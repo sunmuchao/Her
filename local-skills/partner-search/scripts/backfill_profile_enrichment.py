@@ -16,6 +16,11 @@ STRUCTURED_COLUMNS = {
     "dating_pace": "VARCHAR(32)",
     "expression_style": "VARCHAR(32)",
     "relationship_capacity": "VARCHAR(32)",
+    "interaction_comfort": "VARCHAR(32)",
+    "patience_level": "VARCHAR(32)",
+    "life_texture": "VARCHAR(32)",
+    "career_intensity": "VARCHAR(32)",
+    "exercise_habit": "VARCHAR(32)",
     "accept_marital_status_strength": "VARCHAR(32)",
     "accept_partner_children_strength": "VARCHAR(32)",
 }
@@ -47,6 +52,27 @@ BUSY_JOBS = {
     "外贸业务",
     "课程顾问",
     "新媒体运营",
+    "审计",
+}
+
+STABLE_JOBS = {
+    "公务员",
+    "事业单位职员",
+    "教师",
+    "行政",
+    "财务",
+    "会计",
+    "法务",
+    "采购",
+}
+
+BRAINY_JOBS = {
+    "产品经理",
+    "后端工程师",
+    "前端工程师",
+    "软件测试",
+    "数据分析",
+    "产品运营",
 }
 
 
@@ -265,12 +291,64 @@ def infer_structured_style(profile):
     else:
         relationship_capacity = "自然稳定投入"
 
+    if has_any(texts, {"好相处", "松弛", "简单真诚", "相处舒服", "不复杂", "不折腾"}):
+        interaction_comfort = "相处轻松"
+    elif has_any(texts, {"边界清楚", "边界感强", "尊重彼此空间"}):
+        interaction_comfort = "有边界不拧巴"
+    elif has_any(texts, {"安静", "慢热", "温和"}):
+        interaction_comfort = "安静低压"
+    elif has_any(texts, {"理性", "有主见"}):
+        interaction_comfort = "需要一点磨合"
+    else:
+        interaction_comfort = "正常相处"
+
+    if has_any(texts, {"有耐心", "细腻", "慢热", "温和"}):
+        patience_level = "高耐心"
+    elif relationship_goal in {"认真恋爱", "结婚导向"}:
+        patience_level = "耐心稳定"
+    elif marriage_timeline == "半年内" and communication_style == "理性直接":
+        patience_level = "节奏偏快"
+    else:
+        patience_level = "正常耐心"
+
+    if (
+        EDUCATION_ORDER.get(profile.get("education") or "", 0) >= EDUCATION_ORDER["硕士"]
+        and has_any(texts, {"阅读", "看展", "摄影", "旅行", "咖啡", "画画", "烘焙", "手工"})
+        and has_any(texts, {"能沟通", "善沟通", "真诚", "会做简单家常菜", "共同经营生活"})
+    ):
+        life_texture = "有见识也有生活感"
+    elif job in CREATIVE_JOBS or has_any(texts, {"看展", "摄影", "旅行", "咖啡", "画画", "烘焙", "阅读", "手工"}):
+        life_texture = "有生活感"
+    else:
+        life_texture = "简单稳定"
+
+    if job in BUSY_JOBS:
+        career_intensity = "高强度但可协调"
+    elif job in STABLE_JOBS:
+        career_intensity = "规律稳定"
+    elif job in BRAINY_JOBS:
+        career_intensity = "脑力投入型"
+    else:
+        career_intensity = "常规稳定"
+
+    if has_any(texts, {"健身", "爱运动", "跑步", "徒步", "游泳", "羽毛球", "瑜伽"}):
+        exercise_habit = "规律运动"
+    elif has_any(texts, {"散步", "周末会出门走走", "养生"}):
+        exercise_habit = "轻运动"
+    else:
+        exercise_habit = "运动不明显"
+
     return {
         "life_routine": life_routine,
         "communication_style": communication_style,
         "dating_pace": dating_pace,
         "expression_style": expression_style,
         "relationship_capacity": relationship_capacity,
+        "interaction_comfort": interaction_comfort,
+        "patience_level": patience_level,
+        "life_texture": life_texture,
+        "career_intensity": career_intensity,
+        "exercise_habit": exercise_habit,
     }
 
 
@@ -339,6 +417,11 @@ def main():
             "dating_pace",
             "expression_style",
             "relationship_capacity",
+            "interaction_comfort",
+            "patience_level",
+            "life_texture",
+            "career_intensity",
+            "exercise_habit",
         ]
         assignments = ", ".join(f"`{column}`=%s" for column in update_columns)
         sql = f"UPDATE `{args.table}` SET {assignments} WHERE `id`=%s"
