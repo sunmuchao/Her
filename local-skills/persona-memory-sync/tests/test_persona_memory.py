@@ -156,7 +156,7 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertEqual(payload["public_job"], "产品经理")
         self.assertIn("matcher_traits_json", payload)
         self.assertIn("public_personality", payload)
-        self.assertIn("对子女情况=可协商，但接受度偏谨慎", payload["notes"])
+        self.assertIn("对子女情况=现阶段接受度偏低，需结合具体情况判断", payload["notes"])
 
     def test_build_public_profile_masks_sensitive_job_titles(self):
         payload = persona_memory_lib.build_public_profile(
@@ -212,6 +212,15 @@ class PersonaMemoryTests(unittest.TestCase):
             }
         )
         self.assertIn("感情态度飘", payload["notes"])
+
+    def test_build_profile_payload_deduplicates_must_not_and_disliked_notes(self):
+        payload = persona_memory_lib.build_profile_payload(
+            {
+                "must_not_have_tags": "抽烟",
+                "disliked_traits": "长期失联,抽烟",
+            }
+        )
+        self.assertEqual(payload["notes"].count("抽烟"), 1)
 
     def test_mark_profile_sync_results_only_marks_profile_affecting_fields(self):
         field_results = [
