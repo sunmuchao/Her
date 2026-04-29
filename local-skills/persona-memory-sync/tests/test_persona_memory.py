@@ -180,6 +180,16 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertFalse(field_results[1]["applied_to_profile"])
         self.assertFalse(field_results[2]["applied_to_profile"])
 
+    def test_build_public_profile_view_sql_never_falls_back_to_internal_fields(self):
+        sql = persona_memory_lib.build_public_profile_view_sql()
+        self.assertIn("CAST(NULL AS CHAR(32)) AS income_range", sql)
+        self.assertIn("public_personality AS personality", sql)
+        self.assertIn("public_values AS `values`", sql)
+        self.assertIn("public_notes AS notes", sql)
+        self.assertNotIn("COALESCE(public_personality, personality)", sql)
+        self.assertNotIn("COALESCE(public_values, `values`)", sql)
+        self.assertNotIn("COALESCE(public_notes, notes)", sql)
+
 
 if __name__ == "__main__":
     unittest.main()
