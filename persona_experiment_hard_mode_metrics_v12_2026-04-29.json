@@ -1,0 +1,47 @@
+{
+  "persona_count": 12,
+  "matched_persona_count": 4,
+  "no_match_persona_count": 8,
+  "one_match_persona_count": 1,
+  "two_match_persona_count": 3,
+  "no_match_ids": [
+    "h01",
+    "h02",
+    "h03",
+    "h04",
+    "h06",
+    "h09",
+    "h10",
+    "h12"
+  ],
+  "one_match_ids": [
+    "h07"
+  ],
+  "two_match_ids": [
+    "h05",
+    "h08",
+    "h11"
+  ],
+  "top_no_match_reasons": [
+    [
+      "缺少必需关键词「情绪稳定」 x4",
+      2
+    ],
+    [
+      "缺少必需关键词「情绪稳定」 x1",
+      1
+    ],
+    [
+      "婚史接受真实度不匹配 x5",
+      1
+    ],
+    [
+      "婚史接受真实度不匹配 x1",
+      1
+    ],
+    [
+      "缺少必需关键词「情绪稳定」 x2",
+      1
+    ]
+  ]
+}
