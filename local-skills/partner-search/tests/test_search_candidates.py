@@ -344,14 +344,18 @@ class SearchCandidatesTests(unittest.TestCase):
             search_candidates.evaluate_reciprocal_compatibility(candidate, self_profile)
         )
 
-    def test_reciprocal_negotiable_risk_for_children(self):
+    def test_reciprocal_negotiable_children_rejects_when_self_has_children(self):
         candidate = {"accept_partner_children": "可协商"}
         self_profile = {"has_children": 1}
         result = search_candidates.evaluate_reciprocal_compatibility(
-            candidate, self_profile
+            candidate, self_profile, diagnostics=True
         )
         self.assertIsNotNone(result)
-        self.assertIn("对方对子女情况仅可协商", result["risk_flags"])
+        self.assertFalse(result["matched"])
+        self.assertEqual(
+            search_candidates.parse_rejection_reason(result["reject_reason"])[0],
+            "reciprocal_children_acceptance_not_strong",
+        )
 
     def test_reciprocal_missing_children_acceptance_called_out(self):
         candidate = {}
@@ -375,17 +379,21 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertIn("对方收入要求可能可放宽", result["risk_flags"])
 
-    def test_reciprocal_children_acceptance_strength_adds_risk(self):
+    def test_reciprocal_children_acceptance_requires_strong_signal_for_parent(self):
         candidate = {
             "accept_partner_children": "接受",
             "accept_partner_children_strength": "谨慎接受",
         }
         self_profile = {"has_children": 1}
         result = search_candidates.evaluate_reciprocal_compatibility(
-            candidate, self_profile
+            candidate, self_profile, diagnostics=True
         )
         self.assertIsNotNone(result)
-        self.assertIn("对方对子女接受度偏保守", result["risk_flags"])
+        self.assertFalse(result["matched"])
+        self.assertEqual(
+            search_candidates.parse_rejection_reason(result["reject_reason"])[0],
+            "reciprocal_children_acceptance_not_strong",
+        )
 
     def test_attach_photo_previews_groups_by_source_and_table(self):
         original_loader = search_candidates.load_mysql_photo_previews
@@ -840,7 +848,7 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertNotIn("SELF", output)
         self.assertNotIn("MismatchCity", output)
 
-    def test_main_with_self_id_negotiable_children_risk_visible(self):
+    def test_main_with_self_id_negotiable_children_now_filtered_out(self):
         fake_records = [
             {
                 "id": 90001,
@@ -890,8 +898,8 @@ class SearchCandidatesTests(unittest.TestCase):
             search_candidates.main()
 
         output = "".join(call.args[0] for call in mock_stdout.write.call_args_list)
-        self.assertIn("NegotiableA", output)
-        self.assertIn("对方对子女情况仅可协商", output)
+        self.assertIn("No matches found.", output)
+        self.assertIn("对方对你的孩子不是明确接受", output)
 
     def test_main_with_active_within_days_filters_old_activity(self):
         fake_records = [
