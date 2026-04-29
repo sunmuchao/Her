@@ -53,6 +53,22 @@ class BackfillProfileEnrichmentTests(unittest.TestCase):
         self.assertEqual(enriched["warmth_style"], "有温度会接话")
         self.assertNotEqual(enriched["lightness_humor"], "偏克制")
 
+    def test_infer_acceptance_adds_semantic_labels(self):
+        profile = {
+            "id": 1001,
+            "age": 35,
+            "relationship_goal": "结婚导向",
+            "marital_status": "离异",
+            "values": "真诚, 稳定踏实, 愿意共同经营生活",
+            "personality": "务实, 情绪稳定",
+            "accept_marital_status": "未婚,离异",
+            "accept_partner_children": "可协商",
+        }
+        enriched = backfill_profile_enrichment.infer_acceptance(profile)
+        self.assertIn("accept_marital_status_semantics", enriched)
+        self.assertIn("accept_partner_children_semantics", enriched)
+        self.assertTrue(enriched["accept_partner_children_semantics"])
+
     def test_preserve_curated_backfill_keeps_existing_manual_labels(self):
         row = {
             "source_channel": "高质量补池",

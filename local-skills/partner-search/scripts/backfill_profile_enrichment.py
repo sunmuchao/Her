@@ -40,7 +40,9 @@ STRUCTURED_COLUMNS = {
     "relationship_execution": "VARCHAR(32)",
     "blended_family_readiness": "VARCHAR(32)",
     "accept_marital_status_strength": "VARCHAR(32)",
+    "accept_marital_status_semantics": "VARCHAR(128)",
     "accept_partner_children_strength": "VARCHAR(32)",
+    "accept_partner_children_semantics": "VARCHAR(128)",
 }
 
 ALL_NEW_COLUMNS = dict(STRICTNESS_COLUMNS, **STRUCTURED_COLUMNS)
@@ -52,8 +54,10 @@ BACKFILL_UPDATE_COLUMNS = [
     "preferred_income_strictness",
     "accept_marital_status",
     "accept_marital_status_strength",
+    "accept_marital_status_semantics",
     "accept_partner_children",
     "accept_partner_children_strength",
+    "accept_partner_children_semantics",
     "life_routine",
     "communication_style",
     "dating_pace",
@@ -78,6 +82,10 @@ BACKFILL_UPDATE_COLUMNS = [
 ]
 
 CURATED_SOURCE_CHANNELS = {"高质量补池"}
+
+ACCEPTANCE_STRENGTH_STRONG_VALUES = {"明确接受", "长期接受", "真接受"}
+ACCEPTANCE_STRENGTH_CAUTION_VALUES = {"谨慎接受", "了解后定", "需要磨合"}
+ACCEPTANCE_STRENGTH_SURFACE_VALUES = {"短期可聊", "表面接受", "先接触再说"}
 
 EDUCATION_ORDER = {
     "初中": 1,
@@ -313,6 +321,57 @@ def infer_strictness(profile):
 
 
 def infer_acceptance(profile):
+    def acceptance_strength_bucket(value):
+        lowered = (value or "").strip()
+        if lowered in ACCEPTANCE_STRENGTH_STRONG_VALUES:
+            return "strong"
+        if lowered in ACCEPTANCE_STRENGTH_CAUTION_VALUES:
+            return "cautious"
+        if lowered in ACCEPTANCE_STRENGTH_SURFACE_VALUES:
+            return "surface"
+        return "unknown"
+
+    def acceptance_semantics_label(value, strength):
+        state = (value or "").strip()
+        if not state:
+            return None
+        bucket = acceptance_strength_bucket(strength)
+        if state == "不接受":
+            return "明确不接受"
+        if state == "未知":
+            return "态度未知"
+        if state == "接受":
+            if bucket == "strong":
+                return "明确接受"
+            if bucket == "cautious":
+                return "接受，但会更看具体情况"
+            if bucket == "surface":
+                return "先接受接触，再看后续现实情况"
+            return "接受"
+        if state == "可协商":
+            if bucket == "strong":
+                return "愿意结合具体情况认真评估"
+            if bucket == "cautious":
+                return "现阶段接受度偏低，需结合具体情况判断"
+            if bucket == "surface":
+                return "可以先接触再判断"
+            return "可协商"
+        return state
+
+    def marital_acceptance_semantics_label(statuses_value, strength):
+        if not statuses_value:
+            return None
+        bucket = acceptance_strength_bucket(strength)
+        if bucket == "strong":
+            return "在可接受婚况范围内，属于明确接受"
+        if bucket == "cautious":
+            return "在可接受婚况范围内，但会更看具体人和相处质量"
+        if bucket == "surface":
+            return "在可接受婚况范围内，可以先聊再判断"
+        if statuses_value == "未婚":
+            return "仅接受未婚"
+        return "可接受婚况范围已设置"
+
     profile_id = int(profile["id"])
     age = int(profile.get("age") or 0)
     relationship_goal = profile.get("relationship_goal") or ""
@@ -373,11 +432,20 @@ def infer_acceptance(profile):
         else:
             child_strength = "未知"
 
+    marital_status_text = ", ".join(unique_keep_order(statuses))
     return {
-        "accept_marital_status": ", ".join(unique_keep_order(statuses)),
+        "accept_marital_status": marital_status_text,
         "accept_marital_status_strength": marital_strength,
+        "accept_marital_status_semantics": marital_acceptance_semantics_label(
+            marital_status_text,
+            marital_strength,
+        ),
         "accept_partner_children": accept_partner_children,
         "accept_partner_children_strength": child_strength,
+        "accept_partner_children_semantics": acceptance_semantics_label(
+            accept_partner_children,
+            child_strength,
+        ),
     }
 
 

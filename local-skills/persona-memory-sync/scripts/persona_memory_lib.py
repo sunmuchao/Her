@@ -164,6 +164,8 @@ PROFILE_EXTENSION_COLUMNS = {
     "matcher_preferences_json": "JSON NULL",
     "matcher_risks_json": "JSON NULL",
     "matcher_summary_internal": "TEXT NULL",
+    "accept_marital_status_semantics": "VARCHAR(128) NULL",
+    "accept_partner_children_semantics": "VARCHAR(128) NULL",
     "public_job": "VARCHAR(64) NULL",
     "public_personality": "TEXT NULL",
     "public_values": "TEXT NULL",
@@ -195,10 +197,10 @@ PATCH_DERIVED_PROFILE_COLUMNS = {
     "self_income_wan": {"income_range"},
     "self_job": {"public_job"},
     "target_accept_long_distance": {"long_distance", "accept_long_distance"},
-    "target_accept_partner_children": {"accept_partner_children"},
-    "target_marital_statuses": {"accept_marital_status"},
-    "target_marital_status_strength": {"accept_marital_status_strength"},
-    "target_accept_partner_children_strength": {"accept_partner_children_strength"},
+    "target_accept_partner_children": {"accept_partner_children", "accept_partner_children_semantics"},
+    "target_marital_statuses": {"accept_marital_status", "accept_marital_status_semantics"},
+    "target_marital_status_strength": {"accept_marital_status_strength", "accept_marital_status_semantics"},
+    "target_accept_partner_children_strength": {"accept_partner_children_strength", "accept_partner_children_semantics"},
 }
 
 RAW_NEGATIVE_TO_MATCHER = {
@@ -380,6 +382,50 @@ def format_acceptance_note(value: Any, strength: Any) -> Optional[str]:
     if note_value == "接受" and bucket == "cautious":
         return "接受，但会更看具体相处"
     return f"{note_value}（{note_strength}）"
+
+
+def acceptance_semantics_label(value: Any, strength: Any) -> Optional[str]:
+    state = clean_text(value)
+    if not state:
+        return None
+    bucket = acceptance_strength_bucket(strength)
+    if state == "不接受":
+        return "明确不接受"
+    if state == "未知":
+        return "态度未知"
+    if state == "接受":
+        if bucket == "strong":
+            return "明确接受"
+        if bucket == "cautious":
+            return "接受，但会更看具体情况"
+        if bucket == "surface":
+            return "先接受接触，再看后续现实情况"
+        return "接受"
+    if state == "可协商":
+        if bucket == "strong":
+            return "愿意结合具体情况认真评估"
+        if bucket == "cautious":
+            return "现阶段接受度偏低，需结合具体情况判断"
+        if bucket == "surface":
+            return "可以先接触再判断"
+        return "可协商"
+    return state
+
+
+def marital_acceptance_semantics_label(statuses: Any, strength: Any) -> Optional[str]:
+    status_text = clean_text(statuses)
+    if not status_text:
+        return None
+    bucket = acceptance_strength_bucket(strength)
+    if bucket == "strong":
+        return "在可接受婚况范围内，属于明确接受"
+    if bucket == "cautious":
+        return "在可接受婚况范围内，但会更看具体人和相处质量"
+    if bucket == "surface":
+        return "在可接受婚况范围内，可以先聊再判断"
+    if status_text == "未婚":
+        return "仅接受未婚"
+    return "可接受婚况范围已设置"
 
 
 def as_int(value: Any) -> Optional[int]:
@@ -575,8 +621,16 @@ def build_matcher_payload(persona: Dict[str, Any]) -> Dict[str, Optional[str]]:
         "target_income_max_wan": persona.get("target_income_max_wan"),
         "target_marital_statuses": target_statuses,
         "target_marital_status_strength": persona.get("target_marital_status_strength"),
+        "target_marital_status_semantics": marital_acceptance_semantics_label(
+            persona.get("target_marital_statuses"),
+            persona.get("target_marital_status_strength"),
+        ),
         "target_accept_partner_children": persona.get("target_accept_partner_children"),
         "target_accept_partner_children_strength": persona.get("target_accept_partner_children_strength"),
+        "target_accept_partner_children_semantics": acceptance_semantics_label(
+            persona.get("target_accept_partner_children"),
+            persona.get("target_accept_partner_children_strength"),
+        ),
         "target_accept_long_distance": persona.get("target_accept_long_distance"),
         "must_have_tags": must_have,
         "preferred_traits": preferred_traits,
@@ -686,8 +740,26 @@ def build_profile_payload(
         payload["accept_long_distance"] = persona.get("target_accept_long_distance")
     if persona.get("target_accept_partner_children") is not None:
         payload["accept_partner_children"] = persona.get("target_accept_partner_children")
+    if (
+        persona.get("target_accept_partner_children") is not None
+        or "target_accept_partner_children" in include_null_persona_fields
+        or "target_accept_partner_children_strength" in include_null_persona_fields
+    ):
+        payload["accept_partner_children_semantics"] = acceptance_semantics_label(
+            persona.get("target_accept_partner_children"),
+            persona.get("target_accept_partner_children_strength"),
+        )
     if persona.get("target_marital_statuses") is not None:
         payload["accept_marital_status"] = persona.get("target_marital_statuses")
+    if (
+        persona.get("target_marital_statuses") is not None
+        or "target_marital_statuses" in include_null_persona_fields
+        or "target_marital_status_strength" in include_null_persona_fields
+    ):
+        payload["accept_marital_status_semantics"] = marital_acceptance_semantics_label(
+            persona.get("target_marital_statuses"),
+            persona.get("target_marital_status_strength"),
+        )
 
     public_payload = build_public_profile(persona)
     matcher_payload = build_matcher_payload(persona)
