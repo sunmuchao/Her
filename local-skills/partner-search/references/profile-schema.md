@@ -47,6 +47,8 @@ Use this schema for MySQL columns.
 | `aesthetic_expression` | Structured aesthetic / expressive signal such as clear taste output or plain |
 | `conversation_resonance` | Whether the person can聊想法也聊日常, can接情绪, or mainly stays at practical info exchange |
 | `personal_presence` | Whether the profile feels memorable, warm-and-enduring, or conditionally correct but flat |
+| `lightness_humor` | Whether the person feels playful / not wooden in chat, or more steady and restrained |
+| `commitment_clarity` | Whether the person is explicitly entering with long-term intent or still more “先聊熟再说” |
 | `blended_family_readiness` | Whether the profile has concretely thought through divorced-with-children reality |
 | `smoking` | `否`, `是`, `偶尔`, `未知` |
 | `drinking` | `否`, `是`, `偶尔`, `未知` |
@@ -120,6 +122,8 @@ CREATE TABLE profiles (
   aesthetic_expression VARCHAR(32),
   conversation_resonance VARCHAR(32),
   personal_presence VARCHAR(32),
+  lightness_humor VARCHAR(32),
+  commitment_clarity VARCHAR(32),
   blended_family_readiness VARCHAR(32),
   smoking VARCHAR(16),
   drinking VARCHAR(16),
