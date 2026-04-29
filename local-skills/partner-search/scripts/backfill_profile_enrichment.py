@@ -25,6 +25,8 @@ STRUCTURED_COLUMNS = {
     "growth_signal": "VARCHAR(32)",
     "warmth_style": "VARCHAR(32)",
     "aesthetic_expression": "VARCHAR(32)",
+    "conversation_resonance": "VARCHAR(32)",
+    "personal_presence": "VARCHAR(32)",
     "blended_family_readiness": "VARCHAR(32)",
     "accept_marital_status_strength": "VARCHAR(32)",
     "accept_partner_children_strength": "VARCHAR(32)",
@@ -382,6 +384,25 @@ def infer_structured_style(profile):
     else:
         aesthetic_expression = "普通"
 
+    if has_any(texts, {"聊想法", "长期成长", "看展", "阅读", "写点东西", "研究", "判断", "有观点"}):
+        conversation_resonance = "能聊想法也能聊日常"
+    elif has_any(texts, {"真诚", "善沟通", "好相处", "简单真诚", "沟通顺畅", "有耐心"}):
+        conversation_resonance = "会接话也会接情绪"
+    elif has_any(texts, {"务实", "稳定踏实", "重视家庭", "愿意共同经营生活"}):
+        conversation_resonance = "偏务实日常"
+    else:
+        conversation_resonance = "偏信息交换"
+
+    if (
+        aesthetic_expression == "有审美输出"
+        and has_any(texts, {"看展", "摄影", "阅读", "画画", "烘焙", "咖啡", "写点东西", "长期成长"})
+    ):
+        personal_presence = "有记忆点"
+    elif has_any(texts, {"温和", "真诚", "有耐心", "好相处", "细腻"}):
+        personal_presence = "温和耐看"
+    else:
+        personal_presence = "偏平"
+
     marital_strength = profile.get("accept_marital_status_strength") or ""
     child_strength = profile.get("accept_partner_children_strength") or ""
     accept_partner_children = profile.get("accept_partner_children") or ""
@@ -408,6 +429,8 @@ def infer_structured_style(profile):
         "growth_signal": growth_signal,
         "warmth_style": warmth_style,
         "aesthetic_expression": aesthetic_expression,
+        "conversation_resonance": conversation_resonance,
+        "personal_presence": personal_presence,
         "blended_family_readiness": blended_family_readiness,
     }
 
@@ -486,6 +509,8 @@ def main():
             "growth_signal",
             "warmth_style",
             "aesthetic_expression",
+            "conversation_resonance",
+            "personal_presence",
             "blended_family_readiness",
         ]
         assignments = ", ".join(f"`{column}`=%s" for column in update_columns)

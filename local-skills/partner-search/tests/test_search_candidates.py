@@ -402,6 +402,8 @@ class SearchCandidatesTests(unittest.TestCase):
             "growth_signal": "上升明确",
             "warmth_style": "理性但不冷",
             "aesthetic_expression": "有审美输出",
+            "conversation_resonance": "能聊想法也能聊日常",
+            "personal_presence": "有记忆点",
             "life_texture": "有见识也有生活感",
             "interaction_comfort": "有边界不拧巴",
             "patience_level": "耐心稳定",
@@ -420,6 +422,9 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertIn("成长势能更强", result["matched_on"])
         self.assertIn("理性但不冷", result["matched_on"])
         self.assertIn("更有审美和表达感", result["matched_on"])
+        self.assertIn("更容易聊出感觉", result["matched_on"])
+        self.assertIn("人物感更强", result["matched_on"])
+        self.assertIn("不只合适，也更容易让人有感觉", result["matched_on"])
         self.assertGreater(result["score_bonus"], 0)
 
     def test_attach_photo_previews_groups_by_source_and_table(self):
@@ -571,6 +576,8 @@ class SearchCandidatesTests(unittest.TestCase):
                         "growth_signal": "上升明确",
                         "warmth_style": "有温度会接话",
                         "aesthetic_expression": "有审美输出",
+                        "conversation_resonance": "能聊想法也能聊日常",
+                        "personal_presence": "有记忆点",
                         "blended_family_readiness": "已想过现实安排",
                     },
                     "source_file": "",
@@ -586,6 +593,8 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertIn("成长=上升明确", text)
         self.assertIn("温度=有温度会接话", text)
         self.assertIn("审美=有审美输出", text)
+        self.assertIn("共鸣=能聊想法也能聊日常", text)
+        self.assertIn("人物感=有记忆点", text)
         self.assertIn("现实承接=已想过现实安排", text)
 
     def test_redact_sensitive_text_masks_common_contact_fields(self):
