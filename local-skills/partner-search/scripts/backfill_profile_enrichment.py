@@ -36,6 +36,37 @@ STRUCTURED_COLUMNS = {
 
 ALL_NEW_COLUMNS = dict(STRICTNESS_COLUMNS, **STRUCTURED_COLUMNS)
 
+BACKFILL_UPDATE_COLUMNS = [
+    "preferred_age_strictness",
+    "preferred_height_strictness",
+    "preferred_education_strictness",
+    "preferred_income_strictness",
+    "accept_marital_status",
+    "accept_marital_status_strength",
+    "accept_partner_children",
+    "accept_partner_children_strength",
+    "life_routine",
+    "communication_style",
+    "dating_pace",
+    "expression_style",
+    "relationship_capacity",
+    "interaction_comfort",
+    "patience_level",
+    "life_texture",
+    "career_intensity",
+    "exercise_habit",
+    "growth_signal",
+    "warmth_style",
+    "aesthetic_expression",
+    "conversation_resonance",
+    "personal_presence",
+    "lightness_humor",
+    "commitment_clarity",
+    "blended_family_readiness",
+]
+
+CURATED_SOURCE_CHANNELS = {"高质量补池"}
+
 EDUCATION_ORDER = {
     "初中": 1,
     "高中": 2,
@@ -69,10 +100,12 @@ STABLE_JOBS = {
     "事业单位职员",
     "教师",
     "行政",
+    "高校行政",
     "财务",
     "会计",
     "法务",
     "采购",
+    "国企职员",
 }
 
 BRAINY_JOBS = {
@@ -82,6 +115,16 @@ BRAINY_JOBS = {
     "软件测试",
     "数据分析",
     "产品运营",
+    "AI研究员",
+    "用户研究负责人",
+    "政策研究员",
+    "城市策略顾问",
+    "产业战略经理",
+    "商业分析经理",
+    "业务发展负责人",
+    "战略咨询经理",
+    "AI产品经理",
+    "医疗器械产品经理",
 }
 
 UPWARD_JOBS = BRAINY_JOBS | {
@@ -90,6 +133,7 @@ UPWARD_JOBS = BRAINY_JOBS | {
     "审计",
     "银行职员",
     "招商主管",
+    "药企招商主管",
 }
 
 
@@ -122,6 +166,18 @@ def unique_keep_order(items):
             seen.add(item)
             result.append(item)
     return result
+
+
+def preserve_curated_backfill(row, enriched):
+    if row.get("source_channel") not in CURATED_SOURCE_CHANNELS:
+        return enriched
+
+    merged = dict(enriched)
+    for column in BACKFILL_UPDATE_COLUMNS:
+        current_value = row.get(column)
+        if current_value not in (None, ""):
+            merged[column] = current_value
+    return merged
 
 
 def pseudo_bucket(profile_id, salt):
@@ -274,7 +330,7 @@ def infer_structured_style(profile):
     else:
         life_routine = "正常作息"
 
-    if has_any(texts, {"善沟通", "能沟通", "沟通顺畅"}):
+    if has_any(texts, {"善沟通", "能沟通", "沟通顺畅", "能接住话", "接住话", "不冷场", "不拖节奏"}):
         communication_style = "主动沟通"
     elif has_any(texts, {"慢热"}):
         communication_style = "慢热少话"
@@ -308,7 +364,7 @@ def infer_structured_style(profile):
     else:
         relationship_capacity = "自然稳定投入"
 
-    if has_any(texts, {"好相处", "松弛", "简单真诚", "相处舒服", "不复杂", "不折腾"}):
+    if has_any(texts, {"好相处", "松弛", "简单真诚", "相处舒服", "不复杂", "不折腾", "不压人", "让人放松", "不端着"}):
         interaction_comfort = "相处轻松"
     elif has_any(texts, {"边界清楚", "边界感强", "尊重彼此空间"}):
         interaction_comfort = "有边界不拧巴"
@@ -370,9 +426,9 @@ def infer_structured_style(profile):
     else:
         growth_signal = "稳定型"
 
-    if has_any(texts, {"善沟通", "好相处", "爱笑", "细腻", "真诚"}) and communication_style in {"主动沟通", "稳定沟通"}:
+    if has_any(texts, {"善沟通", "好相处", "爱笑", "细腻", "真诚", "能接住话", "接住话", "不冷场", "不压人", "让人放松"}) and communication_style in {"主动沟通", "稳定沟通", "慢热少话"}:
         warmth_style = "有温度会接话"
-    elif has_any(texts, {"理性", "边界清楚", "边界感强"}) and has_any(texts, {"温和", "真诚", "有耐心"}):
+    elif has_any(texts, {"理性", "边界清楚", "边界感强", "不端着"}) and has_any(texts, {"温和", "真诚", "有耐心", "不压人", "让人放松"}):
         warmth_style = "理性但不冷"
     elif communication_style == "慢热少话" or has_any(texts, {"安静"}):
         warmth_style = "偏克制"
@@ -386,9 +442,9 @@ def infer_structured_style(profile):
     else:
         aesthetic_expression = "普通"
 
-    if has_any(texts, {"聊想法", "长期成长", "看展", "阅读", "写点东西", "研究", "判断", "有观点"}):
+    if has_any(texts, {"聊想法", "长期成长", "看展", "阅读", "写点东西", "研究", "判断", "有观点", "把复杂问题讲得有趣"}):
         conversation_resonance = "能聊想法也能聊日常"
-    elif has_any(texts, {"真诚", "善沟通", "好相处", "简单真诚", "沟通顺畅", "有耐心"}):
+    elif has_any(texts, {"真诚", "善沟通", "好相处", "简单真诚", "沟通顺畅", "有耐心", "能接住话", "不冷场"}):
         conversation_resonance = "会接话也会接情绪"
     elif has_any(texts, {"务实", "稳定踏实", "重视家庭", "愿意共同经营生活"}):
         conversation_resonance = "偏务实日常"
@@ -400,19 +456,21 @@ def infer_structured_style(profile):
         and has_any(texts, {"看展", "摄影", "阅读", "画画", "烘焙", "咖啡", "写点东西", "长期成长"})
     ):
         personal_presence = "有记忆点"
-    elif has_any(texts, {"温和", "真诚", "有耐心", "好相处", "细腻"}):
+    elif has_any(texts, {"温和", "真诚", "有耐心", "好相处", "细腻", "不压人", "让人放松"}):
         personal_presence = "温和耐看"
     else:
         personal_presence = "偏平"
 
-    if has_any(texts, {"幽默", "有趣", "不端着", "松弛", "会开玩笑", "把复杂问题讲得有趣", "轻松一点"}):
+    if has_any(texts, {"幽默", "有趣", "不端着", "松弛", "会开玩笑", "把复杂问题讲得有趣", "轻松一点", "不冷场", "让人放松", "不拖节奏", "不紧绷"}):
         lightness_humor = "有点幽默不端着"
-    elif has_any(texts, {"温和", "有分寸", "理性", "边界清楚", "稳重"}):
+    elif has_any(texts, {"温和", "有分寸", "理性", "边界清楚", "稳重", "不压人"}):
         lightness_humor = "稳重有分寸"
     else:
         lightness_humor = "偏克制"
 
     if relationship_goal == "结婚导向" and marriage_timeline in {"半年内", "1年内"}:
+        commitment_clarity = "明确奔着长期"
+    elif has_any(texts, {"认真找长期关系", "不爱反复试探", "长期打算说清楚", "不想把时间耗在反复试探上"}):
         commitment_clarity = "明确奔着长期"
     elif relationship_goal in {"认真恋爱", "结婚导向"}:
         commitment_clarity = "愿意稳定推进"
@@ -484,12 +542,31 @@ def main():
     )
     try:
         ensure_columns(conn, args.table)
+        base_columns = [
+            "id",
+            "age",
+            "gender",
+            "education",
+            "job",
+            "relationship_goal",
+            "marriage_timeline",
+            "personality",
+            "values",
+            "lifestyle",
+            "hobbies",
+            "notes",
+            "marital_status",
+            "accept_marital_status",
+            "accept_partner_children",
+            "source_channel",
+        ]
+        select_columns = base_columns + [
+            column for column in BACKFILL_UPDATE_COLUMNS if column not in base_columns
+        ]
         with conn.cursor() as cursor:
             cursor.execute(
                 f"""
-                SELECT `id`, `age`, `gender`, `education`, `job`, `relationship_goal`, `marriage_timeline`,
-                       `personality`, `values`, `lifestyle`, `hobbies`, `notes`, `marital_status`,
-                       `accept_marital_status`, `accept_partner_children`
+                SELECT {", ".join(f"`{column}`" for column in select_columns)}
                 FROM `{args.table}`
                 """
             )
@@ -502,45 +579,18 @@ def main():
             acceptance = infer_acceptance(row)
             enriched.update(acceptance)
             enriched.update(infer_structured_style(dict(row, **acceptance)))
+            enriched = preserve_curated_backfill(row, enriched)
             enriched["id"] = row["id"]
             updates.append(enriched)
 
-        update_columns = [
-            "preferred_age_strictness",
-            "preferred_height_strictness",
-            "preferred_education_strictness",
-            "preferred_income_strictness",
-            "accept_marital_status",
-            "accept_marital_status_strength",
-            "accept_partner_children",
-            "accept_partner_children_strength",
-            "life_routine",
-            "communication_style",
-            "dating_pace",
-            "expression_style",
-            "relationship_capacity",
-            "interaction_comfort",
-            "patience_level",
-            "life_texture",
-            "career_intensity",
-            "exercise_habit",
-            "growth_signal",
-            "warmth_style",
-            "aesthetic_expression",
-            "conversation_resonance",
-            "personal_presence",
-            "lightness_humor",
-            "commitment_clarity",
-            "blended_family_readiness",
-        ]
-        assignments = ", ".join(f"`{column}`=%s" for column in update_columns)
+        assignments = ", ".join(f"`{column}`=%s" for column in BACKFILL_UPDATE_COLUMNS)
         sql = f"UPDATE `{args.table}` SET {assignments} WHERE `id`=%s"
 
         with conn.cursor() as cursor:
             cursor.executemany(
                 sql,
                 [
-                    tuple(item[column] for column in update_columns) + (item["id"],)
+                    tuple(item[column] for column in BACKFILL_UPDATE_COLUMNS) + (item["id"],)
                     for item in updates
                 ],
             )

@@ -363,6 +363,8 @@ RISK_FLAG_PENALTIES = {
     "相处可能偏冷": 6,
     "相处节奏可能偏赶": 5,
     "忙的时候可能更难推进": 5,
+    "工作节奏偏忙，稳定投入要再看": 5,
+    "主动沟通感偏弱": 4,
     "成长势能偏弱": 6,
     "聊天温度偏冷": 5,
     "审美表达偏平": 4,
@@ -796,6 +798,15 @@ def evaluate_contextual_fit(record, criteria, self_profile=None):
     communication_style = record.get("communication_style")
     dating_pace = record.get("dating_pace")
     expression_style = record.get("expression_style")
+    notes_and_values = " ".join(
+        str(record.get(field) or "") for field in ("notes", "values", "family_background")
+    )
+    steady_life_profile = (
+        requires_explicit_marital_acceptance(self_profile)
+        or requires_explicit_children_acceptance(self_profile)
+        or keyword_requested(criteria, {"稳定踏实", "生活规律", "省心", "过日子", "相处舒服", "相处轻松", "简单舒服", "不累"})
+    )
+    wants_proactive_communication = keyword_requested(criteria, {"主动沟通", "沟通"})
 
     if keyword_requested(criteria, {"有耐心", "慢热", "沟通", "相处", "舒服", "不累"}):
         if interaction_comfort in {"相处轻松", "安静低压", "有边界不拧巴"}:
@@ -856,6 +867,13 @@ def evaluate_contextual_fit(record, criteria, self_profile=None):
                 reasons.append("学历层次更接近")
                 score_bonus += 5
                 match_evidence.append(f"学历层次更接近 <- 学历: {record.get('education')}")
+                if (
+                    self_education_rank >= EDUCATION_ORDER["博士"]
+                    and candidate_education_rank >= EDUCATION_ORDER["博士"]
+                ):
+                    reasons.append("认知层次更对位")
+                    score_bonus += 4
+                    match_evidence.append(f"认知层次更对位 <- 学历: {record.get('education')}")
             elif self_education_rank >= EDUCATION_ORDER["博士"] and candidate_education_rank <= EDUCATION_ORDER["本科"]:
                 risk_flags.append("生活阶段可能有落差")
 
@@ -868,6 +886,27 @@ def evaluate_contextual_fit(record, criteria, self_profile=None):
             risk_flags.append("生活阶段可能有落差")
 
     if high_bar_profile or keyword_requested(criteria, {"见识", "表达", "生活感", "会聊天", "人物感", "上头", "火花"}):
+        if wants_proactive_communication:
+            if communication_style == "主动沟通":
+                reasons.append("沟通更主动")
+                score_bonus += 4
+                match_evidence.append(f"沟通更主动 <- 沟通风格: {communication_style}")
+            elif communication_style == "稳定沟通":
+                reasons.append("沟通节奏更稳")
+                score_bonus += 2
+                match_evidence.append(f"沟通节奏更稳 <- 沟通风格: {communication_style}")
+            elif communication_style == "慢热少话":
+                risk_flags.append("主动沟通感偏弱")
+        if warmth_style == "有温度会接话":
+            reasons.append("理性之外也有温度")
+            score_bonus += 4
+            match_evidence.append(f"理性之外也有温度 <- 聊天温度: {warmth_style}")
+        elif warmth_style == "理性但不冷":
+            reasons.append("理性但不端着")
+            score_bonus += 3
+            match_evidence.append(f"理性但不端着 <- 聊天温度: {warmth_style}")
+        elif warmth_style == "偏克制":
+            risk_flags.append("聊天温度偏冷")
         if life_texture == "有见识也有生活感":
             reasons.append("资料不只稳，也更有生活感")
             score_bonus += 7
@@ -931,6 +970,18 @@ def evaluate_contextual_fit(record, criteria, self_profile=None):
         elif high_bar_profile and growth_signal in {"稳定型", "未知"}:
             risk_flags.append("成长势能偏弱")
 
+    if steady_life_profile:
+        if career_intensity == "规律稳定":
+            reasons.append("工作节奏更稳")
+            score_bonus += 5
+            match_evidence.append(f"工作节奏更稳 <- 工作节奏类型: {career_intensity}")
+        elif career_intensity == "常规稳定":
+            reasons.append("关系投入更省心")
+            score_bonus += 3
+            match_evidence.append(f"关系投入更省心 <- 工作节奏类型: {career_intensity}")
+        elif career_intensity == "高强度但可协调":
+            risk_flags.append("工作节奏偏忙，稳定投入要再看")
+
     self_job = self_profile.get("job")
     if self_job and contains_any_text(self_job, BUSY_JOB_KEYWORDS):
         if communication_style in {"主动沟通", "稳定沟通"} and dating_pace != "慢热推进":
@@ -957,6 +1008,14 @@ def evaluate_contextual_fit(record, criteria, self_profile=None):
             match_evidence.append(f"现实问题愿意一起商量 <- 现实承接度: {blended_family_readiness}")
         elif blended_family_readiness in {"仅口头接受", "未知", None, ""}:
             risk_flags.append("重组家庭现实承接仍需确认")
+        if (
+            requires_explicit_marital_acceptance(self_profile)
+            and record.get("accept_marital_status_strength") == "明确接受"
+            and contains_any_text(notes_and_values, {"婚史", "再婚", "现实安排", "家里相处", "边界", "为什么结束"})
+        ):
+            reasons.append("对婚史和现实问题想得更具体")
+            score_bonus += 3
+            match_evidence.append("对婚史和现实问题想得更具体 <- 备注/价值观提到了婚史或现实安排")
 
     relationship_goals = set(criteria.get("relationship_goals") or [])
     wants_clear_long_term = (
@@ -1114,6 +1173,10 @@ def build_follow_up_questions(record, missing_fields, risk_flags, self_profile=N
             questions.append("确认推进会不会太快，会不会让你有压力。")
         elif risk == "忙的时候可能更难推进":
             questions.append("确认工作忙时的沟通和见面安排能不能稳定下来。")
+        elif risk == "工作节奏偏忙，稳定投入要再看":
+            questions.append("确认对方工作到底有多忙，周中回复和见面能不能稳定。")
+        elif risk == "主动沟通感偏弱":
+            questions.append("确认对方是慢热还是低反馈，别聊着聊着只剩你一个人在推进。")
         elif risk == "成长势能偏弱":
             questions.append("确认对方接下来几年是继续往上走，还是更偏稳定守成。")
         elif risk == "聊天温度偏冷":
