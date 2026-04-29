@@ -8,16 +8,11 @@ import json
 from persona_memory_lib import (
     DEFAULT_PERSONA_TABLE,
     build_profile_payload,
+    insert_profile_stub,
     mysql_connect,
     parse_mysql_source,
     quote_mysql_ident,
 )
-
-
-def allocate_profile_id(cursor, profile_table: str) -> int:
-    cursor.execute(f"SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM {quote_mysql_ident(profile_table)}")
-    row = cursor.fetchone()
-    return int(row["next_id"])
 
 
 def fetch_persona(cursor, persona_table: str, user_key=None, profile_id=None):
@@ -36,7 +31,7 @@ def fetch_persona(cursor, persona_table: str, user_key=None, profile_id=None):
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Sync a saved user persona into the internal profiles table.")
-    parser.add_argument("--source", default=None, help="MySQL DSN. Defaults to PERSONA_MEMORY_MYSQL_SOURCE or local her DB.")
+    parser.add_argument("--source", default=None, help="MySQL DSN. Defaults to PERSONA_MEMORY_MYSQL_SOURCE.")
     parser.add_argument("--persona-table", default=DEFAULT_PERSONA_TABLE)
     parser.add_argument("--profile-table", default=None, help="Override the profile table name.")
     parser.add_argument("--user-key", default=None)
@@ -58,7 +53,8 @@ def main() -> None:
 
             profile_id = persona.get("profile_id") or args.profile_id
             if profile_id is None:
-                profile_id = allocate_profile_id(cursor, profile_table)
+                initial_payload = build_profile_payload(persona, existing_profile={})
+                profile_id = insert_profile_stub(cursor, profile_table, initial_payload)
                 cursor.execute(
                     f"UPDATE {quote_mysql_ident(args.persona_table)} SET profile_id = %s WHERE id = %s",
                     (profile_id, persona["id"]),
@@ -118,4 +114,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

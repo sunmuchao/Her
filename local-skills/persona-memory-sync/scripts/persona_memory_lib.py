@@ -12,11 +12,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 
 MYSQL_SCHEMES = {"mysql", "mysql+pymysql"}
-DEFAULT_SOURCE = (
-    os.environ.get("PERSONA_MEMORY_MYSQL_SOURCE")
-    or os.environ.get("PARTNER_SEARCH_MYSQL_SOURCE")
-    or "mysql://root@127.0.0.1:3307/her?table=profiles"
-)
+DEFAULT_SOURCE_ENV = "PERSONA_MEMORY_MYSQL_SOURCE"
 DEFAULT_PROFILE_TABLE = "profiles"
 DEFAULT_PERSONA_TABLE = "user_personas"
 DEFAULT_OBSERVATION_TABLE = "user_persona_observations"
@@ -167,6 +163,25 @@ PROFILE_EXTENSION_COLUMNS = {
     "public_notes": "TEXT NULL",
 }
 
+PROFILE_SYNC_PERSONA_FIELDS = set(PERSONA_TO_PROFILE_FIELD_MAP) | {
+    "display_name",
+    "self_income_wan",
+    "target_accept_long_distance",
+    "target_accept_partner_children",
+    "target_marital_statuses",
+    "target_gender",
+    "target_want_children",
+    "target_marriage_timeline",
+    "must_have_tags",
+    "must_not_have_tags",
+    "preferred_traits",
+    "disliked_traits",
+    "persona_summary_internal",
+    "preference_summary_internal",
+    "public_profile_summary_draft",
+    "public_preference_summary_draft",
+}
+
 RAW_NEGATIVE_TO_MATCHER = {
     "绿茶": {
         "boundary_clarity_risk": "high",
@@ -224,8 +239,18 @@ PUBLIC_SAFE_TAG_MAP = {
 }
 
 
+def resolve_mysql_source(source: Optional[str] = None) -> str:
+    resolved = source or os.environ.get(DEFAULT_SOURCE_ENV)
+    if resolved:
+        return resolved
+    raise ValueError(
+        "No MySQL source configured. Pass --source mysql://user:pass@host:3306/db?table=profiles "
+        f"or set {DEFAULT_SOURCE_ENV}."
+    )
+
+
 def parse_mysql_source(source: Optional[str] = None) -> Dict[str, Any]:
-    source = source or DEFAULT_SOURCE
+    source = resolve_mysql_source(source)
     parsed = urlparse(str(source))
     if parsed.scheme.lower() not in MYSQL_SCHEMES:
         raise ValueError(f"Unsupported MySQL source: {source}")
@@ -270,6 +295,10 @@ def mysql_connect(source: Optional[str] = None):
 
 def quote_mysql_ident(identifier: str) -> str:
     return "`" + str(identifier).replace("`", "``") + "`"
+
+
+def persona_field_affects_profile(field_name: str) -> bool:
+    return field_name in PROFILE_SYNC_PERSONA_FIELDS
 
 
 def now_string() -> str:
@@ -576,16 +605,95 @@ def build_profile_payload(persona: Dict[str, Any], existing_profile: Optional[Di
     matcher_payload = build_matcher_payload(persona)
     payload.update(public_payload)
     payload.update(matcher_payload)
+    must_have = items_from_csv(persona.get("must_have_tags"))
+    must_not_have = items_from_csv(persona.get("must_not_have_tags"))
+    preferred_traits = items_from_csv(persona.get("preferred_traits"))
+    disliked_traits = items_from_csv(persona.get("disliked_traits"))
 
-    payload["personality"] = public_payload["public_personality"]
-    payload["values"] = public_payload["public_values"]
-    payload["notes"] = public_payload["public_notes"]
+    internal_personality = (
+        clean_text(persona.get("persona_summary_internal"))
+        or clean_text(existing_profile.get("personality"))
+        or public_payload["public_personality"]
+    )
+
+    if clean_text(persona.get("preference_summary_internal")):
+        internal_values = clean_text(persona.get("preference_summary_internal"))
+    else:
+        value_fragments = []
+        if must_have:
+            value_fragments.append("看重" + "、".join(must_have[:3]))
+        if preferred_traits:
+            value_fragments.append("偏好" + "、".join(preferred_traits[:3]))
+        if persona.get("target_accept_long_distance") == "不接受":
+            value_fragments.append("异地推进需要同城前提")
+        internal_values = (
+            "；".join(value_fragments)
+            or clean_text(existing_profile.get("values"))
+            or public_payload["public_values"]
+        )
+
+    internal_note_parts = []
+    if must_not_have:
+        internal_note_parts.append("明确避开" + "、".join(must_not_have[:3]))
+    if disliked_traits:
+        internal_note_parts.append("不太接受" + "、".join(disliked_traits[:3]))
+    if persona.get("target_marital_statuses"):
+        internal_note_parts.append(f"可接受婚况={persona.get('target_marital_statuses')}")
+    if persona.get("target_accept_partner_children"):
+        internal_note_parts.append(f"对子女情况={persona.get('target_accept_partner_children')}")
+    internal_notes = (
+        "；".join(internal_note_parts)
+        or clean_text(existing_profile.get("notes"))
+        or matcher_payload["matcher_summary_internal"]
+        or public_payload["public_notes"]
+    )
+
+    payload["personality"] = internal_personality
+    payload["values"] = internal_values
+    payload["notes"] = internal_notes
     payload["name"] = clean_text(persona.get("display_name")) or clean_text(existing_profile.get("name")) or clean_text(persona.get("user_key")) or "未命名"
     payload["source_channel"] = clean_text(existing_profile.get("source_channel")) or "persona-memory-sync"
     payload["profile_status"] = clean_text(existing_profile.get("profile_status")) or "active"
     payload["verified_level"] = clean_text(existing_profile.get("verified_level")) or "none"
     payload["last_active_at"] = now_string()
     return payload
+
+
+def mark_profile_sync_results(
+    field_results: List[Dict[str, Any]],
+    *,
+    synced_profile: bool,
+) -> List[Dict[str, Any]]:
+    for item in field_results:
+        item["applied_to_profile"] = bool(
+            synced_profile
+            and item.get("applied_to_persona")
+            and persona_field_affects_profile(item.get("field_name", ""))
+        )
+    return field_results
+
+
+def insert_profile_stub(cursor, profile_table: str, payload: Dict[str, Any]) -> int:
+    cursor.execute(
+        f"""
+        INSERT INTO {quote_mysql_ident(profile_table)}
+          (name, profile_status, verified_level, source_channel, last_active_at)
+        VALUES (%s, %s, %s, %s, %s)
+        """,
+        (
+            payload["name"],
+            payload["profile_status"],
+            payload["verified_level"],
+            payload["source_channel"],
+            payload["last_active_at"],
+        ),
+    )
+    profile_id = getattr(cursor, "lastrowid", None)
+    if not profile_id:
+        raise ValueError(
+            f"Could not allocate a profile id from {profile_table}. Ensure profiles.id is AUTO_INCREMENT."
+        )
+    return int(profile_id)
 
 
 def build_public_profile_view_sql(profile_table: str = DEFAULT_PROFILE_TABLE, view_name: str = DEFAULT_PUBLIC_VIEW) -> str:
@@ -612,4 +720,3 @@ SELECT
   COALESCE(public_notes, notes) AS notes
 FROM {profile_table_q}
 """.strip()
-
