@@ -205,6 +205,14 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertEqual(payload["notes"], existing_profile["notes"])
         self.assertNotEqual(payload["personality"], payload["public_personality"])
 
+    def test_build_profile_payload_keeps_four_disliked_traits_in_internal_notes(self):
+        payload = persona_memory_lib.build_profile_payload(
+            {
+                "disliked_traits": "控制欲强,长期回避沟通,消费观失衡,感情态度飘",
+            }
+        )
+        self.assertIn("感情态度飘", payload["notes"])
+
     def test_mark_profile_sync_results_only_marks_profile_affecting_fields(self):
         field_results = [
             {"field_name": "self_city", "applied_to_persona": True},

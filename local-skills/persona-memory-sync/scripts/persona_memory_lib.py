@@ -722,9 +722,9 @@ def build_profile_payload(
 
     internal_note_parts = []
     if must_not_have:
-        internal_note_parts.append("明确避开" + "、".join(must_not_have[:3]))
+        internal_note_parts.append("明确避开" + "、".join(must_not_have[:4]))
     if disliked_traits:
-        internal_note_parts.append("不太接受" + "、".join(disliked_traits[:3]))
+        internal_note_parts.append("不太接受" + "、".join(disliked_traits[:4]))
     if persona.get("target_marital_statuses"):
         marital_note = f"可接受婚况={persona.get('target_marital_statuses')}"
         if clean_text(persona.get("target_marital_status_strength")):
