@@ -32,17 +32,29 @@ Use this schema for MySQL columns.
 | `values` | Values, spending style, family outlook |
 | `lifestyle` | Routine, exercise, smoking, drinking, pets |
 | `hobbies` | Hobbies and interests |
+| `life_routine` | Structured routine summary such as regular, stable, or busy-but-coordinatable |
+| `communication_style` | Structured communication style such as proactive, rational-direct, or slow-warm |
+| `dating_pace` | Structured dating pace such as natural, slow-warm, or serious-progress |
+| `expression_style` | Structured self-expression and life-feel summary |
+| `relationship_capacity` | Structured relationship bandwidth / investment signal |
+| `interaction_comfort` | Whether the person feels easygoing, low-pressure, or needs more磨合 in interaction |
+| `patience_level` | Structured patience signal such as high, stable, or pace-fast |
+| `life_texture` | Whether the profile feels plain-stable, has生活感, or has见识+生活感 |
+| `career_intensity` | Structured work-rhythm summary such as busy-but-coordinatable or regular-stable |
+| `exercise_habit` | Structured exercise habit such as regular, light, or not obvious |
 | `smoking` | `否`, `是`, `偶尔`, `未知` |
 | `drinking` | `否`, `是`, `偶尔`, `未知` |
 | `long_distance` | `接受`, `不接受`, `可协商`, `未知` |
 | `accept_long_distance` | Whether the profile accepts long-distance matches |
 | `accept_smoking` / `accept_drinking` | Whether the profile accepts those habits in a partner |
 | `accept_marital_status` | Acceptable partner marital statuses |
+| `accept_marital_status_strength` | Whether accepting divorce history is explicit, cautious, or surface-level |
 | `marital_status` | Single, divorced, etc. |
 | `has_children` / `children_count` | Whether the profile has children and how many |
 | `children_living_with_self` | Whether the children live with the profile |
 | `want_children` | Future child plan |
 | `accept_partner_children` | Whether the profile accepts a partner who already has children |
+| `accept_partner_children_strength` | Whether accepting a partner with children is explicit, cautious, or surface-level |
 | `marriage_timeline` | Marriage timing expectation |
 | `family_background` | Short family note |
 | `notes` | Free-text notes |
@@ -87,6 +99,16 @@ CREATE TABLE profiles (
   values TEXT,
   lifestyle TEXT,
   hobbies TEXT,
+  life_routine VARCHAR(32),
+  communication_style VARCHAR(32),
+  dating_pace VARCHAR(32),
+  expression_style VARCHAR(32),
+  relationship_capacity VARCHAR(32),
+  interaction_comfort VARCHAR(32),
+  patience_level VARCHAR(32),
+  life_texture VARCHAR(32),
+  career_intensity VARCHAR(32),
+  exercise_habit VARCHAR(32),
   smoking VARCHAR(16),
   drinking VARCHAR(16),
   long_distance VARCHAR(16),
@@ -94,12 +116,14 @@ CREATE TABLE profiles (
   accept_smoking ENUM('接受','不接受','可协商','未知'),
   accept_drinking ENUM('接受','不接受','可协商','未知'),
   accept_marital_status TEXT,
+  accept_marital_status_strength VARCHAR(32),
   marital_status VARCHAR(32),
   has_children TINYINT(1),
   children_count TINYINT UNSIGNED,
   children_living_with_self TINYINT(1),
   want_children ENUM('想要','不要','可协商','未知'),
   accept_partner_children ENUM('接受','不接受','可协商','未知'),
+  accept_partner_children_strength VARCHAR(32),
   marriage_timeline ENUM('半年内','1年内','2年内','合适就结婚','暂不考虑','未知'),
   family_background TEXT,
   notes TEXT,
