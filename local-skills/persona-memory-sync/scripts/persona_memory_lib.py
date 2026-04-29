@@ -374,7 +374,7 @@ def format_acceptance_note(value: Any, strength: Any) -> Optional[str]:
         return note_value
     bucket = acceptance_strength_bucket(note_strength)
     if note_value == "可协商" and bucket == "cautious":
-        return "可协商，但接受度偏谨慎"
+        return "现阶段接受度偏低，需结合具体情况判断"
     if note_value == "可协商" and bucket == "surface":
         return "可协商，先接触再判断"
     if note_value == "接受" and bucket == "cautious":
@@ -723,8 +723,9 @@ def build_profile_payload(
     internal_note_parts = []
     if must_not_have:
         internal_note_parts.append("明确避开" + "、".join(must_not_have[:4]))
-    if disliked_traits:
-        internal_note_parts.append("不太接受" + "、".join(disliked_traits[:4]))
+    note_disliked_traits = [item for item in disliked_traits if item not in set(must_not_have)]
+    if note_disliked_traits:
+        internal_note_parts.append("不太接受" + "、".join(note_disliked_traits[:4]))
     if persona.get("target_marital_statuses"):
         marital_note = f"可接受婚况={persona.get('target_marital_statuses')}"
         if clean_text(persona.get("target_marital_status_strength")):
