@@ -27,6 +27,8 @@ STRUCTURED_COLUMNS = {
     "aesthetic_expression": "VARCHAR(32)",
     "conversation_resonance": "VARCHAR(32)",
     "personal_presence": "VARCHAR(32)",
+    "lightness_humor": "VARCHAR(32)",
+    "commitment_clarity": "VARCHAR(32)",
     "blended_family_readiness": "VARCHAR(32)",
     "accept_marital_status_strength": "VARCHAR(32)",
     "accept_partner_children_strength": "VARCHAR(32)",
@@ -403,6 +405,20 @@ def infer_structured_style(profile):
     else:
         personal_presence = "偏平"
 
+    if has_any(texts, {"幽默", "有趣", "不端着", "松弛", "会开玩笑", "把复杂问题讲得有趣", "轻松一点"}):
+        lightness_humor = "有点幽默不端着"
+    elif has_any(texts, {"温和", "有分寸", "理性", "边界清楚", "稳重"}):
+        lightness_humor = "稳重有分寸"
+    else:
+        lightness_humor = "偏克制"
+
+    if relationship_goal == "结婚导向" and marriage_timeline in {"半年内", "1年内"}:
+        commitment_clarity = "明确奔着长期"
+    elif relationship_goal in {"认真恋爱", "结婚导向"}:
+        commitment_clarity = "愿意稳定推进"
+    else:
+        commitment_clarity = "先聊熟再说"
+
     marital_strength = profile.get("accept_marital_status_strength") or ""
     child_strength = profile.get("accept_partner_children_strength") or ""
     accept_partner_children = profile.get("accept_partner_children") or ""
@@ -431,6 +447,8 @@ def infer_structured_style(profile):
         "aesthetic_expression": aesthetic_expression,
         "conversation_resonance": conversation_resonance,
         "personal_presence": personal_presence,
+        "lightness_humor": lightness_humor,
+        "commitment_clarity": commitment_clarity,
         "blended_family_readiness": blended_family_readiness,
     }
 
@@ -511,6 +529,8 @@ def main():
             "aesthetic_expression",
             "conversation_resonance",
             "personal_presence",
+            "lightness_humor",
+            "commitment_clarity",
             "blended_family_readiness",
         ]
         assignments = ", ".join(f"`{column}`=%s" for column in update_columns)

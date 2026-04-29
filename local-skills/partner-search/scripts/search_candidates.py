@@ -68,6 +68,18 @@ FIELD_ALIASES = {
         "记忆点",
         "个人辨识度",
     },
+    "lightness_humor": {
+        "lightness_humor",
+        "轻松感",
+        "幽默感",
+        "聊天轻盈度",
+    },
+    "commitment_clarity": {
+        "commitment_clarity",
+        "进入关系明确度",
+        "结婚意愿明确度",
+        "长期意图明确度",
+    },
     "blended_family_readiness": {
         "blended_family_readiness",
         "重组家庭承接度",
@@ -185,6 +197,8 @@ TEXT_FIELDS = [
     "aesthetic_expression",
     "conversation_resonance",
     "personal_presence",
+    "lightness_humor",
+    "commitment_clarity",
     "blended_family_readiness",
     "smoking",
     "drinking",
@@ -262,6 +276,8 @@ FIELD_DISPLAY_NAMES = {
     "aesthetic_expression": "审美表达",
     "conversation_resonance": "聊天共鸣",
     "personal_presence": "人物感",
+    "lightness_humor": "轻松感",
+    "commitment_clarity": "长期意图明确度",
     "blended_family_readiness": "现实承接度",
     "smoking": "抽烟情况",
     "drinking": "喝酒情况",
@@ -305,6 +321,8 @@ KEYWORD_EVIDENCE_FIELDS = [
     ("aesthetic_expression", "审美表达"),
     ("conversation_resonance", "聊天共鸣"),
     ("personal_presence", "人物感"),
+    ("lightness_humor", "轻松感"),
+    ("commitment_clarity", "长期意图明确度"),
     ("blended_family_readiness", "现实承接度"),
     ("notes", "备注"),
     ("family_background", "家庭情况"),
@@ -350,6 +368,8 @@ RISK_FLAG_PENALTIES = {
     "审美表达偏平": 4,
     "聊天可能像信息交换": 5,
     "人物感偏淡": 5,
+    "聊天可能偏板正": 5,
+    "进入关系信号偏弱": 6,
     "重组家庭现实承接仍需确认": 6,
     "未认证": 6,
     "活跃时间未知": 4,
@@ -770,6 +790,8 @@ def evaluate_contextual_fit(record, criteria, self_profile=None):
     aesthetic_expression = record.get("aesthetic_expression")
     conversation_resonance = record.get("conversation_resonance")
     personal_presence = record.get("personal_presence")
+    lightness_humor = record.get("lightness_humor")
+    commitment_clarity = record.get("commitment_clarity")
     blended_family_readiness = record.get("blended_family_readiness")
     communication_style = record.get("communication_style")
     dating_pace = record.get("dating_pace")
@@ -886,6 +908,16 @@ def evaluate_contextual_fit(record, criteria, self_profile=None):
             match_evidence.append(f"人物感更舒服 <- 人物感: {personal_presence}")
         elif personal_presence == "偏平":
             risk_flags.append("人物感偏淡")
+        if lightness_humor == "有点幽默不端着":
+            reasons.append("聊天不木，也更有轻松感")
+            score_bonus += 5
+            match_evidence.append(f"聊天不木，也更有轻松感 <- 轻松感: {lightness_humor}")
+        elif lightness_humor == "稳重有分寸":
+            reasons.append("稳重但不板正")
+            score_bonus += 3
+            match_evidence.append(f"稳重但不板正 <- 轻松感: {lightness_humor}")
+        elif lightness_humor == "偏克制":
+            risk_flags.append("聊天可能偏板正")
 
     if high_bar_profile or keyword_requested(criteria, {"成长", "势能", "事业", "大局观", "上进"}):
         if growth_signal == "上升明确":
@@ -926,6 +958,25 @@ def evaluate_contextual_fit(record, criteria, self_profile=None):
         elif blended_family_readiness in {"仅口头接受", "未知", None, ""}:
             risk_flags.append("重组家庭现实承接仍需确认")
 
+    relationship_goals = set(criteria.get("relationship_goals") or [])
+    wants_clear_long_term = (
+        "结婚导向" in relationship_goals
+        or keyword_requested(criteria, {"稳定投入关系", "认真推进", "结婚", "长期"})
+        or as_int(self_profile.get("age")) is not None
+        and as_int(self_profile.get("age")) >= 29
+    )
+    if wants_clear_long_term:
+        if commitment_clarity == "明确奔着长期":
+            reasons.append("进入关系意愿更明确")
+            score_bonus += 5
+            match_evidence.append(f"进入关系意愿更明确 <- 长期意图明确度: {commitment_clarity}")
+        elif commitment_clarity == "愿意稳定推进":
+            reasons.append("长期推进预期更清楚")
+            score_bonus += 3
+            match_evidence.append(f"长期推进预期更清楚 <- 长期意图明确度: {commitment_clarity}")
+        elif commitment_clarity == "先聊熟再说":
+            risk_flags.append("进入关系信号偏弱")
+
     if (
         high_bar_profile
         and conversation_resonance == "能聊想法也能聊日常"
@@ -937,6 +988,14 @@ def evaluate_contextual_fit(record, criteria, self_profile=None):
         match_evidence.append(
             "不只合适，也更容易让人有感觉 <- 聊天共鸣/人物感/审美表达组合更完整"
         )
+    if (
+        high_bar_profile
+        and lightness_humor == "有点幽默不端着"
+        and conversation_resonance == "能聊想法也能聊日常"
+    ):
+        reasons.append("理性之外，也更容易有火花")
+        score_bonus += 4
+        match_evidence.append("理性之外，也更容易有火花 <- 轻松感/聊天共鸣更完整")
 
     return {
         "matched_on": reasons,
@@ -1065,6 +1124,10 @@ def build_follow_up_questions(record, missing_fields, risk_flags, self_profile=N
             questions.append("确认对方聊天是不是只在交换条件和流程，还是能真正聊出共鸣。")
         elif risk == "人物感偏淡":
             questions.append("确认对方除了条件在线，有没有让你记住和想继续了解的点。")
+        elif risk == "聊天可能偏板正":
+            questions.append("确认对方是不是太稳太克制，实际聊天会不会少一点轻松感和火花。")
+        elif risk == "进入关系信号偏弱":
+            questions.append("确认对方到底是明确奔着长期来，还是只是先聊着看感觉。")
         elif risk == "重组家庭现实承接仍需确认":
             questions.append("确认对方有没有具体想过孩子、时间和家庭安排，不要只停留在口头接受。")
 
@@ -2628,6 +2691,10 @@ def format_text(results, include_source=False):
             vibe_parts.append(f"共鸣={profile.get('conversation_resonance')}")
         if profile.get("personal_presence"):
             vibe_parts.append(f"人物感={profile.get('personal_presence')}")
+        if profile.get("lightness_humor"):
+            vibe_parts.append(f"轻松感={profile.get('lightness_humor')}")
+        if profile.get("commitment_clarity"):
+            vibe_parts.append(f"长期意图={profile.get('commitment_clarity')}")
         if profile.get("blended_family_readiness"):
             vibe_parts.append(f"现实承接={profile.get('blended_family_readiness')}")
         if vibe_parts:
