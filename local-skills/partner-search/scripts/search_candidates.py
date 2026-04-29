@@ -118,6 +118,12 @@ FIELD_ALIASES = {
         "婚史接受强度",
         "婚况接受态度",
     },
+    "accept_marital_status_semantics": {
+        "accept_marital_status_semantics",
+        "婚况接受细语义",
+        "婚史接受细语义",
+        "婚况接受真实表达",
+    },
     "marital_status": {"marital_status", "婚姻状态"},
     "has_children": {"has_children", "有无孩子", "是否有孩子", "是否已育"},
     "children_count": {"children_count", "孩子数量", "子女数量"},
@@ -134,6 +140,12 @@ FIELD_ALIASES = {
         "接受孩子强度",
         "对子女接受强度",
         "对子女接受态度",
+    },
+    "accept_partner_children_semantics": {
+        "accept_partner_children_semantics",
+        "对子女接受细语义",
+        "对子女接受真实表达",
+        "对子女接受补充语义",
     },
     "marriage_timeline": {"marriage_timeline", "结婚时间", "结婚计划", "结婚节奏"},
     "family_background": {"family_background", "家庭情况", "家庭背景"},
@@ -230,10 +242,12 @@ TEXT_FIELDS = [
     "accept_drinking",
     "accept_marital_status",
     "accept_marital_status_strength",
+    "accept_marital_status_semantics",
     "marital_status",
     "want_children",
     "accept_partner_children",
     "accept_partner_children_strength",
+    "accept_partner_children_semantics",
     "marriage_timeline",
     "family_background",
     "notes",
@@ -316,10 +330,12 @@ FIELD_DISPLAY_NAMES = {
     "marriage_timeline": "结婚节奏",
     "accept_marital_status": "是否接受对方婚况",
     "accept_marital_status_strength": "婚史接受真实度",
+    "accept_marital_status_semantics": "婚史接受细语义",
     "accept_smoking": "是否接受对方抽烟",
     "accept_drinking": "是否接受对方喝酒",
     "accept_long_distance": "是否接受异地",
     "accept_partner_children_strength": "对子女接受真实度",
+    "accept_partner_children_semantics": "对子女接受细语义",
     "preferred_age_strictness": "年龄要求硬度",
     "preferred_height_strictness": "身高要求硬度",
     "preferred_education_strictness": "学历要求硬度",
@@ -391,6 +407,7 @@ CRITICAL_MISSING_FIELD_PENALTIES = {
 
 RISK_FLAG_PENALTIES = {
     "对方对子女情况仅可协商": 10,
+    "对方对子女接受度偏低": 11,
     "对方对子女接受度未知": 12,
     "对方对抽烟仅可协商": 7,
     "对方对抽烟接受度未知": 9,
@@ -1328,8 +1345,12 @@ def build_follow_up_questions(record, missing_fields, risk_flags, self_profile=N
             questions.append("确认结婚节奏，是1年内推进还是合适再定。")
         elif field == "accept_partner_children":
             questions.append("确认是否能长期接受伴侣已有孩子，以及现实安排怎么想。")
+        elif field == "accept_partner_children_semantics":
+            questions.append("确认对方对子女情况到底是能接受，还是只是态度偏保留。")
         elif field == "accept_marital_status":
             questions.append("确认是否真的接受你的婚史，而不是表面上说可以。")
+        elif field == "accept_marital_status_semantics":
+            questions.append("确认对方对婚史是明确接受，还是要看具体人和相处质量。")
         elif field == "accept_smoking":
             questions.append("确认是否真的接受伴侣抽烟，而不是先聊着再说。")
         elif field == "accept_drinking":
@@ -1375,6 +1396,8 @@ def build_follow_up_questions(record, missing_fields, risk_flags, self_profile=N
     for risk in unique_ordered(risk_flags):
         if risk == "对方对子女情况仅可协商":
             questions.append("确认对方是能真正接受你有孩子，还是只是暂时不想说死。")
+        elif risk == "对方对子女接受度偏低":
+            questions.append("确认对方对子女情况是不是现实里会比较难接受，不要只看口头上没拒绝。")
         elif risk == "对方对喝酒仅可协商":
             questions.append("确认偶尔喝酒在对方那里是能接受，还是只是勉强可协商。")
         elif risk == "对方对抽烟仅可协商":
@@ -2389,6 +2412,7 @@ def evaluate_reciprocal_compatibility(record, self_profile, diagnostics=False):
 
     self_has_children = normalize_bool(self_profile.get("has_children"))
     accept_partner_children = normalize_acceptance_state(record.get("accept_partner_children"))
+    accept_partner_children_semantics = as_text(record.get("accept_partner_children_semantics"))
     if self_has_children is None:
         if accept_partner_children != "missing":
             missing_fields.append("self_has_children")
@@ -2414,7 +2438,10 @@ def evaluate_reciprocal_compatibility(record, self_profile, diagnostics=False):
         elif accept_partner_children == "negotiable":
             if requires_explicit_children_acceptance(self_profile):
                 return fail("reciprocal_children_acceptance_not_strong")
-            risk_flags.append("对方对子女情况仅可协商")
+            if contains_any_text(accept_partner_children_semantics, {"偏低", "偏保留"}):
+                risk_flags.append("对方对子女接受度偏低")
+            else:
+                risk_flags.append("对方对子女情况仅可协商")
         elif accept_partner_children == "unknown":
             if requires_explicit_children_acceptance(self_profile):
                 return fail("reciprocal_children_acceptance_unknown")

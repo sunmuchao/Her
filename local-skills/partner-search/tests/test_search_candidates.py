@@ -457,6 +457,14 @@ class SearchCandidatesTests(unittest.TestCase):
             "reciprocal_children_acceptance_not_strong",
         )
 
+    def test_build_follow_up_questions_supports_children_semantic_risk(self):
+        questions = search_candidates.build_follow_up_questions(
+            {},
+            [],
+            ["对方对子女接受度偏低"],
+        )
+        self.assertTrue(any("对子女情况" in item for item in questions))
+
     def test_reciprocal_uses_matcher_preference_tags_for_soft_bonus(self):
         candidate = {
             "matcher_preferences_json": '{"must_have_tags":["情绪稳定"],"preferred_traits":["愿意沟通"]}',
