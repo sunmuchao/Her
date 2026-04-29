@@ -53,6 +53,15 @@ FIELD_ALIASES = {
     "life_texture": {"life_texture", "生活立体感", "生活层次", "生活感层次"},
     "career_intensity": {"career_intensity", "工作节奏类型", "职业强度", "工作强度"},
     "exercise_habit": {"exercise_habit", "运动习惯", "运动频率"},
+    "growth_signal": {"growth_signal", "事业势能", "成长性", "发展势能"},
+    "warmth_style": {"warmth_style", "聊天温度", "互动温度", "温度感"},
+    "aesthetic_expression": {"aesthetic_expression", "审美表达", "审美感", "内容输出"},
+    "blended_family_readiness": {
+        "blended_family_readiness",
+        "重组家庭承接度",
+        "现实承接度",
+        "带娃现实承接度",
+    },
     "smoking": {"smoking", "抽烟", "吸烟"},
     "drinking": {"drinking", "喝酒", "饮酒"},
     "long_distance": {"long_distance", "异地", "接受异地"},
@@ -159,6 +168,10 @@ TEXT_FIELDS = [
     "life_texture",
     "career_intensity",
     "exercise_habit",
+    "growth_signal",
+    "warmth_style",
+    "aesthetic_expression",
+    "blended_family_readiness",
     "smoking",
     "drinking",
     "long_distance",
@@ -230,6 +243,10 @@ FIELD_DISPLAY_NAMES = {
     "life_texture": "生活感层次",
     "career_intensity": "工作节奏类型",
     "exercise_habit": "运动习惯",
+    "growth_signal": "事业势能",
+    "warmth_style": "聊天温度",
+    "aesthetic_expression": "审美表达",
+    "blended_family_readiness": "现实承接度",
     "smoking": "抽烟情况",
     "drinking": "喝酒情况",
     "long_distance": "异地态度",
@@ -267,6 +284,10 @@ KEYWORD_EVIDENCE_FIELDS = [
     ("life_texture", "生活感层次"),
     ("career_intensity", "工作节奏类型"),
     ("exercise_habit", "运动习惯"),
+    ("growth_signal", "事业势能"),
+    ("warmth_style", "聊天温度"),
+    ("aesthetic_expression", "审美表达"),
+    ("blended_family_readiness", "现实承接度"),
     ("notes", "备注"),
     ("family_background", "家庭情况"),
 ]
@@ -306,6 +327,10 @@ RISK_FLAG_PENALTIES = {
     "相处可能偏冷": 6,
     "相处节奏可能偏赶": 5,
     "忙的时候可能更难推进": 5,
+    "成长势能偏弱": 6,
+    "聊天温度偏冷": 5,
+    "审美表达偏平": 4,
+    "重组家庭现实承接仍需确认": 6,
     "未认证": 6,
     "活跃时间未知": 4,
     "90天前活跃": 6,
@@ -720,6 +745,10 @@ def evaluate_contextual_fit(record, criteria, self_profile=None):
     life_texture = record.get("life_texture")
     career_intensity = record.get("career_intensity")
     exercise_habit = record.get("exercise_habit")
+    growth_signal = record.get("growth_signal")
+    warmth_style = record.get("warmth_style")
+    aesthetic_expression = record.get("aesthetic_expression")
+    blended_family_readiness = record.get("blended_family_readiness")
     communication_style = record.get("communication_style")
     dating_pace = record.get("dating_pace")
     expression_style = record.get("expression_style")
@@ -737,6 +766,16 @@ def evaluate_contextual_fit(record, criteria, self_profile=None):
             risk_flags.append("相处节奏可能偏赶")
         if expression_style == "理性克制" and communication_style == "理性直接":
             risk_flags.append("相处可能偏冷")
+        if warmth_style == "有温度会接话":
+            reasons.append("聊天温度更舒服")
+            score_bonus += 4
+            match_evidence.append(f"聊天温度更舒服 <- 聊天温度: {warmth_style}")
+        elif warmth_style == "理性但不冷":
+            reasons.append("理性但不冷")
+            score_bonus += 3
+            match_evidence.append(f"理性但不冷 <- 聊天温度: {warmth_style}")
+        elif warmth_style == "偏克制":
+            risk_flags.append("聊天温度偏冷")
 
     if keyword_requested(criteria, {"边界", "边界感", "理性直接"}):
         if interaction_comfort == "有边界不拧巴":
@@ -791,6 +830,28 @@ def evaluate_contextual_fit(record, criteria, self_profile=None):
             match_evidence.append(f"有生活感 <- 生活感层次: {life_texture}")
         elif life_texture == "简单稳定":
             risk_flags.append("资料偏稳但不够鲜活")
+        if aesthetic_expression == "有审美输出":
+            reasons.append("更有审美和表达感")
+            score_bonus += 6
+            match_evidence.append(f"更有审美和表达感 <- 审美表达: {aesthetic_expression}")
+        elif aesthetic_expression == "有生活审美":
+            reasons.append("审美表达更顺眼")
+            score_bonus += 3
+            match_evidence.append(f"审美表达更顺眼 <- 审美表达: {aesthetic_expression}")
+        elif aesthetic_expression == "普通":
+            risk_flags.append("审美表达偏平")
+
+    if high_bar_profile or keyword_requested(criteria, {"成长", "势能", "事业", "大局观", "上进"}):
+        if growth_signal == "上升明确":
+            reasons.append("成长势能更强")
+            score_bonus += 6
+            match_evidence.append(f"成长势能更强 <- 事业势能: {growth_signal}")
+        elif growth_signal == "平台成熟":
+            reasons.append("发展阶段更成熟")
+            score_bonus += 4
+            match_evidence.append(f"发展阶段更成熟 <- 事业势能: {growth_signal}")
+        elif high_bar_profile and growth_signal in {"稳定型", "未知"}:
+            risk_flags.append("成长势能偏弱")
 
     self_job = self_profile.get("job")
     if self_job and contains_any_text(self_job, BUSY_JOB_KEYWORDS):
@@ -806,6 +867,18 @@ def evaluate_contextual_fit(record, criteria, self_profile=None):
             match_evidence.append(f"也能理解高强度工作 <- 工作节奏类型: {career_intensity}")
         elif communication_style == "慢热少话":
             risk_flags.append("忙的时候可能更难推进")
+
+    if requires_explicit_marital_acceptance(self_profile) or requires_explicit_children_acceptance(self_profile):
+        if blended_family_readiness == "已想过现实安排":
+            reasons.append("更能承接现实安排")
+            score_bonus += 5
+            match_evidence.append(f"更能承接现实安排 <- 现实承接度: {blended_family_readiness}")
+        elif blended_family_readiness == "愿意一起商量":
+            reasons.append("现实问题愿意一起商量")
+            score_bonus += 2
+            match_evidence.append(f"现实问题愿意一起商量 <- 现实承接度: {blended_family_readiness}")
+        elif blended_family_readiness in {"仅口头接受", "未知", None, ""}:
+            risk_flags.append("重组家庭现实承接仍需确认")
 
     return {
         "matched_on": reasons,
@@ -882,6 +955,14 @@ def build_follow_up_questions(record, missing_fields, risk_flags, self_profile=N
             questions.append("确认工作节奏到底有多忙，关系里能不能稳定投入。")
         elif field == "exercise_habit":
             questions.append("确认有没有稳定运动或身体管理习惯。")
+        elif field == "growth_signal":
+            questions.append("确认对方现在是稳定型，还是还在明显上升期。")
+        elif field == "warmth_style":
+            questions.append("确认聊天有没有温度，还是只是礼貌理性地回复。")
+        elif field == "aesthetic_expression":
+            questions.append("确认对方是不是有自己的审美和表达，不只是资料写得漂亮。")
+        elif field == "blended_family_readiness":
+            questions.append("确认对方有没有认真想过离异带娃后的现实安排，而不是只说可以。")
 
     for risk in unique_ordered(risk_flags):
         if risk == "对方对子女情况仅可协商":
@@ -916,6 +997,14 @@ def build_follow_up_questions(record, missing_fields, risk_flags, self_profile=N
             questions.append("确认推进会不会太快，会不会让你有压力。")
         elif risk == "忙的时候可能更难推进":
             questions.append("确认工作忙时的沟通和见面安排能不能稳定下来。")
+        elif risk == "成长势能偏弱":
+            questions.append("确认对方接下来几年是继续往上走，还是更偏稳定守成。")
+        elif risk == "聊天温度偏冷":
+            questions.append("确认对方是不是只在资料里理性，实际聊天会不会太冷。")
+        elif risk == "审美表达偏平":
+            questions.append("确认对方有没有自己的生活审美和表达，而不是只有基础条件。")
+        elif risk == "重组家庭现实承接仍需确认":
+            questions.append("确认对方有没有具体想过孩子、时间和家庭安排，不要只停留在口头接受。")
 
     return unique_ordered(questions)[:5]
 
@@ -2467,6 +2556,14 @@ def format_text(results, include_source=False):
             vibe_parts.append(f"工作={profile.get('career_intensity')}")
         if profile.get("exercise_habit"):
             vibe_parts.append(f"运动={profile.get('exercise_habit')}")
+        if profile.get("growth_signal"):
+            vibe_parts.append(f"成长={profile.get('growth_signal')}")
+        if profile.get("warmth_style"):
+            vibe_parts.append(f"温度={profile.get('warmth_style')}")
+        if profile.get("aesthetic_expression"):
+            vibe_parts.append(f"审美={profile.get('aesthetic_expression')}")
+        if profile.get("blended_family_readiness"):
+            vibe_parts.append(f"现实承接={profile.get('blended_family_readiness')}")
         if vibe_parts:
             lines.append(f"   vibe: {' | '.join(vibe_parts)}")
         if result.get("photo_preview"):
