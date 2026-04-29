@@ -56,6 +56,24 @@ class BackfillProfileEnrichmentTests(unittest.TestCase):
         self.assertEqual(merged["lightness_humor"], "稳重有分寸")
         self.assertEqual(merged["career_intensity"], "脑力投入型")
 
+    def test_infer_structured_style_adds_consumption_chat_and_execution_fields(self):
+        profile = {
+            "relationship_goal": "认真恋爱",
+            "marriage_timeline": "1年内",
+            "job": "品牌策划",
+            "values": "消费观正常, 不喜欢攀比, 对感情认真",
+            "lifestyle": "喜欢做饭, 生活规律",
+            "hobbies": "看展, 咖啡, 阅读",
+            "notes": "聊天不端着，顺着聊不费劲，也愿意把长期打算说清楚，把见面安排说清楚",
+        }
+
+        enriched = backfill_profile_enrichment.infer_structured_style(profile)
+
+        self.assertEqual(enriched["consumption_attitude"], "清醒务实")
+        self.assertEqual(enriched["chat_texture"], "有梗也有内容")
+        self.assertEqual(enriched["commitment_clarity"], "明确奔着长期")
+        self.assertEqual(enriched["relationship_execution"], "会把安排说清")
+
 
 if __name__ == "__main__":
     unittest.main()

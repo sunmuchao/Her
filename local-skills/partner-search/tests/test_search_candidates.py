@@ -501,6 +501,41 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertIn("对婚史和现实问题想得更具体", steady["matched_on"])
         self.assertIn("工作节奏偏忙，稳定投入要再看", busy["risk_flags"])
 
+    def test_evaluate_contextual_fit_uses_new_fields_for_consumption_chat_and_execution(self):
+        record = {
+            "warmth_style": "有温度会接话",
+            "lightness_humor": "稳重有分寸",
+            "consumption_attitude": "清醒务实",
+            "chat_texture": "顺着聊不费劲",
+            "commitment_clarity": "明确奔着长期",
+            "relationship_execution": "会把安排说清",
+        }
+        criteria = {
+            "prefer": ["消费观正常", "会接话", "不板正", "长期"],
+            "relationship_goals": ["认真恋爱"],
+        }
+
+        result = search_candidates.evaluate_contextual_fit(record, criteria, self_profile={"age": 29})
+
+        self.assertIn("消费观更清醒", result["matched_on"])
+        self.assertIn("聊天更顺，不容易累", result["matched_on"])
+        self.assertIn("稳重但不板正", result["matched_on"])
+        self.assertIn("推进方式更落地", result["matched_on"])
+        self.assertGreater(result["score_bonus"], 0)
+
+    def test_build_follow_up_questions_handles_new_style_fields_and_risks(self):
+        questions = search_candidates.build_follow_up_questions(
+            {},
+            ["consumption_attitude", "chat_texture", "relationship_execution"],
+            ["聊天还像完成任务", "长期意图有，但推进方式还不够落地"],
+        )
+
+        self.assertIn("确认对方花钱更看重什么，是清醒务实，还是容易被外在包装带着走。", questions)
+        self.assertIn("确认对方聊天是顺着聊不费劲，还是容易只剩条件交换。", questions)
+        self.assertIn("确认对方认真推进时，会不会把见面节奏、关系预期和现实安排说清。", questions)
+        self.assertIn("确认对方聊天是不是容易只讲条件和流程，还是能把话题真正聊活。", questions)
+        self.assertIn("确认对方不是只会说想长期，而是真的会把推进节奏和安排说清。", questions)
+
     def test_attach_photo_previews_groups_by_source_and_table(self):
         original_loader = search_candidates.load_mysql_photo_previews
         calls = []
@@ -653,7 +688,10 @@ class SearchCandidatesTests(unittest.TestCase):
                         "conversation_resonance": "能聊想法也能聊日常",
                         "personal_presence": "有记忆点",
                         "lightness_humor": "有点幽默不端着",
+                        "consumption_attitude": "清醒务实",
+                        "chat_texture": "有梗也有内容",
                         "commitment_clarity": "明确奔着长期",
+                        "relationship_execution": "会把安排说清",
                         "blended_family_readiness": "已想过现实安排",
                     },
                     "source_file": "",
@@ -672,7 +710,10 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertIn("共鸣=能聊想法也能聊日常", text)
         self.assertIn("人物感=有记忆点", text)
         self.assertIn("轻松感=有点幽默不端着", text)
+        self.assertIn("消费观=清醒务实", text)
+        self.assertIn("聊天质感=有梗也有内容", text)
         self.assertIn("长期意图=明确奔着长期", text)
+        self.assertIn("推进方式=会把安排说清", text)
         self.assertIn("现实承接=已想过现实安排", text)
 
     def test_redact_sensitive_text_masks_common_contact_fields(self):

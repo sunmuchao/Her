@@ -392,6 +392,10 @@ RISK_FLAG_PENALTIES = {
     "忙的时候可能更难推进": 5,
     "工作节奏偏忙，稳定投入要再看": 5,
     "主动沟通感偏弱": 4,
+    "消费观还不够具体": 4,
+    "聊天还像完成任务": 5,
+    "长期意图有，但推进方式还不够落地": 4,
+    "推进方式偏慢观察": 4,
     "成长势能偏弱": 6,
     "聊天温度偏冷": 5,
     "审美表达偏平": 4,
@@ -820,7 +824,10 @@ def evaluate_contextual_fit(record, criteria, self_profile=None):
     conversation_resonance = record.get("conversation_resonance")
     personal_presence = record.get("personal_presence")
     lightness_humor = record.get("lightness_humor")
+    consumption_attitude = record.get("consumption_attitude")
+    chat_texture = record.get("chat_texture")
     commitment_clarity = record.get("commitment_clarity")
+    relationship_execution = record.get("relationship_execution")
     blended_family_readiness = record.get("blended_family_readiness")
     communication_style = record.get("communication_style")
     dating_pace = record.get("dating_pace")
@@ -834,8 +841,11 @@ def evaluate_contextual_fit(record, criteria, self_profile=None):
         or keyword_requested(criteria, {"稳定踏实", "生活规律", "省心", "过日子", "相处舒服", "相处轻松", "简单舒服", "不累"})
     )
     wants_proactive_communication = keyword_requested(criteria, {"主动沟通", "沟通"})
+    cares_about_consumption = keyword_requested(
+        criteria, {"消费观", "消费观正常", "不攀比", "过日子", "务实", "花钱观"}
+    )
 
-    if keyword_requested(criteria, {"有耐心", "慢热", "沟通", "相处", "舒服", "不累"}):
+    if keyword_requested(criteria, {"有耐心", "慢热", "沟通", "会接话", "相处", "舒服", "不累"}):
         if interaction_comfort in {"相处轻松", "安静低压", "有边界不拧巴"}:
             reasons.append("相处压力更小")
             score_bonus += 4
@@ -887,6 +897,24 @@ def evaluate_contextual_fit(record, criteria, self_profile=None):
         (self_education_rank is not None and self_education_rank >= EDUCATION_ORDER["硕士"])
         or (self_income_max is not None and self_income_max >= 50)
     )
+    wants_expressive_resonance = high_bar_profile or keyword_requested(
+        criteria,
+        {
+            "见识",
+            "表达",
+            "生活感",
+            "会聊天",
+            "会接话",
+            "接话",
+            "人物感",
+            "上头",
+            "火花",
+            "不板正",
+            "不端着",
+            "聊天趣味",
+            "聊天不累",
+        },
+    )
 
     if self_education_rank is not None and self_education_rank >= EDUCATION_ORDER["硕士"]:
         if candidate_education_rank is not None:
@@ -912,7 +940,23 @@ def evaluate_contextual_fit(record, criteria, self_profile=None):
         elif candidate_income_max < max(26, int(self_income_max * 0.4)):
             risk_flags.append("生活阶段可能有落差")
 
-    if high_bar_profile or keyword_requested(criteria, {"见识", "表达", "生活感", "会聊天", "人物感", "上头", "火花"}):
+    if cares_about_consumption or high_bar_profile:
+        if consumption_attitude == "清醒务实":
+            reasons.append("消费观更清醒")
+            score_bonus += 5
+            match_evidence.append(f"消费观更清醒 <- 消费观锚点: {consumption_attitude}")
+        elif consumption_attitude == "有取舍会生活":
+            reasons.append("消费观有取舍，也会生活")
+            score_bonus += 4
+            match_evidence.append(f"消费观有取舍，也会生活 <- 消费观锚点: {consumption_attitude}")
+        elif consumption_attitude == "踏实过日子":
+            reasons.append("消费观更适合过日子")
+            score_bonus += 3
+            match_evidence.append(f"消费观更适合过日子 <- 消费观锚点: {consumption_attitude}")
+        elif cares_about_consumption and consumption_attitude == "表达不明显":
+            risk_flags.append("消费观还不够具体")
+
+    if wants_expressive_resonance:
         if wants_proactive_communication:
             if communication_style == "主动沟通":
                 reasons.append("沟通更主动")
@@ -934,6 +978,20 @@ def evaluate_contextual_fit(record, criteria, self_profile=None):
             match_evidence.append(f"理性但不端着 <- 聊天温度: {warmth_style}")
         elif warmth_style == "偏克制":
             risk_flags.append("聊天温度偏冷")
+        if chat_texture == "有梗也有内容":
+            reasons.append("聊天更有趣也更有内容")
+            score_bonus += 5
+            match_evidence.append(f"聊天更有趣也更有内容 <- 聊天质感: {chat_texture}")
+        elif chat_texture == "顺着聊不费劲":
+            reasons.append("聊天更顺，不容易累")
+            score_bonus += 4
+            match_evidence.append(f"聊天更顺，不容易累 <- 聊天质感: {chat_texture}")
+        elif chat_texture == "稳重顺聊":
+            reasons.append("聊天顺畅不拧巴")
+            score_bonus += 3
+            match_evidence.append(f"聊天顺畅不拧巴 <- 聊天质感: {chat_texture}")
+        elif chat_texture == "偏功能聊天":
+            risk_flags.append("聊天还像完成任务")
         if life_texture == "有见识也有生活感":
             reasons.append("资料不只稳，也更有生活感")
             score_bonus += 7
@@ -1062,6 +1120,18 @@ def evaluate_contextual_fit(record, criteria, self_profile=None):
             match_evidence.append(f"长期推进预期更清楚 <- 长期意图明确度: {commitment_clarity}")
         elif commitment_clarity == "先聊熟再说":
             risk_flags.append("进入关系信号偏弱")
+        if relationship_execution == "会把安排说清":
+            reasons.append("推进方式更落地")
+            score_bonus += 5
+            match_evidence.append(f"推进方式更落地 <- 现实推进方式: {relationship_execution}")
+        elif relationship_execution == "稳步推进不拖拉":
+            reasons.append("推进节奏更踏实")
+            score_bonus += 3
+            match_evidence.append(f"推进节奏更踏实 <- 现实推进方式: {relationship_execution}")
+        elif relationship_execution == "口头长期待验证":
+            risk_flags.append("长期意图有，但推进方式还不够落地")
+        elif relationship_execution == "先聊熟再定":
+            risk_flags.append("推进方式偏慢观察")
 
     if (
         high_bar_profile
@@ -1166,6 +1236,12 @@ def build_follow_up_questions(record, missing_fields, risk_flags, self_profile=N
             questions.append("确认对方是不是有自己的审美和表达，不只是资料写得漂亮。")
         elif field == "blended_family_readiness":
             questions.append("确认对方有没有认真想过离异带娃后的现实安排，而不是只说可以。")
+        elif field == "consumption_attitude":
+            questions.append("确认对方花钱更看重什么，是清醒务实，还是容易被外在包装带着走。")
+        elif field == "chat_texture":
+            questions.append("确认对方聊天是顺着聊不费劲，还是容易只剩条件交换。")
+        elif field == "relationship_execution":
+            questions.append("确认对方认真推进时，会不会把见面节奏、关系预期和现实安排说清。")
 
     for risk in unique_ordered(risk_flags):
         if risk == "对方对子女情况仅可协商":
@@ -1204,6 +1280,14 @@ def build_follow_up_questions(record, missing_fields, risk_flags, self_profile=N
             questions.append("确认对方工作到底有多忙，周中回复和见面能不能稳定。")
         elif risk == "主动沟通感偏弱":
             questions.append("确认对方是慢热还是低反馈，别聊着聊着只剩你一个人在推进。")
+        elif risk == "消费观还不够具体":
+            questions.append("确认对方的消费观到底是清醒务实，还是只是资料里泛泛写正常。")
+        elif risk == "聊天还像完成任务":
+            questions.append("确认对方聊天是不是容易只讲条件和流程，还是能把话题真正聊活。")
+        elif risk == "长期意图有，但推进方式还不够落地":
+            questions.append("确认对方不是只会说想长期，而是真的会把推进节奏和安排说清。")
+        elif risk == "推进方式偏慢观察":
+            questions.append("确认对方是慢热但会往前走，还是会一直停在观察阶段。")
         elif risk == "成长势能偏弱":
             questions.append("确认对方接下来几年是继续往上走，还是更偏稳定守成。")
         elif risk == "聊天温度偏冷":
@@ -2783,8 +2867,14 @@ def format_text(results, include_source=False):
             vibe_parts.append(f"人物感={profile.get('personal_presence')}")
         if profile.get("lightness_humor"):
             vibe_parts.append(f"轻松感={profile.get('lightness_humor')}")
+        if profile.get("consumption_attitude"):
+            vibe_parts.append(f"消费观={profile.get('consumption_attitude')}")
+        if profile.get("chat_texture"):
+            vibe_parts.append(f"聊天质感={profile.get('chat_texture')}")
         if profile.get("commitment_clarity"):
             vibe_parts.append(f"长期意图={profile.get('commitment_clarity')}")
+        if profile.get("relationship_execution"):
+            vibe_parts.append(f"推进方式={profile.get('relationship_execution')}")
         if profile.get("blended_family_readiness"):
             vibe_parts.append(f"现实承接={profile.get('blended_family_readiness')}")
         if vibe_parts:
