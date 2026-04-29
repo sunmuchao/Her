@@ -303,6 +303,68 @@ class SearchCandidatesTests(unittest.TestCase):
         evidence = search_candidates.extract_keyword_evidence(record, "情绪稳定")
         self.assertEqual(evidence, "备注: 命中关键词，敏感细节已隐藏")
 
+    def test_keyword_matches_record_accepts_structured_emotional_stability_signals(self):
+        record = {
+            "interaction_comfort": "安静低压",
+            "patience_level": "高耐心",
+            "warmth_style": "理性但不冷",
+            "combined_text": "认真恋爱 稳定投入关系",
+        }
+
+        self.assertTrue(search_candidates.keyword_matches_record(record, "情绪稳定"))
+        self.assertEqual(
+            search_candidates.extract_keyword_evidence(record, "情绪稳定"),
+            "结构化信号: 相处状态=安静低压；耐心程度=高耐心；聊天温度=理性但不冷",
+        )
+
+    def test_evaluate_candidate_accepts_structured_emotional_stability_without_literal_keyword(self):
+        record = {
+            "id": 106,
+            "name": "StructuredStable",
+            "gender": "男",
+            "age": 34,
+            "city": "上海",
+            "settlement_city": "上海",
+            "relationship_goal": "结婚导向",
+            "smoking": "否",
+            "drinking": "否",
+            "long_distance": "不接受",
+            "profile_status": "active",
+            "verified_level": "id",
+            "photo_count": 6,
+            "interaction_comfort": "有边界不拧巴",
+            "patience_level": "高耐心",
+            "warmth_style": "有温度会接话",
+            "combined_text": "结婚导向 上海 定居上海 不接受异地 不抽烟不喝酒",
+            "last_active_at": "2099-01-01 00:00:00",
+            "source_file": "mysql://root@127.0.0.1:3307/her?table=profiles#profiles",
+        }
+        criteria = {
+            "gender": "男",
+            "age_min": 32,
+            "age_max": 38,
+            "cities": ["上海"],
+            "settlement_cities": ["上海"],
+            "relationship_goals": ["结婚导向"],
+            "must_have": ["情绪稳定"],
+            "smoking": "否",
+            "drinking": "否",
+            "long_distance": "不接受",
+            "profile_statuses": ["active"],
+            "verified_level_min": "photo",
+            "photo_count_min": 4,
+            "exclude_ids": set(),
+        }
+
+        result = search_candidates.evaluate_candidate(record, criteria)
+
+        self.assertIsNotNone(result)
+        self.assertIn("包含 情绪稳定", result["matched_on"])
+        self.assertIn(
+            "情绪稳定 <- 结构化信号: 相处状态=有边界不拧巴；耐心程度=高耐心；聊天温度=有温度会接话",
+            result["match_evidence"],
+        )
+
     def test_evaluate_candidate_rejected_by_must_not_have(self):
         record = {
             "id": 102,

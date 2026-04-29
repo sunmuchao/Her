@@ -355,6 +355,24 @@ KEYWORD_EVIDENCE_FIELDS = [
     ("family_background", "家庭情况"),
 ]
 
+STRUCTURED_KEYWORD_SIGNAL_RULES = {
+    "情绪稳定": [
+        ("interaction_comfort", "相处状态", {"相处轻松", "安静低压", "有边界不拧巴"}),
+        ("patience_level", "耐心程度", {"高耐心", "耐心稳定"}),
+        ("warmth_style", "聊天温度", {"有温度会接话", "理性但不冷"}),
+        ("chat_texture", "聊天质感", {"稳重顺聊", "顺着聊不费劲"}),
+        ("life_routine", "作息类型", {"生活规律", "生活稳定"}),
+        ("relationship_execution", "现实推进方式", {"稳步推进不拖拉", "会把安排说清"}),
+    ],
+}
+
+TEXTUAL_KEYWORD_SIGNAL_RULES = {
+    "情绪稳定": [
+        ("personality", "性格", {"温和", "理性", "松弛", "稳重", "好相处", "有耐心", "不内耗"}),
+        ("values", "价值观", {"边界清楚", "不拧巴", "不内耗", "稳定踏实"}),
+    ],
+}
+
 CRITICAL_MISSING_FIELD_PENALTIES = {
     "smoking": 8,
     "drinking": 4,
@@ -521,6 +539,14 @@ def normalize_whitespace(value):
 
 def field_display_name(field):
     return FIELD_DISPLAY_NAMES.get(str(field), str(field))
+
+
+def split_evidence_segments(value):
+    return [
+        normalize_whitespace(part.strip(" ,，。;；|"))
+        for part in re.split(r"[。；;\n|]+", str(value))
+        if normalize_whitespace(part.strip(" ,，。;；|"))
+    ]
 
 
 def as_int(value):
@@ -743,7 +769,7 @@ def shorten_text(value, max_length=60):
     return text[: max_length - 3].rstrip() + "..."
 
 
-def extract_keyword_evidence(record, keyword):
+def extract_literal_keyword_evidence(record, keyword):
     lowered_keyword = as_lower(keyword)
     if not lowered_keyword:
         return None
@@ -752,16 +778,52 @@ def extract_keyword_evidence(record, keyword):
         value = record.get(field)
         if not value:
             continue
-        segments = [
-            normalize_whitespace(part.strip(" ,，。;；|"))
-            for part in re.split(r"[。；;\n|]+", str(value))
-            if normalize_whitespace(part.strip(" ,，。;；|"))
-        ]
+        segments = split_evidence_segments(value)
         for segment in segments:
             if lowered_keyword in segment.lower():
                 if contains_sensitive_note_detail(segment):
                     return f"{label}: 命中关键词，敏感细节已隐藏"
                 return f"{label}: {shorten_text(redact_sensitive_text(segment))}"
+    return None
+
+
+def collect_keyword_signal_evidence(record, keyword):
+    lowered_keyword = as_lower(keyword)
+    signal_parts = []
+
+    for field, label, expected_values in STRUCTURED_KEYWORD_SIGNAL_RULES.get(lowered_keyword, []):
+        value = as_text(record.get(field))
+        if value and value in expected_values:
+            signal_parts.append(f"{label}={value}")
+
+    for field, label, cues in TEXTUAL_KEYWORD_SIGNAL_RULES.get(lowered_keyword, []):
+        value = record.get(field)
+        if not value or not contains_any_text(value, cues):
+            continue
+        signal_parts.append(f"{label}={shorten_text(redact_sensitive_text(value), max_length=20)}")
+
+    if len(signal_parts) < 3:
+        return []
+    return signal_parts[:3]
+
+
+def keyword_matches_record(record, keyword):
+    lowered_keyword = as_lower(keyword)
+    if not lowered_keyword:
+        return False
+    if lowered_keyword in as_lower(record.get("combined_text", "")):
+        return True
+    return bool(collect_keyword_signal_evidence(record, keyword))
+
+
+def extract_keyword_evidence(record, keyword):
+    literal_evidence = extract_literal_keyword_evidence(record, keyword)
+    if literal_evidence:
+        return literal_evidence
+
+    signal_evidence = collect_keyword_signal_evidence(record, keyword)
+    if signal_evidence:
+        return f"结构化信号: {'；'.join(signal_evidence)}"
     return None
 
 
@@ -2527,11 +2589,9 @@ def evaluate_candidate(record, criteria, diagnostics=False):
             fit_score += 15
             fit_score += RELATIONSHIP_GOAL_STRENGTH_BONUS.get(record.get("relationship_goal"), 0)
 
-    combined_text = record.get("combined_text", "")
-
     if criteria.get("must_have"):
         for keyword in criteria["must_have"]:
-            if keyword.lower() not in combined_text:
+            if not keyword_matches_record(record, keyword):
                 return fail("must_have_missing", keyword)
             reasons.append(f"包含 {keyword}")
             fit_score += 8
@@ -2541,11 +2601,11 @@ def evaluate_candidate(record, criteria, diagnostics=False):
 
     if criteria.get("must_not_have"):
         for keyword in criteria["must_not_have"]:
-            if keyword.lower() in combined_text:
+            if as_lower(keyword) in as_lower(record.get("combined_text", "")):
                 return fail("must_not_have_hit", keyword)
 
     for keyword in criteria.get("prefer", []):
-        if keyword.lower() in combined_text:
+        if keyword_matches_record(record, keyword):
             reasons.append(f"偏好命中 {keyword}")
             fit_score += 6
             evidence = extract_keyword_evidence(record, keyword)

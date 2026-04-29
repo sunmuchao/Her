@@ -1,0 +1,23 @@
+{
+  "persona_count": 12,
+  "matched_persona_count": 12,
+  "no_match_persona_count": 0,
+  "one_match_persona_count": 1,
+  "two_match_ids": [
+    "h01",
+    "h02",
+    "h03",
+    "h04",
+    "h05",
+    "h06",
+    "h08",
+    "h09",
+    "h10",
+    "h11",
+    "h12"
+  ],
+  "one_match_ids": [
+    "h07"
+  ],
+  "no_match_ids": []
+}
