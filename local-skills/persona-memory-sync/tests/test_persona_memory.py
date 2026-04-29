@@ -156,6 +156,7 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertEqual(payload["public_job"], "产品经理")
         self.assertIn("matcher_traits_json", payload)
         self.assertIn("public_personality", payload)
+        self.assertIn("对子女情况=可协商，但接受度偏谨慎", payload["notes"])
 
     def test_build_public_profile_masks_sensitive_job_titles(self):
         payload = persona_memory_lib.build_public_profile(

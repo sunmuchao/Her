@@ -379,7 +379,10 @@ def extract_patches(
 - `explicit_patch` 允许硬字段，如年龄、城市、学历、婚况、抽烟喝酒、目标年龄/城市、接受度边界。
 - `strong_inference_patch` 只允许这些字段：must_have_tags, must_not_have_tags, preferred_traits, disliked_traits, persona_summary_internal, preference_summary_internal, public_profile_summary_draft, public_preference_summary_draft。
 - 如果用户说“更匹配一点，但不是硬门槛”，不要把它写进硬门槛字段。
+- 如果用户只给了区间、约数或模糊表达，不要补成更精确的值；例如收入只说“大概 35-40”，就不要写成 38。
+- `self_smoking` / `self_drinking` 不要过度标准化；如果用户说“基本不喝”“极少量社交饮酒”，优先保留这个粒度，不要直接写成“偶尔”。
 - 如果用户说“接受度偏低/偏谨慎”，可以把 `target_accept_partner_children_strength` 或 `target_marital_status_strength` 写到 `explicit_patch`。
+- 如果婚史或对子女是“可以聊、但明显偏保守/更看具体相处”，优先把强度写成 `谨慎接受`，不要轻易写成 `短期可聊`。
 - `public_*` 草稿必须克制，不能把用户明确说“不想公开”的内容写进去。
 - 列表字段用数组；未提及就留空。
 
