@@ -1,6 +1,8 @@
 import pathlib
+import os
 import types
 import unittest
+from unittest import mock
 
 
 SCRIPT_PATH = (
@@ -12,6 +14,22 @@ exec(compile(SCRIPT_PATH.read_text(encoding="utf-8"), str(SCRIPT_PATH), "exec"),
 
 
 class PersonaMemoryTests(unittest.TestCase):
+    def test_resolve_mysql_source_requires_explicit_config(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            with self.assertRaises(ValueError):
+                persona_memory_lib.resolve_mysql_source()
+
+    def test_resolve_mysql_source_reads_persona_env(self):
+        with mock.patch.dict(
+            os.environ,
+            {"PERSONA_MEMORY_MYSQL_SOURCE": "mysql://demo@127.0.0.1:3306/her?table=profiles"},
+            clear=True,
+        ):
+            self.assertEqual(
+                persona_memory_lib.resolve_mysql_source(),
+                "mysql://demo@127.0.0.1:3306/her?table=profiles",
+            )
+
     def test_normalize_patch_supports_lists_and_ints(self):
         patch = persona_memory_lib.normalize_patch(
             {
@@ -85,6 +103,8 @@ class PersonaMemoryTests(unittest.TestCase):
             "self_city": "无锡",
             "self_income_wan": 40,
             "self_relationship_goal": "结婚导向",
+            "persona_summary_internal": "慢热但反馈稳定，认真推进关系。",
+            "preference_summary_internal": "看重沟通效率，也看重情绪稳定。",
             "target_age_min": 24,
             "target_age_max": 30,
             "target_cities": "无锡",
@@ -102,8 +122,40 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertEqual(payload["accept_partner_children"], "不接受")
         self.assertEqual(payload["accept_marital_status"], "未婚")
         self.assertEqual(payload["income_range"], "36-45万/年")
+        self.assertEqual(payload["personality"], "慢热但反馈稳定，认真推进关系。")
+        self.assertEqual(payload["values"], "看重沟通效率，也看重情绪稳定。")
         self.assertIn("matcher_traits_json", payload)
         self.assertIn("public_personality", payload)
+
+    def test_build_profile_payload_preserves_existing_internal_text_over_public_fallback(self):
+        persona = {
+            "user_key": "demo-user",
+            "display_name": "Demo",
+            "self_city": "无锡",
+            "self_relationship_goal": "认真恋爱",
+            "must_have_tags": "情绪稳定",
+        }
+        existing_profile = {
+            "personality": "真实聊天里很会接话，也会主动推进。",
+            "values": "看重沟通和现实执行感。",
+            "notes": "明确不接受长期拉扯。",
+        }
+        payload = persona_memory_lib.build_profile_payload(persona, existing_profile=existing_profile)
+        self.assertEqual(payload["personality"], existing_profile["personality"])
+        self.assertEqual(payload["values"], existing_profile["values"])
+        self.assertEqual(payload["notes"], existing_profile["notes"])
+        self.assertNotEqual(payload["personality"], payload["public_personality"])
+
+    def test_mark_profile_sync_results_only_marks_profile_affecting_fields(self):
+        field_results = [
+            {"field_name": "self_city", "applied_to_persona": True},
+            {"field_name": "profile_id", "applied_to_persona": True},
+            {"field_name": "self_age", "applied_to_persona": False},
+        ]
+        persona_memory_lib.mark_profile_sync_results(field_results, synced_profile=True)
+        self.assertTrue(field_results[0]["applied_to_profile"])
+        self.assertFalse(field_results[1]["applied_to_profile"])
+        self.assertFalse(field_results[2]["applied_to_profile"])
 
 
 if __name__ == "__main__":

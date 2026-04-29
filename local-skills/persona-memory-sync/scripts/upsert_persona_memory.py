@@ -9,6 +9,8 @@ from persona_memory_lib import (
     DEFAULT_OBSERVATION_TABLE,
     DEFAULT_PERSONA_TABLE,
     build_profile_payload,
+    insert_profile_stub,
+    mark_profile_sync_results,
     merge_persona,
     mysql_connect,
     normalize_patch,
@@ -79,7 +81,7 @@ def insert_observations(
                 conversation_ref,
                 item["action_type"],
                 1 if item["applied_to_persona"] else 0,
-                0,
+                1 if item.get("applied_to_profile") else 0,
                 now_string(),
             ),
         )
@@ -119,16 +121,9 @@ def upsert_profile(cursor, profile_table: str, payload, profile_id):
         [payload[column] for column in update_columns] + [profile_id],
     )
 
-
-def allocate_profile_id(cursor, profile_table: str) -> int:
-    cursor.execute(f"SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM {quote_mysql_ident(profile_table)}")
-    row = cursor.fetchone()
-    return int(row["next_id"])
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description="Upsert persona memory from a structured patch and optionally sync to profiles.")
-    parser.add_argument("--source", default=None, help="MySQL DSN. Defaults to PERSONA_MEMORY_MYSQL_SOURCE or local her DB.")
+    parser.add_argument("--source", default=None, help="MySQL DSN. Defaults to PERSONA_MEMORY_MYSQL_SOURCE.")
     parser.add_argument("--persona-table", default=DEFAULT_PERSONA_TABLE)
     parser.add_argument("--observation-table", default=DEFAULT_OBSERVATION_TABLE)
     parser.add_argument("--profile-table", default=None, help="Override the profile table name.")
@@ -154,6 +149,7 @@ def main() -> None:
     config = parse_mysql_source(args.source)
     profile_table = args.profile_table or config["table"]
     conn = mysql_connect(args.source)
+    profile_synced = False
     try:
         with conn.cursor() as cursor:
             existing = fetch_persona(cursor, args.persona_table, args.user_key)
@@ -162,6 +158,30 @@ def main() -> None:
             merged, field_results = merge_persona(base, normalized_patch, args.source_type)
             merged["user_key"] = args.user_key
             saved_persona = upsert_persona(cursor, args.persona_table, merged)
+
+            if args.sync_profile and args.source_type != "weak_inference":
+                profile_id = saved_persona.get("profile_id")
+                persona_for_profile = dict(saved_persona)
+                persona_for_profile["user_key"] = args.user_key
+                if profile_id is None:
+                    initial_payload = build_profile_payload(persona_for_profile, existing_profile={})
+                    profile_id = insert_profile_stub(cursor, profile_table, initial_payload)
+                    cursor.execute(
+                        f"UPDATE {quote_mysql_ident(args.persona_table)} SET profile_id = %s WHERE id = %s",
+                        (profile_id, saved_persona["id"]),
+                    )
+                    saved_persona["profile_id"] = profile_id
+                    persona_for_profile["profile_id"] = profile_id
+                cursor.execute(
+                    f"SELECT * FROM {quote_mysql_ident(profile_table)} WHERE id = %s",
+                    (profile_id,),
+                )
+                existing_profile = cursor.fetchone() or {}
+                payload = build_profile_payload(persona_for_profile, existing_profile=existing_profile)
+                upsert_profile(cursor, profile_table, payload, profile_id)
+                profile_synced = True
+
+            mark_profile_sync_results(field_results, synced_profile=profile_synced)
             insert_observations(
                 cursor=cursor,
                 observation_table=args.observation_table,
@@ -174,25 +194,6 @@ def main() -> None:
                 field_results=field_results,
             )
 
-            if args.sync_profile and args.source_type != "weak_inference":
-                profile_id = saved_persona.get("profile_id")
-                if profile_id is None:
-                    profile_id = allocate_profile_id(cursor, profile_table)
-                    cursor.execute(
-                        f"UPDATE {quote_mysql_ident(args.persona_table)} SET profile_id = %s WHERE id = %s",
-                        (profile_id, saved_persona["id"]),
-                    )
-                    saved_persona["profile_id"] = profile_id
-                cursor.execute(
-                    f"SELECT * FROM {quote_mysql_ident(profile_table)} WHERE id = %s",
-                    (profile_id,),
-                )
-                existing_profile = cursor.fetchone() or {}
-                persona_for_profile = dict(saved_persona)
-                persona_for_profile["user_key"] = args.user_key
-                payload = build_profile_payload(persona_for_profile, existing_profile=existing_profile)
-                upsert_profile(cursor, profile_table, payload, profile_id)
-
         conn.commit()
     finally:
         conn.close()
@@ -204,7 +205,7 @@ def main() -> None:
                 "source_type": args.source_type,
                 "applied_fields": [item for item in field_results if item["applied_to_persona"]],
                 "skipped_fields": [item for item in field_results if not item["applied_to_persona"]],
-                "synced_profile": bool(args.sync_profile and args.source_type != "weak_inference"),
+                "synced_profile": profile_synced,
             },
             ensure_ascii=False,
             indent=2,
@@ -214,4 +215,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
