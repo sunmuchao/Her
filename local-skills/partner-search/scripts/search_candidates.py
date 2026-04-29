@@ -56,6 +56,18 @@ FIELD_ALIASES = {
     "growth_signal": {"growth_signal", "事业势能", "成长性", "发展势能"},
     "warmth_style": {"warmth_style", "聊天温度", "互动温度", "温度感"},
     "aesthetic_expression": {"aesthetic_expression", "审美表达", "审美感", "内容输出"},
+    "conversation_resonance": {
+        "conversation_resonance",
+        "聊天共鸣",
+        "聊天同频感",
+        "聊天感觉",
+    },
+    "personal_presence": {
+        "personal_presence",
+        "人物感",
+        "记忆点",
+        "个人辨识度",
+    },
     "blended_family_readiness": {
         "blended_family_readiness",
         "重组家庭承接度",
@@ -171,6 +183,8 @@ TEXT_FIELDS = [
     "growth_signal",
     "warmth_style",
     "aesthetic_expression",
+    "conversation_resonance",
+    "personal_presence",
     "blended_family_readiness",
     "smoking",
     "drinking",
@@ -246,6 +260,8 @@ FIELD_DISPLAY_NAMES = {
     "growth_signal": "事业势能",
     "warmth_style": "聊天温度",
     "aesthetic_expression": "审美表达",
+    "conversation_resonance": "聊天共鸣",
+    "personal_presence": "人物感",
     "blended_family_readiness": "现实承接度",
     "smoking": "抽烟情况",
     "drinking": "喝酒情况",
@@ -287,6 +303,8 @@ KEYWORD_EVIDENCE_FIELDS = [
     ("growth_signal", "事业势能"),
     ("warmth_style", "聊天温度"),
     ("aesthetic_expression", "审美表达"),
+    ("conversation_resonance", "聊天共鸣"),
+    ("personal_presence", "人物感"),
     ("blended_family_readiness", "现实承接度"),
     ("notes", "备注"),
     ("family_background", "家庭情况"),
@@ -330,6 +348,8 @@ RISK_FLAG_PENALTIES = {
     "成长势能偏弱": 6,
     "聊天温度偏冷": 5,
     "审美表达偏平": 4,
+    "聊天可能像信息交换": 5,
+    "人物感偏淡": 5,
     "重组家庭现实承接仍需确认": 6,
     "未认证": 6,
     "活跃时间未知": 4,
@@ -748,6 +768,8 @@ def evaluate_contextual_fit(record, criteria, self_profile=None):
     growth_signal = record.get("growth_signal")
     warmth_style = record.get("warmth_style")
     aesthetic_expression = record.get("aesthetic_expression")
+    conversation_resonance = record.get("conversation_resonance")
+    personal_presence = record.get("personal_presence")
     blended_family_readiness = record.get("blended_family_readiness")
     communication_style = record.get("communication_style")
     dating_pace = record.get("dating_pace")
@@ -776,6 +798,10 @@ def evaluate_contextual_fit(record, criteria, self_profile=None):
             match_evidence.append(f"理性但不冷 <- 聊天温度: {warmth_style}")
         elif warmth_style == "偏克制":
             risk_flags.append("聊天温度偏冷")
+        if conversation_resonance == "会接话也会接情绪":
+            reasons.append("聊天更容易有来有回")
+            score_bonus += 4
+            match_evidence.append(f"聊天更容易有来有回 <- 聊天共鸣: {conversation_resonance}")
 
     if keyword_requested(criteria, {"边界", "边界感", "理性直接"}):
         if interaction_comfort == "有边界不拧巴":
@@ -819,7 +845,7 @@ def evaluate_contextual_fit(record, criteria, self_profile=None):
         elif candidate_income_max < max(26, int(self_income_max * 0.4)):
             risk_flags.append("生活阶段可能有落差")
 
-    if high_bar_profile or keyword_requested(criteria, {"见识", "表达", "生活感", "会聊天"}):
+    if high_bar_profile or keyword_requested(criteria, {"见识", "表达", "生活感", "会聊天", "人物感", "上头", "火花"}):
         if life_texture == "有见识也有生活感":
             reasons.append("资料不只稳，也更有生活感")
             score_bonus += 7
@@ -840,6 +866,26 @@ def evaluate_contextual_fit(record, criteria, self_profile=None):
             match_evidence.append(f"审美表达更顺眼 <- 审美表达: {aesthetic_expression}")
         elif aesthetic_expression == "普通":
             risk_flags.append("审美表达偏平")
+        if conversation_resonance == "能聊想法也能聊日常":
+            reasons.append("更容易聊出感觉")
+            score_bonus += 6
+            match_evidence.append(f"更容易聊出感觉 <- 聊天共鸣: {conversation_resonance}")
+        elif conversation_resonance == "会接话也会接情绪":
+            reasons.append("聊天不只对条件，也有情绪接住感")
+            score_bonus += 4
+            match_evidence.append(f"聊天不只对条件，也有情绪接住感 <- 聊天共鸣: {conversation_resonance}")
+        elif conversation_resonance == "偏信息交换":
+            risk_flags.append("聊天可能像信息交换")
+        if personal_presence == "有记忆点":
+            reasons.append("人物感更强")
+            score_bonus += 6
+            match_evidence.append(f"人物感更强 <- 人物感: {personal_presence}")
+        elif personal_presence == "温和耐看":
+            reasons.append("人物感更舒服")
+            score_bonus += 3
+            match_evidence.append(f"人物感更舒服 <- 人物感: {personal_presence}")
+        elif personal_presence == "偏平":
+            risk_flags.append("人物感偏淡")
 
     if high_bar_profile or keyword_requested(criteria, {"成长", "势能", "事业", "大局观", "上进"}):
         if growth_signal == "上升明确":
@@ -879,6 +925,18 @@ def evaluate_contextual_fit(record, criteria, self_profile=None):
             match_evidence.append(f"现实问题愿意一起商量 <- 现实承接度: {blended_family_readiness}")
         elif blended_family_readiness in {"仅口头接受", "未知", None, ""}:
             risk_flags.append("重组家庭现实承接仍需确认")
+
+    if (
+        high_bar_profile
+        and conversation_resonance == "能聊想法也能聊日常"
+        and personal_presence == "有记忆点"
+        and aesthetic_expression in {"有审美输出", "有生活审美"}
+    ):
+        reasons.append("不只合适，也更容易让人有感觉")
+        score_bonus += 5
+        match_evidence.append(
+            "不只合适，也更容易让人有感觉 <- 聊天共鸣/人物感/审美表达组合更完整"
+        )
 
     return {
         "matched_on": reasons,
@@ -1003,6 +1061,10 @@ def build_follow_up_questions(record, missing_fields, risk_flags, self_profile=N
             questions.append("确认对方是不是只在资料里理性，实际聊天会不会太冷。")
         elif risk == "审美表达偏平":
             questions.append("确认对方有没有自己的生活审美和表达，而不是只有基础条件。")
+        elif risk == "聊天可能像信息交换":
+            questions.append("确认对方聊天是不是只在交换条件和流程，还是能真正聊出共鸣。")
+        elif risk == "人物感偏淡":
+            questions.append("确认对方除了条件在线，有没有让你记住和想继续了解的点。")
         elif risk == "重组家庭现实承接仍需确认":
             questions.append("确认对方有没有具体想过孩子、时间和家庭安排，不要只停留在口头接受。")
 
@@ -2562,6 +2624,10 @@ def format_text(results, include_source=False):
             vibe_parts.append(f"温度={profile.get('warmth_style')}")
         if profile.get("aesthetic_expression"):
             vibe_parts.append(f"审美={profile.get('aesthetic_expression')}")
+        if profile.get("conversation_resonance"):
+            vibe_parts.append(f"共鸣={profile.get('conversation_resonance')}")
+        if profile.get("personal_presence"):
+            vibe_parts.append(f"人物感={profile.get('personal_presence')}")
         if profile.get("blended_family_readiness"):
             vibe_parts.append(f"现实承接={profile.get('blended_family_readiness')}")
         if vibe_parts:
