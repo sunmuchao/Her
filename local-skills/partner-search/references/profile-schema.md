@@ -48,7 +48,10 @@ Use this schema for MySQL columns.
 | `conversation_resonance` | Whether the person can聊想法也聊日常, can接情绪, or mainly stays at practical info exchange |
 | `personal_presence` | Whether the profile feels memorable, warm-and-enduring, or conditionally correct but flat |
 | `lightness_humor` | Whether the person feels playful / not wooden in chat, or more steady and restrained |
+| `consumption_attitude` | Structured spending stance such as clear-headed and practical, selective but knows how to live, or everyday-home-oriented |
+| `chat_texture` | Whether chat feels lively-with-substance, easy-to-follow, steady-smooth, or mostly functional |
 | `commitment_clarity` | Whether the person is explicitly entering with long-term intent or still more “先聊熟再说” |
+| `relationship_execution` | Whether the person can turn long-term intent into concrete pacing, expectations, and plans |
 | `blended_family_readiness` | Whether the profile has concretely thought through divorced-with-children reality |
 | `smoking` | `否`, `是`, `偶尔`, `未知` |
 | `drinking` | `否`, `是`, `偶尔`, `未知` |
@@ -123,7 +126,10 @@ CREATE TABLE profiles (
   conversation_resonance VARCHAR(32),
   personal_presence VARCHAR(32),
   lightness_humor VARCHAR(32),
+  consumption_attitude VARCHAR(32),
+  chat_texture VARCHAR(32),
   commitment_clarity VARCHAR(32),
+  relationship_execution VARCHAR(32),
   blended_family_readiness VARCHAR(32),
   smoking VARCHAR(16),
   drinking VARCHAR(16),
@@ -215,6 +221,9 @@ The script normalizes common aliases automatically.
 | `values` | `价值观`, `消费观` |
 | `lifestyle` | `生活方式`, `作息` |
 | `hobbies` | `兴趣`, `爱好` |
+| `consumption_attitude` | `消费观锚点`, `消费观类型`, `花钱观` |
+| `chat_texture` | `聊天质感`, `聊天趣味`, `聊天顺滑度` |
+| `relationship_execution` | `现实推进方式`, `关系推进方式`, `推进执行感` |
 | `smoking` | `抽烟`, `吸烟` |
 | `drinking` | `喝酒`, `饮酒` |
 | `long_distance` | `异地`, `接受异地` |
