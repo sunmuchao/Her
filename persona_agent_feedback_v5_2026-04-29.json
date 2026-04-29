@@ -1,0 +1,308 @@
+[
+  {
+    "persona_id": "p01",
+    "candidate_reviews": [
+      {
+        "rank": 1,
+        "name": "季沉川",
+        "score": 9,
+        "verdict": "愿意继续聊"
+      },
+      {
+        "rank": 2,
+        "name": "顾闻舟",
+        "score": 9,
+        "verdict": "愿意继续聊"
+      }
+    ]
+  },
+  {
+    "persona_id": "p02",
+    "candidate_reviews": [
+      {
+        "rank": 1,
+        "name": "苏念远",
+        "score": 9,
+        "verdict": "愿意继续聊"
+      },
+      {
+        "rank": 2,
+        "name": "林乔安",
+        "score": 8,
+        "verdict": "愿意继续聊"
+      }
+    ]
+  },
+  {
+    "persona_id": "p03",
+    "candidate_reviews": [
+      {
+        "rank": 1,
+        "name": "蒋知白",
+        "score": 9,
+        "verdict": "愿意继续聊"
+      },
+      {
+        "rank": 2,
+        "name": "孙安阳",
+        "score": 8,
+        "verdict": "观望"
+      }
+    ]
+  },
+  {
+    "persona_id": "p04",
+    "candidate_reviews": [
+      {
+        "rank": 1,
+        "name": "何安涵",
+        "score": 9,
+        "verdict": "愿意继续聊"
+      },
+      {
+        "rank": 2,
+        "name": "杨星妍",
+        "score": 8,
+        "verdict": "观望"
+      }
+    ]
+  },
+  {
+    "persona_id": "p05",
+    "candidate_reviews": [
+      {
+        "rank": 1,
+        "name": "沈叙白",
+        "score": 9,
+        "verdict": "愿意继续聊"
+      },
+      {
+        "rank": 2,
+        "name": "梁砚知",
+        "score": 8,
+        "verdict": "愿意继续聊"
+      }
+    ]
+  },
+  {
+    "persona_id": "p06",
+    "candidate_reviews": [
+      {
+        "rank": 1,
+        "name": "沈知行",
+        "score": 9,
+        "verdict": "愿意继续聊"
+      },
+      {
+        "rank": 2,
+        "name": "徐语婷",
+        "score": 7,
+        "verdict": "观望"
+      }
+    ]
+  },
+  {
+    "persona_id": "p07",
+    "candidate_reviews": [
+      {
+        "rank": 1,
+        "name": "闻时越",
+        "score": 9,
+        "verdict": "愿意继续聊"
+      },
+      {
+        "rank": 2,
+        "name": "许之衡",
+        "score": 8,
+        "verdict": "观望"
+      }
+    ]
+  },
+  {
+    "persona_id": "p08",
+    "candidate_reviews": [
+      {
+        "rank": 1,
+        "name": "黄芷然",
+        "score": 9,
+        "verdict": "愿意继续聊"
+      },
+      {
+        "rank": 2,
+        "name": "胡书瑶",
+        "score": 8,
+        "verdict": "愿意继续聊"
+      }
+    ]
+  },
+  {
+    "persona_id": "p09",
+    "candidate_reviews": [
+      {
+        "rank": 1,
+        "name": "韩叙川",
+        "score": 9,
+        "verdict": "愿意继续聊"
+      },
+      {
+        "rank": 2,
+        "name": "梁怀瑾",
+        "score": 8,
+        "verdict": "愿意继续聊"
+      }
+    ]
+  },
+  {
+    "persona_id": "p10",
+    "candidate_reviews": [
+      {
+        "rank": 1,
+        "name": "周砚川",
+        "score": 9,
+        "verdict": "愿意继续聊"
+      },
+      {
+        "rank": 2,
+        "name": "陈柏舟",
+        "score": 8,
+        "verdict": "愿意继续聊"
+      }
+    ]
+  },
+  {
+    "persona_id": "p11",
+    "candidate_reviews": [
+      {
+        "rank": 1,
+        "name": "季沉川",
+        "score": 9,
+        "verdict": "愿意继续聊"
+      },
+      {
+        "rank": 2,
+        "name": "陆景珩",
+        "score": 9,
+        "verdict": "愿意继续聊"
+      }
+    ]
+  },
+  {
+    "persona_id": "p12",
+    "candidate_reviews": [
+      {
+        "rank": 1,
+        "name": "许清和",
+        "score": 9,
+        "verdict": "愿意继续聊"
+      },
+      {
+        "rank": 2,
+        "name": "于舒宁",
+        "score": 8,
+        "verdict": "愿意继续聊"
+      }
+    ]
+  },
+  {
+    "persona_id": "p13",
+    "candidate_reviews": [
+      {
+        "rank": 1,
+        "name": "周既白",
+        "score": 9,
+        "verdict": "愿意继续聊"
+      },
+      {
+        "rank": 2,
+        "name": "江芷岚",
+        "score": 9,
+        "verdict": "愿意继续聊"
+      }
+    ]
+  },
+  {
+    "persona_id": "p14",
+    "candidate_reviews": [
+      {
+        "rank": 1,
+        "name": "顾承润",
+        "score": 9,
+        "verdict": "愿意继续聊"
+      },
+      {
+        "rank": 2,
+        "name": "赵奕瑞",
+        "score": 8,
+        "verdict": "观望"
+      }
+    ]
+  },
+  {
+    "persona_id": "p15",
+    "candidate_reviews": [
+      {
+        "rank": 1,
+        "name": "高以嘉",
+        "score": 8,
+        "verdict": "愿意继续聊"
+      },
+      {
+        "rank": 2,
+        "name": "罗若瑶",
+        "score": 7,
+        "verdict": "观望"
+      }
+    ]
+  },
+  {
+    "persona_id": "p16",
+    "candidate_reviews": [
+      {
+        "rank": 1,
+        "name": "程叙安",
+        "score": 9,
+        "verdict": "愿意继续聊"
+      },
+      {
+        "rank": 2,
+        "name": "沈越川",
+        "score": 8,
+        "verdict": "愿意继续聊"
+      }
+    ]
+  },
+  {
+    "persona_id": "p17",
+    "candidate_reviews": [
+      {
+        "rank": 1,
+        "name": "高欣彤",
+        "score": 9,
+        "verdict": "愿意继续聊"
+      },
+      {
+        "rank": 2,
+        "name": "李依菲",
+        "score": 8,
+        "verdict": "愿意继续聊"
+      }
+    ]
+  },
+  {
+    "persona_id": "p18",
+    "candidate_reviews": [
+      {
+        "rank": 1,
+        "name": "沈叙白",
+        "score": 8,
+        "verdict": "愿意继续聊"
+      },
+      {
+        "rank": 2,
+        "name": "梁砚知",
+        "score": 8,
+        "verdict": "观望"
+      }
+    ]
+  }
+]

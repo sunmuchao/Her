@@ -1,0 +1,11 @@
+{
+  "persona_count": 18,
+  "candidate_review_count": 36,
+  "average_score": 8.4722,
+  "top1_average_score": 8.8889,
+  "verdict_counts": {
+    "愿意继续聊": 29,
+    "观望": 7,
+    "不考虑": 0
+  }
+}
