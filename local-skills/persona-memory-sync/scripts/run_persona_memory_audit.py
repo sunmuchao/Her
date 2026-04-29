@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 import sys
+from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
@@ -24,6 +25,7 @@ from persona_memory_lib import (  # noqa: E402
     DEFAULT_PERSONA_TABLE,
     build_profile_payload,
     insert_profile_stub,
+    income_wan_to_range,
     mark_profile_sync_results,
     merge_persona,
     mysql_connect,
@@ -326,6 +328,28 @@ def prune_none(value: Any) -> Any:
     return value
 
 
+def mentions_income_privacy(private_boundaries: Optional[Iterable[str]]) -> bool:
+    for boundary in private_boundaries or []:
+        text = str(boundary).strip()
+        if not text:
+            continue
+        if any(keyword in text for keyword in ("收入", "薪资", "薪水", "工资")):
+            return True
+    return False
+
+
+def mask_snapshot_for_review(snapshot: Dict[str, Any], private_boundaries: Optional[Iterable[str]]) -> Dict[str, Any]:
+    masked = deepcopy(snapshot)
+    if mentions_income_privacy(private_boundaries):
+        persona_row = masked.get("user_persona") or {}
+        exact_income = persona_row.pop("self_income_wan", None)
+        if exact_income is not None:
+            income_range = income_wan_to_range(exact_income)
+            if income_range:
+                persona_row["self_income_range"] = income_range
+    return masked
+
+
 def persona_reply(
     client: OpenAI,
     *,
@@ -515,6 +539,7 @@ def fetch_snapshot(
     *,
     user_key: str,
     profile_id: int,
+    private_boundaries: Optional[Iterable[str]] = None,
     persona_table: str = DEFAULT_PERSONA_TABLE,
     profile_table: str = "profiles",
     public_view: str = "public_profile_view",
@@ -543,11 +568,12 @@ def fetch_snapshot(
     persona_excerpt = {field: persona_row.get(field) for field in PERSONA_SNAPSHOT_FIELDS}
     profile_excerpt = {field: profile_row.get(field) for field in PROFILE_SNAPSHOT_FIELDS}
     public_excerpt = {field: public_row.get(field) for field in PUBLIC_VIEW_SNAPSHOT_FIELDS}
-    return {
+    snapshot = {
         "user_persona": prune_none(persona_excerpt),
         "profile_internal": prune_none(profile_excerpt),
         "public_profile_view": prune_none(public_excerpt),
     }
+    return mask_snapshot_for_review(snapshot, private_boundaries)
 
 
 def review_snapshot(
@@ -753,7 +779,12 @@ def main() -> None:
                     conversation_ref=conversation_ref,
                 )
 
-            snapshot = fetch_snapshot(source, user_key=user_key, profile_id=profile_id)
+            snapshot = fetch_snapshot(
+                source,
+                user_key=user_key,
+                profile_id=profile_id,
+                private_boundaries=persona.private_boundaries,
+            )
             review = review_snapshot(
                 client,
                 model=analysis_model,
