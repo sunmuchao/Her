@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import json
 import os
 import re
 import sys
@@ -535,6 +536,18 @@ def as_text(value):
 
 def normalize_whitespace(value):
     return re.sub(r"\s+", " ", str(value)).strip()
+
+
+def parse_json_object(value):
+    if isinstance(value, dict):
+        return value
+    if not value:
+        return {}
+    try:
+        parsed = json.loads(value)
+    except (TypeError, ValueError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
 
 
 def field_display_name(field):
@@ -1461,6 +1474,10 @@ def normalize_record(raw):
         if income_max is not None:
             record["income_max_wan"] = income_max
 
+    record["matcher_traits"] = parse_json_object(record.get("matcher_traits_json"))
+    record["matcher_preferences"] = parse_json_object(record.get("matcher_preferences_json"))
+    record["matcher_risks"] = parse_json_object(record.get("matcher_risks_json"))
+
     record["combined_text"] = build_combined_text(record)
     return record
 
@@ -1975,6 +1992,7 @@ def build_self_profile_from_args(args, records):
     if args.self_id is not None:
         profile["id"] = args.self_id
     profile["has_children"] = normalize_bool(profile.get("has_children"))
+    profile["combined_text"] = build_combined_text(profile)
     return profile
 
 
@@ -2195,6 +2213,20 @@ def format_no_match_text(diagnostics):
     if suggestions:
         lines.append("relax_suggestions: " + " | ".join(suggestions))
     return "\n".join(lines)
+
+
+def matcher_preference_tags(record):
+    preferences = record.get("matcher_preferences")
+    if not isinstance(preferences, dict):
+        preferences = parse_json_object(record.get("matcher_preferences_json"))
+    tags = []
+    for key in ("must_have_tags", "preferred_traits"):
+        value = preferences.get(key)
+        if isinstance(value, list):
+            tags.extend(value)
+        else:
+            tags.extend(split_keywords(value))
+    return unique_ordered(tags)
 
 
 def evaluate_reciprocal_compatibility(record, self_profile, diagnostics=False):
@@ -2440,6 +2472,14 @@ def evaluate_reciprocal_compatibility(record, self_profile, diagnostics=False):
             risk_flags.append("对方异地接受度未知")
         else:
             missing_fields.append("accept_long_distance")
+
+    soft_preference_tags = matcher_preference_tags(record)
+    if soft_preference_tags:
+        self_text = as_lower(self_profile.get("combined_text"))
+        matched_soft_tags = [tag for tag in soft_preference_tags if as_lower(tag) in self_text]
+        if matched_soft_tags:
+            reasons.append("对方软性偏好有重合")
+            score_bonus += min(4, len(matched_soft_tags) * 2)
 
     return {
         "matched": True,
@@ -2795,6 +2835,11 @@ def evaluate_candidate(record, criteria, diagnostics=False):
 
     completeness = sum(1 for field in TEXT_FIELDS if record.get(field))
     confidence_score += min(completeness, 10)
+    matcher_enrichment_count = sum(
+        1 for field in ("matcher_traits", "matcher_preferences", "matcher_risks") if record.get(field)
+    )
+    if matcher_enrichment_count:
+        confidence_score += min(matcher_enrichment_count, 2)
 
     required_known_fields = {
         field

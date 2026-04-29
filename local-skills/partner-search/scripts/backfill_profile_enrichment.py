@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 
 import argparse
+import os
 import re
+from urllib.parse import parse_qs, unquote, urlparse
+
+
+MYSQL_SCHEMES = {"mysql", "mysql+pymysql"}
+DEFAULT_SOURCE_ENV = "PARTNER_SEARCH_MYSQL_SOURCE"
 
 
 STRICTNESS_COLUMNS = {
@@ -145,14 +151,74 @@ UPWARD_JOBS = BRAINY_JOBS | {
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Backfill partner-search enrichment fields into MySQL profiles.")
-    parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=3307)
-    parser.add_argument("--user", default="root")
-    parser.add_argument("--password", default="")
-    parser.add_argument("--database", default="her")
-    parser.add_argument("--table", default="profiles")
-    parser.add_argument("--charset", default="utf8mb4")
+    parser.add_argument(
+        "--source",
+        default=os.environ.get(DEFAULT_SOURCE_ENV),
+        help=f"MySQL DSN such as mysql://user:pass@host:3306/db?table=profiles. Defaults to {DEFAULT_SOURCE_ENV}.",
+    )
+    parser.add_argument("--host", default=None)
+    parser.add_argument("--port", type=int, default=None)
+    parser.add_argument("--user", default=None)
+    parser.add_argument("--password", default=None)
+    parser.add_argument("--database", default=None)
+    parser.add_argument("--table", default=None)
+    parser.add_argument("--charset", default=None)
     return parser.parse_args()
+
+
+def parse_mysql_source(source):
+    parsed = urlparse(str(source))
+    if parsed.scheme.lower() not in MYSQL_SCHEMES:
+        raise ValueError(f"Unsupported MySQL source: {source}")
+
+    database = unquote(parsed.path.lstrip("/"))
+    if not database:
+        raise ValueError("MySQL source must include a database name.")
+
+    query = parse_qs(parsed.query)
+    return {
+        "host": parsed.hostname or "127.0.0.1",
+        "port": parsed.port or 3306,
+        "user": unquote(parsed.username) if parsed.username else None,
+        "password": unquote(parsed.password) if parsed.password else None,
+        "database": database,
+        "table": query.get("table", ["profiles"])[0],
+        "charset": query.get("charset", ["utf8mb4"])[0],
+    }
+
+
+def resolve_connection_config(args):
+    if args.source:
+        config = parse_mysql_source(args.source)
+        if args.table:
+            config["table"] = args.table
+        if args.charset:
+            config["charset"] = args.charset
+        return config
+
+    required = {
+        "host": args.host,
+        "port": args.port,
+        "user": args.user,
+        "database": args.database,
+        "table": args.table,
+    }
+    missing = [name for name, value in required.items() if value in {None, ""}]
+    if missing:
+        raise SystemExit(
+            "Provide --source or explicit connection flags for "
+            + ", ".join(missing)
+            + "."
+        )
+    return {
+        "host": args.host,
+        "port": args.port,
+        "user": args.user,
+        "password": args.password or "",
+        "database": args.database,
+        "table": args.table,
+        "charset": args.charset or "utf8mb4",
+    }
 
 
 def split_items(value):
@@ -573,18 +639,19 @@ def main():
     except ImportError as exc:  # pragma: no cover
         raise SystemExit("PyMySQL is required to backfill profile enrichment fields.") from exc
 
+    config = resolve_connection_config(args)
     conn = pymysql.connect(
-        host=args.host,
-        port=args.port,
-        user=args.user,
-        password=args.password,
-        database=args.database,
-        charset=args.charset,
+        host=config["host"],
+        port=config["port"],
+        user=config["user"],
+        password=config.get("password") or "",
+        database=config["database"],
+        charset=config["charset"],
         autocommit=False,
         cursorclass=pymysql.cursors.DictCursor,
     )
     try:
-        ensure_columns(conn, args.table)
+        ensure_columns(conn, config["table"])
         base_columns = [
             "id",
             "age",
@@ -610,7 +677,7 @@ def main():
             cursor.execute(
                 f"""
                 SELECT {", ".join(f"`{column}`" for column in select_columns)}
-                FROM `{args.table}`
+                FROM `{config['table']}`
                 """
             )
             rows = cursor.fetchall()
@@ -627,7 +694,7 @@ def main():
             updates.append(enriched)
 
         assignments = ", ".join(f"`{column}`=%s" for column in BACKFILL_UPDATE_COLUMNS)
-        sql = f"UPDATE `{args.table}` SET {assignments} WHERE `id`=%s"
+        sql = f"UPDATE `{config['table']}` SET {assignments} WHERE `id`=%s"
 
         with conn.cursor() as cursor:
             cursor.executemany(
@@ -638,7 +705,7 @@ def main():
                 ],
             )
         conn.commit()
-        print(f"Backfilled {len(updates)} profiles in {args.database}.{args.table}")
+        print(f"Backfilled {len(updates)} profiles in {config['database']}.{config['table']}")
     finally:
         conn.close()
 

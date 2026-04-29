@@ -23,6 +23,8 @@ Ensure the Python dependency is present first. Run `python3 -m pip install pymys
    - which questions to confirm next when the profile is promising but still fuzzy
    - how much is real fit versus just profile completeness
 
+Companion write scripts such as `scripts/backfill_profile_enrichment.py` and `scripts/seed_gap_profiles.py` should use the same `--source` / `PARTNER_SEARCH_MYSQL_SOURCE` entrypoint instead of relying on an implicit local root connection.
+
 ## Criteria Flags
 
 Use only the flags you need:

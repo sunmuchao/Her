@@ -457,6 +457,18 @@ class SearchCandidatesTests(unittest.TestCase):
             "reciprocal_children_acceptance_not_strong",
         )
 
+    def test_reciprocal_uses_matcher_preference_tags_for_soft_bonus(self):
+        candidate = {
+            "matcher_preferences_json": '{"must_have_tags":["情绪稳定"],"preferred_traits":["愿意沟通"]}',
+        }
+        self_profile = {
+            "combined_text": "情绪稳定，也愿意沟通，遇事不逃避。",
+        }
+        result = search_candidates.evaluate_reciprocal_compatibility(candidate, self_profile)
+        self.assertIsNotNone(result)
+        self.assertIn("对方软性偏好有重合", result["matched_on"])
+        self.assertGreaterEqual(result["score_bonus"], 2)
+
     def test_evaluate_contextual_fit_rewards_growth_warmth_and_aesthetic(self):
         record = {
             "education": "硕士",

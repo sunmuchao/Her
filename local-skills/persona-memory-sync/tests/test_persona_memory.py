@@ -14,6 +14,30 @@ exec(compile(SCRIPT_PATH.read_text(encoding="utf-8"), str(SCRIPT_PATH), "exec"),
 
 
 class PersonaMemoryTests(unittest.TestCase):
+    def test_insert_profile_stub_uses_database_generated_id(self):
+        class FakeCursor:
+            def __init__(self):
+                self.lastrowid = 321
+                self.executed = []
+
+            def execute(self, query, params):
+                self.executed.append((query, params))
+
+        cursor = FakeCursor()
+        profile_id = persona_memory_lib.insert_profile_stub(
+            cursor,
+            "profiles",
+            {
+                "name": "Demo",
+                "profile_status": "active",
+                "verified_level": "none",
+                "source_channel": "persona-memory-sync",
+                "last_active_at": "2026-04-29 12:00:00",
+            },
+        )
+        self.assertEqual(profile_id, 321)
+        self.assertEqual(len(cursor.executed), 1)
+
     def test_resolve_mysql_source_requires_explicit_config(self):
         with mock.patch.dict(os.environ, {}, clear=True):
             with self.assertRaises(ValueError):
@@ -133,7 +157,6 @@ class PersonaMemoryTests(unittest.TestCase):
             "display_name": "Demo",
             "self_city": "无锡",
             "self_relationship_goal": "认真恋爱",
-            "must_have_tags": "情绪稳定",
         }
         existing_profile = {
             "personality": "真实聊天里很会接话，也会主动推进。",
