@@ -264,6 +264,10 @@ PUBLIC_JOB_PATTERNS = (
     (re.compile(r"(研究院|实验室|科研)"), "科研相关工作"),
 )
 
+ACCEPTANCE_STRENGTH_STRONG_VALUES = {"明确接受", "长期接受", "真接受"}
+ACCEPTANCE_STRENGTH_CAUTION_VALUES = {"谨慎接受", "了解后定", "需要磨合"}
+ACCEPTANCE_STRENGTH_SURFACE_VALUES = {"短期可聊", "表面接受", "先接触再说"}
+
 
 def resolve_mysql_source(source: Optional[str] = None) -> str:
     resolved = source or os.environ.get(DEFAULT_SOURCE_ENV)
@@ -346,6 +350,36 @@ def clean_text(value: Any) -> Optional[str]:
         return None
     text = str(value).strip()
     return text or None
+
+
+def acceptance_strength_bucket(value: Any) -> str:
+    lowered = clean_text(value)
+    if not lowered:
+        return "unknown"
+    if lowered in ACCEPTANCE_STRENGTH_STRONG_VALUES:
+        return "strong"
+    if lowered in ACCEPTANCE_STRENGTH_CAUTION_VALUES:
+        return "cautious"
+    if lowered in ACCEPTANCE_STRENGTH_SURFACE_VALUES:
+        return "surface"
+    return "unknown"
+
+
+def format_acceptance_note(value: Any, strength: Any) -> Optional[str]:
+    note_value = clean_text(value)
+    note_strength = clean_text(strength)
+    if not note_value:
+        return None
+    if not note_strength:
+        return note_value
+    bucket = acceptance_strength_bucket(note_strength)
+    if note_value == "可协商" and bucket == "cautious":
+        return "可协商，但接受度偏谨慎"
+    if note_value == "可协商" and bucket == "surface":
+        return "可协商，先接触再判断"
+    if note_value == "接受" and bucket == "cautious":
+        return "接受，但会更看具体相处"
+    return f"{note_value}（{note_strength}）"
 
 
 def as_int(value: Any) -> Optional[int]:
@@ -697,9 +731,10 @@ def build_profile_payload(
             marital_note += f"（{persona.get('target_marital_status_strength')}）"
         internal_note_parts.append(marital_note)
     if persona.get("target_accept_partner_children"):
-        child_note = str(persona.get("target_accept_partner_children"))
-        if clean_text(persona.get("target_accept_partner_children_strength")):
-            child_note += f"（{persona.get('target_accept_partner_children_strength')}）"
+        child_note = format_acceptance_note(
+            persona.get("target_accept_partner_children"),
+            persona.get("target_accept_partner_children_strength"),
+        )
         internal_note_parts.append(f"对子女情况={child_note}")
     internal_notes = (
         "；".join(internal_note_parts)
