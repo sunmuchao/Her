@@ -713,10 +713,10 @@ SELECT
   height,
   education,
   job,
-  income_range,
+  CAST(NULL AS CHAR(32)) AS income_range,
   relationship_goal,
-  COALESCE(public_personality, personality) AS personality,
-  COALESCE(public_values, `values`) AS `values`,
-  COALESCE(public_notes, notes) AS notes
+  public_personality AS personality,
+  public_values AS `values`,
+  public_notes AS notes
 FROM {profile_table_q}
 """.strip()
