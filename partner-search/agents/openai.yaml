@@ -1,4 +1,0 @@
-interface:
-  display_name: "Partner Search"
-  short_description: "Search and rank dating profiles from local MySQL"
-  default_prompt: "Use $partner-search to search the local MySQL profile database for candidates matching the user preferences and explain the best matches."
