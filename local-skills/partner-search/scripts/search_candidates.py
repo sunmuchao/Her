@@ -392,8 +392,11 @@ RISK_FLAG_PENALTIES = {
     "忙的时候可能更难推进": 5,
     "工作节奏偏忙，稳定投入要再看": 5,
     "主动沟通感偏弱": 4,
+    "乐观外放感偏弱": 3,
     "消费观还不够具体": 4,
     "聊天还像完成任务": 5,
+    "认真相处信号还不够落地": 4,
+    "认真相处推进偏慢": 3,
     "长期意图有，但推进方式还不够落地": 4,
     "推进方式偏慢观察": 4,
     "成长势能偏弱": 6,
@@ -840,10 +843,12 @@ def evaluate_contextual_fit(record, criteria, self_profile=None):
         or requires_explicit_children_acceptance(self_profile)
         or keyword_requested(criteria, {"稳定踏实", "生活规律", "省心", "过日子", "相处舒服", "相处轻松", "简单舒服", "不累"})
     )
+    cares_about_regular_life = keyword_requested(criteria, {"生活规律", "生活稳定"})
     wants_proactive_communication = keyword_requested(criteria, {"主动沟通", "沟通"})
     cares_about_consumption = keyword_requested(
         criteria, {"消费观", "消费观正常", "不攀比", "过日子", "务实", "花钱观"}
     )
+    cares_about_positive_energy = keyword_requested(criteria, {"乐观", "爱笑", "松弛"})
 
     if keyword_requested(criteria, {"有耐心", "慢热", "沟通", "会接话", "相处", "舒服", "不累"}):
         if interaction_comfort in {"相处轻松", "安静低压", "有边界不拧巴"}:
@@ -880,6 +885,10 @@ def evaluate_contextual_fit(record, criteria, self_profile=None):
             match_evidence.append(f"边界清楚不拧巴 <- 相处状态: {interaction_comfort}")
 
     if keyword_requested(criteria, {"生活规律", "爱运动", "健身", "乐观"}):
+        if cares_about_regular_life and record.get("life_routine") in {"生活规律", "生活稳定"}:
+            reasons.append("生活节奏更稳")
+            score_bonus += 3
+            match_evidence.append(f"生活节奏更稳 <- 作息类型: {record.get('life_routine')}")
         if exercise_habit == "规律运动":
             reasons.append("运动习惯更匹配")
             score_bonus += 5
@@ -888,6 +897,25 @@ def evaluate_contextual_fit(record, criteria, self_profile=None):
             reasons.append("生活状态更合拍")
             score_bonus += 3
             match_evidence.append(f"生活状态更合拍 <- 运动习惯: {exercise_habit}")
+        if cares_about_positive_energy:
+            if warmth_style == "有温度会接话":
+                reasons.append("相处更有正反馈")
+                score_bonus += 3
+                match_evidence.append(f"相处更有正反馈 <- 聊天温度: {warmth_style}")
+            elif warmth_style == "理性但不冷":
+                reasons.append("情绪反馈更稳定")
+                score_bonus += 2
+                match_evidence.append(f"情绪反馈更稳定 <- 聊天温度: {warmth_style}")
+            if lightness_humor == "有点幽默不端着":
+                reasons.append("相处更有松弛感")
+                score_bonus += 4
+                match_evidence.append(f"相处更有松弛感 <- 轻松感: {lightness_humor}")
+            elif lightness_humor == "稳重有分寸":
+                reasons.append("相处更稳定不内耗")
+                score_bonus += 2
+                match_evidence.append(f"相处更稳定不内耗 <- 轻松感: {lightness_humor}")
+            elif lightness_humor == "偏克制":
+                risk_flags.append("乐观外放感偏弱")
 
     self_education_rank = education_rank(self_profile.get("education"))
     self_income_max = as_int(self_profile.get("income_max_wan"))
@@ -1103,12 +1131,38 @@ def evaluate_contextual_fit(record, criteria, self_profile=None):
             match_evidence.append("对婚史和现实问题想得更具体 <- 备注/价值观提到了婚史或现实安排")
 
     relationship_goals = set(criteria.get("relationship_goals") or [])
+    wants_steady_relationship = (
+        "认真恋爱" in relationship_goals
+        or "结婚导向" in relationship_goals
+        or keyword_requested(criteria, {"认真相处", "稳定投入关系", "认真推进"})
+    )
     wants_clear_long_term = (
         "结婚导向" in relationship_goals
         or keyword_requested(criteria, {"稳定投入关系", "认真推进", "结婚", "长期"})
         or as_int(self_profile.get("age")) is not None
         and as_int(self_profile.get("age")) >= 29
     )
+    if wants_steady_relationship and not wants_clear_long_term:
+        if commitment_clarity == "明确奔着长期":
+            reasons.append("认真相处意愿更明确")
+            score_bonus += 4
+            match_evidence.append(f"认真相处意愿更明确 <- 长期意图明确度: {commitment_clarity}")
+        elif commitment_clarity == "愿意稳定推进":
+            reasons.append("认真相处预期更清楚")
+            score_bonus += 2
+            match_evidence.append(f"认真相处预期更清楚 <- 长期意图明确度: {commitment_clarity}")
+        if relationship_execution == "会把安排说清":
+            reasons.append("认真相处不拖泥带水")
+            score_bonus += 4
+            match_evidence.append(f"认真相处不拖泥带水 <- 现实推进方式: {relationship_execution}")
+        elif relationship_execution == "稳步推进不拖拉":
+            reasons.append("认真相处节奏更稳")
+            score_bonus += 2
+            match_evidence.append(f"认真相处节奏更稳 <- 现实推进方式: {relationship_execution}")
+        elif relationship_execution == "口头长期待验证":
+            risk_flags.append("认真相处信号还不够落地")
+        elif relationship_execution == "先聊熟再定":
+            risk_flags.append("认真相处推进偏慢")
     if wants_clear_long_term:
         if commitment_clarity == "明确奔着长期":
             reasons.append("进入关系意愿更明确")
@@ -1280,10 +1334,16 @@ def build_follow_up_questions(record, missing_fields, risk_flags, self_profile=N
             questions.append("确认对方工作到底有多忙，周中回复和见面能不能稳定。")
         elif risk == "主动沟通感偏弱":
             questions.append("确认对方是慢热还是低反馈，别聊着聊着只剩你一个人在推进。")
+        elif risk == "乐观外放感偏弱":
+            questions.append("确认对方是稳定安静型，还是实际相处里会偏闷、偏没劲。")
         elif risk == "消费观还不够具体":
             questions.append("确认对方的消费观到底是清醒务实，还是只是资料里泛泛写正常。")
         elif risk == "聊天还像完成任务":
             questions.append("确认对方聊天是不是容易只讲条件和流程，还是能把话题真正聊活。")
+        elif risk == "认真相处信号还不够落地":
+            questions.append("确认对方是不是只说想认真相处，还是会真的把见面和节奏往前推。")
+        elif risk == "认真相处推进偏慢":
+            questions.append("确认对方是稳一点，还是会把认真相处一直拖在观察阶段。")
         elif risk == "长期意图有，但推进方式还不够落地":
             questions.append("确认对方不是只会说想长期，而是真的会把推进节奏和安排说清。")
         elif risk == "推进方式偏慢观察":
