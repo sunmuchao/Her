@@ -523,6 +523,28 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertIn("推进方式更落地", result["matched_on"])
         self.assertGreater(result["score_bonus"], 0)
 
+    def test_evaluate_contextual_fit_rewards_positive_energy_and_serious_dating_execution(self):
+        record = {
+            "life_routine": "生活规律",
+            "exercise_habit": "规律运动",
+            "warmth_style": "有温度会接话",
+            "lightness_humor": "有点幽默不端着",
+            "commitment_clarity": "明确奔着长期",
+            "relationship_execution": "会把安排说清",
+        }
+        criteria = {
+            "prefer": ["乐观", "生活规律", "规律运动"],
+            "relationship_goals": ["认真恋爱"],
+        }
+
+        result = search_candidates.evaluate_contextual_fit(record, criteria, self_profile={"age": 28})
+
+        self.assertIn("生活节奏更稳", result["matched_on"])
+        self.assertIn("相处更有正反馈", result["matched_on"])
+        self.assertIn("相处更有松弛感", result["matched_on"])
+        self.assertIn("认真相处意愿更明确", result["matched_on"])
+        self.assertIn("认真相处不拖泥带水", result["matched_on"])
+
     def test_build_follow_up_questions_handles_new_style_fields_and_risks(self):
         questions = search_candidates.build_follow_up_questions(
             {},
