@@ -1,0 +1,12 @@
+.DS_Store
+__pycache__/
+*.pyc
+
+# Local MySQL runtime/data
+.partner-search-mysql/
+
+# Local process/runtime files
+*.pid
+*.sock
+*.sock.lock
+*.err
