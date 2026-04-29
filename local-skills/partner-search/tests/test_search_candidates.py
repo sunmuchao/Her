@@ -434,6 +434,73 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertIn("理性之外，也更容易有火花", result["matched_on"])
         self.assertGreater(result["score_bonus"], 0)
 
+    def test_evaluate_contextual_fit_rewards_doctorate_match_and_active_communication(self):
+        record = {
+            "education": "博士",
+            "income_range": "60-90万/年",
+            "growth_signal": "上升明确",
+            "warmth_style": "理性但不冷",
+            "aesthetic_expression": "有审美输出",
+            "conversation_resonance": "能聊想法也能聊日常",
+            "personal_presence": "有记忆点",
+            "lightness_humor": "有点幽默不端着",
+            "commitment_clarity": "明确奔着长期",
+            "life_texture": "有见识也有生活感",
+            "interaction_comfort": "有边界不拧巴",
+            "patience_level": "耐心稳定",
+            "communication_style": "主动沟通",
+            "dating_pace": "认真推进",
+            "career_intensity": "脑力投入型",
+        }
+        criteria = {
+            "prefer": ["主动沟通", "沟通", "有生活感"],
+            "relationship_goals": ["结婚导向"],
+        }
+        self_profile = {
+            "age": 31,
+            "education": "博士",
+            "income_max_wan": 70,
+        }
+
+        result = search_candidates.evaluate_contextual_fit(record, criteria, self_profile=self_profile)
+
+        self.assertIn("认知层次更对位", result["matched_on"])
+        self.assertIn("沟通更主动", result["matched_on"])
+        self.assertIn("理性但不端着", result["matched_on"])
+
+    def test_evaluate_contextual_fit_rewards_steady_realistic_divorce_acceptance(self):
+        steady_record = {
+            "career_intensity": "规律稳定",
+            "blended_family_readiness": "已想过现实安排",
+            "accept_marital_status_strength": "明确接受",
+            "notes": "会把婚史、现实安排和双方家里边界聊明白",
+            "values": "稳定踏实, 愿意共同经营生活",
+            "commitment_clarity": "明确奔着长期",
+        }
+        busy_record = {
+            "career_intensity": "高强度但可协调",
+            "blended_family_readiness": "已想过现实安排",
+            "accept_marital_status_strength": "明确接受",
+            "notes": "明确接受离异未育",
+            "values": "稳定踏实, 愿意共同经营生活",
+            "commitment_clarity": "明确奔着长期",
+        }
+        criteria = {
+            "prefer": ["稳定踏实", "相处舒服"],
+            "relationship_goals": ["结婚导向"],
+        }
+        self_profile = {
+            "age": 34,
+            "marital_status": "离异未育",
+        }
+
+        steady = search_candidates.evaluate_contextual_fit(steady_record, criteria, self_profile=self_profile)
+        busy = search_candidates.evaluate_contextual_fit(busy_record, criteria, self_profile=self_profile)
+
+        self.assertIn("工作节奏更稳", steady["matched_on"])
+        self.assertIn("对婚史和现实问题想得更具体", steady["matched_on"])
+        self.assertIn("工作节奏偏忙，稳定投入要再看", busy["risk_flags"])
+
     def test_attach_photo_previews_groups_by_source_and_table(self):
         original_loader = search_candidates.load_mysql_photo_previews
         calls = []
