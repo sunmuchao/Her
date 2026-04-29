@@ -362,6 +362,31 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertIn("accept_partner_children", result["missing_fields"])
 
+    def test_reciprocal_soft_income_preference_becomes_risk(self):
+        candidate = {
+            "preferred_income_min_wan": 10,
+            "preferred_income_max_wan": 30,
+            "preferred_income_strictness": "可放宽",
+        }
+        self_profile = {"income_min_wan": 70, "income_max_wan": 70}
+        result = search_candidates.evaluate_reciprocal_compatibility(
+            candidate, self_profile
+        )
+        self.assertIsNotNone(result)
+        self.assertIn("对方收入要求可能可放宽", result["risk_flags"])
+
+    def test_reciprocal_children_acceptance_strength_adds_risk(self):
+        candidate = {
+            "accept_partner_children": "接受",
+            "accept_partner_children_strength": "谨慎接受",
+        }
+        self_profile = {"has_children": 1}
+        result = search_candidates.evaluate_reciprocal_compatibility(
+            candidate, self_profile
+        )
+        self.assertIsNotNone(result)
+        self.assertIn("对方对子女接受度偏保守", result["risk_flags"])
+
     def test_attach_photo_previews_groups_by_source_and_table(self):
         original_loader = search_candidates.load_mysql_photo_previews
         calls = []
@@ -482,6 +507,43 @@ class SearchCandidatesTests(unittest.TestCase):
         )
         self.assertIn("created_at=2026-01-02 03:04:05", text)
         self.assertNotIn("active_at=", text)
+
+    def test_format_text_shows_vibe_fields_when_present(self):
+        text = search_candidates.format_text(
+            [
+                {
+                    "id": 1,
+                    "name": "Alice",
+                    "score": 42,
+                    "fit_score": 24,
+                    "confidence_score": 20,
+                    "risk_score": 2,
+                    "matched_on": [],
+                    "reciprocal_on": [],
+                    "missing_fields": [],
+                    "risk_flags": [],
+                    "match_evidence": [],
+                    "follow_up_questions": [],
+                    "profile": {
+                        "age": 28,
+                        "city": "无锡",
+                        "job": "产品经理",
+                        "life_routine": "生活规律",
+                        "communication_style": "主动沟通",
+                        "dating_pace": "自然推进",
+                        "expression_style": "会表达有生活感",
+                        "relationship_capacity": "稳定投入关系",
+                    },
+                    "source_file": "",
+                    "verified_rank": 0,
+                    "activity_sort_ts": 0,
+                    "profile_status_rank": 0,
+                }
+            ]
+        )
+        self.assertIn("vibe: 作息=生活规律 | 沟通=主动沟通 | 节奏=自然推进", text)
+        self.assertIn("表达=会表达有生活感", text)
+        self.assertIn("关系投入=稳定投入关系", text)
 
     def test_redact_sensitive_text_masks_common_contact_fields(self):
         redacted = search_candidates.redact_sensitive_text(

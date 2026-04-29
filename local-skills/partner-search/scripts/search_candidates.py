@@ -32,13 +32,22 @@ FIELD_ALIASES = {
     "preferred_cities": {"preferred_cities", "择偶城市", "意向城市", "期望城市", "偏好城市"},
     "preferred_height_min": {"preferred_height_min", "择偶身高下限", "身高要求下限", "偏好身高下限", "最低身高"},
     "preferred_height_max": {"preferred_height_max", "择偶身高上限", "身高要求上限", "偏好身高上限", "最高身高"},
+    "preferred_age_strictness": {"preferred_age_strictness", "年龄要求严格度", "择偶年龄严格度"},
+    "preferred_height_strictness": {"preferred_height_strictness", "身高要求严格度", "择偶身高严格度"},
     "preferred_education_min": {"preferred_education_min", "择偶学历下限", "最低学历", "学历要求"},
+    "preferred_education_strictness": {"preferred_education_strictness", "学历要求严格度", "择偶学历严格度"},
     "preferred_income_min_wan": {"preferred_income_min_wan", "择偶收入下限", "收入要求下限", "最低收入"},
     "preferred_income_max_wan": {"preferred_income_max_wan", "择偶收入上限", "收入要求上限", "最高收入"},
+    "preferred_income_strictness": {"preferred_income_strictness", "收入要求严格度", "择偶收入严格度"},
     "personality": {"personality", "性格"},
     "values": {"values", "价值观", "消费观"},
     "lifestyle": {"lifestyle", "生活方式", "作息"},
     "hobbies": {"hobbies", "兴趣", "爱好"},
+    "life_routine": {"life_routine", "作息类型", "生活节奏"},
+    "communication_style": {"communication_style", "沟通风格", "沟通方式"},
+    "dating_pace": {"dating_pace", "推进节奏", "相处节奏"},
+    "expression_style": {"expression_style", "表达风格", "表达感", "生活感"},
+    "relationship_capacity": {"relationship_capacity", "关系投入能力", "关系承接能力"},
     "smoking": {"smoking", "抽烟", "吸烟"},
     "drinking": {"drinking", "喝酒", "饮酒"},
     "long_distance": {"long_distance", "异地", "接受异地"},
@@ -46,6 +55,12 @@ FIELD_ALIASES = {
     "accept_smoking": {"accept_smoking", "接受抽烟", "接受吸烟", "是否接受抽烟", "是否接受吸烟"},
     "accept_drinking": {"accept_drinking", "接受喝酒", "接受饮酒", "是否接受喝酒", "是否接受饮酒"},
     "accept_marital_status": {"accept_marital_status", "接受婚况", "可接受婚况", "可接受婚姻状态"},
+    "accept_marital_status_strength": {
+        "accept_marital_status_strength",
+        "婚况接受强度",
+        "婚史接受强度",
+        "婚况接受态度",
+    },
     "marital_status": {"marital_status", "婚姻状态"},
     "has_children": {"has_children", "有无孩子", "是否有孩子", "是否已育"},
     "children_count": {"children_count", "孩子数量", "子女数量"},
@@ -56,6 +71,12 @@ FIELD_ALIASES = {
         "接受对方孩子",
         "是否接受对方有孩子",
         "是否接受伴侣有孩子",
+    },
+    "accept_partner_children_strength": {
+        "accept_partner_children_strength",
+        "接受孩子强度",
+        "对子女接受强度",
+        "对子女接受态度",
     },
     "marriage_timeline": {"marriage_timeline", "结婚时间", "结婚计划", "结婚节奏"},
     "family_background": {"family_background", "家庭情况", "家庭背景"},
@@ -115,10 +136,19 @@ TEXT_FIELDS = [
     "income_range",
     "relationship_goal",
     "preferred_cities",
+    "preferred_age_strictness",
+    "preferred_height_strictness",
+    "preferred_education_strictness",
+    "preferred_income_strictness",
     "personality",
     "values",
     "lifestyle",
     "hobbies",
+    "life_routine",
+    "communication_style",
+    "dating_pace",
+    "expression_style",
+    "relationship_capacity",
     "smoking",
     "drinking",
     "long_distance",
@@ -126,9 +156,11 @@ TEXT_FIELDS = [
     "accept_smoking",
     "accept_drinking",
     "accept_marital_status",
+    "accept_marital_status_strength",
     "marital_status",
     "want_children",
     "accept_partner_children",
+    "accept_partner_children_strength",
     "marriage_timeline",
     "family_background",
     "notes",
@@ -176,6 +208,11 @@ FIELD_DISPLAY_NAMES = {
     "district": "区域",
     "settlement_city": "定居城市",
     "relationship_goal": "关系目标",
+    "life_routine": "作息类型",
+    "communication_style": "沟通风格",
+    "dating_pace": "推进节奏",
+    "expression_style": "表达风格",
+    "relationship_capacity": "关系承接能力",
     "smoking": "抽烟情况",
     "drinking": "喝酒情况",
     "long_distance": "异地态度",
@@ -187,9 +224,15 @@ FIELD_DISPLAY_NAMES = {
     "accept_partner_children": "是否接受对方有孩子",
     "marriage_timeline": "结婚节奏",
     "accept_marital_status": "是否接受对方婚况",
+    "accept_marital_status_strength": "婚史接受真实度",
     "accept_smoking": "是否接受对方抽烟",
     "accept_drinking": "是否接受对方喝酒",
     "accept_long_distance": "是否接受异地",
+    "accept_partner_children_strength": "对子女接受真实度",
+    "preferred_age_strictness": "年龄要求硬度",
+    "preferred_height_strictness": "身高要求硬度",
+    "preferred_education_strictness": "学历要求硬度",
+    "preferred_income_strictness": "收入要求硬度",
 }
 
 KEYWORD_EVIDENCE_FIELDS = [
@@ -197,6 +240,11 @@ KEYWORD_EVIDENCE_FIELDS = [
     ("values", "价值观"),
     ("lifestyle", "生活方式"),
     ("hobbies", "爱好"),
+    ("life_routine", "作息类型"),
+    ("communication_style", "沟通风格"),
+    ("dating_pace", "推进节奏"),
+    ("expression_style", "表达风格"),
+    ("relationship_capacity", "关系承接能力"),
     ("notes", "备注"),
     ("family_background", "家庭情况"),
 ]
@@ -225,6 +273,12 @@ RISK_FLAG_PENALTIES = {
     "对方对喝酒接受度未知": 8,
     "对方异地仅可协商": 5,
     "对方异地接受度未知": 7,
+    "对方年龄要求可能可放宽": 6,
+    "对方身高要求可能可放宽": 5,
+    "对方学历要求可能可放宽": 5,
+    "对方收入要求可能可放宽": 6,
+    "对方婚史接受度偏保守": 8,
+    "对方对子女接受度偏保守": 9,
     "未认证": 6,
     "活跃时间未知": 4,
     "90天前活跃": 6,
@@ -235,6 +289,14 @@ RELATIONSHIP_GOAL_STRENGTH_BONUS = {
     "认真恋爱": 2,
     "结婚导向": 4,
 }
+
+STRICTNESS_HARD_VALUES = {"硬性", "严格", "必须", "不能放宽"}
+STRICTNESS_SOFT_VALUES = {"可放宽", "可商量", "弹性"}
+STRICTNESS_REFERENCE_VALUES = {"仅参考", "参考", "偏好参考"}
+
+ACCEPTANCE_STRENGTH_STRONG_VALUES = {"明确接受", "长期接受", "真接受"}
+ACCEPTANCE_STRENGTH_CAUTION_VALUES = {"谨慎接受", "了解后定", "需要磨合"}
+ACCEPTANCE_STRENGTH_SURFACE_VALUES = {"短期可聊", "表面接受", "先接触再说"}
 
 
 def build_alias_lookup():
@@ -376,6 +438,32 @@ def normalize_acceptance_state(value):
         return "accepted"
     if normalized is False:
         return "rejected"
+    return "unknown"
+
+
+def normalize_strictness_state(value):
+    if value is None or value == "":
+        return "hard"
+    lowered = as_lower(value)
+    if lowered in {as_lower(item) for item in STRICTNESS_HARD_VALUES}:
+        return "hard"
+    if lowered in {as_lower(item) for item in STRICTNESS_SOFT_VALUES}:
+        return "soft"
+    if lowered in {as_lower(item) for item in STRICTNESS_REFERENCE_VALUES}:
+        return "reference"
+    return "hard"
+
+
+def normalize_acceptance_strength(value):
+    if value is None or value == "":
+        return "unknown"
+    lowered = as_lower(value)
+    if lowered in {as_lower(item) for item in ACCEPTANCE_STRENGTH_STRONG_VALUES}:
+        return "strong"
+    if lowered in {as_lower(item) for item in ACCEPTANCE_STRENGTH_CAUTION_VALUES}:
+        return "cautious"
+    if lowered in {as_lower(item) for item in ACCEPTANCE_STRENGTH_SURFACE_VALUES}:
+        return "surface"
     return "unknown"
 
 
@@ -554,6 +642,18 @@ def risk_flag_penalty(risk_flag):
     return RISK_FLAG_PENALTIES.get(risk_flag, 0)
 
 
+def soft_preference_risk_flag(kind, strictness_state):
+    if strictness_state == "reference":
+        return None
+    mapping = {
+        "age": "对方年龄要求可能可放宽",
+        "height": "对方身高要求可能可放宽",
+        "education": "对方学历要求可能可放宽",
+        "income": "对方收入要求可能可放宽",
+    }
+    return mapping.get(kind)
+
+
 def has_explicit_field_value(record, field):
     if field == "has_children":
         return effective_has_children(record) is not None
@@ -600,6 +700,16 @@ def build_follow_up_questions(record, missing_fields, risk_flags, self_profile=N
         elif field == "accept_long_distance":
             if self_city and candidate_city and as_lower(self_city) != as_lower(candidate_city):
                 questions.append("确认异地是否能长期接受，以及见面频率怎么安排。")
+        elif field == "life_routine":
+            questions.append("确认平时作息到底稳不稳，工作日和周末差别大不大。")
+        elif field == "communication_style":
+            questions.append("确认沟通频率和方式，遇到问题是当下聊还是闷着。")
+        elif field == "dating_pace":
+            questions.append("确认推进节奏，是慢热观察型还是想尽快认真推进。")
+        elif field == "expression_style":
+            questions.append("确认对方是不是会表达、有生活感，聊天会不会太干。")
+        elif field == "relationship_capacity":
+            questions.append("确认对方现在有没有稳定投入关系的时间和精力。")
 
     for risk in unique_ordered(risk_flags):
         if risk == "对方对子女情况仅可协商":
@@ -612,6 +722,18 @@ def build_follow_up_questions(record, missing_fields, risk_flags, self_profile=N
             questions.append("确认异地推进的底线和可执行方式，不要只停留在口头可协商。")
         elif risk == "90天前活跃":
             questions.append("确认对方现在是否还在认真相亲，以及回复节奏是否稳定。")
+        elif risk == "对方年龄要求可能可放宽":
+            questions.append("确认年龄差在对方那里到底是不是硬门槛，别一上来就自我淘汰。")
+        elif risk == "对方身高要求可能可放宽":
+            questions.append("确认身高条件是硬卡，还是聊得来可以放宽。")
+        elif risk == "对方学历要求可能可放宽":
+            questions.append("确认学历要求是不是死卡，还是更看实际认知和相处。")
+        elif risk == "对方收入要求可能可放宽":
+            questions.append("确认对方在意的是收入数字，还是更在意生活方式和相处压力。")
+        elif risk == "对方婚史接受度偏保守":
+            questions.append("确认对方对婚史是长期能接受，还是只是暂时不想说死。")
+        elif risk == "对方对子女接受度偏保守":
+            questions.append("确认对方能不能长期接受孩子和现实安排，不要只停留在口头上。")
 
     return unique_ordered(questions)[:5]
 
@@ -1388,13 +1510,22 @@ def evaluate_reciprocal_compatibility(record, self_profile, diagnostics=False):
     self_age = as_int(self_profile.get("age"))
     pref_age_min = as_int(record.get("preferred_age_min"))
     pref_age_max = as_int(record.get("preferred_age_max"))
+    age_strictness = normalize_strictness_state(record.get("preferred_age_strictness"))
     if pref_age_min is not None or pref_age_max is not None:
         if self_age is None:
             missing_fields.append("self_age")
         elif pref_age_min is not None and self_age < pref_age_min:
-            return fail("reciprocal_age_preference")
+            if age_strictness == "hard":
+                return fail("reciprocal_age_preference")
+            risk_flag = soft_preference_risk_flag("age", age_strictness)
+            if risk_flag:
+                risk_flags.append(risk_flag)
         elif pref_age_max is not None and self_age > pref_age_max:
-            return fail("reciprocal_age_preference")
+            if age_strictness == "hard":
+                return fail("reciprocal_age_preference")
+            risk_flag = soft_preference_risk_flag("age", age_strictness)
+            if risk_flag:
+                risk_flags.append(risk_flag)
         else:
             reasons.append("对方年龄偏好命中")
             score_bonus += 10
@@ -1413,18 +1544,28 @@ def evaluate_reciprocal_compatibility(record, self_profile, diagnostics=False):
     self_height = as_int(self_profile.get("height"))
     pref_height_min = as_int(record.get("preferred_height_min"))
     pref_height_max = as_int(record.get("preferred_height_max"))
+    height_strictness = normalize_strictness_state(record.get("preferred_height_strictness"))
     if pref_height_min is not None or pref_height_max is not None:
         if self_height is None:
             missing_fields.append("self_height")
         elif pref_height_min is not None and self_height < pref_height_min:
-            return fail("reciprocal_height_preference")
+            if height_strictness == "hard":
+                return fail("reciprocal_height_preference")
+            risk_flag = soft_preference_risk_flag("height", height_strictness)
+            if risk_flag:
+                risk_flags.append(risk_flag)
         elif pref_height_max is not None and self_height > pref_height_max:
-            return fail("reciprocal_height_preference")
+            if height_strictness == "hard":
+                return fail("reciprocal_height_preference")
+            risk_flag = soft_preference_risk_flag("height", height_strictness)
+            if risk_flag:
+                risk_flags.append(risk_flag)
         else:
             reasons.append("对方身高偏好命中")
             score_bonus += 6
 
     pref_education_min = record.get("preferred_education_min")
+    education_strictness = normalize_strictness_state(record.get("preferred_education_strictness"))
     if pref_education_min:
         self_education = self_profile.get("education")
         self_rank = education_rank(self_education)
@@ -1433,15 +1574,24 @@ def evaluate_reciprocal_compatibility(record, self_profile, diagnostics=False):
             missing_fields.append("self_education")
         elif self_rank is None or required_rank is None:
             if not exact_match(self_education, pref_education_min):
-                return fail("reciprocal_education_preference")
+                if education_strictness == "hard":
+                    return fail("reciprocal_education_preference")
+                risk_flag = soft_preference_risk_flag("education", education_strictness)
+                if risk_flag:
+                    risk_flags.append(risk_flag)
         elif self_rank < required_rank:
-            return fail("reciprocal_education_preference")
+            if education_strictness == "hard":
+                return fail("reciprocal_education_preference")
+            risk_flag = soft_preference_risk_flag("education", education_strictness)
+            if risk_flag:
+                risk_flags.append(risk_flag)
         else:
             reasons.append("对方学历偏好命中")
             score_bonus += 6
 
     pref_income_min = as_int(record.get("preferred_income_min_wan"))
     pref_income_max = as_int(record.get("preferred_income_max_wan"))
+    income_strictness = normalize_strictness_state(record.get("preferred_income_strictness"))
     if pref_income_min is not None or pref_income_max is not None:
         self_income_min = as_int(self_profile.get("income_min_wan"))
         self_income_max = as_int(self_profile.get("income_max_wan"))
@@ -1449,7 +1599,11 @@ def evaluate_reciprocal_compatibility(record, self_profile, diagnostics=False):
         if overlap is None:
             missing_fields.append("self_income_wan")
         elif overlap is False:
-            return fail("reciprocal_income_preference")
+            if income_strictness == "hard":
+                return fail("reciprocal_income_preference")
+            risk_flag = soft_preference_risk_flag("income", income_strictness)
+            if risk_flag:
+                risk_flags.append(risk_flag)
         else:
             reasons.append("对方收入偏好命中")
             score_bonus += 6
@@ -1464,6 +1618,14 @@ def evaluate_reciprocal_compatibility(record, self_profile, diagnostics=False):
         else:
             reasons.append("对方可接受婚况命中")
             score_bonus += 8
+            if as_lower(self_status) not in {"", "未婚"}:
+                marital_strength = normalize_acceptance_strength(
+                    record.get("accept_marital_status_strength")
+                )
+                if marital_strength in {"cautious", "surface"}:
+                    risk_flags.append("对方婚史接受度偏保守")
+                elif marital_strength == "unknown":
+                    missing_fields.append("accept_marital_status_strength")
     else:
         self_status = self_profile.get("marital_status")
         if self_status and as_lower(self_status) not in {"", "未婚"}:
@@ -1480,6 +1642,13 @@ def evaluate_reciprocal_compatibility(record, self_profile, diagnostics=False):
         if accept_partner_children == "accepted":
             reasons.append("对方接受你有孩子")
             score_bonus += 8
+            children_strength = normalize_acceptance_strength(
+                record.get("accept_partner_children_strength")
+            )
+            if children_strength in {"cautious", "surface"}:
+                risk_flags.append("对方对子女接受度偏保守")
+            elif children_strength == "unknown":
+                missing_fields.append("accept_partner_children_strength")
         elif accept_partner_children == "negotiable":
             risk_flags.append("对方对子女情况仅可协商")
         elif accept_partner_children == "unknown":
@@ -2022,6 +2191,19 @@ def format_text(results, include_source=False):
             meta_parts.append(f"{activity_field}={active_at}")
         if meta_parts:
             lines.append(f"   meta: {' | '.join(meta_parts)}")
+        vibe_parts = []
+        if profile.get("life_routine"):
+            vibe_parts.append(f"作息={profile.get('life_routine')}")
+        if profile.get("communication_style"):
+            vibe_parts.append(f"沟通={profile.get('communication_style')}")
+        if profile.get("dating_pace"):
+            vibe_parts.append(f"节奏={profile.get('dating_pace')}")
+        if profile.get("expression_style"):
+            vibe_parts.append(f"表达={profile.get('expression_style')}")
+        if profile.get("relationship_capacity"):
+            vibe_parts.append(f"关系投入={profile.get('relationship_capacity')}")
+        if vibe_parts:
+            lines.append(f"   vibe: {' | '.join(vibe_parts)}")
         if result.get("photo_preview"):
             lines.append(f"   photo_preview: {', '.join(result['photo_preview'])}")
         if result["matched_on"]:
