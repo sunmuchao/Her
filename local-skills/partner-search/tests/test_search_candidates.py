@@ -395,6 +395,33 @@ class SearchCandidatesTests(unittest.TestCase):
             "reciprocal_children_acceptance_not_strong",
         )
 
+    def test_evaluate_contextual_fit_rewards_growth_warmth_and_aesthetic(self):
+        record = {
+            "education": "硕士",
+            "income_range": "42-68万/年",
+            "growth_signal": "上升明确",
+            "warmth_style": "理性但不冷",
+            "aesthetic_expression": "有审美输出",
+            "life_texture": "有见识也有生活感",
+            "interaction_comfort": "有边界不拧巴",
+            "patience_level": "耐心稳定",
+            "communication_style": "主动沟通",
+            "dating_pace": "认真推进",
+            "career_intensity": "脑力投入型",
+        }
+        criteria = {
+            "prefer": ["成长", "沟通", "生活感", "审美"],
+        }
+        self_profile = {
+            "education": "博士",
+            "income_max_wan": 70,
+        }
+        result = search_candidates.evaluate_contextual_fit(record, criteria, self_profile=self_profile)
+        self.assertIn("成长势能更强", result["matched_on"])
+        self.assertIn("理性但不冷", result["matched_on"])
+        self.assertIn("更有审美和表达感", result["matched_on"])
+        self.assertGreater(result["score_bonus"], 0)
+
     def test_attach_photo_previews_groups_by_source_and_table(self):
         original_loader = search_candidates.load_mysql_photo_previews
         calls = []
@@ -541,6 +568,10 @@ class SearchCandidatesTests(unittest.TestCase):
                         "dating_pace": "自然推进",
                         "expression_style": "会表达有生活感",
                         "relationship_capacity": "稳定投入关系",
+                        "growth_signal": "上升明确",
+                        "warmth_style": "有温度会接话",
+                        "aesthetic_expression": "有审美输出",
+                        "blended_family_readiness": "已想过现实安排",
                     },
                     "source_file": "",
                     "verified_rank": 0,
@@ -552,6 +583,10 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertIn("vibe: 作息=生活规律 | 沟通=主动沟通 | 节奏=自然推进", text)
         self.assertIn("表达=会表达有生活感", text)
         self.assertIn("关系投入=稳定投入关系", text)
+        self.assertIn("成长=上升明确", text)
+        self.assertIn("温度=有温度会接话", text)
+        self.assertIn("审美=有审美输出", text)
+        self.assertIn("现实承接=已想过现实安排", text)
 
     def test_redact_sensitive_text_masks_common_contact_fields(self):
         redacted = search_candidates.redact_sensitive_text(

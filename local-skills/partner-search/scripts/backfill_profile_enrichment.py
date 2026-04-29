@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import re
 
 
 STRICTNESS_COLUMNS = {
@@ -21,6 +22,10 @@ STRUCTURED_COLUMNS = {
     "life_texture": "VARCHAR(32)",
     "career_intensity": "VARCHAR(32)",
     "exercise_habit": "VARCHAR(32)",
+    "growth_signal": "VARCHAR(32)",
+    "warmth_style": "VARCHAR(32)",
+    "aesthetic_expression": "VARCHAR(32)",
+    "blended_family_readiness": "VARCHAR(32)",
     "accept_marital_status_strength": "VARCHAR(32)",
     "accept_partner_children_strength": "VARCHAR(32)",
 }
@@ -73,6 +78,14 @@ BRAINY_JOBS = {
     "软件测试",
     "数据分析",
     "产品运营",
+}
+
+UPWARD_JOBS = BRAINY_JOBS | {
+    "医生",
+    "法务",
+    "审计",
+    "银行职员",
+    "招商主管",
 }
 
 
@@ -338,6 +351,49 @@ def infer_structured_style(profile):
     else:
         exercise_habit = "运动不明显"
 
+    income_numbers = [int(item) for item in re.findall(r"\d+", str(profile.get("income_range") or ""))]
+    income_max = max(income_numbers) if income_numbers else 0
+    education_rank = EDUCATION_ORDER.get(profile.get("education") or "", 0)
+
+    if (
+        job in UPWARD_JOBS and income_max >= 30
+    ) or (education_rank >= EDUCATION_ORDER["硕士"] and income_max >= 35):
+        growth_signal = "上升明确"
+    elif job in STABLE_JOBS or income_max >= 24 or education_rank >= EDUCATION_ORDER["硕士"]:
+        growth_signal = "平台成熟"
+    elif relationship_goal in {"认真恋爱", "结婚导向"}:
+        growth_signal = "稳步发展"
+    else:
+        growth_signal = "稳定型"
+
+    if has_any(texts, {"善沟通", "好相处", "爱笑", "细腻", "真诚"}) and communication_style in {"主动沟通", "稳定沟通"}:
+        warmth_style = "有温度会接话"
+    elif has_any(texts, {"理性", "边界清楚", "边界感强"}) and has_any(texts, {"温和", "真诚", "有耐心"}):
+        warmth_style = "理性但不冷"
+    elif communication_style == "慢热少话" or has_any(texts, {"安静"}):
+        warmth_style = "偏克制"
+    else:
+        warmth_style = "正常温度"
+
+    if (job in CREATIVE_JOBS or has_any(texts, {"摄影", "看展", "画画", "咖啡", "阅读", "烘焙", "手工"})) and expression_style == "会表达有生活感":
+        aesthetic_expression = "有审美输出"
+    elif life_texture in {"有见识也有生活感", "有生活感"}:
+        aesthetic_expression = "有生活审美"
+    else:
+        aesthetic_expression = "普通"
+
+    marital_strength = profile.get("accept_marital_status_strength") or ""
+    child_strength = profile.get("accept_partner_children_strength") or ""
+    accept_partner_children = profile.get("accept_partner_children") or ""
+    if marital_strength == "明确接受" and child_strength == "明确接受":
+        blended_family_readiness = "已想过现实安排"
+    elif "明确接受" in {marital_strength, child_strength} or {"谨慎接受"} & {marital_strength, child_strength}:
+        blended_family_readiness = "愿意一起商量"
+    elif accept_partner_children == "可协商" or "短期可聊" in {marital_strength, child_strength}:
+        blended_family_readiness = "仅口头接受"
+    else:
+        blended_family_readiness = "未知"
+
     return {
         "life_routine": life_routine,
         "communication_style": communication_style,
@@ -349,6 +405,10 @@ def infer_structured_style(profile):
         "life_texture": life_texture,
         "career_intensity": career_intensity,
         "exercise_habit": exercise_habit,
+        "growth_signal": growth_signal,
+        "warmth_style": warmth_style,
+        "aesthetic_expression": aesthetic_expression,
+        "blended_family_readiness": blended_family_readiness,
     }
 
 
@@ -398,8 +458,9 @@ def main():
         for row in rows:
             enriched = {}
             enriched.update(infer_strictness(row))
-            enriched.update(infer_acceptance(row))
-            enriched.update(infer_structured_style(row))
+            acceptance = infer_acceptance(row)
+            enriched.update(acceptance)
+            enriched.update(infer_structured_style(dict(row, **acceptance)))
             enriched["id"] = row["id"]
             updates.append(enriched)
 
@@ -422,6 +483,10 @@ def main():
             "life_texture",
             "career_intensity",
             "exercise_habit",
+            "growth_signal",
+            "warmth_style",
+            "aesthetic_expression",
+            "blended_family_readiness",
         ]
         assignments = ", ".join(f"`{column}`=%s" for column in update_columns)
         sql = f"UPDATE `{args.table}` SET {assignments} WHERE `id`=%s"

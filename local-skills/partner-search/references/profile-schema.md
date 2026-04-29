@@ -42,6 +42,10 @@ Use this schema for MySQL columns.
 | `life_texture` | Whether the profile feels plain-stable, has生活感, or has见识+生活感 |
 | `career_intensity` | Structured work-rhythm summary such as busy-but-coordinatable or regular-stable |
 | `exercise_habit` | Structured exercise habit such as regular, light, or not obvious |
+| `growth_signal` | Structured career momentum such as rising, mature-platform, or stable |
+| `warmth_style` | Structured chat warmth such as warm-responsive, rational-not-cold, or restrained |
+| `aesthetic_expression` | Structured aesthetic / expressive signal such as clear taste output or plain |
+| `blended_family_readiness` | Whether the profile has concretely thought through divorced-with-children reality |
 | `smoking` | `否`, `是`, `偶尔`, `未知` |
 | `drinking` | `否`, `是`, `偶尔`, `未知` |
 | `long_distance` | `接受`, `不接受`, `可协商`, `未知` |
@@ -109,6 +113,10 @@ CREATE TABLE profiles (
   life_texture VARCHAR(32),
   career_intensity VARCHAR(32),
   exercise_habit VARCHAR(32),
+  growth_signal VARCHAR(32),
+  warmth_style VARCHAR(32),
+  aesthetic_expression VARCHAR(32),
+  blended_family_readiness VARCHAR(32),
   smoking VARCHAR(16),
   drinking VARCHAR(16),
   long_distance VARCHAR(16),
