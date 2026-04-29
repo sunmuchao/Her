@@ -28,6 +28,8 @@ Do not treat `profiles` as a raw public profile. The public-facing version must 
 5. Optionally preview or refresh public rendering.
    Run `python3 scripts/render_public_profile.py --user-key ... --write-profile`.
 
+Pass `--source` explicitly, or set `PERSONA_MEMORY_MYSQL_SOURCE` first if you want a reusable default. The skill no longer assumes a built-in local root DSN.
+
 ## Source Types
 
 - `explicit`: the user clearly said it; may update hard fields
@@ -61,4 +63,3 @@ Multi-value fields can be passed as arrays or comma-separated strings.
 - Merge behavior: `references/merge-rules.md`
 - Public rendering rules: `references/public-rendering.md`
 - Visibility policy: `references/visibility-policy.md`
-

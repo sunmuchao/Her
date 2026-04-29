@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 
 import argparse
+import os
 from datetime import datetime, timedelta
+from urllib.parse import parse_qs, unquote, urlparse
 
 from backfill_profile_enrichment import ALL_NEW_COLUMNS
+
+
+MYSQL_SCHEMES = {"mysql", "mysql+pymysql"}
+DEFAULT_SOURCE_ENV = "PARTNER_SEARCH_MYSQL_SOURCE"
 
 
 PROFILE_COLUMNS = [
@@ -104,15 +110,80 @@ STRUCTURED_COLUMN_TYPES = {
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Seed curated gap-filling profiles into MySQL.")
-    parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=3307)
-    parser.add_argument("--user", default="root")
-    parser.add_argument("--password", default="")
-    parser.add_argument("--database", default="her")
-    parser.add_argument("--table", default="profiles")
-    parser.add_argument("--photos-table", default="profile_photos")
-    parser.add_argument("--charset", default="utf8mb4")
+    parser.add_argument(
+        "--source",
+        default=os.environ.get(DEFAULT_SOURCE_ENV),
+        help=f"MySQL DSN such as mysql://user:pass@host:3306/db?table=profiles&photos_table=profile_photos. Defaults to {DEFAULT_SOURCE_ENV}.",
+    )
+    parser.add_argument("--host", default=None)
+    parser.add_argument("--port", type=int, default=None)
+    parser.add_argument("--user", default=None)
+    parser.add_argument("--password", default=None)
+    parser.add_argument("--database", default=None)
+    parser.add_argument("--table", default=None)
+    parser.add_argument("--photos-table", default=None)
+    parser.add_argument("--charset", default=None)
     return parser.parse_args()
+
+
+def parse_mysql_source(source):
+    parsed = urlparse(str(source))
+    if parsed.scheme.lower() not in MYSQL_SCHEMES:
+        raise ValueError(f"Unsupported MySQL source: {source}")
+
+    database = unquote(parsed.path.lstrip("/"))
+    if not database:
+        raise ValueError("MySQL source must include a database name.")
+
+    query = parse_qs(parsed.query)
+    return {
+        "host": parsed.hostname or "127.0.0.1",
+        "port": parsed.port or 3306,
+        "user": unquote(parsed.username) if parsed.username else None,
+        "password": unquote(parsed.password) if parsed.password else None,
+        "database": database,
+        "table": query.get("table", ["profiles"])[0],
+        "photos_table": query.get("photos_table", ["profile_photos"])[0],
+        "charset": query.get("charset", ["utf8mb4"])[0],
+    }
+
+
+def resolve_connection_config(args):
+    if args.source:
+        config = parse_mysql_source(args.source)
+        if args.table:
+            config["table"] = args.table
+        if args.photos_table:
+            config["photos_table"] = args.photos_table
+        if args.charset:
+            config["charset"] = args.charset
+        return config
+
+    required = {
+        "host": args.host,
+        "port": args.port,
+        "user": args.user,
+        "database": args.database,
+        "table": args.table,
+        "photos_table": args.photos_table,
+    }
+    missing = [name for name, value in required.items() if value in {None, ""}]
+    if missing:
+        raise SystemExit(
+            "Provide --source or explicit connection flags for "
+            + ", ".join(missing)
+            + "."
+        )
+    return {
+        "host": args.host,
+        "port": args.port,
+        "user": args.user,
+        "password": args.password or "",
+        "database": args.database,
+        "table": args.table,
+        "photos_table": args.photos_table,
+        "charset": args.charset or "utf8mb4",
+    }
 
 
 def money_range(min_wan, max_wan):
@@ -3403,21 +3474,22 @@ def main():
         raise SystemExit("PyMySQL is required to seed gap profiles.") from exc
 
     profiles = build_profiles()
+    config = resolve_connection_config(args)
     conn = pymysql.connect(
-        host=args.host,
-        port=args.port,
-        user=args.user,
-        password=args.password,
-        database=args.database,
-        charset=args.charset,
+        host=config["host"],
+        port=config["port"],
+        user=config["user"],
+        password=config.get("password") or "",
+        database=config["database"],
+        charset=config["charset"],
         autocommit=False,
     )
     try:
-        ensure_columns(conn, args.table)
-        upsert_profiles(conn, args.table, profiles)
-        replace_photos(conn, args.photos_table, profiles)
+        ensure_columns(conn, config["table"])
+        upsert_profiles(conn, config["table"], profiles)
+        replace_photos(conn, config["photos_table"], profiles)
         conn.commit()
-        print(f"Seeded {len(profiles)} curated profiles into {args.database}.{args.table}")
+        print(f"Seeded {len(profiles)} curated profiles into {config['database']}.{config['table']}")
     except Exception:
         conn.rollback()
         raise

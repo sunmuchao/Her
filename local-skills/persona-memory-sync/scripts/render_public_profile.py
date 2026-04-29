@@ -31,7 +31,7 @@ def fetch_persona(cursor, persona_table: str, user_key=None, profile_id=None):
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Preview or refresh the public-safe profile rendering.")
-    parser.add_argument("--source", default=None, help="MySQL DSN. Defaults to PERSONA_MEMORY_MYSQL_SOURCE or local her DB.")
+    parser.add_argument("--source", default=None, help="MySQL DSN. Defaults to PERSONA_MEMORY_MYSQL_SOURCE.")
     parser.add_argument("--persona-table", default=DEFAULT_PERSONA_TABLE)
     parser.add_argument("--profile-table", default=None, help="Override the profile table name.")
     parser.add_argument("--user-key", default=None)
@@ -89,4 +89,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS {observation_table} (
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Create persona memory tables and extend profiles for internal/public sync.")
-    parser.add_argument("--source", default=None, help="MySQL DSN. Defaults to PERSONA_MEMORY_MYSQL_SOURCE or local her DB.")
+    parser.add_argument("--source", default=None, help="MySQL DSN. Defaults to PERSONA_MEMORY_MYSQL_SOURCE.")
     parser.add_argument("--persona-table", default=DEFAULT_PERSONA_TABLE)
     parser.add_argument("--observation-table", default=DEFAULT_OBSERVATION_TABLE)
     parser.add_argument("--profile-table", default=None, help="Override the profile table name.")
@@ -140,4 +140,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

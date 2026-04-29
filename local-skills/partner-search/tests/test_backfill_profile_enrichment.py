@@ -15,6 +15,22 @@ exec(
 
 
 class BackfillProfileEnrichmentTests(unittest.TestCase):
+    def test_resolve_connection_config_from_source(self):
+        args = backfill_profile_enrichment.parse_args.__globals__["argparse"].Namespace(
+            source="mysql://demo:pw@127.0.0.1:3306/her?table=profiles",
+            host=None,
+            port=None,
+            user=None,
+            password=None,
+            database=None,
+            table=None,
+            charset=None,
+        )
+        config = backfill_profile_enrichment.resolve_connection_config(args)
+        self.assertEqual(config["host"], "127.0.0.1")
+        self.assertEqual(config["database"], "her")
+        self.assertEqual(config["table"], "profiles")
+
     def test_infer_structured_style_keeps_slow_warm_notes_out_of_cold_bucket(self):
         profile = {
             "relationship_goal": "结婚导向",
