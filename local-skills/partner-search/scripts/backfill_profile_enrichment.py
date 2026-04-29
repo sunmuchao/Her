@@ -28,7 +28,10 @@ STRUCTURED_COLUMNS = {
     "conversation_resonance": "VARCHAR(32)",
     "personal_presence": "VARCHAR(32)",
     "lightness_humor": "VARCHAR(32)",
+    "consumption_attitude": "VARCHAR(32)",
+    "chat_texture": "VARCHAR(32)",
     "commitment_clarity": "VARCHAR(32)",
+    "relationship_execution": "VARCHAR(32)",
     "blended_family_readiness": "VARCHAR(32)",
     "accept_marital_status_strength": "VARCHAR(32)",
     "accept_partner_children_strength": "VARCHAR(32)",
@@ -61,7 +64,10 @@ BACKFILL_UPDATE_COLUMNS = [
     "conversation_resonance",
     "personal_presence",
     "lightness_humor",
+    "consumption_attitude",
+    "chat_texture",
     "commitment_clarity",
+    "relationship_execution",
     "blended_family_readiness",
 ]
 
@@ -468,6 +474,31 @@ def infer_structured_style(profile):
     else:
         lightness_humor = "偏克制"
 
+    if has_any(texts, {"消费观正常", "不拜金", "不喜欢攀比", "量力而行", "务实"}) and has_any(
+        texts, {"边界清楚", "对感情认真", "稳定踏实", "愿意共同经营生活"}
+    ):
+        consumption_attitude = "清醒务实"
+    elif has_any(texts, {"消费观正常", "不拜金", "不喜欢攀比"}) and has_any(
+        texts, {"看展", "旅行", "咖啡", "阅读", "喜欢做饭", "播客"}
+    ):
+        consumption_attitude = "有取舍会生活"
+    elif has_any(texts, {"稳定踏实", "重视家庭", "爱逛菜场", "喜欢做饭", "偏宅"}):
+        consumption_attitude = "踏实过日子"
+    else:
+        consumption_attitude = "表达不明显"
+
+    if has_any(texts, {"会开玩笑", "有趣", "把复杂问题讲得有趣", "不冷场", "脱口秀", "有梗", "不端着"}):
+        chat_texture = "有梗也有内容"
+    elif has_any(texts, {"能接住话", "接住话", "顺着聊", "不压人", "让人放松", "不费劲", "相处舒服"}):
+        chat_texture = "顺着聊不费劲"
+    elif warmth_style in {"有温度会接话", "理性但不冷"} or conversation_resonance in {
+        "能聊想法也能聊日常",
+        "会接话也会接情绪",
+    }:
+        chat_texture = "稳重顺聊"
+    else:
+        chat_texture = "偏功能聊天"
+
     if relationship_goal == "结婚导向" and marriage_timeline in {"半年内", "1年内"}:
         commitment_clarity = "明确奔着长期"
     elif has_any(texts, {"认真找长期关系", "不爱反复试探", "长期打算说清楚", "不想把时间耗在反复试探上"}):
@@ -476,6 +507,15 @@ def infer_structured_style(profile):
         commitment_clarity = "愿意稳定推进"
     else:
         commitment_clarity = "先聊熟再说"
+
+    if has_any(texts, {"聊明白", "说清楚", "提前商量", "安排说清", "边界聊透", "不爱反复试探", "不拖节奏", "现实安排"}):
+        relationship_execution = "会把安排说清"
+    elif commitment_clarity == "明确奔着长期" or has_any(texts, {"认真推进", "认真找长期关系", "认真相处"}):
+        relationship_execution = "稳步推进不拖拉"
+    elif relationship_goal == "先接触看看" or has_any(texts, {"先聊聊", "先看感觉", "慢慢了解"}):
+        relationship_execution = "先聊熟再定"
+    else:
+        relationship_execution = "口头长期待验证"
 
     marital_strength = profile.get("accept_marital_status_strength") or ""
     child_strength = profile.get("accept_partner_children_strength") or ""
@@ -506,7 +546,10 @@ def infer_structured_style(profile):
         "conversation_resonance": conversation_resonance,
         "personal_presence": personal_presence,
         "lightness_humor": lightness_humor,
+        "consumption_attitude": consumption_attitude,
+        "chat_texture": chat_texture,
         "commitment_clarity": commitment_clarity,
+        "relationship_execution": relationship_execution,
         "blended_family_readiness": blended_family_readiness,
     }
 
