@@ -48,6 +48,11 @@ FIELD_ALIASES = {
     "dating_pace": {"dating_pace", "推进节奏", "相处节奏"},
     "expression_style": {"expression_style", "表达风格", "表达感", "生活感"},
     "relationship_capacity": {"relationship_capacity", "关系投入能力", "关系承接能力"},
+    "interaction_comfort": {"interaction_comfort", "相处轻松度", "相处压力", "相处状态"},
+    "patience_level": {"patience_level", "耐心程度", "耐心水平"},
+    "life_texture": {"life_texture", "生活立体感", "生活层次", "生活感层次"},
+    "career_intensity": {"career_intensity", "工作节奏类型", "职业强度", "工作强度"},
+    "exercise_habit": {"exercise_habit", "运动习惯", "运动频率"},
     "smoking": {"smoking", "抽烟", "吸烟"},
     "drinking": {"drinking", "喝酒", "饮酒"},
     "long_distance": {"long_distance", "异地", "接受异地"},
@@ -149,6 +154,11 @@ TEXT_FIELDS = [
     "dating_pace",
     "expression_style",
     "relationship_capacity",
+    "interaction_comfort",
+    "patience_level",
+    "life_texture",
+    "career_intensity",
+    "exercise_habit",
     "smoking",
     "drinking",
     "long_distance",
@@ -193,6 +203,8 @@ EDUCATION_ORDER = {
     "博士": 8,
 }
 
+BUSY_JOB_KEYWORDS = {"医生", "护士", "审计", "金融", "投行", "新媒体", "课程顾问", "外贸"}
+
 ACCEPTED_VALUES = {"接受", "是", "可以", "ok", "accept", "accepted"}
 REJECTED_VALUES = {"不接受", "否", "不可以", "reject", "rejected"}
 NEGOTIABLE_VALUES = {"可协商", "协商", "待定"}
@@ -213,6 +225,11 @@ FIELD_DISPLAY_NAMES = {
     "dating_pace": "推进节奏",
     "expression_style": "表达风格",
     "relationship_capacity": "关系承接能力",
+    "interaction_comfort": "相处状态",
+    "patience_level": "耐心程度",
+    "life_texture": "生活感层次",
+    "career_intensity": "工作节奏类型",
+    "exercise_habit": "运动习惯",
     "smoking": "抽烟情况",
     "drinking": "喝酒情况",
     "long_distance": "异地态度",
@@ -245,6 +262,11 @@ KEYWORD_EVIDENCE_FIELDS = [
     ("dating_pace", "推进节奏"),
     ("expression_style", "表达风格"),
     ("relationship_capacity", "关系承接能力"),
+    ("interaction_comfort", "相处状态"),
+    ("patience_level", "耐心程度"),
+    ("life_texture", "生活感层次"),
+    ("career_intensity", "工作节奏类型"),
+    ("exercise_habit", "运动习惯"),
     ("notes", "备注"),
     ("family_background", "家庭情况"),
 ]
@@ -279,6 +301,11 @@ RISK_FLAG_PENALTIES = {
     "对方收入要求可能可放宽": 6,
     "对方婚史接受度偏保守": 8,
     "对方对子女接受度偏保守": 9,
+    "生活阶段可能有落差": 8,
+    "资料偏稳但不够鲜活": 5,
+    "相处可能偏冷": 6,
+    "相处节奏可能偏赶": 5,
+    "忙的时候可能更难推进": 5,
     "未认证": 6,
     "活跃时间未知": 4,
     "90天前活跃": 6,
@@ -465,6 +492,11 @@ def normalize_acceptance_strength(value):
     if lowered in {as_lower(item) for item in ACCEPTANCE_STRENGTH_SURFACE_VALUES}:
         return "surface"
     return "unknown"
+
+
+def contains_any_text(value, keywords):
+    lowered = as_lower(value)
+    return any(as_lower(keyword) in lowered for keyword in keywords)
 
 
 def habit_requires_acceptance(value):
@@ -654,6 +686,136 @@ def soft_preference_risk_flag(kind, strictness_state):
     return mapping.get(kind)
 
 
+def keyword_requested(criteria, keywords):
+    joined = " ".join(criteria.get("must_have", []) + criteria.get("prefer", []))
+    return contains_any_text(joined, keywords)
+
+
+def candidate_income_bounds(record):
+    income_min = as_int(record.get("income_min_wan"))
+    income_max = as_int(record.get("income_max_wan"))
+    if income_min is not None or income_max is not None:
+        return income_min, income_max
+    return parse_income_range_to_wan(record.get("income_range"))
+
+
+def requires_explicit_marital_acceptance(self_profile):
+    status = as_lower(self_profile.get("marital_status"))
+    return bool(status and status != "未婚")
+
+
+def requires_explicit_children_acceptance(self_profile):
+    return normalize_bool(self_profile.get("has_children")) is True
+
+
+def evaluate_contextual_fit(record, criteria, self_profile=None):
+    self_profile = self_profile or {}
+    reasons = []
+    risk_flags = []
+    match_evidence = []
+    score_bonus = 0
+
+    interaction_comfort = record.get("interaction_comfort")
+    patience_level = record.get("patience_level")
+    life_texture = record.get("life_texture")
+    career_intensity = record.get("career_intensity")
+    exercise_habit = record.get("exercise_habit")
+    communication_style = record.get("communication_style")
+    dating_pace = record.get("dating_pace")
+    expression_style = record.get("expression_style")
+
+    if keyword_requested(criteria, {"有耐心", "慢热", "沟通", "相处", "舒服", "不累"}):
+        if interaction_comfort in {"相处轻松", "安静低压", "有边界不拧巴"}:
+            reasons.append("相处压力更小")
+            score_bonus += 4
+            match_evidence.append(f"相处压力更小 <- 相处状态: {interaction_comfort}")
+        if patience_level in {"高耐心", "耐心稳定"}:
+            reasons.append("耐心更匹配")
+            score_bonus += 4
+            match_evidence.append(f"耐心更匹配 <- 耐心程度: {patience_level}")
+        elif patience_level == "节奏偏快":
+            risk_flags.append("相处节奏可能偏赶")
+        if expression_style == "理性克制" and communication_style == "理性直接":
+            risk_flags.append("相处可能偏冷")
+
+    if keyword_requested(criteria, {"边界", "边界感", "理性直接"}):
+        if interaction_comfort == "有边界不拧巴":
+            reasons.append("边界清楚不拧巴")
+            score_bonus += 4
+            match_evidence.append(f"边界清楚不拧巴 <- 相处状态: {interaction_comfort}")
+
+    if keyword_requested(criteria, {"生活规律", "爱运动", "健身", "乐观"}):
+        if exercise_habit == "规律运动":
+            reasons.append("运动习惯更匹配")
+            score_bonus += 5
+            match_evidence.append(f"运动习惯更匹配 <- 运动习惯: {exercise_habit}")
+        elif exercise_habit == "轻运动":
+            reasons.append("生活状态更合拍")
+            score_bonus += 3
+            match_evidence.append(f"生活状态更合拍 <- 运动习惯: {exercise_habit}")
+
+    self_education_rank = education_rank(self_profile.get("education"))
+    self_income_max = as_int(self_profile.get("income_max_wan"))
+    candidate_education_rank = education_rank(record.get("education"))
+    _, candidate_income_max = candidate_income_bounds(record)
+    high_bar_profile = (
+        (self_education_rank is not None and self_education_rank >= EDUCATION_ORDER["硕士"])
+        or (self_income_max is not None and self_income_max >= 50)
+    )
+
+    if self_education_rank is not None and self_education_rank >= EDUCATION_ORDER["硕士"]:
+        if candidate_education_rank is not None:
+            if candidate_education_rank >= max(EDUCATION_ORDER["硕士"], self_education_rank - 1):
+                reasons.append("学历层次更接近")
+                score_bonus += 5
+                match_evidence.append(f"学历层次更接近 <- 学历: {record.get('education')}")
+            elif self_education_rank >= EDUCATION_ORDER["博士"] and candidate_education_rank <= EDUCATION_ORDER["本科"]:
+                risk_flags.append("生活阶段可能有落差")
+
+    if self_income_max is not None and self_income_max >= 60 and candidate_income_max is not None:
+        if candidate_income_max >= max(32, int(self_income_max * 0.45)):
+            reasons.append("生活阶段更接近")
+            score_bonus += 6
+            match_evidence.append(f"生活阶段更接近 <- 收入范围: {record.get('income_range')}")
+        elif candidate_income_max < max(26, int(self_income_max * 0.4)):
+            risk_flags.append("生活阶段可能有落差")
+
+    if high_bar_profile or keyword_requested(criteria, {"见识", "表达", "生活感", "会聊天"}):
+        if life_texture == "有见识也有生活感":
+            reasons.append("资料不只稳，也更有生活感")
+            score_bonus += 7
+            match_evidence.append(f"资料不只稳，也更有生活感 <- 生活感层次: {life_texture}")
+        elif life_texture == "有生活感":
+            reasons.append("有生活感")
+            score_bonus += 4
+            match_evidence.append(f"有生活感 <- 生活感层次: {life_texture}")
+        elif life_texture == "简单稳定":
+            risk_flags.append("资料偏稳但不够鲜活")
+
+    self_job = self_profile.get("job")
+    if self_job and contains_any_text(self_job, BUSY_JOB_KEYWORDS):
+        if communication_style in {"主动沟通", "稳定沟通"} and dating_pace != "慢热推进":
+            reasons.append("能配合忙碌节奏")
+            score_bonus += 5
+            match_evidence.append(
+                f"能配合忙碌节奏 <- 沟通风格: {communication_style} | 推进节奏: {dating_pace}"
+            )
+        if career_intensity == "高强度但可协调":
+            reasons.append("也能理解高强度工作")
+            score_bonus += 3
+            match_evidence.append(f"也能理解高强度工作 <- 工作节奏类型: {career_intensity}")
+        elif communication_style == "慢热少话":
+            risk_flags.append("忙的时候可能更难推进")
+
+    return {
+        "matched_on": reasons,
+        "risk_flags": risk_flags,
+        "match_evidence": match_evidence,
+        "score_bonus": score_bonus,
+        "missing_fields": [],
+    }
+
+
 def has_explicit_field_value(record, field):
     if field == "has_children":
         return effective_has_children(record) is not None
@@ -710,6 +872,16 @@ def build_follow_up_questions(record, missing_fields, risk_flags, self_profile=N
             questions.append("确认对方是不是会表达、有生活感，聊天会不会太干。")
         elif field == "relationship_capacity":
             questions.append("确认对方现在有没有稳定投入关系的时间和精力。")
+        elif field == "interaction_comfort":
+            questions.append("确认相处会不会累，遇到分歧时是能聊开还是会绷着。")
+        elif field == "patience_level":
+            questions.append("确认对方耐心够不够，推进时会不会容易着急。")
+        elif field == "life_texture":
+            questions.append("确认对方是不是只有稳定条件，还是生活里也有表达和趣味。")
+        elif field == "career_intensity":
+            questions.append("确认工作节奏到底有多忙，关系里能不能稳定投入。")
+        elif field == "exercise_habit":
+            questions.append("确认有没有稳定运动或身体管理习惯。")
 
     for risk in unique_ordered(risk_flags):
         if risk == "对方对子女情况仅可协商":
@@ -734,6 +906,16 @@ def build_follow_up_questions(record, missing_fields, risk_flags, self_profile=N
             questions.append("确认对方对婚史是长期能接受，还是只是暂时不想说死。")
         elif risk == "对方对子女接受度偏保守":
             questions.append("确认对方能不能长期接受孩子和现实安排，不要只停留在口头上。")
+        elif risk == "生活阶段可能有落差":
+            questions.append("确认你们的收入压力、消费方式和长期生活节奏是不是一个频道。")
+        elif risk == "资料偏稳但不够鲜活":
+            questions.append("确认对方是不是只有条件合适，还是聊天和生活里也真的有感觉。")
+        elif risk == "相处可能偏冷":
+            questions.append("确认对方理性之外有没有温度，聊天会不会太端着。")
+        elif risk == "相处节奏可能偏赶":
+            questions.append("确认推进会不会太快，会不会让你有压力。")
+        elif risk == "忙的时候可能更难推进":
+            questions.append("确认工作忙时的沟通和见面安排能不能稳定下来。")
 
     return unique_ordered(questions)[:5]
 
@@ -761,6 +943,13 @@ def normalize_record(raw):
     if record.get("height") is not None:
         match = re.search(r"\d+", str(record["height"]))
         record["height"] = int(match.group()) if match else None
+
+    if record.get("income_min_wan") is None and record.get("income_max_wan") is None:
+        income_min, income_max = parse_income_range_to_wan(record.get("income_range"))
+        if income_min is not None:
+            record["income_min_wan"] = income_min
+        if income_max is not None:
+            record["income_max_wan"] = income_max
 
     record["combined_text"] = build_combined_text(record)
     return record
@@ -1200,6 +1389,12 @@ def build_criteria_from_args(args):
         criteria["want_children"] = args.want_children
     if args.accept_partner_children:
         criteria["accept_partner_children"] = args.accept_partner_children
+    accept_marital_status_strength = getattr(args, "accept_marital_status_strength", None)
+    if accept_marital_status_strength:
+        criteria["accept_marital_status_strength"] = accept_marital_status_strength
+    accept_partner_children_strength = getattr(args, "accept_partner_children_strength", None)
+    if accept_partner_children_strength:
+        criteria["accept_partner_children_strength"] = accept_partner_children_strength
     if args.marriage_timeline:
         criteria["marriage_timelines"] = merge_keyword_args(args.marriage_timeline)
     criteria["profile_statuses"] = merge_keyword_args(args.profile_status) or ["active"]
@@ -1249,6 +1444,7 @@ def build_self_profile_from_args(args, records):
         "city": args.self_city,
         "height": args.self_height,
         "education": args.self_education,
+        "job": getattr(args, "self_job", None),
         "marital_status": args.self_marital_status,
         "smoking": args.self_smoking,
         "drinking": args.self_drinking,
@@ -1359,6 +1555,8 @@ def format_rejection_reason(reason):
         "has_children_mismatch": "子女情况不匹配",
         "want_children_mismatch": "生育计划不匹配",
         "accept_partner_children_mismatch": "对子女接受度不匹配",
+        "accept_marital_status_strength_mismatch": "婚史接受真实度不匹配",
+        "accept_partner_children_strength_mismatch": "对子女接受真实度不匹配",
         "marriage_timeline_mismatch": "结婚节奏不匹配",
         "photo_count_too_low": "照片数量低于要求",
         "reciprocal_age_preference": "不符合对方年龄偏好",
@@ -1368,6 +1566,10 @@ def format_rejection_reason(reason):
         "reciprocal_income_preference": "不符合对方收入偏好",
         "reciprocal_marital_status_preference": "不符合对方婚况接受范围",
         "reciprocal_children_acceptance": "对方不能接受你的子女情况",
+        "reciprocal_marital_status_acceptance_not_strong": "对方对你的婚史不是明确接受",
+        "reciprocal_children_acceptance_not_strong": "对方对你的孩子不是明确接受",
+        "reciprocal_marital_status_acceptance_unknown": "对方没明确写是否真接受你的婚史",
+        "reciprocal_children_acceptance_unknown": "对方没明确写是否真接受你的孩子",
         "reciprocal_smoking_acceptance": "对方不能接受你的抽烟情况",
         "reciprocal_drinking_acceptance": "对方不能接受你的喝酒情况",
         "reciprocal_long_distance_acceptance": "对方不能接受异地",
@@ -1404,8 +1606,14 @@ def suggestion_for_rejection(reason):
         "has_children_mismatch",
         "want_children_mismatch",
         "accept_partner_children_mismatch",
+        "accept_marital_status_strength_mismatch",
+        "accept_partner_children_strength_mismatch",
         "reciprocal_marital_status_preference",
         "reciprocal_children_acceptance",
+        "reciprocal_marital_status_acceptance_not_strong",
+        "reciprocal_children_acceptance_not_strong",
+        "reciprocal_marital_status_acceptance_unknown",
+        "reciprocal_children_acceptance_unknown",
     }:
         return "婚况和孩子会明显压缩池子，建议先保留边界内可聊对象再二次确认。"
     if code == "required_known_missing":
@@ -1622,9 +1830,15 @@ def evaluate_reciprocal_compatibility(record, self_profile, diagnostics=False):
                 marital_strength = normalize_acceptance_strength(
                     record.get("accept_marital_status_strength")
                 )
-                if marital_strength in {"cautious", "surface"}:
+                if marital_strength == "strong":
+                    score_bonus += 2
+                elif requires_explicit_marital_acceptance(self_profile):
+                    return fail("reciprocal_marital_status_acceptance_not_strong")
+                elif marital_strength in {"cautious", "surface"}:
                     risk_flags.append("对方婚史接受度偏保守")
                 elif marital_strength == "unknown":
+                    if requires_explicit_marital_acceptance(self_profile):
+                        return fail("reciprocal_marital_status_acceptance_unknown")
                     missing_fields.append("accept_marital_status_strength")
     else:
         self_status = self_profile.get("marital_status")
@@ -1645,13 +1859,23 @@ def evaluate_reciprocal_compatibility(record, self_profile, diagnostics=False):
             children_strength = normalize_acceptance_strength(
                 record.get("accept_partner_children_strength")
             )
-            if children_strength in {"cautious", "surface"}:
+            if children_strength == "strong":
+                score_bonus += 2
+            elif requires_explicit_children_acceptance(self_profile):
+                return fail("reciprocal_children_acceptance_not_strong")
+            elif children_strength in {"cautious", "surface"}:
                 risk_flags.append("对方对子女接受度偏保守")
             elif children_strength == "unknown":
+                if requires_explicit_children_acceptance(self_profile):
+                    return fail("reciprocal_children_acceptance_unknown")
                 missing_fields.append("accept_partner_children_strength")
         elif accept_partner_children == "negotiable":
+            if requires_explicit_children_acceptance(self_profile):
+                return fail("reciprocal_children_acceptance_not_strong")
             risk_flags.append("对方对子女情况仅可协商")
         elif accept_partner_children == "unknown":
+            if requires_explicit_children_acceptance(self_profile):
+                return fail("reciprocal_children_acceptance_unknown")
             risk_flags.append("对方对子女接受度未知")
         else:
             missing_fields.append("accept_partner_children")
@@ -1970,6 +2194,26 @@ def evaluate_candidate(record, criteria, diagnostics=False):
             reasons.append(f"接受对方孩子 {accept_partner_children}")
             fit_score += 6
 
+    if criteria.get("accept_marital_status_strength"):
+        marital_strength = record.get("accept_marital_status_strength")
+        if not marital_strength:
+            missing_fields.append("accept_marital_status_strength")
+        elif not exact_match(marital_strength, criteria["accept_marital_status_strength"]):
+            return fail("accept_marital_status_strength_mismatch")
+        else:
+            reasons.append(f"婚史接受真实度 {marital_strength}")
+            fit_score += 5
+
+    if criteria.get("accept_partner_children_strength"):
+        children_strength = record.get("accept_partner_children_strength")
+        if not children_strength:
+            missing_fields.append("accept_partner_children_strength")
+        elif not exact_match(children_strength, criteria["accept_partner_children_strength"]):
+            return fail("accept_partner_children_strength_mismatch")
+        else:
+            reasons.append(f"对子女接受真实度 {children_strength}")
+            fit_score += 5
+
     if criteria.get("marriage_timelines"):
         marriage_timeline = record.get("marriage_timeline")
         if not marriage_timeline:
@@ -2013,6 +2257,17 @@ def evaluate_candidate(record, criteria, diagnostics=False):
     missing_fields.extend(reciprocal["missing_fields"])
     risk_flags.extend(reciprocal["risk_flags"])
     fit_score += reciprocal["score_bonus"]
+
+    contextual_fit = evaluate_contextual_fit(
+        record,
+        criteria,
+        self_profile=criteria.get("self_profile"),
+    )
+    reasons.extend(contextual_fit["matched_on"])
+    missing_fields.extend(contextual_fit["missing_fields"])
+    risk_flags.extend(contextual_fit["risk_flags"])
+    match_evidence.extend(contextual_fit["match_evidence"])
+    fit_score += contextual_fit["score_bonus"]
 
     verified_score, verified_label, verified_sort_rank = verified_score_info(record)
     confidence_score += verified_score
@@ -2202,6 +2457,16 @@ def format_text(results, include_source=False):
             vibe_parts.append(f"表达={profile.get('expression_style')}")
         if profile.get("relationship_capacity"):
             vibe_parts.append(f"关系投入={profile.get('relationship_capacity')}")
+        if profile.get("interaction_comfort"):
+            vibe_parts.append(f"相处={profile.get('interaction_comfort')}")
+        if profile.get("patience_level"):
+            vibe_parts.append(f"耐心={profile.get('patience_level')}")
+        if profile.get("life_texture"):
+            vibe_parts.append(f"生活感={profile.get('life_texture')}")
+        if profile.get("career_intensity"):
+            vibe_parts.append(f"工作={profile.get('career_intensity')}")
+        if profile.get("exercise_habit"):
+            vibe_parts.append(f"运动={profile.get('exercise_habit')}")
         if vibe_parts:
             lines.append(f"   vibe: {' | '.join(vibe_parts)}")
         if result.get("photo_preview"):
@@ -2294,6 +2559,14 @@ def main():
         help="Candidate acceptance of a partner who already has children.",
     )
     parser.add_argument(
+        "--accept-marital-status-strength",
+        help="Required candidate marital-history acceptance strength, for example 明确接受.",
+    )
+    parser.add_argument(
+        "--accept-partner-children-strength",
+        help="Required candidate child-acceptance strength, for example 明确接受.",
+    )
+    parser.add_argument(
         "--marriage-timeline",
         action="append",
         help="Allowed marriage timeline. Repeat or use comma-separated values.",
@@ -2330,6 +2603,7 @@ def main():
     parser.add_argument("--self-city", help="Your city for reciprocal matching.")
     parser.add_argument("--self-height", type=int, help="Your height in cm for reciprocal matching.")
     parser.add_argument("--self-education", help="Your education for reciprocal matching.")
+    parser.add_argument("--self-job", help="Your job for contextual matching, for example 医生 or 金融.")
     parser.add_argument("--self-income-wan", type=int, help="Your annual income in 万 for reciprocal matching.")
     parser.add_argument("--self-marital-status", help="Your marital status for reciprocal matching.")
     parser.add_argument("--self-has-children", type=int, choices=[0, 1], help="Whether you have children for reciprocal matching.")
