@@ -1,0 +1,8 @@
+interface:
+  display_name: "Persona Memory Sync"
+  short_description: "Persist dating persona memory and sync safe public profile fields."
+  default_prompt: "Use $persona-memory-sync to update a dating user's long-term persona and sync it into MySQL."
+
+policy:
+  allow_implicit_invocation: true
+
