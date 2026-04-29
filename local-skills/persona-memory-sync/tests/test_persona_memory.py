@@ -125,6 +125,7 @@ class PersonaMemoryTests(unittest.TestCase):
             "self_gender": "男",
             "self_age": 28,
             "self_city": "无锡",
+            "self_job": "产品经理",
             "self_income_wan": 40,
             "self_relationship_goal": "结婚导向",
             "persona_summary_internal": "慢热但反馈稳定，认真推进关系。",
@@ -133,8 +134,10 @@ class PersonaMemoryTests(unittest.TestCase):
             "target_age_max": 30,
             "target_cities": "无锡",
             "target_accept_long_distance": "不接受",
-            "target_accept_partner_children": "不接受",
+            "target_accept_partner_children": "可协商",
+            "target_accept_partner_children_strength": "谨慎接受",
             "target_marital_statuses": "未婚",
+            "target_marital_status_strength": "谨慎接受",
             "must_have_tags": "情绪稳定,消费观正常",
         }
         payload = persona_memory_lib.build_profile_payload(persona)
@@ -143,13 +146,45 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertEqual(payload["preferred_age_max"], 30)
         self.assertEqual(payload["preferred_cities"], "无锡")
         self.assertEqual(payload["accept_long_distance"], "不接受")
-        self.assertEqual(payload["accept_partner_children"], "不接受")
+        self.assertEqual(payload["accept_partner_children"], "可协商")
+        self.assertEqual(payload["accept_partner_children_strength"], "谨慎接受")
         self.assertEqual(payload["accept_marital_status"], "未婚")
+        self.assertEqual(payload["accept_marital_status_strength"], "谨慎接受")
         self.assertEqual(payload["income_range"], "36-45万/年")
         self.assertEqual(payload["personality"], "慢热但反馈稳定，认真推进关系。")
         self.assertEqual(payload["values"], "看重沟通效率，也看重情绪稳定。")
+        self.assertEqual(payload["public_job"], "产品经理")
         self.assertIn("matcher_traits_json", payload)
         self.assertIn("public_personality", payload)
+
+    def test_build_public_profile_masks_sensitive_job_titles(self):
+        payload = persona_memory_lib.build_public_profile(
+            {
+                "self_job": "医院药师",
+                "self_city": "无锡",
+            }
+        )
+        self.assertEqual(payload["public_job"], "医疗相关工作")
+
+    def test_profile_columns_for_persona_patch_includes_nullable_profile_targets(self):
+        columns = persona_memory_lib.profile_columns_for_persona_patch(
+            {
+                "target_education_min": None,
+                "self_job": None,
+                "target_accept_partner_children_strength": "谨慎接受",
+            }
+        )
+        self.assertIn("preferred_education_min", columns)
+        self.assertIn("public_job", columns)
+        self.assertIn("accept_partner_children_strength", columns)
+
+    def test_build_profile_payload_can_force_null_persona_fields(self):
+        payload = persona_memory_lib.build_profile_payload(
+            {"target_education_min": None},
+            include_null_persona_fields={"target_education_min"},
+        )
+        self.assertIn("preferred_education_min", payload)
+        self.assertIsNone(payload["preferred_education_min"])
 
     def test_build_profile_payload_preserves_existing_internal_text_over_public_fallback(self):
         persona = {
@@ -183,6 +218,8 @@ class PersonaMemoryTests(unittest.TestCase):
     def test_build_public_profile_view_sql_never_falls_back_to_internal_fields(self):
         sql = persona_memory_lib.build_public_profile_view_sql()
         self.assertIn("CAST(NULL AS CHAR(32)) AS income_range", sql)
+        self.assertIn("public_job", sql)
+        self.assertIn("CASE", sql)
         self.assertIn("public_personality AS personality", sql)
         self.assertIn("public_values AS `values`", sql)
         self.assertIn("public_notes AS notes", sql)

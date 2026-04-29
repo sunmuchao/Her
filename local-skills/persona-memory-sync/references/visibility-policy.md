@@ -7,7 +7,7 @@ Can be shown directly after rendering:
 - age
 - city
 - education
-- job
+- masked public job text
 - relationship goal
 - `public_personality`
 - `public_values`
@@ -31,4 +31,3 @@ Visible only for audit and debugging:
 - confidence score
 - source type
 - conversation reference
-
