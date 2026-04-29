@@ -11,6 +11,7 @@ The script `ensure_persona_tables.py` creates:
 - `user_personas`
 - `user_persona_observations`
 - extra `profiles` columns:
+  - `public_job`
   - `matcher_traits_json`
   - `matcher_preferences_json`
   - `matcher_risks_json`
@@ -20,5 +21,4 @@ The script `ensure_persona_tables.py` creates:
   - `public_notes`
 - `public_profile_view`
 
-`profiles` is intentionally not treated as a raw public table. Public UI should read `public_*` or the view.
-
+`profiles` is intentionally not treated as a raw public table. Public UI should read `public_*` or the view, including masked job text from `public_job` instead of assuming raw `job` is safe.

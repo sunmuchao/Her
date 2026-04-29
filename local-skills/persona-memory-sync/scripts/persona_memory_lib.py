@@ -44,7 +44,9 @@ USER_PERSONA_FIELDS = {
     "target_income_min_wan",
     "target_income_max_wan",
     "target_marital_statuses",
+    "target_marital_status_strength",
     "target_accept_partner_children",
+    "target_accept_partner_children_strength",
     "target_accept_long_distance",
     "target_want_children",
     "target_marriage_timeline",
@@ -110,7 +112,9 @@ EXPLICIT_ONLY_FIELDS = {
     "target_income_min_wan",
     "target_income_max_wan",
     "target_marital_statuses",
+    "target_marital_status_strength",
     "target_accept_partner_children",
+    "target_accept_partner_children_strength",
     "target_accept_long_distance",
     "target_want_children",
     "target_marriage_timeline",
@@ -151,6 +155,8 @@ PERSONA_TO_PROFILE_FIELD_MAP = {
     "target_education_min": "preferred_education_min",
     "target_income_min_wan": "preferred_income_min_wan",
     "target_income_max_wan": "preferred_income_max_wan",
+    "target_marital_status_strength": "accept_marital_status_strength",
+    "target_accept_partner_children_strength": "accept_partner_children_strength",
 }
 
 PROFILE_EXTENSION_COLUMNS = {
@@ -158,6 +164,7 @@ PROFILE_EXTENSION_COLUMNS = {
     "matcher_preferences_json": "JSON NULL",
     "matcher_risks_json": "JSON NULL",
     "matcher_summary_internal": "TEXT NULL",
+    "public_job": "VARCHAR(64) NULL",
     "public_personality": "TEXT NULL",
     "public_values": "TEXT NULL",
     "public_notes": "TEXT NULL",
@@ -168,7 +175,9 @@ PROFILE_SYNC_PERSONA_FIELDS = set(PERSONA_TO_PROFILE_FIELD_MAP) | {
     "self_income_wan",
     "target_accept_long_distance",
     "target_accept_partner_children",
+    "target_accept_partner_children_strength",
     "target_marital_statuses",
+    "target_marital_status_strength",
     "target_gender",
     "target_want_children",
     "target_marriage_timeline",
@@ -180,6 +189,16 @@ PROFILE_SYNC_PERSONA_FIELDS = set(PERSONA_TO_PROFILE_FIELD_MAP) | {
     "preference_summary_internal",
     "public_profile_summary_draft",
     "public_preference_summary_draft",
+}
+
+PATCH_DERIVED_PROFILE_COLUMNS = {
+    "self_income_wan": {"income_range"},
+    "self_job": {"public_job"},
+    "target_accept_long_distance": {"long_distance", "accept_long_distance"},
+    "target_accept_partner_children": {"accept_partner_children"},
+    "target_marital_statuses": {"accept_marital_status"},
+    "target_marital_status_strength": {"accept_marital_status_strength"},
+    "target_accept_partner_children_strength": {"accept_partner_children_strength"},
 }
 
 RAW_NEGATIVE_TO_MATCHER = {
@@ -237,6 +256,13 @@ PUBLIC_SAFE_TAG_MAP = {
     "沟通": "沟通顺畅",
     "消费观正常": "消费观一致",
 }
+
+PUBLIC_JOB_PATTERNS = (
+    (re.compile(r"(医院|诊所|药师|医生|医师|护士|临床|医疗)"), "医疗相关工作"),
+    (re.compile(r"(学校|教师|老师|教研|辅导员|教育|培训)"), "教育相关工作"),
+    (re.compile(r"(银行|证券|基金|保险|金融)"), "金融相关工作"),
+    (re.compile(r"(研究院|实验室|科研)"), "科研相关工作"),
+)
 
 
 def resolve_mysql_source(source: Optional[str] = None) -> str:
@@ -299,6 +325,16 @@ def quote_mysql_ident(identifier: str) -> str:
 
 def persona_field_affects_profile(field_name: str) -> bool:
     return field_name in PROFILE_SYNC_PERSONA_FIELDS
+
+
+def profile_columns_for_persona_patch(patch: Dict[str, Any]) -> List[str]:
+    columns = set()
+    for field_name in patch:
+        profile_field = PERSONA_TO_PROFILE_FIELD_MAP.get(field_name)
+        if profile_field:
+            columns.add(profile_field)
+        columns.update(PATCH_DERIVED_PROFILE_COLUMNS.get(field_name, set()))
+    return sorted(columns)
 
 
 def now_string() -> str:
@@ -504,7 +540,9 @@ def build_matcher_payload(persona: Dict[str, Any]) -> Dict[str, Optional[str]]:
         "target_income_min_wan": persona.get("target_income_min_wan"),
         "target_income_max_wan": persona.get("target_income_max_wan"),
         "target_marital_statuses": target_statuses,
+        "target_marital_status_strength": persona.get("target_marital_status_strength"),
         "target_accept_partner_children": persona.get("target_accept_partner_children"),
+        "target_accept_partner_children_strength": persona.get("target_accept_partner_children_strength"),
         "target_accept_long_distance": persona.get("target_accept_long_distance"),
         "must_have_tags": must_have,
         "preferred_traits": preferred_traits,
@@ -539,6 +577,16 @@ def build_matcher_payload(persona: Dict[str, Any]) -> Dict[str, Optional[str]]:
 
 def public_safe_tag(tag: str) -> str:
     return PUBLIC_SAFE_TAG_MAP.get(tag, tag)
+
+
+def build_public_job_title(job: Any) -> Optional[str]:
+    title = clean_text(job)
+    if not title:
+        return None
+    for pattern, safe_title in PUBLIC_JOB_PATTERNS:
+        if pattern.search(title):
+            return safe_title
+    return title
 
 
 def build_public_profile(persona: Dict[str, Any]) -> Dict[str, Optional[str]]:
@@ -577,18 +625,24 @@ def build_public_profile(persona: Dict[str, Any]) -> Dict[str, Optional[str]]:
     public_notes = "；".join(notes[:3]) if notes else None
 
     return {
+        "public_job": build_public_job_title(persona.get("self_job")),
         "public_personality": public_personality,
         "public_values": public_values,
         "public_notes": public_notes,
     }
 
 
-def build_profile_payload(persona: Dict[str, Any], existing_profile: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def build_profile_payload(
+    persona: Dict[str, Any],
+    existing_profile: Optional[Dict[str, Any]] = None,
+    include_null_persona_fields: Optional[Iterable[str]] = None,
+) -> Dict[str, Any]:
     existing_profile = existing_profile or {}
+    include_null_persona_fields = set(include_null_persona_fields or [])
     payload: Dict[str, Any] = {}
     for persona_field, profile_field in PERSONA_TO_PROFILE_FIELD_MAP.items():
         value = persona.get(persona_field)
-        if value is not None:
+        if value is not None or persona_field in include_null_persona_fields:
             payload[profile_field] = value
 
     if persona.get("self_income_wan") is not None:
@@ -638,9 +692,15 @@ def build_profile_payload(persona: Dict[str, Any], existing_profile: Optional[Di
     if disliked_traits:
         internal_note_parts.append("不太接受" + "、".join(disliked_traits[:3]))
     if persona.get("target_marital_statuses"):
-        internal_note_parts.append(f"可接受婚况={persona.get('target_marital_statuses')}")
+        marital_note = f"可接受婚况={persona.get('target_marital_statuses')}"
+        if clean_text(persona.get("target_marital_status_strength")):
+            marital_note += f"（{persona.get('target_marital_status_strength')}）"
+        internal_note_parts.append(marital_note)
     if persona.get("target_accept_partner_children"):
-        internal_note_parts.append(f"对子女情况={persona.get('target_accept_partner_children')}")
+        child_note = str(persona.get("target_accept_partner_children"))
+        if clean_text(persona.get("target_accept_partner_children_strength")):
+            child_note += f"（{persona.get('target_accept_partner_children_strength')}）"
+        internal_note_parts.append(f"对子女情况={child_note}")
     internal_notes = (
         "；".join(internal_note_parts)
         or clean_text(existing_profile.get("notes"))
@@ -712,7 +772,16 @@ SELECT
   district,
   height,
   education,
-  job,
+  COALESCE(
+    public_job,
+    CASE
+      WHEN job REGEXP '医院|诊所|药师|医生|医师|护士|临床|医疗' THEN '医疗相关工作'
+      WHEN job REGEXP '学校|教师|老师|教研|辅导员|教育|培训' THEN '教育相关工作'
+      WHEN job REGEXP '银行|证券|基金|保险|金融' THEN '金融相关工作'
+      WHEN job REGEXP '研究院|实验室|科研' THEN '科研相关工作'
+      ELSE job
+    END
+  ) AS job,
   CAST(NULL AS CHAR(32)) AS income_range,
   relationship_goal,
   public_personality AS personality,

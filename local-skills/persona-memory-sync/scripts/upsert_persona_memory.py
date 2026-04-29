@@ -17,6 +17,7 @@ from persona_memory_lib import (
     now_string,
     parse_mysql_source,
     parse_patch_json,
+    profile_columns_for_persona_patch,
     quote_mysql_ident,
 )
 
@@ -87,7 +88,7 @@ def insert_observations(
         )
 
 
-def upsert_profile(cursor, profile_table: str, payload, profile_id):
+def upsert_profile(cursor, profile_table: str, payload, profile_id, force_columns=None):
     cursor.execute(
         f"SELECT * FROM {quote_mysql_ident(profile_table)} WHERE id = %s",
         (profile_id,),
@@ -111,7 +112,8 @@ def upsert_profile(cursor, profile_table: str, payload, profile_id):
         )
         existing = {}
 
-    update_columns = [column for column, value in payload.items() if value is not None]
+    force_columns = set(force_columns or [])
+    update_columns = [column for column, value in payload.items() if value is not None or column in force_columns]
     cursor.execute(
         f"""
         UPDATE {quote_mysql_ident(profile_table)}
@@ -177,8 +179,18 @@ def main() -> None:
                     (profile_id,),
                 )
                 existing_profile = cursor.fetchone() or {}
-                payload = build_profile_payload(persona_for_profile, existing_profile=existing_profile)
-                upsert_profile(cursor, profile_table, payload, profile_id)
+                payload = build_profile_payload(
+                    persona_for_profile,
+                    existing_profile=existing_profile,
+                    include_null_persona_fields=normalized_patch.keys(),
+                )
+                upsert_profile(
+                    cursor,
+                    profile_table,
+                    payload,
+                    profile_id,
+                    force_columns=profile_columns_for_persona_patch(normalized_patch),
+                )
                 profile_synced = True
 
             mark_profile_sync_results(field_results, synced_profile=profile_synced)

@@ -46,7 +46,9 @@ CREATE TABLE IF NOT EXISTS {persona_table} (
   target_income_min_wan INT DEFAULT NULL,
   target_income_max_wan INT DEFAULT NULL,
   target_marital_statuses TEXT,
+  target_marital_status_strength VARCHAR(32) DEFAULT NULL,
   target_accept_partner_children VARCHAR(16) DEFAULT NULL,
+  target_accept_partner_children_strength VARCHAR(32) DEFAULT NULL,
   target_accept_long_distance VARCHAR(16) DEFAULT NULL,
   target_want_children VARCHAR(16) DEFAULT NULL,
   target_marriage_timeline VARCHAR(32) DEFAULT NULL,
@@ -87,6 +89,11 @@ CREATE TABLE IF NOT EXISTS {observation_table} (
 ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
 """
 
+PERSONA_EXTENSION_COLUMNS = {
+    "target_marital_status_strength": "VARCHAR(32) DEFAULT NULL",
+    "target_accept_partner_children_strength": "VARCHAR(32) DEFAULT NULL",
+}
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Create persona memory tables and extend profiles for internal/public sync.")
@@ -110,6 +117,16 @@ def main() -> None:
             cursor.execute(
                 OBSERVATION_TABLE_SQL.format(observation_table=quote_mysql_ident(observation_table))
             )
+
+            cursor.execute(f"SHOW COLUMNS FROM {quote_mysql_ident(persona_table)}")
+            existing_persona_columns = {row["Field"] for row in cursor.fetchall()}
+            for column_name, column_type in PERSONA_EXTENSION_COLUMNS.items():
+                if column_name in existing_persona_columns:
+                    continue
+                cursor.execute(
+                    f"ALTER TABLE {quote_mysql_ident(persona_table)} "
+                    f"ADD COLUMN {quote_mysql_ident(column_name)} {column_type}"
+                )
 
             cursor.execute(f"SHOW COLUMNS FROM {quote_mysql_ident(profile_table)}")
             existing_columns = {row["Field"] for row in cursor.fetchall()}
