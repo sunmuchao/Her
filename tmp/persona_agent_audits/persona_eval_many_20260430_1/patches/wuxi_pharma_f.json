@@ -1,0 +1,23 @@
+{
+  "display_name": "用户A03",
+  "self_gender": "女",
+  "self_age": 29,
+  "self_city": "无锡",
+  "self_education": "硕士",
+  "self_job": "医院药师",
+  "self_income_wan": 24,
+  "self_marital_status": "未婚",
+  "self_smoking": "否",
+  "self_drinking": "否",
+  "self_relationship_goal": "结婚导向",
+  "target_gender": "男",
+  "target_age_min": 28,
+  "target_age_max": 34,
+  "target_cities": "无锡,苏州",
+  "target_accept_long_distance": "可协商",
+  "must_have_tags": "稳定工作,不抽烟,少酒,边界清楚,不暧昧,愿意沟通",
+  "preferred_traits": "情绪稳定,责任心,三观正,尊重他人,有行动力,有计划,适度幽默",
+  "disliked_traits": "抽烟严重,经常喝酒,暧昧不清,失联冷处理,说一套做一套,边界感差",
+  "persona_summary_internal": "29岁无锡医院药师，硕士，作息规律，认真找恋爱对象，合适希望稳定结婚。",
+  "preference_summary_internal": "偏好28到34岁无锡或苏州男生，不抽烟少酒，原则上不接受远距离异地，但近距离或有落地计划可沟通。"
+}

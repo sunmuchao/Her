@@ -1,0 +1,23 @@
+{
+  "display_name": "用户A01",
+  "self_gender": "女",
+  "self_age": 32,
+  "self_city": "上海",
+  "self_education": "硕士",
+  "self_job": "外企战略/商业分析",
+  "self_income_wan": 85,
+  "self_marital_status": "未婚",
+  "self_smoking": "否",
+  "self_drinking": "偶尔",
+  "self_relationship_goal": "结婚导向",
+  "target_gender": "男",
+  "target_age_min": 30,
+  "target_age_max": 38,
+  "target_cities": "上海",
+  "target_accept_long_distance": "可协商",
+  "must_have_tags": "情绪稳定,消费观清醒,表达自然,有长期投入能力,有稳定工作和生活能力,有婚姻诚意",
+  "preferred_traits": "成熟,靠谱,责任感强,沟通直接,生活习惯健康,有稳定热爱,稳定留沪",
+  "disliked_traits": "控制欲强,暧昧拖拉,情绪拉扯,回避承诺,长期消耗型相处",
+  "persona_summary_internal": "32岁上海外企战略/商业分析，硕士，工作忙但生活有规划，认真找长期稳定关系，最好1到2年内结婚。",
+  "preference_summary_internal": "偏好30到38岁上海或稳定留沪男生，短期异地可了解，但不接受长期不落地异地。"
+}
