@@ -33,15 +33,14 @@ def round_score(value):
     return round(value, 4)
 
 
-def main():
-    args = parse_args()
-    input_path = Path(args.input).resolve()
-    output_path = Path(args.output).resolve()
-
-    feedback = json.loads(input_path.read_text(encoding="utf-8"))
+def load_feedback(path):
+    feedback = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(feedback, list):
-        raise SystemExit(f"Expected a JSON list in {input_path}")
+        raise SystemExit(f"Expected a JSON list in {path}")
+    return feedback
 
+
+def summarize_feedback(feedback, input_path, label=None):
     reviews = []
     top1_scores = []
     verdict_counts = Counter()
@@ -63,8 +62,8 @@ def main():
                 verdict_counts[verdict] += 1
 
     review_scores = [float(review.get("score", 0)) for review in reviews]
-    metrics = {
-        "label": args.label,
+    return {
+        "label": label,
         "source_input": str(input_path),
         "persona_count": len(feedback),
         "candidate_review_count": len(reviews),
@@ -74,8 +73,21 @@ def main():
         "generated_at": datetime.now().isoformat(timespec="seconds"),
     }
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(metrics, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+def write_json(path, payload):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def main():
+    args = parse_args()
+    input_path = Path(args.input).resolve()
+    output_path = Path(args.output).resolve()
+
+    feedback = load_feedback(input_path)
+    metrics = summarize_feedback(feedback, input_path, args.label)
+
+    write_json(output_path, metrics)
 
 
 if __name__ == "__main__":
