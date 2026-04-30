@@ -599,6 +599,10 @@ def merge_persona(existing: Optional[Dict[str, Any]], patch: Dict[str, Any], sou
             }
         )
 
+    merged = sanitize_persona_summary_fields(merged)
+    for item in field_results:
+        item["stored_value"] = merged.get(item["field_name"])
+
     merged["updated_at"] = now_string()
     if source_type == "explicit":
         merged["last_confirmed_at"] = merged["updated_at"]
@@ -764,6 +768,7 @@ def sanitize_public_profile_summary(summary: Any, persona: Dict[str, Any]) -> Op
         (re.compile(r"\d+年内[^，。；]*?(?:结婚|再婚)导向?"), "认真了解，合适的话希望稳定推进"),
         (re.compile(r"认真以结婚为导向"), "认真了解，重视长期关系"),
         (re.compile(r"以结婚为导向"), "认真了解，重视长期关系"),
+        (re.compile(r"结婚导向"), "以长期稳定关系为前提"),
         (re.compile(r"以再婚为导向"), "认真了解，合适会考虑再婚"),
         (re.compile(r"再婚导向"), "认真了解，合适会考虑再婚"),
     ]
@@ -815,6 +820,15 @@ def summarize_observation_evidence(
     if len(evidence) > max_length:
         evidence = evidence[: max_length - 3].rstrip() + "..."
     return f"{base}；证据摘要: {evidence}"
+
+
+def sanitize_persona_summary_fields(persona: Dict[str, Any]) -> Dict[str, Any]:
+    sanitized = deepcopy(persona)
+    for field_name in ("persona_summary_internal", "public_profile_summary_draft"):
+        sanitized_value = sanitize_public_profile_summary(sanitized.get(field_name), sanitized)
+        if sanitized_value:
+            sanitized[field_name] = sanitized_value
+    return sanitized
 
 
 def build_public_profile(persona: Dict[str, Any]) -> Dict[str, Optional[str]]:
@@ -917,8 +931,12 @@ def build_profile_payload(
 
     existing_personality = clean_text(existing_profile.get("personality"))
     legacy_personality = build_legacy_public_personality(persona)
-    if clean_text(persona.get("persona_summary_internal")):
-        internal_personality = clean_text(persona.get("persona_summary_internal"))
+    sanitized_persona_summary = sanitize_public_profile_summary(
+        persona.get("persona_summary_internal"),
+        persona,
+    )
+    if sanitized_persona_summary:
+        internal_personality = sanitized_persona_summary
     elif existing_personality and existing_personality != legacy_personality:
         internal_personality = (
             sanitize_public_profile_summary(existing_personality, persona)
