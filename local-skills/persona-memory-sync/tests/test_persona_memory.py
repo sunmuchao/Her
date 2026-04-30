@@ -215,6 +215,15 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertNotIn("上海本地", payload["public_personality"])
         self.assertNotIn("导向", payload["public_personality"])
 
+    def test_build_public_profile_keeps_remarriage_timeline_without_harsh_pressure(self):
+        payload = persona_memory_lib.build_public_profile(
+            {
+                "self_city": "苏州",
+                "self_relationship_goal": "认真找对象，希望两年内推进到再婚",
+            }
+        )
+        self.assertEqual(payload["public_personality"], "现居苏州，认真了解，合适的话希望稳步推进到再婚")
+
     def test_build_public_profile_sanitizes_legacy_public_draft(self):
         payload = persona_memory_lib.build_public_profile(
             {
@@ -330,6 +339,7 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertIn("public_job", sql)
         self.assertIn("CASE", sql)
         self.assertIn("认真了解，合适的话希望稳定推进", sql)
+        self.assertIn("认真了解，合适的话希望稳步推进到再婚", sql)
         self.assertIn("public_personality AS personality", sql)
         self.assertIn("public_values AS `values`", sql)
         self.assertIn("public_notes AS notes", sql)
