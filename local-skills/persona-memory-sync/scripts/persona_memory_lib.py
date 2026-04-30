@@ -283,17 +283,25 @@ PUBLIC_SAFE_TAG_MAP = {
     "消费观正常": "消费观清醒",
     "接受孩子现实": "能承接现实关系",
     "能接受孩子现实": "能承接现实关系",
-    "婚姻诚意": "长期关系诚意",
+    "婚姻诚意": "婚姻诚意",
     "现实推进能力": "现实推进能力",
+    "共同兴趣": "共同兴趣",
+    "有共同兴趣更好": "共同兴趣",
+    "有一点审美": "审美契合",
+    "健康习惯": "健康习惯",
+    "真诚": "真诚",
+    "责任感": "责任感",
 }
 
 PUBLIC_VALUE_PRIORITY_TAGS = (
+    "真正接受孩子现实",
     "能承接现实关系",
     "现实推进能力",
-    "长期关系诚意",
+    "婚姻诚意",
     "情绪稳定",
     "边界清楚",
     "责任感",
+    "健康习惯",
     "沟通顺畅",
     "愿意沟通",
 )
@@ -466,6 +474,10 @@ LONG_DISTANCE_BLOCK_PATTERNS = (
     re.compile(r"长期[^，。；]{0,8}异地[^，。；]{0,8}(?:不接受|不考虑|不行|免谈)"),
     re.compile(r"长期不落地异地"),
 )
+
+REGIONAL_CITY_EXPANSIONS = {
+    "江浙沪": ("上海", "苏州", "无锡", "南京", "杭州", "常州", "宁波"),
+}
 
 
 def resolve_mysql_source(source: Optional[str] = None) -> str:
@@ -742,6 +754,79 @@ def extract_children_living_with_self_from_text(*texts: Any) -> Optional[int]:
     return None
 
 
+def normalize_self_marital_status_label(status: Any) -> Optional[str]:
+    text = clean_text(status)
+    if not text:
+        return None
+    if text.startswith("离异"):
+        return "离异"
+    if text.startswith("丧偶"):
+        return "丧偶"
+    return text
+
+
+def infer_children_state_from_marital_status(status: Any) -> Optional[int]:
+    text = clean_text(status) or ""
+    if not text:
+        return None
+    if any(marker in text for marker in ("无孩", "未育")):
+        return 0
+    if any(marker in text for marker in ("已育", "有孩", "带娃", "带孩子")):
+        return 1
+    return None
+
+
+def expand_regional_target_cities(target_cities: Any, *texts: Any) -> List[str]:
+    cities = split_multi_value(target_cities)
+    combined_text = " ".join(clean_text(text) or "" for text in texts)
+    expanded = list(cities)
+    for region, region_cities in REGIONAL_CITY_EXPANSIONS.items():
+        if region in combined_text:
+            expanded.extend(region_cities)
+    return unique_ordered(expanded)
+
+
+def infer_target_long_distance_value(explicit_value: Any, semantics_text: Any) -> Optional[str]:
+    explicit = clean_text(explicit_value)
+    semantics = clean_text(semantics_text) or ""
+    if not semantics:
+        return explicit
+
+    allows_short_term = any(
+        marker in semantics for marker in ("短期异地可了解", "短期通勤型距离", "短期通勤", "稳定留沪")
+    )
+    dual_city_transition = any(
+        marker in semantics for marker in ("双城过渡", "近距离", "通勤", "见面成本不能太高")
+    )
+    long_term_cautious = "长期异地比较谨慎" in semantics
+    blocks_long_term = any(pattern.search(semantics) for pattern in LONG_DISTANCE_BLOCK_PATTERNS)
+
+    if explicit == "可协商":
+        if long_term_cautious:
+            return "短期通勤可了解，长期异地谨慎"
+        if allows_short_term or dual_city_transition or blocks_long_term:
+            return "近距离可推进，长期异地不接受"
+    if explicit == "不接受":
+        if allows_short_term and blocks_long_term:
+            return "短期可了解，长期异地不接受"
+        if dual_city_transition and blocks_long_term and "短期过渡" not in semantics:
+            return "近距离可推进，长期异地不接受"
+    return explicit
+
+
+def build_public_city_preference_phrase(known_cities: Iterable[str], semantics_text: Any) -> Optional[str]:
+    cities = [city for city in known_cities if clean_text(city)]
+    if not cities:
+        return None
+    semantics = clean_text(semantics_text) or ""
+    if len(cities) == 1:
+        return f"{cities[0]}优先"
+    if len(cities) == 2:
+        suffix = "都可以" if "都可以" in semantics else "优先"
+        return f"{cities[0]}或{cities[1]}{suffix}"
+    return "、".join(cities[:3]) + "优先"
+
+
 def contains_any_marker(texts: Iterable[Any], markers: Iterable[str]) -> bool:
     normalized_texts = [clean_text(text) or "" for text in texts]
     return any(marker in text for text in normalized_texts for marker in markers)
@@ -811,26 +896,67 @@ def build_public_location_note(persona: Dict[str, Any]) -> Optional[str]:
     )
 
     if blocks_long_term and (allows_short_term or has_landing_plan):
-        if explicit_distance_boundary:
-            return "原则上不接受异地；如有短期过渡，需明确落地计划"
-        return "短期异地可了解，但需要明确落地计划；不接受长期异地"
+        note = (
+            "原则上不接受异地；如有短期过渡，需明确落地计划"
+            if explicit_distance_boundary
+            else "短期异地可了解，但需要明确落地计划；不接受长期异地"
+        )
+        city_note = build_public_city_preference_phrase(known_cities, semantics)
+        if city_note and city_note not in note:
+            return f"{city_note}；{note}"
+        return note
     if explicit_boundary_from_text and needs_real_world_meetup:
-        return "原则上不接受异地；需能正常见面并推进关系"
+        note = "原则上不接受异地；需能正常见面并推进关系"
+        city_note = build_public_city_preference_phrase(known_cities, semantics)
+        if city_note and city_note not in note:
+            return f"{city_note}；{note}"
+        return note
     if blocks_long_term:
-        return "不接受长期异地"
+        city_note = build_public_city_preference_phrase(known_cities, semantics)
+        note = "不接受长期异地"
+        if city_note and city_note not in note:
+            return f"{city_note}；{note}"
+        return note
     if has_landing_plan and "异地" in semantics:
-        return "异地需有明确落地计划"
+        city_note = build_public_city_preference_phrase(known_cities, semantics)
+        note = "异地需有明确落地计划"
+        if city_note and city_note not in note:
+            return f"{city_note}；{note}"
+        return note
     if explicit_boundary_from_text:
-        return "原则上不接受异地"
+        city_note = build_public_city_preference_phrase(known_cities, semantics)
+        note = "原则上不接受异地"
+        if city_note and city_note not in note:
+            return f"{city_note}；{note}"
+        return note
     if explicit_distance_boundary:
-        return "更适合同城或近距离认真相处"
+        city_note = build_public_city_preference_phrase(known_cities, semantics)
+        note = "更适合同城或近距离认真相处"
+        if city_note and city_note not in note:
+            return f"{city_note}；{note}"
+        return note
     if any(marker in semantics for marker in ("同城", "近距离", "周边", "通勤")):
-        return "更适合同城或近距离认真相处"
+        city_note = build_public_city_preference_phrase(known_cities, semantics)
+        note = "更适合同城或近距离认真相处"
+        if city_note and city_note not in note:
+            return f"{city_note}；{note}"
+        return note
     return None
 
 
 def enrich_patch_from_explicit_semantics(patch: Dict[str, Any]) -> Dict[str, Any]:
     enriched = deepcopy(patch)
+    marital_status = clean_text(enriched.get("self_marital_status"))
+    inferred_children_from_status = infer_children_state_from_marital_status(marital_status)
+    normalized_marital_status = normalize_self_marital_status_label(marital_status)
+    if normalized_marital_status and normalized_marital_status != marital_status:
+        enriched["self_marital_status"] = normalized_marital_status
+    if (
+        inferred_children_from_status is not None
+        and enriched.get("self_has_children") in {None, ""}
+    ):
+        enriched["self_has_children"] = inferred_children_from_status
+
     text_candidates = [
         enriched.get("persona_summary_internal"),
         enriched.get("preference_summary_internal"),
@@ -882,6 +1008,21 @@ def enrich_patch_from_explicit_semantics(patch: Dict[str, Any]) -> Dict[str, Any
             enriched.get("public_preference_summary_draft"),
             known_cities=split_multi_value(enriched.get("target_cities")),
         )
+
+    expanded_target_cities = expand_regional_target_cities(
+        enriched.get("target_cities"),
+        enriched.get("target_location_semantics"),
+        enriched.get("preference_summary_internal"),
+    )
+    if expanded_target_cities:
+        enriched["target_cities"] = expanded_target_cities
+
+    inferred_target_long_distance = infer_target_long_distance_value(
+        enriched.get("target_accept_long_distance"),
+        enriched.get("target_location_semantics"),
+    )
+    if inferred_target_long_distance:
+        enriched["target_accept_long_distance"] = inferred_target_long_distance
 
     return enriched
 
@@ -1218,6 +1359,8 @@ def build_public_relationship_goal(goal: Any) -> Optional[str]:
         return "认真了解，方向明确，不仓促推进"
     if "现实关系" in goal_text:
         return "认真了解，长期现实关系方向明确"
+    if "认真找长期关系" in goal_text and "会考虑结婚" in goal_text:
+        return "认真了解，长期关系方向明确，合适会考虑结婚"
     if "再婚" in goal_text:
         if has_timeline:
             return "认真了解，再婚方向明确，合适会稳步推进"
@@ -1226,10 +1369,14 @@ def build_public_relationship_goal(goal: Any) -> Optional[str]:
         if has_timeline:
             return "认真了解，婚姻方向明确，合适会稳步推进"
         return "认真了解，长期关系与婚姻方向明确"
+    if "稳定结婚" in goal_text:
+        return "认真了解，长期关系与婚姻方向明确"
     if "结婚" in goal_text or "结婚导向" in goal_text:
         if has_timeline:
             return "认真了解，婚姻方向明确，合适会稳步推进"
         return "认真了解，婚姻方向明确"
+    if "认真找长期关系" in goal_text:
+        return "认真了解，长期关系方向明确"
     if any(marker in goal_text for marker in ("认真恋爱", "长期", "稳定")):
         return "认真了解，重视长期稳定关系"
     return goal_text
@@ -1420,12 +1567,12 @@ def build_public_profile(persona: Dict[str, Any]) -> Dict[str, Optional[str]]:
     if not public_values:
         key_tags = unique_ordered(must_have + preferred_traits)
         if normalize_boolish(persona.get("target_requires_partner_accept_my_children")) == 1:
-            key_tags = unique_ordered(["能承接现实关系"] + key_tags)
+            key_tags = unique_ordered(["真正接受孩子现实", "能承接现实关系"] + key_tags)
         prioritized_tags = [
             tag for tag in PUBLIC_VALUE_PRIORITY_TAGS if tag in key_tags
         ]
         trailing_tags = [tag for tag in key_tags if tag not in set(prioritized_tags)]
-        key_tags = unique_ordered(prioritized_tags + trailing_tags)[:5]
+        key_tags = unique_ordered(prioritized_tags + trailing_tags)[:6]
         if key_tags:
             public_values = "看重" + "、".join(key_tags)
         else:
@@ -1437,6 +1584,10 @@ def build_public_profile(persona: Dict[str, Any]) -> Dict[str, Optional[str]]:
     if location_note and location_note not in str(public_values):
         notes.append(location_note)
     for raw_tag in must_not_have:
+        safe_note = PUBLIC_SAFE_NEGATIVE_NOTES.get(raw_tag)
+        if safe_note and safe_note not in notes:
+            notes.append(safe_note)
+    for raw_tag in items_from_csv(persona.get("disliked_traits")):
         safe_note = PUBLIC_SAFE_NEGATIVE_NOTES.get(raw_tag)
         if safe_note and safe_note not in notes:
             notes.append(safe_note)
@@ -1537,10 +1688,10 @@ def build_profile_payload(
 
     internal_note_parts = []
     if must_not_have:
-        internal_note_parts.append("明确避开" + "、".join(must_not_have[:4]))
+        internal_note_parts.append("明确避开" + "、".join(must_not_have[:5]))
     note_disliked_traits = [item for item in disliked_traits if item not in set(must_not_have)]
     if note_disliked_traits:
-        internal_note_parts.append("不太接受" + "、".join(note_disliked_traits[:4]))
+        internal_note_parts.append("不太接受" + "、".join(note_disliked_traits[:5]))
     if persona.get("target_marital_statuses"):
         marital_note = f"可接受婚况={persona.get('target_marital_statuses')}"
         if clean_text(persona.get("target_marital_status_strength")):
@@ -1639,6 +1790,349 @@ def insert_profile_stub(cursor, profile_table: str, payload: Dict[str, Any]) -> 
     return int(profile_id)
 
 
+def fetch_persona(
+    cursor,
+    persona_table: str,
+    *,
+    user_key: Optional[str] = None,
+    profile_id: Optional[int] = None,
+):
+    if user_key:
+        cursor.execute(
+            f"SELECT * FROM {quote_mysql_ident(persona_table)} WHERE user_key = %s",
+            (user_key,),
+        )
+        return cursor.fetchone()
+    if profile_id is not None:
+        cursor.execute(
+            f"SELECT * FROM {quote_mysql_ident(persona_table)} WHERE profile_id = %s",
+            (profile_id,),
+        )
+        return cursor.fetchone()
+    raise ValueError("Provide user_key or profile_id to fetch a persona.")
+
+
+def fetch_profile(cursor, profile_table: str, profile_id: int):
+    cursor.execute(
+        f"SELECT * FROM {quote_mysql_ident(profile_table)} WHERE id = %s",
+        (profile_id,),
+    )
+    return cursor.fetchone()
+
+
+def upsert_persona(cursor, persona_table: str, merged_persona: Dict[str, Any]):
+    payload = {key: value for key, value in merged_persona.items() if key not in {"id", "created_at"}}
+    columns = list(payload.keys())
+    values = [payload[column] for column in columns]
+    update_clause = ", ".join(
+        f"{quote_mysql_ident(column)} = VALUES({quote_mysql_ident(column)})" for column in columns
+    )
+    cursor.execute(
+        f"""
+        INSERT INTO {quote_mysql_ident(persona_table)} ({", ".join(quote_mysql_ident(column) for column in columns)})
+        VALUES ({", ".join(["%s"] * len(columns))})
+        ON DUPLICATE KEY UPDATE {update_clause}
+        """,
+        values,
+    )
+    cursor.execute(
+        f"SELECT * FROM {quote_mysql_ident(persona_table)} WHERE user_key = %s",
+        (merged_persona["user_key"],),
+    )
+    return cursor.fetchone()
+
+
+def insert_observations(
+    cursor,
+    observation_table: str,
+    *,
+    user_key: str,
+    persona_id,
+    source_type: str,
+    confidence_score,
+    evidence_text,
+    conversation_ref,
+    field_results: List[Dict[str, Any]],
+):
+    for item in field_results:
+        sanitized_evidence = summarize_observation_evidence(
+            item["field_name"],
+            item["new_value"],
+            evidence_text,
+        )
+        cursor.execute(
+            f"""
+            INSERT INTO {quote_mysql_ident(observation_table)}
+              (user_key, persona_id, field_name, field_value, source_type, confidence_score,
+               evidence_text, conversation_ref, action_type, applied_to_persona, applied_to_profile, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                user_key,
+                persona_id,
+                item["field_name"],
+                item["new_value"],
+                source_type,
+                confidence_score,
+                sanitized_evidence,
+                conversation_ref,
+                item["action_type"],
+                1 if item["applied_to_persona"] else 0,
+                1 if item.get("applied_to_profile") else 0,
+                now_string(),
+            ),
+        )
+
+
+def ensure_persona_profile_binding(cursor, persona_table: str, profile_table: str, persona: Dict[str, Any]) -> int:
+    profile_id = as_int(persona.get("profile_id"))
+    if profile_id is not None:
+        return profile_id
+
+    initial_payload = build_profile_payload(persona, existing_profile={})
+    profile_id = insert_profile_stub(cursor, profile_table, initial_payload)
+    cursor.execute(
+        f"UPDATE {quote_mysql_ident(persona_table)} SET profile_id = %s WHERE id = %s",
+        (profile_id, persona["id"]),
+    )
+    persona["profile_id"] = profile_id
+    return profile_id
+
+
+def upsert_profile(cursor, profile_table: str, payload: Dict[str, Any], profile_id: int, force_columns=None) -> List[str]:
+    existing = fetch_profile(cursor, profile_table, profile_id)
+    if existing is None:
+        cursor.execute(
+            f"""
+            INSERT INTO {quote_mysql_ident(profile_table)}
+              (id, name, profile_status, verified_level, source_channel, last_active_at)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            """,
+            (
+                profile_id,
+                payload["name"],
+                payload["profile_status"],
+                payload["verified_level"],
+                payload["source_channel"],
+                payload["last_active_at"],
+            ),
+        )
+        existing = {}
+
+    force_columns = set(force_columns or [])
+    update_columns = [column for column, value in payload.items() if value is not None or column in force_columns]
+    cursor.execute(
+        f"""
+        UPDATE {quote_mysql_ident(profile_table)}
+        SET {", ".join(f"{quote_mysql_ident(column)} = %s" for column in update_columns)}
+        WHERE id = %s
+        """,
+        [payload[column] for column in update_columns] + [profile_id],
+    )
+    return update_columns
+
+
+def write_public_profile_fields(cursor, profile_table: str, profile_id: int, profile_payload: Dict[str, Any]) -> List[str]:
+    update_columns = [
+        "public_display_name",
+        "public_education",
+        "public_job",
+        "public_personality",
+        "public_values",
+        "public_notes",
+        "personality",
+        "values",
+        "notes",
+    ]
+    cursor.execute(
+        f"""
+        UPDATE {quote_mysql_ident(profile_table)}
+        SET {", ".join(f"{quote_mysql_ident(column)} = %s" for column in update_columns)}
+        WHERE id = %s
+        """,
+        [profile_payload[column] for column in update_columns] + [profile_id],
+    )
+    return update_columns
+
+
+def apply_persona_patch(
+    *,
+    source: Optional[str],
+    user_key: str,
+    source_type: str,
+    normalized_patch: Dict[str, Any],
+    persona_table: str = DEFAULT_PERSONA_TABLE,
+    observation_table: str = DEFAULT_OBSERVATION_TABLE,
+    profile_table: Optional[str] = None,
+    confidence_score=None,
+    evidence_text=None,
+    conversation_ref=None,
+    sync_profile: bool = False,
+) -> Dict[str, Any]:
+    profile_table = profile_table or parse_mysql_source(source)["table"]
+    conn = mysql_connect(source)
+    profile_synced = False
+    field_results: List[Dict[str, Any]] = []
+    try:
+        with conn.cursor() as cursor:
+            existing = fetch_persona(cursor, persona_table, user_key=user_key)
+            base = dict(existing or {})
+            base["user_key"] = user_key
+            merged, field_results = merge_persona(base, normalized_patch, source_type)
+            merged["user_key"] = user_key
+            saved_persona = upsert_persona(cursor, persona_table, merged)
+
+            if sync_profile and source_type != "weak_inference":
+                persona_for_profile = dict(saved_persona)
+                persona_for_profile["user_key"] = user_key
+                profile_id = ensure_persona_profile_binding(
+                    cursor,
+                    persona_table,
+                    profile_table,
+                    persona_for_profile,
+                )
+                existing_profile = fetch_profile(cursor, profile_table, profile_id) or {}
+                payload = build_profile_payload(
+                    persona_for_profile,
+                    existing_profile=existing_profile,
+                    include_null_persona_fields=normalized_patch.keys(),
+                )
+                upsert_profile(
+                    cursor,
+                    profile_table,
+                    payload,
+                    profile_id,
+                    force_columns=profile_columns_for_persona_patch(normalized_patch),
+                )
+                profile_synced = True
+
+            mark_profile_sync_results(field_results, synced_profile=profile_synced)
+            insert_observations(
+                cursor,
+                observation_table,
+                user_key=user_key,
+                persona_id=saved_persona["id"],
+                source_type=source_type,
+                confidence_score=confidence_score,
+                evidence_text=evidence_text,
+                conversation_ref=conversation_ref,
+                field_results=field_results,
+            )
+
+        conn.commit()
+    finally:
+        conn.close()
+
+    return {
+        "user_key": user_key,
+        "source_type": source_type,
+        "applied_fields": [item for item in field_results if item["applied_to_persona"]],
+        "skipped_fields": [item for item in field_results if not item["applied_to_persona"]],
+        "synced_profile": profile_synced,
+    }
+
+
+def sync_persona_profile(
+    *,
+    source: Optional[str],
+    persona_table: str = DEFAULT_PERSONA_TABLE,
+    profile_table: Optional[str] = None,
+    user_key: Optional[str] = None,
+    profile_id: Optional[int] = None,
+) -> Dict[str, Any]:
+    if not user_key and profile_id is None:
+        raise ValueError("Provide user_key or profile_id.")
+
+    profile_table = profile_table or parse_mysql_source(source)["table"]
+    conn = mysql_connect(source)
+    summary: Dict[str, Any] = {}
+    try:
+        with conn.cursor() as cursor:
+            persona = fetch_persona(cursor, persona_table, user_key=user_key, profile_id=profile_id)
+            if not persona:
+                raise ValueError("Persona not found.")
+
+            bound_profile_id = as_int(persona.get("profile_id")) or profile_id
+            if bound_profile_id is None:
+                bound_profile_id = ensure_persona_profile_binding(
+                    cursor,
+                    persona_table,
+                    profile_table,
+                    persona,
+                )
+            else:
+                persona["profile_id"] = bound_profile_id
+
+            existing_profile = fetch_profile(cursor, profile_table, bound_profile_id) or {}
+            payload = build_profile_payload(persona, existing_profile=existing_profile)
+            update_columns = upsert_profile(
+                cursor,
+                profile_table,
+                payload,
+                bound_profile_id,
+            )
+
+            summary = {
+                "user_key": persona["user_key"],
+                "profile_id": bound_profile_id,
+                "updated_columns": update_columns,
+                "public_personality": payload.get("public_personality"),
+                "public_values": payload.get("public_values"),
+                "public_notes": payload.get("public_notes"),
+            }
+
+        conn.commit()
+    finally:
+        conn.close()
+
+    return summary
+
+
+def render_public_profile_result(
+    *,
+    source: Optional[str],
+    persona_table: str = DEFAULT_PERSONA_TABLE,
+    profile_table: Optional[str] = None,
+    user_key: Optional[str] = None,
+    profile_id: Optional[int] = None,
+    write_profile: bool = False,
+) -> Dict[str, Any]:
+    if not user_key and profile_id is None:
+        raise ValueError("Provide user_key or profile_id.")
+
+    profile_table = profile_table or parse_mysql_source(source)["table"]
+    conn = mysql_connect(source)
+    output: Dict[str, Any] = {}
+    try:
+        with conn.cursor() as cursor:
+            persona = fetch_persona(cursor, persona_table, user_key=user_key, profile_id=profile_id)
+            if not persona:
+                raise ValueError("Persona not found.")
+
+            public_payload = build_public_profile(persona)
+            output = {
+                "user_key": persona["user_key"],
+                "profile_id": persona.get("profile_id"),
+                **public_payload,
+            }
+
+            if write_profile and persona.get("profile_id") is not None:
+                existing_profile = fetch_profile(cursor, profile_table, persona["profile_id"]) or {}
+                profile_payload = build_profile_payload(persona, existing_profile=existing_profile)
+                write_public_profile_fields(
+                    cursor,
+                    profile_table,
+                    persona["profile_id"],
+                    profile_payload,
+                )
+
+        conn.commit()
+    finally:
+        conn.close()
+
+    return output
+
+
 def build_public_profile_view_sql(profile_table: str = DEFAULT_PROFILE_TABLE, view_name: str = DEFAULT_PUBLIC_VIEW) -> str:
     profile_table_q = quote_mysql_ident(profile_table)
     view_name_q = quote_mysql_ident(view_name)
@@ -1671,6 +2165,12 @@ SELECT
   CAST(NULL AS CHAR(32)) AS income_range,
   CASE
     WHEN relationship_goal IS NULL OR TRIM(relationship_goal) = '' THEN NULL
+    WHEN relationship_goal REGEXP '不着急' AND relationship_goal REGEXP '结婚|婚姻'
+      THEN '认真了解，结婚不着急，方向明确'
+    WHEN relationship_goal REGEXP '现实关系'
+      THEN '认真了解，长期现实关系方向明确'
+    WHEN relationship_goal REGEXP '认真找长期关系' AND relationship_goal REGEXP '会考虑结婚'
+      THEN '认真了解，长期关系方向明确，合适会考虑结婚'
     WHEN relationship_goal REGEXP '[一二两三四五六七八九十]+年内' AND relationship_goal REGEXP '再婚'
       THEN '认真了解，再婚方向明确，合适会稳步推进'
     WHEN relationship_goal REGEXP '[0-9]+[[:space:]]*(-|到|至|~)[[:space:]]*[0-9]+年内' AND relationship_goal REGEXP '再婚'
@@ -1684,8 +2184,14 @@ SELECT
     WHEN relationship_goal REGEXP '[0-9]+年内' AND relationship_goal REGEXP '结婚|再婚'
       THEN '认真了解，婚姻方向明确，合适会稳步推进'
     WHEN relationship_goal REGEXP '再婚' THEN '认真了解，再婚方向明确'
+    WHEN relationship_goal REGEXP '长期关系' AND relationship_goal REGEXP '结婚|婚姻'
+      THEN '认真了解，长期关系与婚姻方向明确'
     WHEN relationship_goal REGEXP '认真恋爱' AND relationship_goal REGEXP '结婚'
       THEN '认真了解，婚姻方向明确'
+    WHEN relationship_goal REGEXP '稳定结婚'
+      THEN '认真了解，长期关系与婚姻方向明确'
+    WHEN relationship_goal REGEXP '认真找长期关系'
+      THEN '认真了解，长期关系方向明确'
     WHEN relationship_goal = '结婚导向' THEN '认真了解，婚姻方向明确'
     WHEN relationship_goal REGEXP '结婚' THEN '认真了解，婚姻方向明确'
     WHEN relationship_goal REGEXP '认真恋爱|长期|稳定' THEN '认真了解，重视长期稳定关系'

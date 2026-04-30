@@ -417,12 +417,55 @@ STRUCTURED_KEYWORD_SIGNAL_RULES = {
         ("life_routine", "作息类型", {"生活规律", "生活稳定"}),
         ("relationship_execution", "现实推进方式", {"稳步推进不拖拉", "会把安排说清"}),
     ],
+    "共同兴趣": [
+        ("conversation_resonance", "聊天共鸣", {"能聊想法也能聊日常", "会接话也会接情绪"}),
+        ("aesthetic_expression", "审美表达", {"有审美输出", "有生活审美"}),
+    ],
+    "有一点审美": [
+        ("aesthetic_expression", "审美表达", {"有审美输出", "有生活审美"}),
+    ],
+    "有情绪回应": [
+        ("warmth_style", "聊天温度", {"有温度会接话", "理性但不冷"}),
+        ("conversation_resonance", "聊天共鸣", {"会接话也会接情绪", "能聊想法也能聊日常"}),
+    ],
+    "现实推进能力": [
+        ("relationship_execution", "推进方式", {"稳步推进不拖拉", "会把安排说清"}),
+        ("blended_family_readiness", "现实承接", {"愿意一起商量", "安排比较成熟"}),
+    ],
+    "婚姻诚意": [
+        ("commitment_clarity", "长期意图", {"明确奔着长期", "愿意稳定推进"}),
+        ("relationship_execution", "推进方式", {"稳步推进不拖拉", "会把安排说清"}),
+    ],
+    "责任感": [
+        ("relationship_execution", "推进方式", {"稳步推进不拖拉", "会把安排说清"}),
+        ("blended_family_readiness", "现实承接", {"愿意一起商量", "安排比较成熟"}),
+    ],
+    "稳定踏实": [
+        ("life_routine", "作息类型", {"生活规律", "生活稳定"}),
+        ("consumption_attitude", "消费观", {"清醒务实", "踏实过日子"}),
+    ],
 }
 
 TEXTUAL_KEYWORD_SIGNAL_RULES = {
     "情绪稳定": [
         ("personality", "性格", {"温和", "理性", "松弛", "稳重", "好相处", "有耐心", "不内耗"}),
         ("values", "价值观", {"边界清楚", "不拧巴", "不内耗", "稳定踏实"}),
+    ],
+    "责任感": [
+        ("personality", "性格", {"有责任感", "靠谱", "有担当"}),
+        ("values", "价值观", {"愿意共同经营生活", "责任感"}),
+    ],
+    "真诚": [
+        ("personality", "性格", {"真诚", "坦诚", "不端着"}),
+        ("values", "价值观", {"真诚", "不玩套路"}),
+    ],
+    "沟通自然": [
+        ("personality", "性格", {"好相处", "不端着", "自然"}),
+        ("values", "价值观", {"沟通顺畅", "不拧巴"}),
+    ],
+    "健康习惯": [
+        ("personality", "性格", {"自律", "稳定"}),
+        ("values", "价值观", {"规律运动", "作息规律"}),
     ],
 }
 
@@ -954,6 +997,10 @@ def normalize_acceptance_state(value):
         return "guarded"
     if lowered in NEGOTIABLE_VALUES:
         return "negotiable"
+    if any(marker in lowered for marker in ("短期异地", "双城过渡", "落地计划", "稳定留沪", "通勤型距离")):
+        return "negotiable"
+    if "长期异地比较谨慎" in lowered:
+        return "guarded"
     if lowered in UNKNOWN_VALUES:
         return "unknown"
     normalized = normalize_bool(value)
@@ -1043,7 +1090,7 @@ def effective_has_children(record):
     marital_status = as_lower(record.get("marital_status"))
     if "已育" in marital_status:
         return True
-    if marital_status in {"未婚", "离异未育"}:
+    if marital_status in {"未婚", "离异未育", "离异无孩"} or "无孩" in marital_status:
         return False
     return None
 
@@ -1055,15 +1102,20 @@ def marital_status_match_options(record):
     options = [status]
     lowered = as_lower(status)
     has_children = normalize_bool(record.get("has_children"))
+    if lowered in {"离异", "离异无孩", "离异未育", "离异已育"}:
+        options.append("离异")
     if lowered == "离异":
         if has_children is True:
             options.append("离异已育")
         elif has_children is False:
             options.append("离异未育")
+            options.append("离异无孩")
     elif lowered == "离异已育":
         options.append("离异")
-    elif lowered == "离异未育":
+    elif lowered in {"离异未育", "离异无孩"}:
         options.append("离异")
+        options.append("离异未育")
+        options.append("离异无孩")
     return unique_ordered(options)
 
 
@@ -3465,7 +3517,10 @@ def evaluate_candidate(record, criteria, diagnostics=False, reciprocal_mode="str
         marital_status = record.get("marital_status")
         if not marital_status:
             missing_fields.append("marital_status")
-        elif not match_any_exact(marital_status, criteria["marital_statuses"]):
+        elif not any(
+            match_any_exact(option, criteria["marital_statuses"])
+            for option in marital_status_match_options({"marital_status": marital_status, "has_children": record.get("has_children")})
+        ):
             return fail("marital_status_mismatch")
         else:
             reasons.append(f"婚况 {marital_status}")
