@@ -7,6 +7,27 @@ description: Persist and evolve a dating user's long-term persona, partner prefe
 
 Use this skill when a dating or matchmaking conversation reveals new information about a user's own profile, partner preferences, dealbreakers, or stable inferred tendencies, and that information should be persisted into MySQL.
 
+## Scope
+
+- 只处理当前已有的人设记忆落库能力：写入 `user_persona_observations`、合并 `user_personas`、同步到 `profiles`、渲染公开安全字段。
+- Phase 1 只做结构整理：把核心读写逻辑收口到公共库，CLI 脚本保留为薄包装层，补齐测试和交付说明。
+- 默认继续沿用现有表结构、字段语义、source type 规则、公开字段渲染规则，不改变已有输入输出契约。
+
+## Non-Goals
+
+- 不新增产品功能，不扩展新的记忆类型、工作流、后台任务、提醒机制、业务 API 或事件系统。
+- 不改变现有 merge 规则、public rendering 规则、profiles 同步策略、source type 权限边界。
+- 不把 `persona-memory-sync` 变成新的业务编排层；它仍然只负责当前这套记忆写入与同步能力。
+
+## Delivery Order
+
+1. Phase 1：结构收口
+   让脚本只负责参数解析和 JSON 输出，核心逻辑集中到共享库，补单测。
+2. Phase 2：引擎边界明确
+   在不加新功能的前提下，把共享库当成稳定引擎层，梳理调用边界和复用方式。
+3. Phase 3：对外接入整理
+   只在确认有真实复用方时，再决定是否补独立 API/CLI 适配层；没有复用方就不额外扩展。
+
 This skill separates three concerns:
 
 - `user_persona_observations`: every new signal, with source and confidence
