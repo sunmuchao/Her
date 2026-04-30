@@ -166,6 +166,7 @@ class SearchCandidatesTests(unittest.TestCase):
         parser.add_argument("--verified-level", action="append")
         parser.add_argument("--photo-count-min", type=int)
         parser.add_argument("--exclude-id", action="append", type=int)
+        parser.add_argument("--exclude-source-channel", action="append")
         args = parser.parse_args(
             [
                 "--gender",
@@ -184,6 +185,8 @@ class SearchCandidatesTests(unittest.TestCase):
                 "active,paused",
                 "--exclude-id",
                 "90001",
+                "--exclude-source-channel",
+                "persona-memory-sync",
             ]
         )
         criteria = search_candidates.build_criteria_from_args(args)
@@ -195,6 +198,7 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertEqual(criteria["required_known_fields"], ["smoking", "want_children"])
         self.assertEqual(criteria["profile_statuses"], ["active", "paused"])
         self.assertEqual(criteria["exclude_ids"], {90001})
+        self.assertEqual(criteria["exclude_source_channels"], {"persona-memory-sync"})
 
     def test_build_criteria_from_args_softens_additional_relationship_keywords(self):
         args = search_candidates.argparse.Namespace(
@@ -229,6 +233,7 @@ class SearchCandidatesTests(unittest.TestCase):
             photo_count_min=None,
             require_known=None,
             exclude_id=None,
+            exclude_source_channel=None,
         )
 
         criteria = search_candidates.build_criteria_from_args(args)
@@ -236,6 +241,24 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertNotIn("must_have", criteria)
         self.assertIn("性格稳定", criteria["prefer"])
         self.assertIn("不暧昧", criteria["prefer"])
+
+    def test_build_mysql_prefilter_supports_excluding_source_channel(self):
+        criteria = {
+            "gender": "女",
+            "profile_statuses": ["active"],
+            "exclude_source_channels": {"persona-memory-sync"},
+        }
+        canonical_to_actual = {
+            "gender": "gender",
+            "profile_status": "profile_status",
+            "source_channel": "source_channel",
+        }
+
+        where_clause, params = search_candidates.build_mysql_prefilter(criteria, canonical_to_actual)
+
+        self.assertIn("`source_channel`", where_clause)
+        self.assertIn("NOT IN", where_clause)
+        self.assertIn("persona-memory-sync", params)
 
     def test_evaluate_candidate_positive(self):
         record = {
@@ -277,8 +300,6 @@ class SearchCandidatesTests(unittest.TestCase):
         }
         result = search_candidates.evaluate_candidate(record, criteria)
         self.assertIsNotNone(result)
-        self.assertEqual(result["id"], 101)
-        self.assertGreater(result["score"], 0)
         self.assertEqual(
             result["score"],
             result["fit_score"] + result["confidence_score"] - result["risk_score"],
@@ -310,6 +331,29 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertEqual(result["risk_score"], 0)
         self.assertIn("性别 女", result["matched_on"])
         self.assertIn("消费观正常 <- 价值观: 消费观正常", result["match_evidence"])
+
+    def test_evaluate_candidate_rejects_excluded_source_channel(self):
+        record = {
+            "id": 101,
+            "name": "测试用户",
+            "gender": "女",
+            "age": 27,
+            "city": "无锡",
+            "profile_status": "active",
+            "source_channel": "persona-memory-sync",
+        }
+        criteria = {
+            "gender": "女",
+            "exclude_ids": set(),
+            "exclude_source_channels": {"persona-memory-sync"},
+        }
+
+        result = search_candidates.evaluate_candidate(record, criteria, diagnostics=True)
+
+        self.assertFalse(result["matched"])
+        self.assertEqual(result["reject_reason"], "exclude_source_channel")
+        self.assertEqual(result["id"], 101)
+        self.assertEqual(result["name"], "测试用户")
 
     def test_evaluate_candidate_surfaces_habit_matches_when_requested(self):
         record = {

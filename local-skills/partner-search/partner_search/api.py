@@ -1,0 +1,113 @@
+"""Importable API for the partner-search matching engine."""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, field
+from typing import Any, Mapping, Sequence
+
+from scripts import search_candidates as engine
+
+
+@dataclass
+class SearchRequest:
+    source: str | Sequence[str] | None = None
+    criteria: Mapping[str, Any] = field(default_factory=dict)
+    self_profile: Mapping[str, Any] | None = None
+    self_id: int | None = None
+    table_name: str | None = None
+    photos_table_name: str | None = None
+    limit: int = 10
+    photo_preview_count: int = 0
+    include_source: bool = False
+
+    def to_engine_request(self) -> dict[str, Any]:
+        return engine.build_search_request(
+            source=self.source,
+            table_name=self.table_name,
+            photos_table_name=self.photos_table_name,
+            criteria=dict(self.criteria or {}),
+            self_profile=dict(self.self_profile or {}) or None,
+            self_id=self.self_id,
+            limit=self.limit,
+            photo_preview_count=self.photo_preview_count,
+        )
+
+
+@dataclass
+class SearchResponse:
+    search_run: Mapping[str, Any]
+    include_source: bool = False
+
+    @property
+    def text(self) -> str:
+        return engine.render_search_output(
+            dict(self.search_run),
+            include_source=self.include_source,
+        )
+
+    def to_dict(self, include_text: bool = False) -> dict[str, Any]:
+        return engine.build_structured_search_response(
+            dict(self.search_run),
+            include_source=self.include_source,
+            include_text=include_text,
+        )
+
+    def to_json(self, include_text: bool = False, ensure_ascii: bool = False, indent: int = 2) -> str:
+        return json.dumps(
+            self.to_dict(include_text=include_text),
+            ensure_ascii=ensure_ascii,
+            indent=indent,
+            sort_keys=False,
+        )
+
+
+def search(request: SearchRequest | Mapping[str, Any]) -> SearchResponse:
+    if isinstance(request, SearchRequest):
+        search_request = request
+    else:
+        search_request = SearchRequest(
+            source=request.get("source") or request.get("sources"),
+            criteria=request.get("criteria") or {},
+            self_profile=request.get("self_profile"),
+            self_id=request.get("self_id"),
+            table_name=request.get("table_name"),
+            photos_table_name=request.get("photos_table_name"),
+            limit=request.get("limit", 10),
+            photo_preview_count=request.get("photo_preview_count", 0),
+            include_source=bool(request.get("include_source", False)),
+        )
+
+    return SearchResponse(
+        search_run=engine.execute_search_request(search_request.to_engine_request()),
+        include_source=search_request.include_source,
+    )
+
+
+def search_profiles(
+    *,
+    source: str | Sequence[str] | None,
+    criteria: Mapping[str, Any] | None = None,
+    self_profile: Mapping[str, Any] | None = None,
+    self_id: int | None = None,
+    table_name: str | None = None,
+    photos_table_name: str | None = None,
+    limit: int = 10,
+    photo_preview_count: int = 0,
+    include_source: bool = False,
+    include_text: bool = False,
+) -> dict[str, Any]:
+    response = search(
+        SearchRequest(
+            source=source,
+            criteria=criteria or {},
+            self_profile=self_profile,
+            self_id=self_id,
+            table_name=table_name,
+            photos_table_name=photos_table_name,
+            limit=limit,
+            photo_preview_count=photo_preview_count,
+            include_source=include_source,
+        )
+    )
+    return response.to_dict(include_text=include_text)

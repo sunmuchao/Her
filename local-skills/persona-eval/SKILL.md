@@ -124,7 +124,8 @@ Use a single run directory such as `tmp/persona_agent_audits/persona_eval_202604
 7. Run partner search for that persona.
    Use `python3 local-skills/partner-search/scripts/search_candidates.py` with reciprocal matching based on the stored profile.
    Important:
-   - when audit personas were inserted into `profiles`, exclude all audit profile ids with repeated `--exclude-id`
+   - when audit personas were inserted into `profiles`, prefer `--exclude-source-channel persona-memory-sync`
+   - this excludes the whole audit persona pool while still allowing `--self-id` to load the roleplayed user
    - otherwise the synthetic audit personas may match each other and pollute the result
 8. Send the candidate result or no-match explanation back to the same roleplayed user agent.
    That agent should decide:
