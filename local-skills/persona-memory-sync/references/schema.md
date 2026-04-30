@@ -1,5 +1,14 @@
 # Schema
 
+## Boundary Note
+
+This schema exists only to support the current `persona-memory-sync` capability:
+writing persona memory, recording observations, syncing existing profile fields, and exposing current public-safe fields.
+
+Do not treat this schema document as permission to grow `persona-memory-sync` into a broader product domain
+or to add unrelated workflow tables, subscription tables, notification tables, recommendation history tables,
+or other new business responsibilities.
+
 This skill maintains three storage layers:
 
 - `user_persona_observations`: append-only signal log

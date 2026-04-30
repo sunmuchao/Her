@@ -1,5 +1,12 @@
 # Public Rendering
 
+## Boundary Note
+
+This document only governs how the current `persona-memory-sync` skill renders existing public-safe fields.
+
+It does not authorize adding new product responsibilities, new rendering products, recommendation flows,
+notification flows, or any new business workflow beyond the current persona write/sync/render scope.
+
 Public rendering must never expose raw internal matcher labels.
 
 Examples:
@@ -18,4 +25,3 @@ Preferred flow:
 1. normalize raw labels into internal matcher features
 2. write matcher features into `profiles.matcher_*`
 3. render public-safe text into `profiles.public_*`
-
