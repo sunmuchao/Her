@@ -112,6 +112,13 @@ PROFILE_ENUM_UPGRADES = {
     }
 }
 
+PROFILE_COLUMN_TYPE_UPGRADES = {
+    "accept_long_distance": {
+        "expected_type": "varchar(16)",
+        "ddl": "VARCHAR(16) DEFAULT NULL COMMENT '是否接受异地或近距离过渡'",
+    }
+}
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Create persona memory tables and extend profiles for internal/public sync.")
@@ -169,6 +176,18 @@ def main() -> None:
                     literal for literal in upgrade["required_literals"] if f"'{literal}'" not in str(row.get("Type") or "")
                 ]
                 if not missing_literals:
+                    continue
+                cursor.execute(
+                    f"ALTER TABLE {quote_mysql_ident(profile_table)} "
+                    f"MODIFY COLUMN {quote_mysql_ident(column_name)} {upgrade['ddl']}"
+                )
+
+            for column_name, upgrade in PROFILE_COLUMN_TYPE_UPGRADES.items():
+                row = existing_column_rows.get(column_name)
+                if not row:
+                    continue
+                column_type = str(row.get("Type") or "").lower()
+                if column_type == upgrade["expected_type"]:
                     continue
                 cursor.execute(
                     f"ALTER TABLE {quote_mysql_ident(profile_table)} "

@@ -2,7 +2,18 @@
 
 import argparse
 import json
+import sys
 from pathlib import Path
+
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+REPO_ROOT = SCRIPT_DIR.parents[2]
+PERSONA_MEMORY_SYNC_SCRIPTS = REPO_ROOT / "local-skills" / "persona-memory-sync" / "scripts"
+
+if str(PERSONA_MEMORY_SYNC_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(PERSONA_MEMORY_SYNC_SCRIPTS))
+
+from run_persona_memory_audit import mask_snapshot_for_review  # noqa: E402
 
 
 PROFILE_INTERNAL_FOCUS_FIELDS = [
@@ -85,6 +96,15 @@ def build_packets(input_personas, memory_snapshots, search_results):
         persona_id = persona.get("persona_id")
         snapshot = snapshot_index.get(persona_id, {})
         search_result = search_index.get(persona_id, {})
+        private_boundaries = snapshot.get("private_boundaries") or persona.get("private_boundaries") or []
+        remasked_snapshot = mask_snapshot_for_review(
+            {
+                "user_persona": snapshot.get("user_persona") or {},
+                "profile_internal": snapshot.get("profile_internal") or {},
+                "public_profile_view": snapshot.get("public_profile_view") or {},
+            },
+            private_boundaries,
+        )
         packets.append(
             prune_none(
                 {
@@ -93,20 +113,18 @@ def build_packets(input_personas, memory_snapshots, search_results):
                     "agent_id": persona.get("agent_id") or snapshot.get("agent_id"),
                     "user_key": persona.get("user_key") or snapshot.get("user_key"),
                     "profile_id": snapshot.get("profile_id") or persona.get("profile_id"),
-                    "private_boundaries": snapshot.get("private_boundaries")
-                    or persona.get("private_boundaries")
-                    or [],
+                    "private_boundaries": private_boundaries,
                     "roleplay_answers": persona.get("roleplay_answers")
                     or snapshot.get("roleplay_answers")
                     or [],
                     "notes_about_possible_drift": persona.get("notes_about_possible_drift")
                     or snapshot.get("notes_about_possible_drift")
                     or [],
-                    "user_persona": snapshot.get("user_persona") or {},
+                    "user_persona": remasked_snapshot.get("user_persona") or {},
                     "profile_internal_focus": pick_fields(
-                        snapshot.get("profile_internal"), PROFILE_INTERNAL_FOCUS_FIELDS
+                        remasked_snapshot.get("profile_internal"), PROFILE_INTERNAL_FOCUS_FIELDS
                     ),
-                    "public_profile_view": snapshot.get("public_profile_view") or {},
+                    "public_profile_view": remasked_snapshot.get("public_profile_view") or {},
                     "search_output": search_result or {},
                 }
             )

@@ -1068,14 +1068,18 @@ def build_public_location_note(persona: Dict[str, Any]) -> Optional[str]:
         marker in semantics for marker in ("正常见面", "推进关系", "见面成本不能太高", "见面成本")
     )
 
-    if explicit_distance_value in {"短期通勤可了解，长期异地谨慎", "近距离可推进，长期异地不接受"}:
+    if explicit_distance_value in {
+        "短期通勤可了解，长期异地谨慎",
+        "短期可了解，长期异地不接受",
+        "近距离可推进，长期异地不接受",
+    }:
         city_note = build_public_city_preference_phrase(known_cities, semantics)
         if city_note and city_note not in explicit_distance_value:
             return f"{city_note}；{explicit_distance_value}"
         return explicit_distance_value
     if blocks_long_term and (allows_short_term or has_landing_plan):
         note = (
-            "原则上不接受异地；如有短期过渡，需明确落地计划"
+            "明确不接受长期异地；如有短期过渡，需明确落地计划"
             if explicit_distance_boundary
             else "短期异地可了解，但需要明确落地计划；不接受长期异地"
         )
