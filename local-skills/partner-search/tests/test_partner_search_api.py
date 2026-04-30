@@ -1,4 +1,5 @@
 import json
+import importlib.util
 import pathlib
 import sys
 import unittest
@@ -206,6 +207,26 @@ class PartnerSearchApiTests(unittest.TestCase):
             )
 
         self.assertEqual(response["results"][0]["name"], "LocalSteady")
+
+    def test_python_api_integration_example_builds_outer_system_payload(self):
+        example_path = SKILL_ROOT / "examples" / "python_api_integration.py"
+        spec = importlib.util.spec_from_file_location("python_api_integration", example_path)
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+
+        saved_search = module.build_demo_saved_search()
+        response = {
+            "result_count": 2,
+            "results": [{"id": 1, "name": "A"}, {"id": 2, "name": "B"}],
+        }
+
+        payload = module.build_recommendation_batch(saved_search, response)
+
+        self.assertEqual(payload["subscription_id"], "saved-search-1001")
+        self.assertEqual(payload["requester_id"], 70001)
+        self.assertEqual(payload["top_candidate_ids"], [1, 2])
+        self.assertEqual(payload["search_response"], response)
 
 
 if __name__ == "__main__":  # pragma: no cover
