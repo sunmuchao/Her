@@ -4,6 +4,7 @@
 
 Can be shown directly after rendering:
 
+- anonymous display name from `public_profile_view` only, not raw real name
 - age
 - city
 - education
