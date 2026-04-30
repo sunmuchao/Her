@@ -3067,12 +3067,15 @@ def evaluate_candidate(record, criteria, diagnostics=False, reciprocal_mode="str
             return fail("age_above_max")
 
     height = record.get("height")
+    height_reason_added = False
     if criteria.get("height_min") is not None:
         if height is None:
             missing_fields.append("height")
         elif height < criteria["height_min"]:
             return fail("height_below_min")
         else:
+            reasons.append(f"身高 {height}cm")
+            height_reason_added = True
             fit_score += 5
     if criteria.get("height_max") is not None:
         if height is None:
@@ -3080,6 +3083,9 @@ def evaluate_candidate(record, criteria, diagnostics=False, reciprocal_mode="str
                 missing_fields.append("height")
         elif height > criteria["height_max"]:
             return fail("height_above_max")
+        elif not height_reason_added:
+            reasons.append(f"身高 {height}cm")
+            height_reason_added = True
 
     if criteria.get("gender"):
         gender = as_lower(record.get("gender"))

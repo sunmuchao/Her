@@ -1,0 +1,14 @@
+{
+  "label": null,
+  "source_input": "/Users/sunmuchao/Downloads/Her/tmp/persona_agent_audits/persona_eval_agents_20260430_3/search_commands.json",
+  "persona_count": 6,
+  "success_count": 6,
+  "failure_count": 0,
+  "match_count": 6,
+  "no_match_count": 0,
+  "success_rate": 1.0,
+  "match_rate": 1.0,
+  "average_candidate_count": 2.8333,
+  "max_candidate_count": 3,
+  "generated_at": "2026-04-30T16:31:36"
+}
