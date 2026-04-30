@@ -2,7 +2,7 @@
   {
     "persona_id": "shanghai_exec_f_v2",
     "display_name": "用户C01",
-    "agent_id": "019ddce7-428a-7753-b962-d0a7be5e9376",
+    "agent_id": "019dddc6-89f8-7541-b500-1c92c384fcbd",
     "user_key": "persona_eval_agents_20260430_3_shanghai_exec_f_v2",
     "roleplay_answers": [
       "32岁，上海，168cm，硕士，外企商业分析/战略岗位。",
@@ -52,7 +52,7 @@
   {
     "persona_id": "suzhou_divorce_m_v2",
     "display_name": "用户C02",
-    "agent_id": "019ddce7-42a6-7a40-b918-e7ae1b5c0fe7",
+    "agent_id": "019dddc6-8a26-79f1-a7f9-088fe6fdb494",
     "user_key": "persona_eval_agents_20260430_3_suzhou_divorce_m_v2",
     "roleplay_answers": [
       "37岁，苏州，178cm，本科，制造业供应链管理岗。",
@@ -101,7 +101,7 @@
   {
     "persona_id": "wuxi_pharma_f_v2",
     "display_name": "用户C03",
-    "agent_id": "019ddce7-42be-71e2-9c62-7578966ccbba",
+    "agent_id": "019dddc6-8a5c-7170-8a42-1b19af2dbefc",
     "user_key": "persona_eval_agents_20260430_3_wuxi_pharma_f_v2",
     "roleplay_answers": [
       "29岁，无锡，164cm，硕士，医院药师。",
@@ -150,7 +150,7 @@
   {
     "persona_id": "nanjing_academic_f_v2",
     "display_name": "用户C04",
-    "agent_id": "019ddce7-43d6-7530-925a-0164e08d277c",
+    "agent_id": "019dddc6-8a8c-77a1-8e44-fee4a9544b16",
     "user_key": "persona_eval_agents_20260430_3_nanjing_academic_f_v2",
     "roleplay_answers": [
       "34岁，南京，165cm，博士，高校教师。",
@@ -200,7 +200,7 @@
   {
     "persona_id": "hangzhou_divorce_mom_f_v2",
     "display_name": "用户C05",
-    "agent_id": "019ddce7-43de-7090-8e3a-fcf261c93f70",
+    "agent_id": "019dddc6-8aba-7d42-a72d-00721bcece85",
     "user_key": "persona_eval_agents_20260430_3_hangzhou_divorce_mom_f_v2",
     "roleplay_answers": [
       "35岁，杭州，166cm，本科，品牌市场/内容电商管理岗。",
@@ -253,7 +253,7 @@
   {
     "persona_id": "shanghai_creative_m_v2",
     "display_name": "用户C06",
-    "agent_id": "019ddce7-4413-7942-b746-d49d3fbf1246",
+    "agent_id": "019dddc6-8ace-7ff2-a80f-061b0697ab69",
     "user_key": "persona_eval_agents_20260430_3_shanghai_creative_m_v2",
     "roleplay_answers": [
       "31岁，上海，180cm，本科，游戏UI/交互设计管理岗。",
