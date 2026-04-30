@@ -65,6 +65,34 @@ Rule of thumb:
 - `scripts/ensure_persona_tables.py` 仍然属于建表和 schema 补齐脚本，不属于运行时 engine。
 - `engine` 和 `Python API` 只是现有能力的调用壳，不是新增功能的授权入口。
 
+Engine responsibilities:
+
+- 把外部调用统一收口成稳定的运行时入口
+- 定义现有 3 个动作的标准 request 形态：
+  `UpsertPersonaMemoryRequest`、`SyncPersonaProfileRequest`、`RenderPublicProfileRequest`
+- 负责少量入口级整理，例如默认表名解析、patch 标准化触发、是否附带 `normalized_patch`
+- 把请求转交给 `persona_memory_lib.py` 执行
+- 保持 CLI、Python API、审计脚本走同一套运行路径
+
+Engine is not responsible for:
+
+- 定义新的产品能力
+- 修改 merge 规则、public rendering 规则、source type 权限边界
+- 直接承载业务编排、通知逻辑、审核流、任务流
+- 绕过 `lib` 另写一套 SQL 或另写一套画像处理规则
+
+Call chain:
+
+- CLI -> engine -> lib -> MySQL
+- Python API -> engine -> lib -> MySQL
+- audit script -> engine -> lib -> MySQL
+
+Rule of thumb:
+
+- 想改“调用入口长什么样”，看 engine
+- 想改“画像怎么合并、怎么同步、怎么渲染”，看 lib
+- 想加新的产品职责，不应该放进 engine，也不应该放进这个 skill
+
 This skill separates three concerns:
 
 - `user_persona_observations`: every new signal, with source and confidence
