@@ -56,6 +56,54 @@ Do not treat `profiles` as a raw public profile. The public-facing version must 
 5. Optionally preview or refresh public rendering.
    Run `python3 scripts/render_public_profile.py --user-key ... --write-profile`.
 
+## Python API
+
+Use the importable API when another Python caller wants structured results directly instead of shelling out to the CLI:
+
+```python
+from persona_memory_sync import (
+    render_public_profile,
+    sync_persona_profile,
+    upsert_persona_memory,
+)
+
+upsert_result = upsert_persona_memory(
+    {
+        "source": "mysql://user:pass@127.0.0.1:3306/her?table=profiles",
+        "user_key": "demo-user",
+        "source_type": "explicit",
+        "patch": {
+            "self_city": "上海",
+            "self_relationship_goal": "认真恋爱",
+        },
+        "sync_profile": True,
+    }
+)
+
+sync_result = sync_persona_profile(
+    {
+        "source": "mysql://user:pass@127.0.0.1:3306/her?table=profiles",
+        "user_key": "demo-user",
+    }
+)
+
+public_result = render_public_profile(
+    {
+        "source": "mysql://user:pass@127.0.0.1:3306/her?table=profiles",
+        "user_key": "demo-user",
+        "write_profile": True,
+    }
+)
+```
+
+The public package exports:
+
+- `persona_memory_sync.upsert_persona_memory(...)`
+- `persona_memory_sync.sync_persona_profile(...)`
+- `persona_memory_sync.render_public_profile(...)`
+- `UpsertPersonaMemoryRequest`, `SyncPersonaProfileRequest`, `RenderPublicProfileRequest` when you want explicit request objects
+- `examples/python_api_integration.py` for a minimal outer-system call example that wraps the sync result into its own payload
+
 Pass `--source` explicitly, or set `PERSONA_MEMORY_MYSQL_SOURCE` first if you want a reusable default. The skill no longer assumes a built-in local root DSN.
 
 ## Source Types

@@ -1331,8 +1331,6 @@ def creative_job_match(value):
 def child_or_marital_topic_requested(criteria, self_profile):
     if requires_explicit_children_acceptance(self_profile):
         return True
-    if requires_explicit_marital_acceptance(self_profile):
-        return True
     joined = " ".join(
         criteria.get("must_have", [])
         + criteria.get("prefer", [])
@@ -4041,8 +4039,9 @@ def append_result_detail_lines(lines, result, profile, include_source=False):
     append_labeled_line(lines, "fallback_reason", result.get("fallback_reason"))
     append_joined_line(lines, "match_evidence", result.get("match_evidence"), separator=" | ")
     append_joined_line(lines, "follow_up_questions", result.get("follow_up_questions"), separator=" | ")
-    notes_summary = result.get("display_notes")
-    if notes_summary is None:
+    if "display_notes" in result:
+        notes_summary = result.get("display_notes")
+    else:
         notes_summary = summarize_notes(profile.get("notes"))
     append_labeled_line(lines, "notes", notes_summary)
     if include_source and result.get("source_file"):
