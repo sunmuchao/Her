@@ -620,6 +620,53 @@ def build_alias_lookup():
 
 ALIAS_LOOKUP = build_alias_lookup()
 
+REQUEST_SEQUENCE_CRITERIA_ALIASES = {
+    "cities": ("cities", "city"),
+    "districts": ("districts", "district"),
+    "settlement_cities": ("settlement_cities", "settlement_city"),
+    "relationship_goals": ("relationship_goals", "relationship_goal"),
+    "must_have": ("must_have",),
+    "must_not_have": ("must_not_have", "must_not_have"),
+    "prefer": ("prefer",),
+    "housing_statuses": ("housing_statuses", "housing_status"),
+    "car_statuses": ("car_statuses", "car_status"),
+    "marital_statuses": ("marital_statuses", "marital_status"),
+    "marriage_timelines": ("marriage_timelines", "marriage_timeline"),
+    "profile_statuses": ("profile_statuses", "profile_status"),
+    "verified_levels": ("verified_levels", "verified_level"),
+    "required_known_fields": ("required_known_fields", "require_known"),
+}
+
+REQUEST_SCALAR_CRITERIA_ALIASES = {
+    "gender": ("gender",),
+    "age_min": ("age_min",),
+    "age_max": ("age_max",),
+    "height_min": ("height_min",),
+    "height_max": ("height_max",),
+    "smoking": ("smoking",),
+    "drinking": ("drinking",),
+    "long_distance": ("long_distance",),
+    "want_children": ("want_children",),
+    "accept_partner_children": ("accept_partner_children",),
+    "accept_marital_status_strength": ("accept_marital_status_strength",),
+    "accept_partner_children_strength": ("accept_partner_children_strength",),
+    "active_within_days": ("active_within_days",),
+    "verified_level_min": ("verified_level_min",),
+    "photo_count_min": ("photo_count_min",),
+    "has_children": ("has_children",),
+}
+
+STRUCTURED_RESULT_LIST_FIELDS = (
+    "matched_on",
+    "reciprocal_on",
+    "missing_fields",
+    "self_profile_gaps",
+    "risk_flags",
+    "match_evidence",
+    "follow_up_questions",
+    "photo_preview",
+)
+
 
 def is_mysql_source(source):
     try:
@@ -688,6 +735,25 @@ def merge_keyword_args(values):
     for value in values or []:
         merged.extend(split_keywords(value))
     return merged
+
+
+def merge_keyword_values(value):
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple, set)):
+        return unique_ordered(
+            keyword
+            for item in value
+            for keyword in split_keywords(item)
+        )
+    return unique_ordered(split_keywords(value))
+
+
+def first_defined(mapping, aliases):
+    for alias in aliases:
+        if alias in mapping and mapping[alias] is not None:
+            return mapping[alias]
+    return None
 
 
 def as_lower(value):
@@ -2003,6 +2069,15 @@ def build_mysql_prefilter(criteria, canonical_to_actual, include_ids=None):
                 base_clauses.append(f"{expr} IN ({placeholders})")
         base_params.extend(normalized)
 
+    def add_not_in(canonical, values):
+        actual = canonical_to_actual.get(canonical)
+        normalized = [as_text(item) for item in values or [] if as_text(item)]
+        if actual is None or not normalized:
+            return
+        placeholders = ", ".join(["%s"] * len(normalized))
+        base_clauses.append(f"{text_expr(actual)} NOT IN ({placeholders})")
+        base_params.extend(normalized)
+
     def add_numeric_bound(canonical, operator, value, allow_missing=False):
         actual = canonical_to_actual.get(canonical)
         if actual is None or value is None:
@@ -2032,6 +2107,7 @@ def build_mysql_prefilter(criteria, canonical_to_actual, include_ids=None):
     add_exact("accept_partner_children", criteria.get("accept_partner_children"), allow_missing=True)
     add_in("marriage_timeline", criteria.get("marriage_timelines"), allow_missing=True)
     add_in("profile_status", criteria.get("profile_statuses") or ["active"], allow_missing=True)
+    add_not_in("source_channel", criteria.get("exclude_source_channels"))
     add_in("verified_level", criteria.get("verified_levels"), default_value="none")
     add_numeric_bound("photo_count", ">=", criteria.get("photo_count_min"), allow_missing=True)
 
@@ -2359,33 +2435,175 @@ def build_criteria_from_args(args):
     if required_known_fields:
         criteria["required_known_fields"] = required_known_fields
     criteria["exclude_ids"] = {item for item in args.exclude_id or []}
+    exclude_source_channels = merge_keyword_args(getattr(args, "exclude_source_channel", None))
+    if exclude_source_channels:
+        criteria["exclude_source_channels"] = {
+            as_lower(item) for item in exclude_source_channels if as_lower(item)
+        }
 
     return criteria
 
 
-def build_self_profile_from_args(args, records):
+def normalize_request_criteria(criteria):
+    criteria = dict(criteria or {})
+    normalized = {}
+
+    scalar_values = {}
+    for target_key, aliases in REQUEST_SCALAR_CRITERIA_ALIASES.items():
+        scalar_values[target_key] = first_defined(criteria, aliases)
+
+    if scalar_values["gender"]:
+        normalized["gender"] = as_text(scalar_values["gender"]).lower()
+
+    for key in ("age_min", "age_max", "height_min", "height_max", "active_within_days", "photo_count_min"):
+        value = as_int(scalar_values.get(key))
+        if value is not None:
+            normalized[key] = value
+
+    for key in (
+        "smoking",
+        "drinking",
+        "long_distance",
+        "want_children",
+        "accept_partner_children",
+        "accept_marital_status_strength",
+        "accept_partner_children_strength",
+        "verified_level_min",
+    ):
+        value = scalar_values.get(key)
+        if value is not None and value != "":
+            normalized[key] = value
+
+    has_children = normalize_bool(scalar_values.get("has_children"))
+    if has_children is not None:
+        normalized["has_children"] = has_children
+
+    for target_key, aliases in REQUEST_SEQUENCE_CRITERIA_ALIASES.items():
+        values = merge_keyword_values(first_defined(criteria, aliases))
+        if not values:
+            continue
+        if target_key == "required_known_fields":
+            normalized[target_key] = [
+                ALIAS_LOOKUP.get(normalize_key(field), normalize_key(field))
+                for field in values
+            ]
+        else:
+            normalized[target_key] = values
+
+    must_have = normalized.pop("must_have", [])
+    hard_must_have, soft_must_have = split_must_have_keywords(must_have)
+    if hard_must_have:
+        normalized["must_have"] = hard_must_have
+    prefer = normalized.get("prefer", [])
+    if soft_must_have:
+        prefer = unique_ordered(prefer + soft_must_have)
+    if prefer:
+        normalized["prefer"] = prefer
+
+    exclude_ids = first_defined(criteria, ("exclude_ids", "exclude_id"))
+    if exclude_ids is None:
+        normalized["exclude_ids"] = set()
+    elif isinstance(exclude_ids, (list, tuple, set)):
+        normalized["exclude_ids"] = {item for item in (as_int(value) for value in exclude_ids) if item is not None}
+    else:
+        exclude_id = as_int(exclude_ids)
+        normalized["exclude_ids"] = {exclude_id} if exclude_id is not None else set()
+
+    exclude_source_channels = first_defined(criteria, ("exclude_source_channels", "exclude_source_channel"))
+    if exclude_source_channels is None:
+        normalized["exclude_source_channels"] = set()
+    elif isinstance(exclude_source_channels, (list, tuple, set)):
+        normalized["exclude_source_channels"] = {
+            item for item in (as_lower(value) for value in exclude_source_channels) if item
+        }
+    else:
+        exclude_source_channel = as_lower(exclude_source_channels)
+        normalized["exclude_source_channels"] = (
+            {exclude_source_channel} if exclude_source_channel else set()
+        )
+
+    profile_statuses = normalized.get("profile_statuses")
+    if not profile_statuses:
+        normalized["profile_statuses"] = ["active"]
+
+    if "exclude_record_refs" in criteria and criteria["exclude_record_refs"] is not None:
+        normalized["exclude_record_refs"] = set(criteria["exclude_record_refs"])
+
+    if "self_profile" in criteria and criteria["self_profile"]:
+        normalized["self_profile"] = normalize_self_profile_input(criteria["self_profile"])
+
+    return normalized
+
+
+def resolve_self_profile_record(self_id, records):
+    matched_records = [record for record in records if as_int(record.get("id")) == self_id]
+    if not matched_records:
+        raise ValueError(f"Could not find self profile id {self_id} in the selected source.")
+    distinct_sources = unique_ordered(record.get("source_file") or "" for record in matched_records)
+    if len(distinct_sources) > 1:
+        readable_sources = [redact_source_ref(source) or "<unknown source>" for source in distinct_sources]
+        raise ValueError(
+            f"Self profile id {self_id} is ambiguous across multiple sources: "
+            + ", ".join(readable_sources)
+            + ". Narrow --source or use a unique id."
+        )
+    return matched_records[0]
+
+
+def normalize_self_profile_input(profile):
+    if not profile:
+        return None
+    if not any(value is not None and value != "" for value in profile.values()):
+        return None
+
+    normalized = normalize_record(dict(profile))
+    income_wan = as_int(normalized.get("income_wan"))
+    if income_wan is not None:
+        normalized["income_min_wan"] = income_wan
+        normalized["income_max_wan"] = income_wan
+
+    if normalized.get("income_min_wan") is None and normalized.get("income_max_wan") is None:
+        income_min, income_max = parse_income_range_to_wan(normalized.get("income_range"))
+        if income_min is not None:
+            normalized["income_min_wan"] = income_min
+        if income_max is not None:
+            normalized["income_max_wan"] = income_max
+
+    normalized["has_children"] = normalize_bool(normalized.get("has_children"))
+    normalized["combined_text"] = build_combined_text(normalized)
+    return normalized
+
+
+def build_self_profile(records, self_id=None, profile_input=None):
     profile = {}
 
-    if args.self_id is not None:
-        matched_records = [record for record in records if as_int(record.get("id")) == args.self_id]
-        if not matched_records:
-            raise ValueError(f"Could not find self profile id {args.self_id} in the selected source.")
-        distinct_sources = unique_ordered(record.get("source_file") or "" for record in matched_records)
-        if len(distinct_sources) > 1:
-            readable_sources = [redact_source_ref(source) or "<unknown source>" for source in distinct_sources]
-            raise ValueError(
-                f"Self profile id {args.self_id} is ambiguous across multiple sources: "
-                + ", ".join(readable_sources)
-                + ". Narrow --source or use a unique id."
-            )
-        matched = matched_records[0]
+    if self_id is not None:
+        matched = resolve_self_profile_record(self_id, records)
         profile.update(strip_internal_fields(matched))
         profile["source_file"] = matched.get("source_file") or ""
         income_min, income_max = parse_income_range_to_wan(matched.get("income_range"))
         profile["income_min_wan"] = income_min
         profile["income_max_wan"] = income_max
 
-    overlays = {
+    normalized_input = normalize_self_profile_input(profile_input)
+    if normalized_input:
+        existing_source = profile.get("source_file") or ""
+        profile.update(strip_internal_fields(normalized_input))
+        if existing_source and not profile.get("source_file"):
+            profile["source_file"] = existing_source
+
+    if not profile:
+        return None
+
+    if self_id is not None:
+        profile["id"] = self_id
+    profile["has_children"] = normalize_bool(profile.get("has_children"))
+    profile["combined_text"] = build_combined_text(profile)
+    return profile
+
+
+def build_self_profile_from_args(args, records):
+    profile_input = {
         "age": args.self_age,
         "city": args.self_city,
         "height": args.self_height,
@@ -2395,24 +2613,16 @@ def build_self_profile_from_args(args, records):
         "smoking": args.self_smoking,
         "drinking": args.self_drinking,
     }
-    for key, value in overlays.items():
-        if value is not None:
-            profile[key] = value
-
     if args.self_income_wan is not None:
-        profile["income_min_wan"] = args.self_income_wan
-        profile["income_max_wan"] = args.self_income_wan
+        profile_input["income_wan"] = args.self_income_wan
     if args.self_has_children is not None:
-        profile["has_children"] = bool(args.self_has_children)
+        profile_input["has_children"] = bool(args.self_has_children)
 
-    if not profile:
-        return None
-
-    if args.self_id is not None:
-        profile["id"] = args.self_id
-    profile["has_children"] = normalize_bool(profile.get("has_children"))
-    profile["combined_text"] = build_combined_text(profile)
-    return profile
+    return build_self_profile(
+        records,
+        self_id=args.self_id,
+        profile_input=profile_input,
+    )
 
 
 def exact_match(value, expected):
@@ -2521,6 +2731,7 @@ def format_rejection_reason(reason):
         "reciprocal_drinking_acceptance": "对方不能接受你的喝酒情况",
         "reciprocal_long_distance_acceptance": "对方不能接受异地",
         "candidate_pool_empty_after_exclusions": "筛选后没有其他可用候选",
+        "exclude_source_channel": "来自排除的来源渠道",
     }
     if code == "must_have_missing":
         return f"缺少必需关键词「{detail}」"
@@ -3008,12 +3219,26 @@ def evaluate_candidate(record, criteria, diagnostics=False, reciprocal_mode="str
     def fail(reason, detail=None):
         if not diagnostics:
             return None
-        return {
-            "matched": False,
-            "reject_reason": build_rejection_reason(reason, detail),
-            "id": record.get("id"),
-            "name": record.get("name") or "未命名",
-        }
+        activity_dt = effective_activity_datetime(record)
+        return build_match_result(
+            record=record,
+            score=0,
+            fit_score=0,
+            confidence_score=0,
+            risk_score=0,
+            matched_on=[],
+            reciprocal_on=[],
+            missing_fields=[],
+            self_profile_gaps=[],
+            risk_flags=[],
+            match_evidence=[],
+            follow_up_questions=[],
+            verified_rank=verified_rank(record.get("verified_level")),
+            activity_sort_ts=int(activity_dt.timestamp()) if activity_dt else 0,
+            profile_status_rank=profile_status_rank(record.get("profile_status")),
+            matched=False,
+            reject_reason=build_rejection_reason(reason, detail),
+        )
 
     reasons = []
     reciprocal_reasons = []
@@ -3027,6 +3252,9 @@ def evaluate_candidate(record, criteria, diagnostics=False, reciprocal_mode="str
         return fail("exclude_record_ref")
     if as_int(record.get("id")) in criteria.get("exclude_ids", set()):
         return fail("exclude_id")
+    source_channel = as_lower(record.get("source_channel"))
+    if source_channel and source_channel in criteria.get("exclude_source_channels", set()):
+        return fail("exclude_source_channel")
 
     profile_status = record.get("profile_status")
     allowed_statuses = criteria.get("profile_statuses") or ["active"]
@@ -3845,8 +4073,23 @@ SELF_PROFILE_ARGUMENT_SPECS = [
 OUTPUT_ARGUMENT_SPECS = [
     (("--exclude-id",), {"action": "append", "type": int, "help": "Profile id to exclude from results. Repeatable."}),
     (
+        ("--exclude-source-channel",),
+        {
+            "action": "append",
+            "help": "Profile source_channel to exclude from results. Repeatable or comma-separated.",
+        },
+    ),
+    (
         ("--show-source",),
         {"action": "store_true", "help": "Include the redacted source DSN and table in the text output for debugging."},
+    ),
+    (
+        ("--output-format",),
+        {
+            "choices": ["text", "json"],
+            "default": "text",
+            "help": "Render human-readable text or structured JSON output.",
+        },
     ),
     (("--limit",), {"type": int, "default": 10, "help": "Maximum number of results to return."}),
 ]
@@ -3882,8 +4125,69 @@ def build_parser():
     return parser
 
 
-def resolve_sources(args):
-    sources = args.source or ([DEFAULT_MYSQL_SOURCE] if DEFAULT_MYSQL_SOURCE else [])
+def build_search_request(
+    source=None,
+    sources=None,
+    table_name=None,
+    photos_table_name=None,
+    criteria=None,
+    self_profile=None,
+    self_id=None,
+    limit=10,
+    photo_preview_count=0,
+):
+    request_sources = sources if sources is not None else source
+    if request_sources is None:
+        normalized_sources = []
+    elif isinstance(request_sources, (list, tuple, set)):
+        normalized_sources = [item for item in request_sources if item]
+    else:
+        normalized_sources = [request_sources]
+    return {
+        "sources": normalized_sources,
+        "table_name": table_name,
+        "photos_table_name": photos_table_name,
+        "criteria": normalize_request_criteria(criteria),
+        "self_profile": normalize_self_profile_input(self_profile),
+        "self_id": as_int(self_id),
+        "limit": as_int(limit) or 10,
+        "photo_preview_count": as_int(photo_preview_count) or 0,
+    }
+
+
+def build_cli_self_profile_input(args):
+    profile = {
+        "age": args.self_age,
+        "city": args.self_city,
+        "height": args.self_height,
+        "education": args.self_education,
+        "job": getattr(args, "self_job", None),
+        "marital_status": args.self_marital_status,
+        "smoking": args.self_smoking,
+        "drinking": args.self_drinking,
+    }
+    if args.self_income_wan is not None:
+        profile["income_wan"] = args.self_income_wan
+    if args.self_has_children is not None:
+        profile["has_children"] = bool(args.self_has_children)
+    return profile
+
+
+def build_search_request_from_args(args):
+    return build_search_request(
+        sources=args.source,
+        table_name=args.table,
+        photos_table_name=args.photos_table,
+        criteria=build_criteria_from_args(args),
+        self_profile=build_cli_self_profile_input(args),
+        self_id=args.self_id,
+        limit=args.limit,
+        photo_preview_count=args.photo_preview_count,
+    )
+
+
+def resolve_request_sources(request):
+    sources = request.get("sources") or ([DEFAULT_MYSQL_SOURCE] if DEFAULT_MYSQL_SOURCE else [])
     if not sources:
         raise ValueError(
             "No profile source configured. Pass --source mysql://user:pass@host:3306/db?table=profiles "
@@ -3892,19 +4196,32 @@ def resolve_sources(args):
     return sources
 
 
-def collect_source_records(args, criteria, sources):
+def resolve_sources(args):
+    return resolve_request_sources(build_search_request_from_args(args))
+
+
+def collect_source_records_for_request(sources, table_name=None, criteria=None, self_id=None):
     records = []
-    include_ids = [args.self_id] if args.self_id is not None else []
+    include_ids = [self_id] if self_id is not None else []
     for source in sources:
         records.extend(
             load_source(
                 source,
-                table_name=args.table,
+                table_name=table_name,
                 criteria=criteria,
                 include_ids=include_ids,
             )
         )
     return records
+
+
+def collect_source_records(args, criteria, sources):
+    return collect_source_records_for_request(
+        sources,
+        table_name=args.table,
+        criteria=criteria,
+        self_id=args.self_id,
+    )
 
 
 def evaluate_records(records, criteria, limit):
@@ -3917,13 +4234,25 @@ def evaluate_records(records, criteria, limit):
     return select_diverse_results(results, limit)
 
 
-def apply_self_profile_context(args, criteria, records):
-    self_profile = build_self_profile_from_args(args, records)
+def apply_request_self_profile_context(request, criteria, records):
+    self_profile = build_self_profile(
+        records,
+        self_id=request.get("self_id"),
+        profile_input=request.get("self_profile"),
+    )
     if self_profile:
         criteria["self_profile"] = self_profile
-    if args.self_id is not None:
+    if request.get("self_id") is not None:
         criteria.setdefault("exclude_record_refs", set()).add(record_ref(self_profile))
     return self_profile
+
+
+def apply_self_profile_context(args, criteria, records):
+    return apply_request_self_profile_context(
+        build_search_request_from_args(args),
+        criteria,
+        records,
+    )
 
 
 def build_search_run(criteria, records, results):
@@ -3952,20 +4281,132 @@ def populate_no_match_details(search_run, args):
     return search_run
 
 
-def prepare_search_context(args):
-    criteria = build_criteria_from_args(args)
-    sources = resolve_sources(args)
-    records = collect_source_records(args, criteria, sources)
-    apply_self_profile_context(args, criteria, records)
+def prepare_search_request_context(request):
+    criteria = normalize_request_criteria(request.get("criteria"))
+    sources = resolve_request_sources(request)
+    records = collect_source_records_for_request(
+        sources,
+        table_name=request.get("table_name"),
+        criteria=criteria,
+        self_id=request.get("self_id"),
+    )
+    apply_request_self_profile_context(request, criteria, records)
     return criteria, records
 
 
-def execute_search(args):
-    criteria, records = prepare_search_context(args)
-    results = evaluate_records(records, criteria, args.limit)
-    attach_photo_previews(results, args.photo_preview_count, photos_table_name=args.photos_table)
+def prepare_search_context(args):
+    return prepare_search_request_context(build_search_request_from_args(args))
+
+
+def execute_search_request(request):
+    normalized_request = build_search_request(
+        sources=request.get("sources") if isinstance(request, dict) else None,
+        source=request.get("source") if isinstance(request, dict) else None,
+        table_name=request.get("table_name") if isinstance(request, dict) else None,
+        photos_table_name=request.get("photos_table_name") if isinstance(request, dict) else None,
+        criteria=request.get("criteria") if isinstance(request, dict) else None,
+        self_profile=request.get("self_profile") if isinstance(request, dict) else None,
+        self_id=request.get("self_id") if isinstance(request, dict) else None,
+        limit=request.get("limit", 10) if isinstance(request, dict) else 10,
+        photo_preview_count=request.get("photo_preview_count", 0) if isinstance(request, dict) else 0,
+    )
+    criteria, records = prepare_search_request_context(normalized_request)
+    results = evaluate_records(records, criteria, normalized_request["limit"])
+    attach_photo_previews(
+        results,
+        normalized_request["photo_preview_count"],
+        photos_table_name=normalized_request["photos_table_name"],
+    )
     search_run = build_search_run(criteria, records, results)
-    return populate_no_match_details(search_run, args)
+    return populate_no_match_details(
+        search_run,
+        argparse.Namespace(limit=normalized_request["limit"]),
+    )
+
+
+def execute_search(args):
+    return execute_search_request(build_search_request_from_args(args))
+
+
+def json_safe(value):
+    if isinstance(value, datetime):
+        return format_datetime(value)
+    if isinstance(value, dict):
+        return {
+            str(key): json_safe(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, set):
+        return [json_safe(item) for item in sorted(value, key=lambda item: repr(item))]
+    if isinstance(value, (list, tuple)):
+        return [json_safe(item) for item in value]
+    return value
+
+
+def build_structured_result_payload(result, include_source=False):
+    payload = {
+        "id": result.get("id"),
+        "name": result.get("name") or "未命名",
+        "score": result.get("score"),
+        "fit_score": result.get("fit_score"),
+        "confidence_score": result.get("confidence_score"),
+        "risk_score": result.get("risk_score"),
+        "matched_on": list(result.get("matched_on") or []),
+        "reciprocal_on": list(result.get("reciprocal_on") or []),
+        "missing_fields": list(result.get("missing_fields") or []),
+        "self_profile_gaps": list(result.get("self_profile_gaps") or []),
+        "risk_flags": list(result.get("risk_flags") or []),
+        "match_evidence": list(result.get("match_evidence") or []),
+        "follow_up_questions": list(result.get("follow_up_questions") or []),
+        "photo_preview": list(result.get("photo_preview") or []),
+        "fallback_reason": result.get("fallback_reason"),
+        "profile": json_safe(result.get("profile") or {}),
+    }
+    if include_source and result.get("source_file"):
+        payload["source"] = redact_source_ref(result["source_file"])
+    return payload
+
+
+def build_pool_summary(search_run):
+    diagnostics = search_run.get("diagnostics") or {}
+    return {
+        "scanned_count": len(search_run.get("records") or []),
+        "passed_count": len(search_run.get("results") or []),
+        "usable_count": diagnostics.get("usable_count", len(search_run.get("records") or [])),
+    }
+
+
+def build_structured_search_response(search_run, include_source=False, include_text=False):
+    response = {
+        "has_match": bool(search_run.get("results")),
+        "result_count": len(search_run.get("results") or []),
+        "pool_summary": build_pool_summary(search_run),
+        "results": [
+            build_structured_result_payload(result, include_source=include_source)
+            for result in search_run.get("results") or []
+        ],
+        "fallback_results": [
+            build_structured_result_payload(result, include_source=include_source)
+            for result in search_run.get("fallback_results") or []
+        ],
+        "diagnostics": json_safe(search_run.get("diagnostics")),
+    }
+    if include_text:
+        response["text"] = render_search_output(search_run, include_source=include_source)
+    return response
+
+
+def render_search_json(search_run, include_source=False, include_text=False):
+    return json.dumps(
+        build_structured_search_response(
+            search_run,
+            include_source=include_source,
+            include_text=include_text,
+        ),
+        ensure_ascii=False,
+        indent=2,
+        sort_keys=False,
+    )
 
 
 def render_search_output(search_run, include_source=False):
@@ -3977,13 +4418,21 @@ def render_search_output(search_run, include_source=False):
     )
 
 
-def main():
+def main(argv=None):
     parser = build_parser()
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     try:
         search_run = execute_search(args)
-        print(render_search_output(search_run, include_source=args.show_source))
+        if args.output_format == "json":
+            print(
+                render_search_json(
+                    search_run,
+                    include_source=args.show_source,
+                )
+            )
+        else:
+            print(render_search_output(search_run, include_source=args.show_source))
     except Exception as exc:  # pragma: no cover - CLI path
         print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(1)

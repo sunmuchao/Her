@@ -51,7 +51,8 @@ Ensure the Python dependency is present first. Run `python3 -m pip install pymys
    Pass `--source` explicitly, or set `PARTNER_SEARCH_MYSQL_SOURCE` first if you want a reusable local default. The skill no longer assumes a built-in MySQL root DSN.
 2. Convert the user's request into CLI flags.
    Start with direct filters such as `--gender`, `--city`, `--relationship-goal`, and `--verified-level-min`. Add `--must-have` / `--must-not-have` for text requirements and `--self-id` or `--self-*` only when reciprocal matching matters.
-3. Run `scripts/search_candidates.py`.
+3. Choose the call shape.
+   Use `python3 scripts/search_candidates.py` for human-facing text, `--output-format json` for structured CLI output, or import `partner_search.search_profiles(...)` when another Python system wants structured data directly.
 4. Return the best matches with three things:
    - why they match
    - what information is missing
@@ -72,8 +73,9 @@ Use only the flags you need:
 - Quality filters: `--profile-status`, `--active-within-days`, `--verified-level`, `--verified-level-min`, `--photo-count-min`
 - Text matching: `--must-have`, `--must-not-have`, `--prefer`
 - Known-field control: `--require-known` for fields that must be explicitly filled instead of blank or unknown
-- Reciprocal matching: `--self-id`, the `--self-*` flags, and `--exclude-id`
+- Reciprocal matching: `--self-id`, the `--self-*` flags, `--exclude-id`, and `--exclude-source-channel`
 - Optional media lookup: `--photo-preview-count`, `--photos-table`
+- Output shape: `--output-format text|json`
 - Debug output: `--show-source` when you explicitly need the redacted source DSN and table in the final text output
 
 Repeat multi-value flags such as `--city`, `--relationship-goal`, `--must-have`, `--must-not-have`, and `--prefer` as needed, or pass comma-separated values.
@@ -163,6 +165,50 @@ python3 scripts/search_candidates.py \
   --city 无锡
 ```
 
+Return structured JSON from the CLI when another tool wants machine-readable output:
+
+```bash
+python3 scripts/search_candidates.py \
+  --source 'mysql://user:pass@127.0.0.1:3306/her?table=profiles' \
+  --gender 女 \
+  --city 无锡 \
+  --output-format json
+```
+
+## Python API
+
+Use the importable API when another Python caller wants stable structured results without shelling out:
+
+```python
+from partner_search import search_profiles
+
+response = search_profiles(
+    source="mysql://user:pass@127.0.0.1:3306/her?table=profiles",
+    criteria={
+        "gender": "女",
+        "cities": ["无锡"],
+        "relationship_goals": ["认真恋爱", "结婚导向"],
+        "must_have": ["情绪稳定"],
+        "prefer": ["消费观正常", "生活规律"],
+        "verified_level_min": "photo",
+    },
+    self_profile={
+        "age": 28,
+        "city": "无锡",
+        "height": 178,
+    },
+    limit=10,
+)
+```
+
+The public package exports:
+
+- `partner_search.search_profiles(...)` for the simplest structured call
+- `partner_search.search(...)` and `partner_search.SearchRequest` when you want an explicit request/response object
+- `SearchResponse.to_dict()` / `to_json()` / `.text` for structured vs human-readable rendering from the same search run
+
+For the Python API, pass canonical criteria keys such as `cities`, `districts`, `relationship_goals`, `profile_statuses`, `required_known_fields`, `exclude_ids`, and `exclude_source_channels`. The API also accepts singular convenience aliases such as `city`, `district`, and `relationship_goal`.
+
 ## Interpretation Rules
 
 - Treat age, city, gender, relationship goal, smoking, drinking, long-distance preference, marital status, and child plan as the strongest filters when present.
@@ -192,6 +238,21 @@ python3 scripts/search_candidates.py \
 - Photo previews are fetched after ranking so the script only queries `profile_photos` for the final result ids. If the photos table is unavailable or incomplete, continue without `photo_preview`.
 
 ## Output Format
+
+There are now two caller-facing output shapes:
+
+- text: default CLI output for humans
+- json: `--output-format json` in the CLI, or `SearchResponse.to_dict()` / `to_json()` from the Python API
+
+The structured response contains:
+
+- `has_match`
+- `result_count`
+- `pool_summary`
+- `results`
+- `fallback_results`
+- `diagnostics`
+- optional `text` when the Python caller explicitly asks to include the rendered text form
 
 Summarize the top matches in plain language. For each candidate, include:
 

@@ -509,6 +509,40 @@ Phase 1 完成后，`partner-search` 应该处于下面这个状态：
 - 改动 scorer 或 formatter 时，测试能及时发现回归
 - `partner-search` 依然保持纯匹配边界
 
+### 13.6 Phase 2 落地到当前代码
+
+这一阶段在当前 skill 里，应该具体落成下面这些东西：
+
+- `scripts/search_candidates.py`
+  - 保留 CLI
+  - 但把真正的执行入口固定成 request 驱动
+  - 例如 `build_search_request(...)`、`execute_search_request(...)`
+  - CLI 只是把命令行参数转成 request，再调用同一条执行链路
+- `partner_search/api.py`
+  - 提供正式的 Python 调用入口
+  - 例如 `search_profiles(...)`、`search(...)`
+  - 让外部系统直接拿结构化结果，不再需要 shell 跑脚本后解析文本
+- `partner_search/__init__.py`
+  - 暴露稳定的公共导入面
+  - 让调用方直接 `from partner_search import search_profiles`
+- `scripts/search_candidates.py` 继续保留文本输出
+  - 但同时支持结构化 JSON 输出
+  - 例如 `--output-format json`
+- `tests/test_partner_search_api.py`
+  - 覆盖 importable API
+  - 覆盖结构化 JSON 输出
+  - 覆盖 persona 风格样本请求
+- `tests/test_search_candidates.py`
+  - 继续锁住 scorer、formatter、diagnostics、CLI 回归
+
+这样做完以后，Phase 2 的状态应该是：
+
+- 人可以继续用 CLI 看文本结果
+- 系统可以直接 import 调用
+- 文本和结构化输出共用同一套搜索执行链路
+- 结果 schema 更稳定
+- 测试能同时盯住 CLI 和 API 两层
+
 ## 14. Phase 3: 外部系统做“持续留意 / 新候选提醒”
 
 ### 14.1 目标
