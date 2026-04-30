@@ -842,6 +842,26 @@ def infer_target_long_distance_value(explicit_value: Any, semantics_text: Any) -
     return explicit
 
 
+def canonicalize_long_distance_state(value: Any) -> Optional[str]:
+    text = clean_text(value)
+    if not text:
+        return None
+    if text in {"接受", "不接受", "可协商", "未知"}:
+        return text
+
+    has_transition_allowance = any(
+        marker in text
+        for marker in ("短期异地", "短期通勤", "通勤型距离", "近距离", "落地计划", "双城过渡", "稳定留沪")
+    )
+    if has_transition_allowance or "谨慎" in text:
+        return "可协商"
+    if "不接受异地" in text or any(pattern.search(text) for pattern in LONG_DISTANCE_BLOCK_PATTERNS):
+        return "不接受"
+    if "接受" in text:
+        return "接受"
+    return text
+
+
 def normalize_city_token(value: Any) -> Optional[str]:
     text = clean_text(value)
     if not text:
@@ -1700,8 +1720,11 @@ def build_profile_payload(
     if persona.get("self_income_wan") is not None:
         payload["income_range"] = income_wan_to_range(persona.get("self_income_wan"))
     if persona.get("target_accept_long_distance") is not None:
-        payload["long_distance"] = persona.get("target_accept_long_distance")
-        payload["accept_long_distance"] = persona.get("target_accept_long_distance")
+        canonical_long_distance = canonicalize_long_distance_state(
+            persona.get("target_accept_long_distance")
+        )
+        payload["long_distance"] = canonical_long_distance
+        payload["accept_long_distance"] = canonical_long_distance
     if persona.get("target_accept_partner_children") is not None:
         payload["accept_partner_children"] = canonicalize_child_acceptance_state(
             persona.get("target_accept_partner_children")
