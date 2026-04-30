@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
 
+"""Search profile sources for partner candidates.
+
+This module intentionally keeps product workflow concerns out of the matching
+engine. The CLI remains available, but the search flow is split into small
+helpers so callers can reuse loading, evaluation, and rendering separately.
+"""
+
 import argparse
 import json
 import os
@@ -1773,6 +1780,10 @@ def build_follow_up_questions(record, missing_fields, risk_flags, self_profile=N
             questions.append("确认城市偏好没命中时，对方是不是只是嘴上可协商，现实里会不会很快卡住。")
         elif risk == "对方城市偏好未命中，异地接受度未知":
             questions.append("确认城市偏好没命中的情况下，对方到底能不能接受跨城推进。")
+        elif risk == "对方不接受长期异地，需要确认落地计划":
+            questions.append("确认对方能接受的是短期过渡，还是只要长期异地就会卡住，以及落地计划怎么定。")
+        elif risk == "异地需要明确落地计划":
+            questions.append("确认跨城推进有没有明确落地计划，不要只停留在原则上可以。")
         elif risk == "对方对喝酒仅可协商":
             questions.append("确认偶尔喝酒在对方那里是能接受，还是只是勉强可协商。")
         elif risk == "对方对抽烟仅可协商":
@@ -2652,7 +2663,7 @@ def build_fallback_candidates(records, criteria, limit=3):
         candidates.append(fallback_result)
 
     candidates.sort(key=result_sort_key, reverse=True)
-    return candidates[:limit]
+    return select_diverse_results(candidates, limit)
 
 
 def format_no_match_text(diagnostics, fallback_results=None):
@@ -3435,6 +3446,71 @@ def result_sort_key(result):
     )
 
 
+def diversity_job_cluster(job):
+    text = as_text(job)
+    if not text:
+        return ""
+    for pattern, label in DIVERSITY_JOB_PATTERNS:
+        if pattern.search(text):
+            return label
+    return text[:12]
+
+
+def diversity_signature(result):
+    profile = result.get("profile") or {}
+    return (
+        diversity_job_cluster(profile.get("job")),
+        as_text(profile.get("career_intensity")),
+        as_text(profile.get("communication_style")),
+        as_text(profile.get("life_routine")),
+        as_text(profile.get("commitment_clarity")),
+    )
+
+
+def diversity_penalty(candidate, selected):
+    candidate_signature = diversity_signature(candidate)
+    max_penalty = 0
+    for existing in selected:
+        overlap = sum(
+            1
+            for left, right in zip(candidate_signature, diversity_signature(existing))
+            if left and right and left == right
+        )
+        if overlap >= 4:
+            max_penalty = max(max_penalty, 6)
+        elif overlap >= 3:
+            max_penalty = max(max_penalty, 4)
+        elif overlap >= 2:
+            max_penalty = max(max_penalty, 2)
+    return max_penalty
+
+
+def select_diverse_results(results, limit):
+    if len(results) <= limit:
+        return results[:limit]
+
+    remaining = list(results)
+    selected = []
+    while remaining and len(selected) < limit:
+        best = None
+        best_key = None
+        for item in remaining:
+            penalty = diversity_penalty(item, selected)
+            key = (
+                item["score"] - penalty,
+                item["score"],
+                item["verified_rank"],
+                item["activity_sort_ts"],
+                item["profile_status_rank"],
+            )
+            if best is None or key > best_key:
+                best = item
+                best_key = key
+        selected.append(best)
+        remaining.remove(best)
+    return selected
+
+
 def attach_photo_previews(results, preview_count, photos_table_name=None):
     if preview_count <= 0 or not results:
         return
@@ -3478,6 +3554,17 @@ def attach_photo_previews(results, preview_count, photos_table_name=None):
             result["photo_preview"] = previews
 
 
+def summarize_signal_parts(profile, limit=8):
+    parts = []
+    for field, label in SIGNAL_FIELD_SPECS:
+        value = profile.get(field)
+        if value:
+            parts.append(f"{label}={value}")
+        if len(parts) >= limit:
+            break
+    return parts
+
+
 def format_text(results, include_source=False):
     lines = []
     for index, result in enumerate(results, start=1):
@@ -3507,51 +3594,9 @@ def format_text(results, include_source=False):
             meta_parts.append(f"{activity_field}={active_at}")
         if meta_parts:
             lines.append(f"   meta: {' | '.join(meta_parts)}")
-        vibe_parts = []
-        if profile.get("life_routine"):
-            vibe_parts.append(f"作息={profile.get('life_routine')}")
-        if profile.get("communication_style"):
-            vibe_parts.append(f"沟通={profile.get('communication_style')}")
-        if profile.get("dating_pace"):
-            vibe_parts.append(f"节奏={profile.get('dating_pace')}")
-        if profile.get("expression_style"):
-            vibe_parts.append(f"表达={profile.get('expression_style')}")
-        if profile.get("relationship_capacity"):
-            vibe_parts.append(f"关系投入={profile.get('relationship_capacity')}")
-        if profile.get("interaction_comfort"):
-            vibe_parts.append(f"相处={profile.get('interaction_comfort')}")
-        if profile.get("patience_level"):
-            vibe_parts.append(f"耐心={profile.get('patience_level')}")
-        if profile.get("life_texture"):
-            vibe_parts.append(f"生活感={profile.get('life_texture')}")
-        if profile.get("career_intensity"):
-            vibe_parts.append(f"工作={profile.get('career_intensity')}")
-        if profile.get("exercise_habit"):
-            vibe_parts.append(f"运动={profile.get('exercise_habit')}")
-        if profile.get("growth_signal"):
-            vibe_parts.append(f"成长={profile.get('growth_signal')}")
-        if profile.get("warmth_style"):
-            vibe_parts.append(f"温度={profile.get('warmth_style')}")
-        if profile.get("aesthetic_expression"):
-            vibe_parts.append(f"审美={profile.get('aesthetic_expression')}")
-        if profile.get("conversation_resonance"):
-            vibe_parts.append(f"共鸣={profile.get('conversation_resonance')}")
-        if profile.get("personal_presence"):
-            vibe_parts.append(f"人物感={profile.get('personal_presence')}")
-        if profile.get("lightness_humor"):
-            vibe_parts.append(f"轻松感={profile.get('lightness_humor')}")
-        if profile.get("consumption_attitude"):
-            vibe_parts.append(f"消费观={profile.get('consumption_attitude')}")
-        if profile.get("chat_texture"):
-            vibe_parts.append(f"聊天质感={profile.get('chat_texture')}")
-        if profile.get("commitment_clarity"):
-            vibe_parts.append(f"长期意图={profile.get('commitment_clarity')}")
-        if profile.get("relationship_execution"):
-            vibe_parts.append(f"推进方式={profile.get('relationship_execution')}")
-        if profile.get("blended_family_readiness"):
-            vibe_parts.append(f"现实承接={profile.get('blended_family_readiness')}")
-        if vibe_parts:
-            lines.append(f"   vibe: {' | '.join(vibe_parts)}")
+        signal_parts = summarize_signal_parts(profile)
+        if signal_parts:
+            lines.append(f"   signals: {' | '.join(signal_parts)}")
         if result.get("photo_preview"):
             lines.append(f"   photo_preview: {', '.join(result['photo_preview'])}")
         if result["matched_on"]:
@@ -3560,6 +3605,8 @@ def format_text(results, include_source=False):
             lines.append(f"   reciprocal_on: {', '.join(result['reciprocal_on'])}")
         if result["missing_fields"]:
             lines.append(f"   missing_fields: {', '.join(result['missing_fields'])}")
+        if result.get("self_profile_gaps"):
+            lines.append(f"   self_profile_gaps: {', '.join(result['self_profile_gaps'])}")
         if result["risk_flags"]:
             lines.append(f"   risk_flags: {', '.join(result['risk_flags'])}")
         if result.get("fallback_reason"):
@@ -3576,7 +3623,7 @@ def format_text(results, include_source=False):
     return "\n".join(lines)
 
 
-def main():
+def build_parser():
     parser = argparse.ArgumentParser(description="Search profile sources for partner candidates.")
     parser.add_argument(
         "--source",
@@ -3701,55 +3748,91 @@ def main():
         help="Include the redacted source DSN and table in the text output for debugging.",
     )
     parser.add_argument("--limit", type=int, default=10, help="Maximum number of results to return.")
+    return parser
+
+
+def resolve_sources(args):
+    sources = args.source or ([DEFAULT_MYSQL_SOURCE] if DEFAULT_MYSQL_SOURCE else [])
+    if not sources:
+        raise ValueError(
+            "No profile source configured. Pass --source mysql://user:pass@host:3306/db?table=profiles "
+            "or set PARTNER_SEARCH_MYSQL_SOURCE."
+        )
+    return sources
+
+
+def collect_source_records(args, criteria, sources):
+    records = []
+    include_ids = [args.self_id] if args.self_id is not None else []
+    for source in sources:
+        records.extend(
+            load_source(
+                source,
+                table_name=args.table,
+                criteria=criteria,
+                include_ids=include_ids,
+            )
+        )
+    return records
+
+
+def evaluate_records(records, criteria, limit):
+    results = []
+    for record in records:
+        evaluated = evaluate_candidate(record, criteria)
+        if evaluated:
+            results.append(evaluated)
+    results.sort(key=result_sort_key, reverse=True)
+    return select_diverse_results(results, limit)
+
+
+def execute_search(args):
+    criteria = build_criteria_from_args(args)
+    sources = resolve_sources(args)
+    records = collect_source_records(args, criteria, sources)
+
+    self_profile = build_self_profile_from_args(args, records)
+    if self_profile:
+        criteria["self_profile"] = self_profile
+    if args.self_id is not None:
+        criteria.setdefault("exclude_record_refs", set()).add(record_ref(self_profile))
+
+    results = evaluate_records(records, criteria, args.limit)
+    attach_photo_previews(results, args.photo_preview_count, photos_table_name=args.photos_table)
+
+    search_run = {
+        "criteria": criteria,
+        "records": records,
+        "results": results,
+        "fallback_results": None,
+        "diagnostics": None,
+    }
+    if not results:
+        search_run["fallback_results"] = build_fallback_candidates(
+            records,
+            criteria,
+            limit=min(args.limit, 3),
+        )
+        search_run["diagnostics"] = build_no_match_diagnostics(records, criteria)
+    return search_run
+
+
+def render_search_output(search_run, include_source=False):
+    if search_run["results"]:
+        return format_text(search_run["results"], include_source=include_source)
+    return format_no_match_text(
+        search_run["diagnostics"],
+        fallback_results=search_run["fallback_results"],
+    )
+
+
+def main():
+    parser = build_parser()
     args = parser.parse_args()
 
     try:
-        criteria = build_criteria_from_args(args)
-        records = []
-        sources = args.source or ([DEFAULT_MYSQL_SOURCE] if DEFAULT_MYSQL_SOURCE else [])
-        if not sources:
-            raise ValueError(
-                "No profile source configured. Pass --source mysql://user:pass@host:3306/db?table=profiles "
-                "or set PARTNER_SEARCH_MYSQL_SOURCE."
-            )
-        include_ids = [args.self_id] if args.self_id is not None else []
-        for source in sources:
-            records.extend(
-                load_source(
-                    source,
-                    table_name=args.table,
-                    criteria=criteria,
-                    include_ids=include_ids,
-                )
-            )
-        self_profile = build_self_profile_from_args(args, records)
-        if self_profile:
-            criteria["self_profile"] = self_profile
-        if args.self_id is not None:
-            criteria.setdefault("exclude_record_refs", set()).add(record_ref(self_profile))
-        results = []
-        for record in records:
-            evaluated = evaluate_candidate(record, criteria)
-            if evaluated:
-                results.append(evaluated)
-        results.sort(key=result_sort_key, reverse=True)
-        results = results[: args.limit]
-        attach_photo_previews(results, args.photo_preview_count, photos_table_name=args.photos_table)
-
-        if results:
-            print(format_text(results, include_source=args.show_source))
-        else:
-            fallback_results = build_fallback_candidates(
-                records,
-                criteria,
-                limit=min(args.limit, 3),
-            )
-            print(
-                format_no_match_text(
-                    build_no_match_diagnostics(records, criteria),
-                    fallback_results=fallback_results,
-                )
-            )
+        search_run = execute_search(args)
+        print(render_search_output(search_run, include_source=args.show_source))
     except Exception as exc:  # pragma: no cover - CLI path
         print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(1)

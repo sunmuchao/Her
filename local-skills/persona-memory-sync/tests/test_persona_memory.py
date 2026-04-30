@@ -211,7 +211,7 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertEqual(payload["accept_marital_status_semantics"], "在可接受婚况范围内，但会更看具体人和相处质量")
         self.assertEqual(payload["income_range"], "36-45万/年")
         self.assertEqual(payload["education"], "专升本")
-        self.assertEqual(payload["public_education"], "本科及以上")
+        self.assertEqual(payload["public_education"], "本科")
         self.assertEqual(payload["personality"], "慢热但反馈稳定，认真推进关系。")
         self.assertEqual(payload["values"], "看重沟通效率，也看重情绪稳定。")
         self.assertEqual(payload["public_job"], "产品经理")
@@ -260,7 +260,7 @@ class PersonaMemoryTests(unittest.TestCase):
                 "self_education": "专升本",
             }
         )
-        self.assertEqual(payload["public_education"], "本科及以上")
+        self.assertEqual(payload["public_education"], "本科")
 
     def test_build_public_profile_uses_current_city_not_native_and_softens_goal(self):
         payload = persona_memory_lib.build_public_profile(
@@ -269,7 +269,7 @@ class PersonaMemoryTests(unittest.TestCase):
                 "self_relationship_goal": "1-2年内往结婚推进",
             }
         )
-        self.assertEqual(payload["public_personality"], "现居上海，认真了解，合适的话希望稳定推进")
+        self.assertEqual(payload["public_personality"], "现居上海，认真了解，婚姻方向明确，合适会稳步推进")
         self.assertNotIn("上海本地", payload["public_personality"])
         self.assertNotIn("导向", payload["public_personality"])
 
@@ -288,6 +288,21 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertEqual(patch["target_requires_partner_accept_my_children"], 1)
         self.assertIsNone(patch["target_accept_partner_children"])
         self.assertIn("原则上不接受异地", patch["target_location_semantics"])
+        self.assertEqual(patch["must_have_tags"], "收入稳定")
+        self.assertEqual(patch["preferred_traits"], "接受孩子现实")
+
+    def test_normalize_patch_extracts_location_semantics_without_copying_full_preference_summary(self):
+        patch = persona_memory_lib.normalize_patch(
+            {
+                "target_cities": "上海",
+                "preference_summary_internal": "上海优先，也接受稳定留沪；短期异地可了解，但不接受长期不落地异地；也看重情绪稳定和沟通顺畅。",
+            }
+        )
+        self.assertEqual(
+            patch["target_location_semantics"],
+            "上海优先,也接受稳定留沪,短期异地可了解,但不接受长期不落地异地",
+        )
+        self.assertNotIn("情绪稳定", patch["target_location_semantics"])
 
     def test_build_public_profile_uses_safe_internal_traits_and_masks_child_reality_phrase(self):
         payload = persona_memory_lib.build_public_profile(
@@ -298,7 +313,7 @@ class PersonaMemoryTests(unittest.TestCase):
                 "must_have_tags": "接受孩子现实,边界清楚",
             }
         )
-        self.assertEqual(payload["public_personality"], "现居南京，慢热但认真，生活安静稳定，认真了解，重视长期关系")
+        self.assertEqual(payload["public_personality"], "现居南京，慢热但认真，生活安静稳定，认真了解，重视长期稳定关系")
         self.assertIn("能承接现实关系", payload["public_values"])
         self.assertNotIn("孩子现实", payload["public_values"])
 
@@ -326,7 +341,7 @@ class PersonaMemoryTests(unittest.TestCase):
                 "self_relationship_goal": "认真找对象，希望两年内推进到再婚",
             }
         )
-        self.assertEqual(payload["public_personality"], "现居苏州，认真了解，合适的话希望稳步推进到再婚")
+        self.assertEqual(payload["public_personality"], "现居苏州，认真了解，再婚方向明确，合适会稳步推进")
 
     def test_build_public_profile_does_not_infer_stable_lifestyle_from_non_smoking_alone(self):
         payload = persona_memory_lib.build_public_profile(
@@ -336,7 +351,7 @@ class PersonaMemoryTests(unittest.TestCase):
                 "self_smoking": "不抽烟",
             }
         )
-        self.assertEqual(payload["public_personality"], "现居无锡，认真了解，合适会考虑结婚")
+        self.assertEqual(payload["public_personality"], "现居无锡，认真了解，婚姻方向明确")
 
     def test_build_public_profile_sanitizes_legacy_public_draft(self):
         payload = persona_memory_lib.build_public_profile(
@@ -346,7 +361,7 @@ class PersonaMemoryTests(unittest.TestCase):
                 "public_profile_summary_draft": "无锡本地，生活方式稳定，认真以结婚为导向。",
             }
         )
-        self.assertEqual(payload["public_personality"], "现居无锡，生活方式稳定，认真了解，重视长期关系。")
+        self.assertEqual(payload["public_personality"], "现居无锡，生活方式稳定，认真了解，婚姻方向明确。")
 
     def test_build_public_profile_keeps_willingness_to_communicate_wording(self):
         payload = persona_memory_lib.build_public_profile(
@@ -368,9 +383,20 @@ class PersonaMemoryTests(unittest.TestCase):
             payload["public_values"],
             "更适合同城或近距离认真相处，看重边界感、沟通顺畅和稳定性。",
         )
-        self.assertIn("更适合同城或近距离相处", payload["public_notes"])
         self.assertIn("更偏好生活习惯相近的人", payload["public_notes"])
         self.assertIn("不喜欢关系里反复拉扯", payload["public_notes"])
+
+    def test_build_public_profile_preserves_stronger_location_boundary_in_public_preference(self):
+        payload = persona_memory_lib.build_public_profile(
+            {
+                "target_location_semantics": "上海优先；稳定留沪；短期异地可了解；但不接受长期不落地异地",
+                "public_preference_summary_draft": "上海优先，也接受稳定留沪；短期异地可了解，但不接受长期不落地异地；看重沟通顺畅。",
+            }
+        )
+        self.assertEqual(
+            payload["public_values"],
+            "短期异地可了解，但需要明确落地计划；不接受长期异地，看重沟通顺畅",
+        )
 
     def test_summarize_observation_evidence_replaces_raw_transcript_with_field_summary(self):
         evidence = persona_memory_lib.summarize_observation_evidence(
@@ -430,7 +456,7 @@ class PersonaMemoryTests(unittest.TestCase):
             "personality": "上海本地，1-2年内往结婚推进导向",
         }
         payload = persona_memory_lib.build_profile_payload(persona, existing_profile=existing_profile)
-        self.assertEqual(payload["personality"], "现居上海，认真了解，合适的话希望稳定推进")
+        self.assertEqual(payload["personality"], "现居上海，认真了解，婚姻方向明确，合适会稳步推进")
 
     def test_build_profile_payload_sanitizes_existing_internal_personality_without_dropping_extra_context(self):
         persona = {
@@ -480,8 +506,8 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertIn("AS education", sql)
         self.assertIn("public_job", sql)
         self.assertIn("CASE", sql)
-        self.assertIn("认真了解，合适的话希望稳定推进", sql)
-        self.assertIn("认真了解，合适的话希望稳步推进到再婚", sql)
+        self.assertIn("认真了解，婚姻方向明确，合适会稳步推进", sql)
+        self.assertIn("认真了解，再婚方向明确，合适会稳步推进", sql)
         self.assertIn("public_personality AS personality", sql)
         self.assertIn("public_values AS `values`", sql)
         self.assertIn("public_notes AS notes", sql)
