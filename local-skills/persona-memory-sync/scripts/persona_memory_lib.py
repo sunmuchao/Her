@@ -283,8 +283,20 @@ PUBLIC_SAFE_TAG_MAP = {
     "消费观正常": "消费观清醒",
     "接受孩子现实": "能承接现实关系",
     "能接受孩子现实": "能承接现实关系",
-    "婚姻诚意": "关系目标明确",
+    "婚姻诚意": "长期关系诚意",
+    "现实推进能力": "现实推进能力",
 }
+
+PUBLIC_VALUE_PRIORITY_TAGS = (
+    "能承接现实关系",
+    "现实推进能力",
+    "长期关系诚意",
+    "情绪稳定",
+    "边界清楚",
+    "责任感",
+    "沟通顺畅",
+    "愿意沟通",
+)
 
 PUBLIC_JOB_PATTERNS = (
     (re.compile(r"(医院|诊所|药师|医生|医师|护士|临床|医疗)"), "医疗相关工作"),
@@ -794,6 +806,8 @@ def build_public_location_note(persona: Dict[str, Any]) -> Optional[str]:
     blocks_long_term = any(pattern.search(semantics) for pattern in LONG_DISTANCE_BLOCK_PATTERNS)
 
     if blocks_long_term and (allows_short_term or has_landing_plan):
+        if clean_text(persona.get("target_accept_long_distance")) == "不接受":
+            return "原则上不接受异地；如有短期过渡，需明确落地计划"
         return "短期异地可了解，但需要明确落地计划；不接受长期异地"
     if blocks_long_term:
         return "不接受长期异地"
@@ -1387,7 +1401,14 @@ def build_public_profile(persona: Dict[str, Any]) -> Dict[str, Optional[str]]:
         public_personality = "，".join(unique_ordered(fragments)) or "资料在持续完善中"
 
     if not public_values:
-        key_tags = unique_ordered(must_have + preferred_traits)[:4]
+        key_tags = unique_ordered(must_have + preferred_traits)
+        if normalize_boolish(persona.get("target_requires_partner_accept_my_children")) == 1:
+            key_tags = unique_ordered(["能承接现实关系"] + key_tags)
+        prioritized_tags = [
+            tag for tag in PUBLIC_VALUE_PRIORITY_TAGS if tag in key_tags
+        ]
+        trailing_tags = [tag for tag in key_tags if tag not in set(prioritized_tags)]
+        key_tags = unique_ordered(prioritized_tags + trailing_tags)[:5]
         if key_tags:
             public_values = "看重" + "、".join(key_tags)
         else:
