@@ -384,6 +384,69 @@ class SearchCandidatesTests(unittest.TestCase):
         }
         self.assertIsNone(search_candidates.evaluate_candidate(record, criteria))
 
+    def test_evaluate_candidate_does_not_reject_non_smoker_for_smoking_keyword(self):
+        record = {
+            "id": 107,
+            "name": "NoSmoking",
+            "profile_status": "active",
+            "verified_level": "photo",
+            "smoking": "否",
+            "combined_text": "不抽烟，生活规律",
+            "source_file": "mysql://root@127.0.0.1:3307/her?table=profiles#profiles",
+        }
+        criteria = {
+            "must_not_have": ["抽烟"],
+            "profile_statuses": ["active"],
+            "exclude_ids": set(),
+        }
+
+        result = search_candidates.evaluate_candidate(record, criteria)
+
+        self.assertIsNotNone(result)
+        self.assertNotIn("资料里提到“抽烟”，需要确认具体语境", result["risk_flags"])
+
+    def test_evaluate_candidate_does_not_reject_soft_negative_keyword_when_it_is_boundary(self):
+        record = {
+            "id": 108,
+            "name": "NoDrama",
+            "profile_status": "active",
+            "verified_level": "photo",
+            "notes": "不喜欢关系里来回拉扯，希望相处简单直接。",
+            "combined_text": "不喜欢关系里来回拉扯 希望相处简单直接",
+            "source_file": "mysql://root@127.0.0.1:3307/her?table=profiles#profiles",
+        }
+        criteria = {
+            "must_not_have": ["拉扯"],
+            "profile_statuses": ["active"],
+            "exclude_ids": set(),
+        }
+
+        result = search_candidates.evaluate_candidate(record, criteria)
+
+        self.assertIsNotNone(result)
+        self.assertNotIn("资料里提到“拉扯”，需要确认具体语境", result["risk_flags"])
+
+    def test_evaluate_candidate_soft_negative_keyword_ambiguous_mention_becomes_risk(self):
+        record = {
+            "id": 109,
+            "name": "AmbiguousDrama",
+            "profile_status": "active",
+            "verified_level": "photo",
+            "notes": "之前经历过一段很拉扯的关系，现在更想稳定。",
+            "combined_text": "之前经历过一段很拉扯的关系 现在更想稳定",
+            "source_file": "mysql://root@127.0.0.1:3307/her?table=profiles#profiles",
+        }
+        criteria = {
+            "must_not_have": ["拉扯"],
+            "profile_statuses": ["active"],
+            "exclude_ids": set(),
+        }
+
+        result = search_candidates.evaluate_candidate(record, criteria)
+
+        self.assertIsNotNone(result)
+        self.assertIn("资料里提到“拉扯”，需要确认具体语境", result["risk_flags"])
+
     def test_evaluate_candidate_keeps_missing_profile_status_as_unknown(self):
         record = {
             "id": 103,
@@ -408,6 +471,18 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertIsNone(
             search_candidates.evaluate_reciprocal_compatibility(candidate, self_profile)
         )
+
+    def test_reciprocal_city_preference_softens_when_accepts_long_distance(self):
+        candidate = {
+            "preferred_cities": "上海",
+            "accept_long_distance": "接受",
+        }
+        self_profile = {"city": "无锡"}
+
+        result = search_candidates.evaluate_reciprocal_compatibility(candidate, self_profile)
+
+        self.assertIsNotNone(result)
+        self.assertIn("对方城市偏好未命中，但资料写了接受异地", result["risk_flags"])
 
     def test_reciprocal_negotiable_children_becomes_risk_when_self_has_children(self):
         candidate = {
@@ -1087,6 +1162,43 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertIn("pool_summary: scanned=1 | passed=0", output)
         self.assertIn("why_no_match: 城市不在要求范围 x1", output)
         self.assertIn("relax_suggestions: 放宽地域条件", output)
+
+    def test_main_outputs_fallback_candidates_when_strict_matching_is_empty(self):
+        fake_records = [
+            {
+                "id": 802,
+                "name": "NearMatch",
+                "gender": "女",
+                "age": 29,
+                "city": "上海",
+                "preferred_cities": "上海",
+                "profile_status": "active",
+                "verified_level": "photo",
+                "combined_text": "认真恋爱",
+                "last_active_at": "2099-01-01 00:00:00",
+                "source_file": "mysql://root@127.0.0.1:3307/her?table=profiles#profiles",
+            }
+        ]
+
+        with mock.patch.object(search_candidates, "load_source", return_value=fake_records), mock.patch(
+            "sys.argv",
+            [
+                "search_candidates.py",
+                "--source",
+                "mysql://user:pass@127.0.0.1:3306/her?table=profiles",
+                "--gender",
+                "女",
+                "--self-city",
+                "无锡",
+            ],
+        ), mock.patch("sys.stdout", new_callable=mock.MagicMock) as mock_stdout:
+            search_candidates.main()
+
+        output = "".join(call.args[0] for call in mock_stdout.write.call_args_list)
+        self.assertIn("No matches found.", output)
+        self.assertIn("fallback_matches: strict 条件下没人过", output)
+        self.assertIn("1. NearMatch", output)
+        self.assertIn("fallback_reason: 不符合对方城市偏好", output)
 
     def test_main_errors_when_no_source_configured(self):
         original_default = search_candidates.DEFAULT_MYSQL_SOURCE
