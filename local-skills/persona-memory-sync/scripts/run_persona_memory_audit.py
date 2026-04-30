@@ -24,7 +24,9 @@ from persona_memory_lib import (  # noqa: E402
     DEFAULT_OBSERVATION_TABLE,
     DEFAULT_PERSONA_TABLE,
     build_profile_payload,
+    fetch_persona,
     insert_profile_stub,
+    insert_observations,
     income_wan_to_range,
     mark_profile_sync_results,
     merge_persona,
@@ -34,10 +36,6 @@ from persona_memory_lib import (  # noqa: E402
     profile_columns_for_persona_patch,
     quote_mysql_ident,
     resolve_mysql_source,
-)
-from upsert_persona_memory import (  # noqa: E402
-    fetch_persona,
-    insert_observations,
     upsert_persona,
     upsert_profile,
 )
@@ -467,7 +465,7 @@ def apply_persona_patch(
     field_results: List[Dict[str, Any]] = []
     try:
         with conn.cursor() as cursor:
-            existing = fetch_persona(cursor, persona_table, user_key)
+            existing = fetch_persona(cursor, persona_table, user_key=user_key)
             base = dict(existing or {})
             base["user_key"] = user_key
             merged, field_results = merge_persona(base, normalized_patch, source_type)

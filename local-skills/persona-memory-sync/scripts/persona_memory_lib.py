@@ -479,6 +479,34 @@ REGIONAL_CITY_EXPANSIONS = {
     "江浙沪": ("上海", "苏州", "无锡", "南京", "杭州", "常州", "宁波"),
 }
 
+CITY_PREFERENCE_PATTERNS = (
+    re.compile(
+        r"(?P<phrase>(?P<cities>[\u4e00-\u9fff]{2,4}(?:或|/|、|和|及)[\u4e00-\u9fff]{2,4})(?:都可以|都可|均可|优先))"
+    ),
+    re.compile(r"(?P<phrase>(?P<city>[\u4e00-\u9fff]{2,4})优先)"),
+    re.compile(r"(?P<phrase>(?P<city>[\u4e00-\u9fff]{2,4})(?:都可以|都可|均可))"),
+)
+
+CITY_TOKEN_BLOCKLIST = {
+    "异地",
+    "长期",
+    "短期",
+    "原则",
+    "关系",
+    "现实",
+    "正常",
+    "推进",
+    "沟通",
+    "计划",
+    "见面",
+    "稳定",
+    "留沪",
+    "同城",
+    "周边",
+    "通勤",
+    "落地",
+}
+
 
 def resolve_mysql_source(source: Optional[str] = None) -> str:
     resolved = source or os.environ.get(DEFAULT_SOURCE_ENV)
@@ -779,7 +807,7 @@ def infer_children_state_from_marital_status(status: Any) -> Optional[int]:
 def expand_regional_target_cities(target_cities: Any, *texts: Any) -> List[str]:
     cities = split_multi_value(target_cities)
     combined_text = " ".join(clean_text(text) or "" for text in texts)
-    expanded = list(cities)
+    expanded = list(cities) + extract_city_candidates_from_semantics(*texts)
     for region, region_cities in REGIONAL_CITY_EXPANSIONS.items():
         if region in combined_text:
             expanded.extend(region_cities)
@@ -814,7 +842,57 @@ def infer_target_long_distance_value(explicit_value: Any, semantics_text: Any) -
     return explicit
 
 
+def normalize_city_token(value: Any) -> Optional[str]:
+    text = clean_text(value)
+    if not text:
+        return None
+    if text.endswith("市") and len(text) >= 3:
+        text = text[:-1]
+    if not re.fullmatch(r"[\u4e00-\u9fff]{2,4}", text):
+        return None
+    if text in CITY_TOKEN_BLOCKLIST:
+        return None
+    return text
+
+
+def extract_city_preference_phrase_from_semantics(semantics_text: Any) -> Optional[str]:
+    semantics = clean_text(semantics_text) or ""
+    if not semantics:
+        return None
+    for segment in split_text_segments(semantics):
+        for pattern in CITY_PREFERENCE_PATTERNS:
+            match = pattern.search(segment)
+            if not match:
+                continue
+            phrase = clean_text(match.group("phrase"))
+            city_tokens = [
+                normalize_city_token(token)
+                for token in re.split(r"(?:或|/|、|和|及)", match.groupdict().get("cities") or match.groupdict().get("city") or "")
+            ]
+            city_tokens = [token for token in city_tokens if token]
+            if city_tokens:
+                return phrase
+    return None
+
+
+def extract_city_candidates_from_semantics(*texts: Any) -> List[str]:
+    candidates: List[str] = []
+    for text in texts:
+        phrase = extract_city_preference_phrase_from_semantics(text)
+        if not phrase:
+            continue
+        city_part = re.sub(r"(?:都可以|都可|均可|优先)$", "", phrase)
+        for token in re.split(r"(?:或|/|、|和|及)", city_part):
+            normalized = normalize_city_token(token)
+            if normalized:
+                candidates.append(normalized)
+    return unique_ordered(candidates)
+
+
 def build_public_city_preference_phrase(known_cities: Iterable[str], semantics_text: Any) -> Optional[str]:
+    semantic_phrase = extract_city_preference_phrase_from_semantics(semantics_text)
+    if semantic_phrase:
+        return semantic_phrase
     cities = [city for city in known_cities if clean_text(city)]
     if not cities:
         return None
@@ -849,6 +927,8 @@ def has_location_signal(segment: Any, known_cities: Optional[Iterable[str]] = No
     text = clean_text(segment) or ""
     if not text:
         return False
+    if extract_city_preference_phrase_from_semantics(text):
+        return True
     cities = [city for city in (known_cities or []) if clean_text(city)]
     if any(city in text for city in cities):
         return True
@@ -1565,7 +1645,9 @@ def build_public_profile(persona: Dict[str, Any]) -> Dict[str, Optional[str]]:
         public_personality = "，".join(unique_ordered(fragments)) or "资料在持续完善中"
 
     if not public_values:
-        key_tags = unique_ordered(must_have + preferred_traits)
+        key_tags = [
+            tag for tag in unique_ordered(must_have + preferred_traits) if tag not in {"稳定留沪"}
+        ]
         if normalize_boolish(persona.get("target_requires_partner_accept_my_children")) == 1:
             key_tags = unique_ordered(["真正接受孩子现实", "能承接现实关系"] + key_tags)
         prioritized_tags = [

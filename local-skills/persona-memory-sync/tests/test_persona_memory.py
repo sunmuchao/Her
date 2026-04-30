@@ -291,6 +291,20 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertIsNone(patch["must_have_tags"])
         self.assertEqual(patch["preferred_traits"], "收入稳定,接受孩子现实")
 
+    def test_normalize_patch_splits_compound_self_marital_status_and_expands_region(self):
+        patch = persona_memory_lib.normalize_patch(
+            {
+                "self_marital_status": "离异无孩",
+                "preference_summary_internal": "江浙沪范围内优先；短期通勤型距离可了解，但长期异地比较谨慎。",
+                "target_cities": "苏州,无锡,上海,南京",
+                "target_accept_long_distance": "可协商",
+            }
+        )
+        self.assertEqual(patch["self_marital_status"], "离异")
+        self.assertEqual(patch["self_has_children"], 0)
+        self.assertIn("杭州", patch["target_cities"])
+        self.assertEqual(patch["target_accept_long_distance"], "短期通勤可了解，长期异地谨慎")
+
     def test_normalize_patch_extracts_location_semantics_without_copying_full_preference_summary(self):
         patch = persona_memory_lib.normalize_patch(
             {
@@ -303,6 +317,14 @@ class PersonaMemoryTests(unittest.TestCase):
             "上海优先；也接受稳定留沪；短期异地可了解；但不接受长期不落地异地",
         )
         self.assertNotIn("情绪稳定", patch["target_location_semantics"])
+
+    def test_normalize_patch_infers_target_cities_from_location_semantics_phrase(self):
+        patch = persona_memory_lib.normalize_patch(
+            {
+                "target_location_semantics": "杭州或上海都可以，但原则上不接受异地；就算是上海也要能正常见面并推进关系。",
+            }
+        )
+        self.assertEqual(patch["target_cities"], "杭州,上海")
 
     def test_build_public_profile_uses_safe_internal_traits_and_masks_child_reality_phrase(self):
         payload = persona_memory_lib.build_public_profile(
@@ -370,9 +392,9 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertEqual(payload["public_personality"], "现居杭州，认真了解，长期现实关系方向明确")
         self.assertEqual(
             payload["public_values"],
-            "看重能承接现实关系、情绪稳定、边界清楚、责任感、沟通顺畅",
+            "看重真正接受孩子现实、能承接现实关系、情绪稳定、边界清楚、责任感、沟通顺畅",
         )
-        self.assertEqual(payload["public_notes"], "原则上不接受异地；需能正常见面并推进关系")
+        self.assertEqual(payload["public_notes"], "杭州或上海都可以；原则上不接受异地；需能正常见面并推进关系")
 
     def test_build_public_profile_does_not_infer_stable_lifestyle_from_non_smoking_alone(self):
         payload = persona_memory_lib.build_public_profile(
@@ -427,7 +449,7 @@ class PersonaMemoryTests(unittest.TestCase):
         )
         self.assertEqual(
             payload["public_values"],
-            "原则上不接受异地；如有短期过渡，需明确落地计划，上海优先，看重沟通顺畅",
+            "上海优先；原则上不接受异地；如有短期过渡，需明确落地计划，看重沟通顺畅",
         )
 
     def test_build_public_profile_prioritizes_child_reality_requirement_in_public_values(self):
@@ -439,7 +461,7 @@ class PersonaMemoryTests(unittest.TestCase):
         )
         self.assertEqual(
             payload["public_values"],
-            "看重能承接现实关系、情绪稳定、边界清楚、责任感、沟通顺畅",
+            "看重真正接受孩子现实、能承接现实关系、情绪稳定、边界清楚、责任感、沟通顺畅",
         )
 
     def test_build_public_profile_preserves_reality_execution_tag_in_public_values(self):
@@ -450,7 +472,7 @@ class PersonaMemoryTests(unittest.TestCase):
         )
         self.assertEqual(
             payload["public_values"],
-            "看重现实推进能力、长期关系诚意、情绪稳定、消费观清醒、沟通自然",
+            "看重现实推进能力、婚姻诚意、情绪稳定、消费观清醒、沟通自然",
         )
 
     def test_summarize_observation_evidence_replaces_raw_transcript_with_field_summary(self):
