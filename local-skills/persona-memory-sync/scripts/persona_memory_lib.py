@@ -313,6 +313,48 @@ CHILD_ACCEPTANCE_GUARDED_MARKERS = (
     "现阶段不考虑",
 )
 
+SOFT_REQUIREMENT_TAGS = {
+    "情绪稳定",
+    "愿意沟通",
+    "能沟通",
+    "好沟通",
+    "沟通顺畅",
+    "边界清楚",
+    "边界感",
+    "稳定工作",
+    "稳定生活",
+    "责任感",
+    "真诚",
+    "消费观正常",
+    "同城稳定发展",
+    "同城见面方便",
+    "同城更方便",
+    "长期推进明确",
+    "认真长期关系",
+    "愿意经营生活",
+    "作息相对正常",
+    "作息稳定",
+    "成长背景相近",
+    "少酒",
+}
+
+SOFT_REQUIREMENT_MARKERS = (
+    "沟通",
+    "情绪稳定",
+    "边界",
+    "责任感",
+    "真诚",
+    "稳定工作",
+    "稳定生活",
+    "同城",
+    "长期推进",
+    "经营生活",
+    "消费观",
+    "作息",
+    "成长背景",
+    "少酒",
+)
+
 
 def resolve_mysql_source(source: Optional[str] = None) -> str:
     resolved = source or os.environ.get(DEFAULT_SOURCE_ENV)
@@ -533,6 +575,31 @@ def split_multi_value(value: Any) -> List[str]:
     return result
 
 
+def is_soft_requirement_tag(tag: Any) -> bool:
+    text = clean_text(tag)
+    if not text:
+        return False
+    if text in SOFT_REQUIREMENT_TAGS:
+        return True
+    return any(marker in text for marker in SOFT_REQUIREMENT_MARKERS)
+
+
+def rebalance_soft_requirement_tags(patch: Dict[str, Any]) -> Dict[str, Any]:
+    normalized_patch = deepcopy(patch)
+    if "must_have_tags" not in normalized_patch:
+        return normalized_patch
+
+    must_have_items = split_multi_value(normalized_patch.get("must_have_tags"))
+    preferred_items = split_multi_value(normalized_patch.get("preferred_traits"))
+    hard_must_have = [item for item in must_have_items if not is_soft_requirement_tag(item)]
+    soft_must_have = [item for item in must_have_items if is_soft_requirement_tag(item)]
+
+    if soft_must_have:
+        normalized_patch["must_have_tags"] = hard_must_have
+        normalized_patch["preferred_traits"] = preferred_items + soft_must_have
+    return normalized_patch
+
+
 def csv_from_items(items: Iterable[str]) -> Optional[str]:
     normalized = split_multi_value(list(items))
     return ",".join(normalized) if normalized else None
@@ -552,6 +619,7 @@ def parse_patch_json(raw_json: Optional[str] = None, patch_file: Optional[str] =
 
 
 def normalize_patch(patch: Dict[str, Any]) -> Dict[str, Any]:
+    patch = rebalance_soft_requirement_tags(patch)
     normalized: Dict[str, Any] = {}
     for key, value in patch.items():
         if key not in USER_PERSONA_FIELDS:
