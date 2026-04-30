@@ -9,7 +9,7 @@
     "一般": 8,
     "愿意聊": 10
   },
-  "overall_score_average": 87.5,
+  "overall_score_average": 91.5,
   "overall_score_count": 6,
   "matching_satisfaction_counts": {
     "中": 3,
@@ -21,18 +21,18 @@
   "memory_drift_persona_count": 6,
   "privacy_flag_persona_count": 6,
   "systemic_issue_persona_count": 6,
-  "average_memory_drift_count": 3.1667,
-  "average_privacy_flag_count": 3.6667,
-  "average_systemic_issue_count": 3.6667,
+  "average_memory_drift_count": 3.3333,
+  "average_privacy_flag_count": 3.1667,
+  "average_systemic_issue_count": 3.5,
   "personas": [
     {
       "persona_id": "shanghai_exec_f_v2",
       "display_name": "用户C01",
-      "overall_score": 88.0,
+      "overall_score": 92.0,
       "overall_satisfaction": "高",
       "overall_verdict": null,
       "candidate_review_count": 3,
-      "memory_drift_count": 2,
+      "memory_drift_count": 3,
       "privacy_flag_count": 2,
       "systemic_issue_count": 3,
       "no_match": false,
@@ -45,11 +45,11 @@
     {
       "persona_id": "suzhou_divorce_m_v2",
       "display_name": "用户C02",
-      "overall_score": 88.0,
+      "overall_score": 92.0,
       "overall_satisfaction": "高",
       "overall_verdict": null,
       "candidate_review_count": 3,
-      "memory_drift_count": 4,
+      "memory_drift_count": 3,
       "privacy_flag_count": 3,
       "systemic_issue_count": 3,
       "no_match": false,
@@ -62,7 +62,7 @@
     {
       "persona_id": "wuxi_pharma_f_v2",
       "display_name": "用户C03",
-      "overall_score": 88.0,
+      "overall_score": 92.0,
       "overall_satisfaction": "中",
       "overall_verdict": null,
       "candidate_review_count": 3,
@@ -79,13 +79,13 @@
     {
       "persona_id": "nanjing_academic_f_v2",
       "display_name": "用户C04",
-      "overall_score": 88.0,
+      "overall_score": 92.0,
       "overall_satisfaction": "中",
       "overall_verdict": null,
       "candidate_review_count": 3,
       "memory_drift_count": 3,
-      "privacy_flag_count": 4,
-      "systemic_issue_count": 4,
+      "privacy_flag_count": 5,
+      "systemic_issue_count": 3,
       "no_match": false,
       "top_candidate": {
         "name": "顾行远",
@@ -96,12 +96,12 @@
     {
       "persona_id": "hangzhou_divorce_mom_f_v2",
       "display_name": "用户C05",
-      "overall_score": 89.0,
+      "overall_score": 91.0,
       "overall_satisfaction": "高",
       "overall_verdict": null,
       "candidate_review_count": 3,
-      "memory_drift_count": 3,
-      "privacy_flag_count": 5,
+      "memory_drift_count": 4,
+      "privacy_flag_count": 4,
       "systemic_issue_count": 4,
       "no_match": false,
       "top_candidate": {
@@ -113,12 +113,12 @@
     {
       "persona_id": "shanghai_creative_m_v2",
       "display_name": "用户C06",
-      "overall_score": 84.0,
+      "overall_score": 90.0,
       "overall_satisfaction": "中",
       "overall_verdict": null,
       "candidate_review_count": 3,
       "memory_drift_count": 4,
-      "privacy_flag_count": 5,
+      "privacy_flag_count": 2,
       "systemic_issue_count": 4,
       "no_match": false,
       "top_candidate": {
@@ -128,5 +128,5 @@
       }
     }
   ],
-  "generated_at": "2026-04-30T17:50:47"
+  "generated_at": "2026-04-30T18:54:02"
 }
