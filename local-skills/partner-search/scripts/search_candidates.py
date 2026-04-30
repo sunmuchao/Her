@@ -3622,11 +3622,17 @@ def summarize_signal_parts(profile, limit=8):
 
 
 def format_result_headline(result, profile):
-    return (
-        f"{result['index']}. {result['name']} | score={result['score']} | "
-        f"{profile.get('age', '未知')}岁 | {profile.get('city', '城市未知')} | "
-        f"{profile.get('job', '工作未知')}"
-    )
+    headline_parts = [f"{profile.get('age', '未知')}岁"]
+    if profile.get("height") is not None:
+        headline_parts.append(f"{profile.get('height')}cm")
+    if profile.get("city"):
+        headline_parts.append(profile.get("city"))
+    else:
+        headline_parts.append("城市未知")
+    if profile.get("education"):
+        headline_parts.append(profile.get("education"))
+    headline_parts.append(profile.get("job", "工作未知"))
+    return f"{result['index']}. {result['name']} | score={result['score']} | " + " | ".join(headline_parts)
 
 
 def format_result_scoring_line(result):

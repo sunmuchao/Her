@@ -801,19 +801,28 @@ def build_public_location_note(persona: Dict[str, Any]) -> Optional[str]:
             ]
         )
     )
+    explicit_distance_boundary = clean_text(persona.get("target_accept_long_distance")) == "不接受"
     has_landing_plan = any(marker in semantics for marker in ("落地计划", "稳定留沪", "双城过渡", "落地"))
     allows_short_term = "短期异地" in semantics
     blocks_long_term = any(pattern.search(semantics) for pattern in LONG_DISTANCE_BLOCK_PATTERNS)
+    explicit_boundary_from_text = "不接受异地" in semantics or blocks_long_term
+    needs_real_world_meetup = any(
+        marker in semantics for marker in ("正常见面", "推进关系", "见面成本不能太高", "见面成本")
+    )
 
     if blocks_long_term and (allows_short_term or has_landing_plan):
-        if clean_text(persona.get("target_accept_long_distance")) == "不接受":
+        if explicit_distance_boundary:
             return "原则上不接受异地；如有短期过渡，需明确落地计划"
         return "短期异地可了解，但需要明确落地计划；不接受长期异地"
+    if explicit_boundary_from_text and needs_real_world_meetup:
+        return "原则上不接受异地；需能正常见面并推进关系"
     if blocks_long_term:
         return "不接受长期异地"
     if has_landing_plan and "异地" in semantics:
         return "异地需有明确落地计划"
-    if clean_text(persona.get("target_accept_long_distance")) == "不接受":
+    if explicit_boundary_from_text:
+        return "原则上不接受异地"
+    if explicit_distance_boundary:
         return "更适合同城或近距离认真相处"
     if any(marker in semantics for marker in ("同城", "近距离", "周边", "通勤")):
         return "更适合同城或近距离认真相处"
@@ -1205,10 +1214,18 @@ def build_public_relationship_goal(goal: Any) -> Optional[str]:
         or re.search(r"\d+年内", goal_text)
         or re.search(r"[一二两三四五六七八九十]+年内", goal_text)
     )
+    if "不着急" in goal_text and ("结婚" in goal_text or "婚姻" in goal_text):
+        return "认真了解，方向明确，不仓促推进"
+    if "现实关系" in goal_text:
+        return "认真了解，长期现实关系方向明确"
     if "再婚" in goal_text:
         if has_timeline:
             return "认真了解，再婚方向明确，合适会稳步推进"
         return "认真了解，再婚方向明确"
+    if ("长期关系" in goal_text or "长期" in goal_text) and ("结婚" in goal_text or "婚姻" in goal_text):
+        if has_timeline:
+            return "认真了解，婚姻方向明确，合适会稳步推进"
+        return "认真了解，长期关系与婚姻方向明确"
     if "结婚" in goal_text or "结婚导向" in goal_text:
         if has_timeline:
             return "认真了解，婚姻方向明确，合适会稳步推进"
