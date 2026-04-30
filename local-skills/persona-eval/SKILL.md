@@ -186,6 +186,8 @@ Also include a run-level section with:
   Render result packets for review.
 - `python3 local-skills/persona-eval/scripts/summarize_agent_feedback.py`
   Summarize both legacy candidate-only feedback and the newer `memory_accuracy + matching_feedback` reviewer JSON.
+- `python3 local-skills/persona-eval/scripts/build_audit_summary.py`
+  Build a final `audit_summary.json` from reviewer feedback plus optional memory snapshots, search outputs, and dataset diagnostics.
 
 ## Legacy Note
 
