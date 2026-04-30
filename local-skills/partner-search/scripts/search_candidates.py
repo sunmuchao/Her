@@ -285,7 +285,7 @@ BUSY_JOB_KEYWORDS = {"医生", "护士", "审计", "金融", "投行", "新媒�
 ACCEPTED_VALUES = {"接受", "是", "可以", "ok", "accept", "accepted"}
 REJECTED_VALUES = {"不接受", "否", "不可以", "reject", "rejected"}
 NEGOTIABLE_VALUES = {"可协商", "协商", "待定"}
-GUARDED_NEGOTIABLE_VALUES = {"谨慎可协商", "低接受度可协商"}
+GUARDED_NEGOTIABLE_VALUES = {"现阶段不太接受", "谨慎可协商", "低接受度可协商"}
 UNKNOWN_VALUES = {"未知", "不确定", "未说明", "未填写", "unknown"}
 POSITIVE_HABIT_VALUES = {"是", "偶尔", "有", "yes", "true", "1"}
 

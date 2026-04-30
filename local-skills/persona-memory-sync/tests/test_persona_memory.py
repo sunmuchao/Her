@@ -180,14 +180,20 @@ class PersonaMemoryTests(unittest.TestCase):
         payload = persona_memory_lib.build_profile_payload(
             {
                 "profile_id": 30074,
-                "target_accept_partner_children": "谨慎可协商",
+                "target_accept_partner_children": "现阶段不太接受",
                 "target_accept_partner_children_strength": "谨慎接受",
             }
         )
-        self.assertEqual(payload["accept_partner_children"], "谨慎可协商")
+        self.assertEqual(payload["accept_partner_children"], "现阶段不太接受")
         self.assertEqual(payload["accept_partner_children_strength"], "谨慎接受")
         self.assertEqual(payload["accept_partner_children_semantics"], "现阶段不太接受")
         self.assertIn("对子女情况=现阶段不太接受", payload["notes"])
+
+    def test_normalize_patch_canonicalizes_legacy_guarded_children_alias(self):
+        patch = persona_memory_lib.normalize_patch(
+            {"target_accept_partner_children": "谨慎可协商"}
+        )
+        self.assertEqual(patch["target_accept_partner_children"], "现阶段不太接受")
 
     def test_build_public_profile_masks_sensitive_job_titles(self):
         payload = persona_memory_lib.build_public_profile(

@@ -96,9 +96,9 @@ PERSONA_EXTENSION_COLUMNS = {
 
 PROFILE_ENUM_UPGRADES = {
     "accept_partner_children": {
-        "required_literals": ["接受", "不接受", "可协商", "谨慎可协商", "未知"],
+        "required_literals": ["接受", "不接受", "可协商", "现阶段不太接受", "谨慎可协商", "未知"],
         "ddl": (
-            "ENUM('接受','不接受','可协商','谨慎可协商','未知') "
+            "ENUM('接受','不接受','可协商','现阶段不太接受','谨慎可协商','未知') "
             "DEFAULT NULL COMMENT '是否接受对方已有孩子'"
         ),
     }

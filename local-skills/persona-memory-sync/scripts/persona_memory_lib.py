@@ -302,6 +302,8 @@ OBSERVATION_FIELD_LABELS = {
 ACCEPTANCE_STRENGTH_STRONG_VALUES = {"明确接受", "长期接受", "真接受"}
 ACCEPTANCE_STRENGTH_CAUTION_VALUES = {"谨慎接受", "了解后定", "需要磨合"}
 ACCEPTANCE_STRENGTH_SURFACE_VALUES = {"短期可聊", "表面接受", "先接触再说"}
+CHILD_ACCEPTANCE_GUARDED_CANONICAL = "现阶段不太接受"
+CHILD_ACCEPTANCE_GUARDED_ALIASES = {"谨慎可协商", "低接受度可协商", CHILD_ACCEPTANCE_GUARDED_CANONICAL}
 
 
 def resolve_mysql_source(source: Optional[str] = None) -> str:
@@ -387,6 +389,13 @@ def clean_text(value: Any) -> Optional[str]:
     return text or None
 
 
+def canonicalize_child_acceptance_state(value: Any) -> Optional[str]:
+    text = clean_text(value)
+    if text in CHILD_ACCEPTANCE_GUARDED_ALIASES:
+        return CHILD_ACCEPTANCE_GUARDED_CANONICAL
+    return text
+
+
 def acceptance_strength_bucket(value: Any) -> str:
     lowered = clean_text(value)
     if not lowered:
@@ -401,17 +410,17 @@ def acceptance_strength_bucket(value: Any) -> str:
 
 
 def format_acceptance_note(value: Any, strength: Any) -> Optional[str]:
-    note_value = clean_text(value)
+    note_value = canonicalize_child_acceptance_state(value) or clean_text(value)
     note_strength = clean_text(strength)
     if not note_value:
         return None
     if not note_strength:
-        if note_value == "谨慎可协商":
-            return "现阶段不太接受"
+        if note_value == CHILD_ACCEPTANCE_GUARDED_CANONICAL:
+            return CHILD_ACCEPTANCE_GUARDED_CANONICAL
         return note_value
     bucket = acceptance_strength_bucket(note_strength)
-    if note_value == "谨慎可协商":
-        return "现阶段不太接受"
+    if note_value == CHILD_ACCEPTANCE_GUARDED_CANONICAL:
+        return CHILD_ACCEPTANCE_GUARDED_CANONICAL
     if note_value == "可协商" and bucket == "cautious":
         return "现阶段接受度偏低，需结合具体情况判断"
     if note_value == "可协商" and bucket == "surface":
@@ -422,7 +431,7 @@ def format_acceptance_note(value: Any, strength: Any) -> Optional[str]:
 
 
 def acceptance_semantics_label(value: Any, strength: Any) -> Optional[str]:
-    state = clean_text(value)
+    state = canonicalize_child_acceptance_state(value) or clean_text(value)
     if not state:
         return None
     bucket = acceptance_strength_bucket(strength)
@@ -430,8 +439,8 @@ def acceptance_semantics_label(value: Any, strength: Any) -> Optional[str]:
         return "明确不接受"
     if state == "未知":
         return "态度未知"
-    if state == "谨慎可协商":
-        return "现阶段不太接受"
+    if state == CHILD_ACCEPTANCE_GUARDED_CANONICAL:
+        return CHILD_ACCEPTANCE_GUARDED_CANONICAL
     if state == "接受":
         if bucket == "strong":
             return "明确接受"
@@ -541,6 +550,8 @@ def normalize_patch(patch: Dict[str, Any]) -> Dict[str, Any]:
             normalized[key] = as_int(value)
         else:
             normalized[key] = clean_text(value)
+            if key == "target_accept_partner_children":
+                normalized[key] = canonicalize_child_acceptance_state(normalized[key])
     return normalized
 
 
@@ -668,7 +679,9 @@ def build_matcher_payload(persona: Dict[str, Any]) -> Dict[str, Optional[str]]:
             persona.get("target_marital_statuses"),
             persona.get("target_marital_status_strength"),
         ),
-        "target_accept_partner_children": persona.get("target_accept_partner_children"),
+        "target_accept_partner_children": canonicalize_child_acceptance_state(
+            persona.get("target_accept_partner_children")
+        ),
         "target_accept_partner_children_strength": persona.get("target_accept_partner_children_strength"),
         "target_accept_partner_children_semantics": acceptance_semantics_label(
             persona.get("target_accept_partner_children"),
@@ -912,7 +925,9 @@ def build_profile_payload(
         payload["long_distance"] = persona.get("target_accept_long_distance")
         payload["accept_long_distance"] = persona.get("target_accept_long_distance")
     if persona.get("target_accept_partner_children") is not None:
-        payload["accept_partner_children"] = persona.get("target_accept_partner_children")
+        payload["accept_partner_children"] = canonicalize_child_acceptance_state(
+            persona.get("target_accept_partner_children")
+        )
     if (
         persona.get("target_accept_partner_children") is not None
         or "target_accept_partner_children" in include_null_persona_fields

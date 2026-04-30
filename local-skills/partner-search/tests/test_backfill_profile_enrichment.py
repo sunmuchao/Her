@@ -77,10 +77,10 @@ class BackfillProfileEnrichmentTests(unittest.TestCase):
             "marital_status": "离异无孩",
             "values": "真诚, 稳定踏实",
             "personality": "务实, 情绪稳定",
-            "accept_partner_children": "谨慎可协商",
+            "accept_partner_children": "现阶段不太接受",
         }
         enriched = backfill_profile_enrichment.infer_acceptance(profile)
-        self.assertEqual(enriched["accept_partner_children"], "谨慎可协商")
+        self.assertEqual(enriched["accept_partner_children"], "现阶段不太接受")
         self.assertEqual(enriched["accept_partner_children_strength"], "谨慎接受")
         self.assertEqual(
             enriched["accept_partner_children_semantics"],

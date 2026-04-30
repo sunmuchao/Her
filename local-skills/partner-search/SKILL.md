@@ -121,10 +121,10 @@ python3 scripts/search_candidates.py \
 - Use `--photo-preview-count` when you want the result to include the top `N` image URLs from `profile_photos`.
 - Match free-text requirements against `personality`, `values`, `notes`, `hobbies`, `lifestyle`, and the combined record text.
 - When `--self-id` or any `--self-*` flag is provided, enforce reciprocal matching against the candidate's `preferred_*` and `accept_*` fields where available.
-- Treat `接受` as a strong reciprocal match, `可协商` as a risk or follow-up question, `谨慎可协商` as an even stronger low-acceptance risk, and `未知` as unknown rather than positive evidence.
+- Treat `接受` as a strong reciprocal match, `可协商` as a risk or follow-up question, `现阶段不太接受` as an even stronger low-acceptance risk, and `未知` as unknown rather than positive evidence.
 - When the user clearly cares about a field being explicit, use `--require-known` for fields such as `smoking`, `long_distance`, `want_children`, `accept_partner_children`, `accept_marital_status`, or `marriage_timeline`.
 - Treat a blank `profile_status` as unknown rather than `active`; keep the record only when no explicit mismatch is found and call out the gap in `missing_fields`.
-- Rank stronger candidates higher when they are more recently active, have a higher `verified_level`, share the same city as the requester, and carry fewer unresolved risks such as `可协商` / `谨慎可协商` or missing hard-decision fields.
+- Rank stronger candidates higher when they are more recently active, have a higher `verified_level`, share the same city as the requester, and carry fewer unresolved risks such as `可协商` / `现阶段不太接受` or missing hard-decision fields.
 - Read `score` as a combined rank only. Use `fit_score` to judge "像不像你要找的人", `confidence_score` to judge "这份资料靠不靠谱、够不够完整", and `risk_score` to judge "还有多少坑没排完". The current total score is `fit_score + confidence_score - risk_score`.
 - Keep candidates with missing structured fields such as age, city, or height when no explicit mismatch is found, but call out those gaps in `missing_fields`.
 - Treat keyword rules (`--must-have`, `--must-not-have`), verification minimums, recent-activity requirements, and reciprocal hard conflicts as elimination rules.
@@ -156,7 +156,7 @@ Summarize the top matches in plain language. For each candidate, include:
 - `missing_fields`
 - `risk_flags`
 - `match_evidence` for `must-have` / `prefer` keywords when the script can trace them back to profile text
-- `follow_up_questions` for the key unknowns or `可协商` / `谨慎可协商` risks
+- `follow_up_questions` for the key unknowns or `可协商` / `现阶段不太接受` risks
 - `notes` as a short, masked summary rather than raw free text
 - `source` only when you intentionally pass `--show-source` for debugging multi-source results
 
