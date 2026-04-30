@@ -19,15 +19,17 @@ This skill is for evaluation, not live matchmaking. If the user wants to actuall
 
 1. Pick the evaluation input.
    Use a JSON file whose items contain at least `id`, `name`, and `command`.
-2. Rerun the batch search.
+2. Prefer the bundle runner when you want the standard artifact trio.
+   Run `python3 scripts/run_persona_eval_bundle.py --input ... --results-output ... --packets-output ... --metrics-output ...`.
+3. Rerun only the search batch when you do not need packets yet.
    Run `python3 scripts/run_persona_eval.py --input ... --results-output ...`.
-3. Inspect the result JSON.
+4. Inspect the result JSON.
    Check `returncode`, `has_match`, `candidate_count`, and `output`.
-4. Generate reviewer packets when needed.
+5. Generate reviewer packets separately when needed.
    Run `python3 scripts/generate_persona_packets.py --input ... --output ... --section-label ...`.
-5. If agent or human review feedback exists, summarize it.
+6. If agent or human review feedback exists, summarize it.
    Run `python3 scripts/summarize_agent_feedback.py --input ... --output ...`.
-6. Report the conclusion.
+7. Report the conclusion.
    Separate:
    - command health
    - match coverage
@@ -47,6 +49,18 @@ Typical artifact flow:
 Use the existing files in the repo as templates when the user wants to continue an existing benchmark line instead of inventing a new format.
 
 ## Run The Scripts
+
+Run the standard trio in one command:
+
+```bash
+python3 scripts/run_persona_eval_bundle.py \
+  --input /path/to/persona_experiment_input_v11_2026-04-29.json \
+  --results-output /path/to/persona_experiment_results_v12_2026-04-30.json \
+  --packets-output /path/to/persona_agent_packets_v7_2026-04-30.md \
+  --metrics-output /path/to/persona_experiment_metrics_v12_2026-04-30.json \
+  --section-label round7 \
+  --label v12
+```
 
 Rerun a standard persona batch:
 
