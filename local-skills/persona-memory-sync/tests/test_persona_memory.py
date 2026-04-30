@@ -233,15 +233,15 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertEqual(payload["accept_partner_children_semantics"], "现阶段不太接受")
         self.assertIn("你对对方孩子情况=现阶段不太接受", payload["notes"])
 
-    def test_build_profile_payload_falls_back_to_canonical_long_distance_enum(self):
+    def test_build_profile_payload_preserves_nuanced_long_distance_boundary(self):
         payload = persona_memory_lib.build_profile_payload(
             {
                 "target_accept_long_distance": "短期通勤可了解，长期异地谨慎",
                 "target_location_semantics": "江浙沪范围内优先；短期通勤型距离可了解，但长期异地比较谨慎。",
             }
         )
-        self.assertEqual(payload["long_distance"], "可协商")
-        self.assertEqual(payload["accept_long_distance"], "可协商")
+        self.assertEqual(payload["long_distance"], "短期通勤可了解，长期异地谨慎")
+        self.assertEqual(payload["accept_long_distance"], "短期通勤可了解，长期异地谨慎")
 
     def test_normalize_patch_canonicalizes_legacy_guarded_children_alias(self):
         patch = persona_memory_lib.normalize_patch(
@@ -271,6 +271,16 @@ class PersonaMemoryTests(unittest.TestCase):
             }
         )
         self.assertEqual(payload["public_education"], "本科")
+
+    def test_build_public_profile_preserves_high_education_and_safe_teacher_title(self):
+        payload = persona_memory_lib.build_public_profile(
+            {
+                "self_education": "博士",
+                "self_job": "高校教师",
+            }
+        )
+        self.assertEqual(payload["public_education"], "博士")
+        self.assertEqual(payload["public_job"], "高校教师")
 
     def test_build_public_profile_uses_current_city_not_native_and_softens_goal(self):
         payload = persona_memory_lib.build_public_profile(
@@ -315,6 +325,15 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertIn("杭州", patch["target_cities"])
         self.assertNotIn("沪范围内", patch["target_cities"])
         self.assertEqual(patch["target_accept_long_distance"], "短期通勤可了解，长期异地谨慎")
+
+    def test_normalize_patch_preserves_near_distance_bridge_for_otherwise_rejecting_profile(self):
+        patch = persona_memory_lib.normalize_patch(
+            {
+                "target_accept_long_distance": "不接受",
+                "target_location_semantics": "原则上不接受远距离异地；近距离或对方有明确落地计划时可以沟通。",
+            }
+        )
+        self.assertEqual(patch["target_accept_long_distance"], "近距离可推进，长期异地不接受")
 
     def test_normalize_patch_extracts_location_semantics_without_copying_full_preference_summary(self):
         patch = persona_memory_lib.normalize_patch(

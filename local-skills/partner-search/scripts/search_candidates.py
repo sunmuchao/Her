@@ -506,7 +506,7 @@ RISK_FLAG_PENALTIES = {
     "对方城市偏好未命中，异地接受度未知": 10,
     "对方对抽烟仅可协商": 7,
     "对方对抽烟接受度未知": 9,
-    "对方对喝酒仅可协商": 6,
+    "对方对喝酒仅可协商": 4,
     "对方对喝酒接受度未知": 8,
     "对方异地仅可协商": 5,
     "对方异地接受度未知": 7,
@@ -546,6 +546,15 @@ RISK_FLAG_PENALTIES = {
     "活跃时间未知": 4,
     "90天前活跃": 6,
 }
+
+CREATIVE_JOB_PATTERNS = (
+    re.compile(r"(设计|ui|ux|交互|视觉|插画|动画|品牌|创意|内容|游戏|摄影|导演|编剧)", re.I),
+)
+
+SENSITIVE_RELATION_NOTE_PATTERNS = (
+    re.compile(r"(孩子|带娃|生育|备孕|不要孩子|丁克)"),
+    re.compile(r"(离异|再婚|婚史|前任|前夫|前妻)"),
+)
 
 DIVERSITY_JOB_PATTERNS = (
     (re.compile(r"(医生|护士|药师|医疗|医院|临床)"), "medical"),
@@ -1312,6 +1321,53 @@ def keyword_requested(criteria, keywords):
     return contains_any_text(joined, keywords)
 
 
+def creative_job_match(value):
+    text = as_text(value)
+    if not text:
+        return False
+    return any(pattern.search(text) for pattern in CREATIVE_JOB_PATTERNS)
+
+
+def child_or_marital_topic_requested(criteria, self_profile):
+    if requires_explicit_children_acceptance(self_profile):
+        return True
+    if requires_explicit_marital_acceptance(self_profile):
+        return True
+    joined = " ".join(
+        criteria.get("must_have", [])
+        + criteria.get("prefer", [])
+        + criteria.get("must_not_have", [])
+        + criteria.get("relationship_goals", [])
+    )
+    return contains_any_text(joined, {"孩子", "带娃", "婚史", "再婚", "生育", "接受孩子现实"})
+
+
+def summarize_notes_for_result(record, criteria, self_profile, max_segments=2, max_length=80):
+    notes = record.get("notes")
+    summary = summarize_notes(notes, max_segments=max_segments, max_length=max_length)
+    if not summary:
+        return None
+    if child_or_marital_topic_requested(criteria, self_profile):
+        return summary
+
+    parts = [
+        part.strip(" ,，。;；|")
+        for part in re.split(r"[。；;\n|]+", summary)
+        if part.strip(" ,，。;；|")
+    ]
+    filtered = [
+        part
+        for part in parts
+        if not any(pattern.search(part) for pattern in SENSITIVE_RELATION_NOTE_PATTERNS)
+    ]
+    if not filtered:
+        return None
+    compact = "；".join(filtered[:max_segments])
+    if len(compact) > max_length:
+        compact = compact[: max_length - 3].rstrip() + "..."
+    return compact or None
+
+
 def candidate_income_bounds(record):
     income_min = as_int(record.get("income_min_wan"))
     income_max = as_int(record.get("income_max_wan"))
@@ -1694,11 +1750,19 @@ def evaluate_contextual_fit(record, criteria, self_profile=None):
         elif communication_style == "慢热少话":
             risk_flags.append("忙的时候可能更难推进")
 
-    if requires_explicit_marital_acceptance(self_profile) or requires_explicit_children_acceptance(self_profile):
+    if wants_expressive_resonance and creative_job_match(self_job) and creative_job_match(record.get("job")):
+        reasons.append("审美和内容语境更接近")
+        score_bonus += 6
+        match_evidence.append(f"审美和内容语境更接近 <- 职业: {record.get('job')}")
+
+    needs_explicit_family_reality = requires_explicit_children_acceptance(self_profile) or keyword_requested(
+        criteria, {"接受孩子现实", "孩子现实", "现实承接", "再婚现实"}
+    )
+    if needs_explicit_family_reality:
         if blended_family_readiness == "已想过现实安排":
-            reasons.append("更能承接现实安排")
+            reasons.append("现实安排想得更具体")
             score_bonus += 5
-            match_evidence.append(f"更能承接现实安排 <- 现实承接度: {blended_family_readiness}")
+            match_evidence.append(f"现实安排想得更具体 <- 现实承接度: {blended_family_readiness}")
         elif blended_family_readiness == "愿意一起商量":
             reasons.append("现实问题愿意一起商量")
             score_bonus += 2
@@ -1706,13 +1770,12 @@ def evaluate_contextual_fit(record, criteria, self_profile=None):
         elif blended_family_readiness in {"仅口头接受", "未知", None, ""}:
             risk_flags.append("重组家庭现实承接仍需确认")
         if (
-            requires_explicit_marital_acceptance(self_profile)
-            and record.get("accept_marital_status_strength") == "明确接受"
+            requires_explicit_children_acceptance(self_profile)
             and contains_any_text(notes_and_values, {"婚史", "再婚", "现实安排", "家里相处", "边界", "为什么结束"})
         ):
-            reasons.append("对婚史和现实问题想得更具体")
+            reasons.append("复杂现实问题愿意提前讲清")
             score_bonus += 3
-            match_evidence.append("对婚史和现实问题想得更具体 <- 备注/价值观提到了婚史或现实安排")
+            match_evidence.append("复杂现实问题愿意提前讲清 <- 备注/价值观提到了现实安排")
 
     relationship_goals = set(criteria.get("relationship_goals") or [])
     wants_steady_relationship = (
@@ -3710,6 +3773,11 @@ def evaluate_candidate(record, criteria, diagnostics=False, reciprocal_mode="str
         matched=True,
         reject_reason=None,
     )
+    result["display_notes"] = summarize_notes_for_result(
+        record,
+        criteria,
+        criteria.get("self_profile") or {},
+    )
     if not diagnostics:
         result.pop("matched", None)
         result.pop("reject_reason", None)
@@ -3970,7 +4038,9 @@ def append_result_detail_lines(lines, result, profile, include_source=False):
     append_labeled_line(lines, "fallback_reason", result.get("fallback_reason"))
     append_joined_line(lines, "match_evidence", result.get("match_evidence"), separator=" | ")
     append_joined_line(lines, "follow_up_questions", result.get("follow_up_questions"), separator=" | ")
-    notes_summary = summarize_notes(profile.get("notes"))
+    notes_summary = result.get("display_notes")
+    if notes_summary is None:
+        notes_summary = summarize_notes(profile.get("notes"))
     append_labeled_line(lines, "notes", notes_summary)
     if include_source and result.get("source_file"):
         append_labeled_line(lines, "source", redact_source_ref(result["source_file"]))
