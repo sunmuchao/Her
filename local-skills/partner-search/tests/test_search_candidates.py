@@ -427,7 +427,7 @@ class SearchCandidatesTests(unittest.TestCase):
         candidate = {
             "accept_partner_children": "谨慎可协商",
             "accept_partner_children_strength": "谨慎接受",
-            "accept_partner_children_semantics": "现阶段不太接受，需要非常看具体情况",
+            "accept_partner_children_semantics": "现阶段不太接受",
         }
         self_profile = {"has_children": 1}
         result = search_candidates.evaluate_reciprocal_compatibility(
