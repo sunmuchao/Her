@@ -331,6 +331,129 @@ skill 层只回答一个问题：
 - 结果里能清楚解释“为什么匹配”
 - 没有把产品工作流状态耦合进 skill
 
+### 12.6 Phase 1 开发清单（按文件）
+
+这一阶段建议只动下面这些文件。
+
+#### 文件 1：`scripts/search_candidates.py`
+
+目标：
+
+- 不改变 skill 的产品边界
+- 稳定输入和输出契约
+- 保持 CLI 继续可用
+
+具体任务：
+
+- 明确模块职责注释
+  - 在文件头部或关键函数附近补简短说明
+  - 明确这是“单次匹配脚本”，不是通知或撮合工作流
+- 稳定输入处理
+  - 检查 `build_criteria_from_args(...)` 的输出字段是否一致
+  - 检查 `build_self_profile_from_args(...)` 对 `self-id` / `self-*` 的行为是否一致
+  - 明确哪些字段缺省时会被省略，哪些会给默认值
+- 稳定候选结果结构
+  - 检查 `evaluate_candidate(...)` 的返回字段是否固定
+  - 保证命中候选时始终返回统一字段集
+  - 保证 `matched_on / reciprocal_on / missing_fields / risk_flags / follow_up_questions` 这些字段格式稳定
+- 稳定 no-match 结果
+  - 检查 `build_no_match_diagnostics(...)` 和 `format_no_match_text(...)`
+  - 明确无结果时最少会返回哪些诊断信息
+- 保持 CLI 行为不破坏
+  - `main()` 的现有调用方式继续可用
+  - `--help`、`--self-id`、`--source`、`--show-source` 等现有行为不回退
+
+这一阶段不要做：
+
+- 不抽大规模新模块
+- 不新建推荐/通知表
+- 不加入订阅或工作流状态
+- 不把脚本改成服务端程序
+
+#### 文件 2：`tests/test_search_candidates.py`
+
+目标：
+
+- 把 Phase 1 的输入输出契约变成测试
+
+具体任务：
+
+- 补输入契约测试
+  - `build_criteria_from_args(...)` 的关键字段映射
+  - `build_self_profile_from_args(...)` 的成功和报错路径
+- 补结果结构测试
+  - `evaluate_candidate(...)` 命中时必须包含哪些字段
+  - `evaluate_candidate(...)` 失败时的行为是否稳定
+- 补 no-match 测试
+  - 空结果时的诊断结构
+  - fallback 候选的文本输出
+- 补输出安全测试
+  - 敏感字段脱敏
+  - source 显示时密码脱敏
+- 补 CLI 回归测试
+  - `main()` 正常输出
+  - `main()` 无结果输出
+  - `main()` 报错退出
+
+这一阶段不要做：
+
+- 不为了测试去引入外部通知状态
+- 不为了未来 Phase 3/4/5 提前加测试夹具
+
+#### 文件 3：`SKILL.md`
+
+目标：
+
+- 让 skill 使用者一眼看懂边界和调用方式
+
+具体任务：
+
+- 保持 `Scope` 和 `Non-Goals` 清晰
+- 确保 Quick Start 仍然围绕“单次匹配”
+- 如果 Phase 1 调整了输入或输出描述，同步更新示例
+
+#### 文件 4：`references/profile-schema.md`
+
+目标：
+
+- 保证 schema 文档继续支撑“纯匹配”场景
+
+具体任务：
+
+- 检查字段说明是否足够支撑当前筛选和 reciprocal 判断
+- 如果 Phase 1 发现某些字段名解释不清，在这里补清楚
+- 不在这里加入推荐订阅、通知、撮合状态字段
+
+### 12.7 Phase 1 建议执行顺序
+
+建议按下面顺序做：
+
+1. 先读 `tests/test_search_candidates.py`
+   - 先知道当前已经承诺了哪些行为
+2. 再整理 `scripts/search_candidates.py` 的输入输出边界
+   - 不急着大改结构
+   - 先稳住契约
+3. 先补测试，再改逻辑
+   - 特别是结果结构和 no-match 结构测试
+4. 再做最小必要代码调整
+   - 只修契约不清、字段不稳、输出不一致的问题
+5. 最后同步 `SKILL.md` 和 `references/profile-schema.md`
+   - 保证文档和代码一致
+6. 跑 `bash scripts/run_tests.sh`
+   - 用现有测试套件做最后回归
+
+### 12.8 Phase 1 完成后应该达到的状态
+
+Phase 1 完成后，`partner-search` 应该处于下面这个状态：
+
+- 文档已经明确写死：它只做匹配
+- CLI 继续可用
+- 输入字段定义清楚
+- 输出字段定义清楚
+- 命中和 no-match 两种结果都稳定
+- 测试能覆盖核心契约
+- 还没有任何提醒、订阅、代问、撮合状态被耦合进来
+
 ## 13. Phase 2: 可复用接口、质量和可维护性
 
 ### 13.1 目标
