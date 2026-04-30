@@ -33,6 +33,36 @@ Do not couple these product/system capabilities into this skill:
 
 If a larger product wants those features, it should call `partner-search` as a dependency. The outer system owns persistence, timing, notification policy, and user-action state. This skill should remain focused on `画像 / 条件 -> 候选结果`.
 
+## Functional Boundary
+
+This boundary is hard, not aspirational.
+
+- `partner-search` 的产品功能边界，只能是当前已有的“根据画像 / 条件返回匹配候选结果”的能力。
+- 可以调整代码结构、CLI、Python API、输出 schema、测试和文档。
+- 这些结构调整不代表可以顺带增加新的产品职责。
+
+Allowed:
+
+- 读取资料库
+- 根据条件筛选候选人
+- 结合 reciprocal matching 规则做匹配判断
+- 排序、解释匹配原因、指出缺失信息和风险
+- 为以上现有能力补 CLI、Python API、engine 风格包装、测试和文档
+
+Not allowed:
+
+- 新增持续监控、持续留意、定时重跑、推荐订阅
+- 新增推荐历史、消息中心、通知、站内信、短信、微信触达
+- 新增跳过 / 收藏 / 已联系 / 跟进状态管理
+- 新增代理开口、自动撮合、工作流编排、队列、cron、任务系统
+- 把 `partner-search` 扩成推荐系统、撮合系统、用户状态系统或产品后端总控层
+- 因为补了 CLI / Python API，就顺带新增新的业务语义、外部状态或新的产品流程
+
+Rule of thumb:
+
+- 可以改“怎么调用、怎么返回结果、怎么组织代码”
+- 不可以改“这个 skill 负责什么产品能力”
+
 ## Delivery Order
 
 The recommended roadmap for this skill is:
@@ -61,6 +91,8 @@ Ensure the Python dependency is present first. Run `python3 -m pip install pymys
    - how much is real fit versus just profile completeness
 
 Do not stretch this skill into a long-running recommendation service. If a future system wants recurring recommendations, it should persist the search criteria externally and call `scripts/search_candidates.py` or the same matching logic repeatedly from outside the skill.
+
+The CLI and Python API are just callable shells around the same matching capability. They are not authorization to add subscription, recommendation-history, notification, or matchmaking workflow features into this skill.
 
 Companion write scripts such as `scripts/backfill_profile_enrichment.py` and `scripts/seed_gap_profiles.py` should use the same `--source` / `PARTNER_SEARCH_MYSQL_SOURCE` entrypoint instead of relying on an implicit local root connection.
 
