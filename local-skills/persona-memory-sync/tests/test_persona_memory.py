@@ -136,6 +136,7 @@ class PersonaMemoryTests(unittest.TestCase):
         persona = {
             "user_key": "demo-user",
             "display_name": "Demo",
+            "profile_id": 30074,
             "self_gender": "男",
             "self_age": 28,
             "self_city": "无锡",
@@ -170,9 +171,23 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertEqual(payload["personality"], "慢热但反馈稳定，认真推进关系。")
         self.assertEqual(payload["values"], "看重沟通效率，也看重情绪稳定。")
         self.assertEqual(payload["public_job"], "产品经理")
+        self.assertEqual(payload["public_display_name"], "用户0074")
         self.assertIn("matcher_traits_json", payload)
         self.assertIn("public_personality", payload)
         self.assertIn("对子女情况=现阶段接受度偏低，需结合具体情况判断", payload["notes"])
+
+    def test_build_profile_payload_keeps_cautious_children_rejection_conservative(self):
+        payload = persona_memory_lib.build_profile_payload(
+            {
+                "profile_id": 30074,
+                "target_accept_partner_children": "不接受",
+                "target_accept_partner_children_strength": "谨慎接受",
+            }
+        )
+        self.assertEqual(payload["accept_partner_children"], "不接受")
+        self.assertEqual(payload["accept_partner_children_strength"], "谨慎接受")
+        self.assertEqual(payload["accept_partner_children_semantics"], "现阶段不接受，特殊情况才会再评估")
+        self.assertIn("对子女情况=现阶段不接受，特殊情况才会再评估", payload["notes"])
 
     def test_build_public_profile_masks_sensitive_job_titles(self):
         payload = persona_memory_lib.build_public_profile(
@@ -304,12 +319,15 @@ class PersonaMemoryTests(unittest.TestCase):
     def test_build_public_profile_view_sql_never_falls_back_to_internal_fields(self):
         sql = persona_memory_lib.build_public_profile_view_sql()
         self.assertIn("CAST(NULL AS CHAR(32)) AS income_range", sql)
+        self.assertIn("public_display_name", sql)
+        self.assertIn("CONCAT('用户'", sql)
         self.assertIn("public_job", sql)
         self.assertIn("CASE", sql)
         self.assertIn("认真了解，合适的话希望稳定推进", sql)
         self.assertIn("public_personality AS personality", sql)
         self.assertIn("public_values AS `values`", sql)
         self.assertIn("public_notes AS notes", sql)
+        self.assertNotIn("\n  name,\n", sql)
         self.assertNotIn("COALESCE(public_personality, personality)", sql)
         self.assertNotIn("COALESCE(public_values, `values`)", sql)
         self.assertNotIn("COALESCE(public_notes, notes)", sql)

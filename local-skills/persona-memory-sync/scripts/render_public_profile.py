@@ -65,6 +65,7 @@ def main() -> None:
                 existing_profile = cursor.fetchone() or {}
                 profile_payload = build_profile_payload(persona, existing_profile=existing_profile)
                 update_columns = [
+                    "public_display_name",
                     "public_job",
                     "public_personality",
                     "public_values",

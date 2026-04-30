@@ -166,6 +166,7 @@ PROFILE_EXTENSION_COLUMNS = {
     "matcher_summary_internal": "TEXT NULL",
     "accept_marital_status_semantics": "VARCHAR(128) NULL",
     "accept_partner_children_semantics": "VARCHAR(128) NULL",
+    "public_display_name": "VARCHAR(64) NULL",
     "public_job": "VARCHAR(64) NULL",
     "public_personality": "TEXT NULL",
     "public_values": "TEXT NULL",
@@ -407,6 +408,8 @@ def format_acceptance_note(value: Any, strength: Any) -> Optional[str]:
     if not note_strength:
         return note_value
     bucket = acceptance_strength_bucket(note_strength)
+    if note_value == "不接受" and bucket == "cautious":
+        return "现阶段不接受，特殊情况才会再评估"
     if note_value == "可协商" and bucket == "cautious":
         return "现阶段接受度偏低，需结合具体情况判断"
     if note_value == "可协商" and bucket == "surface":
@@ -422,6 +425,8 @@ def acceptance_semantics_label(value: Any, strength: Any) -> Optional[str]:
         return None
     bucket = acceptance_strength_bucket(strength)
     if state == "不接受":
+        if bucket == "cautious":
+            return "现阶段不接受，特殊情况才会再评估"
         return "明确不接受"
     if state == "未知":
         return "态度未知"
@@ -713,6 +718,13 @@ def build_public_job_title(job: Any) -> Optional[str]:
     return title
 
 
+def build_public_display_name(profile_id: Any) -> Optional[str]:
+    profile_id_int = as_int(profile_id)
+    if profile_id_int is None:
+        return None
+    return f"用户{profile_id_int % 10000:04d}"
+
+
 def build_legacy_public_personality(persona: Dict[str, Any]) -> Optional[str]:
     fragments = []
     if persona.get("self_city"):
@@ -989,6 +1001,10 @@ def build_profile_payload(
     payload["values"] = internal_values
     payload["notes"] = internal_notes
     payload["name"] = clean_text(persona.get("display_name")) or clean_text(existing_profile.get("name")) or clean_text(persona.get("user_key")) or "未命名"
+    payload["public_display_name"] = (
+        clean_text(existing_profile.get("public_display_name"))
+        or build_public_display_name(persona.get("profile_id") or existing_profile.get("id"))
+    )
     payload["source_channel"] = clean_text(existing_profile.get("source_channel")) or "persona-memory-sync"
     payload["profile_status"] = clean_text(existing_profile.get("profile_status")) or "active"
     payload["verified_level"] = clean_text(existing_profile.get("verified_level")) or "none"
@@ -1040,7 +1056,10 @@ def build_public_profile_view_sql(profile_table: str = DEFAULT_PROFILE_TABLE, vi
 CREATE OR REPLACE VIEW {view_name_q} AS
 SELECT
   id,
-  name,
+  COALESCE(
+    NULLIF(TRIM(public_display_name), ''),
+    CONCAT('用户', LPAD(MOD(id, 10000), 4, '0'))
+  ) AS name,
   avatar_url,
   photo_count,
   gender,
