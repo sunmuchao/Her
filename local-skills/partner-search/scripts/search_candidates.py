@@ -452,6 +452,48 @@ RISK_FLAG_PENALTIES = {
     "90天前活跃": 6,
 }
 
+SOFT_MUST_HAVE_KEYWORDS = {
+    "情绪稳定",
+    "愿意沟通",
+    "能沟通",
+    "好沟通",
+    "沟通顺畅",
+    "边界清楚",
+    "边界感",
+    "稳定工作",
+    "稳定生活",
+    "责任感",
+    "真诚",
+    "消费观正常",
+    "同城稳定发展",
+    "同城见面方便",
+    "同城更方便",
+    "长期推进明确",
+    "认真长期关系",
+    "愿意经营生活",
+    "作息相对正常",
+    "作息稳定",
+    "成长背景相近",
+    "少酒",
+}
+
+SOFT_MUST_HAVE_MARKERS = (
+    "沟通",
+    "情绪稳定",
+    "边界",
+    "责任感",
+    "真诚",
+    "稳定工作",
+    "稳定生活",
+    "同城",
+    "长期推进",
+    "经营生活",
+    "消费观",
+    "作息",
+    "成长背景",
+    "少酒",
+)
+
 RELATIONSHIP_GOAL_STRENGTH_BONUS = {
     "先接触看看": 0,
     "认真恋爱": 2,
@@ -557,6 +599,30 @@ def as_text(value):
 
 def normalize_whitespace(value):
     return re.sub(r"\s+", " ", str(value)).strip()
+
+
+def canonicalize_keyword(keyword):
+    return normalize_whitespace(keyword).replace("，", ",")
+
+
+def is_soft_must_have_keyword(keyword):
+    normalized = canonicalize_keyword(keyword)
+    if not normalized:
+        return False
+    if normalized in SOFT_MUST_HAVE_KEYWORDS:
+        return True
+    return any(marker in normalized for marker in SOFT_MUST_HAVE_MARKERS)
+
+
+def split_must_have_keywords(keywords):
+    hard = []
+    soft = []
+    for keyword in keywords or []:
+        if is_soft_must_have_keyword(keyword):
+            soft.append(keyword)
+        else:
+            hard.append(keyword)
+    return unique_ordered(hard), unique_ordered(soft)
 
 
 def parse_json_object(value):
@@ -1975,15 +2041,18 @@ def build_criteria_from_args(args):
     if relationship_goals:
         criteria["relationship_goals"] = relationship_goals
 
-    must_have = merge_keyword_args(args.must_have)
-    if must_have:
-        criteria["must_have"] = must_have
-
     must_not_have = merge_keyword_args(args.must_not_have)
     if must_not_have:
         criteria["must_not_have"] = must_not_have
 
+    must_have = merge_keyword_args(args.must_have)
+    hard_must_have, soft_must_have = split_must_have_keywords(must_have)
+    if hard_must_have:
+        criteria["must_have"] = hard_must_have
+
     prefer = merge_keyword_args(args.prefer)
+    if soft_must_have:
+        prefer = unique_ordered(prefer + soft_must_have)
     if prefer:
         criteria["prefer"] = prefer
 

@@ -224,6 +224,16 @@ class PersonaMemoryTests(unittest.TestCase):
         )
         self.assertEqual(payload["public_personality"], "现居苏州，认真了解，合适的话希望稳步推进到再婚")
 
+    def test_build_public_profile_does_not_infer_stable_lifestyle_from_non_smoking_alone(self):
+        payload = persona_memory_lib.build_public_profile(
+            {
+                "self_city": "无锡",
+                "self_relationship_goal": "认真恋爱，合适就结婚",
+                "self_smoking": "不抽烟",
+            }
+        )
+        self.assertEqual(payload["public_personality"], "现居无锡，认真了解，合适会考虑结婚")
+
     def test_build_public_profile_sanitizes_legacy_public_draft(self):
         payload = persona_memory_lib.build_public_profile(
             {
@@ -233,6 +243,14 @@ class PersonaMemoryTests(unittest.TestCase):
             }
         )
         self.assertEqual(payload["public_personality"], "现居无锡，生活方式稳定，认真了解，重视长期关系。")
+
+    def test_build_public_profile_keeps_willingness_to_communicate_wording(self):
+        payload = persona_memory_lib.build_public_profile(
+            {
+                "must_have_tags": "边界清楚,愿意沟通,不暧昧",
+            }
+        )
+        self.assertEqual(payload["public_values"], "看重边界清楚、愿意沟通、不暧昧")
 
     def test_summarize_observation_evidence_replaces_raw_transcript_with_field_summary(self):
         evidence = persona_memory_lib.summarize_observation_evidence(
@@ -290,7 +308,7 @@ class PersonaMemoryTests(unittest.TestCase):
             "personality": "上海本地，1-2年内往结婚推进导向",
         }
         payload = persona_memory_lib.build_profile_payload(persona, existing_profile=existing_profile)
-        self.assertEqual(payload["personality"], "现居上海，认真了解，合适的话希望稳定推进，生活方式相对稳定")
+        self.assertEqual(payload["personality"], "现居上海，认真了解，合适的话希望稳定推进")
 
     def test_build_profile_payload_sanitizes_existing_internal_personality_without_dropping_extra_context(self):
         persona = {
