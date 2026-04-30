@@ -1,5 +1,13 @@
 # Profile Schema
 
+## Boundary Note
+
+This document only describes the schema needed for the current `partner-search` capability:
+reading profiles, filtering candidates, scoring matches, and returning match results.
+
+Do not use this schema document as justification to expand `partner-search` into recommendation subscriptions,
+notification delivery, follow-up state management, matchmaking workflows, or a broader product backend.
+
 Use this schema for MySQL columns.
 
 ## Recommended Fields
