@@ -423,6 +423,23 @@ class SearchCandidatesTests(unittest.TestCase):
             result["risk_flags"],
         )
 
+    def test_reciprocal_guarded_children_state_becomes_low_acceptance_risk(self):
+        candidate = {
+            "accept_partner_children": "谨慎可协商",
+            "accept_partner_children_strength": "谨慎接受",
+            "accept_partner_children_semantics": "现阶段不太接受，需要非常看具体情况",
+        }
+        self_profile = {"has_children": 1}
+        result = search_candidates.evaluate_reciprocal_compatibility(
+            candidate, self_profile, diagnostics=True
+        )
+        self.assertIsNotNone(result)
+        self.assertTrue(result["matched"])
+        self.assertIn(
+            "对方对子女接受度偏低",
+            result["risk_flags"],
+        )
+
     def test_reciprocal_missing_children_acceptance_called_out(self):
         candidate = {}
         self_profile = {"has_children": 1}

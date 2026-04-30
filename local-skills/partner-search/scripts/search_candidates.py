@@ -285,6 +285,7 @@ BUSY_JOB_KEYWORDS = {"医生", "护士", "审计", "金融", "投行", "新媒�
 ACCEPTED_VALUES = {"接受", "是", "可以", "ok", "accept", "accepted"}
 REJECTED_VALUES = {"不接受", "否", "不可以", "reject", "rejected"}
 NEGOTIABLE_VALUES = {"可协商", "协商", "待定"}
+GUARDED_NEGOTIABLE_VALUES = {"谨慎可协商", "低接受度可协商"}
 UNKNOWN_VALUES = {"未知", "不确定", "未说明", "未填写", "unknown"}
 POSITIVE_HABIT_VALUES = {"是", "偶尔", "有", "yes", "true", "1"}
 
@@ -616,6 +617,8 @@ def normalize_acceptance_state(value):
         return "accepted"
     if lowered in REJECTED_VALUES:
         return "rejected"
+    if lowered in GUARDED_NEGOTIABLE_VALUES:
+        return "guarded"
     if lowered in NEGOTIABLE_VALUES:
         return "negotiable"
     if lowered in UNKNOWN_VALUES:
@@ -925,6 +928,8 @@ def children_acceptance_risk_flag(state, strength, semantics):
     semantics_text = as_text(semantics)
     if contains_any_text(semantics_text, {"偏低", "偏保留"}):
         return "对方对子女接受度偏低"
+    if contains_any_text(semantics_text, {"不太接受", "非常看具体"}):
+        return "对方对子女接受度偏低"
     if contains_any_text(semantics_text, {"先接触再判断", "先聊再判断", "后续现实情况"}):
         return "对方对子女接受需要先接触再判断"
     if contains_any_text(semantics_text, {"更看具体"}):
@@ -947,6 +952,9 @@ def children_acceptance_risk_flag(state, strength, semantics):
         if strength == "surface":
             return "对方对子女接受需要先接触再判断"
         return "对方对子女情况仅可协商"
+
+    if state == "guarded":
+        return "对方对子女接受度偏低"
 
     if state == "unknown":
         return "对方对子女接受度未知"
@@ -2493,10 +2501,10 @@ def evaluate_reciprocal_compatibility(record, self_profile, diagnostics=False):
                 )
                 if children_risk:
                     risk_flags.append(children_risk)
-        elif accept_partner_children == "negotiable":
+        elif accept_partner_children in {"negotiable", "guarded"}:
             risk_flags.append(
                 children_acceptance_risk_flag(
-                    "negotiable",
+                    accept_partner_children,
                     normalize_acceptance_strength(
                         record.get("accept_partner_children_strength")
                     ),
