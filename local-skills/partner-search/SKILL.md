@@ -80,6 +80,17 @@ Repeat multi-value flags such as `--city`, `--relationship-goal`, `--must-have`,
 
 Run `python3 scripts/search_candidates.py --help` for the full CLI.
 
+## Input Contract
+
+Think of the input in two parts:
+
+- requester profile
+  - provided by `--self-id` or the `--self-*` flags when reciprocal matching matters
+- search criteria
+  - provided by filters such as `--gender`, `--age-min`, `--city`, `--relationship-goal`, `--must-have`, and `--prefer`
+
+If you do not pass `--self-id` or any `--self-*` flag, the skill still works, but it behaves as one-way matching instead of reciprocal matching.
+
 ## Source Rules
 
 - For MySQL, pass a DSN like `mysql://user:pass@host:3306/db?table=profiles&photos_table=profile_photos`. Use `--table` or `--photos-table` when the table names are not in the DSN or when auto-detection is ambiguous.
@@ -188,10 +199,12 @@ Summarize the top matches in plain language. For each candidate, include:
 - `fit_score`, `confidence_score`, `risk_score`
 - `scoring` in the text output so the caller can quickly separate "合适" from "资料靠谱"
 - `meta` for compact status / verification / photo count / time context
+- `signals` for a compact snapshot of structured style / rhythm / intent fields when present
 - `photo_preview` when requested and available
 - `matched_on`
 - `reciprocal_on`
 - `missing_fields`
+- `self_profile_gaps` when reciprocal matching depends on requester fields that are missing or unclear
 - `risk_flags`
 - `match_evidence` for `must-have` / `prefer` keywords when the script can trace them back to profile text
 - `follow_up_questions` for the key unknowns or `可协商` / `现阶段不太接受` risks

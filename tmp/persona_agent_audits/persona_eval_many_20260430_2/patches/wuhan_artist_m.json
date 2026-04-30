@@ -1,0 +1,23 @@
+{
+  "display_name": "用户B06",
+  "self_gender": "男",
+  "self_age": 27,
+  "self_city": "武汉",
+  "self_education": "本科",
+  "self_job": "游戏原画/自由职业",
+  "self_income_wan": 18,
+  "self_marital_status": "未婚",
+  "self_smoking": "否",
+  "self_drinking": "偶尔",
+  "self_relationship_goal": "认真恋爱",
+  "target_gender": "女",
+  "target_age_min": 24,
+  "target_age_max": 29,
+  "target_cities": "武汉",
+  "target_accept_long_distance": "可协商",
+  "target_location_semantics": "武汉优先，也接受双城过渡，但要有明确发展意愿和落地计划，不接受玩票心态。",
+  "preferred_traits": "真诚,愿意沟通,有情绪回应,不强控制欲,相处自然,认真投入关系,愿意落地推进,有共同兴趣更好,有审美",
+  "disliked_traits": "控制欲强,玩票心态,反复拉扯,回避沟通,缺少情绪回应",
+  "persona_summary_internal": "27岁武汉游戏原画，自由职业，作息不算特别规律，但想认真谈长期关系。",
+  "preference_summary_internal": "偏好24到29岁武汉女生，也接受双城过渡，但要有明确发展意愿，不是玩票心态。"
+}
