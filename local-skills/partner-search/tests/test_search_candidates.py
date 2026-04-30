@@ -176,6 +176,8 @@ class SearchCandidatesTests(unittest.TestCase):
                 "无锡,苏州",
                 "--must-have",
                 "情绪稳定",
+                "--must-have",
+                "已购房",
                 "--require-known",
                 "smoking,想要孩子",
                 "--profile-status",
@@ -188,7 +190,8 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertEqual(criteria["gender"], "女")
         self.assertEqual(criteria["age_min"], 24)
         self.assertEqual(criteria["cities"], ["无锡", "苏州"])
-        self.assertEqual(criteria["must_have"], ["情绪稳定"])
+        self.assertEqual(criteria["must_have"], ["已购房"])
+        self.assertIn("情绪稳定", criteria["prefer"])
         self.assertEqual(criteria["required_known_fields"], ["smoking", "want_children"])
         self.assertEqual(criteria["profile_statuses"], ["active", "paused"])
         self.assertEqual(criteria["exclude_ids"], {90001})

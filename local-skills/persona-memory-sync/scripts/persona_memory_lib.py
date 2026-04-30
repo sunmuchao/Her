@@ -1092,20 +1092,40 @@ def mark_profile_sync_results(
 
 
 def insert_profile_stub(cursor, profile_table: str, payload: Dict[str, Any]) -> int:
-    cursor.execute(
-        f"""
+    insert_params = (
+        payload["name"],
+        payload["profile_status"],
+        payload["verified_level"],
+        payload["source_channel"],
+        payload["last_active_at"],
+    )
+    insert_sql = f"""
         INSERT INTO {quote_mysql_ident(profile_table)}
           (name, profile_status, verified_level, source_channel, last_active_at)
         VALUES (%s, %s, %s, %s, %s)
-        """,
-        (
-            payload["name"],
-            payload["profile_status"],
-            payload["verified_level"],
-            payload["source_channel"],
-            payload["last_active_at"],
-        ),
-    )
+        """
+    try:
+        cursor.execute(insert_sql, insert_params)
+    except Exception as exc:
+        error_text = str(exc)
+        if "doesn't have a default value" not in error_text or "'id'" not in error_text:
+            raise
+        cursor.execute(
+            f"SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM {quote_mysql_ident(profile_table)}"
+        )
+        row = cursor.fetchone() or {}
+        next_id = as_int(row.get("next_id") if isinstance(row, dict) else None)
+        if next_id is None:
+            raise ValueError(f"Could not allocate a fallback profile id from {profile_table}.") from exc
+        cursor.execute(
+            f"""
+            INSERT INTO {quote_mysql_ident(profile_table)}
+              (id, name, profile_status, verified_level, source_channel, last_active_at)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            """,
+            (next_id,) + insert_params,
+        )
+        return int(next_id)
     profile_id = getattr(cursor, "lastrowid", None)
     if not profile_id:
         raise ValueError(
