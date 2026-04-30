@@ -19,6 +19,35 @@ Use this skill when a dating or matchmaking conversation reveals new information
 - 不改变现有 merge 规则、public rendering 规则、profiles 同步策略、source type 权限边界。
 - 不把 `persona-memory-sync` 变成新的业务编排层；它仍然只负责当前这套记忆写入与同步能力。
 
+## Functional Boundary
+
+This boundary is hard, not aspirational.
+
+- `persona-memory-sync` 的产品功能边界，只能是当前已有的“写入 / 更新用户画像并同步公开安全字段”的能力。
+- 可以调整代码结构、调用方式、CLI、Python API、engine 分层、测试和文档。
+- 这些结构调整不代表可以顺带增加新的产品职责。
+
+Allowed:
+
+- 写入 `user_persona_observations`
+- 合并并更新 `user_personas`
+- 同步现有 `profiles` 字段
+- 生成和回写现有 `public_*` 字段或等价公开视图字段
+- 为以上现有能力补 CLI、Python API、engine 包装层
+
+Not allowed:
+
+- 新增新的画像产品能力、记忆类型、事件语义或新的长期状态机
+- 新增提醒、订阅、持续监听、消息分发、通知、审核流、任务编排
+- 新增推荐、匹配、候选召回、排序、代理撮合、自动媒合
+- 把 `persona-memory-sync` 扩成通用画像中心、工作流中心或业务编排层
+- 因为补了 CLI / Python API / engine，就顺带新增新的输入语义、输出语义或新的业务流程
+
+Rule of thumb:
+
+- 可以改“怎么调用、怎么组织代码、怎么暴露接口”
+- 不可以改“这个 skill 负责什么产品能力”
+
 ## Delivery Order
 
 1. Phase 1：结构收口
@@ -34,6 +63,7 @@ Use this skill when a dating or matchmaking conversation reveals new information
 - CLI 入口 `upsert_persona_memory.py`、`sync_persona_to_profile.py`、`render_public_profile.py` 以及审计脚本 `run_persona_memory_audit.py` 都应通过 engine 层调用，不再直接拼装底层读写流程。
 - `scripts/persona_memory_lib.py` 继续保留为内部实现细节，负责规则、字段映射、SQL 读写和公开文案生成；新调用方默认不要直接依赖它的运行时函数。
 - `scripts/ensure_persona_tables.py` 仍然属于建表和 schema 补齐脚本，不属于运行时 engine。
+- `engine` 和 `Python API` 只是现有能力的调用壳，不是新增功能的授权入口。
 
 This skill separates three concerns:
 
