@@ -283,4 +283,5 @@ If nothing matches, say so plainly and include:
 
 - Read `references/profile-schema.md` for supported fields and aliases, especially reciprocal preference columns such as `preferred_*`, `accept_*`, and child-plan fields.
 - Read `references/proactive-matchmaking-design.md` only as an external-system reference. That document is not part of the core skill contract.
+- Phase 3's landed outer system now lives at `external-systems/partner-recommendation-system/` and should continue to own subscriptions, recommendation history, refresh jobs, and in-app recommendation cards.
 - When validating changes to this skill itself, run `bash scripts/run_tests.sh` so the test pass does not leave `__pycache__` or `.pyc` artifacts inside the package.

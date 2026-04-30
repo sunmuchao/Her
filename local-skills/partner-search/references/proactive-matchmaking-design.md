@@ -602,6 +602,42 @@ Phase 1 完成后，`partner-search` 应该处于下面这个状态：
 - 推荐频控和冷却生效
 - `partner-search` 本身没有被状态逻辑污染
 
+### 14.6 Phase 3 落地到当前代码
+
+这一阶段现在已经在 repo 里作为独立外部系统落地，路径是：
+
+- `external-systems/partner-recommendation-system/`
+
+具体对应关系如下：
+
+- `recommendation_system/storage.py`
+  - 建 `saved_search_subscriptions`
+  - 建 `profile_recommendations`
+  - 建 `recommendation_actions`
+  - 建 `in_app_recommendation_cards`
+- `recommendation_system/service.py`
+  - 刷新订阅
+  - 调 `partner-search`
+  - 做历史去重
+  - 做 `skip` 冷却
+  - 做每日提醒频控
+  - 做静默时段控制
+  - 生成站内推荐卡片
+- `recommendation_system/search_client.py`
+  - 通过 Phase 2 Python API 调 `partner-search`
+- `scripts/create_saved_search_subscription.py`
+  - 创建保存搜索订阅
+- `scripts/refresh_saved_searches.py`
+  - 跑“持续留意”刷新任务
+- `scripts/deliver_in_app_recommendations.py`
+  - 跑站内推荐派发任务
+- `scripts/record_recommendation_action.py`
+  - 记录 `skip / save / direct_greet`
+- `tests/test_recommendation_system.py`
+  - 锁住去重、冷却、频控、站内卡片等回归
+
+这样以后如果产品层要做真正的“继续帮我留意”，应该直接扩这个外部系统，而不是把状态逻辑塞回 `partner-search`。
+
 ## 15. Phase 4: 外部系统做“代为开口”
 
 ### 15.1 目标

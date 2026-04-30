@@ -1010,6 +1010,281 @@
         "applied_to_persona": 0,
         "applied_to_profile": 0,
         "created_at": "2026-04-30 16:28:15"
+      },
+      {
+        "id": 1608,
+        "field_name": "display_name",
+        "field_value": "用户C01",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到昵称=用户C01",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1609,
+        "field_name": "self_gender",
+        "field_value": "女",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到self_gender=女",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1610,
+        "field_name": "self_age",
+        "field_value": "32",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到年龄=32",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1611,
+        "field_name": "self_height",
+        "field_value": "168",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到self_height=168",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1612,
+        "field_name": "self_city",
+        "field_value": "上海",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到现居城市=上海",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1613,
+        "field_name": "self_education",
+        "field_value": "硕士",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到学历=硕士",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1614,
+        "field_name": "self_job",
+        "field_value": "外企商业分析/战略岗位",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到职业=外企商业分析/战略岗位",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1615,
+        "field_name": "self_income_wan",
+        "field_value": "82",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到收入=82",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1616,
+        "field_name": "self_marital_status",
+        "field_value": "未婚",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到婚况=未婚",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1617,
+        "field_name": "self_has_children",
+        "field_value": "0",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到是否有孩子=0",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1618,
+        "field_name": "self_smoking",
+        "field_value": "否",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到抽烟情况=否",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1619,
+        "field_name": "self_drinking",
+        "field_value": "社交型少量饮酒",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到喝酒情况=社交型少量饮酒",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1620,
+        "field_name": "self_relationship_goal",
+        "field_value": "1-2年内往结婚推进",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到关系目标=1-2年内往结婚推进",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1621,
+        "field_name": "target_gender",
+        "field_value": "男",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到目标性别=男",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1622,
+        "field_name": "target_age_min",
+        "field_value": "30",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到目标年龄下限=30",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1623,
+        "field_name": "target_age_max",
+        "field_value": "37",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到目标年龄上限=37",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1624,
+        "field_name": "target_height_min",
+        "field_value": "175",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到目标身高下限=175",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1625,
+        "field_name": "target_cities",
+        "field_value": "上海,苏州",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到目标城市=上海,苏州",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1626,
+        "field_name": "target_education_min",
+        "field_value": "本科",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到目标学历下限=本科",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1627,
+        "field_name": "target_accept_long_distance",
+        "field_value": "短期可了解，长期异地不接受",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到异地接受度=短期可了解，长期异地不接受",
+        "action_type": "update",
+        "applied_to_persona": 1,
+        "applied_to_profile": 1,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1628,
+        "field_name": "target_location_semantics",
+        "field_value": "上海或苏州优先，也接受人在外地但稳定留沪；短期异地可了解，但不接受长期不落地异地。",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到位置偏好补充=上海或苏州优先，也接受人在外地但稳定留沪；短期异地可了解，...",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1629,
+        "field_name": "preferred_traits",
+        "field_value": "情绪稳定,婚姻诚意,消费观正常,沟通自然,现实推进能力,稳定留沪",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到更偏好特质=情绪稳定,婚姻诚意,消费观正常,沟通自然,现实推进能力,稳定留沪",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1630,
+        "field_name": "disliked_traits",
+        "field_value": "控制欲强,暧昧拖拉,回避承诺,长期情绪拉扯",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到不太接受特质=控制欲强,暧昧拖拉,回避承诺,长期情绪拉扯",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1631,
+        "field_name": "persona_summary_internal",
+        "field_value": "32岁女性，现居上海，身高168cm，硕士，外企商业分析/战略岗位，年收入约82万，未婚，无孩，不抽烟，社交型少量饮酒。工作忙但生活有秩序，会运动，认真找长期稳定关系，合适希望1到2年内结婚。",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到persona_summary_internal=32岁女性，现居上海，身高168cm，硕士，外企商业分析/...",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1632,
+        "field_name": "preference_summary_internal",
+        "field_value": "偏好30到37岁、175cm以上、本科及以上男性，上海或苏州优先，也接受人在外地但稳定留沪。短期异地可了解，但不接受长期不落地异地。最看重情绪稳定、婚姻诚意、消费观正常、沟通自然和现实推进能力；不能接受控制欲强、暧昧拖拉、回避承诺、长期情绪拉扯。",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到preference_summary_internal=偏好30到37岁、175cm以上、本科及以上男性，上海或苏...",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
       }
     ],
     "user_persona": {
@@ -1030,7 +1305,7 @@
       "target_cities": "上海,苏州",
       "target_height_min": 175,
       "target_education_min": "本科",
-      "target_accept_long_distance": "不接受",
+      "target_accept_long_distance": "短期可了解，长期异地不接受",
       "target_location_semantics": "上海或苏州优先，也接受人在外地但稳定留沪；短期异地可了解，但不接受长期不落地异地。",
       "preferred_traits": "情绪稳定,婚姻诚意,消费观正常,沟通自然,现实推进能力,稳定留沪",
       "disliked_traits": "控制欲强,暧昧拖拉,回避承诺,长期情绪拉扯",
@@ -1061,8 +1336,8 @@
       "notes": "不太接受控制欲强、暧昧拖拉、回避承诺、长期情绪拉扯",
       "matcher_summary_internal": "32岁女性，现居上海，身高168cm，硕士，外企商业分析/战略岗位，年收入约82万，未婚，无孩，不抽烟，社交型少量饮酒。工作忙但生活有秩序，会运动，认真找长期稳定关系，合适希望1到2年内结婚。 | 偏好30到37岁、175cm以上、本科及以上男性，上海或苏州优先，也接受人在外地但稳定留沪。短期异地可了解，但不接受长期不落地异地。最看重情绪稳定、婚姻诚意、消费观正常、沟通自然和现实推进能力；不能接受控制欲强、暧昧拖拉、回避承诺、长期情绪拉扯。",
       "public_personality": "现居上海，认真了解，婚姻方向明确，合适会稳步推进",
-      "public_values": "看重现实推进能力、长期关系诚意、情绪稳定、消费观清醒、沟通自然",
-      "public_notes": "原则上不接受异地；如有短期过渡，需明确落地计划"
+      "public_values": "看重现实推进能力、婚姻诚意、情绪稳定、消费观清醒、沟通自然",
+      "public_notes": "上海或苏州优先；短期异地可了解，但需要明确落地计划；不接受长期异地"
     },
     "public_profile_view": {
       "id": 30102,
@@ -1074,8 +1349,8 @@
       "job": "外企商业分析/战略岗位",
       "relationship_goal": "认真了解，婚姻方向明确，合适会稳步推进",
       "personality": "现居上海，认真了解，婚姻方向明确，合适会稳步推进",
-      "values": "看重现实推进能力、长期关系诚意、情绪稳定、消费观清醒、沟通自然",
-      "notes": "原则上不接受异地；如有短期过渡，需明确落地计划"
+      "values": "看重现实推进能力、婚姻诚意、情绪稳定、消费观清醒、沟通自然",
+      "notes": "上海或苏州优先；短期异地可了解，但需要明确落地计划；不接受长期异地"
     }
   },
   {
@@ -2050,6 +2325,534 @@
         "applied_to_persona": 0,
         "applied_to_profile": 0,
         "created_at": "2026-04-30 16:28:15"
+      },
+      {
+        "id": 1633,
+        "field_name": "display_name",
+        "field_value": "用户C02",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到昵称=用户C02",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1634,
+        "field_name": "self_gender",
+        "field_value": "男",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到self_gender=男",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1635,
+        "field_name": "self_age",
+        "field_value": "37",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到年龄=37",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1636,
+        "field_name": "self_height",
+        "field_value": "178",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到self_height=178",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1637,
+        "field_name": "self_city",
+        "field_value": "苏州",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到现居城市=苏州",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1638,
+        "field_name": "self_education",
+        "field_value": "本科",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到学历=本科",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1639,
+        "field_name": "self_job",
+        "field_value": "制造业供应链管理岗",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到职业=制造业供应链管理岗",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1640,
+        "field_name": "self_income_wan",
+        "field_value": "36",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到收入=36",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1641,
+        "field_name": "self_marital_status",
+        "field_value": "离异",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到婚况=离异",
+        "action_type": "update",
+        "applied_to_persona": 1,
+        "applied_to_profile": 1,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1642,
+        "field_name": "self_has_children",
+        "field_value": "0",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到是否有孩子=0",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1643,
+        "field_name": "self_smoking",
+        "field_value": "否",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到抽烟情况=否",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1644,
+        "field_name": "self_drinking",
+        "field_value": "偶尔",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到喝酒情况=偶尔",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1645,
+        "field_name": "self_relationship_goal",
+        "field_value": "2年内再婚方向明确",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到关系目标=2年内再婚方向明确",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1646,
+        "field_name": "target_gender",
+        "field_value": "女",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到目标性别=女",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1647,
+        "field_name": "target_age_min",
+        "field_value": "29",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到目标年龄下限=29",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1648,
+        "field_name": "target_age_max",
+        "field_value": "35",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到目标年龄上限=35",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1649,
+        "field_name": "target_height_min",
+        "field_value": "160",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到目标身高下限=160",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1650,
+        "field_name": "target_cities",
+        "field_value": "苏州,无锡,上海,南京,沪范围内,杭州,常州,宁波",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到目标城市=苏州,无锡,上海,南京,沪范围内,杭州,常州,宁波",
+        "action_type": "update",
+        "applied_to_persona": 1,
+        "applied_to_profile": 1,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1651,
+        "field_name": "target_accept_long_distance",
+        "field_value": "短期通勤可了解，长期异地谨慎",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到异地接受度=短期通勤可了解，长期异地谨慎",
+        "action_type": "update",
+        "applied_to_persona": 1,
+        "applied_to_profile": 1,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1652,
+        "field_name": "target_location_semantics",
+        "field_value": "江浙沪范围内优先；短期通勤型距离可了解，但长期异地比较谨慎。",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到位置偏好补充=江浙沪范围内优先；短期通勤型距离可了解，但长期异地比较谨慎。",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1653,
+        "field_name": "preferred_traits",
+        "field_value": "真诚,稳定踏实,愿意沟通,尊重彼此,生活规律,家庭观念,情绪稳定",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到更偏好特质=真诚,稳定踏实,愿意沟通,尊重彼此,生活规律,家庭观念,情绪稳定",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1654,
+        "field_name": "disliked_traits",
+        "field_value": "不真诚,回避沟通,情绪波动大,对再婚现实认知不清",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到不太接受特质=不真诚,回避沟通,情绪波动大,对再婚现实认知不清",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1655,
+        "field_name": "persona_summary_internal",
+        "field_value": "37岁男性，现居苏州，身高178cm，本科，制造业供应链管理岗，年收入约36万，离异无孩，不抽烟，少量社交饮酒。生活节奏规律，认真找长期关系，合适希望2年内再婚。",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到persona_summary_internal=37岁男性，现居苏州，身高178cm，本科，制造业供应链管...",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1656,
+        "field_name": "preference_summary_internal",
+        "field_value": "偏好29到35岁、160cm以上女性，最好在苏州、无锡、上海、南京等江浙沪城市。短期通勤型距离能看，长期异地比较谨慎。很看重真诚、稳定踏实、愿意沟通、尊重彼此、生活规律、家庭观念和情绪稳定；不能接受不真诚、回避沟通、情绪波动大、对再婚现实认知不清的人。",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到preference_summary_internal=偏好29到35岁、160cm以上女性，最好在苏州、无锡、上...",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1681,
+        "field_name": "display_name",
+        "field_value": "用户C02",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到昵称=用户C02",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:34:35"
+      },
+      {
+        "id": 1682,
+        "field_name": "self_gender",
+        "field_value": "男",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到self_gender=男",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:34:35"
+      },
+      {
+        "id": 1683,
+        "field_name": "self_age",
+        "field_value": "37",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到年龄=37",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:34:35"
+      },
+      {
+        "id": 1684,
+        "field_name": "self_height",
+        "field_value": "178",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到self_height=178",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:34:35"
+      },
+      {
+        "id": 1685,
+        "field_name": "self_city",
+        "field_value": "苏州",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到现居城市=苏州",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:34:35"
+      },
+      {
+        "id": 1686,
+        "field_name": "self_education",
+        "field_value": "本科",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到学历=本科",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:34:35"
+      },
+      {
+        "id": 1687,
+        "field_name": "self_job",
+        "field_value": "制造业供应链管理岗",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到职业=制造业供应链管理岗",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:34:35"
+      },
+      {
+        "id": 1688,
+        "field_name": "self_income_wan",
+        "field_value": "36",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到收入=36",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:34:35"
+      },
+      {
+        "id": 1689,
+        "field_name": "self_marital_status",
+        "field_value": "离异",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到婚况=离异",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:34:35"
+      },
+      {
+        "id": 1690,
+        "field_name": "self_has_children",
+        "field_value": "0",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到是否有孩子=0",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:34:35"
+      },
+      {
+        "id": 1691,
+        "field_name": "self_smoking",
+        "field_value": "否",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到抽烟情况=否",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:34:35"
+      },
+      {
+        "id": 1692,
+        "field_name": "self_drinking",
+        "field_value": "偶尔",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到喝酒情况=偶尔",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:34:35"
+      },
+      {
+        "id": 1693,
+        "field_name": "self_relationship_goal",
+        "field_value": "2年内再婚方向明确",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到关系目标=2年内再婚方向明确",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:34:35"
+      },
+      {
+        "id": 1694,
+        "field_name": "target_gender",
+        "field_value": "女",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到目标性别=女",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:34:35"
+      },
+      {
+        "id": 1695,
+        "field_name": "target_age_min",
+        "field_value": "29",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到目标年龄下限=29",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:34:35"
+      },
+      {
+        "id": 1696,
+        "field_name": "target_age_max",
+        "field_value": "35",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到目标年龄上限=35",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:34:35"
+      },
+      {
+        "id": 1697,
+        "field_name": "target_height_min",
+        "field_value": "160",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到目标身高下限=160",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:34:35"
+      },
+      {
+        "id": 1698,
+        "field_name": "target_cities",
+        "field_value": "苏州,无锡,上海,南京,杭州,常州,宁波",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到目标城市=苏州,无锡,上海,南京,杭州,常州,宁波",
+        "action_type": "update",
+        "applied_to_persona": 1,
+        "applied_to_profile": 1,
+        "created_at": "2026-04-30 17:34:35"
+      },
+      {
+        "id": 1699,
+        "field_name": "target_accept_long_distance",
+        "field_value": "短期通勤可了解，长期异地谨慎",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到异地接受度=短期通勤可了解，长期异地谨慎",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:34:35"
+      },
+      {
+        "id": 1700,
+        "field_name": "target_location_semantics",
+        "field_value": "江浙沪范围内优先；短期通勤型距离可了解，但长期异地比较谨慎。",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到位置偏好补充=江浙沪范围内优先；短期通勤型距离可了解，但长期异地比较谨慎。",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:34:35"
+      },
+      {
+        "id": 1701,
+        "field_name": "preferred_traits",
+        "field_value": "真诚,稳定踏实,愿意沟通,尊重彼此,生活规律,家庭观念,情绪稳定",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到更偏好特质=真诚,稳定踏实,愿意沟通,尊重彼此,生活规律,家庭观念,情绪稳定",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:34:35"
+      },
+      {
+        "id": 1702,
+        "field_name": "disliked_traits",
+        "field_value": "不真诚,回避沟通,情绪波动大,对再婚现实认知不清",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到不太接受特质=不真诚,回避沟通,情绪波动大,对再婚现实认知不清",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:34:35"
+      },
+      {
+        "id": 1703,
+        "field_name": "persona_summary_internal",
+        "field_value": "37岁男性，现居苏州，身高178cm，本科，制造业供应链管理岗，年收入约36万，离异无孩，不抽烟，少量社交饮酒。生活节奏规律，认真找长期关系，合适希望2年内再婚。",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到persona_summary_internal=37岁男性，现居苏州，身高178cm，本科，制造业供应链管...",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:34:35"
+      },
+      {
+        "id": 1704,
+        "field_name": "preference_summary_internal",
+        "field_value": "偏好29到35岁、160cm以上女性，最好在苏州、无锡、上海、南京等江浙沪城市。短期通勤型距离能看，长期异地比较谨慎。很看重真诚、稳定踏实、愿意沟通、尊重彼此、生活规律、家庭观念和情绪稳定；不能接受不真诚、回避沟通、情绪波动大、对再婚现实认知不清的人。",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到preference_summary_internal=偏好29到35岁、160cm以上女性，最好在苏州、无锡、上...",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:34:35"
       }
     ],
     "user_persona": {
@@ -2059,7 +2862,7 @@
       "self_city": "苏州",
       "self_education": "本科",
       "self_job": "制造业供应链管理岗",
-      "self_marital_status": "离异无孩",
+      "self_marital_status": "离异",
       "self_has_children": 0,
       "self_smoking": "否",
       "self_drinking": "偶尔",
@@ -2067,9 +2870,9 @@
       "target_gender": "女",
       "target_age_min": 29,
       "target_age_max": 35,
-      "target_cities": "苏州,无锡,上海,南京",
+      "target_cities": "苏州,无锡,上海,南京,杭州,常州,宁波",
       "target_height_min": 160,
-      "target_accept_long_distance": "可协商",
+      "target_accept_long_distance": "短期通勤可了解，长期异地谨慎",
       "target_location_semantics": "江浙沪范围内优先；短期通勤型距离可了解，但长期异地比较谨慎。",
       "preferred_traits": "真诚,稳定踏实,愿意沟通,尊重彼此,生活规律,家庭观念,情绪稳定",
       "disliked_traits": "不真诚,回避沟通,情绪波动大,对再婚现实认知不清",
@@ -2099,7 +2902,8 @@
       "notes": "不太接受不真诚、回避沟通、情绪波动大、对再婚现实认知不清",
       "matcher_summary_internal": "37岁男性，现居苏州，身高178cm，本科，制造业供应链管理岗，年收入约36万，离异无孩，不抽烟，少量社交饮酒。生活节奏规律，认真找长期关系，合适希望2年内再婚。 | 偏好29到35岁、160cm以上女性，最好在苏州、无锡、上海、南京等江浙沪城市。短期通勤型距离能看，长期异地比较谨慎。很看重真诚、稳定踏实、愿意沟通、尊重彼此、生活规律、家庭观念和情绪稳定；不能接受不真诚、回避沟通、情绪波动大、对再婚现实认知不清的人。",
       "public_personality": "现居苏州，认真了解，再婚方向明确，合适会稳步推进",
-      "public_values": "看重情绪稳定、愿意沟通、真诚、稳定踏实、尊重彼此，更适合同城或近距离认真相处"
+      "public_values": "看重情绪稳定、愿意沟通、真诚、稳定踏实、尊重彼此、生活规律",
+      "public_notes": "苏州、无锡、上海优先；更适合同城或近距离认真相处"
     },
     "public_profile_view": {
       "id": 30098,
@@ -2111,7 +2915,8 @@
       "job": "制造业供应链管理岗",
       "relationship_goal": "认真了解，再婚方向明确，合适会稳步推进",
       "personality": "现居苏州，认真了解，再婚方向明确，合适会稳步推进",
-      "values": "看重情绪稳定、愿意沟通、真诚、稳定踏实、尊重彼此，更适合同城或近距离认真相处"
+      "values": "看重情绪稳定、愿意沟通、真诚、稳定踏实、尊重彼此、生活规律",
+      "notes": "苏州、无锡、上海优先；更适合同城或近距离认真相处"
     }
   },
   {
@@ -3086,6 +3891,270 @@
         "applied_to_persona": 0,
         "applied_to_profile": 0,
         "created_at": "2026-04-30 16:28:16"
+      },
+      {
+        "id": 1531,
+        "field_name": "display_name",
+        "field_value": "用户C03",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到昵称=用户C03",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1532,
+        "field_name": "self_gender",
+        "field_value": "女",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到self_gender=女",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1533,
+        "field_name": "self_age",
+        "field_value": "29",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到年龄=29",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1534,
+        "field_name": "self_height",
+        "field_value": "164",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到self_height=164",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1535,
+        "field_name": "self_city",
+        "field_value": "无锡",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到现居城市=无锡",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1536,
+        "field_name": "self_education",
+        "field_value": "硕士",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到学历=硕士",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1537,
+        "field_name": "self_job",
+        "field_value": "医院药师",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到职业=医院药师",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1538,
+        "field_name": "self_income_wan",
+        "field_value": "24",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到收入=24",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1539,
+        "field_name": "self_marital_status",
+        "field_value": "未婚",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到婚况=未婚",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1540,
+        "field_name": "self_has_children",
+        "field_value": "0",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到是否有孩子=0",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1541,
+        "field_name": "self_smoking",
+        "field_value": "否",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到抽烟情况=否",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1542,
+        "field_name": "self_drinking",
+        "field_value": "基本不喝酒",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到喝酒情况=基本不喝酒",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1543,
+        "field_name": "self_relationship_goal",
+        "field_value": "认真恋爱，合适希望稳定结婚",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到关系目标=认真恋爱，合适希望稳定结婚",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1544,
+        "field_name": "target_gender",
+        "field_value": "男",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到目标性别=男",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1545,
+        "field_name": "target_age_min",
+        "field_value": "28",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到目标年龄下限=28",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1546,
+        "field_name": "target_age_max",
+        "field_value": "34",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到目标年龄上限=34",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1547,
+        "field_name": "target_height_min",
+        "field_value": "172",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到目标身高下限=172",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1548,
+        "field_name": "target_cities",
+        "field_value": "无锡,苏州",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到目标城市=无锡,苏州",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1549,
+        "field_name": "target_accept_long_distance",
+        "field_value": "不接受",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到异地接受度=不接受",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1550,
+        "field_name": "target_location_semantics",
+        "field_value": "原则上不接受远距离异地；近距离或对方有明确落地计划时可以沟通。",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到位置偏好补充=原则上不接受远距离异地；近距离或对方有明确落地计划时可以沟通。",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1551,
+        "field_name": "preferred_traits",
+        "field_value": "情绪稳定,责任心,尊重他人,三观正,行动力,边界清楚,愿意沟通,稳定工作,不抽烟,少酒",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到更偏好特质=情绪稳定,责任心,尊重他人,三观正,行动力,边界清楚,愿意...",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1552,
+        "field_name": "disliked_traits",
+        "field_value": "抽烟严重,经常喝酒,失联冷处理,说一套做一套,边界感差,暧昧不清",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到不太接受特质=抽烟严重,经常喝酒,失联冷处理,说一套做一套,边界感差,暧昧不清",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1553,
+        "field_name": "persona_summary_internal",
+        "field_value": "29岁女性，现居无锡，身高164cm，硕士，在医院做药师，年收入约24万，未婚，无孩，不抽烟，基本不喝酒，作息规律。认真找恋爱对象，合适希望稳定结婚。",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到persona_summary_internal=29岁女性，现居无锡，身高164cm，硕士，在医院做药师，...",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1554,
+        "field_name": "preference_summary_internal",
+        "field_value": "偏好28到34岁、172cm以上男性，最好无锡或苏州，稳定工作，不抽烟、少酒、边界清楚、别暧昧、愿意沟通。原则上不接受远距离异地，但近距离或对方有明确落地计划时可以沟通。最看重情绪稳定、责任心、尊重他人、三观正和行动力；不能接受抽烟严重、经常喝酒、失联冷处理、说一套做一套、边界感差的人。",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到preference_summary_internal=偏好28到34岁、172cm以上男性，最好无锡或苏州，稳定...",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
       }
     ],
     "user_persona": {
@@ -3132,11 +4201,11 @@
       "location_preference_semantics": "原则上不接受远距离异地；近距离或对方有明确落地计划时可以沟通。",
       "personality": "29岁女性，现居无锡，身高164cm，硕士，在医院做药师，年收入约24万，未婚，无孩，不抽烟，基本不喝酒，作息规律。认真找恋爱对象，合适希望稳定结婚。",
       "values": "偏好28到34岁、172cm以上男性，最好无锡或苏州，稳定工作，不抽烟、少酒、边界清楚、别暧昧、愿意沟通。原则上不接受远距离异地，但近距离或对方有明确落地计划时可以沟通。最看重情绪稳定、责任心、尊重他人、三观正和行动力；不能接受抽烟严重、经常喝酒、失联冷处理、说一套做一套、边界感差的人。",
-      "notes": "不太接受抽烟严重、经常喝酒、失联冷处理、说一套做一套",
+      "notes": "不太接受抽烟严重、经常喝酒、失联冷处理、说一套做一套、边界感差",
       "matcher_summary_internal": "29岁女性，现居无锡，身高164cm，硕士，在医院做药师，年收入约24万，未婚，无孩，不抽烟，基本不喝酒，作息规律。认真找恋爱对象，合适希望稳定结婚。 | 偏好28到34岁、172cm以上男性，最好无锡或苏州，稳定工作，不抽烟、少酒、边界清楚、别暧昧、愿意沟通。原则上不接受远距离异地，但近距离或对方有明确落地计划时可以沟通。最看重情绪稳定、责任心、尊重他人、三观正和行动力；不能接受抽烟严重、经常喝酒、失联冷处理、说一套做一套、边界感差的人。",
-      "public_personality": "现居无锡，作息规律，认真了解，婚姻方向明确",
-      "public_values": "看重情绪稳定、边界清楚、愿意沟通、责任心、尊重他人",
-      "public_notes": "异地需有明确落地计划"
+      "public_personality": "现居无锡，作息规律，认真了解，长期关系与婚姻方向明确",
+      "public_values": "看重情绪稳定、边界清楚、愿意沟通、责任心、尊重他人、三观正",
+      "public_notes": "无锡或苏州优先；异地需有明确落地计划；不喜欢关系里反复拉扯"
     },
     "public_profile_view": {
       "id": 30099,
@@ -3147,9 +4216,9 @@
       "education": "本科及以上",
       "job": "医疗相关工作",
       "relationship_goal": "认真了解，婚姻方向明确",
-      "personality": "现居无锡，作息规律，认真了解，婚姻方向明确",
-      "values": "看重情绪稳定、边界清楚、愿意沟通、责任心、尊重他人",
-      "notes": "异地需有明确落地计划"
+      "personality": "现居无锡，作息规律，认真了解，长期关系与婚姻方向明确",
+      "values": "看重情绪稳定、边界清楚、愿意沟通、责任心、尊重他人、三观正",
+      "notes": "无锡或苏州优先；异地需有明确落地计划；不喜欢关系里反复拉扯"
     }
   },
   {
@@ -4163,6 +5232,281 @@
         "applied_to_persona": 0,
         "applied_to_profile": 0,
         "created_at": "2026-04-30 16:28:16"
+      },
+      {
+        "id": 1555,
+        "field_name": "display_name",
+        "field_value": "用户C04",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到昵称=用户C04",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1556,
+        "field_name": "self_gender",
+        "field_value": "女",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到self_gender=女",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1558,
+        "field_name": "self_age",
+        "field_value": "34",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到年龄=34",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1560,
+        "field_name": "self_height",
+        "field_value": "165",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到self_height=165",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1562,
+        "field_name": "self_city",
+        "field_value": "南京",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到现居城市=南京",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1563,
+        "field_name": "self_education",
+        "field_value": "博士",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到学历=博士",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1565,
+        "field_name": "self_job",
+        "field_value": "高校教师",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到职业=高校教师",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1567,
+        "field_name": "self_income_wan",
+        "field_value": "30",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到收入=30",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1569,
+        "field_name": "self_marital_status",
+        "field_value": "未婚",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到婚况=未婚",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1571,
+        "field_name": "self_has_children",
+        "field_value": "0",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到是否有孩子=0",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1573,
+        "field_name": "self_smoking",
+        "field_value": "否",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到抽烟情况=否",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1575,
+        "field_name": "self_drinking",
+        "field_value": "基本不喝酒",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到喝酒情况=基本不喝酒",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1577,
+        "field_name": "self_relationship_goal",
+        "field_value": "结婚不着急但方向明确",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到关系目标=结婚不着急但方向明确",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1579,
+        "field_name": "target_gender",
+        "field_value": "男",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到目标性别=男",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1581,
+        "field_name": "target_age_min",
+        "field_value": "32",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到目标年龄下限=32",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1583,
+        "field_name": "target_age_max",
+        "field_value": "38",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到目标年龄上限=38",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1585,
+        "field_name": "target_height_min",
+        "field_value": "175",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到目标身高下限=175",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1587,
+        "field_name": "target_cities",
+        "field_value": "南京,苏州",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到目标城市=南京,苏州",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1589,
+        "field_name": "target_education_min",
+        "field_value": "本科",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到目标学历下限=本科",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1591,
+        "field_name": "target_accept_long_distance",
+        "field_value": "不接受",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到异地接受度=不接受",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1593,
+        "field_name": "target_location_semantics",
+        "field_value": "南京或苏州优先；明确不接受长期异地，如需短期过渡也要有明确落地计划。",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到位置偏好补充=南京或苏州优先；明确不接受长期异地，如需短期过渡也要有明确...",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1595,
+        "field_name": "preferred_traits",
+        "field_value": "情绪稳定,耐心,沟通顺畅,边界感正常,生活稳定,责任感强,健康习惯,做事踏实,有自己的兴趣爱好",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到更偏好特质=情绪稳定,耐心,沟通顺畅,边界感正常,生活稳定,责任感强,...",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1597,
+        "field_name": "disliked_traits",
+        "field_value": "强控制欲,沟通不清,情绪化,反复拉扯,态度暧昧,长期异地",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到不太接受特质=强控制欲,沟通不清,情绪化,反复拉扯,态度暧昧,长期异地",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1600,
+        "field_name": "persona_summary_internal",
+        "field_value": "34岁女性，现居南京，身高165cm，博士，高校教师，年收入约30万，未婚，无孩，不抽烟，基本不喝酒。生活安静稳定，慢热但认真，想找长期稳定关系，结婚不着急但方向明确。",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到persona_summary_internal=34岁女性，现居南京，身高165cm，博士，高校教师，年收...",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1603,
+        "field_name": "preference_summary_internal",
+        "field_value": "偏好32到38岁、175cm以上、南京或苏州、本科及以上男性。明确不接受长期异地。看重情绪稳定、耐心、沟通顺畅、边界感正常、生活稳定、责任感和健康习惯；加分项是有自己的兴趣爱好；不能接受强控制欲、沟通不清、情绪化、反复拉扯和态度暧昧。",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到preference_summary_internal=偏好32到38岁、175cm以上、南京或苏州、本科及以上男...",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
       }
     ],
     "user_persona": {
@@ -4211,11 +5555,11 @@
       "preferred_education_min": "本科",
       "personality": "34岁女性，现居南京，身高165cm，博士，高校教师，年收入约30万，未婚，无孩，不抽烟，基本不喝酒。生活安静稳定，慢热但认真，想找长期稳定关系，结婚不着急但方向明确。",
       "values": "偏好32到38岁、175cm以上、南京或苏州、本科及以上男性。明确不接受长期异地。看重情绪稳定、耐心、沟通顺畅、边界感正常、生活稳定、责任感和健康习惯；加分项是有自己的兴趣爱好；不能接受强控制欲、沟通不清、情绪化、反复拉扯和态度暧昧。",
-      "notes": "不太接受强控制欲、沟通不清、情绪化、反复拉扯",
+      "notes": "不太接受强控制欲、沟通不清、情绪化、反复拉扯、态度暧昧",
       "matcher_summary_internal": "34岁女性，现居南京，身高165cm，博士，高校教师，年收入约30万，未婚，无孩，不抽烟，基本不喝酒。生活安静稳定，慢热但认真，想找长期稳定关系，结婚不着急但方向明确。 | 偏好32到38岁、175cm以上、南京或苏州、本科及以上男性。明确不接受长期异地。看重情绪稳定、耐心、沟通顺畅、边界感正常、生活稳定、责任感和健康习惯；加分项是有自己的兴趣爱好；不能接受强控制欲、沟通不清、情绪化、反复拉扯和态度暧昧。",
       "public_personality": "现居南京，慢热但认真，生活安静稳定，认真了解，方向明确，不仓促推进",
-      "public_values": "看重情绪稳定、沟通顺畅、耐心、边界感正常、生活稳定",
-      "public_notes": "原则上不接受异地；如有短期过渡，需明确落地计划"
+      "public_values": "看重情绪稳定、健康习惯、沟通顺畅、耐心、边界感正常、生活稳定",
+      "public_notes": "南京或苏州优先；原则上不接受异地；如有短期过渡，需明确落地计划"
     },
     "public_profile_view": {
       "id": 30100,
@@ -4225,10 +5569,10 @@
       "city": "南京",
       "education": "本科及以上",
       "job": "教育相关工作",
-      "relationship_goal": "认真了解，婚姻方向明确",
+      "relationship_goal": "认真了解，结婚不着急，方向明确",
       "personality": "现居南京，慢热但认真，生活安静稳定，认真了解，方向明确，不仓促推进",
-      "values": "看重情绪稳定、沟通顺畅、耐心、边界感正常、生活稳定",
-      "notes": "原则上不接受异地；如有短期过渡，需明确落地计划"
+      "values": "看重情绪稳定、健康习惯、沟通顺畅、耐心、边界感正常、生活稳定",
+      "notes": "南京或苏州优先；原则上不接受异地；如有短期过渡，需明确落地计划"
     }
   },
   {
@@ -5356,6 +6700,313 @@
         "applied_to_persona": 0,
         "applied_to_profile": 0,
         "created_at": "2026-04-30 16:28:16"
+      },
+      {
+        "id": 1557,
+        "field_name": "display_name",
+        "field_value": "用户C05",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到昵称=用户C05",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1559,
+        "field_name": "self_gender",
+        "field_value": "女",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到self_gender=女",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1561,
+        "field_name": "self_age",
+        "field_value": "35",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到年龄=35",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1564,
+        "field_name": "self_height",
+        "field_value": "166",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到self_height=166",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1566,
+        "field_name": "self_city",
+        "field_value": "杭州",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到现居城市=杭州",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1568,
+        "field_name": "self_education",
+        "field_value": "本科",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到学历=本科",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1570,
+        "field_name": "self_job",
+        "field_value": "品牌市场/内容电商管理岗",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到职业=品牌市场/内容电商管理岗",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1572,
+        "field_name": "self_income_wan",
+        "field_value": "48",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到收入=48",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1574,
+        "field_name": "self_marital_status",
+        "field_value": "离异",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到婚况=离异",
+        "action_type": "update",
+        "applied_to_persona": 1,
+        "applied_to_profile": 1,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1576,
+        "field_name": "self_has_children",
+        "field_value": "1",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到是否有孩子=1",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1578,
+        "field_name": "self_children_count",
+        "field_value": "1",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到孩子数量=1",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1580,
+        "field_name": "self_children_living_with_self",
+        "field_value": "0",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到孩子是否随自己生活=0",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1582,
+        "field_name": "self_smoking",
+        "field_value": "否",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到抽烟情况=否",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1584,
+        "field_name": "self_drinking",
+        "field_value": "偶尔",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到喝酒情况=偶尔",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1586,
+        "field_name": "self_relationship_goal",
+        "field_value": "认真稳定、能走向长期现实关系",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到关系目标=认真稳定、能走向长期现实关系",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1588,
+        "field_name": "target_gender",
+        "field_value": "男",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到目标性别=男",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1590,
+        "field_name": "target_age_min",
+        "field_value": "35",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到目标年龄下限=35",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1592,
+        "field_name": "target_age_max",
+        "field_value": "42",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到目标年龄上限=42",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1594,
+        "field_name": "target_height_min",
+        "field_value": "175",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到目标身高下限=175",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1596,
+        "field_name": "target_cities",
+        "field_value": "杭州,上海",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到目标城市=杭州,上海",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1598,
+        "field_name": "target_accept_long_distance",
+        "field_value": "不接受",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到异地接受度=不接受",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1599,
+        "field_name": "target_location_semantics",
+        "field_value": "杭州或上海都可以，但原则上不接受异地；就算是上海也要能正常见面并推进关系。",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到位置偏好补充=杭州或上海都可以，但原则上不接受异地；就算是上海也要能正常...",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1601,
+        "field_name": "target_requires_partner_accept_my_children",
+        "field_value": "1",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到对方是否需要接受自己的孩子现实=1",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1602,
+        "field_name": "must_have_tags",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到硬偏好标签",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1604,
+        "field_name": "preferred_traits",
+        "field_value": "情绪稳定,边界清楚,责任感,沟通顺畅,有分寸,真实,有担当,接受孩子现实",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到更偏好特质=情绪稳定,边界清楚,责任感,沟通顺畅,有分寸,真实,有担当...",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1605,
+        "field_name": "disliked_traits",
+        "field_value": "拉扯消耗,情绪失控,回避问题,责任感弱,边界感差,排斥孩子现实",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到不太接受特质=拉扯消耗,情绪失控,回避问题,责任感弱,边界感差,排斥孩子现实",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1606,
+        "field_name": "persona_summary_internal",
+        "field_value": "35岁女性，现居杭州，身高166cm，本科，品牌市场/内容电商管理岗，年收入约48万，离异已育，有一个女儿但不随身，不抽烟，偶尔社交饮酒。希望找认真稳定、能走向长期现实关系的人。",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到persona_summary_internal=35岁女性，现居杭州，身高166cm，本科，品牌市场/内容...",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
+      },
+      {
+        "id": 1607,
+        "field_name": "preference_summary_internal",
+        "field_value": "偏好35到42岁、175cm以上男性，杭州或上海都可以，但原则上不接受异地。非常看重对方真正接受孩子现实、情绪稳定、边界清楚、责任感、沟通顺畅和有分寸；不能接受拉扯消耗、情绪失控、回避问题、责任感弱、边界感差和排斥孩子现实的人。",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到preference_summary_internal=偏好35到42岁、175cm以上男性，杭州或上海都可以，但...",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:31:29"
       }
     ],
     "user_persona": {
@@ -5365,7 +7016,7 @@
       "self_city": "杭州",
       "self_education": "本科",
       "self_job": "品牌市场/内容电商管理岗",
-      "self_marital_status": "离异已育",
+      "self_marital_status": "离异",
       "self_has_children": 1,
       "self_smoking": "否",
       "self_drinking": "偶尔",
@@ -5404,11 +7055,11 @@
       "requires_partner_accept_my_children": 1,
       "personality": "35岁女性，现居杭州，身高166cm，本科，品牌市场/内容电商管理岗，年收入约48万，离异已育，有一个女儿但不随身，不抽烟，偶尔社交饮酒。希望找认真稳定、能走向长期现实关系的人。",
       "values": "偏好35到42岁、175cm以上男性，杭州或上海都可以，但原则上不接受异地。非常看重对方真正接受孩子现实、情绪稳定、边界清楚、责任感、沟通顺畅和有分寸；不能接受拉扯消耗、情绪失控、回避问题、责任感弱、边界感差和排斥孩子现实的人。",
-      "notes": "不太接受拉扯消耗、情绪失控、回避问题、责任感弱；对方需能接受你的孩子现实",
+      "notes": "不太接受拉扯消耗、情绪失控、回避问题、责任感弱、边界感差；对方需能接受你的孩子现实",
       "matcher_summary_internal": "35岁女性，现居杭州，身高166cm，本科，品牌市场/内容电商管理岗，年收入约48万，离异已育，有一个女儿但不随身，不抽烟，偶尔社交饮酒。希望找认真稳定、能走向长期现实关系的人。 | 偏好35到42岁、175cm以上男性，杭州或上海都可以，但原则上不接受异地。非常看重对方真正接受孩子现实、情绪稳定、边界清楚、责任感、沟通顺畅和有分寸；不能接受拉扯消耗、情绪失控、回避问题、责任感弱、边界感差和排斥孩子现实的人。",
       "public_personality": "现居杭州，认真了解，长期现实关系方向明确",
-      "public_values": "看重能承接现实关系、情绪稳定、边界清楚、责任感、沟通顺畅",
-      "public_notes": "原则上不接受异地；需能正常见面并推进关系"
+      "public_values": "看重真正接受孩子现实、能承接现实关系、情绪稳定、边界清楚、责任感、沟通顺畅",
+      "public_notes": "杭州或上海都可以；原则上不接受异地；需能正常见面并推进关系"
     },
     "public_profile_view": {
       "id": 30103,
@@ -5418,10 +7069,10 @@
       "city": "杭州",
       "education": "本科",
       "job": "品牌市场/内容电商管理岗",
-      "relationship_goal": "认真了解，重视长期稳定关系",
+      "relationship_goal": "认真了解，长期现实关系方向明确",
       "personality": "现居杭州，认真了解，长期现实关系方向明确",
-      "values": "看重能承接现实关系、情绪稳定、边界清楚、责任感、沟通顺畅",
-      "notes": "原则上不接受异地；需能正常见面并推进关系"
+      "values": "看重真正接受孩子现实、能承接现实关系、情绪稳定、边界清楚、责任感、沟通顺畅",
+      "notes": "杭州或上海都可以；原则上不接受异地；需能正常见面并推进关系"
     }
   },
   {
@@ -6396,6 +8047,270 @@
         "applied_to_persona": 0,
         "applied_to_profile": 0,
         "created_at": "2026-04-30 16:28:16"
+      },
+      {
+        "id": 1657,
+        "field_name": "display_name",
+        "field_value": "用户C06",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到昵称=用户C06",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1658,
+        "field_name": "self_gender",
+        "field_value": "男",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到self_gender=男",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1659,
+        "field_name": "self_age",
+        "field_value": "31",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到年龄=31",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1660,
+        "field_name": "self_height",
+        "field_value": "180",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到self_height=180",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1661,
+        "field_name": "self_city",
+        "field_value": "上海",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到现居城市=上海",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1662,
+        "field_name": "self_education",
+        "field_value": "本科",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到学历=本科",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1663,
+        "field_name": "self_job",
+        "field_value": "游戏UI/交互设计管理岗",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到职业=游戏UI/交互设计管理岗",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1664,
+        "field_name": "self_income_wan",
+        "field_value": "32",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到收入=32",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1665,
+        "field_name": "self_marital_status",
+        "field_value": "未婚",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到婚况=未婚",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1666,
+        "field_name": "self_has_children",
+        "field_value": "0",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到是否有孩子=0",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1667,
+        "field_name": "self_smoking",
+        "field_value": "否",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到抽烟情况=否",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1668,
+        "field_name": "self_drinking",
+        "field_value": "偶尔",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到喝酒情况=偶尔",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1669,
+        "field_name": "self_relationship_goal",
+        "field_value": "认真找长期关系，合适会考虑结婚",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到关系目标=认真找长期关系，合适会考虑结婚",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1670,
+        "field_name": "target_gender",
+        "field_value": "女",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到目标性别=女",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1671,
+        "field_name": "target_age_min",
+        "field_value": "26",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到目标年龄下限=26",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1672,
+        "field_name": "target_age_max",
+        "field_value": "32",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到目标年龄上限=32",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1673,
+        "field_name": "target_height_min",
+        "field_value": "160",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到目标身高下限=160",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1674,
+        "field_name": "target_cities",
+        "field_value": "上海,苏州,杭州",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到目标城市=上海,苏州,杭州",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1675,
+        "field_name": "target_accept_long_distance",
+        "field_value": "近距离可推进，长期异地不接受",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到异地接受度=近距离可推进，长期异地不接受",
+        "action_type": "update",
+        "applied_to_persona": 1,
+        "applied_to_profile": 1,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1676,
+        "field_name": "target_location_semantics",
+        "field_value": "上海优先；也接受苏州或杭州的双城过渡，但见面成本不能太高，不接受长期无落地计划的异地。",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到位置偏好补充=上海优先；也接受苏州或杭州的双城过渡，但见面成本不能太高，...",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1677,
+        "field_name": "preferred_traits",
+        "field_value": "真诚,愿意沟通,有情绪回应,生活状态正常,有一点审美,有共同兴趣",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到更偏好特质=真诚,愿意沟通,有情绪回应,生活状态正常,有一点审美,有共同兴趣",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1678,
+        "field_name": "disliked_traits",
+        "field_value": "控制欲强,长期暧昧,反复拉扯,不尊重人,情绪攻击",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到不太接受特质=控制欲强,长期暧昧,反复拉扯,不尊重人,情绪攻击",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1679,
+        "field_name": "persona_summary_internal",
+        "field_value": "31岁男性，现居上海，身高180cm，本科，游戏UI/交互设计管理岗，年收入约32万，未婚，无孩，不抽烟，偶尔喝酒。工作有创意但也有强度，生活节奏总体正常，认真找长期关系，合适会考虑结婚。",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到persona_summary_internal=31岁男性，现居上海，身高180cm，本科，游戏UI/交互...",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
+      },
+      {
+        "id": 1680,
+        "field_name": "preference_summary_internal",
+        "field_value": "偏好26到32岁、160cm以上女性，上海优先，也接受苏州或杭州，但见面成本不能太高，不接受长期无落地计划的异地。看重真诚、沟通、情绪回应、正常生活状态，最好有一点审美和共同兴趣；不能接受控制欲强、暧昧拉扯、不尊重和情绪攻击。",
+        "source_type": "explicit",
+        "evidence_text": "对话中明确提到preference_summary_internal=偏好26到32岁、160cm以上女性，上海优先，也接受苏州...",
+        "action_type": "skip",
+        "applied_to_persona": 0,
+        "applied_to_profile": 0,
+        "created_at": "2026-04-30 17:33:41"
       }
     ],
     "user_persona": {
@@ -6415,7 +8330,7 @@
       "target_age_max": 32,
       "target_cities": "上海,苏州,杭州",
       "target_height_min": 160,
-      "target_accept_long_distance": "可协商",
+      "target_accept_long_distance": "近距离可推进，长期异地不接受",
       "target_location_semantics": "上海优先；也接受苏州或杭州的双城过渡，但见面成本不能太高，不接受长期无落地计划的异地。",
       "preferred_traits": "真诚,愿意沟通,有情绪回应,生活状态正常,有一点审美,有共同兴趣",
       "disliked_traits": "控制欲强,长期暧昧,反复拉扯,不尊重人,情绪攻击",
@@ -6442,11 +8357,11 @@
       "location_preference_semantics": "上海优先；也接受苏州或杭州的双城过渡，但见面成本不能太高，不接受长期无落地计划的异地。",
       "personality": "31岁男性，现居上海，身高180cm，本科，游戏UI/交互设计管理岗，年收入约32万，未婚，无孩，不抽烟，偶尔喝酒。工作有创意但也有强度，生活节奏总体正常，认真找长期关系，合适会考虑结婚。",
       "values": "偏好26到32岁、160cm以上女性，上海优先，也接受苏州或杭州，但见面成本不能太高，不接受长期无落地计划的异地。看重真诚、沟通、情绪回应、正常生活状态，最好有一点审美和共同兴趣；不能接受控制欲强、暧昧拉扯、不尊重和情绪攻击。",
-      "notes": "不太接受控制欲强、长期暧昧、反复拉扯、不尊重人",
+      "notes": "不太接受控制欲强、长期暧昧、反复拉扯、不尊重人、情绪攻击",
       "matcher_summary_internal": "31岁男性，现居上海，身高180cm，本科，游戏UI/交互设计管理岗，年收入约32万，未婚，无孩，不抽烟，偶尔喝酒。工作有创意但也有强度，生活节奏总体正常，认真找长期关系，合适会考虑结婚。 | 偏好26到32岁、160cm以上女性，上海优先，也接受苏州或杭州，但见面成本不能太高，不接受长期无落地计划的异地。看重真诚、沟通、情绪回应、正常生活状态，最好有一点审美和共同兴趣；不能接受控制欲强、暧昧拉扯、不尊重和情绪攻击。",
-      "public_personality": "现居上海，认真了解，长期关系与婚姻方向明确",
-      "public_values": "看重愿意沟通、真诚、有情绪回应、生活状态正常、有一点审美",
-      "public_notes": "异地需有明确落地计划"
+      "public_personality": "现居上海，认真了解，长期关系方向明确，合适会考虑结婚",
+      "public_values": "看重愿意沟通、真诚、有情绪回应、生活状态正常、审美契合、有共同兴趣",
+      "public_notes": "上海优先；异地需有明确落地计划"
     },
     "public_profile_view": {
       "id": 30101,
@@ -6456,10 +8371,10 @@
       "city": "上海",
       "education": "本科",
       "job": "游戏UI/交互设计管理岗",
-      "relationship_goal": "认真了解，婚姻方向明确",
-      "personality": "现居上海，认真了解，长期关系与婚姻方向明确",
-      "values": "看重愿意沟通、真诚、有情绪回应、生活状态正常、有一点审美",
-      "notes": "异地需有明确落地计划"
+      "relationship_goal": "认真了解，长期关系方向明确，合适会考虑结婚",
+      "personality": "现居上海，认真了解，长期关系方向明确，合适会考虑结婚",
+      "values": "看重愿意沟通、真诚、有情绪回应、生活状态正常、审美契合、有共同兴趣",
+      "notes": "上海优先；异地需有明确落地计划"
     }
   }
 ]
