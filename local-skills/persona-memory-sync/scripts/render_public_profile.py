@@ -5,10 +5,10 @@ from __future__ import annotations
 import argparse
 import json
 
-from persona_memory_lib import (
+from persona_memory_engine import (
     DEFAULT_PERSONA_TABLE,
-    parse_mysql_source,
-    render_public_profile_result,
+    RenderPublicProfileRequest,
+    execute_render_public_profile,
 )
 
 def main() -> None:
@@ -24,16 +24,16 @@ def main() -> None:
     if not args.user_key and args.profile_id is None:
         raise SystemExit("Provide --user-key or --profile-id.")
 
-    config = parse_mysql_source(args.source)
-    profile_table = args.profile_table or config["table"]
     try:
-        output = render_public_profile_result(
-            source=args.source,
-            persona_table=args.persona_table,
-            profile_table=profile_table,
-            user_key=args.user_key,
-            profile_id=args.profile_id,
-            write_profile=args.write_profile,
+        output = execute_render_public_profile(
+            RenderPublicProfileRequest(
+                source=args.source,
+                user_key=args.user_key,
+                profile_id=args.profile_id,
+                persona_table=args.persona_table,
+                profile_table=args.profile_table,
+                write_profile=args.write_profile,
+            )
         )
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc

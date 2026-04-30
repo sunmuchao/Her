@@ -5,12 +5,11 @@ from __future__ import annotations
 import argparse
 import json
 
-from persona_memory_lib import (
+from persona_memory_engine import (
     DEFAULT_OBSERVATION_TABLE,
     DEFAULT_PERSONA_TABLE,
-    apply_persona_patch,
-    normalize_patch,
-    parse_mysql_source,
+    UpsertPersonaMemoryRequest,
+    execute_upsert_persona_memory,
     parse_patch_json,
 )
 
@@ -37,22 +36,20 @@ def main() -> None:
         patch.setdefault("profile_id", args.profile_id)
     if args.display_name:
         patch.setdefault("display_name", args.display_name)
-    normalized_patch = normalize_patch(patch)
-
-    config = parse_mysql_source(args.source)
-    profile_table = args.profile_table or config["table"]
-    result = apply_persona_patch(
-        source=args.source,
-        user_key=args.user_key,
-        source_type=args.source_type,
-        normalized_patch=normalized_patch,
-        persona_table=args.persona_table,
-        observation_table=args.observation_table,
-        profile_table=profile_table,
-        confidence_score=args.confidence_score,
-        evidence_text=args.evidence_text,
-        conversation_ref=args.conversation_ref,
-        sync_profile=args.sync_profile,
+    result = execute_upsert_persona_memory(
+        UpsertPersonaMemoryRequest(
+            source=args.source,
+            user_key=args.user_key,
+            source_type=args.source_type,
+            patch=patch,
+            persona_table=args.persona_table,
+            observation_table=args.observation_table,
+            profile_table=args.profile_table,
+            confidence_score=args.confidence_score,
+            evidence_text=args.evidence_text,
+            conversation_ref=args.conversation_ref,
+            sync_profile=args.sync_profile,
+        )
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
 

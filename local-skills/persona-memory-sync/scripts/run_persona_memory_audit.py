@@ -20,24 +20,16 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
+from persona_memory_engine import (  # noqa: E402
+    UpsertPersonaMemoryRequest,
+    execute_upsert_persona_memory,
+)
 from persona_memory_lib import (  # noqa: E402
-    DEFAULT_OBSERVATION_TABLE,
     DEFAULT_PERSONA_TABLE,
-    build_profile_payload,
-    fetch_persona,
-    insert_profile_stub,
-    insert_observations,
     income_wan_to_range,
-    mark_profile_sync_results,
-    merge_persona,
     mysql_connect,
-    normalize_patch,
-    now_string,
-    profile_columns_for_persona_patch,
     quote_mysql_ident,
     resolve_mysql_source,
-    upsert_persona,
-    upsert_profile,
 )
 
 
@@ -444,114 +436,6 @@ def filter_strong_inference_patch(patch: Dict[str, Any]) -> Dict[str, Any]:
     return {key: value for key, value in patch.items() if key in STRONG_INFERENCE_FIELDS}
 
 
-def apply_persona_patch(
-    *,
-    source: str,
-    user_key: str,
-    profile_id: int,
-    display_name: str,
-    source_type: str,
-    patch: Dict[str, Any],
-    evidence_text: str,
-    confidence_score: int,
-    conversation_ref: str,
-    persona_table: str = DEFAULT_PERSONA_TABLE,
-    observation_table: str = DEFAULT_OBSERVATION_TABLE,
-    profile_table: str = "profiles",
-) -> Dict[str, Any]:
-    normalized_patch = normalize_patch(patch)
-    conn = mysql_connect(source)
-    profile_synced = False
-    field_results: List[Dict[str, Any]] = []
-    try:
-        with conn.cursor() as cursor:
-            existing = fetch_persona(cursor, persona_table, user_key=user_key)
-            base = dict(existing or {})
-            base["user_key"] = user_key
-            merged, field_results = merge_persona(base, normalized_patch, source_type)
-            merged["user_key"] = user_key
-            saved_persona = upsert_persona(cursor, persona_table, merged)
-
-            if source_type != "weak_inference":
-                current_profile_id = saved_persona.get("profile_id") or profile_id
-                persona_for_profile = dict(saved_persona)
-                persona_for_profile["user_key"] = user_key
-                persona_for_profile["profile_id"] = current_profile_id
-                if saved_persona.get("profile_id") is None:
-                    initial_payload = build_profile_payload(persona_for_profile, existing_profile={})
-                    if current_profile_id is None:
-                        current_profile_id = insert_profile_stub(cursor, profile_table, initial_payload)
-                    else:
-                        cursor.execute(
-                            f"""
-                            INSERT IGNORE INTO {quote_mysql_ident(profile_table)}
-                              (id, name, profile_status, verified_level, source_channel, last_active_at)
-                            VALUES (%s, %s, %s, %s, %s, %s)
-                            """,
-                            (
-                                current_profile_id,
-                                initial_payload["name"],
-                                initial_payload["profile_status"],
-                                initial_payload["verified_level"],
-                                initial_payload["source_channel"],
-                                initial_payload["last_active_at"],
-                            ),
-                        )
-                    cursor.execute(
-                        f"UPDATE {quote_mysql_ident(persona_table)} SET profile_id = %s WHERE id = %s",
-                        (current_profile_id, saved_persona["id"]),
-                    )
-                    saved_persona["profile_id"] = current_profile_id
-                    persona_for_profile["profile_id"] = current_profile_id
-
-                cursor.execute(
-                    f"SELECT * FROM {quote_mysql_ident(profile_table)} WHERE id = %s",
-                    (saved_persona["profile_id"],),
-                )
-                existing_profile = cursor.fetchone() or {}
-                payload = build_profile_payload(
-                    persona_for_profile,
-                    existing_profile=existing_profile,
-                    include_null_persona_fields=normalized_patch.keys(),
-                )
-                upsert_profile(
-                    cursor,
-                    profile_table,
-                    payload,
-                    saved_persona["profile_id"],
-                    force_columns=profile_columns_for_persona_patch(normalized_patch),
-                )
-                profile_synced = True
-
-            mark_profile_sync_results(field_results, synced_profile=profile_synced)
-            insert_observations(
-                cursor=cursor,
-                observation_table=observation_table,
-                user_key=user_key,
-                persona_id=saved_persona["id"],
-                source_type=source_type,
-                confidence_score=confidence_score,
-                evidence_text=evidence_text,
-                conversation_ref=conversation_ref,
-                field_results=field_results,
-            )
-
-        conn.commit()
-    finally:
-        conn.close()
-
-    return {
-        "user_key": user_key,
-        "source_type": source_type,
-        "profile_id": profile_id,
-        "display_name": display_name,
-        "applied_fields": [item for item in field_results if item["applied_to_persona"]],
-        "skipped_fields": [item for item in field_results if not item["applied_to_persona"]],
-        "synced_profile": profile_synced,
-        "normalized_patch": normalized_patch,
-    }
-
-
 def fetch_snapshot(
     source: str,
     *,
@@ -772,29 +656,35 @@ def main() -> None:
             )
 
             conversation_ref = f"persona-memory-audit/{run_label}/{persona.id}"
-            explicit_result = apply_persona_patch(
-                source=source,
-                user_key=user_key,
-                profile_id=profile_id,
-                display_name=persona.display_name,
-                source_type="explicit",
-                patch=explicit_patch,
-                evidence_text=extraction.explicit_evidence or "audit roleplay explicit extraction",
-                confidence_score=96,
-                conversation_ref=conversation_ref,
+            explicit_result = execute_upsert_persona_memory(
+                UpsertPersonaMemoryRequest(
+                    source=source,
+                    user_key=user_key,
+                    source_type="explicit",
+                    patch=explicit_patch,
+                    persona_table=DEFAULT_PERSONA_TABLE,
+                    confidence_score=96,
+                    evidence_text=extraction.explicit_evidence or "audit roleplay explicit extraction",
+                    conversation_ref=conversation_ref,
+                    sync_profile=True,
+                ),
+                include_normalized_patch=True,
             )
             inference_result = None
             if strong_inference_patch:
-                inference_result = apply_persona_patch(
-                    source=source,
-                    user_key=user_key,
-                    profile_id=profile_id,
-                    display_name=persona.display_name,
-                    source_type="strong_inference",
-                    patch=strong_inference_patch,
-                    evidence_text=extraction.strong_inference_evidence or "audit roleplay strong inference extraction",
-                    confidence_score=84,
-                    conversation_ref=conversation_ref,
+                inference_result = execute_upsert_persona_memory(
+                    UpsertPersonaMemoryRequest(
+                        source=source,
+                        user_key=user_key,
+                        source_type="strong_inference",
+                        patch=strong_inference_patch,
+                        persona_table=DEFAULT_PERSONA_TABLE,
+                        confidence_score=84,
+                        evidence_text=extraction.strong_inference_evidence or "audit roleplay strong inference extraction",
+                        conversation_ref=conversation_ref,
+                        sync_profile=True,
+                    ),
+                    include_normalized_patch=True,
                 )
 
             snapshot = fetch_snapshot(
