@@ -289,6 +289,36 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertIn("性别 女", result["matched_on"])
         self.assertIn("消费观正常 <- 价值观: 消费观正常", result["match_evidence"])
 
+    def test_evaluate_candidate_surfaces_habit_matches_when_requested(self):
+        record = {
+            "id": 102,
+            "name": "HabitFit",
+            "gender": "女",
+            "age": 27,
+            "city": "无锡",
+            "smoking": "否",
+            "drinking": "否",
+            "profile_status": "active",
+            "verified_level": "photo",
+            "combined_text": "认真恋爱",
+            "last_active_at": "2099-01-01 00:00:00",
+            "source_file": "mysql://root@127.0.0.1:3307/her?table=profiles#profiles",
+        }
+        criteria = {
+            "gender": "女",
+            "cities": ["无锡"],
+            "smoking": "否",
+            "drinking": "否",
+            "profile_statuses": ["active"],
+            "exclude_ids": set(),
+        }
+
+        result = search_candidates.evaluate_candidate(record, criteria)
+
+        self.assertIsNotNone(result)
+        self.assertIn("不抽烟", result["matched_on"])
+        self.assertIn("少酒/不喝酒", result["matched_on"])
+
     def test_evaluate_candidate_require_known_rejects_missing_field(self):
         record = {
             "id": 104,
@@ -621,6 +651,18 @@ class SearchCandidatesTests(unittest.TestCase):
             "对方婚史接受需要先聊再判断",
             result["risk_flags"],
         )
+
+    def test_reciprocal_marital_acceptance_matches_plain_divorce_with_children_state(self):
+        candidate = {
+            "accept_marital_status": "未婚,离异已育",
+            "accept_marital_status_strength": "明确接受",
+        }
+        self_profile = {"marital_status": "离异", "has_children": 1}
+
+        result = search_candidates.evaluate_reciprocal_compatibility(candidate, self_profile)
+
+        self.assertIsNotNone(result)
+        self.assertIn("对方可接受婚况命中", result["matched_on"])
 
     def test_evaluate_candidate_children_semantics_affect_ranking(self):
         base_record = {
@@ -1168,6 +1210,36 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertEqual(diagnostics["top_reasons"][0]["reason"], "city_mismatch")
         self.assertEqual(diagnostics["top_reasons"][0]["count"], 2)
         self.assertIn("放宽地域条件", diagnostics["relax_suggestions"][0])
+
+    def test_build_no_match_diagnostics_detects_only_self_exclusion(self):
+        records = [
+            {
+                "id": 999,
+                "name": "SelfOnly",
+                "gender": "女",
+                "age": 27,
+                "city": "深圳",
+                "profile_status": "active",
+                "verified_level": "photo",
+                "combined_text": "认真恋爱",
+                "source_file": "mysql://root@127.0.0.1:3307/her?table=profiles#profiles",
+            }
+        ]
+        criteria = {
+            "gender": "女",
+            "profile_statuses": ["active"],
+            "exclude_ids": set(),
+            "exclude_record_refs": {(999, "mysql://root@127.0.0.1:3307/her?table=profiles#profiles")},
+        }
+
+        diagnostics = search_candidates.build_no_match_diagnostics(records, criteria)
+
+        self.assertEqual(diagnostics["usable_count"], 0)
+        self.assertEqual(
+            diagnostics["top_reasons"][0]["reason"],
+            "candidate_pool_empty_after_exclusions",
+        )
+        self.assertIn("补数据池", diagnostics["relax_suggestions"][0])
 
     def test_main_outputs_no_match_diagnostics_when_records_exist(self):
         fake_records = [
