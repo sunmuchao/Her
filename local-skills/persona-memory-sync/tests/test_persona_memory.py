@@ -176,18 +176,18 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertIn("public_personality", payload)
         self.assertIn("对子女情况=现阶段接受度偏低，需结合具体情况判断", payload["notes"])
 
-    def test_build_profile_payload_keeps_cautious_children_rejection_conservative(self):
+    def test_build_profile_payload_supports_guarded_children_negotiation(self):
         payload = persona_memory_lib.build_profile_payload(
             {
                 "profile_id": 30074,
-                "target_accept_partner_children": "不接受",
+                "target_accept_partner_children": "谨慎可协商",
                 "target_accept_partner_children_strength": "谨慎接受",
             }
         )
-        self.assertEqual(payload["accept_partner_children"], "不接受")
+        self.assertEqual(payload["accept_partner_children"], "谨慎可协商")
         self.assertEqual(payload["accept_partner_children_strength"], "谨慎接受")
-        self.assertEqual(payload["accept_partner_children_semantics"], "现阶段不接受，特殊情况才会再评估")
-        self.assertIn("对子女情况=现阶段不接受，特殊情况才会再评估", payload["notes"])
+        self.assertEqual(payload["accept_partner_children_semantics"], "现阶段不太接受，需要非常看具体情况")
+        self.assertIn("对子女情况=现阶段不太接受，需要非常看具体情况", payload["notes"])
 
     def test_build_public_profile_masks_sensitive_job_titles(self):
         payload = persona_memory_lib.build_public_profile(
