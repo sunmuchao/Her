@@ -10,6 +10,7 @@ from persona_memory_lib import (
     DEFAULT_PERSONA_TABLE,
     build_profile_payload,
     insert_profile_stub,
+    summarize_observation_evidence,
     mark_profile_sync_results,
     merge_persona,
     mysql_connect,
@@ -64,6 +65,11 @@ def insert_observations(
     field_results,
 ):
     for item in field_results:
+        sanitized_evidence = summarize_observation_evidence(
+            item["field_name"],
+            item["new_value"],
+            evidence_text,
+        )
         cursor.execute(
             f"""
             INSERT INTO {quote_mysql_ident(observation_table)}
@@ -78,7 +84,7 @@ def insert_observations(
                 item["new_value"],
                 source_type,
                 confidence_score,
-                evidence_text,
+                sanitized_evidence,
                 conversation_ref,
                 item["action_type"],
                 1 if item["applied_to_persona"] else 0,
