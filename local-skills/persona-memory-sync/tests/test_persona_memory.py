@@ -343,6 +343,37 @@ class PersonaMemoryTests(unittest.TestCase):
         )
         self.assertEqual(payload["public_personality"], "现居苏州，认真了解，再婚方向明确，合适会稳步推进")
 
+    def test_build_public_profile_preserves_non_rushed_marriage_tone(self):
+        payload = persona_memory_lib.build_public_profile(
+            {
+                "self_city": "南京",
+                "self_relationship_goal": "结婚不着急但方向明确",
+                "persona_summary_internal": "慢热但认真，生活安静稳定，希望长期稳定相处。",
+            }
+        )
+        self.assertEqual(
+            payload["public_personality"],
+            "现居南京，慢热但认真，生活安静稳定，认真了解，方向明确，不仓促推进",
+        )
+
+    def test_build_public_profile_surfaces_realistic_long_term_goal_and_distance_boundary(self):
+        payload = persona_memory_lib.build_public_profile(
+            {
+                "self_city": "杭州",
+                "self_relationship_goal": "认真稳定、能走向长期现实关系",
+                "target_accept_long_distance": "不接受",
+                "target_location_semantics": "杭州或上海都可以，但原则上不接受异地；就算是上海也要能正常见面并推进关系。",
+                "target_requires_partner_accept_my_children": 1,
+                "preferred_traits": "情绪稳定,边界清楚,责任感,沟通顺畅,有分寸,接受孩子现实",
+            }
+        )
+        self.assertEqual(payload["public_personality"], "现居杭州，认真了解，长期现实关系方向明确")
+        self.assertEqual(
+            payload["public_values"],
+            "看重能承接现实关系、情绪稳定、边界清楚、责任感、沟通顺畅",
+        )
+        self.assertEqual(payload["public_notes"], "原则上不接受异地；需能正常见面并推进关系")
+
     def test_build_public_profile_does_not_infer_stable_lifestyle_from_non_smoking_alone(self):
         payload = persona_memory_lib.build_public_profile(
             {
