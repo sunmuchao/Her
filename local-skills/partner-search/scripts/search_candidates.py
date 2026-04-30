@@ -411,6 +411,9 @@ RISK_FLAG_PENALTIES = {
     "对方对子女接受度偏低": 11,
     "对方对子女接受需要先接触再判断": 10,
     "对方对子女接受度未知": 12,
+    "对方城市偏好未命中，但资料写了接受异地": 6,
+    "对方城市偏好未命中，异地仅可协商": 8,
+    "对方城市偏好未命中，异地接受度未知": 10,
     "对方对抽烟仅可协商": 7,
     "对方对抽烟接受度未知": 9,
     "对方对喝酒仅可协商": 6,
@@ -493,6 +496,30 @@ SOFT_MUST_HAVE_MARKERS = (
     "成长背景",
     "少酒",
 )
+
+SOFT_EXCLUSION_KEYWORDS = {
+    "拉扯",
+    "暧昧",
+    "内耗",
+    "冷暴力",
+    "控制欲",
+    "情绪失控",
+}
+
+SOFT_EXCLUSION_MARKERS = (
+    "拉扯",
+    "暧昧",
+    "内耗",
+    "冷暴力",
+    "控制欲",
+)
+
+NEGATIVE_KEYWORD_STRUCTURED_FIELDS = {
+    "抽烟": "smoking",
+    "吸烟": "smoking",
+    "喝酒": "drinking",
+    "饮酒": "drinking",
+}
 
 RELATIONSHIP_GOAL_STRENGTH_BONUS = {
     "先接触看看": 0,
@@ -623,6 +650,99 @@ def split_must_have_keywords(keywords):
         else:
             hard.append(keyword)
     return unique_ordered(hard), unique_ordered(soft)
+
+
+def is_soft_exclusion_keyword(keyword):
+    normalized = canonicalize_keyword(keyword)
+    if not normalized:
+        return False
+    if normalized in SOFT_EXCLUSION_KEYWORDS:
+        return True
+    return any(marker in normalized for marker in SOFT_EXCLUSION_MARKERS)
+
+
+def keyword_segment_pairs(record, keyword):
+    lowered_keyword = as_lower(keyword)
+    if not lowered_keyword:
+        return []
+
+    pairs = []
+    for field, label in KEYWORD_EVIDENCE_FIELDS:
+        value = record.get(field)
+        if not value:
+            continue
+        for segment in split_evidence_segments(value):
+            if lowered_keyword in segment.lower():
+                pairs.append((label, segment))
+    if not pairs and lowered_keyword in as_lower(record.get("combined_text", "")):
+        pairs.append(("资料文本", keyword))
+    return pairs
+
+
+def segment_negates_keyword(segment, keyword):
+    text = normalize_whitespace(segment)
+    escaped_keyword = re.escape(as_text(keyword))
+    patterns = (
+        rf"(?:不|别|没|无|拒绝|反感|讨厌|最怕|远离|受不了)[^，。；;,.]{{0,12}}{escaped_keyword}",
+        rf"(?:不想|不要|不爱|不接受|不喜欢|不搞|不玩)[^，。；;,.]{{0,12}}{escaped_keyword}",
+        rf"{escaped_keyword}[^，。；;,.]{{0,8}}(?:不行|免谈|劝退|pass)",
+    )
+    return any(re.search(pattern, text, re.IGNORECASE) for pattern in patterns)
+
+
+def negative_keyword_structured_conflict(record, keyword):
+    field = NEGATIVE_KEYWORD_STRUCTURED_FIELDS.get(canonicalize_keyword(keyword))
+    if not field:
+        return None
+
+    value = record.get(field)
+    if not value:
+        return None
+
+    if field in {"smoking", "drinking"}:
+        return habit_requires_acceptance(value)
+    return None
+
+
+def soft_exclusion_risk_flag(keyword):
+    return f"资料里提到“{keyword}”，需要确认具体语境"
+
+
+def evaluate_exclusion_keyword(record, keyword):
+    structured_conflict = negative_keyword_structured_conflict(record, keyword)
+    if structured_conflict is True:
+        return {
+            "blocked": True,
+            "risk_flag": None,
+        }
+    if structured_conflict is False:
+        return {
+            "blocked": False,
+            "risk_flag": None,
+        }
+
+    matched_segments = []
+    for label, segment in keyword_segment_pairs(record, keyword):
+        if segment_negates_keyword(segment, keyword):
+            continue
+        matched_segments.append((label, segment))
+
+    if not matched_segments:
+        return {
+            "blocked": False,
+            "risk_flag": None,
+        }
+
+    if is_soft_exclusion_keyword(keyword):
+        return {
+            "blocked": False,
+            "risk_flag": soft_exclusion_risk_flag(keyword),
+        }
+
+    return {
+        "blocked": True,
+        "risk_flag": None,
+    }
 
 
 def parse_json_object(value):
@@ -936,6 +1056,8 @@ def missing_field_penalty(field):
 
 
 def risk_flag_penalty(risk_flag):
+    if str(risk_flag).startswith("资料里提到“"):
+        return 4
     return RISK_FLAG_PENALTIES.get(risk_flag, 0)
 
 
@@ -1024,6 +1146,16 @@ def children_acceptance_risk_flag(state, strength, semantics):
 
     if state == "unknown":
         return "对方对子女接受度未知"
+    return None
+
+
+def reciprocal_city_preference_risk_flag(accept_long_distance_state, reciprocal_mode):
+    if accept_long_distance_state == "accepted":
+        return "对方城市偏好未命中，但资料写了接受异地"
+    if accept_long_distance_state in {"negotiable", "guarded"}:
+        return "对方城市偏好未命中，异地仅可协商"
+    if reciprocal_mode == "fallback" and accept_long_distance_state in {"unknown", "missing"}:
+        return "对方城市偏好未命中，异地接受度未知"
     return None
 
 
@@ -2387,7 +2519,7 @@ def matcher_preference_tags(record):
     return unique_ordered(tags)
 
 
-def evaluate_reciprocal_compatibility(record, self_profile, diagnostics=False):
+def evaluate_reciprocal_compatibility(record, self_profile, diagnostics=False, reciprocal_mode="strict"):
     def fail(reason, detail=None):
         if not diagnostics:
             return None
@@ -2444,7 +2576,14 @@ def evaluate_reciprocal_compatibility(record, self_profile, diagnostics=False):
         if not self_city:
             missing_fields.append("self_city")
         elif not match_any_exact(self_city, pref_cities):
-            return fail("reciprocal_city_preference")
+            city_preference_risk = reciprocal_city_preference_risk_flag(
+                normalize_acceptance_state(record.get("accept_long_distance")),
+                reciprocal_mode,
+            )
+            if city_preference_risk:
+                risk_flags.append(city_preference_risk)
+            else:
+                return fail("reciprocal_city_preference")
         else:
             reasons.append("对方城市偏好命中")
             score_bonus += 10
@@ -2581,7 +2720,10 @@ def evaluate_reciprocal_compatibility(record, self_profile, diagnostics=False):
                 )
             )
         elif accept_partner_children == "unknown":
-            return fail("reciprocal_children_acceptance_unknown")
+            if reciprocal_mode == "fallback":
+                risk_flags.append("对方对子女接受度未知")
+            else:
+                return fail("reciprocal_children_acceptance_unknown")
         else:
             missing_fields.append("accept_partner_children")
 
@@ -2654,7 +2796,7 @@ def evaluate_reciprocal_compatibility(record, self_profile, diagnostics=False):
     }
 
 
-def evaluate_candidate(record, criteria, diagnostics=False):
+def evaluate_candidate(record, criteria, diagnostics=False, reciprocal_mode="strict"):
     def fail(reason, detail=None):
         if not diagnostics:
             return None
@@ -2804,8 +2946,11 @@ def evaluate_candidate(record, criteria, diagnostics=False):
 
     if criteria.get("must_not_have"):
         for keyword in criteria["must_not_have"]:
-            if as_lower(keyword) in as_lower(record.get("combined_text", "")):
+            exclusion = evaluate_exclusion_keyword(record, keyword)
+            if exclusion["blocked"]:
                 return fail("must_not_have_hit", keyword)
+            if exclusion.get("risk_flag"):
+                risk_flags.append(exclusion["risk_flag"])
 
     for keyword in criteria.get("prefer", []):
         if keyword_matches_record(record, keyword):
@@ -2959,6 +3104,7 @@ def evaluate_candidate(record, criteria, diagnostics=False):
         record,
         criteria.get("self_profile"),
         diagnostics=diagnostics,
+        reciprocal_mode=reciprocal_mode,
     )
     if reciprocal is None:
         return fail("reciprocal_mismatch")
