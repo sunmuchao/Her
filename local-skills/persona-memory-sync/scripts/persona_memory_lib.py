@@ -247,16 +247,16 @@ POSITIVE_TAG_TO_MATCHER = {
 }
 
 PUBLIC_SAFE_NEGATIVE_NOTES = {
-    "暧昧不清": "不喜欢长期拉扯型相处",
+    "暧昧不清": "不喜欢关系里反复拉扯",
     "冷暴力": "希望沟通方式更稳定直接",
     "绿茶": "关系边界希望更清晰",
     "拜金": "消费观需要更加一致",
-    "抽烟": "对生活方式和习惯有较明确要求",
+    "抽烟": "更偏好生活习惯相近的人",
 }
 
 PUBLIC_SAFE_TAG_MAP = {
-    "愿意沟通": "沟通顺畅",
-    "沟通": "沟通顺畅",
+    "愿意沟通": "愿意沟通",
+    "沟通": "愿意沟通",
     "消费观正常": "消费观一致",
 }
 
@@ -304,6 +304,14 @@ ACCEPTANCE_STRENGTH_CAUTION_VALUES = {"谨慎接受", "了解后定", "需要磨
 ACCEPTANCE_STRENGTH_SURFACE_VALUES = {"短期可聊", "表面接受", "先接触再说"}
 CHILD_ACCEPTANCE_GUARDED_CANONICAL = "现阶段不太接受"
 CHILD_ACCEPTANCE_GUARDED_ALIASES = {"谨慎可协商", "低接受度可协商", CHILD_ACCEPTANCE_GUARDED_CANONICAL}
+CHILD_ACCEPTANCE_GUARDED_MARKERS = (
+    "不太接受",
+    "优先不考虑",
+    "先不考虑",
+    "偏谨慎",
+    "偏保留",
+    "现阶段不考虑",
+)
 
 
 def resolve_mysql_source(source: Optional[str] = None) -> str:
@@ -391,7 +399,13 @@ def clean_text(value: Any) -> Optional[str]:
 
 def canonicalize_child_acceptance_state(value: Any) -> Optional[str]:
     text = clean_text(value)
+    if not text:
+        return None
     if text in CHILD_ACCEPTANCE_GUARDED_ALIASES:
+        return CHILD_ACCEPTANCE_GUARDED_CANONICAL
+    if text not in {"不接受", "明确不接受", "完全不接受"} and any(
+        marker in text for marker in CHILD_ACCEPTANCE_GUARDED_MARKERS
+    ):
         return CHILD_ACCEPTANCE_GUARDED_CANONICAL
     return text
 
@@ -814,6 +828,25 @@ def sanitize_public_profile_summary(summary: Any, persona: Dict[str, Any]) -> Op
     for pattern, replacement in replacements:
         text = pattern.sub(replacement, text)
 
+    text = re.sub(r"认真\s*认真了解", "认真了解", text)
+    text = re.sub(r"(现居[\u4e00-\u9fffA-Za-z0-9]+)[，,]?\1", r"\1", text)
+    text = re.sub(r"(认真了解，合适的话希望稳定推进)[，,]?\1", r"\1", text)
+    text = re.sub(r"[，,]{2,}", "，", text)
+    return text.strip("，, ")
+
+
+def sanitize_public_preference_summary(summary: Any) -> Optional[str]:
+    text = clean_text(summary)
+    if not text:
+        return None
+    replacements = [
+        ("更适合同城稳定发展的关系", "更适合同城或近距离相处"),
+        ("更适合同城或近距离稳定推进的关系", "更适合同城或近距离认真相处"),
+        ("更适合同城或近距离认真推进的关系", "更适合同城或近距离认真相处"),
+        ("对生活方式和习惯有较明确要求", "更偏好生活习惯相近的人"),
+    ]
+    for old, new in replacements:
+        text = text.replace(old, new)
     text = re.sub(r"[，,]{2,}", "，", text)
     return text.strip("，, ")
 
@@ -865,6 +898,11 @@ def sanitize_persona_summary_fields(persona: Dict[str, Any]) -> Dict[str, Any]:
         sanitized_value = sanitize_public_profile_summary(sanitized.get(field_name), sanitized)
         if sanitized_value:
             sanitized[field_name] = sanitized_value
+    public_pref = sanitize_public_preference_summary(
+        sanitized.get("public_preference_summary_draft")
+    )
+    if public_pref:
+        sanitized["public_preference_summary_draft"] = public_pref
     return sanitized
 
 
@@ -876,7 +914,9 @@ def build_public_profile(persona: Dict[str, Any]) -> Dict[str, Optional[str]]:
         persona.get("public_profile_summary_draft"),
         persona,
     )
-    public_values = clean_text(persona.get("public_preference_summary_draft"))
+    public_values = sanitize_public_preference_summary(
+        persona.get("public_preference_summary_draft")
+    )
 
     if not public_personality:
         fragments = []
@@ -886,8 +926,6 @@ def build_public_profile(persona: Dict[str, Any]) -> Dict[str, Optional[str]]:
         goal_fragment = build_public_relationship_goal(persona.get("self_relationship_goal"))
         if goal_fragment:
             fragments.append(goal_fragment)
-        if clean_text(persona.get("self_smoking")) in NON_SMOKING_VALUES:
-            fragments.append("生活方式相对稳定")
         public_personality = "，".join(fragments) or "资料在持续完善中"
 
     if not public_values:
@@ -901,7 +939,7 @@ def build_public_profile(persona: Dict[str, Any]) -> Dict[str, Optional[str]]:
 
     notes = []
     if persona.get("target_accept_long_distance") == "不接受":
-        notes.append("更适合同城稳定发展的关系")
+        notes.append("更适合同城或近距离相处")
     for raw_tag in must_not_have:
         safe_note = PUBLIC_SAFE_NEGATIVE_NOTES.get(raw_tag)
         if safe_note and safe_note not in notes:
