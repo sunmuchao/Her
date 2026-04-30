@@ -28,6 +28,13 @@ Use this skill when a dating or matchmaking conversation reveals new information
 3. Phase 3：对外接入整理
    只在确认有真实复用方时，再决定是否补独立 API/CLI 适配层；没有复用方就不额外扩展。
 
+## Engine Boundary
+
+- `scripts/persona_memory_engine.py` 是 Phase 2 之后的正式运行时入口层。
+- CLI 入口 `upsert_persona_memory.py`、`sync_persona_to_profile.py`、`render_public_profile.py` 以及审计脚本 `run_persona_memory_audit.py` 都应通过 engine 层调用，不再直接拼装底层读写流程。
+- `scripts/persona_memory_lib.py` 继续保留为内部实现细节，负责规则、字段映射、SQL 读写和公开文案生成；新调用方默认不要直接依赖它的运行时函数。
+- `scripts/ensure_persona_tables.py` 仍然属于建表和 schema 补齐脚本，不属于运行时 engine。
+
 This skill separates three concerns:
 
 - `user_persona_observations`: every new signal, with source and confidence

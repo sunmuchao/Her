@@ -1017,6 +1017,7 @@ def extract_location_semantics(
 
 def build_public_location_note(persona: Dict[str, Any]) -> Optional[str]:
     known_cities = split_multi_value(persona.get("target_cities"))
+    explicit_distance_value = clean_text(persona.get("target_accept_long_distance"))
     semantics = "；".join(
         unique_ordered(
             [
@@ -1042,6 +1043,11 @@ def build_public_location_note(persona: Dict[str, Any]) -> Optional[str]:
         marker in semantics for marker in ("正常见面", "推进关系", "见面成本不能太高", "见面成本")
     )
 
+    if explicit_distance_value in {"短期通勤可了解，长期异地谨慎", "近距离可推进，长期异地不接受"}:
+        city_note = build_public_city_preference_phrase(known_cities, semantics)
+        if city_note and city_note not in explicit_distance_value:
+            return f"{city_note}；{explicit_distance_value}"
+        return explicit_distance_value
     if blocks_long_term and (allows_short_term or has_landing_plan):
         note = (
             "原则上不接受异地；如有短期过渡，需明确落地计划"

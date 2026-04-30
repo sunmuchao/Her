@@ -407,6 +407,16 @@ class PersonaMemoryTests(unittest.TestCase):
         )
         self.assertEqual(payload["public_notes"], "杭州或上海都可以；原则上不接受异地；需能正常见面并推进关系")
 
+    def test_build_public_profile_preserves_nuanced_negotiable_distance_boundary(self):
+        payload = persona_memory_lib.build_public_profile(
+            {
+                "target_cities": "苏州,无锡,上海,南京,杭州,常州,宁波",
+                "target_accept_long_distance": "短期通勤可了解，长期异地谨慎",
+                "target_location_semantics": "江浙沪范围内优先；短期通勤型距离可了解，但长期异地比较谨慎。",
+            }
+        )
+        self.assertEqual(payload["public_notes"], "江浙沪范围内优先；短期通勤可了解，长期异地谨慎")
+
     def test_build_public_profile_does_not_infer_stable_lifestyle_from_non_smoking_alone(self):
         payload = persona_memory_lib.build_public_profile(
             {
