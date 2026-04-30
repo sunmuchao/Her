@@ -21,6 +21,7 @@ SCHEMA_STATEMENTS = (
       photos_table_name TEXT,
       search_criteria_json TEXT NOT NULL,
       self_profile_json TEXT,
+      self_id INTEGER,
       limit_count INTEGER NOT NULL DEFAULT 10,
       top_k INTEGER NOT NULL DEFAULT 5,
       min_notify_score INTEGER NOT NULL DEFAULT 40,
@@ -106,9 +107,19 @@ def connect_db(db_path: str | Path) -> sqlite3.Connection:
     return conn
 
 
+def ensure_column(conn: sqlite3.Connection, table_name: str, column_name: str, definition: str) -> None:
+    columns = {
+        row["name"]
+        for row in conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+    }
+    if column_name not in columns:
+        conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}")
+
+
 def initialize_database(conn: sqlite3.Connection) -> None:
     for statement in SCHEMA_STATEMENTS:
         conn.execute(statement)
+    ensure_column(conn, "saved_search_subscriptions", "self_id", "INTEGER")
     conn.commit()
 
 
