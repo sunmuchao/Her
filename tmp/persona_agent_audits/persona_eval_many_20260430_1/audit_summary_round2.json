@@ -1,0 +1,184 @@
+{
+  "run_id": "persona_eval_many_20260430_1",
+  "generated_at": "2026-04-30",
+  "scope": [
+    "multi-agent persona review",
+    "persona-memory-sync accuracy audit",
+    "public exposure audit",
+    "partner-search satisfaction audit"
+  ],
+  "dataset_diagnostics": {
+    "shenzhen_guangzhou_dongguan_male_35_42_active_profiles": 0,
+    "wuhan_female_24_29_active_profiles": 0,
+    "note": "深圳女画像和武汉男画像本轮无结果，根因是数据池为空，不是单纯排序问题。"
+  },
+  "overall": {
+    "agent_count": 6,
+    "overall_score_avg": 70.8,
+    "matching_satisfaction_distribution": {
+      "high": 2,
+      "medium": 1,
+      "low": 3
+    },
+    "common_memory_issues": [
+      "把有条件接受压缩成过宽枚举，例如“可协商”",
+      "把强要求降级成偏好项，导致 must_have_tags 丢失",
+      "把城市范围收窄，遗漏“稳定留沪”“双城过渡”等细化语义",
+      "关系目标强度被写得过硬或过弱，例如统一成“结婚导向”或“认真恋爱”",
+      "婚育语义映射不准，尤其是“对方接受我有孩子”被写成“我接受对方有孩子”"
+    ],
+    "common_public_risks": [
+      "收入精确值和收入区间不适合公开",
+      "孩子细节、离婚原因、前任或家庭压力不适合公开",
+      "过细职业和单位信息可能造成可识别性上升",
+      "公开描述过于简化会削弱画像准确度，但也不能反向暴露敏感经历"
+    ],
+    "common_matching_issues": [
+      "数据池覆盖不均衡，深圳/武汉样本为空",
+      "匹配解释偏正向堆砌，缺少反向排雷和推进落地性判断",
+      "部分 persona 的关键条件没有在候选解释中被重点体现",
+      "无结果时反馈颗粒度不够，理由不够可操作"
+    ]
+  },
+  "personas": [
+    {
+      "persona_id": "shanghai_exec_f",
+      "profile_id": 30082,
+      "overall_score": 88,
+      "matching_satisfaction": "high",
+      "memory_drift": [
+        "target_cities 只写上海，漏掉“稳定留沪”",
+        "target_accept_long_distance 写成“可协商”过宽",
+        "公开描述没有体现 1 到 2 年内结婚的明确预期"
+      ],
+      "do_not_public": [
+        "准确收入 85 万",
+        "收入区间 81-90 万/年",
+        "具体公司",
+        "过往恋爱细节",
+        "家里催婚压力"
+      ],
+      "matching_verdict": [
+        "季沉川：愿意聊",
+        "顾闻舟：愿意聊",
+        "沈既白：愿意聊"
+      ]
+    },
+    {
+      "persona_id": "suzhou_divorce_m",
+      "profile_id": 30083,
+      "overall_score": 58,
+      "matching_satisfaction": "low",
+      "memory_drift": [
+        "target_cities 从“江浙沪”收窄成 5 个城市",
+        "target_accept_long_distance 写成“可协商”偏松",
+        "must_have_tags 漏掉“愿意沟通”",
+        "公开层弱化了 2 年内再婚方向"
+      ],
+      "do_not_public": [
+        "准确收入 38 万",
+        "收入区间 31-40 万/年",
+        "离婚原因",
+        "房贷压力",
+        "父母身体负担"
+      ],
+      "matching_verdict": [
+        "无候选",
+        "主要拦截原因：对方婚况接受范围、城市偏好"
+      ]
+    },
+    {
+      "persona_id": "wuxi_pharma_f",
+      "profile_id": 30084,
+      "overall_score": 75,
+      "matching_satisfaction": "medium",
+      "memory_drift": [
+        "self_drinking 写成“否”过硬，更准确是基本不喝",
+        "target_accept_long_distance 写成“可协商”偏宽",
+        "must_have_tags 漏掉少酒、稳定工作、边界清楚、愿意沟通",
+        "公开价值观表达过窄"
+      ],
+      "do_not_public": [
+        "具体医院",
+        "准确收入 24 万",
+        "轻微焦虑史",
+        "家庭催婚压力"
+      ],
+      "matching_verdict": [
+        "陈安阳：愿意聊",
+        "徐铭远：一般，长期推进落地性不足",
+        "张嘉卓：一般，长期推进落地性不足"
+      ]
+    },
+    {
+      "persona_id": "nanjing_academic_f",
+      "profile_id": 30085,
+      "overall_score": 86,
+      "matching_satisfaction": "high",
+      "memory_drift": [
+        "relationship_goal 写成“认真恋爱”偏窄",
+        "must_have_tags 漏掉“情绪稳定”“沟通顺畅”",
+        "公开层没体现“慢热但认真”",
+        "公开层没有充分带出“不接受强控制欲”"
+      ],
+      "do_not_public": [
+        "具体学校名称",
+        "论文压力",
+        "父母职业",
+        "备孕焦虑",
+        "收入细节"
+      ],
+      "matching_verdict": [
+        "顾行远：愿意聊",
+        "秦叙言：愿意聊",
+        "陆行止：愿意聊"
+      ]
+    },
+    {
+      "persona_id": "shenzhen_divorce_mom_f",
+      "profile_id": 30086,
+      "overall_score": 56,
+      "matching_satisfaction": "low",
+      "memory_drift": [
+        "relationship_goal 写成“结婚导向”偏硬",
+        "target_accept_partner_children 语义错位",
+        "self_has_children 只写 1，漏掉“有一女但不随身”",
+        "public_values 漏掉“边界清楚”“情绪稳定”"
+      ],
+      "do_not_public": [
+        "准确收入或收入区间",
+        "孩子具体情况",
+        "有一女但不随身",
+        "离婚原因",
+        "前夫相关纠纷"
+      ],
+      "matching_verdict": [
+        "无候选",
+        "根因是深圳/广州/东莞男 35-42 数据池为空"
+      ]
+    },
+    {
+      "persona_id": "wuhan_artist_m",
+      "profile_id": 30087,
+      "overall_score": 62,
+      "matching_satisfaction": "low",
+      "memory_drift": [
+        "target_cities 只写武汉，漏掉“双城过渡”",
+        "target_accept_long_distance 写成“可协商”过泛",
+        "真诚、愿意沟通被放成偏好项，不是基础门槛",
+        "公开描述没有体现真实生活节奏"
+      ],
+      "do_not_public": [
+        "具体接单平台",
+        "收入不稳定细节",
+        "家里对职业的看法",
+        "前任细节",
+        "过细收入分档"
+      ],
+      "matching_verdict": [
+        "无候选",
+        "根因是武汉女 24-29 数据池为空"
+      ]
+    }
+  ]
+}
