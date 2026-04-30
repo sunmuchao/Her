@@ -23,9 +23,11 @@ This skill is for evaluation, not live matchmaking. If the user wants to actuall
    Run `python3 scripts/run_persona_eval.py --input ... --results-output ...`.
 3. Inspect the result JSON.
    Check `returncode`, `has_match`, `candidate_count`, and `output`.
-4. If agent or human review feedback exists, summarize it.
+4. Generate reviewer packets when needed.
+   Run `python3 scripts/generate_persona_packets.py --input ... --output ... --section-label ...`.
+5. If agent or human review feedback exists, summarize it.
    Run `python3 scripts/summarize_agent_feedback.py --input ... --output ...`.
-5. Report the conclusion.
+6. Report the conclusion.
    Separate:
    - command health
    - match coverage
@@ -70,6 +72,15 @@ Summarize review feedback:
 python3 scripts/summarize_agent_feedback.py \
   --input /path/to/persona_agent_feedback_v11_2026-04-29.json \
   --output /path/to/persona_agent_metrics_v12_2026-04-30.json
+```
+
+Generate markdown review packets:
+
+```bash
+python3 scripts/generate_persona_packets.py \
+  --input /path/to/persona_experiment_results_v11_2026-04-29.json \
+  --output /path/to/persona_agent_packets_v7_2026-04-30.md \
+  --section-label round7
 ```
 
 ## Interpretation Rules
