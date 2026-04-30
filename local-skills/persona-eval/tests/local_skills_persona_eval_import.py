@@ -7,4 +7,5 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 import build_audit_summary  # noqa: E402
+import normalize_agent_feedback  # noqa: E402
 import summarize_agent_feedback  # noqa: E402

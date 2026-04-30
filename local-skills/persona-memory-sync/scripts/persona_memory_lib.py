@@ -31,6 +31,8 @@ USER_PERSONA_FIELDS = {
     "self_job",
     "self_marital_status",
     "self_has_children",
+    "self_children_count",
+    "self_children_living_with_self",
     "self_smoking",
     "self_drinking",
     "self_relationship_goal",
@@ -48,6 +50,8 @@ USER_PERSONA_FIELDS = {
     "target_accept_partner_children",
     "target_accept_partner_children_strength",
     "target_accept_long_distance",
+    "target_location_semantics",
+    "target_requires_partner_accept_my_children",
     "target_want_children",
     "target_marriage_timeline",
     "must_have_tags",
@@ -74,6 +78,7 @@ INT_FIELDS = {
     "self_age",
     "self_height",
     "self_income_wan",
+    "self_children_count",
     "target_age_min",
     "target_age_max",
     "target_height_min",
@@ -84,6 +89,8 @@ INT_FIELDS = {
 
 BOOL_FIELDS = {
     "self_has_children",
+    "self_children_living_with_self",
+    "target_requires_partner_accept_my_children",
 }
 
 EXPLICIT_ONLY_FIELDS = {
@@ -99,6 +106,8 @@ EXPLICIT_ONLY_FIELDS = {
     "self_job",
     "self_marital_status",
     "self_has_children",
+    "self_children_count",
+    "self_children_living_with_self",
     "self_smoking",
     "self_drinking",
     "self_relationship_goal",
@@ -116,6 +125,8 @@ EXPLICIT_ONLY_FIELDS = {
     "target_accept_partner_children",
     "target_accept_partner_children_strength",
     "target_accept_long_distance",
+    "target_location_semantics",
+    "target_requires_partner_accept_my_children",
     "target_want_children",
     "target_marriage_timeline",
 }
@@ -144,6 +155,8 @@ PERSONA_TO_PROFILE_FIELD_MAP = {
     "self_job": "job",
     "self_marital_status": "marital_status",
     "self_has_children": "has_children",
+    "self_children_count": "children_count",
+    "self_children_living_with_self": "children_living_with_self",
     "self_smoking": "smoking",
     "self_drinking": "drinking",
     "self_relationship_goal": "relationship_goal",
@@ -157,6 +170,8 @@ PERSONA_TO_PROFILE_FIELD_MAP = {
     "target_income_max_wan": "preferred_income_max_wan",
     "target_marital_status_strength": "accept_marital_status_strength",
     "target_accept_partner_children_strength": "accept_partner_children_strength",
+    "target_location_semantics": "location_preference_semantics",
+    "target_requires_partner_accept_my_children": "requires_partner_accept_my_children",
 }
 
 PROFILE_EXTENSION_COLUMNS = {
@@ -166,6 +181,8 @@ PROFILE_EXTENSION_COLUMNS = {
     "matcher_summary_internal": "TEXT NULL",
     "accept_marital_status_semantics": "VARCHAR(128) NULL",
     "accept_partner_children_semantics": "VARCHAR(128) NULL",
+    "location_preference_semantics": "VARCHAR(128) NULL",
+    "requires_partner_accept_my_children": "TINYINT(1) NULL",
     "public_display_name": "VARCHAR(64) NULL",
     "public_education": "VARCHAR(32) NULL",
     "public_job": "VARCHAR(64) NULL",
@@ -180,6 +197,8 @@ PROFILE_SYNC_PERSONA_FIELDS = set(PERSONA_TO_PROFILE_FIELD_MAP) | {
     "target_accept_long_distance",
     "target_accept_partner_children",
     "target_accept_partner_children_strength",
+    "target_location_semantics",
+    "target_requires_partner_accept_my_children",
     "target_marital_statuses",
     "target_marital_status_strength",
     "target_gender",
@@ -201,6 +220,8 @@ PATCH_DERIVED_PROFILE_COLUMNS = {
     "self_job": {"public_job"},
     "target_accept_long_distance": {"long_distance", "accept_long_distance"},
     "target_accept_partner_children": {"accept_partner_children", "accept_partner_children_semantics"},
+    "target_location_semantics": {"location_preference_semantics"},
+    "target_requires_partner_accept_my_children": {"requires_partner_accept_my_children"},
     "target_marital_statuses": {"accept_marital_status", "accept_marital_status_semantics"},
     "target_marital_status_strength": {"accept_marital_status_strength", "accept_marital_status_semantics"},
     "target_accept_partner_children_strength": {"accept_partner_children_strength", "accept_partner_children_semantics"},
@@ -260,6 +281,8 @@ PUBLIC_SAFE_TAG_MAP = {
     "愿意沟通": "愿意沟通",
     "沟通": "愿意沟通",
     "消费观正常": "消费观一致",
+    "接受孩子现实": "能承接现实关系",
+    "能接受孩子现实": "能承接现实关系",
 }
 
 PUBLIC_JOB_PATTERNS = (
@@ -280,6 +303,8 @@ OBSERVATION_FIELD_LABELS = {
     "self_income_wan": "收入",
     "self_marital_status": "婚况",
     "self_has_children": "是否有孩子",
+    "self_children_count": "孩子数量",
+    "self_children_living_with_self": "孩子是否随自己生活",
     "self_smoking": "抽烟情况",
     "self_drinking": "喝酒情况",
     "self_relationship_goal": "关系目标",
@@ -295,6 +320,8 @@ OBSERVATION_FIELD_LABELS = {
     "target_accept_partner_children": "对子女情况接受度",
     "target_accept_partner_children_strength": "对子女情况接受强度",
     "target_accept_long_distance": "异地接受度",
+    "target_location_semantics": "位置偏好补充",
+    "target_requires_partner_accept_my_children": "对方是否需要接受自己的孩子现实",
     "must_have_tags": "硬偏好标签",
     "must_not_have_tags": "明确排斥标签",
     "preferred_traits": "更偏好特质",
@@ -316,45 +343,60 @@ CHILD_ACCEPTANCE_GUARDED_MARKERS = (
 )
 
 SOFT_REQUIREMENT_TAGS = {
-    "情绪稳定",
-    "愿意沟通",
-    "能沟通",
-    "好沟通",
-    "沟通顺畅",
-    "边界清楚",
-    "边界感",
-    "稳定工作",
-    "稳定生活",
-    "责任感",
-    "真诚",
-    "消费观正常",
-    "同城稳定发展",
-    "同城见面方便",
-    "同城更方便",
-    "长期推进明确",
-    "认真长期关系",
-    "愿意经营生活",
-    "作息相对正常",
-    "作息稳定",
-    "成长背景相近",
-    "少酒",
+    "聊得来",
+    "有感觉",
+    "共同兴趣",
+    "有共同兴趣更好",
+    "眼缘",
+    "生活状态正常",
+    "有共同话题",
+    "相处舒服",
 }
 
 SOFT_REQUIREMENT_MARKERS = (
-    "沟通",
-    "情绪稳定",
-    "边界",
-    "责任感",
-    "真诚",
-    "稳定工作",
-    "稳定生活",
-    "同城",
-    "长期推进",
-    "经营生活",
-    "消费观",
-    "作息",
-    "成长背景",
-    "少酒",
+    "聊得来",
+    "有感觉",
+    "共同兴趣",
+    "共同话题",
+    "眼缘",
+    "相处舒服",
+)
+
+PARENT_REALITY_REQUIRED_MARKERS = (
+    "接受孩子现实",
+    "能接受孩子现实",
+    "接受我有孩子",
+    "接受我这边有孩子",
+    "接受我的孩子",
+    "接受我带孩子",
+    "能承接孩子现实",
+)
+
+PARTNER_HAS_CHILDREN_MARKERS = (
+    "接受对方有孩子",
+    "接受对方已有孩子",
+    "对方有孩子也可以",
+    "能接受对方有孩子",
+    "能接受对方带孩子",
+)
+
+LOCATION_NUANCE_MARKERS = (
+    "稳定留沪",
+    "双城过渡",
+    "长期异地",
+    "短期异地",
+    "近距离",
+    "落地计划",
+    "落地异地",
+)
+
+SAFE_PUBLIC_PERSONALITY_PATTERNS = (
+    (re.compile(r"慢热但认真"), "慢热但认真"),
+    (re.compile(r"生活安静稳定"), "生活安静稳定"),
+    (re.compile(r"生活有规划"), "生活有规划"),
+    (re.compile(r"作息规律"), "作息规律"),
+    (re.compile(r"作息不算特别规律"), "作息不算特别规律"),
+    (re.compile(r"认真"), "对关系认真"),
 )
 
 
@@ -577,6 +619,111 @@ def split_multi_value(value: Any) -> List[str]:
     return result
 
 
+def bool_is_true(value: Any) -> bool:
+    return normalize_boolish(value) == 1
+
+
+def extract_children_count_from_text(*texts: Any) -> Optional[int]:
+    for raw_text in texts:
+        text = clean_text(raw_text) or ""
+        if not text:
+            continue
+        if any(marker in text for marker in ("有一女", "有一子", "一个孩子", "1个孩子")):
+            return 1
+        if any(marker in text for marker in ("有两孩", "两个孩子", "2个孩子", "一子一女")):
+            return 2
+        match = re.search(r"有([一二两三四五六七八九十0-9])个孩子", text)
+        if match:
+            mapping = {
+                "一": 1,
+                "二": 2,
+                "两": 2,
+                "三": 3,
+                "四": 4,
+                "五": 5,
+                "六": 6,
+                "七": 7,
+                "八": 8,
+                "九": 9,
+                "十": 10,
+            }
+            token = match.group(1)
+            return mapping.get(token, as_int(token))
+    return None
+
+
+def extract_children_living_with_self_from_text(*texts: Any) -> Optional[int]:
+    for raw_text in texts:
+        text = clean_text(raw_text) or ""
+        if not text:
+            continue
+        if any(marker in text for marker in ("不随身", "不跟自己住", "不在身边", "不跟我住")):
+            return 0
+        if any(marker in text for marker in ("随身", "跟自己住", "跟我住", "自己带")):
+            return 1
+    return None
+
+
+def contains_any_marker(texts: Iterable[Any], markers: Iterable[str]) -> bool:
+    normalized_texts = [clean_text(text) or "" for text in texts]
+    return any(marker in text for text in normalized_texts for marker in markers)
+
+
+def enrich_patch_from_explicit_semantics(patch: Dict[str, Any]) -> Dict[str, Any]:
+    enriched = deepcopy(patch)
+    text_candidates = [
+        enriched.get("persona_summary_internal"),
+        enriched.get("preference_summary_internal"),
+        enriched.get("public_preference_summary_draft"),
+        enriched.get("public_profile_summary_draft"),
+    ]
+    list_candidates = (
+        split_multi_value(enriched.get("must_have_tags"))
+        + split_multi_value(enriched.get("preferred_traits"))
+        + split_multi_value(enriched.get("disliked_traits"))
+    )
+    has_children = bool_is_true(enriched.get("self_has_children")) or bool_is_true(
+        enriched.get("self_children_count")
+    )
+
+    if enriched.get("self_children_count") in {None, ""}:
+        inferred_count = extract_children_count_from_text(*text_candidates)
+        if inferred_count is not None:
+            enriched["self_children_count"] = inferred_count
+
+    if enriched.get("self_children_living_with_self") in {None, ""}:
+        inferred_living = extract_children_living_with_self_from_text(*text_candidates)
+        if inferred_living is not None:
+            enriched["self_children_living_with_self"] = inferred_living
+
+    partner_must_accept_my_children = contains_any_marker(
+        text_candidates + list_candidates,
+        PARENT_REALITY_REQUIRED_MARKERS,
+    )
+    accepts_partner_with_children = contains_any_marker(
+        text_candidates + list_candidates,
+        PARTNER_HAS_CHILDREN_MARKERS,
+    )
+
+    if has_children and partner_must_accept_my_children:
+        enriched["target_requires_partner_accept_my_children"] = 1
+        if clean_text(enriched.get("target_accept_partner_children")) and not accepts_partner_with_children:
+            enriched["target_accept_partner_children"] = None
+            if "target_accept_partner_children_strength" in enriched:
+                enriched["target_accept_partner_children_strength"] = None
+
+    if (
+        clean_text(enriched.get("target_location_semantics")) is None
+        and clean_text(enriched.get("preference_summary_internal"))
+        and contains_any_marker(text_candidates, LOCATION_NUANCE_MARKERS)
+    ):
+        enriched["target_location_semantics"] = clean_text(
+            enriched.get("preference_summary_internal")
+        )
+
+    return enriched
+
+
 def is_soft_requirement_tag(tag: Any) -> bool:
     text = clean_text(tag)
     if not text:
@@ -621,6 +768,7 @@ def parse_patch_json(raw_json: Optional[str] = None, patch_file: Optional[str] =
 
 
 def normalize_patch(patch: Dict[str, Any]) -> Dict[str, Any]:
+    patch = enrich_patch_from_explicit_semantics(patch)
     patch = rebalance_soft_requirement_tags(patch)
     normalized: Dict[str, Any] = {}
     for key, value in patch.items():
@@ -772,6 +920,10 @@ def build_matcher_payload(persona: Dict[str, Any]) -> Dict[str, Optional[str]]:
             persona.get("target_accept_partner_children_strength"),
         ),
         "target_accept_long_distance": persona.get("target_accept_long_distance"),
+        "target_location_semantics": clean_text(persona.get("target_location_semantics")),
+        "target_requires_partner_accept_my_children": normalize_boolish(
+            persona.get("target_requires_partner_accept_my_children")
+        ),
         "must_have_tags": must_have,
         "preferred_traits": preferred_traits,
     }
@@ -842,6 +994,20 @@ def build_public_display_name(profile_id: Any) -> Optional[str]:
     if profile_id_int is None:
         return None
     return f"用户{profile_id_int % 10000:04d}"
+
+
+def sanitize_internal_profile_summary(summary: Any, persona: Dict[str, Any]) -> Optional[str]:
+    text = clean_text(summary)
+    if not text:
+        return None
+
+    city_text = clean_text(persona.get("self_city"))
+    if city_text:
+        text = text.replace(f"{city_text}本地", f"现居{city_text}")
+
+    text = re.sub(r"(现居[\u4e00-\u9fffA-Za-z0-9]+)[，,]?\1", r"\1", text)
+    text = re.sub(r"[，,]{2,}", "，", text)
+    return text.strip("，, ")
 
 
 def build_legacy_public_personality(persona: Dict[str, Any]) -> Optional[str]:
@@ -934,9 +1100,23 @@ def sanitize_public_preference_summary(summary: Any) -> Optional[str]:
         ("更适合同城或近距离稳定推进的关系", "更适合同城或近距离认真相处"),
         ("更适合同城或近距离认真推进的关系", "更适合同城或近距离认真相处"),
         ("对生活方式和习惯有较明确要求", "更偏好生活习惯相近的人"),
+        ("接受孩子现实", "能承接现实关系"),
+        ("能接受孩子现实", "能承接现实关系"),
+        ("稳定留沪", "有明确落地计划"),
+        ("双城过渡", "近距离过渡"),
     ]
     for old, new in replacements:
         text = text.replace(old, new)
+    text = re.sub(
+        r"[^，。；]*?(短期异地|长期异地|异地|近距离|落地计划)[^，。；]*",
+        "更适合同城或近距离认真相处",
+        text,
+    )
+    text = re.sub(
+        r"更适合同城或近距离认真相处[，,]?更适合同城或近距离认真相处",
+        "更适合同城或近距离认真相处",
+        text,
+    )
     text = re.sub(r"[，,]{2,}", "，", text)
     return text.strip("，, ")
 
@@ -984,10 +1164,18 @@ def summarize_observation_evidence(
 
 def sanitize_persona_summary_fields(persona: Dict[str, Any]) -> Dict[str, Any]:
     sanitized = deepcopy(persona)
-    for field_name in ("persona_summary_internal", "public_profile_summary_draft"):
-        sanitized_value = sanitize_public_profile_summary(sanitized.get(field_name), sanitized)
-        if sanitized_value:
-            sanitized[field_name] = sanitized_value
+    internal_summary = sanitize_internal_profile_summary(
+        sanitized.get("persona_summary_internal"),
+        sanitized,
+    )
+    if internal_summary:
+        sanitized["persona_summary_internal"] = internal_summary
+    public_profile = sanitize_public_profile_summary(
+        sanitized.get("public_profile_summary_draft"),
+        sanitized,
+    )
+    if public_profile:
+        sanitized["public_profile_summary_draft"] = public_profile
     public_pref = sanitize_public_preference_summary(
         sanitized.get("public_preference_summary_draft")
     )
@@ -996,9 +1184,24 @@ def sanitize_persona_summary_fields(persona: Dict[str, Any]) -> Dict[str, Any]:
     return sanitized
 
 
+def extract_safe_public_personality_traits(persona: Dict[str, Any]) -> List[str]:
+    fragments: List[str] = []
+    for summary in (
+        clean_text(persona.get("public_profile_summary_draft")),
+        clean_text(persona.get("persona_summary_internal")),
+    ):
+        if not summary:
+            continue
+        for pattern, label in SAFE_PUBLIC_PERSONALITY_PATTERNS:
+            if pattern.search(summary) and label not in fragments:
+                fragments.append(label)
+    return fragments[:2]
+
+
 def build_public_profile(persona: Dict[str, Any]) -> Dict[str, Optional[str]]:
     must_have = [public_safe_tag(tag) for tag in items_from_csv(persona.get("must_have_tags"))]
     must_not_have = items_from_csv(persona.get("must_not_have_tags"))
+    preferred_traits = [public_safe_tag(tag) for tag in items_from_csv(persona.get("preferred_traits"))]
 
     public_personality = sanitize_public_profile_summary(
         persona.get("public_profile_summary_draft"),
@@ -1013,17 +1216,18 @@ def build_public_profile(persona: Dict[str, Any]) -> Dict[str, Optional[str]]:
         city_fragment = build_public_city_phrase(persona.get("self_city"))
         if city_fragment:
             fragments.append(city_fragment)
+        fragments.extend(extract_safe_public_personality_traits(persona))
         goal_fragment = build_public_relationship_goal(persona.get("self_relationship_goal"))
         if goal_fragment:
             fragments.append(goal_fragment)
-        public_personality = "，".join(fragments) or "资料在持续完善中"
+        public_personality = "，".join(unique_ordered(fragments)) or "资料在持续完善中"
 
     if not public_values:
-        key_tags = must_have[:3]
+        key_tags = unique_ordered(must_have + preferred_traits)[:4]
         if key_tags:
             public_values = "看重" + "、".join(key_tags)
             if persona.get("target_accept_long_distance") == "不接受":
-                public_values += "，更适合同城稳定推进的关系"
+                public_values += "，更适合同城或近距离认真相处"
         else:
             public_values = "看重稳定、真诚和可持续的相处方式"
 
@@ -1099,7 +1303,7 @@ def build_profile_payload(
 
     existing_personality = clean_text(existing_profile.get("personality"))
     legacy_personality = build_legacy_public_personality(persona)
-    sanitized_persona_summary = sanitize_public_profile_summary(
+    sanitized_persona_summary = sanitize_internal_profile_summary(
         persona.get("persona_summary_internal"),
         persona,
     )
@@ -1107,7 +1311,7 @@ def build_profile_payload(
         internal_personality = sanitized_persona_summary
     elif existing_personality and existing_personality != legacy_personality:
         internal_personality = (
-            sanitize_public_profile_summary(existing_personality, persona)
+            sanitize_internal_profile_summary(existing_personality, persona)
             or existing_personality
         )
     else:
@@ -1145,7 +1349,15 @@ def build_profile_payload(
             persona.get("target_accept_partner_children"),
             persona.get("target_accept_partner_children_strength"),
         )
-        internal_note_parts.append(f"对子女情况={child_note}")
+        internal_note_parts.append(f"你对对方孩子情况={child_note}")
+    if (
+        normalize_boolish(persona.get("target_requires_partner_accept_my_children")) == 1
+        and (
+            normalize_boolish(persona.get("self_has_children")) == 1
+            or (as_int(persona.get("self_children_count")) or 0) > 0
+        )
+    ):
+        internal_note_parts.append("对方需能接受你的孩子现实")
     internal_notes = (
         "；".join(internal_note_parts)
         or clean_text(existing_profile.get("notes"))

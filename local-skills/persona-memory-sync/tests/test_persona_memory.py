@@ -94,19 +94,19 @@ class PersonaMemoryTests(unittest.TestCase):
         )
         self.assertEqual(patch["self_age"], 28)
         self.assertEqual(patch["self_has_children"], 0)
-        self.assertIsNone(patch["must_have_tags"])
-        self.assertEqual(patch["preferred_traits"], "情绪稳定,沟通")
+        self.assertEqual(patch["must_have_tags"], "情绪稳定,沟通")
+        self.assertIsNone(patch.get("preferred_traits"))
         self.assertEqual(patch["target_cities"], "无锡,苏州")
 
-    def test_normalize_patch_keeps_hard_must_have_and_moves_soft_tags_to_preferred(self):
+    def test_normalize_patch_moves_only_ambiguous_soft_tags_to_preferred(self):
         patch = persona_memory_lib.normalize_patch(
             {
-                "must_have_tags": ["已购房", "情绪稳定", "愿意沟通"],
+                "must_have_tags": ["已购房", "聊得来", "情绪稳定"],
                 "preferred_traits": ["真诚"],
             }
         )
-        self.assertEqual(patch["must_have_tags"], "已购房")
-        self.assertEqual(patch["preferred_traits"], "真诚,情绪稳定,愿意沟通")
+        self.assertEqual(patch["must_have_tags"], "已购房,情绪稳定")
+        self.assertEqual(patch["preferred_traits"], "真诚,聊得来")
 
     def test_merge_explicit_overwrites_hard_fields(self):
         existing = {"self_city": "上海", "must_have_tags": "情绪稳定"}
@@ -169,9 +169,9 @@ class PersonaMemoryTests(unittest.TestCase):
             },
             "explicit",
         )
-        self.assertEqual(merged["persona_summary_internal"], "现居无锡，以长期稳定关系为前提，偏务实。")
+        self.assertEqual(merged["persona_summary_internal"], "现居无锡，结婚导向，偏务实。")
         summary_result = [item for item in field_results if item["field_name"] == "persona_summary_internal"][0]
-        self.assertEqual(summary_result["stored_value"], "现居无锡，以长期稳定关系为前提，偏务实。")
+        self.assertEqual(summary_result["stored_value"], "现居无锡，结婚导向，偏务实。")
 
     def test_build_profile_payload_maps_acceptance_fields(self):
         persona = {
@@ -218,7 +218,7 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertEqual(payload["public_display_name"], "用户0074")
         self.assertIn("matcher_traits_json", payload)
         self.assertIn("public_personality", payload)
-        self.assertIn("对子女情况=现阶段接受度偏低，需结合具体情况判断", payload["notes"])
+        self.assertIn("你对对方孩子情况=现阶段接受度偏低，需结合具体情况判断", payload["notes"])
 
     def test_build_profile_payload_supports_guarded_children_negotiation(self):
         payload = persona_memory_lib.build_profile_payload(
@@ -272,6 +272,52 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertEqual(payload["public_personality"], "现居上海，认真了解，合适的话希望稳定推进")
         self.assertNotIn("上海本地", payload["public_personality"])
         self.assertNotIn("导向", payload["public_personality"])
+
+    def test_normalize_patch_infers_child_reality_requirement_without_overloading_partner_children(self):
+        patch = persona_memory_lib.normalize_patch(
+            {
+                "self_has_children": "是",
+                "must_have_tags": ["收入稳定", "接受孩子现实"],
+                "target_accept_partner_children": "接受",
+                "persona_summary_internal": "35岁，离异，有一女但不随身。",
+                "preference_summary_internal": "希望对方能接受孩子现实，原则上不接受异地。",
+            }
+        )
+        self.assertEqual(patch["self_children_count"], 1)
+        self.assertEqual(patch["self_children_living_with_self"], 0)
+        self.assertEqual(patch["target_requires_partner_accept_my_children"], 1)
+        self.assertIsNone(patch["target_accept_partner_children"])
+        self.assertIn("原则上不接受异地", patch["target_location_semantics"])
+
+    def test_build_public_profile_uses_safe_internal_traits_and_masks_child_reality_phrase(self):
+        payload = persona_memory_lib.build_public_profile(
+            {
+                "self_city": "南京",
+                "self_relationship_goal": "认真恋爱",
+                "persona_summary_internal": "慢热但认真，生活安静稳定，希望长期稳定相处。",
+                "must_have_tags": "接受孩子现实,边界清楚",
+            }
+        )
+        self.assertEqual(payload["public_personality"], "现居南京，慢热但认真，生活安静稳定，认真了解，重视长期关系")
+        self.assertIn("能承接现实关系", payload["public_values"])
+        self.assertNotIn("孩子现实", payload["public_values"])
+
+    def test_build_profile_payload_maps_children_detail_and_partner_accepts_my_children_requirement(self):
+        payload = persona_memory_lib.build_profile_payload(
+            {
+                "profile_id": 30100,
+                "self_has_children": 1,
+                "self_children_count": 1,
+                "self_children_living_with_self": 0,
+                "target_requires_partner_accept_my_children": 1,
+                "persona_summary_internal": "有一女但不随身，认真找长期关系。",
+            }
+        )
+        self.assertEqual(payload["has_children"], 1)
+        self.assertEqual(payload["children_count"], 1)
+        self.assertEqual(payload["children_living_with_self"], 0)
+        self.assertEqual(payload["requires_partner_accept_my_children"], 1)
+        self.assertIn("对方需能接受你的孩子现实", payload["notes"])
 
     def test_build_public_profile_keeps_remarriage_timeline_without_harsh_pressure(self):
         payload = persona_memory_lib.build_public_profile(

@@ -7,6 +7,7 @@ from pathlib import Path
 
 import build_audit_summary
 import generate_persona_packets
+import normalize_agent_feedback
 import run_persona_eval
 import summarize_agent_feedback
 
@@ -39,6 +40,21 @@ def parse_args():
         "--feedback-input",
         default=None,
         help="Optional reviewer feedback JSON file such as persona_agent_feedback_*.json.",
+    )
+    parser.add_argument(
+        "--feedback-raw-input",
+        default=None,
+        help="Optional raw multi-agent reply JSON to normalize into agent_feedback.json.",
+    )
+    parser.add_argument(
+        "--feedback-output",
+        default=None,
+        help="Optional output path for normalized agent_feedback.json when --feedback-raw-input is used.",
+    )
+    parser.add_argument(
+        "--persona-index-input",
+        default=None,
+        help="Optional persona index JSON such as input_personas.json used when normalizing raw feedback.",
     )
     parser.add_argument(
         "--review-metrics-output",
@@ -110,6 +126,13 @@ def main():
     packets_output_path = Path(args.packets_output).resolve()
     metrics_output_path = Path(args.metrics_output).resolve()
     feedback_input_path = Path(args.feedback_input).resolve() if args.feedback_input else None
+    feedback_raw_input_path = (
+        Path(args.feedback_raw_input).resolve() if args.feedback_raw_input else None
+    )
+    feedback_output_path = Path(args.feedback_output).resolve() if args.feedback_output else None
+    persona_index_input_path = (
+        Path(args.persona_index_input).resolve() if args.persona_index_input else None
+    )
     review_metrics_output_path = (
         Path(args.review_metrics_output).resolve() if args.review_metrics_output else None
     )
@@ -124,14 +147,27 @@ def main():
     )
     repo_root = input_path.parent if args.cwd is None else Path(args.cwd).resolve()
 
-    if bool(feedback_input_path) != bool(review_metrics_output_path):
+    if feedback_input_path and feedback_raw_input_path:
         raise SystemExit(
-            "Provide --feedback-input and --review-metrics-output together when reviewer metrics are needed."
+            "Provide either --feedback-input or --feedback-raw-input, not both."
+        )
+    if feedback_raw_input_path and not feedback_output_path:
+        raise SystemExit(
+            "Provide --feedback-output when --feedback-raw-input is requested."
+        )
+    if feedback_raw_input_path and review_metrics_output_path and not feedback_output_path:
+        raise SystemExit(
+            "Provide --feedback-output when reviewer metrics are requested from raw feedback."
+        )
+    if review_metrics_output_path and not (feedback_input_path or feedback_raw_input_path):
+        raise SystemExit(
+            "Provide --feedback-input or --feedback-raw-input when --review-metrics-output is requested."
         )
     if audit_summary_output_path and not feedback_input_path:
-        raise SystemExit(
-            "Provide --feedback-input when --audit-summary-output is requested."
-        )
+        if not feedback_raw_input_path:
+            raise SystemExit(
+                "Provide --feedback-input or --feedback-raw-input when --audit-summary-output is requested."
+            )
 
     personas = run_persona_eval.load_personas(input_path)
     print(
@@ -170,6 +206,28 @@ def main():
         f"[persona-eval-bundle] wrote packets to {packets_output_path}",
         file=sys.stderr,
     )
+
+    if feedback_raw_input_path:
+        persona_index = (
+            normalize_agent_feedback.load_persona_index(persona_index_input_path)
+            if persona_index_input_path
+            else None
+        )
+        raw_feedback_payload = normalize_agent_feedback.load_json(feedback_raw_input_path)
+        normalized_feedback, normalize_errors = normalize_agent_feedback.normalize_feedback_payload(
+            raw_feedback_payload,
+            persona_index=persona_index,
+        )
+        normalize_agent_feedback.write_json(feedback_output_path, normalized_feedback)
+        feedback_input_path = feedback_output_path
+        print(
+            f"[persona-eval-bundle] wrote normalized feedback to {feedback_output_path}",
+            file=sys.stderr,
+        )
+        for error in normalize_errors:
+            print(f"[persona-eval-bundle] normalize warning: {error}", file=sys.stderr)
+        if normalize_errors and args.strict:
+            raise SystemExit(1)
 
     review_feedback = None
     review_metrics = None
