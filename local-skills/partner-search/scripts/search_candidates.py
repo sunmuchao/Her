@@ -3645,142 +3645,163 @@ def format_text(results, include_source=False):
     return "\n".join(lines)
 
 
-def add_source_arguments(parser):
-    parser.add_argument(
-        "--source",
-        action="append",
-        help=(
-            "MySQL DSN such as mysql://user:pass@host:3306/db?table=profiles. "
-            f"Repeatable. {default_source_help_text()}"
+def register_argument_specs(parser, specs):
+    for flags, kwargs in specs:
+        parser.add_argument(*flags, **kwargs)
+
+
+def build_source_argument_specs():
+    return [
+        (
+            ("--source",),
+            {
+                "action": "append",
+                "help": (
+                    "MySQL DSN such as mysql://user:pass@host:3306/db?table=profiles. "
+                    f"Repeatable. {default_source_help_text()}"
+                ),
+            },
         ),
-    )
-    parser.add_argument("--table", help="MySQL table name when the table is not included in the DSN.")
+        (
+            ("--table",),
+            {
+                "help": "MySQL table name when the table is not included in the DSN.",
+            },
+        ),
+    ]
+
+
+PROFILE_FILTER_ARGUMENT_SPECS = [
+    (("--gender",), {"help": "Filter by gender."}),
+    (("--age-min",), {"type": int, "help": "Minimum age."}),
+    (("--age-max",), {"type": int, "help": "Maximum age."}),
+    (("--height-min",), {"type": int, "help": "Minimum height in cm."}),
+    (("--height-max",), {"type": int, "help": "Maximum height in cm."}),
+    (("--city",), {"action": "append", "help": "Allowed city. Repeat or use comma-separated values."}),
+    (("--district",), {"action": "append", "help": "Allowed district. Repeat or use comma-separated values."}),
+    (
+        ("--settlement-city",),
+        {"action": "append", "help": "Allowed long-term settlement city. Repeat or use comma-separated values."},
+    ),
+    (
+        ("--relationship-goal",),
+        {"action": "append", "help": "Allowed relationship goal. Repeat or use comma-separated values."},
+    ),
+    (("--must-have",), {"action": "append", "help": "Required keyword. Repeat or use comma-separated values."}),
+    (("--must-not-have",), {"action": "append", "help": "Excluded keyword. Repeat or use comma-separated values."}),
+    (("--prefer",), {"action": "append", "help": "Preferred keyword. Repeat or use comma-separated values."}),
+    (
+        ("--require-known",),
+        {
+            "action": "append",
+            "help": (
+                "Require these fields to be explicitly filled instead of missing. "
+                "Repeat or use comma-separated canonical field names such as smoking,want_children,accept_partner_children."
+            ),
+        },
+    ),
+    (("--smoking",), {"help": "Exact smoking preference, for example 否."}),
+    (("--drinking",), {"help": "Exact drinking preference, for example 否."}),
+    (("--long-distance",), {"help": "Exact long-distance preference, for example 不接受."}),
+    (("--housing-status",), {"action": "append", "help": "Allowed housing status. Repeat or use comma-separated values."}),
+    (("--car-status",), {"action": "append", "help": "Allowed car status. Repeat or use comma-separated values."}),
+    (("--marital-status",), {"action": "append", "help": "Allowed candidate marital status. Repeat or use comma-separated values."}),
+    (("--has-children",), {"type": int, "choices": [0, 1], "help": "Filter whether the candidate has children."}),
+    (("--want-children",), {"help": "Candidate child plan, for example 想要 or 可协商."}),
+    (
+        ("--accept-partner-children",),
+        {"help": "Candidate acceptance of a partner who already has children."},
+    ),
+    (
+        ("--accept-marital-status-strength",),
+        {"help": "Required candidate marital-history acceptance strength, for example 明确接受."},
+    ),
+    (
+        ("--accept-partner-children-strength",),
+        {"help": "Required candidate child-acceptance strength, for example 明确接受."},
+    ),
+    (
+        ("--marriage-timeline",),
+        {"action": "append", "help": "Allowed marriage timeline. Repeat or use comma-separated values."},
+    ),
+]
+
+
+QUALITY_ARGUMENT_SPECS = [
+    (
+        ("--profile-status",),
+        {"action": "append", "help": "Allowed profile status. Defaults to active. Repeat or use comma-separated values."},
+    ),
+    (("--active-within-days",), {"type": int, "help": "Require recent activity within N days."}),
+    (
+        ("--verified-level-min",),
+        {"choices": ["none", "basic", "photo", "id", "offline"], "help": "Minimum verification level."},
+    ),
+    (
+        ("--verified-level",),
+        {"action": "append", "help": "Exact allowed verification level. Repeat or use comma-separated values."},
+    ),
+    (("--photo-count-min",), {"type": int, "help": "Minimum required photo count."}),
+    (
+        ("--photo-preview-count",),
+        {
+            "type": int,
+            "default": 0,
+            "help": "Return the top N photo URLs from the MySQL photos table for each result.",
+        },
+    ),
+    (
+        ("--photos-table",),
+        {
+            "help": "MySQL photos table name when not using the default profile_photos or DSN photos_table query param.",
+        },
+    ),
+]
+
+
+SELF_PROFILE_ARGUMENT_SPECS = [
+    (("--self-id",), {"type": int, "help": "Use an existing profile id as your own profile for reciprocal matching."}),
+    (("--self-age",), {"type": int, "help": "Your age for reciprocal matching."}),
+    (("--self-city",), {"help": "Your city for reciprocal matching."}),
+    (("--self-height",), {"type": int, "help": "Your height in cm for reciprocal matching."}),
+    (("--self-education",), {"help": "Your education for reciprocal matching."}),
+    (("--self-job",), {"help": "Your job for contextual matching, for example 医生 or 金融."}),
+    (("--self-income-wan",), {"type": int, "help": "Your annual income in 万 for reciprocal matching."}),
+    (("--self-marital-status",), {"help": "Your marital status for reciprocal matching."}),
+    (("--self-has-children",), {"type": int, "choices": [0, 1], "help": "Whether you have children for reciprocal matching."}),
+    (("--self-smoking",), {"help": "Your smoking habit for reciprocal matching."}),
+    (("--self-drinking",), {"help": "Your drinking habit for reciprocal matching."}),
+]
+
+
+OUTPUT_ARGUMENT_SPECS = [
+    (("--exclude-id",), {"action": "append", "type": int, "help": "Profile id to exclude from results. Repeatable."}),
+    (
+        ("--show-source",),
+        {"action": "store_true", "help": "Include the redacted source DSN and table in the text output for debugging."},
+    ),
+    (("--limit",), {"type": int, "default": 10, "help": "Maximum number of results to return."}),
+]
+
+
+def add_source_arguments(parser):
+    register_argument_specs(parser, build_source_argument_specs())
 
 
 def add_profile_filter_arguments(parser):
-    parser.add_argument("--gender", help="Filter by gender.")
-    parser.add_argument("--age-min", type=int, help="Minimum age.")
-    parser.add_argument("--age-max", type=int, help="Maximum age.")
-    parser.add_argument("--height-min", type=int, help="Minimum height in cm.")
-    parser.add_argument("--height-max", type=int, help="Maximum height in cm.")
-    parser.add_argument("--city", action="append", help="Allowed city. Repeat or use comma-separated values.")
-    parser.add_argument("--district", action="append", help="Allowed district. Repeat or use comma-separated values.")
-    parser.add_argument(
-        "--settlement-city",
-        action="append",
-        help="Allowed long-term settlement city. Repeat or use comma-separated values.",
-    )
-    parser.add_argument(
-        "--relationship-goal",
-        action="append",
-        help="Allowed relationship goal. Repeat or use comma-separated values.",
-    )
-    parser.add_argument("--must-have", action="append", help="Required keyword. Repeat or use comma-separated values.")
-    parser.add_argument(
-        "--must-not-have",
-        action="append",
-        help="Excluded keyword. Repeat or use comma-separated values.",
-    )
-    parser.add_argument("--prefer", action="append", help="Preferred keyword. Repeat or use comma-separated values.")
-    parser.add_argument(
-        "--require-known",
-        action="append",
-        help=(
-            "Require these fields to be explicitly filled instead of missing. "
-            "Repeat or use comma-separated canonical field names such as smoking,want_children,accept_partner_children."
-        ),
-    )
-    parser.add_argument("--smoking", help="Exact smoking preference, for example 否.")
-    parser.add_argument("--drinking", help="Exact drinking preference, for example 否.")
-    parser.add_argument("--long-distance", help="Exact long-distance preference, for example 不接受.")
-    parser.add_argument(
-        "--housing-status",
-        action="append",
-        help="Allowed housing status. Repeat or use comma-separated values.",
-    )
-    parser.add_argument(
-        "--car-status",
-        action="append",
-        help="Allowed car status. Repeat or use comma-separated values.",
-    )
-    parser.add_argument(
-        "--marital-status",
-        action="append",
-        help="Allowed candidate marital status. Repeat or use comma-separated values.",
-    )
-    parser.add_argument("--has-children", type=int, choices=[0, 1], help="Filter whether the candidate has children.")
-    parser.add_argument("--want-children", help="Candidate child plan, for example 想要 or 可协商.")
-    parser.add_argument(
-        "--accept-partner-children",
-        help="Candidate acceptance of a partner who already has children.",
-    )
-    parser.add_argument(
-        "--accept-marital-status-strength",
-        help="Required candidate marital-history acceptance strength, for example 明确接受.",
-    )
-    parser.add_argument(
-        "--accept-partner-children-strength",
-        help="Required candidate child-acceptance strength, for example 明确接受.",
-    )
-    parser.add_argument(
-        "--marriage-timeline",
-        action="append",
-        help="Allowed marriage timeline. Repeat or use comma-separated values.",
-    )
+    register_argument_specs(parser, PROFILE_FILTER_ARGUMENT_SPECS)
 
 
 def add_quality_arguments(parser):
-    parser.add_argument(
-        "--profile-status",
-        action="append",
-        help="Allowed profile status. Defaults to active. Repeat or use comma-separated values.",
-    )
-    parser.add_argument("--active-within-days", type=int, help="Require recent activity within N days.")
-    parser.add_argument(
-        "--verified-level-min",
-        choices=["none", "basic", "photo", "id", "offline"],
-        help="Minimum verification level.",
-    )
-    parser.add_argument(
-        "--verified-level",
-        action="append",
-        help="Exact allowed verification level. Repeat or use comma-separated values.",
-    )
-    parser.add_argument("--photo-count-min", type=int, help="Minimum required photo count.")
-    parser.add_argument(
-        "--photo-preview-count",
-        type=int,
-        default=0,
-        help="Return the top N photo URLs from the MySQL photos table for each result.",
-    )
-    parser.add_argument(
-        "--photos-table",
-        help="MySQL photos table name when not using the default profile_photos or DSN photos_table query param.",
-    )
+    register_argument_specs(parser, QUALITY_ARGUMENT_SPECS)
 
 
 def add_self_profile_arguments(parser):
-    parser.add_argument("--self-id", type=int, help="Use an existing profile id as your own profile for reciprocal matching.")
-    parser.add_argument("--self-age", type=int, help="Your age for reciprocal matching.")
-    parser.add_argument("--self-city", help="Your city for reciprocal matching.")
-    parser.add_argument("--self-height", type=int, help="Your height in cm for reciprocal matching.")
-    parser.add_argument("--self-education", help="Your education for reciprocal matching.")
-    parser.add_argument("--self-job", help="Your job for contextual matching, for example 医生 or 金融.")
-    parser.add_argument("--self-income-wan", type=int, help="Your annual income in 万 for reciprocal matching.")
-    parser.add_argument("--self-marital-status", help="Your marital status for reciprocal matching.")
-    parser.add_argument("--self-has-children", type=int, choices=[0, 1], help="Whether you have children for reciprocal matching.")
-    parser.add_argument("--self-smoking", help="Your smoking habit for reciprocal matching.")
-    parser.add_argument("--self-drinking", help="Your drinking habit for reciprocal matching.")
+    register_argument_specs(parser, SELF_PROFILE_ARGUMENT_SPECS)
 
 
 def add_output_arguments(parser):
-    parser.add_argument("--exclude-id", action="append", type=int, help="Profile id to exclude from results. Repeatable.")
-    parser.add_argument(
-        "--show-source",
-        action="store_true",
-        help="Include the redacted source DSN and table in the text output for debugging.",
-    )
-    parser.add_argument("--limit", type=int, default=10, help="Maximum number of results to return.")
+    register_argument_specs(parser, OUTPUT_ARGUMENT_SPECS)
 
 
 def build_parser():
