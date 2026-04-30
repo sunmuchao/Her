@@ -373,6 +373,22 @@ KEYWORD_EVIDENCE_FIELDS = [
     ("family_background", "家庭情况"),
 ]
 
+NEGATIVE_KEYWORD_EVIDENCE_FIELDS = KEYWORD_EVIDENCE_FIELDS + [
+    ("relationship_goal", "关系目标"),
+    ("city", "城市"),
+    ("settlement_city", "定居城市"),
+    ("housing_status", "住房情况"),
+    ("car_status", "车辆情况"),
+    ("education", "学历"),
+    ("job", "工作"),
+    ("income_range", "收入范围"),
+    ("smoking", "抽烟情况"),
+    ("drinking", "喝酒情况"),
+    ("long_distance", "异地态度"),
+    ("marital_status", "婚况"),
+    ("want_children", "生育计划"),
+]
+
 STRUCTURED_KEYWORD_SIGNAL_RULES = {
     "情绪稳定": [
         ("interaction_comfort", "相处状态", {"相处轻松", "安静低压", "有边界不拧巴"}),
@@ -667,14 +683,21 @@ def keyword_segment_pairs(record, keyword):
         return []
 
     pairs = []
-    for field, label in KEYWORD_EVIDENCE_FIELDS:
+    for field, label in NEGATIVE_KEYWORD_EVIDENCE_FIELDS:
         value = record.get(field)
         if not value:
             continue
         for segment in split_evidence_segments(value):
             if lowered_keyword in segment.lower():
                 pairs.append((label, segment))
-    if not pairs and lowered_keyword in as_lower(record.get("combined_text", "")):
+    if (
+        not pairs
+        and lowered_keyword in as_lower(record.get("combined_text", ""))
+        and (
+            canonicalize_keyword(keyword) in NEGATIVE_KEYWORD_STRUCTURED_FIELDS
+            or is_soft_exclusion_keyword(keyword)
+        )
+    ):
         pairs.append(("资料文本", keyword))
     return pairs
 
@@ -1658,6 +1681,12 @@ def build_follow_up_questions(record, missing_fields, risk_flags, self_profile=N
             questions.append("确认对方对子女情况是不是现实里会比较难接受，不要只看口头上没拒绝。")
         elif risk == "对方对子女接受需要先接触再判断":
             questions.append("确认对方对子女情况是不是只有接触意愿，真到关系推进时会不会犹豫。")
+        elif risk == "对方城市偏好未命中，但资料写了接受异地":
+            questions.append("确认城市不是对方的硬门槛，异地或跨城推进在现实里怎么落地。")
+        elif risk == "对方城市偏好未命中，异地仅可协商":
+            questions.append("确认城市偏好没命中时，对方是不是只是嘴上可协商，现实里会不会很快卡住。")
+        elif risk == "对方城市偏好未命中，异地接受度未知":
+            questions.append("确认城市偏好没命中的情况下，对方到底能不能接受跨城推进。")
         elif risk == "对方对喝酒仅可协商":
             questions.append("确认偶尔喝酒在对方那里是能接受，还是只是勉强可协商。")
         elif risk == "对方对抽烟仅可协商":
@@ -1726,6 +1755,9 @@ def build_follow_up_questions(record, missing_fields, risk_flags, self_profile=N
             questions.append("确认对方到底是明确奔着长期来，还是只是先聊着看感觉。")
         elif risk == "重组家庭现实承接仍需确认":
             questions.append("确认对方有没有具体想过孩子、时间和家庭安排，不要只停留在口头接受。")
+        elif risk.startswith("资料里提到“"):
+            keyword = str(risk).removeprefix("资料里提到“").split("”", 1)[0]
+            questions.append(f"确认对方提到“{keyword}”是在表达边界，还是现实里真的会出现这类问题。")
 
     return unique_ordered(questions)[:5]
 
@@ -2485,7 +2517,32 @@ def build_no_match_diagnostics(records, criteria):
     }
 
 
-def format_no_match_text(diagnostics):
+def build_fallback_candidates(records, criteria, limit=3):
+    candidates = []
+    for record in records:
+        strict_diagnostic = evaluate_candidate(record, criteria, diagnostics=True)
+        if strict_diagnostic and strict_diagnostic.get("matched"):
+            continue
+
+        fallback_result = evaluate_candidate(
+            record,
+            criteria,
+            reciprocal_mode="fallback",
+        )
+        if not fallback_result:
+            continue
+
+        if strict_diagnostic and strict_diagnostic.get("reject_reason"):
+            fallback_result["fallback_reason"] = format_rejection_reason(
+                strict_diagnostic["reject_reason"]
+            )
+        candidates.append(fallback_result)
+
+    candidates.sort(key=result_sort_key, reverse=True)
+    return candidates[:limit]
+
+
+def format_no_match_text(diagnostics, fallback_results=None):
     lines = ["No matches found."]
     if not diagnostics:
         return "\n".join(lines)
@@ -2502,6 +2559,9 @@ def format_no_match_text(diagnostics):
     suggestions = diagnostics.get("relax_suggestions") or []
     if suggestions:
         lines.append("relax_suggestions: " + " | ".join(suggestions))
+    if fallback_results:
+        lines.append("fallback_matches: strict 条件下没人过，但下面这些属于放宽后可聊对象。")
+        lines.append(format_text(fallback_results))
     return "\n".join(lines)
 
 
@@ -3363,6 +3423,8 @@ def format_text(results, include_source=False):
             lines.append(f"   missing_fields: {', '.join(result['missing_fields'])}")
         if result["risk_flags"]:
             lines.append(f"   risk_flags: {', '.join(result['risk_flags'])}")
+        if result.get("fallback_reason"):
+            lines.append(f"   fallback_reason: {result['fallback_reason']}")
         if result.get("match_evidence"):
             lines.append(f"   match_evidence: {' | '.join(result['match_evidence'])}")
         if result.get("follow_up_questions"):
@@ -3538,7 +3600,17 @@ def main():
         if results:
             print(format_text(results, include_source=args.show_source))
         else:
-            print(format_no_match_text(build_no_match_diagnostics(records, criteria)))
+            fallback_results = build_fallback_candidates(
+                records,
+                criteria,
+                limit=min(args.limit, 3),
+            )
+            print(
+                format_no_match_text(
+                    build_no_match_diagnostics(records, criteria),
+                    fallback_results=fallback_results,
+                )
+            )
     except Exception as exc:  # pragma: no cover - CLI path
         print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(1)
