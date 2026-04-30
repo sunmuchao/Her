@@ -266,6 +266,38 @@ PUBLIC_JOB_PATTERNS = (
     (re.compile(r"(研究院|实验室|科研)"), "科研相关工作"),
 )
 
+NON_SMOKING_VALUES = {"否", "不抽烟", "不吸烟"}
+
+OBSERVATION_FIELD_LABELS = {
+    "display_name": "昵称",
+    "self_age": "年龄",
+    "self_city": "现居城市",
+    "self_education": "学历",
+    "self_job": "职业",
+    "self_income_wan": "收入",
+    "self_marital_status": "婚况",
+    "self_has_children": "是否有孩子",
+    "self_smoking": "抽烟情况",
+    "self_drinking": "喝酒情况",
+    "self_relationship_goal": "关系目标",
+    "target_gender": "目标性别",
+    "target_age_min": "目标年龄下限",
+    "target_age_max": "目标年龄上限",
+    "target_cities": "目标城市",
+    "target_height_min": "目标身高下限",
+    "target_height_max": "目标身高上限",
+    "target_education_min": "目标学历下限",
+    "target_marital_statuses": "可接受婚况",
+    "target_marital_status_strength": "婚史接受强度",
+    "target_accept_partner_children": "对子女情况接受度",
+    "target_accept_partner_children_strength": "对子女情况接受强度",
+    "target_accept_long_distance": "异地接受度",
+    "must_have_tags": "硬偏好标签",
+    "must_not_have_tags": "明确排斥标签",
+    "preferred_traits": "更偏好特质",
+    "disliked_traits": "不太接受特质",
+}
+
 ACCEPTANCE_STRENGTH_STRONG_VALUES = {"明确接受", "长期接受", "真接受"}
 ACCEPTANCE_STRENGTH_CAUTION_VALUES = {"谨慎接受", "了解后定", "需要磨合"}
 ACCEPTANCE_STRENGTH_SURFACE_VALUES = {"短期可聊", "表面接受", "先接触再说"}
@@ -677,20 +709,133 @@ def build_public_job_title(job: Any) -> Optional[str]:
     return title
 
 
+def build_legacy_public_personality(persona: Dict[str, Any]) -> Optional[str]:
+    fragments = []
+    if persona.get("self_city"):
+        fragments.append(f"{persona['self_city']}本地")
+    if persona.get("self_relationship_goal"):
+        fragments.append(f"{persona['self_relationship_goal']}导向")
+    if clean_text(persona.get("self_smoking")) == "否":
+        fragments.append("生活方式相对稳定")
+    legacy = "，".join(fragments)
+    return legacy or None
+
+
+def build_public_city_phrase(city: Any) -> Optional[str]:
+    city_text = clean_text(city)
+    if not city_text:
+        return None
+    return f"现居{city_text}"
+
+
+def build_public_relationship_goal(goal: Any) -> Optional[str]:
+    goal_text = clean_text(goal)
+    if not goal_text:
+        return None
+    if "再婚" in goal_text:
+        return "认真了解，合适会考虑再婚"
+    if re.search(r"\d+\s*(?:-|到|至|~)\s*\d+年内", goal_text) or re.search(r"\d+年内", goal_text):
+        if "结婚" in goal_text or "再婚" in goal_text:
+            return "认真了解，合适的话希望稳定推进"
+    if "认真恋爱" in goal_text and "结婚" in goal_text:
+        return "认真了解，合适会考虑结婚"
+    if "结婚导向" in goal_text:
+        return "以长期稳定关系为前提"
+    if "结婚" in goal_text:
+        return "认真了解，重视长期关系"
+    if "认真恋爱" in goal_text:
+        return "认真了解，重视长期关系"
+    return goal_text
+
+
+def sanitize_public_profile_summary(summary: Any, persona: Dict[str, Any]) -> Optional[str]:
+    text = clean_text(summary)
+    if not text:
+        return None
+
+    city_text = clean_text(persona.get("self_city"))
+    if city_text:
+        text = text.replace(f"{city_text}本地", f"现居{city_text}")
+
+    goal_text = clean_text(persona.get("self_relationship_goal"))
+    goal_fragment = build_public_relationship_goal(goal_text)
+    replacements = [
+        (re.compile(r"\d+\s*(?:-|到|至|~)\s*\d+年内[^，。；]*?(?:结婚|再婚)导向?"), "认真了解，合适的话希望稳定推进"),
+        (re.compile(r"\d+年内[^，。；]*?(?:结婚|再婚)导向?"), "认真了解，合适的话希望稳定推进"),
+        (re.compile(r"认真以结婚为导向"), "认真了解，重视长期关系"),
+        (re.compile(r"以结婚为导向"), "认真了解，重视长期关系"),
+        (re.compile(r"以再婚为导向"), "认真了解，合适会考虑再婚"),
+        (re.compile(r"再婚导向"), "认真了解，合适会考虑再婚"),
+    ]
+    if goal_text and goal_fragment:
+        replacements.append((re.compile(re.escape(goal_text) + r"导向"), goal_fragment))
+    for pattern, replacement in replacements:
+        text = pattern.sub(replacement, text)
+
+    text = re.sub(r"[，,]{2,}", "，", text)
+    return text.strip("，, ")
+
+
+def observation_field_label(field_name: Any) -> str:
+    return OBSERVATION_FIELD_LABELS.get(str(field_name), str(field_name))
+
+
+def summarize_observation_evidence(
+    field_name: Any,
+    field_value: Any,
+    evidence_text: Any,
+    *,
+    max_length: int = 120,
+) -> Optional[str]:
+    label = observation_field_label(field_name)
+    value_text = clean_text(field_value) or ""
+    if len(value_text) > 32:
+        value_text = value_text[:29].rstrip() + "..."
+    base = f"对话中明确提到{label}"
+    if value_text:
+        base += f"={value_text}"
+
+    evidence = re.sub(r"\s+", " ", str(evidence_text or "")).strip()
+    if not evidence:
+        return base
+
+    lowered = evidence.lower()
+    looks_like_transcript = (
+        "\n" in str(evidence_text)
+        or "interviewer:" in lowered
+        or "user:" in lowered
+        or len(evidence) > max_length
+    )
+    if looks_like_transcript:
+        return base
+
+    if value_text and evidence == value_text:
+        return base
+
+    if len(evidence) > max_length:
+        evidence = evidence[: max_length - 3].rstrip() + "..."
+    return f"{base}；证据摘要: {evidence}"
+
+
 def build_public_profile(persona: Dict[str, Any]) -> Dict[str, Optional[str]]:
     must_have = [public_safe_tag(tag) for tag in items_from_csv(persona.get("must_have_tags"))]
     must_not_have = items_from_csv(persona.get("must_not_have_tags"))
 
-    public_personality = clean_text(persona.get("public_profile_summary_draft"))
+    public_personality = sanitize_public_profile_summary(
+        persona.get("public_profile_summary_draft"),
+        persona,
+    )
     public_values = clean_text(persona.get("public_preference_summary_draft"))
 
     if not public_personality:
         fragments = []
-        if persona.get("self_city"):
-            fragments.append(f"{persona['self_city']}本地")
-        if persona.get("self_relationship_goal"):
-            fragments.append(f"{persona['self_relationship_goal']}导向")
-        if persona.get("self_smoking") == "否":
+        city_fragment = build_public_city_phrase(persona.get("self_city"))
+        if city_fragment:
+            fragments.append(city_fragment)
+        goal_fragment = build_public_relationship_goal(persona.get("self_relationship_goal"))
+        if goal_fragment:
+            fragments.append(goal_fragment)
+        if clean_text(persona.get("self_smoking")) in NON_SMOKING_VALUES:
             fragments.append("生活方式相对稳定")
         public_personality = "，".join(fragments) or "资料在持续完善中"
 
@@ -770,11 +915,17 @@ def build_profile_payload(
     preferred_traits = items_from_csv(persona.get("preferred_traits"))
     disliked_traits = items_from_csv(persona.get("disliked_traits"))
 
-    internal_personality = (
-        clean_text(persona.get("persona_summary_internal"))
-        or clean_text(existing_profile.get("personality"))
-        or public_payload["public_personality"]
-    )
+    existing_personality = clean_text(existing_profile.get("personality"))
+    legacy_personality = build_legacy_public_personality(persona)
+    if clean_text(persona.get("persona_summary_internal")):
+        internal_personality = clean_text(persona.get("persona_summary_internal"))
+    elif existing_personality and existing_personality != legacy_personality:
+        internal_personality = (
+            sanitize_public_profile_summary(existing_personality, persona)
+            or existing_personality
+        )
+    else:
+        internal_personality = public_payload["public_personality"]
 
     if clean_text(persona.get("preference_summary_internal")):
         internal_values = clean_text(persona.get("preference_summary_internal"))
@@ -891,7 +1042,20 @@ SELECT
     END
   ) AS job,
   CAST(NULL AS CHAR(32)) AS income_range,
-  relationship_goal,
+  CASE
+    WHEN relationship_goal IS NULL OR TRIM(relationship_goal) = '' THEN NULL
+    WHEN relationship_goal REGEXP '再婚' THEN '认真了解，合适会考虑再婚'
+    WHEN relationship_goal REGEXP '[0-9]+[[:space:]]*(-|到|至|~)[[:space:]]*[0-9]+年内' AND relationship_goal REGEXP '结婚|再婚'
+      THEN '认真了解，合适的话希望稳定推进'
+    WHEN relationship_goal REGEXP '[0-9]+年内' AND relationship_goal REGEXP '结婚|再婚'
+      THEN '认真了解，合适的话希望稳定推进'
+    WHEN relationship_goal REGEXP '认真恋爱' AND relationship_goal REGEXP '结婚'
+      THEN '认真了解，合适会考虑结婚'
+    WHEN relationship_goal = '结婚导向' THEN '以长期稳定关系为前提'
+    WHEN relationship_goal REGEXP '结婚' THEN '认真了解，重视长期关系'
+    WHEN relationship_goal REGEXP '认真恋爱' THEN '认真了解，重视长期关系'
+    ELSE relationship_goal
+  END AS relationship_goal,
   public_personality AS personality,
   public_values AS `values`,
   public_notes AS notes

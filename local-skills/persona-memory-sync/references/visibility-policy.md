@@ -27,7 +27,9 @@ Visible to matching and matchmaking backend only:
 
 Visible only for audit and debugging:
 
-- observation evidence text
+- field-scoped observation evidence summary
 - confidence score
 - source type
 - conversation reference
+
+Do not store or render full raw conversation transcripts in `evidence_text`.

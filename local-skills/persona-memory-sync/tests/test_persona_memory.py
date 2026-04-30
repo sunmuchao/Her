@@ -169,6 +169,35 @@ class PersonaMemoryTests(unittest.TestCase):
         )
         self.assertEqual(payload["public_job"], "医疗相关工作")
 
+    def test_build_public_profile_uses_current_city_not_native_and_softens_goal(self):
+        payload = persona_memory_lib.build_public_profile(
+            {
+                "self_city": "上海",
+                "self_relationship_goal": "1-2年内往结婚推进",
+            }
+        )
+        self.assertEqual(payload["public_personality"], "现居上海，认真了解，合适的话希望稳定推进")
+        self.assertNotIn("上海本地", payload["public_personality"])
+        self.assertNotIn("导向", payload["public_personality"])
+
+    def test_build_public_profile_sanitizes_legacy_public_draft(self):
+        payload = persona_memory_lib.build_public_profile(
+            {
+                "self_city": "无锡",
+                "self_relationship_goal": "结婚导向",
+                "public_profile_summary_draft": "无锡本地，生活方式稳定，认真以结婚为导向。",
+            }
+        )
+        self.assertEqual(payload["public_personality"], "现居无锡，生活方式稳定，认真了解，重视长期关系。")
+
+    def test_summarize_observation_evidence_replaces_raw_transcript_with_field_summary(self):
+        evidence = persona_memory_lib.summarize_observation_evidence(
+            "self_job",
+            "产品经理",
+            "interviewer: 先简单了解一下\\nuser: 我现在在上海做产品经理，公司这边节奏挺快。",
+        )
+        self.assertEqual(evidence, "对话中明确提到职业=产品经理")
+
     def test_profile_columns_for_persona_patch_includes_nullable_profile_targets(self):
         columns = persona_memory_lib.profile_columns_for_persona_patch(
             {
@@ -207,6 +236,29 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertEqual(payload["notes"], existing_profile["notes"])
         self.assertNotEqual(payload["personality"], payload["public_personality"])
 
+    def test_build_profile_payload_refreshes_legacy_generated_internal_personality(self):
+        persona = {
+            "self_city": "上海",
+            "self_relationship_goal": "1-2年内往结婚推进",
+            "self_smoking": "不抽烟",
+        }
+        existing_profile = {
+            "personality": "上海本地，1-2年内往结婚推进导向",
+        }
+        payload = persona_memory_lib.build_profile_payload(persona, existing_profile=existing_profile)
+        self.assertEqual(payload["personality"], "现居上海，认真了解，合适的话希望稳定推进，生活方式相对稳定")
+
+    def test_build_profile_payload_sanitizes_existing_internal_personality_without_dropping_extra_context(self):
+        persona = {
+            "self_city": "无锡",
+            "self_relationship_goal": "结婚导向",
+        }
+        existing_profile = {
+            "personality": "无锡本地，结婚导向，偏务实，倾向稳定清晰的长期关系。",
+        }
+        payload = persona_memory_lib.build_profile_payload(persona, existing_profile=existing_profile)
+        self.assertEqual(payload["personality"], "现居无锡，以长期稳定关系为前提，偏务实，倾向稳定清晰的长期关系。")
+
     def test_build_profile_payload_keeps_four_disliked_traits_in_internal_notes(self):
         payload = persona_memory_lib.build_profile_payload(
             {
@@ -240,6 +292,7 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertIn("CAST(NULL AS CHAR(32)) AS income_range", sql)
         self.assertIn("public_job", sql)
         self.assertIn("CASE", sql)
+        self.assertIn("认真了解，合适的话希望稳定推进", sql)
         self.assertIn("public_personality AS personality", sql)
         self.assertIn("public_values AS `values`", sql)
         self.assertIn("public_notes AS notes", sql)

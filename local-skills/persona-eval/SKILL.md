@@ -12,6 +12,8 @@ Use this skill when the user wants to judge whether the current matchmaking sear
 - "看看 hard mode 这一版有没有退化"
 - "把 agent 反馈汇总成分数"
 - "对比 v10 和 v11 哪版更好"
+- "启动多个模拟用户 agent 跑完整撮合流程"
+- "让模拟用户检查画像落库、公开展示和找对象结果"
 
 This skill is for evaluation, not live matchmaking. If the user wants to actually find candidates in the database, use `partner-search`. If the user wants to persist new persona memory into MySQL, use `persona-memory-sync`.
 
@@ -19,17 +21,19 @@ This skill is for evaluation, not live matchmaking. If the user wants to actuall
 
 1. Pick the evaluation input.
    Use a JSON file whose items contain at least `id`, `name`, and `command`.
-2. Prefer the bundle runner when you want the standard artifact set.
+2. Use the full journey audit when you want simulated user agents to reveal persona info, inspect stored/public memory, run partner search, and judge satisfaction.
+   Run `python3 scripts/run_multi_agent_matchmaking_audit.py --source ... --output-dir ...`.
+3. Prefer the bundle runner when you want the standard artifact set.
    Run `python3 scripts/run_persona_eval_bundle.py --input ... --results-output ... --packets-output ... --metrics-output ...`.
-3. Rerun only the search batch when you do not need packets yet.
+4. Rerun only the search batch when you do not need packets yet.
    Run `python3 scripts/run_persona_eval.py --input ... --results-output ...`.
-4. Inspect the result JSON.
+5. Inspect the result JSON.
    Check `returncode`, `has_match`, `candidate_count`, and `output`.
-5. Generate reviewer packets separately when needed.
+6. Generate reviewer packets separately when needed.
    Run `python3 scripts/generate_persona_packets.py --input ... --output ... --section-label ...`.
-6. If agent or human review feedback exists, summarize it.
+7. If agent or human review feedback exists, summarize it.
    Run `python3 scripts/summarize_agent_feedback.py --input ... --output ...`.
-7. Report the conclusion.
+8. Report the conclusion.
    Separate:
    - command health
    - match coverage
@@ -60,6 +64,16 @@ python3 scripts/run_persona_eval_bundle.py \
   --metrics-output /path/to/persona_experiment_metrics_v12_2026-04-30.json \
   --section-label round7 \
   --label v12
+```
+
+Run the full simulated matchmaking journey:
+
+```bash
+python3 scripts/run_multi_agent_matchmaking_audit.py \
+  --source 'mysql://root@127.0.0.1:3307/her?table=profiles&photos_table=profile_photos' \
+  --output-dir /path/to/output \
+  --max-personas 3 \
+  --candidate-limit 2
 ```
 
 Add reviewer metrics in the same command when feedback JSON already exists:
