@@ -1177,7 +1177,7 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertNotIn("SELF", output)
         self.assertNotIn("MismatchCity", output)
 
-    def test_main_with_self_id_negotiable_children_now_filtered_out(self):
+    def test_main_with_self_id_negotiable_children_kept_with_risk(self):
         fake_records = [
             {
                 "id": 90001,
@@ -1227,8 +1227,9 @@ class SearchCandidatesTests(unittest.TestCase):
             search_candidates.main()
 
         output = "".join(call.args[0] for call in mock_stdout.write.call_args_list)
-        self.assertIn("No matches found.", output)
-        self.assertIn("对方对你的孩子不是明确接受", output)
+        self.assertIn("NegotiableA", output)
+        self.assertIn("对方对子女情况仅可协商", output)
+        self.assertIn("确认对方是能真正接受你有孩子", output)
 
     def test_main_with_active_within_days_filters_old_activity(self):
         fake_records = [
