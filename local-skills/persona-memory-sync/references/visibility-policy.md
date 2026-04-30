@@ -1,5 +1,13 @@
 # Visibility Policy
 
+## Boundary Note
+
+This document only defines visibility rules for the current `persona-memory-sync` outputs and storage layers.
+
+It does not expand the skill's product scope. Future changes should stay within the existing persona
+write/sync/render boundary and must not use this policy as a reason to add new workflow, notification,
+recommendation, or orchestration features.
+
 ## public
 
 Can be shown directly after rendering:

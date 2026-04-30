@@ -1,5 +1,13 @@
 # Merge Rules
 
+## Boundary Note
+
+This document only describes merge behavior for the existing `persona-memory-sync` capability:
+persisting persona updates, syncing existing profile fields, and rendering public-safe fields.
+
+Do not use this document as justification to expand `persona-memory-sync` into new product capabilities
+such as subscriptions, notifications, workflows, recommendation systems, or a general-purpose persona platform.
+
 ## Source priority
 
 1. `explicit`
@@ -32,4 +40,3 @@ Only `explicit` can overwrite hard fields such as:
 - public-safe draft summaries
 
 `weak_inference` is recorded in observations but does not overwrite the persona.
-
