@@ -1,0 +1,7 @@
+interface:
+  display_name: "Persona Eval"
+  short_description: "Run multi-agent persona audits across memory accuracy, privacy exposure, and match satisfaction."
+  default_prompt: "Use $persona-eval to run a multi-agent audit where each roleplayed user reveals persona details, checks persona-memory-sync accuracy and public exposure, then judges whether the recommended matches are actually acceptable."
+
+policy:
+  allow_implicit_invocation: true
