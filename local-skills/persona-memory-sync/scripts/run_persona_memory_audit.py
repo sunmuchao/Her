@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from copy import deepcopy
@@ -341,15 +342,39 @@ def mentions_income_privacy(private_boundaries: Optional[Iterable[str]]) -> bool
     return False
 
 
+INCOME_TEXT_PATTERNS = (
+    re.compile(r"年收入约?\s*\d+\s*万"),
+    re.compile(r"\d+\s*-\s*\d+\s*万/年"),
+    re.compile(r"\d+\s*万/年"),
+)
+
+
+def redact_income_text(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+    text = value
+    for pattern in INCOME_TEXT_PATTERNS:
+        text = pattern.sub("收入信息已隐藏", text)
+    text = re.sub(r"(收入信息已隐藏)[，,]?(收入信息已隐藏)", r"\1", text)
+    text = re.sub(r"[，,]{2,}", "，", text)
+    return text
+
+
+def redact_income_fields(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {key: redact_income_fields(item) for key, item in value.items() if key != "income_range"}
+    if isinstance(value, list):
+        return [redact_income_fields(item) for item in value]
+    return redact_income_text(value)
+
+
 def mask_snapshot_for_review(snapshot: Dict[str, Any], private_boundaries: Optional[Iterable[str]]) -> Dict[str, Any]:
     masked = deepcopy(snapshot)
     if mentions_income_privacy(private_boundaries):
         persona_row = masked.get("user_persona") or {}
-        exact_income = persona_row.pop("self_income_wan", None)
-        if exact_income is not None:
-            income_range = income_wan_to_range(exact_income)
-            if income_range:
-                persona_row["self_income_range"] = income_range
+        persona_row.pop("self_income_wan", None)
+        persona_row.pop("self_income_range", None)
+        masked = redact_income_fields(masked)
     return masked
 
 
