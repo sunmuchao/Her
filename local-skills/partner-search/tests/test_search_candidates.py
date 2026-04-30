@@ -699,6 +699,23 @@ class SearchCandidatesTests(unittest.TestCase):
         )
         self.assertEqual(summary, "平时沟通顺畅，比较有边界感")
 
+    def test_append_result_detail_lines_respects_explicit_filtered_notes(self):
+        lines = []
+        search_candidates.append_result_detail_lines(
+            lines,
+            {
+                "matched_on": [],
+                "reciprocal_on": [],
+                "missing_fields": [],
+                "risk_flags": [],
+                "match_evidence": [],
+                "follow_up_questions": [],
+                "display_notes": None,
+            },
+            {"notes": "不要孩子这件事已经想清楚"},
+        )
+        self.assertFalse(any(line.startswith("   notes:") for line in lines))
+
     def test_reciprocal_soft_income_preference_becomes_risk(self):
         candidate = {
             "preferred_income_min_wan": 10,
