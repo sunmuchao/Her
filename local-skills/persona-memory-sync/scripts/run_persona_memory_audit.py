@@ -106,6 +106,7 @@ PROFILE_SNAPSHOT_FIELDS = [
     "age",
     "city",
     "education",
+    "public_education",
     "job",
     "public_job",
     "income_range",

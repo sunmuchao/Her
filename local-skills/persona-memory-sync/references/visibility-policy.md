@@ -7,7 +7,7 @@ Can be shown directly after rendering:
 - anonymous display name from `public_profile_view` only, not raw real name
 - age
 - city
-- education
+- masked education from `public_education` / `public_profile_view` only, not raw `education`
 - masked public job text
 - relationship goal
 - `public_personality`

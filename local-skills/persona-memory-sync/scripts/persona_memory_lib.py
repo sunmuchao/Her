@@ -167,6 +167,7 @@ PROFILE_EXTENSION_COLUMNS = {
     "accept_marital_status_semantics": "VARCHAR(128) NULL",
     "accept_partner_children_semantics": "VARCHAR(128) NULL",
     "public_display_name": "VARCHAR(64) NULL",
+    "public_education": "VARCHAR(32) NULL",
     "public_job": "VARCHAR(64) NULL",
     "public_personality": "TEXT NULL",
     "public_values": "TEXT NULL",
@@ -196,6 +197,7 @@ PROFILE_SYNC_PERSONA_FIELDS = set(PERSONA_TO_PROFILE_FIELD_MAP) | {
 
 PATCH_DERIVED_PROFILE_COLUMNS = {
     "self_income_wan": {"income_range"},
+    "self_education": {"public_education"},
     "self_job": {"public_job"},
     "target_accept_long_distance": {"long_distance", "accept_long_distance"},
     "target_accept_partner_children": {"accept_partner_children", "accept_partner_children_semantics"},
@@ -815,6 +817,26 @@ def build_public_job_title(job: Any) -> Optional[str]:
     return title
 
 
+def build_public_education(education: Any) -> Optional[str]:
+    text = clean_text(education)
+    if not text:
+        return None
+
+    normalized = text.lower()
+    if any(
+        token in normalized
+        for token in ("博士", "博士后", "phd", "研究生", "硕士", "mba", "emba", "本科", "学士", "专升本", "本硕")
+    ):
+        return "本科及以上"
+    if any(token in normalized for token in ("大专", "专科", "高职", "高专")):
+        return "大专/高职"
+    if any(token in normalized for token in ("高中", "中专", "职高", "技校")):
+        return "高中/中专"
+    if any(token in normalized for token in ("初中", "小学")):
+        return "高中以下"
+    return "已做模糊展示"
+
+
 def build_public_display_name(profile_id: Any) -> Optional[str]:
     profile_id_int = as_int(profile_id)
     if profile_id_int is None:
@@ -1015,6 +1037,7 @@ def build_public_profile(persona: Dict[str, Any]) -> Dict[str, Optional[str]]:
     public_notes = "；".join(notes[:3]) if notes else None
 
     return {
+        "public_education": build_public_education(persona.get("self_education")),
         "public_job": build_public_job_title(persona.get("self_job")),
         "public_personality": public_personality,
         "public_values": public_values,
@@ -1220,7 +1243,7 @@ SELECT
   city,
   district,
   height,
-  education,
+  NULLIF(TRIM(public_education), '') AS education,
   COALESCE(
     public_job,
     CASE

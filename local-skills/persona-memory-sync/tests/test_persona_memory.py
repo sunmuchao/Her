@@ -181,6 +181,7 @@ class PersonaMemoryTests(unittest.TestCase):
             "self_gender": "男",
             "self_age": 28,
             "self_city": "无锡",
+            "self_education": "专升本",
             "self_job": "产品经理",
             "self_income_wan": 40,
             "self_relationship_goal": "结婚导向",
@@ -209,6 +210,8 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertEqual(payload["accept_marital_status_strength"], "谨慎接受")
         self.assertEqual(payload["accept_marital_status_semantics"], "在可接受婚况范围内，但会更看具体人和相处质量")
         self.assertEqual(payload["income_range"], "36-45万/年")
+        self.assertEqual(payload["education"], "专升本")
+        self.assertEqual(payload["public_education"], "本科及以上")
         self.assertEqual(payload["personality"], "慢热但反馈稳定，认真推进关系。")
         self.assertEqual(payload["values"], "看重沟通效率，也看重情绪稳定。")
         self.assertEqual(payload["public_job"], "产品经理")
@@ -250,6 +253,14 @@ class PersonaMemoryTests(unittest.TestCase):
             }
         )
         self.assertEqual(payload["public_job"], "医疗相关工作")
+
+    def test_build_public_profile_masks_raw_education_to_coarse_band(self):
+        payload = persona_memory_lib.build_public_profile(
+            {
+                "self_education": "专升本",
+            }
+        )
+        self.assertEqual(payload["public_education"], "本科及以上")
 
     def test_build_public_profile_uses_current_city_not_native_and_softens_goal(self):
         payload = persona_memory_lib.build_public_profile(
@@ -327,11 +338,13 @@ class PersonaMemoryTests(unittest.TestCase):
         columns = persona_memory_lib.profile_columns_for_persona_patch(
             {
                 "target_education_min": None,
+                "self_education": None,
                 "self_job": None,
                 "target_accept_partner_children_strength": "谨慎接受",
             }
         )
         self.assertIn("preferred_education_min", columns)
+        self.assertIn("public_education", columns)
         self.assertIn("public_job", columns)
         self.assertIn("accept_partner_children_strength", columns)
 
@@ -417,6 +430,8 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertIn("CAST(NULL AS CHAR(32)) AS income_range", sql)
         self.assertIn("public_display_name", sql)
         self.assertIn("CONCAT('用户'", sql)
+        self.assertIn("public_education", sql)
+        self.assertIn("AS education", sql)
         self.assertIn("public_job", sql)
         self.assertIn("CASE", sql)
         self.assertIn("认真了解，合适的话希望稳定推进", sql)
@@ -425,6 +440,7 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertIn("public_values AS `values`", sql)
         self.assertIn("public_notes AS notes", sql)
         self.assertNotIn("\n  name,\n", sql)
+        self.assertNotIn("\n  education,\n", sql)
         self.assertNotIn("COALESCE(public_personality, personality)", sql)
         self.assertNotIn("COALESCE(public_values, `values`)", sql)
         self.assertNotIn("COALESCE(public_notes, notes)", sql)

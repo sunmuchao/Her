@@ -1,0 +1,13 @@
+{
+  "label": "subagent_rerun_20260430_111004",
+  "source_input": "/Users/sunmuchao/Downloads/Her/tmp/persona_agent_audits/persona_agent_feedback_20260430_111004.json",
+  "persona_count": 3,
+  "candidate_review_count": 6,
+  "average_score": 79.6667,
+  "top1_average_score": 87.0,
+  "verdict_counts": {
+    "满意": 2,
+    "能聊聊": 4
+  },
+  "generated_at": "2026-04-30T11:20:26"
+}
