@@ -547,6 +547,7 @@ class SearchCandidatesTests(unittest.TestCase):
         candidate = {
             "preferred_cities": "上海",
             "accept_long_distance": "接受",
+            "location_preference_semantics": "短期异地可了解，但需要明确落地计划；不接受长期异地",
         }
         self_profile = {"city": "无锡"}
 
@@ -554,6 +555,7 @@ class SearchCandidatesTests(unittest.TestCase):
 
         self.assertIsNotNone(result)
         self.assertIn("对方城市偏好未命中，但资料写了接受异地", result["risk_flags"])
+        self.assertIn("对方不接受长期异地，需要确认落地计划", result["risk_flags"])
 
     def test_reciprocal_negotiable_children_becomes_risk_when_self_has_children(self):
         candidate = {
@@ -748,12 +750,12 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertIn("成长势能更强", result["matched_on"])
         self.assertIn("理性但不冷", result["matched_on"])
         self.assertIn("更有审美和表达感", result["matched_on"])
-        self.assertIn("更容易聊出感觉", result["matched_on"])
-        self.assertIn("人物感更强", result["matched_on"])
-        self.assertIn("不只合适，也更容易让人有感觉", result["matched_on"])
-        self.assertIn("聊天不木，也更有轻松感", result["matched_on"])
+        self.assertIn("聊天层次更完整", result["matched_on"])
+        self.assertIn("资料辨识度更高", result["matched_on"])
+        self.assertIn("条件之外，表达层次也更完整", result["matched_on"])
+        self.assertIn("互动更轻松", result["matched_on"])
         self.assertIn("进入关系意愿更明确", result["matched_on"])
-        self.assertIn("理性之外，也更容易有火花", result["matched_on"])
+        self.assertIn("互动不容易太板正", result["matched_on"])
         self.assertGreater(result["score_bonus"], 0)
 
     def test_evaluate_contextual_fit_rewards_doctorate_match_and_active_communication(self):
@@ -866,6 +868,82 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertIn("相处更有松弛感", result["matched_on"])
         self.assertIn("认真相处意愿更明确", result["matched_on"])
         self.assertIn("认真相处不拖泥带水", result["matched_on"])
+
+    def test_evaluate_candidate_separates_self_profile_gaps_from_candidate_missing_fields(self):
+        record = {
+            "id": 301,
+            "name": "GapSplit",
+            "gender": "男",
+            "age": 34,
+            "city": "上海",
+            "preferred_height_min": 175,
+            "profile_status": "active",
+            "verified_level": "photo",
+            "combined_text": "认真恋爱",
+            "source_file": "mysql://root@127.0.0.1:3307/her?table=profiles#profiles",
+        }
+        criteria = {
+            "gender": "男",
+            "profile_statuses": ["active"],
+            "exclude_ids": set(),
+            "self_profile": {"city": "上海"},
+        }
+
+        result = search_candidates.evaluate_candidate(record, criteria)
+
+        self.assertIsNotNone(result)
+        self.assertIn("self_height", result["self_profile_gaps"])
+        self.assertNotIn("self_height", result["missing_fields"])
+
+    def test_select_diverse_results_avoids_near_duplicate_top_profiles(self):
+        results = [
+            {
+                "id": 1,
+                "score": 100,
+                "verified_rank": 3,
+                "activity_sort_ts": 30,
+                "profile_status_rank": 3,
+                "profile": {
+                    "job": "产品经理",
+                    "career_intensity": "脑力投入型",
+                    "communication_style": "主动沟通",
+                    "life_routine": "生活规律",
+                    "commitment_clarity": "明确奔着长期",
+                },
+            },
+            {
+                "id": 2,
+                "score": 99,
+                "verified_rank": 3,
+                "activity_sort_ts": 29,
+                "profile_status_rank": 3,
+                "profile": {
+                    "job": "研发工程师",
+                    "career_intensity": "脑力投入型",
+                    "communication_style": "主动沟通",
+                    "life_routine": "生活规律",
+                    "commitment_clarity": "明确奔着长期",
+                },
+            },
+            {
+                "id": 3,
+                "score": 97,
+                "verified_rank": 2,
+                "activity_sort_ts": 28,
+                "profile_status_rank": 3,
+                "profile": {
+                    "job": "教师",
+                    "career_intensity": "规律稳定",
+                    "communication_style": "稳定沟通",
+                    "life_routine": "生活稳定",
+                    "commitment_clarity": "愿意稳定推进",
+                },
+            },
+        ]
+
+        selected = search_candidates.select_diverse_results(results, 2)
+
+        self.assertEqual([item["id"] for item in selected], [1, 3])
 
     def test_build_follow_up_questions_handles_new_style_fields_and_risks(self):
         questions = search_candidates.build_follow_up_questions(
@@ -1100,6 +1178,52 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertIn("Defaults to PARTNER_SEARCH_MYSQL_SOURCE=", normalized_output)
         self.assertIn("user:***@127.0.0.1:3306/her?table=profiles", normalized_output)
         self.assertNotIn("secret", output)
+
+    def test_execute_search_returns_structured_run(self):
+        fake_records = [
+            {
+                "id": 201,
+                "name": "C1",
+                "gender": "女",
+                "age": 27,
+                "city": "无锡",
+                "profile_status": "active",
+                "verified_level": "id",
+                "combined_text": "情绪稳定",
+                "last_active_at": "2099-01-01 00:00:00",
+                "source_file": "mysql://root@127.0.0.1:3307/her?table=profiles#profiles",
+            }
+        ]
+
+        args = search_candidates.build_parser().parse_args(
+            [
+                "--source",
+                "mysql://user:pass@127.0.0.1:3306/her?table=profiles",
+                "--gender",
+                "女",
+                "--city",
+                "无锡",
+                "--must-have",
+                "情绪稳定",
+                "--limit",
+                "2",
+            ]
+        )
+
+        with mock.patch.object(search_candidates, "load_source", return_value=fake_records), mock.patch.object(
+            search_candidates, "attach_photo_previews"
+        ) as mocked_attach:
+            search_run = search_candidates.execute_search(args)
+
+        self.assertEqual(search_run["records"], fake_records)
+        self.assertEqual(len(search_run["results"]), 1)
+        self.assertEqual(search_run["results"][0]["name"], "C1")
+        self.assertIsNone(search_run["diagnostics"])
+        self.assertIsNone(search_run["fallback_results"])
+        self.assertEqual(search_run["criteria"]["gender"], "女")
+        self.assertEqual(search_run["criteria"]["cities"], ["无锡"])
+        self.assertIn("1. C1", search_candidates.render_search_output(search_run))
+        mocked_attach.assert_called_once()
 
     def test_main_outputs_ranked_results(self):
         fake_records = [
