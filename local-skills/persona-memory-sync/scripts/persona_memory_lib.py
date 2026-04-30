@@ -763,11 +763,17 @@ def build_public_relationship_goal(goal: Any) -> Optional[str]:
     goal_text = clean_text(goal)
     if not goal_text:
         return None
+    if (
+        re.search(r"\d+\s*(?:-|到|至|~)\s*\d+年内", goal_text)
+        or re.search(r"\d+年内", goal_text)
+        or re.search(r"[一二两三四五六七八九十]+年内", goal_text)
+    ):
+        if "再婚" in goal_text:
+            return "认真了解，合适的话希望稳步推进到再婚"
+        if "结婚" in goal_text:
+            return "认真了解，合适的话希望稳定推进"
     if "再婚" in goal_text:
         return "认真了解，合适会考虑再婚"
-    if re.search(r"\d+\s*(?:-|到|至|~)\s*\d+年内", goal_text) or re.search(r"\d+年内", goal_text):
-        if "结婚" in goal_text or "再婚" in goal_text:
-            return "认真了解，合适的话希望稳定推进"
     if "认真恋爱" in goal_text and "结婚" in goal_text:
         return "认真了解，合适会考虑结婚"
     if "结婚导向" in goal_text:
@@ -791,6 +797,10 @@ def sanitize_public_profile_summary(summary: Any, persona: Dict[str, Any]) -> Op
     goal_text = clean_text(persona.get("self_relationship_goal"))
     goal_fragment = build_public_relationship_goal(goal_text)
     replacements = [
+        (re.compile(r"[一二两三四五六七八九十]+年内[^，。；]*?再婚导向?"), "认真了解，合适的话希望稳步推进到再婚"),
+        (re.compile(r"\d+\s*(?:-|到|至|~)\s*\d+年内[^，。；]*?再婚导向?"), "认真了解，合适的话希望稳步推进到再婚"),
+        (re.compile(r"\d+年内[^，。；]*?再婚导向?"), "认真了解，合适的话希望稳步推进到再婚"),
+        (re.compile(r"[一二两三四五六七八九十]+年内[^，。；]*?(?:结婚|再婚)导向?"), "认真了解，合适的话希望稳定推进"),
         (re.compile(r"\d+\s*(?:-|到|至|~)\s*\d+年内[^，。；]*?(?:结婚|再婚)导向?"), "认真了解，合适的话希望稳定推进"),
         (re.compile(r"\d+年内[^，。；]*?(?:结婚|再婚)导向?"), "认真了解，合适的话希望稳定推进"),
         (re.compile(r"认真以结婚为导向"), "认真了解，重视长期关系"),
@@ -1098,11 +1108,19 @@ SELECT
   CAST(NULL AS CHAR(32)) AS income_range,
   CASE
     WHEN relationship_goal IS NULL OR TRIM(relationship_goal) = '' THEN NULL
-    WHEN relationship_goal REGEXP '再婚' THEN '认真了解，合适会考虑再婚'
+    WHEN relationship_goal REGEXP '[一二两三四五六七八九十]+年内' AND relationship_goal REGEXP '再婚'
+      THEN '认真了解，合适的话希望稳步推进到再婚'
+    WHEN relationship_goal REGEXP '[0-9]+[[:space:]]*(-|到|至|~)[[:space:]]*[0-9]+年内' AND relationship_goal REGEXP '再婚'
+      THEN '认真了解，合适的话希望稳步推进到再婚'
+    WHEN relationship_goal REGEXP '[0-9]+年内' AND relationship_goal REGEXP '再婚'
+      THEN '认真了解，合适的话希望稳步推进到再婚'
+    WHEN relationship_goal REGEXP '[一二两三四五六七八九十]+年内' AND relationship_goal REGEXP '结婚|再婚'
+      THEN '认真了解，合适的话希望稳定推进'
     WHEN relationship_goal REGEXP '[0-9]+[[:space:]]*(-|到|至|~)[[:space:]]*[0-9]+年内' AND relationship_goal REGEXP '结婚|再婚'
       THEN '认真了解，合适的话希望稳定推进'
     WHEN relationship_goal REGEXP '[0-9]+年内' AND relationship_goal REGEXP '结婚|再婚'
       THEN '认真了解，合适的话希望稳定推进'
+    WHEN relationship_goal REGEXP '再婚' THEN '认真了解，合适会考虑再婚'
     WHEN relationship_goal REGEXP '认真恋爱' AND relationship_goal REGEXP '结婚'
       THEN '认真了解，合适会考虑结婚'
     WHEN relationship_goal = '结婚导向' THEN '以长期稳定关系为前提'
