@@ -1079,7 +1079,7 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertIn("created_at=2026-01-02 03:04:05", text)
         self.assertNotIn("active_at=", text)
 
-    def test_format_text_shows_vibe_fields_when_present(self):
+    def test_format_text_shows_compact_signal_fields_when_present(self):
         text = search_candidates.format_text(
             [
                 {
@@ -1092,6 +1092,7 @@ class SearchCandidatesTests(unittest.TestCase):
                     "matched_on": [],
                     "reciprocal_on": [],
                     "missing_fields": [],
+                    "self_profile_gaps": ["self_height"],
                     "risk_flags": [],
                     "match_evidence": [],
                     "follow_up_questions": [],
@@ -1123,20 +1124,13 @@ class SearchCandidatesTests(unittest.TestCase):
                 }
             ]
         )
-        self.assertIn("vibe: 作息=生活规律 | 沟通=主动沟通 | 节奏=自然推进", text)
-        self.assertIn("表达=会表达有生活感", text)
-        self.assertIn("关系投入=稳定投入关系", text)
+        self.assertIn("signals: 作息=生活规律 | 沟通=主动沟通 | 节奏=自然推进", text)
         self.assertIn("成长=上升明确", text)
-        self.assertIn("温度=有温度会接话", text)
-        self.assertIn("审美=有审美输出", text)
-        self.assertIn("共鸣=能聊想法也能聊日常", text)
-        self.assertIn("人物感=有记忆点", text)
-        self.assertIn("轻松感=有点幽默不端着", text)
         self.assertIn("消费观=清醒务实", text)
-        self.assertIn("聊天质感=有梗也有内容", text)
         self.assertIn("长期意图=明确奔着长期", text)
         self.assertIn("推进方式=会把安排说清", text)
         self.assertIn("现实承接=已想过现实安排", text)
+        self.assertIn("self_profile_gaps: self_height", text)
 
     def test_redact_sensitive_text_masks_common_contact_fields(self):
         redacted = search_candidates.redact_sensitive_text(
