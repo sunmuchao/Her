@@ -406,17 +406,21 @@ class SearchCandidatesTests(unittest.TestCase):
             search_candidates.evaluate_reciprocal_compatibility(candidate, self_profile)
         )
 
-    def test_reciprocal_negotiable_children_rejects_when_self_has_children(self):
-        candidate = {"accept_partner_children": "可协商"}
+    def test_reciprocal_negotiable_children_becomes_risk_when_self_has_children(self):
+        candidate = {
+            "accept_partner_children": "可协商",
+            "accept_partner_children_strength": "短期可聊",
+            "accept_partner_children_semantics": "可以先接触再判断",
+        }
         self_profile = {"has_children": 1}
         result = search_candidates.evaluate_reciprocal_compatibility(
             candidate, self_profile, diagnostics=True
         )
         self.assertIsNotNone(result)
-        self.assertFalse(result["matched"])
-        self.assertEqual(
-            search_candidates.parse_rejection_reason(result["reject_reason"])[0],
-            "reciprocal_children_acceptance_not_strong",
+        self.assertTrue(result["matched"])
+        self.assertIn(
+            "对方对子女接受需要先接触再判断",
+            result["risk_flags"],
         )
 
     def test_reciprocal_missing_children_acceptance_called_out(self):
@@ -441,7 +445,7 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertIn("对方收入要求可能可放宽", result["risk_flags"])
 
-    def test_reciprocal_children_acceptance_requires_strong_signal_for_parent(self):
+    def test_reciprocal_children_acceptance_cautious_signal_becomes_risk(self):
         candidate = {
             "accept_partner_children": "接受",
             "accept_partner_children_strength": "谨慎接受",
@@ -451,10 +455,10 @@ class SearchCandidatesTests(unittest.TestCase):
             candidate, self_profile, diagnostics=True
         )
         self.assertIsNotNone(result)
-        self.assertFalse(result["matched"])
-        self.assertEqual(
-            search_candidates.parse_rejection_reason(result["reject_reason"])[0],
-            "reciprocal_children_acceptance_not_strong",
+        self.assertTrue(result["matched"])
+        self.assertIn(
+            "对方对子女接受度偏保守",
+            result["risk_flags"],
         )
 
     def test_build_follow_up_questions_supports_children_semantic_risk(self):
@@ -464,6 +468,64 @@ class SearchCandidatesTests(unittest.TestCase):
             ["对方对子女接受度偏低"],
         )
         self.assertTrue(any("对子女情况" in item for item in questions))
+
+    def test_reciprocal_marital_acceptance_surface_signal_becomes_risk(self):
+        candidate = {
+            "accept_marital_status": "未婚,离异未育,离异已育",
+            "accept_marital_status_strength": "短期可聊",
+            "accept_marital_status_semantics": "在可接受婚况范围内，可以先聊再判断",
+        }
+        self_profile = {"marital_status": "离异未育"}
+        result = search_candidates.evaluate_reciprocal_compatibility(
+            candidate, self_profile, diagnostics=True
+        )
+        self.assertIsNotNone(result)
+        self.assertTrue(result["matched"])
+        self.assertIn(
+            "对方婚史接受需要先聊再判断",
+            result["risk_flags"],
+        )
+
+    def test_evaluate_candidate_children_semantics_affect_ranking(self):
+        base_record = {
+            "gender": "女",
+            "profile_status": "active",
+            "verified_level": "photo",
+            "last_active_at": "2099-01-01 00:00:00",
+            "combined_text": "",
+            "source_file": "mysql://root@127.0.0.1:3307/her?table=profiles#profiles",
+        }
+        lower_acceptance = dict(
+            base_record,
+            id=201,
+            name="LowAcceptance",
+            accept_partner_children="可协商",
+            accept_partner_children_strength="谨慎接受",
+            accept_partner_children_semantics="现阶段接受度偏低，需结合具体情况判断",
+        )
+        softer_acceptance = dict(
+            base_record,
+            id=202,
+            name="SurfaceAcceptance",
+            accept_partner_children="可协商",
+            accept_partner_children_strength="短期可聊",
+            accept_partner_children_semantics="可以先接触再判断",
+        )
+        criteria = {
+            "gender": "女",
+            "profile_statuses": ["active"],
+            "exclude_ids": set(),
+            "self_profile": {"has_children": 1},
+        }
+
+        lower_result = search_candidates.evaluate_candidate(lower_acceptance, criteria)
+        softer_result = search_candidates.evaluate_candidate(softer_acceptance, criteria)
+
+        self.assertIsNotNone(lower_result)
+        self.assertIsNotNone(softer_result)
+        self.assertIn("对方对子女接受度偏低", lower_result["risk_flags"])
+        self.assertIn("对方对子女接受需要先接触再判断", softer_result["risk_flags"])
+        self.assertLess(lower_result["score"], softer_result["score"])
 
     def test_reciprocal_uses_matcher_preference_tags_for_soft_bonus(self):
         candidate = {
