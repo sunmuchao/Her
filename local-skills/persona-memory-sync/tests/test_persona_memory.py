@@ -94,8 +94,19 @@ class PersonaMemoryTests(unittest.TestCase):
         )
         self.assertEqual(patch["self_age"], 28)
         self.assertEqual(patch["self_has_children"], 0)
-        self.assertEqual(patch["must_have_tags"], "情绪稳定,沟通")
+        self.assertIsNone(patch["must_have_tags"])
+        self.assertEqual(patch["preferred_traits"], "情绪稳定,沟通")
         self.assertEqual(patch["target_cities"], "无锡,苏州")
+
+    def test_normalize_patch_keeps_hard_must_have_and_moves_soft_tags_to_preferred(self):
+        patch = persona_memory_lib.normalize_patch(
+            {
+                "must_have_tags": ["已购房", "情绪稳定", "愿意沟通"],
+                "preferred_traits": ["真诚"],
+            }
+        )
+        self.assertEqual(patch["must_have_tags"], "已购房")
+        self.assertEqual(patch["preferred_traits"], "真诚,情绪稳定,愿意沟通")
 
     def test_merge_explicit_overwrites_hard_fields(self):
         existing = {"self_city": "上海", "must_have_tags": "情绪稳定"}
