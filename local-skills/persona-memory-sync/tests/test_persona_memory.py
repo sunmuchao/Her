@@ -391,11 +391,35 @@ class PersonaMemoryTests(unittest.TestCase):
             {
                 "target_location_semantics": "上海优先；稳定留沪；短期异地可了解；但不接受长期不落地异地",
                 "public_preference_summary_draft": "上海优先，也接受稳定留沪；短期异地可了解，但不接受长期不落地异地；看重沟通顺畅。",
+                "target_accept_long_distance": "不接受",
             }
         )
         self.assertEqual(
             payload["public_values"],
-            "短期异地可了解，但需要明确落地计划；不接受长期异地，上海优先，看重沟通顺畅",
+            "原则上不接受异地；如有短期过渡，需明确落地计划，上海优先，看重沟通顺畅",
+        )
+
+    def test_build_public_profile_prioritizes_child_reality_requirement_in_public_values(self):
+        payload = persona_memory_lib.build_public_profile(
+            {
+                "target_requires_partner_accept_my_children": 1,
+                "preferred_traits": "情绪稳定,边界清楚,责任感,沟通顺畅,有分寸,接受孩子现实",
+            }
+        )
+        self.assertEqual(
+            payload["public_values"],
+            "看重能承接现实关系、情绪稳定、边界清楚、责任感、沟通顺畅",
+        )
+
+    def test_build_public_profile_preserves_reality_execution_tag_in_public_values(self):
+        payload = persona_memory_lib.build_public_profile(
+            {
+                "preferred_traits": "情绪稳定,婚姻诚意,消费观正常,沟通自然,现实推进能力,稳定留沪",
+            }
+        )
+        self.assertEqual(
+            payload["public_values"],
+            "看重现实推进能力、长期关系诚意、情绪稳定、消费观清醒、沟通自然",
         )
 
     def test_summarize_observation_evidence_replaces_raw_transcript_with_field_summary(self):

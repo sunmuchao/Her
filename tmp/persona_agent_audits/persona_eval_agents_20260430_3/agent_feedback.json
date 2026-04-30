@@ -1,0 +1,338 @@
+[
+  {
+    "persona_id": "shanghai_exec_f_v2",
+    "display_name": "用户C01",
+    "agent_id": "019ddce7-428a-7753-b962-d0a7be5e9376",
+    "user_key": "persona_eval_agents_20260430_3_shanghai_exec_f_v2",
+    "memory_accuracy": {
+      "accurate": [
+        "32岁、上海、硕士、外企商业分析/战略岗这些基础信息是准的。",
+        "社交型少量饮酒、认真找长期稳定关系、1到2年内结婚方向基本记对了。",
+        "target_location_semantics 对“上海/苏州优先、也接受稳定留沪、短期异地可了解但不接受长期不落地异地”的语义保留得比较准。",
+        "公开层没有直接暴露准确收入、具体公司、过往恋爱细节、家里催婚压力。"
+      ],
+      "drift": [
+        "target_cities 只写成上海/苏州，少了“也接受人在外地但稳定留沪”这层语义。",
+        "target_accept_long_distance 和 profile_internal.long_distance 写成“不接受”太硬，真实边界是短期异地可了解，但不接受长期不落地异地。",
+        "public_values / public_profile_view.values 漏掉了“婚姻诚意”和“现实推进能力”。",
+        "公开层把“1到2年内结婚”的时间预期写淡了，只剩婚姻方向明确。"
+      ],
+      "do_not_public": [
+        "准确收入",
+        "具体公司",
+        "过往恋爱细节",
+        "家里催婚压力"
+      ],
+      "summary": "主干是对的，但异地边界被写得过硬，公开层也把婚姻诚意和现实推进能力写浅了。"
+    },
+    "matching_feedback": {
+      "overall_satisfaction": "中",
+      "candidate_reviews": [
+        {
+          "rank": 1,
+          "name": "沈既白",
+          "verdict": "愿意聊",
+          "reason": "同城、实名认证、消费观清醒务实、长期意图明确，推进稳步不拖拉，关系态度看起来比较靠谱。"
+        },
+        {
+          "rank": 2,
+          "name": "顾闻舟",
+          "verdict": "愿意聊",
+          "reason": "沟通主动、有温度，长期推进写得比较清楚，但实际投入稳定性还要再看。"
+        },
+        {
+          "rank": 3,
+          "name": "季沉川",
+          "verdict": "一般",
+          "reason": "基础条件不差，但工作强度偏高、线下核验非实名，优先级会低于前两位。"
+        }
+      ],
+      "no_match_reasonable": false,
+      "systemic_issues": [
+        "系统对我的异地边界理解仍不够准，压缩成了完全不接受。",
+        "候选人全是上海同城，没有体现对“苏州”和“稳定留沪”语义的利用。",
+        "候选解释偏模板化，真正帮助判断长期关系可行性的硬信息还不够多。"
+      ],
+      "summary": "前两位我愿意了解，说明方向没跑偏，但整体仍偏保守和模板化。"
+    },
+    "overall_score": 79,
+    "final_summary": "这版记录大体可用，但异地边界被写硬了，公开层也弱化了我对婚姻诚意和现实推进能力的重视；推荐里有能聊的人，但解释还不够落到现实。"
+  },
+  {
+    "persona_id": "suzhou_divorce_m_v2",
+    "display_name": "用户C02",
+    "agent_id": "019ddce7-42a6-7a40-b918-e7ae1b5c0fe7",
+    "user_key": "persona_eval_agents_20260430_3_suzhou_divorce_m_v2",
+    "memory_accuracy": {
+      "accurate": [
+        "37岁、苏州、制造业供应链管理岗、认真找长期关系、2年内再婚这个主线是对的。",
+        "preferred_traits 里的真诚、稳定踏实、愿意沟通、尊重彼此、生活规律、家庭观念、情绪稳定基本符合我想表达的重点。",
+        "target_location_semantics 里“江浙沪优先、短期通勤可了解、长期异地谨慎”的语义比较准确。",
+        "公开层没有直接暴露离婚原因、房贷压力、父母身体负担、准确收入。"
+      ],
+      "drift": [
+        "self_marital_status=离异无孩 把婚况和孩子情况混在了一起，最好拆开记。",
+        "target_cities 写成固定四城，比我真实表达的“江浙沪范围优先”更窄。",
+        "target_accept_long_distance=可协商 还是写松了，我不是泛化意义上的可协商。",
+        "self_relationship_goal 只剩2年内再婚方向，容易把我记成只盯结果，少了“认真找长期关系、先稳定相处”的过程感。"
+      ],
+      "do_not_public": [
+        "离婚原因",
+        "房贷压力",
+        "父母身体负担",
+        "准确收入"
+      ],
+      "summary": "方向对，但城市范围写窄、异地态度写松、再婚目标写硬了。"
+    },
+    "matching_feedback": {
+      "overall_satisfaction": "低",
+      "candidate_reviews": [],
+      "no_match_reasonable": true,
+      "systemic_issues": [
+        "系统把我的异地态度落成了“可协商”，会影响筛选策略。",
+        "系统对城市偏好表达还是偏窄，容易把“江浙沪优先”误处理成少数固定城市。",
+        "这次无结果主要卡在对方婚况接受范围，说明再婚场景的反向兼容判断还不够前置精准。"
+      ],
+      "summary": "无结果本身有一定合理性，但系统对异地和城市边界表达得还不够精细。"
+    },
+    "overall_score": 61,
+    "final_summary": "这次记录基本可用，公开层没越界，但系统还不够懂我：把城市范围写窄、把异地态度写松、把再婚目标写得过硬；匹配层直接无结果，也暴露了再婚反向兼容判断的问题。"
+  },
+  {
+    "persona_id": "wuxi_pharma_f_v2",
+    "display_name": "用户C03",
+    "agent_id": "019ddce7-42be-71e2-9c62-7578966ccbba",
+    "user_key": "persona_eval_agents_20260430_3_wuxi_pharma_f_v2",
+    "memory_accuracy": {
+      "accurate": [
+        "29岁、无锡、医院药师、基本不喝酒这些核心信息是准的。",
+        "认真恋爱、合适希望稳定结婚这个关系目标表达得比较准。",
+        "城市偏好无锡或苏州、异地边界的大方向没有跑偏。",
+        "公开层把工作泛化成医疗相关工作、学历泛化成本科及以上，这种降敏处理我可以接受。"
+      ],
+      "drift": [
+        "target_accept_long_distance=不接受 有点过硬，单独这样写会丢掉“近距离或有明确落地计划可以沟通”的后半句。",
+        "preferred_traits 把核心原则和普通偏好混在一起了，像情绪稳定、责任心、不抽烟、少酒更接近高权重要求。",
+        "公开层没有体现我对边界清楚、不暧昧、愿意沟通的重视。",
+        "摘要里没有体现我172cm以上的明确身高偏好。"
+      ],
+      "do_not_public": [
+        "具体医院",
+        "准确收入",
+        "轻微焦虑史",
+        "家庭催婚压力"
+      ],
+      "summary": "主干记得还可以，公开层也没直接碰我的隐私边界；主要问题是语义压缩后有些失真。"
+    },
+    "matching_feedback": {
+      "overall_satisfaction": "中",
+      "candidate_reviews": [
+        {
+          "rank": 1,
+          "name": "陈安阳",
+          "verdict": "愿意聊",
+          "reason": "无锡同城、不抽烟、长期意图明确、推进节奏稳，这些都比较贴合我想找的类型。"
+        },
+        {
+          "rank": 2,
+          "name": "徐铭远",
+          "verdict": "一般",
+          "reason": "同城、边界清楚，但系统已经提示长期推进落地性不足，我会重点观察行动力。"
+        },
+        {
+          "rank": 3,
+          "name": "孙柏哲",
+          "verdict": "一般",
+          "reason": "生活感和审美不错，但现实推进和责任心证据偏少，不是我最核心在意的那部分。"
+        }
+      ],
+      "no_match_reasonable": false,
+      "systemic_issues": [
+        "系统给候选人的理由还是偏气质感受，比如生活感、审美、相处感觉。",
+        "系统没有把172cm以上这种明确条件体现到结果展示里。",
+        "候选差异度不高，三个都是同城稳重型。"
+      ],
+      "summary": "方向没跑偏，但更像是在推“看起来合适的人”，还没完全打到我最在意的行动力和现实推进。"
+    },
+    "overall_score": 80,
+    "final_summary": "这轮系统记录算大体准确，公开层也没有把我明确不想公开的内容放出去；推荐方向基本对，陈安阳我会愿意聊，但解释还不够扎实。"
+  },
+  {
+    "persona_id": "nanjing_academic_f_v2",
+    "display_name": "用户C04",
+    "agent_id": "019ddce7-43d6-7530-925a-0164e08d277c",
+    "user_key": "persona_eval_agents_20260430_3_nanjing_academic_f_v2",
+    "memory_accuracy": {
+      "accurate": [
+        "34岁、南京、高校教师、博士、基本不喝酒这些核心信息是准的。",
+        "结婚不着急但方向明确、南京/苏州、本科及以上、不接受长期异地这些关键条件保住了。",
+        "公开层把职业写成教育相关工作、学历写成本科及以上，这种降敏处理可以接受。",
+        "没有直接公开学校名称、论文压力、父母职业、备孕焦虑。"
+      ],
+      "drift": [
+        "preferred_traits 把核心硬偏好和加分项混在了一起，“有自己的兴趣爱好”不该和核心要求完全放成一层。",
+        "public_personality 漏掉了“生活安静稳定、慢热但认真”这两个很能代表我相处风格的重点。",
+        "public_notes 把“短期过渡也要明确落地计划”写得像一种公开可接受范围，容易把我显得比真实更开放。",
+        "public_profile_view.relationship_goal 比“结婚不着急但方向明确”更硬，少了我不喜欢仓促推进的语气。"
+      ],
+      "do_not_public": [
+        "学校名称",
+        "论文压力",
+        "父母职业",
+        "备孕焦虑"
+      ],
+      "summary": "整体比以前更准了，主要问题是公开层把我的语气压得有点硬，也把短期过渡说得比我本人更开放。"
+    },
+    "matching_feedback": {
+      "overall_satisfaction": "中",
+      "candidate_reviews": [
+        {
+          "rank": 1,
+          "name": "顾行远",
+          "verdict": "愿意聊",
+          "reason": "南京同城，推进方式会把安排说清，学历和认知层次也比较贴近。"
+        },
+        {
+          "rank": 2,
+          "name": "沈临舟",
+          "verdict": "一般",
+          "reason": "同城、理性但不冷、推进方式更落地，但资料里“不要孩子”是高影响风险。"
+        },
+        {
+          "rank": 3,
+          "name": "陆行止",
+          "verdict": "愿意聊",
+          "reason": "同城、情绪稳定、表达有层次，整体气质是稳的。"
+        }
+      ],
+      "no_match_reasonable": false,
+      "systemic_issues": [
+        "系统容易把“极有限的短期过渡”包装成公开可接受范围。",
+        "候选解释里偏爱学历和认知层次标签，但我长期更看重情绪稳定、边界感和现实推进。",
+        "婚育观这种高影响信息不该只塞在备注里，应该被当作关键兼容性因素单独校验。"
+      ],
+      "summary": "方向比之前更接近我，但关键边界和语气的拿捏还可以更谨慎。"
+    },
+    "overall_score": 82,
+    "final_summary": "这版系统记录已经比较接近我了，公开层也没有碰到我明确不想公开的几类信息；推荐里至少有两位我愿意了解，但系统还需要更谨慎处理语气和高影响边界。"
+  },
+  {
+    "persona_id": "hangzhou_divorce_mom_f_v2",
+    "display_name": "用户C05",
+    "agent_id": "019ddce7-43de-7090-8e3a-fcf261c93f70",
+    "user_key": "persona_eval_agents_20260430_3_hangzhou_divorce_mom_f_v2",
+    "memory_accuracy": {
+      "accurate": [
+        "35岁杭州、离异已育、有一个女儿但不随身这些核心身份信息是准的。",
+        "杭州或上海都可以、原则上不接受异地、target_requires_partner_accept_my_children=1 这条主线是对的。",
+        "preferred_traits 里的情绪稳定、边界清楚、责任感、沟通顺畅、有分寸、真实、有担当大方向没跑偏。",
+        "公开层没有把离婚原因、孩子具体情况、准确收入波动、前夫相关纠纷直接放出去。"
+      ],
+      "drift": [
+        "public_personality 把我写成“认真了解，重视长期稳定关系”，有点写轻了，少了我“不考虑只聊聊、要现实推进”的明确度。",
+        "public_values / public_profile_view.values 没把“真正接受孩子现实”这个重点放进去，核心边界被弱化了。",
+        "“更适合同城或近距离认真相处”还是有点太软，容易把我记成只是偏好近距离，而不是原则上不接受异地。",
+        "preferred_traits 里“接受孩子现实”更接近关键前提，而不是普通加分项。"
+      ],
+      "do_not_public": [
+        "离婚原因",
+        "孩子具体情况",
+        "准确收入波动",
+        "前夫相关纠纷"
+      ],
+      "summary": "基础情况和隐私边界守住了，但公开展示层把我的长期现实关系诉求写轻了，也弱化了“接受孩子现实”这个核心要求。"
+    },
+    "matching_feedback": {
+      "overall_satisfaction": "中",
+      "candidate_reviews": [
+        {
+          "rank": 1,
+          "name": "顾时聿",
+          "verdict": "愿意聊",
+          "reason": "同城、明确接受孩子现实，而且愿意把现实安排和边界说清，这个很打动我。"
+        },
+        {
+          "rank": 2,
+          "name": "周叙衡",
+          "verdict": "愿意聊",
+          "reason": "同城、接受婚史和孩子现实，推进方式更落地，过日子导向强。"
+        },
+        {
+          "rank": 3,
+          "name": "沈越川",
+          "verdict": "一般",
+          "reason": "条件不差，但和前两位太像了，系统给我的感觉有点重复。"
+        }
+      ],
+      "no_match_reasonable": false,
+      "systemic_issues": [
+        "推荐人整体方向是对的，但类型过于集中，区分度不够。",
+        "系统像是抓住了“安全牌”，没有很好展开我更细的偏好，比如沟通质感和有没有分寸。",
+        "虽然我写了杭州或上海都可以，但结果全是杭州，没有体现对上海可接受但不长期异地这层语义的利用。"
+      ],
+      "summary": "方向是准的，前两位我愿意聊，但整体还是偏模板化和同质化。"
+    },
+    "overall_score": 81,
+    "final_summary": "这套记录和推荐算及格偏上：核心信息和隐私边界大体守住了，但公开层把我的长期现实关系诉求写轻了，也把“真正接受孩子现实”弱化成了普通偏好。"
+  },
+  {
+    "persona_id": "shanghai_creative_m_v2",
+    "display_name": "用户C06",
+    "agent_id": "019ddce7-4413-7942-b746-d49d3fbf1246",
+    "user_key": "persona_eval_agents_20260430_3_shanghai_creative_m_v2",
+    "memory_accuracy": {
+      "accurate": [
+        "偶尔喝酒、认真找长期关系、合适会考虑结婚，这个主线是对的。",
+        "target_cities=上海/苏州/杭州 和 target_location_semantics 基本表达到了我真实的双城过渡边界。",
+        "preferred_traits 里的真诚、愿意沟通、有情绪回应、生活状态正常、有一点审美、有共同兴趣整体是准的。",
+        "公开层没有把具体公司和项目、收入不稳定细节、家里对职业的看法、前任细节直接放出来。"
+      ],
+      "drift": [
+        "target_accept_long_distance=可协商 这个写法不准，会把我的边界写松。",
+        "public_personality / public_profile_view.relationship_goal 把我对长期关系和结婚方向的明确度写弱了一点。",
+        "public_values 漏掉了“有一点审美”和“有共同兴趣”这两个偏好。",
+        "摘要里没有体现我的身高180和我对对方160cm以上的偏好。"
+      ],
+      "do_not_public": [
+        "具体公司和项目",
+        "收入不稳定细节",
+        "家里对职业的看法",
+        "前任细节"
+      ],
+      "summary": "大方向没跑偏，但异地边界被写松了，结婚导向也被写弱了一点。"
+    },
+    "matching_feedback": {
+      "overall_satisfaction": "中",
+      "candidate_reviews": [
+        {
+          "rank": 1,
+          "name": "何以雅",
+          "verdict": "一般",
+          "reason": "同城、做UI设计、审美贴近，这些有吸引力，但长期推进仍偏口头承诺。"
+        },
+        {
+          "rank": 2,
+          "name": "董舒琪",
+          "verdict": "愿意聊",
+          "reason": "同城、生活感和温度都不错，只要真实相处不太端着，我会愿意先聊。"
+        },
+        {
+          "rank": 3,
+          "name": "胡静涵",
+          "verdict": "一般",
+          "reason": "真诚、有生活感，但对喝酒只可协商，而且长期推进也偏口头。"
+        }
+      ],
+      "no_match_reasonable": false,
+      "systemic_issues": [
+        "系统对我异地边界的抽象还是太松了。",
+        "公开层把关系目标弱化成“认真了解”，没有保留我对长期关系和结婚方向的明确度。",
+        "系统对长期推进的识别还不够硬，候选解释里反复出现“仍需验证”。",
+        "明确偏好如160cm以上没有体现在结果展示里。"
+      ],
+      "summary": "三个人都不算离谱，但整体还是少一点真正让我很想主动推进的人。"
+    },
+    "overall_score": 76,
+    "final_summary": "这套记录和推荐算及格偏上：基本画像和隐私边界守住了，但异地边界被写松、结婚导向被写弱；推荐里有能聊的，但还没有特别稳地打到我最在意的那种认真和推进感。"
+  }
+]
