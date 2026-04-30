@@ -19,7 +19,7 @@ This skill is for evaluation, not live matchmaking. If the user wants to actuall
 
 1. Pick the evaluation input.
    Use a JSON file whose items contain at least `id`, `name`, and `command`.
-2. Prefer the bundle runner when you want the standard artifact trio.
+2. Prefer the bundle runner when you want the standard artifact set.
    Run `python3 scripts/run_persona_eval_bundle.py --input ... --results-output ... --packets-output ... --metrics-output ...`.
 3. Rerun only the search batch when you do not need packets yet.
    Run `python3 scripts/run_persona_eval.py --input ... --results-output ...`.
@@ -58,6 +58,20 @@ python3 scripts/run_persona_eval_bundle.py \
   --results-output /path/to/persona_experiment_results_v12_2026-04-30.json \
   --packets-output /path/to/persona_agent_packets_v7_2026-04-30.md \
   --metrics-output /path/to/persona_experiment_metrics_v12_2026-04-30.json \
+  --section-label round7 \
+  --label v12
+```
+
+Add reviewer metrics in the same command when feedback JSON already exists:
+
+```bash
+python3 scripts/run_persona_eval_bundle.py \
+  --input /path/to/persona_experiment_input_v11_2026-04-29.json \
+  --results-output /path/to/persona_experiment_results_v12_2026-04-30.json \
+  --packets-output /path/to/persona_agent_packets_v7_2026-04-30.md \
+  --metrics-output /path/to/persona_experiment_metrics_v12_2026-04-30.json \
+  --feedback-input /path/to/persona_agent_feedback_v11_2026-04-29.json \
+  --review-metrics-output /path/to/persona_agent_metrics_v12_2026-04-30.json \
   --section-label round7 \
   --label v12
 ```

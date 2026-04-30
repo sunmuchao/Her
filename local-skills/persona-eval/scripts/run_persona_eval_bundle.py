@@ -7,6 +7,7 @@ from pathlib import Path
 
 import generate_persona_packets
 import run_persona_eval
+import summarize_agent_feedback
 
 
 def parse_args():
@@ -34,6 +35,16 @@ def parse_args():
         help="Where to write aggregate metrics JSON.",
     )
     parser.add_argument(
+        "--feedback-input",
+        default=None,
+        help="Optional reviewer feedback JSON file such as persona_agent_feedback_*.json.",
+    )
+    parser.add_argument(
+        "--review-metrics-output",
+        default=None,
+        help="Optional output path for aggregated reviewer metrics JSON.",
+    )
+    parser.add_argument(
         "--cwd",
         default=None,
         help="Working directory for subprocess execution. Defaults to the input file directory.",
@@ -42,6 +53,11 @@ def parse_args():
         "--label",
         default=None,
         help="Optional label written into the metrics JSON.",
+    )
+    parser.add_argument(
+        "--review-label",
+        default=None,
+        help="Optional label written into the reviewer metrics JSON. Defaults to --label when omitted.",
     )
     parser.add_argument(
         "--section-label",
@@ -77,7 +93,16 @@ def main():
     results_output_path = Path(args.results_output).resolve()
     packets_output_path = Path(args.packets_output).resolve()
     metrics_output_path = Path(args.metrics_output).resolve()
+    feedback_input_path = Path(args.feedback_input).resolve() if args.feedback_input else None
+    review_metrics_output_path = (
+        Path(args.review_metrics_output).resolve() if args.review_metrics_output else None
+    )
     repo_root = input_path.parent if args.cwd is None else Path(args.cwd).resolve()
+
+    if bool(feedback_input_path) != bool(review_metrics_output_path):
+        raise SystemExit(
+            "Provide --feedback-input and --review-metrics-output together when reviewer metrics are needed."
+        )
 
     personas = run_persona_eval.load_personas(input_path)
     print(
@@ -116,6 +141,20 @@ def main():
         f"[persona-eval-bundle] wrote packets to {packets_output_path}",
         file=sys.stderr,
     )
+
+    if feedback_input_path and review_metrics_output_path:
+        review_feedback = summarize_agent_feedback.load_feedback(feedback_input_path)
+        review_metrics = summarize_agent_feedback.summarize_feedback(
+            review_feedback,
+            feedback_input_path,
+            args.review_label or args.label,
+        )
+        summarize_agent_feedback.write_json(review_metrics_output_path, review_metrics)
+        print(
+            f"[persona-eval-bundle] wrote reviewer metrics to {review_metrics_output_path}",
+            file=sys.stderr,
+        )
+        print(json.dumps(review_metrics, ensure_ascii=False, indent=2), file=sys.stderr)
 
     print(json.dumps(metrics, ensure_ascii=False, indent=2), file=sys.stderr)
 
