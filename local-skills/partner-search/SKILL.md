@@ -33,6 +33,16 @@ Do not couple these product/system capabilities into this skill:
 
 If a larger product wants those features, it should call `partner-search` as a dependency. The outer system owns persistence, timing, notification policy, and user-action state. This skill should remain focused on `画像 / 条件 -> 候选结果`.
 
+## Delivery Order
+
+The recommended roadmap for this skill is:
+
+1. Phase 1: stabilize `partner-search` as a pure matching engine
+2. Phase 2: harden the callable interface, output schema, test coverage, and quality diagnostics
+3. Any recurring recommendation, notification, proxy-intro, or matchmaking workflow starts only after that, and lives outside the skill
+
+See `references/proactive-matchmaking-design.md` for the cross-phase roadmap and for the external-system phases that come after the core matching engine is stable.
+
 ## Quick Start
 
 Ensure the Python dependency is present first. Run `python3 -m pip install pymysql` if the environment does not already have `PyMySQL`.
