@@ -186,8 +186,8 @@ class PersonaMemoryTests(unittest.TestCase):
         )
         self.assertEqual(payload["accept_partner_children"], "谨慎可协商")
         self.assertEqual(payload["accept_partner_children_strength"], "谨慎接受")
-        self.assertEqual(payload["accept_partner_children_semantics"], "现阶段不太接受，需要非常看具体情况")
-        self.assertIn("对子女情况=现阶段不太接受，需要非常看具体情况", payload["notes"])
+        self.assertEqual(payload["accept_partner_children_semantics"], "现阶段不太接受")
+        self.assertIn("对子女情况=现阶段不太接受", payload["notes"])
 
     def test_build_public_profile_masks_sensitive_job_titles(self):
         payload = persona_memory_lib.build_public_profile(
