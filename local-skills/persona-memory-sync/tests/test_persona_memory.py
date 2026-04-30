@@ -94,8 +94,8 @@ class PersonaMemoryTests(unittest.TestCase):
         )
         self.assertEqual(patch["self_age"], 28)
         self.assertEqual(patch["self_has_children"], 0)
-        self.assertEqual(patch["must_have_tags"], "情绪稳定,沟通")
-        self.assertIsNone(patch.get("preferred_traits"))
+        self.assertIsNone(patch["must_have_tags"])
+        self.assertEqual(patch["preferred_traits"], "情绪稳定,沟通")
         self.assertEqual(patch["target_cities"], "无锡,苏州")
 
     def test_normalize_patch_moves_only_ambiguous_soft_tags_to_preferred(self):
@@ -105,8 +105,8 @@ class PersonaMemoryTests(unittest.TestCase):
                 "preferred_traits": ["真诚"],
             }
         )
-        self.assertEqual(patch["must_have_tags"], "已购房,情绪稳定")
-        self.assertEqual(patch["preferred_traits"], "真诚,聊得来")
+        self.assertEqual(patch["must_have_tags"], "已购房")
+        self.assertEqual(patch["preferred_traits"], "真诚,聊得来,情绪稳定")
 
     def test_merge_explicit_overwrites_hard_fields(self):
         existing = {"self_city": "上海", "must_have_tags": "情绪稳定"}
@@ -288,8 +288,8 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertEqual(patch["target_requires_partner_accept_my_children"], 1)
         self.assertIsNone(patch["target_accept_partner_children"])
         self.assertIn("原则上不接受异地", patch["target_location_semantics"])
-        self.assertEqual(patch["must_have_tags"], "收入稳定")
-        self.assertEqual(patch["preferred_traits"], "接受孩子现实")
+        self.assertIsNone(patch["must_have_tags"])
+        self.assertEqual(patch["preferred_traits"], "收入稳定,接受孩子现实")
 
     def test_normalize_patch_extracts_location_semantics_without_copying_full_preference_summary(self):
         patch = persona_memory_lib.normalize_patch(
@@ -300,7 +300,7 @@ class PersonaMemoryTests(unittest.TestCase):
         )
         self.assertEqual(
             patch["target_location_semantics"],
-            "上海优先,也接受稳定留沪,短期异地可了解,但不接受长期不落地异地",
+            "上海优先；也接受稳定留沪；短期异地可了解；但不接受长期不落地异地",
         )
         self.assertNotIn("情绪稳定", patch["target_location_semantics"])
 
@@ -381,7 +381,7 @@ class PersonaMemoryTests(unittest.TestCase):
         )
         self.assertEqual(
             payload["public_values"],
-            "更适合同城或近距离认真相处，看重边界感、沟通顺畅和稳定性。",
+            "更适合同城或近距离认真相处，看重边界感、沟通顺畅和稳定性",
         )
         self.assertIn("更偏好生活习惯相近的人", payload["public_notes"])
         self.assertIn("不喜欢关系里反复拉扯", payload["public_notes"])
@@ -395,7 +395,7 @@ class PersonaMemoryTests(unittest.TestCase):
         )
         self.assertEqual(
             payload["public_values"],
-            "短期异地可了解，但需要明确落地计划；不接受长期异地，看重沟通顺畅",
+            "短期异地可了解，但需要明确落地计划；不接受长期异地，上海优先，看重沟通顺畅",
         )
 
     def test_summarize_observation_evidence_replaces_raw_transcript_with_field_summary(self):

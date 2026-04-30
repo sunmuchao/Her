@@ -3565,66 +3565,87 @@ def summarize_signal_parts(profile, limit=8):
     return parts
 
 
+def format_result_headline(result, profile):
+    return (
+        f"{result['index']}. {result['name']} | score={result['score']} | "
+        f"{profile.get('age', '未知')}岁 | {profile.get('city', '城市未知')} | "
+        f"{profile.get('job', '工作未知')}"
+    )
+
+
+def format_result_scoring_line(result):
+    return (
+        "   scoring: "
+        f"fit={result.get('fit_score', result['score'])} | "
+        f"confidence={result.get('confidence_score', 0)} | "
+        f"risk={result.get('risk_score', 0)}"
+    )
+
+
+def build_result_meta_parts(profile):
+    meta_parts = []
+    if profile.get("profile_status"):
+        meta_parts.append(f"status={profile.get('profile_status')}")
+    if profile.get("verified_level"):
+        meta_parts.append(f"verified={profile.get('verified_level')}")
+    if profile.get("photo_count") is not None:
+        meta_parts.append(f"photos={profile.get('photo_count')}")
+    activity_field, activity_dt = effective_activity_info(profile)
+    active_at = format_datetime(activity_dt)
+    if activity_field and active_at:
+        meta_parts.append(f"{activity_field}={active_at}")
+    return meta_parts
+
+
+def append_labeled_line(lines, label, value):
+    if value:
+        lines.append(f"   {label}: {value}")
+
+
+def append_joined_line(lines, label, values, separator=", "):
+    if values:
+        lines.append(f"   {label}: {separator.join(values)}")
+
+
+def append_result_detail_lines(lines, result, profile, include_source=False):
+    signal_parts = summarize_signal_parts(profile)
+    append_joined_line(lines, "signals", signal_parts, separator=" | ")
+    append_joined_line(lines, "photo_preview", result.get("photo_preview"))
+    append_joined_line(lines, "matched_on", result["matched_on"])
+    append_joined_line(lines, "reciprocal_on", result["reciprocal_on"])
+    append_joined_line(lines, "missing_fields", result["missing_fields"])
+    append_joined_line(lines, "self_profile_gaps", result.get("self_profile_gaps"))
+    append_joined_line(lines, "risk_flags", result["risk_flags"])
+    append_labeled_line(lines, "fallback_reason", result.get("fallback_reason"))
+    append_joined_line(lines, "match_evidence", result.get("match_evidence"), separator=" | ")
+    append_joined_line(lines, "follow_up_questions", result.get("follow_up_questions"), separator=" | ")
+    notes_summary = summarize_notes(profile.get("notes"))
+    append_labeled_line(lines, "notes", notes_summary)
+    if include_source and result.get("source_file"):
+        append_labeled_line(lines, "source", redact_source_ref(result["source_file"]))
+
+
+def format_result_block(result, index, include_source=False):
+    profile = result["profile"]
+    lines = []
+    display_result = dict(result)
+    display_result["index"] = index
+    lines.append(format_result_headline(display_result, profile))
+    lines.append(format_result_scoring_line(display_result))
+    meta_parts = build_result_meta_parts(profile)
+    append_joined_line(lines, "meta", meta_parts, separator=" | ")
+    append_result_detail_lines(lines, display_result, profile, include_source=include_source)
+    return lines
+
+
 def format_text(results, include_source=False):
     lines = []
     for index, result in enumerate(results, start=1):
-        profile = result["profile"]
-        headline = (
-            f"{index}. {result['name']} | score={result['score']} | "
-            f"{profile.get('age', '未知')}岁 | {profile.get('city', '城市未知')} | "
-            f"{profile.get('job', '工作未知')}"
-        )
-        lines.append(headline)
-        lines.append(
-            "   scoring: "
-            f"fit={result.get('fit_score', result['score'])} | "
-            f"confidence={result.get('confidence_score', 0)} | "
-            f"risk={result.get('risk_score', 0)}"
-        )
-        meta_parts = []
-        if profile.get("profile_status"):
-            meta_parts.append(f"status={profile.get('profile_status')}")
-        if profile.get("verified_level"):
-            meta_parts.append(f"verified={profile.get('verified_level')}")
-        if profile.get("photo_count") is not None:
-            meta_parts.append(f"photos={profile.get('photo_count')}")
-        activity_field, activity_dt = effective_activity_info(profile)
-        active_at = format_datetime(activity_dt)
-        if activity_field and active_at:
-            meta_parts.append(f"{activity_field}={active_at}")
-        if meta_parts:
-            lines.append(f"   meta: {' | '.join(meta_parts)}")
-        signal_parts = summarize_signal_parts(profile)
-        if signal_parts:
-            lines.append(f"   signals: {' | '.join(signal_parts)}")
-        if result.get("photo_preview"):
-            lines.append(f"   photo_preview: {', '.join(result['photo_preview'])}")
-        if result["matched_on"]:
-            lines.append(f"   matched_on: {', '.join(result['matched_on'])}")
-        if result["reciprocal_on"]:
-            lines.append(f"   reciprocal_on: {', '.join(result['reciprocal_on'])}")
-        if result["missing_fields"]:
-            lines.append(f"   missing_fields: {', '.join(result['missing_fields'])}")
-        if result.get("self_profile_gaps"):
-            lines.append(f"   self_profile_gaps: {', '.join(result['self_profile_gaps'])}")
-        if result["risk_flags"]:
-            lines.append(f"   risk_flags: {', '.join(result['risk_flags'])}")
-        if result.get("fallback_reason"):
-            lines.append(f"   fallback_reason: {result['fallback_reason']}")
-        if result.get("match_evidence"):
-            lines.append(f"   match_evidence: {' | '.join(result['match_evidence'])}")
-        if result.get("follow_up_questions"):
-            lines.append(f"   follow_up_questions: {' | '.join(result['follow_up_questions'])}")
-        notes_summary = summarize_notes(profile.get("notes"))
-        if notes_summary:
-            lines.append(f"   notes: {notes_summary}")
-        if include_source and result.get("source_file"):
-            lines.append(f"   source: {redact_source_ref(result['source_file'])}")
+        lines.extend(format_result_block(result, index, include_source=include_source))
     return "\n".join(lines)
 
 
-def build_parser():
-    parser = argparse.ArgumentParser(description="Search profile sources for partner candidates.")
+def add_source_arguments(parser):
     parser.add_argument(
         "--source",
         action="append",
@@ -3634,6 +3655,9 @@ def build_parser():
         ),
     )
     parser.add_argument("--table", help="MySQL table name when the table is not included in the DSN.")
+
+
+def add_profile_filter_arguments(parser):
     parser.add_argument("--gender", help="Filter by gender.")
     parser.add_argument("--age-min", type=int, help="Minimum age.")
     parser.add_argument("--age-max", type=int, help="Maximum age.")
@@ -3703,6 +3727,9 @@ def build_parser():
         action="append",
         help="Allowed marriage timeline. Repeat or use comma-separated values.",
     )
+
+
+def add_quality_arguments(parser):
     parser.add_argument(
         "--profile-status",
         action="append",
@@ -3730,6 +3757,9 @@ def build_parser():
         "--photos-table",
         help="MySQL photos table name when not using the default profile_photos or DSN photos_table query param.",
     )
+
+
+def add_self_profile_arguments(parser):
     parser.add_argument("--self-id", type=int, help="Use an existing profile id as your own profile for reciprocal matching.")
     parser.add_argument("--self-age", type=int, help="Your age for reciprocal matching.")
     parser.add_argument("--self-city", help="Your city for reciprocal matching.")
@@ -3741,6 +3771,9 @@ def build_parser():
     parser.add_argument("--self-has-children", type=int, choices=[0, 1], help="Whether you have children for reciprocal matching.")
     parser.add_argument("--self-smoking", help="Your smoking habit for reciprocal matching.")
     parser.add_argument("--self-drinking", help="Your drinking habit for reciprocal matching.")
+
+
+def add_output_arguments(parser):
     parser.add_argument("--exclude-id", action="append", type=int, help="Profile id to exclude from results. Repeatable.")
     parser.add_argument(
         "--show-source",
@@ -3748,6 +3781,15 @@ def build_parser():
         help="Include the redacted source DSN and table in the text output for debugging.",
     )
     parser.add_argument("--limit", type=int, default=10, help="Maximum number of results to return.")
+
+
+def build_parser():
+    parser = argparse.ArgumentParser(description="Search profile sources for partner candidates.")
+    add_source_arguments(parser)
+    add_profile_filter_arguments(parser)
+    add_quality_arguments(parser)
+    add_self_profile_arguments(parser)
+    add_output_arguments(parser)
     return parser
 
 
