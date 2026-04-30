@@ -5,6 +5,7 @@ import json
 import sys
 from pathlib import Path
 
+import build_audit_summary
 import generate_persona_packets
 import run_persona_eval
 import summarize_agent_feedback
@@ -43,6 +44,21 @@ def parse_args():
         "--review-metrics-output",
         default=None,
         help="Optional output path for aggregated reviewer metrics JSON.",
+    )
+    parser.add_argument(
+        "--audit-summary-output",
+        default=None,
+        help="Optional output path for an audit summary JSON built from reviewer feedback.",
+    )
+    parser.add_argument(
+        "--memory-snapshots-input",
+        default=None,
+        help="Optional memory snapshots JSON used to enrich the audit summary.",
+    )
+    parser.add_argument(
+        "--dataset-diagnostics-input",
+        default=None,
+        help="Optional dataset diagnostics JSON object merged into the audit summary.",
     )
     parser.add_argument(
         "--cwd",
@@ -97,11 +113,24 @@ def main():
     review_metrics_output_path = (
         Path(args.review_metrics_output).resolve() if args.review_metrics_output else None
     )
+    audit_summary_output_path = (
+        Path(args.audit_summary_output).resolve() if args.audit_summary_output else None
+    )
+    memory_snapshots_input_path = (
+        Path(args.memory_snapshots_input).resolve() if args.memory_snapshots_input else None
+    )
+    dataset_diagnostics_input_path = (
+        Path(args.dataset_diagnostics_input).resolve() if args.dataset_diagnostics_input else None
+    )
     repo_root = input_path.parent if args.cwd is None else Path(args.cwd).resolve()
 
     if bool(feedback_input_path) != bool(review_metrics_output_path):
         raise SystemExit(
             "Provide --feedback-input and --review-metrics-output together when reviewer metrics are needed."
+        )
+    if audit_summary_output_path and not feedback_input_path:
+        raise SystemExit(
+            "Provide --feedback-input when --audit-summary-output is requested."
         )
 
     personas = run_persona_eval.load_personas(input_path)
@@ -142,8 +171,12 @@ def main():
         file=sys.stderr,
     )
 
-    if feedback_input_path and review_metrics_output_path:
+    review_feedback = None
+    review_metrics = None
+    if feedback_input_path:
         review_feedback = summarize_agent_feedback.load_feedback(feedback_input_path)
+
+    if feedback_input_path and review_metrics_output_path:
         review_metrics = summarize_agent_feedback.summarize_feedback(
             review_feedback,
             feedback_input_path,
@@ -155,6 +188,37 @@ def main():
             file=sys.stderr,
         )
         print(json.dumps(review_metrics, ensure_ascii=False, indent=2), file=sys.stderr)
+
+    if audit_summary_output_path:
+        memory_snapshots = (
+            build_audit_summary.ensure_list_payload(
+                build_audit_summary.load_json(memory_snapshots_input_path),
+                memory_snapshots_input_path,
+            )
+            if memory_snapshots_input_path
+            else []
+        )
+        dataset_diagnostics = (
+            build_audit_summary.ensure_object_payload(
+                build_audit_summary.load_json(dataset_diagnostics_input_path),
+                dataset_diagnostics_input_path,
+            )
+            if dataset_diagnostics_input_path
+            else None
+        )
+        audit_summary = build_audit_summary.build_audit_summary(
+            review_feedback,
+            feedback_input_path,
+            run_id=args.label,
+            memory_snapshots=memory_snapshots,
+            search_results=results,
+            dataset_diagnostics=dataset_diagnostics,
+        )
+        build_audit_summary.write_json(audit_summary_output_path, audit_summary)
+        print(
+            f"[persona-eval-bundle] wrote audit summary to {audit_summary_output_path}",
+            file=sys.stderr,
+        )
 
     print(json.dumps(metrics, ensure_ascii=False, indent=2), file=sys.stderr)
 
