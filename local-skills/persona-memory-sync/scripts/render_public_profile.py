@@ -66,6 +66,7 @@ def main() -> None:
                 profile_payload = build_profile_payload(persona, existing_profile=existing_profile)
                 update_columns = [
                     "public_display_name",
+                    "public_education",
                     "public_job",
                     "public_personality",
                     "public_values",
