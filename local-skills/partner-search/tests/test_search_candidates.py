@@ -917,6 +917,34 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertIn("self_height", result["self_profile_gaps"])
         self.assertNotIn("self_height", result["missing_fields"])
 
+    def test_evaluate_candidate_surfaces_height_match_when_bound_present(self):
+        record = {
+            "id": 302,
+            "name": "HeightHit",
+            "gender": "男",
+            "age": 33,
+            "height": 182,
+            "city": "上海",
+            "profile_status": "active",
+            "verified_level": "photo",
+            "combined_text": "认真恋爱",
+            "source_file": "mysql://root@127.0.0.1:3307/her?table=profiles#profiles",
+        }
+        criteria = {
+            "gender": "男",
+            "age_min": 30,
+            "age_max": 36,
+            "height_min": 180,
+            "profile_statuses": ["active"],
+            "exclude_ids": set(),
+            "self_profile": {"city": "上海"},
+        }
+
+        result = search_candidates.evaluate_candidate(record, criteria)
+
+        self.assertIsNotNone(result)
+        self.assertIn("身高 182cm", result["matched_on"])
+
     def test_select_diverse_results_avoids_near_duplicate_top_profiles(self):
         results = [
             {
@@ -1153,6 +1181,39 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertIn("推进方式=会把安排说清", text)
         self.assertIn("现实承接=已想过现实安排", text)
         self.assertIn("self_profile_gaps: self_height", text)
+
+    def test_format_text_headline_includes_height_and_education_when_present(self):
+        text = search_candidates.format_text(
+            [
+                {
+                    "id": 2,
+                    "name": "Bob",
+                    "score": 51,
+                    "fit_score": 31,
+                    "confidence_score": 22,
+                    "risk_score": 2,
+                    "matched_on": [],
+                    "reciprocal_on": [],
+                    "missing_fields": [],
+                    "self_profile_gaps": [],
+                    "risk_flags": [],
+                    "match_evidence": [],
+                    "follow_up_questions": [],
+                    "profile": {
+                        "age": 31,
+                        "height": 178,
+                        "city": "上海",
+                        "education": "硕士",
+                        "job": "产品经理",
+                    },
+                    "source_file": "",
+                    "verified_rank": 0,
+                    "activity_sort_ts": 0,
+                    "profile_status_rank": 0,
+                }
+            ]
+        )
+        self.assertIn("1. Bob | score=51 | 31岁 | 178cm | 上海 | 硕士 | 产品经理", text)
 
     def test_redact_sensitive_text_masks_common_contact_fields(self):
         redacted = search_candidates.redact_sensitive_text(

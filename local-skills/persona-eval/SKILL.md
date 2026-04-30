@@ -131,6 +131,14 @@ Use a single run directory such as `tmp/persona_agent_audits/persona_eval_202604
    - whether the recommended people are actually acceptable
    - whether it is only "能聊聊再看" or truly "满意"
    - whether a no-match result feels reasonable or feels like a system bug
+   Do not compress the match result into one-line candidate blurbs when asking for the verdict.
+   Pass the full `partner-search` output or equivalent structured detail such as:
+   - `matched_on`
+   - `reciprocal_on`
+   - `risk_flags`
+   - `match_evidence`
+   - `follow_up_questions`
+   - the visible `profile` facts that justified the recommendation
 9. Diagnose empty-result runs before blaming ranking.
    If a persona gets no matches and the pool summary is tiny or only shows `exclude_record_ref`, run a direct source check to distinguish:
    - data pool empty
