@@ -735,6 +735,77 @@ def contains_any_marker(texts: Iterable[Any], markers: Iterable[str]) -> bool:
     return any(marker in text for text in normalized_texts for marker in markers)
 
 
+def split_text_segments(value: Any) -> List[str]:
+    text = clean_text(value)
+    if not text:
+        return []
+    segments: List[str] = []
+    for block in re.split(r"[。；;\n]+", text):
+        for part in re.split(r"[，,]+", block):
+            normalized = clean_text(part.strip("，,。；; "))
+            if normalized:
+                segments.append(normalized)
+    return unique_ordered(segments)
+
+
+def has_location_signal(segment: Any, known_cities: Optional[Iterable[str]] = None) -> bool:
+    text = clean_text(segment) or ""
+    if not text:
+        return False
+    cities = [city for city in (known_cities or []) if clean_text(city)]
+    if any(city in text for city in cities):
+        return True
+    return any(marker in text for marker in LOCATION_NUANCE_MARKERS)
+
+
+def extract_location_semantics(
+    *texts: Any,
+    known_cities: Optional[Iterable[str]] = None,
+) -> Optional[str]:
+    segments: List[str] = []
+    for text in texts:
+        for segment in split_text_segments(text):
+            if has_location_signal(segment, known_cities=known_cities):
+                segments.append(segment)
+    unique_segments = unique_ordered(segments)
+    return "；".join(unique_segments) if unique_segments else None
+
+
+def build_public_location_note(persona: Dict[str, Any]) -> Optional[str]:
+    known_cities = split_multi_value(persona.get("target_cities"))
+    semantics = "；".join(
+        unique_ordered(
+            [
+                item
+                for item in (
+                    clean_text(persona.get("target_location_semantics")),
+                    extract_location_semantics(
+                        persona.get("public_preference_summary_draft"),
+                        persona.get("preference_summary_internal"),
+                        known_cities=known_cities,
+                    ),
+                )
+                if item
+            ]
+        )
+    )
+    has_landing_plan = any(marker in semantics for marker in ("落地计划", "稳定留沪", "双城过渡", "落地"))
+    allows_short_term = "短期异地" in semantics
+    blocks_long_term = any(pattern.search(semantics) for pattern in LONG_DISTANCE_BLOCK_PATTERNS)
+
+    if blocks_long_term and (allows_short_term or has_landing_plan):
+        return "短期异地可了解，但需要明确落地计划；不接受长期异地"
+    if blocks_long_term:
+        return "不接受长期异地"
+    if has_landing_plan and "异地" in semantics:
+        return "异地需有明确落地计划"
+    if clean_text(persona.get("target_accept_long_distance")) == "不接受":
+        return "更适合同城或近距离认真相处"
+    if any(marker in semantics for marker in ("同城", "近距离", "周边", "通勤")):
+        return "更适合同城或近距离认真相处"
+    return None
+
+
 def enrich_patch_from_explicit_semantics(patch: Dict[str, Any]) -> Dict[str, Any]:
     enriched = deepcopy(patch)
     text_candidates = [
@@ -783,8 +854,10 @@ def enrich_patch_from_explicit_semantics(patch: Dict[str, Any]) -> Dict[str, Any
         and clean_text(enriched.get("preference_summary_internal"))
         and contains_any_marker(text_candidates, LOCATION_NUANCE_MARKERS)
     ):
-        enriched["target_location_semantics"] = clean_text(
-            enriched.get("preference_summary_internal")
+        enriched["target_location_semantics"] = extract_location_semantics(
+            enriched.get("preference_summary_internal"),
+            enriched.get("public_preference_summary_draft"),
+            known_cities=split_multi_value(enriched.get("target_cities")),
         )
 
     return enriched
@@ -806,8 +879,20 @@ def rebalance_soft_requirement_tags(patch: Dict[str, Any]) -> Dict[str, Any]:
 
     must_have_items = split_multi_value(normalized_patch.get("must_have_tags"))
     preferred_items = split_multi_value(normalized_patch.get("preferred_traits"))
-    hard_must_have = [item for item in must_have_items if not is_soft_requirement_tag(item)]
-    soft_must_have = [item for item in must_have_items if is_soft_requirement_tag(item)]
+    requires_accepting_my_children = normalize_boolish(
+        normalized_patch.get("target_requires_partner_accept_my_children")
+    ) == 1
+    hard_must_have: List[str] = []
+    soft_must_have: List[str] = []
+    for item in must_have_items:
+        if requires_accepting_my_children and contains_any_marker(
+            [item], PARENT_REALITY_REQUIRED_MARKERS
+        ):
+            soft_must_have.append(item)
+        elif is_soft_requirement_tag(item):
+            soft_must_have.append(item)
+        else:
+            hard_must_have.append(item)
 
     if soft_must_have:
         normalized_patch["must_have_tags"] = hard_must_have
@@ -1043,9 +1128,11 @@ def build_public_education(education: Any) -> Optional[str]:
     normalized = text.lower()
     if any(
         token in normalized
-        for token in ("博士", "博士后", "phd", "研究生", "硕士", "mba", "emba", "本科", "学士", "专升本", "本硕")
+        for token in ("博士", "博士后", "phd", "研究生", "硕士", "mba", "emba", "本硕")
     ):
         return "本科及以上"
+    if any(token in normalized for token in ("本科", "学士", "专升本")):
+        return "本科"
     if any(token in normalized for token in ("大专", "专科", "高职", "高专")):
         return "大专/高职"
     if any(token in normalized for token in ("高中", "中专", "职高", "技校")):
@@ -1099,25 +1186,21 @@ def build_public_relationship_goal(goal: Any) -> Optional[str]:
     goal_text = clean_text(goal)
     if not goal_text:
         return None
-    if (
+    has_timeline = bool(
         re.search(r"\d+\s*(?:-|到|至|~)\s*\d+年内", goal_text)
         or re.search(r"\d+年内", goal_text)
         or re.search(r"[一二两三四五六七八九十]+年内", goal_text)
-    ):
-        if "再婚" in goal_text:
-            return "认真了解，合适的话希望稳步推进到再婚"
-        if "结婚" in goal_text:
-            return "认真了解，合适的话希望稳定推进"
+    )
     if "再婚" in goal_text:
-        return "认真了解，合适会考虑再婚"
-    if "认真恋爱" in goal_text and "结婚" in goal_text:
-        return "认真了解，合适会考虑结婚"
-    if "结婚导向" in goal_text:
-        return "以长期稳定关系为前提"
-    if "结婚" in goal_text:
-        return "认真了解，重视长期关系"
-    if "认真恋爱" in goal_text:
-        return "认真了解，重视长期关系"
+        if has_timeline:
+            return "认真了解，再婚方向明确，合适会稳步推进"
+        return "认真了解，再婚方向明确"
+    if "结婚" in goal_text or "结婚导向" in goal_text:
+        if has_timeline:
+            return "认真了解，婚姻方向明确，合适会稳步推进"
+        return "认真了解，婚姻方向明确"
+    if any(marker in goal_text for marker in ("认真恋爱", "长期", "稳定")):
+        return "认真了解，重视长期稳定关系"
     return goal_text
 
 
@@ -1133,17 +1216,17 @@ def sanitize_public_profile_summary(summary: Any, persona: Dict[str, Any]) -> Op
     goal_text = clean_text(persona.get("self_relationship_goal"))
     goal_fragment = build_public_relationship_goal(goal_text)
     replacements = [
-        (re.compile(r"[一二两三四五六七八九十]+年内[^，。；]*?再婚导向?"), "认真了解，合适的话希望稳步推进到再婚"),
-        (re.compile(r"\d+\s*(?:-|到|至|~)\s*\d+年内[^，。；]*?再婚导向?"), "认真了解，合适的话希望稳步推进到再婚"),
-        (re.compile(r"\d+年内[^，。；]*?再婚导向?"), "认真了解，合适的话希望稳步推进到再婚"),
-        (re.compile(r"[一二两三四五六七八九十]+年内[^，。；]*?(?:结婚|再婚)导向?"), "认真了解，合适的话希望稳定推进"),
-        (re.compile(r"\d+\s*(?:-|到|至|~)\s*\d+年内[^，。；]*?(?:结婚|再婚)导向?"), "认真了解，合适的话希望稳定推进"),
-        (re.compile(r"\d+年内[^，。；]*?(?:结婚|再婚)导向?"), "认真了解，合适的话希望稳定推进"),
-        (re.compile(r"认真以结婚为导向"), "认真了解，重视长期关系"),
-        (re.compile(r"以结婚为导向"), "认真了解，重视长期关系"),
-        (re.compile(r"结婚导向"), "以长期稳定关系为前提"),
-        (re.compile(r"以再婚为导向"), "认真了解，合适会考虑再婚"),
-        (re.compile(r"再婚导向"), "认真了解，合适会考虑再婚"),
+        (re.compile(r"[一二两三四五六七八九十]+年内[^，。；]*?再婚导向?"), "认真了解，再婚方向明确，合适会稳步推进"),
+        (re.compile(r"\d+\s*(?:-|到|至|~)\s*\d+年内[^，。；]*?再婚导向?"), "认真了解，再婚方向明确，合适会稳步推进"),
+        (re.compile(r"\d+年内[^，。；]*?再婚导向?"), "认真了解，再婚方向明确，合适会稳步推进"),
+        (re.compile(r"[一二两三四五六七八九十]+年内[^，。；]*?(?:结婚|再婚)导向?"), "认真了解，婚姻方向明确，合适会稳步推进"),
+        (re.compile(r"\d+\s*(?:-|到|至|~)\s*\d+年内[^，。；]*?(?:结婚|再婚)导向?"), "认真了解，婚姻方向明确，合适会稳步推进"),
+        (re.compile(r"\d+年内[^，。；]*?(?:结婚|再婚)导向?"), "认真了解，婚姻方向明确，合适会稳步推进"),
+        (re.compile(r"认真以结婚为导向"), "认真了解，婚姻方向明确"),
+        (re.compile(r"以结婚为导向"), "认真了解，婚姻方向明确"),
+        (re.compile(r"结婚导向"), "认真了解，婚姻方向明确"),
+        (re.compile(r"以再婚为导向"), "认真了解，再婚方向明确"),
+        (re.compile(r"再婚导向"), "认真了解，再婚方向明确"),
     ]
     if goal_text and goal_fragment:
         replacements.append((re.compile(re.escape(goal_text) + r"导向"), goal_fragment))
@@ -1152,12 +1235,16 @@ def sanitize_public_profile_summary(summary: Any, persona: Dict[str, Any]) -> Op
 
     text = re.sub(r"认真\s*认真了解", "认真了解", text)
     text = re.sub(r"(现居[\u4e00-\u9fffA-Za-z0-9]+)[，,]?\1", r"\1", text)
-    text = re.sub(r"(认真了解，合适的话希望稳定推进)[，,]?\1", r"\1", text)
+    text = re.sub(r"(认真了解，婚姻方向明确(?:，合适会稳步推进)?)[，,]?\1", r"\1", text)
+    text = re.sub(r"(认真了解，再婚方向明确(?:，合适会稳步推进)?)[，,]?\1", r"\1", text)
     text = re.sub(r"[，,]{2,}", "，", text)
     return text.strip("，, ")
 
 
-def sanitize_public_preference_summary(summary: Any) -> Optional[str]:
+def sanitize_public_preference_summary(
+    summary: Any,
+    persona: Optional[Dict[str, Any]] = None,
+) -> Optional[str]:
     text = clean_text(summary)
     if not text:
         return None
@@ -1168,21 +1255,29 @@ def sanitize_public_preference_summary(summary: Any) -> Optional[str]:
         ("对生活方式和习惯有较明确要求", "更偏好生活习惯相近的人"),
         ("接受孩子现实", "能承接现实关系"),
         ("能接受孩子现实", "能承接现实关系"),
-        ("稳定留沪", "有明确落地计划"),
-        ("双城过渡", "近距离过渡"),
     ]
     for old, new in replacements:
         text = text.replace(old, new)
-    text = re.sub(
-        r"[^，。；]*?(短期异地|长期异地|异地|近距离|落地计划)[^，。；]*",
-        "更适合同城或近距离认真相处",
-        text,
+    known_cities = split_multi_value((persona or {}).get("target_cities"))
+    location_note = build_public_location_note(
+        persona or {"target_location_semantics": text}
     )
-    text = re.sub(
-        r"更适合同城或近距离认真相处[，,]?更适合同城或近距离认真相处",
-        "更适合同城或近距离认真相处",
-        text,
-    )
+    segments = split_text_segments(text)
+    location_segments = [
+        segment for segment in segments if has_location_signal(segment, known_cities=known_cities)
+    ]
+    if location_segments:
+        non_location_segments = [
+            segment for segment in segments if segment not in set(location_segments)
+        ]
+        rebuilt_segments: List[str] = []
+        if location_note:
+            rebuilt_segments.append(location_note)
+        else:
+            rebuilt_segments.append("更适合同城或近距离认真相处")
+        rebuilt_segments.extend(non_location_segments)
+        text = "，".join(unique_ordered(rebuilt_segments))
+    text = re.sub(r"(更适合同城或近距离认真相处)[，,]?\1", r"\1", text)
     text = re.sub(r"[，,]{2,}", "，", text)
     return text.strip("，, ")
 
@@ -1243,7 +1338,8 @@ def sanitize_persona_summary_fields(persona: Dict[str, Any]) -> Dict[str, Any]:
     if public_profile:
         sanitized["public_profile_summary_draft"] = public_profile
     public_pref = sanitize_public_preference_summary(
-        sanitized.get("public_preference_summary_draft")
+        sanitized.get("public_preference_summary_draft"),
+        sanitized,
     )
     if public_pref:
         sanitized["public_preference_summary_draft"] = public_pref
@@ -1274,8 +1370,10 @@ def build_public_profile(persona: Dict[str, Any]) -> Dict[str, Optional[str]]:
         persona,
     )
     public_values = sanitize_public_preference_summary(
-        persona.get("public_preference_summary_draft")
+        persona.get("public_preference_summary_draft"),
+        persona,
     )
+    location_note = build_public_location_note(persona)
 
     if not public_personality:
         fragments = []
@@ -1292,14 +1390,14 @@ def build_public_profile(persona: Dict[str, Any]) -> Dict[str, Optional[str]]:
         key_tags = unique_ordered(must_have + preferred_traits)[:4]
         if key_tags:
             public_values = "看重" + "、".join(key_tags)
-            if persona.get("target_accept_long_distance") == "不接受":
-                public_values += "，更适合同城或近距离认真相处"
         else:
             public_values = "看重稳定、真诚和可持续的相处方式"
+        if location_note and location_note == "更适合同城或近距离认真相处":
+            public_values += "，" + location_note
 
     notes = []
-    if persona.get("target_accept_long_distance") == "不接受":
-        notes.append("更适合同城或近距离相处")
+    if location_note and location_note not in str(public_values):
+        notes.append(location_note)
     for raw_tag in must_not_have:
         safe_note = PUBLIC_SAFE_NEGATIVE_NOTES.get(raw_tag)
         if safe_note and safe_note not in notes:
@@ -1536,23 +1634,23 @@ SELECT
   CASE
     WHEN relationship_goal IS NULL OR TRIM(relationship_goal) = '' THEN NULL
     WHEN relationship_goal REGEXP '[一二两三四五六七八九十]+年内' AND relationship_goal REGEXP '再婚'
-      THEN '认真了解，合适的话希望稳步推进到再婚'
+      THEN '认真了解，再婚方向明确，合适会稳步推进'
     WHEN relationship_goal REGEXP '[0-9]+[[:space:]]*(-|到|至|~)[[:space:]]*[0-9]+年内' AND relationship_goal REGEXP '再婚'
-      THEN '认真了解，合适的话希望稳步推进到再婚'
+      THEN '认真了解，再婚方向明确，合适会稳步推进'
     WHEN relationship_goal REGEXP '[0-9]+年内' AND relationship_goal REGEXP '再婚'
-      THEN '认真了解，合适的话希望稳步推进到再婚'
+      THEN '认真了解，再婚方向明确，合适会稳步推进'
     WHEN relationship_goal REGEXP '[一二两三四五六七八九十]+年内' AND relationship_goal REGEXP '结婚|再婚'
-      THEN '认真了解，合适的话希望稳定推进'
+      THEN '认真了解，婚姻方向明确，合适会稳步推进'
     WHEN relationship_goal REGEXP '[0-9]+[[:space:]]*(-|到|至|~)[[:space:]]*[0-9]+年内' AND relationship_goal REGEXP '结婚|再婚'
-      THEN '认真了解，合适的话希望稳定推进'
+      THEN '认真了解，婚姻方向明确，合适会稳步推进'
     WHEN relationship_goal REGEXP '[0-9]+年内' AND relationship_goal REGEXP '结婚|再婚'
-      THEN '认真了解，合适的话希望稳定推进'
-    WHEN relationship_goal REGEXP '再婚' THEN '认真了解，合适会考虑再婚'
+      THEN '认真了解，婚姻方向明确，合适会稳步推进'
+    WHEN relationship_goal REGEXP '再婚' THEN '认真了解，再婚方向明确'
     WHEN relationship_goal REGEXP '认真恋爱' AND relationship_goal REGEXP '结婚'
-      THEN '认真了解，合适会考虑结婚'
-    WHEN relationship_goal = '结婚导向' THEN '以长期稳定关系为前提'
-    WHEN relationship_goal REGEXP '结婚' THEN '认真了解，重视长期关系'
-    WHEN relationship_goal REGEXP '认真恋爱' THEN '认真了解，重视长期关系'
+      THEN '认真了解，婚姻方向明确'
+    WHEN relationship_goal = '结婚导向' THEN '认真了解，婚姻方向明确'
+    WHEN relationship_goal REGEXP '结婚' THEN '认真了解，婚姻方向明确'
+    WHEN relationship_goal REGEXP '认真恋爱|长期|稳定' THEN '认真了解，重视长期稳定关系'
     ELSE relationship_goal
   END AS relationship_goal,
   public_personality AS personality,
