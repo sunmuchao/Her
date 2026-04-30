@@ -1,0 +1,1658 @@
+[
+  {
+    "persona_id": "shanghai_exec_f",
+    "display_name": "用户B01",
+    "profile_id": 30088,
+    "private_boundaries": [
+      "准确收入",
+      "具体公司",
+      "过往恋爱细节",
+      "家里催婚压力"
+    ],
+    "roleplay_answers": [
+      "我32岁，现在在上海，硕士毕业，做外企这边的战略和商业分析。平时工作节奏不算躺平型，忙的时候会比较集中，但整体生活还是有秩序的，工作之外会留时间给运动、朋友和正常社交。这次是认真想找长期稳定关系的，如果合适，希望1到2年内能走到结婚。",
+      "我未婚，不抽烟，酒的话属于社交场合少量喝一点。想找30到38岁的男生，上海优先，也接受人在外地但工作生活稳定、明确会长期留沪的人。短期异地可以先了解，但不接受那种长期没有落地计划的异地关系。",
+      "我最看重的是情绪稳定、消费观清醒、表达自然，还有对关系有长期投入能力，是真的有婚姻诚意，而不是嘴上说说。最不能接受的是控制欲强、暧昧拖拉、情绪拉扯，或者一到关键问题就回避承诺的人。",
+      "像更准确的收入、具体公司、过往恋爱细节，还有家里催婚压力这类信息，后台记住做匹配可以，但我不想公开。系统最容易把我记偏成条件导向很强、只看物质，或者因为我在上海和工作节奏快，就默认我很强势、很难相处，这些其实都不准确。"
+    ],
+    "notes_about_possible_drift": [
+      "容易被记偏成只看条件和物质，其实我更看重关系质量、稳定性和长期投入",
+      "容易被记偏成能接受长期异地，实际上我只接受短期异地了解，不接受长期不落地"
+    ],
+    "system_snapshot": {
+      "user_persona_observations": [
+        {
+          "field_name": "display_name",
+          "field_value": "用户B01",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_gender",
+          "field_value": "女",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_age",
+          "field_value": "32",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_city",
+          "field_value": "上海",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_education",
+          "field_value": "硕士",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_job",
+          "field_value": "外企战略/商业分析",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_income_wan",
+          "field_value": "85",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_marital_status",
+          "field_value": "未婚",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_smoking",
+          "field_value": "否",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_drinking",
+          "field_value": "偶尔",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_relationship_goal",
+          "field_value": "1-2年内往结婚推进",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "target_gender",
+          "field_value": "男",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "target_age_min",
+          "field_value": "30",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "target_age_max",
+          "field_value": "38",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "target_cities",
+          "field_value": "上海",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "target_accept_long_distance",
+          "field_value": "可协商",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "target_location_semantics",
+          "field_value": "上海优先，也接受稳定留沪；短期异地可了解，但不接受长期不落地异地。",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "must_have_tags",
+          "field_value": "情绪稳定,消费观清醒,表达自然,长期投入能力,婚姻诚意",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "preferred_traits",
+          "field_value": "稳定留沪,认真,自然沟通,关系目标明确",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "disliked_traits",
+          "field_value": "控制欲强,暧昧拖拉,情绪拉扯,回避承诺",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "persona_summary_internal",
+          "field_value": "32岁上海女性，硕士，外企战略/商业分析，年收入约85万，未婚，不抽烟，社交型少量饮酒，认真寻找长期稳定关系，希望1到2年内结婚。",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "preference_summary_internal",
+          "field_value": "偏好30到38岁男性，上海优先，也接受稳定留沪；短期异地可了解，但不接受长期不落地异地。看重情绪稳定、消费观清醒、表达自然、长期投入能力和婚姻诚意；不接受控制欲强、暧昧拖拉、情绪拉扯、回避承诺。",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        }
+      ],
+      "user_persona": {
+        "display_name": "用户B01",
+        "self_gender": "女",
+        "self_age": 32,
+        "self_city": "上海",
+        "self_education": "硕士",
+        "self_job": "外企战略/商业分析",
+        "self_marital_status": "未婚",
+        "self_smoking": "否",
+        "self_drinking": "偶尔",
+        "self_relationship_goal": "1-2年内往结婚推进",
+        "target_gender": "男",
+        "target_age_min": 30,
+        "target_age_max": 38,
+        "target_cities": "上海",
+        "target_accept_long_distance": "可协商",
+        "target_location_semantics": "上海优先，也接受稳定留沪；短期异地可了解，但不接受长期不落地异地。",
+        "must_have_tags": "情绪稳定,消费观清醒,表达自然,长期投入能力,婚姻诚意",
+        "preferred_traits": "稳定留沪,认真,自然沟通,关系目标明确",
+        "disliked_traits": "控制欲强,暧昧拖拉,情绪拉扯,回避承诺",
+        "persona_summary_internal": "32岁上海女性，硕士，外企战略/商业分析，年收入约85万，未婚，不抽烟，社交型少量饮酒，认真寻找长期稳定关系，希望1到2年内结婚。",
+        "preference_summary_internal": "偏好30到38岁男性，上海优先，也接受稳定留沪；短期异地可了解，但不接受长期不落地异地。看重情绪稳定、消费观清醒、表达自然、长期投入能力和婚姻诚意；不接受控制欲强、暧昧拖拉、情绪拉扯、回避承诺。",
+        "self_income_range": "81-90万/年"
+      },
+      "profile_internal": {
+        "id": 30088,
+        "name": "用户B01",
+        "gender": "女",
+        "age": 32,
+        "city": "上海",
+        "education": "硕士",
+        "public_education": "本科及以上",
+        "job": "外企战略/商业分析",
+        "public_job": "外企战略/商业分析",
+        "income_range": "81-90万/年",
+        "relationship_goal": "1-2年内往结婚推进",
+        "drinking": "偶尔",
+        "smoking": "否",
+        "long_distance": "可协商",
+        "accept_long_distance": "可协商",
+        "location_preference_semantics": "上海优先，也接受稳定留沪；短期异地可了解，但不接受长期不落地异地。",
+        "personality": "32岁上海女性，硕士，外企战略/商业分析，年收入约85万，未婚，不抽烟，社交型少量饮酒，认真寻找长期稳定关系，希望1到2年内结婚。",
+        "values": "偏好30到38岁男性，上海优先，也接受稳定留沪；短期异地可了解，但不接受长期不落地异地。看重情绪稳定、消费观清醒、表达自然、长期投入能力和婚姻诚意；不接受控制欲强、暧昧拖拉、情绪拉扯、回避承诺。",
+        "notes": "不太接受控制欲强、暧昧拖拉、情绪拉扯、回避承诺",
+        "matcher_summary_internal": "32岁上海女性，硕士，外企战略/商业分析，年收入约85万，未婚，不抽烟，社交型少量饮酒，认真寻找长期稳定关系，希望1到2年内结婚。 | 偏好30到38岁男性，上海优先，也接受稳定留沪；短期异地可了解，但不接受长期不落地异地。看重情绪稳定、消费观清醒、表达自然、长期投入能力和婚姻诚意；不接受控制欲强、暧昧拖拉、情绪拉扯、回避承诺。 | must_have: 情绪稳定, 消费观清醒, 表达自然, 长期投入能力, 婚姻诚意",
+        "public_personality": "现居上海，认真了解，合适的话希望稳定推进",
+        "public_values": "看重情绪稳定、消费观清醒、表达自然、长期投入能力"
+      },
+      "public_profile_view": {
+        "id": 30088,
+        "name": "用户0088",
+        "gender": "女",
+        "age": 32,
+        "city": "上海",
+        "education": "本科及以上",
+        "job": "外企战略/商业分析",
+        "relationship_goal": "认真了解，合适的话希望稳定推进",
+        "personality": "现居上海，认真了解，合适的话希望稳定推进",
+        "values": "看重情绪稳定、消费观清醒、表达自然、长期投入能力"
+      }
+    }
+  },
+  {
+    "persona_id": "suzhou_divorce_m",
+    "display_name": "用户B02",
+    "profile_id": 30090,
+    "private_boundaries": [
+      "离婚原因",
+      "房贷压力",
+      "父母身体负担",
+      "准确收入"
+    ],
+    "roleplay_answers": [
+      "我37岁，现在在苏州，做制造业供应链管理，算是带团队、盯流程和交付那一类工作。平时生活节奏比较规律，工作日正常上班，偶尔会有阶段性忙碌，但整体还是稳定的。这次是认真找对象，希望先以稳定交往为前提，合适的话2年内再婚。",
+      "我目前是离异无孩，不抽烟，喝酒就是少量社交场合会喝一点。想找29到35岁的女生，范围主要看江浙沪，最好是苏州及周边，城市之间通勤还能接受，但长期异地我会比较谨慎，不太希望一直分开相处。",
+      "我最看重的是稳定踏实、情绪稳定、真诚、愿意沟通、尊重彼此，另外我也比较在意生活规律和家庭观念。最不能接受的是不真诚、回避沟通、情绪波动太大，或者对再婚这件事本身没有想清楚的人。",
+      "有些信息后台记住做匹配可以，但我不想公开，比如离婚原因、房贷压力、父母身体方面的负担，还有准确收入数字。系统最容易把我记偏成那种只看条件、很现实的再婚男，或者默认我能接受长期异地，其实我更看重相处稳定和沟通质量。"
+    ],
+    "notes_about_possible_drift": [
+      "容易被记偏成只看现实条件、缺少情感需求的再婚男性",
+      "容易被误判为可以接受长期异地，实际上对此比较谨慎"
+    ],
+    "system_snapshot": {
+      "user_persona_observations": [
+        {
+          "field_name": "display_name",
+          "field_value": "用户B02",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_gender",
+          "field_value": "男",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_age",
+          "field_value": "37",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_city",
+          "field_value": "苏州",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_education",
+          "field_value": "本科",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_job",
+          "field_value": "制造业供应链负责人",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_income_wan",
+          "field_value": "38",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_marital_status",
+          "field_value": "离异",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_has_children",
+          "field_value": "0",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_smoking",
+          "field_value": "否",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_drinking",
+          "field_value": "偶尔",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_relationship_goal",
+          "field_value": "认真找对象，希望两年内推进到再婚",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "target_gender",
+          "field_value": "女",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "target_age_min",
+          "field_value": "29",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "target_age_max",
+          "field_value": "35",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "target_cities",
+          "field_value": "苏州,无锡,上海,南京,杭州",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "target_accept_long_distance",
+          "field_value": "可协商",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "target_location_semantics",
+          "field_value": "江浙沪范围内都可考虑，最好是苏州及周边；城市之间通勤还能接受，但长期异地较谨慎。",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "must_have_tags",
+          "field_value": "生活稳定,能接受再婚现实,愿意沟通,情绪稳定,真诚,尊重彼此,有家庭观念",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "preferred_traits",
+          "field_value": "稳定踏实,生活规律,真诚,尊重彼此,家庭观念强",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "disliked_traits",
+          "field_value": "不真诚,回避沟通,情绪波动大,对再婚认知不清",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "persona_summary_internal",
+          "field_value": "37岁男性，苏州，本科，制造业供应链负责人，年收入约38万，离异无孩，不抽烟，少量社交饮酒，认真找对象，期望合适后2年内再婚。",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "preference_summary_internal",
+          "field_value": "偏好29到35岁女性，江浙沪范围，生活稳定，能接受再婚现实，愿意沟通。看重稳定踏实、情绪稳定、真诚、尊重彼此、生活规律和家庭观念。对长期异地较谨慎。",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "profile_id",
+          "field_value": "30090",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 0
+        }
+      ],
+      "user_persona": {
+        "display_name": "用户B02",
+        "self_gender": "男",
+        "self_age": 37,
+        "self_city": "苏州",
+        "self_education": "本科",
+        "self_job": "制造业供应链负责人",
+        "self_marital_status": "离异",
+        "self_has_children": 0,
+        "self_smoking": "否",
+        "self_drinking": "偶尔",
+        "self_relationship_goal": "认真找对象，希望两年内推进到再婚",
+        "target_gender": "女",
+        "target_age_min": 29,
+        "target_age_max": 35,
+        "target_cities": "苏州,无锡,上海,南京,杭州",
+        "target_accept_long_distance": "可协商",
+        "target_location_semantics": "江浙沪范围内都可考虑，最好是苏州及周边；城市之间通勤还能接受，但长期异地较谨慎。",
+        "must_have_tags": "生活稳定,能接受再婚现实,愿意沟通,情绪稳定,真诚,尊重彼此,有家庭观念",
+        "preferred_traits": "稳定踏实,生活规律,真诚,尊重彼此,家庭观念强",
+        "disliked_traits": "不真诚,回避沟通,情绪波动大,对再婚认知不清",
+        "persona_summary_internal": "37岁男性，苏州，本科，制造业供应链负责人，年收入约38万，离异无孩，不抽烟，少量社交饮酒，认真找对象，期望合适后2年内再婚。",
+        "preference_summary_internal": "偏好29到35岁女性，江浙沪范围，生活稳定，能接受再婚现实，愿意沟通。看重稳定踏实、情绪稳定、真诚、尊重彼此、生活规律和家庭观念。对长期异地较谨慎。",
+        "self_income_range": "31-40万/年"
+      },
+      "profile_internal": {
+        "id": 30090,
+        "name": "用户B02",
+        "gender": "男",
+        "age": 37,
+        "city": "苏州",
+        "education": "本科",
+        "public_education": "本科及以上",
+        "job": "制造业供应链负责人",
+        "public_job": "制造业供应链负责人",
+        "income_range": "31-40万/年",
+        "relationship_goal": "认真找对象，希望两年内推进到再婚",
+        "drinking": "偶尔",
+        "smoking": "否",
+        "long_distance": "可协商",
+        "accept_long_distance": "可协商",
+        "location_preference_semantics": "江浙沪范围内都可考虑，最好是苏州及周边；城市之间通勤还能接受，但长期异地较谨慎。",
+        "personality": "37岁男性，苏州，本科，制造业供应链负责人，年收入约38万，离异无孩，不抽烟，少量社交饮酒，认真找对象，期望合适后2年内再婚。",
+        "values": "偏好29到35岁女性，江浙沪范围，生活稳定，能接受再婚现实，愿意沟通。看重稳定踏实、情绪稳定、真诚、尊重彼此、生活规律和家庭观念。对长期异地较谨慎。",
+        "notes": "不太接受不真诚、回避沟通、情绪波动大、对再婚认知不清",
+        "matcher_summary_internal": "37岁男性，苏州，本科，制造业供应链负责人，年收入约38万，离异无孩，不抽烟，少量社交饮酒，认真找对象，期望合适后2年内再婚。 | 偏好29到35岁女性，江浙沪范围，生活稳定，能接受再婚现实，愿意沟通。看重稳定踏实、情绪稳定、真诚、尊重彼此、生活规律和家庭观念。对长期异地较谨慎。 | must_have: 生活稳定, 能接受再婚现实, 愿意沟通, 情绪稳定, 真诚, 尊重彼此, 有家庭观念",
+        "public_personality": "现居苏州，认真了解，合适的话希望稳步推进到再婚",
+        "public_values": "看重生活稳定、能接受再婚现实、愿意沟通、情绪稳定"
+      },
+      "public_profile_view": {
+        "id": 30090,
+        "name": "用户0090",
+        "gender": "男",
+        "age": 37,
+        "city": "苏州",
+        "education": "本科及以上",
+        "job": "制造业供应链负责人",
+        "relationship_goal": "认真了解，合适的话希望稳步推进到再婚",
+        "personality": "现居苏州，认真了解，合适的话希望稳步推进到再婚",
+        "values": "看重生活稳定、能接受再婚现实、愿意沟通、情绪稳定"
+      }
+    }
+  },
+  {
+    "persona_id": "wuxi_pharma_f",
+    "display_name": "用户B03",
+    "profile_id": 30089,
+    "private_boundaries": [
+      "具体医院",
+      "准确收入",
+      "轻微焦虑史",
+      "家庭催婚压力"
+    ],
+    "roleplay_answers": [
+      "我29岁，现居无锡，硕士学历，在医院做药师。平时作息比较规律，不太熬夜，生活节奏相对稳定，工作之外会把时间留给休息、运动和日常生活安排。这次是认真找恋爱对象，如果合适，希望是能稳定发展到结婚的关系。",
+      "我未婚，不抽烟，基本不喝酒。想找28到34岁的男生，城市上优先无锡或者苏州。异地原则上不太接受，太远不考虑，但如果距离近，或者对方有明确落地计划、能实际推进，也可以沟通看看。",
+      "我最看重的是情绪稳定、责任心、三观正、尊重他人，也希望对方有行动力、有计划、边界清楚，愿意好好沟通，最好还能有一点幽默感，工作和生活都比较稳定。最不能接受的是抽烟严重、经常喝酒、暧昧不清、失联冷处理、说一套做一套，或者边界感很差的人。",
+      "有些信息后台记住做匹配可以，但我不想公开，比如我具体在哪家医院、收入的准确数字、一些个人情绪经历，还有家里催婚这类压力。系统最容易把我记偏成“能接受异地”或者“标准很高不好接触”，但其实我是边界比较清楚，核心诉求是稳定、真诚和能落地相处。"
+    ],
+    "notes_about_possible_drift": [
+      "容易被记偏成可以接受异地，但实际是原则上不接受远距离，只接受近距离或对方有明确落地计划的情况。",
+      "容易被记偏成高冷或要求过多，但实际是边界清楚、目标明确，核心诉求是稳定真诚、能沟通和能落实。"
+    ],
+    "system_snapshot": {
+      "user_persona_observations": [
+        {
+          "field_name": "display_name",
+          "field_value": "用户B03",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_gender",
+          "field_value": "女",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_age",
+          "field_value": "29",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_city",
+          "field_value": "无锡",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_education",
+          "field_value": "硕士",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_job",
+          "field_value": "医院药师",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_income_wan",
+          "field_value": "24",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_marital_status",
+          "field_value": "未婚",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_smoking",
+          "field_value": "否",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_drinking",
+          "field_value": "否",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_relationship_goal",
+          "field_value": "认真恋爱，合适就结婚",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "target_gender",
+          "field_value": "男",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "target_age_min",
+          "field_value": "28",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "target_age_max",
+          "field_value": "34",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "target_cities",
+          "field_value": "无锡,苏州",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "target_accept_long_distance",
+          "field_value": "可协商",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "target_location_semantics",
+          "field_value": "原则上不接受远距离异地，但近距离或对方有明确落地计划时可以沟通。",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "must_have_tags",
+          "field_value": "情绪稳定,责任心,三观正,尊重他人,有行动力,有计划,稳定工作,边界清楚,愿意沟通",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "preferred_traits",
+          "field_value": "适度幽默,少酒,生活规律,真诚稳定",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "disliked_traits",
+          "field_value": "抽烟严重,经常喝酒,暧昧不清,失联冷处理,说一套做一套,边界感差",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "persona_summary_internal",
+          "field_value": "29岁女性，现居无锡，硕士，医院药师，年收入约24万，未婚，不抽烟，基本不喝酒，作息规律，认真找恋爱对象，合适希望稳定结婚。",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "preference_summary_internal",
+          "field_value": "偏好28到34岁男性，无锡或苏州，不抽烟少酒，原则上不接受远距离异地，但近距离或有落地计划可沟通。看重情绪稳定、责任心、三观正、尊重他人、有行动力、有计划、适度幽默、稳定工作、边界清楚、愿意沟通；不接受抽烟严重、经常喝酒、暧昧不清、失联冷处理、说一套做一套、边界感差。",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        }
+      ],
+      "user_persona": {
+        "display_name": "用户B03",
+        "self_gender": "女",
+        "self_age": 29,
+        "self_city": "无锡",
+        "self_education": "硕士",
+        "self_job": "医院药师",
+        "self_marital_status": "未婚",
+        "self_smoking": "否",
+        "self_drinking": "否",
+        "self_relationship_goal": "认真恋爱，合适就结婚",
+        "target_gender": "男",
+        "target_age_min": 28,
+        "target_age_max": 34,
+        "target_cities": "无锡,苏州",
+        "target_accept_long_distance": "可协商",
+        "target_location_semantics": "原则上不接受远距离异地，但近距离或对方有明确落地计划时可以沟通。",
+        "must_have_tags": "情绪稳定,责任心,三观正,尊重他人,有行动力,有计划,稳定工作,边界清楚,愿意沟通",
+        "preferred_traits": "适度幽默,少酒,生活规律,真诚稳定",
+        "disliked_traits": "抽烟严重,经常喝酒,暧昧不清,失联冷处理,说一套做一套,边界感差",
+        "persona_summary_internal": "29岁女性，现居无锡，硕士，医院药师，年收入约24万，未婚，不抽烟，基本不喝酒，作息规律，认真找恋爱对象，合适希望稳定结婚。",
+        "preference_summary_internal": "偏好28到34岁男性，无锡或苏州，不抽烟少酒，原则上不接受远距离异地，但近距离或有落地计划可沟通。看重情绪稳定、责任心、三观正、尊重他人、有行动力、有计划、适度幽默、稳定工作、边界清楚、愿意沟通；不接受抽烟严重、经常喝酒、暧昧不清、失联冷处理、说一套做一套、边界感差。",
+        "self_income_range": "16-25万/年"
+      },
+      "profile_internal": {
+        "id": 30089,
+        "name": "用户B03",
+        "gender": "女",
+        "age": 29,
+        "city": "无锡",
+        "education": "硕士",
+        "public_education": "本科及以上",
+        "job": "医院药师",
+        "public_job": "医疗相关工作",
+        "income_range": "16-25万/年",
+        "relationship_goal": "认真恋爱，合适就结婚",
+        "drinking": "否",
+        "smoking": "否",
+        "long_distance": "可协商",
+        "accept_long_distance": "可协商",
+        "location_preference_semantics": "原则上不接受远距离异地，但近距离或对方有明确落地计划时可以沟通。",
+        "personality": "29岁女性，现居无锡，硕士，医院药师，年收入约24万，未婚，不抽烟，基本不喝酒，作息规律，认真找恋爱对象，合适希望稳定结婚。",
+        "values": "偏好28到34岁男性，无锡或苏州，不抽烟少酒，原则上不接受远距离异地，但近距离或有落地计划可沟通。看重情绪稳定、责任心、三观正、尊重他人、有行动力、有计划、适度幽默、稳定工作、边界清楚、愿意沟通；不接受抽烟严重、经常喝酒、暧昧不清、失联冷处理、说一套做一套、边界感差。",
+        "notes": "不太接受抽烟严重、经常喝酒、暧昧不清、失联冷处理",
+        "matcher_summary_internal": "29岁女性，现居无锡，硕士，医院药师，年收入约24万，未婚，不抽烟，基本不喝酒，作息规律，认真找恋爱对象，合适希望稳定结婚。 | 偏好28到34岁男性，无锡或苏州，不抽烟少酒，原则上不接受远距离异地，但近距离或有落地计划可沟通。看重情绪稳定、责任心、三观正、尊重他人、有行动力、有计划、适度幽默、稳定工作、边界清楚、愿意沟通；不接受抽烟严重、经常喝酒、暧昧不清、失联冷处理、说一套做一套、边界感差。 | must_have: 情绪稳定, 责任心, 三观正, 尊重他人, 有行动力, 有计划, 稳定工作, 边界清楚, 愿意沟通",
+        "public_personality": "现居无锡，作息规律，认真了解，合适会考虑结婚",
+        "public_values": "看重情绪稳定、责任心、三观正、尊重他人"
+      },
+      "public_profile_view": {
+        "id": 30089,
+        "name": "用户0089",
+        "gender": "女",
+        "age": 29,
+        "city": "无锡",
+        "education": "本科及以上",
+        "job": "医疗相关工作",
+        "relationship_goal": "认真了解，合适会考虑结婚",
+        "personality": "现居无锡，作息规律，认真了解，合适会考虑结婚",
+        "values": "看重情绪稳定、责任心、三观正、尊重他人"
+      }
+    }
+  },
+  {
+    "persona_id": "nanjing_academic_f",
+    "display_name": "用户B04",
+    "profile_id": 30091,
+    "private_boundaries": [
+      "学校名称",
+      "论文压力",
+      "父母职业",
+      "备孕焦虑"
+    ],
+    "roleplay_answers": [
+      "我34岁，现居南京，在高校做老师，博士毕业。平时生活节奏比较安静稳定，工作和生活都偏规律，慢热一点，但相处起来是认真负责的类型。这次主要想找能长期稳定相处的关系，结婚不着急，但方向是明确的，希望是以认真交往为前提慢慢了解。",
+      "我未婚，不抽烟，也基本不喝酒。希望对方年龄在32到38岁之间，城市最好是南京或苏州，本科及以上更合适。长期异地我不接受，还是希望能在一个相对可落地的生活半径内相处和发展。",
+      "我最看重的是情绪稳定、耐心、沟通顺畅，边界感正常，另外也会看重生活是否稳定、有没有责任感、生活习惯是否健康，以及做事是不是踏实。加分项是有自己的兴趣爱好，能把日子过得比较平衡。我最不能接受的是强控制欲、沟通不清、情绪化、反复拉扯、态度暧昧，还有长期异地这种一开始就很难落地的关系。",
+      "有些信息系统后台记住做匹配可以，但我不太想公开，比如我具体任职的学校名称、论文相关压力、父母职业，还有关于备孕焦虑这类很私人的内容。系统最容易把我记偏成“高要求、不着急结婚、只看条件”的类型，但其实我不是挑剔，我只是希望关系稳定、沟通成熟，彼此能踏实往前走。"
+    ],
+    "notes_about_possible_drift": [
+      "容易被误记为高冷或要求过高，但实际只是慢热、边界清晰、认真筛选长期关系。",
+      "容易被误记为不着急结婚等于态度模糊，但实际是结婚方向明确，只是不接受仓促推进。"
+    ],
+    "system_snapshot": {
+      "user_persona_observations": [
+        {
+          "field_name": "display_name",
+          "field_value": "用户B04",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_gender",
+          "field_value": "女",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_age",
+          "field_value": "34",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_city",
+          "field_value": "南京",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_education",
+          "field_value": "博士",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_job",
+          "field_value": "高校老师",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_income_wan",
+          "field_value": "30",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_marital_status",
+          "field_value": "未婚",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_smoking",
+          "field_value": "否",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_drinking",
+          "field_value": "否",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_relationship_goal",
+          "field_value": "认真恋爱",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "target_gender",
+          "field_value": "男",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "target_age_min",
+          "field_value": "32",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "target_age_max",
+          "field_value": "38",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "target_cities",
+          "field_value": "南京,苏州",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "target_accept_long_distance",
+          "field_value": "不接受",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "target_education_min",
+          "field_value": "本科",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "must_have_tags",
+          "field_value": "情绪稳定,耐心,沟通顺畅,边界感正常,生活稳定,责任感强,健康生活习惯,做事踏实",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "preferred_traits",
+          "field_value": "有自己的兴趣爱好,认真稳定,相处不拧巴,成熟可靠",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "disliked_traits",
+          "field_value": "强控制欲,长期异地,沟通不清,情绪化,反复拉扯,态度暧昧",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "persona_summary_internal",
+          "field_value": "34岁南京女性，博士，高校老师，年收入约30万，未婚，不抽烟不喝酒，生活安静稳定，慢热但认真，长期关系导向，结婚不着急但方向明确。",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "preference_summary_internal",
+          "field_value": "偏好32到38岁男性，南京或苏州，本科及以上，不接受长期异地。看重情绪稳定、耐心、沟通顺畅、边界感正常、责任感、健康生活习惯和踏实度；排斥强控制欲、情绪化、暧昧拉扯和沟通不清。",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "profile_id",
+          "field_value": "30091",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 0
+        },
+        {
+          "field_name": "target_location_semantics",
+          "field_value": "偏好32到38岁男性，南京或苏州，本科及以上，不接受长期异地。看重情绪稳定、耐心、沟通顺畅、边界感正常、责任感、健康生活习惯和踏实度；排斥强控制欲、情绪化、暧昧拉扯和沟通不清。",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        }
+      ],
+      "user_persona": {
+        "display_name": "用户B04",
+        "self_gender": "女",
+        "self_age": 34,
+        "self_city": "南京",
+        "self_education": "博士",
+        "self_income_wan": 30,
+        "self_job": "高校老师",
+        "self_marital_status": "未婚",
+        "self_smoking": "否",
+        "self_drinking": "否",
+        "self_relationship_goal": "认真恋爱",
+        "target_gender": "男",
+        "target_age_min": 32,
+        "target_age_max": 38,
+        "target_cities": "南京,苏州",
+        "target_education_min": "本科",
+        "target_accept_long_distance": "不接受",
+        "target_location_semantics": "偏好32到38岁男性，南京或苏州，本科及以上，不接受长期异地。看重情绪稳定、耐心、沟通顺畅、边界感正常、责任感、健康生活习惯和踏实度；排斥强控制欲、情绪化、暧昧拉扯和沟通不清。",
+        "must_have_tags": "情绪稳定,耐心,沟通顺畅,边界感正常,生活稳定,责任感强,健康生活习惯,做事踏实",
+        "preferred_traits": "有自己的兴趣爱好,认真稳定,相处不拧巴,成熟可靠",
+        "disliked_traits": "强控制欲,长期异地,沟通不清,情绪化,反复拉扯,态度暧昧",
+        "persona_summary_internal": "34岁南京女性，博士，高校老师，年收入约30万，未婚，不抽烟不喝酒，生活安静稳定，慢热但认真，长期关系导向，结婚不着急但方向明确。",
+        "preference_summary_internal": "偏好32到38岁男性，南京或苏州，本科及以上，不接受长期异地。看重情绪稳定、耐心、沟通顺畅、边界感正常、责任感、健康生活习惯和踏实度；排斥强控制欲、情绪化、暧昧拉扯和沟通不清。"
+      },
+      "profile_internal": {
+        "id": 30091,
+        "name": "用户B04",
+        "gender": "女",
+        "age": 34,
+        "city": "南京",
+        "education": "博士",
+        "public_education": "本科及以上",
+        "job": "高校老师",
+        "public_job": "教育相关工作",
+        "income_range": "26-35万/年",
+        "relationship_goal": "认真恋爱",
+        "drinking": "否",
+        "smoking": "否",
+        "long_distance": "不接受",
+        "accept_long_distance": "不接受",
+        "location_preference_semantics": "偏好32到38岁男性，南京或苏州，本科及以上，不接受长期异地。看重情绪稳定、耐心、沟通顺畅、边界感正常、责任感、健康生活习惯和踏实度；排斥强控制欲、情绪化、暧昧拉扯和沟通不清。",
+        "preferred_education_min": "本科",
+        "personality": "34岁南京女性，博士，高校老师，年收入约30万，未婚，不抽烟不喝酒，生活安静稳定，慢热但认真，长期关系导向，结婚不着急但方向明确。",
+        "values": "偏好32到38岁男性，南京或苏州，本科及以上，不接受长期异地。看重情绪稳定、耐心、沟通顺畅、边界感正常、责任感、健康生活习惯和踏实度；排斥强控制欲、情绪化、暧昧拉扯和沟通不清。",
+        "notes": "不太接受强控制欲、长期异地、沟通不清、情绪化",
+        "matcher_summary_internal": "34岁南京女性，博士，高校老师，年收入约30万，未婚，不抽烟不喝酒，生活安静稳定，慢热但认真，长期关系导向，结婚不着急但方向明确。 | 偏好32到38岁男性，南京或苏州，本科及以上，不接受长期异地。看重情绪稳定、耐心、沟通顺畅、边界感正常、责任感、健康生活习惯和踏实度；排斥强控制欲、情绪化、暧昧拉扯和沟通不清。 | must_have: 情绪稳定, 耐心, 沟通顺畅, 边界感正常, 生活稳定, 责任感强, 健康生活习惯, 做事踏实",
+        "public_personality": "现居南京，慢热但认真，生活安静稳定，认真了解，重视长期关系",
+        "public_values": "看重情绪稳定、耐心、沟通顺畅、边界感正常，更适合同城或近距离认真相处",
+        "public_notes": "更适合同城或近距离相处"
+      },
+      "public_profile_view": {
+        "id": 30091,
+        "name": "用户0091",
+        "gender": "女",
+        "age": 34,
+        "city": "南京",
+        "education": "本科及以上",
+        "job": "教育相关工作",
+        "relationship_goal": "认真了解，重视长期关系",
+        "personality": "现居南京，慢热但认真，生活安静稳定，认真了解，重视长期关系",
+        "values": "看重情绪稳定、耐心、沟通顺畅、边界感正常，更适合同城或近距离认真相处",
+        "notes": "更适合同城或近距离相处"
+      }
+    }
+  },
+  {
+    "persona_id": "hangzhou_divorce_mom_f",
+    "display_name": "用户B05",
+    "profile_id": 30092,
+    "private_boundaries": [
+      "离婚原因",
+      "孩子具体情况",
+      "准确收入波动",
+      "前夫相关纠纷"
+    ],
+    "roleplay_answers": [
+      "我35岁，现居杭州，本科，现在做品牌市场和内容电商相关的管理工作，节奏会比较忙，但生活整体还是规律的。平时重视效率，也重视情绪稳定和生活质量。这次我想找的是认真、稳定、能走向长期的现实关系，不考虑只聊聊或者反复拉扯的状态。",
+      "我目前是离异，有一个女儿，但孩子不随身。我不抽烟，偶尔会喝一点酒。想找35到42岁的男生，城市最好在杭州或上海，前提是彼此都是真诚想认真推进关系的。原则上我不接受异地，尤其不接受长期靠线上维系、落不到现实里的关系。",
+      "我最看重对方真实、有担当、沟通顺畅，情绪稳定，有边界感，也能理解成年人关系里该有的责任和分寸。另外，能接受孩子这件事的现实，对我来说很重要。最不能接受的是拉扯消耗、情绪失控、回避问题、边界感差、责任感弱，以及一听到孩子情况就本能排斥的人。",
+      "有些信息后台记住做匹配可以，但我不想公开，比如离婚原因、孩子更具体的情况、我收入的准确波动，以及和前任相关的纠纷细节。系统最容易把我记偏成两个方向：一个是把我理解成只要条件合适就急着再婚，另一个是把“离异有孩子”直接等同于复杂、负担重，忽略我其实更看重的是关系质量、边界和长期稳定。还有一点也容易记偏，就是我能接受上海，不代表我能接受长期异地。"
+    ],
+    "notes_about_possible_drift": [
+      "容易被记成能接受上海就等于能接受长期异地，但原则上不接受异地。",
+      "容易被记成离异有孩子就等于关系负担重或急着再婚，但我的核心诉求其实是稳定、清晰、有边界的长期关系。"
+    ],
+    "system_snapshot": {
+      "user_persona_observations": [
+        {
+          "field_name": "display_name",
+          "field_value": "用户B05",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_gender",
+          "field_value": "女",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_age",
+          "field_value": "35",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_city",
+          "field_value": "杭州",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_education",
+          "field_value": "本科",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_job",
+          "field_value": "品牌市场/内容电商负责人",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_income_wan",
+          "field_value": "48",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_marital_status",
+          "field_value": "离异",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_has_children",
+          "field_value": "1",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_smoking",
+          "field_value": "否",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_drinking",
+          "field_value": "偶尔",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_relationship_goal",
+          "field_value": "认真稳定、能走向长期的现实关系",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "target_gender",
+          "field_value": "男",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "target_age_min",
+          "field_value": "35",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "target_age_max",
+          "field_value": "42",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "target_cities",
+          "field_value": "杭州,上海",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "target_accept_long_distance",
+          "field_value": "不接受",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "must_have_tags",
+          "field_value": "认真稳定,收入稳定,接受孩子现实,边界清楚,情绪稳定,责任感",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "preferred_traits",
+          "field_value": "真实,有担当,沟通顺畅,有同理心,生活习惯健康,有分寸",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "disliked_traits",
+          "field_value": "拉扯消耗,情绪失控,边界感差,回避问题,责任感弱,排斥孩子现实",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "persona_summary_internal",
+          "field_value": "35岁杭州女性，本科，品牌市场/内容电商负责人，年收入约48万，离异有一女但不随身，不抽烟，偶尔喝酒，寻求认真稳定的长期现实关系。",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "preference_summary_internal",
+          "field_value": "偏好35到42岁杭州或上海男性，收入稳定，接受孩子现实，边界清楚，情绪稳定，沟通顺畅，有担当与同理心，原则上不接受异地，不接受拉扯消耗和责任感弱。",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "profile_id",
+          "field_value": "30092",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 0
+        },
+        {
+          "field_name": "self_children_count",
+          "field_value": "1",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_children_living_with_self",
+          "field_value": "0",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "target_requires_partner_accept_my_children",
+          "field_value": "1",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "target_location_semantics",
+          "field_value": "偏好35到42岁杭州或上海男性，收入稳定，接受孩子现实，边界清楚，情绪稳定，沟通顺畅，有担当与同理心，原则上不接受异地，不接受拉扯消耗和责任感弱。",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        }
+      ],
+      "user_persona": {
+        "display_name": "用户B05",
+        "self_gender": "女",
+        "self_age": 35,
+        "self_city": "杭州",
+        "self_education": "本科",
+        "self_job": "品牌市场/内容电商负责人",
+        "self_marital_status": "离异",
+        "self_has_children": 1,
+        "self_smoking": "否",
+        "self_drinking": "偶尔",
+        "self_relationship_goal": "认真稳定、能走向长期的现实关系",
+        "target_gender": "男",
+        "target_age_min": 35,
+        "target_age_max": 42,
+        "target_cities": "杭州,上海",
+        "target_accept_long_distance": "不接受",
+        "target_location_semantics": "偏好35到42岁杭州或上海男性，收入稳定，接受孩子现实，边界清楚，情绪稳定，沟通顺畅，有担当与同理心，原则上不接受异地，不接受拉扯消耗和责任感弱。",
+        "target_requires_partner_accept_my_children": 1,
+        "must_have_tags": "认真稳定,收入稳定,接受孩子现实,边界清楚,情绪稳定,责任感",
+        "preferred_traits": "真实,有担当,沟通顺畅,有同理心,生活习惯健康,有分寸",
+        "disliked_traits": "拉扯消耗,情绪失控,边界感差,回避问题,责任感弱,排斥孩子现实",
+        "persona_summary_internal": "35岁杭州女性，本科，品牌市场/内容电商负责人，年收入约48万，离异有一女但不随身，不抽烟，偶尔喝酒，寻求认真稳定的长期现实关系。",
+        "preference_summary_internal": "偏好35到42岁杭州或上海男性，收入稳定，接受孩子现实，边界清楚，情绪稳定，沟通顺畅，有担当与同理心，原则上不接受异地，不接受拉扯消耗和责任感弱。",
+        "self_income_range": "41-50万/年"
+      },
+      "profile_internal": {
+        "id": 30092,
+        "name": "用户B05",
+        "gender": "女",
+        "age": 35,
+        "city": "杭州",
+        "education": "本科",
+        "public_education": "本科及以上",
+        "job": "品牌市场/内容电商负责人",
+        "public_job": "品牌市场/内容电商负责人",
+        "income_range": "41-50万/年",
+        "relationship_goal": "认真稳定、能走向长期的现实关系",
+        "drinking": "偶尔",
+        "smoking": "否",
+        "long_distance": "不接受",
+        "accept_long_distance": "不接受",
+        "location_preference_semantics": "偏好35到42岁杭州或上海男性，收入稳定，接受孩子现实，边界清楚，情绪稳定，沟通顺畅，有担当与同理心，原则上不接受异地，不接受拉扯消耗和责任感弱。",
+        "requires_partner_accept_my_children": 1,
+        "personality": "35岁杭州女性，本科，品牌市场/内容电商负责人，年收入约48万，离异有一女但不随身，不抽烟，偶尔喝酒，寻求认真稳定的长期现实关系。",
+        "values": "偏好35到42岁杭州或上海男性，收入稳定，接受孩子现实，边界清楚，情绪稳定，沟通顺畅，有担当与同理心，原则上不接受异地，不接受拉扯消耗和责任感弱。",
+        "notes": "不太接受拉扯消耗、情绪失控、边界感差、回避问题；对方需能接受你的孩子现实",
+        "matcher_summary_internal": "35岁杭州女性，本科，品牌市场/内容电商负责人，年收入约48万，离异有一女但不随身，不抽烟，偶尔喝酒，寻求认真稳定的长期现实关系。 | 偏好35到42岁杭州或上海男性，收入稳定，接受孩子现实，边界清楚，情绪稳定，沟通顺畅，有担当与同理心，原则上不接受异地，不接受拉扯消耗和责任感弱。 | must_have: 认真稳定, 收入稳定, 接受孩子现实, 边界清楚, 情绪稳定, 责任感",
+        "public_personality": "现居杭州，认真稳定、能走向长期的现实关系",
+        "public_values": "看重认真稳定、收入稳定、能承接现实关系、边界清楚，更适合同城或近距离认真相处",
+        "public_notes": "更适合同城或近距离相处"
+      },
+      "public_profile_view": {
+        "id": 30092,
+        "name": "用户0092",
+        "gender": "女",
+        "age": 35,
+        "city": "杭州",
+        "education": "本科及以上",
+        "job": "品牌市场/内容电商负责人",
+        "relationship_goal": "认真稳定、能走向长期的现实关系",
+        "personality": "现居杭州，认真稳定、能走向长期的现实关系",
+        "values": "看重认真稳定、收入稳定、能承接现实关系、边界清楚，更适合同城或近距离认真相处",
+        "notes": "更适合同城或近距离相处"
+      }
+    }
+  },
+  {
+    "persona_id": "shanghai_creative_m",
+    "display_name": "用户B06",
+    "profile_id": 30093,
+    "private_boundaries": [
+      "具体项目和公司",
+      "收入中不稳定的细节",
+      "家里对职业的看法",
+      "前任细节"
+    ],
+    "roleplay_answers": [
+      "我31岁，现在在上海，做游戏UI/交互设计，带一点团队，也要盯方案落地。工作本身挺有创意，但节奏不算松，忙的时候强度会比较高，平时还是会尽量把生活过正常一点。这次想找的是认真、稳定、能往长期走的关系，合适的话就是以结婚为前提慢慢了解。",
+      "我未婚，不抽烟，酒是偶尔喝一点。想找26到32岁的女生，上海优先，如果在苏州或杭州、见面成本不高也可以接受。但我不想长期异地，还是希望关系能落到真实相处上。",
+      "我最看重的是真诚、愿意沟通、有情绪回应，另外最好有一点审美，生活状态正常，彼此能聊得来。比起很会说，我更在意相处里是不是尊重人、有没有稳定表达。最不能接受的是控制欲强、长期暧昧、反复拉扯、不尊重人，还有情绪攻击这种相处方式。",
+      "后台做匹配可以记住我具体收入区间、工作强度、对城市半径的接受度，还有我对长期关系和沟通方式的偏好，但这些不太想公开展开讲。像具体项目和公司、收入里不稳定的细节、家里怎么看我的职业、前任相关细节，我都不想放到公开资料里。系统比较容易把我记偏成只看外在审美、或者默认互联网设计岗就一定作息混乱、很难投入关系，但其实我更看重的是相处质量和稳定性。"
+    ],
+    "notes_about_possible_drift": [
+      "容易被记偏成只看审美或外在，其实更看重真诚、沟通和稳定相处。",
+      "容易被记偏成创意行业作息混乱、不适合长期关系，但我对长期关系和结婚方向是明确的。"
+    ],
+    "system_snapshot": {
+      "user_persona_observations": [
+        {
+          "field_name": "display_name",
+          "field_value": "用户B06",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_gender",
+          "field_value": "男",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_age",
+          "field_value": "31",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_city",
+          "field_value": "上海",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_education",
+          "field_value": "本科",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_job",
+          "field_value": "游戏UI/交互设计负责人",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_income_wan",
+          "field_value": "32",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_marital_status",
+          "field_value": "未婚",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_smoking",
+          "field_value": "否",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_drinking",
+          "field_value": "偶尔",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "self_relationship_goal",
+          "field_value": "认真恋爱，合适会考虑结婚",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "target_gender",
+          "field_value": "女",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "target_age_min",
+          "field_value": "26",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "target_age_max",
+          "field_value": "32",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "target_cities",
+          "field_value": "上海,苏州,杭州",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "target_accept_long_distance",
+          "field_value": "可协商",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "target_location_semantics",
+          "field_value": "上海优先，也接受苏州杭州短途；不接受长期异地，关系最好能落到真实相处上。",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "must_have_tags",
+          "field_value": "真诚,愿意沟通,有情绪回应,尊重人",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "preferred_traits",
+          "field_value": "有审美,情绪稳定,表达自然,相处不拧巴,长期关系意愿明确,生活状态正常,聊得来",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "disliked_traits",
+          "field_value": "控制欲强,长期暧昧,反复拉扯,不尊重人,情绪攻击",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "persona_summary_internal",
+          "field_value": "31岁上海男生，本科，游戏UI/交互设计负责人，年收入约32万，未婚，不抽烟，偶尔喝酒，工作有创意也有强度，关系目标明确，偏长期稳定与结婚导向。",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "preference_summary_internal",
+          "field_value": "偏好26到32岁女性，上海优先，也接受苏州杭州短途，不接受长期异地；看重真诚、沟通、情绪回应、审美和正常生活状态，排斥控制欲、暧昧拉扯、不尊重和情绪攻击。",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1
+        },
+        {
+          "field_name": "profile_id",
+          "field_value": "30093",
+          "source_type": "explicit",
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 0
+        }
+      ],
+      "user_persona": {
+        "display_name": "用户B06",
+        "self_gender": "男",
+        "self_age": 31,
+        "self_city": "上海",
+        "self_education": "本科",
+        "self_job": "游戏UI/交互设计负责人",
+        "self_marital_status": "未婚",
+        "self_smoking": "否",
+        "self_drinking": "偶尔",
+        "self_relationship_goal": "认真恋爱，合适会考虑结婚",
+        "target_gender": "女",
+        "target_age_min": 26,
+        "target_age_max": 32,
+        "target_cities": "上海,苏州,杭州",
+        "target_accept_long_distance": "可协商",
+        "target_location_semantics": "上海优先，也接受苏州杭州短途；不接受长期异地，关系最好能落到真实相处上。",
+        "must_have_tags": "真诚,愿意沟通,有情绪回应,尊重人",
+        "preferred_traits": "有审美,情绪稳定,表达自然,相处不拧巴,长期关系意愿明确,生活状态正常,聊得来",
+        "disliked_traits": "控制欲强,长期暧昧,反复拉扯,不尊重人,情绪攻击",
+        "persona_summary_internal": "31岁上海男生，本科，游戏UI/交互设计负责人，年收入约32万，未婚，不抽烟，偶尔喝酒，工作有创意也有强度，关系目标明确，偏长期稳定与结婚导向。",
+        "preference_summary_internal": "偏好26到32岁女性，上海优先，也接受苏州杭州短途，不接受长期异地；看重真诚、沟通、情绪回应、审美和正常生活状态，排斥控制欲、暧昧拉扯、不尊重和情绪攻击。",
+        "self_income_range": "26-35万/年"
+      },
+      "profile_internal": {
+        "id": 30093,
+        "name": "用户B06",
+        "gender": "男",
+        "age": 31,
+        "city": "上海",
+        "education": "本科",
+        "public_education": "本科及以上",
+        "job": "游戏UI/交互设计负责人",
+        "public_job": "游戏UI/交互设计负责人",
+        "income_range": "26-35万/年",
+        "relationship_goal": "认真恋爱，合适会考虑结婚",
+        "drinking": "偶尔",
+        "smoking": "否",
+        "long_distance": "可协商",
+        "accept_long_distance": "可协商",
+        "location_preference_semantics": "上海优先，也接受苏州杭州短途；不接受长期异地，关系最好能落到真实相处上。",
+        "personality": "31岁上海男生，本科，游戏UI/交互设计负责人，年收入约32万，未婚，不抽烟，偶尔喝酒，工作有创意也有强度，关系目标明确，偏长期稳定与结婚导向。",
+        "values": "偏好26到32岁女性，上海优先，也接受苏州杭州短途，不接受长期异地；看重真诚、沟通、情绪回应、审美和正常生活状态，排斥控制欲、暧昧拉扯、不尊重和情绪攻击。",
+        "notes": "不太接受控制欲强、长期暧昧、反复拉扯、不尊重人",
+        "matcher_summary_internal": "31岁上海男生，本科，游戏UI/交互设计负责人，年收入约32万，未婚，不抽烟，偶尔喝酒，工作有创意也有强度，关系目标明确，偏长期稳定与结婚导向。 | 偏好26到32岁女性，上海优先，也接受苏州杭州短途，不接受长期异地；看重真诚、沟通、情绪回应、审美和正常生活状态，排斥控制欲、暧昧拉扯、不尊重和情绪攻击。 | must_have: 真诚, 愿意沟通, 有情绪回应, 尊重人",
+        "public_personality": "现居上海，认真了解，合适会考虑结婚",
+        "public_values": "看重真诚、愿意沟通、有情绪回应、尊重人"
+      },
+      "public_profile_view": {
+        "id": 30093,
+        "name": "用户0093",
+        "gender": "男",
+        "age": 31,
+        "city": "上海",
+        "education": "本科及以上",
+        "job": "游戏UI/交互设计负责人",
+        "relationship_goal": "认真了解，合适会考虑结婚",
+        "personality": "现居上海，认真了解，合适会考虑结婚",
+        "values": "看重真诚、愿意沟通、有情绪回应、尊重人"
+      }
+    }
+  }
+]
