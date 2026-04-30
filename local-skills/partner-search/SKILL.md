@@ -7,6 +7,32 @@ description: Search a MySQL dating profile database for partner candidates that 
 
 Use this skill when the user has a profile library and wants candidate matches, such as "在资料库里帮我筛合适对象" or "从相亲库里推荐几个人", rather than general dating advice.
 
+## Scope
+
+This skill is intentionally narrow.
+
+- It takes a user profile or explicit search criteria
+- It searches the profile library
+- It ranks and explains candidate matches
+- It returns match results
+
+Treat `partner-search` as a pure matching/query skill.
+
+## Non-Goals
+
+Do not couple these product/system capabilities into this skill:
+
+- continuous monitoring or "keep looking for me"
+- recommendation subscriptions
+- notification delivery
+- message inbox or recommendation history
+- skip / save / follow-up action state
+- proxy introductions
+- automatic matchmaking
+- scheduling, queues, cron jobs, or workflow orchestration
+
+If a larger product wants those features, it should call `partner-search` as a dependency. The outer system owns persistence, timing, notification policy, and user-action state. This skill should remain focused on `画像 / 条件 -> 候选结果`.
+
 ## Quick Start
 
 Ensure the Python dependency is present first. Run `python3 -m pip install pymysql` if the environment does not already have `PyMySQL`.
@@ -22,6 +48,8 @@ Ensure the Python dependency is present first. Run `python3 -m pip install pymys
    - any obvious risks or mismatches
    - which questions to confirm next when the profile is promising but still fuzzy
    - how much is real fit versus just profile completeness
+
+Do not stretch this skill into a long-running recommendation service. If a future system wants recurring recommendations, it should persist the search criteria externally and call `scripts/search_candidates.py` or the same matching logic repeatedly from outside the skill.
 
 Companion write scripts such as `scripts/backfill_profile_enrichment.py` and `scripts/seed_gap_profiles.py` should use the same `--source` / `PARTNER_SEARCH_MYSQL_SOURCE` entrypoint instead of relying on an implicit local root connection.
 
@@ -169,4 +197,5 @@ If nothing matches, say so plainly and include:
 ## Resources
 
 - Read `references/profile-schema.md` for supported fields and aliases, especially reciprocal preference columns such as `preferred_*`, `accept_*`, and child-plan fields.
+- Read `references/proactive-matchmaking-design.md` only as an external-system reference. That document is not part of the core skill contract.
 - When validating changes to this skill itself, run `bash scripts/run_tests.sh` so the test pass does not leave `__pycache__` or `.pyc` artifacts inside the package.
