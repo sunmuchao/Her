@@ -291,6 +291,11 @@ PUBLIC_SAFE_TAG_MAP = {
     "健康习惯": "健康习惯",
     "真诚": "真诚",
     "责任感": "责任感",
+    "责任心": "责任感",
+    "行动力": "行动力",
+    "生活规律": "生活规律",
+    "家庭观念": "家庭观念",
+    "稳定踏实": "稳定踏实",
 }
 
 PUBLIC_VALUE_PRIORITY_TAGS = (
@@ -301,7 +306,12 @@ PUBLIC_VALUE_PRIORITY_TAGS = (
     "情绪稳定",
     "边界清楚",
     "责任感",
+    "行动力",
     "健康习惯",
+    "生活规律",
+    "家庭观念",
+    "真诚",
+    "稳定踏实",
     "沟通顺畅",
     "愿意沟通",
 )
@@ -488,6 +498,7 @@ CITY_PREFERENCE_PATTERNS = (
 )
 
 CITY_TOKEN_BLOCKLIST = {
+    "江浙沪",
     "异地",
     "长期",
     "短期",
@@ -505,6 +516,13 @@ CITY_TOKEN_BLOCKLIST = {
     "周边",
     "通勤",
     "落地",
+}
+
+CITY_TOKEN_BLOCK_SUBSTRINGS = {
+    "范围",
+    "地区",
+    "城市",
+    "周边",
 }
 
 
@@ -851,7 +869,17 @@ def canonicalize_long_distance_state(value: Any) -> Optional[str]:
 
     has_transition_allowance = any(
         marker in text
-        for marker in ("短期异地", "短期通勤", "通勤型距离", "近距离", "落地计划", "双城过渡", "稳定留沪")
+        for marker in (
+            "短期异地",
+            "短期通勤",
+            "短期可了解",
+            "短期过渡",
+            "通勤型距离",
+            "近距离",
+            "落地计划",
+            "双城过渡",
+            "稳定留沪",
+        )
     )
     if has_transition_allowance or "谨慎" in text:
         return "可协商"
@@ -871,6 +899,8 @@ def normalize_city_token(value: Any) -> Optional[str]:
     if not re.fullmatch(r"[\u4e00-\u9fff]{2,4}", text):
         return None
     if text in CITY_TOKEN_BLOCKLIST:
+        return None
+    if any(marker in text for marker in CITY_TOKEN_BLOCK_SUBSTRINGS):
         return None
     return text
 
@@ -895,6 +925,18 @@ def extract_city_preference_phrase_from_semantics(semantics_text: Any) -> Option
     return None
 
 
+def extract_region_preference_phrase_from_semantics(semantics_text: Any) -> Optional[str]:
+    semantics = clean_text(semantics_text) or ""
+    if not semantics:
+        return None
+    for segment in split_text_segments(semantics):
+        for region in REGIONAL_CITY_EXPANSIONS:
+            match = re.search(rf"({re.escape(region)}(?:范围内)?优先)", segment)
+            if match:
+                return clean_text(match.group(1))
+    return None
+
+
 def extract_city_candidates_from_semantics(*texts: Any) -> List[str]:
     candidates: List[str] = []
     for text in texts:
@@ -913,6 +955,9 @@ def build_public_city_preference_phrase(known_cities: Iterable[str], semantics_t
     semantic_phrase = extract_city_preference_phrase_from_semantics(semantics_text)
     if semantic_phrase:
         return semantic_phrase
+    region_phrase = extract_region_preference_phrase_from_semantics(semantics_text)
+    if region_phrase:
+        return region_phrase
     cities = [city for city in known_cities if clean_text(city)]
     if not cities:
         return None
@@ -948,6 +993,8 @@ def has_location_signal(segment: Any, known_cities: Optional[Iterable[str]] = No
     if not text:
         return False
     if extract_city_preference_phrase_from_semantics(text):
+        return True
+    if extract_region_preference_phrase_from_semantics(text):
         return True
     cities = [city for city in (known_cities or []) if clean_text(city)]
     if any(city in text for city in cities):
