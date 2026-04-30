@@ -109,6 +109,12 @@ FIELD_ALIASES = {
     "drinking": {"drinking", "喝酒", "饮酒"},
     "long_distance": {"long_distance", "异地", "接受异地"},
     "accept_long_distance": {"accept_long_distance", "是否接受异地", "可否异地"},
+    "location_preference_semantics": {
+        "location_preference_semantics",
+        "位置偏好补充",
+        "异地补充说明",
+        "位置偏好语义",
+    },
     "accept_smoking": {"accept_smoking", "接受抽烟", "接受吸烟", "是否接受抽烟", "是否接受吸烟"},
     "accept_drinking": {"accept_drinking", "接受喝酒", "接受饮酒", "是否接受喝酒", "是否接受饮酒"},
     "accept_marital_status": {"accept_marital_status", "接受婚况", "可接受婚况", "可接受婚姻状态"},
@@ -146,6 +152,11 @@ FIELD_ALIASES = {
         "对子女接受细语义",
         "对子女接受真实表达",
         "对子女接受补充语义",
+    },
+    "requires_partner_accept_my_children": {
+        "requires_partner_accept_my_children",
+        "是否要求对方接受其孩子现实",
+        "对方是否需要接受其孩子现实",
     },
     "marriage_timeline": {"marriage_timeline", "结婚时间", "结婚计划", "结婚节奏"},
     "family_background": {"family_background", "家庭情况", "家庭背景"},
@@ -238,6 +249,7 @@ TEXT_FIELDS = [
     "drinking",
     "long_distance",
     "accept_long_distance",
+    "location_preference_semantics",
     "accept_smoking",
     "accept_drinking",
     "accept_marital_status",
@@ -422,6 +434,18 @@ CRITICAL_MISSING_FIELD_PENALTIES = {
     "settlement_city": 4,
 }
 
+SELF_PROFILE_GAP_PENALTIES = {
+    "self_age": 3,
+    "self_city": 4,
+    "self_height": 4,
+    "self_education": 3,
+    "self_income_wan": 3,
+    "self_marital_status": 4,
+    "self_has_children": 5,
+    "self_smoking": 2,
+    "self_drinking": 2,
+}
+
 RISK_FLAG_PENALTIES = {
     "对方对子女情况仅可协商": 10,
     "对方对子女接受度偏低": 11,
@@ -444,6 +468,8 @@ RISK_FLAG_PENALTIES = {
     "对方婚史接受需要先聊再判断": 9,
     "对方婚史接受度未知": 10,
     "对方对子女接受度偏保守": 9,
+    "对方不接受长期异地，需要确认落地计划": 9,
+    "异地需要明确落地计划": 6,
     "生活阶段可能有落差": 8,
     "资料偏稳但不够鲜活": 5,
     "相处可能偏冷": 6,
@@ -453,23 +479,44 @@ RISK_FLAG_PENALTIES = {
     "主动沟通感偏弱": 4,
     "乐观外放感偏弱": 3,
     "消费观还不够具体": 4,
-    "聊天还像完成任务": 5,
-    "认真相处信号还不够落地": 4,
-    "认真相处推进偏慢": 3,
-    "长期意图有，但推进方式还不够落地": 4,
-    "推进方式偏慢观察": 4,
+    "聊天还像完成任务": 7,
+    "认真相处信号还不够落地": 6,
+    "认真相处推进偏慢": 5,
+    "长期意图有，但推进方式还不够落地": 8,
+    "推进方式偏慢观察": 6,
     "成长势能偏弱": 6,
     "聊天温度偏冷": 5,
     "审美表达偏平": 4,
     "聊天可能像信息交换": 5,
-    "人物感偏淡": 5,
+    "人物感偏淡": 4,
     "聊天可能偏板正": 5,
-    "进入关系信号偏弱": 6,
+    "进入关系信号偏弱": 9,
     "重组家庭现实承接仍需确认": 6,
     "未认证": 6,
     "活跃时间未知": 4,
     "90天前活跃": 6,
 }
+
+DIVERSITY_JOB_PATTERNS = (
+    (re.compile(r"(医生|护士|药师|医疗|医院|临床)"), "medical"),
+    (re.compile(r"(教师|老师|学校|教育|培训)"), "education"),
+    (re.compile(r"(产品|运营|研发|工程师|程序|算法|设计)"), "tech"),
+    (re.compile(r"(金融|银行|证券|基金|投行|保险)"), "finance"),
+    (re.compile(r"(体制|公务员|事业单位|国企)"), "public-sector"),
+)
+
+SIGNAL_FIELD_SPECS = (
+    ("life_routine", "作息"),
+    ("communication_style", "沟通"),
+    ("dating_pace", "节奏"),
+    ("career_intensity", "工作节奏"),
+    ("consumption_attitude", "消费观"),
+    ("commitment_clarity", "长期意图"),
+    ("relationship_execution", "推进方式"),
+    ("blended_family_readiness", "现实承接"),
+    ("growth_signal", "成长"),
+    ("interaction_comfort", "相处"),
+)
 
 SOFT_MUST_HAVE_KEYWORDS = {
     "情绪稳定",
@@ -1096,15 +1143,31 @@ def extract_keyword_evidence(record, keyword):
 
 
 def missing_field_penalty(field):
-    if str(field).startswith("self_"):
-        return 0
     return CRITICAL_MISSING_FIELD_PENALTIES.get(field, 0)
+
+
+def self_profile_gap_penalty(field):
+    return SELF_PROFILE_GAP_PENALTIES.get(field, 0)
 
 
 def risk_flag_penalty(risk_flag):
     if str(risk_flag).startswith("资料里提到“"):
         return 4
     return RISK_FLAG_PENALTIES.get(risk_flag, 0)
+
+
+def location_semantics_risk_flags(record):
+    semantics = as_text(record.get("location_preference_semantics"))
+    if not semantics:
+        return []
+    if re.search(r"(?:不接受|不考虑|不能接受|不想)[^，。；]{0,8}长期异地", semantics) or re.search(
+        r"长期[^，。；]{0,8}异地[^，。；]{0,8}(?:不接受|不考虑|不行|免谈)",
+        semantics,
+    ):
+        return ["对方不接受长期异地，需要确认落地计划"]
+    if any(marker in semantics for marker in ("落地计划", "稳定留沪", "双城过渡", "短期异地")):
+        return ["异地需要明确落地计划"]
+    return []
 
 
 def soft_preference_risk_flag(kind, strictness_state):
@@ -1437,9 +1500,9 @@ def evaluate_contextual_fit(record, criteria, self_profile=None):
         elif aesthetic_expression == "普通":
             risk_flags.append("审美表达偏平")
         if conversation_resonance == "能聊想法也能聊日常":
-            reasons.append("更容易聊出感觉")
-            score_bonus += 6
-            match_evidence.append(f"更容易聊出感觉 <- 聊天共鸣: {conversation_resonance}")
+            reasons.append("聊天层次更完整")
+            score_bonus += 5
+            match_evidence.append(f"聊天层次更完整 <- 聊天共鸣: {conversation_resonance}")
         elif conversation_resonance == "会接话也会接情绪":
             reasons.append("聊天不只对条件，也有情绪接住感")
             score_bonus += 4
@@ -1447,9 +1510,9 @@ def evaluate_contextual_fit(record, criteria, self_profile=None):
         elif conversation_resonance == "偏信息交换":
             risk_flags.append("聊天可能像信息交换")
         if personal_presence == "有记忆点":
-            reasons.append("人物感更强")
-            score_bonus += 6
-            match_evidence.append(f"人物感更强 <- 人物感: {personal_presence}")
+            reasons.append("资料辨识度更高")
+            score_bonus += 4
+            match_evidence.append(f"资料辨识度更高 <- 人物感: {personal_presence}")
         elif personal_presence == "温和耐看":
             reasons.append("人物感更舒服")
             score_bonus += 3
@@ -1457,9 +1520,9 @@ def evaluate_contextual_fit(record, criteria, self_profile=None):
         elif personal_presence == "偏平":
             risk_flags.append("人物感偏淡")
         if lightness_humor == "有点幽默不端着":
-            reasons.append("聊天不木，也更有轻松感")
-            score_bonus += 5
-            match_evidence.append(f"聊天不木，也更有轻松感 <- 轻松感: {lightness_humor}")
+            reasons.append("互动更轻松")
+            score_bonus += 4
+            match_evidence.append(f"互动更轻松 <- 轻松感: {lightness_humor}")
         elif lightness_humor == "稳重有分寸":
             reasons.append("稳重但不板正")
             score_bonus += 3
@@ -1589,19 +1652,19 @@ def evaluate_contextual_fit(record, criteria, self_profile=None):
         and personal_presence == "有记忆点"
         and aesthetic_expression in {"有审美输出", "有生活审美"}
     ):
-        reasons.append("不只合适，也更容易让人有感觉")
-        score_bonus += 5
+        reasons.append("条件之外，表达层次也更完整")
+        score_bonus += 4
         match_evidence.append(
-            "不只合适，也更容易让人有感觉 <- 聊天共鸣/人物感/审美表达组合更完整"
+            "条件之外，表达层次也更完整 <- 聊天共鸣/人物感/审美表达组合更完整"
         )
     if (
         high_bar_profile
         and lightness_humor == "有点幽默不端着"
         and conversation_resonance == "能聊想法也能聊日常"
     ):
-        reasons.append("理性之外，也更容易有火花")
-        score_bonus += 4
-        match_evidence.append("理性之外，也更容易有火花 <- 轻松感/聊天共鸣更完整")
+        reasons.append("互动不容易太板正")
+        score_bonus += 3
+        match_evidence.append("互动不容易太板正 <- 轻松感/聊天共鸣更完整")
 
     return {
         "matched_on": reasons,
@@ -2696,6 +2759,7 @@ def evaluate_reciprocal_compatibility(record, self_profile, diagnostics=False, r
             )
             if city_preference_risk:
                 risk_flags.append(city_preference_risk)
+                risk_flags.extend(location_semantics_risk_flags(record))
             else:
                 return fail("reciprocal_city_preference")
         else:
@@ -2885,10 +2949,13 @@ def evaluate_reciprocal_compatibility(record, self_profile, diagnostics=False, r
         if accept_long_distance == "accepted":
             reasons.append("对方接受异地")
             score_bonus += 4
+            risk_flags.extend(location_semantics_risk_flags(record))
         elif accept_long_distance == "negotiable":
             risk_flags.append("对方异地仅可协商")
+            risk_flags.extend(location_semantics_risk_flags(record))
         elif accept_long_distance == "unknown":
             risk_flags.append("对方异地接受度未知")
+            risk_flags.extend(location_semantics_risk_flags(record))
         else:
             missing_fields.append("accept_long_distance")
 
@@ -3287,15 +3354,23 @@ def evaluate_candidate(record, criteria, diagnostics=False, reciprocal_mode="str
     if failed_required_known:
         return fail("required_known_missing", failed_required_known[0])
 
-    missing_penalty = sum(missing_field_penalty(field) for field in unique_ordered(missing_fields))
+    all_missing_fields = unique_ordered(missing_fields)
+    self_profile_gaps = [
+        field for field in all_missing_fields if str(field).startswith("self_")
+    ]
+    candidate_missing_fields = [
+        field for field in all_missing_fields if not str(field).startswith("self_")
+    ]
+    missing_penalty = sum(missing_field_penalty(field) for field in candidate_missing_fields)
+    self_gap_penalty = sum(self_profile_gap_penalty(field) for field in self_profile_gaps)
     risk_score = missing_penalty + sum(
         risk_flag_penalty(flag) for flag in unique_ordered(risk_flags)
-    )
+    ) + self_gap_penalty
     score = fit_score + confidence_score - risk_score
 
     follow_up_questions = build_follow_up_questions(
         record,
-        missing_fields,
+        candidate_missing_fields,
         risk_flags,
         self_profile=criteria.get("self_profile"),
     )
@@ -3310,7 +3385,8 @@ def evaluate_candidate(record, criteria, diagnostics=False, reciprocal_mode="str
         "risk_score": risk_score,
         "matched_on": unique_ordered(reasons),
         "reciprocal_on": unique_ordered(reciprocal_reasons),
-        "missing_fields": unique_ordered(missing_fields),
+        "missing_fields": candidate_missing_fields,
+        "self_profile_gaps": self_profile_gaps,
         "risk_flags": unique_ordered(risk_flags),
         "match_evidence": unique_ordered(match_evidence),
         "follow_up_questions": follow_up_questions,
