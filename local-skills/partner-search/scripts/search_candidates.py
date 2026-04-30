@@ -2440,6 +2440,7 @@ def evaluate_reciprocal_compatibility(record, self_profile, diagnostics=False):
             score_bonus += 6
 
     accepted_statuses = split_keywords(record.get("accept_marital_status"))
+    accept_marital_status_semantics = as_text(record.get("accept_marital_status_semantics"))
     if accepted_statuses:
         self_status = self_profile.get("marital_status")
         if not self_status:
@@ -2455,14 +2456,13 @@ def evaluate_reciprocal_compatibility(record, self_profile, diagnostics=False):
                 )
                 if marital_strength == "strong":
                     score_bonus += 2
-                elif requires_explicit_marital_acceptance(self_profile):
-                    return fail("reciprocal_marital_status_acceptance_not_strong")
-                elif marital_strength in {"cautious", "surface"}:
-                    risk_flags.append("对方婚史接受度偏保守")
-                elif marital_strength == "unknown":
-                    if requires_explicit_marital_acceptance(self_profile):
-                        return fail("reciprocal_marital_status_acceptance_unknown")
-                    missing_fields.append("accept_marital_status_strength")
+                else:
+                    marital_risk = marital_acceptance_risk_flag(
+                        marital_strength,
+                        accept_marital_status_semantics,
+                    )
+                    if marital_risk:
+                        risk_flags.append(marital_risk)
     else:
         self_status = self_profile.get("marital_status")
         if self_status and as_lower(self_status) not in {"", "未婚"}:
@@ -2485,25 +2485,26 @@ def evaluate_reciprocal_compatibility(record, self_profile, diagnostics=False):
             )
             if children_strength == "strong":
                 score_bonus += 2
-            elif requires_explicit_children_acceptance(self_profile):
-                return fail("reciprocal_children_acceptance_not_strong")
-            elif children_strength in {"cautious", "surface"}:
-                risk_flags.append("对方对子女接受度偏保守")
-            elif children_strength == "unknown":
-                if requires_explicit_children_acceptance(self_profile):
-                    return fail("reciprocal_children_acceptance_unknown")
-                missing_fields.append("accept_partner_children_strength")
-        elif accept_partner_children == "negotiable":
-            if requires_explicit_children_acceptance(self_profile):
-                return fail("reciprocal_children_acceptance_not_strong")
-            if contains_any_text(accept_partner_children_semantics, {"偏低", "偏保留"}):
-                risk_flags.append("对方对子女接受度偏低")
             else:
-                risk_flags.append("对方对子女情况仅可协商")
+                children_risk = children_acceptance_risk_flag(
+                    "accepted",
+                    children_strength,
+                    accept_partner_children_semantics,
+                )
+                if children_risk:
+                    risk_flags.append(children_risk)
+        elif accept_partner_children == "negotiable":
+            risk_flags.append(
+                children_acceptance_risk_flag(
+                    "negotiable",
+                    normalize_acceptance_strength(
+                        record.get("accept_partner_children_strength")
+                    ),
+                    accept_partner_children_semantics,
+                )
+            )
         elif accept_partner_children == "unknown":
-            if requires_explicit_children_acceptance(self_profile):
-                return fail("reciprocal_children_acceptance_unknown")
-            risk_flags.append("对方对子女接受度未知")
+            return fail("reciprocal_children_acceptance_unknown")
         else:
             missing_fields.append("accept_partner_children")
 
