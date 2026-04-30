@@ -422,7 +422,7 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertEqual(payload["public_personality"], "现居杭州，认真了解，长期现实关系方向明确")
         self.assertEqual(
             payload["public_values"],
-            "看重真正接受孩子现实、能承接现实关系、情绪稳定、边界清楚、责任感、沟通顺畅",
+            "看重情绪稳定、边界清楚、责任感、沟通顺畅、能承接现实关系、有分寸，也要尊重孩子现实",
         )
         self.assertEqual(payload["public_notes"], "杭州或上海都可以；原则上不接受异地；需能正常见面并推进关系")
 
@@ -489,7 +489,7 @@ class PersonaMemoryTests(unittest.TestCase):
         )
         self.assertEqual(
             payload["public_values"],
-            "上海优先；明确不接受长期异地；如有短期过渡，需明确落地计划，看重沟通顺畅",
+            "上海优先，也接受明确留沪；明确不接受长期异地；如有短期过渡，需明确落地计划，看重沟通顺畅",
         )
 
     def test_build_public_profile_prioritizes_child_reality_requirement_in_public_values(self):
@@ -501,7 +501,7 @@ class PersonaMemoryTests(unittest.TestCase):
         )
         self.assertEqual(
             payload["public_values"],
-            "看重真正接受孩子现实、能承接现实关系、情绪稳定、边界清楚、责任感、沟通顺畅",
+            "看重情绪稳定、边界清楚、责任感、沟通顺畅、能承接现实关系、有分寸，也要尊重孩子现实",
         )
 
     def test_build_public_profile_preserves_reality_execution_tag_in_public_values(self):
@@ -512,7 +512,17 @@ class PersonaMemoryTests(unittest.TestCase):
         )
         self.assertEqual(
             payload["public_values"],
-            "看重现实推进能力、婚姻诚意、情绪稳定、消费观清醒、沟通自然",
+            "看重情绪稳定、婚姻诚意、现实推进能力、消费观清醒、沟通自然",
+        )
+
+    def test_sanitize_internal_profile_summary_strips_income_and_child_living_detail(self):
+        summary = persona_memory_lib.sanitize_internal_profile_summary(
+            "35岁女性，杭州本地，品牌市场岗，年收入约48万，离异已育，有一个女儿但不随身，认真找长期关系。",
+            {"self_city": "杭州"},
+        )
+        self.assertEqual(
+            summary,
+            "35岁女性，现居杭州，品牌市场岗，离异已育，认真找长期关系。",
         )
 
     def test_summarize_observation_evidence_replaces_raw_transcript_with_field_summary(self):

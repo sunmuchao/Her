@@ -271,10 +271,17 @@ POSITIVE_TAG_TO_MATCHER = {
 
 PUBLIC_SAFE_NEGATIVE_NOTES = {
     "暧昧不清": "不喜欢关系里反复拉扯",
+    "长期暧昧": "不喜欢长期暧昧拉扯",
+    "反复拉扯": "不喜欢关系里反复拉扯",
     "冷暴力": "希望沟通方式更稳定直接",
+    "情绪攻击": "希望沟通方式稳定、彼此尊重",
     "绿茶": "关系边界希望更清晰",
     "拜金": "消费观需要更加一致",
     "抽烟": "更偏好生活习惯相近的人",
+    "控制欲强": "不喜欢控制感太强的相处",
+    "不尊重人": "希望关系里有基本尊重",
+    "沟通不清": "希望沟通更直接清晰",
+    "态度暧昧": "不喜欢态度暧昧",
 }
 
 PUBLIC_SAFE_TAG_MAP = {
@@ -299,21 +306,21 @@ PUBLIC_SAFE_TAG_MAP = {
 }
 
 PUBLIC_VALUE_PRIORITY_TAGS = (
-    "真正接受孩子现实",
-    "能承接现实关系",
-    "现实推进能力",
-    "婚姻诚意",
     "情绪稳定",
     "边界清楚",
     "责任感",
+    "沟通顺畅",
+    "愿意沟通",
+    "真诚",
+    "稳定踏实",
+    "婚姻诚意",
+    "现实推进能力",
+    "能承接现实关系",
+    "真正接受孩子现实",
     "行动力",
     "健康习惯",
     "生活规律",
     "家庭观念",
-    "真诚",
-    "稳定踏实",
-    "沟通顺畅",
-    "愿意沟通",
 )
 
 PUBLIC_JOB_PATTERNS = (
@@ -478,6 +485,8 @@ SAFE_PUBLIC_PERSONALITY_PATTERNS = (
     (re.compile(r"生活有规划"), "生活有规划"),
     (re.compile(r"作息规律"), "作息规律"),
     (re.compile(r"作息不算特别规律"), "作息不算特别规律"),
+    (re.compile(r"工作有创意"), "工作有创意"),
+    (re.compile(r"生活节奏总体正常"), "生活节奏总体正常"),
 )
 
 LONG_DISTANCE_BLOCK_PATTERNS = (
@@ -978,21 +987,42 @@ def extract_city_candidates_from_semantics(*texts: Any) -> List[str]:
 
 def build_public_city_preference_phrase(known_cities: Iterable[str], semantics_text: Any) -> Optional[str]:
     semantic_phrase = extract_city_preference_phrase_from_semantics(semantics_text)
-    if semantic_phrase:
-        return semantic_phrase
     region_phrase = extract_region_preference_phrase_from_semantics(semantics_text)
-    if region_phrase:
-        return region_phrase
     cities = [city for city in known_cities if clean_text(city)]
-    if not cities:
-        return None
     semantics = clean_text(semantics_text) or ""
-    if len(cities) == 1:
-        return f"{cities[0]}优先"
-    if len(cities) == 2:
-        suffix = "都可以" if "都可以" in semantics else "优先"
-        return f"{cities[0]}或{cities[1]}{suffix}"
-    return "、".join(cities[:3]) + "优先"
+
+    base_phrase: Optional[str] = None
+    if semantic_phrase:
+        base_phrase = semantic_phrase
+    elif region_phrase:
+        base_phrase = region_phrase
+    elif cities:
+        if len(cities) == 1:
+            base_phrase = f"{cities[0]}优先"
+        elif len(cities) == 2:
+            suffix = "都可以" if "都可以" in semantics else "优先"
+            base_phrase = f"{cities[0]}或{cities[1]}{suffix}"
+        else:
+            base_phrase = "、".join(cities[:3]) + "优先"
+
+    suffixes: List[str] = []
+    if "稳定留沪" in semantics:
+        suffixes.append("也接受明确留沪")
+    if "双城过渡" in semantics:
+        if "见面成本" in semantics:
+            suffixes.append("也接受低成本双城过渡")
+        else:
+            suffixes.append("也接受双城过渡")
+
+    if not base_phrase:
+        if suffixes:
+            return "，".join(unique_ordered(suffixes))
+        return None
+
+    for suffix in unique_ordered(suffixes):
+        if suffix not in base_phrase:
+            base_phrase += f"，{suffix}"
+    return base_phrase
 
 
 def contains_any_marker(texts: Iterable[Any], markers: Iterable[str]) -> bool:
@@ -1503,7 +1533,19 @@ def sanitize_internal_profile_summary(summary: Any, persona: Dict[str, Any]) -> 
     if city_text:
         text = text.replace(f"{city_text}本地", f"现居{city_text}")
 
+    text = re.sub(r"[，,]?\s*(?:年收入约?\s*\d+\s*万|\d+\s*-\s*\d+\s*万/年|收入信息已隐藏)\s*", "，", text)
+    text = re.sub(
+        r"离异已育[，,]\s*(?:有一个|有一位|有孩子|孩子)\S{0,8}?(?:但不随身|不随身|不跟自己住|不跟自己生活)",
+        "离异已育",
+        text,
+    )
+    text = re.sub(
+        r"(?:有一个|有一位)(?:儿子|女儿|孩子)\S{0,8}?(?:但不随身|不随身|不跟自己住|不跟自己生活)",
+        "有孩子",
+        text,
+    )
     text = re.sub(r"(现居[\u4e00-\u9fffA-Za-z0-9]+)[，,]?\1", r"\1", text)
+    text = re.sub(r"(离异已育)[，,]?有孩子", r"\1", text)
     text = re.sub(r"[，,]{2,}", "，", text)
     return text.strip("，, ")
 
@@ -1741,6 +1783,11 @@ def build_public_profile(persona: Dict[str, Any]) -> Dict[str, Optional[str]]:
             fragments.append(city_fragment)
         fragments.extend(extract_safe_public_personality_traits(persona))
         goal_fragment = build_public_relationship_goal(persona.get("self_relationship_goal"))
+        if (
+            goal_fragment == "认真了解，方向明确，不仓促推进"
+            and "长期稳定关系" in (clean_text(persona.get("persona_summary_internal")) or "")
+        ):
+            goal_fragment = "认真了解，长期稳定关系方向明确，不仓促推进"
         if goal_fragment:
             fragments.append(goal_fragment)
         public_personality = "，".join(unique_ordered(fragments)) or "资料在持续完善中"
@@ -1750,7 +1797,7 @@ def build_public_profile(persona: Dict[str, Any]) -> Dict[str, Optional[str]]:
             tag for tag in unique_ordered(must_have + preferred_traits) if tag not in {"稳定留沪"}
         ]
         if normalize_boolish(persona.get("target_requires_partner_accept_my_children")) == 1:
-            key_tags = unique_ordered(["真正接受孩子现实", "能承接现实关系"] + key_tags)
+            key_tags = unique_ordered(key_tags + ["能承接现实关系"])
         prioritized_tags = [
             tag for tag in PUBLIC_VALUE_PRIORITY_TAGS if tag in key_tags
         ]
@@ -1760,6 +1807,11 @@ def build_public_profile(persona: Dict[str, Any]) -> Dict[str, Optional[str]]:
             public_values = "看重" + "、".join(key_tags)
         else:
             public_values = "看重稳定、真诚和可持续的相处方式"
+        if (
+            normalize_boolish(persona.get("target_requires_partner_accept_my_children")) == 1
+            and "孩子现实" not in public_values
+        ):
+            public_values += "，也要尊重孩子现实"
         if location_note and location_note == "更适合同城或近距离认真相处":
             public_values += "，" + location_note
 
