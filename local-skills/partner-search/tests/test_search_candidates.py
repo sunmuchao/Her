@@ -283,6 +283,28 @@ class SearchCandidatesTests(unittest.TestCase):
             result["score"],
             result["fit_score"] + result["confidence_score"] - result["risk_score"],
         )
+        self.assertTrue(
+            {
+                "id",
+                "name",
+                "score",
+                "fit_score",
+                "confidence_score",
+                "risk_score",
+                "matched_on",
+                "reciprocal_on",
+                "missing_fields",
+                "self_profile_gaps",
+                "risk_flags",
+                "match_evidence",
+                "follow_up_questions",
+                "profile",
+                "source_file",
+                "verified_rank",
+                "activity_sort_ts",
+                "profile_status_rank",
+            }.issubset(result.keys())
+        )
         self.assertGreater(result["fit_score"], 0)
         self.assertGreater(result["confidence_score"], 0)
         self.assertEqual(result["risk_score"], 0)
@@ -1219,6 +1241,31 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertIn("1. C1", search_candidates.render_search_output(search_run))
         mocked_attach.assert_called_once()
 
+    def test_execute_search_populates_no_match_diagnostics(self):
+        args = search_candidates.build_parser().parse_args(
+            [
+                "--source",
+                "mysql://user:pass@127.0.0.1:3306/her?table=profiles",
+                "--gender",
+                "女",
+                "--limit",
+                "2",
+            ]
+        )
+
+        with mock.patch.object(search_candidates, "load_source", return_value=[]), mock.patch.object(
+            search_candidates, "attach_photo_previews"
+        ) as mocked_attach:
+            search_run = search_candidates.execute_search(args)
+
+        self.assertEqual(search_run["records"], [])
+        self.assertEqual(search_run["results"], [])
+        self.assertEqual(search_run["fallback_results"], [])
+        self.assertIsNotNone(search_run["diagnostics"])
+        self.assertEqual(search_run["diagnostics"]["scanned_count"], 0)
+        self.assertIn("No matches found.", search_candidates.render_search_output(search_run))
+        mocked_attach.assert_called_once()
+
     def test_main_outputs_ranked_results(self):
         fake_records = [
             {
@@ -1325,6 +1372,10 @@ class SearchCandidatesTests(unittest.TestCase):
 
         self.assertEqual(diagnostics["scanned_count"], 2)
         self.assertEqual(diagnostics["passed_count"], 0)
+        self.assertEqual(
+            set(diagnostics.keys()),
+            {"scanned_count", "passed_count", "usable_count", "top_reasons", "relax_suggestions"},
+        )
         self.assertEqual(diagnostics["top_reasons"][0]["reason"], "city_mismatch")
         self.assertEqual(diagnostics["top_reasons"][0]["count"], 2)
         self.assertIn("放宽地域条件", diagnostics["relax_suggestions"][0])

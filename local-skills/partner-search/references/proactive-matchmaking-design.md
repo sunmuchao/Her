@@ -293,7 +293,7 @@ skill 层只回答一个问题：
 - 明确输出边界
   - 固定返回的候选字段
   - 固定 `score / fit_score / confidence_score / risk_score`
-  - 固定 `matched_on / risk_flags / missing_fields / follow_up_questions`
+  - 固定 `matched_on / reciprocal_on / missing_fields / self_profile_gaps / risk_flags / follow_up_questions`
 - 固定 skill 职责
   - 文档明确只做 `画像 / 条件 -> 候选结果`
   - 不把提醒、代问、撮合状态耦合进来

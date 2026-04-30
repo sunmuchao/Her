@@ -2632,12 +2632,28 @@ def build_no_match_diagnostics(records, criteria):
         for item in top_reasons
     )
 
+    return build_no_match_diagnostics_payload(
+        scanned_count=len(records),
+        passed_count=passed_count,
+        usable_count=usable_count,
+        top_reasons=top_reasons,
+        relax_suggestions=relax_suggestions[:3],
+    )
+
+
+def build_no_match_diagnostics_payload(
+    scanned_count,
+    passed_count,
+    usable_count,
+    top_reasons,
+    relax_suggestions,
+):
     return {
-        "scanned_count": len(records),
+        "scanned_count": scanned_count,
         "passed_count": passed_count,
         "usable_count": usable_count,
         "top_reasons": top_reasons,
-        "relax_suggestions": relax_suggestions[:3],
+        "relax_suggestions": relax_suggestions,
     }
 
 
@@ -3386,32 +3402,72 @@ def evaluate_candidate(record, criteria, diagnostics=False, reciprocal_mode="str
         self_profile=criteria.get("self_profile"),
     )
 
-    result = {
-        "matched": True,
+    result = build_match_result(
+        record=record,
+        score=score,
+        fit_score=fit_score,
+        confidence_score=confidence_score,
+        risk_score=risk_score,
+        matched_on=unique_ordered(reasons),
+        reciprocal_on=unique_ordered(reciprocal_reasons),
+        missing_fields=candidate_missing_fields,
+        self_profile_gaps=self_profile_gaps,
+        risk_flags=unique_ordered(risk_flags),
+        match_evidence=unique_ordered(match_evidence),
+        follow_up_questions=follow_up_questions,
+        verified_rank=verified_sort_rank,
+        activity_sort_ts=int(activity_dt.timestamp()) if activity_dt else 0,
+        profile_status_rank=profile_status_rank(profile_status),
+        matched=True,
+        reject_reason=None,
+    )
+    if not diagnostics:
+        result.pop("matched", None)
+        result.pop("reject_reason", None)
+    return result
+
+
+def build_match_result(
+    record,
+    score,
+    fit_score,
+    confidence_score,
+    risk_score,
+    matched_on,
+    reciprocal_on,
+    missing_fields,
+    self_profile_gaps,
+    risk_flags,
+    match_evidence,
+    follow_up_questions,
+    verified_rank,
+    activity_sort_ts,
+    profile_status_rank,
+    matched=True,
+    reject_reason=None,
+):
+    return {
+        "matched": matched,
         "id": record.get("id"),
         "name": record.get("name") or "未命名",
         "score": score,
         "fit_score": fit_score,
         "confidence_score": confidence_score,
         "risk_score": risk_score,
-        "matched_on": unique_ordered(reasons),
-        "reciprocal_on": unique_ordered(reciprocal_reasons),
-        "missing_fields": candidate_missing_fields,
+        "matched_on": matched_on,
+        "reciprocal_on": reciprocal_on,
+        "missing_fields": missing_fields,
         "self_profile_gaps": self_profile_gaps,
-        "risk_flags": unique_ordered(risk_flags),
-        "match_evidence": unique_ordered(match_evidence),
+        "risk_flags": risk_flags,
+        "match_evidence": match_evidence,
         "follow_up_questions": follow_up_questions,
         "profile": strip_internal_fields(record),
         "source_file": record.get("source_file"),
-        "verified_rank": verified_sort_rank,
-        "activity_sort_ts": int(activity_dt.timestamp()) if activity_dt else 0,
-        "profile_status_rank": profile_status_rank(profile_status),
-        "reject_reason": None,
+        "verified_rank": verified_rank,
+        "activity_sort_ts": activity_sort_ts,
+        "profile_status_rank": profile_status_rank,
+        "reject_reason": reject_reason,
     }
-    if not diagnostics:
-        result.pop("matched", None)
-        result.pop("reject_reason", None)
-    return result
 
 
 def unique_ordered(items):
@@ -3849,35 +3905,55 @@ def evaluate_records(records, criteria, limit):
     return select_diverse_results(results, limit)
 
 
-def execute_search(args):
-    criteria = build_criteria_from_args(args)
-    sources = resolve_sources(args)
-    records = collect_source_records(args, criteria, sources)
-
+def apply_self_profile_context(args, criteria, records):
     self_profile = build_self_profile_from_args(args, records)
     if self_profile:
         criteria["self_profile"] = self_profile
     if args.self_id is not None:
         criteria.setdefault("exclude_record_refs", set()).add(record_ref(self_profile))
+    return self_profile
 
-    results = evaluate_records(records, criteria, args.limit)
-    attach_photo_previews(results, args.photo_preview_count, photos_table_name=args.photos_table)
 
-    search_run = {
+def build_search_run(criteria, records, results):
+    return {
         "criteria": criteria,
         "records": records,
         "results": results,
         "fallback_results": None,
         "diagnostics": None,
     }
-    if not results:
-        search_run["fallback_results"] = build_fallback_candidates(
-            records,
-            criteria,
-            limit=min(args.limit, 3),
-        )
-        search_run["diagnostics"] = build_no_match_diagnostics(records, criteria)
+
+
+def populate_no_match_details(search_run, args):
+    if search_run["results"]:
+        return search_run
+
+    search_run["fallback_results"] = build_fallback_candidates(
+        search_run["records"],
+        search_run["criteria"],
+        limit=min(args.limit, 3),
+    )
+    search_run["diagnostics"] = build_no_match_diagnostics(
+        search_run["records"],
+        search_run["criteria"],
+    )
     return search_run
+
+
+def prepare_search_context(args):
+    criteria = build_criteria_from_args(args)
+    sources = resolve_sources(args)
+    records = collect_source_records(args, criteria, sources)
+    apply_self_profile_context(args, criteria, records)
+    return criteria, records
+
+
+def execute_search(args):
+    criteria, records = prepare_search_context(args)
+    results = evaluate_records(records, criteria, args.limit)
+    attach_photo_previews(results, args.photo_preview_count, photos_table_name=args.photos_table)
+    search_run = build_search_run(criteria, records, results)
+    return populate_no_match_details(search_run, args)
 
 
 def render_search_output(search_run, include_source=False):
