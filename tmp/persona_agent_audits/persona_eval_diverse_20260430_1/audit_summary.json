@@ -1,0 +1,278 @@
+{
+  "run_id": "persona_eval_diverse_20260430_1",
+  "generated_at": "2026-04-30",
+  "scope": [
+    "multi-agent persona review",
+    "persona-memory-sync accuracy audit",
+    "public exposure audit",
+    "partner-search satisfaction audit"
+  ],
+  "overall": {
+    "agent_count": 6,
+    "overall_score_avg": 76.0,
+    "matching_satisfaction_distribution": {
+      "medium": 6
+    },
+    "common_memory_issues": [
+      "公开摘要过度简化",
+      "条件接受被写宽",
+      "硬要求被降级或丢失",
+      "关系目标强度漂移",
+      "婚育语义映射不准"
+    ],
+    "common_public_risks": [
+      "家庭与健康压力不宜公开",
+      "收入信息不宜公开",
+      "婚育和前任隐私不宜公开",
+      "单位学校等可识别信息不宜公开",
+      "过往恋爱细节"
+    ],
+    "common_matching_issues": [
+      "软偏好权重不足",
+      "推进落地判断不足",
+      "系统对候选人的描述过度依赖“vibe化”语言，像“有温度会接话”“更容易聊出感觉”这种表述很多，但真正能判断长期关系的硬信息还是偏少。",
+      "三个候选的文案结构和优点非常相似，区分度不够，容易看起来像同一类模板化推荐，缺少更具体的人物差异。",
+      "missing_fields 里 self_height、self_has_children 都缺失，这种基础信息缺口会直接影响我是否愿意投入时间了解。"
+    ]
+  },
+  "personas": [
+    {
+      "persona_id": "shanghai_exec_f",
+      "display_name": "用户B01",
+      "profile_id": 30088,
+      "overall_score": 76.0,
+      "matching_satisfaction": "medium",
+      "memory_drift": [
+        "user_persona.target_cities 写成“上海”偏窄了，我不是只接受上海户籍或纯本地，我也接受人在外地但稳定留沪的人。",
+        "user_persona.target_accept_long_distance 和 profile_internal.accept_long_distance 写成“可协商”太松，容易把我记成能接受长期异地；我的真实边界是短期异地可了解，但不接受长期不落地异地。",
+        "user_persona.self_drinking 和 profile_internal.drinking 写成“偶尔”不算错，但比“社交型少量饮酒”更粗，少了场景和边界感。",
+        "public_profile_view.relationship_goal、profile_internal.public_personality 把“最好1到2年内结婚”弱化成了“认真了解，合适的话希望稳定推进”，婚姻导向和时间预期被写轻了。",
+        "public_profile_view.values 漏掉了“婚姻诚意”这个关键点，只剩情绪稳定、消费观清醒、表达自然、长期投入能力，不够完整。",
+        "user_persona.target_cities 这种写法容易把我的软偏好硬化成硬筛选条件，真正准确的是 target_location_semantics 那句完整语义。"
+      ],
+      "do_not_public": [
+        "准确收入",
+        "具体公司",
+        "过往恋爱细节",
+        "家里催婚压力"
+      ],
+      "matching_verdict": [
+        "沈既白：愿意聊",
+        "顾闻舟：愿意聊",
+        "季沉川：一般"
+      ],
+      "systemic_issues": [
+        "系统对候选人的描述过度依赖“vibe化”语言，像“有温度会接话”“更容易聊出感觉”这种表述很多，但真正能判断长期关系的硬信息还是偏少。",
+        "三个候选的文案结构和优点非常相似，区分度不够，容易看起来像同一类模板化推荐，缺少更具体的人物差异。",
+        "missing_fields 里 self_height、self_has_children 都缺失，这种基础信息缺口会直接影响我是否愿意投入时间了解。",
+        "系统虽然写了我不接受长期不落地异地，但这轮候选全是上海同城，没有验证系统是否真的理解并执行了这条边界。",
+        "系统把很多软偏好都往高分上叠加了，但对“婚姻诚意”和“现实推进能力”的证据还不够硬，容易显得评分偏乐观。"
+      ],
+      "private_boundaries": [
+        "准确收入",
+        "具体公司",
+        "过往恋爱细节",
+        "家里催婚压力"
+      ]
+    },
+    {
+      "persona_id": "suzhou_divorce_m",
+      "display_name": "用户B02",
+      "profile_id": 30090,
+      "overall_score": 74.0,
+      "matching_satisfaction": "medium",
+      "memory_drift": [
+        "target_cities 把“江浙沪范围内”收窄成“苏州,无锡,上海,南京,杭州”，范围被写死了。",
+        "target_accept_long_distance=可协商 记得偏松，我实际是对长期异地比较谨慎，不是中性开放。",
+        "must_have_tags 把我看重的价值观写得过硬了，像“生活稳定、尊重彼此、有家庭观念”更像重要偏好，不一定都该当硬门槛。",
+        "preferred_traits 漏了“愿意沟通”和“情绪稳定”的权重，这两个对我其实很关键。",
+        "public_profile_view.values 只保留了“生活稳定、能接受再婚现实、愿意沟通、情绪稳定”，把“真诚、尊重彼此、生活规律、家庭观念”漏掉了。",
+        "public_profile_view.personality 写得太泛，没体现我更看重相处稳定和沟通质量，容易把我写成模板化再婚用户。"
+      ],
+      "do_not_public": [
+        "离婚原因",
+        "房贷压力",
+        "父母身体负担",
+        "准确收入数字"
+      ],
+      "matching_verdict": [
+        "顾书宁：愿意聊",
+        "林乔安：愿意聊",
+        "苏念远：一般"
+      ],
+      "systemic_issues": [
+        "系统把我的“长期异地较谨慎”处理得还是偏松，容易继续给我推需要较强异地承受能力的人。",
+        "候选文案模板感很重，三个人的 vibe 和匹配理由高度相似，区分度不够，像在重复同一类标签。",
+        "系统过度强调“能接受再婚现实、现实安排”，这个方向没错，但容易压过我同样看重的真诚、尊重彼此、生活规律和家庭观念。",
+        "候选 notes 多次提到“孩子安排”，而我是离异无孩，这说明系统在再婚场景里有把“离异”默认联想到“有孩子议题”的倾向。"
+      ],
+      "private_boundaries": [
+        "离婚原因",
+        "房贷压力",
+        "父母身体负担",
+        "准确收入"
+      ]
+    },
+    {
+      "persona_id": "wuxi_pharma_f",
+      "display_name": "用户B03",
+      "profile_id": 30089,
+      "overall_score": 76.0,
+      "matching_satisfaction": "medium",
+      "memory_drift": [
+        "字段 `target_accept_long_distance` 写成“可协商”还是偏宽，容易把我记成接受异地；更准确的是“原则上不接受远距离异地，只有近距离或对方有明确落地计划时可沟通”。",
+        "字段 `self_drinking` 写成“否”有点过满，我原本是“基本不喝酒”，不是绝对完全不喝。",
+        "字段 `must_have_tags` 把我很多“看重”的内容都写成了硬条件，语气偏重了，像“有计划”“稳定工作”更像重要偏好，不一定都要做成强筛选门槛。",
+        "字段 `public_profile_view.relationship_goal` 以及相关公开文案里写成“认真了解，合适会考虑结婚”，比我原本“认真找恋爱对象，合适希望稳定结婚”弱了一点，少了我对稳定关系的明确度。",
+        "字段 `preferred_traits` 虽然概括得还行，但没有很好体现我对“有行动力”“尊重他人”的重视程度。",
+        "字段 `profile_internal.notes` 只摘了部分雷点，漏掉了“边界感差”和“说一套做一套”这两个我也很在意的点。"
+      ],
+      "do_not_public": [
+        "具体医院",
+        "准确收入数字",
+        "轻微焦虑史",
+        "家庭催婚压力"
+      ],
+      "matching_verdict": [
+        "陈安阳：愿意聊",
+        "徐铭远：一般",
+        "张嘉卓：一般"
+      ],
+      "systemic_issues": [
+        "系统对我“原则上不接受远距离异地”的语义抓得不够严，容易放进一些只是泛泛“可协商”的人，筛选边界还不够准。",
+        "候选说明里“有温度”“有生活感”“有审美输出”这类感受型标签很多，但我真正会在意的“少酒”“责任心”“行动力”“推进是否落地”证据不够具体。",
+        "关键缺失字段不少，比如身高、是否有孩子都显示缺失，这会影响我判断，也说明系统在硬信息不完整的情况下就给了较高分。",
+        "几位候选整体风格很像，都是稳重顺聊型，说明系统在多样性上一般，没有明显拉开不同类型但仍符合我要求的人选。",
+        "对“长期意图”的判断偏依赖文案和氛围词，缺少更真实的落地信号，比如时间投入、见面节奏、城市规划这些。"
+      ],
+      "private_boundaries": [
+        "具体医院",
+        "准确收入",
+        "轻微焦虑史",
+        "家庭催婚压力"
+      ]
+    },
+    {
+      "persona_id": "nanjing_academic_f",
+      "display_name": "用户B04",
+      "profile_id": 30091,
+      "overall_score": 76.0,
+      "matching_satisfaction": "medium",
+      "memory_drift": [
+        "user_persona.self_drinking、profile_internal.drinking 写成了“否”，这比我原话“基本不喝酒”更硬，容易被理解成绝对不喝。",
+        "user_persona.self_relationship_goal、profile_internal.relationship_goal、public_profile_view.relationship_goal 把“结婚不着急但方向明确”弱化成了“认真恋爱/认真了解，重视长期关系”，漏掉了我对婚姻方向是明确的这个关键语义。",
+        "public_profile_view.values、public_profile_view.notes 把“不接受长期异地”写成了“更适合同城或近距离相处”，边界被写软了，像偏好，不像明确不接受。",
+        "profile_internal.notes 只保留了部分不能接受项，漏掉了“反复拉扯”和“态度暧昧”这两个我说得很明确的点。",
+        "preference_summary_internal、profile_internal.values 没有把“有自己的兴趣爱好”这个明确加分项体现出来，也弱化了我对“生活稳定”的看重。",
+        "target_location_semantics 这个字段写的不是纯地点语义，而是整段择偶偏好，字段含义有点串了。"
+      ],
+      "do_not_public": [
+        "具体任职学校名称",
+        "论文压力和相关细节",
+        "父母职业",
+        "备孕焦虑相关内容"
+      ],
+      "matching_verdict": [
+        "顾行远：愿意聊",
+        "沈临舟：一般",
+        "陆行止：愿意聊"
+      ],
+      "systemic_issues": [
+        "系统在说明理由时过度使用“更容易有感觉”“更有火花”“人物感更强”这类偏主观的话，具体可验证的信息反而不够多。",
+        "系统没有把我“结婚不着急但方向明确”这个点稳定地贯穿到匹配里，更像是在匹配“认真恋爱”，少了一层婚姻方向的校准。",
+        "系统没有明确校验婚育观边界，却把带有“不要孩子”这种强前提的人直接推上来，这对我来说属于关键风险，不该只放在备注里。",
+        "候选解释里对学历和认知层次的加分写得很重，但我真正看重的是情绪稳定、沟通质量、边界感和现实推进，权重看起来有点失衡。",
+        "缺失字段像 self_height、self_has_children 持续存在，说明匹配判断里还有一些基础信息空缺，结果可信度会受影响。"
+      ],
+      "private_boundaries": [
+        "学校名称",
+        "论文压力",
+        "父母职业",
+        "备孕焦虑"
+      ]
+    },
+    {
+      "persona_id": "hangzhou_divorce_mom_f",
+      "display_name": "用户B05",
+      "profile_id": 30092,
+      "overall_score": 76.0,
+      "matching_satisfaction": "medium",
+      "memory_drift": [
+        "target_location_semantics 这个字段写偏了，应该单独表达我对杭州/上海和异地边界的语义，而不是把整段择偶偏好塞进去。",
+        "public_values 和 public_notes 把‘原则上不接受异地’弱化成了‘更适合同城或近距离认真相处’，这会让人误解成我只是偏好同城，不是边界明确。",
+        "must_have_tags 把‘接受孩子现实’写得过硬了，我的意思更接近重要前提和现实理解，不是标签式地生硬筛选。",
+        "profile_internal.values、matcher_summary_internal 压缩得有点重，漏掉了‘真实’‘有分寸’‘生活习惯健康’这些我明确提过、而且对我也挺重要的点。",
+        "profile_internal.notes 只保留了部分负向偏好，漏掉了‘责任感弱’和‘排斥孩子现实’这两个我明确不能接受的点。",
+        "public_profile_view.education 写成‘本科及以上’，这是泛化，不是我的准确信息；我本人是本科。",
+        "整套记录没有把‘我能接受上海，不等于接受长期异地’这个最容易被记偏的提醒明确保留下来，关键语义还是漏了。"
+      ],
+      "do_not_public": [
+        "离婚原因",
+        "孩子具体情况",
+        "孩子不随身这类更细的家庭安排",
+        "准确收入金额和波动",
+        "收入区间这类过细收入信息",
+        "前夫相关纠纷"
+      ],
+      "matching_verdict": [
+        "顾时聿：愿意聊",
+        "周叙衡：愿意聊",
+        "沈越川：一般"
+      ],
+      "systemic_issues": [
+        "候选类型过于集中，三个人都偏同一类稳定理性男，两个还是相近职业，系统多样性不够。",
+        "系统明显过度依赖‘情绪稳定、边界清楚、接受孩子现实’这些标签，导致推荐虽然安全，但容易审美疲劳，也不够像真实筛人。",
+        "对我‘杭州或上海都可以，但原则上不接受异地’的理解没有充分转化，结果里只有杭州，没有看到上海但能落地推进关系的人。",
+        "候选文案里很多描述像模板化夸人，像‘有生活感’‘有温度会接话’‘稳重有分寸’这种重复词很多，真实区分度不高。",
+        "系统对我的公开偏好表达偏软，容易让搜索策略也变软，把边界条件和偏好条件混在一起。"
+      ],
+      "private_boundaries": [
+        "离婚原因",
+        "孩子具体情况",
+        "准确收入波动",
+        "前夫相关纠纷"
+      ]
+    },
+    {
+      "persona_id": "shanghai_creative_m",
+      "display_name": "用户B06",
+      "profile_id": 30093,
+      "overall_score": 78.0,
+      "matching_satisfaction": "medium",
+      "memory_drift": [
+        "user_persona.target_accept_long_distance 被写成“可协商”不准。我表达的是不接受长期异地，只接受上海优先和苏州杭州这种短途，不该被理解成异地本身可以协商。",
+        "profile_internal.long_distance 和 accept_long_distance 也被写成了“可协商”，这会把我的边界写松，和我原本的意思不一样。",
+        "public_profile_view.relationship_goal 和 public_profile_view.personality 把“认真谈长期关系”弱化成了“认真了解”，少了我对长期关系和结婚导向的明确度。",
+        "must_have_tags 只收了“真诚、愿意沟通、有情绪回应、尊重人”，漏掉了我明确在意的“生活状态正常、聊得来”，关键信息不完整。",
+        "preferred_traits 把我明确说过的偏好和系统自己归纳的词混在一起了，比如“情绪稳定、表达自然、相处不拧巴、长期关系意愿明确”更像推断或延展，不完全等于我原话。",
+        "profile_internal.notes 漏了我明确不能接受的“情绪攻击”，只保留了前面几项，少了一个重要雷点。",
+        "user_persona.self_relationship_goal 和 profile_internal.relationship_goal 虽然方向没错，但“认真恋爱，合适会考虑结婚”还是比我原话“认真谈长期关系，合适会往结婚走”轻了一点。"
+      ],
+      "do_not_public": [
+        "具体项目和公司",
+        "具体收入区间和收入中不稳定的细节",
+        "工作强度的细节展开",
+        "家里对职业的看法",
+        "前任细节"
+      ],
+      "matching_verdict": [
+        "孙书然：愿意聊",
+        "郑舒然：愿意聊",
+        "孙书宁：一般"
+      ],
+      "systemic_issues": [
+        "系统对我“不接受长期异地”的理解不够稳，记忆里已经被写成“可协商”，这会直接影响候选筛选逻辑。",
+        "系统有点过度依赖气质型标签，比如“有温度会接话”“聊天更容易有来有回”“有审美输出”，这些能参考，但容易把软感受说得过满。",
+        "一些关键字段缺失没有被真正补齐，比如 self_height、self_has_children 一直缺着，说明画像完整度还不够，互相筛选时会留隐患。",
+        "公开层和内部层对关系目标的措辞不一致，公开层把我的长期结婚导向写弱了，这种弱化也可能让匹配结果偏向只是想先随便聊的人。",
+        "候选排序里对风险项的权重看起来还不够清晰，比如第三位已经出现喝酒可协商的风险，但总分仍然非常接近前两位。"
+      ],
+      "private_boundaries": [
+        "具体项目和公司",
+        "收入中不稳定的细节",
+        "家里对职业的看法",
+        "前任细节"
+      ]
+    }
+  ]
+}
