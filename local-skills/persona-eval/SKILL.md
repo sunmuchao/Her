@@ -1,140 +1,100 @@
 ---
 name: persona-eval
-description: Rerun and evaluate matchmaking persona benchmark sets, including batch persona search regression, hard-mode checks, result summary, and agent-feedback metrics for dating search quality.
+description: Audit the full matchmaking journey with roleplayed user agents who disclose persona details, inspect stored and public memory, review partner recommendations, and judge satisfaction themselves.
 ---
 
 # Persona Eval
 
-Use this skill when the user wants to judge whether the current matchmaking search quality is good enough across many personas, such as:
+Use this skill when the user wants to audit the full journey from the simulated user's own point of view, such as:
 
-- "把这批 persona 再跑一遍看看效果"
-- "做一轮回归测试"
-- "看看 hard mode 这一版有没有退化"
-- "把 agent 反馈汇总成分数"
-- "对比 v10 和 v11 哪版更好"
 - "启动多个模拟用户 agent 跑完整撮合流程"
-- "让模拟用户检查画像落库、公开展示和找对象结果"
+- "让每个模拟用户自己检查画像落库对不对"
+- "让模拟用户看公开展示有没有泄露不想公开的信息"
+- "让模拟用户自己判断推荐对象满不满意"
 
-This skill is for evaluation, not live matchmaking. If the user wants to actually find candidates in the database, use `partner-search`. If the user wants to persist new persona memory into MySQL, use `persona-memory-sync`.
+This skill is for audit, not live matchmaking. If the user only wants to search the database for candidates, use `partner-search`. If the user only wants to persist or merge persona memory into MySQL, use `persona-memory-sync`.
+
+Do not use a local script that calls OpenAI and produces the review for you. The judgment must come from the roleplayed user agent itself.
+
+## Core Rule
+
+- One persona equals one reviewer.
+- The same roleplayed user agent who disclosed the persona should also review the stored data and the recommendation result.
+- The main agent may run deterministic local scripts, SQL queries, and search commands.
+- The main agent must not let a local script generate the final verdict.
+
+## Inputs
+
+- Default persona set: `local-skills/persona-memory-sync/references/audit_personas.json`
+- Persona memory tables and sync scripts from `local-skills/persona-memory-sync`
+- Search script from `local-skills/partner-search/scripts/search_candidates.py`
+- MySQL DSN such as `mysql://root@127.0.0.1:3307/her?table=profiles&photos_table=profile_photos`
 
 ## Workflow
 
-1. Pick the evaluation input.
-   Use a JSON file whose items contain at least `id`, `name`, and `command`.
-2. Use the full journey audit when you want simulated user agents to reveal persona info, inspect stored/public memory, run partner search, and judge satisfaction.
-   Run `python3 scripts/run_multi_agent_matchmaking_audit.py --source ... --output-dir ...`.
-3. Prefer the bundle runner when you want the standard artifact set.
-   Run `python3 scripts/run_persona_eval_bundle.py --input ... --results-output ... --packets-output ... --metrics-output ...`.
-4. Rerun only the search batch when you do not need packets yet.
-   Run `python3 scripts/run_persona_eval.py --input ... --results-output ...`.
-5. Inspect the result JSON.
-   Check `returncode`, `has_match`, `candidate_count`, and `output`.
-6. Generate reviewer packets separately when needed.
-   Run `python3 scripts/generate_persona_packets.py --input ... --output ... --section-label ...`.
-7. If agent or human review feedback exists, summarize it.
-   Run `python3 scripts/summarize_agent_feedback.py --input ... --output ...`.
-8. Report the conclusion.
+1. Pick the personas to audit.
+   Use the built-in `audit_personas.json` or a user-provided set.
+2. Start one roleplayed user agent per persona when the runtime supports sub-agents.
+   Pass the persona's `role_brief` and `private_boundaries`. Tell the agent to do two jobs:
+   - answer as that user during persona collection
+   - later judge whether the stored data, public rendering, and match result feel right
+3. Let the roleplayed user expose profile and preference information through conversation.
    Separate:
-   - command health
-   - match coverage
-   - qualitative problems
-   - score changes versus the prior version
+   - what the user explicitly said
+   - what the system is only strongly inferring
+4. Persist the memory with deterministic local tools.
+   Use:
+   - `python3 local-skills/persona-memory-sync/scripts/ensure_persona_tables.py`
+   - `python3 local-skills/persona-memory-sync/scripts/upsert_persona_memory.py`
+   - `python3 local-skills/persona-memory-sync/scripts/sync_persona_to_profile.py`
+   - `python3 local-skills/persona-memory-sync/scripts/render_public_profile.py --write-profile`
+5. Fetch the audit snapshot.
+   At minimum inspect:
+   - `user_persona_observations`
+   - `user_personas`
+   - `profiles`
+   - `public_profile_view`
+6. Send the stored snapshot back to the same roleplayed user agent.
+   Ask that agent to judge:
+   - which fields are accurate
+   - which fields drifted or became too hard a constraint
+   - which public fields expose information the user would not want shown
+7. Run partner search for that persona.
+   Use `python3 local-skills/partner-search/scripts/search_candidates.py` with reciprocal matching based on the stored profile.
+8. Send the candidate result or no-match explanation back to the same roleplayed user agent.
+   That agent should decide:
+   - whether the recommended people are actually acceptable
+   - whether it is only "能聊聊再看" or truly "满意"
+   - whether a no-match result feels reasonable or feels like a system bug
+9. Aggregate the audit across personas.
+   Separate:
+   - memory accuracy problems
+   - privacy exposure problems
+   - matching logic problems
+   - whether the simulated users themselves felt satisfied
 
-## Expected Artifacts
+## What To Look For
 
-Typical artifact flow:
+- `must_have_tags` holding soft traits such as `愿意沟通` or `稳定工作` and over-filtering the pool
+- public rewrite drift such as awkward wording, duplicated phrases, or softened meaning that no longer matches the user
+- private boundaries leaking into public text, especially exact income, employer, hospital, divorce reason, family burden, or medical history
+- recommendation quality gaps where the profile is stored correctly but the search result still feels wrong to the simulated user
 
-- `persona_experiment_input_*.json`: evaluation input set
-- `persona_experiment_results_*.json`: rerun outputs
-- `persona_agent_feedback_*.json`: agent or reviewer scoring
-- `persona_agent_metrics_*.json`: aggregated feedback metrics
-- `persona_agent_packets_*.md`: human-readable packets for review
+## Output Shape
 
-Use the existing files in the repo as templates when the user wants to continue an existing benchmark line instead of inventing a new format.
+Report each persona in plain language with:
 
-## Run The Scripts
+- `persona`
+- `what the user actually meant`
+- `stored correctly`
+- `stored with drift`
+- `publicly exposed but should not be`
+- `candidate result`
+- `simulated user verdict`
+- `systemic issue behind the result`
 
-Run the standard trio in one command:
+Keep the simulated user's own judgment separate from the main agent's system diagnosis.
 
-```bash
-python3 scripts/run_persona_eval_bundle.py \
-  --input /path/to/persona_experiment_input_v11_2026-04-29.json \
-  --results-output /path/to/persona_experiment_results_v12_2026-04-30.json \
-  --packets-output /path/to/persona_agent_packets_v7_2026-04-30.md \
-  --metrics-output /path/to/persona_experiment_metrics_v12_2026-04-30.json \
-  --section-label round7 \
-  --label v12
-```
+## Legacy Note
 
-Run the full simulated matchmaking journey:
-
-```bash
-python3 scripts/run_multi_agent_matchmaking_audit.py \
-  --source 'mysql://root@127.0.0.1:3307/her?table=profiles&photos_table=profile_photos' \
-  --output-dir /path/to/output \
-  --max-personas 3 \
-  --candidate-limit 2
-```
-
-Add reviewer metrics in the same command when feedback JSON already exists:
-
-```bash
-python3 scripts/run_persona_eval_bundle.py \
-  --input /path/to/persona_experiment_input_v11_2026-04-29.json \
-  --results-output /path/to/persona_experiment_results_v12_2026-04-30.json \
-  --packets-output /path/to/persona_agent_packets_v7_2026-04-30.md \
-  --metrics-output /path/to/persona_experiment_metrics_v12_2026-04-30.json \
-  --feedback-input /path/to/persona_agent_feedback_v11_2026-04-29.json \
-  --review-metrics-output /path/to/persona_agent_metrics_v12_2026-04-30.json \
-  --section-label round7 \
-  --label v12
-```
-
-Rerun a standard persona batch:
-
-```bash
-python3 scripts/run_persona_eval.py \
-  --input /path/to/persona_experiment_input_v11_2026-04-29.json \
-  --results-output /path/to/persona_experiment_results_v12_2026-04-30.json \
-  --metrics-output /path/to/persona_experiment_metrics_v12_2026-04-30.json
-```
-
-Rerun a hard-mode batch:
-
-```bash
-python3 scripts/run_persona_eval.py \
-  --input /path/to/persona_experiment_hard_mode_input_v12_2026-04-29.json \
-  --results-output /path/to/persona_experiment_hard_mode_results_v13_2026-04-30.json \
-  --metrics-output /path/to/persona_experiment_hard_mode_metrics_v13_2026-04-30.json
-```
-
-Summarize review feedback:
-
-```bash
-python3 scripts/summarize_agent_feedback.py \
-  --input /path/to/persona_agent_feedback_v11_2026-04-29.json \
-  --output /path/to/persona_agent_metrics_v12_2026-04-30.json
-```
-
-Generate markdown review packets:
-
-```bash
-python3 scripts/generate_persona_packets.py \
-  --input /path/to/persona_experiment_results_v11_2026-04-29.json \
-  --output /path/to/persona_agent_packets_v7_2026-04-30.md \
-  --section-label round7
-```
-
-## Interpretation Rules
-
-- Treat non-zero `returncode` as an execution problem first, not a ranking problem.
-- Treat `has_match=false` as a coverage issue, then inspect whether the persona is intentionally strict.
-- Read `candidate_count` as a weak signal only. More candidates does not mean better candidates.
-- When comparing versions, prefer absolute dates and filenames in the conclusion so the benchmark lineage is clear.
-- When score summaries are available, separate top-1 quality from overall average quality.
-- Call out benchmark blind spots plainly. Example: if all reviews are "愿意继续聊", say the set may not be discriminative enough.
-
-## Resources
-
-- If the input commands call `local-skills/partner-search/scripts/search_candidates.py`, that is expected. This skill evaluates the search system; it does not replace it.
-- When the repo already has prior benchmark artifacts, read only the specific version files you need for the current comparison.
+Legacy deterministic benchmark scripts may still exist in this directory for plain search reruns or packet rendering, but they are not the path for user-judgment audit. Do not reintroduce a local script that calls OpenAI to play the role and write the verdict in one step.
