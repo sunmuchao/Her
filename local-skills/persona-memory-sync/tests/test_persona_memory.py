@@ -231,7 +231,7 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertEqual(payload["accept_partner_children"], "现阶段不太接受")
         self.assertEqual(payload["accept_partner_children_strength"], "谨慎接受")
         self.assertEqual(payload["accept_partner_children_semantics"], "现阶段不太接受")
-        self.assertIn("对子女情况=现阶段不太接受", payload["notes"])
+        self.assertIn("你对对方孩子情况=现阶段不太接受", payload["notes"])
 
     def test_normalize_patch_canonicalizes_legacy_guarded_children_alias(self):
         patch = persona_memory_lib.normalize_patch(
@@ -441,7 +441,7 @@ class PersonaMemoryTests(unittest.TestCase):
             "personality": "无锡本地，结婚导向，偏务实，倾向稳定清晰的长期关系。",
         }
         payload = persona_memory_lib.build_profile_payload(persona, existing_profile=existing_profile)
-        self.assertEqual(payload["personality"], "现居无锡，以长期稳定关系为前提，偏务实，倾向稳定清晰的长期关系。")
+        self.assertEqual(payload["personality"], "现居无锡，结婚导向，偏务实，倾向稳定清晰的长期关系。")
 
     def test_build_profile_payload_keeps_four_disliked_traits_in_internal_notes(self):
         payload = persona_memory_lib.build_profile_payload(

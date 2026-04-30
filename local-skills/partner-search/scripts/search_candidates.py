@@ -928,6 +928,25 @@ def effective_has_children(record):
     return None
 
 
+def marital_status_match_options(record):
+    status = as_text(record.get("marital_status"))
+    if not status:
+        return []
+    options = [status]
+    lowered = as_lower(status)
+    has_children = normalize_bool(record.get("has_children"))
+    if lowered == "离异":
+        if has_children is True:
+            options.append("离异已育")
+        elif has_children is False:
+            options.append("离异未育")
+    elif lowered == "离异已育":
+        options.append("离异")
+    elif lowered == "离异未育":
+        options.append("离异")
+    return unique_ordered(options)
+
+
 def effective_activity_datetime(record):
     return effective_activity_info(record)[1]
 
@@ -2427,6 +2446,7 @@ def format_rejection_reason(reason):
         "reciprocal_smoking_acceptance": "对方不能接受你的抽烟情况",
         "reciprocal_drinking_acceptance": "对方不能接受你的喝酒情况",
         "reciprocal_long_distance_acceptance": "对方不能接受异地",
+        "candidate_pool_empty_after_exclusions": "筛选后没有其他可用候选",
     }
     if code == "must_have_missing":
         return f"缺少必需关键词「{detail}」"
@@ -2457,19 +2477,26 @@ def suggestion_for_rejection(reason):
         return "把生活习惯类条件分成硬雷点和可追问项，别一刀切。"
     if code in {
         "marital_status_mismatch",
+        "accept_marital_status_strength_mismatch",
+        "reciprocal_marital_status_preference",
+        "reciprocal_marital_status_acceptance_not_strong",
+        "reciprocal_marital_status_acceptance_unknown",
+    }:
+        return "婚况会明显压缩池子，先看对方是否明确接受再婚/复杂婚史。"
+    if code in {
         "has_children_mismatch",
         "want_children_mismatch",
         "accept_partner_children_mismatch",
-        "accept_marital_status_strength_mismatch",
         "accept_partner_children_strength_mismatch",
-        "reciprocal_marital_status_preference",
         "reciprocal_children_acceptance",
-        "reciprocal_marital_status_acceptance_not_strong",
         "reciprocal_children_acceptance_not_strong",
-        "reciprocal_marital_status_acceptance_unknown",
         "reciprocal_children_acceptance_unknown",
     }:
-        return "婚况和孩子会明显压缩池子，建议先保留边界内可聊对象再二次确认。"
+        return "孩子相关条件会明显压缩池子，先确认对方是明确接受、谨慎接受还是完全不接受。"
+    if code in {
+        "candidate_pool_empty_after_exclusions",
+    }:
+        return "这轮不是排序问题，是当前城市/年龄段没有其他可用候选，先补数据池。"
     if code == "required_known_missing":
         return f"先别强制要求写明{field_display_name(detail)}，保留结果后再追问。"
     if code.startswith("reciprocal_"):
@@ -2482,6 +2509,7 @@ def build_no_match_diagnostics(records, criteria):
         return {
             "scanned_count": 0,
             "passed_count": 0,
+            "usable_count": 0,
             "top_reasons": [],
             "relax_suggestions": [
                 "数据源预筛后已经没候选了，先检查城市、年龄、资料状态、最近活跃、认证等级这些硬条件。"
@@ -2490,6 +2518,7 @@ def build_no_match_diagnostics(records, criteria):
 
     rejection_counts = Counter()
     passed_count = 0
+    excluded_count = 0
     for record in records:
         diagnostic = evaluate_candidate(record, criteria, diagnostics=True)
         if diagnostic and diagnostic.get("matched"):
@@ -2498,16 +2527,32 @@ def build_no_match_diagnostics(records, criteria):
         reason = "unknown"
         if diagnostic:
             reason = diagnostic.get("reject_reason") or "unknown"
+        if reason == "exclude_record_ref":
+            excluded_count += 1
+            continue
         rejection_counts[reason] += 1
 
-    top_reasons = [
-        {
-            "reason": reason,
-            "label": format_rejection_reason(reason),
-            "count": count,
-        }
-        for reason, count in rejection_counts.most_common(4)
-    ]
+    usable_count = max(len(records) - excluded_count, 0)
+
+    if rejection_counts:
+        top_reasons = [
+            {
+                "reason": reason,
+                "label": format_rejection_reason(reason),
+                "count": count,
+            }
+            for reason, count in rejection_counts.most_common(4)
+        ]
+    elif excluded_count:
+        top_reasons = [
+            {
+                "reason": "candidate_pool_empty_after_exclusions",
+                "label": "筛选后没有其他可用候选",
+                "count": excluded_count,
+            }
+        ]
+    else:
+        top_reasons = []
     relax_suggestions = unique_ordered(
         suggestion_for_rejection(item["reason"])
         for item in top_reasons
@@ -2516,6 +2561,7 @@ def build_no_match_diagnostics(records, criteria):
     return {
         "scanned_count": len(records),
         "passed_count": passed_count,
+        "usable_count": usable_count,
         "top_reasons": top_reasons,
         "relax_suggestions": relax_suggestions[:3],
     }
@@ -2551,9 +2597,13 @@ def format_no_match_text(diagnostics, fallback_results=None):
     if not diagnostics:
         return "\n".join(lines)
 
-    lines.append(
-        f"pool_summary: scanned={diagnostics.get('scanned_count', 0)} | passed={diagnostics.get('passed_count', 0)}"
-    )
+    pool_parts = [
+        f"scanned={diagnostics.get('scanned_count', 0)}",
+        f"passed={diagnostics.get('passed_count', 0)}",
+    ]
+    if diagnostics.get("usable_count") is not None and diagnostics.get("usable_count") != diagnostics.get("scanned_count"):
+        pool_parts.append(f"usable_after_exclusions={diagnostics.get('usable_count', 0)}")
+    lines.append("pool_summary: " + " | ".join(pool_parts))
     top_reasons = diagnostics.get("top_reasons") or []
     if top_reasons:
         lines.append(
@@ -2725,7 +2775,7 @@ def evaluate_reciprocal_compatibility(record, self_profile, diagnostics=False, r
         self_status = self_profile.get("marital_status")
         if not self_status:
             missing_fields.append("self_marital_status")
-        elif not match_any_exact(self_status, accepted_statuses):
+        elif not any(match_any_exact(option, accepted_statuses) for option in marital_status_match_options(self_profile)):
             return fail("reciprocal_marital_status_preference")
         else:
             reasons.append("对方可接受婚况命中")
@@ -3032,6 +3082,10 @@ def evaluate_candidate(record, criteria, diagnostics=False, reciprocal_mode="str
         elif smoking != desired:
             return fail("smoking_mismatch")
         else:
+            if desired in {"否", "不抽烟", "不吸烟"}:
+                reasons.append("不抽烟")
+            else:
+                reasons.append(f"抽烟习惯 {record.get('smoking')}")
             fit_score += 8
 
     if criteria.get("drinking"):
@@ -3042,6 +3096,10 @@ def evaluate_candidate(record, criteria, diagnostics=False, reciprocal_mode="str
         elif drinking != desired:
             return fail("drinking_mismatch")
         else:
+            if desired in {"否", "不喝酒", "不饮酒"}:
+                reasons.append("少酒/不喝酒")
+            else:
+                reasons.append(f"饮酒习惯 {record.get('drinking')}")
             fit_score += 5
 
     if criteria.get("long_distance"):
@@ -3052,6 +3110,7 @@ def evaluate_candidate(record, criteria, diagnostics=False, reciprocal_mode="str
         elif long_distance != desired:
             return fail("long_distance_mismatch")
         else:
+            reasons.append(f"异地态度 {record.get('long_distance')}")
             fit_score += 8
 
     if criteria.get("housing_statuses"):

@@ -383,6 +383,7 @@ PARTNER_HAS_CHILDREN_MARKERS = (
 LOCATION_NUANCE_MARKERS = (
     "稳定留沪",
     "双城过渡",
+    "异地",
     "长期异地",
     "短期异地",
     "近距离",
@@ -396,7 +397,6 @@ SAFE_PUBLIC_PERSONALITY_PATTERNS = (
     (re.compile(r"生活有规划"), "生活有规划"),
     (re.compile(r"作息规律"), "作息规律"),
     (re.compile(r"作息不算特别规律"), "作息不算特别规律"),
-    (re.compile(r"认真"), "对关系认真"),
 )
 
 
@@ -616,6 +616,16 @@ def split_multi_value(value: Any) -> List[str]:
         if text and text not in seen:
             seen.add(text)
             result.append(text)
+    return result
+
+
+def unique_ordered(items: Iterable[str]) -> List[str]:
+    seen = set()
+    result: List[str] = []
+    for item in items:
+        if item and item not in seen:
+            seen.add(item)
+            result.append(item)
     return result
 
 
