@@ -10,16 +10,19 @@ if str(SYSTEM_ROOT) not in sys.path:
     sys.path.insert(0, str(SYSTEM_ROOT))
 
 from recommendation_system import (  # noqa: E402
+    DEFAULT_NO_MATCH_OPT_IN_PROMPT,
     connect_db,
     create_subscription,
     deliver_in_app_recommendations,
     get_subscription,
+    handle_opt_in_decision,
     initialize_database,
     list_in_app_cards,
     list_recommendations_for_subscription,
     record_recommendation_action,
     refresh_due_subscriptions,
     refresh_subscription,
+    run_search_session,
 )
 
 
@@ -235,6 +238,114 @@ class RecommendationSystemTests(unittest.TestCase):
         self.assertEqual(due, [])
         loaded = get_subscription(self.conn, subscription["subscription_id"])
         self.assertEqual(loaded["last_result_count"], 1)
+
+    def test_run_search_session_requests_opt_in_prompt_when_no_match(self):
+        called = {}
+
+        def fake_search_runner(**kwargs):
+            called.update(kwargs)
+            return {
+                "has_match": False,
+                "result_count": 0,
+                "results": [],
+                "fallback_results": [],
+            }
+
+        session = run_search_session(
+            source="mysql://user:pass@127.0.0.1:3306/her?table=profiles",
+            criteria={"gender": "女", "cities": ["无锡"]},
+            self_profile={"age": 28, "city": "无锡"},
+            limit=8,
+            search_runner=fake_search_runner,
+        )
+
+        self.assertEqual(called["criteria"]["cities"], ["无锡"])
+        self.assertEqual(called["limit"], 8)
+        self.assertTrue(session["needs_opt_in_prompt"])
+        self.assertEqual(session["opt_in_prompt"], DEFAULT_NO_MATCH_OPT_IN_PROMPT)
+
+    def test_run_search_session_skips_opt_in_prompt_when_match_exists(self):
+        session = run_search_session(
+            source="mysql://user:pass@127.0.0.1:3306/her?table=profiles",
+            criteria={"gender": "女", "cities": ["无锡"]},
+            search_runner=lambda **_: {
+                "has_match": True,
+                "result_count": 1,
+                "results": [build_result(701, "已有结果", 61)],
+            },
+        )
+
+        self.assertFalse(session["needs_opt_in_prompt"])
+        self.assertIsNone(session["opt_in_prompt"])
+        self.assertEqual(session["result_count"], 1)
+
+    def test_handle_opt_in_decision_creates_subscription_from_original_search_request(self):
+        session = run_search_session(
+            source="mysql://user:pass@127.0.0.1:3306/her?table=profiles",
+            criteria={"gender": "女", "cities": ["无锡"], "relationship_goals": ["认真恋爱"]},
+            self_id=90001,
+            table_name="profiles",
+            photos_table_name="profile_photos",
+            limit=6,
+            search_runner=lambda **_: {
+                "has_match": False,
+                "result_count": 0,
+                "results": [],
+                "fallback_results": [],
+            },
+        )
+
+        decision = handle_opt_in_decision(
+            self.conn,
+            requester_id=70001,
+            search_session=session,
+            user_opted_in=True,
+            title="空结果后继续留意",
+        )
+
+        self.assertTrue(decision["created_subscription"])
+        subscription = decision["subscription"]
+        self.assertEqual(subscription["requester_id"], 70001)
+        self.assertEqual(subscription["title"], "空结果后继续留意")
+        self.assertEqual(subscription["self_id"], 90001)
+        self.assertEqual(subscription["table_name"], "profiles")
+        self.assertEqual(subscription["photos_table_name"], "profile_photos")
+        self.assertEqual(subscription["limit_count"], 6)
+
+        called = {}
+        refresh_subscription(
+            self.conn,
+            subscription["subscription_id"],
+            now=datetime(2026, 4, 30, 9, 0, 0),
+            search_runner=lambda **kwargs: called.update(kwargs) or {"results": []},
+        )
+        self.assertEqual(called["self_id"], 90001)
+        self.assertEqual(called["criteria"]["relationship_goals"], ["认真恋爱"])
+        self.assertEqual(called["limit"], 6)
+
+    def test_handle_opt_in_decision_rejection_creates_no_subscription(self):
+        session = run_search_session(
+            source="mysql://user:pass@127.0.0.1:3306/her?table=profiles",
+            criteria={"gender": "女"},
+            search_runner=lambda **_: {
+                "has_match": False,
+                "result_count": 0,
+                "results": [],
+                "fallback_results": [],
+            },
+        )
+
+        decision = handle_opt_in_decision(
+            self.conn,
+            requester_id=70001,
+            search_session=session,
+            user_opted_in=False,
+        )
+
+        saved_count = self.conn.execute("SELECT COUNT(*) AS c FROM saved_search_subscriptions").fetchone()["c"]
+        self.assertFalse(decision["created_subscription"])
+        self.assertIsNone(decision["subscription"])
+        self.assertEqual(saved_count, 0)
 
 
 if __name__ == "__main__":  # pragma: no cover

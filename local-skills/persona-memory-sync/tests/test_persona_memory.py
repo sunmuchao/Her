@@ -489,7 +489,7 @@ class PersonaMemoryTests(unittest.TestCase):
         )
         self.assertEqual(
             payload["public_values"],
-            "上海优先；原则上不接受异地；如有短期过渡，需明确落地计划，看重沟通顺畅",
+            "上海优先；明确不接受长期异地；如有短期过渡，需明确落地计划，看重沟通顺畅",
         )
 
     def test_build_public_profile_prioritizes_child_reality_requirement_in_public_values(self):

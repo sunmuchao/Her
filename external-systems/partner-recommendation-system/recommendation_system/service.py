@@ -100,6 +100,7 @@ def create_subscription(
     source: str,
     criteria: dict[str, Any],
     self_profile: dict[str, Any] | None = None,
+    self_id: int | None = None,
     title: str | None = None,
     table_name: str | None = None,
     photos_table_name: str | None = None,
@@ -116,6 +117,7 @@ def create_subscription(
     subscription_id: str | None = None,
     now: datetime | None = None,
 ) -> dict[str, Any]:
+    now = current_time(now)
     created_at = format_dt(now)
     subscription_id = subscription_id or generate_subscription_id()
     title = title or f"持续留意 {requester_id}"
@@ -132,6 +134,7 @@ def create_subscription(
           photos_table_name,
           search_criteria_json,
           self_profile_json,
+          self_id,
           limit_count,
           top_k,
           min_notify_score,
@@ -143,7 +146,7 @@ def create_subscription(
           last_result_count,
           created_at,
           updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
         """,
         (
           subscription_id,
@@ -156,6 +159,7 @@ def create_subscription(
           photos_table_name,
           json_dumps(criteria),
           json_dumps(self_profile or {}),
+          self_id,
           limit_count,
           top_k,
           min_notify_score,
@@ -214,6 +218,7 @@ def load_subscription_search_args(subscription: dict[str, Any]) -> dict[str, Any
         "photos_table_name": subscription.get("photos_table_name"),
         "criteria": json_loads(subscription["search_criteria_json"], {}),
         "self_profile": json_loads(subscription.get("self_profile_json"), None),
+        "self_id": subscription.get("self_id"),
         "limit": int(subscription.get("limit_count") or 10),
         "include_source": True,
         "include_text": False,

@@ -1570,6 +1570,9 @@ def evaluate_contextual_fit(record, criteria, self_profile=None):
         {
             "见识",
             "表达",
+            "审美",
+            "共同兴趣",
+            "情绪回应",
             "生活感",
             "会聊天",
             "会接话",

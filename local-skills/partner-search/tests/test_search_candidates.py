@@ -666,6 +666,39 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertIn("accept_partner_children", result["missing_fields"])
 
+    def test_contextual_fit_does_not_force_family_reality_language_for_divorced_without_children(self):
+        result = search_candidates.evaluate_contextual_fit(
+            {
+                "blended_family_readiness": "已想过现实安排",
+                "accept_marital_status_strength": "明确接受",
+                "notes": "愿意一起把现实安排说清楚",
+            },
+            {"prefer": ["真诚", "愿意沟通"], "must_have": []},
+            self_profile={"marital_status": "离异", "has_children": 0},
+        )
+        self.assertNotIn("现实安排想得更具体", result["matched_on"])
+
+    def test_contextual_fit_rewards_shared_creative_domain_for_expressive_profile(self):
+        result = search_candidates.evaluate_contextual_fit(
+            {
+                "job": "品牌设计师",
+            },
+            {
+                "prefer": ["有一点审美", "共同兴趣", "有情绪回应"],
+                "must_have": [],
+            },
+            self_profile={"job": "游戏UI设计管理岗"},
+        )
+        self.assertIn("审美和内容语境更接近", result["matched_on"])
+
+    def test_summarize_notes_for_result_filters_unrequested_child_topic(self):
+        summary = search_candidates.summarize_notes_for_result(
+            {"notes": "不要孩子这件事已经想清楚；平时沟通顺畅，比较有边界感。"},
+            {"prefer": ["情绪稳定"], "must_have": [], "must_not_have": [], "relationship_goals": []},
+            {"marital_status": "未婚", "has_children": 0},
+        )
+        self.assertEqual(summary, "平时沟通顺畅，比较有边界感")
+
     def test_reciprocal_soft_income_preference_becomes_risk(self):
         candidate = {
             "preferred_income_min_wan": 10,
@@ -888,7 +921,7 @@ class SearchCandidatesTests(unittest.TestCase):
         busy = search_candidates.evaluate_contextual_fit(busy_record, criteria, self_profile=self_profile)
 
         self.assertIn("工作节奏更稳", steady["matched_on"])
-        self.assertIn("对婚史和现实问题想得更具体", steady["matched_on"])
+        self.assertNotIn("复杂现实问题愿意提前讲清", steady["matched_on"])
         self.assertIn("工作节奏偏忙，稳定投入要再看", busy["risk_flags"])
 
     def test_evaluate_contextual_fit_uses_new_fields_for_consumption_chat_and_execution(self):
