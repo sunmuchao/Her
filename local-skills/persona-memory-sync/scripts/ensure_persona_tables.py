@@ -94,6 +94,16 @@ PERSONA_EXTENSION_COLUMNS = {
     "target_accept_partner_children_strength": "VARCHAR(32) DEFAULT NULL",
 }
 
+PROFILE_ENUM_UPGRADES = {
+    "accept_partner_children": {
+        "required_literals": ["接受", "不接受", "可协商", "谨慎可协商", "未知"],
+        "ddl": (
+            "ENUM('接受','不接受','可协商','谨慎可协商','未知') "
+            "DEFAULT NULL COMMENT '是否接受对方已有孩子'"
+        ),
+    }
+}
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Create persona memory tables and extend profiles for internal/public sync.")
@@ -128,8 +138,9 @@ def main() -> None:
                     f"ADD COLUMN {quote_mysql_ident(column_name)} {column_type}"
                 )
 
-            cursor.execute(f"SHOW COLUMNS FROM {quote_mysql_ident(profile_table)}")
-            existing_columns = {row["Field"] for row in cursor.fetchall()}
+            cursor.execute(f"SHOW FULL COLUMNS FROM {quote_mysql_ident(profile_table)}")
+            existing_column_rows = {row["Field"]: row for row in cursor.fetchall()}
+            existing_columns = set(existing_column_rows)
             for column_name, column_type in PROFILE_EXTENSION_COLUMNS.items():
                 if column_name in existing_columns:
                     continue
@@ -138,6 +149,23 @@ def main() -> None:
                     f"ADD COLUMN {quote_mysql_ident(column_name)} {column_type}"
                 )
                 created_columns.append(column_name)
+
+            for column_name, upgrade in PROFILE_ENUM_UPGRADES.items():
+                row = existing_column_rows.get(column_name)
+                if not row:
+                    continue
+                column_type = str(row.get("Type") or "").lower()
+                if not column_type.startswith("enum("):
+                    continue
+                missing_literals = [
+                    literal for literal in upgrade["required_literals"] if f"'{literal}'" not in str(row.get("Type") or "")
+                ]
+                if not missing_literals:
+                    continue
+                cursor.execute(
+                    f"ALTER TABLE {quote_mysql_ident(profile_table)} "
+                    f"MODIFY COLUMN {quote_mysql_ident(column_name)} {upgrade['ddl']}"
+                )
 
             cursor.execute(build_public_profile_view_sql(profile_table=profile_table, view_name=args.public_view))
 
