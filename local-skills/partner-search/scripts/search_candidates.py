@@ -408,6 +408,7 @@ CRITICAL_MISSING_FIELD_PENALTIES = {
 RISK_FLAG_PENALTIES = {
     "对方对子女情况仅可协商": 10,
     "对方对子女接受度偏低": 11,
+    "对方对子女接受需要先接触再判断": 10,
     "对方对子女接受度未知": 12,
     "对方对抽烟仅可协商": 7,
     "对方对抽烟接受度未知": 9,
@@ -420,6 +421,8 @@ RISK_FLAG_PENALTIES = {
     "对方学历要求可能可放宽": 5,
     "对方收入要求可能可放宽": 6,
     "对方婚史接受度偏保守": 8,
+    "对方婚史接受需要先聊再判断": 9,
+    "对方婚史接受度未知": 10,
     "对方对子女接受度偏保守": 9,
     "生活阶段可能有落差": 8,
     "资料偏稳但不够鲜活": 5,
@@ -899,6 +902,55 @@ def requires_explicit_marital_acceptance(self_profile):
 
 def requires_explicit_children_acceptance(self_profile):
     return normalize_bool(self_profile.get("has_children")) is True
+
+
+def marital_acceptance_risk_flag(strength, semantics):
+    semantics_text = as_text(semantics)
+    if contains_any_text(semantics_text, {"先聊再判断", "先接触再判断"}):
+        return "对方婚史接受需要先聊再判断"
+    if contains_any_text(semantics_text, {"更看具体", "相处质量"}):
+        return "对方婚史接受度偏保守"
+    if contains_any_text(semantics_text, {"态度未知"}):
+        return "对方婚史接受度未知"
+    if strength == "surface":
+        return "对方婚史接受需要先聊再判断"
+    if strength == "cautious":
+        return "对方婚史接受度偏保守"
+    if strength == "unknown":
+        return "对方婚史接受度未知"
+    return None
+
+
+def children_acceptance_risk_flag(state, strength, semantics):
+    semantics_text = as_text(semantics)
+    if contains_any_text(semantics_text, {"偏低", "偏保留"}):
+        return "对方对子女接受度偏低"
+    if contains_any_text(semantics_text, {"先接触再判断", "先聊再判断", "后续现实情况"}):
+        return "对方对子女接受需要先接触再判断"
+    if contains_any_text(semantics_text, {"更看具体"}):
+        return "对方对子女接受度偏保守"
+    if contains_any_text(semantics_text, {"态度未知"}):
+        return "对方对子女接受度未知"
+
+    if state == "accepted":
+        if strength == "cautious":
+            return "对方对子女接受度偏保守"
+        if strength == "surface":
+            return "对方对子女接受需要先接触再判断"
+        if strength == "unknown":
+            return "对方对子女接受度未知"
+        return None
+
+    if state == "negotiable":
+        if strength == "cautious":
+            return "对方对子女接受度偏低"
+        if strength == "surface":
+            return "对方对子女接受需要先接触再判断"
+        return "对方对子女情况仅可协商"
+
+    if state == "unknown":
+        return "对方对子女接受度未知"
+    return None
 
 
 def evaluate_contextual_fit(record, criteria, self_profile=None):
@@ -1398,6 +1450,8 @@ def build_follow_up_questions(record, missing_fields, risk_flags, self_profile=N
             questions.append("确认对方是能真正接受你有孩子，还是只是暂时不想说死。")
         elif risk == "对方对子女接受度偏低":
             questions.append("确认对方对子女情况是不是现实里会比较难接受，不要只看口头上没拒绝。")
+        elif risk == "对方对子女接受需要先接触再判断":
+            questions.append("确认对方对子女情况是不是只有接触意愿，真到关系推进时会不会犹豫。")
         elif risk == "对方对喝酒仅可协商":
             questions.append("确认偶尔喝酒在对方那里是能接受，还是只是勉强可协商。")
         elif risk == "对方对抽烟仅可协商":
@@ -1416,6 +1470,10 @@ def build_follow_up_questions(record, missing_fields, risk_flags, self_profile=N
             questions.append("确认对方在意的是收入数字，还是更在意生活方式和相处压力。")
         elif risk == "对方婚史接受度偏保守":
             questions.append("确认对方对婚史是长期能接受，还是只是暂时不想说死。")
+        elif risk == "对方婚史接受需要先聊再判断":
+            questions.append("确认对方对婚史是不是先聊了再说，后面会不会卡在现实接受度上。")
+        elif risk == "对方婚史接受度未知":
+            questions.append("确认对方对婚史的接受到底有多明确，别只看到可接受范围。")
         elif risk == "对方对子女接受度偏保守":
             questions.append("确认对方能不能长期接受孩子和现实安排，不要只停留在口头上。")
         elif risk == "生活阶段可能有落差":
