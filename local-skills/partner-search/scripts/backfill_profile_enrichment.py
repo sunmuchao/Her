@@ -341,7 +341,7 @@ def infer_acceptance(profile):
         if state == "未知":
             return "态度未知"
         if state == "谨慎可协商":
-            return "现阶段不太接受，需要非常看具体情况"
+            return "现阶段不太接受"
         if state == "接受":
             if bucket == "strong":
                 return "明确接受"

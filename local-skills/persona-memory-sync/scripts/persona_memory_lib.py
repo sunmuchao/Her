@@ -407,11 +407,11 @@ def format_acceptance_note(value: Any, strength: Any) -> Optional[str]:
         return None
     if not note_strength:
         if note_value == "谨慎可协商":
-            return "现阶段不太接受，需要非常看具体情况"
+            return "现阶段不太接受"
         return note_value
     bucket = acceptance_strength_bucket(note_strength)
     if note_value == "谨慎可协商":
-        return "现阶段不太接受，需要非常看具体情况"
+        return "现阶段不太接受"
     if note_value == "可协商" and bucket == "cautious":
         return "现阶段接受度偏低，需结合具体情况判断"
     if note_value == "可协商" and bucket == "surface":
@@ -431,7 +431,7 @@ def acceptance_semantics_label(value: Any, strength: Any) -> Optional[str]:
     if state == "未知":
         return "态度未知"
     if state == "谨慎可协商":
-        return "现阶段不太接受，需要非常看具体情况"
+        return "现阶段不太接受"
     if state == "接受":
         if bucket == "strong":
             return "明确接受"
