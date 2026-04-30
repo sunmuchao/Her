@@ -69,6 +69,24 @@ class BackfillProfileEnrichmentTests(unittest.TestCase):
         self.assertIn("accept_partner_children_semantics", enriched)
         self.assertTrue(enriched["accept_partner_children_semantics"])
 
+    def test_infer_acceptance_preserves_guarded_children_state(self):
+        profile = {
+            "id": 1002,
+            "age": 36,
+            "relationship_goal": "结婚导向",
+            "marital_status": "离异无孩",
+            "values": "真诚, 稳定踏实",
+            "personality": "务实, 情绪稳定",
+            "accept_partner_children": "谨慎可协商",
+        }
+        enriched = backfill_profile_enrichment.infer_acceptance(profile)
+        self.assertEqual(enriched["accept_partner_children"], "谨慎可协商")
+        self.assertEqual(enriched["accept_partner_children_strength"], "谨慎接受")
+        self.assertEqual(
+            enriched["accept_partner_children_semantics"],
+            "现阶段不太接受，需要非常看具体情况",
+        )
+
     def test_preserve_curated_backfill_keeps_existing_manual_labels(self):
         row = {
             "source_channel": "高质量补池",

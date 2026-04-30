@@ -144,7 +144,7 @@ CREATE TABLE profiles (
   children_count TINYINT UNSIGNED,
   children_living_with_self TINYINT(1),
   want_children ENUM('想要','不要','可协商','未知'),
-  accept_partner_children ENUM('接受','不接受','可协商','未知'),
+  accept_partner_children ENUM('接受','不接受','可协商','谨慎可协商','未知'),
   accept_partner_children_strength VARCHAR(32),
   marriage_timeline ENUM('半年内','1年内','2年内','合适就结婚','暂不考虑','未知'),
   family_background TEXT,
