@@ -317,6 +317,7 @@ PUBLIC_VALUE_PRIORITY_TAGS = (
 )
 
 PUBLIC_JOB_PATTERNS = (
+    (re.compile(r"(高校教师|大学教师|高校讲师)"), "高校教师"),
     (re.compile(r"(医院|诊所|药师|医生|医师|护士|临床|医疗)"), "医疗相关工作"),
     (re.compile(r"(学校|教师|老师|教研|辅导员|教育|培训)"), "教育相关工作"),
     (re.compile(r"(银行|证券|基金|保险|金融)"), "金融相关工作"),
@@ -855,6 +856,14 @@ def infer_target_long_distance_value(explicit_value: Any, semantics_text: Any) -
     if explicit == "不接受":
         if allows_short_term and blocks_long_term:
             return "短期可了解，长期异地不接受"
+        if (
+            any(marker in semantics for marker in ("近距离", "见面成本不能太高", "稳定留沪"))
+            or (
+                "落地计划" in semantics
+                and any(marker in semantics for marker in ("可以沟通", "可沟通", "可了解", "能看"))
+            )
+        ) and "明确不接受长期异地" not in semantics:
+            return "近距离可推进，长期异地不接受"
         if dual_city_transition and blocks_long_term and "短期过渡" not in semantics:
             return "近距离可推进，长期异地不接受"
     return explicit
@@ -866,6 +875,22 @@ def canonicalize_long_distance_state(value: Any) -> Optional[str]:
         return None
     if text in {"接受", "不接受", "可协商", "未知"}:
         return text
+
+    if "短期通勤" in text or ("通勤" in text and "谨慎" in text):
+        return "短期通勤可了解，长期异地谨慎"
+    if "短期可了解" in text and any(pattern.search(text) for pattern in LONG_DISTANCE_BLOCK_PATTERNS):
+        return "短期可了解，长期异地不接受"
+    if any(
+        marker in text
+        for marker in ("近距离", "双城过渡", "稳定留沪", "见面成本不能太高")
+    ) and (
+        any(pattern.search(text) for pattern in LONG_DISTANCE_BLOCK_PATTERNS)
+        or "不接受远距离异地" in text
+        or "长期异地不接受" in text
+    ):
+        return "近距离可推进，长期异地不接受"
+    if "长期异地比较谨慎" in text:
+        return "短期通勤可了解，长期异地谨慎"
 
     has_transition_allowance = any(
         marker in text
@@ -1443,11 +1468,10 @@ def build_public_education(education: Any) -> Optional[str]:
         return None
 
     normalized = text.lower()
-    if any(
-        token in normalized
-        for token in ("博士", "博士后", "phd", "研究生", "硕士", "mba", "emba", "本硕")
-    ):
-        return "本科及以上"
+    if any(token in normalized for token in ("博士", "博士后", "phd")):
+        return "博士"
+    if any(token in normalized for token in ("研究生", "硕士", "mba", "emba", "本硕")):
+        return "硕士"
     if any(token in normalized for token in ("本科", "学士", "专升本")):
         return "本科"
     if any(token in normalized for token in ("大专", "专科", "高职", "高专")):
