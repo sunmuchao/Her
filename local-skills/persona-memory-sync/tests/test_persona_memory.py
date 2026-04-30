@@ -38,6 +38,35 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertEqual(profile_id, 321)
         self.assertEqual(len(cursor.executed), 1)
 
+    def test_insert_profile_stub_falls_back_to_manual_id_when_profile_id_is_not_auto_increment(self):
+        class FakeCursor:
+            def __init__(self):
+                self.lastrowid = None
+                self.executed = []
+
+            def execute(self, query, params=None):
+                self.executed.append((query, params))
+                if "INSERT INTO `profiles`" in query and "VALUES (%s, %s, %s, %s, %s)" in query:
+                    raise Exception("(1364, \"Field 'id' doesn't have a default value\")")
+
+            def fetchone(self):
+                return {"next_id": 90123}
+
+        cursor = FakeCursor()
+        profile_id = persona_memory_lib.insert_profile_stub(
+            cursor,
+            "profiles",
+            {
+                "name": "Demo",
+                "profile_status": "active",
+                "verified_level": "none",
+                "source_channel": "persona-memory-sync",
+                "last_active_at": "2026-04-29 12:00:00",
+            },
+        )
+        self.assertEqual(profile_id, 90123)
+        self.assertEqual(len(cursor.executed), 3)
+
     def test_resolve_mysql_source_requires_explicit_config(self):
         with mock.patch.dict(os.environ, {}, clear=True):
             with self.assertRaises(ValueError):
@@ -117,6 +146,7 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertNotIn("拜金", combined)
         self.assertIn("关系边界", combined)
         self.assertIn("消费观", combined)
+        self.assertNotIn("对生活方式和习惯有较明确要求", combined)
 
     def test_merge_persona_sanitizes_summary_fields_with_city_and_goal_inference(self):
         merged, field_results = persona_memory_lib.merge_persona(
@@ -195,6 +225,12 @@ class PersonaMemoryTests(unittest.TestCase):
         )
         self.assertEqual(patch["target_accept_partner_children"], "现阶段不太接受")
 
+    def test_normalize_patch_canonicalizes_guarded_children_phrase(self):
+        patch = persona_memory_lib.normalize_patch(
+            {"target_accept_partner_children": "优先不考虑对方已有孩子"}
+        )
+        self.assertEqual(patch["target_accept_partner_children"], "现阶段不太接受")
+
     def test_build_public_profile_masks_sensitive_job_titles(self):
         payload = persona_memory_lib.build_public_profile(
             {
@@ -251,6 +287,22 @@ class PersonaMemoryTests(unittest.TestCase):
             }
         )
         self.assertEqual(payload["public_values"], "看重边界清楚、愿意沟通、不暧昧")
+
+    def test_build_public_profile_softens_preference_and_note_wording(self):
+        payload = persona_memory_lib.build_public_profile(
+            {
+                "target_accept_long_distance": "不接受",
+                "must_not_have_tags": "抽烟,暧昧不清",
+                "public_preference_summary_draft": "更适合同城或近距离稳定推进的关系，看重边界感、沟通顺畅和稳定性。",
+            }
+        )
+        self.assertEqual(
+            payload["public_values"],
+            "更适合同城或近距离认真相处，看重边界感、沟通顺畅和稳定性。",
+        )
+        self.assertIn("更适合同城或近距离相处", payload["public_notes"])
+        self.assertIn("更偏好生活习惯相近的人", payload["public_notes"])
+        self.assertIn("不喜欢关系里反复拉扯", payload["public_notes"])
 
     def test_summarize_observation_evidence_replaces_raw_transcript_with_field_summary(self):
         evidence = persona_memory_lib.summarize_observation_evidence(
