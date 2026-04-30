@@ -1,0 +1,7 @@
+interface:
+  display_name: "Persona Eval"
+  short_description: "Run persona benchmark regressions and summarize matchmaking evaluation metrics."
+  default_prompt: "Use $persona-eval to rerun persona benchmark inputs, inspect regression results, and summarize agent feedback metrics for matchmaking search quality."
+
+policy:
+  allow_implicit_invocation: true
