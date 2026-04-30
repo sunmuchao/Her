@@ -206,6 +206,7 @@ The public package exports:
 - `partner_search.search_profiles(...)` for the simplest structured call
 - `partner_search.search(...)` and `partner_search.SearchRequest` when you want an explicit request/response object
 - `SearchResponse.to_dict()` / `to_json()` / `.text` for structured vs human-readable rendering from the same search run
+- `examples/python_api_integration.py` for a minimal outer-system call example that wraps the search result into its own recommendation payload
 
 For the Python API, pass canonical criteria keys such as `cities`, `districts`, `relationship_goals`, `profile_statuses`, `required_known_fields`, `exclude_ids`, and `exclude_source_channels`. The API also accepts singular convenience aliases such as `city`, `district`, and `relationship_goal`.
 
