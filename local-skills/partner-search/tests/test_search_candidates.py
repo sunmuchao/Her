@@ -425,7 +425,7 @@ class SearchCandidatesTests(unittest.TestCase):
 
     def test_reciprocal_guarded_children_state_becomes_low_acceptance_risk(self):
         candidate = {
-            "accept_partner_children": "谨慎可协商",
+            "accept_partner_children": "现阶段不太接受",
             "accept_partner_children_strength": "谨慎接受",
             "accept_partner_children_semantics": "现阶段不太接受",
         }

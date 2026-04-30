@@ -340,7 +340,7 @@ def infer_acceptance(profile):
             return "明确不接受"
         if state == "未知":
             return "态度未知"
-        if state == "谨慎可协商":
+        if state in {"谨慎可协商", "现阶段不太接受"}:
             return "现阶段不太接受"
         if state == "接受":
             if bucket == "strong":
@@ -418,7 +418,8 @@ def infer_acceptance(profile):
             child_strength = "谨慎接受"
         else:
             child_strength = "谨慎接受"
-    elif accept_partner_children == "谨慎可协商":
+    elif accept_partner_children in {"谨慎可协商", "现阶段不太接受"}:
+        accept_partner_children = "现阶段不太接受"
         child_strength = "谨慎接受"
     elif accept_partner_children == "不接受":
         if very_mature and family_oriented and child_bucket < 18:
@@ -662,7 +663,7 @@ def infer_structured_style(profile):
         blended_family_readiness = "已想过现实安排"
     elif "明确接受" in {marital_strength, child_strength} or {"谨慎接受"} & {marital_strength, child_strength}:
         blended_family_readiness = "愿意一起商量"
-    elif accept_partner_children == "谨慎可协商":
+    elif accept_partner_children == "现阶段不太接受":
         blended_family_readiness = "现实承接偏保留"
     elif accept_partner_children == "可协商" or "短期可聊" in {marital_strength, child_strength}:
         blended_family_readiness = "仅口头接受"
