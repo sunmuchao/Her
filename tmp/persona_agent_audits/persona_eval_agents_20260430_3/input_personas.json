@@ -1,0 +1,302 @@
+[
+  {
+    "persona_id": "shanghai_exec_f_v2",
+    "display_name": "用户C01",
+    "agent_id": "019ddce7-428a-7753-b962-d0a7be5e9376",
+    "user_key": "persona_eval_agents_20260430_3_shanghai_exec_f_v2",
+    "roleplay_answers": [
+      "32岁，上海，168cm，硕士，外企商业分析/战略岗位。",
+      "工作忙但生活有秩序，不抽烟，社交型少量饮酒。",
+      "认真找长期稳定关系，合适希望1到2年内结婚。",
+      "偏好30到37岁、175cm以上、本科及以上、上海或苏州，也接受稳定留沪；短期异地可了解，但不接受长期不落地异地。"
+    ],
+    "patch": {
+      "display_name": "用户C01",
+      "self_gender": "女",
+      "self_age": 32,
+      "self_height": 168,
+      "self_city": "上海",
+      "self_education": "硕士",
+      "self_job": "外企商业分析/战略岗位",
+      "self_income_wan": 82,
+      "self_marital_status": "未婚",
+      "self_has_children": 0,
+      "self_smoking": "否",
+      "self_drinking": "社交型少量饮酒",
+      "self_relationship_goal": "1-2年内往结婚推进",
+      "target_gender": "男",
+      "target_age_min": 30,
+      "target_age_max": 37,
+      "target_height_min": 175,
+      "target_cities": "上海,苏州",
+      "target_education_min": "本科",
+      "target_accept_long_distance": "不接受",
+      "target_location_semantics": "上海或苏州优先，也接受人在外地但稳定留沪；短期异地可了解，但不接受长期不落地异地。",
+      "preferred_traits": "情绪稳定,婚姻诚意,消费观正常,沟通自然,现实推进能力,稳定留沪",
+      "disliked_traits": "控制欲强,暧昧拖拉,回避承诺,长期情绪拉扯",
+      "persona_summary_internal": "32岁女性，现居上海，身高168cm，硕士，外企商业分析/战略岗位，年收入约82万，未婚，无孩，不抽烟，社交型少量饮酒。工作忙但生活有秩序，会运动，认真找长期稳定关系，合适希望1到2年内结婚。",
+      "preference_summary_internal": "偏好30到37岁、175cm以上、本科及以上男性，上海或苏州优先，也接受人在外地但稳定留沪。短期异地可了解，但不接受长期不落地异地。最看重情绪稳定、婚姻诚意、消费观正常、沟通自然和现实推进能力；不能接受控制欲强、暧昧拖拉、回避承诺、长期情绪拉扯。"
+    },
+    "private_boundaries": [
+      "准确收入",
+      "具体公司",
+      "过往恋爱细节",
+      "家里催婚压力"
+    ],
+    "notes_about_possible_drift": [
+      "容易被记成只看条件和物质，但更看重长期关系里的稳定性、诚意和现实推进能力。",
+      "容易被记成只接受上海本地，其实也接受苏州或稳定留沪的人。",
+      "容易被记成接受异地，但真实边界只是短期异地可了解，不接受长期不落地异地。"
+    ]
+  },
+  {
+    "persona_id": "suzhou_divorce_m_v2",
+    "display_name": "用户C02",
+    "agent_id": "019ddce7-42a6-7a40-b918-e7ae1b5c0fe7",
+    "user_key": "persona_eval_agents_20260430_3_suzhou_divorce_m_v2",
+    "roleplay_answers": [
+      "37岁，苏州，178cm，本科，制造业供应链管理岗。",
+      "生活节奏规律，不抽烟，少量社交饮酒。",
+      "认真找长期关系，合适希望2年内再婚。",
+      "偏好29到35岁、160cm以上、苏州/无锡/上海/南京等江浙沪城市；短期通勤型距离能看，长期异地比较谨慎。"
+    ],
+    "patch": {
+      "display_name": "用户C02",
+      "self_gender": "男",
+      "self_age": 37,
+      "self_height": 178,
+      "self_city": "苏州",
+      "self_education": "本科",
+      "self_job": "制造业供应链管理岗",
+      "self_income_wan": 36,
+      "self_marital_status": "离异无孩",
+      "self_has_children": 0,
+      "self_smoking": "否",
+      "self_drinking": "偶尔",
+      "self_relationship_goal": "2年内再婚方向明确",
+      "target_gender": "女",
+      "target_age_min": 29,
+      "target_age_max": 35,
+      "target_height_min": 160,
+      "target_cities": "苏州,无锡,上海,南京",
+      "target_accept_long_distance": "可协商",
+      "target_location_semantics": "江浙沪范围内优先；短期通勤型距离可了解，但长期异地比较谨慎。",
+      "preferred_traits": "真诚,稳定踏实,愿意沟通,尊重彼此,生活规律,家庭观念,情绪稳定",
+      "disliked_traits": "不真诚,回避沟通,情绪波动大,对再婚现实认知不清",
+      "persona_summary_internal": "37岁男性，现居苏州，身高178cm，本科，制造业供应链管理岗，年收入约36万，离异无孩，不抽烟，少量社交饮酒。生活节奏规律，认真找长期关系，合适希望2年内再婚。",
+      "preference_summary_internal": "偏好29到35岁、160cm以上女性，最好在苏州、无锡、上海、南京等江浙沪城市。短期通勤型距离能看，长期异地比较谨慎。很看重真诚、稳定踏实、愿意沟通、尊重彼此、生活规律、家庭观念和情绪稳定；不能接受不真诚、回避沟通、情绪波动大、对再婚现实认知不清的人。"
+    },
+    "private_boundaries": [
+      "离婚原因",
+      "房贷压力",
+      "父母身体负担",
+      "准确收入"
+    ],
+    "notes_about_possible_drift": [
+      "容易被记成只看现实条件、缺少情感需求的再婚男性，但其实很看重相处质量和沟通感受。",
+      "容易被误记为接受异地，其实只是能接受短期通勤型距离，长期异地比较谨慎。",
+      "容易把看重的特质全部写成硬门槛，实际上有些更适合作为高权重偏好。"
+    ]
+  },
+  {
+    "persona_id": "wuxi_pharma_f_v2",
+    "display_name": "用户C03",
+    "agent_id": "019ddce7-42be-71e2-9c62-7578966ccbba",
+    "user_key": "persona_eval_agents_20260430_3_wuxi_pharma_f_v2",
+    "roleplay_answers": [
+      "29岁，无锡，164cm，硕士，医院药师。",
+      "作息规律，不抽烟，基本不喝酒。",
+      "认真找恋爱对象，合适希望稳定结婚。",
+      "偏好28到34岁、172cm以上、无锡或苏州的男性；原则上不接受远距离异地，但近距离或有明确落地计划时可以沟通。"
+    ],
+    "patch": {
+      "display_name": "用户C03",
+      "self_gender": "女",
+      "self_age": 29,
+      "self_height": 164,
+      "self_city": "无锡",
+      "self_education": "硕士",
+      "self_job": "医院药师",
+      "self_income_wan": 24,
+      "self_marital_status": "未婚",
+      "self_has_children": 0,
+      "self_smoking": "否",
+      "self_drinking": "基本不喝酒",
+      "self_relationship_goal": "认真恋爱，合适希望稳定结婚",
+      "target_gender": "男",
+      "target_age_min": 28,
+      "target_age_max": 34,
+      "target_height_min": 172,
+      "target_cities": "无锡,苏州",
+      "target_accept_long_distance": "不接受",
+      "target_location_semantics": "原则上不接受远距离异地；近距离或对方有明确落地计划时可以沟通。",
+      "preferred_traits": "情绪稳定,责任心,尊重他人,三观正,行动力,边界清楚,愿意沟通,稳定工作,不抽烟,少酒",
+      "disliked_traits": "抽烟严重,经常喝酒,失联冷处理,说一套做一套,边界感差,暧昧不清",
+      "persona_summary_internal": "29岁女性，现居无锡，身高164cm，硕士，在医院做药师，年收入约24万，未婚，无孩，不抽烟，基本不喝酒，作息规律。认真找恋爱对象，合适希望稳定结婚。",
+      "preference_summary_internal": "偏好28到34岁、172cm以上男性，最好无锡或苏州，稳定工作，不抽烟、少酒、边界清楚、别暧昧、愿意沟通。原则上不接受远距离异地，但近距离或对方有明确落地计划时可以沟通。最看重情绪稳定、责任心、尊重他人、三观正和行动力；不能接受抽烟严重、经常喝酒、失联冷处理、说一套做一套、边界感差的人。"
+    },
+    "private_boundaries": [
+      "具体医院",
+      "准确收入",
+      "轻微焦虑史",
+      "家庭催婚压力"
+    ],
+    "notes_about_possible_drift": [
+      "容易被记偏成可以接受异地，但实际是原则上不接受远距离异地，只能接受近距离或对方有明确落地计划的情况。",
+      "容易把对少酒、稳定工作、身高和城市的偏好全都写成绝对硬门槛，但实际还是会综合看人和相处感受。",
+      "容易被写成要求高或者比较冷，但只是边界清楚，目标明确。"
+    ]
+  },
+  {
+    "persona_id": "nanjing_academic_f_v2",
+    "display_name": "用户C04",
+    "agent_id": "019ddce7-43d6-7530-925a-0164e08d277c",
+    "user_key": "persona_eval_agents_20260430_3_nanjing_academic_f_v2",
+    "roleplay_answers": [
+      "34岁，南京，165cm，博士，高校教师。",
+      "生活安静稳定，不抽烟，基本不喝酒。",
+      "想找长期稳定关系，结婚不着急但方向明确。",
+      "偏好32到38岁、175cm以上、本科及以上、南京或苏州的男性；明确不接受长期异地。"
+    ],
+    "patch": {
+      "display_name": "用户C04",
+      "self_gender": "女",
+      "self_age": 34,
+      "self_height": 165,
+      "self_city": "南京",
+      "self_education": "博士",
+      "self_job": "高校教师",
+      "self_income_wan": 30,
+      "self_marital_status": "未婚",
+      "self_has_children": 0,
+      "self_smoking": "否",
+      "self_drinking": "基本不喝酒",
+      "self_relationship_goal": "结婚不着急但方向明确",
+      "target_gender": "男",
+      "target_age_min": 32,
+      "target_age_max": 38,
+      "target_height_min": 175,
+      "target_cities": "南京,苏州",
+      "target_education_min": "本科",
+      "target_accept_long_distance": "不接受",
+      "target_location_semantics": "南京或苏州优先；明确不接受长期异地，如需短期过渡也要有明确落地计划。",
+      "preferred_traits": "情绪稳定,耐心,沟通顺畅,边界感正常,生活稳定,责任感强,健康习惯,做事踏实,有自己的兴趣爱好",
+      "disliked_traits": "强控制欲,沟通不清,情绪化,反复拉扯,态度暧昧,长期异地",
+      "persona_summary_internal": "34岁女性，现居南京，身高165cm，博士，高校教师，年收入约30万，未婚，无孩，不抽烟，基本不喝酒。生活安静稳定，慢热但认真，想找长期稳定关系，结婚不着急但方向明确。",
+      "preference_summary_internal": "偏好32到38岁、175cm以上、南京或苏州、本科及以上男性。明确不接受长期异地。看重情绪稳定、耐心、沟通顺畅、边界感正常、生活稳定、责任感和健康习惯；加分项是有自己的兴趣爱好；不能接受强控制欲、沟通不清、情绪化、反复拉扯和态度暧昧。"
+    },
+    "private_boundaries": [
+      "学校名称",
+      "论文压力",
+      "父母职业",
+      "备孕焦虑"
+    ],
+    "notes_about_possible_drift": [
+      "容易被记成高冷或要求过高，但其实只是慢热、边界清楚、筛选认真。",
+      "容易把“结婚不着急”记成态度模糊，但其实是方向明确，只是不接受仓促推进。",
+      "容易把对南京或苏州的偏好写成能接受长期异地，但明确不接受长期异地。"
+    ]
+  },
+  {
+    "persona_id": "hangzhou_divorce_mom_f_v2",
+    "display_name": "用户C05",
+    "agent_id": "019ddce7-43de-7090-8e3a-fcf261c93f70",
+    "user_key": "persona_eval_agents_20260430_3_hangzhou_divorce_mom_f_v2",
+    "roleplay_answers": [
+      "35岁，杭州，166cm，本科，品牌市场/内容电商管理岗。",
+      "工作忙但整体规律，不抽烟，偶尔社交饮酒。",
+      "离异已育，有一个女儿但不随身，想找认真稳定、能走向长期现实关系的人。",
+      "偏好35到42岁、175cm以上、杭州或上海的男性；原则上不接受异地，对方必须能真正接受孩子现实。"
+    ],
+    "patch": {
+      "display_name": "用户C05",
+      "self_gender": "女",
+      "self_age": 35,
+      "self_height": 166,
+      "self_city": "杭州",
+      "self_education": "本科",
+      "self_job": "品牌市场/内容电商管理岗",
+      "self_income_wan": 48,
+      "self_marital_status": "离异已育",
+      "self_has_children": 1,
+      "self_children_count": 1,
+      "self_children_living_with_self": 0,
+      "self_smoking": "否",
+      "self_drinking": "偶尔",
+      "self_relationship_goal": "认真稳定、能走向长期现实关系",
+      "target_gender": "男",
+      "target_age_min": 35,
+      "target_age_max": 42,
+      "target_height_min": 175,
+      "target_cities": "杭州,上海",
+      "target_accept_long_distance": "不接受",
+      "target_location_semantics": "杭州或上海都可以，但原则上不接受异地；就算是上海也要能正常见面并推进关系。",
+      "target_requires_partner_accept_my_children": 1,
+      "must_have_tags": "接受孩子现实",
+      "preferred_traits": "情绪稳定,边界清楚,责任感,沟通顺畅,有分寸,真实,有担当",
+      "disliked_traits": "拉扯消耗,情绪失控,回避问题,责任感弱,边界感差,排斥孩子现实",
+      "persona_summary_internal": "35岁女性，现居杭州，身高166cm，本科，品牌市场/内容电商管理岗，年收入约48万，离异已育，有一个女儿但不随身，不抽烟，偶尔社交饮酒。希望找认真稳定、能走向长期现实关系的人。",
+      "preference_summary_internal": "偏好35到42岁、175cm以上男性，杭州或上海都可以，但原则上不接受异地。非常看重对方真正接受孩子现实、情绪稳定、边界清楚、责任感、沟通顺畅和有分寸；不能接受拉扯消耗、情绪失控、回避问题、责任感弱、边界感差和排斥孩子现实的人。"
+    },
+    "private_boundaries": [
+      "离婚原因",
+      "孩子具体情况",
+      "准确收入波动",
+      "前夫相关纠纷"
+    ],
+    "notes_about_possible_drift": [
+      "容易被记成能接受上海就等于能接受长期异地，但原则上不接受异地。",
+      "容易被记成离异已育就代表关系负担重，忽略真正看重的是稳定、边界和现实承接能力。",
+      "容易把想要长期关系理解成着急推进，但只是排斥只聊聊和长期消耗。"
+    ]
+  },
+  {
+    "persona_id": "shanghai_creative_m_v2",
+    "display_name": "用户C06",
+    "agent_id": "019ddce7-4413-7942-b746-d49d3fbf1246",
+    "user_key": "persona_eval_agents_20260430_3_shanghai_creative_m_v2",
+    "roleplay_answers": [
+      "31岁，上海，180cm，本科，游戏UI/交互设计管理岗。",
+      "工作有创意但也有强度，生活不会太乱，不抽烟，偶尔喝酒。",
+      "认真找长期关系，合适会考虑结婚。",
+      "偏好26到32岁、160cm以上、上海优先，也接受苏州或杭州的低见面成本双城过渡；不接受长期无落地计划的异地。"
+    ],
+    "patch": {
+      "display_name": "用户C06",
+      "self_gender": "男",
+      "self_age": 31,
+      "self_height": 180,
+      "self_city": "上海",
+      "self_education": "本科",
+      "self_job": "游戏UI/交互设计管理岗",
+      "self_income_wan": 32,
+      "self_marital_status": "未婚",
+      "self_has_children": 0,
+      "self_smoking": "否",
+      "self_drinking": "偶尔",
+      "self_relationship_goal": "认真找长期关系，合适会考虑结婚",
+      "target_gender": "女",
+      "target_age_min": 26,
+      "target_age_max": 32,
+      "target_height_min": 160,
+      "target_cities": "上海,苏州,杭州",
+      "target_accept_long_distance": "可协商",
+      "target_location_semantics": "上海优先；也接受苏州或杭州的双城过渡，但见面成本不能太高，不接受长期无落地计划的异地。",
+      "preferred_traits": "真诚,愿意沟通,有情绪回应,生活状态正常,有一点审美,有共同兴趣",
+      "disliked_traits": "控制欲强,长期暧昧,反复拉扯,不尊重人,情绪攻击",
+      "persona_summary_internal": "31岁男性，现居上海，身高180cm，本科，游戏UI/交互设计管理岗，年收入约32万，未婚，无孩，不抽烟，偶尔喝酒。工作有创意但也有强度，生活节奏总体正常，认真找长期关系，合适会考虑结婚。",
+      "preference_summary_internal": "偏好26到32岁、160cm以上女性，上海优先，也接受苏州或杭州，但见面成本不能太高，不接受长期无落地计划的异地。看重真诚、沟通、情绪回应、正常生活状态，最好有一点审美和共同兴趣；不能接受控制欲强、暧昧拉扯、不尊重和情绪攻击。"
+    },
+    "private_boundaries": [
+      "具体公司和项目",
+      "收入不稳定细节",
+      "家里对职业的看法",
+      "前任细节"
+    ],
+    "notes_about_possible_drift": [
+      "容易被记偏成只看外在审美，但更看重真诚、沟通和相处质量。",
+      "容易被记偏成游戏设计行业就作息混乱、生活不稳定，但实际生活节奏总体正常。",
+      "容易被记偏成能接受异地，其实只接受见面成本低、能明确推进的短途双城过渡。"
+    ]
+  }
+]
