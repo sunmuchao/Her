@@ -196,6 +196,47 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertEqual(criteria["profile_statuses"], ["active", "paused"])
         self.assertEqual(criteria["exclude_ids"], {90001})
 
+    def test_build_criteria_from_args_softens_additional_relationship_keywords(self):
+        args = search_candidates.argparse.Namespace(
+            gender=None,
+            age_min=None,
+            age_max=None,
+            height_min=None,
+            height_max=None,
+            city=None,
+            district=None,
+            settlement_city=None,
+            relationship_goal=None,
+            must_have=["性格稳定", "不暧昧"],
+            must_not_have=None,
+            prefer=None,
+            smoking=None,
+            drinking=None,
+            long_distance=None,
+            housing_status=None,
+            car_status=None,
+            marital_status=None,
+            has_children=None,
+            want_children=None,
+            accept_partner_children=None,
+            accept_marital_status_strength=None,
+            accept_partner_children_strength=None,
+            marriage_timeline=None,
+            profile_status=None,
+            active_within_days=None,
+            verified_level_min=None,
+            verified_level=None,
+            photo_count_min=None,
+            require_known=None,
+            exclude_id=None,
+        )
+
+        criteria = search_candidates.build_criteria_from_args(args)
+
+        self.assertNotIn("must_have", criteria)
+        self.assertIn("性格稳定", criteria["prefer"])
+        self.assertIn("不暧昧", criteria["prefer"])
+
     def test_evaluate_candidate_positive(self):
         record = {
             "id": 101,
