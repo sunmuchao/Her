@@ -157,6 +157,8 @@ class PersonaPatchModel(BaseModel):
     self_job: Optional[str] = None
     self_marital_status: Optional[str] = None
     self_has_children: Optional[bool] = None
+    self_children_count: Optional[int] = None
+    self_children_living_with_self: Optional[bool] = None
     self_smoking: Optional[str] = None
     self_drinking: Optional[str] = None
     self_relationship_goal: Optional[str] = None
@@ -174,6 +176,8 @@ class PersonaPatchModel(BaseModel):
     target_accept_partner_children: Optional[str] = None
     target_accept_partner_children_strength: Optional[str] = None
     target_accept_long_distance: Optional[str] = None
+    target_location_semantics: Optional[str] = None
+    target_requires_partner_accept_my_children: Optional[bool] = None
     target_want_children: Optional[str] = None
     target_marriage_timeline: Optional[str] = None
     must_have_tags: Optional[List[str]] = None
@@ -404,6 +408,10 @@ def extract_patches(
 关键规则：
 - 绝对不要用对话之外的信息。
 - `explicit_patch` 允许硬字段，如年龄、城市、学历、婚况、抽烟喝酒、目标年龄/城市、接受度边界。
+- 如果用户自己有孩子，`self_children_count` / `self_children_living_with_self` 能明确就尽量明确。
+- `target_accept_partner_children` 只表示“我是否接受对方已有孩子”。
+- 如果用户表达的是“对方要能接受我有孩子/我的孩子现实”，写到 `target_requires_partner_accept_my_children`，不要误写进 `target_accept_partner_children`。
+- `target_location_semantics` 用来保留“稳定留沪 / 双城过渡 / 近距离可沟通但长期异地不行”这类细粒度位置偏好，不要硬塞进 `target_cities`。
 - `strong_inference_patch` 只允许这些字段：must_have_tags, must_not_have_tags, preferred_traits, disliked_traits, persona_summary_internal, preference_summary_internal, public_profile_summary_draft, public_preference_summary_draft。
 - 如果用户说“更匹配一点，但不是硬门槛”，不要把它写进硬门槛字段。
 - 如果用户只给了区间、约数或模糊表达，不要补成更精确的值；例如收入只说“大概 35-40”，就不要写成 38。

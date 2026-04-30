@@ -48,6 +48,7 @@ If the user asks for "多 agent 审计", the final report must separate:
 Write these files when the audit is substantial:
 
 - `input_personas.json`
+- `raw_agent_feedback.json` when you are saving the raw `wait_agent` or per-agent reply payload first
 - `memory_snapshots.json`
 - `search_outputs.json`
 - `agent_feedback.json`
@@ -138,6 +139,7 @@ Use a single run directory such as `tmp/persona_agent_audits/persona_eval_202604
    - missing structured fields
 10. Aggregate the audit across personas.
     Keep the roleplayed user's judgment separate from the main agent's diagnosis.
+    If the raw reviewer replies were saved from tool output first, normalize them before aggregation.
     Use `python3 local-skills/persona-eval/scripts/summarize_agent_feedback.py` to summarize reviewer feedback after the JSON responses are collected.
 
 ## What To Look For
@@ -184,6 +186,8 @@ Also include a run-level section with:
   Generate results JSON, packet markdown, and reviewer metrics in one pass.
 - `python3 local-skills/persona-eval/scripts/generate_persona_packets.py`
   Render result packets for review.
+- `python3 local-skills/persona-eval/scripts/normalize_agent_feedback.py`
+  Normalize raw `wait_agent` status payloads, `results` reports, or mixed feedback lists into standard `agent_feedback.json`.
 - `python3 local-skills/persona-eval/scripts/summarize_agent_feedback.py`
   Summarize both legacy candidate-only feedback and the newer `memory_accuracy + matching_feedback` reviewer JSON.
 - `python3 local-skills/persona-eval/scripts/build_audit_summary.py`

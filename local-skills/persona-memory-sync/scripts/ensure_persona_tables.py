@@ -33,6 +33,8 @@ CREATE TABLE IF NOT EXISTS {persona_table} (
   self_job VARCHAR(64) DEFAULT NULL,
   self_marital_status VARCHAR(32) DEFAULT NULL,
   self_has_children TINYINT(1) DEFAULT NULL,
+  self_children_count INT DEFAULT NULL,
+  self_children_living_with_self TINYINT(1) DEFAULT NULL,
   self_smoking VARCHAR(16) DEFAULT NULL,
   self_drinking VARCHAR(16) DEFAULT NULL,
   self_relationship_goal VARCHAR(32) DEFAULT NULL,
@@ -50,6 +52,8 @@ CREATE TABLE IF NOT EXISTS {persona_table} (
   target_accept_partner_children VARCHAR(16) DEFAULT NULL,
   target_accept_partner_children_strength VARCHAR(32) DEFAULT NULL,
   target_accept_long_distance VARCHAR(16) DEFAULT NULL,
+  target_location_semantics VARCHAR(128) DEFAULT NULL,
+  target_requires_partner_accept_my_children TINYINT(1) DEFAULT NULL,
   target_want_children VARCHAR(16) DEFAULT NULL,
   target_marriage_timeline VARCHAR(32) DEFAULT NULL,
   must_have_tags TEXT,
@@ -90,8 +94,12 @@ CREATE TABLE IF NOT EXISTS {observation_table} (
 """
 
 PERSONA_EXTENSION_COLUMNS = {
+    "self_children_count": "INT DEFAULT NULL",
+    "self_children_living_with_self": "TINYINT(1) DEFAULT NULL",
     "target_marital_status_strength": "VARCHAR(32) DEFAULT NULL",
     "target_accept_partner_children_strength": "VARCHAR(32) DEFAULT NULL",
+    "target_location_semantics": "VARCHAR(128) DEFAULT NULL",
+    "target_requires_partner_accept_my_children": "TINYINT(1) DEFAULT NULL",
 }
 
 PROFILE_ENUM_UPGRADES = {
