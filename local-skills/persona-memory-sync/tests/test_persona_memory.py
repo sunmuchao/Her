@@ -118,6 +118,20 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertIn("关系边界", combined)
         self.assertIn("消费观", combined)
 
+    def test_merge_persona_sanitizes_summary_fields_with_city_and_goal_inference(self):
+        merged, field_results = persona_memory_lib.merge_persona(
+            {},
+            {
+                "self_city": "无锡",
+                "self_relationship_goal": "结婚导向",
+                "persona_summary_internal": "无锡本地，结婚导向，偏务实。",
+            },
+            "explicit",
+        )
+        self.assertEqual(merged["persona_summary_internal"], "现居无锡，以长期稳定关系为前提，偏务实。")
+        summary_result = [item for item in field_results if item["field_name"] == "persona_summary_internal"][0]
+        self.assertEqual(summary_result["stored_value"], "现居无锡，以长期稳定关系为前提，偏务实。")
+
     def test_build_profile_payload_maps_acceptance_fields(self):
         persona = {
             "user_key": "demo-user",
