@@ -241,6 +241,7 @@ def build_audit_summary(
     all_memory_drifts = []
     all_privacy_flags = []
     all_matching_issues = []
+    matching_satisfaction_counts = Counter()
     personas = []
 
     for index, entry in enumerate(feedback, start=1):
@@ -260,6 +261,8 @@ def build_audit_summary(
         matching_satisfaction = canonical_satisfaction(
             matching_feedback.get("overall_satisfaction")
         )
+        if matching_satisfaction:
+            matching_satisfaction_counts[matching_satisfaction] += 1
 
         all_memory_drifts.extend(memory_drift)
         all_privacy_flags.extend(do_not_public)
@@ -288,8 +291,8 @@ def build_audit_summary(
         "overall": {
             "agent_count": review_metrics["persona_count"],
             "overall_score_avg": review_metrics.get("overall_score_average", 0.0),
-            "matching_satisfaction_distribution": review_metrics.get(
-                "matching_satisfaction_counts", {}
+            "matching_satisfaction_distribution": dict(
+                sorted(matching_satisfaction_counts.items())
             ),
             "common_memory_issues": top_categories(all_memory_drifts, MEMORY_ISSUE_RULES),
             "common_public_risks": top_categories(all_privacy_flags, PRIVACY_RISK_RULES),
