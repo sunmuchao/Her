@@ -1,0 +1,451 @@
+{
+  "run_label": "subagent_rerun_20260430_095844",
+  "results": [
+    {
+      "persona_id": "lin",
+      "agent_id": "019dd8ec-eaa4-7a72-928d-b0788eaf5b1f",
+      "user_key": "subagent_rerun_20260430_095844_lin",
+      "display_name": "林知夏",
+      "profile_id": 30073,
+      "private_boundaries": [
+        "准确收入",
+        "过去6年恋爱经历",
+        "备孕或生育时间焦虑",
+        "具体公司名"
+      ],
+      "expected_do_not_public_fields": [
+        "准确收入数字",
+        "具体公司名",
+        "过去6年恋爱经历细节",
+        "备孕或生育时间焦虑相关表述",
+        "任何把结婚节奏写得过于强压或急迫的内容"
+      ],
+      "review_focus": [
+        "是否把收入写成了精确数字或可反推出具体收入的信息",
+        "是否错误补充了我没有明确说过的婚育态度字段",
+        "是否准确保留上海或苏州定居偏好以及不接受长期异地",
+        "是否把关系目标写得自然，而不是过于有压迫感",
+        "是否公开了具体公司名或过往长期恋爱经历"
+      ],
+      "transcript": [
+        {
+          "turn": 1,
+          "text": "我叫林知夏，今年30岁，现在人在上海，做产品经理。本科毕业，平时工作有忙有闲，但整体生活节奏还算正常。这次来主要还是想认真认识合适的人，不是随便聊聊。"
+        },
+        {
+          "turn": 2,
+          "text": "我目前是未婚，不抽烟，喝酒的话就是偶尔聚会或者应酬会喝一点，平时基本没有这个习惯。感情上我是偏认真型的，如果相处合适，我希望1到2年内能比较稳定地往结婚去推进。"
+        },
+        {
+          "turn": 3,
+          "text": "我这边还是想找男性，年龄大概30到36岁会比较合适一些。身高175以上、本科及以上，我会觉得相处和交流更顺。最好是在上海或者苏州定居发展的，现实里更方便往下走。"
+        },
+        {
+          "turn": 4,
+          "text": "我比较看重情绪稳定、愿意沟通，还有消费观正常这几个点。相处里有分寸感也很重要，会让人觉得舒服。长期异地我不接受，另外如果一个人控制欲太强、长期回避沟通，或者感情态度很飘，那我基本不会考虑。"
+        }
+      ],
+      "normalized_patch": {
+        "display_name": "林知夏",
+        "self_age": 30,
+        "self_city": "上海",
+        "self_education": "本科",
+        "self_job": "产品经理",
+        "self_marital_status": "未婚",
+        "self_smoking": "不抽烟",
+        "self_drinking": "偶尔喝酒",
+        "self_relationship_goal": "认真认识合适的人，1到2年内比较稳定地往结婚推进",
+        "target_gender": "男性",
+        "target_age_min": 30,
+        "target_age_max": 36,
+        "target_cities": "上海,苏州",
+        "target_height_min": 175,
+        "target_education_min": "本科",
+        "target_accept_long_distance": "不接受",
+        "must_have_tags": "情绪稳定,愿意沟通,消费观正常",
+        "preferred_traits": "有分寸感",
+        "disliked_traits": "控制欲太强,长期回避沟通,感情态度很飘",
+        "target_marriage_timeline": "1到2年内"
+      },
+      "snapshot": {
+        "user_persona": {
+          "display_name": "林知夏",
+          "self_age": 30,
+          "self_city": "上海",
+          "self_education": "本科",
+          "self_job": "产品经理",
+          "self_marital_status": "未婚",
+          "self_smoking": "不抽烟",
+          "self_drinking": "偶尔喝酒",
+          "self_relationship_goal": "认真认识合适的人，1到2年内比较稳定地往结婚推进",
+          "target_gender": "男性",
+          "target_age_min": 30,
+          "target_age_max": 36,
+          "target_cities": "上海,苏州",
+          "target_height_min": 175,
+          "target_education_min": "本科",
+          "target_accept_long_distance": "不接受",
+          "must_have_tags": "情绪稳定,愿意沟通,消费观正常",
+          "preferred_traits": "有分寸感",
+          "disliked_traits": "控制欲太强,长期回避沟通,感情态度很飘"
+        },
+        "profile_internal": {
+          "id": 30073,
+          "name": "林知夏",
+          "age": 30,
+          "city": "上海",
+          "education": "本科",
+          "job": "产品经理",
+          "public_job": "产品经理",
+          "relationship_goal": "认真认识合适的人，1到2年内比较稳定地往结婚推进",
+          "drinking": "偶尔喝酒",
+          "smoking": "不抽烟",
+          "preferred_education_min": "本科",
+          "personality": "现居上海，认真了解，合适的话希望稳定推进，生活方式相对稳定",
+          "values": "看重情绪稳定、愿意沟通、消费观正常；偏好有分寸感；异地推进需要同城前提",
+          "notes": "不太接受控制欲太强、长期回避沟通、感情态度很飘",
+          "matcher_summary_internal": "must_have: 情绪稳定, 愿意沟通, 消费观正常",
+          "public_personality": "现居上海，认真了解，合适的话希望稳定推进，生活方式相对稳定",
+          "public_values": "看重情绪稳定、沟通顺畅、消费观一致，更适合同城稳定推进的关系",
+          "public_notes": "更适合同城稳定发展的关系"
+        },
+        "public_profile_view": {
+          "id": 30073,
+          "name": "林知夏",
+          "age": 30,
+          "city": "上海",
+          "education": "本科",
+          "job": "产品经理",
+          "relationship_goal": "认真了解，合适的话希望稳定推进",
+          "personality": "现居上海，认真了解，合适的话希望稳定推进，生活方式相对稳定",
+          "values": "看重情绪稳定、沟通顺畅、消费观一致，更适合同城稳定推进的关系",
+          "notes": "更适合同城稳定发展的关系"
+        }
+      },
+      "observations": [
+        {
+          "field_name": "target_marriage_timeline",
+          "field_value": "1到2年内",
+          "source_type": "explicit",
+          "confidence_score": 5,
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1,
+          "evidence_text": "对话中明确提到target_marriage_timeline=1到2年内",
+          "conversation_ref": "subagent_rerun_20260430_095844/lin",
+          "created_at": "2026-04-30 10:01:28"
+        },
+        {
+          "field_name": "disliked_traits",
+          "field_value": "控制欲太强,长期回避沟通,感情态度很飘",
+          "source_type": "explicit",
+          "confidence_score": 5,
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1,
+          "evidence_text": "对话中明确提到不太接受特质=控制欲太强,长期回避沟通,感情态度很飘",
+          "conversation_ref": "subagent_rerun_20260430_095844/lin",
+          "created_at": "2026-04-30 10:01:28"
+        },
+        {
+          "field_name": "preferred_traits",
+          "field_value": "有分寸感",
+          "source_type": "explicit",
+          "confidence_score": 5,
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1,
+          "evidence_text": "对话中明确提到更偏好特质=有分寸感",
+          "conversation_ref": "subagent_rerun_20260430_095844/lin",
+          "created_at": "2026-04-30 10:01:28"
+        },
+        {
+          "field_name": "must_have_tags",
+          "field_value": "情绪稳定,愿意沟通,消费观正常",
+          "source_type": "explicit",
+          "confidence_score": 5,
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1,
+          "evidence_text": "对话中明确提到硬偏好标签=情绪稳定,愿意沟通,消费观正常",
+          "conversation_ref": "subagent_rerun_20260430_095844/lin",
+          "created_at": "2026-04-30 10:01:28"
+        },
+        {
+          "field_name": "target_accept_long_distance",
+          "field_value": "不接受",
+          "source_type": "explicit",
+          "confidence_score": 5,
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1,
+          "evidence_text": "对话中明确提到异地接受度=不接受",
+          "conversation_ref": "subagent_rerun_20260430_095844/lin",
+          "created_at": "2026-04-30 10:01:28"
+        },
+        {
+          "field_name": "target_education_min",
+          "field_value": "本科",
+          "source_type": "explicit",
+          "confidence_score": 5,
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1,
+          "evidence_text": "对话中明确提到目标学历下限=本科",
+          "conversation_ref": "subagent_rerun_20260430_095844/lin",
+          "created_at": "2026-04-30 10:01:28"
+        },
+        {
+          "field_name": "target_height_min",
+          "field_value": "175",
+          "source_type": "explicit",
+          "confidence_score": 5,
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1,
+          "evidence_text": "对话中明确提到目标身高下限=175",
+          "conversation_ref": "subagent_rerun_20260430_095844/lin",
+          "created_at": "2026-04-30 10:01:28"
+        },
+        {
+          "field_name": "target_cities",
+          "field_value": "上海,苏州",
+          "source_type": "explicit",
+          "confidence_score": 5,
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1,
+          "evidence_text": "对话中明确提到目标城市=上海,苏州",
+          "conversation_ref": "subagent_rerun_20260430_095844/lin",
+          "created_at": "2026-04-30 10:01:28"
+        },
+        {
+          "field_name": "target_age_max",
+          "field_value": "36",
+          "source_type": "explicit",
+          "confidence_score": 5,
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1,
+          "evidence_text": "对话中明确提到目标年龄上限=36",
+          "conversation_ref": "subagent_rerun_20260430_095844/lin",
+          "created_at": "2026-04-30 10:01:28"
+        },
+        {
+          "field_name": "target_age_min",
+          "field_value": "30",
+          "source_type": "explicit",
+          "confidence_score": 5,
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1,
+          "evidence_text": "对话中明确提到目标年龄下限=30",
+          "conversation_ref": "subagent_rerun_20260430_095844/lin",
+          "created_at": "2026-04-30 10:01:28"
+        },
+        {
+          "field_name": "target_gender",
+          "field_value": "男性",
+          "source_type": "explicit",
+          "confidence_score": 5,
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1,
+          "evidence_text": "对话中明确提到目标性别=男性",
+          "conversation_ref": "subagent_rerun_20260430_095844/lin",
+          "created_at": "2026-04-30 10:01:28"
+        },
+        {
+          "field_name": "self_relationship_goal",
+          "field_value": "认真认识合适的人，1到2年内比较稳定地往结婚推进",
+          "source_type": "explicit",
+          "confidence_score": 5,
+          "action_type": "insert",
+          "applied_to_persona": 1,
+          "applied_to_profile": 1,
+          "evidence_text": "对话中明确提到关系目标=认真认识合适的人，1到2年内比较稳定地往结婚推进",
+          "conversation_ref": "subagent_rerun_20260430_095844/lin",
+          "created_at": "2026-04-30 10:01:28"
+        }
+      ]
+    },
+    {
+      "persona_id": "zhou",
+      "agent_id": "019dd8ec-eb7c-71b3-a39e-e0f1ae0c8370",
+      "user_key": "subagent_rerun_20260430_095844_zhou",
+      "display_name": "周予安",
+      "profile_id": null,
+      "private_boundaries": [
+        "离婚原因",
+        "房贷压力",
+        "父母健康负担",
+        "准确收入"
+      ],
+      "expected_do_not_public_fields": [
+        "离婚原因",
+        "房贷压力",
+        "父母健康负担",
+        "准确收入",
+        "任何家庭经济压力细节",
+        "任何父母健康照护细节"
+      ],
+      "review_focus": [
+        "是否把离异无孩准确记录，而不是只写离异",
+        "是否把对子女情况错误放宽成普通可协商，实际应是现阶段接受度不高、谨慎接受",
+        "是否保留了女性、29到35岁、苏州无锡上海这些明确择偶条件",
+        "是否把性格要求准确写成稳定、别太强控制欲、能好好沟通",
+        "是否把不想公开的信息错误带到公开展示层"
+      ],
+      "transcript": [
+        {
+          "turn": 1,
+          "text": "我叫周予安，36岁，现在人在苏州，做供应链管理。工作内容比较偏协调和推进，日常节奏算务实稳定。婚姻情况是离异，没有孩子。"
+        },
+        {
+          "turn": 2,
+          "text": "我学历是专科升本，不抽烟，喝酒也就是少量社交场合会碰一点，平时基本没有这个习惯。现在出来接触异性，目的还是认真找对象，不是随便聊聊。"
+        },
+        {
+          "turn": 3,
+          "text": "我想找的是女性，年龄大概29到35岁，最好在苏州、无锡或者上海，现实一点，后面见面也方便。性格上我比较看重稳定，别太强控制欲，有事能好好沟通。要是相处里总是拉扯，或者生活状态一直很乱，我会比较累。"
+        },
+        {
+          "turn": 4,
+          "text": "如果两个人确实合适，我希望两年内认真推进到再婚。婚史方面我不是完全卡得特别死，但对方如果已经有孩子，我现阶段会比较谨慎，坦白说接受度不高。比起一开始聊得多热闹，我更在意后面能不能踏实相处。"
+        }
+      ],
+      "normalized_patch": {
+        "display_name": "周予安",
+        "self_age": 36,
+        "self_city": "苏州",
+        "self_education": "专科升本",
+        "self_job": "供应链管理",
+        "self_marital_status": "离异无孩",
+        "self_smoking": "不抽烟",
+        "self_drinking": "少量社交饮酒",
+        "self_relationship_goal": "认真找对象，希望两年内推进到再婚",
+        "target_gender": "女性",
+        "target_age_min": 29,
+        "target_age_max": 35,
+        "target_cities": "苏州,无锡,上海",
+        "must_have_tags": "性格稳定,能好好沟通",
+        "preferred_traits": "踏实相处",
+        "disliked_traits": "强控制欲,相处拉扯,生活状态一直很乱",
+        "target_accept_partner_children": "可协商",
+        "target_accept_partner_children_strength": "谨慎接受",
+        "target_marriage_timeline": "两年内认真推进到再婚"
+      },
+      "snapshot": {
+        "user_persona": {
+          "display_name": "周予安",
+          "self_age": 36,
+          "self_city": "苏州",
+          "self_education": "专科升本",
+          "self_job": "供应链管理",
+          "self_marital_status": "离异无孩",
+          "self_smoking": "不抽烟",
+          "self_drinking": "少量社交饮酒",
+          "self_relationship_goal": "认真找对象，希望两年内推进到再婚",
+          "target_gender": "女性",
+          "target_age_min": 29,
+          "target_age_max": 35,
+          "target_cities": "苏州,无锡,上海",
+          "target_accept_partner_children": "可协商",
+          "target_accept_partner_children_strength": "谨慎接受",
+          "must_have_tags": "性格稳定,能好好沟通",
+          "preferred_traits": "踏实相处",
+          "disliked_traits": "强控制欲,相处拉扯,生活状态一直很乱"
+        },
+        "profile_internal": {},
+        "public_profile_view": {}
+      },
+      "observations": []
+    },
+    {
+      "persona_id": "chen",
+      "agent_id": "019dd8ec-eb90-7e63-99aa-af359af1f331",
+      "user_key": "subagent_rerun_20260430_095844_chen",
+      "display_name": "陈芷宁",
+      "profile_id": null,
+      "private_boundaries": [
+        "具体医院",
+        "母亲长期慢病",
+        "准确收入",
+        "轻微焦虑史"
+      ],
+      "expected_do_not_public_fields": [
+        "具体医院名称",
+        "精确年收入数字",
+        "家庭成员健康情况",
+        "心理状态或焦虑史细节",
+        "任何能进一步定位本人身份的过细工作信息"
+      ],
+      "review_focus": [
+        "现居无锡不要被写成无锡本地人",
+        "关系目标不要被改写成着急结婚或强结果导向",
+        "不暧昧要保留为高优先级要求，不要只弱化到普通偏好",
+        "公开层不要出现具体医院或精确收入",
+        "喝酒习惯不要被写成偶尔喝酒很多或社交频繁"
+      ],
+      "transcript": [
+        {
+          "turn": 1,
+          "text": "我叫陈芷宁，28岁，现在在无锡工作生活。平时节奏还算规律，工作日会忙一点，但整体不是特别乱。来这边就是想认真认识人，如果相处合适，也可以往结婚方向走。"
+        },
+        {
+          "turn": 2,
+          "text": "我硕士毕业，现在在医院做药师，未婚。自己不抽烟，酒也基本不喝，平时生活比较简单，休息的时候更喜欢安静一点的安排。比起一上来很热络的关系，我更在意相处是不是自然。"
+        },
+        {
+          "turn": 3,
+          "text": "我会更想认识28到34岁的男生，最好是在无锡或者苏州，这样现实里接触起来方便一些。工作稳定、不抽烟、少酒会比较加分。还有一点对我挺重要，就是边界要清楚，别暧昧，有事能正常沟通。"
+        },
+        {
+          "turn": 4,
+          "text": "我对关系是认真态度，但不会为了推进速度去勉强自己。说到底还是看人靠不靠谱，相处累不累，能不能把话说清楚。条件当然会看，但我不会只盯着表面的东西。"
+        }
+      ],
+      "normalized_patch": {
+        "display_name": "陈芷宁",
+        "self_age": 28,
+        "self_city": "无锡",
+        "self_education": "硕士",
+        "self_job": "药师",
+        "self_marital_status": "未婚",
+        "self_smoking": "不抽烟",
+        "self_drinking": "基本不喝酒",
+        "self_relationship_goal": "认真恋爱，合适就结婚",
+        "target_gender": "男性",
+        "target_age_min": 28,
+        "target_age_max": 34,
+        "target_cities": "无锡,苏州",
+        "must_have_tags": "边界清楚,愿意沟通,不暧昧",
+        "preferred_traits": "稳定工作,少酒,不抽烟",
+        "disliked_traits": "暧昧不清,沟通含糊,相处很累"
+      },
+      "snapshot": {
+        "user_persona": {
+          "display_name": "陈芷宁",
+          "self_age": 28,
+          "self_city": "无锡",
+          "self_education": "硕士",
+          "self_job": "药师",
+          "self_marital_status": "未婚",
+          "self_smoking": "不抽烟",
+          "self_drinking": "基本不喝酒",
+          "self_relationship_goal": "认真恋爱，合适就结婚",
+          "target_gender": "男性",
+          "target_age_min": 28,
+          "target_age_max": 34,
+          "target_cities": "无锡,苏州",
+          "must_have_tags": "边界清楚,愿意沟通,不暧昧",
+          "preferred_traits": "稳定工作,少酒,不抽烟",
+          "disliked_traits": "暧昧不清,沟通含糊,相处很累"
+        },
+        "profile_internal": {},
+        "public_profile_view": {}
+      },
+      "observations": []
+    }
+  ]
+}
