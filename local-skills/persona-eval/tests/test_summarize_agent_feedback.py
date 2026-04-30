@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from local_skills_persona_eval_import import summarize_agent_feedback
+from local_skills_persona_eval_import import build_audit_summary, summarize_agent_feedback
 
 
 class SummarizeAgentFeedbackTests(unittest.TestCase):
