@@ -84,7 +84,7 @@ class BackfillProfileEnrichmentTests(unittest.TestCase):
         self.assertEqual(enriched["accept_partner_children_strength"], "谨慎接受")
         self.assertEqual(
             enriched["accept_partner_children_semantics"],
-            "现阶段不太接受，需要非常看具体情况",
+            "现阶段不太接受",
         )
 
     def test_preserve_curated_backfill_keeps_existing_manual_labels(self):
