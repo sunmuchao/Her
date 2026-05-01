@@ -5,12 +5,31 @@ import unittest
 from unittest import mock
 
 
+BACKFILL_SCRIPT_PATH = (
+    pathlib.Path(__file__).resolve().parents[1] / "scripts" / "backfill_profile_enrichment.py"
+)
+backfill_profile_enrichment = types.ModuleType("backfill_profile_enrichment")
+backfill_profile_enrichment.__file__ = str(BACKFILL_SCRIPT_PATH)
+exec(
+    compile(BACKFILL_SCRIPT_PATH.read_text(encoding="utf-8"), str(BACKFILL_SCRIPT_PATH), "exec"),
+    backfill_profile_enrichment.__dict__,
+)
+sys.modules["backfill_profile_enrichment"] = backfill_profile_enrichment
+
 SCRIPT_PATH = (
     pathlib.Path(__file__).resolve().parents[1] / "scripts" / "search_candidates.py"
 )
 search_candidates = types.ModuleType("search_candidates")
 search_candidates.__file__ = str(SCRIPT_PATH)
 exec(compile(SCRIPT_PATH.read_text(encoding="utf-8"), str(SCRIPT_PATH), "exec"), search_candidates.__dict__)
+
+SEED_SCRIPT_PATH = pathlib.Path(__file__).resolve().parents[1] / "scripts" / "seed_gap_profiles.py"
+seed_gap_profiles = types.ModuleType("seed_gap_profiles")
+seed_gap_profiles.__file__ = str(SEED_SCRIPT_PATH)
+exec(
+    compile(SEED_SCRIPT_PATH.read_text(encoding="utf-8"), str(SEED_SCRIPT_PATH), "exec"),
+    seed_gap_profiles.__dict__,
+)
 
 
 class FakeCursor:
@@ -384,6 +403,45 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertIn("不抽烟", result["matched_on"])
         self.assertIn("少酒/不喝酒", result["matched_on"])
+
+    def test_seed_gap_profiles_cover_strict_wuxi_pharmacist_search(self):
+        records = [
+            search_candidates.normalize_record(dict(profile, source_file="seed#profiles"))
+            for profile in seed_gap_profiles.build_profiles()
+        ]
+        criteria = {
+            "gender": "男",
+            "age_min": 28,
+            "age_max": 34,
+            "cities": ["无锡", "苏州"],
+            "relationship_goals": ["认真恋爱", "结婚导向"],
+            "smoking": "否",
+            "drinking": "否",
+            "profile_statuses": ["active"],
+            "verified_level_min": "photo",
+            "prefer": ["稳定工作", "边界清楚", "愿意沟通", "不暧昧"],
+            "exclude_ids": set(),
+            "self_profile": {
+                "age": 28,
+                "gender": "女",
+                "city": "无锡",
+                "height": 162,
+                "education": "硕士",
+                "income_range": "22万/年",
+                "marital_status": "未婚",
+                "has_children": 0,
+            },
+        }
+
+        results = search_candidates.evaluate_records(records, criteria, 5)
+
+        self.assertGreaterEqual(len(results), 3)
+        self.assertEqual(
+            {"宋知行", "顾承泽", "梁亦辰"},
+            {result["name"] for result in results[:3]},
+        )
+        self.assertTrue(all(result["profile"]["smoking"] == "否" for result in results[:3]))
+        self.assertTrue(all(result["profile"]["drinking"] == "否" for result in results[:3]))
 
     def test_evaluate_candidate_require_known_rejects_missing_field(self):
         record = {
