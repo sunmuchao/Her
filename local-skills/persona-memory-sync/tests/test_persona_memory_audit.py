@@ -1,3 +1,4 @@
+import json
 import pathlib
 import sys
 import unittest
@@ -78,6 +79,35 @@ class PersonaMemoryAuditTests(unittest.TestCase):
         }
         masked = audit_script.mask_snapshot_for_review(snapshot, ["具体公司名"])
         self.assertEqual(masked["user_persona"]["self_income_wan"], 38)
+
+    def test_mask_snapshot_for_review_redacts_family_housing_and_history_boundaries(self):
+        snapshot = {
+            "user_persona": {
+                "persona_summary_internal": "家里老人身体负担不轻，离婚原因不想展开。",
+                "self_job": "某事业单位人力行政岗",
+            },
+            "profile_internal": {
+                "job": "某事业单位人力行政岗",
+                "public_job": "事业单位人力行政岗",
+                "notes": "房贷金额目前不想公开；前任细节不方便展开。",
+            },
+            "public_profile_view": {
+                "job": "事业单位人力行政岗",
+                "notes": "房贷金额目前不想公开",
+            },
+        }
+        masked = audit_script.mask_snapshot_for_review(
+            snapshot,
+            ["家里老人身体负担", "房贷金额", "离婚原因", "具体单位"],
+        )
+        flattened = json.dumps(masked, ensure_ascii=False)
+        self.assertNotIn("老人身体负担", flattened)
+        self.assertNotIn("房贷金额", flattened)
+        self.assertNotIn("离婚原因", flattened)
+        self.assertNotIn("前任细节", flattened)
+        self.assertNotIn("某事业单位", flattened)
+        self.assertNotIn("job", masked["profile_internal"])
+        self.assertEqual(masked["public_profile_view"]["job"], "事业单位人力行政岗")
 
 
 if __name__ == "__main__":

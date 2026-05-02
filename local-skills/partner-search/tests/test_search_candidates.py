@@ -623,6 +623,44 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertIn("对方城市偏好未命中，但资料写了接受异地", result["risk_flags"])
         self.assertIn("对方不接受长期异地，需要确认落地计划", result["risk_flags"])
 
+    def test_evaluate_candidate_prefers_same_city_when_near_distance_is_priority(self):
+        base_record = {
+            "gender": "女",
+            "profile_status": "active",
+            "verified_level": "photo",
+            "last_active_at": "2099-01-01 00:00:00",
+            "combined_text": "",
+            "source_file": "mysql://root@127.0.0.1:3307/her?table=profiles#profiles",
+            "relationship_goal": "结婚导向",
+            "marital_status": "未婚",
+            "photo_count": 4,
+            "age": 31,
+            "height": 165,
+            "accept_long_distance": "接受",
+        }
+        same_city = dict(base_record, id=211, name="SameCity", city="宁波")
+        cross_city = dict(base_record, id=212, name="CrossCity", city="杭州")
+        criteria = {
+            "gender": "女",
+            "profile_statuses": ["active"],
+            "relationship_goals": ["结婚导向"],
+            "exclude_ids": set(),
+            "self_profile": {
+                "city": "宁波",
+                "accept_long_distance": "不接受",
+                "preferred_cities": "宁波,杭州",
+            },
+        }
+
+        same_result = search_candidates.evaluate_candidate(same_city, criteria)
+        cross_result = search_candidates.evaluate_candidate(cross_city, criteria)
+
+        self.assertIsNotNone(same_result)
+        self.assertIsNotNone(cross_result)
+        self.assertIn("近距离更省心", same_result["matched_on"])
+        self.assertIn("非同城，见面推进成本更高", cross_result["risk_flags"])
+        self.assertGreater(same_result["score"], cross_result["score"])
+
     def test_reciprocal_negotiable_children_becomes_risk_when_self_has_children(self):
         candidate = {
             "accept_partner_children": "可协商",
@@ -823,6 +861,49 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertIn("对方对子女接受需要先接触再判断", softer_result["risk_flags"])
         self.assertLess(lower_result["score"], softer_result["score"])
 
+    def test_evaluate_candidate_marks_concession_stack_when_multiple_soft_risks_accumulate(self):
+        record = {
+            "id": 301,
+            "name": "SoftStack",
+            "gender": "男",
+            "city": "常州",
+            "age": 36,
+            "height": 178,
+            "relationship_goal": "结婚导向",
+            "marital_status": "未婚",
+            "profile_status": "active",
+            "verified_level": "photo",
+            "photo_count": 4,
+            "last_active_at": "2099-01-01 00:00:00",
+            "combined_text": "",
+            "source_file": "mysql://root@127.0.0.1:3307/her?table=profiles#profiles",
+            "accept_long_distance": "可协商",
+            "preferred_age_max": 35,
+            "preferred_age_strictness": "可放宽",
+            "commitment_clarity": "愿意稳定推进",
+            "relationship_execution": "口头长期待验证",
+        }
+        criteria = {
+            "gender": "男",
+            "profile_statuses": ["active"],
+            "relationship_goals": ["结婚导向"],
+            "exclude_ids": set(),
+            "self_profile": {
+                "age": 38,
+                "city": "镇江",
+                "accept_long_distance": "不接受",
+            },
+        }
+
+        result = search_candidates.evaluate_candidate(record, criteria)
+
+        self.assertIsNotNone(result)
+        self.assertIn("对方年龄要求可能可放宽", result["risk_flags"])
+        self.assertIn("对方异地仅可协商", result["risk_flags"])
+        self.assertIn("非同城，见面推进成本更高", result["risk_flags"])
+        self.assertIn("长期意图有，但推进方式还不够落地", result["risk_flags"])
+        self.assertIn("多项条件需要放宽后才成立", result["risk_flags"])
+
     def test_reciprocal_uses_matcher_preference_tags_for_soft_bonus(self):
         candidate = {
             "matcher_preferences_json": '{"must_have_tags":["情绪稳定"],"preferred_traits":["愿意沟通"]}',
@@ -957,7 +1038,7 @@ class SearchCandidatesTests(unittest.TestCase):
 
         result = search_candidates.evaluate_contextual_fit(record, criteria, self_profile={"age": 29})
 
-        self.assertIn("消费观更清醒", result["matched_on"])
+        self.assertIn("过日子观念更稳", result["matched_on"])
         self.assertIn("聊天更顺，不容易累", result["matched_on"])
         self.assertIn("稳重但不板正", result["matched_on"])
         self.assertIn("推进方式更落地", result["matched_on"])
@@ -1093,7 +1174,7 @@ class SearchCandidatesTests(unittest.TestCase):
         questions = search_candidates.build_follow_up_questions(
             {},
             ["consumption_attitude", "chat_texture", "relationship_execution"],
-            ["聊天还像完成任务", "长期意图有，但推进方式还不够落地"],
+            ["聊天还像完成任务", "长期意图有，但推进方式还不够落地", "多项条件需要放宽后才成立"],
         )
 
         self.assertIn("确认对方花钱更看重什么，是清醒务实，还是容易被外在包装带着走。", questions)
@@ -1101,6 +1182,7 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertIn("确认对方认真推进时，会不会把见面节奏、关系预期和现实安排说清。", questions)
         self.assertIn("确认对方聊天是不是容易只讲条件和流程，还是能把话题真正聊活。", questions)
         self.assertIn("确认对方不是只会说想长期，而是真的会把推进节奏和安排说清。", questions)
+        self.assertIn("确认这段匹配到底是少数几个点不完美，还是很多关键条件都要靠放宽才行。", questions)
 
     def test_attach_photo_previews_groups_by_source_and_table(self):
         original_loader = search_candidates.load_mysql_photo_previews
