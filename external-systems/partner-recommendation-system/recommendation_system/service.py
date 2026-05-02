@@ -288,6 +288,15 @@ def normalize_delivery_status(
             return ("rejected_by_gate", final_review["reason"])
         if final_review_status == "save_only":
             return ("save_only", final_review["reason"])
+        if final_review_status == "direct_greet_ready":
+            user_review_status = (existing or {}).get("user_review_status")
+            if user_review_status == "direct_greet":
+                return ("pending_delivery", "user_review_direct_greet")
+            if user_review_status == "save":
+                return ("save_only", "user_review_save")
+            if user_review_status == "skip":
+                return ("review_skipped", "user_review_skip")
+            return ("review_pending", final_review["reason"])
 
     if skip_cooldown_expired:
         return ("pending_delivery", "skip_cooldown_expired")
@@ -304,6 +313,7 @@ def inflate_recommendation(recommendation: dict[str, Any]) -> dict[str, Any]:
     inflated["risk_flags"] = json_loads(inflated.pop("risk_flags_json"), [])
     inflated["latest_payload"] = json_loads(inflated.pop("latest_payload_json"), {})
     inflated["final_review_payload"] = json_loads(inflated.pop("final_review_payload_json"), {})
+    inflated["user_review_payload"] = json_loads(inflated.pop("user_review_payload_json"), {})
     return inflated
 
 
@@ -344,6 +354,25 @@ def upsert_recommendation(
     final_review_payload_json = json_dumps(final_review.get("payload") or {})
     reviewed_at = format_dt(now)
     snapshot_hash = candidate_snapshot_hash(result)
+    snapshot_changed = bool(existing and existing.get("candidate_snapshot_hash") != snapshot_hash)
+    user_review_status = (existing or {}).get("user_review_status") or "not_requested"
+    user_review_reason = (existing or {}).get("user_review_reason")
+    user_review_payload = (existing or {}).get("user_review_payload") or {}
+    user_reviewed_at = (existing or {}).get("user_reviewed_at")
+    recommendation_mode = normalize_recommendation_mode(subscription.get("recommendation_mode"))
+
+    if recommendation_mode == "direct_greet_only" and final_review["status"] == "direct_greet_ready":
+        if snapshot_changed or user_review_status in {"not_requested", "pending_review"}:
+            user_review_status = "pending_review"
+            user_review_reason = "awaiting_real_user_review"
+            user_review_payload = {}
+            user_reviewed_at = None
+    else:
+        user_review_status = "not_requested"
+        user_review_reason = None
+        user_review_payload = {}
+        user_reviewed_at = None
+    user_review_payload_json = json_dumps(user_review_payload)
 
     if existing:
         conn.execute(
@@ -365,7 +394,11 @@ def upsert_recommendation(
                 final_review_score = ?,
                 final_review_payload_json = ?,
                 reviewed_at = ?,
-                candidate_snapshot_hash = ?
+                candidate_snapshot_hash = ?,
+                user_review_status = ?,
+                user_review_reason = ?,
+                user_review_payload_json = ?,
+                user_reviewed_at = ?
             WHERE recommendation_id = ?
             """,
             (
@@ -386,6 +419,10 @@ def upsert_recommendation(
                 final_review_payload_json,
                 reviewed_at,
                 snapshot_hash,
+                user_review_status,
+                user_review_reason,
+                user_review_payload_json,
+                user_reviewed_at,
                 existing["recommendation_id"],
             ),
         )
@@ -413,8 +450,12 @@ def upsert_recommendation(
               final_review_score,
               final_review_payload_json,
               reviewed_at,
-              candidate_snapshot_hash
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              candidate_snapshot_hash,
+              user_review_status,
+              user_review_reason,
+              user_review_payload_json,
+              user_reviewed_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 subscription["subscription_id"],
@@ -438,6 +479,10 @@ def upsert_recommendation(
                 final_review_payload_json,
                 reviewed_at,
                 snapshot_hash,
+                user_review_status,
+                user_review_reason,
+                user_review_payload_json,
+                user_reviewed_at,
             ),
         )
     conn.commit()
@@ -751,6 +796,89 @@ def record_recommendation_action(
             f"user_action_{action_type}",
             action_type,
             cooling_until,
+            recommendation["recommendation_id"],
+        ),
+    )
+    conn.commit()
+    return get_recommendation(conn, subscription_id, int(candidate_id))
+
+
+def record_user_review(
+    conn,
+    *,
+    subscription_id: str,
+    candidate_id: int,
+    review_type: str,
+    now: datetime | None = None,
+    review_payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    now = current_time(now)
+    recommendation = get_recommendation(conn, subscription_id, int(candidate_id))
+    if not recommendation:
+        raise ValueError(f"Unknown recommendation for subscription={subscription_id} candidate_id={candidate_id}")
+
+    if recommendation.get("notified_at"):
+        raise ValueError("User review must happen before delivery.")
+    if recommendation.get("final_review_status") != "direct_greet_ready":
+        raise ValueError("User review is only valid after the rule gate passes direct_greet_ready.")
+
+    allowed_reviews = {"skip", "save", "direct_greet"}
+    if review_type not in allowed_reviews:
+        raise ValueError(f"Unsupported review_type: {review_type}")
+
+    if review_type == "direct_greet":
+        user_review_status = "direct_greet"
+        delivery_status = "pending_delivery"
+        delivery_reason = "user_review_direct_greet"
+    elif review_type == "save":
+        user_review_status = "save"
+        delivery_status = "save_only"
+        delivery_reason = "user_review_save"
+    else:
+        user_review_status = "skip"
+        delivery_status = "review_skipped"
+        delivery_reason = "user_review_skip"
+
+    conn.execute(
+        """
+        INSERT INTO recommendation_actions (
+          subscription_id,
+          recommendation_id,
+          requester_id,
+          candidate_id,
+          action_type,
+          action_payload_json,
+          occurred_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            subscription_id,
+            recommendation["recommendation_id"],
+            recommendation["requester_id"],
+            recommendation["candidate_id"],
+            f"review_{review_type}",
+            json_dumps(review_payload or {}),
+            format_dt(now),
+        ),
+    )
+    conn.execute(
+        """
+        UPDATE profile_recommendations
+        SET user_review_status = ?,
+            user_review_reason = ?,
+            user_review_payload_json = ?,
+            user_reviewed_at = ?,
+            delivery_status = ?,
+            delivery_reason = ?
+        WHERE recommendation_id = ?
+        """,
+        (
+            user_review_status,
+            delivery_reason,
+            json_dumps(review_payload or {}),
+            format_dt(now),
+            delivery_status,
+            delivery_reason,
             recommendation["recommendation_id"],
         ),
     )

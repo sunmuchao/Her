@@ -20,6 +20,7 @@ from recommendation_system import (  # noqa: E402
     list_in_app_cards,
     list_recommendations_for_subscription,
     record_recommendation_action,
+    record_user_review,
     refresh_due_subscriptions,
     refresh_subscription,
     run_search_session,
@@ -134,9 +135,10 @@ class RecommendationSystemTests(unittest.TestCase):
         self.assertEqual(called["self_profile"]["city"], "无锡")
         recommendations = list_recommendations_for_subscription(self.conn, subscription["subscription_id"])
         self.assertEqual(len(recommendations), 2)
-        self.assertEqual(recommendations[0]["delivery_status"], "pending_delivery")
+        self.assertEqual(recommendations[0]["delivery_status"], "review_pending")
         self.assertEqual(recommendations[1]["delivery_status"], "suppressed_low_score")
         self.assertEqual(recommendations[0]["final_review_status"], "direct_greet_ready")
+        self.assertEqual(recommendations[0]["user_review_status"], "pending_review")
 
     def test_deliver_pending_recommendations_creates_in_app_card(self):
         subscription = self.create_active_subscription()
@@ -145,6 +147,14 @@ class RecommendationSystemTests(unittest.TestCase):
             subscription["subscription_id"],
             now=datetime(2026, 4, 30, 9, 0, 0),
             search_runner=lambda **_: {"results": [build_result(201, "提醒对象", 61)]},
+        )
+        record_user_review(
+            self.conn,
+            subscription_id=subscription["subscription_id"],
+            candidate_id=201,
+            review_type="direct_greet",
+            now=datetime(2026, 4, 30, 9, 30, 0),
+            review_payload={"reason": "真实用户愿意主动打招呼"},
         )
 
         summary = deliver_in_app_recommendations(
@@ -159,6 +169,7 @@ class RecommendationSystemTests(unittest.TestCase):
         recommendations = list_recommendations_for_subscription(self.conn, subscription["subscription_id"])
         self.assertEqual(recommendations[0]["delivery_status"], "delivered")
         self.assertEqual(recommendations[0]["final_review_status"], "direct_greet_ready")
+        self.assertEqual(recommendations[0]["user_review_status"], "direct_greet")
         self.assertIsNotNone(recommendations[0]["latest_card_id"])
 
     def test_direct_greet_only_mode_keeps_save_level_candidate_out_of_notifications(self):
@@ -189,6 +200,36 @@ class RecommendationSystemTests(unittest.TestCase):
         self.assertEqual(recommendations[0]["delivery_status"], "save_only")
         self.assertEqual(recommendations[0]["final_review_status"], "save_only")
         self.assertEqual(list_in_app_cards(self.conn, requester_id=70001), [])
+
+    def test_user_review_save_blocks_candidate_even_after_rule_gate_passes(self):
+        subscription = self.create_active_subscription()
+        refresh_subscription(
+            self.conn,
+            subscription["subscription_id"],
+            now=datetime(2026, 4, 30, 9, 0, 0),
+            search_runner=lambda **_: {"results": [build_result(213, "真实用户只会收藏", 66)]},
+        )
+        review = record_user_review(
+            self.conn,
+            subscription_id=subscription["subscription_id"],
+            candidate_id=213,
+            review_type="save",
+            now=datetime(2026, 4, 30, 9, 20, 0),
+            review_payload={"reason": "满意，但还不到主动打招呼"},
+        )
+        self.assertEqual(review["delivery_status"], "save_only")
+        self.assertEqual(review["user_review_status"], "save")
+
+        summary = deliver_in_app_recommendations(
+            self.conn,
+            now=datetime(2026, 4, 30, 10, 0, 0),
+        )
+
+        self.assertEqual(summary["delivered_count"], 0)
+        recommendations = list_recommendations_for_subscription(self.conn, subscription["subscription_id"])
+        self.assertEqual(recommendations[0]["final_review_status"], "direct_greet_ready")
+        self.assertEqual(recommendations[0]["user_review_status"], "save")
+        self.assertEqual(recommendations[0]["delivery_status"], "save_only")
 
     def test_match_based_mode_can_still_push_candidate_that_is_not_direct_greet_ready(self):
         subscription = self.create_active_subscription(recommendation_mode="match_based")
@@ -226,6 +267,13 @@ class RecommendationSystemTests(unittest.TestCase):
             now=datetime(2026, 4, 30, 9, 0, 0),
             search_runner=lambda **_: {"results": [build_result(301, "冷却对象", 62)]},
         )
+        record_user_review(
+            self.conn,
+            subscription_id=subscription["subscription_id"],
+            candidate_id=301,
+            review_type="direct_greet",
+            now=datetime(2026, 4, 30, 9, 30, 0),
+        )
         deliver_in_app_recommendations(self.conn, now=datetime(2026, 4, 30, 10, 0, 0))
         record_recommendation_action(
             self.conn,
@@ -255,7 +303,7 @@ class RecommendationSystemTests(unittest.TestCase):
             search_runner=lambda **_: {"results": [build_result(301, "冷却对象", 65)]},
         )
         recommendation = list_recommendations_for_subscription(self.conn, subscription["subscription_id"])[0]
-        self.assertEqual(recommendation["delivery_status"], "pending_delivery")
+        self.assertEqual(recommendation["delivery_status"], "review_pending")
 
     def test_daily_notification_cap_defers_extra_cards(self):
         subscription = self.create_active_subscription(daily_notification_cap=1)
@@ -269,6 +317,20 @@ class RecommendationSystemTests(unittest.TestCase):
                     build_result(402, "第二位", 64),
                 ]
             },
+        )
+        record_user_review(
+            self.conn,
+            subscription_id=subscription["subscription_id"],
+            candidate_id=401,
+            review_type="direct_greet",
+            now=datetime(2026, 4, 30, 9, 30, 0),
+        )
+        record_user_review(
+            self.conn,
+            subscription_id=subscription["subscription_id"],
+            candidate_id=402,
+            review_type="direct_greet",
+            now=datetime(2026, 4, 30, 9, 31, 0),
         )
 
         summary = deliver_in_app_recommendations(self.conn, now=datetime(2026, 4, 30, 10, 0, 0))
@@ -293,6 +355,13 @@ class RecommendationSystemTests(unittest.TestCase):
             subscription["subscription_id"],
             now=datetime(2026, 4, 30, 9, 0, 0),
             search_runner=lambda **_: {"results": [build_result(501, "静默时段对象", 60)]},
+        )
+        record_user_review(
+            self.conn,
+            subscription_id=subscription["subscription_id"],
+            candidate_id=501,
+            review_type="direct_greet",
+            now=datetime(2026, 4, 30, 9, 30, 0),
         )
 
         summary = deliver_in_app_recommendations(self.conn, now=datetime(2026, 4, 30, 10, 0, 0))

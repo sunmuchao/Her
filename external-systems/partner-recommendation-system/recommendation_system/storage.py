@@ -69,6 +69,10 @@ SCHEMA_STATEMENTS = (
       final_review_payload_json TEXT NOT NULL DEFAULT '{}',
       reviewed_at TEXT,
       candidate_snapshot_hash TEXT,
+      user_review_status TEXT NOT NULL DEFAULT 'not_requested',
+      user_review_reason TEXT,
+      user_review_payload_json TEXT NOT NULL DEFAULT '{}',
+      user_reviewed_at TEXT,
       latest_card_id TEXT,
       UNIQUE(subscription_id, candidate_id),
       FOREIGN KEY(subscription_id) REFERENCES saved_search_subscriptions(subscription_id)
@@ -190,6 +194,20 @@ def initialize_database(conn: sqlite3.Connection) -> None:
     )
     ensure_column(conn, "profile_recommendations", "reviewed_at", "TEXT")
     ensure_column(conn, "profile_recommendations", "candidate_snapshot_hash", "TEXT")
+    ensure_column(
+        conn,
+        "profile_recommendations",
+        "user_review_status",
+        "TEXT NOT NULL DEFAULT 'not_requested'",
+    )
+    ensure_column(conn, "profile_recommendations", "user_review_reason", "TEXT")
+    ensure_column(
+        conn,
+        "profile_recommendations",
+        "user_review_payload_json",
+        "TEXT NOT NULL DEFAULT '{}'",
+    )
+    ensure_column(conn, "profile_recommendations", "user_reviewed_at", "TEXT")
     conn.commit()
 
 
