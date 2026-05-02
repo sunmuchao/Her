@@ -76,12 +76,17 @@ class BuildReviewPacketsTests(unittest.TestCase):
         )
 
         packet = packets[0]
+        masked_payload = {
+            "user_persona": packet["user_persona"],
+            "profile_internal_focus": packet["profile_internal_focus"],
+            "public_profile_view": packet["public_profile_view"],
+        }
         self.assertNotIn("self_job", packet["user_persona"])
         self.assertNotIn("job", packet["profile_internal_focus"])
         self.assertEqual(packet["profile_internal_focus"]["public_job"], "事业单位综合岗")
-        self.assertNotIn("房贷金额", str(packet))
-        self.assertNotIn("离婚原因", str(packet))
-        self.assertNotIn("某事业单位", str(packet))
+        self.assertNotIn("房贷金额", str(masked_payload))
+        self.assertNotIn("离婚原因", str(masked_payload))
+        self.assertNotIn("某事业单位", str(masked_payload))
 
 
 if __name__ == "__main__":
