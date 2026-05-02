@@ -36,7 +36,7 @@ def build_candidate():
         "self_profile_gaps": [],
         "risk_flags": [],
         "match_evidence": [],
-        "follow_up_questions": ["确认平时见面频率和城市半径。"],
+        "follow_up_questions": [],
         "photo_preview": [],
         "profile": {
             "age": 36,
@@ -58,7 +58,7 @@ class NoMatchRoleplayFlowTests(unittest.TestCase):
         self.conn.close()
         self.tempdir.cleanup()
 
-    def test_no_match_opt_in_then_supplement_candidate_can_be_saved(self):
+    def test_no_match_opt_in_then_supplement_candidate_can_be_direct_greeted(self):
         candidate_pool = []
 
         def search_runner(**_):
@@ -128,20 +128,21 @@ class NoMatchRoleplayFlowTests(unittest.TestCase):
         self.assertIn("发现新的合适对象", cards[0]["title"])
         self.assertIn("周砚川", cards[0]["title"])
 
-        saved = record_recommendation_action(
+        greeted = record_recommendation_action(
             self.conn,
             subscription_id=subscription["subscription_id"],
             candidate_id=30010,
-            action_type="save",
+            action_type="direct_greet",
             now=datetime(2026, 5, 3, 10, 15, 0),
-            action_payload={"reason": "城市近、目标明确、整体风格稳定"},
+            action_payload={"reason": "同城稳定，目标明确，愿意直接开始聊"},
         )
-        self.assertEqual(saved["delivery_status"], "saved_by_user")
-        self.assertEqual(saved["last_action_type"], "save")
+        self.assertEqual(greeted["delivery_status"], "direct_greeted")
+        self.assertEqual(greeted["last_action_type"], "direct_greet")
 
         recommendations = list_recommendations_for_subscription(self.conn, subscription["subscription_id"])
         self.assertEqual(len(recommendations), 1)
-        self.assertEqual(recommendations[0]["delivery_status"], "saved_by_user")
+        self.assertEqual(recommendations[0]["final_review_status"], "direct_greet_ready")
+        self.assertEqual(recommendations[0]["delivery_status"], "direct_greeted")
         self.assertEqual(recommendations[0]["candidate_name"], "周砚川")
 
 

@@ -262,6 +262,7 @@ def normalize_delivery_status(
     now: datetime,
     final_review: dict[str, Any],
 ) -> tuple[str, str]:
+    skip_cooldown_expired = False
     if existing and existing.get("last_action_type") == "save":
         return ("saved_by_user", "user_saved_candidate")
     if existing and existing.get("last_action_type") == "direct_greet":
@@ -270,11 +271,12 @@ def normalize_delivery_status(
         cooling_until = parse_dt(existing.get("cooling_until"))
         if cooling_until and now < cooling_until:
             return ("cooled_down", "skip_cooldown_active")
+        skip_cooldown_expired = True
 
     if int(result.get("score") or 0) < int(subscription.get("min_notify_score") or 0):
         return ("suppressed_low_score", "score_below_notify_threshold")
 
-    if existing and existing.get("notified_at"):
+    if existing and existing.get("notified_at") and not skip_cooldown_expired:
         return ("already_delivered", "candidate_already_notified")
 
     recommendation_mode = normalize_recommendation_mode(subscription.get("recommendation_mode"))
@@ -287,6 +289,8 @@ def normalize_delivery_status(
         if final_review_status == "save_only":
             return ("save_only", final_review["reason"])
 
+    if skip_cooldown_expired:
+        return ("pending_delivery", "skip_cooldown_expired")
     if existing and existing.get("delivery_status") == "pending_delivery":
         return ("pending_delivery", "still_pending_delivery")
     return ("pending_delivery", "new_candidate")

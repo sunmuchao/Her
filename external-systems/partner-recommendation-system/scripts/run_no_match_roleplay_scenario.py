@@ -49,10 +49,7 @@ def build_candidate() -> dict[str, object]:
         "self_profile_gaps": [],
         "risk_flags": [],
         "match_evidence": [],
-        "follow_up_questions": [
-            "确认对再婚现实和长期关系推进节奏的看法。",
-            "确认平时见面频率和城市半径。",
-        ],
+        "follow_up_questions": [],
         "photo_preview": [],
         "profile": {
             "age": 36,
@@ -178,11 +175,12 @@ def main() -> int:
             "recommendations": recommendations,
             "cards": cards,
             "record_action_hint": {
-                "db": str(db_path),
-                "subscription_id": subscription["subscription_id"],
-                "candidate_id": candidate_pool[0]["id"],
-                "allowed_actions": ["skip", "save", "direct_greet"],
-            },
+            "db": str(db_path),
+            "subscription_id": subscription["subscription_id"],
+            "candidate_id": candidate_pool[0]["id"],
+            "allowed_actions": ["skip", "save", "direct_greet"],
+            "recommended_action": "direct_greet",
+        },
         }
     finally:
         conn.close()

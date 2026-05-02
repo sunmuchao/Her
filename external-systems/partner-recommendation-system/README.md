@@ -6,6 +6,7 @@ It is intentionally separate from the skill itself.
 
 - `partner-search` still only does `画像 / 条件 -> 候选结果`
 - this outer system owns saved searches, recommendation history, user actions, refresh timing, frequency caps, cooldowns, and in-app recommendation cards
+- proactive recommendation now defaults to `direct_greet_only`: a candidate is pushed only when the outer-system review believes the user would likely choose `direct_greet`, not just `save`
 
 ## Directory Map
 
@@ -34,11 +35,13 @@ It is intentionally separate from the skill itself.
   - who enabled continuous search
   - the saved criteria and requester profile
   - refresh cadence, quiet hours, daily cap, score threshold, skip cooldown
+  - recommendation mode and the extra bar for proactive `direct_greet` pushes
 - `profile_recommendations`
   - recommendation history per `(subscription, candidate)`
   - latest score snapshot
   - delivery status
   - cooldown state
+  - final proactive-review status such as `direct_greet_ready`, `save_only`, or `rejected`
 - `recommendation_actions`
   - user actions such as `skip`, `save`, `direct_greet`
 - `in_app_recommendation_cards`
@@ -49,11 +52,22 @@ It is intentionally separate from the skill itself.
 1. Create a saved-search subscription in the outer system.
 2. Run the refresh job.
 3. The refresh job calls `partner-search` through its Python API.
-4. New high-score candidates become `pending_delivery`.
-5. Run the delivery job.
-6. The delivery job applies quiet hours and daily caps, then writes in-app cards.
-7. Record user actions such as `skip` or `save`.
-8. Future refreshes use recommendation history and cooldown state to avoid noisy repeat reminders.
+4. New high-score candidates first pass the proactive-review gate.
+5. Only `direct_greet_ready` candidates become `pending_delivery`.
+6. Run the delivery job.
+7. The delivery job applies quiet hours and daily caps, then writes in-app cards.
+8. Record user actions such as `skip`, `save`, or `direct_greet`.
+9. Future refreshes use recommendation history and cooldown state to avoid noisy repeat reminders.
+
+## Recommendation Modes
+
+- `direct_greet_only`
+  - default mode
+  - candidates that look like `save` stay in recommendation history but do not generate proactive cards
+  - only candidates that pass the direct-greet review become `pending_delivery`
+- `match_based`
+  - legacy fallback mode
+  - any candidate above the score threshold can still be pushed even if the direct-greet review would have said `save`
 
 ## Empty-Result Opt-In Flow
 
@@ -121,7 +135,9 @@ python3 external-systems/partner-recommendation-system/scripts/create_saved_sear
   --source 'mysql://user:pass@127.0.0.1:3306/her?table=profiles' \
   --title '无锡认真恋爱' \
   --criteria-json '{"gender":"女","cities":["无锡"],"relationship_goals":["认真恋爱","结婚导向"],"must_have":["情绪稳定"],"verified_level_min":"photo"}' \
-  --self-profile-json '{"age":28,"city":"无锡","height":178}'
+  --self-profile-json '{"age":28,"city":"无锡","height":178}' \
+  --recommendation-mode direct_greet_only \
+  --min-direct-greet-score 60
 ```
 
 If the requester profile already lives in the partner-search source, you can store `--self-id` instead of copying `--self-profile-json`.
