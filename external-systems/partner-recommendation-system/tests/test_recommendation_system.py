@@ -303,7 +303,7 @@ class RecommendationSystemTests(unittest.TestCase):
             search_runner=lambda **_: {"results": [build_result(301, "冷却对象", 65)]},
         )
         recommendation = list_recommendations_for_subscription(self.conn, subscription["subscription_id"])[0]
-        self.assertEqual(recommendation["delivery_status"], "review_pending")
+        self.assertEqual(recommendation["delivery_status"], "pending_delivery")
 
     def test_daily_notification_cap_defers_extra_cards(self):
         subscription = self.create_active_subscription(daily_notification_cap=1)

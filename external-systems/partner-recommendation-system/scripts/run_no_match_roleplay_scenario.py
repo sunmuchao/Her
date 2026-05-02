@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-"""Run a deterministic Phase 3 scenario: no match first, then supplement a candidate later."""
+"""Run a deterministic Phase 3 scenario: no match first, then queue a candidate for real-user review."""
 
 from __future__ import annotations
 
@@ -17,10 +17,8 @@ if str(SYSTEM_ROOT) not in sys.path:
 
 from recommendation_system import (  # noqa: E402
     connect_db,
-    deliver_in_app_recommendations,
     handle_opt_in_decision,
     initialize_database,
-    list_in_app_cards,
     list_recommendations_for_subscription,
     refresh_due_subscriptions,
     run_search_session,
@@ -94,7 +92,7 @@ def build_persona() -> dict[str, object]:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run a no-match then notify roleplay scenario.")
+    parser = argparse.ArgumentParser(description="Run a no-match then human-review roleplay scenario.")
     parser.add_argument(
         "--db",
         default="/tmp/partner-roleplay-phase3.sqlite3",
@@ -156,14 +154,12 @@ def main() -> int:
             now=first_search_at + timedelta(days=1),
             search_runner=search_runner,
         )
-        delivery_summary = deliver_in_app_recommendations(
-            conn,
-            now=first_search_at + timedelta(days=1, hours=1),
-        )
 
         subscription = decision["subscription"]
         recommendations = list_recommendations_for_subscription(conn, subscription["subscription_id"])
-        cards = list_in_app_cards(conn, requester_id=int(persona["requester_id"]))
+        review_pending_candidates = [
+            item for item in recommendations if item.get("delivery_status") == "review_pending"
+        ]
 
         output = {
             "persona": persona,
@@ -171,16 +167,14 @@ def main() -> int:
             "opt_in_decision": decision,
             "supplemented_candidates": candidate_pool,
             "refresh_summaries": refresh_summaries,
-            "delivery_summary": delivery_summary,
             "recommendations": recommendations,
-            "cards": cards,
-            "record_action_hint": {
-            "db": str(db_path),
-            "subscription_id": subscription["subscription_id"],
-            "candidate_id": candidate_pool[0]["id"],
-            "allowed_actions": ["skip", "save", "direct_greet"],
-            "recommended_action": "direct_greet",
-        },
+            "review_pending_candidates": review_pending_candidates,
+            "record_user_review_hint": {
+                "db": str(db_path),
+                "subscription_id": subscription["subscription_id"],
+                "candidate_id": candidate_pool[0]["id"],
+                "allowed_reviews": ["skip", "save", "direct_greet"],
+            },
         }
     finally:
         conn.close()
