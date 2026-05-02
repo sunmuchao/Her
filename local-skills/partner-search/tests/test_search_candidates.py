@@ -1174,7 +1174,7 @@ class SearchCandidatesTests(unittest.TestCase):
         questions = search_candidates.build_follow_up_questions(
             {},
             ["consumption_attitude", "chat_texture", "relationship_execution"],
-            ["聊天还像完成任务", "长期意图有，但推进方式还不够落地", "多项条件需要放宽后才成立"],
+            ["聊天还像完成任务", "长期意图有，但推进方式还不够落地"],
         )
 
         self.assertIn("确认对方花钱更看重什么，是清醒务实，还是容易被外在包装带着走。", questions)
@@ -1182,7 +1182,18 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertIn("确认对方认真推进时，会不会把见面节奏、关系预期和现实安排说清。", questions)
         self.assertIn("确认对方聊天是不是容易只讲条件和流程，还是能把话题真正聊活。", questions)
         self.assertIn("确认对方不是只会说想长期，而是真的会把推进节奏和安排说清。", questions)
-        self.assertIn("确认这段匹配到底是少数几个点不完美，还是很多关键条件都要靠放宽才行。", questions)
+
+    def test_build_follow_up_questions_handles_concession_stack_risk(self):
+        questions = search_candidates.build_follow_up_questions(
+            {},
+            [],
+            ["多项条件需要放宽后才成立"],
+        )
+
+        self.assertEqual(
+            questions,
+            ["确认这段匹配到底是少数几个点不完美，还是很多关键条件都要靠放宽才行。"],
+        )
 
     def test_attach_photo_previews_groups_by_source_and_table(self):
         original_loader = search_candidates.load_mysql_photo_previews
