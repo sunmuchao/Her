@@ -13,6 +13,7 @@ PERSONA_MEMORY_SYNC_SCRIPTS = REPO_ROOT / "local-skills" / "persona-memory-sync"
 if str(PERSONA_MEMORY_SYNC_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(PERSONA_MEMORY_SYNC_SCRIPTS))
 
+from persona_memory_lib import OBSERVATION_FIELD_LABELS  # noqa: E402
 from run_persona_memory_audit import mask_snapshot_for_review  # noqa: E402
 
 
@@ -41,6 +42,58 @@ PROFILE_INTERNAL_FOCUS_FIELDS = [
     "public_values",
     "public_notes",
 ]
+
+USER_PERSONA_LABELS = {
+    **OBSERVATION_FIELD_LABELS,
+    "persona_summary_internal": "内部人物摘要",
+    "preference_summary_internal": "内部偏好摘要",
+    "public_profile_summary_draft": "公开人物草稿",
+    "public_preference_summary_draft": "公开偏好草稿",
+}
+
+PROFILE_INTERNAL_FOCUS_LABELS = {
+    "education": "学历",
+    "public_education": "公开学历",
+    "job": "工作",
+    "public_job": "公开职业",
+    "relationship_goal": "关系目标",
+    "smoking": "抽烟情况",
+    "drinking": "喝酒情况",
+    "long_distance": "异地态度",
+    "accept_long_distance": "是否接受异地",
+    "location_preference_semantics": "位置偏好补充",
+    "accept_partner_children": "是否接受对方有孩子",
+    "accept_partner_children_strength": "对子女接受强度",
+    "accept_partner_children_semantics": "对子女补充说明",
+    "accept_marital_status": "可接受婚况",
+    "accept_marital_status_strength": "婚史接受强度",
+    "accept_marital_status_semantics": "婚史补充说明",
+    "requires_partner_accept_my_children": "是否需要对方接受自己的孩子现实",
+    "personality": "内部人物摘要",
+    "values": "内部偏好摘要",
+    "notes": "内部补充",
+    "public_personality": "公开人物展示",
+    "public_values": "公开偏好展示",
+    "public_notes": "公开备注",
+}
+
+PUBLIC_PROFILE_VIEW_LABELS = {
+    "id": "资料ID",
+    "name": "公开昵称",
+    "gender": "性别",
+    "age": "年龄",
+    "city": "城市",
+    "district": "区域",
+    "height": "身高",
+    "education": "公开学历",
+    "job": "公开职业",
+    "relationship_goal": "公开关系目标",
+    "smoking": "公开抽烟情况",
+    "drinking": "公开喝酒情况",
+    "personality": "公开人物展示",
+    "values": "公开偏好展示",
+    "notes": "公开备注",
+}
 
 
 def parse_args():
@@ -81,6 +134,16 @@ def pick_fields(source, field_names):
     return prune_none({field: source.get(field) for field in field_names})
 
 
+def readable_fields(source, label_map):
+    if not isinstance(source, dict):
+        return {}
+    readable = {}
+    for key, value in source.items():
+        label = label_map.get(key, key)
+        readable[label] = value
+    return prune_none(readable)
+
+
 def build_packets(input_personas, memory_snapshots, search_results):
     snapshot_index = {
         item.get("persona_id"): item for item in memory_snapshots if item.get("persona_id")
@@ -105,6 +168,11 @@ def build_packets(input_personas, memory_snapshots, search_results):
             },
             private_boundaries,
         )
+        user_persona = remasked_snapshot.get("user_persona") or {}
+        profile_internal_focus = pick_fields(
+            remasked_snapshot.get("profile_internal"), PROFILE_INTERNAL_FOCUS_FIELDS
+        )
+        public_profile_view = remasked_snapshot.get("public_profile_view") or {}
         packets.append(
             prune_none(
                 {
@@ -120,11 +188,16 @@ def build_packets(input_personas, memory_snapshots, search_results):
                     "notes_about_possible_drift": persona.get("notes_about_possible_drift")
                     or snapshot.get("notes_about_possible_drift")
                     or [],
-                    "user_persona": remasked_snapshot.get("user_persona") or {},
-                    "profile_internal_focus": pick_fields(
-                        remasked_snapshot.get("profile_internal"), PROFILE_INTERNAL_FOCUS_FIELDS
+                    "user_persona": user_persona,
+                    "user_persona_readable": readable_fields(user_persona, USER_PERSONA_LABELS),
+                    "profile_internal_focus": profile_internal_focus,
+                    "profile_internal_focus_readable": readable_fields(
+                        profile_internal_focus, PROFILE_INTERNAL_FOCUS_LABELS
                     ),
-                    "public_profile_view": remasked_snapshot.get("public_profile_view") or {},
+                    "public_profile_view": public_profile_view,
+                    "public_profile_view_readable": readable_fields(
+                        public_profile_view, PUBLIC_PROFILE_VIEW_LABELS
+                    ),
                     "search_output": search_result or {},
                 }
             )

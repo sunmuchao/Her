@@ -380,6 +380,19 @@ CHILD_ACCEPTANCE_GUARDED_MARKERS = (
     "偏保留",
     "现阶段不考虑",
 )
+MARITAL_ACCEPTANCE_CAUTIOUS_MARKERS = (
+    "更看具体",
+    "看具体人",
+    "看具体情况",
+    "相处质量",
+    "人稳定",
+    "情况清楚",
+)
+MARITAL_ACCEPTANCE_SURFACE_MARKERS = (
+    "先聊再判断",
+    "先接触再判断",
+    "先聊再说",
+)
 
 SOFT_REQUIREMENT_TAGS = {
     "聊得来",
@@ -709,14 +722,35 @@ def marital_acceptance_semantics_label(statuses: Any, strength: Any) -> Optional
         return None
     bucket = acceptance_strength_bucket(strength)
     if bucket == "strong":
-        return "在可接受婚况范围内，属于明确接受"
+        return "在可接受范围内，态度明确"
     if bucket == "cautious":
-        return "在可接受婚况范围内，但会更看具体人和相处质量"
+        return "能接受，但更看具体人和相处质量"
     if bucket == "surface":
-        return "在可接受婚况范围内，可以先聊再判断"
+        return "能先聊，但还要再判断"
     if status_text == "未婚":
         return "仅接受未婚"
     return "可接受婚况范围已设置"
+
+
+def infer_target_marital_status_strength(
+    explicit_strength: Any,
+    statuses: Any,
+    *texts: Any,
+) -> Optional[str]:
+    explicit = clean_text(explicit_strength)
+    if explicit and explicit not in {"可协商", "接受"}:
+        return explicit
+
+    status_text = clean_text(statuses)
+    if not status_text:
+        return explicit
+
+    combined = " ".join(clean_text(text) or "" for text in texts)
+    if any(marker in combined for marker in MARITAL_ACCEPTANCE_SURFACE_MARKERS):
+        return "先接触再说"
+    if any(marker in combined for marker in MARITAL_ACCEPTANCE_CAUTIOUS_MARKERS):
+        return "谨慎接受"
+    return explicit
 
 
 def as_int(value: Any) -> Optional[int]:
@@ -1243,6 +1277,16 @@ def enrich_patch_from_explicit_semantics(patch: Dict[str, Any]) -> Dict[str, Any
     if inferred_target_long_distance:
         enriched["target_accept_long_distance"] = inferred_target_long_distance
 
+    inferred_marital_strength = infer_target_marital_status_strength(
+        enriched.get("target_marital_status_strength"),
+        enriched.get("target_marital_statuses"),
+        enriched.get("preference_summary_internal"),
+        enriched.get("public_preference_summary_draft"),
+        enriched.get("persona_summary_internal"),
+    )
+    if inferred_marital_strength:
+        enriched["target_marital_status_strength"] = inferred_marital_strength
+
     return enriched
 
 
@@ -1607,17 +1651,17 @@ def build_public_relationship_goal(goal: Any) -> Optional[str]:
         return "认真相处，先看长期关系，合适再考虑婚姻"
     if has_remarriage_intent:
         if has_timeline:
-            return "认真相处，方向明确，合适会稳步推进"
+            return "认真相处，合适就认真往后走"
         return "认真相处，合适再往婚姻走"
     if has_long_term_intent and has_marriage_intent:
         if has_timeline:
-            return "认真相处，方向明确，合适会稳步推进"
+            return "认真相处，合适就认真往后走"
         return "认真相处，长期关系稳定了再往婚姻走"
     if "稳定结婚" in goal_text:
         return "认真相处，长期关系稳定了再往婚姻走"
     if "结婚" in goal_text or "结婚导向" in goal_text:
         if has_timeline:
-            return "认真相处，方向明确，合适会稳步推进"
+            return "认真相处，合适就认真往后走"
         return "认真相处，合适再往婚姻走"
     if "认真找长期关系" in goal_text:
         return "认真相处，重视长期稳定关系"
@@ -1638,12 +1682,12 @@ def sanitize_public_profile_summary(summary: Any, persona: Dict[str, Any]) -> Op
     goal_text = clean_text(persona.get("self_relationship_goal"))
     goal_fragment = build_public_relationship_goal(goal_text)
     replacements = [
-        (re.compile(r"[一二两三四五六七八九十]+年内[^，。；]*?再婚导向?"), "认真了解，再婚方向明确，合适会稳步推进"),
-        (re.compile(r"\d+\s*(?:-|到|至|~)\s*\d+年内[^，。；]*?再婚导向?"), "认真了解，再婚方向明确，合适会稳步推进"),
-        (re.compile(r"\d+年内[^，。；]*?再婚导向?"), "认真了解，再婚方向明确，合适会稳步推进"),
-        (re.compile(r"[一二两三四五六七八九十]+年内[^，。；]*?(?:结婚|再婚)导向?"), "认真了解，婚姻方向明确，合适会稳步推进"),
-        (re.compile(r"\d+\s*(?:-|到|至|~)\s*\d+年内[^，。；]*?(?:结婚|再婚)导向?"), "认真了解，婚姻方向明确，合适会稳步推进"),
-        (re.compile(r"\d+年内[^，。；]*?(?:结婚|再婚)导向?"), "认真了解，婚姻方向明确，合适会稳步推进"),
+        (re.compile(r"[一二两三四五六七八九十]+年内[^，。；]*?再婚导向?"), "认真了解，合适就认真往后走"),
+        (re.compile(r"\d+\s*(?:-|到|至|~)\s*\d+年内[^，。；]*?再婚导向?"), "认真了解，合适就认真往后走"),
+        (re.compile(r"\d+年内[^，。；]*?再婚导向?"), "认真了解，合适就认真往后走"),
+        (re.compile(r"[一二两三四五六七八九十]+年内[^，。；]*?(?:结婚|再婚)导向?"), "认真了解，合适就认真往后走"),
+        (re.compile(r"\d+\s*(?:-|到|至|~)\s*\d+年内[^，。；]*?(?:结婚|再婚)导向?"), "认真了解，合适就认真往后走"),
+        (re.compile(r"\d+年内[^，。；]*?(?:结婚|再婚)导向?"), "认真了解，合适就认真往后走"),
         (re.compile(r"认真以结婚为导向"), "认真了解，婚姻方向明确"),
         (re.compile(r"以结婚为导向"), "认真了解，婚姻方向明确"),
         (re.compile(r"结婚导向"), "认真了解，婚姻方向明确"),
@@ -1679,7 +1723,7 @@ def sanitize_public_profile_summary(summary: Any, persona: Dict[str, Any]) -> Op
     text = re.sub(r"(认真了解，婚姻方向明确(?:，合适会稳步推进)?)[，,]?\1", r"\1", text)
     text = re.sub(r"(认真了解，再婚方向明确(?:，合适会稳步推进)?)[，,]?\1", r"\1", text)
     text = re.sub(r"(认真相处，方向明确，不仓促推进)[，,]?\1", r"\1", text)
-    text = re.sub(r"(认真相处，方向明确，合适会稳步推进)[，,]?\1", r"\1", text)
+    text = re.sub(r"(认真相处，合适就认真往后走)[，,]?\1", r"\1", text)
     text = re.sub(r"(认真相处，合适再往婚姻走)[，,]?\1", r"\1", text)
     text = re.sub(r"(认真相处，先看关系质量，合适再往婚姻走)[，,]?\1", r"\1", text)
     text = re.sub(r"(认真相处，先看长期关系，合适再考虑婚姻)[，,]?\1", r"\1", text)
@@ -2469,17 +2513,17 @@ SELECT
     WHEN relationship_goal REGEXP '认真找长期关系' AND relationship_goal REGEXP '会考虑结婚'
       THEN '认真相处，先看长期关系，合适再考虑婚姻'
     WHEN relationship_goal REGEXP '[一二两三四五六七八九十]+年内' AND relationship_goal REGEXP '再婚'
-      THEN '认真相处，方向明确，合适会稳步推进'
+      THEN '认真相处，合适就认真往后走'
     WHEN relationship_goal REGEXP '[0-9]+[[:space:]]*(-|到|至|~)[[:space:]]*[0-9]+年内' AND relationship_goal REGEXP '再婚'
-      THEN '认真相处，方向明确，合适会稳步推进'
+      THEN '认真相处，合适就认真往后走'
     WHEN relationship_goal REGEXP '[0-9]+年内' AND relationship_goal REGEXP '再婚'
-      THEN '认真相处，方向明确，合适会稳步推进'
+      THEN '认真相处，合适就认真往后走'
     WHEN relationship_goal REGEXP '[一二两三四五六七八九十]+年内' AND relationship_goal REGEXP '结婚|再婚'
-      THEN '认真相处，方向明确，合适会稳步推进'
+      THEN '认真相处，合适就认真往后走'
     WHEN relationship_goal REGEXP '[0-9]+[[:space:]]*(-|到|至|~)[[:space:]]*[0-9]+年内' AND relationship_goal REGEXP '结婚|再婚'
-      THEN '认真相处，方向明确，合适会稳步推进'
+      THEN '认真相处，合适就认真往后走'
     WHEN relationship_goal REGEXP '[0-9]+年内' AND relationship_goal REGEXP '结婚|再婚'
-      THEN '认真相处，方向明确，合适会稳步推进'
+      THEN '认真相处，合适就认真往后走'
     WHEN relationship_goal REGEXP '再婚' THEN '认真相处，合适再往婚姻走'
     WHEN relationship_goal REGEXP '长期关系' AND relationship_goal REGEXP '结婚|婚姻'
       THEN '认真相处，长期关系稳定了再往婚姻走'

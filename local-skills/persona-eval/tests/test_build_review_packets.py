@@ -42,6 +42,8 @@ class BuildReviewPacketsTests(unittest.TestCase):
         self.assertNotIn("income_range", packet["profile_internal_focus"])
         self.assertIn("收入信息已隐藏", packet["user_persona"]["persona_summary_internal"])
         self.assertIn("收入信息已隐藏", packet["profile_internal_focus"]["personality"])
+        self.assertIn("内部人物摘要", packet["user_persona_readable"])
+        self.assertIn("内部人物摘要", packet["profile_internal_focus_readable"])
 
     def test_re_masks_non_income_private_boundaries_in_review_packet(self):
         packets = build_review_packets.build_packets(
@@ -87,6 +89,7 @@ class BuildReviewPacketsTests(unittest.TestCase):
         self.assertNotIn("房贷金额", str(masked_payload))
         self.assertNotIn("离婚原因", str(masked_payload))
         self.assertNotIn("某事业单位", str(masked_payload))
+        self.assertIn("公开职业", packet["profile_internal_focus_readable"])
 
 
 if __name__ == "__main__":

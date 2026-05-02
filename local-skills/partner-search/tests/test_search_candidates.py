@@ -795,7 +795,7 @@ class SearchCandidatesTests(unittest.TestCase):
         candidate = {
             "accept_marital_status": "未婚,离异未育,离异已育",
             "accept_marital_status_strength": "短期可聊",
-            "accept_marital_status_semantics": "在可接受婚况范围内，可以先聊再判断",
+            "accept_marital_status_semantics": "能先聊，但还要再判断",
         }
         self_profile = {"marital_status": "离异未育"}
         result = search_candidates.evaluate_reciprocal_compatibility(
@@ -1169,6 +1169,83 @@ class SearchCandidatesTests(unittest.TestCase):
         selected = search_candidates.select_diverse_results(results, 2)
 
         self.assertEqual([item["id"] for item in selected], [1, 3])
+
+    def test_select_diverse_results_trims_high_risk_tail(self):
+        results = [
+            {
+                "id": 1,
+                "score": 155,
+                "risk_score": 18,
+                "risk_flags": ["对方异地仅可协商"],
+                "verified_rank": 2,
+                "activity_sort_ts": 30,
+                "profile_status_rank": 3,
+                "profile": {"job": "设计", "communication_style": "主动沟通"},
+            },
+            {
+                "id": 2,
+                "score": 115,
+                "risk_score": 43,
+                "risk_flags": ["多项条件需要放宽后才成立"],
+                "verified_rank": 4,
+                "activity_sort_ts": 29,
+                "profile_status_rank": 3,
+                "profile": {"job": "人事", "communication_style": "稳定沟通"},
+            },
+            {
+                "id": 3,
+                "score": 113,
+                "risk_score": 43,
+                "risk_flags": ["多项条件需要放宽后才成立"],
+                "verified_rank": 1,
+                "activity_sort_ts": 28,
+                "profile_status_rank": 3,
+                "profile": {"job": "法务", "communication_style": "慢热少话"},
+            },
+        ]
+
+        selected = search_candidates.select_diverse_results(results, 3)
+
+        self.assertEqual([item["id"] for item in selected], [1])
+
+    def test_evaluate_candidate_marks_below_self_education_floor_as_risk(self):
+        record = {
+            "id": 401,
+            "name": "EduGap",
+            "gender": "女",
+            "age": 31,
+            "height": 165,
+            "city": "宁波",
+            "relationship_goal": "结婚导向",
+            "marital_status": "未婚",
+            "education": "大专",
+            "smoking": "否",
+            "profile_status": "active",
+            "verified_level": "photo",
+            "photo_count": 4,
+            "combined_text": "认真恋爱 宁波 不抽烟",
+            "last_active_at": "2099-01-01 00:00:00",
+            "source_file": "mysql://root@127.0.0.1:3307/her?table=profiles#profiles",
+        }
+        criteria = {
+            "gender": "女",
+            "cities": ["宁波"],
+            "relationship_goals": ["结婚导向"],
+            "smoking": "否",
+            "profile_statuses": ["active"],
+            "verified_level_min": "basic",
+            "photo_count_min": 3,
+            "exclude_ids": set(),
+            "self_profile": {
+                "preferred_education_min": "本科",
+                "preferred_education_strictness": "可放宽",
+            },
+        }
+
+        result = search_candidates.evaluate_candidate(record, criteria)
+
+        self.assertIsNotNone(result)
+        self.assertIn("学历没有完全卡进你的底线", result["risk_flags"])
 
     def test_build_follow_up_questions_handles_new_style_fields_and_risks(self):
         questions = search_candidates.build_follow_up_questions(

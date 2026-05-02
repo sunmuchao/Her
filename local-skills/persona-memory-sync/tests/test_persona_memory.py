@@ -208,7 +208,7 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertEqual(payload["accept_partner_children_semantics"], "现阶段接受度偏低，需结合具体情况判断")
         self.assertEqual(payload["accept_marital_status"], "未婚")
         self.assertEqual(payload["accept_marital_status_strength"], "谨慎接受")
-        self.assertEqual(payload["accept_marital_status_semantics"], "在可接受婚况范围内，但会更看具体人和相处质量")
+        self.assertEqual(payload["accept_marital_status_semantics"], "能接受，但更看具体人和相处质量")
         self.assertEqual(payload["income_range"], "36-45万/年")
         self.assertEqual(payload["education"], "专升本")
         self.assertEqual(payload["public_education"], "本科")
@@ -242,6 +242,16 @@ class PersonaMemoryTests(unittest.TestCase):
         )
         self.assertEqual(payload["long_distance"], "短期通勤可了解，长期异地谨慎")
         self.assertEqual(payload["accept_long_distance"], "短期通勤可了解，长期异地谨慎")
+
+    def test_normalize_patch_infers_cautious_marital_acceptance_from_summary(self):
+        patch = persona_memory_lib.normalize_patch(
+            {
+                "target_marital_statuses": "未婚,离异无孩",
+                "target_marital_status_strength": "可协商",
+                "preference_summary_internal": "婚况上未婚和离异无孩都可以，但更看具体人和相处质量。",
+            }
+        )
+        self.assertEqual(patch["target_marital_status_strength"], "谨慎接受")
 
     def test_normalize_patch_canonicalizes_legacy_guarded_children_alias(self):
         patch = persona_memory_lib.normalize_patch(
@@ -289,7 +299,7 @@ class PersonaMemoryTests(unittest.TestCase):
                 "self_relationship_goal": "1-2年内往结婚推进",
             }
         )
-        self.assertEqual(payload["public_personality"], "现居上海，认真相处，方向明确，合适会稳步推进")
+        self.assertEqual(payload["public_personality"], "现居上海，认真相处，合适就认真往后走")
         self.assertNotIn("上海本地", payload["public_personality"])
         self.assertNotIn("导向", payload["public_personality"])
 
@@ -393,7 +403,7 @@ class PersonaMemoryTests(unittest.TestCase):
                 "self_relationship_goal": "认真找对象，希望两年内推进到再婚",
             }
         )
-        self.assertEqual(payload["public_personality"], "现居苏州，认真相处，方向明确，合适会稳步推进")
+        self.assertEqual(payload["public_personality"], "现居苏州，认真相处，合适就认真往后走")
 
     def test_build_public_profile_preserves_non_rushed_marriage_tone(self):
         payload = persona_memory_lib.build_public_profile(
@@ -609,7 +619,7 @@ class PersonaMemoryTests(unittest.TestCase):
             "personality": "上海本地，1-2年内往结婚推进导向",
         }
         payload = persona_memory_lib.build_profile_payload(persona, existing_profile=existing_profile)
-        self.assertEqual(payload["personality"], "现居上海，认真相处，方向明确，合适会稳步推进")
+        self.assertEqual(payload["personality"], "现居上海，认真相处，合适就认真往后走")
 
     def test_build_profile_payload_sanitizes_existing_internal_personality_without_dropping_extra_context(self):
         persona = {
@@ -659,7 +669,7 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertIn("AS education", sql)
         self.assertIn("public_job", sql)
         self.assertIn("CASE", sql)
-        self.assertIn("认真相处，方向明确，合适会稳步推进", sql)
+        self.assertIn("认真相处，合适就认真往后走", sql)
         self.assertIn("认真相处，合适再往婚姻走", sql)
         self.assertIn("认真相处，先看关系质量，合适再往婚姻走", sql)
         self.assertIn("认真相处，先看长期关系，合适再考虑婚姻", sql)
