@@ -26,9 +26,33 @@ from recommendation_system import (  # noqa: E402
 )
 
 
-def build_result(candidate_id, name, score, city="无锡", matched_on=None, risk_flags=None):
+def build_result(
+    candidate_id,
+    name,
+    score,
+    city="无锡",
+    matched_on=None,
+    risk_flags=None,
+    reciprocal_on=None,
+    follow_up_questions=None,
+    missing_fields=None,
+    self_profile_gaps=None,
+    profile_overrides=None,
+):
     matched_on = matched_on or ["城市 无锡", "目标 认真恋爱"]
     risk_flags = risk_flags or []
+    reciprocal_on = reciprocal_on or []
+    if follow_up_questions is None:
+        follow_up_questions = ["确认最近的见面频率安排。"] if risk_flags else []
+    missing_fields = missing_fields or []
+    self_profile_gaps = self_profile_gaps or []
+    profile = {
+        "age": 28,
+        "city": city,
+        "job": "产品经理",
+        "relationship_goal": "认真恋爱",
+    }
+    profile.update(profile_overrides or {})
     return {
         "id": candidate_id,
         "name": name,
@@ -37,19 +61,14 @@ def build_result(candidate_id, name, score, city="无锡", matched_on=None, risk
         "confidence_score": 10,
         "risk_score": 0,
         "matched_on": matched_on,
-        "reciprocal_on": [],
-        "missing_fields": [],
-        "self_profile_gaps": [],
+        "reciprocal_on": reciprocal_on,
+        "missing_fields": missing_fields,
+        "self_profile_gaps": self_profile_gaps,
         "risk_flags": risk_flags,
         "match_evidence": [],
-        "follow_up_questions": ["确认最近的见面频率安排。"] if risk_flags else [],
+        "follow_up_questions": follow_up_questions,
         "photo_preview": [],
-        "profile": {
-            "age": 28,
-            "city": city,
-            "job": "产品经理",
-            "relationship_goal": "认真恋爱",
-        },
+        "profile": profile,
     }
 
 
@@ -83,6 +102,9 @@ class RecommendationSystemTests(unittest.TestCase):
             "quiet_hours_end": 23,
             "refresh_interval_hours": 24,
             "skip_cooldown_days": 30,
+            "recommendation_mode": "direct_greet_only",
+            "max_review_candidates_per_refresh": 3,
+            "min_direct_greet_score": 60,
             "now": datetime(2026, 4, 30, 9, 0, 0),
         }
         base.update(overrides)
@@ -96,7 +118,7 @@ class RecommendationSystemTests(unittest.TestCase):
             called.update(kwargs)
             return {
                 "results": [
-                    build_result(101, "新对象A", 58),
+                    build_result(101, "新对象A", 62),
                     build_result(102, "分数偏低", 33),
                 ]
             }
@@ -114,6 +136,7 @@ class RecommendationSystemTests(unittest.TestCase):
         self.assertEqual(len(recommendations), 2)
         self.assertEqual(recommendations[0]["delivery_status"], "pending_delivery")
         self.assertEqual(recommendations[1]["delivery_status"], "suppressed_low_score")
+        self.assertEqual(recommendations[0]["final_review_status"], "direct_greet_ready")
 
     def test_deliver_pending_recommendations_creates_in_app_card(self):
         subscription = self.create_active_subscription()
@@ -135,7 +158,65 @@ class RecommendationSystemTests(unittest.TestCase):
         self.assertIn("发现新的合适对象", cards[0]["title"])
         recommendations = list_recommendations_for_subscription(self.conn, subscription["subscription_id"])
         self.assertEqual(recommendations[0]["delivery_status"], "delivered")
+        self.assertEqual(recommendations[0]["final_review_status"], "direct_greet_ready")
         self.assertIsNotNone(recommendations[0]["latest_card_id"])
+
+    def test_direct_greet_only_mode_keeps_save_level_candidate_out_of_notifications(self):
+        subscription = self.create_active_subscription()
+        refresh_subscription(
+            self.conn,
+            subscription["subscription_id"],
+            now=datetime(2026, 4, 30, 9, 0, 0),
+            search_runner=lambda **_: {
+                "results": [
+                    build_result(
+                        211,
+                        "先收藏对象",
+                        68,
+                        follow_up_questions=["确认见面频率和关系推进节奏。"],
+                    )
+                ]
+            },
+        )
+
+        summary = deliver_in_app_recommendations(
+            self.conn,
+            now=datetime(2026, 4, 30, 10, 0, 0),
+        )
+
+        self.assertEqual(summary["delivered_count"], 0)
+        recommendations = list_recommendations_for_subscription(self.conn, subscription["subscription_id"])
+        self.assertEqual(recommendations[0]["delivery_status"], "save_only")
+        self.assertEqual(recommendations[0]["final_review_status"], "save_only")
+        self.assertEqual(list_in_app_cards(self.conn, requester_id=70001), [])
+
+    def test_match_based_mode_can_still_push_candidate_that_is_not_direct_greet_ready(self):
+        subscription = self.create_active_subscription(recommendation_mode="match_based")
+        refresh_subscription(
+            self.conn,
+            subscription["subscription_id"],
+            now=datetime(2026, 4, 30, 9, 0, 0),
+            search_runner=lambda **_: {
+                "results": [
+                    build_result(
+                        212,
+                        "传统匹配候选",
+                        68,
+                        follow_up_questions=["确认见面频率和关系推进节奏。"],
+                    )
+                ]
+            },
+        )
+
+        summary = deliver_in_app_recommendations(
+            self.conn,
+            now=datetime(2026, 4, 30, 10, 0, 0),
+        )
+
+        self.assertEqual(summary["delivered_count"], 1)
+        recommendations = list_recommendations_for_subscription(self.conn, subscription["subscription_id"])
+        self.assertEqual(recommendations[0]["final_review_status"], "match_ready")
+        self.assertEqual(recommendations[0]["delivery_status"], "delivered")
 
     def test_skip_action_applies_cooldown_and_blocks_redelivery_until_expiry(self):
         subscription = self.create_active_subscription(daily_notification_cap=5)
@@ -322,6 +403,7 @@ class RecommendationSystemTests(unittest.TestCase):
         self.assertEqual(called["self_id"], 90001)
         self.assertEqual(called["criteria"]["relationship_goals"], ["认真恋爱"])
         self.assertEqual(called["limit"], 6)
+        self.assertEqual(subscription["recommendation_mode"], "direct_greet_only")
 
     def test_handle_opt_in_decision_rejection_creates_no_subscription(self):
         session = run_search_session(
