@@ -1,5 +1,10 @@
 """External Phase 3 recommendation system built on top of partner-search."""
 
+from .direct_greet_gate import (
+    DEFAULT_MAX_REVIEW_CANDIDATES_PER_REFRESH,
+    DEFAULT_MIN_DIRECT_GREET_SCORE,
+    DEFAULT_RECOMMENDATION_MODE,
+)
 from .no_match_opt_in import (
     DEFAULT_NO_MATCH_OPT_IN_PROMPT,
     handle_opt_in_decision,
@@ -20,6 +25,9 @@ from .service import (
 from .storage import connect_db, initialize_database
 
 __all__ = [
+    "DEFAULT_MAX_REVIEW_CANDIDATES_PER_REFRESH",
+    "DEFAULT_MIN_DIRECT_GREET_SCORE",
+    "DEFAULT_RECOMMENDATION_MODE",
     "DEFAULT_NO_MATCH_OPT_IN_PROMPT",
     "build_in_app_card",
     "connect_db",
