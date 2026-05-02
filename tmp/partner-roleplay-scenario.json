@@ -1,0 +1,323 @@
+{
+  "persona": {
+    "requester_id": 88001,
+    "title": "无锡稳定认真关系持续留意",
+    "criteria": {
+      "gender": "男",
+      "cities": [
+        "无锡",
+        "苏州"
+      ],
+      "relationship_goals": [
+        "认真恋爱",
+        "结婚导向"
+      ],
+      "must_have": [
+        "情绪稳定",
+        "责任心",
+        "稳定工作",
+        "愿意沟通"
+      ],
+      "must_not_have": [
+        "抽烟严重",
+        "暧昧不清",
+        "失联冷处理"
+      ],
+      "verified_level_min": "photo",
+      "photo_count_min": 2
+    },
+    "self_profile": {
+      "age": 29,
+      "city": "无锡",
+      "height": 165,
+      "education": "硕士",
+      "income_wan": 24,
+      "marital_status": "未婚",
+      "has_children": 0
+    },
+    "roleplay_brief": "29岁无锡女生，医院药师，认真找稳定长期关系。看重情绪稳定、责任心、三观正、边界清楚和沟通能力；原则上不接受长期异地，不喜欢拉扯和失联。"
+  },
+  "first_search_session": {
+    "search_request": {
+      "source": "mock://roleplay/no-match-then-notify",
+      "criteria": {
+        "gender": "男",
+        "cities": [
+          "无锡",
+          "苏州"
+        ],
+        "relationship_goals": [
+          "认真恋爱",
+          "结婚导向"
+        ],
+        "must_have": [
+          "情绪稳定",
+          "责任心",
+          "稳定工作",
+          "愿意沟通"
+        ],
+        "must_not_have": [
+          "抽烟严重",
+          "暧昧不清",
+          "失联冷处理"
+        ],
+        "verified_level_min": "photo",
+        "photo_count_min": 2
+      },
+      "self_profile": {
+        "age": 29,
+        "city": "无锡",
+        "height": 165,
+        "education": "硕士",
+        "income_wan": 24,
+        "marital_status": "未婚",
+        "has_children": 0
+      },
+      "self_id": null,
+      "table_name": null,
+      "photos_table_name": null,
+      "limit": 5,
+      "photo_preview_count": 0,
+      "include_source": false,
+      "include_text": false
+    },
+    "search_response": {
+      "has_match": false,
+      "result_count": 0,
+      "results": [],
+      "fallback_results": []
+    },
+    "has_match": false,
+    "result_count": 0,
+    "needs_opt_in_prompt": true,
+    "opt_in_prompt": "是否需要如果有合适的我主动通知你？"
+  },
+  "opt_in_decision": {
+    "created_subscription": true,
+    "subscription": {
+      "subscription_id": "saved-search-d206d54bb4d1",
+      "requester_id": 88001,
+      "title": "无锡稳定认真关系持续留意",
+      "status": "active",
+      "is_still_searching": 1,
+      "source": "mock://roleplay/no-match-then-notify",
+      "table_name": null,
+      "photos_table_name": null,
+      "search_criteria_json": "{\"cities\": [\"无锡\", \"苏州\"], \"gender\": \"男\", \"must_have\": [\"情绪稳定\", \"责任心\", \"稳定工作\", \"愿意沟通\"], \"must_not_have\": [\"抽烟严重\", \"暧昧不清\", \"失联冷处理\"], \"photo_count_min\": 2, \"relationship_goals\": [\"认真恋爱\", \"结婚导向\"], \"verified_level_min\": \"photo\"}",
+      "self_profile_json": "{\"age\": 29, \"city\": \"无锡\", \"education\": \"硕士\", \"has_children\": 0, \"height\": 165, \"income_wan\": 24, \"marital_status\": \"未婚\"}",
+      "self_id": null,
+      "limit_count": 5,
+      "top_k": 5,
+      "min_notify_score": 40,
+      "daily_notification_cap": 2,
+      "quiet_hours_start": 23,
+      "quiet_hours_end": 8,
+      "refresh_interval_hours": 24,
+      "skip_cooldown_days": 30,
+      "last_refreshed_at": null,
+      "last_result_count": 0,
+      "created_at": "2026-05-02 09:05:32",
+      "updated_at": "2026-05-02 09:05:32"
+    }
+  },
+  "supplemented_candidates": [
+    {
+      "id": 30010,
+      "name": "周砚川",
+      "score": 67,
+      "fit_score": 55,
+      "confidence_score": 12,
+      "risk_score": 0,
+      "matched_on": [
+        "城市 无锡",
+        "目标 结婚导向",
+        "情绪稳定",
+        "不对婚史设偏见"
+      ],
+      "reciprocal_on": [
+        "年龄在对方偏好区间",
+        "教育符合偏好"
+      ],
+      "missing_fields": [],
+      "self_profile_gaps": [],
+      "risk_flags": [],
+      "match_evidence": [],
+      "follow_up_questions": [
+        "确认对再婚现实和长期关系推进节奏的看法。",
+        "确认平时见面频率和城市半径。"
+      ],
+      "photo_preview": [],
+      "profile": {
+        "age": 36,
+        "city": "无锡",
+        "job": "法务",
+        "relationship_goal": "结婚导向",
+        "marital_status": "未婚",
+        "smoking": "否",
+        "drinking": "偶尔"
+      }
+    }
+  ],
+  "refresh_summaries": [
+    {
+      "subscription_id": "saved-search-d206d54bb4d1",
+      "requester_id": 88001,
+      "title": "无锡稳定认真关系持续留意",
+      "searched_at": "2026-05-03 09:00:00",
+      "result_count": 1,
+      "status_counts": {
+        "pending_delivery": 1
+      }
+    }
+  ],
+  "delivery_summary": {
+    "delivered_count": 1,
+    "held_quiet_hours": 0,
+    "held_daily_cap": 0
+  },
+  "recommendations": [
+    {
+      "recommendation_id": 1,
+      "subscription_id": "saved-search-d206d54bb4d1",
+      "requester_id": 88001,
+      "candidate_id": 30010,
+      "candidate_name": "周砚川",
+      "score": 67,
+      "fit_score": 55,
+      "confidence_score": 12,
+      "risk_score": 0,
+      "delivery_status": "delivered",
+      "delivery_reason": "in_app_card_created",
+      "first_seen_at": "2026-05-03 09:00:00",
+      "last_seen_at": "2026-05-03 09:00:00",
+      "notified_at": "2026-05-03 10:00:00",
+      "cooling_until": null,
+      "last_action_type": null,
+      "latest_card_id": "card-50d83ae539f4",
+      "matched_on": [
+        "城市 无锡",
+        "目标 结婚导向",
+        "情绪稳定",
+        "不对婚史设偏见"
+      ],
+      "risk_flags": [],
+      "latest_payload": {
+        "confidence_score": 12,
+        "fit_score": 55,
+        "follow_up_questions": [
+          "确认对再婚现实和长期关系推进节奏的看法。",
+          "确认平时见面频率和城市半径。"
+        ],
+        "id": 30010,
+        "match_evidence": [],
+        "matched_on": [
+          "城市 无锡",
+          "目标 结婚导向",
+          "情绪稳定",
+          "不对婚史设偏见"
+        ],
+        "missing_fields": [],
+        "name": "周砚川",
+        "photo_preview": [],
+        "profile": {
+          "age": 36,
+          "city": "无锡",
+          "drinking": "偶尔",
+          "job": "法务",
+          "marital_status": "未婚",
+          "relationship_goal": "结婚导向",
+          "smoking": "否"
+        },
+        "reciprocal_on": [
+          "年龄在对方偏好区间",
+          "教育符合偏好"
+        ],
+        "risk_flags": [],
+        "risk_score": 0,
+        "score": 67,
+        "self_profile_gaps": []
+      }
+    }
+  ],
+  "cards": [
+    {
+      "card_id": "card-50d83ae539f4",
+      "subscription_id": "saved-search-d206d54bb4d1",
+      "recommendation_id": 1,
+      "requester_id": 88001,
+      "candidate_id": 30010,
+      "card_status": "unread",
+      "title": "发现新的合适对象：周砚川",
+      "subtitle": "无锡稳定认真关系持续留意 | score=67 | 36岁 | 无锡 | 法务",
+      "body": "匹配点：城市 无锡；目标 结婚导向；情绪稳定\n建议确认：确认对再婚现实和长期关系推进节奏的看法。；确认平时见面频率和城市半径。",
+      "created_at": "2026-05-03 10:00:00",
+      "delivered_at": "2026-05-03 10:00:00",
+      "payload": {
+        "body": "匹配点：城市 无锡；目标 结婚导向；情绪稳定\n建议确认：确认对再婚现实和长期关系推进节奏的看法。；确认平时见面频率和城市半径。",
+        "card_type": "partner_recommendation",
+        "cta_actions": [
+          {
+            "id": "save",
+            "label": "先收藏"
+          },
+          {
+            "id": "skip",
+            "label": "先跳过"
+          },
+          {
+            "id": "direct_greet",
+            "label": "直接打招呼"
+          }
+        ],
+        "result_snapshot": {
+          "confidence_score": 12,
+          "fit_score": 55,
+          "follow_up_questions": [
+            "确认对再婚现实和长期关系推进节奏的看法。",
+            "确认平时见面频率和城市半径。"
+          ],
+          "id": 30010,
+          "match_evidence": [],
+          "matched_on": [
+            "城市 无锡",
+            "目标 结婚导向",
+            "情绪稳定",
+            "不对婚史设偏见"
+          ],
+          "missing_fields": [],
+          "name": "周砚川",
+          "photo_preview": [],
+          "profile": {
+            "age": 36,
+            "city": "无锡",
+            "drinking": "偶尔",
+            "job": "法务",
+            "marital_status": "未婚",
+            "relationship_goal": "结婚导向",
+            "smoking": "否"
+          },
+          "reciprocal_on": [
+            "年龄在对方偏好区间",
+            "教育符合偏好"
+          ],
+          "risk_flags": [],
+          "risk_score": 0,
+          "score": 67,
+          "self_profile_gaps": []
+        },
+        "subtitle": "无锡稳定认真关系持续留意 | score=67 | 36岁 | 无锡 | 法务",
+        "title": "发现新的合适对象：周砚川"
+      }
+    }
+  ],
+  "record_action_hint": {
+    "db": "/Users/sunmuchao/Downloads/Her/tmp/partner-roleplay-phase3.sqlite3",
+    "subscription_id": "saved-search-d206d54bb4d1",
+    "candidate_id": 30010,
+    "allowed_actions": [
+      "skip",
+      "save",
+      "direct_greet"
+    ]
+  }
+}
