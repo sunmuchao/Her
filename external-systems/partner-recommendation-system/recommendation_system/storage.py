@@ -30,6 +30,12 @@ SCHEMA_STATEMENTS = (
       quiet_hours_end INTEGER NOT NULL DEFAULT 9,
       refresh_interval_hours INTEGER NOT NULL DEFAULT 24,
       skip_cooldown_days INTEGER NOT NULL DEFAULT 30,
+      recommendation_mode TEXT NOT NULL DEFAULT 'direct_greet_only',
+      direct_greet_profile_json TEXT NOT NULL DEFAULT '{}',
+      max_review_candidates_per_refresh INTEGER NOT NULL DEFAULT 3,
+      min_direct_greet_score INTEGER NOT NULL DEFAULT 60,
+      auto_reject_on_follow_up_questions INTEGER NOT NULL DEFAULT 1,
+      auto_reject_on_risk_flags INTEGER NOT NULL DEFAULT 1,
       last_refreshed_at TEXT,
       last_result_count INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
@@ -57,6 +63,12 @@ SCHEMA_STATEMENTS = (
       matched_on_json TEXT NOT NULL,
       risk_flags_json TEXT NOT NULL,
       latest_payload_json TEXT NOT NULL,
+      final_review_status TEXT NOT NULL DEFAULT 'match_ready',
+      final_review_reason TEXT,
+      final_review_score INTEGER NOT NULL DEFAULT 0,
+      final_review_payload_json TEXT NOT NULL DEFAULT '{}',
+      reviewed_at TEXT,
+      candidate_snapshot_hash TEXT,
       latest_card_id TEXT,
       UNIQUE(subscription_id, candidate_id),
       FOREIGN KEY(subscription_id) REFERENCES saved_search_subscriptions(subscription_id)
@@ -95,6 +107,7 @@ SCHEMA_STATEMENTS = (
     "CREATE INDEX IF NOT EXISTS idx_saved_search_due ON saved_search_subscriptions(status, is_still_searching, last_refreshed_at)",
     "CREATE INDEX IF NOT EXISTS idx_recommendations_subscription_status ON profile_recommendations(subscription_id, delivery_status, score DESC)",
     "CREATE INDEX IF NOT EXISTS idx_recommendations_requester_status ON profile_recommendations(requester_id, delivery_status, notified_at)",
+    "CREATE INDEX IF NOT EXISTS idx_recommendations_review_status ON profile_recommendations(subscription_id, final_review_status, score DESC)",
     "CREATE INDEX IF NOT EXISTS idx_actions_recommendation_time ON recommendation_actions(recommendation_id, occurred_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_cards_requester_time ON in_app_recommendation_cards(requester_id, delivered_at DESC)",
 )
@@ -120,6 +133,63 @@ def initialize_database(conn: sqlite3.Connection) -> None:
     for statement in SCHEMA_STATEMENTS:
         conn.execute(statement)
     ensure_column(conn, "saved_search_subscriptions", "self_id", "INTEGER")
+    ensure_column(
+        conn,
+        "saved_search_subscriptions",
+        "recommendation_mode",
+        "TEXT NOT NULL DEFAULT 'direct_greet_only'",
+    )
+    ensure_column(
+        conn,
+        "saved_search_subscriptions",
+        "direct_greet_profile_json",
+        "TEXT NOT NULL DEFAULT '{}'",
+    )
+    ensure_column(
+        conn,
+        "saved_search_subscriptions",
+        "max_review_candidates_per_refresh",
+        "INTEGER NOT NULL DEFAULT 3",
+    )
+    ensure_column(
+        conn,
+        "saved_search_subscriptions",
+        "min_direct_greet_score",
+        "INTEGER NOT NULL DEFAULT 60",
+    )
+    ensure_column(
+        conn,
+        "saved_search_subscriptions",
+        "auto_reject_on_follow_up_questions",
+        "INTEGER NOT NULL DEFAULT 1",
+    )
+    ensure_column(
+        conn,
+        "saved_search_subscriptions",
+        "auto_reject_on_risk_flags",
+        "INTEGER NOT NULL DEFAULT 1",
+    )
+    ensure_column(
+        conn,
+        "profile_recommendations",
+        "final_review_status",
+        "TEXT NOT NULL DEFAULT 'match_ready'",
+    )
+    ensure_column(conn, "profile_recommendations", "final_review_reason", "TEXT")
+    ensure_column(
+        conn,
+        "profile_recommendations",
+        "final_review_score",
+        "INTEGER NOT NULL DEFAULT 0",
+    )
+    ensure_column(
+        conn,
+        "profile_recommendations",
+        "final_review_payload_json",
+        "TEXT NOT NULL DEFAULT '{}'",
+    )
+    ensure_column(conn, "profile_recommendations", "reviewed_at", "TEXT")
+    ensure_column(conn, "profile_recommendations", "candidate_snapshot_hash", "TEXT")
     conn.commit()
 
 
