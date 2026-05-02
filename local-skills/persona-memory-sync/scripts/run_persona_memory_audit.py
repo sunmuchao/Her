@@ -11,7 +11,7 @@ import sys
 from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Set
 
 from openai import OpenAI
 from pydantic import BaseModel, Field
@@ -332,14 +332,23 @@ def prune_none(value: Any) -> Any:
     return value
 
 
+PRIVATE_BOUNDARY_CATEGORY_KEYWORDS = {
+    "income": ("收入", "薪资", "薪水", "工资", "存款"),
+    "housing": ("房产", "房贷", "车贷", "买房"),
+    "family": ("父母", "老人", "催婚", "家庭"),
+    "health": ("婚育检查", "生育检查", "身体", "健康", "耗竭"),
+    "relationship_history": ("前任", "离婚原因", "感情失败", "相亲失败", "前夫", "前妻"),
+    "workplace": ("公司名", "公司", "单位"),
+}
+
+PRIVATE_BOUNDARY_FIELD_BLOCKLIST = {
+    "income": {"self_income_wan", "self_income_range", "income_range", "income_min_wan", "income_max_wan"},
+    "housing": {"housing_status", "car_status"},
+}
+
+
 def mentions_income_privacy(private_boundaries: Optional[Iterable[str]]) -> bool:
-    for boundary in private_boundaries or []:
-        text = str(boundary).strip()
-        if not text:
-            continue
-        if any(keyword in text for keyword in ("收入", "薪资", "薪水", "工资")):
-            return True
-    return False
+    return "income" in detect_private_boundary_categories(private_boundaries)
 
 
 INCOME_TEXT_PATTERNS = (
@@ -347,6 +356,40 @@ INCOME_TEXT_PATTERNS = (
     re.compile(r"\d+\s*-\s*\d+\s*万/年"),
     re.compile(r"\d+\s*万/年"),
 )
+
+PRIVATE_BOUNDARY_TEXT_PATTERNS = {
+    "income": INCOME_TEXT_PATTERNS
+    + (
+        re.compile(r"存款[^，。；\n]{0,20}"),
+    ),
+    "housing": (
+        re.compile(r"(?:房产细节|房产情况|房贷金额|房贷|车贷细节|车贷|买房预算|买房计划)[^，。；\n]{0,20}"),
+    ),
+    "family": (
+        re.compile(r"(?:父母做生意的具体情况|家里老人身体负担|父母催婚压力|被催婚(?:的细节)?|家庭关系细节|家庭负担)[^，。；\n]{0,20}"),
+    ),
+    "health": (
+        re.compile(r"(?:婚育检查相关的事|婚育检查|生育检查|身体情况|身体负担|健康压力|上一份工作耗竭经历|耗竭经历)[^，。；\n]{0,20}"),
+    ),
+    "relationship_history": (
+        re.compile(r"(?:离婚原因|前任细节|过去感情失败原因|过往相亲失败经历|上一段感情(?:失败原因)?|前夫|前妻|前任)[^，。；\n]{0,20}"),
+    ),
+    "workplace": (
+        re.compile(r"(?:具体公司名|公司名|工作单位|具体单位|单位名)[^，。；\n]{0,20}"),
+    ),
+}
+
+
+def detect_private_boundary_categories(private_boundaries: Optional[Iterable[str]]) -> Set[str]:
+    categories = set()
+    for boundary in private_boundaries or []:
+        text = str(boundary).strip()
+        if not text:
+            continue
+        for category, keywords in PRIVATE_BOUNDARY_CATEGORY_KEYWORDS.items():
+            if any(keyword in text for keyword in keywords):
+                categories.add(category)
+    return categories
 
 
 def redact_income_text(value: Any) -> Any:
@@ -368,13 +411,69 @@ def redact_income_fields(value: Any) -> Any:
     return redact_income_text(value)
 
 
+def redact_private_boundary_text(value: Any, categories: Set[str]) -> Any:
+    if not isinstance(value, str) or not categories:
+        return value
+
+    patterns = [
+        pattern
+        for category in categories
+        for pattern in PRIVATE_BOUNDARY_TEXT_PATTERNS.get(category, ())
+    ]
+    if not patterns:
+        return value
+
+    segments = [segment.strip() for segment in re.split(r"[。；;\n]+", value) if segment.strip()]
+    kept_segments = []
+    removed = False
+    for segment in segments:
+        if any(pattern.search(segment) for pattern in patterns):
+            removed = True
+            continue
+        kept_segments.append(segment)
+    if removed:
+        return "；".join(kept_segments) if kept_segments else "相关信息已隐藏"
+
+    text = value
+    for pattern in patterns:
+        text = pattern.sub("相关信息已隐藏", text)
+    text = re.sub(r"(相关信息已隐藏)[，,、 ]?(相关信息已隐藏)", r"\1", text)
+    text = re.sub(r"[，,]{2,}", "，", text)
+    return text.strip("，,；; ")
+
+
+def redact_private_boundary_fields(value: Any, categories: Set[str]) -> Any:
+    if isinstance(value, dict):
+        blocked_fields = {
+            field
+            for category in categories
+            for field in PRIVATE_BOUNDARY_FIELD_BLOCKLIST.get(category, set())
+        }
+        return {
+            key: redact_private_boundary_fields(item, categories)
+            for key, item in value.items()
+            if key not in blocked_fields
+        }
+    if isinstance(value, list):
+        return [redact_private_boundary_fields(item, categories) for item in value]
+    return redact_private_boundary_text(value, categories)
+
+
 def mask_snapshot_for_review(snapshot: Dict[str, Any], private_boundaries: Optional[Iterable[str]]) -> Dict[str, Any]:
     masked = deepcopy(snapshot)
-    if mentions_income_privacy(private_boundaries):
+    categories = detect_private_boundary_categories(private_boundaries)
+    if "income" in categories:
         persona_row = masked.get("user_persona") or {}
         persona_row.pop("self_income_wan", None)
         persona_row.pop("self_income_range", None)
         masked = redact_income_fields(masked)
+    if "workplace" in categories:
+        persona_row = masked.get("user_persona") or {}
+        profile_row = masked.get("profile_internal") or {}
+        persona_row.pop("self_job", None)
+        profile_row.pop("job", None)
+    if categories:
+        masked = redact_private_boundary_fields(masked, categories)
     return masked
 
 

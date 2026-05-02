@@ -287,7 +287,7 @@ PUBLIC_SAFE_NEGATIVE_NOTES = {
 PUBLIC_SAFE_TAG_MAP = {
     "愿意沟通": "愿意沟通",
     "沟通": "愿意沟通",
-    "消费观正常": "消费观清醒",
+    "消费观正常": "消费观相近",
     "接受孩子现实": "能承接现实关系",
     "能接受孩子现实": "能承接现实关系",
     "婚姻诚意": "婚姻诚意",
@@ -480,12 +480,19 @@ LOCATION_NUANCE_MARKERS = (
 )
 
 SAFE_PUBLIC_PERSONALITY_PATTERNS = (
+    (re.compile(r"慢热[^，。；]{0,12}(?:有反馈|有回应)"), "慢热但有反馈"),
     (re.compile(r"慢热但认真"), "慢热但认真"),
+    (re.compile(r"表达克制"), "表达克制"),
+    (re.compile(r"(?:做事|相处|生活)[^，。；]{0,6}有计划"), "做事有计划"),
+    (re.compile(r"(?:相处舒服|相处自然|不拉扯|不拧巴)"), "相处不拧巴"),
     (re.compile(r"生活安静稳定"), "生活安静稳定"),
     (re.compile(r"生活有规划"), "生活有规划"),
+    (re.compile(r"生活规律"), "生活规律"),
     (re.compile(r"作息规律"), "作息规律"),
     (re.compile(r"作息不算特别规律"), "作息不算特别规律"),
+    (re.compile(r"务实"), "务实"),
     (re.compile(r"工作有创意"), "工作有创意"),
+    (re.compile(r"(?:有自己的生活趣味|生活有趣味)"), "有自己的生活趣味"),
     (re.compile(r"生活节奏总体正常"), "生活节奏总体正常"),
 )
 
@@ -1578,17 +1585,31 @@ def build_public_relationship_goal(goal: Any) -> Optional[str]:
         or re.search(r"\d+年内", goal_text)
         or re.search(r"[一二两三四五六七八九十]+年内", goal_text)
     )
-    if "不着急" in goal_text and ("结婚" in goal_text or "婚姻" in goal_text):
+    has_non_rushed_tone = any(
+        marker in goal_text
+        for marker in ("不着急", "不仓促", "不想仓促", "先看相处", "先看相处质量", "慢慢来")
+    )
+    has_marriage_intent = "结婚" in goal_text or "婚姻" in goal_text
+    has_remarriage_intent = "再婚" in goal_text
+    has_long_term_intent = "长期关系" in goal_text or "长期" in goal_text
+
+    if has_non_rushed_tone and has_remarriage_intent:
+        return "认真了解，长期关系方向明确，合适再往婚姻走"
+    if has_non_rushed_tone and has_long_term_intent and has_marriage_intent:
+        return "认真了解，长期关系方向明确，合适再考虑婚姻"
+    if has_non_rushed_tone and has_long_term_intent:
+        return "认真了解，长期关系方向明确，不仓促推进"
+    if has_non_rushed_tone and has_marriage_intent:
         return "认真了解，方向明确，不仓促推进"
     if "现实关系" in goal_text:
         return "认真了解，长期现实关系方向明确"
     if "认真找长期关系" in goal_text and "会考虑结婚" in goal_text:
         return "认真了解，长期关系方向明确，合适会考虑结婚"
-    if "再婚" in goal_text:
+    if has_remarriage_intent:
         if has_timeline:
             return "认真了解，再婚方向明确，合适会稳步推进"
         return "认真了解，再婚方向明确"
-    if ("长期关系" in goal_text or "长期" in goal_text) and ("结婚" in goal_text or "婚姻" in goal_text):
+    if has_long_term_intent and has_marriage_intent:
         if has_timeline:
             return "认真了解，婚姻方向明确，合适会稳步推进"
         return "认真了解，长期关系与婚姻方向明确"
@@ -1631,6 +1652,24 @@ def sanitize_public_profile_summary(summary: Any, persona: Dict[str, Any]) -> Op
     ]
     if goal_text and goal_fragment:
         replacements.append((re.compile(re.escape(goal_text) + r"导向"), goal_fragment))
+        replacements.append(
+            (
+                re.compile(r"(?:认真了解，)?再婚方向明确(?:，合适会稳步推进)?"),
+                goal_fragment,
+            )
+        )
+        replacements.append(
+            (
+                re.compile(r"(?:认真了解，)?长期关系与婚姻方向明确(?:，合适会稳步推进)?"),
+                goal_fragment,
+            )
+        )
+        replacements.append(
+            (
+                re.compile(r"(?:认真了解，)?婚姻方向明确(?:，合适会稳步推进)?"),
+                goal_fragment,
+            )
+        )
     for pattern, replacement in replacements:
         text = pattern.sub(replacement, text)
 
@@ -1654,6 +1693,7 @@ def sanitize_public_preference_summary(
         ("更适合同城或近距离稳定推进的关系", "更适合同城或近距离认真相处"),
         ("更适合同城或近距离认真推进的关系", "更适合同城或近距离认真相处"),
         ("对生活方式和习惯有较明确要求", "更偏好生活习惯相近的人"),
+        ("消费观正常", "消费观相近"),
         ("接受孩子现实", "能承接现实关系"),
         ("能接受孩子现实", "能承接现实关系"),
     ]
@@ -2403,8 +2443,19 @@ SELECT
   CAST(NULL AS CHAR(32)) AS income_range,
   CASE
     WHEN relationship_goal IS NULL OR TRIM(relationship_goal) = '' THEN NULL
-    WHEN relationship_goal REGEXP '不着急' AND relationship_goal REGEXP '结婚|婚姻'
-      THEN '认真了解，结婚不着急，方向明确'
+    WHEN relationship_goal REGEXP '不着急|不仓促|不想仓促|先看相处|先看相处质量|慢慢来'
+      AND relationship_goal REGEXP '再婚'
+      THEN '认真了解，长期关系方向明确，合适再往婚姻走'
+    WHEN relationship_goal REGEXP '不着急|不仓促|不想仓促|先看相处|先看相处质量|慢慢来'
+      AND relationship_goal REGEXP '长期关系|长期'
+      AND relationship_goal REGEXP '结婚|婚姻'
+      THEN '认真了解，长期关系方向明确，合适再考虑婚姻'
+    WHEN relationship_goal REGEXP '不着急|不仓促|不想仓促|先看相处|先看相处质量|慢慢来'
+      AND relationship_goal REGEXP '长期关系|长期'
+      THEN '认真了解，长期关系方向明确，不仓促推进'
+    WHEN relationship_goal REGEXP '不着急|不仓促|不想仓促|先看相处|先看相处质量|慢慢来'
+      AND relationship_goal REGEXP '结婚|婚姻'
+      THEN '认真了解，方向明确，不仓促推进'
     WHEN relationship_goal REGEXP '现实关系'
       THEN '认真了解，长期现实关系方向明确'
     WHEN relationship_goal REGEXP '认真找长期关系' AND relationship_goal REGEXP '会考虑结婚'
