@@ -19,6 +19,7 @@ from .service import (
     list_in_app_cards,
     list_recommendations_for_subscription,
     record_recommendation_action,
+    record_user_review,
     refresh_due_subscriptions,
     refresh_subscription,
 )
@@ -39,6 +40,7 @@ __all__ = [
     "list_in_app_cards",
     "list_recommendations_for_subscription",
     "record_recommendation_action",
+    "record_user_review",
     "refresh_due_subscriptions",
     "refresh_subscription",
     "run_search_session",
