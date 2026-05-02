@@ -1,0 +1,132 @@
+{
+  "label": "persona_eval_agents_20260502_2",
+  "source_input": "/Users/sunmuchao/Downloads/Her/tmp/persona_agent_audits/persona_eval_agents_20260502_2/agent_feedback.json",
+  "persona_count": 6,
+  "candidate_review_count": 16,
+  "average_score": 0.0,
+  "top1_average_score": 0.0,
+  "verdict_counts": {
+    "一般": 4,
+    "愿意聊": 12
+  },
+  "overall_score_average": 96.1667,
+  "overall_score_count": 6,
+  "matching_satisfaction_counts": {
+    "中": 1,
+    "高": 5
+  },
+  "overall_verdict_counts": {},
+  "no_match_persona_count": 0,
+  "memory_reviewed_persona_count": 6,
+  "memory_drift_persona_count": 6,
+  "privacy_flag_persona_count": 6,
+  "systemic_issue_persona_count": 6,
+  "average_memory_drift_count": 2.3333,
+  "average_privacy_flag_count": 1.8333,
+  "average_systemic_issue_count": 2.6667,
+  "personas": [
+    {
+      "persona_id": "changzhou_ev_m_v1",
+      "display_name": "用户D01",
+      "overall_score": 97.0,
+      "overall_satisfaction": "高",
+      "overall_verdict": null,
+      "candidate_review_count": 3,
+      "memory_drift_count": 2,
+      "privacy_flag_count": 1,
+      "systemic_issue_count": 2,
+      "no_match": false,
+      "top_candidate": {
+        "name": "许知夏",
+        "verdict": "愿意聊",
+        "score": null
+      }
+    },
+    {
+      "persona_id": "nantong_risk_f_v1",
+      "display_name": "用户D02",
+      "overall_score": 97.0,
+      "overall_satisfaction": "高",
+      "overall_verdict": null,
+      "candidate_review_count": 3,
+      "memory_drift_count": 2,
+      "privacy_flag_count": 1,
+      "systemic_issue_count": 3,
+      "no_match": false,
+      "top_candidate": {
+        "name": "赵柏峰",
+        "verdict": "愿意聊",
+        "score": null
+      }
+    },
+    {
+      "persona_id": "ningbo_port_m_v1",
+      "display_name": "用户D03",
+      "overall_score": 97.0,
+      "overall_satisfaction": "高",
+      "overall_verdict": null,
+      "candidate_review_count": 3,
+      "memory_drift_count": 3,
+      "privacy_flag_count": 3,
+      "systemic_issue_count": 4,
+      "no_match": false,
+      "top_candidate": {
+        "name": "于语婷",
+        "verdict": "愿意聊",
+        "score": null
+      }
+    },
+    {
+      "persona_id": "yangzhou_pet_f_v1",
+      "display_name": "用户D04",
+      "overall_score": 96.0,
+      "overall_satisfaction": "高",
+      "overall_verdict": null,
+      "candidate_review_count": 3,
+      "memory_drift_count": 2,
+      "privacy_flag_count": 2,
+      "systemic_issue_count": 2,
+      "no_match": false,
+      "top_candidate": {
+        "name": "高奕霖",
+        "verdict": "愿意聊",
+        "score": null
+      }
+    },
+    {
+      "persona_id": "taizhou_reg_m_v1",
+      "display_name": "用户D05",
+      "overall_score": 95.0,
+      "overall_satisfaction": "高",
+      "overall_verdict": null,
+      "candidate_review_count": 3,
+      "memory_drift_count": 2,
+      "privacy_flag_count": 2,
+      "systemic_issue_count": 2,
+      "no_match": false,
+      "top_candidate": {
+        "name": "谢念晨",
+        "verdict": "愿意聊",
+        "score": null
+      }
+    },
+    {
+      "persona_id": "zhenjiang_admin_f_v1",
+      "display_name": "用户D06",
+      "overall_score": 95.0,
+      "overall_satisfaction": "中",
+      "overall_verdict": null,
+      "candidate_review_count": 1,
+      "memory_drift_count": 3,
+      "privacy_flag_count": 2,
+      "systemic_issue_count": 3,
+      "no_match": false,
+      "top_candidate": {
+        "name": "陈柏川",
+        "verdict": "愿意聊",
+        "score": null
+      }
+    }
+  ],
+  "generated_at": "2026-05-02T15:11:48"
+}
