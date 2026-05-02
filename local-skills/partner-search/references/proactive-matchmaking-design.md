@@ -1020,6 +1020,38 @@ Phase 1 完成后，`partner-search` 应该处于下面这个状态：
 - 自动推进数量和风险都可控
 - 出现问题时能回溯是哪个规则、哪个状态和哪条反馈事件触发的
 
+### 16.6 Phase 5 落地到当前代码
+
+这一阶段现在已经在 repo 里作为独立外部系统落地，路径是：
+
+- `external-systems/partner-matchmaking-system/`
+
+具体对应关系如下：
+
+- `matchmaking_system/storage.py`
+  - 建 `matchmaking_pool_members`
+  - 建 `matchmaking_edges`
+  - 建 `matchmaking_pairs`
+  - 建 `match_cases`
+  - 建 `match_case_events`
+  - 建 `matchmaking_feedback_events`
+- `matchmaking_system/service.py`
+  - 管理撮合池成员
+  - 调 `partner-search` 刷新池内单向边
+  - 把双边边拼成 mutual pair
+  - 创建 system `match_case`
+  - 推进 first / second contact 状态流转
+  - 记录反馈并在反馈后自动调用 `persona-memory-sync`
+  - 画像更新后重校验旧 pair 和待处理案件
+- `matchmaking_system/partner_search_client.py`
+  - 通过 Phase 2 Python API 调 `partner-search`
+- `matchmaking_system/persona_memory_client.py`
+  - 通过 Python API 调 `persona-memory-sync`
+- `tests/test_matchmaking_system.py`
+  - 锁住撮合池、mutual pair、案件流转、反馈画像同步和重校验回归
+
+这样以后如果产品层要做真正的自动撮合，应该直接扩这个外部系统，而不是把这些状态机和反馈链路塞回 `partner-search`。
+
 ## 17. 推荐实施顺序
 
 最推荐的落地顺序是：
