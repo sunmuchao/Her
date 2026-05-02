@@ -2,10 +2,18 @@
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 from datetime import datetime, timedelta
 from typing import Any, Callable, Iterable
 
+from .direct_greet_gate import (
+    DEFAULT_MAX_REVIEW_CANDIDATES_PER_REFRESH,
+    DEFAULT_MIN_DIRECT_GREET_SCORE,
+    DEFAULT_RECOMMENDATION_MODE,
+    normalize_recommendation_mode,
+    review_candidate_for_proactive_delivery,
+)
 from .search_client import run_partner_search
 from .storage import json_dumps, json_loads, row_to_dict
 
@@ -112,6 +120,12 @@ def create_subscription(
     quiet_hours_end: int = 9,
     refresh_interval_hours: int = 24,
     skip_cooldown_days: int = 30,
+    recommendation_mode: str = DEFAULT_RECOMMENDATION_MODE,
+    direct_greet_profile: dict[str, Any] | None = None,
+    max_review_candidates_per_refresh: int = DEFAULT_MAX_REVIEW_CANDIDATES_PER_REFRESH,
+    min_direct_greet_score: int = DEFAULT_MIN_DIRECT_GREET_SCORE,
+    auto_reject_on_follow_up_questions: bool = True,
+    auto_reject_on_risk_flags: bool = True,
     status: str = "active",
     is_still_searching: bool = True,
     subscription_id: str | None = None,
@@ -143,10 +157,16 @@ def create_subscription(
           quiet_hours_end,
           refresh_interval_hours,
           skip_cooldown_days,
+          recommendation_mode,
+          direct_greet_profile_json,
+          max_review_candidates_per_refresh,
+          min_direct_greet_score,
+          auto_reject_on_follow_up_questions,
+          auto_reject_on_risk_flags,
           last_result_count,
           created_at,
           updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
         """,
         (
           subscription_id,
@@ -168,6 +188,12 @@ def create_subscription(
           quiet_hours_end,
           refresh_interval_hours,
           skip_cooldown_days,
+          normalize_recommendation_mode(recommendation_mode),
+          json_dumps(direct_greet_profile or {}),
+          max_review_candidates_per_refresh,
+          min_direct_greet_score,
+          bool_to_int(auto_reject_on_follow_up_questions),
+          bool_to_int(auto_reject_on_risk_flags),
           created_at,
           created_at,
         ),
@@ -225,7 +251,17 @@ def load_subscription_search_args(subscription: dict[str, Any]) -> dict[str, Any
     }
 
 
-def normalize_delivery_status(existing: dict[str, Any] | None, result: dict[str, Any], subscription: dict[str, Any], now: datetime) -> tuple[str, str]:
+def candidate_snapshot_hash(result: dict[str, Any]) -> str:
+    return hashlib.sha256(json_dumps(result).encode("utf-8")).hexdigest()
+
+
+def normalize_delivery_status(
+    existing: dict[str, Any] | None,
+    result: dict[str, Any],
+    subscription: dict[str, Any],
+    now: datetime,
+    final_review: dict[str, Any],
+) -> tuple[str, str]:
     if existing and existing.get("last_action_type") == "save":
         return ("saved_by_user", "user_saved_candidate")
     if existing and existing.get("last_action_type") == "direct_greet":
@@ -234,17 +270,25 @@ def normalize_delivery_status(existing: dict[str, Any] | None, result: dict[str,
         cooling_until = parse_dt(existing.get("cooling_until"))
         if cooling_until and now < cooling_until:
             return ("cooled_down", "skip_cooldown_active")
-        if int(result.get("score") or 0) >= int(subscription.get("min_notify_score") or 0):
-            return ("pending_delivery", "skip_cooldown_expired")
-        return ("suppressed_low_score", "score_below_notify_threshold")
 
     if int(result.get("score") or 0) < int(subscription.get("min_notify_score") or 0):
         return ("suppressed_low_score", "score_below_notify_threshold")
 
-    if existing and existing.get("delivery_status") == "pending_delivery":
-        return ("pending_delivery", "still_pending_delivery")
     if existing and existing.get("notified_at"):
         return ("already_delivered", "candidate_already_notified")
+
+    recommendation_mode = normalize_recommendation_mode(subscription.get("recommendation_mode"))
+    final_review_status = final_review["status"]
+    if recommendation_mode == "direct_greet_only":
+        if final_review_status == "review_deferred":
+            return ("review_deferred", final_review["reason"])
+        if final_review_status == "rejected":
+            return ("rejected_by_gate", final_review["reason"])
+        if final_review_status == "save_only":
+            return ("save_only", final_review["reason"])
+
+    if existing and existing.get("delivery_status") == "pending_delivery":
+        return ("pending_delivery", "still_pending_delivery")
     return ("pending_delivery", "new_candidate")
 
 
@@ -255,6 +299,7 @@ def inflate_recommendation(recommendation: dict[str, Any]) -> dict[str, Any]:
     inflated["matched_on"] = json_loads(inflated.pop("matched_on_json"), [])
     inflated["risk_flags"] = json_loads(inflated.pop("risk_flags_json"), [])
     inflated["latest_payload"] = json_loads(inflated.pop("latest_payload_json"), {})
+    inflated["final_review_payload"] = json_loads(inflated.pop("final_review_payload_json"), {})
     return inflated
 
 
@@ -270,16 +315,31 @@ def get_recommendation(conn, subscription_id: str, candidate_id: int) -> dict[st
     return inflate_recommendation(row_to_dict(row))
 
 
-def upsert_recommendation(conn, subscription: dict[str, Any], result: dict[str, Any], now: datetime) -> dict[str, Any]:
+def upsert_recommendation(
+    conn,
+    subscription: dict[str, Any],
+    result: dict[str, Any],
+    now: datetime,
+    *,
+    review_rank: int,
+) -> dict[str, Any]:
     candidate_id = result.get("id")
     if candidate_id is None:
         raise ValueError("Structured search results must contain a candidate id for Phase 3 history tracking.")
 
     existing = get_recommendation(conn, subscription["subscription_id"], int(candidate_id))
-    delivery_status, delivery_reason = normalize_delivery_status(existing, result, subscription, now)
+    final_review = review_candidate_for_proactive_delivery(
+        subscription,
+        result,
+        review_rank=review_rank,
+    )
+    delivery_status, delivery_reason = normalize_delivery_status(existing, result, subscription, now, final_review)
     payload_json = json_dumps(result)
     matched_on_json = json_dumps(result.get("matched_on") or [])
     risk_flags_json = json_dumps(result.get("risk_flags") or [])
+    final_review_payload_json = json_dumps(final_review.get("payload") or {})
+    reviewed_at = format_dt(now)
+    snapshot_hash = candidate_snapshot_hash(result)
 
     if existing:
         conn.execute(
@@ -295,7 +355,13 @@ def upsert_recommendation(conn, subscription: dict[str, Any], result: dict[str, 
                 last_seen_at = ?,
                 matched_on_json = ?,
                 risk_flags_json = ?,
-                latest_payload_json = ?
+                latest_payload_json = ?,
+                final_review_status = ?,
+                final_review_reason = ?,
+                final_review_score = ?,
+                final_review_payload_json = ?,
+                reviewed_at = ?,
+                candidate_snapshot_hash = ?
             WHERE recommendation_id = ?
             """,
             (
@@ -310,6 +376,12 @@ def upsert_recommendation(conn, subscription: dict[str, Any], result: dict[str, 
                 matched_on_json,
                 risk_flags_json,
                 payload_json,
+                final_review["status"],
+                final_review["reason"],
+                int(final_review.get("score") or 0),
+                final_review_payload_json,
+                reviewed_at,
+                snapshot_hash,
                 existing["recommendation_id"],
             ),
         )
@@ -331,8 +403,14 @@ def upsert_recommendation(conn, subscription: dict[str, Any], result: dict[str, 
               last_seen_at,
               matched_on_json,
               risk_flags_json,
-              latest_payload_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              latest_payload_json,
+              final_review_status,
+              final_review_reason,
+              final_review_score,
+              final_review_payload_json,
+              reviewed_at,
+              candidate_snapshot_hash
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 subscription["subscription_id"],
@@ -350,6 +428,12 @@ def upsert_recommendation(conn, subscription: dict[str, Any], result: dict[str, 
                 matched_on_json,
                 risk_flags_json,
                 payload_json,
+                final_review["status"],
+                final_review["reason"],
+                int(final_review.get("score") or 0),
+                final_review_payload_json,
+                reviewed_at,
+                snapshot_hash,
             ),
         )
     conn.commit()
@@ -369,10 +453,19 @@ def refresh_subscription(
     results = list(response.get("results") or [])[: int(subscription.get("top_k") or 5)]
 
     status_counts: dict[str, int] = {}
-    for result in results:
-        recommendation = upsert_recommendation(conn, subscription, result, now)
+    review_counts: dict[str, int] = {}
+    for index, result in enumerate(results, start=1):
+        recommendation = upsert_recommendation(
+            conn,
+            subscription,
+            result,
+            now,
+            review_rank=index,
+        )
         status = recommendation["delivery_status"]
         status_counts[status] = status_counts.get(status, 0) + 1
+        review_status = recommendation["final_review_status"]
+        review_counts[review_status] = review_counts.get(review_status, 0) + 1
 
     conn.execute(
         """
@@ -396,6 +489,7 @@ def refresh_subscription(
         "searched_at": format_dt(now),
         "result_count": len(results),
         "status_counts": status_counts,
+        "review_counts": review_counts,
     }
 
 

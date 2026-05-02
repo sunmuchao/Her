@@ -4,6 +4,11 @@ from __future__ import annotations
 
 from typing import Any, Callable, Mapping, Sequence
 
+from .direct_greet_gate import (
+    DEFAULT_MAX_REVIEW_CANDIDATES_PER_REFRESH,
+    DEFAULT_MIN_DIRECT_GREET_SCORE,
+    DEFAULT_RECOMMENDATION_MODE,
+)
 from .search_client import run_partner_search
 from .service import create_subscription
 
@@ -117,6 +122,12 @@ def subscribe_after_opt_in(
     quiet_hours_end: int = 9,
     refresh_interval_hours: int = 24,
     skip_cooldown_days: int = 30,
+    recommendation_mode: str = DEFAULT_RECOMMENDATION_MODE,
+    direct_greet_profile: Mapping[str, Any] | None = None,
+    max_review_candidates_per_refresh: int = DEFAULT_MAX_REVIEW_CANDIDATES_PER_REFRESH,
+    min_direct_greet_score: int = DEFAULT_MIN_DIRECT_GREET_SCORE,
+    auto_reject_on_follow_up_questions: bool = True,
+    auto_reject_on_risk_flags: bool = True,
 ) -> dict[str, Any]:
     return create_subscription(
         conn,
@@ -136,6 +147,12 @@ def subscribe_after_opt_in(
         quiet_hours_end=quiet_hours_end,
         refresh_interval_hours=refresh_interval_hours,
         skip_cooldown_days=skip_cooldown_days,
+        recommendation_mode=recommendation_mode,
+        direct_greet_profile=dict(direct_greet_profile or {}),
+        max_review_candidates_per_refresh=max_review_candidates_per_refresh,
+        min_direct_greet_score=min_direct_greet_score,
+        auto_reject_on_follow_up_questions=auto_reject_on_follow_up_questions,
+        auto_reject_on_risk_flags=auto_reject_on_risk_flags,
     )
 
 
@@ -153,6 +170,12 @@ def handle_opt_in_decision(
     quiet_hours_end: int = 9,
     refresh_interval_hours: int = 24,
     skip_cooldown_days: int = 30,
+    recommendation_mode: str = DEFAULT_RECOMMENDATION_MODE,
+    direct_greet_profile: Mapping[str, Any] | None = None,
+    max_review_candidates_per_refresh: int = DEFAULT_MAX_REVIEW_CANDIDATES_PER_REFRESH,
+    min_direct_greet_score: int = DEFAULT_MIN_DIRECT_GREET_SCORE,
+    auto_reject_on_follow_up_questions: bool = True,
+    auto_reject_on_risk_flags: bool = True,
 ) -> dict[str, Any]:
     if not search_session.get("needs_opt_in_prompt"):
         raise ValueError("Opt-in decision is only valid for empty-result search sessions.")
@@ -175,6 +198,12 @@ def handle_opt_in_decision(
         quiet_hours_end=quiet_hours_end,
         refresh_interval_hours=refresh_interval_hours,
         skip_cooldown_days=skip_cooldown_days,
+        recommendation_mode=recommendation_mode,
+        direct_greet_profile=direct_greet_profile,
+        max_review_candidates_per_refresh=max_review_candidates_per_refresh,
+        min_direct_greet_score=min_direct_greet_score,
+        auto_reject_on_follow_up_questions=auto_reject_on_follow_up_questions,
+        auto_reject_on_risk_flags=auto_reject_on_risk_flags,
     )
     return {
         "created_subscription": True,

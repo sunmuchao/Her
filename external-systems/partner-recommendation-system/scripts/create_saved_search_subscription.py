@@ -44,6 +44,39 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--limit-count", type=int, default=10, help="How many candidates to ask partner-search for each refresh.")
     parser.add_argument("--top-k", type=int, default=5, help="How many top candidates to track for reminders.")
     parser.add_argument("--min-notify-score", type=int, default=40, help="Minimum score required before the outer system will queue a reminder.")
+    parser.add_argument(
+        "--recommendation-mode",
+        choices=["match_based", "direct_greet_only"],
+        default="direct_greet_only",
+        help="Whether any high-match candidate can be pushed, or only direct-greet-ready candidates.",
+    )
+    parser.add_argument(
+        "--direct-greet-profile-json",
+        default=None,
+        help="Optional JSON string or @file describing the extra bar for proactive direct-greet recommendations.",
+    )
+    parser.add_argument(
+        "--max-review-candidates-per-refresh",
+        type=int,
+        default=3,
+        help="How many top candidates can enter the proactive direct-greet review pool per refresh.",
+    )
+    parser.add_argument(
+        "--min-direct-greet-score",
+        type=int,
+        default=60,
+        help="Minimum direct-greet review score required before a candidate can be proactively pushed.",
+    )
+    parser.add_argument(
+        "--allow-follow-up-questions",
+        action="store_true",
+        help="Allow proactive pushes even when the candidate still has follow-up questions.",
+    )
+    parser.add_argument(
+        "--allow-risk-flags",
+        action="store_true",
+        help="Allow proactive pushes even when the candidate still has risk flags.",
+    )
     parser.add_argument("--daily-notification-cap", type=int, default=2, help="How many recommendation cards the requester can receive per day.")
     parser.add_argument("--quiet-hours-start", type=int, default=22, help="Quiet-hour start in local 24h time.")
     parser.add_argument("--quiet-hours-end", type=int, default=9, help="Quiet-hour end in local 24h time.")
@@ -69,6 +102,12 @@ def main() -> int:
         limit_count=args.limit_count,
         top_k=args.top_k,
         min_notify_score=args.min_notify_score,
+        recommendation_mode=args.recommendation_mode,
+        direct_greet_profile=load_json_arg(args.direct_greet_profile_json, {}),
+        max_review_candidates_per_refresh=args.max_review_candidates_per_refresh,
+        min_direct_greet_score=args.min_direct_greet_score,
+        auto_reject_on_follow_up_questions=not args.allow_follow_up_questions,
+        auto_reject_on_risk_flags=not args.allow_risk_flags,
         daily_notification_cap=args.daily_notification_cap,
         quiet_hours_start=args.quiet_hours_start,
         quiet_hours_end=args.quiet_hours_end,
