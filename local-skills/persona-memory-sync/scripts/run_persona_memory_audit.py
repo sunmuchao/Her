@@ -338,7 +338,8 @@ PRIVATE_BOUNDARY_CATEGORY_KEYWORDS = {
     "family": ("父母", "老人", "催婚", "家庭"),
     "health": ("婚育检查", "生育检查", "身体", "健康", "耗竭"),
     "relationship_history": ("前任", "离婚原因", "感情失败", "相亲失败", "前夫", "前妻"),
-    "workplace": ("公司名", "公司", "单位"),
+    "workplace": ("具体公司名", "公司名", "具体单位", "工作单位", "单位名"),
+    "work_detail": ("公司项目细节", "项目细节", "业务细节"),
 }
 
 PRIVATE_BOUNDARY_FIELD_BLOCKLIST = {
@@ -376,6 +377,9 @@ PRIVATE_BOUNDARY_TEXT_PATTERNS = {
     ),
     "workplace": (
         re.compile(r"(?:具体公司名|公司名|工作单位|具体单位|单位名)[^，。；\n]{0,20}"),
+    ),
+    "work_detail": (
+        re.compile(r"(?:公司项目细节|项目细节|业务细节)[^，。；\n]{0,20}"),
     ),
 }
 

@@ -289,7 +289,7 @@ class PersonaMemoryTests(unittest.TestCase):
                 "self_relationship_goal": "1-2年内往结婚推进",
             }
         )
-        self.assertEqual(payload["public_personality"], "现居上海，认真了解，婚姻方向明确，合适会稳步推进")
+        self.assertEqual(payload["public_personality"], "现居上海，认真相处，方向明确，合适会稳步推进")
         self.assertNotIn("上海本地", payload["public_personality"])
         self.assertNotIn("导向", payload["public_personality"])
 
@@ -365,7 +365,7 @@ class PersonaMemoryTests(unittest.TestCase):
                 "must_have_tags": "接受孩子现实,边界清楚",
             }
         )
-        self.assertEqual(payload["public_personality"], "现居南京，慢热但认真，生活安静稳定，认真了解，重视长期稳定关系")
+        self.assertEqual(payload["public_personality"], "现居南京，慢热但认真，生活安静稳定，认真相处，重视长期稳定关系")
         self.assertIn("能承接现实关系", payload["public_values"])
         self.assertNotIn("孩子现实", payload["public_values"])
 
@@ -393,7 +393,7 @@ class PersonaMemoryTests(unittest.TestCase):
                 "self_relationship_goal": "认真找对象，希望两年内推进到再婚",
             }
         )
-        self.assertEqual(payload["public_personality"], "现居苏州，认真了解，再婚方向明确，合适会稳步推进")
+        self.assertEqual(payload["public_personality"], "现居苏州，认真相处，方向明确，合适会稳步推进")
 
     def test_build_public_profile_preserves_non_rushed_marriage_tone(self):
         payload = persona_memory_lib.build_public_profile(
@@ -405,7 +405,7 @@ class PersonaMemoryTests(unittest.TestCase):
         )
         self.assertEqual(
             payload["public_personality"],
-            "现居南京，慢热但认真，生活安静稳定，认真了解，方向明确，不仓促推进",
+            "现居南京，慢热但认真，生活安静稳定，认真相处，方向明确，不仓促推进",
         )
 
     def test_build_public_profile_softens_non_rushed_remarriage_tone(self):
@@ -418,7 +418,7 @@ class PersonaMemoryTests(unittest.TestCase):
         )
         self.assertEqual(
             payload["public_personality"],
-            "现居宁波，相处不拧巴，认真了解，长期关系方向明确，合适再往婚姻走",
+            "现居宁波，相处不拧巴，认真相处，先看关系质量，合适再往婚姻走",
         )
 
     def test_build_public_profile_surfaces_reserved_but_planned_traits(self):
@@ -431,7 +431,7 @@ class PersonaMemoryTests(unittest.TestCase):
         )
         self.assertEqual(
             payload["public_personality"],
-            "现居镇江，表达克制，做事有计划，认真了解，长期关系方向明确，合适再考虑婚姻",
+            "现居镇江，表达克制，做事有计划，认真相处，先看长期关系，合适再考虑婚姻",
         )
 
     def test_build_public_profile_surfaces_realistic_long_term_goal_and_distance_boundary(self):
@@ -445,7 +445,7 @@ class PersonaMemoryTests(unittest.TestCase):
                 "preferred_traits": "情绪稳定,边界清楚,责任感,沟通顺畅,有分寸,接受孩子现实",
             }
         )
-        self.assertEqual(payload["public_personality"], "现居杭州，认真了解，长期现实关系方向明确")
+        self.assertEqual(payload["public_personality"], "现居杭州，认真相处，长期现实关系方向明确")
         self.assertEqual(
             payload["public_values"],
             "看重情绪稳定、边界清楚、责任感、沟通顺畅、能承接现实关系、有分寸，也要尊重孩子现实",
@@ -470,7 +470,7 @@ class PersonaMemoryTests(unittest.TestCase):
                 "self_smoking": "不抽烟",
             }
         )
-        self.assertEqual(payload["public_personality"], "现居无锡，认真了解，婚姻方向明确")
+        self.assertEqual(payload["public_personality"], "现居无锡，认真相处，合适再往婚姻走")
 
     def test_build_public_profile_sanitizes_legacy_public_draft(self):
         payload = persona_memory_lib.build_public_profile(
@@ -480,7 +480,7 @@ class PersonaMemoryTests(unittest.TestCase):
                 "public_profile_summary_draft": "无锡本地，生活方式稳定，认真以结婚为导向。",
             }
         )
-        self.assertEqual(payload["public_personality"], "现居无锡，生活方式稳定，认真了解，婚姻方向明确。")
+        self.assertEqual(payload["public_personality"], "现居无锡，生活方式稳定，认真相处，合适再往婚姻走。")
 
     def test_build_public_profile_keeps_willingness_to_communicate_wording(self):
         payload = persona_memory_lib.build_public_profile(
@@ -609,7 +609,7 @@ class PersonaMemoryTests(unittest.TestCase):
             "personality": "上海本地，1-2年内往结婚推进导向",
         }
         payload = persona_memory_lib.build_profile_payload(persona, existing_profile=existing_profile)
-        self.assertEqual(payload["personality"], "现居上海，认真了解，婚姻方向明确，合适会稳步推进")
+        self.assertEqual(payload["personality"], "现居上海，认真相处，方向明确，合适会稳步推进")
 
     def test_build_profile_payload_sanitizes_existing_internal_personality_without_dropping_extra_context(self):
         persona = {
@@ -659,10 +659,10 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertIn("AS education", sql)
         self.assertIn("public_job", sql)
         self.assertIn("CASE", sql)
-        self.assertIn("认真了解，婚姻方向明确，合适会稳步推进", sql)
-        self.assertIn("认真了解，再婚方向明确，合适会稳步推进", sql)
-        self.assertIn("认真了解，长期关系方向明确，合适再往婚姻走", sql)
-        self.assertIn("认真了解，长期关系方向明确，合适再考虑婚姻", sql)
+        self.assertIn("认真相处，方向明确，合适会稳步推进", sql)
+        self.assertIn("认真相处，合适再往婚姻走", sql)
+        self.assertIn("认真相处，先看关系质量，合适再往婚姻走", sql)
+        self.assertIn("认真相处，先看长期关系，合适再考虑婚姻", sql)
         self.assertIn("public_personality AS personality", sql)
         self.assertIn("public_values AS `values`", sql)
         self.assertIn("public_notes AS notes", sql)

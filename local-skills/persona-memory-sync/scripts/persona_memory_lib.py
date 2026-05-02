@@ -1594,35 +1594,35 @@ def build_public_relationship_goal(goal: Any) -> Optional[str]:
     has_long_term_intent = "长期关系" in goal_text or "长期" in goal_text
 
     if has_non_rushed_tone and has_remarriage_intent:
-        return "认真了解，长期关系方向明确，合适再往婚姻走"
+        return "认真相处，先看关系质量，合适再往婚姻走"
     if has_non_rushed_tone and has_long_term_intent and has_marriage_intent:
-        return "认真了解，长期关系方向明确，合适再考虑婚姻"
+        return "认真相处，先看长期关系，合适再考虑婚姻"
     if has_non_rushed_tone and has_long_term_intent:
-        return "认真了解，长期关系方向明确，不仓促推进"
+        return "认真相处，长期关系方向明确，不仓促推进"
     if has_non_rushed_tone and has_marriage_intent:
-        return "认真了解，方向明确，不仓促推进"
+        return "认真相处，方向明确，不仓促推进"
     if "现实关系" in goal_text:
-        return "认真了解，长期现实关系方向明确"
+        return "认真相处，长期现实关系方向明确"
     if "认真找长期关系" in goal_text and "会考虑结婚" in goal_text:
-        return "认真了解，长期关系方向明确，合适会考虑结婚"
+        return "认真相处，先看长期关系，合适再考虑婚姻"
     if has_remarriage_intent:
         if has_timeline:
-            return "认真了解，再婚方向明确，合适会稳步推进"
-        return "认真了解，再婚方向明确"
+            return "认真相处，方向明确，合适会稳步推进"
+        return "认真相处，合适再往婚姻走"
     if has_long_term_intent and has_marriage_intent:
         if has_timeline:
-            return "认真了解，婚姻方向明确，合适会稳步推进"
-        return "认真了解，长期关系与婚姻方向明确"
+            return "认真相处，方向明确，合适会稳步推进"
+        return "认真相处，长期关系稳定了再往婚姻走"
     if "稳定结婚" in goal_text:
-        return "认真了解，长期关系与婚姻方向明确"
+        return "认真相处，长期关系稳定了再往婚姻走"
     if "结婚" in goal_text or "结婚导向" in goal_text:
         if has_timeline:
-            return "认真了解，婚姻方向明确，合适会稳步推进"
-        return "认真了解，婚姻方向明确"
+            return "认真相处，方向明确，合适会稳步推进"
+        return "认真相处，合适再往婚姻走"
     if "认真找长期关系" in goal_text:
-        return "认真了解，长期关系方向明确"
+        return "认真相处，重视长期稳定关系"
     if any(marker in goal_text for marker in ("认真恋爱", "长期", "稳定")):
-        return "认真了解，重视长期稳定关系"
+        return "认真相处，重视长期稳定关系"
     return goal_text
 
 
@@ -1674,9 +1674,17 @@ def sanitize_public_profile_summary(summary: Any, persona: Dict[str, Any]) -> Op
         text = pattern.sub(replacement, text)
 
     text = re.sub(r"认真\s*认真了解", "认真了解", text)
+    text = re.sub(r"认真\s*认真相处", "认真相处", text)
     text = re.sub(r"(现居[\u4e00-\u9fffA-Za-z0-9]+)[，,]?\1", r"\1", text)
     text = re.sub(r"(认真了解，婚姻方向明确(?:，合适会稳步推进)?)[，,]?\1", r"\1", text)
     text = re.sub(r"(认真了解，再婚方向明确(?:，合适会稳步推进)?)[，,]?\1", r"\1", text)
+    text = re.sub(r"(认真相处，方向明确，不仓促推进)[，,]?\1", r"\1", text)
+    text = re.sub(r"(认真相处，方向明确，合适会稳步推进)[，,]?\1", r"\1", text)
+    text = re.sub(r"(认真相处，合适再往婚姻走)[，,]?\1", r"\1", text)
+    text = re.sub(r"(认真相处，先看关系质量，合适再往婚姻走)[，,]?\1", r"\1", text)
+    text = re.sub(r"(认真相处，先看长期关系，合适再考虑婚姻)[，,]?\1", r"\1", text)
+    text = re.sub(r"(认真相处，长期关系稳定了再往婚姻走)[，,]?\1", r"\1", text)
+    text = re.sub(r"(认真相处，长期关系方向明确，不仓促推进)[，,]?\1", r"\1", text)
     text = re.sub(r"[，,]{2,}", "，", text)
     return text.strip("，, ")
 
@@ -1824,10 +1832,10 @@ def build_public_profile(persona: Dict[str, Any]) -> Dict[str, Optional[str]]:
         fragments.extend(extract_safe_public_personality_traits(persona))
         goal_fragment = build_public_relationship_goal(persona.get("self_relationship_goal"))
         if (
-            goal_fragment == "认真了解，方向明确，不仓促推进"
+            goal_fragment == "认真相处，方向明确，不仓促推进"
             and "长期稳定关系" in (clean_text(persona.get("persona_summary_internal")) or "")
         ):
-            goal_fragment = "认真了解，长期稳定关系方向明确，不仓促推进"
+            goal_fragment = "认真相处，长期关系方向明确，不仓促推进"
         if goal_fragment:
             fragments.append(goal_fragment)
         public_personality = "，".join(unique_ordered(fragments)) or "资料在持续完善中"
@@ -2445,45 +2453,45 @@ SELECT
     WHEN relationship_goal IS NULL OR TRIM(relationship_goal) = '' THEN NULL
     WHEN relationship_goal REGEXP '不着急|不仓促|不想仓促|先看相处|先看相处质量|慢慢来'
       AND relationship_goal REGEXP '再婚'
-      THEN '认真了解，长期关系方向明确，合适再往婚姻走'
+      THEN '认真相处，先看关系质量，合适再往婚姻走'
     WHEN relationship_goal REGEXP '不着急|不仓促|不想仓促|先看相处|先看相处质量|慢慢来'
       AND relationship_goal REGEXP '长期关系|长期'
       AND relationship_goal REGEXP '结婚|婚姻'
-      THEN '认真了解，长期关系方向明确，合适再考虑婚姻'
+      THEN '认真相处，先看长期关系，合适再考虑婚姻'
     WHEN relationship_goal REGEXP '不着急|不仓促|不想仓促|先看相处|先看相处质量|慢慢来'
       AND relationship_goal REGEXP '长期关系|长期'
-      THEN '认真了解，长期关系方向明确，不仓促推进'
+      THEN '认真相处，长期关系方向明确，不仓促推进'
     WHEN relationship_goal REGEXP '不着急|不仓促|不想仓促|先看相处|先看相处质量|慢慢来'
       AND relationship_goal REGEXP '结婚|婚姻'
-      THEN '认真了解，方向明确，不仓促推进'
+      THEN '认真相处，方向明确，不仓促推进'
     WHEN relationship_goal REGEXP '现实关系'
-      THEN '认真了解，长期现实关系方向明确'
+      THEN '认真相处，长期现实关系方向明确'
     WHEN relationship_goal REGEXP '认真找长期关系' AND relationship_goal REGEXP '会考虑结婚'
-      THEN '认真了解，长期关系方向明确，合适会考虑结婚'
+      THEN '认真相处，先看长期关系，合适再考虑婚姻'
     WHEN relationship_goal REGEXP '[一二两三四五六七八九十]+年内' AND relationship_goal REGEXP '再婚'
-      THEN '认真了解，再婚方向明确，合适会稳步推进'
+      THEN '认真相处，方向明确，合适会稳步推进'
     WHEN relationship_goal REGEXP '[0-9]+[[:space:]]*(-|到|至|~)[[:space:]]*[0-9]+年内' AND relationship_goal REGEXP '再婚'
-      THEN '认真了解，再婚方向明确，合适会稳步推进'
+      THEN '认真相处，方向明确，合适会稳步推进'
     WHEN relationship_goal REGEXP '[0-9]+年内' AND relationship_goal REGEXP '再婚'
-      THEN '认真了解，再婚方向明确，合适会稳步推进'
+      THEN '认真相处，方向明确，合适会稳步推进'
     WHEN relationship_goal REGEXP '[一二两三四五六七八九十]+年内' AND relationship_goal REGEXP '结婚|再婚'
-      THEN '认真了解，婚姻方向明确，合适会稳步推进'
+      THEN '认真相处，方向明确，合适会稳步推进'
     WHEN relationship_goal REGEXP '[0-9]+[[:space:]]*(-|到|至|~)[[:space:]]*[0-9]+年内' AND relationship_goal REGEXP '结婚|再婚'
-      THEN '认真了解，婚姻方向明确，合适会稳步推进'
+      THEN '认真相处，方向明确，合适会稳步推进'
     WHEN relationship_goal REGEXP '[0-9]+年内' AND relationship_goal REGEXP '结婚|再婚'
-      THEN '认真了解，婚姻方向明确，合适会稳步推进'
-    WHEN relationship_goal REGEXP '再婚' THEN '认真了解，再婚方向明确'
+      THEN '认真相处，方向明确，合适会稳步推进'
+    WHEN relationship_goal REGEXP '再婚' THEN '认真相处，合适再往婚姻走'
     WHEN relationship_goal REGEXP '长期关系' AND relationship_goal REGEXP '结婚|婚姻'
-      THEN '认真了解，长期关系与婚姻方向明确'
+      THEN '认真相处，长期关系稳定了再往婚姻走'
     WHEN relationship_goal REGEXP '认真恋爱' AND relationship_goal REGEXP '结婚'
-      THEN '认真了解，婚姻方向明确'
+      THEN '认真相处，合适再往婚姻走'
     WHEN relationship_goal REGEXP '稳定结婚'
-      THEN '认真了解，长期关系与婚姻方向明确'
+      THEN '认真相处，长期关系稳定了再往婚姻走'
     WHEN relationship_goal REGEXP '认真找长期关系'
-      THEN '认真了解，长期关系方向明确'
-    WHEN relationship_goal = '结婚导向' THEN '认真了解，婚姻方向明确'
-    WHEN relationship_goal REGEXP '结婚' THEN '认真了解，婚姻方向明确'
-    WHEN relationship_goal REGEXP '认真恋爱|长期|稳定' THEN '认真了解，重视长期稳定关系'
+      THEN '认真相处，重视长期稳定关系'
+    WHEN relationship_goal = '结婚导向' THEN '认真相处，合适再往婚姻走'
+    WHEN relationship_goal REGEXP '结婚' THEN '认真相处，合适再往婚姻走'
+    WHEN relationship_goal REGEXP '认真恋爱|长期|稳定' THEN '认真相处，重视长期稳定关系'
     ELSE relationship_goal
   END AS relationship_goal,
   public_personality AS personality,
