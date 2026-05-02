@@ -408,6 +408,32 @@ class PersonaMemoryTests(unittest.TestCase):
             "现居南京，慢热但认真，生活安静稳定，认真了解，方向明确，不仓促推进",
         )
 
+    def test_build_public_profile_softens_non_rushed_remarriage_tone(self):
+        payload = persona_memory_lib.build_public_profile(
+            {
+                "self_city": "宁波",
+                "self_relationship_goal": "认真找长期关系，再婚方向明确但不仓促",
+                "persona_summary_internal": "更看重关系质量和相处舒服，不想仓促进入下一段婚姻。",
+            }
+        )
+        self.assertEqual(
+            payload["public_personality"],
+            "现居宁波，相处不拧巴，认真了解，长期关系方向明确，合适再往婚姻走",
+        )
+
+    def test_build_public_profile_surfaces_reserved_but_planned_traits(self):
+        payload = persona_memory_lib.build_public_profile(
+            {
+                "self_city": "镇江",
+                "self_relationship_goal": "想找稳定成熟的长期关系，结婚方向明确但不仓促",
+                "persona_summary_internal": "表达克制，但做事有计划，对感情方向明确。",
+            }
+        )
+        self.assertEqual(
+            payload["public_personality"],
+            "现居镇江，表达克制，做事有计划，认真了解，长期关系方向明确，合适再考虑婚姻",
+        )
+
     def test_build_public_profile_surfaces_realistic_long_term_goal_and_distance_boundary(self):
         payload = persona_memory_lib.build_public_profile(
             {
@@ -512,7 +538,7 @@ class PersonaMemoryTests(unittest.TestCase):
         )
         self.assertEqual(
             payload["public_values"],
-            "看重情绪稳定、婚姻诚意、现实推进能力、消费观清醒、沟通自然",
+            "看重情绪稳定、婚姻诚意、现实推进能力、消费观相近、沟通自然",
         )
 
     def test_sanitize_internal_profile_summary_strips_income_and_child_living_detail(self):
@@ -635,6 +661,8 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertIn("CASE", sql)
         self.assertIn("认真了解，婚姻方向明确，合适会稳步推进", sql)
         self.assertIn("认真了解，再婚方向明确，合适会稳步推进", sql)
+        self.assertIn("认真了解，长期关系方向明确，合适再往婚姻走", sql)
+        self.assertIn("认真了解，长期关系方向明确，合适再考虑婚姻", sql)
         self.assertIn("public_personality AS personality", sql)
         self.assertIn("public_values AS `values`", sql)
         self.assertIn("public_notes AS notes", sql)

@@ -502,24 +502,26 @@ RISK_FLAG_PENALTIES = {
     "对方对子女接受需要先接触再判断": 10,
     "对方对子女接受度未知": 12,
     "对方城市偏好未命中，但资料写了接受异地": 6,
-    "对方城市偏好未命中，异地仅可协商": 8,
+    "对方城市偏好未命中，异地仅可协商": 10,
     "对方城市偏好未命中，异地接受度未知": 10,
     "对方对抽烟仅可协商": 7,
     "对方对抽烟接受度未知": 9,
     "对方对喝酒仅可协商": 4,
     "对方对喝酒接受度未知": 8,
-    "对方异地仅可协商": 5,
-    "对方异地接受度未知": 7,
-    "对方年龄要求可能可放宽": 6,
+    "对方异地仅可协商": 7,
+    "对方异地接受度未知": 8,
+    "对方年龄要求可能可放宽": 7,
     "对方身高要求可能可放宽": 5,
     "对方学历要求可能可放宽": 5,
     "对方收入要求可能可放宽": 6,
-    "对方婚史接受度偏保守": 8,
+    "对方婚史接受度偏保守": 9,
     "对方婚史接受需要先聊再判断": 9,
     "对方婚史接受度未知": 10,
     "对方对子女接受度偏保守": 9,
     "对方不接受长期异地，需要确认落地计划": 9,
     "异地需要明确落地计划": 6,
+    "非同城，见面推进成本更高": 4,
+    "多项条件需要放宽后才成立": 6,
     "生活阶段可能有落差": 8,
     "资料偏稳但不够鲜活": 5,
     "相处可能偏冷": 6,
@@ -532,7 +534,7 @@ RISK_FLAG_PENALTIES = {
     "聊天还像完成任务": 7,
     "认真相处信号还不够落地": 6,
     "认真相处推进偏慢": 5,
-    "长期意图有，但推进方式还不够落地": 8,
+    "长期意图有，但推进方式还不够落地": 9,
     "推进方式偏慢观察": 6,
     "成长势能偏弱": 6,
     "聊天温度偏冷": 5,
@@ -660,6 +662,36 @@ STRICTNESS_REFERENCE_VALUES = {"仅参考", "参考", "偏好参考"}
 ACCEPTANCE_STRENGTH_STRONG_VALUES = {"明确接受", "长期接受", "真接受"}
 ACCEPTANCE_STRENGTH_CAUTION_VALUES = {"谨慎接受", "了解后定", "需要磨合"}
 ACCEPTANCE_STRENGTH_SURFACE_VALUES = {"短期可聊", "表面接受", "先接触再说"}
+
+NEAR_DISTANCE_PRIORITY_MARKERS = (
+    "同城",
+    "近距离",
+    "通勤",
+    "稳定留",
+    "落地计划",
+    "见面成本不能太高",
+    "长期异地不接受",
+)
+
+SOFT_CONCESSION_RISK_FLAGS = {
+    "对方年龄要求可能可放宽",
+    "对方身高要求可能可放宽",
+    "对方学历要求可能可放宽",
+    "对方收入要求可能可放宽",
+    "对方城市偏好未命中，异地仅可协商",
+    "对方城市偏好未命中，异地接受度未知",
+    "对方异地仅可协商",
+    "对方异地接受度未知",
+    "对方婚史接受度偏保守",
+    "对方婚史接受需要先聊再判断",
+    "对方对子女情况仅可协商",
+    "对方对子女接受度偏保守",
+    "对方对子女接受需要先接触再判断",
+    "认真相处信号还不够落地",
+    "认真相处推进偏慢",
+    "长期意图有，但推进方式还不够落地",
+    "推进方式偏慢观察",
+}
 
 
 def build_alias_lookup():
@@ -1447,6 +1479,34 @@ def reciprocal_city_preference_risk_flag(accept_long_distance_state, reciprocal_
     return None
 
 
+def self_prefers_near_distance(self_profile):
+    if not self_profile:
+        return False
+    self_city = as_text(self_profile.get("city"))
+    if not self_city:
+        return False
+
+    own_long_distance = normalize_acceptance_state(
+        self_profile.get("accept_long_distance") or self_profile.get("long_distance")
+    )
+    if own_long_distance in {"rejected", "guarded"}:
+        return True
+
+    preferred_cities = split_keywords(self_profile.get("preferred_cities"))
+    if preferred_cities and match_any_exact(self_city, preferred_cities):
+        return True
+
+    location_semantics = as_text(self_profile.get("location_preference_semantics"))
+    return any(marker in location_semantics for marker in NEAR_DISTANCE_PRIORITY_MARKERS)
+
+
+def concession_stack_risk_flag(risk_flags):
+    concession_count = sum(1 for flag in unique_ordered(risk_flags) if flag in SOFT_CONCESSION_RISK_FLAGS)
+    if concession_count >= 3:
+        return "多项条件需要放宽后才成立"
+    return None
+
+
 def evaluate_contextual_fit(record, criteria, self_profile=None):
     self_profile = self_profile or {}
     reasons = []
@@ -1611,17 +1671,17 @@ def evaluate_contextual_fit(record, criteria, self_profile=None):
 
     if cares_about_consumption or high_bar_profile:
         if consumption_attitude == "清醒务实":
-            reasons.append("消费观更清醒")
+            reasons.append("过日子观念更稳")
             score_bonus += 5
-            match_evidence.append(f"消费观更清醒 <- 消费观锚点: {consumption_attitude}")
+            match_evidence.append(f"过日子观念更稳 <- 消费观锚点: {consumption_attitude}")
         elif consumption_attitude == "有取舍会生活":
-            reasons.append("消费观有取舍，也会生活")
+            reasons.append("生活方式更有分寸")
             score_bonus += 4
-            match_evidence.append(f"消费观有取舍，也会生活 <- 消费观锚点: {consumption_attitude}")
+            match_evidence.append(f"生活方式更有分寸 <- 消费观锚点: {consumption_attitude}")
         elif consumption_attitude == "踏实过日子":
-            reasons.append("消费观更适合过日子")
+            reasons.append("过日子状态更踏实")
             score_bonus += 3
-            match_evidence.append(f"消费观更适合过日子 <- 消费观锚点: {consumption_attitude}")
+            match_evidence.append(f"过日子状态更踏实 <- 消费观锚点: {consumption_attitude}")
         elif cares_about_consumption and consumption_attitude == "表达不明显":
             risk_flags.append("消费观还不够具体")
 
@@ -1966,6 +2026,8 @@ def build_follow_up_questions(record, missing_fields, risk_flags, self_profile=N
             questions.append("确认对方能接受的是短期过渡，还是只要长期异地就会卡住，以及落地计划怎么定。")
         elif risk == "异地需要明确落地计划":
             questions.append("确认跨城推进有没有明确落地计划，不要只停留在原则上可以。")
+        elif risk == "非同城，见面推进成本更高":
+            questions.append("确认见面频率、通勤成本和落地安排，不要默认跨城也能自然推进。")
         elif risk == "对方对喝酒仅可协商":
             questions.append("确认偶尔喝酒在对方那里是能接受，还是只是勉强可协商。")
         elif risk == "对方对抽烟仅可协商":
@@ -2016,6 +2078,8 @@ def build_follow_up_questions(record, missing_fields, risk_flags, self_profile=N
             questions.append("确认对方是稳一点，还是会把认真相处一直拖在观察阶段。")
         elif risk == "长期意图有，但推进方式还不够落地":
             questions.append("确认对方不是只会说想长期，而是真的会把推进节奏和安排说清。")
+        elif risk == "多项条件需要放宽后才成立":
+            questions.append("确认这段匹配到底是少数几个点不完美，还是很多关键条件都要靠放宽才行。")
         elif risk == "推进方式偏慢观察":
             questions.append("确认对方是慢热但会往前走，还是会一直停在观察阶段。")
         elif risk == "成长势能偏弱":
@@ -3454,9 +3518,15 @@ def evaluate_candidate(record, criteria, diagnostics=False, reciprocal_mode="str
     self_profile = criteria.get("self_profile") or {}
     self_city = self_profile.get("city")
     candidate_city = record.get("city")
+    near_distance_priority = self_prefers_near_distance(self_profile)
     if self_city and candidate_city and as_lower(self_city) == as_lower(candidate_city):
         reasons.append("同城")
         fit_score += 8
+        if near_distance_priority:
+            reasons.append("近距离更省心")
+            fit_score += 4
+    elif self_city and candidate_city and near_distance_priority:
+        risk_flags.append("非同城，见面推进成本更高")
 
     if criteria.get("districts"):
         district = as_lower(record.get("district"))
@@ -3695,6 +3765,10 @@ def evaluate_candidate(record, criteria, diagnostics=False, reciprocal_mode="str
     risk_flags.extend(contextual_fit["risk_flags"])
     match_evidence.extend(contextual_fit["match_evidence"])
     fit_score += contextual_fit["score_bonus"]
+
+    stacked_concession_risk = concession_stack_risk_flag(risk_flags)
+    if stacked_concession_risk:
+        risk_flags.append(stacked_concession_risk)
 
     verified_score, verified_label, verified_sort_rank = verified_score_info(record)
     confidence_score += verified_score
