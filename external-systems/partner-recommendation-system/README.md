@@ -6,7 +6,7 @@ It is intentionally separate from the skill itself.
 
 - `partner-search` still only does `画像 / 条件 -> 候选结果`
 - this outer system owns saved searches, recommendation history, user actions, refresh timing, frequency caps, cooldowns, and in-app recommendation cards
-- proactive recommendation now defaults to `direct_greet_only`: a candidate is pushed only when the outer-system review believes the user would likely choose `direct_greet`, not just `save`
+- proactive recommendation now defaults to `direct_greet_only`: candidates first pass a rule gate, then wait for a real user review; only after that can they be pushed
 
 ## Directory Map
 
@@ -26,6 +26,8 @@ It is intentionally separate from the skill itself.
   - convert queued recommendations into in-app cards
 - `scripts/record_recommendation_action.py`
   - store `skip`, `save`, or `direct_greet`
+- `scripts/record_user_review.py`
+  - store the pre-delivery review decision before a recommendation is allowed to notify
 - `tests/test_recommendation_system.py`
   - Phase 3 regression tests
 
@@ -42,6 +44,7 @@ It is intentionally separate from the skill itself.
   - delivery status
   - cooldown state
   - final proactive-review status such as `direct_greet_ready`, `save_only`, or `rejected`
+  - user review status such as `pending_review`, `direct_greet`, or `save`
 - `recommendation_actions`
   - user actions such as `skip`, `save`, `direct_greet`
 - `in_app_recommendation_cards`
@@ -53,18 +56,20 @@ It is intentionally separate from the skill itself.
 2. Run the refresh job.
 3. The refresh job calls `partner-search` through its Python API.
 4. New high-score candidates first pass the proactive-review gate.
-5. Only `direct_greet_ready` candidates become `pending_delivery`.
-6. Run the delivery job.
-7. The delivery job applies quiet hours and daily caps, then writes in-app cards.
-8. Record user actions such as `skip`, `save`, or `direct_greet`.
-9. Future refreshes use recommendation history and cooldown state to avoid noisy repeat reminders.
+5. `direct_greet_ready` candidates become `review_pending`.
+6. A real user review must then mark the candidate as `direct_greet`.
+7. Only after that does the recommendation move to `pending_delivery`.
+8. Run the delivery job.
+9. The delivery job applies quiet hours and daily caps, then writes in-app cards.
+10. Record user actions such as `skip`, `save`, or `direct_greet`.
+11. Future refreshes use recommendation history and cooldown state to avoid noisy repeat reminders.
 
 ## Recommendation Modes
 
 - `direct_greet_only`
   - default mode
   - candidates that look like `save` stay in recommendation history but do not generate proactive cards
-  - only candidates that pass the direct-greet review become `pending_delivery`
+  - only candidates that pass the real-user review become `pending_delivery`
 - `match_based`
   - legacy fallback mode
   - any candidate above the score threshold can still be pushed even if the direct-greet review would have said `save`
@@ -147,6 +152,16 @@ Refresh due subscriptions:
 ```bash
 python3 external-systems/partner-recommendation-system/scripts/refresh_saved_searches.py \
   --db /tmp/partner-phase3.sqlite3
+```
+
+Record the real-user review before delivery:
+
+```bash
+python3 external-systems/partner-recommendation-system/scripts/record_user_review.py \
+  --db /tmp/partner-phase3.sqlite3 \
+  --subscription-id saved-search-xxxx \
+  --candidate-id 90001 \
+  --review direct_greet
 ```
 
 Deliver pending in-app recommendation cards:
