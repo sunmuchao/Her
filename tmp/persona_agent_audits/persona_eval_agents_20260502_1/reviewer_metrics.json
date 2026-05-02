@@ -6,10 +6,10 @@
   "average_score": 0.0,
   "top1_average_score": 0.0,
   "verdict_counts": {
-    "一般": 7,
-    "愿意聊": 11
+    "一般": 6,
+    "愿意聊": 12
   },
-  "overall_score_average": 93.0,
+  "overall_score_average": 95.3333,
   "overall_score_count": 6,
   "matching_satisfaction_counts": {
     "中": 1,
@@ -18,17 +18,17 @@
   "overall_verdict_counts": {},
   "no_match_persona_count": 0,
   "memory_reviewed_persona_count": 6,
-  "memory_drift_persona_count": 5,
+  "memory_drift_persona_count": 6,
   "privacy_flag_persona_count": 6,
   "systemic_issue_persona_count": 6,
-  "average_memory_drift_count": 1.6667,
-  "average_privacy_flag_count": 2.8333,
-  "average_systemic_issue_count": 2.3333,
+  "average_memory_drift_count": 2.0,
+  "average_privacy_flag_count": 1.8333,
+  "average_systemic_issue_count": 2.6667,
   "personas": [
     {
       "persona_id": "changzhou_ev_m_v1",
       "display_name": "用户D01",
-      "overall_score": 93.0,
+      "overall_score": 96.0,
       "overall_satisfaction": "高",
       "overall_verdict": null,
       "candidate_review_count": 3,
@@ -45,13 +45,13 @@
     {
       "persona_id": "nantong_risk_f_v1",
       "display_name": "用户D02",
-      "overall_score": 94.0,
+      "overall_score": 96.0,
       "overall_satisfaction": "高",
       "overall_verdict": null,
       "candidate_review_count": 3,
-      "memory_drift_count": 1,
-      "privacy_flag_count": 4,
-      "systemic_issue_count": 2,
+      "memory_drift_count": 2,
+      "privacy_flag_count": 1,
+      "systemic_issue_count": 3,
       "no_match": false,
       "top_candidate": {
         "name": "赵柏峰",
@@ -62,13 +62,13 @@
     {
       "persona_id": "ningbo_port_m_v1",
       "display_name": "用户D03",
-      "overall_score": 92.0,
+      "overall_score": 96.0,
       "overall_satisfaction": "高",
       "overall_verdict": null,
       "candidate_review_count": 3,
       "memory_drift_count": 3,
-      "privacy_flag_count": 4,
-      "systemic_issue_count": 3,
+      "privacy_flag_count": 3,
+      "systemic_issue_count": 4,
       "no_match": false,
       "top_candidate": {
         "name": "于语婷",
@@ -79,12 +79,12 @@
     {
       "persona_id": "yangzhou_pet_f_v1",
       "display_name": "用户D04",
-      "overall_score": 94.0,
+      "overall_score": 96.0,
       "overall_satisfaction": "高",
       "overall_verdict": null,
       "candidate_review_count": 3,
-      "memory_drift_count": 0,
-      "privacy_flag_count": 4,
+      "memory_drift_count": 1,
+      "privacy_flag_count": 2,
       "systemic_issue_count": 2,
       "no_match": false,
       "top_candidate": {
@@ -113,7 +113,7 @@
     {
       "persona_id": "zhenjiang_admin_f_v1",
       "display_name": "用户D06",
-      "overall_score": 91.0,
+      "overall_score": 94.0,
       "overall_satisfaction": "中",
       "overall_verdict": null,
       "candidate_review_count": 3,
@@ -128,5 +128,5 @@
       }
     }
   ],
-  "generated_at": "2026-05-02T13:34:29"
+  "generated_at": "2026-05-02T14:47:52"
 }
