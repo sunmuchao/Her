@@ -518,6 +518,7 @@ RISK_FLAG_PENALTIES = {
     "对方婚史接受需要先聊再判断": 9,
     "对方婚史接受度未知": 10,
     "对方对子女接受度偏保守": 9,
+    "学历没有完全卡进你的底线": 12,
     "对方不接受长期异地，需要确认落地计划": 9,
     "异地需要明确落地计划": 6,
     "非同城，见面推进成本更高": 4,
@@ -1348,6 +1349,30 @@ def soft_preference_risk_flag(kind, strictness_state):
     return mapping.get(kind)
 
 
+def self_preference_strictness(value):
+    if value is None or value == "":
+        return "soft"
+    return normalize_strictness_state(value)
+
+
+def self_education_floor_risk_flag(self_profile, record):
+    preferred_min = self_profile.get("preferred_education_min")
+    if not preferred_min:
+        return None
+
+    required_rank = education_rank(preferred_min)
+    candidate_rank = education_rank(record.get("education"))
+    if required_rank is None or candidate_rank is None:
+        return None
+    if candidate_rank >= required_rank:
+        return None
+
+    strictness = self_preference_strictness(self_profile.get("preferred_education_strictness"))
+    if strictness == "hard":
+        return "education_below_self_preference"
+    return "学历没有完全卡进你的底线"
+
+
 def keyword_requested(criteria, keywords):
     joined = " ".join(criteria.get("must_have", []) + criteria.get("prefer", []))
     return contains_any_text(joined, keywords)
@@ -2052,6 +2077,8 @@ def build_follow_up_questions(record, missing_fields, risk_flags, self_profile=N
             questions.append("确认对方对婚史的接受到底有多明确，别只看到可接受范围。")
         elif risk == "对方对子女接受度偏保守":
             questions.append("确认对方能不能长期接受孩子和现实安排，不要只停留在口头上。")
+        elif risk == "学历没有完全卡进你的底线":
+            questions.append("确认学历底线是不是只作参考，不然明显低于预期的人不该排到前面。")
         elif risk == "生活阶段可能有落差":
             questions.append("确认你们的收入压力、消费方式和长期生活节奏是不是一个频道。")
         elif risk == "资料偏稳但不够鲜活":
@@ -2896,6 +2923,7 @@ def format_rejection_reason(reason):
         "accept_partner_children_strength_mismatch": "对子女接受真实度不匹配",
         "marriage_timeline_mismatch": "结婚节奏不匹配",
         "photo_count_too_low": "照片数量低于要求",
+        "education_below_self_preference": "低于你的学历底线",
         "reciprocal_age_preference": "不符合对方年龄偏好",
         "reciprocal_city_preference": "不符合对方城市偏好",
         "reciprocal_height_preference": "不符合对方身高偏好",
@@ -2934,6 +2962,8 @@ def suggestion_for_rejection(reason):
         return "先放宽认证要求，再靠追问确认真实性。"
     if code == "photo_count_too_low":
         return "先放宽照片门槛，用资料内容和风险提示做二筛。"
+    if code == "education_below_self_preference":
+        return "先确认学历底线是不是硬条件，不然别把明显低于预期的人往前放。"
     if code in {"active_too_old", "active_time_missing"}:
         return "放宽活跃时间要求，先确认对方现在还找不找。"
     if code == "relationship_goal_mismatch":
@@ -3580,13 +3610,26 @@ def evaluate_candidate(record, criteria, diagnostics=False, reciprocal_mode="str
             if exclusion.get("risk_flag"):
                 risk_flags.append(exclusion["risk_flag"])
 
+    matched_prefer_count = 0
     for keyword in criteria.get("prefer", []):
         if keyword_matches_record(record, keyword):
             reasons.append(f"偏好命中 {keyword}")
             fit_score += 6
+            matched_prefer_count += 1
             evidence = extract_keyword_evidence(record, keyword)
             if evidence:
                 match_evidence.append(f"{keyword} <- {evidence}")
+
+    if matched_prefer_count >= 3:
+        fit_score += 4
+    elif matched_prefer_count >= 2:
+        fit_score += 2
+
+    self_education_floor_risk = self_education_floor_risk_flag(criteria.get("self_profile") or {}, record)
+    if self_education_floor_risk == "education_below_self_preference":
+        return fail("education_below_self_preference")
+    if self_education_floor_risk:
+        risk_flags.append(self_education_floor_risk)
 
     if criteria.get("smoking"):
         smoking = as_lower(record.get("smoking"))
@@ -3973,7 +4016,26 @@ def diversity_penalty(candidate, selected):
     return max_penalty
 
 
+def trim_low_quality_tail(results):
+    if len(results) <= 1:
+        return results
+
+    leader = results[0]
+    trimmed = [leader]
+    for item in results[1:]:
+        score_gap = leader.get("score", 0) - item.get("score", 0)
+        severe_concession = "多项条件需要放宽后才成立" in (item.get("risk_flags") or [])
+        high_risk_tail = item.get("risk_score", 0) >= 35
+        if severe_concession and score_gap >= 20:
+            continue
+        if high_risk_tail and score_gap >= 25:
+            continue
+        trimmed.append(item)
+    return trimmed
+
+
 def select_diverse_results(results, limit):
+    results = trim_low_quality_tail(results)
     if len(results) <= limit:
         return results[:limit]
 
