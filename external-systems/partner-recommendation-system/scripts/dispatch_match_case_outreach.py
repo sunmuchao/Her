@@ -51,11 +51,15 @@ def main() -> int:
     if payload and (not args.case_id or len(args.case_id) != 1):
         raise SystemExit("--payload-json only supports dispatching a single --case-id.")
     if args.case_id and len(args.case_id) == 1 and payload:
-        summary = dispatch_match_case_outreach(
+        case = dispatch_match_case_outreach(
             conn,
             case_id=args.case_id[0],
             payload=payload,
         )
+        summary = {
+            "dispatched_count": 1,
+            "cases": [case],
+        }
     else:
         summary = dispatch_pending_match_cases(
             conn,
