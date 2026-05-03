@@ -21,6 +21,7 @@ from .search_client import load_requester_profile
 
 
 SearchRunner = Callable[..., dict[str, Any]]
+PersonaResolver = Callable[[dict[str, Any]], dict[str, Any] | None]
 
 
 def current_time(now: datetime | None = None) -> datetime:
@@ -648,10 +649,13 @@ def refresh_subscription(
     *,
     now: datetime | None = None,
     search_runner: SearchRunner = run_partner_search,
+    persona_resolver: PersonaResolver = resolve_subscription_persona_profile,
 ) -> dict[str, Any]:
     now = current_time(now)
     subscription = get_subscription(conn, subscription_id)
-    response = search_runner(**load_subscription_search_args(subscription))
+    persona_profile = persona_resolver(subscription)
+    search_request = load_subscription_search_args(subscription, persona_profile=persona_profile)
+    response = search_runner(**search_request)
     results = list(response.get("results") or [])[: int(subscription.get("top_k") or 5)]
 
     status_counts: dict[str, int] = {}
@@ -669,6 +673,17 @@ def refresh_subscription(
         review_status = recommendation["final_review_status"]
         review_counts[review_status] = review_counts.get(review_status, 0) + 1
 
+    record_search_run(
+        conn,
+        subscription=subscription,
+        persona_profile=persona_profile,
+        search_request=search_request,
+        effective_criteria=dict(search_request.get("criteria") or {}),
+        results=results,
+        status_counts=status_counts,
+        review_counts=review_counts,
+        now=now,
+    )
     conn.execute(
         """
         UPDATE saved_search_subscriptions
@@ -700,6 +715,7 @@ def refresh_due_subscriptions(
     *,
     now: datetime | None = None,
     search_runner: SearchRunner = run_partner_search,
+    persona_resolver: PersonaResolver = resolve_subscription_persona_profile,
     subscription_ids: Iterable[str] | None = None,
 ) -> list[dict[str, Any]]:
     now = current_time(now)
@@ -710,6 +726,7 @@ def refresh_due_subscriptions(
             subscription["subscription_id"],
             now=now,
             search_runner=search_runner,
+            persona_resolver=persona_resolver,
         )
         for subscription in due_subscriptions
     ]

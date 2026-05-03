@@ -64,7 +64,7 @@ def _coerce_criteria_value(value: Any, *, as_list_value: bool = False) -> Any:
     if as_list_value:
         coerced = _unique_ordered([item for item in _as_list(value) if item not in {None, ""}])
         return coerced
-    if value in {None, ""}:
+    if value is None or value == "":
         return None
     return value
 
@@ -72,7 +72,7 @@ def _coerce_criteria_value(value: Any, *, as_list_value: bool = False) -> Any:
 def _apply_patch(base: dict[str, Any], patch: Mapping[str, Any]) -> dict[str, Any]:
     updated = dict(base)
     for key, value in patch.items():
-        if value in {None, ""} or value == [] or value == {}:
+        if value is None or value == "" or value == [] or value == {}:
             updated.pop(key, None)
             continue
         if key in LIST_FIELD_KEYS:
@@ -121,15 +121,15 @@ def _build_persona_criteria_patch(persona_profile: Mapping[str, Any] | None) -> 
     }
 
     for target_key, source_key in field_map.items():
+        if source_key not in persona_profile:
+            continue
         value = persona_profile.get(source_key)
         if target_key in LIST_FIELD_KEYS:
             coerced = _coerce_criteria_value(value, as_list_value=True)
-            if coerced:
-                patch[target_key] = coerced
+            patch[target_key] = coerced
         else:
             coerced = _coerce_criteria_value(value)
-            if coerced is not None:
-                patch[target_key] = coerced
+            patch[target_key] = coerced
 
     relationship_goals = _build_relationship_goals(persona_profile, patch.get("relationship_goals"))
     if relationship_goals:
@@ -183,7 +183,7 @@ def build_effective_search_request(
         "table_name": initial_request.get("table_name") or subscription.get("table_name"),
         "photos_table_name": initial_request.get("photos_table_name") or subscription.get("photos_table_name"),
         "criteria": effective_criteria,
-        "self_profile": initial_request.get("self_profile") or json_loads(subscription.get("self_profile_json"), None),
+        "self_profile": dict(persona_profile or {}) or initial_request.get("self_profile") or json_loads(subscription.get("self_profile_json"), None),
         "self_id": initial_request.get("self_id", subscription.get("self_id")),
         "limit": int(initial_request.get("limit") or subscription.get("limit_count") or 10),
         "photo_preview_count": int(initial_request.get("photo_preview_count") or 0),

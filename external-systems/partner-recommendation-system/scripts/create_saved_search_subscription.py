@@ -39,6 +39,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--table-name", default=None, help="Optional MySQL table override.")
     parser.add_argument("--photos-table-name", default=None, help="Optional MySQL photos table override.")
     parser.add_argument("--criteria-json", required=True, help="JSON string or @file for the saved search criteria.")
+    parser.add_argument(
+        "--subscription-overrides-json",
+        default=None,
+        help="Optional JSON string or @file for subscription-level criteria overrides.",
+    )
     parser.add_argument("--self-profile-json", default=None, help="JSON string or @file for the requester profile.")
     parser.add_argument("--self-id", type=int, default=None, help="Optional requester profile id already stored in the partner-search source.")
     parser.add_argument("--limit-count", type=int, default=10, help="How many candidates to ask partner-search for each refresh.")
@@ -94,6 +99,7 @@ def main() -> int:
         requester_id=args.requester_id,
         source=args.source,
         criteria=load_json_arg(args.criteria_json, {}),
+        subscription_overrides=load_json_arg(args.subscription_overrides_json, {}),
         self_profile=load_json_arg(args.self_profile_json, None),
         self_id=args.self_id,
         title=args.title,
