@@ -14,8 +14,10 @@ from .direct_greet_gate import (
     normalize_recommendation_mode,
     review_candidate_for_proactive_delivery,
 )
+from .criteria_compiler import build_effective_search_request
 from .search_client import run_partner_search
 from .storage import json_dumps, json_loads, row_to_dict
+from .search_client import load_requester_profile
 
 
 SearchRunner = Callable[..., dict[str, Any]]
@@ -47,6 +49,145 @@ def generate_card_id() -> str:
 
 def bool_to_int(value: bool) -> int:
     return 1 if value else 0
+
+
+def build_initial_request(
+    *,
+    source: str,
+    criteria: dict[str, Any],
+    self_profile: dict[str, Any] | None,
+    self_id: int | None,
+    table_name: str | None,
+    photos_table_name: str | None,
+    limit_count: int,
+    photo_preview_count: int = 0,
+) -> dict[str, Any]:
+    return {
+        "source": source,
+        "criteria": dict(criteria or {}),
+        "self_profile": dict(self_profile or {}) or None,
+        "self_id": self_id,
+        "table_name": table_name,
+        "photos_table_name": photos_table_name,
+        "limit": limit_count,
+        "photo_preview_count": photo_preview_count,
+        "include_source": True,
+        "include_text": False,
+    }
+
+
+def normalize_subscription_overrides(overrides: dict[str, Any] | None) -> dict[str, Any]:
+    return dict(overrides or {})
+
+
+def resolve_subscription_persona_profile(subscription: dict[str, Any]) -> dict[str, Any] | None:
+    stored_profile = json_loads(subscription.get("self_profile_json"), None)
+    if subscription.get("self_id") is None:
+        return stored_profile
+    return load_requester_profile(
+        source=subscription["source"],
+        self_id=int(subscription["self_id"]),
+        table_name=subscription.get("table_name"),
+        self_profile=stored_profile,
+    )
+
+
+def list_search_runs_for_subscription(conn, subscription_id: str) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT *
+        FROM saved_search_runs
+        WHERE subscription_id = ?
+        ORDER BY created_at DESC, run_id DESC
+        """,
+        (subscription_id,),
+    ).fetchall()
+    runs = []
+    for row in rows:
+        run = row_to_dict(row)
+        run["persona_profile"] = json_loads(run.pop("persona_profile_json"), {})
+        run["effective_criteria"] = json_loads(run.pop("effective_criteria_json"), {})
+        run["search_request"] = json_loads(run.pop("search_request_json"), {})
+        run["top_candidate_ids"] = json_loads(run.pop("top_candidate_ids_json"), [])
+        run["status_counts"] = json_loads(run.pop("status_counts_json"), {})
+        run["review_counts"] = json_loads(run.pop("review_counts_json"), {})
+        runs.append(run)
+    return runs
+
+
+def record_search_run(
+    conn,
+    *,
+    subscription: dict[str, Any],
+    persona_profile: dict[str, Any] | None,
+    search_request: dict[str, Any],
+    effective_criteria: dict[str, Any],
+    results: list[dict[str, Any]],
+    status_counts: dict[str, int],
+    review_counts: dict[str, int],
+    now: datetime,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO saved_search_runs (
+          subscription_id,
+          requester_id,
+          source,
+          table_name,
+          photos_table_name,
+          self_id,
+          persona_profile_json,
+          effective_criteria_json,
+          search_request_json,
+          result_count,
+          top_candidate_ids_json,
+          status_counts_json,
+          review_counts_json,
+          created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            subscription["subscription_id"],
+            subscription["requester_id"],
+            subscription["source"],
+            subscription.get("table_name"),
+            subscription.get("photos_table_name"),
+            subscription.get("self_id"),
+            json_dumps(persona_profile or {}),
+            json_dumps(effective_criteria),
+            json_dumps(search_request),
+            len(results),
+            json_dumps([result.get("id") for result in results if result.get("id") is not None]),
+            json_dumps(status_counts),
+            json_dumps(review_counts),
+            format_dt(now),
+        ),
+    )
+
+
+def update_subscription_overrides(
+    conn,
+    subscription_id: str,
+    overrides: dict[str, Any] | None,
+    *,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    now = current_time(now)
+    conn.execute(
+        """
+        UPDATE saved_search_subscriptions
+        SET subscription_overrides_json = ?,
+            updated_at = ?
+        WHERE subscription_id = ?
+        """,
+        (
+            json_dumps(normalize_subscription_overrides(overrides)),
+            format_dt(now),
+            subscription_id,
+        ),
+    )
+    conn.commit()
+    return get_subscription(conn, subscription_id)
 
 
 def get_subscription(conn, subscription_id: str) -> dict[str, Any]:
@@ -107,6 +248,7 @@ def create_subscription(
     requester_id: int,
     source: str,
     criteria: dict[str, Any],
+    subscription_overrides: dict[str, Any] | None = None,
     self_profile: dict[str, Any] | None = None,
     self_id: int | None = None,
     title: str | None = None,
@@ -129,12 +271,22 @@ def create_subscription(
     status: str = "active",
     is_still_searching: bool = True,
     subscription_id: str | None = None,
+    initial_request: dict[str, Any] | None = None,
     now: datetime | None = None,
 ) -> dict[str, Any]:
     now = current_time(now)
     created_at = format_dt(now)
     subscription_id = subscription_id or generate_subscription_id()
     title = title or f"持续留意 {requester_id}"
+    initial_request = initial_request or build_initial_request(
+        source=source,
+        criteria=criteria,
+        self_profile=self_profile,
+        self_id=self_id,
+        table_name=table_name,
+        photos_table_name=photos_table_name,
+        limit_count=limit_count,
+    )
     conn.execute(
         """
         INSERT INTO saved_search_subscriptions (
@@ -147,6 +299,8 @@ def create_subscription(
           table_name,
           photos_table_name,
           search_criteria_json,
+          initial_request_json,
+          subscription_overrides_json,
           self_profile_json,
           self_id,
           limit_count,
@@ -166,7 +320,7 @@ def create_subscription(
           last_result_count,
           created_at,
           updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
         """,
         (
           subscription_id,
@@ -178,6 +332,8 @@ def create_subscription(
           table_name,
           photos_table_name,
           json_dumps(criteria),
+          json_dumps(initial_request),
+          json_dumps(normalize_subscription_overrides(subscription_overrides)),
           json_dumps(self_profile or {}),
           self_id,
           limit_count,
@@ -237,18 +393,15 @@ def list_due_subscriptions(conn, now: datetime | None = None, subscription_ids: 
     return [subscription for subscription in (row_to_dict(row) for row in rows) if is_subscription_due(subscription, now)]
 
 
-def load_subscription_search_args(subscription: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "source": subscription["source"],
-        "table_name": subscription.get("table_name"),
-        "photos_table_name": subscription.get("photos_table_name"),
-        "criteria": json_loads(subscription["search_criteria_json"], {}),
-        "self_profile": json_loads(subscription.get("self_profile_json"), None),
-        "self_id": subscription.get("self_id"),
-        "limit": int(subscription.get("limit_count") or 10),
-        "include_source": True,
-        "include_text": False,
-    }
+def load_subscription_search_args(
+    subscription: dict[str, Any],
+    *,
+    persona_profile: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    request = build_effective_search_request(subscription, persona_profile=persona_profile)
+    request["include_source"] = True
+    request["include_text"] = False
+    return request
 
 
 def candidate_snapshot_hash(result: dict[str, Any]) -> str:
