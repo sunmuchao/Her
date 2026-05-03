@@ -163,6 +163,55 @@ class ProxyIntroSystemTests(unittest.TestCase):
         self.assertEqual(recommendation["delivery_status"], "proxy_intro_handed_off")
         self.assertIsNone(recommendation["active_match_case_id"])
 
+    def test_accepted_case_blocks_duplicate_creation_until_closed_then_can_reopen(self):
+        subscription = self.seed_delivered_recommendation(candidate_id=90006)
+        case = create_match_case(
+            self.conn,
+            subscription_id=subscription["subscription_id"],
+            candidate_id=90006,
+            now=datetime(2026, 4, 30, 10, 0, 0),
+        )
+        dispatch_match_case_outreach(
+            self.conn,
+            case_id=case["case_id"],
+            now=datetime(2026, 4, 30, 10, 5, 0),
+        )
+        record_match_case_reply(
+            self.conn,
+            case_id=case["case_id"],
+            reply_type="accepted",
+            now=datetime(2026, 4, 30, 11, 0, 0),
+        )
+
+        with self.assertRaises(ValueError):
+            create_match_case(
+                self.conn,
+                subscription_id=subscription["subscription_id"],
+                candidate_id=90006,
+                now=datetime(2026, 4, 30, 11, 5, 0),
+            )
+
+        closed = close_match_case(
+            self.conn,
+            case_id=case["case_id"],
+            close_reason="requester_cancelled",
+            now=datetime(2026, 4, 30, 11, 10, 0),
+        )
+        self.assertEqual(closed["case_status"], "closed")
+
+        recommendation = list_recommendations_for_subscription(self.conn, subscription["subscription_id"])[0]
+        self.assertEqual(recommendation["delivery_status"], "saved_by_user")
+        self.assertIsNone(recommendation["active_match_case_id"])
+
+        reopened = create_match_case(
+            self.conn,
+            subscription_id=subscription["subscription_id"],
+            candidate_id=90006,
+            now=datetime(2026, 4, 30, 11, 20, 0),
+        )
+        self.assertEqual(reopened["case_status"], "pending_outreach")
+        self.assertNotEqual(reopened["case_id"], case["case_id"])
+
     def test_dispatch_script_keeps_summary_shape_with_payload(self):
         subscription = self.seed_delivered_recommendation(candidate_id=90005)
         case = create_match_case(
