@@ -1,4 +1,6 @@
 import pathlib
+import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -92,6 +94,15 @@ class ProxyIntroSystemTests(unittest.TestCase):
         deliver_in_app_recommendations(self.conn, now=datetime(2026, 4, 30, 9, 20, 0))
         return subscription
 
+    def run_script(self, *args):
+        completed = subprocess.run(
+            ["python3", *map(str, args)],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return json.loads(completed.stdout)
+
     def test_create_match_case_syncs_recommendation_and_redacts_summary(self):
         subscription = self.seed_delivered_recommendation()
         case = create_match_case(
@@ -151,6 +162,29 @@ class ProxyIntroSystemTests(unittest.TestCase):
         recommendation = list_recommendations_for_subscription(self.conn, subscription["subscription_id"])[0]
         self.assertEqual(recommendation["delivery_status"], "proxy_intro_handed_off")
         self.assertIsNone(recommendation["active_match_case_id"])
+
+    def test_dispatch_script_keeps_summary_shape_with_payload(self):
+        subscription = self.seed_delivered_recommendation(candidate_id=90005)
+        case = create_match_case(
+            self.conn,
+            subscription_id=subscription["subscription_id"],
+            candidate_id=90005,
+            now=datetime(2026, 4, 30, 10, 0, 0),
+        )
+        script_path = SYSTEM_ROOT / "scripts" / "dispatch_match_case_outreach.py"
+        summary = self.run_script(
+            script_path,
+            "--db",
+            self.db_path,
+            "--case-id",
+            case["case_id"],
+            "--payload-json",
+            '{"operator":"test"}',
+        )
+
+        self.assertEqual(summary["dispatched_count"], 1)
+        self.assertEqual(len(summary["cases"]), 1)
+        self.assertEqual(summary["cases"][0]["case_status"], "awaiting_reply")
 
     def test_declined_case_applies_cooling_and_blocks_duplicate_creation(self):
         subscription = self.seed_delivered_recommendation(candidate_id=90003)
