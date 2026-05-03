@@ -1,4 +1,4 @@
-"""SQLite storage for the Phase 3 external recommendation system."""
+"""SQLite storage for the Phase 3/4 external recommendation system."""
 
 from __future__ import annotations
 
@@ -75,6 +75,7 @@ SCHEMA_STATEMENTS = (
       user_review_reason TEXT,
       user_review_payload_json TEXT NOT NULL DEFAULT '{}',
       user_reviewed_at TEXT,
+      active_match_case_id TEXT,
       latest_card_id TEXT,
       UNIQUE(subscription_id, candidate_id),
       FOREIGN KEY(subscription_id) REFERENCES saved_search_subscriptions(subscription_id)
@@ -130,11 +131,75 @@ SCHEMA_STATEMENTS = (
       FOREIGN KEY(subscription_id) REFERENCES saved_search_subscriptions(subscription_id)
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS match_cases (
+      case_id TEXT PRIMARY KEY,
+      subscription_id TEXT NOT NULL,
+      recommendation_id INTEGER NOT NULL,
+      requester_id INTEGER NOT NULL,
+      candidate_id INTEGER NOT NULL,
+      candidate_name TEXT NOT NULL,
+      initiated_by TEXT NOT NULL DEFAULT 'requester',
+      case_status TEXT NOT NULL,
+      close_reason TEXT,
+      outreach_channel TEXT NOT NULL DEFAULT 'in_app_proxy_intro',
+      safe_summary_json TEXT NOT NULL DEFAULT '{}',
+      requester_profile_snapshot_json TEXT NOT NULL DEFAULT '{}',
+      candidate_snapshot_json TEXT NOT NULL DEFAULT '{}',
+      outreach_payload_json TEXT NOT NULL DEFAULT '{}',
+      reply_payload_json TEXT NOT NULL DEFAULT '{}',
+      reply_deadline_at TEXT,
+      outreach_sent_at TEXT,
+      replied_at TEXT,
+      cooling_until TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY(subscription_id) REFERENCES saved_search_subscriptions(subscription_id),
+      FOREIGN KEY(recommendation_id) REFERENCES profile_recommendations(recommendation_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS match_case_events (
+      event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      case_id TEXT NOT NULL,
+      subscription_id TEXT NOT NULL,
+      recommendation_id INTEGER NOT NULL,
+      requester_id INTEGER NOT NULL,
+      candidate_id INTEGER NOT NULL,
+      event_type TEXT NOT NULL,
+      from_status TEXT,
+      to_status TEXT,
+      actor_type TEXT NOT NULL,
+      payload_json TEXT NOT NULL DEFAULT '{}',
+      occurred_at TEXT NOT NULL,
+      FOREIGN KEY(case_id) REFERENCES match_cases(case_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS match_case_outreach_attempts (
+      attempt_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      case_id TEXT NOT NULL,
+      attempt_number INTEGER NOT NULL,
+      channel TEXT NOT NULL,
+      delivery_status TEXT NOT NULL,
+      payload_json TEXT NOT NULL DEFAULT '{}',
+      provider_message_id TEXT,
+      error_code TEXT,
+      sent_at TEXT NOT NULL,
+      UNIQUE(case_id, attempt_number),
+      FOREIGN KEY(case_id) REFERENCES match_cases(case_id)
+    )
+    """,
     "CREATE INDEX IF NOT EXISTS idx_saved_search_due ON saved_search_subscriptions(status, is_still_searching, last_refreshed_at)",
     "CREATE INDEX IF NOT EXISTS idx_recommendations_subscription_status ON profile_recommendations(subscription_id, delivery_status, score DESC)",
     "CREATE INDEX IF NOT EXISTS idx_recommendations_requester_status ON profile_recommendations(requester_id, delivery_status, notified_at)",
     "CREATE INDEX IF NOT EXISTS idx_recommendations_review_status ON profile_recommendations(subscription_id, final_review_status, score DESC)",
     "CREATE INDEX IF NOT EXISTS idx_saved_search_runs_subscription_time ON saved_search_runs(subscription_id, created_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_match_cases_subscription_status ON match_cases(subscription_id, case_status, created_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_match_cases_recommendation_status ON match_cases(recommendation_id, case_status, updated_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_match_cases_requester_status ON match_cases(requester_id, case_status, updated_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_match_case_events_case_time ON match_case_events(case_id, occurred_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_match_case_attempts_case_time ON match_case_outreach_attempts(case_id, sent_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_actions_recommendation_time ON recommendation_actions(recommendation_id, occurred_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_cards_requester_time ON in_app_recommendation_cards(requester_id, delivered_at DESC)",
 )
@@ -243,6 +308,7 @@ def initialize_database(conn: sqlite3.Connection) -> None:
         "TEXT NOT NULL DEFAULT '{}'",
     )
     ensure_column(conn, "profile_recommendations", "user_reviewed_at", "TEXT")
+    ensure_column(conn, "profile_recommendations", "active_match_case_id", "TEXT")
     ensure_column(conn, "saved_search_runs", "persona_profile_json", "TEXT NOT NULL DEFAULT '{}'")
     ensure_column(conn, "saved_search_runs", "effective_criteria_json", "TEXT NOT NULL DEFAULT '{}'")  # noqa: B950
     ensure_column(conn, "saved_search_runs", "search_request_json", "TEXT NOT NULL DEFAULT '{}'")

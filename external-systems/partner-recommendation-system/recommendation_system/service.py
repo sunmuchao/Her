@@ -415,6 +415,18 @@ def normalize_delivery_status(
     now: datetime,
     final_review: dict[str, Any],
 ) -> tuple[str, str]:
+    if existing:
+        active_match_case_id = existing.get("active_match_case_id")
+        if active_match_case_id:
+            return ("proxy_intro_in_progress", "proxy_intro_case_active")
+        delivery_status = existing.get("delivery_status")
+        if delivery_status in {"proxy_intro_accepted", "proxy_intro_handed_off"}:
+            return (delivery_status, existing.get("delivery_reason") or "proxy_intro_already_resolved")
+        if delivery_status in {"proxy_intro_declined", "proxy_intro_timed_out"}:
+            cooling_until = parse_dt(existing.get("cooling_until"))
+            if cooling_until and now < cooling_until:
+                return (delivery_status, existing.get("delivery_reason") or "proxy_intro_cooling_active")
+
     skip_cooldown_expired = False
     if existing and existing.get("last_action_type") == "save":
         return ("saved_by_user", "user_saved_candidate")
@@ -795,6 +807,7 @@ def build_in_app_card(recommendation: dict[str, Any], subscription_title: str) -
             {"id": "save", "label": "先收藏"},
             {"id": "skip", "label": "先跳过"},
             {"id": "direct_greet", "label": "直接打招呼"},
+            {"id": "request_proxy_intro", "label": "替我去问"},
         ],
         "result_snapshot": payload,
     }

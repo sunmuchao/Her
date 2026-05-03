@@ -3,6 +3,7 @@ import sys
 import tempfile
 import unittest
 from datetime import datetime, timedelta
+from unittest.mock import patch
 
 
 SYSTEM_ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -90,6 +91,39 @@ def build_persona_profile(**overrides):
         "must_have_tags": "情绪稳定,愿意沟通",
         "must_not_have_tags": "抽烟",
         "preferred_traits": "有生活感,沟通顺畅",
+    }
+    profile.update(overrides)
+    return profile
+
+
+def build_synced_requester_profile(**overrides):
+    profile = {
+        "id": 90001,
+        "gender": "男",
+        "age": 28,
+        "city": "无锡",
+        "height": 178,
+        "education": "本科",
+        "marital_status": "未婚",
+        "has_children": 0,
+        "relationship_goal": "认真恋爱",
+        "preferred_age_min": 27,
+        "preferred_age_max": 32,
+        "preferred_cities": "苏州,无锡",
+        "accept_marital_status": "未婚,离异无孩",
+        "accept_marital_status_strength": "hard",
+        "accept_partner_children": "不接受",
+        "accept_partner_children_strength": "hard",
+        "accept_long_distance": "不接受",
+        "matcher_preferences": {
+            "target_gender": "女",
+            "target_cities": ["苏州", "无锡"],
+            "must_have_tags": ["情绪稳定", "愿意沟通"],
+            "preferred_traits": ["有生活感", "沟通顺畅"],
+        },
+        "matcher_risks": {
+            "must_not_have_tags": ["抽烟"],
+        },
     }
     profile.update(overrides)
     return profile
@@ -207,6 +241,60 @@ class RecommendationSystemTests(unittest.TestCase):
         self.assertEqual(runs[0]["effective_criteria"]["cities"], ["苏州", "无锡"])
         self.assertEqual(runs[0]["persona_profile"]["target_age_min"], 27)
         self.assertEqual(runs[0]["search_request"]["self_id"], 90001)
+
+    def test_refresh_subscription_rehydrates_synced_profile_row_into_persona_criteria(self):
+        subscription = self.create_active_subscription(
+            self_id=90001,
+            self_profile={"age": 28, "city": "无锡", "height": 178},
+            criteria={
+                "gender": "男",
+                "cities": ["无锡"],
+                "age_min": 24,
+                "age_max": 28,
+                "marriage_timelines": ["一年内"],
+                "verified_level_min": "photo",
+                "photo_count_min": 3,
+            },
+        )
+        called = {}
+
+        with patch(
+            "recommendation_system.search_client.engine.collect_source_records_for_request",
+            return_value=[{"id": 90001}],
+        ), patch(
+            "recommendation_system.search_client.engine.build_self_profile",
+            return_value=build_synced_requester_profile(),
+        ):
+            refresh_subscription(
+                self.conn,
+                subscription["subscription_id"],
+                now=datetime(2026, 4, 30, 9, 0, 0),
+                search_runner=lambda **kwargs: called.update(kwargs) or {"results": [build_result(812, "同步画像候选", 67)]},
+            )
+
+        self.assertEqual(called["criteria"]["gender"], "女")
+        self.assertEqual(called["criteria"]["cities"], ["苏州", "无锡"])
+        self.assertEqual(called["criteria"]["age_min"], 27)
+        self.assertEqual(called["criteria"]["age_max"], 32)
+        self.assertEqual(called["criteria"]["relationship_goals"], ["认真恋爱", "结婚导向"])
+        self.assertEqual(called["criteria"]["must_have"], ["情绪稳定", "愿意沟通"])
+        self.assertEqual(called["criteria"]["must_not_have"], ["抽烟"])
+        self.assertEqual(called["criteria"]["prefer"], ["有生活感", "沟通顺畅"])
+        self.assertEqual(called["criteria"]["marital_statuses"], ["未婚", "离异无孩"])
+        self.assertEqual(called["criteria"]["accept_partner_children"], "不接受")
+        self.assertEqual(called["criteria"]["long_distance"], "不接受")
+        self.assertEqual(called["criteria"]["marriage_timelines"], ["一年内"])
+        self.assertEqual(called["criteria"]["verified_level_min"], "photo")
+        self.assertEqual(called["criteria"]["photo_count_min"], 3)
+        self.assertEqual(called["self_profile"]["target_age_min"], 27)
+        self.assertEqual(called["self_profile"]["must_have_tags"], ["情绪稳定", "愿意沟通"])
+
+        runs = list_search_runs_for_subscription(self.conn, subscription["subscription_id"])
+        self.assertEqual(len(runs), 1)
+        self.assertEqual(runs[0]["top_candidate_ids"], [812])
+        self.assertEqual(runs[0]["persona_profile"]["target_gender"], "女")
+        self.assertEqual(runs[0]["persona_profile"]["target_cities"], ["苏州", "无锡"])
+        self.assertEqual(runs[0]["effective_criteria"]["marriage_timelines"], ["一年内"])
 
     def test_subscription_overrides_win_over_persona_compiled_criteria(self):
         subscription = self.create_active_subscription(
