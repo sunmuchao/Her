@@ -225,7 +225,7 @@ def load_requester_profile(
         profile = engine.build_self_profile(
             records,
             self_id=self_id,
-            profile_input=self_profile,
+            profile_input=None,
         )
         return normalize_requester_profile_for_subscription(
             profile,
