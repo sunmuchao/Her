@@ -20,6 +20,8 @@ SCHEMA_STATEMENTS = (
       table_name TEXT,
       photos_table_name TEXT,
       search_criteria_json TEXT NOT NULL,
+      initial_request_json TEXT NOT NULL DEFAULT '{}',
+      subscription_overrides_json TEXT NOT NULL DEFAULT '{}',
       self_profile_json TEXT,
       self_id INTEGER,
       limit_count INTEGER NOT NULL DEFAULT 10,
@@ -108,10 +110,31 @@ SCHEMA_STATEMENTS = (
       FOREIGN KEY(recommendation_id) REFERENCES profile_recommendations(recommendation_id)
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS saved_search_runs (
+      run_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      subscription_id TEXT NOT NULL,
+      requester_id INTEGER NOT NULL,
+      source TEXT NOT NULL,
+      table_name TEXT,
+      photos_table_name TEXT,
+      self_id INTEGER,
+      persona_profile_json TEXT NOT NULL DEFAULT '{}',
+      effective_criteria_json TEXT NOT NULL,
+      search_request_json TEXT NOT NULL DEFAULT '{}',
+      result_count INTEGER NOT NULL DEFAULT 0,
+      top_candidate_ids_json TEXT NOT NULL DEFAULT '[]',
+      status_counts_json TEXT NOT NULL DEFAULT '{}',
+      review_counts_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      FOREIGN KEY(subscription_id) REFERENCES saved_search_subscriptions(subscription_id)
+    )
+    """,
     "CREATE INDEX IF NOT EXISTS idx_saved_search_due ON saved_search_subscriptions(status, is_still_searching, last_refreshed_at)",
     "CREATE INDEX IF NOT EXISTS idx_recommendations_subscription_status ON profile_recommendations(subscription_id, delivery_status, score DESC)",
     "CREATE INDEX IF NOT EXISTS idx_recommendations_requester_status ON profile_recommendations(requester_id, delivery_status, notified_at)",
     "CREATE INDEX IF NOT EXISTS idx_recommendations_review_status ON profile_recommendations(subscription_id, final_review_status, score DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_saved_search_runs_subscription_time ON saved_search_runs(subscription_id, created_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_actions_recommendation_time ON recommendation_actions(recommendation_id, occurred_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_cards_requester_time ON in_app_recommendation_cards(requester_id, delivered_at DESC)",
 )
@@ -147,6 +170,18 @@ def initialize_database(conn: sqlite3.Connection) -> None:
         conn,
         "saved_search_subscriptions",
         "direct_greet_profile_json",
+        "TEXT NOT NULL DEFAULT '{}'",
+    )
+    ensure_column(
+        conn,
+        "saved_search_subscriptions",
+        "initial_request_json",
+        "TEXT NOT NULL DEFAULT '{}'",
+    )
+    ensure_column(
+        conn,
+        "saved_search_subscriptions",
+        "subscription_overrides_json",
         "TEXT NOT NULL DEFAULT '{}'",
     )
     ensure_column(
@@ -208,6 +243,12 @@ def initialize_database(conn: sqlite3.Connection) -> None:
         "TEXT NOT NULL DEFAULT '{}'",
     )
     ensure_column(conn, "profile_recommendations", "user_reviewed_at", "TEXT")
+    ensure_column(conn, "saved_search_runs", "persona_profile_json", "TEXT NOT NULL DEFAULT '{}'")
+    ensure_column(conn, "saved_search_runs", "effective_criteria_json", "TEXT NOT NULL DEFAULT '{}'")  # noqa: B950
+    ensure_column(conn, "saved_search_runs", "search_request_json", "TEXT NOT NULL DEFAULT '{}'")
+    ensure_column(conn, "saved_search_runs", "top_candidate_ids_json", "TEXT NOT NULL DEFAULT '[]'")
+    ensure_column(conn, "saved_search_runs", "status_counts_json", "TEXT NOT NULL DEFAULT '{}'")
+    ensure_column(conn, "saved_search_runs", "review_counts_json", "TEXT NOT NULL DEFAULT '{}'")
     conn.commit()
 
 
