@@ -1,6 +1,6 @@
 # Partner Recommendation System
 
-This directory is the Phase 3 outer system for `partner-search`.
+This directory is the Phase 3/4 outer system for `partner-search`.
 
 It is intentionally separate from the skill itself.
 
@@ -14,6 +14,8 @@ It is intentionally separate from the skill itself.
   - SQLite schema and low-level storage helpers
 - `recommendation_system/service.py`
   - subscription refresh, persona-driven criteria compilation, recommendation dedupe, cooldown, frequency cap, quiet-hours, run snapshots, and card generation
+- `recommendation_system/proxy_intro.py`
+  - proxy-intro case creation, dispatch, reply handling, timeout handling, and audit sync
 - `recommendation_system/criteria_compiler.py`
   - compile `persona + subscription overrides -> effective criteria`
 - `recommendation_system/search_client.py`
@@ -30,6 +32,16 @@ It is intentionally separate from the skill itself.
   - store `skip`, `save`, or `direct_greet`
 - `scripts/record_user_review.py`
   - store the pre-delivery review decision before a recommendation is allowed to notify
+- `scripts/request_proxy_intro.py`
+  - create a proxy-intro case from a recommendation
+- `scripts/dispatch_match_case_outreach.py`
+  - move pending proxy-intro cases into awaiting-reply state
+- `scripts/record_match_case_reply.py`
+  - store accepted/declined proxy-intro replies
+- `scripts/close_timed_out_match_cases.py`
+  - close overdue proxy-intro cases
+- `scripts/close_match_case.py`
+  - close an active proxy-intro case after handoff or cancellation
 - `tests/test_recommendation_system.py`
   - Phase 3 regression tests
 
@@ -48,12 +60,18 @@ It is intentionally separate from the skill itself.
   - final proactive-review status such as `direct_greet_ready`, `save_only`, or `rejected`
   - user review status such as `pending_review`, `direct_greet`, or `save`
 - `recommendation_actions`
-  - user actions such as `skip`, `save`, `direct_greet`
+  - user actions such as `skip`, `save`, `direct_greet`, and proxy-intro audit actions
 - `in_app_recommendation_cards`
   - the actual station/in-app recommendation payload shown to the user
 - `saved_search_runs`
   - one snapshot per refresh
   - the resolved persona snapshot, effective criteria, and top candidate ids used for that run
+- `match_cases`
+  - proxy-intro case state, safe summary, deadlines, and cooling
+- `match_case_events`
+  - audit trail for case creation, outreach, replies, timeout, and close
+- `match_case_outreach_attempts`
+  - outreach send attempts and provider payloads
 
 ## Source Of Truth
 
@@ -74,8 +92,10 @@ It is intentionally separate from the skill itself.
 7. Only after that does the recommendation move to `pending_delivery`.
 8. Run the delivery job.
 9. The delivery job applies quiet hours and daily caps, then writes in-app cards.
-10. Record user actions such as `skip`, `save`, or `direct_greet`.
-11. Future refreshes use recommendation history, cooldown state, and the latest persona snapshot to avoid noisy repeat reminders.
+10. Record user actions such as `skip`, `save`, `direct_greet`, or `request_proxy_intro`.
+11. If the user chooses proxy intro, create a `match_case`.
+12. Dispatch the outreach, record replies, and handle timeout or closure.
+13. Future refreshes use recommendation history, case state, cooldown state, and the latest persona snapshot to avoid noisy repeat reminders.
 
 ## Recommendation Modes
 
@@ -86,6 +106,19 @@ It is intentionally separate from the skill itself.
 - `match_based`
   - legacy fallback mode
   - any candidate above the score threshold can still be pushed even if the direct-greet review would have said `save`
+
+## Proxy-Intro Flow
+
+- `request_proxy_intro`
+  - creates a `match_case`
+  - stores only a safe summary before outreach
+  - moves the recommendation into `proxy_intro_in_progress`
+- `accepted`
+  - keeps the case active until handoff is explicitly closed
+- `declined` / `timed_out`
+  - applies a longer cooldown before the same candidate can be reconsidered
+- `closed`
+  - marks the handoff or cancellation as finished
 
 ## Empty-Result Opt-In Flow
 
@@ -197,9 +230,34 @@ python3 external-systems/partner-recommendation-system/scripts/record_recommenda
   --action skip
 ```
 
+Create a proxy-intro case:
+
+```bash
+python3 external-systems/partner-recommendation-system/scripts/request_proxy_intro.py \
+  --db /tmp/partner-phase3.sqlite3 \
+  --subscription-id saved-search-xxxx \
+  --candidate-id 90001
+```
+
+Dispatch pending proxy-intro outreach:
+
+```bash
+python3 external-systems/partner-recommendation-system/scripts/dispatch_match_case_outreach.py \
+  --db /tmp/partner-phase3.sqlite3
+```
+
+Record a proxy-intro reply:
+
+```bash
+python3 external-systems/partner-recommendation-system/scripts/record_match_case_reply.py \
+  --db /tmp/partner-phase3.sqlite3 \
+  --case-id match-case-xxxx \
+  --reply accepted
+```
+
 ## Notes
 
 - This system currently targets in-app recommendation cards only.
-- It does not do proxy intro or automatic matchmaking.
+- Proxy intro now lives in this outer system; automatic matchmaking still does not.
 - It depends on the Phase 2 Python API from `local-skills/partner-search`.
-- Run `bash scripts/run_tests.sh` in this directory to verify Phase 3 behavior.
+- Run `bash scripts/run_tests.sh` in this directory to verify Phase 3/4 behavior.

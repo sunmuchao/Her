@@ -28,6 +28,7 @@ from recommendation_system import (  # noqa: E402
     run_search_session,
     update_subscription_overrides,
 )
+from recommendation_system.search_client import load_requester_profile  # noqa: E402
 
 
 def build_result(
@@ -295,6 +296,33 @@ class RecommendationSystemTests(unittest.TestCase):
         self.assertEqual(runs[0]["persona_profile"]["target_gender"], "女")
         self.assertEqual(runs[0]["persona_profile"]["target_cities"], ["苏州", "无锡"])
         self.assertEqual(runs[0]["effective_criteria"]["marriage_timelines"], ["一年内"])
+
+    def test_load_requester_profile_returns_json_safe_persona_profile(self):
+        with patch(
+            "recommendation_system.search_client.engine.collect_source_records_for_request",
+            return_value=[{"id": 90001}],
+        ), patch(
+            "recommendation_system.search_client.engine.build_self_profile",
+            return_value={
+                "id": 90001,
+                "gender": "男",
+                "city": "无锡",
+                "last_active_at": datetime(2026, 4, 30, 8, 0, 0),
+                "matcher_preferences": {"target_gender": "女", "target_cities": ["苏州", "无锡"]},
+                "matcher_risks": {"must_not_have_tags": ["抽烟"]},
+            },
+        ):
+            profile = load_requester_profile(
+                source="mysql://user:pass@127.0.0.1:3306/her?table=profiles",
+                self_id=90001,
+                table_name="profiles",
+                self_profile=None,
+            )
+
+        self.assertEqual(profile["target_gender"], "女")
+        self.assertEqual(profile["target_cities"], ["苏州", "无锡"])
+        self.assertEqual(profile["must_not_have_tags"], ["抽烟"])
+        self.assertEqual(profile["last_active_at"], "2026-04-30 08:00:00")
 
     def test_subscription_overrides_win_over_persona_compiled_criteria(self):
         subscription = self.create_active_subscription(
