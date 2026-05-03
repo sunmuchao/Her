@@ -563,6 +563,46 @@ class RecommendationSystemTests(unittest.TestCase):
         recommendation = list_recommendations_for_subscription(self.conn, subscription["subscription_id"])[0]
         self.assertEqual(recommendation["delivery_status"], "pending_delivery")
 
+    def test_save_action_persists_without_cooling_when_candidate_reappears(self):
+        subscription = self.create_active_subscription(daily_notification_cap=5)
+        refresh_subscription(
+            self.conn,
+            subscription["subscription_id"],
+            now=datetime(2026, 4, 30, 9, 0, 0),
+            search_runner=lambda **_: {"results": [build_result(311, "收藏对象", 63)]},
+        )
+        record_user_review(
+            self.conn,
+            subscription_id=subscription["subscription_id"],
+            candidate_id=311,
+            review_type="direct_greet",
+            now=datetime(2026, 4, 30, 9, 30, 0),
+        )
+        deliver_in_app_recommendations(self.conn, now=datetime(2026, 4, 30, 10, 0, 0))
+        record_recommendation_action(
+            self.conn,
+            subscription_id=subscription["subscription_id"],
+            candidate_id=311,
+            action_type="save",
+            now=datetime(2026, 4, 30, 11, 0, 0),
+        )
+
+        refresh_subscription(
+            self.conn,
+            subscription["subscription_id"],
+            now=datetime(2026, 5, 1, 12, 0, 0),
+            search_runner=lambda **_: {"results": [build_result(311, "收藏对象", 66)]},
+        )
+
+        recommendation = list_recommendations_for_subscription(self.conn, subscription["subscription_id"])[0]
+        self.assertEqual(recommendation["delivery_status"], "saved_by_user")
+        self.assertEqual(recommendation["last_action_type"], "save")
+        self.assertIsNone(recommendation["cooling_until"])
+        self.assertEqual(
+            deliver_in_app_recommendations(self.conn, now=datetime(2026, 5, 1, 12, 5, 0))["delivered_count"],
+            0,
+        )
+
     def test_daily_notification_cap_defers_extra_cards(self):
         subscription = self.create_active_subscription(daily_notification_cap=1)
         refresh_subscription(

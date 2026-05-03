@@ -328,6 +328,61 @@ class MatchmakingSystemTests(unittest.TestCase):
         self.assertEqual(pair["pair_status"], "cooling")
         self.assertEqual(pair["block_reason"], "first_contact_decline")
 
+    def test_pair_cooling_stays_sticky_until_expiry_then_reopens(self):
+        self.create_member("user-a", 1001)
+        self.create_member("user-b", 1002)
+
+        def fake_search_runner(**kwargs):
+            self_id = kwargs.get("self_id")
+            if self_id == 1001:
+                return {"results": [build_result(1002, "小张", 90)]}
+            if self_id == 1002:
+                return {"results": [build_result(1001, "小李", 90)]}
+            return {"results": []}
+
+        refresh_active_pool(
+            self.conn,
+            now=datetime(2026, 5, 2, 9, 0, 0),
+            search_runner=fake_search_runner,
+        )
+        pair = build_mutual_pairs(self.conn, now=datetime(2026, 5, 2, 9, 5, 0))[0]
+        case = open_match_cases(self.conn, now=datetime(2026, 5, 2, 9, 10, 0))[0]
+        case = dispatch_case_contact(
+            self.conn,
+            case["case_id"],
+            now=datetime(2026, 5, 2, 9, 11, 0),
+        )
+        record_case_reply(
+            self.conn,
+            case["case_id"],
+            member_id=case["first_contact_member_id"],
+            reply_type="decline",
+            now=datetime(2026, 5, 2, 9, 12, 0),
+        )
+
+        refresh_active_pool(
+            self.conn,
+            now=datetime(2026, 5, 2, 10, 0, 0),
+            search_runner=fake_search_runner,
+        )
+        rebuilt = build_mutual_pairs(self.conn, now=datetime(2026, 5, 2, 10, 5, 0))[0]
+        self.assertEqual(rebuilt["pair_key"], pair["pair_key"])
+        self.assertEqual(rebuilt["pair_status"], "cooling")
+
+        self.conn.execute(
+            "UPDATE matchmaking_pairs SET cooling_until = ? WHERE pair_key = ?",
+            ("2026-05-02 09:00:00", pair["pair_key"]),
+        )
+        self.conn.commit()
+
+        refresh_active_pool(
+            self.conn,
+            now=datetime(2026, 5, 4, 10, 0, 0),
+            search_runner=fake_search_runner,
+        )
+        reopened = build_mutual_pairs(self.conn, now=datetime(2026, 5, 4, 10, 5, 0))[0]
+        self.assertEqual(reopened["pair_status"], "eligible")
+
     def test_close_stale_cases_marks_timeout(self):
         member_a = self.create_member("user-a", 1001)
         member_b = self.create_member("user-b", 1002)
@@ -501,6 +556,46 @@ class MatchmakingSystemTests(unittest.TestCase):
         self.assertEqual(updated_pair["pair_status"], "needs_revalidation")
         self.assertEqual(open_match_cases(self.conn, now=datetime(2026, 5, 2, 9, 10, 0)), [])
         self.assertEqual(list_match_cases(self.conn), [])
+
+    def test_feedback_can_pause_member_without_persona_sync_and_close_open_case(self):
+        member_a = self.create_member("user-a", 1001)
+        member_b = self.create_member("user-b", 1002)
+
+        def fake_search_runner(**kwargs):
+            self_id = kwargs.get("self_id")
+            if self_id == 1001:
+                return {"results": [build_result(1002, "小张", 93)]}
+            if self_id == 1002:
+                return {"results": [build_result(1001, "小李", 92)]}
+            return {"results": []}
+
+        refresh_active_pool(
+            self.conn,
+            now=datetime(2026, 5, 2, 9, 0, 0),
+            search_runner=fake_search_runner,
+        )
+        pair = build_mutual_pairs(self.conn, now=datetime(2026, 5, 2, 9, 5, 0))[0]
+        case = open_match_cases(self.conn, now=datetime(2026, 5, 2, 9, 10, 0))[0]
+
+        feedback = record_feedback(
+            self.conn,
+            member_id=member_b["member_id"],
+            feedback_kind="relationship_status",
+            feedback_type="already_chatting",
+            feedback_text="已经在认真聊了，先暂停系统撮合",
+            new_status="paused_serious_chat",
+            now=datetime(2026, 5, 2, 9, 20, 0),
+        )
+
+        self.assertFalse(feedback["synced_to_persona_memory"])
+        self.assertEqual(get_pool_member(self.conn, member_b["member_id"])["status"], "paused_serious_chat")
+
+        updated_pair = get_pair(self.conn, pair["pair_key"])
+        self.assertEqual(updated_pair["pair_status"], "needs_revalidation")
+
+        closed_case = get_match_case(self.conn, case["case_id"])
+        self.assertEqual(closed_case["status"], "closed")
+        self.assertEqual(closed_case["closed_reason"], "member_feedback_requires_revalidation")
 
     def test_daily_case_cap_zero_blocks_new_cases(self):
         self.create_member("user-a", 1001, daily_case_cap=0)
