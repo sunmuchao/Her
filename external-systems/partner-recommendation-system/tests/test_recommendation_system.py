@@ -212,7 +212,12 @@ class RecommendationSystemTests(unittest.TestCase):
         subscription = self.create_active_subscription(
             self_id=90001,
             criteria={"gender": "男", "cities": ["无锡"], "verified_level_min": "photo"},
-            subscription_overrides={"cities": ["上海"], "verified_level_min": "id"},
+        )
+        update_subscription_overrides(
+            self.conn,
+            subscription["subscription_id"],
+            {"cities": ["上海"], "verified_level_min": "id"},
+            now=datetime(2026, 4, 30, 8, 30, 0),
         )
         called = {}
 

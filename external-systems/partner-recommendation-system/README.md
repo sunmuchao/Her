@@ -13,7 +13,9 @@ It is intentionally separate from the skill itself.
 - `recommendation_system/storage.py`
   - SQLite schema and low-level storage helpers
 - `recommendation_system/service.py`
-  - subscription refresh, recommendation dedupe, cooldown, frequency cap, quiet-hours, and card generation
+  - subscription refresh, persona-driven criteria compilation, recommendation dedupe, cooldown, frequency cap, quiet-hours, run snapshots, and card generation
+- `recommendation_system/criteria_compiler.py`
+  - compile `persona + subscription overrides -> effective criteria`
 - `recommendation_system/search_client.py`
   - bridge into `partner-search`'s Python API
 - `recommendation_system/no_match_opt_in.py`
@@ -35,7 +37,7 @@ It is intentionally separate from the skill itself.
 
 - `saved_search_subscriptions`
   - who enabled continuous search
-  - the saved criteria and requester profile
+  - the original request, persona snapshot fallback, and subscription-level overrides
   - refresh cadence, quiet hours, daily cap, score threshold, skip cooldown
   - recommendation mode and the extra bar for proactive `direct_greet` pushes
 - `profile_recommendations`
@@ -49,12 +51,22 @@ It is intentionally separate from the skill itself.
   - user actions such as `skip`, `save`, `direct_greet`
 - `in_app_recommendation_cards`
   - the actual station/in-app recommendation payload shown to the user
+- `saved_search_runs`
+  - one snapshot per refresh
+  - the resolved persona snapshot, effective criteria, and top candidate ids used for that run
+
+## Source Of Truth
+
+- `persona` is the long-term preference source.
+- `saved_search_subscriptions` is the recurring task shell: still searching or not, cadence, caps, quiet hours, and optional subscription overrides.
+- the original `criteria` is kept as the bootstrap request and fallback for fields the persona sync does not currently project into searchable filters.
+- each refresh rebuilds `effective criteria` from `current persona + subscription overrides + bootstrap fallback`, then records a `saved_search_runs` snapshot for audit.
 
 ## End-to-End Flow
 
 1. Create a saved-search subscription in the outer system.
 2. Run the refresh job.
-3. The refresh job calls `partner-search` through its Python API.
+3. The refresh job resolves the latest persona profile, compiles effective criteria, then calls `partner-search`.
 4. New high-score candidates first pass the proactive-review gate.
 5. `direct_greet_ready` candidates become `review_pending`.
 6. A real user review must then mark the candidate as `direct_greet`.
@@ -62,7 +74,7 @@ It is intentionally separate from the skill itself.
 8. Run the delivery job.
 9. The delivery job applies quiet hours and daily caps, then writes in-app cards.
 10. Record user actions such as `skip`, `save`, or `direct_greet`.
-11. Future refreshes use recommendation history and cooldown state to avoid noisy repeat reminders.
+11. Future refreshes use recommendation history, cooldown state, and the latest persona snapshot to avoid noisy repeat reminders.
 
 ## Recommendation Modes
 
@@ -128,6 +140,7 @@ if session["needs_opt_in_prompt"]:
 - `limit`
 
 After that, the normal Phase 3 refresh and delivery jobs take over.
+At refresh time, the system re-resolves the latest persona profile and rebuilds the effective criteria, instead of replaying the old query literally.
 
 ## Quick Start
 
@@ -140,12 +153,13 @@ python3 external-systems/partner-recommendation-system/scripts/create_saved_sear
   --source 'mysql://user:pass@127.0.0.1:3306/her?table=profiles' \
   --title '无锡认真恋爱' \
   --criteria-json '{"gender":"女","cities":["无锡"],"relationship_goals":["认真恋爱","结婚导向"],"must_have":["情绪稳定"],"verified_level_min":"photo"}' \
+  --subscription-overrides-json '{"verified_level_min":"id"}' \
   --self-profile-json '{"age":28,"city":"无锡","height":178}' \
   --recommendation-mode direct_greet_only \
   --min-direct-greet-score 60
 ```
 
-If the requester profile already lives in the partner-search source, you can store `--self-id` instead of copying `--self-profile-json`.
+If the requester profile already lives in the partner-search source, use `--self-id` so refreshes can resolve the latest persona snapshot directly.
 
 Refresh due subscriptions:
 
