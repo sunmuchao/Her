@@ -1,0 +1,1275 @@
+{
+  "scenario_name": "real_user_saved_search_verify_20260503_1",
+  "roleplayed_user": {
+    "name": "无锡 29 岁女生",
+    "brief": "认真找稳定长期关系，先愿意持续留意，收到有婚史候选后明确表示当前只想先看未婚对象。"
+  },
+  "conversation_log": [
+    {
+      "speaker": "user",
+      "text": "帮我看无锡或苏州，31到37，认真恋爱或结婚导向，最好情绪稳定、愿意沟通。"
+    },
+    {
+      "speaker": "system",
+      "text": "这次没有合适结果，要不要以后有合适的主动通知你？"
+    },
+    {
+      "speaker": "user",
+      "text": "要，继续帮我留意。"
+    },
+    {
+      "speaker": "system",
+      "text": "第 1 轮推了顾明哲。"
+    },
+    {
+      "speaker": "user",
+      "text": "先跳过，这类有婚史的我现在不想再看了，更希望先看未婚对象。"
+    },
+    {
+      "speaker": "system",
+      "text": "persona 自动同步后，第 2 轮推了沈知行。"
+    },
+    {
+      "speaker": "user",
+      "text": "这个方向对了，可以直接开始聊。"
+    }
+  ],
+  "first_search_session": {
+    "search_request": {
+      "source": "mock://real-user-saved-search-verify",
+      "criteria": {
+        "gender": "男",
+        "cities": [
+          "无锡",
+          "苏州"
+        ],
+        "relationship_goals": [
+          "认真恋爱",
+          "结婚导向"
+        ],
+        "must_have": [
+          "情绪稳定",
+          "责任心",
+          "愿意沟通"
+        ],
+        "must_not_have": [
+          "抽烟严重",
+          "暧昧不清",
+          "失联冷处理"
+        ],
+        "verified_level_min": "photo",
+        "photo_count_min": 2
+      },
+      "self_profile": {
+        "age": 29,
+        "city": "无锡",
+        "height": 165,
+        "education": "硕士",
+        "marital_status": "未婚",
+        "has_children": 0
+      },
+      "self_id": 88001,
+      "table_name": null,
+      "photos_table_name": null,
+      "limit": 5,
+      "photo_preview_count": 0,
+      "include_source": false,
+      "include_text": false
+    },
+    "search_response": {
+      "has_match": false,
+      "result_count": 0,
+      "results": [],
+      "fallback_results": []
+    },
+    "has_match": false,
+    "result_count": 0,
+    "needs_opt_in_prompt": true,
+    "opt_in_prompt": "是否需要如果有合适的我主动通知你？"
+  },
+  "opt_in_decision": {
+    "created_subscription": true,
+    "subscription": {
+      "subscription_id": "saved-search-6c1d13ccd264",
+      "requester_id": 88001,
+      "title": "无锡稳定认真关系持续留意",
+      "status": "active",
+      "is_still_searching": 1,
+      "source": "mock://real-user-saved-search-verify",
+      "table_name": null,
+      "photos_table_name": null,
+      "search_criteria_json": "{\"cities\": [\"无锡\", \"苏州\"], \"gender\": \"男\", \"must_have\": [\"情绪稳定\", \"责任心\", \"愿意沟通\"], \"must_not_have\": [\"抽烟严重\", \"暧昧不清\", \"失联冷处理\"], \"photo_count_min\": 2, \"relationship_goals\": [\"认真恋爱\", \"结婚导向\"], \"verified_level_min\": \"photo\"}",
+      "initial_request_json": "{\"criteria\": {\"cities\": [\"无锡\", \"苏州\"], \"gender\": \"男\", \"must_have\": [\"情绪稳定\", \"责任心\", \"愿意沟通\"], \"must_not_have\": [\"抽烟严重\", \"暧昧不清\", \"失联冷处理\"], \"photo_count_min\": 2, \"relationship_goals\": [\"认真恋爱\", \"结婚导向\"], \"verified_level_min\": \"photo\"}, \"include_source\": false, \"include_text\": false, \"limit\": 5, \"photo_preview_count\": 0, \"photos_table_name\": null, \"self_id\": 88001, \"self_profile\": {\"age\": 29, \"city\": \"无锡\", \"education\": \"硕士\", \"has_children\": 0, \"height\": 165, \"marital_status\": \"未婚\"}, \"source\": \"mock://real-user-saved-search-verify\", \"table_name\": null}",
+      "subscription_overrides_json": "{}",
+      "self_profile_json": "{\"age\": 29, \"city\": \"无锡\", \"education\": \"硕士\", \"has_children\": 0, \"height\": 165, \"marital_status\": \"未婚\"}",
+      "self_id": 88001,
+      "limit_count": 5,
+      "top_k": 5,
+      "min_notify_score": 40,
+      "daily_notification_cap": 2,
+      "quiet_hours_start": 23,
+      "quiet_hours_end": 8,
+      "refresh_interval_hours": 24,
+      "skip_cooldown_days": 30,
+      "recommendation_mode": "direct_greet_only",
+      "direct_greet_profile_json": "{}",
+      "max_review_candidates_per_refresh": 3,
+      "min_direct_greet_score": 60,
+      "auto_reject_on_follow_up_questions": 1,
+      "auto_reject_on_risk_flags": 1,
+      "last_refreshed_at": null,
+      "last_result_count": 0,
+      "created_at": "2026-05-03 13:27:39",
+      "updated_at": "2026-05-03 13:27:39"
+    }
+  },
+  "refresh_round_1": [
+    {
+      "subscription_id": "saved-search-6c1d13ccd264",
+      "requester_id": 88001,
+      "title": "无锡稳定认真关系持续留意",
+      "searched_at": "2026-05-04 09:00:00",
+      "result_count": 1,
+      "status_counts": {
+        "review_pending": 1
+      },
+      "review_counts": {
+        "direct_greet_ready": 1
+      }
+    }
+  ],
+  "review_1": {
+    "recommendation_id": 1,
+    "subscription_id": "saved-search-6c1d13ccd264",
+    "requester_id": 88001,
+    "candidate_id": 41001,
+    "candidate_name": "顾明哲",
+    "score": 69,
+    "fit_score": 58,
+    "confidence_score": 12,
+    "risk_score": 0,
+    "delivery_status": "pending_delivery",
+    "delivery_reason": "user_review_direct_greet",
+    "first_seen_at": "2026-05-04 09:00:00",
+    "last_seen_at": "2026-05-04 09:00:00",
+    "notified_at": null,
+    "cooling_until": null,
+    "last_action_type": null,
+    "final_review_status": "direct_greet_ready",
+    "final_review_reason": "direct_greet_gate_passed",
+    "final_review_score": 72,
+    "reviewed_at": "2026-05-04 09:00:00",
+    "candidate_snapshot_hash": "81a3bf42e3bd11768e5e1104c1a262d2095ee34408d2183afa8b800cc91222fb",
+    "user_review_status": "direct_greet",
+    "user_review_reason": "user_review_direct_greet",
+    "user_reviewed_at": "2026-05-04 09:20:00",
+    "latest_card_id": null,
+    "matched_on": [
+      "城市 无锡",
+      "目标 结婚导向",
+      "情绪稳定",
+      "愿意沟通"
+    ],
+    "risk_flags": [],
+    "latest_payload": {
+      "confidence_score": 12,
+      "fit_score": 58,
+      "follow_up_questions": [],
+      "id": 41001,
+      "match_evidence": [],
+      "matched_on": [
+        "城市 无锡",
+        "目标 结婚导向",
+        "情绪稳定",
+        "愿意沟通"
+      ],
+      "missing_fields": [],
+      "name": "顾明哲",
+      "photo_preview": [],
+      "profile": {
+        "age": 35,
+        "city": "无锡",
+        "gender": "男",
+        "has_children": 0,
+        "job": "项目经理",
+        "marital_status": "离异",
+        "photo_count": 5,
+        "relationship_goal": "结婚导向",
+        "verified_level": "photo"
+      },
+      "reciprocal_on": [
+        "年龄在对方偏好区间"
+      ],
+      "risk_flags": [],
+      "risk_score": 0,
+      "score": 69,
+      "self_profile_gaps": []
+    },
+    "final_review_payload": {
+      "base_score": 69,
+      "follow_up_questions_count": 0,
+      "matched_on_count": 4,
+      "max_review_candidates_per_refresh": 3,
+      "min_direct_greet_score": 60,
+      "missing_fields_count": 0,
+      "mode": "direct_greet_only",
+      "reciprocal_signal_count": 1,
+      "review_rank": 1,
+      "review_score": 72,
+      "risk_flags_count": 0,
+      "self_profile_gaps_count": 0
+    },
+    "user_review_payload": {
+      "reason": "系统先放出来让我看卡片"
+    }
+  },
+  "delivery_1": {
+    "delivered_count": 1,
+    "held_quiet_hours": 0,
+    "held_daily_cap": 0
+  },
+  "action_1": {
+    "recommendation_id": 1,
+    "subscription_id": "saved-search-6c1d13ccd264",
+    "requester_id": 88001,
+    "candidate_id": 41001,
+    "candidate_name": "顾明哲",
+    "score": 69,
+    "fit_score": 58,
+    "confidence_score": 12,
+    "risk_score": 0,
+    "delivery_status": "cooled_down",
+    "delivery_reason": "user_action_skip",
+    "first_seen_at": "2026-05-04 09:00:00",
+    "last_seen_at": "2026-05-04 09:00:00",
+    "notified_at": "2026-05-04 10:00:00",
+    "cooling_until": "2026-06-03 10:10:00",
+    "last_action_type": "skip",
+    "final_review_status": "direct_greet_ready",
+    "final_review_reason": "direct_greet_gate_passed",
+    "final_review_score": 72,
+    "reviewed_at": "2026-05-04 09:00:00",
+    "candidate_snapshot_hash": "81a3bf42e3bd11768e5e1104c1a262d2095ee34408d2183afa8b800cc91222fb",
+    "user_review_status": "direct_greet",
+    "user_review_reason": "user_review_direct_greet",
+    "user_reviewed_at": "2026-05-04 09:20:00",
+    "latest_card_id": "card-a70c0c2823c5",
+    "matched_on": [
+      "城市 无锡",
+      "目标 结婚导向",
+      "情绪稳定",
+      "愿意沟通"
+    ],
+    "risk_flags": [],
+    "latest_payload": {
+      "confidence_score": 12,
+      "fit_score": 58,
+      "follow_up_questions": [],
+      "id": 41001,
+      "match_evidence": [],
+      "matched_on": [
+        "城市 无锡",
+        "目标 结婚导向",
+        "情绪稳定",
+        "愿意沟通"
+      ],
+      "missing_fields": [],
+      "name": "顾明哲",
+      "photo_preview": [],
+      "profile": {
+        "age": 35,
+        "city": "无锡",
+        "gender": "男",
+        "has_children": 0,
+        "job": "项目经理",
+        "marital_status": "离异",
+        "photo_count": 5,
+        "relationship_goal": "结婚导向",
+        "verified_level": "photo"
+      },
+      "reciprocal_on": [
+        "年龄在对方偏好区间"
+      ],
+      "risk_flags": [],
+      "risk_score": 0,
+      "score": 69,
+      "self_profile_gaps": []
+    },
+    "final_review_payload": {
+      "base_score": 69,
+      "follow_up_questions_count": 0,
+      "matched_on_count": 4,
+      "max_review_candidates_per_refresh": 3,
+      "min_direct_greet_score": 60,
+      "missing_fields_count": 0,
+      "mode": "direct_greet_only",
+      "reciprocal_signal_count": 1,
+      "review_rank": 1,
+      "review_score": 72,
+      "risk_flags_count": 0,
+      "self_profile_gaps_count": 0
+    },
+    "user_review_payload": {
+      "reason": "系统先放出来让我看卡片"
+    }
+  },
+  "refresh_round_2": [
+    {
+      "subscription_id": "saved-search-6c1d13ccd264",
+      "requester_id": 88001,
+      "title": "无锡稳定认真关系持续留意",
+      "searched_at": "2026-05-05 09:00:00",
+      "result_count": 1,
+      "status_counts": {
+        "review_pending": 1
+      },
+      "review_counts": {
+        "direct_greet_ready": 1
+      }
+    }
+  ],
+  "review_2": {
+    "recommendation_id": 2,
+    "subscription_id": "saved-search-6c1d13ccd264",
+    "requester_id": 88001,
+    "candidate_id": 41002,
+    "candidate_name": "沈知行",
+    "score": 74,
+    "fit_score": 64,
+    "confidence_score": 13,
+    "risk_score": 0,
+    "delivery_status": "pending_delivery",
+    "delivery_reason": "user_review_direct_greet",
+    "first_seen_at": "2026-05-05 09:00:00",
+    "last_seen_at": "2026-05-05 09:00:00",
+    "notified_at": null,
+    "cooling_until": null,
+    "last_action_type": null,
+    "final_review_status": "direct_greet_ready",
+    "final_review_reason": "direct_greet_gate_passed",
+    "final_review_score": 80,
+    "reviewed_at": "2026-05-05 09:00:00",
+    "candidate_snapshot_hash": "54af99e847580161f337906f83f03f1167b08540f9e8dbea23846d6769d9021e",
+    "user_review_status": "direct_greet",
+    "user_review_reason": "user_review_direct_greet",
+    "user_reviewed_at": "2026-05-05 09:20:00",
+    "latest_card_id": null,
+    "matched_on": [
+      "城市 无锡",
+      "目标 结婚导向",
+      "情绪稳定",
+      "责任心"
+    ],
+    "risk_flags": [],
+    "latest_payload": {
+      "confidence_score": 13,
+      "fit_score": 64,
+      "follow_up_questions": [],
+      "id": 41002,
+      "match_evidence": [],
+      "matched_on": [
+        "城市 无锡",
+        "目标 结婚导向",
+        "情绪稳定",
+        "责任心"
+      ],
+      "missing_fields": [],
+      "name": "沈知行",
+      "photo_preview": [],
+      "profile": {
+        "age": 33,
+        "city": "无锡",
+        "gender": "男",
+        "has_children": 0,
+        "job": "法务",
+        "marital_status": "未婚",
+        "photo_count": 6,
+        "relationship_goal": "结婚导向",
+        "verified_level": "photo"
+      },
+      "reciprocal_on": [
+        "年龄在对方偏好区间",
+        "城市偏好命中"
+      ],
+      "risk_flags": [],
+      "risk_score": 0,
+      "score": 74,
+      "self_profile_gaps": []
+    },
+    "final_review_payload": {
+      "base_score": 74,
+      "follow_up_questions_count": 0,
+      "matched_on_count": 4,
+      "max_review_candidates_per_refresh": 3,
+      "min_direct_greet_score": 60,
+      "missing_fields_count": 0,
+      "mode": "direct_greet_only",
+      "reciprocal_signal_count": 2,
+      "review_rank": 1,
+      "review_score": 80,
+      "risk_flags_count": 0,
+      "self_profile_gaps_count": 0
+    },
+    "user_review_payload": {
+      "reason": "未婚且同城，更符合我现在的偏好"
+    }
+  },
+  "delivery_2": {
+    "delivered_count": 1,
+    "held_quiet_hours": 0,
+    "held_daily_cap": 0
+  },
+  "action_2": {
+    "recommendation_id": 2,
+    "subscription_id": "saved-search-6c1d13ccd264",
+    "requester_id": 88001,
+    "candidate_id": 41002,
+    "candidate_name": "沈知行",
+    "score": 74,
+    "fit_score": 64,
+    "confidence_score": 13,
+    "risk_score": 0,
+    "delivery_status": "direct_greeted",
+    "delivery_reason": "user_action_direct_greet",
+    "first_seen_at": "2026-05-05 09:00:00",
+    "last_seen_at": "2026-05-05 09:00:00",
+    "notified_at": "2026-05-05 10:00:00",
+    "cooling_until": null,
+    "last_action_type": "direct_greet",
+    "final_review_status": "direct_greet_ready",
+    "final_review_reason": "direct_greet_gate_passed",
+    "final_review_score": 80,
+    "reviewed_at": "2026-05-05 09:00:00",
+    "candidate_snapshot_hash": "54af99e847580161f337906f83f03f1167b08540f9e8dbea23846d6769d9021e",
+    "user_review_status": "direct_greet",
+    "user_review_reason": "user_review_direct_greet",
+    "user_reviewed_at": "2026-05-05 09:20:00",
+    "latest_card_id": "card-e22a4f50777a",
+    "matched_on": [
+      "城市 无锡",
+      "目标 结婚导向",
+      "情绪稳定",
+      "责任心"
+    ],
+    "risk_flags": [],
+    "latest_payload": {
+      "confidence_score": 13,
+      "fit_score": 64,
+      "follow_up_questions": [],
+      "id": 41002,
+      "match_evidence": [],
+      "matched_on": [
+        "城市 无锡",
+        "目标 结婚导向",
+        "情绪稳定",
+        "责任心"
+      ],
+      "missing_fields": [],
+      "name": "沈知行",
+      "photo_preview": [],
+      "profile": {
+        "age": 33,
+        "city": "无锡",
+        "gender": "男",
+        "has_children": 0,
+        "job": "法务",
+        "marital_status": "未婚",
+        "photo_count": 6,
+        "relationship_goal": "结婚导向",
+        "verified_level": "photo"
+      },
+      "reciprocal_on": [
+        "年龄在对方偏好区间",
+        "城市偏好命中"
+      ],
+      "risk_flags": [],
+      "risk_score": 0,
+      "score": 74,
+      "self_profile_gaps": []
+    },
+    "final_review_payload": {
+      "base_score": 74,
+      "follow_up_questions_count": 0,
+      "matched_on_count": 4,
+      "max_review_candidates_per_refresh": 3,
+      "min_direct_greet_score": 60,
+      "missing_fields_count": 0,
+      "mode": "direct_greet_only",
+      "reciprocal_signal_count": 2,
+      "review_rank": 1,
+      "review_score": 80,
+      "risk_flags_count": 0,
+      "self_profile_gaps_count": 0
+    },
+    "user_review_payload": {
+      "reason": "未婚且同城，更符合我现在的偏好"
+    }
+  },
+  "recommendations": [
+    {
+      "recommendation_id": 2,
+      "subscription_id": "saved-search-6c1d13ccd264",
+      "requester_id": 88001,
+      "candidate_id": 41002,
+      "candidate_name": "沈知行",
+      "score": 74,
+      "fit_score": 64,
+      "confidence_score": 13,
+      "risk_score": 0,
+      "delivery_status": "direct_greeted",
+      "delivery_reason": "user_action_direct_greet",
+      "first_seen_at": "2026-05-05 09:00:00",
+      "last_seen_at": "2026-05-05 09:00:00",
+      "notified_at": "2026-05-05 10:00:00",
+      "cooling_until": null,
+      "last_action_type": "direct_greet",
+      "final_review_status": "direct_greet_ready",
+      "final_review_reason": "direct_greet_gate_passed",
+      "final_review_score": 80,
+      "reviewed_at": "2026-05-05 09:00:00",
+      "candidate_snapshot_hash": "54af99e847580161f337906f83f03f1167b08540f9e8dbea23846d6769d9021e",
+      "user_review_status": "direct_greet",
+      "user_review_reason": "user_review_direct_greet",
+      "user_reviewed_at": "2026-05-05 09:20:00",
+      "latest_card_id": "card-e22a4f50777a",
+      "matched_on": [
+        "城市 无锡",
+        "目标 结婚导向",
+        "情绪稳定",
+        "责任心"
+      ],
+      "risk_flags": [],
+      "latest_payload": {
+        "confidence_score": 13,
+        "fit_score": 64,
+        "follow_up_questions": [],
+        "id": 41002,
+        "match_evidence": [],
+        "matched_on": [
+          "城市 无锡",
+          "目标 结婚导向",
+          "情绪稳定",
+          "责任心"
+        ],
+        "missing_fields": [],
+        "name": "沈知行",
+        "photo_preview": [],
+        "profile": {
+          "age": 33,
+          "city": "无锡",
+          "gender": "男",
+          "has_children": 0,
+          "job": "法务",
+          "marital_status": "未婚",
+          "photo_count": 6,
+          "relationship_goal": "结婚导向",
+          "verified_level": "photo"
+        },
+        "reciprocal_on": [
+          "年龄在对方偏好区间",
+          "城市偏好命中"
+        ],
+        "risk_flags": [],
+        "risk_score": 0,
+        "score": 74,
+        "self_profile_gaps": []
+      },
+      "final_review_payload": {
+        "base_score": 74,
+        "follow_up_questions_count": 0,
+        "matched_on_count": 4,
+        "max_review_candidates_per_refresh": 3,
+        "min_direct_greet_score": 60,
+        "missing_fields_count": 0,
+        "mode": "direct_greet_only",
+        "reciprocal_signal_count": 2,
+        "review_rank": 1,
+        "review_score": 80,
+        "risk_flags_count": 0,
+        "self_profile_gaps_count": 0
+      },
+      "user_review_payload": {
+        "reason": "未婚且同城，更符合我现在的偏好"
+      }
+    },
+    {
+      "recommendation_id": 1,
+      "subscription_id": "saved-search-6c1d13ccd264",
+      "requester_id": 88001,
+      "candidate_id": 41001,
+      "candidate_name": "顾明哲",
+      "score": 69,
+      "fit_score": 58,
+      "confidence_score": 12,
+      "risk_score": 0,
+      "delivery_status": "cooled_down",
+      "delivery_reason": "user_action_skip",
+      "first_seen_at": "2026-05-04 09:00:00",
+      "last_seen_at": "2026-05-04 09:00:00",
+      "notified_at": "2026-05-04 10:00:00",
+      "cooling_until": "2026-06-03 10:10:00",
+      "last_action_type": "skip",
+      "final_review_status": "direct_greet_ready",
+      "final_review_reason": "direct_greet_gate_passed",
+      "final_review_score": 72,
+      "reviewed_at": "2026-05-04 09:00:00",
+      "candidate_snapshot_hash": "81a3bf42e3bd11768e5e1104c1a262d2095ee34408d2183afa8b800cc91222fb",
+      "user_review_status": "direct_greet",
+      "user_review_reason": "user_review_direct_greet",
+      "user_reviewed_at": "2026-05-04 09:20:00",
+      "latest_card_id": "card-a70c0c2823c5",
+      "matched_on": [
+        "城市 无锡",
+        "目标 结婚导向",
+        "情绪稳定",
+        "愿意沟通"
+      ],
+      "risk_flags": [],
+      "latest_payload": {
+        "confidence_score": 12,
+        "fit_score": 58,
+        "follow_up_questions": [],
+        "id": 41001,
+        "match_evidence": [],
+        "matched_on": [
+          "城市 无锡",
+          "目标 结婚导向",
+          "情绪稳定",
+          "愿意沟通"
+        ],
+        "missing_fields": [],
+        "name": "顾明哲",
+        "photo_preview": [],
+        "profile": {
+          "age": 35,
+          "city": "无锡",
+          "gender": "男",
+          "has_children": 0,
+          "job": "项目经理",
+          "marital_status": "离异",
+          "photo_count": 5,
+          "relationship_goal": "结婚导向",
+          "verified_level": "photo"
+        },
+        "reciprocal_on": [
+          "年龄在对方偏好区间"
+        ],
+        "risk_flags": [],
+        "risk_score": 0,
+        "score": 69,
+        "self_profile_gaps": []
+      },
+      "final_review_payload": {
+        "base_score": 69,
+        "follow_up_questions_count": 0,
+        "matched_on_count": 4,
+        "max_review_candidates_per_refresh": 3,
+        "min_direct_greet_score": 60,
+        "missing_fields_count": 0,
+        "mode": "direct_greet_only",
+        "reciprocal_signal_count": 1,
+        "review_rank": 1,
+        "review_score": 72,
+        "risk_flags_count": 0,
+        "self_profile_gaps_count": 0
+      },
+      "user_review_payload": {
+        "reason": "系统先放出来让我看卡片"
+      }
+    }
+  ],
+  "cards": [
+    {
+      "card_id": "card-e22a4f50777a",
+      "subscription_id": "saved-search-6c1d13ccd264",
+      "recommendation_id": 2,
+      "requester_id": 88001,
+      "candidate_id": 41002,
+      "card_status": "unread",
+      "title": "发现新的合适对象：沈知行",
+      "subtitle": "无锡稳定认真关系持续留意 | score=74 | 33岁 | 无锡 | 法务",
+      "body": "匹配点：城市 无锡；目标 结婚导向；情绪稳定",
+      "created_at": "2026-05-05 10:00:00",
+      "delivered_at": "2026-05-05 10:00:00",
+      "payload": {
+        "body": "匹配点：城市 无锡；目标 结婚导向；情绪稳定",
+        "card_type": "partner_recommendation",
+        "cta_actions": [
+          {
+            "id": "save",
+            "label": "先收藏"
+          },
+          {
+            "id": "skip",
+            "label": "先跳过"
+          },
+          {
+            "id": "direct_greet",
+            "label": "直接打招呼"
+          }
+        ],
+        "result_snapshot": {
+          "confidence_score": 13,
+          "fit_score": 64,
+          "follow_up_questions": [],
+          "id": 41002,
+          "match_evidence": [],
+          "matched_on": [
+            "城市 无锡",
+            "目标 结婚导向",
+            "情绪稳定",
+            "责任心"
+          ],
+          "missing_fields": [],
+          "name": "沈知行",
+          "photo_preview": [],
+          "profile": {
+            "age": 33,
+            "city": "无锡",
+            "gender": "男",
+            "has_children": 0,
+            "job": "法务",
+            "marital_status": "未婚",
+            "photo_count": 6,
+            "relationship_goal": "结婚导向",
+            "verified_level": "photo"
+          },
+          "reciprocal_on": [
+            "年龄在对方偏好区间",
+            "城市偏好命中"
+          ],
+          "risk_flags": [],
+          "risk_score": 0,
+          "score": 74,
+          "self_profile_gaps": []
+        },
+        "subtitle": "无锡稳定认真关系持续留意 | score=74 | 33岁 | 无锡 | 法务",
+        "title": "发现新的合适对象：沈知行"
+      }
+    },
+    {
+      "card_id": "card-a70c0c2823c5",
+      "subscription_id": "saved-search-6c1d13ccd264",
+      "recommendation_id": 1,
+      "requester_id": 88001,
+      "candidate_id": 41001,
+      "card_status": "unread",
+      "title": "发现新的合适对象：顾明哲",
+      "subtitle": "无锡稳定认真关系持续留意 | score=69 | 35岁 | 无锡 | 项目经理",
+      "body": "匹配点：城市 无锡；目标 结婚导向；情绪稳定",
+      "created_at": "2026-05-04 10:00:00",
+      "delivered_at": "2026-05-04 10:00:00",
+      "payload": {
+        "body": "匹配点：城市 无锡；目标 结婚导向；情绪稳定",
+        "card_type": "partner_recommendation",
+        "cta_actions": [
+          {
+            "id": "save",
+            "label": "先收藏"
+          },
+          {
+            "id": "skip",
+            "label": "先跳过"
+          },
+          {
+            "id": "direct_greet",
+            "label": "直接打招呼"
+          }
+        ],
+        "result_snapshot": {
+          "confidence_score": 12,
+          "fit_score": 58,
+          "follow_up_questions": [],
+          "id": 41001,
+          "match_evidence": [],
+          "matched_on": [
+            "城市 无锡",
+            "目标 结婚导向",
+            "情绪稳定",
+            "愿意沟通"
+          ],
+          "missing_fields": [],
+          "name": "顾明哲",
+          "photo_preview": [],
+          "profile": {
+            "age": 35,
+            "city": "无锡",
+            "gender": "男",
+            "has_children": 0,
+            "job": "项目经理",
+            "marital_status": "离异",
+            "photo_count": 5,
+            "relationship_goal": "结婚导向",
+            "verified_level": "photo"
+          },
+          "reciprocal_on": [
+            "年龄在对方偏好区间"
+          ],
+          "risk_flags": [],
+          "risk_score": 0,
+          "score": 69,
+          "self_profile_gaps": []
+        },
+        "subtitle": "无锡稳定认真关系持续留意 | score=69 | 35岁 | 无锡 | 项目经理",
+        "title": "发现新的合适对象：顾明哲"
+      }
+    }
+  ],
+  "runs": [
+    {
+      "run_id": 2,
+      "subscription_id": "saved-search-6c1d13ccd264",
+      "requester_id": 88001,
+      "source": "mock://real-user-saved-search-verify",
+      "table_name": null,
+      "photos_table_name": null,
+      "self_id": 88001,
+      "result_count": 1,
+      "created_at": "2026-05-05 09:00:00",
+      "persona_profile": {
+        "age": 29,
+        "city": "无锡",
+        "education": "硕士",
+        "has_children": 0,
+        "height": 165,
+        "marital_status": "未婚",
+        "must_have_tags": "情绪稳定,愿意沟通,责任心",
+        "must_not_have_tags": "抽烟严重,暧昧不清,失联冷处理",
+        "preferred_traits": "稳定工作,有生活感",
+        "self_relationship_goal": "认真恋爱",
+        "target_accept_long_distance": "不接受",
+        "target_age_max": 37,
+        "target_age_min": 31,
+        "target_cities": "无锡,苏州",
+        "target_gender": "男",
+        "target_marital_statuses": "未婚"
+      },
+      "effective_criteria": {
+        "age_max": 37,
+        "age_min": 31,
+        "cities": [
+          "无锡",
+          "苏州"
+        ],
+        "gender": "男",
+        "long_distance": "不接受",
+        "marital_statuses": [
+          "未婚"
+        ],
+        "must_have": [
+          "情绪稳定",
+          "愿意沟通",
+          "责任心"
+        ],
+        "must_not_have": [
+          "抽烟严重",
+          "暧昧不清",
+          "失联冷处理"
+        ],
+        "photo_count_min": 2,
+        "prefer": [
+          "稳定工作",
+          "有生活感"
+        ],
+        "relationship_goals": [
+          "认真恋爱",
+          "结婚导向"
+        ],
+        "verified_level_min": "photo"
+      },
+      "search_request": {
+        "criteria": {
+          "age_max": 37,
+          "age_min": 31,
+          "cities": [
+            "无锡",
+            "苏州"
+          ],
+          "gender": "男",
+          "long_distance": "不接受",
+          "marital_statuses": [
+            "未婚"
+          ],
+          "must_have": [
+            "情绪稳定",
+            "愿意沟通",
+            "责任心"
+          ],
+          "must_not_have": [
+            "抽烟严重",
+            "暧昧不清",
+            "失联冷处理"
+          ],
+          "photo_count_min": 2,
+          "prefer": [
+            "稳定工作",
+            "有生活感"
+          ],
+          "relationship_goals": [
+            "认真恋爱",
+            "结婚导向"
+          ],
+          "verified_level_min": "photo"
+        },
+        "include_source": true,
+        "include_text": false,
+        "limit": 5,
+        "photo_preview_count": 0,
+        "photos_table_name": null,
+        "self_id": 88001,
+        "self_profile": {
+          "age": 29,
+          "city": "无锡",
+          "education": "硕士",
+          "has_children": 0,
+          "height": 165,
+          "marital_status": "未婚",
+          "must_have_tags": "情绪稳定,愿意沟通,责任心",
+          "must_not_have_tags": "抽烟严重,暧昧不清,失联冷处理",
+          "preferred_traits": "稳定工作,有生活感",
+          "self_relationship_goal": "认真恋爱",
+          "target_accept_long_distance": "不接受",
+          "target_age_max": 37,
+          "target_age_min": 31,
+          "target_cities": "无锡,苏州",
+          "target_gender": "男",
+          "target_marital_statuses": "未婚"
+        },
+        "source": "mock://real-user-saved-search-verify",
+        "table_name": null
+      },
+      "top_candidate_ids": [
+        41002
+      ],
+      "status_counts": {
+        "review_pending": 1
+      },
+      "review_counts": {
+        "direct_greet_ready": 1
+      }
+    },
+    {
+      "run_id": 1,
+      "subscription_id": "saved-search-6c1d13ccd264",
+      "requester_id": 88001,
+      "source": "mock://real-user-saved-search-verify",
+      "table_name": null,
+      "photos_table_name": null,
+      "self_id": 88001,
+      "result_count": 1,
+      "created_at": "2026-05-04 09:00:00",
+      "persona_profile": {
+        "age": 29,
+        "city": "无锡",
+        "education": "硕士",
+        "has_children": 0,
+        "height": 165,
+        "marital_status": "未婚",
+        "must_have_tags": "情绪稳定,愿意沟通,责任心",
+        "must_not_have_tags": "抽烟严重,暧昧不清,失联冷处理",
+        "preferred_traits": "稳定工作,有生活感",
+        "self_relationship_goal": "认真恋爱",
+        "target_accept_long_distance": "不接受",
+        "target_age_max": 37,
+        "target_age_min": 31,
+        "target_cities": "无锡,苏州",
+        "target_gender": "男",
+        "target_marital_statuses": "未婚,离异无孩"
+      },
+      "effective_criteria": {
+        "age_max": 37,
+        "age_min": 31,
+        "cities": [
+          "无锡",
+          "苏州"
+        ],
+        "gender": "男",
+        "long_distance": "不接受",
+        "marital_statuses": [
+          "未婚",
+          "离异无孩"
+        ],
+        "must_have": [
+          "情绪稳定",
+          "愿意沟通",
+          "责任心"
+        ],
+        "must_not_have": [
+          "抽烟严重",
+          "暧昧不清",
+          "失联冷处理"
+        ],
+        "photo_count_min": 2,
+        "prefer": [
+          "稳定工作",
+          "有生活感"
+        ],
+        "relationship_goals": [
+          "认真恋爱",
+          "结婚导向"
+        ],
+        "verified_level_min": "photo"
+      },
+      "search_request": {
+        "criteria": {
+          "age_max": 37,
+          "age_min": 31,
+          "cities": [
+            "无锡",
+            "苏州"
+          ],
+          "gender": "男",
+          "long_distance": "不接受",
+          "marital_statuses": [
+            "未婚",
+            "离异无孩"
+          ],
+          "must_have": [
+            "情绪稳定",
+            "愿意沟通",
+            "责任心"
+          ],
+          "must_not_have": [
+            "抽烟严重",
+            "暧昧不清",
+            "失联冷处理"
+          ],
+          "photo_count_min": 2,
+          "prefer": [
+            "稳定工作",
+            "有生活感"
+          ],
+          "relationship_goals": [
+            "认真恋爱",
+            "结婚导向"
+          ],
+          "verified_level_min": "photo"
+        },
+        "include_source": true,
+        "include_text": false,
+        "limit": 5,
+        "photo_preview_count": 0,
+        "photos_table_name": null,
+        "self_id": 88001,
+        "self_profile": {
+          "age": 29,
+          "city": "无锡",
+          "education": "硕士",
+          "has_children": 0,
+          "height": 165,
+          "marital_status": "未婚",
+          "must_have_tags": "情绪稳定,愿意沟通,责任心",
+          "must_not_have_tags": "抽烟严重,暧昧不清,失联冷处理",
+          "preferred_traits": "稳定工作,有生活感",
+          "self_relationship_goal": "认真恋爱",
+          "target_accept_long_distance": "不接受",
+          "target_age_max": 37,
+          "target_age_min": 31,
+          "target_cities": "无锡,苏州",
+          "target_gender": "男",
+          "target_marital_statuses": "未婚,离异无孩"
+        },
+        "source": "mock://real-user-saved-search-verify",
+        "table_name": null
+      },
+      "top_candidate_ids": [
+        41001
+      ],
+      "status_counts": {
+        "review_pending": 1
+      },
+      "review_counts": {
+        "direct_greet_ready": 1
+      }
+    }
+  ],
+  "search_requests": [
+    {
+      "at": "2026-05-03T13:27:39",
+      "persona_version": "v1",
+      "request": {
+        "source": "mock://real-user-saved-search-verify",
+        "criteria": {
+          "gender": "男",
+          "cities": [
+            "无锡",
+            "苏州"
+          ],
+          "relationship_goals": [
+            "认真恋爱",
+            "结婚导向"
+          ],
+          "must_have": [
+            "情绪稳定",
+            "责任心",
+            "愿意沟通"
+          ],
+          "must_not_have": [
+            "抽烟严重",
+            "暧昧不清",
+            "失联冷处理"
+          ],
+          "verified_level_min": "photo",
+          "photo_count_min": 2
+        },
+        "self_profile": {
+          "age": 29,
+          "city": "无锡",
+          "height": 165,
+          "education": "硕士",
+          "marital_status": "未婚",
+          "has_children": 0
+        },
+        "self_id": 88001,
+        "table_name": null,
+        "photos_table_name": null,
+        "limit": 5,
+        "photo_preview_count": 0,
+        "include_source": false,
+        "include_text": false
+      }
+    },
+    {
+      "at": "2026-05-03T13:27:39",
+      "persona_version": "v1",
+      "request": {
+        "source": "mock://real-user-saved-search-verify",
+        "table_name": null,
+        "photos_table_name": null,
+        "criteria": {
+          "cities": [
+            "无锡",
+            "苏州"
+          ],
+          "gender": "男",
+          "must_have": [
+            "情绪稳定",
+            "愿意沟通",
+            "责任心"
+          ],
+          "must_not_have": [
+            "抽烟严重",
+            "暧昧不清",
+            "失联冷处理"
+          ],
+          "photo_count_min": 2,
+          "relationship_goals": [
+            "认真恋爱",
+            "结婚导向"
+          ],
+          "verified_level_min": "photo",
+          "age_min": 31,
+          "age_max": 37,
+          "marital_statuses": [
+            "未婚",
+            "离异无孩"
+          ],
+          "long_distance": "不接受",
+          "prefer": [
+            "稳定工作",
+            "有生活感"
+          ]
+        },
+        "self_profile": {
+          "self_relationship_goal": "认真恋爱",
+          "target_gender": "男",
+          "target_age_min": 31,
+          "target_age_max": 37,
+          "target_cities": "无锡,苏州",
+          "target_marital_statuses": "未婚,离异无孩",
+          "target_accept_long_distance": "不接受",
+          "must_have_tags": "情绪稳定,愿意沟通,责任心",
+          "must_not_have_tags": "抽烟严重,暧昧不清,失联冷处理",
+          "preferred_traits": "稳定工作,有生活感",
+          "age": 29,
+          "city": "无锡",
+          "height": 165,
+          "education": "硕士",
+          "marital_status": "未婚",
+          "has_children": 0
+        },
+        "self_id": 88001,
+        "limit": 5,
+        "photo_preview_count": 0,
+        "include_source": true,
+        "include_text": false
+      }
+    },
+    {
+      "at": "2026-05-03T13:27:39",
+      "persona_version": "v2",
+      "request": {
+        "source": "mock://real-user-saved-search-verify",
+        "table_name": null,
+        "photos_table_name": null,
+        "criteria": {
+          "cities": [
+            "无锡",
+            "苏州"
+          ],
+          "gender": "男",
+          "must_have": [
+            "情绪稳定",
+            "愿意沟通",
+            "责任心"
+          ],
+          "must_not_have": [
+            "抽烟严重",
+            "暧昧不清",
+            "失联冷处理"
+          ],
+          "photo_count_min": 2,
+          "relationship_goals": [
+            "认真恋爱",
+            "结婚导向"
+          ],
+          "verified_level_min": "photo",
+          "age_min": 31,
+          "age_max": 37,
+          "marital_statuses": [
+            "未婚"
+          ],
+          "long_distance": "不接受",
+          "prefer": [
+            "稳定工作",
+            "有生活感"
+          ]
+        },
+        "self_profile": {
+          "self_relationship_goal": "认真恋爱",
+          "target_gender": "男",
+          "target_age_min": 31,
+          "target_age_max": 37,
+          "target_cities": "无锡,苏州",
+          "target_marital_statuses": "未婚",
+          "target_accept_long_distance": "不接受",
+          "must_have_tags": "情绪稳定,愿意沟通,责任心",
+          "must_not_have_tags": "抽烟严重,暧昧不清,失联冷处理",
+          "preferred_traits": "稳定工作,有生活感",
+          "age": 29,
+          "city": "无锡",
+          "height": 165,
+          "education": "硕士",
+          "marital_status": "未婚",
+          "has_children": 0
+        },
+        "self_id": 88001,
+        "limit": 5,
+        "photo_preview_count": 0,
+        "include_source": true,
+        "include_text": false
+      }
+    }
+  ],
+  "verdict": {
+    "passed": true,
+    "checks": [
+      "首次无结果后成功创建持续留意订阅",
+      "第 1 轮 refresh 使用 persona v1，允许 未婚 + 离异无孩，命中顾明哲",
+      "用户 skip 后，外层系统记录了动作，但 saved search 本身没有写死旧查询",
+      "persona 切到 v2 后，第 2 轮 refresh 的 effective criteria 只保留 未婚",
+      "同一个候选池里，顾明哲被排除，沈知行被命中",
+      "saved_search_runs 中可回看到每轮实际使用的 criteria"
+    ]
+  }
+}
