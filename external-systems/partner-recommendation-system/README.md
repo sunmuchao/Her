@@ -142,6 +142,7 @@ if session["needs_opt_in_prompt"]:
 
 After that, the normal Phase 3 refresh and delivery jobs take over.
 At refresh time, the system re-resolves the latest persona profile and rebuilds the effective criteria, instead of replaying the old query literally.
+When `self_id` points at a profile row synced by `persona-memory-sync`, refresh rehydrates the latest `profile fields + matcher_preferences_json + matcher_risks_json` back into persona-style preference keys before compiling criteria.
 
 ## Quick Start
 
