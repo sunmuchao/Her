@@ -1,5 +1,20 @@
 """Shared domain vocabulary for relationship-ledger migration."""
 
+from .adapters import (
+    build_canonical_event,
+    canonical_pair_key_for_members,
+    canonical_pair_status,
+    matchmaking_case_status,
+    merge_payload_with_event,
+    pool_member_profile_ref,
+    profile_ref_to_dict,
+    proxy_intro_case_status,
+    recommendation_owner_ref,
+    recommendation_relation_key,
+    recommendation_relation_refs,
+    recommendation_relation_status,
+    recommendation_target_ref,
+)
 from .model import (
     CaseStatus,
     CaseType,
@@ -18,6 +33,19 @@ __all__ = [
     "PairStatus",
     "ProfileRef",
     "RelationStatus",
+    "build_canonical_event",
+    "canonical_pair_key_for_members",
+    "canonical_pair_status",
+    "matchmaking_case_status",
+    "merge_payload_with_event",
+    "pool_member_profile_ref",
+    "profile_ref_to_dict",
+    "proxy_intro_case_status",
+    "recommendation_owner_ref",
+    "recommendation_relation_key",
+    "recommendation_relation_refs",
+    "recommendation_relation_status",
+    "recommendation_target_ref",
     "pair_key",
     "relation_key",
 ]

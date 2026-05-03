@@ -196,6 +196,9 @@ class RecommendationSystemTests(unittest.TestCase):
         self.assertEqual(recommendations[1]["delivery_status"], "suppressed_low_score")
         self.assertEqual(recommendations[0]["final_review_status"], "direct_greet_ready")
         self.assertEqual(recommendations[0]["user_review_status"], "pending_review")
+        self.assertEqual(recommendations[0]["canonical_relation_status"], "recommended")
+        self.assertIn("->", recommendations[0]["relation_key"])
+        self.assertEqual(recommendations[0]["target_profile_ref"]["profile_id"], 101)
 
     def test_refresh_subscription_compiles_effective_criteria_from_persona_and_records_run_snapshot(self):
         subscription = self.create_active_subscription(

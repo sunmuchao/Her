@@ -3,9 +3,24 @@
 from __future__ import annotations
 
 import hashlib
+import sys
 import uuid
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any, Callable, Iterable, Optional
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from match_domain import (  # noqa: E402
+    build_canonical_event,
+    merge_payload_with_event,
+    profile_ref_to_dict,
+    recommendation_relation_key,
+    recommendation_relation_refs,
+    recommendation_relation_status,
+)
 
 from .direct_greet_gate import (
     DEFAULT_MAX_REVIEW_CANDIDATES_PER_REFRESH,
@@ -408,6 +423,73 @@ def candidate_snapshot_hash(result: dict[str, Any]) -> str:
     return hashlib.sha256(json_dumps(result).encode("utf-8")).hexdigest()
 
 
+def _hydrate_recommendation_relation_metadata(
+    recommendation: dict[str, Any],
+) -> dict[str, Any]:
+    relation_status = recommendation_relation_status(
+        delivery_status=recommendation.get("delivery_status"),
+        last_action_type=recommendation.get("last_action_type"),
+        active_match_case_id=recommendation.get("active_match_case_id"),
+    )
+    recommendation["canonical_relation_status"] = relation_status.value
+    return recommendation
+
+
+def _recommendation_action_insert(
+    conn,
+    *,
+    subscription: dict[str, Any],
+    recommendation: dict[str, Any],
+    action_type: str,
+    actor_type: str,
+    actor_id: str | None = None,
+    now: datetime,
+    action_payload: dict[str, Any] | None = None,
+) -> None:
+    relation_key = recommendation.get("relation_key")
+    if not relation_key:
+        relation_key = recommendation_relation_key(subscription, int(recommendation["candidate_id"]))
+    event = build_canonical_event(
+        event_type=action_type,
+        aggregate_type="relation",
+        aggregate_id=relation_key,
+        actor_type=actor_type,
+        actor_id=str(actor_id or subscription["requester_id"]),
+        source_service="recommendation-system",
+        correlation_id=f"rec-{recommendation['recommendation_id']}-{action_type}",
+        idempotency_key=f"rec-action-{recommendation['recommendation_id']}-{action_type}-{format_dt(now)}",
+        occurred_at=now,
+        payload={
+            "subscription_id": subscription["subscription_id"],
+            "recommendation_id": recommendation["recommendation_id"],
+            "candidate_id": recommendation["candidate_id"],
+            **dict(action_payload or {}),
+        },
+    )
+    conn.execute(
+        """
+        INSERT INTO recommendation_actions (
+          subscription_id,
+          recommendation_id,
+          requester_id,
+          candidate_id,
+          action_type,
+          action_payload_json,
+          occurred_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            subscription["subscription_id"],
+            recommendation["recommendation_id"],
+            recommendation["requester_id"],
+            recommendation["candidate_id"],
+            action_type,
+            json_dumps(merge_payload_with_event(action_payload, event)),
+            format_dt(now),
+        ),
+    )
+
+
 def normalize_delivery_status(
     existing: dict[str, Any] | None,
     result: dict[str, Any],
@@ -479,7 +561,9 @@ def inflate_recommendation(recommendation: dict[str, Any]) -> dict[str, Any]:
     inflated["latest_payload"] = json_loads(inflated.pop("latest_payload_json"), {})
     inflated["final_review_payload"] = json_loads(inflated.pop("final_review_payload_json"), {})
     inflated["user_review_payload"] = json_loads(inflated.pop("user_review_payload_json"), {})
-    return inflated
+    inflated["owner_profile_ref"] = json_loads(inflated.pop("owner_profile_ref_json", None), {})
+    inflated["target_profile_ref"] = json_loads(inflated.pop("target_profile_ref_json", None), {})
+    return _hydrate_recommendation_relation_metadata(inflated)
 
 
 def get_recommendation(conn, subscription_id: str, candidate_id: int) -> dict[str, Any] | None:
@@ -525,6 +609,10 @@ def upsert_recommendation(
     user_review_payload = (existing or {}).get("user_review_payload") or {}
     user_reviewed_at = (existing or {}).get("user_reviewed_at")
     recommendation_mode = normalize_recommendation_mode(subscription.get("recommendation_mode"))
+    owner_profile_ref, target_profile_ref = recommendation_relation_refs(subscription, int(candidate_id))
+    relation_key = recommendation_relation_key(subscription, int(candidate_id))
+    owner_profile_ref_json = json_dumps(profile_ref_to_dict(owner_profile_ref))
+    target_profile_ref_json = json_dumps(profile_ref_to_dict(target_profile_ref))
 
     if recommendation_mode == "direct_greet_only" and final_review["status"] == "direct_greet_ready":
         if snapshot_changed or user_review_status in {"not_requested", "pending_review"}:
@@ -563,7 +651,10 @@ def upsert_recommendation(
                 user_review_status = ?,
                 user_review_reason = ?,
                 user_review_payload_json = ?,
-                user_reviewed_at = ?
+                user_reviewed_at = ?,
+                relation_key = ?,
+                owner_profile_ref_json = ?,
+                target_profile_ref_json = ?
             WHERE recommendation_id = ?
             """,
             (
@@ -588,6 +679,9 @@ def upsert_recommendation(
                 user_review_reason,
                 user_review_payload_json,
                 user_reviewed_at,
+                relation_key,
+                owner_profile_ref_json,
+                target_profile_ref_json,
                 existing["recommendation_id"],
             ),
         )
@@ -619,8 +713,11 @@ def upsert_recommendation(
               user_review_status,
               user_review_reason,
               user_review_payload_json,
-              user_reviewed_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              user_reviewed_at,
+              relation_key,
+              owner_profile_ref_json,
+              target_profile_ref_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 subscription["subscription_id"],
@@ -648,6 +745,9 @@ def upsert_recommendation(
                 user_review_reason,
                 user_review_payload_json,
                 user_reviewed_at,
+                relation_key,
+                owner_profile_ref_json,
+                target_profile_ref_json,
             ),
         )
     conn.commit()
@@ -942,27 +1042,14 @@ def record_recommendation_action(
         cooling_until = None
         new_status = "direct_greeted"
 
-    conn.execute(
-        """
-        INSERT INTO recommendation_actions (
-          subscription_id,
-          recommendation_id,
-          requester_id,
-          candidate_id,
-          action_type,
-          action_payload_json,
-          occurred_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            subscription_id,
-            recommendation["recommendation_id"],
-            recommendation["requester_id"],
-            recommendation["candidate_id"],
-            action_type,
-            json_dumps(action_payload or {}),
-            format_dt(now),
-        ),
+    _recommendation_action_insert(
+        conn,
+        subscription=subscription,
+        recommendation=recommendation,
+        action_type=action_type,
+        actor_type="user",
+        now=now,
+        action_payload=action_payload,
     )
     conn.execute(
         """
@@ -995,6 +1082,7 @@ def record_user_review(
     review_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     now = current_time(now)
+    subscription = get_subscription(conn, subscription_id)
     recommendation = get_recommendation(conn, subscription_id, int(candidate_id))
     if not recommendation:
         raise ValueError(f"Unknown recommendation for subscription={subscription_id} candidate_id={candidate_id}")
@@ -1021,27 +1109,14 @@ def record_user_review(
         delivery_status = "review_skipped"
         delivery_reason = "user_review_skip"
 
-    conn.execute(
-        """
-        INSERT INTO recommendation_actions (
-          subscription_id,
-          recommendation_id,
-          requester_id,
-          candidate_id,
-          action_type,
-          action_payload_json,
-          occurred_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            subscription_id,
-            recommendation["recommendation_id"],
-            recommendation["requester_id"],
-            recommendation["candidate_id"],
-            f"review_{review_type}",
-            json_dumps(review_payload or {}),
-            format_dt(now),
-        ),
+    _recommendation_action_insert(
+        conn,
+        subscription=subscription,
+        recommendation=recommendation,
+        action_type=f"review_{review_type}",
+        actor_type="user",
+        now=now,
+        action_payload=review_payload,
     )
     conn.execute(
         """

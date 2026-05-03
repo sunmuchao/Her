@@ -75,6 +75,9 @@ SCHEMA_STATEMENTS = (
       user_review_reason TEXT,
       user_review_payload_json TEXT NOT NULL DEFAULT '{}',
       user_reviewed_at TEXT,
+      relation_key TEXT,
+      owner_profile_ref_json TEXT NOT NULL DEFAULT '{}',
+      target_profile_ref_json TEXT NOT NULL DEFAULT '{}',
       active_match_case_id TEXT,
       latest_card_id TEXT,
       UNIQUE(subscription_id, candidate_id),
@@ -140,6 +143,7 @@ SCHEMA_STATEMENTS = (
       candidate_id INTEGER NOT NULL,
       candidate_name TEXT NOT NULL,
       initiated_by TEXT NOT NULL DEFAULT 'requester',
+      case_type TEXT NOT NULL DEFAULT 'proxy_intro',
       case_status TEXT NOT NULL,
       close_reason TEXT,
       outreach_channel TEXT NOT NULL DEFAULT 'in_app_proxy_intro',
@@ -308,7 +312,26 @@ def initialize_database(conn: sqlite3.Connection) -> None:
         "TEXT NOT NULL DEFAULT '{}'",
     )
     ensure_column(conn, "profile_recommendations", "user_reviewed_at", "TEXT")
+    ensure_column(conn, "profile_recommendations", "relation_key", "TEXT")
+    ensure_column(
+        conn,
+        "profile_recommendations",
+        "owner_profile_ref_json",
+        "TEXT NOT NULL DEFAULT '{}'",
+    )
+    ensure_column(
+        conn,
+        "profile_recommendations",
+        "target_profile_ref_json",
+        "TEXT NOT NULL DEFAULT '{}'",
+    )
     ensure_column(conn, "profile_recommendations", "active_match_case_id", "TEXT")
+    ensure_column(
+        conn,
+        "match_cases",
+        "case_type",
+        "TEXT NOT NULL DEFAULT 'proxy_intro'",
+    )
     ensure_column(conn, "saved_search_runs", "persona_profile_json", "TEXT NOT NULL DEFAULT '{}'")
     ensure_column(conn, "saved_search_runs", "effective_criteria_json", "TEXT NOT NULL DEFAULT '{}'")  # noqa: B950
     ensure_column(conn, "saved_search_runs", "search_request_json", "TEXT NOT NULL DEFAULT '{}'")

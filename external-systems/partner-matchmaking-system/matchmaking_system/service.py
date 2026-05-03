@@ -3,9 +3,26 @@
 from __future__ import annotations
 
 import hashlib
+import sys
 import uuid
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from match_domain import (  # noqa: E402
+    CaseType,
+    build_canonical_event,
+    canonical_pair_key_for_members,
+    canonical_pair_status,
+    matchmaking_case_status,
+    merge_payload_with_event,
+    pool_member_profile_ref,
+    profile_ref_to_dict,
+)
 
 from .partner_search_client import run_partner_search
 from .persona_memory_client import sync_persona_memory
@@ -77,6 +94,7 @@ def inflate_pool_member(member: dict[str, Any] | None) -> dict[str, Any] | None:
     inflated["self_profile"] = json_loads(inflated.pop("self_profile_json"), {})
     inflated["search_criteria"] = json_loads(inflated.pop("search_criteria_json"), {})
     inflated["allowed_channels"] = json_loads(inflated.pop("allowed_channels_json"), [])
+    inflated["profile_ref"] = profile_ref_to_dict(pool_member_profile_ref(inflated))
     return inflated
 
 
@@ -93,13 +111,17 @@ def inflate_pair(pair: dict[str, Any] | None) -> dict[str, Any] | None:
         return pair
     inflated = dict(pair)
     inflated["latest_payload"] = json_loads(inflated.pop("latest_payload_json"), {})
+    inflated["canonical_pair_status"] = canonical_pair_status(inflated.get("pair_status")).value
     return inflated
 
 
 def inflate_case(case: dict[str, Any] | None) -> dict[str, Any] | None:
     if not case:
         return case
-    return dict(case)
+    inflated = dict(case)
+    inflated["case_type"] = inflated.get("case_type") or CaseType.MATCHMAKING.value
+    inflated["canonical_case_status"] = matchmaking_case_status(inflated.get("status")).value
+    return inflated
 
 
 def inflate_feedback(feedback: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -110,6 +132,17 @@ def inflate_feedback(feedback: dict[str, Any] | None) -> dict[str, Any] | None:
     inflated["raw_payload"] = json_loads(inflated.pop("raw_payload_json"), {})
     inflated["persona_sync_result"] = json_loads(inflated.pop("persona_sync_result_json"), {})
     return inflated
+
+
+def _attach_pair_profile_refs(conn, pair: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not pair:
+        return pair
+    member_low = get_pool_member(conn, pair["member_low_id"])
+    member_high = get_pool_member(conn, pair["member_high_id"])
+    pair["member_low_profile_ref"] = member_low["profile_ref"]
+    pair["member_high_profile_ref"] = member_high["profile_ref"]
+    pair["canonical_pair_key"] = canonical_pair_key_for_members(member_low, member_high)
+    return pair
 
 
 def get_pool_member(conn, member_id: str) -> dict[str, Any]:
@@ -435,7 +468,7 @@ def list_pairs(conn, *, statuses: Iterable[str] | None = None) -> list[dict[str,
         """,
         params,
     ).fetchall()
-    return [inflate_pair(row_to_dict(row)) for row in rows]
+    return [_attach_pair_profile_refs(conn, inflate_pair(row_to_dict(row))) for row in rows]
 
 
 def get_pair(conn, pair_key: str) -> dict[str, Any] | None:
@@ -447,7 +480,7 @@ def get_pair(conn, pair_key: str) -> dict[str, Any] | None:
         """,
         (pair_key,),
     ).fetchone()
-    return inflate_pair(row_to_dict(row))
+    return _attach_pair_profile_refs(conn, inflate_pair(row_to_dict(row)))
 
 
 def list_match_cases(conn, *, statuses: Iterable[str] | None = None) -> list[dict[str, Any]]:
@@ -522,6 +555,23 @@ def _record_case_event(
     payload: Mapping[str, Any] | None = None,
     now: datetime | None = None,
 ) -> None:
+    event_now = current_time(now)
+    event = build_canonical_event(
+        event_type=event_type,
+        aggregate_type="case",
+        aggregate_id=case_id,
+        actor_type="member" if actor_member_id else "system",
+        actor_id=str(actor_member_id or "system"),
+        source_service="matchmaking-system",
+        correlation_id=f"matchmaking-{case_id}-{event_type}",
+        idempotency_key=f"matchmaking-{case_id}-{event_type}-{format_dt(event_now)}",
+        occurred_at=event_now,
+        payload={
+            "pair_key": pair_key,
+            "case_type": CaseType.MATCHMAKING.value,
+            **dict(payload or {}),
+        },
+    )
     conn.execute(
         """
         INSERT INTO match_case_events (
@@ -538,8 +588,8 @@ def _record_case_event(
             pair_key,
             event_type,
             actor_member_id,
-            json_dumps(dict(payload or {})),
-            format_dt(current_time(now)),
+            json_dumps(merge_payload_with_event(payload, event)),
+            format_dt(event_now),
         ),
     )
 
@@ -1080,17 +1130,19 @@ def open_match_cases(
               case_id,
               pair_key,
               initiator_type,
+              case_type,
               status,
               first_contact_member_id,
               second_contact_member_id,
               expires_at,
               created_at,
               updated_at
-            ) VALUES (?, ?, 'system', 'pending_first_contact', ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, 'system', ?, 'pending_first_contact', ?, ?, ?, ?, ?)
             """,
             (
                 case_id,
                 pair_key,
+                CaseType.MATCHMAKING.value,
                 first_contact_member_id,
                 second_contact_member_id,
                 format_dt(now + timedelta(hours=case_expires_hours)),
@@ -1519,6 +1571,24 @@ def record_feedback(
     now = current_time(now)
     member = get_pool_member(conn, member_id)
     feedback_id = generate_feedback_id()
+    feedback_event = build_canonical_event(
+        event_type=f"feedback_{feedback_type or feedback_kind}",
+        aggregate_type="member_feedback",
+        aggregate_id=feedback_id,
+        actor_type="member",
+        actor_id=member_id,
+        source_service="matchmaking-system",
+        correlation_id=f"feedback-{feedback_id}",
+        idempotency_key=f"feedback-{feedback_id}",
+        occurred_at=now,
+        payload={
+            "member_id": member_id,
+            "feedback_kind": feedback_kind,
+            "feedback_type": feedback_type,
+            "feedback_text": feedback_text,
+            **dict(raw_payload or {}),
+        },
+    )
     conn.execute(
         """
         INSERT INTO matchmaking_feedback_events (
@@ -1542,7 +1612,7 @@ def record_feedback(
             feedback_type,
             feedback_text,
             json_dumps(dict(persona_patch or {})),
-            json_dumps(dict(raw_payload or {})),
+            json_dumps(merge_payload_with_event(raw_payload, feedback_event)),
             format_dt(now),
             format_dt(now),
         ),
