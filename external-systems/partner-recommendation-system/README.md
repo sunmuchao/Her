@@ -61,6 +61,7 @@ It is intentionally separate from the skill itself.
 - `saved_search_subscriptions` is the recurring task shell: still searching or not, cadence, caps, quiet hours, and optional subscription overrides.
 - the original `criteria` is kept as the bootstrap request and fallback for fields the persona sync does not currently project into searchable filters.
 - each refresh rebuilds `effective criteria` from `current persona + subscription overrides + bootstrap fallback`, then records a `saved_search_runs` snapshot for audit.
+- when a subscription has `self_id`, refresh resolves the latest synced profile row live; when it has only `self_profile`, refresh falls back to that stored snapshot.
 
 ## End-to-End Flow
 
