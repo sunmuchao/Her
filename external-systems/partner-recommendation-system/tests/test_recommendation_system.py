@@ -19,11 +19,13 @@ from recommendation_system import (  # noqa: E402
     initialize_database,
     list_in_app_cards,
     list_recommendations_for_subscription,
+    list_search_runs_for_subscription,
     record_recommendation_action,
     record_user_review,
     refresh_due_subscriptions,
     refresh_subscription,
     run_search_session,
+    update_subscription_overrides,
 )
 
 
@@ -71,6 +73,26 @@ def build_result(
         "photo_preview": [],
         "profile": profile,
     }
+
+
+def build_persona_profile(**overrides):
+    profile = {
+        "self_relationship_goal": "认真恋爱",
+        "target_gender": "女",
+        "target_age_min": 27,
+        "target_age_max": 32,
+        "target_cities": "苏州,无锡",
+        "target_marital_statuses": "未婚,离异无孩",
+        "target_accept_partner_children": "不接受",
+        "target_accept_partner_children_strength": "hard",
+        "target_accept_long_distance": "不接受",
+        "target_marriage_timeline": "一年内",
+        "must_have_tags": "情绪稳定,愿意沟通",
+        "must_not_have_tags": "抽烟",
+        "preferred_traits": "有生活感,沟通顺畅",
+    }
+    profile.update(overrides)
+    return profile
 
 
 class RecommendationSystemTests(unittest.TestCase):
@@ -139,6 +161,72 @@ class RecommendationSystemTests(unittest.TestCase):
         self.assertEqual(recommendations[1]["delivery_status"], "suppressed_low_score")
         self.assertEqual(recommendations[0]["final_review_status"], "direct_greet_ready")
         self.assertEqual(recommendations[0]["user_review_status"], "pending_review")
+
+    def test_refresh_subscription_compiles_effective_criteria_from_persona_and_records_run_snapshot(self):
+        subscription = self.create_active_subscription(
+            self_id=90001,
+            self_profile={"age": 28, "city": "无锡", "height": 178},
+            criteria={
+                "gender": "男",
+                "cities": ["无锡"],
+                "age_min": 24,
+                "age_max": 28,
+                "verified_level_min": "photo",
+                "photo_count_min": 3,
+            },
+        )
+        called = {}
+
+        refresh_subscription(
+            self.conn,
+            subscription["subscription_id"],
+            now=datetime(2026, 4, 30, 9, 0, 0),
+            persona_resolver=lambda _: build_persona_profile(),
+            search_runner=lambda **kwargs: called.update(kwargs) or {"results": [build_result(811, "画像候选", 66)]},
+        )
+
+        self.assertEqual(called["self_id"], 90001)
+        self.assertEqual(called["criteria"]["gender"], "女")
+        self.assertEqual(called["criteria"]["cities"], ["苏州", "无锡"])
+        self.assertEqual(called["criteria"]["age_min"], 27)
+        self.assertEqual(called["criteria"]["age_max"], 32)
+        self.assertEqual(called["criteria"]["relationship_goals"], ["认真恋爱", "结婚导向"])
+        self.assertEqual(called["criteria"]["must_have"], ["情绪稳定", "愿意沟通"])
+        self.assertEqual(called["criteria"]["must_not_have"], ["抽烟"])
+        self.assertEqual(called["criteria"]["prefer"], ["有生活感", "沟通顺畅"])
+        self.assertEqual(called["criteria"]["marital_statuses"], ["未婚", "离异无孩"])
+        self.assertEqual(called["criteria"]["accept_partner_children"], "不接受")
+        self.assertEqual(called["criteria"]["long_distance"], "不接受")
+        self.assertEqual(called["criteria"]["marriage_timelines"], ["一年内"])
+        self.assertEqual(called["criteria"]["verified_level_min"], "photo")
+        self.assertEqual(called["criteria"]["photo_count_min"], 3)
+
+        runs = list_search_runs_for_subscription(self.conn, subscription["subscription_id"])
+        self.assertEqual(len(runs), 1)
+        self.assertEqual(runs[0]["top_candidate_ids"], [811])
+        self.assertEqual(runs[0]["effective_criteria"]["cities"], ["苏州", "无锡"])
+        self.assertEqual(runs[0]["persona_profile"]["target_age_min"], 27)
+        self.assertEqual(runs[0]["search_request"]["self_id"], 90001)
+
+    def test_subscription_overrides_win_over_persona_compiled_criteria(self):
+        subscription = self.create_active_subscription(
+            self_id=90001,
+            criteria={"gender": "男", "cities": ["无锡"], "verified_level_min": "photo"},
+            subscription_overrides={"cities": ["上海"], "verified_level_min": "id"},
+        )
+        called = {}
+
+        refresh_subscription(
+            self.conn,
+            subscription["subscription_id"],
+            now=datetime(2026, 4, 30, 9, 0, 0),
+            persona_resolver=lambda _: build_persona_profile(target_cities="苏州", target_gender="女"),
+            search_runner=lambda **kwargs: called.update(kwargs) or {"results": []},
+        )
+
+        self.assertEqual(called["criteria"]["gender"], "女")
+        self.assertEqual(called["criteria"]["cities"], ["上海"])
+        self.assertEqual(called["criteria"]["verified_level_min"], "id")
 
     def test_deliver_pending_recommendations_creates_in_app_card(self):
         subscription = self.create_active_subscription()

@@ -17,11 +17,13 @@ from .service import (
     deliver_in_app_recommendations,
     get_subscription,
     list_in_app_cards,
+    list_search_runs_for_subscription,
     list_recommendations_for_subscription,
     record_recommendation_action,
     record_user_review,
     refresh_due_subscriptions,
     refresh_subscription,
+    update_subscription_overrides,
 )
 from .storage import connect_db, initialize_database
 
@@ -39,10 +41,12 @@ __all__ = [
     "initialize_database",
     "list_in_app_cards",
     "list_recommendations_for_subscription",
+    "list_search_runs_for_subscription",
     "record_recommendation_action",
     "record_user_review",
     "refresh_due_subscriptions",
     "refresh_subscription",
     "run_search_session",
     "subscribe_after_opt_in",
+    "update_subscription_overrides",
 ]

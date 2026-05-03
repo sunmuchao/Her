@@ -114,6 +114,7 @@ def subscribe_after_opt_in(
     *,
     requester_id: int,
     search_request: Mapping[str, Any],
+    subscription_overrides: Mapping[str, Any] | None = None,
     title: str | None = None,
     top_k: int = 5,
     min_notify_score: int = 40,
@@ -134,12 +135,14 @@ def subscribe_after_opt_in(
         requester_id=requester_id,
         source=normalize_subscription_source(search_request.get("source")),
         criteria=search_request.get("criteria") or {},
+        subscription_overrides=dict(subscription_overrides or {}),
         self_profile=search_request.get("self_profile"),
         self_id=search_request.get("self_id"),
         title=title,
         table_name=search_request.get("table_name"),
         photos_table_name=search_request.get("photos_table_name"),
         limit_count=int(search_request.get("limit") or 10),
+        initial_request=dict(search_request or {}),
         top_k=top_k,
         min_notify_score=min_notify_score,
         daily_notification_cap=daily_notification_cap,
@@ -176,6 +179,7 @@ def handle_opt_in_decision(
     min_direct_greet_score: int = DEFAULT_MIN_DIRECT_GREET_SCORE,
     auto_reject_on_follow_up_questions: bool = True,
     auto_reject_on_risk_flags: bool = True,
+    subscription_overrides: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     if not search_session.get("needs_opt_in_prompt"):
         raise ValueError("Opt-in decision is only valid for empty-result search sessions.")
@@ -204,6 +208,7 @@ def handle_opt_in_decision(
         min_direct_greet_score=min_direct_greet_score,
         auto_reject_on_follow_up_questions=auto_reject_on_follow_up_questions,
         auto_reject_on_risk_flags=auto_reject_on_risk_flags,
+        subscription_overrides=subscription_overrides,
     )
     return {
         "created_subscription": True,
