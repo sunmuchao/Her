@@ -45,6 +45,10 @@ def bool_to_int(value: bool) -> int:
     return 1 if value else 0
 
 
+def member_is_available(member: Mapping[str, Any]) -> bool:
+    return member.get("status") == ACTIVE_MEMBER_STATUS and bool(member.get("is_still_searching"))
+
+
 def generate_member_id() -> str:
     return f"pool-{uuid.uuid4().hex[:12]}"
 
@@ -321,7 +325,16 @@ def set_pool_member_status(
         ),
     )
     conn.commit()
-    return get_pool_member(conn, member_id)
+    updated_member = get_pool_member(conn, member_id)
+    if not member_is_available(updated_member):
+        revalidate_member_matches(
+            conn,
+            member_id,
+            reason=reason or "member_unavailable",
+            now=now,
+        )
+        updated_member = get_pool_member(conn, member_id)
+    return updated_member
 
 
 def is_pool_member_due(member: Mapping[str, Any], now: datetime) -> bool:
@@ -717,6 +730,77 @@ def _pair_block_reason(
     return None
 
 
+def _pair_has_open_case(conn, pair_key: str) -> bool:
+    placeholders = ", ".join(["?"] * len(OPEN_CASE_STATUSES))
+    row = conn.execute(
+        f"""
+        SELECT COUNT(*) AS open_count
+        FROM match_cases
+        WHERE pair_key = ?
+          AND status IN ({placeholders})
+        """,
+        [pair_key, *OPEN_CASE_STATUSES],
+    ).fetchone()
+    return bool(row and row["open_count"])
+
+
+def _daily_case_cap(member: Mapping[str, Any]) -> int:
+    raw_cap = member.get("daily_case_cap")
+    if raw_cap is None:
+        return 1
+    return max(int(raw_cap), 0)
+
+
+def _update_pair_status(
+    conn,
+    pair_key: str,
+    *,
+    pair_status: str,
+    block_reason: str | None,
+    now: datetime,
+) -> None:
+    conn.execute(
+        """
+        UPDATE matchmaking_pairs
+        SET pair_status = ?,
+            block_reason = ?,
+            updated_at = ?
+        WHERE pair_key = ?
+        """,
+        (pair_status, block_reason, format_dt(now), pair_key),
+    )
+
+
+def _evaluate_pair_state(
+    conn,
+    *,
+    pair: Mapping[str, Any] | None,
+    pair_score: int,
+    min_required_score: int,
+    member_low: Mapping[str, Any],
+    member_high: Mapping[str, Any],
+    low_to_high: Mapping[str, Any],
+    high_to_low: Mapping[str, Any],
+    now: datetime,
+) -> tuple[str, str | None]:
+    existing_status = pair.get("pair_status") if pair else None
+    if existing_status == "mutual_accept":
+        return "mutual_accept", None
+    if existing_status == "case_opened" and pair and _pair_has_open_case(conn, pair["pair_key"]):
+        return "case_opened", "open_case_exists"
+
+    cooling_until_dt = parse_dt(pair.get("cooling_until")) if pair else None
+    if cooling_until_dt and now < cooling_until_dt:
+        return "cooling", "pair_cooling_active"
+    if pair_score < min_required_score:
+        return "below_threshold", "pair_score_below_threshold"
+
+    block_reason = _pair_block_reason(member_low, member_high, low_to_high, high_to_low)
+    if block_reason:
+        return "blocked", block_reason
+    return "eligible", None
+
+
 def build_mutual_pairs(
     conn,
     *,
@@ -761,18 +845,18 @@ def build_mutual_pairs(
         pair_status = "eligible"
         block_reason = None
         existing = get_pair(conn, pair_key)
+        pair_status, block_reason = _evaluate_pair_state(
+            conn,
+            pair=existing,
+            pair_score=pair_score,
+            min_required_score=min_required_score,
+            member_low=member_low,
+            member_high=member_high,
+            low_to_high=low_to_high,
+            high_to_low=high_to_low,
+            now=now,
+        )
         cooling_until = existing.get("cooling_until") if existing else None
-        cooling_until_dt = parse_dt(cooling_until)
-        if cooling_until_dt and now < cooling_until_dt:
-            pair_status = "cooling"
-            block_reason = "pair_cooling_active"
-        elif pair_score < min_required_score:
-            pair_status = "below_threshold"
-            block_reason = "pair_score_below_threshold"
-        else:
-            block_reason = _pair_block_reason(member_low, member_high, low_to_high, high_to_low)
-            if block_reason:
-                pair_status = "blocked"
 
         latest_payload = {
             "member_low": {"member_id": member_low_id, "user_key": member_low["user_key"]},
@@ -840,6 +924,41 @@ def build_mutual_pairs(
             )
         updated_pair_keys.append(pair_key)
 
+    for pair in list_pairs(conn):
+        if pair["pair_key"] in processed:
+            continue
+        if pair["pair_status"] == "mutual_accept":
+            continue
+        if pair["pair_status"] == "case_opened" and _pair_has_open_case(conn, pair["pair_key"]):
+            continue
+
+        cooling_until_dt = parse_dt(pair.get("cooling_until"))
+        if pair["pair_status"] == "cooling" and cooling_until_dt and now < cooling_until_dt:
+            continue
+
+        member_low = get_pool_member(conn, pair["member_low_id"])
+        member_high = get_pool_member(conn, pair["member_high_id"])
+        if (
+            pair["pair_status"] == "needs_revalidation"
+            and (member_low.get("needs_refresh") or member_high.get("needs_refresh"))
+        ):
+            continue
+
+        block_reason = "reciprocal_edge_missing"
+        if member_low["status"] != ACTIVE_MEMBER_STATUS or member_high["status"] != ACTIVE_MEMBER_STATUS:
+            block_reason = "member_not_active"
+        elif not member_low["is_still_searching"] or not member_high["is_still_searching"]:
+            block_reason = "member_not_searching"
+
+        _update_pair_status(
+            conn,
+            pair["pair_key"],
+            pair_status="stale",
+            block_reason=block_reason,
+            now=now,
+        )
+        updated_pair_keys.append(pair["pair_key"])
+
     conn.commit()
     return [get_pair(conn, pair_key) for pair_key in updated_pair_keys]
 
@@ -890,11 +1009,66 @@ def open_match_cases(
         pair_key = pair["pair_key"]
         member_low = get_pool_member(conn, pair["member_low_id"])
         member_high = get_pool_member(conn, pair["member_high_id"])
+        if not member_is_available(member_low) or not member_is_available(member_high):
+            _update_pair_status(
+                conn,
+                pair_key,
+                pair_status="blocked",
+                block_reason="member_not_active"
+                if member_low["status"] != ACTIVE_MEMBER_STATUS or member_high["status"] != ACTIVE_MEMBER_STATUS
+                else "member_not_searching",
+                now=now,
+            )
+            continue
+
+        low_to_high = get_edge(conn, member_low["member_id"], member_high["member_id"])
+        high_to_low = get_edge(conn, member_high["member_id"], member_low["member_id"])
+        if (
+            not low_to_high
+            or not high_to_low
+            or low_to_high["edge_status"] != "active"
+            or high_to_low["edge_status"] != "active"
+        ):
+            _update_pair_status(
+                conn,
+                pair_key,
+                pair_status="stale",
+                block_reason="reciprocal_edge_missing",
+                now=now,
+            )
+            continue
+
+        pair_score = min(int(low_to_high.get("score") or 0), int(high_to_low.get("score") or 0))
+        min_required_score = max(
+            int(member_low.get("min_pair_score") or 0),
+            int(member_high.get("min_pair_score") or 0),
+        )
+        pair_status, block_reason = _evaluate_pair_state(
+            conn,
+            pair=pair,
+            pair_score=pair_score,
+            min_required_score=min_required_score,
+            member_low=member_low,
+            member_high=member_high,
+            low_to_high=low_to_high,
+            high_to_low=high_to_low,
+            now=now,
+        )
+        if pair_status != "eligible":
+            _update_pair_status(
+                conn,
+                pair_key,
+                pair_status=pair_status,
+                block_reason=block_reason,
+                now=now,
+            )
+            continue
+
         if _member_has_open_case(conn, member_low["member_id"]) or _member_has_open_case(conn, member_high["member_id"]):
             continue
-        if _count_member_cases_today(conn, member_low["member_id"], now) >= int(member_low["daily_case_cap"] or 1):
+        if _count_member_cases_today(conn, member_low["member_id"], now) >= _daily_case_cap(member_low):
             continue
-        if _count_member_cases_today(conn, member_high["member_id"], now) >= int(member_high["daily_case_cap"] or 1):
+        if _count_member_cases_today(conn, member_high["member_id"], now) >= _daily_case_cap(member_high):
             continue
 
         case_id = generate_case_id()
@@ -1226,14 +1400,33 @@ def revalidate_member_matches(
 ) -> dict[str, Any]:
     now = current_time(now)
     member = get_pool_member(conn, member_id)
-    conn.execute(
+    related_rows = conn.execute(
         """
+        SELECT DISTINCT
+          CASE
+            WHEN owner_member_id = ? THEN candidate_member_id
+            ELSE owner_member_id
+          END AS related_member_id
+        FROM matchmaking_edges
+        WHERE owner_member_id = ? OR candidate_member_id = ?
+        """,
+        (member_id, member_id, member_id),
+    ).fetchall()
+    refresh_member_ids = {member_id}
+    refresh_member_ids.update(
+        row["related_member_id"]
+        for row in related_rows
+        if row["related_member_id"] and row["related_member_id"] != member_id
+    )
+    placeholders = ", ".join(["?"] * len(refresh_member_ids))
+    conn.execute(
+        f"""
         UPDATE matchmaking_pool_members
         SET needs_refresh = 1,
             updated_at = ?
-        WHERE member_id = ?
+        WHERE member_id IN ({placeholders})
         """,
-        (format_dt(now), member_id),
+        [format_dt(now), *sorted(refresh_member_ids)],
     )
     conn.execute(
         """
@@ -1300,6 +1493,7 @@ def revalidate_member_matches(
     return {
         "member_id": member_id,
         "user_key": member["user_key"],
+        "refresh_member_ids": sorted(refresh_member_ids),
         "pair_keys": pair_keys,
         "reason": reason,
     }
