@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -36,6 +37,20 @@ def _as_mapping(value: Any) -> Mapping[str, Any]:
     if isinstance(value, Mapping):
         return value
     return {}
+
+
+def _json_safe_value(value: Any) -> Any:
+    if isinstance(value, datetime):
+        return value.isoformat(sep=" ")
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, Mapping):
+        return {key: _json_safe_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_json_safe_value(item) for item in value]
+    if isinstance(value, tuple):
+        return [_json_safe_value(item) for item in value]
+    return value
 
 
 def normalize_requester_profile_for_subscription(
@@ -179,7 +194,7 @@ def normalize_requester_profile_for_subscription(
         if _has_value(value):
             normalized[key] = value
 
-    return normalized
+    return _json_safe_value(normalized)
 
 
 def run_partner_search(**kwargs: Any) -> dict[str, Any]:
