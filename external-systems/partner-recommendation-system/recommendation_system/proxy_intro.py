@@ -106,8 +106,9 @@ def build_safe_summary(subscription: dict[str, Any], recommendation: dict[str, A
 
 def build_outreach_payload(
     subscription: dict[str, Any],
-    recommendation: dict[str, Any],
     safe_summary: dict[str, Any],
+    *,
+    outreach_channel: str = DEFAULT_OUTREACH_CHANNEL,
 ) -> dict[str, Any]:
     parts = [
         "有人想通过平台进一步认识你。",
@@ -119,8 +120,8 @@ def build_outreach_payload(
         parts.append("匹配点：" + "；".join(str(item) for item in safe_summary["matched_on"]))
     body = "\n".join(part for part in parts if part)
     return {
-        "channel": DEFAULT_OUTREACH_CHANNEL,
-        "title": f"有人想进一步了解你：{recommendation.get('candidate_name') or '匿名候选'}",
+        "channel": outreach_channel,
+        "title": "有人想通过平台进一步了解你",
         "body": body,
         "safe_summary": safe_summary,
         "subscription_title": subscription.get("title"),
@@ -294,7 +295,6 @@ def _sync_recommendation_for_case(
     case_id: str | None,
     delivery_status: str,
     delivery_reason: str,
-    now: datetime,
     cooling_until: datetime | None = None,
     active: bool = False,
 ) -> None:
@@ -352,7 +352,11 @@ def create_match_case(
 
     case_id = generate_case_id()
     safe_summary = build_safe_summary(subscription, recommendation)
-    outreach_payload = build_outreach_payload(subscription, recommendation, safe_summary)
+    outreach_payload = build_outreach_payload(
+        subscription,
+        safe_summary,
+        outreach_channel=outreach_channel,
+    )
     reply_deadline_at = now + timedelta(hours=int(reply_window_hours or DEFAULT_REPLY_WINDOW_HOURS))
     requester_profile_snapshot = {
         "self_id": subscription.get("self_id"),
@@ -435,7 +439,6 @@ def create_match_case(
         case_id=case_id,
         delivery_status="proxy_intro_in_progress",
         delivery_reason="proxy_intro_requested",
-        now=now,
         active=True,
     )
     conn.commit()
@@ -488,7 +491,6 @@ def _update_case_status(
                 case_id=active_match_case_id,
                 delivery_status=recommendation_delivery_status,
                 delivery_reason=recommendation_delivery_reason,
-                now=now,
                 cooling_until=cooling_until,
                 active=bool(active_match_case_id),
             )
@@ -502,7 +504,6 @@ def _update_case_status(
         now=now,
         payload={"close_reason": close_reason, "reply_payload": reply_payload or {}},
     )
-    conn.commit()
     return get_match_case(conn, case["case_id"])
 
 
@@ -741,7 +742,6 @@ def close_match_case(
             case_id=None,
             delivery_status=delivery_status,
             delivery_reason=delivery_reason,
-            now=now,
             cooling_until=cooling_until,
             active=False,
         )
@@ -829,7 +829,6 @@ def close_timed_out_match_cases(
                 case_id=None,
                 delivery_status="proxy_intro_timed_out",
                 delivery_reason="proxy_intro_timed_out",
-                now=now,
                 cooling_until=cooling_until,
                 active=False,
             )
