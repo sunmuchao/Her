@@ -324,6 +324,55 @@ class RecommendationSystemTests(unittest.TestCase):
         self.assertEqual(profile["must_not_have_tags"], ["抽烟"])
         self.assertEqual(profile["last_active_at"], "2026-04-30 08:00:00")
 
+    def test_refresh_subscription_prefers_latest_synced_profile_over_stale_stored_self_profile(self):
+        subscription = self.create_active_subscription(
+            self_id=90001,
+            self_profile={
+                "age": 28,
+                "city": "无锡",
+                "height": 178,
+                "target_marital_statuses": ["未婚", "离异无孩"],
+                "target_age_min": 24,
+                "target_age_max": 36,
+            },
+            criteria={
+                "gender": "男",
+                "cities": ["无锡"],
+                "age_min": 24,
+                "age_max": 28,
+            },
+        )
+        called = {}
+
+        with patch(
+            "recommendation_system.search_client.engine.collect_source_records_for_request",
+            return_value=[{"id": 90001}],
+        ), patch(
+            "recommendation_system.search_client.engine.build_self_profile",
+            return_value=build_synced_requester_profile(
+                preferred_age_min=31,
+                preferred_age_max=37,
+                accept_marital_status="未婚",
+                matcher_preferences={
+                    "target_gender": "女",
+                    "target_cities": ["苏州", "无锡"],
+                    "target_marital_statuses": ["未婚"],
+                    "must_have_tags": ["情绪稳定", "愿意沟通"],
+                    "preferred_traits": ["有生活感", "沟通顺畅"],
+                },
+            ),
+        ):
+            refresh_subscription(
+                self.conn,
+                subscription["subscription_id"],
+                now=datetime(2026, 4, 30, 9, 0, 0),
+                search_runner=lambda **kwargs: called.update(kwargs) or {"results": [build_result(813, "最新画像候选", 67)]},
+            )
+
+        self.assertEqual(called["criteria"]["age_min"], 31)
+        self.assertEqual(called["criteria"]["age_max"], 37)
+        self.assertEqual(called["criteria"]["marital_statuses"], ["未婚"])
+
     def test_subscription_overrides_win_over_persona_compiled_criteria(self):
         subscription = self.create_active_subscription(
             self_id=90001,
