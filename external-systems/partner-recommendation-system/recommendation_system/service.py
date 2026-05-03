@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import uuid
 from datetime import datetime, timedelta
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Iterable, Optional
 
 from .direct_greet_gate import (
     DEFAULT_MAX_REVIEW_CANDIDATES_PER_REFRESH,
@@ -21,7 +21,7 @@ from .search_client import load_requester_profile
 
 
 SearchRunner = Callable[..., dict[str, Any]]
-PersonaResolver = Callable[[dict[str, Any]], dict[str, Any] | None]
+PersonaResolver = Callable[[dict[str, Any]], Optional[dict[str, Any]]]
 
 
 def current_time(now: datetime | None = None) -> datetime:
