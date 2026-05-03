@@ -19,7 +19,12 @@ def ensure_package_root() -> Path:
 
 ensure_package_root()
 
-from recommendation_system import connect_db, dispatch_pending_match_cases, initialize_database  # noqa: E402
+from recommendation_system import (  # noqa: E402
+    connect_db,
+    dispatch_match_case_outreach,
+    dispatch_pending_match_cases,
+    initialize_database,
+)
 
 
 def load_json_arg(value: str | None) -> dict:
@@ -42,11 +47,20 @@ def main() -> int:
     args = parse_args()
     conn = connect_db(args.db)
     initialize_database(conn)
-    summary = dispatch_pending_match_cases(
-        conn,
-        case_ids=args.case_id,
-    )
-    summary["payload"] = load_json_arg(args.payload_json)
+    payload = load_json_arg(args.payload_json)
+    if payload and (not args.case_id or len(args.case_id) != 1):
+        raise SystemExit("--payload-json only supports dispatching a single --case-id.")
+    if args.case_id and len(args.case_id) == 1 and payload:
+        summary = dispatch_match_case_outreach(
+            conn,
+            case_id=args.case_id[0],
+            payload=payload,
+        )
+    else:
+        summary = dispatch_pending_match_cases(
+            conn,
+            case_ids=args.case_id,
+        )
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     return 0
 
