@@ -119,6 +119,8 @@ class MatchmakingSystemTests(unittest.TestCase):
         pair = pairs[0]
         self.assertEqual(pair["pair_status"], "eligible")
         self.assertEqual(pair["pair_score"], 88)
+        self.assertEqual(pair["canonical_pair_status"], "eligible")
+        self.assertIn("<->", pair["canonical_pair_key"])
 
         cases = open_match_cases(
             self.conn,
@@ -127,6 +129,8 @@ class MatchmakingSystemTests(unittest.TestCase):
         self.assertEqual(len(cases), 1)
         case = cases[0]
         self.assertEqual(case["status"], "pending_first_contact")
+        self.assertEqual(case["case_type"], "matchmaking")
+        self.assertEqual(case["canonical_case_status"], "pending_contact")
 
         case = dispatch_case_contact(
             self.conn,
@@ -173,6 +177,7 @@ class MatchmakingSystemTests(unittest.TestCase):
                 "second_reply_accepted",
             ],
         )
+        self.assertEqual(events[0]["payload"]["canonical_event"]["payload"]["case_type"], "matchmaking")
 
         all_cases = list_match_cases(self.conn)
         self.assertEqual(len(all_cases), 1)
@@ -256,6 +261,10 @@ class MatchmakingSystemTests(unittest.TestCase):
         feedback_events = list_feedback_events(self.conn, member_a["member_id"])
         self.assertEqual(len(feedback_events), 1)
         self.assertEqual(feedback_events[0]["feedback_type"], "reject_long_distance")
+        self.assertEqual(
+            feedback_events[0]["raw_payload"]["canonical_event"]["aggregate_type"],
+            "member_feedback",
+        )
 
     def test_paused_member_does_not_generate_eligible_pair(self):
         member_a = self.create_member("user-a", 1001)

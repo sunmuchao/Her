@@ -2,11 +2,31 @@
 
 from __future__ import annotations
 
+import sys
 import uuid
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any, Iterable
 
-from .service import current_time, format_dt, get_recommendation, get_subscription, parse_dt
+REPO_ROOT = Path(__file__).resolve().parents[3]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from match_domain import (  # noqa: E402
+    CaseType,
+    build_canonical_event,
+    merge_payload_with_event,
+    proxy_intro_case_status,
+)
+
+from .service import (  # noqa: E402
+    _recommendation_action_insert,
+    current_time,
+    format_dt,
+    get_recommendation,
+    get_subscription,
+    parse_dt,
+)
 from .storage import json_dumps, json_loads, row_to_dict
 
 
@@ -19,41 +39,6 @@ OPEN_CASE_STATUSES = {"pending_outreach", "awaiting_reply", "accepted"}
 CLOSED_CASE_STATUSES = {"declined", "timed_out", "closed"}
 def generate_case_id() -> str:
     return f"match-case-{uuid.uuid4().hex[:12]}"
-
-
-def _recommendation_action_insert(
-    conn,
-    *,
-    subscription_id: str,
-    recommendation_id: int,
-    requester_id: int,
-    candidate_id: int,
-    action_type: str,
-    now: datetime,
-    action_payload: dict[str, Any] | None = None,
-) -> None:
-    conn.execute(
-        """
-        INSERT INTO recommendation_actions (
-          subscription_id,
-          recommendation_id,
-          requester_id,
-          candidate_id,
-          action_type,
-          action_payload_json,
-          occurred_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            subscription_id,
-            recommendation_id,
-            requester_id,
-            candidate_id,
-            action_type,
-            json_dumps(action_payload or {}),
-            format_dt(now),
-        ),
-    )
 
 
 def _age_bracket(age: Any) -> str | None:
@@ -140,6 +125,8 @@ def inflate_match_case(case: dict[str, Any] | None) -> dict[str, Any] | None:
     inflated["candidate_snapshot"] = json_loads(inflated.pop("candidate_snapshot_json"), {})
     inflated["outreach_payload"] = json_loads(inflated.pop("outreach_payload_json"), {})
     inflated["reply_payload"] = json_loads(inflated.pop("reply_payload_json"), {})
+    inflated["case_type"] = inflated.get("case_type") or CaseType.PROXY_INTRO.value
+    inflated["canonical_case_status"] = proxy_intro_case_status(inflated.get("case_status")).value
     return inflated
 
 
@@ -256,6 +243,28 @@ def _record_case_event(
     now: datetime,
     payload: dict[str, Any] | None = None,
 ) -> None:
+    event = build_canonical_event(
+        event_type=event_type,
+        aggregate_type="case",
+        aggregate_id=case["case_id"],
+        actor_type=actor_type,
+        actor_id=(
+            str(case["candidate_id"])
+            if actor_type == "candidate"
+            else ("system" if actor_type == "system" else str(case["requester_id"]))
+        ),
+        source_service="recommendation-system",
+        correlation_id=f"proxy-intro-{case['case_id']}-{event_type}",
+        idempotency_key=f"proxy-intro-{case['case_id']}-{event_type}-{format_dt(now)}",
+        occurred_at=now,
+        payload={
+            "subscription_id": case["subscription_id"],
+            "recommendation_id": case["recommendation_id"],
+            "candidate_id": case["candidate_id"],
+            "case_type": CaseType.PROXY_INTRO.value,
+            **dict(payload or {}),
+        },
+    )
     conn.execute(
         """
         INSERT INTO match_case_events (
@@ -282,7 +291,7 @@ def _record_case_event(
             from_status,
             to_status,
             actor_type,
-            json_dumps(payload or {}),
+            json_dumps(merge_payload_with_event(payload, event)),
             format_dt(now),
         ),
     )
@@ -374,6 +383,7 @@ def create_match_case(
           candidate_id,
           candidate_name,
           initiated_by,
+          case_type,
           case_status,
           outreach_channel,
           safe_summary_json,
@@ -383,7 +393,7 @@ def create_match_case(
           reply_deadline_at,
           created_at,
           updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             case_id,
@@ -393,6 +403,7 @@ def create_match_case(
             recommendation["candidate_id"],
             recommendation.get("candidate_name") or "未命名",
             initiated_by,
+            CaseType.PROXY_INTRO.value,
             "pending_outreach",
             outreach_channel,
             json_dumps(safe_summary),
@@ -422,15 +433,15 @@ def create_match_case(
     )
     _recommendation_action_insert(
         conn,
-        subscription_id=subscription_id,
-        recommendation_id=recommendation["recommendation_id"],
-        requester_id=recommendation["requester_id"],
-        candidate_id=recommendation["candidate_id"],
+        subscription=subscription,
+        recommendation=recommendation,
         action_type="request_proxy_intro",
+        actor_type=initiated_by,
         now=now,
         action_payload={
             "case_id": case_id,
             "outreach_channel": outreach_channel,
+            "case_type": CaseType.PROXY_INTRO.value,
         },
     )
     _sync_recommendation_for_case(
@@ -629,6 +640,8 @@ def record_match_case_reply(
     reply_type = str(reply_type).strip().lower()
     if reply_type not in {"accepted", "declined"}:
         raise ValueError(f"Unsupported reply_type: {reply_type}")
+    subscription = get_subscription(conn, case["subscription_id"])
+    recommendation = get_recommendation(conn, case["subscription_id"], int(case["candidate_id"]))
 
     if reply_type == "accepted":
         updated_case = _update_case_status(
@@ -645,11 +658,11 @@ def record_match_case_reply(
         )
         _recommendation_action_insert(
             conn,
-            subscription_id=case["subscription_id"],
-            recommendation_id=case["recommendation_id"],
-            requester_id=case["requester_id"],
-            candidate_id=case["candidate_id"],
+            subscription=subscription,
+            recommendation=recommendation,
             action_type="proxy_intro_reply_accepted",
+            actor_type="candidate",
+            actor_id=str(case["candidate_id"]),
             now=now,
             action_payload=reply_payload or {},
         )
@@ -669,11 +682,11 @@ def record_match_case_reply(
         )
         _recommendation_action_insert(
             conn,
-            subscription_id=case["subscription_id"],
-            recommendation_id=case["recommendation_id"],
-            requester_id=case["requester_id"],
-            candidate_id=case["candidate_id"],
+            subscription=subscription,
+            recommendation=recommendation,
             action_type="proxy_intro_reply_declined",
+            actor_type="candidate",
+            actor_id=str(case["candidate_id"]),
             now=now,
             action_payload=reply_payload or {},
         )
@@ -697,6 +710,7 @@ def close_match_case(
     if case["case_status"] not in {"accepted", "awaiting_reply", "pending_outreach"}:
         raise ValueError("Only open match cases can be closed.")
 
+    subscription = get_subscription(conn, case["subscription_id"])
     recommendation = get_recommendation(conn, case["subscription_id"], int(case["candidate_id"]))
     if close_reason == "handoff_completed":
         delivery_status = "proxy_intro_handed_off"
@@ -747,11 +761,11 @@ def close_match_case(
         )
         _recommendation_action_insert(
             conn,
-            subscription_id=case["subscription_id"],
-            recommendation_id=case["recommendation_id"],
-            requester_id=case["requester_id"],
-            candidate_id=case["candidate_id"],
+            subscription=subscription,
+            recommendation=recommendation,
             action_type=f"proxy_intro_closed_{close_reason}",
+            actor_type=actor_type,
+            actor_id="system" if actor_type == "system" else str(case["requester_id"]),
             now=now,
             action_payload=close_payload or {},
         )
@@ -823,6 +837,7 @@ def close_timed_out_match_cases(
         )
         recommendation = get_recommendation(conn, case["subscription_id"], int(case["candidate_id"]))
         if recommendation:
+            subscription = get_subscription(conn, case["subscription_id"])
             _sync_recommendation_for_case(
                 conn,
                 recommendation=recommendation,
@@ -834,11 +849,11 @@ def close_timed_out_match_cases(
             )
             _recommendation_action_insert(
                 conn,
-                subscription_id=case["subscription_id"],
-                recommendation_id=case["recommendation_id"],
-                requester_id=case["requester_id"],
-                candidate_id=case["candidate_id"],
+                subscription=subscription,
+                recommendation=recommendation,
                 action_type="proxy_intro_timed_out",
+                actor_type="system",
+                actor_id="system",
                 now=now,
                 action_payload={"reason": "reply_deadline_elapsed"},
             )

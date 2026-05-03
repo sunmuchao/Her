@@ -77,6 +77,7 @@ SCHEMA_STATEMENTS = (
       case_id TEXT PRIMARY KEY,
       pair_key TEXT NOT NULL,
       initiator_type TEXT NOT NULL DEFAULT 'system',
+      case_type TEXT NOT NULL DEFAULT 'matchmaking',
       status TEXT NOT NULL,
       first_contact_member_id TEXT NOT NULL,
       second_contact_member_id TEXT NOT NULL,
@@ -138,9 +139,24 @@ def connect_db(db_path: str | Path) -> sqlite3.Connection:
     return conn
 
 
+def ensure_column(conn: sqlite3.Connection, table_name: str, column_name: str, definition: str) -> None:
+    columns = {
+        row["name"]
+        for row in conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+    }
+    if column_name not in columns:
+        conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}")
+
+
 def initialize_database(conn: sqlite3.Connection) -> None:
     for statement in SCHEMA_STATEMENTS:
         conn.execute(statement)
+    ensure_column(
+        conn,
+        "match_cases",
+        "case_type",
+        "TEXT NOT NULL DEFAULT 'matchmaking'",
+    )
     conn.commit()
 
 

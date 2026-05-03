@@ -21,6 +21,7 @@ from recommendation_system import (  # noqa: E402
     dispatch_match_case_outreach,
     get_match_case,
     initialize_database,
+    list_match_case_events,
     list_match_case_outreach_attempts,
     list_recommendations_for_subscription,
     record_match_case_reply,
@@ -114,6 +115,8 @@ class ProxyIntroSystemTests(unittest.TestCase):
         )
 
         self.assertEqual(case["case_status"], "pending_outreach")
+        self.assertEqual(case["case_type"], "proxy_intro")
+        self.assertEqual(case["canonical_case_status"], "pending_contact")
         self.assertEqual(case["safe_summary"]["age_bracket"], "25-29岁")
         self.assertEqual(case["safe_summary"]["height_bracket"], "175-179cm")
         self.assertEqual(case["outreach_payload"]["safe_summary"]["city"], "无锡")
@@ -162,6 +165,13 @@ class ProxyIntroSystemTests(unittest.TestCase):
         recommendation = list_recommendations_for_subscription(self.conn, subscription["subscription_id"])[0]
         self.assertEqual(recommendation["delivery_status"], "proxy_intro_handed_off")
         self.assertIsNone(recommendation["active_match_case_id"])
+        self.assertEqual(recommendation["canonical_relation_status"], "closed")
+
+        events = list_match_case_outreach_attempts(self.conn, case["case_id"])
+        self.assertEqual(len(events), 1)
+        case_events = list_match_case_events(self.conn, case["case_id"])
+        self.assertEqual(case_events[-1]["payload"]["canonical_event"]["aggregate_type"], "case")
+        self.assertEqual(case_events[-1]["payload"]["canonical_event"]["payload"]["case_type"], "proxy_intro")
 
     def test_accepted_case_blocks_duplicate_creation_until_closed_then_can_reopen(self):
         subscription = self.seed_delivered_recommendation(candidate_id=90006)
