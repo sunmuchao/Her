@@ -15,9 +15,8 @@ from .direct_greet_gate import (
     review_candidate_for_proactive_delivery,
 )
 from .criteria_compiler import build_effective_search_request
-from .search_client import run_partner_search
+from .search_client import load_requester_profile, run_partner_search
 from .storage import json_dumps, json_loads, row_to_dict
-from .search_client import load_requester_profile
 
 
 SearchRunner = Callable[..., dict[str, Any]]
