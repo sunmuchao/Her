@@ -3,15 +3,14 @@
 from __future__ import annotations
 
 import hashlib
-import sys
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable, Iterable, Optional
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+from ._path_bootstrap import ensure_her_repo_on_sys_path  # noqa: E402
+
+ensure_her_repo_on_sys_path(Path(__file__))
 
 from skill_runtime import ensure_partner_search_skill_on_path  # noqa: E402
 
@@ -19,11 +18,18 @@ ensure_partner_search_skill_on_path()
 
 from match_domain import (  # noqa: E402
     build_canonical_event,
+    build_subscription_refresh_provenance,
+    bundle_recommendation_action_entities,
+    correlation_relation_action,
+    get_trace_id,
+    idempotency_client_relation_action,
+    idempotency_relation_action,
+    match_events_from_action_rows,
     merge_payload_with_event,
     profile_ref_to_dict,
     recommendation_relation_key,
     recommendation_relation_refs,
-    recommendation_relation_status,
+    reduce_relation_ledger,
 )
 from partner_search import load_self_profile, normalize_persona_profile, search_profiles  # noqa: E402
 
@@ -36,6 +42,17 @@ from .direct_greet_gate import (
 )
 from .criteria_compiler import build_effective_search_request
 from .storage import json_dumps, json_loads, row_to_dict
+
+from observability import (  # noqa: E402
+    RECOMMENDATION_FUNNEL_ACTION,
+    RECOMMENDATION_FUNNEL_DELIVERED,
+    RECOMMENDATION_FUNNEL_PENDING_DELIVERY,
+    RECOMMENDATION_FUNNEL_REFRESH,
+    RECOMMENDATION_FUNNEL_REVIEW_PENDING,
+    alert_signal,
+    funnel_stage,
+    metric_gauge,
+)
 
 
 SearchRunner = Callable[..., dict[str, Any]]
@@ -53,7 +70,11 @@ def format_dt(value: datetime | None) -> str | None:
     return current_time(value).isoformat(sep=" ")
 
 
-def parse_dt(value: str | None) -> datetime | None:
+def parse_dt(value: str | datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return current_time(value)
     if not value:
         return None
     return datetime.fromisoformat(value)
@@ -160,6 +181,7 @@ def list_search_runs_for_subscription(conn, subscription_id: str) -> list[dict[s
         run["top_candidate_ids"] = json_loads(run.pop("top_candidate_ids_json"), [])
         run["status_counts"] = json_loads(run.pop("status_counts_json"), {})
         run["review_counts"] = json_loads(run.pop("review_counts_json"), {})
+        run["rule_provenance"] = json_loads(run.pop("rule_provenance_json", None), {})
         runs.append(run)
     return runs
 
@@ -175,6 +197,7 @@ def record_search_run(
     status_counts: dict[str, int],
     review_counts: dict[str, int],
     now: datetime,
+    rule_provenance: dict[str, Any],
 ) -> None:
     conn.execute(
         """
@@ -192,8 +215,9 @@ def record_search_run(
           top_candidate_ids_json,
           status_counts_json,
           review_counts_json,
+          rule_provenance_json,
           created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             subscription["subscription_id"],
@@ -209,6 +233,7 @@ def record_search_run(
             json_dumps([result.get("id") for result in results if result.get("id") is not None]),
             json_dumps(status_counts),
             json_dumps(review_counts),
+            json_dumps(rule_provenance),
             format_dt(now),
         ),
     )
@@ -260,7 +285,7 @@ def list_recommendations_for_subscription(conn, subscription_id: str) -> list[di
         """,
         (subscription_id,),
     ).fetchall()
-    return [inflate_recommendation(row_to_dict(row)) for row in rows]
+    return [inflate_recommendation(row_to_dict(row), conn=conn) for row in rows]
 
 
 def list_in_app_cards(conn, requester_id: int | None = None, unread_only: bool = False) -> list[dict[str, Any]]:
@@ -289,6 +314,35 @@ def list_in_app_cards(conn, requester_id: int | None = None, unread_only: bool =
         card["payload"] = json_loads(card.pop("payload_json"), {})
         cards.append(card)
     return cards
+
+
+def mark_in_app_cards_read(
+    conn,
+    *,
+    requester_id: int,
+    card_ids: list[str],
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Set ``card_status`` to ``read`` and ``read_at`` for the given cards owned by ``requester_id``."""
+
+    now = current_time(now)
+    ts = format_dt(now)
+    updated = 0
+    for raw in card_ids:
+        cid = str(raw).strip()
+        if not cid:
+            continue
+        res = conn.execute(
+            """
+            UPDATE in_app_recommendation_cards
+            SET card_status = 'read', read_at = ?
+            WHERE card_id = ? AND requester_id = ?
+            """,
+            (ts, cid, int(requester_id)),
+        )
+        updated += res.rowcount
+    conn.commit()
+    return {"updated_count": updated, "requester_id": int(requester_id)}
 
 
 def create_subscription(
@@ -457,15 +511,43 @@ def candidate_snapshot_hash(result: dict[str, Any]) -> str:
     return hashlib.sha256(json_dumps(result).encode("utf-8")).hexdigest()
 
 
+def list_recommendation_actions_for_recommendation(
+    conn,
+    recommendation_id: int,
+) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT action_id, subscription_id, recommendation_id, requester_id, candidate_id,
+               action_type, action_payload_json, occurred_at
+        FROM recommendation_actions
+        WHERE recommendation_id = ?
+        ORDER BY occurred_at ASC, action_id ASC
+        """,
+        (int(recommendation_id),),
+    ).fetchall()
+    return [row_to_dict(row) for row in rows]
+
+
 def _hydrate_recommendation_relation_metadata(
     recommendation: dict[str, Any],
+    *,
+    conn=None,
 ) -> dict[str, Any]:
-    relation_status = recommendation_relation_status(
-        delivery_status=recommendation.get("delivery_status"),
-        last_action_type=recommendation.get("last_action_type"),
-        active_match_case_id=recommendation.get("active_match_case_id"),
-    )
-    recommendation["canonical_relation_status"] = relation_status.value
+    ledger_events = []
+    rid = recommendation.get("recommendation_id")
+    if conn is not None and rid is not None:
+        rows = list_recommendation_actions_for_recommendation(conn, int(rid))
+        ledger_events = match_events_from_action_rows(
+            rows,
+            payload_loader=lambda raw: json_loads(raw, {}),
+        )
+    recommendation["relation_ledger_event_count"] = len(ledger_events)
+    reduced = reduce_relation_ledger(ledger_events)
+    recommendation["canonical_relation_status"] = reduced.status.value
+    if reduced.active_match_case_id:
+        recommendation["relation_ledger_active_match_case_id"] = reduced.active_match_case_id
+    else:
+        recommendation.pop("relation_ledger_active_match_case_id", None)
     return recommendation
 
 
@@ -479,10 +561,17 @@ def _recommendation_action_insert(
     actor_id: str | None = None,
     now: datetime,
     action_payload: dict[str, Any] | None = None,
+    client_idempotency_key: str | None = None,
 ) -> None:
     relation_key = recommendation.get("relation_key")
     if not relation_key:
         relation_key = recommendation_relation_key(subscription, int(recommendation["candidate_id"]))
+    rid = int(recommendation["recommendation_id"])
+    idem_key = (
+        idempotency_client_relation_action(rid, client_idempotency_key)
+        if client_idempotency_key
+        else idempotency_relation_action(rid, action_type, format_dt(now))
+    )
     event = build_canonical_event(
         event_type=action_type,
         aggregate_type="relation",
@@ -490,8 +579,8 @@ def _recommendation_action_insert(
         actor_type=actor_type,
         actor_id=str(actor_id or subscription["requester_id"]),
         source_service="recommendation-system",
-        correlation_id=f"rec-{recommendation['recommendation_id']}-{action_type}",
-        idempotency_key=f"rec-action-{recommendation['recommendation_id']}-{action_type}-{format_dt(now)}",
+        correlation_id=correlation_relation_action(rid, action_type),
+        idempotency_key=idem_key,
         occurred_at=now,
         payload={
             "subscription_id": subscription["subscription_id"],
@@ -499,6 +588,12 @@ def _recommendation_action_insert(
             "candidate_id": recommendation["candidate_id"],
             **dict(action_payload or {}),
         },
+        entity_ids=bundle_recommendation_action_entities(
+            subscription=subscription,
+            relation_key=relation_key,
+            recommendation_id=rid,
+            candidate_id=int(recommendation["candidate_id"]),
+        ),
     )
     conn.execute(
         """
@@ -509,8 +604,9 @@ def _recommendation_action_insert(
           candidate_id,
           action_type,
           action_payload_json,
+          client_idempotency_key,
           occurred_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             subscription["subscription_id"],
@@ -519,8 +615,33 @@ def _recommendation_action_insert(
             recommendation["candidate_id"],
             action_type,
             json_dumps(merge_payload_with_event(action_payload, event)),
+            str(client_idempotency_key).strip() if client_idempotency_key else None,
             format_dt(now),
         ),
+    )
+
+
+def append_relation_state_revision_event(
+    conn,
+    *,
+    subscription: dict[str, Any],
+    recommendation_row: dict[str, Any],
+    now: datetime,
+) -> None:
+    _recommendation_action_insert(
+        conn,
+        subscription=subscription,
+        recommendation=recommendation_row,
+        action_type="relation_state_revision",
+        actor_type="system",
+        actor_id="system",
+        now=now,
+        action_payload={
+            "delivery_status": recommendation_row.get("delivery_status"),
+            "last_action_type": recommendation_row.get("last_action_type"),
+            "active_match_case_id": recommendation_row.get("active_match_case_id"),
+            "rule_provenance": json_loads(recommendation_row.get("rule_provenance_json"), {}),
+        },
     )
 
 
@@ -586,7 +707,11 @@ def normalize_delivery_status(
     return ("pending_delivery", "new_candidate")
 
 
-def inflate_recommendation(recommendation: dict[str, Any]) -> dict[str, Any]:
+def inflate_recommendation(
+    recommendation: dict[str, Any],
+    *,
+    conn=None,
+) -> dict[str, Any]:
     if not recommendation:
         return recommendation
     inflated = dict(recommendation)
@@ -597,7 +722,8 @@ def inflate_recommendation(recommendation: dict[str, Any]) -> dict[str, Any]:
     inflated["user_review_payload"] = json_loads(inflated.pop("user_review_payload_json"), {})
     inflated["owner_profile_ref"] = json_loads(inflated.pop("owner_profile_ref_json", None), {})
     inflated["target_profile_ref"] = json_loads(inflated.pop("target_profile_ref_json", None), {})
-    return _hydrate_recommendation_relation_metadata(inflated)
+    inflated["rule_provenance"] = json_loads(inflated.pop("rule_provenance_json", None), {})
+    return _hydrate_recommendation_relation_metadata(inflated, conn=conn)
 
 
 def get_recommendation(conn, subscription_id: str, candidate_id: int) -> dict[str, Any] | None:
@@ -609,7 +735,10 @@ def get_recommendation(conn, subscription_id: str, candidate_id: int) -> dict[st
         """,
         (subscription_id, candidate_id),
     ).fetchone()
-    return inflate_recommendation(row_to_dict(row))
+    row_dict = row_to_dict(row)
+    if not row_dict:
+        return None
+    return inflate_recommendation(row_dict, conn=conn)
 
 
 def upsert_recommendation(
@@ -619,6 +748,7 @@ def upsert_recommendation(
     now: datetime,
     *,
     review_rank: int,
+    rule_provenance: dict[str, Any],
 ) -> dict[str, Any]:
     candidate_id = result.get("id")
     if candidate_id is None:
@@ -630,6 +760,7 @@ def upsert_recommendation(
         result,
         review_rank=review_rank,
     )
+    prev_delivery_status = (existing or {}).get("delivery_status")
     delivery_status, delivery_reason = normalize_delivery_status(existing, result, subscription, now, final_review)
     payload_json = json_dumps(result)
     matched_on_json = json_dumps(result.get("matched_on") or [])
@@ -647,6 +778,7 @@ def upsert_recommendation(
     relation_key = recommendation_relation_key(subscription, int(candidate_id))
     owner_profile_ref_json = json_dumps(profile_ref_to_dict(owner_profile_ref))
     target_profile_ref_json = json_dumps(profile_ref_to_dict(target_profile_ref))
+    rule_provenance_json = json_dumps(rule_provenance)
 
     if recommendation_mode == "direct_greet_only" and final_review["status"] == "direct_greet_ready":
         if snapshot_changed or user_review_status in {"not_requested", "pending_review"}:
@@ -688,7 +820,8 @@ def upsert_recommendation(
                 user_reviewed_at = ?,
                 relation_key = ?,
                 owner_profile_ref_json = ?,
-                target_profile_ref_json = ?
+                target_profile_ref_json = ?,
+                rule_provenance_json = ?
             WHERE recommendation_id = ?
             """,
             (
@@ -716,6 +849,7 @@ def upsert_recommendation(
                 relation_key,
                 owner_profile_ref_json,
                 target_profile_ref_json,
+                rule_provenance_json,
                 existing["recommendation_id"],
             ),
         )
@@ -750,8 +884,9 @@ def upsert_recommendation(
               user_reviewed_at,
               relation_key,
               owner_profile_ref_json,
-              target_profile_ref_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              target_profile_ref_json,
+              rule_provenance_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 subscription["subscription_id"],
@@ -782,24 +917,58 @@ def upsert_recommendation(
                 relation_key,
                 owner_profile_ref_json,
                 target_profile_ref_json,
+                rule_provenance_json,
             ),
         )
+    rec_id = int(existing["recommendation_id"]) if existing else int(conn.lastrowid)
+    row = conn.execute(
+        "SELECT * FROM profile_recommendations WHERE recommendation_id = ?",
+        (rec_id,),
+    ).fetchone()
+    rec_row = row_to_dict(row)
+    if rec_row:
+        append_relation_state_revision_event(conn, subscription=subscription, recommendation_row=rec_row, now=now)
     conn.commit()
-    return get_recommendation(conn, subscription["subscription_id"], int(candidate_id))
+    out = get_recommendation(conn, subscription["subscription_id"], int(candidate_id))
+    if out:
+        rid = int(out["recommendation_id"])
+        if delivery_status == "review_pending" and prev_delivery_status != "review_pending":
+            funnel_stage(
+                system="recommendation",
+                stage=RECOMMENDATION_FUNNEL_REVIEW_PENDING,
+                subscription_id=subscription["subscription_id"],
+                recommendation_id=rid,
+                candidate_id=int(candidate_id),
+                delivery_reason=delivery_reason,
+            )
+        if delivery_status == "pending_delivery" and prev_delivery_status != "pending_delivery":
+            funnel_stage(
+                system="recommendation",
+                stage=RECOMMENDATION_FUNNEL_PENDING_DELIVERY,
+                subscription_id=subscription["subscription_id"],
+                recommendation_id=rid,
+                candidate_id=int(candidate_id),
+                delivery_reason=delivery_reason,
+            )
+    return out
 
 
-def refresh_subscription(
+def _refresh_subscription_core(
     conn,
     subscription_id: str,
     *,
-    now: datetime | None = None,
-    search_runner: SearchRunner = run_partner_search,
-    persona_resolver: PersonaResolver = resolve_subscription_persona_profile,
+    now: datetime,
+    search_runner: SearchRunner,
+    persona_resolver: PersonaResolver,
 ) -> dict[str, Any]:
-    now = current_time(now)
     subscription = get_subscription(conn, subscription_id)
     persona_profile = persona_resolver(subscription)
     search_request = load_subscription_search_args(subscription, persona_profile=persona_profile)
+    rule_provenance = build_subscription_refresh_provenance(
+        subscription_id=subscription_id,
+        persona_profile=persona_profile,
+        search_request=search_request,
+    )
     response = search_runner(**search_request)
     results = list(response.get("results") or [])[: int(subscription.get("top_k") or 5)]
 
@@ -812,6 +981,7 @@ def refresh_subscription(
             result,
             now,
             review_rank=index,
+            rule_provenance=rule_provenance,
         )
         status = recommendation["delivery_status"]
         status_counts[status] = status_counts.get(status, 0) + 1
@@ -828,6 +998,7 @@ def refresh_subscription(
         status_counts=status_counts,
         review_counts=review_counts,
         now=now,
+        rule_provenance=rule_provenance,
     )
     conn.execute(
         """
@@ -855,6 +1026,43 @@ def refresh_subscription(
     }
 
 
+def refresh_subscription(
+    conn,
+    subscription_id: str,
+    *,
+    now: datetime | None = None,
+    search_runner: SearchRunner = run_partner_search,
+    persona_resolver: PersonaResolver = resolve_subscription_persona_profile,
+) -> dict[str, Any]:
+    now = current_time(now)
+    try:
+        out = _refresh_subscription_core(
+            conn,
+            subscription_id,
+            now=now,
+            search_runner=search_runner,
+            persona_resolver=persona_resolver,
+        )
+    except Exception as exc:
+        alert_signal(
+            "recommendation.refresh_failed",
+            str(exc),
+            severity="error",
+            subscription_id=subscription_id,
+            error_type=type(exc).__name__,
+        )
+        raise
+    funnel_stage(
+        system="recommendation",
+        stage=RECOMMENDATION_FUNNEL_REFRESH,
+        subscription_id=subscription_id,
+        result_count=out["result_count"],
+        status_counts=out.get("status_counts"),
+    )
+    metric_gauge("recommendation.refresh.result_count", out["result_count"], subscription_id=subscription_id)
+    return out
+
+
 def refresh_due_subscriptions(
     conn,
     *,
@@ -862,19 +1070,42 @@ def refresh_due_subscriptions(
     search_runner: SearchRunner = run_partner_search,
     persona_resolver: PersonaResolver = resolve_subscription_persona_profile,
     subscription_ids: Iterable[str] | None = None,
-) -> list[dict[str, Any]]:
+) -> dict[str, Any]:
     now = current_time(now)
     due_subscriptions = list_due_subscriptions(conn, now=now, subscription_ids=subscription_ids)
-    return [
-        refresh_subscription(
-            conn,
-            subscription["subscription_id"],
-            now=now,
-            search_runner=search_runner,
-            persona_resolver=persona_resolver,
-        )
-        for subscription in due_subscriptions
-    ]
+    summaries: list[dict[str, Any]] = []
+    errors: list[dict[str, Any]] = []
+    for subscription in due_subscriptions:
+        sid = subscription["subscription_id"]
+        try:
+            out = _refresh_subscription_core(
+                conn,
+                sid,
+                now=now,
+                search_runner=search_runner,
+                persona_resolver=persona_resolver,
+            )
+            summaries.append(out)
+            funnel_stage(
+                system="recommendation",
+                stage=RECOMMENDATION_FUNNEL_REFRESH,
+                subscription_id=sid,
+                result_count=out["result_count"],
+                status_counts=out.get("status_counts"),
+            )
+            metric_gauge("recommendation.refresh.result_count", out["result_count"], subscription_id=sid)
+        except Exception as exc:
+            errors.append(
+                {"subscription_id": sid, "error": str(exc), "error_type": type(exc).__name__},
+            )
+            alert_signal(
+                "recommendation.refresh_failed",
+                str(exc),
+                severity="error",
+                subscription_id=sid,
+                error_type=type(exc).__name__,
+            )
+    return {"summaries": summaries, "errors": errors}
 
 
 def within_quiet_hours(now: datetime, quiet_hours_start: int, quiet_hours_end: int) -> bool:
@@ -944,6 +1175,7 @@ def build_in_app_card(recommendation: dict[str, Any], subscription_title: str) -
             {"id": "request_proxy_intro", "label": "替我去问"},
         ],
         "result_snapshot": payload,
+        "rule_provenance": recommendation.get("rule_provenance") or {},
     }
 
 
@@ -971,9 +1203,10 @@ def deliver_in_app_recommendations(conn, *, now: datetime | None = None) -> dict
     held_quiet_hours = 0
     held_daily_cap = 0
     delivered_today_cache: dict[int, int] = {}
+    subscription_cache: dict[str, dict[str, Any]] = {}
 
     for raw_row in rows:
-        recommendation = inflate_recommendation(row_to_dict(raw_row))
+        recommendation = inflate_recommendation(row_to_dict(raw_row), conn=conn)
         requester_id = int(recommendation["requester_id"])
         if within_quiet_hours(
             now,
@@ -1001,13 +1234,14 @@ def deliver_in_app_recommendations(conn, *, now: datetime | None = None) -> dict
               recommendation_id,
               requester_id,
               candidate_id,
+              card_status,
               title,
               subtitle,
               body,
               payload_json,
               created_at,
               delivered_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 card_id,
@@ -1015,6 +1249,7 @@ def deliver_in_app_recommendations(conn, *, now: datetime | None = None) -> dict
                 recommendation["recommendation_id"],
                 requester_id,
                 recommendation["candidate_id"],
+                "unread",
                 card["title"],
                 card["subtitle"],
                 card["body"],
@@ -1034,10 +1269,36 @@ def deliver_in_app_recommendations(conn, *, now: datetime | None = None) -> dict
             """,
             (format_dt(now), card_id, recommendation["recommendation_id"]),
         )
+        sid = recommendation["subscription_id"]
+        if sid not in subscription_cache:
+            subscription_cache[sid] = get_subscription(conn, sid)
+        row = conn.execute(
+            "SELECT * FROM profile_recommendations WHERE recommendation_id = ?",
+            (recommendation["recommendation_id"],),
+        ).fetchone()
+        rec_row = row_to_dict(row)
+        if rec_row:
+            append_relation_state_revision_event(
+                conn,
+                subscription=subscription_cache[sid],
+                recommendation_row=rec_row,
+                now=now,
+            )
         delivered_today_cache[requester_id] = delivered_today + 1
         delivered_count += 1
+        funnel_stage(
+            system="recommendation",
+            stage=RECOMMENDATION_FUNNEL_DELIVERED,
+            subscription_id=recommendation["subscription_id"],
+            recommendation_id=int(recommendation["recommendation_id"]),
+            candidate_id=int(recommendation["candidate_id"]),
+            card_id=card_id,
+        )
 
     conn.commit()
+    metric_gauge("recommendation.deliver.delivered_count", delivered_count)
+    metric_gauge("recommendation.deliver.held_quiet_hours", held_quiet_hours)
+    metric_gauge("recommendation.deliver.held_daily_cap", held_daily_cap)
     return {
         "delivered_count": delivered_count,
         "held_quiet_hours": held_quiet_hours,
@@ -1053,12 +1314,29 @@ def record_recommendation_action(
     action_type: str,
     now: datetime | None = None,
     action_payload: dict[str, Any] | None = None,
+    client_idempotency_key: str | None = None,
 ) -> dict[str, Any]:
     now = current_time(now)
     subscription = get_subscription(conn, subscription_id)
     recommendation = get_recommendation(conn, subscription_id, int(candidate_id))
     if not recommendation:
         raise ValueError(f"Unknown recommendation for subscription={subscription_id} candidate_id={candidate_id}")
+
+    ck = str(client_idempotency_key).strip() if client_idempotency_key else ""
+    if ck:
+        dup = conn.execute(
+            """
+            SELECT 1 AS o FROM recommendation_actions
+            WHERE recommendation_id = ? AND client_idempotency_key = ?
+            LIMIT 1
+            """,
+            (int(recommendation["recommendation_id"]), ck),
+        ).fetchone()
+        if dup:
+            out = get_recommendation(conn, subscription_id, int(candidate_id))
+            if isinstance(out, dict):
+                out = {**out, "idempotent_replay": True}
+            return out
 
     allowed_actions = {"skip", "save", "direct_greet"}
     if action_type not in allowed_actions:
@@ -1084,6 +1362,7 @@ def record_recommendation_action(
         actor_type="user",
         now=now,
         action_payload=action_payload,
+        client_idempotency_key=ck or None,
     )
     conn.execute(
         """
@@ -1102,8 +1381,25 @@ def record_recommendation_action(
             recommendation["recommendation_id"],
         ),
     )
+    row = conn.execute(
+        "SELECT * FROM profile_recommendations WHERE recommendation_id = ?",
+        (recommendation["recommendation_id"],),
+    ).fetchone()
+    rec_row = row_to_dict(row)
+    if rec_row:
+        append_relation_state_revision_event(conn, subscription=subscription, recommendation_row=rec_row, now=now)
     conn.commit()
-    return get_recommendation(conn, subscription_id, int(candidate_id))
+    out = get_recommendation(conn, subscription_id, int(candidate_id))
+    funnel_stage(
+        system="recommendation",
+        stage=RECOMMENDATION_FUNNEL_ACTION,
+        subscription_id=subscription_id,
+        recommendation_id=int(recommendation["recommendation_id"]),
+        candidate_id=int(candidate_id),
+        action_type=action_type,
+        trace_id=get_trace_id(),
+    )
+    return out
 
 
 def record_user_review(
@@ -1114,12 +1410,29 @@ def record_user_review(
     review_type: str,
     now: datetime | None = None,
     review_payload: dict[str, Any] | None = None,
+    client_idempotency_key: str | None = None,
 ) -> dict[str, Any]:
     now = current_time(now)
     subscription = get_subscription(conn, subscription_id)
     recommendation = get_recommendation(conn, subscription_id, int(candidate_id))
     if not recommendation:
         raise ValueError(f"Unknown recommendation for subscription={subscription_id} candidate_id={candidate_id}")
+
+    ck = str(client_idempotency_key).strip() if client_idempotency_key else ""
+    if ck:
+        dup = conn.execute(
+            """
+            SELECT 1 AS o FROM recommendation_actions
+            WHERE recommendation_id = ? AND client_idempotency_key = ?
+            LIMIT 1
+            """,
+            (int(recommendation["recommendation_id"]), ck),
+        ).fetchone()
+        if dup:
+            out = get_recommendation(conn, subscription_id, int(candidate_id))
+            if isinstance(out, dict):
+                out = {**out, "idempotent_replay": True}
+            return out
 
     if recommendation.get("notified_at"):
         raise ValueError("User review must happen before delivery.")
@@ -1151,6 +1464,7 @@ def record_user_review(
         actor_type="user",
         now=now,
         action_payload=review_payload,
+        client_idempotency_key=ck or None,
     )
     conn.execute(
         """
@@ -1173,5 +1487,23 @@ def record_user_review(
             recommendation["recommendation_id"],
         ),
     )
+    row = conn.execute(
+        "SELECT * FROM profile_recommendations WHERE recommendation_id = ?",
+        (recommendation["recommendation_id"],),
+    ).fetchone()
+    rec_row = row_to_dict(row)
+    if rec_row:
+        append_relation_state_revision_event(conn, subscription=subscription, recommendation_row=rec_row, now=now)
     conn.commit()
-    return get_recommendation(conn, subscription_id, int(candidate_id))
+    out = get_recommendation(conn, subscription_id, int(candidate_id))
+    if review_type == "direct_greet":
+        funnel_stage(
+            system="recommendation",
+            stage=RECOMMENDATION_FUNNEL_PENDING_DELIVERY,
+            subscription_id=subscription_id,
+            recommendation_id=int(recommendation["recommendation_id"]),
+            candidate_id=int(candidate_id),
+            source="user_review",
+            delivery_reason=delivery_reason,
+        )
+    return out

@@ -1,8 +1,7 @@
 import pathlib
 import sys
-import tempfile
 import unittest
-from datetime import datetime, timedelta
+from datetime import datetime
 
 
 SYSTEM_ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -27,8 +26,10 @@ from matchmaking_system import (  # noqa: E402
     record_case_reply,
     record_feedback,
     refresh_active_pool,
+    reset_all_tables,
     set_pool_member_status,
 )
+from matchmaking_system.storage import DEFAULT_MATCHMAKING_TEST_MYSQL_DSN  # noqa: E402
 
 
 def build_result(candidate_id, name, score, *, city="无锡", risk_flags=None, follow_up_questions=None):
@@ -59,15 +60,13 @@ def build_result(candidate_id, name, score, *, city="无锡", risk_flags=None, f
 
 class MatchmakingSystemTests(unittest.TestCase):
     def setUp(self):
-        self.tempdir = tempfile.TemporaryDirectory()
-        self.db_path = pathlib.Path(self.tempdir.name) / "matchmaking.sqlite3"
-        self.conn = connect_db(self.db_path)
+        self.conn = connect_db(DEFAULT_MATCHMAKING_TEST_MYSQL_DSN)
         initialize_database(self.conn)
+        reset_all_tables(self.conn)
         self.source = "mysql://user:pass@127.0.0.1:3306/her?table=profiles"
 
     def tearDown(self):
         self.conn.close()
-        self.tempdir.cleanup()
 
     def create_member(self, user_key, self_id, **overrides):
         base = {
@@ -267,7 +266,7 @@ class MatchmakingSystemTests(unittest.TestCase):
         )
 
     def test_paused_member_does_not_generate_eligible_pair(self):
-        member_a = self.create_member("user-a", 1001)
+        self.create_member("user-a", 1001)
         member_b = self.create_member(
             "user-b",
             1002,
@@ -301,8 +300,8 @@ class MatchmakingSystemTests(unittest.TestCase):
         self.assertEqual(updated_member_b["status"], "paused_serious_chat")
 
     def test_decline_puts_pair_into_cooling(self):
-        member_a = self.create_member("user-a", 1001)
-        member_b = self.create_member("user-b", 1002)
+        self.create_member("user-a", 1001)
+        self.create_member("user-b", 1002)
 
         def fake_search_runner(**kwargs):
             self_id = kwargs.get("self_id")
@@ -393,8 +392,8 @@ class MatchmakingSystemTests(unittest.TestCase):
         self.assertEqual(reopened["pair_status"], "eligible")
 
     def test_close_stale_cases_marks_timeout(self):
-        member_a = self.create_member("user-a", 1001)
-        member_b = self.create_member("user-b", 1002)
+        self.create_member("user-a", 1001)
+        self.create_member("user-b", 1002)
 
         def fake_search_runner(**kwargs):
             self_id = kwargs.get("self_id")
@@ -431,8 +430,8 @@ class MatchmakingSystemTests(unittest.TestCase):
         self.assertEqual(closed["status"], "timed_out")
 
     def test_mutual_accept_stays_sticky_after_refresh_rebuild(self):
-        member_a = self.create_member("user-a", 1001)
-        member_b = self.create_member("user-b", 1002)
+        self.create_member("user-a", 1001)
+        self.create_member("user-b", 1002)
 
         def fake_search_runner(**kwargs):
             self_id = kwargs.get("self_id")
@@ -489,7 +488,7 @@ class MatchmakingSystemTests(unittest.TestCase):
 
     def test_missing_reciprocal_edge_downgrades_pair_to_stale(self):
         member_a = self.create_member("user-a", 1001)
-        member_b = self.create_member("user-b", 1002)
+        self.create_member("user-b", 1002)
 
         def initial_search_runner(**kwargs):
             self_id = kwargs.get("self_id")
@@ -533,7 +532,7 @@ class MatchmakingSystemTests(unittest.TestCase):
         self.assertEqual(stale_pair["block_reason"], "reciprocal_edge_missing")
 
     def test_paused_member_invalidates_existing_eligible_pair(self):
-        member_a = self.create_member("user-a", 1001)
+        self.create_member("user-a", 1001)
         member_b = self.create_member("user-b", 1002)
 
         def fake_search_runner(**kwargs):
@@ -567,7 +566,7 @@ class MatchmakingSystemTests(unittest.TestCase):
         self.assertEqual(list_match_cases(self.conn), [])
 
     def test_feedback_can_pause_member_without_persona_sync_and_close_open_case(self):
-        member_a = self.create_member("user-a", 1001)
+        self.create_member("user-a", 1001)
         member_b = self.create_member("user-b", 1002)
 
         def fake_search_runner(**kwargs):

@@ -2,25 +2,29 @@
 
 from __future__ import annotations
 
-import sys
+import json
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Iterable
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+from ._path_bootstrap import ensure_her_repo_on_sys_path
+
+ensure_her_repo_on_sys_path(Path(__file__))
 
 from match_domain import (  # noqa: E402
     CaseType,
-    build_canonical_event,
-    merge_payload_with_event,
-    proxy_intro_case_status,
+    append_outbox_pending,
+    build_case_aggregate_event,
+    bundle_proxy_intro_case_entities,
+    match_events_from_case_event_rows,
+    reduce_case_ledger,
 )
+from observability import RECOMMENDATION_FUNNEL_PROXY_INTRO, funnel_stage  # noqa: E402
 
 from .service import (  # noqa: E402
     _recommendation_action_insert,
+    append_relation_state_revision_event,
     current_time,
     format_dt,
     get_recommendation,
@@ -113,7 +117,7 @@ def build_outreach_payload(
     }
 
 
-def inflate_match_case(case: dict[str, Any] | None) -> dict[str, Any] | None:
+def inflate_match_case(case: dict[str, Any] | None, *, conn=None) -> dict[str, Any] | None:
     if not case:
         return None
     inflated = dict(case)
@@ -126,7 +130,14 @@ def inflate_match_case(case: dict[str, Any] | None) -> dict[str, Any] | None:
     inflated["outreach_payload"] = json_loads(inflated.pop("outreach_payload_json"), {})
     inflated["reply_payload"] = json_loads(inflated.pop("reply_payload_json"), {})
     inflated["case_type"] = inflated.get("case_type") or CaseType.PROXY_INTRO.value
-    inflated["canonical_case_status"] = proxy_intro_case_status(inflated.get("case_status")).value
+    cid = inflated.get("case_id")
+    ledger_events = []
+    if conn is not None and cid:
+        event_rows = list_match_case_events(conn, str(cid))
+        ledger_events = match_events_from_case_event_rows(event_rows)
+    inflated["case_ledger_event_count"] = len(ledger_events)
+    reduced = reduce_case_ledger(ledger_events)
+    inflated["canonical_case_status"] = reduced.status.value
     return inflated
 
 
@@ -134,7 +145,13 @@ def inflate_match_case_event(event: dict[str, Any] | None) -> dict[str, Any] | N
     if not event:
         return None
     inflated = dict(event)
-    inflated["payload"] = json_loads(inflated.pop("payload_json"), {})
+    canon_raw = inflated.pop("canonical_event_json", None)
+    payload = json_loads(inflated.pop("payload_json"), {})
+    if canon_raw is not None and (not isinstance(canon_raw, str) or str(canon_raw).strip()):
+        canon_obj = json.loads(canon_raw) if isinstance(canon_raw, str) else canon_raw
+        if isinstance(canon_obj, dict):
+            payload = {**payload, "canonical_event": canon_obj}
+    inflated["payload"] = payload
     return inflated
 
 
@@ -148,7 +165,7 @@ def inflate_match_case_attempt(attempt: dict[str, Any] | None) -> dict[str, Any]
 
 def get_match_case(conn, case_id: str) -> dict[str, Any] | None:
     row = conn.execute("SELECT * FROM match_cases WHERE case_id = ?", (case_id,)).fetchone()
-    return inflate_match_case(row_to_dict(row))
+    return inflate_match_case(row_to_dict(row), conn=conn)
 
 
 def list_match_cases_for_subscription(conn, subscription_id: str) -> list[dict[str, Any]]:
@@ -161,7 +178,7 @@ def list_match_cases_for_subscription(conn, subscription_id: str) -> list[dict[s
         """,
         (subscription_id,),
     ).fetchall()
-    return [inflate_match_case(row_to_dict(row)) for row in rows]
+    return [inflate_match_case(row_to_dict(row), conn=conn) for row in rows]
 
 
 def list_match_case_events(conn, case_id: str) -> list[dict[str, Any]]:
@@ -200,7 +217,7 @@ def list_match_cases_for_recommendation(conn, recommendation_id: int) -> list[di
         """,
         (recommendation_id,),
     ).fetchall()
-    return [inflate_match_case(row_to_dict(row)) for row in rows]
+    return [inflate_match_case(row_to_dict(row), conn=conn) for row in rows]
 
 
 def get_latest_match_case_for_recommendation(conn, recommendation_id: int) -> dict[str, Any] | None:
@@ -214,7 +231,7 @@ def get_latest_match_case_for_recommendation(conn, recommendation_id: int) -> di
         """,
         (recommendation_id,),
     ).fetchone()
-    return inflate_match_case(row_to_dict(row))
+    return inflate_match_case(row_to_dict(row), conn=conn)
 
 
 def get_active_match_case_for_recommendation(conn, recommendation_id: int) -> dict[str, Any] | None:
@@ -229,7 +246,7 @@ def get_active_match_case_for_recommendation(conn, recommendation_id: int) -> di
         """,
         (recommendation_id,),
     ).fetchone()
-    return inflate_match_case(row_to_dict(row))
+    return inflate_match_case(row_to_dict(row), conn=conn)
 
 
 def _record_case_event(
@@ -243,28 +260,28 @@ def _record_case_event(
     now: datetime,
     payload: dict[str, Any] | None = None,
 ) -> None:
-    event = build_canonical_event(
+    event = build_case_aggregate_event(
         event_type=event_type,
-        aggregate_type="case",
-        aggregate_id=case["case_id"],
+        case_id=str(case["case_id"]),
+        case_type=CaseType.PROXY_INTRO,
+        source_service="recommendation-system",
         actor_type=actor_type,
         actor_id=(
             str(case["candidate_id"])
             if actor_type == "candidate"
             else ("system" if actor_type == "system" else str(case["requester_id"]))
         ),
-        source_service="recommendation-system",
-        correlation_id=f"proxy-intro-{case['case_id']}-{event_type}",
-        idempotency_key=f"proxy-intro-{case['case_id']}-{event_type}-{format_dt(now)}",
         occurred_at=now,
         payload={
             "subscription_id": case["subscription_id"],
             "recommendation_id": case["recommendation_id"],
             "candidate_id": case["candidate_id"],
-            "case_type": CaseType.PROXY_INTRO.value,
             **dict(payload or {}),
         },
+        entity_ids=bundle_proxy_intro_case_entities(case),
     )
+    occurred_str = format_dt(now)
+    domain_payload = dict(payload or {})
     conn.execute(
         """
         INSERT INTO match_case_events (
@@ -277,9 +294,10 @@ def _record_case_event(
           from_status,
           to_status,
           actor_type,
+          canonical_event_json,
           payload_json,
           occurred_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             case["case_id"],
@@ -291,9 +309,17 @@ def _record_case_event(
             from_status,
             to_status,
             actor_type,
-            json_dumps(merge_payload_with_event(payload, event)),
-            format_dt(now),
+            json_dumps(event.to_dict()),
+            json_dumps(domain_payload),
+            occurred_str,
         ),
+    )
+    append_outbox_pending(
+        conn,
+        event=event,
+        source_row_table="match_case_events",
+        source_row_id=conn.lastrowid or None,
+        created_at_str=occurred_str,
     )
 
 
@@ -306,7 +332,9 @@ def _sync_recommendation_for_case(
     delivery_reason: str,
     cooling_until: datetime | None = None,
     active: bool = False,
+    now: datetime | None = None,
 ) -> None:
+    _now = current_time(now)
     conn.execute(
         """
         UPDATE profile_recommendations
@@ -324,6 +352,19 @@ def _sync_recommendation_for_case(
             recommendation["recommendation_id"],
         ),
     )
+    row = conn.execute(
+        "SELECT * FROM profile_recommendations WHERE recommendation_id = ?",
+        (recommendation["recommendation_id"],),
+    ).fetchone()
+    rec_row = row_to_dict(row)
+    if rec_row:
+        subscription = get_subscription(conn, rec_row["subscription_id"])
+        append_relation_state_revision_event(
+            conn,
+            subscription=subscription,
+            recommendation_row=rec_row,
+            now=_now,
+        )
 
 
 def create_match_case(
@@ -390,10 +431,11 @@ def create_match_case(
           requester_profile_snapshot_json,
           candidate_snapshot_json,
           outreach_payload_json,
+          reply_payload_json,
           reply_deadline_at,
           created_at,
           updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             case_id,
@@ -410,6 +452,7 @@ def create_match_case(
             json_dumps(requester_profile_snapshot),
             json_dumps(candidate_snapshot),
             json_dumps({**outreach_payload, "request_payload": request_payload or {}}),
+            json_dumps({}),
             format_dt(reply_deadline_at),
             format_dt(now),
             format_dt(now),
@@ -451,8 +494,18 @@ def create_match_case(
         delivery_status="proxy_intro_in_progress",
         delivery_reason="proxy_intro_requested",
         active=True,
+        now=now,
     )
     conn.commit()
+    funnel_stage(
+        system="recommendation",
+        stage=RECOMMENDATION_FUNNEL_PROXY_INTRO,
+        subscription_id=subscription_id,
+        case_id=case_id,
+        recommendation_id=int(recommendation["recommendation_id"]),
+        candidate_id=int(candidate_id),
+        initiated_by=initiated_by,
+    )
     return get_match_case(conn, case_id)
 
 
@@ -504,6 +557,7 @@ def _update_case_status(
                 delivery_reason=recommendation_delivery_reason,
                 cooling_until=cooling_until,
                 active=bool(active_match_case_id),
+                now=now,
             )
     _record_case_event(
         conn,
@@ -615,7 +669,7 @@ def dispatch_pending_match_cases(
             ORDER BY created_at ASC, case_id ASC
             """
         ).fetchall()
-    cases = [inflate_match_case(row_to_dict(row)) for row in rows]
+    cases = [inflate_match_case(row_to_dict(row), conn=conn) for row in rows]
     dispatched = []
     for case in cases:
         dispatched.append(dispatch_match_case_outreach(conn, case_id=case["case_id"], now=now))
@@ -758,6 +812,7 @@ def close_match_case(
             delivery_reason=delivery_reason,
             cooling_until=cooling_until,
             active=False,
+            now=now,
         )
         _recommendation_action_insert(
             conn,
@@ -818,7 +873,7 @@ def close_timed_out_match_cases(
 
     timed_out_cases = []
     for row in rows:
-        case = inflate_match_case(row_to_dict(row))
+        case = inflate_match_case(row_to_dict(row), conn=conn)
         cooling_until = now + timedelta(days=DEFAULT_TIMEOUT_COOLDOWN_DAYS)
         conn.execute(
             """
@@ -846,6 +901,7 @@ def close_timed_out_match_cases(
                 delivery_reason="proxy_intro_timed_out",
                 cooling_until=cooling_until,
                 active=False,
+                now=now,
             )
             _recommendation_action_insert(
                 conn,
