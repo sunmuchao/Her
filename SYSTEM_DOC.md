@@ -737,6 +737,18 @@ flowchart LR
 - `partner-matchmaking-system` 目前主要以 importable service API 方式暴露，缺少同等完整的运维脚本层。
 - 这意味着如果未来 3 个月只做一项平台化改造，优先级应放在“给撮合系统补操作入口或标准 API”上。
 
+### 10.6 SQLite -> MySQL 迁移工具
+
+仓库已新增 `migrate_sqlite_to_mysql.py`，用于把推荐系统和撮合系统的 SQLite 状态表迁移到 MySQL：
+
+- 支持 `recommendation` 与 `matchmaking` 两套外部系统。
+- 支持自动建 MySQL 表、索引和外键。
+- 支持按主键 `upsert`，可重复执行。
+- 支持 `--table-prefix`，方便把两套系统落到同一个 MySQL 库时避免表名冲突。
+- 支持 `--schema-only`、`--data-only`、`--truncate-first` 等迁移模式。
+
+这说明当前仓库已经具备“SQLite 运行态 + MySQL 目标库”的平滑迁移路径，但业务运行时尚未整体切换到 MySQL 存储。
+
 ## 11. 当前成熟度评估
 
 ### 11.1 总体判断
@@ -805,7 +817,7 @@ flowchart LR
 1. 增加统一依赖管理，补齐 `pyproject.toml` 或等价配置。
 2. 把 recommendation 和 matchmaking 暴露为标准 HTTP API 或 RPC 服务。
 3. 引入统一任务调度层，替代当前纯 CLI 定时执行模式。
-4. 给 SQLite 状态库增加迁移机制，后续可平滑迁到 MySQL/PostgreSQL。
+4. 基于现有 `migrate_sqlite_to_mysql.py` 继续演进正式迁移机制，补齐回滚、校验和 PostgreSQL 等目标库支持。
 
 ### 13.2 架构统一
 
