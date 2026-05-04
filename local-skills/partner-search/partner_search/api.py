@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import date, datetime
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Sequence
 
@@ -62,6 +63,20 @@ class SearchResponse:
         )
 
 
+def _json_safe_value(value: Any) -> Any:
+    if isinstance(value, datetime):
+        return value.isoformat(sep=" ")
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, Mapping):
+        return {key: _json_safe_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_json_safe_value(item) for item in value]
+    if isinstance(value, tuple):
+        return [_json_safe_value(item) for item in value]
+    return value
+
+
 def search(request: SearchRequest | Mapping[str, Any]) -> SearchResponse:
     if isinstance(request, SearchRequest):
         search_request = request
@@ -111,3 +126,23 @@ def search_profiles(
         )
     )
     return response.to_dict(include_text=include_text)
+
+
+def load_self_profile(
+    *,
+    source: str,
+    self_id: int,
+    table_name: str | None = None,
+) -> dict[str, Any] | None:
+    records = engine.collect_source_records_for_request(
+        [source],
+        table_name=table_name,
+        criteria={},
+        self_id=self_id,
+    )
+    profile = engine.build_self_profile(
+        records,
+        self_id=self_id,
+        profile_input=None,
+    )
+    return _json_safe_value(profile)

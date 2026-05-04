@@ -11,7 +11,7 @@ SKILL_ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(SKILL_ROOT) not in sys.path:
     sys.path.insert(0, str(SKILL_ROOT))
 
-from partner_search import SearchRequest, search, search_profiles  # noqa: E402
+from partner_search import SearchRequest, load_self_profile, search, search_profiles  # noqa: E402
 from scripts import search_candidates as engine  # noqa: E402
 
 
@@ -115,6 +115,36 @@ class PartnerSearchApiTests(unittest.TestCase):
             )
 
         self.assertEqual(response.to_dict()["results"][0]["name"], "MappingRequest")
+
+    def test_load_self_profile_uses_public_api_boundary_and_returns_json_safe_profile(self):
+        with mock.patch.object(
+            engine,
+            "collect_source_records_for_request",
+            return_value=[{"id": 90001}],
+        ) as mocked_collect, mock.patch.object(
+            engine,
+            "build_self_profile",
+            return_value={
+                "id": 90001,
+                "city": "无锡",
+                "last_active_at": datetime(2099, 1, 1, 8, 0, 0),
+            },
+        ) as mocked_build:
+            profile = load_self_profile(
+                source="mysql://user:pass@127.0.0.1:3306/her?table=profiles",
+                self_id=90001,
+                table_name="profiles",
+            )
+
+        mocked_collect.assert_called_once_with(
+            ["mysql://user:pass@127.0.0.1:3306/her?table=profiles"],
+            table_name="profiles",
+            criteria={},
+            self_id=90001,
+        )
+        mocked_build.assert_called_once()
+        self.assertEqual(profile["id"], 90001)
+        self.assertEqual(profile["last_active_at"], "2099-01-01 08:00:00")
 
     def test_main_outputs_json_when_requested(self):
         fake_records = [
