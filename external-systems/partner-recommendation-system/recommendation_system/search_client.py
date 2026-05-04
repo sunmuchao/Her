@@ -18,8 +18,7 @@ def ensure_partner_search_skill_on_path() -> Path:
 
 ensure_partner_search_skill_on_path()
 
-from scripts import search_candidates as engine  # noqa: E402
-from partner_search import search_profiles  # noqa: E402
+from partner_search import load_self_profile, search_profiles  # noqa: E402
 
 
 def _has_value(value: Any) -> bool:
@@ -216,16 +215,10 @@ def load_requester_profile(
         return self_profile
 
     try:
-        records = engine.collect_source_records_for_request(
-            [source],
+        profile = load_self_profile(
+            source=source,
+            self_id=self_id,
             table_name=table_name,
-            criteria={},
-            self_id=self_id,
-        )
-        profile = engine.build_self_profile(
-            records,
-            self_id=self_id,
-            profile_input=None,
         )
         return normalize_requester_profile_for_subscription(
             profile,
