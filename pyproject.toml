@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=61.2", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "her"
+version = "0.1.0"
+description = "Relationship-operations prototype: search, persona memory, recommendation, and matchmaking."
+requires-python = ">=3.10"
+dependencies = [
+  "apscheduler>=3.10,<4",
+  "openai>=1.0.0",
+  "pydantic>=2.0.0",
+  "pymysql>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.0.0",
+]
+
+[tool.setuptools.packages.find]
+where = [
+  ".",
+  "external-systems/partner-recommendation-system",
+  "external-systems/partner-matchmaking-system",
+  "external-systems/partner-http-gateway",
+]
+include = [
+  "match_domain*",
+  "task_scheduler*",
+  "observability*",
+  "recommendation_system*",
+  "matchmaking_system*",
+  "gateway*",
+]
+
+[tool.setuptools]
+py-modules = [
+  "generate_virtual_profiles",
+  "her_activate_repo",
+  "her_monorepo_bootstrap",
+  "outer_mysql_compat",
+  "outer_system_mysql_schema",
+  "skill_runtime",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Intentionally adjust sys.path before later imports.
+"external-systems/partner-recommendation-system/recommendation_system/storage.py" = ["E402"]
+"external-systems/partner-recommendation-system/recommendation_system/service.py" = ["E402"]
+"external-systems/partner-recommendation-system/recommendation_system/proxy_intro.py" = ["E402"]
+"external-systems/partner-matchmaking-system/matchmaking_system/storage.py" = ["E402"]
+"external-systems/partner-matchmaking-system/matchmaking_system/service.py" = ["E402"]
+"local-skills/persona-memory-sync/persona_memory_sync/api.py" = ["E402"]
+"local-skills/persona-memory-sync/tests/test_persona_memory_audit.py" = ["E402"]

@@ -1,8 +1,7 @@
 import pathlib
 import sys
-import tempfile
 import unittest
-from datetime import datetime, timedelta
+from datetime import datetime
 
 
 SYSTEM_ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -19,8 +18,10 @@ from recommendation_system import (  # noqa: E402
     record_recommendation_action,
     record_user_review,
     refresh_due_subscriptions,
+    reset_all_tables,
     run_search_session,
 )
+from recommendation_system.storage import DEFAULT_RECOMMENDATION_TEST_MYSQL_DSN  # noqa: E402
 
 
 def build_candidate():
@@ -50,14 +51,12 @@ def build_candidate():
 
 class NoMatchRoleplayFlowTests(unittest.TestCase):
     def setUp(self):
-        self.tempdir = tempfile.TemporaryDirectory()
-        self.db_path = pathlib.Path(self.tempdir.name) / "roleplay.sqlite3"
-        self.conn = connect_db(self.db_path)
+        self.conn = connect_db(DEFAULT_RECOMMENDATION_TEST_MYSQL_DSN)
         initialize_database(self.conn)
+        reset_all_tables(self.conn)
 
     def tearDown(self):
         self.conn.close()
-        self.tempdir.cleanup()
 
     def test_no_match_opt_in_then_supplement_candidate_can_be_direct_greeted(self):
         candidate_pool = []
@@ -110,13 +109,15 @@ class NoMatchRoleplayFlowTests(unittest.TestCase):
 
         candidate_pool.append(build_candidate())
 
-        refresh_summaries = refresh_due_subscriptions(
+        refresh_batch = refresh_due_subscriptions(
             self.conn,
             now=datetime(2026, 5, 3, 9, 0, 0),
             search_runner=search_runner,
         )
+        refresh_summaries = refresh_batch["summaries"]
         self.assertEqual(len(refresh_summaries), 1)
         self.assertEqual(refresh_summaries[0]["result_count"], 1)
+        self.assertEqual(refresh_batch["errors"], [])
         recommendation = list_recommendations_for_subscription(self.conn, subscription["subscription_id"])[0]
         self.assertEqual(recommendation["delivery_status"], "review_pending")
         self.assertEqual(recommendation["final_review_status"], "direct_greet_ready")

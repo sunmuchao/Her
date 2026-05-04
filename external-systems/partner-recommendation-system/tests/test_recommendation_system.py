@@ -1,8 +1,7 @@
 import pathlib
 import sys
-import tempfile
 import unittest
-from datetime import datetime, timedelta
+from datetime import datetime
 from unittest.mock import patch
 
 
@@ -25,10 +24,14 @@ from recommendation_system import (  # noqa: E402
     record_user_review,
     refresh_due_subscriptions,
     refresh_subscription,
+    reset_all_tables,
     run_search_session,
     update_subscription_overrides,
 )
 from recommendation_system.service import load_requester_profile  # noqa: E402
+from recommendation_system.storage import DEFAULT_RECOMMENDATION_TEST_MYSQL_DSN  # noqa: E402
+
+from match_domain import RULE_PROVENANCE_SCHEMA  # noqa: E402
 
 
 def build_result(
@@ -132,14 +135,12 @@ def build_synced_requester_profile(**overrides):
 
 class RecommendationSystemTests(unittest.TestCase):
     def setUp(self):
-        self.tempdir = tempfile.TemporaryDirectory()
-        self.db_path = pathlib.Path(self.tempdir.name) / "phase3.sqlite3"
-        self.conn = connect_db(self.db_path)
+        self.conn = connect_db(DEFAULT_RECOMMENDATION_TEST_MYSQL_DSN)
         initialize_database(self.conn)
+        reset_all_tables(self.conn)
 
     def tearDown(self):
         self.conn.close()
-        self.tempdir.cleanup()
 
     def create_active_subscription(self, **overrides):
         base = {
@@ -181,13 +182,15 @@ class RecommendationSystemTests(unittest.TestCase):
                 ]
             }
 
-        summaries = refresh_due_subscriptions(
+        batch = refresh_due_subscriptions(
             self.conn,
             now=datetime(2026, 4, 30, 9, 0, 0),
             search_runner=fake_search_runner,
         )
+        summaries = batch["summaries"]
 
         self.assertEqual(len(summaries), 1)
+        self.assertEqual(batch["errors"], [])
         self.assertEqual(called["criteria"]["cities"], ["无锡"])
         self.assertEqual(called["self_profile"]["city"], "无锡")
         recommendations = list_recommendations_for_subscription(self.conn, subscription["subscription_id"])
@@ -245,6 +248,14 @@ class RecommendationSystemTests(unittest.TestCase):
         self.assertEqual(runs[0]["effective_criteria"]["cities"], ["苏州", "无锡"])
         self.assertEqual(runs[0]["persona_profile"]["target_age_min"], 27)
         self.assertEqual(runs[0]["search_request"]["self_id"], 90001)
+        prov = runs[0]["rule_provenance"]
+        self.assertEqual(prov.get("schema"), RULE_PROVENANCE_SCHEMA)
+        self.assertIn("partner_search.scoring", prov.get("rule_sets", {}))
+        self.assertIn("fingerprints", prov)
+        self.assertEqual(prov["fingerprints"]["subscription_id"], subscription["subscription_id"])
+        recs = list_recommendations_for_subscription(self.conn, subscription["subscription_id"])
+        self.assertEqual(len(recs), 1)
+        self.assertEqual(recs[0]["rule_provenance"].get("schema"), RULE_PROVENANCE_SCHEMA)
 
     def test_refresh_subscription_rehydrates_synced_profile_row_into_persona_criteria(self):
         subscription = self.create_active_subscription(
@@ -677,7 +688,8 @@ class RecommendationSystemTests(unittest.TestCase):
             search_runner=lambda **_: {"results": [build_result(602, "不该触发", 99)]},
         )
 
-        self.assertEqual(due, [])
+        self.assertEqual(due["summaries"], [])
+        self.assertEqual(due["errors"], [])
         loaded = get_subscription(self.conn, subscription["subscription_id"])
         self.assertEqual(loaded["last_result_count"], 1)
 

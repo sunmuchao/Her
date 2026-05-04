@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import hashlib
-import sys
+import json
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+from ._path_bootstrap import ensure_her_repo_on_sys_path
+
+ensure_her_repo_on_sys_path(Path(__file__))
 
 from skill_runtime import ensure_partner_search_skill_on_path, ensure_persona_memory_skill_on_path  # noqa: E402
 
@@ -20,18 +20,38 @@ ensure_persona_memory_skill_on_path()
 
 from match_domain import (  # noqa: E402
     CaseType,
+    append_outbox_pending,
     build_canonical_event,
+    build_case_aggregate_event,
+    bundle_matchmaking_case_entities,
     canonical_pair_key_for_members,
     canonical_pair_status,
-    matchmaking_case_status,
+    correlation_member_feedback,
+    entity_id_pool_member,
+    idempotency_feedback,
+    match_events_from_case_event_rows,
     merge_payload_with_event,
     pool_member_profile_ref,
     profile_ref_to_dict,
+    reduce_case_ledger,
 )
 from partner_search import search_profiles  # noqa: E402
 from persona_memory_sync import upsert_persona_memory  # noqa: E402
 
 from .storage import json_dumps, json_loads, row_to_dict
+
+from observability import (  # noqa: E402
+    MATCHMAKING_FUNNEL_CASE,
+    MATCHMAKING_FUNNEL_EDGE,
+    MATCHMAKING_FUNNEL_FIRST_ACCEPT,
+    MATCHMAKING_FUNNEL_MEMBER,
+    MATCHMAKING_FUNNEL_MUTUAL_ACCEPT,
+    MATCHMAKING_FUNNEL_PAIR,
+    MATCHMAKING_FUNNEL_SECOND_ACCEPT,
+    alert_signal,
+    funnel_stage,
+    metric_gauge,
+)
 
 
 SearchRunner = Callable[..., dict[str, Any]]
@@ -59,7 +79,11 @@ def format_dt(value: datetime | None) -> str | None:
     return current_time(value).isoformat(sep=" ")
 
 
-def parse_dt(value: str | None) -> datetime | None:
+def parse_dt(value: str | datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return current_time(value)
     if not value:
         return None
     return datetime.fromisoformat(value)
@@ -122,12 +146,19 @@ def inflate_pair(pair: dict[str, Any] | None) -> dict[str, Any] | None:
     return inflated
 
 
-def inflate_case(case: dict[str, Any] | None) -> dict[str, Any] | None:
+def inflate_case(case: dict[str, Any] | None, *, conn=None) -> dict[str, Any] | None:
     if not case:
         return case
     inflated = dict(case)
     inflated["case_type"] = inflated.get("case_type") or CaseType.MATCHMAKING.value
-    inflated["canonical_case_status"] = matchmaking_case_status(inflated.get("status")).value
+    cid = inflated.get("case_id")
+    ledger_events = []
+    if conn is not None and cid:
+        event_rows = list_match_case_events(conn, str(cid))
+        ledger_events = match_events_from_case_event_rows(event_rows)
+    inflated["case_ledger_event_count"] = len(ledger_events)
+    reduced = reduce_case_ledger(ledger_events)
+    inflated["canonical_case_status"] = reduced.status.value
     return inflated
 
 
@@ -507,7 +538,7 @@ def list_match_cases(conn, *, statuses: Iterable[str] | None = None) -> list[dic
         """,
         params,
     ).fetchall()
-    return [inflate_case(row_to_dict(row)) for row in rows]
+    return [inflate_case(row_to_dict(row), conn=conn) for row in rows]
 
 
 def get_match_case(conn, case_id: str) -> dict[str, Any]:
@@ -515,7 +546,7 @@ def get_match_case(conn, case_id: str) -> dict[str, Any]:
         "SELECT * FROM match_cases WHERE case_id = ?",
         (case_id,),
     ).fetchone()
-    case = inflate_case(row_to_dict(row))
+    case = inflate_case(row_to_dict(row), conn=conn)
     if not case:
         raise ValueError(f"Unknown match case: {case_id}")
     return case
@@ -534,7 +565,13 @@ def list_match_case_events(conn, case_id: str) -> list[dict[str, Any]]:
     events = []
     for row in rows:
         event = row_to_dict(row)
-        event["payload"] = json_loads(event.pop("payload_json"), {})
+        canon_raw = event.pop("canonical_event_json", None)
+        payload = json_loads(event.pop("payload_json"), {})
+        if canon_raw is not None and (not isinstance(canon_raw, str) or str(canon_raw).strip()):
+            canon_obj = json.loads(canon_raw) if isinstance(canon_raw, str) else canon_raw
+            if isinstance(canon_obj, dict):
+                payload = {**payload, "canonical_event": canon_obj}
+        event["payload"] = payload
         events.append(event)
     return events
 
@@ -559,26 +596,30 @@ def _record_case_event(
     pair_key: str,
     event_type: str,
     actor_member_id: str | None = None,
+    first_contact_member_id: str | None = None,
+    second_contact_member_id: str | None = None,
     payload: Mapping[str, Any] | None = None,
     now: datetime | None = None,
 ) -> None:
     event_now = current_time(now)
-    event = build_canonical_event(
+    event = build_case_aggregate_event(
         event_type=event_type,
-        aggregate_type="case",
-        aggregate_id=case_id,
+        case_id=case_id,
+        case_type=CaseType.MATCHMAKING,
+        source_service="matchmaking-system",
         actor_type="member" if actor_member_id else "system",
         actor_id=str(actor_member_id or "system"),
-        source_service="matchmaking-system",
-        correlation_id=f"matchmaking-{case_id}-{event_type}",
-        idempotency_key=f"matchmaking-{case_id}-{event_type}-{format_dt(event_now)}",
         occurred_at=event_now,
-        payload={
-            "pair_key": pair_key,
-            "case_type": CaseType.MATCHMAKING.value,
-            **dict(payload or {}),
-        },
+        payload={"pair_key": pair_key, **dict(payload or {})},
+        entity_ids=bundle_matchmaking_case_entities(
+            case_id=case_id,
+            pair_key=pair_key,
+            first_contact_member_id=first_contact_member_id,
+            second_contact_member_id=second_contact_member_id,
+        ),
     )
+    occurred_str = format_dt(event_now)
+    domain_payload = dict(payload or {})
     conn.execute(
         """
         INSERT INTO match_case_events (
@@ -586,18 +627,27 @@ def _record_case_event(
           pair_key,
           event_type,
           actor_member_id,
+          canonical_event_json,
           payload_json,
           occurred_at
-        ) VALUES (?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
         (
             case_id,
             pair_key,
             event_type,
             actor_member_id,
-            json_dumps(merge_payload_with_event(payload, event)),
-            format_dt(event_now),
+            json_dumps(event.to_dict()),
+            json_dumps(domain_payload),
+            occurred_str,
         ),
+    )
+    append_outbox_pending(
+        conn,
+        event=event,
+        source_row_table="match_case_events",
+        source_row_id=conn.lastrowid or None,
+        created_at_str=occurred_str,
     )
 
 
@@ -736,6 +786,23 @@ def refresh_pool_member(
         (format_dt(now), format_dt(now), member_id),
     )
     conn.commit()
+    funnel_stage(
+        system="matchmaking",
+        stage=MATCHMAKING_FUNNEL_MEMBER,
+        member_id=member_id,
+        result_count=len(results),
+        edge_count=synced_count,
+    )
+    if synced_count:
+        funnel_stage(
+            system="matchmaking",
+            stage=MATCHMAKING_FUNNEL_EDGE,
+            member_id=member_id,
+            edge_count=synced_count,
+            result_count=len(results),
+        )
+    metric_gauge("matchmaking.pool_scan.result_count", len(results), member_id=member_id)
+    metric_gauge("matchmaking.pool_scan.edge_count", synced_count, member_id=member_id)
     return {
         "member_id": member_id,
         "user_key": member["user_key"],
@@ -754,15 +821,38 @@ def refresh_active_pool(
 ) -> list[dict[str, Any]]:
     now = current_time(now)
     due_members = list_due_pool_members(conn, now=now, member_ids=member_ids)
-    return [
-        refresh_pool_member(
-            conn,
-            member["member_id"],
-            now=now,
-            search_runner=search_runner,
-        )
-        for member in due_members
-    ]
+    summaries: list[dict[str, Any]] = []
+    for member in due_members:
+        mid = member["member_id"]
+        try:
+            summaries.append(
+                refresh_pool_member(
+                    conn,
+                    mid,
+                    now=now,
+                    search_runner=search_runner,
+                )
+            )
+        except Exception as exc:
+            alert_signal(
+                "matchmaking.refresh_failed",
+                str(exc),
+                severity="error",
+                member_id=mid,
+                error_type=type(exc).__name__,
+            )
+            summaries.append(
+                {
+                    "member_id": mid,
+                    "user_key": member.get("user_key"),
+                    "skipped": True,
+                    "reason": "refresh_failed",
+                    "error": str(exc),
+                    "edge_count": 0,
+                    "result_count": 0,
+                }
+            )
+    return summaries
 
 
 def _pair_block_reason(
@@ -1017,6 +1107,24 @@ def build_mutual_pairs(
         updated_pair_keys.append(pair["pair_key"])
 
     conn.commit()
+    row_elig = conn.execute(
+        "SELECT COUNT(*) AS c FROM matchmaking_pairs WHERE pair_status = 'eligible'",
+    ).fetchone()
+    row_mutual = conn.execute(
+        "SELECT COUNT(*) AS c FROM matchmaking_pairs WHERE pair_status = 'mutual_accept'",
+    ).fetchone()
+    eligible_total = int(row_elig["c"]) if row_elig else 0
+    mutual_total = int(row_mutual["c"]) if row_mutual else 0
+    funnel_stage(
+        system="matchmaking",
+        stage=MATCHMAKING_FUNNEL_PAIR,
+        pairs_updated=len(updated_pair_keys),
+        eligible_pairs_total=eligible_total,
+        mutual_pairs_total=mutual_total,
+    )
+    metric_gauge("matchmaking.pairs.updated_batch", len(updated_pair_keys))
+    metric_gauge("matchmaking.pairs.eligible_total", eligible_total)
+    metric_gauge("matchmaking.pairs.mutual_total", mutual_total)
     return [get_pair(conn, pair_key) for pair_key in updated_pair_keys]
 
 
@@ -1172,11 +1280,20 @@ def open_match_cases(
             case_id=case_id,
             pair_key=pair_key,
             event_type="case_created",
+            first_contact_member_id=first_contact_member_id,
+            second_contact_member_id=second_contact_member_id,
             payload={"initiator_type": "system"},
             now=now,
         )
+        funnel_stage(
+            system="matchmaking",
+            stage=MATCHMAKING_FUNNEL_CASE,
+            case_id=case_id,
+            pair_key=pair_key,
+        )
         created_case_ids.append(case_id)
     conn.commit()
+    metric_gauge("matchmaking.cases.opened_batch", len(created_case_ids))
     return [get_match_case(conn, case_id) for case_id in created_case_ids]
 
 
@@ -1205,6 +1322,8 @@ def dispatch_case_contact(
             pair_key=case["pair_key"],
             event_type="first_contact_sent",
             actor_member_id=case["first_contact_member_id"],
+            first_contact_member_id=case["first_contact_member_id"],
+            second_contact_member_id=case["second_contact_member_id"],
             now=now,
         )
     elif case["status"] == "pending_second_contact":
@@ -1224,6 +1343,8 @@ def dispatch_case_contact(
             pair_key=case["pair_key"],
             event_type="second_contact_sent",
             actor_member_id=case["second_contact_member_id"],
+            first_contact_member_id=case["first_contact_member_id"],
+            second_contact_member_id=case["second_contact_member_id"],
             now=now,
         )
     else:
@@ -1290,7 +1411,16 @@ def record_case_reply(
                 pair_key=case["pair_key"],
                 event_type="first_reply_accepted",
                 actor_member_id=member_id,
+                first_contact_member_id=case["first_contact_member_id"],
+                second_contact_member_id=case["second_contact_member_id"],
                 now=now,
+            )
+            funnel_stage(
+                system="matchmaking",
+                stage=MATCHMAKING_FUNNEL_FIRST_ACCEPT,
+                case_id=case_id,
+                pair_key=case["pair_key"],
+                member_id=member_id,
             )
         else:
             final_status = "declined" if normalized_reply == "decline" else "timed_out"
@@ -1325,6 +1455,8 @@ def record_case_reply(
                 pair_key=case["pair_key"],
                 event_type=f"first_reply_{normalized_reply}",
                 actor_member_id=member_id,
+                first_contact_member_id=case["first_contact_member_id"],
+                second_contact_member_id=case["second_contact_member_id"],
                 now=now,
             )
     elif case["status"] == "awaiting_second_reply":
@@ -1357,7 +1489,22 @@ def record_case_reply(
                 pair_key=case["pair_key"],
                 event_type="second_reply_accepted",
                 actor_member_id=member_id,
+                first_contact_member_id=case["first_contact_member_id"],
+                second_contact_member_id=case["second_contact_member_id"],
                 now=now,
+            )
+            funnel_stage(
+                system="matchmaking",
+                stage=MATCHMAKING_FUNNEL_SECOND_ACCEPT,
+                case_id=case_id,
+                pair_key=case["pair_key"],
+                member_id=member_id,
+            )
+            funnel_stage(
+                system="matchmaking",
+                stage=MATCHMAKING_FUNNEL_MUTUAL_ACCEPT,
+                case_id=case_id,
+                pair_key=case["pair_key"],
             )
         else:
             final_status = "declined" if normalized_reply == "decline" else "timed_out"
@@ -1392,6 +1539,8 @@ def record_case_reply(
                 pair_key=case["pair_key"],
                 event_type=f"second_reply_{normalized_reply}",
                 actor_member_id=member_id,
+                first_contact_member_id=case["first_contact_member_id"],
+                second_contact_member_id=case["second_contact_member_id"],
                 now=now,
             )
     else:
@@ -1443,6 +1592,8 @@ def close_stale_cases(
             case_id=case["case_id"],
             pair_key=case["pair_key"],
             event_type="case_expired",
+            first_contact_member_id=case["first_contact_member_id"],
+            second_contact_member_id=case["second_contact_member_id"],
             now=now,
         )
         case_ids.append(case["case_id"])
@@ -1545,6 +1696,8 @@ def revalidate_member_matches(
                 pair_key=case["pair_key"],
                 event_type="case_closed_for_revalidation",
                 actor_member_id=member_id,
+                first_contact_member_id=case["first_contact_member_id"],
+                second_contact_member_id=case["second_contact_member_id"],
                 payload={"reason": reason},
                 now=now,
             )
@@ -1585,8 +1738,8 @@ def record_feedback(
         actor_type="member",
         actor_id=member_id,
         source_service="matchmaking-system",
-        correlation_id=f"feedback-{feedback_id}",
-        idempotency_key=f"feedback-{feedback_id}",
+        correlation_id=correlation_member_feedback(feedback_id),
+        idempotency_key=idempotency_feedback(feedback_id),
         occurred_at=now,
         payload={
             "member_id": member_id,
@@ -1595,6 +1748,7 @@ def record_feedback(
             "feedback_text": feedback_text,
             **dict(raw_payload or {}),
         },
+        entity_ids={"pool_member": entity_id_pool_member(member_id)},
     )
     conn.execute(
         """

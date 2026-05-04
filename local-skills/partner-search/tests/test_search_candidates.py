@@ -1,5 +1,4 @@
 import pathlib
-import sys
 import types
 import unittest
 from unittest import mock

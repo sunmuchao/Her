@@ -27,7 +27,6 @@ from persona_memory_engine import (  # noqa: E402
 )
 from persona_memory_lib import (  # noqa: E402
     DEFAULT_PERSONA_TABLE,
-    income_wan_to_range,
     mysql_connect,
     quote_mysql_ident,
     resolve_mysql_source,

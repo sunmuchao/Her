@@ -11,7 +11,9 @@ It is intentionally separate from the skill itself.
 ## Directory Map
 
 - `recommendation_system/storage.py`
-  - SQLite schema and low-level storage helpers
+  - MySQL connection (`mysql://…` DSN only), schema bootstrap（`outer_system_mysql_schema.py`）, `reset_all_tables` 供测试/roleplay 清表；连接与 JSON 行工具与撮合侧共用仓库根目录的 `outer_mysql_compat`
+- 仓库根目录 `her_activate_repo.py`
+  - 由 `recommendation_system._path_bootstrap`（及网关）经 `importlib` 加载，再拉起 `her_monorepo_bootstrap`，保证未 `pip install` 的 checkout 也能导入 `match_domain`
 - `recommendation_system/service.py`
   - subscription refresh, persona-driven criteria compilation, direct `partner-search` API calls, recommendation dedupe, cooldown, frequency cap, quiet-hours, run snapshots, and card generation
 - `recommendation_system/proxy_intro.py`
@@ -22,27 +24,28 @@ It is intentionally separate from the skill itself.
   - outer search-session wrapper for the "no result -> ask whether to keep looking" flow
 - `scripts/create_saved_search_subscription.py`
   - create a saved-search subscription
-- `scripts/refresh_saved_searches.py`
-  - refresh due subscriptions and queue new candidates
-- `scripts/deliver_in_app_recommendations.py`
-  - convert queued recommendations into in-app cards
+- `task_scheduler` (repository root, `python -m task_scheduler`)
+  - interval jobs for refresh, in-app delivery, proxy-intro dispatch, and timeout closure (`HER_SCHED_RECOMMENDATION_DB` / `run-once` / `run`)
 - `scripts/record_recommendation_action.py`
   - store `skip`, `save`, or `direct_greet`
 - `scripts/record_user_review.py`
   - store the pre-delivery review decision before a recommendation is allowed to notify
 - `scripts/request_proxy_intro.py`
   - create a proxy-intro case from a recommendation
-- `scripts/dispatch_match_case_outreach.py`
-  - move pending proxy-intro cases into awaiting-reply state
 - `scripts/record_match_case_reply.py`
   - store accepted/declined proxy-intro replies
-- `scripts/close_timed_out_match_cases.py`
-  - close overdue proxy-intro cases
 - `scripts/close_match_case.py`
   - close an active proxy-intro case after handoff or cancellation
 - `tests/test_recommendation_system.py`
   - Phase 3 regression tests
 
+## Storage (MySQL)
+
+- 业务状态只写入 **MySQL**，不再使用 SQLite 文件。
+- 默认 DSN：`mysql://root@127.0.0.1:3307/her_recommendation`（可用环境变量 **`PARTNER_RECOMMENDATION_DB`** 覆盖）。
+- 单测默认库：`her_recommendation_test`（**`PARTNER_RECOMMENDATION_TEST_DB`**）。
+- Roleplay 脚本默认隔离库：`her_recommendation_roleplay`（**`PARTNER_RECOMMENDATION_ROLEPLAY_DB`**）。
+- 依赖：仓库根目录 `requirements.txt` 中的 **`pymysql`**。
 ## Database Tables
 
 - `saved_search_subscriptions`
@@ -141,7 +144,7 @@ from recommendation_system import (
     run_search_session,
 )
 
-conn = connect_db("/tmp/partner-phase3.sqlite3")
+conn = connect_db("mysql://root@127.0.0.1:3307/her_recommendation")
 initialize_database(conn)
 
 session = run_search_session(
@@ -181,7 +184,7 @@ Create one subscription:
 
 ```bash
 python3 external-systems/partner-recommendation-system/scripts/create_saved_search_subscription.py \
-  --db /tmp/partner-phase3.sqlite3 \
+  --db 'mysql://root@127.0.0.1:3307/her_recommendation' \
   --requester-id 70001 \
   --source 'mysql://user:pass@127.0.0.1:3306/her?table=profiles' \
   --title '无锡认真恋爱' \
@@ -194,18 +197,20 @@ python3 external-systems/partner-recommendation-system/scripts/create_saved_sear
 
 If the requester profile already lives in the partner-search source, use `--self-id` so refreshes can resolve the latest persona snapshot directly.
 
-Refresh due subscriptions:
+Refresh due subscriptions (from repository root; same DSN as `--db` on other scripts):
 
 ```bash
-python3 external-systems/partner-recommendation-system/scripts/refresh_saved_searches.py \
-  --db /tmp/partner-phase3.sqlite3
+export HER_SCHED_RECOMMENDATION_DB='mysql://root@127.0.0.1:3307/her_recommendation'
+python3 -m task_scheduler run-once recommendation.refresh_saved_searches
 ```
+
+Long-running mode: `python3 -m task_scheduler run` runs all registered recommendation jobs on an interval.
 
 Record the real-user review before delivery:
 
 ```bash
 python3 external-systems/partner-recommendation-system/scripts/record_user_review.py \
-  --db /tmp/partner-phase3.sqlite3 \
+  --db 'mysql://root@127.0.0.1:3307/her_recommendation' \
   --subscription-id saved-search-xxxx \
   --candidate-id 90001 \
   --review direct_greet
@@ -214,15 +219,15 @@ python3 external-systems/partner-recommendation-system/scripts/record_user_revie
 Deliver pending in-app recommendation cards:
 
 ```bash
-python3 external-systems/partner-recommendation-system/scripts/deliver_in_app_recommendations.py \
-  --db /tmp/partner-phase3.sqlite3
+export HER_SCHED_RECOMMENDATION_DB='mysql://root@127.0.0.1:3307/her_recommendation'
+python3 -m task_scheduler run-once recommendation.deliver_in_app_recommendations
 ```
 
 Record a user action:
 
 ```bash
 python3 external-systems/partner-recommendation-system/scripts/record_recommendation_action.py \
-  --db /tmp/partner-phase3.sqlite3 \
+  --db 'mysql://root@127.0.0.1:3307/her_recommendation' \
   --subscription-id saved-search-xxxx \
   --candidate-id 90001 \
   --action skip
@@ -232,23 +237,31 @@ Create a proxy-intro case:
 
 ```bash
 python3 external-systems/partner-recommendation-system/scripts/request_proxy_intro.py \
-  --db /tmp/partner-phase3.sqlite3 \
+  --db 'mysql://root@127.0.0.1:3307/her_recommendation' \
   --subscription-id saved-search-xxxx \
   --candidate-id 90001
 ```
 
-Dispatch pending proxy-intro outreach:
+Dispatch pending proxy-intro outreach (batch):
 
 ```bash
-python3 external-systems/partner-recommendation-system/scripts/dispatch_match_case_outreach.py \
-  --db /tmp/partner-phase3.sqlite3
+export HER_SCHED_RECOMMENDATION_DB='mysql://root@127.0.0.1:3307/her_recommendation'
+python3 -m task_scheduler run-once recommendation.dispatch_proxy_intro_outreach
+```
+
+Single-case dispatch with a custom payload: call `recommendation_system.dispatch_match_case_outreach(...)` from Python (or your HTTP gateway).
+
+Close overdue proxy-intro cases:
+
+```bash
+python3 -m task_scheduler run-once recommendation.close_timed_out_proxy_cases
 ```
 
 Record a proxy-intro reply:
 
 ```bash
 python3 external-systems/partner-recommendation-system/scripts/record_match_case_reply.py \
-  --db /tmp/partner-phase3.sqlite3 \
+  --db 'mysql://root@127.0.0.1:3307/her_recommendation' \
   --case-id match-case-xxxx \
   --reply accepted
 ```
