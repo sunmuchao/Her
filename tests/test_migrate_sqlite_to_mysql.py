@@ -1,4 +1,5 @@
 import unittest
+import sqlite3
 
 import migrate_sqlite_to_mysql as migration
 
@@ -63,6 +64,94 @@ class MigrateSqliteToMysqlTests(unittest.TestCase):
             migration.normalize_mysql_value(memoryview(b"abc")),
             b"abc",
         )
+
+    def test_load_sqlite_rows_returns_empty_when_source_table_is_missing(self):
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        try:
+            rows = migration.load_sqlite_rows(
+                conn,
+                migration.SYSTEM_TABLES["recommendation"][0],
+            )
+        finally:
+            conn.close()
+
+        self.assertEqual(rows, [])
+
+    def test_load_sqlite_rows_backfills_missing_required_column_from_defaults(self):
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.execute(
+            """
+            CREATE TABLE match_cases (
+              case_id TEXT PRIMARY KEY,
+              subscription_id TEXT NOT NULL,
+              recommendation_id INTEGER NOT NULL,
+              requester_id INTEGER NOT NULL,
+              candidate_id INTEGER NOT NULL,
+              candidate_name TEXT NOT NULL,
+              initiated_by TEXT NOT NULL,
+              case_status TEXT NOT NULL,
+              close_reason TEXT,
+              outreach_channel TEXT NOT NULL,
+              safe_summary_json TEXT NOT NULL,
+              requester_profile_snapshot_json TEXT NOT NULL,
+              candidate_snapshot_json TEXT NOT NULL,
+              outreach_payload_json TEXT NOT NULL,
+              reply_payload_json TEXT NOT NULL,
+              reply_deadline_at TEXT,
+              outreach_sent_at TEXT,
+              replied_at TEXT,
+              cooling_until TEXT,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO match_cases (
+              case_id, subscription_id, recommendation_id, requester_id, candidate_id,
+              candidate_name, initiated_by, case_status, close_reason, outreach_channel,
+              safe_summary_json, requester_profile_snapshot_json, candidate_snapshot_json,
+              outreach_payload_json, reply_payload_json, reply_deadline_at, outreach_sent_at,
+              replied_at, cooling_until, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "case-1",
+                "sub-1",
+                101,
+                1001,
+                2002,
+                "Alice",
+                "requester",
+                "open",
+                None,
+                "in_app_proxy_intro",
+                "{}",
+                "{}",
+                "{}",
+                "{}",
+                "{}",
+                None,
+                None,
+                None,
+                None,
+                "2026-05-04 10:00:00",
+                "2026-05-04 10:00:00",
+            ),
+        )
+        try:
+            rows = migration.load_sqlite_rows(
+                conn,
+                migration.SYSTEM_TABLES["recommendation"][5],
+            )
+        finally:
+            conn.close()
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0][7], "proxy_intro")
 
 
 if __name__ == "__main__":
