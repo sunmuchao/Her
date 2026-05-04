@@ -883,8 +883,6 @@ Phase 1 完成后，`partner-search` 应该处于下面这个状态：
   - 做每日提醒频控
   - 做静默时段控制
   - 生成站内推荐卡片
-- `recommendation_system/search_client.py`
-  - 通过 Phase 2 Python API 调 `partner-search`
 - `scripts/create_saved_search_subscription.py`
   - 创建保存搜索订阅
 - `scripts/refresh_saved_searches.py`
@@ -1037,16 +1035,12 @@ Phase 1 完成后，`partner-search` 应该处于下面这个状态：
   - 建 `matchmaking_feedback_events`
 - `matchmaking_system/service.py`
   - 管理撮合池成员
-  - 调 `partner-search` 刷新池内单向边
+  - 直接通过公开 API 调 `partner-search` 刷新池内单向边
   - 把双边边拼成 mutual pair
   - 创建 system `match_case`
   - 推进 first / second contact 状态流转
-  - 记录反馈并在反馈后自动调用 `persona-memory-sync`
+  - 记录反馈并在反馈后直接通过公开 API 调 `persona-memory-sync`
   - 画像更新后重校验旧 pair 和待处理案件
-- `matchmaking_system/partner_search_client.py`
-  - 通过 Phase 2 Python API 调 `partner-search`
-- `matchmaking_system/persona_memory_client.py`
-  - 通过 Python API 调 `persona-memory-sync`
 - `tests/test_matchmaking_system.py`
   - 锁住撮合池、mutual pair、案件流转、反馈画像同步和重校验回归
 

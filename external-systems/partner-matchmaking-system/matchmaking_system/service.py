@@ -13,6 +13,11 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from skill_runtime import ensure_partner_search_skill_on_path, ensure_persona_memory_skill_on_path  # noqa: E402
+
+ensure_partner_search_skill_on_path()
+ensure_persona_memory_skill_on_path()
+
 from match_domain import (  # noqa: E402
     CaseType,
     build_canonical_event,
@@ -23,14 +28,16 @@ from match_domain import (  # noqa: E402
     pool_member_profile_ref,
     profile_ref_to_dict,
 )
+from partner_search import search_profiles  # noqa: E402
+from persona_memory_sync import upsert_persona_memory  # noqa: E402
 
-from .partner_search_client import run_partner_search
-from .persona_memory_client import sync_persona_memory
 from .storage import json_dumps, json_loads, row_to_dict
 
 
 SearchRunner = Callable[..., dict[str, Any]]
 PersonaSyncRunner = Callable[[Mapping[str, Any]], dict[str, Any]]
+run_partner_search = search_profiles
+sync_persona_memory = upsert_persona_memory
 
 ACTIVE_MEMBER_STATUS = "active_single"
 OPEN_CASE_STATUSES = {
