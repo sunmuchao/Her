@@ -13,6 +13,10 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from skill_runtime import ensure_partner_search_skill_on_path  # noqa: E402
+
+ensure_partner_search_skill_on_path()
+
 from match_domain import (  # noqa: E402
     build_canonical_event,
     merge_payload_with_event,
@@ -21,6 +25,7 @@ from match_domain import (  # noqa: E402
     recommendation_relation_refs,
     recommendation_relation_status,
 )
+from partner_search import load_self_profile, normalize_persona_profile, search_profiles  # noqa: E402
 
 from .direct_greet_gate import (
     DEFAULT_MAX_REVIEW_CANDIDATES_PER_REFRESH,
@@ -30,12 +35,12 @@ from .direct_greet_gate import (
     review_candidate_for_proactive_delivery,
 )
 from .criteria_compiler import build_effective_search_request
-from .search_client import load_requester_profile, run_partner_search
 from .storage import json_dumps, json_loads, row_to_dict
 
 
 SearchRunner = Callable[..., dict[str, Any]]
 PersonaResolver = Callable[[dict[str, Any]], Optional[dict[str, Any]]]
+run_partner_search = search_profiles
 
 
 def current_time(now: datetime | None = None) -> datetime:
@@ -93,6 +98,35 @@ def build_initial_request(
 
 def normalize_subscription_overrides(overrides: dict[str, Any] | None) -> dict[str, Any]:
     return dict(overrides or {})
+
+
+def load_requester_profile(
+    *,
+    source: str,
+    self_id: int | None,
+    table_name: str | None = None,
+    self_profile: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """Resolve the latest requester profile row for persona-driven refreshes."""
+
+    if self_id is None:
+        return self_profile
+
+    try:
+        profile = load_self_profile(
+            source=source,
+            self_id=self_id,
+            table_name=table_name,
+        )
+        return normalize_persona_profile(
+            profile,
+            fallback_profile=self_profile,
+        )
+    except Exception:
+        return normalize_persona_profile(
+            self_profile,
+            fallback_profile=self_profile,
+        )
 
 
 def resolve_subscription_persona_profile(subscription: dict[str, Any]) -> dict[str, Any] | None:

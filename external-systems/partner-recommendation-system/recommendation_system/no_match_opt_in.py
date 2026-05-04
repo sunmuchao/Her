@@ -9,8 +9,7 @@ from .direct_greet_gate import (
     DEFAULT_MIN_DIRECT_GREET_SCORE,
     DEFAULT_RECOMMENDATION_MODE,
 )
-from .search_client import run_partner_search
-from .service import create_subscription
+from .service import create_subscription, run_partner_search
 
 
 SearchRunner = Callable[..., dict[str, Any]]

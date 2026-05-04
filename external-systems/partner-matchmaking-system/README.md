@@ -27,11 +27,7 @@ It works like a pool:
 - `matchmaking_system/storage.py`
   - SQLite schema and low-level helpers
 - `matchmaking_system/service.py`
-  - pool membership, edge refresh, reciprocal pairing, case workflow, feedback handling, and revalidation
-- `matchmaking_system/partner_search_client.py`
-  - bridge into `partner-search`
-- `matchmaking_system/persona_memory_client.py`
-  - bridge into `persona-memory-sync`
+  - pool membership, edge refresh, direct `partner-search` and `persona-memory-sync` API calls, reciprocal pairing, case workflow, feedback handling, and revalidation
 - `tests/test_matchmaking_system.py`
   - Phase 5 regression tests
 

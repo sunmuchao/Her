@@ -13,13 +13,11 @@ It is intentionally separate from the skill itself.
 - `recommendation_system/storage.py`
   - SQLite schema and low-level storage helpers
 - `recommendation_system/service.py`
-  - subscription refresh, persona-driven criteria compilation, recommendation dedupe, cooldown, frequency cap, quiet-hours, run snapshots, and card generation
+  - subscription refresh, persona-driven criteria compilation, direct `partner-search` API calls, recommendation dedupe, cooldown, frequency cap, quiet-hours, run snapshots, and card generation
 - `recommendation_system/proxy_intro.py`
   - proxy-intro case creation, dispatch, reply handling, timeout handling, and audit sync
 - `recommendation_system/criteria_compiler.py`
   - compile `persona + subscription overrides -> effective criteria`
-- `recommendation_system/search_client.py`
-  - bridge into `partner-search`'s Python API
 - `recommendation_system/no_match_opt_in.py`
   - outer search-session wrapper for the "no result -> ask whether to keep looking" flow
 - `scripts/create_saved_search_subscription.py`

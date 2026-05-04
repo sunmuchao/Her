@@ -28,7 +28,7 @@ from recommendation_system import (  # noqa: E402
     run_search_session,
     update_subscription_overrides,
 )
-from recommendation_system.search_client import load_requester_profile  # noqa: E402
+from recommendation_system.service import load_requester_profile  # noqa: E402
 
 
 def build_result(
@@ -263,7 +263,7 @@ class RecommendationSystemTests(unittest.TestCase):
         called = {}
 
         with patch(
-            "recommendation_system.search_client.load_self_profile",
+            "recommendation_system.service.load_self_profile",
             return_value=build_synced_requester_profile(),
         ):
             refresh_subscription(
@@ -299,7 +299,7 @@ class RecommendationSystemTests(unittest.TestCase):
 
     def test_load_requester_profile_returns_json_safe_persona_profile(self):
         with patch(
-            "recommendation_system.search_client.load_self_profile",
+            "recommendation_system.service.load_self_profile",
             return_value={
                 "id": 90001,
                 "gender": "男",
@@ -342,7 +342,7 @@ class RecommendationSystemTests(unittest.TestCase):
         called = {}
 
         with patch(
-            "recommendation_system.search_client.load_self_profile",
+            "recommendation_system.service.load_self_profile",
             return_value=build_synced_requester_profile(
                 preferred_age_min=31,
                 preferred_age_max=37,
