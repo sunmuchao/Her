@@ -28,6 +28,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 MYSQL_SCHEMES = {"mysql", "mysql+pymysql"}
 DEFAULT_CHARSET = "utf8mb4"
 DEFAULT_COLLATION = "utf8mb4_unicode_ci"
+NO_DEFAULT = object()
 
 
 @dataclass(frozen=True)
@@ -70,6 +71,26 @@ class TableDef:
     @property
     def column_names(self) -> tuple[str, ...]:
         return tuple(column.name for column in self.columns)
+
+
+SOURCE_COLUMN_DEFAULTS: dict[tuple[str, str], Any] = {
+    ("saved_search_subscriptions", "initial_request_json"): "{}",
+    ("saved_search_subscriptions", "subscription_overrides_json"): "{}",
+    ("saved_search_subscriptions", "recommendation_mode"): "direct_greet_only",
+    ("saved_search_subscriptions", "direct_greet_profile_json"): "{}",
+    ("saved_search_subscriptions", "max_review_candidates_per_refresh"): 3,
+    ("saved_search_subscriptions", "min_direct_greet_score"): 60,
+    ("saved_search_subscriptions", "auto_reject_on_follow_up_questions"): 1,
+    ("saved_search_subscriptions", "auto_reject_on_risk_flags"): 1,
+    ("profile_recommendations", "final_review_status"): "match_ready",
+    ("profile_recommendations", "final_review_score"): 0,
+    ("profile_recommendations", "final_review_payload_json"): "{}",
+    ("profile_recommendations", "user_review_status"): "not_requested",
+    ("profile_recommendations", "user_review_payload_json"): "{}",
+    ("profile_recommendations", "owner_profile_ref_json"): "{}",
+    ("profile_recommendations", "target_profile_ref_json"): "{}",
+    ("match_cases", "case_type"): "proxy_intro",
+}
 
 
 def quote_mysql_ident(identifier: str) -> str:
@@ -262,12 +283,41 @@ def chunked(rows: Sequence[Sequence[Any]], batch_size: int) -> Iterator[Sequence
         yield rows[index : index + batch_size]
 
 
+def sqlite_table_exists(sqlite_conn: sqlite3.Connection, table_name: str) -> bool:
+    row = sqlite_conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1",
+        (table_name,),
+    ).fetchone()
+    return row is not None
+
+
 def load_sqlite_rows(sqlite_conn: sqlite3.Connection, table: TableDef) -> list[tuple[Any, ...]]:
+    if not sqlite_table_exists(sqlite_conn, table.name):
+        return []
+    actual_columns = {
+        row["name"] for row in sqlite_conn.execute(f"PRAGMA table_info({quote_sqlite_ident(table.name)})").fetchall()
+    }
     query = build_select_sql(table)
     rows = sqlite_conn.execute(query).fetchall()
     values: list[tuple[Any, ...]] = []
     for row in rows:
-        values.append(tuple(normalize_mysql_value(row[column]) for column in table.column_names))
+        rendered: list[Any] = []
+        for column in table.columns:
+            if column.name in actual_columns:
+                value = row[column.name]
+            else:
+                default = SOURCE_COLUMN_DEFAULTS.get((table.name, column.name), NO_DEFAULT)
+                if default is not NO_DEFAULT:
+                    value = default
+                elif column.nullable:
+                    value = None
+                else:
+                    raise ValueError(
+                        f"Source table {table.name!r} is missing required column {column.name!r} "
+                        "and no migration default is defined."
+                    )
+            rendered.append(normalize_mysql_value(value))
+        values.append(tuple(rendered))
     return values
 
 
