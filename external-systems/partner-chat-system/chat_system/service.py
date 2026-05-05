@@ -21,9 +21,21 @@ from observability import (
     funnel_stage,
 )
 
-from .assistant_llm import build_dyadic_context_for_assistant, generate_assistant_reply
+from .assistant_llm import (
+    build_dyadic_context_for_assistant,
+    build_placeholder_assistant_guidance,
+    generate_assistant_guidance,
+    normalize_assistant_guidance,
+    render_assistant_guidance,
+)
 from .events import chat_message_created_event, chat_thread_opened_event
 from .persona_jobs import maybe_enqueue_persona_sync_job
+from .profile_loader import (
+    DEFAULT_PROFILE_MYSQL_DSN,
+    fetch_profile_for_participant,
+    profile_row_to_assistant_summary,
+    profile_row_to_hook_list,
+)
 from .storage import json_dumps, json_loads, row_to_dict
 
 ASSISTANT_AUTHOR_ID = "assistant"
@@ -150,6 +162,33 @@ def _message_visible_to(row: dict[str, Any], thread: dict[str, Any], requester_i
     if vis == VIS_OWNER_ONLY:
         return row.get("message_recipient_id") == requester_id
     return False
+
+
+def _other_participant_id(thread: dict[str, Any], user_id: str) -> str:
+    if user_id == thread["participant_a_id"]:
+        return str(thread["participant_b_id"])
+    return str(thread["participant_a_id"])
+
+
+def _assistant_profile_context(thread: dict[str, Any], user_id: str) -> dict[str, Any]:
+    dsn = os.environ.get("HER_PROFILE_MYSQL_DSN") or DEFAULT_PROFILE_MYSQL_DSN
+    actor_row = fetch_profile_for_participant(str(dsn), str(user_id))
+    counterpart_row = fetch_profile_for_participant(str(dsn), _other_participant_id(thread, user_id))
+    actor_summary = profile_row_to_assistant_summary(actor_row) if actor_row else ""
+    counterpart_summary = profile_row_to_assistant_summary(counterpart_row) if counterpart_row else ""
+    actor_hooks = profile_row_to_hook_list(actor_row) if actor_row else []
+    counterpart_hooks = profile_row_to_hook_list(counterpart_row) if counterpart_row else []
+    shared_hooks = [hook for hook in actor_hooks if hook in counterpart_hooks]
+    ordered_hooks: list[str] = []
+    for hook in shared_hooks + actor_hooks + counterpart_hooks:
+        if hook and hook not in ordered_hooks:
+            ordered_hooks.append(hook)
+    return {
+        "profile_dsn": str(dsn),
+        "actor_profile_summary": actor_summary,
+        "counterpart_profile_summary": counterpart_summary,
+        "profile_hooks": ordered_hooks[:8],
+    }
 
 
 def list_messages(
@@ -359,16 +398,19 @@ def assistant_query(
         now=now,
     )
     ctx = build_dyadic_context_for_assistant(conn, thread_id, limit=20)
-    placeholder = (
-        "【助手建议占位】\n"
-        "当前问题：\n"
-        "1. 暂未接入模型，暂时无法自动判断对话卡点。\n"
-        "回复建议：\n"
-        "1. 先回应对方上一句里最具体的信息，再继续往下聊。\n"
-        "2. 补一点你自己的真实信息或感受，避免只抛问题。\n"
-        "3. 最终发出去的话请自己组织，不要照搬模板。"
+    profile_ctx = _assistant_profile_context(thread, user_id)
+    placeholder = build_placeholder_assistant_guidance(
+        profile_hooks=list(profile_ctx.get("profile_hooks") or [])
     )
-    body = generate_assistant_reply(user_query=q, thread_context=ctx) or placeholder
+    guidance = generate_assistant_guidance(
+        user_query=q,
+        thread_context=ctx,
+        actor_profile_summary=str(profile_ctx.get("actor_profile_summary") or ""),
+        counterpart_profile_summary=str(profile_ctx.get("counterpart_profile_summary") or ""),
+        profile_hooks=list(profile_ctx.get("profile_hooks") or []),
+    ) or placeholder
+    guidance = normalize_assistant_guidance(guidance)
+    body = render_assistant_guidance(guidance)
     out = post_message(
         conn,
         thread_id,
@@ -388,6 +430,8 @@ def assistant_query(
         message_id=out["message_id"],
         user_id=user_id,
     )
+    out["assistant_guidance"] = guidance
+    out["assistant_profile_context"] = profile_ctx
     return out
 
 
