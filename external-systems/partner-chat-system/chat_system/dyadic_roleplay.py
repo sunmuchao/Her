@@ -40,6 +40,32 @@ _COLD_REPLIES = (
     "一般",
     "行吧",
 )
+_BOUNDARY_HINTS = (
+    "收入",
+    "工资",
+    "年薪",
+    "房",
+    "车",
+    "彩礼",
+    "前任",
+    "照片",
+    "身材",
+    "住哪",
+    "见面",
+)
+_LOW_BAR_QUESTION_TOKENS = (
+    "平时",
+    "一般",
+    "通常",
+    "最近",
+    "周末",
+    "下班",
+    "休息",
+    "会不会",
+    "会吗",
+    "喜欢",
+    "常",
+)
 
 
 class SupportsConn(Protocol):
@@ -160,6 +186,8 @@ def _next_dyadic_message(
         f"{transcript}\n\n"
         "请写出下一条你要发给对方的聊天内容（**只输出正文**，不要引号、不要「对方：」等前缀、不要解释）。"
         "像真实聊天，不要分析对方措辞，不要写成说明文。"
+        "尽量像微信里会发的 1-2 句短消息，能口语就别分析；先接住具体信息，再补一点自己的话。"
+        "如果要提问，优先问轻一点、容易回答的问题。"
         f"{stress_block}"
     )
     raw = llm([{"role": "system", "content": system}, {"role": "user", "content": user}]).strip()
@@ -238,6 +266,41 @@ def _dedupe_strs(items: list[str]) -> list[str]:
     return out
 
 
+def _compact_text(text: str) -> str:
+    return re.sub(r"\s+", "", str(text or ""))
+
+
+def _phrase_fragments(text: str) -> list[str]:
+    raw = str(text or "").strip()
+    if not raw:
+        return []
+    parts = re.split(r"[，。,.、；;：:/\s()（）]+", raw)
+    out: list[str] = []
+    for part in parts:
+        item = part.strip()
+        if len(item) >= 2 and item not in out:
+            out.append(item)
+    compact = _compact_text(raw)
+    if len(compact) >= 4:
+        for frag in (compact[:4], compact[-4:]):
+            if len(frag) >= 2 and frag not in out:
+                out.append(frag)
+    elif len(compact) >= 2 and compact not in out:
+        out.append(compact)
+    return out
+
+
+def _contains_any_phrase_signal(text: str, phrases: list[str]) -> bool:
+    body = _compact_text(text)
+    if not body:
+        return False
+    for phrase in phrases:
+        for frag in _phrase_fragments(phrase):
+            if frag and frag in body:
+                return True
+    return False
+
+
 def _is_question_like(text: str) -> bool:
     t = str(text or "")
     return "？" in t or "?" in t or any(token in t for token in ("吗", "呢", "哪种", "什么", "怎么"))
@@ -280,14 +343,75 @@ def _gold_rescue_for_turn(beats: list[StressBeat]) -> dict[str, Any]:
     }
 
 
-def _assistant_follow_assessment(message: str, guidance: dict[str, Any] | None) -> dict[str, Any]:
-    if not guidance:
+def _fast_rescue_decision(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
+    dyadic = [m for m in messages if str(m.get("visibility") or "") == VIS_DYADIC]
+    if not dyadic:
+        return {
+            "need_rescue": False,
+            "situation": "none",
+            "reason": "首轮开场，先正常聊，不需要提前救场。",
+            "decision_source": "heuristic_bootstrap",
+        }
+
+    last_body = str(dyadic[-1].get("body") or "").strip()
+    prev_body = str(dyadic[-2].get("body") or "").strip() if len(dyadic) >= 2 else ""
+    recent = [str(m.get("body") or "").strip() for m in dyadic[-3:]]
+
+    if _is_cold_like(last_body):
+        return {
+            "need_rescue": True,
+            "situation": "cold",
+            "reason": "上一句是明显短冷回复，再顺着原话题硬聊很容易僵住。",
+            "decision_source": "heuristic",
+        }
+    if any(token in last_body for token in _BOUNDARY_HINTS):
+        return {
+            "need_rescue": True,
+            "situation": "awkward",
+            "reason": "上一句已经碰到敏感或有压力的话题，先给接话缓冲更稳。",
+            "decision_source": "heuristic",
+        }
+    if len(recent) >= 2 and all(len(_compact_text(body)) <= 6 for body in recent[-2:]) and not any(
+        _is_question_like(body) for body in recent[-2:]
+    ):
+        return {
+            "need_rescue": True,
+            "situation": "stuck",
+            "reason": "最近两句都偏短也没有追问，话题已经开始发干。",
+            "decision_source": "heuristic",
+        }
+    if _is_question_like(last_body) and len(_compact_text(last_body)) >= 8:
+        return {
+            "need_rescue": False,
+            "situation": "none",
+            "reason": "上一句本身就是正常可接的问题，先别打断自然往下聊。",
+            "decision_source": "heuristic_clear_continue",
+        }
+    if len(_compact_text(last_body)) >= 10 and not _is_cold_like(last_body) and _is_question_like(prev_body):
+        return {
+            "need_rescue": False,
+            "situation": "none",
+            "reason": "当前还有正常来回，先不额外介入。",
+            "decision_source": "heuristic_clear_continue",
+        }
+    return None
+
+
+def _assistant_follow_assessment(
+    message: str,
+    guidance: dict[str, Any] | None,
+    *,
+    assistant_invoked: bool,
+) -> dict[str, Any]:
+    if not assistant_invoked or not guidance:
         return {"level": "not_applicable", "score": 0, "signals": []}
     text = str(message or "").strip()
     signals: list[str] = []
     score = 0
     strategy_tags = set(str(x) for x in guidance.get("strategy_tags") or [])
     hooks = [str(x) for x in guidance.get("profile_hooks_used") or []]
+    topic_directions = [str(x) for x in guidance.get("topic_directions") or []]
+    easy_question_types = [str(x) for x in guidance.get("easy_question_types") or []]
 
     if _is_cold_like(text):
         return {"level": "none", "score": 0, "signals": ["message_still_cold"]}
@@ -302,18 +426,22 @@ def _assistant_follow_assessment(message: str, guidance: dict[str, Any] | None) 
     ):
         score += 1
         signals.append("acknowledged_awkwardness")
-    if hooks and any(hook and hook in text for hook in hooks):
+    if hooks and _contains_any_phrase_signal(text, hooks):
         score += 1
         signals.append("used_profile_hook")
-    if "switch_topic" in strategy_tags and len(text) >= 12 and not any(
-        token in text for token in ("桌游", "推荐")
-    ):
+    if topic_directions and _contains_any_phrase_signal(text, topic_directions):
+        score += 1
+        signals.append("used_topic_direction")
+    if easy_question_types and _is_question_like(text) and any(token in text for token in _LOW_BAR_QUESTION_TOKENS):
+        score += 1
+        signals.append("asked_low_bar_question")
+    if "switch_topic" in strategy_tags and len(text) >= 12 and (hooks or topic_directions):
         score += 1
         signals.append("switched_topic")
 
-    if score >= 3:
+    if score >= 4:
         level = "strong"
-    elif score >= 1:
+    elif score >= 2:
         level = "partial"
     else:
         level = "none"
@@ -321,7 +449,11 @@ def _assistant_follow_assessment(message: str, guidance: dict[str, Any] | None) 
 
 
 def _assistant_recovery_assessment(current_turn: dict[str, Any], next_turn: dict[str, Any] | None) -> dict[str, Any]:
+    if not bool(current_turn.get("assistant_invoked")):
+        return {"label": "not_applicable", "score": 0, "signals": []}
     follow = current_turn.get("assistant_follow_assessment") or {}
+    if next_turn is None:
+        return {"label": "pending", "score": 0, "signals": ["no_following_reply"]}
     score = 0
     signals: list[str] = []
     if follow.get("level") == "strong":
@@ -330,19 +462,16 @@ def _assistant_recovery_assessment(current_turn: dict[str, Any], next_turn: dict
     elif follow.get("level") == "partial":
         signals.append("speaker_partially_followed_guidance")
 
-    if next_turn is None:
-        signals.append("no_following_reply")
+    reply = str(next_turn.get("generated_message") or "")
+    if not _is_cold_like(reply):
+        score += 1
+        signals.append("counterpart_replied_with_more_than_cold_phrase")
     else:
-        reply = str(next_turn.get("generated_message") or "")
-        if not _is_cold_like(reply):
-            score += 1
-            signals.append("counterpart_replied_with_more_than_cold_phrase")
-        else:
-            score -= 1
-            signals.append("counterpart_reply_still_cold")
-        if len(reply.strip()) >= 10:
-            score += 1
-            signals.append("counterpart_added_detail")
+        score -= 1
+        signals.append("counterpart_reply_still_cold")
+    if len(reply.strip()) >= 10:
+        score += 1
+        signals.append("counterpart_added_detail")
 
     if score >= 2:
         label = "improved"
@@ -514,20 +643,30 @@ def run_dyadic_roleplay(
             turn_record["assistant_guidance"] = hint.get("assistant_guidance")
             turn_record["assistant_profile_context"] = hint.get("assistant_profile_context")
         elif mode == "proactive":
-            pub = dyadic_public_transcript(conn, thread_id, participant_a_id)
-            decision = _orchestrator_rescue_decision(
-                llm=llm,
-                next_speaker_id=speaker,
-                participant_a_id=participant_a_id,
-                participant_b_id=participant_b_id,
-                dyadic_transcript=pub,
-            )
+            pub_msgs = [
+                m
+                for m in list_messages(conn, thread_id, participant_a_id, limit=200)
+                if m.get("visibility") == VIS_DYADIC
+            ]
+            pub = format_visible_transcript(pub_msgs)
+            decision = _fast_rescue_decision(pub_msgs)
+            if decision is None:
+                decision = _orchestrator_rescue_decision(
+                    llm=llm,
+                    next_speaker_id=speaker,
+                    participant_a_id=participant_a_id,
+                    participant_b_id=participant_b_id,
+                    dyadic_transcript=pub,
+                )
+                decision["decision_source"] = "llm"
             need = bool(decision.get("need_rescue"))
             emit(
-                f"{turn_label}: rescue need={need} situation={decision.get('situation') or 'none'} "
+                f"{turn_label}: rescue source={decision.get('decision_source') or 'unknown'} "
+                f"need={need} situation={decision.get('situation') or 'none'} "
                 f"reason={_preview_text(str(decision.get('reason') or ''))}"
             )
             turn_record["rescue_decision"] = decision
+            turn_record["rescue_decision_source"] = decision.get("decision_source") or "unknown"
             if need:
                 situation = str(decision.get("situation") or "awkward")
                 reason = str(decision.get("reason") or "")
@@ -582,6 +721,7 @@ def run_dyadic_roleplay(
         record["assistant_follow_assessment"] = _assistant_follow_assessment(
             str(record.get("generated_message") or ""),
             record.get("assistant_guidance"),
+            assistant_invoked=bool(record.get("assistant_invoked")),
         )
         record["assistant_recovery_assessment"] = _assistant_recovery_assessment(
             record,
@@ -610,11 +750,22 @@ def run_dyadic_roleplay(
     strong_follow = [
         r for r in intervention_records if (r.get("assistant_follow_assessment") or {}).get("level") == "strong"
     ]
-    improved_recovery = [
+    recoverable_interventions = [
         r
         for r in intervention_records
+        if (r.get("assistant_recovery_assessment") or {}).get("label") not in ("not_applicable", "pending")
+    ]
+    improved_recovery = [
+        r
+        for r in recoverable_interventions
         if (r.get("assistant_recovery_assessment") or {}).get("label") == "improved"
     ]
+    heuristic_decisions = [
+        r
+        for r in turn_records
+        if str(r.get("rescue_decision_source") or "").startswith("heuristic")
+    ]
+    llm_decisions = [r for r in turn_records if (r.get("rescue_decision_source") or "") == "llm"]
 
     emit(f"starting self-evaluation for {participant_a_id}")
     eval_a = _persona_self_evaluation(
@@ -668,11 +819,14 @@ def run_dyadic_roleplay(
             "false_negative_rescue_turns": len(false_negative),
             "precision_proxy": round(len(true_positive) / len(pred_positive), 4) if pred_positive else None,
             "recall_proxy": round(len(true_positive) / len(gold_positive), 4) if gold_positive else None,
+            "heuristic_decision_turns": len(heuristic_decisions),
+            "llm_decision_turns": len(llm_decisions),
             "strong_follow_rate": round(len(strong_follow) / len(intervention_records), 4)
             if intervention_records
             else None,
-            "improved_recovery_rate": round(len(improved_recovery) / len(intervention_records), 4)
-            if intervention_records
+            "recoverable_intervention_turns": len(recoverable_interventions),
+            "improved_recovery_rate": round(len(improved_recovery) / len(recoverable_interventions), 4)
+            if recoverable_interventions
             else None,
         },
         "naturalness_metrics": {
