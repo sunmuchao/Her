@@ -172,7 +172,7 @@ def _make_local_demo_llm(*, log: Callable[[str], None] | None = None) -> Callabl
                     "assistant_score": 3,
                     "used_assistant": False,
                     "conversation_note": "demo：聊得中规中矩",
-                    "assistant_note": "demo：我这轮没触发助手草稿",
+                    "assistant_note": "demo：我这轮没触发助手建议",
                 },
                 ensure_ascii=False,
             )

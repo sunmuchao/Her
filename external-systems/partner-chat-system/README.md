@@ -13,7 +13,7 @@ Env: `HER_CHAT_PERSONA_MYSQL_SOURCE` (persona jobs); `OPENAI_API_KEY`, `HER_CHAT
 
 在**真实** `chat_threads` 上跑两个「虚拟相亲用户」LLM，交替发 **dyadic** 消息。
 
-- **默认 `--assistant-mode proactive`**：每轮发言前，用**调度模型**只看「双方可见」记录，判断是否冷场/尬聊等；需要时再调 **`assistant_query`** 给**即将开口的那一方**私下救场建议（不是固定回合手点助手）。
+- **默认 `--assistant-mode proactive`**：每轮发言前，用**调度模型**只看「双方可见」记录，判断是否冷场/尬聊等；需要时再调 **`assistant_query`** 给**即将开口的那一方**私下指出问题并给出接话建议（不是固定回合手点助手，也不直接代写成稿）。
 - **`fixed_turns`**：兼容旧行为，`--assistant-on-turns 0,2` 指定回合先问助手。
 - **`none`**：全程不调助手。
 
@@ -34,7 +34,7 @@ PYTHONPATH=../.. python scripts/run_dyadic_agent_roleplay.py \
 ```bash
 cd external-systems/partner-chat-system
 PYTHONPATH=../.. python scripts/run_dyadic_agent_roleplay.py --rounds 6 --assistant-mode proactive --output /tmp/roleplay.json
-# 无有效 API Key 时先跑通链路（内置占位 LLM + 助手占位回复）：
+# 无有效 API Key 时先跑通链路（内置占位 LLM + 助手占位建议）：
 PYTHONPATH=../.. python scripts/run_dyadic_agent_roleplay.py --rounds 4 --assistant-mode proactive --local-demo --output /tmp/roleplay_demo.json
 ```
 

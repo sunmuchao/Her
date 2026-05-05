@@ -120,6 +120,9 @@ class ChatSystemTests(unittest.TestCase):
         self.assertEqual(draft["author_id"], ASSISTANT_AUTHOR_ID)
         self.assertEqual(draft["source"], SRC_AGENT_DRAFT)
         self.assertEqual(draft["message_recipient_id"], "alice")
+        self.assertIn("当前问题：", draft["body"])
+        self.assertIn("回复建议：", draft["body"])
+        self.assertNotIn("采纳草稿", draft["body"])
 
         alice_view = list_messages(self.conn, th["thread_id"], "alice")
         bob_view = list_messages(self.conn, th["thread_id"], "bob")
@@ -137,6 +140,32 @@ class ChatSystemTests(unittest.TestCase):
 
         both = list_messages(self.conn, th["thread_id"], "bob")
         self.assertTrue(any(m["body"] == "你好，很高兴认识你。" for m in both))
+
+    def test_adopt_draft_requires_user_override(self):
+        th = get_or_create_thread(
+            self.conn,
+            case_id="case-asst-override",
+            relation_key="r2b",
+            participant_a_id="alice",
+            participant_b_id="bob",
+        )
+        draft = assistant_query(self.conn, th["thread_id"], "alice", "怎么接话？")
+
+        with self.assertRaisesRegex(ValueError, "body_override is required"):
+            adopt_draft(
+                self.conn,
+                th["thread_id"],
+                int(draft["message_id"]),
+                "alice",
+            )
+        with self.assertRaisesRegex(ValueError, "must be user-edited"):
+            adopt_draft(
+                self.conn,
+                th["thread_id"],
+                int(draft["message_id"]),
+                "alice",
+                body_override=str(draft["body"]),
+            )
 
     def test_get_thread(self):
         th = get_or_create_thread(
