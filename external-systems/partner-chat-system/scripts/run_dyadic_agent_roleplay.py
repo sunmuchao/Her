@@ -152,10 +152,27 @@ def _make_local_demo_llm(*, log: Callable[[str], None] | None = None) -> Callabl
             orch["n"] += 1
             if orch["n"] == 2:
                 return _json.dumps(
-                    {"need_rescue": True, "situation": "awkward", "reason": "demo：第二轮接话略生硬"},
+                    {
+                        "need_rescue": True,
+                        "situation": "awkward",
+                        "mutual_intent_assessment": "communication_problem",
+                        "interaction_mode": "repair",
+                        "rescue_style": "switch_topic",
+                        "reason": "demo：第二轮接话略生硬",
+                    },
                     ensure_ascii=False,
                 )
-            return _json.dumps({"need_rescue": False, "situation": "none", "reason": "demo：气氛正常"}, ensure_ascii=False)
+            return _json.dumps(
+                {
+                    "need_rescue": False,
+                    "situation": "none",
+                    "mutual_intent_assessment": "normal",
+                    "interaction_mode": "none",
+                    "rescue_style": "none",
+                    "reason": "demo：气氛正常",
+                },
+                ensure_ascii=False,
+            )
         if "请写出下一条" in user_c:
             return "demo：你好，我也挺喜欢慢慢了解的，方便说说你平时周末一般怎么安排吗？"
         if "附加任务" in sys_c and "请输出 JSON" in user_c:
@@ -478,6 +495,9 @@ def main() -> int:
         "roleplay completed "
         f"thread_id={result.get('thread_id')}, reused={result.get('thread_reused')}, "
         f"rescue_events={len(result.get('proactive_rescue_events') or [])}, "
+        f"repair_turns={(result.get('assistant_metrics') or {}).get('repair_intervention_turns')}, "
+        f"probe_turns={(result.get('assistant_metrics') or {}).get('probe_intervention_turns')}, "
+        f"hold_turns={(result.get('assistant_metrics') or {}).get('hold_decision_turns')}, "
         f"stress_events={len(result.get('stress_events') or [])}"
     )
     text = json.dumps(result, ensure_ascii=False, indent=2)
