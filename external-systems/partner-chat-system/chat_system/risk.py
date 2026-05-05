@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import re
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 try:
@@ -16,8 +17,10 @@ from observability import alert_signal
 
 from .events import (
     chat_member_report_submitted_event,
+    chat_meeting_feedback_submitted_event,
     chat_risk_case_event,
     chat_risk_case_reviewed_event,
+    chat_risk_signal_detected_event,
 )
 from .storage import json_dumps, json_loads, row_to_dict
 
@@ -33,6 +36,7 @@ RISK_STATUS_RESOLVED = "resolved"
 ACTION_NONE = "none"
 ACTION_WARN = "warn"
 ACTION_MANUAL_REVIEW = "manual_review"
+ACTION_REQUIRE_VERIFICATION = "require_verification"
 ACTION_LIMIT_CHAT = "limit_chat"
 ACTION_FREEZE = "freeze"
 
@@ -93,6 +97,12 @@ REPORT_TYPE_SIGNAL_MAP = {
     "off_platform": ("off_platform",),
     "photo_mismatch": ("photo_mismatch",),
     "profile_mismatch": ("profile_mismatch",),
+    "income_mismatch": ("income_mismatch",),
+    "job_mismatch": ("job_mismatch",),
+    "education_mismatch": ("education_mismatch",),
+    "identity_mismatch": ("identity_mismatch",),
+    "behavior_pattern": ("behavior_pattern",),
+    "video_refusal": ("video_refusal",),
 }
 
 SEVERITY_ORDER = {
@@ -105,8 +115,42 @@ ACTION_ORDER = {
     ACTION_NONE: 0,
     ACTION_WARN: 1,
     ACTION_MANUAL_REVIEW: 2,
-    ACTION_LIMIT_CHAT: 3,
-    ACTION_FREEZE: 4,
+    ACTION_REQUIRE_VERIFICATION: 3,
+    ACTION_LIMIT_CHAT: 4,
+    ACTION_FREEZE: 5,
+}
+
+VIDEO_REFUSAL_MARKERS = (
+    "不方便视频",
+    "先别视频",
+    "不想视频",
+    "先不视频",
+    "不方便语音",
+    "先别语音",
+    "不想语音",
+    "先不语音",
+    "先不见面",
+    "暂时不见面",
+    "先别见面",
+)
+
+SAFETY_SIGNAL_CODE_ORDER = {
+    "fraud_report",
+    "investment",
+    "money_transfer",
+    "off_platform",
+    "repeated_off_platform_request",
+    "high_frequency_outreach",
+    "repeated_opening",
+    "multi_party_reports",
+    "verification_avoidance",
+    "photo_mismatch",
+    "profile_mismatch",
+    "income_mismatch",
+    "job_mismatch",
+    "education_mismatch",
+    "identity_mismatch",
+    "video_refusal",
 }
 
 
@@ -142,10 +186,18 @@ def _severity_from_signals(signal_codes: list[str], report_type: str) -> str:
         return SEVERITY_HIGH
     if "investment" in codes or "money_transfer" in codes:
         return SEVERITY_HIGH
+    if "high_frequency_outreach" in codes and "repeated_off_platform_request" in codes:
+        return SEVERITY_HIGH
+    if "multi_party_reports" in codes:
+        return SEVERITY_HIGH
     if "off_platform" in codes:
+        return SEVERITY_MEDIUM
+    if "repeated_opening" in codes or "verification_avoidance" in codes or "behavior_pattern" in codes:
         return SEVERITY_MEDIUM
     if "photo_mismatch" in codes or "profile_mismatch" in codes:
         return SEVERITY_LOW
+    if "income_mismatch" in codes or "job_mismatch" in codes or "education_mismatch" in codes or "identity_mismatch" in codes:
+        return SEVERITY_MEDIUM
     return SEVERITY_MEDIUM if report_type == "other" else SEVERITY_LOW
 
 
@@ -154,8 +206,12 @@ def _recommended_action_for(severity: str, report_count: int, signal_codes: list
     if severity == SEVERITY_HIGH:
         if "fraud_report" in codes or "investment" in codes or "money_transfer" in codes:
             return ACTION_LIMIT_CHAT
+        if "multi_party_reports" in codes or "high_frequency_outreach" in codes:
+            return ACTION_REQUIRE_VERIFICATION
         return ACTION_MANUAL_REVIEW
     if severity == SEVERITY_MEDIUM:
+        if "income_mismatch" in codes or "job_mismatch" in codes or "education_mismatch" in codes or "identity_mismatch" in codes:
+            return ACTION_REQUIRE_VERIFICATION
         if report_count >= 2:
             return ACTION_LIMIT_CHAT
         return ACTION_MANUAL_REVIEW
@@ -174,6 +230,92 @@ def _merge_action(left: str, right: str) -> str:
 
 def _contains_any(text: str, keywords: tuple[str, ...] | list[str]) -> bool:
     return any(keyword.lower() in text for keyword in keywords)
+
+
+def _normalize_message_pattern(body: str) -> str:
+    text = _as_text(body).lower()
+    if not text:
+        return ""
+    text = re.sub(r"\d+", "#", text)
+    text = re.sub(r"\s+", "", text)
+    text = re.sub(r"[，,。.!！?？:：;；\-_/\\|]+", "", text)
+    return text[:96]
+
+
+def _distinct_thread_count(rows: list[dict[str, Any]]) -> int:
+    return len({_as_text(row.get("thread_id")) for row in rows if _as_text(row.get("thread_id"))})
+
+
+def _insert_risk_signal(
+    conn,
+    *,
+    thread_id: str,
+    case_id: str,
+    subject_user_id: str,
+    signal_code: str,
+    severity: str,
+    source_type: str,
+    created_at: datetime,
+    message_id: int | None = None,
+    report_id: int | None = None,
+    risk_case_id: str | None = None,
+    evidence: dict[str, Any] | None = None,
+) -> int:
+    conn.execute(
+        """
+        INSERT INTO chat_risk_signals (
+          thread_id, case_id, subject_user_id, message_id, report_id, risk_case_id,
+          source_type, signal_code, severity, evidence_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            thread_id,
+            case_id,
+            subject_user_id,
+            int(message_id) if message_id is not None else None,
+            int(report_id) if report_id is not None else None,
+            risk_case_id,
+            source_type,
+            signal_code,
+            severity,
+            json_dumps(evidence or {}),
+            created_at,
+        ),
+    )
+    signal_id = int(conn.lastrowid)
+    append_outbox_pending(
+        conn,
+        event=chat_risk_signal_detected_event(
+            signal_id=signal_id,
+            thread_id=thread_id,
+            case_id=case_id,
+            subject_user_id=subject_user_id,
+            signal_code=signal_code,
+            severity=severity,
+            source_type=source_type,
+            occurred_at=created_at,
+        ),
+        source_row_table="chat_risk_signals",
+        source_row_id=signal_id,
+        created_at_str=created_at.isoformat(sep=" "),
+    )
+    return signal_id
+
+
+def _inflate_risk_signal(row: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not row:
+        return None
+    out = dict(row)
+    out["evidence"] = json_loads(out.pop("evidence_json", None), {})
+    return out
+
+
+def _inflate_meeting_feedback(row: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not row:
+        return None
+    out = dict(row)
+    out["derived_report_ids"] = json_loads(out.pop("derived_report_ids_json", None), [])
+    return out
 
 
 def _get_thread(conn, thread_id: str) -> dict[str, Any] | None:
@@ -240,6 +382,123 @@ def detect_risk_signals(*, message_body: str | None = None, reason_text: str | N
                 continue
         signal_codes.append(signal_code)
     return _unique_ordered(signal_codes)
+
+
+def detect_behavior_risk_signals(
+    conn,
+    *,
+    thread_id: str,
+    author_id: str,
+    body: str,
+    now: datetime,
+) -> tuple[list[str], dict[str, Any]]:
+    signal_codes: list[str] = []
+    evidence: dict[str, Any] = {}
+    normalized_body = _normalize_message_pattern(body)
+
+    recent_rows = [
+        row_to_dict(row)
+        for row in conn.execute(
+            """
+            SELECT thread_id, body, created_at
+            FROM chat_messages
+            WHERE author_id = ?
+              AND visibility = ?
+              AND created_at >= ?
+            ORDER BY created_at DESC
+            LIMIT 200
+            """,
+            (author_id, "dyadic", now - timedelta(hours=24)),
+        ).fetchall()
+    ]
+    recent_rows = [row for row in recent_rows if row]
+
+    recent_30m = [
+        row
+        for row in recent_rows
+        if _as_text(row.get("created_at")) >= _as_text(now - timedelta(minutes=30))
+    ]
+    if _distinct_thread_count(recent_30m) >= 3:
+        signal_codes.append("high_frequency_outreach")
+        evidence["distinct_threads_30m"] = _distinct_thread_count(recent_30m)
+
+    if normalized_body:
+        repeated_threads = {
+            _as_text(row.get("thread_id"))
+            for row in recent_rows
+            if _normalize_message_pattern(_as_text(row.get("body"))) == normalized_body
+        }
+        if len(repeated_threads) >= 3:
+            signal_codes.append("repeated_opening")
+            evidence["repeated_opening_threads_24h"] = len(repeated_threads)
+            evidence["message_pattern"] = normalized_body
+
+    if _contains_any(_as_text(body).lower(), SCAM_SIGNAL_RULES[2][1]):
+        prior_off_platform = conn.execute(
+            """
+            SELECT COUNT(DISTINCT thread_id) AS c
+            FROM chat_risk_signals
+            WHERE subject_user_id = ?
+              AND signal_code IN (?, ?)
+              AND created_at >= ?
+            """,
+            (
+                author_id,
+                "off_platform",
+                "repeated_off_platform_request",
+                now - timedelta(days=7),
+            ),
+        ).fetchone()
+        prior_count = int((prior_off_platform or {}).get("c") or 0) + (1 if thread_id else 0)
+        if prior_count >= 2:
+            signal_codes.append("repeated_off_platform_request")
+            evidence["off_platform_threads_7d"] = prior_count
+
+    if _contains_any(_as_text(body).lower(), VIDEO_REFUSAL_MARKERS):
+        refusals = conn.execute(
+            """
+            SELECT COUNT(DISTINCT thread_id) AS c
+            FROM chat_messages
+            WHERE author_id = ?
+              AND visibility = ?
+              AND created_at >= ?
+              AND (
+                LOWER(body) LIKE ? OR LOWER(body) LIKE ? OR LOWER(body) LIKE ?
+                OR LOWER(body) LIKE ? OR LOWER(body) LIKE ? OR LOWER(body) LIKE ?
+              )
+            """,
+            (
+                author_id,
+                "dyadic",
+                now - timedelta(days=14),
+                "%视频%",
+                "%语音%",
+                "%见面%",
+                "%不方便%",
+                "%先别%",
+                "%不想%",
+            ),
+        ).fetchone()
+        refusal_count = int((refusals or {}).get("c") or 0)
+        if refusal_count >= 2:
+            signal_codes.append("verification_avoidance")
+            evidence["verification_avoidance_threads_14d"] = refusal_count
+
+    return _unique_ordered(signal_codes), evidence
+
+
+def _subject_user_report_threads(conn, subject_user_id: str, *, now: datetime) -> int:
+    row = conn.execute(
+        """
+        SELECT COUNT(DISTINCT thread_id) AS c
+        FROM chat_member_reports
+        WHERE reported_user_id = ?
+          AND report_source = ?
+          AND created_at >= ?
+        """,
+        (subject_user_id, REPORT_SOURCE_USER, now - timedelta(days=30)),
+    ).fetchone()
+    return int((row or {}).get("c") or 0)
 
 
 def get_active_chat_restriction(conn, thread_id: str, subject_user_id: str) -> str | None:
@@ -371,6 +630,114 @@ def list_member_reports(
         tuple(params + [lim]),
     )
     return [_inflate_report(row_to_dict(row)) for row in cur.fetchall()]
+
+
+def list_risk_signals(
+    conn,
+    *,
+    thread_id: str | None = None,
+    subject_user_id: str | None = None,
+    signal_code: str | None = None,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    clauses = []
+    params: list[Any] = []
+    if thread_id:
+        clauses.append("thread_id = ?")
+        params.append(thread_id)
+    if subject_user_id:
+        clauses.append("subject_user_id = ?")
+        params.append(subject_user_id)
+    if signal_code:
+        clauses.append("signal_code = ?")
+        params.append(signal_code)
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    lim = max(1, min(int(limit), 200))
+    cur = conn.execute(
+        f"""
+        SELECT *
+        FROM chat_risk_signals
+        {where}
+        ORDER BY created_at DESC, signal_id DESC
+        LIMIT ?
+        """,
+        tuple(params + [lim]),
+    )
+    return [_inflate_risk_signal(row_to_dict(row)) for row in cur.fetchall()]
+
+
+def list_meeting_feedback(
+    conn,
+    *,
+    thread_id: str | None = None,
+    counterpart_user_id: str | None = None,
+    reviewer_id: str | None = None,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    clauses = []
+    params: list[Any] = []
+    if thread_id:
+        clauses.append("thread_id = ?")
+        params.append(thread_id)
+    if counterpart_user_id:
+        clauses.append("counterpart_user_id = ?")
+        params.append(counterpart_user_id)
+    if reviewer_id:
+        clauses.append("reviewer_id = ?")
+        params.append(reviewer_id)
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    lim = max(1, min(int(limit), 200))
+    cur = conn.execute(
+        f"""
+        SELECT *
+        FROM chat_meeting_feedback
+        {where}
+        ORDER BY created_at DESC, feedback_id DESC
+        LIMIT ?
+        """,
+        tuple(params + [lim]),
+    )
+    return [_inflate_meeting_feedback(row_to_dict(row)) for row in cur.fetchall()]
+
+
+def build_thread_risk_overview(conn, thread_id: str, viewer_id: str) -> dict[str, Any]:
+    thread = _get_thread(conn, thread_id)
+    if not thread:
+        raise ValueError("thread not found")
+    if viewer_id not in {thread["participant_a_id"], thread["participant_b_id"]}:
+        raise ValueError("viewer is not a participant of this thread")
+
+    counterpart_user_id = _other_participant(thread, viewer_id)
+    risk_cases = list_risk_cases(
+        conn,
+        thread_id=thread_id,
+        subject_user_id=counterpart_user_id,
+        statuses=[RISK_STATUS_OPEN, RISK_STATUS_UNDER_REVIEW, RISK_STATUS_ACTION_APPLIED],
+        limit=20,
+    )
+    signal_codes = _unique_ordered(
+        [code for risk_case in risk_cases for code in list(risk_case.get("signal_codes") or [])]
+    )
+    active_action = get_active_chat_restriction(conn, thread_id, counterpart_user_id)
+    caution_messages: list[str] = []
+    if any(code in signal_codes for code in {"investment", "money_transfer", "off_platform", "repeated_off_platform_request"}):
+        caution_messages.append("对方存在导流 / 投资类风险信号，请勿转账或离开平台沟通。")
+    if any(code in signal_codes for code in {"high_frequency_outreach", "repeated_opening", "multi_party_reports"}):
+        caution_messages.append("对方存在批量接触或多方举报信号，建议先视频核验再继续。")
+    if any(code in signal_codes for code in {"photo_mismatch", "profile_mismatch", "income_mismatch", "identity_mismatch"}):
+        caution_messages.append("对方存在资料一致性风险，建议先确认照片、职业和收入信息。")
+    if any(code in signal_codes for code in {"verification_avoidance", "video_refusal"}):
+        caution_messages.append("对方存在回避视频或线下核验信号，建议不要过早投入或转移平台。")
+    return {
+        "thread_id": thread_id,
+        "viewer_id": viewer_id,
+        "counterpart_user_id": counterpart_user_id,
+        "risk_case_count": len(risk_cases),
+        "signal_codes": signal_codes,
+        "active_action": active_action,
+        "caution_messages": caution_messages,
+        "risk_cases": risk_cases,
+    }
 
 
 def _upsert_risk_case_from_report(
