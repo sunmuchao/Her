@@ -371,13 +371,13 @@ def _fast_rescue_decision(messages: list[dict[str, Any]]) -> dict[str, Any] | No
             "reason": "上一句已经碰到敏感或有压力的话题，先给接话缓冲更稳。",
             "decision_source": "heuristic",
         }
-    if len(recent) >= 2 and all(len(_compact_text(body)) <= 6 for body in recent[-2:]) and not any(
-        _is_question_like(body) for body in recent[-2:]
+    if len(recent) >= 3 and sum(1 for body in recent if _is_cold_like(body)) >= 2 and not any(
+        _is_question_like(body) for body in recent
     ):
         return {
             "need_rescue": True,
             "situation": "stuck",
-            "reason": "最近两句都偏短也没有追问，话题已经开始发干。",
+            "reason": "最近几轮连续偏冷又没有追问，话题已经开始发干。",
             "decision_source": "heuristic",
         }
     if _is_question_like(last_body) and len(_compact_text(last_body)) >= 8:

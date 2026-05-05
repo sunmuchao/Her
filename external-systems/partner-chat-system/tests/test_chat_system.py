@@ -130,6 +130,7 @@ class ChatSystemTests(unittest.TestCase):
         self.assertIn("当前问题：", draft["body"])
         self.assertIn("回复建议：", draft["body"])
         self.assertIn("先别继续这样聊：", draft["body"])
+        self.assertIn("建议按这个顺序来：", draft["body"])
 
         alice_view = list_messages(self.conn, th["thread_id"], "alice")
         bob_view = list_messages(self.conn, th["thread_id"], "bob")
@@ -265,6 +266,8 @@ class ChatSystemTests(unittest.TestCase):
         run_chat_maintenance(self.conn, persona_limit=0, flush_outbox=False)
         s = get_thread_summary(self.conn, th["thread_id"])
         self.assertIsNotNone(s)
+        assert s is not None
+        self.assertIn("hello summary line", s["summary_text"])
 
     def test_submit_member_report_creates_risk_case_and_links_reports(self):
         th = get_or_create_thread(
@@ -347,8 +350,6 @@ class ChatSystemTests(unittest.TestCase):
                 visibility=VIS_DYADIC,
                 now=datetime(2026, 5, 5, 10, 6, 0),
             )
-        assert s is not None
-        self.assertIn("hello summary line", s["summary_text"])
 
 
 if __name__ == "__main__":

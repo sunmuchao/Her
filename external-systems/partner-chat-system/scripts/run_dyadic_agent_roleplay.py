@@ -199,6 +199,12 @@ def _make_llm(*, log: Callable[[str], None] | None = None) -> Callable[[list[dic
     except ImportError as e:
         raise SystemExit("Install openai package: pip install openai") from e
     model = (os.environ.get("HER_ROLEPLAY_MODEL") or os.environ.get("HER_CHAT_ASSISTANT_MODEL") or "gpt-4o-mini").strip()
+    fast_model = (
+        os.environ.get("HER_ROLEPLAY_FAST_MODEL")
+        or os.environ.get("HER_ROLEPLAY_ORCHESTRATOR_MODEL")
+        or model
+    ).strip()
+    eval_model = (os.environ.get("HER_ROLEPLAY_EVAL_MODEL") or model).strip()
     base = (
         os.environ.get("HER_ROLEPLAY_BASE_URL")
         or os.environ.get("HER_CHAT_ASSISTANT_BASE_URL")
@@ -209,15 +215,34 @@ def _make_llm(*, log: Callable[[str], None] | None = None) -> Callable[[list[dic
     if base:
         kwargs["base_url"] = base
     if log is not None:
-        log(f"LLM backend=remote model={model} base_url={base or 'default'}")
+        log(
+            "LLM backend=remote "
+            f"model_main={model} model_fast={fast_model} model_eval={eval_model} "
+            f"base_url={base or 'default'}"
+        )
     client = OpenAI(**kwargs)
 
     def complete(messages: list[dict[str, str]]) -> str:
+        kind, _subject = _classify_llm_call(messages)
+        selected_model = model
+        max_tokens = 400
+        temperature = 0.5
+        if kind == "orchestrator_rescue_decision":
+            selected_model = fast_model
+            max_tokens = 220
+            temperature = 0.1
+        elif kind == "persona_next_message":
+            max_tokens = 220
+            temperature = 0.7
+        elif kind == "persona_self_evaluation":
+            selected_model = eval_model
+            max_tokens = 260
+            temperature = 0.3
         resp = client.chat.completions.create(
-            model=model,
+            model=selected_model,
             messages=messages,
-            max_tokens=800,
-            temperature=0.7,
+            max_tokens=max_tokens,
+            temperature=temperature,
         )
         return (resp.choices[0].message.content or "").strip()
 
@@ -360,6 +385,7 @@ def main() -> int:
 
     _log(f"connecting chat db: {args.db}")
     conn = connect_db(args.db)
+    llm_stats: dict[str, dict[str, int]] = {}
     try:
         if not args.no_init_schema:
             _log("initializing chat schema")
@@ -367,7 +393,6 @@ def main() -> int:
         else:
             _log("skipping chat schema initialization")
         llm_factory = _make_local_demo_llm if args.local_demo else _make_llm
-        llm_stats: dict[str, dict[str, int]] = {}
         llm = _make_logged_llm(llm_factory(log=_log), stats=llm_stats)
         _log("running dyadic roleplay")
         result = run_dyadic_roleplay(
@@ -424,6 +449,13 @@ def main() -> int:
             }
             for key, value in llm_stats.items()
         }
+        _log(
+            "llm stats "
+            + ", ".join(
+                f"{key}:calls={value['calls']},avg_ms={int(value['total_ms'] / value['calls']) if value['calls'] else 0},max_ms={value['max_ms']}"
+                for key, value in sorted(llm_stats.items())
+            )
+        )
     _log(
         "roleplay completed "
         f"thread_id={result.get('thread_id')}, reused={result.get('thread_reused')}, "
