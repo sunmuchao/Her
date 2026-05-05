@@ -282,17 +282,6 @@ def post_message(
             source_row_id=inserted_id,
             created_at_str=ts.isoformat(sep=" "),
         )
-        maybe_enqueue_persona_sync_job(
-            conn,
-            thread,
-            message_id=inserted_id,
-            author_id=author_id,
-            body=body,
-            visibility=visibility,
-            source=source,
-            message_recipient_id=message_recipient_id,
-            ts=ts,
-        )
         conn.commit()
     except IntegrityError:
         conn.rollback()
@@ -312,6 +301,21 @@ def post_message(
     cur = conn.execute("SELECT * FROM chat_messages WHERE message_id = ? LIMIT 1", (mid,))
     row = row_to_dict(cur.fetchone())
     assert row is not None
+    try:
+        maybe_enqueue_persona_sync_job(
+            conn,
+            thread,
+            message_id=inserted_id,
+            author_id=author_id,
+            body=body,
+            visibility=visibility,
+            source=source,
+            message_recipient_id=message_recipient_id,
+            ts=ts,
+        )
+        conn.commit()
+    except IntegrityError:
+        conn.rollback()
     funnel_stage(
         system="chat",
         stage=CHAT_FUNNEL_MESSAGE_SEND,
