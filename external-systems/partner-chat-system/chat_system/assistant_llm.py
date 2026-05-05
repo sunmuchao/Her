@@ -35,6 +35,13 @@ def _default_rescue_flow() -> list[str]:
     ]
 
 
+def _default_graceful_exit_plan() -> list[str]:
+    return [
+        "如果对方连续两轮都很冷，别硬拽，轻轻收一下就行。",
+        "可以把节奏放慢，留一句以后再聊也行，别把气氛越救越僵。",
+    ]
+
+
 def build_dyadic_context_for_assistant(conn, thread_id: str, *, limit: int = 20) -> str:
     lim = max(1, min(int(limit), 50))
     cur = conn.execute(
@@ -88,6 +95,7 @@ def normalize_assistant_guidance(data: dict[str, Any]) -> dict[str, Any]:
         "topic_directions": _to_clean_list(data.get("topic_directions")),
         "easy_question_types": _to_clean_list(data.get("easy_question_types")),
         "rescue_flow": _to_clean_list(data.get("rescue_flow")) or _default_rescue_flow(),
+        "graceful_exit_plan": _to_clean_list(data.get("graceful_exit_plan")) or _default_graceful_exit_plan(),
         "strategy_tags": _to_clean_list(data.get("strategy_tags")) or list(_DEFAULT_STRATEGY_TAGS),
         "reply_suggestions": _to_clean_list(data.get("reply_suggestions")) or ["先回应对方上一句里的具体信息。"],
         "profile_hooks_used": _to_clean_list(data.get("profile_hooks_used")),
@@ -107,6 +115,10 @@ def build_placeholder_assistant_guidance(*, profile_hooks: list[str] | None = No
             "先接住对方上一句，不要马上把话题扔空。",
             "如果旧话题已经聊干了，就切到更容易回答的生活化话题。",
             "最后优先问一句轻一点、对方更容易回的问题。",
+        ],
+        "graceful_exit_plan": [
+            "如果对方还是连续很冷，就别硬拉，先把节奏收住。",
+            "可以留个轻一点的收口，给下次再聊留余地。",
         ],
         "strategy_tags": ["share_detail", "ask_easy_question", "switch_topic"],
         "reply_suggestions": [
@@ -140,6 +152,10 @@ def render_assistant_guidance(guidance: dict[str, Any]) -> str:
         lines.append("建议按这个顺序来：")
         for idx, item in enumerate(g["rescue_flow"], start=1):
             lines.append(f"{idx}. {item}")
+    if g["graceful_exit_plan"]:
+        lines.append("如果还是接不动：")
+        for idx, item in enumerate(g["graceful_exit_plan"], start=1):
+            lines.append(f"{idx}. {item}")
     lines.append("回复建议：")
     for idx, item in enumerate(g["reply_suggestions"], start=1):
         lines.append(f"{idx}. {item}")
@@ -165,6 +181,7 @@ def parse_assistant_guidance(text: str) -> dict[str, Any] | None:
         "topic_directions": "建议优先换到这些话题类型：",
         "easy_question_types": "更容易回答的问题类型：",
         "rescue_flow": "建议按这个顺序来：",
+        "graceful_exit_plan": "如果还是接不动：",
         "reply_suggestions": "回复建议：",
         "profile_hooks_used": "已参考画像钩子：",
     }
@@ -194,6 +211,7 @@ def parse_assistant_guidance(text: str) -> dict[str, Any] | None:
         "topic_directions": data["topic_directions"],
         "easy_question_types": data["easy_question_types"],
         "rescue_flow": data["rescue_flow"],
+        "graceful_exit_plan": data["graceful_exit_plan"],
         "strategy_tags": _DEFAULT_STRATEGY_TAGS,
         "reply_suggestions": data["reply_suggestions"],
         "profile_hooks_used": data["profile_hooks_used"],
@@ -240,6 +258,7 @@ def generate_assistant_guidance(
         "若提供了画像钩子，请优先从双方交集或当前说话人的真实生活里选，而不是泛泛建议电影、旅行这类万能话题。"
         "你的建议必须足够具体，优先回答：现在最关键的问题是什么、别继续做什么、建议换到什么低门槛话题、适合问什么更容易回答的问题。"
         "建议尽量写成步骤感强的教练提示，比如先接住、再换题、最后问轻一点的问题。"
+        "如果当前局面已经连续偏冷、明显顶不动，允许直接给出体面收口或暂时放慢节奏的止损建议。"
         "只输出一个 JSON 对象，不要 Markdown、不要代码块。"
     )
     user_block = (
@@ -256,6 +275,7 @@ def generate_assistant_guidance(
         '  "topic_directions": ["<1-3 个建议切换的话题类型>"],\n'
         '  "easy_question_types": ["<1-2 个更容易回答的问题类型>"],\n'
         '  "rescue_flow": ["<2-4 条分步骤建议，强调先接住、再换题、再问轻问题>"],\n'
+        '  "graceful_exit_plan": ["<0-2 条止损建议；只有在局面明显难救时才写>"],\n'
         '  "strategy_tags": ["<acknowledge_coldness|switch_topic|ask_easy_question|share_detail|expand_detail|graceful_exit 等>"],\n'
         '  "reply_suggestions": ["<2-4 条可执行建议，不要代写整句>"],\n'
         '  "profile_hooks_used": ["<实际用到的画像钩子，必须来自给定画像摘要或钩子>"]\n'

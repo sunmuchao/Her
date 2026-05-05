@@ -67,6 +67,29 @@ _LOW_BAR_QUESTION_TOKENS = (
     "喜欢",
     "常",
 )
+_LOW_ENERGY_PATTERNS = (
+    "在的",
+    "挺简单",
+    "简单的",
+    "就那样",
+    "一般般",
+    "还行吧",
+    "都行",
+    "随便",
+    "看情况",
+    "再说吧",
+)
+_GRACEFUL_EXIT_TOKENS = (
+    "先不打扰",
+    "改天再聊",
+    "有空再聊",
+    "回头聊",
+    "先这样",
+    "先聊到这",
+    "下次再聊",
+    "你先忙",
+    "晚点聊",
+)
 
 
 class SupportsConn(Protocol):
@@ -156,6 +179,7 @@ def _orchestrator_rescue_decision(
         "{\n"
         '  "need_rescue": <true|false>,\n'
         '  "situation": "<cold|awkward|stuck|rude|off_topic|none 选一>",\n'
+        '  "rescue_style": "<reengage|switch_topic|graceful_exit|none 选一>",\n'
         '  "reason": "<极短中文，说明为何需要或不需要救场>"\n'
         "}\n"
         "若 need_rescue 为 true，含义是：建议系统助手**仅对下一位发言者**提供私下回复建议，帮其自然接话、化解尴尬或缓和气氛。"
@@ -164,7 +188,13 @@ def _orchestrator_rescue_decision(
     try:
         return strip_json_object(raw)
     except (json.JSONDecodeError, ValueError):
-        return {"need_rescue": False, "situation": "none", "reason": "调度解析失败，默认不介入", "parse_error": True}
+        return {
+            "need_rescue": False,
+            "situation": "none",
+            "rescue_style": "none",
+            "reason": "调度解析失败，默认不介入",
+            "parse_error": True,
+        }
 
 
 def _next_dyadic_message(
@@ -194,6 +224,19 @@ def _next_dyadic_message(
     raw = llm([{"role": "system", "content": system}, {"role": "user", "content": user}]).strip()
     raw = raw.strip('"').strip()
     return raw or "我先了解一下你的情况～"
+
+
+def _fallback_self_evaluation(*, reason: str) -> dict[str, Any]:
+    return {
+        "conversation_satisfied": False,
+        "conversation_score": 3,
+        "assistant_satisfied": False,
+        "assistant_score": 3,
+        "used_assistant": False,
+        "conversation_note": f"自评生成失败，先按兜底结果记：{reason}",
+        "assistant_note": "这次自评走了兜底，不代表真实主观感受。",
+        "fallback": True,
+    }
 
 
 def _persona_self_evaluation(
@@ -318,13 +361,35 @@ def _is_cold_like(text: str) -> bool:
     return False
 
 
+def _is_low_energy_like(text: str) -> bool:
+    t = " ".join(str(text or "").split()).strip()
+    if _is_cold_like(t):
+        return True
+    if not t or _is_question_like(t):
+        return False
+    compact = _compact_text(t)
+    if any(token in compact for token in _LOW_ENERGY_PATTERNS):
+        return True
+    clauses = [part for part in re.split(r"[，,。.!！?？~～]+", compact) if part]
+    if len(compact) <= 10 and clauses and all(len(part) <= 4 for part in clauses):
+        return True
+    if len(compact) <= 8 and any(token in compact for token in ("你好", "在的", "收到", "好的")):
+        return True
+    return False
+
+
+def _is_graceful_exit_like(text: str) -> bool:
+    t = _compact_text(text)
+    return bool(t) and any(token in t for token in _GRACEFUL_EXIT_TOKENS)
+
+
 def _naturalness_assessment(text: str) -> dict[str, Any]:
     t = str(text or "").strip()
     flags: list[str] = []
     for phrase in _ANALYTIC_PHRASES:
         if phrase in t:
             flags.append(f"analytic_phrase:{phrase}")
-    if len(t) >= 48 and t.count("，") >= 3:
+    if len(t) >= 42 and (t.count("，") + t.count("。")) >= 3:
         flags.append("too_expository")
     if "首先" in t or "其次" in t or "总之" in t:
         flags.append("structured_monologue")
@@ -358,12 +423,13 @@ def _fast_rescue_decision(messages: list[dict[str, Any]]) -> dict[str, Any] | No
     prev_body = str(dyadic[-2].get("body") or "").strip() if len(dyadic) >= 2 else ""
     recent = [str(m.get("body") or "").strip() for m in dyadic[-3:]]
 
-    if _is_cold_like(last_body):
+    if _is_low_energy_like(last_body):
         return {
             "need_rescue": True,
             "situation": "cold",
-            "reason": "上一句是明显短冷回复，再顺着原话题硬聊很容易僵住。",
+            "reason": "上一句明显偏冷偏虚，再顺着原话题硬聊很容易僵住。",
             "decision_source": "heuristic",
+            "rescue_style": "switch_topic" if _is_question_like(prev_body) else "reengage",
         }
     if any(token in last_body for token in _BOUNDARY_HINTS):
         return {
@@ -371,8 +437,17 @@ def _fast_rescue_decision(messages: list[dict[str, Any]]) -> dict[str, Any] | No
             "situation": "awkward",
             "reason": "上一句已经碰到敏感或有压力的话题，先给接话缓冲更稳。",
             "decision_source": "heuristic",
+            "rescue_style": "graceful_exit",
         }
-    if len(recent) >= 3 and sum(1 for body in recent if _is_cold_like(body)) >= 2 and not any(
+    if len(recent) >= 2 and all(_is_low_energy_like(body) for body in recent[-2:]):
+        return {
+            "need_rescue": True,
+            "situation": "stuck",
+            "reason": "最近两轮都很冷，继续硬聊大概率只会更尴尬。",
+            "decision_source": "heuristic",
+            "rescue_style": "graceful_exit",
+        }
+    if len(recent) >= 3 and sum(1 for body in recent if _is_low_energy_like(body)) >= 2 and not any(
         _is_question_like(body) for body in recent
     ):
         return {
@@ -380,6 +455,7 @@ def _fast_rescue_decision(messages: list[dict[str, Any]]) -> dict[str, Any] | No
             "situation": "stuck",
             "reason": "最近几轮连续偏冷又没有追问，话题已经开始发干。",
             "decision_source": "heuristic",
+            "rescue_style": "graceful_exit",
         }
     if _is_question_like(last_body) and len(_compact_text(last_body)) >= 8:
         return {
@@ -387,6 +463,7 @@ def _fast_rescue_decision(messages: list[dict[str, Any]]) -> dict[str, Any] | No
             "situation": "none",
             "reason": "上一句本身就是正常可接的问题，先别打断自然往下聊。",
             "decision_source": "heuristic_clear_continue",
+            "rescue_style": "none",
         }
     if len(_compact_text(last_body)) >= 10 and not _is_cold_like(last_body) and _is_question_like(prev_body):
         return {
@@ -394,8 +471,73 @@ def _fast_rescue_decision(messages: list[dict[str, Any]]) -> dict[str, Any] | No
             "situation": "none",
             "reason": "当前还有正常来回，先不额外介入。",
             "decision_source": "heuristic_clear_continue",
+            "rescue_style": "none",
         }
     return None
+
+
+def _clean_topic_seed(text: str) -> str:
+    topic = re.sub(r"（.*?）", "", str(text or "")).strip()
+    topic = re.sub(r"\(.*?\)", "", topic).strip()
+    topic = topic.replace("话题", "").replace("类型", "").strip("：:，,。 ")
+    return topic
+
+
+def _pick_topic_seed(guidance: dict[str, Any] | None) -> str:
+    if not guidance:
+        return ""
+    for value in list(guidance.get("profile_hooks_used") or []) + list(guidance.get("topic_directions") or []):
+        topic = _clean_topic_seed(str(value or ""))
+        if topic:
+            return topic
+    return ""
+
+
+def _fallback_message_from_topic(topic: str) -> str:
+    clean = _clean_topic_seed(topic)
+    if not clean:
+        return "我平时比较随性一点，你一般周末怎么放松？"
+    if "羽毛球" in clean:
+        return "我平时也会动一动，你平时会打羽毛球吗？"
+    if "咖啡" in clean:
+        return "我有空会找家店坐坐喝咖啡，你平时会这样放松吗？"
+    if "猫" in clean or "狗" in clean or "宠物" in clean:
+        return "我对猫狗也挺有好感的，你平时更偏猫派还是狗派？"
+    if "周末" in clean or "出门走走" in clean:
+        return "我周末一般会出去走走，你通常怎么放松？"
+    if "无锡" in clean:
+        return "都在无锡还挺巧的，你平时周末一般会去哪边转转？"
+    if "养生" in clean or "作息" in clean:
+        return "我最近也会注意作息一点，你平时会比较养生吗？"
+    if "桌游" in clean:
+        return "我偶尔也会玩点桌游，你平时喜欢轻松一点的还是烧脑一点的？"
+    return f"我平时也会关注一点{clean}，你平时会聊到这个吗？"
+
+
+def _fallback_next_message(
+    *,
+    visible_messages: list[dict[str, Any]],
+    assistant_guidance: dict[str, Any] | None,
+) -> str:
+    dyadic = [m for m in visible_messages if str(m.get("visibility") or "") == VIS_DYADIC]
+    recent = [str(m.get("body") or "").strip() for m in dyadic[-3:]]
+    strategy_tags = set(str(x) for x in (assistant_guidance or {}).get("strategy_tags") or [])
+
+    if "graceful_exit" in strategy_tags and len(recent) >= 2 and all(_is_low_energy_like(body) for body in recent[-2:]):
+        return "感觉今天节奏有点慢，我们先轻松点，改天有空再接着聊也行。"
+    if recent and _is_low_energy_like(recent[-1]) and len(recent) >= 2 and _is_question_like(recent[-2]):
+        topic = _pick_topic_seed(assistant_guidance)
+        return _fallback_message_from_topic(topic)
+    if assistant_guidance:
+        topic = _pick_topic_seed(assistant_guidance)
+        if topic:
+            return _fallback_message_from_topic(topic)
+    if not dyadic:
+        return "你好呀，想慢慢认识一下你。"
+    last_body = recent[-1] if recent else ""
+    if _is_question_like(last_body):
+        return "还行，我平时比较随性一点。你呢？"
+    return "我平时比较随性一点，你一般周末怎么放松？"
 
 
 def _assistant_follow_assessment(
@@ -413,8 +555,13 @@ def _assistant_follow_assessment(
     hooks = [str(x) for x in guidance.get("profile_hooks_used") or []]
     topic_directions = [str(x) for x in guidance.get("topic_directions") or []]
     easy_question_types = [str(x) for x in guidance.get("easy_question_types") or []]
+    graceful_exit_used = "graceful_exit" in strategy_tags and _is_graceful_exit_like(text)
 
-    if _is_cold_like(text):
+    if graceful_exit_used:
+        score += 2
+        signals.append("used_graceful_exit")
+
+    if _is_low_energy_like(text) and not graceful_exit_used:
         return {"level": "none", "score": 0, "signals": ["message_still_cold"]}
     if _is_question_like(text):
         score += 1
@@ -464,7 +611,7 @@ def _assistant_recovery_assessment(current_turn: dict[str, Any], next_turn: dict
         signals.append("speaker_partially_followed_guidance")
 
     reply = str(next_turn.get("generated_message") or "")
-    if not _is_cold_like(reply):
+    if not _is_low_energy_like(reply):
         score += 1
         signals.append("counterpart_replied_with_more_than_cold_phrase")
     else:
@@ -656,14 +803,23 @@ def run_dyadic_roleplay(
             pub = format_visible_transcript(pub_msgs)
             decision = _fast_rescue_decision(pub_msgs)
             if decision is None:
-                decision = _orchestrator_rescue_decision(
-                    llm=llm,
-                    next_speaker_id=speaker,
-                    participant_a_id=participant_a_id,
-                    participant_b_id=participant_b_id,
-                    dyadic_transcript=pub,
-                )
-                decision["decision_source"] = "llm"
+                try:
+                    decision = _orchestrator_rescue_decision(
+                        llm=llm,
+                        next_speaker_id=speaker,
+                        participant_a_id=participant_a_id,
+                        participant_b_id=participant_b_id,
+                        dyadic_transcript=pub,
+                    )
+                    decision["decision_source"] = "llm"
+                except Exception as e:
+                    decision = {
+                        "need_rescue": False,
+                        "situation": "none",
+                        "rescue_style": "none",
+                        "reason": f"调度超时，先按不介入处理：{type(e).__name__}",
+                        "decision_source": "llm_error_fallback",
+                    }
             need = bool(decision.get("need_rescue"))
             emit(
                 f"{turn_label}: rescue source={decision.get('decision_source') or 'unknown'} "
@@ -674,10 +830,11 @@ def run_dyadic_roleplay(
             turn_record["rescue_decision_source"] = decision.get("decision_source") or "unknown"
             if need:
                 situation = str(decision.get("situation") or "awkward")
+                rescue_style = str(decision.get("rescue_style") or "switch_topic")
                 reason = str(decision.get("reason") or "")
                 q = (
                     f"（系统判断当前双方可见对话可能需要接话/救场，情况标签：{situation}。"
-                    f"{reason}请先指出我这边当前最需要注意的问题，再给我自然、得体、适合我身份的接话建议。"
+                    f"建议风格：{rescue_style}。{reason}请先指出我这边当前最需要注意的问题，再给我自然、得体、适合我身份的接话建议。"
                     "不要直接代写成一条可发送消息。）"
                 )
                 assistant_started = perf_counter()
@@ -701,13 +858,26 @@ def run_dyadic_roleplay(
 
         msgs = list_messages(conn, thread_id, speaker, limit=200)
         transcript = format_visible_transcript(msgs)
-        body = _next_dyadic_message(
-            llm=llm,
-            user_id=speaker,
-            brief=brief,
-            transcript=transcript,
-            stress_directive=stress_directive,
-        )
+        try:
+            body = _next_dyadic_message(
+                llm=llm,
+                user_id=speaker,
+                brief=brief,
+                transcript=transcript,
+                stress_directive=stress_directive,
+            )
+            turn_record["message_generation_source"] = "llm"
+        except Exception as e:
+            body = _fallback_next_message(
+                visible_messages=msgs,
+                assistant_guidance=turn_record.get("assistant_guidance"),
+            )
+            turn_record["message_generation_source"] = "fallback"
+            turn_record["message_generation_error"] = f"{type(e).__name__}: {e}"
+            emit(
+                f"{turn_label}: message generation fallback used after {type(e).__name__}: "
+                f"{_preview_text(body)}"
+            )
         emit(f"{turn_label}: generated message={_preview_text(body)}")
         msg = post_message(
             conn,
