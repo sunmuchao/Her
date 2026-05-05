@@ -316,6 +316,7 @@ class GatewayRealisticUserFlowTests(unittest.TestCase):
         self.assertEqual(packaged_items["job"]["status"], "needs_review")
         self.assertIn("资料填写为主", packaged["trust_summary"]["headline"])
         self.assertNotIn("已线下核验", packaged["trust_summary"]["headline"])
+        self.assertIn("资料存在待复核或不一致信号", packaged["risk_flags"])
         self.assertGreaterEqual(len(packaged["caution_items"]), 1)
         self.assertGreaterEqual(len(packaged["trust_actions"]), 1)
 

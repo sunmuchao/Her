@@ -207,8 +207,57 @@ class PartnerSearchApiTests(unittest.TestCase):
         self.assertEqual(trust_items["education"]["status"], "verified")
         self.assertEqual(trust_items["job"]["status"], "needs_review")
         self.assertIn("待复核", result["trust_summary"]["headline"])
+        self.assertIn("资料填写为主", result["trust_summary"]["headline"])
+        self.assertIn("资料存在待复核或不一致信号", result["risk_flags"])
         self.assertGreaterEqual(len(result["caution_items"]), 1)
         self.assertGreaterEqual(len(result["trust_actions"]), 1)
+
+    def test_search_profiles_can_require_min_photo_verification_level(self):
+        fake_records = [
+            {
+                "id": 909,
+                "name": "UploadedOnly",
+                "gender": "女",
+                "age": 29,
+                "city": "上海",
+                "photo_count": 4,
+                "photo_verification_level": "uploaded",
+                "profile_status": "active",
+                "verified_level": "id",
+                "combined_text": "认真恋爱",
+                "last_active_at": "2099-01-01 00:00:00",
+                "source_file": "mysql://root@127.0.0.1:3307/her?table=profiles#profiles",
+            },
+            {
+                "id": 910,
+                "name": "VideoVerified",
+                "gender": "女",
+                "age": 30,
+                "city": "上海",
+                "photo_count": 5,
+                "photo_verification_level": "live_video_verified",
+                "profile_status": "active",
+                "verified_level": "id",
+                "combined_text": "认真恋爱",
+                "last_active_at": "2099-01-01 00:00:00",
+                "source_file": "mysql://root@127.0.0.1:3307/her?table=profiles#profiles",
+            },
+        ]
+
+        with mock.patch.object(engine, "load_source", return_value=fake_records), mock.patch.object(
+            engine, "attach_photo_previews"
+        ):
+            response = search_profiles(
+                source="mysql://user:pass@127.0.0.1:3306/her?table=profiles",
+                criteria={
+                    "gender": "女",
+                    "cities": ["上海"],
+                    "photo_verification_level_min": "live_video_verified",
+                },
+            )
+
+        self.assertEqual(response["result_count"], 1)
+        self.assertEqual(response["results"][0]["name"], "VideoVerified")
 
     def test_load_self_profile_uses_public_api_boundary_and_returns_json_safe_profile(self):
         with mock.patch.object(
