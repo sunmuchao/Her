@@ -14,7 +14,11 @@ class AssistantLLMTests(unittest.TestCase):
     def test_guidance_render_and_parse_round_trip(self):
         guidance = normalize_assistant_guidance(
             {
+                "mutual_intent_assessment": "communication_problem",
+                "interaction_mode": "repair",
                 "current_problem": ["对方上一句太短，原话题快聊干了"],
+                "why_not_to_push": [],
+                "low_pressure_options": [],
                 "avoid": ["不要继续追着同一个点硬问"],
                 "topic_directions": ["周末出门走走", "咖啡"],
                 "easy_question_types": ["低门槛生活习惯问题"],
@@ -30,8 +34,12 @@ class AssistantLLMTests(unittest.TestCase):
 
         self.assertIsNotNone(parsed)
         assert parsed is not None
+        self.assertIn("意愿判断：", body)
+        self.assertIn("这轮处理方式：", body)
         self.assertIn("建议按这个顺序来：", body)
         self.assertIn("如果还是接不动：", body)
+        self.assertEqual(parsed["mutual_intent_assessment"], "communication_problem")
+        self.assertEqual(parsed["interaction_mode"], "repair")
         self.assertEqual(parsed["rescue_flow"], ["先接住短回复", "再切生活话题", "最后问轻问题"])
         self.assertEqual(parsed["graceful_exit_plan"], ["如果对方还是很冷，就先轻轻收住"])
         self.assertEqual(parsed["profile_hooks_used"], ["周末会出门走走", "咖啡"])
