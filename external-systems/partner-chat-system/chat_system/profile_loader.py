@@ -61,6 +61,20 @@ _BRIEF_KEYS = (
     "source_channel",
 )
 
+_ASSISTANT_SUMMARY_KEYS = (
+    "name",
+    "age",
+    "settlement_city",
+    "job",
+    "relationship_goal",
+    "personality",
+    "values",
+    "lifestyle",
+    "hobbies",
+    "marriage_timeline",
+    "notes",
+)
+
 
 def fetch_profile_by_id(dsn: str, profile_id: int) -> dict[str, Any]:
     conn = connect_mysql_repo_db(str(dsn), subsystem_name="Profile")
@@ -96,13 +110,73 @@ def profile_row_to_brief(row: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def profile_row_to_assistant_summary(row: dict[str, Any]) -> str:
+    """Compact profile summary safe for coaching suggestions."""
+    lines: list[str] = []
+    for key in _ASSISTANT_SUMMARY_KEYS:
+        val = row.get(key)
+        if val is None or val == "":
+            continue
+        lines.append(f"{key}：{val}")
+    return "\n".join(lines)
+
+
+def _split_profile_hooks(raw: Any) -> list[str]:
+    text = str(raw or "").replace("，", ",").replace("、", ",")
+    out: list[str] = []
+    for part in text.split(","):
+        item = part.strip()
+        if not item or item in out:
+            continue
+        out.append(item)
+    return out
+
+
+def profile_row_to_hook_list(row: dict[str, Any], *, limit: int = 8) -> list[str]:
+    hooks: list[str] = []
+    for key in ("settlement_city", "hometown", "job", "lifestyle", "hobbies", "notes"):
+        if key not in row:
+            continue
+        items = _split_profile_hooks(row.get(key))
+        if key in ("settlement_city", "hometown", "job") and row.get(key):
+            items = [str(row.get(key)).strip()]
+        for item in items:
+            if not item or item in hooks:
+                continue
+            hooks.append(item)
+            if len(hooks) >= max(1, int(limit)):
+                return hooks
+    return hooks
+
+
+def parse_roleplay_profile_id(participant_id: str) -> int | None:
+    text = str(participant_id or "").strip()
+    if not text.startswith("profile-"):
+        return None
+    try:
+        return int(text.split("-", 1)[1])
+    except ValueError:
+        return None
+
+
+def fetch_profile_for_participant(dsn: str, participant_id: str) -> dict[str, Any] | None:
+    profile_id = parse_roleplay_profile_id(participant_id)
+    if profile_id is None:
+        return None
+    return fetch_profile_by_id(str(dsn), profile_id)
+
+
 def roleplay_participant_id(profile_id: int) -> str:
     return f"profile-{int(profile_id)}"
 
 
 __all__ = [
     "DEFAULT_PROFILE_MYSQL_DSN",
+    "fetch_profile_for_participant",
     "fetch_profile_by_id",
+    "parse_roleplay_profile_id",
+    "profile_row_to_assistant_summary",
     "profile_row_to_brief",
+    "profile_row_to_hook_list",
     "roleplay_participant_id",
 ]
