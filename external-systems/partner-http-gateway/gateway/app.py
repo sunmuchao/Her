@@ -702,6 +702,32 @@ class PartnerGateway:
         )
         return 201, {"report": _json_safe(out.get("report")), "risk_case": _json_safe(out.get("risk_case"))}
 
+    def rest_chat_submit_meeting_feedback(
+        self,
+        _environ: dict[str, Any],
+        thread_id: str,
+        body: dict[str, Any],
+    ) -> tuple[int, dict[str, Any]]:
+        now = _parse_optional_now(body)
+        reviewer_id = body.get("reviewer_id")
+        if not reviewer_id:
+            raise ValueError("reviewer_id is required")
+        out = self._with_chat(
+            submit_meeting_feedback,
+            thread_id,
+            str(reviewer_id),
+            counterpart_user_id=str(body["counterpart_user_id"]) if body.get("counterpart_user_id") is not None else None,
+            photo_match_status=body.get("photo_match_status") or "unclear",
+            profile_consistency_status=body.get("profile_consistency_status") or "unclear",
+            income_job_consistency_status=body.get("income_job_consistency_status") or "unclear",
+            safety_concern_status=body.get("safety_concern_status") or "none",
+            willing_video_status=body.get("willing_video_status") or "unknown",
+            willing_offline_status=body.get("willing_offline_status") or "unknown",
+            notes=body.get("notes"),
+            now=now,
+        )
+        return 201, _json_safe(out)
+
     def rest_chat_list_reports(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         q = _query_dict(environ)
         limit_raw = q.get("limit") or "100"
@@ -717,6 +743,22 @@ class PartnerGateway:
             limit=limit,
         )
         return 200, {"reports": _json_safe(rows)}
+
+    def rest_chat_list_meeting_feedback(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+        q = _query_dict(environ)
+        limit_raw = q.get("limit") or "100"
+        try:
+            limit = int(limit_raw)
+        except ValueError:
+            limit = 100
+        rows = self._with_chat(
+            list_meeting_feedback,
+            thread_id=q.get("thread_id") or None,
+            counterpart_user_id=q.get("counterpart_user_id") or None,
+            reviewer_id=q.get("reviewer_id") or None,
+            limit=limit,
+        )
+        return 200, {"meeting_feedback": _json_safe(rows)}
 
     def rest_chat_list_risk_cases(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         q = _query_dict(environ)
@@ -735,12 +777,34 @@ class PartnerGateway:
         )
         return 200, {"risk_cases": _json_safe(rows)}
 
+    def rest_chat_list_risk_signals(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+        q = _query_dict(environ)
+        limit_raw = q.get("limit") or "100"
+        try:
+            limit = int(limit_raw)
+        except ValueError:
+            limit = 100
+        rows = self._with_chat(
+            list_risk_signals,
+            thread_id=q.get("thread_id") or None,
+            subject_user_id=q.get("subject_user_id") or None,
+            signal_code=q.get("signal_code") or None,
+            limit=limit,
+        )
+        return 200, {"risk_signals": _json_safe(rows)}
+
     def rest_chat_get_risk_case(self, _environ: dict[str, Any], risk_case_id: str) -> tuple[int, dict[str, Any]]:
         risk_case = self._with_chat(get_risk_case, risk_case_id)
         if not risk_case:
             return 404, {"error": {"code": "not_found", "message": "risk case not found"}}
         reports = self._with_chat(list_member_reports, risk_case_id=risk_case_id, limit=100)
         return 200, {"risk_case": _json_safe(risk_case), "reports": _json_safe(reports)}
+
+    def rest_chat_thread_risk_overview(self, environ: dict[str, Any], thread_id: str) -> tuple[int, dict[str, Any]]:
+        q = _query_dict(environ)
+        requester_id = self._chat_require_requester(q)
+        out = self._with_chat(build_thread_risk_overview, thread_id, requester_id)
+        return 200, {"risk_overview": _json_safe(out)}
 
     def rest_chat_review_risk_case(
         self,
@@ -855,14 +919,21 @@ class PartnerGateway:
             return self.rest_chat_create_thread(environ, _parse_json_body(_read_body(environ)))
         if path == "/v1/chat/reports" and method == "GET":
             return self.rest_chat_list_reports(environ)
+        if path == "/v1/chat/meeting-feedback" and method == "GET":
+            return self.rest_chat_list_meeting_feedback(environ)
         if path == "/v1/chat/risk-cases" and method == "GET":
             return self.rest_chat_list_risk_cases(environ)
+        if path == "/v1/chat/risk-signals" and method == "GET":
+            return self.rest_chat_list_risk_signals(environ)
         m = re.fullmatch(r"/v1/chat/risk-cases/([^/]+)/review", path)
         if m and method == "POST":
             return self.rest_chat_review_risk_case(environ, m.group(1), _parse_json_body(_read_body(environ)))
         m = re.fullmatch(r"/v1/chat/risk-cases/([^/]+)", path)
         if m and method == "GET":
             return self.rest_chat_get_risk_case(environ, m.group(1))
+        m = re.fullmatch(r"/v1/chat/threads/([^/]+)/risk-overview", path)
+        if m and method == "GET":
+            return self.rest_chat_thread_risk_overview(environ, m.group(1))
         m = re.fullmatch(r"/v1/chat/threads/([^/]+)/summary", path)
         if m and method == "GET":
             return self.rest_chat_get_summary(environ, m.group(1))
@@ -872,6 +943,9 @@ class PartnerGateway:
         m = re.fullmatch(r"/v1/chat/threads/([^/]+)/reports", path)
         if m and method == "POST":
             return self.rest_chat_submit_report(environ, m.group(1), _parse_json_body(_read_body(environ)))
+        m = re.fullmatch(r"/v1/chat/threads/([^/]+)/meeting-feedback", path)
+        if m and method == "POST":
+            return self.rest_chat_submit_meeting_feedback(environ, m.group(1), _parse_json_body(_read_body(environ)))
         m = re.fullmatch(r"/v1/chat/threads/([^/]+)/assistant/query", path)
         if m and method == "POST":
             return self.rest_chat_assistant_query(environ, m.group(1), _parse_json_body(_read_body(environ)))
@@ -1084,6 +1158,21 @@ class PartnerGateway:
                 reported_user_id=str(p["reported_user_id"]) if p.get("reported_user_id") is not None else None,
                 now=p.get("now"),
             )
+        if method == "chat.submit_meeting_feedback":
+            return self._with_chat(
+                submit_meeting_feedback,
+                p["thread_id"],
+                str(p["reviewer_id"]),
+                counterpart_user_id=str(p["counterpart_user_id"]) if p.get("counterpart_user_id") is not None else None,
+                photo_match_status=p.get("photo_match_status") or "unclear",
+                profile_consistency_status=p.get("profile_consistency_status") or "unclear",
+                income_job_consistency_status=p.get("income_job_consistency_status") or "unclear",
+                safety_concern_status=p.get("safety_concern_status") or "none",
+                willing_video_status=p.get("willing_video_status") or "unknown",
+                willing_offline_status=p.get("willing_offline_status") or "unknown",
+                notes=p.get("notes"),
+                now=p.get("now"),
+            )
         if method == "chat.list_member_reports":
             return self._with_chat(
                 list_member_reports,
@@ -1092,12 +1181,28 @@ class PartnerGateway:
                 reported_user_id=p.get("reported_user_id"),
                 limit=int(p.get("limit", 100)),
             )
+        if method == "chat.list_meeting_feedback":
+            return self._with_chat(
+                list_meeting_feedback,
+                thread_id=p.get("thread_id"),
+                counterpart_user_id=p.get("counterpart_user_id"),
+                reviewer_id=p.get("reviewer_id"),
+                limit=int(p.get("limit", 100)),
+            )
         if method == "chat.list_risk_cases":
             return self._with_chat(
                 list_risk_cases,
                 statuses=p.get("statuses"),
                 subject_user_id=p.get("subject_user_id"),
                 thread_id=p.get("thread_id"),
+                limit=int(p.get("limit", 100)),
+            )
+        if method == "chat.list_risk_signals":
+            return self._with_chat(
+                list_risk_signals,
+                thread_id=p.get("thread_id"),
+                subject_user_id=p.get("subject_user_id"),
+                signal_code=p.get("signal_code"),
                 limit=int(p.get("limit", 100)),
             )
         if method == "chat.get_risk_case":
@@ -1117,6 +1222,12 @@ class PartnerGateway:
                 applied_action=p.get("applied_action"),
                 resolution_note=p.get("resolution_note"),
                 now=p.get("now"),
+            )
+        if method == "chat.get_thread_risk_overview":
+            return self._with_chat(
+                build_thread_risk_overview,
+                p["thread_id"],
+                str(p["requester_id"]),
             )
 
         if method == "timeline.get_for_case":
