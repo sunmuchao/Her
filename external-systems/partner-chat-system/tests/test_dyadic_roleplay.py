@@ -173,6 +173,12 @@ class DyadicRoleplayRunTests(unittest.TestCase):
         self.assertIn("assistant_metrics", out)
         self.assertIn("naturalness_metrics", out)
         self.assertEqual(len(out["turn_evaluations"]), 3)
+        self.assertTrue(
+            all(
+                (turn.get("assistant_follow_assessment") or {}).get("level") == "not_applicable"
+                for turn in out["turn_evaluations"]
+            )
+        )
 
     def test_run_proactive_rescue_triggers_assistant(self):
         llm, _orch = self._mock_llm(rescue_on_first=True)
@@ -193,9 +199,10 @@ class DyadicRoleplayRunTests(unittest.TestCase):
         self.assertEqual(len(out["proactive_rescue_events"]), 1)
         from chat_system.service import list_messages
 
-        msgs_a = list_messages(self.conn, out["thread_id"], "pa", limit=50)
-        authors_sources = [(m["author_id"], m["source"]) for m in msgs_a]
+        msgs_b = list_messages(self.conn, out["thread_id"], "pb", limit=50)
+        authors_sources = [(m["author_id"], m["source"]) for m in msgs_b]
         self.assertTrue(any(a == "assistant" for a, _ in authors_sources))
+        self.assertEqual(out["assistant_metrics"]["predicted_rescue_turns"], 1)
 
     def test_run_fixed_turns(self):
         def llm(messages: list[dict[str, str]]) -> str:
@@ -262,6 +269,46 @@ class DyadicRoleplayRunTests(unittest.TestCase):
         self.assertEqual(len(out["stress_events"]), 4)
         self.assertIn("beat_id", out["stress_events"][0])
         self.assertIn("severity", out["stress_events"][0])
+
+    def test_fast_rescue_uses_heuristic_on_cold_reply(self):
+        calls = {"orchestrator": 0, "message": 0}
+
+        def llm(messages: list[dict[str, str]]) -> str:
+            sys_c = messages[0]["content"]
+            user_c = messages[-1]["content"]
+            if "对话调度员" in sys_c:
+                calls["orchestrator"] += 1
+                return '{"need_rescue":false,"situation":"none","reason":"不该被调用"}'
+            if "请写出下一条" in user_c:
+                calls["message"] += 1
+                if calls["message"] == 1:
+                    return "嗯"
+                return "我平时周末会去打羽毛球，你一般怎么放松？"
+            if "附加任务" in sys_c and "「pa」" in sys_c:
+                return '{"conversation_satisfied":true,"conversation_score":3,"assistant_satisfied":true,"assistant_score":4,"used_assistant":false,"conversation_note":"","assistant_note":""}'
+            if "附加任务" in sys_c:
+                return '{"conversation_satisfied":true,"conversation_score":3,"assistant_satisfied":true,"assistant_score":4,"used_assistant":true,"conversation_note":"","assistant_note":""}'
+            return "{}"
+
+        out = run_dyadic_roleplay(
+            self.conn,
+            case_id="test-dyadic-heuristic-rescue",
+            relation_key="pa|pb",
+            participant_a_id="pa",
+            participant_b_id="pb",
+            brief_a="A",
+            brief_b="B",
+            rounds=2,
+            llm=llm,
+            assistant_mode="proactive",
+            base_time=datetime(2026, 5, 4, 9, 0, 0),
+            stress_mode="none",
+        )
+        self.assertEqual(calls["orchestrator"], 0)
+        self.assertEqual(len(out["proactive_rescue_events"]), 1)
+        self.assertEqual(out["turn_evaluations"][1]["rescue_decision_source"], "heuristic")
+        self.assertEqual(out["assistant_metrics"]["heuristic_decision_turns"], 2)
+        self.assertEqual(out["assistant_metrics"]["llm_decision_turns"], 0)
 
     def test_run_rejects_existing_case_by_default(self):
         llm, _orch = self._mock_llm(rescue_on_first=False)

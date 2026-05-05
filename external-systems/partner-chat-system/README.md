@@ -7,6 +7,13 @@ MySQL-backed chat threads and messages for match cases (`docs/chat-agent-archite
 
 Gateway REST: `/v1/chat/...`, `/v1/timeline`, maintenance `POST /v1/chat/maintenance/run`; JSON-RPC `chat.*` and `timeline.get_for_case`.
 
+当前已包含一条最小风控闭环：
+
+- 用户可通过 `POST /v1/chat/threads/{thread_id}/reports` 提交举报。
+- 系统会对 dyadic 消息自动命中第一版反诈关键词规则（如导流站外、投资、转账）并生成 `system_rule` 举报。
+- 举报会聚合成 `chat_risk_cases`，运营可通过 `/v1/chat/risk-cases` 查看、审核，并通过 `review` 接口施加 `warn` / `limit_chat` / `freeze`。
+- 当某个 case 被审核为 `limit_chat` 或 `freeze` 后，该用户会被阻止继续在该线程发送 dyadic 消息。
+
 Env: `HER_CHAT_PERSONA_MYSQL_SOURCE` (persona jobs); `OPENAI_API_KEY`, `HER_CHAT_ASSISTANT_MODEL`, optional `HER_CHAT_ASSISTANT_BASE_URL` or `OPENAI_BASE_URL` (DashScope 等兼容端点); `HER_SCHED_CHAT_DB`, `HER_SCHED_CHAT_MAINTENANCE_SEC`, `HER_SCHED_CHAT_FLUSH_OUTBOX`, `HER_SCHED_CHAT_OUTBOX_CONSUME`, `HER_CHAT_MAINTENANCE_SKIP_SUMMARY`; **`HER_PROFILE_MYSQL_DSN`**（默认 `mysql://root@127.0.0.1:3307/her`）用于从 **`profiles`** 表加载完整画像扮演用户。
 
 相关文档：

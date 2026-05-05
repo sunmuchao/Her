@@ -47,6 +47,14 @@ JSON-RPC：`recommendation.record_recommendation_action` / `record_user_review` 
 
 `GET /health` 返回体含 `db_connection_pool`、`api_key_required`、`rate_limit_per_minute`。
 
+## 搜索（`/v1/search`）
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `POST` | `/v1/search/profiles` | Body：`source` 或 `sources`、可选 `criteria`、`self_profile`、`self_id`、`table_name`、`photos_table_name`、`limit`、`photo_preview_count`、`include_source`、`include_text`。响应直接返回 `partner-search` 结构化结果，包含 `verified_level`、`verified_label`、`verification_items`、`trust_summary` 等可信度字段。 |
+
+**JSON-RPC**：`search.search_profiles`，`params` 与上表一致。
+
 ## 聊天（`/v1/chat`）
 
 持久化库由 **`PARTNER_CHAT_DB`** 指定（默认 `mysql://root@127.0.0.1:3307/her_chat`）。设计见仓库根目录 **`docs/chat-agent-architecture.md`**。
@@ -59,8 +67,13 @@ JSON-RPC：`recommendation.record_recommendation_action` / `record_user_review` 
 | `POST` | `/v1/chat/threads/{thread_id}/messages` | Body：`author_id`、`body`；可选 `visibility`（`dyadic` / `owner_only` / `system`）、`source`、`message_recipient_id`（`owner_only` 必填）、`reply_to_message_id`、`now`。幂等同推荐：`Idempotency-Key` 或 `client_idempotency_key`。 |
 | `POST` | `/v1/chat/threads/{thread_id}/assistant/query` | Body：`user_id`、`query_text`、可选 `now`。侧信道写入用户问题与助手问题诊断/回复建议。 |
 | `POST` | `/v1/chat/threads/{thread_id}/messages/adopt-draft` | Body：`draft_message_id`、`adopter_user_id`、必填 `body_override`、可选 `now`；幂等键同上。助手侧信道内容不能原样直发。 |
+| `POST` | `/v1/chat/threads/{thread_id}/reports` | Body：`reporter_id`、`report_type`、可选 `reason_text`、`message_id`、`reported_user_id`、`now`。用户举报入口；系统也会对聊天消息自动命中第一版反诈关键词规则并生成 `system_rule` 举报。 |
+| `GET` | `/v1/chat/reports` | Query：可选 `thread_id`、`risk_case_id`、`reported_user_id`、`limit`。运营 / 审核查看举报明细。 |
+| `GET` | `/v1/chat/risk-cases` | Query：可选 `status` / `statuses`、`subject_user_id`、`thread_id`、`limit`。返回最小审核后台可用的风险 case 列表。 |
+| `GET` | `/v1/chat/risk-cases/{risk_case_id}` | 返回单个风险 case 及其关联举报。 |
+| `POST` | `/v1/chat/risk-cases/{risk_case_id}/review` | Body：`resolver_id`、`status`、可选 `applied_action`（`warn` / `limit_chat` / `freeze`）、`resolution_note`、`now`。当 `status=action_applied` 时必须给 `applied_action`；`limit_chat` / `freeze` 会阻止该用户继续在该线程发送 dyadic 消息。 |
 
-**JSON-RPC**：`chat.get_thread`、`chat.get_or_create_thread`、`chat.list_messages`、`chat.post_message`、`chat.assistant_query`、`chat.adopt_draft`（`params` 与上表字段一致；`chat.post_message` 可含 `client_idempotency_key`）。
+**JSON-RPC**：`chat.get_thread`、`chat.get_or_create_thread`、`chat.list_messages`、`chat.post_message`、`chat.assistant_query`、`chat.adopt_draft`、`chat.submit_member_report`、`chat.list_member_reports`、`chat.list_risk_cases`、`chat.get_risk_case`、`chat.review_risk_case`（`params` 与上表字段一致；`chat.post_message` 可含 `client_idempotency_key`）。
 
 **维护与投递（运营 / worker）**
 
