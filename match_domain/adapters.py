@@ -6,13 +6,11 @@ import uuid
 from datetime import datetime
 from typing import Any, Mapping
 
+from .trace_context import get_trace_id
 from .model import (
-    CaseStatus,
-    CaseType,
     MatchEvent,
     PairStatus,
     ProfileRef,
-    RelationStatus,
     pair_key,
     relation_key,
 )
@@ -55,59 +53,6 @@ def recommendation_relation_refs(
     )
 
 
-def recommendation_relation_status(
-    *,
-    delivery_status: str | None,
-    last_action_type: str | None = None,
-    active_match_case_id: str | None = None,
-) -> RelationStatus:
-    if active_match_case_id:
-        return RelationStatus.PROXY_INTRO_ACTIVE
-    if delivery_status in {"proxy_intro_in_progress", "proxy_intro_accepted"}:
-        return RelationStatus.PROXY_INTRO_ACTIVE
-    if delivery_status == "proxy_intro_handed_off":
-        return RelationStatus.CLOSED
-    if delivery_status in {"cooled_down", "proxy_intro_declined", "proxy_intro_timed_out"}:
-        return RelationStatus.COOLING
-    if delivery_status in {"saved_by_user", "save_only"}:
-        return RelationStatus.SAVED
-    if delivery_status == "direct_greeted":
-        return RelationStatus.DIRECT_GREETED
-    if delivery_status == "review_skipped":
-        return RelationStatus.SKIPPED
-    if last_action_type == "skip":
-        return RelationStatus.SKIPPED
-    if delivery_status:
-        return RelationStatus.RECOMMENDED
-    return RelationStatus.NEW
-
-
-def proxy_intro_case_status(case_status: str | None) -> CaseStatus:
-    mapping = {
-        "pending_outreach": CaseStatus.PENDING_CONTACT,
-        "awaiting_reply": CaseStatus.AWAITING_REPLY,
-        "accepted": CaseStatus.ACCEPTED,
-        "declined": CaseStatus.DECLINED,
-        "timed_out": CaseStatus.TIMED_OUT,
-        "closed": CaseStatus.CLOSED,
-    }
-    return mapping.get(str(case_status), CaseStatus.CLOSED)
-
-
-def matchmaking_case_status(case_status: str | None) -> CaseStatus:
-    mapping = {
-        "pending_first_contact": CaseStatus.PENDING_CONTACT,
-        "pending_second_contact": CaseStatus.PENDING_CONTACT,
-        "awaiting_first_reply": CaseStatus.AWAITING_REPLY,
-        "awaiting_second_reply": CaseStatus.AWAITING_REPLY,
-        "mutual_accept": CaseStatus.ACCEPTED,
-        "declined": CaseStatus.DECLINED,
-        "timed_out": CaseStatus.TIMED_OUT,
-        "closed": CaseStatus.CLOSED,
-    }
-    return mapping.get(str(case_status), CaseStatus.CLOSED)
-
-
 def canonical_pair_status(pair_status: str | None) -> PairStatus:
     mapping = {
         "eligible": PairStatus.ELIGIBLE,
@@ -143,7 +88,16 @@ def build_canonical_event(
     occurred_at: datetime,
     payload: Mapping[str, Any] | None = None,
     idempotency_key: str | None = None,
+    trace_id: str | None = None,
+    entity_ids: Mapping[str, str] | None = None,
 ) -> MatchEvent:
+    merged = dict(payload or {})
+    if entity_ids:
+        existing = merged.get("entity_ids")
+        base: dict[str, str] = dict(existing) if isinstance(existing, Mapping) else {}
+        base.update(dict(entity_ids))
+        merged["entity_ids"] = base
+    tid = trace_id if trace_id is not None else get_trace_id()
     return MatchEvent(
         event_id=f"evt-{uuid.uuid4().hex[:16]}",
         event_type=event_type,
@@ -155,7 +109,8 @@ def build_canonical_event(
         correlation_id=correlation_id,
         idempotency_key=idempotency_key,
         occurred_at=occurred_at,
-        payload=dict(payload or {}),
+        payload=merged,
+        trace_id=tid,
     )
 
 
@@ -181,21 +136,15 @@ def merge_payload_with_event(
 
 
 __all__ = [
-    "CaseStatus",
-    "CaseType",
     "PairStatus",
-    "RelationStatus",
     "build_canonical_event",
     "canonical_pair_key_for_members",
     "canonical_pair_status",
-    "matchmaking_case_status",
     "merge_payload_with_event",
     "pool_member_profile_ref",
     "profile_ref_to_dict",
-    "proxy_intro_case_status",
     "recommendation_owner_ref",
     "recommendation_relation_key",
     "recommendation_relation_refs",
-    "recommendation_relation_status",
     "recommendation_target_ref",
 ]

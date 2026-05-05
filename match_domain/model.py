@@ -87,6 +87,7 @@ class MatchEvent:
     payload: Mapping[str, Any] = field(default_factory=dict)
     idempotency_key: str | None = None
     version: int = 1
+    trace_id: str | None = None
 
     def __post_init__(self) -> None:
         required = {
@@ -104,7 +105,7 @@ class MatchEvent:
             raise ValueError(f"MatchEvent missing required fields: {', '.join(missing)}")
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        out = {
             "event_id": self.event_id,
             "event_type": self.event_type,
             "aggregate_type": self.aggregate_type,
@@ -118,3 +119,6 @@ class MatchEvent:
             "payload": dict(self.payload),
             "version": self.version,
         }
+        if self.trace_id:
+            out["trace_id"] = self.trace_id
+        return out

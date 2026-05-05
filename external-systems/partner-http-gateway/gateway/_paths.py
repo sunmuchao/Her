@@ -41,8 +41,9 @@ def _bootstrap_monorepo_root() -> Path:
 _REPO_ROOT = _bootstrap_monorepo_root()
 _REC_ROOT = _REPO_ROOT / "external-systems" / "partner-recommendation-system"
 _MM_ROOT = _REPO_ROOT / "external-systems" / "partner-matchmaking-system"
+_CHAT_ROOT = _REPO_ROOT / "external-systems" / "partner-chat-system"
 
-for _p in (_REC_ROOT, _MM_ROOT):
+for _p in (_REC_ROOT, _MM_ROOT, _CHAT_ROOT):
     s = str(_p)
     if s not in sys.path:
         sys.path.insert(0, s)

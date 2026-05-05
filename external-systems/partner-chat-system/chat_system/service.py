@@ -1,0 +1,459 @@
+"""Chat threads and messages (MVP: ``docs/chat-agent-architecture.md``)."""
+
+from __future__ import annotations
+
+import uuid
+from datetime import datetime
+from typing import Any
+
+try:
+    from pymysql.err import IntegrityError
+except ImportError:  # pragma: no cover
+    IntegrityError = Exception  # type: ignore[misc,assignment]
+
+from match_domain.outbox import append_outbox_pending
+from match_domain.trace_context import get_trace_id
+from observability import (
+    CHAT_FUNNEL_ASSISTANT_INVOKE,
+    CHAT_FUNNEL_DRAFT_ADOPT,
+    CHAT_FUNNEL_MESSAGE_SEND,
+    CHAT_FUNNEL_THREAD_OPEN,
+    funnel_stage,
+)
+
+from .assistant_llm import build_dyadic_context_for_assistant, generate_assistant_reply
+from .events import chat_message_created_event, chat_thread_opened_event
+from .persona_jobs import maybe_enqueue_persona_sync_job
+from .storage import json_dumps, json_loads, row_to_dict
+
+ASSISTANT_AUTHOR_ID = "assistant"
+VIS_DYADIC = "dyadic"
+VIS_OWNER_ONLY = "owner_only"
+VIS_SYSTEM = "system"
+SRC_USER = "user"
+SRC_AGENT_DRAFT = "agent_draft"
+SRC_AGENT_SENT = "agent_sent_after_confirm"
+SRC_SYSTEM = "system"
+
+
+def current_time(now: datetime | None = None) -> datetime:
+    return (now or datetime.now()).replace(microsecond=0)
+
+
+def _generate_thread_id() -> str:
+    return f"cht-{uuid.uuid4().hex[:16]}"
+
+
+def get_thread(conn, thread_id: str) -> dict[str, Any] | None:
+    cur = conn.execute(
+        "SELECT * FROM chat_threads WHERE thread_id = ? LIMIT 1",
+        (thread_id,),
+    )
+    row = cur.fetchone()
+    return _inflate_thread(row_to_dict(row))
+
+
+def get_thread_by_case(conn, case_id: str) -> dict[str, Any] | None:
+    cur = conn.execute(
+        "SELECT * FROM chat_threads WHERE case_id = ? LIMIT 1",
+        (case_id,),
+    )
+    row = cur.fetchone()
+    return _inflate_thread(row_to_dict(row))
+
+
+def _inflate_thread(row: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not row:
+        return None
+    out = dict(row)
+    out["metadata"] = json_loads(out.pop("metadata_json", None), {})
+    return out
+
+
+def get_or_create_thread(
+    conn,
+    *,
+    case_id: str,
+    relation_key: str,
+    participant_a_id: str,
+    participant_b_id: str,
+    metadata: dict[str, Any] | None = None,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    existing = get_thread_by_case(conn, case_id)
+    if existing:
+        return existing
+    ts = current_time(now)
+    thread_id = _generate_thread_id()
+    try:
+        conn.execute(
+            """
+            INSERT INTO chat_threads (
+              thread_id, case_id, relation_key, status,
+              participant_a_id, participant_b_id, metadata_json, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                thread_id,
+                case_id,
+                relation_key,
+                "open",
+                participant_a_id,
+                participant_b_id,
+                json_dumps(metadata or {}),
+                ts,
+                ts,
+            ),
+        )
+        append_outbox_pending(
+            conn,
+            event=chat_thread_opened_event(
+                thread_id=thread_id,
+                case_id=case_id,
+                relation_key=relation_key,
+                participant_a_id=participant_a_id,
+                participant_b_id=participant_b_id,
+                occurred_at=ts,
+            ),
+            source_row_table="chat_threads",
+            source_row_id=None,
+            created_at_str=ts.isoformat(sep=" "),
+        )
+        conn.commit()
+        funnel_stage(
+            system="chat",
+            stage=CHAT_FUNNEL_THREAD_OPEN,
+            trace_id=get_trace_id(),
+            case_id=case_id,
+            thread_id=thread_id,
+            relation_key=relation_key,
+        )
+    except IntegrityError:
+        conn.rollback()
+        existing2 = get_thread_by_case(conn, case_id)
+        if existing2:
+            return existing2
+        raise
+    row = get_thread(conn, thread_id)
+    assert row is not None
+    return row
+
+
+def _is_participant(thread: dict[str, Any], user_id: str) -> bool:
+    return user_id in {thread["participant_a_id"], thread["participant_b_id"]}
+
+
+def _message_visible_to(row: dict[str, Any], thread: dict[str, Any], requester_id: str) -> bool:
+    vis = row["visibility"]
+    if vis == VIS_DYADIC or vis == VIS_SYSTEM:
+        return _is_participant(thread, requester_id)
+    if vis == VIS_OWNER_ONLY:
+        return row.get("message_recipient_id") == requester_id
+    return False
+
+
+def list_messages(
+    conn,
+    thread_id: str,
+    requester_id: str,
+    *,
+    limit: int = 50,
+    before_message_id: int | None = None,
+) -> list[dict[str, Any]]:
+    thread = get_thread(conn, thread_id)
+    if not thread:
+        raise ValueError("thread not found")
+    if not _is_participant(thread, requester_id):
+        raise ValueError("requester is not a participant of this thread")
+
+    lim = max(1, min(int(limit), 200))
+    if before_message_id is not None:
+        cur = conn.execute(
+            """
+            SELECT * FROM chat_messages
+            WHERE thread_id = ? AND message_id < ?
+            ORDER BY message_id DESC
+            LIMIT ?
+            """,
+            (thread_id, int(before_message_id), lim),
+        )
+    else:
+        cur = conn.execute(
+            """
+            SELECT * FROM chat_messages
+            WHERE thread_id = ?
+            ORDER BY message_id DESC
+            LIMIT ?
+            """,
+            (thread_id, lim),
+        )
+    rows = cur.fetchall()
+    out = [dict(r) for r in rows if _message_visible_to(dict(r), thread, requester_id)]
+    out.reverse()
+    return out
+
+
+def post_message(
+    conn,
+    thread_id: str,
+    author_id: str,
+    body: str,
+    *,
+    visibility: str = VIS_DYADIC,
+    source: str = SRC_USER,
+    client_msg_id: str | None = None,
+    message_recipient_id: str | None = None,
+    reply_to_message_id: int | None = None,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    thread = get_thread(conn, thread_id)
+    if not thread:
+        raise ValueError("thread not found")
+
+    if visibility not in (VIS_DYADIC, VIS_OWNER_ONLY, VIS_SYSTEM):
+        raise ValueError("invalid visibility")
+    if visibility == VIS_OWNER_ONLY and not message_recipient_id:
+        raise ValueError("message_recipient_id is required for owner_only messages")
+
+    if author_id == ASSISTANT_AUTHOR_ID:
+        if visibility != VIS_OWNER_ONLY:
+            raise ValueError("assistant messages must use owner_only visibility in MVP")
+    elif not _is_participant(thread, author_id):
+        raise ValueError("author is not a participant")
+    else:
+        if visibility == VIS_DYADIC and source not in (SRC_USER, SRC_AGENT_SENT):
+            raise ValueError("invalid source for user dyadic message")
+        if visibility == VIS_OWNER_ONLY and source != SRC_USER:
+            raise ValueError("participants may only post owner_only messages with source=user in MVP")
+
+    ts = current_time(now)
+    cmid = (client_msg_id or "").strip() or None
+    if cmid:
+        cmid = cmid[:191]
+        cur = conn.execute(
+            """
+            SELECT * FROM chat_messages
+            WHERE thread_id = ? AND client_msg_id = ? LIMIT 1
+            """,
+            (thread_id, cmid),
+        )
+        existing = row_to_dict(cur.fetchone())
+        if existing:
+            return dict(existing)
+
+    try:
+        conn.execute(
+            """
+            INSERT INTO chat_messages (
+              thread_id, author_id, message_recipient_id, visibility, source, body,
+              client_msg_id, reply_to_message_id, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                thread_id,
+                author_id,
+                message_recipient_id,
+                visibility,
+                source,
+                body,
+                cmid,
+                reply_to_message_id,
+                ts,
+            ),
+        )
+        inserted_id = int(conn.lastrowid)
+        conn.execute(
+            "UPDATE chat_threads SET updated_at = ? WHERE thread_id = ?",
+            (ts, thread_id),
+        )
+        append_outbox_pending(
+            conn,
+            event=chat_message_created_event(
+                thread_id=thread_id,
+                case_id=str(thread["case_id"]),
+                message_id=inserted_id,
+                author_id=author_id,
+                body=body,
+                visibility=visibility,
+                source=source,
+                occurred_at=ts,
+            ),
+            source_row_table="chat_messages",
+            source_row_id=inserted_id,
+            created_at_str=ts.isoformat(sep=" "),
+        )
+        maybe_enqueue_persona_sync_job(
+            conn,
+            thread,
+            message_id=inserted_id,
+            author_id=author_id,
+            body=body,
+            visibility=visibility,
+            source=source,
+            message_recipient_id=message_recipient_id,
+            ts=ts,
+        )
+        conn.commit()
+    except IntegrityError:
+        conn.rollback()
+        if cmid:
+            cur = conn.execute(
+                """
+                SELECT * FROM chat_messages
+                WHERE thread_id = ? AND client_msg_id = ? LIMIT 1
+                """,
+                (thread_id, cmid),
+            )
+            existing = row_to_dict(cur.fetchone())
+            if existing:
+                return dict(existing)
+        raise
+    mid = inserted_id
+    cur = conn.execute("SELECT * FROM chat_messages WHERE message_id = ? LIMIT 1", (mid,))
+    row = row_to_dict(cur.fetchone())
+    assert row is not None
+    funnel_stage(
+        system="chat",
+        stage=CHAT_FUNNEL_MESSAGE_SEND,
+        trace_id=get_trace_id(),
+        case_id=str(thread["case_id"]),
+        thread_id=thread_id,
+        message_id=mid,
+        visibility=visibility,
+        source=source,
+        author_id=author_id,
+    )
+    return dict(row)
+
+
+def assistant_query(
+    conn,
+    thread_id: str,
+    user_id: str,
+    query_text: str,
+    *,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    thread = get_thread(conn, thread_id)
+    if not thread:
+        raise ValueError("thread not found")
+    if not _is_participant(thread, user_id):
+        raise ValueError("user is not a participant")
+
+    q = (query_text or "").strip()
+    if not q:
+        raise ValueError("query_text is required")
+
+    post_message(
+        conn,
+        thread_id,
+        user_id,
+        q,
+        visibility=VIS_OWNER_ONLY,
+        source=SRC_USER,
+        message_recipient_id=user_id,
+        now=now,
+    )
+    ctx = build_dyadic_context_for_assistant(conn, thread_id, limit=20)
+    placeholder = (
+        "【助手占位】已记录你的问题，后续可接入模型与工具。"
+        "若需要给对方发话，请使用「采纳草稿」接口将草稿同步到主对话。"
+    )
+    body = generate_assistant_reply(user_query=q, thread_context=ctx) or placeholder
+    out = post_message(
+        conn,
+        thread_id,
+        ASSISTANT_AUTHOR_ID,
+        body,
+        visibility=VIS_OWNER_ONLY,
+        source=SRC_AGENT_DRAFT,
+        message_recipient_id=user_id,
+        now=now,
+    )
+    funnel_stage(
+        system="chat",
+        stage=CHAT_FUNNEL_ASSISTANT_INVOKE,
+        trace_id=get_trace_id(),
+        case_id=str(thread["case_id"]),
+        thread_id=thread_id,
+        message_id=out["message_id"],
+        user_id=user_id,
+    )
+    return out
+
+
+def adopt_draft(
+    conn,
+    thread_id: str,
+    draft_message_id: int,
+    adopter_user_id: str,
+    *,
+    body_override: str | None = None,
+    client_msg_id: str | None = None,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    thread = get_thread(conn, thread_id)
+    if not thread:
+        raise ValueError("thread not found")
+    if not _is_participant(thread, adopter_user_id):
+        raise ValueError("adopter is not a participant")
+
+    cur = conn.execute(
+        "SELECT * FROM chat_messages WHERE message_id = ? AND thread_id = ? LIMIT 1",
+        (int(draft_message_id), thread_id),
+    )
+    draft = row_to_dict(cur.fetchone())
+    if not draft:
+        raise ValueError("draft not found")
+    if draft["source"] != SRC_AGENT_DRAFT or draft["visibility"] != VIS_OWNER_ONLY:
+        raise ValueError("message is not an adoptable assistant draft")
+    if draft.get("message_recipient_id") != adopter_user_id:
+        raise ValueError("draft is not addressed to this user")
+
+    body = (body_override if body_override is not None else draft["body"]) or ""
+    body = str(body).strip()
+    if not body:
+        raise ValueError("body is empty")
+
+    msg = post_message(
+        conn,
+        thread_id,
+        adopter_user_id,
+        body,
+        visibility=VIS_DYADIC,
+        source=SRC_AGENT_SENT,
+        client_msg_id=client_msg_id,
+        reply_to_message_id=int(draft_message_id),
+        now=now,
+    )
+    funnel_stage(
+        system="chat",
+        stage=CHAT_FUNNEL_DRAFT_ADOPT,
+        trace_id=get_trace_id(),
+        case_id=str(thread["case_id"]),
+        thread_id=thread_id,
+        message_id=msg["message_id"],
+        adopter_user_id=adopter_user_id,
+        draft_message_id=int(draft_message_id),
+    )
+    return msg
+
+
+__all__ = [
+    "ASSISTANT_AUTHOR_ID",
+    "SRC_AGENT_DRAFT",
+    "SRC_AGENT_SENT",
+    "SRC_SYSTEM",
+    "SRC_USER",
+    "VIS_DYADIC",
+    "VIS_OWNER_ONLY",
+    "VIS_SYSTEM",
+    "adopt_draft",
+    "assistant_query",
+    "current_time",
+    "get_or_create_thread",
+    "get_thread",
+    "get_thread_by_case",
+    "list_messages",
+    "post_message",
+]

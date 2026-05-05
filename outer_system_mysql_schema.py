@@ -1,34 +1,16 @@
-#!/usr/bin/env python3
-
-"""Migrate external-system SQLite state tables into MySQL.
-
-This tool currently supports the two outer systems in this repository:
-
-- recommendation
-- matchmaking
-
-It creates MySQL tables from explicit table metadata and then copies rows
-from a source SQLite database using idempotent upserts.
-"""
+"""MySQL schema metadata and DDL helpers for recommendation and matchmaking outer systems."""
 
 from __future__ import annotations
 
-import argparse
 import hashlib
-import json
 import re
-import sqlite3
-import sys
-from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any, Iterable, Iterator, Sequence
+from dataclasses import dataclass
+from typing import Any, Sequence
 from urllib.parse import parse_qs, unquote, urlparse
-
 
 MYSQL_SCHEMES = {"mysql", "mysql+pymysql"}
 DEFAULT_CHARSET = "utf8mb4"
 DEFAULT_COLLATION = "utf8mb4_unicode_ci"
-NO_DEFAULT = object()
 
 
 @dataclass(frozen=True)
@@ -72,33 +54,8 @@ class TableDef:
     def column_names(self) -> tuple[str, ...]:
         return tuple(column.name for column in self.columns)
 
-
-SOURCE_COLUMN_DEFAULTS: dict[tuple[str, str], Any] = {
-    ("saved_search_subscriptions", "initial_request_json"): "{}",
-    ("saved_search_subscriptions", "subscription_overrides_json"): "{}",
-    ("saved_search_subscriptions", "recommendation_mode"): "direct_greet_only",
-    ("saved_search_subscriptions", "direct_greet_profile_json"): "{}",
-    ("saved_search_subscriptions", "max_review_candidates_per_refresh"): 3,
-    ("saved_search_subscriptions", "min_direct_greet_score"): 60,
-    ("saved_search_subscriptions", "auto_reject_on_follow_up_questions"): 1,
-    ("saved_search_subscriptions", "auto_reject_on_risk_flags"): 1,
-    ("profile_recommendations", "final_review_status"): "match_ready",
-    ("profile_recommendations", "final_review_score"): 0,
-    ("profile_recommendations", "final_review_payload_json"): "{}",
-    ("profile_recommendations", "user_review_status"): "not_requested",
-    ("profile_recommendations", "user_review_payload_json"): "{}",
-    ("profile_recommendations", "owner_profile_ref_json"): "{}",
-    ("profile_recommendations", "target_profile_ref_json"): "{}",
-    ("match_cases", "case_type"): "proxy_intro",
-}
-
-
 def quote_mysql_ident(identifier: str) -> str:
     return f"`{identifier.replace('`', '``')}`"
-
-
-def quote_sqlite_ident(identifier: str) -> str:
-    return f'"{identifier.replace(chr(34), chr(34) * 2)}"'
 
 
 def normalize_prefix(prefix: str | None) -> str:
@@ -241,86 +198,6 @@ def build_create_table_sql(table: TableDef, *, prefix: str | None = None, config
     )
 
 
-def build_upsert_sql(table: TableDef, *, prefix: str | None = None) -> str:
-    dest_table = destination_table_name(table.name, prefix)
-    columns = list(table.column_names)
-    placeholders = ", ".join(["%s"] * len(columns))
-    quoted_columns = ", ".join(quote_mysql_ident(column) for column in columns)
-    non_pk_columns = [column for column in columns if column not in set(table.primary_key)]
-    if non_pk_columns:
-        update_clause = ", ".join(
-            f"{quote_mysql_ident(column)} = VALUES({quote_mysql_ident(column)})"
-            for column in non_pk_columns
-        )
-    else:
-        primary_key = table.primary_key[0]
-        update_clause = f"{quote_mysql_ident(primary_key)} = VALUES({quote_mysql_ident(primary_key)})"
-    return (
-        f"INSERT INTO {quote_mysql_ident(dest_table)} ({quoted_columns}) "
-        f"VALUES ({placeholders}) "
-        f"ON DUPLICATE KEY UPDATE {update_clause}"
-    )
-
-
-def build_select_sql(table: TableDef) -> str:
-    columns = ", ".join(quote_sqlite_ident(column) for column in table.column_names)
-    if table.primary_key:
-        order_by = ", ".join(quote_sqlite_ident(column) for column in table.primary_key)
-        return f"SELECT {columns} FROM {quote_sqlite_ident(table.name)} ORDER BY {order_by}"
-    return f"SELECT {columns} FROM {quote_sqlite_ident(table.name)}"
-
-
-def normalize_mysql_value(value: Any) -> Any:
-    if isinstance(value, bool):
-        return int(value)
-    if isinstance(value, memoryview):
-        return bytes(value)
-    return value
-
-
-def chunked(rows: Sequence[Sequence[Any]], batch_size: int) -> Iterator[Sequence[Sequence[Any]]]:
-    for index in range(0, len(rows), batch_size):
-        yield rows[index : index + batch_size]
-
-
-def sqlite_table_exists(sqlite_conn: sqlite3.Connection, table_name: str) -> bool:
-    row = sqlite_conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1",
-        (table_name,),
-    ).fetchone()
-    return row is not None
-
-
-def load_sqlite_rows(sqlite_conn: sqlite3.Connection, table: TableDef) -> list[tuple[Any, ...]]:
-    if not sqlite_table_exists(sqlite_conn, table.name):
-        return []
-    actual_columns = {
-        row["name"] for row in sqlite_conn.execute(f"PRAGMA table_info({quote_sqlite_ident(table.name)})").fetchall()
-    }
-    query = build_select_sql(table)
-    rows = sqlite_conn.execute(query).fetchall()
-    values: list[tuple[Any, ...]] = []
-    for row in rows:
-        rendered: list[Any] = []
-        for column in table.columns:
-            if column.name in actual_columns:
-                value = row[column.name]
-            else:
-                default = SOURCE_COLUMN_DEFAULTS.get((table.name, column.name), NO_DEFAULT)
-                if default is not NO_DEFAULT:
-                    value = default
-                elif column.nullable:
-                    value = None
-                else:
-                    raise ValueError(
-                        f"Source table {table.name!r} is missing required column {column.name!r} "
-                        "and no migration default is defined."
-                    )
-            rendered.append(normalize_mysql_value(value))
-        values.append(tuple(rendered))
-    return values
-
-
 def table_exists(mysql_conn, table_name: str) -> bool:
     with mysql_conn.cursor() as cursor:
         cursor.execute("SHOW TABLES LIKE %s", (table_name,))
@@ -331,6 +208,42 @@ def index_exists(mysql_conn, table_name: str, index_name: str) -> bool:
     with mysql_conn.cursor() as cursor:
         cursor.execute(f"SHOW INDEX FROM {quote_mysql_ident(table_name)} WHERE Key_name = %s", (index_name,))
         return cursor.fetchone() is not None
+
+
+def column_exists(mysql_conn, table_name: str, column_name: str) -> bool:
+    with mysql_conn.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = %s
+              AND COLUMN_NAME = %s
+            LIMIT 1
+            """,
+            (table_name, column_name),
+        )
+        return cursor.fetchone() is not None
+
+
+def ensure_table_columns(mysql_conn, table: TableDef, *, prefix: str | None = None) -> None:
+    """Apply ``ALTER TABLE ... ADD COLUMN`` for any column missing from an existing table."""
+
+    dest = destination_table_name(table.name, prefix)
+    if not table_exists(mysql_conn, dest):
+        return
+    for col in table.columns:
+        if column_exists(mysql_conn, dest, col.name):
+            continue
+        rendered = f"{quote_mysql_ident(col.name)} {col.mysql_type}"
+        if col.nullable:
+            rendered += " NULL"
+        else:
+            rendered += " NOT NULL"
+        if col.auto_increment:
+            rendered += " AUTO_INCREMENT"
+        alter_sql = f"ALTER TABLE {quote_mysql_ident(dest)} ADD COLUMN {rendered}"
+        with mysql_conn.cursor() as cursor:
+            cursor.execute(alter_sql)
 
 
 def ensure_table(mysql_conn, table: TableDef, *, prefix: str | None = None, config: dict[str, Any] | None = None) -> None:
@@ -367,19 +280,6 @@ def clear_tables(mysql_conn, tables: Sequence[TableDef], *, prefix: str | None =
                 cursor.execute(f"DELETE FROM {quote_mysql_ident(table_name)}")
         finally:
             cursor.execute("SET FOREIGN_KEY_CHECKS = 1")
-
-
-def migrate_table(mysql_conn, sqlite_conn: sqlite3.Connection, table: TableDef, *, prefix: str | None = None, batch_size: int = 500) -> int:
-    rows = load_sqlite_rows(sqlite_conn, table)
-    if not rows:
-        return 0
-
-    sql = build_upsert_sql(table, prefix=prefix)
-    with mysql_conn.cursor() as cursor:
-        for batch in chunked(rows, batch_size):
-            cursor.executemany(sql, list(batch))
-    return len(rows)
-
 
 def recommendation_tables() -> tuple[TableDef, ...]:
     return (
@@ -460,6 +360,7 @@ def recommendation_tables() -> tuple[TableDef, ...]:
                 ColumnDef("target_profile_ref_json", "LONGTEXT", nullable=False),
                 ColumnDef("active_match_case_id", "VARCHAR(191)"),
                 ColumnDef("latest_card_id", "VARCHAR(191)"),
+                ColumnDef("rule_provenance_json", "LONGTEXT"),
             ),
             primary_key=("recommendation_id",),
             uniques=(
@@ -484,6 +385,7 @@ def recommendation_tables() -> tuple[TableDef, ...]:
                 ColumnDef("candidate_id", "BIGINT", nullable=False),
                 ColumnDef("action_type", "VARCHAR(64)", nullable=False),
                 ColumnDef("action_payload_json", "LONGTEXT"),
+                ColumnDef("client_idempotency_key", "VARCHAR(191)"),
                 ColumnDef("occurred_at", "DATETIME", nullable=False),
             ),
             primary_key=("action_id",),
@@ -509,6 +411,7 @@ def recommendation_tables() -> tuple[TableDef, ...]:
                 ColumnDef("payload_json", "LONGTEXT", nullable=False),
                 ColumnDef("created_at", "DATETIME", nullable=False),
                 ColumnDef("delivered_at", "DATETIME", nullable=False),
+                ColumnDef("read_at", "DATETIME"),
             ),
             primary_key=("card_id",),
             indexes=(
@@ -535,6 +438,7 @@ def recommendation_tables() -> tuple[TableDef, ...]:
                 ColumnDef("top_candidate_ids_json", "LONGTEXT", nullable=False),
                 ColumnDef("status_counts_json", "LONGTEXT", nullable=False),
                 ColumnDef("review_counts_json", "LONGTEXT", nullable=False),
+                ColumnDef("rule_provenance_json", "LONGTEXT"),
                 ColumnDef("created_at", "DATETIME", nullable=False),
             ),
             primary_key=("run_id",),
@@ -595,6 +499,7 @@ def recommendation_tables() -> tuple[TableDef, ...]:
                 ColumnDef("from_status", "VARCHAR(64)"),
                 ColumnDef("to_status", "VARCHAR(64)"),
                 ColumnDef("actor_type", "VARCHAR(32)", nullable=False),
+                ColumnDef("canonical_event_json", "LONGTEXT", nullable=True),
                 ColumnDef("payload_json", "LONGTEXT", nullable=False),
                 ColumnDef("occurred_at", "DATETIME", nullable=False),
             ),
@@ -628,6 +533,140 @@ def recommendation_tables() -> tuple[TableDef, ...]:
             ),
             foreign_keys=(
                 ForeignKeyDef(("case_id",), "match_cases", ("case_id",)),
+            ),
+        ),
+        TableDef(
+            name="outbox_events",
+            columns=(
+                ColumnDef("outbox_id", "BIGINT", nullable=False, auto_increment=True),
+                ColumnDef("canonical_event_id", "VARCHAR(64)", nullable=False),
+                ColumnDef("aggregate_type", "VARCHAR(32)", nullable=False),
+                ColumnDef("aggregate_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("event_type", "VARCHAR(64)", nullable=False),
+                ColumnDef("source_service", "VARCHAR(64)", nullable=False),
+                ColumnDef("canonical_event_json", "LONGTEXT", nullable=False),
+                ColumnDef("source_row_table", "VARCHAR(64)", nullable=False),
+                ColumnDef("source_row_id", "BIGINT", nullable=True),
+                ColumnDef("publish_status", "VARCHAR(32)", nullable=False),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+                ColumnDef("published_at", "DATETIME", nullable=True),
+            ),
+            primary_key=("outbox_id",),
+            uniques=(
+                UniqueKeyDef(("canonical_event_id",), name="uniq_outbox_canonical_event_id"),
+            ),
+            indexes=(
+                IndexDef(("publish_status", "created_at"), "idx_outbox_pending_time"),
+            ),
+        ),
+    )
+
+
+def chat_tables() -> tuple[TableDef, ...]:
+    """Standalone chat persistence (see ``docs/chat-agent-architecture.md``)."""
+
+    return (
+        TableDef(
+            name="chat_threads",
+            columns=(
+                ColumnDef("thread_id", "VARCHAR(64)", nullable=False),
+                ColumnDef("case_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("relation_key", "VARCHAR(191)", nullable=False),
+                ColumnDef("status", "VARCHAR(32)", nullable=False),
+                ColumnDef("participant_a_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("participant_b_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("metadata_json", "LONGTEXT", nullable=False),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+                ColumnDef("updated_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("thread_id",),
+            uniques=(UniqueKeyDef(("case_id",), name="uniq_chat_threads_case_id"),),
+            indexes=(IndexDef(("relation_key",), "idx_chat_threads_relation_key"),),
+        ),
+        TableDef(
+            name="chat_messages",
+            columns=(
+                ColumnDef("message_id", "BIGINT", nullable=False, auto_increment=True),
+                ColumnDef("thread_id", "VARCHAR(64)", nullable=False),
+                ColumnDef("author_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("message_recipient_id", "VARCHAR(191)", nullable=True),
+                ColumnDef("visibility", "VARCHAR(32)", nullable=False),
+                ColumnDef("source", "VARCHAR(32)", nullable=False),
+                ColumnDef("body", "LONGTEXT", nullable=False),
+                ColumnDef("client_msg_id", "VARCHAR(191)", nullable=True),
+                ColumnDef("reply_to_message_id", "BIGINT", nullable=True),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("message_id",),
+            uniques=(
+                UniqueKeyDef(("thread_id", "client_msg_id"), name="uniq_chat_messages_thread_client"),
+            ),
+            indexes=(
+                IndexDef(("thread_id", "created_at"), "idx_chat_messages_thread_time"),
+            ),
+            foreign_keys=(
+                ForeignKeyDef(("thread_id",), "chat_threads", ("thread_id",)),
+            ),
+        ),
+        TableDef(
+            name="chat_thread_summaries",
+            columns=(
+                ColumnDef("thread_id", "VARCHAR(64)", nullable=False),
+                ColumnDef("summary_text", "LONGTEXT", nullable=False),
+                ColumnDef("summary_mode", "VARCHAR(32)", nullable=False),
+                ColumnDef("last_message_id", "BIGINT", nullable=True),
+                ColumnDef("updated_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("thread_id",),
+            indexes=(IndexDef(("updated_at",), "idx_chat_thread_summaries_updated"),),
+            foreign_keys=(
+                ForeignKeyDef(("thread_id",), "chat_threads", ("thread_id",)),
+            ),
+        ),
+        TableDef(
+            name="outbox_events",
+            columns=(
+                ColumnDef("outbox_id", "BIGINT", nullable=False, auto_increment=True),
+                ColumnDef("canonical_event_id", "VARCHAR(64)", nullable=False),
+                ColumnDef("aggregate_type", "VARCHAR(32)", nullable=False),
+                ColumnDef("aggregate_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("event_type", "VARCHAR(64)", nullable=False),
+                ColumnDef("source_service", "VARCHAR(64)", nullable=False),
+                ColumnDef("canonical_event_json", "LONGTEXT", nullable=False),
+                ColumnDef("source_row_table", "VARCHAR(64)", nullable=False),
+                ColumnDef("source_row_id", "BIGINT", nullable=True),
+                ColumnDef("publish_status", "VARCHAR(32)", nullable=False),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+                ColumnDef("published_at", "DATETIME", nullable=True),
+            ),
+            primary_key=("outbox_id",),
+            uniques=(
+                UniqueKeyDef(("canonical_event_id",), name="uniq_chat_outbox_canonical_event_id"),
+            ),
+            indexes=(
+                IndexDef(("publish_status", "created_at"), "idx_chat_outbox_pending_time"),
+            ),
+        ),
+        TableDef(
+            name="persona_sync_jobs",
+            columns=(
+                ColumnDef("job_id", "BIGINT", nullable=False, auto_increment=True),
+                ColumnDef("thread_id", "VARCHAR(64)", nullable=False),
+                ColumnDef("message_id", "BIGINT", nullable=False),
+                ColumnDef("subject_user_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("status", "VARCHAR(32)", nullable=False),
+                ColumnDef("patch_json", "LONGTEXT", nullable=True),
+                ColumnDef("evidence_json", "LONGTEXT", nullable=False),
+                ColumnDef("sync_result_json", "LONGTEXT", nullable=True),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+                ColumnDef("processed_at", "DATETIME", nullable=True),
+            ),
+            primary_key=("job_id",),
+            uniques=(
+                UniqueKeyDef(("message_id", "subject_user_id"), name="uniq_persona_job_msg_subject"),
+            ),
+            indexes=(
+                IndexDef(("status", "created_at"), "idx_persona_jobs_status_time"),
             ),
         ),
     )
@@ -758,6 +797,7 @@ def matchmaking_tables() -> tuple[TableDef, ...]:
                 ColumnDef("pair_key", "VARCHAR(191)", nullable=False),
                 ColumnDef("event_type", "VARCHAR(64)", nullable=False),
                 ColumnDef("actor_member_id", "VARCHAR(191)"),
+                ColumnDef("canonical_event_json", "LONGTEXT", nullable=True),
                 ColumnDef("payload_json", "LONGTEXT", nullable=False),
                 ColumnDef("occurred_at", "DATETIME", nullable=False),
             ),
@@ -793,145 +833,46 @@ def matchmaking_tables() -> tuple[TableDef, ...]:
                 ForeignKeyDef(("member_id",), "matchmaking_pool_members", ("member_id",)),
             ),
         ),
+        TableDef(
+            name="outbox_events",
+            columns=(
+                ColumnDef("outbox_id", "BIGINT", nullable=False, auto_increment=True),
+                ColumnDef("canonical_event_id", "VARCHAR(64)", nullable=False),
+                ColumnDef("aggregate_type", "VARCHAR(32)", nullable=False),
+                ColumnDef("aggregate_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("event_type", "VARCHAR(64)", nullable=False),
+                ColumnDef("source_service", "VARCHAR(64)", nullable=False),
+                ColumnDef("canonical_event_json", "LONGTEXT", nullable=False),
+                ColumnDef("source_row_table", "VARCHAR(64)", nullable=False),
+                ColumnDef("source_row_id", "BIGINT", nullable=True),
+                ColumnDef("publish_status", "VARCHAR(32)", nullable=False),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+                ColumnDef("published_at", "DATETIME", nullable=True),
+            ),
+            primary_key=("outbox_id",),
+            uniques=(
+                UniqueKeyDef(("canonical_event_id",), name="uniq_outbox_canonical_event_id"),
+            ),
+            indexes=(
+                IndexDef(("publish_status", "created_at"), "idx_outbox_pending_time"),
+            ),
+        ),
     )
 
 
 SYSTEM_TABLES: dict[str, tuple[TableDef, ...]] = {
     "recommendation": recommendation_tables(),
     "matchmaking": matchmaking_tables(),
+    "chat": chat_tables(),
 }
-
-
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Migrate outer-system SQLite tables into MySQL.")
-    parser.add_argument(
-        "--system",
-        required=True,
-        choices=sorted(SYSTEM_TABLES),
-        help="Which outer-system schema to migrate.",
-    )
-    parser.add_argument(
-        "--sqlite",
-        required=True,
-        help="Source SQLite database path.",
-    )
-    parser.add_argument(
-        "--target-dsn",
-        required=True,
-        help="Target MySQL DSN, for example mysql://user:pass@127.0.0.1:3306/her_recommendation",
-    )
-    parser.add_argument(
-        "--table-prefix",
-        default="",
-        help="Optional destination table prefix, useful if both systems share one MySQL database.",
-    )
-    parser.add_argument(
-        "--schema-only",
-        action="store_true",
-        help="Only create the target schema; do not copy rows.",
-    )
-    parser.add_argument(
-        "--data-only",
-        action="store_true",
-        help="Only copy rows; assume the target schema already exists.",
-    )
-    parser.add_argument(
-        "--truncate-first",
-        action="store_true",
-        help="Delete existing rows from destination tables before importing.",
-    )
-    parser.add_argument(
-        "--batch-size",
-        type=int,
-        default=500,
-        help="Batch size for MySQL executemany inserts.",
-    )
-    return parser.parse_args()
-
 
 def ensure_schema(mysql_conn, tables: Sequence[TableDef], *, prefix: str | None, config: dict[str, Any]) -> dict[str, list[str]]:
     created_indexes: dict[str, list[str]] = {}
     for table in tables:
         ensure_table(mysql_conn, table, prefix=prefix, config=config)
     for table in tables:
+        ensure_table_columns(mysql_conn, table, prefix=prefix)
+    for table in tables:
         created_indexes[destination_table_name(table.name, prefix)] = ensure_indexes(mysql_conn, table, prefix=prefix)
     mysql_conn.commit()
     return created_indexes
-
-
-def migrate(mysql_conn, sqlite_conn: sqlite3.Connection, tables: Sequence[TableDef], *, prefix: str | None, batch_size: int) -> dict[str, int]:
-    migrated: dict[str, int] = {}
-    for table in tables:
-        migrated[destination_table_name(table.name, prefix)] = migrate_table(
-            mysql_conn,
-            sqlite_conn,
-            table,
-            prefix=prefix,
-            batch_size=batch_size,
-        )
-    mysql_conn.commit()
-    return migrated
-
-
-def main() -> int:
-    args = parse_args()
-    if args.schema_only and args.data_only:
-        raise SystemExit("Choose at most one of --schema-only or --data-only.")
-    if args.batch_size <= 0:
-        raise SystemExit("--batch-size must be greater than 0.")
-
-    sqlite_path = Path(args.sqlite).resolve()
-    if not sqlite_path.exists():
-        raise SystemExit(f"SQLite file not found: {sqlite_path}")
-
-    tables = SYSTEM_TABLES[args.system]
-    config = parse_mysql_dsn(args.target_dsn)
-    prefix = normalize_prefix(args.table_prefix)
-
-    ensure_database(config)
-    sqlite_conn = sqlite3.connect(str(sqlite_path))
-    sqlite_conn.row_factory = sqlite3.Row
-    try:
-        mysql_conn = mysql_database_connect(config)
-        try:
-            created_indexes: dict[str, list[str]] = {}
-            if not args.data_only:
-                created_indexes = ensure_schema(mysql_conn, tables, prefix=prefix, config=config)
-
-            if args.truncate_first and not args.schema_only:
-                clear_tables(mysql_conn, tables, prefix=prefix)
-                mysql_conn.commit()
-
-            migrated_rows: dict[str, int] = {}
-            if not args.schema_only:
-                migrated_rows = migrate(
-                    mysql_conn,
-                    sqlite_conn,
-                    tables,
-                    prefix=prefix,
-                    batch_size=args.batch_size,
-                )
-
-            summary = {
-                "system": args.system,
-                "sqlite_path": str(sqlite_path),
-                "target_database": config["database"],
-                "table_prefix": prefix,
-                "schema_only": bool(args.schema_only),
-                "data_only": bool(args.data_only),
-                "truncate_first": bool(args.truncate_first),
-                "tables": [destination_table_name(table.name, prefix) for table in tables],
-                "created_indexes": created_indexes,
-                "migrated_rows": migrated_rows,
-                "total_rows": sum(migrated_rows.values()),
-            }
-            print(json.dumps(summary, ensure_ascii=False, indent=2))
-            return 0
-        finally:
-            mysql_conn.close()
-    finally:
-        sqlite_conn.close()
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

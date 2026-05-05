@@ -885,10 +885,8 @@ Phase 1 完成后，`partner-search` 应该处于下面这个状态：
   - 生成站内推荐卡片
 - `scripts/create_saved_search_subscription.py`
   - 创建保存搜索订阅
-- `scripts/refresh_saved_searches.py`
-  - 跑“持续留意”刷新任务
-- `scripts/deliver_in_app_recommendations.py`
-  - 跑站内推荐派发任务
+- 仓库根目录 `python -m task_scheduler`（`HER_SCHED_RECOMMENDATION_DB`）
+  - 统一跑持续刷新、站内派发、代理外呼批量派发、超时关闭等间隔任务
 - `scripts/record_recommendation_action.py`
   - 记录 `skip / save / direct_greet`
 - `tests/test_recommendation_system.py`

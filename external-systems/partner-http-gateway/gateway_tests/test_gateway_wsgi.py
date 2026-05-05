@@ -40,6 +40,7 @@ class GatewayWsgiTests(unittest.TestCase):
         self.gw = PartnerGateway(
             recommendation_dsn="mysql://noop",
             matchmaking_dsn="mysql://noop",
+            chat_dsn="mysql://noop",
             db_pool_max=0,
         )
         self.status: str = ""
@@ -58,6 +59,7 @@ class GatewayWsgiTests(unittest.TestCase):
         data = json.loads(out.decode("utf-8"))
         self.assertTrue(data.get("ok"))
         self.assertIn("recommendation", data.get("services", []))
+        self.assertIn("chat", data.get("services", []))
         hdrs = {k.lower(): v for k, v in self.headers}
         self.assertIn("x-trace-id", hdrs)
 

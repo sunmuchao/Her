@@ -1,0 +1,291 @@
+#!/usr/bin/env python3
+"""Run two LLM personas in a real chat thread; optional proactive assistant rescue; persona self-ratings."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import secrets
+import sys
+from collections.abc import Callable
+from datetime import datetime
+from pathlib import Path
+
+
+def _load_repo_dotenv() -> None:
+    """Load ``Her/.env`` only when monorepo root is found; ``override=True`` beats bad shell OPENAI_API_KEY."""
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    here = Path(__file__).resolve()
+    for p in (here.parent, *here.parents):
+        if (p / "match_domain").is_dir() and (p / "pyproject.toml").is_file():
+            env = p / ".env"
+            if env.is_file():
+                load_dotenv(env, override=True)
+            return
+
+
+_load_repo_dotenv()
+
+_partner_chat_root = Path(__file__).resolve().parents[1]
+if str(_partner_chat_root) not in sys.path:
+    sys.path.insert(0, str(_partner_chat_root))
+
+from chat_system.dyadic_roleplay import parse_int_csv, run_dyadic_roleplay  # noqa: E402
+from chat_system.profile_loader import (  # noqa: E402
+    DEFAULT_PROFILE_MYSQL_DSN,
+    fetch_profile_by_id,
+    profile_row_to_brief,
+    roleplay_participant_id,
+)
+from chat_system.scenario_stress import list_beat_ids  # noqa: E402
+from chat_system.storage import DEFAULT_CHAT_TEST_MYSQL_DSN, connect_db, initialize_database  # noqa: E402
+
+
+def _parse_str_csv(s: str) -> list[str]:
+    return [x.strip() for x in (s or "").split(",") if x.strip()]
+
+
+def _make_local_demo_llm() -> Callable[[list[dict[str, str]]], str]:
+    """Deterministic offline LLM stand-in (no API key)."""
+
+    import json as _json
+
+    orch = {"n": 0}
+    eval_round = {"n": 0}
+
+    def complete(messages: list[dict[str, str]]) -> str:
+        sys_c = messages[0]["content"]
+        user_c = messages[-1]["content"]
+        if "对话调度员" in sys_c and "下一位即将发言的用户ID" in user_c:
+            orch["n"] += 1
+            if orch["n"] == 2:
+                return _json.dumps(
+                    {"need_rescue": True, "situation": "awkward", "reason": "demo：第二轮接话略生硬"},
+                    ensure_ascii=False,
+                )
+            return _json.dumps({"need_rescue": False, "situation": "none", "reason": "demo：气氛正常"}, ensure_ascii=False)
+        if "请写出下一条" in user_c:
+            return "demo：你好，我也挺喜欢慢慢了解的，方便说说你平时周末一般怎么安排吗？"
+        if "附加任务" in sys_c and "请输出 JSON" in user_c:
+            eval_round["n"] += 1
+            if eval_round["n"] == 1:
+                return _json.dumps(
+                    {
+                        "conversation_satisfied": True,
+                        "conversation_score": 4,
+                        "assistant_satisfied": True,
+                        "assistant_score": 4,
+                        "used_assistant": orch["n"] >= 2,
+                        "conversation_note": "demo：对方节奏还行",
+                        "assistant_note": "demo：救场建议有用",
+                    },
+                    ensure_ascii=False,
+                )
+            return _json.dumps(
+                {
+                    "conversation_satisfied": True,
+                    "conversation_score": 3,
+                    "assistant_satisfied": True,
+                    "assistant_score": 3,
+                    "used_assistant": False,
+                    "conversation_note": "demo：聊得中规中矩",
+                    "assistant_note": "demo：我这轮没触发助手草稿",
+                },
+                ensure_ascii=False,
+            )
+        return "{}"
+
+    return complete
+
+
+def _make_llm() -> Callable[[list[dict[str, str]]], str]:
+    key = (os.environ.get("OPENAI_API_KEY") or "").strip()
+    if not key:
+        raise SystemExit("OPENAI_API_KEY is required for roleplay (set in env or Her/.env).")
+    try:
+        from openai import OpenAI
+    except ImportError as e:
+        raise SystemExit("Install openai package: pip install openai") from e
+    model = (os.environ.get("HER_ROLEPLAY_MODEL") or os.environ.get("HER_CHAT_ASSISTANT_MODEL") or "gpt-4o-mini").strip()
+    base = (
+        os.environ.get("HER_ROLEPLAY_BASE_URL")
+        or os.environ.get("HER_CHAT_ASSISTANT_BASE_URL")
+        or os.environ.get("OPENAI_BASE_URL")
+        or ""
+    ).strip()
+    kwargs: dict[str, str] = {"api_key": key}
+    if base:
+        kwargs["base_url"] = base
+    client = OpenAI(**kwargs)
+
+    def complete(messages: list[dict[str, str]]) -> str:
+        resp = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            max_tokens=800,
+            temperature=0.7,
+        )
+        return (resp.choices[0].message.content or "").strip()
+
+    return complete
+
+
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--db", default=DEFAULT_CHAT_TEST_MYSQL_DSN, help="MySQL DSN (default: test DB).")
+    p.add_argument(
+        "--case-id",
+        default=None,
+        help="chat_threads.case_id (default: random roleplay-*)",
+    )
+    p.add_argument("--rounds", type=int, default=6, help="Alternating dyadic turns (A,B,A,…).")
+    p.add_argument(
+        "--assistant-mode",
+        choices=("proactive", "fixed_turns", "none"),
+        default="proactive",
+        help="proactive=模型判断尬聊/冷场等再触发助手；fixed_turns=按回合；none=不调助手",
+    )
+    p.add_argument(
+        "--assistant-on-turns",
+        default="",
+        help='仅 fixed_turns：逗号分隔回合下标，如 "0,2"',
+    )
+    p.add_argument("--participant-a", default="roleplay-user-a", help="participant_a_id")
+    p.add_argument("--participant-b", default="roleplay-user-b", help="participant_b_id")
+    p.add_argument(
+        "--brief-a",
+        default="28岁无锡女生，互联网运营，认真找对象，重视沟通和情绪稳定，慢热但真诚。",
+        help="Persona brief for A",
+    )
+    p.add_argument(
+        "--brief-b",
+        default="30岁苏州男生，工程师，希望两年内稳定成家，务实、话不多但肯倾听。",
+        help="Persona brief for B",
+    )
+    p.add_argument("--output", default=None, help="Write JSON result to this path.")
+    p.add_argument(
+        "--no-init-schema",
+        action="store_true",
+        help="Skip ensure_database/ensure_schema (use when tables already exist).",
+    )
+    p.add_argument(
+        "--local-demo",
+        action="store_true",
+        help="不调用远程模型，用内置占位逻辑跑通全流程（含一次 proactive 救场），无需 OPENAI_API_KEY。",
+    )
+    p.add_argument(
+        "--profile-a-id",
+        type=int,
+        default=None,
+        help="从 profiles 表加载 A 的完整画像（库：--profile-dsn）；与 participant/brief 互斥优先",
+    )
+    p.add_argument("--profile-b-id", type=int, default=None, help="profiles.id for B")
+    p.add_argument(
+        "--profile-dsn",
+        default=os.environ.get("HER_PROFILE_MYSQL_DSN") or DEFAULT_PROFILE_MYSQL_DSN,
+        help="画像库 DSN，默认 HER_PROFILE_MYSQL_DSN 或 mysql://root@127.0.0.1:3307/her",
+    )
+    p.add_argument(
+        "--stress",
+        choices=("auto", "none", "rotate", "random"),
+        default="auto",
+        help="auto：填了 profile 两 id 时用 rotate 轮播压力剧情，否则 none",
+    )
+    p.add_argument(
+        "--stress-beat-ids",
+        default="",
+        help="只使用这些 beat_id（逗号分隔），见 --list-stress-beats",
+    )
+    p.add_argument("--stress-seed", type=int, default=None, help="random 模式可复现种子")
+    p.add_argument(
+        "--list-stress-beats",
+        action="store_true",
+        help="打印全部压力剧情 id 后退出",
+    )
+    return p.parse_args()
+
+
+def main() -> int:
+    args = parse_args()
+    if args.list_stress_beats:
+        print("\n".join(list_beat_ids()))
+        return 0
+    if args.local_demo:
+        os.environ.pop("OPENAI_API_KEY", None)
+    case_id = args.case_id or f"roleplay-dyadic-{secrets.token_hex(4)}"
+    fixed_turns = parse_int_csv(args.assistant_on_turns)
+    stress_mode = args.stress
+    if stress_mode == "auto":
+        stress_mode = "rotate" if (args.profile_a_id is not None and args.profile_b_id is not None) else "none"
+    stress_beat_ids = _parse_str_csv(args.stress_beat_ids) or None
+
+    if (args.profile_a_id is None) != (args.profile_b_id is None):
+        raise SystemExit("请同时提供 --profile-a-id 与 --profile-b-id，或都不提供。")
+
+    if args.profile_a_id is not None:
+        row_a = fetch_profile_by_id(str(args.profile_dsn), int(args.profile_a_id))
+        row_b = fetch_profile_by_id(str(args.profile_dsn), int(args.profile_b_id))
+        brief_a = profile_row_to_brief(row_a)
+        brief_b = profile_row_to_brief(row_b)
+        pid_a = roleplay_participant_id(int(args.profile_a_id))
+        pid_b = roleplay_participant_id(int(args.profile_b_id))
+        relation_key = f"{pid_a}|{pid_b}"
+    else:
+        brief_a = str(args.brief_a)
+        brief_b = str(args.brief_b)
+        pid_a = str(args.participant_a)
+        pid_b = str(args.participant_b)
+        relation_key = f"{pid_a}|{pid_b}"
+
+    conn = connect_db(args.db)
+    if not args.no_init_schema:
+        initialize_database(conn)
+    llm_factory = _make_local_demo_llm if args.local_demo else _make_llm
+    try:
+        result = run_dyadic_roleplay(
+            conn,
+            case_id=str(case_id),
+            relation_key=relation_key,
+            participant_a_id=pid_a,
+            participant_b_id=pid_b,
+            brief_a=brief_a,
+            brief_b=brief_b,
+            rounds=int(args.rounds),
+            llm=llm_factory(),
+            assistant_mode=str(args.assistant_mode),
+            fixed_assistant_turns=fixed_turns if args.assistant_mode == "fixed_turns" else [],
+            base_time=datetime(2026, 5, 4, 12, 0, 0),
+            stress_mode=stress_mode,
+            stress_beat_ids=stress_beat_ids,
+            stress_seed=args.stress_seed,
+        )
+    except Exception as e:
+        err = str(e).lower()
+        if "401" in err or "authentication" in err or "invalid_api_key" in err or "invalid access token" in err:
+            print(
+                "鉴权失败：请检查 Her 仓库根目录 `.env` 里的 OPENAI_API_KEY（或 DashScope 等兼容网关的 key）是否有效、未过期；"
+                "并确认 HER_CHAT_ASSISTANT_BASE_URL 与 key 所属平台一致。",
+                file=sys.stderr,
+            )
+        raise
+    finally:
+        conn.close()
+    if args.profile_a_id is not None:
+        result["source_profiles"] = {
+            "dsn": str(args.profile_dsn),
+            "profile_a_id": int(args.profile_a_id),
+            "profile_b_id": int(args.profile_b_id),
+        }
+    text = json.dumps(result, ensure_ascii=False, indent=2)
+    if args.output:
+        Path(args.output).write_text(text, encoding="utf-8")
+    print(text)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
