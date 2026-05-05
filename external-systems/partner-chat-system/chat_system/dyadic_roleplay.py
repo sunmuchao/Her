@@ -199,6 +199,13 @@ def _coerce_datetime(value: Any) -> datetime | None:
     return None
 
 
+def _preview_text(text: str, *, limit: int = 80) -> str:
+    single_line = " ".join((text or "").split())
+    if len(single_line) <= limit:
+        return single_line
+    return single_line[: limit - 1] + "…"
+
+
 def _validate_existing_roleplay_thread(
     thread: dict[str, Any],
     *,
@@ -245,6 +252,7 @@ def run_dyadic_roleplay(
     stress_mode: str | None = None,
     stress_beat_ids: list[str] | None = None,
     stress_seed: int | None = None,
+    log: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     """Run roleplay.
 
@@ -258,6 +266,9 @@ def run_dyadic_roleplay(
     - ``True``: resume only when the existing thread matches the requested relation and participants.
 
     ``stress_mode`` (``none`` | ``rotate`` | ``random``): each turn may inject a hidden director line so the speaker enacts awkward / boundary / extreme dating situations (see ``scenario_stress.STRESS_BEATS``).
+
+    ``log``:
+    - Optional callback used by CLI wrappers to emit progress logs without changing the pure return structure.
     """
     if rounds < 1:
         raise ValueError("rounds must be >= 1")
@@ -307,10 +318,22 @@ def run_dyadic_roleplay(
     only_stress = set(stress_beat_ids) if stress_beat_ids else None
     srng = _stress_rng(case_id, stress_seed)
 
+    def emit(message: str) -> None:
+        if log is not None:
+            log(message)
+
+    emit(
+        f"thread ready: thread_id={thread_id}, reused={thread_reused}, base_time={t0.isoformat(sep=' ')}, "
+        f"assistant_mode={mode}, stress_mode={sm}"
+    )
+
     for i in range(rounds):
         ts = t0 + timedelta(seconds=i + 1)
         speaker = participant_a_id if i % 2 == 0 else participant_b_id
         brief = brief_a if i % 2 == 0 else brief_b
+        turn_label = f"turn {i + 1}/{rounds}"
+
+        emit(f"{turn_label}: speaker={speaker}")
 
         beat = pick_stress_beat(turn_index=i, mode=sm, rng=srng, only_ids=only_stress)
         stress_directive = beat.directive if beat else None
@@ -323,8 +346,10 @@ def run_dyadic_roleplay(
                     "category": beat.category,
                 }
             )
+            emit(f"{turn_label}: stress beat={beat.id} category={beat.category}")
 
         if mode == "fixed_turns" and i in fixed_turns:
+            emit(f"{turn_label}: assistant fixed-turn hint for {speaker}")
             assistant_query(conn, thread_id, speaker, fixed_assistant_query, now=ts)
         elif mode == "proactive":
             pub = dyadic_public_transcript(conn, thread_id, participant_a_id)
@@ -336,6 +361,10 @@ def run_dyadic_roleplay(
                 dyadic_transcript=pub,
             )
             need = bool(decision.get("need_rescue"))
+            emit(
+                f"{turn_label}: rescue need={need} situation={decision.get('situation') or 'none'} "
+                f"reason={_preview_text(str(decision.get('reason') or ''))}"
+            )
             if need:
                 situation = str(decision.get("situation") or "awkward")
                 reason = str(decision.get("reason") or "")
@@ -345,6 +374,7 @@ def run_dyadic_roleplay(
                 )
                 assistant_query(conn, thread_id, speaker, q, now=ts)
                 rescue_log.append({"turn": i, "speaker": speaker, "decision": decision})
+                emit(f"{turn_label}: assistant hint posted for {speaker}")
 
         msgs = list_messages(conn, thread_id, speaker, limit=200)
         transcript = format_visible_transcript(msgs)
@@ -355,6 +385,7 @@ def run_dyadic_roleplay(
             transcript=transcript,
             stress_directive=stress_directive,
         )
+        emit(f"{turn_label}: generated message={_preview_text(body)}")
         post_message(
             conn,
             thread_id,
@@ -365,7 +396,9 @@ def run_dyadic_roleplay(
             now=ts + timedelta(milliseconds=1),
         )
         conn.commit()
+        emit(f"{turn_label}: message committed")
 
+    emit(f"starting self-evaluation for {participant_a_id}")
     eval_a = _persona_self_evaluation(
         llm=llm,
         user_id=participant_a_id,
@@ -375,6 +408,11 @@ def run_dyadic_roleplay(
         ),
     )
     conn.commit()
+    emit(
+        f"self-evaluation ready for {participant_a_id}: conversation_score={eval_a.get('conversation_score')}, "
+        f"assistant_score={eval_a.get('assistant_score')}"
+    )
+    emit(f"starting self-evaluation for {participant_b_id}")
     eval_b = _persona_self_evaluation(
         llm=llm,
         user_id=participant_b_id,
@@ -384,6 +422,13 @@ def run_dyadic_roleplay(
         ),
     )
     conn.commit()
+    emit(
+        f"self-evaluation ready for {participant_b_id}: conversation_score={eval_b.get('conversation_score')}, "
+        f"assistant_score={eval_b.get('assistant_score')}"
+    )
+    emit(
+        f"roleplay finished: rescue_events={len(rescue_log)}, stress_events={len(stress_events)}"
+    )
 
     return {
         "thread_id": thread_id,

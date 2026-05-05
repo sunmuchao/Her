@@ -11,6 +11,7 @@ import sys
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
+from time import perf_counter
 
 
 def _load_repo_dotenv() -> None:
@@ -60,10 +61,77 @@ def _parse_base_time(s: str) -> datetime:
         ) from e
 
 
-def _make_local_demo_llm() -> Callable[[list[dict[str, str]]], str]:
+def _log(message: str) -> None:
+    ts = datetime.now().isoformat(sep=" ", timespec="seconds")
+    print(f"[run_dyadic_agent_roleplay {ts}] {message}", file=sys.stderr, flush=True)
+
+
+def _preview_text(text: str, *, limit: int = 120) -> str:
+    single_line = " ".join((text or "").split())
+    if len(single_line) <= limit:
+        return single_line
+    return single_line[: limit - 1] + "…"
+
+
+def _extract_marked_value(text: str, prefix: str, suffix: str) -> str:
+    start = text.find(prefix)
+    if start < 0:
+        return ""
+    start += len(prefix)
+    end = text.find(suffix, start)
+    if end < 0:
+        return text[start:].strip()
+    return text[start:end].strip()
+
+
+def _classify_llm_call(messages: list[dict[str, str]]) -> tuple[str, str]:
+    if not messages:
+        return "unknown", ""
+    sys_c = messages[0].get("content") or ""
+    user_c = messages[-1].get("content") or ""
+    if "对话调度员" in sys_c and "下一位即将发言的用户ID" in user_c:
+        return "orchestrator_rescue_decision", _extract_marked_value(
+            user_c, "下一位即将发言的用户ID：", "\n"
+        )
+    if "附加任务" in sys_c and "请输出 JSON" in user_c:
+        return "persona_self_evaluation", _extract_marked_value(sys_c, "你的用户ID是「", "」")
+    if "请写出下一条你要发给对方的聊天内容" in user_c:
+        return "persona_next_message", _extract_marked_value(sys_c, "你的用户ID是「", "」")
+    return "unknown", ""
+
+
+def _make_logged_llm(complete: Callable[[list[dict[str, str]]], str]) -> Callable[[list[dict[str, str]]], str]:
+    call_counts: dict[str, int] = {}
+
+    def wrapped(messages: list[dict[str, str]]) -> str:
+        kind, subject = _classify_llm_call(messages)
+        call_counts[kind] = call_counts.get(kind, 0) + 1
+        seq = call_counts[kind]
+        label = f"{kind}#{seq}"
+        if subject:
+            label = f"{label}({subject})"
+        _log(f"LLM start {label}")
+        started = perf_counter()
+        try:
+            output = complete(messages)
+        except Exception as e:
+            elapsed_ms = int((perf_counter() - started) * 1000)
+            _log(f"LLM failed {label} after {elapsed_ms} ms: {type(e).__name__}: {e}")
+            raise
+        elapsed_ms = int((perf_counter() - started) * 1000)
+        _log(f"LLM done {label} in {elapsed_ms} ms: {_preview_text(output)}")
+        return output
+
+    return wrapped
+
+
+def _make_local_demo_llm(*, log: Callable[[str], None] | None = None) -> Callable[[list[dict[str, str]]], str]:
     """Deterministic offline LLM stand-in (no API key)."""
 
     import json as _json
+
+    if log is not None:
+        log("LLM backend=local-demo")
 
     orch = {"n": 0}
     eval_round = {"n": 0}
@@ -113,7 +181,7 @@ def _make_local_demo_llm() -> Callable[[list[dict[str, str]]], str]:
     return complete
 
 
-def _make_llm() -> Callable[[list[dict[str, str]]], str]:
+def _make_llm(*, log: Callable[[str], None] | None = None) -> Callable[[list[dict[str, str]]], str]:
     key = (os.environ.get("OPENAI_API_KEY") or "").strip()
     if not key:
         raise SystemExit("OPENAI_API_KEY is required for roleplay (set in env or Her/.env).")
@@ -131,6 +199,8 @@ def _make_llm() -> Callable[[list[dict[str, str]]], str]:
     kwargs: dict[str, str] = {"api_key": key}
     if base:
         kwargs["base_url"] = base
+    if log is not None:
+        log(f"LLM backend=remote model={model} base_url={base or 'default'}")
     client = OpenAI(**kwargs)
 
     def complete(messages: list[dict[str, str]]) -> str:
@@ -256,18 +326,40 @@ def main() -> int:
         pid_a = roleplay_participant_id(int(args.profile_a_id))
         pid_b = roleplay_participant_id(int(args.profile_b_id))
         relation_key = f"{pid_a}|{pid_b}"
+        participant_summary = (
+            f"profiles a={int(args.profile_a_id)}->{pid_a}, b={int(args.profile_b_id)}->{pid_b}"
+        )
     else:
         brief_a = str(args.brief_a)
         brief_b = str(args.brief_b)
         pid_a = str(args.participant_a)
         pid_b = str(args.participant_b)
         relation_key = f"{pid_a}|{pid_b}"
+        participant_summary = f"inline participants a={pid_a}, b={pid_b}"
 
+    _log(
+        "starting roleplay "
+        f"case_id={case_id}, rounds={int(args.rounds)}, assistant_mode={args.assistant_mode}, "
+        f"stress_mode={stress_mode}, base_time={args.base_time.isoformat(sep=' ')}, "
+        f"resume_existing={bool(args.resume_existing)}, local_demo={bool(args.local_demo)}"
+    )
+    _log(participant_summary)
+    if args.assistant_mode == "fixed_turns":
+        _log(f"fixed assistant turns={fixed_turns}")
+    if stress_beat_ids:
+        _log(f"stress beat filter={','.join(stress_beat_ids)}")
+
+    _log(f"connecting chat db: {args.db}")
     conn = connect_db(args.db)
-    if not args.no_init_schema:
-        initialize_database(conn)
-    llm_factory = _make_local_demo_llm if args.local_demo else _make_llm
     try:
+        if not args.no_init_schema:
+            _log("initializing chat schema")
+            initialize_database(conn)
+        else:
+            _log("skipping chat schema initialization")
+        llm_factory = _make_local_demo_llm if args.local_demo else _make_llm
+        llm = _make_logged_llm(llm_factory(log=_log))
+        _log("running dyadic roleplay")
         result = run_dyadic_roleplay(
             conn,
             case_id=str(case_id),
@@ -277,7 +369,7 @@ def main() -> int:
             brief_a=brief_a,
             brief_b=brief_b,
             rounds=int(args.rounds),
-            llm=llm_factory(),
+            llm=llm,
             assistant_mode=str(args.assistant_mode),
             fixed_assistant_turns=fixed_turns if args.assistant_mode == "fixed_turns" else [],
             base_time=args.base_time,
@@ -285,10 +377,12 @@ def main() -> int:
             stress_mode=stress_mode,
             stress_beat_ids=stress_beat_ids,
             stress_seed=args.stress_seed,
+            log=_log,
         )
     except ValueError as e:
         msg = str(e)
         if "roleplay refuses to append by default" in msg or "does not match the requested roleplay participants" in msg:
+            _log(f"roleplay aborted: {msg}")
             print(msg, file=sys.stderr)
             return 2
         raise
@@ -300,18 +394,27 @@ def main() -> int:
                 "并确认 HER_CHAT_ASSISTANT_BASE_URL 与 key 所属平台一致。",
                 file=sys.stderr,
             )
+        _log(f"roleplay failed: {type(e).__name__}: {e}")
         raise
     finally:
         conn.close()
+        _log("chat db connection closed")
     if args.profile_a_id is not None:
         result["source_profiles"] = {
             "dsn": str(args.profile_dsn),
             "profile_a_id": int(args.profile_a_id),
             "profile_b_id": int(args.profile_b_id),
         }
+    _log(
+        "roleplay completed "
+        f"thread_id={result.get('thread_id')}, reused={result.get('thread_reused')}, "
+        f"rescue_events={len(result.get('proactive_rescue_events') or [])}, "
+        f"stress_events={len(result.get('stress_events') or [])}"
+    )
     text = json.dumps(result, ensure_ascii=False, indent=2)
     if args.output:
         Path(args.output).write_text(text, encoding="utf-8")
+        _log(f"result written to {args.output}")
     print(text)
     return 0
 
