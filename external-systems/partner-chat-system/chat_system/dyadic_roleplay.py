@@ -90,6 +90,16 @@ _GRACEFUL_EXIT_TOKENS = (
     "你先忙",
     "晚点聊",
 )
+_ALLOWED_SITUATIONS = {"cold", "awkward", "stuck", "rude", "boundary", "off_topic", "none"}
+_ALLOWED_RESCUE_STYLES = {"reengage", "switch_topic", "low_pressure_probe", "graceful_exit", "none"}
+_ALLOWED_MUTUAL_INTENT_ASSESSMENTS = {
+    "communication_problem",
+    "interest_unclear",
+    "interest_low",
+    "boundary_risk",
+    "normal",
+}
+_ALLOWED_INTERACTION_MODES = {"repair", "probe_lightly", "hold", "none"}
 
 
 class SupportsConn(Protocol):
@@ -397,6 +407,190 @@ def _naturalness_assessment(text: str) -> dict[str, Any]:
         "score": max(1, 5 - len(flags)),
         "flags": flags,
     }
+
+
+def _normalize_situation(value: Any) -> str:
+    raw = str(value or "").strip().lower()
+    if raw in _ALLOWED_SITUATIONS:
+        return raw
+    text = str(value or "").strip()
+    if any(token in text for token in ("边界", "敏感", "压力")):
+        return "boundary"
+    if "冷" in text:
+        return "cold"
+    if "尴尬" in text or "生硬" in text:
+        return "awkward"
+    if "卡住" in text or "僵" in text:
+        return "stuck"
+    if "冒犯" in text or "冲" in text:
+        return "rude"
+    if "跑题" in text:
+        return "off_topic"
+    return "none"
+
+
+def _normalize_mutual_intent_assessment(value: Any) -> str:
+    raw = str(value or "").strip().lower()
+    if raw in _ALLOWED_MUTUAL_INTENT_ASSESSMENTS:
+        return raw
+    text = str(value or "").strip()
+    if "双方" in text and any(token in text for token in ("还想聊", "想继续聊", "继续聊")):
+        return "communication_problem"
+    if any(token in text for token in ("边界", "敏感", "压力")):
+        return "boundary_risk"
+    if any(token in text for token in ("兴趣低", "意愿低", "不想聊", "敷衍", "别硬推", "别讨好")):
+        return "interest_low"
+    if any(token in text for token in ("不明确", "不确定", "试探", "先探")):
+        return "interest_unclear"
+    if any(token in text for token in ("正常", "自然聊", "顺着聊")):
+        return "normal"
+    return "interest_unclear"
+
+
+def _default_interaction_mode(mutual_intent_assessment: str, *, need_rescue: bool) -> str:
+    if mutual_intent_assessment == "communication_problem":
+        return "repair" if need_rescue else "none"
+    if mutual_intent_assessment == "interest_unclear":
+        return "probe_lightly" if need_rescue else "none"
+    if mutual_intent_assessment in {"interest_low", "boundary_risk"}:
+        return "hold"
+    return "none"
+
+
+def _normalize_interaction_mode(
+    value: Any,
+    *,
+    mutual_intent_assessment: str,
+    need_rescue: bool,
+) -> str:
+    raw = str(value or "").strip().lower()
+    if raw in _ALLOWED_INTERACTION_MODES:
+        return raw
+    text = str(value or "").strip()
+    if "低压试探" in text or "轻试" in text:
+        return "probe_lightly"
+    if any(token in text for token in ("先收住", "别硬推", "别推进", "别讨好")):
+        return "hold"
+    if any(token in text for token in ("正常修复", "接住", "往下聊")):
+        return "repair"
+    if any(token in text for token in ("不用介入", "顺着聊", "自然往下聊")):
+        return "none"
+    return _default_interaction_mode(mutual_intent_assessment, need_rescue=need_rescue)
+
+
+def _normalize_rescue_style(
+    value: Any,
+    *,
+    interaction_mode: str,
+    mutual_intent_assessment: str,
+) -> str:
+    raw = str(value or "").strip().lower()
+    if raw in _ALLOWED_RESCUE_STYLES:
+        return raw
+    text = str(value or "").strip()
+    if "低压" in text or "试探" in text:
+        return "low_pressure_probe"
+    if "换题" in text:
+        return "switch_topic"
+    if any(token in text for token in ("收住", "止损", "退出")):
+        return "graceful_exit"
+    if "接住" in text:
+        return "reengage"
+    if interaction_mode == "repair":
+        return "switch_topic"
+    if interaction_mode == "probe_lightly":
+        return "low_pressure_probe"
+    if interaction_mode == "hold" and mutual_intent_assessment in {"interest_low", "boundary_risk"}:
+        return "graceful_exit"
+    return "none"
+
+
+def _normalize_rescue_decision(
+    data: dict[str, Any],
+    *,
+    decision_source: str,
+) -> dict[str, Any]:
+    raw_need = bool(data.get("need_rescue"))
+    mutual_intent_assessment = _normalize_mutual_intent_assessment(
+        data.get("mutual_intent_assessment")
+    )
+    interaction_mode = _normalize_interaction_mode(
+        data.get("interaction_mode"),
+        mutual_intent_assessment=mutual_intent_assessment,
+        need_rescue=raw_need,
+    )
+    need_rescue = interaction_mode in {"repair", "probe_lightly"}
+    rescue_style = _normalize_rescue_style(
+        data.get("rescue_style"),
+        interaction_mode=interaction_mode,
+        mutual_intent_assessment=mutual_intent_assessment,
+    )
+    if interaction_mode == "none":
+        rescue_style = "none"
+    out = {
+        "need_rescue": need_rescue,
+        "situation": _normalize_situation(data.get("situation")),
+        "rescue_style": rescue_style,
+        "mutual_intent_assessment": mutual_intent_assessment,
+        "interaction_mode": interaction_mode,
+        "reason": str(data.get("reason") or "").strip(),
+        "decision_source": decision_source,
+    }
+    if data.get("parse_error"):
+        out["parse_error"] = True
+    return out
+
+
+def _engagement_score(text: str) -> int:
+    compact = _compact_text(text)
+    if not compact or _is_low_energy_like(text):
+        return 0
+    score = 0
+    if len(compact) >= 8:
+        score += 1
+    if _is_question_like(text):
+        score += 1
+    if any(token in compact for token in ("我", "最近", "平时", "周末", "一般", "会", "喜欢")) and len(compact) >= 6:
+        score += 1
+    return score
+
+
+def _recent_mutual_engagement(messages: list[dict[str, Any]], *, window: int = 4) -> bool:
+    recent = messages[-window:]
+    best_by_author: dict[str, int] = {}
+    for message in recent:
+        author = str(message.get("author_id") or "")
+        if not author:
+            continue
+        best_by_author[author] = max(
+            best_by_author.get(author, 0),
+            _engagement_score(str(message.get("body") or "")),
+        )
+    return len(best_by_author) >= 2 and sum(1 for value in best_by_author.values() if value >= 1) >= 2
+
+
+def _speaker_recent_engagement(messages: list[dict[str, Any]], speaker_id: str, *, max_messages: int = 2) -> int:
+    scores: list[int] = []
+    for message in reversed(messages):
+        if str(message.get("author_id") or "") != speaker_id:
+            continue
+        scores.append(_engagement_score(str(message.get("body") or "")))
+        if len(scores) >= max_messages:
+            break
+    return max(scores, default=0)
+
+
+def _speaker_low_energy_streak(messages: list[dict[str, Any]], speaker_id: str) -> int:
+    streak = 0
+    for message in reversed(messages):
+        if str(message.get("author_id") or "") != speaker_id:
+            continue
+        body = str(message.get("body") or "")
+        if _is_low_energy_like(body):
+            streak += 1
+            continue
+        break
+    return streak
 
 
 def _gold_rescue_for_turn(beats: list[StressBeat]) -> dict[str, Any]:
