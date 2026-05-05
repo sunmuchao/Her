@@ -417,6 +417,7 @@ def _fast_rescue_decision(messages: list[dict[str, Any]]) -> dict[str, Any] | No
             "situation": "none",
             "reason": "首轮开场，先正常聊，不需要提前救场。",
             "decision_source": "heuristic_bootstrap",
+            "rescue_style": "none",
         }
 
     last_body = str(dyadic[-1].get("body") or "").strip()
@@ -950,30 +951,51 @@ def run_dyadic_roleplay(
         if str(r.get("rescue_decision_source") or "").startswith("heuristic")
     ]
     llm_decisions = [r for r in turn_records if (r.get("rescue_decision_source") or "") == "llm"]
+    llm_error_fallback_decisions = [
+        r for r in turn_records if (r.get("rescue_decision_source") or "") == "llm_error_fallback"
+    ]
+    fallback_message_turns = [r for r in turn_records if (r.get("message_generation_source") or "") == "fallback"]
+    graceful_exit_advice_turns = [
+        r
+        for r in intervention_records
+        if "graceful_exit"
+        in set(str(x) for x in ((r.get("assistant_guidance") or {}).get("strategy_tags") or []))
+    ]
+    graceful_exit_used_turns = [
+        r for r in intervention_records if _is_graceful_exit_like(str(r.get("generated_message") or ""))
+    ]
 
     emit(f"starting self-evaluation for {participant_a_id}")
-    eval_a = _persona_self_evaluation(
-        llm=llm,
-        user_id=participant_a_id,
-        brief=brief_a,
-        transcript=format_visible_transcript(
-            list_messages(conn, thread_id, participant_a_id, limit=500)
-        ),
-    )
+    try:
+        eval_a = _persona_self_evaluation(
+            llm=llm,
+            user_id=participant_a_id,
+            brief=brief_a,
+            transcript=format_visible_transcript(
+                list_messages(conn, thread_id, participant_a_id, limit=500)
+            ),
+        )
+    except Exception as e:
+        eval_a = _fallback_self_evaluation(reason=f"{type(e).__name__}: {e}")
+        emit(f"self-evaluation fallback used for {participant_a_id}: {type(e).__name__}: {e}")
     conn.commit()
     emit(
         f"self-evaluation ready for {participant_a_id}: conversation_score={eval_a.get('conversation_score')}, "
         f"assistant_score={eval_a.get('assistant_score')}"
     )
     emit(f"starting self-evaluation for {participant_b_id}")
-    eval_b = _persona_self_evaluation(
-        llm=llm,
-        user_id=participant_b_id,
-        brief=brief_b,
-        transcript=format_visible_transcript(
-            list_messages(conn, thread_id, participant_b_id, limit=500)
-        ),
-    )
+    try:
+        eval_b = _persona_self_evaluation(
+            llm=llm,
+            user_id=participant_b_id,
+            brief=brief_b,
+            transcript=format_visible_transcript(
+                list_messages(conn, thread_id, participant_b_id, limit=500)
+            ),
+        )
+    except Exception as e:
+        eval_b = _fallback_self_evaluation(reason=f"{type(e).__name__}: {e}")
+        emit(f"self-evaluation fallback used for {participant_b_id}: {type(e).__name__}: {e}")
     conn.commit()
     emit(
         f"self-evaluation ready for {participant_b_id}: conversation_score={eval_b.get('conversation_score')}, "
@@ -1005,6 +1027,8 @@ def run_dyadic_roleplay(
             "recall_proxy": round(len(true_positive) / len(gold_positive), 4) if gold_positive else None,
             "heuristic_decision_turns": len(heuristic_decisions),
             "llm_decision_turns": len(llm_decisions),
+            "llm_error_fallback_turns": len(llm_error_fallback_decisions),
+            "fallback_message_turns": len(fallback_message_turns),
             "assistant_invoke_avg_ms": round(sum(assistant_latencies) / len(assistant_latencies), 2)
             if assistant_latencies
             else None,
@@ -1016,6 +1040,8 @@ def run_dyadic_roleplay(
             "improved_recovery_rate": round(len(improved_recovery) / len(recoverable_interventions), 4)
             if recoverable_interventions
             else None,
+            "graceful_exit_advice_turns": len(graceful_exit_advice_turns),
+            "graceful_exit_used_turns": len(graceful_exit_used_turns),
         },
         "naturalness_metrics": {
             "average_score": round(sum(naturalness_scores) / len(naturalness_scores), 4)
