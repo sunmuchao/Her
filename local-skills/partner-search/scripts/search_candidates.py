@@ -2872,6 +2872,10 @@ def activity_score_info(record):
 def verified_score_info(record):
     level = record.get("verified_level") or "none"
     rank = verified_rank(level)
+    return (rank * 2, verified_level_label(level), rank)
+
+
+def verified_level_label(value):
     labels = {
         0: "未认证",
         1: "基础认证",
@@ -2879,7 +2883,270 @@ def verified_score_info(record):
         3: "实名认证",
         4: "线下核验",
     }
-    return (rank * 2, labels.get(rank, "未认证"), rank)
+    return labels.get(verified_rank(value), "未认证")
+
+
+def format_income_range_text(record):
+    income_range = as_text(record.get("income_range"))
+    if income_range:
+        return income_range
+
+    income_min = as_int(record.get("income_min_wan"))
+    income_max = as_int(record.get("income_max_wan"))
+    if income_min is None and income_max is None:
+        return None
+    if income_min is None:
+        return f"{income_max}万/年"
+    if income_max is None:
+        return f"{income_min}万/年"
+    if income_min == income_max:
+        return f"{income_min}万/年"
+    return f"{income_min}-{income_max}万/年"
+
+
+def build_verification_items(profile):
+    profile = profile or {}
+    items = []
+    verified_level = profile.get("verified_level") or "none"
+    verified_rank_value = verified_rank(verified_level)
+    photo_count = as_int(profile.get("photo_count"))
+    has_photo = bool(profile.get("avatar_url")) or (photo_count is not None and photo_count > 0) or verified_rank_value >= 2
+
+    photo_suffix = f"（{photo_count}张）" if photo_count is not None and photo_count > 0 else ""
+    if has_photo and verified_rank_value >= 2:
+        items.append(
+            {
+                "key": "photo",
+                "label": "照片",
+                "status": "verified",
+                "source": "platform_verification",
+                "summary": f"已真人照片认证{photo_suffix}",
+            }
+        )
+    elif has_photo:
+        uploaded_summary = f"已上传{photo_count}张照片" if photo_count is not None and photo_count > 0 else "已上传照片"
+        items.append(
+            {
+                "key": "photo",
+                "label": "照片",
+                "status": "self_reported",
+                "source": "profile_self_reported",
+                "summary": uploaded_summary + "（未真人认证）",
+            }
+        )
+    else:
+        items.append(
+            {
+                "key": "photo",
+                "label": "照片",
+                "status": "missing",
+                "source": "not_provided",
+                "summary": "未上传照片",
+            }
+        )
+
+    if verified_rank_value >= 4:
+        identity_summary = "已线下核验"
+        identity_status = "verified"
+    elif verified_rank_value >= 3:
+        identity_summary = "已实名认证"
+        identity_status = "verified"
+    elif verified_rank_value >= 1:
+        identity_summary = "已基础认证"
+        identity_status = "verified"
+    else:
+        identity_summary = "未实名"
+        identity_status = "missing"
+    items.append(
+        {
+            "key": "identity",
+            "label": "身份",
+            "status": identity_status,
+            "source": "platform_verification" if verified_rank_value >= 1 else "not_provided",
+            "summary": identity_summary,
+        }
+    )
+
+    if verified_rank_value >= 4:
+        items.append(
+            {
+                "key": "offline_check",
+                "label": "线下核验",
+                "status": "verified",
+                "source": "platform_verification",
+                "summary": "已完成线下核验",
+            }
+        )
+
+    age = as_int(profile.get("age"))
+    if age is not None:
+        items.append(
+            {
+                "key": "age",
+                "label": "年龄",
+                "status": "verified" if verified_rank_value >= 3 else "self_reported",
+                "source": "platform_verification" if verified_rank_value >= 3 else "profile_self_reported",
+                "summary": f"{age}岁（{'实名层级' if verified_rank_value >= 3 else '资料填写'}）",
+            }
+        )
+    else:
+        items.append(
+            {
+                "key": "age",
+                "label": "年龄",
+                "status": "missing",
+                "source": "not_provided",
+                "summary": "年龄未填写",
+            }
+        )
+
+    def append_profile_item(key, label, value, *, missing_summary, filled_template, allow_verified=False):
+        if value is None or value == "":
+            items.append(
+                {
+                    "key": key,
+                    "label": label,
+                    "status": "missing",
+                    "source": "not_provided",
+                    "summary": missing_summary,
+                }
+            )
+            return
+
+        is_verified = allow_verified and verified_rank_value >= 4
+        items.append(
+            {
+                "key": key,
+                "label": label,
+                "status": "verified" if is_verified else "self_reported",
+                "source": "platform_verification" if is_verified else "profile_self_reported",
+                "summary": filled_template.format(value=value, detail="线下核验" if is_verified else "资料填写"),
+            }
+        )
+
+    append_profile_item(
+        "city",
+        "城市",
+        as_text(profile.get("city")),
+        missing_summary="城市未填写",
+        filled_template="{value}（{detail}）",
+    )
+    append_profile_item(
+        "education",
+        "学历",
+        as_text(profile.get("education")),
+        missing_summary="学历未填写",
+        filled_template="{value}（未单独认证）",
+    )
+    append_profile_item(
+        "job",
+        "职业",
+        as_text(profile.get("job")),
+        missing_summary="职业未填写",
+        filled_template="{value}（未单独认证）",
+    )
+    append_profile_item(
+        "income",
+        "收入",
+        format_income_range_text(profile),
+        missing_summary="收入未填写",
+        filled_template="{value}（未单独认证）",
+    )
+    append_profile_item(
+        "marital_status",
+        "婚况",
+        as_text(profile.get("marital_status")),
+        missing_summary="婚况未填写",
+        filled_template="{value}（资料填写）",
+    )
+
+    has_children = effective_has_children(profile)
+    if has_children is None:
+        items.append(
+            {
+                "key": "children",
+                "label": "子女情况",
+                "status": "missing",
+                "source": "not_provided",
+                "summary": "子女情况未填写",
+            }
+        )
+    else:
+        child_label = "有孩子" if has_children else "无孩子"
+        child_count = as_int(profile.get("children_count"))
+        if has_children and child_count:
+            child_label = f"有{child_count}个孩子"
+        items.append(
+            {
+                "key": "children",
+                "label": "子女情况",
+                "status": "self_reported",
+                "source": "profile_self_reported",
+                "summary": f"{child_label}（资料填写）",
+            }
+        )
+
+    append_profile_item(
+        "relationship_goal",
+        "结婚意向",
+        as_text(profile.get("relationship_goal")),
+        missing_summary="结婚意向未填写",
+        filled_template="{value}（资料填写）",
+    )
+    return items
+
+
+def build_trust_summary(profile, verification_items=None):
+    profile = profile or {}
+    verification_items = verification_items or build_verification_items(profile)
+    verified_labels = [item["label"] for item in verification_items if item["status"] == "verified"]
+    self_reported_labels = [
+        item["label"]
+        for item in verification_items
+        if item["status"] == "self_reported"
+        and item["key"] in {"education", "job", "income", "marital_status", "children", "relationship_goal"}
+    ]
+    missing_labels = [
+        item["label"]
+        for item in verification_items
+        if item["status"] == "missing"
+        and item["key"] in {"marital_status", "children", "income", "education", "job", "relationship_goal"}
+    ]
+
+    badges = []
+    verified_rank_value = verified_rank(profile.get("verified_level"))
+    if verified_rank_value >= 2:
+        badges.append("照片已真人认证")
+    if verified_rank_value >= 3:
+        badges.append("已实名认证")
+    elif verified_rank_value >= 1:
+        badges.append("已基础认证")
+    if verified_rank_value >= 4:
+        badges.append("已线下核验")
+    activity_label = activity_score_info(profile)[1]
+    if activity_label:
+        badges.append(activity_label)
+
+    headline_parts = []
+    if badges:
+        headline_parts.append("；".join(unique_ordered(badges[:3])))
+    else:
+        headline_parts.append("认证信息有限")
+
+    if self_reported_labels:
+        headline_parts.append("其余关键信息以资料填写为主：" + "、".join(unique_ordered(self_reported_labels)[:4]))
+    elif missing_labels:
+        headline_parts.append("仍有资料待补充：" + "、".join(unique_ordered(missing_labels)[:3]))
+
+    return {
+        "headline": "；".join(headline_parts),
+        "verified_level": profile.get("verified_level") or "none",
+        "verified_label": verified_level_label(profile.get("verified_level")),
+        "badges": unique_ordered(badges),
+        "verified_items": unique_ordered(verified_labels),
+        "self_reported_items": unique_ordered(self_reported_labels),
+        "missing_items": unique_ordered(missing_labels),
+    }
 
 
 def build_rejection_reason(code, detail=None):
@@ -4166,6 +4433,7 @@ def append_joined_line(lines, label, values, separator=", "):
 def append_result_detail_lines(lines, result, profile, include_source=False):
     signal_parts = summarize_signal_parts(profile)
     append_joined_line(lines, "signals", signal_parts, separator=" | ")
+    append_labeled_line(lines, "trust", build_trust_summary(profile).get("headline"))
     append_joined_line(lines, "photo_preview", result.get("photo_preview"))
     append_joined_line(lines, "matched_on", result["matched_on"])
     append_joined_line(lines, "reciprocal_on", result["reciprocal_on"])
@@ -4607,6 +4875,10 @@ def json_safe(value):
 
 
 def build_structured_result_payload(result, include_source=False):
+    profile = result.get("profile") or {}
+    verification_items = build_verification_items(profile)
+    trust_summary = build_trust_summary(profile, verification_items=verification_items)
+    activity_dt = effective_activity_datetime(profile)
     payload = {
         "id": result.get("id"),
         "name": result.get("name") or "未命名",
@@ -4614,6 +4886,13 @@ def build_structured_result_payload(result, include_source=False):
         "fit_score": result.get("fit_score"),
         "confidence_score": result.get("confidence_score"),
         "risk_score": result.get("risk_score"),
+        "verified_level": profile.get("verified_level") or "none",
+        "verified_label": trust_summary.get("verified_label"),
+        "photo_count": as_int(profile.get("photo_count")),
+        "last_active_at": json_safe(activity_dt),
+        "activity_label": activity_score_info(profile)[1],
+        "verification_items": verification_items,
+        "trust_summary": trust_summary,
         "matched_on": list(result.get("matched_on") or []),
         "reciprocal_on": list(result.get("reciprocal_on") or []),
         "missing_fields": list(result.get("missing_fields") or []),
@@ -4623,7 +4902,7 @@ def build_structured_result_payload(result, include_source=False):
         "follow_up_questions": list(result.get("follow_up_questions") or []),
         "photo_preview": list(result.get("photo_preview") or []),
         "fallback_reason": result.get("fallback_reason"),
-        "profile": json_safe(result.get("profile") or {}),
+        "profile": json_safe(profile),
     }
     if include_source and result.get("source_file"):
         payload["source"] = redact_source_ref(result["source_file"])

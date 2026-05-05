@@ -49,6 +49,12 @@ class PartnerSearchApiTests(unittest.TestCase):
         self.assertEqual(response["result_count"], 1)
         self.assertEqual(response["pool_summary"]["scanned_count"], 1)
         self.assertEqual(response["results"][0]["name"], "API1")
+        self.assertEqual(response["results"][0]["verified_level"], "id")
+        self.assertEqual(response["results"][0]["verified_label"], "实名认证")
+        self.assertIn("verification_items", response["results"][0])
+        self.assertEqual(response["results"][0]["verification_items"][0]["key"], "photo")
+        self.assertIn("trust_summary", response["results"][0])
+        self.assertIn("已实名认证", response["results"][0]["trust_summary"]["headline"])
         self.assertNotIn("source_file", response["results"][0])
         self.assertIn("matched_on", response["results"][0])
         mocked_attach.assert_called_once()
@@ -83,9 +89,11 @@ class PartnerSearchApiTests(unittest.TestCase):
         payload = json.loads(response.to_json(include_text=True))
         self.assertEqual(payload["results"][0]["name"], "JSONSafe")
         self.assertEqual(payload["results"][0]["profile"]["updated_at"], "2099-01-01 00:00:00")
+        self.assertEqual(payload["results"][0]["verified_label"], "照片认证")
         self.assertIn("source", payload["results"][0])
         self.assertIn("text", payload)
         self.assertIn("1. JSONSafe", payload["text"])
+        self.assertIn("trust:", payload["text"])
 
     def test_search_accepts_plain_mapping_request(self):
         fake_records = [
@@ -115,6 +123,47 @@ class PartnerSearchApiTests(unittest.TestCase):
             )
 
         self.assertEqual(response.to_dict()["results"][0]["name"], "MappingRequest")
+
+    def test_search_profiles_surfaces_self_reported_vs_verified_trust_items(self):
+        fake_records = [
+            {
+                "id": 907,
+                "name": "TrustSignals",
+                "gender": "女",
+                "age": 30,
+                "city": "苏州",
+                "education": "硕士",
+                "job": "产品经理",
+                "income_range": "40-60万/年",
+                "marital_status": "未婚",
+                "has_children": 0,
+                "relationship_goal": "结婚导向",
+                "profile_status": "active",
+                "verified_level": "id",
+                "photo_count": 6,
+                "combined_text": "认真恋爱 情绪稳定",
+                "last_active_at": "2099-01-01 00:00:00",
+                "source_file": "mysql://root@127.0.0.1:3307/her?table=profiles#profiles",
+            }
+        ]
+
+        with mock.patch.object(engine, "load_source", return_value=fake_records), mock.patch.object(
+            engine, "attach_photo_previews"
+        ):
+            response = search_profiles(
+                source="mysql://user:pass@127.0.0.1:3306/her?table=profiles",
+                criteria={"gender": "女", "cities": ["苏州"]},
+            )
+
+        result = response["results"][0]
+        trust_items = {item["key"]: item for item in result["verification_items"]}
+        self.assertEqual(trust_items["photo"]["status"], "verified")
+        self.assertIn("6张", trust_items["photo"]["summary"])
+        self.assertEqual(trust_items["identity"]["status"], "verified")
+        self.assertEqual(trust_items["education"]["status"], "self_reported")
+        self.assertEqual(trust_items["job"]["status"], "self_reported")
+        self.assertEqual(trust_items["income"]["status"], "self_reported")
+        self.assertIn("学历、职业、收入", result["trust_summary"]["headline"])
 
     def test_load_self_profile_uses_public_api_boundary_and_returns_json_safe_profile(self):
         with mock.patch.object(

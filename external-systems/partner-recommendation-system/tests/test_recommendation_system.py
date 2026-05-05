@@ -46,6 +46,8 @@ def build_result(
     missing_fields=None,
     self_profile_gaps=None,
     profile_overrides=None,
+    verified_level="photo",
+    trust_headline=None,
 ):
     matched_on = matched_on or ["城市 无锡", "目标 认真恋爱"]
     risk_flags = risk_flags or []
@@ -59,8 +61,16 @@ def build_result(
         "city": city,
         "job": "产品经理",
         "relationship_goal": "认真恋爱",
+        "verified_level": verified_level,
+        "photo_count": 4,
     }
     profile.update(profile_overrides or {})
+    verified_label = {
+        "basic": "基础认证",
+        "photo": "照片认证",
+        "id": "实名认证",
+        "offline": "线下核验",
+    }.get(str(profile.get("verified_level") or "").lower())
     return {
         "id": candidate_id,
         "name": name,
@@ -68,6 +78,13 @@ def build_result(
         "fit_score": max(score - 10, 0),
         "confidence_score": 10,
         "risk_score": 0,
+        "verified_level": profile.get("verified_level"),
+        "verified_label": verified_label,
+        "trust_summary": {
+            "headline": trust_headline or f"{verified_label}；其余关键信息以资料填写为主：职业、结婚意向",
+            "verified_label": verified_label,
+            "badges": [verified_label] if verified_label else [],
+        },
         "matched_on": matched_on,
         "reciprocal_on": reciprocal_on,
         "missing_fields": missing_fields,
@@ -429,6 +446,8 @@ class RecommendationSystemTests(unittest.TestCase):
         cards = list_in_app_cards(self.conn, requester_id=70001)
         self.assertEqual(len(cards), 1)
         self.assertIn("发现新的合适对象", cards[0]["title"])
+        self.assertIn("照片认证", cards[0]["subtitle"])
+        self.assertIn("可信度：", cards[0]["body"])
         recommendations = list_recommendations_for_subscription(self.conn, subscription["subscription_id"])
         self.assertEqual(recommendations[0]["delivery_status"], "delivered")
         self.assertEqual(recommendations[0]["final_review_status"], "direct_greet_ready")
