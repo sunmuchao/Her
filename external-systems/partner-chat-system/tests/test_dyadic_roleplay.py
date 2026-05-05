@@ -78,8 +78,12 @@ class DyadicRoleplayRunTests(unittest.TestCase):
         self.assistant_patcher = patch(
             "chat_system.service.generate_assistant_guidance",
             return_value={
+                "mutual_intent_assessment": "communication_problem",
+                "interaction_mode": "repair",
                 "current_problem": ["测试问题"],
                 "problem_tags": ["topic_dead_end"],
+                "why_not_to_push": [],
+                "low_pressure_options": [],
                 "avoid": ["不要继续硬追问"],
                 "topic_directions": ["周末安排"],
                 "easy_question_types": ["低门槛生活问题"],
@@ -310,8 +314,107 @@ class DyadicRoleplayRunTests(unittest.TestCase):
         self.assertEqual(calls["orchestrator"], 0)
         self.assertEqual(len(out["proactive_rescue_events"]), 1)
         self.assertEqual(out["turn_evaluations"][1]["rescue_decision_source"], "heuristic")
+        self.assertEqual(out["turn_evaluations"][1]["interaction_mode"], "probe_lightly")
+        self.assertEqual(out["turn_evaluations"][1]["mutual_intent_assessment"], "interest_unclear")
         self.assertEqual(out["assistant_metrics"]["heuristic_decision_turns"], 2)
         self.assertEqual(out["assistant_metrics"]["llm_decision_turns"], 0)
+        self.assertEqual(out["assistant_metrics"]["probe_intervention_turns"], 1)
+
+    def test_heuristic_repair_requires_prior_mutual_engagement(self):
+        calls = {"orchestrator": 0, "message": 0}
+
+        def llm(messages: list[dict[str, str]]) -> str:
+            sys_c = messages[0]["content"]
+            user_c = messages[-1]["content"]
+            if "对话调度员" in sys_c:
+                calls["orchestrator"] += 1
+                return '{"need_rescue":false,"situation":"none","reason":"不该被调用"}'
+            if "请写出下一条" in user_c:
+                calls["message"] += 1
+                if calls["message"] == 1:
+                    return "我周末一般会打羽毛球，你平时怎么放松？"
+                if calls["message"] == 2:
+                    return "我一般会出去走走，有时找家店坐会儿喝咖啡。"
+                if calls["message"] == 3:
+                    return "那还挺舒服的，我最近也会这样慢一点。"
+                if calls["message"] == 4:
+                    return "嗯"
+                return "我周末也挺随性的。"
+            if "附加任务" in sys_c and "「pa」" in sys_c:
+                return '{"conversation_satisfied":true,"conversation_score":3,"assistant_satisfied":true,"assistant_score":4,"used_assistant":true,"conversation_note":"","assistant_note":""}'
+            if "附加任务" in sys_c:
+                return '{"conversation_satisfied":true,"conversation_score":3,"assistant_satisfied":true,"assistant_score":4,"used_assistant":false,"conversation_note":"","assistant_note":""}'
+            return "{}"
+
+        out = run_dyadic_roleplay(
+            self.conn,
+            case_id="test-dyadic-heuristic-repair",
+            relation_key="pa|pb",
+            participant_a_id="pa",
+            participant_b_id="pb",
+            brief_a="A",
+            brief_b="B",
+            rounds=5,
+            llm=llm,
+            assistant_mode="proactive",
+            base_time=datetime(2026, 5, 4, 9, 0, 0),
+            stress_mode="none",
+        )
+        self.assertEqual(calls["orchestrator"], 0)
+        self.assertTrue(out["turn_evaluations"][4]["assistant_invoked"])
+        self.assertEqual(out["turn_evaluations"][4]["interaction_mode"], "repair")
+        self.assertEqual(
+            out["turn_evaluations"][4]["mutual_intent_assessment"],
+            "communication_problem",
+        )
+        self.assertEqual(out["assistant_metrics"]["repair_intervention_turns"], 1)
+
+    def test_heuristic_hold_avoids_overpushing_repeated_low_interest(self):
+        calls = {"orchestrator": 0, "message": 0}
+
+        def llm(messages: list[dict[str, str]]) -> str:
+            sys_c = messages[0]["content"]
+            user_c = messages[-1]["content"]
+            if "对话调度员" in sys_c:
+                calls["orchestrator"] += 1
+                return '{"need_rescue":false,"situation":"none","reason":"不该被调用"}'
+            if "请写出下一条" in user_c:
+                calls["message"] += 1
+                if calls["message"] == 1:
+                    return "你好，我周末一般会出去走走。"
+                if calls["message"] == 2:
+                    return "嗯"
+                if calls["message"] == 3:
+                    return "我一般就随便走走，你呢？"
+                if calls["message"] == 4:
+                    return "都行"
+                return "那先这样。"
+            if "附加任务" in sys_c and "「pa」" in sys_c:
+                return '{"conversation_satisfied":true,"conversation_score":2,"assistant_satisfied":true,"assistant_score":3,"used_assistant":true,"conversation_note":"","assistant_note":""}'
+            if "附加任务" in sys_c:
+                return '{"conversation_satisfied":true,"conversation_score":2,"assistant_satisfied":true,"assistant_score":3,"used_assistant":false,"conversation_note":"","assistant_note":""}'
+            return "{}"
+
+        out = run_dyadic_roleplay(
+            self.conn,
+            case_id="test-dyadic-heuristic-hold",
+            relation_key="pa|pb",
+            participant_a_id="pa",
+            participant_b_id="pb",
+            brief_a="A",
+            brief_b="B",
+            rounds=5,
+            llm=llm,
+            assistant_mode="proactive",
+            base_time=datetime(2026, 5, 4, 9, 0, 0),
+            stress_mode="none",
+        )
+        self.assertEqual(calls["orchestrator"], 0)
+        self.assertFalse(out["turn_evaluations"][4]["assistant_invoked"])
+        self.assertEqual(out["turn_evaluations"][4]["interaction_mode"], "hold")
+        self.assertEqual(out["turn_evaluations"][4]["mutual_intent_assessment"], "interest_low")
+        self.assertEqual(out["assistant_metrics"]["hold_decision_turns"], 1)
+        self.assertEqual(out["assistant_metrics"]["overpush_risk_turns"], 0)
 
     def test_run_survives_message_timeout_with_fallback(self):
         def llm(messages: list[dict[str, str]]) -> str:

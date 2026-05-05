@@ -131,6 +131,8 @@ class ChatSystemTests(unittest.TestCase):
         self.assertEqual(draft["message_recipient_id"], "alice")
         self.assertIn("assistant_guidance", draft)
         self.assertIn("assistant_profile_context", draft)
+        self.assertIn("意愿判断：", draft["body"])
+        self.assertIn("这轮处理方式：", draft["body"])
         self.assertIn("当前问题：", draft["body"])
         self.assertIn("回复建议：", draft["body"])
         self.assertIn("先别继续这样聊：", draft["body"])
