@@ -46,6 +46,46 @@ SCAM_SIGNAL_RULES = (
     ("off_platform", ("加微信", "加微", "微信聊", "vx", "vx", "v信", "telegram", "tg", "whatsapp", "line", "外部群")),
 )
 
+INVESTMENT_SOLICITATION_MARKERS = (
+    "带你",
+    "带单",
+    "收益",
+    "稳赚",
+    "高收益",
+    "进群",
+    "项目",
+    "跟投",
+    "老师",
+    "内幕",
+    "保本",
+    "翻倍",
+    "入金",
+)
+BENIGN_INVESTMENT_CONTEXT_MARKERS = (
+    "投资研究",
+    "研究员",
+    "券商",
+    "基金公司",
+    "私募工作",
+    "工作内容",
+    "岗位",
+    "职业",
+    "行业",
+    "宏观",
+    "二级市场",
+    "一级市场",
+    "分析师",
+)
+BENIGN_PAYMENT_CONTEXT_MARKERS = (
+    "aa",
+    "饭钱",
+    "餐费",
+    "车费",
+    "门票",
+    "拼单",
+    "报销",
+)
+
 REPORT_TYPE_SIGNAL_MAP = {
     "fraud": ("fraud_report",),
     "investment": ("investment",),
@@ -132,6 +172,10 @@ def _merge_action(left: str, right: str) -> str:
     return left if ACTION_ORDER.get(left, 0) >= ACTION_ORDER.get(right, 0) else right
 
 
+def _contains_any(text: str, keywords: tuple[str, ...] | list[str]) -> bool:
+    return any(keyword.lower() in text for keyword in keywords)
+
+
 def _get_thread(conn, thread_id: str) -> dict[str, Any] | None:
     cur = conn.execute("SELECT * FROM chat_threads WHERE thread_id = ? LIMIT 1", (thread_id,))
     row = row_to_dict(cur.fetchone())
@@ -175,8 +219,26 @@ def detect_risk_signals(*, message_body: str | None = None, reason_text: str | N
     corpus = " ".join(part for part in (_as_text(message_body), _as_text(reason_text)) if part).lower()
     signal_codes: list[str] = list(REPORT_TYPE_SIGNAL_MAP.get(report_type, ()))
     for signal_code, keywords in SCAM_SIGNAL_RULES:
-        if any(keyword.lower() in corpus for keyword in keywords):
-            signal_codes.append(signal_code)
+        if not _contains_any(corpus, keywords):
+            continue
+        if signal_code == "investment":
+            if _contains_any(corpus, BENIGN_INVESTMENT_CONTEXT_MARKERS) and not _contains_any(
+                corpus,
+                INVESTMENT_SOLICITATION_MARKERS + SCAM_SIGNAL_RULES[1][1] + SCAM_SIGNAL_RULES[2][1],
+            ):
+                continue
+            if not _contains_any(corpus, INVESTMENT_SOLICITATION_MARKERS) and not _contains_any(
+                corpus,
+                ("带单", "内幕", "稳赚", "高收益", "币圈", "虚拟币", "炒币"),
+            ):
+                continue
+        if signal_code == "money_transfer":
+            if _contains_any(corpus, BENIGN_PAYMENT_CONTEXT_MARKERS) and not _contains_any(
+                corpus,
+                ("借钱", "手续费", "周转", "垫付"),
+            ):
+                continue
+        signal_codes.append(signal_code)
     return _unique_ordered(signal_codes)
 
 

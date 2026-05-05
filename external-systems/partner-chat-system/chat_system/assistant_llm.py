@@ -225,7 +225,12 @@ def generate_assistant_guidance(
         from openai import OpenAI
     except ImportError:
         return None
-    client_kwargs: dict[str, str] = {"api_key": key}
+    assistant_timeout_sec = max(10.0, min(_env_float("HER_CHAT_ASSISTANT_TIMEOUT_SEC", 40.0), 120.0))
+    client_kwargs: dict[str, Any] = {
+        "api_key": key,
+        "max_retries": 0,
+        "timeout": assistant_timeout_sec,
+    }
     if base:
         client_kwargs["base_url"] = base
     client = OpenAI(**client_kwargs)
@@ -260,7 +265,6 @@ def generate_assistant_guidance(
     try:
         max_tokens = _env_int("HER_CHAT_ASSISTANT_MAX_TOKENS", 500)
         temperature = _env_float("HER_CHAT_ASSISTANT_TEMPERATURE", 0.1)
-        timeout_sec = _env_float("HER_CHAT_ASSISTANT_TIMEOUT_SEC", 40.0)
         resp = client.chat.completions.create(
             model=model,
             messages=[
@@ -269,7 +273,6 @@ def generate_assistant_guidance(
             ],
             max_tokens=max(200, min(max_tokens, 900)),
             temperature=max(0.0, min(temperature, 1.0)),
-            timeout=max(10.0, min(timeout_sec, 120.0)),
         )
         choice = resp.choices[0].message.content
         out = (choice or "").strip()

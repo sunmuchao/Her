@@ -1219,6 +1219,13 @@ class PartnerGateway:
             sr(f"{status_code} {reason}", JSON_HEADERS + [("Content-Length", str(len(body)))])
             _access_log(status_code)
             return [body]
+        except ValueError as e:
+            status_code = 400
+            err = {"error": {"code": "bad_request", "message": str(e)}, "trace_id": trace_id}
+            body = json.dumps(err, ensure_ascii=False).encode("utf-8")
+            sr("400 Bad Request", JSON_HEADERS + [("Content-Length", str(len(body)))])
+            _access_log(status_code)
+            return [body]
         except Exception as e:  # noqa: BLE001
             err = {"error": {"code": "internal_error", "message": str(e)}, "trace_id": trace_id}
             body = json.dumps(err, ensure_ascii=False).encode("utf-8")
