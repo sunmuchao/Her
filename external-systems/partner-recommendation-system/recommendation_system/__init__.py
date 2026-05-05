@@ -39,13 +39,14 @@ from .service import (
     list_in_app_cards,
     list_search_runs_for_subscription,
     list_recommendations_for_subscription,
+    mark_in_app_cards_read,
     record_recommendation_action,
     record_user_review,
     refresh_due_subscriptions,
     refresh_subscription,
     update_subscription_overrides,
 )
-from .storage import connect_db, initialize_database
+from .storage import connect_db, initialize_database, reset_all_tables
 
 __all__ = [
     "DEFAULT_MAX_REVIEW_CANDIDATES_PER_REFRESH",
@@ -79,11 +80,13 @@ __all__ = [
     "list_match_cases_for_subscription",
     "list_recommendations_for_subscription",
     "list_search_runs_for_subscription",
+    "mark_in_app_cards_read",
     "record_match_case_reply",
     "record_recommendation_action",
     "record_user_review",
     "refresh_due_subscriptions",
     "refresh_subscription",
+    "reset_all_tables",
     "run_search_session",
     "subscribe_after_opt_in",
     "update_subscription_overrides",

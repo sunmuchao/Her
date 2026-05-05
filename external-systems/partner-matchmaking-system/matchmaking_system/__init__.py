@@ -24,7 +24,7 @@ from .service import (
     revalidate_member_matches,
     set_pool_member_status,
 )
-from .storage import connect_db, initialize_database
+from .storage import connect_db, initialize_database, reset_all_tables
 
 __all__ = [
     "ACTIVE_MEMBER_STATUS",
@@ -48,6 +48,7 @@ __all__ = [
     "record_case_reply",
     "record_feedback",
     "refresh_active_pool",
+    "reset_all_tables",
     "refresh_pool_member",
     "revalidate_member_matches",
     "set_pool_member_status",

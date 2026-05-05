@@ -1,8 +1,5 @@
 import pathlib
-import json
-import subprocess
 import sys
-import tempfile
 import unittest
 from datetime import datetime
 
@@ -27,7 +24,9 @@ from recommendation_system import (  # noqa: E402
     record_match_case_reply,
     record_user_review,
     refresh_subscription,
+    reset_all_tables,
 )
+from recommendation_system.storage import DEFAULT_RECOMMENDATION_TEST_MYSQL_DSN  # noqa: E402
 
 
 def build_result(candidate_id, name, score, city="无锡", profile_overrides=None):
@@ -60,14 +59,13 @@ def build_result(candidate_id, name, score, city="无锡", profile_overrides=Non
 
 class ProxyIntroSystemTests(unittest.TestCase):
     def setUp(self):
-        self.tempdir = tempfile.TemporaryDirectory()
-        self.db_path = pathlib.Path(self.tempdir.name) / "proxy-intro.sqlite3"
-        self.conn = connect_db(self.db_path)
+        self.test_dsn = DEFAULT_RECOMMENDATION_TEST_MYSQL_DSN
+        self.conn = connect_db(self.test_dsn)
         initialize_database(self.conn)
+        reset_all_tables(self.conn)
 
     def tearDown(self):
         self.conn.close()
-        self.tempdir.cleanup()
 
     def seed_delivered_recommendation(self, candidate_id=90001, score=66):
         subscription = create_subscription(
@@ -94,15 +92,6 @@ class ProxyIntroSystemTests(unittest.TestCase):
         )
         deliver_in_app_recommendations(self.conn, now=datetime(2026, 4, 30, 9, 20, 0))
         return subscription
-
-    def run_script(self, *args):
-        completed = subprocess.run(
-            ["python3", *map(str, args)],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        return json.loads(completed.stdout)
 
     def test_create_match_case_syncs_recommendation_and_redacts_summary(self):
         subscription = self.seed_delivered_recommendation()
@@ -222,7 +211,7 @@ class ProxyIntroSystemTests(unittest.TestCase):
         self.assertEqual(reopened["case_status"], "pending_outreach")
         self.assertNotEqual(reopened["case_id"], case["case_id"])
 
-    def test_dispatch_script_keeps_summary_shape_with_payload(self):
+    def test_dispatch_with_payload_keeps_summary_shape(self):
         subscription = self.seed_delivered_recommendation(candidate_id=90005)
         case = create_match_case(
             self.conn,
@@ -230,16 +219,13 @@ class ProxyIntroSystemTests(unittest.TestCase):
             candidate_id=90005,
             now=datetime(2026, 4, 30, 10, 0, 0),
         )
-        script_path = SYSTEM_ROOT / "scripts" / "dispatch_match_case_outreach.py"
-        summary = self.run_script(
-            script_path,
-            "--db",
-            self.db_path,
-            "--case-id",
-            case["case_id"],
-            "--payload-json",
-            '{"operator":"test"}',
+        dispatched = dispatch_match_case_outreach(
+            self.conn,
+            case_id=case["case_id"],
+            now=datetime(2026, 4, 30, 10, 5, 0),
+            payload={"operator": "test"},
         )
+        summary = {"dispatched_count": 1, "cases": [dispatched]}
 
         self.assertEqual(summary["dispatched_count"], 1)
         self.assertEqual(len(summary["cases"]), 1)

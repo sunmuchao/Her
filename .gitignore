@@ -1,6 +1,11 @@
 .DS_Store
+.env
+.env.*
+!.env.example
 __pycache__/
 *.pyc
+.venv/
+*.egg-info/
 
 # Local MySQL runtime/data
 .partner-search-mysql/

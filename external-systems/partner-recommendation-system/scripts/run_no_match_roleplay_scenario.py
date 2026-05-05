@@ -11,9 +11,9 @@ import sys
 from datetime import datetime, timedelta
 
 
-SYSTEM_ROOT = pathlib.Path(__file__).resolve().parents[1]
-if str(SYSTEM_ROOT) not in sys.path:
-    sys.path.insert(0, str(SYSTEM_ROOT))
+_partner_rec_root = pathlib.Path(__file__).resolve().parents[1]
+if str(_partner_rec_root) not in sys.path:
+    sys.path.insert(0, str(_partner_rec_root))
 
 from recommendation_system import (  # noqa: E402
     connect_db,
@@ -21,8 +21,10 @@ from recommendation_system import (  # noqa: E402
     initialize_database,
     list_recommendations_for_subscription,
     refresh_due_subscriptions,
+    reset_all_tables,
     run_search_session,
 )
+from recommendation_system.storage import DEFAULT_RECOMMENDATION_ROLEPLAY_MYSQL_DSN  # noqa: E402
 
 
 def build_candidate() -> dict[str, object]:
@@ -95,8 +97,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run a no-match then human-review roleplay scenario.")
     parser.add_argument(
         "--db",
-        default="/tmp/partner-roleplay-phase3.sqlite3",
-        help="SQLite database path for the recommendation system run.",
+        default=DEFAULT_RECOMMENDATION_ROLEPLAY_MYSQL_DSN,
+        help="MySQL DSN for an isolated roleplay DB (env PARTNER_RECOMMENDATION_ROLEPLAY_DB).",
     )
     parser.add_argument(
         "--output",
@@ -108,10 +110,6 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    db_path = pathlib.Path(args.db)
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    if db_path.exists():
-        db_path.unlink()
 
     persona = build_persona()
     candidate_pool: list[dict[str, object]] = []
@@ -124,8 +122,9 @@ def main() -> int:
             "fallback_results": [],
         }
 
-    conn = connect_db(db_path)
+    conn = connect_db(args.db)
     initialize_database(conn)
+    reset_all_tables(conn)
     try:
         first_search_at = datetime(2026, 5, 2, 9, 0, 0)
         session = run_search_session(
@@ -149,11 +148,12 @@ def main() -> int:
 
         candidate_pool.append(build_candidate())
 
-        refresh_summaries = refresh_due_subscriptions(
+        refresh_batch = refresh_due_subscriptions(
             conn,
             now=first_search_at + timedelta(days=1),
             search_runner=search_runner,
         )
+        refresh_summaries = refresh_batch["summaries"]
 
         subscription = decision["subscription"]
         recommendations = list_recommendations_for_subscription(conn, subscription["subscription_id"])
@@ -167,10 +167,11 @@ def main() -> int:
             "opt_in_decision": decision,
             "supplemented_candidates": candidate_pool,
             "refresh_summaries": refresh_summaries,
+            "refresh_errors": refresh_batch.get("errors", []),
             "recommendations": recommendations,
             "review_pending_candidates": review_pending_candidates,
             "record_user_review_hint": {
-                "db": str(db_path),
+                "db": args.db,
                 "subscription_id": subscription["subscription_id"],
                 "candidate_id": candidate_pool[0]["id"],
                 "allowed_reviews": ["skip", "save", "direct_greet"],

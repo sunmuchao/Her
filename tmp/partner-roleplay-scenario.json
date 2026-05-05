@@ -311,7 +311,7 @@
     }
   ],
   "record_action_hint": {
-    "db": "/Users/sunmuchao/Downloads/Her/tmp/partner-roleplay-phase3.sqlite3",
+    "db": "mysql://root@127.0.0.1:3307/her_recommendation_roleplay",
     "subscription_id": "saved-search-d206d54bb4d1",
     "candidate_id": 30010,
     "allowed_actions": [

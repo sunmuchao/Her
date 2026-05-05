@@ -13,7 +13,7 @@
 - **定位（官方描述）**：Relationship-operations prototype：search、persona memory、recommendation、matchmaking。
 - **运行时**：Python ≥ 3.10
 - **主要依赖**：`apscheduler`、`openai`、`pydantic`、`pymysql`
-- ** setuptools 发现的包**：`match_domain*`、`task_scheduler*`、`observability*`、`recommendation_system*`（partner-recommendation-system）、`matchmaking_system*`（partner-matchmaking-system）、`gateway*`（partner-http-gateway）
+- ** setuptools 发现的包**：`match_domain*`、`task_scheduler*`、`observability*`、`recommendation_system*`（partner-recommendation-system）、`matchmaking_system*`（partner-matchmaking-system）、`chat_system*`（partner-chat-system）、`gateway*`（partner-http-gateway）
 - **根目录 py-modules**：含 `her_activate_repo`（由 `_path_bootstrap` / 网关经 `importlib` 加载，再激活 `her_monorepo_bootstrap`）、`her_monorepo_bootstrap`、`outer_mysql_compat`（含外层库共用的 `connect_mysql_repo_db` / `json_dumps` 等）、`outer_system_mysql_schema`、`skill_runtime`、`generate_virtual_profiles` 等。布局异常时可设 **`HER_REPO_ROOT`**。
 
 ### 1.2 愿景（Vision，由实现反推）
@@ -101,7 +101,8 @@ flowchart TB
 | **Schema & DB** | `outer_system_mysql_schema.py`、`outer_mysql_compat.py` | DSN 解析、建库建表、索引、兼容层 SQL 占位符（`?` → `%s`） |
 | **推荐子系统** | `external-systems/partner-recommendation-system/recommendation_system/` | 订阅、刷新、候选行、审核门槛、卡片投递、用户动作、代理牵线案例 |
 | **撮合子系统** | `external-systems/partner-matchmaking-system/matchmaking_system/` | 池成员、边、双向对、案例状态机、触达与回复、反馈与 persona 同步 |
-| **HTTP 网关** | `external-systems/partner-http-gateway/gateway/` | `/health`、REST `/v1/...`、`POST /jsonrpc`、API Key、限流、可选连接池 |
+| **聊天子系统** | `external-systems/partner-chat-system/chat_system/` | 按 `case_id` 的线程、`chat_messages`、侧信道占位 `assistant/query` 与 `adopt-draft`（见 `docs/chat-agent-architecture.md`） |
+| **HTTP 网关** | `external-systems/partner-http-gateway/gateway/` | `/health`、REST `/v1/...`（含 `/v1/chat/...`）、`POST /jsonrpc`、API Key、限流、可选连接池 |
 | **任务调度** | `task_scheduler/` | 推荐：刷新/投递/代理派发/超时关闭；撮合：池刷新/组对/开案/关 stale |
 | **可观测性** | `observability/` | `her.pipeline` JSON 行日志：漏斗、gauge、告警；健康度与队列深度 |
 | **技能运行时路径** | `skill_runtime.py` | 将 `local-skills/partner-search`、`persona-memory-sync` 加入 `sys.path` |
@@ -110,6 +111,7 @@ flowchart TB
 
 - **推荐库**（`recommendation_tables()`）：`saved_search_subscriptions`、`profile_recommendations`、`recommendation_actions`、`in_app_recommendation_cards`、`saved_search_runs`、推荐域的 `match_cases` / `match_case_events` / `match_case_outreach_attempts`、`outbox_events`
 - **撮合库**（`matchmaking_tables()`）：`matchmaking_pool_members`、`matchmaking_edges`、`matchmaking_pairs`、`match_cases`（双边模型）、`match_case_events`、`matchmaking_feedback_events`、`outbox_events`
+- **聊天库**（`chat_tables()`）：`chat_threads`、`chat_messages`、`outbox_events`、`persona_sync_jobs`（独立 MySQL database，DSN `PARTNER_CHAT_DB`）
 
 > 注意：**两套 schema 中均有名为 `match_cases` / `match_case_events` / `outbox_events` 的表，但列结构不同**，分别服务于「订阅-候选-代理牵线」与「池内双边撮合」，部署时**必须使用不同 MySQL database**（或明确隔离）。
 
@@ -156,17 +158,19 @@ flowchart TB
 
 - **REST**（前缀 `/v1/`）  
   - 推荐：`subscriptions`、`refresh`、`recommendations`、`runs`、`cards`、`deliver`、`actions`、`reviews` 等。  
-  - 撮合：`members`、`pool/refresh`、`pairs`、`cases`（open、dispatch、reply、close-stale）等。
-- **JSON-RPC 2.0**：`POST /jsonrpc`，方法名如 `recommendation.get_subscription`、`matchmaking.open_match_cases`（与 REST 同底层函数）。
-- **横切能力**：`X-Trace-ID` / `X-Request-ID` 与 `match_domain.trace_context`；`Authorization: Bearer` 或 `X-API-Key`（`PARTNER_GATEWAY_API_KEY`）；按 IP 的每分钟限流（`PARTNER_GATEWAY_RATE_LIMIT_PER_MINUTE`）；可选 DB 连接池（`PARTNER_GATEWAY_DB_POOL_MAX`）。
-- **环境变量**：`PARTNER_RECOMMENDATION_DB`、`PARTNER_MATCHMAKING_DB` 等，与各子系统 `storage.DEFAULT_*_DSN` 对齐。
+  - 撮合：`members`、`pool/refresh`、`pairs`、`cases`（open、dispatch、reply、close-stale）等。  
+  - 聊天：`/v1/chat/threads`（创建/获取）、`messages`、`assistant/query`、`messages/adopt-draft`（契约见 `external-systems/partner-http-gateway/API_CONTRACT.md`）。
+- **JSON-RPC 2.0**：`POST /jsonrpc`，方法名如 `recommendation.get_subscription`、`matchmaking.open_match_cases`、`chat.list_messages`（与 REST 同底层函数）。
+- **横切能力**：`X-Trace-ID` / `X-Request-ID` 与 `match_domain.trace_context`；`Authorization: Bearer` 或 `X-API-Key`（`PARTNER_GATEWAY_API_KEY`）；按 IP 的每分钟限流（`PARTNER_GATEWAY_RATE_LIMIT_PER_MINUTE`）；可选 DB 连接池（`PARTNER_GATEWAY_DB_POOL_MAX`，启用时为推荐/撮合/聊天各一池）。
+- **环境变量**：`PARTNER_RECOMMENDATION_DB`、`PARTNER_MATCHMAKING_DB`、`PARTNER_CHAT_DB` 等，与各子系统 `storage.DEFAULT_*_DSN` 对齐。
 
 ### 3.5 任务调度（`task_scheduler`）
 
-- **配置**：`SchedulerSettings.from_environ()` — `HER_SCHED_RECOMMENDATION_DB`、`HER_SCHED_MATCHMAKING_DB` 及各类 `*_SEC` 间隔。
+- **配置**：`SchedulerSettings.from_environ()` — `HER_SCHED_RECOMMENDATION_DB`、`HER_SCHED_MATCHMAKING_DB`、**`HER_SCHED_CHAT_DB`**（可选）及各类 `*_SEC` 间隔；聊天维护周期 **`HER_SCHED_CHAT_MAINTENANCE_SEC`**（默认 `120`）。
 - **推荐任务**：`refresh_due_subscriptions`、`deliver_in_app_recommendations`、`dispatch_pending_match_cases`、`close_timed_out_match_cases`。
 - **撮合任务**：`refresh_active_pool`、`build_mutual_pairs`、`open_match_cases`、`close_stale_cases`。
-- **包装器**：`jobs.make_recommendation_job` / `make_matchmaking_job` — 连接失败时 `alert_signal`，成功后可选跑 `observability.health` 中的健康检查与 gauge。
+- **聊天任务**：`chat.maintenance` → `chat_system.run_chat_maintenance`（persona pending 处理 + 可选 outbox `published` 占位，见 `HER_SCHED_CHAT_FLUSH_OUTBOX`）。
+- **包装器**：`jobs.make_recommendation_job` / `make_matchmaking_job` / **`make_chat_job`** — 连接失败时 `alert_signal`，推荐/撮合成功后可选跑 `observability.health` 中的健康检查与 gauge。
 
 ### 3.6 可观测性（`observability`）
 
@@ -182,8 +186,19 @@ flowchart TB
 |------|------|
 | `PARTNER_RECOMMENDATION_DB` | 推荐 MySQL DSN |
 | `PARTNER_MATCHMAKING_DB` | 撮合 MySQL DSN |
+| `PARTNER_CHAT_DB` | 聊天 MySQL DSN（默认 `mysql://root@127.0.0.1:3307/her_chat`） |
+| `PARTNER_CHAT_TEST_DB` | 聊天子系统测试库 DSN |
 | `PARTNER_RECOMMENDATION_ROLEPLAY_DB` / `PARTNER_RECOMMENDATION_TEST_DB` | 角色扮演/测试库 |
 | `HER_SCHED_RECOMMENDATION_DB` / `HER_SCHED_MATCHMAKING_DB` | 调度器使用的 DSN |
+| `HER_SCHED_CHAT_DB` | 调度器侧聊天库 DSN（设置后注册 `chat.maintenance`） |
+| `HER_SCHED_CHAT_MAINTENANCE_SEC` | 聊天维护任务间隔（秒），默认 `120` |
+| `HER_SCHED_CHAT_FLUSH_OUTBOX` | `1`/`true` 时维护任务将 `outbox_events` 的 `pending` 批置为 `published`（占位消费者） |
+| `HER_CHAT_PERSONA_MYSQL_SOURCE` | persona-memory-sync 的 MySQL `source` DSN；未设置时聊天触发的 persona job 仅标记 `needs_review` |
+| `OPENAI_API_KEY` / `HER_CHAT_ASSISTANT_MODEL` | 可选：聊天助手 `assistant/query`（OpenAI 或兼容端点） |
+| `HER_CHAT_ASSISTANT_BASE_URL` / `OPENAI_BASE_URL` | 可选：Chat Completions 根路径，如阿里云 DashScope `https://coding.dashscope.aliyuncs.com/v1` |
+| （本地） | 仓库根目录 **`cp .env.example .env`** 填写 `OPENAI_API_KEY`；**`python -m gateway`** 启动时会自动加载根目录 `.env`（`python-dotenv`） |
+| `HER_SCHED_CHAT_OUTBOX_CONSUME` | 维护时 outbox 是否写 `outbox_dispatched` 漏斗后再标记 `published`（默认开启） |
+| `HER_CHAT_MAINTENANCE_SKIP_SUMMARY` | `1` 时维护任务不刷新 `chat_thread_summaries` |
 | `HER_SCHED_*_SEC` | 各定时任务周期 |
 | `PARTNER_GATEWAY_API_KEY` | 网关鉴权（空则开放除健康检查外的行为需结合实现确认：未设置 key 时 `ApiKeyGuard` 允许所有请求） |
 | `PARTNER_GATEWAY_RATE_LIMIT_PER_MINUTE` | 限流，默认 600 |
@@ -232,6 +247,8 @@ flowchart TB
 
 ## 7. 文档维护
 
+- **相亲场景产品复盘**（用户侧痛点与系统切入点，由外部规划笔记整理）：**`docs/conversation-debrief-planning.md`**。
+- **聊天与 Agent 中间人**（主对话 / 侧信道、outbox 触发 Agent、`persona-memory-sync` 对接）的完整架构方案见 **`docs/chat-agent-architecture.md`**（设计与实现待代码落地后与 schema/网关同步更新）。
 - 当 **schema**（`outer_system_mysql_schema.py`）、**网关路由**（`gateway/app.py`）或 **调度任务列表**（`task_scheduler/build.py`）变更时，应同步更新本节与功能清单。
 - **pytest**：仓库根目录包名为 `tests`；`partner-http-gateway` 下的 WSGI 测试目录为 **`gateway_tests/`**（勿再使用同名 `tests/`，否则与根目录 `tests` 冲突导致收集失败）。
 - 愿景与用户描述若由产品正式定义，可替换 §1.4 中的推断表述。

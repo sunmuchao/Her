@@ -10,16 +10,12 @@ import sys
 from pathlib import Path
 
 
-def ensure_package_root() -> Path:
-    package_root = Path(__file__).resolve().parents[1]
-    if str(package_root) not in sys.path:
-        sys.path.insert(0, str(package_root))
-    return package_root
-
-
-ensure_package_root()
+_partner_rec_root = Path(__file__).resolve().parents[1]
+if str(_partner_rec_root) not in sys.path:
+    sys.path.insert(0, str(_partner_rec_root))
 
 from recommendation_system import connect_db, create_subscription, initialize_database  # noqa: E402
+from recommendation_system.storage import DEFAULT_RECOMMENDATION_MYSQL_DSN  # noqa: E402
 
 
 def load_json_arg(value: str | None, default):
@@ -32,7 +28,11 @@ def load_json_arg(value: str | None, default):
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Create a Phase 3 saved-search subscription.")
-    parser.add_argument("--db", required=True, help="SQLite database path for the external recommendation system.")
+    parser.add_argument(
+        "--db",
+        default=DEFAULT_RECOMMENDATION_MYSQL_DSN,
+        help="MySQL DSN for recommendation state (env PARTNER_RECOMMENDATION_DB).",
+    )
     parser.add_argument("--requester-id", required=True, type=int, help="Stable requester id in the outer product system.")
     parser.add_argument("--source", required=True, help="Partner-search MySQL DSN.")
     parser.add_argument("--title", default=None, help="Human-readable subscription title.")

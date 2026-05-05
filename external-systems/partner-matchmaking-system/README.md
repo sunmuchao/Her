@@ -25,12 +25,18 @@ It works like a pool:
 ## Directory Map
 
 - `matchmaking_system/storage.py`
-  - SQLite schema and low-level helpers
+  - MySQL connection (`mysql://…` DSN only), schema bootstrap（`outer_system_mysql_schema.py`）, `reset_all_tables` 供测试清表
 - `matchmaking_system/service.py`
   - pool membership, edge refresh, direct `partner-search` and `persona-memory-sync` API calls, reciprocal pairing, case workflow, feedback handling, and revalidation
 - `tests/test_matchmaking_system.py`
   - Phase 5 regression tests
 
+## Storage (MySQL)
+
+- 业务状态只写入 **MySQL**，不再使用 SQLite 文件。
+- 默认 DSN：`mysql://root@127.0.0.1:3307/her_matchmaking`（**`PARTNER_MATCHMAKING_DB`**）。
+- 单测默认库：`her_matchmaking_test`（**`PARTNER_MATCHMAKING_TEST_DB`**）。
+- 依赖：仓库根目录 `requirements.txt` 中的 **`pymysql`**。
 ## Quick Start
 
 Run tests:
