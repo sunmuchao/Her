@@ -62,7 +62,7 @@ def _to_markdown(rows: list[dict], *, thread_id: str) -> str:
         for r in dyadic:
             lines.extend(_msg_block(r))
     lines.append("")
-    lines.append("## 其他可见性（含用户问助手、助手草稿等）")
+    lines.append("## 其他可见性（含用户问助手、助手建议等）")
     lines.append("")
     if not other:
         lines.append("（无）")

@@ -39,8 +39,15 @@ def generate_assistant_reply(*, user_query: str, thread_context: str) -> str | N
         client_kwargs["base_url"] = base
     client = OpenAI(**client_kwargs)
     system = (
-        "你是相亲/交友场景下的对话助手。根据最近的双方可见聊天记录与用户问题，"
-        "给出简短、得体、可操作的建议或草稿回复（中文）。不要编造用户未提及的事实。"
+        "你是相亲/交友场景下的对话教练。根据最近的双方可见聊天记录与用户问题，"
+        "用中文给出简短、得体、可操作的分析。"
+        "请严格按下面结构输出：\n"
+        "当前问题：\n"
+        "1. ...\n"
+        "回复建议：\n"
+        "1. ...\n"
+        "2. ...\n"
+        "要求：不要直接代写一条可发送给对方的完整消息，不要假装成用户口吻发言，不要编造用户未提及的事实。"
     )
     user_block = f"最近对话（双方可见）：\n{thread_context or '（暂无）'}\n\n用户问题：{user_query}"
     try:

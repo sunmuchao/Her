@@ -360,8 +360,13 @@ def assistant_query(
     )
     ctx = build_dyadic_context_for_assistant(conn, thread_id, limit=20)
     placeholder = (
-        "【助手占位】已记录你的问题，后续可接入模型与工具。"
-        "若需要给对方发话，请使用「采纳草稿」接口将草稿同步到主对话。"
+        "【助手建议占位】\n"
+        "当前问题：\n"
+        "1. 暂未接入模型，暂时无法自动判断对话卡点。\n"
+        "回复建议：\n"
+        "1. 先回应对方上一句里最具体的信息，再继续往下聊。\n"
+        "2. 补一点你自己的真实信息或感受，避免只抛问题。\n"
+        "3. 最终发出去的话请自己组织，不要照搬模板。"
     )
     body = generate_assistant_reply(user_query=q, thread_context=ctx) or placeholder
     out = post_message(
@@ -413,11 +418,14 @@ def adopt_draft(
         raise ValueError("message is not an adoptable assistant draft")
     if draft.get("message_recipient_id") != adopter_user_id:
         raise ValueError("draft is not addressed to this user")
+    if body_override is None:
+        raise ValueError("body_override is required; assistant guidance cannot be sent directly")
 
-    body = (body_override if body_override is not None else draft["body"]) or ""
-    body = str(body).strip()
+    body = str(body_override or "").strip()
     if not body:
         raise ValueError("body is empty")
+    if body == str(draft["body"] or "").strip():
+        raise ValueError("body_override must be user-edited; assistant guidance cannot be forwarded verbatim")
 
     msg = post_message(
         conn,

@@ -57,8 +57,8 @@ JSON-RPC：`recommendation.record_recommendation_action` / `record_user_review` 
 | `GET` | `/v1/chat/threads/{thread_id}` | Query：`requester_id`（须为参与者）。 |
 | `GET` | `/v1/chat/threads/{thread_id}/messages` | Query：`requester_id`、可选 `limit`、`before_message_id`。 |
 | `POST` | `/v1/chat/threads/{thread_id}/messages` | Body：`author_id`、`body`；可选 `visibility`（`dyadic` / `owner_only` / `system`）、`source`、`message_recipient_id`（`owner_only` 必填）、`reply_to_message_id`、`now`。幂等同推荐：`Idempotency-Key` 或 `client_idempotency_key`。 |
-| `POST` | `/v1/chat/threads/{thread_id}/assistant/query` | Body：`user_id`、`query_text`、可选 `now`。侧信道写入用户问题与助手占位草稿。 |
-| `POST` | `/v1/chat/threads/{thread_id}/messages/adopt-draft` | Body：`draft_message_id`、`adopter_user_id`、可选 `body_override`、`now`；幂等键同上。 |
+| `POST` | `/v1/chat/threads/{thread_id}/assistant/query` | Body：`user_id`、`query_text`、可选 `now`。侧信道写入用户问题与助手问题诊断/回复建议。 |
+| `POST` | `/v1/chat/threads/{thread_id}/messages/adopt-draft` | Body：`draft_message_id`、`adopter_user_id`、必填 `body_override`、可选 `now`；幂等键同上。助手侧信道内容不能原样直发。 |
 
 **JSON-RPC**：`chat.get_thread`、`chat.get_or_create_thread`、`chat.list_messages`、`chat.post_message`、`chat.assistant_query`、`chat.adopt_draft`（`params` 与上表字段一致；`chat.post_message` 可含 `client_idempotency_key`）。
 
@@ -83,7 +83,7 @@ JSON-RPC：`recommendation.record_recommendation_action` / `record_user_review` 
 - **`GET /v1/chat/threads/{thread_id}/summary`**  
   Query：`requester_id`（参与者）。返回 `summary` 行（`chat_thread_summaries`）；未跑维护任务前可能为 `null`。
 
-- **助手模型（可选）**：设置 **`OPENAI_API_KEY`** 后，`POST .../assistant/query` 基于最近 **双方可见** 消息生成中文建议草稿。默认直连 OpenAI：`HER_CHAT_ASSISTANT_MODEL` 默认 `gpt-4o-mini`。  
+- **助手模型（可选）**：设置 **`OPENAI_API_KEY`** 后，`POST .../assistant/query` 基于最近 **双方可见** 消息生成中文问题诊断与回复建议，不提供可直接发送成稿。默认直连 OpenAI：`HER_CHAT_ASSISTANT_MODEL` 默认 `gpt-4o-mini`。  
   **OpenAI 兼容 API**（如阿里云百炼 Coding 版）：同时设置  
   `HER_CHAT_ASSISTANT_BASE_URL=https://coding.dashscope.aliyuncs.com/v1`、`HER_CHAT_ASSISTANT_MODEL=glm-5`（与控制台一致即可）。也可用通用名 **`OPENAI_BASE_URL`**。未设置 key 时仍为占位文案。
 

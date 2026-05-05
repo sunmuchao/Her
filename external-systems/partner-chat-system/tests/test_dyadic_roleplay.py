@@ -77,7 +77,7 @@ class DyadicRoleplayRunTests(unittest.TestCase):
         reset_all_tables(self.conn)
         self.assistant_patcher = patch(
             "chat_system.service.generate_assistant_reply",
-            return_value="测试助手草稿",
+            return_value="当前问题：\n1. 测试问题\n回复建议：\n1. 测试建议",
         )
         self.assistant_patcher.start()
 

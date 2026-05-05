@@ -79,7 +79,7 @@ def _persona_system(*, user_id: str, brief: str) -> str:
         f"你在相亲/交友场景中与另一位用户私聊。你的用户ID是「{user_id}」。\n"
         f"人设与目标：{brief}\n"
         "规则：只用中文；说话自然、克制、尊重对方；不要编造具体见面承诺或虚假个人信息。\n"
-        "当消息记录里出现 assistant 发给你的「仅自己可见」草稿时，你可以参考其方向，但最终发出的内容要是你自己的话。"
+        "当消息记录里出现 assistant 发给你的「仅自己可见」建议时，你可以参考其方向，但最终发出的内容要是你自己的话。"
     )
 
 
@@ -166,7 +166,7 @@ def _persona_self_evaluation(
         '  "conversation_score": <1-5 整数>,\n'
         '  "assistant_satisfied": <true|false>,\n'
         '  "assistant_score": <1-5 整数>,\n'
-        '  "used_assistant": <true|false 你是否参考过助手草稿>,\n'
+        '  "used_assistant": <true|false 你是否参考过助手建议>,\n'
         '  "conversation_note": "<一两句中文>",\n'
         '  "assistant_note": "<一两句中文；若助手从未出现则说明不适用>"\n'
         "}\n"
@@ -248,7 +248,10 @@ def run_dyadic_roleplay(
     fixed_assistant_turns: list[int] | None = None,
     base_time: datetime | None = None,
     resume_existing: bool = False,
-    fixed_assistant_query: str = "结合当前聊天记录，给我下一句发给对方的要点和一句可直接发送的中文示例（我会自己改）。",
+    fixed_assistant_query: str = (
+        "结合当前聊天记录，先指出我这边当前接话或表达上最需要注意的问题，"
+        "再给我两三条自然、得体、适合我身份的回复建议。不要直接代写成一条可发送消息。"
+    ),
     stress_mode: str | None = None,
     stress_beat_ids: list[str] | None = None,
     stress_seed: int | None = None,
@@ -370,7 +373,8 @@ def run_dyadic_roleplay(
                 reason = str(decision.get("reason") or "")
                 q = (
                     f"（系统判断当前双方可见对话可能需要接话/救场，情况标签：{situation}。"
-                    f"{reason}请给我自然、得体、适合我身份的下一句建议，并附一条可直接发送的中文示例。）"
+                    f"{reason}请先指出我这边当前最需要注意的问题，再给我自然、得体、适合我身份的接话建议。"
+                    "不要直接代写成一条可发送消息。）"
                 )
                 assistant_query(conn, thread_id, speaker, q, now=ts)
                 rescue_log.append({"turn": i, "speaker": speaker, "decision": decision})
