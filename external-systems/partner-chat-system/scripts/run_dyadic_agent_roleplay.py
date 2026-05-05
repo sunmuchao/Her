@@ -44,9 +44,20 @@ from chat_system.profile_loader import (  # noqa: E402
 from chat_system.scenario_stress import list_beat_ids  # noqa: E402
 from chat_system.storage import DEFAULT_CHAT_TEST_MYSQL_DSN, connect_db, initialize_database  # noqa: E402
 
+DEFAULT_ROLEPLAY_BASE_TIME = datetime(2026, 5, 4, 12, 0, 0)
+
 
 def _parse_str_csv(s: str) -> list[str]:
     return [x.strip() for x in (s or "").split(",") if x.strip()]
+
+
+def _parse_base_time(s: str) -> datetime:
+    try:
+        return datetime.fromisoformat(str(s).strip())
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(
+            "base time must be ISO 8601, e.g. 2026-05-04T12:00:00"
+        ) from e
 
 
 def _make_local_demo_llm() -> Callable[[list[dict[str, str]]], str]:
@@ -168,9 +179,20 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument("--output", default=None, help="Write JSON result to this path.")
     p.add_argument(
+        "--base-time",
+        type=_parse_base_time,
+        default=DEFAULT_ROLEPLAY_BASE_TIME,
+        help="模拟对话起始时间（ISO 8601，默认 2026-05-04T12:00:00）",
+    )
+    p.add_argument(
         "--no-init-schema",
         action="store_true",
         help="Skip ensure_database/ensure_schema (use when tables already exist).",
+    )
+    p.add_argument(
+        "--resume-existing",
+        action="store_true",
+        help="允许复用同一个 case_id 的已有线程；默认禁止，避免把新实验接到旧对话后面。",
     )
     p.add_argument(
         "--local-demo",
@@ -258,11 +280,18 @@ def main() -> int:
             llm=llm_factory(),
             assistant_mode=str(args.assistant_mode),
             fixed_assistant_turns=fixed_turns if args.assistant_mode == "fixed_turns" else [],
-            base_time=datetime(2026, 5, 4, 12, 0, 0),
+            base_time=args.base_time,
+            resume_existing=bool(args.resume_existing),
             stress_mode=stress_mode,
             stress_beat_ids=stress_beat_ids,
             stress_seed=args.stress_seed,
         )
+    except ValueError as e:
+        msg = str(e)
+        if "roleplay refuses to append by default" in msg or "does not match the requested roleplay participants" in msg:
+            print(msg, file=sys.stderr)
+            return 2
+        raise
     except Exception as e:
         err = str(e).lower()
         if "401" in err or "authentication" in err or "invalid_api_key" in err or "invalid access token" in err:

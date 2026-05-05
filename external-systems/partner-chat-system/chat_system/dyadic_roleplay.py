@@ -15,6 +15,7 @@ from .service import (
     VIS_DYADIC,
     assistant_query,
     get_or_create_thread,
+    get_thread_by_case,
     list_messages,
     post_message,
 )
@@ -187,6 +188,44 @@ def _stress_rng(case_id: str, stress_seed: int | None) -> random.Random:
     return random.Random(h)
 
 
+def _coerce_datetime(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        return value.replace(microsecond=0)
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value.strip()).replace(microsecond=0)
+        except ValueError:
+            return None
+    return None
+
+
+def _validate_existing_roleplay_thread(
+    thread: dict[str, Any],
+    *,
+    case_id: str,
+    relation_key: str,
+    participant_a_id: str,
+    participant_b_id: str,
+) -> None:
+    problems: list[str] = []
+    if str(thread.get("relation_key") or "") != relation_key:
+        problems.append(f"relation_key={thread.get('relation_key')!r} != {relation_key!r}")
+    if str(thread.get("participant_a_id") or "") != participant_a_id:
+        problems.append(
+            f"participant_a_id={thread.get('participant_a_id')!r} != {participant_a_id!r}"
+        )
+    if str(thread.get("participant_b_id") or "") != participant_b_id:
+        problems.append(
+            f"participant_b_id={thread.get('participant_b_id')!r} != {participant_b_id!r}"
+        )
+    if problems:
+        joined = "; ".join(problems)
+        raise ValueError(
+            f"case_id {case_id!r} already exists as thread {thread.get('thread_id')!r}, "
+            f"but does not match the requested roleplay participants: {joined}"
+        )
+
+
 def run_dyadic_roleplay(
     conn: SupportsConn,
     *,
@@ -201,6 +240,7 @@ def run_dyadic_roleplay(
     assistant_mode: str = "proactive",
     fixed_assistant_turns: list[int] | None = None,
     base_time: datetime | None = None,
+    resume_existing: bool = False,
     fixed_assistant_query: str = "结合当前聊天记录，给我下一句发给对方的要点和一句可直接发送的中文示例（我会自己改）。",
     stress_mode: str | None = None,
     stress_beat_ids: list[str] | None = None,
@@ -213,6 +253,10 @@ def run_dyadic_roleplay(
     - ``fixed_turns``: call ``assistant_query`` on turn indices in ``fixed_assistant_turns``.
     - ``none``: never call assistant.
 
+    ``resume_existing``:
+    - ``False``: fail fast when ``case_id`` already exists, to avoid accidentally appending onto an old experiment.
+    - ``True``: resume only when the existing thread matches the requested relation and participants.
+
     ``stress_mode`` (``none`` | ``rotate`` | ``random``): each turn may inject a hidden director line so the speaker enacts awkward / boundary / extreme dating situations (see ``scenario_stress.STRESS_BEATS``).
     """
     if rounds < 1:
@@ -222,7 +266,31 @@ def run_dyadic_roleplay(
         raise ValueError("assistant_mode must be proactive|fixed_turns|none")
     fixed_turns = set(fixed_assistant_turns or [])
 
-    t0 = (base_time or datetime.now()).replace(microsecond=0)
+    requested_t0 = (base_time or datetime.now()).replace(microsecond=0)
+    existing_thread = get_thread_by_case(conn, case_id)
+    thread_reused = existing_thread is not None
+    if existing_thread:
+        _validate_existing_roleplay_thread(
+            existing_thread,
+            case_id=case_id,
+            relation_key=relation_key,
+            participant_a_id=participant_a_id,
+            participant_b_id=participant_b_id,
+        )
+        if not resume_existing:
+            raise ValueError(
+                f"case_id {case_id!r} already exists as thread {existing_thread.get('thread_id')!r}; "
+                "roleplay refuses to append by default. Pass resume_existing=True to continue."
+            )
+
+    t0 = requested_t0
+    if existing_thread:
+        prior_ts = _coerce_datetime(existing_thread.get("updated_at")) or _coerce_datetime(
+            existing_thread.get("created_at")
+        )
+        if prior_ts and prior_ts > t0:
+            t0 = prior_ts
+
     thread = get_or_create_thread(
         conn,
         case_id=case_id,
@@ -319,7 +387,9 @@ def run_dyadic_roleplay(
 
     return {
         "thread_id": thread_id,
+        "thread_reused": thread_reused,
         "case_id": case_id,
+        "base_time": t0.isoformat(sep=" "),
         "rounds": rounds,
         "assistant_mode": mode,
         "fixed_assistant_turns": sorted(fixed_turns) if mode == "fixed_turns" else [],
