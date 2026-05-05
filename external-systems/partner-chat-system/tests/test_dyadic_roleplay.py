@@ -76,8 +76,17 @@ class DyadicRoleplayRunTests(unittest.TestCase):
         initialize_database(self.conn)
         reset_all_tables(self.conn)
         self.assistant_patcher = patch(
-            "chat_system.service.generate_assistant_reply",
-            return_value="当前问题：\n1. 测试问题\n回复建议：\n1. 测试建议",
+            "chat_system.service.generate_assistant_guidance",
+            return_value={
+                "current_problem": ["测试问题"],
+                "problem_tags": ["topic_dead_end"],
+                "avoid": ["不要继续硬追问"],
+                "topic_directions": ["周末安排"],
+                "easy_question_types": ["低门槛生活问题"],
+                "strategy_tags": ["switch_topic", "ask_easy_question"],
+                "reply_suggestions": ["测试建议"],
+                "profile_hooks_used": ["周末会出门走走"],
+            },
         )
         self.assistant_patcher.start()
 
@@ -161,6 +170,9 @@ class DyadicRoleplayRunTests(unittest.TestCase):
         self.assertEqual(out["base_time"], "2026-05-04 09:00:00")
         self.assertEqual(out["stress_mode"], "none")
         self.assertEqual(out["stress_events"], [])
+        self.assertIn("assistant_metrics", out)
+        self.assertIn("naturalness_metrics", out)
+        self.assertEqual(len(out["turn_evaluations"]), 3)
 
     def test_run_proactive_rescue_triggers_assistant(self):
         llm, _orch = self._mock_llm(rescue_on_first=True)
@@ -249,6 +261,7 @@ class DyadicRoleplayRunTests(unittest.TestCase):
         self.assertEqual(out["stress_mode"], "rotate")
         self.assertEqual(len(out["stress_events"]), 4)
         self.assertIn("beat_id", out["stress_events"][0])
+        self.assertIn("severity", out["stress_events"][0])
 
     def test_run_rejects_existing_case_by_default(self):
         llm, _orch = self._mock_llm(rescue_on_first=False)

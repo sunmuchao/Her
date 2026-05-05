@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import uuid
 from datetime import datetime
 from typing import Any
@@ -36,6 +37,7 @@ from .profile_loader import (
     profile_row_to_assistant_summary,
     profile_row_to_hook_list,
 )
+from .risk import assert_message_allowed, maybe_capture_message_risk_signal
 from .storage import json_dumps, json_loads, row_to_dict
 
 ASSISTANT_AUTHOR_ID = "assistant"
@@ -172,8 +174,14 @@ def _other_participant_id(thread: dict[str, Any], user_id: str) -> str:
 
 def _assistant_profile_context(thread: dict[str, Any], user_id: str) -> dict[str, Any]:
     dsn = os.environ.get("HER_PROFILE_MYSQL_DSN") or DEFAULT_PROFILE_MYSQL_DSN
-    actor_row = fetch_profile_for_participant(str(dsn), str(user_id))
-    counterpart_row = fetch_profile_for_participant(str(dsn), _other_participant_id(thread, user_id))
+    try:
+        actor_row = fetch_profile_for_participant(str(dsn), str(user_id))
+    except Exception:
+        actor_row = None
+    try:
+        counterpart_row = fetch_profile_for_participant(str(dsn), _other_participant_id(thread, user_id))
+    except Exception:
+        counterpart_row = None
     actor_summary = profile_row_to_assistant_summary(actor_row) if actor_row else ""
     counterpart_summary = profile_row_to_assistant_summary(counterpart_row) if counterpart_row else ""
     actor_hooks = profile_row_to_hook_list(actor_row) if actor_row else []
@@ -260,6 +268,7 @@ def post_message(
     elif not _is_participant(thread, author_id):
         raise ValueError("author is not a participant")
     else:
+        assert_message_allowed(conn, thread_id, author_id)
         if visibility == VIS_DYADIC and source not in (SRC_USER, SRC_AGENT_SENT):
             raise ValueError("invalid source for user dyadic message")
         if visibility == VIS_OWNER_ONLY and source != SRC_USER:
@@ -340,6 +349,15 @@ def post_message(
     cur = conn.execute("SELECT * FROM chat_messages WHERE message_id = ? LIMIT 1", (mid,))
     row = row_to_dict(cur.fetchone())
     assert row is not None
+    if visibility == VIS_DYADIC and author_id != ASSISTANT_AUTHOR_ID:
+        maybe_capture_message_risk_signal(
+            conn,
+            thread_id=thread_id,
+            message_id=mid,
+            author_id=author_id,
+            body=body,
+            now=ts,
+        )
     try:
         maybe_enqueue_persona_sync_job(
             conn,
@@ -397,7 +415,12 @@ def assistant_query(
         message_recipient_id=user_id,
         now=now,
     )
-    ctx = build_dyadic_context_for_assistant(conn, thread_id, limit=20)
+    context_limit = int(os.environ.get("HER_CHAT_ASSISTANT_CONTEXT_LIMIT") or "12")
+    ctx = build_dyadic_context_for_assistant(
+        conn,
+        thread_id,
+        limit=max(6, min(context_limit, 20)),
+    )
     profile_ctx = _assistant_profile_context(thread, user_id)
     placeholder = build_placeholder_assistant_guidance(
         profile_hooks=list(profile_ctx.get("profile_hooks") or [])

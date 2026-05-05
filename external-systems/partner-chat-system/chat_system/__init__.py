@@ -19,6 +19,13 @@ from .service import (
     list_messages,
     post_message,
 )
+from .risk import (
+    get_risk_case,
+    list_member_reports,
+    list_risk_cases,
+    review_risk_case,
+    submit_member_report,
+)
 from .summaries import get_thread_summary
 from .storage import (
     connect_db,
@@ -35,13 +42,18 @@ __all__ = [
     "connect_db",
     "current_time",
     "get_or_create_thread",
+    "get_risk_case",
     "get_thread",
     "get_thread_summary",
     "get_thread_by_case",
     "initialize_database",
     "list_messages",
+    "list_member_reports",
     "list_pending_outbox",
+    "list_risk_cases",
     "post_message",
     "reset_all_tables",
+    "review_risk_case",
     "run_chat_maintenance",
+    "submit_member_report",
 ]

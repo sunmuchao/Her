@@ -14,6 +14,10 @@ from . import _paths  # noqa: F401 — side effect: sys.path
 from match_domain import get_trace_id, new_trace_id, reset_trace_id, set_trace_id  # noqa: E402
 from observability import emit_pipeline_record  # noqa: E402
 from outer_system_mysql_schema import chat_tables, matchmaking_tables, recommendation_tables  # noqa: E402
+from skill_runtime import ensure_partner_search_skill_on_path  # noqa: E402
+
+ensure_partner_search_skill_on_path()
+from partner_search import search_profiles as partner_search_profiles  # noqa: E402
 
 from recommendation_system import (  # type: ignore[import-untyped]
     connect_db as recommendation_connect_db,
@@ -61,13 +65,18 @@ from chat_system import (  # type: ignore[import-untyped]
     adopt_draft,
     assistant_query,
     build_chat_timeline,
+    get_risk_case,
     get_or_create_thread,
     get_thread,
     get_thread_summary,
+    list_member_reports,
     list_messages,
     list_pending_outbox,
+    list_risk_cases,
     post_message,
+    review_risk_case,
     run_chat_maintenance,
+    submit_member_report,
 )
 from chat_system.persona_jobs import (  # type: ignore[import-untyped]
     list_pending_persona_jobs,

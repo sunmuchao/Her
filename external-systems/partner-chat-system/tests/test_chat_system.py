@@ -120,9 +120,11 @@ class ChatSystemTests(unittest.TestCase):
         self.assertEqual(draft["author_id"], ASSISTANT_AUTHOR_ID)
         self.assertEqual(draft["source"], SRC_AGENT_DRAFT)
         self.assertEqual(draft["message_recipient_id"], "alice")
+        self.assertIn("assistant_guidance", draft)
+        self.assertIn("assistant_profile_context", draft)
         self.assertIn("当前问题：", draft["body"])
         self.assertIn("回复建议：", draft["body"])
-        self.assertNotIn("采纳草稿", draft["body"])
+        self.assertIn("先别继续这样聊：", draft["body"])
 
         alice_view = list_messages(self.conn, th["thread_id"], "alice")
         bob_view = list_messages(self.conn, th["thread_id"], "bob")

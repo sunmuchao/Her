@@ -100,7 +100,11 @@ def _classify_llm_call(messages: list[dict[str, str]]) -> tuple[str, str]:
     return "unknown", ""
 
 
-def _make_logged_llm(complete: Callable[[list[dict[str, str]]], str]) -> Callable[[list[dict[str, str]]], str]:
+def _make_logged_llm(
+    complete: Callable[[list[dict[str, str]]], str],
+    *,
+    stats: dict[str, dict[str, int]] | None = None,
+) -> Callable[[list[dict[str, str]]], str]:
     call_counts: dict[str, int] = {}
 
     def wrapped(messages: list[dict[str, str]]) -> str:
@@ -119,6 +123,11 @@ def _make_logged_llm(complete: Callable[[list[dict[str, str]]], str]) -> Callabl
             _log(f"LLM failed {label} after {elapsed_ms} ms: {type(e).__name__}: {e}")
             raise
         elapsed_ms = int((perf_counter() - started) * 1000)
+        if stats is not None:
+            bucket = stats.setdefault(kind, {"calls": 0, "total_ms": 0, "max_ms": 0})
+            bucket["calls"] += 1
+            bucket["total_ms"] += elapsed_ms
+            bucket["max_ms"] = max(bucket["max_ms"], elapsed_ms)
         _log(f"LLM done {label} in {elapsed_ms} ms: {_preview_text(output)}")
         return output
 
@@ -358,7 +367,8 @@ def main() -> int:
         else:
             _log("skipping chat schema initialization")
         llm_factory = _make_local_demo_llm if args.local_demo else _make_llm
-        llm = _make_logged_llm(llm_factory(log=_log))
+        llm_stats: dict[str, dict[str, int]] = {}
+        llm = _make_logged_llm(llm_factory(log=_log), stats=llm_stats)
         _log("running dyadic roleplay")
         result = run_dyadic_roleplay(
             conn,
@@ -404,6 +414,15 @@ def main() -> int:
             "dsn": str(args.profile_dsn),
             "profile_a_id": int(args.profile_a_id),
             "profile_b_id": int(args.profile_b_id),
+        }
+    if llm_stats:
+        result["llm_stats"] = {
+            key: {
+                "calls": value["calls"],
+                "avg_ms": int(value["total_ms"] / value["calls"]) if value["calls"] else 0,
+                "max_ms": value["max_ms"],
+            }
+            for key, value in llm_stats.items()
         }
     _log(
         "roleplay completed "
