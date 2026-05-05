@@ -9,6 +9,11 @@ Gateway REST: `/v1/chat/...`, `/v1/timeline`, maintenance `POST /v1/chat/mainten
 
 Env: `HER_CHAT_PERSONA_MYSQL_SOURCE` (persona jobs); `OPENAI_API_KEY`, `HER_CHAT_ASSISTANT_MODEL`, optional `HER_CHAT_ASSISTANT_BASE_URL` or `OPENAI_BASE_URL` (DashScope 等兼容端点); `HER_SCHED_CHAT_DB`, `HER_SCHED_CHAT_MAINTENANCE_SEC`, `HER_SCHED_CHAT_FLUSH_OUTBOX`, `HER_SCHED_CHAT_OUTBOX_CONSUME`, `HER_CHAT_MAINTENANCE_SKIP_SUMMARY`; **`HER_PROFILE_MYSQL_DSN`**（默认 `mysql://root@127.0.0.1:3307/her`）用于从 **`profiles`** 表加载完整画像扮演用户。
 
+相关文档：
+
+- 架构总览：[`docs/chat-agent-architecture.md`](../../docs/chat-agent-architecture.md)
+- 助手评估与改造：[`docs/chat-assistant-improvement-plan.md`](../../docs/chat-assistant-improvement-plan.md)
+
 ## 双智能体角色扮演（救场式助手 + 人设自评）
 
 在**真实** `chat_threads` 上跑两个「虚拟相亲用户」LLM，交替发 **dyadic** 消息。
