@@ -293,6 +293,14 @@ VERIFIED_LEVEL_ORDER = {
     "offline": 4,
 }
 
+PHOTO_VERIFICATION_LEVEL_ORDER = {
+    "none": 0,
+    "uploaded": 1,
+    "human_verified": 2,
+    "live_video_verified": 3,
+    "offline_verified": 4,
+}
+
 PROFILE_STATUS_ORDER = {
     "archived": 0,
     "matched": 1,
@@ -557,6 +565,11 @@ RISK_FLAG_PENALTIES = {
     "聊天可能偏板正": 5,
     "进入关系信号偏弱": 9,
     "重组家庭现实承接仍需确认": 6,
+    "资料存在待复核或不一致信号": 8,
+    "收入声明与职业类型存在明显落差": 12,
+    "职业近30天修改较频繁": 8,
+    "城市近30天修改较频繁": 6,
+    "收入近30天修改较频繁": 8,
     "未认证": 6,
     "活跃时间未知": 4,
     "90天前活跃": 6,
@@ -731,6 +744,7 @@ REQUEST_SEQUENCE_CRITERIA_ALIASES = {
     "marriage_timelines": ("marriage_timelines", "marriage_timeline"),
     "profile_statuses": ("profile_statuses", "profile_status"),
     "verified_levels": ("verified_levels", "verified_level"),
+    "photo_verification_levels": ("photo_verification_levels", "photo_verification_level"),
     "required_known_fields": ("required_known_fields", "require_known"),
 }
 
@@ -749,6 +763,7 @@ REQUEST_SCALAR_CRITERIA_ALIASES = {
     "accept_partner_children_strength": ("accept_partner_children_strength",),
     "active_within_days": ("active_within_days",),
     "verified_level_min": ("verified_level_min",),
+    "photo_verification_level_min": ("photo_verification_level_min",),
     "photo_count_min": ("photo_count_min",),
     "has_children": ("has_children",),
 }
@@ -1120,6 +1135,10 @@ def education_rank(value):
 
 def verified_rank(value):
     return VERIFIED_LEVEL_ORDER.get(as_lower(value), 0)
+
+
+def photo_verification_rank(value):
+    return PHOTO_VERIFICATION_LEVEL_ORDER.get(as_lower(value), 0)
 
 
 def profile_status_rank(value):
@@ -2328,6 +2347,7 @@ def build_mysql_prefilter(criteria, canonical_to_actual, include_ids=None):
     add_in("profile_status", criteria.get("profile_statuses") or ["active"], allow_missing=True)
     add_not_in("source_channel", criteria.get("exclude_source_channels"))
     add_in("verified_level", criteria.get("verified_levels"), default_value="none")
+    add_in("photo_verification_level", criteria.get("photo_verification_levels"), default_value="none")
     add_numeric_bound("photo_count", ">=", criteria.get("photo_count_min"), allow_missing=True)
 
     if criteria.get("has_children") is not None:
@@ -2340,6 +2360,22 @@ def build_mysql_prefilter(criteria, canonical_to_actual, include_ids=None):
             allowed_levels = [
                 level
                 for level, rank in VERIFIED_LEVEL_ORDER.items()
+                if rank >= required_rank
+            ]
+            placeholders = ", ".join(["%s"] * len(allowed_levels))
+            base_clauses.append(
+                f"{defaulted_text_expr(actual)} IN ({placeholders})"
+            )
+            base_params.append("none")
+            base_params.extend(allowed_levels)
+
+    if criteria.get("photo_verification_level_min"):
+        actual = canonical_to_actual.get("photo_verification_level")
+        if actual is not None:
+            required_rank = photo_verification_rank(criteria["photo_verification_level_min"])
+            allowed_levels = [
+                level
+                for level, rank in PHOTO_VERIFICATION_LEVEL_ORDER.items()
                 if rank >= required_rank
             ]
             placeholders = ", ".join(["%s"] * len(allowed_levels))
@@ -2645,6 +2681,12 @@ def build_criteria_from_args(args):
         criteria["verified_level_min"] = args.verified_level_min
     if args.verified_level:
         criteria["verified_levels"] = merge_keyword_args(args.verified_level)
+    photo_verification_level_min = getattr(args, "photo_verification_level_min", None)
+    if photo_verification_level_min:
+        criteria["photo_verification_level_min"] = photo_verification_level_min
+    photo_verification_level = getattr(args, "photo_verification_level", None)
+    if photo_verification_level:
+        criteria["photo_verification_levels"] = merge_keyword_args(photo_verification_level)
     if args.photo_count_min is not None:
         criteria["photo_count_min"] = args.photo_count_min
     required_known_fields = [
@@ -2688,6 +2730,7 @@ def normalize_request_criteria(criteria):
         "accept_marital_status_strength",
         "accept_partner_children_strength",
         "verified_level_min",
+        "photo_verification_level_min",
     ):
         value = scalar_values.get(key)
         if value is not None and value != "":
@@ -3945,6 +3988,10 @@ def evaluate_candidate(record, criteria, diagnostics=False, reciprocal_mode="str
         if verified_rank(record.get("verified_level")) < verified_rank(criteria["verified_level_min"]):
             return fail("verified_below_min")
 
+    if criteria.get("photo_verification_level_min"):
+        if photo_verification_rank(photo_verification_level(record)) < photo_verification_rank(criteria["photo_verification_level_min"]):
+            return fail("photo_verification_below_min")
+
     age = record.get("age")
     if criteria.get("age_min") is not None:
         if age is None:
@@ -4227,6 +4274,13 @@ def evaluate_candidate(record, criteria, diagnostics=False, reciprocal_mode="str
         reasons.append(f"认证 {verified_level}")
         confidence_score += 4
 
+    if criteria.get("photo_verification_levels"):
+        candidate_photo_level = photo_verification_level(record)
+        if not match_any_exact(candidate_photo_level, criteria["photo_verification_levels"]):
+            return fail("photo_verification_level_mismatch")
+        reasons.append(f"照片核验 {photo_verification_level_label(candidate_photo_level)}")
+        confidence_score += 3
+
     if criteria.get("photo_count_min") is not None:
         photo_count = as_int(record.get("photo_count"))
         if photo_count is None:
@@ -4293,6 +4347,8 @@ def evaluate_candidate(record, criteria, diagnostics=False, reciprocal_mode="str
     )
     if matcher_enrichment_count:
         confidence_score += min(matcher_enrichment_count, 2)
+
+    risk_flags.extend(build_profile_consistency_flags(record))
 
     required_known_fields = {
         field
