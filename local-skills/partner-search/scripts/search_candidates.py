@@ -2898,6 +2898,60 @@ def verified_level_label(value):
     return labels.get(verified_rank(value), "未认证")
 
 
+def photo_verification_level(profile):
+    profile = profile or {}
+    explicit = as_lower(profile.get("photo_verification_level") or profile.get("photo_verified_level"))
+    if explicit in {"none", "uploaded", "human_verified", "live_video_verified", "offline_verified"}:
+        return explicit
+    if normalize_bool(profile.get("live_video_verified")) is True:
+        return "live_video_verified"
+    verified_rank_value = verified_rank(profile.get("verified_level"))
+    photo_count = as_int(profile.get("photo_count"))
+    has_photo = bool(profile.get("avatar_url")) or (photo_count is not None and photo_count > 0)
+    if verified_rank_value >= 4:
+        return "offline_verified"
+    if verified_rank_value >= 2:
+        return "human_verified"
+    if has_photo:
+        return "uploaded"
+    return "none"
+
+
+def photo_verification_level_label(value):
+    labels = {
+        "none": "未上传照片",
+        "uploaded": "普通上传照片",
+        "human_verified": "真人照片认证",
+        "live_video_verified": "活体自拍视频认证",
+        "offline_verified": "线下核验照片",
+    }
+    return labels.get(as_lower(value), "普通上传照片")
+
+
+def normalize_field_verification_status(value, fallback="self_reported"):
+    lowered = as_lower(value)
+    if lowered in {"verified", "approved", "passed", "platform_verified", "human_verified", "live_video_verified", "offline_verified"}:
+        return "verified"
+    if lowered in {"needs_review", "inconsistent", "mismatch", "suspicious"}:
+        return "needs_review"
+    if lowered in {"pending", "submitted", "under_review"}:
+        return "pending"
+    if lowered in {"missing", "not_provided", "none"}:
+        return "missing"
+    if lowered in {"self_reported", "declared", "user_filled"}:
+        return "self_reported"
+    return fallback
+
+
+def profile_field_verification_status(profile, field_key, fallback="self_reported"):
+    return normalize_field_verification_status(
+        profile.get(f"{field_key}_verification_status")
+        or profile.get(f"{field_key}_verified_status")
+        or profile.get(f"{field_key}_auth_status"),
+        fallback=fallback,
+    )
+
+
 def format_income_range_text(record):
     income_range = as_text(record.get("income_range"))
     if income_range:
@@ -2916,16 +2970,63 @@ def format_income_range_text(record):
     return f"{income_min}-{income_max}万/年"
 
 
+def build_profile_consistency_flags(profile):
+    profile = profile or {}
+    flags = []
+    review_status = as_lower(profile.get("profile_review_status"))
+    if review_status in {"needs_review", "inconsistent", "limited_exposure"}:
+        flags.append("资料存在待复核或不一致信号")
+
+    income_max = as_int(profile.get("income_max_wan"))
+    if income_max is None:
+        _, income_max = parse_income_range_to_wan(profile.get("income_range"))
+    job_text = as_text(profile.get("job"))
+    if income_max is not None and income_max >= 80 and job_text:
+        if any(keyword in job_text for keyword in ("助理", "文员", "行政", "客服", "店员", "实习")):
+            flags.append("收入声明与职业类型存在明显落差")
+
+    for field_key, label in (
+        ("job_change_count_30d", "职业"),
+        ("city_change_count_30d", "城市"),
+        ("income_change_count_30d", "收入"),
+    ):
+        change_count = as_int(profile.get(field_key))
+        if change_count is not None and change_count >= 2:
+            flags.append(f"{label}近30天修改较频繁")
+    return unique_ordered(flags)
+
+
 def build_verification_items(profile):
     profile = profile or {}
     items = []
     verified_level = profile.get("verified_level") or "none"
     verified_rank_value = verified_rank(verified_level)
     photo_count = as_int(profile.get("photo_count"))
-    has_photo = bool(profile.get("avatar_url")) or (photo_count is not None and photo_count > 0) or verified_rank_value >= 2
+    has_photo = bool(profile.get("avatar_url")) or (photo_count is not None and photo_count > 0)
+    photo_level = photo_verification_level(profile)
 
     photo_suffix = f"（{photo_count}张）" if photo_count is not None and photo_count > 0 else ""
-    if has_photo and verified_rank_value >= 2:
+    if photo_level == "offline_verified":
+        items.append(
+            {
+                "key": "photo",
+                "label": "照片",
+                "status": "verified",
+                "source": "platform_verification",
+                "summary": f"已线下核验照片{photo_suffix}",
+            }
+        )
+    elif photo_level == "live_video_verified":
+        items.append(
+            {
+                "key": "photo",
+                "label": "照片",
+                "status": "verified",
+                "source": "platform_verification",
+                "summary": f"已活体自拍视频认证{photo_suffix}",
+            }
+        )
+    elif photo_level == "human_verified":
         items.append(
             {
                 "key": "photo",
@@ -2935,7 +3036,7 @@ def build_verification_items(profile):
                 "summary": f"已真人照片认证{photo_suffix}",
             }
         )
-    elif has_photo:
+    elif has_photo or photo_level == "uploaded":
         uploaded_summary = f"已上传{photo_count}张照片" if photo_count is not None and photo_count > 0 else "已上传照片"
         items.append(
             {
@@ -2989,16 +3090,27 @@ def build_verification_items(profile):
                 "summary": "已完成线下核验",
             }
         )
+    elif photo_level == "live_video_verified":
+        items.append(
+            {
+                "key": "offline_check",
+                "label": "真人视频核验",
+                "status": "verified",
+                "source": "platform_verification",
+                "summary": "已完成活体自拍视频核验",
+            }
+        )
 
     age = as_int(profile.get("age"))
+    age_status = "verified" if verified_rank_value >= 3 else profile_field_verification_status(profile, "age", fallback="self_reported")
     if age is not None:
         items.append(
             {
                 "key": "age",
                 "label": "年龄",
-                "status": "verified" if verified_rank_value >= 3 else "self_reported",
-                "source": "platform_verification" if verified_rank_value >= 3 else "profile_self_reported",
-                "summary": f"{age}岁（{'实名层级' if verified_rank_value >= 3 else '资料填写'}）",
+                "status": age_status,
+                "source": "platform_verification" if age_status == "verified" else "profile_self_reported",
+                "summary": f"{age}岁（{'实名层级' if age_status == 'verified' else '资料填写'}）",
             }
         )
     else:
@@ -3012,7 +3124,7 @@ def build_verification_items(profile):
             }
         )
 
-    def append_profile_item(key, label, value, *, missing_summary, filled_template, allow_verified=False):
+    def append_profile_item(key, label, value, *, missing_summary, verified_template, self_reported_template):
         if value is None or value == "":
             items.append(
                 {
@@ -3025,14 +3137,26 @@ def build_verification_items(profile):
             )
             return
 
-        is_verified = allow_verified and verified_rank_value >= 4
+        status = profile_field_verification_status(profile, key, fallback="self_reported")
+        source = "profile_self_reported"
+        if status == "verified":
+            source = "platform_verification"
+            summary = verified_template.format(value=value)
+        elif status == "pending":
+            source = "review_pending"
+            summary = f"{value}（认证审核中）"
+        elif status == "needs_review":
+            source = "risk_review"
+            summary = f"{value}（存在不一致信号，建议复核）"
+        else:
+            summary = self_reported_template.format(value=value)
         items.append(
             {
                 "key": key,
                 "label": label,
-                "status": "verified" if is_verified else "self_reported",
-                "source": "platform_verification" if is_verified else "profile_self_reported",
-                "summary": filled_template.format(value=value, detail="线下核验" if is_verified else "资料填写"),
+                "status": status,
+                "source": source,
+                "summary": summary,
             }
         )
 
@@ -3041,35 +3165,40 @@ def build_verification_items(profile):
         "城市",
         as_text(profile.get("city")),
         missing_summary="城市未填写",
-        filled_template="{value}（{detail}）",
+        verified_template="{value}（已核验）",
+        self_reported_template="{value}（资料填写）",
     )
     append_profile_item(
         "education",
         "学历",
         as_text(profile.get("education")),
         missing_summary="学历未填写",
-        filled_template="{value}（未单独认证）",
+        verified_template="{value}（已认证）",
+        self_reported_template="{value}（未单独认证）",
     )
     append_profile_item(
         "job",
         "职业",
         as_text(profile.get("job")),
         missing_summary="职业未填写",
-        filled_template="{value}（未单独认证）",
+        verified_template="{value}（已认证）",
+        self_reported_template="{value}（未单独认证）",
     )
     append_profile_item(
         "income",
         "收入",
         format_income_range_text(profile),
         missing_summary="收入未填写",
-        filled_template="{value}（未单独认证）",
+        verified_template="{value}（已认证区间）",
+        self_reported_template="{value}（未单独认证）",
     )
     append_profile_item(
         "marital_status",
         "婚况",
         as_text(profile.get("marital_status")),
         missing_summary="婚况未填写",
-        filled_template="{value}（资料填写）",
+        verified_template="{value}（已核验）",
+        self_reported_template="{value}（资料填写）",
     )
 
     has_children = effective_has_children(profile)
@@ -3088,13 +3217,14 @@ def build_verification_items(profile):
         child_count = as_int(profile.get("children_count"))
         if has_children and child_count:
             child_label = f"有{child_count}个孩子"
+        children_status = profile_field_verification_status(profile, "children", fallback="self_reported")
         items.append(
             {
                 "key": "children",
                 "label": "子女情况",
-                "status": "self_reported",
-                "source": "profile_self_reported",
-                "summary": f"{child_label}（资料填写）",
+                "status": children_status,
+                "source": "platform_verification" if children_status == "verified" else "profile_self_reported",
+                "summary": f"{child_label}（{'已核验' if children_status == 'verified' else '资料填写'}）",
             }
         )
 
@@ -3103,9 +3233,39 @@ def build_verification_items(profile):
         "结婚意向",
         as_text(profile.get("relationship_goal")),
         missing_summary="结婚意向未填写",
-        filled_template="{value}（资料填写）",
+        verified_template="{value}（已核验）",
+        self_reported_template="{value}（资料填写）",
     )
     return items
+
+
+def build_trust_caution_items(profile, verification_items=None):
+    profile = profile or {}
+    verification_items = verification_items or build_verification_items(profile)
+    caution_items = []
+    photo_item = next((item for item in verification_items if item.get("key") == "photo"), None)
+    if photo_item and photo_item.get("status") == "self_reported":
+        caution_items.append("照片仅为普通上传，建议先视频核验再深入沟通")
+    if any(item.get("status") == "needs_review" for item in verification_items if item.get("key") in {"education", "job", "income", "marital_status", "children"}):
+        caution_items.append("部分高决策字段存在不一致信号，建议补充核验")
+    if profile_field_verification_status(profile, "income", fallback="self_reported") == "self_reported" and format_income_range_text(profile):
+        caution_items.append("收入仍为自填信息，建议仅将其视为参考")
+    caution_items.extend(build_profile_consistency_flags(profile))
+    return unique_ordered(caution_items)
+
+
+def build_trust_actions(profile, verification_items=None, caution_items=None):
+    verification_items = verification_items or build_verification_items(profile)
+    caution_items = caution_items or build_trust_caution_items(profile, verification_items=verification_items)
+    actions = []
+    photo_item = next((item for item in verification_items if item.get("key") == "photo"), None)
+    if photo_item and photo_item.get("status") != "verified":
+        actions.append("建议先视频核验真人状态")
+    if any(item.get("key") in {"income", "job", "education"} and item.get("status") in {"self_reported", "needs_review"} for item in verification_items):
+        actions.append("建议先确认职业、学历和收入区间是否真实")
+    if caution_items:
+        actions.append("在转到站外或涉及金钱前，先完成平台内核验")
+    return unique_ordered(actions)
 
 
 def build_trust_summary(profile, verification_items=None):
@@ -3115,7 +3275,7 @@ def build_trust_summary(profile, verification_items=None):
     self_reported_labels = [
         item["label"]
         for item in verification_items
-        if item["status"] == "self_reported"
+        if item["status"] in {"self_reported", "pending"}
         and item["key"] in {"education", "job", "income", "marital_status", "children", "relationship_goal"}
     ]
     missing_labels = [
@@ -3124,10 +3284,21 @@ def build_trust_summary(profile, verification_items=None):
         if item["status"] == "missing"
         and item["key"] in {"marital_status", "children", "income", "education", "job", "relationship_goal"}
     ]
+    caution_labels = [
+        item["label"]
+        for item in verification_items
+        if item["status"] == "needs_review"
+        and item["key"] in {"education", "job", "income", "marital_status", "children", "relationship_goal"}
+    ]
 
     badges = []
     verified_rank_value = verified_rank(profile.get("verified_level"))
-    if verified_rank_value >= 2:
+    photo_level = photo_verification_level(profile)
+    if photo_level == "offline_verified":
+        badges.append("照片已线下核验")
+    elif photo_level == "live_video_verified":
+        badges.append("照片已活体视频核验")
+    elif photo_level == "human_verified":
         badges.append("照片已真人认证")
     if verified_rank_value >= 3:
         badges.append("已实名认证")
@@ -3145,19 +3316,26 @@ def build_trust_summary(profile, verification_items=None):
     else:
         headline_parts.append("认证信息有限")
 
-    if self_reported_labels:
+    if caution_labels:
+        headline_parts.append("以下字段存在待复核信号：" + "、".join(unique_ordered(caution_labels)[:3]))
+    elif self_reported_labels:
         headline_parts.append("其余关键信息以资料填写为主：" + "、".join(unique_ordered(self_reported_labels)[:4]))
     elif missing_labels:
         headline_parts.append("仍有资料待补充：" + "、".join(unique_ordered(missing_labels)[:3]))
 
+    caution_items = build_trust_caution_items(profile, verification_items=verification_items)
     return {
         "headline": "；".join(headline_parts),
         "verified_level": profile.get("verified_level") or "none",
         "verified_label": verified_level_label(profile.get("verified_level")),
+        "photo_verification_level": photo_level,
+        "photo_verification_label": photo_verification_level_label(photo_level),
         "badges": unique_ordered(badges),
         "verified_items": unique_ordered(verified_labels),
         "self_reported_items": unique_ordered(self_reported_labels),
         "missing_items": unique_ordered(missing_labels),
+        "caution_items": caution_items,
+        "trust_actions": build_trust_actions(profile, verification_items=verification_items, caution_items=caution_items),
     }
 
 
@@ -4900,11 +5078,15 @@ def build_structured_result_payload(result, include_source=False):
         "risk_score": result.get("risk_score"),
         "verified_level": profile.get("verified_level") or "none",
         "verified_label": trust_summary.get("verified_label"),
+        "photo_verification_level": trust_summary.get("photo_verification_level"),
+        "photo_verification_label": trust_summary.get("photo_verification_label"),
         "photo_count": as_int(profile.get("photo_count")),
         "last_active_at": json_safe(activity_dt),
         "activity_label": activity_score_info(profile)[1],
         "verification_items": verification_items,
         "trust_summary": trust_summary,
+        "caution_items": list(trust_summary.get("caution_items") or []),
+        "trust_actions": list(trust_summary.get("trust_actions") or []),
         "matched_on": list(result.get("matched_on") or []),
         "reciprocal_on": list(result.get("reciprocal_on") or []),
         "missing_fields": list(result.get("missing_fields") or []),

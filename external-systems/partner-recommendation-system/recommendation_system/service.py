@@ -1153,6 +1153,23 @@ def recommendation_verified_label(payload: dict[str, Any], profile: dict[str, An
     return labels.get(level)
 
 
+def recommendation_photo_verification_label(payload: dict[str, Any], profile: dict[str, Any]) -> str | None:
+    label = payload.get("photo_verification_label")
+    if label:
+        return str(label)
+    trust_summary = payload.get("trust_summary") or {}
+    if isinstance(trust_summary, dict) and trust_summary.get("photo_verification_label"):
+        return str(trust_summary["photo_verification_label"])
+    level = str(payload.get("photo_verification_level") or trust_summary.get("photo_verification_level") or "").strip().lower()
+    labels = {
+        "uploaded": "普通上传照片",
+        "human_verified": "真人照片认证",
+        "live_video_verified": "活体自拍视频认证",
+        "offline_verified": "线下核验照片",
+    }
+    return labels.get(level)
+
+
 def recommendation_trust_headline(payload: dict[str, Any], profile: dict[str, Any]) -> str | None:
     trust_summary = payload.get("trust_summary") or {}
     if isinstance(trust_summary, dict):
@@ -1174,8 +1191,11 @@ def build_in_app_card(recommendation: dict[str, Any], subscription_title: str) -
     matched_on = payload.get("matched_on") or []
     risk_flags = payload.get("risk_flags") or []
     follow_up_questions = payload.get("follow_up_questions") or []
+    caution_items = payload.get("caution_items") or []
+    trust_actions = payload.get("trust_actions") or []
     trust_headline = recommendation_trust_headline(payload, profile)
     verified_label = recommendation_verified_label(payload, profile)
+    photo_label = recommendation_photo_verification_label(payload, profile)
 
     title = f"发现新的合适对象：{payload.get('name') or recommendation.get('candidate_name')}"
     subtitle_parts = [
@@ -1186,18 +1206,24 @@ def build_in_app_card(recommendation: dict[str, Any], subscription_title: str) -
     ]
     if profile.get("job"):
         subtitle_parts.append(profile.get("job"))
+    if photo_label:
+        subtitle_parts.append(photo_label)
     if verified_label:
         subtitle_parts.append(verified_label)
 
     body_lines = []
     if trust_headline:
         body_lines.append("可信度：" + trust_headline)
+    if caution_items:
+        body_lines.append("谨慎点：" + "；".join(str(item) for item in caution_items[:2]))
     if matched_on:
         body_lines.append("匹配点：" + "；".join(matched_on[:3]))
     if risk_flags:
         body_lines.append("风险点：" + "；".join(risk_flags[:2]))
     if follow_up_questions:
         body_lines.append("建议确认：" + "；".join(follow_up_questions[:2]))
+    if trust_actions:
+        body_lines.append("建议先做：" + "；".join(str(item) for item in trust_actions[:2]))
     if not body_lines:
         body_lines.append("命中了订阅条件，建议进入资料页继续确认。")
 
