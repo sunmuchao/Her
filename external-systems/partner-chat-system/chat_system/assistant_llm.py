@@ -13,6 +13,14 @@ _DEFAULT_PROBLEM_TAGS = ["cold_reply"]
 _DEFAULT_STRATEGY_TAGS = ["share_detail", "ask_easy_question"]
 
 
+def _default_rescue_flow() -> list[str]:
+    return [
+        "先接住对方上一句里还能接的话点，不要像没看到一样硬换题。",
+        "如果已经明显有点冷，就轻轻承认一下节奏有点干，再换到更生活化的话题。",
+        "优先问对方一句就能回答的问题，让对方更容易接回来。",
+    ]
+
+
 def build_dyadic_context_for_assistant(conn, thread_id: str, *, limit: int = 20) -> str:
     lim = max(1, min(int(limit), 50))
     cur = conn.execute(
@@ -65,6 +73,7 @@ def normalize_assistant_guidance(data: dict[str, Any]) -> dict[str, Any]:
         "avoid": _to_clean_list(data.get("avoid")),
         "topic_directions": _to_clean_list(data.get("topic_directions")),
         "easy_question_types": _to_clean_list(data.get("easy_question_types")),
+        "rescue_flow": _to_clean_list(data.get("rescue_flow")) or _default_rescue_flow(),
         "strategy_tags": _to_clean_list(data.get("strategy_tags")) or list(_DEFAULT_STRATEGY_TAGS),
         "reply_suggestions": _to_clean_list(data.get("reply_suggestions")) or ["先回应对方上一句里的具体信息。"],
         "profile_hooks_used": _to_clean_list(data.get("profile_hooks_used")),
@@ -80,6 +89,11 @@ def build_placeholder_assistant_guidance(*, profile_hooks: list[str] | None = No
         "avoid": ["不要连续只回短句", "不要一直只抛封闭问题"],
         "topic_directions": topic_directions,
         "easy_question_types": ["低门槛生活习惯问题"],
+        "rescue_flow": [
+            "先接住对方上一句，不要马上把话题扔空。",
+            "如果旧话题已经聊干了，就切到更容易回答的生活化话题。",
+            "最后优先问一句轻一点、对方更容易回的问题。",
+        ],
         "strategy_tags": ["share_detail", "ask_easy_question", "switch_topic"],
         "reply_suggestions": [
             "先回应对方上一句里最具体的信息，再补一点自己的真实感受。",
@@ -108,6 +122,10 @@ def render_assistant_guidance(guidance: dict[str, Any]) -> str:
         lines.append("更容易回答的问题类型：")
         for idx, item in enumerate(g["easy_question_types"], start=1):
             lines.append(f"{idx}. {item}")
+    if g["rescue_flow"]:
+        lines.append("建议按这个顺序来：")
+        for idx, item in enumerate(g["rescue_flow"], start=1):
+            lines.append(f"{idx}. {item}")
     lines.append("回复建议：")
     for idx, item in enumerate(g["reply_suggestions"], start=1):
         lines.append(f"{idx}. {item}")
@@ -132,6 +150,7 @@ def parse_assistant_guidance(text: str) -> dict[str, Any] | None:
         "avoid": "先别继续这样聊：",
         "topic_directions": "建议优先换到这些话题类型：",
         "easy_question_types": "更容易回答的问题类型：",
+        "rescue_flow": "建议按这个顺序来：",
         "reply_suggestions": "回复建议：",
         "profile_hooks_used": "已参考画像钩子：",
     }
@@ -160,6 +179,7 @@ def parse_assistant_guidance(text: str) -> dict[str, Any] | None:
         "avoid": data["avoid"],
         "topic_directions": data["topic_directions"],
         "easy_question_types": data["easy_question_types"],
+        "rescue_flow": data["rescue_flow"],
         "strategy_tags": _DEFAULT_STRATEGY_TAGS,
         "reply_suggestions": data["reply_suggestions"],
         "profile_hooks_used": data["profile_hooks_used"],
@@ -195,6 +215,7 @@ def generate_assistant_guidance(
         "你只负责指出当前对话问题，并给出下一步可执行的聊天策略，不要代写一条可以直接发送给对方的整句消息。"
         "若提供了画像钩子，请优先从双方交集或当前说话人的真实生活里选，而不是泛泛建议电影、旅行这类万能话题。"
         "你的建议必须足够具体，优先回答：现在最关键的问题是什么、别继续做什么、建议换到什么低门槛话题、适合问什么更容易回答的问题。"
+        "建议尽量写成步骤感强的教练提示，比如先接住、再换题、最后问轻一点的问题。"
         "只输出一个 JSON 对象，不要 Markdown、不要代码块。"
     )
     user_block = (
@@ -210,6 +231,7 @@ def generate_assistant_guidance(
         '  "avoid": ["<1-3 条不要继续做的事>"],\n'
         '  "topic_directions": ["<1-3 个建议切换的话题类型>"],\n'
         '  "easy_question_types": ["<1-2 个更容易回答的问题类型>"],\n'
+        '  "rescue_flow": ["<2-4 条分步骤建议，强调先接住、再换题、再问轻问题>"],\n'
         '  "strategy_tags": ["<acknowledge_coldness|switch_topic|ask_easy_question|share_detail|expand_detail|graceful_exit 等>"],\n'
         '  "reply_suggestions": ["<2-4 条可执行建议，不要代写整句>"],\n'
         '  "profile_hooks_used": ["<实际用到的画像钩子，必须来自给定画像摘要或钩子>"]\n'
@@ -217,14 +239,16 @@ def generate_assistant_guidance(
         "要求：不要编造画像中没有的事实；不要写成整句代发文案；建议要口语场景可执行。"
     )
     try:
+        max_tokens = int(os.environ.get("HER_CHAT_ASSISTANT_MAX_TOKENS") or "500")
+        temperature = float(os.environ.get("HER_CHAT_ASSISTANT_TEMPERATURE") or "0.1")
         resp = client.chat.completions.create(
             model=model,
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": user_block},
             ],
-            max_tokens=700,
-            temperature=0.2,
+            max_tokens=max(200, min(max_tokens, 900)),
+            temperature=max(0.0, min(temperature, 1.0)),
         )
         choice = resp.choices[0].message.content
         out = (choice or "").strip()
@@ -256,7 +280,6 @@ def generate_assistant_reply(
 
 
 __all__ = [
-    "build_assistant_profile_context",
     "build_dyadic_context_for_assistant",
     "build_placeholder_assistant_guidance",
     "generate_assistant_guidance",
