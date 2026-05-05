@@ -203,6 +203,8 @@ class DyadicRoleplayRunTests(unittest.TestCase):
         authors_sources = [(m["author_id"], m["source"]) for m in msgs_b]
         self.assertTrue(any(a == "assistant" for a, _ in authors_sources))
         self.assertEqual(out["assistant_metrics"]["predicted_rescue_turns"], 1)
+        self.assertIsNotNone(out["assistant_metrics"]["assistant_invoke_avg_ms"])
+        self.assertTrue(any("assistant_latency_ms" in turn for turn in out["turn_evaluations"]))
 
     def test_run_fixed_turns(self):
         def llm(messages: list[dict[str, str]]) -> str:

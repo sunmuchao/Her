@@ -14,7 +14,7 @@ Gateway REST: `/v1/chat/...`, `/v1/timeline`, maintenance `POST /v1/chat/mainten
 - 举报会聚合成 `chat_risk_cases`，运营可通过 `/v1/chat/risk-cases` 查看、审核，并通过 `review` 接口施加 `warn` / `limit_chat` / `freeze`。
 - 当某个 case 被审核为 `limit_chat` 或 `freeze` 后，该用户会被阻止继续在该线程发送 dyadic 消息。
 
-Env: `HER_CHAT_PERSONA_MYSQL_SOURCE` (persona jobs); `OPENAI_API_KEY`, `HER_CHAT_ASSISTANT_MODEL`, optional `HER_CHAT_ASSISTANT_BASE_URL` or `OPENAI_BASE_URL` (DashScope 等兼容端点); `HER_SCHED_CHAT_DB`, `HER_SCHED_CHAT_MAINTENANCE_SEC`, `HER_SCHED_CHAT_FLUSH_OUTBOX`, `HER_SCHED_CHAT_OUTBOX_CONSUME`, `HER_CHAT_MAINTENANCE_SKIP_SUMMARY`; **`HER_PROFILE_MYSQL_DSN`**（默认 `mysql://root@127.0.0.1:3307/her`）用于从 **`profiles`** 表加载完整画像扮演用户。
+Env: `HER_CHAT_PERSONA_MYSQL_SOURCE` (persona jobs); `OPENAI_API_KEY`, `HER_CHAT_ASSISTANT_MODEL`, optional `HER_CHAT_ASSISTANT_FAST_MODEL`, `HER_CHAT_ASSISTANT_MAX_TOKENS`, `HER_CHAT_ASSISTANT_TIMEOUT_SEC`, optional `HER_CHAT_ASSISTANT_BASE_URL` or `OPENAI_BASE_URL` (DashScope 等兼容端点); `HER_ROLEPLAY_MODEL`, optional `HER_ROLEPLAY_FAST_MODEL`, `HER_ROLEPLAY_EVAL_MODEL`; `HER_SCHED_CHAT_DB`, `HER_SCHED_CHAT_MAINTENANCE_SEC`, `HER_SCHED_CHAT_FLUSH_OUTBOX`, `HER_SCHED_CHAT_OUTBOX_CONSUME`, `HER_CHAT_MAINTENANCE_SKIP_SUMMARY`; **`HER_PROFILE_MYSQL_DSN`**（默认 `mysql://root@127.0.0.1:3307/her`）用于从 **`profiles`** 表加载完整画像扮演用户。
 
 相关文档：
 
@@ -25,7 +25,7 @@ Env: `HER_CHAT_PERSONA_MYSQL_SOURCE` (persona jobs); `OPENAI_API_KEY`, `HER_CHAT
 
 在**真实** `chat_threads` 上跑两个「虚拟相亲用户」LLM，交替发 **dyadic** 消息。
 
-- **默认 `--assistant-mode proactive`**：每轮发言前，用**调度模型**只看「双方可见」记录，判断是否冷场/尬聊等；需要时再调 **`assistant_query`** 给**即将开口的那一方**私下指出问题并给出接话建议（不是固定回合手点助手，也不直接代写成稿）。
+- **默认 `--assistant-mode proactive`**：每轮发言前先走一层**规则快路径**（明显冷场/明显正常可继续时不再多调一次模型），模糊情况再用**调度模型**只看「双方可见」记录判断是否冷场/尬聊；需要时再调 **`assistant_query`** 给**即将开口的那一方**私下指出问题并给出接话建议（不是固定回合手点助手，也不直接代写成稿）。
 - **`fixed_turns`**：兼容旧行为，`--assistant-on-turns 0,2` 指定回合先问助手。
 - **`none`**：全程不调助手。
 
@@ -53,6 +53,7 @@ PYTHONPATH=../.. python scripts/run_dyadic_agent_roleplay.py --rounds 4 --assist
 - `--case-id`：省略则每次随机新 `case_id`。  
 - `--resume-existing`：显式允许把新回合追加到同一个 `case_id` 的旧线程；默认会直接报错，避免实验串台。  
 - `--base-time`：模拟消息时间戳起点，默认固定为 `2026-05-04T12:00:00`，也会写回输出 JSON。  
+- 输出 JSON 额外包含 `turn_evaluations[].assistant_latency_ms`、`assistant_metrics.assistant_invoke_avg_ms`、`assistant_metrics.assistant_invoke_max_ms`、`assistant_metrics.heuristic_decision_turns`、`llm_stats`，便于排查“到底是调度慢、主回复慢，还是助手建议慢”。  
 - 单测：`pytest tests/test_dyadic_roleplay.py`。
 
 导出某次 roleplay 的**完整库内消息**（含双方可见 + 仅自己可见）：

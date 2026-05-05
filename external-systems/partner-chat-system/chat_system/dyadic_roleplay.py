@@ -7,6 +7,7 @@ import random
 import re
 import zlib
 from datetime import datetime, timedelta
+from time import perf_counter
 from typing import Any, Callable, Protocol
 
 from .scenario_stress import StressBeat, pick_stress_beat, stress_log_entry
@@ -637,11 +638,15 @@ def run_dyadic_roleplay(
 
         if mode == "fixed_turns" and i in fixed_turns:
             emit(f"{turn_label}: assistant fixed-turn hint for {speaker}")
+            assistant_started = perf_counter()
             hint = assistant_query(conn, thread_id, speaker, fixed_assistant_query, now=ts)
+            assistant_elapsed_ms = int((perf_counter() - assistant_started) * 1000)
             turn_record["assistant_invoked"] = True
             turn_record["assistant_message_id"] = hint.get("message_id")
             turn_record["assistant_guidance"] = hint.get("assistant_guidance")
             turn_record["assistant_profile_context"] = hint.get("assistant_profile_context")
+            turn_record["assistant_latency_ms"] = assistant_elapsed_ms
+            emit(f"{turn_label}: assistant hint posted for {speaker} in {assistant_elapsed_ms} ms")
         elif mode == "proactive":
             pub_msgs = [
                 m
@@ -675,20 +680,24 @@ def run_dyadic_roleplay(
                     f"{reason}请先指出我这边当前最需要注意的问题，再给我自然、得体、适合我身份的接话建议。"
                     "不要直接代写成一条可发送消息。）"
                 )
+                assistant_started = perf_counter()
                 hint = assistant_query(conn, thread_id, speaker, q, now=ts)
+                assistant_elapsed_ms = int((perf_counter() - assistant_started) * 1000)
                 turn_record["assistant_invoked"] = True
                 turn_record["assistant_message_id"] = hint.get("message_id")
                 turn_record["assistant_guidance"] = hint.get("assistant_guidance")
                 turn_record["assistant_profile_context"] = hint.get("assistant_profile_context")
+                turn_record["assistant_latency_ms"] = assistant_elapsed_ms
                 rescue_log.append(
                     {
                         "turn": i,
                         "speaker": speaker,
                         "decision": decision,
+                        "assistant_latency_ms": assistant_elapsed_ms,
                         "assistant_guidance": hint.get("assistant_guidance"),
                     }
                 )
-                emit(f"{turn_label}: assistant hint posted for {speaker}")
+                emit(f"{turn_label}: assistant hint posted for {speaker} in {assistant_elapsed_ms} ms")
 
         msgs = list_messages(conn, thread_id, speaker, limit=200)
         transcript = format_visible_transcript(msgs)
@@ -747,6 +756,11 @@ def run_dyadic_roleplay(
     ]
     naturalness_scores = [int((r.get("naturalness") or {}).get("score") or 0) for r in turn_records]
     intervention_records = [r for r in turn_records if bool(r.get("assistant_invoked"))]
+    assistant_latencies = [
+        int(r.get("assistant_latency_ms") or 0)
+        for r in intervention_records
+        if r.get("assistant_latency_ms") is not None
+    ]
     strong_follow = [
         r for r in intervention_records if (r.get("assistant_follow_assessment") or {}).get("level") == "strong"
     ]
@@ -821,6 +835,10 @@ def run_dyadic_roleplay(
             "recall_proxy": round(len(true_positive) / len(gold_positive), 4) if gold_positive else None,
             "heuristic_decision_turns": len(heuristic_decisions),
             "llm_decision_turns": len(llm_decisions),
+            "assistant_invoke_avg_ms": round(sum(assistant_latencies) / len(assistant_latencies), 2)
+            if assistant_latencies
+            else None,
+            "assistant_invoke_max_ms": max(assistant_latencies) if assistant_latencies else None,
             "strong_follow_rate": round(len(strong_follow) / len(intervention_records), 4)
             if intervention_records
             else None,

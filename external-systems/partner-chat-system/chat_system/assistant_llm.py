@@ -13,6 +13,20 @@ _DEFAULT_PROBLEM_TAGS = ["cold_reply"]
 _DEFAULT_STRATEGY_TAGS = ["share_detail", "ask_easy_question"]
 
 
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name) or default)
+    except (TypeError, ValueError):
+        return int(default)
+
+
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(os.environ.get(name) or default)
+    except (TypeError, ValueError):
+        return float(default)
+
+
 def _default_rescue_flow() -> list[str]:
     return [
         "先接住对方上一句里还能接的话点，不要像没看到一样硬换题。",
@@ -198,7 +212,12 @@ def generate_assistant_guidance(
     key = (os.environ.get("OPENAI_API_KEY") or "").strip()
     if not key:
         return None
-    model = (os.environ.get("HER_CHAT_ASSISTANT_MODEL") or "gpt-4o-mini").strip()
+    model = (
+        os.environ.get("HER_CHAT_ASSISTANT_FAST_MODEL")
+        or os.environ.get("HER_CHAT_ASSISTANT_RESCUE_MODEL")
+        or os.environ.get("HER_CHAT_ASSISTANT_MODEL")
+        or "gpt-4o-mini"
+    ).strip()
     base = (
         os.environ.get("HER_CHAT_ASSISTANT_BASE_URL") or os.environ.get("OPENAI_BASE_URL") or ""
     ).strip()
@@ -239,8 +258,9 @@ def generate_assistant_guidance(
         "要求：不要编造画像中没有的事实；不要写成整句代发文案；建议要口语场景可执行。"
     )
     try:
-        max_tokens = int(os.environ.get("HER_CHAT_ASSISTANT_MAX_TOKENS") or "500")
-        temperature = float(os.environ.get("HER_CHAT_ASSISTANT_TEMPERATURE") or "0.1")
+        max_tokens = _env_int("HER_CHAT_ASSISTANT_MAX_TOKENS", 500)
+        temperature = _env_float("HER_CHAT_ASSISTANT_TEMPERATURE", 0.1)
+        timeout_sec = _env_float("HER_CHAT_ASSISTANT_TIMEOUT_SEC", 40.0)
         resp = client.chat.completions.create(
             model=model,
             messages=[
@@ -249,6 +269,7 @@ def generate_assistant_guidance(
             ],
             max_tokens=max(200, min(max_tokens, 900)),
             temperature=max(0.0, min(temperature, 1.0)),
+            timeout=max(10.0, min(timeout_sec, 120.0)),
         )
         choice = resp.choices[0].message.content
         out = (choice or "").strip()
