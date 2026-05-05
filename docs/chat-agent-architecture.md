@@ -270,6 +270,7 @@ flowchart TB
 - **已实现**：`chat_tables()` 含 **`chat_threads`**、**`chat_messages`**、**`chat_thread_summaries`**、**`outbox_events`**、**`persona_sync_jobs`**；消息/开线程同事务 **`append_outbox_pending`**；**`funnel_stage(system="chat", …)`** 覆盖 thread_open、message_send、assistant_invoke、draft_adopt、persona_job_enqueued、outbox_dispatched；**`consume_chat_outbox_batch`**（维护任务默认）；**`refresh_stale_thread_summaries`**（concat 摘要）；**`assistant/query`** 可选 **OpenAI 或兼容 Chat Completions**（`OPENAI_API_KEY`，可选 `HER_CHAT_ASSISTANT_BASE_URL` / `OPENAI_BASE_URL`）；**`/v1/timeline`** 聚合 **撮合 + 推荐** proxy-intro 案例事件；**`GET /v1/chat/threads/{id}/summary`**；详见 `API_CONTRACT.md` / `SYSTEM_DOC.md` §3.5。
 - 本方案与 **`SYSTEM_DOC.md`** 中的组件划分一致；Kafka 等外部队列、端到端加密、三人调解模式等仍可按 §1.2 / §12 演进。
 - 画像合并与可见性细节以 `local-skills/persona-memory-sync/references/` 为准，与本方案冲突时以 skill 引用文档为实施准绳。
+- 助手评估、角色扮演压测发现、以及下一步产品/提示词/延迟改造，请见 [聊天助手改进方案](chat-assistant-improvement-plan.md)。
 
 ---
 
