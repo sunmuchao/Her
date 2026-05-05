@@ -1136,12 +1136,46 @@ def count_cards_delivered_today(conn, requester_id: int, now: datetime) -> int:
     return int(row["delivered_count"]) if row else 0
 
 
+def recommendation_verified_label(payload: dict[str, Any], profile: dict[str, Any]) -> str | None:
+    label = payload.get("verified_label")
+    if label:
+        return str(label)
+    trust_summary = payload.get("trust_summary") or {}
+    if isinstance(trust_summary, dict) and trust_summary.get("verified_label"):
+        return str(trust_summary["verified_label"])
+    level = str(profile.get("verified_level") or "").strip().lower()
+    labels = {
+        "basic": "基础认证",
+        "photo": "照片认证",
+        "id": "实名认证",
+        "offline": "线下核验",
+    }
+    return labels.get(level)
+
+
+def recommendation_trust_headline(payload: dict[str, Any], profile: dict[str, Any]) -> str | None:
+    trust_summary = payload.get("trust_summary") or {}
+    if isinstance(trust_summary, dict):
+        headline = trust_summary.get("headline")
+        if headline:
+            return str(headline)
+    elif trust_summary:
+        return str(trust_summary)
+
+    verified_label = recommendation_verified_label(payload, profile)
+    if verified_label:
+        return verified_label
+    return None
+
+
 def build_in_app_card(recommendation: dict[str, Any], subscription_title: str) -> dict[str, Any]:
     payload = recommendation.get("latest_payload") or {}
     profile = payload.get("profile") or {}
     matched_on = payload.get("matched_on") or []
     risk_flags = payload.get("risk_flags") or []
     follow_up_questions = payload.get("follow_up_questions") or []
+    trust_headline = recommendation_trust_headline(payload, profile)
+    verified_label = recommendation_verified_label(payload, profile)
 
     title = f"发现新的合适对象：{payload.get('name') or recommendation.get('candidate_name')}"
     subtitle_parts = [
@@ -1152,8 +1186,12 @@ def build_in_app_card(recommendation: dict[str, Any], subscription_title: str) -
     ]
     if profile.get("job"):
         subtitle_parts.append(profile.get("job"))
+    if verified_label:
+        subtitle_parts.append(verified_label)
 
     body_lines = []
+    if trust_headline:
+        body_lines.append("可信度：" + trust_headline)
     if matched_on:
         body_lines.append("匹配点：" + "；".join(matched_on[:3]))
     if risk_flags:

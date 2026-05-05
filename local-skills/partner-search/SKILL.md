@@ -291,6 +291,9 @@ Summarize the top matches in plain language. For each candidate, include:
 
 - `score`
 - `fit_score`, `confidence_score`, `risk_score`
+- `verified_level`, `verified_label`
+- `verification_items` so callers can distinguish platform verification from self-reported fields
+- `trust_summary` for a compact user-facing credibility explanation
 - `scoring` in the text output so the caller can quickly separate "合适" from "资料靠谱"
 - `meta` for compact status / verification / photo count / time context
 - `signals` for a compact snapshot of structured style / rhythm / intent fields when present
