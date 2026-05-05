@@ -83,6 +83,7 @@ class DyadicRoleplayRunTests(unittest.TestCase):
                 "avoid": ["不要继续硬追问"],
                 "topic_directions": ["周末安排"],
                 "easy_question_types": ["低门槛生活问题"],
+                "graceful_exit_plan": ["如果对方还是很冷，就先轻轻收住"],
                 "strategy_tags": ["switch_topic", "ask_easy_question"],
                 "reply_suggestions": ["测试建议"],
                 "profile_hooks_used": ["周末会出门走走"],
@@ -311,6 +312,75 @@ class DyadicRoleplayRunTests(unittest.TestCase):
         self.assertEqual(out["turn_evaluations"][1]["rescue_decision_source"], "heuristic")
         self.assertEqual(out["assistant_metrics"]["heuristic_decision_turns"], 2)
         self.assertEqual(out["assistant_metrics"]["llm_decision_turns"], 0)
+
+    def test_run_survives_message_timeout_with_fallback(self):
+        def llm(messages: list[dict[str, str]]) -> str:
+            sys_c = messages[0]["content"]
+            user_c = messages[-1]["content"]
+            if "对话调度员" in sys_c:
+                return '{"need_rescue":false,"situation":"none","rescue_style":"none","reason":""}'
+            if "请写出下一条" in user_c:
+                raise TimeoutError("message timeout")
+            if "附加任务" in sys_c and "「pa」" in sys_c:
+                return '{"conversation_satisfied":true,"conversation_score":3,"assistant_satisfied":true,"assistant_score":3,"used_assistant":false,"conversation_note":"","assistant_note":""}'
+            if "附加任务" in sys_c:
+                return '{"conversation_satisfied":true,"conversation_score":3,"assistant_satisfied":true,"assistant_score":3,"used_assistant":false,"conversation_note":"","assistant_note":""}'
+            return "{}"
+
+        out = run_dyadic_roleplay(
+            self.conn,
+            case_id="test-dyadic-fallback-message",
+            relation_key="pa|pb",
+            participant_a_id="pa",
+            participant_b_id="pb",
+            brief_a="A",
+            brief_b="B",
+            rounds=1,
+            llm=llm,
+            assistant_mode="none",
+            base_time=datetime(2026, 5, 4, 9, 0, 0),
+            stress_mode="none",
+        )
+        self.assertEqual(out["turn_evaluations"][0]["message_generation_source"], "fallback")
+        self.assertIn("message timeout", out["turn_evaluations"][0]["message_generation_error"])
+        self.assertTrue(out["turn_evaluations"][0]["generated_message"])
+        self.assertEqual(out["assistant_metrics"]["fallback_message_turns"], 1)
+
+    def test_orchestrator_timeout_falls_back_without_aborting(self):
+        calls = {"message": 0}
+
+        def llm(messages: list[dict[str, str]]) -> str:
+            sys_c = messages[0]["content"]
+            user_c = messages[-1]["content"]
+            if "对话调度员" in sys_c:
+                raise TimeoutError("orchestrator timeout")
+            if "请写出下一条" in user_c:
+                calls["message"] += 1
+                if calls["message"] == 1:
+                    return "你好，我在无锡做医生，平时周末会出去走走。"
+                return "你好呀"
+            if "附加任务" in sys_c and "「pa」" in sys_c:
+                return '{"conversation_satisfied":true,"conversation_score":3,"assistant_satisfied":true,"assistant_score":3,"used_assistant":false,"conversation_note":"","assistant_note":""}'
+            if "附加任务" in sys_c:
+                return '{"conversation_satisfied":true,"conversation_score":3,"assistant_satisfied":true,"assistant_score":3,"used_assistant":false,"conversation_note":"","assistant_note":""}'
+            return "{}"
+
+        out = run_dyadic_roleplay(
+            self.conn,
+            case_id="test-dyadic-fallback-orchestrator",
+            relation_key="pa|pb",
+            participant_a_id="pa",
+            participant_b_id="pb",
+            brief_a="A",
+            brief_b="B",
+            rounds=2,
+            llm=llm,
+            assistant_mode="proactive",
+            base_time=datetime(2026, 5, 4, 9, 0, 0),
+            stress_mode="none",
+        )
+        self.assertEqual(out["turn_evaluations"][1]["rescue_decision_source"], "llm_error_fallback")
+        self.assertEqual(out["assistant_metrics"]["llm_error_fallback_turns"], 1)
 
     def test_run_rejects_existing_case_by_default(self):
         llm, _orch = self._mock_llm(rescue_on_first=False)

@@ -131,6 +131,7 @@ class ChatSystemTests(unittest.TestCase):
         self.assertIn("回复建议：", draft["body"])
         self.assertIn("先别继续这样聊：", draft["body"])
         self.assertIn("建议按这个顺序来：", draft["body"])
+        self.assertIn("如果还是接不动：", draft["body"])
 
         alice_view = list_messages(self.conn, th["thread_id"], "alice")
         bob_view = list_messages(self.conn, th["thread_id"], "bob")

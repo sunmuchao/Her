@@ -204,6 +204,11 @@ def _make_llm(*, log: Callable[[str], None] | None = None) -> Callable[[list[dic
         or os.environ.get("HER_ROLEPLAY_ORCHESTRATOR_MODEL")
         or model
     ).strip()
+    message_model = (
+        os.environ.get("HER_ROLEPLAY_MESSAGE_MODEL")
+        or fast_model
+        or model
+    ).strip()
     eval_model = (os.environ.get("HER_ROLEPLAY_EVAL_MODEL") or model).strip()
     base = (
         os.environ.get("HER_ROLEPLAY_BASE_URL")
@@ -225,7 +230,7 @@ def _make_llm(*, log: Callable[[str], None] | None = None) -> Callable[[list[dic
     if log is not None:
         log(
             "LLM backend=remote "
-            f"model_main={model} model_fast={fast_model} model_eval={eval_model} "
+            f"model_main={model} model_fast={fast_model} model_message={message_model} model_eval={eval_model} "
             f"base_url={base or 'default'}"
         )
     client = OpenAI(**kwargs)
@@ -235,13 +240,18 @@ def _make_llm(*, log: Callable[[str], None] | None = None) -> Callable[[list[dic
         selected_model = model
         max_tokens = 400
         temperature = 0.5
+        try:
+            message_max_tokens = int(os.environ.get("HER_ROLEPLAY_MESSAGE_MAX_TOKENS") or "120")
+        except ValueError:
+            message_max_tokens = 120
         if kind == "orchestrator_rescue_decision":
             selected_model = fast_model
-            max_tokens = 220
+            max_tokens = 180
             temperature = 0.1
         elif kind == "persona_next_message":
-            max_tokens = 220
-            temperature = 0.7
+            selected_model = message_model
+            max_tokens = max(60, min(message_max_tokens, 220))
+            temperature = 0.55
         elif kind == "persona_self_evaluation":
             selected_model = eval_model
             max_tokens = 260
