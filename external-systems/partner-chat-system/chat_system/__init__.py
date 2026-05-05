@@ -20,10 +20,14 @@ from .service import (
     post_message,
 )
 from .risk import (
+    build_thread_risk_overview,
     get_risk_case,
     list_member_reports,
+    list_meeting_feedback,
     list_risk_cases,
+    list_risk_signals,
     review_risk_case,
+    submit_meeting_feedback,
     submit_member_report,
 )
 from .summaries import get_thread_summary
@@ -38,6 +42,7 @@ __all__ = [
     "ASSISTANT_AUTHOR_ID",
     "adopt_draft",
     "assistant_query",
+    "build_thread_risk_overview",
     "build_chat_timeline",
     "connect_db",
     "current_time",
@@ -49,11 +54,14 @@ __all__ = [
     "initialize_database",
     "list_messages",
     "list_member_reports",
+    "list_meeting_feedback",
     "list_pending_outbox",
     "list_risk_cases",
+    "list_risk_signals",
     "post_message",
     "reset_all_tables",
     "review_risk_case",
     "run_chat_maintenance",
+    "submit_meeting_feedback",
     "submit_member_report",
 ]

@@ -416,7 +416,7 @@ def detect_behavior_risk_signals(
     recent_30m = [
         row
         for row in recent_rows
-        if _as_text(row.get("created_at")) >= _as_text(now - timedelta(minutes=30))
+        if datetime.fromisoformat(_as_text(row.get("created_at"))) >= now - timedelta(minutes=30)
     ]
     if _distinct_thread_count(recent_30m) >= 3:
         signal_codes.append("high_frequency_outreach")
@@ -1323,6 +1323,7 @@ __all__ = [
     "ACTION_FREEZE",
     "ACTION_LIMIT_CHAT",
     "ACTION_MANUAL_REVIEW",
+    "ACTION_REQUIRE_VERIFICATION",
     "ACTION_WARN",
     "REPORT_SOURCE_SYSTEM",
     "REPORT_SOURCE_USER",
@@ -1335,9 +1336,13 @@ __all__ = [
     "detect_risk_signals",
     "get_active_chat_restriction",
     "get_risk_case",
+    "build_thread_risk_overview",
     "list_member_reports",
+    "list_meeting_feedback",
     "list_risk_cases",
+    "list_risk_signals",
     "maybe_capture_message_risk_signal",
     "review_risk_case",
+    "submit_meeting_feedback",
     "submit_member_report",
 ]
