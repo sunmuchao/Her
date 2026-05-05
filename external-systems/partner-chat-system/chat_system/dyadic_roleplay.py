@@ -519,9 +519,16 @@ def _normalize_rescue_decision(
     decision_source: str,
 ) -> dict[str, Any]:
     raw_need = bool(data.get("need_rescue"))
-    mutual_intent_assessment = _normalize_mutual_intent_assessment(
-        data.get("mutual_intent_assessment")
-    )
+    situation = _normalize_situation(data.get("situation"))
+    raw_assessment = str(data.get("mutual_intent_assessment") or "").strip()
+    if raw_assessment:
+        mutual_intent_assessment = _normalize_mutual_intent_assessment(raw_assessment)
+    elif not raw_need and situation == "none":
+        mutual_intent_assessment = "normal"
+    elif raw_need and str(data.get("rescue_style") or "").strip().lower() in {"reengage", "switch_topic"}:
+        mutual_intent_assessment = "communication_problem"
+    else:
+        mutual_intent_assessment = _normalize_mutual_intent_assessment(raw_assessment)
     interaction_mode = _normalize_interaction_mode(
         data.get("interaction_mode"),
         mutual_intent_assessment=mutual_intent_assessment,
@@ -537,7 +544,7 @@ def _normalize_rescue_decision(
         rescue_style = "none"
     out = {
         "need_rescue": need_rescue,
-        "situation": _normalize_situation(data.get("situation")),
+        "situation": situation,
         "rescue_style": rescue_style,
         "mutual_intent_assessment": mutual_intent_assessment,
         "interaction_mode": interaction_mode,
@@ -753,6 +760,26 @@ def _fast_rescue_decision(messages: list[dict[str, Any]]) -> dict[str, Any] | No
                 "interaction_mode": "none",
                 "rescue_style": "none",
                 "reason": "当前还有正常来回，先不额外介入。",
+            },
+            decision_source="heuristic_clear_continue",
+        )
+    if (
+        _engagement_score(last_body) >= 1
+        and not any(token in last_body for token in _BOUNDARY_HINTS)
+        and (
+            len(dyadic) == 1
+            or _engagement_score(prev_body) >= 1
+            or _is_question_like(prev_body)
+        )
+    ):
+        return _normalize_rescue_decision(
+            {
+                "need_rescue": False,
+                "situation": "none",
+                "mutual_intent_assessment": "normal",
+                "interaction_mode": "none",
+                "rescue_style": "none",
+                "reason": "最近这拍仍然有正常信息交换，先顺着自然聊。",
             },
             decision_source="heuristic_clear_continue",
         )

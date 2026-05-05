@@ -460,7 +460,7 @@ class DyadicRoleplayRunTests(unittest.TestCase):
             if "请写出下一条" in user_c:
                 calls["message"] += 1
                 if calls["message"] == 1:
-                    return "你好，我在无锡做医生，平时周末会出去走走。"
+                    return "工作有点多。"
                 return "你好呀"
             if "附加任务" in sys_c and "「pa」" in sys_c:
                 return '{"conversation_satisfied":true,"conversation_score":3,"assistant_satisfied":true,"assistant_score":3,"used_assistant":false,"conversation_note":"","assistant_note":""}'
