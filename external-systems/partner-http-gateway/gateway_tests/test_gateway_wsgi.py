@@ -5,6 +5,7 @@ import json
 import pathlib
 import sys
 import unittest
+from unittest import mock
 
 
 GATEWAY_ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -96,6 +97,78 @@ class GatewayWsgiTests(unittest.TestCase):
         out = b"".join(self.gw(env, self.start_response))
         data = json.loads(out.decode("utf-8"))
         self.assertIn("error", data)
+
+    def test_search_profiles_route_returns_structured_trust_fields(self) -> None:
+        fake_response = {
+            "has_match": True,
+            "result_count": 1,
+            "results": [
+                {
+                    "id": 1,
+                    "name": "候选人A",
+                    "verified_level": "id",
+                    "verified_label": "实名认证",
+                    "trust_summary": {"headline": "已实名认证；其余关键信息以资料填写为主：职业、结婚意向"},
+                }
+            ],
+        }
+        with mock.patch("gateway.app.partner_search_profiles", return_value=fake_response) as mocked_search:
+            env = _wsgi_env(
+                "POST",
+                "/v1/search/profiles",
+                json.dumps(
+                    {
+                        "source": "mysql://user:pass@127.0.0.1:3306/her?table=profiles",
+                        "criteria": {"verified_level_min": "photo"},
+                    }
+                ).encode("utf-8"),
+            )
+            out = b"".join(self.gw(env, self.start_response))
+
+        self.assertIn("200", self.status)
+        payload = json.loads(out.decode("utf-8"))
+        self.assertEqual(payload["results"][0]["verified_label"], "实名认证")
+        self.assertIn("trust_summary", payload["results"][0])
+        mocked_search.assert_called_once()
+
+    def test_chat_report_and_risk_case_routes(self) -> None:
+        fake_submission = {
+            "report": {"report_id": 11, "report_type": "fraud"},
+            "risk_case": {"risk_case_id": "rsk-1", "status": "open", "recommended_action": "limit_chat"},
+        }
+        with mock.patch.object(self.gw, "_with_chat", return_value=fake_submission) as mocked_chat:
+            env = _wsgi_env(
+                "POST",
+                "/v1/chat/threads/cht-1/reports",
+                json.dumps(
+                    {
+                        "reporter_id": "user-a",
+                        "report_type": "fraud",
+                        "reason_text": "对方开始聊投资和转账",
+                        "message_id": 9,
+                    }
+                ).encode("utf-8"),
+            )
+            out = b"".join(self.gw(env, self.start_response))
+
+        self.assertIn("201", self.status)
+        payload = json.loads(out.decode("utf-8"))
+        self.assertEqual(payload["report"]["report_id"], 11)
+        self.assertEqual(payload["risk_case"]["risk_case_id"], "rsk-1")
+        mocked_chat.assert_called_once()
+
+        with mock.patch.object(
+            self.gw,
+            "_with_chat",
+            return_value=[{"risk_case_id": "rsk-1", "status": "open", "severity": "high"}],
+        ) as mocked_chat:
+            env = _wsgi_env("GET", "/v1/chat/risk-cases", query="status=open")
+            out = b"".join(self.gw(env, self.start_response))
+
+        self.assertIn("200", self.status)
+        payload = json.loads(out.decode("utf-8"))
+        self.assertEqual(payload["risk_cases"][0]["risk_case_id"], "rsk-1")
+        mocked_chat.assert_called_once()
 
 
 if __name__ == "__main__":

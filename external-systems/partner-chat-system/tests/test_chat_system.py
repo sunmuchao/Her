@@ -12,10 +12,15 @@ if str(SYSTEM_ROOT) not in sys.path:
 from chat_system import (  # noqa: E402
     adopt_draft,
     assistant_query,
+    get_risk_case,
     get_or_create_thread,
     get_thread,
+    list_member_reports,
     list_messages,
+    list_risk_cases,
     post_message,
+    review_risk_case,
+    submit_member_report,
 )
 from chat_system.outbox_admin import list_pending_outbox  # noqa: E402
 from chat_system.persona_jobs import list_pending_persona_jobs, process_pending_persona_jobs  # noqa: E402
@@ -260,6 +265,88 @@ class ChatSystemTests(unittest.TestCase):
         run_chat_maintenance(self.conn, persona_limit=0, flush_outbox=False)
         s = get_thread_summary(self.conn, th["thread_id"])
         self.assertIsNotNone(s)
+
+    def test_submit_member_report_creates_risk_case_and_links_reports(self):
+        th = get_or_create_thread(
+            self.conn,
+            case_id="case-risk-report",
+            relation_key="risk-report",
+            participant_a_id="user-a",
+            participant_b_id="user-b",
+        )
+        msg = post_message(self.conn, th["thread_id"], "user-b", "我们可以先聊聊", visibility=VIS_DYADIC)
+        out = submit_member_report(
+            self.conn,
+            th["thread_id"],
+            "user-a",
+            "profile_mismatch",
+            reason_text="资料和聊天里说法对不上",
+            message_id=int(msg["message_id"]),
+            now=datetime(2026, 5, 5, 9, 0, 0),
+        )
+
+        self.assertEqual(out["report"]["report_type"], "profile_mismatch")
+        self.assertEqual(out["report"]["reported_user_id"], "user-b")
+        self.assertEqual(out["risk_case"]["thread_id"], th["thread_id"])
+        self.assertEqual(out["risk_case"]["report_count"], 1)
+        self.assertEqual(out["risk_case"]["recommended_action"], "warn")
+
+        reports = list_member_reports(self.conn, risk_case_id=out["risk_case"]["risk_case_id"])
+        self.assertEqual(len(reports), 1)
+        self.assertEqual(reports[0]["risk_case_id"], out["risk_case"]["risk_case_id"])
+
+    def test_auto_keyword_signal_can_be_reviewed_into_chat_restriction(self):
+        th = get_or_create_thread(
+            self.conn,
+            case_id="case-risk-auto",
+            relation_key="risk-auto",
+            participant_a_id="user-a",
+            participant_b_id="user-b",
+        )
+        risky = post_message(
+            self.conn,
+            th["thread_id"],
+            "user-b",
+            "先加微信，我带你投资，收益稳，转账后马上进群",
+            visibility=VIS_DYADIC,
+            now=datetime(2026, 5, 5, 10, 0, 0),
+        )
+
+        reports = list_member_reports(self.conn, thread_id=th["thread_id"])
+        self.assertEqual(len(reports), 1)
+        self.assertEqual(reports[0]["report_source"], "system_rule")
+        self.assertEqual(reports[0]["message_id"], risky["message_id"])
+        self.assertIn("investment", reports[0]["signal_codes"])
+        self.assertIn("money_transfer", reports[0]["signal_codes"])
+
+        risk_cases = list_risk_cases(self.conn, thread_id=th["thread_id"])
+        self.assertEqual(len(risk_cases), 1)
+        self.assertEqual(risk_cases[0]["recommended_action"], "limit_chat")
+        reviewed = review_risk_case(
+            self.conn,
+            risk_cases[0]["risk_case_id"],
+            "moderator-1",
+            status="action_applied",
+            applied_action="limit_chat",
+            resolution_note="命中投资+转账，先限制继续发言",
+            now=datetime(2026, 5, 5, 10, 5, 0),
+        )
+        self.assertEqual(reviewed["status"], "action_applied")
+        self.assertEqual(reviewed["applied_action"], "limit_chat")
+        fetched = get_risk_case(self.conn, reviewed["risk_case_id"])
+        self.assertIsNotNone(fetched)
+        assert fetched is not None
+        self.assertEqual(fetched["resolver_id"], "moderator-1")
+
+        with self.assertRaisesRegex(ValueError, "restricted by risk action"):
+            post_message(
+                self.conn,
+                th["thread_id"],
+                "user-b",
+                "继续聊一下投资细节",
+                visibility=VIS_DYADIC,
+                now=datetime(2026, 5, 5, 10, 6, 0),
+            )
         assert s is not None
         self.assertIn("hello summary line", s["summary_text"])
 

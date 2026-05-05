@@ -74,10 +74,6 @@ def chat_thread_opened_event(
         trace_id=get_trace_id(),
     )
 
-
-__all__ = ["chat_message_created_event", "chat_thread_opened_event"]
-
-
 def chat_member_report_submitted_event(
     *,
     thread_id: str,
