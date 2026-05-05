@@ -3347,7 +3347,7 @@ def build_trust_summary(profile, verification_items=None):
         badges.append("已实名认证")
     elif verified_rank_value >= 1:
         badges.append("已基础认证")
-    if verified_rank_value >= 4:
+    if verified_rank_value >= 4 and photo_level != "offline_verified":
         badges.append("已线下核验")
     activity_label = activity_score_info(profile)[1]
     if activity_label:
@@ -3361,9 +3361,9 @@ def build_trust_summary(profile, verification_items=None):
 
     if caution_labels:
         headline_parts.append("以下字段存在待复核信号：" + "、".join(unique_ordered(caution_labels)[:3]))
-    elif self_reported_labels:
+    if self_reported_labels:
         headline_parts.append("其余关键信息以资料填写为主：" + "、".join(unique_ordered(self_reported_labels)[:4]))
-    elif missing_labels:
+    elif not caution_labels and missing_labels:
         headline_parts.append("仍有资料待补充：" + "、".join(unique_ordered(missing_labels)[:3]))
 
     caution_items = build_trust_caution_items(profile, verification_items=verification_items)
@@ -3401,6 +3401,8 @@ def format_rejection_reason(reason):
         "active_too_old": "最近活跃时间太久",
         "verified_below_min": "认证等级低于最低要求",
         "verified_level_mismatch": "认证等级不在允许范围",
+        "photo_verification_below_min": "照片核验等级低于最低要求",
+        "photo_verification_level_mismatch": "照片核验等级不在允许范围",
         "age_below_min": "年龄低于下限",
         "age_above_max": "年龄高于上限",
         "height_below_min": "身高低于下限",
@@ -4813,6 +4815,20 @@ QUALITY_ARGUMENT_SPECS = [
     (
         ("--verified-level",),
         {"action": "append", "help": "Exact allowed verification level. Repeat or use comma-separated values."},
+    ),
+    (
+        ("--photo-verification-level-min",),
+        {
+            "choices": ["none", "uploaded", "human_verified", "live_video_verified", "offline_verified"],
+            "help": "Minimum required photo verification level.",
+        },
+    ),
+    (
+        ("--photo-verification-level",),
+        {
+            "action": "append",
+            "help": "Exact allowed photo verification level. Repeat or use comma-separated values.",
+        },
     ),
     (("--photo-count-min",), {"type": int, "help": "Minimum required photo count."}),
     (

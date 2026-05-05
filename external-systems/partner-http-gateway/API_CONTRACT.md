@@ -51,7 +51,7 @@ JSON-RPC：`recommendation.record_recommendation_action` / `record_user_review` 
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| `POST` | `/v1/search/profiles` | Body：`source` 或 `sources`、可选 `criteria`、`self_profile`、`self_id`、`table_name`、`photos_table_name`、`limit`、`photo_preview_count`、`include_source`、`include_text`。响应直接返回 `partner-search` 结构化结果，包含 `verified_level`、`verified_label`、`photo_verification_level`、`photo_verification_label`、`verification_items`、`trust_summary`、`caution_items`、`trust_actions` 等可信度字段。 |
+| `POST` | `/v1/search/profiles` | Body：`source` 或 `sources`、可选 `criteria`、`self_profile`、`self_id`、`table_name`、`photos_table_name`、`limit`、`photo_preview_count`、`include_source`、`include_text`。`criteria` 支持 `verified_level_min`、`photo_verification_level_min`、`photo_verification_level`/`photo_verification_levels` 等可信度筛选项。响应直接返回 `partner-search` 结构化结果，包含 `verified_level`、`verified_label`、`photo_verification_level`、`photo_verification_label`、`verification_items`、`trust_summary`、`caution_items`、`trust_actions` 等可信度字段。 |
 
 **JSON-RPC**：`search.search_profiles`，`params` 与上表一致。
 
