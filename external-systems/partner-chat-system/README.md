@@ -14,7 +14,7 @@ Gateway REST: `/v1/chat/...`, `/v1/timeline`, maintenance `POST /v1/chat/mainten
 - 举报会聚合成 `chat_risk_cases`，运营可通过 `/v1/chat/risk-cases` 查看、审核，并通过 `review` 接口施加 `warn` / `limit_chat` / `freeze`。
 - 当某个 case 被审核为 `limit_chat` 或 `freeze` 后，该用户会被阻止继续在该线程发送 dyadic 消息。
 
-Env: `HER_CHAT_PERSONA_MYSQL_SOURCE` (persona jobs); `OPENAI_API_KEY`, `HER_CHAT_ASSISTANT_MODEL`, optional `HER_CHAT_ASSISTANT_FAST_MODEL`, `HER_CHAT_ASSISTANT_MAX_TOKENS`, `HER_CHAT_ASSISTANT_TIMEOUT_SEC`, optional `HER_CHAT_ASSISTANT_BASE_URL` or `OPENAI_BASE_URL` (DashScope 等兼容端点); `HER_ROLEPLAY_MODEL`, optional `HER_ROLEPLAY_FAST_MODEL`, `HER_ROLEPLAY_EVAL_MODEL`; `HER_SCHED_CHAT_DB`, `HER_SCHED_CHAT_MAINTENANCE_SEC`, `HER_SCHED_CHAT_FLUSH_OUTBOX`, `HER_SCHED_CHAT_OUTBOX_CONSUME`, `HER_CHAT_MAINTENANCE_SKIP_SUMMARY`; **`HER_PROFILE_MYSQL_DSN`**（默认 `mysql://root@127.0.0.1:3307/her`）用于从 **`profiles`** 表加载完整画像扮演用户。
+Env: `HER_CHAT_PERSONA_MYSQL_SOURCE` (persona jobs); `OPENAI_API_KEY`, `HER_CHAT_ASSISTANT_MODEL`, optional `HER_CHAT_ASSISTANT_FAST_MODEL`, `HER_CHAT_ASSISTANT_MAX_TOKENS`, `HER_CHAT_ASSISTANT_TIMEOUT_SEC`, optional `HER_CHAT_ASSISTANT_BASE_URL` or `OPENAI_BASE_URL` (DashScope 等兼容端点); `HER_ROLEPLAY_MODEL`, optional `HER_ROLEPLAY_FAST_MODEL`, `HER_ROLEPLAY_EVAL_MODEL`, `HER_ROLEPLAY_TIMEOUT_SEC`; `HER_SCHED_CHAT_DB`, `HER_SCHED_CHAT_MAINTENANCE_SEC`, `HER_SCHED_CHAT_FLUSH_OUTBOX`, `HER_SCHED_CHAT_OUTBOX_CONSUME`, `HER_CHAT_MAINTENANCE_SKIP_SUMMARY`; **`HER_PROFILE_MYSQL_DSN`**（默认 `mysql://root@127.0.0.1:3307/her`）用于从 **`profiles`** 表加载完整画像扮演用户。
 
 相关文档：
 

@@ -211,7 +211,15 @@ def _make_llm(*, log: Callable[[str], None] | None = None) -> Callable[[list[dic
         or os.environ.get("OPENAI_BASE_URL")
         or ""
     ).strip()
-    kwargs: dict[str, str] = {"api_key": key}
+    try:
+        timeout_sec = float(os.environ.get("HER_ROLEPLAY_TIMEOUT_SEC") or "45")
+    except ValueError:
+        timeout_sec = 45.0
+    kwargs: dict[str, object] = {
+        "api_key": key,
+        "max_retries": 0,
+        "timeout": max(10.0, min(timeout_sec, 120.0)),
+    }
     if base:
         kwargs["base_url"] = base
     if log is not None:
