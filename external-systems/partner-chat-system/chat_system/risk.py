@@ -899,7 +899,12 @@ def submit_member_report(
         reason_text=reason_text,
         report_type=report_type,
     )
-    merged_signal_codes = _unique_ordered(list(signal_codes or []) + derived_signal_codes)
+    prior_cross_thread_reports = _subject_user_report_threads(conn, target_user, now=ts)
+    cross_thread_reports = prior_cross_thread_reports + (1 if report_source == REPORT_SOURCE_USER else 0)
+    extra_signal_codes: list[str] = []
+    if cross_thread_reports >= 3:
+        extra_signal_codes.append("multi_party_reports")
+    merged_signal_codes = _unique_ordered(list(signal_codes or []) + derived_signal_codes + extra_signal_codes)
     merged_severity = severity or _severity_from_signals(merged_signal_codes, report_type)
     recommended_action = _recommended_action_for(merged_severity, 1, merged_signal_codes)
     evidence = {
@@ -907,6 +912,7 @@ def submit_member_report(
         "message_id": int(message_id) if message_id is not None else None,
         "message_preview": _as_text((message or {}).get("body"))[:512],
         "report_source": report_source,
+        "cross_thread_reports_30d": cross_thread_reports,
     }
 
     try:
@@ -1030,6 +1036,21 @@ def submit_member_report(
         source_row_id=None,
         created_at_str=ts.isoformat(sep=" "),
     )
+    for signal_code in merged_signal_codes:
+        _insert_risk_signal(
+            conn,
+            thread_id=thread_id,
+            case_id=thread["case_id"],
+            subject_user_id=target_user,
+            message_id=int(message_id) if message_id is not None else None,
+            report_id=report_id,
+            risk_case_id=risk_case["risk_case_id"],
+            source_type=report_source,
+            signal_code=signal_code,
+            severity=merged_severity,
+            evidence=evidence,
+            created_at=ts,
+        )
     conn.commit()
 
     if merged_severity == SEVERITY_HIGH:
@@ -1065,23 +1086,152 @@ def maybe_capture_message_risk_signal(
     body: str,
     now: datetime | None = None,
 ) -> dict[str, Any] | None:
+    ts = current_time(now)
     signal_codes = detect_risk_signals(message_body=body, reason_text=None, report_type="other")
+    behavior_signal_codes, behavior_evidence = detect_behavior_risk_signals(
+        conn,
+        thread_id=thread_id,
+        author_id=author_id,
+        body=body,
+        now=ts,
+    )
+    signal_codes = _unique_ordered(signal_codes + behavior_signal_codes)
     if not signal_codes:
         return None
     severity = _severity_from_signals(signal_codes, "other")
+    reason = "system_rule:auto_keyword_hit"
+    report_type = "auto_keyword"
+    if behavior_signal_codes and not detect_risk_signals(message_body=body, reason_text=None, report_type="other"):
+        reason = "system_rule:behavior_pattern_hit"
+        report_type = "behavior_pattern"
+    elif behavior_signal_codes:
+        reason = "system_rule:keyword_and_behavior_hit"
     return submit_member_report(
         conn,
         thread_id,
         "system",
-        "auto_keyword",
-        reason_text="system_rule:auto_keyword_hit",
+        report_type,
+        reason_text=reason,
         message_id=message_id,
         reported_user_id=author_id,
         report_source=REPORT_SOURCE_SYSTEM,
         signal_codes=signal_codes,
         severity=severity,
-        now=now,
+        now=ts,
     )
+
+
+def submit_meeting_feedback(
+    conn,
+    thread_id: str,
+    reviewer_id: str,
+    *,
+    counterpart_user_id: str | None = None,
+    photo_match_status: str = "unclear",
+    profile_consistency_status: str = "unclear",
+    income_job_consistency_status: str = "unclear",
+    safety_concern_status: str = "none",
+    willing_video_status: str = "unknown",
+    willing_offline_status: str = "unknown",
+    notes: str | None = None,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    ts = current_time(now)
+    thread = _get_thread(conn, thread_id)
+    if not thread:
+        raise ValueError("thread not found")
+    reviewer_id = _as_text(reviewer_id)
+    if reviewer_id not in {thread["participant_a_id"], thread["participant_b_id"]}:
+        raise ValueError("reviewer is not a participant of this thread")
+    target_user = _as_text(counterpart_user_id) or _other_participant(thread, reviewer_id)
+    if target_user == reviewer_id:
+        raise ValueError("counterpart_user_id cannot be reviewer")
+
+    report_specs: list[tuple[str, str]] = []
+    if _as_text(photo_match_status) in {"mismatch", "very_different", "heavily_edited"}:
+        report_specs.append(("photo_mismatch", "见面后反馈：照片与真人差异较大"))
+    if _as_text(profile_consistency_status) in {"mismatch", "hidden_info"}:
+        report_specs.append(("profile_mismatch", "见面后反馈：资料与真人表达存在明显不一致"))
+    if _as_text(income_job_consistency_status) in {"mismatch", "exaggerated"}:
+        report_specs.append(("income_mismatch", "见面后反馈：收入或职业信息存在明显夸大"))
+    if _as_text(safety_concern_status) in {"money_request", "investment_pitch", "off_platform_pressure"}:
+        report_specs.append(("fraud", "见面后反馈：存在借钱、投资或强导流风险"))
+    if _as_text(willing_video_status) == "refused":
+        report_specs.append(("video_refusal", "见面后反馈：长期拒绝视频或语音核验"))
+
+    generated_reports: list[dict[str, Any]] = []
+    risk_cases_by_id: dict[str, dict[str, Any]] = {}
+    for report_type, reason_text in report_specs:
+        out = submit_member_report(
+            conn,
+            thread_id,
+            reviewer_id,
+            report_type,
+            reason_text=reason_text,
+            reported_user_id=target_user,
+            now=ts,
+        )
+        if out.get("report"):
+            generated_reports.append(out["report"])
+        if out.get("risk_case"):
+            risk_cases_by_id[str(out["risk_case"]["risk_case_id"])] = out["risk_case"]
+
+    conn.execute(
+        """
+        INSERT INTO chat_meeting_feedback (
+          thread_id, case_id, reviewer_id, counterpart_user_id,
+          photo_match_status, profile_consistency_status, income_job_consistency_status,
+          safety_concern_status, willing_video_status, willing_offline_status,
+          notes, derived_report_ids_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            thread_id,
+            thread["case_id"],
+            reviewer_id,
+            target_user,
+            _as_text(photo_match_status) or "unclear",
+            _as_text(profile_consistency_status) or "unclear",
+            _as_text(income_job_consistency_status) or "unclear",
+            _as_text(safety_concern_status) or "none",
+            _as_text(willing_video_status) or "unknown",
+            _as_text(willing_offline_status) or "unknown",
+            notes,
+            json_dumps([int(report["report_id"]) for report in generated_reports]),
+            ts,
+        ),
+    )
+    feedback_id = int(conn.lastrowid)
+    append_outbox_pending(
+        conn,
+        event=chat_meeting_feedback_submitted_event(
+            feedback_id=feedback_id,
+            thread_id=thread_id,
+            case_id=thread["case_id"],
+            reviewer_id=reviewer_id,
+            counterpart_user_id=target_user,
+            derived_report_ids=[int(report["report_id"]) for report in generated_reports],
+            occurred_at=ts,
+        ),
+        source_row_table="chat_meeting_feedback",
+        source_row_id=feedback_id,
+        created_at_str=ts.isoformat(sep=" "),
+    )
+    conn.commit()
+    feedback = _inflate_meeting_feedback(
+        row_to_dict(
+            conn.execute(
+                "SELECT * FROM chat_meeting_feedback WHERE feedback_id = ? LIMIT 1",
+                (feedback_id,),
+            ).fetchone()
+        )
+    )
+    assert feedback is not None
+    return {
+        "feedback": feedback,
+        "generated_reports": generated_reports,
+        "risk_cases": list(risk_cases_by_id.values()),
+    }
 
 
 def review_risk_case(
@@ -1109,8 +1259,13 @@ def review_risk_case(
     }:
         raise ValueError("invalid risk case status")
     applied_action = _as_text(applied_action) or None
-    if status == RISK_STATUS_ACTION_APPLIED and applied_action not in {ACTION_WARN, ACTION_LIMIT_CHAT, ACTION_FREEZE}:
-        raise ValueError("applied_action must be warn, limit_chat, or freeze when status=action_applied")
+    if status == RISK_STATUS_ACTION_APPLIED and applied_action not in {
+        ACTION_WARN,
+        ACTION_REQUIRE_VERIFICATION,
+        ACTION_LIMIT_CHAT,
+        ACTION_FREEZE,
+    }:
+        raise ValueError("applied_action must be warn, require_verification, limit_chat, or freeze when status=action_applied")
 
     resolved_at = ts if status in {RISK_STATUS_DISMISSED, RISK_STATUS_RESOLVED} else None
     conn.execute(
