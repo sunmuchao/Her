@@ -39,6 +39,8 @@ PYTHONPATH=../.. python scripts/run_dyadic_agent_roleplay.py --rounds 4 --assist
 ```
 
 - `--case-id`：省略则每次随机新 `case_id`。  
+- `--resume-existing`：显式允许把新回合追加到同一个 `case_id` 的旧线程；默认会直接报错，避免实验串台。  
+- `--base-time`：模拟消息时间戳起点，默认固定为 `2026-05-04T12:00:00`，也会写回输出 JSON。  
 - 单测：`pytest tests/test_dyadic_roleplay.py`。
 
 导出某次 roleplay 的**完整库内消息**（含双方可见 + 仅自己可见）：

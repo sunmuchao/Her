@@ -1,5 +1,11 @@
 """Partner chat subsystem: threads, messages, assistant side-channel (MVP)."""
 
+from pathlib import Path
+
+from ._path_bootstrap import ensure_her_repo_on_sys_path
+
+ensure_her_repo_on_sys_path(Path(__file__))
+
 from .maintenance import run_chat_maintenance
 from .outbox_admin import list_pending_outbox
 from .service import (

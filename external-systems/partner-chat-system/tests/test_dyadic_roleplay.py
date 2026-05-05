@@ -3,6 +3,7 @@ import pathlib
 import sys
 import unittest
 from datetime import datetime
+from unittest.mock import patch
 
 _ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(_ROOT) not in sys.path:
@@ -74,8 +75,14 @@ class DyadicRoleplayRunTests(unittest.TestCase):
         self.conn = connect_db(DEFAULT_CHAT_TEST_MYSQL_DSN)
         initialize_database(self.conn)
         reset_all_tables(self.conn)
+        self.assistant_patcher = patch(
+            "chat_system.service.generate_assistant_reply",
+            return_value="测试助手草稿",
+        )
+        self.assistant_patcher.start()
 
     def tearDown(self):
+        self.assistant_patcher.stop()
         self.conn.close()
 
     def _mock_llm(self, *, rescue_on_first: bool = False):
@@ -150,6 +157,8 @@ class DyadicRoleplayRunTests(unittest.TestCase):
         self.assertEqual(len(out["proactive_rescue_events"]), 0)
         self.assertGreater(orch["n"], 0)
         self.assertTrue(out["evaluation"]["pa"]["conversation_satisfied"])
+        self.assertFalse(out["thread_reused"])
+        self.assertEqual(out["base_time"], "2026-05-04 09:00:00")
         self.assertEqual(out["stress_mode"], "none")
         self.assertEqual(out["stress_events"], [])
 
@@ -240,6 +249,106 @@ class DyadicRoleplayRunTests(unittest.TestCase):
         self.assertEqual(out["stress_mode"], "rotate")
         self.assertEqual(len(out["stress_events"]), 4)
         self.assertIn("beat_id", out["stress_events"][0])
+
+    def test_run_rejects_existing_case_by_default(self):
+        llm, _orch = self._mock_llm(rescue_on_first=False)
+        run_dyadic_roleplay(
+            self.conn,
+            case_id="test-dyadic-rp-existing",
+            relation_key="pa|pb",
+            participant_a_id="pa",
+            participant_b_id="pb",
+            brief_a="A",
+            brief_b="B",
+            rounds=1,
+            llm=llm,
+            assistant_mode="none",
+            base_time=datetime(2026, 5, 4, 9, 0, 0),
+            stress_mode="none",
+        )
+        with self.assertRaisesRegex(ValueError, "roleplay refuses to append by default"):
+            run_dyadic_roleplay(
+                self.conn,
+                case_id="test-dyadic-rp-existing",
+                relation_key="pa|pb",
+                participant_a_id="pa",
+                participant_b_id="pb",
+                brief_a="A",
+                brief_b="B",
+                rounds=1,
+                llm=llm,
+                assistant_mode="none",
+                base_time=datetime(2026, 5, 4, 9, 0, 0),
+                stress_mode="none",
+            )
+
+    def test_run_can_resume_matching_case_explicitly(self):
+        llm, _orch = self._mock_llm(rescue_on_first=False)
+        out1 = run_dyadic_roleplay(
+            self.conn,
+            case_id="test-dyadic-rp-resume",
+            relation_key="pa|pb",
+            participant_a_id="pa",
+            participant_b_id="pb",
+            brief_a="A",
+            brief_b="B",
+            rounds=1,
+            llm=llm,
+            assistant_mode="none",
+            base_time=datetime(2026, 5, 4, 9, 0, 0),
+            stress_mode="none",
+        )
+        out2 = run_dyadic_roleplay(
+            self.conn,
+            case_id="test-dyadic-rp-resume",
+            relation_key="pa|pb",
+            participant_a_id="pa",
+            participant_b_id="pb",
+            brief_a="A",
+            brief_b="B",
+            rounds=1,
+            llm=llm,
+            assistant_mode="none",
+            base_time=datetime(2026, 5, 4, 9, 0, 0),
+            resume_existing=True,
+            stress_mode="none",
+        )
+        self.assertEqual(out1["thread_id"], out2["thread_id"])
+        self.assertTrue(out2["thread_reused"])
+        self.assertEqual(out2["base_time"], "2026-05-04 09:00:01")
+
+    def test_run_resume_rejects_mismatched_existing_case(self):
+        llm, _orch = self._mock_llm(rescue_on_first=False)
+        run_dyadic_roleplay(
+            self.conn,
+            case_id="test-dyadic-rp-mismatch",
+            relation_key="pa|pb",
+            participant_a_id="pa",
+            participant_b_id="pb",
+            brief_a="A",
+            brief_b="B",
+            rounds=1,
+            llm=llm,
+            assistant_mode="none",
+            base_time=datetime(2026, 5, 4, 9, 0, 0),
+            stress_mode="none",
+        )
+        with self.assertRaisesRegex(ValueError, "does not match the requested roleplay participants"):
+            run_dyadic_roleplay(
+                self.conn,
+                case_id="test-dyadic-rp-mismatch",
+                relation_key="pa|pc",
+                participant_a_id="pa",
+                participant_b_id="pc",
+                brief_a="A",
+                brief_b="C",
+                rounds=1,
+                llm=llm,
+                assistant_mode="none",
+                base_time=datetime(2026, 5, 4, 9, 0, 0),
+                resume_existing=True,
+                stress_mode="none",
+            )
 
 
 if __name__ == "__main__":
