@@ -165,6 +165,51 @@ class PartnerSearchApiTests(unittest.TestCase):
         self.assertEqual(trust_items["income"]["status"], "self_reported")
         self.assertIn("学历、职业、收入", result["trust_summary"]["headline"])
 
+    def test_search_profiles_include_photo_verification_and_caution_actions(self):
+        fake_records = [
+            {
+                "id": 908,
+                "name": "PhotoTrust",
+                "gender": "女",
+                "age": 31,
+                "city": "上海",
+                "education": "本科",
+                "education_verification_status": "verified",
+                "job": "行政助理",
+                "job_verification_status": "needs_review",
+                "income_range": "80-100万/年",
+                "income_verification_status": "self_reported",
+                "profile_review_status": "needs_review",
+                "job_change_count_30d": 2,
+                "photo_count": 4,
+                "photo_verification_level": "live_video_verified",
+                "profile_status": "active",
+                "verified_level": "id",
+                "combined_text": "认真恋爱",
+                "last_active_at": "2099-01-01 00:00:00",
+                "source_file": "mysql://root@127.0.0.1:3307/her?table=profiles#profiles",
+            }
+        ]
+
+        with mock.patch.object(engine, "load_source", return_value=fake_records), mock.patch.object(
+            engine, "attach_photo_previews"
+        ):
+            response = search_profiles(
+                source="mysql://user:pass@127.0.0.1:3306/her?table=profiles",
+                criteria={"gender": "女", "cities": ["上海"]},
+            )
+
+        result = response["results"][0]
+        trust_items = {item["key"]: item for item in result["verification_items"]}
+        self.assertEqual(result["photo_verification_level"], "live_video_verified")
+        self.assertEqual(result["photo_verification_label"], "活体自拍视频认证")
+        self.assertEqual(trust_items["photo"]["status"], "verified")
+        self.assertEqual(trust_items["education"]["status"], "verified")
+        self.assertEqual(trust_items["job"]["status"], "needs_review")
+        self.assertIn("待复核", result["trust_summary"]["headline"])
+        self.assertGreaterEqual(len(result["caution_items"]), 1)
+        self.assertGreaterEqual(len(result["trust_actions"]), 1)
+
     def test_load_self_profile_uses_public_api_boundary_and_returns_json_safe_profile(self):
         with mock.patch.object(
             engine,

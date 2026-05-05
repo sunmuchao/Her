@@ -170,6 +170,63 @@ class GatewayWsgiTests(unittest.TestCase):
         self.assertEqual(payload["risk_cases"][0]["risk_case_id"], "rsk-1")
         mocked_chat.assert_called_once()
 
+    def test_chat_meeting_feedback_risk_signals_and_risk_overview_routes(self) -> None:
+        fake_feedback = {
+            "feedback": {"feedback_id": 31, "counterpart_user_id": "user-b"},
+            "generated_reports": [{"report_id": 41, "report_type": "photo_mismatch"}],
+            "risk_cases": [{"risk_case_id": "rsk-2", "recommended_action": "require_verification"}],
+        }
+        with mock.patch.object(self.gw, "_with_chat", return_value=fake_feedback) as mocked_chat:
+            env = _wsgi_env(
+                "POST",
+                "/v1/chat/threads/cht-2/meeting-feedback",
+                json.dumps(
+                    {
+                        "reviewer_id": "user-a",
+                        "photo_match_status": "mismatch",
+                        "profile_consistency_status": "unclear",
+                    }
+                ).encode("utf-8"),
+            )
+            out = b"".join(self.gw(env, self.start_response))
+
+        self.assertIn("201", self.status)
+        payload = json.loads(out.decode("utf-8"))
+        self.assertEqual(payload["feedback"]["feedback_id"], 31)
+        self.assertEqual(payload["generated_reports"][0]["report_type"], "photo_mismatch")
+        mocked_chat.assert_called_once()
+
+        with mock.patch.object(
+            self.gw,
+            "_with_chat",
+            return_value=[{"signal_id": 7, "signal_code": "repeated_opening"}],
+        ) as mocked_chat:
+            env = _wsgi_env("GET", "/v1/chat/risk-signals", query="subject_user_id=user-b")
+            out = b"".join(self.gw(env, self.start_response))
+
+        self.assertIn("200", self.status)
+        payload = json.loads(out.decode("utf-8"))
+        self.assertEqual(payload["risk_signals"][0]["signal_code"], "repeated_opening")
+        mocked_chat.assert_called_once()
+
+        with mock.patch.object(
+            self.gw,
+            "_with_chat",
+            return_value={
+                "thread_id": "cht-2",
+                "counterpart_user_id": "user-b",
+                "caution_messages": ["对方存在资料一致性风险，建议先确认照片、职业和收入信息。"],
+            },
+        ) as mocked_chat:
+            env = _wsgi_env("GET", "/v1/chat/threads/cht-2/risk-overview", query="requester_id=user-a")
+            out = b"".join(self.gw(env, self.start_response))
+
+        self.assertIn("200", self.status)
+        payload = json.loads(out.decode("utf-8"))
+        self.assertEqual(payload["risk_overview"]["counterpart_user_id"], "user-b")
+        self.assertIn("资料一致性风险", payload["risk_overview"]["caution_messages"][0])
+        mocked_chat.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()
