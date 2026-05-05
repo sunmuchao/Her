@@ -735,6 +735,63 @@ def chat_tables() -> tuple[TableDef, ...]:
                 ForeignKeyDef(("thread_id",), "chat_threads", ("thread_id",)),
             ),
         ),
+        TableDef(
+            name="chat_risk_signals",
+            columns=(
+                ColumnDef("signal_id", "BIGINT", nullable=False, auto_increment=True),
+                ColumnDef("thread_id", "VARCHAR(64)", nullable=False),
+                ColumnDef("case_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("subject_user_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("message_id", "BIGINT", nullable=True),
+                ColumnDef("report_id", "BIGINT", nullable=True),
+                ColumnDef("risk_case_id", "VARCHAR(64)", nullable=True),
+                ColumnDef("source_type", "VARCHAR(32)", nullable=False),
+                ColumnDef("signal_code", "VARCHAR(64)", nullable=False),
+                ColumnDef("severity", "VARCHAR(16)", nullable=False),
+                ColumnDef("evidence_json", "LONGTEXT", nullable=False),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("signal_id",),
+            indexes=(
+                IndexDef(("subject_user_id", "created_at"), "idx_chat_risk_signals_subject_time"),
+                IndexDef(("thread_id", "created_at"), "idx_chat_risk_signals_thread_time"),
+                IndexDef(("signal_code", "created_at"), "idx_chat_risk_signals_code_time"),
+                IndexDef(("risk_case_id",), "idx_chat_risk_signals_risk_case"),
+            ),
+            foreign_keys=(
+                ForeignKeyDef(("thread_id",), "chat_threads", ("thread_id",)),
+                ForeignKeyDef(("message_id",), "chat_messages", ("message_id",)),
+                ForeignKeyDef(("report_id",), "chat_member_reports", ("report_id",)),
+            ),
+        ),
+        TableDef(
+            name="chat_meeting_feedback",
+            columns=(
+                ColumnDef("feedback_id", "BIGINT", nullable=False, auto_increment=True),
+                ColumnDef("thread_id", "VARCHAR(64)", nullable=False),
+                ColumnDef("case_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("reviewer_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("counterpart_user_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("photo_match_status", "VARCHAR(32)", nullable=False),
+                ColumnDef("profile_consistency_status", "VARCHAR(32)", nullable=False),
+                ColumnDef("income_job_consistency_status", "VARCHAR(32)", nullable=False),
+                ColumnDef("safety_concern_status", "VARCHAR(32)", nullable=False),
+                ColumnDef("willing_video_status", "VARCHAR(32)", nullable=False),
+                ColumnDef("willing_offline_status", "VARCHAR(32)", nullable=False),
+                ColumnDef("notes", "LONGTEXT", nullable=True),
+                ColumnDef("derived_report_ids_json", "LONGTEXT", nullable=False),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("feedback_id",),
+            indexes=(
+                IndexDef(("thread_id", "created_at"), "idx_chat_meeting_feedback_thread_time"),
+                IndexDef(("counterpart_user_id", "created_at"), "idx_chat_meeting_feedback_counterpart_time"),
+                IndexDef(("reviewer_id", "created_at"), "idx_chat_meeting_feedback_reviewer_time"),
+            ),
+            foreign_keys=(
+                ForeignKeyDef(("thread_id",), "chat_threads", ("thread_id",)),
+            ),
+        ),
     )
 
 

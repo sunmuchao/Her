@@ -178,10 +178,77 @@ def chat_risk_case_reviewed_event(
     )
 
 
+def chat_risk_signal_detected_event(
+    *,
+    signal_id: int,
+    thread_id: str,
+    case_id: str,
+    subject_user_id: str,
+    signal_code: str,
+    severity: str,
+    source_type: str,
+    occurred_at: datetime,
+) -> MatchEvent:
+    return MatchEvent(
+        event_id=f"evt-{uuid.uuid4().hex[:16]}",
+        event_type="risk.signal.detected",
+        aggregate_type="risk_signal",
+        aggregate_id=str(signal_id),
+        actor_type="system",
+        actor_id="chat_system",
+        source_service="chat_system",
+        correlation_id=format_correlation_id(get_trace_id(), entity_id_case(case_id), str(signal_id)),
+        occurred_at=occurred_at,
+        payload={
+            "signal_id": int(signal_id),
+            "thread_id": thread_id,
+            "case_id": case_id,
+            "subject_user_id": subject_user_id,
+            "signal_code": signal_code,
+            "severity": severity,
+            "source_type": source_type,
+        },
+        trace_id=get_trace_id(),
+    )
+
+
+def chat_meeting_feedback_submitted_event(
+    *,
+    feedback_id: int,
+    thread_id: str,
+    case_id: str,
+    reviewer_id: str,
+    counterpart_user_id: str,
+    derived_report_ids: list[int],
+    occurred_at: datetime,
+) -> MatchEvent:
+    return MatchEvent(
+        event_id=f"evt-{uuid.uuid4().hex[:16]}",
+        event_type="member.meeting_feedback.submitted",
+        aggregate_type="chat_thread",
+        aggregate_id=thread_id,
+        actor_type="user",
+        actor_id=reviewer_id,
+        source_service="chat_system",
+        correlation_id=correlation_member_feedback(str(feedback_id), trace_id=get_trace_id()),
+        occurred_at=occurred_at,
+        payload={
+            "feedback_id": int(feedback_id),
+            "thread_id": thread_id,
+            "case_id": case_id,
+            "counterpart_user_id": counterpart_user_id,
+            "derived_report_ids": [int(item) for item in derived_report_ids],
+        },
+        trace_id=get_trace_id(),
+    )
+
+
 __all__ = [
     "chat_member_report_submitted_event",
+    "chat_meeting_feedback_submitted_event",
     "chat_message_created_event",
     "chat_risk_case_event",
     "chat_risk_case_reviewed_event",
+    "chat_risk_signal_detected_event",
     "chat_thread_opened_event",
 ]
