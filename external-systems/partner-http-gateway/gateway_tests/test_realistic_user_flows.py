@@ -58,9 +58,11 @@ class GatewayRealisticUserFlowTests(unittest.TestCase):
         conn = cls._search_conn()
         try:
             with conn.cursor() as cursor:
+                cursor.execute("DROP TABLE IF EXISTS `profile_photos`")
+                cursor.execute("DROP TABLE IF EXISTS `profiles`")
                 cursor.execute(
                     """
-                    CREATE TABLE IF NOT EXISTS `profiles` (
+                    CREATE TABLE `profiles` (
                       `id` BIGINT PRIMARY KEY,
                       `name` VARCHAR(255),
                       `gender` VARCHAR(32),
@@ -74,6 +76,12 @@ class GatewayRealisticUserFlowTests(unittest.TestCase):
                       `relationship_goal` VARCHAR(64),
                       `profile_status` VARCHAR(32),
                       `verified_level` VARCHAR(32),
+                      `photo_verification_level` VARCHAR(32),
+                      `education_verification_status` VARCHAR(32),
+                      `job_verification_status` VARCHAR(32),
+                      `income_verification_status` VARCHAR(32),
+                      `profile_review_status` VARCHAR(32),
+                      `job_change_count_30d` INT,
                       `photo_count` INT,
                       `life_routine` VARCHAR(64),
                       `communication_style` VARCHAR(64),
@@ -85,7 +93,7 @@ class GatewayRealisticUserFlowTests(unittest.TestCase):
                 )
                 cursor.execute(
                     """
-                    CREATE TABLE IF NOT EXISTS `profile_photos` (
+                    CREATE TABLE `profile_photos` (
                       `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
                       `profile_id` BIGINT NOT NULL,
                       `photo_url` VARCHAR(512) NOT NULL,
@@ -149,13 +157,19 @@ class GatewayRealisticUserFlowTests(unittest.TestCase):
                       `relationship_goal`,
                       `profile_status`,
                       `verified_level`,
+                      `photo_verification_level`,
+                      `education_verification_status`,
+                      `job_verification_status`,
+                      `income_verification_status`,
+                      `profile_review_status`,
+                      `job_change_count_30d`,
                       `photo_count`,
                       `life_routine`,
                       `communication_style`,
                       `values`,
                       `notes`,
                       `last_active_at`
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     [
                         (
@@ -172,6 +186,12 @@ class GatewayRealisticUserFlowTests(unittest.TestCase):
                             "结婚导向",
                             "active",
                             "offline",
+                            "offline_verified",
+                            "verified",
+                            "verified",
+                            "verified",
+                            "approved",
+                            0,
                             5,
                             "生活规律",
                             "主动沟通",
@@ -193,6 +213,12 @@ class GatewayRealisticUserFlowTests(unittest.TestCase):
                             "认真恋爱",
                             "active",
                             "basic",
+                            "uploaded",
+                            "self_reported",
+                            "needs_review",
+                            "self_reported",
+                            "needs_review",
+                            2,
                             8,
                             "生活规律",
                             "主动沟通",
@@ -274,17 +300,24 @@ class GatewayRealisticUserFlowTests(unittest.TestCase):
         self.assertGreater(serious["score"], packaged["score"])
         self.assertEqual(serious["verified_level"], "offline")
         self.assertEqual(serious["verified_label"], "线下核验")
+        self.assertEqual(serious["photo_verification_level"], "offline_verified")
+        self.assertEqual(serious["photo_verification_label"], "线下核验照片")
         self.assertEqual(serious_items["offline_check"]["status"], "verified")
         self.assertEqual(serious_items["photo"]["status"], "verified")
         self.assertEqual(len(serious["photo_preview"]), 2)
         self.assertIn("已线下核验", serious["trust_summary"]["headline"])
+        self.assertEqual(serious["caution_items"], [])
 
         self.assertEqual(packaged["verified_level"], "basic")
         self.assertEqual(packaged["verified_label"], "基础认证")
+        self.assertEqual(packaged["photo_verification_level"], "uploaded")
         self.assertEqual(packaged_items["identity"]["status"], "verified")
         self.assertEqual(packaged_items["photo"]["status"], "self_reported")
+        self.assertEqual(packaged_items["job"]["status"], "needs_review")
         self.assertIn("资料填写为主", packaged["trust_summary"]["headline"])
         self.assertNotIn("已线下核验", packaged["trust_summary"]["headline"])
+        self.assertGreaterEqual(len(packaged["caution_items"]), 1)
+        self.assertGreaterEqual(len(packaged["trust_actions"]), 1)
 
         status, payload = self._call(
             "POST",
@@ -348,8 +381,9 @@ class GatewayRealisticUserFlowTests(unittest.TestCase):
         self.assertIn("可信度：", serious_card["body"])
         self.assertIn("已线下核验", serious_card["body"])
 
-        self.assertIn("基础认证", packaged_card["subtitle"])
+        self.assertIn("普通上传照片", packaged_card["subtitle"])
         self.assertIn("可信度：", packaged_card["body"])
+        self.assertIn("谨慎点：", packaged_card["body"])
         self.assertIn("资料填写为主", packaged_card["body"])
         self.assertNotIn("已线下核验", packaged_card["body"])
 
@@ -419,6 +453,25 @@ class GatewayRealisticUserFlowTests(unittest.TestCase):
         self.assertEqual(payload["report"]["report_source"], "user_report")
         self.assertEqual(payload["risk_case"]["report_count"], 2)
         self.assertEqual(payload["risk_case"]["recommended_action"], "limit_chat")
+
+        status, payload = self._call(
+            "GET",
+            "/v1/chat/risk-signals",
+            query=f"thread_id={thread_id}",
+        )
+        self.assertTrue(status.startswith("200"), status)
+        signal_codes = {item["signal_code"] for item in payload["risk_signals"]}
+        self.assertIn("investment", signal_codes)
+        self.assertIn("money_transfer", signal_codes)
+
+        status, payload = self._call(
+            "GET",
+            f"/v1/chat/threads/{thread_id}/risk-overview",
+            query="requester_id=victim-1",
+        )
+        self.assertTrue(status.startswith("200"), status)
+        self.assertEqual(payload["risk_overview"]["counterpart_user_id"], "suspect-1")
+        self.assertIn("请勿转账", "".join(payload["risk_overview"]["caution_messages"]))
 
         status, payload = self._call(
             "GET",

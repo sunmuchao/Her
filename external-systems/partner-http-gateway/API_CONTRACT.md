@@ -51,7 +51,7 @@ JSON-RPC：`recommendation.record_recommendation_action` / `record_user_review` 
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| `POST` | `/v1/search/profiles` | Body：`source` 或 `sources`、可选 `criteria`、`self_profile`、`self_id`、`table_name`、`photos_table_name`、`limit`、`photo_preview_count`、`include_source`、`include_text`。响应直接返回 `partner-search` 结构化结果，包含 `verified_level`、`verified_label`、`verification_items`、`trust_summary` 等可信度字段。 |
+| `POST` | `/v1/search/profiles` | Body：`source` 或 `sources`、可选 `criteria`、`self_profile`、`self_id`、`table_name`、`photos_table_name`、`limit`、`photo_preview_count`、`include_source`、`include_text`。响应直接返回 `partner-search` 结构化结果，包含 `verified_level`、`verified_label`、`photo_verification_level`、`photo_verification_label`、`verification_items`、`trust_summary`、`caution_items`、`trust_actions` 等可信度字段。 |
 
 **JSON-RPC**：`search.search_profiles`，`params` 与上表一致。
 
@@ -68,12 +68,16 @@ JSON-RPC：`recommendation.record_recommendation_action` / `record_user_review` 
 | `POST` | `/v1/chat/threads/{thread_id}/assistant/query` | Body：`user_id`、`query_text`、可选 `now`。侧信道写入用户问题与助手问题诊断/回复建议。 |
 | `POST` | `/v1/chat/threads/{thread_id}/messages/adopt-draft` | Body：`draft_message_id`、`adopter_user_id`、必填 `body_override`、可选 `now`；幂等键同上。助手侧信道内容不能原样直发。 |
 | `POST` | `/v1/chat/threads/{thread_id}/reports` | Body：`reporter_id`、`report_type`、可选 `reason_text`、`message_id`、`reported_user_id`、`now`。用户举报入口；系统也会对聊天消息自动命中第一版反诈关键词规则并生成 `system_rule` 举报。 |
+| `POST` | `/v1/chat/threads/{thread_id}/meeting-feedback` | Body：`reviewer_id`、可选 `counterpart_user_id`、`photo_match_status`、`profile_consistency_status`、`income_job_consistency_status`、`safety_concern_status`、`willing_video_status`、`willing_offline_status`、`notes`、`now`。见面后结构化回流；会自动生成 `photo_mismatch`、`income_mismatch`、`fraud` 等风险举报。 |
 | `GET` | `/v1/chat/reports` | Query：可选 `thread_id`、`risk_case_id`、`reported_user_id`、`limit`。运营 / 审核查看举报明细。 |
+| `GET` | `/v1/chat/meeting-feedback` | Query：可选 `thread_id`、`counterpart_user_id`、`reviewer_id`、`limit`。查看见面后结构化反馈记录。 |
 | `GET` | `/v1/chat/risk-cases` | Query：可选 `status` / `statuses`、`subject_user_id`、`thread_id`、`limit`。返回最小审核后台可用的风险 case 列表。 |
+| `GET` | `/v1/chat/risk-signals` | Query：可选 `thread_id`、`subject_user_id`、`signal_code`、`limit`。查看行为型 / 举报型风控信号明细（如重复开场、高频私聊、导流站外等）。 |
 | `GET` | `/v1/chat/risk-cases/{risk_case_id}` | 返回单个风险 case 及其关联举报。 |
-| `POST` | `/v1/chat/risk-cases/{risk_case_id}/review` | Body：`resolver_id`、`status`、可选 `applied_action`（`warn` / `limit_chat` / `freeze`）、`resolution_note`、`now`。当 `status=action_applied` 时必须给 `applied_action`；`limit_chat` / `freeze` 会阻止该用户继续在该线程发送 dyadic 消息。 |
+| `POST` | `/v1/chat/risk-cases/{risk_case_id}/review` | Body：`resolver_id`、`status`、可选 `applied_action`（`warn` / `require_verification` / `limit_chat` / `freeze`）、`resolution_note`、`now`。当 `status=action_applied` 时必须给 `applied_action`；`limit_chat` / `freeze` 会阻止该用户继续在该线程发送 dyadic 消息。 |
+| `GET` | `/v1/chat/threads/{thread_id}/risk-overview` | Query：`requester_id`（参与者）。返回对方当前线程内的风险概览、命中的 signal codes 与谨慎提示文案，供聊天页展示“不要转账 / 不要离开平台沟通”类提醒。 |
 
-**JSON-RPC**：`chat.get_thread`、`chat.get_or_create_thread`、`chat.list_messages`、`chat.post_message`、`chat.assistant_query`、`chat.adopt_draft`、`chat.submit_member_report`、`chat.list_member_reports`、`chat.list_risk_cases`、`chat.get_risk_case`、`chat.review_risk_case`（`params` 与上表字段一致；`chat.post_message` 可含 `client_idempotency_key`）。
+**JSON-RPC**：`chat.get_thread`、`chat.get_or_create_thread`、`chat.list_messages`、`chat.post_message`、`chat.assistant_query`、`chat.adopt_draft`、`chat.submit_member_report`、`chat.submit_meeting_feedback`、`chat.list_member_reports`、`chat.list_meeting_feedback`、`chat.list_risk_cases`、`chat.list_risk_signals`、`chat.get_risk_case`、`chat.review_risk_case`、`chat.get_thread_risk_overview`（`params` 与上表字段一致；`chat.post_message` 可含 `client_idempotency_key`）。
 
 **维护与投递（运营 / worker）**
 

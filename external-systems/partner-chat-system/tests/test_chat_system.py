@@ -12,14 +12,18 @@ if str(SYSTEM_ROOT) not in sys.path:
 from chat_system import (  # noqa: E402
     adopt_draft,
     assistant_query,
+    build_thread_risk_overview,
     get_risk_case,
     get_or_create_thread,
     get_thread,
     list_member_reports,
+    list_meeting_feedback,
     list_messages,
     list_risk_cases,
+    list_risk_signals,
     post_message,
     review_risk_case,
+    submit_meeting_feedback,
     submit_member_report,
 )
 from chat_system.outbox_admin import list_pending_outbox  # noqa: E402
@@ -351,6 +355,94 @@ class ChatSystemTests(unittest.TestCase):
                 visibility=VIS_DYADIC,
                 now=datetime(2026, 5, 5, 10, 6, 0),
             )
+
+    def test_behavior_signal_records_repeated_opening_and_high_frequency_outreach(self):
+        thread_ids = []
+        for idx in range(3):
+            th = get_or_create_thread(
+                self.conn,
+                case_id=f"case-behavior-{idx}",
+                relation_key=f"risk-behavior-{idx}",
+                participant_a_id=f"user-{idx}",
+                participant_b_id="spammer",
+            )
+            thread_ids.append(th["thread_id"])
+            post_message(
+                self.conn,
+                th["thread_id"],
+                "spammer",
+                "你好呀，我们加微信聊更方便",
+                visibility=VIS_DYADIC,
+                now=datetime(2026, 5, 5, 11, idx * 5, 0),
+            )
+
+        reports = list_member_reports(self.conn, thread_id=thread_ids[-1])
+        self.assertEqual(len(reports), 1)
+        self.assertEqual(reports[0]["report_source"], "system_rule")
+        self.assertIn("off_platform", reports[0]["signal_codes"])
+        self.assertIn("repeated_opening", reports[0]["signal_codes"])
+        self.assertIn("high_frequency_outreach", reports[0]["signal_codes"])
+
+        signals = list_risk_signals(self.conn, subject_user_id="spammer")
+        signal_codes = [item["signal_code"] for item in signals]
+        self.assertIn("repeated_opening", signal_codes)
+        self.assertIn("high_frequency_outreach", signal_codes)
+
+    def test_income_mismatch_can_recommend_require_verification(self):
+        th = get_or_create_thread(
+            self.conn,
+            case_id="case-income-review",
+            relation_key="risk-income-review",
+            participant_a_id="user-a",
+            participant_b_id="user-b",
+        )
+        out = submit_member_report(
+            self.conn,
+            th["thread_id"],
+            "user-a",
+            "income_mismatch",
+            reason_text="收入说法和实际情况明显对不上",
+            now=datetime(2026, 5, 5, 12, 0, 0),
+        )
+        self.assertEqual(out["risk_case"]["recommended_action"], "require_verification")
+        reviewed = review_risk_case(
+            self.conn,
+            out["risk_case"]["risk_case_id"],
+            "moderator-2",
+            status="action_applied",
+            applied_action="require_verification",
+            resolution_note="要求补充收入和职业证明",
+            now=datetime(2026, 5, 5, 12, 5, 0),
+        )
+        self.assertEqual(reviewed["applied_action"], "require_verification")
+
+    def test_meeting_feedback_can_generate_reports_and_thread_risk_overview(self):
+        th = get_or_create_thread(
+            self.conn,
+            case_id="case-meeting-feedback",
+            relation_key="risk-meeting-feedback",
+            participant_a_id="reviewer",
+            participant_b_id="candidate",
+        )
+        out = submit_meeting_feedback(
+            self.conn,
+            th["thread_id"],
+            "reviewer",
+            photo_match_status="mismatch",
+            profile_consistency_status="mismatch",
+            notes="真人和照片差异比较大，职业描述也有明显出入",
+            now=datetime(2026, 5, 5, 13, 0, 0),
+        )
+        self.assertEqual(out["feedback"]["counterpart_user_id"], "candidate")
+        self.assertEqual(len(out["generated_reports"]), 2)
+        report_types = {item["report_type"] for item in out["generated_reports"]}
+        self.assertEqual(report_types, {"photo_mismatch", "profile_mismatch"})
+
+        feedback_rows = list_meeting_feedback(self.conn, thread_id=th["thread_id"])
+        self.assertEqual(len(feedback_rows), 1)
+        overview = build_thread_risk_overview(self.conn, th["thread_id"], "reviewer")
+        self.assertEqual(overview["counterpart_user_id"], "candidate")
+        self.assertIn("资料一致性风险", "".join(overview["caution_messages"]))
 
 
 if __name__ == "__main__":
