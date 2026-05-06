@@ -17,6 +17,9 @@ from .assistant_contract import (
     FOLLOW_LEVEL_STRONG,
     INTERACTION_MODES,
     MUTUAL_INTENT_ASSESSMENTS,
+    ROLEPLAY_TURN_EVALUATION_FIELDS,
+    SHARED_TURN_EVALUATION_FIELDS,
+    TURN_EVALUATION_SCHEMA_VERSION,
     format_choice_values,
     is_rescue_interaction_mode,
     normalize_interaction_mode as _normalize_contract_interaction_mode,
@@ -916,6 +919,144 @@ def _assistant_recovery_assessment(current_turn: dict[str, Any], next_turn: dict
     return {"label": label, "score": score, "signals": signals}
 
 
+def _assistant_mode_compliance(
+    guidance: dict[str, Any] | None,
+    *,
+    assistant_invoked: bool,
+) -> dict[str, Any]:
+    if not assistant_invoked or not guidance:
+        return {"label": "not_applicable", "score": 0, "signals": []}
+    mode = str(guidance.get("interaction_mode") or "none")
+    signals: list[str] = []
+    drifts: list[str] = []
+    if mode == "repair":
+        if guidance.get("rescue_flow"):
+            signals.append("has_repair_flow")
+        else:
+            drifts.append("missing_repair_flow")
+        if guidance.get("topic_directions") or guidance.get("easy_question_types"):
+            signals.append("has_repair_next_step")
+        else:
+            drifts.append("missing_repair_next_step")
+    elif mode == "probe_lightly":
+        if guidance.get("why_not_to_push"):
+            signals.append("has_probe_caution")
+        else:
+            drifts.append("missing_probe_caution")
+        if guidance.get("low_pressure_options"):
+            signals.append("has_low_pressure_options")
+        else:
+            drifts.append("missing_low_pressure_options")
+    elif mode == "hold":
+        if guidance.get("why_not_to_push"):
+            signals.append("has_hold_rationale")
+        else:
+            drifts.append("missing_hold_rationale")
+        if guidance.get("avoid") or guidance.get("graceful_exit_plan"):
+            signals.append("has_hold_stop_signal")
+        else:
+            drifts.append("missing_hold_stop_signal")
+    else:
+        drifts.append("assistant_should_not_have_been_invoked_for_none_mode")
+    if drifts:
+        return {"label": "drifted", "score": 0, "signals": drifts + signals}
+    return {"label": "compliant", "score": 1, "signals": signals}
+
+
+def _predicted_mutual_intent_assessment(record: dict[str, Any]) -> str:
+    guidance = record.get("assistant_guidance") or {}
+    decision = record.get("rescue_decision") or {}
+    return str(
+        guidance.get("mutual_intent_assessment")
+        or decision.get("mutual_intent_assessment")
+        or "normal"
+    )
+
+
+def _predicted_interaction_mode(record: dict[str, Any]) -> str:
+    guidance = record.get("assistant_guidance") or {}
+    decision = record.get("rescue_decision") or {}
+    return str(guidance.get("interaction_mode") or decision.get("interaction_mode") or "none")
+
+
+def _graceful_exit_score(record: dict[str, Any]) -> int | None:
+    mode = _predicted_interaction_mode(record)
+    if mode != "hold":
+        return None
+    message = str(record.get("generated_message") or "")
+    score = 0
+    if _is_graceful_exit_like(message):
+        score += 2
+    elif not any(token in message for token in _BOUNDARY_HINTS):
+        score += 1
+    if _is_low_energy_like(message) and not _is_graceful_exit_like(message):
+        score = max(0, score - 1)
+    return score
+
+
+def _shared_turn_evaluation(record: dict[str, Any]) -> dict[str, Any]:
+    gold = record.get("gold_rescue") or {}
+    guidance = record.get("assistant_guidance") or {}
+    follow = record.get("assistant_follow_assessment") or {}
+    recovery = record.get("assistant_recovery_assessment") or {}
+    compliance = record.get("assistant_mode_compliance_details") or {}
+    follow_level = follow.get("level")
+    if follow_level == FOLLOW_LEVEL_NOT_APPLICABLE:
+        follow_level = None
+    return {
+        "turn_index": int(record.get("turn") or 0),
+        "speaker": str(record.get("speaker") or ""),
+        "stress_beat_id": str(((record.get("stress_beat") or {}).get("beat_id")) or ""),
+        "stress_category": str(((record.get("stress_beat") or {}).get("category")) or ""),
+        "mutual_intent_assessment_gold": str(
+            gold.get("expected_mutual_intent_assessment") or "normal"
+        ),
+        "mutual_intent_assessment_pred": _predicted_mutual_intent_assessment(record),
+        "interaction_mode_gold": str(gold.get("expected_interaction_mode") or "none"),
+        "interaction_mode_pred": _predicted_interaction_mode(record),
+        "assistant_mode_compliance": str(compliance.get("label") or "not_applicable"),
+        "need_rescue_gold": bool(gold.get("need_rescue")),
+        "need_rescue_pred": bool(
+            ((record.get("rescue_decision") or {}).get("need_rescue"))
+            if record.get("rescue_decision") is not None
+            else record.get("assistant_invoked")
+        ),
+        "problem_tags_gold": list(gold.get("expected_problem_tags") or []),
+        "problem_tags_pred": list(guidance.get("problem_tags") or []),
+        "strategy_tags_gold": list(gold.get("suggested_strategy_tags") or []),
+        "strategy_tags_pred": list(guidance.get("strategy_tags") or []),
+        "used_assistant": bool(record.get("assistant_invoked")),
+        "followed_assistant": follow.get("level") in {FOLLOW_LEVEL_PARTIAL, FOLLOW_LEVEL_STRONG},
+        "follow_level": follow_level,
+        "recovery_score_1to3_turns": (
+            int(recovery.get("score") or 0)
+            if recovery.get("label") not in ("not_applicable", "pending", None)
+            else None
+        ),
+        "graceful_exit_score": _graceful_exit_score(record),
+    }
+
+
+def _roleplay_turn_evaluation(record: dict[str, Any]) -> dict[str, Any]:
+    out: dict[str, Any] = {
+        "schema_scope": "roleplay_turn_evaluation",
+    }
+    for field in ROLEPLAY_TURN_EVALUATION_FIELDS:
+        if field == "schema_scope":
+            continue
+        out[field] = record.get(field)
+    return out
+
+
+def _apply_turn_evaluation_schema(record: dict[str, Any]) -> None:
+    shared = _shared_turn_evaluation(record)
+    roleplay = _roleplay_turn_evaluation(record)
+    record["turn_evaluation_schema_version"] = TURN_EVALUATION_SCHEMA_VERSION
+    record["shared_evaluation"] = shared
+    record["roleplay_evaluation"] = roleplay
+    record.update(shared)
+
+
 def _validate_existing_roleplay_thread(
     thread: dict[str, Any],
     *,
@@ -1214,6 +1355,11 @@ def run_dyadic_roleplay(
             record,
             turn_records[idx + 1] if idx + 1 < len(turn_records) else None,
         )
+        record["assistant_mode_compliance_details"] = _assistant_mode_compliance(
+            record.get("assistant_guidance"),
+            assistant_invoked=bool(record.get("assistant_invoked")),
+        )
+        _apply_turn_evaluation_schema(record)
 
     gold_positive = [r for r in turn_records if bool((r.get("gold_rescue") or {}).get("need_rescue"))]
     pred_positive = [r for r in turn_records if bool(r.get("assistant_invoked"))]
@@ -1346,6 +1492,11 @@ def run_dyadic_roleplay(
         "proactive_rescue_events": rescue_log,
         "stress_mode": sm,
         "stress_events": stress_events,
+        "turn_evaluation_schema_version": TURN_EVALUATION_SCHEMA_VERSION,
+        "turn_evaluation_field_groups": {
+            "shared": list(SHARED_TURN_EVALUATION_FIELDS),
+            "roleplay": list(ROLEPLAY_TURN_EVALUATION_FIELDS),
+        },
         "turn_evaluations": turn_records,
         "assistant_metrics": {
             "gold_rescue_turns": len(gold_positive),

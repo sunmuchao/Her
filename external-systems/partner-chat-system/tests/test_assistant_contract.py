@@ -14,6 +14,9 @@ from chat_system.assistant_contract import (  # noqa: E402
     GUIDANCE_SCHEMA_VERSION,
     INTERACTION_MODES,
     MUTUAL_INTENT_ASSESSMENTS,
+    ROLEPLAY_TURN_EVALUATION_FIELDS,
+    SHARED_TURN_EVALUATION_FIELDS,
+    TURN_EVALUATION_SCHEMA_VERSION,
     default_interaction_mode,
     is_rescue_interaction_mode,
     normalize_interaction_mode,
@@ -24,12 +27,16 @@ from chat_system.assistant_contract import (  # noqa: E402
 class AssistantContractTests(unittest.TestCase):
     def test_shared_contract_constants_cover_core_terms(self):
         self.assertEqual(GUIDANCE_SCHEMA_VERSION, 2)
+        self.assertEqual(TURN_EVALUATION_SCHEMA_VERSION, 1)
         self.assertEqual(INTERACTION_MODES, ("repair", "probe_lightly", "hold", "none"))
         self.assertIn("communication_problem", MUTUAL_INTENT_ASSESSMENTS)
         self.assertEqual(FOLLOW_LEVELS, ("none", "partial", "strong"))
         self.assertEqual(FOLLOW_LEVEL_NOT_APPLICABLE, "not_applicable")
         self.assertIn("interaction_mode", ASSISTANT_GUIDANCE_FIELDS)
         self.assertIn("reply_suggestions", ASSISTANT_GUIDANCE_FIELDS)
+        self.assertIn("turn_index", SHARED_TURN_EVALUATION_FIELDS)
+        self.assertIn("graceful_exit_score", SHARED_TURN_EVALUATION_FIELDS)
+        self.assertIn("assistant_guidance", ROLEPLAY_TURN_EVALUATION_FIELDS)
 
     def test_mutual_intent_normalization_uses_shared_rules(self):
         self.assertEqual(
