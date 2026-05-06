@@ -7,19 +7,22 @@ import os
 import re
 from typing import Any
 
+from .assistant_contract import (
+    DEFAULT_MUTUAL_INTENT_ASSESSMENT,
+    GUIDANCE_SCHEMA_VERSION,
+    INTERACTION_MODES,
+    MUTUAL_INTENT_ASSESSMENTS,
+    format_choice_values,
+    normalize_interaction_mode as _normalize_contract_interaction_mode,
+    normalize_mutual_intent_assessment as _normalize_contract_mutual_intent_assessment,
+)
+
 _VIS_DYADIC = "dyadic"
 
 _DEFAULT_PROBLEM_TAGS = ["cold_reply"]
 _DEFAULT_STRATEGY_TAGS = ["share_detail", "ask_easy_question"]
-_DEFAULT_MUTUAL_INTENT_ASSESSMENT = "interest_unclear"
-_ALLOWED_MUTUAL_INTENT_ASSESSMENTS = {
-    "communication_problem",
-    "interest_unclear",
-    "interest_low",
-    "boundary_risk",
-    "normal",
-}
-_ALLOWED_INTERACTION_MODES = {"repair", "probe_lightly", "hold", "none"}
+_MUTUAL_INTENT_CHOICES = format_choice_values(MUTUAL_INTENT_ASSESSMENTS)
+_INTERACTION_MODE_CHOICES = format_choice_values(INTERACTION_MODES)
 
 
 def _env_int(name: str, default: int) -> int:
@@ -51,50 +54,6 @@ def _default_graceful_exit_plan() -> list[str]:
     ]
 
 
-def _normalize_mutual_intent_assessment(value: Any) -> str:
-    raw = str(value or "").strip().lower()
-    if raw in _ALLOWED_MUTUAL_INTENT_ASSESSMENTS:
-        return raw
-    text = str(value or "").strip()
-    if "双方" in text and any(token in text for token in ("还想聊", "想继续聊", "继续聊")):
-        return "communication_problem"
-    if any(token in text for token in ("边界", "敏感", "压力")):
-        return "boundary_risk"
-    if any(token in text for token in ("兴趣低", "意愿低", "不想聊", "敷衍", "别硬推", "别讨好")):
-        return "interest_low"
-    if any(token in text for token in ("不明确", "不确定", "试探", "先探")):
-        return "interest_unclear"
-    if any(token in text for token in ("正常", "顺着聊", "自然聊")):
-        return "normal"
-    return _DEFAULT_MUTUAL_INTENT_ASSESSMENT
-
-
-def _default_interaction_mode(mutual_intent_assessment: str) -> str:
-    if mutual_intent_assessment == "communication_problem":
-        return "repair"
-    if mutual_intent_assessment == "interest_unclear":
-        return "probe_lightly"
-    if mutual_intent_assessment in {"interest_low", "boundary_risk"}:
-        return "hold"
-    return "none"
-
-
-def _normalize_interaction_mode(value: Any, *, mutual_intent_assessment: str) -> str:
-    raw = str(value or "").strip().lower()
-    if raw in _ALLOWED_INTERACTION_MODES:
-        return raw
-    text = str(value or "").strip()
-    if "低压试探" in text or "轻试" in text:
-        return "probe_lightly"
-    if any(token in text for token in ("先收住", "别硬推", "别推进", "别讨好")):
-        return "hold"
-    if any(token in text for token in ("正常修复", "接住", "继续往下聊")):
-        return "repair"
-    if any(token in text for token in ("不用介入", "顺着聊", "自然往下聊")):
-        return "none"
-    return _default_interaction_mode(mutual_intent_assessment)
-
-
 def _default_why_not_to_push(mutual_intent_assessment: str, interaction_mode: str) -> list[str]:
     if interaction_mode == "probe_lightly":
         return ["先别默认对方很想继续聊，避免一上来就重投入或连环追问。"]
@@ -122,7 +81,7 @@ def _humanize_mutual_intent_assessment(value: str) -> str:
         "boundary_risk": "这轮已经碰到边界或压力点，不适合按正常推进来处理。",
         "normal": "当前没有明显卡点，先顺着自然聊就行。",
     }
-    return mapping.get(value, mapping[_DEFAULT_MUTUAL_INTENT_ASSESSMENT])
+    return mapping.get(value, mapping[DEFAULT_MUTUAL_INTENT_ASSESSMENT])
 
 
 def _humanize_interaction_mode(value: str) -> str:
@@ -180,15 +139,15 @@ def _to_clean_list(value: Any) -> list[str]:
 
 
 def normalize_assistant_guidance(data: dict[str, Any]) -> dict[str, Any]:
-    mutual_intent_assessment = _normalize_mutual_intent_assessment(
+    mutual_intent_assessment = _normalize_contract_mutual_intent_assessment(
         data.get("mutual_intent_assessment")
     )
-    interaction_mode = _normalize_interaction_mode(
+    interaction_mode = _normalize_contract_interaction_mode(
         data.get("interaction_mode"),
         mutual_intent_assessment=mutual_intent_assessment,
     )
     return {
-        "schema_version": 2,
+        "schema_version": GUIDANCE_SCHEMA_VERSION,
         "mutual_intent_assessment": mutual_intent_assessment,
         "interaction_mode": interaction_mode,
         "current_problem": _to_clean_list(data.get("current_problem")) or ["当前问题还不够明确。"],
@@ -336,7 +295,7 @@ def parse_assistant_guidance(text: str) -> dict[str, Any] | None:
     parsed = {
         "mutual_intent_assessment": data["mutual_intent_assessment"][0]
         if data["mutual_intent_assessment"]
-        else _DEFAULT_MUTUAL_INTENT_ASSESSMENT,
+        else DEFAULT_MUTUAL_INTENT_ASSESSMENT,
         "interaction_mode": data["interaction_mode"][0] if data["interaction_mode"] else "",
         "current_problem": data["current_problem"],
         "problem_tags": _DEFAULT_PROBLEM_TAGS,
@@ -408,8 +367,8 @@ def generate_assistant_guidance(
         f"用户问题：{user_query}\n\n"
         "输出 JSON：\n"
         "{\n"
-        '  "mutual_intent_assessment": "<communication_problem|interest_unclear|interest_low|boundary_risk|normal>",\n'
-        '  "interaction_mode": "<repair|probe_lightly|hold|none>",\n'
+        f'  "mutual_intent_assessment": "<{_MUTUAL_INTENT_CHOICES}>",\n'
+        f'  "interaction_mode": "<{_INTERACTION_MODE_CHOICES}>",\n'
         '  "current_problem": ["<1-3 条具体问题>"],\n'
         '  "problem_tags": ["<closed_reply|topic_dead_end|awkward_transition|low_energy|misread|boundary_risk 等>"],\n'
         '  "why_not_to_push": ["<0-2 条，说明为什么别讨好式硬推>"],\n'
