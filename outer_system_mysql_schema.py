@@ -595,6 +595,7 @@ def chat_tables() -> tuple[TableDef, ...]:
                 ColumnDef("body", "LONGTEXT", nullable=False),
                 ColumnDef("client_msg_id", "VARCHAR(191)", nullable=True),
                 ColumnDef("reply_to_message_id", "BIGINT", nullable=True),
+                ColumnDef("metadata_json", "LONGTEXT", nullable=True),
                 ColumnDef("created_at", "DATETIME", nullable=False),
             ),
             primary_key=("message_id",),

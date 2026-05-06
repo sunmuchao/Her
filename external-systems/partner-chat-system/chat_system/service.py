@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import uuid
 from datetime import datetime
+from time import perf_counter
 from typing import Any
 
 try:
@@ -49,6 +50,7 @@ SRC_USER = "user"
 SRC_AGENT_DRAFT = "agent_draft"
 SRC_AGENT_SENT = "agent_sent_after_confirm"
 SRC_SYSTEM = "system"
+ASSISTANT_TRACE_SCHEMA_VERSION = 1
 
 
 def current_time(now: datetime | None = None) -> datetime:
@@ -83,6 +85,52 @@ def _inflate_thread(row: dict[str, Any] | None) -> dict[str, Any] | None:
     out = dict(row)
     out["metadata"] = json_loads(out.pop("metadata_json", None), {})
     return out
+
+
+def _inflate_message(row: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not row:
+        return None
+    out = dict(row)
+    out["metadata"] = json_loads(out.pop("metadata_json", None), {})
+    return out
+
+
+def _elapsed_ms(started_at: float) -> int:
+    return max(0, int(round((perf_counter() - started_at) * 1000)))
+
+
+def _profile_context_for_trace(profile_ctx: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "actor_profile_summary": str(profile_ctx.get("actor_profile_summary") or ""),
+        "counterpart_profile_summary": str(profile_ctx.get("counterpart_profile_summary") or ""),
+        "profile_hooks": list(profile_ctx.get("profile_hooks") or []),
+    }
+
+
+def _assistant_trace_payload(
+    *,
+    route_decision: dict[str, Any] | None,
+    guidance: dict[str, Any],
+    profile_ctx: dict[str, Any],
+    route_latency_ms: int,
+    guidance_latency_ms: int,
+    total_latency_ms: int,
+) -> dict[str, Any]:
+    return {
+        "schema_version": ASSISTANT_TRACE_SCHEMA_VERSION,
+        "route_decision": dict(route_decision or {}),
+        "guidance": normalize_assistant_guidance(guidance),
+        "profile_context": _profile_context_for_trace(profile_ctx),
+        "latency_ms": {
+            "route": int(route_latency_ms),
+            "guidance": int(guidance_latency_ms),
+            "total": int(total_latency_ms),
+        },
+        "followed_assistant": None,
+        "follow_level": None,
+        "follow_evidence": None,
+        "overpush_risk": None,
+    }
 
 
 def get_or_create_thread(
@@ -236,7 +284,11 @@ def list_messages(
             (thread_id, lim),
         )
     rows = cur.fetchall()
-    out = [dict(r) for r in rows if _message_visible_to(dict(r), thread, requester_id)]
+    out: list[dict[str, Any]] = []
+    for raw in rows:
+        row = _inflate_message(row_to_dict(raw))
+        if row and _message_visible_to(row, thread, requester_id):
+            out.append(row)
     out.reverse()
     return out
 
@@ -252,6 +304,7 @@ def post_message(
     client_msg_id: str | None = None,
     message_recipient_id: str | None = None,
     reply_to_message_id: int | None = None,
+    metadata: dict[str, Any] | None = None,
     now: datetime | None = None,
 ) -> dict[str, Any]:
     thread = get_thread(conn, thread_id)
@@ -286,7 +339,7 @@ def post_message(
             """,
             (thread_id, cmid),
         )
-        existing = row_to_dict(cur.fetchone())
+        existing = _inflate_message(row_to_dict(cur.fetchone()))
         if existing:
             return dict(existing)
 
@@ -295,8 +348,8 @@ def post_message(
             """
             INSERT INTO chat_messages (
               thread_id, author_id, message_recipient_id, visibility, source, body,
-              client_msg_id, reply_to_message_id, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+              client_msg_id, reply_to_message_id, metadata_json, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 thread_id,
@@ -307,6 +360,7 @@ def post_message(
                 body,
                 cmid,
                 reply_to_message_id,
+                json_dumps(metadata or {}),
                 ts,
             ),
         )
@@ -342,13 +396,13 @@ def post_message(
                 """,
                 (thread_id, cmid),
             )
-            existing = row_to_dict(cur.fetchone())
+            existing = _inflate_message(row_to_dict(cur.fetchone()))
             if existing:
                 return dict(existing)
         raise
     mid = inserted_id
     cur = conn.execute("SELECT * FROM chat_messages WHERE message_id = ? LIMIT 1", (mid,))
-    row = row_to_dict(cur.fetchone())
+    row = _inflate_message(row_to_dict(cur.fetchone()))
     assert row is not None
     if visibility == VIS_DYADIC and author_id != ASSISTANT_AUTHOR_ID:
         maybe_capture_message_risk_signal(
@@ -416,12 +470,23 @@ def assistant_query(
         message_recipient_id=user_id,
         now=now,
     )
+    total_started_at = perf_counter()
     context_limit = int(os.environ.get("HER_CHAT_ASSISTANT_CONTEXT_LIMIT") or "12")
+    route_started_at = perf_counter()
+    route_messages = list_messages(
+        conn,
+        thread_id,
+        user_id,
+        limit=max(6, min(context_limit, 20)),
+    )
+    route_decision = fast_mode_route(route_messages)
+    route_latency_ms = _elapsed_ms(route_started_at)
     ctx = build_dyadic_context_for_assistant(
         conn,
         thread_id,
         limit=max(6, min(context_limit, 20)),
     )
+    guidance_started_at = perf_counter()
     profile_ctx = _assistant_profile_context(thread, user_id)
     placeholder = build_placeholder_assistant_guidance(
         profile_hooks=list(profile_ctx.get("profile_hooks") or [])
@@ -434,7 +499,17 @@ def assistant_query(
         profile_hooks=list(profile_ctx.get("profile_hooks") or []),
     ) or placeholder
     guidance = normalize_assistant_guidance(guidance)
+    guidance_latency_ms = _elapsed_ms(guidance_started_at)
     body = render_assistant_guidance(guidance)
+    total_latency_ms = _elapsed_ms(total_started_at)
+    assistant_trace = _assistant_trace_payload(
+        route_decision=route_decision,
+        guidance=guidance,
+        profile_ctx=profile_ctx,
+        route_latency_ms=route_latency_ms,
+        guidance_latency_ms=guidance_latency_ms,
+        total_latency_ms=total_latency_ms,
+    )
     out = post_message(
         conn,
         thread_id,
@@ -443,6 +518,7 @@ def assistant_query(
         visibility=VIS_OWNER_ONLY,
         source=SRC_AGENT_DRAFT,
         message_recipient_id=user_id,
+        metadata={"assistant_trace": assistant_trace},
         now=now,
     )
     funnel_stage(
@@ -453,9 +529,18 @@ def assistant_query(
         thread_id=thread_id,
         message_id=out["message_id"],
         user_id=user_id,
+        route_latency_ms=route_latency_ms,
+        guidance_latency_ms=guidance_latency_ms,
+        assistant_latency_ms=total_latency_ms,
+        route_interaction_mode=(route_decision or {}).get("interaction_mode"),
+        guidance_interaction_mode=guidance.get("interaction_mode"),
     )
     out["assistant_guidance"] = guidance
     out["assistant_profile_context"] = profile_ctx
+    out["assistant_route_decision"] = route_decision
+    out["assistant_latency_ms"] = total_latency_ms
+    out["assistant_latency_breakdown_ms"] = dict(assistant_trace["latency_ms"])
+    out["assistant_trace"] = assistant_trace
     return out
 
 
@@ -471,8 +556,14 @@ def assistant_mode_route(
         raise ValueError("thread not found")
     if not _is_participant(thread, requester_id):
         raise ValueError("requester is not a participant of this thread")
+    started_at = perf_counter()
     messages = list_messages(conn, thread_id, requester_id, limit=limit)
-    return fast_mode_route(messages)
+    decision = fast_mode_route(messages)
+    if decision is None:
+        return None
+    out = dict(decision)
+    out["latency_ms"] = _elapsed_ms(started_at)
+    return out
 
 
 def adopt_draft(
@@ -495,7 +586,7 @@ def adopt_draft(
         "SELECT * FROM chat_messages WHERE message_id = ? AND thread_id = ? LIMIT 1",
         (int(draft_message_id), thread_id),
     )
-    draft = row_to_dict(cur.fetchone())
+    draft = _inflate_message(row_to_dict(cur.fetchone()))
     if not draft:
         raise ValueError("draft not found")
     if draft["source"] != SRC_AGENT_DRAFT or draft["visibility"] != VIS_OWNER_ONLY:
@@ -511,6 +602,16 @@ def adopt_draft(
     if body == str(draft["body"] or "").strip():
         raise ValueError("body_override must be user-edited; assistant guidance cannot be forwarded verbatim")
 
+    adoption_metadata = {
+        "assistant_adoption": {
+            "assistant_draft_message_id": int(draft_message_id),
+            "followed_assistant": None,
+            "follow_level": None,
+            "follow_evidence": None,
+            "overpush_risk": None,
+        }
+    }
+
     msg = post_message(
         conn,
         thread_id,
@@ -520,6 +621,7 @@ def adopt_draft(
         source=SRC_AGENT_SENT,
         client_msg_id=client_msg_id,
         reply_to_message_id=int(draft_message_id),
+        metadata=adoption_metadata,
         now=now,
     )
     funnel_stage(
