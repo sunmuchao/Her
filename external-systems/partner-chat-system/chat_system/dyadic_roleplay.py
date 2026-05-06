@@ -27,12 +27,14 @@ from .scenario_stress import StressBeat, pick_stress_beat, stress_log_entry
 from .service import (
     SRC_USER,
     VIS_DYADIC,
+    assistant_proactive_hint,
     assistant_query,
     get_or_create_thread,
     get_thread_by_case,
     list_messages,
     post_message,
 )
+from .trend_state import is_duplicate_suppression_reason
 
 LLMFn = Callable[[list[dict[str, str]]], str]
 
@@ -1066,6 +1068,16 @@ def _evaluated_mutual_intent_assessment(record: dict[str, Any]) -> str:
     return str(record.get("mutual_intent_assessment") or _predicted_mutual_intent_assessment(record) or "normal")
 
 
+def _latest_follow_level_for_speaker(turn_records: list[dict[str, Any]], speaker: str) -> str | None:
+    for record in reversed(turn_records):
+        if record.get("speaker") != speaker or not bool(record.get("assistant_invoked")):
+            continue
+        level = str((record.get("assistant_follow_assessment") or {}).get("level") or "").strip()
+        if level:
+            return level
+    return None
+
+
 def _simulated_reply_mode_alignment(record: dict[str, Any]) -> dict[str, Any]:
     mode = _evaluated_interaction_mode(record)
     if mode not in {"repair", "probe_lightly", "hold"}:
@@ -1331,6 +1343,10 @@ def run_dyadic_roleplay(
             "gold_rescue": _gold_rescue_for_turn(gold_beats),
             "assistant_invoked": False,
             "simulated_reply_mode_prompted": False,
+            "hint_trigger_event": None,
+            "hint_posted": None,
+            "trigger_type": None,
+            "suppression_reason": None,
         }
 
         emit(f"{turn_label}: speaker={speaker}")
@@ -1402,31 +1418,23 @@ def run_dyadic_roleplay(
                 decision.get("mutual_intent_assessment") or "normal"
             )
             turn_record["interaction_mode"] = decision.get("interaction_mode") or "none"
-            if need:
-                situation = str(decision.get("situation") or "awkward")
-                mutual_intent_assessment = str(
-                    decision.get("mutual_intent_assessment") or "interest_unclear"
-                )
-                interaction_mode = str(decision.get("interaction_mode") or "repair")
-                rescue_style = str(decision.get("rescue_style") or "switch_topic")
-                reason = str(decision.get("reason") or "")
-                if interaction_mode == "repair":
-                    q = (
-                        f"（系统判断：当前更像双方都还想继续聊，但这轮卡在沟通上。"
-                        f"情况标签：{situation}；意愿判断：{mutual_intent_assessment}；建议风格：{rescue_style}。"
-                        f"{reason}请先指出我这边当前最需要注意的问题，再给我自然、得体、适合我身份的接话建议。"
-                        "不要直接代写成一条可发送消息。）"
-                    )
-                else:
-                    q = (
-                        f"（系统判断：当前更像意愿还不够明确，不适合讨好式救场。"
-                        f"情况标签：{situation}；意愿判断：{mutual_intent_assessment}；建议风格：{rescue_style}。"
-                        f"{reason}请先指出我这边当前最需要注意的问题，再给我低压试探建议、别硬推的提醒，"
-                        "以及如果对方继续很冷该怎么把节奏收住。不要直接代写成一条可发送消息。）"
-                    )
-                assistant_started = perf_counter()
-                hint = assistant_query(conn, thread_id, speaker, q, now=ts)
-                assistant_elapsed_ms = int((perf_counter() - assistant_started) * 1000)
+            assistant_started = perf_counter()
+            hint = assistant_proactive_hint(
+                conn,
+                thread_id,
+                speaker,
+                route_decision=decision,
+                follow_level=_latest_follow_level_for_speaker(turn_records, speaker),
+                now=ts,
+            )
+            assistant_elapsed_ms = int((perf_counter() - assistant_started) * 1000)
+            hint_event = dict(hint.get("assistant_hint_event") or {})
+            turn_record["hint_trigger_event"] = hint_event
+            turn_record["hint_posted"] = bool(hint_event.get("hint_posted"))
+            turn_record["trigger_type"] = hint_event.get("trigger_type")
+            turn_record["suppression_reason"] = hint_event.get("suppression_reason")
+            turn_record["assistant_trend_state"] = hint.get("assistant_trend_state")
+            if turn_record["hint_posted"]:
                 turn_record["assistant_invoked"] = True
                 turn_record["assistant_message_id"] = hint.get("message_id")
                 turn_record["assistant_guidance"] = hint.get("assistant_guidance")
@@ -1437,11 +1445,17 @@ def run_dyadic_roleplay(
                         "turn": i,
                         "speaker": speaker,
                         "decision": decision,
+                        "hint_event": hint_event,
                         "assistant_latency_ms": assistant_elapsed_ms,
                         "assistant_guidance": hint.get("assistant_guidance"),
                     }
                 )
                 emit(f"{turn_label}: assistant hint posted for {speaker} in {assistant_elapsed_ms} ms")
+            else:
+                emit(
+                    f"{turn_label}: hint suppressed for {speaker} "
+                    f"reason={hint_event.get('suppression_reason') or 'unknown'}"
+                )
 
         msgs = list_messages(conn, thread_id, speaker, limit=200)
         transcript = format_visible_transcript(msgs)
@@ -1492,6 +1506,17 @@ def run_dyadic_roleplay(
         turn_record["generated_message_id"] = msg.get("message_id")
         turn_record["generated_message_created_at"] = str(msg.get("created_at") or "")
         turn_record["naturalness"] = _naturalness_assessment(body)
+        turn_record["assistant_follow_assessment"] = _assistant_follow_assessment(
+            str(turn_record.get("generated_message") or ""),
+            turn_record.get("assistant_guidance"),
+            assistant_invoked=bool(turn_record.get("assistant_invoked")),
+        )
+        turn_record["follow_evidence"] = dict(
+            (turn_record.get("assistant_follow_assessment") or {}).get("evidence") or {}
+        )
+        turn_record["overpush_risk"] = (turn_record.get("assistant_follow_assessment") or {}).get(
+            "overpush_risk"
+        )
         turn_records.append(turn_record)
         emit(f"{turn_label}: message committed")
 
@@ -1634,6 +1659,29 @@ def run_dyadic_roleplay(
         r for r in turn_records if (r.get("rescue_decision_source") or "") == "llm_error_fallback"
     ]
     fallback_message_turns = [r for r in turn_records if (r.get("message_generation_source") or "") == "fallback"]
+    proactive_hint_candidates = [r for r in turn_records if isinstance(r.get("hint_trigger_event"), dict)]
+    proactive_hint_posted = [
+        r for r in proactive_hint_candidates if bool((r.get("hint_trigger_event") or {}).get("hint_posted"))
+    ]
+    duplicate_suppressed_turns = [
+        r
+        for r in proactive_hint_candidates
+        if is_duplicate_suppression_reason((r.get("hint_trigger_event") or {}).get("suppression_reason"))
+    ]
+    mode_change_hint_turns = [
+        r
+        for r in proactive_hint_posted
+        if (r.get("hint_trigger_event") or {}).get("trigger_type") == "mode_change"
+    ]
+    hold_repeat_candidates = [
+        r
+        for r in proactive_hint_candidates
+        if (r.get("hint_trigger_event") or {}).get("mode_after") == "hold"
+        and int((r.get("hint_trigger_event") or {}).get("same_mode_turns") or 0) > 1
+    ]
+    hold_repeat_posted = [
+        r for r in hold_repeat_candidates if bool((r.get("hint_trigger_event") or {}).get("hint_posted"))
+    ]
     graceful_exit_advice_turns = [
         r
         for r in intervention_records
@@ -1718,6 +1766,23 @@ def run_dyadic_roleplay(
             "llm_parse_fallback_turns": len(llm_parse_fallback_decisions),
             "llm_error_fallback_turns": len(llm_error_fallback_decisions),
             "fallback_message_turns": len(fallback_message_turns),
+            "hint_candidate_turns": len(proactive_hint_candidates),
+            "hint_posted_turns": len(proactive_hint_posted),
+            "hint_trigger_rate": round(len(proactive_hint_posted) / len(proactive_hint_candidates), 4)
+            if proactive_hint_candidates
+            else None,
+            "duplicate_suppressed_turns": len(duplicate_suppressed_turns),
+            "duplicate_hint_rate": round(len(duplicate_suppressed_turns) / len(proactive_hint_candidates), 4)
+            if proactive_hint_candidates
+            else None,
+            "mode_change_hint_turns": len(mode_change_hint_turns),
+            "mode_change_hint_rate": round(len(mode_change_hint_turns) / len(proactive_hint_candidates), 4)
+            if proactive_hint_candidates
+            else None,
+            "hold_repeat_hint_turns": len(hold_repeat_posted),
+            "hold_repeat_hint_rate": round(len(hold_repeat_posted) / len(hold_repeat_candidates), 4)
+            if hold_repeat_candidates
+            else None,
             "assistant_invoke_avg_ms": round(sum(assistant_latencies) / len(assistant_latencies), 2)
             if assistant_latencies
             else None,
