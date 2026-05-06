@@ -21,10 +21,8 @@ from .assistant_contract import (
     SHARED_TURN_EVALUATION_FIELDS,
     TURN_EVALUATION_SCHEMA_VERSION,
     format_choice_values,
-    is_rescue_interaction_mode,
-    normalize_interaction_mode as _normalize_contract_interaction_mode,
-    normalize_mutual_intent_assessment as _normalize_contract_mutual_intent_assessment,
 )
+from .mode_router import fast_mode_route, normalize_route_decision
 from .scenario_stress import StressBeat, pick_stress_beat, stress_log_entry
 from .service import (
     SRC_USER,
@@ -105,8 +103,6 @@ _GRACEFUL_EXIT_TOKENS = (
     "你先忙",
     "晚点聊",
 )
-_ALLOWED_SITUATIONS = {"cold", "awkward", "stuck", "rude", "boundary", "off_topic", "none"}
-_ALLOWED_RESCUE_STYLES = {"reengage", "switch_topic", "low_pressure_probe", "graceful_exit", "none"}
 _MUTUAL_INTENT_CHOICES = format_choice_values(MUTUAL_INTENT_ASSESSMENTS)
 _INTERACTION_MODE_CHOICES = format_choice_values(INTERACTION_MODES)
 
@@ -199,6 +195,7 @@ def _orchestrator_rescue_decision(
         "{\n"
         '  "need_rescue": <true|false>,\n'
         '  "situation": "<cold|awkward|stuck|rude|boundary|off_topic|none 选一>",\n'
+        '  "problem_tags": ["<closed_reply|low_energy|topic_dead_end|boundary_risk 等粗标签>"],\n'
         f'  "mutual_intent_assessment": "<{_MUTUAL_INTENT_CHOICES} 选一>",\n'
         f'  "interaction_mode": "<{_INTERACTION_MODE_CHOICES} 选一>",\n'
         '  "rescue_style": "<reengage|switch_topic|low_pressure_probe|graceful_exit|none 选一>",\n'
@@ -208,12 +205,13 @@ def _orchestrator_rescue_decision(
     )
     raw = llm([{"role": "system", "content": system}, {"role": "user", "content": user}])
     try:
-        return _normalize_rescue_decision(strip_json_object(raw), decision_source="llm")
+        return normalize_route_decision(strip_json_object(raw), decision_source="llm")
     except (json.JSONDecodeError, ValueError):
-        return _normalize_rescue_decision(
+        return normalize_route_decision(
             {
                 "need_rescue": False,
                 "situation": "none",
+                "problem_tags": [],
                 "mutual_intent_assessment": "normal",
                 "interaction_mode": "none",
                 "rescue_style": "none",
@@ -337,6 +335,18 @@ def _dedupe_strs(items: list[str]) -> list[str]:
     return out
 
 
+def _merge_str_lists(*values: Any) -> list[str]:
+    merged: list[str] = []
+    for value in values:
+        if isinstance(value, list):
+            merged.extend(str(item or "").strip() for item in value)
+        elif value is not None:
+            text = str(value or "").strip()
+            if text:
+                merged.append(text)
+    return _dedupe_strs(merged)
+
+
 def _compact_text(text: str) -> str:
     return re.sub(r"\s+", "", str(text or ""))
 
@@ -426,148 +436,6 @@ def _naturalness_assessment(text: str) -> dict[str, Any]:
     }
 
 
-def _normalize_situation(value: Any) -> str:
-    raw = str(value or "").strip().lower()
-    if raw in _ALLOWED_SITUATIONS:
-        return raw
-    text = str(value or "").strip()
-    if any(token in text for token in ("边界", "敏感", "压力")):
-        return "boundary"
-    if "冷" in text:
-        return "cold"
-    if "尴尬" in text or "生硬" in text:
-        return "awkward"
-    if "卡住" in text or "僵" in text:
-        return "stuck"
-    if "冒犯" in text or "冲" in text:
-        return "rude"
-    if "跑题" in text:
-        return "off_topic"
-    return "none"
-
-
-def _normalize_rescue_style(
-    value: Any,
-    *,
-    interaction_mode: str,
-    mutual_intent_assessment: str,
-) -> str:
-    raw = str(value or "").strip().lower()
-    if raw in _ALLOWED_RESCUE_STYLES:
-        return raw
-    text = str(value or "").strip()
-    if "低压" in text or "试探" in text:
-        return "low_pressure_probe"
-    if "换题" in text:
-        return "switch_topic"
-    if any(token in text for token in ("收住", "止损", "退出")):
-        return "graceful_exit"
-    if "接住" in text:
-        return "reengage"
-    if interaction_mode == "repair":
-        return "switch_topic"
-    if interaction_mode == "probe_lightly":
-        return "low_pressure_probe"
-    if interaction_mode == "hold" and mutual_intent_assessment in {"interest_low", "boundary_risk"}:
-        return "graceful_exit"
-    return "none"
-
-
-def _normalize_rescue_decision(
-    data: dict[str, Any],
-    *,
-    decision_source: str,
-) -> dict[str, Any]:
-    raw_need = bool(data.get("need_rescue"))
-    situation = _normalize_situation(data.get("situation"))
-    raw_assessment = str(data.get("mutual_intent_assessment") or "").strip()
-    if raw_assessment:
-        mutual_intent_assessment = _normalize_contract_mutual_intent_assessment(raw_assessment)
-    elif not raw_need and situation == "none":
-        mutual_intent_assessment = "normal"
-    elif raw_need and str(data.get("rescue_style") or "").strip().lower() in {"reengage", "switch_topic"}:
-        mutual_intent_assessment = "communication_problem"
-    else:
-        mutual_intent_assessment = _normalize_contract_mutual_intent_assessment(raw_assessment)
-    interaction_mode = _normalize_contract_interaction_mode(
-        data.get("interaction_mode"),
-        mutual_intent_assessment=mutual_intent_assessment,
-        need_rescue=raw_need,
-    )
-    need_rescue = is_rescue_interaction_mode(interaction_mode)
-    rescue_style = _normalize_rescue_style(
-        data.get("rescue_style"),
-        interaction_mode=interaction_mode,
-        mutual_intent_assessment=mutual_intent_assessment,
-    )
-    if interaction_mode == "none":
-        rescue_style = "none"
-    out = {
-        "need_rescue": need_rescue,
-        "situation": situation,
-        "rescue_style": rescue_style,
-        "mutual_intent_assessment": mutual_intent_assessment,
-        "interaction_mode": interaction_mode,
-        "reason": str(data.get("reason") or "").strip(),
-        "decision_source": decision_source,
-    }
-    if data.get("parse_error"):
-        out["parse_error"] = True
-    return out
-
-
-def _engagement_score(text: str) -> int:
-    compact = _compact_text(text)
-    if not compact or _is_low_energy_like(text):
-        return 0
-    score = 0
-    if len(compact) >= 8:
-        score += 1
-    if _is_question_like(text):
-        score += 1
-    if any(token in compact for token in ("我", "最近", "平时", "周末", "一般", "会", "喜欢")) and len(compact) >= 6:
-        score += 1
-    return score
-
-
-def _recent_mutual_engagement(messages: list[dict[str, Any]], *, window: int = 4) -> bool:
-    recent = messages[-window:]
-    best_by_author: dict[str, int] = {}
-    for message in recent:
-        author = str(message.get("author_id") or "")
-        if not author:
-            continue
-        best_by_author[author] = max(
-            best_by_author.get(author, 0),
-            _engagement_score(str(message.get("body") or "")),
-        )
-    return len(best_by_author) >= 2 and sum(1 for value in best_by_author.values() if value >= 1) >= 2
-
-
-def _speaker_recent_engagement(messages: list[dict[str, Any]], speaker_id: str, *, max_messages: int = 2) -> int:
-    scores: list[int] = []
-    for message in reversed(messages):
-        if str(message.get("author_id") or "") != speaker_id:
-            continue
-        scores.append(_engagement_score(str(message.get("body") or "")))
-        if len(scores) >= max_messages:
-            break
-    return max(scores, default=0)
-
-
-def _speaker_low_energy_streak(messages: list[dict[str, Any]], speaker_id: str) -> int:
-    streak = 0
-    for message in reversed(messages):
-        if str(message.get("author_id") or "") != speaker_id:
-            continue
-        body = str(message.get("body") or "")
-        if _is_low_energy_like(body):
-            streak += 1
-            continue
-        break
-    return streak
-
-
 def _gold_rescue_for_turn(beats: list[StressBeat]) -> dict[str, Any]:
     primary = max(beats, key=lambda beat: (beat.severity, beat.id), default=None)
     return {
@@ -581,176 +449,6 @@ def _gold_rescue_for_turn(beats: list[StressBeat]) -> dict[str, Any]:
         ),
         "expected_interaction_mode": primary.expected_interaction_mode if primary else "none",
     }
-
-
-def _fast_rescue_decision(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
-    dyadic = [m for m in messages if str(m.get("visibility") or "") == VIS_DYADIC]
-    if not dyadic:
-        return _normalize_rescue_decision(
-            {
-                "need_rescue": False,
-                "situation": "none",
-                "mutual_intent_assessment": "normal",
-                "interaction_mode": "none",
-                "rescue_style": "none",
-                "reason": "首轮开场，先正常聊，不需要提前介入。",
-            },
-            decision_source="heuristic_bootstrap",
-        )
-
-    last_body = str(dyadic[-1].get("body") or "").strip()
-    prev_body = str(dyadic[-2].get("body") or "").strip() if len(dyadic) >= 2 else ""
-    last_author = str(dyadic[-1].get("author_id") or "")
-    recent = [str(m.get("body") or "").strip() for m in dyadic[-3:]]
-    prior_mutual_engagement = _recent_mutual_engagement(dyadic[:-1])
-    last_author_recent_engagement = _speaker_recent_engagement(dyadic[:-1], last_author)
-    last_author_low_streak = _speaker_low_energy_streak(dyadic, last_author)
-
-    if _is_low_energy_like(last_body):
-        if len(recent) >= 2 and all(_is_low_energy_like(body) for body in recent[-2:]):
-            if _recent_mutual_engagement(dyadic[:-2]):
-                return _normalize_rescue_decision(
-                    {
-                        "need_rescue": True,
-                        "situation": "stuck",
-                        "mutual_intent_assessment": "communication_problem",
-                        "interaction_mode": "repair",
-                        "rescue_style": "switch_topic",
-                        "reason": "前面双方都有投入，但最近两拍都接空了，像是不会接而不是不想聊。",
-                    },
-                    decision_source="heuristic",
-                )
-            return _normalize_rescue_decision(
-                {
-                    "need_rescue": False,
-                    "situation": "stuck",
-                    "mutual_intent_assessment": "interest_low",
-                    "interaction_mode": "hold",
-                    "rescue_style": "graceful_exit",
-                    "reason": "最近两边都低投入，更像没人想继续推进，不适合再往救场上推。",
-                },
-                decision_source="heuristic",
-            )
-        if prior_mutual_engagement and last_author_recent_engagement >= 1:
-            return _normalize_rescue_decision(
-                {
-                    "need_rescue": True,
-                    "situation": "cold",
-                    "mutual_intent_assessment": "communication_problem",
-                    "interaction_mode": "repair",
-                    "rescue_style": "switch_topic" if _is_question_like(prev_body) else "reengage",
-                    "reason": "前面双方本来聊得动，这一拍更像接话没接好。",
-                },
-                decision_source="heuristic",
-            )
-        if last_author_low_streak >= 2:
-            return _normalize_rescue_decision(
-                {
-                    "need_rescue": False,
-                    "situation": "cold",
-                    "mutual_intent_assessment": "interest_low",
-                    "interaction_mode": "hold",
-                    "rescue_style": "graceful_exit",
-                    "reason": "对方已经连续低投入，别把它当成单纯不会聊。",
-                },
-                decision_source="heuristic",
-            )
-        return _normalize_rescue_decision(
-            {
-                "need_rescue": True,
-                "situation": "cold",
-                "mutual_intent_assessment": "interest_unclear",
-                "interaction_mode": "probe_lightly",
-                "rescue_style": "low_pressure_probe",
-                "reason": "这轮偏冷，但还看不出是不会聊还是没兴趣，先低压试探。",
-            },
-            decision_source="heuristic",
-        )
-    if any(token in last_body for token in _BOUNDARY_HINTS):
-        return _normalize_rescue_decision(
-            {
-                "need_rescue": False,
-                "situation": "boundary",
-                "mutual_intent_assessment": "boundary_risk",
-                "interaction_mode": "hold",
-                "rescue_style": "graceful_exit",
-                "reason": "上一句已经碰到敏感或有压力的话题，不适合按正常推进来处理。",
-            },
-            decision_source="heuristic",
-        )
-    if len(recent) >= 3 and sum(1 for body in recent if _is_low_energy_like(body)) >= 2 and not any(
-        _is_question_like(body) for body in recent
-    ):
-        if _recent_mutual_engagement(dyadic[:-3]):
-            return _normalize_rescue_decision(
-                {
-                    "need_rescue": True,
-                    "situation": "stuck",
-                    "mutual_intent_assessment": "communication_problem",
-                    "interaction_mode": "repair",
-                    "rescue_style": "switch_topic",
-                    "reason": "前面聊得还行，但最近几轮连续接空，适合做一次轻修复。",
-                },
-                decision_source="heuristic",
-            )
-        return _normalize_rescue_decision(
-            {
-                "need_rescue": False,
-                "situation": "stuck",
-                "mutual_intent_assessment": "interest_low",
-                "interaction_mode": "hold",
-                "rescue_style": "graceful_exit",
-                "reason": "最近几轮连续偏冷又没有追问，更像双方都不想继续加码。",
-            },
-            decision_source="heuristic",
-        )
-    if _is_question_like(last_body) and len(_compact_text(last_body)) >= 8:
-        return _normalize_rescue_decision(
-            {
-                "need_rescue": False,
-                "situation": "none",
-                "mutual_intent_assessment": "normal",
-                "interaction_mode": "none",
-                "rescue_style": "none",
-                "reason": "上一句本身就是正常可接的问题，先别打断自然往下聊。",
-            },
-            decision_source="heuristic_clear_continue",
-        )
-    if len(_compact_text(last_body)) >= 10 and not _is_cold_like(last_body) and _is_question_like(prev_body):
-        return _normalize_rescue_decision(
-            {
-                "need_rescue": False,
-                "situation": "none",
-                "mutual_intent_assessment": "normal",
-                "interaction_mode": "none",
-                "rescue_style": "none",
-                "reason": "当前还有正常来回，先不额外介入。",
-            },
-            decision_source="heuristic_clear_continue",
-        )
-    if (
-        _engagement_score(last_body) >= 1
-        and not any(token in last_body for token in _BOUNDARY_HINTS)
-        and (
-            len(dyadic) == 1
-            or _engagement_score(prev_body) >= 1
-            or _is_question_like(prev_body)
-        )
-    ):
-        return _normalize_rescue_decision(
-            {
-                "need_rescue": False,
-                "situation": "none",
-                "mutual_intent_assessment": "normal",
-                "interaction_mode": "none",
-                "rescue_style": "none",
-                "reason": "最近这拍仍然有正常信息交换，先顺着自然聊。",
-            },
-            decision_source="heuristic_clear_continue",
-        )
-    return None
-
-
 def _clean_topic_seed(text: str) -> str:
     topic = re.sub(r"（.*?）", "", str(text or "")).strip()
     topic = re.sub(r"\(.*?\)", "", topic).strip()
@@ -1022,7 +720,10 @@ def _shared_turn_evaluation(record: dict[str, Any]) -> dict[str, Any]:
             else record.get("assistant_invoked")
         ),
         "problem_tags_gold": list(gold.get("expected_problem_tags") or []),
-        "problem_tags_pred": list(guidance.get("problem_tags") or []),
+        "problem_tags_pred": _merge_str_lists(
+            (record.get("rescue_decision") or {}).get("problem_tags"),
+            guidance.get("problem_tags"),
+        ),
         "strategy_tags_gold": list(gold.get("suggested_strategy_tags") or []),
         "strategy_tags_pred": list(guidance.get("strategy_tags") or []),
         "used_assistant": bool(record.get("assistant_invoked")),
@@ -1228,7 +929,7 @@ def run_dyadic_roleplay(
                 if m.get("visibility") == VIS_DYADIC
             ]
             pub = format_visible_transcript(pub_msgs)
-            decision = _fast_rescue_decision(pub_msgs)
+            decision = fast_mode_route(pub_msgs)
             if decision is None:
                 try:
                     decision = _orchestrator_rescue_decision(
@@ -1239,10 +940,11 @@ def run_dyadic_roleplay(
                         dyadic_transcript=pub,
                     )
                 except Exception as e:
-                    decision = _normalize_rescue_decision(
+                    decision = normalize_route_decision(
                         {
                             "need_rescue": False,
                             "situation": "none",
+                            "problem_tags": [],
                             "mutual_intent_assessment": "normal",
                             "interaction_mode": "none",
                             "rescue_style": "none",

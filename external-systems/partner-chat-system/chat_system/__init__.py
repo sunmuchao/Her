@@ -7,10 +7,12 @@ from ._path_bootstrap import ensure_her_repo_on_sys_path
 ensure_her_repo_on_sys_path(Path(__file__))
 
 from .maintenance import run_chat_maintenance
+from .mode_router import fast_mode_route
 from .outbox_admin import list_pending_outbox
 from .service import (
     ASSISTANT_AUTHOR_ID,
     adopt_draft,
+    assistant_mode_route,
     assistant_query,
     current_time,
     get_or_create_thread,
@@ -41,11 +43,13 @@ from .timeline import build_chat_timeline
 __all__ = [
     "ASSISTANT_AUTHOR_ID",
     "adopt_draft",
+    "assistant_mode_route",
     "assistant_query",
     "build_thread_risk_overview",
     "build_chat_timeline",
     "connect_db",
     "current_time",
+    "fast_mode_route",
     "get_or_create_thread",
     "get_risk_case",
     "get_thread",
