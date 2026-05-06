@@ -13,6 +13,7 @@ if str(SYSTEM_ROOT) not in sys.path:
 from chat_system import (  # noqa: E402
     adopt_draft,
     assistant_mode_route,
+    assistant_proactive_hint,
     assistant_query,
     build_thread_risk_overview,
     get_risk_case,
@@ -219,6 +220,170 @@ class ChatSystemTests(unittest.TestCase):
 
         both = list_messages(self.conn, th["thread_id"], "bob")
         self.assertTrue(any(m["body"] == "你好，很高兴认识你。" for m in both))
+
+    def test_assistant_proactive_hint_triggers_once_then_suppresses_duplicate(self):
+        th = get_or_create_thread(
+            self.conn,
+            case_id="case-proactive-hint",
+            relation_key="r-proactive",
+            participant_a_id="alice",
+            participant_b_id="bob",
+        )
+        route_decision = {
+            "need_rescue": True,
+            "situation": "stuck",
+            "problem_tags": ["topic_dead_end"],
+            "rescue_style": "switch_topic",
+            "mutual_intent_assessment": "communication_problem",
+            "interaction_mode": "repair",
+            "reason": "测试主动提示",
+            "decision_source": "heuristic",
+        }
+        guidance = {
+            "mutual_intent_assessment": "communication_problem",
+            "interaction_mode": "repair",
+            "current_problem": ["旧话题接不下去了"],
+            "problem_tags": ["topic_dead_end"],
+            "advice": ["先接住，再换轻一点的话题。"],
+            "avoid": ["不要继续硬追原话题。"],
+            "topic_directions": ["周末安排"],
+            "easy_question_types": ["低门槛生活问题"],
+            "rescue_flow": ["先接住", "再换题", "最后轻问一句"],
+        }
+        profile_ctx = {
+            "profile_dsn": "mysql://test",
+            "actor_profile_summary": "alice 喜欢咖啡",
+            "counterpart_profile_summary": "bob 周末爱散步",
+            "profile_hooks": ["咖啡", "周末散步"],
+        }
+
+        with patch("chat_system.service.generate_assistant_guidance", return_value=guidance), patch(
+            "chat_system.service._assistant_profile_context",
+            return_value=profile_ctx,
+        ):
+            first = assistant_proactive_hint(
+                self.conn,
+                th["thread_id"],
+                "alice",
+                route_decision=route_decision,
+                now=datetime(2026, 5, 6, 10, 0, 0),
+            )
+            second = assistant_proactive_hint(
+                self.conn,
+                th["thread_id"],
+                "alice",
+                route_decision=route_decision,
+                now=datetime(2026, 5, 6, 10, 0, 1),
+            )
+
+        self.assertTrue(first["hint_posted"])
+        self.assertEqual(first["assistant_hint_event"]["trigger_type"], "mode_change")
+        self.assertEqual(first["assistant_hint_event"]["mode_after"], "repair")
+        self.assertFalse(second["hint_posted"])
+        self.assertEqual(second["assistant_hint_event"]["suppression_reason"], "waiting_for_user_action")
+
+        alice_view = list_messages(self.conn, th["thread_id"], "alice")
+        assistant_msgs = [m for m in alice_view if m["author_id"] == ASSISTANT_AUTHOR_ID]
+        self.assertEqual(len(assistant_msgs), 1)
+        self.assertFalse(
+            any(
+                m["author_id"] == "alice" and m["visibility"] == VIS_OWNER_ONLY
+                for m in alice_view
+            )
+        )
+
+        thread = get_thread(self.conn, th["thread_id"])
+        assert thread is not None
+        trend_state = thread["metadata"]["assistant_trend_state_by_user"]["alice"]
+        self.assertEqual(trend_state["last_hint_mode"], "repair")
+        self.assertEqual(trend_state["last_hint_trigger_type"], "mode_change")
+        self.assertFalse(trend_state["has_user_acted_since_last_hint"])
+
+    def test_assistant_query_is_not_blocked_by_proactive_hint_state(self):
+        th = get_or_create_thread(
+            self.conn,
+            case_id="case-explicit-query-bypass",
+            relation_key="r-explicit",
+            participant_a_id="alice",
+            participant_b_id="bob",
+        )
+        route_decision = {
+            "need_rescue": True,
+            "situation": "stuck",
+            "problem_tags": ["topic_dead_end"],
+            "rescue_style": "switch_topic",
+            "mutual_intent_assessment": "communication_problem",
+            "interaction_mode": "repair",
+            "reason": "测试主动提示状态",
+            "decision_source": "heuristic",
+        }
+        guidance = {
+            "mutual_intent_assessment": "communication_problem",
+            "interaction_mode": "repair",
+            "current_problem": ["旧话题接不下去了"],
+            "problem_tags": ["topic_dead_end"],
+            "advice": ["先接住，再换轻一点的话题。"],
+            "avoid": ["不要继续硬追原话题。"],
+            "topic_directions": ["周末安排"],
+            "easy_question_types": ["低门槛生活问题"],
+            "rescue_flow": ["先接住", "再换题", "最后轻问一句"],
+        }
+        profile_ctx = {
+            "profile_dsn": "mysql://test",
+            "actor_profile_summary": "alice 喜欢咖啡",
+            "counterpart_profile_summary": "bob 周末爱散步",
+            "profile_hooks": ["咖啡", "周末散步"],
+        }
+
+        with patch("chat_system.service.generate_assistant_guidance", return_value=guidance), patch(
+            "chat_system.service._assistant_profile_context",
+            return_value=profile_ctx,
+        ):
+            proactive = assistant_proactive_hint(
+                self.conn,
+                th["thread_id"],
+                "alice",
+                route_decision=route_decision,
+                now=datetime(2026, 5, 6, 10, 5, 0),
+            )
+            suppressed = assistant_proactive_hint(
+                self.conn,
+                th["thread_id"],
+                "alice",
+                route_decision=route_decision,
+                now=datetime(2026, 5, 6, 10, 5, 1),
+            )
+            q1 = assistant_query(
+                self.conn,
+                th["thread_id"],
+                "alice",
+                "我想主动问一下现在怎么回更稳妥？",
+                now=datetime(2026, 5, 6, 10, 5, 2),
+            )
+            q2 = assistant_query(
+                self.conn,
+                th["thread_id"],
+                "alice",
+                "我再问一次，你继续帮我看看。",
+                now=datetime(2026, 5, 6, 10, 5, 3),
+            )
+
+        self.assertTrue(proactive["hint_posted"])
+        self.assertFalse(suppressed["hint_posted"])
+        self.assertEqual(suppressed["assistant_hint_event"]["suppression_reason"], "waiting_for_user_action")
+        self.assertNotEqual(q1["message_id"], q2["message_id"])
+        self.assertNotIn("assistant_hint_event", q1)
+        self.assertNotIn("assistant_hint_event", q2)
+
+        alice_view = list_messages(self.conn, th["thread_id"], "alice")
+        assistant_msgs = [m for m in alice_view if m["author_id"] == ASSISTANT_AUTHOR_ID]
+        user_owner_only_msgs = [
+            m
+            for m in alice_view
+            if m["author_id"] == "alice" and m["visibility"] == VIS_OWNER_ONLY
+        ]
+        self.assertEqual(len(assistant_msgs), 3)
+        self.assertEqual(len(user_owner_only_msgs), 2)
 
     def test_assistant_mode_route_uses_fast_router(self):
         th = get_or_create_thread(

@@ -374,6 +374,164 @@ class DyadicRoleplayRunTests(unittest.TestCase):
             invoked_turn["roleplay_evaluation"],
         )
 
+    def test_run_proactive_t12_hint_events_and_metrics(self):
+        def llm(messages: list[dict[str, str]]) -> str:
+            sys_c = messages[0]["content"]
+            user_c = messages[-1]["content"]
+            if "请写出下一条" in user_c:
+                return "我周末一般会去喝咖啡，你平时怎么放松？"
+            if "附加任务" in sys_c and "请输出 JSON" in user_c:
+                return json.dumps(
+                    {
+                        "conversation_satisfied": True,
+                        "conversation_score": 3,
+                        "assistant_satisfied": True,
+                        "assistant_score": 3,
+                        "used_assistant": True,
+                        "conversation_note": "ok",
+                        "assistant_note": "ok",
+                    },
+                    ensure_ascii=False,
+                )
+            return "{}"
+
+        route_decisions = [
+            {
+                "need_rescue": True,
+                "situation": "stuck",
+                "problem_tags": ["topic_dead_end"],
+                "mutual_intent_assessment": "communication_problem",
+                "interaction_mode": "repair",
+                "rescue_style": "switch_topic",
+                "reason": "双方还想聊，但这轮卡住了",
+                "decision_source": "heuristic_test",
+            },
+            {
+                "need_rescue": False,
+                "situation": "none",
+                "problem_tags": [],
+                "mutual_intent_assessment": "normal",
+                "interaction_mode": "none",
+                "rescue_style": "none",
+                "reason": "正常",
+                "decision_source": "heuristic_test",
+            },
+            {
+                "need_rescue": True,
+                "situation": "stuck",
+                "problem_tags": ["topic_dead_end"],
+                "mutual_intent_assessment": "communication_problem",
+                "interaction_mode": "repair",
+                "rescue_style": "switch_topic",
+                "reason": "还是卡住",
+                "decision_source": "heuristic_test",
+            },
+            {
+                "need_rescue": False,
+                "situation": "boundary",
+                "problem_tags": ["boundary_risk"],
+                "mutual_intent_assessment": "boundary_risk",
+                "interaction_mode": "hold",
+                "rescue_style": "graceful_exit",
+                "reason": "该收住了",
+                "decision_source": "heuristic_test",
+            },
+            {
+                "need_rescue": False,
+                "situation": "none",
+                "problem_tags": [],
+                "mutual_intent_assessment": "normal",
+                "interaction_mode": "none",
+                "rescue_style": "none",
+                "reason": "正常",
+                "decision_source": "heuristic_test",
+            },
+            {
+                "need_rescue": False,
+                "situation": "boundary",
+                "problem_tags": ["boundary_risk"],
+                "mutual_intent_assessment": "boundary_risk",
+                "interaction_mode": "hold",
+                "rescue_style": "graceful_exit",
+                "reason": "还是该收住",
+                "decision_source": "heuristic_test",
+            },
+        ]
+
+        def guidance_for_query(*args, **kwargs):
+            user_query = str(kwargs.get("user_query") or "")
+            if "该收住了" in user_query:
+                return {
+                    "mutual_intent_assessment": "boundary_risk",
+                    "interaction_mode": "hold",
+                    "current_problem": ["这轮已经碰到边界，不适合继续往前推。"],
+                    "problem_tags": ["boundary_risk"],
+                    "why_not_to_push": ["继续推进只会更僵。"],
+                    "avoid": ["不要继续追问敏感信息。"],
+                    "graceful_exit_plan": ["轻轻收住，别再加码。"],
+                    "strategy_tags": ["graceful_exit"],
+                }
+            return {
+                "mutual_intent_assessment": "communication_problem",
+                "interaction_mode": "repair",
+                "current_problem": ["这轮接话卡住了。"],
+                "problem_tags": ["topic_dead_end"],
+                "advice": ["先接住，再换轻一点的话题。"],
+                "avoid": ["不要继续追着旧话题硬问。"],
+                "topic_directions": ["周末安排"],
+                "easy_question_types": ["低门槛生活问题"],
+                "rescue_flow": ["先接住", "再换题", "最后轻问一句"],
+                "strategy_tags": ["switch_topic", "ask_easy_question"],
+            }
+
+        with patch("chat_system.dyadic_roleplay.fast_mode_route", side_effect=route_decisions), patch(
+            "chat_system.service.generate_assistant_guidance",
+            side_effect=guidance_for_query,
+        ):
+            out = run_dyadic_roleplay(
+                self.conn,
+                case_id="test-dyadic-rp-t12",
+                relation_key="pa|pb",
+                participant_a_id="pa",
+                participant_b_id="pb",
+                brief_a="A",
+                brief_b="B",
+                rounds=6,
+                llm=llm,
+                assistant_mode="proactive",
+                base_time=datetime(2026, 5, 6, 9, 0, 0),
+                stress_mode="none",
+            )
+
+        self.assertEqual(len(out["proactive_rescue_events"]), 2)
+        first_turn = out["turn_evaluations"][0]
+        self.assertTrue(first_turn["hint_posted"])
+        self.assertEqual(first_turn["trigger_type"], "mode_change")
+        self.assertIsNone(first_turn["suppression_reason"])
+
+        third_turn = out["turn_evaluations"][2]
+        self.assertFalse(third_turn["hint_posted"])
+        self.assertEqual(third_turn["suppression_reason"], "cooldown_active")
+
+        fourth_turn = out["turn_evaluations"][3]
+        self.assertTrue(fourth_turn["hint_posted"])
+        self.assertEqual(fourth_turn["hint_trigger_event"]["mode_after"], "hold")
+
+        sixth_turn = out["turn_evaluations"][5]
+        self.assertFalse(sixth_turn["hint_posted"])
+        self.assertEqual(sixth_turn["hint_trigger_event"]["mode_after"], "hold")
+        self.assertIn(sixth_turn["suppression_reason"], {"cooldown_active", "hold_repeat_suppressed"})
+
+        metrics = out["assistant_metrics"]
+        self.assertEqual(metrics["hint_candidate_turns"], 6)
+        self.assertEqual(metrics["hint_posted_turns"], 2)
+        self.assertEqual(metrics["mode_change_hint_turns"], 2)
+        self.assertEqual(metrics["duplicate_suppressed_turns"], 2)
+        self.assertGreater(metrics["hint_trigger_rate"], 0)
+        self.assertGreater(metrics["duplicate_hint_rate"], 0)
+        self.assertGreater(metrics["mode_change_hint_rate"], 0)
+        self.assertEqual(metrics["hold_repeat_hint_rate"], 0.0)
+
     def test_roleplay_mode_alignment_experiment_switches_prompt_and_metrics(self):
         def build_llm(prompts: list[str]):
             def llm(messages: list[dict[str, str]]) -> str:
@@ -677,7 +835,9 @@ class DyadicRoleplayRunTests(unittest.TestCase):
             stress_mode="none",
         )
         self.assertEqual(calls["orchestrator"], 0)
-        self.assertFalse(out["turn_evaluations"][4]["assistant_invoked"])
+        self.assertTrue(out["turn_evaluations"][4]["assistant_invoked"])
+        self.assertTrue(out["turn_evaluations"][4]["hint_posted"])
+        self.assertEqual(out["turn_evaluations"][4]["trigger_type"], "mode_change")
         self.assertEqual(out["turn_evaluations"][4]["interaction_mode"], "hold")
         self.assertEqual(out["turn_evaluations"][4]["mutual_intent_assessment"], "interest_low")
         self.assertIn("disengaged", (out["turn_evaluations"][4]["rescue_decision"] or {}).get("problem_tags", []))
