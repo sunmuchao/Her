@@ -261,6 +261,8 @@ def _next_dyadic_message(
     brief: str,
     transcript: str,
     stress_directive: str | None = None,
+    simulated_interaction_mode: str | None = None,
+    simulated_mutual_intent_assessment: str | None = None,
 ) -> str:
     system = _persona_system(user_id=user_id, brief=brief)
     stress_block = ""
@@ -269,6 +271,33 @@ def _next_dyadic_message(
             "\n\n【本回合剧情压力（只体现效果，不要提起「剧情」「导演」「压力测试」等词）】\n"
             f"{stress_directive}"
         )
+    mode = str(simulated_interaction_mode or "").strip().lower()
+    mode_block = ""
+    if mode in {"repair", "probe_lightly", "hold"}:
+        intent = str(simulated_mutual_intent_assessment or "").strip().lower()
+        intent_line = f"辅助判断：{intent}。\n" if intent and intent != "normal" else ""
+        if mode == "repair":
+            detail = (
+                "这轮更像双方都还想继续聊，只是接话卡了一下。先接住对方刚刚的信息，补一点你自己的具体内容，"
+                "再自然往下聊或轻轻抛一个容易接的问题；不要突然变冷，也别切去收入、前任、照片这些敏感方向。"
+            )
+        elif mode == "probe_lightly":
+            detail = (
+                "这轮更像意愿还不够明确，只能轻轻试一下。最多一句低压、好回答的问题，简短一点；"
+                "不要连环追问，不要太用力，也不要讨好式硬拉。"
+            )
+        else:
+            detail = (
+                "这轮更像该收住了。不要继续追问，也不要推进收入、前任、照片等敏感方向；"
+                "优先自然收口，或者发一条不施压的轻收住消息。"
+            )
+        mode_block = (
+            "\n\n【仅用于离线 roleplay 评测的额外模式提示】\n"
+            "这段提示只服务于模拟实验，不代表真实产品会约束真人用户怎么回复。\n"
+            f"当前模式：{mode}\n"
+            f"{intent_line}{detail}\n"
+            "不要在发言里提到“模式”“实验”“系统提示”等词。"
+        )
     user = (
         "以下是你在这个会话里**当前能看到的全部消息**（按时间顺序）：\n\n"
         f"{transcript}\n\n"
@@ -276,7 +305,7 @@ def _next_dyadic_message(
         "像真实聊天，不要分析对方措辞，不要写成说明文。"
         "尽量像微信里会发的 1-2 句短消息，能口语就别分析；先接住具体信息，再补一点自己的话。"
         "如果要提问，优先问轻一点、容易回答的问题。"
-        f"{stress_block}"
+        f"{stress_block}{mode_block}"
     )
     raw = llm([{"role": "system", "content": system}, {"role": "user", "content": user}]).strip()
     raw = raw.strip('"').strip()
@@ -589,6 +618,42 @@ def _fallback_next_message(
     if _is_question_like(last_body):
         return "还行，我平时比较随性一点。你呢？"
     return "我平时比较随性一点，你一般周末怎么放松？"
+
+
+def _simulated_mode_alignment_guidance(
+    interaction_mode: str,
+    *,
+    mutual_intent_assessment: str,
+) -> dict[str, Any] | None:
+    mode = str(interaction_mode or "").strip().lower()
+    if mode == "repair":
+        return {
+            "mutual_intent_assessment": "communication_problem",
+            "interaction_mode": "repair",
+            "strategy_tags": ["switch_topic", "ask_easy_question"],
+            "easy_question_types": ["低门槛生活问题"],
+            "avoid": ["不要继续追着旧话题硬问，也不要切回敏感方向。"],
+        }
+    if mode == "probe_lightly":
+        return {
+            "mutual_intent_assessment": "interest_unclear",
+            "interaction_mode": "probe_lightly",
+            "strategy_tags": ["probe_lightly"],
+            "easy_question_types": ["低门槛生活问题"],
+            "low_pressure_options": ["一句轻问题"],
+            "why_not_to_push": ["这轮只低压试一下，不要连环追问，不要讨好式硬拉。"],
+            "avoid": ["不要连环追问，不要硬推，也不要切回敏感方向。"],
+        }
+    if mode == "hold":
+        return {
+            "mutual_intent_assessment": str(mutual_intent_assessment or "interest_low"),
+            "interaction_mode": "hold",
+            "strategy_tags": ["graceful_exit"],
+            "why_not_to_push": ["这轮更像该收住，不要继续推进。"],
+            "avoid": ["不要继续追问，也不要切回敏感方向。"],
+            "graceful_exit_plan": ["先轻轻收住，必要时体面止损。"],
+        }
+    return None
 
 
 def _assistant_follow_assessment(
@@ -930,6 +995,41 @@ def _evaluated_mutual_intent_assessment(record: dict[str, Any]) -> str:
     return str(record.get("mutual_intent_assessment") or _predicted_mutual_intent_assessment(record) or "normal")
 
 
+def _simulated_reply_mode_alignment(record: dict[str, Any]) -> dict[str, Any]:
+    mode = _evaluated_interaction_mode(record)
+    if mode not in {"repair", "probe_lightly", "hold"}:
+        return {"label": "not_applicable", "score": 0, "signals": [], "mode": mode}
+    guidance = _simulated_mode_alignment_guidance(
+        mode,
+        mutual_intent_assessment=_evaluated_mutual_intent_assessment(record),
+    )
+    follow_proxy = _assistant_follow_assessment(
+        str(record.get("generated_message") or ""),
+        guidance,
+        assistant_invoked=True,
+    )
+    level = str(follow_proxy.get("level") or FOLLOW_LEVEL_NONE)
+    signals = list(follow_proxy.get("signals") or [])
+    if level == FOLLOW_LEVEL_STRONG:
+        label = "aligned"
+        score = 2
+    elif level == FOLLOW_LEVEL_PARTIAL:
+        label = "partially_aligned"
+        score = 1
+    else:
+        label = "misaligned"
+        score = 0
+    return {
+        "label": label,
+        "score": score,
+        "mode": mode,
+        "follow_level_proxy": level,
+        "signals": signals,
+        "evidence": dict(follow_proxy.get("evidence") or {}),
+        "overpush_risk": follow_proxy.get("overpush_risk"),
+    }
+
+
 def _graceful_exit_score(record: dict[str, Any]) -> int | None:
     mode = _evaluated_interaction_mode(record)
     if mode != "hold":
@@ -1063,6 +1163,7 @@ def run_dyadic_roleplay(
         "结合当前聊天记录，先指出我这边当前接话或表达上最需要注意的问题，"
         "再给我两三条自然、得体、适合我身份的回复建议。不要直接代写成一条可发送消息。"
     ),
+    simulate_reply_reads_interaction_mode: bool = False,
     stress_mode: str | None = None,
     stress_beat_ids: list[str] | None = None,
     stress_seed: int | None = None,
@@ -1078,6 +1179,10 @@ def run_dyadic_roleplay(
     ``resume_existing``:
     - ``False``: fail fast when ``case_id`` already exists, to avoid accidentally appending onto an old experiment.
     - ``True``: resume only when the existing thread matches the requested relation and participants.
+
+    ``simulate_reply_reads_interaction_mode``:
+    - ``False``: roleplay personas reply freely.
+    - ``True``: offline experiment only; the simulated replier also receives the current ``interaction_mode`` as an extra prompt hint.
 
     ``stress_mode`` (``none`` | ``rotate`` | ``random``): each turn may inject a hidden director line so the speaker enacts awkward / boundary / extreme dating situations (see ``scenario_stress.STRESS_BEATS``).
 
@@ -1154,6 +1259,7 @@ def run_dyadic_roleplay(
             "speaker": speaker,
             "gold_rescue": _gold_rescue_for_turn(gold_beats),
             "assistant_invoked": False,
+            "simulated_reply_mode_prompted": False,
         }
 
         emit(f"{turn_label}: speaker={speaker}")
@@ -1269,12 +1375,24 @@ def run_dyadic_roleplay(
         msgs = list_messages(conn, thread_id, speaker, limit=200)
         transcript = format_visible_transcript(msgs)
         try:
+            current_mode = _evaluated_interaction_mode(turn_record)
+            simulated_mode = (
+                current_mode
+                if simulate_reply_reads_interaction_mode and current_mode in {"repair", "probe_lightly", "hold"}
+                else None
+            )
+            simulated_intent = (
+                _evaluated_mutual_intent_assessment(turn_record) if simulated_mode is not None else None
+            )
+            turn_record["simulated_reply_mode_prompted"] = simulated_mode is not None
             body = _next_dyadic_message(
                 llm=llm,
                 user_id=speaker,
                 brief=brief,
                 transcript=transcript,
                 stress_directive=stress_directive,
+                simulated_interaction_mode=simulated_mode,
+                simulated_mutual_intent_assessment=simulated_intent,
             )
             turn_record["message_generation_source"] = "llm"
         except Exception as e:
@@ -1319,6 +1437,7 @@ def run_dyadic_roleplay(
             record,
             turn_records[idx + 1 : idx + 4],
         )
+        record["simulated_reply_mode_alignment"] = _simulated_reply_mode_alignment(record)
         record["assistant_mode_compliance_details"] = _assistant_mode_compliance(
             record.get("assistant_guidance"),
             assistant_invoked=bool(record.get("assistant_invoked")),
@@ -1382,6 +1501,22 @@ def run_dyadic_roleplay(
         r
         for r in intervention_records
         if bool(((r.get("overpush_risk") or {}).get("flag")))
+    ]
+    prompted_mode_turns = [r for r in turn_records if bool(r.get("simulated_reply_mode_prompted"))]
+    mode_alignment_records = [
+        r
+        for r in turn_records
+        if (r.get("simulated_reply_mode_alignment") or {}).get("label") != "not_applicable"
+    ]
+    aligned_mode_records = [
+        r
+        for r in mode_alignment_records
+        if (r.get("simulated_reply_mode_alignment") or {}).get("label") in {"aligned", "partially_aligned"}
+    ]
+    strong_aligned_mode_records = [
+        r
+        for r in mode_alignment_records
+        if (r.get("simulated_reply_mode_alignment") or {}).get("label") == "aligned"
     ]
     recoverable_interventions = [
         r
@@ -1486,6 +1621,10 @@ def run_dyadic_roleplay(
         "rounds": rounds,
         "assistant_mode": mode,
         "fixed_assistant_turns": sorted(fixed_turns) if mode == "fixed_turns" else [],
+        "roleplay_experiment": {
+            "simulated_reply_reads_interaction_mode": bool(simulate_reply_reads_interaction_mode),
+            "offline_only": True,
+        },
         "proactive_rescue_events": rescue_log,
         "stress_mode": sm,
         "stress_events": stress_events,
@@ -1516,6 +1655,22 @@ def run_dyadic_roleplay(
             "probe_intervention_turns": len(probe_interventions),
             "hold_decision_turns": len(hold_decisions),
             "overpush_risk_turns": len(overpush_risk_turns),
+            "simulated_reply_mode_prompted_turns": len(prompted_mode_turns),
+            "simulated_reply_mode_applicable_turns": len(mode_alignment_records),
+            "simulated_reply_mode_alignment_turns": len(aligned_mode_records),
+            "simulated_reply_mode_alignment_rate": round(
+                len(aligned_mode_records) / len(mode_alignment_records),
+                4,
+            )
+            if mode_alignment_records
+            else None,
+            "simulated_reply_mode_strong_alignment_turns": len(strong_aligned_mode_records),
+            "simulated_reply_mode_strong_alignment_rate": round(
+                len(strong_aligned_mode_records) / len(mode_alignment_records),
+                4,
+            )
+            if mode_alignment_records
+            else None,
             "followed_intervention_turns": len(followed_interventions),
             "follow_rate": round(len(followed_interventions) / len(intervention_records), 4)
             if intervention_records
