@@ -48,6 +48,51 @@ _COACHING_MARKERS = (
     "收住",
     "低压",
 )
+_SUMMARY_ALLOWED_KEYS = (
+    "settlement_city",
+    "city",
+    "job",
+    "relationship_goal",
+    "personality",
+    "values",
+    "lifestyle",
+    "hobbies",
+    "marriage_timeline",
+    "notes",
+)
+_SUMMARY_KEY_PRIORITY = {
+    "settlement_city": 0,
+    "city": 0,
+    "job": 1,
+    "relationship_goal": 2,
+    "personality": 3,
+    "values": 4,
+    "lifestyle": 5,
+    "hobbies": 6,
+    "marriage_timeline": 7,
+    "notes": 8,
+}
+_GENERIC_PROFILE_HOOKS = frozenset({"电影", "旅行", "旅游", "运动", "健身", "美食"})
+_UNSAFE_PROFILE_HOOK_TOKENS = (
+    "收入",
+    "工资",
+    "年薪",
+    "房产",
+    "彩礼",
+    "前任",
+    "婚史",
+    "离异",
+    "孩子",
+    "照片",
+    "身高",
+    "体重",
+)
+_LOW_BAR_FALLBACK_HOOKS = (
+    "周末安排",
+    "最近放松方式",
+    "同城吃喝",
+    "作息节奏",
+)
 
 
 def _env_int(name: str, default: int) -> int:
@@ -204,6 +249,243 @@ def _merge_clean_lists(*values: Any) -> list[str]:
     return out
 
 
+def _compact_text(text: str) -> str:
+    return re.sub(r"\s+", "", str(text or ""))
+
+
+def _clean_profile_hook(value: Any) -> str:
+    text = str(value or "").strip().strip("，,。.;；：:")
+    if not text:
+        return ""
+    text = re.sub(r"\s+", " ", text)
+    return text[:24] if len(text) > 24 else text
+
+
+def _is_generic_profile_hook(hook: str) -> bool:
+    compact = _compact_text(hook)
+    return compact in _GENERIC_PROFILE_HOOKS
+
+
+def _is_safe_profile_hook(hook: str) -> bool:
+    compact = _compact_text(hook)
+    if not compact or len(compact) <= 1:
+        return False
+    if any(token in compact for token in _UNSAFE_PROFILE_HOOK_TOKENS):
+        return False
+    return True
+
+
+def _profile_hook_fragments(text: str) -> list[str]:
+    raw = _clean_profile_hook(text)
+    if not raw:
+        return []
+    out: list[str] = []
+    for part in re.split(r"[，,、/|；;：:\s()（）]+", raw):
+        item = part.strip()
+        if len(item) >= 2 and item not in out:
+            out.append(item)
+    compact = _compact_text(raw)
+    if len(compact) >= 2 and compact not in out:
+        out.append(compact)
+    return out
+
+
+def _summary_contains_hook(summary: str, hook: str) -> bool:
+    body = _compact_text(summary)
+    return bool(body) and any(fragment in body for fragment in _profile_hook_fragments(hook))
+
+
+def _parse_profile_summary(summary: str) -> list[tuple[str, str]]:
+    out: list[tuple[str, str]] = []
+    for line in str(summary or "").splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        key, sep, value = stripped.partition("：")
+        if not sep:
+            key, sep, value = stripped.partition(":")
+        if not sep:
+            continue
+        norm_key = key.strip()
+        norm_val = value.strip()
+        if not norm_key or not norm_val:
+            continue
+        out.append((norm_key, norm_val))
+    return out
+
+
+def _trim_summary_value(key: str, value: str, preferred_hooks: list[str]) -> str:
+    raw = str(value or "").replace("\n", " ").strip()
+    if key in {"lifestyle", "hobbies", "notes", "values", "personality"}:
+        items = [item.strip() for item in re.split(r"[，,、；;]+", raw) if item.strip()]
+        preferred_items = [
+            item
+            for item in items
+            if any(_summary_contains_hook(item, hook) for hook in preferred_hooks)
+        ]
+        chosen = preferred_items or items[:2]
+        raw = "、".join(chosen[:2])
+    if len(raw) <= 28:
+        return raw
+    return raw[:27] + "…"
+
+
+def _safe_profile_summary(summary: str, preferred_hooks: list[str]) -> str:
+    rows: list[tuple[int, int, str]] = []
+    for idx, (key, value) in enumerate(_parse_profile_summary(summary)):
+        if key not in _SUMMARY_ALLOWED_KEYS:
+            continue
+        trimmed = _trim_summary_value(key, value, preferred_hooks)
+        if not trimmed:
+            continue
+        hook_bonus = 0 if any(_summary_contains_hook(trimmed, hook) for hook in preferred_hooks) else 1
+        priority = _SUMMARY_KEY_PRIORITY.get(key, 99)
+        rows.append((hook_bonus, priority, idx, f"{key}：{trimmed}"))
+    rows.sort()
+    return "\n".join(item for _, _, _, item in rows[:5])
+
+
+def _rank_profile_hooks(
+    *,
+    actor_profile_summary: str,
+    counterpart_profile_summary: str,
+    profile_hooks: list[str] | None,
+) -> dict[str, list[str]]:
+    actor_text = str(actor_profile_summary or "")
+    counterpart_text = str(counterpart_profile_summary or "")
+    shared: list[str] = []
+    actor_only: list[str] = []
+    counterpart_only: list[str] = []
+    unmatched_specific: list[str] = []
+    generic_only: list[str] = []
+    for raw_hook in _to_clean_list(profile_hooks):
+        hook = _clean_profile_hook(raw_hook)
+        if not _is_safe_profile_hook(hook):
+            continue
+        in_actor = _summary_contains_hook(actor_text, hook)
+        in_counterpart = _summary_contains_hook(counterpart_text, hook)
+        if in_actor and in_counterpart:
+            if hook not in shared:
+                shared.append(hook)
+            continue
+        if in_actor and not _is_generic_profile_hook(hook):
+            if hook not in actor_only:
+                actor_only.append(hook)
+            continue
+        if in_counterpart and not _is_generic_profile_hook(hook):
+            if hook not in counterpart_only:
+                counterpart_only.append(hook)
+            continue
+        if not _is_generic_profile_hook(hook):
+            if hook not in unmatched_specific:
+                unmatched_specific.append(hook)
+            continue
+        if _is_generic_profile_hook(hook):
+            if hook not in generic_only:
+                generic_only.append(hook)
+    selected: list[str] = []
+    for hook in shared + actor_only + unmatched_specific:
+        if hook not in selected:
+            selected.append(hook)
+    fallback: list[str] = []
+    for hook in _LOW_BAR_FALLBACK_HOOKS:
+        if hook not in selected and hook not in fallback:
+            fallback.append(hook)
+    if len(selected) < 4:
+        for hook in counterpart_only:
+            if hook not in selected:
+                selected.append(hook)
+            if len(selected) >= 4:
+                break
+    return {
+        "shared_hooks": shared[:3],
+        "actor_hooks": actor_only[:4],
+        "counterpart_hooks": counterpart_only[:4],
+        "unmatched_specific_hooks": unmatched_specific[:4],
+        "generic_hooks": generic_only[:4],
+        "fallback_hooks": fallback[:3],
+        "selected_hooks": selected[:4],
+    }
+
+
+def _default_topic_directions(selected_hooks: list[str], *, interaction_mode: str) -> list[str]:
+    if interaction_mode == "hold":
+        return []
+    topics: list[str] = []
+    for hook in selected_hooks:
+        if hook in _LOW_BAR_FALLBACK_HOOKS or not _is_generic_profile_hook(hook):
+            topics.append(hook)
+        if len(topics) >= 3:
+            break
+    if topics:
+        return topics
+    return list(_LOW_BAR_FALLBACK_HOOKS[:2])
+
+
+def _infer_profile_hooks_used(guidance: dict[str, Any], selected_hooks: list[str]) -> list[str]:
+    text_pool = "\n".join(
+        _merge_clean_lists(
+            guidance.get("topic_directions"),
+            guidance.get("advice"),
+            guidance.get("rescue_flow"),
+            guidance.get("current_problem"),
+            guidance.get("low_pressure_options"),
+        )
+    )
+    inferred: list[str] = []
+    for hook in selected_hooks:
+        if _summary_contains_hook(text_pool, hook) and hook not in inferred:
+            inferred.append(hook)
+    return inferred[:3]
+
+
+def _finalize_guidance_with_profile_context(
+    guidance: dict[str, Any],
+    *,
+    selected_hooks: list[str],
+) -> dict[str, Any]:
+    out = normalize_assistant_guidance(guidance)
+    topic_directions = _to_clean_list(out.get("topic_directions"))
+    if selected_hooks and (
+        not topic_directions or all(_is_generic_profile_hook(topic) for topic in topic_directions)
+    ):
+        topic_directions = _default_topic_directions(
+            selected_hooks,
+            interaction_mode=str(out.get("interaction_mode") or ""),
+        )
+    hooks_used = [hook for hook in _to_clean_list(out.get("profile_hooks_used")) if hook in selected_hooks]
+    for hook in _infer_profile_hooks_used(out, selected_hooks):
+        if hook not in hooks_used:
+            hooks_used.append(hook)
+    if not hooks_used and selected_hooks and str(out.get("interaction_mode") or "") != "hold":
+        hooks_used = selected_hooks[: min(3, len(selected_hooks))]
+    out["topic_directions"] = topic_directions
+    out["profile_hooks_used"] = hooks_used[:3]
+    return out
+
+
+def _prepare_profile_context_for_guidance(
+    *,
+    actor_profile_summary: str,
+    counterpart_profile_summary: str,
+    profile_hooks: list[str] | None,
+) -> dict[str, Any]:
+    ranked = _rank_profile_hooks(
+        actor_profile_summary=actor_profile_summary,
+        counterpart_profile_summary=counterpart_profile_summary,
+        profile_hooks=profile_hooks,
+    )
+    preferred_hooks = list(ranked.get("selected_hooks") or [])
+    return {
+        **ranked,
+        "actor_profile_summary_safe": _safe_profile_summary(actor_profile_summary, preferred_hooks),
+        "counterpart_profile_summary_safe": _safe_profile_summary(
+            counterpart_profile_summary,
+            list(ranked.get("shared_hooks") or preferred_hooks),
+        ),
+    }
+
+
 def _looks_like_direct_send_message(text: str) -> bool:
     item = str(text or "").strip()
     if not item:
@@ -269,8 +551,9 @@ def normalize_assistant_guidance(data: dict[str, Any]) -> dict[str, Any]:
 
 
 def build_placeholder_assistant_guidance(*, profile_hooks: list[str] | None = None) -> dict[str, Any]:
-    hooks = list(profile_hooks or [])
-    topic_directions = hooks[:2] if hooks else ["周末安排", "最近放松方式"]
+    raw_hooks = [_clean_profile_hook(hook) for hook in list(profile_hooks or [])]
+    hooks = [hook for hook in raw_hooks if hook and not _is_generic_profile_hook(hook)]
+    topic_directions = _default_topic_directions(hooks, interaction_mode="probe_lightly")
     advice = [
         "先回应对方上一句里最具体的信息，再补一点自己的真实感受。",
         "如果旧话题已经聊干了，就顺势切到更生活化、更容易回答的话题。",
@@ -300,7 +583,7 @@ def build_placeholder_assistant_guidance(*, profile_hooks: list[str] | None = No
         "reply_suggestions": advice,
         "profile_hooks_used": hooks[:3],
     }
-    return normalize_assistant_guidance(guidance)
+    return _finalize_guidance_with_profile_context(guidance, selected_hooks=hooks)
 
 
 def render_assistant_guidance(guidance: dict[str, Any]) -> str:
@@ -425,7 +708,15 @@ def generate_assistant_guidance(
     counterpart_profile_summary: str = "",
     profile_hooks: list[str] | None = None,
 ) -> dict[str, Any] | None:
-    fallback = build_placeholder_assistant_guidance(profile_hooks=profile_hooks)
+    profile_ctx = _prepare_profile_context_for_guidance(
+        actor_profile_summary=actor_profile_summary,
+        counterpart_profile_summary=counterpart_profile_summary,
+        profile_hooks=profile_hooks,
+    )
+    selected_hooks = list(profile_ctx.get("selected_hooks") or [])
+    actor_summary_safe = str(profile_ctx.get("actor_profile_summary_safe") or "")
+    counterpart_summary_safe = str(profile_ctx.get("counterpart_profile_summary_safe") or "")
+    fallback = build_placeholder_assistant_guidance(profile_hooks=selected_hooks)
     key = (os.environ.get("OPENAI_API_KEY") or "").strip()
     if not key:
         return fallback
@@ -458,7 +749,7 @@ def generate_assistant_guidance(
         "如果你判断当前更像意愿不明确、对方投入偏低，或已经碰到边界/压力点，就不要给讨好型救场，而是改成低压试探或先收住。"
         "请先判断当前属于 communication_problem、interest_unclear、interest_low、boundary_risk、normal 哪一类。"
         "只有 communication_problem 才使用 repair；interest_unclear 使用 probe_lightly；interest_low 或 boundary_risk 使用 hold。"
-        "若提供了画像钩子，请优先从双方交集或当前说话人的真实生活里选，而不是泛泛建议电影、旅行这类万能话题。"
+        "若提供了画像钩子，请优先从双方交集或当前说话人的真实生活里选，而不是泛泛建议电影、旅行、运动这类万能话题。"
         "你的建议必须足够具体，优先回答：现在最关键的问题是什么、别继续做什么、建议换到什么低门槛话题、适合问什么更容易回答的问题。"
         "建议尽量写成步骤感强的教练提示，比如先接住、再换题、最后问轻一点的问题。"
         "如果当前局面已经连续偏冷、明显顶不动，允许直接给出体面收口或暂时放慢节奏的止损建议。"
@@ -466,9 +757,12 @@ def generate_assistant_guidance(
     )
     user_block = (
         f"最近对话（双方可见）：\n{thread_context or '（暂无）'}\n\n"
-        f"当前说话人画像摘要：\n{actor_profile_summary or '（暂无）'}\n\n"
-        f"对方画像摘要：\n{counterpart_profile_summary or '（暂无）'}\n\n"
-        f"优先可用画像钩子：{', '.join(profile_hooks or []) or '（暂无）'}\n\n"
+        f"当前说话人画像摘要（已裁剪）：\n{actor_summary_safe or '（暂无）'}\n\n"
+        f"对方画像摘要（已裁剪）：\n{counterpart_summary_safe or '（暂无）'}\n\n"
+        f"优先画像钩子-双方交集：{', '.join(profile_ctx.get('shared_hooks') or []) or '（暂无）'}\n"
+        f"优先画像钩子-当前说话人真实生活：{', '.join(profile_ctx.get('actor_hooks') or []) or '（暂无）'}\n"
+        f"通用低门槛兜底：{', '.join(profile_ctx.get('fallback_hooks') or []) or '（暂无）'}\n"
+        f"最终优先可用画像钩子：{', '.join(selected_hooks) or '（暂无）'}\n\n"
         f"用户问题：{user_query}\n\n"
         "输出 JSON：\n"
         "{\n"
@@ -506,7 +800,10 @@ def generate_assistant_guidance(
         out = (choice or "").strip()
         if not out:
             return fallback
-        return normalize_assistant_guidance(_strip_json_object(out))
+        return _finalize_guidance_with_profile_context(
+            _strip_json_object(out),
+            selected_hooks=selected_hooks,
+        )
     except Exception:
         return fallback
 

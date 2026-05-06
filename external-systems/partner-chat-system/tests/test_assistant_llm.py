@@ -27,12 +27,14 @@ class _FakeOpenAIResponse:
 
 class _FakeOpenAIClient:
     response_content = "{}"
+    last_create_kwargs = None
 
     def __init__(self, **_kwargs):
         self.chat = self
         self.completions = self
 
     def create(self, **_kwargs):
+        _FakeOpenAIClient.last_create_kwargs = dict(_kwargs)
         return _FakeOpenAIResponse(self.response_content)
 
 
@@ -41,6 +43,7 @@ class AssistantLLMTests(unittest.TestCase):
         os.environ.pop("OPENAI_API_KEY", None)
         os.environ.pop("HER_CHAT_ASSISTANT_BASE_URL", None)
         os.environ.pop("OPENAI_BASE_URL", None)
+        _FakeOpenAIClient.last_create_kwargs = None
 
     def test_guidance_render_and_parse_round_trip(self):
         guidance = normalize_assistant_guidance(
@@ -150,6 +153,72 @@ class AssistantLLMTests(unittest.TestCase):
         self.assertTrue(guidance["avoid"])
         self.assertNotIn("我觉得我们改天再聊吧。", guidance["advice"])
         self.assertIn("先把节奏收住，不要继续追着聊。", guidance["advice"])
+
+    def test_placeholder_guidance_deprioritizes_generic_profile_hooks(self):
+        guidance = build_placeholder_assistant_guidance(
+            profile_hooks=["电影", "旅行", "无锡", "咖啡"]
+        )
+
+        self.assertEqual(guidance["topic_directions"][:2], ["无锡", "咖啡"])
+        self.assertEqual(guidance["profile_hooks_used"], ["无锡", "咖啡"])
+        self.assertNotIn("电影", guidance["topic_directions"])
+        self.assertNotIn("旅行", guidance["topic_directions"])
+
+    def test_generate_assistant_guidance_uses_safe_summaries_and_ranked_hooks(self):
+        os.environ["OPENAI_API_KEY"] = "test-key"
+        _FakeOpenAIClient.response_content = (
+            '{"mutual_intent_assessment":"communication_problem","interaction_mode":"repair",'
+            '"current_problem":["旧话题快聊干了"],'
+            '"topic_directions":["电影","旅行"],'
+            '"advice":["先接住对方上一句，再换到更生活化的话题。"],'
+            '"profile_hooks_used":[]}'
+        )
+        fake_module = SimpleNamespace(OpenAI=_FakeOpenAIClient)
+
+        actor_summary = (
+            "name：小雨\n"
+            "age：29\n"
+            "settlement_city：无锡\n"
+            "job：互联网运营\n"
+            "lifestyle：咖啡、citywalk、运动\n"
+            "hobbies：桌游、羽毛球、电影\n"
+            "notes：周末会找家店坐坐慢慢聊。"
+        )
+        counterpart_summary = (
+            "name：阿杰\n"
+            "age：30\n"
+            "settlement_city：无锡\n"
+            "job：工程师\n"
+            "lifestyle：咖啡、早起\n"
+            "hobbies：桌游、旅行\n"
+            "notes：偏慢热。"
+        )
+
+        with patch.dict(sys.modules, {"openai": fake_module}):
+            guidance = generate_assistant_guidance(
+                user_query="这轮怎么接？",
+                thread_context="bob: 嗯",
+                actor_profile_summary=actor_summary,
+                counterpart_profile_summary=counterpart_summary,
+                profile_hooks=["电影", "旅行", "无锡", "咖啡", "桌游", "羽毛球", "运动"],
+            )
+
+        assert guidance is not None
+        self.assertEqual(guidance["topic_directions"][:3], ["无锡", "咖啡", "桌游"])
+        self.assertEqual(guidance["profile_hooks_used"], ["无锡", "咖啡", "桌游"])
+
+        create_kwargs = _FakeOpenAIClient.last_create_kwargs or {}
+        messages = create_kwargs.get("messages") or []
+        self.assertEqual(len(messages), 2)
+        prompt = messages[1]["content"]
+        self.assertIn("当前说话人画像摘要（已裁剪）：", prompt)
+        self.assertIn("对方画像摘要（已裁剪）：", prompt)
+        self.assertIn("优先画像钩子-双方交集：无锡, 咖啡, 桌游", prompt)
+        self.assertIn("优先画像钩子-当前说话人真实生活：羽毛球", prompt)
+        self.assertIn("最终优先可用画像钩子：无锡, 咖啡, 桌游, 羽毛球", prompt)
+        self.assertNotIn("name：小雨", prompt)
+        self.assertNotIn("age：29", prompt)
+        self.assertNotIn("电影, 旅行, 运动", prompt)
 
 
 if __name__ == "__main__":
