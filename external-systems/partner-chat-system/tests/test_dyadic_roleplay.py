@@ -10,6 +10,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from chat_system.dyadic_roleplay import (
+    _assistant_follow_assessment,
     dyadic_public_transcript,
     parse_int_csv,
     run_dyadic_roleplay,
@@ -68,6 +69,47 @@ class DyadicRoleplayUtilTests(unittest.TestCase):
             self.assertNotIn("secret", pub)
         finally:
             conn.close()
+
+    def test_assistant_follow_assessment_returns_structured_evidence_for_repair(self):
+        out = _assistant_follow_assessment(
+            "我周末一般会找家店坐坐喝咖啡，你一般怎么放松？",
+            {
+                "mutual_intent_assessment": "communication_problem",
+                "interaction_mode": "repair",
+                "strategy_tags": ["switch_topic", "ask_easy_question"],
+                "topic_directions": ["周末安排"],
+                "easy_question_types": ["低门槛生活问题"],
+                "avoid": ["不要继续追着旧话题硬问。"],
+                "profile_hooks_used": ["咖啡"],
+            },
+            assistant_invoked=True,
+        )
+
+        self.assertEqual(out["level"], "strong")
+        self.assertIn("周末安排", out["evidence"]["matched_topic_directions"])
+        self.assertIn("咖啡", out["evidence"]["matched_profile_hooks"])
+        self.assertTrue(out["evidence"]["asked_low_bar_question"])
+        self.assertEqual(out["evidence"]["avoid_violations"], [])
+        self.assertFalse(out["overpush_risk"]["flag"])
+
+    def test_assistant_follow_assessment_flags_hold_mode_overpush(self):
+        out = _assistant_follow_assessment(
+            "那你收入大概多少呀？方便发张照片吗？",
+            {
+                "mutual_intent_assessment": "boundary_risk",
+                "interaction_mode": "hold",
+                "strategy_tags": ["graceful_exit"],
+                "why_not_to_push": ["这轮已经碰到边界，不要继续推进敏感话题。"],
+                "avoid": ["不要继续往收入和照片上推。"],
+                "graceful_exit_plan": ["先轻轻收住，别再继续追问。"],
+            },
+            assistant_invoked=True,
+        )
+
+        self.assertEqual(out["level"], "none")
+        self.assertIn("sensitive_topic_reentry", out["evidence"]["avoid_violations"])
+        self.assertIn("continued_pushing_in_hold_mode", out["evidence"]["avoid_violations"])
+        self.assertTrue(out["overpush_risk"]["flag"])
 
 
 class DyadicRoleplayRunTests(unittest.TestCase):
@@ -340,6 +382,12 @@ class DyadicRoleplayRunTests(unittest.TestCase):
         self.assertEqual(out["assistant_metrics"]["heuristic_decision_turns"], 2)
         self.assertEqual(out["assistant_metrics"]["llm_decision_turns"], 0)
         self.assertEqual(out["assistant_metrics"]["probe_intervention_turns"], 1)
+        self.assertIn("follow_evidence", out["turn_evaluations"][1]["roleplay_evaluation"])
+        self.assertIn("overpush_risk", out["turn_evaluations"][1]["roleplay_evaluation"])
+        self.assertIn(out["turn_evaluations"][1]["follow_level"], {"partial", "strong"})
+        self.assertEqual(out["assistant_metrics"]["followed_intervention_turns"], 1)
+        self.assertEqual(out["assistant_metrics"]["follow_rate"], 1.0)
+        self.assertEqual(out["assistant_metrics"]["avoid_violation_turns"], 0)
 
     def test_heuristic_repair_requires_prior_mutual_engagement(self):
         calls = {"orchestrator": 0, "message": 0}

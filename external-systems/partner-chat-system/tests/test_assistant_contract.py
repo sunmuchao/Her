@@ -38,6 +38,8 @@ class AssistantContractTests(unittest.TestCase):
         self.assertIn("turn_index", SHARED_TURN_EVALUATION_FIELDS)
         self.assertIn("graceful_exit_score", SHARED_TURN_EVALUATION_FIELDS)
         self.assertIn("assistant_guidance", ROLEPLAY_TURN_EVALUATION_FIELDS)
+        self.assertIn("follow_evidence", ROLEPLAY_TURN_EVALUATION_FIELDS)
+        self.assertIn("overpush_risk", ROLEPLAY_TURN_EVALUATION_FIELDS)
 
     def test_mutual_intent_normalization_uses_shared_rules(self):
         self.assertEqual(

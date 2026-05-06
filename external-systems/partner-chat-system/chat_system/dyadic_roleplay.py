@@ -80,6 +80,17 @@ _LOW_BAR_QUESTION_TOKENS = (
     "喜欢",
     "常",
 )
+_QUESTION_HINT_TOKENS = (
+    "吗",
+    "呢",
+    "什么",
+    "怎么",
+    "哪",
+    "哪种",
+    "有没有",
+    "会不会",
+    "是不是",
+)
 _LOW_ENERGY_PATTERNS = (
     "在的",
     "挺简单",
@@ -102,6 +113,27 @@ _GRACEFUL_EXIT_TOKENS = (
     "下次再聊",
     "你先忙",
     "晚点聊",
+)
+_GUIDANCE_TOPIC_KEYWORDS = (
+    "周末",
+    "咖啡",
+    "养生",
+    "作息",
+    "桌游",
+    "羽毛球",
+    "无锡",
+    "聚会",
+    "通勤",
+    "吃喝",
+    "美食",
+    "电影",
+    "旅行",
+    "运动",
+    "宠物",
+    "猫",
+    "狗",
+    "放松",
+    "城市",
 )
 _MUTUAL_INTENT_CHOICES = format_choice_values(MUTUAL_INTENT_ASSESSMENTS)
 _INTERACTION_MODE_CHOICES = format_choice_values(INTERACTION_MODES)
@@ -371,6 +403,29 @@ def _phrase_fragments(text: str) -> list[str]:
     return out
 
 
+def _guidance_match_fragments(text: str) -> list[str]:
+    out = _phrase_fragments(text)
+    compact = _compact_text(text)
+    for token in _GUIDANCE_TOPIC_KEYWORDS:
+        if token in compact and token not in out:
+            out.append(token)
+    return out
+
+
+def _matched_guidance_values(text: str, phrases: list[str]) -> list[str]:
+    body = _compact_text(text)
+    if not body:
+        return []
+    matched: list[str] = []
+    for phrase in phrases:
+        raw = str(phrase or "").strip()
+        if not raw:
+            continue
+        if any(frag in body for frag in _guidance_match_fragments(raw)):
+            matched.append(raw)
+    return _dedupe_strs(matched)
+
+
 def _contains_any_phrase_signal(text: str, phrases: list[str]) -> bool:
     body = _compact_text(text)
     if not body:
@@ -380,6 +435,29 @@ def _contains_any_phrase_signal(text: str, phrases: list[str]) -> bool:
             if frag and frag in body:
                 return True
     return False
+
+
+def _question_cue_count(text: str) -> int:
+    raw = str(text or "")
+    compact = _compact_text(raw)
+    score = raw.count("?") + raw.count("？")
+    for token in _QUESTION_HINT_TOKENS:
+        score += compact.count(token)
+    return score
+
+
+def _is_pushy_questioning(text: str) -> bool:
+    raw = str(text or "").strip()
+    if not raw or not _is_question_like(raw):
+        return False
+    question_marks = raw.count("?") + raw.count("？")
+    cue_count = _question_cue_count(raw)
+    return question_marks >= 2 or cue_count >= 3 or (cue_count >= 2 and len(raw) >= 28)
+
+
+def _mentions_boundary_topic(text: str) -> bool:
+    compact = _compact_text(text)
+    return bool(compact) and any(token in compact for token in _BOUNDARY_HINTS)
 
 
 def _is_question_like(text: str) -> bool:
@@ -520,57 +598,187 @@ def _assistant_follow_assessment(
     assistant_invoked: bool,
 ) -> dict[str, Any]:
     if not assistant_invoked or not guidance:
-        return {"level": FOLLOW_LEVEL_NOT_APPLICABLE, "score": 0, "signals": []}
+        return {
+            "level": FOLLOW_LEVEL_NOT_APPLICABLE,
+            "score": 0,
+            "signals": [],
+            "evidence": {},
+            "overpush_risk": None,
+        }
     text = str(message or "").strip()
     signals: list[str] = []
-    score = 0
     strategy_tags = set(str(x) for x in guidance.get("strategy_tags") or [])
     interaction_mode = str(guidance.get("interaction_mode") or "repair")
+    mutual_intent_assessment = str(guidance.get("mutual_intent_assessment") or "normal")
     hooks = [str(x) for x in guidance.get("profile_hooks_used") or []]
     topic_directions = [str(x) for x in guidance.get("topic_directions") or []]
     easy_question_types = [str(x) for x in guidance.get("easy_question_types") or []]
+    avoid_items = [str(x) for x in guidance.get("avoid") or []]
+    why_not_to_push = [str(x) for x in guidance.get("why_not_to_push") or []]
+    matched_topic_directions = _matched_guidance_values(text, topic_directions)
+    matched_profile_hooks = _matched_guidance_values(text, hooks)
+    asked_question = _is_question_like(text)
+    shared_detail = len(text) >= 18
+    acknowledged_awkwardness = "acknowledge_coldness" in strategy_tags and any(
+        token in text for token in ("聊不下去", "冷场", "接不下去", "不太擅长找话题")
+    )
+    asked_low_bar_question = asked_question and any(token in text for token in _LOW_BAR_QUESTION_TOKENS)
+    pushy_questioning = _is_pushy_questioning(text)
+    mentions_boundary_topic = _mentions_boundary_topic(text)
     graceful_exit_used = "graceful_exit" in strategy_tags and _is_graceful_exit_like(text)
+    switched_topic = bool(matched_topic_directions or matched_profile_hooks)
+    if not switched_topic and "switch_topic" in strategy_tags and asked_low_bar_question and len(text) >= 10:
+        switched_topic = True
+    low_pressure_probe = (
+        interaction_mode == "probe_lightly"
+        and asked_question
+        and asked_low_bar_question
+        and not pushy_questioning
+        and len(text) <= 28
+    )
+
+    avoid_context = " ".join(avoid_items + why_not_to_push)
+    avoid_violations: list[str] = []
+    if mentions_boundary_topic and (
+        mutual_intent_assessment == "boundary_risk"
+        or any(token in avoid_context for token in _BOUNDARY_HINTS)
+    ):
+        avoid_violations.append("sensitive_topic_reentry")
+    if pushy_questioning and any(
+        token in avoid_context for token in ("追问", "连环", "查户口", "硬问", "硬推", "加码", "推进", "讨好")
+    ):
+        avoid_violations.append("cross_exam_questioning")
+    if interaction_mode == "probe_lightly" and pushy_questioning:
+        avoid_violations.append("too_heavy_for_probe")
+    if interaction_mode == "hold" and asked_question and not graceful_exit_used:
+        avoid_violations.append("continued_pushing_in_hold_mode")
+    avoid_violations = _dedupe_strs(avoid_violations)
+    overpush_reasons = [
+        reason
+        for reason in avoid_violations
+        if reason
+        in {
+            "sensitive_topic_reentry",
+            "cross_exam_questioning",
+            "too_heavy_for_probe",
+            "continued_pushing_in_hold_mode",
+        }
+    ]
+
+    evidence = {
+        "matched_topic_directions": matched_topic_directions,
+        "matched_profile_hooks": matched_profile_hooks,
+        "applied_strategies": [],
+        "avoid_violations": avoid_violations,
+        "asked_question": asked_question,
+        "asked_low_bar_question": asked_low_bar_question,
+        "shared_detail": shared_detail,
+        "used_graceful_exit": graceful_exit_used,
+        "message_still_cold": False,
+    }
 
     if graceful_exit_used:
-        score += 2
         signals.append("used_graceful_exit")
+        evidence["applied_strategies"].append("graceful_exit")
 
     if _is_low_energy_like(text) and not graceful_exit_used:
-        return {"level": FOLLOW_LEVEL_NONE, "score": 0, "signals": ["message_still_cold"]}
-    if _is_question_like(text):
+        evidence["message_still_cold"] = True
+        return {
+            "level": FOLLOW_LEVEL_NONE,
+            "score": 0,
+            "signals": ["message_still_cold"],
+            "evidence": evidence,
+            "overpush_risk": {"flag": bool(overpush_reasons), "reasons": overpush_reasons},
+        }
+
+    score = 0
+    if asked_question:
         score += 1
         signals.append("asked_question")
-    if len(text) >= 18:
+        evidence["applied_strategies"].append("asked_question")
+    if shared_detail:
         score += 1
         signals.append("shared_detail")
-    if "acknowledge_coldness" in strategy_tags and any(
-        token in text for token in ("聊不下去", "冷场", "接不下去", "不太擅长找话题")
-    ):
+        evidence["applied_strategies"].append("shared_detail")
+    if acknowledged_awkwardness:
         score += 1
         signals.append("acknowledged_awkwardness")
-    if hooks and _contains_any_phrase_signal(text, hooks):
+        evidence["applied_strategies"].append("acknowledge_coldness")
+    if matched_profile_hooks:
         score += 1
         signals.append("used_profile_hook")
-    if topic_directions and _contains_any_phrase_signal(text, topic_directions):
+        evidence["applied_strategies"].append("used_profile_hook")
+    if matched_topic_directions:
         score += 1
         signals.append("used_topic_direction")
-    if easy_question_types and _is_question_like(text) and any(token in text for token in _LOW_BAR_QUESTION_TOKENS):
+        evidence["applied_strategies"].append("used_topic_direction")
+    if easy_question_types and asked_low_bar_question:
         score += 1
         signals.append("asked_low_bar_question")
-    if interaction_mode == "probe_lightly" and _is_question_like(text) and len(text.strip()) >= 8:
+        evidence["applied_strategies"].append("ask_easy_question")
+    if low_pressure_probe:
         score += 1
         signals.append("used_low_pressure_probe")
-    if "switch_topic" in strategy_tags and len(text) >= 12 and (hooks or topic_directions):
+        evidence["applied_strategies"].append("probe_lightly")
+    if switched_topic:
         score += 1
         signals.append("switched_topic")
+        evidence["applied_strategies"].append("switch_topic")
+    if interaction_mode == "hold" and not asked_question and not mentions_boundary_topic:
+        score += 1
+        signals.append("respected_hold_boundary")
+        evidence["applied_strategies"].append("hold_boundary")
+
+    evidence["applied_strategies"] = _dedupe_strs(evidence["applied_strategies"])
+
+    if interaction_mode in {"probe_lightly", "hold"} and avoid_violations:
+        level = FOLLOW_LEVEL_NONE
+        score = 0
+    else:
+        score = max(0, score - (2 * len(avoid_violations)))
+        if score >= 4:
+            level = FOLLOW_LEVEL_STRONG
+        elif score >= 2:
+            level = FOLLOW_LEVEL_PARTIAL
+        else:
+            level = FOLLOW_LEVEL_NONE
+
+    if interaction_mode == "repair" and switched_topic and asked_low_bar_question and not avoid_violations:
+        level = FOLLOW_LEVEL_STRONG
+        score = max(score, 4)
+    if interaction_mode == "probe_lightly" and low_pressure_probe and not avoid_violations:
+        if score >= 2:
+            level = FOLLOW_LEVEL_STRONG
+            score = max(score, 4)
+        elif level == FOLLOW_LEVEL_NONE:
+            level = FOLLOW_LEVEL_PARTIAL
+            score = max(score, 2)
+    if interaction_mode == "hold":
+        if graceful_exit_used and not avoid_violations:
+            level = FOLLOW_LEVEL_STRONG
+            score = max(score, 4)
+        elif level == FOLLOW_LEVEL_NONE and not avoid_violations and not asked_question and not mentions_boundary_topic:
+            level = FOLLOW_LEVEL_PARTIAL
+            score = max(score, 2)
+    if "sensitive_topic_reentry" in avoid_violations:
+        level = FOLLOW_LEVEL_NONE
+        score = 0
+    elif avoid_violations and level == FOLLOW_LEVEL_STRONG:
+        level = FOLLOW_LEVEL_PARTIAL
+        score = min(score, 3)
 
     if score >= 4:
         level = FOLLOW_LEVEL_STRONG
-    elif score >= 2:
+    elif score >= 2 and level != FOLLOW_LEVEL_STRONG:
         level = FOLLOW_LEVEL_PARTIAL
-    else:
-        level = FOLLOW_LEVEL_NONE
-    return {"level": level, "score": score, "signals": signals}
+
+    return {
+        "level": level,
+        "score": score,
+        "signals": signals,
+        "evidence": evidence,
+        "overpush_risk": {"flag": bool(overpush_reasons), "reasons": overpush_reasons},
+    }
 
 
 def _assistant_recovery_assessment(current_turn: dict[str, Any], next_turn: dict[str, Any] | None) -> dict[str, Any]:
@@ -675,6 +883,14 @@ def _predicted_interaction_mode(record: dict[str, Any]) -> str:
     guidance = record.get("assistant_guidance") or {}
     decision = record.get("rescue_decision") or {}
     return str(guidance.get("interaction_mode") or decision.get("interaction_mode") or "none")
+
+
+def _evaluated_interaction_mode(record: dict[str, Any]) -> str:
+    return str(record.get("interaction_mode") or _predicted_interaction_mode(record) or "none")
+
+
+def _evaluated_mutual_intent_assessment(record: dict[str, Any]) -> str:
+    return str(record.get("mutual_intent_assessment") or _predicted_mutual_intent_assessment(record) or "normal")
 
 
 def _graceful_exit_score(record: dict[str, Any]) -> int | None:
@@ -1048,11 +1264,14 @@ def run_dyadic_roleplay(
         emit(f"{turn_label}: message committed")
 
     for idx, record in enumerate(turn_records):
-        record["assistant_follow_assessment"] = _assistant_follow_assessment(
+        follow_assessment = _assistant_follow_assessment(
             str(record.get("generated_message") or ""),
             record.get("assistant_guidance"),
             assistant_invoked=bool(record.get("assistant_invoked")),
         )
+        record["assistant_follow_assessment"] = follow_assessment
+        record["follow_evidence"] = dict(follow_assessment.get("evidence") or {})
+        record["overpush_risk"] = follow_assessment.get("overpush_risk")
         record["assistant_recovery_assessment"] = _assistant_recovery_assessment(
             record,
             turn_records[idx + 1] if idx + 1 < len(turn_records) else None,
@@ -1087,18 +1306,39 @@ def run_dyadic_roleplay(
         for r in intervention_records
         if r.get("assistant_latency_ms") is not None
     ]
+    followed_interventions = [
+        r
+        for r in intervention_records
+        if (r.get("assistant_follow_assessment") or {}).get("level")
+        in {FOLLOW_LEVEL_PARTIAL, FOLLOW_LEVEL_STRONG}
+    ]
+    partial_follow = [
+        r
+        for r in intervention_records
+        if (r.get("assistant_follow_assessment") or {}).get("level") == FOLLOW_LEVEL_PARTIAL
+    ]
     strong_follow = [
         r for r in intervention_records if (r.get("assistant_follow_assessment") or {}).get("level") == "strong"
     ]
-    repair_interventions = [r for r in intervention_records if (r.get("interaction_mode") or "") == "repair"]
-    probe_interventions = [
-        r for r in intervention_records if (r.get("interaction_mode") or "") == "probe_lightly"
+    topic_shift_follow = [
+        r
+        for r in intervention_records
+        if bool((r.get("follow_evidence") or {}).get("matched_topic_directions"))
+        or bool((r.get("follow_evidence") or {}).get("matched_profile_hooks"))
+        or "switch_topic" in set((r.get("follow_evidence") or {}).get("applied_strategies") or [])
     ]
-    hold_decisions = [r for r in turn_records if (r.get("interaction_mode") or "") == "hold"]
+    avoid_violation_turns = [
+        r for r in intervention_records if bool((r.get("follow_evidence") or {}).get("avoid_violations"))
+    ]
+    repair_interventions = [r for r in intervention_records if _evaluated_interaction_mode(r) == "repair"]
+    probe_interventions = [
+        r for r in intervention_records if _evaluated_interaction_mode(r) == "probe_lightly"
+    ]
+    hold_decisions = [r for r in turn_records if _evaluated_interaction_mode(r) == "hold"]
     overpush_risk_turns = [
         r
         for r in intervention_records
-        if (r.get("mutual_intent_assessment") or "") in {"interest_low", "boundary_risk"}
+        if (_evaluated_mutual_intent_assessment(r) or "") in {"interest_low", "boundary_risk"}
     ]
     recoverable_interventions = [
         r
@@ -1221,9 +1461,20 @@ def run_dyadic_roleplay(
             "probe_intervention_turns": len(probe_interventions),
             "hold_decision_turns": len(hold_decisions),
             "overpush_risk_turns": len(overpush_risk_turns),
+            "followed_intervention_turns": len(followed_interventions),
+            "follow_rate": round(len(followed_interventions) / len(intervention_records), 4)
+            if intervention_records
+            else None,
+            "partial_follow_turns": len(partial_follow),
+            "partial_follow_rate": round(len(partial_follow) / len(intervention_records), 4)
+            if intervention_records
+            else None,
+            "strong_follow_turns": len(strong_follow),
             "strong_follow_rate": round(len(strong_follow) / len(intervention_records), 4)
             if intervention_records
             else None,
+            "topic_shift_follow_turns": len(topic_shift_follow),
+            "avoid_violation_turns": len(avoid_violation_turns),
             "recoverable_intervention_turns": len(recoverable_interventions),
             "improved_recovery_rate": round(len(improved_recovery) / len(recoverable_interventions), 4)
             if recoverable_interventions
