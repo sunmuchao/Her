@@ -264,6 +264,28 @@ def _has_cold_prefix_question(text: str) -> bool:
     return len(parts) == 2 and is_cold_like(parts[0]) and not is_question_like(parts[0])
 
 
+def _should_repair_cold_prefix_question(messages: list[dict[str, Any]], *, window: int = 4) -> bool:
+    recent = messages[-window:]
+    if len(recent) < 2 or _recent_risk_flags(recent):
+        return False
+    bodies = [str(message.get("body") or "").strip() for message in recent]
+    if not _has_cold_prefix_question(bodies[-1]):
+        return False
+    return any(is_low_energy_like(body) for body in bodies[:-1])
+
+
+def _should_repair_after_awkward_reply(messages: list[dict[str, Any]], *, window: int = 4) -> bool:
+    recent = messages[-window:]
+    if len(recent) < 3 or _recent_risk_flags(recent):
+        return False
+    bodies = [str(message.get("body") or "").strip() for message in recent]
+    last_body = bodies[-1]
+    prev_body = bodies[-2]
+    if not is_low_energy_like(last_body):
+        return False
+    return _has_cold_prefix_question(prev_body)
+
+
 def _normalize_situation(value: Any) -> str:
     raw = str(value or "").strip().lower()
     if raw in _ALLOWED_SITUATIONS:
@@ -402,6 +424,8 @@ def fast_mode_route(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
     last_author_low_streak = _speaker_low_energy_streak(dyadic, last_author)
     recent_risk_flags = _recent_risk_flags(dyadic)
     prior_recent_risk_flags = _recent_risk_flags(dyadic[:-1])
+    awkward_cold_question_repair = _should_repair_cold_prefix_question(dyadic)
+    awkward_reply_repair = _should_repair_after_awkward_reply(dyadic)
 
     if _is_boundary_like(last_body) or _is_pressure_like(last_body):
         return normalize_route_decision(
@@ -430,17 +454,20 @@ def fast_mode_route(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
             decision_source="heuristic",
         )
     if _has_cold_prefix_question(last_body):
+        repair_now = prior_mutual_engagement or awkward_cold_question_repair
         return normalize_route_decision(
             {
                 "need_rescue": True,
                 "situation": "cold",
                 "problem_tags": ["closed_reply", "low_energy", "awkward_transition"],
-                "mutual_intent_assessment": "communication_problem"
-                if prior_mutual_engagement
-                else "interest_unclear",
-                "interaction_mode": "repair" if prior_mutual_engagement else "probe_lightly",
-                "rescue_style": "switch_topic" if prior_mutual_engagement else "low_pressure_probe",
-                "reason": "上一句是冷回复里夹了一个问题，表面在继续聊，实际还没真正接顺。",
+                "mutual_intent_assessment": "communication_problem" if repair_now else "interest_unclear",
+                "interaction_mode": "repair" if repair_now else "probe_lightly",
+                "rescue_style": "switch_topic" if repair_now else "low_pressure_probe",
+                "reason": (
+                    "上一句虽然带着问题，但最近这几拍一直没真正接顺，更像开局尬接，值得主动帮忙修一下。"
+                    if repair_now
+                    else "上一句是冷回复里夹了一个问题，表面在继续聊，实际还没真正接顺。"
+                ),
             },
             decision_source="heuristic",
         )
@@ -495,6 +522,19 @@ def fast_mode_route(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
                     "interaction_mode": "repair",
                     "rescue_style": "switch_topic" if is_question_like(prev_body) else "reengage",
                     "reason": "前面双方本来聊得动，这一拍更像接话没接好。",
+                },
+                decision_source="heuristic",
+            )
+        if awkward_reply_repair:
+            return normalize_route_decision(
+                {
+                    "need_rescue": True,
+                    "situation": "stuck",
+                    "problem_tags": ["closed_reply", "low_energy", "awkward_transition", "missed_connection"],
+                    "mutual_intent_assessment": "communication_problem",
+                    "interaction_mode": "repair",
+                    "rescue_style": "switch_topic",
+                    "reason": "刚经历过一拍生硬追问，这一拍又回得很死，更像不会接话导致的冷场，还值得再修一下。",
                 },
                 decision_source="heuristic",
             )

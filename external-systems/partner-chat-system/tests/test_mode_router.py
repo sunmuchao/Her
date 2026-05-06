@@ -71,7 +71,7 @@ class ModeRouterTests(unittest.TestCase):
         self.assertEqual(out["mutual_intent_assessment"], "boundary_risk")
         self.assertEqual(out["problem_tags"], ["boundary_risk", "sensitive_topic"])
 
-    def test_fast_mode_route_probe_lightly_on_cold_prefix_question(self):
+    def test_fast_mode_route_repair_on_cold_prefix_question_after_cold_opening(self):
         messages = [
             _msg("a", "你好"),
             _msg("b", "嗯。你周末都干嘛"),
@@ -79,9 +79,33 @@ class ModeRouterTests(unittest.TestCase):
         out = fast_mode_route(messages)
         self.assertIsNotNone(out)
         assert out is not None
+        self.assertEqual(out["interaction_mode"], "repair")
+        self.assertEqual(out["mutual_intent_assessment"], "communication_problem")
+        self.assertIn("awkward_transition", out["problem_tags"])
+
+    def test_fast_mode_route_probe_lightly_on_cold_prefix_question_without_awkward_context(self):
+        messages = [
+            _msg("a", "我最近工作节奏有点满，不过周末会找个公园走走。"),
+            _msg("b", "嗯。你平时怎么放松"),
+        ]
+        out = fast_mode_route(messages)
+        self.assertIsNotNone(out)
+        assert out is not None
         self.assertEqual(out["interaction_mode"], "probe_lightly")
         self.assertEqual(out["mutual_intent_assessment"], "interest_unclear")
-        self.assertIn("awkward_transition", out["problem_tags"])
+
+    def test_fast_mode_route_repair_on_low_energy_reply_after_awkward_question(self):
+        messages = [
+            _msg("a", "你好"),
+            _msg("b", "嗯。你周末都干嘛"),
+            _msg("a", "睡觉。"),
+        ]
+        out = fast_mode_route(messages)
+        self.assertIsNotNone(out)
+        assert out is not None
+        self.assertEqual(out["interaction_mode"], "repair")
+        self.assertEqual(out["mutual_intent_assessment"], "communication_problem")
+        self.assertIn("missed_connection", out["problem_tags"])
 
     def test_fast_mode_route_does_not_clear_continue_after_cold_context(self):
         messages = [

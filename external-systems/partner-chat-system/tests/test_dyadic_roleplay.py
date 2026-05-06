@@ -741,7 +741,7 @@ class DyadicRoleplayRunTests(unittest.TestCase):
         self.assertEqual(out["assistant_metrics"]["follow_rate"], 1.0)
         self.assertEqual(out["assistant_metrics"]["avoid_violation_turns"], 0)
 
-    def test_heuristic_repair_requires_prior_mutual_engagement(self):
+    def test_heuristic_repair_after_prior_mutual_engagement(self):
         calls = {"orchestrator": 0, "message": 0}
 
         def llm(messages: list[dict[str, str]]) -> str:
@@ -791,6 +791,57 @@ class DyadicRoleplayRunTests(unittest.TestCase):
         self.assertIn(
             "missed_connection",
             (out["turn_evaluations"][4]["rescue_decision"] or {}).get("problem_tags", []),
+        )
+        self.assertEqual(out["assistant_metrics"]["repair_intervention_turns"], 1)
+
+    def test_heuristic_repair_on_salvageable_awkward_start(self):
+        calls = {"orchestrator": 0, "message": 0}
+
+        def llm(messages: list[dict[str, str]]) -> str:
+            sys_c = messages[0]["content"]
+            user_c = messages[-1]["content"]
+            if "对话调度员" in sys_c:
+                calls["orchestrator"] += 1
+                return '{"need_rescue":false,"situation":"none","reason":"不该被调用"}'
+            if "请写出下一条" in user_c:
+                calls["message"] += 1
+                if calls["message"] == 1:
+                    return "你好"
+                if calls["message"] == 2:
+                    return "嗯。你周末都干嘛"
+                if calls["message"] == 3:
+                    return "睡觉。"
+                return "补觉吧，平时太累了。你呢？"
+            if "附加任务" in sys_c and "「pa」" in sys_c:
+                return '{"conversation_satisfied":true,"conversation_score":2,"assistant_satisfied":true,"assistant_score":4,"used_assistant":true,"conversation_note":"","assistant_note":""}'
+            if "附加任务" in sys_c:
+                return '{"conversation_satisfied":true,"conversation_score":2,"assistant_satisfied":true,"assistant_score":4,"used_assistant":true,"conversation_note":"","assistant_note":""}'
+            return "{}"
+
+        out = run_dyadic_roleplay(
+            self.conn,
+            case_id="test-dyadic-heuristic-awkward-start-repair",
+            relation_key="pa|pb",
+            participant_a_id="pa",
+            participant_b_id="pb",
+            brief_a="A",
+            brief_b="B",
+            rounds=3,
+            llm=llm,
+            assistant_mode="proactive",
+            base_time=datetime(2026, 5, 4, 9, 0, 0),
+            stress_mode="none",
+        )
+        self.assertEqual(calls["orchestrator"], 0)
+        self.assertTrue(out["turn_evaluations"][2]["assistant_invoked"])
+        self.assertEqual(out["turn_evaluations"][2]["interaction_mode"], "repair")
+        self.assertEqual(
+            out["turn_evaluations"][2]["mutual_intent_assessment"],
+            "communication_problem",
+        )
+        self.assertIn(
+            "awkward_transition",
+            (out["turn_evaluations"][2]["rescue_decision"] or {}).get("problem_tags", []),
         )
         self.assertEqual(out["assistant_metrics"]["repair_intervention_turns"], 1)
 
