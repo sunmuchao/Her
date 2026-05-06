@@ -283,6 +283,12 @@ def _default_route_decision() -> dict[str, Any]:
         "interaction_mode": "none",
         "reason": "当前没有明显需要主动提示的信号。",
         "decision_source": "none",
+        "risk_axis": None,
+        "hold_subtype": None,
+        "engagement_level": "medium",
+        "warmth_level": "neutral",
+        "irritation_level": "none",
+        "state_trend": "stable",
     }
 
 
@@ -336,10 +342,21 @@ def _proactive_assistant_query_text(route_decision: dict[str, Any] | None) -> st
     mutual_intent = str(decision.get("mutual_intent_assessment") or "normal")
     reason = str(decision.get("reason") or "")
     situation = str(decision.get("situation") or "none")
+    risk_axis = str(decision.get("risk_axis") or "").strip()
+    hold_subtype = str(decision.get("hold_subtype") or "").strip()
+    warmth_level = str(decision.get("warmth_level") or "").strip()
+    irritation_level = str(decision.get("irritation_level") or "").strip()
+    state_trend = str(decision.get("state_trend") or "").strip()
+    state_line = (
+        f"气氛走势：{state_trend or 'stable'}；语气热度：{warmth_level or 'neutral'}；"
+        f"压力程度：{irritation_level or 'none'}。"
+    )
+    axis_line = f"当前风险线：{risk_axis}。" if risk_axis else ""
     if interaction_mode == "repair":
         return (
             f"系统观察到这轮更像双方都还想继续聊，但沟通卡了一下。"
             f"当前情况：{situation}；意愿判断：{mutual_intent}；原因：{reason}。"
+            f"{state_line}{axis_line}"
             "请先指出我这边最需要注意的问题，再给我下一步怎么接、怎么换到更容易继续的话题。"
             "不要直接代写成一条可发送消息。"
         )
@@ -347,13 +364,16 @@ def _proactive_assistant_query_text(route_decision: dict[str, Any] | None) -> st
         return (
             f"系统观察到这轮更像意愿还不够明确。"
             f"当前情况：{situation}；意愿判断：{mutual_intent}；原因：{reason}。"
+            f"{state_line}{axis_line}"
             "请先说明为什么别硬推，再给我一句低压、低成本的试探方向，以及如果对方继续很冷该怎么收住。"
             "不要直接代写成一条可发送消息。"
         )
     if interaction_mode == "hold":
+        subtype_line = f"当前 hold 子类型：{hold_subtype}。" if hold_subtype else ""
         return (
             f"系统观察到这轮更像该收住了。"
             f"当前情况：{situation}；意愿判断：{mutual_intent}；原因：{reason}。"
+            f"{state_line}{axis_line}{subtype_line}"
             "请优先告诉我现在最不该继续做什么，再给我止损型轻提醒，帮助我别把聊天越撑越僵。"
             "不要直接代写成一条可发送消息。"
         )
@@ -419,12 +439,22 @@ def _assistant_draft_core(
         profile_hooks=list(profile_ctx.get("profile_hooks") or []),
         preferred_mutual_intent_assessment=str(route_decision.get("mutual_intent_assessment") or ""),
         preferred_interaction_mode=str(route_decision.get("interaction_mode") or ""),
+        route_reason=str(route_decision.get("reason") or ""),
+        risk_axis=str(route_decision.get("risk_axis") or ""),
+        hold_subtype=str(route_decision.get("hold_subtype") or ""),
+        engagement_level=str(route_decision.get("engagement_level") or ""),
+        warmth_level=str(route_decision.get("warmth_level") or ""),
+        irritation_level=str(route_decision.get("irritation_level") or ""),
+        state_trend=str(route_decision.get("state_trend") or ""),
     ) or placeholder
     guidance = align_guidance_to_route_decision(
         guidance,
         profile_hooks=list(profile_ctx.get("profile_hooks") or []),
         preferred_mutual_intent_assessment=str(route_decision.get("mutual_intent_assessment") or ""),
         preferred_interaction_mode=str(route_decision.get("interaction_mode") or ""),
+        risk_axis=str(route_decision.get("risk_axis") or ""),
+        hold_subtype=str(route_decision.get("hold_subtype") or ""),
+        route_reason=str(route_decision.get("reason") or ""),
     )
     guidance = normalize_assistant_guidance(guidance)
     guidance_latency_ms = _elapsed_ms(guidance_started_at)

@@ -413,6 +413,85 @@ class ChatSystemTests(unittest.TestCase):
         self.assertNotIn("低压试探", out["body"])
         self.assertNotIn("周末安排", out["body"])
 
+    def test_assistant_proactive_hint_repeats_stoploss_for_boundary_risk_hold(self):
+        th = get_or_create_thread(
+            self.conn,
+            case_id="case-proactive-hold-stoploss",
+            relation_key="r-proactive-hold-stoploss",
+            participant_a_id="alice",
+            participant_b_id="bob",
+        )
+        route_decision = {
+            "need_rescue": False,
+            "situation": "boundary",
+            "problem_tags": ["boundary_risk", "sensitive_topic", "defensive_tone"],
+            "rescue_style": "graceful_exit",
+            "mutual_intent_assessment": "boundary_risk",
+            "interaction_mode": "hold",
+            "reason": "这轮已经在照片和较劲方向上继续加码了。",
+            "decision_source": "heuristic",
+            "risk_axis": "appearance",
+            "hold_subtype": "boundary_risk",
+            "engagement_level": "low",
+            "warmth_level": "sharp",
+            "irritation_level": "high",
+            "state_trend": "worsening",
+        }
+        guidance = {
+            "mutual_intent_assessment": "boundary_risk",
+            "interaction_mode": "hold",
+            "risk_axis": "appearance",
+            "hold_subtype": "boundary_risk",
+            "current_problem": ["这轮已经在照片/外貌这条线上发紧。"],
+            "why_not_to_push": ["继续往前顶只会更僵。"],
+            "avoid": ["别继续追着照片、外貌差距这些点问。"],
+            "graceful_exit_plan": ["先收住，别再加码。"],
+            "strategy_tags": ["graceful_exit", "deescalate", "set_boundary"],
+            "advice": ["别继续追着照片、外貌差距这些点问。", "这轮先收口，别再往前顶。"],
+        }
+        profile_ctx = {
+            "profile_dsn": "mysql://test",
+            "actor_profile_summary": "alice 喜欢咖啡",
+            "counterpart_profile_summary": "bob 偏慢热",
+            "profile_hooks": ["咖啡"],
+        }
+
+        with patch("chat_system.service.generate_assistant_guidance", return_value=guidance), patch(
+            "chat_system.service._assistant_profile_context",
+            return_value=profile_ctx,
+        ):
+            first = assistant_proactive_hint(
+                self.conn,
+                th["thread_id"],
+                "alice",
+                route_decision=route_decision,
+                now=datetime(2026, 5, 6, 10, 10, 0),
+            )
+            post_message(
+                self.conn,
+                th["thread_id"],
+                "alice",
+                "我就是确认一下照片是不是本人，别差太大。",
+                visibility=VIS_DYADIC,
+                now=datetime(2026, 5, 6, 10, 10, 1),
+            )
+            second = assistant_proactive_hint(
+                self.conn,
+                th["thread_id"],
+                "alice",
+                route_decision=route_decision,
+                now=datetime(2026, 5, 6, 10, 10, 2),
+            )
+
+        self.assertTrue(first["hint_posted"])
+        self.assertEqual(first["assistant_hint_event"]["trigger_type"], "mode_change")
+        self.assertTrue(second["hint_posted"])
+        self.assertEqual(second["assistant_hint_event"]["trigger_type"], "hold_stoploss")
+        self.assertEqual(second["assistant_hint_event"]["hold_subtype"], "boundary_risk")
+        self.assertEqual(second["assistant_hint_event"]["risk_axis"], "appearance")
+        self.assertEqual(second["assistant_trend_state"]["last_stoploss_strength"], "hard")
+        self.assertEqual(second["assistant_trend_state"]["same_risk_axis_turns"], 2)
+
     def test_assistant_query_is_not_blocked_by_proactive_hint_state(self):
         th = get_or_create_thread(
             self.conn,

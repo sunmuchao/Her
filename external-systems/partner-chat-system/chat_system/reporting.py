@@ -121,6 +121,79 @@ def _direct_send_violation_summary(turn_records: list[dict[str, Any]]) -> dict[s
     }
 
 
+def _gold_need_rescue_for_view(record: dict[str, Any], *, view: str) -> bool:
+    if view == "visible_text":
+        return bool(((record.get("visible_text_gold_decision") or {}).get("need_rescue")))
+    return bool(record.get("need_rescue_gold"))
+
+
+def _gold_interaction_mode_for_view(record: dict[str, Any], *, view: str) -> str:
+    if view == "visible_text":
+        return str(((record.get("visible_text_gold_decision") or {}).get("interaction_mode")) or "none")
+    return str(record.get("interaction_mode_gold") or "none")
+
+
+def _gold_mutual_intent_for_view(record: dict[str, Any], *, view: str) -> str:
+    if view == "visible_text":
+        return str(
+            ((record.get("visible_text_gold_decision") or {}).get("mutual_intent_assessment")) or "normal"
+        )
+    return str(record.get("mutual_intent_assessment_gold") or "normal")
+
+
+def _recognition_view_summary(turn_records: list[dict[str, Any]], *, view: str) -> dict[str, Any]:
+    comparable_turns = list(turn_records)
+    need_matched = [
+        record
+        for record in comparable_turns
+        if _gold_need_rescue_for_view(record, view=view) == bool(record.get("need_rescue_pred"))
+    ]
+    mode_matched = [
+        record
+        for record in comparable_turns
+        if _gold_interaction_mode_for_view(record, view=view) == str(record.get("interaction_mode_pred") or "none")
+    ]
+    intent_matched = [
+        record
+        for record in comparable_turns
+        if _gold_mutual_intent_for_view(record, view=view)
+        == str(record.get("mutual_intent_assessment_pred") or "normal")
+    ]
+    risky_turns = [
+        record
+        for record in comparable_turns
+        if _gold_mutual_intent_for_view(record, view=view) == "boundary_risk"
+    ]
+    risky_none_turns = [
+        record for record in risky_turns if str(record.get("interaction_mode_pred") or "none") == "none"
+    ]
+    boundary_hold_hits = [
+        record for record in risky_turns if str(record.get("interaction_mode_pred") or "none") == "hold"
+    ]
+    return {
+        "need_rescue_accuracy": {
+            "comparable_turns": len(comparable_turns),
+            "matched_turns": len(need_matched),
+            "rate": _rate(len(need_matched), len(comparable_turns)),
+        },
+        "interaction_mode_accuracy": {
+            "comparable_turns": len(comparable_turns),
+            "matched_turns": len(mode_matched),
+            "rate": _rate(len(mode_matched), len(comparable_turns)),
+        },
+        "mutual_intent_accuracy": {
+            "comparable_turns": len(comparable_turns),
+            "matched_turns": len(intent_matched),
+            "rate": _rate(len(intent_matched), len(comparable_turns)),
+        },
+        "boundary_risk_turns": len(risky_turns),
+        "risky_none_turns": len(risky_none_turns),
+        "risky_none_rate": _rate(len(risky_none_turns), len(risky_turns)),
+        "boundary_risk_hold_hits": len(boundary_hold_hits),
+        "boundary_risk_hold_recall": _rate(len(boundary_hold_hits), len(risky_turns)),
+    }
+
+
 def build_roleplay_report_summary(result: dict[str, Any]) -> dict[str, Any]:
     payload = result if isinstance(result, dict) else {}
     turn_records = [
@@ -162,6 +235,8 @@ def build_roleplay_report_summary(result: dict[str, Any]) -> dict[str, Any]:
     slightly_improved = int(metrics.get("slightly_improved_recovery_turns") or 0)
     overpush_risk_turns = int(metrics.get("overpush_risk_turns") or 0)
     distribution = _mode_distribution(turn_records)
+    visible_text_view = _recognition_view_summary(turn_records, view="visible_text")
+    stress_beat_view = _recognition_view_summary(turn_records, view="stress_beat")
     recognition = {
         "need_rescue_accuracy": _accuracy(
             turn_records,
@@ -180,6 +255,13 @@ def build_roleplay_report_summary(result: dict[str, Any]) -> dict[str, Any]:
         ),
         "rescue_precision_proxy": metrics.get("precision_proxy"),
         "rescue_recall_proxy": metrics.get("recall_proxy"),
+        "risky_none_rate": metrics.get("risky_none_rate", stress_beat_view.get("risky_none_rate")),
+        "boundary_risk_hold_recall": metrics.get(
+            "boundary_risk_hold_recall",
+            stress_beat_view.get("boundary_risk_hold_recall"),
+        ),
+        "visible_text_view": visible_text_view,
+        "stress_beat_view": stress_beat_view,
     }
     advice_quality = {
         "assistant_score_avg_1to5": _avg(assistant_scores),
@@ -210,6 +292,9 @@ def build_roleplay_report_summary(result: dict[str, Any]) -> dict[str, Any]:
     latency = {
         "assistant_invoke_avg_ms": metrics.get("assistant_invoke_avg_ms"),
         "assistant_invoke_max_ms": metrics.get("assistant_invoke_max_ms"),
+        "assistant_invoke_timeout_rate": metrics.get("assistant_invoke_timeout_rate"),
+        "assistant_guidance_fallback_rate": metrics.get("assistant_guidance_fallback_rate"),
+        "fallback_message_rate": metrics.get("fallback_message_rate"),
         "llm_by_call_kind": llm_stats,
     }
     topline = {
@@ -217,6 +302,8 @@ def build_roleplay_report_summary(result: dict[str, Any]) -> dict[str, Any]:
         "follow_rate": user_adoption["follow_rate"],
         "local_recovery_rate": local_recovery["local_recovery_rate"],
         "interaction_mode_accuracy": recognition["interaction_mode_accuracy"]["rate"],
+        "risky_none_rate": recognition["risky_none_rate"],
+        "boundary_risk_hold_recall": recognition["boundary_risk_hold_recall"],
         "assistant_invoke_avg_ms": latency["assistant_invoke_avg_ms"],
     }
     return {
@@ -245,6 +332,8 @@ def render_roleplay_report_markdown(
     user_adoption = dict(payload.get("user_adoption") or {})
     local_recovery = dict(payload.get("local_recovery") or {})
     latency = dict(payload.get("latency") or {})
+    visible_text_view = dict(recognition.get("visible_text_view") or {})
+    stress_beat_view = dict(recognition.get("stress_beat_view") or {})
     distribution = dict(payload.get("mode_distribution") or {})
     counts = dict(distribution.get("counts") or {})
     rates = dict(distribution.get("rates") or {})
@@ -286,6 +375,57 @@ def render_roleplay_report_markdown(
             ),
             f"- rescue precision proxy: {_format_rate(recognition.get('rescue_precision_proxy'))}",
             f"- rescue recall proxy: {_format_rate(recognition.get('rescue_recall_proxy'))}",
+            f"- risky none rate: {_format_rate(recognition.get('risky_none_rate'))}",
+            f"- boundary-risk hold recall: {_format_rate(recognition.get('boundary_risk_hold_recall'))}",
+            "",
+            "## 双口径视图",
+            "",
+            (
+                "- visible-text rescue need accuracy: "
+                f"{_format_rate(((visible_text_view.get('need_rescue_accuracy') or {}).get('rate')))} "
+                f"({((visible_text_view.get('need_rescue_accuracy') or {}).get('matched_turns') or 0)}/"
+                f"{((visible_text_view.get('need_rescue_accuracy') or {}).get('comparable_turns') or 0)})"
+            ),
+            (
+                "- visible-text interaction mode accuracy: "
+                f"{_format_rate(((visible_text_view.get('interaction_mode_accuracy') or {}).get('rate')))} "
+                f"({((visible_text_view.get('interaction_mode_accuracy') or {}).get('matched_turns') or 0)}/"
+                f"{((visible_text_view.get('interaction_mode_accuracy') or {}).get('comparable_turns') or 0)})"
+            ),
+            (
+                "- visible-text mutual intent accuracy: "
+                f"{_format_rate(((visible_text_view.get('mutual_intent_accuracy') or {}).get('rate')))} "
+                f"({((visible_text_view.get('mutual_intent_accuracy') or {}).get('matched_turns') or 0)}/"
+                f"{((visible_text_view.get('mutual_intent_accuracy') or {}).get('comparable_turns') or 0)})"
+            ),
+            f"- visible-text risky none rate: {_format_rate(visible_text_view.get('risky_none_rate'))}",
+            (
+                "- visible-text boundary-risk hold recall: "
+                f"{_format_rate(visible_text_view.get('boundary_risk_hold_recall'))}"
+            ),
+            (
+                "- stress-beat rescue need accuracy: "
+                f"{_format_rate(((stress_beat_view.get('need_rescue_accuracy') or {}).get('rate')))} "
+                f"({((stress_beat_view.get('need_rescue_accuracy') or {}).get('matched_turns') or 0)}/"
+                f"{((stress_beat_view.get('need_rescue_accuracy') or {}).get('comparable_turns') or 0)})"
+            ),
+            (
+                "- stress-beat interaction mode accuracy: "
+                f"{_format_rate(((stress_beat_view.get('interaction_mode_accuracy') or {}).get('rate')))} "
+                f"({((stress_beat_view.get('interaction_mode_accuracy') or {}).get('matched_turns') or 0)}/"
+                f"{((stress_beat_view.get('interaction_mode_accuracy') or {}).get('comparable_turns') or 0)})"
+            ),
+            (
+                "- stress-beat mutual intent accuracy: "
+                f"{_format_rate(((stress_beat_view.get('mutual_intent_accuracy') or {}).get('rate')))} "
+                f"({((stress_beat_view.get('mutual_intent_accuracy') or {}).get('matched_turns') or 0)}/"
+                f"{((stress_beat_view.get('mutual_intent_accuracy') or {}).get('comparable_turns') or 0)})"
+            ),
+            f"- stress-beat risky none rate: {_format_rate(stress_beat_view.get('risky_none_rate'))}",
+            (
+                "- stress-beat boundary-risk hold recall: "
+                f"{_format_rate(stress_beat_view.get('boundary_risk_hold_recall'))}"
+            ),
             "",
             "## 建议质量",
             "",
@@ -309,13 +449,15 @@ def render_roleplay_report_markdown(
             "",
             f"- assistant invoke avg: {_format_ms(latency.get('assistant_invoke_avg_ms'))}",
             f"- assistant invoke max: {_format_ms(latency.get('assistant_invoke_max_ms'))}",
+            f"- assistant invoke timeout rate: {_format_rate(latency.get('assistant_invoke_timeout_rate'))}",
+            f"- assistant guidance fallback rate: {_format_rate(latency.get('assistant_guidance_fallback_rate'))}",
+            f"- fallback message rate: {_format_rate(latency.get('fallback_message_rate'))}",
         ]
     )
     if llm_by_call:
-        lines.append("- llm calls:")
         for kind, stats in sorted(llm_by_call.items()):
             lines.append(
-                f"  - {kind}: calls={int(stats.get('calls') or 0)}, "
+                f"- llm {kind}: calls={int(stats.get('calls') or 0)}, "
                 f"avg={_format_ms(stats.get('avg_ms'))}, max={_format_ms(stats.get('max_ms'))}"
             )
     else:

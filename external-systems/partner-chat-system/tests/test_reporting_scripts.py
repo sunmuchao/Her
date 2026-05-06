@@ -41,6 +41,11 @@ class ReportingHelperTests(unittest.TestCase):
                     "turn": 0,
                     "speaker": "pa",
                     "assistant_invoked": False,
+                    "visible_text_gold_decision": {
+                        "need_rescue": False,
+                        "mutual_intent_assessment": "normal",
+                        "interaction_mode": "none",
+                    },
                     "interaction_mode_gold": "none",
                     "interaction_mode_pred": "none",
                     "mutual_intent_assessment_gold": "normal",
@@ -52,6 +57,11 @@ class ReportingHelperTests(unittest.TestCase):
                     "turn": 1,
                     "speaker": "pb",
                     "assistant_invoked": True,
+                    "visible_text_gold_decision": {
+                        "need_rescue": True,
+                        "mutual_intent_assessment": "boundary_risk",
+                        "interaction_mode": "hold",
+                    },
                     "interaction_mode": "repair",
                     "assistant_mode_compliance": "compliant",
                     "assistant_guidance": {
@@ -83,6 +93,11 @@ class ReportingHelperTests(unittest.TestCase):
                 "avoid_violation_turns": 0,
                 "assistant_invoke_avg_ms": 42.0,
                 "assistant_invoke_max_ms": 42,
+                "assistant_invoke_timeout_rate": 0.0,
+                "assistant_guidance_fallback_rate": 0.0,
+                "fallback_message_rate": 0.0,
+                "risky_none_rate": 0.0,
+                "boundary_risk_hold_recall": 0.0,
             },
             "naturalness_metrics": {"average_score": 4.0},
             "evaluation": {
@@ -103,13 +118,18 @@ class ReportingHelperTests(unittest.TestCase):
         self.assertEqual(summary["user_adoption"]["follow_rate"], 1.0)
         self.assertEqual(summary["local_recovery"]["local_recovery_rate"], 1.0)
         self.assertEqual(summary["latency"]["assistant_invoke_avg_ms"], 42.0)
+        self.assertEqual(summary["latency"]["fallback_message_rate"], 0.0)
         self.assertEqual(summary["mode_distribution"]["counts"]["repair"], 1)
+        self.assertIn("visible_text_view", summary["recognition_accuracy"])
+        self.assertIn("stress_beat_view", summary["recognition_accuracy"])
 
         markdown = render_roleplay_report_markdown(summary)
         self.assertIn("## 识别准确率", markdown)
+        self.assertIn("## 双口径视图", markdown)
         self.assertIn("## 建议质量", markdown)
         self.assertIn("## 延迟统计", markdown)
         self.assertIn("direct-send violation rate: 100.0%", markdown)
+        self.assertIn("fallback message rate: 0.0%", markdown)
 
     def test_build_thread_export_markdown_splits_dialogue_assistant_and_summary(self):
         rows = [
