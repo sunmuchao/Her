@@ -41,6 +41,12 @@ from .profile_loader import (
 )
 from .risk import assert_message_allowed, maybe_capture_message_risk_signal
 from .storage import json_dumps, json_loads, row_to_dict
+from .trend_state import (
+    advance_trend_state,
+    apply_hint_event,
+    decide_hint_trigger,
+    normalize_trend_state,
+)
 
 ASSISTANT_AUTHOR_ID = "assistant"
 VIS_DYADIC = "dyadic"
@@ -51,6 +57,7 @@ SRC_AGENT_DRAFT = "agent_draft"
 SRC_AGENT_SENT = "agent_sent_after_confirm"
 SRC_SYSTEM = "system"
 ASSISTANT_TRACE_SCHEMA_VERSION = 1
+_ASSISTANT_TREND_STATE_METADATA_KEY = "assistant_trend_state_by_user"
 
 
 def current_time(now: datetime | None = None) -> datetime:
@@ -115,12 +122,14 @@ def _assistant_trace_payload(
     route_latency_ms: int,
     guidance_latency_ms: int,
     total_latency_ms: int,
+    hint_event: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "schema_version": ASSISTANT_TRACE_SCHEMA_VERSION,
         "route_decision": dict(route_decision or {}),
         "guidance": normalize_assistant_guidance(guidance),
         "profile_context": _profile_context_for_trace(profile_ctx),
+        "hint_event": dict(hint_event or {}) if hint_event else None,
         "latency_ms": {
             "route": int(route_latency_ms),
             "guidance": int(guidance_latency_ms),
@@ -246,6 +255,213 @@ def _assistant_profile_context(thread: dict[str, Any], user_id: str) -> dict[str
         "counterpart_profile_summary": counterpart_summary,
         "profile_hooks": ordered_hooks[:8],
     }
+
+
+def _update_thread_metadata(
+    conn,
+    thread_id: str,
+    metadata: dict[str, Any],
+    *,
+    now: datetime | None = None,
+) -> None:
+    ts = current_time(now)
+    conn.execute(
+        "UPDATE chat_threads SET metadata_json = ?, updated_at = ? WHERE thread_id = ?",
+        (json_dumps(metadata or {}), ts, thread_id),
+    )
+    conn.commit()
+
+
+def _default_route_decision() -> dict[str, Any]:
+    return {
+        "need_rescue": False,
+        "situation": "none",
+        "problem_tags": [],
+        "rescue_style": "none",
+        "mutual_intent_assessment": "normal",
+        "interaction_mode": "none",
+        "reason": "当前没有明显需要主动提示的信号。",
+        "decision_source": "none",
+    }
+
+
+def _dyadic_message_count(conn, thread_id: str, *, author_id: str | None = None) -> int:
+    if author_id is None:
+        row = conn.execute(
+            "SELECT COUNT(*) AS c FROM chat_messages WHERE thread_id = ? AND visibility = ?",
+            (thread_id, VIS_DYADIC),
+        ).fetchone()
+    else:
+        row = conn.execute(
+            """
+            SELECT COUNT(*) AS c
+            FROM chat_messages
+            WHERE thread_id = ? AND visibility = ? AND author_id = ?
+            """,
+            (thread_id, VIS_DYADIC, author_id),
+        ).fetchone()
+    return int((row or {}).get("c") or 0)
+
+
+def _assistant_trend_state(thread: dict[str, Any], user_id: str) -> dict[str, Any]:
+    metadata = dict(thread.get("metadata") or {})
+    by_user = metadata.get(_ASSISTANT_TREND_STATE_METADATA_KEY) or {}
+    if not isinstance(by_user, dict):
+        return normalize_trend_state(None)
+    return normalize_trend_state(by_user.get(user_id))
+
+
+def _persist_assistant_trend_state(
+    conn,
+    thread: dict[str, Any],
+    user_id: str,
+    trend_state: dict[str, Any],
+    *,
+    now: datetime | None = None,
+) -> None:
+    metadata = dict(thread.get("metadata") or {})
+    by_user = metadata.get(_ASSISTANT_TREND_STATE_METADATA_KEY) or {}
+    if not isinstance(by_user, dict):
+        by_user = {}
+    by_user[str(user_id)] = normalize_trend_state(trend_state)
+    metadata[_ASSISTANT_TREND_STATE_METADATA_KEY] = by_user
+    _update_thread_metadata(conn, str(thread["thread_id"]), metadata, now=now)
+    thread["metadata"] = metadata
+
+
+def _proactive_assistant_query_text(route_decision: dict[str, Any] | None) -> str:
+    decision = dict(route_decision or {})
+    interaction_mode = str(decision.get("interaction_mode") or "none")
+    mutual_intent = str(decision.get("mutual_intent_assessment") or "normal")
+    reason = str(decision.get("reason") or "")
+    situation = str(decision.get("situation") or "none")
+    if interaction_mode == "repair":
+        return (
+            f"系统观察到这轮更像双方都还想继续聊，但沟通卡了一下。"
+            f"当前情况：{situation}；意愿判断：{mutual_intent}；原因：{reason}。"
+            "请先指出我这边最需要注意的问题，再给我下一步怎么接、怎么换到更容易继续的话题。"
+            "不要直接代写成一条可发送消息。"
+        )
+    if interaction_mode == "probe_lightly":
+        return (
+            f"系统观察到这轮更像意愿还不够明确。"
+            f"当前情况：{situation}；意愿判断：{mutual_intent}；原因：{reason}。"
+            "请先说明为什么别硬推，再给我一句低压、低成本的试探方向，以及如果对方继续很冷该怎么收住。"
+            "不要直接代写成一条可发送消息。"
+        )
+    if interaction_mode == "hold":
+        return (
+            f"系统观察到这轮更像该收住了。"
+            f"当前情况：{situation}；意愿判断：{mutual_intent}；原因：{reason}。"
+            "请优先告诉我现在最不该继续做什么，再给我止损型轻提醒，帮助我别把聊天越撑越僵。"
+            "不要直接代写成一条可发送消息。"
+        )
+    return (
+        "请结合当前聊天记录，判断这轮是否真的需要额外提醒；"
+        "如果没有明显问题，就顺着聊，不要额外制造紧张感。"
+    )
+
+
+def _assistant_draft_core(
+    conn,
+    thread: dict[str, Any],
+    user_id: str,
+    query_text: str,
+    *,
+    now: datetime | None,
+    post_user_query: bool,
+    route_decision_override: dict[str, Any] | None = None,
+    hint_event: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    q = (query_text or "").strip()
+    if not q:
+        raise ValueError("query_text is required")
+    if post_user_query:
+        post_message(
+            conn,
+            str(thread["thread_id"]),
+            user_id,
+            q,
+            visibility=VIS_OWNER_ONLY,
+            source=SRC_USER,
+            message_recipient_id=user_id,
+            now=now,
+        )
+    total_started_at = perf_counter()
+    context_limit = int(os.environ.get("HER_CHAT_ASSISTANT_CONTEXT_LIMIT") or "12")
+    route_started_at = perf_counter()
+    route_messages = list_messages(
+        conn,
+        str(thread["thread_id"]),
+        user_id,
+        limit=max(6, min(context_limit, 20)),
+    )
+    route_decision = dict(route_decision_override or fast_mode_route(route_messages) or _default_route_decision())
+    route_latency_ms = _elapsed_ms(route_started_at)
+    ctx = build_dyadic_context_for_assistant(
+        conn,
+        str(thread["thread_id"]),
+        limit=max(6, min(context_limit, 20)),
+    )
+    guidance_started_at = perf_counter()
+    profile_ctx = _assistant_profile_context(thread, user_id)
+    placeholder = build_placeholder_assistant_guidance(
+        profile_hooks=list(profile_ctx.get("profile_hooks") or [])
+    )
+    guidance = generate_assistant_guidance(
+        user_query=q,
+        thread_context=ctx,
+        actor_profile_summary=str(profile_ctx.get("actor_profile_summary") or ""),
+        counterpart_profile_summary=str(profile_ctx.get("counterpart_profile_summary") or ""),
+        profile_hooks=list(profile_ctx.get("profile_hooks") or []),
+    ) or placeholder
+    guidance = normalize_assistant_guidance(guidance)
+    guidance_latency_ms = _elapsed_ms(guidance_started_at)
+    body = render_assistant_guidance(guidance)
+    total_latency_ms = _elapsed_ms(total_started_at)
+    assistant_trace = _assistant_trace_payload(
+        route_decision=route_decision,
+        guidance=guidance,
+        profile_ctx=profile_ctx,
+        route_latency_ms=route_latency_ms,
+        guidance_latency_ms=guidance_latency_ms,
+        total_latency_ms=total_latency_ms,
+        hint_event=hint_event,
+    )
+    out = post_message(
+        conn,
+        str(thread["thread_id"]),
+        ASSISTANT_AUTHOR_ID,
+        body,
+        visibility=VIS_OWNER_ONLY,
+        source=SRC_AGENT_DRAFT,
+        message_recipient_id=user_id,
+        metadata={"assistant_trace": assistant_trace},
+        now=now,
+    )
+    funnel_stage(
+        system="chat",
+        stage=CHAT_FUNNEL_ASSISTANT_INVOKE,
+        trace_id=get_trace_id(),
+        case_id=str(thread["case_id"]),
+        thread_id=str(thread["thread_id"]),
+        message_id=out["message_id"],
+        user_id=user_id,
+        route_latency_ms=route_latency_ms,
+        guidance_latency_ms=guidance_latency_ms,
+        assistant_latency_ms=total_latency_ms,
+        route_interaction_mode=route_decision.get("interaction_mode"),
+        guidance_interaction_mode=guidance.get("interaction_mode"),
+    )
+    out["assistant_guidance"] = guidance
+    out["assistant_profile_context"] = profile_ctx
+    out["assistant_route_decision"] = route_decision
+    out["assistant_latency_ms"] = total_latency_ms
+    out["assistant_latency_breakdown_ms"] = dict(assistant_trace["latency_ms"])
+    out["assistant_trace"] = assistant_trace
+    if hint_event is not None:
+        out["assistant_hint_event"] = dict(hint_event)
+    return out
 
 
 def list_messages(
