@@ -93,6 +93,14 @@ _LOW_BAR_FALLBACK_HOOKS = (
     "同城吃喝",
     "作息节奏",
 )
+_HOLD_CONFLICT_STRATEGY_TAGS = frozenset(
+    {
+        "probe_lightly",
+        "ask_easy_question",
+        "share_detail",
+        "switch_topic",
+    }
+)
 
 
 def _env_int(name: str, default: int) -> int:
@@ -629,6 +637,59 @@ def normalize_assistant_guidance(data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _hold_guidance_has_active_reengagement(guidance: dict[str, Any]) -> bool:
+    if _to_clean_list(guidance.get("low_pressure_options")):
+        return True
+    if _to_clean_list(guidance.get("topic_directions")):
+        return True
+    if _to_clean_list(guidance.get("easy_question_types")):
+        return True
+    strategy_tags = set(_to_clean_list(guidance.get("strategy_tags")))
+    return bool(strategy_tags & _HOLD_CONFLICT_STRATEGY_TAGS)
+
+
+def align_guidance_to_route_decision(
+    guidance: dict[str, Any] | None,
+    *,
+    profile_hooks: list[str] | None = None,
+    preferred_mutual_intent_assessment: str | None = None,
+    preferred_interaction_mode: str | None = None,
+) -> dict[str, Any]:
+    preferred_mutual_intent = _normalize_contract_mutual_intent_assessment(
+        preferred_mutual_intent_assessment
+    )
+    preferred_interaction_mode_normalized = _normalize_contract_interaction_mode(
+        preferred_interaction_mode,
+        mutual_intent_assessment=preferred_mutual_intent,
+    )
+    normalized = normalize_assistant_guidance(guidance or {})
+    if preferred_interaction_mode_normalized != "hold":
+        return normalized
+
+    fallback = build_placeholder_assistant_guidance(
+        profile_hooks=profile_hooks,
+        mutual_intent_assessment=preferred_mutual_intent,
+        interaction_mode=preferred_interaction_mode_normalized,
+    )
+    if normalized.get("interaction_mode") != "hold":
+        return fallback
+    if (
+        preferred_mutual_intent in {"boundary_risk", "interest_low"}
+        and normalized.get("mutual_intent_assessment") != preferred_mutual_intent
+    ):
+        return fallback
+    if _hold_guidance_has_active_reengagement(normalized):
+        return fallback
+
+    sanitized = dict(normalized)
+    sanitized["low_pressure_options"] = []
+    sanitized["topic_directions"] = []
+    sanitized["easy_question_types"] = []
+    sanitized["profile_hooks_used"] = []
+    sanitized["strategy_tags"] = list(_default_strategy_tags("hold"))
+    return normalize_assistant_guidance(sanitized)
+
+
 def build_placeholder_assistant_guidance(
     *,
     profile_hooks: list[str] | None = None,
@@ -901,9 +962,15 @@ def generate_assistant_guidance(
         out = (choice or "").strip()
         if not out:
             return fallback
-        return _finalize_guidance_with_profile_context(
+        finalized = _finalize_guidance_with_profile_context(
             _strip_json_object(out),
             selected_hooks=selected_hooks,
+        )
+        return align_guidance_to_route_decision(
+            finalized,
+            profile_hooks=selected_hooks,
+            preferred_mutual_intent_assessment=preferred_mutual_intent_assessment,
+            preferred_interaction_mode=preferred_interaction_mode,
         )
     except Exception:
         return fallback
@@ -930,6 +997,7 @@ def generate_assistant_reply(
 
 
 __all__ = [
+    "align_guidance_to_route_decision",
     "build_dyadic_context_for_assistant",
     "build_placeholder_assistant_guidance",
     "generate_assistant_guidance",
