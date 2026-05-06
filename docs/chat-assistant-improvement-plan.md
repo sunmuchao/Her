@@ -371,6 +371,179 @@
 
 因此，系统不能仅因为“用户没照建议做”就持续出声；再次提醒的前提必须是**这次提醒仍然能减少损伤或改善沟通**。
 
+### 4.6.1 产品边界
+
+`T12` 只作用于**系统主动提示**，不改变下面这些边界：
+
+- 不影响用户主动打开助手、主动提问时的响应
+- 不自动改写用户即将发送的消息
+- 不阻止用户发送消息
+- 不把建议直接发给对方
+- 所有主动提示仍然是 `owner_only` 的教练建议，而不是代聊内容
+
+也就是说，`T12` 负责的是：
+
+- 这次要不要出声
+- 如果出声，是不是值得打断一次
+
+`T12` 不负责的是：
+
+- 决定用户必须怎么发
+- 把本来不该继续聊的局强行维持下去
+
+### 4.6.2 趋势状态器最小状态
+
+建议为每个线程、每个当前待发言用户维护一份最小趋势状态：
+
+- `current_mode`
+- `previous_mode`
+- `current_problem_tags`
+- `risk_flags`
+- `same_mode_turns`
+- `unresolved_turns`
+- `last_hint_turn`
+- `last_hint_mode`
+- `last_hint_reason`
+- `last_hint_trigger_type`
+- `last_hint_follow_level`
+- `has_user_acted_since_last_hint`
+- `cooldown_until_turn`
+- `duplicate_suppressed_count`
+
+其中：
+
+- `same_mode_turns`：连续处于同一模式的轮数
+- `unresolved_turns`：进入非 `normal` 后，连续没有出现恢复信号的轮数
+- `risk_flags`：例如 `boundary_risk`、`misread_risk`、`overpush_risk`
+- `has_user_acted_since_last_hint`：上次提示后，用户是否已经实际发出过下一条可见消息
+
+恢复信号建议至少包括：
+
+- 对方回复长度回升
+- 旧话题不再继续僵住，出现了被接住的新方向
+- 误解被澄清
+- `hold` 场景下用户没有继续推进敏感或越界话题
+
+### 4.6.3 提示决策流程
+
+建议把提示决策做成固定五步，而不是散落在主链路里：
+
+1. 每出现一条新的双方可见消息，就先跑轻判断，得到当前 `mode / problem_tags / risk_flags`
+2. 用这轮结果更新 `trend_state`
+3. 计算这次的 `trigger_type`，候选值建议至少包括：
+   - `mode_change`
+   - `risk_upgrade`
+   - `unresolved_retrigger`
+   - `hold_stoploss`
+   - `none`
+4. 如果命中重复提示抑制或当前不满足“仍有新增价值”，记录 `suppression_reason`，这轮不提示
+5. 如果允许触发，再生成一次 `owner_only` 助手建议，并落库提示事件
+
+建议额外记录：
+
+- `trigger_type`
+- `suppression_reason`
+- `cooldown_active`
+- `hint_posted`
+
+这样后面才能区分：
+
+- 这轮为什么提示了
+- 这轮为什么没提示
+- 没提示到底是判断没问题，还是被冷却/去重拦掉了
+
+### 4.6.4 各模式触发规则
+
+建议把 `repair / probe_lightly / hold / normal` 的触发上限明确分开，不要共用一套模糊逻辑。
+
+`normal`
+
+- 默认不主动提示
+- 即使上一轮刚从坏状态恢复到 `normal`，也不为了“夸一句”而再打断用户
+
+`repair`
+
+- 首次进入 `repair` 时可触发
+- 如果用户已经按自己的方式尝试过一次，但连续 `2` 轮仍未缓解，且冷却窗口已过，可再次触发
+- 再触发的前提是：系统仍判断双方有继续沟通可能，提醒还有机会把沟通拉顺
+
+`probe_lightly`
+
+- 首次进入 `probe_lightly` 时可触发
+- 相邻轮次默认不连续提示
+- 只有在用户已经行动、局势仍然模糊且未改善、并且再次提醒仍有新增价值时，才允许低频再触发
+- 再触发内容仍应保持低压，不允许因为多次触发就一步步把用户推成持续追聊
+
+`hold`
+
+- 首次进入 `hold` 时允许一次止损型轻提醒
+- 默认不因为“聊天还是很冷”就持续重复提示
+- 只有在风险明显升级，或用户继续推进敏感/越界/讨好式硬聊动作时，才允许再次触发
+- `hold` 的目标是减少损伤，不是维持对话存活
+
+### 4.6.5 重复提示抑制
+
+建议至少拦住下面四类重复提示：
+
+- 用户还没来得及根据上次提示采取行动
+- 模式没变、原因没变、严重度没变，只是时间又过去了一轮
+- 上次提示已经覆盖当前建议方向，这次没有新增信息
+- `hold` 场景下只是冷淡持续，但没有新的越界或风险升级
+
+对应的 `suppression_reason` 建议至少包括：
+
+- `awaiting_user_action`
+- `same_mode_same_reason`
+- `cooldown_active`
+- `hold_no_new_risk`
+
+### 4.6.6 埋点与评测
+
+建议为每次“该不该提示”的判断都产出结构化记录，最少包含：
+
+- `turn_index`
+- `speaker`
+- `mode_before`
+- `mode_after`
+- `problem_tags`
+- `risk_flags`
+- `trigger_type`
+- `suppression_reason`
+- `hint_posted`
+- `last_hint_turn_gap`
+- `follow_level_snapshot`
+
+核心指标继续保留：
+
+- `hint_trigger_rate`
+- `duplicate_hint_rate`
+- `mode_change_hint_rate`
+
+建议补一个辅助指标，便于防止实现跑偏：
+
+- `hold_repeat_hint_rate`
+
+理想状态是：
+
+- `repair` 该提醒时别漏掉
+- `probe_lightly` 不要每轮都冒出来
+- `hold` 不要反复教用户继续聊
+
+### 4.6.7 验收样例
+
+`T12` 至少要覆盖下面这些场景：
+
+- `normal -> repair`：触发一次
+- 刚触发完的下一轮仍是同一 `repair`：默认不重复
+- `repair` 连续两轮未缓解、用户已行动、冷却窗口已过：允许再触发一次
+- `normal -> probe_lightly`：触发一次低压提示
+- 下一轮仍是 `probe_lightly` 且没有新增信息：抑制
+- `probe_lightly` 持续未缓解，但仍属可修复窗口：允许低频再触发
+- 首次进入 `hold`：触发一次止损提醒
+- `hold` 持续但没有新风险：不重复
+- `hold` 后用户继续问收入、前任、照片等敏感方向：按 `risk_upgrade` 再触发
+- 用户主动打开助手提问：不受 `T12` 冷却和去重逻辑影响
+
 ### 4.7 当前最关键的五件事
 
 结合现有实现和最新真实压测，当前优先级最高的不是“继续加更多建议模板”，而是先把下面 5 件事做扎实：
@@ -1125,6 +1298,7 @@
 - 增加重复提示抑制
 - 对 `repair / probe_lightly / hold` 分别定义不同的提醒频率上限与出声边界
 - 为 `normal -> probe -> hold` 等关键转换维护标准触发规则
+- 保证主动提示严格停留在 `owner_only` 教练层，不跨到代聊或强行续聊
 
 ---
 
