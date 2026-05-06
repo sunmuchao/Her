@@ -333,17 +333,19 @@
 - 优先级：`P1`
 - 目标：后台逐句看，前台按趋势提醒。
 - 产出：
-  - 趋势状态器
-  - 模式变化触发规则
-  - 重复提示抑制
+  - 趋势状态器：记录上一模式、上次提示时点、持续未缓解轮数、风险等级
+  - 首次触发规则：`normal -> repair`、`normal -> probe_lightly`、`probe_lightly -> hold`、`repair -> hold`、风险升级
+  - 再触发规则：同一非 `normal` 状态持续 `N` 轮未缓解、用户未采纳上次建议且继续重复高风险做法、冷却窗口后仍无改善
+  - 重复提示抑制：刚提示过、状态未变、严重度未升高、用户还没来得及行动时不重复
   - `hint_trigger_rate`、`duplicate_hint_rate`、`mode_change_hint_rate`
 - 主要文件：
   - 可新增：`external-systems/partner-chat-system/chat_system/trend_state.py`
   - [external-systems/partner-chat-system/chat_system/service.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/service.py)
   - [external-systems/partner-chat-system/chat_system/dyadic_roleplay.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/dyadic_roleplay.py)
-- 依赖：`T04`、`T05`
+- 依赖：`T04`、`T05`、`T07`
 - 完成标准：
-  - 没有模式变化时默认不提示
+  - 没有新信息时不复读，但坏状态持续且未缓解时允许再次提示
+  - 能区分首次触发、风险升级触发、持续失败再触发
   - 能统计重复提示率
 
 ### T13：补齐运行脚本和导出报表
