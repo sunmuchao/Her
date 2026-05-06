@@ -97,14 +97,16 @@
 
 ### 1.8 实施优先级结论
 
-当前不应该先做“更多建议模板”，而应该先做下面四件事：
+当前不应该先做“更多建议模板”，而应该先做下面六件事：
 
-1. 把 `repair / probe_lightly / hold` 判准
-2. 把助手输出改成可落库、可评测的结构化建议
-3. 把延迟压到真实聊天可用
-4. 把“建议质量”和“用户是否采纳”分开评估
+1. 把 `repair / probe_lightly / hold` 判准，尤其补强多轮风险状态识别
+2. 把 `heuristic_clear_continue` 收紧，避免危险局被洗回 `none`
+3. 把助手输出改成可落库、可评测的结构化建议
+4. 把 `hold` 做成风险感知止损，而不是提醒一次就闭嘴
+5. 把延迟和超时压到真实聊天可用
+6. 把“建议质量”“用户是否采纳”“可见文本风险”分开评估
 
-人设化建议、口语自然度、提示触发优化，都应该放在这个基础之后。
+人设化建议、口语自然度，要建立在这套底盘跑顺之后再继续打磨。
 
 ---
 
@@ -340,17 +342,19 @@
   - 实现铁律：
     - `repair`：顺水推舟。双方仍有沟通意愿但这轮卡住时，允许积极提醒，帮助把沟通拉顺。
     - `probe_lightly`：只轻扶，不猛推。看不清对方意愿时，只允许低压、低频提醒。
-    - `hold`：见好就收。只做止损型轻提醒，不以“把聊天继续维持下去”为目标。
+    - `hold`：见好就收。目标是止损，不是继续把聊天硬维持下去。
+      - `interest_low` 型 `hold`：偏克制，不要反复打扰用户。
+      - `boundary_risk` 型 `hold`：如果用户继续沿敏感 / 施压 / 比较 / 推进见面方向加码，就要继续止损提醒。
     - `normal`：别添乱。聊天本身顺的时候默认不提示。
-  - 趋势状态器：记录上一模式、上次提示时点、持续未缓解轮数、风险等级、上次提示原因
-  - 建议状态字段：`current_mode`、`previous_mode`、`same_mode_turns`、`unresolved_turns`、`risk_flags`、`last_hint_turn`、`last_hint_mode`、`last_hint_reason`、`last_hint_trigger_type`、`last_hint_follow_level`、`has_user_acted_since_last_hint`、`cooldown_until_turn`
-  - 模式分层触发规则：`repair` 可相对积极提醒，`probe_lightly` 只做低频提醒，`hold` 默认只做止损型轻提醒
-  - 首次触发规则：`normal -> repair`、`normal -> probe_lightly`、`probe_lightly -> hold`、`repair -> hold`、风险升级
-  - 再触发规则：只有在再次提示仍有新增价值时才允许触发，例如沟通问题仍可修复但连续数轮未缓解、风险明显升级、冷却窗口后仍无改善
-  - 重复提示抑制：刚提示过、状态未变、严重度未升高、用户还没来得及行动时不重复
+  - 趋势状态器：记录上一模式、上次提示时点、持续未缓解轮数、风险等级、`hold` 子类型、当前风险轴、上次提示原因
+  - 建议状态字段：`current_mode`、`previous_mode`、`same_mode_turns`、`unresolved_turns`、`risk_flags`、`hold_subtype`、`risk_axis`、`same_risk_axis_turns`、`last_hint_turn`、`last_hint_mode`、`last_hint_reason`、`last_hint_trigger_type`、`last_hint_follow_level`、`last_stoploss_strength`、`has_user_acted_since_last_hint`、`cooldown_until_turn`
+  - 模式分层触发规则：`repair` 可相对积极提醒，`probe_lightly` 只做低频提醒，`hold` 最克制但不能一刀切静音
+  - 首次触发规则：`normal -> repair`、`normal -> probe_lightly`、`probe_lightly -> hold`、`repair -> hold`、首次进入 `boundary_risk hold`
+  - 再触发规则：只有在再次提示仍有新增价值时才允许触发，例如沟通问题仍可修复但连续数轮未缓解、风险明显升级、用户继续沿同一风险轴推进、冷却窗口后仍无改善
+  - 重复提示抑制：刚提示过、状态未变、严重度未升高、用户还没来得及行动、当前轮没有新增止损价值时不重复
   - `follow_level / follow_evidence` 只作为“提示是否仍有新增价值”的辅助信号，不作为监督用户是否听话的主目标
-  - 建议提示事件字段：`turn_index`、`speaker`、`mode_before`、`mode_after`、`trigger_type`、`suppression_reason`、`hint_posted`、`risk_flags`、`last_hint_turn_gap`
-  - `hint_trigger_rate`、`duplicate_hint_rate`、`mode_change_hint_rate`
+  - 建议提示事件字段：`turn_index`、`speaker`、`mode_before`、`mode_after`、`hold_subtype`、`risk_axis`、`trigger_type`、`suppression_reason`、`hint_posted`、`risk_flags`、`last_hint_turn_gap`
+  - `hint_trigger_rate`、`duplicate_hint_rate`、`mode_change_hint_rate`、`boundary_risk_hold_repeat_recall`
 - 主要文件：
   - 可新增：`external-systems/partner-chat-system/chat_system/trend_state.py`
   - [external-systems/partner-chat-system/chat_system/service.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/service.py)
@@ -363,19 +367,22 @@
   1. 抽出 `trend_state.py`，实现状态更新、重复提示抑制、触发决策三个纯函数
   2. 在 `service.py` 中把主动提示入口改成“先更新趋势状态，再决定是否提示”
   3. 在 `dyadic_roleplay.py` 中复用同一套触发逻辑，输出 `trigger_type / suppression_reason / hint_posted`
-  4. 在导出结果中增加 `hint_trigger_rate / duplicate_hint_rate / mode_change_hint_rate / hold_repeat_hint_rate`
-  5. 补齐 `repair / probe_lightly / hold / normal` 四类回归测试
+  4. 为 `hold` 增加 `interest_low / boundary_risk` 子类型判断，以及 `hold_stoploss` 触发类型
+  5. 在导出结果中增加 `hint_trigger_rate / duplicate_hint_rate / mode_change_hint_rate / boundary_risk_hold_repeat_recall`
+  6. 补齐 `repair / probe_lightly / hold / normal` 四类回归测试
 - 完成标准：
   - 没有新信息时不复读，但在“仍值得帮忙”的窗口里允许再次提示
-  - 能区分首次触发、风险升级触发、持续未缓解但仍可修复的再触发
-  - `hold` 场景默认不连续提示，除非风险继续升级或用户继续明显越界
+  - 能区分首次触发、风险升级触发、持续未缓解但仍可修复的再触发、`boundary_risk` 同风险轴持续推进时的止损再触发
+  - `interest_low` 型 `hold` 默认不连续提示
+  - `boundary_risk` 型 `hold` 不要求“模式升级后才能再提醒”，只要用户继续沿风险方向推进，就允许再次止损提醒
   - `normal` 场景默认不打断，`repair` 场景提醒最积极，`probe_lightly` 次之，`hold` 最克制
   - 用户主动询问助手时，不受 `T12` 冷却和去重规则影响
   - 至少覆盖以下验收样例：
     - `normal -> repair` 触发一次；下一轮同模式默认不重复
     - `repair` 连续 `2` 轮未缓解、用户已行动、冷却结束后可再触发
     - `normal -> probe_lightly` 触发一次；相邻轮次默认不复读
-    - 首次进入 `hold` 触发一次；稳定 `hold` 不重复；风险升级时可再触发
+    - 首次进入 `interest_low hold` 触发一次；稳定冷淡但无新风险时不重复
+    - 首次进入 `boundary_risk hold` 触发一次；后续继续问照片 / 收入 / 前任 / 见面，或继续比较施压时，可按 `hold_stoploss` 再触发
   - 能统计重复提示率
 
 ### T13：补齐运行脚本和导出报表
@@ -384,17 +391,24 @@
 - 目标：让压测结果可以直接看，不需要人工翻日志。
 - 产出：
   - 识别准确率
+  - `risky_none_rate`
+  - `boundary_risk_hold_recall`
   - 建议质量分
   - 用户采纳率
   - 局部恢复率
   - 延迟统计
+  - `assistant_invoke_timeout_rate`
+  - `fallback_message_rate`
   - `repair / probe_lightly / hold` 分布
+  - “可见文本口径”与 “stress beat 口径”双视图
 - 主要文件：
   - [external-systems/partner-chat-system/scripts/run_dyadic_agent_roleplay.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/scripts/run_dyadic_agent_roleplay.py)
   - [external-systems/partner-chat-system/scripts/export_chat_thread.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/scripts/export_chat_thread.py)
 - 依赖：`T03`、`T06`、`T07`、`T08`
 - 完成标准：
   - 跑完脚本后能直接看到关键指标
+  - 能直接看出“哪些危险局被判成了 none / repair”
+  - 能区分“策略没判到”还是“模型 timeout / fallback 把效果冲掉了”
   - 导出结果能把主对话、助手建议、评测摘要分区展示
 
 ### T14：建立回归测试和验收基线
@@ -404,16 +418,21 @@
 - 产出：
   - 结构化输出测试
   - 模式判断测试
+  - `heuristic_clear_continue` 防误放测试
+  - `interest_low hold / boundary_risk hold` 回归样例
   - 采纳度评测测试
   - 延迟统计回归基线
+  - timeout / fallback 统计隔离测试
 - 主要文件：
   - [external-systems/partner-chat-system/tests/test_assistant_llm.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/tests/test_assistant_llm.py)
   - [external-systems/partner-chat-system/tests/test_dyadic_roleplay.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/tests/test_dyadic_roleplay.py)
   - [external-systems/partner-chat-system/tests/test_chat_system.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/tests/test_chat_system.py)
-- 依赖：`T04`、`T05`、`T06`
+- 依赖：`T04`、`T05`、`T06`、`T12`
 - 完成标准：
   - 关键结构字段有测试
   - `repair / probe_lightly / hold` 至少各有回归样例
+  - `hold` 至少拆成 `interest_low` 和 `boundary_risk` 两套回归样例
+  - “表面正常提问，但最近几轮已持续施压/别扭”的局，不能再被误放成 `none`
   - 明确代写违规率可被测试覆盖
 
 ### T15：线下见面型红娘助手单独立项
@@ -458,11 +477,12 @@
 
 - `T07` 用户采纳度评估
 - `T08` 局部恢复、止损与过推指标
+- `T12` 提示触发器与重复提示抑制
 - `T13` 运行脚本和导出报表
 
 阶段目标：
 
-- 能分清“建议质量问题”与“用户没采纳”
+- 能分清“策略没判到”“提示没触发”“建议没被采纳”
 
 ### 第三阶段：把效果和体验做起来
 
@@ -471,7 +491,6 @@
 - `T09` `roleplay` 模式对齐实验
 - `T10` 画像钩子排序
 - `T11` 口语自然度改造
-- `T12` 提示触发器与重复提示抑制
 
 阶段目标：
 
@@ -493,7 +512,7 @@
 
 如果当前只做一个最小可落地版本，建议范围是：
 
-- `T01` + `T02` + `T03` + `T04` + `T05` + `T06` + `T07` + `T08` + `T14`
+- `T01` + `T02` + `T03` + `T04` + `T05` + `T06` + `T07` + `T08` + `T12` + `T13` + `T14`
 
 做完这批之后，系统至少可以回答下面几个关键问题：
 
@@ -502,6 +521,7 @@
 - 建议有没有结构化输出
 - 用户有没有采纳
 - 采纳后局面有没有局部变好
+- 危险局为什么被放过，或者为什么继续提醒
 - 不该救的时候有没有避免乱推
 
 这才是后续继续打磨人设化、自然度和提示体验的基础。
