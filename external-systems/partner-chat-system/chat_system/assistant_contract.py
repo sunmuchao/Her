@@ -83,6 +83,7 @@ ASSISTANT_GUIDANCE_FIELDS: Final[tuple[str, ...]] = (
 RESCUE_DECISION_FIELDS: Final[tuple[str, ...]] = (
     "need_rescue",
     "situation",
+    "problem_tags",
     "mutual_intent_assessment",
     "interaction_mode",
     "rescue_style",

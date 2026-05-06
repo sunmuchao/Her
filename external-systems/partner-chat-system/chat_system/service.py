@@ -30,6 +30,7 @@ from .assistant_llm import (
     render_assistant_guidance,
 )
 from .events import chat_message_created_event, chat_thread_opened_event
+from .mode_router import fast_mode_route
 from .persona_jobs import maybe_enqueue_persona_sync_job
 from .profile_loader import (
     DEFAULT_PROFILE_MYSQL_DSN,
@@ -456,6 +457,22 @@ def assistant_query(
     out["assistant_guidance"] = guidance
     out["assistant_profile_context"] = profile_ctx
     return out
+
+
+def assistant_mode_route(
+    conn,
+    thread_id: str,
+    requester_id: str,
+    *,
+    limit: int = 50,
+) -> dict[str, Any] | None:
+    thread = get_thread(conn, thread_id)
+    if not thread:
+        raise ValueError("thread not found")
+    if not _is_participant(thread, requester_id):
+        raise ValueError("requester is not a participant of this thread")
+    messages = list_messages(conn, thread_id, requester_id, limit=limit)
+    return fast_mode_route(messages)
 
 
 def adopt_draft(

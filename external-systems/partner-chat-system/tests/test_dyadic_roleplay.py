@@ -336,6 +336,7 @@ class DyadicRoleplayRunTests(unittest.TestCase):
         self.assertEqual(out["turn_evaluations"][1]["rescue_decision_source"], "heuristic")
         self.assertEqual(out["turn_evaluations"][1]["interaction_mode"], "probe_lightly")
         self.assertEqual(out["turn_evaluations"][1]["mutual_intent_assessment"], "interest_unclear")
+        self.assertIn("closed_reply", (out["turn_evaluations"][1]["rescue_decision"] or {}).get("problem_tags", []))
         self.assertEqual(out["assistant_metrics"]["heuristic_decision_turns"], 2)
         self.assertEqual(out["assistant_metrics"]["llm_decision_turns"], 0)
         self.assertEqual(out["assistant_metrics"]["probe_intervention_turns"], 1)
@@ -387,6 +388,10 @@ class DyadicRoleplayRunTests(unittest.TestCase):
             out["turn_evaluations"][4]["mutual_intent_assessment"],
             "communication_problem",
         )
+        self.assertIn(
+            "missed_connection",
+            (out["turn_evaluations"][4]["rescue_decision"] or {}).get("problem_tags", []),
+        )
         self.assertEqual(out["assistant_metrics"]["repair_intervention_turns"], 1)
 
     def test_heuristic_hold_avoids_overpushing_repeated_low_interest(self):
@@ -433,6 +438,7 @@ class DyadicRoleplayRunTests(unittest.TestCase):
         self.assertFalse(out["turn_evaluations"][4]["assistant_invoked"])
         self.assertEqual(out["turn_evaluations"][4]["interaction_mode"], "hold")
         self.assertEqual(out["turn_evaluations"][4]["mutual_intent_assessment"], "interest_low")
+        self.assertIn("disengaged", (out["turn_evaluations"][4]["rescue_decision"] or {}).get("problem_tags", []))
         self.assertEqual(out["assistant_metrics"]["hold_decision_turns"], 1)
         self.assertEqual(out["assistant_metrics"]["overpush_risk_turns"], 0)
 

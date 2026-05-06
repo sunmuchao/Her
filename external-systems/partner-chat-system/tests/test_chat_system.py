@@ -11,6 +11,7 @@ if str(SYSTEM_ROOT) not in sys.path:
 
 from chat_system import (  # noqa: E402
     adopt_draft,
+    assistant_mode_route,
     assistant_query,
     build_thread_risk_overview,
     get_risk_case,
@@ -155,6 +156,28 @@ class ChatSystemTests(unittest.TestCase):
 
         both = list_messages(self.conn, th["thread_id"], "bob")
         self.assertTrue(any(m["body"] == "你好，很高兴认识你。" for m in both))
+
+    def test_assistant_mode_route_uses_fast_router(self):
+        th = get_or_create_thread(
+            self.conn,
+            case_id="case-mode-route",
+            relation_key="r-mode",
+            participant_a_id="alice",
+            participant_b_id="bob",
+        )
+        post_message(
+            self.conn,
+            th["thread_id"],
+            "bob",
+            "嗯",
+            visibility=VIS_DYADIC,
+        )
+        decision = assistant_mode_route(self.conn, th["thread_id"], "alice")
+        self.assertIsNotNone(decision)
+        assert decision is not None
+        self.assertEqual(decision["decision_source"], "heuristic")
+        self.assertEqual(decision["interaction_mode"], "probe_lightly")
+        self.assertIn("closed_reply", decision["problem_tags"])
 
     def test_adopt_draft_requires_user_override(self):
         th = get_or_create_thread(
