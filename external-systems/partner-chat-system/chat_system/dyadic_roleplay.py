@@ -566,12 +566,17 @@ def _speaker_low_energy_streak(messages: list[dict[str, Any]], speaker_id: str) 
 
 
 def _gold_rescue_for_turn(beats: list[StressBeat]) -> dict[str, Any]:
+    primary = max(beats, key=lambda beat: (beat.severity, beat.id), default=None)
     return {
         "need_rescue": bool(beats),
         "source_beats": [b.id for b in beats],
         "expected_problem_tags": _dedupe_strs([tag for b in beats for tag in b.expected_problem_tags]),
         "suggested_strategy_tags": _dedupe_strs([tag for b in beats for tag in b.suggested_strategy_tags]),
         "max_severity": max([b.severity for b in beats], default=0),
+        "expected_mutual_intent_assessment": (
+            primary.expected_mutual_intent_assessment if primary else "normal"
+        ),
+        "expected_interaction_mode": primary.expected_interaction_mode if primary else "none",
     }
 
 

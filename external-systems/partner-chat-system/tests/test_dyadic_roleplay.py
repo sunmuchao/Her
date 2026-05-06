@@ -276,6 +276,10 @@ class DyadicRoleplayRunTests(unittest.TestCase):
         self.assertEqual(len(out["stress_events"]), 4)
         self.assertIn("beat_id", out["stress_events"][0])
         self.assertIn("severity", out["stress_events"][0])
+        self.assertIn("expected_mutual_intent_assessment", out["stress_events"][0])
+        self.assertIn("expected_interaction_mode", out["stress_events"][0])
+        self.assertIn("expected_mutual_intent_assessment", out["turn_evaluations"][0]["gold_rescue"])
+        self.assertIn("expected_interaction_mode", out["turn_evaluations"][0]["gold_rescue"])
 
     def test_fast_rescue_uses_heuristic_on_cold_reply(self):
         calls = {"orchestrator": 0, "message": 0}

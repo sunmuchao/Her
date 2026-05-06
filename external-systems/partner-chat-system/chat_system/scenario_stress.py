@@ -6,6 +6,53 @@ import random
 from dataclasses import dataclass
 from typing import Any
 
+from .assistant_contract import (
+    INTERACTION_MODE_SET,
+    MUTUAL_INTENT_ASSESSMENT_SET,
+    default_interaction_mode,
+)
+
+
+_BOUNDARY_RISK_PROBLEM_TAGS = frozenset(
+    {
+        "appearance_pry",
+        "boundary_risk",
+        "comparison",
+        "competitive",
+        "cross_exam",
+        "defensive_tone",
+        "dismissive",
+        "jealous_hint",
+        "micro_conflict",
+        "micro_rude",
+        "money_pry",
+        "nitpicking",
+        "no_good_answer",
+        "one_upmanship",
+        "pressure",
+        "too_fast",
+        "value_tension",
+    }
+)
+_INTEREST_UNCLEAR_PROBLEM_TAGS = frozenset(
+    {
+        "closed_reply",
+        "cold_end",
+        "disengaged",
+        "low_energy",
+        "one_word_reply",
+        "topic_dead_end",
+        "vague_answer",
+    }
+)
+_BOUNDARY_RISK_STRATEGY_TAGS = frozenset({"graceful_exit", "set_boundary", "slow_pace"})
+_EXPECTED_ASSESSMENT_OVERRIDES = {
+    "ex_partner_bait": "communication_problem",
+    "family_pressure": "communication_problem",
+    "ghosting_tone": "interest_low",
+    "petty_spat": "communication_problem",
+}
+
 
 @dataclass(frozen=True)
 class StressBeat:
@@ -15,7 +62,32 @@ class StressBeat:
     severity: int
     expected_problem_tags: tuple[str, ...]
     suggested_strategy_tags: tuple[str, ...]
+    expected_mutual_intent_assessment: str
+    expected_interaction_mode: str
     expected_need_rescue_after_turns: int = 0
+
+
+def _infer_expected_mutual_intent_assessment(
+    beat_id: str,
+    *,
+    problems: tuple[str, ...],
+    strategies: tuple[str, ...],
+) -> str:
+    if beat_id in _EXPECTED_ASSESSMENT_OVERRIDES:
+        return _EXPECTED_ASSESSMENT_OVERRIDES[beat_id]
+    if any(tag in _BOUNDARY_RISK_PROBLEM_TAGS for tag in problems):
+        return "boundary_risk"
+    if any(tag in _BOUNDARY_RISK_STRATEGY_TAGS for tag in strategies):
+        return "boundary_risk"
+    if "shutdown" in problems:
+        return "interest_low"
+    if any(tag in _INTEREST_UNCLEAR_PROBLEM_TAGS for tag in problems):
+        return "interest_unclear"
+    return "communication_problem"
+
+
+def _infer_expected_interaction_mode(expected_mutual_intent_assessment: str) -> str:
+    return default_interaction_mode(expected_mutual_intent_assessment, need_rescue=True)
 
 
 def _beat(
@@ -26,8 +98,20 @@ def _beat(
     severity: int,
     problems: tuple[str, ...],
     strategies: tuple[str, ...],
+    expected_mutual_intent_assessment: str | None = None,
+    expected_interaction_mode: str | None = None,
     rescue_after: int = 0,
 ) -> StressBeat:
+    resolved_assessment = expected_mutual_intent_assessment or _infer_expected_mutual_intent_assessment(
+        beat_id,
+        problems=problems,
+        strategies=strategies,
+    )
+    if resolved_assessment not in MUTUAL_INTENT_ASSESSMENT_SET:
+        raise ValueError(f"invalid expected_mutual_intent_assessment for {beat_id}: {resolved_assessment}")
+    resolved_mode = expected_interaction_mode or _infer_expected_interaction_mode(resolved_assessment)
+    if resolved_mode not in INTERACTION_MODE_SET:
+        raise ValueError(f"invalid expected_interaction_mode for {beat_id}: {resolved_mode}")
     return StressBeat(
         beat_id,
         category,
@@ -35,6 +119,8 @@ def _beat(
         severity,
         problems,
         strategies,
+        resolved_assessment,
+        resolved_mode,
         rescue_after,
     )
 
@@ -325,6 +411,8 @@ def stress_log_entry(turn: int, speaker: str, beat: StressBeat | None) -> dict[s
         "severity": beat.severity,
         "expected_problem_tags": list(beat.expected_problem_tags),
         "suggested_strategy_tags": list(beat.suggested_strategy_tags),
+        "expected_mutual_intent_assessment": beat.expected_mutual_intent_assessment,
+        "expected_interaction_mode": beat.expected_interaction_mode,
         "expected_need_rescue_after_turns": beat.expected_need_rescue_after_turns,
     }
 
