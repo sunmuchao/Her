@@ -134,6 +134,8 @@ ROLEPLAY_TURN_EVALUATION_FIELDS: Final[tuple[str, ...]] = (
     "assistant_follow_assessment",
     "follow_evidence",
     "overpush_risk",
+    "simulated_reply_mode_prompted",
+    "simulated_reply_mode_alignment",
     "assistant_recovery_assessment",
     "generated_message",
     "generated_message_id",

@@ -174,6 +174,13 @@ def _make_local_demo_llm(*, log: Callable[[str], None] | None = None) -> Callabl
                 ensure_ascii=False,
             )
         if "请写出下一条" in user_c:
+            if "【仅用于离线 roleplay 评测的额外模式提示】" in user_c:
+                if "当前模式：hold" in user_c:
+                    return "demo：哈哈没事，先这样，有空再聊。"
+                if "当前模式：probe_lightly" in user_c:
+                    return "demo：你平时周末一般怎么安排？"
+                if "当前模式：repair" in user_c:
+                    return "demo：我周末也会出去走走，你一般怎么放松？"
             return "demo：你好，我也挺喜欢慢慢了解的，方便说说你平时周末一般怎么安排吗？"
         if "附加任务" in sys_c and "请输出 JSON" in user_c:
             eval_round["n"] += 1
@@ -339,6 +346,11 @@ def parse_args() -> argparse.Namespace:
         help="不调用远程模型，用内置占位逻辑跑通全流程（含一次 proactive 救场），无需 OPENAI_API_KEY。",
     )
     p.add_argument(
+        "--simulate-read-interaction-mode",
+        action="store_true",
+        help="仅离线 roleplay 实验：让模拟回复生成器额外读取 interaction_mode，不代表真实产品会约束真人用户。",
+    )
+    p.add_argument(
         "--profile-a-id",
         type=int,
         default=None,
@@ -410,7 +422,8 @@ def main() -> int:
         "starting roleplay "
         f"case_id={case_id}, rounds={int(args.rounds)}, assistant_mode={args.assistant_mode}, "
         f"stress_mode={stress_mode}, base_time={args.base_time.isoformat(sep=' ')}, "
-        f"resume_existing={bool(args.resume_existing)}, local_demo={bool(args.local_demo)}"
+        f"resume_existing={bool(args.resume_existing)}, local_demo={bool(args.local_demo)}, "
+        f"simulate_read_interaction_mode={bool(args.simulate_read_interaction_mode)}"
     )
     _log(participant_summary)
     if args.assistant_mode == "fixed_turns":
@@ -444,6 +457,7 @@ def main() -> int:
             fixed_assistant_turns=fixed_turns if args.assistant_mode == "fixed_turns" else [],
             base_time=args.base_time,
             resume_existing=bool(args.resume_existing),
+            simulate_reply_reads_interaction_mode=bool(args.simulate_read_interaction_mode),
             stress_mode=stress_mode,
             stress_beat_ids=stress_beat_ids,
             stress_seed=args.stress_seed,
@@ -499,6 +513,8 @@ def main() -> int:
         f"probe_turns={(result.get('assistant_metrics') or {}).get('probe_intervention_turns')}, "
         f"hold_turns={(result.get('assistant_metrics') or {}).get('hold_decision_turns')}, "
         f"overpush_turns={(result.get('assistant_metrics') or {}).get('overpush_risk_turns')}, "
+        f"mode_prompted_turns={(result.get('assistant_metrics') or {}).get('simulated_reply_mode_prompted_turns')}, "
+        f"mode_alignment_rate={(result.get('assistant_metrics') or {}).get('simulated_reply_mode_alignment_rate')}, "
         f"follow_rate={(result.get('assistant_metrics') or {}).get('follow_rate')}, "
         f"strong_follow_rate={(result.get('assistant_metrics') or {}).get('strong_follow_rate')}, "
         f"improved_recovery_rate={(result.get('assistant_metrics') or {}).get('improved_recovery_rate')}, "
