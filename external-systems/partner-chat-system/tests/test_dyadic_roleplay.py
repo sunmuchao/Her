@@ -278,17 +278,21 @@ class DyadicRoleplayRunTests(unittest.TestCase):
         self.assertEqual(out["stress_events"], [])
         self.assertIn("assistant_metrics", out)
         self.assertIn("naturalness_metrics", out)
+        self.assertIn("roleplay_experiment", out)
         self.assertEqual(out["turn_evaluation_schema_version"], 1)
         self.assertIn("shared", out["turn_evaluation_field_groups"])
         self.assertIn("roleplay", out["turn_evaluation_field_groups"])
         self.assertEqual(len(out["turn_evaluations"]), 3)
         self.assertIn("shared_evaluation", out["turn_evaluations"][0])
         self.assertIn("roleplay_evaluation", out["turn_evaluations"][0])
+        self.assertIn("simulated_reply_mode_alignment", out["turn_evaluations"][0]["roleplay_evaluation"])
         self.assertIn("turn_index", out["turn_evaluations"][0])
         self.assertIn("interaction_mode_gold", out["turn_evaluations"][0])
         self.assertIn("interaction_mode_pred", out["turn_evaluations"][0])
         self.assertIn("recovery_score_1to3_turns", out["turn_evaluations"][0])
         self.assertIn("graceful_exit_score", out["turn_evaluations"][0])
+        self.assertFalse(out["roleplay_experiment"]["simulated_reply_reads_interaction_mode"])
+        self.assertEqual(out["assistant_metrics"]["simulated_reply_mode_prompted_turns"], 0)
         self.assertTrue(
             all(
                 (turn.get("assistant_follow_assessment") or {}).get("level") == "not_applicable"
@@ -326,6 +330,95 @@ class DyadicRoleplayRunTests(unittest.TestCase):
         self.assertIn(
             "assistant_mode_compliance_details",
             invoked_turn["roleplay_evaluation"],
+        )
+
+    def test_roleplay_mode_alignment_experiment_switches_prompt_and_metrics(self):
+        def build_llm(prompts: list[str]):
+            def llm(messages: list[dict[str, str]]) -> str:
+                sys_c = messages[0]["content"]
+                user_c = messages[-1]["content"]
+                if "请写出下一条" in user_c:
+                    prompts.append(user_c)
+                    if "【仅用于离线 roleplay 评测的额外模式提示】" in user_c and "当前模式：repair" in user_c:
+                        return "我周末也会出去走走，你一般怎么放松？"
+                    return "嗯"
+                if "附加任务" in sys_c and "请输出 JSON" in user_c:
+                    return json.dumps(
+                        {
+                            "conversation_satisfied": True,
+                            "conversation_score": 3,
+                            "assistant_satisfied": True,
+                            "assistant_score": 3,
+                            "used_assistant": True,
+                            "conversation_note": "ok",
+                            "assistant_note": "ok",
+                        },
+                        ensure_ascii=False,
+                    )
+                return "{}"
+
+            return llm
+
+        prompts_off: list[str] = []
+        out_off = run_dyadic_roleplay(
+            self.conn,
+            case_id="test-dyadic-mode-align-off",
+            relation_key="pa|pb",
+            participant_a_id="pa",
+            participant_b_id="pb",
+            brief_a="A",
+            brief_b="B",
+            rounds=1,
+            llm=build_llm(prompts_off),
+            assistant_mode="fixed_turns",
+            fixed_assistant_turns=[0],
+            base_time=datetime(2026, 5, 4, 9, 0, 0),
+            stress_mode="none",
+            simulate_reply_reads_interaction_mode=False,
+        )
+
+        prompts_on: list[str] = []
+        out_on = run_dyadic_roleplay(
+            self.conn,
+            case_id="test-dyadic-mode-align-on",
+            relation_key="pa|pb",
+            participant_a_id="pa",
+            participant_b_id="pb",
+            brief_a="A",
+            brief_b="B",
+            rounds=1,
+            llm=build_llm(prompts_on),
+            assistant_mode="fixed_turns",
+            fixed_assistant_turns=[0],
+            base_time=datetime(2026, 5, 4, 9, 0, 0),
+            stress_mode="none",
+            simulate_reply_reads_interaction_mode=True,
+        )
+
+        self.assertEqual(len(prompts_off), 1)
+        self.assertNotIn("【仅用于离线 roleplay 评测的额外模式提示】", prompts_off[0])
+        self.assertFalse(out_off["roleplay_experiment"]["simulated_reply_reads_interaction_mode"])
+        self.assertEqual(out_off["assistant_metrics"]["simulated_reply_mode_prompted_turns"], 0)
+        self.assertEqual(out_off["assistant_metrics"]["simulated_reply_mode_applicable_turns"], 1)
+        self.assertEqual(out_off["assistant_metrics"]["simulated_reply_mode_alignment_rate"], 0.0)
+        self.assertFalse(out_off["turn_evaluations"][0]["simulated_reply_mode_prompted"])
+        self.assertEqual(
+            out_off["turn_evaluations"][0]["simulated_reply_mode_alignment"]["label"],
+            "misaligned",
+        )
+
+        self.assertEqual(len(prompts_on), 1)
+        self.assertIn("【仅用于离线 roleplay 评测的额外模式提示】", prompts_on[0])
+        self.assertIn("当前模式：repair", prompts_on[0])
+        self.assertTrue(out_on["roleplay_experiment"]["simulated_reply_reads_interaction_mode"])
+        self.assertEqual(out_on["assistant_metrics"]["simulated_reply_mode_prompted_turns"], 1)
+        self.assertEqual(out_on["assistant_metrics"]["simulated_reply_mode_applicable_turns"], 1)
+        self.assertEqual(out_on["assistant_metrics"]["simulated_reply_mode_alignment_rate"], 1.0)
+        self.assertEqual(out_on["assistant_metrics"]["simulated_reply_mode_strong_alignment_rate"], 1.0)
+        self.assertTrue(out_on["turn_evaluations"][0]["simulated_reply_mode_prompted"])
+        self.assertEqual(
+            out_on["turn_evaluations"][0]["simulated_reply_mode_alignment"]["label"],
+            "aligned",
         )
 
     def test_run_fixed_turns(self):
