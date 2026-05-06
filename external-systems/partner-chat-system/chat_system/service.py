@@ -406,7 +406,9 @@ def _assistant_draft_core(
     guidance_started_at = perf_counter()
     profile_ctx = _assistant_profile_context(thread, user_id)
     placeholder = build_placeholder_assistant_guidance(
-        profile_hooks=list(profile_ctx.get("profile_hooks") or [])
+        profile_hooks=list(profile_ctx.get("profile_hooks") or []),
+        mutual_intent_assessment=str(route_decision.get("mutual_intent_assessment") or ""),
+        interaction_mode=str(route_decision.get("interaction_mode") or ""),
     )
     guidance = generate_assistant_guidance(
         user_query=q,
@@ -414,6 +416,8 @@ def _assistant_draft_core(
         actor_profile_summary=str(profile_ctx.get("actor_profile_summary") or ""),
         counterpart_profile_summary=str(profile_ctx.get("counterpart_profile_summary") or ""),
         profile_hooks=list(profile_ctx.get("profile_hooks") or []),
+        preferred_mutual_intent_assessment=str(route_decision.get("mutual_intent_assessment") or ""),
+        preferred_interaction_mode=str(route_decision.get("interaction_mode") or ""),
     ) or placeholder
     guidance = normalize_assistant_guidance(guidance)
     guidance_latency_ms = _elapsed_ms(guidance_started_at)

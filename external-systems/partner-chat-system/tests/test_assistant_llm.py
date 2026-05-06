@@ -131,6 +131,28 @@ class AssistantLLMTests(unittest.TestCase):
 
         self.assertEqual(guidance, expected)
 
+    def test_generate_assistant_guidance_fallback_respects_preferred_hold_mode(self):
+        os.environ["OPENAI_API_KEY"] = "test-key"
+        _FakeOpenAIClient.response_content = "不是 JSON"
+        fake_module = SimpleNamespace(OpenAI=_FakeOpenAIClient)
+
+        with patch.dict(sys.modules, {"openai": fake_module}):
+            guidance = generate_assistant_guidance(
+                user_query="现在该怎么处理？",
+                thread_context="a: 你照片是本人吧？别差距太大。\nb: 是本人。怎么，怕见光死？",
+                preferred_mutual_intent_assessment="boundary_risk",
+                preferred_interaction_mode="hold",
+            )
+
+        assert guidance is not None
+        self.assertEqual(guidance["mutual_intent_assessment"], "boundary_risk")
+        self.assertEqual(guidance["interaction_mode"], "hold")
+        self.assertIn("边界或压力风险", guidance["current_problem"][0])
+        self.assertEqual(guidance["low_pressure_options"], [])
+        self.assertEqual(guidance["easy_question_types"], [])
+        self.assertTrue(any("收住" in item or "止损" in item for item in guidance["advice"]))
+        self.assertTrue(any("敏感点" in item or "推进" in item for item in guidance["rescue_flow"]))
+
     def test_generate_assistant_guidance_normalizes_model_schema_gaps(self):
         os.environ["OPENAI_API_KEY"] = "test-key"
         _FakeOpenAIClient.response_content = (
@@ -163,6 +185,19 @@ class AssistantLLMTests(unittest.TestCase):
         self.assertEqual(guidance["profile_hooks_used"], ["无锡", "咖啡"])
         self.assertNotIn("电影", guidance["topic_directions"])
         self.assertNotIn("旅行", guidance["topic_directions"])
+
+    def test_placeholder_guidance_can_follow_hold_mode(self):
+        guidance = build_placeholder_assistant_guidance(
+            mutual_intent_assessment="interest_low",
+            interaction_mode="hold",
+        )
+
+        self.assertEqual(guidance["mutual_intent_assessment"], "interest_low")
+        self.assertEqual(guidance["interaction_mode"], "hold")
+        self.assertEqual(guidance["topic_directions"], [])
+        self.assertEqual(guidance["easy_question_types"], [])
+        self.assertIn("收住", guidance["advice"][0])
+        self.assertTrue(any("硬聊" in item or "收住" in item for item in guidance["current_problem"]))
 
     def test_generate_assistant_guidance_uses_safe_summaries_and_ranked_hooks(self):
         os.environ["OPENAI_API_KEY"] = "test-key"

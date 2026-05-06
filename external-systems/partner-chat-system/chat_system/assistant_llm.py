@@ -109,19 +109,47 @@ def _env_float(name: str, default: float) -> float:
         return float(default)
 
 
-def _default_rescue_flow() -> list[str]:
-    return [
-        "先接住对方上一句里还能接的话点，不要像没看到一样硬换题。",
-        "如果已经明显有点冷，就轻轻承认一下节奏有点干，再换到更生活化的话题。",
-        "优先问对方一句就能回答的问题，让对方更容易接回来。",
-    ]
+def _default_rescue_flow_for_mode(interaction_mode: str) -> list[str]:
+    if interaction_mode == "repair":
+        return [
+            "先接住对方上一句里还能接的话点，不要像没看到一样硬换题。",
+            "如果已经明显有点冷，就轻轻承认一下节奏有点干，再换到更生活化的话题。",
+            "优先问对方一句就能回答的问题，让对方更容易接回来。",
+        ]
+    if interaction_mode == "probe_lightly":
+        return [
+            "先只接一句，不要一下子铺太多解释。",
+            "再丢一个低门槛、对方一句就能回的小问题试试看。",
+            "如果对方还是冷，就先把节奏放慢，不要继续加码。",
+        ]
+    if interaction_mode == "hold":
+        return [
+            "先别顺着敏感点继续往下问，也别急着证明自己没恶意。",
+            "把语气收住，别再加码推进关系或推进见面。",
+            "如果气氛已经僵了，就留一句体面收口的话，先止损。",
+        ]
+    return []
 
 
-def _default_graceful_exit_plan() -> list[str]:
-    return [
-        "如果对方连续两轮都很冷，别硬拽，轻轻收一下就行。",
-        "可以把节奏放慢，留一句以后再聊也行，别把气氛越救越僵。",
-    ]
+def _default_graceful_exit_plan(
+    mutual_intent_assessment: str,
+    interaction_mode: str,
+) -> list[str]:
+    if interaction_mode == "hold":
+        if mutual_intent_assessment == "boundary_risk":
+            return [
+                "这轮先别继续碰敏感点，直接把话题收住更稳。",
+                "如果对方已经不舒服，就别再解释拉扯，留个台阶先停下。",
+            ]
+        return [
+            "如果对方连续两轮都很冷，别硬拽，轻轻收一下就行。",
+            "可以把节奏放慢，留一句以后再聊也行，别把气氛越救越僵。",
+        ]
+    if interaction_mode == "probe_lightly":
+        return [
+            "如果试了一下对方还是很冷，就先收，不要继续追着聊。",
+        ]
+    return []
 
 
 def _default_why_not_to_push(mutual_intent_assessment: str, interaction_mode: str) -> list[str]:
@@ -173,6 +201,37 @@ def _default_advice(interaction_mode: str) -> list[str]:
             "如果要收口，就留一句轻一点的话给下次余地。",
         ]
     return ["顺着当前话题自然往下聊，不用刻意救场。"]
+
+
+def _default_strategy_tags(interaction_mode: str) -> list[str]:
+    if interaction_mode == "repair":
+        return ["share_detail", "ask_easy_question", "switch_topic"]
+    if interaction_mode == "probe_lightly":
+        return ["probe_lightly", "ask_easy_question", "share_detail"]
+    if interaction_mode == "hold":
+        return ["graceful_exit", "deescalate", "set_boundary"]
+    return []
+
+
+def _default_current_problem(
+    mutual_intent_assessment: str,
+    interaction_mode: str,
+) -> list[str]:
+    if interaction_mode == "repair":
+        return ["当前没拿到更细分析，先按“双方还有意愿，但这轮接话卡住了”处理。"]
+    if interaction_mode == "probe_lightly":
+        return ["当前没拿到更细分析，先按“意愿还不够明确”做低压试探。"]
+    if interaction_mode == "hold":
+        if mutual_intent_assessment == "boundary_risk":
+            return ["当前没拿到更细分析，但这轮已经有边界或压力风险，先按收住止损处理。"]
+        return ["当前没拿到更细分析，先按“这轮更该收住而不是继续硬聊”处理。"]
+    return ["当前没有明显异常，先顺着自然聊，不额外打断。"]
+
+
+def _default_easy_question_types(interaction_mode: str) -> list[str]:
+    if interaction_mode in {"repair", "probe_lightly"}:
+        return ["低门槛生活习惯问题"]
+    return []
 
 
 def _humanize_mutual_intent_assessment(value: str) -> str:
@@ -541,44 +600,64 @@ def normalize_assistant_guidance(data: dict[str, Any]) -> dict[str, Any]:
         "avoid": _to_clean_list(payload.get("avoid"))
         or _default_avoid(mutual_intent_assessment, interaction_mode),
         "topic_directions": _to_clean_list(payload.get("topic_directions")),
-        "easy_question_types": _to_clean_list(payload.get("easy_question_types")),
-        "rescue_flow": _to_clean_list(payload.get("rescue_flow")) or _default_rescue_flow(),
-        "graceful_exit_plan": _to_clean_list(payload.get("graceful_exit_plan")) or _default_graceful_exit_plan(),
-        "strategy_tags": _to_clean_list(payload.get("strategy_tags")) or list(_DEFAULT_STRATEGY_TAGS),
+        "easy_question_types": _to_clean_list(payload.get("easy_question_types"))
+        or _default_easy_question_types(interaction_mode),
+        "rescue_flow": _to_clean_list(payload.get("rescue_flow"))
+        or _default_rescue_flow_for_mode(interaction_mode),
+        "graceful_exit_plan": _to_clean_list(payload.get("graceful_exit_plan"))
+        or _default_graceful_exit_plan(mutual_intent_assessment, interaction_mode),
+        "strategy_tags": _to_clean_list(payload.get("strategy_tags"))
+        or _default_strategy_tags(interaction_mode),
         "reply_suggestions": list(advice),
         "profile_hooks_used": _to_clean_list(payload.get("profile_hooks_used")),
     }
 
 
-def build_placeholder_assistant_guidance(*, profile_hooks: list[str] | None = None) -> dict[str, Any]:
+def build_placeholder_assistant_guidance(
+    *,
+    profile_hooks: list[str] | None = None,
+    mutual_intent_assessment: str | None = None,
+    interaction_mode: str | None = None,
+) -> dict[str, Any]:
     raw_hooks = [_clean_profile_hook(hook) for hook in list(profile_hooks or [])]
     hooks = [hook for hook in raw_hooks if hook and not _is_generic_profile_hook(hook)]
-    topic_directions = _default_topic_directions(hooks, interaction_mode="probe_lightly")
-    advice = [
-        "先回应对方上一句里最具体的信息，再补一点自己的真实感受。",
-        "如果旧话题已经聊干了，就顺势切到更生活化、更容易回答的话题。",
-        "最终发出去的话请自己组织，不要照搬模板。",
-    ]
+    normalized_mutual_intent = _normalize_contract_mutual_intent_assessment(
+        mutual_intent_assessment
+    )
+    normalized_interaction_mode = _normalize_contract_interaction_mode(
+        interaction_mode,
+        mutual_intent_assessment=normalized_mutual_intent,
+    )
+    topic_directions = _default_topic_directions(
+        hooks,
+        interaction_mode=normalized_interaction_mode,
+    )
+    advice = _default_advice(normalized_interaction_mode)
     guidance = {
-        "mutual_intent_assessment": "interest_unclear",
-        "interaction_mode": "probe_lightly",
-        "current_problem": ["暂未接入模型，暂时无法自动判断当前最核心的卡点。"],
-        "problem_tags": ["placeholder"],
-        "why_not_to_push": ["先别默认对方一定想继续聊，先用低压方式试一下。"],
-        "low_pressure_options": ["先问一个更容易回答的小问题，再看对方愿不愿意继续接。"],
-        "avoid": ["不要连续只回短句", "不要一直只抛封闭问题"],
+        "mutual_intent_assessment": normalized_mutual_intent,
+        "interaction_mode": normalized_interaction_mode,
+        "current_problem": _default_current_problem(
+            normalized_mutual_intent,
+            normalized_interaction_mode,
+        ),
+        "problem_tags": ["fallback"],
+        "why_not_to_push": _default_why_not_to_push(
+            normalized_mutual_intent,
+            normalized_interaction_mode,
+        ),
+        "low_pressure_options": _default_low_pressure_options(normalized_interaction_mode),
+        "avoid": _default_avoid(
+            normalized_mutual_intent,
+            normalized_interaction_mode,
+        ),
         "topic_directions": topic_directions,
-        "easy_question_types": ["低门槛生活习惯问题"],
-        "rescue_flow": [
-            "先接住对方上一句，不要马上把话题扔空。",
-            "如果旧话题已经聊干了，就切到更容易回答的生活化话题。",
-            "最后优先问一句轻一点、对方更容易回的问题。",
-        ],
-        "graceful_exit_plan": [
-            "如果对方还是连续很冷，就别硬拉，先把节奏收住。",
-            "可以留个轻一点的收口，给下次再聊留余地。",
-        ],
-        "strategy_tags": ["share_detail", "ask_easy_question", "switch_topic"],
+        "easy_question_types": _default_easy_question_types(normalized_interaction_mode),
+        "rescue_flow": _default_rescue_flow_for_mode(normalized_interaction_mode),
+        "graceful_exit_plan": _default_graceful_exit_plan(
+            normalized_mutual_intent,
+            normalized_interaction_mode,
+        ),
+        "strategy_tags": _default_strategy_tags(normalized_interaction_mode),
         "advice": advice,
         "reply_suggestions": advice,
         "profile_hooks_used": hooks[:3],
@@ -707,6 +786,8 @@ def generate_assistant_guidance(
     actor_profile_summary: str = "",
     counterpart_profile_summary: str = "",
     profile_hooks: list[str] | None = None,
+    preferred_mutual_intent_assessment: str | None = None,
+    preferred_interaction_mode: str | None = None,
 ) -> dict[str, Any] | None:
     profile_ctx = _prepare_profile_context_for_guidance(
         actor_profile_summary=actor_profile_summary,
@@ -716,7 +797,11 @@ def generate_assistant_guidance(
     selected_hooks = list(profile_ctx.get("selected_hooks") or [])
     actor_summary_safe = str(profile_ctx.get("actor_profile_summary_safe") or "")
     counterpart_summary_safe = str(profile_ctx.get("counterpart_profile_summary_safe") or "")
-    fallback = build_placeholder_assistant_guidance(profile_hooks=selected_hooks)
+    fallback = build_placeholder_assistant_guidance(
+        profile_hooks=selected_hooks,
+        mutual_intent_assessment=preferred_mutual_intent_assessment,
+        interaction_mode=preferred_interaction_mode,
+    )
     key = (os.environ.get("OPENAI_API_KEY") or "").strip()
     if not key:
         return fallback
