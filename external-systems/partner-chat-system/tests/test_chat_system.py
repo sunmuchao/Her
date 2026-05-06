@@ -299,6 +299,59 @@ class ChatSystemTests(unittest.TestCase):
         self.assertEqual(trend_state["last_hint_trigger_type"], "mode_change")
         self.assertFalse(trend_state["has_user_acted_since_last_hint"])
 
+    def test_assistant_proactive_hint_fallback_keeps_hold_mode(self):
+        th = get_or_create_thread(
+            self.conn,
+            case_id="case-proactive-hold-fallback",
+            relation_key="r-proactive-hold",
+            participant_a_id="alice",
+            participant_b_id="bob",
+        )
+        route_decision = {
+            "need_rescue": True,
+            "situation": "boundary",
+            "problem_tags": ["boundary_risk", "low_energy"],
+            "rescue_style": "deescalate",
+            "mutual_intent_assessment": "boundary_risk",
+            "interaction_mode": "hold",
+            "reason": "这轮已经有边界压力，不适合继续推进。",
+            "decision_source": "heuristic",
+        }
+        profile_ctx = {
+            "profile_dsn": "mysql://test",
+            "actor_profile_summary": "alice 喜欢咖啡",
+            "counterpart_profile_summary": "bob 偏慢热",
+            "profile_hooks": ["咖啡"],
+        }
+
+        with patch("chat_system.service.generate_assistant_guidance", return_value=None), patch(
+            "chat_system.service._assistant_profile_context",
+            return_value=profile_ctx,
+        ):
+            out = assistant_proactive_hint(
+                self.conn,
+                th["thread_id"],
+                "alice",
+                route_decision=route_decision,
+                now=datetime(2026, 5, 6, 10, 2, 0),
+            )
+
+        self.assertTrue(out["hint_posted"])
+        self.assertEqual(out["assistant_hint_event"]["trigger_type"], "mode_change")
+        self.assertEqual(out["assistant_route_decision"]["interaction_mode"], "hold")
+        self.assertEqual(out["assistant_guidance"]["interaction_mode"], "hold")
+        self.assertEqual(out["assistant_guidance"]["mutual_intent_assessment"], "boundary_risk")
+        self.assertTrue(
+            any("收住" in item or "止损" in item for item in out["assistant_guidance"]["advice"])
+        )
+        self.assertIn("先收住", out["body"])
+        self.assertIn("止损", out["body"])
+        self.assertNotIn("低压试探", out["body"])
+        trace = out["metadata"]["assistant_trace"]
+        self.assertEqual(trace["route_decision"]["interaction_mode"], "hold")
+        self.assertEqual(trace["guidance"]["interaction_mode"], "hold")
+        self.assertEqual(trace["guidance"]["mutual_intent_assessment"], "boundary_risk")
+
     def test_assistant_query_is_not_blocked_by_proactive_hint_state(self):
         th = get_or_create_thread(
             self.conn,
