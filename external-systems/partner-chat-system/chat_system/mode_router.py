@@ -27,6 +27,50 @@ BOUNDARY_HINTS: tuple[str, ...] = (
     "住哪",
     "见面",
 )
+_QUESTION_TOKENS = (
+    "吗",
+    "呢",
+    "哪种",
+    "什么",
+    "怎么",
+    "干嘛",
+    "是不是",
+    "有空",
+    "要不要",
+    "行不行",
+    "可不可以",
+    "方不方便",
+)
+_APPEARANCE_PRESSURE_HINTS = (
+    "本人吧",
+    "本人吗",
+    "照片看着",
+    "照片是本人",
+    "发张照片",
+    "见光死",
+    "差距太大",
+)
+_PRESSURE_HINTS = (
+    "不想浪费时间",
+    "别浪费时间",
+    "直接见面",
+    "出来见见",
+    "周末有空出来见见",
+    "这周末有空出来见见",
+)
+_DISMISSIVE_HINTS = (
+    "那挺省事",
+    "省事",
+    "挺别致",
+    "理解能力挺别致",
+    "别抱太大希望",
+    "不用费劲",
+)
+_DEFENSIVE_HINTS = (
+    "怎么怕见光死",
+    "怕见光死",
+    "你理解能力",
+)
 
 _COLD_REPLIES = (
     "嗯",
@@ -78,6 +122,10 @@ def _compact_text(text: str) -> str:
     return re.sub(r"\s+", "", str(text or ""))
 
 
+def _compact_match_text(text: str) -> str:
+    return re.sub(r"[\s，,。.!！?？~～、:：;；“”\"'（）()]+", "", str(text or ""))
+
+
 def _to_clean_list(value: Any) -> list[str]:
     if isinstance(value, list):
         items = value
@@ -90,7 +138,7 @@ def _to_clean_list(value: Any) -> list[str]:
 
 def is_question_like(text: str) -> bool:
     t = str(text or "")
-    return "？" in t or "?" in t or any(token in t for token in ("吗", "呢", "哪种", "什么", "怎么"))
+    return "？" in t or "?" in t or any(token in t for token in _QUESTION_TOKENS)
 
 
 def is_cold_like(text: str) -> bool:
@@ -171,6 +219,49 @@ def _speaker_low_energy_streak(messages: list[dict[str, Any]], speaker_id: str) 
             continue
         break
     return streak
+
+
+def _contains_any_token(text: str, tokens: tuple[str, ...]) -> bool:
+    compact = _compact_match_text(text)
+    return bool(compact) and any(token in compact for token in tokens)
+
+
+def _is_boundary_like(text: str) -> bool:
+    return _contains_any_token(text, BOUNDARY_HINTS + _APPEARANCE_PRESSURE_HINTS)
+
+
+def _is_pressure_like(text: str) -> bool:
+    return _contains_any_token(text, _PRESSURE_HINTS)
+
+
+def _is_dismissive_like(text: str) -> bool:
+    return _contains_any_token(text, _DISMISSIVE_HINTS)
+
+
+def _is_defensive_like(text: str) -> bool:
+    return _contains_any_token(text, _DEFENSIVE_HINTS)
+
+
+def _recent_risk_flags(messages: list[dict[str, Any]], *, window: int = 3) -> list[str]:
+    flags: list[str] = []
+    for message in messages[-window:]:
+        body = str(message.get("body") or "")
+        if _is_boundary_like(body):
+            flags.append("boundary_risk")
+        if _is_pressure_like(body):
+            flags.append("pressure")
+        if _is_dismissive_like(body):
+            flags.append("dismissive")
+        if _is_defensive_like(body):
+            flags.append("defensive")
+    return _dedupe_strs(flags)
+
+
+def _has_cold_prefix_question(text: str) -> bool:
+    if not is_question_like(text):
+        return False
+    parts = [part.strip() for part in re.split(r"[，,。.!！?？~～]+", str(text or "")) if part.strip()]
+    return len(parts) == 2 and is_cold_like(parts[0]) and not is_question_like(parts[0])
 
 
 def _normalize_situation(value: Any) -> str:
@@ -309,8 +400,65 @@ def fast_mode_route(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
     prior_mutual_engagement = _recent_mutual_engagement(dyadic[:-1])
     last_author_recent_engagement = _speaker_recent_engagement(dyadic[:-1], last_author)
     last_author_low_streak = _speaker_low_energy_streak(dyadic, last_author)
+    recent_risk_flags = _recent_risk_flags(dyadic)
+    prior_recent_risk_flags = _recent_risk_flags(dyadic[:-1])
+
+    if _is_boundary_like(last_body) or _is_pressure_like(last_body):
+        return normalize_route_decision(
+            {
+                "need_rescue": False,
+                "situation": "boundary",
+                "problem_tags": ["boundary_risk", "sensitive_topic"],
+                "mutual_intent_assessment": "boundary_risk",
+                "interaction_mode": "hold",
+                "rescue_style": "graceful_exit",
+                "reason": "上一句已经碰到外貌、边界或推进压力点，不能按正常继续处理。",
+            },
+            decision_source="heuristic",
+        )
+    if _is_dismissive_like(last_body) or _is_defensive_like(last_body):
+        return normalize_route_decision(
+            {
+                "need_rescue": False,
+                "situation": "rude",
+                "problem_tags": ["boundary_risk", "defensive_tone", "micro_rude"],
+                "mutual_intent_assessment": "boundary_risk",
+                "interaction_mode": "hold",
+                "rescue_style": "graceful_exit",
+                "reason": "上一句已经带刺、带防御或带施压味道，先按收住止损处理。",
+            },
+            decision_source="heuristic",
+        )
+    if _has_cold_prefix_question(last_body):
+        return normalize_route_decision(
+            {
+                "need_rescue": True,
+                "situation": "cold",
+                "problem_tags": ["closed_reply", "low_energy", "awkward_transition"],
+                "mutual_intent_assessment": "communication_problem"
+                if prior_mutual_engagement
+                else "interest_unclear",
+                "interaction_mode": "repair" if prior_mutual_engagement else "probe_lightly",
+                "rescue_style": "switch_topic" if prior_mutual_engagement else "low_pressure_probe",
+                "reason": "上一句是冷回复里夹了一个问题，表面在继续聊，实际还没真正接顺。",
+            },
+            decision_source="heuristic",
+        )
 
     if is_low_energy_like(last_body):
+        if prior_recent_risk_flags:
+            return normalize_route_decision(
+                {
+                    "need_rescue": False,
+                    "situation": "boundary",
+                    "problem_tags": ["boundary_risk", "conversation_shutdown", "low_energy"],
+                    "mutual_intent_assessment": "boundary_risk",
+                    "interaction_mode": "hold",
+                    "rescue_style": "graceful_exit",
+                    "reason": "最近几句已经带着边界或对立风险，这一拍继续偏冷，不能当成自然缓和。",
+                },
+                decision_source="heuristic",
+            )
         if len(recent) >= 2 and all(is_low_energy_like(body) for body in recent[-2:]):
             if _recent_mutual_engagement(dyadic[:-2]):
                 return normalize_route_decision(
@@ -375,16 +523,33 @@ def fast_mode_route(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
             },
             decision_source="heuristic",
         )
-    if any(token in last_body for token in BOUNDARY_HINTS):
+    if is_question_like(last_body) and any(is_low_energy_like(body) for body in recent[:-1]) and (
+        is_low_energy_like(prev_body) or is_question_like(prev_body)
+    ):
+        return normalize_route_decision(
+            {
+                "need_rescue": True,
+                "situation": "stuck",
+                "problem_tags": ["closed_reply", "low_energy", "awkward_transition"],
+                "mutual_intent_assessment": "communication_problem"
+                if prior_mutual_engagement
+                else "interest_unclear",
+                "interaction_mode": "repair" if prior_mutual_engagement else "probe_lightly",
+                "rescue_style": "switch_topic" if prior_mutual_engagement else "low_pressure_probe",
+                "reason": "前面刚经历冷回复或尬接，这一拍虽然继续提问，但还不能算已经恢复正常。",
+            },
+            decision_source="heuristic",
+        )
+    if recent_risk_flags:
         return normalize_route_decision(
             {
                 "need_rescue": False,
                 "situation": "boundary",
-                "problem_tags": ["boundary_risk", "sensitive_topic"],
+                "problem_tags": ["boundary_risk", "defensive_tone"],
                 "mutual_intent_assessment": "boundary_risk",
                 "interaction_mode": "hold",
                 "rescue_style": "graceful_exit",
-                "reason": "上一句已经碰到敏感或有压力的话题，不适合按正常推进来处理。",
+                "reason": "最近两三句里已经有边界、施压或对立信号，不能因为表面还在接话就判正常。",
             },
             decision_source="heuristic",
         )
