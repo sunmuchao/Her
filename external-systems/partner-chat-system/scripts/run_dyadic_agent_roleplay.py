@@ -498,8 +498,12 @@ def main() -> int:
         f"repair_turns={(result.get('assistant_metrics') or {}).get('repair_intervention_turns')}, "
         f"probe_turns={(result.get('assistant_metrics') or {}).get('probe_intervention_turns')}, "
         f"hold_turns={(result.get('assistant_metrics') or {}).get('hold_decision_turns')}, "
+        f"overpush_turns={(result.get('assistant_metrics') or {}).get('overpush_risk_turns')}, "
         f"follow_rate={(result.get('assistant_metrics') or {}).get('follow_rate')}, "
         f"strong_follow_rate={(result.get('assistant_metrics') or {}).get('strong_follow_rate')}, "
+        f"improved_recovery_rate={(result.get('assistant_metrics') or {}).get('improved_recovery_rate')}, "
+        f"graceful_exit_rate={(result.get('assistant_metrics') or {}).get('graceful_exit_rate')}, "
+        f"clarified_low_interest_rate={(result.get('assistant_metrics') or {}).get('clarified_low_interest_rate')}, "
         f"stress_events={len(result.get('stress_events') or [])}"
     )
     text = json.dumps(result, ensure_ascii=False, indent=2)
