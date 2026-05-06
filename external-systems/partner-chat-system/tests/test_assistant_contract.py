@@ -40,6 +40,8 @@ class AssistantContractTests(unittest.TestCase):
         self.assertIn("assistant_guidance", ROLEPLAY_TURN_EVALUATION_FIELDS)
         self.assertIn("follow_evidence", ROLEPLAY_TURN_EVALUATION_FIELDS)
         self.assertIn("overpush_risk", ROLEPLAY_TURN_EVALUATION_FIELDS)
+        self.assertIn("simulated_reply_mode_prompted", ROLEPLAY_TURN_EVALUATION_FIELDS)
+        self.assertIn("simulated_reply_mode_alignment", ROLEPLAY_TURN_EVALUATION_FIELDS)
 
     def test_mutual_intent_normalization_uses_shared_rules(self):
         self.assertEqual(
