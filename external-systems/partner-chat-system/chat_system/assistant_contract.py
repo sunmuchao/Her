@@ -70,6 +70,7 @@ ASSISTANT_GUIDANCE_FIELDS: Final[tuple[str, ...]] = (
     "problem_tags",
     "why_not_to_push",
     "low_pressure_options",
+    "advice",
     "avoid",
     "topic_directions",
     "easy_question_types",

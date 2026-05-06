@@ -33,6 +33,7 @@ class AssistantContractTests(unittest.TestCase):
         self.assertEqual(FOLLOW_LEVELS, ("none", "partial", "strong"))
         self.assertEqual(FOLLOW_LEVEL_NOT_APPLICABLE, "not_applicable")
         self.assertIn("interaction_mode", ASSISTANT_GUIDANCE_FIELDS)
+        self.assertIn("advice", ASSISTANT_GUIDANCE_FIELDS)
         self.assertIn("reply_suggestions", ASSISTANT_GUIDANCE_FIELDS)
         self.assertIn("turn_index", SHARED_TURN_EVALUATION_FIELDS)
         self.assertIn("graceful_exit_score", SHARED_TURN_EVALUATION_FIELDS)
