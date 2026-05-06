@@ -10,6 +10,18 @@ from datetime import datetime, timedelta
 from time import perf_counter
 from typing import Any, Callable, Protocol
 
+from .assistant_contract import (
+    FOLLOW_LEVEL_NONE,
+    FOLLOW_LEVEL_NOT_APPLICABLE,
+    FOLLOW_LEVEL_PARTIAL,
+    FOLLOW_LEVEL_STRONG,
+    INTERACTION_MODES,
+    MUTUAL_INTENT_ASSESSMENTS,
+    format_choice_values,
+    is_rescue_interaction_mode,
+    normalize_interaction_mode as _normalize_contract_interaction_mode,
+    normalize_mutual_intent_assessment as _normalize_contract_mutual_intent_assessment,
+)
 from .scenario_stress import StressBeat, pick_stress_beat, stress_log_entry
 from .service import (
     SRC_USER,
@@ -92,14 +104,8 @@ _GRACEFUL_EXIT_TOKENS = (
 )
 _ALLOWED_SITUATIONS = {"cold", "awkward", "stuck", "rude", "boundary", "off_topic", "none"}
 _ALLOWED_RESCUE_STYLES = {"reengage", "switch_topic", "low_pressure_probe", "graceful_exit", "none"}
-_ALLOWED_MUTUAL_INTENT_ASSESSMENTS = {
-    "communication_problem",
-    "interest_unclear",
-    "interest_low",
-    "boundary_risk",
-    "normal",
-}
-_ALLOWED_INTERACTION_MODES = {"repair", "probe_lightly", "hold", "none"}
+_MUTUAL_INTENT_CHOICES = format_choice_values(MUTUAL_INTENT_ASSESSMENTS)
+_INTERACTION_MODE_CHOICES = format_choice_values(INTERACTION_MODES)
 
 
 class SupportsConn(Protocol):
@@ -190,8 +196,8 @@ def _orchestrator_rescue_decision(
         "{\n"
         '  "need_rescue": <true|false>,\n'
         '  "situation": "<cold|awkward|stuck|rude|boundary|off_topic|none 选一>",\n'
-        '  "mutual_intent_assessment": "<communication_problem|interest_unclear|interest_low|boundary_risk|normal 选一>",\n'
-        '  "interaction_mode": "<repair|probe_lightly|hold|none 选一>",\n'
+        f'  "mutual_intent_assessment": "<{_MUTUAL_INTENT_CHOICES} 选一>",\n'
+        f'  "interaction_mode": "<{_INTERACTION_MODE_CHOICES} 选一>",\n'
         '  "rescue_style": "<reengage|switch_topic|low_pressure_probe|graceful_exit|none 选一>",\n'
         '  "reason": "<极短中文，说明为何需要或不需要救场>"\n'
         "}\n"
@@ -437,55 +443,6 @@ def _normalize_situation(value: Any) -> str:
     return "none"
 
 
-def _normalize_mutual_intent_assessment(value: Any) -> str:
-    raw = str(value or "").strip().lower()
-    if raw in _ALLOWED_MUTUAL_INTENT_ASSESSMENTS:
-        return raw
-    text = str(value or "").strip()
-    if "双方" in text and any(token in text for token in ("还想聊", "想继续聊", "继续聊")):
-        return "communication_problem"
-    if any(token in text for token in ("边界", "敏感", "压力")):
-        return "boundary_risk"
-    if any(token in text for token in ("兴趣低", "意愿低", "不想聊", "敷衍", "别硬推", "别讨好")):
-        return "interest_low"
-    if any(token in text for token in ("不明确", "不确定", "试探", "先探")):
-        return "interest_unclear"
-    if any(token in text for token in ("正常", "自然聊", "顺着聊")):
-        return "normal"
-    return "interest_unclear"
-
-
-def _default_interaction_mode(mutual_intent_assessment: str, *, need_rescue: bool) -> str:
-    if mutual_intent_assessment == "communication_problem":
-        return "repair" if need_rescue else "none"
-    if mutual_intent_assessment == "interest_unclear":
-        return "probe_lightly" if need_rescue else "none"
-    if mutual_intent_assessment in {"interest_low", "boundary_risk"}:
-        return "hold"
-    return "none"
-
-
-def _normalize_interaction_mode(
-    value: Any,
-    *,
-    mutual_intent_assessment: str,
-    need_rescue: bool,
-) -> str:
-    raw = str(value or "").strip().lower()
-    if raw in _ALLOWED_INTERACTION_MODES:
-        return raw
-    text = str(value or "").strip()
-    if "低压试探" in text or "轻试" in text:
-        return "probe_lightly"
-    if any(token in text for token in ("先收住", "别硬推", "别推进", "别讨好")):
-        return "hold"
-    if any(token in text for token in ("正常修复", "接住", "往下聊")):
-        return "repair"
-    if any(token in text for token in ("不用介入", "顺着聊", "自然往下聊")):
-        return "none"
-    return _default_interaction_mode(mutual_intent_assessment, need_rescue=need_rescue)
-
-
 def _normalize_rescue_style(
     value: Any,
     *,
@@ -522,19 +479,19 @@ def _normalize_rescue_decision(
     situation = _normalize_situation(data.get("situation"))
     raw_assessment = str(data.get("mutual_intent_assessment") or "").strip()
     if raw_assessment:
-        mutual_intent_assessment = _normalize_mutual_intent_assessment(raw_assessment)
+        mutual_intent_assessment = _normalize_contract_mutual_intent_assessment(raw_assessment)
     elif not raw_need and situation == "none":
         mutual_intent_assessment = "normal"
     elif raw_need and str(data.get("rescue_style") or "").strip().lower() in {"reengage", "switch_topic"}:
         mutual_intent_assessment = "communication_problem"
     else:
-        mutual_intent_assessment = _normalize_mutual_intent_assessment(raw_assessment)
-    interaction_mode = _normalize_interaction_mode(
+        mutual_intent_assessment = _normalize_contract_mutual_intent_assessment(raw_assessment)
+    interaction_mode = _normalize_contract_interaction_mode(
         data.get("interaction_mode"),
         mutual_intent_assessment=mutual_intent_assessment,
         need_rescue=raw_need,
     )
-    need_rescue = interaction_mode in {"repair", "probe_lightly"}
+    need_rescue = is_rescue_interaction_mode(interaction_mode)
     rescue_style = _normalize_rescue_style(
         data.get("rescue_style"),
         interaction_mode=interaction_mode,
@@ -857,7 +814,7 @@ def _assistant_follow_assessment(
     assistant_invoked: bool,
 ) -> dict[str, Any]:
     if not assistant_invoked or not guidance:
-        return {"level": "not_applicable", "score": 0, "signals": []}
+        return {"level": FOLLOW_LEVEL_NOT_APPLICABLE, "score": 0, "signals": []}
     text = str(message or "").strip()
     signals: list[str] = []
     score = 0
@@ -873,7 +830,7 @@ def _assistant_follow_assessment(
         signals.append("used_graceful_exit")
 
     if _is_low_energy_like(text) and not graceful_exit_used:
-        return {"level": "none", "score": 0, "signals": ["message_still_cold"]}
+        return {"level": FOLLOW_LEVEL_NONE, "score": 0, "signals": ["message_still_cold"]}
     if _is_question_like(text):
         score += 1
         signals.append("asked_question")
@@ -902,11 +859,11 @@ def _assistant_follow_assessment(
         signals.append("switched_topic")
 
     if score >= 4:
-        level = "strong"
+        level = FOLLOW_LEVEL_STRONG
     elif score >= 2:
-        level = "partial"
+        level = FOLLOW_LEVEL_PARTIAL
     else:
-        level = "none"
+        level = FOLLOW_LEVEL_NONE
     return {"level": level, "score": score, "signals": signals}
 
 
