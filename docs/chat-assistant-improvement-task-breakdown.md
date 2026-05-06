@@ -331,21 +331,25 @@
 ### T12：实现提示触发器与重复提示抑制
 
 - 优先级：`P1`
-- 目标：后台逐句看，前台按趋势提醒。
+- 目标：后台逐句看，前台只在还能明显帮助沟通时按趋势提醒。
 - 产出：
-  - 趋势状态器：记录上一模式、上次提示时点、持续未缓解轮数、风险等级
+  - 趋势状态器：记录上一模式、上次提示时点、持续未缓解轮数、风险等级、上次提示原因
+  - 模式分层触发规则：`repair` 可相对积极提醒，`probe_lightly` 只做低频提醒，`hold` 默认只做止损型轻提醒
   - 首次触发规则：`normal -> repair`、`normal -> probe_lightly`、`probe_lightly -> hold`、`repair -> hold`、风险升级
-  - 再触发规则：同一非 `normal` 状态持续 `N` 轮未缓解、用户未采纳上次建议且继续重复高风险做法、冷却窗口后仍无改善
+  - 再触发规则：只有在再次提示仍有新增价值时才允许触发，例如沟通问题仍可修复但连续数轮未缓解、风险明显升级、冷却窗口后仍无改善
   - 重复提示抑制：刚提示过、状态未变、严重度未升高、用户还没来得及行动时不重复
+  - `follow_level / follow_evidence` 只作为“提示是否仍有新增价值”的辅助信号，不作为监督用户是否听话的主目标
   - `hint_trigger_rate`、`duplicate_hint_rate`、`mode_change_hint_rate`
 - 主要文件：
   - 可新增：`external-systems/partner-chat-system/chat_system/trend_state.py`
   - [external-systems/partner-chat-system/chat_system/service.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/service.py)
   - [external-systems/partner-chat-system/chat_system/dyadic_roleplay.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/dyadic_roleplay.py)
-- 依赖：`T04`、`T05`、`T07`
+- 依赖：`T04`、`T05`
+- 联动增强：`T07` 可提供 `follow_level` 作为辅助信号
 - 完成标准：
-  - 没有新信息时不复读，但坏状态持续且未缓解时允许再次提示
-  - 能区分首次触发、风险升级触发、持续失败再触发
+  - 没有新信息时不复读，但在“仍值得帮忙”的窗口里允许再次提示
+  - 能区分首次触发、风险升级触发、持续未缓解但仍可修复的再触发
+  - `hold` 场景默认不连续提示，除非风险继续升级或用户继续明显越界
   - 能统计重复提示率
 
 ### T13：补齐运行脚本和导出报表
