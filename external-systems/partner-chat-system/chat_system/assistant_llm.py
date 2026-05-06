@@ -101,6 +101,14 @@ _HOLD_CONFLICT_STRATEGY_TAGS = frozenset(
         "switch_topic",
     }
 )
+_RISK_AXIS_LABELS = {
+    "appearance": "照片/外貌",
+    "income_condition": "收入/条件",
+    "privacy_ex": "前任/隐私",
+    "meetup_push": "见面推进",
+    "pressure_compare": "比较/施压",
+    "other": "压力点",
+}
 
 
 def _env_int(name: str, default: int) -> int:
@@ -117,7 +125,41 @@ def _env_float(name: str, default: float) -> float:
         return float(default)
 
 
-def _default_rescue_flow_for_mode(interaction_mode: str) -> list[str]:
+def _normalize_risk_axis(value: Any) -> str | None:
+    raw = str(value or "").strip().lower()
+    return raw if raw in _RISK_AXIS_LABELS else None
+
+
+def _normalize_hold_subtype(value: Any) -> str | None:
+    raw = str(value or "").strip().lower()
+    if raw in {"interest_low", "boundary_risk"}:
+        return raw
+    return None
+
+
+def _axis_guardrail(risk_axis: str | None) -> str:
+    mapping = {
+        "appearance": "别继续追着照片、外貌差距这些点问。",
+        "income_condition": "别继续盘收入、房车、条件高低。",
+        "privacy_ex": "别继续碰前任、婚史、隐私这些点。",
+        "meetup_push": "别急着继续推进见面。",
+        "pressure_compare": "别继续比较、抬杠、证明自己。",
+        "other": "别继续沿当前压力点加码。",
+    }
+    return mapping.get(risk_axis or "", "别继续沿当前压力点加码。")
+
+
+def _axis_problem_line(risk_axis: str | None) -> str:
+    label = _RISK_AXIS_LABELS.get(risk_axis or "", "当前压力点")
+    return f"这轮已经在往“{label}”这条线发紧，不适合再往前推。"
+
+
+def _default_rescue_flow_for_mode(
+    interaction_mode: str,
+    *,
+    risk_axis: str | None = None,
+    hold_subtype: str | None = None,
+) -> list[str]:
     if interaction_mode == "repair":
         return [
             "先接住对方上一句里还能接的话点，不要像没看到一样硬换题。",
@@ -131,6 +173,12 @@ def _default_rescue_flow_for_mode(interaction_mode: str) -> list[str]:
             "如果对方还是冷，就先把节奏放慢，不要继续加码。",
         ]
     if interaction_mode == "hold":
+        if hold_subtype == "boundary_risk":
+            return [
+                _axis_guardrail(risk_axis),
+                "别继续解释拉扯，也别急着证明自己没恶意。",
+                "如果对方已经明显不舒服，就直接收口。",
+            ]
         return [
             "先别顺着敏感点继续往下问，也别急着证明自己没恶意。",
             "把语气收住，别再加码推进关系或推进见面。",
@@ -179,19 +227,32 @@ def _default_low_pressure_options(interaction_mode: str) -> list[str]:
     ]
 
 
-def _default_avoid(mutual_intent_assessment: str, interaction_mode: str) -> list[str]:
+def _default_avoid(
+    mutual_intent_assessment: str,
+    interaction_mode: str,
+    *,
+    risk_axis: str | None = None,
+    hold_subtype: str | None = None,
+) -> list[str]:
     if interaction_mode == "repair":
         return ["不要继续追着已经聊干的话题硬问。"]
     if interaction_mode == "probe_lightly":
         return ["不要一上来就连发很多解释或追问。"]
     if interaction_mode == "hold":
+        if hold_subtype == "boundary_risk":
+            return [_axis_guardrail(risk_axis), "别继续解释拉扯。"]
         if mutual_intent_assessment == "boundary_risk":
             return ["不要继续往让对方有压力或越界的话题上推。"]
         return ["不要继续加码输出或讨好式硬聊。"]
     return []
 
 
-def _default_advice(interaction_mode: str) -> list[str]:
+def _default_advice(
+    interaction_mode: str,
+    *,
+    risk_axis: str | None = None,
+    hold_subtype: str | None = None,
+) -> list[str]:
     if interaction_mode == "repair":
         return [
             "先回应对方上一句里的具体信息。",
@@ -204,6 +265,11 @@ def _default_advice(interaction_mode: str) -> list[str]:
             "如果对方还是冷，就别继续加码输出。",
         ]
     if interaction_mode == "hold":
+        if hold_subtype == "boundary_risk":
+            return [
+                _axis_guardrail(risk_axis),
+                "这轮先收口，别再往前顶。",
+            ]
         return [
             "先把节奏收住，不要继续追着聊。",
             "如果要收口，就留一句轻一点的话给下次余地。",
@@ -224,12 +290,20 @@ def _default_strategy_tags(interaction_mode: str) -> list[str]:
 def _default_current_problem(
     mutual_intent_assessment: str,
     interaction_mode: str,
+    *,
+    risk_axis: str | None = None,
+    hold_subtype: str | None = None,
+    route_reason: str = "",
 ) -> list[str]:
+    if route_reason:
+        return [route_reason]
     if interaction_mode == "repair":
         return ["当前没拿到更细分析，先按“双方还有意愿，但这轮接话卡住了”处理。"]
     if interaction_mode == "probe_lightly":
         return ["当前没拿到更细分析，先按“意愿还不够明确”做低压试探。"]
     if interaction_mode == "hold":
+        if hold_subtype == "boundary_risk":
+            return [_axis_problem_line(risk_axis)]
         if mutual_intent_assessment == "boundary_risk":
             return ["当前没拿到更细分析，但这轮已经有边界或压力风险，先按收住止损处理。"]
         return ["当前没拿到更细分析，先按“这轮更该收住而不是继续硬聊”处理。"]
@@ -586,6 +660,8 @@ def _sanitize_advice(
     value: Any,
     *,
     interaction_mode: str,
+    risk_axis: str | None = None,
+    hold_subtype: str | None = None,
 ) -> list[str]:
     out: list[str] = []
     for item in _to_clean_list(value):
@@ -594,11 +670,16 @@ def _sanitize_advice(
         out.append(item)
     if out:
         return out
-    return _default_advice(interaction_mode)
+    return _default_advice(
+        interaction_mode,
+        risk_axis=risk_axis,
+        hold_subtype=hold_subtype,
+    )
 
 
 def normalize_assistant_guidance(data: dict[str, Any]) -> dict[str, Any]:
     payload = data if isinstance(data, dict) else {}
+    guidance_source = str(payload.get("guidance_source") or "").strip() or "model"
     mutual_intent_assessment = _normalize_contract_mutual_intent_assessment(
         payload.get("mutual_intent_assessment")
     )
@@ -606,15 +687,28 @@ def normalize_assistant_guidance(data: dict[str, Any]) -> dict[str, Any]:
         payload.get("interaction_mode"),
         mutual_intent_assessment=mutual_intent_assessment,
     )
+    risk_axis = _normalize_risk_axis(payload.get("risk_axis"))
+    hold_subtype = _normalize_hold_subtype(payload.get("hold_subtype"))
     advice = _sanitize_advice(
         _merge_clean_lists(payload.get("advice"), payload.get("reply_suggestions")),
         interaction_mode=interaction_mode,
+        risk_axis=risk_axis,
+        hold_subtype=hold_subtype,
     )
     return {
         "schema_version": GUIDANCE_SCHEMA_VERSION,
+        "guidance_source": guidance_source,
         "mutual_intent_assessment": mutual_intent_assessment,
         "interaction_mode": interaction_mode,
-        "current_problem": _to_clean_list(payload.get("current_problem")) or ["当前问题还不够明确。"],
+        "risk_axis": risk_axis,
+        "hold_subtype": hold_subtype,
+        "current_problem": _to_clean_list(payload.get("current_problem"))
+        or _default_current_problem(
+            mutual_intent_assessment,
+            interaction_mode,
+            risk_axis=risk_axis,
+            hold_subtype=hold_subtype,
+        ),
         "problem_tags": _to_clean_list(payload.get("problem_tags")) or list(_DEFAULT_PROBLEM_TAGS),
         "why_not_to_push": _to_clean_list(payload.get("why_not_to_push"))
         or _default_why_not_to_push(mutual_intent_assessment, interaction_mode),
@@ -622,12 +716,21 @@ def normalize_assistant_guidance(data: dict[str, Any]) -> dict[str, Any]:
         or _default_low_pressure_options(interaction_mode),
         "advice": advice,
         "avoid": _to_clean_list(payload.get("avoid"))
-        or _default_avoid(mutual_intent_assessment, interaction_mode),
+        or _default_avoid(
+            mutual_intent_assessment,
+            interaction_mode,
+            risk_axis=risk_axis,
+            hold_subtype=hold_subtype,
+        ),
         "topic_directions": _to_clean_list(payload.get("topic_directions")),
         "easy_question_types": _to_clean_list(payload.get("easy_question_types"))
         or _default_easy_question_types(interaction_mode),
         "rescue_flow": _to_clean_list(payload.get("rescue_flow"))
-        or _default_rescue_flow_for_mode(interaction_mode),
+        or _default_rescue_flow_for_mode(
+            interaction_mode,
+            risk_axis=risk_axis,
+            hold_subtype=hold_subtype,
+        ),
         "graceful_exit_plan": _to_clean_list(payload.get("graceful_exit_plan"))
         or _default_graceful_exit_plan(mutual_intent_assessment, interaction_mode),
         "strategy_tags": _to_clean_list(payload.get("strategy_tags"))
@@ -654,6 +757,9 @@ def align_guidance_to_route_decision(
     profile_hooks: list[str] | None = None,
     preferred_mutual_intent_assessment: str | None = None,
     preferred_interaction_mode: str | None = None,
+    risk_axis: str | None = None,
+    hold_subtype: str | None = None,
+    route_reason: str = "",
 ) -> dict[str, Any]:
     preferred_mutual_intent = _normalize_contract_mutual_intent_assessment(
         preferred_mutual_intent_assessment
@@ -670,6 +776,10 @@ def align_guidance_to_route_decision(
         profile_hooks=profile_hooks,
         mutual_intent_assessment=preferred_mutual_intent,
         interaction_mode=preferred_interaction_mode_normalized,
+        route_reason=route_reason,
+        risk_axis=risk_axis,
+        hold_subtype=hold_subtype,
+        guidance_source="fallback_alignment",
     )
     if normalized.get("interaction_mode") != "hold":
         return fallback
@@ -687,6 +797,8 @@ def align_guidance_to_route_decision(
     sanitized["easy_question_types"] = []
     sanitized["profile_hooks_used"] = []
     sanitized["strategy_tags"] = list(_default_strategy_tags("hold"))
+    sanitized["risk_axis"] = _normalize_risk_axis(risk_axis)
+    sanitized["hold_subtype"] = _normalize_hold_subtype(hold_subtype)
     return normalize_assistant_guidance(sanitized)
 
 
@@ -695,6 +807,10 @@ def build_placeholder_assistant_guidance(
     profile_hooks: list[str] | None = None,
     mutual_intent_assessment: str | None = None,
     interaction_mode: str | None = None,
+    route_reason: str = "",
+    risk_axis: str | None = None,
+    hold_subtype: str | None = None,
+    guidance_source: str = "fallback",
 ) -> dict[str, Any]:
     raw_hooks = [_clean_profile_hook(hook) for hook in list(profile_hooks or [])]
     hooks = [hook for hook in raw_hooks if hook and not _is_generic_profile_hook(hook)]
@@ -709,14 +825,26 @@ def build_placeholder_assistant_guidance(
         hooks,
         interaction_mode=normalized_interaction_mode,
     )
-    advice = _default_advice(normalized_interaction_mode)
+    normalized_risk_axis = _normalize_risk_axis(risk_axis)
+    normalized_hold_subtype = _normalize_hold_subtype(hold_subtype)
+    advice = _default_advice(
+        normalized_interaction_mode,
+        risk_axis=normalized_risk_axis,
+        hold_subtype=normalized_hold_subtype,
+    )
     guidance = {
+        "guidance_source": guidance_source,
         "mutual_intent_assessment": normalized_mutual_intent,
         "interaction_mode": normalized_interaction_mode,
         "current_problem": _default_current_problem(
             normalized_mutual_intent,
             normalized_interaction_mode,
+            risk_axis=normalized_risk_axis,
+            hold_subtype=normalized_hold_subtype,
+            route_reason=route_reason,
         ),
+        "risk_axis": normalized_risk_axis,
+        "hold_subtype": normalized_hold_subtype,
         "problem_tags": ["fallback"],
         "why_not_to_push": _default_why_not_to_push(
             normalized_mutual_intent,
@@ -726,10 +854,16 @@ def build_placeholder_assistant_guidance(
         "avoid": _default_avoid(
             normalized_mutual_intent,
             normalized_interaction_mode,
+            risk_axis=normalized_risk_axis,
+            hold_subtype=normalized_hold_subtype,
         ),
         "topic_directions": topic_directions,
         "easy_question_types": _default_easy_question_types(normalized_interaction_mode),
-        "rescue_flow": _default_rescue_flow_for_mode(normalized_interaction_mode),
+        "rescue_flow": _default_rescue_flow_for_mode(
+            normalized_interaction_mode,
+            risk_axis=normalized_risk_axis,
+            hold_subtype=normalized_hold_subtype,
+        ),
         "graceful_exit_plan": _default_graceful_exit_plan(
             normalized_mutual_intent,
             normalized_interaction_mode,
@@ -865,6 +999,13 @@ def generate_assistant_guidance(
     profile_hooks: list[str] | None = None,
     preferred_mutual_intent_assessment: str | None = None,
     preferred_interaction_mode: str | None = None,
+    route_reason: str = "",
+    risk_axis: str = "",
+    hold_subtype: str = "",
+    engagement_level: str = "",
+    warmth_level: str = "",
+    irritation_level: str = "",
+    state_trend: str = "",
 ) -> dict[str, Any] | None:
     profile_ctx = _prepare_profile_context_for_guidance(
         actor_profile_summary=actor_profile_summary,
@@ -882,6 +1023,10 @@ def generate_assistant_guidance(
         profile_hooks=selected_hooks,
         mutual_intent_assessment=preferred_mutual_intent_assessment,
         interaction_mode=preferred_interaction_mode,
+        route_reason=route_reason,
+        risk_axis=risk_axis,
+        hold_subtype=hold_subtype,
+        guidance_source="fallback_no_key",
     )
     key = (os.environ.get("OPENAI_API_KEY") or "").strip()
     if not key:
@@ -922,6 +1067,17 @@ def generate_assistant_guidance(
         f"最近对话（双方可见）：\n{compact_context}",
         f"用户问题：{user_query}",
     ]
+    if route_reason or risk_axis or hold_subtype or engagement_level or warmth_level or irritation_level or state_trend:
+        prompt_parts.append(
+            "轻判断快照："
+            f"原因={route_reason or '（暂无）'}；"
+            f"风险线={risk_axis or '无'}；"
+            f"hold子类型={hold_subtype or '无'}；"
+            f"投入度={engagement_level or 'unknown'}；"
+            f"语气={warmth_level or 'unknown'}；"
+            f"压力={irritation_level or 'unknown'}；"
+            f"走势={state_trend or 'stable'}。"
+        )
     if actor_summary_safe:
         prompt_parts.append(f"当前说话人画像摘要（已裁剪）：\n{actor_summary_safe}")
     if counterpart_summary_safe:
@@ -935,6 +1091,8 @@ def generate_assistant_guidance(
             "{",
             f'  "mutual_intent_assessment": "<{_MUTUAL_INTENT_CHOICES}>",',
             f'  "interaction_mode": "<{_INTERACTION_MODE_CHOICES}>",',
+            '  "risk_axis": "<appearance|income_condition|privacy_ex|meetup_push|pressure_compare|other，可省略>",',
+            '  "hold_subtype": "<interest_low|boundary_risk，可省略>",',
             '  "current_problem": ["<1 条最关键问题>"],',
             '  "avoid": ["<1-2 条>"],',
             '  "advice": ["<1-2 条方向性建议，不要代写整句>"],',
@@ -947,7 +1105,7 @@ def generate_assistant_guidance(
     )
     user_block = "\n\n".join(prompt_parts)
     try:
-        max_tokens = _env_int("HER_CHAT_ASSISTANT_MAX_TOKENS", 180)
+        max_tokens = _env_int("HER_CHAT_ASSISTANT_MAX_TOKENS", 160)
         temperature = _env_float("HER_CHAT_ASSISTANT_TEMPERATURE", 0.1)
         resp = client.chat.completions.create(
             model=model,
@@ -966,14 +1124,27 @@ def generate_assistant_guidance(
             _strip_json_object(out),
             selected_hooks=selected_hooks,
         )
+        finalized["guidance_source"] = "model"
         return align_guidance_to_route_decision(
             finalized,
             profile_hooks=selected_hooks,
             preferred_mutual_intent_assessment=preferred_mutual_intent_assessment,
             preferred_interaction_mode=preferred_interaction_mode,
+            risk_axis=risk_axis,
+            hold_subtype=hold_subtype,
+            route_reason=route_reason,
         )
-    except Exception:
-        return fallback
+    except Exception as e:
+        source = "fallback_timeout" if "timeout" in type(e).__name__.lower() else "fallback_exception"
+        return build_placeholder_assistant_guidance(
+            profile_hooks=selected_hooks,
+            mutual_intent_assessment=preferred_mutual_intent_assessment,
+            interaction_mode=preferred_interaction_mode,
+            route_reason=route_reason,
+            risk_axis=risk_axis,
+            hold_subtype=hold_subtype,
+            guidance_source=source,
+        )
 
 
 def generate_assistant_reply(

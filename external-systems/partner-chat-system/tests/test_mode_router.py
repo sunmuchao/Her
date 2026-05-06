@@ -33,6 +33,9 @@ class ModeRouterTests(unittest.TestCase):
         self.assertEqual(out["decision_source"], "heuristic")
         self.assertEqual(out["interaction_mode"], "probe_lightly")
         self.assertEqual(out["mutual_intent_assessment"], "interest_unclear")
+        self.assertEqual(out["engagement_level"], "low")
+        self.assertEqual(out["warmth_level"], "cold")
+        self.assertEqual(out["irritation_level"], "mild")
         self.assertIn("closed_reply", out["problem_tags"])
 
     def test_fast_mode_route_repair_after_prior_mutual_engagement(self):
@@ -69,6 +72,10 @@ class ModeRouterTests(unittest.TestCase):
         assert out is not None
         self.assertEqual(out["interaction_mode"], "hold")
         self.assertEqual(out["mutual_intent_assessment"], "boundary_risk")
+        self.assertEqual(out["risk_axis"], "income_condition")
+        self.assertEqual(out["hold_subtype"], "boundary_risk")
+        self.assertEqual(out["irritation_level"], "medium")
+        self.assertEqual(out["state_trend"], "worsening")
         self.assertEqual(out["problem_tags"], ["boundary_risk", "sensitive_topic"])
 
     def test_fast_mode_route_repair_on_cold_prefix_question_after_cold_opening(self):
@@ -130,6 +137,10 @@ class ModeRouterTests(unittest.TestCase):
         assert out is not None
         self.assertEqual(out["interaction_mode"], "hold")
         self.assertEqual(out["mutual_intent_assessment"], "boundary_risk")
+        self.assertEqual(out["risk_axis"], "appearance")
+        self.assertEqual(out["hold_subtype"], "boundary_risk")
+        self.assertEqual(out["warmth_level"], "sharp")
+        self.assertEqual(out["irritation_level"], "high")
         self.assertIn("boundary_risk", out["problem_tags"])
 
     def test_fast_mode_route_hold_on_recent_risk_carryover(self):

@@ -71,6 +71,58 @@ _DEFENSIVE_HINTS = (
     "怕见光死",
     "你理解能力",
 )
+_APPEARANCE_AXIS_HINTS = (
+    "照片",
+    "本人",
+    "见光死",
+    "身材",
+    "瘦",
+    "胖",
+    "外貌",
+    "差距太大",
+)
+_INCOME_AXIS_HINTS = (
+    "收入",
+    "工资",
+    "年薪",
+    "房",
+    "车",
+    "彩礼",
+    "条件",
+)
+_PRIVACY_AXIS_HINTS = (
+    "前任",
+    "婚史",
+    "离异",
+    "孩子",
+    "隐私",
+    "住哪",
+)
+_MEETUP_AXIS_HINTS = (
+    "见面",
+    "出来见",
+    "这周末有空出来见见",
+    "直接见面",
+    "约出来",
+)
+_PRESSURE_COMPARE_AXIS_HINTS = (
+    "别浪费时间",
+    "不想浪费时间",
+    "省事",
+    "理解能力挺别致",
+    "不用费劲",
+    "别抱太大希望",
+    "差距太大",
+)
+_WARM_HINTS = (
+    "哈哈",
+    "那不错",
+    "挺巧",
+    "我也",
+    "还挺",
+    "蛮",
+    "有点意思",
+)
 
 _COLD_REPLIES = (
     "嗯",
@@ -97,6 +149,19 @@ _LOW_ENERGY_PATTERNS = (
 )
 _ALLOWED_SITUATIONS = {"cold", "awkward", "stuck", "rude", "boundary", "off_topic", "none"}
 _ALLOWED_RESCUE_STYLES = {"reengage", "switch_topic", "low_pressure_probe", "graceful_exit", "none"}
+_ALLOWED_ENGAGEMENT_LEVELS = {"high", "medium", "low", "closed"}
+_ALLOWED_WARMTH_LEVELS = {"warm", "neutral", "cold", "sharp"}
+_ALLOWED_IRRITATION_LEVELS = {"none", "mild", "medium", "high"}
+_ALLOWED_STATE_TRENDS = {"warming", "stable", "cooling", "worsening", "recovering"}
+_ALLOWED_RISK_AXES = {
+    "appearance",
+    "income_condition",
+    "privacy_ex",
+    "meetup_push",
+    "pressure_compare",
+    "other",
+}
+_ALLOWED_HOLD_SUBTYPES = {"interest_low", "boundary_risk"}
 _DEFAULT_PROBLEM_TAGS_BY_SITUATION: dict[str, tuple[str, ...]] = {
     "cold": ("closed_reply", "low_energy"),
     "awkward": ("awkward_transition",),
@@ -257,6 +322,167 @@ def _recent_risk_flags(messages: list[dict[str, Any]], *, window: int = 3) -> li
     return _dedupe_strs(flags)
 
 
+def _normalize_engagement_level(value: Any) -> str:
+    raw = str(value or "").strip().lower()
+    return raw if raw in _ALLOWED_ENGAGEMENT_LEVELS else "medium"
+
+
+def _normalize_warmth_level(value: Any) -> str:
+    raw = str(value or "").strip().lower()
+    return raw if raw in _ALLOWED_WARMTH_LEVELS else "neutral"
+
+
+def _normalize_irritation_level(value: Any) -> str:
+    raw = str(value or "").strip().lower()
+    return raw if raw in _ALLOWED_IRRITATION_LEVELS else "none"
+
+
+def _normalize_state_trend(value: Any) -> str:
+    raw = str(value or "").strip().lower()
+    return raw if raw in _ALLOWED_STATE_TRENDS else "stable"
+
+
+def _normalize_risk_axis(value: Any) -> str | None:
+    raw = str(value or "").strip().lower()
+    return raw if raw in _ALLOWED_RISK_AXES else None
+
+
+def _normalize_hold_subtype(value: Any) -> str | None:
+    raw = str(value or "").strip().lower()
+    return raw if raw in _ALLOWED_HOLD_SUBTYPES else None
+
+
+def _infer_risk_axis(messages: list[dict[str, Any]]) -> str | None:
+    texts = [str(message.get("body") or "") for message in messages[-3:]]
+    for text in reversed(texts):
+        compact = _compact_match_text(text)
+        if not compact:
+            continue
+        if any(token in compact for token in _APPEARANCE_AXIS_HINTS):
+            return "appearance"
+        if any(token in compact for token in _INCOME_AXIS_HINTS):
+            return "income_condition"
+        if any(token in compact for token in _PRIVACY_AXIS_HINTS):
+            return "privacy_ex"
+        if any(token in compact for token in _MEETUP_AXIS_HINTS):
+            return "meetup_push"
+        if any(token in compact for token in _PRESSURE_COMPARE_AXIS_HINTS):
+            return "pressure_compare"
+    return None
+
+
+def _infer_engagement_level(
+    messages: list[dict[str, Any]],
+    *,
+    last_body: str,
+    last_author: str,
+) -> str:
+    streak = _speaker_low_energy_streak(messages, last_author)
+    if streak >= 2:
+        return "closed"
+    if is_low_energy_like(last_body):
+        return "low"
+    score = _engagement_score(last_body)
+    if score >= 2 and _recent_mutual_engagement(messages):
+        return "high"
+    if score >= 1:
+        return "medium"
+    return "low"
+
+
+def _infer_warmth_level(last_body: str, recent_risk_flags: list[str]) -> str:
+    compact = _compact_text(last_body)
+    if _is_dismissive_like(last_body) or _is_defensive_like(last_body):
+        return "sharp"
+    if any(flag in recent_risk_flags for flag in ("dismissive", "defensive")):
+        return "sharp"
+    if is_low_energy_like(last_body):
+        return "cold"
+    if compact and any(token in compact for token in _WARM_HINTS):
+        return "warm"
+    return "neutral"
+
+
+def _infer_irritation_level(
+    messages: list[dict[str, Any]],
+    *,
+    last_body: str,
+    last_author: str,
+    recent_risk_flags: list[str],
+) -> str:
+    if _is_dismissive_like(last_body) or _is_defensive_like(last_body):
+        return "high"
+    if any(flag in recent_risk_flags for flag in ("dismissive", "defensive")):
+        return "high"
+    if _is_boundary_like(last_body) or _is_pressure_like(last_body):
+        return "medium"
+    if any(flag in recent_risk_flags for flag in ("boundary_risk", "pressure")):
+        return "medium"
+    if _speaker_low_energy_streak(messages, last_author) >= 2 or is_low_energy_like(last_body):
+        return "mild"
+    return "none"
+
+
+def _infer_state_trend(
+    messages: list[dict[str, Any]],
+    *,
+    engagement_level: str,
+    warmth_level: str,
+    irritation_level: str,
+) -> str:
+    recent = [str(message.get("body") or "").strip() for message in messages[-3:]]
+    if not recent:
+        return "stable"
+    if irritation_level in {"medium", "high"} or warmth_level == "sharp":
+        return "worsening"
+    if engagement_level in {"low", "closed"} and any(
+        not is_low_energy_like(body) for body in recent[:-1]
+    ):
+        return "cooling"
+    if engagement_level in {"medium", "high"} and any(
+        is_low_energy_like(body) for body in recent[:-1]
+    ) and not is_low_energy_like(recent[-1]):
+        return "recovering"
+    if engagement_level == "high" and len(recent) >= 2 and _engagement_score(recent[-1]) >= _engagement_score(recent[-2]):
+        return "warming"
+    return "stable"
+
+
+def _state_snapshot(messages: list[dict[str, Any]]) -> dict[str, Any]:
+    if not messages:
+        return {
+            "engagement_level": "medium",
+            "warmth_level": "neutral",
+            "irritation_level": "none",
+            "state_trend": "stable",
+            "risk_axis": None,
+        }
+    last_body = str(messages[-1].get("body") or "").strip()
+    last_author = str(messages[-1].get("author_id") or "")
+    recent_risk_flags = _recent_risk_flags(messages)
+    engagement_level = _infer_engagement_level(messages, last_body=last_body, last_author=last_author)
+    warmth_level = _infer_warmth_level(last_body, recent_risk_flags)
+    irritation_level = _infer_irritation_level(
+        messages,
+        last_body=last_body,
+        last_author=last_author,
+        recent_risk_flags=recent_risk_flags,
+    )
+    state_trend = _infer_state_trend(
+        messages,
+        engagement_level=engagement_level,
+        warmth_level=warmth_level,
+        irritation_level=irritation_level,
+    )
+    return {
+        "engagement_level": engagement_level,
+        "warmth_level": warmth_level,
+        "irritation_level": irritation_level,
+        "state_trend": state_trend,
+        "risk_axis": _infer_risk_axis(messages),
+    }
+
+
 def _has_cold_prefix_question(text: str) -> bool:
     if not is_question_like(text):
         return False
@@ -376,6 +602,12 @@ def normalize_route_decision(
     )
     if interaction_mode == "none":
         rescue_style = "none"
+    hold_subtype = None
+    if interaction_mode == "hold":
+        if mutual_intent_assessment == "boundary_risk":
+            hold_subtype = "boundary_risk"
+        elif mutual_intent_assessment == "interest_low":
+            hold_subtype = "interest_low"
     problem_tags = (
         _to_clean_list(data.get("problem_tags"))
         or _default_problem_tags(
@@ -393,6 +625,12 @@ def normalize_route_decision(
         "interaction_mode": interaction_mode,
         "reason": str(data.get("reason") or "").strip(),
         "decision_source": decision_source,
+        "risk_axis": _normalize_risk_axis(data.get("risk_axis")),
+        "hold_subtype": _normalize_hold_subtype(data.get("hold_subtype")) or hold_subtype,
+        "engagement_level": _normalize_engagement_level(data.get("engagement_level")),
+        "warmth_level": _normalize_warmth_level(data.get("warmth_level")),
+        "irritation_level": _normalize_irritation_level(data.get("irritation_level")),
+        "state_trend": _normalize_state_trend(data.get("state_trend")),
     }
     if data.get("parse_error"):
         out["parse_error"] = True
@@ -401,8 +639,13 @@ def normalize_route_decision(
 
 def fast_mode_route(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
     dyadic = [m for m in messages if str(m.get("visibility") or "") == VIS_DYADIC]
+    snapshot = _state_snapshot(dyadic)
+
+    def _decision(payload: dict[str, Any], source: str) -> dict[str, Any]:
+        return normalize_route_decision({**snapshot, **payload}, decision_source=source)
+
     if not dyadic:
-        return normalize_route_decision(
+        return _decision(
             {
                 "need_rescue": False,
                 "situation": "none",
@@ -412,7 +655,7 @@ def fast_mode_route(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
                 "rescue_style": "none",
                 "reason": "首轮开场，先正常聊，不需要提前介入。",
             },
-            decision_source="heuristic_bootstrap",
+            "heuristic_bootstrap",
         )
 
     last_body = str(dyadic[-1].get("body") or "").strip()
@@ -424,11 +667,14 @@ def fast_mode_route(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
     last_author_low_streak = _speaker_low_energy_streak(dyadic, last_author)
     recent_risk_flags = _recent_risk_flags(dyadic)
     prior_recent_risk_flags = _recent_risk_flags(dyadic[:-1])
+    risk_axis = snapshot.get("risk_axis")
+    irritation_level = str(snapshot.get("irritation_level") or "none")
+    state_trend = str(snapshot.get("state_trend") or "stable")
     awkward_cold_question_repair = _should_repair_cold_prefix_question(dyadic)
     awkward_reply_repair = _should_repair_after_awkward_reply(dyadic)
 
     if _is_boundary_like(last_body) or _is_pressure_like(last_body):
-        return normalize_route_decision(
+        return _decision(
             {
                 "need_rescue": False,
                 "situation": "boundary",
@@ -437,11 +683,13 @@ def fast_mode_route(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
                 "interaction_mode": "hold",
                 "rescue_style": "graceful_exit",
                 "reason": "上一句已经碰到外貌、边界或推进压力点，不能按正常继续处理。",
+                "risk_axis": risk_axis,
+                "hold_subtype": "boundary_risk",
             },
-            decision_source="heuristic",
+            "heuristic",
         )
     if _is_dismissive_like(last_body) or _is_defensive_like(last_body):
-        return normalize_route_decision(
+        return _decision(
             {
                 "need_rescue": False,
                 "situation": "rude",
@@ -450,12 +698,14 @@ def fast_mode_route(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
                 "interaction_mode": "hold",
                 "rescue_style": "graceful_exit",
                 "reason": "上一句已经带刺、带防御或带施压味道，先按收住止损处理。",
+                "risk_axis": risk_axis or "pressure_compare",
+                "hold_subtype": "boundary_risk",
             },
-            decision_source="heuristic",
+            "heuristic",
         )
     if _has_cold_prefix_question(last_body):
         repair_now = prior_mutual_engagement or awkward_cold_question_repair
-        return normalize_route_decision(
+        return _decision(
             {
                 "need_rescue": True,
                 "situation": "cold",
@@ -469,12 +719,12 @@ def fast_mode_route(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
                     else "上一句是冷回复里夹了一个问题，表面在继续聊，实际还没真正接顺。"
                 ),
             },
-            decision_source="heuristic",
+            "heuristic",
         )
 
     if is_low_energy_like(last_body):
         if prior_recent_risk_flags:
-            return normalize_route_decision(
+            return _decision(
                 {
                     "need_rescue": False,
                     "situation": "boundary",
@@ -483,12 +733,14 @@ def fast_mode_route(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
                     "interaction_mode": "hold",
                     "rescue_style": "graceful_exit",
                     "reason": "最近几句已经带着边界或对立风险，这一拍继续偏冷，不能当成自然缓和。",
+                    "risk_axis": risk_axis,
+                    "hold_subtype": "boundary_risk",
                 },
-                decision_source="heuristic",
+                "heuristic",
             )
         if len(recent) >= 2 and all(is_low_energy_like(body) for body in recent[-2:]):
             if _recent_mutual_engagement(dyadic[:-2]):
-                return normalize_route_decision(
+                return _decision(
                     {
                         "need_rescue": True,
                         "situation": "stuck",
@@ -498,9 +750,9 @@ def fast_mode_route(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
                         "rescue_style": "switch_topic",
                         "reason": "前面双方都有投入，但最近两拍都接空了，像是不会接而不是不想聊。",
                     },
-                    decision_source="heuristic",
+                    "heuristic",
                 )
-            return normalize_route_decision(
+            return _decision(
                 {
                     "need_rescue": False,
                     "situation": "stuck",
@@ -509,11 +761,12 @@ def fast_mode_route(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
                     "interaction_mode": "hold",
                     "rescue_style": "graceful_exit",
                     "reason": "最近两边都低投入，更像没人想继续推进，不适合再往救场上推。",
+                    "hold_subtype": "interest_low",
                 },
-                decision_source="heuristic",
+                "heuristic",
             )
         if prior_mutual_engagement and last_author_recent_engagement >= 1:
-            return normalize_route_decision(
+            return _decision(
                 {
                     "need_rescue": True,
                     "situation": "cold",
@@ -523,10 +776,10 @@ def fast_mode_route(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
                     "rescue_style": "switch_topic" if is_question_like(prev_body) else "reengage",
                     "reason": "前面双方本来聊得动，这一拍更像接话没接好。",
                 },
-                decision_source="heuristic",
+                "heuristic",
             )
         if awkward_reply_repair:
-            return normalize_route_decision(
+            return _decision(
                 {
                     "need_rescue": True,
                     "situation": "stuck",
@@ -536,10 +789,10 @@ def fast_mode_route(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
                     "rescue_style": "switch_topic",
                     "reason": "刚经历过一拍生硬追问，这一拍又回得很死，更像不会接话导致的冷场，还值得再修一下。",
                 },
-                decision_source="heuristic",
+                "heuristic",
             )
         if last_author_low_streak >= 2:
-            return normalize_route_decision(
+            return _decision(
                 {
                     "need_rescue": False,
                     "situation": "cold",
@@ -548,10 +801,11 @@ def fast_mode_route(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
                     "interaction_mode": "hold",
                     "rescue_style": "graceful_exit",
                     "reason": "对方已经连续低投入，别把它当成单纯不会聊。",
+                    "hold_subtype": "interest_low",
                 },
-                decision_source="heuristic",
+                "heuristic",
             )
-        return normalize_route_decision(
+        return _decision(
             {
                 "need_rescue": True,
                 "situation": "cold",
@@ -561,12 +815,12 @@ def fast_mode_route(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
                 "rescue_style": "low_pressure_probe",
                 "reason": "这轮偏冷，但还看不出是不会聊还是没兴趣，先低压试探。",
             },
-            decision_source="heuristic",
+            "heuristic",
         )
     if is_question_like(last_body) and any(is_low_energy_like(body) for body in recent[:-1]) and (
         is_low_energy_like(prev_body) or is_question_like(prev_body)
     ):
-        return normalize_route_decision(
+        return _decision(
             {
                 "need_rescue": True,
                 "situation": "stuck",
@@ -578,10 +832,10 @@ def fast_mode_route(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
                 "rescue_style": "switch_topic" if prior_mutual_engagement else "low_pressure_probe",
                 "reason": "前面刚经历冷回复或尬接，这一拍虽然继续提问，但还不能算已经恢复正常。",
             },
-            decision_source="heuristic",
+            "heuristic",
         )
     if recent_risk_flags:
-        return normalize_route_decision(
+        return _decision(
             {
                 "need_rescue": False,
                 "situation": "boundary",
@@ -590,14 +844,16 @@ def fast_mode_route(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
                 "interaction_mode": "hold",
                 "rescue_style": "graceful_exit",
                 "reason": "最近两三句里已经有边界、施压或对立信号，不能因为表面还在接话就判正常。",
+                "risk_axis": risk_axis,
+                "hold_subtype": "boundary_risk",
             },
-            decision_source="heuristic",
+            "heuristic",
         )
     if len(recent) >= 3 and sum(1 for body in recent if is_low_energy_like(body)) >= 2 and not any(
         is_question_like(body) for body in recent
     ):
         if _recent_mutual_engagement(dyadic[:-3]):
-            return normalize_route_decision(
+            return _decision(
                 {
                     "need_rescue": True,
                     "situation": "stuck",
@@ -607,9 +863,9 @@ def fast_mode_route(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
                     "rescue_style": "switch_topic",
                     "reason": "前面聊得还行，但最近几轮连续接空，适合做一次轻修复。",
                 },
-                decision_source="heuristic",
+                "heuristic",
             )
-        return normalize_route_decision(
+        return _decision(
             {
                 "need_rescue": False,
                 "situation": "stuck",
@@ -618,11 +874,17 @@ def fast_mode_route(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
                 "interaction_mode": "hold",
                 "rescue_style": "graceful_exit",
                 "reason": "最近几轮连续偏冷又没有追问，更像双方都不想继续加码。",
+                "hold_subtype": "interest_low",
             },
-            decision_source="heuristic",
+            "heuristic",
         )
-    if is_question_like(last_body) and len(_compact_text(last_body)) >= 8:
-        return normalize_route_decision(
+    if (
+        is_question_like(last_body)
+        and len(_compact_text(last_body)) >= 8
+        and state_trend not in {"cooling", "worsening"}
+        and irritation_level in {"none", "mild"}
+    ):
+        return _decision(
             {
                 "need_rescue": False,
                 "situation": "none",
@@ -632,10 +894,16 @@ def fast_mode_route(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
                 "rescue_style": "none",
                 "reason": "上一句本身就是正常可接的问题，先别打断自然往下聊。",
             },
-            decision_source="heuristic_clear_continue",
+            "heuristic_clear_continue",
         )
-    if len(_compact_text(last_body)) >= 10 and not is_cold_like(last_body) and is_question_like(prev_body):
-        return normalize_route_decision(
+    if (
+        len(_compact_text(last_body)) >= 10
+        and not is_cold_like(last_body)
+        and is_question_like(prev_body)
+        and state_trend not in {"cooling", "worsening"}
+        and irritation_level == "none"
+    ):
+        return _decision(
             {
                 "need_rescue": False,
                 "situation": "none",
@@ -645,18 +913,20 @@ def fast_mode_route(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
                 "rescue_style": "none",
                 "reason": "当前还有正常来回，先不额外介入。",
             },
-            decision_source="heuristic_clear_continue",
+            "heuristic_clear_continue",
         )
     if (
         _engagement_score(last_body) >= 1
         and not any(token in last_body for token in BOUNDARY_HINTS)
+        and state_trend not in {"cooling", "worsening"}
+        and irritation_level == "none"
         and (
             len(dyadic) == 1
             or _engagement_score(prev_body) >= 1
             or is_question_like(prev_body)
         )
     ):
-        return normalize_route_decision(
+        return _decision(
             {
                 "need_rescue": False,
                 "situation": "none",
@@ -666,7 +936,7 @@ def fast_mode_route(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
                 "rescue_style": "none",
                 "reason": "最近这拍仍然有正常信息交换，先顺着自然聊。",
             },
-            decision_source="heuristic_clear_continue",
+            "heuristic_clear_continue",
         )
     return None
 

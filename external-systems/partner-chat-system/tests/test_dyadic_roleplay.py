@@ -520,7 +520,7 @@ class DyadicRoleplayRunTests(unittest.TestCase):
         sixth_turn = out["turn_evaluations"][5]
         self.assertFalse(sixth_turn["hint_posted"])
         self.assertEqual(sixth_turn["hint_trigger_event"]["mode_after"], "hold")
-        self.assertIn(sixth_turn["suppression_reason"], {"cooldown_active", "hold_repeat_suppressed"})
+        self.assertIn(sixth_turn["suppression_reason"], {"cooldown_active", "hold_no_new_risk"})
 
         metrics = out["assistant_metrics"]
         self.assertEqual(metrics["hint_candidate_turns"], 6)
@@ -531,6 +531,8 @@ class DyadicRoleplayRunTests(unittest.TestCase):
         self.assertGreater(metrics["duplicate_hint_rate"], 0)
         self.assertGreater(metrics["mode_change_hint_rate"], 0)
         self.assertEqual(metrics["hold_repeat_hint_rate"], 0.0)
+        self.assertIn("visible_text_view", metrics)
+        self.assertIn("stress_beat_view", metrics)
 
     def test_roleplay_mode_alignment_experiment_switches_prompt_and_metrics(self):
         def build_llm(prompts: list[str]):

@@ -120,7 +120,10 @@ class AssistantLLMTests(unittest.TestCase):
         os.environ["OPENAI_API_KEY"] = "test-key"
         _FakeOpenAIClient.response_content = "不是 JSON"
         fake_module = SimpleNamespace(OpenAI=_FakeOpenAIClient)
-        expected = build_placeholder_assistant_guidance(profile_hooks=["咖啡"])
+        expected = build_placeholder_assistant_guidance(
+            profile_hooks=["咖啡"],
+            guidance_source="fallback_exception",
+        )
 
         with patch.dict(sys.modules, {"openai": fake_module}):
             guidance = generate_assistant_guidance(
@@ -147,6 +150,7 @@ class AssistantLLMTests(unittest.TestCase):
         assert guidance is not None
         self.assertEqual(guidance["mutual_intent_assessment"], "boundary_risk")
         self.assertEqual(guidance["interaction_mode"], "hold")
+        self.assertEqual(guidance["guidance_source"], "fallback_exception")
         self.assertIn("边界或压力风险", guidance["current_problem"][0])
         self.assertEqual(guidance["low_pressure_options"], [])
         self.assertEqual(guidance["easy_question_types"], [])
@@ -274,7 +278,7 @@ class AssistantLLMTests(unittest.TestCase):
         create_kwargs = _FakeOpenAIClient.last_create_kwargs or {}
         messages = create_kwargs.get("messages") or []
         self.assertEqual(len(messages), 2)
-        self.assertEqual(create_kwargs.get("max_tokens"), 180)
+        self.assertEqual(create_kwargs.get("max_tokens"), 160)
         prompt = messages[1]["content"]
         self.assertIn("当前说话人画像摘要（已裁剪）：", prompt)
         self.assertIn("对方画像摘要（已裁剪）：", prompt)

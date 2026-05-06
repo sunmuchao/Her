@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from time import perf_counter
 from typing import Any, Callable, Protocol
 
+from . import mode_router as _mode_router_module
 from .assistant_contract import (
     FOLLOW_LEVEL_NONE,
     FOLLOW_LEVEL_NOT_APPLICABLE,
@@ -1068,6 +1069,34 @@ def _evaluated_mutual_intent_assessment(record: dict[str, Any]) -> str:
     return str(record.get("mutual_intent_assessment") or _predicted_mutual_intent_assessment(record) or "normal")
 
 
+def _predicted_route_value(record: dict[str, Any], key: str) -> str | None:
+    guidance = record.get("assistant_guidance") or {}
+    decision = record.get("rescue_decision") or {}
+    for source in (guidance, decision):
+        value = str(source.get(key) or "").strip()
+        if value:
+            return value
+    return None
+
+
+def _visible_text_gold_decision(messages: list[dict[str, Any]]) -> dict[str, Any]:
+    decision = _mode_router_module.fast_mode_route(messages)
+    if decision is not None:
+        return dict(decision)
+    return normalize_route_decision(
+        {
+            "need_rescue": False,
+            "situation": "none",
+            "problem_tags": [],
+            "mutual_intent_assessment": "normal",
+            "interaction_mode": "none",
+            "rescue_style": "none",
+            "reason": "可见文本里暂时没有明显卡点。",
+        },
+        decision_source="visible_text_fallback",
+    )
+
+
 def _latest_follow_level_for_speaker(turn_records: list[dict[str, Any]], speaker: str) -> str | None:
     for record in reversed(turn_records):
         if record.get("speaker") != speaker or not bool(record.get("assistant_invoked")):
@@ -1168,6 +1197,12 @@ def _shared_turn_evaluation(record: dict[str, Any]) -> dict[str, Any]:
         ),
         "strategy_tags_gold": list(gold.get("suggested_strategy_tags") or []),
         "strategy_tags_pred": list(guidance.get("strategy_tags") or []),
+        "risk_axis_pred": _predicted_route_value(record, "risk_axis"),
+        "hold_subtype_pred": _predicted_route_value(record, "hold_subtype"),
+        "engagement_level_pred": _predicted_route_value(record, "engagement_level"),
+        "warmth_level_pred": _predicted_route_value(record, "warmth_level"),
+        "irritation_level_pred": _predicted_route_value(record, "irritation_level"),
+        "state_trend_pred": _predicted_route_value(record, "state_trend"),
         "used_assistant": bool(record.get("assistant_invoked")),
         "followed_assistant": follow.get("level") in {FOLLOW_LEVEL_PARTIAL, FOLLOW_LEVEL_STRONG},
         "follow_level": follow_level,
@@ -1198,6 +1233,87 @@ def _apply_turn_evaluation_schema(record: dict[str, Any]) -> None:
     record["shared_evaluation"] = shared
     record["roleplay_evaluation"] = roleplay
     record.update(shared)
+
+
+def _gold_need_rescue_for_view(record: dict[str, Any], *, view: str) -> bool:
+    if view == "visible_text":
+        return bool(((record.get("visible_text_gold_decision") or {}).get("need_rescue")))
+    return bool(record.get("need_rescue_gold"))
+
+
+def _gold_interaction_mode_for_view(record: dict[str, Any], *, view: str) -> str:
+    if view == "visible_text":
+        return str(((record.get("visible_text_gold_decision") or {}).get("interaction_mode")) or "none")
+    return str(record.get("interaction_mode_gold") or "none")
+
+
+def _gold_mutual_intent_for_view(record: dict[str, Any], *, view: str) -> str:
+    if view == "visible_text":
+        return str(
+            ((record.get("visible_text_gold_decision") or {}).get("mutual_intent_assessment")) or "normal"
+        )
+    return str(record.get("mutual_intent_assessment_gold") or "normal")
+
+
+def _recognition_view_metrics(
+    turn_records: list[dict[str, Any]],
+    *,
+    view: str,
+) -> dict[str, Any]:
+    comparable_need = list(turn_records)
+    need_matched = [
+        record
+        for record in comparable_need
+        if _gold_need_rescue_for_view(record, view=view) == bool(record.get("need_rescue_pred"))
+    ]
+    comparable_mode = list(turn_records)
+    mode_matched = [
+        record
+        for record in comparable_mode
+        if _gold_interaction_mode_for_view(record, view=view) == str(record.get("interaction_mode_pred") or "none")
+    ]
+    comparable_intent = list(turn_records)
+    intent_matched = [
+        record
+        for record in comparable_intent
+        if _gold_mutual_intent_for_view(record, view=view)
+        == str(record.get("mutual_intent_assessment_pred") or "normal")
+    ]
+    risky_turns = [
+        record
+        for record in turn_records
+        if _gold_mutual_intent_for_view(record, view=view) == "boundary_risk"
+    ]
+    risky_none_turns = [
+        record for record in risky_turns if str(record.get("interaction_mode_pred") or "none") == "none"
+    ]
+    boundary_hold_hits = [
+        record for record in risky_turns if str(record.get("interaction_mode_pred") or "none") == "hold"
+    ]
+    return {
+        "need_rescue_accuracy": {
+            "comparable_turns": len(comparable_need),
+            "matched_turns": len(need_matched),
+            "rate": round(len(need_matched) / len(comparable_need), 4) if comparable_need else None,
+        },
+        "interaction_mode_accuracy": {
+            "comparable_turns": len(comparable_mode),
+            "matched_turns": len(mode_matched),
+            "rate": round(len(mode_matched) / len(comparable_mode), 4) if comparable_mode else None,
+        },
+        "mutual_intent_accuracy": {
+            "comparable_turns": len(comparable_intent),
+            "matched_turns": len(intent_matched),
+            "rate": round(len(intent_matched) / len(comparable_intent), 4) if comparable_intent else None,
+        },
+        "boundary_risk_turns": len(risky_turns),
+        "risky_none_turns": len(risky_none_turns),
+        "risky_none_rate": round(len(risky_none_turns) / len(risky_turns), 4) if risky_turns else None,
+        "boundary_risk_hold_hits": len(boundary_hold_hits),
+        "boundary_risk_hold_recall": (
+            round(len(boundary_hold_hits) / len(risky_turns), 4) if risky_turns else None
+        ),
+    }
 
 
 def _validate_existing_roleplay_thread(
@@ -1363,6 +1479,13 @@ def run_dyadic_roleplay(
             if rescue_turn < rounds:
                 expected_rescue_turns.setdefault(rescue_turn, []).append(beat)
 
+        preturn_pub_msgs = [
+            m
+            for m in list_messages(conn, thread_id, participant_a_id, limit=200)
+            if m.get("visibility") == VIS_DYADIC
+        ]
+        turn_record["visible_text_gold_decision"] = _visible_text_gold_decision(preturn_pub_msgs)
+
         if mode == "fixed_turns" and i in fixed_turns:
             emit(f"{turn_label}: assistant fixed-turn hint for {speaker}")
             assistant_started = perf_counter()
@@ -1372,14 +1495,42 @@ def run_dyadic_roleplay(
             turn_record["assistant_message_id"] = hint.get("message_id")
             turn_record["assistant_guidance"] = hint.get("assistant_guidance")
             turn_record["assistant_profile_context"] = hint.get("assistant_profile_context")
+            turn_record["rescue_decision"] = hint.get("assistant_route_decision")
+            turn_record["rescue_decision_source"] = (
+                (hint.get("assistant_route_decision") or {}).get("decision_source") or "assistant_query"
+            )
+            turn_record["mutual_intent_assessment"] = (
+                (hint.get("assistant_guidance") or {}).get("mutual_intent_assessment")
+                or (hint.get("assistant_route_decision") or {}).get("mutual_intent_assessment")
+                or "normal"
+            )
+            turn_record["interaction_mode"] = (
+                (hint.get("assistant_guidance") or {}).get("interaction_mode")
+                or (hint.get("assistant_route_decision") or {}).get("interaction_mode")
+                or "none"
+            )
+            turn_record["risk_axis"] = (
+                (hint.get("assistant_guidance") or {}).get("risk_axis")
+                or (hint.get("assistant_route_decision") or {}).get("risk_axis")
+            )
+            turn_record["hold_subtype"] = (
+                (hint.get("assistant_guidance") or {}).get("hold_subtype")
+                or (hint.get("assistant_route_decision") or {}).get("hold_subtype")
+            )
+            turn_record["engagement_level"] = (hint.get("assistant_route_decision") or {}).get(
+                "engagement_level"
+            )
+            turn_record["warmth_level"] = (hint.get("assistant_route_decision") or {}).get(
+                "warmth_level"
+            )
+            turn_record["irritation_level"] = (hint.get("assistant_route_decision") or {}).get(
+                "irritation_level"
+            )
+            turn_record["state_trend"] = (hint.get("assistant_route_decision") or {}).get("state_trend")
             turn_record["assistant_latency_ms"] = assistant_elapsed_ms
             emit(f"{turn_label}: assistant hint posted for {speaker} in {assistant_elapsed_ms} ms")
         elif mode == "proactive":
-            pub_msgs = [
-                m
-                for m in list_messages(conn, thread_id, participant_a_id, limit=200)
-                if m.get("visibility") == VIS_DYADIC
-            ]
+            pub_msgs = list(preturn_pub_msgs)
             pub = format_visible_transcript(pub_msgs)
             decision = fast_mode_route(pub_msgs)
             if decision is None:
@@ -1418,6 +1569,12 @@ def run_dyadic_roleplay(
                 decision.get("mutual_intent_assessment") or "normal"
             )
             turn_record["interaction_mode"] = decision.get("interaction_mode") or "none"
+            turn_record["risk_axis"] = decision.get("risk_axis")
+            turn_record["hold_subtype"] = decision.get("hold_subtype")
+            turn_record["engagement_level"] = decision.get("engagement_level")
+            turn_record["warmth_level"] = decision.get("warmth_level")
+            turn_record["irritation_level"] = decision.get("irritation_level")
+            turn_record["state_trend"] = decision.get("state_trend")
             assistant_started = perf_counter()
             hint = assistant_proactive_hint(
                 conn,
@@ -1691,6 +1848,34 @@ def run_dyadic_roleplay(
     graceful_exit_used_turns = [
         r for r in intervention_records if _is_graceful_exit_like(str(r.get("generated_message") or ""))
     ]
+    timeout_guidance_turns = [
+        r
+        for r in intervention_records
+        if str(((r.get("assistant_guidance") or {}).get("guidance_source")) or "") == "fallback_timeout"
+    ]
+    fallback_guidance_turns = [
+        r
+        for r in intervention_records
+        if str(((r.get("assistant_guidance") or {}).get("guidance_source")) or "").startswith("fallback")
+    ]
+    visible_text_view = _recognition_view_metrics(turn_records, view="visible_text")
+    stress_beat_view = _recognition_view_metrics(turn_records, view="stress_beat")
+    boundary_risk_hold_repeat_candidates = [
+        r
+        for r in proactive_hint_candidates
+        if (r.get("hint_trigger_event") or {}).get("mode_after") == "hold"
+        and (r.get("hint_trigger_event") or {}).get("hold_subtype") == "boundary_risk"
+        and bool((r.get("hint_trigger_event") or {}).get("has_user_acted_since_last_hint"))
+        and int(((r.get("assistant_trend_state") or {}).get("same_risk_axis_turns")) or 0) >= 2
+        and str(((r.get("assistant_trend_state") or {}).get("irritation_level")) or "")
+        in {"medium", "high"}
+    ]
+    boundary_risk_hold_repeat_posted = [
+        r
+        for r in boundary_risk_hold_repeat_candidates
+        if bool((r.get("hint_trigger_event") or {}).get("hint_posted"))
+        and (r.get("hint_trigger_event") or {}).get("trigger_type") == "hold_stoploss"
+    ]
 
     emit(f"starting self-evaluation for {participant_a_id}")
     try:
@@ -1766,6 +1951,9 @@ def run_dyadic_roleplay(
             "llm_parse_fallback_turns": len(llm_parse_fallback_decisions),
             "llm_error_fallback_turns": len(llm_error_fallback_decisions),
             "fallback_message_turns": len(fallback_message_turns),
+            "fallback_message_rate": round(len(fallback_message_turns) / len(turn_records), 4)
+            if turn_records
+            else None,
             "hint_candidate_turns": len(proactive_hint_candidates),
             "hint_posted_turns": len(proactive_hint_posted),
             "hint_trigger_rate": round(len(proactive_hint_posted) / len(proactive_hint_candidates), 4)
@@ -1783,14 +1971,43 @@ def run_dyadic_roleplay(
             "hold_repeat_hint_rate": round(len(hold_repeat_posted) / len(hold_repeat_candidates), 4)
             if hold_repeat_candidates
             else None,
+            "boundary_risk_hold_repeat_turns": len(boundary_risk_hold_repeat_posted),
+            "boundary_risk_hold_repeat_recall": round(
+                len(boundary_risk_hold_repeat_posted) / len(boundary_risk_hold_repeat_candidates),
+                4,
+            )
+            if boundary_risk_hold_repeat_candidates
+            else None,
             "assistant_invoke_avg_ms": round(sum(assistant_latencies) / len(assistant_latencies), 2)
             if assistant_latencies
             else None,
             "assistant_invoke_max_ms": max(assistant_latencies) if assistant_latencies else None,
+            "assistant_invoke_timeout_turns": len(timeout_guidance_turns),
+            "assistant_invoke_timeout_rate": round(len(timeout_guidance_turns) / len(intervention_records), 4)
+            if intervention_records
+            else None,
+            "assistant_guidance_fallback_turns": len(fallback_guidance_turns),
+            "assistant_guidance_fallback_rate": round(
+                len(fallback_guidance_turns) / len(intervention_records),
+                4,
+            )
+            if intervention_records
+            else None,
             "repair_intervention_turns": len(repair_interventions),
             "probe_intervention_turns": len(probe_interventions),
             "hold_decision_turns": len(hold_decisions),
             "overpush_risk_turns": len(overpush_risk_turns),
+            "risky_none_turns": stress_beat_view["risky_none_turns"],
+            "risky_none_rate": stress_beat_view["risky_none_rate"],
+            "boundary_risk_hold_recall": stress_beat_view["boundary_risk_hold_recall"],
+            "visible_text_risky_none_turns": visible_text_view["risky_none_turns"],
+            "visible_text_risky_none_rate": visible_text_view["risky_none_rate"],
+            "visible_text_boundary_risk_hold_recall": visible_text_view["boundary_risk_hold_recall"],
+            "stress_beat_risky_none_turns": stress_beat_view["risky_none_turns"],
+            "stress_beat_risky_none_rate": stress_beat_view["risky_none_rate"],
+            "stress_beat_boundary_risk_hold_recall": stress_beat_view["boundary_risk_hold_recall"],
+            "visible_text_view": visible_text_view,
+            "stress_beat_view": stress_beat_view,
             "simulated_reply_mode_prompted_turns": len(prompted_mode_turns),
             "simulated_reply_mode_applicable_turns": len(mode_alignment_records),
             "simulated_reply_mode_alignment_turns": len(aligned_mode_records),
