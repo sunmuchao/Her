@@ -186,6 +186,7 @@
 - 产出：
   - 每轮记录 schema
   - 至少包含 `turn_index`、`interaction_mode_gold/pred`、`follow_level`、`recovery_score_1to3_turns`、`graceful_exit_score`
+  - 增加连续状态字段：`engagement_level`、`warmth_level`、`irritation_level`、`state_trend`
   - 区分真实产品字段和 `roleplay` 专用字段
 - 主要文件：
   - [external-systems/partner-chat-system/chat_system/dyadic_roleplay.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/dyadic_roleplay.py)
@@ -199,18 +200,24 @@
 
 - 优先级：`P0`
 - 目标：先把“什么时候该出手”做成快速、稳定的前置判断。
+- 关键原则：不要把每一轮当成独立分类题；轻判断必须带最小跨轮记忆。
 - 产出：
   - 基于规则的快路径
   - 小模型或轻判断逻辑
+  - 轻量状态累积逻辑，至少维护 `engagement / warmth / irritation` 三条连续状态轴
   - 输出 `need_rescue`、`problem_tags`、`interaction_mode`
+  - 输出 `engagement_level`、`warmth_level`、`irritation_level`、`state_trend`
 - 主要文件：
   - 可新增：`external-systems/partner-chat-system/chat_system/mode_router.py`
+  - 可新增：`external-systems/partner-chat-system/chat_system/chat_state.py`
   - [external-systems/partner-chat-system/chat_system/service.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/service.py)
   - [external-systems/partner-chat-system/chat_system/dyadic_roleplay.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/dyadic_roleplay.py)
 - 依赖：`T02`、`T03`
 - 完成标准：
   - 能区分 `repair / probe_lightly / hold / none`
+  - 不是只看当前一句，而是能结合最近 `1-3` 轮状态做判断
   - 有规则覆盖一字回复、终结语、连续低投入、敏感话题等场景
+  - 能覆盖“热情 -> 平淡 -> 冷淡 -> 不耐烦”这类连续变化场景
   - 能单独统计轻判断耗时
 
 ### T05：改造 `assistant_llm.py` 为结构化建议输出
@@ -346,8 +353,9 @@
       - `interest_low` 型 `hold`：偏克制，不要反复打扰用户。
       - `boundary_risk` 型 `hold`：如果用户继续沿敏感 / 施压 / 比较 / 推进见面方向加码，就要继续止损提醒。
     - `normal`：别添乱。聊天本身顺的时候默认不提示。
-  - 趋势状态器：记录上一模式、上次提示时点、持续未缓解轮数、风险等级、`hold` 子类型、当前风险轴、上次提示原因
-  - 建议状态字段：`current_mode`、`previous_mode`、`same_mode_turns`、`unresolved_turns`、`risk_flags`、`hold_subtype`、`risk_axis`、`same_risk_axis_turns`、`last_hint_turn`、`last_hint_mode`、`last_hint_reason`、`last_hint_trigger_type`、`last_hint_follow_level`、`last_stoploss_strength`、`has_user_acted_since_last_hint`、`cooldown_until_turn`
+  - 趋势状态器：记录上一模式、上次提示时点、持续未缓解轮数、风险等级、`hold` 子类型、当前风险轴、上次提示原因，以及连续态度状态
+  - 建议状态字段：`current_mode`、`previous_mode`、`same_mode_turns`、`unresolved_turns`、`risk_flags`、`hold_subtype`、`risk_axis`、`same_risk_axis_turns`、`engagement_level`、`warmth_level`、`irritation_level`、`state_trend`、`last_hint_turn`、`last_hint_mode`、`last_hint_reason`、`last_hint_trigger_type`、`last_hint_follow_level`、`last_stoploss_strength`、`has_user_acted_since_last_hint`、`cooldown_until_turn`
+  - 连续状态原则：这些状态不是每轮清零，而是像小型状态机一样逐轮更新
   - 模式分层触发规则：`repair` 可相对积极提醒，`probe_lightly` 只做低频提醒，`hold` 最克制但不能一刀切静音
   - 首次触发规则：`normal -> repair`、`normal -> probe_lightly`、`probe_lightly -> hold`、`repair -> hold`、首次进入 `boundary_risk hold`
   - 再触发规则：只有在再次提示仍有新增价值时才允许触发，例如沟通问题仍可修复但连续数轮未缓解、风险明显升级、用户继续沿同一风险轴推进、冷却窗口后仍无改善
@@ -364,7 +372,7 @@
 - 依赖：`T04`、`T05`
 - 联动增强：`T07` 可提供 `follow_level` 作为辅助信号
 - 建议实现步骤：
-  1. 抽出 `trend_state.py`，实现状态更新、重复提示抑制、触发决策三个纯函数
+  1. 抽出 `trend_state.py`，实现连续状态更新、重复提示抑制、触发决策三个纯函数
   2. 在 `service.py` 中把主动提示入口改成“先更新趋势状态，再决定是否提示”
   3. 在 `dyadic_roleplay.py` 中复用同一套触发逻辑，输出 `trigger_type / suppression_reason / hint_posted`
   4. 为 `hold` 增加 `interest_low / boundary_risk` 子类型判断，以及 `hold_stoploss` 触发类型
