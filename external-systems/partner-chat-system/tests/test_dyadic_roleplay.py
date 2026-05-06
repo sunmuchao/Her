@@ -11,6 +11,8 @@ if str(_ROOT) not in sys.path:
 
 from chat_system.dyadic_roleplay import (
     _assistant_follow_assessment,
+    _assistant_recovery_assessment,
+    _graceful_exit_score,
     dyadic_public_transcript,
     parse_int_csv,
     run_dyadic_roleplay,
@@ -110,6 +112,63 @@ class DyadicRoleplayUtilTests(unittest.TestCase):
         self.assertIn("sensitive_topic_reentry", out["evidence"]["avoid_violations"])
         self.assertIn("continued_pushing_in_hold_mode", out["evidence"]["avoid_violations"])
         self.assertTrue(out["overpush_risk"]["flag"])
+
+    def test_assistant_recovery_assessment_uses_three_turn_window(self):
+        out = _assistant_recovery_assessment(
+            {
+                "speaker": "pa",
+                "assistant_invoked": True,
+                "assistant_guidance": {"interaction_mode": "repair"},
+                "assistant_follow_assessment": {"level": "strong"},
+                "follow_evidence": {"applied_strategies": ["switch_topic"]},
+            },
+            [
+                {"speaker": "pb", "generated_message": "嗯"},
+                {"speaker": "pa", "generated_message": "我最近周末也会找家店坐坐。"},
+                {
+                    "speaker": "pb",
+                    "generated_message": "那你平时会去喝咖啡吗？我最近也在找这种放松方式。",
+                },
+            ],
+        )
+
+        self.assertEqual(out["label"], "improved")
+        self.assertEqual(out["window_turns"], 3)
+        self.assertEqual(out["counterpart_reply_count"], 2)
+        self.assertTrue(out["first_reply_low_energy"])
+        self.assertIn("counterpart_kept_conversation_going", out["signals"])
+        self.assertIn("new_topic_got_engagement", out["signals"])
+
+    def test_assistant_recovery_assessment_can_clarify_low_interest(self):
+        out = _assistant_recovery_assessment(
+            {
+                "speaker": "pa",
+                "assistant_invoked": True,
+                "assistant_guidance": {"interaction_mode": "probe_lightly"},
+                "assistant_follow_assessment": {"level": "strong"},
+                "follow_evidence": {"applied_strategies": ["probe_lightly"]},
+            },
+            [
+                {"speaker": "pb", "generated_message": "嗯"},
+                {"speaker": "pa", "generated_message": "好的，那先不打扰你。"},
+                {"speaker": "pb", "generated_message": "都行"},
+            ],
+        )
+
+        self.assertEqual(out["label"], "clarified_low_interest")
+        self.assertEqual(out["score"], 0)
+        self.assertIn("probe_confirmed_counterpart_still_low_energy", out["signals"])
+
+    def test_graceful_exit_score_does_not_reward_boundary_reentry(self):
+        self.assertEqual(
+            _graceful_exit_score(
+                {
+                    "interaction_mode": "hold",
+                    "generated_message": "那先这样吧，方便发张照片吗？",
+                }
+            ),
+            0,
+        )
 
 
 class DyadicRoleplayRunTests(unittest.TestCase):
@@ -522,6 +581,110 @@ class DyadicRoleplayRunTests(unittest.TestCase):
         self.assertIn("message timeout", out["turn_evaluations"][0]["message_generation_error"])
         self.assertTrue(out["turn_evaluations"][0]["generated_message"])
         self.assertEqual(out["assistant_metrics"]["fallback_message_turns"], 1)
+
+    def test_fixed_turn_hold_tracks_graceful_exit_and_overpush_separately(self):
+        def llm(messages: list[dict[str, str]]) -> str:
+            sys_c = messages[0]["content"]
+            user_c = messages[-1]["content"]
+            if "对话调度员" in sys_c:
+                return "{}"
+            if "请写出下一条" in user_c:
+                return "感觉今天节奏有点慢，那先这样，改天有空再聊。"
+            if "附加任务" in sys_c and "「pa」" in sys_c:
+                return '{"conversation_satisfied":true,"conversation_score":3,"assistant_satisfied":true,"assistant_score":4,"used_assistant":true,"conversation_note":"","assistant_note":""}'
+            if "附加任务" in sys_c:
+                return '{"conversation_satisfied":true,"conversation_score":3,"assistant_satisfied":true,"assistant_score":4,"used_assistant":false,"conversation_note":"","assistant_note":""}'
+            return "{}"
+
+        with patch(
+            "chat_system.dyadic_roleplay.assistant_query",
+            return_value={
+                "message_id": "asst-hold-1",
+                "assistant_guidance": {
+                    "mutual_intent_assessment": "interest_low",
+                    "interaction_mode": "hold",
+                    "strategy_tags": ["graceful_exit"],
+                    "why_not_to_push": ["对方当前投入偏低，不要继续往下推。"],
+                    "avoid": ["不要继续追问，也不要切回敏感话题。"],
+                    "graceful_exit_plan": ["先轻轻收住。"],
+                },
+                "assistant_profile_context": {},
+            },
+        ):
+            out = run_dyadic_roleplay(
+                self.conn,
+                case_id="test-dyadic-fixed-hold-exit",
+                relation_key="pa|pb",
+                participant_a_id="pa",
+                participant_b_id="pb",
+                brief_a="A",
+                brief_b="B",
+                rounds=1,
+                llm=llm,
+                assistant_mode="fixed_turns",
+                fixed_assistant_turns=[0],
+                base_time=datetime(2026, 5, 4, 9, 0, 0),
+                stress_mode="none",
+            )
+
+        self.assertEqual(out["assistant_metrics"]["hold_decision_turns"], 1)
+        self.assertEqual(out["assistant_metrics"]["overpush_risk_turns"], 0)
+        self.assertEqual(out["assistant_metrics"]["graceful_exit_turns"], 1)
+        self.assertEqual(out["assistant_metrics"]["graceful_exit_rate"], 1.0)
+        self.assertEqual(out["turn_evaluations"][0]["graceful_exit_score"], 2)
+        self.assertEqual(out["assistant_metrics"]["recoverable_intervention_turns"], 0)
+
+    def test_fixed_turn_hold_counts_actual_overpush_turns(self):
+        def llm(messages: list[dict[str, str]]) -> str:
+            sys_c = messages[0]["content"]
+            user_c = messages[-1]["content"]
+            if "对话调度员" in sys_c:
+                return "{}"
+            if "请写出下一条" in user_c:
+                return "那你收入大概多少？方便发张照片吗？"
+            if "附加任务" in sys_c and "「pa」" in sys_c:
+                return '{"conversation_satisfied":false,"conversation_score":2,"assistant_satisfied":false,"assistant_score":1,"used_assistant":true,"conversation_note":"","assistant_note":""}'
+            if "附加任务" in sys_c:
+                return '{"conversation_satisfied":false,"conversation_score":2,"assistant_satisfied":false,"assistant_score":1,"used_assistant":false,"conversation_note":"","assistant_note":""}'
+            return "{}"
+
+        with patch(
+            "chat_system.dyadic_roleplay.assistant_query",
+            return_value={
+                "message_id": "asst-hold-2",
+                "assistant_guidance": {
+                    "mutual_intent_assessment": "boundary_risk",
+                    "interaction_mode": "hold",
+                    "strategy_tags": ["graceful_exit"],
+                    "why_not_to_push": ["这轮已经碰到边界，不要继续推进敏感话题。"],
+                    "avoid": ["不要继续往收入和照片上推。"],
+                    "graceful_exit_plan": ["先轻轻收住，别再继续追问。"],
+                },
+                "assistant_profile_context": {},
+            },
+        ):
+            out = run_dyadic_roleplay(
+                self.conn,
+                case_id="test-dyadic-fixed-hold-overpush",
+                relation_key="pa|pb",
+                participant_a_id="pa",
+                participant_b_id="pb",
+                brief_a="A",
+                brief_b="B",
+                rounds=1,
+                llm=llm,
+                assistant_mode="fixed_turns",
+                fixed_assistant_turns=[0],
+                base_time=datetime(2026, 5, 4, 9, 0, 0),
+                stress_mode="none",
+            )
+
+        self.assertEqual(out["assistant_metrics"]["hold_decision_turns"], 1)
+        self.assertEqual(out["assistant_metrics"]["overpush_risk_turns"], 1)
+        self.assertEqual(out["assistant_metrics"]["graceful_exit_turns"], 0)
+        self.assertEqual(out["assistant_metrics"]["graceful_exit_rate"], 0.0)
+        self.assertEqual(out["turn_evaluations"][0]["graceful_exit_score"], 0)
+        self.assertTrue(out["turn_evaluations"][0]["overpush_risk"]["flag"])
 
     def test_orchestrator_timeout_falls_back_without_aborting(self):
         calls = {"message": 0}

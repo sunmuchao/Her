@@ -781,7 +781,10 @@ def _assistant_follow_assessment(
     }
 
 
-def _assistant_recovery_assessment(current_turn: dict[str, Any], next_turn: dict[str, Any] | None) -> dict[str, Any]:
+def _assistant_recovery_assessment(
+    current_turn: dict[str, Any],
+    future_turns: list[dict[str, Any]] | None,
+) -> dict[str, Any]:
     if not bool(current_turn.get("assistant_invoked")):
         return {"label": "not_applicable", "score": 0, "signals": []}
     follow = current_turn.get("assistant_follow_assessment") or {}
@@ -790,7 +793,10 @@ def _assistant_recovery_assessment(current_turn: dict[str, Any], next_turn: dict
         or ((current_turn.get("rescue_decision") or {}).get("interaction_mode"))
         or "repair"
     )
-    if next_turn is None:
+    if interaction_mode == "hold":
+        return {"label": "not_applicable", "score": 0, "signals": ["hold_mode_scored_separately"]}
+    window = list(future_turns or [])[:3]
+    if not window:
         return {"label": "pending", "score": 0, "signals": ["no_following_reply"]}
     score = 0
     signals: list[str] = []
@@ -800,8 +806,22 @@ def _assistant_recovery_assessment(current_turn: dict[str, Any], next_turn: dict
     elif follow.get("level") == "partial":
         signals.append("speaker_partially_followed_guidance")
 
-    reply = str(next_turn.get("generated_message") or "")
-    if not _is_low_energy_like(reply):
+    speaker = str(current_turn.get("speaker") or "")
+    counterpart_turns = [turn for turn in window if str(turn.get("speaker") or "") != speaker]
+    replies = [str(turn.get("generated_message") or "").strip() for turn in counterpart_turns]
+    replies = [reply for reply in replies if reply]
+    if not replies:
+        return {"label": "pending", "score": 0, "signals": ["no_counterpart_reply_in_window"]}
+
+    first_reply = replies[0]
+    engaged_replies = [reply for reply in replies if not _is_low_energy_like(reply)]
+    detailed_replies = [reply for reply in replies if len(reply) >= 10]
+    question_replies = [reply for reply in replies if _is_question_like(reply)]
+    later_engaged_replies = [reply for reply in replies[1:] if not _is_low_energy_like(reply)]
+    follow_evidence = current_turn.get("follow_evidence") or {}
+    applied_strategies = set(str(x) for x in (follow_evidence.get("applied_strategies") or []))
+
+    if engaged_replies:
         score += 1
         signals.append("counterpart_replied_with_more_than_cold_phrase")
     else:
@@ -810,19 +830,36 @@ def _assistant_recovery_assessment(current_turn: dict[str, Any], next_turn: dict
         else:
             score -= 1
             signals.append("counterpart_reply_still_cold")
-    if len(reply.strip()) >= 10:
+    if detailed_replies:
         score += 1
         signals.append("counterpart_added_detail")
+    if question_replies:
+        score += 1
+        signals.append("counterpart_started_asking_back")
+    if later_engaged_replies:
+        score += 1
+        signals.append("counterpart_kept_conversation_going")
+    if "switch_topic" in applied_strategies and engaged_replies:
+        score += 1
+        signals.append("new_topic_got_engagement")
 
-    if interaction_mode == "probe_lightly" and "probe_confirmed_counterpart_still_low_energy" in signals and score <= 0:
+    if interaction_mode == "probe_lightly" and not engaged_replies and not detailed_replies and not question_replies:
         label = "clarified_low_interest"
-    elif score >= 2:
+        score = 0
+    elif score >= 3:
         label = "improved"
-    elif score <= 0:
-        label = "worse_or_same"
-    else:
+    elif score >= 1:
         label = "slightly_improved"
-    return {"label": label, "score": score, "signals": signals}
+    else:
+        label = "worse_or_same"
+    return {
+        "label": label,
+        "score": score,
+        "signals": signals,
+        "window_turns": len(window),
+        "counterpart_reply_count": len(replies),
+        "first_reply_low_energy": _is_low_energy_like(first_reply),
+    }
 
 
 def _assistant_mode_compliance(
@@ -894,14 +931,20 @@ def _evaluated_mutual_intent_assessment(record: dict[str, Any]) -> str:
 
 
 def _graceful_exit_score(record: dict[str, Any]) -> int | None:
-    mode = _predicted_interaction_mode(record)
+    mode = _evaluated_interaction_mode(record)
     if mode != "hold":
         return None
     message = str(record.get("generated_message") or "")
+    if not message.strip():
+        return 0
+    if bool(((record.get("overpush_risk") or {}).get("flag"))):
+        return 0
+    if _mentions_boundary_topic(message):
+        return 0
     score = 0
     if _is_graceful_exit_like(message):
-        score += 2
-    elif not any(token in message for token in _BOUNDARY_HINTS):
+        score += 1 if _is_question_like(message) else 2
+    elif not _is_question_like(message):
         score += 1
     if _is_low_energy_like(message) and not _is_graceful_exit_like(message):
         score = max(0, score - 1)
@@ -1274,7 +1317,7 @@ def run_dyadic_roleplay(
         record["overpush_risk"] = follow_assessment.get("overpush_risk")
         record["assistant_recovery_assessment"] = _assistant_recovery_assessment(
             record,
-            turn_records[idx + 1] if idx + 1 < len(turn_records) else None,
+            turn_records[idx + 1 : idx + 4],
         )
         record["assistant_mode_compliance_details"] = _assistant_mode_compliance(
             record.get("assistant_guidance"),
@@ -1338,28 +1381,40 @@ def run_dyadic_roleplay(
     overpush_risk_turns = [
         r
         for r in intervention_records
-        if (_evaluated_mutual_intent_assessment(r) or "") in {"interest_low", "boundary_risk"}
+        if bool(((r.get("overpush_risk") or {}).get("flag")))
     ]
     recoverable_interventions = [
         r
         for r in intervention_records
-        if (r.get("assistant_recovery_assessment") or {}).get("label") not in ("not_applicable", "pending")
+        if _evaluated_interaction_mode(r) in {"repair", "probe_lightly"}
+        and (r.get("assistant_recovery_assessment") or {}).get("label") not in ("not_applicable", "pending")
     ]
     improved_recovery = [
         r
         for r in recoverable_interventions
         if (r.get("assistant_recovery_assessment") or {}).get("label") == "improved"
     ]
+    slightly_improved_recovery = [
+        r
+        for r in recoverable_interventions
+        if (r.get("assistant_recovery_assessment") or {}).get("label") == "slightly_improved"
+    ]
     clarified_low_interest = [
         r
         for r in recoverable_interventions
         if (r.get("assistant_recovery_assessment") or {}).get("label") == "clarified_low_interest"
+    ]
+    worse_or_same_recovery = [
+        r
+        for r in recoverable_interventions
+        if (r.get("assistant_recovery_assessment") or {}).get("label") == "worse_or_same"
     ]
     recoverable_probe_interventions = [
         r
         for r in probe_interventions
         if (r.get("assistant_recovery_assessment") or {}).get("label") not in ("not_applicable", "pending")
     ]
+    graceful_exit_turns = [r for r in hold_decisions if int(_graceful_exit_score(r) or 0) > 0]
     heuristic_decisions = [
         r
         for r in turn_records
@@ -1476,14 +1531,22 @@ def run_dyadic_roleplay(
             "topic_shift_follow_turns": len(topic_shift_follow),
             "avoid_violation_turns": len(avoid_violation_turns),
             "recoverable_intervention_turns": len(recoverable_interventions),
+            "improved_recovery_turns": len(improved_recovery),
             "improved_recovery_rate": round(len(improved_recovery) / len(recoverable_interventions), 4)
             if recoverable_interventions
             else None,
+            "slightly_improved_recovery_turns": len(slightly_improved_recovery),
+            "worse_or_same_recovery_turns": len(worse_or_same_recovery),
+            "clarified_low_interest_turns": len(clarified_low_interest),
             "clarified_low_interest_rate": round(
                 len(clarified_low_interest) / len(recoverable_probe_interventions),
                 4,
             )
             if recoverable_probe_interventions
+            else None,
+            "graceful_exit_turns": len(graceful_exit_turns),
+            "graceful_exit_rate": round(len(graceful_exit_turns) / len(hold_decisions), 4)
+            if hold_decisions
             else None,
             "graceful_exit_advice_turns": len(graceful_exit_advice_turns),
             "graceful_exit_used_turns": len(graceful_exit_used_turns),
