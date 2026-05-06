@@ -13,6 +13,8 @@ from chat_system.dyadic_roleplay import (
     _assistant_follow_assessment,
     _assistant_recovery_assessment,
     _graceful_exit_score,
+    _naturalness_assessment,
+    _next_dyadic_message,
     dyadic_public_transcript,
     parse_int_csv,
     run_dyadic_roleplay,
@@ -169,6 +171,46 @@ class DyadicRoleplayUtilTests(unittest.TestCase):
             ),
             0,
         )
+
+    def test_persona_prompt_contains_naturalness_anti_examples(self):
+        captured: dict[str, str] = {}
+
+        def llm(messages: list[dict[str, str]]) -> str:
+            captured["system"] = messages[0]["content"]
+            captured["user"] = messages[-1]["content"]
+            return "你好呀"
+
+        out = _next_dyadic_message(
+            llm=llm,
+            user_id="pa",
+            brief="A",
+            transcript="pb: 嗯",
+        )
+
+        self.assertEqual(out, "你好呀")
+        self.assertIn("低质量反例", captured["system"])
+        self.assertIn("你是在认可……吗", captured["system"])
+        self.assertIn("首先……其次……总之……", captured["system"])
+        self.assertIn("不要解释你为什么这样说", captured["user"])
+        self.assertIn("一条消息别做太多事", captured["user"])
+
+    def test_naturalness_assessment_penalizes_analytic_and_explanatory_tone(self):
+        out = _naturalness_assessment(
+            "我理解你的意思是你现在更想慢慢来，我想表达的是这说明你挺看重稳定感的。"
+        )
+
+        self.assertLessEqual(out["score"], 2)
+        self.assertIn("analytic_phrase:我理解你的意思是", out["flags"])
+        self.assertIn("explanatory_phrase:我想表达的是", out["flags"])
+        self.assertIn("meta_commentary", out["flags"])
+
+    def test_naturalness_assessment_penalizes_structured_monologue(self):
+        out = _naturalness_assessment(
+            "首先我觉得你说得挺真诚的，其次我也能理解这个节奏，总之可以慢慢聊。"
+        )
+
+        self.assertLessEqual(out["score"], 3)
+        self.assertIn("structured_monologue", out["flags"])
 
 
 class DyadicRoleplayRunTests(unittest.TestCase):
@@ -674,6 +716,40 @@ class DyadicRoleplayRunTests(unittest.TestCase):
         self.assertIn("message timeout", out["turn_evaluations"][0]["message_generation_error"])
         self.assertTrue(out["turn_evaluations"][0]["generated_message"])
         self.assertEqual(out["assistant_metrics"]["fallback_message_turns"], 1)
+
+    def test_run_reports_naturalness_flags_for_analytic_reply(self):
+        def llm(messages: list[dict[str, str]]) -> str:
+            sys_c = messages[0]["content"]
+            user_c = messages[-1]["content"]
+            if "对话调度员" in sys_c:
+                return '{"need_rescue":false,"situation":"none","reason":""}'
+            if "请写出下一条" in user_c:
+                return "我理解你的意思是你现在想慢慢来，我想表达的是这样聊会更稳一点。"
+            if "附加任务" in sys_c and "「pa」" in sys_c:
+                return '{"conversation_satisfied":true,"conversation_score":3,"assistant_satisfied":true,"assistant_score":3,"used_assistant":false,"conversation_note":"","assistant_note":""}'
+            if "附加任务" in sys_c:
+                return '{"conversation_satisfied":true,"conversation_score":3,"assistant_satisfied":true,"assistant_score":3,"used_assistant":false,"conversation_note":"","assistant_note":""}'
+            return "{}"
+
+        out = run_dyadic_roleplay(
+            self.conn,
+            case_id="test-dyadic-naturalness-flags",
+            relation_key="pa|pb",
+            participant_a_id="pa",
+            participant_b_id="pb",
+            brief_a="A",
+            brief_b="B",
+            rounds=1,
+            llm=llm,
+            assistant_mode="none",
+            base_time=datetime(2026, 5, 4, 9, 0, 0),
+            stress_mode="none",
+        )
+
+        flagged = out["naturalness_metrics"]["flagged_turns"]
+        self.assertEqual(len(flagged), 1)
+        self.assertIn("analytic_phrase:我理解你的意思是", flagged[0]["flags"])
+        self.assertLessEqual((out["turn_evaluations"][0]["naturalness"] or {}).get("score") or 5, 2)
 
     def test_fixed_turn_hold_tracks_graceful_exit_and_overpush_separately(self):
         def llm(messages: list[dict[str, str]]) -> str:

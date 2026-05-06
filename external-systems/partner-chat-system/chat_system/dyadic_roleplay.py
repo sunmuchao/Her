@@ -42,6 +42,37 @@ _ANALYTIC_PHRASES = (
     "从你的表述来看",
     "如果我没理解错",
     "从你的角度看",
+    "你想表达的是",
+    "这说明你",
+    "意味着你",
+)
+_EXPLANATORY_PHRASES = (
+    "我的意思是",
+    "我想表达的是",
+    "这样说是因为",
+    "之所以这么说",
+    "换句话说",
+)
+_STRUCTURED_MONOLOGUE_TOKENS = (
+    "首先",
+    "其次",
+    "总之",
+)
+_WRITTEN_TONE_TOKENS = (
+    "表述",
+    "认可",
+    "意味着",
+    "说明",
+    "本质上",
+    "例如",
+    "如下",
+)
+_META_COMMENTARY_MARKERS = (
+    "这样回复",
+    "这样说",
+    "我的意思",
+    "我想表达",
+    "如果我没理解错",
 )
 _COLD_REPLIES = (
     "嗯",
@@ -195,8 +226,15 @@ def _persona_system(*, user_id: str, brief: str) -> str:
         f"你在相亲/交友场景中与另一位用户私聊。你的用户ID是「{user_id}」。\n"
         f"人设与目标：{brief}\n"
         "规则：只用中文；说话自然、克制、尊重对方；不要编造具体见面承诺或虚假个人信息。\n"
-        "像真人即时聊天，优先短句和口语，不要写成分析、解释、客服、复盘或小作文口吻。\n"
-        "避免出现「你是在认可……吗」「从你的表述来看」「我理解你的意思是」这类书面分析腔。\n"
+        "像真人即时聊天，优先短句、口语、自然停顿，不要写成分析、解释、客服、复盘或小作文口吻。\n"
+        "一条消息通常只做一到两件事：接住对方、补一句自己、或者问一个轻问题，不要展开三段说明。\n"
+        "低质量反例："
+        "「你是在认可……吗」"
+        "「从你的表述来看……」"
+        "「我理解你的意思是……」"
+        "「如果我没理解错的话……」"
+        "「首先……其次……总之……」"
+        "，这些都太像分析者，不像真人聊天。\n"
         "当消息记录里出现 assistant 发给你的「仅自己可见」建议时，你可以参考其方向，但最终发出的内容要是你自己的话。"
     )
 
@@ -304,6 +342,10 @@ def _next_dyadic_message(
         "请写出下一条你要发给对方的聊天内容（**只输出正文**，不要引号、不要「对方：」等前缀、不要解释）。"
         "像真实聊天，不要分析对方措辞，不要写成说明文。"
         "尽量像微信里会发的 1-2 句短消息，能口语就别分析；先接住具体信息，再补一点自己的话。"
+        "不要解释你为什么这样说，不要总结对方态度，不要写"
+        "「我理解你的意思是」「从你的表述来看」「如果我没理解错」这类分析句。"
+        "也不要写「首先、其次、总之」这种说明文结构。"
+        "一条消息别做太多事，够自然就行。"
         "如果要提问，优先问轻一点、容易回答的问题。"
         f"{stress_block}{mode_block}"
     )
@@ -533,12 +575,41 @@ def _naturalness_assessment(text: str) -> dict[str, Any]:
     for phrase in _ANALYTIC_PHRASES:
         if phrase in t:
             flags.append(f"analytic_phrase:{phrase}")
-    if len(t) >= 42 and (t.count("，") + t.count("。")) >= 3:
-        flags.append("too_expository")
-    if "首先" in t or "其次" in t or "总之" in t:
+    for phrase in _EXPLANATORY_PHRASES:
+        if phrase in t:
+            flags.append(f"explanatory_phrase:{phrase}")
+    if any(token in t for token in _STRUCTURED_MONOLOGUE_TOKENS):
         flags.append("structured_monologue")
+    if any(token in t for token in _META_COMMENTARY_MARKERS):
+        flags.append("meta_commentary")
+    compact = _compact_text(t)
+    if len(t) >= 42 and (t.count("，") + t.count("。") + t.count("；")) >= 3:
+        flags.append("too_expository")
+    if len(t) >= 28 and any(token in compact for token in _WRITTEN_TONE_TOKENS):
+        flags.append("written_tone")
+    if len(t) >= 38 and (t.count("，") + t.count("。") + t.count("；") + t.count("？") + t.count("?")) >= 4:
+        flags.append("overpacked_message")
+    severe_flags = [
+        flag
+        for flag in flags
+        if flag.startswith("analytic_phrase:")
+        or flag.startswith("explanatory_phrase:")
+        or flag in {"structured_monologue", "meta_commentary"}
+    ]
+    if not flags:
+        score = 5
+    elif not severe_flags and len(flags) == 1:
+        score = 4
+    elif not severe_flags:
+        score = 3
+    elif len(severe_flags) == 1 and len(flags) <= 2:
+        score = 3
+    elif len(severe_flags) >= 2 or len(flags) >= 4:
+        score = 1
+    else:
+        score = 2
     return {
-        "score": max(1, 5 - len(flags)),
+        "score": score,
         "flags": flags,
     }
 
