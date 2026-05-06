@@ -3,6 +3,7 @@ import pathlib
 import sys
 import unittest
 from datetime import datetime
+from unittest.mock import patch
 
 
 SYSTEM_ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -125,25 +126,81 @@ class ChatSystemTests(unittest.TestCase):
             participant_a_id="alice",
             participant_b_id="bob",
         )
-        draft = assistant_query(self.conn, th["thread_id"], "alice", "怎么回复他？")
+        route_decision = {
+            "need_rescue": True,
+            "situation": "stuck",
+            "problem_tags": ["topic_dead_end"],
+            "rescue_style": "switch_topic",
+            "mutual_intent_assessment": "communication_problem",
+            "interaction_mode": "repair",
+            "reason": "测试路由结果",
+            "decision_source": "heuristic",
+        }
+        guidance = {
+            "mutual_intent_assessment": "communication_problem",
+            "interaction_mode": "repair",
+            "current_problem": ["对方上一句太短，旧话题接不下去了"],
+            "problem_tags": ["topic_dead_end"],
+            "advice": ["先接住，再换低门槛话题。"],
+            "avoid": ["不要继续追着旧话题硬问。"],
+            "topic_directions": ["周末安排", "咖啡"],
+            "easy_question_types": ["低门槛生活问题"],
+            "rescue_flow": ["先接住", "再换题", "最后问轻问题"],
+        }
+        profile_ctx = {
+            "profile_dsn": "mysql://test",
+            "actor_profile_summary": "alice 喜欢咖啡和周末散步",
+            "counterpart_profile_summary": "bob 周末常出门走走",
+            "profile_hooks": ["咖啡", "周末走走"],
+        }
+
+        with patch("chat_system.service.fast_mode_route", return_value=route_decision), patch(
+            "chat_system.service.generate_assistant_guidance",
+            return_value=guidance,
+        ), patch("chat_system.service._assistant_profile_context", return_value=profile_ctx):
+            draft = assistant_query(self.conn, th["thread_id"], "alice", "怎么回复他？")
 
         self.assertEqual(draft["author_id"], ASSISTANT_AUTHOR_ID)
         self.assertEqual(draft["source"], SRC_AGENT_DRAFT)
         self.assertEqual(draft["message_recipient_id"], "alice")
         self.assertIn("assistant_guidance", draft)
         self.assertIn("assistant_profile_context", draft)
+        self.assertIn("assistant_route_decision", draft)
+        self.assertIn("assistant_latency_ms", draft)
+        self.assertIn("assistant_latency_breakdown_ms", draft)
+        self.assertIn("assistant_trace", draft)
         self.assertIn("意愿判断：", draft["body"])
         self.assertIn("这轮处理方式：", draft["body"])
         self.assertIn("当前问题：", draft["body"])
         self.assertIn("回复建议：", draft["body"])
         self.assertIn("先别继续这样聊：", draft["body"])
         self.assertIn("建议按这个顺序来：", draft["body"])
-        self.assertIn("如果还是接不动：", draft["body"])
+        self.assertEqual(draft["assistant_route_decision"]["interaction_mode"], "repair")
+        self.assertEqual(draft["assistant_guidance"]["interaction_mode"], "repair")
+        self.assertEqual(draft["assistant_guidance"]["advice"], ["先接住，再换低门槛话题。"])
+        self.assertEqual(draft["assistant_profile_context"]["profile_hooks"], ["咖啡", "周末走走"])
+        self.assertGreaterEqual(draft["assistant_latency_ms"], 0)
+        self.assertEqual(
+            draft["assistant_latency_breakdown_ms"]["total"],
+            draft["assistant_latency_ms"],
+        )
+        trace = draft["metadata"]["assistant_trace"]
+        self.assertEqual(trace["schema_version"], 1)
+        self.assertEqual(trace["route_decision"]["interaction_mode"], "repair")
+        self.assertEqual(trace["guidance"]["interaction_mode"], "repair")
+        self.assertEqual(trace["profile_context"]["profile_hooks"], ["咖啡", "周末走走"])
+        self.assertIsNone(trace["follow_evidence"])
+        self.assertIsNone(trace["overpush_risk"])
 
         alice_view = list_messages(self.conn, th["thread_id"], "alice")
         bob_view = list_messages(self.conn, th["thread_id"], "bob")
         self.assertGreaterEqual(len(alice_view), 1)
         self.assertEqual(len(bob_view), 0)
+        persisted_draft = next(m for m in alice_view if m["message_id"] == draft["message_id"])
+        self.assertEqual(
+            persisted_draft["metadata"]["assistant_trace"]["latency_ms"]["total"],
+            draft["assistant_latency_ms"],
+        )
 
         sent = adopt_draft(
             self.conn,
@@ -153,6 +210,12 @@ class ChatSystemTests(unittest.TestCase):
             body_override="你好，很高兴认识你。",
         )
         self.assertEqual(sent["visibility"], VIS_DYADIC)
+        self.assertEqual(
+            sent["metadata"]["assistant_adoption"]["assistant_draft_message_id"],
+            int(draft["message_id"]),
+        )
+        self.assertIsNone(sent["metadata"]["assistant_adoption"]["follow_evidence"])
+        self.assertIsNone(sent["metadata"]["assistant_adoption"]["overpush_risk"])
 
         both = list_messages(self.conn, th["thread_id"], "bob")
         self.assertTrue(any(m["body"] == "你好，很高兴认识你。" for m in both))
@@ -178,6 +241,7 @@ class ChatSystemTests(unittest.TestCase):
         self.assertEqual(decision["decision_source"], "heuristic")
         self.assertEqual(decision["interaction_mode"], "probe_lightly")
         self.assertIn("closed_reply", decision["problem_tags"])
+        self.assertGreaterEqual(int(decision["latency_ms"]), 0)
 
     def test_adopt_draft_requires_user_override(self):
         th = get_or_create_thread(
