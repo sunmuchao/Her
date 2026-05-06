@@ -498,6 +498,8 @@ def main() -> int:
         f"repair_turns={(result.get('assistant_metrics') or {}).get('repair_intervention_turns')}, "
         f"probe_turns={(result.get('assistant_metrics') or {}).get('probe_intervention_turns')}, "
         f"hold_turns={(result.get('assistant_metrics') or {}).get('hold_decision_turns')}, "
+        f"follow_rate={(result.get('assistant_metrics') or {}).get('follow_rate')}, "
+        f"strong_follow_rate={(result.get('assistant_metrics') or {}).get('strong_follow_rate')}, "
         f"stress_events={len(result.get('stress_events') or [])}"
     )
     text = json.dumps(result, ensure_ascii=False, indent=2)
