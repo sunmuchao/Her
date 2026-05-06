@@ -42,6 +42,7 @@ from chat_system.profile_loader import (  # noqa: E402
     profile_row_to_brief,
     roleplay_participant_id,
 )
+from chat_system.reporting import build_roleplay_report_summary, render_roleplay_report_markdown  # noqa: E402
 from chat_system.scenario_stress import list_beat_ids  # noqa: E402
 from chat_system.storage import DEFAULT_CHAT_TEST_MYSQL_DSN, connect_db, initialize_database  # noqa: E402
 
@@ -505,6 +506,8 @@ def main() -> int:
                 for key, value in sorted(llm_stats.items())
             )
         )
+    result["report_summary"] = build_roleplay_report_summary(result)
+    report_markdown = render_roleplay_report_markdown(result["report_summary"])
     _log(
         "roleplay completed "
         f"thread_id={result.get('thread_id')}, reused={result.get('thread_reused')}, "
@@ -522,6 +525,7 @@ def main() -> int:
         f"clarified_low_interest_rate={(result.get('assistant_metrics') or {}).get('clarified_low_interest_rate')}, "
         f"stress_events={len(result.get('stress_events') or [])}"
     )
+    print(report_markdown, file=sys.stderr)
     text = json.dumps(result, ensure_ascii=False, indent=2)
     if args.output:
         Path(args.output).write_text(text, encoding="utf-8")
