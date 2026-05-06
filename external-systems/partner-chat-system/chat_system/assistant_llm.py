@@ -545,6 +545,22 @@ def _prepare_profile_context_for_guidance(
     }
 
 
+def _compact_thread_context_for_guidance(
+    thread_context: str,
+    *,
+    max_chars: int,
+    max_lines: int = 10,
+) -> str:
+    lines = [line.rstrip() for line in str(thread_context or "").splitlines() if line.strip()]
+    if not lines:
+        return "（暂无）"
+    text = "\n".join(lines[-max_lines:])
+    if len(text) <= max_chars:
+        return text
+    tail = text[-max_chars:].lstrip()
+    return f"…\n{tail}" if tail else "（暂无）"
+
+
 def _looks_like_direct_send_message(text: str) -> bool:
     item = str(text or "").strip()
     if not item:
@@ -797,6 +813,10 @@ def generate_assistant_guidance(
     selected_hooks = list(profile_ctx.get("selected_hooks") or [])
     actor_summary_safe = str(profile_ctx.get("actor_profile_summary_safe") or "")
     counterpart_summary_safe = str(profile_ctx.get("counterpart_profile_summary_safe") or "")
+    compact_context = _compact_thread_context_for_guidance(
+        thread_context,
+        max_chars=max(240, min(_env_int("HER_CHAT_ASSISTANT_CONTEXT_CHARS", 700), 1600)),
+    )
     fallback = build_placeholder_assistant_guidance(
         profile_hooks=selected_hooks,
         mutual_intent_assessment=preferred_mutual_intent_assessment,
@@ -828,49 +848,45 @@ def generate_assistant_guidance(
         client_kwargs["base_url"] = base
     client = OpenAI(**client_kwargs)
     system = (
-        "你是相亲/交友场景下的对话教练，不是代聊者。"
-        "你只负责指出当前对话问题，并给出下一步可执行的聊天策略，不要代写一条可以直接发送给对方的整句消息。"
-        "你的职责重点是帮助“双方都还想继续聊，但这轮沟通卡住了”的人。"
-        "如果你判断当前更像意愿不明确、对方投入偏低，或已经碰到边界/压力点，就不要给讨好型救场，而是改成低压试探或先收住。"
-        "请先判断当前属于 communication_problem、interest_unclear、interest_low、boundary_risk、normal 哪一类。"
-        "只有 communication_problem 才使用 repair；interest_unclear 使用 probe_lightly；interest_low 或 boundary_risk 使用 hold。"
-        "若提供了画像钩子，请优先从双方交集或当前说话人的真实生活里选，而不是泛泛建议电影、旅行、运动这类万能话题。"
-        "你的建议必须足够具体，优先回答：现在最关键的问题是什么、别继续做什么、建议换到什么低门槛话题、适合问什么更容易回答的问题。"
-        "建议尽量写成步骤感强的教练提示，比如先接住、再换题、最后问轻一点的问题。"
-        "如果当前局面已经连续偏冷、明显顶不动，允许直接给出体面收口或暂时放慢节奏的止损建议。"
+        "你是相亲聊天教练，不是代聊者。"
+        "只分析问题和下一步策略，不写可以直接发送给对方的整句消息。"
+        "先判断 mutual_intent_assessment：communication_problem、interest_unclear、interest_low、boundary_risk、normal。"
+        "模式映射：communication_problem->repair；interest_unclear->probe_lightly；interest_low 或 boundary_risk->hold；normal->none。"
+        "优先给：当前问题、别继续做什么、可换的话题、容易回答的问题、分步骤建议。"
+        "如果局面明显偏冷或碰到边界/压力点，要给收住或止损建议。"
+        "若给了画像钩子，优先用双方交集或当前说话人的真实生活，避免电影、旅行、运动这类泛泛万能话题。"
         "只输出一个 JSON 对象，不要 Markdown、不要代码块。"
     )
-    user_block = (
-        f"最近对话（双方可见）：\n{thread_context or '（暂无）'}\n\n"
-        f"当前说话人画像摘要（已裁剪）：\n{actor_summary_safe or '（暂无）'}\n\n"
-        f"对方画像摘要（已裁剪）：\n{counterpart_summary_safe or '（暂无）'}\n\n"
-        f"优先画像钩子-双方交集：{', '.join(profile_ctx.get('shared_hooks') or []) or '（暂无）'}\n"
-        f"优先画像钩子-当前说话人真实生活：{', '.join(profile_ctx.get('actor_hooks') or []) or '（暂无）'}\n"
-        f"通用低门槛兜底：{', '.join(profile_ctx.get('fallback_hooks') or []) or '（暂无）'}\n"
-        f"最终优先可用画像钩子：{', '.join(selected_hooks) or '（暂无）'}\n\n"
-        f"用户问题：{user_query}\n\n"
-        "输出 JSON：\n"
-        "{\n"
-        f'  "mutual_intent_assessment": "<{_MUTUAL_INTENT_CHOICES}>",\n'
-        f'  "interaction_mode": "<{_INTERACTION_MODE_CHOICES}>",\n'
-        '  "current_problem": ["<1-3 条具体问题>"],\n'
-        '  "problem_tags": ["<closed_reply|topic_dead_end|awkward_transition|low_energy|misread|boundary_risk 等>"],\n'
-        '  "why_not_to_push": ["<0-2 条，说明为什么别讨好式硬推>"],\n'
-        '  "low_pressure_options": ["<0-2 条，仅在 probe_lightly 时给>"],\n'
-        '  "avoid": ["<1-3 条不要继续做的事>"],\n'
-        '  "topic_directions": ["<1-3 个建议切换的话题类型>"],\n'
-        '  "easy_question_types": ["<1-2 个更容易回答的问题类型>"],\n'
-        '  "rescue_flow": ["<2-4 条分步骤建议，强调先接住、再换题、再问轻问题>"],\n'
-        '  "graceful_exit_plan": ["<0-2 条止损建议；只有在局面明显难救时才写>"],\n'
-        '  "strategy_tags": ["<acknowledge_coldness|switch_topic|ask_easy_question|share_detail|expand_detail|graceful_exit|probe_lightly 等>"],\n'
-        '  "advice": ["<2-4 条方向性建议，不要代写整句，不要写成可以原样发送的话>"],\n'
-        '  "profile_hooks_used": ["<实际用到的画像钩子，必须来自给定画像摘要或钩子>"]\n'
-        "}\n"
-        "要求：不要编造画像中没有的事实；不要写成整句代发文案；建议要口语场景可执行；"
-        "如果 interaction_mode 不是 repair，就明确告诉用户为什么不要硬推。"
+    prompt_parts = [
+        f"最近对话（双方可见）：\n{compact_context}",
+        f"用户问题：{user_query}",
+    ]
+    if actor_summary_safe:
+        prompt_parts.append(f"当前说话人画像摘要（已裁剪）：\n{actor_summary_safe}")
+    if counterpart_summary_safe:
+        prompt_parts.append(f"对方画像摘要（已裁剪）：\n{counterpart_summary_safe}")
+    prompt_parts.extend(
+        [
+            f"优先画像钩子-双方交集：{', '.join(profile_ctx.get('shared_hooks') or []) or '（暂无）'}",
+            f"优先画像钩子-当前说话人真实生活：{', '.join(profile_ctx.get('actor_hooks') or []) or '（暂无）'}",
+            f"最终优先可用画像钩子：{', '.join(selected_hooks) or '（暂无）'}",
+            "请输出 JSON，尽量短，只保留有内容的必要字段，不要输出空数组：",
+            "{",
+            f'  "mutual_intent_assessment": "<{_MUTUAL_INTENT_CHOICES}>",',
+            f'  "interaction_mode": "<{_INTERACTION_MODE_CHOICES}>",',
+            '  "current_problem": ["<1 条最关键问题>"],',
+            '  "avoid": ["<1-2 条>"],',
+            '  "advice": ["<1-2 条方向性建议，不要代写整句>"],',
+            '  "topic_directions": ["<0-2 个，可省略>"],',
+            '  "rescue_flow": ["<0-2 条步骤，可省略>"],',
+            '  "profile_hooks_used": ["<0-2 个，必须来自给定画像或钩子，可省略>"]',
+            "}",
+            "不要编造画像里没有的事实；不要代码块；没必要的字段直接省略。",
+        ]
     )
+    user_block = "\n\n".join(prompt_parts)
     try:
-        max_tokens = _env_int("HER_CHAT_ASSISTANT_MAX_TOKENS", 500)
+        max_tokens = _env_int("HER_CHAT_ASSISTANT_MAX_TOKENS", 180)
         temperature = _env_float("HER_CHAT_ASSISTANT_TEMPERATURE", 0.1)
         resp = client.chat.completions.create(
             model=model,
@@ -878,7 +894,7 @@ def generate_assistant_guidance(
                 {"role": "system", "content": system},
                 {"role": "user", "content": user_block},
             ],
-            max_tokens=max(200, min(max_tokens, 900)),
+            max_tokens=max(100, min(max_tokens, 360)),
             temperature=max(0.0, min(temperature, 1.0)),
         )
         choice = resp.choices[0].message.content

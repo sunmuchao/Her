@@ -245,12 +245,18 @@ class AssistantLLMTests(unittest.TestCase):
         create_kwargs = _FakeOpenAIClient.last_create_kwargs or {}
         messages = create_kwargs.get("messages") or []
         self.assertEqual(len(messages), 2)
+        self.assertEqual(create_kwargs.get("max_tokens"), 180)
         prompt = messages[1]["content"]
         self.assertIn("当前说话人画像摘要（已裁剪）：", prompt)
         self.assertIn("对方画像摘要（已裁剪）：", prompt)
         self.assertIn("优先画像钩子-双方交集：无锡, 咖啡, 桌游", prompt)
         self.assertIn("优先画像钩子-当前说话人真实生活：羽毛球", prompt)
         self.assertIn("最终优先可用画像钩子：无锡, 咖啡, 桌游, 羽毛球", prompt)
+        self.assertNotIn('"problem_tags"', prompt)
+        self.assertNotIn('"strategy_tags"', prompt)
+        self.assertNotIn('"easy_question_types"', prompt)
+        self.assertNotIn('"graceful_exit_plan"', prompt)
+        self.assertNotIn("通用低门槛兜底", prompt)
         self.assertNotIn("name：小雨", prompt)
         self.assertNotIn("age：29", prompt)
         self.assertNotIn("电影, 旅行, 运动", prompt)
