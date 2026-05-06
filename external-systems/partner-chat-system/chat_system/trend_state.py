@@ -110,6 +110,7 @@ def normalize_trend_state(state: dict[str, Any] | None) -> dict[str, Any]:
         "same_mode_turns": max(0, int(payload.get("same_mode_turns") or 0)),
         "unresolved_turns": max(0, int(payload.get("unresolved_turns") or 0)),
         "risk_flags": risk_flags,
+        "previous_risk_flags": _to_clean_list(payload.get("previous_risk_flags")),
         "risk_level": max(0, int(payload.get("risk_level") or 0)),
         "previous_risk_level": max(0, int(payload.get("previous_risk_level") or 0)),
         "last_hint_turn": payload.get("last_hint_turn"),
@@ -171,6 +172,7 @@ def advance_trend_state(
         "same_mode_turns": same_mode_turns,
         "unresolved_turns": unresolved_turns,
         "risk_flags": risk_flags,
+        "previous_risk_flags": list(prev.get("risk_flags") or []),
         "risk_level": risk_level,
         "previous_risk_level": prev["risk_level"],
         "has_user_acted_since_last_hint": has_user_acted_since_last_hint,
@@ -196,9 +198,10 @@ def decide_hint_trigger(
         else max(0, int(cur["current_turn_index"]) - int(last_hint_turn))
     )
     risk_flags = list(cur.get("risk_flags") or [])
+    previous_risk_flags = set(str(flag) for flag in (cur.get("previous_risk_flags") or []))
     risk_upgraded = bool(
         cur["risk_level"] > cur["previous_risk_level"]
-        or any(flag not in set(cur.get("risk_flags") or []) for flag in ())
+        or any(flag not in previous_risk_flags for flag in risk_flags)
     )
     event = {
         "turn_index": int(cur["current_turn_index"]),

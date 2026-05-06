@@ -671,92 +671,80 @@ def assistant_query(
         raise ValueError("thread not found")
     if not _is_participant(thread, user_id):
         raise ValueError("user is not a participant")
-
-    q = (query_text or "").strip()
-    if not q:
-        raise ValueError("query_text is required")
-
-    post_message(
+    return _assistant_draft_core(
         conn,
-        thread_id,
+        thread,
         user_id,
-        q,
-        visibility=VIS_OWNER_ONLY,
-        source=SRC_USER,
-        message_recipient_id=user_id,
+        query_text,
         now=now,
+        post_user_query=True,
     )
-    total_started_at = perf_counter()
-    context_limit = int(os.environ.get("HER_CHAT_ASSISTANT_CONTEXT_LIMIT") or "12")
-    route_started_at = perf_counter()
-    route_messages = list_messages(
+
+
+def assistant_proactive_hint(
+    conn,
+    thread_id: str,
+    user_id: str,
+    *,
+    route_decision: dict[str, Any] | None = None,
+    follow_level: str | None = None,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    thread = get_thread(conn, thread_id)
+    if not thread:
+        raise ValueError("thread not found")
+    if not _is_participant(thread, user_id):
+        raise ValueError("user is not a participant")
+
+    resolved_route = dict(route_decision or {})
+    if not resolved_route:
+        visible_messages = [
+            message
+            for message in list_messages(conn, thread_id, user_id, limit=200)
+            if message.get("visibility") == VIS_DYADIC
+        ]
+        resolved_route = dict(fast_mode_route(visible_messages) or _default_route_decision())
+    else:
+        resolved_route = dict(resolved_route)
+
+    current_state = _assistant_trend_state(thread, user_id)
+    advanced_state = advance_trend_state(
+        current_state,
+        resolved_route,
+        turn_index=_dyadic_message_count(conn, thread_id) + 1,
+        actor_turn_count=_dyadic_message_count(conn, thread_id, author_id=user_id),
+        follow_level=follow_level,
+    )
+    hint_event = decide_hint_trigger(
+        advanced_state,
+        speaker=user_id,
+        reason=str(resolved_route.get("reason") or ""),
+    )
+    next_state = apply_hint_event(advanced_state, hint_event)
+
+    if not bool(hint_event.get("hint_posted")):
+        _persist_assistant_trend_state(conn, thread, user_id, next_state, now=now)
+        return {
+            "hint_posted": False,
+            "assistant_hint_event": dict(hint_event),
+            "assistant_route_decision": resolved_route,
+            "assistant_trend_state": normalize_trend_state(next_state),
+        }
+
+    out = _assistant_draft_core(
         conn,
-        thread_id,
+        thread,
         user_id,
-        limit=max(6, min(context_limit, 20)),
-    )
-    route_decision = fast_mode_route(route_messages)
-    route_latency_ms = _elapsed_ms(route_started_at)
-    ctx = build_dyadic_context_for_assistant(
-        conn,
-        thread_id,
-        limit=max(6, min(context_limit, 20)),
-    )
-    guidance_started_at = perf_counter()
-    profile_ctx = _assistant_profile_context(thread, user_id)
-    placeholder = build_placeholder_assistant_guidance(
-        profile_hooks=list(profile_ctx.get("profile_hooks") or [])
-    )
-    guidance = generate_assistant_guidance(
-        user_query=q,
-        thread_context=ctx,
-        actor_profile_summary=str(profile_ctx.get("actor_profile_summary") or ""),
-        counterpart_profile_summary=str(profile_ctx.get("counterpart_profile_summary") or ""),
-        profile_hooks=list(profile_ctx.get("profile_hooks") or []),
-    ) or placeholder
-    guidance = normalize_assistant_guidance(guidance)
-    guidance_latency_ms = _elapsed_ms(guidance_started_at)
-    body = render_assistant_guidance(guidance)
-    total_latency_ms = _elapsed_ms(total_started_at)
-    assistant_trace = _assistant_trace_payload(
-        route_decision=route_decision,
-        guidance=guidance,
-        profile_ctx=profile_ctx,
-        route_latency_ms=route_latency_ms,
-        guidance_latency_ms=guidance_latency_ms,
-        total_latency_ms=total_latency_ms,
-    )
-    out = post_message(
-        conn,
-        thread_id,
-        ASSISTANT_AUTHOR_ID,
-        body,
-        visibility=VIS_OWNER_ONLY,
-        source=SRC_AGENT_DRAFT,
-        message_recipient_id=user_id,
-        metadata={"assistant_trace": assistant_trace},
+        _proactive_assistant_query_text(resolved_route),
         now=now,
+        post_user_query=False,
+        route_decision_override=resolved_route,
+        hint_event=hint_event,
     )
-    funnel_stage(
-        system="chat",
-        stage=CHAT_FUNNEL_ASSISTANT_INVOKE,
-        trace_id=get_trace_id(),
-        case_id=str(thread["case_id"]),
-        thread_id=thread_id,
-        message_id=out["message_id"],
-        user_id=user_id,
-        route_latency_ms=route_latency_ms,
-        guidance_latency_ms=guidance_latency_ms,
-        assistant_latency_ms=total_latency_ms,
-        route_interaction_mode=(route_decision or {}).get("interaction_mode"),
-        guidance_interaction_mode=guidance.get("interaction_mode"),
-    )
-    out["assistant_guidance"] = guidance
-    out["assistant_profile_context"] = profile_ctx
-    out["assistant_route_decision"] = route_decision
-    out["assistant_latency_ms"] = total_latency_ms
-    out["assistant_latency_breakdown_ms"] = dict(assistant_trace["latency_ms"])
-    out["assistant_trace"] = assistant_trace
+    _persist_assistant_trend_state(conn, thread, user_id, next_state, now=now)
+    out["hint_posted"] = True
+    out["assistant_hint_event"] = dict(hint_event)
+    out["assistant_trend_state"] = normalize_trend_state(next_state)
     return out
 
 
@@ -863,6 +851,8 @@ __all__ = [
     "VIS_OWNER_ONLY",
     "VIS_SYSTEM",
     "adopt_draft",
+    "assistant_mode_route",
+    "assistant_proactive_hint",
     "assistant_query",
     "current_time",
     "get_or_create_thread",
