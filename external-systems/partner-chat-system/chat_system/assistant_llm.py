@@ -23,6 +23,31 @@ _DEFAULT_PROBLEM_TAGS = ["cold_reply"]
 _DEFAULT_STRATEGY_TAGS = ["share_detail", "ask_easy_question"]
 _MUTUAL_INTENT_CHOICES = format_choice_values(MUTUAL_INTENT_ASSESSMENTS)
 _INTERACTION_MODE_CHOICES = format_choice_values(INTERACTION_MODES)
+_DIRECT_SEND_PREFIX_RE = re.compile(
+    r"(?:可以说|可以回|回一句|回他|发一句|发给对方|直接说|你就说|例如|比如|试试说|可以发)\s*[：:]"
+)
+_COACHING_MARKERS = (
+    "你可以",
+    "可以先",
+    "先回应",
+    "先接住",
+    "再换",
+    "最后问",
+    "别",
+    "不要",
+    "建议",
+    "优先",
+    "如果",
+    "试着",
+    "回应",
+    "承认",
+    "换到",
+    "话题",
+    "问题",
+    "节奏",
+    "收住",
+    "低压",
+)
 
 
 def _env_int(name: str, default: int) -> int:
@@ -71,6 +96,38 @@ def _default_low_pressure_options(interaction_mode: str) -> list[str]:
         "先丢一个低门槛、对方一句就能接的问题试一下。",
         "如果对方还是冷，就别继续加码输出，先把节奏放慢。",
     ]
+
+
+def _default_avoid(mutual_intent_assessment: str, interaction_mode: str) -> list[str]:
+    if interaction_mode == "repair":
+        return ["不要继续追着已经聊干的话题硬问。"]
+    if interaction_mode == "probe_lightly":
+        return ["不要一上来就连发很多解释或追问。"]
+    if interaction_mode == "hold":
+        if mutual_intent_assessment == "boundary_risk":
+            return ["不要继续往让对方有压力或越界的话题上推。"]
+        return ["不要继续加码输出或讨好式硬聊。"]
+    return []
+
+
+def _default_advice(interaction_mode: str) -> list[str]:
+    if interaction_mode == "repair":
+        return [
+            "先回应对方上一句里的具体信息。",
+            "再把话题换到更容易接、门槛更低的方向。",
+            "最后只问一个轻一点、对方容易回答的问题。",
+        ]
+    if interaction_mode == "probe_lightly":
+        return [
+            "只丢一个低成本、对方一句就能接的问题试一下。",
+            "如果对方还是冷，就别继续加码输出。",
+        ]
+    if interaction_mode == "hold":
+        return [
+            "先把节奏收住，不要继续追着聊。",
+            "如果要收口，就留一句轻一点的话给下次余地。",
+        ]
+    return ["顺着当前话题自然往下聊，不用刻意救场。"]
 
 
 def _humanize_mutual_intent_assessment(value: str) -> str:
@@ -138,38 +195,87 @@ def _to_clean_list(value: Any) -> list[str]:
     return out
 
 
+def _merge_clean_lists(*values: Any) -> list[str]:
+    out: list[str] = []
+    for value in values:
+        for item in _to_clean_list(value):
+            if item not in out:
+                out.append(item)
+    return out
+
+
+def _looks_like_direct_send_message(text: str) -> bool:
+    item = str(text or "").strip()
+    if not item:
+        return False
+    if _DIRECT_SEND_PREFIX_RE.search(item):
+        return True
+    if any(marker in item for marker in _COACHING_MARKERS):
+        return False
+    if any(token in item for token in ("我", "你", "哈哈", "吗", "呢", "呀", "吧")) and item[-1] in "。！？?!~":
+        return True
+    return False
+
+
+def _sanitize_advice(
+    value: Any,
+    *,
+    interaction_mode: str,
+) -> list[str]:
+    out: list[str] = []
+    for item in _to_clean_list(value):
+        if _looks_like_direct_send_message(item):
+            continue
+        out.append(item)
+    if out:
+        return out
+    return _default_advice(interaction_mode)
+
+
 def normalize_assistant_guidance(data: dict[str, Any]) -> dict[str, Any]:
+    payload = data if isinstance(data, dict) else {}
     mutual_intent_assessment = _normalize_contract_mutual_intent_assessment(
-        data.get("mutual_intent_assessment")
+        payload.get("mutual_intent_assessment")
     )
     interaction_mode = _normalize_contract_interaction_mode(
-        data.get("interaction_mode"),
+        payload.get("interaction_mode"),
         mutual_intent_assessment=mutual_intent_assessment,
+    )
+    advice = _sanitize_advice(
+        _merge_clean_lists(payload.get("advice"), payload.get("reply_suggestions")),
+        interaction_mode=interaction_mode,
     )
     return {
         "schema_version": GUIDANCE_SCHEMA_VERSION,
         "mutual_intent_assessment": mutual_intent_assessment,
         "interaction_mode": interaction_mode,
-        "current_problem": _to_clean_list(data.get("current_problem")) or ["当前问题还不够明确。"],
-        "problem_tags": _to_clean_list(data.get("problem_tags")) or list(_DEFAULT_PROBLEM_TAGS),
-        "why_not_to_push": _to_clean_list(data.get("why_not_to_push"))
+        "current_problem": _to_clean_list(payload.get("current_problem")) or ["当前问题还不够明确。"],
+        "problem_tags": _to_clean_list(payload.get("problem_tags")) or list(_DEFAULT_PROBLEM_TAGS),
+        "why_not_to_push": _to_clean_list(payload.get("why_not_to_push"))
         or _default_why_not_to_push(mutual_intent_assessment, interaction_mode),
-        "low_pressure_options": _to_clean_list(data.get("low_pressure_options"))
+        "low_pressure_options": _to_clean_list(payload.get("low_pressure_options"))
         or _default_low_pressure_options(interaction_mode),
-        "avoid": _to_clean_list(data.get("avoid")),
-        "topic_directions": _to_clean_list(data.get("topic_directions")),
-        "easy_question_types": _to_clean_list(data.get("easy_question_types")),
-        "rescue_flow": _to_clean_list(data.get("rescue_flow")) or _default_rescue_flow(),
-        "graceful_exit_plan": _to_clean_list(data.get("graceful_exit_plan")) or _default_graceful_exit_plan(),
-        "strategy_tags": _to_clean_list(data.get("strategy_tags")) or list(_DEFAULT_STRATEGY_TAGS),
-        "reply_suggestions": _to_clean_list(data.get("reply_suggestions")) or ["先回应对方上一句里的具体信息。"],
-        "profile_hooks_used": _to_clean_list(data.get("profile_hooks_used")),
+        "advice": advice,
+        "avoid": _to_clean_list(payload.get("avoid"))
+        or _default_avoid(mutual_intent_assessment, interaction_mode),
+        "topic_directions": _to_clean_list(payload.get("topic_directions")),
+        "easy_question_types": _to_clean_list(payload.get("easy_question_types")),
+        "rescue_flow": _to_clean_list(payload.get("rescue_flow")) or _default_rescue_flow(),
+        "graceful_exit_plan": _to_clean_list(payload.get("graceful_exit_plan")) or _default_graceful_exit_plan(),
+        "strategy_tags": _to_clean_list(payload.get("strategy_tags")) or list(_DEFAULT_STRATEGY_TAGS),
+        "reply_suggestions": list(advice),
+        "profile_hooks_used": _to_clean_list(payload.get("profile_hooks_used")),
     }
 
 
 def build_placeholder_assistant_guidance(*, profile_hooks: list[str] | None = None) -> dict[str, Any]:
     hooks = list(profile_hooks or [])
     topic_directions = hooks[:2] if hooks else ["周末安排", "最近放松方式"]
+    advice = [
+        "先回应对方上一句里最具体的信息，再补一点自己的真实感受。",
+        "如果旧话题已经聊干了，就顺势切到更生活化、更容易回答的话题。",
+        "最终发出去的话请自己组织，不要照搬模板。",
+    ]
     guidance = {
         "mutual_intent_assessment": "interest_unclear",
         "interaction_mode": "probe_lightly",
@@ -190,11 +296,8 @@ def build_placeholder_assistant_guidance(*, profile_hooks: list[str] | None = No
             "可以留个轻一点的收口，给下次再聊留余地。",
         ],
         "strategy_tags": ["share_detail", "ask_easy_question", "switch_topic"],
-        "reply_suggestions": [
-            "先回应对方上一句里最具体的信息，再补一点自己的真实感受。",
-            "如果旧话题已经聊干了，就顺势切到更生活化、更容易回答的话题。",
-            "最终发出去的话请自己组织，不要照搬模板。",
-        ],
+        "advice": advice,
+        "reply_suggestions": advice,
         "profile_hooks_used": hooks[:3],
     }
     return normalize_assistant_guidance(guidance)
@@ -241,7 +344,7 @@ def render_assistant_guidance(guidance: dict[str, Any]) -> str:
         for idx, item in enumerate(g["graceful_exit_plan"], start=1):
             lines.append(f"{idx}. {item}")
     lines.append("回复建议：")
-    for idx, item in enumerate(g["reply_suggestions"], start=1):
+    for idx, item in enumerate(g["advice"], start=1):
         lines.append(f"{idx}. {item}")
     if g["profile_hooks_used"]:
         lines.append("已参考画像钩子：")
@@ -260,18 +363,18 @@ def parse_assistant_guidance(text: str) -> dict[str, Any] | None:
         pass
 
     sections = {
-        "mutual_intent_assessment": "意愿判断：",
-        "interaction_mode": "这轮处理方式：",
-        "current_problem": "当前问题：",
-        "why_not_to_push": "现在别硬推的原因：",
-        "low_pressure_options": "如果只适合低压试探：",
-        "avoid": "先别继续这样聊：",
-        "topic_directions": "建议优先换到这些话题类型：",
-        "easy_question_types": "更容易回答的问题类型：",
-        "rescue_flow": "建议按这个顺序来：",
-        "graceful_exit_plan": "如果还是接不动：",
-        "reply_suggestions": "回复建议：",
-        "profile_hooks_used": "已参考画像钩子：",
+        "mutual_intent_assessment": {"意愿判断："},
+        "interaction_mode": {"这轮处理方式："},
+        "current_problem": {"当前问题："},
+        "why_not_to_push": {"现在别硬推的原因："},
+        "low_pressure_options": {"如果只适合低压试探："},
+        "avoid": {"先别继续这样聊："},
+        "topic_directions": {"建议优先换到这些话题类型："},
+        "easy_question_types": {"更容易回答的问题类型："},
+        "rescue_flow": {"建议按这个顺序来："},
+        "graceful_exit_plan": {"如果还是接不动："},
+        "advice": {"回复建议：", "行动建议："},
+        "profile_hooks_used": {"已参考画像钩子："},
     }
     current: str | None = None
     data: dict[str, list[str]] = {k: [] for k in sections}
@@ -280,8 +383,8 @@ def parse_assistant_guidance(text: str) -> dict[str, Any] | None:
         if not stripped:
             continue
         matched = False
-        for key, header in sections.items():
-            if stripped == header:
+        for key, headers in sections.items():
+            if stripped in headers:
                 current = key
                 matched = True
                 break
@@ -307,7 +410,8 @@ def parse_assistant_guidance(text: str) -> dict[str, Any] | None:
         "rescue_flow": data["rescue_flow"],
         "graceful_exit_plan": data["graceful_exit_plan"],
         "strategy_tags": _DEFAULT_STRATEGY_TAGS,
-        "reply_suggestions": data["reply_suggestions"],
+        "advice": data["advice"],
+        "reply_suggestions": data["advice"],
         "profile_hooks_used": data["profile_hooks_used"],
     }
     return normalize_assistant_guidance(parsed)
@@ -321,9 +425,10 @@ def generate_assistant_guidance(
     counterpart_profile_summary: str = "",
     profile_hooks: list[str] | None = None,
 ) -> dict[str, Any] | None:
+    fallback = build_placeholder_assistant_guidance(profile_hooks=profile_hooks)
     key = (os.environ.get("OPENAI_API_KEY") or "").strip()
     if not key:
-        return None
+        return fallback
     model = (
         os.environ.get("HER_CHAT_ASSISTANT_FAST_MODEL")
         or os.environ.get("HER_CHAT_ASSISTANT_RESCUE_MODEL")
@@ -336,7 +441,7 @@ def generate_assistant_guidance(
     try:
         from openai import OpenAI
     except ImportError:
-        return None
+        return fallback
     assistant_timeout_sec = max(10.0, min(_env_float("HER_CHAT_ASSISTANT_TIMEOUT_SEC", 40.0), 120.0))
     client_kwargs: dict[str, Any] = {
         "api_key": key,
@@ -379,7 +484,7 @@ def generate_assistant_guidance(
         '  "rescue_flow": ["<2-4 条分步骤建议，强调先接住、再换题、再问轻问题>"],\n'
         '  "graceful_exit_plan": ["<0-2 条止损建议；只有在局面明显难救时才写>"],\n'
         '  "strategy_tags": ["<acknowledge_coldness|switch_topic|ask_easy_question|share_detail|expand_detail|graceful_exit|probe_lightly 等>"],\n'
-        '  "reply_suggestions": ["<2-4 条可执行建议，不要代写整句>"],\n'
+        '  "advice": ["<2-4 条方向性建议，不要代写整句，不要写成可以原样发送的话>"],\n'
         '  "profile_hooks_used": ["<实际用到的画像钩子，必须来自给定画像摘要或钩子>"]\n'
         "}\n"
         "要求：不要编造画像中没有的事实；不要写成整句代发文案；建议要口语场景可执行；"
@@ -400,10 +505,10 @@ def generate_assistant_guidance(
         choice = resp.choices[0].message.content
         out = (choice or "").strip()
         if not out:
-            return None
+            return fallback
         return normalize_assistant_guidance(_strip_json_object(out))
     except Exception:
-        return None
+        return fallback
 
 
 def generate_assistant_reply(
