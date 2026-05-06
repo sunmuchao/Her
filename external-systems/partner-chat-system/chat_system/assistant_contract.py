@@ -15,6 +15,7 @@ from __future__ import annotations
 from typing import Any, Final
 
 GUIDANCE_SCHEMA_VERSION: Final[int] = 2
+TURN_EVALUATION_SCHEMA_VERSION: Final[int] = 1
 
 DEFAULT_MUTUAL_INTENT_ASSESSMENT: Final[str] = "interest_unclear"
 
@@ -94,6 +95,49 @@ TURN_EVALUATION_FIELDS: Final[tuple[str, ...]] = (
     "assistant_follow_assessment",
     "assistant_recovery_assessment",
     "assistant_mode_compliance",
+)
+
+SHARED_TURN_EVALUATION_FIELDS: Final[tuple[str, ...]] = (
+    "turn_index",
+    "speaker",
+    "stress_beat_id",
+    "stress_category",
+    "mutual_intent_assessment_gold",
+    "mutual_intent_assessment_pred",
+    "interaction_mode_gold",
+    "interaction_mode_pred",
+    "assistant_mode_compliance",
+    "need_rescue_gold",
+    "need_rescue_pred",
+    "problem_tags_gold",
+    "problem_tags_pred",
+    "strategy_tags_gold",
+    "strategy_tags_pred",
+    "used_assistant",
+    "followed_assistant",
+    "follow_level",
+    "recovery_score_1to3_turns",
+    "graceful_exit_score",
+)
+
+ROLEPLAY_TURN_EVALUATION_FIELDS: Final[tuple[str, ...]] = (
+    "schema_scope",
+    "gold_rescue",
+    "stress_beat",
+    "rescue_decision",
+    "rescue_decision_source",
+    "assistant_guidance",
+    "assistant_profile_context",
+    "assistant_mode_compliance_details",
+    "assistant_follow_assessment",
+    "assistant_recovery_assessment",
+    "generated_message",
+    "generated_message_id",
+    "generated_message_created_at",
+    "message_generation_source",
+    "message_generation_error",
+    "assistant_latency_ms",
+    "naturalness",
 )
 
 
@@ -177,6 +221,9 @@ __all__ = [
     "FOLLOW_LEVEL_STRONG",
     "FOLLOW_LEVELS",
     "GUIDANCE_SCHEMA_VERSION",
+    "ROLEPLAY_TURN_EVALUATION_FIELDS",
+    "SHARED_TURN_EVALUATION_FIELDS",
+    "TURN_EVALUATION_SCHEMA_VERSION",
     "INTERACTION_MODES",
     "INTERACTION_MODE_SET",
     "MUTUAL_INTENT_ASSESSMENTS",

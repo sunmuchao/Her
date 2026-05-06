@@ -177,7 +177,17 @@ class DyadicRoleplayRunTests(unittest.TestCase):
         self.assertEqual(out["stress_events"], [])
         self.assertIn("assistant_metrics", out)
         self.assertIn("naturalness_metrics", out)
+        self.assertEqual(out["turn_evaluation_schema_version"], 1)
+        self.assertIn("shared", out["turn_evaluation_field_groups"])
+        self.assertIn("roleplay", out["turn_evaluation_field_groups"])
         self.assertEqual(len(out["turn_evaluations"]), 3)
+        self.assertIn("shared_evaluation", out["turn_evaluations"][0])
+        self.assertIn("roleplay_evaluation", out["turn_evaluations"][0])
+        self.assertIn("turn_index", out["turn_evaluations"][0])
+        self.assertIn("interaction_mode_gold", out["turn_evaluations"][0])
+        self.assertIn("interaction_mode_pred", out["turn_evaluations"][0])
+        self.assertIn("recovery_score_1to3_turns", out["turn_evaluations"][0])
+        self.assertIn("graceful_exit_score", out["turn_evaluations"][0])
         self.assertTrue(
             all(
                 (turn.get("assistant_follow_assessment") or {}).get("level") == "not_applicable"
@@ -210,6 +220,12 @@ class DyadicRoleplayRunTests(unittest.TestCase):
         self.assertEqual(out["assistant_metrics"]["predicted_rescue_turns"], 1)
         self.assertIsNotNone(out["assistant_metrics"]["assistant_invoke_avg_ms"])
         self.assertTrue(any("assistant_latency_ms" in turn for turn in out["turn_evaluations"]))
+        invoked_turn = next(turn for turn in out["turn_evaluations"] if turn.get("assistant_invoked"))
+        self.assertEqual(invoked_turn["assistant_mode_compliance"], "compliant")
+        self.assertIn(
+            "assistant_mode_compliance_details",
+            invoked_turn["roleplay_evaluation"],
+        )
 
     def test_run_fixed_turns(self):
         def llm(messages: list[dict[str, str]]) -> str:
