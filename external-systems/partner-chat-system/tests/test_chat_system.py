@@ -352,6 +352,67 @@ class ChatSystemTests(unittest.TestCase):
         self.assertEqual(trace["guidance"]["interaction_mode"], "hold")
         self.assertEqual(trace["guidance"]["mutual_intent_assessment"], "boundary_risk")
 
+    def test_assistant_proactive_hint_coerces_misaligned_hold_guidance(self):
+        th = get_or_create_thread(
+            self.conn,
+            case_id="case-proactive-hold-coerce",
+            relation_key="r-proactive-hold-coerce",
+            participant_a_id="alice",
+            participant_b_id="bob",
+        )
+        route_decision = {
+            "need_rescue": True,
+            "situation": "boundary",
+            "problem_tags": ["boundary_risk", "sensitive_topic"],
+            "rescue_style": "graceful_exit",
+            "mutual_intent_assessment": "boundary_risk",
+            "interaction_mode": "hold",
+            "reason": "这轮已经有边界压力，不适合继续推进。",
+            "decision_source": "heuristic",
+        }
+        profile_ctx = {
+            "profile_dsn": "mysql://test",
+            "actor_profile_summary": "alice 喜欢咖啡",
+            "counterpart_profile_summary": "bob 偏慢热",
+            "profile_hooks": ["咖啡"],
+        }
+        misaligned_guidance = {
+            "mutual_intent_assessment": "interest_unclear",
+            "interaction_mode": "probe_lightly",
+            "current_problem": ["先轻轻试一下"],
+            "low_pressure_options": ["先问一个更容易回答的小问题"],
+            "topic_directions": ["周末安排"],
+            "easy_question_types": ["低门槛生活习惯问题"],
+            "strategy_tags": ["probe_lightly", "ask_easy_question"],
+            "advice": ["先轻轻试一下，不要太用力。"],
+        }
+
+        with patch(
+            "chat_system.service.generate_assistant_guidance",
+            return_value=misaligned_guidance,
+        ), patch(
+            "chat_system.service._assistant_profile_context",
+            return_value=profile_ctx,
+        ):
+            out = assistant_proactive_hint(
+                self.conn,
+                th["thread_id"],
+                "alice",
+                route_decision=route_decision,
+                now=datetime(2026, 5, 6, 10, 3, 0),
+            )
+
+        self.assertTrue(out["hint_posted"])
+        self.assertEqual(out["assistant_route_decision"]["interaction_mode"], "hold")
+        self.assertEqual(out["assistant_guidance"]["interaction_mode"], "hold")
+        self.assertEqual(out["assistant_guidance"]["mutual_intent_assessment"], "boundary_risk")
+        self.assertEqual(out["assistant_guidance"]["low_pressure_options"], [])
+        self.assertEqual(out["assistant_guidance"]["topic_directions"], [])
+        self.assertEqual(out["assistant_guidance"]["easy_question_types"], [])
+        self.assertIn("先收住", out["body"])
+        self.assertNotIn("低压试探", out["body"])
+        self.assertNotIn("周末安排", out["body"])
+
     def test_assistant_query_is_not_blocked_by_proactive_hint_state(self):
         th = get_or_create_thread(
             self.conn,

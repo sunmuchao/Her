@@ -24,6 +24,7 @@ from observability import (
 )
 
 from .assistant_llm import (
+    align_guidance_to_route_decision,
     build_dyadic_context_for_assistant,
     build_placeholder_assistant_guidance,
     generate_assistant_guidance,
@@ -419,6 +420,12 @@ def _assistant_draft_core(
         preferred_mutual_intent_assessment=str(route_decision.get("mutual_intent_assessment") or ""),
         preferred_interaction_mode=str(route_decision.get("interaction_mode") or ""),
     ) or placeholder
+    guidance = align_guidance_to_route_decision(
+        guidance,
+        profile_hooks=list(profile_ctx.get("profile_hooks") or []),
+        preferred_mutual_intent_assessment=str(route_decision.get("mutual_intent_assessment") or ""),
+        preferred_interaction_mode=str(route_decision.get("interaction_mode") or ""),
+    )
     guidance = normalize_assistant_guidance(guidance)
     guidance_latency_ms = _elapsed_ms(guidance_started_at)
     body = render_assistant_guidance(guidance)

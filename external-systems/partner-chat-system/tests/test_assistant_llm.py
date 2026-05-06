@@ -153,6 +153,35 @@ class AssistantLLMTests(unittest.TestCase):
         self.assertTrue(any("收住" in item or "止损" in item for item in guidance["advice"]))
         self.assertTrue(any("敏感点" in item or "推进" in item for item in guidance["rescue_flow"]))
 
+    def test_generate_assistant_guidance_coerces_probe_output_back_to_hold(self):
+        os.environ["OPENAI_API_KEY"] = "test-key"
+        _FakeOpenAIClient.response_content = (
+            '{"mutual_intent_assessment":"interest_unclear","interaction_mode":"probe_lightly",'
+            '"current_problem":["先轻轻试一下"],'
+            '"low_pressure_options":["问一个容易回答的小问题"],'
+            '"topic_directions":["周末安排"],'
+            '"easy_question_types":["低门槛生活习惯问题"],'
+            '"strategy_tags":["probe_lightly","ask_easy_question"]}'
+        )
+        fake_module = SimpleNamespace(OpenAI=_FakeOpenAIClient)
+
+        with patch.dict(sys.modules, {"openai": fake_module}):
+            guidance = generate_assistant_guidance(
+                user_query="现在该怎么处理？",
+                thread_context="a: 你照片是本人吧？别差距太大。\nb: 是本人。怎么，怕见光死？",
+                preferred_mutual_intent_assessment="boundary_risk",
+                preferred_interaction_mode="hold",
+            )
+
+        assert guidance is not None
+        self.assertEqual(guidance["mutual_intent_assessment"], "boundary_risk")
+        self.assertEqual(guidance["interaction_mode"], "hold")
+        self.assertEqual(guidance["low_pressure_options"], [])
+        self.assertEqual(guidance["topic_directions"], [])
+        self.assertEqual(guidance["easy_question_types"], [])
+        self.assertEqual(guidance["strategy_tags"], ["graceful_exit", "deescalate", "set_boundary"])
+        self.assertTrue(any("收住" in item or "止损" in item for item in guidance["advice"]))
+
     def test_generate_assistant_guidance_normalizes_model_schema_gaps(self):
         os.environ["OPENAI_API_KEY"] = "test-key"
         _FakeOpenAIClient.response_content = (
