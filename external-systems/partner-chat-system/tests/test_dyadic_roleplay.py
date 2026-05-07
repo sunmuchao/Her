@@ -96,7 +96,7 @@ class DyadicRoleplayUtilTests(unittest.TestCase):
         self.assertEqual(out["evidence"]["avoid_violations"], [])
         self.assertFalse(out["overpush_risk"]["flag"])
 
-    def test_assistant_follow_assessment_flags_hold_mode_overpush(self):
+    def test_assistant_follow_assessment_ignores_non_repair_guidance(self):
         out = _assistant_follow_assessment(
             "那你收入大概多少呀？方便发张照片吗？",
             {
@@ -110,10 +110,10 @@ class DyadicRoleplayUtilTests(unittest.TestCase):
             assistant_invoked=True,
         )
 
-        self.assertEqual(out["level"], "none")
-        self.assertIn("sensitive_topic_reentry", out["evidence"]["avoid_violations"])
-        self.assertIn("continued_pushing_in_hold_mode", out["evidence"]["avoid_violations"])
-        self.assertTrue(out["overpush_risk"]["flag"])
+        self.assertEqual(out["level"], "not_applicable")
+        self.assertIn("non_repair_guidance_out_of_scope", out["signals"])
+        self.assertEqual(out["evidence"], {})
+        self.assertIsNone(out["overpush_risk"])
 
     def test_assistant_recovery_assessment_uses_three_turn_window(self):
         out = _assistant_recovery_assessment(
@@ -141,7 +141,7 @@ class DyadicRoleplayUtilTests(unittest.TestCase):
         self.assertIn("counterpart_kept_conversation_going", out["signals"])
         self.assertIn("new_topic_got_engagement", out["signals"])
 
-    def test_assistant_recovery_assessment_can_clarify_low_interest(self):
+    def test_assistant_recovery_assessment_ignores_non_repair_guidance(self):
         out = _assistant_recovery_assessment(
             {
                 "speaker": "pa",
@@ -157,19 +157,18 @@ class DyadicRoleplayUtilTests(unittest.TestCase):
             ],
         )
 
-        self.assertEqual(out["label"], "clarified_low_interest")
+        self.assertEqual(out["label"], "not_applicable")
         self.assertEqual(out["score"], 0)
-        self.assertIn("probe_confirmed_counterpart_still_low_energy", out["signals"])
+        self.assertIn("non_repair_guidance_out_of_scope", out["signals"])
 
     def test_graceful_exit_score_does_not_reward_boundary_reentry(self):
-        self.assertEqual(
+        self.assertIsNone(
             _graceful_exit_score(
                 {
                     "interaction_mode": "hold",
                     "generated_message": "那先这样吧，方便发张照片吗？",
                 }
-            ),
-            0,
+            )
         )
 
     def test_persona_prompt_contains_naturalness_anti_examples(self):
@@ -255,12 +254,22 @@ class DyadicRoleplayRunTests(unittest.TestCase):
                         {
                             "need_rescue": True,
                             "situation": "cold",
+                            "mutual_intent_assessment": "communication_problem",
+                            "interaction_mode": "repair",
+                            "rescue_style": "switch_topic",
                             "reason": "测试触发救场",
                         },
                         ensure_ascii=False,
                     )
                 return json.dumps(
-                    {"need_rescue": False, "situation": "none", "reason": "流畅"},
+                    {
+                        "need_rescue": False,
+                        "situation": "none",
+                        "mutual_intent_assessment": "normal",
+                        "interaction_mode": "none",
+                        "rescue_style": "none",
+                        "reason": "流畅",
+                    },
                     ensure_ascii=False,
                 )
             if "请写出下一条" in user_c:
@@ -297,20 +306,21 @@ class DyadicRoleplayRunTests(unittest.TestCase):
 
     def test_run_proactive_no_rescue(self):
         llm, orch = self._mock_llm(rescue_on_first=False)
-        out = run_dyadic_roleplay(
-            self.conn,
-            case_id="test-dyadic-rp-pro",
-            relation_key="pa|pb",
-            participant_a_id="pa",
-            participant_b_id="pb",
-            brief_a="A",
-            brief_b="B",
-            rounds=3,
-            llm=llm,
-            assistant_mode="proactive",
-            base_time=datetime(2026, 5, 4, 9, 0, 0),
-            stress_mode="none",
-        )
+        with patch("chat_system.dyadic_roleplay.fast_mode_route", return_value=None):
+            out = run_dyadic_roleplay(
+                self.conn,
+                case_id="test-dyadic-rp-pro",
+                relation_key="pa|pb",
+                participant_a_id="pa",
+                participant_b_id="pb",
+                brief_a="A",
+                brief_b="B",
+                rounds=3,
+                llm=llm,
+                assistant_mode="proactive",
+                base_time=datetime(2026, 5, 4, 9, 0, 0),
+                stress_mode="none",
+            )
         self.assertEqual(len(out["proactive_rescue_events"]), 0)
         self.assertGreater(orch["n"], 0)
         self.assertTrue(out["evaluation"]["pa"]["conversation_satisfied"])
@@ -344,30 +354,31 @@ class DyadicRoleplayRunTests(unittest.TestCase):
 
     def test_run_proactive_rescue_triggers_assistant(self):
         llm, _orch = self._mock_llm(rescue_on_first=True)
-        out = run_dyadic_roleplay(
-            self.conn,
-            case_id="test-dyadic-rp-rescue",
-            relation_key="pa|pb",
-            participant_a_id="pa",
-            participant_b_id="pb",
-            brief_a="A",
-            brief_b="B",
-            rounds=2,
-            llm=llm,
-            assistant_mode="proactive",
-            base_time=datetime(2026, 5, 4, 9, 0, 0),
-            stress_mode="none",
-        )
+        with patch("chat_system.dyadic_roleplay.fast_mode_route", return_value=None):
+            out = run_dyadic_roleplay(
+                self.conn,
+                case_id="test-dyadic-rp-rescue",
+                relation_key="pa|pb",
+                participant_a_id="pa",
+                participant_b_id="pb",
+                brief_a="A",
+                brief_b="B",
+                rounds=2,
+                llm=llm,
+                assistant_mode="proactive",
+                base_time=datetime(2026, 5, 4, 9, 0, 0),
+                stress_mode="none",
+            )
         self.assertEqual(len(out["proactive_rescue_events"]), 1)
         from chat_system.service import list_messages
 
-        msgs_b = list_messages(self.conn, out["thread_id"], "pb", limit=50)
-        authors_sources = [(m["author_id"], m["source"]) for m in msgs_b]
+        invoked_turn = next(turn for turn in out["turn_evaluations"] if turn.get("assistant_invoked"))
+        owner_msgs = list_messages(self.conn, out["thread_id"], invoked_turn["speaker"], limit=50)
+        authors_sources = [(m["author_id"], m["source"]) for m in owner_msgs]
         self.assertTrue(any(a == "assistant" for a, _ in authors_sources))
         self.assertEqual(out["assistant_metrics"]["predicted_rescue_turns"], 1)
         self.assertIsNotNone(out["assistant_metrics"]["assistant_invoke_avg_ms"])
         self.assertTrue(any("assistant_latency_ms" in turn for turn in out["turn_evaluations"]))
-        invoked_turn = next(turn for turn in out["turn_evaluations"] if turn.get("assistant_invoked"))
         self.assertEqual(invoked_turn["assistant_mode_compliance"], "compliant")
         self.assertIn(
             "assistant_mode_compliance_details",
@@ -428,12 +439,12 @@ class DyadicRoleplayRunTests(unittest.TestCase):
             },
             {
                 "need_rescue": False,
-                "situation": "boundary",
-                "problem_tags": ["boundary_risk"],
-                "mutual_intent_assessment": "boundary_risk",
-                "interaction_mode": "hold",
-                "rescue_style": "graceful_exit",
-                "reason": "该收住了",
+                "situation": "none",
+                "problem_tags": [],
+                "mutual_intent_assessment": "normal",
+                "interaction_mode": "none",
+                "rescue_style": "none",
+                "reason": "不属于回温助手职责",
                 "decision_source": "heuristic_test",
             },
             {
@@ -447,30 +458,18 @@ class DyadicRoleplayRunTests(unittest.TestCase):
                 "decision_source": "heuristic_test",
             },
             {
-                "need_rescue": False,
-                "situation": "boundary",
-                "problem_tags": ["boundary_risk"],
-                "mutual_intent_assessment": "boundary_risk",
-                "interaction_mode": "hold",
-                "rescue_style": "graceful_exit",
-                "reason": "还是该收住",
+                "need_rescue": True,
+                "situation": "stuck",
+                "problem_tags": ["topic_dead_end"],
+                "mutual_intent_assessment": "communication_problem",
+                "interaction_mode": "repair",
+                "rescue_style": "switch_topic",
+                "reason": "最后一轮又卡住了",
                 "decision_source": "heuristic_test",
             },
         ]
 
         def guidance_for_query(*args, **kwargs):
-            user_query = str(kwargs.get("user_query") or "")
-            if "该收住了" in user_query:
-                return {
-                    "mutual_intent_assessment": "boundary_risk",
-                    "interaction_mode": "hold",
-                    "current_problem": ["这轮已经碰到边界，不适合继续往前推。"],
-                    "problem_tags": ["boundary_risk"],
-                    "why_not_to_push": ["继续推进只会更僵。"],
-                    "avoid": ["不要继续追问敏感信息。"],
-                    "graceful_exit_plan": ["轻轻收住，别再加码。"],
-                    "strategy_tags": ["graceful_exit"],
-                }
             return {
                 "mutual_intent_assessment": "communication_problem",
                 "interaction_mode": "repair",
@@ -513,28 +512,49 @@ class DyadicRoleplayRunTests(unittest.TestCase):
         self.assertFalse(third_turn["hint_posted"])
         self.assertEqual(third_turn["suppression_reason"], "cooldown_active")
 
-        fourth_turn = out["turn_evaluations"][3]
-        self.assertTrue(fourth_turn["hint_posted"])
-        self.assertEqual(fourth_turn["hint_trigger_event"]["mode_after"], "hold")
-
         sixth_turn = out["turn_evaluations"][5]
-        self.assertFalse(sixth_turn["hint_posted"])
-        self.assertEqual(sixth_turn["hint_trigger_event"]["mode_after"], "hold")
-        self.assertIn(sixth_turn["suppression_reason"], {"cooldown_active", "hold_no_new_risk"})
+        self.assertTrue(sixth_turn["hint_posted"])
+        self.assertEqual(sixth_turn["hint_trigger_event"]["mode_after"], "repair")
+        self.assertIsNone(sixth_turn["suppression_reason"])
 
         metrics = out["assistant_metrics"]
         self.assertEqual(metrics["hint_candidate_turns"], 6)
         self.assertEqual(metrics["hint_posted_turns"], 2)
         self.assertEqual(metrics["mode_change_hint_turns"], 2)
-        self.assertEqual(metrics["duplicate_suppressed_turns"], 2)
+        self.assertEqual(metrics["duplicate_suppressed_turns"], 1)
         self.assertGreater(metrics["hint_trigger_rate"], 0)
         self.assertGreater(metrics["duplicate_hint_rate"], 0)
         self.assertGreater(metrics["mode_change_hint_rate"], 0)
-        self.assertEqual(metrics["hold_repeat_hint_rate"], 0.0)
+        self.assertEqual(metrics["repair_intervention_turns"], 2)
         self.assertIn("visible_text_view", metrics)
         self.assertIn("stress_beat_view", metrics)
 
     def test_roleplay_mode_alignment_experiment_switches_prompt_and_metrics(self):
+        repair_hint = {
+            "message_id": "asst-repair-alignment",
+            "assistant_guidance": {
+                "mutual_intent_assessment": "communication_problem",
+                "interaction_mode": "repair",
+                "current_problem": ["这轮接话卡住了。"],
+                "advice": ["先接住，再换轻一点的话题。"],
+                "avoid": ["不要继续追着旧话题硬问。"],
+                "topic_directions": ["周末安排"],
+                "easy_question_types": ["低门槛生活问题"],
+                "rescue_flow": ["先接住", "再换题", "最后轻问一句"],
+                "strategy_tags": ["switch_topic", "ask_easy_question"],
+            },
+            "assistant_profile_context": {},
+            "assistant_route_decision": {
+                "need_rescue": True,
+                "mutual_intent_assessment": "communication_problem",
+                "interaction_mode": "repair",
+                "rescue_style": "switch_topic",
+                "problem_tags": ["topic_dead_end"],
+                "reason": "测试 repair 模式提示",
+                "decision_source": "test_fixed_turn",
+            },
+        }
+
         def build_llm(prompts: list[str]):
             def llm(messages: list[dict[str, str]]) -> str:
                 sys_c = messages[0]["content"]
@@ -562,40 +582,42 @@ class DyadicRoleplayRunTests(unittest.TestCase):
             return llm
 
         prompts_off: list[str] = []
-        out_off = run_dyadic_roleplay(
-            self.conn,
-            case_id="test-dyadic-mode-align-off",
-            relation_key="pa|pb",
-            participant_a_id="pa",
-            participant_b_id="pb",
-            brief_a="A",
-            brief_b="B",
-            rounds=1,
-            llm=build_llm(prompts_off),
-            assistant_mode="fixed_turns",
-            fixed_assistant_turns=[0],
-            base_time=datetime(2026, 5, 4, 9, 0, 0),
-            stress_mode="none",
-            simulate_reply_reads_interaction_mode=False,
-        )
+        with patch("chat_system.dyadic_roleplay.assistant_query", return_value=repair_hint):
+            out_off = run_dyadic_roleplay(
+                self.conn,
+                case_id="test-dyadic-mode-align-off",
+                relation_key="pa|pb",
+                participant_a_id="pa",
+                participant_b_id="pb",
+                brief_a="A",
+                brief_b="B",
+                rounds=1,
+                llm=build_llm(prompts_off),
+                assistant_mode="fixed_turns",
+                fixed_assistant_turns=[0],
+                base_time=datetime(2026, 5, 4, 9, 0, 0),
+                stress_mode="none",
+                simulate_reply_reads_interaction_mode=False,
+            )
 
         prompts_on: list[str] = []
-        out_on = run_dyadic_roleplay(
-            self.conn,
-            case_id="test-dyadic-mode-align-on",
-            relation_key="pa|pb",
-            participant_a_id="pa",
-            participant_b_id="pb",
-            brief_a="A",
-            brief_b="B",
-            rounds=1,
-            llm=build_llm(prompts_on),
-            assistant_mode="fixed_turns",
-            fixed_assistant_turns=[0],
-            base_time=datetime(2026, 5, 4, 9, 0, 0),
-            stress_mode="none",
-            simulate_reply_reads_interaction_mode=True,
-        )
+        with patch("chat_system.dyadic_roleplay.assistant_query", return_value=repair_hint):
+            out_on = run_dyadic_roleplay(
+                self.conn,
+                case_id="test-dyadic-mode-align-on",
+                relation_key="pa|pb",
+                participant_a_id="pa",
+                participant_b_id="pb",
+                brief_a="A",
+                brief_b="B",
+                rounds=1,
+                llm=build_llm(prompts_on),
+                assistant_mode="fixed_turns",
+                fixed_assistant_turns=[0],
+                base_time=datetime(2026, 5, 4, 9, 0, 0),
+                stress_mode="none",
+                simulate_reply_reads_interaction_mode=True,
+            )
 
         self.assertEqual(len(prompts_off), 1)
         self.assertNotIn("【仅用于离线 roleplay 评测的额外模式提示】", prompts_off[0])
@@ -651,14 +673,17 @@ class DyadicRoleplayRunTests(unittest.TestCase):
         with patch(
             "chat_system.dyadic_roleplay.assistant_query",
             return_value={
-                "message_id": "asst-hold-guided",
+                "message_id": "asst-repair-guided",
                 "assistant_guidance": {
-                    "mutual_intent_assessment": "boundary_risk",
-                    "interaction_mode": "hold",
-                    "current_problem": ["这轮已经碰到边界，不适合继续推进。"],
-                    "advice": ["这轮先收住，别再往前顶。"],
-                    "avoid": ["不要继续追问敏感信息。"],
-                    "strategy_tags": ["graceful_exit"],
+                    "mutual_intent_assessment": "communication_problem",
+                    "interaction_mode": "repair",
+                    "current_problem": ["这轮接话卡住了。"],
+                    "advice": ["先接住，再换轻一点的话题。"],
+                    "avoid": ["不要继续追着旧话题硬问。"],
+                    "topic_directions": ["周末安排"],
+                    "easy_question_types": ["低门槛生活问题"],
+                    "rescue_flow": ["先接住", "再换题", "最后轻问一句"],
+                    "strategy_tags": ["switch_topic", "ask_easy_question"],
                 },
                 "assistant_profile_context": {},
             },
@@ -686,12 +711,12 @@ class DyadicRoleplayRunTests(unittest.TestCase):
         self.assertIn("实验模式：controlled", prompts[0])
         self.assertIn("如果 assistant 给了方向", prompts[0])
 
-    def test_hold_fallback_stays_in_stoploss_lane(self):
+    def test_fixed_turn_non_repair_guidance_is_scoped_out(self):
         def llm(messages: list[dict[str, str]]) -> str:
             sys_c = messages[0]["content"]
             user_c = messages[-1]["content"]
             if "请写出下一条" in user_c:
-                raise TimeoutError("message timeout")
+                return "感觉今天有点卡。"
             if "附加任务" in sys_c and "请输出 JSON" in user_c:
                 return json.dumps(
                     {
@@ -710,7 +735,7 @@ class DyadicRoleplayRunTests(unittest.TestCase):
         with patch(
             "chat_system.dyadic_roleplay.assistant_query",
             return_value={
-                "message_id": "asst-hold-timeout",
+                "message_id": "asst-old-hold-guidance",
                 "assistant_guidance": {
                     "mutual_intent_assessment": "boundary_risk",
                     "interaction_mode": "hold",
@@ -724,7 +749,7 @@ class DyadicRoleplayRunTests(unittest.TestCase):
         ):
             out = run_dyadic_roleplay(
                 self.conn,
-                case_id="test-dyadic-hold-fallback-stoploss",
+                case_id="test-dyadic-old-hold-guidance-scoped-out",
                 relation_key="pa|pb",
                 participant_a_id="pa",
                 participant_b_id="pb",
@@ -738,11 +763,12 @@ class DyadicRoleplayRunTests(unittest.TestCase):
                 stress_mode="none",
             )
 
-        message = out["turn_evaluations"][0]["generated_message"]
-        self.assertEqual(out["turn_evaluations"][0]["message_generation_source"], "fallback")
-        self.assertIn("先这样", message)
-        self.assertNotIn("周末", message)
-        self.assertEqual(out["assistant_metrics"]["message_generation_timeout_turns"], 1)
+        turn = out["turn_evaluations"][0]
+        self.assertEqual(turn["interaction_mode"], "none")
+        self.assertEqual(turn["mutual_intent_assessment"], "normal")
+        self.assertEqual(turn["assistant_mode_compliance"], "drifted")
+        self.assertEqual((turn["assistant_follow_assessment"] or {}).get("level"), "not_applicable")
+        self.assertEqual(out["assistant_metrics"]["recoverable_intervention_turns"], 0)
 
     def test_stress_manifestation_and_speaker_state_are_recorded(self):
         def llm(messages: list[dict[str, str]]) -> str:
@@ -898,19 +924,18 @@ class DyadicRoleplayRunTests(unittest.TestCase):
             stress_mode="none",
         )
         self.assertEqual(calls["orchestrator"], 0)
-        self.assertEqual(len(out["proactive_rescue_events"]), 1)
-        self.assertEqual(out["turn_evaluations"][1]["rescue_decision_source"], "heuristic")
-        self.assertEqual(out["turn_evaluations"][1]["interaction_mode"], "probe_lightly")
-        self.assertEqual(out["turn_evaluations"][1]["mutual_intent_assessment"], "interest_unclear")
-        self.assertIn("closed_reply", (out["turn_evaluations"][1]["rescue_decision"] or {}).get("problem_tags", []))
+        self.assertEqual(len(out["proactive_rescue_events"]), 0)
+        self.assertEqual(out["turn_evaluations"][1]["rescue_decision_source"], "heuristic_scope_filter")
+        self.assertEqual(out["turn_evaluations"][1]["interaction_mode"], "none")
+        self.assertEqual(out["turn_evaluations"][1]["mutual_intent_assessment"], "normal")
         self.assertEqual(out["assistant_metrics"]["heuristic_decision_turns"], 2)
         self.assertEqual(out["assistant_metrics"]["llm_decision_turns"], 0)
-        self.assertEqual(out["assistant_metrics"]["probe_intervention_turns"], 1)
+        self.assertEqual(out["assistant_metrics"]["repair_intervention_turns"], 0)
         self.assertIn("follow_evidence", out["turn_evaluations"][1]["roleplay_evaluation"])
         self.assertIn("overpush_risk", out["turn_evaluations"][1]["roleplay_evaluation"])
-        self.assertIn(out["turn_evaluations"][1]["follow_level"], {"partial", "strong"})
-        self.assertEqual(out["assistant_metrics"]["followed_intervention_turns"], 1)
-        self.assertEqual(out["assistant_metrics"]["follow_rate"], 1.0)
+        self.assertIsNone(out["turn_evaluations"][1]["follow_level"])
+        self.assertEqual(out["assistant_metrics"]["followed_intervention_turns"], 0)
+        self.assertEqual(out["assistant_metrics"]["follow_rate"], None)
         self.assertEqual(out["assistant_metrics"]["avoid_violation_turns"], 0)
 
     def test_heuristic_repair_after_prior_mutual_engagement(self):
@@ -1017,7 +1042,7 @@ class DyadicRoleplayRunTests(unittest.TestCase):
         )
         self.assertEqual(out["assistant_metrics"]["repair_intervention_turns"], 1)
 
-    def test_heuristic_hold_avoids_overpushing_repeated_low_interest(self):
+    def test_heuristic_skips_repeated_low_interest_out_of_scope(self):
         calls = {"orchestrator": 0, "message": 0}
 
         def llm(messages: list[dict[str, str]]) -> str:
@@ -1045,7 +1070,7 @@ class DyadicRoleplayRunTests(unittest.TestCase):
 
         out = run_dyadic_roleplay(
             self.conn,
-            case_id="test-dyadic-heuristic-hold",
+            case_id="test-dyadic-heuristic-low-interest-scope-filter",
             relation_key="pa|pb",
             participant_a_id="pa",
             participant_b_id="pb",
@@ -1058,13 +1083,10 @@ class DyadicRoleplayRunTests(unittest.TestCase):
             stress_mode="none",
         )
         self.assertEqual(calls["orchestrator"], 0)
-        self.assertTrue(out["turn_evaluations"][4]["assistant_invoked"])
-        self.assertTrue(out["turn_evaluations"][4]["hint_posted"])
-        self.assertEqual(out["turn_evaluations"][4]["trigger_type"], "mode_change")
-        self.assertEqual(out["turn_evaluations"][4]["interaction_mode"], "hold")
-        self.assertEqual(out["turn_evaluations"][4]["mutual_intent_assessment"], "interest_low")
-        self.assertIn("disengaged", (out["turn_evaluations"][4]["rescue_decision"] or {}).get("problem_tags", []))
-        self.assertEqual(out["assistant_metrics"]["hold_decision_turns"], 1)
+        self.assertFalse(out["turn_evaluations"][4]["assistant_invoked"])
+        self.assertEqual(out["turn_evaluations"][4]["interaction_mode"], "none")
+        self.assertEqual(out["turn_evaluations"][4]["mutual_intent_assessment"], "normal")
+        self.assertEqual(out["assistant_metrics"]["repair_intervention_turns"], 1)
         self.assertEqual(out["assistant_metrics"]["overpush_risk_turns"], 0)
 
     def test_run_survives_message_timeout_with_fallback(self):
@@ -1134,14 +1156,14 @@ class DyadicRoleplayRunTests(unittest.TestCase):
         self.assertIn("analytic_phrase:我理解你的意思是", flagged[0]["flags"])
         self.assertLessEqual((out["turn_evaluations"][0]["naturalness"] or {}).get("score") or 5, 2)
 
-    def test_fixed_turn_hold_tracks_graceful_exit_and_overpush_separately(self):
+    def test_fixed_turn_old_hold_guidance_becomes_none_mode(self):
         def llm(messages: list[dict[str, str]]) -> str:
             sys_c = messages[0]["content"]
             user_c = messages[-1]["content"]
             if "对话调度员" in sys_c:
                 return "{}"
             if "请写出下一条" in user_c:
-                return "感觉今天节奏有点慢，那先这样，改天有空再聊。"
+                return "感觉今天节奏有点慢。"
             if "附加任务" in sys_c and "「pa」" in sys_c:
                 return '{"conversation_satisfied":true,"conversation_score":3,"assistant_satisfied":true,"assistant_score":4,"used_assistant":true,"conversation_note":"","assistant_note":""}'
             if "附加任务" in sys_c:
@@ -1178,15 +1200,12 @@ class DyadicRoleplayRunTests(unittest.TestCase):
                 base_time=datetime(2026, 5, 4, 9, 0, 0),
                 stress_mode="none",
             )
-
-        self.assertEqual(out["assistant_metrics"]["hold_decision_turns"], 1)
-        self.assertEqual(out["assistant_metrics"]["overpush_risk_turns"], 0)
-        self.assertEqual(out["assistant_metrics"]["graceful_exit_turns"], 1)
-        self.assertEqual(out["assistant_metrics"]["graceful_exit_rate"], 1.0)
-        self.assertEqual(out["turn_evaluations"][0]["graceful_exit_score"], 2)
+        self.assertEqual(out["turn_evaluations"][0]["interaction_mode"], "none")
+        self.assertEqual(out["turn_evaluations"][0]["assistant_mode_compliance"], "drifted")
+        self.assertIsNone(out["turn_evaluations"][0]["graceful_exit_score"])
         self.assertEqual(out["assistant_metrics"]["recoverable_intervention_turns"], 0)
 
-    def test_fixed_turn_hold_counts_actual_overpush_turns(self):
+    def test_fixed_turn_old_hold_guidance_still_marks_no_repair_follow(self):
         def llm(messages: list[dict[str, str]]) -> str:
             sys_c = messages[0]["content"]
             user_c = messages[-1]["content"]
@@ -1231,12 +1250,10 @@ class DyadicRoleplayRunTests(unittest.TestCase):
                 stress_mode="none",
             )
 
-        self.assertEqual(out["assistant_metrics"]["hold_decision_turns"], 1)
-        self.assertEqual(out["assistant_metrics"]["overpush_risk_turns"], 1)
-        self.assertEqual(out["assistant_metrics"]["graceful_exit_turns"], 0)
-        self.assertEqual(out["assistant_metrics"]["graceful_exit_rate"], 0.0)
-        self.assertEqual(out["turn_evaluations"][0]["graceful_exit_score"], 0)
-        self.assertTrue(out["turn_evaluations"][0]["overpush_risk"]["flag"])
+        self.assertEqual(out["turn_evaluations"][0]["interaction_mode"], "none")
+        self.assertEqual((out["turn_evaluations"][0]["assistant_follow_assessment"] or {}).get("level"), "not_applicable")
+        self.assertEqual(out["assistant_metrics"]["overpush_risk_turns"], 0)
+        self.assertIsNone(out["turn_evaluations"][0]["overpush_risk"])
 
     def test_orchestrator_timeout_falls_back_without_aborting(self):
         calls = {"message": 0}
@@ -1257,22 +1274,23 @@ class DyadicRoleplayRunTests(unittest.TestCase):
                 return '{"conversation_satisfied":true,"conversation_score":3,"assistant_satisfied":true,"assistant_score":3,"used_assistant":false,"conversation_note":"","assistant_note":""}'
             return "{}"
 
-        out = run_dyadic_roleplay(
-            self.conn,
-            case_id="test-dyadic-fallback-orchestrator",
-            relation_key="pa|pb",
-            participant_a_id="pa",
-            participant_b_id="pb",
-            brief_a="A",
-            brief_b="B",
-            rounds=2,
-            llm=llm,
-            assistant_mode="proactive",
-            base_time=datetime(2026, 5, 4, 9, 0, 0),
-            stress_mode="none",
+        with patch("chat_system.dyadic_roleplay.fast_mode_route", return_value=None):
+            out = run_dyadic_roleplay(
+                self.conn,
+                case_id="test-dyadic-fallback-orchestrator",
+                relation_key="pa|pb",
+                participant_a_id="pa",
+                participant_b_id="pb",
+                brief_a="A",
+                brief_b="B",
+                rounds=2,
+                llm=llm,
+                assistant_mode="proactive",
+                base_time=datetime(2026, 5, 4, 9, 0, 0),
+                stress_mode="none",
         )
         self.assertEqual(out["turn_evaluations"][1]["rescue_decision_source"], "llm_error_fallback")
-        self.assertEqual(out["assistant_metrics"]["llm_error_fallback_turns"], 1)
+        self.assertEqual(out["assistant_metrics"]["llm_error_fallback_turns"], 2)
 
     def test_run_rejects_existing_case_by_default(self):
         llm, _orch = self._mock_llm(rescue_on_first=False)
