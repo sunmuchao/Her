@@ -244,7 +244,7 @@ def _call_legacy_like_guidance() -> dict[str, Any]:
         or "gpt-4o-mini"
     ).strip()
     base = (os.environ.get("HER_CHAT_ASSISTANT_BASE_URL") or os.environ.get("OPENAI_BASE_URL") or "").strip()
-    timeout_sec = max(10.0, min(_env_float("HER_CHAT_ASSISTANT_TIMEOUT_SEC", 40.0), 120.0))
+    timeout_sec = max(10.0, min(_env_float("HER_CHAT_ASSISTANT_TIMEOUT_SEC", 60.0), 180.0))
     prompt = _legacy_prompt_snapshot()
     client = _openai_client_cached(key, base, round(timeout_sec, 2))
     response = client.chat.completions.create(

@@ -145,6 +145,10 @@ def _assistant_trace_payload(
     }
 
 
+def _assistant_guidance_timed_out(guidance: dict[str, Any] | None) -> bool:
+    return str(((guidance or {}).get("guidance_source")) or "").strip() == "timeout_hidden"
+
+
 def get_or_create_thread(
     conn,
     *,
@@ -473,18 +477,27 @@ def _assistant_draft_core(
         state_trend=str(route_decision.get("state_trend") or ""),
         hint_trigger_type=str((hint_event or {}).get("trigger_type") or ""),
     ) or placeholder
-    guidance = align_guidance_to_route_decision(
-        guidance,
-        profile_hooks=list(profile_ctx.get("profile_hooks") or []),
-        preferred_mutual_intent_assessment=str(route_decision.get("mutual_intent_assessment") or ""),
-        preferred_interaction_mode=str(route_decision.get("interaction_mode") or ""),
-        risk_axis=str(route_decision.get("risk_axis") or ""),
-        hold_subtype=str(route_decision.get("hold_subtype") or ""),
-        route_reason=str(route_decision.get("reason") or ""),
-    )
-    guidance = normalize_assistant_guidance(guidance)
+    guidance_timed_out = _assistant_guidance_timed_out(guidance)
+    if guidance_timed_out:
+        guidance = normalize_assistant_guidance(
+            {
+                **placeholder,
+                **dict(guidance or {}),
+                "guidance_source": "timeout_hidden",
+            }
+        )
+    else:
+        guidance = align_guidance_to_route_decision(
+            guidance,
+            profile_hooks=list(profile_ctx.get("profile_hooks") or []),
+            preferred_mutual_intent_assessment=str(route_decision.get("mutual_intent_assessment") or ""),
+            preferred_interaction_mode=str(route_decision.get("interaction_mode") or ""),
+            risk_axis=str(route_decision.get("risk_axis") or ""),
+            hold_subtype=str(route_decision.get("hold_subtype") or ""),
+            route_reason=str(route_decision.get("reason") or ""),
+        )
+        guidance = normalize_assistant_guidance(guidance)
     guidance_latency_ms = _elapsed_ms(guidance_started_at)
-    body = render_assistant_guidance(guidance)
     total_latency_ms = _elapsed_ms(total_started_at)
     assistant_trace = _assistant_trace_payload(
         route_decision=route_decision,
@@ -495,6 +508,45 @@ def _assistant_draft_core(
         total_latency_ms=total_latency_ms,
         hint_event=hint_event,
     )
+    if guidance_timed_out:
+        funnel_stage(
+            system="chat",
+            stage=CHAT_FUNNEL_ASSISTANT_INVOKE,
+            trace_id=get_trace_id(),
+            case_id=str(thread["case_id"]),
+            thread_id=str(thread["thread_id"]),
+            message_id=None,
+            user_id=user_id,
+            route_latency_ms=route_latency_ms,
+            guidance_latency_ms=guidance_latency_ms,
+            assistant_latency_ms=total_latency_ms,
+            route_interaction_mode=route_decision.get("interaction_mode"),
+            guidance_interaction_mode=guidance.get("interaction_mode"),
+            assistant_hidden=True,
+            assistant_hidden_reason="guidance_timeout",
+        )
+        out = {
+            "message_id": None,
+            "thread_id": str(thread["thread_id"]),
+            "author_id": ASSISTANT_AUTHOR_ID,
+            "message_recipient_id": user_id,
+            "visibility": VIS_OWNER_ONLY,
+            "source": SRC_AGENT_DRAFT,
+            "body": None,
+            "metadata": {"assistant_trace": assistant_trace},
+            "assistant_hidden": True,
+            "assistant_hidden_reason": "guidance_timeout",
+            "assistant_guidance": guidance,
+            "assistant_profile_context": profile_ctx,
+            "assistant_route_decision": route_decision,
+            "assistant_latency_ms": total_latency_ms,
+            "assistant_latency_breakdown_ms": dict(assistant_trace["latency_ms"]),
+            "assistant_trace": assistant_trace,
+        }
+        if hint_event is not None:
+            out["assistant_hint_event"] = dict(hint_event)
+        return out
+    body = render_assistant_guidance(guidance)
     out = post_message(
         conn,
         str(thread["thread_id"]),
@@ -808,6 +860,15 @@ def assistant_proactive_hint(
         route_decision_override=resolved_route,
         hint_event=hint_event,
     )
+    if bool(out.get("assistant_hidden")):
+        hidden_event = dict(hint_event)
+        hidden_event["hint_posted"] = False
+        hidden_event["suppression_reason"] = "assistant_timeout"
+        _persist_assistant_trend_state(conn, thread, user_id, advanced_state, now=now)
+        out["hint_posted"] = False
+        out["assistant_hint_event"] = hidden_event
+        out["assistant_trend_state"] = normalize_trend_state(advanced_state)
+        return out
     _persist_assistant_trend_state(conn, thread, user_id, next_state, now=now)
     out["hint_posted"] = True
     out["assistant_hint_event"] = dict(hint_event)

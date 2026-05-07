@@ -133,6 +133,12 @@ def _env_float(name: str, default: float) -> float:
         return float(default)
 
 
+def _is_timeout_exception(exc: Exception) -> bool:
+    name = type(exc).__name__.lower()
+    text = str(exc or "").lower()
+    return "timeout" in name or "timed out" in text or "deadline exceeded" in text
+
+
 def _normalize_risk_axis(value: Any) -> str | None:
     raw = str(value or "").strip().lower()
     return raw if raw in _RISK_AXIS_LABELS else None
@@ -1236,7 +1242,7 @@ def generate_assistant_guidance(
         from openai import OpenAI  # noqa: F401
     except ImportError:
         return fallback
-    assistant_timeout_sec = max(10.0, min(_env_float("HER_CHAT_ASSISTANT_TIMEOUT_SEC", 40.0), 120.0))
+    assistant_timeout_sec = max(10.0, min(_env_float("HER_CHAT_ASSISTANT_TIMEOUT_SEC", 60.0), 180.0))
     client = _openai_client_cached(
         key,
         base,
@@ -1332,7 +1338,22 @@ def generate_assistant_guidance(
         _guidance_response_cache_put(cache_key, aligned)
         return aligned
     except Exception as e:
-        source = "fallback_timeout" if "timeout" in type(e).__name__.lower() else "fallback_exception"
+        if _is_timeout_exception(e):
+            return {
+                "guidance_source": "timeout_hidden",
+                "mutual_intent_assessment": _normalize_contract_mutual_intent_assessment(
+                    preferred_mutual_intent_assessment
+                ),
+                "interaction_mode": _normalize_contract_interaction_mode(
+                    preferred_interaction_mode,
+                    mutual_intent_assessment=_normalize_contract_mutual_intent_assessment(
+                        preferred_mutual_intent_assessment
+                    ),
+                ),
+                "risk_axis": _normalize_risk_axis(risk_axis),
+                "hold_subtype": _normalize_hold_subtype(hold_subtype),
+            }
+        source = "fallback_exception"
         return build_placeholder_assistant_guidance(
             profile_hooks=selected_hooks,
             mutual_intent_assessment=preferred_mutual_intent_assessment,
@@ -1360,6 +1381,8 @@ def generate_assistant_reply(
         profile_hooks=profile_hooks,
     )
     if guidance is None:
+        return None
+    if str((guidance or {}).get("guidance_source") or "").strip() == "timeout_hidden":
         return None
     return render_assistant_guidance(guidance)
 
