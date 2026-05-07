@@ -577,7 +577,11 @@ def _assistant_message_title(row: dict[str, Any]) -> str:
     trace = dict(((row.get("metadata") or {}).get("assistant_trace")) or {})
     guidance = dict(trace.get("guidance") or {})
     hint_event = dict(trace.get("hint_event") or {})
-    parts = ["助手建议"]
+    meta = dict(row.get("metadata") or {})
+    if str(meta.get("owner_only_kind") or "") == "assistant_hint_entry":
+        parts = ["助手建议入口"]
+    else:
+        parts = ["助手建议"]
     mode = str(guidance.get("interaction_mode") or "")
     if mode:
         parts.append(f"mode={mode}")

@@ -11,8 +11,10 @@ from .mode_router import fast_mode_route
 from .outbox_admin import list_pending_outbox
 from .service import (
     ASSISTANT_AUTHOR_ID,
+    SRC_AGENT_HINT_ENTRY,
     adopt_draft,
     assistant_mode_route,
+    assistant_open_coaching_entry,
     assistant_proactive_hint,
     assistant_query,
     current_time,
@@ -43,8 +45,10 @@ from .timeline import build_chat_timeline
 
 __all__ = [
     "ASSISTANT_AUTHOR_ID",
+    "SRC_AGENT_HINT_ENTRY",
     "adopt_draft",
     "assistant_mode_route",
+    "assistant_open_coaching_entry",
     "assistant_proactive_hint",
     "assistant_query",
     "build_thread_risk_overview",

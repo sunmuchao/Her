@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
-TREND_STATE_SCHEMA_VERSION = 2
+TREND_STATE_SCHEMA_VERSION = 3
 TREND_MODES = ("normal", "repair")
 _MODE_SET = frozenset(TREND_MODES)
+_COACHING_STAGES = frozenset({"none", "drying", "suggested", "viewed"})
 _DUPLICATE_SUPPRESSION_REASONS = frozenset(
     {
         "waiting_for_user_action",
@@ -58,6 +59,11 @@ def _irritation_level(value: Any) -> str:
 def _state_trend(value: Any) -> str:
     raw = str(value or "").strip().lower()
     return raw if raw in {"warming", "stable", "cooling", "worsening", "recovering"} else "stable"
+
+
+def _coaching_stage(value: Any) -> str:
+    raw = str(value or "").strip().lower()
+    return raw if raw in _COACHING_STAGES else "none"
 
 
 def _risk_flags(decision: dict[str, Any], current_mode: str) -> list[str]:
@@ -132,6 +138,10 @@ def normalize_trend_state(state: dict[str, Any] | None) -> dict[str, Any]:
         "last_hint_actor_turn_count": int(payload.get("last_hint_actor_turn_count") or 0),
         "current_turn_index": max(0, int(payload.get("current_turn_index") or 0)),
         "current_actor_turn_count": max(0, int(payload.get("current_actor_turn_count") or 0)),
+        "coaching_stage": _coaching_stage(payload.get("coaching_stage")),
+        "active_entry_message_id": payload.get("active_entry_message_id"),
+        "last_entry_turn": payload.get("last_entry_turn"),
+        "last_entry_opened_turn": payload.get("last_entry_opened_turn"),
     }
     if current_mode not in _MODE_SET:
         out["current_mode"] = "normal"
@@ -143,6 +153,10 @@ def normalize_trend_state(state: dict[str, Any] | None) -> dict[str, Any]:
         out["cooldown_until_turn"] = 0
         out["last_hint_actor_turn_count"] = 0
         out["has_user_acted_since_last_hint"] = False
+    if out["current_mode"] == "normal":
+        out["coaching_stage"] = "none"
+        out["active_entry_message_id"] = None
+        out["last_entry_turn"] = None
     return out
 
 
@@ -181,6 +195,15 @@ def advance_trend_state(
     last_hint_follow_level = prev.get("last_hint_follow_level")
     if has_user_acted_since_last_hint and follow_level:
         last_hint_follow_level = str(follow_level)
+    coaching_stage = str(prev.get("coaching_stage") or "none")
+    active_entry_message_id = prev.get("active_entry_message_id")
+    last_entry_turn = prev.get("last_entry_turn")
+    if current_mode == "normal":
+        coaching_stage = "none"
+        active_entry_message_id = None
+        last_entry_turn = None
+    elif coaching_stage == "none":
+        coaching_stage = "drying"
     return {
         **prev,
         "schema_version": TREND_STATE_SCHEMA_VERSION,
@@ -200,6 +223,9 @@ def advance_trend_state(
         "current_turn_index": int(turn_index),
         "current_actor_turn_count": int(actor_turn_count),
         "last_hint_follow_level": last_hint_follow_level,
+        "coaching_stage": coaching_stage,
+        "active_entry_message_id": active_entry_message_id,
+        "last_entry_turn": last_entry_turn,
     }
 
 
