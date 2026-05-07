@@ -415,6 +415,69 @@ class ChatSystemTests(unittest.TestCase):
         self.assertIsNone(trend_state["last_hint_turn"])
         self.assertIsNone(trend_state["last_hint_mode"])
 
+    def test_assistant_proactive_hint_error_is_hidden_and_does_not_advance_state(self):
+        th = get_or_create_thread(
+            self.conn,
+            case_id="case-proactive-error-hidden",
+            relation_key="r-proactive-error-hidden",
+            participant_a_id="alice",
+            participant_b_id="bob",
+        )
+        route_decision = {
+            "need_rescue": True,
+            "situation": "stuck",
+            "problem_tags": ["topic_dead_end"],
+            "rescue_style": "switch_topic",
+            "mutual_intent_assessment": "communication_problem",
+            "interaction_mode": "repair",
+            "reason": "这轮有点接不顺。",
+            "decision_source": "heuristic",
+        }
+        error_guidance = {
+            "guidance_source": "error_hidden",
+            "mutual_intent_assessment": "communication_problem",
+            "interaction_mode": "repair",
+        }
+        profile_ctx = {
+            "profile_dsn": "mysql://test",
+            "actor_profile_summary": "alice 喜欢咖啡",
+            "counterpart_profile_summary": "bob 周末爱散步",
+            "profile_hooks": ["咖啡", "周末散步"],
+        }
+
+        with patch(
+            "chat_system.service.generate_assistant_guidance",
+            return_value=error_guidance,
+        ), patch(
+            "chat_system.service._assistant_profile_context",
+            return_value=profile_ctx,
+        ):
+            out = assistant_proactive_hint(
+                self.conn,
+                th["thread_id"],
+                "alice",
+                route_decision=route_decision,
+                now=datetime(2026, 5, 6, 10, 2, 30),
+            )
+
+        self.assertFalse(out["hint_posted"])
+        self.assertTrue(out["assistant_hidden"])
+        self.assertEqual(out["assistant_hidden_reason"], "guidance_error")
+        self.assertIsNone(out["message_id"])
+        self.assertIsNone(out["body"])
+        self.assertEqual(out["assistant_hint_event"]["trigger_type"], "mode_change")
+        self.assertEqual(out["assistant_hint_event"]["suppression_reason"], "assistant_error")
+
+        alice_view = list_messages(self.conn, th["thread_id"], "alice")
+        assistant_msgs = [m for m in alice_view if m["author_id"] == ASSISTANT_AUTHOR_ID]
+        self.assertEqual(len(assistant_msgs), 0)
+
+        thread = get_thread(self.conn, th["thread_id"])
+        assert thread is not None
+        trend_state = thread["metadata"]["assistant_trend_state_by_user"]["alice"]
+        self.assertIsNone(trend_state["last_hint_turn"])
+        self.assertIsNone(trend_state["last_hint_mode"])
+
     def test_assistant_proactive_hint_coerces_misaligned_hold_guidance(self):
         th = get_or_create_thread(
             self.conn,

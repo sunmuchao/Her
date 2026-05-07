@@ -145,8 +145,11 @@ def _assistant_trace_payload(
     }
 
 
-def _assistant_guidance_timed_out(guidance: dict[str, Any] | None) -> bool:
-    return str(((guidance or {}).get("guidance_source")) or "").strip() == "timeout_hidden"
+def _assistant_guidance_hidden_source(guidance: dict[str, Any] | None) -> str | None:
+    source = str(((guidance or {}).get("guidance_source")) or "").strip()
+    if source in {"timeout_hidden", "error_hidden"}:
+        return source
+    return None
 
 
 def get_or_create_thread(
@@ -477,13 +480,13 @@ def _assistant_draft_core(
         state_trend=str(route_decision.get("state_trend") or ""),
         hint_trigger_type=str((hint_event or {}).get("trigger_type") or ""),
     ) or placeholder
-    guidance_timed_out = _assistant_guidance_timed_out(guidance)
-    if guidance_timed_out:
+    hidden_guidance_source = _assistant_guidance_hidden_source(guidance)
+    if hidden_guidance_source:
         guidance = normalize_assistant_guidance(
             {
                 **placeholder,
                 **dict(guidance or {}),
-                "guidance_source": "timeout_hidden",
+                "guidance_source": hidden_guidance_source,
             }
         )
     else:
@@ -508,7 +511,10 @@ def _assistant_draft_core(
         total_latency_ms=total_latency_ms,
         hint_event=hint_event,
     )
-    if guidance_timed_out:
+    if hidden_guidance_source:
+        hidden_reason = (
+            "guidance_timeout" if hidden_guidance_source == "timeout_hidden" else "guidance_error"
+        )
         funnel_stage(
             system="chat",
             stage=CHAT_FUNNEL_ASSISTANT_INVOKE,
@@ -523,7 +529,7 @@ def _assistant_draft_core(
             route_interaction_mode=route_decision.get("interaction_mode"),
             guidance_interaction_mode=guidance.get("interaction_mode"),
             assistant_hidden=True,
-            assistant_hidden_reason="guidance_timeout",
+            assistant_hidden_reason=hidden_reason,
         )
         out = {
             "message_id": None,
@@ -535,7 +541,7 @@ def _assistant_draft_core(
             "body": None,
             "metadata": {"assistant_trace": assistant_trace},
             "assistant_hidden": True,
-            "assistant_hidden_reason": "guidance_timeout",
+            "assistant_hidden_reason": hidden_reason,
             "assistant_guidance": guidance,
             "assistant_profile_context": profile_ctx,
             "assistant_route_decision": route_decision,
@@ -861,9 +867,12 @@ def assistant_proactive_hint(
         hint_event=hint_event,
     )
     if bool(out.get("assistant_hidden")):
+        hidden_reason = str(out.get("assistant_hidden_reason") or "").strip() or "guidance_error"
         hidden_event = dict(hint_event)
         hidden_event["hint_posted"] = False
-        hidden_event["suppression_reason"] = "assistant_timeout"
+        hidden_event["suppression_reason"] = (
+            "assistant_timeout" if hidden_reason == "guidance_timeout" else "assistant_error"
+        )
         _persist_assistant_trend_state(conn, thread, user_id, advanced_state, now=now)
         out["hint_posted"] = False
         out["assistant_hint_event"] = hidden_event

@@ -1353,16 +1353,20 @@ def generate_assistant_guidance(
                 "risk_axis": _normalize_risk_axis(risk_axis),
                 "hold_subtype": _normalize_hold_subtype(hold_subtype),
             }
-        source = "fallback_exception"
-        return build_placeholder_assistant_guidance(
-            profile_hooks=selected_hooks,
-            mutual_intent_assessment=preferred_mutual_intent_assessment,
-            interaction_mode=preferred_interaction_mode,
-            route_reason=route_reason,
-            risk_axis=risk_axis,
-            hold_subtype=hold_subtype,
-            guidance_source=source,
-        )
+        return {
+            "guidance_source": "error_hidden",
+            "mutual_intent_assessment": _normalize_contract_mutual_intent_assessment(
+                preferred_mutual_intent_assessment
+            ),
+            "interaction_mode": _normalize_contract_interaction_mode(
+                preferred_interaction_mode,
+                mutual_intent_assessment=_normalize_contract_mutual_intent_assessment(
+                    preferred_mutual_intent_assessment
+                ),
+            ),
+            "risk_axis": _normalize_risk_axis(risk_axis),
+            "hold_subtype": _normalize_hold_subtype(hold_subtype),
+        }
 
 
 def generate_assistant_reply(
