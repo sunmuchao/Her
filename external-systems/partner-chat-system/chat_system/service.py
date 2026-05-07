@@ -39,6 +39,7 @@ from .persona_jobs import maybe_enqueue_persona_sync_job
 from .profile_loader import (
     DEFAULT_PROFILE_MYSQL_DSN,
     fetch_profile_for_participant,
+    parse_profile_id_candidate,
     profile_row_to_assistant_summary,
     profile_row_to_hook_list,
 )
@@ -61,6 +62,7 @@ SRC_AGENT_SENT = "agent_sent_after_confirm"
 SRC_SYSTEM = "system"
 ASSISTANT_TRACE_SCHEMA_VERSION = 1
 _ASSISTANT_TREND_STATE_METADATA_KEY = "assistant_trend_state_by_user"
+_OWNER_ONLY_KIND_ASSISTANT_QUERY = "assistant_query"
 
 
 def current_time(now: datetime | None = None) -> datetime:
@@ -77,7 +79,10 @@ def get_thread(conn, thread_id: str) -> dict[str, Any] | None:
         (thread_id,),
     )
     row = cur.fetchone()
-    return _inflate_thread(row_to_dict(row))
+    thread = _inflate_thread(row_to_dict(row))
+    if thread is not None:
+        thread["_conn"] = conn
+    return thread
 
 
 def get_thread_by_case(conn, case_id: str) -> dict[str, Any] | None:
@@ -86,7 +91,10 @@ def get_thread_by_case(conn, case_id: str) -> dict[str, Any] | None:
         (case_id,),
     )
     row = cur.fetchone()
-    return _inflate_thread(row_to_dict(row))
+    thread = _inflate_thread(row_to_dict(row))
+    if thread is not None:
+        thread["_conn"] = conn
+    return thread
 
 
 def _inflate_thread(row: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -240,18 +248,84 @@ def _other_participant_id(thread: dict[str, Any], user_id: str) -> str:
     return str(thread["participant_a_id"])
 
 
+def _coerce_profile_id_hint(value: Any) -> int | None:
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _participant_profile_hints(thread: dict[str, Any], participant_id: str) -> dict[str, Any]:
+    metadata = dict(thread.get("metadata") or {})
+    participant = str(participant_id or "")
+    profile_id_hint = parse_profile_id_candidate(participant)
+    user_key_hint: str | None = None
+
+    refs = metadata.get("participant_profile_refs")
+    if isinstance(refs, dict):
+        ref = refs.get(participant)
+        if isinstance(ref, dict):
+            profile_id_hint = _coerce_profile_id_hint(ref.get("profile_id")) or profile_id_hint
+            user_key_hint = str(ref.get("user_key") or "").strip() or user_key_hint
+
+    profile_ids = metadata.get("participant_profile_ids")
+    if isinstance(profile_ids, dict):
+        profile_id_hint = _coerce_profile_id_hint(profile_ids.get(participant)) or profile_id_hint
+
+    user_keys = metadata.get("participant_profile_user_keys")
+    if isinstance(user_keys, dict):
+        user_key_hint = str(user_keys.get(participant) or "").strip() or user_key_hint
+
+    side = "a" if participant == str(thread.get("participant_a_id") or "") else "b"
+    profile_id_hint = _coerce_profile_id_hint(metadata.get(f"participant_{side}_profile_id")) or profile_id_hint
+    user_key_hint = str(metadata.get(f"participant_{side}_profile_user_key") or "").strip() or user_key_hint
+
+    if user_key_hint is None and participant and not participant.startswith("profile-") and not participant.isdigit():
+        user_key_hint = participant
+    return {
+        "profile_id": profile_id_hint,
+        "user_key": user_key_hint,
+    }
+
 @lru_cache(maxsize=256)
 def _assistant_profile_context_cached(
     dsn: str,
     actor_id: str,
     counterpart_id: str,
+    actor_profile_id_hint: int | None,
+    counterpart_profile_id_hint: int | None,
+    actor_user_key_hint: str | None,
+    counterpart_user_key_hint: str | None,
 ) -> tuple[str, str, tuple[str, ...]]:
-    if not str(actor_id).startswith("profile-") and not str(counterpart_id).startswith("profile-"):
+    if not any(
+        (
+            actor_id,
+            counterpart_id,
+            actor_profile_id_hint is not None,
+            counterpart_profile_id_hint is not None,
+            actor_user_key_hint,
+            counterpart_user_key_hint,
+        )
+    ):
         return "", "", ()
 
     def _safe_fetch(participant_id: str):
         try:
-            return fetch_profile_for_participant(str(dsn), str(participant_id))
+            hints = (
+                actor_profile_id_hint,
+                actor_user_key_hint,
+            ) if participant_id == actor_id else (
+                counterpart_profile_id_hint,
+                counterpart_user_key_hint,
+            )
+            return fetch_profile_for_participant(
+                str(dsn),
+                str(participant_id),
+                profile_id_hint=hints[0],
+                user_key_hint=hints[1],
+            )
         except Exception:
             return None
 
@@ -275,10 +349,18 @@ def _assistant_profile_context_cached(
 
 def _assistant_profile_context(thread: dict[str, Any], user_id: str) -> dict[str, Any]:
     dsn = os.environ.get("HER_PROFILE_MYSQL_DSN") or DEFAULT_PROFILE_MYSQL_DSN
+    actor_id = str(user_id)
+    counterpart_id = _other_participant_id(thread, user_id)
+    actor_hints = _participant_profile_hints(thread, actor_id)
+    counterpart_hints = _participant_profile_hints(thread, counterpart_id)
     actor_summary, counterpart_summary, ordered_hooks = _assistant_profile_context_cached(
         str(dsn),
-        str(user_id),
-        _other_participant_id(thread, user_id),
+        actor_id,
+        counterpart_id,
+        actor_hints.get("profile_id"),
+        counterpart_hints.get("profile_id"),
+        actor_hints.get("user_key"),
+        counterpart_hints.get("user_key"),
     )
     return {
         "profile_dsn": str(dsn),
@@ -372,6 +454,26 @@ def _dyadic_message_count(conn, thread_id: str, *, author_id: str | None = None)
 
 
 def _assistant_trend_state(thread: dict[str, Any], user_id: str) -> dict[str, Any]:
+    row = thread.get("_assistant_trend_state_row")
+    if isinstance(row, dict) and str(row.get("user_id") or "") == str(user_id):
+        return normalize_trend_state(json_loads(row.get("state_json"), {}))
+
+    conn = thread.get("_conn")
+    if conn is not None:
+        cur = conn.execute(
+            """
+            SELECT user_id, state_json
+            FROM chat_assistant_trend_states
+            WHERE thread_id = ? AND user_id = ?
+            LIMIT 1
+            """,
+            (str(thread["thread_id"]), str(user_id)),
+        )
+        trend_row = row_to_dict(cur.fetchone())
+        if trend_row:
+            thread["_assistant_trend_state_row"] = trend_row
+            return normalize_trend_state(json_loads(trend_row.get("state_json"), {}))
+
     metadata = dict(thread.get("metadata") or {})
     by_user = metadata.get(_ASSISTANT_TREND_STATE_METADATA_KEY) or {}
     if not isinstance(by_user, dict):
@@ -387,14 +489,26 @@ def _persist_assistant_trend_state(
     *,
     now: datetime | None = None,
 ) -> None:
-    metadata = dict(thread.get("metadata") or {})
-    by_user = metadata.get(_ASSISTANT_TREND_STATE_METADATA_KEY) or {}
-    if not isinstance(by_user, dict):
-        by_user = {}
-    by_user[str(user_id)] = normalize_trend_state(trend_state)
-    metadata[_ASSISTANT_TREND_STATE_METADATA_KEY] = by_user
-    _update_thread_metadata(conn, str(thread["thread_id"]), metadata, now=now)
-    thread["metadata"] = metadata
+    ts = current_time(now)
+    state_json = json_dumps(normalize_trend_state(trend_state))
+    conn.execute(
+        """
+        INSERT INTO chat_assistant_trend_states (
+          thread_id, user_id, state_json, updated_at
+        ) VALUES (?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+          state_json = VALUES(state_json),
+          updated_at = VALUES(updated_at)
+        """,
+        (str(thread["thread_id"]), str(user_id), state_json, ts),
+    )
+    conn.commit()
+    thread["_assistant_trend_state_row"] = {
+        "thread_id": str(thread["thread_id"]),
+        "user_id": str(user_id),
+        "state_json": state_json,
+        "updated_at": ts,
+    }
 
 
 def _proactive_assistant_query_text(route_decision: dict[str, Any] | None) -> str:
@@ -447,18 +561,17 @@ def _assistant_draft_core(
             visibility=VIS_OWNER_ONLY,
             source=SRC_USER,
             message_recipient_id=user_id,
+            metadata={
+                "owner_only_kind": _OWNER_ONLY_KIND_ASSISTANT_QUERY,
+                "skip_persona_sync": True,
+            },
             now=now,
         )
     total_started_at = perf_counter()
     context_limit = int(os.environ.get("HER_CHAT_ASSISTANT_CONTEXT_LIMIT") or "12")
     message_limit = max(6, min(context_limit, 20))
     route_started_at = perf_counter()
-    route_messages = list_messages(
-        conn,
-        str(thread["thread_id"]),
-        user_id,
-        limit=message_limit,
-    )
+    route_messages = _list_dyadic_messages(conn, thread, user_id, limit=message_limit)
     route_decision = _scope_online_assistant_route_decision(
         route_decision_override or fast_mode_route(route_messages) or _default_route_decision()
     )
@@ -614,35 +727,82 @@ def list_messages(
     if not _is_participant(thread, requester_id):
         raise ValueError("requester is not a participant of this thread")
 
-    lim = max(1, min(int(limit), 200))
+    return _list_messages_for_requester(
+        conn,
+        thread,
+        requester_id,
+        limit=limit,
+        before_message_id=before_message_id,
+        dyadic_only=False,
+    )
+
+
+def _list_messages_for_requester(
+    conn,
+    thread: dict[str, Any],
+    requester_id: str,
+    *,
+    limit: int,
+    before_message_id: int | None,
+    dyadic_only: bool,
+) -> list[dict[str, Any]]:
+    lim = max(1, min(int(limit), 500))
+    params: list[Any] = [str(thread["thread_id"])]
+    before_clause = ""
     if before_message_id is not None:
+        before_clause = "AND message_id < ?"
+        params.append(int(before_message_id))
+
+    if dyadic_only:
         cur = conn.execute(
-            """
+            f"""
             SELECT * FROM chat_messages
-            WHERE thread_id = ? AND message_id < ?
+            WHERE thread_id = ?
+              {before_clause}
+              AND visibility = ?
             ORDER BY message_id DESC
             LIMIT ?
             """,
-            (thread_id, int(before_message_id), lim),
+            tuple(params + [VIS_DYADIC, lim]),
         )
     else:
         cur = conn.execute(
-            """
+            f"""
             SELECT * FROM chat_messages
             WHERE thread_id = ?
+              {before_clause}
+              AND (
+                visibility IN (?, ?)
+                OR (visibility = ? AND message_recipient_id = ?)
+              )
             ORDER BY message_id DESC
             LIMIT ?
             """,
-            (thread_id, lim),
+            tuple(params + [VIS_DYADIC, VIS_SYSTEM, VIS_OWNER_ONLY, str(requester_id), lim]),
         )
     rows = cur.fetchall()
-    out: list[dict[str, Any]] = []
-    for raw in rows:
-        row = _inflate_message(row_to_dict(raw))
-        if row and _message_visible_to(row, thread, requester_id):
-            out.append(row)
-    out.reverse()
-    return out
+    out = [_inflate_message(row_to_dict(raw)) for raw in rows]
+    return [row for row in reversed(out) if row]
+
+
+def _list_dyadic_messages(
+    conn,
+    thread: dict[str, Any],
+    requester_id: str,
+    *,
+    limit: int = 50,
+    before_message_id: int | None = None,
+) -> list[dict[str, Any]]:
+    if not _is_participant(thread, requester_id):
+        raise ValueError("requester is not a participant of this thread")
+    return _list_messages_for_requester(
+        conn,
+        thread,
+        requester_id,
+        limit=limit,
+        before_message_id=before_message_id,
+        dyadic_only=True,
+    )
 
 
 def post_message(
@@ -775,6 +935,7 @@ def post_message(
             visibility=visibility,
             source=source,
             message_recipient_id=message_recipient_id,
+            metadata=metadata,
             ts=ts,
         )
         conn.commit()
@@ -834,12 +995,10 @@ def assistant_proactive_hint(
 
     resolved_route = dict(route_decision or {})
     if not resolved_route:
-        visible_messages = [
-            message
-            for message in list_messages(conn, thread_id, user_id, limit=200)
-            if message.get("visibility") == VIS_DYADIC
-        ]
-        resolved_route = dict(fast_mode_route(visible_messages) or _default_route_decision())
+        resolved_route = dict(
+            fast_mode_route(_list_dyadic_messages(conn, thread, user_id, limit=200))
+            or _default_route_decision()
+        )
     else:
         resolved_route = dict(resolved_route)
     resolved_route = _scope_online_assistant_route_decision(resolved_route)
@@ -910,7 +1069,7 @@ def assistant_mode_route(
     if not _is_participant(thread, requester_id):
         raise ValueError("requester is not a participant of this thread")
     started_at = perf_counter()
-    messages = list_messages(conn, thread_id, requester_id, limit=limit)
+    messages = _list_dyadic_messages(conn, thread, requester_id, limit=limit)
     decision = fast_mode_route(messages)
     if decision is None:
         return None

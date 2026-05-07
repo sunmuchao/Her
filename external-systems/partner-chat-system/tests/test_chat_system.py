@@ -1,3 +1,4 @@
+import json
 import os
 import pathlib
 import sys
@@ -46,6 +47,17 @@ class ChatSystemTests(unittest.TestCase):
 
     def tearDown(self):
         self.conn.close()
+
+    def _trend_state_row(self, thread_id: str, user_id: str):
+        cur = self.conn.execute(
+            """
+            SELECT * FROM chat_assistant_trend_states
+            WHERE thread_id = ? AND user_id = ?
+            LIMIT 1
+            """,
+            (thread_id, user_id),
+        )
+        return cur.fetchone()
 
     def test_thread_create_idempotent_and_messages(self):
         t1 = get_or_create_thread(
@@ -221,6 +233,94 @@ class ChatSystemTests(unittest.TestCase):
         both = list_messages(self.conn, th["thread_id"], "bob")
         self.assertTrue(any(m["body"] == "你好，很高兴认识你。" for m in both))
 
+    def test_assistant_query_uses_dyadic_history_even_when_owner_only_messages_are_dense(self):
+        th = get_or_create_thread(
+            self.conn,
+            case_id="case-asst-dyadic-context",
+            relation_key="r-dyadic-context",
+            participant_a_id="alice",
+            participant_b_id="bob",
+        )
+        for idx, body in enumerate(
+            (
+                "我周末一般会出去走走。",
+                "我有时会找家店坐坐喝咖啡。",
+                "那还挺舒服的，我最近也想慢下来一点。",
+                "嗯",
+            ),
+            start=1,
+        ):
+            post_message(
+                self.conn,
+                th["thread_id"],
+                "alice" if idx % 2 else "bob",
+                body,
+                visibility=VIS_DYADIC,
+            )
+        for idx in range(6):
+            post_message(
+                self.conn,
+                th["thread_id"],
+                ASSISTANT_AUTHOR_ID,
+                f"历史助手提示-{idx}",
+                visibility=VIS_OWNER_ONLY,
+                source=SRC_AGENT_DRAFT,
+                message_recipient_id="alice",
+            )
+
+        captured = {}
+        guidance = {
+            "mutual_intent_assessment": "communication_problem",
+            "interaction_mode": "repair",
+            "current_problem": ["旧话题接不下去了"],
+            "problem_tags": ["topic_dead_end"],
+            "advice": ["先接住，再换轻一点的话题。"],
+        }
+        route_decision = {
+            "need_rescue": True,
+            "situation": "stuck",
+            "problem_tags": ["topic_dead_end"],
+            "rescue_style": "switch_topic",
+            "mutual_intent_assessment": "communication_problem",
+            "interaction_mode": "repair",
+            "reason": "测试 dyadic 上下文",
+            "decision_source": "heuristic",
+        }
+
+        def _capture_guidance(**kwargs):
+            captured["thread_context"] = kwargs.get("thread_context")
+            return guidance
+
+        with patch("chat_system.service.fast_mode_route", return_value=route_decision), patch(
+            "chat_system.service.generate_assistant_guidance",
+            side_effect=_capture_guidance,
+        ):
+            draft = assistant_query(self.conn, th["thread_id"], "alice", "这轮怎么接？")
+
+        self.assertIn("alice: 我周末一般会出去走走。", captured["thread_context"])
+        self.assertIn("bob: 嗯", captured["thread_context"])
+        self.assertNotIn("历史助手提示", captured["thread_context"])
+        self.assertEqual(draft["assistant_route_decision"]["interaction_mode"], "repair")
+
+    def test_assistant_query_owner_only_message_does_not_enqueue_persona_sync(self):
+        th = get_or_create_thread(
+            self.conn,
+            case_id="case-assistant-query-persona-skip",
+            relation_key="r-assistant-query-persona-skip",
+            participant_a_id="alice",
+            participant_b_id="bob",
+        )
+
+        assistant_query(
+            self.conn,
+            th["thread_id"],
+            "alice",
+            "他工作是做什么的，我该怎么问比较自然？",
+        )
+
+        jobs = list_pending_persona_jobs(self.conn)
+        self.assertEqual(jobs, [])
+
     def test_assistant_proactive_hint_triggers_once_then_suppresses_duplicate(self):
         th = get_or_create_thread(
             self.conn,
@@ -294,10 +394,13 @@ class ChatSystemTests(unittest.TestCase):
 
         thread = get_thread(self.conn, th["thread_id"])
         assert thread is not None
-        trend_state = thread["metadata"]["assistant_trend_state_by_user"]["alice"]
-        self.assertEqual(trend_state["last_hint_mode"], "repair")
-        self.assertEqual(trend_state["last_hint_trigger_type"], "mode_change")
-        self.assertFalse(trend_state["has_user_acted_since_last_hint"])
+        trend_state = self._trend_state_row(th["thread_id"], "alice")
+        self.assertIsNotNone(trend_state)
+        assert trend_state is not None
+        state = json.loads(trend_state["state_json"])
+        self.assertEqual(state["last_hint_mode"], "repair")
+        self.assertEqual(state["last_hint_trigger_type"], "mode_change")
+        self.assertFalse(state["has_user_acted_since_last_hint"])
 
     def test_assistant_proactive_hint_skips_out_of_scope_route(self):
         th = get_or_create_thread(
@@ -390,9 +493,12 @@ class ChatSystemTests(unittest.TestCase):
 
         thread = get_thread(self.conn, th["thread_id"])
         assert thread is not None
-        trend_state = thread["metadata"]["assistant_trend_state_by_user"]["alice"]
-        self.assertIsNone(trend_state["last_hint_turn"])
-        self.assertIsNone(trend_state["last_hint_mode"])
+        trend_state = self._trend_state_row(th["thread_id"], "alice")
+        self.assertIsNotNone(trend_state)
+        assert trend_state is not None
+        state = json.loads(trend_state["state_json"])
+        self.assertIsNone(state["last_hint_turn"])
+        self.assertIsNone(state["last_hint_mode"])
 
     def test_assistant_proactive_hint_error_is_hidden_and_does_not_advance_state(self):
         th = get_or_create_thread(
@@ -453,9 +559,12 @@ class ChatSystemTests(unittest.TestCase):
 
         thread = get_thread(self.conn, th["thread_id"])
         assert thread is not None
-        trend_state = thread["metadata"]["assistant_trend_state_by_user"]["alice"]
-        self.assertIsNone(trend_state["last_hint_turn"])
-        self.assertIsNone(trend_state["last_hint_mode"])
+        trend_state = self._trend_state_row(th["thread_id"], "alice")
+        self.assertIsNotNone(trend_state)
+        assert trend_state is not None
+        state = json.loads(trend_state["state_json"])
+        self.assertIsNone(state["last_hint_turn"])
+        self.assertIsNone(state["last_hint_mode"])
 
     def test_assistant_proactive_hint_ignores_hold_route_even_if_guidance_was_patched(self):
         th = get_or_create_thread(
