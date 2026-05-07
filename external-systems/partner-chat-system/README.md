@@ -25,7 +25,7 @@ Env: `HER_CHAT_PERSONA_MYSQL_SOURCE` (persona jobs); `OPENAI_API_KEY`, `HER_CHAT
 
 在**真实** `chat_threads` 上跑两个「虚拟相亲用户」LLM，交替发 **dyadic** 消息。
 
-- **默认 `--assistant-mode proactive`**：每轮发言前先走一层**规则快路径**，把场景分成 `repair / probe_lightly / hold / none` 四类。只有更像“双方都还想继续聊，但这轮卡在沟通上”时才会走 `repair`；若只是意愿不明确，只给 `probe_lightly` 低压试探；若对方明显低投入或碰到边界，则走 `hold`，不再把用户往讨好式救场上推。模糊情况再用**调度模型**只看「双方可见」记录做同样判断；需要时再调 **`assistant_query`** 给**即将开口的那一方**私下指出问题并给出建议。
+- **默认 `--assistant-mode proactive`**：每轮发言前先走一层**规则快路径**，只分两类：`repair / none`。只有更像“双方都还想继续聊，但这轮卡在沟通上”时才会走 `repair`；如果更像自然降温、兴趣不足、边界冒犯、施压抬杠这类不属于回温助手职责的场景，就走 `none`，不主动提示。模糊情况再用**调度模型**只看「双方可见」记录做同样判断；需要时再调 **`assistant_query`** 给**即将开口的那一方**私下指出问题并给出建议。
 - **`fixed_turns`**：兼容旧行为，`--assistant-on-turns 0,2` 指定回合先问助手。
 - **`none`**：全程不调助手。
 - **`--simulate-read-interaction-mode`**：仅离线 `roleplay` 实验使用。打开后，模拟回复生成器会额外读到当前 `interaction_mode`，用于验证“模式建议是否可执行”；这不是线上产品能力，更不代表系统会约束真实用户必须怎么回。
@@ -57,7 +57,7 @@ PYTHONPATH=../.. python scripts/run_dyadic_agent_roleplay.py --rounds 6 --assist
 - `--case-id`：省略则每次随机新 `case_id`。  
 - `--resume-existing`：显式允许把新回合追加到同一个 `case_id` 的旧线程；默认会直接报错，避免实验串台。  
 - `--base-time`：模拟消息时间戳起点，默认固定为 `2026-05-04T12:00:00`，也会写回输出 JSON。  
-- 输出 JSON 额外包含 `roleplay_experiment.simulated_reply_reads_interaction_mode`、`turn_evaluations[].assistant_latency_ms`、`turn_evaluations[].message_generation_source`、`turn_evaluations[].mutual_intent_assessment`、`turn_evaluations[].interaction_mode`、`turn_evaluations[].simulated_reply_mode_prompted`、`turn_evaluations[].simulated_reply_mode_alignment`、`turn_evaluations[].recovery_score_1to3_turns`、`turn_evaluations[].graceful_exit_score`、`assistant_metrics.assistant_invoke_avg_ms`、`assistant_metrics.assistant_invoke_max_ms`、`assistant_metrics.heuristic_decision_turns`、`assistant_metrics.repair_intervention_turns`、`assistant_metrics.probe_intervention_turns`、`assistant_metrics.hold_decision_turns`、`assistant_metrics.overpush_risk_turns`、`assistant_metrics.simulated_reply_mode_alignment_rate`、`assistant_metrics.improved_recovery_rate`、`assistant_metrics.graceful_exit_rate`、`assistant_metrics.clarified_low_interest_rate`、`assistant_metrics.fallback_message_turns`、`assistant_metrics.llm_error_fallback_turns`、`assistant_metrics.graceful_exit_advice_turns`、`llm_stats`，便于排查“到底是调度慢、主回复慢，还是助手建议慢”，也能把“局部救回来一点”“该收住时有没有体面收住”“模拟回复是否按模式执行”拆开看。  
+- 输出 JSON 额外包含 `roleplay_experiment.simulated_reply_reads_interaction_mode`、`turn_evaluations[].assistant_latency_ms`、`turn_evaluations[].message_generation_source`、`turn_evaluations[].mutual_intent_assessment`、`turn_evaluations[].interaction_mode`、`turn_evaluations[].simulated_reply_mode_prompted`、`turn_evaluations[].simulated_reply_mode_alignment`、`turn_evaluations[].recovery_score_1to3_turns`、`assistant_metrics.assistant_invoke_avg_ms`、`assistant_metrics.assistant_invoke_max_ms`、`assistant_metrics.heuristic_decision_turns`、`assistant_metrics.repair_intervention_turns`、`assistant_metrics.overpush_risk_turns`、`assistant_metrics.simulated_reply_mode_alignment_rate`、`assistant_metrics.improved_recovery_rate`、`assistant_metrics.fallback_message_turns`、`assistant_metrics.llm_error_fallback_turns`、`llm_stats`，便于排查“到底是调度慢、主回复慢，还是助手建议慢”，也能把“该不该出手”“提示后有没有回温一点”“模拟回复是否按模式执行”拆开看。  
 - 单测：`pytest tests/test_dyadic_roleplay.py`。
 
 导出某次 roleplay 的**完整库内消息**（含双方可见 + 仅自己可见）：

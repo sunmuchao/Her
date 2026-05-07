@@ -313,8 +313,6 @@ def _default_route_decision() -> dict[str, Any]:
         "interaction_mode": "none",
         "reason": "当前没有明显需要主动提示的信号。",
         "decision_source": "none",
-        "risk_axis": None,
-        "hold_subtype": None,
         "engagement_level": "medium",
         "warmth_level": "neutral",
         "irritation_level": "none",
@@ -335,9 +333,9 @@ def _scope_online_assistant_route_decision(route_decision: dict[str, Any] | None
             "need_rescue": True,
             "mutual_intent_assessment": "communication_problem",
             "interaction_mode": "repair",
-            "risk_axis": None,
-            "hold_subtype": None,
         }
+        scoped.pop("risk_axis", None)
+        scoped.pop("hold_subtype", None)
         if str(scoped.get("rescue_style") or "").strip().lower() == "none":
             scoped["rescue_style"] = "switch_topic"
         return scoped
@@ -488,13 +486,10 @@ def _assistant_draft_core(
         preferred_mutual_intent_assessment=str(route_decision.get("mutual_intent_assessment") or ""),
         preferred_interaction_mode=str(route_decision.get("interaction_mode") or ""),
         route_reason=str(route_decision.get("reason") or ""),
-        risk_axis=str(route_decision.get("risk_axis") or ""),
-        hold_subtype=str(route_decision.get("hold_subtype") or ""),
         engagement_level=str(route_decision.get("engagement_level") or ""),
         warmth_level=str(route_decision.get("warmth_level") or ""),
         irritation_level=str(route_decision.get("irritation_level") or ""),
         state_trend=str(route_decision.get("state_trend") or ""),
-        hint_trigger_type=str((hint_event or {}).get("trigger_type") or ""),
         online_scope_only=True,
     ) or placeholder
     hidden_guidance_source = _assistant_guidance_hidden_source(guidance)
@@ -512,8 +507,6 @@ def _assistant_draft_core(
             profile_hooks=list(profile_ctx.get("profile_hooks") or []),
             preferred_mutual_intent_assessment=str(route_decision.get("mutual_intent_assessment") or ""),
             preferred_interaction_mode=str(route_decision.get("interaction_mode") or ""),
-            risk_axis=str(route_decision.get("risk_axis") or ""),
-            hold_subtype=str(route_decision.get("hold_subtype") or ""),
             route_reason=str(route_decision.get("reason") or ""),
             online_scope_only=True,
         )

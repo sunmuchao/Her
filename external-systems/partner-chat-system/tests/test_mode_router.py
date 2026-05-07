@@ -72,8 +72,6 @@ class ModeRouterTests(unittest.TestCase):
         assert out is not None
         self.assertEqual(out["interaction_mode"], "none")
         self.assertEqual(out["mutual_intent_assessment"], "normal")
-        self.assertIsNone(out["risk_axis"])
-        self.assertIsNone(out["hold_subtype"])
         self.assertEqual(out["irritation_level"], "medium")
         self.assertEqual(out["state_trend"], "worsening")
         self.assertEqual(out["problem_tags"], [])
@@ -137,8 +135,6 @@ class ModeRouterTests(unittest.TestCase):
         assert out is not None
         self.assertEqual(out["interaction_mode"], "none")
         self.assertEqual(out["mutual_intent_assessment"], "normal")
-        self.assertIsNone(out["risk_axis"])
-        self.assertIsNone(out["hold_subtype"])
         self.assertEqual(out["warmth_level"], "sharp")
         self.assertEqual(out["irritation_level"], "high")
         self.assertEqual(out["problem_tags"], [])

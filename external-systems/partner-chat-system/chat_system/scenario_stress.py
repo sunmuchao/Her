@@ -34,22 +34,11 @@ _BOUNDARY_RISK_PROBLEM_TAGS = frozenset(
         "value_tension",
     }
 )
-_INTEREST_UNCLEAR_PROBLEM_TAGS = frozenset(
-    {
-        "closed_reply",
-        "cold_end",
-        "disengaged",
-        "low_energy",
-        "one_word_reply",
-        "topic_dead_end",
-        "vague_answer",
-    }
-)
 _BOUNDARY_RISK_STRATEGY_TAGS = frozenset({"graceful_exit", "set_boundary", "slow_pace"})
 _EXPECTED_ASSESSMENT_OVERRIDES = {
     "ex_partner_bait": "communication_problem",
     "family_pressure": "communication_problem",
-    "ghosting_tone": "interest_low",
+    "ghosting_tone": "normal",
     "petty_spat": "communication_problem",
 }
 
@@ -76,13 +65,11 @@ def _infer_expected_mutual_intent_assessment(
     if beat_id in _EXPECTED_ASSESSMENT_OVERRIDES:
         return _EXPECTED_ASSESSMENT_OVERRIDES[beat_id]
     if any(tag in _BOUNDARY_RISK_PROBLEM_TAGS for tag in problems):
-        return "boundary_risk"
+        return "normal"
     if any(tag in _BOUNDARY_RISK_STRATEGY_TAGS for tag in strategies):
-        return "boundary_risk"
+        return "normal"
     if "shutdown" in problems:
-        return "interest_low"
-    if any(tag in _INTEREST_UNCLEAR_PROBLEM_TAGS for tag in problems):
-        return "interest_unclear"
+        return "normal"
     return "communication_problem"
 
 

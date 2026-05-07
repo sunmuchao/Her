@@ -40,11 +40,6 @@ def _to_clean_list(value: Any) -> list[str]:
     return out
 
 
-def _optional_str(value: Any) -> str | None:
-    text = str(value or "").strip()
-    return text or None
-
-
 def _engagement_level(value: Any) -> str:
     raw = str(value or "").strip().lower()
     return raw if raw in {"high", "medium", "low", "closed"} else "medium"
@@ -63,20 +58,6 @@ def _irritation_level(value: Any) -> str:
 def _state_trend(value: Any) -> str:
     raw = str(value or "").strip().lower()
     return raw if raw in {"warming", "stable", "cooling", "worsening", "recovering"} else "stable"
-
-
-def _risk_axis(value: Any) -> str | None:
-    raw = str(value or "").strip().lower()
-    if raw in {"appearance", "income_condition", "privacy_ex", "meetup_push", "pressure_compare", "other"}:
-        return raw
-    return None
-
-
-def _hold_subtype(value: Any) -> str | None:
-    raw = str(value or "").strip().lower()
-    if raw in {"interest_low", "boundary_risk"}:
-        return raw
-    return None
 
 
 def _risk_flags(decision: dict[str, Any], current_mode: str) -> list[str]:
@@ -137,10 +118,6 @@ def normalize_trend_state(state: dict[str, Any] | None) -> dict[str, Any]:
         "previous_risk_flags": _to_clean_list(payload.get("previous_risk_flags")),
         "risk_level": max(0, int(payload.get("risk_level") or 0)),
         "previous_risk_level": max(0, int(payload.get("previous_risk_level") or 0)),
-        "risk_axis": _risk_axis(payload.get("risk_axis")),
-        "previous_risk_axis": _risk_axis(payload.get("previous_risk_axis")),
-        "same_risk_axis_turns": max(0, int(payload.get("same_risk_axis_turns") or 0)),
-        "hold_subtype": _hold_subtype(payload.get("hold_subtype")),
         "engagement_level": _engagement_level(payload.get("engagement_level")),
         "warmth_level": _warmth_level(payload.get("warmth_level")),
         "irritation_level": _irritation_level(payload.get("irritation_level")),
@@ -150,7 +127,6 @@ def normalize_trend_state(state: dict[str, Any] | None) -> dict[str, Any]:
         "last_hint_reason": str(payload.get("last_hint_reason") or "").strip() or None,
         "last_hint_trigger_type": str(payload.get("last_hint_trigger_type") or "").strip() or None,
         "last_hint_follow_level": str(payload.get("last_hint_follow_level") or "").strip() or None,
-        "last_stoploss_strength": _optional_str(payload.get("last_stoploss_strength")),
         "has_user_acted_since_last_hint": bool(payload.get("has_user_acted_since_last_hint")),
         "cooldown_until_turn": int(payload.get("cooldown_until_turn") or 0),
         "last_hint_actor_turn_count": int(payload.get("last_hint_actor_turn_count") or 0),
@@ -189,10 +165,6 @@ def advance_trend_state(
     else:
         unresolved_turns = 1
     risk_flags = _risk_flags(route_decision or {}, current_mode)
-    hold_subtype = None
-    risk_axis = None
-    previous_risk_axis = prev.get("risk_axis")
-    same_risk_axis_turns = 0
     engagement_level = _engagement_level((route_decision or {}).get("engagement_level"))
     warmth_level = _warmth_level((route_decision or {}).get("warmth_level"))
     irritation_level = _irritation_level((route_decision or {}).get("irritation_level"))
@@ -220,10 +192,6 @@ def advance_trend_state(
         "previous_risk_flags": list(prev.get("risk_flags") or []),
         "risk_level": risk_level,
         "previous_risk_level": prev["risk_level"],
-        "risk_axis": risk_axis,
-        "previous_risk_axis": previous_risk_axis,
-        "same_risk_axis_turns": same_risk_axis_turns,
-        "hold_subtype": hold_subtype,
         "engagement_level": engagement_level,
         "warmth_level": warmth_level,
         "irritation_level": irritation_level,
@@ -261,8 +229,6 @@ def decide_hint_trigger(
         "speaker": str(speaker or ""),
         "mode_before": mode_before,
         "mode_after": mode_after,
-        "hold_subtype": None,
-        "risk_axis": None,
         "trigger_type": None,
         "suppression_reason": None,
         "hint_posted": False,
@@ -316,14 +282,14 @@ def apply_hint_event(state: dict[str, Any] | None, event: dict[str, Any] | None)
     if not bool(payload.get("hint_posted")):
         return cur
     current_mode = str(cur.get("current_mode") or "normal")
-    trigger_type = _optional_str(payload.get("trigger_type"))
+    trigger_type_text = str(payload.get("trigger_type") or "").strip()
+    trigger_type = trigger_type_text or None
     return {
         **cur,
         "last_hint_turn": int(cur["current_turn_index"]),
         "last_hint_mode": current_mode,
         "last_hint_reason": str(payload.get("reason") or "").strip() or None,
         "last_hint_trigger_type": trigger_type,
-        "last_stoploss_strength": cur.get("last_stoploss_strength"),
         "has_user_acted_since_last_hint": False,
         "cooldown_until_turn": int(cur["current_turn_index"]) + _cooldown_turns(current_mode),
         "last_hint_actor_turn_count": int(cur["current_actor_turn_count"]),

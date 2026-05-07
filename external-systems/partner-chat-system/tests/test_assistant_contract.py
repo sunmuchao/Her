@@ -25,36 +25,31 @@ from chat_system.assistant_contract import (  # noqa: E402
 
 
 class AssistantContractTests(unittest.TestCase):
-    def test_shared_contract_constants_cover_core_terms(self):
+    def test_shared_contract_constants_are_repair_only(self):
         self.assertEqual(GUIDANCE_SCHEMA_VERSION, 2)
         self.assertEqual(TURN_EVALUATION_SCHEMA_VERSION, 1)
-        self.assertEqual(INTERACTION_MODES, ("repair", "probe_lightly", "hold", "none"))
-        self.assertIn("communication_problem", MUTUAL_INTENT_ASSESSMENTS)
+        self.assertEqual(INTERACTION_MODES, ("repair", "none"))
+        self.assertEqual(MUTUAL_INTENT_ASSESSMENTS, ("communication_problem", "normal"))
         self.assertEqual(FOLLOW_LEVELS, ("none", "partial", "strong"))
         self.assertEqual(FOLLOW_LEVEL_NOT_APPLICABLE, "not_applicable")
         self.assertIn("interaction_mode", ASSISTANT_GUIDANCE_FIELDS)
         self.assertIn("advice", ASSISTANT_GUIDANCE_FIELDS)
-        self.assertIn("reply_suggestions", ASSISTANT_GUIDANCE_FIELDS)
-        self.assertIn("turn_index", SHARED_TURN_EVALUATION_FIELDS)
-        self.assertIn("graceful_exit_score", SHARED_TURN_EVALUATION_FIELDS)
+        self.assertNotIn("risk_axis", ASSISTANT_GUIDANCE_FIELDS)
+        self.assertNotIn("hold_subtype", ASSISTANT_GUIDANCE_FIELDS)
+        self.assertNotIn("graceful_exit_score", SHARED_TURN_EVALUATION_FIELDS)
         self.assertIn("assistant_guidance", ROLEPLAY_TURN_EVALUATION_FIELDS)
-        self.assertIn("follow_evidence", ROLEPLAY_TURN_EVALUATION_FIELDS)
-        self.assertIn("overpush_risk", ROLEPLAY_TURN_EVALUATION_FIELDS)
-        self.assertIn("simulated_reply_mode_prompted", ROLEPLAY_TURN_EVALUATION_FIELDS)
-        self.assertIn("simulated_reply_mode_alignment", ROLEPLAY_TURN_EVALUATION_FIELDS)
 
-    def test_mutual_intent_normalization_uses_shared_rules(self):
+    def test_mutual_intent_normalization_collapses_old_categories(self):
         self.assertEqual(
             normalize_mutual_intent_assessment("双方都还想继续聊，只是这轮没接好"),
             "communication_problem",
         )
-        self.assertEqual(
-            normalize_mutual_intent_assessment("这轮已经碰到边界和压力"),
-            "boundary_risk",
-        )
-        self.assertEqual(normalize_mutual_intent_assessment("先试探一下"), "interest_unclear")
+        self.assertEqual(normalize_mutual_intent_assessment("有点冷场，像没接住"), "communication_problem")
+        self.assertEqual(normalize_mutual_intent_assessment("interest_unclear"), "normal")
+        self.assertEqual(normalize_mutual_intent_assessment("boundary_risk"), "normal")
+        self.assertEqual(normalize_mutual_intent_assessment("先试探一下"), "normal")
 
-    def test_interaction_mode_normalization_uses_shared_rules(self):
+    def test_interaction_mode_normalization_collapses_old_modes(self):
         self.assertEqual(
             normalize_interaction_mode(
                 "",
@@ -73,13 +68,13 @@ class AssistantContractTests(unittest.TestCase):
         self.assertEqual(
             normalize_interaction_mode(
                 "先收住，别硬推",
-                mutual_intent_assessment="interest_low",
+                mutual_intent_assessment="normal",
             ),
-            "hold",
+            "none",
         )
-        self.assertEqual(default_interaction_mode("interest_unclear"), "probe_lightly")
+        self.assertEqual(default_interaction_mode("normal"), "none")
         self.assertTrue(is_rescue_interaction_mode("repair"))
-        self.assertFalse(is_rescue_interaction_mode("hold"))
+        self.assertFalse(is_rescue_interaction_mode("none"))
 
 
 if __name__ == "__main__":
