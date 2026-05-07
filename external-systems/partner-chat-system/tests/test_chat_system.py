@@ -500,11 +500,11 @@ class ChatSystemTests(unittest.TestCase):
         self.assertIsNone(state["last_hint_turn"])
         self.assertIsNone(state["last_hint_mode"])
 
-    def test_assistant_proactive_hint_error_is_hidden_and_does_not_advance_state(self):
+    def test_assistant_proactive_hint_visible_error_fallback_still_posts_and_advances_state(self):
         th = get_or_create_thread(
             self.conn,
-            case_id="case-proactive-error-hidden",
-            relation_key="r-proactive-error-hidden",
+            case_id="case-proactive-error-fallback",
+            relation_key="r-proactive-error-fallback",
             participant_a_id="alice",
             participant_b_id="bob",
         )
@@ -519,9 +519,11 @@ class ChatSystemTests(unittest.TestCase):
             "decision_source": "heuristic",
         }
         error_guidance = {
-            "guidance_source": "error_hidden",
+            "guidance_source": "fallback_error",
             "mutual_intent_assessment": "communication_problem",
             "interaction_mode": "repair",
+            "current_problem": ["旧话题已经接不太顺了"],
+            "advice": ["先接住，再换个更容易继续的话题。"],
         }
         profile_ctx = {
             "profile_dsn": "mysql://test",
@@ -545,17 +547,20 @@ class ChatSystemTests(unittest.TestCase):
                 now=datetime(2026, 5, 6, 10, 2, 30),
             )
 
-        self.assertFalse(out["hint_posted"])
-        self.assertTrue(out["assistant_hidden"])
-        self.assertEqual(out["assistant_hidden_reason"], "guidance_error")
-        self.assertIsNone(out["message_id"])
-        self.assertIsNone(out["body"])
+        self.assertTrue(out["hint_posted"])
+        self.assertNotIn("assistant_hidden", out)
+        self.assertIsNotNone(out["message_id"])
+        self.assertIsNotNone(out["body"])
         self.assertEqual(out["assistant_hint_event"]["trigger_type"], "mode_change")
-        self.assertEqual(out["assistant_hint_event"]["suppression_reason"], "assistant_error")
+        self.assertIsNone(out["assistant_hint_event"]["suppression_reason"])
 
         alice_view = list_messages(self.conn, th["thread_id"], "alice")
         assistant_msgs = [m for m in alice_view if m["author_id"] == ASSISTANT_AUTHOR_ID]
-        self.assertEqual(len(assistant_msgs), 0)
+        self.assertEqual(len(assistant_msgs), 1)
+        self.assertEqual(
+            assistant_msgs[0]["metadata"]["assistant_trace"]["guidance"]["guidance_source"],
+            "fallback_error",
+        )
 
         thread = get_thread(self.conn, th["thread_id"])
         assert thread is not None
@@ -563,8 +568,78 @@ class ChatSystemTests(unittest.TestCase):
         self.assertIsNotNone(trend_state)
         assert trend_state is not None
         state = json.loads(trend_state["state_json"])
-        self.assertIsNone(state["last_hint_turn"])
-        self.assertIsNone(state["last_hint_mode"])
+        self.assertEqual(state["last_hint_mode"], "repair")
+        self.assertEqual(state["last_hint_trigger_type"], "mode_change")
+
+    def test_assistant_proactive_hint_allows_retry_after_one_turn_cooldown_when_still_unresolved(self):
+        th = get_or_create_thread(
+            self.conn,
+            case_id="case-proactive-cooldown-retry",
+            relation_key="r-proactive-cooldown-retry",
+            participant_a_id="alice",
+            participant_b_id="bob",
+        )
+        guidance = {
+            "mutual_intent_assessment": "communication_problem",
+            "interaction_mode": "repair",
+            "current_problem": ["旧话题接不下去了"],
+            "advice": ["先接住，再换轻一点的话题。"],
+        }
+        route_decision = {
+            "need_rescue": True,
+            "situation": "stuck",
+            "problem_tags": ["topic_dead_end"],
+            "rescue_style": "switch_topic",
+            "mutual_intent_assessment": "communication_problem",
+            "interaction_mode": "repair",
+            "reason": "测试冷却后一拍还能再提醒",
+            "decision_source": "heuristic",
+        }
+        profile_ctx = {
+            "profile_dsn": "mysql://test",
+            "actor_profile_summary": "alice 喜欢咖啡",
+            "counterpart_profile_summary": "bob 周末爱散步",
+            "profile_hooks": ["咖啡", "周末散步"],
+        }
+
+        with patch("chat_system.service.generate_assistant_guidance", return_value=guidance), patch(
+            "chat_system.service._assistant_profile_context",
+            return_value=profile_ctx,
+        ):
+            first = assistant_proactive_hint(
+                self.conn,
+                th["thread_id"],
+                "alice",
+                route_decision=route_decision,
+                now=datetime(2026, 5, 6, 10, 10, 0),
+            )
+            post_message(
+                self.conn,
+                th["thread_id"],
+                "alice",
+                "嗯 辛苦了",
+                visibility=VIS_DYADIC,
+                now=datetime(2026, 5, 6, 10, 10, 1),
+            )
+            post_message(
+                self.conn,
+                th["thread_id"],
+                "bob",
+                "嗯 习惯了",
+                visibility=VIS_DYADIC,
+                now=datetime(2026, 5, 6, 10, 10, 2),
+            )
+            second = assistant_proactive_hint(
+                self.conn,
+                th["thread_id"],
+                "alice",
+                route_decision=route_decision,
+                now=datetime(2026, 5, 6, 10, 10, 3),
+            )
+
+        self.assertTrue(first["hint_posted"])
+        self.assertTrue(second["hint_posted"])
+        self.assertEqual(second["assistant_hint_event"]["trigger_type"], "unresolved_retry")
 
     def test_assistant_proactive_hint_ignores_hold_route_even_if_guidance_was_patched(self):
         th = get_or_create_thread(

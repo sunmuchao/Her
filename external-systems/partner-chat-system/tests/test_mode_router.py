@@ -52,6 +52,20 @@ class ModeRouterTests(unittest.TestCase):
         self.assertEqual(out["mutual_intent_assessment"], "communication_problem")
         self.assertIn("missed_connection", out["problem_tags"])
 
+    def test_fast_mode_route_repairs_early_two_sided_cold_exchange_when_someone_is_still_trying(self):
+        messages = [
+            _msg("a", "嗯好"),
+            _msg("b", "你周末一般都在干嘛"),
+            _msg("a", "在家"),
+            _msg("b", "哦 挺好的"),
+        ]
+        out = fast_mode_route(messages)
+        self.assertIsNotNone(out)
+        assert out is not None
+        self.assertEqual(out["interaction_mode"], "repair")
+        self.assertEqual(out["mutual_intent_assessment"], "communication_problem")
+        self.assertIn("awkward_transition", out["problem_tags"])
+
     def test_fast_mode_route_ignores_repeated_low_interest(self):
         messages = [
             _msg("a", "你好，我周末一般会出去走走。"),

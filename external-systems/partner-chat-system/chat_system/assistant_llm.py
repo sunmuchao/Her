@@ -885,6 +885,19 @@ def parse_assistant_guidance(text: str) -> dict[str, Any] | None:
     return normalize_assistant_guidance(parsed)
 
 
+def _visible_repair_fallback_guidance(
+    fallback: dict[str, Any],
+    *,
+    guidance_source: str,
+) -> dict[str, Any]:
+    return normalize_assistant_guidance(
+        {
+            **dict(fallback or {}),
+            "guidance_source": guidance_source,
+        }
+    )
+
+
 def generate_assistant_guidance(
     *,
     user_query: str,
@@ -1022,8 +1035,20 @@ def generate_assistant_guidance(
         out = (choice or "").strip()
         if not out:
             return fallback
+        try:
+            parsed_payload = _strip_json_object(out)
+        except (json.JSONDecodeError, ValueError):
+            parsed_guidance = parse_assistant_guidance(out)
+            if parsed_guidance is None:
+                visible_fallback = _visible_repair_fallback_guidance(
+                    fallback,
+                    guidance_source="fallback_parse_error",
+                )
+                _guidance_response_cache_put(cache_key, visible_fallback)
+                return visible_fallback
+            parsed_payload = parsed_guidance
         finalized = _finalize_guidance_with_profile_context(
-            _strip_json_object(out),
+            parsed_payload,
             selected_hooks=selected_hooks,
         )
         finalized["guidance_source"] = "model"
@@ -1044,6 +1069,11 @@ def generate_assistant_guidance(
                 "mutual_intent_assessment": preferred_mutual_intent,
                 "interaction_mode": preferred_interaction_mode_normalized,
             }
+        if preferred_interaction_mode_normalized == "repair":
+            return _visible_repair_fallback_guidance(
+                fallback,
+                guidance_source="fallback_error",
+            )
         return {
             "guidance_source": "error_hidden",
             "mutual_intent_assessment": preferred_mutual_intent,
