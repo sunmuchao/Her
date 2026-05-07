@@ -43,6 +43,15 @@ class _FakeOpenAIClient:
         return _FakeOpenAIResponse(self.response_content)
 
 
+class _FakeTimeoutOpenAIClient:
+    def __init__(self, **_kwargs):
+        self.chat = self
+        self.completions = self
+
+    def create(self, **_kwargs):
+        raise TimeoutError("request timed out")
+
+
 class AssistantLLMTests(unittest.TestCase):
     def setUp(self):
         os.environ.pop("OPENAI_API_KEY", None)
@@ -142,6 +151,23 @@ class AssistantLLMTests(unittest.TestCase):
             )
 
         self.assertEqual(guidance, expected)
+
+    def test_generate_assistant_guidance_hides_timeout_result(self):
+        os.environ["OPENAI_API_KEY"] = "test-key"
+        fake_module = SimpleNamespace(OpenAI=_FakeTimeoutOpenAIClient)
+
+        with patch.dict(sys.modules, {"openai": fake_module}):
+            guidance = generate_assistant_guidance(
+                user_query="怎么接话？",
+                thread_context="bob: 设计吧。",
+                preferred_mutual_intent_assessment="communication_problem",
+                preferred_interaction_mode="repair",
+            )
+
+        assert guidance is not None
+        self.assertEqual(guidance["guidance_source"], "timeout_hidden")
+        self.assertEqual(guidance["mutual_intent_assessment"], "communication_problem")
+        self.assertEqual(guidance["interaction_mode"], "repair")
 
     def test_generate_assistant_guidance_fallback_respects_preferred_hold_mode(self):
         os.environ["OPENAI_API_KEY"] = "test-key"
