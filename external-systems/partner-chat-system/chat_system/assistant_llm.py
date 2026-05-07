@@ -898,6 +898,38 @@ def _visible_repair_fallback_guidance(
     )
 
 
+def _hidden_guidance_result(
+    *,
+    mutual_intent_assessment: str,
+    interaction_mode: str,
+    guidance_source: str = "error_hidden",
+) -> dict[str, Any]:
+    return {
+        "guidance_source": guidance_source,
+        "mutual_intent_assessment": mutual_intent_assessment,
+        "interaction_mode": interaction_mode,
+    }
+
+
+def _failure_guidance_result(
+    fallback: dict[str, Any],
+    *,
+    mutual_intent_assessment: str,
+    interaction_mode: str,
+    guidance_source: str,
+    hide_on_failure: bool,
+) -> dict[str, Any]:
+    if hide_on_failure:
+        return _hidden_guidance_result(
+            mutual_intent_assessment=mutual_intent_assessment,
+            interaction_mode=interaction_mode,
+        )
+    return _visible_repair_fallback_guidance(
+        fallback,
+        guidance_source=guidance_source,
+    )
+
+
 def generate_assistant_guidance(
     *,
     user_query: str,
@@ -913,6 +945,7 @@ def generate_assistant_guidance(
     irritation_level: str = "",
     state_trend: str = "",
     online_scope_only: bool = False,
+    hide_on_failure: bool = False,
 ) -> dict[str, Any] | None:
     profile_ctx = _prepare_profile_context_for_guidance(
         actor_profile_summary=actor_profile_summary,
@@ -947,7 +980,13 @@ def generate_assistant_guidance(
         return fallback
     key = (os.environ.get("OPENAI_API_KEY") or "").strip()
     if not key:
-        return fallback
+        return _failure_guidance_result(
+            fallback,
+            mutual_intent_assessment=preferred_mutual_intent,
+            interaction_mode=preferred_interaction_mode_normalized,
+            guidance_source="fallback_no_key",
+            hide_on_failure=hide_on_failure,
+        )
     model = (
         os.environ.get("HER_CHAT_ASSISTANT_FAST_MODEL")
         or os.environ.get("HER_CHAT_ASSISTANT_RESCUE_MODEL")
@@ -960,7 +999,13 @@ def generate_assistant_guidance(
     try:
         from openai import OpenAI  # noqa: F401
     except ImportError:
-        return fallback
+        return _failure_guidance_result(
+            fallback,
+            mutual_intent_assessment=preferred_mutual_intent,
+            interaction_mode=preferred_interaction_mode_normalized,
+            guidance_source="fallback_no_key",
+            hide_on_failure=hide_on_failure,
+        )
     assistant_timeout_sec = max(10.0, min(_env_float("HER_CHAT_ASSISTANT_TIMEOUT_SEC", 60.0), 180.0))
     client = _openai_client_cached(
         key,
@@ -1034,18 +1079,28 @@ def generate_assistant_guidance(
         choice = resp.choices[0].message.content
         out = (choice or "").strip()
         if not out:
-            return fallback
+            return _failure_guidance_result(
+                fallback,
+                mutual_intent_assessment=preferred_mutual_intent,
+                interaction_mode=preferred_interaction_mode_normalized,
+                guidance_source="fallback_error",
+                hide_on_failure=hide_on_failure,
+            )
         try:
             parsed_payload = _strip_json_object(out)
         except (json.JSONDecodeError, ValueError):
             parsed_guidance = parse_assistant_guidance(out)
             if parsed_guidance is None:
-                visible_fallback = _visible_repair_fallback_guidance(
+                visible_or_hidden = _failure_guidance_result(
                     fallback,
+                    mutual_intent_assessment=preferred_mutual_intent,
+                    interaction_mode=preferred_interaction_mode_normalized,
                     guidance_source="fallback_parse_error",
+                    hide_on_failure=hide_on_failure,
                 )
-                _guidance_response_cache_put(cache_key, visible_fallback)
-                return visible_fallback
+                if not hide_on_failure:
+                    _guidance_response_cache_put(cache_key, visible_or_hidden)
+                return visible_or_hidden
             parsed_payload = parsed_guidance
         finalized = _finalize_guidance_with_profile_context(
             parsed_payload,
@@ -1064,21 +1119,18 @@ def generate_assistant_guidance(
         return aligned
     except Exception as e:
         if _is_timeout_exception(e):
-            return {
-                "guidance_source": "timeout_hidden",
-                "mutual_intent_assessment": preferred_mutual_intent,
-                "interaction_mode": preferred_interaction_mode_normalized,
-            }
-        if preferred_interaction_mode_normalized == "repair":
-            return _visible_repair_fallback_guidance(
-                fallback,
-                guidance_source="fallback_error",
+            return _hidden_guidance_result(
+                mutual_intent_assessment=preferred_mutual_intent,
+                interaction_mode=preferred_interaction_mode_normalized,
+                guidance_source="timeout_hidden",
             )
-        return {
-            "guidance_source": "error_hidden",
-            "mutual_intent_assessment": preferred_mutual_intent,
-            "interaction_mode": preferred_interaction_mode_normalized,
-        }
+        return _failure_guidance_result(
+            fallback,
+            mutual_intent_assessment=preferred_mutual_intent,
+            interaction_mode=preferred_interaction_mode_normalized,
+            guidance_source="fallback_error",
+            hide_on_failure=hide_on_failure,
+        )
 
 
 def generate_assistant_reply(

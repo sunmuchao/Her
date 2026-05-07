@@ -138,7 +138,7 @@ class AssistantLLMTests(unittest.TestCase):
         self.assertEqual(guidance["advice"], ["你可以自然一点，换个轻松话题，别太用力。"])
         self.assertEqual(guidance["reply_suggestions"], ["你可以自然一点，换个轻松话题，别太用力。"])
 
-    def test_generate_assistant_guidance_falls_back_on_invalid_json(self):
+    def test_generate_assistant_guidance_hides_invalid_json_result(self):
         os.environ["OPENAI_API_KEY"] = "test-key"
         _FakeOpenAIClient.response_content = "不是 JSON"
         fake_module = SimpleNamespace(OpenAI=_FakeOpenAIClient)
@@ -153,10 +153,10 @@ class AssistantLLMTests(unittest.TestCase):
             )
 
         assert guidance is not None
-        self.assertEqual(guidance["guidance_source"], "fallback_parse_error")
+        self.assertEqual(guidance["guidance_source"], "error_hidden")
         self.assertEqual(guidance["mutual_intent_assessment"], "communication_problem")
         self.assertEqual(guidance["interaction_mode"], "repair")
-        self.assertTrue(guidance["advice"])
+        self.assertNotIn("advice", guidance)
 
     def test_generate_assistant_guidance_hides_timeout_result(self):
         os.environ["OPENAI_API_KEY"] = "test-key"
@@ -175,7 +175,7 @@ class AssistantLLMTests(unittest.TestCase):
         self.assertEqual(guidance["mutual_intent_assessment"], "communication_problem")
         self.assertEqual(guidance["interaction_mode"], "repair")
 
-    def test_generate_assistant_guidance_uses_visible_fallback_on_non_timeout_error(self):
+    def test_generate_assistant_guidance_hides_non_timeout_error(self):
         os.environ["OPENAI_API_KEY"] = "test-key"
         fake_module = SimpleNamespace(OpenAI=_FakeErrorOpenAIClient)
 
@@ -188,9 +188,22 @@ class AssistantLLMTests(unittest.TestCase):
             )
 
         assert guidance is not None
-        self.assertEqual(guidance["guidance_source"], "fallback_error")
+        self.assertEqual(guidance["guidance_source"], "error_hidden")
         self.assertEqual(guidance["interaction_mode"], "repair")
-        self.assertTrue(guidance["advice"])
+        self.assertNotIn("advice", guidance)
+
+    def test_generate_assistant_guidance_hides_when_model_unavailable(self):
+        guidance = generate_assistant_guidance(
+            user_query="怎么接话？",
+            thread_context="bob: 嗯",
+            preferred_mutual_intent_assessment="communication_problem",
+            preferred_interaction_mode="repair",
+        )
+
+        assert guidance is not None
+        self.assertEqual(guidance["guidance_source"], "error_hidden")
+        self.assertEqual(guidance["mutual_intent_assessment"], "communication_problem")
+        self.assertEqual(guidance["interaction_mode"], "repair")
 
     def test_generate_assistant_guidance_skips_model_for_none_route(self):
         os.environ["OPENAI_API_KEY"] = "test-key"
