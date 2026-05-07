@@ -154,6 +154,33 @@ def _axis_problem_line(risk_axis: str | None) -> str:
     return f"这轮已经在往“{label}”这条线发紧，不适合再往前推。"
 
 
+def _hold_quickpath_enabled() -> bool:
+    raw = str(os.environ.get("HER_CHAT_ASSISTANT_FAST_BOUNDARY_HOLD") or "1").strip().lower()
+    return raw not in {"0", "false", "off", "no"}
+
+
+def _should_use_fast_hold_path(
+    *,
+    preferred_mutual_intent_assessment: str | None,
+    preferred_interaction_mode: str | None,
+    hold_subtype: str | None,
+) -> bool:
+    if not _hold_quickpath_enabled():
+        return False
+    mode = _normalize_contract_interaction_mode(
+        preferred_interaction_mode,
+        mutual_intent_assessment=_normalize_contract_mutual_intent_assessment(
+            preferred_mutual_intent_assessment
+        ),
+    )
+    if mode != "hold":
+        return False
+    subtype = _normalize_hold_subtype(hold_subtype)
+    if subtype == "boundary_risk":
+        return True
+    return _normalize_contract_mutual_intent_assessment(preferred_mutual_intent_assessment) == "boundary_risk"
+
+
 def _default_rescue_flow_for_mode(
     interaction_mode: str,
     *,
@@ -876,6 +903,60 @@ def build_placeholder_assistant_guidance(
     return _finalize_guidance_with_profile_context(guidance, selected_hooks=hooks)
 
 
+def build_fast_hold_guidance(
+    *,
+    profile_hooks: list[str] | None = None,
+    route_reason: str = "",
+    risk_axis: str | None = None,
+    hold_subtype: str | None = None,
+    hint_trigger_type: str = "",
+) -> dict[str, Any]:
+    normalized_risk_axis = _normalize_risk_axis(risk_axis)
+    normalized_hold_subtype = _normalize_hold_subtype(hold_subtype) or "boundary_risk"
+    trigger = str(hint_trigger_type or "").strip().lower()
+    if trigger == "hold_stoploss":
+        current_problem = (
+            route_reason.strip()
+            or "这轮已经沿同一条危险线继续加码了，再解释或再追只会更僵。"
+        )
+        advice = [
+            _axis_guardrail(normalized_risk_axis),
+            "别再证明自己，也别试图把话题拉回正常聊天。",
+        ]
+        avoid = [
+            "不要继续解释动机。",
+            "不要再抛新的泛聊天问题硬续上。",
+        ]
+    else:
+        current_problem = route_reason.strip() or _axis_problem_line(normalized_risk_axis)
+        advice = [
+            _axis_guardrail(normalized_risk_axis),
+            "这轮先收住，别再往前顶。",
+        ]
+        avoid = [
+            _axis_guardrail(normalized_risk_axis),
+            "别继续解释拉扯。",
+        ]
+    guidance = build_placeholder_assistant_guidance(
+        profile_hooks=profile_hooks,
+        mutual_intent_assessment="boundary_risk",
+        interaction_mode="hold",
+        route_reason=current_problem,
+        risk_axis=normalized_risk_axis,
+        hold_subtype=normalized_hold_subtype,
+        guidance_source="fast_hold_policy",
+    )
+    guidance["current_problem"] = [current_problem]
+    guidance["advice"] = list(advice)
+    guidance["reply_suggestions"] = list(advice)
+    guidance["avoid"] = list(avoid)
+    guidance["low_pressure_options"] = []
+    guidance["topic_directions"] = []
+    guidance["easy_question_types"] = []
+    guidance["strategy_tags"] = ["graceful_exit", "deescalate", "set_boundary"]
+    return normalize_assistant_guidance(guidance)
+
+
 def render_assistant_guidance(guidance: dict[str, Any]) -> str:
     g = normalize_assistant_guidance(guidance)
     lines: list[str] = [
@@ -1006,6 +1087,7 @@ def generate_assistant_guidance(
     warmth_level: str = "",
     irritation_level: str = "",
     state_trend: str = "",
+    hint_trigger_type: str = "",
 ) -> dict[str, Any] | None:
     profile_ctx = _prepare_profile_context_for_guidance(
         actor_profile_summary=actor_profile_summary,
@@ -1028,6 +1110,18 @@ def generate_assistant_guidance(
         hold_subtype=hold_subtype,
         guidance_source="fallback_no_key",
     )
+    if _should_use_fast_hold_path(
+        preferred_mutual_intent_assessment=preferred_mutual_intent_assessment,
+        preferred_interaction_mode=preferred_interaction_mode,
+        hold_subtype=hold_subtype,
+    ):
+        return build_fast_hold_guidance(
+            profile_hooks=selected_hooks,
+            route_reason=route_reason,
+            risk_axis=risk_axis,
+            hold_subtype=hold_subtype,
+            hint_trigger_type=hint_trigger_type,
+        )
     key = (os.environ.get("OPENAI_API_KEY") or "").strip()
     if not key:
         return fallback
@@ -1170,6 +1264,7 @@ def generate_assistant_reply(
 __all__ = [
     "align_guidance_to_route_decision",
     "build_dyadic_context_for_assistant",
+    "build_fast_hold_guidance",
     "build_placeholder_assistant_guidance",
     "generate_assistant_guidance",
     "generate_assistant_reply",
