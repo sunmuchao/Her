@@ -148,6 +148,54 @@ _GRACEFUL_EXIT_TOKENS = (
     "你先忙",
     "晚点聊",
 )
+_MEETUP_PUSH_TOKENS = (
+    "见面",
+    "出来",
+    "线下",
+    "约",
+    "方便",
+    "住哪",
+    "定位",
+)
+_FAST_RELATION_TOKENS = (
+    "马上见",
+    "尽快见",
+    "赶紧",
+    "定下来",
+    "确定关系",
+)
+_WORK_STRESS_TOKENS = (
+    "工作",
+    "加班",
+    "忙",
+    "烦",
+    "累",
+    "开会",
+)
+_STRESS_BEAT_SIGNAL_TOKENS = {
+    "appearance_pry": ("照片", "本人", "瘦", "身材", "差距", "见光死"),
+    "boundary_test": ("见面", "住哪", "方便", "定位", "哪边", "线下"),
+    "cold_short": ("嗯", "哦", "还好", "一般"),
+    "comparison_trap": ("别人", "闺蜜", "标准", "诚意", "条件"),
+    "competitive": ("我比", "我这边", "不至于", "谁都", "至少"),
+    "dismissive": ("就这", "没意思", "无聊", "不至于", "就那样"),
+    "double_bind": ("那你到底", "选一个", "总得", "到底是"),
+    "ex_partner_bait": ("前任", "以前对象", "之前那段", "上一段"),
+    "family_pressure": ("家里", "催婚", "催", "相亲", "着急"),
+    "ghosting_tone": ("再说吧", "看情况", "先这样", "回头聊"),
+    "health_tmi": ("身体", "医院", "病", "难受", "检查"),
+    "jealous_hint": ("别人都", "异性", "追你", "挺抢手"),
+    "love_bomb_hint": ("好喜欢", "很心动", "感觉你很适合", "好难得"),
+    "moral_pedagogy": ("你应该", "最好", "成熟点", "别这样"),
+    "money_pry": ("工资", "收入", "年薪", "房", "车", "彩礼"),
+    "petty_spat": ("刚刚还", "不是说", "怎么又", "前后不一"),
+    "political_social_bait": ("价值观", "社会", "男女", "婚恋市场"),
+    "schedule_conflict": ("周末", "加班", "时间", "排班", "不好约"),
+    "skeptic_grill": ("是不是", "还是说", "怎么又", "那你为什么"),
+    "urgent_need": ("尽快", "马上", "快点", "定下来", "抓紧"),
+    "vague_answer": ("看情况", "还行吧", "一般般", "再说"),
+    "work_rant": ("工作", "加班", "离谱", "烦", "累"),
+}
 _GUIDANCE_TOPIC_KEYWORDS = (
     "周末",
     "咖啡",
@@ -175,6 +223,17 @@ _INTERACTION_MODE_CHOICES = format_choice_values(INTERACTION_MODES)
 
 class SupportsConn(Protocol):
     def commit(self) -> None: ...
+
+
+def _is_timeout_exception(exc: Exception) -> bool:
+    name = type(exc).__name__.lower()
+    text = str(exc or "").lower()
+    return "timeout" in name or "timed out" in text or "deadline exceeded" in text
+
+
+def _is_timeout_error_text(text: str) -> bool:
+    lowered = str(text or "").lower()
+    return "timeout" in lowered or "timed out" in lowered or "deadline exceeded" in lowered
 
 
 def parse_int_csv(s: str) -> list[int]:
@@ -295,6 +354,190 @@ def _orchestrator_rescue_decision(
         )
 
 
+def _normalize_reply_experiment_mode(
+    reply_experiment_mode: str | None,
+    *,
+    simulate_reply_reads_interaction_mode: bool,
+) -> str:
+    raw = str(reply_experiment_mode or "").strip().lower()
+    if not raw:
+        return "mode_hint" if simulate_reply_reads_interaction_mode else "free"
+    if raw in {"free", "off", "none"}:
+        return "free"
+    if raw in {"mode_hint", "hint", "read_mode"}:
+        return "mode_hint"
+    if raw in {"controlled", "control", "guided"}:
+        return "controlled"
+    raise ValueError("reply_experiment_mode must be free|mode_hint|controlled")
+
+
+def _clamp_state_level(value: int, *, low: int = 0, high: int = 4) -> int:
+    return max(low, min(high, int(value)))
+
+
+def _default_speaker_state() -> dict[str, Any]:
+    return {
+        "warmth": 2,
+        "guardedness": 1,
+        "irritation": 0,
+        "disengagement": 1,
+        "closure_bias": 0,
+        "trend": "steady",
+    }
+
+
+def _speaker_state_copy(state: dict[str, Any] | None) -> dict[str, Any]:
+    base = _default_speaker_state()
+    if not isinstance(state, dict):
+        return base
+    for key in ("warmth", "guardedness", "irritation", "disengagement", "closure_bias"):
+        base[key] = _clamp_state_level(int(state.get(key) or base[key]))
+    trend = str(state.get("trend") or "steady").strip() or "steady"
+    base["trend"] = trend
+    return base
+
+
+def _apply_state_delta(
+    state: dict[str, Any],
+    *,
+    warmth: int = 0,
+    guardedness: int = 0,
+    irritation: int = 0,
+    disengagement: int = 0,
+    closure_bias: int = 0,
+    trend: str | None = None,
+) -> dict[str, Any]:
+    out = _speaker_state_copy(state)
+    out["warmth"] = _clamp_state_level(int(out["warmth"]) + warmth)
+    out["guardedness"] = _clamp_state_level(int(out["guardedness"]) + guardedness)
+    out["irritation"] = _clamp_state_level(int(out["irritation"]) + irritation)
+    out["disengagement"] = _clamp_state_level(int(out["disengagement"]) + disengagement)
+    out["closure_bias"] = _clamp_state_level(int(out["closure_bias"]) + closure_bias)
+    if trend:
+        out["trend"] = str(trend)
+    return out
+
+
+def _state_delta_from_counterpart_message(text: str) -> dict[str, int | str]:
+    compact = _compact_text(text)
+    if not compact:
+        return {"disengagement": 1, "closure_bias": 1, "trend": "cooling"}
+    delta: dict[str, int | str] = {}
+    if _mentions_boundary_topic(text) or any(token in compact for token in _MEETUP_PUSH_TOKENS):
+        delta["guardedness"] = 1
+        delta["irritation"] = 1
+        delta["trend"] = "tenser"
+    elif _is_pushy_questioning(text):
+        delta["guardedness"] = 1
+        delta["trend"] = "tenser"
+    elif _is_low_energy_like(text):
+        delta["disengagement"] = 1
+        delta["closure_bias"] = 1
+        delta["trend"] = "cooling"
+    elif _is_question_like(text):
+        delta["warmth"] = 1
+        delta["disengagement"] = -1
+        delta["trend"] = "opening"
+    else:
+        delta["trend"] = "steady"
+    return delta
+
+
+def _state_delta_from_stress_beat(beat: StressBeat | None) -> dict[str, int | str]:
+    if beat is None:
+        return {"trend": "steady"}
+    beat_id = beat.id
+    if beat_id in {"cold_short", "one_word", "slow_reply_energy", "ghosting_tone", "silent_judgment", "vague_answer"}:
+        return {"warmth": -1, "disengagement": 1, "closure_bias": 1, "trend": "cooling"}
+    if beat_id in {"money_pry", "appearance_pry", "boundary_test", "comparison_trap", "skeptic_grill", "petty_spat"}:
+        return {"warmth": -1, "guardedness": 1, "irritation": 1, "trend": "tenser"}
+    if beat_id in {"love_bomb_hint", "urgent_need"}:
+        return {"warmth": 1, "guardedness": -1, "trend": "accelerating"}
+    if beat_id in {"family_pressure", "work_rant", "health_tmi", "overshare"}:
+        return {"warmth": -1, "disengagement": 1, "trend": "heavier"}
+    return {"trend": "steady"}
+
+
+def _state_delta_from_message(text: str) -> dict[str, int | str]:
+    compact = _compact_text(text)
+    if not compact:
+        return {"disengagement": 1, "closure_bias": 1, "trend": "cooling"}
+    delta: dict[str, int | str] = {"trend": "steady"}
+    if _is_graceful_exit_like(text):
+        delta["warmth"] = -1
+        delta["closure_bias"] = 2
+        delta["disengagement"] = 1
+        delta["trend"] = "closing"
+        return delta
+    if _mentions_boundary_topic(text) or any(token in compact for token in _FAST_RELATION_TOKENS):
+        delta["guardedness"] = 1
+        delta["irritation"] = 1
+        delta["trend"] = "tenser"
+    if _is_low_energy_like(text):
+        delta["warmth"] = -1
+        delta["disengagement"] = 1
+        delta["trend"] = "cooling"
+    elif _is_question_like(text):
+        delta["warmth"] = 1
+        delta["disengagement"] = -1
+        delta["trend"] = "opening"
+    elif len(compact) >= 14:
+        delta["warmth"] = 1
+        delta["trend"] = "steady"
+    return delta
+
+
+def _describe_speaker_state(state: dict[str, Any]) -> str:
+    parts: list[str] = []
+    warmth = int(state.get("warmth") or 0)
+    guardedness = int(state.get("guardedness") or 0)
+    irritation = int(state.get("irritation") or 0)
+    disengagement = int(state.get("disengagement") or 0)
+    closure_bias = int(state.get("closure_bias") or 0)
+    if warmth >= 3:
+        parts.append("还愿意接话")
+    elif warmth <= 1:
+        parts.append("语气偏淡")
+    if guardedness >= 3:
+        parts.append("比较防备")
+    if irritation >= 3:
+        parts.append("已经有点烦")
+    elif irritation == 2:
+        parts.append("有点不耐烦")
+    if disengagement >= 3:
+        parts.append("明显不想多聊")
+    elif disengagement == 2:
+        parts.append("聊天动力一般")
+    if closure_bias >= 3:
+        parts.append("更想收口")
+    trend = str(state.get("trend") or "steady")
+    if trend == "opening":
+        parts.append("状态在慢慢回暖")
+    elif trend == "cooling":
+        parts.append("状态在变冷")
+    elif trend in {"tenser", "heavier", "closing", "accelerating"}:
+        parts.append(f"整体走势是{trend}")
+    return "，".join(parts) if parts else "状态平稳"
+
+
+def _guidance_controlled_summary(guidance: dict[str, Any] | None) -> str:
+    if not isinstance(guidance, dict):
+        return ""
+    lines: list[str] = []
+    advice = [str(item or "").strip() for item in list(guidance.get("advice") or []) if str(item or "").strip()]
+    avoid = [str(item or "").strip() for item in list(guidance.get("avoid") or []) if str(item or "").strip()]
+    current_problem = [
+        str(item or "").strip() for item in list(guidance.get("current_problem") or []) if str(item or "").strip()
+    ]
+    if current_problem:
+        lines.append(f"当前卡点：{current_problem[0]}")
+    if advice:
+        lines.append(f"优先动作：{advice[0]}")
+    if avoid:
+        lines.append(f"别这么做：{avoid[0]}")
+    return "\n".join(lines[:3])
+
+
 def _next_dyadic_message(
     *,
     llm: LLMFn,
@@ -302,8 +545,11 @@ def _next_dyadic_message(
     brief: str,
     transcript: str,
     stress_directive: str | None = None,
+    speaker_state_before: dict[str, Any] | None = None,
+    reply_experiment_mode: str = "free",
     simulated_interaction_mode: str | None = None,
     simulated_mutual_intent_assessment: str | None = None,
+    simulated_assistant_guidance: dict[str, Any] | None = None,
 ) -> str:
     system = _persona_system(user_id=user_id, brief=brief)
     stress_block = ""
@@ -312,9 +558,17 @@ def _next_dyadic_message(
             "\n\n【本回合剧情压力（只体现效果，不要提起「剧情」「导演」「压力测试」等词）】\n"
             f"{stress_directive}"
         )
+    continuity_block = ""
+    if speaker_state_before:
+        continuity_block = (
+            "\n\n【连续状态】\n"
+            f"你这轮延续上轮的整体状态：{_describe_speaker_state(speaker_state_before)}。\n"
+            "只允许小幅漂移，不要突然从很冷变得很热情，也不要突然从普通聊天跳到翻脸。"
+        )
     mode = str(simulated_interaction_mode or "").strip().lower()
     mode_block = ""
-    if mode in {"repair", "probe_lightly", "hold"}:
+    experiment_mode = str(reply_experiment_mode or "free").strip().lower()
+    if experiment_mode in {"mode_hint", "controlled"} and mode in {"repair", "probe_lightly", "hold"}:
         intent = str(simulated_mutual_intent_assessment or "").strip().lower()
         intent_line = f"辅助判断：{intent}。\n" if intent and intent != "normal" else ""
         if mode == "repair":
@@ -332,11 +586,22 @@ def _next_dyadic_message(
                 "这轮更像该收住了。不要继续追问，也不要推进收入、前任、照片等敏感方向；"
                 "优先自然收口，或者发一条不施压的轻收住消息。"
             )
+        controlled_block = ""
+        if experiment_mode == "controlled":
+            guidance_summary = _guidance_controlled_summary(simulated_assistant_guidance)
+            controlled_block = (
+                "这是离线执行实验，不是产品在约束真人用户。\n"
+                "如果 assistant 给了方向，尽量顺着它的核心动作去做，但仍要像你自己会发的话，别照抄。\n"
+            )
+            if guidance_summary:
+                controlled_block += f"{guidance_summary}\n"
         mode_block = (
             "\n\n【仅用于离线 roleplay 评测的额外模式提示】\n"
             "这段提示只服务于模拟实验，不代表真实产品会约束真人用户怎么回复。\n"
+            f"实验模式：{experiment_mode}\n"
             f"当前模式：{mode}\n"
             f"{intent_line}{detail}\n"
+            f"{controlled_block}"
             "不要在发言里提到“模式”“实验”“系统提示”等词。"
         )
     user = (
@@ -350,7 +615,7 @@ def _next_dyadic_message(
         "也不要写「首先、其次、总之」这种说明文结构。"
         "一条消息别做太多事，够自然就行。"
         "如果要提问，优先问轻一点、容易回答的问题。"
-        f"{stress_block}{mode_block}"
+        f"{stress_block}{continuity_block}{mode_block}"
     )
     raw = llm([{"role": "system", "content": system}, {"role": "user", "content": user}]).strip()
     raw = raw.strip('"').strip()
@@ -668,22 +933,63 @@ def _fallback_message_from_topic(topic: str) -> str:
     return f"我平时也会关注一点{clean}，你平时会聊到这个吗？"
 
 
+def _hold_fallback_message(
+    *,
+    mutual_intent_assessment: str,
+    speaker_state: dict[str, Any] | None,
+) -> str:
+    intent = str(mutual_intent_assessment or "").strip().lower()
+    state = _speaker_state_copy(speaker_state)
+    if intent == "boundary_risk" or int(state.get("irritation") or 0) >= 2:
+        return "这个话题先不展开了，先这样吧。"
+    if int(state.get("closure_bias") or 0) >= 2 or int(state.get("disengagement") or 0) >= 2:
+        return "感觉今天先轻松点，改天有空再聊。"
+    return "我先不往下赶了，回头有空再聊。"
+
+
+def _repair_fallback_message(topic: str) -> str:
+    base = _fallback_message_from_topic(topic)
+    return f"我刚刚那句可能接得有点硬。{base}"
+
+
 def _fallback_next_message(
     *,
     visible_messages: list[dict[str, Any]],
     assistant_guidance: dict[str, Any] | None,
+    interaction_mode: str = "",
+    mutual_intent_assessment: str = "",
+    speaker_state: dict[str, Any] | None = None,
 ) -> str:
     dyadic = [m for m in visible_messages if str(m.get("visibility") or "") == VIS_DYADIC]
     recent = [str(m.get("body") or "").strip() for m in dyadic[-3:]]
     strategy_tags = set(str(x) for x in (assistant_guidance or {}).get("strategy_tags") or [])
+    mode = str(
+        interaction_mode or (assistant_guidance or {}).get("interaction_mode") or "none"
+    ).strip().lower()
+    intent = str(
+        mutual_intent_assessment or (assistant_guidance or {}).get("mutual_intent_assessment") or "normal"
+    ).strip().lower()
+    topic = _pick_topic_seed(assistant_guidance)
+
+    if mode == "hold":
+        return _hold_fallback_message(
+            mutual_intent_assessment=intent,
+            speaker_state=speaker_state,
+        )
+    if mode == "repair":
+        if topic:
+            return _repair_fallback_message(topic)
+        return "我刚刚那句可能接得有点硬。我平时周末会出去走走，你一般怎么放松？"
+    if mode == "probe_lightly":
+        if topic:
+            return _fallback_message_from_topic(topic)
+        return "我平时还挺随性的，你一般周末怎么安排？"
 
     if "graceful_exit" in strategy_tags and len(recent) >= 2 and all(_is_low_energy_like(body) for body in recent[-2:]):
         return "感觉今天节奏有点慢，我们先轻松点，改天有空再接着聊也行。"
     if recent and _is_low_energy_like(recent[-1]) and len(recent) >= 2 and _is_question_like(recent[-2]):
-        topic = _pick_topic_seed(assistant_guidance)
         return _fallback_message_from_topic(topic)
     if assistant_guidance:
-        topic = _pick_topic_seed(assistant_guidance)
         if topic:
             return _fallback_message_from_topic(topic)
     if not dyadic:
@@ -692,6 +998,52 @@ def _fallback_next_message(
     if _is_question_like(last_body):
         return "还行，我平时比较随性一点。你呢？"
     return "我平时比较随性一点，你一般周末怎么放松？"
+
+
+def _stress_beat_manifestation_assessment(beat: StressBeat | None, message: str) -> dict[str, Any]:
+    if beat is None:
+        return {
+            "beat_id": None,
+            "manifested": False,
+            "matched_signals": [],
+            "score": 0,
+        }
+    text = str(message or "").strip()
+    compact = _compact_text(text)
+    matched: list[str] = []
+    score = 0
+    for token in _STRESS_BEAT_SIGNAL_TOKENS.get(beat.id, ()):
+        if token and token in compact and token not in matched:
+            matched.append(token)
+            score += 2
+    problems = set(str(item or "") for item in beat.expected_problem_tags)
+    if problems & {"closed_reply", "low_energy", "one_word_reply", "topic_dead_end", "shutdown"} and _is_low_energy_like(text):
+        matched.append("low_energy_shape")
+        score += 2
+    if problems & {"boundary_risk", "money_pry", "appearance_pry", "too_fast"} and (
+        _mentions_boundary_topic(text) or any(token in compact for token in _MEETUP_PUSH_TOKENS)
+    ):
+        matched.append("boundary_topic_shape")
+        score += 2
+    if problems & {"pressure", "comparison", "cross_exam", "micro_conflict", "nitpicking"} and _is_pushy_questioning(text):
+        matched.append("pressure_question_shape")
+        score += 2
+    if problems & {"pressure_dump", "negative_energy"} and any(token in compact for token in _WORK_STRESS_TOKENS + ("家里", "催", "压力")):
+        matched.append("pressure_dump_shape")
+        score += 1
+    if beat.id in {"ghosting_tone", "cold_short", "one_word", "silent_judgment"} and len(compact) <= 8:
+        matched.append("short_cold_shape")
+        score += 1
+    if beat.id in {"urgent_need", "love_bomb_hint"} and any(token in compact for token in _FAST_RELATION_TOKENS):
+        matched.append("fast_relation_shape")
+        score += 2
+    manifested = score >= 2 or (score >= 1 and len(matched) >= 2)
+    return {
+        "beat_id": beat.id,
+        "manifested": manifested,
+        "matched_signals": _dedupe_strs(matched),
+        "score": score,
+    }
 
 
 def _simulated_mode_alignment_guidance(
@@ -1238,12 +1590,16 @@ def _apply_turn_evaluation_schema(record: dict[str, Any]) -> None:
 def _gold_need_rescue_for_view(record: dict[str, Any], *, view: str) -> bool:
     if view == "visible_text":
         return bool(((record.get("visible_text_gold_decision") or {}).get("need_rescue")))
+    if view == "manifested_stress_beat":
+        return bool(((record.get("manifested_stress_gold_decision") or {}).get("need_rescue")))
     return bool(record.get("need_rescue_gold"))
 
 
 def _gold_interaction_mode_for_view(record: dict[str, Any], *, view: str) -> str:
     if view == "visible_text":
         return str(((record.get("visible_text_gold_decision") or {}).get("interaction_mode")) or "none")
+    if view == "manifested_stress_beat":
+        return str(((record.get("manifested_stress_gold_decision") or {}).get("expected_interaction_mode")) or "none")
     return str(record.get("interaction_mode_gold") or "none")
 
 
@@ -1251,6 +1607,11 @@ def _gold_mutual_intent_for_view(record: dict[str, Any], *, view: str) -> str:
     if view == "visible_text":
         return str(
             ((record.get("visible_text_gold_decision") or {}).get("mutual_intent_assessment")) or "normal"
+        )
+    if view == "manifested_stress_beat":
+        return str(
+            ((record.get("manifested_stress_gold_decision") or {}).get("expected_mutual_intent_assessment"))
+            or "normal"
         )
     return str(record.get("mutual_intent_assessment_gold") or "normal")
 
@@ -1363,6 +1724,7 @@ def run_dyadic_roleplay(
         "再给我两三条自然、得体、适合我身份的回复建议。不要直接代写成一条可发送消息。"
     ),
     simulate_reply_reads_interaction_mode: bool = False,
+    reply_experiment_mode: str | None = None,
     stress_mode: str | None = None,
     stress_beat_ids: list[str] | None = None,
     stress_seed: int | None = None,
@@ -1380,8 +1742,12 @@ def run_dyadic_roleplay(
     - ``True``: resume only when the existing thread matches the requested relation and participants.
 
     ``simulate_reply_reads_interaction_mode``:
-    - ``False``: roleplay personas reply freely.
-    - ``True``: offline experiment only; the simulated replier also receives the current ``interaction_mode`` as an extra prompt hint.
+    - Backward-compatible alias for ``reply_experiment_mode=mode_hint``.
+
+    ``reply_experiment_mode``:
+    - ``free``: personas reply freely.
+    - ``mode_hint``: offline experiment only; the simulated replier also receives the current ``interaction_mode`` as an extra prompt hint.
+    - ``controlled``: stricter offline execution experiment; simulated replier is asked to loosely follow assistant direction while staying natural/in-character.
 
     ``stress_mode`` (``none`` | ``rotate`` | ``random``): each turn may inject a hidden director line so the speaker enacts awkward / boundary / extreme dating situations (see ``scenario_stress.STRESS_BEATS``).
 
@@ -1394,6 +1760,10 @@ def run_dyadic_roleplay(
     if mode not in ("proactive", "fixed_turns", "none"):
         raise ValueError("assistant_mode must be proactive|fixed_turns|none")
     fixed_turns = set(fixed_assistant_turns or [])
+    effective_reply_experiment_mode = _normalize_reply_experiment_mode(
+        reply_experiment_mode,
+        simulate_reply_reads_interaction_mode=simulate_reply_reads_interaction_mode,
+    )
 
     requested_t0 = (base_time or datetime.now()).replace(microsecond=0)
     existing_thread = get_thread_by_case(conn, case_id)
@@ -1436,7 +1806,11 @@ def run_dyadic_roleplay(
     sm = (stress_mode or "none").strip().lower()
     only_stress = set(stress_beat_ids) if stress_beat_ids else None
     srng = _stress_rng(case_id, stress_seed)
-    expected_rescue_turns: dict[int, list[StressBeat]] = {}
+    expected_rescue_turns: dict[int, list[dict[str, Any]]] = {}
+    speaker_state_by_user: dict[str, dict[str, Any]] = {
+        participant_a_id: _default_speaker_state(),
+        participant_b_id: _default_speaker_state(),
+    }
 
     def emit(message: str) -> None:
         if log is not None:
@@ -1444,7 +1818,7 @@ def run_dyadic_roleplay(
 
     emit(
         f"thread ready: thread_id={thread_id}, reused={thread_reused}, base_time={t0.isoformat(sep=' ')}, "
-        f"assistant_mode={mode}, stress_mode={sm}"
+        f"assistant_mode={mode}, stress_mode={sm}, reply_experiment_mode={effective_reply_experiment_mode}"
     )
 
     for i in range(rounds):
@@ -1452,17 +1826,28 @@ def run_dyadic_roleplay(
         speaker = participant_a_id if i % 2 == 0 else participant_b_id
         brief = brief_a if i % 2 == 0 else brief_b
         turn_label = f"turn {i + 1}/{rounds}"
-        gold_beats = list(expected_rescue_turns.get(i, []))
+        scheduled_gold_items = list(expected_rescue_turns.get(i, []))
+        gold_beats = [item["beat"] for item in scheduled_gold_items]
+        manifested_gold_beats = [
+            item["beat"]
+            for item in scheduled_gold_items
+            if int(item.get("source_turn") or -1) < len(turn_records)
+            and bool(
+                ((turn_records[int(item.get("source_turn") or -1)].get("stress_manifestation") or {}).get("manifested"))
+            )
+        ]
         turn_record: dict[str, Any] = {
             "turn": i,
             "speaker": speaker,
             "gold_rescue": _gold_rescue_for_turn(gold_beats),
+            "manifested_stress_gold_decision": _gold_rescue_for_turn(manifested_gold_beats),
             "assistant_invoked": False,
             "simulated_reply_mode_prompted": False,
             "hint_trigger_event": None,
             "hint_posted": None,
             "trigger_type": None,
             "suppression_reason": None,
+            "reply_experiment_mode": effective_reply_experiment_mode,
         }
 
         emit(f"{turn_label}: speaker={speaker}")
@@ -1477,7 +1862,9 @@ def run_dyadic_roleplay(
             emit(f"{turn_label}: stress beat={beat.id} category={beat.category}")
             rescue_turn = i + 1 + int(beat.expected_need_rescue_after_turns)
             if rescue_turn < rounds:
-                expected_rescue_turns.setdefault(rescue_turn, []).append(beat)
+                expected_rescue_turns.setdefault(rescue_turn, []).append(
+                    {"source_turn": i, "beat": beat}
+                )
 
         preturn_pub_msgs = [
             m
@@ -1616,11 +2003,35 @@ def run_dyadic_roleplay(
 
         msgs = list_messages(conn, thread_id, speaker, limit=200)
         transcript = format_visible_transcript(msgs)
+        last_counterpart_message = ""
+        for item in reversed([m for m in msgs if m.get("visibility") == VIS_DYADIC]):
+            if str(item.get("author_id") or "") != speaker:
+                last_counterpart_message = str(item.get("body") or "")
+                break
+        speaker_state_before = _apply_state_delta(
+            _apply_state_delta(
+                speaker_state_by_user.get(speaker),
+                **{
+                    key: value
+                    for key, value in _state_delta_from_counterpart_message(last_counterpart_message).items()
+                    if key != "trend"
+                },
+                trend=str(_state_delta_from_counterpart_message(last_counterpart_message).get("trend") or "steady"),
+            ),
+            **{
+                key: value
+                for key, value in _state_delta_from_stress_beat(beat).items()
+                if key != "trend"
+            },
+            trend=str(_state_delta_from_stress_beat(beat).get("trend") or "steady"),
+        )
+        turn_record["speaker_state_before"] = dict(speaker_state_before)
         try:
             current_mode = _evaluated_interaction_mode(turn_record)
             simulated_mode = (
                 current_mode
-                if simulate_reply_reads_interaction_mode and current_mode in {"repair", "probe_lightly", "hold"}
+                if effective_reply_experiment_mode in {"mode_hint", "controlled"}
+                and current_mode in {"repair", "probe_lightly", "hold"}
                 else None
             )
             simulated_intent = (
@@ -1633,14 +2044,20 @@ def run_dyadic_roleplay(
                 brief=brief,
                 transcript=transcript,
                 stress_directive=stress_directive,
+                speaker_state_before=speaker_state_before,
+                reply_experiment_mode=effective_reply_experiment_mode,
                 simulated_interaction_mode=simulated_mode,
                 simulated_mutual_intent_assessment=simulated_intent,
+                simulated_assistant_guidance=turn_record.get("assistant_guidance"),
             )
             turn_record["message_generation_source"] = "llm"
         except Exception as e:
             body = _fallback_next_message(
                 visible_messages=msgs,
                 assistant_guidance=turn_record.get("assistant_guidance"),
+                interaction_mode=_evaluated_interaction_mode(turn_record),
+                mutual_intent_assessment=_evaluated_mutual_intent_assessment(turn_record),
+                speaker_state=speaker_state_before,
             )
             turn_record["message_generation_source"] = "fallback"
             turn_record["message_generation_error"] = f"{type(e).__name__}: {e}"
@@ -1662,6 +2079,18 @@ def run_dyadic_roleplay(
         turn_record["generated_message"] = body
         turn_record["generated_message_id"] = msg.get("message_id")
         turn_record["generated_message_created_at"] = str(msg.get("created_at") or "")
+        turn_record["stress_manifestation"] = _stress_beat_manifestation_assessment(beat, body)
+        speaker_state_after = _apply_state_delta(
+            speaker_state_before,
+            **{
+                key: value
+                for key, value in _state_delta_from_message(body).items()
+                if key != "trend"
+            },
+            trend=str(_state_delta_from_message(body).get("trend") or "steady"),
+        )
+        speaker_state_by_user[speaker] = dict(speaker_state_after)
+        turn_record["speaker_state_after"] = dict(speaker_state_after)
         turn_record["naturalness"] = _naturalness_assessment(body)
         turn_record["assistant_follow_assessment"] = _assistant_follow_assessment(
             str(turn_record.get("generated_message") or ""),
@@ -1858,8 +2287,6 @@ def run_dyadic_roleplay(
         for r in intervention_records
         if str(((r.get("assistant_guidance") or {}).get("guidance_source")) or "").startswith("fallback")
     ]
-    visible_text_view = _recognition_view_metrics(turn_records, view="visible_text")
-    stress_beat_view = _recognition_view_metrics(turn_records, view="stress_beat")
     boundary_risk_hold_repeat_candidates = [
         r
         for r in proactive_hint_candidates
@@ -1876,8 +2303,31 @@ def run_dyadic_roleplay(
         if bool((r.get("hint_trigger_event") or {}).get("hint_posted"))
         and (r.get("hint_trigger_event") or {}).get("trigger_type") == "hold_stoploss"
     ]
+    message_generation_timeout_turns = [
+        r
+        for r in turn_records
+        if (r.get("message_generation_source") or "") == "fallback"
+        and _is_timeout_error_text(str(r.get("message_generation_error") or ""))
+    ]
+    fast_hold_guidance_turns = [
+        r
+        for r in intervention_records
+        if str(((r.get("assistant_guidance") or {}).get("guidance_source")) or "") == "fast_hold_policy"
+    ]
+    stress_turns = [r for r in turn_records if isinstance(r.get("stress_beat"), dict)]
+    manifested_stress_turns = [
+        r for r in stress_turns if bool((r.get("stress_manifestation") or {}).get("manifested"))
+    ]
+    visible_text_view = _recognition_view_metrics(turn_records, view="visible_text")
+    stress_beat_view = _recognition_view_metrics(turn_records, view="stress_beat")
+    manifested_stress_beat_view = _recognition_view_metrics(
+        turn_records,
+        view="manifested_stress_beat",
+    )
 
     emit(f"starting self-evaluation for {participant_a_id}")
+    eval_a_fallback = False
+    eval_a_timeout = False
     try:
         eval_a = _persona_self_evaluation(
             llm=llm,
@@ -1889,6 +2339,8 @@ def run_dyadic_roleplay(
         )
     except Exception as e:
         eval_a = _fallback_self_evaluation(reason=f"{type(e).__name__}: {e}")
+        eval_a_fallback = True
+        eval_a_timeout = _is_timeout_exception(e)
         emit(f"self-evaluation fallback used for {participant_a_id}: {type(e).__name__}: {e}")
     conn.commit()
     emit(
@@ -1896,6 +2348,8 @@ def run_dyadic_roleplay(
         f"assistant_score={eval_a.get('assistant_score')}"
     )
     emit(f"starting self-evaluation for {participant_b_id}")
+    eval_b_fallback = False
+    eval_b_timeout = False
     try:
         eval_b = _persona_self_evaluation(
             llm=llm,
@@ -1907,6 +2361,8 @@ def run_dyadic_roleplay(
         )
     except Exception as e:
         eval_b = _fallback_self_evaluation(reason=f"{type(e).__name__}: {e}")
+        eval_b_fallback = True
+        eval_b_timeout = _is_timeout_exception(e)
         emit(f"self-evaluation fallback used for {participant_b_id}: {type(e).__name__}: {e}")
     conn.commit()
     emit(
@@ -1926,7 +2382,10 @@ def run_dyadic_roleplay(
         "assistant_mode": mode,
         "fixed_assistant_turns": sorted(fixed_turns) if mode == "fixed_turns" else [],
         "roleplay_experiment": {
-            "simulated_reply_reads_interaction_mode": bool(simulate_reply_reads_interaction_mode),
+            "reply_experiment_mode": effective_reply_experiment_mode,
+            "simulated_reply_reads_interaction_mode": effective_reply_experiment_mode
+            in {"mode_hint", "controlled"},
+            "legacy_simulate_reply_reads_interaction_mode": bool(simulate_reply_reads_interaction_mode),
             "offline_only": True,
         },
         "proactive_rescue_events": rescue_log,
@@ -1952,6 +2411,13 @@ def run_dyadic_roleplay(
             "llm_error_fallback_turns": len(llm_error_fallback_decisions),
             "fallback_message_turns": len(fallback_message_turns),
             "fallback_message_rate": round(len(fallback_message_turns) / len(turn_records), 4)
+            if turn_records
+            else None,
+            "message_generation_timeout_turns": len(message_generation_timeout_turns),
+            "message_generation_timeout_rate": round(
+                len(message_generation_timeout_turns) / len(turn_records),
+                4,
+            )
             if turn_records
             else None,
             "hint_candidate_turns": len(proactive_hint_candidates),
@@ -1993,21 +2459,42 @@ def run_dyadic_roleplay(
             )
             if intervention_records
             else None,
+            "assistant_guidance_fast_path_turns": len(fast_hold_guidance_turns),
+            "assistant_guidance_fast_path_rate": round(
+                len(fast_hold_guidance_turns) / len(intervention_records),
+                4,
+            )
+            if intervention_records
+            else None,
             "repair_intervention_turns": len(repair_interventions),
             "probe_intervention_turns": len(probe_interventions),
             "hold_decision_turns": len(hold_decisions),
             "overpush_risk_turns": len(overpush_risk_turns),
-            "risky_none_turns": stress_beat_view["risky_none_turns"],
-            "risky_none_rate": stress_beat_view["risky_none_rate"],
-            "boundary_risk_hold_recall": stress_beat_view["boundary_risk_hold_recall"],
+            "risky_none_turns": manifested_stress_beat_view["risky_none_turns"],
+            "risky_none_rate": manifested_stress_beat_view["risky_none_rate"],
+            "boundary_risk_hold_recall": manifested_stress_beat_view["boundary_risk_hold_recall"],
             "visible_text_risky_none_turns": visible_text_view["risky_none_turns"],
             "visible_text_risky_none_rate": visible_text_view["risky_none_rate"],
             "visible_text_boundary_risk_hold_recall": visible_text_view["boundary_risk_hold_recall"],
             "stress_beat_risky_none_turns": stress_beat_view["risky_none_turns"],
             "stress_beat_risky_none_rate": stress_beat_view["risky_none_rate"],
             "stress_beat_boundary_risk_hold_recall": stress_beat_view["boundary_risk_hold_recall"],
+            "manifested_stress_beat_risky_none_turns": manifested_stress_beat_view["risky_none_turns"],
+            "manifested_stress_beat_risky_none_rate": manifested_stress_beat_view["risky_none_rate"],
+            "manifested_stress_beat_boundary_risk_hold_recall": manifested_stress_beat_view[
+                "boundary_risk_hold_recall"
+            ],
             "visible_text_view": visible_text_view,
             "stress_beat_view": stress_beat_view,
+            "manifested_stress_beat_view": manifested_stress_beat_view,
+            "stress_beat_turns": len(stress_turns),
+            "stress_beat_manifested_turns": len(manifested_stress_turns),
+            "stress_beat_manifestation_rate": round(
+                len(manifested_stress_turns) / len(stress_turns),
+                4,
+            )
+            if stress_turns
+            else None,
             "simulated_reply_mode_prompted_turns": len(prompted_mode_turns),
             "simulated_reply_mode_applicable_turns": len(mode_alignment_records),
             "simulated_reply_mode_alignment_turns": len(aligned_mode_records),
@@ -2058,6 +2545,8 @@ def run_dyadic_roleplay(
             else None,
             "graceful_exit_advice_turns": len(graceful_exit_advice_turns),
             "graceful_exit_used_turns": len(graceful_exit_used_turns),
+            "self_evaluation_fallback_count": int(eval_a_fallback) + int(eval_b_fallback),
+            "self_evaluation_timeout_count": int(eval_a_timeout) + int(eval_b_timeout),
         },
         "naturalness_metrics": {
             "average_score": round(sum(naturalness_scores) / len(naturalness_scores), 4)

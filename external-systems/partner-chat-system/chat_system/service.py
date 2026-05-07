@@ -446,6 +446,7 @@ def _assistant_draft_core(
         warmth_level=str(route_decision.get("warmth_level") or ""),
         irritation_level=str(route_decision.get("irritation_level") or ""),
         state_trend=str(route_decision.get("state_trend") or ""),
+        hint_trigger_type=str((hint_event or {}).get("trigger_type") or ""),
     ) or placeholder
     guidance = align_guidance_to_route_decision(
         guidance,

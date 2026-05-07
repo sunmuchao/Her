@@ -85,6 +85,12 @@ def _extract_marked_value(text: str, prefix: str, suffix: str) -> str:
     return text[start:end].strip()
 
 
+def _looks_like_timeout_error(exc: Exception) -> bool:
+    name = type(exc).__name__.lower()
+    text = str(exc or "").lower()
+    return "timeout" in name or "timed out" in text or "deadline exceeded" in text
+
+
 def _classify_llm_call(messages: list[dict[str, str]]) -> tuple[str, str]:
     if not messages:
         return "unknown", ""
@@ -117,17 +123,38 @@ def _make_logged_llm(
             label = f"{label}({subject})"
         _log(f"LLM start {label}")
         started = perf_counter()
+        bucket = None
+        if stats is not None:
+            bucket = stats.setdefault(
+                kind,
+                {
+                    "calls_started": 0,
+                    "successes": 0,
+                    "failures": 0,
+                    "timeouts": 0,
+                    "total_ms_all": 0,
+                    "total_ms_success": 0,
+                    "max_ms": 0,
+                },
+            )
+            bucket["calls_started"] += 1
         try:
             output = complete(messages)
         except Exception as e:
             elapsed_ms = int((perf_counter() - started) * 1000)
+            if bucket is not None:
+                bucket["failures"] += 1
+                bucket["total_ms_all"] += elapsed_ms
+                bucket["max_ms"] = max(bucket["max_ms"], elapsed_ms)
+                if _looks_like_timeout_error(e):
+                    bucket["timeouts"] += 1
             _log(f"LLM failed {label} after {elapsed_ms} ms: {type(e).__name__}: {e}")
             raise
         elapsed_ms = int((perf_counter() - started) * 1000)
-        if stats is not None:
-            bucket = stats.setdefault(kind, {"calls": 0, "total_ms": 0, "max_ms": 0})
-            bucket["calls"] += 1
-            bucket["total_ms"] += elapsed_ms
+        if bucket is not None:
+            bucket["successes"] += 1
+            bucket["total_ms_all"] += elapsed_ms
+            bucket["total_ms_success"] += elapsed_ms
             bucket["max_ms"] = max(bucket["max_ms"], elapsed_ms)
         _log(f"LLM done {label} in {elapsed_ms} ms: {_preview_text(output)}")
         return output
@@ -349,7 +376,13 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--simulate-read-interaction-mode",
         action="store_true",
-        help="仅离线 roleplay 实验：让模拟回复生成器额外读取 interaction_mode，不代表真实产品会约束真人用户。",
+        help="旧别名：等价于 --reply-experiment-mode mode_hint。",
+    )
+    p.add_argument(
+        "--reply-experiment-mode",
+        choices=("free", "mode_hint", "controlled"),
+        default=None,
+        help="离线实验模式：free=自由回复；mode_hint=只读 mode 提示；controlled=尽量按提示方向执行。",
     )
     p.add_argument(
         "--profile-a-id",
@@ -459,6 +492,7 @@ def main() -> int:
             base_time=args.base_time,
             resume_existing=bool(args.resume_existing),
             simulate_reply_reads_interaction_mode=bool(args.simulate_read_interaction_mode),
+            reply_experiment_mode=args.reply_experiment_mode,
             stress_mode=stress_mode,
             stress_beat_ids=stress_beat_ids,
             stress_seed=args.stress_seed,
@@ -493,8 +527,18 @@ def main() -> int:
     if llm_stats:
         result["llm_stats"] = {
             key: {
-                "calls": value["calls"],
-                "avg_ms": int(value["total_ms"] / value["calls"]) if value["calls"] else 0,
+                "calls": value["successes"],
+                "calls_started": value["calls_started"],
+                "successes": value["successes"],
+                "failures": value["failures"],
+                "timeouts": value["timeouts"],
+                "avg_ms": int(value["total_ms_success"] / value["successes"]) if value["successes"] else 0,
+                "avg_success_ms": int(value["total_ms_success"] / value["successes"])
+                if value["successes"]
+                else 0,
+                "avg_all_ms": int(value["total_ms_all"] / value["calls_started"])
+                if value["calls_started"]
+                else 0,
                 "max_ms": value["max_ms"],
             }
             for key, value in llm_stats.items()
@@ -502,7 +546,11 @@ def main() -> int:
         _log(
             "llm stats "
             + ", ".join(
-                f"{key}:calls={value['calls']},avg_ms={int(value['total_ms'] / value['calls']) if value['calls'] else 0},max_ms={value['max_ms']}"
+                f"{key}:started={value['calls_started']},ok={value['successes']},fail={value['failures']},"
+                f"timeout={value['timeouts']},avg_ok_ms="
+                f"{int(value['total_ms_success'] / value['successes']) if value['successes'] else 0},"
+                f"avg_all_ms={int(value['total_ms_all'] / value['calls_started']) if value['calls_started'] else 0},"
+                f"max_ms={value['max_ms']}"
                 for key, value in sorted(llm_stats.items())
             )
         )
@@ -518,11 +566,11 @@ def main() -> int:
         f"overpush_turns={(result.get('assistant_metrics') or {}).get('overpush_risk_turns')}, "
         f"mode_prompted_turns={(result.get('assistant_metrics') or {}).get('simulated_reply_mode_prompted_turns')}, "
         f"mode_alignment_rate={(result.get('assistant_metrics') or {}).get('simulated_reply_mode_alignment_rate')}, "
-        f"follow_rate={(result.get('assistant_metrics') or {}).get('follow_rate')}, "
-        f"strong_follow_rate={(result.get('assistant_metrics') or {}).get('strong_follow_rate')}, "
-        f"improved_recovery_rate={(result.get('assistant_metrics') or {}).get('improved_recovery_rate')}, "
-        f"graceful_exit_rate={(result.get('assistant_metrics') or {}).get('graceful_exit_rate')}, "
-        f"clarified_low_interest_rate={(result.get('assistant_metrics') or {}).get('clarified_low_interest_rate')}, "
+        f"risky_none_rate={(result.get('assistant_metrics') or {}).get('risky_none_rate')}, "
+        f"boundary_risk_hold_recall={(result.get('assistant_metrics') or {}).get('boundary_risk_hold_recall')}, "
+        f"assistant_timeout_rate={(result.get('assistant_metrics') or {}).get('assistant_invoke_timeout_rate')}, "
+        f"guidance_fallback_rate={(result.get('assistant_metrics') or {}).get('assistant_guidance_fallback_rate')}, "
+        f"message_timeout_rate={(result.get('assistant_metrics') or {}).get('message_generation_timeout_rate')}, "
         f"stress_events={len(result.get('stress_events') or [])}"
     )
     print(report_markdown, file=sys.stderr)
