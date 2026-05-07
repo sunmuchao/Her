@@ -663,6 +663,19 @@ def fast_mode_route(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
                     },
                     "heuristic",
                 )
+            if any(is_question_like(body) for body in recent[:-1]) and last_author_low_streak < 2:
+                return _decision(
+                    {
+                        "need_rescue": True,
+                        "situation": "stuck",
+                        "problem_tags": ["closed_reply", "low_energy", "awkward_transition"],
+                        "mutual_intent_assessment": "communication_problem",
+                        "interaction_mode": "repair",
+                        "rescue_style": "switch_topic",
+                        "reason": "最近两拍都偏冷，但前面还有人在试着往下接，更像聊尬了而不是已经不想聊。",
+                    },
+                    "heuristic",
+                )
             return _none(
                 "最近两边都偏冷，更像自然降温，不属于回温助手职责。",
                 "heuristic_scope_filter",

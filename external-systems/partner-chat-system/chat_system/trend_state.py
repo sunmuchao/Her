@@ -99,7 +99,7 @@ def _cooldown_turns(
     current_mode: str,
 ) -> int:
     if current_mode == "repair":
-        return 2
+        return 1
     return 0
 
 
