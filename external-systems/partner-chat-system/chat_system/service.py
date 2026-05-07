@@ -58,11 +58,13 @@ VIS_OWNER_ONLY = "owner_only"
 VIS_SYSTEM = "system"
 SRC_USER = "user"
 SRC_AGENT_DRAFT = "agent_draft"
+SRC_AGENT_HINT_ENTRY = "agent_hint_entry"
 SRC_AGENT_SENT = "agent_sent_after_confirm"
 SRC_SYSTEM = "system"
 ASSISTANT_TRACE_SCHEMA_VERSION = 1
 _ASSISTANT_TREND_STATE_METADATA_KEY = "assistant_trend_state_by_user"
 _OWNER_ONLY_KIND_ASSISTANT_QUERY = "assistant_query"
+_OWNER_ONLY_KIND_ASSISTANT_HINT_ENTRY = "assistant_hint_entry"
 
 
 def current_time(now: datetime | None = None) -> datetime:
@@ -166,6 +168,117 @@ def _assistant_guidance_hidden_source(
     if hide_failed_guidance and source.startswith("fallback"):
         return "error_hidden"
     return None
+
+
+def _assistant_proactive_mode() -> str:
+    raw = str(os.environ.get("HER_CHAT_ASSISTANT_PROACTIVE_MODE") or "entry").strip().lower()
+    return raw if raw in {"entry", "detail"} else "entry"
+
+
+def _assistant_entry_guidance(route_decision: dict[str, Any] | None) -> dict[str, Any]:
+    decision = dict(route_decision or {})
+    guidance = build_placeholder_assistant_guidance(
+        profile_hooks=[],
+        mutual_intent_assessment=str(decision.get("mutual_intent_assessment") or ""),
+        interaction_mode=str(decision.get("interaction_mode") or ""),
+        route_reason=str(decision.get("reason") or ""),
+        guidance_source="entry_pending",
+        online_scope_only=True,
+    )
+    aligned = align_guidance_to_route_decision(
+        guidance,
+        profile_hooks=[],
+        preferred_mutual_intent_assessment=str(decision.get("mutual_intent_assessment") or ""),
+        preferred_interaction_mode=str(decision.get("interaction_mode") or ""),
+        route_reason=str(decision.get("reason") or ""),
+        online_scope_only=True,
+    )
+    aligned["guidance_source"] = "entry_pending"
+    return normalize_assistant_guidance(aligned)
+
+
+def _assistant_entry_body(route_decision: dict[str, Any] | None) -> str:
+    decision = dict(route_decision or {})
+    situation = str(decision.get("situation") or "").strip().lower()
+    trend = str(decision.get("state_trend") or "").strip().lower()
+    if situation in {"stuck", "awkward"} or trend in {"cooling", "worsening"}:
+        head = "这几轮有点聊干了。"
+    else:
+        head = "这轮有点没接顺。"
+    return (
+        f"{head}\n"
+        "如果你还想继续，先别继续追原话题，换个更好接的小话题会更顺。\n"
+        "可查看建议。"
+    )
+
+
+def _assistant_entry_out(
+    conn,
+    thread: dict[str, Any],
+    user_id: str,
+    *,
+    route_decision: dict[str, Any],
+    hint_event: dict[str, Any] | None,
+    now: datetime | None,
+) -> dict[str, Any]:
+    started_at = perf_counter()
+    guidance = _assistant_entry_guidance(route_decision)
+    total_latency_ms = _elapsed_ms(started_at)
+    assistant_trace = _assistant_trace_payload(
+        route_decision=route_decision,
+        guidance=guidance,
+        profile_ctx={},
+        route_latency_ms=0,
+        guidance_latency_ms=0,
+        total_latency_ms=total_latency_ms,
+        hint_event=hint_event,
+    )
+    out = post_message(
+        conn,
+        str(thread["thread_id"]),
+        ASSISTANT_AUTHOR_ID,
+        _assistant_entry_body(route_decision),
+        visibility=VIS_OWNER_ONLY,
+        source=SRC_AGENT_HINT_ENTRY,
+        message_recipient_id=user_id,
+        metadata={
+            "assistant_trace": assistant_trace,
+            "owner_only_kind": _OWNER_ONLY_KIND_ASSISTANT_HINT_ENTRY,
+            "assistant_entry": {
+                "entry_kind": "proactive_coaching_entry",
+                "detail_status": "pending",
+            },
+        },
+        now=now,
+    )
+    funnel_stage(
+        system="chat",
+        stage=CHAT_FUNNEL_ASSISTANT_INVOKE,
+        trace_id=get_trace_id(),
+        case_id=str(thread["case_id"]),
+        thread_id=str(thread["thread_id"]),
+        message_id=out["message_id"],
+        user_id=user_id,
+        route_latency_ms=0,
+        guidance_latency_ms=0,
+        assistant_latency_ms=total_latency_ms,
+        route_interaction_mode=route_decision.get("interaction_mode"),
+        guidance_interaction_mode=guidance.get("interaction_mode"),
+    )
+    out["assistant_guidance"] = guidance
+    out["assistant_profile_context"] = {}
+    out["assistant_route_decision"] = route_decision
+    out["assistant_latency_ms"] = total_latency_ms
+    out["assistant_latency_breakdown_ms"] = dict(assistant_trace["latency_ms"])
+    out["assistant_trace"] = assistant_trace
+    out["assistant_hint_shape"] = "entry"
+    out["assistant_entry"] = {
+        "entry_kind": "proactive_coaching_entry",
+        "detail_status": "pending",
+    }
+    if hint_event is not None:
+        out["assistant_hint_event"] = dict(hint_event)
+    return out
 
 
 def get_or_create_thread(
@@ -519,6 +632,26 @@ def _persist_assistant_trend_state(
     }
 
 
+def _assistant_trend_state_with_entry(
+    trend_state: dict[str, Any] | None,
+    *,
+    coaching_stage: str | None = None,
+    active_entry_message_id: int | None = None,
+    last_entry_turn: int | None = None,
+    last_entry_opened_turn: int | None = None,
+) -> dict[str, Any]:
+    state = normalize_trend_state(trend_state)
+    if coaching_stage is not None:
+        state["coaching_stage"] = coaching_stage
+    if active_entry_message_id is not None:
+        state["active_entry_message_id"] = int(active_entry_message_id)
+    if last_entry_turn is not None:
+        state["last_entry_turn"] = int(last_entry_turn)
+    if last_entry_opened_turn is not None:
+        state["last_entry_opened_turn"] = int(last_entry_opened_turn)
+    return normalize_trend_state(state)
+
+
 def _proactive_assistant_query_text(route_decision: dict[str, Any] | None) -> str:
     decision = dict(route_decision or {})
     interaction_mode = str(decision.get("interaction_mode") or "none")
@@ -685,6 +818,7 @@ def _assistant_draft_core(
             "assistant_latency_ms": total_latency_ms,
             "assistant_latency_breakdown_ms": dict(assistant_trace["latency_ms"]),
             "assistant_trace": assistant_trace,
+            "assistant_hint_shape": "detail",
         }
         if hint_event is not None:
             out["assistant_hint_event"] = dict(hint_event)
@@ -721,6 +855,7 @@ def _assistant_draft_core(
     out["assistant_latency_ms"] = total_latency_ms
     out["assistant_latency_breakdown_ms"] = dict(assistant_trace["latency_ms"])
     out["assistant_trace"] = assistant_trace
+    out["assistant_hint_shape"] = "detail"
     if hint_event is not None:
         out["assistant_hint_event"] = dict(hint_event)
     return out
@@ -992,6 +1127,60 @@ def assistant_query(
     )
 
 
+def assistant_open_coaching_entry(
+    conn,
+    thread_id: str,
+    user_id: str,
+    entry_message_id: int,
+    *,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    thread = get_thread(conn, thread_id)
+    if not thread:
+        raise ValueError("thread not found")
+    if not _is_participant(thread, user_id):
+        raise ValueError("user is not a participant")
+    cur = conn.execute(
+        "SELECT * FROM chat_messages WHERE message_id = ? AND thread_id = ? LIMIT 1",
+        (int(entry_message_id), thread_id),
+    )
+    entry = _inflate_message(row_to_dict(cur.fetchone()))
+    if not entry:
+        raise ValueError("entry not found")
+    if str(entry.get("author_id") or "") != ASSISTANT_AUTHOR_ID:
+        raise ValueError("entry is not an assistant message")
+    if str(entry.get("visibility") or "") != VIS_OWNER_ONLY:
+        raise ValueError("entry is not owner_only")
+    if str(entry.get("message_recipient_id") or "") != str(user_id):
+        raise ValueError("entry is not addressed to this user")
+    meta = dict(entry.get("metadata") or {})
+    if str(meta.get("owner_only_kind") or "") != _OWNER_ONLY_KIND_ASSISTANT_HINT_ENTRY:
+        raise ValueError("message is not a coaching entry")
+    trace = dict(meta.get("assistant_trace") or {})
+    route_decision = _scope_online_assistant_route_decision(trace.get("route_decision") or {})
+    out = _assistant_draft_core(
+        conn,
+        thread,
+        user_id,
+        _proactive_assistant_query_text(route_decision),
+        now=now,
+        post_user_query=False,
+        hide_failed_guidance=False,
+        route_decision_override=route_decision,
+    )
+    current_state = _assistant_trend_state(thread, user_id)
+    viewed_state = _assistant_trend_state_with_entry(
+        current_state,
+        coaching_stage="viewed",
+        active_entry_message_id=int(entry_message_id),
+        last_entry_opened_turn=int(current_state.get("current_turn_index") or 0),
+    )
+    _persist_assistant_trend_state(conn, thread, user_id, viewed_state, now=now)
+    out["assistant_entry_opened_from"] = int(entry_message_id)
+    out["assistant_trend_state"] = normalize_trend_state(viewed_state)
+    return out
+
+
 def assistant_proactive_hint(
     conn,
     thread_id: str,
@@ -1040,6 +1229,28 @@ def assistant_proactive_hint(
             "assistant_route_decision": resolved_route,
             "assistant_trend_state": normalize_trend_state(next_state),
         }
+
+    proactive_mode = _assistant_proactive_mode()
+    if proactive_mode == "entry":
+        out = _assistant_entry_out(
+            conn,
+            thread,
+            user_id,
+            route_decision=resolved_route,
+            hint_event=hint_event,
+            now=now,
+        )
+        next_state = _assistant_trend_state_with_entry(
+            next_state,
+            coaching_stage="suggested",
+            active_entry_message_id=int(out["message_id"]),
+            last_entry_turn=int(next_state.get("current_turn_index") or 0),
+        )
+        _persist_assistant_trend_state(conn, thread, user_id, next_state, now=now)
+        out["hint_posted"] = True
+        out["assistant_hint_event"] = dict(hint_event)
+        out["assistant_trend_state"] = normalize_trend_state(next_state)
+        return out
 
     out = _assistant_draft_core(
         conn,
@@ -1167,6 +1378,7 @@ def adopt_draft(
 __all__ = [
     "ASSISTANT_AUTHOR_ID",
     "SRC_AGENT_DRAFT",
+    "SRC_AGENT_HINT_ENTRY",
     "SRC_AGENT_SENT",
     "SRC_SYSTEM",
     "SRC_USER",
@@ -1175,6 +1387,7 @@ __all__ = [
     "VIS_SYSTEM",
     "adopt_draft",
     "assistant_mode_route",
+    "assistant_open_coaching_entry",
     "assistant_proactive_hint",
     "assistant_query",
     "current_time",

@@ -14,6 +14,7 @@ if str(SYSTEM_ROOT) not in sys.path:
 from chat_system import (  # noqa: E402
     adopt_draft,
     assistant_mode_route,
+    assistant_open_coaching_entry,
     assistant_proactive_hint,
     assistant_query,
     build_thread_risk_overview,
@@ -32,7 +33,13 @@ from chat_system import (  # noqa: E402
 )
 from chat_system.outbox_admin import list_pending_outbox  # noqa: E402
 from chat_system.persona_jobs import list_pending_persona_jobs, process_pending_persona_jobs  # noqa: E402
-from chat_system.service import ASSISTANT_AUTHOR_ID, SRC_AGENT_DRAFT, VIS_DYADIC, VIS_OWNER_ONLY  # noqa: E402
+from chat_system.service import (  # noqa: E402
+    ASSISTANT_AUTHOR_ID,
+    SRC_AGENT_DRAFT,
+    SRC_AGENT_HINT_ENTRY,
+    VIS_DYADIC,
+    VIS_OWNER_ONLY,
+)
 from chat_system.storage import DEFAULT_CHAT_TEST_MYSQL_DSN, connect_db, initialize_database, reset_all_tables  # noqa: E402
 
 
@@ -41,6 +48,7 @@ class ChatSystemTests(unittest.TestCase):
         os.environ.pop("OPENAI_API_KEY", None)
         os.environ.pop("HER_CHAT_ASSISTANT_BASE_URL", None)
         os.environ.pop("OPENAI_BASE_URL", None)
+        os.environ.pop("HER_CHAT_ASSISTANT_PROACTIVE_MODE", None)
         self.conn = connect_db(DEFAULT_CHAT_TEST_MYSQL_DSN)
         initialize_database(self.conn)
         reset_all_tables(self.conn)
@@ -385,6 +393,8 @@ class ChatSystemTests(unittest.TestCase):
         alice_view = list_messages(self.conn, th["thread_id"], "alice")
         assistant_msgs = [m for m in alice_view if m["author_id"] == ASSISTANT_AUTHOR_ID]
         self.assertEqual(len(assistant_msgs), 1)
+        self.assertEqual(assistant_msgs[0]["source"], SRC_AGENT_HINT_ENTRY)
+        self.assertEqual(assistant_msgs[0]["metadata"]["owner_only_kind"], "assistant_hint_entry")
         self.assertFalse(
             any(
                 m["author_id"] == "alice" and m["visibility"] == VIS_OWNER_ONLY
@@ -401,6 +411,8 @@ class ChatSystemTests(unittest.TestCase):
         self.assertEqual(state["last_hint_mode"], "repair")
         self.assertEqual(state["last_hint_trigger_type"], "mode_change")
         self.assertFalse(state["has_user_acted_since_last_hint"])
+        self.assertEqual(state["coaching_stage"], "suggested")
+        self.assertEqual(int(state["active_entry_message_id"]), int(assistant_msgs[0]["message_id"]))
 
     def test_assistant_proactive_hint_skips_out_of_scope_route(self):
         th = get_or_create_thread(
@@ -435,6 +447,7 @@ class ChatSystemTests(unittest.TestCase):
         self.assertEqual(out["assistant_trend_state"]["current_mode"], "normal")
 
     def test_assistant_proactive_hint_timeout_is_hidden_and_does_not_advance_state(self):
+        os.environ["HER_CHAT_ASSISTANT_PROACTIVE_MODE"] = "detail"
         th = get_or_create_thread(
             self.conn,
             case_id="case-proactive-timeout-hidden",
@@ -501,6 +514,7 @@ class ChatSystemTests(unittest.TestCase):
         self.assertIsNone(state["last_hint_mode"])
 
     def test_assistant_proactive_hint_hides_error_fallback_and_does_not_advance_state(self):
+        os.environ["HER_CHAT_ASSISTANT_PROACTIVE_MODE"] = "detail"
         th = get_or_create_thread(
             self.conn,
             case_id="case-proactive-error-fallback",
@@ -637,6 +651,74 @@ class ChatSystemTests(unittest.TestCase):
         self.assertTrue(first["hint_posted"])
         self.assertTrue(second["hint_posted"])
         self.assertEqual(second["assistant_hint_event"]["trigger_type"], "unresolved_retry")
+
+    def test_assistant_open_coaching_entry_returns_detail_and_marks_viewed(self):
+        th = get_or_create_thread(
+            self.conn,
+            case_id="case-coaching-entry-open",
+            relation_key="r-coaching-open",
+            participant_a_id="alice",
+            participant_b_id="bob",
+        )
+        route_decision = {
+            "need_rescue": True,
+            "situation": "stuck",
+            "problem_tags": ["topic_dead_end"],
+            "rescue_style": "switch_topic",
+            "mutual_intent_assessment": "communication_problem",
+            "interaction_mode": "repair",
+            "reason": "这几轮有点接不顺。",
+            "decision_source": "heuristic",
+        }
+        guidance = {
+            "mutual_intent_assessment": "communication_problem",
+            "interaction_mode": "repair",
+            "current_problem": ["旧话题接不下去了"],
+            "problem_tags": ["topic_dead_end"],
+            "advice": ["先接住，再换轻一点的话题。"],
+            "avoid": ["不要继续硬追原话题。"],
+            "topic_directions": ["周末安排"],
+            "easy_question_types": ["低门槛生活问题"],
+            "rescue_flow": ["先接住", "再换题", "最后轻问一句"],
+        }
+        profile_ctx = {
+            "profile_dsn": "mysql://test",
+            "actor_profile_summary": "alice 喜欢咖啡",
+            "counterpart_profile_summary": "bob 周末爱散步",
+            "profile_hooks": ["咖啡", "周末散步"],
+        }
+
+        with patch("chat_system.service.generate_assistant_guidance", return_value=guidance), patch(
+            "chat_system.service._assistant_profile_context",
+            return_value=profile_ctx,
+        ):
+            entry = assistant_proactive_hint(
+                self.conn,
+                th["thread_id"],
+                "alice",
+                route_decision=route_decision,
+                now=datetime(2026, 5, 6, 10, 20, 0),
+            )
+            detail = assistant_open_coaching_entry(
+                self.conn,
+                th["thread_id"],
+                "alice",
+                int(entry["message_id"]),
+                now=datetime(2026, 5, 6, 10, 20, 1),
+            )
+
+        self.assertTrue(entry["hint_posted"])
+        self.assertEqual(entry["assistant_hint_shape"], "entry")
+        self.assertEqual(detail["assistant_hint_shape"], "detail")
+        self.assertEqual(detail["assistant_guidance"]["interaction_mode"], "repair")
+        self.assertEqual(detail["assistant_entry_opened_from"], int(entry["message_id"]))
+        self.assertEqual(detail["assistant_trend_state"]["coaching_stage"], "viewed")
+
+        alice_view = list_messages(self.conn, th["thread_id"], "alice")
+        assistant_msgs = [m for m in alice_view if m["author_id"] == ASSISTANT_AUTHOR_ID]
+        self.assertEqual(len(assistant_msgs), 2)
+        self.assertEqual(assistant_msgs[0]["source"], SRC_AGENT_HINT_ENTRY)
+        self.assertEqual(assistant_msgs[1]["source"], SRC_AGENT_DRAFT)
 
     def test_assistant_proactive_hint_ignores_hold_route_even_if_guidance_was_patched(self):
         th = get_or_create_thread(
