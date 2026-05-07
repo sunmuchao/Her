@@ -500,7 +500,7 @@ class ChatSystemTests(unittest.TestCase):
         self.assertIsNone(state["last_hint_turn"])
         self.assertIsNone(state["last_hint_mode"])
 
-    def test_assistant_proactive_hint_visible_error_fallback_still_posts_and_advances_state(self):
+    def test_assistant_proactive_hint_hides_error_fallback_and_does_not_advance_state(self):
         th = get_or_create_thread(
             self.conn,
             case_id="case-proactive-error-fallback",
@@ -547,20 +547,17 @@ class ChatSystemTests(unittest.TestCase):
                 now=datetime(2026, 5, 6, 10, 2, 30),
             )
 
-        self.assertTrue(out["hint_posted"])
-        self.assertNotIn("assistant_hidden", out)
-        self.assertIsNotNone(out["message_id"])
-        self.assertIsNotNone(out["body"])
+        self.assertFalse(out["hint_posted"])
+        self.assertTrue(out["assistant_hidden"])
+        self.assertEqual(out["assistant_hidden_reason"], "guidance_error")
+        self.assertIsNone(out["message_id"])
+        self.assertIsNone(out["body"])
         self.assertEqual(out["assistant_hint_event"]["trigger_type"], "mode_change")
-        self.assertIsNone(out["assistant_hint_event"]["suppression_reason"])
+        self.assertEqual(out["assistant_hint_event"]["suppression_reason"], "assistant_error")
 
         alice_view = list_messages(self.conn, th["thread_id"], "alice")
         assistant_msgs = [m for m in alice_view if m["author_id"] == ASSISTANT_AUTHOR_ID]
-        self.assertEqual(len(assistant_msgs), 1)
-        self.assertEqual(
-            assistant_msgs[0]["metadata"]["assistant_trace"]["guidance"]["guidance_source"],
-            "fallback_error",
-        )
+        self.assertEqual(len(assistant_msgs), 0)
 
         thread = get_thread(self.conn, th["thread_id"])
         assert thread is not None
@@ -568,8 +565,8 @@ class ChatSystemTests(unittest.TestCase):
         self.assertIsNotNone(trend_state)
         assert trend_state is not None
         state = json.loads(trend_state["state_json"])
-        self.assertEqual(state["last_hint_mode"], "repair")
-        self.assertEqual(state["last_hint_trigger_type"], "mode_change")
+        self.assertIsNone(state["last_hint_turn"])
+        self.assertIsNone(state["last_hint_mode"])
 
     def test_assistant_proactive_hint_allows_retry_after_one_turn_cooldown_when_still_unresolved(self):
         th = get_or_create_thread(

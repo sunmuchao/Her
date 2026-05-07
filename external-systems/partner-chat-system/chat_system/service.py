@@ -155,8 +155,10 @@ def _assistant_trace_payload(
 
 def _assistant_guidance_hidden_source(guidance: dict[str, Any] | None) -> str | None:
     source = str(((guidance or {}).get("guidance_source")) or "").strip()
-    if source in {"timeout_hidden", "error_hidden"}:
+    if source == "timeout_hidden":
         return source
+    if source == "error_hidden" or source.startswith("fallback"):
+        return "error_hidden"
     return None
 
 
