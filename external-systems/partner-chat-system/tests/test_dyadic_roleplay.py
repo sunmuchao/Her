@@ -510,7 +510,7 @@ class DyadicRoleplayRunTests(unittest.TestCase):
 
         third_turn = out["turn_evaluations"][2]
         self.assertFalse(third_turn["hint_posted"])
-        self.assertEqual(third_turn["suppression_reason"], "cooldown_active")
+        self.assertEqual(third_turn["suppression_reason"], "no_new_value_after_strong_follow")
 
         sixth_turn = out["turn_evaluations"][5]
         self.assertTrue(sixth_turn["hint_posted"])
