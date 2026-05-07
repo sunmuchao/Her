@@ -6,6 +6,10 @@ from ._path_bootstrap import ensure_her_repo_on_sys_path
 
 ensure_her_repo_on_sys_path(Path(__file__))
 
+from .coaching_jobs import (
+    list_pending_coaching_entry_jobs,
+    process_pending_coaching_entry_jobs,
+)
 from .maintenance import run_chat_maintenance
 from .mode_router import fast_mode_route
 from .outbox_admin import list_pending_outbox
@@ -62,6 +66,7 @@ __all__ = [
     "get_thread_summary",
     "get_thread_by_case",
     "initialize_database",
+    "list_pending_coaching_entry_jobs",
     "list_messages",
     "list_member_reports",
     "list_meeting_feedback",
@@ -69,6 +74,7 @@ __all__ = [
     "list_risk_cases",
     "list_risk_signals",
     "post_message",
+    "process_pending_coaching_entry_jobs",
     "reset_all_tables",
     "review_risk_case",
     "run_chat_maintenance",

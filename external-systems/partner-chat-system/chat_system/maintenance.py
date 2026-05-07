@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from .coaching_jobs import process_pending_coaching_entry_jobs
 from .outbox_admin import mark_pending_outbox_published_batch
 from .outbox_consumer import consume_chat_outbox_batch
 from .persona_jobs import process_pending_persona_jobs
@@ -14,6 +15,7 @@ from .summaries import refresh_stale_thread_summaries
 def run_chat_maintenance(
     conn,
     *,
+    coaching_limit: int = 20,
     persona_limit: int = 20,
     flush_outbox: bool | None = None,
     summary_max_threads: int = 30,
@@ -27,6 +29,7 @@ def run_chat_maintenance(
     out: dict[str, Any] = {
         "outbox_marked_published": 0,
         "outbox_consume": {},
+        "coaching": {},
         "persona": {},
         "summaries": {},
     }
@@ -37,6 +40,10 @@ def run_chat_maintenance(
             out["outbox_marked_published"] = int(oc.get("marked_published", 0))
         else:
             out["outbox_marked_published"] = mark_pending_outbox_published_batch(conn, limit=200)
+    if coaching_limit > 0:
+        out["coaching"] = process_pending_coaching_entry_jobs(conn, limit=coaching_limit)
+    else:
+        out["coaching"] = {"skipped": True}
     if persona_limit > 0:
         out["persona"] = process_pending_persona_jobs(conn, limit=persona_limit)
     else:
