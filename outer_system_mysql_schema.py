@@ -671,6 +671,32 @@ def chat_tables() -> tuple[TableDef, ...]:
             ),
         ),
         TableDef(
+            name="chat_coaching_entry_jobs",
+            columns=(
+                ColumnDef("job_id", "BIGINT", nullable=False, auto_increment=True),
+                ColumnDef("thread_id", "VARCHAR(64)", nullable=False),
+                ColumnDef("entry_message_id", "BIGINT", nullable=False),
+                ColumnDef("user_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("status", "VARCHAR(32)", nullable=False),
+                ColumnDef("route_decision_json", "LONGTEXT", nullable=False),
+                ColumnDef("result_json", "LONGTEXT", nullable=True),
+                ColumnDef("detail_message_id", "BIGINT", nullable=True),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+                ColumnDef("processed_at", "DATETIME", nullable=True),
+            ),
+            primary_key=("job_id",),
+            uniques=(
+                UniqueKeyDef(("entry_message_id",), name="uniq_chat_coaching_entry_jobs_entry"),
+            ),
+            indexes=(
+                IndexDef(("status", "created_at"), "idx_chat_coaching_entry_jobs_status_time"),
+            ),
+            foreign_keys=(
+                ForeignKeyDef(("thread_id",), "chat_threads", ("thread_id",)),
+                ForeignKeyDef(("entry_message_id",), "chat_messages", ("message_id",)),
+            ),
+        ),
+        TableDef(
             name="chat_assistant_trend_states",
             columns=(
                 ColumnDef("thread_id", "VARCHAR(64)", nullable=False),

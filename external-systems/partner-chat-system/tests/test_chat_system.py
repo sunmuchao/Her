@@ -31,6 +31,11 @@ from chat_system import (  # noqa: E402
     submit_meeting_feedback,
     submit_member_report,
 )
+from chat_system.coaching_jobs import (  # noqa: E402
+    get_coaching_entry_job_by_entry_message,
+    list_pending_coaching_entry_jobs,
+    process_pending_coaching_entry_jobs,
+)
 from chat_system.outbox_admin import list_pending_outbox  # noqa: E402
 from chat_system.persona_jobs import list_pending_persona_jobs, process_pending_persona_jobs  # noqa: E402
 from chat_system.service import (  # noqa: E402
@@ -652,11 +657,64 @@ class ChatSystemTests(unittest.TestCase):
         self.assertTrue(second["hint_posted"])
         self.assertEqual(second["assistant_hint_event"]["trigger_type"], "unresolved_retry")
 
-    def test_assistant_open_coaching_entry_returns_detail_and_marks_viewed(self):
+    def test_assistant_open_coaching_entry_enqueues_detail_job_and_marks_viewed(self):
         th = get_or_create_thread(
             self.conn,
             case_id="case-coaching-entry-open",
             relation_key="r-coaching-open",
+            participant_a_id="alice",
+            participant_b_id="bob",
+        )
+        route_decision = {
+            "need_rescue": True,
+            "situation": "stuck",
+            "problem_tags": ["topic_dead_end"],
+            "rescue_style": "switch_topic",
+            "mutual_intent_assessment": "communication_problem",
+            "interaction_mode": "repair",
+            "reason": "这几轮有点接不顺。",
+            "decision_source": "heuristic",
+        }
+        entry = assistant_proactive_hint(
+            self.conn,
+            th["thread_id"],
+            "alice",
+            route_decision=route_decision,
+            now=datetime(2026, 5, 6, 10, 20, 0),
+        )
+        detail = assistant_open_coaching_entry(
+            self.conn,
+            th["thread_id"],
+            "alice",
+            int(entry["message_id"]),
+            now=datetime(2026, 5, 6, 10, 20, 1),
+        )
+
+        self.assertTrue(entry["hint_posted"])
+        self.assertEqual(entry["assistant_hint_shape"], "entry")
+        self.assertEqual(detail["assistant_hint_shape"], "entry")
+        self.assertEqual(detail["assistant_entry_opened_from"], int(entry["message_id"]))
+        self.assertEqual(detail["assistant_detail_status"], "requested")
+        self.assertTrue(detail["assistant_job_enqueued"])
+        self.assertEqual(detail["assistant_trend_state"]["coaching_stage"], "viewed")
+
+        alice_view = list_messages(self.conn, th["thread_id"], "alice")
+        assistant_msgs = [m for m in alice_view if m["author_id"] == ASSISTANT_AUTHOR_ID]
+        self.assertEqual(len(assistant_msgs), 1)
+        self.assertEqual(assistant_msgs[0]["source"], SRC_AGENT_HINT_ENTRY)
+        self.assertEqual(
+            assistant_msgs[0]["metadata"]["assistant_entry"]["detail_status"],
+            "requested",
+        )
+        jobs = list_pending_coaching_entry_jobs(self.conn)
+        self.assertEqual(len(jobs), 1)
+        self.assertEqual(int(jobs[0]["entry_message_id"]), int(entry["message_id"]))
+
+    def test_process_pending_coaching_entry_jobs_generates_detail_message(self):
+        th = get_or_create_thread(
+            self.conn,
+            case_id="case-coaching-entry-process",
+            relation_key="r-coaching-process",
             participant_a_id="alice",
             participant_b_id="bob",
         )
@@ -688,37 +746,134 @@ class ChatSystemTests(unittest.TestCase):
             "profile_hooks": ["咖啡", "周末散步"],
         }
 
+        entry = assistant_proactive_hint(
+            self.conn,
+            th["thread_id"],
+            "alice",
+            route_decision=route_decision,
+            now=datetime(2026, 5, 6, 10, 21, 0),
+        )
+        assistant_open_coaching_entry(
+            self.conn,
+            th["thread_id"],
+            "alice",
+            int(entry["message_id"]),
+            now=datetime(2026, 5, 6, 10, 21, 1),
+        )
+
         with patch("chat_system.service.generate_assistant_guidance", return_value=guidance), patch(
             "chat_system.service._assistant_profile_context",
             return_value=profile_ctx,
         ):
-            entry = assistant_proactive_hint(
+            out = process_pending_coaching_entry_jobs(
                 self.conn,
-                th["thread_id"],
-                "alice",
-                route_decision=route_decision,
-                now=datetime(2026, 5, 6, 10, 20, 0),
-            )
-            detail = assistant_open_coaching_entry(
-                self.conn,
-                th["thread_id"],
-                "alice",
-                int(entry["message_id"]),
-                now=datetime(2026, 5, 6, 10, 20, 1),
+                limit=10,
+                now=datetime(2026, 5, 6, 10, 21, 2),
             )
 
-        self.assertTrue(entry["hint_posted"])
-        self.assertEqual(entry["assistant_hint_shape"], "entry")
-        self.assertEqual(detail["assistant_hint_shape"], "detail")
-        self.assertEqual(detail["assistant_guidance"]["interaction_mode"], "repair")
-        self.assertEqual(detail["assistant_entry_opened_from"], int(entry["message_id"]))
-        self.assertEqual(detail["assistant_trend_state"]["coaching_stage"], "viewed")
+        self.assertEqual(out["completed"], 1)
+        self.assertEqual(out["failed_hidden"], 0)
 
         alice_view = list_messages(self.conn, th["thread_id"], "alice")
         assistant_msgs = [m for m in alice_view if m["author_id"] == ASSISTANT_AUTHOR_ID]
         self.assertEqual(len(assistant_msgs), 2)
         self.assertEqual(assistant_msgs[0]["source"], SRC_AGENT_HINT_ENTRY)
         self.assertEqual(assistant_msgs[1]["source"], SRC_AGENT_DRAFT)
+        self.assertEqual(assistant_msgs[1]["reply_to_message_id"], int(entry["message_id"]))
+        self.assertEqual(
+            assistant_msgs[1]["metadata"]["assistant_entry_opened_from"],
+            int(entry["message_id"]),
+        )
+        self.assertEqual(
+            assistant_msgs[0]["metadata"]["assistant_entry"]["detail_status"],
+            "ready",
+        )
+        self.assertEqual(
+            int(assistant_msgs[0]["metadata"]["assistant_entry"]["detail_message_id"]),
+            int(assistant_msgs[1]["message_id"]),
+        )
+        job = get_coaching_entry_job_by_entry_message(self.conn, int(entry["message_id"]))
+        self.assertIsNotNone(job)
+        assert job is not None
+        self.assertEqual(job["status"], "completed")
+        self.assertEqual(int(job["detail_message_id"]), int(assistant_msgs[1]["message_id"]))
+
+    def test_process_pending_coaching_entry_jobs_hides_failed_detail(self):
+        th = get_or_create_thread(
+            self.conn,
+            case_id="case-coaching-entry-hidden",
+            relation_key="r-coaching-hidden",
+            participant_a_id="alice",
+            participant_b_id="bob",
+        )
+        route_decision = {
+            "need_rescue": True,
+            "situation": "stuck",
+            "problem_tags": ["topic_dead_end"],
+            "rescue_style": "switch_topic",
+            "mutual_intent_assessment": "communication_problem",
+            "interaction_mode": "repair",
+            "reason": "这几轮有点接不顺。",
+            "decision_source": "heuristic",
+        }
+        timeout_guidance = {
+            "guidance_source": "timeout_hidden",
+            "mutual_intent_assessment": "communication_problem",
+            "interaction_mode": "repair",
+        }
+        profile_ctx = {
+            "profile_dsn": "mysql://test",
+            "actor_profile_summary": "alice 喜欢咖啡",
+            "counterpart_profile_summary": "bob 周末爱散步",
+            "profile_hooks": ["咖啡", "周末散步"],
+        }
+
+        entry = assistant_proactive_hint(
+            self.conn,
+            th["thread_id"],
+            "alice",
+            route_decision=route_decision,
+            now=datetime(2026, 5, 6, 10, 22, 0),
+        )
+        assistant_open_coaching_entry(
+            self.conn,
+            th["thread_id"],
+            "alice",
+            int(entry["message_id"]),
+            now=datetime(2026, 5, 6, 10, 22, 1),
+        )
+
+        with patch(
+            "chat_system.service.generate_assistant_guidance",
+            return_value=timeout_guidance,
+        ), patch(
+            "chat_system.service._assistant_profile_context",
+            return_value=profile_ctx,
+        ):
+            out = process_pending_coaching_entry_jobs(
+                self.conn,
+                limit=10,
+                now=datetime(2026, 5, 6, 10, 22, 2),
+            )
+
+        self.assertEqual(out["completed"], 0)
+        self.assertEqual(out["failed_hidden"], 1)
+
+        alice_view = list_messages(self.conn, th["thread_id"], "alice")
+        assistant_msgs = [m for m in alice_view if m["author_id"] == ASSISTANT_AUTHOR_ID]
+        self.assertEqual(len(assistant_msgs), 1)
+        self.assertEqual(
+            assistant_msgs[0]["metadata"]["assistant_entry"]["detail_status"],
+            "hidden_failed",
+        )
+        self.assertEqual(
+            assistant_msgs[0]["metadata"]["assistant_entry"]["detail_hidden_reason"],
+            "guidance_timeout",
+        )
+        job = get_coaching_entry_job_by_entry_message(self.conn, int(entry["message_id"]))
+        self.assertIsNotNone(job)
+        assert job is not None
+        self.assertEqual(job["status"], "failed_hidden")
 
     def test_assistant_proactive_hint_ignores_hold_route_even_if_guidance_was_patched(self):
         th = get_or_create_thread(

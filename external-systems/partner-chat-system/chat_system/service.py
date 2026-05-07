@@ -246,7 +246,7 @@ def _assistant_entry_out(
             "owner_only_kind": _OWNER_ONLY_KIND_ASSISTANT_HINT_ENTRY,
             "assistant_entry": {
                 "entry_kind": "proactive_coaching_entry",
-                "detail_status": "pending",
+                "detail_status": "available",
             },
         },
         now=now,
@@ -274,7 +274,7 @@ def _assistant_entry_out(
     out["assistant_hint_shape"] = "entry"
     out["assistant_entry"] = {
         "entry_kind": "proactive_coaching_entry",
-        "detail_status": "pending",
+        "detail_status": "available",
     }
     if hint_event is not None:
         out["assistant_hint_event"] = dict(hint_event)
@@ -506,6 +506,31 @@ def _update_thread_metadata(
     conn.commit()
 
 
+def _update_message_metadata(
+    conn,
+    message_id: int,
+    metadata: dict[str, Any],
+    *,
+    now: datetime | None = None,
+) -> None:
+    ts = current_time(now)
+    conn.execute(
+        "UPDATE chat_messages SET metadata_json = ? WHERE message_id = ?",
+        (json_dumps(metadata or {}), int(message_id)),
+    )
+    conn.execute(
+        """
+        UPDATE chat_threads
+        SET updated_at = ?
+        WHERE thread_id = (
+          SELECT thread_id FROM chat_messages WHERE message_id = ? LIMIT 1
+        )
+        """,
+        (ts, int(message_id)),
+    )
+    conn.commit()
+
+
 def _default_route_decision() -> dict[str, Any]:
     return {
         "need_rescue": False,
@@ -652,6 +677,46 @@ def _assistant_trend_state_with_entry(
     return normalize_trend_state(state)
 
 
+def _assistant_entry_detail_metadata(
+    metadata: dict[str, Any] | None,
+    **fields: Any,
+) -> dict[str, Any]:
+    out = dict(metadata or {})
+    assistant_entry = dict(out.get("assistant_entry") or {})
+    for key, value in fields.items():
+        assistant_entry[key] = value
+    out["assistant_entry"] = assistant_entry
+    return out
+
+
+def _load_coaching_entry(
+    conn,
+    thread_id: str,
+    entry_message_id: int,
+    *,
+    recipient_user_id: str | None = None,
+) -> dict[str, Any]:
+    cur = conn.execute(
+        "SELECT * FROM chat_messages WHERE message_id = ? AND thread_id = ? LIMIT 1",
+        (int(entry_message_id), thread_id),
+    )
+    entry = _inflate_message(row_to_dict(cur.fetchone()))
+    if not entry:
+        raise ValueError("entry not found")
+    if str(entry.get("author_id") or "") != ASSISTANT_AUTHOR_ID:
+        raise ValueError("entry is not an assistant message")
+    if str(entry.get("visibility") or "") != VIS_OWNER_ONLY:
+        raise ValueError("entry is not owner_only")
+    if recipient_user_id is not None and str(entry.get("message_recipient_id") or "") != str(
+        recipient_user_id
+    ):
+        raise ValueError("entry is not addressed to this user")
+    meta = dict(entry.get("metadata") or {})
+    if str(meta.get("owner_only_kind") or "") != _OWNER_ONLY_KIND_ASSISTANT_HINT_ENTRY:
+        raise ValueError("message is not a coaching entry")
+    return entry
+
+
 def _proactive_assistant_query_text(route_decision: dict[str, Any] | None) -> str:
     decision = dict(route_decision or {})
     interaction_mode = str(decision.get("interaction_mode") or "none")
@@ -690,6 +755,8 @@ def _assistant_draft_core(
     hide_failed_guidance: bool = False,
     route_decision_override: dict[str, Any] | None = None,
     hint_event: dict[str, Any] | None = None,
+    reply_to_message_id: int | None = None,
+    extra_metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     q = (query_text or "").strip()
     if not q:
@@ -781,6 +848,8 @@ def _assistant_draft_core(
         total_latency_ms=total_latency_ms,
         hint_event=hint_event,
     )
+    message_metadata = dict(extra_metadata or {})
+    message_metadata["assistant_trace"] = assistant_trace
     if hidden_guidance_source:
         hidden_reason = (
             "guidance_timeout" if hidden_guidance_source == "timeout_hidden" else "guidance_error"
@@ -809,7 +878,7 @@ def _assistant_draft_core(
             "visibility": VIS_OWNER_ONLY,
             "source": SRC_AGENT_DRAFT,
             "body": None,
-            "metadata": {"assistant_trace": assistant_trace},
+            "metadata": message_metadata,
             "assistant_hidden": True,
             "assistant_hidden_reason": hidden_reason,
             "assistant_guidance": guidance,
@@ -832,7 +901,8 @@ def _assistant_draft_core(
         visibility=VIS_OWNER_ONLY,
         source=SRC_AGENT_DRAFT,
         message_recipient_id=user_id,
-        metadata={"assistant_trace": assistant_trace},
+        reply_to_message_id=reply_to_message_id,
+        metadata=message_metadata,
         now=now,
     )
     funnel_stage(
@@ -858,6 +928,31 @@ def _assistant_draft_core(
     out["assistant_hint_shape"] = "detail"
     if hint_event is not None:
         out["assistant_hint_event"] = dict(hint_event)
+    return out
+
+
+def _assistant_generate_coaching_entry_detail(
+    conn,
+    thread: dict[str, Any],
+    user_id: str,
+    entry_message_id: int,
+    *,
+    route_decision: dict[str, Any],
+    now: datetime | None,
+) -> dict[str, Any]:
+    out = _assistant_draft_core(
+        conn,
+        thread,
+        user_id,
+        _proactive_assistant_query_text(route_decision),
+        now=now,
+        post_user_query=False,
+        hide_failed_guidance=True,
+        route_decision_override=route_decision,
+        reply_to_message_id=int(entry_message_id),
+        extra_metadata={"assistant_entry_opened_from": int(entry_message_id)},
+    )
+    out["assistant_entry_opened_from"] = int(entry_message_id)
     return out
 
 
@@ -1135,39 +1230,62 @@ def assistant_open_coaching_entry(
     *,
     now: datetime | None = None,
 ) -> dict[str, Any]:
+    from .coaching_jobs import enqueue_coaching_entry_detail_job
+
     thread = get_thread(conn, thread_id)
     if not thread:
         raise ValueError("thread not found")
     if not _is_participant(thread, user_id):
         raise ValueError("user is not a participant")
-    cur = conn.execute(
-        "SELECT * FROM chat_messages WHERE message_id = ? AND thread_id = ? LIMIT 1",
-        (int(entry_message_id), thread_id),
-    )
-    entry = _inflate_message(row_to_dict(cur.fetchone()))
-    if not entry:
-        raise ValueError("entry not found")
-    if str(entry.get("author_id") or "") != ASSISTANT_AUTHOR_ID:
-        raise ValueError("entry is not an assistant message")
-    if str(entry.get("visibility") or "") != VIS_OWNER_ONLY:
-        raise ValueError("entry is not owner_only")
-    if str(entry.get("message_recipient_id") or "") != str(user_id):
-        raise ValueError("entry is not addressed to this user")
+    entry = _load_coaching_entry(conn, thread_id, int(entry_message_id), recipient_user_id=user_id)
     meta = dict(entry.get("metadata") or {})
-    if str(meta.get("owner_only_kind") or "") != _OWNER_ONLY_KIND_ASSISTANT_HINT_ENTRY:
-        raise ValueError("message is not a coaching entry")
     trace = dict(meta.get("assistant_trace") or {})
     route_decision = _scope_online_assistant_route_decision(trace.get("route_decision") or {})
-    out = _assistant_draft_core(
-        conn,
-        thread,
-        user_id,
-        _proactive_assistant_query_text(route_decision),
-        now=now,
-        post_user_query=False,
-        hide_failed_guidance=False,
-        route_decision_override=route_decision,
+    assistant_entry = dict(meta.get("assistant_entry") or {})
+    detail_status = str(assistant_entry.get("detail_status") or "").strip().lower()
+    detail_message_id = assistant_entry.get("detail_message_id")
+    job_id = (
+        int(assistant_entry["detail_job_id"])
+        if assistant_entry.get("detail_job_id") not in (None, "")
+        else None
     )
+    job_enqueued = False
+
+    if detail_status != "ready" or detail_message_id in (None, ""):
+        job = enqueue_coaching_entry_detail_job(
+            conn,
+            thread_id=thread_id,
+            entry_message_id=int(entry_message_id),
+            user_id=user_id,
+            route_decision=route_decision,
+            now=now,
+        )
+        if job:
+            job_id = int(job["job_id"])
+            job_enqueued = bool(job.get("job_enqueued"))
+            job_status = str(job.get("status") or "").strip().lower()
+            if job_status == "completed":
+                detail_status = "ready"
+                detail_message_id = job.get("detail_message_id")
+            elif job_status == "processing":
+                detail_status = "processing"
+                detail_message_id = None
+            elif job_status == "failed_hidden":
+                detail_status = "hidden_failed"
+                detail_message_id = None
+            else:
+                detail_status = "requested"
+                detail_message_id = None
+
+    ts = current_time(now)
+    updated_meta = _assistant_entry_detail_metadata(
+        meta,
+        detail_status=detail_status or "requested",
+        detail_job_id=job_id if job_id is not None else assistant_entry.get("detail_job_id"),
+        detail_message_id=detail_message_id,
+        last_opened_at=ts.isoformat(sep=" "),
+    )
+    _update_message_metadata(conn, int(entry_message_id), updated_meta, now=ts)
     current_state = _assistant_trend_state(thread, user_id)
     viewed_state = _assistant_trend_state_with_entry(
         current_state,
@@ -1176,9 +1294,18 @@ def assistant_open_coaching_entry(
         last_entry_opened_turn=int(current_state.get("current_turn_index") or 0),
     )
     _persist_assistant_trend_state(conn, thread, user_id, viewed_state, now=now)
-    out["assistant_entry_opened_from"] = int(entry_message_id)
-    out["assistant_trend_state"] = normalize_trend_state(viewed_state)
-    return out
+    return {
+        "thread_id": str(thread_id),
+        "assistant_hint_shape": "entry",
+        "assistant_entry_opened_from": int(entry_message_id),
+        "assistant_detail_status": detail_status or "requested",
+        "assistant_detail_message_id": (
+            int(detail_message_id) if detail_message_id not in (None, "") else None
+        ),
+        "assistant_job_id": job_id,
+        "assistant_job_enqueued": job_enqueued,
+        "assistant_trend_state": normalize_trend_state(viewed_state),
+    }
 
 
 def assistant_proactive_hint(
