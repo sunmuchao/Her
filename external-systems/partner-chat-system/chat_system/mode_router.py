@@ -644,7 +644,7 @@ def fast_mode_route(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
     def _decision(payload: dict[str, Any], source: str) -> dict[str, Any]:
         return normalize_route_decision({**snapshot, **payload}, decision_source=source)
 
-    if not dyadic:
+    def _none(reason: str, source: str = "heuristic") -> dict[str, Any]:
         return _decision(
             {
                 "need_rescue": False,
@@ -653,10 +653,15 @@ def fast_mode_route(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
                 "mutual_intent_assessment": "normal",
                 "interaction_mode": "none",
                 "rescue_style": "none",
-                "reason": "首轮开场，先正常聊，不需要提前介入。",
+                "reason": reason,
+                "risk_axis": None,
+                "hold_subtype": None,
             },
-            "heuristic_bootstrap",
+            source,
         )
+
+    if not dyadic:
+        return _none("首轮开场，先正常聊，不需要提前介入。", "heuristic_bootstrap")
 
     last_body = str(dyadic[-1].get("body") or "").strip()
     prev_body = str(dyadic[-2].get("body") or "").strip() if len(dyadic) >= 2 else ""
@@ -666,78 +671,40 @@ def fast_mode_route(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
     last_author_recent_engagement = _speaker_recent_engagement(dyadic[:-1], last_author)
     last_author_low_streak = _speaker_low_energy_streak(dyadic, last_author)
     recent_risk_flags = _recent_risk_flags(dyadic)
-    prior_recent_risk_flags = _recent_risk_flags(dyadic[:-1])
-    risk_axis = snapshot.get("risk_axis")
-    irritation_level = str(snapshot.get("irritation_level") or "none")
-    state_trend = str(snapshot.get("state_trend") or "stable")
     awkward_cold_question_repair = _should_repair_cold_prefix_question(dyadic)
     awkward_reply_repair = _should_repair_after_awkward_reply(dyadic)
+    recent_low_energy = sum(1 for body in recent if is_low_energy_like(body))
 
-    if _is_boundary_like(last_body) or _is_pressure_like(last_body):
-        return _decision(
-            {
-                "need_rescue": False,
-                "situation": "boundary",
-                "problem_tags": ["boundary_risk", "sensitive_topic"],
-                "mutual_intent_assessment": "boundary_risk",
-                "interaction_mode": "hold",
-                "rescue_style": "graceful_exit",
-                "reason": "上一句已经碰到外貌、边界或推进压力点，不能按正常继续处理。",
-                "risk_axis": risk_axis,
-                "hold_subtype": "boundary_risk",
-            },
-            "heuristic",
+    if recent_risk_flags or _is_boundary_like(last_body) or _is_pressure_like(last_body):
+        return _none(
+            "这轮更像边界、冒犯或施压问题，不属于回温助手职责，先不主动提示。",
+            "heuristic_scope_filter",
         )
     if _is_dismissive_like(last_body) or _is_defensive_like(last_body):
-        return _decision(
-            {
-                "need_rescue": False,
-                "situation": "rude",
-                "problem_tags": ["boundary_risk", "defensive_tone", "micro_rude"],
-                "mutual_intent_assessment": "boundary_risk",
-                "interaction_mode": "hold",
-                "rescue_style": "graceful_exit",
-                "reason": "上一句已经带刺、带防御或带施压味道，先按收住止损处理。",
-                "risk_axis": risk_axis or "pressure_compare",
-                "hold_subtype": "boundary_risk",
-            },
-            "heuristic",
+        return _none(
+            "这轮已经带刺或对立了，不属于回温助手职责，先不主动提示。",
+            "heuristic_scope_filter",
         )
     if _has_cold_prefix_question(last_body):
-        repair_now = prior_mutual_engagement or awkward_cold_question_repair
-        return _decision(
-            {
-                "need_rescue": True,
-                "situation": "cold",
-                "problem_tags": ["closed_reply", "low_energy", "awkward_transition"],
-                "mutual_intent_assessment": "communication_problem" if repair_now else "interest_unclear",
-                "interaction_mode": "repair" if repair_now else "probe_lightly",
-                "rescue_style": "switch_topic" if repair_now else "low_pressure_probe",
-                "reason": (
-                    "上一句虽然带着问题，但最近这几拍一直没真正接顺，更像开局尬接，值得主动帮忙修一下。"
-                    if repair_now
-                    else "上一句是冷回复里夹了一个问题，表面在继续聊，实际还没真正接顺。"
-                ),
-            },
-            "heuristic",
-        )
-
-    if is_low_energy_like(last_body):
-        if prior_recent_risk_flags:
+        if prior_mutual_engagement or awkward_cold_question_repair:
             return _decision(
                 {
-                    "need_rescue": False,
-                    "situation": "boundary",
-                    "problem_tags": ["boundary_risk", "conversation_shutdown", "low_energy"],
-                    "mutual_intent_assessment": "boundary_risk",
-                    "interaction_mode": "hold",
-                    "rescue_style": "graceful_exit",
-                    "reason": "最近几句已经带着边界或对立风险，这一拍继续偏冷，不能当成自然缓和。",
-                    "risk_axis": risk_axis,
-                    "hold_subtype": "boundary_risk",
+                    "need_rescue": True,
+                    "situation": "cold",
+                    "problem_tags": ["closed_reply", "low_energy", "awkward_transition"],
+                    "mutual_intent_assessment": "communication_problem",
+                    "interaction_mode": "repair",
+                    "rescue_style": "switch_topic",
+                    "reason": "上一句虽然带着问题，但最近这几拍一直没真正接顺，更像开局尬接，值得主动帮忙修一下。",
                 },
                 "heuristic",
             )
+        return _none(
+            "这轮虽然带着问题，但还看不出是典型的回温型卡点，先不主动提示。",
+            "heuristic_scope_filter",
+        )
+
+    if is_low_energy_like(last_body):
         if len(recent) >= 2 and all(is_low_energy_like(body) for body in recent[-2:]):
             if _recent_mutual_engagement(dyadic[:-2]):
                 return _decision(
@@ -752,18 +719,9 @@ def fast_mode_route(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
                     },
                     "heuristic",
                 )
-            return _decision(
-                {
-                    "need_rescue": False,
-                    "situation": "stuck",
-                    "problem_tags": ["disengaged", "low_energy", "conversation_shutdown"],
-                    "mutual_intent_assessment": "interest_low",
-                    "interaction_mode": "hold",
-                    "rescue_style": "graceful_exit",
-                    "reason": "最近两边都低投入，更像没人想继续推进，不适合再往救场上推。",
-                    "hold_subtype": "interest_low",
-                },
-                "heuristic",
+            return _none(
+                "最近两边都偏冷，更像自然降温，不属于回温助手职责。",
+                "heuristic_scope_filter",
             )
         if prior_mutual_engagement and last_author_recent_engagement >= 1:
             return _decision(
@@ -792,30 +750,13 @@ def fast_mode_route(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
                 "heuristic",
             )
         if last_author_low_streak >= 2:
-            return _decision(
-                {
-                    "need_rescue": False,
-                    "situation": "cold",
-                    "problem_tags": ["disengaged", "low_energy"],
-                    "mutual_intent_assessment": "interest_low",
-                    "interaction_mode": "hold",
-                    "rescue_style": "graceful_exit",
-                    "reason": "对方已经连续低投入，别把它当成单纯不会聊。",
-                    "hold_subtype": "interest_low",
-                },
-                "heuristic",
+            return _none(
+                "对方已经连续低投入，更像兴趣不高，不属于回温助手职责。",
+                "heuristic_scope_filter",
             )
-        return _decision(
-            {
-                "need_rescue": True,
-                "situation": "cold",
-                "problem_tags": ["closed_reply", "low_energy"],
-                "mutual_intent_assessment": "interest_unclear",
-                "interaction_mode": "probe_lightly",
-                "rescue_style": "low_pressure_probe",
-                "reason": "这轮偏冷，但还看不出是不会聊还是没兴趣，先低压试探。",
-            },
-            "heuristic",
+        return _none(
+            "这轮偏冷，但还不足以说明只是不会聊，先不主动提示。",
+            "heuristic_scope_filter",
         )
     if is_question_like(last_body) and any(is_low_energy_like(body) for body in recent[:-1]) and (
         is_low_energy_like(prev_body) or is_question_like(prev_body)
@@ -825,33 +766,14 @@ def fast_mode_route(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
                 "need_rescue": True,
                 "situation": "stuck",
                 "problem_tags": ["closed_reply", "low_energy", "awkward_transition"],
-                "mutual_intent_assessment": "communication_problem"
-                if prior_mutual_engagement
-                else "interest_unclear",
-                "interaction_mode": "repair" if prior_mutual_engagement else "probe_lightly",
-                "rescue_style": "switch_topic" if prior_mutual_engagement else "low_pressure_probe",
-                "reason": "前面刚经历冷回复或尬接，这一拍虽然继续提问，但还不能算已经恢复正常。",
+                "mutual_intent_assessment": "communication_problem",
+                "interaction_mode": "repair",
+                "rescue_style": "switch_topic",
+                "reason": "前面刚经历冷回复或尬接，这一拍虽然继续提问，但还没真正恢复顺畅，适合帮忙回温。",
             },
             "heuristic",
         )
-    if recent_risk_flags:
-        return _decision(
-            {
-                "need_rescue": False,
-                "situation": "boundary",
-                "problem_tags": ["boundary_risk", "defensive_tone"],
-                "mutual_intent_assessment": "boundary_risk",
-                "interaction_mode": "hold",
-                "rescue_style": "graceful_exit",
-                "reason": "最近两三句里已经有边界、施压或对立信号，不能因为表面还在接话就判正常。",
-                "risk_axis": risk_axis,
-                "hold_subtype": "boundary_risk",
-            },
-            "heuristic",
-        )
-    if len(recent) >= 3 and sum(1 for body in recent if is_low_energy_like(body)) >= 2 and not any(
-        is_question_like(body) for body in recent
-    ):
+    if len(recent) >= 3 and recent_low_energy >= 2 and not any(is_question_like(body) for body in recent):
         if _recent_mutual_engagement(dyadic[:-3]):
             return _decision(
                 {
@@ -865,80 +787,49 @@ def fast_mode_route(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
                 },
                 "heuristic",
             )
+        return _none(
+            "最近几轮连续偏冷又没有追问，更像自然降温，不属于回温助手职责。",
+            "heuristic_scope_filter",
+        )
+    if (
+        _engagement_score(last_body) >= 1
+        and any(is_low_energy_like(body) for body in recent[:-1])
+        and len(_compact_text(last_body)) >= 8
+    ):
         return _decision(
             {
-                "need_rescue": False,
+                "need_rescue": True,
                 "situation": "stuck",
-                "problem_tags": ["conversation_shutdown", "low_energy", "disengaged"],
-                "mutual_intent_assessment": "interest_low",
-                "interaction_mode": "hold",
-                "rescue_style": "graceful_exit",
-                "reason": "最近几轮连续偏冷又没有追问，更像双方都不想继续加码。",
-                "hold_subtype": "interest_low",
+                "problem_tags": ["closed_reply", "awkward_transition", "missed_connection"],
+                "mutual_intent_assessment": "communication_problem",
+                "interaction_mode": "repair",
+                "rescue_style": "switch_topic",
+                "reason": "这轮已经在努力把冷场接回来，但还没完全接顺，适合给一把回温建议。",
             },
             "heuristic",
         )
     if (
         is_question_like(last_body)
         and len(_compact_text(last_body)) >= 8
-        and state_trend not in {"cooling", "worsening"}
-        and irritation_level in {"none", "mild"}
     ):
-        return _decision(
-            {
-                "need_rescue": False,
-                "situation": "none",
-                "problem_tags": [],
-                "mutual_intent_assessment": "normal",
-                "interaction_mode": "none",
-                "rescue_style": "none",
-                "reason": "上一句本身就是正常可接的问题，先别打断自然往下聊。",
-            },
-            "heuristic_clear_continue",
-        )
+        return _none("上一句本身就是正常可接的问题，先别打断自然往下聊。", "heuristic_clear_continue")
     if (
         len(_compact_text(last_body)) >= 10
         and not is_cold_like(last_body)
         and is_question_like(prev_body)
-        and state_trend not in {"cooling", "worsening"}
-        and irritation_level == "none"
     ):
-        return _decision(
-            {
-                "need_rescue": False,
-                "situation": "none",
-                "problem_tags": [],
-                "mutual_intent_assessment": "normal",
-                "interaction_mode": "none",
-                "rescue_style": "none",
-                "reason": "当前还有正常来回，先不额外介入。",
-            },
-            "heuristic_clear_continue",
-        )
+        return _none("当前还有正常来回，先不额外介入。", "heuristic_clear_continue")
     if (
         _engagement_score(last_body) >= 1
         and not any(token in last_body for token in BOUNDARY_HINTS)
-        and state_trend not in {"cooling", "worsening"}
-        and irritation_level == "none"
         and (
             len(dyadic) == 1
             or _engagement_score(prev_body) >= 1
             or is_question_like(prev_body)
         )
     ):
-        return _decision(
-            {
-                "need_rescue": False,
-                "situation": "none",
-                "problem_tags": [],
-                "mutual_intent_assessment": "normal",
-                "interaction_mode": "none",
-                "rescue_style": "none",
-                "reason": "最近这拍仍然有正常信息交换，先顺着自然聊。",
-            },
-            "heuristic_clear_continue",
-        )
-    return None
+        return _none("最近这拍仍然有正常信息交换，先顺着自然聊。", "heuristic_clear_continue")
+    return _none("当前没有明显的回温型卡点，先顺着自然聊。", "heuristic_default")
 
 
 __all__ = [

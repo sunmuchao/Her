@@ -263,6 +263,23 @@ def _should_use_fast_hold_path(
     return _normalize_contract_mutual_intent_assessment(preferred_mutual_intent_assessment) == "boundary_risk"
 
 
+def _coerce_online_scope_route(
+    *,
+    mutual_intent_assessment: str | None,
+    interaction_mode: str | None,
+) -> tuple[str, str]:
+    normalized_mutual_intent = _normalize_contract_mutual_intent_assessment(
+        mutual_intent_assessment
+    )
+    normalized_interaction_mode = _normalize_contract_interaction_mode(
+        interaction_mode,
+        mutual_intent_assessment=normalized_mutual_intent,
+    )
+    if normalized_interaction_mode == "repair":
+        return "communication_problem", "repair"
+    return "normal", "none"
+
+
 def _default_rescue_flow_for_mode(
     interaction_mode: str,
     *,
@@ -681,7 +698,7 @@ def _rank_profile_hooks(
 
 
 def _default_topic_directions(selected_hooks: list[str], *, interaction_mode: str) -> list[str]:
-    if interaction_mode == "hold":
+    if interaction_mode in {"hold", "none"}:
         return []
     topics: list[str] = []
     for hook in selected_hooks:
@@ -891,6 +908,7 @@ def align_guidance_to_route_decision(
     risk_axis: str | None = None,
     hold_subtype: str | None = None,
     route_reason: str = "",
+    online_scope_only: bool = False,
 ) -> dict[str, Any]:
     preferred_mutual_intent = _normalize_contract_mutual_intent_assessment(
         preferred_mutual_intent_assessment
@@ -899,7 +917,33 @@ def align_guidance_to_route_decision(
         preferred_interaction_mode,
         mutual_intent_assessment=preferred_mutual_intent,
     )
+    if online_scope_only:
+        preferred_mutual_intent, preferred_interaction_mode_normalized = _coerce_online_scope_route(
+            mutual_intent_assessment=preferred_mutual_intent_assessment,
+            interaction_mode=preferred_interaction_mode,
+        )
     normalized = normalize_assistant_guidance(guidance or {})
+    if online_scope_only:
+        fallback = build_placeholder_assistant_guidance(
+            profile_hooks=profile_hooks,
+            mutual_intent_assessment=preferred_mutual_intent,
+            interaction_mode=preferred_interaction_mode_normalized,
+            route_reason=route_reason,
+            risk_axis=risk_axis,
+            hold_subtype=hold_subtype,
+            guidance_source="fallback_alignment",
+            online_scope_only=True,
+        )
+        if preferred_interaction_mode_normalized != "repair":
+            return fallback
+        if normalized.get("interaction_mode") != "repair":
+            return fallback
+        sanitized = dict(normalized)
+        sanitized["mutual_intent_assessment"] = "communication_problem"
+        sanitized["interaction_mode"] = "repair"
+        sanitized["risk_axis"] = None
+        sanitized["hold_subtype"] = None
+        return normalize_assistant_guidance(sanitized)
     if preferred_interaction_mode_normalized != "hold":
         return normalized
 
@@ -942,6 +986,7 @@ def build_placeholder_assistant_guidance(
     risk_axis: str | None = None,
     hold_subtype: str | None = None,
     guidance_source: str = "fallback",
+    online_scope_only: bool = False,
 ) -> dict[str, Any]:
     raw_hooks = [_clean_profile_hook(hook) for hook in list(profile_hooks or [])]
     hooks = [hook for hook in raw_hooks if hook and not _is_generic_profile_hook(hook)]
@@ -952,6 +997,11 @@ def build_placeholder_assistant_guidance(
         interaction_mode,
         mutual_intent_assessment=normalized_mutual_intent,
     )
+    if online_scope_only:
+        normalized_mutual_intent, normalized_interaction_mode = _coerce_online_scope_route(
+            mutual_intent_assessment=normalized_mutual_intent,
+            interaction_mode=normalized_interaction_mode,
+        )
     topic_directions = _default_topic_directions(
         hooks,
         interaction_mode=normalized_interaction_mode,
@@ -1192,6 +1242,7 @@ def generate_assistant_guidance(
     irritation_level: str = "",
     state_trend: str = "",
     hint_trigger_type: str = "",
+    online_scope_only: bool = False,
 ) -> dict[str, Any] | None:
     profile_ctx = _prepare_profile_context_for_guidance(
         actor_profile_summary=actor_profile_summary,
@@ -1213,7 +1264,10 @@ def generate_assistant_guidance(
         risk_axis=risk_axis,
         hold_subtype=hold_subtype,
         guidance_source="fallback_no_key",
+        online_scope_only=online_scope_only,
     )
+    if online_scope_only and str(fallback.get("interaction_mode") or "") != "repair":
+        return fallback
     if _should_use_fast_hold_path(
         preferred_mutual_intent_assessment=preferred_mutual_intent_assessment,
         preferred_interaction_mode=preferred_interaction_mode,
@@ -1248,14 +1302,23 @@ def generate_assistant_guidance(
         base,
         round(assistant_timeout_sec, 2),
     )
-    system = (
-        "你是相亲聊天教练，只给策略，不代写可直接发送给对方的整句。"
-        "先判 mutual_intent_assessment 和 interaction_mode。"
-        "映射：communication_problem->repair；interest_unclear->probe_lightly；"
-        "interest_low/boundary_risk->hold；normal->none。"
-        "局面偏冷或碰到边界/压力点时，优先给收住或止损建议。"
-        "只输出一个极短 JSON 对象，不要 Markdown，不要代码块。"
-    )
+    if online_scope_only:
+        system = (
+            "你是相亲聊天回温教练，只处理双方还想继续聊、但这轮接话卡住的场景。"
+            "只给策略，不代写可直接发送给对方的整句。"
+            "只允许输出两种判断：communication_problem->repair，normal->none。"
+            "如果这轮不需要回温介入，就明确给 normal/none。"
+            "只输出一个极短 JSON 对象，不要 Markdown，不要代码块。"
+        )
+    else:
+        system = (
+            "你是相亲聊天教练，只给策略，不代写可直接发送给对方的整句。"
+            "先判 mutual_intent_assessment 和 interaction_mode。"
+            "映射：communication_problem->repair；interest_unclear->probe_lightly；"
+            "interest_low/boundary_risk->hold；normal->none。"
+            "局面偏冷或碰到边界/压力点时，优先给收住或止损建议。"
+            "只输出一个极短 JSON 对象，不要 Markdown，不要代码块。"
+        )
     prompt_parts = [
         f"对话:\n{compact_context}",
         f"用户问: {user_query}",
@@ -1277,23 +1340,40 @@ def generate_assistant_guidance(
         prompt_parts.append(f"对方画像:\n{counterpart_summary_safe}")
     if selected_hooks:
         prompt_parts.append(f"优先钩子: {', '.join(selected_hooks[:3])}")
-    prompt_parts.extend(
-        [
-            "输出极短 JSON，只保留必要字段，不要空数组：",
-            "{",
-            f'  "mutual_intent_assessment": "<{_MUTUAL_INTENT_CHOICES}>",',
-            f'  "interaction_mode": "<{_INTERACTION_MODE_CHOICES}>",',
-            '  "current_problem": ["<1 条最关键问题>"],',
-            '  "avoid": ["<1-2 条，可省略>"],',
-            '  "advice": ["<1-2 条方向性建议，不要代写整句>"],',
-            '  "risk_axis": "<appearance|income_condition|privacy_ex|meetup_push|pressure_compare|other，可省略>",',
-            '  "hold_subtype": "<interest_low|boundary_risk，可省略>",',
-            '  "topic_directions": ["<0-2 个，可省略>"],',
-            '  "profile_hooks_used": ["<0-2 个，必须来自优先钩子，可省略>"]',
-            "}",
-            "不要编造画像里没有的事实；没必要的字段直接省略。",
-        ]
-    )
+    if online_scope_only:
+        prompt_parts.extend(
+            [
+                "输出极短 JSON，只保留必要字段，不要空数组：",
+                "{",
+                '  "mutual_intent_assessment": "<communication_problem|normal>",',
+                '  "interaction_mode": "<repair|none>",',
+                '  "current_problem": ["<1 条最关键问题>"],',
+                '  "avoid": ["<1-2 条，可省略>"],',
+                '  "advice": ["<1-2 条方向性建议，不要代写整句>"],',
+                '  "topic_directions": ["<0-2 个，可省略，仅 repair 时使用>"],',
+                '  "profile_hooks_used": ["<0-2 个，必须来自优先钩子，可省略>"]',
+                "}",
+                "不要编造画像里没有的事实；没必要的字段直接省略。",
+            ]
+        )
+    else:
+        prompt_parts.extend(
+            [
+                "输出极短 JSON，只保留必要字段，不要空数组：",
+                "{",
+                f'  "mutual_intent_assessment": "<{_MUTUAL_INTENT_CHOICES}>",',
+                f'  "interaction_mode": "<{_INTERACTION_MODE_CHOICES}>",',
+                '  "current_problem": ["<1 条最关键问题>"],',
+                '  "avoid": ["<1-2 条，可省略>"],',
+                '  "advice": ["<1-2 条方向性建议，不要代写整句>"],',
+                '  "risk_axis": "<appearance|income_condition|privacy_ex|meetup_push|pressure_compare|other，可省略>",',
+                '  "hold_subtype": "<interest_low|boundary_risk，可省略>",',
+                '  "topic_directions": ["<0-2 个，可省略>"],',
+                '  "profile_hooks_used": ["<0-2 个，必须来自优先钩子，可省略>"]',
+                "}",
+                "不要编造画像里没有的事实；没必要的字段直接省略。",
+            ]
+        )
     user_block = "\n\n".join(prompt_parts)
     try:
         max_tokens = _env_int("HER_CHAT_ASSISTANT_MAX_TOKENS", 120)
@@ -1334,6 +1414,7 @@ def generate_assistant_guidance(
             risk_axis=risk_axis,
             hold_subtype=hold_subtype,
             route_reason=route_reason,
+            online_scope_only=online_scope_only,
         )
         _guidance_response_cache_put(cache_key, aligned)
         return aligned

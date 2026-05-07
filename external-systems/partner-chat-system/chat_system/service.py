@@ -322,6 +322,39 @@ def _default_route_decision() -> dict[str, Any]:
     }
 
 
+def _scope_online_assistant_route_decision(route_decision: dict[str, Any] | None) -> dict[str, Any]:
+    decision = dict(route_decision or {})
+    if not decision:
+        return _default_route_decision()
+
+    interaction_mode = str(decision.get("interaction_mode") or "").strip().lower()
+    if interaction_mode == "repair":
+        scoped = {
+            **_default_route_decision(),
+            **decision,
+            "need_rescue": True,
+            "mutual_intent_assessment": "communication_problem",
+            "interaction_mode": "repair",
+            "risk_axis": None,
+            "hold_subtype": None,
+        }
+        if str(scoped.get("rescue_style") or "").strip().lower() == "none":
+            scoped["rescue_style"] = "switch_topic"
+        return scoped
+
+    fallback = _default_route_decision()
+    fallback["reason"] = (
+        str(decision.get("reason") or "").strip()
+        or "当前还不属于“双方都想继续聊但聊尬了”的回温场景，线上助手先不主动介入。"
+    )
+    fallback["decision_source"] = str(decision.get("decision_source") or "scope_filter")
+    fallback["engagement_level"] = str(decision.get("engagement_level") or fallback["engagement_level"])
+    fallback["warmth_level"] = str(decision.get("warmth_level") or fallback["warmth_level"])
+    fallback["irritation_level"] = str(decision.get("irritation_level") or fallback["irritation_level"])
+    fallback["state_trend"] = str(decision.get("state_trend") or fallback["state_trend"])
+    return fallback
+
+
 def _dyadic_message_count(conn, thread_id: str, *, author_id: str | None = None) -> int:
     if author_id is None:
         row = conn.execute(
@@ -372,8 +405,6 @@ def _proactive_assistant_query_text(route_decision: dict[str, Any] | None) -> st
     mutual_intent = str(decision.get("mutual_intent_assessment") or "normal")
     reason = str(decision.get("reason") or "")
     situation = str(decision.get("situation") or "none")
-    risk_axis = str(decision.get("risk_axis") or "").strip()
-    hold_subtype = str(decision.get("hold_subtype") or "").strip()
     warmth_level = str(decision.get("warmth_level") or "").strip()
     irritation_level = str(decision.get("irritation_level") or "").strip()
     state_trend = str(decision.get("state_trend") or "").strip()
@@ -381,35 +412,17 @@ def _proactive_assistant_query_text(route_decision: dict[str, Any] | None) -> st
         f"气氛走势：{state_trend or 'stable'}；语气热度：{warmth_level or 'neutral'}；"
         f"压力程度：{irritation_level or 'none'}。"
     )
-    axis_line = f"当前风险线：{risk_axis}。" if risk_axis else ""
     if interaction_mode == "repair":
         return (
             f"系统观察到这轮更像双方都还想继续聊，但沟通卡了一下。"
             f"当前情况：{situation}；意愿判断：{mutual_intent}；原因：{reason}。"
-            f"{state_line}{axis_line}"
+            f"{state_line}"
             "请先指出我这边最需要注意的问题，再给我下一步怎么接、怎么换到更容易继续的话题。"
             "不要直接代写成一条可发送消息。"
         )
-    if interaction_mode == "probe_lightly":
-        return (
-            f"系统观察到这轮更像意愿还不够明确。"
-            f"当前情况：{situation}；意愿判断：{mutual_intent}；原因：{reason}。"
-            f"{state_line}{axis_line}"
-            "请先说明为什么别硬推，再给我一句低压、低成本的试探方向，以及如果对方继续很冷该怎么收住。"
-            "不要直接代写成一条可发送消息。"
-        )
-    if interaction_mode == "hold":
-        subtype_line = f"当前 hold 子类型：{hold_subtype}。" if hold_subtype else ""
-        return (
-            f"系统观察到这轮更像该收住了。"
-            f"当前情况：{situation}；意愿判断：{mutual_intent}；原因：{reason}。"
-            f"{state_line}{axis_line}{subtype_line}"
-            "请优先告诉我现在最不该继续做什么，再给我止损型轻提醒，帮助我别把聊天越撑越僵。"
-            "不要直接代写成一条可发送消息。"
-        )
     return (
-        "请结合当前聊天记录，判断这轮是否真的需要额外提醒；"
-        "如果没有明显问题，就顺着聊，不要额外制造紧张感。"
+        "请结合当前聊天记录，判断这轮是否需要回温助手主动介入；"
+        "如果没有明显的冷场卡点，就直接告诉我这轮先顺着自然聊，不要额外制造紧张感。"
     )
 
 
@@ -448,7 +461,9 @@ def _assistant_draft_core(
         user_id,
         limit=message_limit,
     )
-    route_decision = dict(route_decision_override or fast_mode_route(route_messages) or _default_route_decision())
+    route_decision = _scope_online_assistant_route_decision(
+        route_decision_override or fast_mode_route(route_messages) or _default_route_decision()
+    )
     route_latency_ms = _elapsed_ms(route_started_at)
     ctx = build_dyadic_context_for_assistant(
         conn,
@@ -462,6 +477,7 @@ def _assistant_draft_core(
         profile_hooks=list(profile_ctx.get("profile_hooks") or []),
         mutual_intent_assessment=str(route_decision.get("mutual_intent_assessment") or ""),
         interaction_mode=str(route_decision.get("interaction_mode") or ""),
+        online_scope_only=True,
     )
     guidance = generate_assistant_guidance(
         user_query=q,
@@ -479,6 +495,7 @@ def _assistant_draft_core(
         irritation_level=str(route_decision.get("irritation_level") or ""),
         state_trend=str(route_decision.get("state_trend") or ""),
         hint_trigger_type=str((hint_event or {}).get("trigger_type") or ""),
+        online_scope_only=True,
     ) or placeholder
     hidden_guidance_source = _assistant_guidance_hidden_source(guidance)
     if hidden_guidance_source:
@@ -498,6 +515,7 @@ def _assistant_draft_core(
             risk_axis=str(route_decision.get("risk_axis") or ""),
             hold_subtype=str(route_decision.get("hold_subtype") or ""),
             route_reason=str(route_decision.get("reason") or ""),
+            online_scope_only=True,
         )
         guidance = normalize_assistant_guidance(guidance)
     guidance_latency_ms = _elapsed_ms(guidance_started_at)
@@ -831,6 +849,7 @@ def assistant_proactive_hint(
         resolved_route = dict(fast_mode_route(visible_messages) or _default_route_decision())
     else:
         resolved_route = dict(resolved_route)
+    resolved_route = _scope_online_assistant_route_decision(resolved_route)
 
     current_state = _assistant_trend_state(thread, user_id)
     advanced_state = advance_trend_state(
@@ -902,7 +921,7 @@ def assistant_mode_route(
     decision = fast_mode_route(messages)
     if decision is None:
         return None
-    out = dict(decision)
+    out = _scope_online_assistant_route_decision(decision)
     out["latency_ms"] = _elapsed_ms(started_at)
     return out
 
