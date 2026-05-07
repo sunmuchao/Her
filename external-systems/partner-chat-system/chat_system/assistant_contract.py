@@ -17,28 +17,22 @@ from typing import Any, Final
 GUIDANCE_SCHEMA_VERSION: Final[int] = 2
 TURN_EVALUATION_SCHEMA_VERSION: Final[int] = 1
 
-DEFAULT_MUTUAL_INTENT_ASSESSMENT: Final[str] = "interest_unclear"
+DEFAULT_MUTUAL_INTENT_ASSESSMENT: Final[str] = "normal"
 
 MUTUAL_INTENT_ASSESSMENTS: Final[tuple[str, ...]] = (
     "communication_problem",
-    "interest_unclear",
-    "interest_low",
-    "boundary_risk",
     "normal",
 )
 MUTUAL_INTENT_ASSESSMENT_SET: Final[frozenset[str]] = frozenset(MUTUAL_INTENT_ASSESSMENTS)
 
 INTERACTION_MODES: Final[tuple[str, ...]] = (
     "repair",
-    "probe_lightly",
-    "hold",
     "none",
 )
 INTERACTION_MODE_SET: Final[frozenset[str]] = frozenset(INTERACTION_MODES)
 
 RESCUE_INTERACTION_MODES: Final[tuple[str, ...]] = (
     "repair",
-    "probe_lightly",
 )
 RESCUE_INTERACTION_MODE_SET: Final[frozenset[str]] = frozenset(RESCUE_INTERACTION_MODES)
 
@@ -67,18 +61,14 @@ ASSISTANT_GUIDANCE_FIELDS: Final[tuple[str, ...]] = (
     "guidance_source",
     "mutual_intent_assessment",
     "interaction_mode",
-    "risk_axis",
-    "hold_subtype",
     "current_problem",
     "problem_tags",
     "why_not_to_push",
-    "low_pressure_options",
     "advice",
     "avoid",
     "topic_directions",
     "easy_question_types",
     "rescue_flow",
-    "graceful_exit_plan",
     "strategy_tags",
     "reply_suggestions",
     "profile_hooks_used",
@@ -118,8 +108,6 @@ SHARED_TURN_EVALUATION_FIELDS: Final[tuple[str, ...]] = (
     "problem_tags_pred",
     "strategy_tags_gold",
     "strategy_tags_pred",
-    "risk_axis_pred",
-    "hold_subtype_pred",
     "engagement_level_pred",
     "warmth_level_pred",
     "irritation_level_pred",
@@ -128,7 +116,6 @@ SHARED_TURN_EVALUATION_FIELDS: Final[tuple[str, ...]] = (
     "followed_assistant",
     "follow_level",
     "recovery_score_1to3_turns",
-    "graceful_exit_score",
 )
 
 ROLEPLAY_TURN_EVALUATION_FIELDS: Final[tuple[str, ...]] = (
@@ -173,15 +160,19 @@ def normalize_mutual_intent_assessment(
     raw = str(value or "").strip().lower()
     if raw in MUTUAL_INTENT_ASSESSMENT_SET:
         return raw
+    if raw in {"interest_unclear", "interest_low", "boundary_risk"}:
+        return "normal"
     text = str(value or "").strip()
     if "双方" in text and any(token in text for token in ("还想聊", "想继续聊", "继续聊")):
         return "communication_problem"
+    if any(token in text for token in ("卡住", "尴尬", "冷场", "没接好", "不会接", "接不下去")):
+        return "communication_problem"
     if any(token in text for token in ("边界", "敏感", "压力")):
-        return "boundary_risk"
+        return "normal"
     if any(token in text for token in ("兴趣低", "意愿低", "不想聊", "敷衍", "别硬推", "别讨好")):
-        return "interest_low"
+        return "normal"
     if any(token in text for token in ("不明确", "不确定", "试探", "先探")):
-        return "interest_unclear"
+        return "normal"
     if any(token in text for token in ("正常", "自然聊", "顺着聊")):
         return "normal"
     return default
@@ -196,12 +187,6 @@ def default_interaction_mode(
         if need_rescue is False:
             return "none"
         return "repair"
-    if mutual_intent_assessment == "interest_unclear":
-        if need_rescue is False:
-            return "none"
-        return "probe_lightly"
-    if mutual_intent_assessment in {"interest_low", "boundary_risk"}:
-        return "hold"
     return "none"
 
 
@@ -214,11 +199,13 @@ def normalize_interaction_mode(
     raw = str(value or "").strip().lower()
     if raw in INTERACTION_MODE_SET:
         return raw
+    if raw in {"probe_lightly", "hold"}:
+        return "none"
     text = str(value or "").strip()
     if "低压试探" in text or "轻试" in text:
-        return "probe_lightly"
+        return "none"
     if any(token in text for token in ("先收住", "别硬推", "别推进", "别讨好")):
-        return "hold"
+        return "none"
     if any(token in text for token in ("正常修复", "接住", "往下聊", "继续往下聊")):
         return "repair"
     if any(token in text for token in ("不用介入", "顺着聊", "自然往下聊")):

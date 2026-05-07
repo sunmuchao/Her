@@ -51,8 +51,6 @@ SAMPLE_ROUTE = {
     "preferred_mutual_intent_assessment": "communication_problem",
     "preferred_interaction_mode": "repair",
     "route_reason": "对方上一句太短，旧话题快聊干了。",
-    "risk_axis": "",
-    "hold_subtype": "",
     "engagement_level": "medium",
     "warmth_level": "cool",
     "irritation_level": "none",
@@ -63,8 +61,6 @@ SAMPLE_NONE_ROUTE = {
     "preferred_mutual_intent_assessment": "normal",
     "preferred_interaction_mode": "none",
     "route_reason": "上一句本身就是正常可接的问题，先别打断自然往下聊。",
-    "risk_axis": "",
-    "hold_subtype": "",
     "engagement_level": "high",
     "warmth_level": "warm",
     "irritation_level": "none",
@@ -127,8 +123,6 @@ def _current_prompt_snapshot() -> dict[str, str]:
         (
             "快照: "
             f"原因={SAMPLE_ROUTE['route_reason']} | "
-            f"风险={SAMPLE_ROUTE['risk_axis'] or '无'} | "
-            f"hold={SAMPLE_ROUTE['hold_subtype'] or '无'} | "
             f"投入={SAMPLE_ROUTE['engagement_level']} | "
             f"语气={SAMPLE_ROUTE['warmth_level']} | "
             f"压力={SAMPLE_ROUTE['irritation_level']} | "
@@ -263,8 +257,6 @@ def _call_legacy_like_guidance() -> dict[str, Any]:
         profile_hooks=selected_hooks,
         preferred_mutual_intent_assessment=SAMPLE_ROUTE["preferred_mutual_intent_assessment"],
         preferred_interaction_mode=SAMPLE_ROUTE["preferred_interaction_mode"],
-        risk_axis=SAMPLE_ROUTE["risk_axis"],
-        hold_subtype=SAMPLE_ROUTE["hold_subtype"],
         route_reason=SAMPLE_ROUTE["route_reason"],
         online_scope_only=True,
     )

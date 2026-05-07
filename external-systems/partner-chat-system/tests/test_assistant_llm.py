@@ -69,14 +69,12 @@ class AssistantLLMTests(unittest.TestCase):
                 "mutual_intent_assessment": "communication_problem",
                 "interaction_mode": "repair",
                 "current_problem": ["对方上一句太短，原话题快聊干了"],
-                "why_not_to_push": [],
-                "low_pressure_options": [],
+                "why_not_to_push": ["这轮更像没接顺，靠加大输出只会更僵。"],
                 "advice": ["先回应，再补一点自己", "不要整句代写"],
                 "avoid": ["不要继续追着同一个点硬问"],
                 "topic_directions": ["周末出门走走", "咖啡"],
                 "easy_question_types": ["低门槛生活习惯问题"],
                 "rescue_flow": ["先接住短回复", "再切生活话题", "最后问轻问题"],
-                "graceful_exit_plan": ["如果对方还是很冷，就先轻轻收住"],
                 "profile_hooks_used": ["周末会出门走走", "咖啡"],
             }
         )
@@ -89,33 +87,30 @@ class AssistantLLMTests(unittest.TestCase):
         self.assertIn("意愿判断：", body)
         self.assertIn("这轮处理方式：", body)
         self.assertIn("建议按这个顺序来：", body)
-        self.assertIn("如果还是接不动：", body)
         self.assertEqual(parsed["schema_version"], GUIDANCE_SCHEMA_VERSION)
         self.assertEqual(parsed["mutual_intent_assessment"], "communication_problem")
         self.assertEqual(parsed["interaction_mode"], "repair")
         self.assertEqual(parsed["rescue_flow"], ["先接住短回复", "再切生活话题", "最后问轻问题"])
-        self.assertEqual(parsed["graceful_exit_plan"], ["如果对方还是很冷，就先轻轻收住"])
         self.assertEqual(parsed["advice"], ["先回应，再补一点自己", "不要整句代写"])
         self.assertEqual(parsed["reply_suggestions"], ["先回应，再补一点自己", "不要整句代写"])
         self.assertEqual(parsed["profile_hooks_used"], ["周末会出门走走", "咖啡"])
+        self.assertNotIn("如果还是接不动：", body)
 
-    def test_normalize_guidance_adds_defaults_for_probe_lightly(self):
+    def test_normalize_guidance_defaults_to_none_for_out_of_scope_input(self):
         guidance = normalize_assistant_guidance(
             {
                 "mutual_intent_assessment": "interest_unclear",
                 "interaction_mode": "probe_lightly",
                 "current_problem": ["对方回得短，意愿还看不清"],
-                "problem_tags": ["closed_reply"],
             }
         )
 
         self.assertEqual(guidance["schema_version"], GUIDANCE_SCHEMA_VERSION)
-        self.assertEqual(guidance["interaction_mode"], "probe_lightly")
-        self.assertTrue(guidance["why_not_to_push"])
-        self.assertTrue(guidance["low_pressure_options"])
-        self.assertTrue(guidance["avoid"])
-        self.assertTrue(guidance["advice"])
-        self.assertEqual(guidance["advice"], guidance["reply_suggestions"])
+        self.assertEqual(guidance["mutual_intent_assessment"], "normal")
+        self.assertEqual(guidance["interaction_mode"], "none")
+        self.assertEqual(guidance["topic_directions"], [])
+        self.assertEqual(guidance["easy_question_types"], [])
+        self.assertEqual(guidance["rescue_flow"], [])
 
     def test_normalize_guidance_filters_direct_send_like_suggestions(self):
         guidance = normalize_assistant_guidance(
@@ -143,13 +138,15 @@ class AssistantLLMTests(unittest.TestCase):
             guidance = generate_assistant_guidance(
                 user_query="怎么接话？",
                 thread_context="bob: 嗯",
+                preferred_mutual_intent_assessment="communication_problem",
+                preferred_interaction_mode="repair",
                 profile_hooks=["咖啡"],
             )
 
         assert guidance is not None
         self.assertEqual(guidance["guidance_source"], "error_hidden")
-        self.assertEqual(guidance["mutual_intent_assessment"], "interest_unclear")
-        self.assertEqual(guidance["interaction_mode"], "probe_lightly")
+        self.assertEqual(guidance["mutual_intent_assessment"], "communication_problem")
+        self.assertEqual(guidance["interaction_mode"], "repair")
 
     def test_generate_assistant_guidance_hides_timeout_result(self):
         os.environ["OPENAI_API_KEY"] = "test-key"
@@ -168,135 +165,7 @@ class AssistantLLMTests(unittest.TestCase):
         self.assertEqual(guidance["mutual_intent_assessment"], "communication_problem")
         self.assertEqual(guidance["interaction_mode"], "repair")
 
-    def test_generate_assistant_guidance_fallback_respects_preferred_hold_mode(self):
-        os.environ["OPENAI_API_KEY"] = "test-key"
-        _FakeOpenAIClient.response_content = "不是 JSON"
-        fake_module = SimpleNamespace(OpenAI=_FakeOpenAIClient)
-
-        with patch.dict(sys.modules, {"openai": fake_module}):
-            guidance = generate_assistant_guidance(
-                user_query="现在该怎么处理？",
-                thread_context="a: 你照片是本人吧？别差距太大。\nb: 是本人。怎么，怕见光死？",
-                preferred_mutual_intent_assessment="boundary_risk",
-                preferred_interaction_mode="hold",
-            )
-
-        assert guidance is not None
-        self.assertEqual(guidance["mutual_intent_assessment"], "boundary_risk")
-        self.assertEqual(guidance["interaction_mode"], "hold")
-        self.assertEqual(guidance["guidance_source"], "fast_hold_policy")
-        self.assertIn("不适合再往前推", guidance["current_problem"][0])
-        self.assertEqual(guidance["low_pressure_options"], [])
-        self.assertEqual(guidance["easy_question_types"], [])
-        self.assertTrue(any("收住" in item or "止损" in item for item in guidance["advice"]))
-        self.assertTrue(any("收口" in item or "解释" in item for item in guidance["rescue_flow"]))
-
-    def test_generate_assistant_guidance_fast_hold_stoploss_uses_harder_stop_signal(self):
-        guidance = generate_assistant_guidance(
-            user_query="现在该怎么处理？",
-            thread_context="a: 你照片是本人吧？\nb: 是本人。\na: 那别差太多。",
-            preferred_mutual_intent_assessment="boundary_risk",
-            preferred_interaction_mode="hold",
-            risk_axis="appearance",
-            hold_subtype="boundary_risk",
-            hint_trigger_type="hold_stoploss",
-        )
-
-        assert guidance is not None
-        self.assertEqual(guidance["guidance_source"], "fast_hold_policy")
-        self.assertEqual(guidance["interaction_mode"], "hold")
-        self.assertTrue(any("别再证明自己" in item for item in guidance["advice"]))
-        self.assertTrue(any("不要再抛新的泛聊天问题" in item for item in guidance["avoid"]))
-
-    def test_generate_assistant_guidance_coerces_probe_output_back_to_hold(self):
-        os.environ["OPENAI_API_KEY"] = "test-key"
-        _FakeOpenAIClient.response_content = (
-            '{"mutual_intent_assessment":"interest_unclear","interaction_mode":"probe_lightly",'
-            '"current_problem":["先轻轻试一下"],'
-            '"low_pressure_options":["问一个容易回答的小问题"],'
-            '"topic_directions":["周末安排"],'
-            '"easy_question_types":["低门槛生活习惯问题"],'
-            '"strategy_tags":["probe_lightly","ask_easy_question"]}'
-        )
-        fake_module = SimpleNamespace(OpenAI=_FakeOpenAIClient)
-
-        with patch.dict(sys.modules, {"openai": fake_module}):
-            guidance = generate_assistant_guidance(
-                user_query="现在该怎么处理？",
-                thread_context="a: 你照片是本人吧？别差距太大。\nb: 是本人。怎么，怕见光死？",
-                preferred_mutual_intent_assessment="boundary_risk",
-                preferred_interaction_mode="hold",
-            )
-
-        assert guidance is not None
-        self.assertEqual(guidance["mutual_intent_assessment"], "boundary_risk")
-        self.assertEqual(guidance["interaction_mode"], "hold")
-        self.assertEqual(guidance["low_pressure_options"], [])
-        self.assertEqual(guidance["topic_directions"], [])
-        self.assertEqual(guidance["easy_question_types"], [])
-        self.assertEqual(guidance["strategy_tags"], ["graceful_exit", "deescalate", "set_boundary"])
-        self.assertTrue(any("收住" in item or "止损" in item for item in guidance["advice"]))
-
-    def test_generate_assistant_guidance_normalizes_model_schema_gaps(self):
-        os.environ["OPENAI_API_KEY"] = "test-key"
-        _FakeOpenAIClient.response_content = (
-            '{"mutual_intent_assessment":"interest_low","interaction_mode":"hold",'
-            '"current_problem":["对方回得很冷"],'
-            '"problem_tags":["low_energy"],'
-            '"advice":["我觉得我们改天再聊吧。"]}'
-        )
-        fake_module = SimpleNamespace(OpenAI=_FakeOpenAIClient)
-
-        with patch.dict(sys.modules, {"openai": fake_module}):
-            guidance = generate_assistant_guidance(
-                user_query="怎么接？",
-                thread_context="bob: 哦",
-            )
-
-        assert guidance is not None
-        self.assertEqual(guidance["interaction_mode"], "hold")
-        self.assertTrue(guidance["why_not_to_push"])
-        self.assertTrue(guidance["avoid"])
-        self.assertNotIn("我觉得我们改天再聊吧。", guidance["advice"])
-        self.assertIn("先把节奏收住，不要继续追着聊。", guidance["advice"])
-
-    def test_placeholder_guidance_deprioritizes_generic_profile_hooks(self):
-        guidance = build_placeholder_assistant_guidance(
-            profile_hooks=["电影", "旅行", "无锡", "咖啡"]
-        )
-
-        self.assertEqual(guidance["topic_directions"][:2], ["无锡", "咖啡"])
-        self.assertEqual(guidance["profile_hooks_used"], ["无锡", "咖啡"])
-        self.assertNotIn("电影", guidance["topic_directions"])
-        self.assertNotIn("旅行", guidance["topic_directions"])
-
-    def test_placeholder_guidance_can_follow_hold_mode(self):
-        guidance = build_placeholder_assistant_guidance(
-            mutual_intent_assessment="interest_low",
-            interaction_mode="hold",
-        )
-
-        self.assertEqual(guidance["mutual_intent_assessment"], "interest_low")
-        self.assertEqual(guidance["interaction_mode"], "hold")
-        self.assertEqual(guidance["topic_directions"], [])
-        self.assertEqual(guidance["easy_question_types"], [])
-        self.assertIn("收住", guidance["advice"][0])
-        self.assertTrue(any("硬聊" in item or "收住" in item for item in guidance["current_problem"]))
-
-    def test_placeholder_guidance_online_scope_only_collapses_old_modes(self):
-        guidance = build_placeholder_assistant_guidance(
-            mutual_intent_assessment="interest_low",
-            interaction_mode="hold",
-            online_scope_only=True,
-        )
-
-        self.assertEqual(guidance["mutual_intent_assessment"], "normal")
-        self.assertEqual(guidance["interaction_mode"], "none")
-        self.assertEqual(guidance["topic_directions"], [])
-        self.assertEqual(guidance["profile_hooks_used"], [])
-        self.assertIn("顺着当前话题自然往下聊", guidance["advice"][0])
-
-    def test_generate_assistant_guidance_online_scope_only_skips_model_for_none_route(self):
+    def test_generate_assistant_guidance_skips_model_for_none_route(self):
         os.environ["OPENAI_API_KEY"] = "test-key"
         _FakeOpenAIClient.response_content = '{"mutual_intent_assessment":"communication_problem","interaction_mode":"repair"}'
         fake_module = SimpleNamespace(OpenAI=_FakeOpenAIClient)
@@ -304,9 +173,9 @@ class AssistantLLMTests(unittest.TestCase):
         with patch.dict(sys.modules, {"openai": fake_module}):
             guidance = generate_assistant_guidance(
                 user_query="怎么接？",
-                thread_context="bob: 嗯",
-                preferred_mutual_intent_assessment="interest_unclear",
-                preferred_interaction_mode="probe_lightly",
+                thread_context="bob: 正常继续吧",
+                preferred_mutual_intent_assessment="normal",
+                preferred_interaction_mode="none",
                 online_scope_only=True,
             )
 
@@ -315,6 +184,32 @@ class AssistantLLMTests(unittest.TestCase):
         self.assertEqual(guidance["interaction_mode"], "none")
         self.assertEqual(_FakeOpenAIClient.instance_count, 0)
         self.assertEqual(_FakeOpenAIClient.create_call_count, 0)
+
+    def test_placeholder_guidance_deprioritizes_generic_profile_hooks(self):
+        guidance = build_placeholder_assistant_guidance(
+            profile_hooks=["电影", "旅行", "无锡", "咖啡"],
+            mutual_intent_assessment="communication_problem",
+            interaction_mode="repair",
+        )
+
+        self.assertEqual(guidance["topic_directions"][:2], ["无锡", "咖啡"])
+        self.assertEqual(guidance["profile_hooks_used"], ["无锡", "咖啡"])
+        self.assertNotIn("电影", guidance["topic_directions"])
+        self.assertNotIn("旅行", guidance["topic_directions"])
+
+    def test_placeholder_guidance_clears_topics_for_none_mode(self):
+        guidance = build_placeholder_assistant_guidance(
+            mutual_intent_assessment="normal",
+            interaction_mode="none",
+            profile_hooks=["无锡", "咖啡"],
+            online_scope_only=True,
+        )
+
+        self.assertEqual(guidance["mutual_intent_assessment"], "normal")
+        self.assertEqual(guidance["interaction_mode"], "none")
+        self.assertEqual(guidance["topic_directions"], [])
+        self.assertEqual(guidance["profile_hooks_used"], [])
+        self.assertIn("顺着当前话题自然往下聊", guidance["advice"][0])
 
     def test_generate_assistant_guidance_uses_safe_summaries_and_ranked_hooks(self):
         os.environ["OPENAI_API_KEY"] = "test-key"
@@ -353,6 +248,8 @@ class AssistantLLMTests(unittest.TestCase):
                 actor_profile_summary=actor_summary,
                 counterpart_profile_summary=counterpart_summary,
                 profile_hooks=["电影", "旅行", "无锡", "咖啡", "桌游", "羽毛球", "运动"],
+                preferred_mutual_intent_assessment="communication_problem",
+                preferred_interaction_mode="repair",
             )
 
         assert guidance is not None
@@ -370,8 +267,8 @@ class AssistantLLMTests(unittest.TestCase):
         self.assertNotIn('"problem_tags"', prompt)
         self.assertNotIn('"strategy_tags"', prompt)
         self.assertNotIn('"easy_question_types"', prompt)
-        self.assertNotIn('"graceful_exit_plan"', prompt)
         self.assertNotIn('"rescue_flow"', prompt)
+        self.assertNotIn('"graceful_exit_plan"', prompt)
         self.assertNotIn("通用低门槛兜底", prompt)
         self.assertNotIn("name：小雨", prompt)
         self.assertNotIn("age：29", prompt)
@@ -394,6 +291,8 @@ class AssistantLLMTests(unittest.TestCase):
                 actor_profile_summary="job：运营",
                 counterpart_profile_summary="job：工程师",
                 profile_hooks=["咖啡", "无锡"],
+                preferred_mutual_intent_assessment="communication_problem",
+                preferred_interaction_mode="repair",
             )
             second = generate_assistant_guidance(
                 user_query="这轮怎么接？",
@@ -401,6 +300,8 @@ class AssistantLLMTests(unittest.TestCase):
                 actor_profile_summary="job：运营",
                 counterpart_profile_summary="job：工程师",
                 profile_hooks=["咖啡", "无锡"],
+                preferred_mutual_intent_assessment="communication_problem",
+                preferred_interaction_mode="repair",
             )
 
         self.assertEqual(_FakeOpenAIClient.instance_count, 1)

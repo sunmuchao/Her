@@ -148,20 +148,11 @@ _LOW_ENERGY_PATTERNS = (
     "再说吧",
 )
 _ALLOWED_SITUATIONS = {"cold", "awkward", "stuck", "rude", "boundary", "off_topic", "none"}
-_ALLOWED_RESCUE_STYLES = {"reengage", "switch_topic", "low_pressure_probe", "graceful_exit", "none"}
+_ALLOWED_RESCUE_STYLES = {"reengage", "switch_topic", "none"}
 _ALLOWED_ENGAGEMENT_LEVELS = {"high", "medium", "low", "closed"}
 _ALLOWED_WARMTH_LEVELS = {"warm", "neutral", "cold", "sharp"}
 _ALLOWED_IRRITATION_LEVELS = {"none", "mild", "medium", "high"}
 _ALLOWED_STATE_TRENDS = {"warming", "stable", "cooling", "worsening", "recovering"}
-_ALLOWED_RISK_AXES = {
-    "appearance",
-    "income_condition",
-    "privacy_ex",
-    "meetup_push",
-    "pressure_compare",
-    "other",
-}
-_ALLOWED_HOLD_SUBTYPES = {"interest_low", "boundary_risk"}
 _DEFAULT_PROBLEM_TAGS_BY_SITUATION: dict[str, tuple[str, ...]] = {
     "cold": ("closed_reply", "low_energy"),
     "awkward": ("awkward_transition",),
@@ -342,35 +333,6 @@ def _normalize_state_trend(value: Any) -> str:
     return raw if raw in _ALLOWED_STATE_TRENDS else "stable"
 
 
-def _normalize_risk_axis(value: Any) -> str | None:
-    raw = str(value or "").strip().lower()
-    return raw if raw in _ALLOWED_RISK_AXES else None
-
-
-def _normalize_hold_subtype(value: Any) -> str | None:
-    raw = str(value or "").strip().lower()
-    return raw if raw in _ALLOWED_HOLD_SUBTYPES else None
-
-
-def _infer_risk_axis(messages: list[dict[str, Any]]) -> str | None:
-    texts = [str(message.get("body") or "") for message in messages[-3:]]
-    for text in reversed(texts):
-        compact = _compact_match_text(text)
-        if not compact:
-            continue
-        if any(token in compact for token in _APPEARANCE_AXIS_HINTS):
-            return "appearance"
-        if any(token in compact for token in _INCOME_AXIS_HINTS):
-            return "income_condition"
-        if any(token in compact for token in _PRIVACY_AXIS_HINTS):
-            return "privacy_ex"
-        if any(token in compact for token in _MEETUP_AXIS_HINTS):
-            return "meetup_push"
-        if any(token in compact for token in _PRESSURE_COMPARE_AXIS_HINTS):
-            return "pressure_compare"
-    return None
-
-
 def _infer_engagement_level(
     messages: list[dict[str, Any]],
     *,
@@ -455,7 +417,6 @@ def _state_snapshot(messages: list[dict[str, Any]]) -> dict[str, Any]:
             "warmth_level": "neutral",
             "irritation_level": "none",
             "state_trend": "stable",
-            "risk_axis": None,
         }
     last_body = str(messages[-1].get("body") or "").strip()
     last_author = str(messages[-1].get("author_id") or "")
@@ -479,7 +440,6 @@ def _state_snapshot(messages: list[dict[str, Any]]) -> dict[str, Any]:
         "warmth_level": warmth_level,
         "irritation_level": irritation_level,
         "state_trend": state_trend,
-        "risk_axis": _infer_risk_axis(messages),
     }
 
 
@@ -539,8 +499,6 @@ def _default_problem_tags(
     interaction_mode: str,
 ) -> list[str]:
     tags = list(_DEFAULT_PROBLEM_TAGS_BY_SITUATION.get(situation, ()))
-    if interaction_mode == "hold" and mutual_intent_assessment == "interest_low":
-        tags.extend(["disengaged", "conversation_shutdown"])
     if interaction_mode == "repair" and situation == "stuck":
         tags.append("missed_connection")
     return _dedupe_strs(tags)
@@ -557,19 +515,15 @@ def _normalize_rescue_style(
         return raw
     text = str(value or "").strip()
     if "低压" in text or "试探" in text:
-        return "low_pressure_probe"
+        return "none"
     if "换题" in text:
         return "switch_topic"
     if any(token in text for token in ("收住", "止损", "退出")):
-        return "graceful_exit"
+        return "none"
     if "接住" in text:
         return "reengage"
     if interaction_mode == "repair":
         return "switch_topic"
-    if interaction_mode == "probe_lightly":
-        return "low_pressure_probe"
-    if interaction_mode == "hold" and mutual_intent_assessment in {"interest_low", "boundary_risk"}:
-        return "graceful_exit"
     return "none"
 
 
@@ -602,12 +556,6 @@ def normalize_route_decision(
     )
     if interaction_mode == "none":
         rescue_style = "none"
-    hold_subtype = None
-    if interaction_mode == "hold":
-        if mutual_intent_assessment == "boundary_risk":
-            hold_subtype = "boundary_risk"
-        elif mutual_intent_assessment == "interest_low":
-            hold_subtype = "interest_low"
     problem_tags = (
         _to_clean_list(data.get("problem_tags"))
         or _default_problem_tags(
@@ -625,8 +573,6 @@ def normalize_route_decision(
         "interaction_mode": interaction_mode,
         "reason": str(data.get("reason") or "").strip(),
         "decision_source": decision_source,
-        "risk_axis": _normalize_risk_axis(data.get("risk_axis")),
-        "hold_subtype": _normalize_hold_subtype(data.get("hold_subtype")) or hold_subtype,
         "engagement_level": _normalize_engagement_level(data.get("engagement_level")),
         "warmth_level": _normalize_warmth_level(data.get("warmth_level")),
         "irritation_level": _normalize_irritation_level(data.get("irritation_level")),
@@ -654,8 +600,6 @@ def fast_mode_route(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
                 "interaction_mode": "none",
                 "rescue_style": "none",
                 "reason": reason,
-                "risk_axis": None,
-                "hold_subtype": None,
             },
             source,
         )
