@@ -138,10 +138,6 @@ class AssistantLLMTests(unittest.TestCase):
         os.environ["OPENAI_API_KEY"] = "test-key"
         _FakeOpenAIClient.response_content = "不是 JSON"
         fake_module = SimpleNamespace(OpenAI=_FakeOpenAIClient)
-        expected = build_placeholder_assistant_guidance(
-            profile_hooks=["咖啡"],
-            guidance_source="fallback_exception",
-        )
 
         with patch.dict(sys.modules, {"openai": fake_module}):
             guidance = generate_assistant_guidance(
@@ -150,7 +146,10 @@ class AssistantLLMTests(unittest.TestCase):
                 profile_hooks=["咖啡"],
             )
 
-        self.assertEqual(guidance, expected)
+        assert guidance is not None
+        self.assertEqual(guidance["guidance_source"], "error_hidden")
+        self.assertEqual(guidance["mutual_intent_assessment"], "interest_unclear")
+        self.assertEqual(guidance["interaction_mode"], "probe_lightly")
 
     def test_generate_assistant_guidance_hides_timeout_result(self):
         os.environ["OPENAI_API_KEY"] = "test-key"
