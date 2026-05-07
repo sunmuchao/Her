@@ -134,7 +134,9 @@ SHARED_TURN_EVALUATION_FIELDS: Final[tuple[str, ...]] = (
 ROLEPLAY_TURN_EVALUATION_FIELDS: Final[tuple[str, ...]] = (
     "schema_scope",
     "gold_rescue",
+    "manifested_stress_gold_decision",
     "stress_beat",
+    "stress_manifestation",
     "rescue_decision",
     "rescue_decision_source",
     "assistant_guidance",
@@ -145,6 +147,7 @@ ROLEPLAY_TURN_EVALUATION_FIELDS: Final[tuple[str, ...]] = (
     "overpush_risk",
     "simulated_reply_mode_prompted",
     "simulated_reply_mode_alignment",
+    "reply_experiment_mode",
     "assistant_recovery_assessment",
     "generated_message",
     "generated_message_id",
@@ -152,6 +155,8 @@ ROLEPLAY_TURN_EVALUATION_FIELDS: Final[tuple[str, ...]] = (
     "message_generation_source",
     "message_generation_error",
     "assistant_latency_ms",
+    "speaker_state_before",
+    "speaker_state_after",
     "naturalness",
 )
 
