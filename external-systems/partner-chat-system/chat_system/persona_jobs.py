@@ -71,9 +71,15 @@ def maybe_enqueue_persona_sync_job(
     visibility: str,
     source: str,
     message_recipient_id: str | None,
+    metadata: dict[str, Any] | None,
     ts,
 ) -> None:
     if source != _SRC_USER or author_id == _ASSISTANT:
+        return
+    msg_meta = metadata if isinstance(metadata, dict) else {}
+    if bool(msg_meta.get("skip_persona_sync")):
+        return
+    if str(msg_meta.get("owner_only_kind") or "").strip() == "assistant_query":
         return
     pa, pb = thread["participant_a_id"], thread["participant_b_id"]
     if author_id not in (pa, pb):

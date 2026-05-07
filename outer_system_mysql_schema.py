@@ -671,6 +671,20 @@ def chat_tables() -> tuple[TableDef, ...]:
             ),
         ),
         TableDef(
+            name="chat_assistant_trend_states",
+            columns=(
+                ColumnDef("thread_id", "VARCHAR(64)", nullable=False),
+                ColumnDef("user_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("state_json", "LONGTEXT", nullable=False),
+                ColumnDef("updated_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("thread_id", "user_id"),
+            indexes=(IndexDef(("updated_at",), "idx_chat_assistant_trend_states_updated"),),
+            foreign_keys=(
+                ForeignKeyDef(("thread_id",), "chat_threads", ("thread_id",)),
+            ),
+        ),
+        TableDef(
             name="chat_member_reports",
             columns=(
                 ColumnDef("report_id", "BIGINT", nullable=False, auto_increment=True),

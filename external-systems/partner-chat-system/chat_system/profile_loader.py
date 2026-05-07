@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -75,6 +76,14 @@ _ASSISTANT_SUMMARY_KEYS = (
     "notes",
 )
 
+_PROFILE_USER_KEY_COLUMNS = (
+    "user_key",
+    "participant_id",
+    "owner_user_id",
+    "owner_id",
+    "app_user_id",
+)
+
 
 def fetch_profile_by_id(dsn: str, profile_id: int) -> dict[str, Any]:
     conn = connect_mysql_repo_db(str(dsn), subsystem_name="Profile")
@@ -86,6 +95,47 @@ def fetch_profile_by_id(dsn: str, profile_id: int) -> dict[str, Any]:
         return dict(row)
     finally:
         conn.close()
+
+
+@lru_cache(maxsize=32)
+def _profile_lookup_columns(dsn: str) -> tuple[str, ...]:
+    conn = connect_mysql_repo_db(str(dsn), subsystem_name="Profile")
+    try:
+        cur = conn.execute("SHOW COLUMNS FROM profiles")
+        rows = cur.fetchall()
+        names = {str(row.get("Field") or "") for row in rows}
+    except Exception:
+        return ()
+    finally:
+        conn.close()
+    return tuple(column for column in _PROFILE_USER_KEY_COLUMNS if column in names)
+
+
+def _fetch_profile_by_column(dsn: str, column: str, value: Any) -> dict[str, Any] | None:
+    conn = connect_mysql_repo_db(str(dsn), subsystem_name="Profile")
+    try:
+        cur = conn.execute(f"SELECT * FROM profiles WHERE {column} = ? LIMIT 1", (value,))
+        row = row_to_dict(cur.fetchone())
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def parse_profile_id_candidate(participant_id: str) -> int | None:
+    text = str(participant_id or "").strip()
+    if not text:
+        return None
+    if text.startswith("profile-"):
+        try:
+            return int(text.split("-", 1)[1])
+        except ValueError:
+            return None
+    if text.isdigit():
+        try:
+            return int(text)
+        except ValueError:
+            return None
+    return None
 
 
 def profile_row_to_brief(row: dict[str, Any]) -> str:
@@ -153,17 +203,31 @@ def parse_roleplay_profile_id(participant_id: str) -> int | None:
     text = str(participant_id or "").strip()
     if not text.startswith("profile-"):
         return None
-    try:
-        return int(text.split("-", 1)[1])
-    except ValueError:
-        return None
+    return parse_profile_id_candidate(text)
 
 
-def fetch_profile_for_participant(dsn: str, participant_id: str) -> dict[str, Any] | None:
-    profile_id = parse_roleplay_profile_id(participant_id)
-    if profile_id is None:
+def fetch_profile_for_participant(
+    dsn: str,
+    participant_id: str,
+    *,
+    profile_id_hint: int | None = None,
+    user_key_hint: str | None = None,
+) -> dict[str, Any] | None:
+    profile_id = profile_id_hint if profile_id_hint is not None else parse_profile_id_candidate(participant_id)
+    if profile_id is not None:
+        try:
+            return fetch_profile_by_id(str(dsn), profile_id)
+        except ValueError:
+            pass
+
+    user_key = str(user_key_hint or participant_id or "").strip()
+    if not user_key:
         return None
-    return fetch_profile_by_id(str(dsn), profile_id)
+    for column in _profile_lookup_columns(str(dsn)):
+        row = _fetch_profile_by_column(str(dsn), column, user_key)
+        if row:
+            return row
+    return None
 
 
 def roleplay_participant_id(profile_id: int) -> str:
@@ -174,6 +238,7 @@ __all__ = [
     "DEFAULT_PROFILE_MYSQL_DSN",
     "fetch_profile_for_participant",
     "fetch_profile_by_id",
+    "parse_profile_id_candidate",
     "parse_roleplay_profile_id",
     "profile_row_to_assistant_summary",
     "profile_row_to_brief",
