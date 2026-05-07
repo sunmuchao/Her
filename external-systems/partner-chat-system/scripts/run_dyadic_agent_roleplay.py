@@ -203,10 +203,6 @@ def _make_local_demo_llm(*, log: Callable[[str], None] | None = None) -> Callabl
             )
         if "请写出下一条" in user_c:
             if "【仅用于离线 roleplay 评测的额外模式提示】" in user_c:
-                if "当前模式：hold" in user_c:
-                    return "demo：哈哈没事，先这样，有空再聊。"
-                if "当前模式：probe_lightly" in user_c:
-                    return "demo：你平时周末一般怎么安排？"
                 if "当前模式：repair" in user_c:
                     return "demo：我周末也会出去走走，你一般怎么放松？"
             return "demo：你好，我也挺喜欢慢慢了解的，方便说说你平时周末一般怎么安排吗？"
@@ -561,13 +557,10 @@ def main() -> int:
         f"thread_id={result.get('thread_id')}, reused={result.get('thread_reused')}, "
         f"rescue_events={len(result.get('proactive_rescue_events') or [])}, "
         f"repair_turns={(result.get('assistant_metrics') or {}).get('repair_intervention_turns')}, "
-        f"probe_turns={(result.get('assistant_metrics') or {}).get('probe_intervention_turns')}, "
-        f"hold_turns={(result.get('assistant_metrics') or {}).get('hold_decision_turns')}, "
         f"overpush_turns={(result.get('assistant_metrics') or {}).get('overpush_risk_turns')}, "
         f"mode_prompted_turns={(result.get('assistant_metrics') or {}).get('simulated_reply_mode_prompted_turns')}, "
         f"mode_alignment_rate={(result.get('assistant_metrics') or {}).get('simulated_reply_mode_alignment_rate')}, "
         f"risky_none_rate={(result.get('assistant_metrics') or {}).get('risky_none_rate')}, "
-        f"boundary_risk_hold_recall={(result.get('assistant_metrics') or {}).get('boundary_risk_hold_recall')}, "
         f"assistant_timeout_rate={(result.get('assistant_metrics') or {}).get('assistant_invoke_timeout_rate')}, "
         f"guidance_fallback_rate={(result.get('assistant_metrics') or {}).get('assistant_guidance_fallback_rate')}, "
         f"message_timeout_rate={(result.get('assistant_metrics') or {}).get('message_generation_timeout_rate')}, "
