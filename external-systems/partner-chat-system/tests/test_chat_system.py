@@ -299,7 +299,7 @@ class ChatSystemTests(unittest.TestCase):
         self.assertEqual(trend_state["last_hint_trigger_type"], "mode_change")
         self.assertFalse(trend_state["has_user_acted_since_last_hint"])
 
-    def test_assistant_proactive_hint_fallback_keeps_hold_mode(self):
+    def test_assistant_proactive_hint_skips_out_of_scope_route(self):
         th = get_or_create_thread(
             self.conn,
             case_id="case-proactive-hold-fallback",
@@ -317,40 +317,19 @@ class ChatSystemTests(unittest.TestCase):
             "reason": "这轮已经有边界压力，不适合继续推进。",
             "decision_source": "heuristic",
         }
-        profile_ctx = {
-            "profile_dsn": "mysql://test",
-            "actor_profile_summary": "alice 喜欢咖啡",
-            "counterpart_profile_summary": "bob 偏慢热",
-            "profile_hooks": ["咖啡"],
-        }
-
-        with patch("chat_system.service.generate_assistant_guidance", return_value=None), patch(
-            "chat_system.service._assistant_profile_context",
-            return_value=profile_ctx,
-        ):
-            out = assistant_proactive_hint(
-                self.conn,
-                th["thread_id"],
-                "alice",
-                route_decision=route_decision,
-                now=datetime(2026, 5, 6, 10, 2, 0),
-            )
-
-        self.assertTrue(out["hint_posted"])
-        self.assertEqual(out["assistant_hint_event"]["trigger_type"], "mode_change")
-        self.assertEqual(out["assistant_route_decision"]["interaction_mode"], "hold")
-        self.assertEqual(out["assistant_guidance"]["interaction_mode"], "hold")
-        self.assertEqual(out["assistant_guidance"]["mutual_intent_assessment"], "boundary_risk")
-        self.assertTrue(
-            any("收住" in item or "止损" in item for item in out["assistant_guidance"]["advice"])
+        out = assistant_proactive_hint(
+            self.conn,
+            th["thread_id"],
+            "alice",
+            route_decision=route_decision,
+            now=datetime(2026, 5, 6, 10, 2, 0),
         )
-        self.assertIn("先收住", out["body"])
-        self.assertIn("止损", out["body"])
-        self.assertNotIn("低压试探", out["body"])
-        trace = out["metadata"]["assistant_trace"]
-        self.assertEqual(trace["route_decision"]["interaction_mode"], "hold")
-        self.assertEqual(trace["guidance"]["interaction_mode"], "hold")
-        self.assertEqual(trace["guidance"]["mutual_intent_assessment"], "boundary_risk")
+
+        self.assertFalse(out["hint_posted"])
+        self.assertEqual(out["assistant_hint_event"]["suppression_reason"], "normal_mode")
+        self.assertEqual(out["assistant_route_decision"]["interaction_mode"], "none")
+        self.assertEqual(out["assistant_route_decision"]["mutual_intent_assessment"], "normal")
+        self.assertEqual(out["assistant_trend_state"]["current_mode"], "normal")
 
     def test_assistant_proactive_hint_timeout_is_hidden_and_does_not_advance_state(self):
         th = get_or_create_thread(
@@ -478,7 +457,7 @@ class ChatSystemTests(unittest.TestCase):
         self.assertIsNone(trend_state["last_hint_turn"])
         self.assertIsNone(trend_state["last_hint_mode"])
 
-    def test_assistant_proactive_hint_coerces_misaligned_hold_guidance(self):
+    def test_assistant_proactive_hint_ignores_hold_route_even_if_guidance_was_patched(self):
         th = get_or_create_thread(
             self.conn,
             case_id="case-proactive-hold-coerce",
@@ -528,18 +507,12 @@ class ChatSystemTests(unittest.TestCase):
                 now=datetime(2026, 5, 6, 10, 3, 0),
             )
 
-        self.assertTrue(out["hint_posted"])
-        self.assertEqual(out["assistant_route_decision"]["interaction_mode"], "hold")
-        self.assertEqual(out["assistant_guidance"]["interaction_mode"], "hold")
-        self.assertEqual(out["assistant_guidance"]["mutual_intent_assessment"], "boundary_risk")
-        self.assertEqual(out["assistant_guidance"]["low_pressure_options"], [])
-        self.assertEqual(out["assistant_guidance"]["topic_directions"], [])
-        self.assertEqual(out["assistant_guidance"]["easy_question_types"], [])
-        self.assertIn("先收住", out["body"])
-        self.assertNotIn("低压试探", out["body"])
-        self.assertNotIn("周末安排", out["body"])
+        self.assertFalse(out["hint_posted"])
+        self.assertEqual(out["assistant_hint_event"]["suppression_reason"], "normal_mode")
+        self.assertEqual(out["assistant_route_decision"]["interaction_mode"], "none")
+        self.assertNotIn("assistant_guidance", out)
 
-    def test_assistant_proactive_hint_repeats_stoploss_for_boundary_risk_hold(self):
+    def test_assistant_proactive_hint_does_not_repeat_stoploss_for_boundary_risk_hold(self):
         th = get_or_create_thread(
             self.conn,
             case_id="case-proactive-hold-stoploss",
@@ -609,14 +582,11 @@ class ChatSystemTests(unittest.TestCase):
                 now=datetime(2026, 5, 6, 10, 10, 2),
             )
 
-        self.assertTrue(first["hint_posted"])
-        self.assertEqual(first["assistant_hint_event"]["trigger_type"], "mode_change")
-        self.assertTrue(second["hint_posted"])
-        self.assertEqual(second["assistant_hint_event"]["trigger_type"], "hold_stoploss")
-        self.assertEqual(second["assistant_hint_event"]["hold_subtype"], "boundary_risk")
-        self.assertEqual(second["assistant_hint_event"]["risk_axis"], "appearance")
-        self.assertEqual(second["assistant_trend_state"]["last_stoploss_strength"], "hard")
-        self.assertEqual(second["assistant_trend_state"]["same_risk_axis_turns"], 2)
+        self.assertFalse(first["hint_posted"])
+        self.assertEqual(first["assistant_hint_event"]["suppression_reason"], "normal_mode")
+        self.assertFalse(second["hint_posted"])
+        self.assertEqual(second["assistant_hint_event"]["suppression_reason"], "normal_mode")
+        self.assertEqual(second["assistant_route_decision"]["interaction_mode"], "none")
 
     def test_assistant_query_is_not_blocked_by_proactive_hint_state(self):
         th = get_or_create_thread(
@@ -722,9 +692,9 @@ class ChatSystemTests(unittest.TestCase):
         decision = assistant_mode_route(self.conn, th["thread_id"], "alice")
         self.assertIsNotNone(decision)
         assert decision is not None
-        self.assertEqual(decision["decision_source"], "heuristic")
-        self.assertEqual(decision["interaction_mode"], "probe_lightly")
-        self.assertIn("closed_reply", decision["problem_tags"])
+        self.assertEqual(decision["decision_source"], "heuristic_scope_filter")
+        self.assertEqual(decision["interaction_mode"], "none")
+        self.assertEqual(decision["problem_tags"], [])
         self.assertGreaterEqual(int(decision["latency_ms"]), 0)
 
     def test_adopt_draft_requires_user_override(self):

@@ -26,17 +26,17 @@ class ModeRouterTests(unittest.TestCase):
         self.assertEqual(out["interaction_mode"], "none")
         self.assertEqual(out["problem_tags"], [])
 
-    def test_fast_mode_route_probe_lightly_on_cold_reply(self):
+    def test_fast_mode_route_ignores_single_cold_reply_without_clear_repair_context(self):
         out = fast_mode_route([_msg("a", "嗯")])
         self.assertIsNotNone(out)
         assert out is not None
-        self.assertEqual(out["decision_source"], "heuristic")
-        self.assertEqual(out["interaction_mode"], "probe_lightly")
-        self.assertEqual(out["mutual_intent_assessment"], "interest_unclear")
+        self.assertEqual(out["decision_source"], "heuristic_scope_filter")
+        self.assertEqual(out["interaction_mode"], "none")
+        self.assertEqual(out["mutual_intent_assessment"], "normal")
         self.assertEqual(out["engagement_level"], "low")
         self.assertEqual(out["warmth_level"], "cold")
         self.assertEqual(out["irritation_level"], "mild")
-        self.assertIn("closed_reply", out["problem_tags"])
+        self.assertEqual(out["problem_tags"], [])
 
     def test_fast_mode_route_repair_after_prior_mutual_engagement(self):
         messages = [
@@ -52,7 +52,7 @@ class ModeRouterTests(unittest.TestCase):
         self.assertEqual(out["mutual_intent_assessment"], "communication_problem")
         self.assertIn("missed_connection", out["problem_tags"])
 
-    def test_fast_mode_route_hold_on_repeated_low_interest(self):
+    def test_fast_mode_route_ignores_repeated_low_interest(self):
         messages = [
             _msg("a", "你好，我周末一般会出去走走。"),
             _msg("b", "嗯"),
@@ -62,21 +62,21 @@ class ModeRouterTests(unittest.TestCase):
         out = fast_mode_route(messages)
         self.assertIsNotNone(out)
         assert out is not None
-        self.assertEqual(out["interaction_mode"], "hold")
-        self.assertEqual(out["mutual_intent_assessment"], "interest_low")
-        self.assertIn("disengaged", out["problem_tags"])
+        self.assertEqual(out["interaction_mode"], "none")
+        self.assertEqual(out["mutual_intent_assessment"], "normal")
+        self.assertEqual(out["problem_tags"], [])
 
-    def test_fast_mode_route_hold_on_boundary_risk(self):
+    def test_fast_mode_route_ignores_boundary_risk(self):
         out = fast_mode_route([_msg("a", "你收入大概多少呀？")])
         self.assertIsNotNone(out)
         assert out is not None
-        self.assertEqual(out["interaction_mode"], "hold")
-        self.assertEqual(out["mutual_intent_assessment"], "boundary_risk")
-        self.assertEqual(out["risk_axis"], "income_condition")
-        self.assertEqual(out["hold_subtype"], "boundary_risk")
+        self.assertEqual(out["interaction_mode"], "none")
+        self.assertEqual(out["mutual_intent_assessment"], "normal")
+        self.assertIsNone(out["risk_axis"])
+        self.assertIsNone(out["hold_subtype"])
         self.assertEqual(out["irritation_level"], "medium")
         self.assertEqual(out["state_trend"], "worsening")
-        self.assertEqual(out["problem_tags"], ["boundary_risk", "sensitive_topic"])
+        self.assertEqual(out["problem_tags"], [])
 
     def test_fast_mode_route_repair_on_cold_prefix_question_after_cold_opening(self):
         messages = [
@@ -90,7 +90,7 @@ class ModeRouterTests(unittest.TestCase):
         self.assertEqual(out["mutual_intent_assessment"], "communication_problem")
         self.assertIn("awkward_transition", out["problem_tags"])
 
-    def test_fast_mode_route_probe_lightly_on_cold_prefix_question_without_awkward_context(self):
+    def test_fast_mode_route_ignores_cold_prefix_question_without_awkward_context(self):
         messages = [
             _msg("a", "我最近工作节奏有点满，不过周末会找个公园走走。"),
             _msg("b", "嗯。你平时怎么放松"),
@@ -98,8 +98,8 @@ class ModeRouterTests(unittest.TestCase):
         out = fast_mode_route(messages)
         self.assertIsNotNone(out)
         assert out is not None
-        self.assertEqual(out["interaction_mode"], "probe_lightly")
-        self.assertEqual(out["mutual_intent_assessment"], "interest_unclear")
+        self.assertEqual(out["interaction_mode"], "none")
+        self.assertEqual(out["mutual_intent_assessment"], "normal")
 
     def test_fast_mode_route_repair_on_low_energy_reply_after_awkward_question(self):
         messages = [
@@ -123,10 +123,10 @@ class ModeRouterTests(unittest.TestCase):
         out = fast_mode_route(messages)
         self.assertIsNotNone(out)
         assert out is not None
-        self.assertEqual(out["interaction_mode"], "probe_lightly")
+        self.assertEqual(out["interaction_mode"], "repair")
         self.assertNotEqual(out["decision_source"], "heuristic_clear_continue")
 
-    def test_fast_mode_route_hold_on_defensive_boundary_question(self):
+    def test_fast_mode_route_ignores_defensive_boundary_question(self):
         messages = [
             _msg("b", "还行，我平时比较随性一点。你呢？"),
             _msg("a", "随性。你照片看着挺瘦，是本人吧？别差距太大。"),
@@ -135,15 +135,15 @@ class ModeRouterTests(unittest.TestCase):
         out = fast_mode_route(messages)
         self.assertIsNotNone(out)
         assert out is not None
-        self.assertEqual(out["interaction_mode"], "hold")
-        self.assertEqual(out["mutual_intent_assessment"], "boundary_risk")
-        self.assertEqual(out["risk_axis"], "appearance")
-        self.assertEqual(out["hold_subtype"], "boundary_risk")
+        self.assertEqual(out["interaction_mode"], "none")
+        self.assertEqual(out["mutual_intent_assessment"], "normal")
+        self.assertIsNone(out["risk_axis"])
+        self.assertIsNone(out["hold_subtype"])
         self.assertEqual(out["warmth_level"], "sharp")
         self.assertEqual(out["irritation_level"], "high")
-        self.assertIn("boundary_risk", out["problem_tags"])
+        self.assertEqual(out["problem_tags"], [])
 
-    def test_fast_mode_route_hold_on_recent_risk_carryover(self):
+    def test_fast_mode_route_ignores_recent_risk_carryover(self):
         messages = [
             _msg("a", "随性。你照片看着挺瘦，是本人吧？别差距太大。"),
             _msg("b", "是本人。怎么，怕见光死？"),
@@ -152,10 +152,10 @@ class ModeRouterTests(unittest.TestCase):
         out = fast_mode_route(messages)
         self.assertIsNotNone(out)
         assert out is not None
-        self.assertEqual(out["interaction_mode"], "hold")
-        self.assertEqual(out["mutual_intent_assessment"], "boundary_risk")
+        self.assertEqual(out["interaction_mode"], "none")
+        self.assertEqual(out["mutual_intent_assessment"], "normal")
 
-    def test_fast_mode_route_hold_on_conflict_tail(self):
+    def test_fast_mode_route_ignores_conflict_tail(self):
         messages = [
             _msg("b", "哦。那挺省事的。"),
             _msg("a", "那行。既然省事，这周末有空出来见见？"),
@@ -164,8 +164,8 @@ class ModeRouterTests(unittest.TestCase):
         out = fast_mode_route(messages)
         self.assertIsNotNone(out)
         assert out is not None
-        self.assertEqual(out["interaction_mode"], "hold")
-        self.assertEqual(out["mutual_intent_assessment"], "boundary_risk")
+        self.assertEqual(out["interaction_mode"], "none")
+        self.assertEqual(out["mutual_intent_assessment"], "normal")
         self.assertNotEqual(out["decision_source"], "heuristic_clear_continue")
 
 

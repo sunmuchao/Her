@@ -283,6 +283,39 @@ class AssistantLLMTests(unittest.TestCase):
         self.assertIn("收住", guidance["advice"][0])
         self.assertTrue(any("硬聊" in item or "收住" in item for item in guidance["current_problem"]))
 
+    def test_placeholder_guidance_online_scope_only_collapses_old_modes(self):
+        guidance = build_placeholder_assistant_guidance(
+            mutual_intent_assessment="interest_low",
+            interaction_mode="hold",
+            online_scope_only=True,
+        )
+
+        self.assertEqual(guidance["mutual_intent_assessment"], "normal")
+        self.assertEqual(guidance["interaction_mode"], "none")
+        self.assertEqual(guidance["topic_directions"], [])
+        self.assertEqual(guidance["profile_hooks_used"], [])
+        self.assertIn("顺着当前话题自然往下聊", guidance["advice"][0])
+
+    def test_generate_assistant_guidance_online_scope_only_skips_model_for_none_route(self):
+        os.environ["OPENAI_API_KEY"] = "test-key"
+        _FakeOpenAIClient.response_content = '{"mutual_intent_assessment":"communication_problem","interaction_mode":"repair"}'
+        fake_module = SimpleNamespace(OpenAI=_FakeOpenAIClient)
+
+        with patch.dict(sys.modules, {"openai": fake_module}):
+            guidance = generate_assistant_guidance(
+                user_query="怎么接？",
+                thread_context="bob: 嗯",
+                preferred_mutual_intent_assessment="interest_unclear",
+                preferred_interaction_mode="probe_lightly",
+                online_scope_only=True,
+            )
+
+        assert guidance is not None
+        self.assertEqual(guidance["mutual_intent_assessment"], "normal")
+        self.assertEqual(guidance["interaction_mode"], "none")
+        self.assertEqual(_FakeOpenAIClient.instance_count, 0)
+        self.assertEqual(_FakeOpenAIClient.create_call_count, 0)
+
     def test_generate_assistant_guidance_uses_safe_summaries_and_ranked_hooks(self):
         os.environ["OPENAI_API_KEY"] = "test-key"
         _FakeOpenAIClient.response_content = (
