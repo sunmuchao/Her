@@ -12,6 +12,7 @@ if str(SYSTEM_ROOT) not in sys.path:
 
 from chat_system.assistant_contract import GUIDANCE_SCHEMA_VERSION  # noqa: E402
 from chat_system.assistant_llm import (  # noqa: E402
+    _clear_assistant_llm_caches_for_tests,
     build_placeholder_assistant_guidance,
     generate_assistant_guidance,
     normalize_assistant_guidance,
@@ -28,13 +29,17 @@ class _FakeOpenAIResponse:
 class _FakeOpenAIClient:
     response_content = "{}"
     last_create_kwargs = None
+    create_call_count = 0
+    instance_count = 0
 
     def __init__(self, **_kwargs):
+        _FakeOpenAIClient.instance_count += 1
         self.chat = self
         self.completions = self
 
     def create(self, **_kwargs):
         _FakeOpenAIClient.last_create_kwargs = dict(_kwargs)
+        _FakeOpenAIClient.create_call_count += 1
         return _FakeOpenAIResponse(self.response_content)
 
 
@@ -43,7 +48,11 @@ class AssistantLLMTests(unittest.TestCase):
         os.environ.pop("OPENAI_API_KEY", None)
         os.environ.pop("HER_CHAT_ASSISTANT_BASE_URL", None)
         os.environ.pop("OPENAI_BASE_URL", None)
+        os.environ.pop("HER_CHAT_ASSISTANT_MAX_TOKENS", None)
+        _clear_assistant_llm_caches_for_tests()
         _FakeOpenAIClient.last_create_kwargs = None
+        _FakeOpenAIClient.create_call_count = 0
+        _FakeOpenAIClient.instance_count = 0
 
     def test_guidance_render_and_parse_round_trip(self):
         guidance = normalize_assistant_guidance(
@@ -295,21 +304,50 @@ class AssistantLLMTests(unittest.TestCase):
         create_kwargs = _FakeOpenAIClient.last_create_kwargs or {}
         messages = create_kwargs.get("messages") or []
         self.assertEqual(len(messages), 2)
-        self.assertEqual(create_kwargs.get("max_tokens"), 160)
+        self.assertEqual(create_kwargs.get("max_tokens"), 120)
         prompt = messages[1]["content"]
-        self.assertIn("当前说话人画像摘要（已裁剪）：", prompt)
-        self.assertIn("对方画像摘要（已裁剪）：", prompt)
-        self.assertIn("优先画像钩子-双方交集：无锡, 咖啡, 桌游", prompt)
-        self.assertIn("优先画像钩子-当前说话人真实生活：羽毛球", prompt)
-        self.assertIn("最终优先可用画像钩子：无锡, 咖啡, 桌游, 羽毛球", prompt)
+        self.assertIn("我方画像:", prompt)
+        self.assertIn("对方画像:", prompt)
+        self.assertIn("优先钩子: 无锡, 咖啡, 桌游", prompt)
         self.assertNotIn('"problem_tags"', prompt)
         self.assertNotIn('"strategy_tags"', prompt)
         self.assertNotIn('"easy_question_types"', prompt)
         self.assertNotIn('"graceful_exit_plan"', prompt)
+        self.assertNotIn('"rescue_flow"', prompt)
         self.assertNotIn("通用低门槛兜底", prompt)
         self.assertNotIn("name：小雨", prompt)
         self.assertNotIn("age：29", prompt)
+        self.assertNotIn("优先画像钩子-双方交集", prompt)
         self.assertNotIn("电影, 旅行, 运动", prompt)
+
+    def test_generate_assistant_guidance_reuses_cached_result_for_identical_input(self):
+        os.environ["OPENAI_API_KEY"] = "test-key"
+        _FakeOpenAIClient.response_content = (
+            '{"mutual_intent_assessment":"communication_problem","interaction_mode":"repair",'
+            '"current_problem":["旧话题有点接不下去"],'
+            '"advice":["先接住，再轻一点换题。"]}'
+        )
+        fake_module = SimpleNamespace(OpenAI=_FakeOpenAIClient)
+
+        with patch.dict(sys.modules, {"openai": fake_module}):
+            first = generate_assistant_guidance(
+                user_query="这轮怎么接？",
+                thread_context="bob: 嗯",
+                actor_profile_summary="job：运营",
+                counterpart_profile_summary="job：工程师",
+                profile_hooks=["咖啡", "无锡"],
+            )
+            second = generate_assistant_guidance(
+                user_query="这轮怎么接？",
+                thread_context="bob: 嗯",
+                actor_profile_summary="job：运营",
+                counterpart_profile_summary="job：工程师",
+                profile_hooks=["咖啡", "无锡"],
+            )
+
+        self.assertEqual(_FakeOpenAIClient.instance_count, 1)
+        self.assertEqual(_FakeOpenAIClient.create_call_count, 1)
+        self.assertEqual(first, second)
 
 
 if __name__ == "__main__":

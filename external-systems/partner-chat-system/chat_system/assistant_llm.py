@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
+from copy import deepcopy
+from functools import lru_cache
+import hashlib
 import json
 import os
 import re
+from threading import RLock
 from typing import Any
 
 from .assistant_contract import (
@@ -93,6 +98,7 @@ _LOW_BAR_FALLBACK_HOOKS = (
     "同城吃喝",
     "作息节奏",
 )
+_GUIDANCE_PROMPT_VERSION = 2
 _HOLD_CONFLICT_STRATEGY_TAGS = frozenset(
     {
         "probe_lightly",
@@ -109,6 +115,8 @@ _RISK_AXIS_LABELS = {
     "pressure_compare": "比较/施压",
     "other": "压力点",
 }
+_GUIDANCE_RESPONSE_CACHE_LOCK = RLock()
+_GUIDANCE_RESPONSE_CACHE: OrderedDict[str, dict[str, Any]] = OrderedDict()
 
 
 def _env_int(name: str, default: int) -> int:
@@ -157,6 +165,74 @@ def _axis_problem_line(risk_axis: str | None) -> str:
 def _hold_quickpath_enabled() -> bool:
     raw = str(os.environ.get("HER_CHAT_ASSISTANT_FAST_BOUNDARY_HOLD") or "1").strip().lower()
     return raw not in {"0", "false", "off", "no"}
+
+
+def _guidance_response_cache_enabled() -> bool:
+    raw = str(os.environ.get("HER_CHAT_ASSISTANT_RESPONSE_CACHE") or "1").strip().lower()
+    return raw not in {"0", "false", "off", "no"}
+
+
+def _guidance_response_cache_size() -> int:
+    return max(1, min(_env_int("HER_CHAT_ASSISTANT_RESPONSE_CACHE_SIZE", 128), 512))
+
+
+def _guidance_response_cache_key(
+    *,
+    model: str,
+    base: str,
+    temperature: float,
+    system: str,
+    user_block: str,
+) -> str:
+    payload = {
+        "v": _GUIDANCE_PROMPT_VERSION,
+        "model": str(model or ""),
+        "base": str(base or ""),
+        "temperature": round(float(temperature), 3),
+        "system": system,
+        "user": user_block,
+    }
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()
+
+
+def _guidance_response_cache_get(cache_key: str) -> dict[str, Any] | None:
+    if not _guidance_response_cache_enabled():
+        return None
+    with _GUIDANCE_RESPONSE_CACHE_LOCK:
+        cached = _GUIDANCE_RESPONSE_CACHE.get(cache_key)
+        if cached is None:
+            return None
+        _GUIDANCE_RESPONSE_CACHE.move_to_end(cache_key)
+        return deepcopy(cached)
+
+
+def _guidance_response_cache_put(cache_key: str, guidance: dict[str, Any]) -> None:
+    if not _guidance_response_cache_enabled():
+        return
+    with _GUIDANCE_RESPONSE_CACHE_LOCK:
+        _GUIDANCE_RESPONSE_CACHE[cache_key] = deepcopy(guidance)
+        _GUIDANCE_RESPONSE_CACHE.move_to_end(cache_key)
+        while len(_GUIDANCE_RESPONSE_CACHE) > _guidance_response_cache_size():
+            _GUIDANCE_RESPONSE_CACHE.popitem(last=False)
+
+
+@lru_cache(maxsize=4)
+def _openai_client_cached(
+    api_key: str,
+    base: str,
+    timeout_sec: float,
+):
+    from openai import OpenAI
+
+    client_kwargs: dict[str, Any] = {
+        "api_key": api_key,
+        "max_retries": 0,
+        "timeout": timeout_sec,
+    }
+    if base:
+        client_kwargs["base_url"] = base
+    return OpenAI(**client_kwargs)
 
 
 def _should_use_fast_hold_path(
@@ -364,8 +440,28 @@ def _humanize_interaction_mode(value: str) -> str:
     return mapping.get(value, mapping["probe_lightly"])
 
 
-def build_dyadic_context_for_assistant(conn, thread_id: str, *, limit: int = 20) -> str:
+def _render_dyadic_context_from_messages(
+    messages: list[dict[str, Any]],
+    *,
+    limit: int,
+) -> str:
+    dyadic = [message for message in list(messages or []) if str(message.get("visibility") or "") == _VIS_DYADIC]
+    tail = dyadic[-limit:]
+    if not tail:
+        return "（暂无）"
+    return "\n".join(f"{message.get('author_id')}: {message.get('body')}" for message in tail)
+
+
+def build_dyadic_context_for_assistant(
+    conn,
+    thread_id: str,
+    *,
+    limit: int = 20,
+    visible_messages: list[dict[str, Any]] | None = None,
+) -> str:
     lim = max(1, min(int(limit), 50))
+    if visible_messages is not None:
+        return _render_dyadic_context_from_messages(visible_messages, limit=lim)
     cur = conn.execute(
         """
         SELECT author_id, body FROM chat_messages
@@ -375,6 +471,8 @@ def build_dyadic_context_for_assistant(conn, thread_id: str, *, limit: int = 20)
         (thread_id, _VIS_DYADIC, lim),
     )
     rows = list(reversed(cur.fetchall()))
+    if not rows:
+        return "（暂无）"
     return "\n".join(f"{r['author_id']}: {r['body']}" for r in rows)
 
 
@@ -658,7 +756,7 @@ def _compact_thread_context_for_guidance(
     thread_context: str,
     *,
     max_chars: int,
-    max_lines: int = 10,
+    max_lines: int = 8,
 ) -> str:
     lines = [line.rstrip() for line in str(thread_context or "").splitlines() if line.strip()]
     if not lines:
@@ -1099,7 +1197,7 @@ def generate_assistant_guidance(
     counterpart_summary_safe = str(profile_ctx.get("counterpart_profile_summary_safe") or "")
     compact_context = _compact_thread_context_for_guidance(
         thread_context,
-        max_chars=max(240, min(_env_int("HER_CHAT_ASSISTANT_CONTEXT_CHARS", 700), 1600)),
+        max_chars=max(180, min(_env_int("HER_CHAT_ASSISTANT_CONTEXT_CHARS", 420), 1000)),
     )
     fallback = build_placeholder_assistant_guidance(
         profile_hooks=selected_hooks,
@@ -1135,79 +1233,82 @@ def generate_assistant_guidance(
         os.environ.get("HER_CHAT_ASSISTANT_BASE_URL") or os.environ.get("OPENAI_BASE_URL") or ""
     ).strip()
     try:
-        from openai import OpenAI
+        from openai import OpenAI  # noqa: F401
     except ImportError:
         return fallback
     assistant_timeout_sec = max(10.0, min(_env_float("HER_CHAT_ASSISTANT_TIMEOUT_SEC", 40.0), 120.0))
-    client_kwargs: dict[str, Any] = {
-        "api_key": key,
-        "max_retries": 0,
-        "timeout": assistant_timeout_sec,
-    }
-    if base:
-        client_kwargs["base_url"] = base
-    client = OpenAI(**client_kwargs)
+    client = _openai_client_cached(
+        key,
+        base,
+        round(assistant_timeout_sec, 2),
+    )
     system = (
-        "你是相亲聊天教练，不是代聊者。"
-        "只分析问题和下一步策略，不写可以直接发送给对方的整句消息。"
-        "先判断 mutual_intent_assessment：communication_problem、interest_unclear、interest_low、boundary_risk、normal。"
-        "模式映射：communication_problem->repair；interest_unclear->probe_lightly；interest_low 或 boundary_risk->hold；normal->none。"
-        "优先给：当前问题、别继续做什么、可换的话题、容易回答的问题、分步骤建议。"
-        "如果局面明显偏冷或碰到边界/压力点，要给收住或止损建议。"
-        "若给了画像钩子，优先用双方交集或当前说话人的真实生活，避免电影、旅行、运动这类泛泛万能话题。"
-        "只输出一个 JSON 对象，不要 Markdown、不要代码块。"
+        "你是相亲聊天教练，只给策略，不代写可直接发送给对方的整句。"
+        "先判 mutual_intent_assessment 和 interaction_mode。"
+        "映射：communication_problem->repair；interest_unclear->probe_lightly；"
+        "interest_low/boundary_risk->hold；normal->none。"
+        "局面偏冷或碰到边界/压力点时，优先给收住或止损建议。"
+        "只输出一个极短 JSON 对象，不要 Markdown，不要代码块。"
     )
     prompt_parts = [
-        f"最近对话（双方可见）：\n{compact_context}",
-        f"用户问题：{user_query}",
+        f"对话:\n{compact_context}",
+        f"用户问: {user_query}",
     ]
     if route_reason or risk_axis or hold_subtype or engagement_level or warmth_level or irritation_level or state_trend:
         prompt_parts.append(
-            "轻判断快照："
-            f"原因={route_reason or '（暂无）'}；"
-            f"风险线={risk_axis or '无'}；"
-            f"hold子类型={hold_subtype or '无'}；"
-            f"投入度={engagement_level or 'unknown'}；"
-            f"语气={warmth_level or 'unknown'}；"
-            f"压力={irritation_level or 'unknown'}；"
-            f"走势={state_trend or 'stable'}。"
+            "快照: "
+            f"原因={route_reason or '无'} | "
+            f"风险={risk_axis or '无'} | "
+            f"hold={hold_subtype or '无'} | "
+            f"投入={engagement_level or 'unknown'} | "
+            f"语气={warmth_level or 'unknown'} | "
+            f"压力={irritation_level or 'unknown'} | "
+            f"走势={state_trend or 'stable'}"
         )
     if actor_summary_safe:
-        prompt_parts.append(f"当前说话人画像摘要（已裁剪）：\n{actor_summary_safe}")
+        prompt_parts.append(f"我方画像:\n{actor_summary_safe}")
     if counterpart_summary_safe:
-        prompt_parts.append(f"对方画像摘要（已裁剪）：\n{counterpart_summary_safe}")
+        prompt_parts.append(f"对方画像:\n{counterpart_summary_safe}")
+    if selected_hooks:
+        prompt_parts.append(f"优先钩子: {', '.join(selected_hooks[:3])}")
     prompt_parts.extend(
         [
-            f"优先画像钩子-双方交集：{', '.join(profile_ctx.get('shared_hooks') or []) or '（暂无）'}",
-            f"优先画像钩子-当前说话人真实生活：{', '.join(profile_ctx.get('actor_hooks') or []) or '（暂无）'}",
-            f"最终优先可用画像钩子：{', '.join(selected_hooks) or '（暂无）'}",
-            "请输出 JSON，尽量短，只保留有内容的必要字段，不要输出空数组：",
+            "输出极短 JSON，只保留必要字段，不要空数组：",
             "{",
             f'  "mutual_intent_assessment": "<{_MUTUAL_INTENT_CHOICES}>",',
             f'  "interaction_mode": "<{_INTERACTION_MODE_CHOICES}>",',
+            '  "current_problem": ["<1 条最关键问题>"],',
+            '  "avoid": ["<1-2 条，可省略>"],',
+            '  "advice": ["<1-2 条方向性建议，不要代写整句>"],',
             '  "risk_axis": "<appearance|income_condition|privacy_ex|meetup_push|pressure_compare|other，可省略>",',
             '  "hold_subtype": "<interest_low|boundary_risk，可省略>",',
-            '  "current_problem": ["<1 条最关键问题>"],',
-            '  "avoid": ["<1-2 条>"],',
-            '  "advice": ["<1-2 条方向性建议，不要代写整句>"],',
             '  "topic_directions": ["<0-2 个，可省略>"],',
-            '  "rescue_flow": ["<0-2 条步骤，可省略>"],',
-            '  "profile_hooks_used": ["<0-2 个，必须来自给定画像或钩子，可省略>"]',
+            '  "profile_hooks_used": ["<0-2 个，必须来自优先钩子，可省略>"]',
             "}",
-            "不要编造画像里没有的事实；不要代码块；没必要的字段直接省略。",
+            "不要编造画像里没有的事实；没必要的字段直接省略。",
         ]
     )
     user_block = "\n\n".join(prompt_parts)
     try:
-        max_tokens = _env_int("HER_CHAT_ASSISTANT_MAX_TOKENS", 160)
+        max_tokens = _env_int("HER_CHAT_ASSISTANT_MAX_TOKENS", 120)
         temperature = _env_float("HER_CHAT_ASSISTANT_TEMPERATURE", 0.1)
+        cache_key = _guidance_response_cache_key(
+            model=model,
+            base=base,
+            temperature=temperature,
+            system=system,
+            user_block=user_block,
+        )
+        cached_guidance = _guidance_response_cache_get(cache_key)
+        if cached_guidance is not None:
+            return cached_guidance
         resp = client.chat.completions.create(
             model=model,
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": user_block},
             ],
-            max_tokens=max(100, min(max_tokens, 360)),
+            max_tokens=max(80, min(max_tokens, 240)),
             temperature=max(0.0, min(temperature, 1.0)),
         )
         choice = resp.choices[0].message.content
@@ -1219,7 +1320,7 @@ def generate_assistant_guidance(
             selected_hooks=selected_hooks,
         )
         finalized["guidance_source"] = "model"
-        return align_guidance_to_route_decision(
+        aligned = align_guidance_to_route_decision(
             finalized,
             profile_hooks=selected_hooks,
             preferred_mutual_intent_assessment=preferred_mutual_intent_assessment,
@@ -1228,6 +1329,8 @@ def generate_assistant_guidance(
             hold_subtype=hold_subtype,
             route_reason=route_reason,
         )
+        _guidance_response_cache_put(cache_key, aligned)
+        return aligned
     except Exception as e:
         source = "fallback_timeout" if "timeout" in type(e).__name__.lower() else "fallback_exception"
         return build_placeholder_assistant_guidance(
@@ -1259,6 +1362,12 @@ def generate_assistant_reply(
     if guidance is None:
         return None
     return render_assistant_guidance(guidance)
+
+
+def _clear_assistant_llm_caches_for_tests() -> None:
+    with _GUIDANCE_RESPONSE_CACHE_LOCK:
+        _GUIDANCE_RESPONSE_CACHE.clear()
+    _openai_client_cached.cache_clear()
 
 
 __all__ = [
