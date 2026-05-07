@@ -155,7 +155,7 @@ class AssistantLLMTests(unittest.TestCase):
         self.assertEqual(guidance["low_pressure_options"], [])
         self.assertEqual(guidance["easy_question_types"], [])
         self.assertTrue(any("收住" in item or "止损" in item for item in guidance["advice"]))
-        self.assertTrue(any("敏感点" in item or "推进" in item for item in guidance["rescue_flow"]))
+        self.assertTrue(any("收口" in item or "解释" in item for item in guidance["rescue_flow"]))
 
     def test_generate_assistant_guidance_fast_hold_stoploss_uses_harder_stop_signal(self):
         guidance = generate_assistant_guidance(
