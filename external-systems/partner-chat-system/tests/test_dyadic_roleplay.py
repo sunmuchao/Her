@@ -622,6 +622,176 @@ class DyadicRoleplayRunTests(unittest.TestCase):
             out_on["turn_evaluations"][0]["simulated_reply_mode_alignment"]["label"],
             "aligned",
         )
+        self.assertEqual(out_on["roleplay_experiment"]["reply_experiment_mode"], "mode_hint")
+
+    def test_roleplay_controlled_experiment_includes_guided_execution_block(self):
+        prompts: list[str] = []
+
+        def llm(messages: list[dict[str, str]]) -> str:
+            sys_c = messages[0]["content"]
+            user_c = messages[-1]["content"]
+            if "请写出下一条" in user_c:
+                prompts.append(user_c)
+                return "那这个话题先不展开了，先这样吧。"
+            if "附加任务" in sys_c and "请输出 JSON" in user_c:
+                return json.dumps(
+                    {
+                        "conversation_satisfied": True,
+                        "conversation_score": 3,
+                        "assistant_satisfied": True,
+                        "assistant_score": 3,
+                        "used_assistant": True,
+                        "conversation_note": "ok",
+                        "assistant_note": "ok",
+                    },
+                    ensure_ascii=False,
+                )
+            return "{}"
+
+        with patch(
+            "chat_system.dyadic_roleplay.assistant_query",
+            return_value={
+                "message_id": "asst-hold-guided",
+                "assistant_guidance": {
+                    "mutual_intent_assessment": "boundary_risk",
+                    "interaction_mode": "hold",
+                    "current_problem": ["这轮已经碰到边界，不适合继续推进。"],
+                    "advice": ["这轮先收住，别再往前顶。"],
+                    "avoid": ["不要继续追问敏感信息。"],
+                    "strategy_tags": ["graceful_exit"],
+                },
+                "assistant_profile_context": {},
+            },
+        ):
+            out = run_dyadic_roleplay(
+                self.conn,
+                case_id="test-dyadic-controlled-mode",
+                relation_key="pa|pb",
+                participant_a_id="pa",
+                participant_b_id="pb",
+                brief_a="A",
+                brief_b="B",
+                rounds=1,
+                llm=llm,
+                assistant_mode="fixed_turns",
+                fixed_assistant_turns=[0],
+                base_time=datetime(2026, 5, 4, 9, 0, 0),
+                stress_mode="none",
+                reply_experiment_mode="controlled",
+            )
+
+        self.assertEqual(out["roleplay_experiment"]["reply_experiment_mode"], "controlled")
+        self.assertTrue(out["roleplay_experiment"]["simulated_reply_reads_interaction_mode"])
+        self.assertEqual(out["turn_evaluations"][0]["reply_experiment_mode"], "controlled")
+        self.assertIn("实验模式：controlled", prompts[0])
+        self.assertIn("如果 assistant 给了方向", prompts[0])
+
+    def test_hold_fallback_stays_in_stoploss_lane(self):
+        def llm(messages: list[dict[str, str]]) -> str:
+            sys_c = messages[0]["content"]
+            user_c = messages[-1]["content"]
+            if "请写出下一条" in user_c:
+                raise TimeoutError("message timeout")
+            if "附加任务" in sys_c and "请输出 JSON" in user_c:
+                return json.dumps(
+                    {
+                        "conversation_satisfied": True,
+                        "conversation_score": 3,
+                        "assistant_satisfied": True,
+                        "assistant_score": 3,
+                        "used_assistant": True,
+                        "conversation_note": "ok",
+                        "assistant_note": "ok",
+                    },
+                    ensure_ascii=False,
+                )
+            return "{}"
+
+        with patch(
+            "chat_system.dyadic_roleplay.assistant_query",
+            return_value={
+                "message_id": "asst-hold-timeout",
+                "assistant_guidance": {
+                    "mutual_intent_assessment": "boundary_risk",
+                    "interaction_mode": "hold",
+                    "current_problem": ["这轮已经碰到边界，不适合继续推进。"],
+                    "advice": ["这轮先收住，别再往前顶。"],
+                    "avoid": ["不要继续追问照片。"],
+                    "strategy_tags": ["graceful_exit"],
+                },
+                "assistant_profile_context": {},
+            },
+        ):
+            out = run_dyadic_roleplay(
+                self.conn,
+                case_id="test-dyadic-hold-fallback-stoploss",
+                relation_key="pa|pb",
+                participant_a_id="pa",
+                participant_b_id="pb",
+                brief_a="A",
+                brief_b="B",
+                rounds=1,
+                llm=llm,
+                assistant_mode="fixed_turns",
+                fixed_assistant_turns=[0],
+                base_time=datetime(2026, 5, 4, 9, 0, 0),
+                stress_mode="none",
+            )
+
+        message = out["turn_evaluations"][0]["generated_message"]
+        self.assertEqual(out["turn_evaluations"][0]["message_generation_source"], "fallback")
+        self.assertIn("先这样", message)
+        self.assertNotIn("周末", message)
+        self.assertEqual(out["assistant_metrics"]["message_generation_timeout_turns"], 1)
+
+    def test_stress_manifestation_and_speaker_state_are_recorded(self):
+        def llm(messages: list[dict[str, str]]) -> str:
+            sys_c = messages[0]["content"]
+            user_c = messages[-1]["content"]
+            if "请写出下一条" in user_c:
+                return "家里最近一直催相亲，周末安排也不太好定。"
+            if "附加任务" in sys_c and "请输出 JSON" in user_c:
+                return json.dumps(
+                    {
+                        "conversation_satisfied": True,
+                        "conversation_score": 3,
+                        "assistant_satisfied": True,
+                        "assistant_score": 3,
+                        "used_assistant": False,
+                        "conversation_note": "ok",
+                        "assistant_note": "ok",
+                    },
+                    ensure_ascii=False,
+                )
+            return "{}"
+
+        out = run_dyadic_roleplay(
+            self.conn,
+            case_id="test-dyadic-stress-manifest",
+            relation_key="pa|pb",
+            participant_a_id="pa",
+            participant_b_id="pb",
+            brief_a="A",
+            brief_b="B",
+            rounds=2,
+            llm=llm,
+            assistant_mode="none",
+            base_time=datetime(2026, 5, 4, 9, 0, 0),
+            stress_mode="none",
+            stress_beat_ids=["family_pressure"],
+        )
+
+        first_turn = out["turn_evaluations"][0]
+        second_turn = out["turn_evaluations"][1]
+        self.assertIn("speaker_state_before", first_turn)
+        self.assertIn("speaker_state_after", first_turn)
+        self.assertTrue(first_turn["stress_manifestation"]["manifested"])
+        self.assertIn("家里", first_turn["stress_manifestation"]["matched_signals"])
+        self.assertIn("manifested_stress_gold_decision", second_turn)
+        self.assertGreaterEqual(
+            (out["assistant_metrics"].get("stress_beat_manifestation_rate") or 0),
+            1.0,
+        )
 
     def test_run_fixed_turns(self):
         def llm(messages: list[dict[str, str]]) -> str:

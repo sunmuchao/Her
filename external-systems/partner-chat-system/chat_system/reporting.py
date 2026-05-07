@@ -246,6 +246,10 @@ def build_roleplay_report_summary(result: dict[str, Any]) -> dict[str, Any]:
     distribution = _mode_distribution(turn_records)
     visible_text_view = _recognition_view_summary(turn_records, view="visible_text")
     stress_beat_view = _recognition_view_summary(turn_records, view="stress_beat")
+    manifested_stress_beat_view = _recognition_view_summary(
+        turn_records,
+        view="manifested_stress_beat",
+    )
     recognition = {
         "need_rescue_accuracy": _accuracy(
             turn_records,
@@ -264,13 +268,17 @@ def build_roleplay_report_summary(result: dict[str, Any]) -> dict[str, Any]:
         ),
         "rescue_precision_proxy": metrics.get("precision_proxy"),
         "rescue_recall_proxy": metrics.get("recall_proxy"),
-        "risky_none_rate": metrics.get("risky_none_rate", stress_beat_view.get("risky_none_rate")),
+        "risky_none_rate": metrics.get(
+            "risky_none_rate",
+            manifested_stress_beat_view.get("risky_none_rate"),
+        ),
         "boundary_risk_hold_recall": metrics.get(
             "boundary_risk_hold_recall",
-            stress_beat_view.get("boundary_risk_hold_recall"),
+            manifested_stress_beat_view.get("boundary_risk_hold_recall"),
         ),
         "visible_text_view": visible_text_view,
         "stress_beat_view": stress_beat_view,
+        "manifested_stress_beat_view": manifested_stress_beat_view,
     }
     advice_quality = {
         "assistant_score_avg_1to5": _avg(assistant_scores),
@@ -304,26 +312,66 @@ def build_roleplay_report_summary(result: dict[str, Any]) -> dict[str, Any]:
         "assistant_invoke_timeout_rate": metrics.get("assistant_invoke_timeout_rate"),
         "assistant_guidance_fallback_rate": metrics.get("assistant_guidance_fallback_rate"),
         "fallback_message_rate": metrics.get("fallback_message_rate"),
+        "message_generation_timeout_rate": metrics.get("message_generation_timeout_rate"),
+        "assistant_guidance_fast_path_rate": metrics.get("assistant_guidance_fast_path_rate"),
+        "self_evaluation_fallback_count": metrics.get("self_evaluation_fallback_count"),
+        "self_evaluation_timeout_count": metrics.get("self_evaluation_timeout_count"),
         "llm_by_call_kind": llm_stats,
     }
-    topline = {
-        "assistant_score_avg_1to5": advice_quality["assistant_score_avg_1to5"],
-        "follow_rate": user_adoption["follow_rate"],
-        "local_recovery_rate": local_recovery["local_recovery_rate"],
-        "interaction_mode_accuracy": recognition["interaction_mode_accuracy"]["rate"],
+    primary_evaluation = {
+        "assistant_mode_compliance_rate": advice_quality["assistant_mode_compliance_rate"],
+        "direct_send_violation_rate": advice_quality["direct_send_violation_rate"],
+        "avoid_violation_rate": advice_quality["avoid_violation_rate"],
+        "visible_text_interaction_mode_accuracy": (
+            (visible_text_view.get("interaction_mode_accuracy") or {}).get("rate")
+        ),
+        "manifested_stress_interaction_mode_accuracy": (
+            (manifested_stress_beat_view.get("interaction_mode_accuracy") or {}).get("rate")
+        ),
         "risky_none_rate": recognition["risky_none_rate"],
         "boundary_risk_hold_recall": recognition["boundary_risk_hold_recall"],
-        "assistant_invoke_avg_ms": latency["assistant_invoke_avg_ms"],
+        "assistant_invoke_timeout_rate": latency["assistant_invoke_timeout_rate"],
+        "assistant_guidance_fallback_rate": latency["assistant_guidance_fallback_rate"],
+        "fallback_message_rate": latency["fallback_message_rate"],
+        "message_generation_timeout_rate": latency["message_generation_timeout_rate"],
+        "assistant_guidance_fast_path_rate": latency["assistant_guidance_fast_path_rate"],
+        "stress_beat_manifestation_rate": metrics.get("stress_beat_manifestation_rate"),
+    }
+    reference_only = {
+        "user_adoption": user_adoption,
+        "local_recovery": local_recovery,
+        "self_evaluation": {
+            "assistant_score_avg_1to5": advice_quality["assistant_score_avg_1to5"],
+            "conversation_score_avg_1to5": advice_quality["conversation_score_avg_1to5"],
+        },
+        "mode_alignment": {
+            "simulated_reply_mode_prompted_turns": metrics.get("simulated_reply_mode_prompted_turns"),
+            "simulated_reply_mode_alignment_rate": metrics.get("simulated_reply_mode_alignment_rate"),
+            "simulated_reply_mode_strong_alignment_rate": metrics.get(
+                "simulated_reply_mode_strong_alignment_rate"
+            ),
+        },
+    }
+    topline = {
+        "assistant_mode_compliance_rate": primary_evaluation["assistant_mode_compliance_rate"],
+        "interaction_mode_accuracy": primary_evaluation["manifested_stress_interaction_mode_accuracy"],
+        "risky_none_rate": recognition["risky_none_rate"],
+        "boundary_risk_hold_recall": recognition["boundary_risk_hold_recall"],
+        "assistant_invoke_timeout_rate": latency["assistant_invoke_timeout_rate"],
+        "assistant_guidance_fallback_rate": latency["assistant_guidance_fallback_rate"],
+        "fallback_message_rate": latency["fallback_message_rate"],
     }
     return {
         "schema_version": 1,
         "case_id": payload.get("case_id"),
         "thread_id": payload.get("thread_id"),
         "rounds": int(payload.get("rounds") or len(turn_records)),
+        "primary_evaluation": primary_evaluation,
         "recognition_accuracy": recognition,
         "advice_quality": advice_quality,
         "user_adoption": user_adoption,
         "local_recovery": local_recovery,
+        "reference_only": reference_only,
         "latency": latency,
         "mode_distribution": distribution,
         "topline": topline,
@@ -336,13 +384,18 @@ def render_roleplay_report_markdown(
     include_title: bool = True,
 ) -> str:
     payload = summary if isinstance(summary, dict) else {}
+    primary = dict(payload.get("primary_evaluation") or {})
     recognition = dict(payload.get("recognition_accuracy") or {})
     advice_quality = dict(payload.get("advice_quality") or {})
-    user_adoption = dict(payload.get("user_adoption") or {})
-    local_recovery = dict(payload.get("local_recovery") or {})
+    reference_only = dict(payload.get("reference_only") or {})
+    user_adoption = dict(reference_only.get("user_adoption") or payload.get("user_adoption") or {})
+    local_recovery = dict(reference_only.get("local_recovery") or payload.get("local_recovery") or {})
+    self_evaluation = dict(reference_only.get("self_evaluation") or {})
+    mode_alignment = dict(reference_only.get("mode_alignment") or {})
     latency = dict(payload.get("latency") or {})
     visible_text_view = dict(recognition.get("visible_text_view") or {})
     stress_beat_view = dict(recognition.get("stress_beat_view") or {})
+    manifested_stress_beat_view = dict(recognition.get("manifested_stress_beat_view") or {})
     distribution = dict(payload.get("mode_distribution") or {})
     counts = dict(distribution.get("counts") or {})
     rates = dict(distribution.get("rates") or {})
@@ -362,32 +415,19 @@ def render_roleplay_report_markdown(
             f"- thread_id: {payload.get('thread_id') or ''}",
             f"- rounds: {payload.get('rounds') or 0}",
             "",
-            "## 识别准确率",
+            "## 主要结论（提示是否合理）",
             "",
-            (
-                "- rescue need accuracy: "
-                f"{_format_rate(((recognition.get('need_rescue_accuracy') or {}).get('rate')))} "
-                f"({((recognition.get('need_rescue_accuracy') or {}).get('matched_turns') or 0)}/"
-                f"{((recognition.get('need_rescue_accuracy') or {}).get('comparable_turns') or 0)})"
-            ),
-            (
-                "- interaction mode accuracy: "
-                f"{_format_rate(((recognition.get('interaction_mode_accuracy') or {}).get('rate')))} "
-                f"({((recognition.get('interaction_mode_accuracy') or {}).get('matched_turns') or 0)}/"
-                f"{((recognition.get('interaction_mode_accuracy') or {}).get('comparable_turns') or 0)})"
-            ),
-            (
-                "- mutual intent accuracy: "
-                f"{_format_rate(((recognition.get('mutual_intent_accuracy') or {}).get('rate')))} "
-                f"({((recognition.get('mutual_intent_accuracy') or {}).get('matched_turns') or 0)}/"
-                f"{((recognition.get('mutual_intent_accuracy') or {}).get('comparable_turns') or 0)})"
-            ),
-            f"- rescue precision proxy: {_format_rate(recognition.get('rescue_precision_proxy'))}",
-            f"- rescue recall proxy: {_format_rate(recognition.get('rescue_recall_proxy'))}",
-            f"- risky none rate: {_format_rate(recognition.get('risky_none_rate'))}",
-            f"- boundary-risk hold recall: {_format_rate(recognition.get('boundary_risk_hold_recall'))}",
+            "- 以下指标优先看“提示本身是否合理”，不把角色扮演有没有照做当主结论。",
+            f"- assistant mode compliance rate: {_format_rate(primary.get('assistant_mode_compliance_rate'))}",
+            f"- direct-send violation rate: {_format_rate(primary.get('direct_send_violation_rate'))}",
+            f"- avoid violation rate: {_format_rate(primary.get('avoid_violation_rate'))}",
+            f"- visible-text interaction mode accuracy: {_format_rate(primary.get('visible_text_interaction_mode_accuracy'))}",
+            f"- manifested-stress interaction mode accuracy: {_format_rate(primary.get('manifested_stress_interaction_mode_accuracy'))}",
+            f"- risky none rate: {_format_rate(primary.get('risky_none_rate'))}",
+            f"- boundary-risk hold recall: {_format_rate(primary.get('boundary_risk_hold_recall'))}",
+            f"- stress-beat manifestation rate: {_format_rate(primary.get('stress_beat_manifestation_rate'))}",
             "",
-            "## 双口径视图",
+            "## 三口径视图",
             "",
             (
                 "- visible-text rescue need accuracy: "
@@ -436,16 +476,63 @@ def render_roleplay_report_markdown(
                 f"{_format_rate(stress_beat_view.get('boundary_risk_hold_recall'))}"
             ),
             "",
-            "## 建议质量",
+            (
+                "- manifested-stress rescue need accuracy: "
+                f"{_format_rate(((manifested_stress_beat_view.get('need_rescue_accuracy') or {}).get('rate')))} "
+                f"({((manifested_stress_beat_view.get('need_rescue_accuracy') or {}).get('matched_turns') or 0)}/"
+                f"{((manifested_stress_beat_view.get('need_rescue_accuracy') or {}).get('comparable_turns') or 0)})"
+            ),
+            (
+                "- manifested-stress interaction mode accuracy: "
+                f"{_format_rate(((manifested_stress_beat_view.get('interaction_mode_accuracy') or {}).get('rate')))} "
+                f"({((manifested_stress_beat_view.get('interaction_mode_accuracy') or {}).get('matched_turns') or 0)}/"
+                f"{((manifested_stress_beat_view.get('interaction_mode_accuracy') or {}).get('comparable_turns') or 0)})"
+            ),
+            (
+                "- manifested-stress mutual intent accuracy: "
+                f"{_format_rate(((manifested_stress_beat_view.get('mutual_intent_accuracy') or {}).get('rate')))} "
+                f"({((manifested_stress_beat_view.get('mutual_intent_accuracy') or {}).get('matched_turns') or 0)}/"
+                f"{((manifested_stress_beat_view.get('mutual_intent_accuracy') or {}).get('comparable_turns') or 0)})"
+            ),
+            f"- manifested-stress risky none rate: {_format_rate(manifested_stress_beat_view.get('risky_none_rate'))}",
+            (
+                "- manifested-stress boundary-risk hold recall: "
+                f"{_format_rate(manifested_stress_beat_view.get('boundary_risk_hold_recall'))}"
+            ),
             "",
-            f"- assistant score avg: {_format_score(advice_quality.get('assistant_score_avg_1to5'))}/5",
-            f"- conversation score avg: {_format_score(advice_quality.get('conversation_score_avg_1to5'))}/5",
-            f"- assistant mode compliance rate: {_format_rate(advice_quality.get('assistant_mode_compliance_rate'))}",
-            f"- direct-send violation rate: {_format_rate(advice_quality.get('direct_send_violation_rate'))}",
+            "## 稳定性",
+            "",
+            f"- assistant invoke avg: {_format_ms(latency.get('assistant_invoke_avg_ms'))}",
+            f"- assistant invoke max: {_format_ms(latency.get('assistant_invoke_max_ms'))}",
+            f"- assistant invoke timeout rate: {_format_rate(latency.get('assistant_invoke_timeout_rate'))}",
+            f"- assistant guidance fallback rate: {_format_rate(latency.get('assistant_guidance_fallback_rate'))}",
+            f"- assistant guidance fast-path rate: {_format_rate(latency.get('assistant_guidance_fast_path_rate'))}",
+            f"- fallback message rate: {_format_rate(latency.get('fallback_message_rate'))}",
+            f"- message generation timeout rate: {_format_rate(latency.get('message_generation_timeout_rate'))}",
+            f"- self-evaluation fallback count: {int(latency.get('self_evaluation_fallback_count') or 0)}",
+            f"- self-evaluation timeout count: {int(latency.get('self_evaluation_timeout_count') or 0)}",
+        ]
+    )
+    if llm_by_call:
+        for kind, stats in sorted(llm_by_call.items()):
+            lines.append(
+                f"- llm {kind}: started={int(stats.get('calls_started') or 0)}, "
+                f"ok={int(stats.get('successes') or stats.get('calls') or 0)}, "
+                f"fail={int(stats.get('failures') or 0)}, timeout={int(stats.get('timeouts') or 0)}, "
+                f"avg_ok={_format_ms(stats.get('avg_success_ms') or stats.get('avg_ms'))}, "
+                f"avg_all={_format_ms(stats.get('avg_all_ms'))}, max={_format_ms(stats.get('max_ms'))}"
+            )
+    else:
+        lines.append("- llm calls: n/a")
+    lines.extend(
+        [
+            "",
+            "## 参考结果（受角色扮演影响）",
+            "",
+            "- 以下结果容易被“角色有没有照提示做、角色演得像不像真人”影响，只作参考。",
+            f"- assistant score avg: {_format_score(self_evaluation.get('assistant_score_avg_1to5') or advice_quality.get('assistant_score_avg_1to5'))}/5",
+            f"- conversation score avg: {_format_score(self_evaluation.get('conversation_score_avg_1to5') or advice_quality.get('conversation_score_avg_1to5'))}/5",
             f"- naturalness avg: {_format_score(advice_quality.get('naturalness_average_score_1to5'))}/5",
-            "",
-            "## 用户采纳与恢复",
-            "",
             f"- follow rate: {_format_rate(user_adoption.get('follow_rate'))}",
             f"- strong follow rate: {_format_rate(user_adoption.get('strong_follow_rate'))}",
             f"- local recovery rate: {_format_rate(local_recovery.get('local_recovery_rate'))}",
@@ -453,26 +540,7 @@ def render_roleplay_report_markdown(
             f"- clarified low interest rate: {_format_rate(local_recovery.get('clarified_low_interest_rate'))}",
             f"- graceful exit rate: {_format_rate(local_recovery.get('graceful_exit_rate'))}",
             f"- overpush risk rate: {_format_rate(local_recovery.get('overpush_risk_rate'))}",
-            "",
-            "## 延迟统计",
-            "",
-            f"- assistant invoke avg: {_format_ms(latency.get('assistant_invoke_avg_ms'))}",
-            f"- assistant invoke max: {_format_ms(latency.get('assistant_invoke_max_ms'))}",
-            f"- assistant invoke timeout rate: {_format_rate(latency.get('assistant_invoke_timeout_rate'))}",
-            f"- assistant guidance fallback rate: {_format_rate(latency.get('assistant_guidance_fallback_rate'))}",
-            f"- fallback message rate: {_format_rate(latency.get('fallback_message_rate'))}",
-        ]
-    )
-    if llm_by_call:
-        for kind, stats in sorted(llm_by_call.items()):
-            lines.append(
-                f"- llm {kind}: calls={int(stats.get('calls') or 0)}, "
-                f"avg={_format_ms(stats.get('avg_ms'))}, max={_format_ms(stats.get('max_ms'))}"
-            )
-    else:
-        lines.append("- llm calls: n/a")
-    lines.extend(
-        [
+            f"- simulated mode alignment rate: {_format_rate(mode_alignment.get('simulated_reply_mode_alignment_rate'))}",
             "",
             "## 模式分布",
             "",

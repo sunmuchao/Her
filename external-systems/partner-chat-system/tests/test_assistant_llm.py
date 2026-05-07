@@ -150,12 +150,29 @@ class AssistantLLMTests(unittest.TestCase):
         assert guidance is not None
         self.assertEqual(guidance["mutual_intent_assessment"], "boundary_risk")
         self.assertEqual(guidance["interaction_mode"], "hold")
-        self.assertEqual(guidance["guidance_source"], "fallback_exception")
-        self.assertIn("边界或压力风险", guidance["current_problem"][0])
+        self.assertEqual(guidance["guidance_source"], "fast_hold_policy")
+        self.assertIn("不适合再往前推", guidance["current_problem"][0])
         self.assertEqual(guidance["low_pressure_options"], [])
         self.assertEqual(guidance["easy_question_types"], [])
         self.assertTrue(any("收住" in item or "止损" in item for item in guidance["advice"]))
         self.assertTrue(any("敏感点" in item or "推进" in item for item in guidance["rescue_flow"]))
+
+    def test_generate_assistant_guidance_fast_hold_stoploss_uses_harder_stop_signal(self):
+        guidance = generate_assistant_guidance(
+            user_query="现在该怎么处理？",
+            thread_context="a: 你照片是本人吧？\nb: 是本人。\na: 那别差太多。",
+            preferred_mutual_intent_assessment="boundary_risk",
+            preferred_interaction_mode="hold",
+            risk_axis="appearance",
+            hold_subtype="boundary_risk",
+            hint_trigger_type="hold_stoploss",
+        )
+
+        assert guidance is not None
+        self.assertEqual(guidance["guidance_source"], "fast_hold_policy")
+        self.assertEqual(guidance["interaction_mode"], "hold")
+        self.assertTrue(any("别再证明自己" in item for item in guidance["advice"]))
+        self.assertTrue(any("不要再抛新的泛聊天问题" in item for item in guidance["avoid"]))
 
     def test_generate_assistant_guidance_coerces_probe_output_back_to_hold(self):
         os.environ["OPENAI_API_KEY"] = "test-key"
