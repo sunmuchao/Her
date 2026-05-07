@@ -124,12 +124,16 @@ def _direct_send_violation_summary(turn_records: list[dict[str, Any]]) -> dict[s
 def _gold_need_rescue_for_view(record: dict[str, Any], *, view: str) -> bool:
     if view == "visible_text":
         return bool(((record.get("visible_text_gold_decision") or {}).get("need_rescue")))
+    if view == "manifested_stress_beat":
+        return bool(((record.get("manifested_stress_gold_decision") or {}).get("need_rescue")))
     return bool(record.get("need_rescue_gold"))
 
 
 def _gold_interaction_mode_for_view(record: dict[str, Any], *, view: str) -> str:
     if view == "visible_text":
         return str(((record.get("visible_text_gold_decision") or {}).get("interaction_mode")) or "none")
+    if view == "manifested_stress_beat":
+        return str(((record.get("manifested_stress_gold_decision") or {}).get("expected_interaction_mode")) or "none")
     return str(record.get("interaction_mode_gold") or "none")
 
 
@@ -137,6 +141,11 @@ def _gold_mutual_intent_for_view(record: dict[str, Any], *, view: str) -> str:
     if view == "visible_text":
         return str(
             ((record.get("visible_text_gold_decision") or {}).get("mutual_intent_assessment")) or "normal"
+        )
+    if view == "manifested_stress_beat":
+        return str(
+            ((record.get("manifested_stress_gold_decision") or {}).get("expected_mutual_intent_assessment"))
+            or "normal"
         )
     return str(record.get("mutual_intent_assessment_gold") or "normal")
 
