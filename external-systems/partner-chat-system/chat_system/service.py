@@ -153,11 +153,17 @@ def _assistant_trace_payload(
     }
 
 
-def _assistant_guidance_hidden_source(guidance: dict[str, Any] | None) -> str | None:
+def _assistant_guidance_hidden_source(
+    guidance: dict[str, Any] | None,
+    *,
+    hide_failed_guidance: bool = False,
+) -> str | None:
     source = str(((guidance or {}).get("guidance_source")) or "").strip()
     if source == "timeout_hidden":
         return source
-    if source == "error_hidden" or source.startswith("fallback"):
+    if source == "error_hidden":
+        return source
+    if hide_failed_guidance and source.startswith("fallback"):
         return "error_hidden"
     return None
 
@@ -548,6 +554,7 @@ def _assistant_draft_core(
     *,
     now: datetime | None,
     post_user_query: bool,
+    hide_failed_guidance: bool = False,
     route_decision_override: dict[str, Any] | None = None,
     hint_event: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -606,8 +613,12 @@ def _assistant_draft_core(
         irritation_level=str(route_decision.get("irritation_level") or ""),
         state_trend=str(route_decision.get("state_trend") or ""),
         online_scope_only=True,
+        hide_on_failure=hide_failed_guidance,
     ) or placeholder
-    hidden_guidance_source = _assistant_guidance_hidden_source(guidance)
+    hidden_guidance_source = _assistant_guidance_hidden_source(
+        guidance,
+        hide_failed_guidance=hide_failed_guidance,
+    )
     if hidden_guidance_source:
         guidance = normalize_assistant_guidance(
             {
@@ -977,6 +988,7 @@ def assistant_query(
         query_text,
         now=now,
         post_user_query=True,
+        hide_failed_guidance=False,
     )
 
 
@@ -1036,6 +1048,7 @@ def assistant_proactive_hint(
         _proactive_assistant_query_text(resolved_route),
         now=now,
         post_user_query=False,
+        hide_failed_guidance=True,
         route_decision_override=resolved_route,
         hint_event=hint_event,
     )
