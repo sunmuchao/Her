@@ -59,6 +59,18 @@ SAMPLE_ROUTE = {
     "state_trend": "cooling",
 }
 
+SAMPLE_NONE_ROUTE = {
+    "preferred_mutual_intent_assessment": "normal",
+    "preferred_interaction_mode": "none",
+    "route_reason": "上一句本身就是正常可接的问题，先别打断自然往下聊。",
+    "risk_axis": "",
+    "hold_subtype": "",
+    "engagement_level": "high",
+    "warmth_level": "warm",
+    "irritation_level": "none",
+    "state_trend": "stable",
+}
+
 SAMPLE_INPUT = {
     "user_query": "这轮怎么接比较自然？",
     "thread_context": (
@@ -90,21 +102,6 @@ SAMPLE_INPUT = {
     "profile_hooks": ["电影", "旅行", "无锡", "咖啡", "桌游", "羽毛球", "运动"],
 }
 
-HOLD_INPUT = {
-    "user_query": "现在该怎么处理？",
-    "thread_context": "a: 你照片是本人吧？别差距太大。\nb: 是本人。怎么，怕见光死？",
-    "preferred_mutual_intent_assessment": "boundary_risk",
-    "preferred_interaction_mode": "hold",
-    "route_reason": "这轮已经碰到边界压力，不适合继续推进。",
-    "risk_axis": "appearance",
-    "hold_subtype": "boundary_risk",
-    "engagement_level": "medium",
-    "warmth_level": "cool",
-    "irritation_level": "high",
-    "state_trend": "tenser",
-    "hint_trigger_type": "hold_stoploss",
-}
-
 
 def _current_prompt_snapshot() -> dict[str, str]:
     profile_ctx = _prepare_profile_context_for_guidance(
@@ -118,11 +115,10 @@ def _current_prompt_snapshot() -> dict[str, str]:
         max_chars=max(180, min(_env_int("HER_CHAT_ASSISTANT_CONTEXT_CHARS", 420), 1000)),
     )
     system = (
-        "你是相亲聊天教练，只给策略，不代写可直接发送给对方的整句。"
-        "先判 mutual_intent_assessment 和 interaction_mode。"
-        "映射：communication_problem->repair；interest_unclear->probe_lightly；"
-        "interest_low/boundary_risk->hold；normal->none。"
-        "局面偏冷或碰到边界/压力点时，优先给收住或止损建议。"
+        "你是相亲聊天回温教练，只处理双方还想继续聊、但这轮接话卡住的场景。"
+        "只给策略，不代写可直接发送给对方的整句。"
+        "只允许输出两种判断：communication_problem->repair，normal->none。"
+        "如果这轮不需要回温介入，就明确给 normal/none。"
         "只输出一个极短 JSON 对象，不要 Markdown，不要代码块。"
     )
     prompt_parts = [
@@ -151,13 +147,11 @@ def _current_prompt_snapshot() -> dict[str, str]:
         [
             "输出极短 JSON，只保留必要字段，不要空数组：",
             "{",
-            '  "mutual_intent_assessment": "<communication_problem|interest_unclear|interest_low|boundary_risk|normal>",',
-            '  "interaction_mode": "<repair|probe_lightly|hold|none>",',
+            '  "mutual_intent_assessment": "<communication_problem|normal>",',
+            '  "interaction_mode": "<repair|none>",',
             '  "current_problem": ["<1 条最关键问题>"],',
             '  "avoid": ["<1-2 条，可省略>"],',
             '  "advice": ["<1-2 条方向性建议，不要代写整句>"],',
-            '  "risk_axis": "<appearance|income_condition|privacy_ex|meetup_push|pressure_compare|other，可省略>",',
-            '  "hold_subtype": "<interest_low|boundary_risk，可省略>",',
             '  "topic_directions": ["<0-2 个，可省略>"],',
             '  "profile_hooks_used": ["<0-2 个，必须来自优先钩子，可省略>"]',
             "}",
@@ -184,10 +178,10 @@ def _legacy_prompt_snapshot() -> dict[str, str]:
     system = (
         "你是相亲聊天教练，不是代聊者。"
         "只分析问题和下一步策略，不写可以直接发送给对方的整句消息。"
-        "先判断 mutual_intent_assessment：communication_problem、interest_unclear、interest_low、boundary_risk、normal。"
-        "模式映射：communication_problem->repair；interest_unclear->probe_lightly；interest_low 或 boundary_risk->hold；normal->none。"
+        "先判断 mutual_intent_assessment：communication_problem 或 normal。"
+        "模式映射：communication_problem->repair；normal->none。"
         "优先给：当前问题、别继续做什么、可换的话题、容易回答的问题、分步骤建议。"
-        "如果局面明显偏冷或碰到边界/压力点，要给收住或止损建议。"
+        "如果这轮没有明显冷场卡点，就明确判断为 normal/none。"
         "若给了画像钩子，优先用双方交集或当前说话人的真实生活，避免电影、旅行、运动这类泛泛万能话题。"
         "只输出一个 JSON 对象，不要 Markdown、不要代码块。"
     )
@@ -197,8 +191,6 @@ def _legacy_prompt_snapshot() -> dict[str, str]:
         (
             "轻判断快照："
             f"原因={SAMPLE_ROUTE['route_reason']}；"
-            f"风险线={SAMPLE_ROUTE['risk_axis'] or '无'}；"
-            f"hold子类型={SAMPLE_ROUTE['hold_subtype'] or '无'}；"
             f"投入度={SAMPLE_ROUTE['engagement_level']}；"
             f"语气={SAMPLE_ROUTE['warmth_level']}；"
             f"压力={SAMPLE_ROUTE['irritation_level']}；"
@@ -216,10 +208,8 @@ def _legacy_prompt_snapshot() -> dict[str, str]:
             f"最终优先可用画像钩子：{', '.join(selected_hooks) or '（暂无）'}",
             "请输出 JSON，尽量短，只保留有内容的必要字段，不要输出空数组：",
             "{",
-            '  "mutual_intent_assessment": "<communication_problem|interest_unclear|interest_low|boundary_risk|normal>",',
-            '  "interaction_mode": "<repair|probe_lightly|hold|none>",',
-            '  "risk_axis": "<appearance|income_condition|privacy_ex|meetup_push|pressure_compare|other，可省略>",',
-            '  "hold_subtype": "<interest_low|boundary_risk，可省略>",',
+            '  "mutual_intent_assessment": "<communication_problem|normal>",',
+            '  "interaction_mode": "<repair|none>",',
             '  "current_problem": ["<1 条最关键问题>"],',
             '  "avoid": ["<1-2 条>"],',
             '  "advice": ["<1-2 条方向性建议，不要代写整句>"],',
@@ -276,6 +266,7 @@ def _call_legacy_like_guidance() -> dict[str, Any]:
         risk_axis=SAMPLE_ROUTE["risk_axis"],
         hold_subtype=SAMPLE_ROUTE["hold_subtype"],
         route_reason=SAMPLE_ROUTE["route_reason"],
+        online_scope_only=True,
     )
 
 
@@ -335,20 +326,12 @@ def _run_benchmark(repeats: int) -> dict[str, Any]:
 
     scenarios.append(
         _measure(
-            "hold_fast_path",
-            lambda: _guidance_result_preview(generate_assistant_guidance(**HOLD_INPUT)),
-            repeats=max(1, repeats),
-        )
-    )
-
-    _clear_assistant_llm_caches_for_tests()
-    scenarios.append(
-        _measure(
             "repair_current_uncached",
             lambda: _guidance_result_preview(
                 generate_assistant_guidance(
                     **SAMPLE_INPUT,
                     **SAMPLE_ROUTE,
+                    online_scope_only=True,
                 )
             ),
             repeats=max(1, repeats),
@@ -356,11 +339,30 @@ def _run_benchmark(repeats: int) -> dict[str, Any]:
     )
 
     _clear_assistant_llm_caches_for_tests()
-    warm_current = _guidance_result_preview(generate_assistant_guidance(**SAMPLE_INPUT, **SAMPLE_ROUTE))
+    warm_current = _guidance_result_preview(
+        generate_assistant_guidance(**SAMPLE_INPUT, **SAMPLE_ROUTE, online_scope_only=True)
+    )
     scenarios.append(
         _measure(
             "repair_current_cache_hit",
-            lambda: _guidance_result_preview(generate_assistant_guidance(**SAMPLE_INPUT, **SAMPLE_ROUTE)),
+            lambda: _guidance_result_preview(
+                generate_assistant_guidance(**SAMPLE_INPUT, **SAMPLE_ROUTE, online_scope_only=True)
+            ),
+            repeats=max(1, repeats),
+        )
+    )
+
+    _clear_assistant_llm_caches_for_tests()
+    scenarios.append(
+        _measure(
+            "none_online_short_circuit",
+            lambda: _guidance_result_preview(
+                generate_assistant_guidance(
+                    **SAMPLE_INPUT,
+                    **SAMPLE_NONE_ROUTE,
+                    online_scope_only=True,
+                )
+            ),
             repeats=max(1, repeats),
         )
     )
