@@ -221,6 +221,55 @@ _MUTUAL_INTENT_CHOICES = format_choice_values(MUTUAL_INTENT_ASSESSMENTS)
 _INTERACTION_MODE_CHOICES = format_choice_values(INTERACTION_MODES)
 
 
+def _coerce_roleplay_mutual_intent(value: Any) -> str:
+    raw = str(value or "").strip().lower()
+    if raw == "communication_problem":
+        return "communication_problem"
+    return "normal"
+
+
+def _coerce_roleplay_interaction_mode(value: Any) -> str:
+    raw = str(value or "").strip().lower()
+    if raw == "repair":
+        return "repair"
+    return "none"
+
+
+def _scope_roleplay_route_decision(decision: dict[str, Any] | None) -> dict[str, Any]:
+    normalized = normalize_route_decision(dict(decision or {}), decision_source=str((decision or {}).get("decision_source") or "roleplay_scope"))
+    mode = _coerce_roleplay_interaction_mode(normalized.get("interaction_mode"))
+    if mode == "repair":
+        return {
+            **normalized,
+            "need_rescue": True,
+            "mutual_intent_assessment": "communication_problem",
+            "interaction_mode": "repair",
+            "risk_axis": None,
+            "hold_subtype": None,
+        }
+    return {
+        **normalized,
+        "need_rescue": False,
+        "mutual_intent_assessment": "normal",
+        "interaction_mode": "none",
+        "rescue_style": "none",
+        "risk_axis": None,
+        "hold_subtype": None,
+    }
+
+
+def _scope_roleplay_guidance(guidance: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(guidance, dict) or not guidance:
+        return guidance
+    scoped = dict(guidance)
+    mode = _coerce_roleplay_interaction_mode(scoped.get("interaction_mode"))
+    scoped["interaction_mode"] = mode
+    scoped["mutual_intent_assessment"] = "communication_problem" if mode == "repair" else "normal"
+    scoped["risk_axis"] = None
+    scoped["hold_subtype"] = None
+    return scoped
+
+
 class SupportsConn(Protocol):
     def commit(self) -> None: ...
 
@@ -312,8 +361,9 @@ def _orchestrator_rescue_decision(
     system = (
         "你是相亲/交友私聊的**对话调度员**（不是参与者本人）。"
         "你只阅读「双方可见」记录，判断在**下一位用户即将开口前**，是否应由系统助手介入。\n"
-        "先分清楚：这到底是“双方都还想继续聊，但这轮卡在沟通上”，还是“意愿不明确 / 对方投入偏低 / 已经碰到边界”。\n"
-        "只有在更像沟通问题时，才应该让助手做 repair。若只是意愿不明确，只能做低压试探；若对方明显低投入或碰到边界，就不要再往救场上推。\n"
+        "只分两类："
+        "1. 双方都还想继续聊，但这轮卡在沟通上，需要 repair。"
+        "2. 其他情况一律 normal/none，不要让助手介入。\n"
         "不要过度干预：自然、有来有往、气氛正常时不要介入。\n"
         "只输出**一个 JSON 对象**，不要 Markdown、不要代码块外壳。"
     )
@@ -328,18 +378,23 @@ def _orchestrator_rescue_decision(
         '  "need_rescue": <true|false>,\n'
         '  "situation": "<cold|awkward|stuck|rude|boundary|off_topic|none 选一>",\n'
         '  "problem_tags": ["<closed_reply|low_energy|topic_dead_end|boundary_risk 等粗标签>"],\n'
-        f'  "mutual_intent_assessment": "<{_MUTUAL_INTENT_CHOICES} 选一>",\n'
-        f'  "interaction_mode": "<{_INTERACTION_MODE_CHOICES} 选一>",\n'
-        '  "rescue_style": "<reengage|switch_topic|low_pressure_probe|graceful_exit|none 选一>",\n'
+        '  "mutual_intent_assessment": "<communication_problem|normal 选一>",\n'
+        '  "interaction_mode": "<repair|none 选一>",\n'
+        '  "rescue_style": "<reengage|switch_topic|none 选一>",\n'
         '  "reason": "<极短中文，说明为何需要或不需要救场>"\n'
         "}\n"
-        "规则：只有 interaction_mode 为 repair 或 probe_lightly 时，need_rescue 才能为 true。"
+        "规则：只有 interaction_mode 为 repair 时，need_rescue 才能为 true。"
     )
     raw = llm([{"role": "system", "content": system}, {"role": "user", "content": user}])
     try:
-        return normalize_route_decision(strip_json_object(raw), decision_source="llm")
+        return _scope_roleplay_route_decision(
+            {
+                **strip_json_object(raw),
+                "decision_source": "llm",
+            }
+        )
     except (json.JSONDecodeError, ValueError):
-        return normalize_route_decision(
+        return _scope_roleplay_route_decision(
             {
                 "need_rescue": False,
                 "situation": "none",
@@ -349,8 +404,8 @@ def _orchestrator_rescue_decision(
                 "rescue_style": "none",
                 "reason": "调度解析失败，默认不介入",
                 "parse_error": True,
+                "decision_source": "llm_parse_fallback",
             },
-            decision_source="llm_parse_fallback",
         )
 
 
@@ -568,24 +623,13 @@ def _next_dyadic_message(
     mode = str(simulated_interaction_mode or "").strip().lower()
     mode_block = ""
     experiment_mode = str(reply_experiment_mode or "free").strip().lower()
-    if experiment_mode in {"mode_hint", "controlled"} and mode in {"repair", "probe_lightly", "hold"}:
+    if experiment_mode in {"mode_hint", "controlled"} and mode == "repair":
         intent = str(simulated_mutual_intent_assessment or "").strip().lower()
         intent_line = f"辅助判断：{intent}。\n" if intent and intent != "normal" else ""
-        if mode == "repair":
-            detail = (
-                "这轮更像双方都还想继续聊，只是接话卡了一下。先接住对方刚刚的信息，补一点你自己的具体内容，"
-                "再自然往下聊或轻轻抛一个容易接的问题；不要突然变冷，也别切去收入、前任、照片这些敏感方向。"
-            )
-        elif mode == "probe_lightly":
-            detail = (
-                "这轮更像意愿还不够明确，只能轻轻试一下。最多一句低压、好回答的问题，简短一点；"
-                "不要连环追问，不要太用力，也不要讨好式硬拉。"
-            )
-        else:
-            detail = (
-                "这轮更像该收住了。不要继续追问，也不要推进收入、前任、照片等敏感方向；"
-                "优先自然收口，或者发一条不施压的轻收住消息。"
-            )
+        detail = (
+            "这轮更像双方都还想继续聊，只是接话卡了一下。先接住对方刚刚的信息，补一点你自己的具体内容，"
+            "再自然往下聊或轻轻抛一个容易接的问题；不要突然变冷，也别切去收入、前任、照片这些敏感方向。"
+        )
         controlled_block = ""
         if experiment_mode == "controlled":
             guidance_summary = _guidance_controlled_summary(simulated_assistant_guidance)
@@ -884,16 +928,19 @@ def _naturalness_assessment(text: str) -> dict[str, Any]:
 
 def _gold_rescue_for_turn(beats: list[StressBeat]) -> dict[str, Any]:
     primary = max(beats, key=lambda beat: (beat.severity, beat.id), default=None)
+    scoped_mode = _coerce_roleplay_interaction_mode(
+        primary.expected_interaction_mode if primary else "none"
+    )
     return {
-        "need_rescue": bool(beats),
+        "need_rescue": scoped_mode == "repair",
         "source_beats": [b.id for b in beats],
         "expected_problem_tags": _dedupe_strs([tag for b in beats for tag in b.expected_problem_tags]),
         "suggested_strategy_tags": _dedupe_strs([tag for b in beats for tag in b.suggested_strategy_tags]),
         "max_severity": max([b.severity for b in beats], default=0),
-        "expected_mutual_intent_assessment": (
-            primary.expected_mutual_intent_assessment if primary else "normal"
-        ),
-        "expected_interaction_mode": primary.expected_interaction_mode if primary else "none",
+        "expected_mutual_intent_assessment": "communication_problem"
+        if scoped_mode == "repair"
+        else "normal",
+        "expected_interaction_mode": scoped_mode,
     }
 def _clean_topic_seed(text: str) -> str:
     topic = re.sub(r"（.*?）", "", str(text or "")).strip()
@@ -933,20 +980,6 @@ def _fallback_message_from_topic(topic: str) -> str:
     return f"我平时也会关注一点{clean}，你平时会聊到这个吗？"
 
 
-def _hold_fallback_message(
-    *,
-    mutual_intent_assessment: str,
-    speaker_state: dict[str, Any] | None,
-) -> str:
-    intent = str(mutual_intent_assessment or "").strip().lower()
-    state = _speaker_state_copy(speaker_state)
-    if intent == "boundary_risk" or int(state.get("irritation") or 0) >= 2:
-        return "这个话题先不展开了，先这样吧。"
-    if int(state.get("closure_bias") or 0) >= 2 or int(state.get("disengagement") or 0) >= 2:
-        return "感觉今天先轻松点，改天有空再聊。"
-    return "我先不往下赶了，回头有空再聊。"
-
-
 def _repair_fallback_message(topic: str) -> str:
     base = _fallback_message_from_topic(topic)
     return f"我刚刚那句可能接得有点硬。{base}"
@@ -962,31 +995,15 @@ def _fallback_next_message(
 ) -> str:
     dyadic = [m for m in visible_messages if str(m.get("visibility") or "") == VIS_DYADIC]
     recent = [str(m.get("body") or "").strip() for m in dyadic[-3:]]
-    strategy_tags = set(str(x) for x in (assistant_guidance or {}).get("strategy_tags") or [])
     mode = str(
         interaction_mode or (assistant_guidance or {}).get("interaction_mode") or "none"
     ).strip().lower()
-    intent = str(
-        mutual_intent_assessment or (assistant_guidance or {}).get("mutual_intent_assessment") or "normal"
-    ).strip().lower()
     topic = _pick_topic_seed(assistant_guidance)
 
-    if mode == "hold":
-        return _hold_fallback_message(
-            mutual_intent_assessment=intent,
-            speaker_state=speaker_state,
-        )
     if mode == "repair":
         if topic:
             return _repair_fallback_message(topic)
         return "我刚刚那句可能接得有点硬。我平时周末会出去走走，你一般怎么放松？"
-    if mode == "probe_lightly":
-        if topic:
-            return _fallback_message_from_topic(topic)
-        return "我平时还挺随性的，你一般周末怎么安排？"
-
-    if "graceful_exit" in strategy_tags and len(recent) >= 2 and all(_is_low_energy_like(body) for body in recent[-2:]):
-        return "感觉今天节奏有点慢，我们先轻松点，改天有空再接着聊也行。"
     if recent and _is_low_energy_like(recent[-1]) and len(recent) >= 2 and _is_question_like(recent[-2]):
         return _fallback_message_from_topic(topic)
     if assistant_guidance:
@@ -1060,25 +1077,6 @@ def _simulated_mode_alignment_guidance(
             "easy_question_types": ["低门槛生活问题"],
             "avoid": ["不要继续追着旧话题硬问，也不要切回敏感方向。"],
         }
-    if mode == "probe_lightly":
-        return {
-            "mutual_intent_assessment": "interest_unclear",
-            "interaction_mode": "probe_lightly",
-            "strategy_tags": ["probe_lightly"],
-            "easy_question_types": ["低门槛生活问题"],
-            "low_pressure_options": ["一句轻问题"],
-            "why_not_to_push": ["这轮只低压试一下，不要连环追问，不要讨好式硬拉。"],
-            "avoid": ["不要连环追问，不要硬推，也不要切回敏感方向。"],
-        }
-    if mode == "hold":
-        return {
-            "mutual_intent_assessment": str(mutual_intent_assessment or "interest_low"),
-            "interaction_mode": "hold",
-            "strategy_tags": ["graceful_exit"],
-            "why_not_to_push": ["这轮更像该收住，不要继续推进。"],
-            "avoid": ["不要继续追问，也不要切回敏感方向。"],
-            "graceful_exit_plan": ["先轻轻收住，必要时体面止损。"],
-        }
     return None
 
 
@@ -1096,10 +1094,18 @@ def _assistant_follow_assessment(
             "evidence": {},
             "overpush_risk": None,
         }
+    interaction_mode = _coerce_roleplay_interaction_mode(guidance.get("interaction_mode"))
+    if interaction_mode != "repair":
+        return {
+            "level": FOLLOW_LEVEL_NOT_APPLICABLE,
+            "score": 0,
+            "signals": ["non_repair_guidance_out_of_scope"],
+            "evidence": {},
+            "overpush_risk": None,
+        }
     text = str(message or "").strip()
     signals: list[str] = []
     strategy_tags = set(str(x) for x in guidance.get("strategy_tags") or [])
-    interaction_mode = str(guidance.get("interaction_mode") or "repair")
     mutual_intent_assessment = str(guidance.get("mutual_intent_assessment") or "normal")
     hooks = [str(x) for x in guidance.get("profile_hooks_used") or []]
     topic_directions = [str(x) for x in guidance.get("topic_directions") or []]
@@ -1116,17 +1122,9 @@ def _assistant_follow_assessment(
     asked_low_bar_question = asked_question and any(token in text for token in _LOW_BAR_QUESTION_TOKENS)
     pushy_questioning = _is_pushy_questioning(text)
     mentions_boundary_topic = _mentions_boundary_topic(text)
-    graceful_exit_used = "graceful_exit" in strategy_tags and _is_graceful_exit_like(text)
     switched_topic = bool(matched_topic_directions or matched_profile_hooks)
     if not switched_topic and "switch_topic" in strategy_tags and asked_low_bar_question and len(text) >= 10:
         switched_topic = True
-    low_pressure_probe = (
-        interaction_mode == "probe_lightly"
-        and asked_question
-        and asked_low_bar_question
-        and not pushy_questioning
-        and len(text) <= 28
-    )
 
     avoid_context = " ".join(avoid_items + why_not_to_push)
     avoid_violations: list[str] = []
@@ -1139,10 +1137,6 @@ def _assistant_follow_assessment(
         token in avoid_context for token in ("追问", "连环", "查户口", "硬问", "硬推", "加码", "推进", "讨好")
     ):
         avoid_violations.append("cross_exam_questioning")
-    if interaction_mode == "probe_lightly" and pushy_questioning:
-        avoid_violations.append("too_heavy_for_probe")
-    if interaction_mode == "hold" and asked_question and not graceful_exit_used:
-        avoid_violations.append("continued_pushing_in_hold_mode")
     avoid_violations = _dedupe_strs(avoid_violations)
     overpush_reasons = [
         reason
@@ -1151,8 +1145,6 @@ def _assistant_follow_assessment(
         in {
             "sensitive_topic_reentry",
             "cross_exam_questioning",
-            "too_heavy_for_probe",
-            "continued_pushing_in_hold_mode",
         }
     ]
 
@@ -1164,15 +1156,10 @@ def _assistant_follow_assessment(
         "asked_question": asked_question,
         "asked_low_bar_question": asked_low_bar_question,
         "shared_detail": shared_detail,
-        "used_graceful_exit": graceful_exit_used,
         "message_still_cold": False,
     }
 
-    if graceful_exit_used:
-        signals.append("used_graceful_exit")
-        evidence["applied_strategies"].append("graceful_exit")
-
-    if _is_low_energy_like(text) and not graceful_exit_used:
+    if _is_low_energy_like(text):
         evidence["message_still_cold"] = True
         return {
             "level": FOLLOW_LEVEL_NONE,
@@ -1207,50 +1194,24 @@ def _assistant_follow_assessment(
         score += 1
         signals.append("asked_low_bar_question")
         evidence["applied_strategies"].append("ask_easy_question")
-    if low_pressure_probe:
-        score += 1
-        signals.append("used_low_pressure_probe")
-        evidence["applied_strategies"].append("probe_lightly")
     if switched_topic:
         score += 1
         signals.append("switched_topic")
         evidence["applied_strategies"].append("switch_topic")
-    if interaction_mode == "hold" and not asked_question and not mentions_boundary_topic:
-        score += 1
-        signals.append("respected_hold_boundary")
-        evidence["applied_strategies"].append("hold_boundary")
 
     evidence["applied_strategies"] = _dedupe_strs(evidence["applied_strategies"])
 
-    if interaction_mode in {"probe_lightly", "hold"} and avoid_violations:
-        level = FOLLOW_LEVEL_NONE
-        score = 0
+    score = max(0, score - (2 * len(avoid_violations)))
+    if score >= 4:
+        level = FOLLOW_LEVEL_STRONG
+    elif score >= 2:
+        level = FOLLOW_LEVEL_PARTIAL
     else:
-        score = max(0, score - (2 * len(avoid_violations)))
-        if score >= 4:
-            level = FOLLOW_LEVEL_STRONG
-        elif score >= 2:
-            level = FOLLOW_LEVEL_PARTIAL
-        else:
-            level = FOLLOW_LEVEL_NONE
+        level = FOLLOW_LEVEL_NONE
 
     if interaction_mode == "repair" and switched_topic and asked_low_bar_question and not avoid_violations:
         level = FOLLOW_LEVEL_STRONG
         score = max(score, 4)
-    if interaction_mode == "probe_lightly" and low_pressure_probe and not avoid_violations:
-        if score >= 2:
-            level = FOLLOW_LEVEL_STRONG
-            score = max(score, 4)
-        elif level == FOLLOW_LEVEL_NONE:
-            level = FOLLOW_LEVEL_PARTIAL
-            score = max(score, 2)
-    if interaction_mode == "hold":
-        if graceful_exit_used and not avoid_violations:
-            level = FOLLOW_LEVEL_STRONG
-            score = max(score, 4)
-        elif level == FOLLOW_LEVEL_NONE and not avoid_violations and not asked_question and not mentions_boundary_topic:
-            level = FOLLOW_LEVEL_PARTIAL
-            score = max(score, 2)
     if "sensitive_topic_reentry" in avoid_violations:
         level = FOLLOW_LEVEL_NONE
         score = 0
@@ -1284,8 +1245,8 @@ def _assistant_recovery_assessment(
         or ((current_turn.get("rescue_decision") or {}).get("interaction_mode"))
         or "repair"
     )
-    if interaction_mode == "hold":
-        return {"label": "not_applicable", "score": 0, "signals": ["hold_mode_scored_separately"]}
+    if _coerce_roleplay_interaction_mode(interaction_mode) != "repair":
+        return {"label": "not_applicable", "score": 0, "signals": ["non_repair_guidance_out_of_scope"]}
     window = list(future_turns or [])[:3]
     if not window:
         return {"label": "pending", "score": 0, "signals": ["no_following_reply"]}
@@ -1316,11 +1277,8 @@ def _assistant_recovery_assessment(
         score += 1
         signals.append("counterpart_replied_with_more_than_cold_phrase")
     else:
-        if interaction_mode == "probe_lightly":
-            signals.append("probe_confirmed_counterpart_still_low_energy")
-        else:
-            score -= 1
-            signals.append("counterpart_reply_still_cold")
+        score -= 1
+        signals.append("counterpart_reply_still_cold")
     if detailed_replies:
         score += 1
         signals.append("counterpart_added_detail")
@@ -1334,10 +1292,7 @@ def _assistant_recovery_assessment(
         score += 1
         signals.append("new_topic_got_engagement")
 
-    if interaction_mode == "probe_lightly" and not engaged_replies and not detailed_replies and not question_replies:
-        label = "clarified_low_interest"
-        score = 0
-    elif score >= 3:
+    if score >= 3:
         label = "improved"
     elif score >= 1:
         label = "slightly_improved"
@@ -1372,24 +1327,6 @@ def _assistant_mode_compliance(
             signals.append("has_repair_next_step")
         else:
             drifts.append("missing_repair_next_step")
-    elif mode == "probe_lightly":
-        if guidance.get("why_not_to_push"):
-            signals.append("has_probe_caution")
-        else:
-            drifts.append("missing_probe_caution")
-        if guidance.get("low_pressure_options"):
-            signals.append("has_low_pressure_options")
-        else:
-            drifts.append("missing_low_pressure_options")
-    elif mode == "hold":
-        if guidance.get("why_not_to_push"):
-            signals.append("has_hold_rationale")
-        else:
-            drifts.append("missing_hold_rationale")
-        if guidance.get("avoid") or guidance.get("graceful_exit_plan"):
-            signals.append("has_hold_stop_signal")
-        else:
-            drifts.append("missing_hold_stop_signal")
     else:
         drifts.append("assistant_should_not_have_been_invoked_for_none_mode")
     if drifts:
@@ -1400,7 +1337,7 @@ def _assistant_mode_compliance(
 def _predicted_mutual_intent_assessment(record: dict[str, Any]) -> str:
     guidance = record.get("assistant_guidance") or {}
     decision = record.get("rescue_decision") or {}
-    return str(
+    return _coerce_roleplay_mutual_intent(
         guidance.get("mutual_intent_assessment")
         or decision.get("mutual_intent_assessment")
         or "normal"
@@ -1410,15 +1347,21 @@ def _predicted_mutual_intent_assessment(record: dict[str, Any]) -> str:
 def _predicted_interaction_mode(record: dict[str, Any]) -> str:
     guidance = record.get("assistant_guidance") or {}
     decision = record.get("rescue_decision") or {}
-    return str(guidance.get("interaction_mode") or decision.get("interaction_mode") or "none")
+    return _coerce_roleplay_interaction_mode(
+        guidance.get("interaction_mode") or decision.get("interaction_mode") or "none"
+    )
 
 
 def _evaluated_interaction_mode(record: dict[str, Any]) -> str:
-    return str(record.get("interaction_mode") or _predicted_interaction_mode(record) or "none")
+    return _coerce_roleplay_interaction_mode(
+        record.get("interaction_mode") or _predicted_interaction_mode(record) or "none"
+    )
 
 
 def _evaluated_mutual_intent_assessment(record: dict[str, Any]) -> str:
-    return str(record.get("mutual_intent_assessment") or _predicted_mutual_intent_assessment(record) or "normal")
+    return _coerce_roleplay_mutual_intent(
+        record.get("mutual_intent_assessment") or _predicted_mutual_intent_assessment(record) or "normal"
+    )
 
 
 def _predicted_route_value(record: dict[str, Any], key: str) -> str | None:
@@ -1434,8 +1377,8 @@ def _predicted_route_value(record: dict[str, Any], key: str) -> str | None:
 def _visible_text_gold_decision(messages: list[dict[str, Any]]) -> dict[str, Any]:
     decision = _mode_router_module.fast_mode_route(messages)
     if decision is not None:
-        return dict(decision)
-    return normalize_route_decision(
+        return _scope_roleplay_route_decision(dict(decision))
+    return _scope_roleplay_route_decision(
         {
             "need_rescue": False,
             "situation": "none",
@@ -1444,8 +1387,8 @@ def _visible_text_gold_decision(messages: list[dict[str, Any]]) -> dict[str, Any
             "interaction_mode": "none",
             "rescue_style": "none",
             "reason": "可见文本里暂时没有明显卡点。",
-        },
-        decision_source="visible_text_fallback",
+            "decision_source": "visible_text_fallback",
+        }
     )
 
 
@@ -1461,7 +1404,7 @@ def _latest_follow_level_for_speaker(turn_records: list[dict[str, Any]], speaker
 
 def _simulated_reply_mode_alignment(record: dict[str, Any]) -> dict[str, Any]:
     mode = _evaluated_interaction_mode(record)
-    if mode not in {"repair", "probe_lightly", "hold"}:
+    if mode != "repair":
         return {"label": "not_applicable", "score": 0, "signals": [], "mode": mode}
     guidance = _simulated_mode_alignment_guidance(
         mode,
@@ -1495,24 +1438,7 @@ def _simulated_reply_mode_alignment(record: dict[str, Any]) -> dict[str, Any]:
 
 
 def _graceful_exit_score(record: dict[str, Any]) -> int | None:
-    mode = _evaluated_interaction_mode(record)
-    if mode != "hold":
-        return None
-    message = str(record.get("generated_message") or "")
-    if not message.strip():
-        return 0
-    if bool(((record.get("overpush_risk") or {}).get("flag"))):
-        return 0
-    if _mentions_boundary_topic(message):
-        return 0
-    score = 0
-    if _is_graceful_exit_like(message):
-        score += 1 if _is_question_like(message) else 2
-    elif not _is_question_like(message):
-        score += 1
-    if _is_low_energy_like(message) and not _is_graceful_exit_like(message):
-        score = max(0, score - 1)
-    return score
+    return None
 
 
 def _shared_turn_evaluation(record: dict[str, Any]) -> dict[str, Any]:
@@ -1529,11 +1455,13 @@ def _shared_turn_evaluation(record: dict[str, Any]) -> dict[str, Any]:
         "speaker": str(record.get("speaker") or ""),
         "stress_beat_id": str(((record.get("stress_beat") or {}).get("beat_id")) or ""),
         "stress_category": str(((record.get("stress_beat") or {}).get("category")) or ""),
-        "mutual_intent_assessment_gold": str(
+        "mutual_intent_assessment_gold": _coerce_roleplay_mutual_intent(
             gold.get("expected_mutual_intent_assessment") or "normal"
         ),
         "mutual_intent_assessment_pred": _predicted_mutual_intent_assessment(record),
-        "interaction_mode_gold": str(gold.get("expected_interaction_mode") or "none"),
+        "interaction_mode_gold": _coerce_roleplay_interaction_mode(
+            gold.get("expected_interaction_mode") or "none"
+        ),
         "interaction_mode_pred": _predicted_interaction_mode(record),
         "assistant_mode_compliance": str(compliance.get("label") or "not_applicable"),
         "need_rescue_gold": bool(gold.get("need_rescue")),
@@ -1597,23 +1525,28 @@ def _gold_need_rescue_for_view(record: dict[str, Any], *, view: str) -> bool:
 
 def _gold_interaction_mode_for_view(record: dict[str, Any], *, view: str) -> str:
     if view == "visible_text":
-        return str(((record.get("visible_text_gold_decision") or {}).get("interaction_mode")) or "none")
+        return _coerce_roleplay_interaction_mode(
+            ((record.get("visible_text_gold_decision") or {}).get("interaction_mode")) or "none"
+        )
     if view == "manifested_stress_beat":
-        return str(((record.get("manifested_stress_gold_decision") or {}).get("expected_interaction_mode")) or "none")
-    return str(record.get("interaction_mode_gold") or "none")
+        return _coerce_roleplay_interaction_mode(
+            ((record.get("manifested_stress_gold_decision") or {}).get("expected_interaction_mode"))
+            or "none"
+        )
+    return _coerce_roleplay_interaction_mode(record.get("interaction_mode_gold") or "none")
 
 
 def _gold_mutual_intent_for_view(record: dict[str, Any], *, view: str) -> str:
     if view == "visible_text":
-        return str(
+        return _coerce_roleplay_mutual_intent(
             ((record.get("visible_text_gold_decision") or {}).get("mutual_intent_assessment")) or "normal"
         )
     if view == "manifested_stress_beat":
-        return str(
+        return _coerce_roleplay_mutual_intent(
             ((record.get("manifested_stress_gold_decision") or {}).get("expected_mutual_intent_assessment"))
             or "normal"
         )
-    return str(record.get("mutual_intent_assessment_gold") or "normal")
+    return _coerce_roleplay_mutual_intent(record.get("mutual_intent_assessment_gold") or "normal")
 
 
 def _recognition_view_metrics(
@@ -1640,16 +1573,16 @@ def _recognition_view_metrics(
         if _gold_mutual_intent_for_view(record, view=view)
         == str(record.get("mutual_intent_assessment_pred") or "normal")
     ]
-    risky_turns = [
+    repair_turns = [
         record
         for record in turn_records
-        if _gold_mutual_intent_for_view(record, view=view) == "boundary_risk"
+        if _gold_interaction_mode_for_view(record, view=view) == "repair"
     ]
-    risky_none_turns = [
-        record for record in risky_turns if str(record.get("interaction_mode_pred") or "none") == "none"
+    repair_missed_none_turns = [
+        record for record in repair_turns if _predicted_interaction_mode(record) == "none"
     ]
-    boundary_hold_hits = [
-        record for record in risky_turns if str(record.get("interaction_mode_pred") or "none") == "hold"
+    repair_hit_turns = [
+        record for record in repair_turns if _predicted_interaction_mode(record) == "repair"
     ]
     return {
         "need_rescue_accuracy": {
@@ -1667,13 +1600,15 @@ def _recognition_view_metrics(
             "matched_turns": len(intent_matched),
             "rate": round(len(intent_matched) / len(comparable_intent), 4) if comparable_intent else None,
         },
-        "boundary_risk_turns": len(risky_turns),
-        "risky_none_turns": len(risky_none_turns),
-        "risky_none_rate": round(len(risky_none_turns) / len(risky_turns), 4) if risky_turns else None,
-        "boundary_risk_hold_hits": len(boundary_hold_hits),
-        "boundary_risk_hold_recall": (
-            round(len(boundary_hold_hits) / len(risky_turns), 4) if risky_turns else None
-        ),
+        "repair_turns": len(repair_turns),
+        "repair_hit_turns": len(repair_hit_turns),
+        "repair_recall": round(len(repair_hit_turns) / len(repair_turns), 4)
+        if repair_turns
+        else None,
+        "repair_missed_none_turns": len(repair_missed_none_turns),
+        "repair_miss_rate": round(len(repair_missed_none_turns) / len(repair_turns), 4)
+        if repair_turns
+        else None,
     }
 
 
@@ -1878,42 +1813,32 @@ def run_dyadic_roleplay(
             assistant_started = perf_counter()
             hint = assistant_query(conn, thread_id, speaker, fixed_assistant_query, now=ts)
             assistant_elapsed_ms = int((perf_counter() - assistant_started) * 1000)
+            scoped_guidance = _scope_roleplay_guidance(hint.get("assistant_guidance"))
+            scoped_route = _scope_roleplay_route_decision(hint.get("assistant_route_decision"))
             turn_record["assistant_invoked"] = True
             turn_record["assistant_message_id"] = hint.get("message_id")
-            turn_record["assistant_guidance"] = hint.get("assistant_guidance")
+            turn_record["assistant_guidance"] = scoped_guidance
             turn_record["assistant_profile_context"] = hint.get("assistant_profile_context")
-            turn_record["rescue_decision"] = hint.get("assistant_route_decision")
+            turn_record["rescue_decision"] = scoped_route
             turn_record["rescue_decision_source"] = (
-                (hint.get("assistant_route_decision") or {}).get("decision_source") or "assistant_query"
+                scoped_route.get("decision_source") or "assistant_query"
             )
             turn_record["mutual_intent_assessment"] = (
-                (hint.get("assistant_guidance") or {}).get("mutual_intent_assessment")
-                or (hint.get("assistant_route_decision") or {}).get("mutual_intent_assessment")
+                (scoped_guidance or {}).get("mutual_intent_assessment")
+                or scoped_route.get("mutual_intent_assessment")
                 or "normal"
             )
             turn_record["interaction_mode"] = (
-                (hint.get("assistant_guidance") or {}).get("interaction_mode")
-                or (hint.get("assistant_route_decision") or {}).get("interaction_mode")
+                (scoped_guidance or {}).get("interaction_mode")
+                or scoped_route.get("interaction_mode")
                 or "none"
             )
-            turn_record["risk_axis"] = (
-                (hint.get("assistant_guidance") or {}).get("risk_axis")
-                or (hint.get("assistant_route_decision") or {}).get("risk_axis")
-            )
-            turn_record["hold_subtype"] = (
-                (hint.get("assistant_guidance") or {}).get("hold_subtype")
-                or (hint.get("assistant_route_decision") or {}).get("hold_subtype")
-            )
-            turn_record["engagement_level"] = (hint.get("assistant_route_decision") or {}).get(
-                "engagement_level"
-            )
-            turn_record["warmth_level"] = (hint.get("assistant_route_decision") or {}).get(
-                "warmth_level"
-            )
-            turn_record["irritation_level"] = (hint.get("assistant_route_decision") or {}).get(
-                "irritation_level"
-            )
-            turn_record["state_trend"] = (hint.get("assistant_route_decision") or {}).get("state_trend")
+            turn_record["risk_axis"] = None
+            turn_record["hold_subtype"] = None
+            turn_record["engagement_level"] = scoped_route.get("engagement_level")
+            turn_record["warmth_level"] = scoped_route.get("warmth_level")
+            turn_record["irritation_level"] = scoped_route.get("irritation_level")
+            turn_record["state_trend"] = scoped_route.get("state_trend")
             turn_record["assistant_latency_ms"] = assistant_elapsed_ms
             emit(f"{turn_label}: assistant hint posted for {speaker} in {assistant_elapsed_ms} ms")
         elif mode == "proactive":
@@ -1930,7 +1855,7 @@ def run_dyadic_roleplay(
                         dyadic_transcript=pub,
                     )
                 except Exception as e:
-                    decision = normalize_route_decision(
+                    decision = _scope_roleplay_route_decision(
                         {
                             "need_rescue": False,
                             "situation": "none",
@@ -1939,9 +1864,11 @@ def run_dyadic_roleplay(
                             "interaction_mode": "none",
                             "rescue_style": "none",
                             "reason": f"调度超时，先按不介入处理：{type(e).__name__}",
-                        },
-                        decision_source="llm_error_fallback",
+                            "decision_source": "llm_error_fallback",
+                        }
                     )
+            else:
+                decision = _scope_roleplay_route_decision(decision)
             need = bool(decision.get("need_rescue"))
             emit(
                 f"{turn_label}: rescue source={decision.get('decision_source') or 'unknown'} "
@@ -1981,7 +1908,7 @@ def run_dyadic_roleplay(
             if turn_record["hint_posted"]:
                 turn_record["assistant_invoked"] = True
                 turn_record["assistant_message_id"] = hint.get("message_id")
-                turn_record["assistant_guidance"] = hint.get("assistant_guidance")
+                turn_record["assistant_guidance"] = _scope_roleplay_guidance(hint.get("assistant_guidance"))
                 turn_record["assistant_profile_context"] = hint.get("assistant_profile_context")
                 turn_record["assistant_latency_ms"] = assistant_elapsed_ms
                 rescue_log.append(
@@ -2031,7 +1958,7 @@ def run_dyadic_roleplay(
             simulated_mode = (
                 current_mode
                 if effective_reply_experiment_mode in {"mode_hint", "controlled"}
-                and current_mode in {"repair", "probe_lightly", "hold"}
+                and current_mode == "repair"
                 else None
             )
             simulated_intent = (
@@ -2175,10 +2102,6 @@ def run_dyadic_roleplay(
         r for r in intervention_records if bool((r.get("follow_evidence") or {}).get("avoid_violations"))
     ]
     repair_interventions = [r for r in intervention_records if _evaluated_interaction_mode(r) == "repair"]
-    probe_interventions = [
-        r for r in intervention_records if _evaluated_interaction_mode(r) == "probe_lightly"
-    ]
-    hold_decisions = [r for r in turn_records if _evaluated_interaction_mode(r) == "hold"]
     overpush_risk_turns = [
         r
         for r in intervention_records
@@ -2203,7 +2126,7 @@ def run_dyadic_roleplay(
     recoverable_interventions = [
         r
         for r in intervention_records
-        if _evaluated_interaction_mode(r) in {"repair", "probe_lightly"}
+        if _evaluated_interaction_mode(r) == "repair"
         and (r.get("assistant_recovery_assessment") or {}).get("label") not in ("not_applicable", "pending")
     ]
     improved_recovery = [
@@ -2216,22 +2139,11 @@ def run_dyadic_roleplay(
         for r in recoverable_interventions
         if (r.get("assistant_recovery_assessment") or {}).get("label") == "slightly_improved"
     ]
-    clarified_low_interest = [
-        r
-        for r in recoverable_interventions
-        if (r.get("assistant_recovery_assessment") or {}).get("label") == "clarified_low_interest"
-    ]
     worse_or_same_recovery = [
         r
         for r in recoverable_interventions
         if (r.get("assistant_recovery_assessment") or {}).get("label") == "worse_or_same"
     ]
-    recoverable_probe_interventions = [
-        r
-        for r in probe_interventions
-        if (r.get("assistant_recovery_assessment") or {}).get("label") not in ("not_applicable", "pending")
-    ]
-    graceful_exit_turns = [r for r in hold_decisions if int(_graceful_exit_score(r) or 0) > 0]
     heuristic_decisions = [
         r
         for r in turn_records
@@ -2259,24 +2171,6 @@ def run_dyadic_roleplay(
         for r in proactive_hint_posted
         if (r.get("hint_trigger_event") or {}).get("trigger_type") == "mode_change"
     ]
-    hold_repeat_candidates = [
-        r
-        for r in proactive_hint_candidates
-        if (r.get("hint_trigger_event") or {}).get("mode_after") == "hold"
-        and int((r.get("hint_trigger_event") or {}).get("same_mode_turns") or 0) > 1
-    ]
-    hold_repeat_posted = [
-        r for r in hold_repeat_candidates if bool((r.get("hint_trigger_event") or {}).get("hint_posted"))
-    ]
-    graceful_exit_advice_turns = [
-        r
-        for r in intervention_records
-        if "graceful_exit"
-        in set(str(x) for x in ((r.get("assistant_guidance") or {}).get("strategy_tags") or []))
-    ]
-    graceful_exit_used_turns = [
-        r for r in intervention_records if _is_graceful_exit_like(str(r.get("generated_message") or ""))
-    ]
     timeout_guidance_turns = [
         r
         for r in intervention_records
@@ -2287,32 +2181,11 @@ def run_dyadic_roleplay(
         for r in intervention_records
         if str(((r.get("assistant_guidance") or {}).get("guidance_source")) or "").startswith("fallback")
     ]
-    boundary_risk_hold_repeat_candidates = [
-        r
-        for r in proactive_hint_candidates
-        if (r.get("hint_trigger_event") or {}).get("mode_after") == "hold"
-        and (r.get("hint_trigger_event") or {}).get("hold_subtype") == "boundary_risk"
-        and bool((r.get("hint_trigger_event") or {}).get("has_user_acted_since_last_hint"))
-        and int(((r.get("assistant_trend_state") or {}).get("same_risk_axis_turns")) or 0) >= 2
-        and str(((r.get("assistant_trend_state") or {}).get("irritation_level")) or "")
-        in {"medium", "high"}
-    ]
-    boundary_risk_hold_repeat_posted = [
-        r
-        for r in boundary_risk_hold_repeat_candidates
-        if bool((r.get("hint_trigger_event") or {}).get("hint_posted"))
-        and (r.get("hint_trigger_event") or {}).get("trigger_type") == "hold_stoploss"
-    ]
     message_generation_timeout_turns = [
         r
         for r in turn_records
         if (r.get("message_generation_source") or "") == "fallback"
         and _is_timeout_error_text(str(r.get("message_generation_error") or ""))
-    ]
-    fast_hold_guidance_turns = [
-        r
-        for r in intervention_records
-        if str(((r.get("assistant_guidance") or {}).get("guidance_source")) or "") == "fast_hold_policy"
     ]
     stress_turns = [r for r in turn_records if isinstance(r.get("stress_beat"), dict)]
     manifested_stress_turns = [
@@ -2433,17 +2306,6 @@ def run_dyadic_roleplay(
             "mode_change_hint_rate": round(len(mode_change_hint_turns) / len(proactive_hint_candidates), 4)
             if proactive_hint_candidates
             else None,
-            "hold_repeat_hint_turns": len(hold_repeat_posted),
-            "hold_repeat_hint_rate": round(len(hold_repeat_posted) / len(hold_repeat_candidates), 4)
-            if hold_repeat_candidates
-            else None,
-            "boundary_risk_hold_repeat_turns": len(boundary_risk_hold_repeat_posted),
-            "boundary_risk_hold_repeat_recall": round(
-                len(boundary_risk_hold_repeat_posted) / len(boundary_risk_hold_repeat_candidates),
-                4,
-            )
-            if boundary_risk_hold_repeat_candidates
-            else None,
             "assistant_invoke_avg_ms": round(sum(assistant_latencies) / len(assistant_latencies), 2)
             if assistant_latencies
             else None,
@@ -2459,31 +2321,26 @@ def run_dyadic_roleplay(
             )
             if intervention_records
             else None,
-            "assistant_guidance_fast_path_turns": len(fast_hold_guidance_turns),
-            "assistant_guidance_fast_path_rate": round(
-                len(fast_hold_guidance_turns) / len(intervention_records),
-                4,
-            )
-            if intervention_records
-            else None,
             "repair_intervention_turns": len(repair_interventions),
-            "probe_intervention_turns": len(probe_interventions),
-            "hold_decision_turns": len(hold_decisions),
             "overpush_risk_turns": len(overpush_risk_turns),
-            "risky_none_turns": manifested_stress_beat_view["risky_none_turns"],
-            "risky_none_rate": manifested_stress_beat_view["risky_none_rate"],
-            "boundary_risk_hold_recall": manifested_stress_beat_view["boundary_risk_hold_recall"],
-            "visible_text_risky_none_turns": visible_text_view["risky_none_turns"],
-            "visible_text_risky_none_rate": visible_text_view["risky_none_rate"],
-            "visible_text_boundary_risk_hold_recall": visible_text_view["boundary_risk_hold_recall"],
-            "stress_beat_risky_none_turns": stress_beat_view["risky_none_turns"],
-            "stress_beat_risky_none_rate": stress_beat_view["risky_none_rate"],
-            "stress_beat_boundary_risk_hold_recall": stress_beat_view["boundary_risk_hold_recall"],
-            "manifested_stress_beat_risky_none_turns": manifested_stress_beat_view["risky_none_turns"],
-            "manifested_stress_beat_risky_none_rate": manifested_stress_beat_view["risky_none_rate"],
-            "manifested_stress_beat_boundary_risk_hold_recall": manifested_stress_beat_view[
-                "boundary_risk_hold_recall"
+            "repair_turns": manifested_stress_beat_view["repair_turns"],
+            "repair_recall": manifested_stress_beat_view["repair_recall"],
+            "repair_missed_none_turns": manifested_stress_beat_view["repair_missed_none_turns"],
+            "repair_miss_rate": manifested_stress_beat_view["repair_miss_rate"],
+            "visible_text_repair_turns": visible_text_view["repair_turns"],
+            "visible_text_repair_recall": visible_text_view["repair_recall"],
+            "visible_text_repair_missed_none_turns": visible_text_view["repair_missed_none_turns"],
+            "visible_text_repair_miss_rate": visible_text_view["repair_miss_rate"],
+            "stress_beat_repair_turns": stress_beat_view["repair_turns"],
+            "stress_beat_repair_recall": stress_beat_view["repair_recall"],
+            "stress_beat_repair_missed_none_turns": stress_beat_view["repair_missed_none_turns"],
+            "stress_beat_repair_miss_rate": stress_beat_view["repair_miss_rate"],
+            "manifested_stress_beat_repair_turns": manifested_stress_beat_view["repair_turns"],
+            "manifested_stress_beat_repair_recall": manifested_stress_beat_view["repair_recall"],
+            "manifested_stress_beat_repair_missed_none_turns": manifested_stress_beat_view[
+                "repair_missed_none_turns"
             ],
+            "manifested_stress_beat_repair_miss_rate": manifested_stress_beat_view["repair_miss_rate"],
             "visible_text_view": visible_text_view,
             "stress_beat_view": stress_beat_view,
             "manifested_stress_beat_view": manifested_stress_beat_view,
@@ -2532,19 +2389,6 @@ def run_dyadic_roleplay(
             else None,
             "slightly_improved_recovery_turns": len(slightly_improved_recovery),
             "worse_or_same_recovery_turns": len(worse_or_same_recovery),
-            "clarified_low_interest_turns": len(clarified_low_interest),
-            "clarified_low_interest_rate": round(
-                len(clarified_low_interest) / len(recoverable_probe_interventions),
-                4,
-            )
-            if recoverable_probe_interventions
-            else None,
-            "graceful_exit_turns": len(graceful_exit_turns),
-            "graceful_exit_rate": round(len(graceful_exit_turns) / len(hold_decisions), 4)
-            if hold_decisions
-            else None,
-            "graceful_exit_advice_turns": len(graceful_exit_advice_turns),
-            "graceful_exit_used_turns": len(graceful_exit_used_turns),
             "self_evaluation_fallback_count": int(eval_a_fallback) + int(eval_b_fallback),
             "self_evaluation_timeout_count": int(eval_a_timeout) + int(eval_b_timeout),
         },

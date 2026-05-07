@@ -59,8 +59,8 @@ class ReportingHelperTests(unittest.TestCase):
                     "assistant_invoked": True,
                     "visible_text_gold_decision": {
                         "need_rescue": True,
-                        "mutual_intent_assessment": "boundary_risk",
-                        "interaction_mode": "hold",
+                        "mutual_intent_assessment": "communication_problem",
+                        "interaction_mode": "repair",
                     },
                     "interaction_mode": "repair",
                     "assistant_mode_compliance": "compliant",
@@ -76,8 +76,8 @@ class ReportingHelperTests(unittest.TestCase):
                     "need_rescue_pred": True,
                     "manifested_stress_gold_decision": {
                         "need_rescue": True,
-                        "expected_mutual_intent_assessment": "boundary_risk",
-                        "expected_interaction_mode": "hold",
+                        "expected_mutual_intent_assessment": "communication_problem",
+                        "expected_interaction_mode": "repair",
                     },
                 },
             ],
@@ -92,19 +92,16 @@ class ReportingHelperTests(unittest.TestCase):
                 "improved_recovery_turns": 1,
                 "improved_recovery_rate": 1.0,
                 "slightly_improved_recovery_turns": 0,
-                "clarified_low_interest_rate": None,
-                "graceful_exit_rate": None,
                 "overpush_risk_turns": 0,
                 "avoid_violation_turns": 0,
                 "assistant_invoke_avg_ms": 42.0,
                 "assistant_invoke_max_ms": 42,
                 "assistant_invoke_timeout_rate": 0.0,
                 "assistant_guidance_fallback_rate": 0.0,
-                "assistant_guidance_fast_path_rate": 1.0,
                 "fallback_message_rate": 0.0,
                 "message_generation_timeout_rate": 0.0,
-                "risky_none_rate": 0.0,
-                "boundary_risk_hold_recall": 0.0,
+                "repair_recall": 1.0,
+                "repair_miss_rate": 0.0,
                 "stress_beat_manifestation_rate": 1.0,
                 "self_evaluation_fallback_count": 0,
                 "self_evaluation_timeout_count": 0,
@@ -136,7 +133,8 @@ class ReportingHelperTests(unittest.TestCase):
         self.assertEqual(summary["advice_quality"]["assistant_score_avg_1to5"], 4.5)
         self.assertEqual(summary["advice_quality"]["direct_send_violation_rate"], 1.0)
         self.assertIn("primary_evaluation", summary)
-        self.assertEqual(summary["primary_evaluation"]["assistant_guidance_fast_path_rate"], 1.0)
+        self.assertEqual(summary["primary_evaluation"]["repair_recall"], 1.0)
+        self.assertEqual(summary["primary_evaluation"]["repair_miss_rate"], 0.0)
         self.assertEqual(summary["user_adoption"]["follow_rate"], 1.0)
         self.assertEqual(summary["reference_only"]["user_adoption"]["follow_rate"], 1.0)
         self.assertEqual(summary["local_recovery"]["local_recovery_rate"], 1.0)
@@ -154,6 +152,7 @@ class ReportingHelperTests(unittest.TestCase):
         self.assertIn("## 参考结果（受角色扮演影响）", markdown)
         self.assertIn("direct-send violation rate: 100.0%", markdown)
         self.assertIn("fallback message rate: 0.0%", markdown)
+        self.assertIn("repair recall: 100.0%", markdown)
         self.assertIn("llm persona_next_message: started=3, ok=2, fail=1, timeout=1", markdown)
 
     def test_build_thread_export_markdown_splits_dialogue_assistant_and_summary(self):
