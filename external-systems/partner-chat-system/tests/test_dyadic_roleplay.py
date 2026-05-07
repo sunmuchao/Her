@@ -777,7 +777,7 @@ class DyadicRoleplayRunTests(unittest.TestCase):
             llm=llm,
             assistant_mode="none",
             base_time=datetime(2026, 5, 4, 9, 0, 0),
-            stress_mode="none",
+            stress_mode="rotate",
             stress_beat_ids=["family_pressure"],
         )
 

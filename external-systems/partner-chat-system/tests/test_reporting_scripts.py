@@ -74,6 +74,11 @@ class ReportingHelperTests(unittest.TestCase):
                     "mutual_intent_assessment_pred": "communication_problem",
                     "need_rescue_gold": True,
                     "need_rescue_pred": True,
+                    "manifested_stress_gold_decision": {
+                        "need_rescue": True,
+                        "expected_mutual_intent_assessment": "boundary_risk",
+                        "expected_interaction_mode": "hold",
+                    },
                 },
             ],
             "assistant_metrics": {
@@ -95,9 +100,14 @@ class ReportingHelperTests(unittest.TestCase):
                 "assistant_invoke_max_ms": 42,
                 "assistant_invoke_timeout_rate": 0.0,
                 "assistant_guidance_fallback_rate": 0.0,
+                "assistant_guidance_fast_path_rate": 1.0,
                 "fallback_message_rate": 0.0,
+                "message_generation_timeout_rate": 0.0,
                 "risky_none_rate": 0.0,
                 "boundary_risk_hold_recall": 0.0,
+                "stress_beat_manifestation_rate": 1.0,
+                "self_evaluation_fallback_count": 0,
+                "self_evaluation_timeout_count": 0,
             },
             "naturalness_metrics": {"average_score": 4.0},
             "evaluation": {
@@ -105,7 +115,17 @@ class ReportingHelperTests(unittest.TestCase):
                 "pb": {"conversation_score": 3, "assistant_score": 4, "used_assistant": False},
             },
             "llm_stats": {
-                "persona_next_message": {"calls": 2, "avg_ms": 120, "max_ms": 180},
+                "persona_next_message": {
+                    "calls": 2,
+                    "calls_started": 3,
+                    "successes": 2,
+                    "failures": 1,
+                    "timeouts": 1,
+                    "avg_ms": 120,
+                    "avg_success_ms": 120,
+                    "avg_all_ms": 140,
+                    "max_ms": 180,
+                },
             },
         }
 
@@ -115,21 +135,26 @@ class ReportingHelperTests(unittest.TestCase):
         self.assertEqual(summary["recognition_accuracy"]["interaction_mode_accuracy"]["rate"], 1.0)
         self.assertEqual(summary["advice_quality"]["assistant_score_avg_1to5"], 4.5)
         self.assertEqual(summary["advice_quality"]["direct_send_violation_rate"], 1.0)
+        self.assertIn("primary_evaluation", summary)
+        self.assertEqual(summary["primary_evaluation"]["assistant_guidance_fast_path_rate"], 1.0)
         self.assertEqual(summary["user_adoption"]["follow_rate"], 1.0)
+        self.assertEqual(summary["reference_only"]["user_adoption"]["follow_rate"], 1.0)
         self.assertEqual(summary["local_recovery"]["local_recovery_rate"], 1.0)
         self.assertEqual(summary["latency"]["assistant_invoke_avg_ms"], 42.0)
         self.assertEqual(summary["latency"]["fallback_message_rate"], 0.0)
         self.assertEqual(summary["mode_distribution"]["counts"]["repair"], 1)
         self.assertIn("visible_text_view", summary["recognition_accuracy"])
         self.assertIn("stress_beat_view", summary["recognition_accuracy"])
+        self.assertIn("manifested_stress_beat_view", summary["recognition_accuracy"])
 
         markdown = render_roleplay_report_markdown(summary)
-        self.assertIn("## 识别准确率", markdown)
-        self.assertIn("## 双口径视图", markdown)
-        self.assertIn("## 建议质量", markdown)
-        self.assertIn("## 延迟统计", markdown)
+        self.assertIn("## 主要结论（提示是否合理）", markdown)
+        self.assertIn("## 三口径视图", markdown)
+        self.assertIn("## 稳定性", markdown)
+        self.assertIn("## 参考结果（受角色扮演影响）", markdown)
         self.assertIn("direct-send violation rate: 100.0%", markdown)
         self.assertIn("fallback message rate: 0.0%", markdown)
+        self.assertIn("llm persona_next_message: started=3, ok=2, fail=1, timeout=1", markdown)
 
     def test_build_thread_export_markdown_splits_dialogue_assistant_and_summary(self):
         rows = [
