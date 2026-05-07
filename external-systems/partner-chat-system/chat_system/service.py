@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
 import os
 import uuid
 from datetime import datetime
@@ -231,16 +233,27 @@ def _other_participant_id(thread: dict[str, Any], user_id: str) -> str:
     return str(thread["participant_a_id"])
 
 
-def _assistant_profile_context(thread: dict[str, Any], user_id: str) -> dict[str, Any]:
-    dsn = os.environ.get("HER_PROFILE_MYSQL_DSN") or DEFAULT_PROFILE_MYSQL_DSN
-    try:
-        actor_row = fetch_profile_for_participant(str(dsn), str(user_id))
-    except Exception:
-        actor_row = None
-    try:
-        counterpart_row = fetch_profile_for_participant(str(dsn), _other_participant_id(thread, user_id))
-    except Exception:
-        counterpart_row = None
+@lru_cache(maxsize=256)
+def _assistant_profile_context_cached(
+    dsn: str,
+    actor_id: str,
+    counterpart_id: str,
+) -> tuple[str, str, tuple[str, ...]]:
+    if not str(actor_id).startswith("profile-") and not str(counterpart_id).startswith("profile-"):
+        return "", "", ()
+
+    def _safe_fetch(participant_id: str):
+        try:
+            return fetch_profile_for_participant(str(dsn), str(participant_id))
+        except Exception:
+            return None
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        actor_future = pool.submit(_safe_fetch, actor_id)
+        counterpart_future = pool.submit(_safe_fetch, counterpart_id)
+        actor_row = actor_future.result()
+        counterpart_row = counterpart_future.result()
+
     actor_summary = profile_row_to_assistant_summary(actor_row) if actor_row else ""
     counterpart_summary = profile_row_to_assistant_summary(counterpart_row) if counterpart_row else ""
     actor_hooks = profile_row_to_hook_list(actor_row) if actor_row else []
@@ -250,11 +263,21 @@ def _assistant_profile_context(thread: dict[str, Any], user_id: str) -> dict[str
     for hook in shared_hooks + actor_hooks + counterpart_hooks:
         if hook and hook not in ordered_hooks:
             ordered_hooks.append(hook)
+    return actor_summary, counterpart_summary, tuple(ordered_hooks[:8])
+
+
+def _assistant_profile_context(thread: dict[str, Any], user_id: str) -> dict[str, Any]:
+    dsn = os.environ.get("HER_PROFILE_MYSQL_DSN") or DEFAULT_PROFILE_MYSQL_DSN
+    actor_summary, counterpart_summary, ordered_hooks = _assistant_profile_context_cached(
+        str(dsn),
+        str(user_id),
+        _other_participant_id(thread, user_id),
+    )
     return {
         "profile_dsn": str(dsn),
         "actor_profile_summary": actor_summary,
         "counterpart_profile_summary": counterpart_summary,
-        "profile_hooks": ordered_hooks[:8],
+        "profile_hooks": list(ordered_hooks[:8]),
     }
 
 
@@ -410,19 +433,21 @@ def _assistant_draft_core(
         )
     total_started_at = perf_counter()
     context_limit = int(os.environ.get("HER_CHAT_ASSISTANT_CONTEXT_LIMIT") or "12")
+    message_limit = max(6, min(context_limit, 20))
     route_started_at = perf_counter()
     route_messages = list_messages(
         conn,
         str(thread["thread_id"]),
         user_id,
-        limit=max(6, min(context_limit, 20)),
+        limit=message_limit,
     )
     route_decision = dict(route_decision_override or fast_mode_route(route_messages) or _default_route_decision())
     route_latency_ms = _elapsed_ms(route_started_at)
     ctx = build_dyadic_context_for_assistant(
         conn,
         str(thread["thread_id"]),
-        limit=max(6, min(context_limit, 20)),
+        limit=message_limit,
+        visible_messages=route_messages,
     )
     guidance_started_at = perf_counter()
     profile_ctx = _assistant_profile_context(thread, user_id)
