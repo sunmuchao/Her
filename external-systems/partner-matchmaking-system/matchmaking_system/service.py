@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -12,11 +13,6 @@ from typing import Any, Callable, Iterable, Mapping
 from ._path_bootstrap import ensure_her_repo_on_sys_path
 
 ensure_her_repo_on_sys_path(Path(__file__))
-
-from skill_runtime import ensure_partner_search_skill_on_path, ensure_persona_memory_skill_on_path  # noqa: E402
-
-ensure_partner_search_skill_on_path()
-ensure_persona_memory_skill_on_path()
 
 from match_domain import (  # noqa: E402
     CaseType,
@@ -462,6 +458,7 @@ def load_pool_member_search_args(member: Mapping[str, Any]) -> dict[str, Any]:
         "limit": int(member.get("limit_count") or 10),
         "include_source": True,
         "include_text": False,
+        "moderation_dsn": os.environ.get("HER_CHAT_MODERATION_DB") or os.environ.get("PARTNER_CHAT_DB"),
     }
 
 

@@ -22,7 +22,7 @@ def chat_message_created_event(
     source: str,
     occurred_at: datetime,
 ) -> MatchEvent:
-    actor_type = "agent" if author_id == "assistant" else "user"
+    actor_type = "system" if source == "system" else "user"
     return MatchEvent(
         event_id=f"evt-{uuid.uuid4().hex[:16]}",
         event_type="chat.message.created",
@@ -73,6 +73,73 @@ def chat_thread_opened_event(
         },
         trace_id=get_trace_id(),
     )
+
+
+def chat_conversation_opened_event(
+    *,
+    conversation_id: str,
+    case_id: str,
+    relation_key: str,
+    channel_key: str,
+    conversation_kind: str,
+    participant_ids: list[str],
+    occurred_at: datetime,
+) -> MatchEvent:
+    return MatchEvent(
+        event_id=f"evt-{uuid.uuid4().hex[:16]}",
+        event_type="chat.conversation.opened",
+        aggregate_type="chat_conversation",
+        aggregate_id=conversation_id,
+        actor_type="system",
+        actor_id="chat_system",
+        source_service="chat_system",
+        correlation_id=format_correlation_id(get_trace_id(), entity_id_case(case_id)),
+        occurred_at=occurred_at,
+        payload={
+            "conversation_id": conversation_id,
+            "case_id": case_id,
+            "relation_key": relation_key,
+            "channel_key": channel_key,
+            "conversation_kind": conversation_kind,
+            "participant_ids": list(participant_ids),
+        },
+        trace_id=get_trace_id(),
+    )
+
+
+def chat_conversation_message_created_event(
+    *,
+    conversation_id: str,
+    case_id: str,
+    message_id: int,
+    channel_key: str,
+    author_id: str,
+    body: str,
+    source: str,
+    occurred_at: datetime,
+) -> MatchEvent:
+    actor_type = "system" if source == "system" else ("agent" if source == "agent" else "user")
+    return MatchEvent(
+        event_id=f"evt-{uuid.uuid4().hex[:16]}",
+        event_type="chat.conversation.message.created",
+        aggregate_type="chat_conversation",
+        aggregate_id=conversation_id,
+        actor_type=actor_type,
+        actor_id=author_id,
+        source_service="chat_system",
+        correlation_id=format_correlation_id(get_trace_id(), entity_id_case(case_id)),
+        occurred_at=occurred_at,
+        payload={
+            "conversation_id": conversation_id,
+            "case_id": case_id,
+            "channel_key": channel_key,
+            "message_id": message_id,
+            "source": source,
+            "body_preview": (body or "")[:512],
+        },
+        trace_id=get_trace_id(),
+    )
+
 
 def chat_member_report_submitted_event(
     *,
@@ -244,6 +311,8 @@ def chat_meeting_feedback_submitted_event(
 
 
 __all__ = [
+    "chat_conversation_message_created_event",
+    "chat_conversation_opened_event",
     "chat_member_report_submitted_event",
     "chat_meeting_feedback_submitted_event",
     "chat_message_created_event",

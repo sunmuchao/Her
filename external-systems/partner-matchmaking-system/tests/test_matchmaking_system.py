@@ -18,6 +18,7 @@ from matchmaking_system import (  # noqa: E402
     get_pair,
     get_pool_member,
     initialize_database,
+    list_pending_outbox,
     list_feedback_events,
     list_match_case_events,
     list_match_cases,
@@ -27,6 +28,7 @@ from matchmaking_system import (  # noqa: E402
     record_feedback,
     refresh_active_pool,
     reset_all_tables,
+    run_matchmaking_outbox_worker,
     set_pool_member_status,
 )
 from matchmaking_system.storage import DEFAULT_MATCHMAKING_TEST_MYSQL_DSN  # noqa: E402
@@ -184,6 +186,38 @@ class MatchmakingSystemTests(unittest.TestCase):
 
         self.assertEqual(get_pool_member(self.conn, member_a["member_id"])["needs_refresh"], 0)
         self.assertEqual(get_pool_member(self.conn, member_b["member_id"])["needs_refresh"], 0)
+
+    def test_outbox_worker_consumes_match_case_events(self):
+        self.create_member("user-a", 1001)
+        self.create_member("user-b", 1002)
+
+        def fake_search_runner(**kwargs):
+            self_id = kwargs.get("self_id")
+            if self_id == 1001:
+                return {"results": [build_result(1002, "小张", 92)]}
+            if self_id == 1002:
+                return {"results": [build_result(1001, "小李", 88)]}
+            return {"results": []}
+
+        refresh_active_pool(
+            self.conn,
+            now=datetime(2026, 5, 2, 9, 0, 0),
+            search_runner=fake_search_runner,
+        )
+        build_mutual_pairs(self.conn, now=datetime(2026, 5, 2, 9, 5, 0))
+        cases = open_match_cases(self.conn, now=datetime(2026, 5, 2, 9, 10, 0))
+
+        self.assertEqual(len(cases), 1)
+        self.assertGreaterEqual(len(list_pending_outbox(self.conn, limit=20)), 1)
+        result = run_matchmaking_outbox_worker(
+            self.conn,
+            limit=20,
+            max_batches=2,
+            now=datetime(2026, 5, 2, 9, 10, 30),
+        )
+
+        self.assertGreaterEqual(result["totals"]["marked_published"], 1)
+        self.assertEqual(len(list_pending_outbox(self.conn, limit=20, now=datetime(2026, 5, 2, 9, 10, 31))), 0)
 
     def test_feedback_auto_syncs_persona_and_marks_pairs_for_revalidation(self):
         member_a = self.create_member("user-a", 1001)

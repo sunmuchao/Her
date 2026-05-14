@@ -1,10 +1,17 @@
+import base64
 import json
 import os
 import pathlib
 import sys
+import tempfile
+import types
 import unittest
-from datetime import datetime
-from unittest.mock import patch
+from datetime import datetime, timedelta
+from unittest import mock
+
+import cv2
+from huggingface_hub.errors import LocalEntryNotFoundError
+import numpy as np
 
 
 SYSTEM_ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -12,65 +19,173 @@ if str(SYSTEM_ROOT) not in sys.path:
     sys.path.insert(0, str(SYSTEM_ROOT))
 
 from chat_system import (  # noqa: E402
-    adopt_draft,
-    assistant_mode_route,
-    assistant_open_coaching_entry,
-    assistant_proactive_hint,
-    assistant_query,
+    build_fraud_network_overview,
     build_thread_risk_overview,
-    get_risk_case,
+    create_live_video_verification_challenge,
+    evaluate_profile_consistency,
+    evaluate_fraud_network,
+    get_photo_risk_score_run,
     get_or_create_thread,
+    get_fraud_network_profile,
+    get_verification_submission,
+    get_risk_case,
     get_thread,
+    get_thread_summary,
+    list_fraud_network_profiles,
+    list_photo_review_requests,
+    list_photo_risk_review_queue,
+    list_photo_risk_score_runs,
     list_member_reports,
     list_meeting_feedback,
     list_messages,
     list_risk_cases,
     list_risk_signals,
+    list_verification_notifications,
+    list_verification_submissions,
     post_message,
+    resubmit_live_video_verification,
+    review_profile_review_case,
     review_risk_case,
+    review_live_video_verification,
+    run_chat_maintenance,
+    submit_live_video_verification,
     submit_meeting_feedback,
     submit_member_report,
 )
-from chat_system.coaching_jobs import (  # noqa: E402
-    get_coaching_entry_job_by_entry_message,
-    list_pending_coaching_entry_jobs,
-    process_pending_coaching_entry_jobs,
+import chat_system.verification as verification_module  # noqa: E402
+import chat_system.live_video_local as live_video_local_module  # noqa: E402
+from chat_system.outbox_admin import (  # noqa: E402
+    claim_pending_outbox_batch,
+    get_outbox_row,
+    list_failed_outbox,
+    list_pending_outbox,
+    list_processing_outbox,
+    list_retry_pending_outbox,
+    recover_stale_outbox_claims,
+    requeue_outbox_rows,
+    summarize_outbox,
 )
-from chat_system.outbox_admin import list_pending_outbox  # noqa: E402
-from chat_system.persona_jobs import list_pending_persona_jobs, process_pending_persona_jobs  # noqa: E402
-from chat_system.service import (  # noqa: E402
-    ASSISTANT_AUTHOR_ID,
-    SRC_AGENT_DRAFT,
-    SRC_AGENT_HINT_ENTRY,
-    VIS_DYADIC,
-    VIS_OWNER_ONLY,
+from chat_system.outbox_consumer import consume_chat_outbox_batch  # noqa: E402
+from chat_system.outbox_worker import (  # noqa: E402
+    resolve_outbox_consume_config,
+    run_chat_outbox_worker,
+    serve_chat_outbox_worker,
 )
+from chat_system.persona_jobs import enqueue_persona_sync_job, list_pending_persona_jobs, process_pending_persona_jobs  # noqa: E402
+from chat_system.service import VIS_DYADIC, VIS_OWNER_ONLY  # noqa: E402
 from chat_system.storage import DEFAULT_CHAT_TEST_MYSQL_DSN, connect_db, initialize_database, reset_all_tables  # noqa: E402
 
 
 class ChatSystemTests(unittest.TestCase):
     def setUp(self):
-        os.environ.pop("OPENAI_API_KEY", None)
-        os.environ.pop("HER_CHAT_ASSISTANT_BASE_URL", None)
-        os.environ.pop("OPENAI_BASE_URL", None)
-        os.environ.pop("HER_CHAT_ASSISTANT_PROACTIVE_MODE", None)
+        self._old_verification_provider = os.environ.get("HER_VERIFICATION_PROVIDER")
+        self._old_verification_auto_triage = os.environ.get("HER_VERIFICATION_AUTO_TRIAGE")
+        os.environ["HER_VERIFICATION_PROVIDER"] = "local_oss"
+        os.environ["HER_VERIFICATION_AUTO_TRIAGE"] = "1"
         self.conn = connect_db(DEFAULT_CHAT_TEST_MYSQL_DSN)
         initialize_database(self.conn)
         reset_all_tables(self.conn)
+        self._reset_profile_sync_table()
 
     def tearDown(self):
+        self._reset_profile_sync_table()
         self.conn.close()
+        if self._old_verification_provider is None:
+            os.environ.pop("HER_VERIFICATION_PROVIDER", None)
+        else:
+            os.environ["HER_VERIFICATION_PROVIDER"] = self._old_verification_provider
+        if self._old_verification_auto_triage is None:
+            os.environ.pop("HER_VERIFICATION_AUTO_TRIAGE", None)
+        else:
+            os.environ["HER_VERIFICATION_AUTO_TRIAGE"] = self._old_verification_auto_triage
 
-    def _trend_state_row(self, thread_id: str, user_id: str):
-        cur = self.conn.execute(
-            """
-            SELECT * FROM chat_assistant_trend_states
-            WHERE thread_id = ? AND user_id = ?
-            LIMIT 1
-            """,
-            (thread_id, user_id),
-        )
-        return cur.fetchone()
+    def _reset_profile_sync_table(self) -> None:
+        with self.conn.driver_connection.cursor() as cursor:
+            cursor.execute("DROP TABLE IF EXISTS `profiles`")
+        self.conn.commit()
+
+    def _deepfake_face_mask(self) -> np.ndarray:
+        mask = np.zeros((192, 192), dtype=np.uint8)
+        cv2.ellipse(mask, (96, 106), (58, 68), 0, 0, 360, 255, -1)
+        return mask.astype(bool)
+
+    def _build_photo_edit_face_crops(self, *, edited: bool, count: int = 4) -> list[np.ndarray]:
+        rng = np.random.default_rng(20260521 if edited else 20260520)
+        crops: list[np.ndarray] = []
+        for index in range(count):
+            crop = np.full((192, 192, 3), (32, 40, 54), dtype=np.uint8)
+            face_axes = (58, 82) if edited else (68, 82)
+            face_mask = np.zeros((192, 192), dtype=np.uint8)
+            cv2.ellipse(face_mask, (96, 104), face_axes, 0, 0, 360, 255, -1)
+            face_mask_bool = face_mask.astype(bool)
+            face_tone = np.array([176, 198, 220], dtype=np.int16)
+            face_shift = np.array([index - 2, index - 1, index], dtype=np.int16)
+            face_color = tuple(np.clip(face_tone + face_shift, 0, 255).astype(np.uint8).tolist())
+            cv2.ellipse(crop, (96, 104), face_axes, 0, 0, 360, face_color, -1)
+            cv2.ellipse(crop, (74, 86), (11, 6), 0, 0, 360, (48, 48, 48), -1)
+            cv2.ellipse(crop, (118, 86), (11, 6), 0, 0, 360, (48, 48, 48), -1)
+            cv2.line(crop, (96, 92), (96, 122), (90, 108, 136), 2)
+            cv2.ellipse(crop, (96, 136), (20, 5 + (index % 2)), 0, 0, 360, (74, 88, 150), -1)
+            natural_noise = rng.integers(-10, 11, size=crop.shape, dtype=np.int16)
+            textured = np.clip(crop.astype(np.int16) + natural_noise, 0, 255).astype(np.uint8)
+            crop[face_mask_bool] = textured[face_mask_bool]
+
+            if edited:
+                blurred = cv2.GaussianBlur(crop, (11, 11), 0)
+                crop[face_mask_bool] = blurred[face_mask_bool]
+                hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV).astype(np.int16)
+                hsv[:, :, 1][face_mask_bool] = np.clip(hsv[:, :, 1][face_mask_bool] + 32, 0, 255)
+                hsv[:, :, 2][face_mask_bool] = np.clip(hsv[:, :, 2][face_mask_bool] + 28, 0, 255)
+                crop = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
+                highlight = np.zeros_like(crop)
+                cv2.ellipse(highlight, (96, 98), (42, 48), 0, 0, 360, (16, 18, 18), -1)
+                boosted = np.clip(crop.astype(np.int16) + highlight.astype(np.int16), 0, 255).astype(np.uint8)
+                crop[face_mask_bool] = boosted[face_mask_bool]
+
+            crops.append(crop)
+        return crops
+
+    def _build_synthetic_face_sequence(self, *, manipulated: bool) -> list[np.ndarray]:
+        rng = np.random.default_rng(20260513 if manipulated else 20260512)
+        inner_mask = self._deepfake_face_mask()
+        frames: list[np.ndarray] = []
+        for index in range(8):
+            frame = np.full((192, 192, 3), (34, 42, 54), dtype=np.uint8)
+            face_tone = np.array([174, 198, 220], dtype=np.int16)
+            face_shift = np.array([index - 3, index - 2, index - 1], dtype=np.int16)
+            face_color = tuple(np.clip(face_tone + face_shift, 0, 255).astype(np.uint8).tolist())
+            cv2.ellipse(frame, (96, 106), (70, 82), 0, 0, 360, face_color, -1)
+            cv2.ellipse(frame, (74, 88), (11, 6), 0, 0, 360, (42, 42, 42), -1)
+            cv2.ellipse(frame, (118, 88), (11, 6), 0, 0, 360, (42, 42, 42), -1)
+            mouth_open = 3 + (index % 3)
+            cv2.ellipse(frame, (96, 132), (22, mouth_open), 0, 0, 360, (64, 68, 128), -1)
+            natural_noise = rng.integers(-4, 5, size=frame.shape, dtype=np.int16)
+            frame = np.clip(frame.astype(np.int16) + natural_noise, 0, 255).astype(np.uint8)
+
+            if manipulated:
+                altered = frame.astype(np.int16)
+                inner_noise = rng.integers(-22, 23, size=frame.shape, dtype=np.int16)
+                inner_shift = np.array(
+                    [14 - index, ((index % 2) * 18) - 9, 10 + (index * 2)],
+                    dtype=np.int16,
+                )
+                altered[inner_mask] = np.clip(
+                    altered[inner_mask] + inner_noise[inner_mask] + inner_shift,
+                    0,
+                    255,
+                )
+                frame = altered.astype(np.uint8)
+                if index % 2 == 0:
+                    blurred = cv2.GaussianBlur(frame, (7, 7), 0)
+                    frame[inner_mask] = blurred[inner_mask]
+                seam_color = (
+                    235 if index % 2 == 0 else 60,
+                    52 + (index * 6),
+                    200 - (index * 8),
+                )
+                cv2.ellipse(frame, (96, 106), (58, 68), 0, 0, 360, seam_color, 3)
+            frames.append(frame)
+        return frames
 
     def test_thread_create_idempotent_and_messages(self):
         t1 = get_or_create_thread(
@@ -144,1002 +259,65 @@ class ChatSystemTests(unittest.TestCase):
         )
         self.assertEqual(m1["message_id"], m2["message_id"])
 
-    def test_assistant_query_and_adopt(self):
+    def test_owner_only_messages_from_non_participants_are_hidden(self):
         th = get_or_create_thread(
             self.conn,
-            case_id="case-asst",
-            relation_key="r2",
+            case_id="case-private-visibility",
+            relation_key="private-visibility",
             participant_a_id="alice",
             participant_b_id="bob",
         )
-        route_decision = {
-            "need_rescue": True,
-            "situation": "stuck",
-            "problem_tags": ["topic_dead_end"],
-            "rescue_style": "switch_topic",
-            "mutual_intent_assessment": "communication_problem",
-            "interaction_mode": "repair",
-            "reason": "测试路由结果",
-            "decision_source": "heuristic",
-        }
-        guidance = {
-            "mutual_intent_assessment": "communication_problem",
-            "interaction_mode": "repair",
-            "current_problem": ["对方上一句太短，旧话题接不下去了"],
-            "problem_tags": ["topic_dead_end"],
-            "advice": ["先接住，再换低门槛话题。"],
-            "avoid": ["不要继续追着旧话题硬问。"],
-            "topic_directions": ["周末安排", "咖啡"],
-            "easy_question_types": ["低门槛生活问题"],
-            "rescue_flow": ["先接住", "再换题", "最后问轻问题"],
-        }
-        profile_ctx = {
-            "profile_dsn": "mysql://test",
-            "actor_profile_summary": "alice 喜欢咖啡和周末散步",
-            "counterpart_profile_summary": "bob 周末常出门走走",
-            "profile_hooks": ["咖啡", "周末走走"],
-        }
-
-        with patch("chat_system.service.fast_mode_route", return_value=route_decision), patch(
-            "chat_system.service.generate_assistant_guidance",
-            return_value=guidance,
-        ), patch("chat_system.service._assistant_profile_context", return_value=profile_ctx):
-            draft = assistant_query(self.conn, th["thread_id"], "alice", "怎么回复他？")
-
-        self.assertEqual(draft["author_id"], ASSISTANT_AUTHOR_ID)
-        self.assertEqual(draft["source"], SRC_AGENT_DRAFT)
-        self.assertEqual(draft["message_recipient_id"], "alice")
-        self.assertIn("assistant_guidance", draft)
-        self.assertIn("assistant_profile_context", draft)
-        self.assertIn("assistant_route_decision", draft)
-        self.assertIn("assistant_latency_ms", draft)
-        self.assertIn("assistant_latency_breakdown_ms", draft)
-        self.assertIn("assistant_trace", draft)
-        self.assertIn("意愿判断：", draft["body"])
-        self.assertIn("这轮处理方式：", draft["body"])
-        self.assertIn("当前问题：", draft["body"])
-        self.assertIn("回复建议：", draft["body"])
-        self.assertIn("先别继续这样聊：", draft["body"])
-        self.assertIn("建议按这个顺序来：", draft["body"])
-        self.assertEqual(draft["assistant_route_decision"]["interaction_mode"], "repair")
-        self.assertEqual(draft["assistant_guidance"]["interaction_mode"], "repair")
-        self.assertEqual(draft["assistant_guidance"]["advice"], ["先接住，再换低门槛话题。"])
-        self.assertEqual(draft["assistant_profile_context"]["profile_hooks"], ["咖啡", "周末走走"])
-        self.assertGreaterEqual(draft["assistant_latency_ms"], 0)
-        self.assertEqual(
-            draft["assistant_latency_breakdown_ms"]["total"],
-            draft["assistant_latency_ms"],
-        )
-        trace = draft["metadata"]["assistant_trace"]
-        self.assertEqual(trace["schema_version"], 1)
-        self.assertEqual(trace["route_decision"]["interaction_mode"], "repair")
-        self.assertEqual(trace["guidance"]["interaction_mode"], "repair")
-        self.assertEqual(trace["profile_context"]["profile_hooks"], ["咖啡", "周末走走"])
-        self.assertIsNone(trace["follow_evidence"])
-        self.assertIsNone(trace["overpush_risk"])
-
-        alice_view = list_messages(self.conn, th["thread_id"], "alice")
-        bob_view = list_messages(self.conn, th["thread_id"], "bob")
-        self.assertGreaterEqual(len(alice_view), 1)
-        self.assertEqual(len(bob_view), 0)
-        persisted_draft = next(m for m in alice_view if m["message_id"] == draft["message_id"])
-        self.assertEqual(
-            persisted_draft["metadata"]["assistant_trace"]["latency_ms"]["total"],
-            draft["assistant_latency_ms"],
-        )
-
-        sent = adopt_draft(
-            self.conn,
-            th["thread_id"],
-            int(draft["message_id"]),
-            "alice",
-            body_override="你好，很高兴认识你。",
-        )
-        self.assertEqual(sent["visibility"], VIS_DYADIC)
-        self.assertEqual(
-            sent["metadata"]["assistant_adoption"]["assistant_draft_message_id"],
-            int(draft["message_id"]),
-        )
-        self.assertIsNone(sent["metadata"]["assistant_adoption"]["follow_evidence"])
-        self.assertIsNone(sent["metadata"]["assistant_adoption"]["overpush_risk"])
-
-        both = list_messages(self.conn, th["thread_id"], "bob")
-        self.assertTrue(any(m["body"] == "你好，很高兴认识你。" for m in both))
-
-    def test_assistant_query_uses_dyadic_history_even_when_owner_only_messages_are_dense(self):
-        th = get_or_create_thread(
-            self.conn,
-            case_id="case-asst-dyadic-context",
-            relation_key="r-dyadic-context",
-            participant_a_id="alice",
-            participant_b_id="bob",
-        )
-        for idx, body in enumerate(
-            (
-                "我周末一般会出去走走。",
-                "我有时会找家店坐坐喝咖啡。",
-                "那还挺舒服的，我最近也想慢下来一点。",
-                "嗯",
-            ),
-            start=1,
-        ):
+        with self.assertRaisesRegex(ValueError, "author is not a participant"):
             post_message(
                 self.conn,
                 th["thread_id"],
-                "alice" if idx % 2 else "bob",
-                body,
-                visibility=VIS_DYADIC,
-            )
-        for idx in range(6):
-            post_message(
-                self.conn,
-                th["thread_id"],
-                ASSISTANT_AUTHOR_ID,
-                f"历史助手提示-{idx}",
+                "legacy-bot",
+                "legacy private message",
                 visibility=VIS_OWNER_ONLY,
-                source=SRC_AGENT_DRAFT,
+                source="user",
                 message_recipient_id="alice",
             )
 
-        captured = {}
-        guidance = {
-            "mutual_intent_assessment": "communication_problem",
-            "interaction_mode": "repair",
-            "current_problem": ["旧话题接不下去了"],
-            "problem_tags": ["topic_dead_end"],
-            "advice": ["先接住，再换轻一点的话题。"],
-        }
-        route_decision = {
-            "need_rescue": True,
-            "situation": "stuck",
-            "problem_tags": ["topic_dead_end"],
-            "rescue_style": "switch_topic",
-            "mutual_intent_assessment": "communication_problem",
-            "interaction_mode": "repair",
-            "reason": "测试 dyadic 上下文",
-            "decision_source": "heuristic",
-        }
-
-        def _capture_guidance(**kwargs):
-            captured["thread_context"] = kwargs.get("thread_context")
-            return guidance
-
-        with patch("chat_system.service.fast_mode_route", return_value=route_decision), patch(
-            "chat_system.service.generate_assistant_guidance",
-            side_effect=_capture_guidance,
-        ):
-            draft = assistant_query(self.conn, th["thread_id"], "alice", "这轮怎么接？")
-
-        self.assertIn("alice: 我周末一般会出去走走。", captured["thread_context"])
-        self.assertIn("bob: 嗯", captured["thread_context"])
-        self.assertNotIn("历史助手提示", captured["thread_context"])
-        self.assertEqual(draft["assistant_route_decision"]["interaction_mode"], "repair")
-
-    def test_assistant_query_owner_only_message_does_not_enqueue_persona_sync(self):
-        th = get_or_create_thread(
-            self.conn,
-            case_id="case-assistant-query-persona-skip",
-            relation_key="r-assistant-query-persona-skip",
-            participant_a_id="alice",
-            participant_b_id="bob",
+        self.conn.execute(
+            """
+            INSERT INTO chat_messages (
+              thread_id, author_id, message_recipient_id, visibility, source, body,
+              client_msg_id, reply_to_message_id, metadata_json, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)
+            """,
+            (
+                th["thread_id"],
+                "legacy-bot",
+                "alice",
+                "owner_only",
+                "legacy",
+                "legacy hidden private message",
+                json.dumps({}),
+                datetime(2026, 5, 4, 10, 4, 0),
+            ),
         )
-
-        assistant_query(
-            self.conn,
-            th["thread_id"],
-            "alice",
-            "他工作是做什么的，我该怎么问比较自然？",
-        )
-
-        jobs = list_pending_persona_jobs(self.conn)
-        self.assertEqual(jobs, [])
-
-    def test_assistant_proactive_hint_triggers_once_then_suppresses_duplicate(self):
-        th = get_or_create_thread(
-            self.conn,
-            case_id="case-proactive-hint",
-            relation_key="r-proactive",
-            participant_a_id="alice",
-            participant_b_id="bob",
-        )
-        route_decision = {
-            "need_rescue": True,
-            "situation": "stuck",
-            "problem_tags": ["topic_dead_end"],
-            "rescue_style": "switch_topic",
-            "mutual_intent_assessment": "communication_problem",
-            "interaction_mode": "repair",
-            "reason": "测试主动提示",
-            "decision_source": "heuristic",
-        }
-        guidance = {
-            "mutual_intent_assessment": "communication_problem",
-            "interaction_mode": "repair",
-            "current_problem": ["旧话题接不下去了"],
-            "problem_tags": ["topic_dead_end"],
-            "advice": ["先接住，再换轻一点的话题。"],
-            "avoid": ["不要继续硬追原话题。"],
-            "topic_directions": ["周末安排"],
-            "easy_question_types": ["低门槛生活问题"],
-            "rescue_flow": ["先接住", "再换题", "最后轻问一句"],
-        }
-        profile_ctx = {
-            "profile_dsn": "mysql://test",
-            "actor_profile_summary": "alice 喜欢咖啡",
-            "counterpart_profile_summary": "bob 周末爱散步",
-            "profile_hooks": ["咖啡", "周末散步"],
-        }
-
-        with patch("chat_system.service.generate_assistant_guidance", return_value=guidance), patch(
-            "chat_system.service._assistant_profile_context",
-            return_value=profile_ctx,
-        ):
-            first = assistant_proactive_hint(
-                self.conn,
+        self.conn.execute(
+            """
+            INSERT INTO chat_messages (
+              thread_id, author_id, message_recipient_id, visibility, source, body,
+              client_msg_id, reply_to_message_id, metadata_json, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)
+            """,
+            (
                 th["thread_id"],
                 "alice",
-                route_decision=route_decision,
-                now=datetime(2026, 5, 6, 10, 0, 0),
-            )
-            second = assistant_proactive_hint(
-                self.conn,
-                th["thread_id"],
                 "alice",
-                route_decision=route_decision,
-                now=datetime(2026, 5, 6, 10, 0, 1),
-            )
-
-        self.assertTrue(first["hint_posted"])
-        self.assertEqual(first["assistant_hint_event"]["trigger_type"], "mode_change")
-        self.assertEqual(first["assistant_hint_event"]["mode_after"], "repair")
-        self.assertFalse(second["hint_posted"])
-        self.assertEqual(second["assistant_hint_event"]["suppression_reason"], "waiting_for_user_action")
+                "owner_only",
+                "user",
+                "real private note",
+                json.dumps({}),
+                datetime(2026, 5, 4, 10, 5, 0),
+            ),
+        )
+        self.conn.commit()
 
         alice_view = list_messages(self.conn, th["thread_id"], "alice")
-        assistant_msgs = [m for m in alice_view if m["author_id"] == ASSISTANT_AUTHOR_ID]
-        self.assertEqual(len(assistant_msgs), 1)
-        self.assertEqual(assistant_msgs[0]["source"], SRC_AGENT_HINT_ENTRY)
-        self.assertEqual(assistant_msgs[0]["metadata"]["owner_only_kind"], "assistant_hint_entry")
-        self.assertFalse(
-            any(
-                m["author_id"] == "alice" and m["visibility"] == VIS_OWNER_ONLY
-                for m in alice_view
-            )
-        )
-
-        thread = get_thread(self.conn, th["thread_id"])
-        assert thread is not None
-        trend_state = self._trend_state_row(th["thread_id"], "alice")
-        self.assertIsNotNone(trend_state)
-        assert trend_state is not None
-        state = json.loads(trend_state["state_json"])
-        self.assertEqual(state["last_hint_mode"], "repair")
-        self.assertEqual(state["last_hint_trigger_type"], "mode_change")
-        self.assertFalse(state["has_user_acted_since_last_hint"])
-        self.assertEqual(state["coaching_stage"], "suggested")
-        self.assertEqual(int(state["active_entry_message_id"]), int(assistant_msgs[0]["message_id"]))
-
-    def test_assistant_proactive_hint_skips_out_of_scope_route(self):
-        th = get_or_create_thread(
-            self.conn,
-            case_id="case-proactive-hold-fallback",
-            relation_key="r-proactive-hold",
-            participant_a_id="alice",
-            participant_b_id="bob",
-        )
-        route_decision = {
-            "need_rescue": True,
-            "situation": "boundary",
-            "problem_tags": ["boundary_risk", "low_energy"],
-            "rescue_style": "deescalate",
-            "mutual_intent_assessment": "boundary_risk",
-            "interaction_mode": "hold",
-            "reason": "这轮已经有边界压力，不适合继续推进。",
-            "decision_source": "heuristic",
-        }
-        out = assistant_proactive_hint(
-            self.conn,
-            th["thread_id"],
-            "alice",
-            route_decision=route_decision,
-            now=datetime(2026, 5, 6, 10, 2, 0),
-        )
-
-        self.assertFalse(out["hint_posted"])
-        self.assertEqual(out["assistant_hint_event"]["suppression_reason"], "normal_mode")
-        self.assertEqual(out["assistant_route_decision"]["interaction_mode"], "none")
-        self.assertEqual(out["assistant_route_decision"]["mutual_intent_assessment"], "normal")
-        self.assertEqual(out["assistant_trend_state"]["current_mode"], "normal")
-
-    def test_assistant_proactive_hint_timeout_is_hidden_and_does_not_advance_state(self):
-        os.environ["HER_CHAT_ASSISTANT_PROACTIVE_MODE"] = "detail"
-        th = get_or_create_thread(
-            self.conn,
-            case_id="case-proactive-timeout-hidden",
-            relation_key="r-proactive-timeout-hidden",
-            participant_a_id="alice",
-            participant_b_id="bob",
-        )
-        route_decision = {
-            "need_rescue": True,
-            "situation": "stuck",
-            "problem_tags": ["topic_dead_end"],
-            "rescue_style": "switch_topic",
-            "mutual_intent_assessment": "communication_problem",
-            "interaction_mode": "repair",
-            "reason": "这轮有点接不顺。",
-            "decision_source": "heuristic",
-        }
-        timeout_guidance = {
-            "guidance_source": "timeout_hidden",
-            "mutual_intent_assessment": "communication_problem",
-            "interaction_mode": "repair",
-        }
-        profile_ctx = {
-            "profile_dsn": "mysql://test",
-            "actor_profile_summary": "alice 喜欢咖啡",
-            "counterpart_profile_summary": "bob 周末爱散步",
-            "profile_hooks": ["咖啡", "周末散步"],
-        }
-
-        with patch(
-            "chat_system.service.generate_assistant_guidance",
-            return_value=timeout_guidance,
-        ), patch(
-            "chat_system.service._assistant_profile_context",
-            return_value=profile_ctx,
-        ):
-            out = assistant_proactive_hint(
-                self.conn,
-                th["thread_id"],
-                "alice",
-                route_decision=route_decision,
-                now=datetime(2026, 5, 6, 10, 2, 0),
-            )
-
-        self.assertFalse(out["hint_posted"])
-        self.assertTrue(out["assistant_hidden"])
-        self.assertEqual(out["assistant_hidden_reason"], "guidance_timeout")
-        self.assertIsNone(out["message_id"])
-        self.assertIsNone(out["body"])
-        self.assertEqual(out["assistant_hint_event"]["trigger_type"], "mode_change")
-        self.assertEqual(out["assistant_hint_event"]["suppression_reason"], "assistant_timeout")
-
-        alice_view = list_messages(self.conn, th["thread_id"], "alice")
-        assistant_msgs = [m for m in alice_view if m["author_id"] == ASSISTANT_AUTHOR_ID]
-        self.assertEqual(len(assistant_msgs), 0)
-
-        thread = get_thread(self.conn, th["thread_id"])
-        assert thread is not None
-        trend_state = self._trend_state_row(th["thread_id"], "alice")
-        self.assertIsNotNone(trend_state)
-        assert trend_state is not None
-        state = json.loads(trend_state["state_json"])
-        self.assertIsNone(state["last_hint_turn"])
-        self.assertIsNone(state["last_hint_mode"])
-
-    def test_assistant_proactive_hint_hides_error_fallback_and_does_not_advance_state(self):
-        os.environ["HER_CHAT_ASSISTANT_PROACTIVE_MODE"] = "detail"
-        th = get_or_create_thread(
-            self.conn,
-            case_id="case-proactive-error-fallback",
-            relation_key="r-proactive-error-fallback",
-            participant_a_id="alice",
-            participant_b_id="bob",
-        )
-        route_decision = {
-            "need_rescue": True,
-            "situation": "stuck",
-            "problem_tags": ["topic_dead_end"],
-            "rescue_style": "switch_topic",
-            "mutual_intent_assessment": "communication_problem",
-            "interaction_mode": "repair",
-            "reason": "这轮有点接不顺。",
-            "decision_source": "heuristic",
-        }
-        error_guidance = {
-            "guidance_source": "fallback_error",
-            "mutual_intent_assessment": "communication_problem",
-            "interaction_mode": "repair",
-            "current_problem": ["旧话题已经接不太顺了"],
-            "advice": ["先接住，再换个更容易继续的话题。"],
-        }
-        profile_ctx = {
-            "profile_dsn": "mysql://test",
-            "actor_profile_summary": "alice 喜欢咖啡",
-            "counterpart_profile_summary": "bob 周末爱散步",
-            "profile_hooks": ["咖啡", "周末散步"],
-        }
-
-        with patch(
-            "chat_system.service.generate_assistant_guidance",
-            return_value=error_guidance,
-        ), patch(
-            "chat_system.service._assistant_profile_context",
-            return_value=profile_ctx,
-        ):
-            out = assistant_proactive_hint(
-                self.conn,
-                th["thread_id"],
-                "alice",
-                route_decision=route_decision,
-                now=datetime(2026, 5, 6, 10, 2, 30),
-            )
-
-        self.assertFalse(out["hint_posted"])
-        self.assertTrue(out["assistant_hidden"])
-        self.assertEqual(out["assistant_hidden_reason"], "guidance_error")
-        self.assertIsNone(out["message_id"])
-        self.assertIsNone(out["body"])
-        self.assertEqual(out["assistant_hint_event"]["trigger_type"], "mode_change")
-        self.assertEqual(out["assistant_hint_event"]["suppression_reason"], "assistant_error")
-
-        alice_view = list_messages(self.conn, th["thread_id"], "alice")
-        assistant_msgs = [m for m in alice_view if m["author_id"] == ASSISTANT_AUTHOR_ID]
-        self.assertEqual(len(assistant_msgs), 0)
-
-        thread = get_thread(self.conn, th["thread_id"])
-        assert thread is not None
-        trend_state = self._trend_state_row(th["thread_id"], "alice")
-        self.assertIsNotNone(trend_state)
-        assert trend_state is not None
-        state = json.loads(trend_state["state_json"])
-        self.assertIsNone(state["last_hint_turn"])
-        self.assertIsNone(state["last_hint_mode"])
-
-    def test_assistant_proactive_hint_allows_retry_after_one_turn_cooldown_when_still_unresolved(self):
-        th = get_or_create_thread(
-            self.conn,
-            case_id="case-proactive-cooldown-retry",
-            relation_key="r-proactive-cooldown-retry",
-            participant_a_id="alice",
-            participant_b_id="bob",
-        )
-        guidance = {
-            "mutual_intent_assessment": "communication_problem",
-            "interaction_mode": "repair",
-            "current_problem": ["旧话题接不下去了"],
-            "advice": ["先接住，再换轻一点的话题。"],
-        }
-        route_decision = {
-            "need_rescue": True,
-            "situation": "stuck",
-            "problem_tags": ["topic_dead_end"],
-            "rescue_style": "switch_topic",
-            "mutual_intent_assessment": "communication_problem",
-            "interaction_mode": "repair",
-            "reason": "测试冷却后一拍还能再提醒",
-            "decision_source": "heuristic",
-        }
-        profile_ctx = {
-            "profile_dsn": "mysql://test",
-            "actor_profile_summary": "alice 喜欢咖啡",
-            "counterpart_profile_summary": "bob 周末爱散步",
-            "profile_hooks": ["咖啡", "周末散步"],
-        }
-
-        with patch("chat_system.service.generate_assistant_guidance", return_value=guidance), patch(
-            "chat_system.service._assistant_profile_context",
-            return_value=profile_ctx,
-        ):
-            first = assistant_proactive_hint(
-                self.conn,
-                th["thread_id"],
-                "alice",
-                route_decision=route_decision,
-                now=datetime(2026, 5, 6, 10, 10, 0),
-            )
-            post_message(
-                self.conn,
-                th["thread_id"],
-                "alice",
-                "嗯 辛苦了",
-                visibility=VIS_DYADIC,
-                now=datetime(2026, 5, 6, 10, 10, 1),
-            )
-            post_message(
-                self.conn,
-                th["thread_id"],
-                "bob",
-                "嗯 习惯了",
-                visibility=VIS_DYADIC,
-                now=datetime(2026, 5, 6, 10, 10, 2),
-            )
-            second = assistant_proactive_hint(
-                self.conn,
-                th["thread_id"],
-                "alice",
-                route_decision=route_decision,
-                now=datetime(2026, 5, 6, 10, 10, 3),
-            )
-
-        self.assertTrue(first["hint_posted"])
-        self.assertTrue(second["hint_posted"])
-        self.assertEqual(second["assistant_hint_event"]["trigger_type"], "unresolved_retry")
-
-    def test_assistant_open_coaching_entry_enqueues_detail_job_and_marks_viewed(self):
-        th = get_or_create_thread(
-            self.conn,
-            case_id="case-coaching-entry-open",
-            relation_key="r-coaching-open",
-            participant_a_id="alice",
-            participant_b_id="bob",
-        )
-        route_decision = {
-            "need_rescue": True,
-            "situation": "stuck",
-            "problem_tags": ["topic_dead_end"],
-            "rescue_style": "switch_topic",
-            "mutual_intent_assessment": "communication_problem",
-            "interaction_mode": "repair",
-            "reason": "这几轮有点接不顺。",
-            "decision_source": "heuristic",
-        }
-        entry = assistant_proactive_hint(
-            self.conn,
-            th["thread_id"],
-            "alice",
-            route_decision=route_decision,
-            now=datetime(2026, 5, 6, 10, 20, 0),
-        )
-        detail = assistant_open_coaching_entry(
-            self.conn,
-            th["thread_id"],
-            "alice",
-            int(entry["message_id"]),
-            now=datetime(2026, 5, 6, 10, 20, 1),
-        )
-
-        self.assertTrue(entry["hint_posted"])
-        self.assertEqual(entry["assistant_hint_shape"], "entry")
-        self.assertEqual(detail["assistant_hint_shape"], "entry")
-        self.assertEqual(detail["assistant_entry_opened_from"], int(entry["message_id"]))
-        self.assertEqual(detail["assistant_detail_status"], "requested")
-        self.assertTrue(detail["assistant_job_enqueued"])
-        self.assertEqual(detail["assistant_trend_state"]["coaching_stage"], "viewed")
-
-        alice_view = list_messages(self.conn, th["thread_id"], "alice")
-        assistant_msgs = [m for m in alice_view if m["author_id"] == ASSISTANT_AUTHOR_ID]
-        self.assertEqual(len(assistant_msgs), 1)
-        self.assertEqual(assistant_msgs[0]["source"], SRC_AGENT_HINT_ENTRY)
-        self.assertEqual(
-            assistant_msgs[0]["metadata"]["assistant_entry"]["detail_status"],
-            "requested",
-        )
-        jobs = list_pending_coaching_entry_jobs(self.conn)
-        self.assertEqual(len(jobs), 1)
-        self.assertEqual(int(jobs[0]["entry_message_id"]), int(entry["message_id"]))
-
-    def test_process_pending_coaching_entry_jobs_generates_detail_message(self):
-        th = get_or_create_thread(
-            self.conn,
-            case_id="case-coaching-entry-process",
-            relation_key="r-coaching-process",
-            participant_a_id="alice",
-            participant_b_id="bob",
-        )
-        route_decision = {
-            "need_rescue": True,
-            "situation": "stuck",
-            "problem_tags": ["topic_dead_end"],
-            "rescue_style": "switch_topic",
-            "mutual_intent_assessment": "communication_problem",
-            "interaction_mode": "repair",
-            "reason": "这几轮有点接不顺。",
-            "decision_source": "heuristic",
-        }
-        guidance = {
-            "mutual_intent_assessment": "communication_problem",
-            "interaction_mode": "repair",
-            "current_problem": ["旧话题接不下去了"],
-            "problem_tags": ["topic_dead_end"],
-            "advice": ["先接住，再换轻一点的话题。"],
-            "avoid": ["不要继续硬追原话题。"],
-            "topic_directions": ["周末安排"],
-            "easy_question_types": ["低门槛生活问题"],
-            "rescue_flow": ["先接住", "再换题", "最后轻问一句"],
-        }
-        profile_ctx = {
-            "profile_dsn": "mysql://test",
-            "actor_profile_summary": "alice 喜欢咖啡",
-            "counterpart_profile_summary": "bob 周末爱散步",
-            "profile_hooks": ["咖啡", "周末散步"],
-        }
-
-        entry = assistant_proactive_hint(
-            self.conn,
-            th["thread_id"],
-            "alice",
-            route_decision=route_decision,
-            now=datetime(2026, 5, 6, 10, 21, 0),
-        )
-        assistant_open_coaching_entry(
-            self.conn,
-            th["thread_id"],
-            "alice",
-            int(entry["message_id"]),
-            now=datetime(2026, 5, 6, 10, 21, 1),
-        )
-
-        with patch("chat_system.service.generate_assistant_guidance", return_value=guidance), patch(
-            "chat_system.service._assistant_profile_context",
-            return_value=profile_ctx,
-        ):
-            out = process_pending_coaching_entry_jobs(
-                self.conn,
-                limit=10,
-                now=datetime(2026, 5, 6, 10, 21, 2),
-            )
-
-        self.assertEqual(out["completed"], 1)
-        self.assertEqual(out["failed_hidden"], 0)
-
-        alice_view = list_messages(self.conn, th["thread_id"], "alice")
-        assistant_msgs = [m for m in alice_view if m["author_id"] == ASSISTANT_AUTHOR_ID]
-        self.assertEqual(len(assistant_msgs), 2)
-        self.assertEqual(assistant_msgs[0]["source"], SRC_AGENT_HINT_ENTRY)
-        self.assertEqual(assistant_msgs[1]["source"], SRC_AGENT_DRAFT)
-        self.assertEqual(assistant_msgs[1]["reply_to_message_id"], int(entry["message_id"]))
-        self.assertEqual(
-            assistant_msgs[1]["metadata"]["assistant_entry_opened_from"],
-            int(entry["message_id"]),
-        )
-        self.assertEqual(
-            assistant_msgs[0]["metadata"]["assistant_entry"]["detail_status"],
-            "ready",
-        )
-        self.assertEqual(
-            int(assistant_msgs[0]["metadata"]["assistant_entry"]["detail_message_id"]),
-            int(assistant_msgs[1]["message_id"]),
-        )
-        job = get_coaching_entry_job_by_entry_message(self.conn, int(entry["message_id"]))
-        self.assertIsNotNone(job)
-        assert job is not None
-        self.assertEqual(job["status"], "completed")
-        self.assertEqual(int(job["detail_message_id"]), int(assistant_msgs[1]["message_id"]))
-
-    def test_process_pending_coaching_entry_jobs_hides_failed_detail(self):
-        th = get_or_create_thread(
-            self.conn,
-            case_id="case-coaching-entry-hidden",
-            relation_key="r-coaching-hidden",
-            participant_a_id="alice",
-            participant_b_id="bob",
-        )
-        route_decision = {
-            "need_rescue": True,
-            "situation": "stuck",
-            "problem_tags": ["topic_dead_end"],
-            "rescue_style": "switch_topic",
-            "mutual_intent_assessment": "communication_problem",
-            "interaction_mode": "repair",
-            "reason": "这几轮有点接不顺。",
-            "decision_source": "heuristic",
-        }
-        timeout_guidance = {
-            "guidance_source": "timeout_hidden",
-            "mutual_intent_assessment": "communication_problem",
-            "interaction_mode": "repair",
-        }
-        profile_ctx = {
-            "profile_dsn": "mysql://test",
-            "actor_profile_summary": "alice 喜欢咖啡",
-            "counterpart_profile_summary": "bob 周末爱散步",
-            "profile_hooks": ["咖啡", "周末散步"],
-        }
-
-        entry = assistant_proactive_hint(
-            self.conn,
-            th["thread_id"],
-            "alice",
-            route_decision=route_decision,
-            now=datetime(2026, 5, 6, 10, 22, 0),
-        )
-        assistant_open_coaching_entry(
-            self.conn,
-            th["thread_id"],
-            "alice",
-            int(entry["message_id"]),
-            now=datetime(2026, 5, 6, 10, 22, 1),
-        )
-
-        with patch(
-            "chat_system.service.generate_assistant_guidance",
-            return_value=timeout_guidance,
-        ), patch(
-            "chat_system.service._assistant_profile_context",
-            return_value=profile_ctx,
-        ):
-            out = process_pending_coaching_entry_jobs(
-                self.conn,
-                limit=10,
-                now=datetime(2026, 5, 6, 10, 22, 2),
-            )
-
-        self.assertEqual(out["completed"], 0)
-        self.assertEqual(out["failed_hidden"], 1)
-
-        alice_view = list_messages(self.conn, th["thread_id"], "alice")
-        assistant_msgs = [m for m in alice_view if m["author_id"] == ASSISTANT_AUTHOR_ID]
-        self.assertEqual(len(assistant_msgs), 1)
-        self.assertEqual(
-            assistant_msgs[0]["metadata"]["assistant_entry"]["detail_status"],
-            "hidden_failed",
-        )
-        self.assertEqual(
-            assistant_msgs[0]["metadata"]["assistant_entry"]["detail_hidden_reason"],
-            "guidance_timeout",
-        )
-        job = get_coaching_entry_job_by_entry_message(self.conn, int(entry["message_id"]))
-        self.assertIsNotNone(job)
-        assert job is not None
-        self.assertEqual(job["status"], "failed_hidden")
-
-    def test_assistant_proactive_hint_ignores_hold_route_even_if_guidance_was_patched(self):
-        th = get_or_create_thread(
-            self.conn,
-            case_id="case-proactive-hold-coerce",
-            relation_key="r-proactive-hold-coerce",
-            participant_a_id="alice",
-            participant_b_id="bob",
-        )
-        route_decision = {
-            "need_rescue": True,
-            "situation": "boundary",
-            "problem_tags": ["boundary_risk", "sensitive_topic"],
-            "rescue_style": "graceful_exit",
-            "mutual_intent_assessment": "boundary_risk",
-            "interaction_mode": "hold",
-            "reason": "这轮已经有边界压力，不适合继续推进。",
-            "decision_source": "heuristic",
-        }
-        profile_ctx = {
-            "profile_dsn": "mysql://test",
-            "actor_profile_summary": "alice 喜欢咖啡",
-            "counterpart_profile_summary": "bob 偏慢热",
-            "profile_hooks": ["咖啡"],
-        }
-        misaligned_guidance = {
-            "mutual_intent_assessment": "interest_unclear",
-            "interaction_mode": "probe_lightly",
-            "current_problem": ["先轻轻试一下"],
-            "low_pressure_options": ["先问一个更容易回答的小问题"],
-            "topic_directions": ["周末安排"],
-            "easy_question_types": ["低门槛生活习惯问题"],
-            "strategy_tags": ["probe_lightly", "ask_easy_question"],
-            "advice": ["先轻轻试一下，不要太用力。"],
-        }
-
-        with patch(
-            "chat_system.service.generate_assistant_guidance",
-            return_value=misaligned_guidance,
-        ), patch(
-            "chat_system.service._assistant_profile_context",
-            return_value=profile_ctx,
-        ):
-            out = assistant_proactive_hint(
-                self.conn,
-                th["thread_id"],
-                "alice",
-                route_decision=route_decision,
-                now=datetime(2026, 5, 6, 10, 3, 0),
-            )
-
-        self.assertFalse(out["hint_posted"])
-        self.assertEqual(out["assistant_hint_event"]["suppression_reason"], "normal_mode")
-        self.assertEqual(out["assistant_route_decision"]["interaction_mode"], "none")
-        self.assertNotIn("assistant_guidance", out)
-
-    def test_assistant_proactive_hint_does_not_repeat_stoploss_for_boundary_risk_hold(self):
-        th = get_or_create_thread(
-            self.conn,
-            case_id="case-proactive-hold-stoploss",
-            relation_key="r-proactive-hold-stoploss",
-            participant_a_id="alice",
-            participant_b_id="bob",
-        )
-        route_decision = {
-            "need_rescue": False,
-            "situation": "boundary",
-            "problem_tags": ["boundary_risk", "sensitive_topic", "defensive_tone"],
-            "rescue_style": "graceful_exit",
-            "mutual_intent_assessment": "boundary_risk",
-            "interaction_mode": "hold",
-            "reason": "这轮已经在照片和较劲方向上继续加码了。",
-            "decision_source": "heuristic",
-            "risk_axis": "appearance",
-            "hold_subtype": "boundary_risk",
-            "engagement_level": "low",
-            "warmth_level": "sharp",
-            "irritation_level": "high",
-            "state_trend": "worsening",
-        }
-        guidance = {
-            "mutual_intent_assessment": "boundary_risk",
-            "interaction_mode": "hold",
-            "risk_axis": "appearance",
-            "hold_subtype": "boundary_risk",
-            "current_problem": ["这轮已经在照片/外貌这条线上发紧。"],
-            "why_not_to_push": ["继续往前顶只会更僵。"],
-            "avoid": ["别继续追着照片、外貌差距这些点问。"],
-            "graceful_exit_plan": ["先收住，别再加码。"],
-            "strategy_tags": ["graceful_exit", "deescalate", "set_boundary"],
-            "advice": ["别继续追着照片、外貌差距这些点问。", "这轮先收口，别再往前顶。"],
-        }
-        profile_ctx = {
-            "profile_dsn": "mysql://test",
-            "actor_profile_summary": "alice 喜欢咖啡",
-            "counterpart_profile_summary": "bob 偏慢热",
-            "profile_hooks": ["咖啡"],
-        }
-
-        with patch("chat_system.service.generate_assistant_guidance", return_value=guidance), patch(
-            "chat_system.service._assistant_profile_context",
-            return_value=profile_ctx,
-        ):
-            first = assistant_proactive_hint(
-                self.conn,
-                th["thread_id"],
-                "alice",
-                route_decision=route_decision,
-                now=datetime(2026, 5, 6, 10, 10, 0),
-            )
-            post_message(
-                self.conn,
-                th["thread_id"],
-                "alice",
-                "我就是确认一下照片是不是本人，别差太大。",
-                visibility=VIS_DYADIC,
-                now=datetime(2026, 5, 6, 10, 10, 1),
-            )
-            second = assistant_proactive_hint(
-                self.conn,
-                th["thread_id"],
-                "alice",
-                route_decision=route_decision,
-                now=datetime(2026, 5, 6, 10, 10, 2),
-            )
-
-        self.assertFalse(first["hint_posted"])
-        self.assertEqual(first["assistant_hint_event"]["suppression_reason"], "normal_mode")
-        self.assertFalse(second["hint_posted"])
-        self.assertEqual(second["assistant_hint_event"]["suppression_reason"], "normal_mode")
-        self.assertEqual(second["assistant_route_decision"]["interaction_mode"], "none")
-
-    def test_assistant_query_is_not_blocked_by_proactive_hint_state(self):
-        th = get_or_create_thread(
-            self.conn,
-            case_id="case-explicit-query-bypass",
-            relation_key="r-explicit",
-            participant_a_id="alice",
-            participant_b_id="bob",
-        )
-        route_decision = {
-            "need_rescue": True,
-            "situation": "stuck",
-            "problem_tags": ["topic_dead_end"],
-            "rescue_style": "switch_topic",
-            "mutual_intent_assessment": "communication_problem",
-            "interaction_mode": "repair",
-            "reason": "测试主动提示状态",
-            "decision_source": "heuristic",
-        }
-        guidance = {
-            "mutual_intent_assessment": "communication_problem",
-            "interaction_mode": "repair",
-            "current_problem": ["旧话题接不下去了"],
-            "problem_tags": ["topic_dead_end"],
-            "advice": ["先接住，再换轻一点的话题。"],
-            "avoid": ["不要继续硬追原话题。"],
-            "topic_directions": ["周末安排"],
-            "easy_question_types": ["低门槛生活问题"],
-            "rescue_flow": ["先接住", "再换题", "最后轻问一句"],
-        }
-        profile_ctx = {
-            "profile_dsn": "mysql://test",
-            "actor_profile_summary": "alice 喜欢咖啡",
-            "counterpart_profile_summary": "bob 周末爱散步",
-            "profile_hooks": ["咖啡", "周末散步"],
-        }
-
-        with patch("chat_system.service.generate_assistant_guidance", return_value=guidance), patch(
-            "chat_system.service._assistant_profile_context",
-            return_value=profile_ctx,
-        ):
-            proactive = assistant_proactive_hint(
-                self.conn,
-                th["thread_id"],
-                "alice",
-                route_decision=route_decision,
-                now=datetime(2026, 5, 6, 10, 5, 0),
-            )
-            suppressed = assistant_proactive_hint(
-                self.conn,
-                th["thread_id"],
-                "alice",
-                route_decision=route_decision,
-                now=datetime(2026, 5, 6, 10, 5, 1),
-            )
-            q1 = assistant_query(
-                self.conn,
-                th["thread_id"],
-                "alice",
-                "我想主动问一下现在怎么回更稳妥？",
-                now=datetime(2026, 5, 6, 10, 5, 2),
-            )
-            q2 = assistant_query(
-                self.conn,
-                th["thread_id"],
-                "alice",
-                "我再问一次，你继续帮我看看。",
-                now=datetime(2026, 5, 6, 10, 5, 3),
-            )
-
-        self.assertTrue(proactive["hint_posted"])
-        self.assertFalse(suppressed["hint_posted"])
-        self.assertEqual(suppressed["assistant_hint_event"]["suppression_reason"], "waiting_for_user_action")
-        self.assertNotEqual(q1["message_id"], q2["message_id"])
-        self.assertNotIn("assistant_hint_event", q1)
-        self.assertNotIn("assistant_hint_event", q2)
-
-        alice_view = list_messages(self.conn, th["thread_id"], "alice")
-        assistant_msgs = [m for m in alice_view if m["author_id"] == ASSISTANT_AUTHOR_ID]
-        user_owner_only_msgs = [
-            m
-            for m in alice_view
-            if m["author_id"] == "alice" and m["visibility"] == VIS_OWNER_ONLY
-        ]
-        self.assertEqual(len(assistant_msgs), 3)
-        self.assertEqual(len(user_owner_only_msgs), 2)
-
-    def test_assistant_mode_route_uses_fast_router(self):
-        th = get_or_create_thread(
-            self.conn,
-            case_id="case-mode-route",
-            relation_key="r-mode",
-            participant_a_id="alice",
-            participant_b_id="bob",
-        )
-        post_message(
-            self.conn,
-            th["thread_id"],
-            "bob",
-            "嗯",
-            visibility=VIS_DYADIC,
-        )
-        decision = assistant_mode_route(self.conn, th["thread_id"], "alice")
-        self.assertIsNotNone(decision)
-        assert decision is not None
-        self.assertEqual(decision["decision_source"], "heuristic_scope_filter")
-        self.assertEqual(decision["interaction_mode"], "none")
-        self.assertEqual(decision["problem_tags"], [])
-        self.assertGreaterEqual(int(decision["latency_ms"]), 0)
-
-    def test_adopt_draft_requires_user_override(self):
-        th = get_or_create_thread(
-            self.conn,
-            case_id="case-asst-override",
-            relation_key="r2b",
-            participant_a_id="alice",
-            participant_b_id="bob",
-        )
-        draft = assistant_query(self.conn, th["thread_id"], "alice", "怎么接话？")
-
-        with self.assertRaisesRegex(ValueError, "body_override is required"):
-            adopt_draft(
-                self.conn,
-                th["thread_id"],
-                int(draft["message_id"]),
-                "alice",
-            )
-        with self.assertRaisesRegex(ValueError, "must be user-edited"):
-            adopt_draft(
-                self.conn,
-                th["thread_id"],
-                int(draft["message_id"]),
-                "alice",
-                body_override=str(draft["body"]),
-            )
+        self.assertEqual([item["body"] for item in alice_view], ["real private note"])
 
     def test_get_thread(self):
         th = get_or_create_thread(
@@ -1171,7 +349,7 @@ class ChatSystemTests(unittest.TestCase):
         pending = list_pending_outbox(self.conn, limit=50)
         self.assertGreaterEqual(len(pending), 2)
 
-    def test_persona_job_heuristic_and_process(self):
+    def test_live_chat_does_not_enqueue_persona_job_mid_conversation(self):
         th = get_or_create_thread(
             self.conn,
             case_id="case-pj",
@@ -1187,23 +365,52 @@ class ChatSystemTests(unittest.TestCase):
             visibility=VIS_DYADIC,
         )
         jobs = list_pending_persona_jobs(self.conn)
-        self.assertEqual(len(jobs), 1)
-        self.assertEqual(jobs[0]["status"], "pending")
+        self.assertEqual(jobs, [])
         out = process_pending_persona_jobs(self.conn, limit=10)
-        self.assertGreaterEqual(out["examined"], 1)
-        self.assertGreaterEqual(out["needs_review"], 1)
-        cur = self.conn.execute(
-            "SELECT status FROM persona_sync_jobs WHERE job_id = ?",
-            (int(jobs[0]["job_id"]),),
+        self.assertEqual(out["examined"], 0)
+        self.assertEqual(out["applied"], 0)
+        self.assertEqual(out["needs_review"], 0)
+
+    def test_persona_sync_jobs_allow_n_updates_for_same_subject_and_message(self):
+        evidence_base = {
+            "conversation_ref": "thread-1/100",
+            "reason": "assistant_post_chat_review",
+            "source_type": "explicit",
+            "basis": "self_statement",
+            "apply_scope": "persona_only",
+        }
+        ok1 = enqueue_persona_sync_job(
+            self.conn,
+            thread_id="thread-1",
+            message_id=100,
+            subject_user_id="user-b",
+            patch={"self_job": "财务相关工作"},
+            evidence={**evidence_base, "evidence_text": "用户明确说自己做财务相关工作。"},
         )
-        st = cur.fetchone()
-        self.assertIsNotNone(st)
-        assert st is not None
-        self.assertEqual(st["status"], "needs_review")
+        ok2 = enqueue_persona_sync_job(
+            self.conn,
+            thread_id="thread-1",
+            message_id=100,
+            subject_user_id="user-b",
+            patch={"persona_summary_internal": "生活节奏偏规律。"},
+            evidence={**evidence_base, "evidence_text": "用户明确说自己生活比较规律。"},
+        )
+        ok3 = enqueue_persona_sync_job(
+            self.conn,
+            thread_id="thread-1",
+            message_id=100,
+            subject_user_id="user-b",
+            patch={"target_accept_long_distance": "不接受"},
+            evidence={**evidence_base, "evidence_text": "用户明确说自己不接受长期异地。"},
+        )
+
+        self.assertTrue(ok1)
+        self.assertTrue(ok2)
+        self.assertTrue(ok3)
+        jobs = list_pending_persona_jobs(self.conn)
+        self.assertEqual(len(jobs), 3)
 
     def test_outbox_consume_clears_pending(self):
-        from chat_system.outbox_consumer import consume_chat_outbox_batch
-
         th = get_or_create_thread(
             self.conn,
             case_id="case-oc",
@@ -1217,10 +424,325 @@ class ChatSystemTests(unittest.TestCase):
         self.assertGreaterEqual(out["marked_published"], 1)
         self.assertEqual(len(list_pending_outbox(self.conn)), 0)
 
-    def test_maintenance_refreshes_summary(self):
-        from chat_system.maintenance import run_chat_maintenance
-        from chat_system.summaries import get_thread_summary
+    def test_outbox_consume_schedules_retry_and_then_marks_failed(self):
+        th = get_or_create_thread(
+            self.conn,
+            case_id="case-oc-retry",
+            relation_key="roc-retry",
+            participant_a_id="x",
+            participant_b_id="y",
+        )
+        consume_chat_outbox_batch(
+            self.conn,
+            limit=10,
+            now=datetime(2026, 5, 8, 21, 59, 50),
+        )
+        msg = post_message(
+            self.conn,
+            th["thread_id"],
+            "x",
+            "retry me",
+            visibility=VIS_DYADIC,
+            now=datetime(2026, 5, 8, 22, 0, 0),
+        )
+        cur = self.conn.execute(
+            """
+            SELECT outbox_id
+            FROM outbox_events
+            WHERE source_row_table = ? AND source_row_id = ?
+            LIMIT 1
+            """,
+            ("chat_messages", int(msg["message_id"])),
+        )
+        row = cur.fetchone()
+        assert row is not None
+        outbox_id = int(row["outbox_id"])
 
+        with mock.patch("chat_system.outbox_consumer._maybe_enqueue_agent_task_from_event", side_effect=RuntimeError("boom")):
+            first = consume_chat_outbox_batch(
+                self.conn,
+                limit=10,
+                now=datetime(2026, 5, 8, 22, 0, 5),
+                retry_delay_seconds=60,
+                max_attempts=2,
+            )
+
+        row = get_outbox_row(self.conn, outbox_id)
+        assert row is not None
+        self.assertEqual(first["retry_scheduled"], 1)
+        self.assertEqual(first["failed"], 0)
+        self.assertEqual(row["publish_status"], "retry_pending")
+        self.assertEqual(int(row["publish_attempts"]), 1)
+        self.assertEqual(len(list_pending_outbox(self.conn, limit=10, now=datetime(2026, 5, 8, 22, 0, 30))), 0)
+        self.assertEqual(len(list_pending_outbox(self.conn, limit=10, now=datetime(2026, 5, 8, 22, 1, 6))), 1)
+
+        with mock.patch("chat_system.outbox_consumer._maybe_enqueue_agent_task_from_event", side_effect=RuntimeError("boom")):
+            second = consume_chat_outbox_batch(
+                self.conn,
+                limit=10,
+                now=datetime(2026, 5, 8, 22, 1, 6),
+                retry_delay_seconds=60,
+                max_attempts=2,
+            )
+
+        row = get_outbox_row(self.conn, outbox_id)
+        assert row is not None
+        self.assertEqual(second["retry_scheduled"], 0)
+        self.assertEqual(second["failed"], 1)
+        self.assertEqual(row["publish_status"], "failed")
+        self.assertEqual(int(row["publish_attempts"]), 2)
+        self.assertIsNone(row["next_retry_at"])
+        self.assertEqual(len(list_pending_outbox(self.conn, limit=10, now=datetime(2026, 5, 8, 22, 2, 10))), 0)
+
+    def test_outbox_admin_can_summarize_and_requeue_failed_rows(self):
+        th = get_or_create_thread(
+            self.conn,
+            case_id="case-oc-requeue",
+            relation_key="roc-requeue",
+            participant_a_id="x",
+            participant_b_id="y",
+        )
+        consume_chat_outbox_batch(
+            self.conn,
+            limit=10,
+            now=datetime(2026, 5, 8, 22, 9, 50),
+        )
+        msg = post_message(
+            self.conn,
+            th["thread_id"],
+            "x",
+            "requeue me",
+            visibility=VIS_DYADIC,
+            now=datetime(2026, 5, 8, 22, 10, 0),
+        )
+        cur = self.conn.execute(
+            """
+            SELECT outbox_id
+            FROM outbox_events
+            WHERE source_row_table = ? AND source_row_id = ?
+            LIMIT 1
+            """,
+            ("chat_messages", int(msg["message_id"])),
+        )
+        row = cur.fetchone()
+        assert row is not None
+        outbox_id = int(row["outbox_id"])
+
+        with mock.patch("chat_system.outbox_consumer._maybe_enqueue_agent_task_from_event", side_effect=RuntimeError("boom")):
+            consume_chat_outbox_batch(
+                self.conn,
+                limit=10,
+                now=datetime(2026, 5, 8, 22, 10, 5),
+                retry_delay_seconds=60,
+                max_attempts=1,
+            )
+
+        self.assertEqual(len(list_failed_outbox(self.conn, limit=10)), 1)
+        summary = summarize_outbox(self.conn, now=datetime(2026, 5, 8, 22, 10, 6))
+        self.assertEqual(summary["failed_rows"], 1)
+        self.assertEqual(summary["pending_rows"], 0)
+        self.assertEqual(summary["retry_pending_rows"], 0)
+
+        changed = requeue_outbox_rows(self.conn, [outbox_id], reset_attempts=True)
+        self.conn.commit()
+        self.assertEqual(changed, 1)
+        row = get_outbox_row(self.conn, outbox_id)
+        assert row is not None
+        self.assertEqual(row["publish_status"], "pending")
+        self.assertEqual(int(row["publish_attempts"]), 0)
+        self.assertEqual(len(list_failed_outbox(self.conn, limit=10)), 0)
+        self.assertEqual(len(list_pending_outbox(self.conn, limit=10, now=datetime(2026, 5, 8, 22, 10, 7))), 1)
+
+    def test_outbox_claim_recovery_requeues_stale_processing_rows(self):
+        th = get_or_create_thread(
+            self.conn,
+            case_id="case-oc-processing",
+            relation_key="roc-processing",
+            participant_a_id="x",
+            participant_b_id="y",
+        )
+        msg = post_message(
+            self.conn,
+            th["thread_id"],
+            "x",
+            "stale claim",
+            visibility=VIS_DYADIC,
+            now=datetime(2026, 5, 8, 22, 10, 30),
+        )
+        cur = self.conn.execute(
+            """
+            SELECT outbox_id
+            FROM outbox_events
+            WHERE source_row_table = ? AND source_row_id = ?
+            LIMIT 1
+            """,
+            ("chat_messages", int(msg["message_id"])),
+        )
+        row = cur.fetchone()
+        assert row is not None
+        outbox_id = int(row["outbox_id"])
+
+        claimed = claim_pending_outbox_batch(
+            self.conn,
+            limit=10,
+            claim_token="token-stale",
+            worker_name="worker-a",
+            now=datetime(2026, 5, 8, 22, 10, 31),
+            claim_timeout_seconds=30,
+            stale_retry_delay_seconds=60,
+            max_attempts=3,
+        )
+        self.assertEqual(claimed["stale_recovered"], 0)
+        claimed_ids = {int(item["outbox_id"]) for item in claimed["rows"]}
+        self.assertIn(outbox_id, claimed_ids)
+        self.assertGreaterEqual(len(claimed["rows"]), 1)
+        self.assertGreaterEqual(len(list_processing_outbox(self.conn, limit=10)), 1)
+        row = get_outbox_row(self.conn, outbox_id)
+        assert row is not None
+        self.assertEqual(row["publish_status"], "processing")
+        self.assertEqual(row["processing_token"], "token-stale")
+        self.assertEqual(len(list_pending_outbox(self.conn, limit=10, now=datetime(2026, 5, 8, 22, 10, 31))), 0)
+
+        recovered = recover_stale_outbox_claims(
+            self.conn,
+            now=datetime(2026, 5, 8, 22, 11, 5),
+            claim_timeout_seconds=30,
+            retry_delay_seconds=60,
+            max_attempts=3,
+        )
+        self.conn.commit()
+        self.assertGreaterEqual(recovered, 1)
+        row = get_outbox_row(self.conn, outbox_id)
+        assert row is not None
+        self.assertEqual(row["publish_status"], "retry_pending")
+        self.assertEqual(int(row["publish_attempts"]), 1)
+        self.assertIsNone(row["processing_token"])
+        self.assertEqual(len(list_processing_outbox(self.conn, limit=10)), 0)
+        pending_ids = {
+            int(item["outbox_id"])
+            for item in list_pending_outbox(
+                self.conn,
+                limit=10,
+                now=datetime(2026, 5, 8, 22, 12, 6),
+            )
+        }
+        self.assertIn(outbox_id, pending_ids)
+
+    def test_outbox_worker_uses_env_config_and_reports_summary(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "HER_CHAT_OUTBOX_BATCH_LIMIT": "25",
+                "HER_CHAT_OUTBOX_MAX_BATCHES": "2",
+                "HER_CHAT_OUTBOX_RETRY_DELAY_SECONDS": "90",
+                "HER_CHAT_OUTBOX_RETRY_BACKOFF_MULTIPLIER": "3",
+                "HER_CHAT_OUTBOX_RETRY_MAX_DELAY_SECONDS": "900",
+                "HER_CHAT_OUTBOX_MAX_ATTEMPTS": "4",
+                "HER_CHAT_OUTBOX_CLAIM_TIMEOUT_SECONDS": "180",
+                "HER_CHAT_OUTBOX_POLL_INTERVAL_SECONDS": "7",
+                "HER_CHAT_OUTBOX_MAX_IDLE_POLLS": "5",
+                "HER_CHAT_OUTBOX_WORKER_NAME": "env-worker",
+            },
+            clear=False,
+        ):
+            config = resolve_outbox_consume_config()
+
+        self.assertEqual(
+            config,
+            {
+                "limit": 25,
+                "max_batches": 2,
+                "retry_delay_seconds": 90,
+                "retry_backoff_multiplier": 3,
+                "retry_max_delay_seconds": 900,
+                "max_attempts": 4,
+                "claim_timeout_seconds": 180,
+                "poll_interval_seconds": 7,
+                "max_idle_polls": 5,
+                "worker_name": "env-worker",
+            },
+        )
+        result = run_chat_outbox_worker(
+            self.conn,
+            limit=5,
+            max_batches=2,
+            retry_delay_seconds=30,
+            retry_backoff_multiplier=2,
+            retry_max_delay_seconds=120,
+            max_attempts=2,
+            claim_timeout_seconds=45,
+            worker_name="manual-worker",
+            now=datetime(2026, 5, 8, 22, 11, 0),
+        )
+        self.assertEqual(result["config"]["limit"], 5)
+        self.assertEqual(result["config"]["retry_delay_seconds"], 30)
+        self.assertEqual(result["config"]["retry_backoff_multiplier"], 2)
+        self.assertEqual(result["config"]["retry_max_delay_seconds"], 120)
+        self.assertEqual(result["config"]["max_attempts"], 2)
+        self.assertEqual(result["config"]["claim_timeout_seconds"], 45)
+        self.assertEqual(result["config"]["max_batches"], 2)
+        self.assertEqual(result["config"]["worker_name"], "manual-worker")
+        self.assertIn("summary_before", result)
+        self.assertIn("summary_after", result)
+        self.assertIn("totals", result)
+
+    def test_outbox_worker_serve_polls_until_idle(self):
+        th = get_or_create_thread(
+            self.conn,
+            case_id="case-oc-serve",
+            relation_key="roc-serve",
+            participant_a_id="x",
+            participant_b_id="y",
+        )
+        post_message(
+            self.conn,
+            th["thread_id"],
+            "x",
+            "serve worker",
+            visibility=VIS_DYADIC,
+            now=datetime(2026, 5, 8, 22, 12, 0),
+        )
+        state = {"now": datetime(2026, 5, 8, 22, 12, 1)}
+
+        def clock_fn():
+            return state["now"]
+
+        def sleep_fn(seconds: int) -> None:
+            state["now"] = state["now"] + timedelta(seconds=seconds)
+
+        result = serve_chat_outbox_worker(
+            self.conn,
+            limit=10,
+            max_batches_per_cycle=1,
+            retry_delay_seconds=30,
+            retry_backoff_multiplier=2,
+            retry_max_delay_seconds=120,
+            max_attempts=3,
+            claim_timeout_seconds=60,
+            poll_interval_seconds=5,
+            max_idle_polls=2,
+            worker_name="loop-worker",
+            clock_fn=clock_fn,
+            sleep_fn=sleep_fn,
+        )
+
+        self.assertEqual(result["worker_name"], "loop-worker")
+        self.assertEqual(result["stopped_reason"], "idle")
+        self.assertEqual(result["poll_interval_seconds"], 5)
+        self.assertEqual(result["max_idle_polls"], 2)
+        self.assertGreaterEqual(result["cycles_run"], 2)
+        self.assertGreaterEqual(result["totals"]["marked_published"], 1)
+        self.assertEqual(len(list_pending_outbox(self.conn, limit=10, now=state["now"])), 0)
+
+    def test_live_video_verification_provider_defaults_to_local_oss_when_env_missing(self):
+        previous = os.environ.pop("HER_VERIFICATION_PROVIDER", None)
+        try:
+            self.assertEqual(verification_module._machine_review_provider_name(), "local_oss")
+        finally:
+            if previous is not None:
+                os.environ["HER_VERIFICATION_PROVIDER"] = previous
+
+    def test_maintenance_refreshes_summary(self):
         th = get_or_create_thread(
             self.conn,
             case_id="case-sum",
@@ -1349,6 +871,118 @@ class ChatSystemTests(unittest.TestCase):
         self.assertIn("repeated_opening", signal_codes)
         self.assertIn("high_frequency_outreach", signal_codes)
 
+    def test_fraud_network_can_link_shared_entities_and_apply_global_freeze(self):
+        source_dsn = "mysql://root@127.0.0.1:3307/her_graph?table=profiles"
+        suspects = [
+            ("suspect-a", 9101, "203.0.113.11"),
+            ("suspect-b", 9102, "203.0.113.12"),
+            ("suspect-c", 9103, "203.0.113.13"),
+        ]
+        shared_metadata = {
+            "risk_observation": {
+                "device_fingerprint": "device-cluster-001",
+                "contact_handles": ["wechat:ringcenter01"],
+                "avatar_fingerprint": "avatar-same-001",
+                "registration_path": "ios_invite",
+                "user_agent": "Her/1.0 (iPhone; iOS 18.1)",
+            }
+        }
+
+        for idx, (suspect_user_id, profile_id, client_ip) in enumerate(suspects):
+            metadata = {
+                "participant_profiles": {
+                    suspect_user_id: {
+                        "profile_id": profile_id,
+                        "source_dsn": source_dsn,
+                        "source_table_name": "profiles",
+                    }
+                }
+            }
+            thread = get_or_create_thread(
+                self.conn,
+                case_id=f"case-fraud-graph-{idx}",
+                relation_key=f"fraud-graph-{idx}",
+                participant_a_id=f"victim-{idx}",
+                participant_b_id=suspect_user_id,
+                metadata=metadata,
+                now=datetime(2026, 5, 5, 14, idx, 0),
+            )
+            message_metadata = {
+                **shared_metadata,
+                "risk_observation": {
+                    **shared_metadata["risk_observation"],
+                    "client_ip": client_ip,
+                },
+            }
+            post_message(
+                self.conn,
+                thread["thread_id"],
+                suspect_user_id,
+                "加微信 ringcenter01，我带你做投资，收益稳，先转一笔就能进群",
+                visibility=VIS_DYADIC,
+                metadata=message_metadata,
+                now=datetime(2026, 5, 5, 14, idx * 3 + 1, 0),
+            )
+
+        overview = evaluate_fraud_network(
+            self.conn,
+            "suspect-a",
+            source_dsn=source_dsn,
+            source_table_name="profiles",
+            profile_id=9101,
+            now=datetime(2026, 5, 5, 14, 20, 0),
+        )
+        profile = overview["network_profile"]
+        self.assertIsNotNone(profile)
+        assert profile is not None
+        self.assertEqual(profile["review_status"], "action_applied")
+        self.assertEqual(profile["applied_action"], "freeze")
+        self.assertEqual(profile["connected_subject_count"], 2)
+        self.assertIn("shared_device_fingerprint", profile["signal_codes"])
+        self.assertIn("shared_external_contact", profile["signal_codes"])
+        self.assertGreaterEqual(int(profile["graph_risk_score"]), 160)
+
+        linked_users = [item["linked_user_id"] for item in overview["account_links"]]
+        self.assertEqual(linked_users, ["suspect-b", "suspect-c"])
+
+        fetched_profile = get_fraud_network_profile(self.conn, "suspect-a")
+        self.assertIsNotNone(fetched_profile)
+        assert fetched_profile is not None
+        self.assertEqual(fetched_profile["applied_action"], "freeze")
+
+        high_risk_profiles = list_fraud_network_profiles(self.conn, minimum_score=100, limit=10)
+        self.assertGreaterEqual(len(high_risk_profiles), 3)
+
+        playback = build_fraud_network_overview(self.conn, "suspect-a")
+        self.assertEqual(playback["moderation_state"]["applied_action"], "freeze")
+
+        restricted_thread = get_or_create_thread(
+            self.conn,
+            case_id="case-fraud-graph-retry",
+            relation_key="fraud-graph-retry",
+            participant_a_id="victim-retry",
+            participant_b_id="suspect-a",
+            metadata={
+                "participant_profiles": {
+                    "suspect-a": {
+                        "profile_id": 9101,
+                        "source_dsn": source_dsn,
+                        "source_table_name": "profiles",
+                    }
+                }
+            },
+            now=datetime(2026, 5, 5, 14, 25, 0),
+        )
+        with self.assertRaisesRegex(ValueError, "restricted by risk action: freeze"):
+            post_message(
+                self.conn,
+                restricted_thread["thread_id"],
+                "suspect-a",
+                "继续平台内聊聊吧",
+                visibility=VIS_DYADIC,
+                now=datetime(2026, 5, 5, 14, 26, 0),
+            )
+
     def test_income_mismatch_can_recommend_require_verification(self):
         th = get_or_create_thread(
             self.conn,
@@ -1377,6 +1011,26 @@ class ChatSystemTests(unittest.TestCase):
         )
         self.assertEqual(reviewed["applied_action"], "require_verification")
 
+    def test_suspected_fake_photo_report_has_photo_specific_signal(self):
+        th = get_or_create_thread(
+            self.conn,
+            case_id="case-photo-risk",
+            relation_key="risk-photo-review",
+            participant_a_id="user-a",
+            participant_b_id="user-b",
+        )
+        out = submit_member_report(
+            self.conn,
+            th["thread_id"],
+            "user-a",
+            "suspected_fake_photo",
+            reason_text="怀疑照片不是本人，线下见面差异很大",
+            evidence={"photo_gap": "looks_like_different_person"},
+            now=datetime(2026, 5, 5, 12, 30, 0),
+        )
+        self.assertIn("suspected_fake_photo", out["report"]["signal_codes"])
+        self.assertEqual(out["risk_case"]["recommended_action"], "require_verification")
+
     def test_meeting_feedback_can_generate_reports_and_thread_risk_overview(self):
         th = get_or_create_thread(
             self.conn,
@@ -1404,6 +1058,2322 @@ class ChatSystemTests(unittest.TestCase):
         overview = build_thread_risk_overview(self.conn, th["thread_id"], "reviewer")
         self.assertEqual(overview["counterpart_user_id"], "candidate")
         self.assertIn("资料一致性风险", "".join(overview["caution_messages"]))
+
+    def test_photo_review_request_can_be_created_from_risk_case_and_completed(self):
+        with self.conn.driver_connection.cursor() as cursor:
+            cursor.execute(
+                """
+                CREATE TABLE `profiles` (
+                  `id` BIGINT PRIMARY KEY,
+                  `photo_verification_level` VARCHAR(32),
+                  `live_video_verified` TINYINT(1),
+                  `updated_at` DATETIME
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """
+            )
+            cursor.execute(
+                """
+                INSERT INTO `profiles` (`id`, `photo_verification_level`, `live_video_verified`, `updated_at`)
+                VALUES (1101, 'uploaded', 0, '2026-05-05 13:50:00')
+                """
+            )
+        self.conn.commit()
+
+        th = get_or_create_thread(
+            self.conn,
+            case_id="case-photo-request",
+            relation_key="risk-photo-request",
+            participant_a_id="reviewer-a",
+            participant_b_id="candidate-a",
+            metadata={
+                "participant_profiles": {
+                    "candidate-a": {
+                        "profile_id": 1101,
+                        "source_dsn": DEFAULT_CHAT_TEST_MYSQL_DSN,
+                        "source_table_name": "profiles",
+                    }
+                }
+            },
+        )
+        report = submit_member_report(
+            self.conn,
+            th["thread_id"],
+            "reviewer-a",
+            "suspected_fake_photo",
+            reason_text="感觉照片不像同一个人",
+            now=datetime(2026, 5, 5, 14, 0, 0),
+        )
+        risk_case_id = report["risk_case"]["risk_case_id"]
+        review_risk_case(
+            self.conn,
+            risk_case_id,
+            "moderator-photo",
+            status="action_applied",
+            applied_action="require_verification",
+            resolution_note="请先补录真人活体视频",
+            now=datetime(2026, 5, 5, 14, 5, 0),
+        )
+
+        requests = list_photo_review_requests(self.conn, user_id="candidate-a")
+        self.assertEqual(len(requests), 1)
+        request = requests[0]
+        self.assertEqual(request["status"], "awaiting_submission")
+        self.assertEqual(request["photo_review_task"]["linked_risk_case_ids"], [risk_case_id])
+        self.assertEqual(request["notifications"][0]["notification_type"], "photo_review_requested")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            old_storage_dir = os.environ.get("HER_VERIFICATION_STORAGE_DIR")
+            os.environ["HER_VERIFICATION_STORAGE_DIR"] = temp_dir
+            try:
+                first = submit_live_video_verification(
+                    self.conn,
+                    user_id="candidate-a",
+                    submission_id=request["submission_id"],
+                    profile_id=1101,
+                    source_dsn=f"{DEFAULT_CHAT_TEST_MYSQL_DSN}?table=profiles",
+                    video_base64=base64.b64encode(b"photo-request-first").decode("ascii"),
+                    file_name="first-photo-request.mp4",
+                    content_type="video/mp4",
+                    metadata={
+                        "machine_review_inputs": {
+                            "liveness_score": 45,
+                            "face_match_score": 86,
+                            "challenge_score": 35,
+                        }
+                    },
+                    now=datetime(2026, 5, 5, 14, 10, 0),
+                )
+                approved = resubmit_live_video_verification(
+                    self.conn,
+                    request["submission_id"],
+                    user_id="candidate-a",
+                    video_base64=base64.b64encode(b"photo-request-second").decode("ascii"),
+                    file_name="second-photo-request.mp4",
+                    content_type="video/mp4",
+                    challenge_phrase="请重新补录一次",
+                    metadata={
+                        "machine_review_inputs": {
+                            "liveness_score": 96,
+                            "face_match_score": 93,
+                            "challenge_score": 91,
+                        }
+                    },
+                    now=datetime(2026, 5, 5, 14, 20, 0),
+                )
+            finally:
+                if old_storage_dir is None:
+                    os.environ.pop("HER_VERIFICATION_STORAGE_DIR", None)
+                else:
+                    os.environ["HER_VERIFICATION_STORAGE_DIR"] = old_storage_dir
+
+        self.assertEqual(first["submission_id"], request["submission_id"])
+        self.assertEqual(first["status"], "resubmission_required")
+        self.assertEqual(approved["status"], "approved")
+        self.assertEqual(approved["profile_sync"]["status"], "synced")
+        notification_types = [item["notification_type"] for item in approved["notifications"]]
+        self.assertIn("photo_review_requested", notification_types)
+        self.assertIn("photo_review_resubmission_required", notification_types)
+        self.assertIn("photo_review_approved", notification_types)
+
+        notification_rows = list_verification_notifications(self.conn, submission_id=request["submission_id"])
+        self.assertEqual(
+            {item["notification_type"] for item in notification_rows},
+            {
+                "photo_review_requested",
+                "photo_review_resubmission_required",
+                "photo_review_approved",
+            },
+        )
+
+    def test_photo_review_request_can_be_frozen_after_risk_escalation(self):
+        th = get_or_create_thread(
+            self.conn,
+            case_id="case-photo-freeze",
+            relation_key="risk-photo-freeze",
+            participant_a_id="reviewer-b",
+            participant_b_id="candidate-b",
+        )
+        report = submit_member_report(
+            self.conn,
+            th["thread_id"],
+            "reviewer-b",
+            "photo_heavily_edited",
+            reason_text="怀疑修图太重",
+            now=datetime(2026, 5, 5, 15, 0, 0),
+        )
+        risk_case_id = report["risk_case"]["risk_case_id"]
+        review_risk_case(
+            self.conn,
+            risk_case_id,
+            "moderator-b",
+            status="action_applied",
+            applied_action="require_verification",
+            resolution_note="先补录真人视频",
+            now=datetime(2026, 5, 5, 15, 10, 0),
+        )
+        request = list_photo_review_requests(self.conn, user_id="candidate-b")[0]
+        self.assertEqual(request["status"], "awaiting_submission")
+
+        review_risk_case(
+            self.conn,
+            risk_case_id,
+            "moderator-c",
+            status="action_applied",
+            applied_action="freeze",
+            resolution_note="风险升级，先冻结处理",
+            now=datetime(2026, 5, 5, 15, 20, 0),
+        )
+
+        frozen = get_verification_submission(self.conn, request["submission_id"])
+        assert frozen is not None
+        self.assertEqual(frozen["status"], "frozen")
+        notification_types = {item["notification_type"] for item in frozen["notifications"]}
+        self.assertIn("photo_review_requested", notification_types)
+        self.assertIn("photo_review_frozen", notification_types)
+
+    def test_live_video_verification_can_submit_review_and_sync_profile(self):
+        with self.conn.driver_connection.cursor() as cursor:
+            cursor.execute(
+                """
+                CREATE TABLE `profiles` (
+                  `id` BIGINT PRIMARY KEY,
+                  `photo_verification_level` VARCHAR(32),
+                  `live_video_verified` TINYINT(1),
+                  `updated_at` DATETIME
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """
+            )
+            cursor.execute(
+                """
+                INSERT INTO `profiles` (`id`, `photo_verification_level`, `live_video_verified`, `updated_at`)
+                VALUES (1001, 'uploaded', 0, '2026-05-05 09:00:00')
+                """
+            )
+        self.conn.commit()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            old_storage_dir = os.environ.get("HER_VERIFICATION_STORAGE_DIR")
+            os.environ["HER_VERIFICATION_STORAGE_DIR"] = temp_dir
+            try:
+                submission = submit_live_video_verification(
+                    self.conn,
+                    user_id="user-v1",
+                    profile_id=1001,
+                    source_dsn=f"{DEFAULT_CHAT_TEST_MYSQL_DSN}?table=profiles",
+                    video_base64=base64.b64encode(b"fake-mp4-binary").decode("ascii"),
+                    file_name="selfie.mp4",
+                    content_type="video/mp4",
+                    challenge_phrase="今天是周一",
+                    metadata={"device": "ios"},
+                    now=datetime(2026, 5, 5, 9, 30, 0),
+                )
+                self.assertEqual(submission["status"], "under_review")
+                self.assertEqual(submission["recommended_decision"], "manual_review")
+                self.assertEqual(submission["recommended_next_step"], "manual_review")
+                self.assertEqual(submission["verification_provider"], "local_oss")
+                self.assertFalse(submission["auto_review_applied"])
+                self.assertEqual(len(submission["assets"]), 1)
+                stored_file = pathlib.Path(temp_dir) / submission["assets"][0]["storage_key"]
+                self.assertTrue(stored_file.exists())
+
+                reviewed = review_live_video_verification(
+                    self.conn,
+                    submission["submission_id"],
+                    "moderator-1",
+                    decision="approve",
+                    review_note="视频人物和资料一致，允许通过",
+                    liveness_result="pass",
+                    face_match_result="pass",
+                    profile_consistency_result="pass",
+                    now=datetime(2026, 5, 5, 9, 40, 0),
+                )
+            finally:
+                if old_storage_dir is None:
+                    os.environ.pop("HER_VERIFICATION_STORAGE_DIR", None)
+                else:
+                    os.environ["HER_VERIFICATION_STORAGE_DIR"] = old_storage_dir
+
+        self.assertEqual(reviewed["status"], "approved")
+        self.assertEqual(reviewed["latest_sync_status"], "synced")
+        self.assertEqual(reviewed["profile_sync"]["status"], "synced")
+        self.assertEqual(len(reviewed["reviews"]), 1)
+
+        fetched = get_verification_submission(self.conn, submission["submission_id"])
+        self.assertIsNotNone(fetched)
+        assert fetched is not None
+        self.assertEqual(fetched["status"], "approved")
+
+        listed = list_verification_submissions(self.conn, user_id="user-v1")
+        self.assertEqual(len(listed), 1)
+        self.assertEqual(listed[0]["submission_id"], submission["submission_id"])
+
+        row = self.conn.execute(
+            "SELECT * FROM profiles WHERE id = ? LIMIT 1",
+            (1001,),
+        ).fetchone()
+        self.assertEqual(row["photo_verification_level"], "live_video_verified")
+        self.assertEqual(int(row["live_video_verified"]), 1)
+
+    def test_live_video_verification_can_auto_approve_with_strong_machine_review(self):
+        with self.conn.driver_connection.cursor() as cursor:
+            cursor.execute(
+                """
+                CREATE TABLE `profiles` (
+                  `id` BIGINT PRIMARY KEY,
+                  `photo_verification_level` VARCHAR(32),
+                  `live_video_verified` TINYINT(1),
+                  `updated_at` DATETIME
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """
+            )
+            cursor.execute(
+                """
+                INSERT INTO `profiles` (`id`, `photo_verification_level`, `live_video_verified`, `updated_at`)
+                VALUES (1002, 'uploaded', 0, '2026-05-05 10:50:00')
+                """
+            )
+        self.conn.commit()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            old_storage_dir = os.environ.get("HER_VERIFICATION_STORAGE_DIR")
+            os.environ["HER_VERIFICATION_STORAGE_DIR"] = temp_dir
+            try:
+                submission = submit_live_video_verification(
+                    self.conn,
+                    user_id="user-v2",
+                    profile_id=1002,
+                    source_dsn=f"{DEFAULT_CHAT_TEST_MYSQL_DSN}?table=profiles",
+                    video_base64=base64.b64encode(b"auto-approve-video").decode("ascii"),
+                    file_name="auto-approve.mp4",
+                    content_type="video/mp4",
+                    challenge_phrase="请眨眼并读出今天日期",
+                    metadata={
+                        "device": "ios",
+                        "machine_review_inputs": {
+                            "liveness_score": 96,
+                            "face_match_score": 94,
+                            "challenge_score": 92,
+                            "risk_flags": [],
+                        },
+                    },
+                    now=datetime(2026, 5, 5, 11, 0, 0),
+                )
+            finally:
+                if old_storage_dir is None:
+                    os.environ.pop("HER_VERIFICATION_STORAGE_DIR", None)
+                else:
+                    os.environ["HER_VERIFICATION_STORAGE_DIR"] = old_storage_dir
+
+        self.assertEqual(submission["status"], "approved")
+        self.assertTrue(submission["auto_review_applied"])
+        self.assertEqual(submission["review_decision"], "approve")
+        self.assertEqual(submission["reviewer_id"], "system:auto_verification")
+        self.assertEqual(submission["recommended_next_step"], "complete")
+        self.assertEqual(submission["profile_sync"]["status"], "synced")
+        self.assertEqual(len(submission["reviews"]), 1)
+        self.assertEqual(submission["reviews"][0]["decision"], "approve")
+
+        row = self.conn.execute(
+            "SELECT * FROM profiles WHERE id = ? LIMIT 1",
+            (1002,),
+        ).fetchone()
+        self.assertEqual(row["photo_verification_level"], "live_video_verified")
+        self.assertEqual(int(row["live_video_verified"]), 1)
+
+    def test_live_video_verification_can_request_resubmission_and_upload_again(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            old_storage_dir = os.environ.get("HER_VERIFICATION_STORAGE_DIR")
+            os.environ["HER_VERIFICATION_STORAGE_DIR"] = temp_dir
+            try:
+                submission = submit_live_video_verification(
+                    self.conn,
+                    user_id="user-v3",
+                    video_base64=base64.b64encode(b"first-video").decode("ascii"),
+                    file_name="first.mov",
+                    content_type="video/quicktime",
+                    metadata={
+                        "machine_review_inputs": {
+                            "liveness_score": 42,
+                            "face_match_score": 88,
+                            "challenge_score": 35,
+                        }
+                    },
+                    now=datetime(2026, 5, 5, 10, 0, 0),
+                )
+                updated = resubmit_live_video_verification(
+                    self.conn,
+                    submission["submission_id"],
+                    user_id="user-v3",
+                    video_base64=base64.b64encode(b"second-video").decode("ascii"),
+                    file_name="second.mov",
+                    content_type="video/quicktime",
+                    challenge_phrase="补录第二次",
+                    metadata={
+                        "retry": 1,
+                        "machine_review_inputs": {
+                            "liveness_score": 95,
+                            "face_match_score": 91,
+                            "challenge_score": 90,
+                        },
+                    },
+                    now=datetime(2026, 5, 5, 10, 10, 0),
+                )
+            finally:
+                if old_storage_dir is None:
+                    os.environ.pop("HER_VERIFICATION_STORAGE_DIR", None)
+                else:
+                    os.environ["HER_VERIFICATION_STORAGE_DIR"] = old_storage_dir
+
+        self.assertEqual(submission["status"], "resubmission_required")
+        self.assertEqual(submission["review_decision"], "request_resubmission")
+        self.assertEqual(submission["reviews"][0]["decision"], "request_resubmission")
+        self.assertEqual(updated["status"], "approved")
+        self.assertEqual(updated["resubmission_count"], 1)
+        self.assertEqual(len(updated["assets"]), 2)
+        self.assertEqual(len(updated["reviews"]), 2)
+        self.assertEqual(updated["reviews"][-1]["decision"], "approve")
+        self.assertEqual(updated["challenge_phrase"], "补录第二次")
+        self.assertEqual(updated["machine_review"]["attempt"], 2)
+
+    def test_live_video_verification_realtime_challenge_can_auto_approve(self):
+        with self.conn.driver_connection.cursor() as cursor:
+            cursor.execute(
+                """
+                CREATE TABLE `profiles` (
+                  `id` BIGINT PRIMARY KEY,
+                  `photo_verification_level` VARCHAR(32),
+                  `live_video_verified` TINYINT(1),
+                  `updated_at` DATETIME
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """
+            )
+            cursor.execute(
+                """
+                INSERT INTO `profiles` (`id`, `photo_verification_level`, `live_video_verified`, `updated_at`)
+                VALUES (1003, 'uploaded', 0, '2026-05-05 11:50:00')
+                """
+            )
+        self.conn.commit()
+
+        challenge = create_live_video_verification_challenge(
+            user_id="user-v5",
+            profile_id=1003,
+            challenge_actions=["blink", "open_mouth", "turn_left"],
+            now=datetime(2026, 5, 5, 12, 0, 0),
+        )
+        self.assertEqual(challenge["required_actions"], ["blink", "open_mouth", "turn_left"])
+        self.assertRegex(
+            challenge["challenge_phrase"],
+            r"^请依次完成：眨眼、张嘴、向左转头；并大声读出数字 \d{2}$",
+        )
+        self.assertRegex(challenge["spoken_code"], r"^\d{2}$")
+        self.assertEqual(len(challenge["prompt_steps"]), 4)
+        self.assertEqual(challenge["prompt_steps"][-1]["kind"], "spoken_code")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            old_storage_dir = os.environ.get("HER_VERIFICATION_STORAGE_DIR")
+            os.environ["HER_VERIFICATION_STORAGE_DIR"] = temp_dir
+            try:
+                submission = submit_live_video_verification(
+                    self.conn,
+                    user_id="user-v5",
+                    profile_id=1003,
+                    source_dsn=f"{DEFAULT_CHAT_TEST_MYSQL_DSN}?table=profiles",
+                    video_base64=base64.b64encode(b"realtime-proof-video").decode("ascii"),
+                    file_name="realtime-proof.mp4",
+                    content_type="video/mp4",
+                    challenge_token=challenge["challenge_token"],
+                    metadata={
+                        "action_result": {
+                            "capture_mode": "realtime_challenge",
+                            "completed_actions": ["blink", "open_mouth", "turn_left"],
+                            "action_events": [
+                                {"action": "blink", "step_index": 1, "detected_at_ms": 720, "score": 95},
+                                {"action": "open_mouth", "step_index": 2, "detected_at_ms": 1510, "score": 93},
+                                {"action": "turn_left", "step_index": 3, "detected_at_ms": 2290, "score": 90},
+                            ],
+                            "action_scores": {
+                                "blink": 95,
+                                "open_mouth": 93,
+                                "turn_left": 90,
+                            },
+                            "face_count_max": 1,
+                            "challenge_phrase_rendered": True,
+                            "spoken_prompt_rendered": True,
+                            "spoken_prompt_display_ms": 1900,
+                            "audio_recorded": True,
+                            "recording_duration_ms": 4200,
+                            "video_recorded": True,
+                        },
+                        "machine_review_inputs": {
+                            "face_match_score": 94,
+                        },
+                        "speech_challenge_result": {
+                            "provider": "unit_test_asr",
+                            "transcript_text": challenge["spoken_code"],
+                            "transcript_confidence": 96,
+                            "speech_started_at_ms": 2500,
+                            "speech_ended_at_ms": 3280,
+                            "audio_video_sync_score": 84,
+                        },
+                    },
+                    now=datetime(2026, 5, 5, 12, 1, 0),
+                )
+            finally:
+                if old_storage_dir is None:
+                    os.environ.pop("HER_VERIFICATION_STORAGE_DIR", None)
+                else:
+                    os.environ["HER_VERIFICATION_STORAGE_DIR"] = old_storage_dir
+
+        self.assertEqual(submission["status"], "approved")
+        self.assertRegex(
+            submission["challenge_phrase"],
+            r"^请依次完成：眨眼、张嘴、向左转头；并大声读出数字 \d{2}$",
+        )
+        self.assertEqual(submission["review_decision"], "approve")
+        self.assertEqual(submission["recommended_next_step"], "complete")
+        self.assertEqual(submission["machine_review"]["capture_mode"], "realtime_challenge")
+        self.assertEqual(submission["machine_review"]["required_actions"], ["blink", "open_mouth", "turn_left"])
+        self.assertEqual(submission["machine_review"]["speech_result"], "pass")
+        self.assertTrue(submission["machine_review"]["spoken_code_match"])
+        self.assertEqual(
+            submission["metadata"]["action_challenge"]["spoken_code"],
+            challenge["spoken_code"],
+        )
+        self.assertEqual(submission["profile_sync"]["status"], "synced")
+
+    def test_live_video_verification_realtime_challenge_rejects_expired_token(self):
+        challenge = create_live_video_verification_challenge(
+            user_id="user-v6",
+            challenge_actions=["blink", "turn_right"],
+            now=datetime(2026, 5, 5, 12, 0, 0),
+        )
+        with self.assertRaisesRegex(ValueError, "expired"):
+            submit_live_video_verification(
+                self.conn,
+                user_id="user-v6",
+                video_base64=base64.b64encode(b"expired-realtime-video").decode("ascii"),
+                file_name="expired.mp4",
+                content_type="video/mp4",
+                challenge_token=challenge["challenge_token"],
+                metadata={
+                    "action_result": {
+                        "capture_mode": "realtime_challenge",
+                        "completed_actions": ["blink", "turn_right"],
+                    }
+                },
+                now=datetime(2026, 5, 5, 12, 20, 0),
+            )
+
+    def test_live_video_verification_realtime_challenge_rejects_wrong_order(self):
+        challenge = create_live_video_verification_challenge(
+            user_id="user-v7",
+            challenge_actions=["open_mouth", "blink", "turn_left"],
+            now=datetime(2026, 5, 5, 12, 0, 0),
+        )
+        with self.assertRaisesRegex(ValueError, "does not follow challenge order"):
+            submit_live_video_verification(
+                self.conn,
+                user_id="user-v7",
+                video_base64=base64.b64encode(b"wrong-order-video").decode("ascii"),
+                file_name="wrong-order.mp4",
+                content_type="video/mp4",
+                challenge_token=challenge["challenge_token"],
+                metadata={
+                    "action_result": {
+                        "capture_mode": "realtime_challenge",
+                        "completed_actions": ["blink", "open_mouth", "turn_left"],
+                        "action_events": [
+                            {"action": "blink", "step_index": 1, "detected_at_ms": 600, "score": 96},
+                            {"action": "open_mouth", "step_index": 2, "detected_at_ms": 1340, "score": 95},
+                            {"action": "turn_left", "step_index": 3, "detected_at_ms": 2100, "score": 92},
+                        ],
+                        "action_scores": {
+                            "blink": 96,
+                            "open_mouth": 95,
+                            "turn_left": 92,
+                        },
+                        "challenge_phrase_rendered": True,
+                        "spoken_prompt_rendered": True,
+                        "audio_recorded": True,
+                        "video_recorded": True,
+                    }
+                },
+                now=datetime(2026, 5, 5, 12, 1, 0),
+            )
+
+    def test_live_video_verification_realtime_challenge_requests_resubmission_when_spoken_code_mismatches(self):
+        challenge = create_live_video_verification_challenge(
+            user_id="user-v8",
+            challenge_actions=["blink", "open_mouth", "turn_left"],
+            now=datetime(2026, 5, 5, 12, 0, 0),
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            old_storage_dir = os.environ.get("HER_VERIFICATION_STORAGE_DIR")
+            os.environ["HER_VERIFICATION_STORAGE_DIR"] = temp_dir
+            try:
+                submission = submit_live_video_verification(
+                    self.conn,
+                    user_id="user-v8",
+                    video_base64=base64.b64encode(b"spoken-code-mismatch-video").decode("ascii"),
+                    file_name="spoken-mismatch.mp4",
+                    content_type="video/mp4",
+                    challenge_token=challenge["challenge_token"],
+                    metadata={
+                        "action_result": {
+                            "capture_mode": "realtime_challenge",
+                            "completed_actions": ["blink", "open_mouth", "turn_left"],
+                            "action_events": [
+                                {"action": "blink", "step_index": 1, "detected_at_ms": 700, "score": 95},
+                                {"action": "open_mouth", "step_index": 2, "detected_at_ms": 1500, "score": 94},
+                                {"action": "turn_left", "step_index": 3, "detected_at_ms": 2250, "score": 92},
+                            ],
+                            "action_scores": {
+                                "blink": 95,
+                                "open_mouth": 94,
+                                "turn_left": 92,
+                            },
+                            "face_count_max": 1,
+                            "challenge_phrase_rendered": True,
+                            "spoken_prompt_rendered": True,
+                            "spoken_prompt_display_ms": 2100,
+                            "audio_recorded": True,
+                            "recording_duration_ms": 4500,
+                            "video_recorded": True,
+                        },
+                        "speech_challenge_result": {
+                            "provider": "unit_test_asr",
+                            "transcript_text": "12",
+                            "transcript_confidence": 97,
+                            "speech_started_at_ms": 2520,
+                            "speech_ended_at_ms": 3270,
+                            "audio_video_sync_score": 83,
+                        },
+                        "machine_review_inputs": {
+                            "face_match_score": 92,
+                            "liveness_score": 90,
+                        },
+                    },
+                    now=datetime(2026, 5, 5, 12, 1, 0),
+                )
+            finally:
+                if old_storage_dir is None:
+                    os.environ.pop("HER_VERIFICATION_STORAGE_DIR", None)
+                else:
+                    os.environ["HER_VERIFICATION_STORAGE_DIR"] = old_storage_dir
+
+        self.assertEqual(submission["status"], "resubmission_required")
+        self.assertEqual(submission["recommended_decision"], "request_resubmission")
+        self.assertEqual(submission["recommended_next_step"], "retry_live_video")
+        self.assertEqual(submission["machine_review"]["speech_result"], "fail")
+        self.assertFalse(submission["machine_review"]["spoken_code_match"])
+        self.assertIn("spoken_code_mismatch", submission["machine_review"]["risk_flags"])
+
+    def test_live_video_verification_rejects_non_local_provider_env_values(self):
+        previous = os.environ.get("HER_VERIFICATION_PROVIDER")
+        try:
+            os.environ["HER_VERIFICATION_PROVIDER"] = "mock"
+            with self.assertRaisesRegex(ValueError, "only supports local_oss"):
+                verification_module._machine_review_provider_name()
+            os.environ["HER_VERIFICATION_PROVIDER"] = "reported"
+            with self.assertRaisesRegex(ValueError, "only supports local_oss"):
+                verification_module._machine_review_provider_name()
+        finally:
+            if previous is None:
+                os.environ["HER_VERIFICATION_PROVIDER"] = "local_oss"
+            else:
+                os.environ["HER_VERIFICATION_PROVIDER"] = previous
+
+    def test_decode_video_bytes_accepts_data_url_with_codec_list(self):
+        payload = "data:video/webm;codecs=vp9,opus;base64,QUJD"
+        video_bytes, inferred_content_type = verification_module._decode_video_bytes(payload)
+        self.assertEqual(video_bytes, b"ABC")
+        self.assertEqual(inferred_content_type, "video/webm")
+
+    def test_local_live_video_keeps_anti_spoof_result_when_whisper_bootstrap_fails(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            video_path = pathlib.Path(temp_dir) / "demo.mp4"
+            video_path.write_bytes(b"demo-video")
+            anti_spoof_result = {
+                "liveness_score": 96,
+                "spoofing_risk_score": 4,
+                "replay_attack_score": 9,
+                "screen_risk_score": 7,
+                "motion_score": 64,
+                "face_presence_score": 100,
+                "sampled_frame_count": 7,
+                "valid_face_frame_count": 7,
+                "detected_face_count_max": 1,
+                "average_detection_confidence": 97,
+                "risk_flags": [],
+            }
+            with mock.patch.object(
+                live_video_local_module,
+                "_inspect_media_file",
+                return_value={"has_audio_track": True, "duration_ms": 4200},
+            ), mock.patch.object(
+                live_video_local_module,
+                "_analyze_silent_face_video",
+                return_value=anti_spoof_result,
+            ), mock.patch.object(
+                live_video_local_module,
+                "_transcribe_video_audio",
+                side_effect=LocalEntryNotFoundError("whisper download timeout"),
+            ):
+                out = live_video_local_module.analyze_local_live_video(video_path, spoken_code="37")
+
+        self.assertEqual(out["provider"], "local_oss")
+        self.assertEqual(out["provider_version"], "silent-face+faster-whisper-v1")
+        self.assertEqual(out["liveness_score"], 96)
+        self.assertEqual(out["face_presence_score"], 100)
+        self.assertEqual(out["speech_challenge_result"]["provider"], "faster_whisper")
+        self.assertEqual(out["speech_challenge_result"]["analysis_status"], "unavailable")
+        self.assertEqual(out["speech_challenge_result"]["error_type"], "LocalEntryNotFoundError")
+        self.assertIn("speech_analysis_unavailable", out["risk_flags"])
+
+    def test_analyze_local_live_video_uses_same_person_result_for_face_match_score(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            video_path = pathlib.Path(temp_dir) / "demo.mp4"
+            video_path.write_bytes(b"demo-video")
+            anti_spoof_result = {
+                "liveness_score": 96,
+                "spoofing_risk_score": 4,
+                "replay_attack_score": 9,
+                "screen_risk_score": 7,
+                "motion_score": 64,
+                "face_presence_score": 100,
+                "sampled_frame_count": 7,
+                "valid_face_frame_count": 7,
+                "detected_face_count_max": 1,
+                "average_detection_confidence": 97,
+                "risk_flags": [],
+            }
+            same_person_result = {
+                "analysis_status": "ok",
+                "face_match_score": 91,
+                "same_person_score": 91,
+                "reference_face_source_count": 2,
+                "reference_face_count": 2,
+                "matched_frame_count": 3,
+                "best_similarity": 0.62,
+                "risk_flags": [],
+            }
+            speech_result = {
+                "provider": "faster_whisper",
+                "transcript_text": "37",
+                "transcript_segments": [],
+                "transcript_confidence": 95,
+                "speech_started_at_ms": 2480,
+                "speech_ended_at_ms": 3290,
+                "audio_duration_ms": 3290,
+            }
+            with mock.patch.object(
+                live_video_local_module,
+                "_inspect_media_file",
+                return_value={"has_audio_track": True, "duration_ms": 4200},
+            ), mock.patch.object(
+                live_video_local_module,
+                "_analyze_silent_face_video",
+                return_value=anti_spoof_result,
+            ), mock.patch.object(
+                live_video_local_module,
+                "_safe_analyze_same_person_faces",
+                return_value=same_person_result,
+            ) as same_person_mock, mock.patch.object(
+                live_video_local_module,
+                "_safe_transcribe_video_audio",
+                return_value=speech_result,
+            ):
+                out = live_video_local_module.analyze_local_live_video(
+                    video_path,
+                    spoken_code="37",
+                    reference_image_sources=["https://img.her.local/a.jpg", "https://img.her.local/b.jpg"],
+                )
+
+        self.assertEqual(out["face_match_score"], 91)
+        self.assertEqual(out["same_person_score"], 91)
+        self.assertEqual(out["reference_face_source_count"], 2)
+        self.assertEqual(out["matched_face_frame_count"], 3)
+        self.assertEqual(out["best_face_similarity"], 0.62)
+        self.assertEqual(same_person_mock.call_args.kwargs["reference_image_sources"], ["https://img.her.local/a.jpg", "https://img.her.local/b.jpg"])
+
+    def test_analyze_local_live_video_merges_deepfake_result(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            video_path = pathlib.Path(temp_dir) / "demo.mp4"
+            video_path.write_bytes(b"demo-video")
+            anti_spoof_result = {
+                "liveness_score": 95,
+                "spoofing_risk_score": 5,
+                "replay_attack_score": 8,
+                "screen_risk_score": 7,
+                "motion_score": 68,
+                "face_presence_score": 100,
+                "sampled_frame_count": 7,
+                "valid_face_frame_count": 7,
+                "detected_face_count_max": 1,
+                "average_detection_confidence": 96,
+                "risk_flags": [],
+            }
+            same_person_result = {
+                "analysis_status": "ok",
+                "face_match_score": 90,
+                "same_person_score": 90,
+                "reference_face_source_count": 1,
+                "reference_face_count": 1,
+                "matched_frame_count": 3,
+                "best_similarity": 0.61,
+                "risk_flags": [],
+            }
+            deepfake_result = {
+                "analysis_status": "ok",
+                "deepfake_risk_score": 88,
+                "deepfake_temporal_score": 92,
+                "deepfake_artifact_score": 79,
+                "deepfake_sampled_frame_count": 10,
+                "deepfake_face_frame_count": 8,
+                "risk_flags": ["deepfake_risk"],
+            }
+            with mock.patch.object(
+                live_video_local_module,
+                "_inspect_media_file",
+                return_value={"has_audio_track": False, "duration_ms": 4200},
+            ), mock.patch.object(
+                live_video_local_module,
+                "_analyze_silent_face_video",
+                return_value=anti_spoof_result,
+            ), mock.patch.object(
+                live_video_local_module,
+                "_safe_analyze_same_person_faces",
+                return_value=same_person_result,
+            ), mock.patch.object(
+                live_video_local_module,
+                "_safe_analyze_deepfake_video",
+                return_value=deepfake_result,
+            ):
+                out = live_video_local_module.analyze_local_live_video(video_path)
+
+        self.assertEqual(out["deepfake_risk_score"], 88)
+        self.assertEqual(out["deepfake_analysis_status"], "ok")
+        self.assertEqual(out["deepfake_temporal_score"], 92)
+        self.assertEqual(out["deepfake_artifact_score"], 79)
+        self.assertIn("deepfake_risk", out["risk_flags"])
+
+    def test_analyze_deepfake_face_crops_scores_manipulated_sequence_higher(self):
+        natural = live_video_local_module._analyze_deepfake_face_crops(
+            self._build_synthetic_face_sequence(manipulated=False)
+        )
+        manipulated = live_video_local_module._analyze_deepfake_face_crops(
+            self._build_synthetic_face_sequence(manipulated=True)
+        )
+
+        self.assertEqual(natural["analysis_status"], "ok")
+        self.assertEqual(manipulated["analysis_status"], "ok")
+        self.assertLess(natural["deepfake_risk_score"], 55)
+        self.assertGreaterEqual(manipulated["deepfake_risk_score"], 60)
+        self.assertGreater(manipulated["deepfake_temporal_score"], natural["deepfake_temporal_score"])
+        self.assertGreater(manipulated["deepfake_artifact_score"], natural["deepfake_artifact_score"])
+        self.assertTrue(manipulated["risk_flags"])
+
+    def test_analyze_photo_edit_face_sets_scores_edited_reference_higher(self):
+        live_metrics = [
+            live_video_local_module._photo_edit_crop_metrics(
+                crop,
+                face_aspect_ratio=68.0 / 82.0,
+            )
+            for crop in self._build_photo_edit_face_crops(edited=False, count=5)
+        ]
+        natural_reference_metrics = [
+            live_video_local_module._photo_edit_crop_metrics(
+                crop,
+                face_aspect_ratio=68.0 / 82.0,
+            )
+            for crop in self._build_photo_edit_face_crops(edited=False, count=3)
+        ]
+        edited_reference_metrics = [
+            live_video_local_module._photo_edit_crop_metrics(
+                crop,
+                face_aspect_ratio=58.0 / 82.0,
+            )
+            for crop in self._build_photo_edit_face_crops(edited=True, count=3)
+        ]
+
+        natural = live_video_local_module._analyze_photo_edit_face_sets(
+            natural_reference_metrics,
+            live_metrics,
+            reference_face_source_count=3,
+        )
+        edited = live_video_local_module._analyze_photo_edit_face_sets(
+            edited_reference_metrics,
+            live_metrics,
+            reference_face_source_count=3,
+        )
+
+        self.assertEqual(natural["analysis_status"], "ok")
+        self.assertEqual(edited["analysis_status"], "ok")
+        self.assertLess(natural["photo_edit_risk_score"], 55)
+        self.assertGreaterEqual(edited["photo_edit_risk_score"], 60)
+        self.assertGreater(edited["skin_smoothing_risk_score"], natural["skin_smoothing_risk_score"])
+        self.assertGreater(edited["beauty_filter_risk_score"], natural["beauty_filter_risk_score"])
+        self.assertTrue(edited["risk_flags"])
+
+    def test_analyze_local_live_video_merges_photo_edit_result(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            video_path = pathlib.Path(temp_dir) / "demo.mp4"
+            video_path.write_bytes(b"demo-video")
+            anti_spoof_result = {
+                "liveness_score": 94,
+                "spoofing_risk_score": 6,
+                "replay_attack_score": 8,
+                "screen_risk_score": 7,
+                "motion_score": 70,
+                "face_presence_score": 100,
+                "sampled_frame_count": 7,
+                "valid_face_frame_count": 7,
+                "detected_face_count_max": 1,
+                "average_detection_confidence": 96,
+                "risk_flags": [],
+            }
+            same_person_result = {
+                "analysis_status": "ok",
+                "face_match_score": 90,
+                "same_person_score": 90,
+                "reference_face_source_count": 2,
+                "reference_face_count": 2,
+                "matched_frame_count": 3,
+                "best_similarity": 0.62,
+                "risk_flags": [],
+            }
+            photo_edit_result = {
+                "analysis_status": "ok",
+                "photo_edit_risk_score": 87,
+                "skin_smoothing_risk_score": 92,
+                "beauty_filter_risk_score": 81,
+                "face_shape_delta_score": 48,
+                "photo_edit_reference_face_count": 2,
+                "photo_edit_live_face_frame_count": 5,
+                "photo_edit_reference_source_count": 2,
+                "photo_edit_edited_reference_count": 2,
+                "risk_flags": ["photo_heavily_edited"],
+            }
+            with mock.patch.object(
+                live_video_local_module,
+                "_inspect_media_file",
+                return_value={"has_audio_track": False, "duration_ms": 4200},
+            ), mock.patch.object(
+                live_video_local_module,
+                "_analyze_silent_face_video",
+                return_value=anti_spoof_result,
+            ), mock.patch.object(
+                live_video_local_module,
+                "_safe_analyze_same_person_faces",
+                return_value=same_person_result,
+            ), mock.patch.object(
+                live_video_local_module,
+                "_safe_analyze_deepfake_video",
+                return_value=live_video_local_module._deepfake_unavailable_result(
+                    "not_needed",
+                    sampled_frame_count=0,
+                    face_frame_count=0,
+                ),
+            ), mock.patch.object(
+                live_video_local_module,
+                "_safe_analyze_photo_edit_risk",
+                return_value=photo_edit_result,
+            ):
+                out = live_video_local_module.analyze_local_live_video(
+                    video_path,
+                    reference_image_sources=["https://img.her.local/a.jpg", "https://img.her.local/b.jpg"],
+                )
+
+        self.assertEqual(out["photo_edit_risk_score"], 87)
+        self.assertEqual(out["photo_edit_analysis_status"], "ok")
+        self.assertEqual(out["skin_smoothing_risk_score"], 92)
+        self.assertEqual(out["beauty_filter_risk_score"], 81)
+        self.assertEqual(out["photo_edit_edited_reference_count"], 2)
+        self.assertIn("photo_heavily_edited", out["risk_flags"])
+
+    def test_analyze_same_person_photo_entries_flags_mixed_identity(self):
+        photo_entries = [
+            {"face_count": 1, "embedding": np.asarray([1.0, 0.0, 0.0], dtype=np.float32)},
+            {"face_count": 1, "embedding": np.asarray([0.98, 0.02, 0.0], dtype=np.float32)},
+            {"face_count": 1, "embedding": np.asarray([0.0, 1.0, 0.0], dtype=np.float32)},
+        ]
+
+        class _DummyFaceEngine:
+            @staticmethod
+            def match(feature_a: np.ndarray, feature_b: np.ndarray) -> float:
+                norm_a = float(np.linalg.norm(feature_a))
+                norm_b = float(np.linalg.norm(feature_b))
+                if norm_a <= 0 or norm_b <= 0:
+                    return 0.0
+                return float(np.dot(feature_a, feature_b) / (norm_a * norm_b))
+
+        with mock.patch.object(
+            live_video_local_module,
+            "_face_match_engine",
+            return_value=_DummyFaceEngine(),
+        ):
+            out = live_video_local_module._analyze_same_person_photo_entries(photo_entries)
+
+        self.assertEqual(out["analysis_status"], "ok")
+        self.assertLess(out["same_person_score"], 45)
+        self.assertIn("mixed_identity_photos", out["risk_flags"])
+
+    def test_analyze_profile_photo_duplicates_flags_cross_profile_duplicate(self):
+        out = live_video_local_module._analyze_profile_photo_duplicates(
+            [
+                {"source": "a.jpg", "image_hash": int("10101010", 2)},
+                {"source": "b.jpg", "image_hash": int("11110000", 2)},
+            ],
+            comparison_entries=[
+                {"source": "other-1.jpg", "image_hash": int("10101010", 2)},
+                {"source": "other-2.jpg", "image_hash": int("00001111", 2)},
+            ],
+        )
+
+        self.assertEqual(out["analysis_status"], "ok")
+        self.assertGreaterEqual(out["stolen_media_risk_score"], 85)
+        self.assertGreaterEqual(out["cross_profile_duplicate_count"], 1)
+        self.assertIn("stolen_media_risk", out["risk_flags"])
+
+    def test_transcribe_video_audio_extracts_wav_before_whisper(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            video_path = pathlib.Path(temp_dir) / "demo.webm"
+            audio_path = pathlib.Path(temp_dir) / "demo.wav"
+            video_path.write_bytes(b"demo-video")
+            audio_path.write_bytes(b"demo-audio")
+            with mock.patch.object(
+                live_video_local_module,
+                "_extract_audio_track_to_wav",
+                return_value=audio_path,
+            ) as extract_mock, mock.patch.object(
+                live_video_local_module,
+                "_transcribe_audio_with_whisper_worker",
+                return_value={
+                    "provider": "faster_whisper",
+                    "model_name": "tiny",
+                    "transcript_text": "37",
+                    "transcript_segments": [
+                        {
+                            "text": "37",
+                            "start_ms": 2480,
+                            "end_ms": 3290,
+                            "confidence": 95,
+                        }
+                    ],
+                    "transcript_confidence": 95,
+                    "speech_started_at_ms": 2480,
+                    "speech_ended_at_ms": 3290,
+                    "audio_duration_ms": 3290,
+                },
+            ) as worker_mock, mock.patch.object(
+                live_video_local_module,
+                "_safe_compute_audio_video_sync_result",
+                return_value={
+                    "audio_video_sync_score": 84,
+                    "audio_video_sync_status": "ok",
+                    "audio_video_sync_offset_ms": 40,
+                    "audio_video_sync_correlation": 0.74,
+                    "audio_video_sync_overlap_ratio": 0.81,
+                },
+            ) as sync_mock:
+                out = live_video_local_module._transcribe_video_audio(
+                    video_path,
+                    media_info={"has_audio_track": True, "duration_ms": 4200},
+                )
+
+        self.assertEqual(extract_mock.call_args.args[0], video_path)
+        self.assertEqual(worker_mock.call_args.args[0], audio_path)
+        self.assertEqual(worker_mock.call_args.kwargs["language"], None)
+        self.assertEqual(sync_mock.call_args.args[0], video_path)
+        self.assertEqual(sync_mock.call_args.kwargs["audio_path"], audio_path)
+        self.assertEqual(out["provider"], "faster_whisper")
+        self.assertEqual(out["transcript_text"], "37")
+        self.assertEqual(out["audio_video_sync_score"], 84)
+        self.assertEqual(out["audio_video_sync_status"], "ok")
+        self.assertFalse(audio_path.exists())
+
+    def test_score_audio_video_sync_curves_rewards_aligned_motion(self):
+        audio_points = [
+            {"timestamp_ms": 2000, "value": 0.05},
+            {"timestamp_ms": 2040, "value": 0.16},
+            {"timestamp_ms": 2080, "value": 0.35},
+            {"timestamp_ms": 2120, "value": 0.72},
+            {"timestamp_ms": 2160, "value": 0.96},
+            {"timestamp_ms": 2200, "value": 0.84},
+            {"timestamp_ms": 2240, "value": 0.48},
+            {"timestamp_ms": 2280, "value": 0.19},
+            {"timestamp_ms": 2320, "value": 0.07},
+        ]
+        aligned_visual_points = [
+            {"timestamp_ms": 2010, "value": 0.02},
+            {"timestamp_ms": 2090, "value": 0.22},
+            {"timestamp_ms": 2140, "value": 0.61},
+            {"timestamp_ms": 2190, "value": 0.88},
+            {"timestamp_ms": 2240, "value": 0.43},
+            {"timestamp_ms": 2290, "value": 0.12},
+        ]
+        shifted_visual_points = [
+            {"timestamp_ms": 2450, "value": 0.02},
+            {"timestamp_ms": 2530, "value": 0.22},
+            {"timestamp_ms": 2580, "value": 0.61},
+            {"timestamp_ms": 2630, "value": 0.88},
+            {"timestamp_ms": 2680, "value": 0.43},
+            {"timestamp_ms": 2730, "value": 0.12},
+        ]
+
+        aligned = live_video_local_module._score_audio_video_sync_curves(
+            audio_points,
+            aligned_visual_points,
+            speech_start_ms=2040,
+            speech_end_ms=2280,
+        )
+        shifted = live_video_local_module._score_audio_video_sync_curves(
+            audio_points,
+            shifted_visual_points,
+            speech_start_ms=2040,
+            speech_end_ms=2280,
+        )
+
+        self.assertGreaterEqual(aligned["audio_video_sync_score"], 75)
+        self.assertLessEqual(shifted["audio_video_sync_score"], 55)
+
+    def test_evaluate_speech_challenge_requires_audio_video_sync_for_pass(self):
+        metadata = {
+            "action_challenge": {
+                "spoken_code": "37",
+            },
+            "action_result": {
+                "audio_recorded": True,
+                "spoken_prompt_rendered": True,
+                "spoken_prompt_display_ms": 2200,
+                "action_events": [
+                    {"action": "blink", "detected_at_ms": 700},
+                    {"action": "open_mouth", "detected_at_ms": 1450},
+                    {"action": "turn_left", "detected_at_ms": 2200},
+                ],
+            },
+            "speech_challenge_result": {
+                "provider": "faster_whisper",
+                "transcript_text": "37",
+                "transcript_confidence": 95,
+                "speech_started_at_ms": 2480,
+                "speech_ended_at_ms": 3290,
+            },
+        }
+
+        out = verification_module._evaluate_speech_challenge(metadata)
+
+        self.assertEqual(out["speech_result"], "unclear")
+        self.assertIn("audio_video_sync_unverified", out["risk_flags"])
+
+    def test_transcribe_audio_with_whisper_worker_invokes_module_process(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            audio_path = pathlib.Path(temp_dir) / "demo.wav"
+            audio_path.write_bytes(b"demo-audio")
+            completed = types.SimpleNamespace(
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "provider": "faster_whisper",
+                        "model_name": "tiny",
+                        "transcript_text": "37",
+                        "transcript_segments": [],
+                        "transcript_confidence": 95,
+                        "speech_started_at_ms": 2480,
+                        "speech_ended_at_ms": 3290,
+                        "audio_duration_ms": 3290,
+                    }
+                ),
+                stderr="",
+            )
+            with mock.patch.object(live_video_local_module.subprocess, "run", return_value=completed) as run_mock:
+                out = live_video_local_module._transcribe_audio_with_whisper_worker(audio_path, language="zh")
+
+        self.assertEqual(out["transcript_text"], "37")
+        command = run_mock.call_args.args[0]
+        self.assertEqual(command[1:3], ["-m", "chat_system.live_video_whisper_worker"])
+        self.assertEqual(command[3], str(audio_path))
+        self.assertEqual(run_mock.call_args.kwargs["env"]["HER_VERIFICATION_WHISPER_LANGUAGE"], "zh")
+
+    def test_transcribe_audio_with_whisper_worker_raises_on_worker_failure(self):
+        completed = types.SimpleNamespace(returncode=139, stdout="", stderr="Segmentation fault")
+        with mock.patch.object(live_video_local_module.subprocess, "run", return_value=completed):
+            with self.assertRaisesRegex(RuntimeError, "Segmentation fault"):
+                live_video_local_module._transcribe_audio_with_whisper_worker(pathlib.Path("/tmp/demo.wav"), language=None)
+
+    def test_load_profile_reference_face_sources_prefers_primary_photo_rows(self):
+        with self.conn.driver_connection.cursor() as cursor:
+            cursor.execute("DROP TABLE IF EXISTS `profile_photos`")
+            cursor.execute("DROP TABLE IF EXISTS `profiles`")
+            cursor.execute(
+                """
+                CREATE TABLE `profiles` (
+                  `id` BIGINT PRIMARY KEY,
+                  `avatar_url` VARCHAR(255)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE `profile_photos` (
+                  `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
+                  `profile_id` BIGINT NOT NULL,
+                  `photo_url` VARCHAR(255) NOT NULL,
+                  `is_primary` TINYINT(1) DEFAULT 0,
+                  `sort_order` INT DEFAULT 0
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """
+            )
+            cursor.execute(
+                "INSERT INTO `profiles` (`id`, `avatar_url`) VALUES (1001, 'https://img.her.local/avatar-fallback.jpg')"
+            )
+            cursor.executemany(
+                "INSERT INTO `profile_photos` (`profile_id`, `photo_url`, `is_primary`, `sort_order`) VALUES (%s, %s, %s, %s)",
+                [
+                    (1001, "https://img.her.local/gallery-2.jpg", 0, 2),
+                    (1001, "https://img.her.local/primary.jpg", 1, 9),
+                    (1001, "https://img.her.local/gallery-1.jpg", 0, 1),
+                ],
+            )
+        self.conn.commit()
+
+        out = verification_module._load_profile_reference_face_sources(
+            profile_id=1001,
+            source_dsn=f"{DEFAULT_CHAT_TEST_MYSQL_DSN}?table=profiles&photos_table=profile_photos",
+            source_table_name=None,
+        )
+
+        self.assertEqual(
+            out,
+            [
+                "https://img.her.local/primary.jpg",
+                "https://img.her.local/gallery-1.jpg",
+                "https://img.her.local/gallery-2.jpg",
+            ],
+        )
+
+    def test_load_profile_reference_face_sources_falls_back_to_avatar(self):
+        with self.conn.driver_connection.cursor() as cursor:
+            cursor.execute("DROP TABLE IF EXISTS `profile_photos`")
+            cursor.execute("DROP TABLE IF EXISTS `profiles`")
+            cursor.execute(
+                """
+                CREATE TABLE `profiles` (
+                  `id` BIGINT PRIMARY KEY,
+                  `avatar_url` VARCHAR(255)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """
+            )
+            cursor.execute(
+                "INSERT INTO `profiles` (`id`, `avatar_url`) VALUES (1002, 'https://img.her.local/avatar-only.jpg')"
+            )
+        self.conn.commit()
+
+        out = verification_module._load_profile_reference_face_sources(
+            profile_id=1002,
+            source_dsn=f"{DEFAULT_CHAT_TEST_MYSQL_DSN}?table=profiles&photos_table=profile_photos",
+            source_table_name=None,
+        )
+
+        self.assertEqual(out, ["https://img.her.local/avatar-only.jpg"])
+
+    def test_evaluate_profile_consistency_creates_photo_review_request_from_photo_authenticity_risk(self):
+        with self.conn.driver_connection.cursor() as cursor:
+            cursor.execute("DROP TABLE IF EXISTS `profile_photos`")
+            cursor.execute("DROP TABLE IF EXISTS `profiles`")
+            cursor.execute(
+                """
+                CREATE TABLE `profiles` (
+                  `id` BIGINT PRIMARY KEY,
+                  `avatar_url` VARCHAR(255),
+                  `education` VARCHAR(64),
+                  `job` VARCHAR(255),
+                  `income_range` VARCHAR(64),
+                  `city` VARCHAR(64),
+                  `job_change_count_30d` INT,
+                  `income_change_count_30d` INT,
+                  `city_change_count_30d` INT,
+                  `profile_review_status` VARCHAR(32),
+                  `job_verification_status` VARCHAR(32),
+                  `income_verification_status` VARCHAR(32),
+                  `education_verification_status` VARCHAR(32)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE `profile_photos` (
+                  `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
+                  `profile_id` BIGINT NOT NULL,
+                  `photo_url` VARCHAR(255) NOT NULL,
+                  `is_primary` TINYINT(1) DEFAULT 0,
+                  `sort_order` INT DEFAULT 0
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """
+            )
+            cursor.executemany(
+                (
+                    "INSERT INTO `profiles` "
+                    "(`id`, `avatar_url`, `education`, `job`, `income_range`, `city`, "
+                    "`job_change_count_30d`, `income_change_count_30d`, `city_change_count_30d`, "
+                    "`profile_review_status`, `job_verification_status`, `income_verification_status`, `education_verification_status`) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+                ),
+                [
+                    (3001, None, "本科", "产品经理", "30-50万/年", "上海", 0, 0, 0, "approved", "verified", "verified", "verified"),
+                    (3002, None, "本科", "产品经理", "30-50万/年", "上海", 0, 0, 0, "approved", "verified", "verified", "verified"),
+                ],
+            )
+            cursor.executemany(
+                "INSERT INTO `profile_photos` (`profile_id`, `photo_url`, `is_primary`, `sort_order`) VALUES (%s, %s, %s, %s)",
+                [
+                    (3001, "/tmp/photo-a.jpg", 1, 0),
+                    (3001, "/tmp/photo-b.jpg", 0, 1),
+                    (3002, "/tmp/photo-c.jpg", 1, 0),
+                ],
+            )
+        self.conn.commit()
+
+        mocked_review = {
+            "analysis_status": "ok",
+            "photo_authenticity_score": 36,
+            "same_person_score": 32,
+            "same_person_pair_count": 1,
+            "same_person_matched_pair_count": 0,
+            "same_person_average_similarity": 0.24,
+            "same_person_min_similarity": 0.24,
+            "photo_edit_risk_score": 88,
+            "photo_edit_analysis_status": "ok",
+            "skin_smoothing_risk_score": 91,
+            "beauty_filter_risk_score": 80,
+            "face_shape_delta_score": 45,
+            "edited_photo_count": 2,
+            "deepfake_risk_score": 0,
+            "deepfake_analysis_status": "ok",
+            "deepfake_artifact_score": 0,
+            "deepfake_consistency_score": 0,
+            "stolen_media_risk_score": 86,
+            "stolen_media_analysis_status": "ok",
+            "duplicate_photo_count": 0,
+            "cross_profile_duplicate_count": 1,
+            "exact_cross_profile_duplicate_count": 1,
+            "source_count": 2,
+            "loaded_source_count": 2,
+            "valid_face_photo_count": 2,
+            "multiple_face_photo_count": 0,
+            "comparison_source_count": 1,
+            "risk_flags": ["mixed_identity_photos", "photo_heavily_edited", "stolen_media_risk"],
+        }
+        with mock.patch.object(
+            live_video_local_module,
+            "analyze_profile_photo_authenticity_detailed",
+            return_value={
+                "review": mocked_review,
+                "photo_entries": [
+                    {
+                        "source": "/tmp/photo-a.jpg",
+                        "face_count": 1,
+                        "face_detection_score": 97,
+                        "image_hash_hex": "aaaaaaaaaaaaaaaa",
+                        "embedding_available": True,
+                        "embedding_dim": 512,
+                        "embedding_preview": [0.11, 0.22],
+                        "photo_edit_metrics": {"skin_detail": 0.14, "feature_skin_gap": 1.28},
+                        "deepfake_metrics": {"seam_strength": 0.81, "detail_ratio": 1.02},
+                    },
+                    {
+                        "source": "/tmp/photo-b.jpg",
+                        "face_count": 1,
+                        "face_detection_score": 96,
+                        "image_hash_hex": "bbbbbbbbbbbbbbbb",
+                        "embedding_available": True,
+                        "embedding_dim": 512,
+                        "embedding_preview": [0.33, 0.44],
+                        "photo_edit_metrics": {"skin_detail": 0.12, "feature_skin_gap": 1.35},
+                        "deepfake_metrics": {"seam_strength": 0.77, "detail_ratio": 1.01},
+                    },
+                ],
+                "comparison_entries": [
+                    {
+                        "source": "/tmp/photo-c.jpg",
+                        "face_count": 1,
+                        "face_detection_score": 95,
+                        "image_hash_hex": "cccccccccccccccc",
+                        "embedding_available": True,
+                        "embedding_dim": 512,
+                        "embedding_preview": [0.55, 0.66],
+                        "photo_edit_metrics": {"skin_detail": 0.15, "feature_skin_gap": 1.21},
+                        "deepfake_metrics": {"seam_strength": 0.73, "detail_ratio": 1.03},
+                    }
+                ],
+            },
+        ):
+            out = evaluate_profile_consistency(
+                self.conn,
+                profile_id=3001,
+                source_dsn=f"{DEFAULT_CHAT_TEST_MYSQL_DSN}?table=profiles&photos_table=profile_photos",
+                subject_user_id="user-photo-3001",
+                now=datetime(2026, 5, 13, 16, 0, 0),
+            )
+
+        self.assertIsNotNone(out["risk_case"])
+        self.assertIsNotNone(out["photo_review_request"])
+        rule_codes = {item["rule_code"] for item in out["rule_hits"]}
+        self.assertIn("profile_photo_identity_mismatch", rule_codes)
+        self.assertIn("profile_photo_stolen_media_risk", rule_codes)
+        self.assertIn("profile_photo_heavily_edited", rule_codes)
+        self.assertEqual(out["photo_authenticity_review"]["photo_authenticity_score"], 36)
+        self.assertEqual(
+            (out["risk_case"]["evidence_summary"] or {}).get("photo_authenticity_review", {}).get("photo_authenticity_score"),
+            36,
+        )
+        self.assertEqual(
+            (out["risk_case"]["evidence_summary"] or {}).get("photo_review_signal_codes"),
+            ["photo_mismatch", "identity_mismatch", "suspected_fake_photo", "photo_heavily_edited"],
+        )
+        self.assertEqual(out["photo_review_request"]["status"], "awaiting_submission")
+        self.assertEqual(len(list_photo_review_requests(self.conn, user_id="user-photo-3001")), 1)
+
+    def test_evaluate_profile_consistency_persists_photo_risk_service_records(self):
+        with self.conn.driver_connection.cursor() as cursor:
+            cursor.execute("DROP TABLE IF EXISTS `profile_photos`")
+            cursor.execute("DROP TABLE IF EXISTS `profiles`")
+            cursor.execute(
+                """
+                CREATE TABLE `profiles` (
+                  `id` BIGINT PRIMARY KEY,
+                  `avatar_url` VARCHAR(255),
+                  `education` VARCHAR(64),
+                  `job` VARCHAR(255),
+                  `income_range` VARCHAR(64),
+                  `city` VARCHAR(64),
+                  `job_change_count_30d` INT,
+                  `income_change_count_30d` INT,
+                  `city_change_count_30d` INT,
+                  `profile_review_status` VARCHAR(32),
+                  `job_verification_status` VARCHAR(32),
+                  `income_verification_status` VARCHAR(32),
+                  `education_verification_status` VARCHAR(32)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE `profile_photos` (
+                  `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
+                  `profile_id` BIGINT NOT NULL,
+                  `photo_url` VARCHAR(255) NOT NULL,
+                  `is_primary` TINYINT(1) DEFAULT 0,
+                  `sort_order` INT DEFAULT 0
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """
+            )
+            cursor.executemany(
+                (
+                    "INSERT INTO `profiles` "
+                    "(`id`, `avatar_url`, `education`, `job`, `income_range`, `city`, "
+                    "`job_change_count_30d`, `income_change_count_30d`, `city_change_count_30d`, "
+                    "`profile_review_status`, `job_verification_status`, `income_verification_status`, `education_verification_status`) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+                ),
+                [
+                    (3101, None, "本科", "产品经理", "30-50万/年", "上海", 0, 0, 0, "approved", "verified", "verified", "verified"),
+                    (3102, None, "本科", "产品经理", "30-50万/年", "上海", 0, 0, 0, "approved", "verified", "verified", "verified"),
+                ],
+            )
+            cursor.executemany(
+                "INSERT INTO `profile_photos` (`profile_id`, `photo_url`, `is_primary`, `sort_order`) VALUES (%s, %s, %s, %s)",
+                [
+                    (3101, "/tmp/persist-a.jpg", 1, 0),
+                    (3101, "/tmp/persist-b.jpg", 0, 1),
+                    (3102, "/tmp/persist-c.jpg", 1, 0),
+                ],
+            )
+        self.conn.commit()
+
+        mocked_review = {
+            "analysis_status": "ok",
+            "photo_authenticity_score": 36,
+            "same_person_score": 32,
+            "same_person_pair_count": 1,
+            "same_person_matched_pair_count": 0,
+            "same_person_average_similarity": 0.24,
+            "same_person_min_similarity": 0.24,
+            "photo_edit_risk_score": 88,
+            "photo_edit_analysis_status": "ok",
+            "skin_smoothing_risk_score": 91,
+            "beauty_filter_risk_score": 80,
+            "face_shape_delta_score": 45,
+            "edited_photo_count": 2,
+            "deepfake_risk_score": 0,
+            "deepfake_analysis_status": "ok",
+            "deepfake_artifact_score": 0,
+            "deepfake_consistency_score": 0,
+            "stolen_media_risk_score": 86,
+            "stolen_media_analysis_status": "ok",
+            "duplicate_photo_count": 0,
+            "cross_profile_duplicate_count": 1,
+            "exact_cross_profile_duplicate_count": 1,
+            "source_count": 2,
+            "loaded_source_count": 2,
+            "valid_face_photo_count": 2,
+            "multiple_face_photo_count": 0,
+            "comparison_source_count": 1,
+            "risk_flags": ["mixed_identity_photos", "photo_heavily_edited", "stolen_media_risk"],
+        }
+        mocked_bundle = {
+            "review": mocked_review,
+            "photo_entries": [
+                {
+                    "source": "/tmp/persist-a.jpg",
+                    "face_count": 1,
+                    "face_detection_score": 97,
+                    "image_hash_hex": "aaaaaaaaaaaaaaaa",
+                    "embedding_available": True,
+                    "embedding_dim": 512,
+                    "embedding_preview": [0.11, 0.22],
+                    "photo_edit_metrics": {"skin_detail": 0.14, "feature_skin_gap": 1.28},
+                    "deepfake_metrics": {"seam_strength": 0.81, "detail_ratio": 1.02},
+                },
+                {
+                    "source": "/tmp/persist-b.jpg",
+                    "face_count": 1,
+                    "face_detection_score": 96,
+                    "image_hash_hex": "bbbbbbbbbbbbbbbb",
+                    "embedding_available": True,
+                    "embedding_dim": 512,
+                    "embedding_preview": [0.33, 0.44],
+                    "photo_edit_metrics": {"skin_detail": 0.12, "feature_skin_gap": 1.35},
+                    "deepfake_metrics": {"seam_strength": 0.77, "detail_ratio": 1.01},
+                },
+            ],
+            "comparison_entries": [
+                {
+                    "source": "/tmp/persist-c.jpg",
+                    "face_count": 1,
+                    "face_detection_score": 95,
+                    "image_hash_hex": "cccccccccccccccc",
+                    "embedding_available": True,
+                    "embedding_dim": 512,
+                    "embedding_preview": [0.55, 0.66],
+                    "photo_edit_metrics": {"skin_detail": 0.15, "feature_skin_gap": 1.21},
+                    "deepfake_metrics": {"seam_strength": 0.73, "detail_ratio": 1.03},
+                }
+            ],
+        }
+        with mock.patch.object(
+            live_video_local_module,
+            "analyze_profile_photo_authenticity_detailed",
+            return_value=mocked_bundle,
+        ):
+            out = evaluate_profile_consistency(
+                self.conn,
+                profile_id=3101,
+                source_dsn=f"{DEFAULT_CHAT_TEST_MYSQL_DSN}?table=profiles&photos_table=profile_photos",
+                subject_user_id="user-photo-3101",
+                now=datetime(2026, 5, 13, 16, 30, 0),
+            )
+
+        service = out["photo_risk_service"]
+        self.assertIsNotNone(service)
+        self.assertEqual(service["score_run"]["photo_authenticity_score"], 36)
+        self.assertIsNotNone(service["review_queue_item"])
+        self.assertEqual(service["review_queue_item"]["queue_status"], "open")
+
+        stored_run = get_photo_risk_score_run(self.conn, service["score_run_id"])
+        self.assertIsNotNone(stored_run)
+        assert stored_run is not None
+        self.assertEqual(stored_run["decision"]["recommended_action"], "limited_exposure")
+        self.assertEqual(len(stored_run["assets"]), 3)
+        asset_roles = {item["feature_snapshot"]["asset_role"] for item in stored_run["assets"]}
+        self.assertEqual(asset_roles, {"subject_profile_photo", "comparison_profile_photo"})
+        self.assertEqual(
+            (out["risk_case"]["evidence_summary"] or {}).get("photo_risk_service", {}).get("score_run_id"),
+            service["score_run_id"],
+        )
+
+        listed_runs = list_photo_risk_score_runs(self.conn, profile_id=3101)
+        self.assertEqual(len(listed_runs), 1)
+        self.assertEqual(listed_runs[0]["score_run_id"], service["score_run_id"])
+
+        queue_items = list_photo_risk_review_queue(self.conn, statuses=["open"], profile_id=3101)
+        self.assertEqual(len(queue_items), 1)
+        self.assertEqual(queue_items[0]["profile_review_case_id"], out["risk_case"]["profile_review_case_id"])
+
+    def test_evaluate_profile_consistency_persists_clear_photo_risk_run_without_case(self):
+        with self.conn.driver_connection.cursor() as cursor:
+            cursor.execute("DROP TABLE IF EXISTS `profile_photos`")
+            cursor.execute("DROP TABLE IF EXISTS `profiles`")
+            cursor.execute(
+                """
+                CREATE TABLE `profiles` (
+                  `id` BIGINT PRIMARY KEY,
+                  `avatar_url` VARCHAR(255),
+                  `education` VARCHAR(64),
+                  `job` VARCHAR(255),
+                  `income_range` VARCHAR(64),
+                  `city` VARCHAR(64),
+                  `job_change_count_30d` INT,
+                  `income_change_count_30d` INT,
+                  `city_change_count_30d` INT,
+                  `profile_review_status` VARCHAR(32),
+                  `job_verification_status` VARCHAR(32),
+                  `income_verification_status` VARCHAR(32),
+                  `education_verification_status` VARCHAR(32)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE `profile_photos` (
+                  `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
+                  `profile_id` BIGINT NOT NULL,
+                  `photo_url` VARCHAR(255) NOT NULL,
+                  `is_primary` TINYINT(1) DEFAULT 0,
+                  `sort_order` INT DEFAULT 0
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """
+            )
+            cursor.execute(
+                (
+                    "INSERT INTO `profiles` "
+                    "(`id`, `avatar_url`, `education`, `job`, `income_range`, `city`, "
+                    "`job_change_count_30d`, `income_change_count_30d`, `city_change_count_30d`, "
+                    "`profile_review_status`, `job_verification_status`, `income_verification_status`, `education_verification_status`) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+                ),
+                (3201, None, "本科", "产品经理", "30-50万/年", "上海", 0, 0, 0, "approved", "verified", "verified", "verified"),
+            )
+            cursor.executemany(
+                "INSERT INTO `profile_photos` (`profile_id`, `photo_url`, `is_primary`, `sort_order`) VALUES (%s, %s, %s, %s)",
+                [
+                    (3201, "/tmp/clear-a.jpg", 1, 0),
+                    (3201, "/tmp/clear-b.jpg", 0, 1),
+                ],
+            )
+        self.conn.commit()
+
+        mocked_bundle = {
+            "review": {
+                "analysis_status": "ok",
+                "photo_authenticity_score": 93,
+                "same_person_score": 95,
+                "same_person_pair_count": 1,
+                "same_person_matched_pair_count": 1,
+                "same_person_average_similarity": 0.71,
+                "same_person_min_similarity": 0.71,
+                "photo_edit_risk_score": 12,
+                "photo_edit_analysis_status": "ok",
+                "skin_smoothing_risk_score": 8,
+                "beauty_filter_risk_score": 9,
+                "face_shape_delta_score": 6,
+                "edited_photo_count": 0,
+                "deepfake_risk_score": 0,
+                "deepfake_analysis_status": "ok",
+                "deepfake_artifact_score": 0,
+                "deepfake_consistency_score": 0,
+                "stolen_media_risk_score": 0,
+                "stolen_media_analysis_status": "ok",
+                "duplicate_photo_count": 0,
+                "cross_profile_duplicate_count": 0,
+                "exact_cross_profile_duplicate_count": 0,
+                "source_count": 2,
+                "loaded_source_count": 2,
+                "valid_face_photo_count": 2,
+                "multiple_face_photo_count": 0,
+                "comparison_source_count": 0,
+                "risk_flags": [],
+            },
+            "photo_entries": [
+                {
+                    "source": "/tmp/clear-a.jpg",
+                    "face_count": 1,
+                    "face_detection_score": 98,
+                    "image_hash_hex": "1111111111111111",
+                    "embedding_available": True,
+                    "embedding_dim": 512,
+                    "embedding_preview": [0.01, 0.02],
+                    "photo_edit_metrics": {"skin_detail": 0.33},
+                    "deepfake_metrics": {"seam_strength": 0.14},
+                },
+                {
+                    "source": "/tmp/clear-b.jpg",
+                    "face_count": 1,
+                    "face_detection_score": 97,
+                    "image_hash_hex": "2222222222222222",
+                    "embedding_available": True,
+                    "embedding_dim": 512,
+                    "embedding_preview": [0.03, 0.04],
+                    "photo_edit_metrics": {"skin_detail": 0.32},
+                    "deepfake_metrics": {"seam_strength": 0.13},
+                },
+            ],
+            "comparison_entries": [],
+        }
+        with mock.patch.object(
+            live_video_local_module,
+            "analyze_profile_photo_authenticity_detailed",
+            return_value=mocked_bundle,
+        ):
+            out = evaluate_profile_consistency(
+                self.conn,
+                profile_id=3201,
+                source_dsn=f"{DEFAULT_CHAT_TEST_MYSQL_DSN}?table=profiles&photos_table=profile_photos",
+                subject_user_id="user-photo-3201",
+                now=datetime(2026, 5, 13, 16, 40, 0),
+            )
+
+        self.assertIsNone(out["risk_case"])
+        self.assertIsNone(out["photo_review_request"])
+        self.assertEqual(out["photo_risk_service"]["decision"]["recommended_action"], "none")
+        self.assertEqual(len(list_photo_risk_score_runs(self.conn, profile_id=3201)), 1)
+        self.assertEqual(list_photo_risk_review_queue(self.conn, profile_id=3201), [])
+
+    def test_review_profile_review_case_syncs_photo_risk_queue_status(self):
+        with self.conn.driver_connection.cursor() as cursor:
+            cursor.execute("DROP TABLE IF EXISTS `profile_photos`")
+            cursor.execute("DROP TABLE IF EXISTS `profiles`")
+            cursor.execute(
+                """
+                CREATE TABLE `profiles` (
+                  `id` BIGINT PRIMARY KEY,
+                  `avatar_url` VARCHAR(255),
+                  `education` VARCHAR(64),
+                  `job` VARCHAR(255),
+                  `income_range` VARCHAR(64),
+                  `city` VARCHAR(64),
+                  `job_change_count_30d` INT,
+                  `income_change_count_30d` INT,
+                  `city_change_count_30d` INT,
+                  `profile_review_status` VARCHAR(32),
+                  `job_verification_status` VARCHAR(32),
+                  `income_verification_status` VARCHAR(32),
+                  `education_verification_status` VARCHAR(32)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE `profile_photos` (
+                  `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
+                  `profile_id` BIGINT NOT NULL,
+                  `photo_url` VARCHAR(255) NOT NULL,
+                  `is_primary` TINYINT(1) DEFAULT 0,
+                  `sort_order` INT DEFAULT 0
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """
+            )
+            cursor.executemany(
+                (
+                    "INSERT INTO `profiles` "
+                    "(`id`, `avatar_url`, `education`, `job`, `income_range`, `city`, "
+                    "`job_change_count_30d`, `income_change_count_30d`, `city_change_count_30d`, "
+                    "`profile_review_status`, `job_verification_status`, `income_verification_status`, `education_verification_status`) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+                ),
+                [
+                    (3301, None, "本科", "产品经理", "30-50万/年", "上海", 0, 0, 0, "approved", "verified", "verified", "verified"),
+                    (3302, None, "本科", "产品经理", "30-50万/年", "上海", 0, 0, 0, "approved", "verified", "verified", "verified"),
+                ],
+            )
+            cursor.executemany(
+                "INSERT INTO `profile_photos` (`profile_id`, `photo_url`, `is_primary`, `sort_order`) VALUES (%s, %s, %s, %s)",
+                [
+                    (3301, "/tmp/queue-a.jpg", 1, 0),
+                    (3301, "/tmp/queue-b.jpg", 0, 1),
+                    (3302, "/tmp/queue-c.jpg", 1, 0),
+                ],
+            )
+        self.conn.commit()
+
+        mocked_bundle = {
+            "review": {
+                "analysis_status": "ok",
+                "photo_authenticity_score": 38,
+                "same_person_score": 35,
+                "same_person_pair_count": 1,
+                "same_person_matched_pair_count": 0,
+                "same_person_average_similarity": 0.26,
+                "same_person_min_similarity": 0.26,
+                "photo_edit_risk_score": 72,
+                "photo_edit_analysis_status": "ok",
+                "skin_smoothing_risk_score": 70,
+                "beauty_filter_risk_score": 68,
+                "face_shape_delta_score": 42,
+                "edited_photo_count": 1,
+                "deepfake_risk_score": 0,
+                "deepfake_analysis_status": "ok",
+                "deepfake_artifact_score": 0,
+                "deepfake_consistency_score": 0,
+                "stolen_media_risk_score": 91,
+                "stolen_media_analysis_status": "ok",
+                "duplicate_photo_count": 0,
+                "cross_profile_duplicate_count": 1,
+                "exact_cross_profile_duplicate_count": 1,
+                "source_count": 2,
+                "loaded_source_count": 2,
+                "valid_face_photo_count": 2,
+                "multiple_face_photo_count": 0,
+                "comparison_source_count": 1,
+                "risk_flags": ["mixed_identity_photos", "stolen_media_risk"],
+            },
+            "photo_entries": [
+                {"source": "/tmp/queue-a.jpg", "face_count": 1, "face_detection_score": 97, "image_hash_hex": "abcd", "embedding_available": True, "embedding_dim": 512, "embedding_preview": [0.1], "photo_edit_metrics": None, "deepfake_metrics": None},
+                {"source": "/tmp/queue-b.jpg", "face_count": 1, "face_detection_score": 96, "image_hash_hex": "bcde", "embedding_available": True, "embedding_dim": 512, "embedding_preview": [0.2], "photo_edit_metrics": None, "deepfake_metrics": None},
+            ],
+            "comparison_entries": [
+                {"source": "/tmp/queue-c.jpg", "face_count": 1, "face_detection_score": 95, "image_hash_hex": "cdef", "embedding_available": True, "embedding_dim": 512, "embedding_preview": [0.3], "photo_edit_metrics": None, "deepfake_metrics": None},
+            ],
+        }
+        with mock.patch.object(
+            live_video_local_module,
+            "analyze_profile_photo_authenticity_detailed",
+            return_value=mocked_bundle,
+        ):
+            out = evaluate_profile_consistency(
+                self.conn,
+                profile_id=3301,
+                source_dsn=f"{DEFAULT_CHAT_TEST_MYSQL_DSN}?table=profiles&photos_table=profile_photos",
+                subject_user_id="user-photo-3301",
+                now=datetime(2026, 5, 13, 16, 50, 0),
+            )
+
+        resolved = review_profile_review_case(
+            self.conn,
+            out["risk_case"]["profile_review_case_id"],
+            "moderator-photo-1",
+            status="resolved",
+            resolution_note="已人工确认并结案",
+            now=datetime(2026, 5, 13, 16, 55, 0),
+        )
+        self.assertEqual(resolved["photo_risk_queue_sync"]["queue_status"], "resolved")
+        queue_items = list_photo_risk_review_queue(self.conn, statuses=["resolved"], profile_id=3301)
+        self.assertEqual(len(queue_items), 1)
+        self.assertEqual(queue_items[0]["profile_review_case_id"], out["risk_case"]["profile_review_case_id"])
+
+    def test_live_video_verification_keeps_browser_speech_result_when_backend_whisper_is_unavailable(self):
+        challenge = create_live_video_verification_challenge(
+            user_id="user-v-browser-fallback",
+            challenge_actions=["blink", "open_mouth", "turn_left"],
+            now=datetime(2026, 5, 5, 13, 0, 0),
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            old_storage_dir = os.environ.get("HER_VERIFICATION_STORAGE_DIR")
+            os.environ["HER_VERIFICATION_STORAGE_DIR"] = temp_dir
+            try:
+                submission = submit_live_video_verification(
+                    self.conn,
+                    user_id="user-v-browser-fallback",
+                    video_base64=base64.b64encode(b"browser-speech-fallback-video" * 128).decode("ascii"),
+                    file_name="browser-fallback.mp4",
+                    content_type="video/mp4",
+                    challenge_token=challenge["challenge_token"],
+                    metadata={
+                        "local_provider_result": {
+                            "provider": "local_oss",
+                            "provider_version": "silent-face+faster-whisper-v1",
+                            "liveness_score": 94,
+                            "face_match_score": 88,
+                            "same_person_score": 88,
+                            "replay_attack_score": 8,
+                            "screen_risk_score": 10,
+                            "spoofing_risk_score": 6,
+                            "deepfake_risk_score": 0,
+                            "motion_score": 71,
+                            "face_presence_score": 97,
+                            "sampled_frame_count": 7,
+                            "valid_face_frame_count": 7,
+                            "detected_face_count_max": 1,
+                            "has_audio_track": True,
+                            "risk_flags": [],
+                            "speech_challenge_result": {
+                                "provider": "faster_whisper",
+                                "analysis_status": "unavailable",
+                                "error_type": "LocalEntryNotFoundError",
+                                "error_message": "whisper bootstrap timeout",
+                            },
+                        },
+                        "action_result": {
+                            "capture_mode": "realtime_challenge",
+                            "completed_actions": ["blink", "open_mouth", "turn_left"],
+                            "action_events": [
+                                {"action": "blink", "step_index": 1, "detected_at_ms": 720, "score": 95},
+                                {"action": "open_mouth", "step_index": 2, "detected_at_ms": 1490, "score": 94},
+                                {"action": "turn_left", "step_index": 3, "detected_at_ms": 2260, "score": 92},
+                            ],
+                            "action_scores": {
+                                "blink": 95,
+                                "open_mouth": 94,
+                                "turn_left": 92,
+                            },
+                            "face_count_max": 1,
+                            "challenge_phrase_rendered": True,
+                            "spoken_prompt_rendered": True,
+                            "spoken_prompt_display_ms": 2300,
+                            "audio_recorded": True,
+                            "recording_duration_ms": 4700,
+                            "video_recorded": True,
+                        },
+                        "speech_challenge_result": {
+                            "provider": "browser_speech_recognition",
+                            "transcript_text": challenge["spoken_code"],
+                            "transcript_confidence": 95,
+                            "speech_started_at_ms": 2480,
+                            "speech_ended_at_ms": 3290,
+                            "audio_video_sync_score": 83,
+                        },
+                    },
+                    now=datetime(2026, 5, 5, 13, 1, 0),
+                )
+            finally:
+                if old_storage_dir is None:
+                    os.environ.pop("HER_VERIFICATION_STORAGE_DIR", None)
+                else:
+                    os.environ["HER_VERIFICATION_STORAGE_DIR"] = old_storage_dir
+
+        self.assertEqual(submission["status"], "approved")
+        self.assertEqual(submission["machine_review"]["speech_provider"], "browser_speech_recognition")
+        self.assertEqual(submission["machine_review"]["speech_result"], "pass")
+        self.assertTrue(submission["machine_review"]["spoken_code_match"])
+        self.assertEqual(submission["metadata"]["speech_challenge_result"]["provider"], "browser_speech_recognition")
+
+    def test_live_video_verification_local_oss_provider_can_auto_approve_with_backend_asr(self):
+        os.environ["HER_VERIFICATION_PROVIDER"] = "local_oss"
+        with self.conn.driver_connection.cursor() as cursor:
+            cursor.execute(
+                """
+                CREATE TABLE `profiles` (
+                  `id` BIGINT PRIMARY KEY,
+                  `photo_verification_level` VARCHAR(32),
+                  `live_video_verified` TINYINT(1),
+                  `updated_at` DATETIME
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """
+            )
+            cursor.execute(
+                """
+                INSERT INTO `profiles` (`id`, `photo_verification_level`, `live_video_verified`, `updated_at`)
+                VALUES (1004, 'uploaded', 0, '2026-05-05 12:50:00')
+                """
+            )
+        self.conn.commit()
+
+        challenge = create_live_video_verification_challenge(
+            user_id="user-v10",
+            profile_id=1004,
+            challenge_actions=["blink", "open_mouth", "turn_left"],
+            now=datetime(2026, 5, 5, 13, 0, 0),
+        )
+        local_provider_result = {
+            "provider": "local_oss",
+            "provider_version": "silent-face+faster-whisper-v1",
+            "liveness_score": 93,
+            "face_match_score": 89,
+            "same_person_score": 89,
+            "replay_attack_score": 8,
+            "screen_risk_score": 12,
+            "spoofing_risk_score": 6,
+            "deepfake_risk_score": 0,
+            "motion_score": 76,
+            "face_presence_score": 98,
+            "sampled_frame_count": 7,
+            "valid_face_frame_count": 7,
+            "detected_face_count_max": 1,
+            "has_audio_track": True,
+            "risk_flags": [],
+            "speech_challenge_result": {
+                "provider": "faster_whisper",
+                "transcript_text": challenge["spoken_code"],
+                "transcript_confidence": 95,
+                "speech_started_at_ms": 2480,
+                "speech_ended_at_ms": 3290,
+                "audio_duration_ms": 3290,
+                "audio_video_sync_score": 84,
+            },
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            old_storage_dir = os.environ.get("HER_VERIFICATION_STORAGE_DIR")
+            os.environ["HER_VERIFICATION_STORAGE_DIR"] = temp_dir
+            try:
+                local_provider_module = types.SimpleNamespace(
+                    LOCAL_OSS_PROVIDER_VERSION="silent-face+faster-whisper-v1",
+                    analyze_local_live_video=mock.Mock(return_value=local_provider_result),
+                )
+                with mock.patch.object(
+                    verification_module,
+                    "_live_video_local_module",
+                    return_value=local_provider_module,
+                ):
+                    submission = submit_live_video_verification(
+                        self.conn,
+                        user_id="user-v10",
+                        profile_id=1004,
+                        source_dsn=f"{DEFAULT_CHAT_TEST_MYSQL_DSN}?table=profiles",
+                        video_base64=base64.b64encode(b"local-oss-provider-video" * 128).decode("ascii"),
+                        file_name="local-oss.mp4",
+                        content_type="video/mp4",
+                        challenge_token=challenge["challenge_token"],
+                        metadata={
+                            "action_result": {
+                                "capture_mode": "realtime_challenge",
+                                "completed_actions": ["blink", "open_mouth", "turn_left"],
+                                "action_events": [
+                                    {"action": "blink", "step_index": 1, "detected_at_ms": 720, "score": 95},
+                                    {"action": "open_mouth", "step_index": 2, "detected_at_ms": 1490, "score": 94},
+                                    {"action": "turn_left", "step_index": 3, "detected_at_ms": 2260, "score": 92},
+                                ],
+                                "action_scores": {
+                                    "blink": 95,
+                                    "open_mouth": 94,
+                                    "turn_left": 92,
+                                },
+                                "face_count_max": 1,
+                                "challenge_phrase_rendered": True,
+                                "spoken_prompt_rendered": True,
+                                "spoken_prompt_display_ms": 2300,
+                                "audio_recorded": True,
+                                "recording_duration_ms": 4700,
+                                "video_recorded": True,
+                            }
+                        },
+                        now=datetime(2026, 5, 5, 13, 1, 0),
+                    )
+            finally:
+                if old_storage_dir is None:
+                    os.environ.pop("HER_VERIFICATION_STORAGE_DIR", None)
+                else:
+                    os.environ["HER_VERIFICATION_STORAGE_DIR"] = old_storage_dir
+
+        self.assertEqual(submission["status"], "approved")
+        self.assertEqual(submission["verification_provider"], "local_oss")
+        self.assertEqual(submission["machine_review"]["speech_provider"], "faster_whisper")
+        self.assertEqual(submission["machine_review"]["speech_result"], "pass")
+        self.assertTrue(submission["machine_review"]["spoken_code_match"])
+        self.assertEqual(submission["metadata"]["speech_challenge_result"]["provider"], "faster_whisper")
+        self.assertEqual(submission["profile_sync"]["status"], "synced")
+
+    def test_live_video_verification_local_oss_provider_escalates_high_spoof_risk(self):
+        os.environ["HER_VERIFICATION_PROVIDER"] = "local_oss"
+        challenge = create_live_video_verification_challenge(
+            user_id="user-v11",
+            challenge_actions=["blink", "open_mouth", "turn_left"],
+            now=datetime(2026, 5, 5, 13, 0, 0),
+        )
+        local_provider_result = {
+            "provider": "local_oss",
+            "provider_version": "silent-face+faster-whisper-v1",
+            "liveness_score": 52,
+            "face_match_score": 87,
+            "same_person_score": 87,
+            "replay_attack_score": 91,
+            "screen_risk_score": 88,
+            "spoofing_risk_score": 92,
+            "deepfake_risk_score": 0,
+            "motion_score": 72,
+            "face_presence_score": 95,
+            "sampled_frame_count": 7,
+            "valid_face_frame_count": 6,
+            "detected_face_count_max": 1,
+            "has_audio_track": True,
+            "risk_flags": [],
+            "speech_challenge_result": {
+                "provider": "faster_whisper",
+                "transcript_text": challenge["spoken_code"],
+                "transcript_confidence": 94,
+                "speech_started_at_ms": 2520,
+                "speech_ended_at_ms": 3340,
+                "audio_duration_ms": 3340,
+                "audio_video_sync_score": 82,
+            },
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            old_storage_dir = os.environ.get("HER_VERIFICATION_STORAGE_DIR")
+            os.environ["HER_VERIFICATION_STORAGE_DIR"] = temp_dir
+            try:
+                local_provider_module = types.SimpleNamespace(
+                    LOCAL_OSS_PROVIDER_VERSION="silent-face+faster-whisper-v1",
+                    analyze_local_live_video=mock.Mock(return_value=local_provider_result),
+                )
+                with mock.patch.object(
+                    verification_module,
+                    "_live_video_local_module",
+                    return_value=local_provider_module,
+                ):
+                    submission = submit_live_video_verification(
+                        self.conn,
+                        user_id="user-v11",
+                        video_base64=base64.b64encode(b"spoof-risk-video" * 128).decode("ascii"),
+                        file_name="spoof-risk.mp4",
+                        content_type="video/mp4",
+                        challenge_token=challenge["challenge_token"],
+                        metadata={
+                            "action_result": {
+                                "capture_mode": "realtime_challenge",
+                                "completed_actions": ["blink", "open_mouth", "turn_left"],
+                                "action_events": [
+                                    {"action": "blink", "step_index": 1, "detected_at_ms": 710, "score": 95},
+                                    {"action": "open_mouth", "step_index": 2, "detected_at_ms": 1480, "score": 94},
+                                    {"action": "turn_left", "step_index": 3, "detected_at_ms": 2280, "score": 91},
+                                ],
+                                "action_scores": {
+                                    "blink": 95,
+                                    "open_mouth": 94,
+                                    "turn_left": 91,
+                                },
+                                "face_count_max": 1,
+                                "challenge_phrase_rendered": True,
+                                "spoken_prompt_rendered": True,
+                                "spoken_prompt_display_ms": 2200,
+                                "audio_recorded": True,
+                                "recording_duration_ms": 4600,
+                                "video_recorded": True,
+                            }
+                        },
+                        now=datetime(2026, 5, 5, 13, 1, 0),
+                    )
+            finally:
+                if old_storage_dir is None:
+                    os.environ.pop("HER_VERIFICATION_STORAGE_DIR", None)
+                else:
+                    os.environ["HER_VERIFICATION_STORAGE_DIR"] = old_storage_dir
+
+        self.assertEqual(submission["status"], "under_review")
+        self.assertIsNone(submission["review_decision"])
+        self.assertEqual(submission["recommended_next_step"], "strong_identity")
+        self.assertIn("replay_attack", submission["machine_review"]["risk_flags"])
+        self.assertIn("spoofing_risk", submission["machine_review"]["risk_flags"])
+
+    def test_live_video_verification_local_oss_provider_escalates_high_deepfake_risk(self):
+        os.environ["HER_VERIFICATION_PROVIDER"] = "local_oss"
+        challenge = create_live_video_verification_challenge(
+            user_id="user-v12",
+            challenge_actions=["blink", "open_mouth", "turn_left"],
+            now=datetime(2026, 5, 5, 13, 0, 0),
+        )
+        local_provider_result = {
+            "provider": "local_oss",
+            "provider_version": "silent-face+faster-whisper-v1",
+            "liveness_score": 91,
+            "face_match_score": 88,
+            "same_person_score": 88,
+            "replay_attack_score": 9,
+            "screen_risk_score": 11,
+            "spoofing_risk_score": 8,
+            "deepfake_risk_score": 91,
+            "deepfake_analysis_status": "ok",
+            "deepfake_temporal_score": 94,
+            "deepfake_artifact_score": 86,
+            "deepfake_sampled_frame_count": 10,
+            "deepfake_face_frame_count": 8,
+            "motion_score": 75,
+            "face_presence_score": 96,
+            "sampled_frame_count": 7,
+            "valid_face_frame_count": 7,
+            "detected_face_count_max": 1,
+            "has_audio_track": True,
+            "risk_flags": [],
+            "speech_challenge_result": {
+                "provider": "faster_whisper",
+                "transcript_text": challenge["spoken_code"],
+                "transcript_confidence": 95,
+                "speech_started_at_ms": 2490,
+                "speech_ended_at_ms": 3300,
+                "audio_duration_ms": 3300,
+                "audio_video_sync_score": 84,
+            },
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            old_storage_dir = os.environ.get("HER_VERIFICATION_STORAGE_DIR")
+            os.environ["HER_VERIFICATION_STORAGE_DIR"] = temp_dir
+            try:
+                local_provider_module = types.SimpleNamespace(
+                    LOCAL_OSS_PROVIDER_VERSION="silent-face+faster-whisper-v1",
+                    analyze_local_live_video=mock.Mock(return_value=local_provider_result),
+                )
+                with mock.patch.object(
+                    verification_module,
+                    "_live_video_local_module",
+                    return_value=local_provider_module,
+                ):
+                    submission = submit_live_video_verification(
+                        self.conn,
+                        user_id="user-v12",
+                        video_base64=base64.b64encode(b"deepfake-risk-video" * 128).decode("ascii"),
+                        file_name="deepfake-risk.mp4",
+                        content_type="video/mp4",
+                        challenge_token=challenge["challenge_token"],
+                        metadata={
+                            "action_result": {
+                                "capture_mode": "realtime_challenge",
+                                "completed_actions": ["blink", "open_mouth", "turn_left"],
+                                "action_events": [
+                                    {"action": "blink", "step_index": 1, "detected_at_ms": 710, "score": 95},
+                                    {"action": "open_mouth", "step_index": 2, "detected_at_ms": 1480, "score": 94},
+                                    {"action": "turn_left", "step_index": 3, "detected_at_ms": 2270, "score": 92},
+                                ],
+                                "action_scores": {
+                                    "blink": 95,
+                                    "open_mouth": 94,
+                                    "turn_left": 92,
+                                },
+                                "face_count_max": 1,
+                                "challenge_phrase_rendered": True,
+                                "spoken_prompt_rendered": True,
+                                "spoken_prompt_display_ms": 2200,
+                                "audio_recorded": True,
+                                "recording_duration_ms": 4650,
+                                "video_recorded": True,
+                            }
+                        },
+                        now=datetime(2026, 5, 5, 13, 1, 0),
+                    )
+            finally:
+                if old_storage_dir is None:
+                    os.environ.pop("HER_VERIFICATION_STORAGE_DIR", None)
+                else:
+                    os.environ["HER_VERIFICATION_STORAGE_DIR"] = old_storage_dir
+
+        self.assertEqual(submission["status"], "under_review")
+        self.assertEqual(submission["recommended_next_step"], "strong_identity")
+        self.assertEqual(submission["machine_review"]["deepfake_risk_score"], 91)
+        self.assertEqual(submission["machine_review"]["deepfake_analysis_status"], "ok")
+        self.assertIn("deepfake_risk", submission["machine_review"]["risk_flags"])
+
+    def test_live_video_verification_local_oss_provider_holds_high_photo_edit_risk_for_manual_review(self):
+        os.environ["HER_VERIFICATION_PROVIDER"] = "local_oss"
+        challenge = create_live_video_verification_challenge(
+            user_id="user-v13",
+            challenge_actions=["blink", "open_mouth", "turn_left"],
+            now=datetime(2026, 5, 5, 13, 0, 0),
+        )
+        local_provider_result = {
+            "provider": "local_oss",
+            "provider_version": "silent-face+faster-whisper-v1",
+            "liveness_score": 92,
+            "face_match_score": 89,
+            "same_person_score": 89,
+            "replay_attack_score": 8,
+            "screen_risk_score": 9,
+            "spoofing_risk_score": 7,
+            "deepfake_risk_score": 0,
+            "photo_edit_risk_score": 88,
+            "photo_edit_analysis_status": "ok",
+            "skin_smoothing_risk_score": 94,
+            "beauty_filter_risk_score": 82,
+            "face_shape_delta_score": 46,
+            "photo_edit_reference_face_count": 2,
+            "photo_edit_live_face_frame_count": 5,
+            "photo_edit_reference_source_count": 2,
+            "photo_edit_edited_reference_count": 2,
+            "motion_score": 74,
+            "face_presence_score": 97,
+            "sampled_frame_count": 7,
+            "valid_face_frame_count": 7,
+            "detected_face_count_max": 1,
+            "has_audio_track": True,
+            "risk_flags": [],
+            "speech_challenge_result": {
+                "provider": "faster_whisper",
+                "transcript_text": challenge["spoken_code"],
+                "transcript_confidence": 95,
+                "speech_started_at_ms": 2490,
+                "speech_ended_at_ms": 3300,
+                "audio_duration_ms": 3300,
+                "audio_video_sync_score": 84,
+            },
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            old_storage_dir = os.environ.get("HER_VERIFICATION_STORAGE_DIR")
+            os.environ["HER_VERIFICATION_STORAGE_DIR"] = temp_dir
+            try:
+                local_provider_module = types.SimpleNamespace(
+                    LOCAL_OSS_PROVIDER_VERSION="silent-face+faster-whisper-v1",
+                    analyze_local_live_video=mock.Mock(return_value=local_provider_result),
+                )
+                with mock.patch.object(
+                    verification_module,
+                    "_live_video_local_module",
+                    return_value=local_provider_module,
+                ):
+                    submission = submit_live_video_verification(
+                        self.conn,
+                        user_id="user-v13",
+                        video_base64=base64.b64encode(b"photo-edit-risk-video" * 128).decode("ascii"),
+                        file_name="photo-edit-risk.mp4",
+                        content_type="video/mp4",
+                        challenge_token=challenge["challenge_token"],
+                        metadata={
+                            "action_result": {
+                                "capture_mode": "realtime_challenge",
+                                "completed_actions": ["blink", "open_mouth", "turn_left"],
+                                "action_events": [
+                                    {"action": "blink", "step_index": 1, "detected_at_ms": 710, "score": 95},
+                                    {"action": "open_mouth", "step_index": 2, "detected_at_ms": 1490, "score": 94},
+                                    {"action": "turn_left", "step_index": 3, "detected_at_ms": 2280, "score": 92},
+                                ],
+                                "action_scores": {
+                                    "blink": 95,
+                                    "open_mouth": 94,
+                                    "turn_left": 92,
+                                },
+                                "face_count_max": 1,
+                                "challenge_phrase_rendered": True,
+                                "spoken_prompt_rendered": True,
+                                "spoken_prompt_display_ms": 2200,
+                                "audio_recorded": True,
+                                "recording_duration_ms": 4620,
+                                "video_recorded": True,
+                            }
+                        },
+                        now=datetime(2026, 5, 5, 13, 1, 0),
+                    )
+            finally:
+                if old_storage_dir is None:
+                    os.environ.pop("HER_VERIFICATION_STORAGE_DIR", None)
+                else:
+                    os.environ["HER_VERIFICATION_STORAGE_DIR"] = old_storage_dir
+
+        self.assertEqual(submission["status"], "under_review")
+        self.assertEqual(submission["recommended_next_step"], "manual_review")
+        self.assertEqual(submission["machine_review"]["photo_edit_risk_score"], 88)
+        self.assertEqual(submission["machine_review"]["photo_edit_analysis_status"], "ok")
+        self.assertIn("photo_heavily_edited", submission["machine_review"]["risk_flags"])
+
+    def test_live_video_verification_can_escalate_to_strong_identity_review(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            old_storage_dir = os.environ.get("HER_VERIFICATION_STORAGE_DIR")
+            os.environ["HER_VERIFICATION_STORAGE_DIR"] = temp_dir
+            try:
+                submission = submit_live_video_verification(
+                    self.conn,
+                    user_id="user-v4",
+                    video_base64=base64.b64encode(b"identity-risk-video").decode("ascii"),
+                    file_name="risk.mp4",
+                    content_type="video/mp4",
+                    challenge_phrase="请抬头并张嘴",
+                    metadata={
+                        "machine_review_inputs": {
+                            "liveness_score": 93,
+                            "face_match_score": 18,
+                            "challenge_score": 90,
+                            "risk_flags": ["deepfake_risk"],
+                        }
+                    },
+                    now=datetime(2026, 5, 5, 11, 30, 0),
+                )
+            finally:
+                if old_storage_dir is None:
+                    os.environ.pop("HER_VERIFICATION_STORAGE_DIR", None)
+                else:
+                    os.environ["HER_VERIFICATION_STORAGE_DIR"] = old_storage_dir
+
+        self.assertEqual(submission["status"], "under_review")
+        self.assertEqual(submission["recommended_decision"], "manual_review")
+        self.assertEqual(submission["recommended_next_step"], "strong_identity")
+        self.assertTrue(submission["machine_review"]["risk_flags"])
+        self.assertFalse(submission["auto_review_applied"])
+        self.assertEqual(len(submission["reviews"]), 0)
 
 
 if __name__ == "__main__":

@@ -1,16 +1,8 @@
-import pathlib
 import os
-import types
 import unittest
 from unittest import mock
 
-
-SCRIPT_PATH = (
-    pathlib.Path(__file__).resolve().parents[1] / "scripts" / "persona_memory_lib.py"
-)
-persona_memory_lib = types.ModuleType("persona_memory_lib")
-persona_memory_lib.__file__ = str(SCRIPT_PATH)
-exec(compile(SCRIPT_PATH.read_text(encoding="utf-8"), str(SCRIPT_PATH), "exec"), persona_memory_lib.__dict__)
+import persona_memory_sync.persona_memory_lib as persona_memory_lib
 
 
 class PersonaMemoryTests(unittest.TestCase):
@@ -108,6 +100,18 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertEqual(patch["must_have_tags"], "已购房")
         self.assertEqual(patch["preferred_traits"], "真诚,聊得来,情绪稳定")
 
+    def test_normalize_patch_canonicalizes_structured_persona_fields(self):
+        patch = persona_memory_lib.normalize_patch(
+            {
+                "self_life_rhythm": "我平时生活比较规律，作息也稳定",
+                "self_work_pattern": "工作安排经常有临时变动，有点像随时待命",
+                "self_expression_style": "我说话比较直接，不太花哨",
+            }
+        )
+        self.assertEqual(patch["self_life_rhythm"], "生活规律")
+        self.assertEqual(patch["self_work_pattern"], "工作节奏波动较多")
+        self.assertEqual(patch["self_expression_style"], "表达直接")
+
     def test_merge_explicit_overwrites_hard_fields(self):
         existing = {"self_city": "上海", "must_have_tags": "情绪稳定"}
         patch = {"self_city": "无锡", "must_have_tags": "情绪稳定,消费观正常"}
@@ -126,27 +130,124 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertFalse(city_result["applied_to_persona"])
         self.assertEqual(city_result["note"], "explicit_only_scalar")
 
+    def test_strong_inference_can_update_soft_self_description_fields(self):
+        merged, field_results = persona_memory_lib.merge_persona(
+            {},
+            {
+                "self_life_rhythm": "生活规律",
+                "self_work_pattern": "工作节奏波动较多",
+                "self_expression_style": "表达直接",
+                "self_job": "财务报表相关工作",
+            },
+            "strong_inference",
+        )
+        self.assertEqual(merged["self_life_rhythm"], "生活规律")
+        self.assertEqual(merged["self_work_pattern"], "工作节奏波动较多")
+        self.assertEqual(merged["self_expression_style"], "表达直接")
+        self.assertNotIn("self_job", merged)
+        applied_fields = {item["field_name"]: item for item in field_results}
+        self.assertTrue(applied_fields["self_life_rhythm"]["applied_to_persona"])
+        self.assertTrue(applied_fields["self_work_pattern"]["applied_to_persona"])
+        self.assertTrue(applied_fields["self_expression_style"]["applied_to_persona"])
+        self.assertFalse(applied_fields["self_job"]["applied_to_persona"])
+        self.assertEqual(applied_fields["self_job"]["note"], "explicit_only_scalar")
+
+    def test_apply_persona_patch_observation_only_skips_persona_and_profile_upsert(self):
+        class FakeCursor:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        class FakeConn:
+            def __init__(self):
+                self.cursor_obj = FakeCursor()
+                self.committed = False
+                self.closed = False
+
+            def cursor(self):
+                return self.cursor_obj
+
+            def commit(self):
+                self.committed = True
+
+            def close(self):
+                self.closed = True
+
+        conn = FakeConn()
+        field_results = [
+            {
+                "field_name": "self_job",
+                "old_value": None,
+                "new_value": "财务",
+                "stored_value": "财务",
+                "action_type": "insert",
+                "applied_to_persona": True,
+                "note": "",
+            }
+        ]
+
+        with (
+            mock.patch.object(persona_memory_lib, "mysql_connect", return_value=conn),
+            mock.patch.object(persona_memory_lib, "parse_mysql_source", return_value={"table": "profiles"}),
+            mock.patch.object(persona_memory_lib, "fetch_persona", return_value=None),
+            mock.patch.object(persona_memory_lib, "merge_persona", return_value=({"user_key": "user-1"}, field_results)),
+            mock.patch.object(persona_memory_lib, "upsert_persona") as upsert_mock,
+            mock.patch.object(persona_memory_lib, "fetch_profile") as fetch_profile_mock,
+            mock.patch.object(persona_memory_lib, "upsert_profile") as upsert_profile_mock,
+            mock.patch.object(persona_memory_lib, "insert_observations") as insert_mock,
+        ):
+            result = persona_memory_lib.apply_persona_patch(
+                source="mysql://root@127.0.0.1:3307/her?table=profiles",
+                user_key="user-1",
+                source_type="explicit",
+                normalized_patch={"self_job": "财务"},
+                apply_scope="observation_only",
+                sync_profile=False,
+            )
+
+        upsert_mock.assert_not_called()
+        fetch_profile_mock.assert_not_called()
+        upsert_profile_mock.assert_not_called()
+        insert_mock.assert_called_once()
+        self.assertEqual(insert_mock.call_args.kwargs["persona_id"], None)
+        self.assertEqual(result["apply_scope"], "observation_only")
+        self.assertEqual(result["applied_fields"], [])
+        self.assertEqual(len(result["skipped_fields"]), 1)
+        self.assertEqual(result["skipped_fields"][0]["note"], "observation_only_scope")
+        self.assertFalse(result["synced_profile"])
+
     def test_build_matcher_payload_normalizes_negative_terms(self):
         persona = {
             "must_have_tags": "情绪稳定,愿意沟通,消费观正常",
             "must_not_have_tags": "绿茶,拜金,冷暴力,暧昧不清",
             "target_cities": "无锡",
             "target_accept_long_distance": "不接受",
+            "self_life_rhythm": "生活规律",
+            "self_work_pattern": "工作节奏波动较多",
+            "self_expression_style": "表达直接",
         }
         payload = persona_memory_lib.build_matcher_payload(persona)
         risks = payload["matcher_risks_json"]
         prefs = payload["matcher_preferences_json"]
+        traits = payload["matcher_traits_json"]
         self.assertIn("boundary_clarity_risk", risks)
         self.assertIn("spending_values_mismatch_risk", risks)
         self.assertIn("communication_shutdown_risk", risks)
         self.assertIn("emotional_stability_priority", prefs)
         self.assertIn("communication_directness_preference", prefs)
+        self.assertIn("self_life_rhythm", traits)
+        self.assertIn("self_work_pattern", traits)
+        self.assertIn("self_expression_style", traits)
 
     def test_build_public_profile_hides_raw_negative_labels(self):
         persona = {
             "self_city": "无锡",
             "self_relationship_goal": "结婚",
             "self_smoking": "否",
+            "self_life_rhythm": "生活规律",
+            "self_expression_style": "表达克制",
             "target_accept_long_distance": "不接受",
             "must_have_tags": "情绪稳定,愿意沟通,消费观正常",
             "must_not_have_tags": "绿茶,拜金,冷暴力,暧昧不清",
@@ -157,6 +258,8 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertNotIn("拜金", combined)
         self.assertIn("关系边界", combined)
         self.assertIn("消费观", combined)
+        self.assertIn("生活规律", combined)
+        self.assertIn("表达克制", combined)
         self.assertNotIn("对生活方式和习惯有较明确要求", combined)
 
     def test_merge_persona_sanitizes_summary_fields_with_city_and_goal_inference(self):

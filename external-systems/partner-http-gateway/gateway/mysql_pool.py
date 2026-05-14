@@ -6,6 +6,7 @@ import threading
 from collections.abc import Callable, Sequence
 from typing import Any
 
+from db_migrations import initialize_target_database
 from outer_mysql_compat import MySQLCompatConnection
 from outer_system_mysql_schema import (
     TableDef,
@@ -24,15 +25,21 @@ class GatewayConnectionPool:
     def __init__(
         self,
         dsn: str,
-        tables: Callable[[], Sequence[TableDef]],
+        target: str | Callable[[], Sequence[TableDef]],
         *,
         max_size: int = 8,
     ) -> None:
         self._cfg = parse_mysql_dsn(dsn)
         ensure_database(self._cfg)
         raw = mysql_database_connect(self._cfg)
-        ensure_schema(raw, tables(), prefix=None, config=self._cfg)
-        raw.close()
+        try:
+            resolved_target = _resolve_target(target)
+            if resolved_target is not None:
+                initialize_target_database(raw, target=resolved_target, config=self._cfg)
+            else:
+                ensure_schema(raw, target(), prefix=None, config=self._cfg)
+        finally:
+            raw.close()
 
         self._sem = threading.BoundedSemaphore(max(1, max_size))
         self._lock = threading.Lock()
@@ -65,3 +72,14 @@ class GatewayConnectionPool:
 
 
 __all__ = ["GatewayConnectionPool"]
+
+
+def _resolve_target(target: str | Callable[[], Sequence[TableDef]]) -> str | None:
+    if isinstance(target, str):
+        return target
+    mapping = {
+        "recommendation_tables": "recommendation",
+        "matchmaking_tables": "matchmaking",
+        "chat_tables": "chat",
+    }
+    return mapping.get(getattr(target, "__name__", ""))

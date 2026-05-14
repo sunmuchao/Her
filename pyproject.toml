@@ -10,6 +10,7 @@ requires-python = ">=3.10"
 dependencies = [
   "apscheduler>=3.10,<4",
   "openai>=1.0.0",
+  "openai-agents",
   "pydantic>=2.0.0",
   "pymysql>=1.0.0",
   "python-dotenv>=1.0.0",
@@ -20,21 +21,31 @@ dev = [
   "pytest>=7.0.0",
 ]
 
+[project.scripts]
+partner-search = "partner_search.search_candidates:main"
+persona-memory-sync = "persona_memory_sync.cli:main"
+
 [tool.setuptools.packages.find]
 where = [
   ".",
   "external-systems/partner-recommendation-system",
   "external-systems/partner-matchmaking-system",
   "external-systems/partner-chat-system",
+  "external-systems/partner-discovery-system",
   "external-systems/partner-http-gateway",
 ]
 include = [
+  "db_migrations*",
+  "async_jobs*",
   "match_domain*",
   "task_scheduler*",
   "observability*",
+  "partner_search*",
+  "persona_memory_sync*",
   "recommendation_system*",
   "matchmaking_system*",
   "chat_system*",
+  "discovery_system*",
   "gateway*",
 ]
 
@@ -45,6 +56,7 @@ py-modules = [
   "her_monorepo_bootstrap",
   "outer_mysql_compat",
   "outer_system_mysql_schema",
+  "partner_moderation",
   "skill_runtime",
 ]
 
@@ -58,5 +70,7 @@ py-modules = [
 "external-systems/partner-chat-system/chat_system/storage.py" = ["E402"]
 "external-systems/partner-chat-system/chat_system/service.py" = ["E402"]
 "external-systems/partner-chat-system/chat_system/events.py" = ["E402"]
-"local-skills/persona-memory-sync/persona_memory_sync/api.py" = ["E402"]
 "local-skills/persona-memory-sync/tests/test_persona_memory_audit.py" = ["E402"]
+
+[tool.pytest.ini_options]
+addopts = "--import-mode=importlib"

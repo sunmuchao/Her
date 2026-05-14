@@ -14,6 +14,13 @@ except ImportError:  # pragma: no cover
 
 from match_domain.outbox import append_outbox_pending
 from observability import alert_signal
+from partner_moderation import (
+    clear_moderation_state,
+    get_active_moderation_state,
+    infer_required_verifications,
+    parse_source_ref,
+    upsert_moderation_state,
+)
 
 from .events import (
     chat_member_report_submitted_event,
@@ -22,7 +29,9 @@ from .events import (
     chat_risk_case_reviewed_event,
     chat_risk_signal_detected_event,
 )
+from .fraud_graph import get_fraud_network_profile, record_fraud_network_observation
 from .storage import json_dumps, json_loads, row_to_dict
+from .verification import sync_photo_review_request_from_risk_case
 
 REPORT_SOURCE_USER = "user_report"
 REPORT_SOURCE_SYSTEM = "system_rule"
@@ -95,6 +104,8 @@ REPORT_TYPE_SIGNAL_MAP = {
     "investment": ("investment",),
     "money": ("money_transfer",),
     "off_platform": ("off_platform",),
+    "suspected_fake_photo": ("suspected_fake_photo",),
+    "photo_heavily_edited": ("photo_heavily_edited",),
     "photo_mismatch": ("photo_mismatch",),
     "profile_mismatch": ("profile_mismatch",),
     "income_mismatch": ("income_mismatch",),
@@ -145,6 +156,8 @@ SAFETY_SIGNAL_CODE_ORDER = {
     "multi_party_reports",
     "verification_avoidance",
     "photo_mismatch",
+    "suspected_fake_photo",
+    "photo_heavily_edited",
     "profile_mismatch",
     "income_mismatch",
     "job_mismatch",
@@ -192,6 +205,8 @@ def _severity_from_signals(signal_codes: list[str], report_type: str) -> str:
         return SEVERITY_HIGH
     if "off_platform" in codes:
         return SEVERITY_MEDIUM
+    if "suspected_fake_photo" in codes or "photo_heavily_edited" in codes:
+        return SEVERITY_MEDIUM
     if "repeated_opening" in codes or "verification_avoidance" in codes or "behavior_pattern" in codes:
         return SEVERITY_MEDIUM
     if "photo_mismatch" in codes or "profile_mismatch" in codes:
@@ -210,6 +225,8 @@ def _recommended_action_for(severity: str, report_count: int, signal_codes: list
             return ACTION_REQUIRE_VERIFICATION
         return ACTION_MANUAL_REVIEW
     if severity == SEVERITY_MEDIUM:
+        if "suspected_fake_photo" in codes or "photo_heavily_edited" in codes or "photo_mismatch" in codes:
+            return ACTION_REQUIRE_VERIFICATION
         if "income_mismatch" in codes or "job_mismatch" in codes or "education_mismatch" in codes or "identity_mismatch" in codes:
             return ACTION_REQUIRE_VERIFICATION
         if report_count >= 2:
@@ -329,13 +346,68 @@ def _get_thread(conn, thread_id: str) -> dict[str, Any] | None:
 
 def _get_message(conn, message_id: int) -> dict[str, Any] | None:
     cur = conn.execute("SELECT * FROM chat_messages WHERE message_id = ? LIMIT 1", (int(message_id),))
-    return row_to_dict(cur.fetchone())
+    row = row_to_dict(cur.fetchone())
+    if not row:
+        return None
+    row["metadata"] = json_loads(row.pop("metadata_json", None), {})
+    return row
 
 
 def _other_participant(thread: dict[str, Any], user_id: str) -> str:
     if user_id == thread["participant_a_id"]:
         return str(thread["participant_b_id"])
     return str(thread["participant_a_id"])
+
+
+def _participant_profile_ref(thread: dict[str, Any], user_id: str) -> dict[str, Any]:
+    metadata = thread.get("metadata") or {}
+    participant_profiles = metadata.get("participant_profiles") if isinstance(metadata, dict) else None
+    if not isinstance(participant_profiles, dict):
+        return {}
+    raw = participant_profiles.get(user_id) or {}
+    if not isinstance(raw, dict):
+        return {}
+    source_dsn, source_table_name = parse_source_ref(
+        raw.get("source_dsn") or raw.get("source"),
+        raw.get("source_table_name") or raw.get("table_name"),
+    )
+    try:
+        profile_id = int(raw.get("profile_id")) if raw.get("profile_id") is not None else None
+    except (TypeError, ValueError):
+        profile_id = None
+    return {
+        "profile_id": profile_id,
+        "source_dsn": source_dsn,
+        "source_table_name": source_table_name,
+    }
+
+
+def _merge_subject_profile_ref(
+    thread: dict[str, Any],
+    target_user: str,
+    *,
+    reported_profile_id: int | None = None,
+    reported_source_dsn: str | None = None,
+    reported_source_table_name: str | None = None,
+) -> dict[str, Any]:
+    explicit_source_dsn, explicit_source_table_name = parse_source_ref(
+        reported_source_dsn,
+        reported_source_table_name,
+    )
+    if reported_profile_id is not None and explicit_source_dsn and explicit_source_table_name:
+        return {
+            "profile_id": int(reported_profile_id),
+            "source_dsn": explicit_source_dsn,
+            "source_table_name": explicit_source_table_name,
+        }
+    derived = _participant_profile_ref(thread, target_user)
+    if reported_profile_id is not None:
+        derived["profile_id"] = int(reported_profile_id)
+    if explicit_source_dsn:
+        derived["source_dsn"] = explicit_source_dsn
+    if explicit_source_table_name:
+        derived["source_table_name"] = explicit_source_table_name
+    return derived
 
 
 def _inflate_report(row: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -527,10 +599,41 @@ def get_active_chat_restriction(conn, thread_id: str, subject_user_id: str) -> s
     return _as_text(row["applied_action"]) or None
 
 
+def _global_chat_restriction(conn, subject_user_id: str) -> str | None:
+    state = get_active_moderation_state(conn, subject_user_id=subject_user_id)
+    action = _as_text((state or {}).get("applied_action"))
+    if action in {ACTION_LIMIT_CHAT, ACTION_FREEZE}:
+        return action
+    return None
+
+
+def _is_proactive_outreach(conn, thread_id: str, subject_user_id: str) -> bool:
+    thread = _get_thread(conn, thread_id)
+    if not thread:
+        return False
+    counterpart = _other_participant(thread, subject_user_id)
+    row = conn.execute(
+        """
+        SELECT COUNT(*) AS c
+        FROM chat_messages
+        WHERE thread_id = ?
+          AND visibility = ?
+          AND author_id = ?
+        """,
+        (thread_id, "dyadic", counterpart),
+    ).fetchone()
+    return int((row or {}).get("c") or 0) == 0
+
+
 def assert_message_allowed(conn, thread_id: str, subject_user_id: str) -> None:
     restriction = get_active_chat_restriction(conn, thread_id, subject_user_id)
     if restriction:
         raise ValueError(f"author is currently restricted by risk action: {restriction}")
+    global_restriction = _global_chat_restriction(conn, subject_user_id)
+    if global_restriction == ACTION_FREEZE:
+        raise ValueError("author is currently restricted by risk action: freeze")
+    if global_restriction == ACTION_LIMIT_CHAT and _is_proactive_outreach(conn, thread_id, subject_user_id):
+        raise ValueError("author is currently restricted by risk action: limit_chat")
 
 
 def _find_open_risk_case(conn, thread_id: str, subject_user_id: str) -> dict[str, Any] | None:
@@ -719,15 +822,24 @@ def build_thread_risk_overview(conn, thread_id: str, viewer_id: str) -> dict[str
         [code for risk_case in risk_cases for code in list(risk_case.get("signal_codes") or [])]
     )
     active_action = get_active_chat_restriction(conn, thread_id, counterpart_user_id)
+    moderation_state = get_active_moderation_state(conn, subject_user_id=counterpart_user_id)
+    fraud_network_profile = get_fraud_network_profile(conn, counterpart_user_id)
+    global_action = _as_text((moderation_state or {}).get("applied_action")) or None
     caution_messages: list[str] = []
     if any(code in signal_codes for code in {"investment", "money_transfer", "off_platform", "repeated_off_platform_request"}):
         caution_messages.append("对方存在导流 / 投资类风险信号，请勿转账或离开平台沟通。")
     if any(code in signal_codes for code in {"high_frequency_outreach", "repeated_opening", "multi_party_reports"}):
         caution_messages.append("对方存在批量接触或多方举报信号，建议先视频核验再继续。")
-    if any(code in signal_codes for code in {"photo_mismatch", "profile_mismatch", "income_mismatch", "identity_mismatch"}):
+    if any(code in signal_codes for code in {"photo_mismatch", "suspected_fake_photo", "photo_heavily_edited", "profile_mismatch", "income_mismatch", "identity_mismatch"}):
         caution_messages.append("对方存在资料一致性风险，建议先确认照片、职业和收入信息。")
     if any(code in signal_codes for code in {"verification_avoidance", "video_refusal"}):
         caution_messages.append("对方存在回避视频或线下核验信号，建议不要过早投入或转移平台。")
+    if int((fraud_network_profile or {}).get("graph_risk_score") or 0) >= 60:
+        caution_messages.append("对方存在设备 / 联系方式 / 话术模板关联风险，建议只在平台内谨慎沟通。")
+    if global_action == ACTION_LIMIT_CHAT:
+        caution_messages.append("对方当前处于平台限聊状态，只允许在已有沟通中回复。")
+    if global_action == ACTION_FREEZE:
+        caution_messages.append("对方当前处于平台冻结状态，请勿继续线下推进。")
     return {
         "thread_id": thread_id,
         "viewer_id": viewer_id,
@@ -735,6 +847,9 @@ def build_thread_risk_overview(conn, thread_id: str, viewer_id: str) -> dict[str
         "risk_case_count": len(risk_cases),
         "signal_codes": signal_codes,
         "active_action": active_action,
+        "global_action": global_action,
+        "fraud_network_profile": fraud_network_profile,
+        "moderation_state": moderation_state,
         "caution_messages": caution_messages,
         "risk_cases": risk_cases,
     }
@@ -848,9 +963,13 @@ def submit_member_report(
     reason_text: str | None = None,
     message_id: int | None = None,
     reported_user_id: str | None = None,
+    reported_profile_id: int | None = None,
+    reported_source_dsn: str | None = None,
+    reported_source_table_name: str | None = None,
     report_source: str = REPORT_SOURCE_USER,
     signal_codes: list[str] | None = None,
     severity: str | None = None,
+    evidence: dict[str, Any] | None = None,
     now: datetime | None = None,
 ) -> dict[str, Any]:
     ts = current_time(now)
@@ -878,6 +997,13 @@ def submit_member_report(
         raise ValueError("reported_user_id is required")
     if report_source == REPORT_SOURCE_USER and target_user == reporter_id:
         raise ValueError("cannot report your own message or identity")
+    profile_ref = _merge_subject_profile_ref(
+        thread,
+        target_user,
+        reported_profile_id=reported_profile_id,
+        reported_source_dsn=reported_source_dsn,
+        reported_source_table_name=reported_source_table_name,
+    )
 
     if report_source == REPORT_SOURCE_SYSTEM and message_id is not None:
         cur = conn.execute(
@@ -908,11 +1034,16 @@ def submit_member_report(
     merged_severity = severity or _severity_from_signals(merged_signal_codes, report_type)
     recommended_action = _recommended_action_for(merged_severity, 1, merged_signal_codes)
     evidence = {
+        **dict(evidence or {}),
         "reason_text": _as_text(reason_text),
         "message_id": int(message_id) if message_id is not None else None,
         "message_preview": _as_text((message or {}).get("body"))[:512],
+        "message_metadata": dict((message or {}).get("metadata") or {}),
         "report_source": report_source,
         "cross_thread_reports_30d": cross_thread_reports,
+        "profile_id": profile_ref.get("profile_id"),
+        "source_dsn": profile_ref.get("source_dsn"),
+        "source_table_name": profile_ref.get("source_table_name"),
     }
 
     try:
@@ -990,6 +1121,9 @@ def submit_member_report(
             "signal_codes": merged_signal_codes,
             "severity": merged_severity,
             "recommended_action": recommended_action,
+            "profile_id": profile_ref.get("profile_id"),
+            "source_dsn": profile_ref.get("source_dsn"),
+            "source_table_name": profile_ref.get("source_table_name"),
         },
         now=ts,
     )
@@ -1051,6 +1185,23 @@ def submit_member_report(
             evidence=evidence,
             created_at=ts,
         )
+    record_fraud_network_observation(
+        conn,
+        subject_user_id=target_user,
+        source_dsn=profile_ref.get("source_dsn"),
+        source_table_name=profile_ref.get("source_table_name"),
+        profile_id=profile_ref.get("profile_id"),
+        thread_id=thread_id,
+        case_id=thread["case_id"],
+        risk_case_id=risk_case["risk_case_id"],
+        report_id=report_id,
+        source_type=report_source,
+        event_type="member_report" if report_source == REPORT_SOURCE_USER else "system_rule",
+        signal_codes=merged_signal_codes,
+        evidence=evidence,
+        message_body=_as_text((message or {}).get("body")),
+        now=ts,
+    )
     conn.commit()
 
     if merged_severity == SEVERITY_HIGH:
@@ -1127,6 +1278,9 @@ def submit_meeting_feedback(
     reviewer_id: str,
     *,
     counterpart_user_id: str | None = None,
+    counterpart_profile_id: int | None = None,
+    counterpart_source_dsn: str | None = None,
+    counterpart_source_table_name: str | None = None,
     photo_match_status: str = "unclear",
     profile_consistency_status: str = "unclear",
     income_job_consistency_status: str = "unclear",
@@ -1146,6 +1300,13 @@ def submit_meeting_feedback(
     target_user = _as_text(counterpart_user_id) or _other_participant(thread, reviewer_id)
     if target_user == reviewer_id:
         raise ValueError("counterpart_user_id cannot be reviewer")
+    profile_ref = _merge_subject_profile_ref(
+        thread,
+        target_user,
+        reported_profile_id=counterpart_profile_id,
+        reported_source_dsn=counterpart_source_dsn,
+        reported_source_table_name=counterpart_source_table_name,
+    )
 
     report_specs: list[tuple[str, str]] = []
     if _as_text(photo_match_status) in {"mismatch", "very_different", "heavily_edited"}:
@@ -1169,6 +1330,9 @@ def submit_meeting_feedback(
             report_type,
             reason_text=reason_text,
             reported_user_id=target_user,
+            reported_profile_id=profile_ref.get("profile_id"),
+            reported_source_dsn=profile_ref.get("source_dsn"),
+            reported_source_table_name=profile_ref.get("source_table_name"),
             now=ts,
         )
         if out.get("report"):
@@ -1300,6 +1464,49 @@ def review_risk_case(
     )
     updated = get_risk_case(conn, risk_case_id)
     assert updated is not None
+    profile_id = updated.get("evidence_summary", {}).get("profile_id")
+    source_dsn = updated.get("evidence_summary", {}).get("source_dsn")
+    source_table_name = updated.get("evidence_summary", {}).get("source_table_name")
+    photo_sync_kwargs = {
+        "subject_user_id": updated.get("subject_user_id"),
+        "profile_id": int(profile_id) if profile_id is not None else None,
+        "source_dsn": source_dsn,
+        "source_table_name": source_table_name,
+        "signal_codes": list(updated.get("signal_codes") or []),
+        "risk_case_id": risk_case_id,
+        "applied_action": applied_action,
+        "status": status,
+        "resolution_note": resolution_note,
+        "resolver_id": resolver_id,
+        "now": ts,
+    }
+    if status == RISK_STATUS_ACTION_APPLIED and applied_action:
+        upsert_moderation_state(
+            conn,
+            subject_user_id=updated.get("subject_user_id"),
+            source_dsn=source_dsn,
+            source_table_name=source_table_name,
+            profile_id=int(profile_id) if profile_id is not None else None,
+            action=applied_action,
+            reason_code="chat_risk_case",
+            reason_summary=resolution_note or "聊天风险案件已执行人工处置",
+            required_verifications=infer_required_verifications(updated.get("signal_codes")),
+            evidence={"risk_case_id": risk_case_id, "signal_codes": updated.get("signal_codes")},
+            linked_risk_case_id=risk_case_id,
+            resolver_id=resolver_id,
+            now=ts,
+        )
+    elif status in {RISK_STATUS_DISMISSED, RISK_STATUS_RESOLVED}:
+        clear_moderation_state(
+            conn,
+            subject_user_id=updated.get("subject_user_id"),
+            source_dsn=source_dsn,
+            source_table_name=source_table_name,
+            profile_id=int(profile_id) if profile_id is not None else None,
+            resolver_id=resolver_id,
+            reason_summary=resolution_note or "聊天风险案件已关闭",
+            now=ts,
+        )
     append_outbox_pending(
         conn,
         event=chat_risk_case_reviewed_event(
@@ -1315,6 +1522,7 @@ def review_risk_case(
         source_row_id=None,
         created_at_str=ts.isoformat(sep=" "),
     )
+    sync_photo_review_request_from_risk_case(conn, **photo_sync_kwargs)
     conn.commit()
     return updated
 

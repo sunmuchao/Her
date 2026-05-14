@@ -6,8 +6,9 @@ from unittest import mock
 
 
 SKILL_ROOT = pathlib.Path(__file__).resolve().parents[1]
-if str(SKILL_ROOT) not in sys.path:
-    sys.path.insert(0, str(SKILL_ROOT))
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from persona_memory_sync import (  # noqa: E402
     DEFAULT_OBSERVATION_TABLE,
@@ -51,6 +52,8 @@ class PersonaMemoryApiTests(unittest.TestCase):
                 confidence_score=None,
                 evidence_text=None,
                 conversation_ref=None,
+                basis=None,
+                apply_scope=None,
                 sync_profile=True,
             ),
             include_normalized_patch=False,

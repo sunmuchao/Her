@@ -1,28 +1,11 @@
-import importlib.util
-import pathlib
-import sys
 import unittest
 from unittest import mock
 
-
-SCRIPT_DIR = pathlib.Path(__file__).resolve().parents[1] / "scripts"
-if str(SCRIPT_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPT_DIR))
-
-
-def load_engine_module():
-    path = SCRIPT_DIR / "persona_memory_engine.py"
-    spec = importlib.util.spec_from_file_location("test_persona_memory_engine", path)
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+import persona_memory_sync.persona_memory_engine as module
 
 
 class PersonaMemoryEngineTests(unittest.TestCase):
     def test_execute_upsert_persona_memory_normalizes_patch_and_resolves_profile_table(self):
-        module = load_engine_module()
         request = module.UpsertPersonaMemoryRequest(
             source=None,
             user_key="user-1",
@@ -55,12 +38,12 @@ class PersonaMemoryEngineTests(unittest.TestCase):
             confidence_score=None,
             evidence_text=None,
             conversation_ref=None,
+            apply_scope="persona_and_profile",
             sync_profile=True,
         )
         self.assertEqual(result, {"user_key": "user-1", "synced_profile": True})
 
     def test_execute_upsert_persona_memory_can_include_normalized_patch(self):
-        module = load_engine_module()
         request = module.UpsertPersonaMemoryRequest(
             source=None,
             user_key="user-1",
@@ -89,8 +72,44 @@ class PersonaMemoryEngineTests(unittest.TestCase):
             },
         )
 
+    def test_execute_upsert_persona_memory_can_use_observation_only_scope(self):
+        request = module.UpsertPersonaMemoryRequest(
+            source=None,
+            user_key="user-3",
+            source_type="explicit",
+            patch={"self_job": "财务"},
+            apply_scope="observation_only",
+        )
+
+        with (
+            mock.patch.object(module, "normalize_patch", return_value={"self_job": "财务"}) as normalize_mock,
+            mock.patch.object(module, "resolve_profile_table", return_value="profiles"),
+            mock.patch.object(
+                module,
+                "apply_persona_patch_impl",
+                return_value={"user_key": "user-3", "apply_scope": "observation_only", "synced_profile": False},
+            ) as apply_mock,
+        ):
+            result = module.execute_upsert_persona_memory(request)
+
+        normalize_mock.assert_called_once()
+        apply_mock.assert_called_once_with(
+            source=None,
+            user_key="user-3",
+            source_type="explicit",
+            normalized_patch={"self_job": "财务"},
+            persona_table=module.DEFAULT_PERSONA_TABLE,
+            observation_table=module.DEFAULT_OBSERVATION_TABLE,
+            profile_table="profiles",
+            confidence_score=None,
+            evidence_text=None,
+            conversation_ref=None,
+            apply_scope="observation_only",
+            sync_profile=False,
+        )
+        self.assertEqual(result["apply_scope"], "observation_only")
+
     def test_execute_sync_persona_profile_delegates_to_library(self):
-        module = load_engine_module()
         request = module.SyncPersonaProfileRequest(
             source=None,
             user_key="user-2",
@@ -117,7 +136,6 @@ class PersonaMemoryEngineTests(unittest.TestCase):
         self.assertEqual(result, {"user_key": "user-2", "profile_id": 99})
 
     def test_execute_render_public_profile_delegates_to_library(self):
-        module = load_engine_module()
         request = module.RenderPublicProfileRequest(
             source=None,
             user_key="user-3",

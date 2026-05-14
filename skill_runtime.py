@@ -1,27 +1,37 @@
-"""Shared helpers for importing local skill packages through their public APIs."""
+"""Compatibility helpers for verifying packaged skill imports."""
 
 from __future__ import annotations
 
-import sys
+import importlib.util
 from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parent
 
 
-def _ensure_skill_on_path(skill_dir_name: str) -> Path:
-    skill_root = REPO_ROOT / "local-skills" / skill_dir_name
-    if str(skill_root) not in sys.path:
-        sys.path.insert(0, str(skill_root))
-    return skill_root
+def _require_skill_package(package_name: str) -> Path:
+    spec = importlib.util.find_spec(package_name)
+    if spec is None:
+        raise ModuleNotFoundError(
+            f"Required skill package '{package_name}' is not importable. "
+            "Install the Her repo as a package before starting the service."
+        )
+    search_locations = list(spec.submodule_search_locations or ())
+    if search_locations:
+        return Path(search_locations[0]).resolve()
+    if spec.origin:
+        return Path(spec.origin).resolve().parent
+    raise ModuleNotFoundError(
+        f"Required skill package '{package_name}' resolved without a filesystem location."
+    )
 
 
 def ensure_partner_search_skill_on_path() -> Path:
-    return _ensure_skill_on_path("partner-search")
+    return _require_skill_package("partner_search")
 
 
 def ensure_persona_memory_skill_on_path() -> Path:
-    return _ensure_skill_on_path("persona-memory-sync")
+    return _require_skill_package("persona_memory_sync")
 
 
 __all__ = [

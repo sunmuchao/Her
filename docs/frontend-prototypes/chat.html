@@ -1,0 +1,893 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <title>Her Prototype · 聊天页</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f4ecdf;
+        --bg-deep: #e7dcc5;
+        --panel: rgba(255, 250, 244, 0.9);
+        --panel-strong: rgba(255, 252, 248, 0.98);
+        --ink: #18211f;
+        --muted: #5c6a64;
+        --line: rgba(24, 33, 31, 0.1);
+        --accent: #0f766e;
+        --accent-strong: #115e59;
+        --accent-soft: rgba(15, 118, 110, 0.12);
+        --warn: #9a6f1e;
+        --warn-soft: rgba(154, 111, 30, 0.12);
+        --rose: #b74d5f;
+        --rose-soft: rgba(183, 77, 95, 0.12);
+        --good: #1d7a46;
+        --good-soft: rgba(29, 122, 70, 0.12);
+        --shadow: 0 28px 70px rgba(43, 37, 28, 0.14);
+        --radius-xl: 32px;
+        --radius-lg: 24px;
+        --radius-md: 18px;
+        --radius-sm: 14px;
+        font-family: "IBM Plex Sans", "PingFang SC", "Noto Sans SC", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at top left, rgba(15, 118, 110, 0.13), transparent 28%),
+          radial-gradient(circle at 86% 12%, rgba(183, 77, 95, 0.1), transparent 22%),
+          linear-gradient(180deg, #fbf6ef 0%, var(--bg) 54%, var(--bg-deep) 100%);
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background-image:
+          linear-gradient(rgba(24, 33, 31, 0.035) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(24, 33, 31, 0.035) 1px, transparent 1px);
+        background-size: 22px 22px;
+        mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.34), transparent 82%);
+      }
+
+      .page {
+        width: min(1220px, calc(100vw - 28px));
+        margin: 0 auto;
+        padding: 20px 0 30px;
+      }
+
+      .prototype-bar {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        margin: 0 0 14px;
+        border-radius: 999px;
+        background: rgba(255, 252, 248, 0.82);
+        border: 1px solid rgba(255, 255, 255, 0.75);
+        box-shadow: 0 8px 24px rgba(43, 37, 28, 0.08);
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #0f766e, #115e59);
+      }
+
+      .shell {
+        display: grid;
+        grid-template-columns: minmax(0, 430px) minmax(0, 1fr);
+        gap: 24px;
+        align-items: start;
+      }
+
+      .phone {
+        position: sticky;
+        top: 20px;
+        min-height: calc(100vh - 50px);
+        padding: 16px;
+        border-radius: 40px;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(245, 235, 222, 0.92)),
+          rgba(255, 255, 255, 0.5);
+        border: 1px solid rgba(255, 255, 255, 0.7);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(16px);
+      }
+
+      .phone::before {
+        content: "";
+        display: block;
+        width: 138px;
+        height: 28px;
+        margin: 0 auto 14px;
+        border-radius: 999px;
+        background: rgba(24, 33, 31, 0.08);
+      }
+
+      .app {
+        overflow: hidden;
+        border-radius: 30px;
+        background:
+          linear-gradient(180deg, rgba(255, 253, 248, 0.98), rgba(248, 241, 230, 0.98));
+        border: 1px solid rgba(24, 33, 31, 0.06);
+      }
+
+      .chat-header {
+        padding: 18px 18px 12px;
+        border-bottom: 1px solid rgba(24, 33, 31, 0.06);
+      }
+
+      .row {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: center;
+      }
+
+      .icon-btn,
+      .header-pill,
+      .tab-btn,
+      .chip,
+      .nav-item {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .header-left {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+      }
+
+      .icon-btn {
+        width: 42px;
+        height: 42px;
+        border: 0;
+        border-radius: 14px;
+        background: rgba(24, 33, 31, 0.06);
+        color: var(--ink);
+        font-size: 16px;
+      }
+
+      .pair h1,
+      .support h2,
+      .mini-panel h3 {
+        font-family: "Iowan Old Style", "Noto Serif SC", "STSong", serif;
+      }
+
+      .pair h1 {
+        margin: 0;
+        font-size: 26px;
+        line-height: 1;
+        letter-spacing: -0.05em;
+      }
+
+      .pair p {
+        margin: 6px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .header-pill {
+        gap: 8px;
+        padding: 10px 12px;
+        border-radius: 14px;
+        background: var(--warn-soft);
+        color: var(--warn);
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .trust-banner {
+        margin-top: 14px;
+        padding: 16px;
+        border-radius: 22px;
+        background:
+          radial-gradient(circle at top right, rgba(183, 77, 95, 0.1), transparent 28%),
+          linear-gradient(140deg, rgba(15, 118, 110, 0.12), rgba(255, 255, 255, 0.7));
+        border: 1px solid rgba(15, 118, 110, 0.08);
+      }
+
+      .eyebrow {
+        margin: 0 0 8px;
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--accent);
+      }
+
+      .trust-banner strong {
+        display: block;
+        font-size: 18px;
+        letter-spacing: -0.03em;
+      }
+
+      .trust-banner p {
+        margin: 8px 0 12px;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.7;
+      }
+
+      .chip-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .chip {
+        padding: 8px 12px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .chip.good {
+        color: var(--good);
+        background: var(--good-soft);
+      }
+
+      .chip.warn {
+        color: var(--warn);
+        background: var(--warn-soft);
+      }
+
+      .chip.soft {
+        color: var(--muted);
+        background: rgba(24, 33, 31, 0.06);
+      }
+
+      .tabs {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        padding: 12px 18px 0;
+      }
+
+      .tab-btn {
+        padding: 12px 10px;
+        border: 0;
+        border-radius: 16px;
+        background: rgba(24, 33, 31, 0.06);
+        color: var(--muted);
+        font: inherit;
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .tab-btn.active {
+        color: #f7faf9;
+        background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+        box-shadow: 0 12px 30px rgba(15, 118, 110, 0.24);
+      }
+
+      .conversation {
+        display: none;
+        padding: 14px 18px 12px;
+      }
+
+      .conversation.active {
+        display: block;
+      }
+
+      .case-strip {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: center;
+        padding: 14px 16px;
+        border-radius: 20px;
+        background: rgba(24, 33, 31, 0.05);
+      }
+
+      .case-strip strong {
+        display: block;
+        font-size: 14px;
+      }
+
+      .case-strip span {
+        display: block;
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .status-tag {
+        padding: 8px 10px;
+        border-radius: 12px;
+        background: var(--accent-soft);
+        color: var(--accent-strong);
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .message-list {
+        display: grid;
+        gap: 12px;
+        margin-top: 14px;
+      }
+
+      .message {
+        display: flex;
+        gap: 10px;
+        align-items: flex-end;
+      }
+
+      .message.me {
+        justify-content: flex-end;
+      }
+
+      .avatar {
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #d2c1ab, #8e7359);
+        flex: none;
+      }
+
+      .avatar.agent {
+        background: linear-gradient(135deg, #0f766e, #115e59);
+      }
+
+      .bubble {
+        max-width: 74%;
+        padding: 12px 14px;
+        border-radius: 18px 18px 18px 6px;
+        background: rgba(255, 255, 255, 0.84);
+        border: 1px solid rgba(24, 33, 31, 0.06);
+        box-shadow: 0 10px 24px rgba(43, 37, 28, 0.06);
+      }
+
+      .message.me .bubble {
+        border-radius: 18px 18px 6px 18px;
+        background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+        color: #f7faf9;
+      }
+
+      .bubble strong {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 12px;
+        letter-spacing: 0.04em;
+      }
+
+      .bubble p {
+        margin: 0;
+        font-size: 14px;
+        line-height: 1.65;
+      }
+
+      .bubble time {
+        display: block;
+        margin-top: 8px;
+        font-size: 11px;
+        color: rgba(24, 33, 31, 0.56);
+      }
+
+      .message.me .bubble time {
+        color: rgba(247, 250, 249, 0.76);
+      }
+
+      .system-card {
+        padding: 14px 16px;
+        border-radius: 18px;
+        background: rgba(24, 33, 31, 0.05);
+        color: var(--ink);
+      }
+
+      .system-card strong {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 13px;
+      }
+
+      .system-card p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.7;
+      }
+
+      .quick-tools {
+        display: grid;
+        gap: 10px;
+        margin-top: 16px;
+      }
+
+      .quick-card {
+        padding: 14px 16px;
+        border-radius: 18px;
+        background: rgba(24, 33, 31, 0.05);
+      }
+
+      .quick-card strong {
+        display: block;
+        font-size: 14px;
+      }
+
+      .quick-card p {
+        margin: 6px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.7;
+      }
+
+      .prompt-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      .prompt {
+        padding: 9px 12px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.82);
+        color: var(--ink);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .composer {
+        position: sticky;
+        bottom: 0;
+        padding: 12px 18px 18px;
+        background: linear-gradient(180deg, rgba(248, 241, 230, 0), rgba(248, 241, 230, 0.98) 34%);
+      }
+
+      .composer-inner {
+        display: grid;
+        grid-template-columns: 42px minmax(0, 1fr) 76px;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .input-shell {
+        padding: 14px 16px;
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.84);
+        color: var(--muted);
+        font-size: 14px;
+        border: 1px solid rgba(24, 33, 31, 0.06);
+      }
+
+      .send-btn {
+        appearance: none;
+        border: 0;
+        border-radius: 18px;
+        padding: 14px 12px;
+        color: #f7faf9;
+        background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+        font: inherit;
+        font-size: 14px;
+        font-weight: 800;
+      }
+
+      .bottom-nav {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+        padding: 0 18px 18px;
+      }
+
+      .nav-item {
+        flex-direction: column;
+        gap: 6px;
+        min-height: 58px;
+        border-radius: 18px;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        background: rgba(255, 255, 255, 0.58);
+      }
+
+      .nav-item strong {
+        font-size: 16px;
+      }
+
+      .nav-item.active {
+        color: #f7faf9;
+        background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+        box-shadow: 0 12px 30px rgba(15, 118, 110, 0.22);
+      }
+
+      .support {
+        display: grid;
+        gap: 18px;
+      }
+
+      .panel {
+        padding: 24px;
+        border-radius: 32px;
+        background:
+          linear-gradient(180deg, rgba(255, 252, 247, 0.95), rgba(247, 239, 227, 0.95)),
+          rgba(255, 255, 255, 0.5);
+        border: 1px solid rgba(255, 255, 255, 0.78);
+        box-shadow: var(--shadow);
+      }
+
+      .support h2 {
+        margin: 0;
+        font-size: 34px;
+        line-height: 1;
+        letter-spacing: -0.05em;
+      }
+
+      .support p {
+        margin: 12px 0 0;
+        color: var(--muted);
+        line-height: 1.8;
+      }
+
+      .checklist {
+        display: grid;
+        gap: 12px;
+        margin-top: 22px;
+      }
+
+      .check {
+        padding: 16px 18px;
+        border-radius: 20px;
+        background: rgba(24, 33, 31, 0.05);
+      }
+
+      .check strong {
+        display: block;
+        font-size: 16px;
+      }
+
+      .check span {
+        display: block;
+        margin-top: 6px;
+        color: var(--muted);
+        line-height: 1.7;
+      }
+
+      .grid-panels {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 18px;
+      }
+
+      .mini-panel {
+        padding: 22px;
+        border-radius: 28px;
+        background: rgba(255, 252, 247, 0.8);
+        border: 1px solid rgba(255, 255, 255, 0.75);
+        box-shadow: 0 16px 40px rgba(43, 37, 28, 0.08);
+      }
+
+      .mini-panel h3 {
+        margin: 0 0 10px;
+        font-size: 24px;
+        letter-spacing: -0.04em;
+      }
+
+      .mini-panel ul {
+        margin: 0;
+        padding-left: 18px;
+        color: var(--muted);
+        line-height: 1.8;
+      }
+
+      @media (max-width: 1040px) {
+        .shell {
+          grid-template-columns: 1fr;
+        }
+
+        .phone {
+          position: static;
+          min-height: auto;
+        }
+      }
+
+      @media (max-width: 720px) {
+        .page {
+          width: min(100vw - 16px, 1220px);
+          padding-top: 10px;
+        }
+
+        .prototype-bar {
+          display: none;
+        }
+
+        .phone {
+          padding: 10px;
+          border-radius: 28px;
+        }
+
+        .app {
+          border-radius: 24px;
+        }
+
+        .tabs,
+        .grid-panels {
+          grid-template-columns: 1fr;
+        }
+
+        .panel {
+          padding: 20px;
+          border-radius: 24px;
+        }
+
+        .support h2 {
+          font-size: 28px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <div class="prototype-bar">
+        <span class="dot"></span>
+        <span>Static prototype · 用户端聊天页 · 主聊天 / 红娘私聊结构</span>
+      </div>
+
+      <div class="shell">
+        <section class="phone">
+          <div class="app">
+            <header class="chat-header">
+              <div class="row">
+                <div class="header-left">
+                  <button class="icon-btn" type="button" aria-label="返回">←</button>
+                  <div class="pair">
+                    <h1>张砚舟 &amp; 林知夏</h1>
+                    <p>case #MT-2048 · 认真认识中</p>
+                  </div>
+                </div>
+                <div class="header-pill">资料待核验</div>
+              </div>
+
+              <section class="trust-banner">
+                <p class="eyebrow">Trust &amp; Safety</p>
+                <strong>平台提醒：先在站内聊清楚，再决定要不要转到线下。</strong>
+                <p>
+                  对方照片已完成真人照认证，但职业与收入仍以自填为主。当前没有强处置动作，但建议先确认日常作息、工作真实性和见面预期。
+                </p>
+                <div class="chip-row">
+                  <span class="chip good">照片已认证</span>
+                  <span class="chip warn">职业未核验</span>
+                  <span class="chip warn">收入未核验</span>
+                  <span class="chip soft">不要急着离开平台</span>
+                </div>
+              </section>
+            </header>
+
+            <nav class="tabs" aria-label="会话切换">
+              <button class="tab-btn active" type="button" data-target="group">主聊天</button>
+              <button class="tab-btn" type="button" data-target="dm-a">红娘对我</button>
+              <button class="tab-btn" type="button" data-target="actions">操作区</button>
+            </nav>
+
+            <section class="conversation active" id="group">
+              <div class="case-strip">
+                <div>
+                  <strong>正在主聊天里</strong>
+                  <span>双方可见，适合推进共同话题和见面预期。</span>
+                </div>
+                <span class="status-tag">可继续</span>
+              </div>
+
+              <div class="message-list">
+                <div class="system-card">
+                  <strong>平台谨慎提示</strong>
+                  <p>
+                    如果对方很快要求加微信、谈投资、借钱或规避视频核验，请直接点右上角举报，不要自己硬扛。
+                  </p>
+                </div>
+
+                <div class="message">
+                  <div class="avatar"></div>
+                  <div class="bubble">
+                    <strong>林知夏</strong>
+                    <p>我平时工作日下班比较规律，周末会去图书馆或者骑行。你平时更偏宅一点还是会出门？</p>
+                    <time>19:42</time>
+                  </div>
+                </div>
+
+                <div class="message me">
+                  <div class="bubble">
+                    <strong>我</strong>
+                    <p>我算中间吧，工作日偏安静，周末会安排徒步或者和朋友吃饭。你比较期待什么样的关系节奏？</p>
+                    <time>19:44</time>
+                  </div>
+                </div>
+
+                <div class="message">
+                  <div class="avatar"></div>
+                  <div class="bubble">
+                    <strong>林知夏</strong>
+                    <p>我更想慢一点确认，不想一开始就特别热闹，但如果价值观对得上，推进会比较稳。</p>
+                    <time>19:46</time>
+                  </div>
+                </div>
+
+                <div class="system-card">
+                  <strong>红娘系统观察</strong>
+                  <p>当前节奏正常，没有明显风险信号。下一步更适合聊：工作强度、周末安排、对见面的预期。</p>
+                </div>
+              </div>
+            </section>
+
+            <section class="conversation" id="dm-a">
+              <div class="case-strip">
+                <div>
+                  <strong>这是“红娘对我”私聊</strong>
+                  <span>只有你和平台助手可见，不会发给对方。</span>
+                </div>
+                <span class="status-tag">私密建议</span>
+              </div>
+
+              <div class="message-list">
+                <div class="message">
+                  <div class="avatar agent"></div>
+                  <div class="bubble">
+                    <strong>红娘 C</strong>
+                    <p>她对关系推进偏稳，不像想快速转场的人。你现在可以继续围绕“作息、周末、见面边界”聊，不需要立刻问很重的问题。</p>
+                    <time>19:47</time>
+                  </div>
+                </div>
+
+                <div class="message me">
+                  <div class="bubble">
+                    <strong>我</strong>
+                    <p>那我如果想确认她是不是认真，不显得太审问，应该怎么问？</p>
+                    <time>19:48</time>
+                  </div>
+                </div>
+
+                <div class="message">
+                  <div class="avatar agent"></div>
+                  <div class="bubble">
+                    <strong>红娘 C</strong>
+                    <p>你可以问她“你会更希望先聊一两周再见，还是先喝杯咖啡看看感觉？”这种问题既能看认真程度，也不会太像盘问。</p>
+                    <time>19:49</time>
+                  </div>
+                </div>
+
+                <div class="quick-tools">
+                  <div class="quick-card">
+                    <strong>可直接拿去用的问法</strong>
+                    <div class="prompt-row">
+                      <span class="prompt">你更喜欢慢慢熟还是尽快见面？</span>
+                      <span class="prompt">你周末通常怎么安排？</span>
+                      <span class="prompt">你会介意先视频再见面吗？</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="conversation" id="actions">
+              <div class="case-strip">
+                <div>
+                  <strong>聊天页内直接处理风险</strong>
+                  <span>不用让用户退出聊天页再去找举报、反馈和申诉入口。</span>
+                </div>
+                <span class="status-tag">就地处理</span>
+              </div>
+
+              <div class="quick-tools">
+                <div class="quick-card">
+                  <strong>举报对方</strong>
+                  <p>适合处理照骗、资料不符、导流站外、借钱投资等情况。入口应该在聊天页常驻可见。</p>
+                  <div class="prompt-row">
+                    <span class="prompt">照片与真人不符</span>
+                    <span class="prompt">导流站外</span>
+                    <span class="prompt">借钱/投资</span>
+                  </div>
+                </div>
+
+                <div class="quick-card">
+                  <strong>见面后反馈</strong>
+                  <p>见面结束后，用户可以直接回填“照片是否一致、职业收入是否符合、是否有安全担忧”。</p>
+                  <div class="prompt-row">
+                    <span class="prompt">照片一致</span>
+                    <span class="prompt">资料不符</span>
+                    <span class="prompt">有安全顾虑</span>
+                  </div>
+                </div>
+
+                <div class="quick-card">
+                  <strong>信任状态</strong>
+                  <p>如果后续平台要求对方补录活体视频或发起申诉，聊天页顶部状态条可以持续同步，不需要用户自己猜。</p>
+                </div>
+              </div>
+            </section>
+
+            <div class="composer">
+              <div class="composer-inner">
+                <button class="icon-btn" type="button" aria-label="更多">＋</button>
+                <div class="input-shell">想说点什么？输入前，先想想是不是值得继续聊。</div>
+                <button class="send-btn" type="button">发送</button>
+              </div>
+            </div>
+
+            <nav class="bottom-nav" aria-label="底部导航">
+              <div class="nav-item"><strong>⌂</strong>发现</div>
+              <div class="nav-item active"><strong>✉</strong>聊天</div>
+              <div class="nav-item"><strong>◎</strong>信任</div>
+              <div class="nav-item"><strong>◌</strong>我的</div>
+            </nav>
+          </div>
+        </section>
+
+        <section class="support">
+          <article class="panel">
+            <p class="eyebrow">Page Direction</p>
+            <h2>这版聊天页的核心，不是气泡好不好看，而是风险处理别再脱离聊天上下文。</h2>
+            <p>
+              你的后端已经支持主聊天、红娘私聊、举报、风险提示和见面后反馈，所以前端不能再做成普通单线程 IM。用户一边聊，一边就能看到平台建议和信任状态，才符合现在系统的结构。
+            </p>
+            <div class="checklist">
+              <div class="check">
+                <strong>主聊天和红娘私聊分开</strong>
+                <span>主聊天面向双方，红娘私聊只对单个用户可见，避免把系统建议误发给对方。</span>
+              </div>
+              <div class="check">
+                <strong>风险提醒常驻顶部</strong>
+                <span>不要把信任状态埋到资料详情页，聊天时用户更需要知道“现在该不该谨慎一点”。</span>
+              </div>
+              <div class="check">
+                <strong>举报与见面反馈留在同一页</strong>
+                <span>用户出事时不会先想起“去设置里找入口”，所以必须就地处理。</span>
+              </div>
+            </div>
+          </article>
+
+          <div class="grid-panels">
+            <article class="mini-panel">
+              <h3>后续可接接口</h3>
+              <ul>
+                <li>`/v2/chat/cases/{case_id}/timeline` 接主聊天和红娘私聊。</li>
+                <li>`/v1/chat/threads/{thread_id}/risk-overview` 接谨慎提示。</li>
+                <li>`/v1/chat/threads/{thread_id}/reports` 接举报。</li>
+                <li>`/v1/chat/threads/{thread_id}/meeting-feedback` 接见面后反馈。</li>
+              </ul>
+            </article>
+
+            <article class="mini-panel">
+              <h3>第二版可以再加</h3>
+              <ul>
+                <li>会话列表页，展示多个 case 的阶段状态。</li>
+                <li>聊天内“建议回复草稿”但不强推自动发送。</li>
+                <li>顶部信任条点开后进入完整 `trust-hub`。</li>
+                <li>风险触发后直接弹出补认证或申诉引导。</li>
+              </ul>
+            </article>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <script>
+      const tabs = document.querySelectorAll(".tab-btn");
+      const panels = document.querySelectorAll(".conversation");
+
+      for (const tab of tabs) {
+        tab.addEventListener("click", () => {
+          const target = tab.getAttribute("data-target");
+          for (const item of tabs) item.classList.toggle("active", item === tab);
+          for (const panel of panels) panel.classList.toggle("active", panel.id === target);
+        });
+      }
+    </script>
+  </body>
+</html>

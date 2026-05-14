@@ -16,6 +16,12 @@ def ensure_her_repo_on_sys_path(anchor_file: Path) -> Path:
     cached = sys.modules.get("her_monorepo_bootstrap")
     if cached is not None and hasattr(cached, "activate_for_anchor"):
         return cached.activate_for_anchor(anchor_file)
+    try:
+        import her_monorepo_bootstrap as bootstrap
+    except ImportError:
+        bootstrap = None
+    if bootstrap is not None and hasattr(bootstrap, "activate_for_anchor"):
+        return bootstrap.activate_for_anchor(anchor_file)
 
     here = anchor_file.resolve()
     bootstrap_py: Path | None = None
