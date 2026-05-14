@@ -27,8 +27,10 @@ from chat_system.storage import (  # noqa: E402
     initialize_database as initialize_chat_db,
     reset_all_tables as reset_chat_tables,
 )
+from chat_system.async_tasks import run_chat_async_job_worker  # noqa: E402
 from gateway.app import PartnerGateway  # noqa: E402
 from matchmaking_system.async_tasks import run_matchmaking_async_job_worker  # noqa: E402
+from recommendation_system.async_tasks import run_recommendation_async_job_worker  # noqa: E402
 from matchmaking_system.storage import (  # noqa: E402
     DEFAULT_MATCHMAKING_TEST_MYSQL_DSN,
     connect_db as connect_matchmaking_db,
@@ -348,6 +350,20 @@ class GatewayEndToEndRegressionTests(unittest.TestCase):
         finally:
             conn.close()
 
+    def _run_recommendation_async_jobs(self) -> dict:
+        conn = connect_recommendation_db(DEFAULT_RECOMMENDATION_TEST_MYSQL_DSN)
+        try:
+            return run_recommendation_async_job_worker(conn, limit=10)
+        finally:
+            conn.close()
+
+    def _run_chat_async_jobs(self) -> dict:
+        conn = connect_chat_db(DEFAULT_CHAT_TEST_MYSQL_DSN)
+        try:
+            return run_chat_async_job_worker(conn, limit=10)
+        finally:
+            conn.close()
+
     def test_end_to_end_matchmaking_case_can_flow_into_chat_timeline(self) -> None:
         self._seed_matchmaking_profiles()
 
@@ -643,6 +659,205 @@ class GatewayEndToEndRegressionTests(unittest.TestCase):
         self.assertIsNone(payload["matchmaking"]["case"])
         self.assertEqual(payload["recommendation"]["case"]["case_id"], case_id)
         self.assertGreaterEqual(len(payload["recommendation"]["events"]), 1)
+
+    def test_end_to_end_async_jobs_are_observable_across_three_systems(self) -> None:
+        self._seed_recommendation_profiles()
+        self._seed_matchmaking_profiles()
+
+        status, payload = self._call(
+            "POST",
+            "/v1/recommendation/subscriptions",
+            {
+                "requester_id": 70001,
+                "title": "无锡认真恋爱候选池",
+                "source": self.search_dsn,
+                "criteria": {
+                    "gender": "女",
+                    "cities": ["无锡"],
+                    "relationship_goals": ["认真恋爱", "结婚导向"],
+                },
+                "self_profile": {"age": 30, "city": "无锡", "education": "本科"},
+                "limit_count": 5,
+                "top_k": 5,
+                "min_notify_score": 1,
+                "daily_notification_cap": 5,
+                "quiet_hours_start": 23,
+                "quiet_hours_end": 8,
+                "refresh_interval_hours": 24,
+                "recommendation_mode": "match_based",
+                "now": "2026-05-08 10:00:00",
+            },
+            token="token-requester-70001",
+        )
+        self.assertTrue(status.startswith("201"), status)
+        subscription_id = payload["subscription"]["subscription_id"]
+
+        status, payload = self._call(
+            "POST",
+            "/v1/recommendation/subscriptions/refresh-due",
+            {
+                "subscription_ids": [subscription_id],
+                "now": "2026-05-08 10:05:00",
+            },
+            token="token-ops",
+        )
+        self.assertTrue(status.startswith("202"), status)
+        recommendation_job_id = payload["job"]["job_id"]
+        recommendation_worker = self._run_recommendation_async_jobs()
+        self.assertEqual(recommendation_worker["success_count"], 1)
+
+        status, payload = self._call(
+            "GET",
+            f"/v1/recommendation/jobs/{recommendation_job_id}",
+            token="token-ops",
+        )
+        self.assertTrue(status.startswith("200"), status)
+        self.assertEqual(payload["job"]["status"], "succeeded")
+        self.assertEqual(len(payload["job"]["result"]["summaries"]), 1)
+
+        status, payload = self._call(
+            "POST",
+            "/v1/matchmaking/members",
+            {
+                "user_key": "user-a",
+                "source": self.search_dsn,
+                "self_id": 2001,
+                "search_criteria": {
+                    "gender": "女",
+                    "cities": ["无锡"],
+                    "relationship_goals": ["认真恋爱", "结婚导向"],
+                },
+                "self_profile": {"age": 30, "city": "无锡", "education": "本科"},
+                "min_pair_score": 1,
+                "limit_count": 5,
+                "refresh_interval_hours": 24,
+                "now": "2026-05-08 10:06:00",
+            },
+            token="token-user-a",
+        )
+        self.assertTrue(status.startswith("201"), status)
+
+        status, payload = self._call(
+            "POST",
+            "/v1/matchmaking/members",
+            {
+                "user_key": "user-b",
+                "source": self.search_dsn,
+                "self_id": 2002,
+                "search_criteria": {
+                    "gender": "男",
+                    "cities": ["无锡"],
+                    "relationship_goals": ["认真恋爱", "结婚导向"],
+                },
+                "self_profile": {"age": 28, "city": "无锡", "education": "本科"},
+                "min_pair_score": 1,
+                "limit_count": 5,
+                "refresh_interval_hours": 24,
+                "now": "2026-05-08 10:06:00",
+            },
+            token="token-user-b",
+        )
+        self.assertTrue(status.startswith("201"), status)
+
+        status, payload = self._call(
+            "POST",
+            "/v1/matchmaking/pool/refresh",
+            {"now": "2026-05-08 10:07:00"},
+            token="token-ops",
+        )
+        self.assertTrue(status.startswith("202"), status)
+        matchmaking_job_id = payload["job"]["job_id"]
+        matchmaking_worker = self._run_matchmaking_async_jobs()
+        self.assertEqual(matchmaking_worker["success_count"], 1)
+
+        status, payload = self._call(
+            "GET",
+            f"/v1/matchmaking/jobs/{matchmaking_job_id}",
+            token="token-ops",
+        )
+        self.assertTrue(status.startswith("200"), status)
+        self.assertEqual(payload["job"]["status"], "succeeded")
+        self.assertEqual(len(payload["job"]["result"]), 2)
+
+        status, payload = self._call(
+            "POST",
+            "/v1/chat/threads",
+            {
+                "case_id": "case-async-dashboard-1",
+                "relation_key": "async-dashboard:1",
+                "participant_a_id": "user-a",
+                "participant_b_id": "user-b",
+                "now": "2026-05-08 10:08:00",
+            },
+            token="token-ops",
+        )
+        self.assertTrue(status.startswith("201"), status)
+        thread_id = payload["thread"]["thread_id"]
+
+        status, payload = self._call(
+            "POST",
+            f"/v1/chat/threads/{thread_id}/messages",
+            {
+                "author_id": "user-a",
+                "body": "先打个招呼，看看 maintenance 和摘要链路。",
+                "now": "2026-05-08 10:09:00",
+            },
+            token="token-user-a",
+        )
+        self.assertTrue(status.startswith("201"), status)
+
+        status, payload = self._call(
+            "POST",
+            "/v1/chat/maintenance/run",
+            {
+                "persona_limit": 5,
+                "summary_max_threads": 10,
+            },
+            token="token-ops",
+        )
+        self.assertTrue(status.startswith("202"), status)
+        chat_job_id = payload["job"]["job_id"]
+        chat_worker = self._run_chat_async_jobs()
+        self.assertEqual(chat_worker["success_count"], 1)
+
+        status, payload = self._call(
+            "GET",
+            f"/v1/chat/jobs/{chat_job_id}",
+            token="token-ops",
+        )
+        self.assertTrue(status.startswith("200"), status)
+        self.assertEqual(payload["job"]["status"], "succeeded")
+
+        status, payload = self._call(
+            "GET",
+            "/v1/ops/async-jobs/dashboard",
+            token="token-ops",
+        )
+        self.assertTrue(status.startswith("200"), status)
+        dashboard = payload
+        self.assertGreaterEqual(dashboard["totals"]["succeeded"], 3)
+        self.assertEqual(dashboard["totals"]["backlog_open"], 0)
+
+        recommendation_types = {
+            item["job_type"]: item for item in dashboard["systems"]["recommendation"]["job_types"]
+        }
+        self.assertEqual(
+            recommendation_types["recommendation.refresh_due_subscriptions"]["by_status"]["succeeded"],
+            1,
+        )
+
+        matchmaking_types = {
+            item["job_type"]: item for item in dashboard["systems"]["matchmaking"]["job_types"]
+        }
+        self.assertEqual(
+            matchmaking_types["matchmaking.refresh_active_pool"]["by_status"]["succeeded"],
+            1,
+        )
+
+        chat_types = {
+            item["job_type"]: item for item in dashboard["systems"]["chat"]["job_types"]
+        }
+        self.assertEqual(chat_types["chat.run_maintenance"]["by_status"]["succeeded"], 1)
 
 
 if __name__ == "__main__":
