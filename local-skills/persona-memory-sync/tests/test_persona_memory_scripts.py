@@ -8,8 +8,6 @@ from unittest import mock
 
 
 SCRIPT_DIR = pathlib.Path(__file__).resolve().parents[1] / "scripts"
-if str(SCRIPT_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPT_DIR))
 
 
 def load_script_module(name: str):
@@ -22,6 +20,66 @@ def load_script_module(name: str):
 
 
 class PersonaMemoryScriptTests(unittest.TestCase):
+    def test_ensure_persona_tables_main_delegates_to_schema_helper(self):
+        module = load_script_module("ensure_persona_tables")
+        stdout = io.StringIO()
+        fake_conn = mock.Mock()
+
+        with (
+            mock.patch.object(module, "mysql_connect", return_value=fake_conn) as connect_mock,
+            mock.patch.object(
+                module,
+                "ensure_persona_schema",
+                return_value={
+                    "persona_table": "personas_v2",
+                    "observation_table": "observations_v2",
+                    "profile_table": "profiles_v2",
+                    "public_view": "public_profile_view_v2",
+                    "created_profile_columns": ["matcher_traits_json", "public_display_name"],
+                },
+            ) as ensure_mock,
+            mock.patch.object(
+                sys,
+                "argv",
+                [
+                    "ensure_persona_tables.py",
+                    "--source",
+                    "mysql://demo@127.0.0.1:3306/her?table=profiles_v2",
+                    "--persona-table",
+                    "personas_v2",
+                    "--observation-table",
+                    "observations_v2",
+                    "--public-view",
+                    "public_profile_view_v2",
+                ],
+            ),
+            contextlib.redirect_stdout(stdout),
+        ):
+            module.main()
+
+        connect_mock.assert_called_once_with("mysql://demo@127.0.0.1:3306/her?table=profiles_v2")
+        ensure_mock.assert_called_once_with(
+            fake_conn,
+            source="mysql://demo@127.0.0.1:3306/her?table=profiles_v2",
+            persona_table="personas_v2",
+            observation_table="observations_v2",
+            profile_table=None,
+            public_view="public_profile_view_v2",
+        )
+        fake_conn.close.assert_called_once_with()
+        self.assertEqual(
+            stdout.getvalue().strip(),
+            "\n".join(
+                [
+                    "persona_table=personas_v2",
+                    "observation_table=observations_v2",
+                    "profile_table=profiles_v2",
+                    "public_view=public_profile_view_v2",
+                    "created_profile_columns=matcher_traits_json,public_display_name",
+                ]
+            ),
+        )
+
     def test_upsert_persona_memory_main_delegates_to_engine_and_prints_json(self):
         module = load_script_module("upsert_persona_memory")
         stdout = io.StringIO()
@@ -67,6 +125,8 @@ class PersonaMemoryScriptTests(unittest.TestCase):
                 confidence_score=None,
                 evidence_text=None,
                 conversation_ref=None,
+                basis=None,
+                apply_scope=None,
                 sync_profile=True,
             ),
         )

@@ -16,8 +16,14 @@ logger = logging.getLogger(__name__)
 
 JOB_REC_REFRESH = "recommendation.refresh_saved_searches"
 JOB_REC_DELIVER = "recommendation.deliver_in_app_recommendations"
+JOB_REC_OUTBOX = "recommendation.outbox_worker"
+JOB_REC_ASYNC_WORKER = "recommendation.async_job_worker"
 JOB_MM_REFRESH = "matchmaking.refresh_active_pool"
+JOB_MM_OUTBOX = "matchmaking.outbox_worker"
+JOB_MM_ASYNC_WORKER = "matchmaking.async_job_worker"
 JOB_CHAT_MAINTENANCE = "chat.maintenance"
+JOB_CHAT_OUTBOX = "chat.outbox_worker"
+JOB_CHAT_ASYNC_WORKER = "chat.async_job_worker"
 
 
 def _safe_dsn_hint(dsn: str) -> str:

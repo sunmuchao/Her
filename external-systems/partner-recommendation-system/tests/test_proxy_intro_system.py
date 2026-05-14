@@ -18,6 +18,7 @@ from recommendation_system import (  # noqa: E402
     dispatch_match_case_outreach,
     get_match_case,
     initialize_database,
+    list_pending_outbox,
     list_match_case_events,
     list_match_case_outreach_attempts,
     list_recommendations_for_subscription,
@@ -25,6 +26,7 @@ from recommendation_system import (  # noqa: E402
     record_user_review,
     refresh_subscription,
     reset_all_tables,
+    run_recommendation_outbox_worker,
 )
 from recommendation_system.storage import DEFAULT_RECOMMENDATION_TEST_MYSQL_DSN  # noqa: E402
 
@@ -161,6 +163,31 @@ class ProxyIntroSystemTests(unittest.TestCase):
         case_events = list_match_case_events(self.conn, case["case_id"])
         self.assertEqual(case_events[-1]["payload"]["canonical_event"]["aggregate_type"], "case")
         self.assertEqual(case_events[-1]["payload"]["canonical_event"]["payload"]["case_type"], "proxy_intro")
+
+    def test_outbox_worker_consumes_proxy_intro_events(self):
+        subscription = self.seed_delivered_recommendation(candidate_id=90008)
+        case = create_match_case(
+            self.conn,
+            subscription_id=subscription["subscription_id"],
+            candidate_id=90008,
+            now=datetime(2026, 4, 30, 10, 0, 0),
+        )
+        dispatch_match_case_outreach(
+            self.conn,
+            case_id=case["case_id"],
+            now=datetime(2026, 4, 30, 10, 5, 0),
+        )
+
+        self.assertGreaterEqual(len(list_pending_outbox(self.conn, limit=20)), 2)
+        result = run_recommendation_outbox_worker(
+            self.conn,
+            limit=20,
+            max_batches=2,
+            now=datetime(2026, 4, 30, 10, 6, 0),
+        )
+
+        self.assertGreaterEqual(result["totals"]["marked_published"], 2)
+        self.assertEqual(len(list_pending_outbox(self.conn, limit=20, now=datetime(2026, 4, 30, 10, 6, 1))), 0)
 
     def test_accepted_case_blocks_duplicate_creation_until_closed_then_can_reopen(self):
         subscription = self.seed_delivered_recommendation(candidate_id=90006)

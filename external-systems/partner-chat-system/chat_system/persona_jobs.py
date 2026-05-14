@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import hashlib
+import zlib
 from typing import Any
 
 try:
@@ -14,14 +16,14 @@ from datetime import datetime
 
 from match_domain.trace_context import get_trace_id
 from observability import CHAT_FUNNEL_PERSONA_JOB_ENQUEUED, funnel_stage
-from skill_runtime import ensure_persona_memory_skill_on_path
 
 from .storage import json_dumps, json_loads, row_to_dict
 
-_ASSISTANT = "assistant"
 _SRC_USER = "user"
 _VIS_DYADIC = "dyadic"
 _VIS_OWNER_ONLY = "owner_only"
+SUPPORTED_PERSONA_SOURCE_TYPES = {"explicit", "strong_inference", "weak_inference"}
+SUPPORTED_PERSONA_APPLY_SCOPES = {"observation_only", "persona_only", "persona_and_profile"}
 
 
 def _ts(now: datetime | None = None) -> datetime:
@@ -61,6 +63,62 @@ def body_suggests_persona_update(body: str) -> bool:
     return any(m in text for m in PERSONA_HINT_MARKERS)
 
 
+def enqueue_persona_sync_job(
+    conn,
+    *,
+    thread_id: str,
+    message_id: int,
+    subject_user_id: str,
+    patch: dict[str, Any] | None,
+    evidence: dict[str, Any],
+    now: datetime | None = None,
+) -> bool:
+    ts = _ts(now)
+    patch_payload = dict(patch) if isinstance(patch, dict) and patch else None
+    evidence_payload = dict(evidence or {})
+    source_type = str(evidence_payload.get("source_type") or "").strip()
+    basis = str(evidence_payload.get("basis") or "").strip()
+    apply_scope = str(evidence_payload.get("apply_scope") or "").strip()
+    update_key_payload = {
+        "message_id": int(message_id),
+        "subject_user_id": str(subject_user_id),
+        "source_type": source_type,
+        "basis": basis,
+        "apply_scope": apply_scope,
+        "patch": patch_payload or {},
+    }
+    update_key = hashlib.sha1(json_dumps(update_key_payload).encode("utf-8")).hexdigest()
+    stored_message_id = int(message_id) * 1_000_000 + (zlib.crc32(update_key.encode("utf-8")) % 1_000_000)
+    try:
+        conn.execute(
+            """
+            INSERT INTO persona_sync_jobs (
+              thread_id, message_id, subject_user_id, update_key, status, patch_json, evidence_json, created_at
+            ) VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)
+            """,
+            (
+                str(thread_id),
+                stored_message_id,
+                str(subject_user_id),
+                update_key,
+                json_dumps(patch_payload) if patch_payload is not None else None,
+                json_dumps(evidence_payload),
+                ts,
+            ),
+        )
+    except IntegrityError:
+        return False
+    funnel_stage(
+        system="chat",
+        stage=CHAT_FUNNEL_PERSONA_JOB_ENQUEUED,
+        trace_id=get_trace_id(),
+        thread_id=str(thread_id),
+        message_id=stored_message_id,
+        subject_user_id=str(subject_user_id),
+    )
+    return True
+
+
 def maybe_enqueue_persona_sync_job(
     conn,
     thread: dict[str, Any],
@@ -74,52 +132,9 @@ def maybe_enqueue_persona_sync_job(
     metadata: dict[str, Any] | None,
     ts,
 ) -> None:
-    if source != _SRC_USER or author_id == _ASSISTANT:
-        return
-    msg_meta = metadata if isinstance(metadata, dict) else {}
-    if bool(msg_meta.get("skip_persona_sync")):
-        return
-    if str(msg_meta.get("owner_only_kind") or "").strip() == "assistant_query":
-        return
-    pa, pb = thread["participant_a_id"], thread["participant_b_id"]
-    if author_id not in (pa, pb):
-        return
-    if visibility == _VIS_DYADIC:
-        pass
-    elif visibility == _VIS_OWNER_ONLY and message_recipient_id == author_id:
-        pass
-    else:
-        return
-    if not body_suggests_persona_update(body):
-        return
-
-    evidence = json_dumps(
-        {
-            "conversation_ref": f"{thread['thread_id']}/{message_id}",
-            "body_snippet": (body or "")[:2000],
-            "reason": "keyword_heuristic",
-        }
-    )
-    try:
-        conn.execute(
-            """
-            INSERT INTO persona_sync_jobs (
-              thread_id, message_id, subject_user_id, status, evidence_json, created_at
-            ) VALUES (?, ?, ?, 'pending', ?, ?)
-            """,
-            (thread["thread_id"], int(message_id), author_id, evidence, ts),
-        )
-    except IntegrityError:
-        return
-    funnel_stage(
-        system="chat",
-        stage=CHAT_FUNNEL_PERSONA_JOB_ENQUEUED,
-        trace_id=get_trace_id(),
-        case_id=str(thread.get("case_id")),
-        thread_id=thread["thread_id"],
-        message_id=int(message_id),
-        subject_user_id=author_id,
-    )
+    # Live chat messages should not trigger persona sync directly.
+    # Persona changes are decided in a dedicated post-chat review step.
+    return
 
 
 def list_pending_persona_jobs(conn, *, limit: int = 50) -> list[dict[str, Any]]:
@@ -153,6 +168,7 @@ def process_pending_persona_jobs(conn, *, limit: int = 20, now=None) -> dict[str
     for row in rows:
         job_id = int(row["job_id"])
         subject = str(row["subject_user_id"])
+        patch = json_loads(row.get("patch_json"), None)
         evidence = json_loads(row.get("evidence_json"), {})
 
         def _finish(status: str, result: dict[str, Any]) -> None:
@@ -174,20 +190,65 @@ def process_pending_persona_jobs(conn, *, limit: int = 20, now=None) -> dict[str
             continue
 
         try:
-            ensure_persona_memory_skill_on_path()
             from persona_memory_sync import upsert_persona_memory  # noqa: PLC0415
 
             conv = str(evidence.get("conversation_ref") or "")
             snippet = str(evidence.get("body_snippet") or "")
+            evidence_text = str(evidence.get("evidence_text") or snippet)
+            source_type = str(evidence.get("source_type") or "").strip()
+            apply_scope = str(evidence.get("apply_scope") or "").strip()
+            raw_confidence = evidence.get("confidence_score")
+            try:
+                confidence_score = int(raw_confidence) if raw_confidence is not None else None
+            except (TypeError, ValueError):
+                confidence_score = None
+            sync_profile = bool(evidence.get("sync_profile"))
+            if not apply_scope:
+                apply_scope = "persona_and_profile" if sync_profile else "persona_only"
+            if not isinstance(patch, dict) or not patch:
+                _finish(
+                    "needs_review",
+                    {
+                        "skipped": True,
+                        "reason": "missing_persona_patch",
+                        "evidence_reason": str(evidence.get("reason") or ""),
+                    },
+                )
+                review += 1
+                continue
+            if source_type not in SUPPORTED_PERSONA_SOURCE_TYPES:
+                _finish(
+                    "needs_review",
+                    {
+                        "skipped": True,
+                        "reason": "unsupported_source_type",
+                        "source_type": source_type,
+                    },
+                )
+                review += 1
+                continue
+            if apply_scope not in SUPPORTED_PERSONA_APPLY_SCOPES:
+                _finish(
+                    "needs_review",
+                    {
+                        "skipped": True,
+                        "reason": "unsupported_apply_scope",
+                        "apply_scope": apply_scope,
+                    },
+                )
+                review += 1
+                continue
             result = upsert_persona_memory(
                 {
                     "source": source,
                     "user_key": subject,
-                    "source_type": "chat_message",
-                    "patch": {},
-                    "evidence_text": snippet,
+                    "source_type": source_type,
+                    "patch": patch,
+                    "confidence_score": confidence_score,
+                    "evidence_text": evidence_text,
                     "conversation_ref": conv,
-                    "sync_profile": False,
+                    "sync_profile": apply_scope == "persona_and_profile",
+                    "apply_scope": apply_scope,
                 }
             )
             _finish("applied", {"ok": True, "upsert": result})
@@ -210,8 +271,10 @@ def get_persona_job(conn, job_id: int) -> dict[str, Any] | None:
 
 
 __all__ = [
+    "SUPPORTED_PERSONA_SOURCE_TYPES",
     "PERSONA_HINT_MARKERS",
     "body_suggests_persona_update",
+    "enqueue_persona_sync_job",
     "get_persona_job",
     "list_pending_persona_jobs",
     "maybe_enqueue_persona_sync_job",

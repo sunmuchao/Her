@@ -9,12 +9,22 @@ import json
 import sys
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 
 _partner_rec_root = Path(__file__).resolve().parents[1]
-if str(_partner_rec_root) not in sys.path:
-    sys.path.insert(0, str(_partner_rec_root))
+_repo_root = Path(__file__).resolve().parents[3]
+for root in (_partner_rec_root, _repo_root):
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
 
 from recommendation_system import connect_db, initialize_database, record_recommendation_action  # noqa: E402
+from match_domain.script_actor import (  # noqa: E402
+    activate_actor_from_args,
+    add_actor_cli_args,
+    audit_cli_action,
+    clear_actor,
+)
 from recommendation_system.storage import DEFAULT_RECOMMENDATION_MYSQL_DSN  # noqa: E402
 
 
@@ -42,20 +52,57 @@ def parse_args() -> argparse.Namespace:
         help="Outer-system action taken on this recommendation.",
     )
     parser.add_argument("--payload-json", default=None, help="Optional JSON string or @file with additional action payload.")
+    add_actor_cli_args(
+        parser,
+        default_actor_id="system:recommendation-admin",
+        default_actor_roles="service_worker",
+    )
     return parser.parse_args()
 
 
 def main() -> int:
+    load_dotenv(_repo_root / ".env", override=True)
     args = parse_args()
-    conn = connect_db(args.db)
-    initialize_database(conn)
-    recommendation = record_recommendation_action(
-        conn,
-        subscription_id=args.subscription_id,
-        candidate_id=args.candidate_id,
-        action_type=args.action,
-        action_payload=load_json_arg(args.payload_json),
+    actor_token = activate_actor_from_args(
+        args,
+        default_actor_id="system:recommendation-admin",
+        default_actor_roles="service_worker",
     )
+    conn = connect_db(args.db)
+    try:
+        initialize_database(conn)
+        recommendation = record_recommendation_action(
+            conn,
+            subscription_id=args.subscription_id,
+            candidate_id=args.candidate_id,
+            action_type=args.action,
+            actor_id=args.actor_id,
+            action_payload=load_json_arg(args.payload_json),
+        )
+        audit_cli_action(
+            args,
+            action="recommendation.record_action",
+            resource_type="recommendation_subscription",
+            resource_id=args.subscription_id,
+            outcome="succeeded",
+            candidate_id=args.candidate_id,
+            action_type=args.action,
+        )
+    except Exception as exc:
+        audit_cli_action(
+            args,
+            action="recommendation.record_action",
+            resource_type="recommendation_subscription",
+            resource_id=args.subscription_id,
+            outcome="failed",
+            candidate_id=args.candidate_id,
+            action_type=args.action,
+            error_message=str(exc),
+        )
+        raise
+    finally:
+        conn.close()
+        clear_actor(actor_token)
     print(json.dumps(recommendation, ensure_ascii=False, indent=2))
     return 0
 

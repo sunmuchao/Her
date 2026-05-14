@@ -1,5 +1,15 @@
 """External Phase 5 matchmaking system built on top of partner-search and persona-memory-sync."""
 
+from .outbox import (
+    list_failed_outbox,
+    list_pending_outbox,
+    list_processing_outbox,
+    list_retry_pending_outbox,
+    requeue_outbox_rows,
+    run_matchmaking_outbox_worker,
+    serve_matchmaking_outbox_worker,
+    summarize_outbox,
+)
 from .service import (
     ACTIVE_MEMBER_STATUS,
     build_mutual_pairs,
@@ -38,18 +48,26 @@ __all__ = [
     "get_pool_member",
     "initialize_database",
     "list_active_pool_members",
+    "list_failed_outbox",
     "list_due_pool_members",
     "list_feedback_events",
     "list_match_case_events",
     "list_match_cases",
+    "list_pending_outbox",
     "list_pairs",
+    "list_processing_outbox",
     "list_pool_members",
+    "list_retry_pending_outbox",
     "open_match_cases",
     "record_case_reply",
     "record_feedback",
     "refresh_active_pool",
     "reset_all_tables",
     "refresh_pool_member",
+    "requeue_outbox_rows",
     "revalidate_member_matches",
+    "run_matchmaking_outbox_worker",
     "set_pool_member_status",
+    "serve_matchmaking_outbox_worker",
+    "summarize_outbox",
 ]

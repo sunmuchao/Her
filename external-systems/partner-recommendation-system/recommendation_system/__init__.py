@@ -46,6 +46,16 @@ from .service import (
     refresh_subscription,
     update_subscription_overrides,
 )
+from .outbox import (
+    list_failed_outbox,
+    list_pending_outbox,
+    list_processing_outbox,
+    list_retry_pending_outbox,
+    requeue_outbox_rows,
+    run_recommendation_outbox_worker,
+    serve_recommendation_outbox_worker,
+    summarize_outbox,
+)
 from .storage import connect_db, initialize_database, reset_all_tables
 
 __all__ = [
@@ -74,20 +84,28 @@ __all__ = [
     "handle_opt_in_decision",
     "initialize_database",
     "list_in_app_cards",
+    "list_failed_outbox",
     "list_match_case_events",
     "list_match_case_outreach_attempts",
     "list_match_cases_for_recommendation",
     "list_match_cases_for_subscription",
+    "list_pending_outbox",
+    "list_processing_outbox",
     "list_recommendations_for_subscription",
+    "list_retry_pending_outbox",
     "list_search_runs_for_subscription",
     "mark_in_app_cards_read",
     "record_match_case_reply",
     "record_recommendation_action",
     "record_user_review",
+    "requeue_outbox_rows",
     "refresh_due_subscriptions",
     "refresh_subscription",
     "reset_all_tables",
     "run_search_session",
+    "run_recommendation_outbox_worker",
+    "serve_recommendation_outbox_worker",
     "subscribe_after_opt_in",
+    "summarize_outbox",
     "update_subscription_overrides",
 ]

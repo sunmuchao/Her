@@ -8,7 +8,18 @@ from apscheduler.schedulers.base import BaseScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
 from .config import SchedulerSettings
-from .jobs import JOB_CHAT_MAINTENANCE, make_chat_job, make_matchmaking_job, make_recommendation_job
+from .jobs import (
+    JOB_CHAT_ASYNC_WORKER,
+    JOB_CHAT_MAINTENANCE,
+    JOB_CHAT_OUTBOX,
+    JOB_MM_ASYNC_WORKER,
+    JOB_MM_OUTBOX,
+    JOB_REC_ASYNC_WORKER,
+    JOB_REC_OUTBOX,
+    make_chat_job,
+    make_matchmaking_job,
+    make_recommendation_job,
+)
 from .paths import (
     ensure_chat_system_on_path,
     ensure_matchmaking_system_on_path,
@@ -42,9 +53,29 @@ def register_jobs(scheduler: BaseScheduler, settings: SchedulerSettings) -> list
             dispatch_pending_match_cases,
             refresh_due_subscriptions,
         )
+        from recommendation_system.async_tasks import run_recommendation_async_job_worker  # noqa: PLC0415
+        from recommendation_system.outbox import run_recommendation_outbox_worker  # noqa: PLC0415
 
         db = settings.recommendation_db
         specs: list[tuple[str, int, Callable[[], None]]] = [
+            (
+                JOB_REC_ASYNC_WORKER,
+                settings.recommendation_async_job_sec,
+                make_recommendation_job(
+                    JOB_REC_ASYNC_WORKER,
+                    run_recommendation_async_job_worker,
+                    db=db,
+                ),
+            ),
+            (
+                JOB_REC_OUTBOX,
+                settings.recommendation_outbox_sec,
+                make_recommendation_job(
+                    JOB_REC_OUTBOX,
+                    run_recommendation_outbox_worker,
+                    db=db,
+                ),
+            ),
             (
                 JOB_REC_REFRESH,
                 settings.recommendation_refresh_subscriptions_sec,
@@ -104,9 +135,21 @@ def register_jobs(scheduler: BaseScheduler, settings: SchedulerSettings) -> list
             open_match_cases,
             refresh_active_pool,
         )
+        from matchmaking_system.async_tasks import run_matchmaking_async_job_worker  # noqa: PLC0415
+        from matchmaking_system.outbox import run_matchmaking_outbox_worker  # noqa: PLC0415
 
         db = settings.matchmaking_db
         mm_specs: list[tuple[str, int, Callable[[], None]]] = [
+            (
+                JOB_MM_ASYNC_WORKER,
+                settings.matchmaking_async_job_sec,
+                make_matchmaking_job(JOB_MM_ASYNC_WORKER, run_matchmaking_async_job_worker, db=db),
+            ),
+            (
+                JOB_MM_OUTBOX,
+                settings.matchmaking_outbox_sec,
+                make_matchmaking_job(JOB_MM_OUTBOX, run_matchmaking_outbox_worker, db=db),
+            ),
             (
                 JOB_MM_REFRESH,
                 settings.matchmaking_refresh_pool_sec,
@@ -144,11 +187,33 @@ def register_jobs(scheduler: BaseScheduler, settings: SchedulerSettings) -> list
 
     if settings.chat_db:
         ensure_chat_system_on_path()
+        from chat_system.async_tasks import run_chat_async_job_worker  # noqa: PLC0415
         from chat_system.maintenance import run_chat_maintenance  # noqa: PLC0415
+        from chat_system.outbox_worker import run_chat_outbox_worker  # noqa: PLC0415
 
         db = settings.chat_db
         scheduler.add_job(
-            make_chat_job(JOB_CHAT_MAINTENANCE, run_chat_maintenance, db=db),
+            make_chat_job(JOB_CHAT_ASYNC_WORKER, run_chat_async_job_worker, db=db),
+            trigger=IntervalTrigger(seconds=settings.chat_async_job_sec),
+            id=JOB_CHAT_ASYNC_WORKER,
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
+        registered.append(JOB_CHAT_ASYNC_WORKER)
+        logger.info("registered job %s every %ss", JOB_CHAT_ASYNC_WORKER, settings.chat_async_job_sec)
+        scheduler.add_job(
+            make_chat_job(JOB_CHAT_OUTBOX, run_chat_outbox_worker, db=db),
+            trigger=IntervalTrigger(seconds=settings.chat_outbox_sec),
+            id=JOB_CHAT_OUTBOX,
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
+        registered.append(JOB_CHAT_OUTBOX)
+        logger.info("registered job %s every %ss", JOB_CHAT_OUTBOX, settings.chat_outbox_sec)
+        scheduler.add_job(
+            make_chat_job(JOB_CHAT_MAINTENANCE, run_chat_maintenance, db=db, flush_outbox=False),
             trigger=IntervalTrigger(seconds=settings.chat_maintenance_sec),
             id=JOB_CHAT_MAINTENANCE,
             replace_existing=True,
@@ -175,8 +240,20 @@ def run_job_once(job_id: str, settings: SchedulerSettings) -> None:
             dispatch_pending_match_cases,
             refresh_due_subscriptions,
         )
+        from recommendation_system.async_tasks import run_recommendation_async_job_worker  # noqa: PLC0415
+        from recommendation_system.outbox import run_recommendation_outbox_worker  # noqa: PLC0415
 
         db = settings.recommendation_db
+        mapping[JOB_REC_ASYNC_WORKER] = make_recommendation_job(
+            JOB_REC_ASYNC_WORKER,
+            run_recommendation_async_job_worker,
+            db=db,
+        )
+        mapping[JOB_REC_OUTBOX] = make_recommendation_job(
+            JOB_REC_OUTBOX,
+            run_recommendation_outbox_worker,
+            db=db,
+        )
         mapping[JOB_REC_REFRESH] = make_recommendation_job(
             JOB_REC_REFRESH, refresh_due_subscriptions, db=db
         )
@@ -198,8 +275,16 @@ def run_job_once(job_id: str, settings: SchedulerSettings) -> None:
             open_match_cases,
             refresh_active_pool,
         )
+        from matchmaking_system.async_tasks import run_matchmaking_async_job_worker  # noqa: PLC0415
+        from matchmaking_system.outbox import run_matchmaking_outbox_worker  # noqa: PLC0415
 
         db = settings.matchmaking_db
+        mapping[JOB_MM_ASYNC_WORKER] = make_matchmaking_job(
+            JOB_MM_ASYNC_WORKER,
+            run_matchmaking_async_job_worker,
+            db=db,
+        )
+        mapping[JOB_MM_OUTBOX] = make_matchmaking_job(JOB_MM_OUTBOX, run_matchmaking_outbox_worker, db=db)
         mapping[JOB_MM_REFRESH] = make_matchmaking_job(JOB_MM_REFRESH, refresh_active_pool, db=db)
         mapping[JOB_MM_PAIRS] = make_matchmaking_job(JOB_MM_PAIRS, build_mutual_pairs, db=db)
         mapping[JOB_MM_OPEN] = make_matchmaking_job(JOB_MM_OPEN, open_match_cases, db=db)
@@ -207,9 +292,18 @@ def run_job_once(job_id: str, settings: SchedulerSettings) -> None:
 
     if settings.chat_db:
         ensure_chat_system_on_path()
+        from chat_system.async_tasks import run_chat_async_job_worker  # noqa: PLC0415
         from chat_system.maintenance import run_chat_maintenance  # noqa: PLC0415
+        from chat_system.outbox_worker import run_chat_outbox_worker  # noqa: PLC0415
 
-        mapping[JOB_CHAT_MAINTENANCE] = make_chat_job(JOB_CHAT_MAINTENANCE, run_chat_maintenance, db=settings.chat_db)
+        mapping[JOB_CHAT_ASYNC_WORKER] = make_chat_job(JOB_CHAT_ASYNC_WORKER, run_chat_async_job_worker, db=settings.chat_db)
+        mapping[JOB_CHAT_OUTBOX] = make_chat_job(JOB_CHAT_OUTBOX, run_chat_outbox_worker, db=settings.chat_db)
+        mapping[JOB_CHAT_MAINTENANCE] = make_chat_job(
+            JOB_CHAT_MAINTENANCE,
+            run_chat_maintenance,
+            db=settings.chat_db,
+            flush_outbox=False,
+        )
 
     if job_id not in mapping:
         raise KeyError(f"unknown job or subsystem db not configured: {job_id}")
@@ -221,6 +315,8 @@ def all_job_ids(settings: SchedulerSettings) -> list[str]:
     if settings.recommendation_db:
         ids.extend(
             [
+                JOB_REC_ASYNC_WORKER,
+                JOB_REC_OUTBOX,
                 JOB_REC_REFRESH,
                 JOB_REC_DELIVER,
                 JOB_REC_DISPATCH,
@@ -228,9 +324,9 @@ def all_job_ids(settings: SchedulerSettings) -> list[str]:
             ]
         )
     if settings.matchmaking_db:
-        ids.extend([JOB_MM_REFRESH, JOB_MM_PAIRS, JOB_MM_OPEN, JOB_MM_STALE])
+        ids.extend([JOB_MM_ASYNC_WORKER, JOB_MM_OUTBOX, JOB_MM_REFRESH, JOB_MM_PAIRS, JOB_MM_OPEN, JOB_MM_STALE])
     if settings.chat_db:
-        ids.append(JOB_CHAT_MAINTENANCE)
+        ids.extend([JOB_CHAT_ASYNC_WORKER, JOB_CHAT_OUTBOX, JOB_CHAT_MAINTENANCE])
     return ids
 
 

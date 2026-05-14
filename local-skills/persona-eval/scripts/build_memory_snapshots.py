@@ -8,19 +8,17 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parents[2]
-PERSONA_MEMORY_SYNC_SCRIPTS = REPO_ROOT / "local-skills" / "persona-memory-sync" / "scripts"
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
-if str(PERSONA_MEMORY_SYNC_SCRIPTS) not in sys.path:
-    sys.path.insert(0, str(PERSONA_MEMORY_SYNC_SCRIPTS))
-
-from persona_memory_lib import mysql_connect, quote_mysql_ident  # noqa: E402
-from run_persona_memory_audit import (  # noqa: E402
+from persona_memory_sync.audit import (  # noqa: E402
     PERSONA_SNAPSHOT_FIELDS,
     PROFILE_SNAPSHOT_FIELDS,
     PUBLIC_VIEW_SNAPSHOT_FIELDS,
     mask_snapshot_for_review,
     prune_none,
 )
+from persona_memory_sync.persona_memory_lib import mysql_connect, quote_mysql_ident  # noqa: E402
 
 
 DEFAULT_PERSONA_TABLE = "user_personas"

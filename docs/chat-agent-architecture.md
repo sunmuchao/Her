@@ -9,6 +9,10 @@
 - 画像技能：`local-skills/persona-memory-sync/`（`persona_memory_sync.upsert_persona_memory`）
 - 接入与事件习惯：`partner-http-gateway`、`match_domain.outbox`、`observability`
 
+**专项落地文档**：
+
+- 触发式红娘 C 以 **Agents SDK** 运行的完整实现方案见 [chat-triggered-matchmaker-agent-design.md](./chat-triggered-matchmaker-agent-design.md)
+
 ---
 
 ## 1. 目标与边界
@@ -114,7 +118,7 @@ flowchart TB
 - `body` 或 `content_json`（文本 / 图片引用 / 系统卡片）
 - `client_msg_id`（客户端幂等）
 - `reply_to_message_id`（可选）
-- `source`：`user` | `agent_draft` | `agent_sent_after_confirm` | `system`
+- `source`：`user` | `system`
 - `created_at`
 
 若采用完整事件溯源：
@@ -122,11 +126,7 @@ flowchart TB
 - `chat_events`：`event_type`、`payload_json`、`occurred_at`
 - `chat_messages` 为投影表，由 worker 维护
 
-### 4.3 `agent_turns`（可选，或并入 `chat_messages`）
-
-记录侧信道多轮、tool 调用摘要、`draft_id → sent_message_id` 映射。
-
-### 4.4 `persona_sync_jobs`（由聊天触发的画像同步）
+### 4.3 `persona_sync_jobs`（由聊天触发的画像同步）
 
 - `job_id`, `thread_id`, `message_id` 或 `message_id` 范围
 - `subject_user_id`：**画像归属主体，仅为陈述者本人**
@@ -137,19 +137,13 @@ flowchart TB
 
 ---
 
-## 5. 主对话与侧信道
+## 5. 主对话与私有记录
 
 | 类型 | 可见性 | 典型内容 |
 |------|--------|----------|
 | 主对话 `dyadic` | A、B（及授权运营工具） | 用户正式消息 |
-| 侧信道 `owner_only` | 该用户、平台、Agent | 求助、草稿、解释、风险提示 |
+| 私有记录 `owner_only` | 该用户、平台 | 用户仅自己可见的备注 |
 | `system` | 系统 | 会话开启、超时、拦截提示 |
-
-### 代发流程（推荐强制）
-
-1. Agent 写入 `agent_draft`（或对用户展示的草稿态）。
-2. 用户 **确认** → 服务端写入主对话，标记 `agent_sent_after_confirm` 或等价元数据。
-3. 对端仅见主对话最终内容（可选设置中披露「由助手润色」）。
 
 ---
 
@@ -159,7 +153,7 @@ flowchart TB
 
 - **读**：按策略拉取 `thread_id` 近期消息 + 可选 safe profile 摘要（与 `build_safe_summary` 哲学一致）。
 - **写**：侧信道建议、草稿；不直接修改对端可见内容（除非经确认或产品定义的模板自动发送）。
-- **编排**：决定是否进入 **persona 抽取**、是否 **escalation**（人工）。
+- **编排**：由外层 worker 驱动，内层可通过 **Agents SDK runtime** 调用检索工具、自主搜索历史消息并完成多步推理；同时决定是否进入 **persona 抽取**、是否 **escalation**（人工）。
 
 ### 6.2 触发方式（可并存）
 
@@ -213,8 +207,6 @@ flowchart TB
 | POST | `/threads` | 按 `case_id` 创建或获取线程 |
 | GET | `/threads/{id}/messages` | 分页拉消息（按 `visibility` 过滤） |
 | POST | `/threads/{id}/messages` | 发主对话消息（`client_msg_id` 幂等） |
-| POST | `/threads/{id}/assistant/query` | 用户求助 → 同步或异步侧信道 |
-| POST | `/threads/{id}/messages/adopt-draft` | 确认草稿 → 入主对话 |
 | POST | `/threads/{id}/read-receipt` | 已读（可选） |
 
 若与现网 JSON-RPC 统一，可镜像上述方法名。
@@ -240,7 +232,7 @@ flowchart TB
 
 ## 11. 可观测性
 
-- 漏斗建议：`chat.thread.open`、`chat.message.send`、`chat.assistant.invoke`、`chat.persona_job.applied` / `failed`。
+- 漏斗建议：`chat.thread.open`、`chat.message.send`、`chat.persona_job.applied` / `failed`。
 - 与 `observability` / `her.pipeline` 对齐；`trace_id` 从网关透传至 Chat 与 persona worker。
 
 ---
@@ -250,10 +242,9 @@ flowchart TB
 | 阶段 | 内容 |
 |------|------|
 | MVP | `threads` + `messages`；仅主对话；网关 CRUD。 |
-| Phase 2 | 侧信道 + 草稿 + 确认后发；单一触发（用户点击）。 |
-| Phase 3 | outbox 驱动 Agent；上下文摘要表。 |
-| Phase 4 | `persona_sync_jobs` + 自动抽取 + 规则/人工 gate。 |
-| Phase 5 | 统一用户时间线 API（推荐动作 + case 事件 + 聊天 + persona job）。 |
+| Phase 2 | outbox 驱动投递与摘要表。 |
+| Phase 3 | `persona_sync_jobs` + 自动抽取 + 规则/人工 gate。 |
+| Phase 4 | 统一用户时间线 API（推荐动作 + case 事件 + 聊天 + persona job）。 |
 
 ---
 
@@ -267,10 +258,9 @@ flowchart TB
 
 ## 14. 文档维护
 
-- **已实现**：`chat_tables()` 含 **`chat_threads`**、**`chat_messages`**、**`chat_thread_summaries`**、**`outbox_events`**、**`persona_sync_jobs`**；消息/开线程同事务 **`append_outbox_pending`**；**`funnel_stage(system="chat", …)`** 覆盖 thread_open、message_send、assistant_invoke、draft_adopt、persona_job_enqueued、outbox_dispatched；**`consume_chat_outbox_batch`**（维护任务默认）；**`refresh_stale_thread_summaries`**（concat 摘要）；**`assistant/query`** 可选 **OpenAI 或兼容 Chat Completions**（`OPENAI_API_KEY`，可选 `HER_CHAT_ASSISTANT_BASE_URL` / `OPENAI_BASE_URL`）；**`/v1/timeline`** 聚合 **撮合 + 推荐** proxy-intro 案例事件；**`GET /v1/chat/threads/{id}/summary`**；详见 `API_CONTRACT.md` / `SYSTEM_DOC.md` §3.5。
+- **已实现**：`chat_tables()` 含 **`chat_threads`**、**`chat_messages`**、**`chat_thread_summaries`**、**`outbox_events`**、**`persona_sync_jobs`**；消息/开线程同事务 **`append_outbox_pending`**；**`funnel_stage(system="chat", …)`** 覆盖 thread_open、message_send、persona_job_enqueued、outbox_dispatched；**`consume_chat_outbox_batch`**（维护任务默认）；**`refresh_stale_thread_summaries`**（concat 摘要）；**`/v1/timeline`** 聚合 **撮合 + 推荐** proxy-intro 案例事件；**`GET /v1/chat/threads/{id}/summary`**；详见 `API_CONTRACT.md` / `SYSTEM_DOC.md` §3.5。
 - 本方案与 **`SYSTEM_DOC.md`** 中的组件划分一致；Kafka 等外部队列、端到端加密、三人调解模式等仍可按 §1.2 / §12 演进。
 - 画像合并与可见性细节以 `local-skills/persona-memory-sync/references/` 为准，与本方案冲突时以 skill 引用文档为实施准绳。
-- 助手评估、角色扮演压测发现、以及下一步产品/提示词/延迟改造，请见 [聊天助手改进方案](chat-assistant-improvement-plan.md)。
 
 ---
 

@@ -8,14 +8,31 @@ import os
 from datetime import datetime, timezone
 from typing import Any
 
+from match_domain.actor_context import get_actor_context, normalize_actor_roles
+from match_domain.trace_context import get_trace_id
+
 _LOGGER = logging.getLogger("her.pipeline")
 
 
 def _base_fields() -> dict[str, Any]:
-    return {
+    payload: dict[str, Any] = {
         "ts": datetime.now(timezone.utc).isoformat(),
         "her_schema": "1",
     }
+    trace_id = get_trace_id()
+    if trace_id:
+        payload["trace_id"] = trace_id
+    actor = get_actor_context()
+    if actor is not None:
+        payload["actor_id"] = actor.actor_id
+        payload["actor_roles"] = list(actor.actor_roles)
+        if actor.auth_source:
+            payload["actor_auth_source"] = actor.auth_source
+        if actor.token_id:
+            payload["actor_token_id"] = actor.token_id
+        if actor.reason:
+            payload["actor_reason"] = actor.reason
+    return payload
 
 
 def emit_pipeline_record(**fields: Any) -> None:
@@ -57,6 +74,38 @@ def alert_signal(
     )
 
 
+def audit_event(
+    *,
+    action: str,
+    resource_type: str,
+    outcome: str,
+    resource_id: str | int | None = None,
+    reason: str | None = None,
+    actor_id: str | None = None,
+    actor_roles: str | list[str] | tuple[str, ...] | None = None,
+    impersonated_owner_id: str | int | None = None,
+    **context: Any,
+) -> None:
+    payload: dict[str, Any] = {
+        "her_kind": "audit",
+        "audit_action": action,
+        "resource_type": resource_type,
+        "outcome": outcome,
+        **context,
+    }
+    if resource_id is not None:
+        payload["resource_id"] = str(resource_id)
+    if reason:
+        payload["reason"] = reason
+    if actor_id:
+        payload["actor_id"] = str(actor_id)
+    if actor_roles is not None:
+        payload["actor_roles"] = list(normalize_actor_roles(actor_roles))
+    if impersonated_owner_id is not None:
+        payload["impersonated_owner_id"] = str(impersonated_owner_id)
+    emit_pipeline_record(**payload)
+
+
 # --- Recommendation funnel (canonical stages) ---
 RECOMMENDATION_FUNNEL_REFRESH = "refresh"
 RECOMMENDATION_FUNNEL_REVIEW_PENDING = "review_pending"
@@ -77,7 +126,5 @@ MATCHMAKING_FUNNEL_MUTUAL_ACCEPT = "mutual_accept"
 # --- Chat funnel ---
 CHAT_FUNNEL_THREAD_OPEN = "thread_open"
 CHAT_FUNNEL_MESSAGE_SEND = "message_send"
-CHAT_FUNNEL_ASSISTANT_INVOKE = "assistant_invoke"
-CHAT_FUNNEL_DRAFT_ADOPT = "draft_adopt"
 CHAT_FUNNEL_PERSONA_JOB_ENQUEUED = "persona_job_enqueued"
 CHAT_FUNNEL_OUTBOX_DISPATCHED = "outbox_dispatched"

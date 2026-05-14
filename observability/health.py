@@ -6,6 +6,8 @@ import os
 from datetime import datetime, timezone
 from typing import Any, Mapping
 
+from async_jobs import summarize_async_jobs
+
 from . import alert_signal, metric_gauge
 
 
@@ -134,6 +136,53 @@ def emit_matchmaking_gauges(conn) -> None:
     metric_gauge("matchmaking.pairs_eligible", int(row["c"]) if row else 0)
 
 
+def emit_async_job_gauges(
+    conn,
+    *,
+    system: str,
+    now: datetime,
+    claim_timeout_seconds: int = 300,
+) -> dict[str, Any]:
+    summary = summarize_async_jobs(conn, now=now, claim_timeout_seconds=claim_timeout_seconds)
+    metric_gauge(f"{system}.async_jobs.total", int(summary["total"]))
+    metric_gauge(f"{system}.async_jobs.backlog_open", int(summary["backlog_open"]))
+    metric_gauge(f"{system}.async_jobs.due_now", int(summary["due_now"]))
+    metric_gauge(f"{system}.async_jobs.processing_overdue", int(summary["processing_overdue"]))
+    by_status = dict(summary.get("by_status") or {})
+    for status, count in by_status.items():
+        metric_gauge(f"{system}.async_jobs.{status}", int(count))
+
+    upper = system.upper()
+    backlog_threshold = _env_int(f"HER_ALERT_{upper}_ASYNC_JOB_BACKLOG", 20)
+    if int(summary["backlog_open"]) >= backlog_threshold:
+        alert_signal(
+            f"{system}.async_job_backlog",
+            f"{system} async job backlog_open={summary['backlog_open']} (threshold {backlog_threshold}).",
+            severity="warning",
+            backlog_open=int(summary["backlog_open"]),
+            threshold=backlog_threshold,
+        )
+    failed_threshold = _env_int(f"HER_ALERT_{upper}_ASYNC_JOB_FAILED", 5)
+    if int(by_status.get("failed", 0)) >= failed_threshold:
+        alert_signal(
+            f"{system}.async_job_failed_depth",
+            f"{system} async job failed={by_status.get('failed', 0)} (threshold {failed_threshold}).",
+            severity="warning",
+            failed_count=int(by_status.get("failed", 0) or 0),
+            threshold=failed_threshold,
+        )
+    overdue_threshold = _env_int(f"HER_ALERT_{upper}_ASYNC_JOB_PROCESSING_OVERDUE", 1)
+    if int(summary["processing_overdue"]) >= overdue_threshold:
+        alert_signal(
+            f"{system}.async_job_processing_overdue",
+            f"{system} async job processing_overdue={summary['processing_overdue']} (threshold {overdue_threshold}).",
+            severity="warning",
+            processing_overdue=int(summary["processing_overdue"]),
+            threshold=overdue_threshold,
+        )
+    return summary
+
+
 def check_low_refresh_scan(
     summaries: list[Mapping[str, Any]],
     *,
@@ -172,6 +221,7 @@ def run_recommendation_health(
     refresh_errors: list[Mapping[str, Any]] | None = None,
 ) -> None:
     emit_recommendation_gauges(conn)
+    emit_async_job_gauges(conn, system="recommendation", now=now)
     proxy_backlog = count_proxy_cases_past_deadline(conn, now=now)
     metric_gauge("recommendation.proxy_cases_past_reply_deadline", proxy_backlog)
     max_proxy = _env_int("HER_ALERT_PROXY_CASE_BACKLOG", 20)
@@ -197,6 +247,7 @@ def run_matchmaking_health(
     pool_refresh_summaries: list[Mapping[str, Any]] | None = None,
 ) -> None:
     emit_matchmaking_gauges(conn)
+    emit_async_job_gauges(conn, system="matchmaking", now=now)
     mm_backlog = count_matchmaking_cases_past_expiry(conn, now=now)
     metric_gauge("matchmaking.cases_past_expires_at", mm_backlog)
     max_mm = _env_int("HER_ALERT_MATCHMAKING_CASE_BACKLOG", 10)

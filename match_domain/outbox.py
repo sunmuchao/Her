@@ -9,6 +9,9 @@ from typing import Any
 from .model import MatchEvent
 
 PUBLISH_STATUS_PENDING = "pending"
+PUBLISH_STATUS_PROCESSING = "processing"
+PUBLISH_STATUS_RETRY_PENDING = "retry_pending"
+PUBLISH_STATUS_FAILED = "failed"
 PUBLISH_STATUS_PUBLISHED = "published"
 
 
@@ -77,8 +80,11 @@ class SyncEventBus:
 
 
 __all__ = [
+    "PUBLISH_STATUS_FAILED",
     "PUBLISH_STATUS_PENDING",
+    "PUBLISH_STATUS_PROCESSING",
     "PUBLISH_STATUS_PUBLISHED",
+    "PUBLISH_STATUS_RETRY_PENDING",
     "SyncEventBus",
     "append_outbox_pending",
     "dump_canonical_event_json",

@@ -13,6 +13,12 @@ def _load_her_activate_repo():
     mod = sys.modules.get("her_activate_repo")
     if mod is not None:
         return mod
+    try:
+        import her_activate_repo as mod
+    except ImportError:
+        mod = None
+    if mod is not None and hasattr(mod, "ensure_her_repo_on_sys_path"):
+        return mod
     activate_py: Path | None = None
     for p in (_SEARCH_ANCHOR.parent, *_SEARCH_ANCHOR.parents):
         cand = p / "her_activate_repo.py"

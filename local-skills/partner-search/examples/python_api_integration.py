@@ -15,19 +15,20 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import sys
 from datetime import datetime
 from pathlib import Path
 
 
-def ensure_skill_root_on_path() -> Path:
-    skill_root = Path(__file__).resolve().parents[1]
-    if str(skill_root) not in sys.path:
-        sys.path.insert(0, str(skill_root))
-    return skill_root
+def ensure_repo_root_on_path() -> Path:
+    import sys
+
+    repo_root = Path(__file__).resolve().parents[3]
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    return repo_root
 
 
-SKILL_ROOT = ensure_skill_root_on_path()
+REPO_ROOT = ensure_repo_root_on_path()
 
 from partner_search import search_profiles  # noqa: E402
 

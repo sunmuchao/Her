@@ -12,12 +12,25 @@ import sys
 from pathlib import Path
 
 
+def _looks_like_repo_root(candidate: Path) -> bool:
+    """Support both the packaged skill layout and the older local-skills checkout layout."""
+
+    if not (candidate / "match_domain").is_dir():
+        return False
+    has_packaged_skills = (candidate / "partner_search").is_dir() and (candidate / "persona_memory_sync").is_dir()
+    has_legacy_skill_dirs = (
+        (candidate / "local-skills" / "partner-search").is_dir()
+        and (candidate / "local-skills" / "persona-memory-sync").is_dir()
+    )
+    return has_packaged_skills or has_legacy_skill_dirs
+
+
 def ensure_her_repo_on_sys_path(anchor_file: Path, *, repo_root_hint: Path | None = None) -> Path:
     """
     Ensure the repository root (contains ``match_domain/``) is first on ``sys.path``.
 
     Precedence: ``HER_REPO_ROOT`` → ``repo_root_hint`` (directory of this file when loaded) →
-    walk ``anchor_file`` parents for ``local-skills/partner-search`` + ``match_domain`` →
+    walk ``anchor_file`` parents for packaged skill dirs + ``match_domain`` →
     infer from ``.../<root>/external-systems/...`` layout.
     """
 
@@ -30,7 +43,7 @@ def ensure_her_repo_on_sys_path(anchor_file: Path, *, repo_root_hint: Path | Non
         here = anchor_file.resolve()
         root = None
         for p in (here.parent, *here.parents):
-            if (p / "local-skills" / "partner-search").is_dir() and (p / "match_domain").is_dir():
+            if _looks_like_repo_root(p):
                 root = p
                 break
         if root is None and "external-systems" in here.parts:
@@ -40,7 +53,8 @@ def ensure_her_repo_on_sys_path(anchor_file: Path, *, repo_root_hint: Path | Non
         if root is None:
             raise RuntimeError(
                 "Cannot locate Her monorepo root. Set HER_REPO_ROOT to the directory that "
-                "contains match_domain/ and local-skills/partner-search/, or run from a full checkout."
+                "contains match_domain/ and the packaged skill directories partner_search/ + "
+                "persona_memory_sync/ (or the legacy local-skills checkout), or run from a full checkout."
             )
 
     if str(root) not in sys.path:

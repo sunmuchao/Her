@@ -57,8 +57,11 @@ from .ids import (
 )
 from .ledger_store import InMemoryLedgerStore, LedgerStore
 from .outbox import (
+    PUBLISH_STATUS_FAILED,
     PUBLISH_STATUS_PENDING,
+    PUBLISH_STATUS_PROCESSING,
     PUBLISH_STATUS_PUBLISHED,
+    PUBLISH_STATUS_RETRY_PENDING,
     SyncEventBus,
     append_outbox_pending,
     dump_canonical_event_json,
@@ -74,6 +77,13 @@ from .rulesets import (
     stable_content_fingerprint,
 )
 from .trace_context import get_trace_id, new_trace_id, reset_trace_id, set_trace_id
+from .actor_context import (
+    ActorContext,
+    get_actor_context,
+    normalize_actor_roles,
+    reset_actor_context,
+    set_actor_context,
+)
 from .model import (
     CaseStatus,
     CaseType,
@@ -99,8 +109,11 @@ __all__ = [
     "AGGREGATE_RELATION",
     "HER_NS",
     "TRACE_ID_HEX_LEN",
+    "PUBLISH_STATUS_FAILED",
     "PUBLISH_STATUS_PENDING",
+    "PUBLISH_STATUS_PROCESSING",
     "PUBLISH_STATUS_PUBLISHED",
+    "PUBLISH_STATUS_RETRY_PENDING",
     "SyncEventBus",
     "append_outbox_pending",
     "dump_canonical_event_json",
@@ -116,6 +129,8 @@ __all__ = [
     "CaseStatus",
     "CaseType",
     "format_correlation_id",
+    "ActorContext",
+    "get_actor_context",
     "get_trace_id",
     "idempotency_case_event",
     "idempotency_client_relation_action",
@@ -155,7 +170,10 @@ __all__ = [
     "reduce_case_ledger",
     "reduce_relation_ledger",
     "relation_status_from_row_snapshot",
+    "normalize_actor_roles",
+    "reset_actor_context",
     "reset_trace_id",
+    "set_actor_context",
     "set_trace_id",
     "sort_ledger_events",
     "pair_key",

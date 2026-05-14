@@ -1,0 +1,1219 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <title>Her Prototype · 对话式发现页</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f4ecdf;
+        --bg-deep: #e8dcc5;
+        --panel: rgba(255, 250, 244, 0.9);
+        --panel-strong: rgba(255, 253, 249, 0.98);
+        --ink: #18211f;
+        --muted: #5f6d66;
+        --line: rgba(24, 33, 31, 0.1);
+        --accent: #0f766e;
+        --accent-strong: #115e59;
+        --accent-soft: rgba(15, 118, 110, 0.12);
+        --good: #1d7a46;
+        --good-soft: rgba(29, 122, 70, 0.12);
+        --warn: #9a6f1e;
+        --warn-soft: rgba(154, 111, 30, 0.12);
+        --rose: #b74d5f;
+        --rose-soft: rgba(183, 77, 95, 0.12);
+        --shadow: 0 28px 70px rgba(43, 37, 28, 0.14);
+        --radius-xl: 32px;
+        --radius-lg: 24px;
+        --radius-md: 18px;
+        --radius-sm: 14px;
+        font-family: "IBM Plex Sans", "PingFang SC", "Noto Sans SC", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at top left, rgba(15, 118, 110, 0.13), transparent 28%),
+          radial-gradient(circle at 84% 12%, rgba(183, 77, 95, 0.1), transparent 22%),
+          linear-gradient(180deg, #fbf6ef 0%, var(--bg) 54%, var(--bg-deep) 100%);
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background-image:
+          linear-gradient(rgba(24, 33, 31, 0.035) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(24, 33, 31, 0.035) 1px, transparent 1px);
+        background-size: 22px 22px;
+        mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.34), transparent 82%);
+      }
+
+      .page {
+        width: min(1220px, calc(100vw - 28px));
+        margin: 0 auto;
+        padding: 20px 0 30px;
+      }
+
+      .prototype-bar {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        margin: 0 0 14px;
+        border-radius: 999px;
+        background: rgba(255, 252, 248, 0.82);
+        border: 1px solid rgba(255, 255, 255, 0.75);
+        box-shadow: 0 8px 24px rgba(43, 37, 28, 0.08);
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #0f766e, #115e59);
+      }
+
+      .shell {
+        display: grid;
+        grid-template-columns: minmax(0, 430px) minmax(0, 1fr);
+        gap: 24px;
+        align-items: start;
+      }
+
+      .phone {
+        position: sticky;
+        top: 20px;
+        min-height: calc(100vh - 50px);
+        padding: 16px;
+        border-radius: 40px;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(245, 235, 222, 0.92)),
+          rgba(255, 255, 255, 0.5);
+        border: 1px solid rgba(255, 255, 255, 0.7);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(16px);
+      }
+
+      .phone::before {
+        content: "";
+        display: block;
+        width: 138px;
+        height: 28px;
+        margin: 0 auto 14px;
+        border-radius: 999px;
+        background: rgba(24, 33, 31, 0.08);
+      }
+
+      .app {
+        overflow: hidden;
+        border-radius: 30px;
+        background:
+          linear-gradient(180deg, rgba(255, 253, 248, 0.98), rgba(248, 241, 230, 0.98));
+        border: 1px solid rgba(24, 33, 31, 0.06);
+      }
+
+      .topbar {
+        padding: 18px 18px 14px;
+        border-bottom: 1px solid rgba(24, 33, 31, 0.06);
+      }
+
+      .row {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: center;
+      }
+
+      .header-left {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+      }
+
+      .agent-avatar,
+      .user-avatar,
+      .icon-btn,
+      .meta-pill,
+      .criteria-chip,
+      .suggestion-chip,
+      .nav-item {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .agent-avatar {
+        width: 44px;
+        height: 44px;
+        border-radius: 16px;
+        background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+        color: #f7faf9;
+        font-size: 16px;
+        font-weight: 800;
+        box-shadow: 0 12px 28px rgba(15, 118, 110, 0.24);
+      }
+
+      .title h1,
+      .support h2,
+      .mini-panel h3 {
+        font-family: "Iowan Old Style", "Noto Serif SC", "STSong", serif;
+      }
+
+      .title h1 {
+        margin: 0;
+        font-size: 27px;
+        line-height: 1;
+        letter-spacing: -0.05em;
+      }
+
+      .title p {
+        margin: 6px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .icon-btn {
+        width: 42px;
+        height: 42px;
+        border: 0;
+        border-radius: 14px;
+        background: rgba(24, 33, 31, 0.06);
+        color: var(--ink);
+        font-size: 16px;
+      }
+
+      .summary-card {
+        margin-top: 14px;
+        padding: 16px;
+        border-radius: 22px;
+        background:
+          radial-gradient(circle at top right, rgba(183, 77, 95, 0.08), transparent 28%),
+          linear-gradient(140deg, rgba(15, 118, 110, 0.12), rgba(255, 255, 255, 0.7));
+        border: 1px solid rgba(15, 118, 110, 0.08);
+      }
+
+      .eyebrow {
+        margin: 0 0 8px;
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--accent);
+      }
+
+      .summary-card strong {
+        display: block;
+        font-size: 18px;
+        letter-spacing: -0.03em;
+      }
+
+      .summary-card p {
+        margin: 8px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.7;
+      }
+
+      .search-state {
+        padding: 14px 18px 8px;
+      }
+
+      .search-box {
+        padding: 14px 16px;
+        border-radius: 20px;
+        background: rgba(24, 33, 31, 0.05);
+      }
+
+      .search-box strong {
+        display: block;
+        font-size: 14px;
+      }
+
+      .search-box p {
+        margin: 6px 0 0;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.7;
+      }
+
+      .criteria-row,
+      .suggestions {
+        display: flex;
+        gap: 8px;
+        overflow-x: auto;
+        scrollbar-width: none;
+      }
+
+      .criteria-row::-webkit-scrollbar,
+      .suggestions::-webkit-scrollbar {
+        display: none;
+      }
+
+      .criteria-row {
+        padding: 0 18px 12px;
+      }
+
+      .criteria-chip {
+        white-space: nowrap;
+        padding: 9px 12px;
+        border-radius: 999px;
+        background: rgba(24, 33, 31, 0.06);
+        color: var(--ink);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .criteria-chip.active {
+        background: var(--accent-soft);
+        color: var(--accent-strong);
+      }
+
+      .dialogue {
+        display: grid;
+        gap: 14px;
+        padding: 0 18px 110px;
+      }
+
+      .msg {
+        display: flex;
+        gap: 10px;
+        align-items: flex-end;
+      }
+
+      .msg.user {
+        justify-content: flex-end;
+      }
+
+      .msg.assistant .user-avatar {
+        background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+      }
+
+      .user-avatar {
+        width: 34px;
+        height: 34px;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #cdb9a1, #8f7357);
+        color: #f7faf9;
+        font-size: 12px;
+        font-weight: 800;
+        flex: none;
+      }
+
+      .bubble {
+        max-width: 80%;
+        padding: 13px 14px;
+        border-radius: 18px 18px 18px 6px;
+        background: rgba(255, 255, 255, 0.84);
+        border: 1px solid rgba(24, 33, 31, 0.06);
+        box-shadow: 0 10px 24px rgba(43, 37, 28, 0.06);
+      }
+
+      .msg.user .bubble {
+        border-radius: 18px 18px 6px 18px;
+        background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+        color: #f7faf9;
+      }
+
+      .bubble strong {
+        display: block;
+        margin-bottom: 7px;
+        font-size: 12px;
+        letter-spacing: 0.04em;
+      }
+
+      .bubble p {
+        margin: 0;
+        font-size: 14px;
+        line-height: 1.7;
+      }
+
+      .time {
+        display: block;
+        margin-top: 8px;
+        font-size: 11px;
+        color: rgba(24, 33, 31, 0.56);
+      }
+
+      .msg.user .time {
+        color: rgba(247, 250, 249, 0.76);
+      }
+
+      .inline-note {
+        padding: 14px 16px;
+        border-radius: 18px;
+        background: rgba(24, 33, 31, 0.05);
+      }
+
+      .inline-note strong {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 13px;
+      }
+
+      .inline-note p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.7;
+      }
+
+      .prompt-grid {
+        display: grid;
+        gap: 10px;
+        margin-top: 12px;
+      }
+
+      .prompt-item {
+        padding: 12px 14px;
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.76);
+        font-size: 13px;
+        font-weight: 700;
+        line-height: 1.6;
+      }
+
+      .result-stack {
+        display: grid;
+        gap: 14px;
+      }
+
+      .result-card {
+        overflow: hidden;
+        border-radius: 26px;
+        background: var(--panel-strong);
+        border: 1px solid rgba(255, 255, 255, 0.78);
+        box-shadow: 0 18px 50px rgba(43, 37, 28, 0.09);
+      }
+
+      .result-card[data-href] {
+        cursor: pointer;
+      }
+
+      .result-cover {
+        position: relative;
+        min-height: 138px;
+        padding: 16px;
+        color: #f8faf9;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        background:
+          radial-gradient(circle at 18% 20%, rgba(255, 255, 255, 0.22), transparent 16%),
+          radial-gradient(circle at 82% 18%, rgba(255, 255, 255, 0.14), transparent 16%),
+          linear-gradient(145deg, #33534d 0%, #5d867d 52%, #cc9d7d 100%);
+      }
+
+      .result-cover.alt {
+        background:
+          radial-gradient(circle at 18% 20%, rgba(255, 255, 255, 0.2), transparent 16%),
+          radial-gradient(circle at 82% 18%, rgba(255, 255, 255, 0.16), transparent 16%),
+          linear-gradient(145deg, #6c4250 0%, #986c76 52%, #ddb08e 100%);
+      }
+
+      .result-top,
+      .result-bottom {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .meta-pill {
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 700;
+        color: #f8faf9;
+        background: rgba(12, 18, 17, 0.38);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+      }
+
+      .score {
+        display: grid;
+        justify-items: end;
+      }
+
+      .score small {
+        font-size: 11px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        opacity: 0.78;
+      }
+
+      .score strong {
+        font-size: 28px;
+        line-height: 1;
+        letter-spacing: -0.08em;
+      }
+
+      .result-body {
+        padding: 16px;
+      }
+
+      .person-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: flex-start;
+      }
+
+      .person-row h2 {
+        margin: 0;
+        font-size: 26px;
+        line-height: 1;
+        letter-spacing: -0.05em;
+        font-family: "Iowan Old Style", "Noto Serif SC", "STSong", serif;
+      }
+
+      .person-row p {
+        margin: 6px 0 0;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .fit-badge {
+        padding: 8px 10px;
+        border-radius: 14px;
+        background: var(--good-soft);
+        color: var(--good);
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .tag-row,
+      .suggestions {
+        flex-wrap: wrap;
+      }
+
+      .tag-row {
+        display: flex;
+        gap: 8px;
+        margin-top: 14px;
+      }
+
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 8px 12px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .tag.good {
+        color: var(--good);
+        background: var(--good-soft);
+      }
+
+      .tag.accent {
+        color: var(--accent-strong);
+        background: var(--accent-soft);
+      }
+
+      .tag.warn {
+        color: var(--warn);
+        background: var(--warn-soft);
+      }
+
+      .tag.soft {
+        color: var(--muted);
+        background: rgba(24, 33, 31, 0.06);
+      }
+
+      .module {
+        margin-top: 14px;
+        padding: 14px;
+        border-radius: 20px;
+        background: rgba(24, 33, 31, 0.04);
+      }
+
+      .module-title {
+        margin: 0 0 10px;
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .reason-list,
+      .trust-grid {
+        display: grid;
+        gap: 10px;
+      }
+
+      .reason-item,
+      .trust-line {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .reason-item span:first-child,
+      .trust-line span:first-child {
+        color: var(--ink);
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .reason-item span:last-child,
+      .trust-line span:last-child {
+        color: var(--muted);
+        font-size: 13px;
+        text-align: right;
+      }
+
+      .card-actions {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 10px;
+        margin-top: 14px;
+      }
+
+      .btn {
+        appearance: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 0;
+        border-radius: 18px;
+        padding: 13px 14px;
+        font: inherit;
+        font-size: 14px;
+        font-weight: 800;
+        text-decoration: none;
+      }
+
+      .btn.primary {
+        color: #f7faf9;
+        background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+      }
+
+      .btn.secondary {
+        color: var(--ink);
+        background: rgba(24, 33, 31, 0.08);
+      }
+
+      .followup {
+        padding: 14px 16px;
+        border-radius: 18px;
+        background: rgba(24, 33, 31, 0.05);
+      }
+
+      .followup strong {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 13px;
+      }
+
+      .followup p {
+        margin: 0 0 12px;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.7;
+      }
+
+      .suggestion-chip {
+        white-space: nowrap;
+        padding: 9px 12px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.82);
+        color: var(--ink);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .composer {
+        position: sticky;
+        bottom: 0;
+        padding: 12px 18px 18px;
+        background: linear-gradient(180deg, rgba(248, 241, 230, 0), rgba(248, 241, 230, 0.98) 34%);
+      }
+
+      .quick-prompts {
+        display: flex;
+        gap: 8px;
+        overflow-x: auto;
+        margin-bottom: 10px;
+        scrollbar-width: none;
+      }
+
+      .quick-prompts::-webkit-scrollbar {
+        display: none;
+      }
+
+      .quick-pill {
+        white-space: nowrap;
+        padding: 9px 12px;
+        border-radius: 999px;
+        background: rgba(24, 33, 31, 0.06);
+        color: var(--ink);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .composer-inner {
+        display: grid;
+        grid-template-columns: 42px minmax(0, 1fr) 76px;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .input-shell {
+        padding: 14px 16px;
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.84);
+        color: var(--muted);
+        font-size: 14px;
+        border: 1px solid rgba(24, 33, 31, 0.06);
+      }
+
+      .send-btn {
+        appearance: none;
+        border: 0;
+        border-radius: 18px;
+        padding: 14px 12px;
+        color: #f7faf9;
+        background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+        font: inherit;
+        font-size: 14px;
+        font-weight: 800;
+      }
+
+      .bottom-nav {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+        padding: 0 18px 18px;
+      }
+
+      .nav-item {
+        flex-direction: column;
+        gap: 6px;
+        min-height: 58px;
+        border-radius: 18px;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        background: rgba(255, 255, 255, 0.58);
+      }
+
+      .nav-item strong {
+        font-size: 16px;
+      }
+
+      .nav-item.active {
+        color: #f7faf9;
+        background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+        box-shadow: 0 12px 30px rgba(15, 118, 110, 0.22);
+      }
+
+      .support {
+        display: grid;
+        gap: 18px;
+      }
+
+      .panel {
+        padding: 24px;
+        border-radius: 32px;
+        background:
+          linear-gradient(180deg, rgba(255, 252, 247, 0.95), rgba(247, 239, 227, 0.95)),
+          rgba(255, 255, 255, 0.5);
+        border: 1px solid rgba(255, 255, 255, 0.78);
+        box-shadow: var(--shadow);
+      }
+
+      .support h2 {
+        margin: 0;
+        font-size: 34px;
+        line-height: 1;
+        letter-spacing: -0.05em;
+      }
+
+      .support p {
+        margin: 12px 0 0;
+        color: var(--muted);
+        line-height: 1.8;
+      }
+
+      .checklist {
+        display: grid;
+        gap: 12px;
+        margin-top: 22px;
+      }
+
+      .check {
+        padding: 16px 18px;
+        border-radius: 20px;
+        background: rgba(24, 33, 31, 0.05);
+      }
+
+      .check strong {
+        display: block;
+        font-size: 16px;
+      }
+
+      .check span {
+        display: block;
+        margin-top: 6px;
+        color: var(--muted);
+        line-height: 1.7;
+      }
+
+      .grid-panels {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 18px;
+      }
+
+      .mini-panel {
+        padding: 22px;
+        border-radius: 28px;
+        background: rgba(255, 252, 247, 0.8);
+        border: 1px solid rgba(255, 255, 255, 0.75);
+        box-shadow: 0 16px 40px rgba(43, 37, 28, 0.08);
+      }
+
+      .mini-panel h3 {
+        margin: 0 0 10px;
+        font-size: 24px;
+        letter-spacing: -0.04em;
+      }
+
+      .mini-panel ul {
+        margin: 0;
+        padding-left: 18px;
+        color: var(--muted);
+        line-height: 1.8;
+      }
+
+      @media (max-width: 1040px) {
+        .shell {
+          grid-template-columns: 1fr;
+        }
+
+        .phone {
+          position: static;
+          min-height: auto;
+        }
+      }
+
+      @media (max-width: 720px) {
+        .page {
+          width: min(100vw - 16px, 1220px);
+          padding-top: 10px;
+        }
+
+        .prototype-bar {
+          display: none;
+        }
+
+        .phone {
+          padding: 10px;
+          border-radius: 28px;
+        }
+
+        .app {
+          border-radius: 24px;
+        }
+
+        .grid-panels {
+          grid-template-columns: 1fr;
+        }
+
+        .panel {
+          padding: 20px;
+          border-radius: 24px;
+        }
+
+        .support h2 {
+          font-size: 28px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <div class="prototype-bar">
+        <span class="dot"></span>
+        <span>Static prototype · 发现页已改为 AI 红娘对话式入口</span>
+      </div>
+
+      <div class="shell">
+        <section class="phone">
+          <div class="app">
+            <header class="topbar">
+              <div class="row">
+                <div class="header-left">
+                  <div class="agent-avatar">红娘</div>
+                  <div class="title">
+                    <h1>今天先从对话里找对象</h1>
+                    <p>不是填一长串表单，而是边聊边收窄条件。</p>
+                  </div>
+                </div>
+                <button class="icon-btn" type="button" aria-label="更多">⋯</button>
+              </div>
+
+              <section class="summary-card">
+                <p class="eyebrow">Matchmaker Discovery</p>
+                <strong>红娘先理解你，再去匹配库里替你查，不让你自己盲刷。</strong>
+                <p>
+                  这一页的主交互是“说需求、被追问、看结果、继续缩小范围”。候选卡片只是对话中的结果块，不是页面的主角。
+                </p>
+              </section>
+            </header>
+
+            <section class="search-state">
+              <div class="search-box">
+                <strong>本轮已整理条件 8 项</strong>
+                <p>城市：无锡｜目标：认真恋爱 / 结婚导向｜优先：真人认证、工作稳定、沟通自然｜排除：销售感太重、明显油腻</p>
+              </div>
+            </section>
+
+            <section class="criteria-row" aria-label="已整理条件">
+              <span class="criteria-chip active">无锡</span>
+              <span class="criteria-chip active">认真恋爱</span>
+              <span class="criteria-chip active">结婚导向</span>
+              <span class="criteria-chip">真人认证优先</span>
+              <span class="criteria-chip">工作稳定</span>
+              <span class="criteria-chip">不要销售岗</span>
+            </section>
+
+            <section class="dialogue">
+              <div class="msg assistant">
+                <div class="user-avatar">C</div>
+                <div class="bubble">
+                  <strong>AI 红娘</strong>
+                  <p>你先不用一次把条件全说完。告诉我你大概想找什么样的人，我边听边帮你整理，再给你看第一轮合适的人。</p>
+                  <span class="time">19:30</span>
+                </div>
+              </div>
+
+              <div class="msg user">
+                <div class="bubble">
+                  <strong>我</strong>
+                  <p>我在无锡，想找认真恋爱、最好以结婚为前提的女生。别太包装，工作稳定一点，聊天自然，不要那种很油或者很销售感的。</p>
+                  <span class="time">19:31</span>
+                </div>
+              </div>
+
+              <div class="msg assistant">
+                <div class="user-avatar">C</div>
+                <div class="bubble">
+                  <strong>AI 红娘</strong>
+                  <p>我先按“无锡、认真恋爱、可信度优先、沟通自然”整理。还有两个点我想确认一下，这会明显影响结果质量。</p>
+                  <span class="time">19:32</span>
+                </div>
+              </div>
+
+              <div class="inline-note">
+                <strong>红娘正在补问关键条件</strong>
+                <div class="prompt-grid">
+                  <div class="prompt-item">1. 年龄你更希望集中在几岁？是 26-30，还是可以放宽到 31-33？</div>
+                  <div class="prompt-item">2. 你更看重“本地定居稳定”，还是“人格和聊天舒服优先”？</div>
+                </div>
+              </div>
+
+              <div class="msg user">
+                <div class="bubble">
+                  <strong>我</strong>
+                  <p>年龄先看 27 到 31。定居稳定和聊天舒服都重要，但如果只能二选一，我会先要真实和稳定。还有最好真人照片认证过。</p>
+                  <span class="time">19:33</span>
+                </div>
+              </div>
+
+              <div class="msg assistant">
+                <div class="user-avatar">C</div>
+                <div class="bubble">
+                  <strong>AI 红娘</strong>
+                  <p>明白了。我先把“真人认证优先、稳定度优先、年龄 27-31、不要强销售感”压进去，先给你看两位比较像认真认识对象的人。</p>
+                  <span class="time">19:34</span>
+                </div>
+              </div>
+
+              <div class="result-stack">
+                <article class="result-card" data-href="./profile-detail.html#lin-zhixia">
+                  <div class="result-cover">
+                    <div class="result-top">
+                      <span class="meta-pill">真人照认证 · 学历已核验</span>
+                      <div class="score">
+                        <small>匹配感</small>
+                        <strong>92</strong>
+                      </div>
+                    </div>
+                    <div class="result-bottom">
+                      <span class="meta-pill">近 2 天活跃</span>
+                      <span class="meta-pill">无明显风险</span>
+                    </div>
+                  </div>
+                  <div class="result-body">
+                    <div class="person-row">
+                      <div>
+                        <h2>林知夏 29</h2>
+                        <p>无锡 · 中学老师 · 硕士</p>
+                      </div>
+                      <div class="fit-badge">先聊她</div>
+                    </div>
+
+                    <div class="tag-row">
+                      <span class="tag good">结婚导向</span>
+                      <span class="tag accent">生活规律</span>
+                      <span class="tag soft">沟通直接</span>
+                    </div>
+
+                    <div class="module">
+                      <p class="module-title">红娘为什么先给你看她</p>
+                      <div class="reason-list">
+                        <div class="reason-item">
+                          <span>关系目标</span>
+                          <span>认真恋爱、长期关系明确</span>
+                        </div>
+                        <div class="reason-item">
+                          <span>稳定度</span>
+                          <span>工作和生活节奏都偏稳</span>
+                        </div>
+                        <div class="reason-item">
+                          <span>聊天风格</span>
+                          <span>不是强推销型表达</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="module">
+                      <p class="module-title">可信度拆开看</p>
+                      <div class="trust-grid">
+                        <div class="trust-line">
+                          <span>已核验</span>
+                          <span>照片、学历</span>
+                        </div>
+                        <div class="trust-line">
+                          <span>自填信息</span>
+                          <span>收入区间、工作细节</span>
+                        </div>
+                        <div class="trust-line">
+                          <span>建议确认</span>
+                          <span>对见面节奏和未来城市的想法</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="card-actions">
+                      <a class="btn secondary" href="./profile-detail.html#lin-zhixia">看详情</a>
+                      <button class="btn primary" type="button">继续围绕她找</button>
+                    </div>
+                  </div>
+                </article>
+
+                <article class="result-card" data-href="./profile-detail.html#zhou-qinghe">
+                  <div class="result-cover alt">
+                    <div class="result-top">
+                      <span class="meta-pill">真人照认证</span>
+                      <div class="score">
+                        <small>匹配感</small>
+                        <strong>84</strong>
+                      </div>
+                    </div>
+                    <div class="result-bottom">
+                      <span class="meta-pill">今天活跃</span>
+                      <span class="meta-pill">资料填写为主</span>
+                    </div>
+                  </div>
+                  <div class="result-body">
+                    <div class="person-row">
+                      <div>
+                        <h2>周清和 31</h2>
+                        <p>苏州-无锡通勤圈 · 产品经理 · 本科</p>
+                      </div>
+                      <div class="fit-badge" style="background: var(--warn-soft); color: var(--warn);">
+                        可再筛
+                      </div>
+                    </div>
+
+                    <div class="tag-row">
+                      <span class="tag accent">认真恋爱</span>
+                      <span class="tag soft">偏理性表达</span>
+                      <span class="tag warn">收入未核验</span>
+                    </div>
+
+                    <div class="module">
+                      <p class="module-title">为什么放第二个给你</p>
+                      <div class="reason-list">
+                        <div class="reason-item">
+                          <span>目标一致</span>
+                          <span>长期关系意愿明确</span>
+                        </div>
+                        <div class="reason-item">
+                          <span>适配点</span>
+                          <span>聊天节奏稳，边界感清楚</span>
+                        </div>
+                        <div class="reason-item">
+                          <span>不确定点</span>
+                          <span>职业真实性需要再聊细节</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="module">
+                      <p class="module-title">可信度拆开看</p>
+                      <div class="trust-grid">
+                        <div class="trust-line">
+                          <span>已核验</span>
+                          <span>照片</span>
+                        </div>
+                        <div class="trust-line">
+                          <span>自填信息</span>
+                          <span>工作内容、收入区间</span>
+                        </div>
+                        <div class="trust-line">
+                          <span>建议确认</span>
+                          <span>是否长期在无锡、工作稳定度</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="card-actions">
+                      <a class="btn secondary" href="./profile-detail.html#zhou-qinghe">看详情</a>
+                      <button class="btn primary" type="button">保留她</button>
+                    </div>
+                  </div>
+                </article>
+              </div>
+
+              <div class="followup">
+                <strong>红娘下一句不该是“还要看更多吗”，而该是继续收窄</strong>
+                <p>这时候用户最自然的动作不是无脑下滑，而是继续说“要更年轻一点”“只看无锡本地”“不要互联网加班太狠的”“必须真人认证以上”。</p>
+                <div class="suggestions">
+                  <span class="suggestion-chip">只看无锡本地</span>
+                  <span class="suggestion-chip">年龄再年轻一点</span>
+                  <span class="suggestion-chip">不要互联网强加班</span>
+                  <span class="suggestion-chip">必须真人认证以上</span>
+                  <span class="suggestion-chip">更偏温和型聊天</span>
+                </div>
+              </div>
+
+              <div class="msg assistant">
+                <div class="user-avatar">C</div>
+                <div class="bubble">
+                  <strong>AI 红娘</strong>
+                  <p>如果你愿意，我下一轮可以继续缩小成“只看无锡本地 + 真人认证以上 + 工作更稳定”的版本，这样结果会更少，但会更像你真正想认真认识的人。</p>
+                  <span class="time">19:35</span>
+                </div>
+              </div>
+            </section>
+
+            <div class="composer">
+              <div class="quick-prompts">
+                <span class="quick-pill">只看无锡本地</span>
+                <span class="quick-pill">再年轻一点</span>
+                <span class="quick-pill">别销售岗</span>
+                <span class="quick-pill">真人认证以上</span>
+              </div>
+              <div class="composer-inner">
+                <button class="icon-btn" type="button" aria-label="更多">＋</button>
+                <div class="input-shell">继续告诉红娘你的偏好，她会据此重新缩小结果。</div>
+                <button class="send-btn" type="button">发送</button>
+              </div>
+            </div>
+
+            <nav class="bottom-nav" aria-label="底部导航">
+              <div class="nav-item active"><strong>⌂</strong>发现</div>
+              <div class="nav-item"><strong>✉</strong>聊天</div>
+              <div class="nav-item"><strong>◎</strong>信任</div>
+              <div class="nav-item"><strong>◌</strong>我的</div>
+            </nav>
+          </div>
+        </section>
+
+        <section class="support">
+          <article class="panel">
+            <p class="eyebrow">Page Direction</p>
+            <h2>发现页现在是“AI 红娘对话页”，不是“用户自己刷卡页”。</h2>
+            <p>
+              我已经按你说的入口重画了。用户先说需求，红娘追问关键条件，底层再去调用匹配引擎拿候选结果，最后把结果以卡片块的形式插回对话流里。这样页面主线就从“无穷下滑”变成了“逐步收窄”。
+            </p>
+            <div class="checklist">
+              <div class="check">
+                <strong>对话才是主界面</strong>
+                <span>候选人卡片只是对话中的结果块，不再是用户一打开就盲刷的大列表。</span>
+              </div>
+              <div class="check">
+                <strong>红娘负责追问缺失条件</strong>
+                <span>像年龄范围、城市接受度、定居稳定优先级，这些都由红娘补问，不让用户先填复杂表单。</span>
+              </div>
+              <div class="check">
+                <strong>每轮结果都应该支持继续缩小</strong>
+                <span>用户自然会说“只看更稳的”“别销售岗”“必须真人认证”，前端要把这些做成对话后的快速 refinements。</span>
+              </div>
+            </div>
+          </article>
+
+          <div class="grid-panels">
+            <article class="mini-panel">
+              <h3>前端承接什么</h3>
+              <ul>
+                <li>展示红娘对话流。</li>
+                <li>把用户自然语言整理成“已理解条件”模块。</li>
+                <li>把每轮结果渲染成内嵌候选卡片。</li>
+                <li>给用户低成本继续收窄的快捷按钮。</li>
+              </ul>
+            </article>
+
+            <article class="mini-panel">
+              <h3>匹配引擎只负责什么</h3>
+              <ul>
+                <li>输入条件和画像，返回候选结果。</li>
+                <li>输出匹配理由、缺失信息、风险提示。</li>
+                <li>不负责聊天 UI、订阅、通知和会话管理。</li>
+                <li>也就是说，前端入口是红娘，对外不是技能名。</li>
+              </ul>
+            </article>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <script>
+      const resultCards = document.querySelectorAll(".result-card[data-href]");
+
+      for (const card of resultCards) {
+        const href = card.getAttribute("data-href");
+        if (!href) continue;
+
+        card.tabIndex = 0;
+        card.setAttribute("role", "link");
+
+        card.addEventListener("click", (event) => {
+          if (event.target.closest(".btn")) return;
+          window.location.href = href;
+        });
+
+        card.addEventListener("keydown", (event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          if (event.target.closest(".btn")) return;
+          event.preventDefault();
+          window.location.href = href;
+        });
+      }
+    </script>
+  </body>
+</html>

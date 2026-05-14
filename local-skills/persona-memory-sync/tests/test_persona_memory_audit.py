@@ -1,14 +1,7 @@
 import json
-import pathlib
-import sys
 import unittest
 
-
-SCRIPT_DIR = pathlib.Path(__file__).resolve().parents[1] / "scripts"
-if str(SCRIPT_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPT_DIR))
-
-import run_persona_memory_audit as audit_script
+from persona_memory_sync import audit as audit_script
 
 
 class PersonaMemoryAuditTests(unittest.TestCase):

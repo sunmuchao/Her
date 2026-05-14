@@ -54,6 +54,36 @@ class TableDef:
     def column_names(self) -> tuple[str, ...]:
         return tuple(column.name for column in self.columns)
 
+
+ASYNC_JOB_TABLE = TableDef(
+    name="async_jobs",
+    columns=(
+        ColumnDef("job_id", "VARCHAR(64)", nullable=False),
+        ColumnDef("job_type", "VARCHAR(128)", nullable=False),
+        ColumnDef("status", "VARCHAR(32)", nullable=False),
+        ColumnDef("payload_json", "LONGTEXT", nullable=False),
+        ColumnDef("result_json", "LONGTEXT", nullable=True),
+        ColumnDef("error_text", "LONGTEXT", nullable=True),
+        ColumnDef("attempt_count", "INT DEFAULT 0", nullable=False),
+        ColumnDef("max_attempts", "INT DEFAULT 3", nullable=False),
+        ColumnDef("next_attempt_at", "DATETIME", nullable=True),
+        ColumnDef("created_by", "VARCHAR(191)", nullable=True),
+        ColumnDef("trace_id", "VARCHAR(128)", nullable=True),
+        ColumnDef("claim_token", "VARCHAR(64)", nullable=True),
+        ColumnDef("claim_started_at", "DATETIME", nullable=True),
+        ColumnDef("claim_worker", "VARCHAR(191)", nullable=True),
+        ColumnDef("created_at", "DATETIME", nullable=False),
+        ColumnDef("started_at", "DATETIME", nullable=True),
+        ColumnDef("finished_at", "DATETIME", nullable=True),
+    ),
+    primary_key=("job_id",),
+    indexes=(
+        IndexDef(("status", "next_attempt_at", "created_at"), "idx_async_jobs_due"),
+        IndexDef(("claim_token",), "idx_async_jobs_claim_token"),
+        IndexDef(("created_at",), "idx_async_jobs_created_at"),
+    ),
+)
+
 def quote_mysql_ident(identifier: str) -> str:
     return f"`{identifier.replace('`', '``')}`"
 
@@ -252,6 +282,28 @@ def ensure_table(mysql_conn, table: TableDef, *, prefix: str | None = None, conf
         cursor.execute(sql)
 
 
+def ensure_unique_keys(mysql_conn, table: TableDef, *, prefix: str | None = None) -> list[str]:
+    dest_table = destination_table_name(table.name, prefix)
+    created: list[str] = []
+    with mysql_conn.cursor() as cursor:
+        for unique in table.uniques:
+            unique_name = unique.name or stable_name("uniq", dest_table, *unique.columns)
+            if index_exists(mysql_conn, dest_table, unique_name):
+                continue
+            try:
+                cursor.execute(
+                    f"ALTER TABLE {quote_mysql_ident(dest_table)} ADD UNIQUE KEY {quote_mysql_ident(unique_name)} ("
+                    + ", ".join(quote_mysql_ident(column) for column in unique.columns)
+                    + ")"
+                )
+            except Exception as exc:  # noqa: BLE001
+                if "Duplicate key name" in str(exc):
+                    continue
+                raise
+            created.append(unique_name)
+    return created
+
+
 def ensure_indexes(mysql_conn, table: TableDef, *, prefix: str | None = None) -> list[str]:
     dest_table = destination_table_name(table.name, prefix)
     created: list[str] = []
@@ -260,11 +312,16 @@ def ensure_indexes(mysql_conn, table: TableDef, *, prefix: str | None = None) ->
             index_name = stable_name(normalize_prefix(prefix), index.name)
             if index_exists(mysql_conn, dest_table, index_name):
                 continue
-            cursor.execute(
-                f"CREATE INDEX {quote_mysql_ident(index_name)} ON {quote_mysql_ident(dest_table)} ("
-                + ", ".join(quote_mysql_ident(column) for column in index.columns)
-                + ")"
-            )
+            try:
+                cursor.execute(
+                    f"CREATE INDEX {quote_mysql_ident(index_name)} ON {quote_mysql_ident(dest_table)} ("
+                    + ", ".join(quote_mysql_ident(column) for column in index.columns)
+                    + ")"
+                )
+            except Exception as exc:  # noqa: BLE001
+                if "Duplicate key name" in str(exc):
+                    continue
+                raise
             created.append(index_name)
     return created
 
@@ -280,6 +337,40 @@ def clear_tables(mysql_conn, tables: Sequence[TableDef], *, prefix: str | None =
                 cursor.execute(f"DELETE FROM {quote_mysql_ident(table_name)}")
         finally:
             cursor.execute("SET FOREIGN_KEY_CHECKS = 1")
+
+
+def validate_schema(mysql_conn, tables: Sequence[TableDef], *, prefix: str | None = None) -> dict[str, list[str]]:
+    missing_tables: list[str] = []
+    missing_columns: list[str] = []
+    missing_unique_keys: list[str] = []
+    missing_indexes: list[str] = []
+
+    for table in tables:
+        dest_table = destination_table_name(table.name, prefix)
+        if not table_exists(mysql_conn, dest_table):
+            missing_tables.append(dest_table)
+            continue
+
+        for column in table.columns:
+            if not column_exists(mysql_conn, dest_table, column.name):
+                missing_columns.append(f"{dest_table}.{column.name}")
+
+        for unique in table.uniques:
+            unique_name = unique.name or stable_name("uniq", dest_table, *unique.columns)
+            if not index_exists(mysql_conn, dest_table, unique_name):
+                missing_unique_keys.append(f"{dest_table}.{unique_name}")
+
+        for index in table.indexes:
+            index_name = stable_name(normalize_prefix(prefix), index.name)
+            if not index_exists(mysql_conn, dest_table, index_name):
+                missing_indexes.append(f"{dest_table}.{index_name}")
+
+    return {
+        "missing_tables": missing_tables,
+        "missing_columns": missing_columns,
+        "missing_unique_keys": missing_unique_keys,
+        "missing_indexes": missing_indexes,
+    }
 
 def recommendation_tables() -> tuple[TableDef, ...]:
     return (
@@ -559,6 +650,7 @@ def recommendation_tables() -> tuple[TableDef, ...]:
                 IndexDef(("publish_status", "created_at"), "idx_outbox_pending_time"),
             ),
         ),
+        ASYNC_JOB_TABLE,
     )
 
 
@@ -610,6 +702,138 @@ def chat_tables() -> tuple[TableDef, ...]:
             ),
         ),
         TableDef(
+            name="chat_conversations",
+            columns=(
+                ColumnDef("conversation_id", "VARCHAR(64)", nullable=False),
+                ColumnDef("case_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("relation_key", "VARCHAR(191)", nullable=False),
+                ColumnDef("channel_key", "VARCHAR(191)", nullable=False),
+                ColumnDef("conversation_kind", "VARCHAR(32)", nullable=False),
+                ColumnDef("status", "VARCHAR(32)", nullable=False),
+                ColumnDef("metadata_json", "LONGTEXT", nullable=False),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+                ColumnDef("updated_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("conversation_id",),
+            uniques=(
+                UniqueKeyDef(("case_id", "channel_key"), name="uniq_chat_conversations_case_channel"),
+            ),
+            indexes=(
+                IndexDef(("case_id", "created_at"), "idx_chat_conversations_case_time"),
+                IndexDef(("conversation_kind", "status"), "idx_chat_conversations_kind_status"),
+            ),
+        ),
+        TableDef(
+            name="chat_conversation_members",
+            columns=(
+                ColumnDef("conversation_id", "VARCHAR(64)", nullable=False),
+                ColumnDef("participant_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("member_role", "VARCHAR(32)", nullable=False),
+                ColumnDef("can_read", "TINYINT(1)", nullable=False),
+                ColumnDef("can_send", "TINYINT(1)", nullable=False),
+                ColumnDef("metadata_json", "LONGTEXT", nullable=False),
+                ColumnDef("joined_at", "DATETIME", nullable=False),
+                ColumnDef("left_at", "DATETIME", nullable=True),
+            ),
+            primary_key=("conversation_id", "participant_id"),
+            indexes=(
+                IndexDef(("participant_id", "conversation_id"), "idx_chat_conversation_members_participant"),
+            ),
+            foreign_keys=(
+                ForeignKeyDef(("conversation_id",), "chat_conversations", ("conversation_id",)),
+            ),
+        ),
+        TableDef(
+            name="chat_conversation_messages",
+            columns=(
+                ColumnDef("message_id", "BIGINT", nullable=False, auto_increment=True),
+                ColumnDef("conversation_id", "VARCHAR(64)", nullable=False),
+                ColumnDef("author_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("source", "VARCHAR(32)", nullable=False),
+                ColumnDef("body", "LONGTEXT", nullable=False),
+                ColumnDef("client_msg_id", "VARCHAR(191)", nullable=True),
+                ColumnDef("reply_to_message_id", "BIGINT", nullable=True),
+                ColumnDef("metadata_json", "LONGTEXT", nullable=True),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("message_id",),
+            uniques=(
+                UniqueKeyDef(("conversation_id", "client_msg_id"), name="uniq_chat_conversation_messages_client"),
+            ),
+            indexes=(
+                IndexDef(("conversation_id", "created_at"), "idx_chat_conversation_messages_time"),
+            ),
+            foreign_keys=(
+                ForeignKeyDef(("conversation_id",), "chat_conversations", ("conversation_id",)),
+            ),
+        ),
+        TableDef(
+            name="chat_agent_sessions",
+            columns=(
+                ColumnDef("session_id", "VARCHAR(64)", nullable=False),
+                ColumnDef("case_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("relation_key", "VARCHAR(191)", nullable=False),
+                ColumnDef("status", "VARCHAR(32)", nullable=False),
+                ColumnDef("participant_a_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("participant_b_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("agent_participant_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("triggered_by_message_id", "BIGINT", nullable=True),
+                ColumnDef("last_seen_message_id", "BIGINT", nullable=True),
+                ColumnDef("last_user_message_at", "DATETIME", nullable=True),
+                ColumnDef("last_agent_message_at", "DATETIME", nullable=True),
+                ColumnDef("last_replied_at", "DATETIME", nullable=True),
+                ColumnDef("cooldown_until", "DATETIME", nullable=True),
+                ColumnDef("close_reason", "VARCHAR(64)", nullable=True),
+                ColumnDef("state_json", "LONGTEXT", nullable=False),
+                ColumnDef("started_at", "DATETIME", nullable=False),
+                ColumnDef("ended_at", "DATETIME", nullable=True),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+                ColumnDef("updated_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("session_id",),
+            uniques=(
+                UniqueKeyDef(("case_id",), name="uniq_chat_agent_sessions_case"),
+            ),
+            indexes=(
+                IndexDef(("status", "updated_at"), "idx_chat_agent_sessions_status_updated"),
+                IndexDef(("agent_participant_id", "status"), "idx_chat_agent_sessions_agent_status"),
+            ),
+        ),
+        TableDef(
+            name="chat_agent_tasks",
+            columns=(
+                ColumnDef("task_id", "BIGINT", nullable=False, auto_increment=True),
+                ColumnDef("session_id", "VARCHAR(64)", nullable=False),
+                ColumnDef("case_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("trigger_conversation_id", "VARCHAR(64)", nullable=False),
+                ColumnDef("trigger_message_id", "BIGINT", nullable=False),
+                ColumnDef("trigger_author_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("trigger_channel_key", "VARCHAR(191)", nullable=False),
+                ColumnDef("reason", "VARCHAR(64)", nullable=False),
+                ColumnDef("status", "VARCHAR(32)", nullable=False),
+                ColumnDef("attempt_count", "INT", nullable=False),
+                ColumnDef("lease_until", "DATETIME", nullable=True),
+                ColumnDef("dedupe_key", "VARCHAR(191)", nullable=False),
+                ColumnDef("result_json", "LONGTEXT", nullable=True),
+                ColumnDef("error_text", "LONGTEXT", nullable=True),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+                ColumnDef("started_at", "DATETIME", nullable=True),
+                ColumnDef("finished_at", "DATETIME", nullable=True),
+            ),
+            primary_key=("task_id",),
+            uniques=(
+                UniqueKeyDef(("dedupe_key",), name="uniq_chat_agent_tasks_dedupe"),
+            ),
+            indexes=(
+                IndexDef(("status", "created_at"), "idx_chat_agent_tasks_status_created"),
+                IndexDef(("session_id", "created_at"), "idx_chat_agent_tasks_session_created"),
+                IndexDef(("case_id", "trigger_message_id"), "idx_chat_agent_tasks_case_message"),
+            ),
+            foreign_keys=(
+                ForeignKeyDef(("session_id",), "chat_agent_sessions", ("session_id",)),
+            ),
+        ),
+        TableDef(
             name="chat_thread_summaries",
             columns=(
                 ColumnDef("thread_id", "VARCHAR(64)", nullable=False),
@@ -655,6 +879,7 @@ def chat_tables() -> tuple[TableDef, ...]:
                 ColumnDef("thread_id", "VARCHAR(64)", nullable=False),
                 ColumnDef("message_id", "BIGINT", nullable=False),
                 ColumnDef("subject_user_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("update_key", "VARCHAR(191)", nullable=False),
                 ColumnDef("status", "VARCHAR(32)", nullable=False),
                 ColumnDef("patch_json", "LONGTEXT", nullable=True),
                 ColumnDef("evidence_json", "LONGTEXT", nullable=False),
@@ -664,50 +889,115 @@ def chat_tables() -> tuple[TableDef, ...]:
             ),
             primary_key=("job_id",),
             uniques=(
-                UniqueKeyDef(("message_id", "subject_user_id"), name="uniq_persona_job_msg_subject"),
+                UniqueKeyDef(("update_key",), name="uniq_persona_job_update_key"),
             ),
             indexes=(
                 IndexDef(("status", "created_at"), "idx_persona_jobs_status_time"),
             ),
         ),
+        ASYNC_JOB_TABLE,
         TableDef(
-            name="chat_coaching_entry_jobs",
+            name="verification_submissions",
             columns=(
-                ColumnDef("job_id", "BIGINT", nullable=False, auto_increment=True),
-                ColumnDef("thread_id", "VARCHAR(64)", nullable=False),
-                ColumnDef("entry_message_id", "BIGINT", nullable=False),
+                ColumnDef("submission_id", "VARCHAR(64)", nullable=False),
+                ColumnDef("verification_type", "VARCHAR(32)", nullable=False),
                 ColumnDef("user_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("profile_id", "BIGINT", nullable=True),
+                ColumnDef("source_dsn", "VARCHAR(512)", nullable=True),
+                ColumnDef("source_table_name", "VARCHAR(191)", nullable=True),
                 ColumnDef("status", "VARCHAR(32)", nullable=False),
-                ColumnDef("route_decision_json", "LONGTEXT", nullable=False),
-                ColumnDef("result_json", "LONGTEXT", nullable=True),
-                ColumnDef("detail_message_id", "BIGINT", nullable=True),
+                ColumnDef("resubmission_count", "INT", nullable=False),
+                ColumnDef("challenge_phrase", "VARCHAR(191)", nullable=True),
+                ColumnDef("review_decision", "VARCHAR(32)", nullable=True),
+                ColumnDef("review_note", "LONGTEXT", nullable=True),
+                ColumnDef("reviewer_id", "VARCHAR(191)", nullable=True),
+                ColumnDef("latest_asset_id", "BIGINT", nullable=True),
+                ColumnDef("latest_sync_status", "VARCHAR(32)", nullable=True),
+                ColumnDef("latest_sync_error", "LONGTEXT", nullable=True),
+                ColumnDef("submitted_at", "DATETIME", nullable=False),
+                ColumnDef("reviewed_at", "DATETIME", nullable=True),
+                ColumnDef("approved_at", "DATETIME", nullable=True),
+                ColumnDef("rejected_at", "DATETIME", nullable=True),
+                ColumnDef("metadata_json", "LONGTEXT", nullable=False),
                 ColumnDef("created_at", "DATETIME", nullable=False),
-                ColumnDef("processed_at", "DATETIME", nullable=True),
+                ColumnDef("updated_at", "DATETIME", nullable=False),
             ),
-            primary_key=("job_id",),
-            uniques=(
-                UniqueKeyDef(("entry_message_id",), name="uniq_chat_coaching_entry_jobs_entry"),
-            ),
+            primary_key=("submission_id",),
             indexes=(
-                IndexDef(("status", "created_at"), "idx_chat_coaching_entry_jobs_status_time"),
-            ),
-            foreign_keys=(
-                ForeignKeyDef(("thread_id",), "chat_threads", ("thread_id",)),
-                ForeignKeyDef(("entry_message_id",), "chat_messages", ("message_id",)),
+                IndexDef(("user_id", "status", "updated_at"), "idx_verification_submissions_user_status"),
+                IndexDef(("status", "updated_at"), "idx_verification_submissions_status_time"),
+                IndexDef(("profile_id", "updated_at"), "idx_verification_submissions_profile_time"),
             ),
         ),
         TableDef(
-            name="chat_assistant_trend_states",
+            name="verification_assets",
             columns=(
-                ColumnDef("thread_id", "VARCHAR(64)", nullable=False),
-                ColumnDef("user_id", "VARCHAR(191)", nullable=False),
-                ColumnDef("state_json", "LONGTEXT", nullable=False),
-                ColumnDef("updated_at", "DATETIME", nullable=False),
+                ColumnDef("asset_id", "BIGINT", nullable=False, auto_increment=True),
+                ColumnDef("submission_id", "VARCHAR(64)", nullable=False),
+                ColumnDef("asset_kind", "VARCHAR(32)", nullable=False),
+                ColumnDef("storage_key", "VARCHAR(512)", nullable=False),
+                ColumnDef("original_file_name", "VARCHAR(255)", nullable=False),
+                ColumnDef("content_type", "VARCHAR(128)", nullable=False),
+                ColumnDef("file_size_bytes", "BIGINT", nullable=False),
+                ColumnDef("sha256_hex", "VARCHAR(64)", nullable=False),
+                ColumnDef("upload_attempt", "INT", nullable=False),
+                ColumnDef("metadata_json", "LONGTEXT", nullable=False),
+                ColumnDef("created_at", "DATETIME", nullable=False),
             ),
-            primary_key=("thread_id", "user_id"),
-            indexes=(IndexDef(("updated_at",), "idx_chat_assistant_trend_states_updated"),),
+            primary_key=("asset_id",),
+            indexes=(
+                IndexDef(("submission_id", "created_at"), "idx_verification_assets_submission_time"),
+            ),
             foreign_keys=(
-                ForeignKeyDef(("thread_id",), "chat_threads", ("thread_id",)),
+                ForeignKeyDef(("submission_id",), "verification_submissions", ("submission_id",)),
+            ),
+        ),
+        TableDef(
+            name="verification_reviews",
+            columns=(
+                ColumnDef("review_id", "BIGINT", nullable=False, auto_increment=True),
+                ColumnDef("submission_id", "VARCHAR(64)", nullable=False),
+                ColumnDef("reviewer_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("decision", "VARCHAR(32)", nullable=False),
+                ColumnDef("review_note", "LONGTEXT", nullable=True),
+                ColumnDef("liveness_result", "VARCHAR(32)", nullable=True),
+                ColumnDef("face_match_result", "VARCHAR(32)", nullable=True),
+                ColumnDef("profile_consistency_result", "VARCHAR(32)", nullable=True),
+                ColumnDef("metadata_json", "LONGTEXT", nullable=False),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("review_id",),
+            indexes=(
+                IndexDef(("submission_id", "created_at"), "idx_verification_reviews_submission_time"),
+                IndexDef(("reviewer_id", "created_at"), "idx_verification_reviews_reviewer_time"),
+            ),
+            foreign_keys=(
+                ForeignKeyDef(("submission_id",), "verification_submissions", ("submission_id",)),
+            ),
+        ),
+        TableDef(
+            name="verification_notifications",
+            columns=(
+                ColumnDef("notification_id", "BIGINT", nullable=False, auto_increment=True),
+                ColumnDef("submission_id", "VARCHAR(64)", nullable=False),
+                ColumnDef("user_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("notification_type", "VARCHAR(64)", nullable=False),
+                ColumnDef("delivery_channel", "VARCHAR(32)", nullable=False),
+                ColumnDef("delivery_status", "VARCHAR(32)", nullable=False),
+                ColumnDef("title", "VARCHAR(255)", nullable=True),
+                ColumnDef("body", "LONGTEXT", nullable=True),
+                ColumnDef("metadata_json", "LONGTEXT", nullable=False),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+                ColumnDef("sent_at", "DATETIME", nullable=True),
+            ),
+            primary_key=("notification_id",),
+            indexes=(
+                IndexDef(("submission_id", "created_at"), "idx_verification_notifications_submission_time"),
+                IndexDef(("user_id", "created_at"), "idx_verification_notifications_user_time"),
+                IndexDef(("delivery_status", "created_at"), "idx_verification_notifications_status_time"),
+            ),
+            foreign_keys=(
+                ForeignKeyDef(("submission_id",), "verification_submissions", ("submission_id",)),
             ),
         ),
         TableDef(
@@ -831,6 +1121,540 @@ def chat_tables() -> tuple[TableDef, ...]:
             ),
             foreign_keys=(
                 ForeignKeyDef(("thread_id",), "chat_threads", ("thread_id",)),
+            ),
+        ),
+        TableDef(
+            name="account_moderation_states",
+            columns=(
+                ColumnDef("state_id", "BIGINT", nullable=False, auto_increment=True),
+                ColumnDef("subject_key", "VARCHAR(191)", nullable=False),
+                ColumnDef("subject_user_id", "VARCHAR(191)", nullable=True),
+                ColumnDef("source_dsn", "VARCHAR(512)", nullable=True),
+                ColumnDef("source_table_name", "VARCHAR(191)", nullable=True),
+                ColumnDef("profile_id", "BIGINT", nullable=True),
+                ColumnDef("moderation_status", "VARCHAR(32)", nullable=False),
+                ColumnDef("applied_action", "VARCHAR(32)", nullable=False),
+                ColumnDef("reason_code", "VARCHAR(64)", nullable=True),
+                ColumnDef("reason_summary", "LONGTEXT", nullable=True),
+                ColumnDef("required_verifications_json", "LONGTEXT", nullable=False),
+                ColumnDef("evidence_json", "LONGTEXT", nullable=False),
+                ColumnDef("linked_risk_case_id", "VARCHAR(64)", nullable=True),
+                ColumnDef("linked_profile_review_case_id", "VARCHAR(64)", nullable=True),
+                ColumnDef("resolver_id", "VARCHAR(191)", nullable=True),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+                ColumnDef("updated_at", "DATETIME", nullable=False),
+                ColumnDef("cleared_at", "DATETIME", nullable=True),
+            ),
+            primary_key=("state_id",),
+            uniques=(
+                UniqueKeyDef(("subject_key",), name="uniq_account_moderation_subject"),
+            ),
+            indexes=(
+                IndexDef(("moderation_status", "applied_action", "updated_at"), "idx_account_moderation_status_action"),
+                IndexDef(("subject_user_id", "moderation_status"), "idx_account_moderation_subject_status"),
+                IndexDef(("source_table_name", "profile_id"), "idx_account_moderation_profile_ref"),
+            ),
+            foreign_keys=(
+                ForeignKeyDef(("linked_risk_case_id",), "chat_risk_cases", ("risk_case_id",)),
+            ),
+        ),
+        TableDef(
+            name="chat_risk_appeals",
+            columns=(
+                ColumnDef("appeal_id", "BIGINT", nullable=False, auto_increment=True),
+                ColumnDef("risk_case_id", "VARCHAR(64)", nullable=False),
+                ColumnDef("subject_key", "VARCHAR(191)", nullable=True),
+                ColumnDef("subject_user_id", "VARCHAR(191)", nullable=True),
+                ColumnDef("appellant_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("appeal_status", "VARCHAR(32)", nullable=False),
+                ColumnDef("reason_text", "LONGTEXT", nullable=False),
+                ColumnDef("evidence_json", "LONGTEXT", nullable=False),
+                ColumnDef("resolution_note", "LONGTEXT", nullable=True),
+                ColumnDef("resolver_id", "VARCHAR(191)", nullable=True),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+                ColumnDef("updated_at", "DATETIME", nullable=False),
+                ColumnDef("resolved_at", "DATETIME", nullable=True),
+            ),
+            primary_key=("appeal_id",),
+            indexes=(
+                IndexDef(("risk_case_id", "created_at"), "idx_chat_risk_appeals_case_time"),
+                IndexDef(("appeal_status", "updated_at"), "idx_chat_risk_appeals_status_time"),
+                IndexDef(("subject_user_id", "created_at"), "idx_chat_risk_appeals_subject_time"),
+            ),
+            foreign_keys=(
+                ForeignKeyDef(("risk_case_id",), "chat_risk_cases", ("risk_case_id",)),
+            ),
+        ),
+        TableDef(
+            name="chat_risk_entity_links",
+            columns=(
+                ColumnDef("entity_link_id", "BIGINT", nullable=False, auto_increment=True),
+                ColumnDef("subject_user_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("source_dsn", "VARCHAR(512)", nullable=True),
+                ColumnDef("source_table_name", "VARCHAR(191)", nullable=True),
+                ColumnDef("profile_id", "BIGINT", nullable=True),
+                ColumnDef("thread_id", "VARCHAR(64)", nullable=True),
+                ColumnDef("case_id", "VARCHAR(191)", nullable=True),
+                ColumnDef("risk_case_id", "VARCHAR(64)", nullable=True),
+                ColumnDef("report_id", "BIGINT", nullable=True),
+                ColumnDef("source_type", "VARCHAR(32)", nullable=False),
+                ColumnDef("event_type", "VARCHAR(64)", nullable=False),
+                ColumnDef("entity_type", "VARCHAR(64)", nullable=False),
+                ColumnDef("entity_hash", "VARCHAR(128)", nullable=False),
+                ColumnDef("entity_key_hint", "VARCHAR(128)", nullable=True),
+                ColumnDef("entity_weight", "INT", nullable=False),
+                ColumnDef("signal_codes_json", "LONGTEXT", nullable=False),
+                ColumnDef("evidence_json", "LONGTEXT", nullable=False),
+                ColumnDef("first_seen_at", "DATETIME", nullable=False),
+                ColumnDef("last_seen_at", "DATETIME", nullable=False),
+                ColumnDef("occurrence_count", "INT", nullable=False),
+            ),
+            primary_key=("entity_link_id",),
+            uniques=(
+                UniqueKeyDef(("subject_user_id", "entity_type", "entity_hash"), name="uniq_chat_risk_entity_link"),
+            ),
+            indexes=(
+                IndexDef(("subject_user_id", "last_seen_at"), "idx_chat_risk_entity_links_subject_time"),
+                IndexDef(("entity_type", "entity_hash"), "idx_chat_risk_entity_links_entity_hash"),
+                IndexDef(("risk_case_id",), "idx_chat_risk_entity_links_risk_case"),
+                IndexDef(("report_id",), "idx_chat_risk_entity_links_report"),
+            ),
+            foreign_keys=(
+                ForeignKeyDef(("thread_id",), "chat_threads", ("thread_id",)),
+                ForeignKeyDef(("risk_case_id",), "chat_risk_cases", ("risk_case_id",)),
+                ForeignKeyDef(("report_id",), "chat_member_reports", ("report_id",)),
+            ),
+        ),
+        TableDef(
+            name="chat_risk_account_links",
+            columns=(
+                ColumnDef("account_link_id", "BIGINT", nullable=False, auto_increment=True),
+                ColumnDef("subject_user_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("linked_user_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("shared_entity_types_json", "LONGTEXT", nullable=False),
+                ColumnDef("shared_signal_codes_json", "LONGTEXT", nullable=False),
+                ColumnDef("shared_entity_count", "INT", nullable=False),
+                ColumnDef("link_score", "INT", nullable=False),
+                ColumnDef("evidence_json", "LONGTEXT", nullable=False),
+                ColumnDef("first_seen_at", "DATETIME", nullable=False),
+                ColumnDef("last_seen_at", "DATETIME", nullable=False),
+                ColumnDef("updated_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("account_link_id",),
+            uniques=(
+                UniqueKeyDef(("subject_user_id", "linked_user_id"), name="uniq_chat_risk_account_link"),
+            ),
+            indexes=(
+                IndexDef(("subject_user_id", "link_score"), "idx_chat_risk_account_links_subject_score"),
+                IndexDef(("linked_user_id", "link_score"), "idx_chat_risk_account_links_linked_score"),
+            ),
+        ),
+        TableDef(
+            name="chat_risk_network_profiles",
+            columns=(
+                ColumnDef("subject_user_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("source_dsn", "VARCHAR(512)", nullable=True),
+                ColumnDef("source_table_name", "VARCHAR(191)", nullable=True),
+                ColumnDef("profile_id", "BIGINT", nullable=True),
+                ColumnDef("review_status", "VARCHAR(32)", nullable=False),
+                ColumnDef("graph_risk_score", "INT", nullable=False),
+                ColumnDef("risk_level", "VARCHAR(16)", nullable=False),
+                ColumnDef("connected_subject_count", "INT", nullable=False),
+                ColumnDef("high_risk_neighbor_count", "INT", nullable=False),
+                ColumnDef("shared_entity_type_counts_json", "LONGTEXT", nullable=False),
+                ColumnDef("signal_codes_json", "LONGTEXT", nullable=False),
+                ColumnDef("recommended_action", "VARCHAR(32)", nullable=True),
+                ColumnDef("applied_action", "VARCHAR(32)", nullable=True),
+                ColumnDef("evidence_json", "LONGTEXT", nullable=False),
+                ColumnDef("last_evaluated_at", "DATETIME", nullable=False),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+                ColumnDef("updated_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("subject_user_id",),
+            indexes=(
+                IndexDef(("review_status", "graph_risk_score"), "idx_chat_risk_network_profiles_status_score"),
+                IndexDef(("source_table_name", "profile_id"), "idx_chat_risk_network_profiles_profile_ref"),
+                IndexDef(("applied_action", "updated_at"), "idx_chat_risk_network_profiles_action_time"),
+            ),
+        ),
+        TableDef(
+            name="profile_field_verification_submissions",
+            columns=(
+                ColumnDef("submission_id", "VARCHAR(64)", nullable=False),
+                ColumnDef("field_key", "VARCHAR(32)", nullable=False),
+                ColumnDef("subject_user_id", "VARCHAR(191)", nullable=True),
+                ColumnDef("profile_id", "BIGINT", nullable=False),
+                ColumnDef("source_dsn", "VARCHAR(512)", nullable=False),
+                ColumnDef("source_table_name", "VARCHAR(191)", nullable=False),
+                ColumnDef("status", "VARCHAR(32)", nullable=False),
+                ColumnDef("declared_value", "VARCHAR(255)", nullable=True),
+                ColumnDef("approved_value", "VARCHAR(255)", nullable=True),
+                ColumnDef("resubmission_count", "INT", nullable=False),
+                ColumnDef("required_documents_json", "LONGTEXT", nullable=False),
+                ColumnDef("evidence_json", "LONGTEXT", nullable=False),
+                ColumnDef("evidence_type", "VARCHAR(64)", nullable=True),
+                ColumnDef("evidence_channel", "VARCHAR(64)", nullable=True),
+                ColumnDef("reverify_strategy", "VARCHAR(32)", nullable=True),
+                ColumnDef("verification_expires_at", "DATETIME", nullable=True),
+                ColumnDef("next_review_due_at", "DATETIME", nullable=True),
+                ColumnDef("dispute_status", "VARCHAR(32)", nullable=True),
+                ColumnDef("dispute_reason", "LONGTEXT", nullable=True),
+                ColumnDef("dispute_evidence_json", "LONGTEXT", nullable=True),
+                ColumnDef("disputed_at", "DATETIME", nullable=True),
+                ColumnDef("dispute_resolved_at", "DATETIME", nullable=True),
+                ColumnDef("review_decision", "VARCHAR(32)", nullable=True),
+                ColumnDef("review_note", "LONGTEXT", nullable=True),
+                ColumnDef("reviewer_id", "VARCHAR(191)", nullable=True),
+                ColumnDef("latest_sync_status", "VARCHAR(32)", nullable=True),
+                ColumnDef("latest_sync_error", "LONGTEXT", nullable=True),
+                ColumnDef("submitted_at", "DATETIME", nullable=False),
+                ColumnDef("reviewed_at", "DATETIME", nullable=True),
+                ColumnDef("approved_at", "DATETIME", nullable=True),
+                ColumnDef("rejected_at", "DATETIME", nullable=True),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+                ColumnDef("updated_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("submission_id",),
+            indexes=(
+                IndexDef(("field_key", "status", "updated_at"), "idx_profile_field_verif_field_status"),
+                IndexDef(("profile_id", "updated_at"), "idx_profile_field_verif_profile_time"),
+                IndexDef(("subject_user_id", "status", "updated_at"), "idx_profile_field_verif_subject_status"),
+            ),
+        ),
+        TableDef(
+            name="profile_field_verification_reviews",
+            columns=(
+                ColumnDef("review_id", "BIGINT", nullable=False, auto_increment=True),
+                ColumnDef("submission_id", "VARCHAR(64)", nullable=False),
+                ColumnDef("reviewer_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("decision", "VARCHAR(32)", nullable=False),
+                ColumnDef("review_note", "LONGTEXT", nullable=True),
+                ColumnDef("approved_value", "VARCHAR(255)", nullable=True),
+                ColumnDef("requested_documents_json", "LONGTEXT", nullable=False),
+                ColumnDef("metadata_json", "LONGTEXT", nullable=False),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("review_id",),
+            indexes=(
+                IndexDef(("submission_id", "created_at"), "idx_profile_field_verif_reviews_submission_time"),
+            ),
+            foreign_keys=(
+                ForeignKeyDef(("submission_id",), "profile_field_verification_submissions", ("submission_id",)),
+            ),
+        ),
+        TableDef(
+            name="profile_review_cases",
+            columns=(
+                ColumnDef("profile_review_case_id", "VARCHAR(64)", nullable=False),
+                ColumnDef("subject_user_id", "VARCHAR(191)", nullable=True),
+                ColumnDef("profile_id", "BIGINT", nullable=False),
+                ColumnDef("source_dsn", "VARCHAR(512)", nullable=False),
+                ColumnDef("source_table_name", "VARCHAR(191)", nullable=False),
+                ColumnDef("status", "VARCHAR(32)", nullable=False),
+                ColumnDef("severity", "VARCHAR(16)", nullable=False),
+                ColumnDef("rule_codes_json", "LONGTEXT", nullable=False),
+                ColumnDef("evidence_summary_json", "LONGTEXT", nullable=False),
+                ColumnDef("recommended_action", "VARCHAR(32)", nullable=False),
+                ColumnDef("applied_action", "VARCHAR(32)", nullable=True),
+                ColumnDef("resolver_id", "VARCHAR(191)", nullable=True),
+                ColumnDef("resolution_note", "LONGTEXT", nullable=True),
+                ColumnDef("last_evaluated_at", "DATETIME", nullable=False),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+                ColumnDef("updated_at", "DATETIME", nullable=False),
+                ColumnDef("resolved_at", "DATETIME", nullable=True),
+            ),
+            primary_key=("profile_review_case_id",),
+            indexes=(
+                IndexDef(("profile_id", "source_table_name", "status"), "idx_profile_review_cases_profile_status"),
+                IndexDef(("status", "severity", "updated_at"), "idx_profile_review_cases_status_severity"),
+                IndexDef(("subject_user_id", "status"), "idx_profile_review_cases_subject_status"),
+            ),
+        ),
+        TableDef(
+            name="profile_review_events",
+            columns=(
+                ColumnDef("event_id", "BIGINT", nullable=False, auto_increment=True),
+                ColumnDef("profile_review_case_id", "VARCHAR(64)", nullable=False),
+                ColumnDef("rule_code", "VARCHAR(64)", nullable=False),
+                ColumnDef("severity", "VARCHAR(16)", nullable=False),
+                ColumnDef("evidence_json", "LONGTEXT", nullable=False),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("event_id",),
+            indexes=(
+                IndexDef(("profile_review_case_id", "created_at"), "idx_profile_review_events_case_time"),
+                IndexDef(("rule_code", "created_at"), "idx_profile_review_events_rule_time"),
+            ),
+            foreign_keys=(
+                ForeignKeyDef(("profile_review_case_id",), "profile_review_cases", ("profile_review_case_id",)),
+            ),
+        ),
+        TableDef(
+            name="profile_review_case_appeals",
+            columns=(
+                ColumnDef("appeal_id", "BIGINT", nullable=False, auto_increment=True),
+                ColumnDef("profile_review_case_id", "VARCHAR(64)", nullable=False),
+                ColumnDef("subject_key", "VARCHAR(191)", nullable=True),
+                ColumnDef("subject_user_id", "VARCHAR(191)", nullable=True),
+                ColumnDef("appellant_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("appeal_status", "VARCHAR(32)", nullable=False),
+                ColumnDef("reason_text", "LONGTEXT", nullable=False),
+                ColumnDef("evidence_json", "LONGTEXT", nullable=False),
+                ColumnDef("resolution_note", "LONGTEXT", nullable=True),
+                ColumnDef("resolver_id", "VARCHAR(191)", nullable=True),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+                ColumnDef("updated_at", "DATETIME", nullable=False),
+                ColumnDef("resolved_at", "DATETIME", nullable=True),
+            ),
+            primary_key=("appeal_id",),
+            indexes=(
+                IndexDef(("profile_review_case_id", "created_at"), "idx_profile_review_appeals_case_time"),
+                IndexDef(("appeal_status", "updated_at"), "idx_profile_review_appeals_status_time"),
+                IndexDef(("subject_user_id", "created_at"), "idx_profile_review_appeals_subject_time"),
+            ),
+            foreign_keys=(
+                ForeignKeyDef(("profile_review_case_id",), "profile_review_cases", ("profile_review_case_id",)),
+            ),
+        ),
+        TableDef(
+            name="photo_risk_assets",
+            columns=(
+                ColumnDef("asset_id", "BIGINT", nullable=False, auto_increment=True),
+                ColumnDef("source_dsn", "VARCHAR(512)", nullable=False),
+                ColumnDef("source_table_name", "VARCHAR(191)", nullable=False),
+                ColumnDef("source_profile_id", "BIGINT", nullable=True),
+                ColumnDef("asset_origin", "VARCHAR(32)", nullable=False),
+                ColumnDef("photo_source", "VARCHAR(1024)", nullable=False),
+                ColumnDef("photo_source_sha1", "CHAR(40)", nullable=False),
+                ColumnDef("first_seen_at", "DATETIME", nullable=False),
+                ColumnDef("last_seen_at", "DATETIME", nullable=False),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+                ColumnDef("updated_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("asset_id",),
+            uniques=(
+                UniqueKeyDef(
+                    ("source_dsn", "source_table_name", "source_profile_id", "photo_source_sha1"),
+                    name="uniq_photo_risk_asset_src",
+                ),
+            ),
+            indexes=(
+                IndexDef(("source_profile_id", "updated_at"), "idx_photo_risk_asset_profile"),
+                IndexDef(("photo_source_sha1",), "idx_photo_risk_asset_sha1"),
+            ),
+        ),
+        TableDef(
+            name="photo_risk_score_runs",
+            columns=(
+                ColumnDef("score_run_id", "BIGINT", nullable=False, auto_increment=True),
+                ColumnDef("profile_id", "BIGINT", nullable=False),
+                ColumnDef("subject_user_id", "VARCHAR(191)", nullable=True),
+                ColumnDef("source_dsn", "VARCHAR(512)", nullable=False),
+                ColumnDef("source_table_name", "VARCHAR(191)", nullable=False),
+                ColumnDef("profile_review_case_id", "VARCHAR(64)", nullable=True),
+                ColumnDef("trigger_source", "VARCHAR(64)", nullable=False),
+                ColumnDef("engine_name", "VARCHAR(64)", nullable=False),
+                ColumnDef("engine_version", "VARCHAR(64)", nullable=False),
+                ColumnDef("analysis_status", "VARCHAR(32)", nullable=False),
+                ColumnDef("photo_authenticity_score", "INT", nullable=False),
+                ColumnDef("same_person_score", "INT", nullable=False),
+                ColumnDef("photo_edit_risk_score", "INT", nullable=False),
+                ColumnDef("deepfake_risk_score", "INT", nullable=False),
+                ColumnDef("stolen_media_risk_score", "INT", nullable=False),
+                ColumnDef("source_count", "INT", nullable=False),
+                ColumnDef("loaded_source_count", "INT", nullable=False),
+                ColumnDef("valid_face_photo_count", "INT", nullable=False),
+                ColumnDef("multiple_face_photo_count", "INT", nullable=False),
+                ColumnDef("comparison_source_count", "INT", nullable=False),
+                ColumnDef("risk_flags_json", "LONGTEXT", nullable=False),
+                ColumnDef("score_payload_json", "LONGTEXT", nullable=False),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("score_run_id",),
+            indexes=(
+                IndexDef(("profile_id", "created_at"), "idx_photo_risk_run_profile"),
+                IndexDef(("subject_user_id", "created_at"), "idx_photo_risk_run_subject"),
+                IndexDef(("profile_review_case_id", "created_at"), "idx_photo_risk_run_case"),
+            ),
+        ),
+        TableDef(
+            name="photo_risk_feature_snapshots",
+            columns=(
+                ColumnDef("feature_snapshot_id", "BIGINT", nullable=False, auto_increment=True),
+                ColumnDef("asset_id", "BIGINT", nullable=False),
+                ColumnDef("score_run_id", "BIGINT", nullable=False),
+                ColumnDef("asset_role", "VARCHAR(32)", nullable=False),
+                ColumnDef("feature_version", "VARCHAR(64)", nullable=False),
+                ColumnDef("face_count", "INT", nullable=False),
+                ColumnDef("face_detection_score", "INT", nullable=False),
+                ColumnDef("image_hash_hex", "VARCHAR(32)", nullable=True),
+                ColumnDef("embedding_available", "TINYINT(1)", nullable=False),
+                ColumnDef("embedding_dim", "INT", nullable=False),
+                ColumnDef("embedding_preview_json", "LONGTEXT", nullable=False),
+                ColumnDef("photo_edit_metrics_json", "LONGTEXT", nullable=True),
+                ColumnDef("deepfake_metrics_json", "LONGTEXT", nullable=True),
+                ColumnDef("metadata_json", "LONGTEXT", nullable=False),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("feature_snapshot_id",),
+            indexes=(
+                IndexDef(("asset_id", "created_at"), "idx_photo_risk_feat_asset"),
+                IndexDef(("score_run_id", "asset_role"), "idx_photo_risk_feat_run"),
+            ),
+            foreign_keys=(
+                ForeignKeyDef(("asset_id",), "photo_risk_assets", ("asset_id",)),
+                ForeignKeyDef(("score_run_id",), "photo_risk_score_runs", ("score_run_id",)),
+            ),
+        ),
+        TableDef(
+            name="photo_risk_decisions",
+            columns=(
+                ColumnDef("decision_id", "BIGINT", nullable=False, auto_increment=True),
+                ColumnDef("score_run_id", "BIGINT", nullable=False),
+                ColumnDef("profile_review_case_id", "VARCHAR(64)", nullable=True),
+                ColumnDef("decision_source", "VARCHAR(64)", nullable=False),
+                ColumnDef("decision_status", "VARCHAR(32)", nullable=False),
+                ColumnDef("severity", "VARCHAR(16)", nullable=False),
+                ColumnDef("recommended_action", "VARCHAR(32)", nullable=False),
+                ColumnDef("required_verifications_json", "LONGTEXT", nullable=False),
+                ColumnDef("rule_codes_json", "LONGTEXT", nullable=False),
+                ColumnDef("signal_codes_json", "LONGTEXT", nullable=False),
+                ColumnDef("decision_payload_json", "LONGTEXT", nullable=False),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+                ColumnDef("updated_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("decision_id",),
+            uniques=(UniqueKeyDef(("score_run_id",), name="uniq_photo_risk_decision_run"),),
+            indexes=(
+                IndexDef(("profile_review_case_id", "updated_at"), "idx_photo_risk_dec_case"),
+                IndexDef(("decision_status", "updated_at"), "idx_photo_risk_dec_status"),
+            ),
+            foreign_keys=(
+                ForeignKeyDef(("score_run_id",), "photo_risk_score_runs", ("score_run_id",)),
+            ),
+        ),
+        TableDef(
+            name="photo_risk_review_queue",
+            columns=(
+                ColumnDef("queue_item_id", "BIGINT", nullable=False, auto_increment=True),
+                ColumnDef("profile_id", "BIGINT", nullable=False),
+                ColumnDef("subject_user_id", "VARCHAR(191)", nullable=True),
+                ColumnDef("source_dsn", "VARCHAR(512)", nullable=False),
+                ColumnDef("source_table_name", "VARCHAR(191)", nullable=False),
+                ColumnDef("profile_review_case_id", "VARCHAR(64)", nullable=False),
+                ColumnDef("score_run_id", "BIGINT", nullable=False),
+                ColumnDef("decision_id", "BIGINT", nullable=False),
+                ColumnDef("queue_status", "VARCHAR(32)", nullable=False),
+                ColumnDef("priority", "VARCHAR(16)", nullable=False),
+                ColumnDef("reason_codes_json", "LONGTEXT", nullable=False),
+                ColumnDef("queue_payload_json", "LONGTEXT", nullable=False),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+                ColumnDef("updated_at", "DATETIME", nullable=False),
+                ColumnDef("resolved_at", "DATETIME", nullable=True),
+            ),
+            primary_key=("queue_item_id",),
+            uniques=(UniqueKeyDef(("profile_review_case_id",), name="uniq_photo_risk_queue_case"),),
+            indexes=(
+                IndexDef(("queue_status", "priority", "updated_at"), "idx_photo_risk_queue_status"),
+                IndexDef(("subject_user_id", "updated_at"), "idx_photo_risk_queue_subject"),
+                IndexDef(("profile_id", "updated_at"), "idx_photo_risk_queue_profile"),
+            ),
+            foreign_keys=(
+                ForeignKeyDef(("score_run_id",), "photo_risk_score_runs", ("score_run_id",)),
+                ForeignKeyDef(("decision_id",), "photo_risk_decisions", ("decision_id",)),
+                ForeignKeyDef(("profile_review_case_id",), "profile_review_cases", ("profile_review_case_id",)),
+            ),
+        ),
+    )
+
+
+def discovery_tables() -> tuple[TableDef, ...]:
+    return (
+        TableDef(
+            name="discovery_agent_sessions",
+            columns=(
+                ColumnDef("session_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("requester_id", "BIGINT", nullable=False),
+                ColumnDef("profile_id", "BIGINT", nullable=False),
+                ColumnDef("status", "VARCHAR(32)", nullable=False),
+                ColumnDef("phase", "VARCHAR(64)", nullable=False),
+                ColumnDef("state_json", "LONGTEXT", nullable=False),
+                ColumnDef("latest_view_json", "LONGTEXT", nullable=False),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+                ColumnDef("updated_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("session_id",),
+            indexes=(
+                IndexDef(("requester_id", "updated_at"), "idx_discovery_sessions_requester_updated"),
+                IndexDef(("status", "updated_at"), "idx_discovery_sessions_status_updated"),
+            ),
+        ),
+        TableDef(
+            name="discovery_agent_turns",
+            columns=(
+                ColumnDef("turn_id", "BIGINT", nullable=False, auto_increment=True),
+                ColumnDef("session_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("request_kind", "VARCHAR(32)", nullable=False),
+                ColumnDef("user_message_text", "TEXT"),
+                ColumnDef("consumed_action_id", "VARCHAR(191)"),
+                ColumnDef("agent_decision_json", "LONGTEXT", nullable=False),
+                ColumnDef("view_snapshot_json", "LONGTEXT", nullable=False),
+                ColumnDef("search_run_id", "BIGINT"),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("turn_id",),
+            indexes=(
+                IndexDef(("session_id", "created_at"), "idx_discovery_turns_session_time"),
+                IndexDef(("consumed_action_id",), "idx_discovery_turns_action_id"),
+            ),
+            foreign_keys=(
+                ForeignKeyDef(("session_id",), "discovery_agent_sessions", ("session_id",)),
+            ),
+        ),
+        TableDef(
+            name="discovery_agent_actions",
+            columns=(
+                ColumnDef("action_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("session_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("label", "VARCHAR(255)", nullable=False),
+                ColumnDef("style", "VARCHAR(32)", nullable=False),
+                ColumnDef("semantic_payload_json", "LONGTEXT", nullable=False),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+                ColumnDef("expires_at", "DATETIME"),
+                ColumnDef("consumed_at", "DATETIME"),
+            ),
+            primary_key=("action_id",),
+            indexes=(
+                IndexDef(("session_id", "created_at"), "idx_discovery_actions_session_time"),
+                IndexDef(("session_id", "consumed_at"), "idx_discovery_actions_session_consumed"),
+            ),
+            foreign_keys=(
+                ForeignKeyDef(("session_id",), "discovery_agent_sessions", ("session_id",)),
+            ),
+        ),
+        TableDef(
+            name="discovery_search_runs",
+            columns=(
+                ColumnDef("search_run_id", "BIGINT", nullable=False, auto_increment=True),
+                ColumnDef("session_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("requester_id", "BIGINT", nullable=False),
+                ColumnDef("profile_id", "BIGINT", nullable=False),
+                ColumnDef("source", "VARCHAR(512)", nullable=False),
+                ColumnDef("criteria_json", "LONGTEXT", nullable=False),
+                ColumnDef("self_profile_json", "LONGTEXT"),
+                ColumnDef("limit_count", "INT", nullable=False),
+                ColumnDef("result_count", "INT", nullable=False),
+                ColumnDef("has_match", "TINYINT(1)", nullable=False),
+                ColumnDef("response_json", "LONGTEXT", nullable=False),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("search_run_id",),
+            indexes=(
+                IndexDef(("session_id", "created_at"), "idx_discovery_search_runs_session_time"),
+                IndexDef(("requester_id", "created_at"), "idx_discovery_search_runs_requester_time"),
+            ),
+            foreign_keys=(
+                ForeignKeyDef(("session_id",), "discovery_agent_sessions", ("session_id",)),
             ),
         ),
     )
@@ -1021,6 +1845,7 @@ def matchmaking_tables() -> tuple[TableDef, ...]:
                 IndexDef(("publish_status", "created_at"), "idx_outbox_pending_time"),
             ),
         ),
+        ASYNC_JOB_TABLE,
     )
 
 
@@ -1028,15 +1853,27 @@ SYSTEM_TABLES: dict[str, tuple[TableDef, ...]] = {
     "recommendation": recommendation_tables(),
     "matchmaking": matchmaking_tables(),
     "chat": chat_tables(),
+    "discovery": discovery_tables(),
 }
 
-def ensure_schema(mysql_conn, tables: Sequence[TableDef], *, prefix: str | None, config: dict[str, Any]) -> dict[str, list[str]]:
+def ensure_schema(
+    mysql_conn,
+    tables: Sequence[TableDef],
+    *,
+    prefix: str | None,
+    config: dict[str, Any],
+    commit: bool = True,
+) -> dict[str, list[str]]:
     created_indexes: dict[str, list[str]] = {}
     for table in tables:
         ensure_table(mysql_conn, table, prefix=prefix, config=config)
     for table in tables:
         ensure_table_columns(mysql_conn, table, prefix=prefix)
     for table in tables:
-        created_indexes[destination_table_name(table.name, prefix)] = ensure_indexes(mysql_conn, table, prefix=prefix)
-    mysql_conn.commit()
+        dest_table = destination_table_name(table.name, prefix)
+        created_uniques = ensure_unique_keys(mysql_conn, table, prefix=prefix)
+        created_non_unique = ensure_indexes(mysql_conn, table, prefix=prefix)
+        created_indexes[dest_table] = created_uniques + created_non_unique
+    if commit:
+        mysql_conn.commit()
     return created_indexes

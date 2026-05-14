@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -11,10 +12,6 @@ from typing import Any, Callable, Iterable, Optional
 from ._path_bootstrap import ensure_her_repo_on_sys_path  # noqa: E402
 
 ensure_her_repo_on_sys_path(Path(__file__))
-
-from skill_runtime import ensure_partner_search_skill_on_path  # noqa: E402
-
-ensure_partner_search_skill_on_path()
 
 from match_domain import (  # noqa: E402
     build_canonical_event,
@@ -504,6 +501,7 @@ def load_subscription_search_args(
     request = build_effective_search_request(subscription, persona_profile=persona_profile)
     request["include_source"] = True
     request["include_text"] = False
+    request["moderation_dsn"] = os.environ.get("HER_CHAT_MODERATION_DB") or os.environ.get("PARTNER_CHAT_DB")
     return request
 
 
@@ -1376,6 +1374,7 @@ def record_recommendation_action(
     subscription_id: str,
     candidate_id: int,
     action_type: str,
+    actor_id: str | None = None,
     now: datetime | None = None,
     action_payload: dict[str, Any] | None = None,
     client_idempotency_key: str | None = None,
@@ -1424,6 +1423,7 @@ def record_recommendation_action(
         recommendation=recommendation,
         action_type=action_type,
         actor_type="user",
+        actor_id=actor_id,
         now=now,
         action_payload=action_payload,
         client_idempotency_key=ck or None,
@@ -1472,6 +1472,7 @@ def record_user_review(
     subscription_id: str,
     candidate_id: int,
     review_type: str,
+    actor_id: str | None = None,
     now: datetime | None = None,
     review_payload: dict[str, Any] | None = None,
     client_idempotency_key: str | None = None,
@@ -1526,6 +1527,7 @@ def record_user_review(
         recommendation=recommendation,
         action_type=f"review_{review_type}",
         actor_type="user",
+        actor_id=actor_id,
         now=now,
         action_payload=review_payload,
         client_idempotency_key=ck or None,

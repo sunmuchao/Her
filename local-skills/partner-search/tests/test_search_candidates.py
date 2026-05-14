@@ -1,15 +1,7 @@
-import pathlib
-import types
 import unittest
 from unittest import mock
 
-
-SCRIPT_PATH = (
-    pathlib.Path(__file__).resolve().parents[1] / "scripts" / "search_candidates.py"
-)
-search_candidates = types.ModuleType("search_candidates")
-search_candidates.__file__ = str(SCRIPT_PATH)
-exec(compile(SCRIPT_PATH.read_text(encoding="utf-8"), str(SCRIPT_PATH), "exec"), search_candidates.__dict__)
+import partner_search.search_candidates as search_candidates
 
 
 class FakeCursor:

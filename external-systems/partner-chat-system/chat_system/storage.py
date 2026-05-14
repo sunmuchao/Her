@@ -16,6 +16,7 @@ from ._path_bootstrap import ensure_her_repo_on_sys_path
 
 ensure_her_repo_on_sys_path(Path(__file__))
 
+from db_migrations import initialize_target_database  # noqa: E402
 import outer_system_mysql_schema as _schema  # noqa: E402
 
 from outer_mysql_compat import (  # noqa: E402
@@ -31,10 +32,8 @@ def connect_db(dsn: str) -> MySQLCompatConnection:
     return connect_mysql_repo_db(dsn, subsystem_name="Chat")
 
 
-def initialize_database(conn: MySQLCompatConnection) -> None:
-    _schema.ensure_database(conn.config)
-    _schema.ensure_schema(conn._conn, _schema.chat_tables(), prefix=None, config=conn.config)
-    conn.commit()
+def initialize_database(conn: MySQLCompatConnection, *, mode: str | None = None) -> None:
+    initialize_target_database(conn, target="chat", mode=mode)
 
 
 def reset_all_tables(conn: MySQLCompatConnection) -> None:
