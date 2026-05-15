@@ -1,6 +1,6 @@
 # 发现页 Agent-Native 方案任务拆解
 
-> 文档校准说明：本文少量示例仍引用 `types.py` 等未单独落地的文件。当前 discovery 结构化 schema 主要集中在 `external-systems/partner-discovery-system/discovery_system/agent_runtime.py`、`service.py`、`view_models.py`。
+> 文档校准说明：本文少量示例仍引用 `types.py` 等未单独落地的文件。当前 discovery 结构化 schema 主要集中在 `external-systems/partner-discovery-system/discovery_system/decision_models.py`、`service.py`、`view_models.py`；`agent_runtime.py` 主要负责 Agents SDK 运行时和 prompt 组装。
 
 本文档把 [`discovery-agent-native-architecture-plan-20260514.md`](./discovery-agent-native-architecture-plan-20260514.md) 拆成可排期、可开发、可验收的任务。
 
@@ -83,7 +83,7 @@
 | 任务 | 当前状态 | 说明 |
 | --- | --- | --- |
 | `D01` | `已完成` | discovery 术语、边界、render model / detail_view 契约已写入架构文档和本任务文档。 |
-| `D02` | `已完成` | `partner-discovery-system` 目录、`storage.py`、`service.py`、`agent_runtime.py`、`view_models.py` 已建立。 |
+| `D02` | `已完成` | `partner-discovery-system` 目录、`storage.py`、`service.py`、`agent_runtime.py`、`decision_models.py`、`view_models.py` 已建立。 |
 | `D03` | `已完成` | `discovery_agent_sessions`、`turns`、`actions`、`search_runs` 表和 migration 已落地，支持内存版与 MySQL 版。 |
 | `D04` | `已完成` | discovery agent runtime 已落地，支持真实 Agents SDK 路径和 stub fallback。 |
 | `D05` | `已完成` | discovery runtime 已移除 `get_discovery_session_state`、`get_requester_profile` 两个读取型 tool，改为每轮注入正式 `official_context`；核心能力已收敛为 `search_partner_candidates`（底层接 `partner-search`）、`sync_requester_persona_memory`（底层接 `persona-memory-sync`）、`create_saved_search_subscription_from_last_search`，并补齐 tool 调用审计表与测试。 |
@@ -100,9 +100,14 @@
 
 前端联调任务当前状态：
 
-- 发现页和聊天页静态 HTML 原型已做
-- discovery 后端接口已具备联调条件
-- 真正的前端接口接入仍未开始，前端联调任务 1-5 目前都还不算完成
+- 发现页联调版 HTML 已接 `POST /v1/discovery/sessions`
+- 发现页联调版 HTML 已接 `POST /v1/discovery/sessions/{session_id}/turns`
+- 发现页联调版 HTML 已接 `action_id` 点击回传
+- 资料详情页联调版 HTML 已接 `GET /v1/discovery/profiles/{profile_id}`
+- session 恢复已接 `GET /v1/discovery/sessions/{session_id}`
+- gateway 已提供同源 demo 路由：
+  - `GET /demo/discovery`
+  - `GET /demo/discovery/profile-detail`
 
 ---
 
@@ -135,6 +140,7 @@
     - `storage.py`
     - `service.py`
     - `agent_runtime.py`
+    - `decision_models.py`
     - `view_models.py`
   - 最小 import 路径打通
 - 建议文件：
