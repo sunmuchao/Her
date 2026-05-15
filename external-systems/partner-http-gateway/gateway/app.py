@@ -24,7 +24,7 @@ from .http_helpers import (  # noqa: E402
     _parse_optional_now,
     _query_dict,
     _read_body,
-    _read_live_video_demo_html,
+    _read_demo_html,
     _statuses_from_query,
     _subscription_ids_from_query,
     _wrap_trace_headers,
@@ -3896,8 +3896,9 @@ class PartnerGateway(AsyncJobGatewayMixin):
                 sr("200 OK", JSON_HEADERS + [("Content-Length", str(len(body)))])
                 _access_log(200)
                 return [body]
-            if path.rstrip("/") == "/demo/live-video-verification" and method == "GET":
-                body = _read_live_video_demo_html().encode("utf-8")
+            demo_html = _read_demo_html(path) if method == "GET" else None
+            if demo_html is not None:
+                body = demo_html.encode("utf-8")
                 sr("200 OK", DEMO_HTML_HEADERS + [("Content-Length", str(len(body)))])
                 _access_log(200)
                 return [body]

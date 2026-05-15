@@ -278,6 +278,76 @@ class GatewayWsgiTests(unittest.TestCase):
         self.assertEqual({k.lower(): v for k, v in headers}.get("content-type"), "text/html; charset=utf-8")
         self.assertIn("Live Video Verification Demo", out.decode("utf-8"))
 
+    def test_discovery_demo_route_serves_html(self) -> None:
+        env = _wsgi_env("GET", "/demo/discovery")
+        out = b"".join(self.gw(env, self.start_response))
+
+        self.assertIn("200", self.status)
+        hdrs = {k.lower(): v for k, v in self.headers}
+        self.assertEqual(hdrs.get("content-type"), "text/html; charset=utf-8")
+        body = out.decode("utf-8")
+        self.assertIn("对话式发现页", body)
+        self.assertIn("/v1/discovery/sessions", body)
+        self.assertIn("/demo/discovery/profile-detail", body)
+
+    def test_discovery_demo_route_skips_api_key_guard(self) -> None:
+        with mock.patch.dict(os.environ, {"PARTNER_GATEWAY_API_KEY": "demo-secret"}, clear=False):
+            gw = PartnerGateway(
+                recommendation_dsn="mysql://noop",
+                matchmaking_dsn="mysql://noop",
+                chat_dsn="mysql://noop",
+                db_pool_max=0,
+            )
+            status = ""
+            headers: list[tuple[str, str]] = []
+
+            def start_response(current_status: str, current_headers: list[tuple[str, str]]) -> None:
+                nonlocal status, headers
+                status = current_status
+                headers = current_headers
+
+            env = _wsgi_env("GET", "/demo/discovery")
+            out = b"".join(gw(env, start_response))
+
+        self.assertIn("200", status)
+        self.assertEqual({k.lower(): v for k, v in headers}.get("content-type"), "text/html; charset=utf-8")
+        self.assertIn("对话式发现页", out.decode("utf-8"))
+
+    def test_discovery_profile_detail_demo_route_serves_html(self) -> None:
+        env = _wsgi_env("GET", "/demo/discovery/profile-detail")
+        out = b"".join(self.gw(env, self.start_response))
+
+        self.assertIn("200", self.status)
+        hdrs = {k.lower(): v for k, v in self.headers}
+        self.assertEqual(hdrs.get("content-type"), "text/html; charset=utf-8")
+        body = out.decode("utf-8")
+        self.assertIn("资料详情页", body)
+        self.assertIn("GET /v1/discovery/profiles/{profile_id}", body)
+        self.assertIn("/demo/discovery", body)
+
+    def test_discovery_profile_detail_demo_route_skips_api_key_guard(self) -> None:
+        with mock.patch.dict(os.environ, {"PARTNER_GATEWAY_API_KEY": "demo-secret"}, clear=False):
+            gw = PartnerGateway(
+                recommendation_dsn="mysql://noop",
+                matchmaking_dsn="mysql://noop",
+                chat_dsn="mysql://noop",
+                db_pool_max=0,
+            )
+            status = ""
+            headers: list[tuple[str, str]] = []
+
+            def start_response(current_status: str, current_headers: list[tuple[str, str]]) -> None:
+                nonlocal status, headers
+                status = current_status
+                headers = current_headers
+
+            env = _wsgi_env("GET", "/demo/discovery/profile-detail")
+            out = b"".join(gw(env, start_response))
+
+        self.assertIn("200", status)
+        self.assertEqual({k.lower(): v for k, v in headers}.get("content-type"), "text/html; charset=utf-8")
+        self.assertIn("资料详情页", out.decode("utf-8"))
+
     def test_live_video_demo_asset_route_serves_local_module(self) -> None:
         env = _wsgi_env("GET", "/demo/assets/mediapipe/vision_bundle.mjs")
         out = b"".join(self.gw(env, self.start_response))
