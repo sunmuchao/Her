@@ -11,6 +11,7 @@ from collections.abc import Callable, Mapping
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
+from her_env import env_int
 from observability import alert_signal, funnel_stage
 
 from .outbox import (
@@ -29,15 +30,6 @@ OUTBOX_FUNNEL_DISPATCHED = "outbox_dispatched"
 
 def _ts(now: datetime | None = None) -> datetime:
     return (now or datetime.now()).replace(microsecond=0)
-
-
-def _env_int(name: str, default: int) -> int:
-    raw = os.environ.get(name)
-    if raw is None or str(raw).strip() == "":
-        return default
-    return int(raw)
-
-
 def _default_worker_name(system: str) -> str:
     return f"{system}-outbox@{socket.gethostname()}:{os.getpid()}"
 
@@ -63,44 +55,44 @@ def resolve_outbox_consume_config(
         or _default_worker_name(system)
     ).strip() or _default_worker_name(system)
     return {
-        "limit": max(1, _env_int(f"{env_prefix}_BATCH_LIMIT", default_limit)),
-        "max_batches": max(1, _env_int(f"{env_prefix}_MAX_BATCHES", default_max_batches)),
+        "limit": max(1, env_int(f"{env_prefix}_BATCH_LIMIT", default_limit)),
+        "max_batches": max(1, env_int(f"{env_prefix}_MAX_BATCHES", default_max_batches)),
         "retry_delay_seconds": max(
             1,
-            _env_int(f"{env_prefix}_RETRY_DELAY_SECONDS", default_retry_delay_seconds),
+            env_int(f"{env_prefix}_RETRY_DELAY_SECONDS", default_retry_delay_seconds),
         ),
         "retry_backoff_multiplier": max(
             1,
-            _env_int(
+            env_int(
                 f"{env_prefix}_RETRY_BACKOFF_MULTIPLIER",
                 default_retry_backoff_multiplier,
             ),
         ),
         "retry_max_delay_seconds": max(
             1,
-            _env_int(
+            env_int(
                 f"{env_prefix}_RETRY_MAX_DELAY_SECONDS",
                 default_retry_max_delay_seconds,
             ),
         ),
-        "max_attempts": max(1, _env_int(f"{env_prefix}_MAX_ATTEMPTS", default_max_attempts)),
+        "max_attempts": max(1, env_int(f"{env_prefix}_MAX_ATTEMPTS", default_max_attempts)),
         "claim_timeout_seconds": max(
             1,
-            _env_int(
+            env_int(
                 f"{env_prefix}_CLAIM_TIMEOUT_SECONDS",
                 default_claim_timeout_seconds,
             ),
         ),
         "poll_interval_seconds": max(
             1,
-            _env_int(
+            env_int(
                 f"{env_prefix}_POLL_INTERVAL_SECONDS",
                 default_poll_interval_seconds,
             ),
         ),
         "max_idle_polls": max(
             1,
-            _env_int(f"{env_prefix}_MAX_IDLE_POLLS", default_max_idle_polls),
+            env_int(f"{env_prefix}_MAX_IDLE_POLLS", default_max_idle_polls),
         ),
         "worker_name": worker_name,
     }

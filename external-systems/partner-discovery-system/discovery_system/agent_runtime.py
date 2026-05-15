@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from json import JSONDecodeError
 from typing import Any, Callable, Protocol
 
+from her_env import coerce_json_object, env_first, env_float
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -33,6 +34,7 @@ class DiscoveryRunInput:
     get_requester_profile: Callable[[], dict[str, Any] | None]
     search_partner_candidates: Callable[[dict[str, Any], int], dict[str, Any]]
     create_saved_search_subscription_from_last_search: Callable[[], dict[str, Any]]
+    agent_session: Any | None = None
 
 
 @dataclass(frozen=True)
@@ -110,35 +112,17 @@ class DiscoveryDecisionModel(BaseModel):
         if not str(self.assistant_message or "").strip():
             raise ValueError("assistant_message is required")
         return self
-
-
-def _env_first(*names: str, default: str = "") -> str:
-    for name in names:
-        value = (os.environ.get(name) or "").strip()
-        if value:
-            return value
-    return default
-
-
-def _env_float(*names: str, default: float) -> float:
-    raw = _env_first(*names, default=str(default))
-    try:
-        return float(raw)
-    except (TypeError, ValueError):
-        return float(default)
-
-
 def _configure_agents_sdk_provider() -> None:
     from agents import set_default_openai_api, set_default_openai_client, set_tracing_disabled
     from openai import AsyncOpenAI
 
-    base_url = _env_first(
+    base_url = env_first(
         "HER_DISCOVERY_AGENT_BASE_URL",
         "HER_CHAT_AGENT_BASE_URL",
         "OPENAI_BASE_URL",
         "HER_CHAT_ASSISTANT_BASE_URL",
     )
-    api_mode = _env_first(
+    api_mode = env_first(
         "HER_DISCOVERY_AGENT_OPENAI_API",
         "HER_CHAT_AGENT_OPENAI_API",
         "HER_CHAT_ASSISTANT_OPENAI_API",
@@ -149,7 +133,7 @@ def _configure_agents_sdk_provider() -> None:
         client = AsyncOpenAI(
             base_url=base_url,
             api_key=api_key,
-            timeout=_env_float(
+            timeout=env_float(
                 "HER_DISCOVERY_AGENT_TIMEOUT_SECONDS",
                 "HER_CHAT_AGENT_TIMEOUT_SECONDS",
                 "HER_CHAT_ASSISTANT_TIMEOUT_SECONDS",
@@ -158,7 +142,7 @@ def _configure_agents_sdk_provider() -> None:
         )
         set_default_openai_client(client, use_for_tracing=False)
         set_default_openai_api(api_mode or "chat_completions")
-        disable_tracing = _env_first(
+        disable_tracing = env_first(
             "HER_DISCOVERY_AGENT_DISABLE_TRACING",
             "HER_CHAT_AGENT_DISABLE_TRACING",
             "HER_CHAT_ASSISTANT_DISABLE_TRACING",
@@ -244,6 +228,11 @@ def _build_runtime_prompt(
     user_message: str | None = None,
     action_context: dict[str, Any] | None = None,
 ) -> str:
+    recent_timeline = (
+        []
+        if run_input.agent_session is not None
+        else _compact_timeline(run_input.recent_timeline)
+    )
     payload = {
         "event": event,
         "session": {
@@ -260,7 +249,7 @@ def _build_runtime_prompt(
         }
         if action_context
         else None,
-        "recent_timeline": _compact_timeline(run_input.recent_timeline),
+        "recent_timeline": recent_timeline,
         "requester_profile_hint": _compact_requester_profile(run_input.get_requester_profile()),
         "note": (
             "If you need more context, call tools. "
@@ -271,19 +260,7 @@ def _build_runtime_prompt(
 
 
 def _coerce_json_output(raw_output: Any) -> dict[str, Any]:
-    if isinstance(raw_output, dict):
-        return raw_output
-    text = str(raw_output or "").strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
-        text = re.sub(r"\s*```$", "", text)
-        text = text.strip()
-    if text and not text.startswith("{"):
-        start = text.find("{")
-        end = text.rfind("}")
-        if start >= 0 and end > start:
-            text = text[start : end + 1]
-    return json.loads(text)
+    return coerce_json_object(raw_output)
 
 
 def _validate_decision_output(raw_output: Any) -> DiscoveryDecision:
@@ -478,7 +455,7 @@ class AgentsSdkDiscoveryAgentRuntime:
         )
 
     def _should_use_agents_sdk(self) -> bool:
-        runtime = _env_first(
+        runtime = env_first(
             "HER_DISCOVERY_AGENT_RUNTIME",
             "HER_CHAT_AGENT_RUNTIME",
             default="agents_sdk",
@@ -566,7 +543,7 @@ class AgentsSdkDiscoveryAgentRuntime:
         agent = Agent(
             name="discovery_matchmaker",
             instructions=instructions.strip(),
-            model=_env_first(
+            model=env_first(
                 "HER_DISCOVERY_AGENT_MODEL",
                 "HER_CHAT_AGENT_MODEL",
                 "HER_CHAT_ASSISTANT_MODEL",
@@ -588,6 +565,7 @@ class AgentsSdkDiscoveryAgentRuntime:
                 user_message=user_message,
                 action_context=action_context,
             ),
+            session=run_input.agent_session,
         )
         final_output = getattr(result, "final_output", result)
         decision = (

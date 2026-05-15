@@ -6,10 +6,11 @@ import json
 import os
 import re
 from dataclasses import dataclass
-from datetime import datetime
 from json import JSONDecodeError
 from typing import Any, Callable, Optional
 
+from her_env import coerce_json_object, env_first, env_float
+from her_time_utils import coerce_dt as _coerce_dt
 from pydantic import BaseModel, Field, model_validator
 
 from .assistant_sessions import (
@@ -179,21 +180,6 @@ POST_CHAT_NATURAL_END_REASON_CODES = {
     "natural_end_goodnight",
     "natural_conversation_ending",
 }
-def _env_first(*names: str, default: str = "") -> str:
-    for name in names:
-        value = (os.environ.get(name) or "").strip()
-        if value:
-            return value
-    return default
-
-
-def _env_float(*names: str, default: float) -> float:
-    raw = _env_first(*names, default=str(default))
-    try:
-        return float(raw)
-    except (TypeError, ValueError):
-        return float(default)
-
 
 def _task_reason(run_input: MatchmakerRunInput) -> str:
     return str(run_input.task.get("reason") or "").strip()
@@ -234,19 +220,6 @@ def _post_chat_sent_at_key(channel_key: str) -> str | None:
         return "followup_b_sent_at"
     return None
 
-
-def _coerce_dt(value: Any) -> datetime | None:
-    if isinstance(value, datetime):
-        return value
-    text = str(value or "").strip()
-    if not text:
-        return None
-    try:
-        return datetime.fromisoformat(text)
-    except ValueError:
-        return None
-
-
 def _recent_messages(run_input: MatchmakerRunInput) -> list[dict[str, Any]]:
     return list(run_input.bootstrap.get("recent_messages") or [])
 
@@ -277,7 +250,7 @@ def _counterpart_display_name(run_input: MatchmakerRunInput, channel_key: str) -
     else:
         snapshot = dict(run_input.profile_snapshots.get("participant_a") or {})
     profile = dict(snapshot.get("profile") or {})
-    return str(profile.get("public_display_name") or profile.get("name") or "对方").strip() or "对方"
+    return str(profile.get("name") or "对方").strip() or "对方"
 
 
 def _build_post_chat_phase_patch(
@@ -435,7 +408,7 @@ def _opening_probe_profile_brief(snapshot: dict[str, Any] | None) -> tuple[str, 
     label = "一位" if role == "participant_a" else "另一位"
     parts: list[str] = []
     city = str(profile.get("city") or "").strip()
-    job = str(profile.get("public_job") or profile.get("job") or "").strip()
+    job = str(profile.get("job") or "").strip()
     if city and job:
         parts.append(f"现在在{city}做{job}")
     elif job:
@@ -443,28 +416,25 @@ def _opening_probe_profile_brief(snapshot: dict[str, Any] | None) -> tuple[str, 
     elif city:
         parts.append(f"现在在{city}生活")
 
-    hobbies = _split_profile_tokens(profile.get("hobbies"))
-    lifestyle = _split_profile_tokens(profile.get("lifestyle"))
-    if hobbies:
-        parts.append(f"平时喜欢{'、'.join(hobbies[:2])}")
-    elif lifestyle:
-        parts.append(f"平时{'、'.join(lifestyle[:2])}")
-
     return label, "，".join(parts)
 
 
 def _opening_probe_highlight_phrase(snapshot: dict[str, Any] | None) -> str:
     profile = dict((snapshot or {}).get("profile") or {})
-    lifestyle_tokens = set(_split_profile_tokens(profile.get("lifestyle")))
-    hobby_tokens = set(_split_profile_tokens(profile.get("hobbies")))
+    personality_tokens = set(_split_profile_tokens(profile.get("personality")))
+    value_tokens = set(_split_profile_tokens(profile.get("values")))
+    goal_text = str(profile.get("relationship_goal") or "").strip()
     note_text = str(profile.get("notes") or "").strip()
+    combined_tokens = personality_tokens | value_tokens
 
-    if {"做饭", "家务", "下厨"} & (lifestyle_tokens | hobby_tokens) or "做饭" in note_text:
+    if {"做饭", "家务", "下厨"} & combined_tokens or "做饭" in note_text:
         return "会自己做饭，把日子收得挺稳"
-    if {"运动", "瑜伽", "跑步"} & (lifestyle_tokens | hobby_tokens):
+    if {"运动", "瑜伽", "跑步", "规律"} & combined_tokens:
         return "再忙也还会保持运动和规律作息，这种自我管理挺加分"
-    if {"稳定", "耐心", "边界"} & set(_split_profile_tokens(profile.get("personality"))):
+    if {"稳定", "耐心", "边界", "真诚"} & combined_tokens:
         return "相处节奏拿捏得挺稳"
+    if "认真相处" in goal_text or "长期" in goal_text:
+        return "对关系是认真来看的"
     if "照顾" in note_text or "家庭" in note_text:
         return "会照顾日常，相处里通常比较省心"
     return ""
@@ -483,13 +453,12 @@ def _build_opening_probe_intro(run_input: MatchmakerRunInput) -> str | None:
     a_highlight = _opening_probe_highlight_phrase(participant_a)
     b_highlight = _opening_probe_highlight_phrase(participant_b)
     shared_topic = "可以先聊聊各自周末最常见的安排，通常会比较好接。"
-    shared_hobbies = sorted(
-        set(_split_profile_tokens(a_profile.get("hobbies"))) & set(_split_profile_tokens(b_profile.get("hobbies")))
-    )
-    if "咖啡" in shared_hobbies:
-        shared_topic = "你们都对咖啡有点兴趣，可以先聊聊最近常去的一家店。"
-    elif a_profile.get("city") and a_profile.get("city") == b_profile.get("city"):
+    a_values = set(_split_profile_tokens(a_profile.get("values")))
+    b_values = set(_split_profile_tokens(b_profile.get("values")))
+    if a_profile.get("city") and a_profile.get("city") == b_profile.get("city"):
         shared_topic = f"你们都在{a_profile.get('city')}，可以先聊聊各自下班后最常去放松的地方。"
+    elif {"稳定", "真诚", "长期"} & (a_values & b_values):
+        shared_topic = "你们都挺看重认真稳定的相处，可以先聊聊各自最在意的关系节奏。"
 
     intro_parts = ["我先帮两位搭个话。"]
     if a_brief:
@@ -596,6 +565,8 @@ def _compact_profile(profile: dict[str, Any] | None) -> dict[str, Any]:
     keep_keys = [
         "id",
         "name",
+        "avatar_url",
+        "photo_count",
         "gender",
         "age",
         "city",
@@ -607,29 +578,7 @@ def _compact_profile(profile: dict[str, Any] | None) -> dict[str, Any]:
         "relationship_goal",
         "personality",
         "values",
-        "lifestyle",
-        "hobbies",
         "notes",
-        "communication_style",
-        "dating_pace",
-        "relationship_capacity",
-        "interaction_comfort",
-        "life_routine",
-        "career_intensity",
-        "warmth_style",
-        "preferred_age_min",
-        "preferred_age_max",
-        "preferred_cities",
-        "preferred_height_min",
-        "preferred_height_max",
-        "preferred_education_min",
-        "preferred_income_min_wan",
-        "preferred_income_max_wan",
-        "accept_smoking",
-        "accept_drinking",
-        "accept_long_distance",
-        "accept_partner_children",
-        "marriage_timeline",
     ]
     return {key: profile.get(key) for key in keep_keys if profile.get(key) not in (None, "", [])}
 
@@ -640,7 +589,6 @@ def _compact_profile_snapshot(snapshot: dict[str, Any] | None) -> dict[str, Any]
         "participant_id": snapshot.get("participant_id"),
         "role": snapshot.get("role"),
         "profile_id": snapshot.get("profile_id"),
-        "persona": snapshot.get("persona"),
         "profile": _compact_profile(snapshot.get("profile") or {}),
     }
 
@@ -682,19 +630,7 @@ def _build_runtime_prompt(run_input: MatchmakerRunInput) -> str:
 
 
 def _coerce_json_output(raw_output: Any) -> dict[str, Any]:
-    if isinstance(raw_output, dict):
-        return raw_output
-    text = str(raw_output or "").strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
-        text = re.sub(r"\s*```$", "", text)
-        text = text.strip()
-    if text and not text.startswith("{"):
-        start = text.find("{")
-        end = text.rfind("}")
-        if start >= 0 and end > start:
-            text = text[start : end + 1]
-    return json.loads(text)
+    return coerce_json_object(raw_output)
 
 
 def _validate_decision_output(raw_output: Any) -> dict[str, Any]:
@@ -901,12 +837,12 @@ def _configure_agents_sdk_provider() -> None:
     from agents import set_default_openai_api, set_default_openai_client, set_tracing_disabled
     from openai import AsyncOpenAI
 
-    base_url = _env_first(
+    base_url = env_first(
         "HER_CHAT_AGENT_BASE_URL",
         "OPENAI_BASE_URL",
         "HER_CHAT_ASSISTANT_BASE_URL",
     )
-    api_mode = _env_first(
+    api_mode = env_first(
         "HER_CHAT_AGENT_OPENAI_API",
         "HER_CHAT_ASSISTANT_OPENAI_API",
     ).lower()
@@ -916,7 +852,7 @@ def _configure_agents_sdk_provider() -> None:
         client = AsyncOpenAI(
             base_url=base_url,
             api_key=api_key,
-            timeout=_env_float(
+            timeout=env_float(
                 "HER_CHAT_AGENT_TIMEOUT_SECONDS",
                 "HER_CHAT_ASSISTANT_TIMEOUT_SECONDS",
                 default=120.0,
@@ -924,7 +860,7 @@ def _configure_agents_sdk_provider() -> None:
         )
         set_default_openai_client(client, use_for_tracing=False)
         set_default_openai_api(api_mode or "chat_completions")
-        disable_tracing = _env_first(
+        disable_tracing = env_first(
             "HER_CHAT_AGENT_DISABLE_TRACING",
             "HER_CHAT_ASSISTANT_DISABLE_TRACING",
             default="1",
@@ -1132,7 +1068,7 @@ reply_body 要简短、可执行、像真人红娘发消息。主群尤其要像
     agent = Agent(
         name="matchmaker_c",
         instructions=instructions.strip(),
-        model=_env_first(
+        model=env_first(
             "HER_CHAT_AGENT_MODEL",
             "HER_CHAT_ASSISTANT_MODEL",
             default="gpt-4.1-mini",
@@ -1173,7 +1109,7 @@ def run_matchmaker_agent(run_input: MatchmakerRunInput) -> dict[str, Any]:
     post_chat_decision = _build_post_chat_followup_decision(run_input)
     if post_chat_decision is not None:
         return post_chat_decision
-    runtime = _env_first(
+    runtime = env_first(
         "HER_CHAT_AGENT_RUNTIME",
         "HER_CHAT_ASSISTANT_RUNTIME",
         default="agents_sdk",

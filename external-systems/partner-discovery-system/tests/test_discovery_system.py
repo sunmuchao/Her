@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import json
 import os
 import pathlib
 import sys
@@ -12,11 +14,14 @@ if str(DISCOVERY_ROOT) not in sys.path:
     sys.path.insert(0, str(DISCOVERY_ROOT))
 
 from discovery_system.agent_runtime import (  # noqa: E402
+    AgentsSdkDiscoveryAgentRuntime,
     DiscoveryActionSuggestion,
     DiscoveryCandidateSelection,
     DiscoveryDecision,
+    DiscoveryRunInput,
     DiscoveryRuntimeResult,
 )
+from discovery_system.agent_session_store import InMemoryDiscoveryAgentSessionStore  # noqa: E402
 from discovery_system.service import DiscoveryService  # noqa: E402
 from discovery_system.storage import InMemoryDiscoveryStorage  # noqa: E402
 
@@ -142,6 +147,72 @@ class _NoMatchOptInRuntime:
 
 
 class DiscoveryServiceTests(unittest.TestCase):
+    def test_in_memory_agent_session_store_persists_items_across_instances(self) -> None:
+        store = InMemoryDiscoveryAgentSessionStore()
+        session = store.get_session("discovery-session-001")
+        items = [
+            {"role": "user", "content": [{"type": "input_text", "text": "你好"}]},
+            {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "你好呀"}]},
+        ]
+
+        asyncio.run(session.add_items(items))
+
+        reloaded = store.get_session("discovery-session-001")
+        self.assertEqual(asyncio.run(reloaded.get_items()), items)
+        self.assertEqual(asyncio.run(reloaded.pop_item()), items[-1])
+        self.assertEqual(asyncio.run(reloaded.get_items()), items[:1])
+        asyncio.run(reloaded.clear_session())
+        self.assertEqual(asyncio.run(reloaded.get_items()), [])
+
+    def test_agents_runtime_passes_session_memory_to_runner(self) -> None:
+        runtime = AgentsSdkDiscoveryAgentRuntime()
+        session_store = InMemoryDiscoveryAgentSessionStore()
+        session = session_store.get_session("discovery-session-002")
+        captured: dict[str, object] = {}
+
+        def _fake_run_sync(_agent, input, **kwargs):
+            captured["input"] = input
+            captured["session"] = kwargs.get("session")
+            return {
+                "phase": "collecting_preferences",
+                "assistant_message": "先说说你的基本要求。",
+                "criteria_labels": [],
+                "suggested_actions": [],
+                "selected_candidates": [],
+            }
+
+        run_input = DiscoveryRunInput(
+            session_id="discovery-session-002",
+            requester_id=70001,
+            profile_id=10001,
+            phase="collecting_preferences",
+            criteria_labels=["上海"],
+            recent_timeline=[
+                {"item_type": "assistant_message", "body": "前面聊过城市和关系目标。"},
+            ],
+            get_discovery_session_state=lambda: {"phase": "collecting_preferences"},
+            get_requester_profile=lambda: {"self_city": "上海"},
+            search_partner_candidates=lambda _criteria, _limit: {"has_match": False, "result_count": 0, "results": []},
+            create_saved_search_subscription_from_last_search=lambda: {"created_subscription": False},
+            agent_session=session,
+        )
+
+        with mock.patch("discovery_system.agent_runtime._configure_agents_sdk_provider"), mock.patch(
+            "agents.Agent",
+            return_value=object(),
+        ), mock.patch("agents.Runner.run_sync", side_effect=_fake_run_sync):
+            result = runtime._run_with_agents_sdk(
+                run_input,
+                event="user_message",
+                user_message="我在上海，想认真恋爱。",
+                action_context=None,
+            )
+
+        self.assertIs(captured["session"], session)
+        payload = json.loads(str(captured["input"]))
+        self.assertEqual(payload["recent_timeline"], [])
+        self.assertEqual(result.decision.assistant_message, "先说说你的基本要求。")
+
     def test_service_renders_cards_from_canonical_search_result(self) -> None:
         service = DiscoveryService(
             storage=InMemoryDiscoveryStorage(),

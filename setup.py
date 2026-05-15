@@ -18,6 +18,7 @@ INSTALL_REQUIRES = [
 
 DEV_REQUIRES = [
     "pytest>=7.0.0",
+    "setuptools>=61.2",
 ]
 
 ROOT_PACKAGES = find_packages(
@@ -37,6 +38,8 @@ ROOT_PACKAGES = find_packages(
         "partner_search.*",
         "persona_memory_sync",
         "persona_memory_sync.*",
+        "profile_service",
+        "profile_service.*",
     ],
 )
 
@@ -81,9 +84,14 @@ setup(
         "discovery_system": "external-systems/partner-discovery-system/discovery_system",
     },
     py_modules=[
+        "her_external_systems",
         "generate_virtual_profiles",
         "her_activate_repo",
+        "her_env",
         "her_monorepo_bootstrap",
+        "her_repo_path_bootstrap",
+        "her_runtime_context",
+        "her_time_utils",
         "outer_mysql_compat",
         "outer_system_mysql_schema",
         "partner_moderation",
