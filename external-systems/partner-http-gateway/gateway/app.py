@@ -14,7 +14,6 @@ from . import _paths  # noqa: F401 — side effect: sys.path
 from .http_helpers import (  # noqa: E402
     _augment_chat_message_metadata,
     _demo_asset_file,
-    _extract_client_idempotency_key,
     _gateway_error_payload,
     _incoming_trace_id,
     _json_safe,
@@ -43,10 +42,8 @@ from partner_search import search_profiles as partner_search_profiles  # noqa: E
 from recommendation_system import (  # type: ignore[import-untyped]
     connect_db as recommendation_connect_db,
     create_subscription,
-    get_match_case as recommendation_get_match_case,
     get_subscription,
     list_in_app_cards,
-    list_match_case_events as recommendation_list_match_case_events,
     list_recommendations_for_subscription,
     list_search_runs_for_subscription,
     mark_in_app_cards_read,
@@ -73,7 +70,6 @@ from matchmaking_system import (  # type: ignore[import-untyped]
     get_match_case,
     get_pair,
     get_pool_member,
-    list_match_case_events,
     list_match_cases,
     list_pairs,
     record_case_reply,
@@ -115,7 +111,6 @@ from chat_system import (  # type: ignore[import-untyped]
     get_profile_review_case_appeal,
     get_profile_review_case,
     get_risk_appeal,
-    build_chat_timeline,
     get_conversation,
     get_or_create_thread,
     list_case_conversations,
@@ -129,7 +124,6 @@ from chat_system import (  # type: ignore[import-untyped]
     list_profile_review_cases,
     list_risk_appeals,
     get_thread,
-    get_thread_summary,
     list_member_reports,
     list_meeting_feedback,
     list_messages,
@@ -175,6 +169,26 @@ from discovery_system import (  # type: ignore[import-untyped]
 )
 
 from .async_jobs import AsyncJobGatewayMixin
+from .chat_routes import (
+    chat_require_requester as _chat_require_requester,
+    dispatch_chat_rest,
+    rest_chat_case_conversation_timeline as _rest_chat_case_conversation_timeline,
+    rest_chat_create_assistant_layout as _rest_chat_create_assistant_layout,
+    rest_chat_create_thread as _rest_chat_create_thread,
+    rest_chat_get_conversation as _rest_chat_get_conversation,
+    rest_chat_get_summary as _rest_chat_get_summary,
+    rest_chat_get_thread as _rest_chat_get_thread,
+    rest_chat_list_case_conversations as _rest_chat_list_case_conversations,
+    rest_chat_list_conversation_messages as _rest_chat_list_conversation_messages,
+    rest_chat_list_messages as _rest_chat_list_messages,
+    rest_chat_maintenance_run as _rest_chat_maintenance_run,
+    rest_chat_post_conversation_message as _rest_chat_post_conversation_message,
+    rest_chat_post_message as _rest_chat_post_message,
+    rest_get_chat_job as _rest_get_chat_job,
+    rest_list_chat_jobs as _rest_list_chat_jobs,
+    rest_timeline as _rest_timeline,
+    timeline_payload as _chat_timeline_payload,
+)
 from .discovery_routes import dispatch_discovery_rest
 from .identity import (
     ActorPrincipal,
@@ -948,78 +962,19 @@ class PartnerGateway(AsyncJobGatewayMixin):
         q: dict[str, str],
         body: dict[str, Any] | None = None,
     ) -> str:
-        rid = (q.get("requester_id") or "").strip()
-        if not rid and body:
-            rid = str(body.get("requester_id") or "").strip()
-        return self._resolve_actor_bound_id(environ, rid, field_name="requester_id")
+        return _chat_require_requester(self, environ, q, body)
 
     def rest_chat_create_thread(self, environ: dict[str, Any], body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        self._require_roles(
-            environ,
-            INTERNAL_WRITE_ROLES,
-            message="current actor cannot create chat threads",
-        )
-        now = _parse_optional_now(body)
-        kwargs = {k: v for k, v in body.items() if k != "now"}
-        if now is not None:
-            kwargs["now"] = now
-        for key in ("case_id", "relation_key", "participant_a_id", "participant_b_id"):
-            if not kwargs.get(key):
-                raise ValueError(f"{key} is required")
-        thread = self._with_chat(get_or_create_thread, **kwargs)
-        return 201, {"thread": _json_safe(thread)}
+        return _rest_chat_create_thread(self, environ, body)
 
     def rest_chat_get_thread(self, environ: dict[str, Any], thread_id: str) -> tuple[int, dict[str, Any]]:
-        q = _query_dict(environ)
-        requester_id = self._chat_require_requester(environ, q)
-        thread = self._with_chat(get_thread, thread_id)
-        if not thread:
-            return 404, {"error": {"code": "not_found", "message": "thread not found"}}
-        actor = self._current_actor(environ)
-        if requester_id not in (thread["participant_a_id"], thread["participant_b_id"]) and not (
-            actor and actor.has_any_role(STAFF_OVERRIDE_ROLES)
-        ):
-            return 403, {"error": {"code": "forbidden", "message": "requester is not a participant"}}
-        return 200, {"thread": _json_safe(thread)}
+        return _rest_chat_get_thread(self, environ, thread_id)
 
     def rest_chat_list_messages(self, environ: dict[str, Any], thread_id: str) -> tuple[int, dict[str, Any]]:
-        q = _query_dict(environ)
-        requester_id = self._chat_require_requester(environ, q)
-        limit_raw = q.get("limit") or "50"
-        before_raw = q.get("before_message_id")
-        try:
-            limit = int(limit_raw)
-        except ValueError:
-            limit = 50
-        before_id: int | None = None
-        if before_raw not in (None, ""):
-            try:
-                before_id = int(before_raw)
-            except ValueError:
-                before_id = None
-        rows = self._with_chat(
-            list_messages, thread_id, requester_id, limit=limit, before_message_id=before_id
-        )
-        return 200, {"messages": _json_safe(rows)}
+        return _rest_chat_list_messages(self, environ, thread_id)
 
     def rest_chat_post_message(self, environ: dict[str, Any], thread_id: str, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        now = _parse_optional_now(body)
-        kwargs = {k: v for k, v in body.items() if k not in {"now", "idempotency_key", "client_idempotency_key"}}
-        idem = _extract_client_idempotency_key(environ, body)
-        kwargs["metadata"] = _augment_chat_message_metadata(environ, kwargs.get("metadata"))
-        if idem:
-            kwargs["client_msg_id"] = idem
-        if now is not None:
-            kwargs["now"] = now
-        if kwargs.get("body") is None:
-            raise ValueError("body is required")
-        author_id = self._resolve_actor_bound_id(environ, kwargs.pop("author_id", None), field_name="author_id")
-        body_text = kwargs.pop("body")
-        msg = self._with_chat(post_message, thread_id, author_id, body_text, **kwargs)
-        out: dict[str, Any] = {"message": _json_safe(msg), "trace_id": get_trace_id()}
-        if idem:
-            out["client_idempotency_key"] = idem
-        return 201, out
+        return _rest_chat_post_message(self, environ, thread_id, body)
 
     def rest_chat_create_assistant_layout(
         self,
@@ -1027,97 +982,28 @@ class PartnerGateway(AsyncJobGatewayMixin):
         case_id: str,
         body: dict[str, Any],
     ) -> tuple[int, dict[str, Any]]:
-        self._require_roles(
-            environ,
-            INTERNAL_WRITE_ROLES,
-            message="current actor cannot create assistant layouts",
-        )
-        now = _parse_optional_now(body)
-        relation_key = body.get("relation_key")
-        participant_a_id = body.get("participant_a_id")
-        participant_b_id = body.get("participant_b_id")
-        agent_id = body.get("agent_id")
-        if not relation_key or not participant_a_id or not participant_b_id or not agent_id:
-            raise ValueError("relation_key, participant_a_id, participant_b_id, and agent_id are required")
-        layout = self._with_chat(
-            create_assistant_case_layout,
-            case_id=str(case_id),
-            relation_key=str(relation_key),
-            participant_a_id=str(participant_a_id),
-            participant_b_id=str(participant_b_id),
-            agent_id=str(agent_id),
-            conversation_ids=body.get("conversation_ids"),
-            metadata=body.get("metadata"),
-            now=now,
-        )
-        return 201, {"layout": _json_safe(layout), "trace_id": get_trace_id()}
+        return _rest_chat_create_assistant_layout(self, environ, case_id, body)
 
     def rest_chat_list_case_conversations(
         self,
         environ: dict[str, Any],
         case_id: str,
     ) -> tuple[int, dict[str, Any]]:
-        q = _query_dict(environ)
-        requester_id = self._chat_require_requester(environ, q)
-        conversations = self._with_chat(
-            list_case_conversations,
-            str(case_id),
-            requester_id=requester_id,
-        )
-        return 200, {
-            "case_id": case_id,
-            "requester_id": requester_id,
-            "conversation_count": len(conversations),
-            "conversations": _json_safe(conversations),
-        }
+        return _rest_chat_list_case_conversations(self, environ, case_id)
 
     def rest_chat_get_conversation(
         self,
         environ: dict[str, Any],
         conversation_id: str,
     ) -> tuple[int, dict[str, Any]]:
-        q = _query_dict(environ)
-        requester_id = self._chat_require_requester(environ, q)
-        conversation = self._with_chat(get_conversation, conversation_id)
-        if not conversation:
-            return 404, {"error": {"code": "not_found", "message": "conversation not found"}}
-        conversations = self._with_chat(
-            list_case_conversations,
-            str(conversation["case_id"]),
-            requester_id=requester_id,
-        )
-        for item in conversations:
-            if str(item["conversation_id"]) == str(conversation_id):
-                return 200, {"conversation": _json_safe(item)}
-        return 403, {"error": {"code": "forbidden", "message": "requester is not allowed to read this conversation"}}
+        return _rest_chat_get_conversation(self, environ, conversation_id)
 
     def rest_chat_list_conversation_messages(
         self,
         environ: dict[str, Any],
         conversation_id: str,
     ) -> tuple[int, dict[str, Any]]:
-        q = _query_dict(environ)
-        requester_id = self._chat_require_requester(environ, q)
-        limit_raw = q.get("limit") or "50"
-        before_raw = q.get("before_message_id")
-        try:
-            limit = int(limit_raw)
-        except ValueError:
-            limit = 50
-        before_id: int | None = None
-        if before_raw not in (None, ""):
-            try:
-                before_id = int(before_raw)
-            except ValueError:
-                before_id = None
-        rows = self._with_chat(
-            list_conversation_messages,
-            conversation_id,
-            requester_id,
-            limit=limit,
-            before_message_id=before_id,
-        )
-        return 200, {"messages": _json_safe(rows)}
+        return _rest_chat_list_conversation_messages(self, environ, conversation_id)
 
     def rest_chat_post_conversation_message(
         self,
@@ -1125,157 +1011,32 @@ class PartnerGateway(AsyncJobGatewayMixin):
         conversation_id: str,
         body: dict[str, Any],
     ) -> tuple[int, dict[str, Any]]:
-        now = _parse_optional_now(body)
-        kwargs = {k: v for k, v in body.items() if k not in {"now", "idempotency_key", "client_idempotency_key"}}
-        idem = _extract_client_idempotency_key(environ, body)
-        if idem:
-            kwargs["client_msg_id"] = idem
-        if now is not None:
-            kwargs["now"] = now
-        if kwargs.get("body") is None:
-            raise ValueError("body is required")
-        author_id = self._resolve_actor_bound_id(environ, kwargs.pop("author_id", None), field_name="author_id")
-        body_text = kwargs.pop("body")
-        msg = self._with_chat(post_conversation_message, conversation_id, author_id, body_text, **kwargs)
-        out: dict[str, Any] = {"message": _json_safe(msg), "trace_id": get_trace_id()}
-        if idem:
-            out["client_idempotency_key"] = idem
-        return 201, out
+        return _rest_chat_post_conversation_message(self, environ, conversation_id, body)
 
     def rest_chat_case_conversation_timeline(
         self,
         environ: dict[str, Any],
         case_id: str,
     ) -> tuple[int, dict[str, Any]]:
-        q = _query_dict(environ)
-        requester_id = self._chat_require_requester(environ, q)
-        limit_raw = q.get("message_limit") or "50"
-        try:
-            limit = int(limit_raw)
-        except ValueError:
-            limit = 50
-        out = self._with_chat(
-            build_case_conversation_timeline,
-            str(case_id),
-            requester_id,
-            message_limit=limit,
-        )
-        return 200, _json_safe(out)
+        return _rest_chat_case_conversation_timeline(self, environ, case_id)
 
     def _timeline_payload(self, case_id: str, viewer_id: str, *, message_limit: int = 50) -> dict[str, Any]:
-        chat_part = self._with_chat(build_chat_timeline, case_id, viewer_id, message_limit=message_limit)
-        try:
-            case = self._with_mm(get_match_case, case_id)
-            evs = self._with_mm(list_match_case_events, case_id)
-            mm_part = {"case": _json_safe(case), "events": _json_safe(evs)}
-        except ValueError:
-            mm_part = {"case": None, "events": []}
-        rec_part: dict[str, Any] = {"case": None, "events": []}
-        try:
-            rc = self._with_rec(recommendation_get_match_case, case_id)
-            if rc:
-                rev = self._with_rec(recommendation_list_match_case_events, case_id)
-                rec_part = {"case": _json_safe(rc), "events": _json_safe(rev)}
-        except Exception:
-            rec_part = {"case": None, "events": []}
-        return {
-            "case_id": case_id,
-            "viewer_id": viewer_id,
-            "chat": _json_safe(chat_part),
-            "matchmaking": mm_part,
-            "recommendation": rec_part,
-        }
+        return _chat_timeline_payload(self, case_id, viewer_id, message_limit=message_limit)
 
     def rest_timeline(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        q = _query_dict(environ)
-        case_id = (q.get("case_id") or "").strip()
-        viewer_id = self._resolve_actor_bound_id(environ, q.get("viewer_id"), field_name="viewer_id")
-        if not case_id:
-            raise ValueError("case_id is required")
-        lim_raw = q.get("message_limit") or "50"
-        try:
-            mlim = int(lim_raw)
-        except ValueError:
-            mlim = 50
-        return 200, self._timeline_payload(case_id, viewer_id, message_limit=mlim)
+        return _rest_timeline(self, environ)
 
     def rest_chat_maintenance_run(self, environ: dict[str, Any], body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        self._require_roles(
-            environ,
-            INTERNAL_WRITE_ROLES,
-            message="current actor cannot run chat maintenance",
-        )
-        po = body.get("persona_limit")
-        try:
-            plim = int(po) if po is not None else 20
-        except (TypeError, ValueError):
-            plim = 20
-        raw_flush = body.get("flush_outbox")
-        flush_opt: bool | None = None
-        if isinstance(raw_flush, bool):
-            flush_opt = raw_flush
-        elif isinstance(raw_flush, str):
-            flush_opt = raw_flush.lower() in ("1", "true", "yes")
-        sm = body.get("summary_max_threads")
-        try:
-            smax = int(sm) if sm is not None else 30
-        except (TypeError, ValueError):
-            smax = 30
-        payload: dict[str, Any] = {
-            "persona_limit": plim,
-            "summary_max_threads": smax,
-        }
-        if flush_opt is not None:
-            payload["flush_outbox"] = flush_opt
-        return self._enqueue_async_job(
-            environ,
-            target="chat",
-            with_fn=self._with_chat,
-            enqueue_fn=enqueue_chat_async_job,
-            job_type=JOB_RUN_CHAT_MAINTENANCE,
-            payload=payload,
-        )
+        return _rest_chat_maintenance_run(self, environ, body)
 
     def rest_get_chat_job(self, environ: dict[str, Any], job_id: str) -> tuple[int, dict[str, Any]]:
-        self._require_roles(
-            environ,
-            INTERNAL_WRITE_ROLES,
-            message="current actor cannot inspect chat jobs",
-        )
-        return self._get_async_job(
-            target="chat",
-            with_fn=self._with_chat,
-            get_fn=get_chat_async_job,
-            job_id=job_id,
-        )
+        return _rest_get_chat_job(self, environ, job_id)
 
     def rest_list_chat_jobs(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        self._require_roles(
-            environ,
-            INTERNAL_WRITE_ROLES,
-            message="current actor cannot inspect chat jobs",
-        )
-        return self._list_async_jobs(
-            environ,
-            target="chat",
-            with_fn=self._with_chat,
-            list_fn=list_chat_async_jobs,
-            summary_fn=summarize_chat_async_jobs,
-        )
+        return _rest_list_chat_jobs(self, environ)
 
     def rest_chat_get_summary(self, environ: dict[str, Any], thread_id: str) -> tuple[int, dict[str, Any]]:
-        q = _query_dict(environ)
-        requester_id = self._chat_require_requester(environ, q)
-        thread = self._with_chat(get_thread, thread_id)
-        if not thread:
-            return 404, {"error": {"code": "not_found", "message": "thread not found"}}
-        actor = self._current_actor(environ)
-        if requester_id not in (thread["participant_a_id"], thread["participant_b_id"]) and not (
-            actor and actor.has_any_role(STAFF_OVERRIDE_ROLES)
-        ):
-            return 403, {"error": {"code": "forbidden", "message": "requester is not a participant"}}
-        summ = self._with_chat(get_thread_summary, thread_id)
-        return 200, {"thread_id": thread_id, "summary": _json_safe(summ)}
+        return _rest_chat_get_summary(self, environ, thread_id)
 
     def rest_chat_submit_report(self, environ: dict[str, Any], thread_id: str, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         now = _parse_optional_now(body)
@@ -1709,41 +1470,11 @@ class PartnerGateway(AsyncJobGatewayMixin):
         matchmaking_response = dispatch_matchmaking_rest(self, environ, method, path)
         if matchmaking_response is not None:
             return matchmaking_response
+        chat_response = dispatch_chat_rest(self, environ, method, path)
+        if chat_response is not None:
+            return chat_response
         if path == "/v1/user-center/trust-hub" and method == "GET":
             return self.rest_user_trust_hub(environ)
-
-        if path == "/v1/timeline" and method == "GET":
-            return self.rest_timeline(environ)
-
-        # /v2/chat/...
-        m = re.fullmatch(r"/v2/chat/cases/([^/]+)/assistant-layout", path)
-        if m and method == "POST":
-            return self.rest_chat_create_assistant_layout(environ, m.group(1), _parse_json_body(_read_body(environ)))
-        m = re.fullmatch(r"/v2/chat/cases/([^/]+)/conversations", path)
-        if m and method == "GET":
-            return self.rest_chat_list_case_conversations(environ, m.group(1))
-        m = re.fullmatch(r"/v2/chat/cases/([^/]+)/timeline", path)
-        if m and method == "GET":
-            return self.rest_chat_case_conversation_timeline(environ, m.group(1))
-        m = re.fullmatch(r"/v2/chat/conversations/([^/]+)/messages", path)
-        if m and method == "POST":
-            return self.rest_chat_post_conversation_message(environ, m.group(1), _parse_json_body(_read_body(environ)))
-        if m and method == "GET":
-            return self.rest_chat_list_conversation_messages(environ, m.group(1))
-        m = re.fullmatch(r"/v2/chat/conversations/([^/]+)", path)
-        if m and method == "GET":
-            return self.rest_chat_get_conversation(environ, m.group(1))
-
-        # /v1/chat/...
-        if path == "/v1/chat/maintenance/run" and method == "POST":
-            return self.rest_chat_maintenance_run(environ, _parse_json_body(_read_body(environ)))
-        if path == "/v1/chat/jobs" and method == "GET":
-            return self.rest_list_chat_jobs(environ)
-        m = re.fullmatch(r"/v1/chat/jobs/([^/]+)", path)
-        if m and method == "GET":
-            return self.rest_get_chat_job(environ, m.group(1))
-        if path == "/v1/chat/threads" and method == "POST":
-            return self.rest_chat_create_thread(environ, _parse_json_body(_read_body(environ)))
         if path == "/v1/chat/reports" and method == "GET":
             return self.rest_chat_list_reports(environ)
         if path == "/v1/chat/meeting-feedback" and method == "GET":
@@ -1785,23 +1516,12 @@ class PartnerGateway(AsyncJobGatewayMixin):
         m = re.fullmatch(r"/v1/chat/threads/([^/]+)/risk-overview", path)
         if m and method == "GET":
             return self.rest_chat_thread_risk_overview(environ, m.group(1))
-        m = re.fullmatch(r"/v1/chat/threads/([^/]+)/summary", path)
-        if m and method == "GET":
-            return self.rest_chat_get_summary(environ, m.group(1))
         m = re.fullmatch(r"/v1/chat/threads/([^/]+)/reports", path)
         if m and method == "POST":
             return self.rest_chat_submit_report(environ, m.group(1), _parse_json_body(_read_body(environ)))
         m = re.fullmatch(r"/v1/chat/threads/([^/]+)/meeting-feedback", path)
         if m and method == "POST":
             return self.rest_chat_submit_meeting_feedback(environ, m.group(1), _parse_json_body(_read_body(environ)))
-        m = re.fullmatch(r"/v1/chat/threads/([^/]+)/messages", path)
-        if m and method == "POST":
-            return self.rest_chat_post_message(environ, m.group(1), _parse_json_body(_read_body(environ)))
-        if m and method == "GET":
-            return self.rest_chat_list_messages(environ, m.group(1))
-        m = re.fullmatch(r"/v1/chat/threads/([^/]+)", path)
-        if m and method == "GET":
-            return self.rest_chat_get_thread(environ, m.group(1))
 
         return 404, {"error": {"code": "not_found", "message": f"No route for {method} {path}"}}
 
