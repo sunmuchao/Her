@@ -8,15 +8,10 @@ import time
 from datetime import datetime
 from typing import Any
 
+from her_env import env_int
+
 from .outbox_admin import summarize_outbox
 from .outbox_consumer import consume_chat_outbox_batch
-
-
-def _env_int(name: str, default: int) -> int:
-    raw = os.environ.get(name)
-    if raw is None or str(raw).strip() == "":
-        return default
-    return int(raw)
 
 
 def _default_worker_name() -> str:
@@ -28,15 +23,15 @@ def _default_worker_name() -> str:
 
 def resolve_outbox_consume_config() -> dict[str, Any]:
     return {
-        "limit": max(1, _env_int("HER_CHAT_OUTBOX_BATCH_LIMIT", 200)),
-        "max_batches": max(1, _env_int("HER_CHAT_OUTBOX_MAX_BATCHES", 1)),
-        "retry_delay_seconds": max(1, _env_int("HER_CHAT_OUTBOX_RETRY_DELAY_SECONDS", 60)),
-        "retry_backoff_multiplier": max(1, _env_int("HER_CHAT_OUTBOX_RETRY_BACKOFF_MULTIPLIER", 2)),
-        "retry_max_delay_seconds": max(1, _env_int("HER_CHAT_OUTBOX_RETRY_MAX_DELAY_SECONDS", 600)),
-        "max_attempts": max(1, _env_int("HER_CHAT_OUTBOX_MAX_ATTEMPTS", 3)),
-        "claim_timeout_seconds": max(1, _env_int("HER_CHAT_OUTBOX_CLAIM_TIMEOUT_SECONDS", 300)),
-        "poll_interval_seconds": max(1, _env_int("HER_CHAT_OUTBOX_POLL_INTERVAL_SECONDS", 15)),
-        "max_idle_polls": max(1, _env_int("HER_CHAT_OUTBOX_MAX_IDLE_POLLS", 3)),
+        "limit": max(1, env_int("HER_CHAT_OUTBOX_BATCH_LIMIT", 200)),
+        "max_batches": max(1, env_int("HER_CHAT_OUTBOX_MAX_BATCHES", 1)),
+        "retry_delay_seconds": max(1, env_int("HER_CHAT_OUTBOX_RETRY_DELAY_SECONDS", 60)),
+        "retry_backoff_multiplier": max(1, env_int("HER_CHAT_OUTBOX_RETRY_BACKOFF_MULTIPLIER", 2)),
+        "retry_max_delay_seconds": max(1, env_int("HER_CHAT_OUTBOX_RETRY_MAX_DELAY_SECONDS", 600)),
+        "max_attempts": max(1, env_int("HER_CHAT_OUTBOX_MAX_ATTEMPTS", 3)),
+        "claim_timeout_seconds": max(1, env_int("HER_CHAT_OUTBOX_CLAIM_TIMEOUT_SECONDS", 300)),
+        "poll_interval_seconds": max(1, env_int("HER_CHAT_OUTBOX_POLL_INTERVAL_SECONDS", 15)),
+        "max_idle_polls": max(1, env_int("HER_CHAT_OUTBOX_MAX_IDLE_POLLS", 3)),
         "worker_name": _default_worker_name(),
     }
 

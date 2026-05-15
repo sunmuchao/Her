@@ -1657,6 +1657,22 @@ def discovery_tables() -> tuple[TableDef, ...]:
                 ForeignKeyDef(("session_id",), "discovery_agent_sessions", ("session_id",)),
             ),
         ),
+        TableDef(
+            name="discovery_agent_session_memory_items",
+            columns=(
+                ColumnDef("item_id", "BIGINT", nullable=False, auto_increment=True),
+                ColumnDef("session_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("item_json", "LONGTEXT", nullable=False),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("item_id",),
+            indexes=(
+                IndexDef(("session_id", "item_id"), "idx_discovery_agent_memory_session_item"),
+            ),
+            foreign_keys=(
+                ForeignKeyDef(("session_id",), "discovery_agent_sessions", ("session_id",)),
+            ),
+        ),
     )
 
 

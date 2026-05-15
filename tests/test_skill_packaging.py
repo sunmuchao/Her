@@ -158,6 +158,8 @@ def test_setup_py_declares_expected_console_scripts(monkeypatch) -> None:
     assert captured["name"] == "her"
     assert captured["python_requires"] == ">=3.10"
     assert "discovery_system" in captured["packages"]
+    assert "profile_service" in captured["packages"]
+    assert "her_repo_path_bootstrap" in captured["py_modules"]
     assert captured["package_dir"]["discovery_system"] == "external-systems/partner-discovery-system/discovery_system"
     assert captured["entry_points"] == {
         "console_scripts": [
@@ -165,3 +167,9 @@ def test_setup_py_declares_expected_console_scripts(monkeypatch) -> None:
             "persona-memory-sync=persona_memory_sync.cli:main",
         ]
     }
+
+
+def test_pyproject_includes_profile_service_package() -> None:
+    contents = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    assert '"profile_service*"' in contents
+    assert '"her_repo_path_bootstrap"' in contents

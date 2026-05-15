@@ -7,26 +7,16 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Callable, Mapping
 
+import outer_system_mysql_schema as schema
+from her_time_utils import current_time, format_dt
 from outer_mysql_compat import json_dumps, json_loads, row_to_dict
-from outer_system_mysql_schema import ASYNC_JOB_TABLE
 
+ASYNC_JOB_TABLE = schema.ASYNC_JOB_TABLE
 ASYNC_JOB_PENDING = "pending"
 ASYNC_JOB_PROCESSING = "processing"
 ASYNC_JOB_RETRY_PENDING = "retry_pending"
 ASYNC_JOB_SUCCEEDED = "succeeded"
 ASYNC_JOB_FAILED = "failed"
-
-
-def current_time(now: datetime | None = None) -> datetime:
-    return (now or datetime.now()).replace(microsecond=0)
-
-
-def format_dt(value: datetime | None) -> str | None:
-    if value is None:
-        return None
-    return current_time(value).isoformat(sep=" ")
-
-
 def _generate_job_id() -> str:
     return f"job-{uuid.uuid4().hex[:16]}"
 

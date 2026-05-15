@@ -5,9 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Iterable
-from urllib.parse import parse_qs, unquote, urlparse
 
+from her_time_utils import as_text, current_time, unique_ordered_texts
 from outer_mysql_compat import connect_mysql_repo_db, json_dumps, json_loads, row_to_dict
+from profile_source_refs import build_source_file_ref, resolve_profile_source, split_source_file_ref
 
 MODERATION_STATUS_ACTIVE = "active"
 MODERATION_STATUS_CLEARED = "cleared"
@@ -46,28 +47,12 @@ FIELD_KEY_TO_STATUS_COLUMN = {
     "job": "job_verification_status",
     "income": "income_verification_status",
 }
-
-
-def current_time(now: datetime | None = None) -> datetime:
-    return (now or datetime.now()).replace(microsecond=0)
-
-
 def _as_text(value: Any) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
+    return as_text(value)
 
 
 def _unique_ordered(values: Iterable[Any]) -> list[str]:
-    out: list[str] = []
-    seen: set[str] = set()
-    for value in values:
-        item = _as_text(value)
-        if not item or item in seen:
-            continue
-        seen.add(item)
-        out.append(item)
-    return out
+    return unique_ordered_texts(values)
 
 
 def _merge_action(left: str | None, right: str | None) -> str | None:
@@ -83,22 +68,15 @@ def parse_source_ref(source_dsn: str | None, source_table_name: str | None = Non
     table_name = _as_text(source_table_name) or None
     if not dsn:
         return None, table_name
-    if table_name:
-        return dsn, table_name
-    parsed = urlparse(dsn)
-    query = parse_qs(parsed.query)
-    detected = query.get("table", [None])[0]
-    if detected:
-        return dsn, unquote(str(detected))
-    return dsn, None
+    return resolve_profile_source(dsn, table_name)
 
 
 def source_ref_from_record(record: dict[str, Any]) -> tuple[str | None, str | None, int | None]:
     source_file = _as_text(record.get("source_file"))
     source_dsn = None
     table_name = None
-    if source_file and "#" in source_file:
-        source_dsn, _, table_name = source_file.rpartition("#")
+    if source_file:
+        source_dsn, table_name = split_source_file_ref(source_file)
     else:
         source_dsn = _as_text(record.get("source_dsn")) or None
         table_name = _as_text(record.get("source_table_name")) or None
@@ -123,7 +101,7 @@ def build_subject_key(
         return f"user:{user_id}"
     normalized_source, normalized_table = parse_source_ref(source_dsn, source_table_name)
     if normalized_source and normalized_table and profile_id is not None:
-        return f"profile:{normalized_source}#{normalized_table}:{int(profile_id)}"
+        return f"profile:{build_source_file_ref(normalized_source, normalized_table)}:{int(profile_id)}"
     raise ValueError("subject_user_id or complete profile source reference is required")
 
 

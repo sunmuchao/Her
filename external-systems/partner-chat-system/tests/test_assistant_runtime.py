@@ -11,7 +11,7 @@ SYSTEM_ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(SYSTEM_ROOT) not in sys.path:
     sys.path.insert(0, str(SYSTEM_ROOT))
 
-from chat_system.assistant_runtime import MatchmakerRunInput, _apply_runtime_policy, run_matchmaker_agent  # noqa: E402
+from chat_system.assistant_runtime import MatchmakerRunInput, _apply_runtime_policy, _compact_profile, run_matchmaker_agent  # noqa: E402
 
 
 def _make_run_input(
@@ -80,12 +80,28 @@ def _make_run_input(
             "participant_a": {
                 "participant_id": "user-a",
                 "role": "participant_a",
-                "profile": {"name": "沈既白", "city": "上海", "job": "产品经理", "hobbies": "阅读, 咖啡"},
+                "profile": {
+                    "name": "沈既白",
+                    "city": "上海",
+                    "job": "产品经理",
+                    "personality": "稳定, 真诚",
+                    "values": "看重稳定, 认真相处",
+                    "notes": "会照顾日常",
+                    "hobbies": "阅读, 咖啡",
+                },
             },
             "participant_b": {
                 "participant_id": "user-b",
                 "role": "participant_b",
-                "profile": {"name": "高佳晨", "city": "上海", "job": "医生", "hobbies": "咖啡, 瑜伽"},
+                "profile": {
+                    "name": "高佳晨",
+                    "city": "上海",
+                    "job": "医生",
+                    "personality": "耐心, 边界",
+                    "values": "看重真诚, 长期",
+                    "notes": "会照顾日常",
+                    "hobbies": "咖啡, 瑜伽",
+                },
             },
         },
         get_recent_case_messages=lambda **kwargs: recent_messages,
@@ -232,10 +248,43 @@ class AssistantRuntimeTests(unittest.TestCase):
         self.assertIn("另一位现在在上海做医生", decision["reply_body"])
         self.assertNotIn("沈既白", decision["reply_body"])
         self.assertNotIn("高佳晨", decision["reply_body"])
-        self.assertTrue("做饭" in decision["reply_body"] or "运动" in decision["reply_body"])
+        self.assertIn("相处节奏拿捏得挺稳", decision["reply_body"])
+        self.assertNotIn("阅读", decision["reply_body"])
+        self.assertNotIn("咖啡", decision["reply_body"])
+        self.assertNotIn("瑜伽", decision["reply_body"])
         self.assertIn("opening_probe_profile_intro", decision["reason_codes"])
         self.assertTrue(decision["public_followup"]["active"])
         self.assertEqual(decision["public_followup"]["mode"], "opening")
+
+    def test_compact_profile_drops_internal_fields(self):
+        compact = _compact_profile(
+            {
+                "id": 1,
+                "name": "公开名",
+                "city": "上海",
+                "job": "产品经理",
+                "personality": "稳定",
+                "values": "真诚",
+                "notes": "会照顾日常",
+                "hobbies": "阅读, 咖啡",
+                "lifestyle": "早睡早起",
+                "public_display_name": "不该保留",
+                "public_job": "不该保留",
+            }
+        )
+
+        self.assertEqual(
+            compact,
+            {
+                "id": 1,
+                "name": "公开名",
+                "city": "上海",
+                "job": "产品经理",
+                "personality": "稳定",
+                "values": "真诚",
+                "notes": "会照顾日常",
+            },
+        )
 
     def test_post_chat_followup_reason_asks_private_first_impression(self):
         run_input = _make_run_input(reason="post_chat_followup_a")

@@ -19,6 +19,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "pytest>=7.0.0",
+  "setuptools>=61.2",
 ]
 
 [project.scripts]
@@ -42,6 +43,7 @@ include = [
   "observability*",
   "partner_search*",
   "persona_memory_sync*",
+  "profile_service*",
   "recommendation_system*",
   "matchmaking_system*",
   "chat_system*",
@@ -51,13 +53,27 @@ include = [
 
 [tool.setuptools]
 py-modules = [
+  "her_external_systems",
   "generate_virtual_profiles",
   "her_activate_repo",
+  "her_env",
   "her_monorepo_bootstrap",
+  "her_repo_path_bootstrap",
+  "her_runtime_context",
+  "her_time_utils",
   "outer_mysql_compat",
   "outer_system_mysql_schema",
   "partner_moderation",
   "skill_runtime",
+]
+
+[tool.ruff]
+exclude = [
+  "build",
+  "tmp",
+  "__pycache__",
+  ".pytest_cache",
+  ".ruff_cache",
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -70,6 +86,12 @@ py-modules = [
 "external-systems/partner-chat-system/chat_system/storage.py" = ["E402"]
 "external-systems/partner-chat-system/chat_system/service.py" = ["E402"]
 "external-systems/partner-chat-system/chat_system/events.py" = ["E402"]
+"external-systems/partner-chat-system/chat_system/__init__.py" = ["E402"]
+"external-systems/partner-http-gateway/gateway/__main__.py" = ["E402"]
+"local-skills/persona-memory-sync/scripts/ensure_persona_tables.py" = ["E402"]
+"local-skills/persona-memory-sync/scripts/render_public_profile.py" = ["E402"]
+"local-skills/persona-memory-sync/scripts/sync_persona_to_profile.py" = ["E402"]
+"local-skills/persona-memory-sync/scripts/upsert_persona_memory.py" = ["E402"]
 "local-skills/persona-memory-sync/tests/test_persona_memory_audit.py" = ["E402"]
 
 [tool.pytest.ini_options]

@@ -8,8 +8,7 @@ import os
 from datetime import datetime, timezone
 from typing import Any
 
-from match_domain.actor_context import get_actor_context, normalize_actor_roles
-from match_domain.trace_context import get_trace_id
+from her_runtime_context import get_actor_context, get_trace_id, normalize_actor_roles
 
 _LOGGER = logging.getLogger("her.pipeline")
 

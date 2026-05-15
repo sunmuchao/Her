@@ -17,6 +17,13 @@ from .agent_runtime import (  # noqa: E402
     StubDiscoveryAgentRuntime,
     create_default_discovery_agent_runtime,
 )
+from .agent_session_store import (  # noqa: E402
+    InMemoryDiscoveryAgentSession,
+    InMemoryDiscoveryAgentSessionStore,
+    MySQLDiscoveryAgentSession,
+    MySQLDiscoveryAgentSessionStore,
+    create_default_discovery_agent_session_store,
+)
 from .service import (  # noqa: E402
     DiscoveryActionExpiredError,
     DiscoveryActionNotFoundError,
@@ -55,7 +62,11 @@ __all__ = [
     "DiscoverySessionNotFoundError",
     "DEFAULT_DISCOVERY_MYSQL_DSN",
     "DEFAULT_DISCOVERY_TEST_MYSQL_DSN",
+    "InMemoryDiscoveryAgentSession",
+    "InMemoryDiscoveryAgentSessionStore",
     "InMemoryDiscoveryStorage",
+    "MySQLDiscoveryAgentSession",
+    "MySQLDiscoveryAgentSessionStore",
     "MySQLDiscoveryStorage",
     "StoredAction",
     "StoredSearchRun",
@@ -64,6 +75,7 @@ __all__ = [
     "StubDiscoveryAgentRuntime",
     "connect_db",
     "create_default_discovery_agent_runtime",
+    "create_default_discovery_agent_session_store",
     "create_default_discovery_service",
     "initialize_database",
     "reset_all_tables",
