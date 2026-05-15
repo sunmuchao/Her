@@ -11,8 +11,6 @@ import argparse as _argparse
 import os
 import re
 import sys
-from datetime import datetime
-from urllib.parse import parse_qs, unquote, urlparse
 
 from her_time_utils import coerce_int as as_int, unique_ordered_texts
 from mysql_source_config import MYSQL_SCHEMES as MYSQL_SOURCE_SCHEMES
@@ -91,6 +89,27 @@ from partner_search.search_profile_context import (
     normalize_request_criteria as _normalize_request_criteria,
     normalize_self_profile_input as _normalize_self_profile_input,
     resolve_self_profile_record as _resolve_self_profile_record,
+)
+from partner_search.search_profile_utils import (
+    SearchProfileUtilsRuntime,
+    as_datetime as _as_datetime,
+    build_combined_text as _build_combined_text,
+    default_source_help_text as _default_source_help_text,
+    education_rank as _education_rank,
+    effective_activity_datetime as _effective_activity_datetime,
+    effective_activity_info as _effective_activity_info,
+    effective_has_children as _effective_has_children,
+    format_datetime as _format_datetime,
+    has_explicit_field_value as _has_explicit_field_value,
+    is_mysql_source as _is_mysql_source,
+    marital_status_match_options as _marital_status_match_options,
+    normalize_record as _normalize_record,
+    parse_income_range_to_wan as _parse_income_range_to_wan,
+    photo_verification_rank as _photo_verification_rank,
+    profile_status_rank as _profile_status_rank,
+    redact_mysql_source as _redact_mysql_source,
+    redact_source_ref as _redact_source_ref,
+    verified_rank as _verified_rank,
 )
 from partner_search.search_ranking import (
     SearchRankingRuntime,
@@ -597,149 +616,63 @@ ALIAS_LOOKUP = build_alias_lookup()
 
 
 def is_mysql_source(source):
-    try:
-        return urlparse(str(source)).scheme.lower() in MYSQL_SCHEMES
-    except Exception:
-        return False
+    return _is_mysql_source(_build_search_profile_utils_runtime(), source)
 
 
 def redact_mysql_source(source):
-    text = str(source)
-    try:
-        parsed = urlparse(text)
-    except Exception:
-        return text
-    if parsed.scheme.lower() not in MYSQL_SCHEMES:
-        return text
-
-    userinfo = ""
-    if parsed.username:
-        username = unquote(parsed.username)
-        if parsed.password:
-            userinfo = f"{username}:***@"
-        else:
-            userinfo = f"{username}@"
-
-    host = parsed.hostname or "localhost"
-    port = f":{parsed.port}" if parsed.port else ""
-    query = parse_qs(parsed.query)
-    safe_query_parts = []
-    for key in ("table", "photos_table", "charset"):
-        value = query.get(key, [None])[0]
-        if value:
-            safe_query_parts.append(f"{key}={value}")
-    query_text = f"?{'&'.join(safe_query_parts)}" if safe_query_parts else ""
-    return f"{parsed.scheme}://{userinfo}{host}{port}{parsed.path}{query_text}"
+    return _redact_mysql_source(_build_search_profile_utils_runtime(), source)
 
 
 def redact_source_ref(source_ref):
-    if not source_ref:
-        return ""
-    source, table_name = split_source_file_ref(source_ref)
-    if not table_name:
-        return redact_mysql_source(source_ref)
-    redacted = redact_mysql_source(source)
-    return f"{redacted}#{table_name}" if table_name else redacted
+    return _redact_source_ref(_build_search_profile_utils_runtime(), source_ref)
 
 
 def default_source_help_text():
-    if DEFAULT_MYSQL_SOURCE:
-        return f"Defaults to PARTNER_SEARCH_MYSQL_SOURCE={redact_mysql_source(DEFAULT_MYSQL_SOURCE)}."
-    return "Required unless PARTNER_SEARCH_MYSQL_SOURCE is set."
+    return _default_source_help_text(_build_search_profile_utils_runtime())
 
 
 def as_datetime(value):
-    if value is None or value == "":
-        return None
-    if isinstance(value, datetime):
-        return value
-    text = str(value).strip()
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
-        try:
-            return datetime.strptime(text, fmt)
-        except ValueError:
-            continue
-    return None
+    return _as_datetime(value)
 
 
 def education_rank(value):
-    return EDUCATION_ORDER.get(str(value).strip()) if value else None
+    return _education_rank(_build_search_profile_utils_runtime(), value)
 
 
 def verified_rank(value):
-    return VERIFIED_LEVEL_ORDER.get(as_lower(value), 0)
+    return _verified_rank(_build_search_profile_utils_runtime(), value)
 
 
 def photo_verification_rank(value):
-    return PHOTO_VERIFICATION_LEVEL_ORDER.get(as_lower(value), 0)
+    return _photo_verification_rank(_build_search_profile_utils_runtime(), value)
 
 
 def profile_status_rank(value):
-    return PROFILE_STATUS_ORDER.get(as_lower(value), 0)
+    return _profile_status_rank(_build_search_profile_utils_runtime(), value)
 
 
 def parse_income_range_to_wan(value):
-    if value is None:
-        return (None, None)
-    numbers = [int(item) for item in re.findall(r"\d+", str(value))]
-    if not numbers:
-        return (None, None)
-    if len(numbers) == 1:
-        return (numbers[0], numbers[0])
-    return (min(numbers[0], numbers[1]), max(numbers[0], numbers[1]))
+    return _parse_income_range_to_wan(value)
 
 
 def effective_has_children(record):
-    direct = normalize_bool(record.get("has_children"))
-    if direct is not None:
-        return direct
-    marital_status = as_lower(record.get("marital_status"))
-    if "已育" in marital_status:
-        return True
-    if marital_status in {"未婚", "离异未育", "离异无孩"} or "无孩" in marital_status:
-        return False
-    return None
+    return _effective_has_children(_build_search_profile_utils_runtime(), record)
 
 
 def marital_status_match_options(record):
-    status = as_text(record.get("marital_status"))
-    if not status:
-        return []
-    options = [status]
-    lowered = as_lower(status)
-    has_children = normalize_bool(record.get("has_children"))
-    if lowered in {"离异", "离异无孩", "离异未育", "离异已育"}:
-        options.append("离异")
-    if lowered == "离异":
-        if has_children is True:
-            options.append("离异已育")
-        elif has_children is False:
-            options.append("离异未育")
-            options.append("离异无孩")
-    elif lowered == "离异已育":
-        options.append("离异")
-    elif lowered in {"离异未育", "离异无孩"}:
-        options.append("离异")
-        options.append("离异未育")
-        options.append("离异无孩")
-    return unique_ordered(options)
+    return _marital_status_match_options(_build_search_profile_utils_runtime(), record)
 
 
 def effective_activity_datetime(record):
-    return effective_activity_info(record)[1]
+    return _effective_activity_datetime(_build_search_profile_utils_runtime(), record)
 
 
 def effective_activity_info(record):
-    for field in ("last_active_at", "updated_at", "created_at"):
-        parsed = as_datetime(record.get(field))
-        if parsed is not None:
-            return (field, parsed)
-    return (None, None)
+    return _effective_activity_info(_build_search_profile_utils_runtime(), record)
 
 
 def format_datetime(value):
-    parsed = as_datetime(value)
-    return parsed.strftime("%Y-%m-%d %H:%M:%S") if parsed else None
+    return _format_datetime(value)
 
 
 def mask_value(value, left=2, right=2, mask="***"):
@@ -911,17 +844,7 @@ def evaluate_contextual_fit(record, criteria, self_profile=None):
 
 
 def has_explicit_field_value(record, field):
-    if field == "has_children":
-        return effective_has_children(record) is not None
-
-    value = record.get(field)
-    if value is None or value == "":
-        return False
-
-    lowered = as_lower(value)
-    if lowered in UNKNOWN_VALUES:
-        return False
-    return True
+    return _has_explicit_field_value(_build_search_profile_utils_runtime(), record, field)
 
 
 def build_follow_up_questions(record, missing_fields, risk_flags, self_profile=None):
@@ -935,42 +858,7 @@ def build_follow_up_questions(record, missing_fields, risk_flags, self_profile=N
 
 
 def normalize_record(raw):
-    record = {}
-    for key, value in raw.items():
-        canonical = ALIAS_LOOKUP.get(normalize_key(key), normalize_key(key))
-        record[canonical] = value
-
-    if "source_file" not in record:
-        record["source_file"] = ""
-
-    for key, value in list(record.items()):
-        if isinstance(value, str):
-            value = value.strip()
-            if value == "":
-                value = None
-        record[key] = value
-
-    if record.get("age") is not None:
-        match = re.search(r"\d+", str(record["age"]))
-        record["age"] = int(match.group()) if match else None
-
-    if record.get("height") is not None:
-        match = re.search(r"\d+", str(record["height"]))
-        record["height"] = int(match.group()) if match else None
-
-    if record.get("income_min_wan") is None and record.get("income_max_wan") is None:
-        income_min, income_max = parse_income_range_to_wan(record.get("income_range"))
-        if income_min is not None:
-            record["income_min_wan"] = income_min
-        if income_max is not None:
-            record["income_max_wan"] = income_max
-
-    record["matcher_traits"] = parse_json_object(record.get("matcher_traits_json"))
-    record["matcher_preferences"] = parse_json_object(record.get("matcher_preferences_json"))
-    record["matcher_risks"] = parse_json_object(record.get("matcher_risks_json"))
-
-    record["combined_text"] = build_combined_text(record)
-    return record
+    return _normalize_record(_build_search_profile_utils_runtime(), raw)
 
 
 def build_source_file_ref(source, table_name=None):
@@ -982,12 +870,28 @@ def split_source_file_ref(source_ref):
 
 
 def build_combined_text(record):
-    parts = []
-    for key in TEXT_FIELDS:
-        value = record.get(key)
-        if value:
-            parts.append(str(value))
-    return " | ".join(parts).lower()
+    return _build_combined_text(_build_search_profile_utils_runtime(), record)
+
+
+def _build_search_profile_utils_runtime() -> SearchProfileUtilsRuntime:
+    return SearchProfileUtilsRuntime(
+        mysql_schemes=MYSQL_SCHEMES,
+        default_mysql_source=DEFAULT_MYSQL_SOURCE,
+        alias_lookup=ALIAS_LOOKUP,
+        text_fields=TEXT_FIELDS,
+        unknown_values=UNKNOWN_VALUES,
+        education_order=EDUCATION_ORDER,
+        verified_level_order=VERIFIED_LEVEL_ORDER,
+        photo_verification_level_order=PHOTO_VERIFICATION_LEVEL_ORDER,
+        profile_status_order=PROFILE_STATUS_ORDER,
+        as_lower=as_lower,
+        as_text=as_text,
+        normalize_bool=normalize_bool,
+        normalize_key=normalize_key,
+        parse_json_object=parse_json_object,
+        unique_ordered=unique_ordered,
+        split_source_file_ref=split_source_file_ref,
+    )
 
 
 def _build_search_profile_context_runtime() -> SearchProfileContextRuntime:
