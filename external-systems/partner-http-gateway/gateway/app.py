@@ -37,24 +37,7 @@ from partner_search import search_profiles as partner_search_profiles  # noqa: E
 
 from recommendation_system import (  # type: ignore[import-untyped]
     connect_db as recommendation_connect_db,
-    create_subscription,
     get_subscription,
-    list_in_app_cards,
-    list_recommendations_for_subscription,
-    list_search_runs_for_subscription,
-    mark_in_app_cards_read,
-    record_recommendation_action,
-    record_user_review,
-    refresh_subscription,
-    update_subscription_overrides,
-)
-from recommendation_system.async_tasks import (  # type: ignore[import-untyped]
-    JOB_DELIVER_IN_APP_RECOMMENDATIONS,
-    JOB_REFRESH_DUE_SUBSCRIPTIONS,
-    enqueue_recommendation_async_job,
-    get_recommendation_async_job,
-    list_recommendation_async_jobs,
-    summarize_recommendation_async_jobs,
 )
 from recommendation_system.storage import (  # type: ignore[import-untyped]
     DEFAULT_RECOMMENDATION_MYSQL_DSN,
@@ -169,6 +152,7 @@ from .matchmaking_routes import (
 )
 from .mysql_pool import GatewayConnectionPool
 from .profile_jsonrpc import JSONRPC_NOT_HANDLED as PROFILE_JSONRPC_NOT_HANDLED, handle_profile_jsonrpc
+from .recommendation_jsonrpc import JSONRPC_NOT_HANDLED as RECOMMENDATION_JSONRPC_NOT_HANDLED, handle_recommendation_jsonrpc
 from .request_policy import client_ip, rate_limiter_from_environ
 from .verification_jsonrpc import JSONRPC_NOT_HANDLED as VERIFICATION_JSONRPC_NOT_HANDLED, handle_verification_jsonrpc
 from .profile_routes import (
@@ -1188,147 +1172,9 @@ class PartnerGateway(AsyncJobGatewayMixin):
         handled = handle_verification_jsonrpc(self, environ, method, p)
         if handled is not VERIFICATION_JSONRPC_NOT_HANDLED:
             return handled
-        if method == "recommendation.get_subscription":
-            self._get_recommendation_subscription_for_actor(environ, p["subscription_id"])
-            return self._with_rec(get_subscription, p["subscription_id"])
-        if method == "recommendation.create_subscription":
-            p2 = dict(p)
-            if p2.get("requester_id") is not None or self._current_actor(environ) is not None:
-                p2["requester_id"] = self._resolve_int_actor_bound_id(
-                    environ,
-                    p2.get("requester_id"),
-                    field_name="requester_id",
-                )
-            return self._with_rec(create_subscription, **p2)
-        if method == "recommendation.update_subscription_overrides":
-            self._get_recommendation_subscription_for_actor(environ, p["subscription_id"])
-            return self._with_rec(update_subscription_overrides, p["subscription_id"], p.get("overrides"), now=p.get("now"))
-        if method == "recommendation.refresh_subscription":
-            self._get_recommendation_subscription_for_actor(environ, p["subscription_id"])
-            return self._with_rec(refresh_subscription, p["subscription_id"], now=p.get("now"))
-        if method == "recommendation.refresh_due_subscriptions":
-            self._require_roles(
-                environ,
-                INTERNAL_WRITE_ROLES,
-                message="current actor cannot refresh due recommendation subscriptions",
-            )
-            ids = p.get("subscription_ids")
-            if ids is not None and not isinstance(ids, list):
-                raise ValueError("subscription_ids must be a list")
-            payload: dict[str, Any] = {}
-            if ids is not None:
-                payload["subscription_ids"] = [str(item) for item in ids]
-            now_text = _normalize_optional_now_text(p.get("now"))
-            if now_text is not None:
-                payload["now"] = now_text
-            actor = self._current_actor(environ)
-            job = self._with_rec(
-                enqueue_recommendation_async_job,
-                job_type=JOB_REFRESH_DUE_SUBSCRIPTIONS,
-                payload=payload,
-                created_by=actor.actor_id if actor is not None else None,
-                trace_id=get_trace_id(),
-            )
-            return self._job_payload("recommendation", job)
-        if method == "recommendation.get_async_job":
-            self._require_roles(
-                environ,
-                INTERNAL_WRITE_ROLES,
-                message="current actor cannot inspect recommendation jobs",
-            )
-            job = self._with_rec(get_recommendation_async_job, str(p["job_id"]))
-            if not job:
-                raise ValueError("job not found")
-            return self._job_payload("recommendation", job)
-        if method == "recommendation.list_async_jobs":
-            self._require_roles(
-                environ,
-                INTERNAL_WRITE_ROLES,
-                message="current actor cannot inspect recommendation jobs",
-            )
-            statuses = p.get("statuses")
-            if statuses is not None and not isinstance(statuses, list):
-                raise ValueError("statuses must be a list")
-            limit = int(p.get("limit", 50))
-            jobs = self._with_rec(list_recommendation_async_jobs, statuses=statuses, limit=limit)
-            summary = self._with_rec(summarize_recommendation_async_jobs)
-            return self._job_collection_payload("recommendation", jobs, summary)
-        if method == "recommendation.list_recommendations_for_subscription":
-            self._get_recommendation_subscription_for_actor(environ, p["subscription_id"])
-            return self._with_rec(list_recommendations_for_subscription, p["subscription_id"])
-        if method == "recommendation.list_search_runs_for_subscription":
-            self._get_recommendation_subscription_for_actor(environ, p["subscription_id"])
-            return self._with_rec(list_search_runs_for_subscription, p["subscription_id"])
-        if method == "recommendation.list_in_app_cards":
-            requester_id = p.get("requester_id")
-            rid = None
-            if requester_id is not None or self._current_actor(environ) is not None:
-                rid = self._resolve_int_actor_bound_id(
-                    environ,
-                    requester_id,
-                    field_name="requester_id",
-                )
-            return self._with_rec(
-                list_in_app_cards,
-                requester_id=rid,
-                unread_only=bool(p.get("unread_only", False)),
-            )
-        if method == "recommendation.deliver_in_app_recommendations":
-            self._require_roles(
-                environ,
-                INTERNAL_WRITE_ROLES,
-                message="current actor cannot deliver recommendation cards",
-            )
-            payload: dict[str, Any] = {}
-            now_text = _normalize_optional_now_text(p.get("now"))
-            if now_text is not None:
-                payload["now"] = now_text
-            actor = self._current_actor(environ)
-            job = self._with_rec(
-                enqueue_recommendation_async_job,
-                job_type=JOB_DELIVER_IN_APP_RECOMMENDATIONS,
-                payload=payload,
-                created_by=actor.actor_id if actor is not None else None,
-                trace_id=get_trace_id(),
-            )
-            return self._job_payload("recommendation", job)
-        if method == "recommendation.record_recommendation_action":
-            p2 = {k: v for k, v in p.items() if k not in {"idempotency_key", "client_idempotency_key"}}
-            subscription = self._get_recommendation_subscription_for_actor(environ, str(p2.get("subscription_id") or ""))
-            ck = p.get("client_idempotency_key") or p.get("idempotency_key")
-            if ck is not None and str(ck).strip():
-                p2["client_idempotency_key"] = str(ck).strip()[:191]
-            p2["subscription_id"] = subscription["subscription_id"]
-            actor = self._current_actor(environ)
-            if actor is not None:
-                p2["actor_id"] = actor.actor_id
-            return self._with_rec(record_recommendation_action, **p2)
-        if method == "recommendation.record_user_review":
-            p2 = {k: v for k, v in p.items() if k not in {"idempotency_key", "client_idempotency_key"}}
-            subscription = self._get_recommendation_subscription_for_actor(environ, str(p2.get("subscription_id") or ""))
-            ck = p.get("client_idempotency_key") or p.get("idempotency_key")
-            if ck is not None and str(ck).strip():
-                p2["client_idempotency_key"] = str(ck).strip()[:191]
-            p2["subscription_id"] = subscription["subscription_id"]
-            actor = self._current_actor(environ)
-            if actor is not None:
-                p2["actor_id"] = actor.actor_id
-            return self._with_rec(record_user_review, **p2)
-        if method == "recommendation.mark_in_app_cards_read":
-            rid = self._resolve_int_actor_bound_id(
-                environ,
-                p.get("requester_id"),
-                field_name="requester_id",
-            )
-            card_ids = p.get("card_ids")
-            if not isinstance(card_ids, list):
-                raise ValueError("card_ids must be a list")
-            return self._with_rec(
-                mark_in_app_cards_read,
-                requester_id=rid,
-                card_ids=[str(x) for x in card_ids],
-                now=p.get("now"),
-            )
+        handled = handle_recommendation_jsonrpc(self, environ, method, p)
+        if handled is not RECOMMENDATION_JSONRPC_NOT_HANDLED:
+            return handled
 
         if method == "matchmaking.create_pool_member":
             p2 = dict(p)
