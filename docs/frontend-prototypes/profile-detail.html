@@ -2,10 +2,7 @@
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1, viewport-fit=cover"
-    />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Her Prototype · 资料详情页</title>
     <style>
       :root {
@@ -27,10 +24,6 @@
         --rose: #b74d5f;
         --rose-soft: rgba(183, 77, 95, 0.12);
         --shadow: 0 28px 70px rgba(43, 37, 28, 0.14);
-        --radius-xl: 32px;
-        --radius-lg: 24px;
-        --radius-md: 18px;
-        --radius-sm: 14px;
         font-family: "IBM Plex Sans", "PingFang SC", "Noto Sans SC", sans-serif;
       }
 
@@ -121,8 +114,7 @@
       .app {
         overflow: hidden;
         border-radius: 30px;
-        background:
-          linear-gradient(180deg, rgba(255, 253, 248, 0.98), rgba(248, 241, 230, 0.98));
+        background: linear-gradient(180deg, rgba(255, 253, 248, 0.98), rgba(248, 241, 230, 0.98));
         border: 1px solid rgba(24, 33, 31, 0.06);
       }
 
@@ -139,20 +131,18 @@
       }
 
       .back-link,
-      .switch-link,
       .action-btn,
-      .icon-btn,
       .hero-pill,
       .tag,
-      .prompt-chip,
-      .nav-item {
+      .nav-item,
+      .meta-pill {
         display: inline-flex;
         align-items: center;
         justify-content: center;
       }
 
       .back-link,
-      .icon-btn {
+      .refresh-btn {
         min-height: 42px;
         padding: 0 14px;
         border-radius: 14px;
@@ -161,49 +151,21 @@
         font-size: 13px;
         font-weight: 700;
         text-decoration: none;
-      }
-
-      .icon-btn {
-        width: 42px;
-        padding: 0;
-        font-size: 16px;
-      }
-
-      .profile-switch {
-        display: flex;
-        gap: 8px;
-        padding: 0 18px 12px;
-        overflow-x: auto;
-        scrollbar-width: none;
-      }
-
-      .profile-switch::-webkit-scrollbar {
-        display: none;
-      }
-
-      .switch-link {
-        white-space: nowrap;
-        padding: 10px 14px;
-        border-radius: 999px;
-        background: rgba(24, 33, 31, 0.06);
-        color: var(--muted);
-        font-size: 13px;
-        font-weight: 800;
-        text-decoration: none;
-      }
-
-      .switch-link.active {
-        background: var(--accent-soft);
-        color: var(--accent-strong);
+        border: 0;
+        cursor: pointer;
       }
 
       .profile-screen {
-        display: none;
         padding: 0 18px 18px;
       }
 
-      .profile-screen.active {
-        display: block;
+      .hero,
+      .summary-card,
+      .section,
+      .panel,
+      .mini-panel,
+      .config-panel {
+        border: 1px solid rgba(24, 33, 31, 0.06);
       }
 
       .hero {
@@ -214,13 +176,6 @@
           radial-gradient(circle at 18% 20%, rgba(255, 255, 255, 0.22), transparent 16%),
           radial-gradient(circle at 82% 18%, rgba(255, 255, 255, 0.16), transparent 16%),
           linear-gradient(145deg, #33534d 0%, #5d867d 52%, #cc9d7d 100%);
-      }
-
-      .hero.alt {
-        background:
-          radial-gradient(circle at 18% 20%, rgba(255, 255, 255, 0.2), transparent 16%),
-          radial-gradient(circle at 82% 18%, rgba(255, 255, 255, 0.16), transparent 16%),
-          linear-gradient(145deg, #6c4250 0%, #986c76 52%, #ddb08e 100%);
       }
 
       .hero-top,
@@ -237,19 +192,26 @@
         padding: 56px 16px 16px;
       }
 
-      .hero-pill {
+      .hero-pill,
+      .meta-pill,
+      .tag {
         gap: 8px;
         padding: 8px 12px;
         border-radius: 999px;
-        background: rgba(12, 18, 17, 0.36);
-        border: 1px solid rgba(255, 255, 255, 0.12);
         font-size: 12px;
         font-weight: 700;
       }
 
+      .hero-pill {
+        color: #f8faf9;
+        background: rgba(12, 18, 17, 0.36);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+      }
+
       .person h1,
       .support h2,
-      .mini-panel h3 {
+      .mini-panel h3,
+      .config-panel h3 {
         font-family: "Iowan Old Style", "Noto Serif SC", "STSong", serif;
       }
 
@@ -260,10 +222,21 @@
         letter-spacing: -0.05em;
       }
 
+      .person p,
+      .summary-card p,
+      .narrative,
+      .support p,
+      .check span,
+      .mini-panel ul,
+      .helper-text {
+        color: var(--muted);
+        line-height: 1.75;
+      }
+
       .person p {
         margin: 8px 0 0;
-        font-size: 14px;
         color: rgba(248, 250, 249, 0.82);
+        font-size: 14px;
       }
 
       .score {
@@ -300,40 +273,49 @@
         color: var(--accent);
       }
 
-      .summary-card strong {
+      .summary-card strong,
+      .section-title,
+      .check strong {
         display: block;
+      }
+
+      .summary-card strong {
         font-size: 16px;
       }
 
       .summary-card p {
         margin: 8px 0 0;
-        color: var(--muted);
         font-size: 13px;
-        line-height: 1.7;
       }
 
-      .tag-row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
+      .meta-row,
+      .tag-row,
+      .photo-strip,
+      .action-row,
+      .config-grid {
+        display: grid;
+        gap: 10px;
+      }
+
+      .meta-row {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         margin-top: 12px;
       }
 
-      .tag {
-        padding: 8px 12px;
-        border-radius: 999px;
-        font-size: 12px;
-        font-weight: 700;
+      .meta-pill {
+        justify-content: flex-start;
+        background: rgba(255, 255, 255, 0.82);
+        color: var(--ink);
+      }
+
+      .tag-row {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        margin-top: 12px;
       }
 
       .tag.good {
         color: var(--good);
         background: var(--good-soft);
-      }
-
-      .tag.accent {
-        color: var(--accent-strong);
-        background: var(--accent-soft);
       }
 
       .tag.warn {
@@ -344,6 +326,28 @@
       .tag.rose {
         color: var(--rose);
         background: var(--rose-soft);
+      }
+
+      .photo-strip {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        margin-top: 14px;
+      }
+
+      .photo-frame {
+        position: relative;
+        overflow: hidden;
+        min-height: 120px;
+        border-radius: 18px;
+        background:
+          radial-gradient(circle at 18% 20%, rgba(255, 255, 255, 0.22), transparent 16%),
+          linear-gradient(145deg, #33534d 0%, #5d867d 52%, #cc9d7d 100%);
+      }
+
+      .photo-frame img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
       }
 
       .section {
@@ -362,77 +366,60 @@
         color: var(--muted);
       }
 
-      .list,
-      .detail-grid {
+      .list {
         display: grid;
         gap: 10px;
       }
 
-      .list-item,
-      .detail-line {
+      .list-item {
         display: flex;
         justify-content: space-between;
         gap: 12px;
-        align-items: center;
+        align-items: flex-start;
       }
 
-      .list-item span:first-child,
-      .detail-line span:first-child {
+      .list-item span:first-child {
         color: var(--ink);
         font-size: 13px;
         font-weight: 700;
       }
 
-      .list-item span:last-child,
-      .detail-line span:last-child {
+      .list-item span:last-child {
         color: var(--muted);
         font-size: 13px;
         text-align: right;
       }
 
       .narrative {
-        color: var(--muted);
+        margin: 0;
         font-size: 13px;
-        line-height: 1.75;
-      }
-
-      .prompt-row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-      }
-
-      .prompt-chip {
-        padding: 9px 12px;
-        border-radius: 999px;
-        background: rgba(255, 255, 255, 0.82);
-        color: var(--ink);
-        font-size: 12px;
-        font-weight: 700;
       }
 
       .action-row {
-        display: grid;
         grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-        gap: 10px;
         margin-top: 16px;
       }
 
-      .action-btn {
+      .action-btn,
+      .config-actions button {
         min-height: 48px;
         border-radius: 18px;
         padding: 0 14px;
         font-size: 14px;
         font-weight: 800;
         text-decoration: none;
+        border: 0;
+        cursor: pointer;
       }
 
-      .action-btn.primary {
+      .action-btn.primary,
+      .config-actions button.primary {
         color: #f7faf9;
         background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
       }
 
-      .action-btn.secondary {
+      .action-btn.secondary,
+      .config-actions button.secondary {
         color: var(--ink);
         background: rgba(24, 33, 31, 0.08);
       }
@@ -471,13 +458,14 @@
         gap: 18px;
       }
 
-      .panel {
+      .panel,
+      .mini-panel,
+      .config-panel {
         padding: 24px;
         border-radius: 32px;
         background:
           linear-gradient(180deg, rgba(255, 252, 247, 0.95), rgba(247, 239, 227, 0.95)),
           rgba(255, 255, 255, 0.5);
-        border: 1px solid rgba(255, 255, 255, 0.78);
         box-shadow: var(--shadow);
       }
 
@@ -486,12 +474,6 @@
         font-size: 34px;
         line-height: 1;
         letter-spacing: -0.05em;
-      }
-
-      .support p {
-        margin: 12px 0 0;
-        color: var(--muted);
-        line-height: 1.8;
       }
 
       .checklist {
@@ -507,15 +489,7 @@
       }
 
       .check strong {
-        display: block;
         font-size: 16px;
-      }
-
-      .check span {
-        display: block;
-        margin-top: 6px;
-        color: var(--muted);
-        line-height: 1.7;
       }
 
       .grid-panels {
@@ -524,25 +498,55 @@
         gap: 18px;
       }
 
-      .mini-panel {
-        padding: 22px;
-        border-radius: 28px;
-        background: rgba(255, 252, 247, 0.8);
-        border: 1px solid rgba(255, 255, 255, 0.75);
-        box-shadow: 0 16px 40px rgba(43, 37, 28, 0.08);
-      }
-
-      .mini-panel h3 {
+      .mini-panel h3,
+      .config-panel h3 {
         margin: 0 0 10px;
         font-size: 24px;
         letter-spacing: -0.04em;
       }
 
-      .mini-panel ul {
-        margin: 0;
-        padding-left: 18px;
+      .field {
+        display: grid;
+        gap: 6px;
+      }
+
+      .field span {
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
         color: var(--muted);
-        line-height: 1.8;
+      }
+
+      .field input {
+        width: 100%;
+        padding: 13px 14px;
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.84);
+        color: var(--ink);
+        font: inherit;
+        font-size: 14px;
+        border: 1px solid rgba(24, 33, 31, 0.06);
+      }
+
+      .config-actions {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 18px;
+      }
+
+      .config-meta {
+        margin-top: 14px;
+        display: grid;
+        gap: 6px;
+      }
+
+      .config-meta code {
+        padding: 3px 7px;
+        border-radius: 999px;
+        background: rgba(24, 33, 31, 0.06);
+        color: var(--ink);
       }
 
       @media (max-width: 1040px) {
@@ -576,11 +580,17 @@
         }
 
         .grid-panels,
-        .action-row {
+        .photo-strip,
+        .action-row,
+        .config-actions,
+        .meta-row,
+        .tag-row {
           grid-template-columns: 1fr;
         }
 
-        .panel {
+        .panel,
+        .mini-panel,
+        .config-panel {
           padding: 20px;
           border-radius: 24px;
         }
@@ -595,7 +605,7 @@
     <main class="page">
       <div class="prototype-bar">
         <span class="dot"></span>
-        <span>Static prototype · 资料详情页 · 通过 hash 切换示例候选人</span>
+        <span>Live API prototype · 资料详情页直接联调 `/v1/discovery/profiles/{profile_id}`</span>
       </div>
 
       <div class="shell">
@@ -603,273 +613,46 @@
           <div class="app">
             <header class="topbar">
               <div class="row">
-                <a class="back-link" href="./discovery.html">← 返回发现页</a>
-                <a class="icon-btn" href="./chat.html" aria-label="去聊天">✉</a>
+                <a class="back-link" id="back-link" href="./discovery.html">← 返回发现页</a>
+                <button class="refresh-btn" id="reload-detail-btn" type="button">重载详情</button>
               </div>
             </header>
 
-            <nav class="profile-switch" aria-label="候选人切换">
-              <a class="switch-link" href="#lin-zhixia" data-profile-link="lin-zhixia">林知夏</a>
-              <a class="switch-link" href="#zhou-qinghe" data-profile-link="zhou-qinghe">周清和</a>
-            </nav>
-
-            <section class="profile-screen" data-profile="lin-zhixia">
+            <section class="profile-screen">
               <div class="hero">
                 <div class="hero-top">
-                  <span class="hero-pill">真人照认证 · 学历已核验</span>
-                  <span class="hero-pill">近 2 天活跃</span>
+                  <span class="hero-pill" id="hero-pill-left">等待详情</span>
+                  <span class="hero-pill" id="hero-pill-right">session_id -</span>
                 </div>
                 <div class="hero-bottom">
                   <div class="person">
-                    <h1>林知夏 29</h1>
-                    <p>无锡 · 中学老师 · 硕士</p>
+                    <h1 id="hero-name">正在读取候选人资料</h1>
+                    <p id="hero-headline">详情页只展示后端返回的 `detail_view`。</p>
                   </div>
                   <div class="score">
-                    <small>匹配感</small>
-                    <strong>92</strong>
+                    <small>资料页</small>
+                    <strong id="hero-profile-id">-</strong>
                   </div>
                 </div>
               </div>
 
               <div class="summary-card">
                 <p class="eyebrow">Matchmaker Summary</p>
-                <strong>红娘判断：她更像“可以认真往前聊的人”，不是只靠包装冲到你面前的资料。</strong>
-                <p>
-                  这一类资料不一定每项都核验完，但“目标明确、节奏稳定、表达自然、可信度够高”。如果你先想聊一个更稳的人，她是很合理的第一位。
-                </p>
-                <div class="tag-row">
-                  <span class="tag good">结婚导向</span>
-                  <span class="tag accent">生活规律</span>
-                  <span class="tag soft">沟通直接</span>
+                <strong id="summary-title">先拿到 detail_view，再决定展示什么。</strong>
+                <p id="summary-copy">发现页的卡片只负责承接入口，详情页不再从列表字段自行拼更多判断。</p>
+                <div class="meta-row">
+                  <span class="meta-pill" id="trace-pill">trace_id: -</span>
+                  <span class="meta-pill" id="phase-pill">profile_id: -</span>
                 </div>
               </div>
 
-              <div class="section">
-                <p class="section-title">红娘为什么先推给你</p>
-                <div class="list">
-                  <div class="list-item">
-                    <span>关系目标</span>
-                    <span>认真恋爱、长期关系意愿明确</span>
-                  </div>
-                  <div class="list-item">
-                    <span>稳定度</span>
-                    <span>工作与生活节奏都偏稳</span>
-                  </div>
-                  <div class="list-item">
-                    <span>表达风格</span>
-                    <span>不是强推销型，也不油腻</span>
-                  </div>
-                </div>
-              </div>
-
-              <div class="section">
-                <p class="section-title">可信度拆开看</p>
-                <div class="detail-grid">
-                  <div class="detail-line">
-                    <span>已核验</span>
-                    <span>照片、学历</span>
-                  </div>
-                  <div class="detail-line">
-                    <span>自填信息</span>
-                    <span>收入区间、工作细节</span>
-                  </div>
-                  <div class="detail-line">
-                    <span>当前风险</span>
-                    <span>未见明显风险信号</span>
-                  </div>
-                  <div class="detail-line">
-                    <span>建议确认</span>
-                    <span>未来城市安排、见面节奏、工作强度</span>
-                  </div>
-                </div>
-              </div>
-
-              <div class="section">
-                <p class="section-title">基本情况</p>
-                <div class="detail-grid">
-                  <div class="detail-line">
-                    <span>年龄</span>
-                    <span>29</span>
-                  </div>
-                  <div class="detail-line">
-                    <span>城市</span>
-                    <span>无锡</span>
-                  </div>
-                  <div class="detail-line">
-                    <span>职业</span>
-                    <span>中学老师</span>
-                  </div>
-                  <div class="detail-line">
-                    <span>学历</span>
-                    <span>硕士</span>
-                  </div>
-                  <div class="detail-line">
-                    <span>关系目标</span>
-                    <span>认真恋爱 / 结婚导向</span>
-                  </div>
-                  <div class="detail-line">
-                    <span>活跃情况</span>
-                    <span>近 2 天有回应</span>
-                  </div>
-                </div>
-              </div>
-
-              <div class="section">
-                <p class="section-title">生活与关系观</p>
-                <p class="narrative">
-                  红娘从她的资料和匹配理由里整理出的印象是：偏规律、表达不绕、关系节奏稳，不像一开始就要把氛围推很满的人。更适合从“工作与作息、周末安排、对见面推进的接受度”开始聊。
-                </p>
-              </div>
-
-              <div class="section">
-                <p class="section-title">建议你先聊什么</p>
-                <div class="prompt-row">
-                  <span class="prompt-chip">你平时工作日下班后会怎么放松？</span>
-                  <span class="prompt-chip">你更倾向先聊一段时间再见面吗？</span>
-                  <span class="prompt-chip">如果以后关系稳定，你更想留在无锡吗？</span>
-                </div>
-              </div>
-
-              <div class="section">
-                <p class="section-title">平台提醒</p>
-                <p class="narrative">
-                  她当前没有明显风险信号，但平台仍然建议先在站内沟通，不要因为第一印象稳定就过快转到站外，也不要把“学历已核验”误读成所有字段都已确认。
-                </p>
-              </div>
+              <div class="photo-strip" id="photo-strip"></div>
+              <div class="tag-row" id="tag-row"></div>
+              <div id="detail-sections"></div>
 
               <div class="action-row">
-                <a class="action-btn secondary" href="./discovery.html">回到发现页</a>
-                <a class="action-btn primary" href="./chat.html">进入聊天页原型</a>
-              </div>
-            </section>
-
-            <section class="profile-screen" data-profile="zhou-qinghe">
-              <div class="hero alt">
-                <div class="hero-top">
-                  <span class="hero-pill">真人照认证</span>
-                  <span class="hero-pill">今天活跃</span>
-                </div>
-                <div class="hero-bottom">
-                  <div class="person">
-                    <h1>周清和 31</h1>
-                    <p>苏州-无锡通勤圈 · 产品经理 · 本科</p>
-                  </div>
-                  <div class="score">
-                    <small>匹配感</small>
-                    <strong>84</strong>
-                  </div>
-                </div>
-              </div>
-
-              <div class="summary-card">
-                <p class="eyebrow">Matchmaker Summary</p>
-                <strong>红娘判断：她可以保留，但比起“立刻推进”，更适合先做真实性确认。</strong>
-                <p>
-                  她的问题不在明显危险，而在“资料填写为主、稳定度还不够硬”。对你来说，这种人可以聊，但要把关键确认问题提早放进去，不要被表层匹配感带着跑。
-                </p>
-                <div class="tag-row">
-                  <span class="tag accent">认真恋爱</span>
-                  <span class="tag soft">偏理性表达</span>
-                  <span class="tag warn">收入未核验</span>
-                </div>
-              </div>
-
-              <div class="section">
-                <p class="section-title">红娘为什么没有把她排第一</p>
-                <div class="list">
-                  <div class="list-item">
-                    <span>目标一致</span>
-                    <span>长期关系意愿明确</span>
-                  </div>
-                  <div class="list-item">
-                    <span>适配点</span>
-                    <span>聊天节奏稳，边界感清楚</span>
-                  </div>
-                  <div class="list-item">
-                    <span>减分点</span>
-                    <span>职业与收入真实性要更多确认</span>
-                  </div>
-                </div>
-              </div>
-
-              <div class="section">
-                <p class="section-title">可信度拆开看</p>
-                <div class="detail-grid">
-                  <div class="detail-line">
-                    <span>已核验</span>
-                    <span>照片</span>
-                  </div>
-                  <div class="detail-line">
-                    <span>自填信息</span>
-                    <span>工作内容、收入区间、长期定居计划</span>
-                  </div>
-                  <div class="detail-line">
-                    <span>当前风险</span>
-                    <span>无强风险，但资料硬度不足</span>
-                  </div>
-                  <div class="detail-line">
-                    <span>建议确认</span>
-                    <span>是否长期在无锡、工作节奏、真实职业状态</span>
-                  </div>
-                </div>
-              </div>
-
-              <div class="section">
-                <p class="section-title">基本情况</p>
-                <div class="detail-grid">
-                  <div class="detail-line">
-                    <span>年龄</span>
-                    <span>31</span>
-                  </div>
-                  <div class="detail-line">
-                    <span>工作区域</span>
-                    <span>苏州-无锡通勤圈</span>
-                  </div>
-                  <div class="detail-line">
-                    <span>职业</span>
-                    <span>产品经理</span>
-                  </div>
-                  <div class="detail-line">
-                    <span>学历</span>
-                    <span>本科</span>
-                  </div>
-                  <div class="detail-line">
-                    <span>关系目标</span>
-                    <span>认真恋爱</span>
-                  </div>
-                  <div class="detail-line">
-                    <span>活跃情况</span>
-                    <span>今天在线</span>
-                  </div>
-                </div>
-              </div>
-
-              <div class="section">
-                <p class="section-title">生活与关系观</p>
-                <p class="narrative">
-                  她给人的感觉是理性、边界清楚、不会一上来特别热烈。这类对象的关键不是先制造气氛，而是确认“她是不是长期真的在你可接受的生活半径里，以及她的工作强度是否会影响关系推进”。
-                </p>
-              </div>
-
-              <div class="section">
-                <p class="section-title">建议你先聊什么</p>
-                <div class="prompt-row">
-                  <span class="prompt-chip">你会考虑长期在无锡发展吗？</span>
-                  <span class="prompt-chip">你平时工作强度大概是什么节奏？</span>
-                  <span class="prompt-chip">你更喜欢慢慢熟还是尽快线下见面？</span>
-                </div>
-              </div>
-
-              <div class="section">
-                <p class="section-title">平台提醒</p>
-                <p class="narrative">
-                  她不是明显有问题的资料，但也不是“可以默认很稳”的类型。对这种对象，前几轮聊天的目标应该是去确认现实条件，而不是单纯追求对话舒服。
-                </p>
-              </div>
-
-              <div class="action-row">
-                <a class="action-btn secondary" href="./discovery.html">回到发现页</a>
-                <a class="action-btn primary" href="./chat.html">进入聊天页原型</a>
+                <a class="action-btn secondary" id="back-action-btn" href="./discovery.html">回到发现页</a>
+                <button class="action-btn primary" id="copy-session-btn" type="button">复制 session_id</button>
               </div>
             </section>
 
@@ -883,44 +666,75 @@
         </section>
 
         <section class="support">
+          <article class="config-panel">
+            <p class="eyebrow">Detail Integration</p>
+            <h3>当前详情请求配置</h3>
+            <p class="helper-text">这页默认从 URL 里读 `profile_id` 和 `session_id`。如果你是单独调试，也可以在这里手动改后重载。</p>
+            <div class="config-grid">
+              <label class="field">
+                <span>API Base</span>
+                <input id="api-base-input" type="text" autocomplete="off" />
+              </label>
+              <label class="field">
+                <span>API Token</span>
+                <input id="api-token-input" type="password" autocomplete="off" />
+              </label>
+              <label class="field">
+                <span>Profile ID</span>
+                <input id="profile-id-input" type="number" min="1" step="1" />
+              </label>
+              <label class="field">
+                <span>Session ID</span>
+                <input id="session-id-input" type="text" autocomplete="off" />
+              </label>
+            </div>
+            <div class="config-actions">
+              <button class="secondary" id="save-config-btn" type="button">保存配置</button>
+              <button class="primary" id="reload-config-btn" type="button">按当前配置重载</button>
+            </div>
+            <div class="config-meta" id="config-meta"></div>
+          </article>
+
           <article class="panel">
             <p class="eyebrow">Page Direction</p>
-            <h2>详情页的职责不是堆字段，而是承接红娘在发现页里的判断。</h2>
-            <p>
-              用户从发现页点进来时，最重要的不是看到更长的资料列表，而是先理解“红娘为什么把这个人给我、这个人到底哪里可信、哪里还要我自己确认”。所以这页先给判断，再给字段，最后给聊天建议。
-            </p>
+            <h2>详情页现在是 discovery 卡片的正式承接页，不再靠静态样例硬切。</h2>
+            <p>这页只调一个接口：`GET /v1/discovery/profiles/{profile_id}?session_id=...`。前端不从列表卡片推断 trust，不从文案猜测风险，也不自己补“为什么推荐”。</p>
             <div class="checklist">
               <div class="check">
-                <strong>先说为什么出现</strong>
-                <span>用户要先知道“为什么这人值得看”，而不是一上来被资料细节淹没。</span>
+                <strong>先看红娘说明</strong>
+                <span>`matchmaker_notes` 会直接落在详情页顶部，用户先理解“为什么值得看”。</span>
               </div>
               <div class="check">
-                <strong>可信度必须拆开</strong>
-                <span>已核验、自填、待确认、风险提醒分开写，避免用户误以为整份资料都被平台背书。</span>
+                <strong>再看核验与自填</strong>
+                <span>`verified_sections`、`self_reported_sections`、`caution_sections` 都由后端 detail_view 决定。</span>
               </div>
               <div class="check">
-                <strong>详情页要反哺聊天</strong>
-                <span>最后必须给出“建议先聊什么”，这样用户从详情页回到聊天页才有下一步动作。</span>
+                <strong>最后仍然回发现页</strong>
+                <span>这页不负责自己推业务动作，只负责把这个候选人的承接信息展示清楚。</span>
               </div>
             </div>
           </article>
 
           <div class="grid-panels">
             <article class="mini-panel">
-              <h3>如何和发现页衔接</h3>
+              <h3>本页真实接的字段</h3>
               <ul>
-                <li>`discovery.html#lin-zhixia` 点进来后默认展示林知夏。</li>
-                <li>`discovery.html#zhou-qinghe` 点进来后默认展示周清和。</li>
-                <li>同一个详情页文件通过 hash 切换不同示例候选人。</li>
+                <li>`detail_view.hero`</li>
+                <li>`detail_view.photo_gallery`</li>
+                <li>`detail_view.verified_sections`</li>
+                <li>`detail_view.self_reported_sections`</li>
+                <li>`detail_view.caution_sections`</li>
+                <li>`detail_view.matchmaker_notes`</li>
               </ul>
             </article>
 
             <article class="mini-panel">
-              <h3>后续可接真实数据</h3>
+              <h3>这页刻意不做的事</h3>
               <ul>
-                <li>发现页传候选人 id 到详情页路由。</li>
-                <li>详情页请求候选人资料、可信度字段和风险提示。</li>
-                <li>继续沿用红娘生成的“为什么推荐”和“建议确认什么”。</li>
+                <li>不从 discovery 卡片字段拼出更多详情。</li>
+                <li>不自己扩写信任状态。</li>
+                <li>不自己发起搜索、追问或业务判断。</li>
+                <li>不自己决定这人值不值得继续聊。</li>
               </ul>
             </article>
           </div>
@@ -929,33 +743,379 @@
     </main>
 
     <script>
-      const defaultProfile = "lin-zhixia";
-      const screens = document.querySelectorAll(".profile-screen");
-      const links = document.querySelectorAll(".switch-link");
+      const DEMO_CONFIG_KEY = "her.discovery.demo.config.v1";
+      const DEMO_SESSION_KEY = "her.discovery.demo.session.v1";
 
-      function validProfileKey(key) {
-        return Array.from(screens).some((screen) => screen.dataset.profile === key);
+      const refs = {
+        backLink: document.getElementById("back-link"),
+        backActionBtn: document.getElementById("back-action-btn"),
+        reloadDetailBtn: document.getElementById("reload-detail-btn"),
+        heroPillLeft: document.getElementById("hero-pill-left"),
+        heroPillRight: document.getElementById("hero-pill-right"),
+        heroName: document.getElementById("hero-name"),
+        heroHeadline: document.getElementById("hero-headline"),
+        heroProfileId: document.getElementById("hero-profile-id"),
+        summaryTitle: document.getElementById("summary-title"),
+        summaryCopy: document.getElementById("summary-copy"),
+        tracePill: document.getElementById("trace-pill"),
+        phasePill: document.getElementById("phase-pill"),
+        photoStrip: document.getElementById("photo-strip"),
+        tagRow: document.getElementById("tag-row"),
+        detailSections: document.getElementById("detail-sections"),
+        copySessionBtn: document.getElementById("copy-session-btn"),
+        apiBaseInput: document.getElementById("api-base-input"),
+        apiTokenInput: document.getElementById("api-token-input"),
+        profileIdInput: document.getElementById("profile-id-input"),
+        sessionIdInput: document.getElementById("session-id-input"),
+        saveConfigBtn: document.getElementById("save-config-btn"),
+        reloadConfigBtn: document.getElementById("reload-config-btn"),
+        configMeta: document.getElementById("config-meta"),
+      };
+
+      const state = {
+        loading: false,
+        traceId: "",
+        profileId: "",
+        sessionId: "",
+        detailView: null,
+        config: loadConfig(),
+      };
+
+      function inferDefaultApiBase() {
+        const origin = String(window.location.origin || "").trim();
+        if (origin && origin !== "null" && /^https?:\/\//.test(origin)) {
+          return origin;
+        }
+        return "http://127.0.0.1:8765";
       }
 
-      function syncProfile() {
-        const rawKey = window.location.hash.replace(/^#/, "");
-        const activeKey = validProfileKey(rawKey) ? rawKey : defaultProfile;
-
-        if (rawKey !== activeKey) {
-          history.replaceState(null, "", `#${activeKey}`);
-        }
-
-        for (const screen of screens) {
-          screen.classList.toggle("active", screen.dataset.profile === activeKey);
-        }
-
-        for (const link of links) {
-          link.classList.toggle("active", link.dataset.profileLink === activeKey);
+      function safeJsonParse(raw, fallback) {
+        try {
+          const parsed = JSON.parse(String(raw || ""));
+          return parsed && typeof parsed === "object" ? parsed : fallback;
+        } catch (_error) {
+          return fallback;
         }
       }
 
-      window.addEventListener("hashchange", syncProfile);
-      syncProfile();
+      function loadConfig() {
+        const stored = safeJsonParse(localStorage.getItem(DEMO_CONFIG_KEY), {});
+        const query = new URLSearchParams(window.location.search);
+        return {
+          apiBase: String(query.get("api_base") || stored.apiBase || inferDefaultApiBase()).trim(),
+          apiToken: String(query.get("api_token") || stored.apiToken || "").trim(),
+        };
+      }
+
+      function discoveryPageHref() {
+        const params = new URLSearchParams();
+        if (state.sessionId) {
+          params.set("session_id", state.sessionId);
+        }
+        if (window.location.origin === "null" && state.config.apiBase) {
+          params.set("api_base", state.config.apiBase);
+        }
+        const path = window.location.pathname.includes("/demo/discovery/profile-detail")
+          ? "/demo/discovery"
+          : "./discovery.html";
+        return `${path}${params.toString() ? `?${params.toString()}` : ""}`;
+      }
+
+      function syncConfigInputs() {
+        refs.apiBaseInput.value = state.config.apiBase;
+        refs.apiTokenInput.value = state.config.apiToken;
+        refs.profileIdInput.value = state.profileId;
+        refs.sessionIdInput.value = state.sessionId;
+      }
+
+      function readConfigInputs() {
+        state.config = {
+          apiBase: String(refs.apiBaseInput.value || inferDefaultApiBase()).trim(),
+          apiToken: String(refs.apiTokenInput.value || "").trim(),
+        };
+        localStorage.setItem(DEMO_CONFIG_KEY, JSON.stringify(state.config));
+        state.profileId = String(refs.profileIdInput.value || "").trim();
+        state.sessionId = String(refs.sessionIdInput.value || "").trim();
+        if (state.sessionId) {
+          localStorage.setItem(DEMO_SESSION_KEY, state.sessionId);
+        }
+      }
+
+      function buildHeaders() {
+        const headers = {};
+        if (state.config.apiToken) {
+          headers["Authorization"] = `Bearer ${state.config.apiToken}`;
+        }
+        return headers;
+      }
+
+      function buildApiUrl(path) {
+        const base = String(state.config.apiBase || inferDefaultApiBase()).trim() || inferDefaultApiBase();
+        return new URL(path, base.endsWith("/") ? base : `${base}/`).toString();
+      }
+
+      async function requestJson(method, path) {
+        const response = await fetch(buildApiUrl(path.replace(/^\//, "")), {
+          method,
+          headers: buildHeaders(),
+        });
+        const text = await response.text();
+        const payload = text ? safeJsonParse(text, {}) : {};
+        if (!response.ok) {
+          throw {
+            status: response.status,
+            code: payload.error_code || payload?.error?.code || `HTTP_${response.status}`,
+            message:
+              payload.error_message ||
+              payload?.error?.message ||
+              `请求失败（${response.status}）`,
+            retryable: Boolean(payload.retryable),
+            traceId: String(payload.trace_id || "").trim(),
+          };
+        }
+        return payload;
+      }
+
+      function escapeHtml(text) {
+        return String(text || "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#39;");
+      }
+
+      function bootstrapQueryState() {
+        const query = new URLSearchParams(window.location.search);
+        state.profileId = String(query.get("profile_id") || "").trim();
+        state.sessionId =
+          String(query.get("session_id") || localStorage.getItem(DEMO_SESSION_KEY) || "").trim();
+      }
+
+      function syncLocation() {
+        const params = new URLSearchParams(window.location.search);
+        if (state.profileId) {
+          params.set("profile_id", state.profileId);
+        }
+        if (state.sessionId) {
+          params.set("session_id", state.sessionId);
+        }
+        if (window.location.origin === "null" && state.config.apiBase) {
+          params.set("api_base", state.config.apiBase);
+        }
+        history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
+        refs.backLink.href = discoveryPageHref();
+        refs.backActionBtn.href = discoveryPageHref();
+      }
+
+      function renderTags(detailView) {
+        refs.tagRow.innerHTML = "";
+        const tags = [];
+        for (const section of detailView.verified_sections || []) {
+          for (const item of section.items || []) {
+            tags.push({ kind: "good", label: item });
+          }
+        }
+        for (const section of detailView.caution_sections || []) {
+          for (const item of section.items || []) {
+            tags.push({ kind: "warn", label: item });
+          }
+        }
+        if (!tags.length) {
+          refs.tagRow.innerHTML = '<span class="tag rose">当前还没有更多结构化标签</span>';
+          return;
+        }
+        for (const tag of tags.slice(0, 6)) {
+          const span = document.createElement("span");
+          span.className = `tag ${tag.kind}`;
+          span.textContent = tag.label;
+          refs.tagRow.appendChild(span);
+        }
+      }
+
+      function renderPhotos(detailView) {
+        refs.photoStrip.innerHTML = "";
+        const photos = Array.isArray(detailView.photo_gallery) ? detailView.photo_gallery : [];
+        if (!photos.length) {
+          refs.photoStrip.innerHTML = '<div class="photo-frame"></div>';
+          return;
+        }
+        for (const photo of photos.slice(0, 3)) {
+          const frame = document.createElement("div");
+          frame.className = "photo-frame";
+          const url = String(photo.image_url || "").trim();
+          frame.innerHTML = url
+            ? `<img src="${escapeHtml(url)}" alt="候选人照片" />`
+            : "";
+          refs.photoStrip.appendChild(frame);
+        }
+      }
+
+      function renderSection(title, items) {
+        const values = Array.isArray(items) ? items.filter(Boolean) : [];
+        if (!values.length) {
+          return "";
+        }
+        return `
+          <section class="section">
+            <p class="section-title">${escapeHtml(title)}</p>
+            <div class="list">
+              ${values.map((item) => `<div class="list-item"><span>•</span><span>${escapeHtml(item)}</span></div>`).join("")}
+            </div>
+          </section>
+        `;
+      }
+
+      function renderSections(detailView) {
+        const blocks = [];
+        for (const section of detailView.verified_sections || []) {
+          blocks.push(renderSection(section.title || "已核验信息", section.items || []));
+        }
+        for (const section of detailView.self_reported_sections || []) {
+          blocks.push(renderSection(section.title || "资料要点", section.items || []));
+        }
+        for (const section of detailView.caution_sections || []) {
+          blocks.push(renderSection(section.title || "你需要知道", section.items || []));
+        }
+        const notes = Array.isArray(detailView.matchmaker_notes) ? detailView.matchmaker_notes : [];
+        if (notes.length) {
+          blocks.push(`
+            <section class="section">
+              <p class="section-title">红娘承接说明</p>
+              <p class="narrative">${notes.map((item) => escapeHtml(item)).join("<br />")}</p>
+            </section>
+          `);
+        }
+        if (!blocks.length) {
+          blocks.push(`
+            <section class="section">
+              <p class="section-title">当前暂无结构化详情</p>
+              <p class="narrative">后端没有返回更多 <code>detail_view</code> 字段，前端也不会自己从 discovery 卡片硬拼更多内容。</p>
+            </section>
+          `);
+        }
+        refs.detailSections.innerHTML = blocks.join("");
+      }
+
+      function renderMeta() {
+        refs.tracePill.textContent = `trace_id: ${state.traceId || "-"}`;
+        refs.phasePill.textContent = `profile_id: ${state.profileId || "-"}`;
+        refs.heroPillRight.textContent = `session_id ${state.sessionId || "-"}`;
+        refs.configMeta.innerHTML = `
+          <div><strong>当前 API Base：</strong> <code>${escapeHtml(state.config.apiBase)}</code></div>
+          <div><strong>当前 Profile：</strong> <code>${escapeHtml(state.profileId || "-")}</code></div>
+          <div><strong>当前 Session：</strong> <code>${escapeHtml(state.sessionId || "-")}</code></div>
+          <div><strong>当前 Trace：</strong> <code>${escapeHtml(state.traceId || "-")}</code></div>
+        `;
+      }
+
+      function renderEmpty(message) {
+        refs.heroName.textContent = "当前无法展示候选人详情";
+        refs.heroHeadline.textContent = message;
+        refs.heroProfileId.textContent = "-";
+        refs.heroPillLeft.textContent = "等待 detail_view";
+        refs.summaryTitle.textContent = "详情页只展示后端返回的 `detail_view`。";
+        refs.summaryCopy.textContent = message;
+        refs.photoStrip.innerHTML = '<div class="photo-frame"></div>';
+        refs.tagRow.innerHTML = '<span class="tag rose">暂无详情数据</span>';
+        refs.detailSections.innerHTML = `
+          <section class="section">
+            <p class="section-title">当前状态</p>
+            <p class="narrative">${escapeHtml(message)}</p>
+          </section>
+        `;
+        renderMeta();
+      }
+
+      function renderDetail(detailView) {
+        const hero = detailView.hero || {};
+        refs.heroName.textContent = [hero.name, hero.age].filter((item) => item !== null && item !== undefined && item !== "").join(" ");
+        refs.heroHeadline.textContent = [hero.city, hero.headline].filter(Boolean).join(" · ") || "后端暂未返回更多 headline。";
+        refs.heroProfileId.textContent = state.profileId || "-";
+        refs.heroPillLeft.textContent =
+          (detailView.verified_sections || []).flatMap((section) => section.items || []).slice(0, 2).join(" · ") ||
+          "待继续确认";
+        const notes = Array.isArray(detailView.matchmaker_notes) ? detailView.matchmaker_notes : [];
+        refs.summaryTitle.textContent = notes[0] || "红娘没有额外补充说明，前端也不会自己编造推荐理由。";
+        refs.summaryCopy.textContent =
+          notes.length > 1
+            ? `这页还拿到了 ${notes.length} 条承接说明，下面会继续展开。`
+            : "这一页仍然只承接详情读模型，不做额外业务推断。";
+        renderPhotos(detailView);
+        renderTags(detailView);
+        renderSections(detailView);
+        renderMeta();
+      }
+
+      async function loadDetail() {
+        state.loading = true;
+        renderMeta();
+        if (!state.profileId) {
+          renderEmpty("URL 里没有 `profile_id`，所以前端不知道该请求哪一个候选人详情。");
+          state.loading = false;
+          return;
+        }
+        try {
+          const query = state.sessionId ? `?session_id=${encodeURIComponent(state.sessionId)}` : "";
+          const payload = await requestJson(
+            "GET",
+            `/v1/discovery/profiles/${encodeURIComponent(state.profileId)}${query}`,
+          );
+          state.traceId = String(payload.trace_id || "").trim();
+          state.detailView = payload.detail_view || {};
+          renderDetail(state.detailView);
+        } catch (error) {
+          state.traceId = String(error.traceId || "").trim();
+          renderEmpty(error.message || "详情请求失败。");
+        } finally {
+          state.loading = false;
+          renderMeta();
+        }
+      }
+
+      function attachEvents() {
+        refs.reloadDetailBtn.addEventListener("click", () => {
+          readConfigInputs();
+          syncLocation();
+          loadDetail();
+        });
+        refs.saveConfigBtn.addEventListener("click", () => {
+          readConfigInputs();
+          syncLocation();
+          renderMeta();
+        });
+        refs.reloadConfigBtn.addEventListener("click", () => {
+          readConfigInputs();
+          syncLocation();
+          loadDetail();
+        });
+        refs.copySessionBtn.addEventListener("click", async () => {
+          if (!state.sessionId) {
+            refs.copySessionBtn.textContent = "没有 session_id";
+            return;
+          }
+          try {
+            await navigator.clipboard.writeText(state.sessionId);
+            refs.copySessionBtn.textContent = "已复制 session_id";
+            window.setTimeout(() => {
+              refs.copySessionBtn.textContent = "复制 session_id";
+            }, 1500);
+          } catch (_error) {
+            refs.copySessionBtn.textContent = "复制失败";
+          }
+        });
+      }
+
+      function bootstrap() {
+        bootstrapQueryState();
+        syncConfigInputs();
+        attachEvents();
+        syncLocation();
+        renderMeta();
+        loadDetail();
+      }
+
+      bootstrap();
     </script>
   </body>
 </html>

@@ -2,10 +2,7 @@
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1, viewport-fit=cover"
-    />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Her Prototype · 对话式发现页</title>
     <style>
       :root {
@@ -27,10 +24,6 @@
         --rose: #b74d5f;
         --rose-soft: rgba(183, 77, 95, 0.12);
         --shadow: 0 28px 70px rgba(43, 37, 28, 0.14);
-        --radius-xl: 32px;
-        --radius-lg: 24px;
-        --radius-md: 18px;
-        --radius-sm: 14px;
         font-family: "IBM Plex Sans", "PingFang SC", "Noto Sans SC", sans-serif;
       }
 
@@ -61,13 +54,13 @@
       }
 
       .page {
-        width: min(1220px, calc(100vw - 28px));
+        width: min(520px, calc(100vw - 28px));
         margin: 0 auto;
         padding: 20px 0 30px;
       }
 
       .prototype-bar {
-        display: inline-flex;
+        display: none;
         align-items: center;
         gap: 10px;
         padding: 10px 14px;
@@ -89,15 +82,12 @@
 
       .shell {
         display: grid;
-        grid-template-columns: minmax(0, 430px) minmax(0, 1fr);
-        gap: 24px;
-        align-items: start;
+        gap: 16px;
       }
 
       .phone {
-        position: sticky;
-        top: 20px;
-        min-height: calc(100vh - 50px);
+        position: static;
+        min-height: auto;
         padding: 16px;
         border-radius: 40px;
         background:
@@ -121,8 +111,7 @@
       .app {
         overflow: hidden;
         border-radius: 30px;
-        background:
-          linear-gradient(180deg, rgba(255, 253, 248, 0.98), rgba(248, 241, 230, 0.98));
+        background: linear-gradient(180deg, rgba(255, 253, 248, 0.98), rgba(248, 241, 230, 0.98));
         border: 1px solid rgba(24, 33, 31, 0.06);
       }
 
@@ -147,10 +136,12 @@
       .agent-avatar,
       .user-avatar,
       .icon-btn,
-      .meta-pill,
       .criteria-chip,
       .suggestion-chip,
-      .nav-item {
+      .quick-pill,
+      .nav-item,
+      .status-pill,
+      .tag {
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -194,6 +185,21 @@
         background: rgba(24, 33, 31, 0.06);
         color: var(--ink);
         font-size: 16px;
+        cursor: pointer;
+      }
+
+      .summary-card,
+      .search-box,
+      .inline-note,
+      .followup,
+      .panel,
+      .mini-panel,
+      .config-panel,
+      .result-card,
+      .module,
+      .field input,
+      .field textarea {
+        border: 1px solid rgba(24, 33, 31, 0.06);
       }
 
       .summary-card {
@@ -203,7 +209,6 @@
         background:
           radial-gradient(circle at top right, rgba(183, 77, 95, 0.08), transparent 28%),
           linear-gradient(140deg, rgba(15, 118, 110, 0.12), rgba(255, 255, 255, 0.7));
-        border: 1px solid rgba(15, 118, 110, 0.08);
       }
 
       .eyebrow {
@@ -215,17 +220,63 @@
         color: var(--accent);
       }
 
-      .summary-card strong {
+      .summary-card strong,
+      .search-box strong,
+      .inline-note strong,
+      .followup strong,
+      .check strong,
+      .module-title,
+      .result-group-title,
+      .config-panel h3 {
         display: block;
+      }
+
+      .summary-card strong {
         font-size: 18px;
         letter-spacing: -0.03em;
       }
 
+      .summary-card p,
+      .search-box p,
+      .inline-note p,
+      .followup p,
+      .check span,
+      .support p,
+      .mini-panel ul,
+      .helper-text {
+        color: var(--muted);
+        line-height: 1.7;
+      }
+
       .summary-card p {
         margin: 8px 0 0;
-        color: var(--muted);
         font-size: 13px;
-        line-height: 1.7;
+      }
+
+      .status-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      .status-pill {
+        padding: 8px 12px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 700;
+        background: rgba(255, 255, 255, 0.72);
+        color: var(--ink);
+      }
+
+      .status-pill.phase {
+        color: var(--accent-strong);
+        background: var(--accent-soft);
+      }
+
+      .status-pill.error {
+        color: var(--rose);
+        background: var(--rose-soft);
       }
 
       .search-state {
@@ -239,19 +290,18 @@
       }
 
       .search-box strong {
-        display: block;
         font-size: 14px;
       }
 
       .search-box p {
         margin: 6px 0 0;
-        color: var(--muted);
         font-size: 12px;
-        line-height: 1.7;
       }
 
       .criteria-row,
-      .suggestions {
+      .suggestions,
+      .quick-prompts,
+      .photo-strip {
         display: flex;
         gap: 8px;
         overflow-x: auto;
@@ -259,7 +309,9 @@
       }
 
       .criteria-row::-webkit-scrollbar,
-      .suggestions::-webkit-scrollbar {
+      .suggestions::-webkit-scrollbar,
+      .quick-prompts::-webkit-scrollbar,
+      .photo-strip::-webkit-scrollbar {
         display: none;
       }
 
@@ -267,14 +319,19 @@
         padding: 0 18px 12px;
       }
 
-      .criteria-chip {
+      .criteria-chip,
+      .quick-pill,
+      .suggestion-chip {
         white-space: nowrap;
         padding: 9px 12px;
         border-radius: 999px;
-        background: rgba(24, 33, 31, 0.06);
-        color: var(--ink);
         font-size: 12px;
         font-weight: 700;
+      }
+
+      .criteria-chip {
+        background: rgba(24, 33, 31, 0.06);
+        color: var(--ink);
       }
 
       .criteria-chip.active {
@@ -282,10 +339,21 @@
         color: var(--accent-strong);
       }
 
+      .criteria-chip.empty,
+      .quick-pill {
+        color: var(--muted);
+      }
+
+      .quick-pill {
+        border: 0;
+        background: rgba(24, 33, 31, 0.06);
+        cursor: pointer;
+      }
+
       .dialogue {
         display: grid;
         gap: 14px;
-        padding: 0 18px 110px;
+        padding: 0 18px 16px;
       }
 
       .msg {
@@ -314,11 +382,10 @@
       }
 
       .bubble {
-        max-width: 80%;
+        max-width: 84%;
         padding: 13px 14px;
         border-radius: 18px 18px 18px 6px;
         background: rgba(255, 255, 255, 0.84);
-        border: 1px solid rgba(24, 33, 31, 0.06);
         box-shadow: 0 10px 24px rgba(43, 37, 28, 0.06);
       }
 
@@ -339,51 +406,41 @@
         margin: 0;
         font-size: 14px;
         line-height: 1.7;
+        white-space: pre-wrap;
       }
 
-      .time {
-        display: block;
-        margin-top: 8px;
-        font-size: 11px;
-        color: rgba(24, 33, 31, 0.56);
-      }
-
-      .msg.user .time {
-        color: rgba(247, 250, 249, 0.76);
-      }
-
-      .inline-note {
+      .inline-note,
+      .followup {
         padding: 14px 16px;
         border-radius: 18px;
         background: rgba(24, 33, 31, 0.05);
       }
 
-      .inline-note strong {
-        display: block;
+      .inline-note strong,
+      .followup strong {
         margin-bottom: 8px;
         font-size: 13px;
       }
 
-      .inline-note p {
+      .inline-note p,
+      .followup p {
         margin: 0;
+        font-size: 13px;
+      }
+
+      .empty-state {
+        padding: 16px;
+        border-radius: 20px;
+        background: rgba(24, 33, 31, 0.05);
         color: var(--muted);
         font-size: 13px;
         line-height: 1.7;
       }
 
-      .prompt-grid {
-        display: grid;
-        gap: 10px;
-        margin-top: 12px;
-      }
-
-      .prompt-item {
-        padding: 12px 14px;
-        border-radius: 16px;
-        background: rgba(255, 255, 255, 0.76);
-        font-size: 13px;
-        font-weight: 700;
-        line-height: 1.6;
+      .result-group-title {
+        margin: 0 0 10px;
+        font-size: 15px;
+        letter-spacing: -0.02em;
       }
 
       .result-stack {
@@ -395,17 +452,12 @@
         overflow: hidden;
         border-radius: 26px;
         background: var(--panel-strong);
-        border: 1px solid rgba(255, 255, 255, 0.78);
         box-shadow: 0 18px 50px rgba(43, 37, 28, 0.09);
-      }
-
-      .result-card[data-href] {
-        cursor: pointer;
       }
 
       .result-cover {
         position: relative;
-        min-height: 138px;
+        min-height: 148px;
         padding: 16px;
         color: #f8faf9;
         display: flex;
@@ -415,26 +467,13 @@
           radial-gradient(circle at 18% 20%, rgba(255, 255, 255, 0.22), transparent 16%),
           radial-gradient(circle at 82% 18%, rgba(255, 255, 255, 0.14), transparent 16%),
           linear-gradient(145deg, #33534d 0%, #5d867d 52%, #cc9d7d 100%);
-      }
-
-      .result-cover.alt {
-        background:
-          radial-gradient(circle at 18% 20%, rgba(255, 255, 255, 0.2), transparent 16%),
-          radial-gradient(circle at 82% 18%, rgba(255, 255, 255, 0.16), transparent 16%),
-          linear-gradient(145deg, #6c4250 0%, #986c76 52%, #ddb08e 100%);
-      }
-
-      .result-top,
-      .result-bottom {
-        position: relative;
-        z-index: 1;
-        display: flex;
-        justify-content: space-between;
-        gap: 10px;
-        align-items: center;
+        background-size: cover;
+        background-position: center;
       }
 
       .meta-pill {
+        display: inline-flex;
+        align-items: center;
         gap: 8px;
         padding: 8px 12px;
         border-radius: 999px;
@@ -443,6 +482,19 @@
         color: #f8faf9;
         background: rgba(12, 18, 17, 0.38);
         border: 1px solid rgba(255, 255, 255, 0.12);
+      }
+
+      .result-top,
+      .result-bottom,
+      .person-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .result-top,
+      .result-bottom {
+        align-items: center;
       }
 
       .score {
@@ -468,16 +520,13 @@
       }
 
       .person-row {
-        display: flex;
-        justify-content: space-between;
-        gap: 12px;
         align-items: flex-start;
       }
 
       .person-row h2 {
         margin: 0;
-        font-size: 26px;
-        line-height: 1;
+        font-size: 25px;
+        line-height: 1.1;
         letter-spacing: -0.05em;
         font-family: "Iowan Old Style", "Noto Serif SC", "STSong", serif;
       }
@@ -488,30 +537,14 @@
         font-size: 14px;
       }
 
-      .fit-badge {
-        padding: 8px 10px;
-        border-radius: 14px;
-        background: var(--good-soft);
-        color: var(--good);
-        font-size: 12px;
-        font-weight: 800;
-      }
-
-      .tag-row,
-      .suggestions {
-        flex-wrap: wrap;
-      }
-
       .tag-row {
         display: flex;
+        flex-wrap: wrap;
         gap: 8px;
         margin-top: 14px;
       }
 
       .tag {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
         padding: 8px 12px;
         border-radius: 999px;
         font-size: 12px;
@@ -521,11 +554,6 @@
       .tag.good {
         color: var(--good);
         background: var(--good-soft);
-      }
-
-      .tag.accent {
-        color: var(--accent-strong);
-        background: var(--accent-soft);
       }
 
       .tag.warn {
@@ -554,32 +582,11 @@
         color: var(--muted);
       }
 
-      .reason-list,
-      .trust-grid {
-        display: grid;
-        gap: 10px;
-      }
-
-      .reason-item,
-      .trust-line {
-        display: flex;
-        justify-content: space-between;
-        gap: 10px;
-        align-items: center;
-      }
-
-      .reason-item span:first-child,
-      .trust-line span:first-child {
-        color: var(--ink);
-        font-size: 13px;
-        font-weight: 700;
-      }
-
-      .reason-item span:last-child,
-      .trust-line span:last-child {
+      .module p {
+        margin: 0;
         color: var(--muted);
         font-size: 13px;
-        text-align: right;
+        line-height: 1.7;
       }
 
       .card-actions {
@@ -589,57 +596,46 @@
         margin-top: 14px;
       }
 
-      .btn {
+      .btn,
+      .config-actions button,
+      .send-btn {
         appearance: none;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
         border: 0;
         border-radius: 18px;
         padding: 13px 14px;
         font: inherit;
         font-size: 14px;
         font-weight: 800;
-        text-decoration: none;
+        cursor: pointer;
       }
 
-      .btn.primary {
+      .btn.primary,
+      .config-actions button.primary,
+      .send-btn {
         color: #f7faf9;
         background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
       }
 
-      .btn.secondary {
+      .btn.secondary,
+      .config-actions button.secondary {
         color: var(--ink);
         background: rgba(24, 33, 31, 0.08);
       }
 
-      .followup {
-        padding: 14px 16px;
-        border-radius: 18px;
-        background: rgba(24, 33, 31, 0.05);
-      }
-
-      .followup strong {
-        display: block;
-        margin-bottom: 8px;
-        font-size: 13px;
-      }
-
-      .followup p {
-        margin: 0 0 12px;
-        color: var(--muted);
-        font-size: 13px;
-        line-height: 1.7;
+      .btn:disabled,
+      .config-actions button:disabled,
+      .send-btn:disabled,
+      .icon-btn:disabled,
+      .quick-pill:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
       }
 
       .suggestion-chip {
-        white-space: nowrap;
-        padding: 9px 12px;
-        border-radius: 999px;
+        border: 0;
         background: rgba(255, 255, 255, 0.82);
         color: var(--ink);
-        font-size: 12px;
-        font-weight: 700;
+        cursor: pointer;
       }
 
       .composer {
@@ -649,26 +645,12 @@
         background: linear-gradient(180deg, rgba(248, 241, 230, 0), rgba(248, 241, 230, 0.98) 34%);
       }
 
-      .quick-prompts {
-        display: flex;
-        gap: 8px;
-        overflow-x: auto;
-        margin-bottom: 10px;
-        scrollbar-width: none;
-      }
-
-      .quick-prompts::-webkit-scrollbar {
+      .bottom-nav {
         display: none;
       }
 
-      .quick-pill {
-        white-space: nowrap;
-        padding: 9px 12px;
-        border-radius: 999px;
-        background: rgba(24, 33, 31, 0.06);
-        color: var(--ink);
-        font-size: 12px;
-        font-weight: 700;
+      .quick-prompts {
+        margin-bottom: 10px;
       }
 
       .composer-inner {
@@ -679,24 +661,30 @@
       }
 
       .input-shell {
-        padding: 14px 16px;
+        padding: 0;
         border-radius: 18px;
         background: rgba(255, 255, 255, 0.84);
-        color: var(--muted);
-        font-size: 14px;
         border: 1px solid rgba(24, 33, 31, 0.06);
       }
 
-      .send-btn {
-        appearance: none;
+      .compose-field {
+        width: 100%;
+        min-height: 54px;
+        max-height: 140px;
+        padding: 14px 16px;
         border: 0;
-        border-radius: 18px;
-        padding: 14px 12px;
-        color: #f7faf9;
-        background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+        resize: vertical;
+        background: transparent;
+        color: var(--ink);
         font: inherit;
         font-size: 14px;
-        font-weight: 800;
+      }
+
+      .compose-field:focus,
+      .field input:focus,
+      .field textarea:focus {
+        outline: 2px solid rgba(15, 118, 110, 0.2);
+        outline-offset: 0;
       }
 
       .bottom-nav {
@@ -733,13 +721,14 @@
         gap: 18px;
       }
 
-      .panel {
+      .panel,
+      .mini-panel,
+      .config-panel {
         padding: 24px;
         border-radius: 32px;
         background:
           linear-gradient(180deg, rgba(255, 252, 247, 0.95), rgba(247, 239, 227, 0.95)),
           rgba(255, 255, 255, 0.5);
-        border: 1px solid rgba(255, 255, 255, 0.78);
         box-shadow: var(--shadow);
       }
 
@@ -750,13 +739,8 @@
         letter-spacing: -0.05em;
       }
 
-      .support p {
-        margin: 12px 0 0;
-        color: var(--muted);
-        line-height: 1.8;
-      }
-
-      .checklist {
+      .checklist,
+      .config-grid {
         display: grid;
         gap: 12px;
         margin-top: 22px;
@@ -769,15 +753,7 @@
       }
 
       .check strong {
-        display: block;
         font-size: 16px;
-      }
-
-      .check span {
-        display: block;
-        margin-top: 6px;
-        color: var(--muted);
-        line-height: 1.7;
       }
 
       .grid-panels {
@@ -786,25 +762,100 @@
         gap: 18px;
       }
 
-      .mini-panel {
-        padding: 22px;
-        border-radius: 28px;
-        background: rgba(255, 252, 247, 0.8);
-        border: 1px solid rgba(255, 255, 255, 0.75);
-        box-shadow: 0 16px 40px rgba(43, 37, 28, 0.08);
-      }
-
-      .mini-panel h3 {
+      .mini-panel h3,
+      .config-panel h3 {
         margin: 0 0 10px;
         font-size: 24px;
         letter-spacing: -0.04em;
       }
 
-      .mini-panel ul {
-        margin: 0;
-        padding-left: 18px;
+      .field {
+        display: grid;
+        gap: 6px;
+      }
+
+      .field span {
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
         color: var(--muted);
-        line-height: 1.8;
+      }
+
+      .field input,
+      .field textarea {
+        width: 100%;
+        padding: 13px 14px;
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.84);
+        color: var(--ink);
+        font: inherit;
+        font-size: 14px;
+      }
+
+      .config-actions {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 18px;
+      }
+
+      .config-meta {
+        margin-top: 14px;
+        display: grid;
+        gap: 6px;
+      }
+
+      .config-meta code {
+        padding: 3px 7px;
+        border-radius: 999px;
+        background: rgba(24, 33, 31, 0.06);
+        color: var(--ink);
+      }
+
+      .debug-shell {
+        overflow: hidden;
+        border-radius: 28px;
+        background:
+          linear-gradient(180deg, rgba(255, 252, 247, 0.95), rgba(247, 239, 227, 0.95)),
+          rgba(255, 255, 255, 0.5);
+        border: 1px solid rgba(24, 33, 31, 0.06);
+        box-shadow: var(--shadow);
+      }
+
+      .debug-summary {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: center;
+        padding: 18px 20px;
+        cursor: pointer;
+        color: var(--ink);
+        font-size: 14px;
+        font-weight: 800;
+        list-style: none;
+      }
+
+      .debug-summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .debug-hint {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .debug-content {
+        padding: 0 20px 20px;
+      }
+
+      .debug-content .config-panel {
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        box-shadow: none;
+        background: transparent;
       }
 
       @media (max-width: 1040px) {
@@ -820,7 +871,7 @@
 
       @media (max-width: 720px) {
         .page {
-          width: min(100vw - 16px, 1220px);
+          width: min(100vw - 16px, 520px);
           padding-top: 10px;
         }
 
@@ -837,13 +888,26 @@
           border-radius: 24px;
         }
 
-        .grid-panels {
+        .grid-panels,
+        .config-actions,
+        .card-actions {
           grid-template-columns: 1fr;
         }
 
-        .panel {
+        .panel,
+        .mini-panel,
+        .config-panel {
           padding: 20px;
           border-radius: 24px;
+        }
+
+        .debug-shell {
+          padding: 0;
+          border-radius: 24px;
+        }
+
+        .debug-content {
+          padding: 0 0 4px;
         }
 
         .support h2 {
@@ -856,7 +920,7 @@
     <main class="page">
       <div class="prototype-bar">
         <span class="dot"></span>
-        <span>Static prototype · 发现页已改为 AI 红娘对话式入口</span>
+        <span>Live API prototype · 发现页直接联调 `/v1/discovery/...`</span>
       </div>
 
       <div class="shell">
@@ -867,271 +931,53 @@
                 <div class="header-left">
                   <div class="agent-avatar">红娘</div>
                   <div class="title">
-                    <h1>今天先从对话里找对象</h1>
-                    <p>不是填一长串表单，而是边聊边收窄条件。</p>
+                    <h1>先聊，再找合适的人</h1>
+                    <p>你只要说要求，红娘会继续追问或给结果。</p>
                   </div>
                 </div>
-                <button class="icon-btn" type="button" aria-label="更多">⋯</button>
+                <button class="icon-btn" id="refresh-icon-btn" type="button" aria-label="恢复当前会话">↻</button>
               </div>
 
               <section class="summary-card">
-                <p class="eyebrow">Matchmaker Discovery</p>
-                <strong>红娘先理解你，再去匹配库里替你查，不让你自己盲刷。</strong>
-                <p>
-                  这一页的主交互是“说需求、被追问、看结果、继续缩小范围”。候选卡片只是对话中的结果块，不是页面的主角。
-                </p>
+                <p class="eyebrow">AI 红娘</p>
+                <strong id="summary-headline">正在连接发现页会话…</strong>
+                <p id="summary-copy">继续告诉她你的要求，她会决定下一步怎么走。</p>
+                <div class="status-row">
+                  <span class="status-pill phase" id="phase-pill">未连接</span>
+                  <span class="status-pill" id="connection-pill">等待 session</span>
+                </div>
               </section>
             </header>
 
             <section class="search-state">
               <div class="search-box">
-                <strong>本轮已整理条件 8 项</strong>
-                <p>城市：无锡｜目标：认真恋爱 / 结婚导向｜优先：真人认证、工作稳定、沟通自然｜排除：销售感太重、明显油腻</p>
+                <strong id="session-strong">准备开始这一轮对话</strong>
+                <p id="session-meta">默认先用当前资料进入，有需要再去设置里切换。</p>
               </div>
             </section>
 
-            <section class="criteria-row" aria-label="已整理条件">
-              <span class="criteria-chip active">无锡</span>
-              <span class="criteria-chip active">认真恋爱</span>
-              <span class="criteria-chip active">结婚导向</span>
-              <span class="criteria-chip">真人认证优先</span>
-              <span class="criteria-chip">工作稳定</span>
-              <span class="criteria-chip">不要销售岗</span>
-            </section>
+            <section class="criteria-row" id="criteria-row" aria-label="已整理条件"></section>
+            <section class="dialogue" id="dialogue"></section>
 
-            <section class="dialogue">
-              <div class="msg assistant">
-                <div class="user-avatar">C</div>
-                <div class="bubble">
-                  <strong>AI 红娘</strong>
-                  <p>你先不用一次把条件全说完。告诉我你大概想找什么样的人，我边听边帮你整理，再给你看第一轮合适的人。</p>
-                  <span class="time">19:30</span>
-                </div>
-              </div>
-
-              <div class="msg user">
-                <div class="bubble">
-                  <strong>我</strong>
-                  <p>我在无锡，想找认真恋爱、最好以结婚为前提的女生。别太包装，工作稳定一点，聊天自然，不要那种很油或者很销售感的。</p>
-                  <span class="time">19:31</span>
-                </div>
-              </div>
-
-              <div class="msg assistant">
-                <div class="user-avatar">C</div>
-                <div class="bubble">
-                  <strong>AI 红娘</strong>
-                  <p>我先按“无锡、认真恋爱、可信度优先、沟通自然”整理。还有两个点我想确认一下，这会明显影响结果质量。</p>
-                  <span class="time">19:32</span>
-                </div>
-              </div>
-
-              <div class="inline-note">
-                <strong>红娘正在补问关键条件</strong>
-                <div class="prompt-grid">
-                  <div class="prompt-item">1. 年龄你更希望集中在几岁？是 26-30，还是可以放宽到 31-33？</div>
-                  <div class="prompt-item">2. 你更看重“本地定居稳定”，还是“人格和聊天舒服优先”？</div>
-                </div>
-              </div>
-
-              <div class="msg user">
-                <div class="bubble">
-                  <strong>我</strong>
-                  <p>年龄先看 27 到 31。定居稳定和聊天舒服都重要，但如果只能二选一，我会先要真实和稳定。还有最好真人照片认证过。</p>
-                  <span class="time">19:33</span>
-                </div>
-              </div>
-
-              <div class="msg assistant">
-                <div class="user-avatar">C</div>
-                <div class="bubble">
-                  <strong>AI 红娘</strong>
-                  <p>明白了。我先把“真人认证优先、稳定度优先、年龄 27-31、不要强销售感”压进去，先给你看两位比较像认真认识对象的人。</p>
-                  <span class="time">19:34</span>
-                </div>
-              </div>
-
-              <div class="result-stack">
-                <article class="result-card" data-href="./profile-detail.html#lin-zhixia">
-                  <div class="result-cover">
-                    <div class="result-top">
-                      <span class="meta-pill">真人照认证 · 学历已核验</span>
-                      <div class="score">
-                        <small>匹配感</small>
-                        <strong>92</strong>
-                      </div>
-                    </div>
-                    <div class="result-bottom">
-                      <span class="meta-pill">近 2 天活跃</span>
-                      <span class="meta-pill">无明显风险</span>
-                    </div>
-                  </div>
-                  <div class="result-body">
-                    <div class="person-row">
-                      <div>
-                        <h2>林知夏 29</h2>
-                        <p>无锡 · 中学老师 · 硕士</p>
-                      </div>
-                      <div class="fit-badge">先聊她</div>
-                    </div>
-
-                    <div class="tag-row">
-                      <span class="tag good">结婚导向</span>
-                      <span class="tag accent">生活规律</span>
-                      <span class="tag soft">沟通直接</span>
-                    </div>
-
-                    <div class="module">
-                      <p class="module-title">红娘为什么先给你看她</p>
-                      <div class="reason-list">
-                        <div class="reason-item">
-                          <span>关系目标</span>
-                          <span>认真恋爱、长期关系明确</span>
-                        </div>
-                        <div class="reason-item">
-                          <span>稳定度</span>
-                          <span>工作和生活节奏都偏稳</span>
-                        </div>
-                        <div class="reason-item">
-                          <span>聊天风格</span>
-                          <span>不是强推销型表达</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div class="module">
-                      <p class="module-title">可信度拆开看</p>
-                      <div class="trust-grid">
-                        <div class="trust-line">
-                          <span>已核验</span>
-                          <span>照片、学历</span>
-                        </div>
-                        <div class="trust-line">
-                          <span>自填信息</span>
-                          <span>收入区间、工作细节</span>
-                        </div>
-                        <div class="trust-line">
-                          <span>建议确认</span>
-                          <span>对见面节奏和未来城市的想法</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div class="card-actions">
-                      <a class="btn secondary" href="./profile-detail.html#lin-zhixia">看详情</a>
-                      <button class="btn primary" type="button">继续围绕她找</button>
-                    </div>
-                  </div>
-                </article>
-
-                <article class="result-card" data-href="./profile-detail.html#zhou-qinghe">
-                  <div class="result-cover alt">
-                    <div class="result-top">
-                      <span class="meta-pill">真人照认证</span>
-                      <div class="score">
-                        <small>匹配感</small>
-                        <strong>84</strong>
-                      </div>
-                    </div>
-                    <div class="result-bottom">
-                      <span class="meta-pill">今天活跃</span>
-                      <span class="meta-pill">资料填写为主</span>
-                    </div>
-                  </div>
-                  <div class="result-body">
-                    <div class="person-row">
-                      <div>
-                        <h2>周清和 31</h2>
-                        <p>苏州-无锡通勤圈 · 产品经理 · 本科</p>
-                      </div>
-                      <div class="fit-badge" style="background: var(--warn-soft); color: var(--warn);">
-                        可再筛
-                      </div>
-                    </div>
-
-                    <div class="tag-row">
-                      <span class="tag accent">认真恋爱</span>
-                      <span class="tag soft">偏理性表达</span>
-                      <span class="tag warn">收入未核验</span>
-                    </div>
-
-                    <div class="module">
-                      <p class="module-title">为什么放第二个给你</p>
-                      <div class="reason-list">
-                        <div class="reason-item">
-                          <span>目标一致</span>
-                          <span>长期关系意愿明确</span>
-                        </div>
-                        <div class="reason-item">
-                          <span>适配点</span>
-                          <span>聊天节奏稳，边界感清楚</span>
-                        </div>
-                        <div class="reason-item">
-                          <span>不确定点</span>
-                          <span>职业真实性需要再聊细节</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div class="module">
-                      <p class="module-title">可信度拆开看</p>
-                      <div class="trust-grid">
-                        <div class="trust-line">
-                          <span>已核验</span>
-                          <span>照片</span>
-                        </div>
-                        <div class="trust-line">
-                          <span>自填信息</span>
-                          <span>工作内容、收入区间</span>
-                        </div>
-                        <div class="trust-line">
-                          <span>建议确认</span>
-                          <span>是否长期在无锡、工作稳定度</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div class="card-actions">
-                      <a class="btn secondary" href="./profile-detail.html#zhou-qinghe">看详情</a>
-                      <button class="btn primary" type="button">保留她</button>
-                    </div>
-                  </div>
-                </article>
-              </div>
-
-              <div class="followup">
-                <strong>红娘下一句不该是“还要看更多吗”，而该是继续收窄</strong>
-                <p>这时候用户最自然的动作不是无脑下滑，而是继续说“要更年轻一点”“只看无锡本地”“不要互联网加班太狠的”“必须真人认证以上”。</p>
-                <div class="suggestions">
-                  <span class="suggestion-chip">只看无锡本地</span>
-                  <span class="suggestion-chip">年龄再年轻一点</span>
-                  <span class="suggestion-chip">不要互联网强加班</span>
-                  <span class="suggestion-chip">必须真人认证以上</span>
-                  <span class="suggestion-chip">更偏温和型聊天</span>
-                </div>
-              </div>
-
-              <div class="msg assistant">
-                <div class="user-avatar">C</div>
-                <div class="bubble">
-                  <strong>AI 红娘</strong>
-                  <p>如果你愿意，我下一轮可以继续缩小成“只看无锡本地 + 真人认证以上 + 工作更稳定”的版本，这样结果会更少，但会更像你真正想认真认识的人。</p>
-                  <span class="time">19:35</span>
-                </div>
-              </div>
+            <section class="followup" id="actions-panel" hidden>
+              <strong>这一轮可以继续点这些</strong>
+              <p id="actions-copy">点一下就行，页面会自动刷新。</p>
+              <div class="suggestions" id="suggestions"></div>
             </section>
 
             <div class="composer">
-              <div class="quick-prompts">
-                <span class="quick-pill">只看无锡本地</span>
-                <span class="quick-pill">再年轻一点</span>
-                <span class="quick-pill">别销售岗</span>
-                <span class="quick-pill">真人认证以上</span>
-              </div>
+              <div class="quick-prompts" id="quick-prompts"></div>
               <div class="composer-inner">
-                <button class="icon-btn" type="button" aria-label="更多">＋</button>
-                <div class="input-shell">继续告诉红娘你的偏好，她会据此重新缩小结果。</div>
-                <button class="send-btn" type="button">发送</button>
+                <button class="icon-btn" id="new-session-btn" type="button" aria-label="新建会话">＋</button>
+                <div class="input-shell">
+                  <textarea
+                    class="compose-field"
+                    id="composer-input"
+                    rows="2"
+                    placeholder="告诉红娘你的偏好，她会替你整理并搜索。"
+                  ></textarea>
+                </div>
+                <button class="send-btn" id="send-btn" type="button">发送</button>
               </div>
             </div>
 
@@ -1144,76 +990,638 @@
           </div>
         </section>
 
-        <section class="support">
-          <article class="panel">
-            <p class="eyebrow">Page Direction</p>
-            <h2>发现页现在是“AI 红娘对话页”，不是“用户自己刷卡页”。</h2>
-            <p>
-              我已经按你说的入口重画了。用户先说需求，红娘追问关键条件，底层再去调用匹配引擎拿候选结果，最后把结果以卡片块的形式插回对话流里。这样页面主线就从“无穷下滑”变成了“逐步收窄”。
-            </p>
-            <div class="checklist">
-              <div class="check">
-                <strong>对话才是主界面</strong>
-                <span>候选人卡片只是对话中的结果块，不再是用户一打开就盲刷的大列表。</span>
+        <details class="debug-shell">
+          <summary class="debug-summary">
+            <span>联调设置</span>
+            <span class="debug-hint">不重要的信息都收在这里</span>
+          </summary>
+          <div class="debug-content">
+            <article class="config-panel">
+              <p class="helper-text">默认直接连当前 gateway。只有改用户、换资料或补 token 时，才需要展开这里。</p>
+              <div class="config-grid">
+                <label class="field">
+                  <span>API Base</span>
+                  <input id="api-base-input" type="text" autocomplete="off" />
+                </label>
+                <label class="field">
+                  <span>API Token</span>
+                  <input id="api-token-input" type="password" autocomplete="off" placeholder="gateway 开了鉴权时再填" />
+                </label>
+                <label class="field">
+                  <span>Requester ID</span>
+                  <input id="requester-id-input" type="number" min="1" step="1" />
+                </label>
+                <label class="field">
+                  <span>Profile ID</span>
+                  <input id="profile-id-input" type="number" min="1" step="1" />
+                </label>
               </div>
-              <div class="check">
-                <strong>红娘负责追问缺失条件</strong>
-                <span>像年龄范围、城市接受度、定居稳定优先级，这些都由红娘补问，不让用户先填复杂表单。</span>
+              <div class="config-actions">
+                <button class="secondary" id="save-config-btn" type="button">保存配置</button>
+                <button class="primary" id="restart-session-btn" type="button">重建 session</button>
+                <button class="secondary" id="restore-session-btn" type="button">恢复当前</button>
+                <button class="secondary" id="clear-session-btn" type="button">清空本地 session</button>
               </div>
-              <div class="check">
-                <strong>每轮结果都应该支持继续缩小</strong>
-                <span>用户自然会说“只看更稳的”“别销售岗”“必须真人认证”，前端要把这些做成对话后的快速 refinements。</span>
-              </div>
-            </div>
-          </article>
-
-          <div class="grid-panels">
-            <article class="mini-panel">
-              <h3>前端承接什么</h3>
-              <ul>
-                <li>展示红娘对话流。</li>
-                <li>把用户自然语言整理成“已理解条件”模块。</li>
-                <li>把每轮结果渲染成内嵌候选卡片。</li>
-                <li>给用户低成本继续收窄的快捷按钮。</li>
-              </ul>
-            </article>
-
-            <article class="mini-panel">
-              <h3>匹配引擎只负责什么</h3>
-              <ul>
-                <li>输入条件和画像，返回候选结果。</li>
-                <li>输出匹配理由、缺失信息、风险提示。</li>
-                <li>不负责聊天 UI、订阅、通知和会话管理。</li>
-                <li>也就是说，前端入口是红娘，对外不是技能名。</li>
-              </ul>
+              <div class="config-meta" id="config-meta"></div>
             </article>
           </div>
-        </section>
+        </details>
       </div>
     </main>
 
     <script>
-      const resultCards = document.querySelectorAll(".result-card[data-href]");
+      const DEMO_CONFIG_KEY = "her.discovery.demo.config.v1";
+      const DEMO_SESSION_KEY = "her.discovery.demo.session.v1";
+      const QUICK_PROMPTS = [
+        "我在上海，不接受抽烟，想认真恋爱。",
+        "只看上海本地，最好工作稳定一点。",
+        "年龄再集中一点，偏 27 到 31 岁。",
+        "真人认证优先，别太会包装。",
+      ];
 
-      for (const card of resultCards) {
-        const href = card.getAttribute("data-href");
-        if (!href) continue;
+      const refs = {
+        summaryHeadline: document.getElementById("summary-headline"),
+        summaryCopy: document.getElementById("summary-copy"),
+        phasePill: document.getElementById("phase-pill"),
+        connectionPill: document.getElementById("connection-pill"),
+        sessionStrong: document.getElementById("session-strong"),
+        sessionMeta: document.getElementById("session-meta"),
+        criteriaRow: document.getElementById("criteria-row"),
+        dialogue: document.getElementById("dialogue"),
+        actionsPanel: document.getElementById("actions-panel"),
+        actionsCopy: document.getElementById("actions-copy"),
+        suggestions: document.getElementById("suggestions"),
+        quickPrompts: document.getElementById("quick-prompts"),
+        composerInput: document.getElementById("composer-input"),
+        sendBtn: document.getElementById("send-btn"),
+        refreshIconBtn: document.getElementById("refresh-icon-btn"),
+        newSessionBtn: document.getElementById("new-session-btn"),
+        apiBaseInput: document.getElementById("api-base-input"),
+        apiTokenInput: document.getElementById("api-token-input"),
+        requesterIdInput: document.getElementById("requester-id-input"),
+        profileIdInput: document.getElementById("profile-id-input"),
+        saveConfigBtn: document.getElementById("save-config-btn"),
+        restartSessionBtn: document.getElementById("restart-session-btn"),
+        restoreSessionBtn: document.getElementById("restore-session-btn"),
+        clearSessionBtn: document.getElementById("clear-session-btn"),
+        configMeta: document.getElementById("config-meta"),
+      };
 
-        card.tabIndex = 0;
-        card.setAttribute("role", "link");
+      const state = {
+        loading: false,
+        session: null,
+        view: null,
+        traceId: "",
+        config: loadConfig(),
+      };
 
-        card.addEventListener("click", (event) => {
-          if (event.target.closest(".btn")) return;
-          window.location.href = href;
+      function inferDefaultApiBase() {
+        const origin = String(window.location.origin || "").trim();
+        if (origin && origin !== "null" && /^https?:\/\//.test(origin)) {
+          return origin;
+        }
+        return "http://127.0.0.1:8765";
+      }
+
+      function safeJsonParse(raw, fallback) {
+        try {
+          const parsed = JSON.parse(String(raw || ""));
+          return parsed && typeof parsed === "object" ? parsed : fallback;
+        } catch (_error) {
+          return fallback;
+        }
+      }
+
+      function loadConfig() {
+        const stored = safeJsonParse(localStorage.getItem(DEMO_CONFIG_KEY), {});
+        const query = new URLSearchParams(window.location.search);
+        return {
+          apiBase: String(query.get("api_base") || stored.apiBase || inferDefaultApiBase()).trim(),
+          apiToken: String(query.get("api_token") || stored.apiToken || "").trim(),
+          requesterId: String(query.get("requester_id") || stored.requesterId || "70001").trim(),
+          profileId: String(query.get("profile_id") || stored.profileId || "10001").trim(),
+        };
+      }
+
+      function persistConfig() {
+        localStorage.setItem(DEMO_CONFIG_KEY, JSON.stringify(state.config));
+      }
+
+      function getStoredSessionId() {
+        const query = new URLSearchParams(window.location.search);
+        const fromQuery = String(query.get("session_id") || "").trim();
+        if (fromQuery) {
+          localStorage.setItem(DEMO_SESSION_KEY, fromQuery);
+          return fromQuery;
+        }
+        return String(localStorage.getItem(DEMO_SESSION_KEY) || "").trim();
+      }
+
+      function saveSessionId(sessionId) {
+        const normalized = String(sessionId || "").trim();
+        if (!normalized) {
+          localStorage.removeItem(DEMO_SESSION_KEY);
+          return;
+        }
+        localStorage.setItem(DEMO_SESSION_KEY, normalized);
+      }
+
+      function clearStoredSession() {
+        localStorage.removeItem(DEMO_SESSION_KEY);
+      }
+
+      function syncConfigInputs() {
+        refs.apiBaseInput.value = state.config.apiBase;
+        refs.apiTokenInput.value = state.config.apiToken;
+        refs.requesterIdInput.value = state.config.requesterId;
+        refs.profileIdInput.value = state.config.profileId;
+      }
+
+      function readConfigInputs() {
+        state.config = {
+          apiBase: String(refs.apiBaseInput.value || inferDefaultApiBase()).trim(),
+          apiToken: String(refs.apiTokenInput.value || "").trim(),
+          requesterId: String(refs.requesterIdInput.value || "70001").trim(),
+          profileId: String(refs.profileIdInput.value || "10001").trim(),
+        };
+        persistConfig();
+      }
+
+      function buildHeaders(hasBody) {
+        const headers = {};
+        if (hasBody) {
+          headers["Content-Type"] = "application/json";
+        }
+        if (state.config.apiToken) {
+          headers["Authorization"] = `Bearer ${state.config.apiToken}`;
+        }
+        return headers;
+      }
+
+      function buildApiUrl(path) {
+        const base = String(state.config.apiBase || inferDefaultApiBase()).trim() || inferDefaultApiBase();
+        return new URL(path, base.endsWith("/") ? base : `${base}/`).toString();
+      }
+
+      async function requestJson(method, path, body) {
+        const response = await fetch(buildApiUrl(path.replace(/^\//, "")), {
+          method,
+          headers: buildHeaders(body !== undefined),
+          body: body === undefined ? undefined : JSON.stringify(body),
+        });
+        const text = await response.text();
+        const payload = text ? safeJsonParse(text, {}) : {};
+        if (!response.ok) {
+          throw {
+            status: response.status,
+            code: payload.error_code || payload?.error?.code || `HTTP_${response.status}`,
+            message:
+              payload.error_message ||
+              payload?.error?.message ||
+              `请求失败（${response.status}）`,
+            retryable: Boolean(payload.retryable),
+            traceId: String(payload.trace_id || "").trim(),
+          };
+        }
+        return payload;
+      }
+
+      function phaseLabel(phase) {
+        const mapping = {
+          collecting_preferences: "正在整理偏好",
+          searching: "正在搜索",
+          results_shown: "已展示结果",
+          no_result: "暂无合适结果",
+        };
+        return mapping[String(phase || "").trim()] || "等待后端决策";
+      }
+
+      function escapeHtml(text) {
+        return String(text || "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#39;");
+      }
+
+      function detailPageHref(profileId) {
+        const params = new URLSearchParams();
+        params.set("profile_id", String(profileId));
+        const sessionId = String((state.session || {}).session_id || getStoredSessionId() || "").trim();
+        if (sessionId) {
+          params.set("session_id", sessionId);
+        }
+        if (window.location.origin === "null" && state.config.apiBase) {
+          params.set("api_base", state.config.apiBase);
+        }
+        const path = window.location.pathname.includes("/demo/discovery")
+          ? "/demo/discovery/profile-detail"
+          : "./profile-detail.html";
+        return `${path}?${params.toString()}`;
+      }
+
+      function syncLocationFromState() {
+        const params = new URLSearchParams(window.location.search);
+        params.set("requester_id", state.config.requesterId);
+        params.set("profile_id", state.config.profileId);
+        const sessionId = String((state.session || {}).session_id || getStoredSessionId() || "").trim();
+        if (sessionId) {
+          params.set("session_id", sessionId);
+        } else {
+          params.delete("session_id");
+        }
+        if (window.location.origin === "null" && state.config.apiBase) {
+          params.set("api_base", state.config.apiBase);
+        }
+        const next = `${window.location.pathname}?${params.toString()}`;
+        history.replaceState(null, "", next);
+      }
+
+      function renderCriteriaChips() {
+        const chips = Array.isArray((state.view || {}).criteria_chips) ? state.view.criteria_chips : [];
+        refs.criteriaRow.innerHTML = "";
+        if (!chips.length) {
+          refs.criteriaRow.innerHTML = '<span class="criteria-chip empty">这一轮还没有整理出可展示条件</span>';
+          return;
+        }
+        for (const chip of chips) {
+          const span = document.createElement("span");
+          span.className = "criteria-chip active";
+          span.textContent = String(chip.label || "");
+          refs.criteriaRow.appendChild(span);
+        }
+      }
+
+      function renderSuggestedActions() {
+        const actions = Array.isArray((state.view || {}).suggested_actions) ? state.view.suggested_actions : [];
+        refs.suggestions.innerHTML = "";
+        refs.actionsPanel.hidden = actions.length === 0;
+        if (!actions.length) {
+          return;
+        }
+        refs.actionsCopy.textContent = "点击时前端只回传 action_id，后端会返回新的完整 view。";
+        for (const action of actions) {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "suggestion-chip";
+          button.dataset.actionId = String(action.action_id || "");
+          button.textContent = String(action.label || "继续");
+          button.disabled = state.loading;
+          refs.suggestions.appendChild(button);
+        }
+      }
+
+      function buildResultCard(candidate) {
+        const article = document.createElement("article");
+        article.className = "result-card";
+        const trustBadges = Array.isArray(candidate.trust_badges) ? candidate.trust_badges.slice(0, 2) : [];
+        const matchScore = candidate.match_score ?? "--";
+        const cover = document.createElement("div");
+        cover.className = "result-cover";
+        if (candidate.cover_image_url) {
+          cover.style.backgroundImage =
+            `linear-gradient(145deg, rgba(20, 38, 34, 0.68), rgba(92, 134, 123, 0.34), rgba(204, 157, 125, 0.5)), url("${String(candidate.cover_image_url).replaceAll('"', "&quot;")}")`;
+        }
+        cover.innerHTML = `
+          <div class="result-top">
+            <span class="meta-pill">${escapeHtml(trustBadges.join(" · ") || "待继续确认")}</span>
+            <div class="score">
+              <small>匹配感</small>
+              <strong>${escapeHtml(matchScore)}</strong>
+            </div>
+          </div>
+          <div class="result-bottom">
+            <span class="meta-pill">profile_id ${escapeHtml(candidate.profile_id)}</span>
+          </div>
+        `;
+        const body = document.createElement("div");
+        body.className = "result-body";
+
+        const tags = [];
+        for (const badge of trustBadges) {
+          tags.push(`<span class="tag good">${escapeHtml(badge)}</span>`);
+        }
+        if (!tags.length) {
+          tags.push('<span class="tag soft">信任字段待继续确认</span>');
+        }
+        if (candidate.subtitle) {
+          tags.push(`<span class="tag soft">${escapeHtml(candidate.subtitle)}</span>`);
+        }
+
+        body.innerHTML = `
+          <div class="person-row">
+            <div>
+              <h2>${escapeHtml(candidate.title || "未命名候选人")}</h2>
+              <p>${escapeHtml(candidate.subtitle || "后端暂未返回更多稳定字段")}</p>
+            </div>
+          </div>
+          <div class="tag-row">${tags.join("")}</div>
+          <div class="module">
+            <p class="module-title">红娘给出的当前理由</p>
+            <p>${escapeHtml(candidate.reason_summary || "这一轮先看整体资料。")}</p>
+          </div>
+          <div class="card-actions">
+            <button class="btn secondary" type="button" data-open-profile="${escapeHtml(candidate.profile_id)}">看详情</button>
+            <button class="btn primary" type="button" data-seed-message="${escapeHtml(candidate.title || "")} 这类再多看一点">围绕这类继续聊</button>
+          </div>
+        `;
+
+        article.appendChild(cover);
+        article.appendChild(body);
+        return article;
+      }
+
+      function renderTimeline() {
+        const timeline = Array.isArray((state.view || {}).timeline) ? state.view.timeline : [];
+        refs.dialogue.innerHTML = "";
+        if (!timeline.length) {
+          refs.dialogue.innerHTML = '<div class="empty-state">当前还没有 timeline。创建 session 后，这里会直接显示后端返回的首屏 view。</div>';
+          return;
+        }
+        for (const item of timeline) {
+          const type = String(item.item_type || "").trim();
+          if (type === "assistant_message" || type === "user_message") {
+            const wrapper = document.createElement("div");
+            wrapper.className = `msg ${type === "user_message" ? "user" : "assistant"}`;
+            if (type === "assistant_message") {
+              const avatar = document.createElement("div");
+              avatar.className = "user-avatar";
+              avatar.textContent = "C";
+              wrapper.appendChild(avatar);
+            }
+            const bubble = document.createElement("div");
+            bubble.className = "bubble";
+            bubble.innerHTML = `
+              <strong>${type === "user_message" ? "我" : "AI 红娘"}</strong>
+              <p>${escapeHtml(item.body || "")}</p>
+            `;
+            wrapper.appendChild(bubble);
+            refs.dialogue.appendChild(wrapper);
+            continue;
+          }
+          if (type === "result_group") {
+            const section = document.createElement("section");
+            section.innerHTML = `<p class="result-group-title">${escapeHtml(item.title || "这一轮结果")}</p>`;
+            const stack = document.createElement("div");
+            stack.className = "result-stack";
+            for (const card of Array.isArray(item.cards) ? item.cards : []) {
+              stack.appendChild(buildResultCard(card));
+            }
+            if (!stack.children.length) {
+              stack.innerHTML = '<div class="empty-state">这一轮后端没有返回可展示候选卡片。</div>';
+            }
+            section.appendChild(stack);
+            refs.dialogue.appendChild(section);
+            continue;
+          }
+          const fallback = document.createElement("div");
+          fallback.className = "inline-note";
+          fallback.innerHTML = `<strong>未识别的 timeline item</strong><p>${escapeHtml(JSON.stringify(item))}</p>`;
+          refs.dialogue.appendChild(fallback);
+        }
+      }
+
+      function renderQuickPrompts() {
+        refs.quickPrompts.innerHTML = "";
+        for (const prompt of QUICK_PROMPTS) {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "quick-pill";
+          button.textContent = prompt;
+          button.disabled = state.loading;
+          button.dataset.quickPrompt = prompt;
+          refs.quickPrompts.appendChild(button);
+        }
+      }
+
+      function renderMeta() {
+        const sessionId = String((state.session || {}).session_id || "").trim();
+        const phase = String((state.session || {}).phase || "").trim();
+        refs.summaryHeadline.textContent = sessionId
+          ? "红娘已经接上了，继续补充你的要求就行。"
+          : "正在准备这一轮会话。";
+        refs.summaryCopy.textContent = sessionId
+          ? "她会自己决定是继续追问、帮你筛人，还是给你下一步动作。"
+          : "如果恢复不到历史会话，页面会自动新建一轮。";
+        refs.phasePill.textContent = phaseLabel(phase);
+        refs.connectionPill.textContent = state.loading ? "请求中…" : sessionId ? "已连接" : "等待连接";
+        refs.connectionPill.className = `status-pill${state.loading ? "" : ""}`;
+        refs.sessionStrong.textContent = sessionId
+          ? "红娘已经接到你的资料"
+          : "准备开始这一轮对话";
+        refs.sessionMeta.textContent = sessionId
+          ? "直接补充年龄、城市、关系期待或不能接受的点就行。"
+          : "如果要切用户或切资料，可以去下面的联调设置里改。";
+        refs.configMeta.innerHTML = `
+          <div><strong>当前 API Base：</strong> <code>${escapeHtml(state.config.apiBase)}</code></div>
+          <div><strong>当前用户：</strong> <code>${escapeHtml(state.config.requesterId)}</code></div>
+          <div><strong>当前资料：</strong> <code>${escapeHtml(state.config.profileId)}</code></div>
+          <div><strong>当前 Session：</strong> <code>${escapeHtml(sessionId || "-")}</code></div>
+          <div><strong>当前 Trace：</strong> <code>${escapeHtml(state.traceId || "-")}</code></div>
+        `;
+      }
+
+      function applyViewPayload(payload) {
+        state.traceId = String(payload.trace_id || "").trim();
+        state.session = payload.session || null;
+        state.view = payload.view || null;
+        const nextSessionId = String(((payload || {}).session || {}).session_id || "").trim();
+        saveSessionId(nextSessionId);
+        syncLocationFromState();
+        render();
+      }
+
+      function render() {
+        renderMeta();
+        renderCriteriaChips();
+        renderTimeline();
+        renderSuggestedActions();
+        renderQuickPrompts();
+        const composer = (state.view || {}).composer || {};
+        refs.composerInput.placeholder = String(composer.placeholder || "继续告诉红娘你的要求");
+        refs.composerInput.disabled = Boolean(composer.disabled) || state.loading;
+        refs.sendBtn.disabled = Boolean(composer.disabled) || state.loading || !String(refs.composerInput.value || "").trim();
+        refs.newSessionBtn.disabled = state.loading;
+        refs.refreshIconBtn.disabled = state.loading;
+        refs.restoreSessionBtn.disabled = state.loading;
+        refs.restartSessionBtn.disabled = state.loading;
+      }
+
+      async function createSession() {
+        readConfigInputs();
+        state.loading = true;
+        render();
+        try {
+          const payload = await requestJson("POST", "/v1/discovery/sessions", {
+            requester_id: Number(state.config.requesterId),
+            profile_id: Number(state.config.profileId),
+          });
+          applyViewPayload(payload);
+        } catch (error) {
+          refs.dialogue.innerHTML = `<div class="empty-state">创建 session 失败：${escapeHtml(error.message || "未知错误")}</div>`;
+          state.traceId = String(error.traceId || "").trim();
+          state.session = null;
+          state.view = null;
+          renderMeta();
+        } finally {
+          state.loading = false;
+          render();
+        }
+      }
+
+      async function restoreSession(options = {}) {
+        readConfigInputs();
+        const sessionId = String(options.sessionId || getStoredSessionId() || "").trim();
+        if (!sessionId) {
+          await createSession();
+          return;
+        }
+        state.loading = true;
+        render();
+        try {
+          const payload = await requestJson("GET", `/v1/discovery/sessions/${encodeURIComponent(sessionId)}`);
+          applyViewPayload(payload);
+        } catch (error) {
+          if (error.code === "DISCOVERY_SESSION_NOT_FOUND" || error.code === "DISCOVERY_SESSION_CLOSED") {
+            clearStoredSession();
+            await createSession();
+            return;
+          }
+          refs.dialogue.innerHTML = `<div class="empty-state">恢复 session 失败：${escapeHtml(error.message || "未知错误")}</div>`;
+          state.traceId = String(error.traceId || "").trim();
+          renderMeta();
+        } finally {
+          state.loading = false;
+          render();
+        }
+      }
+
+      async function submitTurn(payload) {
+        const sessionId = String(((state.session || {}).session_id || getStoredSessionId()) || "").trim();
+        if (!sessionId) {
+          await createSession();
+          return;
+        }
+        state.loading = true;
+        render();
+        try {
+          const next = await requestJson(
+            "POST",
+            `/v1/discovery/sessions/${encodeURIComponent(sessionId)}/turns`,
+            payload,
+          );
+          applyViewPayload(next);
+          refs.composerInput.value = "";
+        } catch (error) {
+          refs.dialogue.insertAdjacentHTML(
+            "afterbegin",
+            `<div class="inline-note"><strong>请求失败</strong><p>${escapeHtml(error.message || "未知错误")}</p></div>`,
+          );
+          state.traceId = String(error.traceId || "").trim();
+          renderMeta();
+        } finally {
+          state.loading = false;
+          render();
+        }
+      }
+
+      function openProfile(profileId) {
+        window.location.href = detailPageHref(profileId);
+      }
+
+      function attachEvents() {
+        refs.sendBtn.addEventListener("click", () => {
+          const message = String(refs.composerInput.value || "").trim();
+          if (!message) {
+            return;
+          }
+          submitTurn({ user_message: message });
         });
 
-        card.addEventListener("keydown", (event) => {
-          if (event.key !== "Enter" && event.key !== " ") return;
-          if (event.target.closest(".btn")) return;
-          event.preventDefault();
-          window.location.href = href;
+        refs.composerInput.addEventListener("input", () => {
+          refs.sendBtn.disabled = state.loading || !String(refs.composerInput.value || "").trim();
+        });
+
+        refs.composerInput.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault();
+            refs.sendBtn.click();
+          }
+        });
+
+        refs.quickPrompts.addEventListener("click", (event) => {
+          const target = event.target.closest("[data-quick-prompt]");
+          if (!target) {
+            return;
+          }
+          submitTurn({ user_message: target.dataset.quickPrompt });
+        });
+
+        refs.suggestions.addEventListener("click", (event) => {
+          const target = event.target.closest("[data-action-id]");
+          if (!target) {
+            return;
+          }
+          submitTurn({ action_id: target.dataset.actionId });
+        });
+
+        refs.dialogue.addEventListener("click", (event) => {
+          const openButton = event.target.closest("[data-open-profile]");
+          if (openButton) {
+            openProfile(openButton.dataset.openProfile);
+            return;
+          }
+          const seedButton = event.target.closest("[data-seed-message]");
+          if (seedButton) {
+            refs.composerInput.value = seedButton.dataset.seedMessage || "";
+            refs.composerInput.focus();
+            refs.sendBtn.disabled = !String(refs.composerInput.value || "").trim();
+          }
+        });
+
+        refs.refreshIconBtn.addEventListener("click", () => restoreSession());
+        refs.newSessionBtn.addEventListener("click", () => {
+          clearStoredSession();
+          createSession();
+        });
+        refs.saveConfigBtn.addEventListener("click", () => {
+          readConfigInputs();
+          syncLocationFromState();
+          render();
+        });
+        refs.restoreSessionBtn.addEventListener("click", () => restoreSession());
+        refs.restartSessionBtn.addEventListener("click", () => {
+          clearStoredSession();
+          createSession();
+        });
+        refs.clearSessionBtn.addEventListener("click", () => {
+          clearStoredSession();
+          state.session = null;
+          state.view = null;
+          state.traceId = "";
+          syncLocationFromState();
+          render();
+          refs.dialogue.innerHTML = '<div class="empty-state">本地 session_id 已清空。点击“重建 session”或顶部“＋”重新开始。</div>';
         });
       }
+
+      async function bootstrap() {
+        syncConfigInputs();
+        attachEvents();
+        render();
+        const query = new URLSearchParams(window.location.search);
+        if (query.get("reset") === "1") {
+          clearStoredSession();
+        }
+        if (getStoredSessionId()) {
+          await restoreSession();
+          return;
+        }
+        await createSession();
+      }
+
+      bootstrap();
     </script>
   </body>
 </html>
