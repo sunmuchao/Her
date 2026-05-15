@@ -187,6 +187,28 @@ from .identity import (
 )
 from .mysql_pool import GatewayConnectionPool
 from .request_policy import client_ip, rate_limiter_from_environ
+from .profile_routes import (
+    dispatch_profile_rest,
+    rest_profile_dispute_field_verification as _rest_profile_dispute_field_verification,
+    rest_profile_evaluate_review as _rest_profile_evaluate_review,
+    rest_profile_expire_due_field_verifications as _rest_profile_expire_due_field_verifications,
+    rest_profile_get_field_verification as _rest_profile_get_field_verification,
+    rest_profile_get_photo_risk_run as _rest_profile_get_photo_risk_run,
+    rest_profile_get_review_case as _rest_profile_get_review_case,
+    rest_profile_get_review_case_appeal as _rest_profile_get_review_case_appeal,
+    rest_profile_list_field_verifications as _rest_profile_list_field_verifications,
+    rest_profile_list_photo_risk_review_queue as _rest_profile_list_photo_risk_review_queue,
+    rest_profile_list_photo_risk_runs as _rest_profile_list_photo_risk_runs,
+    rest_profile_list_review_case_appeals as _rest_profile_list_review_case_appeals,
+    rest_profile_list_review_cases as _rest_profile_list_review_cases,
+    rest_profile_resubmit_field_verification as _rest_profile_resubmit_field_verification,
+    rest_profile_review_case as _rest_profile_review_case,
+    rest_profile_review_field_verification as _rest_profile_review_field_verification,
+    rest_profile_review_review_case_appeal as _rest_profile_review_review_case_appeal,
+    rest_profile_submit_field_verification as _rest_profile_submit_field_verification,
+    rest_profile_submit_review_case_appeal as _rest_profile_submit_review_case_appeal,
+    rest_profile_verification_policies as _rest_profile_verification_policies,
+)
 from .role_sets import (
     CHAT_RISK_REVIEW_ROLES,
     INTERNAL_WRITE_ROLES,
@@ -846,63 +868,20 @@ class PartnerGateway(AsyncJobGatewayMixin):
         return _rest_verification_review_submission(self, environ, submission_id, body)
 
     def rest_profile_verification_policies(self, _environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return 200, {"policies": _json_safe(field_verification_policies())}
+        return _rest_profile_verification_policies(self, _environ)
 
     def rest_profile_submit_field_verification(
         self,
         environ: dict[str, Any],
         body: dict[str, Any],
     ) -> tuple[int, dict[str, Any]]:
-        now = _parse_optional_now(body)
-        for key in ("field_key", "profile_id", "source_dsn"):
-            if body.get(key) in (None, ""):
-                raise ValueError(f"{key} is required")
-        subject_user_id = None
-        if body.get("subject_user_id") not in (None, "") or self._current_actor(environ) is not None:
-            subject_user_id = self._resolve_actor_bound_id(
-                environ,
-                body.get("subject_user_id"),
-                field_name="subject_user_id",
-            )
-        submission = self._with_chat(
-            submit_profile_field_verification,
-            field_key=str(body["field_key"]),
-            profile_id=int(body["profile_id"]),
-            source_dsn=str(body["source_dsn"]),
-            source_table_name=body.get("source_table_name") or body.get("table_name"),
-            subject_user_id=subject_user_id,
-            declared_value=body.get("declared_value"),
-            evidence=body.get("evidence"),
-            evidence_type=body.get("evidence_type"),
-            evidence_channel=body.get("evidence_channel"),
-            required_documents=body.get("required_documents"),
-            now=now,
-        )
-        return 201, {"submission": _json_safe(submission)}
+        return _rest_profile_submit_field_verification(self, environ, body)
 
     def rest_profile_list_field_verifications(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        q = _query_dict(environ)
-        subject_user_id = q.get("subject_user_id") or None
-        actor = self._current_actor(environ)
-        if actor is not None and not actor.has_any_role(STAFF_OVERRIDE_ROLES):
-            subject_user_id = self._resolve_actor_bound_id(environ, subject_user_id, field_name="subject_user_id")
-        rows = self._with_chat(
-            list_profile_field_verification_submissions,
-            field_key=q.get("field_key") or None,
-            subject_user_id=subject_user_id,
-            profile_id=int(q["profile_id"]) if q.get("profile_id") is not None else None,
-            statuses=_statuses_from_query(q),
-            dispute_statuses=_statuses_from_query({"status": q.get("dispute_status"), "statuses": q.get("dispute_statuses")}),
-            limit=int(q.get("limit", 100)),
-        )
-        return 200, {"submissions": _json_safe(rows)}
+        return _rest_profile_list_field_verifications(self, environ)
 
     def rest_profile_get_field_verification(self, environ: dict[str, Any], submission_id: str) -> tuple[int, dict[str, Any]]:
-        submission = self._with_chat(get_profile_field_verification_submission, submission_id)
-        if not submission:
-            return 404, {"error": {"code": "not_found", "message": "profile verification submission not found"}}
-        self._assert_actor_can_access_owner(environ, submission.get("subject_user_id"), field_name="subject_user_id")
-        return 200, {"submission": _json_safe(submission)}
+        return _rest_profile_get_field_verification(self, environ, submission_id)
 
     def rest_profile_resubmit_field_verification(
         self,
@@ -910,26 +889,7 @@ class PartnerGateway(AsyncJobGatewayMixin):
         submission_id: str,
         body: dict[str, Any],
     ) -> tuple[int, dict[str, Any]]:
-        now = _parse_optional_now(body)
-        subject_user_id = None
-        if body.get("subject_user_id") not in (None, "") or self._current_actor(environ) is not None:
-            subject_user_id = self._resolve_actor_bound_id(
-                environ,
-                body.get("subject_user_id"),
-                field_name="subject_user_id",
-            )
-        submission = self._with_chat(
-            resubmit_profile_field_verification,
-            submission_id,
-            subject_user_id=subject_user_id,
-            declared_value=body.get("declared_value"),
-            evidence=body.get("evidence"),
-            evidence_type=body.get("evidence_type"),
-            evidence_channel=body.get("evidence_channel"),
-            required_documents=body.get("required_documents"),
-            now=now,
-        )
-        return 200, {"submission": _json_safe(submission)}
+        return _rest_profile_resubmit_field_verification(self, environ, submission_id, body)
 
     def rest_profile_dispute_field_verification(
         self,
@@ -937,25 +897,7 @@ class PartnerGateway(AsyncJobGatewayMixin):
         submission_id: str,
         body: dict[str, Any],
     ) -> tuple[int, dict[str, Any]]:
-        now = _parse_optional_now(body)
-        if body.get("dispute_reason") in (None, ""):
-            raise ValueError("dispute_reason is required")
-        subject_user_id = None
-        if body.get("subject_user_id") not in (None, "") or self._current_actor(environ) is not None:
-            subject_user_id = self._resolve_actor_bound_id(
-                environ,
-                body.get("subject_user_id"),
-                field_name="subject_user_id",
-            )
-        submission = self._with_chat(
-            dispute_profile_field_verification,
-            submission_id,
-            subject_user_id=subject_user_id,
-            dispute_reason=str(body["dispute_reason"]),
-            evidence=body.get("evidence"),
-            now=now,
-        )
-        return 200, {"submission": _json_safe(submission)}
+        return _rest_profile_dispute_field_verification(self, environ, submission_id, body)
 
     def rest_profile_review_field_verification(
         self,
@@ -963,133 +905,36 @@ class PartnerGateway(AsyncJobGatewayMixin):
         submission_id: str,
         body: dict[str, Any],
     ) -> tuple[int, dict[str, Any]]:
-        now = _parse_optional_now(body)
-        reviewer_id = self._resolve_operator_actor_id(
-            environ,
-            body.get("reviewer_id"),
-            field_name="reviewer_id",
-            roles=PROFILE_REVIEW_ROLES,
-            message="current actor cannot review profile verifications",
-        )
-        if body.get("decision") in (None, ""):
-            raise ValueError("decision is required")
-        submission = self._with_chat(
-            review_profile_field_verification,
-            submission_id,
-            reviewer_id,
-            decision=str(body["decision"]),
-            review_note=body.get("review_note"),
-            approved_value=body.get("approved_value"),
-            requested_documents=body.get("requested_documents"),
-            metadata=body.get("metadata"),
-            validity_days=body.get("validity_days"),
-            next_review_days=body.get("next_review_days"),
-            reverify_strategy=body.get("reverify_strategy"),
-            now=now,
-        )
-        return 200, {"submission": _json_safe(submission)}
+        return _rest_profile_review_field_verification(self, environ, submission_id, body)
 
     def rest_profile_expire_due_field_verifications(
         self,
         environ: dict[str, Any],
         body: dict[str, Any],
     ) -> tuple[int, dict[str, Any]]:
-        self._require_roles(
-            environ,
-            PROFILE_REVIEW_ROLES | INTERNAL_WRITE_ROLES,
-            message="current actor cannot expire due profile verifications",
-        )
-        now = _parse_optional_now(body)
-        result = self._with_chat(
-            expire_due_profile_field_verifications,
-            now=now,
-            limit=int(body.get("limit", 100)),
-        )
-        return 200, _json_safe(result)
+        return _rest_profile_expire_due_field_verifications(self, environ, body)
 
     def rest_profile_evaluate_review(
         self,
         environ: dict[str, Any],
         body: dict[str, Any],
     ) -> tuple[int, dict[str, Any]]:
-        self._require_roles(
-            environ,
-            PROFILE_REVIEW_ROLES | INTERNAL_WRITE_ROLES,
-            message="current actor cannot evaluate profile review cases",
-        )
-        now = _parse_optional_now(body)
-        for key in ("profile_id", "source_dsn"):
-            if body.get(key) in (None, ""):
-                raise ValueError(f"{key} is required")
-        out = self._with_chat(
-            evaluate_profile_consistency,
-            profile_id=int(body["profile_id"]),
-            source_dsn=str(body["source_dsn"]),
-            source_table_name=body.get("source_table_name") or body.get("table_name"),
-            subject_user_id=body.get("subject_user_id"),
-            now=now,
-        )
-        return 200, _json_safe(out)
+        return _rest_profile_evaluate_review(self, environ, body)
 
     def rest_profile_list_review_cases(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        q = _query_dict(environ)
-        subject_user_id = q.get("subject_user_id") or None
-        actor = self._current_actor(environ)
-        if actor is not None and not actor.has_any_role(STAFF_OVERRIDE_ROLES):
-            subject_user_id = self._resolve_actor_bound_id(environ, subject_user_id, field_name="subject_user_id")
-        rows = self._with_chat(
-            list_profile_review_cases,
-            statuses=_statuses_from_query(q),
-            profile_id=int(q["profile_id"]) if q.get("profile_id") is not None else None,
-            subject_user_id=subject_user_id,
-            limit=int(q.get("limit", 100)),
-        )
-        return 200, {"risk_cases": _json_safe(rows)}
+        return _rest_profile_list_review_cases(self, environ)
 
     def rest_profile_get_review_case(self, environ: dict[str, Any], profile_review_case_id: str) -> tuple[int, dict[str, Any]]:
-        risk_case = self._with_chat(get_profile_review_case, profile_review_case_id)
-        if not risk_case:
-            return 404, {"error": {"code": "not_found", "message": "profile review case not found"}}
-        self._assert_actor_can_access_owner(environ, risk_case.get("subject_user_id"), field_name="subject_user_id")
-        return 200, {"risk_case": _json_safe(risk_case)}
+        return _rest_profile_get_review_case(self, environ, profile_review_case_id)
 
     def rest_profile_list_photo_risk_runs(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        q = _query_dict(environ)
-        subject_user_id = q.get("subject_user_id") or None
-        actor = self._current_actor(environ)
-        if actor is not None and not actor.has_any_role(STAFF_OVERRIDE_ROLES):
-            subject_user_id = self._resolve_actor_bound_id(environ, subject_user_id, field_name="subject_user_id")
-        rows = self._with_chat(
-            list_photo_risk_score_runs,
-            profile_id=int(q["profile_id"]) if q.get("profile_id") is not None else None,
-            subject_user_id=subject_user_id,
-            profile_review_case_id=q.get("profile_review_case_id") or None,
-            limit=int(q.get("limit", 100)),
-        )
-        return 200, {"score_runs": _json_safe(rows)}
+        return _rest_profile_list_photo_risk_runs(self, environ)
 
     def rest_profile_get_photo_risk_run(self, environ: dict[str, Any], score_run_id: int) -> tuple[int, dict[str, Any]]:
-        row = self._with_chat(get_photo_risk_score_run, int(score_run_id))
-        if not row:
-            return 404, {"error": {"code": "not_found", "message": "photo risk score run not found"}}
-        self._assert_actor_can_access_owner(environ, row.get("subject_user_id"), field_name="subject_user_id")
-        return 200, {"score_run": _json_safe(row)}
+        return _rest_profile_get_photo_risk_run(self, environ, score_run_id)
 
     def rest_profile_list_photo_risk_review_queue(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        self._require_roles(
-            environ,
-            PROFILE_REVIEW_ROLES,
-            message="current actor cannot view the photo risk review queue",
-        )
-        q = _query_dict(environ)
-        rows = self._with_chat(
-            list_photo_risk_review_queue,
-            statuses=_statuses_from_query(q, key="queue_status"),
-            profile_id=int(q["profile_id"]) if q.get("profile_id") is not None else None,
-            subject_user_id=q.get("subject_user_id") or None,
-            limit=int(q.get("limit", 100)),
-        )
-        return 200, {"review_queue": _json_safe(rows)}
+        return _rest_profile_list_photo_risk_review_queue(self, environ)
 
     def rest_profile_review_case(
         self,
@@ -1097,26 +942,7 @@ class PartnerGateway(AsyncJobGatewayMixin):
         profile_review_case_id: str,
         body: dict[str, Any],
     ) -> tuple[int, dict[str, Any]]:
-        now = _parse_optional_now(body)
-        resolver_id = self._resolve_operator_actor_id(
-            environ,
-            body.get("resolver_id"),
-            field_name="resolver_id",
-            roles=PROFILE_REVIEW_ROLES,
-            message="current actor cannot review profile risk cases",
-        )
-        if body.get("status") in (None, ""):
-            raise ValueError("status is required")
-        risk_case = self._with_chat(
-            review_profile_review_case,
-            profile_review_case_id,
-            resolver_id,
-            status=str(body["status"]),
-            applied_action=body.get("applied_action"),
-            resolution_note=body.get("resolution_note"),
-            now=now,
-        )
-        return 200, {"risk_case": _json_safe(risk_case)}
+        return _rest_profile_review_case(self, environ, profile_review_case_id, body)
 
     def rest_profile_submit_review_case_appeal(
         self,
@@ -1124,41 +950,13 @@ class PartnerGateway(AsyncJobGatewayMixin):
         profile_review_case_id: str,
         body: dict[str, Any],
     ) -> tuple[int, dict[str, Any]]:
-        now = _parse_optional_now(body)
-        appellant_id = self._resolve_actor_bound_id(environ, body.get("appellant_id"), field_name="appellant_id")
-        if body.get("reason_text") in (None, ""):
-            raise ValueError("reason_text is required")
-        appeal = self._with_chat(
-            submit_profile_review_case_appeal,
-            profile_review_case_id,
-            appellant_id,
-            reason_text=str(body["reason_text"]),
-            evidence=body.get("evidence"),
-            now=now,
-        )
-        return 201, {"appeal": _json_safe(appeal)}
+        return _rest_profile_submit_review_case_appeal(self, environ, profile_review_case_id, body)
 
     def rest_profile_list_review_case_appeals(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        q = _query_dict(environ)
-        subject_user_id = q.get("subject_user_id") or None
-        actor = self._current_actor(environ)
-        if actor is not None and not actor.has_any_role(STAFF_OVERRIDE_ROLES):
-            subject_user_id = self._resolve_actor_bound_id(environ, subject_user_id, field_name="subject_user_id")
-        rows = self._with_chat(
-            list_profile_review_case_appeals,
-            statuses=_statuses_from_query(q),
-            profile_review_case_id=q.get("profile_review_case_id") or None,
-            subject_user_id=subject_user_id,
-            limit=int(q.get("limit", 100)),
-        )
-        return 200, {"appeals": _json_safe(rows)}
+        return _rest_profile_list_review_case_appeals(self, environ)
 
     def rest_profile_get_review_case_appeal(self, environ: dict[str, Any], appeal_id: int) -> tuple[int, dict[str, Any]]:
-        appeal = self._with_chat(get_profile_review_case_appeal, int(appeal_id))
-        if not appeal:
-            return 404, {"error": {"code": "not_found", "message": "profile review appeal not found"}}
-        self._assert_actor_can_access_owner(environ, appeal.get("subject_user_id"), field_name="subject_user_id")
-        return 200, {"appeal": _json_safe(appeal)}
+        return _rest_profile_get_review_case_appeal(self, environ, appeal_id)
 
     def rest_profile_review_review_case_appeal(
         self,
@@ -1166,25 +964,7 @@ class PartnerGateway(AsyncJobGatewayMixin):
         appeal_id: int,
         body: dict[str, Any],
     ) -> tuple[int, dict[str, Any]]:
-        now = _parse_optional_now(body)
-        resolver_id = self._resolve_operator_actor_id(
-            environ,
-            body.get("resolver_id"),
-            field_name="resolver_id",
-            roles=PROFILE_REVIEW_ROLES,
-            message="current actor cannot review profile appeals",
-        )
-        if body.get("appeal_status") in (None, ""):
-            raise ValueError("appeal_status is required")
-        appeal = self._with_chat(
-            review_profile_review_case_appeal,
-            int(appeal_id),
-            resolver_id,
-            appeal_status=str(body["appeal_status"]),
-            resolution_note=body.get("resolution_note"),
-            now=now,
-        )
-        return 200, {"appeal": _json_safe(appeal)}
+        return _rest_profile_review_review_case_appeal(self, environ, appeal_id, body)
 
     def rest_user_trust_hub(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         q = _query_dict(environ)
@@ -2210,56 +1990,11 @@ class PartnerGateway(AsyncJobGatewayMixin):
         verification_response = dispatch_verification_rest(self, environ, method, path)
         if verification_response is not None:
             return verification_response
+        profile_response = dispatch_profile_rest(self, environ, method, path)
+        if profile_response is not None:
+            return profile_response
         if path == "/v1/user-center/trust-hub" and method == "GET":
             return self.rest_user_trust_hub(environ)
-        if path == "/v1/profile-verifications/policies" and method == "GET":
-            return self.rest_profile_verification_policies(environ)
-        if path == "/v1/profile-verifications/submissions" and method == "POST":
-            return self.rest_profile_submit_field_verification(environ, _parse_json_body(_read_body(environ)))
-        if path == "/v1/profile-verifications/submissions" and method == "GET":
-            return self.rest_profile_list_field_verifications(environ)
-        m = re.fullmatch(r"/v1/profile-verifications/submissions/([^/]+)/resubmit", path)
-        if m and method == "POST":
-            return self.rest_profile_resubmit_field_verification(environ, m.group(1), _parse_json_body(_read_body(environ)))
-        m = re.fullmatch(r"/v1/profile-verifications/submissions/([^/]+)/dispute", path)
-        if m and method == "POST":
-            return self.rest_profile_dispute_field_verification(environ, m.group(1), _parse_json_body(_read_body(environ)))
-        m = re.fullmatch(r"/v1/profile-verifications/submissions/([^/]+)/review", path)
-        if m and method == "POST":
-            return self.rest_profile_review_field_verification(environ, m.group(1), _parse_json_body(_read_body(environ)))
-        m = re.fullmatch(r"/v1/profile-verifications/submissions/([^/]+)", path)
-        if m and method == "GET":
-            return self.rest_profile_get_field_verification(environ, m.group(1))
-        if path == "/v1/profile-verifications/expire-due" and method == "POST":
-            return self.rest_profile_expire_due_field_verifications(environ, _parse_json_body(_read_body(environ)))
-        if path == "/v1/profile-review/risk-cases/evaluate" and method == "POST":
-            return self.rest_profile_evaluate_review(environ, _parse_json_body(_read_body(environ)))
-        if path == "/v1/profile-review/risk-cases" and method == "GET":
-            return self.rest_profile_list_review_cases(environ)
-        if path == "/v1/profile-review/photo-risk/runs" and method == "GET":
-            return self.rest_profile_list_photo_risk_runs(environ)
-        if path == "/v1/profile-review/photo-risk/review-queue" and method == "GET":
-            return self.rest_profile_list_photo_risk_review_queue(environ)
-        if path == "/v1/profile-review/appeals" and method == "GET":
-            return self.rest_profile_list_review_case_appeals(environ)
-        m = re.fullmatch(r"/v1/profile-review/risk-cases/([^/]+)/review", path)
-        if m and method == "POST":
-            return self.rest_profile_review_case(environ, m.group(1), _parse_json_body(_read_body(environ)))
-        m = re.fullmatch(r"/v1/profile-review/risk-cases/([^/]+)/appeals", path)
-        if m and method == "POST":
-            return self.rest_profile_submit_review_case_appeal(environ, m.group(1), _parse_json_body(_read_body(environ)))
-        m = re.fullmatch(r"/v1/profile-review/appeals/([^/]+)/review", path)
-        if m and method == "POST":
-            return self.rest_profile_review_review_case_appeal(environ, int(m.group(1)), _parse_json_body(_read_body(environ)))
-        m = re.fullmatch(r"/v1/profile-review/appeals/([^/]+)", path)
-        if m and method == "GET":
-            return self.rest_profile_get_review_case_appeal(environ, int(m.group(1)))
-        m = re.fullmatch(r"/v1/profile-review/risk-cases/([^/]+)", path)
-        if m and method == "GET":
-            return self.rest_profile_get_review_case(environ, m.group(1))
-        m = re.fullmatch(r"/v1/profile-review/photo-risk/runs/([^/]+)", path)
-        if m and method == "GET":
-            return self.rest_profile_get_photo_risk_run(environ, int(m.group(1)))
 
         # /v1/recommendation/...
         m = re.fullmatch(r"/v1/recommendation/subscriptions/([^/]+)", path)
