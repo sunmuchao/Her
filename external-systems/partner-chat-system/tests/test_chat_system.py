@@ -54,13 +54,14 @@ from chat_system import (  # noqa: E402
 )
 import chat_system.verification as verification_module  # noqa: E402
 import chat_system.live_video_local as live_video_local_module  # noqa: E402
+import chat_system.persona_jobs as persona_jobs_module  # noqa: E402
+import chat_system.profile_reviews as profile_reviews_module  # noqa: E402
 from chat_system.outbox_admin import (  # noqa: E402
     claim_pending_outbox_batch,
     get_outbox_row,
     list_failed_outbox,
     list_pending_outbox,
     list_processing_outbox,
-    list_retry_pending_outbox,
     recover_stale_outbox_claims,
     requeue_outbox_rows,
     summarize_outbox,
@@ -370,6 +371,70 @@ class ChatSystemTests(unittest.TestCase):
         self.assertEqual(out["examined"], 0)
         self.assertEqual(out["applied"], 0)
         self.assertEqual(out["needs_review"], 0)
+
+    def test_process_pending_persona_jobs_routes_writes_through_profile_service(self):
+        self.conn.execute(
+            """
+            INSERT INTO persona_sync_jobs (
+              thread_id, message_id, subject_user_id, update_key, status, patch_json, evidence_json, created_at
+            ) VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)
+            """,
+            (
+                "thread-profile-service",
+                100000001,
+                "user-profile-service",
+                "job-key-1",
+                json.dumps({"self_job": "产品经理"}),
+                json.dumps(
+                    {
+                        "source_type": "explicit",
+                        "apply_scope": "persona_and_profile",
+                        "conversation_ref": "thread-profile-service/100000001",
+                        "evidence_text": "用户明确说自己做产品。",
+                        "confidence_score": 88,
+                    }
+                ),
+                datetime(2026, 5, 5, 8, 0, 0),
+            ),
+        )
+        self.conn.commit()
+
+        with (
+            mock.patch.dict(os.environ, {"HER_CHAT_PERSONA_MYSQL_SOURCE": "mysql://persona-source?table=profiles"}, clear=False),
+            mock.patch.object(
+                persona_jobs_module,
+                "apply_persona_patch",
+                return_value={"status": "synced", "profile_id": 88},
+            ) as mocked,
+        ):
+            out = process_pending_persona_jobs(
+                self.conn,
+                limit=10,
+                now=datetime(2026, 5, 5, 8, 5, 0),
+            )
+
+        self.assertEqual(out["examined"], 1)
+        self.assertEqual(out["applied"], 1)
+        self.assertEqual(out["needs_review"], 0)
+        mocked.assert_called_once_with(
+            {
+                "source": "mysql://persona-source?table=profiles",
+                "user_key": "user-profile-service",
+                "source_type": "explicit",
+                "patch": {"self_job": "产品经理"},
+                "confidence_score": 88,
+                "evidence_text": "用户明确说自己做产品。",
+                "conversation_ref": "thread-profile-service/100000001",
+                "sync_profile": True,
+                "apply_scope": "persona_and_profile",
+            }
+        )
+        row = self.conn.execute(
+            "SELECT status, sync_result_json FROM persona_sync_jobs WHERE update_key = ? LIMIT 1",
+            ("job-key-1",),
+        ).fetchone()
+        self.assertEqual(row["status"], "applied")
+        self.assertIn('"ok": true', row["sync_result_json"])
 
     def test_persona_sync_jobs_allow_n_updates_for_same_subject_and_message(self):
         evidence_base = {
@@ -2729,6 +2794,76 @@ class ChatSystemTests(unittest.TestCase):
         self.assertEqual(out["photo_risk_service"]["decision"]["recommended_action"], "none")
         self.assertEqual(len(list_photo_risk_score_runs(self.conn, profile_id=3201)), 1)
         self.assertEqual(list_photo_risk_review_queue(self.conn, profile_id=3201), [])
+
+    def test_evaluate_profile_consistency_gracefully_degrades_without_local_photo_runtime(self):
+        with self.conn.driver_connection.cursor() as cursor:
+            cursor.execute("DROP TABLE IF EXISTS `profile_photos`")
+            cursor.execute("DROP TABLE IF EXISTS `profiles`")
+            cursor.execute(
+                """
+                CREATE TABLE `profiles` (
+                  `id` BIGINT PRIMARY KEY,
+                  `avatar_url` VARCHAR(255),
+                  `education` VARCHAR(64),
+                  `job` VARCHAR(255),
+                  `income_range` VARCHAR(64),
+                  `city` VARCHAR(64),
+                  `job_change_count_30d` INT,
+                  `income_change_count_30d` INT,
+                  `city_change_count_30d` INT,
+                  `profile_review_status` VARCHAR(32),
+                  `job_verification_status` VARCHAR(32),
+                  `income_verification_status` VARCHAR(32),
+                  `education_verification_status` VARCHAR(32)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE `profile_photos` (
+                  `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
+                  `profile_id` BIGINT NOT NULL,
+                  `photo_url` VARCHAR(255) NOT NULL,
+                  `is_primary` TINYINT(1) DEFAULT 0,
+                  `sort_order` INT DEFAULT 0
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """
+            )
+            cursor.execute(
+                (
+                    "INSERT INTO `profiles` "
+                    "(`id`, `avatar_url`, `education`, `job`, `income_range`, `city`, "
+                    "`job_change_count_30d`, `income_change_count_30d`, `city_change_count_30d`, "
+                    "`profile_review_status`, `job_verification_status`, `income_verification_status`, `education_verification_status`) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+                ),
+                (3301, None, "本科", "行政助理", "120万+/年", "无锡", 2, 0, 0, "approved", "self_reported", "self_reported", "self_reported"),
+            )
+        self.conn.commit()
+
+        with mock.patch.object(
+            profile_reviews_module.importlib,
+            "import_module",
+            side_effect=ModuleNotFoundError("No module named 'av'"),
+        ):
+            out = evaluate_profile_consistency(
+                self.conn,
+                profile_id=3301,
+                source_dsn=f"{DEFAULT_CHAT_TEST_MYSQL_DSN}?table=profiles&photos_table=profile_photos",
+                subject_user_id="user-missing-runtime-3301",
+                now=datetime(2026, 5, 13, 16, 45, 0),
+            )
+
+        self.assertIsNotNone(out["risk_case"])
+        self.assertEqual(out["risk_case"]["recommended_action"], "limited_exposure")
+        self.assertEqual(out["photo_authenticity_review"]["analysis_status"], "unavailable")
+        self.assertEqual(out["photo_authenticity_review"]["analysis_reason"], "runtime_dependency_unavailable")
+        self.assertEqual(out["photo_authenticity_review"]["error_type"], "ModuleNotFoundError")
+        self.assertEqual(out["photo_authenticity_review"]["source_count"], 0)
+        self.assertIsNone(out["photo_review_request"])
+        rule_codes = {item["rule_code"] for item in out["rule_hits"]}
+        self.assertIn("income_job_mismatch", rule_codes)
+        self.assertIn("frequent_profile_changes", rule_codes)
 
     def test_review_profile_review_case_syncs_photo_risk_queue_status(self):
         with self.conn.driver_connection.cursor() as cursor:

@@ -6,6 +6,8 @@ import uuid
 from datetime import datetime
 from typing import Any
 
+from her_time_utils import current_time
+
 try:
     from pymysql.err import IntegrityError
 except ImportError:  # pragma: no cover
@@ -22,7 +24,7 @@ from observability import (
 from .events import chat_message_created_event, chat_thread_opened_event
 from .persona_jobs import maybe_enqueue_persona_sync_job
 from .risk import assert_message_allowed, maybe_capture_message_risk_signal
-from .storage import json_dumps, json_loads, row_to_dict
+from .storage import inflate_json_columns, json_dumps, row_to_dict
 
 VIS_DYADIC = "dyadic"
 VIS_OWNER_ONLY = "owner_only"
@@ -31,28 +33,16 @@ SRC_USER = "user"
 SRC_SYSTEM = "system"
 
 
-def current_time(now: datetime | None = None) -> datetime:
-    return (now or datetime.now()).replace(microsecond=0)
-
-
 def _generate_thread_id() -> str:
     return f"cht-{uuid.uuid4().hex[:16]}"
 
 
 def _inflate_thread(row: dict[str, Any] | None) -> dict[str, Any] | None:
-    if not row:
-        return None
-    out = dict(row)
-    out["metadata"] = json_loads(out.pop("metadata_json", None), {})
-    return out
+    return inflate_json_columns(row, metadata=("metadata_json", {}))
 
 
 def _inflate_message(row: dict[str, Any] | None) -> dict[str, Any] | None:
-    if not row:
-        return None
-    out = dict(row)
-    out["metadata"] = json_loads(out.pop("metadata_json", None), {})
-    return out
+    return inflate_json_columns(row, metadata=("metadata_json", {}))
 
 
 def get_thread(conn, thread_id: str) -> dict[str, Any] | None:

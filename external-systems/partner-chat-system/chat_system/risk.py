@@ -7,6 +7,8 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Any
 
+from her_time_utils import as_text as _as_text, current_time, unique_ordered_texts as _unique_ordered
+
 try:
     from pymysql.err import IntegrityError
 except ImportError:  # pragma: no cover
@@ -30,7 +32,7 @@ from .events import (
     chat_risk_signal_detected_event,
 )
 from .fraud_graph import get_fraud_network_profile, record_fraud_network_observation
-from .storage import json_dumps, json_loads, row_to_dict
+from .storage import inflate_json_columns, json_dumps, json_loads, row_to_dict
 from .verification import sync_photo_review_request_from_risk_case
 
 REPORT_SOURCE_USER = "user_report"
@@ -165,32 +167,8 @@ SAFETY_SIGNAL_CODE_ORDER = {
     "identity_mismatch",
     "video_refusal",
 }
-
-
-def current_time(now: datetime | None = None) -> datetime:
-    return (now or datetime.now()).replace(microsecond=0)
-
-
 def _generate_risk_case_id() -> str:
     return f"rsk-{uuid.uuid4().hex[:16]}"
-
-
-def _as_text(value: Any) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
-def _unique_ordered(values: list[str]) -> list[str]:
-    out: list[str] = []
-    seen: set[str] = set()
-    for value in values:
-        item = _as_text(value)
-        if not item or item in seen:
-            continue
-        seen.add(item)
-        out.append(item)
-    return out
 
 
 def _severity_from_signals(signal_codes: list[str], report_type: str) -> str:
@@ -320,37 +298,21 @@ def _insert_risk_signal(
 
 
 def _inflate_risk_signal(row: dict[str, Any] | None) -> dict[str, Any] | None:
-    if not row:
-        return None
-    out = dict(row)
-    out["evidence"] = json_loads(out.pop("evidence_json", None), {})
-    return out
+    return inflate_json_columns(row, evidence=("evidence_json", {}))
 
 
 def _inflate_meeting_feedback(row: dict[str, Any] | None) -> dict[str, Any] | None:
-    if not row:
-        return None
-    out = dict(row)
-    out["derived_report_ids"] = json_loads(out.pop("derived_report_ids_json", None), [])
-    return out
+    return inflate_json_columns(row, derived_report_ids=("derived_report_ids_json", []))
 
 
 def _get_thread(conn, thread_id: str) -> dict[str, Any] | None:
     cur = conn.execute("SELECT * FROM chat_threads WHERE thread_id = ? LIMIT 1", (thread_id,))
-    row = row_to_dict(cur.fetchone())
-    if not row:
-        return None
-    row["metadata"] = json_loads(row.pop("metadata_json", None), {})
-    return row
+    return inflate_json_columns(row_to_dict(cur.fetchone()), metadata=("metadata_json", {}))
 
 
 def _get_message(conn, message_id: int) -> dict[str, Any] | None:
     cur = conn.execute("SELECT * FROM chat_messages WHERE message_id = ? LIMIT 1", (int(message_id),))
-    row = row_to_dict(cur.fetchone())
-    if not row:
-        return None
-    row["metadata"] = json_loads(row.pop("metadata_json", None), {})
-    return row
+    return inflate_json_columns(row_to_dict(cur.fetchone()), metadata=("metadata_json", {}))
 
 
 def _other_participant(thread: dict[str, Any], user_id: str) -> str:

@@ -55,9 +55,9 @@ JSON-RPC：`recommendation.record_recommendation_action` / `record_user_review` 
 
 **JSON-RPC**：`search.search_profiles`，`params` 与上表一致。
 
-## 发现页（`/v1/discovery`，规划中）
+## 发现页（`/v1/discovery`）
 
-以下为发现页的**规划中契约草案**，用于前后端并行开发和联调对齐；当前仓库尚未实现这些路由，正式上线前仍以 `gateway/app.py` 实际实现为准。
+以下为当前仓库**已实现**的发现页 REST 契约摘要；网关入口以 `gateway/app.py` 为准，后端能力由 `external-systems/partner-discovery-system/` 提供。
 
 发现页约束只有两条：
 - 前端发送时只上传 `user_message` 或 `action_id`

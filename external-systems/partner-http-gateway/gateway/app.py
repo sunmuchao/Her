@@ -6,16 +6,32 @@ import json
 import mimetypes
 import os
 import re
-from datetime import date, datetime
-from pathlib import Path
+from datetime import datetime
 from typing import Any, Callable
-from urllib.parse import parse_qs, unquote
+from urllib.parse import unquote
 
 from . import _paths  # noqa: F401 — side effect: sys.path
+from .http_helpers import (  # noqa: E402
+    _augment_chat_message_metadata,
+    _demo_asset_file,
+    _extract_client_idempotency_key,
+    _gateway_error_payload,
+    _incoming_trace_id,
+    _json_safe,
+    _normalize_boolish,
+    _normalize_optional_now_text,
+    _parse_json_body,
+    _parse_optional_now,
+    _query_dict,
+    _read_body,
+    _read_live_video_demo_html,
+    _statuses_from_query,
+    _subscription_ids_from_query,
+    _wrap_trace_headers,
+)
 
 from match_domain import (  # noqa: E402
     get_trace_id,
-    new_trace_id,
     reset_actor_context,
     reset_trace_id,
     set_actor_context,
@@ -28,7 +44,6 @@ from partner_search import search_profiles as partner_search_profiles  # noqa: E
 from recommendation_system import (  # type: ignore[import-untyped]
     connect_db as recommendation_connect_db,
     create_subscription,
-    deliver_in_app_recommendations,
     get_match_case as recommendation_get_match_case,
     get_subscription,
     list_in_app_cards,
@@ -38,7 +53,6 @@ from recommendation_system import (  # type: ignore[import-untyped]
     mark_in_app_cards_read,
     record_recommendation_action,
     record_user_review,
-    refresh_due_subscriptions,
     refresh_subscription,
     update_subscription_overrides,
 )
@@ -49,14 +63,11 @@ from recommendation_system.async_tasks import (  # type: ignore[import-untyped]
     get_recommendation_async_job,
     list_recommendation_async_jobs,
     summarize_recommendation_async_jobs,
-    summarize_recommendation_async_jobs_by_type,
 )
 from recommendation_system.storage import (  # type: ignore[import-untyped]
     DEFAULT_RECOMMENDATION_MYSQL_DSN,
 )
 from matchmaking_system import (  # type: ignore[import-untyped]
-    build_mutual_pairs,
-    close_stale_cases,
     connect_db as matchmaking_connect_db,
     create_pool_member,
     dispatch_case_contact,
@@ -66,10 +77,8 @@ from matchmaking_system import (  # type: ignore[import-untyped]
     list_match_case_events,
     list_match_cases,
     list_pairs,
-    open_match_cases,
     record_case_reply,
     record_feedback,
-    refresh_active_pool,
     refresh_pool_member,
     set_pool_member_status,
 )
@@ -82,7 +91,6 @@ from matchmaking_system.async_tasks import (  # type: ignore[import-untyped]
     get_matchmaking_async_job,
     list_matchmaking_async_jobs,
     summarize_matchmaking_async_jobs,
-    summarize_matchmaking_async_jobs_by_type,
 )
 from matchmaking_system.storage import (  # type: ignore[import-untyped]
     DEFAULT_MATCHMAKING_MYSQL_DSN,
@@ -102,7 +110,6 @@ from chat_system import (  # type: ignore[import-untyped]
     evaluate_profile_consistency,
     expire_due_profile_field_verifications,
     field_verification_policies,
-    get_photo_risk_review_queue_item,
     get_photo_risk_score_run,
     get_fraud_network_profile,
     get_profile_field_verification_submission,
@@ -111,11 +118,9 @@ from chat_system import (  # type: ignore[import-untyped]
     get_risk_appeal,
     build_chat_timeline,
     get_conversation,
-    get_risk_case,
     get_or_create_thread,
     list_case_conversations,
     list_conversation_messages,
-    list_fraud_network_links,
     list_fraud_network_profiles,
     list_photo_risk_review_queue,
     list_photo_risk_score_runs,
@@ -147,7 +152,6 @@ from chat_system import (  # type: ignore[import-untyped]
     review_risk_appeal,
     review_risk_case,
     review_live_video_verification,
-    run_chat_maintenance,
     submit_profile_field_verification,
     submit_profile_review_case_appeal,
     submit_risk_appeal,
@@ -161,12 +165,8 @@ from chat_system.async_tasks import (  # type: ignore[import-untyped]
     get_chat_async_job,
     list_chat_async_jobs,
     summarize_chat_async_jobs,
-    summarize_chat_async_jobs_by_type,
 )
-from chat_system.persona_jobs import (  # type: ignore[import-untyped]
-    list_pending_persona_jobs,
-    process_pending_persona_jobs,
-)
+from chat_system.persona_jobs import process_pending_persona_jobs  # type: ignore[import-untyped]
 from chat_system.storage import (  # type: ignore[import-untyped]
     DEFAULT_CHAT_MYSQL_DSN,
     connect_db as chat_connect_db,
@@ -176,6 +176,7 @@ from discovery_system import (  # type: ignore[import-untyped]
     create_default_discovery_service,
 )
 
+from .async_jobs import AsyncJobGatewayMixin
 from .identity import (
     ActorPrincipal,
     GatewayAuthError,
@@ -196,8 +197,6 @@ from .request_policy import client_ip, rate_limiter_from_environ
 JSON_HEADERS = [("Content-Type", "application/json; charset=utf-8")]
 HTML_HEADERS = [("Content-Type", "text/html; charset=utf-8")]
 DEMO_HTML_HEADERS = HTML_HEADERS + [("Cache-Control", "no-store")]
-LIVE_VIDEO_DEMO_FILE = Path(__file__).with_name("live_video_verification_demo.html")
-DEMO_ASSET_ROOT = Path(__file__).with_name("demo_assets")
 
 RouteHandler = Callable[..., tuple[int, dict[str, Any]]]
 
@@ -231,158 +230,7 @@ CHAT_RISK_REVIEW_ROLES = frozenset(
 )
 
 
-def _incoming_trace_id(environ: dict[str, Any]) -> str:
-    raw = (
-        (environ.get("HTTP_X_TRACE_ID") or "").strip()
-        or (environ.get("HTTP_X_REQUEST_ID") or "").strip()
-    )
-    if raw and len(raw) <= 128:
-        return raw
-    return new_trace_id()
-
-
-def _wrap_trace_headers(base: Callable[..., Any], trace_id: str) -> Callable[..., Any]:
-    def sr(status: str, response_headers: list[tuple[str, str]], exc_info: Any = None) -> Any:
-        merged = list(response_headers)
-        if not any(h[0].lower() == "x-trace-id" for h in merged):
-            merged.append(("X-Trace-ID", trace_id))
-        # Some test doubles only implement the 2-arg WSGI ``start_response`` signature.
-        if exc_info is not None:
-            return base(status, merged, exc_info)
-        return base(status, merged)
-
-    return sr
-
-
-def _extract_client_idempotency_key(environ: dict[str, Any], body: dict[str, Any]) -> str | None:
-    h = (environ.get("HTTP_IDEMPOTENCY_KEY") or "").strip()
-    if h:
-        return h[:191]
-    v = body.get("client_idempotency_key") if isinstance(body, dict) else None
-    if v is None and isinstance(body, dict):
-        v = body.get("idempotency_key")
-    if v is not None and str(v).strip():
-        return str(v).strip()[:191]
-    return None
-
-
-def _gateway_error_payload(code: str, message: str, trace_id: str) -> dict[str, Any]:
-    return {"error": {"code": code, "message": message}, "trace_id": trace_id}
-
-
-def _read_live_video_demo_html() -> str:
-    return LIVE_VIDEO_DEMO_FILE.read_text(encoding="utf-8")
-
-
-def _demo_asset_file(asset_path: str) -> Path | None:
-    cleaned = str(asset_path or "").lstrip("/")
-    if not cleaned:
-        return None
-    target = (DEMO_ASSET_ROOT / cleaned).resolve()
-    root = DEMO_ASSET_ROOT.resolve()
-    if target != root and root not in target.parents:
-        return None
-    if not target.is_file():
-        return None
-    return target
-
-
-def _json_safe(value: Any) -> Any:
-    if isinstance(value, datetime):
-        return value.isoformat(sep=" ")
-    if isinstance(value, date):
-        return value.isoformat()
-    if isinstance(value, dict):
-        return {k: _json_safe(v) for k, v in value.items()}
-    if isinstance(value, list):
-        return [_json_safe(v) for v in value]
-    if isinstance(value, tuple):
-        return [_json_safe(v) for v in value]
-    return value
-
-
-def _read_body(environ: dict[str, Any], max_bytes: int = 8 * 1024 * 1024) -> bytes:
-    try:
-        size = int(environ.get("CONTENT_LENGTH") or 0)
-    except ValueError:
-        size = 0
-    if size > max_bytes:
-        raise ValueError("Request body too large")
-    stream = environ["wsgi.input"]
-    return stream.read(size) if size else stream.read()
-
-
-def _parse_json_body(raw: bytes) -> dict[str, Any]:
-    if not raw:
-        return {}
-    data = json.loads(raw.decode("utf-8"))
-    if not isinstance(data, dict):
-        raise ValueError("JSON body must be an object")
-    return data
-
-
-def _parse_optional_now(params: dict[str, Any]) -> datetime | None:
-    raw = params.get("now")
-    if raw is None or raw == "":
-        return None
-    if isinstance(raw, datetime):
-        return raw
-    return datetime.fromisoformat(str(raw))
-
-
-def _normalize_optional_now_text(raw: Any) -> str | None:
-    if raw is None or raw == "":
-        return None
-    if isinstance(raw, datetime):
-        return raw.replace(microsecond=0).isoformat(sep=" ")
-    return datetime.fromisoformat(str(raw)).replace(microsecond=0).isoformat(sep=" ")
-
-
-def _query_dict(environ: dict[str, Any]) -> dict[str, str]:
-    qs = environ.get("QUERY_STRING") or ""
-    parsed = parse_qs(qs, keep_blank_values=True)
-    return {k: v[-1] if v else "" for k, v in parsed.items()}
-
-
-def _normalize_boolish(value: Any, default: bool = False) -> bool:
-    if isinstance(value, bool):
-        return value
-    if value is None:
-        return default
-    if isinstance(value, str):
-        return value.strip().lower() in ("1", "true", "yes", "on")
-    return bool(value)
-
-
-def _subscription_ids_from_query(q: dict[str, str]) -> list[str] | None:
-    raw = q.get("subscription_ids") or q.get("ids")
-    if not raw:
-        return None
-    return [s.strip() for s in raw.split(",") if s.strip()]
-
-
-def _statuses_from_query(q: dict[str, str], key: str = "status") -> list[str] | None:
-    raw = q.get(key) or q.get("statuses")
-    if not raw:
-        return None
-    return [s.strip() for s in raw.split(",") if s.strip()]
-
-
-def _augment_chat_message_metadata(environ: dict[str, Any], metadata: Any) -> dict[str, Any] | None:
-    payload = dict(metadata) if isinstance(metadata, dict) else {}
-    risk_observation = dict(payload.get("risk_observation") or {})
-    remote_ip = client_ip(environ)
-    if remote_ip and remote_ip != "0.0.0.0":
-        risk_observation.setdefault("client_ip", remote_ip)
-    user_agent = (environ.get("HTTP_USER_AGENT") or "").strip()
-    if user_agent:
-        risk_observation.setdefault("user_agent", user_agent[:512])
-    if risk_observation:
-        payload["risk_observation"] = risk_observation
-    return payload or None
-
-
-class PartnerGateway:
+class PartnerGateway(AsyncJobGatewayMixin):
     def __init__(
         self,
         *,
@@ -448,207 +296,6 @@ class PartnerGateway:
             return fn(conn, *args, **kwargs)
         finally:
             conn.close()
-
-    def _decorate_async_job(self, target: str, job: dict[str, Any]) -> dict[str, Any]:
-        payload = dict(job)
-        payload["target"] = target
-        payload["poll_path"] = f"/v1/{target}/jobs/{payload['job_id']}"
-        return _json_safe(payload)
-
-    def _decorate_async_jobs(self, target: str, jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        return [self._decorate_async_job(target, job) for job in jobs]
-
-    def _decorate_async_job_type_summary(self, target: str, summary: dict[str, Any]) -> dict[str, Any]:
-        payload = {"target": target}
-        payload.update(summary)
-        return _json_safe(payload)
-
-    def _decorate_async_job_type_summaries(self, target: str, summaries: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        return [self._decorate_async_job_type_summary(target, summary) for summary in summaries]
-
-    def _empty_async_job_summary(self) -> dict[str, Any]:
-        return {
-            "total": 0,
-            "backlog_open": 0,
-            "due_now": 0,
-            "processing_overdue": 0,
-            "oldest_due_created_at": None,
-            "latest_finished_at": None,
-            "by_status": {
-                "pending": 0,
-                "processing": 0,
-                "retry_pending": 0,
-                "succeeded": 0,
-                "failed": 0,
-            },
-        }
-
-    def _job_payload(self, target: str, job: dict[str, Any]) -> dict[str, Any]:
-        return {"job": self._decorate_async_job(target, job), "trace_id": get_trace_id()}
-
-    def _job_collection_payload(self, target: str, jobs: list[dict[str, Any]], summary: dict[str, Any]) -> dict[str, Any]:
-        return {
-            "summary": _json_safe(summary),
-            "jobs": self._decorate_async_jobs(target, jobs),
-            "trace_id": get_trace_id(),
-        }
-
-    def _async_job_dashboard_system(
-        self,
-        *,
-        target: str,
-        with_fn: Callable[..., Any],
-        list_fn: Callable[..., Any],
-        summary_fn: Callable[..., Any],
-        summary_by_type_fn: Callable[..., Any],
-        limit: int,
-    ) -> dict[str, Any]:
-        try:
-            summary = with_fn(summary_fn)
-            job_types = with_fn(summary_by_type_fn)
-            jobs = with_fn(list_fn, limit=limit)
-        except Exception as exc:  # noqa: BLE001 - dashboard should degrade per subsystem
-            return {
-                "available": False,
-                "error": str(exc),
-                "summary": self._empty_async_job_summary(),
-                "job_types": [],
-                "recent_jobs": [],
-            }
-        return {
-            "available": True,
-            "summary": _json_safe(summary),
-            "job_types": self._decorate_async_job_type_summaries(target, job_types),
-            "recent_jobs": self._decorate_async_jobs(target, jobs),
-        }
-
-    def _async_job_dashboard_payload(self, systems: dict[str, dict[str, Any]]) -> dict[str, Any]:
-        totals = {
-            "total": 0,
-            "backlog_open": 0,
-            "due_now": 0,
-            "processing_overdue": 0,
-            "pending": 0,
-            "processing": 0,
-            "retry_pending": 0,
-            "succeeded": 0,
-            "failed": 0,
-        }
-        job_types: list[dict[str, Any]] = []
-        for system_payload in systems.values():
-            summary = system_payload.get("summary") or {}
-            by_status = summary.get("by_status") or {}
-            totals["total"] += int(summary.get("total") or 0)
-            totals["backlog_open"] += int(summary.get("backlog_open") or 0)
-            totals["due_now"] += int(summary.get("due_now") or 0)
-            totals["processing_overdue"] += int(summary.get("processing_overdue") or 0)
-            totals["pending"] += int(by_status.get("pending") or 0)
-            totals["processing"] += int(by_status.get("processing") or 0)
-            totals["retry_pending"] += int(by_status.get("retry_pending") or 0)
-            totals["succeeded"] += int(by_status.get("succeeded") or 0)
-            totals["failed"] += int(by_status.get("failed") or 0)
-            for item in system_payload.get("job_types") or []:
-                if isinstance(item, dict):
-                    job_types.append(item)
-        job_types.sort(
-            key=lambda item: (
-                -int(item.get("backlog_open") or 0),
-                -int(item.get("due_now") or 0),
-                -int((item.get("by_status") or {}).get("failed") or 0),
-                -int(item.get("total") or 0),
-                str(item.get("target") or ""),
-                str(item.get("job_type") or ""),
-            )
-        )
-        return {
-            "systems": systems,
-            "totals": totals,
-            "job_types": job_types,
-            "trace_id": get_trace_id(),
-        }
-
-    def _build_async_job_dashboard(self, *, limit: int) -> dict[str, Any]:
-        safe_limit = max(int(limit), 1)
-        systems = {
-            "recommendation": self._async_job_dashboard_system(
-                target="recommendation",
-                with_fn=self._with_rec,
-                list_fn=list_recommendation_async_jobs,
-                summary_fn=summarize_recommendation_async_jobs,
-                summary_by_type_fn=summarize_recommendation_async_jobs_by_type,
-                limit=safe_limit,
-            ),
-            "matchmaking": self._async_job_dashboard_system(
-                target="matchmaking",
-                with_fn=self._with_mm,
-                list_fn=list_matchmaking_async_jobs,
-                summary_fn=summarize_matchmaking_async_jobs,
-                summary_by_type_fn=summarize_matchmaking_async_jobs_by_type,
-                limit=safe_limit,
-            ),
-            "chat": self._async_job_dashboard_system(
-                target="chat",
-                with_fn=self._with_chat,
-                list_fn=list_chat_async_jobs,
-                summary_fn=summarize_chat_async_jobs,
-                summary_by_type_fn=summarize_chat_async_jobs_by_type,
-                limit=safe_limit,
-            ),
-        }
-        return self._async_job_dashboard_payload(systems)
-
-    def _enqueue_async_job(
-        self,
-        environ: dict[str, Any],
-        *,
-        target: str,
-        with_fn: Callable[..., Any],
-        enqueue_fn: Callable[..., Any],
-        job_type: str,
-        payload: dict[str, Any],
-    ) -> tuple[int, dict[str, Any]]:
-        actor = self._current_actor(environ)
-        job = with_fn(
-            enqueue_fn,
-            job_type=job_type,
-            payload=payload,
-            created_by=actor.actor_id if actor is not None else None,
-            trace_id=get_trace_id(),
-        )
-        return 202, self._job_payload(target, job)
-
-    def _get_async_job(
-        self,
-        *,
-        target: str,
-        with_fn: Callable[..., Any],
-        get_fn: Callable[..., Any],
-        job_id: str,
-    ) -> tuple[int, dict[str, Any]]:
-        job = with_fn(get_fn, job_id)
-        if not job:
-            return 404, {"error": {"code": "not_found", "message": "job not found"}, "trace_id": get_trace_id()}
-        return 200, self._job_payload(target, job)
-
-    def _list_async_jobs(
-        self,
-        environ: dict[str, Any],
-        *,
-        target: str,
-        with_fn: Callable[..., Any],
-        list_fn: Callable[..., Any],
-        summary_fn: Callable[..., Any],
-    ) -> tuple[int, dict[str, Any]]:
-        q = _query_dict(environ)
-        statuses = _statuses_from_query(q)
-        limit_raw = q.get("limit") or "50"
-        try:
-            limit = int(limit_raw)
-        except ValueError:
-            limit = 50
-        jobs = with_fn(list_fn, statuses=statuses, limit=limit)
-        summary = with_fn(summary_fn)
-        return 200, self._job_collection_payload(target, jobs, summary)
 
     # --- REST ---
 

@@ -5,7 +5,6 @@ import json
 import pathlib
 import sys
 import unittest
-from datetime import datetime
 
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]

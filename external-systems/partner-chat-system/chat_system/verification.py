@@ -12,13 +12,13 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, unquote, urlparse
 
-import outer_system_mysql_schema as schema
-from outer_mysql_compat import connect_mysql_repo_db
+from her_time_utils import as_text as _as_text, current_time as _current_time, unique_ordered_texts as _unique_ordered
+
 from partner_moderation import ACTION_FREEZE, get_active_moderation_state
+from profile_service import apply_profile_updates, list_profile_photo_sources, resolve_profile_source
 
-from .storage import json_dumps, json_loads, row_to_dict
+from .storage import inflate_json_columns, json_dumps, json_loads, row_to_dict
 
 VERIFICATION_TYPE_LIVE_VIDEO = "live_video"
 VERIFICATION_PROVIDER_LOCAL_OSS = "local_oss"
@@ -62,7 +62,6 @@ CHALLENGE_CAPTURE_MODE_REALTIME = "realtime_challenge"
 DEFAULT_CHALLENGE_TTL_SECONDS = 15 * 60
 DEFAULT_CHALLENGE_SPOKEN_CODE_LENGTH = 2
 MIN_SPOKEN_PROMPT_DISPLAY_MS = 1200
-DEFAULT_PROFILE_PHOTOS_TABLE = "profile_photos"
 DEFAULT_REFERENCE_FACE_CANDIDATE_LIMIT = 6
 LIVE_CHALLENGE_ACTION_LIBRARY = {
     "blink": {"label": "眨眼"},
@@ -189,24 +188,6 @@ def _normalize_action_keys(value: Any) -> list[str]:
             continue
         seen.add(key)
         out.append(key)
-    return out
-
-
-def _as_text(value: Any) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
-def _unique_ordered(values: list[Any] | tuple[Any, ...] | set[Any] | None) -> list[str]:
-    out: list[str] = []
-    seen: set[str] = set()
-    for value in list(values or []):
-        item = _as_text(value)
-        if not item or item in seen:
-            continue
-        seen.add(item)
-        out.append(item)
     return out
 
 
@@ -937,10 +918,6 @@ def _validate_live_challenge_submission(
     return enriched_metadata, str(payload.get("challenge_phrase") or _challenge_phrase(required_actions))
 
 
-def _current_time(now: datetime | None = None) -> datetime:
-    return (now or datetime.now()).replace(microsecond=0)
-
-
 def _generate_submission_id() -> str:
     return f"vfy-{uuid.uuid4().hex[:16]}"
 
@@ -1066,27 +1043,15 @@ def _parse_statuses(value: list[str] | tuple[str, ...] | str | None) -> list[str
 
 
 def _inflate_asset(row: dict[str, Any] | None) -> dict[str, Any] | None:
-    if not row:
-        return None
-    out = dict(row)
-    out["metadata"] = _normalize_metadata(json_loads(out.pop("metadata_json", None), {}))
-    return out
+    return inflate_json_columns(row, metadata=("metadata_json", {}, _normalize_metadata))
 
 
 def _inflate_review(row: dict[str, Any] | None) -> dict[str, Any] | None:
-    if not row:
-        return None
-    out = dict(row)
-    out["metadata"] = _normalize_metadata(json_loads(out.pop("metadata_json", None), {}))
-    return out
+    return inflate_json_columns(row, metadata=("metadata_json", {}, _normalize_metadata))
 
 
 def _inflate_notification(row: dict[str, Any] | None) -> dict[str, Any] | None:
-    if not row:
-        return None
-    out = dict(row)
-    out["metadata"] = _normalize_metadata(json_loads(out.pop("metadata_json", None), {}))
-    return out
+    return inflate_json_columns(row, metadata=("metadata_json", {}, _normalize_metadata))
 
 
 def list_verification_notifications(
@@ -2678,38 +2643,12 @@ def resubmit_live_video_verification(
     return updated
 
 
-def _resolve_profile_source(source_dsn: str | None, source_table_name: str | None) -> tuple[str | None, str | None]:
-    dsn = str(source_dsn or "").strip()
-    if not dsn:
-        return None, None
-    explicit_table = str(source_table_name or "").strip() or None
-    if explicit_table:
-        return dsn, explicit_table
-    parsed = urlparse(dsn)
-    query = parse_qs(parsed.query)
-    table_name = query.get("table", [None])[0]
-    if table_name:
-        return dsn, unquote(table_name)
-    return dsn, None
-
-
 def _reference_face_candidate_limit() -> int:
     try:
         value = int(os.environ.get("HER_VERIFICATION_REFERENCE_FACE_CANDIDATE_LIMIT", DEFAULT_REFERENCE_FACE_CANDIDATE_LIMIT))
     except (TypeError, ValueError):
         value = DEFAULT_REFERENCE_FACE_CANDIDATE_LIMIT
     return max(1, min(value, 12))
-
-
-def _resolve_profile_photo_table(source_dsn: str | None) -> str | None:
-    dsn = str(source_dsn or "").strip()
-    if not dsn:
-        return None
-    parsed = urlparse(dsn)
-    query = parse_qs(parsed.query)
-    table_name = query.get("photos_table", [DEFAULT_PROFILE_PHOTOS_TABLE])[0]
-    normalized = str(table_name or "").strip()
-    return unquote(normalized) if normalized else None
 
 
 def _load_profile_reference_face_sources(
@@ -2719,110 +2658,35 @@ def _load_profile_reference_face_sources(
     source_table_name: str | None,
 ) -> list[str]:
     normalized_profile_id = int(profile_id) if profile_id is not None else None
-    normalized_source_dsn, profile_table = _resolve_profile_source(source_dsn, source_table_name)
+    normalized_source_dsn, profile_table = resolve_profile_source(source_dsn, source_table_name)
     if normalized_profile_id is None or not normalized_source_dsn or not profile_table:
         return []
-
-    photo_table = _resolve_profile_photo_table(normalized_source_dsn)
-    profile_conn = connect_mysql_repo_db(normalized_source_dsn, subsystem_name="VerificationReferenceFaces")
-    try:
-        raw_conn = profile_conn.driver_connection
-        if not schema.table_exists(raw_conn, profile_table) or not schema.column_exists(raw_conn, profile_table, "id"):
-            return []
-        profile_row = profile_conn.execute(
-            f"SELECT * FROM {schema.quote_mysql_ident(profile_table)} WHERE {schema.quote_mysql_ident('id')} = ? LIMIT 1",
-            (normalized_profile_id,),
-        ).fetchone()
-        profile = row_to_dict(profile_row)
-        if not profile:
-            return []
-
-        sources: list[str] = []
-        seen: set[str] = set()
-        if photo_table and schema.table_exists(raw_conn, photo_table):
-            if schema.column_exists(raw_conn, photo_table, "profile_id") and schema.column_exists(raw_conn, photo_table, "photo_url"):
-                order_clauses: list[str] = []
-                if schema.column_exists(raw_conn, photo_table, "is_primary"):
-                    order_clauses.append(f"{schema.quote_mysql_ident('is_primary')} DESC")
-                if schema.column_exists(raw_conn, photo_table, "photo_type"):
-                    order_clauses.append(
-                        f"CASE WHEN {schema.quote_mysql_ident('photo_type')} = 'avatar' THEN 0 ELSE 1 END ASC"
-                    )
-                if schema.column_exists(raw_conn, photo_table, "sort_order"):
-                    order_clauses.append(f"{schema.quote_mysql_ident('sort_order')} ASC")
-                if schema.column_exists(raw_conn, photo_table, "id"):
-                    order_clauses.append(f"{schema.quote_mysql_ident('id')} ASC")
-                order_sql = ", ".join(order_clauses) if order_clauses else f"{schema.quote_mysql_ident('photo_url')} ASC"
-                rows = profile_conn.execute(
-                    (
-                        f"SELECT {schema.quote_mysql_ident('photo_url')} AS photo_url "
-                        f"FROM {schema.quote_mysql_ident(photo_table)} "
-                        f"WHERE {schema.quote_mysql_ident('profile_id')} = ? "
-                        f"ORDER BY {order_sql} "
-                        f"LIMIT ?"
-                    ),
-                    (normalized_profile_id, _reference_face_candidate_limit()),
-                ).fetchall()
-                for row in rows:
-                    photo_url = str((row_to_dict(row).get("photo_url") if row else "") or "").strip()
-                    if not photo_url or photo_url in seen:
-                        continue
-                    seen.add(photo_url)
-                    sources.append(photo_url)
-        avatar_url = str(profile.get("avatar_url") or "").strip()
-        if avatar_url and avatar_url not in seen and not sources:
-            sources.append(avatar_url)
-        return sources
-    finally:
-        profile_conn.close()
+    return list_profile_photo_sources(
+        source_dsn=normalized_source_dsn,
+        source_table_name=profile_table,
+        profile_id=normalized_profile_id,
+        limit=_reference_face_candidate_limit(),
+    )
 
 
 def _sync_live_video_status_to_profile(submission: dict[str, Any], *, reviewed_at: datetime) -> dict[str, Any]:
     profile_id = submission.get("profile_id")
-    source_dsn, table_name = _resolve_profile_source(submission.get("source_dsn"), submission.get("source_table_name"))
+    source_dsn, table_name = resolve_profile_source(submission.get("source_dsn"), submission.get("source_table_name"))
     if profile_id is None or not source_dsn or not table_name:
         return {"status": "skipped", "reason": "profile source is not configured"}
-
-    profile_conn = connect_mysql_repo_db(source_dsn, subsystem_name="VerificationProfileSync")
-    updated_fields: list[str] = []
-    try:
-        raw_conn = profile_conn.driver_connection
-        if not schema.column_exists(raw_conn, table_name, "id"):
-            raise ValueError(f"profile table {table_name} is missing id column")
-        assignments: list[str] = []
-        values: list[Any] = []
-        if schema.column_exists(raw_conn, table_name, "photo_verification_level"):
-            assignments.append(f"{schema.quote_mysql_ident('photo_verification_level')} = ?")
-            values.append("live_video_verified")
-            updated_fields.append("photo_verification_level")
-        if schema.column_exists(raw_conn, table_name, "live_video_verified"):
-            assignments.append(f"{schema.quote_mysql_ident('live_video_verified')} = ?")
-            values.append(1)
-            updated_fields.append("live_video_verified")
-        if schema.column_exists(raw_conn, table_name, "updated_at"):
-            assignments.append(f"{schema.quote_mysql_ident('updated_at')} = ?")
-            values.append(reviewed_at)
-            updated_fields.append("updated_at")
-        if not assignments:
-            raise ValueError(f"profile table {table_name} has no live-video verification fields")
-        sql = (
-            f"UPDATE {schema.quote_mysql_ident(table_name)} "
-            f"SET {', '.join(assignments)} "
-            f"WHERE {schema.quote_mysql_ident('id')} = ?"
-        )
-        values.append(int(profile_id))
-        result = profile_conn.execute(sql, tuple(values))
-        if int(result.rowcount or 0) <= 0:
-            raise ValueError(f"profile {profile_id} was not found in table {table_name}")
-        profile_conn.commit()
-        return {
-            "status": "synced",
-            "updated_fields": updated_fields,
-            "table_name": table_name,
-            "profile_id": int(profile_id),
-        }
-    finally:
-        profile_conn.close()
+    sync_result = apply_profile_updates(
+        source_dsn=source_dsn,
+        source_table_name=table_name,
+        profile_id=int(profile_id),
+        updates={
+            "photo_verification_level": "live_video_verified",
+            "live_video_verified": 1,
+            "updated_at": reviewed_at,
+        },
+    )
+    if sync_result.get("status") == "skipped":
+        raise ValueError(f"profile table {table_name} has no live-video verification fields")
+    return sync_result
 
 
 def review_live_video_verification(

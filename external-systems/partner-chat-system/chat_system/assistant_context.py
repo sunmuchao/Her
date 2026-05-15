@@ -4,16 +4,13 @@ from __future__ import annotations
 
 from typing import Any
 
+from .persona_source import load_public_profile_from_persona_source
 from .conversations import get_conversation_by_case_and_key, list_case_conversations
-from .storage import json_loads, row_to_dict
+from .storage import inflate_json_columns, row_to_dict
 
 
 def _inflate_case_message(row: dict[str, Any] | None) -> dict[str, Any] | None:
-    if not row:
-        return None
-    out = dict(row)
-    out["metadata"] = json_loads(out.pop("metadata_json", None), {})
-    return out
+    return inflate_json_columns(row, metadata=("metadata_json", {}))
 
 
 def list_recent_case_messages(
@@ -234,7 +231,6 @@ def list_case_conversation_catalog(conn, case_id: str) -> list[dict[str, Any]]:
         )
     return out
 
-
 def get_profile_snapshot(conn, case_id: str, participant_id: str) -> dict[str, Any]:
     participant_id = str(participant_id or "").strip()
     main_group = get_conversation_by_case_and_key(conn, case_id, "main_group")
@@ -256,6 +252,13 @@ def get_profile_snapshot(conn, case_id: str, participant_id: str) -> dict[str, A
         persona = metadata.get("participant_b_persona")
     elif participant_id and participant_id == str(metadata.get("agent_id") or ""):
         role = "agent"
+
+    candidate_profile_id = profile_id or (profile or {}).get("id")
+    if candidate_profile_id is not None:
+        public_profile = load_public_profile_from_persona_source(candidate_profile_id)
+        profile = dict(public_profile or {})
+        if public_profile:
+            profile_id = public_profile.get("id") or profile_id
 
     conversations = list_case_conversations(conn, case_id)
     conversation_roles: list[dict[str, Any]] = []
