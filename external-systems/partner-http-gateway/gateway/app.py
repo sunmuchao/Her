@@ -86,17 +86,6 @@ from matchmaking_system.async_tasks import (  # type: ignore[import-untyped]
 from matchmaking_system.storage import (  # type: ignore[import-untyped]
     DEFAULT_MATCHMAKING_MYSQL_DSN,
 )
-from chat_system import (  # type: ignore[import-untyped]
-    create_live_video_verification_challenge,
-    list_photo_review_requests,
-    list_verification_notifications,
-    list_verification_submissions,
-    get_verification_submission,
-    request_live_video_verification,
-    resubmit_live_video_verification,
-    review_live_video_verification,
-    submit_live_video_verification,
-)
 from chat_system.storage import (  # type: ignore[import-untyped]
     DEFAULT_CHAT_MYSQL_DSN,
     connect_db as chat_connect_db,
@@ -181,6 +170,7 @@ from .matchmaking_routes import (
 from .mysql_pool import GatewayConnectionPool
 from .profile_jsonrpc import JSONRPC_NOT_HANDLED as PROFILE_JSONRPC_NOT_HANDLED, handle_profile_jsonrpc
 from .request_policy import client_ip, rate_limiter_from_environ
+from .verification_jsonrpc import JSONRPC_NOT_HANDLED as VERIFICATION_JSONRPC_NOT_HANDLED, handle_verification_jsonrpc
 from .profile_routes import (
     dispatch_profile_rest,
     rest_profile_dispute_field_verification as _rest_profile_dispute_field_verification,
@@ -221,10 +211,8 @@ from .recommendation_routes import (
     rest_refresh_subscription as _rest_refresh_subscription,
 )
 from .role_sets import (
-    CHAT_RISK_REVIEW_ROLES,
     INTERNAL_WRITE_ROLES,
     STAFF_OVERRIDE_ROLES,
-    VERIFICATION_REVIEW_ROLES,
 )
 from .verification_routes import (
     dispatch_verification_rest,
@@ -1197,135 +1185,9 @@ class PartnerGateway(AsyncJobGatewayMixin):
             except (TypeError, ValueError):
                 limit = 5
             return self._build_async_job_dashboard(limit=limit)
-        if method == "verification.submit_live_video":
-            user_id = self._resolve_actor_bound_id(environ, p.get("user_id"), field_name="user_id")
-            return self._with_chat(
-                submit_live_video_verification,
-                user_id=user_id,
-                video_base64=str(p.get("video_base64") or p.get("video_bytes_base64") or ""),
-                file_name=str(p.get("file_name") or p.get("filename") or ""),
-                submission_id=p.get("submission_id"),
-                content_type=p.get("content_type"),
-                profile_id=int(p["profile_id"]) if p.get("profile_id") is not None else None,
-                source_dsn=p.get("source_dsn") or p.get("source"),
-                source_table_name=p.get("source_table_name") or p.get("table_name"),
-                challenge_token=p.get("challenge_token"),
-                challenge_phrase=p.get("challenge_phrase"),
-                metadata=p.get("metadata"),
-                now=p.get("now"),
-            )
-        if method == "verification.request_live_video":
-            self._require_roles(
-                environ,
-                VERIFICATION_REVIEW_ROLES | CHAT_RISK_REVIEW_ROLES,
-                message="current actor cannot request live video verification",
-            )
-            return self._with_chat(
-                request_live_video_verification,
-                user_id=str(p["user_id"]),
-                profile_id=int(p["profile_id"]) if p.get("profile_id") is not None else None,
-                source_dsn=p.get("source_dsn") or p.get("source"),
-                source_table_name=p.get("source_table_name") or p.get("table_name"),
-                request_source=str(p.get("request_source") or "risk_case_review"),
-                request_reason=p.get("request_reason") or p.get("reason_text"),
-                signal_codes=p.get("signal_codes") or p.get("reason_codes"),
-                risk_case_id=p.get("risk_case_id"),
-                report_ids=p.get("report_ids"),
-                requested_by=self._resolve_optional_operator_actor_id(
-                    environ,
-                    p.get("requested_by") or p.get("resolver_id"),
-                    field_name="requested_by",
-                    roles=VERIFICATION_REVIEW_ROLES | CHAT_RISK_REVIEW_ROLES,
-                    message="current actor cannot request live video verification",
-                ),
-                due_at=p.get("due_at"),
-                metadata=p.get("metadata"),
-                now=p.get("now"),
-            )
-        if method == "verification.create_live_challenge":
-            user_id = self._resolve_actor_bound_id(environ, p.get("user_id"), field_name="user_id")
-            return create_live_video_verification_challenge(
-                user_id=user_id,
-                profile_id=int(p["profile_id"]) if p.get("profile_id") is not None else None,
-                challenge_actions=p.get("challenge_actions") or p.get("required_actions"),
-                challenge_action_pool=p.get("challenge_action_pool") or p.get("allowed_actions"),
-                action_count=int(p.get("action_count", 3)),
-                now=p.get("now"),
-            )
-        if method == "verification.list_submissions":
-            user_id = str(p["user_id"]) if p.get("user_id") is not None else None
-            actor = self._current_actor(environ)
-            if actor is not None and not actor.has_any_role(STAFF_OVERRIDE_ROLES):
-                user_id = self._resolve_actor_bound_id(environ, user_id, field_name="user_id")
-            return self._with_chat(
-                list_verification_submissions,
-                user_id=user_id,
-                statuses=p.get("statuses") or p.get("status"),
-                profile_id=int(p["profile_id"]) if p.get("profile_id") is not None else None,
-                limit=int(p.get("limit", 100)),
-            )
-        if method == "verification.list_photo_review_requests":
-            user_id = str(p["user_id"]) if p.get("user_id") is not None else None
-            actor = self._current_actor(environ)
-            if actor is not None and not actor.has_any_role(STAFF_OVERRIDE_ROLES):
-                user_id = self._resolve_actor_bound_id(environ, user_id, field_name="user_id")
-            return self._with_chat(
-                list_photo_review_requests,
-                user_id=user_id,
-                statuses=p.get("statuses") or p.get("status"),
-                profile_id=int(p["profile_id"]) if p.get("profile_id") is not None else None,
-                limit=int(p.get("limit", 100)),
-            )
-        if method == "verification.get_submission":
-            submission = self._with_chat(get_verification_submission, str(p["submission_id"]))
-            self._assert_actor_can_access_owner(environ, (submission or {}).get("user_id"), field_name="user_id")
-            return submission
-        if method == "verification.list_notifications":
-            user_id = str(p["user_id"]) if p.get("user_id") is not None else None
-            actor = self._current_actor(environ)
-            if actor is not None and not actor.has_any_role(STAFF_OVERRIDE_ROLES):
-                user_id = self._resolve_actor_bound_id(environ, user_id, field_name="user_id")
-            return self._with_chat(
-                list_verification_notifications,
-                submission_id=str(p["submission_id"]) if p.get("submission_id") is not None else None,
-                user_id=user_id,
-                notification_types=p.get("types") or p.get("type"),
-                limit=int(p.get("limit", 100)),
-            )
-        if method == "verification.resubmit_live_video":
-            user_id = self._resolve_actor_bound_id(environ, p.get("user_id"), field_name="user_id")
-            return self._with_chat(
-                resubmit_live_video_verification,
-                str(p["submission_id"]),
-                user_id=user_id,
-                video_base64=str(p.get("video_base64") or p.get("video_bytes_base64") or ""),
-                file_name=str(p.get("file_name") or p.get("filename") or ""),
-                content_type=p.get("content_type"),
-                challenge_token=p.get("challenge_token"),
-                challenge_phrase=p.get("challenge_phrase"),
-                metadata=p.get("metadata"),
-                now=p.get("now"),
-            )
-        if method == "verification.review_submission":
-            reviewer_id = self._resolve_operator_actor_id(
-                environ,
-                p.get("reviewer_id"),
-                field_name="reviewer_id",
-                roles=VERIFICATION_REVIEW_ROLES,
-                message="current actor cannot review live video submissions",
-            )
-            return self._with_chat(
-                review_live_video_verification,
-                str(p["submission_id"]),
-                reviewer_id,
-                decision=str(p["decision"]),
-                review_note=p.get("review_note"),
-                liveness_result=p.get("liveness_result"),
-                face_match_result=p.get("face_match_result"),
-                profile_consistency_result=p.get("profile_consistency_result"),
-                metadata=p.get("metadata"),
-                now=p.get("now"),
-            )
+        handled = handle_verification_jsonrpc(self, environ, method, p)
+        if handled is not VERIFICATION_JSONRPC_NOT_HANDLED:
+            return handled
         if method == "recommendation.get_subscription":
             self._get_recommendation_subscription_for_actor(environ, p["subscription_id"])
             return self._with_rec(get_subscription, p["subscription_id"])
