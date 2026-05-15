@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import hashlib
 import zlib
 from typing import Any
@@ -16,7 +15,9 @@ from datetime import datetime
 
 from match_domain.trace_context import get_trace_id
 from observability import CHAT_FUNNEL_PERSONA_JOB_ENQUEUED, funnel_stage
+from profile_service import apply_persona_patch
 
+from .persona_source import persona_mysql_source
 from .storage import json_dumps, json_loads, row_to_dict
 
 _SRC_USER = "user"
@@ -150,18 +151,12 @@ def list_pending_persona_jobs(conn, *, limit: int = 50) -> list[dict[str, Any]]:
     )
     return [dict(r) for r in cur.fetchall()]
 
-
-def _persona_mysql_source() -> str | None:
-    raw = (os.environ.get("HER_CHAT_PERSONA_MYSQL_SOURCE") or "").strip()
-    return raw or None
-
-
 def process_pending_persona_jobs(conn, *, limit: int = 20, now=None) -> dict[str, Any]:
     """Consume pending jobs: call persona-memory-sync when ``HER_CHAT_PERSONA_MYSQL_SOURCE`` is set; else ``needs_review``."""
 
     ts = _ts(now)
     rows = list_pending_persona_jobs(conn, limit=limit)
-    source = _persona_mysql_source()
+    source = persona_mysql_source()
     applied = 0
     review = 0
 
@@ -190,8 +185,6 @@ def process_pending_persona_jobs(conn, *, limit: int = 20, now=None) -> dict[str
             continue
 
         try:
-            from persona_memory_sync import upsert_persona_memory  # noqa: PLC0415
-
             conv = str(evidence.get("conversation_ref") or "")
             snippet = str(evidence.get("body_snippet") or "")
             evidence_text = str(evidence.get("evidence_text") or snippet)
@@ -238,7 +231,7 @@ def process_pending_persona_jobs(conn, *, limit: int = 20, now=None) -> dict[str
                 )
                 review += 1
                 continue
-            result = upsert_persona_memory(
+            result = apply_persona_patch(
                 {
                     "source": source,
                     "user_key": subject,

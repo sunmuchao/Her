@@ -6,15 +6,12 @@ from datetime import datetime
 from typing import Any
 
 from async_jobs import (
-    AsyncJobHandler,
-    enqueue_async_job,
     get_async_job,
     list_async_jobs,
-    run_async_job_worker,
     summarize_async_jobs,
     summarize_async_jobs_by_type,
 )
-from observability.health import emit_async_job_gauges
+from her_external_systems import AsyncJobHandler, enqueue_external_async_job, run_external_async_job_worker
 
 from .service import deliver_in_app_recommendations, parse_dt, refresh_due_subscriptions
 
@@ -61,16 +58,14 @@ def enqueue_recommendation_async_job(
     trace_id: str | None = None,
     now: datetime | None = None,
 ) -> dict[str, Any]:
-    handler = _HANDLERS.get(job_type)
-    if handler is None:
-        raise ValueError(f"unsupported recommendation async job type: {job_type}")
-    return enqueue_async_job(
+    return enqueue_external_async_job(
         conn,
+        handlers=_HANDLERS,
+        subsystem_name="recommendation",
         job_type=job_type,
         payload=payload,
         created_by=created_by,
         trace_id=trace_id,
-        max_attempts=handler.max_attempts,
         now=now,
     )
 
@@ -118,9 +113,10 @@ def run_recommendation_async_job_worker(
     worker_name: str = "recommendation-async-worker",
     now: datetime | None = None,
 ) -> dict[str, Any]:
-    out = run_async_job_worker(
+    return run_external_async_job_worker(
         conn,
         handlers=_HANDLERS,
+        system="recommendation",
         limit=limit,
         retry_delay_seconds=retry_delay_seconds,
         retry_backoff_multiplier=retry_backoff_multiplier,
@@ -129,13 +125,6 @@ def run_recommendation_async_job_worker(
         worker_name=worker_name,
         now=now,
     )
-    out["summary"] = emit_async_job_gauges(
-        conn,
-        system="recommendation",
-        now=(now or datetime.now()).replace(microsecond=0),
-        claim_timeout_seconds=claim_timeout_seconds,
-    )
-    return out
 
 
 __all__ = [

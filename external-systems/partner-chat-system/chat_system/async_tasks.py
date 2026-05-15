@@ -6,28 +6,18 @@ from datetime import datetime
 from typing import Any
 
 from async_jobs import (
-    AsyncJobHandler,
-    enqueue_async_job,
     get_async_job,
     list_async_jobs,
-    run_async_job_worker,
     summarize_async_jobs,
     summarize_async_jobs_by_type,
 )
-from observability.health import emit_async_job_gauges
+from her_external_systems import AsyncJobHandler, enqueue_external_async_job, run_external_async_job_worker
+from her_time_utils import parse_dt_trimmed
 
 from .maintenance import run_chat_maintenance
 
 
 JOB_RUN_CHAT_MAINTENANCE = "chat.run_maintenance"
-
-
-def _parse_dt(value: Any) -> datetime | None:
-    if value is None or value == "":
-        return None
-    if isinstance(value, datetime):
-        return value.replace(microsecond=0)
-    return datetime.fromisoformat(str(value)).replace(microsecond=0)
 
 
 def _normalize_flush_outbox(value: Any) -> bool | None:
@@ -46,7 +36,7 @@ def _run_maintenance(conn, payload: dict[str, Any]) -> dict[str, Any]:
         "summary_max_threads": int(payload.get("summary_max_threads", 30)),
         "flush_outbox": _normalize_flush_outbox(payload.get("flush_outbox")),
     }
-    job_now = _parse_dt(payload.get("now"))
+    job_now = parse_dt_trimmed(payload.get("now"))
     if job_now is not None:
         kwargs["now"] = job_now
     return run_chat_maintenance(conn, **kwargs)
@@ -70,16 +60,14 @@ def enqueue_chat_async_job(
     trace_id: str | None = None,
     now: datetime | None = None,
 ) -> dict[str, Any]:
-    handler = _HANDLERS.get(job_type)
-    if handler is None:
-        raise ValueError(f"unsupported chat async job type: {job_type}")
-    return enqueue_async_job(
+    return enqueue_external_async_job(
         conn,
+        handlers=_HANDLERS,
+        subsystem_name="chat",
         job_type=job_type,
         payload=payload,
         created_by=created_by,
         trace_id=trace_id,
-        max_attempts=handler.max_attempts,
         now=now,
     )
 
@@ -127,9 +115,10 @@ def run_chat_async_job_worker(
     worker_name: str = "chat-async-worker",
     now: datetime | None = None,
 ) -> dict[str, Any]:
-    out = run_async_job_worker(
+    return run_external_async_job_worker(
         conn,
         handlers=_HANDLERS,
+        system="chat",
         limit=limit,
         retry_delay_seconds=retry_delay_seconds,
         retry_backoff_multiplier=retry_backoff_multiplier,
@@ -138,13 +127,6 @@ def run_chat_async_job_worker(
         worker_name=worker_name,
         now=now,
     )
-    out["summary"] = emit_async_job_gauges(
-        conn,
-        system="chat",
-        now=(now or datetime.now()).replace(microsecond=0),
-        claim_timeout_seconds=claim_timeout_seconds,
-    )
-    return out
 
 
 __all__ = [

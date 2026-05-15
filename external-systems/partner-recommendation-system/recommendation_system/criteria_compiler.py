@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any, Mapping
 
+from her_time_utils import clean_text as _clean_text
 from .storage import json_loads
 
 
@@ -25,15 +26,6 @@ LIST_FIELD_KEYS = {
     "required_known_fields",
     "exclude_source_channels",
 }
-
-
-def _clean_text(value: Any) -> str | None:
-    if value is None:
-        return None
-    text = str(value).strip()
-    return text or None
-
-
 def _as_list(value: Any) -> list[Any]:
     if value is None:
         return []

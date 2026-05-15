@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from her_time_utils import coerce_dt as _coerce_dt, current_time
+
 from .assistant_context import (
     build_case_agent_bootstrap,
     get_message_window,
@@ -26,21 +28,8 @@ from .assistant_sessions import (
 from .conversations import get_conversation_by_case_and_key, post_conversation_message
 from .persona_jobs import enqueue_persona_sync_job
 
-
 def _normalize_now(now: datetime | None = None) -> datetime:
-    return (now or datetime.now()).replace(microsecond=0)
-
-
-def _coerce_dt(value: Any) -> datetime | None:
-    if isinstance(value, datetime):
-        return value
-    text = str(value or "").strip()
-    if not text:
-        return None
-    try:
-        return datetime.fromisoformat(text)
-    except ValueError:
-        return None
+    return current_time(now)
 
 
 def _ensure_connection(conn) -> None:

@@ -32,7 +32,8 @@ from match_domain import (  # noqa: E402
     reduce_case_ledger,
 )
 from partner_search import search_profiles  # noqa: E402
-from persona_memory_sync import upsert_persona_memory  # noqa: E402
+from profile_service import apply_persona_patch  # noqa: E402
+from her_time_utils import bool_to_int, current_time, format_dt, parse_dt  # noqa: E402
 
 from .storage import json_dumps, json_loads, row_to_dict
 
@@ -53,7 +54,7 @@ from observability import (  # noqa: E402
 SearchRunner = Callable[..., dict[str, Any]]
 PersonaSyncRunner = Callable[[Mapping[str, Any]], dict[str, Any]]
 run_partner_search = search_profiles
-sync_persona_memory = upsert_persona_memory
+sync_persona_memory = apply_persona_patch
 
 ACTIVE_MEMBER_STATUS = "active_single"
 OPEN_CASE_STATUSES = {
@@ -63,30 +64,6 @@ OPEN_CASE_STATUSES = {
     "awaiting_second_reply",
 }
 FINAL_CASE_STATUSES = {"mutual_accept", "declined", "timed_out", "closed"}
-
-
-def current_time(now: datetime | None = None) -> datetime:
-    return (now or datetime.now()).replace(microsecond=0)
-
-
-def format_dt(value: datetime | None) -> str | None:
-    if value is None:
-        return None
-    return current_time(value).isoformat(sep=" ")
-
-
-def parse_dt(value: str | datetime | None) -> datetime | None:
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return current_time(value)
-    if not value:
-        return None
-    return datetime.fromisoformat(value)
-
-
-def bool_to_int(value: bool) -> int:
-    return 1 if value else 0
 
 
 def member_is_available(member: Mapping[str, Any]) -> bool:

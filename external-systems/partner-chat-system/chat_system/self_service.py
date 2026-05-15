@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any, Iterable
+from typing import Any
 
-from partner_moderation import ACTION_FREEZE, ACTION_LIMIT_CHAT, ACTION_LIMITED_EXPOSURE, ACTION_REQUIRE_VERIFICATION, get_active_moderation_state
+from her_time_utils import as_text as _as_text, unique_ordered_texts as _unique_ordered
+
+from partner_moderation import ACTION_FREEZE, ACTION_LIMIT_CHAT, ACTION_LIMITED_EXPOSURE
 
 from .moderation_ops import list_risk_appeals
 from .profile_reviews import (
@@ -66,24 +67,6 @@ FIELD_REQUEST_STATES = {
     FIELD_SUBMISSION_STATUS_EXPIRED,
     FIELD_SUBMISSION_STATUS_APPROVED,
 }
-
-
-def _as_text(value: Any) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
-def _unique_ordered(values: Iterable[Any]) -> list[str]:
-    out: list[str] = []
-    seen: set[str] = set()
-    for value in values:
-        item = _as_text(value)
-        if not item or item in seen:
-            continue
-        seen.add(item)
-        out.append(item)
-    return out
 
 
 def _item_time(item: dict[str, Any]) -> str:
