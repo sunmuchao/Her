@@ -8,6 +8,8 @@ import sys
 import unittest
 from unittest import mock
 
+from agents import AgentOutputSchema
+
 
 DISCOVERY_ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(DISCOVERY_ROOT) not in sys.path:
@@ -16,8 +18,10 @@ if str(DISCOVERY_ROOT) not in sys.path:
 from discovery_system.agent_runtime import (  # noqa: E402
     AgentsSdkDiscoveryAgentRuntime,
     DiscoveryActionSuggestion,
+    DiscoveryActionSuggestionModel,
     DiscoveryCandidateSelection,
     DiscoveryDecision,
+    DiscoveryDecisionModel,
     DiscoveryRunInput,
     DiscoveryRuntimeResult,
 )
@@ -238,6 +242,7 @@ class DiscoveryServiceTests(unittest.TestCase):
 
         def _fake_agent(**kwargs):
             captured["tools"] = kwargs.get("tools")
+            captured["output_type"] = kwargs.get("output_type")
             return object()
 
         def _fake_run_sync(_agent, input, **kwargs):
@@ -302,7 +307,72 @@ class DiscoveryServiceTests(unittest.TestCase):
                 "create_saved_search_subscription_from_last_search",
             ],
         )
+        output_type = captured["output_type"]
+        self.assertIsInstance(output_type, AgentOutputSchema)
+        self.assertTrue(output_type.is_strict_json_schema())
         self.assertEqual(result.decision.assistant_message, "先说说你的基本要求。")
+
+    def test_discovery_decision_schema_is_strict_compatible_and_enumerated(self) -> None:
+        schema = AgentOutputSchema(DiscoveryDecisionModel, strict_json_schema=True).json_schema()
+        self.assertEqual(
+            schema["properties"]["phase"]["enum"],
+            ["collecting_preferences", "searching", "results_shown", "no_result"],
+        )
+        action_schema = schema["$defs"]["DiscoveryActionSuggestionModel"]
+        style_schema = action_schema["properties"]["style"]
+        self.assertEqual(style_schema["enum"], ["primary", "secondary", "ghost"])
+        self.assertFalse(action_schema["additionalProperties"])
+        payload_schema = action_schema["properties"]["semantic_payload"]
+        self.assertIn("anyOf", payload_schema)
+        union_schema = next(
+            item for item in payload_schema["anyOf"] if isinstance(item, dict) and "discriminator" in item
+        )
+        mapping = union_schema["discriminator"]["mapping"]
+        self.assertIn("saved_search_opt_in", mapping)
+
+    def test_discovery_action_suggestion_model_supports_known_payload_shapes(self) -> None:
+        model = DiscoveryActionSuggestionModel.model_validate(
+            {
+                "label": "细聊这三位",
+                "style": "primary",
+                "semantic_payload": {
+                    "kind": "refine_candidates",
+                    "candidates": [30017, 30003, 30029],
+                },
+            }
+        )
+        payload = model.semantic_payload
+        assert payload is not None
+        self.assertEqual(payload.kind, "refine_candidates")
+        self.assertEqual(payload.candidates, [30017, 30003, 30029])
+
+    def test_discovery_decision_model_accepts_message_alias_and_age_preference_payload(self) -> None:
+        model = DiscoveryDecisionModel.model_validate(
+            {
+                "phase": "collecting_preferences",
+                "message": "先确认一下你想找男生还是女生。",
+                "criteria_labels": ["上海", "认真恋爱"],
+                "suggested_actions": [
+                    {
+                        "label": "男生，27-35岁",
+                        "style": "secondary",
+                        "semantic_payload": {
+                            "kind": "age_preference",
+                            "target_gender": "男",
+                            "age_min": 27,
+                            "age_max": 35,
+                        },
+                    }
+                ],
+            }
+        )
+        self.assertEqual(model.assistant_message, "先确认一下你想找男生还是女生。")
+        payload = model.suggested_actions[0].semantic_payload
+        assert payload is not None
+        self.assertEqual(payload.kind, "age_preference")
+        self.assertEqual(payload.target_gender, "男")
+        self.assertEqual(payload.age_min, 27)
+        self.assertEqual(payload.age_max, 35)
 
     def test_service_renders_cards_from_canonical_search_result(self) -> None:
         service = DiscoveryService(

@@ -4,22 +4,23 @@ from __future__ import annotations
 
 import json
 import os
-import re
 from dataclasses import dataclass, field
-from json import JSONDecodeError
 from typing import Any, Callable, Protocol
 
-from her_env import coerce_json_object, env_first, env_float
-from pydantic import BaseModel, Field, model_validator
+from her_env import env_first, env_float
 
-
-VALID_PHASES = {
-    "collecting_preferences",
-    "searching",
-    "results_shown",
-    "no_result",
-}
-VALID_ACTION_STYLES = {"primary", "secondary", "ghost"}
+from .decision_models import (
+    DiscoveryActionSuggestion,
+    DiscoveryActionSuggestionModel,
+    DiscoveryCandidateSelection,
+    DiscoveryDecision,
+    DiscoveryDecisionModel,
+    DiscoveryRuntimeResult,
+    DiscoveryToolCall,
+    recover_decision_from_exception as _recover_decision_from_exception,
+    to_decision as _to_decision,
+    validate_decision_output as _validate_decision_output,
+)
 
 
 @dataclass(frozen=True)
@@ -38,43 +39,6 @@ class DiscoveryRunInput:
     agent_session: Any | None = None
 
 
-@dataclass(frozen=True)
-class DiscoveryActionSuggestion:
-    label: str
-    style: str = "secondary"
-    semantic_payload: dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class DiscoveryCandidateSelection:
-    profile_id: int
-    reason_summary: str = ""
-
-
-@dataclass(frozen=True)
-class DiscoveryToolCall:
-    tool_name: str
-    arguments: dict[str, Any] = field(default_factory=dict)
-    result: dict[str, Any] = field(default_factory=dict)
-    status: str = "succeeded"
-
-
-@dataclass(frozen=True)
-class DiscoveryDecision:
-    phase: str
-    assistant_message: str
-    criteria_labels: list[str] = field(default_factory=list)
-    suggested_actions: list[DiscoveryActionSuggestion] = field(default_factory=list)
-    result_group_title: str | None = None
-    selected_candidates: list[DiscoveryCandidateSelection] = field(default_factory=list)
-
-
-@dataclass(frozen=True)
-class DiscoveryRuntimeResult:
-    decision: DiscoveryDecision
-    search_response: dict[str, Any] | None = None
-
-
 class DiscoveryAgentRuntime(Protocol):
     def initial_decision(self, run_input: DiscoveryRunInput) -> DiscoveryRuntimeResult: ...
 
@@ -87,40 +51,6 @@ class DiscoveryAgentRuntime(Protocol):
     ) -> DiscoveryRuntimeResult: ...
 
 
-class DiscoveryActionSuggestionModel(BaseModel):
-    label: str
-    style: str = Field(default="secondary")
-    semantic_payload: dict[str, Any] = Field(default_factory=dict)
-
-    @model_validator(mode="after")
-    def _validate_action(self) -> "DiscoveryActionSuggestionModel":
-        if not str(self.label or "").strip():
-            raise ValueError("suggested action label is required")
-        if self.style not in VALID_ACTION_STYLES:
-            raise ValueError("suggested action style must be primary, secondary, or ghost")
-        return self
-
-
-class DiscoveryCandidateSelectionModel(BaseModel):
-    profile_id: int = Field(ge=1)
-    reason_summary: str = Field(default="")
-
-
-class DiscoveryDecisionModel(BaseModel):
-    phase: str
-    assistant_message: str
-    criteria_labels: list[str] = Field(default_factory=list)
-    suggested_actions: list[DiscoveryActionSuggestionModel] = Field(default_factory=list)
-    result_group_title: str | None = Field(default=None)
-    selected_candidates: list[DiscoveryCandidateSelectionModel] = Field(default_factory=list)
-
-    @model_validator(mode="after")
-    def _validate_decision(self) -> "DiscoveryDecisionModel":
-        if self.phase not in VALID_PHASES:
-            raise ValueError("phase must be collecting_preferences, searching, results_shown, or no_result")
-        if not str(self.assistant_message or "").strip():
-            raise ValueError("assistant_message is required")
-        return self
 def _configure_agents_sdk_provider() -> None:
     from agents import set_default_openai_api, set_default_openai_client, set_tracing_disabled
     from openai import AsyncOpenAI
@@ -268,58 +198,6 @@ def _build_runtime_prompt(
         ),
     }
     return json.dumps(payload, ensure_ascii=False, sort_keys=True)
-
-
-def _coerce_json_output(raw_output: Any) -> dict[str, Any]:
-    return coerce_json_object(raw_output)
-
-
-def _validate_decision_output(raw_output: Any) -> DiscoveryDecision:
-    parsed = DiscoveryDecisionModel.model_validate(_coerce_json_output(raw_output))
-    return _to_decision(parsed)
-
-
-def _recover_decision_from_exception(exc: Exception) -> DiscoveryDecision | None:
-    text = str(exc or "").strip()
-    if not text:
-        return None
-    fenced_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, flags=re.IGNORECASE | re.DOTALL)
-    candidate = fenced_match.group(1).strip() if fenced_match else None
-    if not candidate:
-        start = text.find("{")
-        end = text.rfind("}")
-        if start >= 0 and end > start:
-            candidate = text[start : end + 1].strip()
-    if not candidate:
-        return None
-    try:
-        return _validate_decision_output(candidate)
-    except (JSONDecodeError, TypeError, ValueError):
-        return None
-
-
-def _to_decision(model: DiscoveryDecisionModel) -> DiscoveryDecision:
-    return DiscoveryDecision(
-        phase=model.phase,
-        assistant_message=model.assistant_message.strip(),
-        criteria_labels=[str(label).strip() for label in model.criteria_labels if str(label or "").strip()],
-        suggested_actions=[
-            DiscoveryActionSuggestion(
-                label=action.label.strip(),
-                style=action.style,
-                semantic_payload=dict(action.semantic_payload or {}),
-            )
-            for action in model.suggested_actions
-        ],
-        result_group_title=(str(model.result_group_title or "").strip() or None),
-        selected_candidates=[
-            DiscoveryCandidateSelection(
-                profile_id=selection.profile_id,
-                reason_summary=str(selection.reason_summary or "").strip(),
-            )
-            for selection in model.selected_candidates
-        ],
-    )
 
 
 class StubDiscoveryAgentRuntime:
@@ -551,8 +429,12 @@ official_context 里常见信息：
 
 输出原则：
 - assistant_message 保持短，像真人红娘，不要写成系统说明。
+- phase 只能是：collecting_preferences、searching、results_shown、no_result。不要自造 phase 名。
+- 如果你正在展示候选卡片，phase 必须是 `results_shown`。
 - criteria_labels 用于给前端展示条件 chips，最多 6 个。
 - suggested_actions 最多 3 个，标签要短。
+- suggested_actions.style 只能是：primary、secondary、ghost。
+- semantic_payload.kind 只用这些值：starter_prompt、followup_prompt、saved_search_opt_in、refine_candidates、add_criteria、refine_preferences、show_more_candidates、age_preference。
 - 如果你刚拿到了新的明确画像，通常应先调用 `sync_requester_persona_memory`，再决定是否搜索。
 - 只有在你真的调用了搜索工具并且决定展示结果时，才填写 selected_candidates。
 - selected_candidates 里的 profile_id 必须来自最新一次搜索工具返回的 results。
@@ -572,7 +454,7 @@ official_context 里常见信息：
                 "HER_CHAT_ASSISTANT_MODEL",
                 default="gpt-4.1-mini",
             ),
-            output_type=AgentOutputSchema(DiscoveryDecisionModel, strict_json_schema=False),
+            output_type=AgentOutputSchema(DiscoveryDecisionModel, strict_json_schema=True),
             tools=[
                 sync_requester_persona_memory,
                 search_partner_candidates,
@@ -618,9 +500,11 @@ def create_default_discovery_agent_runtime() -> DiscoveryAgentRuntime:
 __all__ = [
     "AgentsSdkDiscoveryAgentRuntime",
     "DiscoveryActionSuggestion",
+    "DiscoveryActionSuggestionModel",
     "DiscoveryAgentRuntime",
     "DiscoveryCandidateSelection",
     "DiscoveryDecision",
+    "DiscoveryDecisionModel",
     "DiscoveryRunInput",
     "DiscoveryRuntimeResult",
     "DiscoveryToolCall",
