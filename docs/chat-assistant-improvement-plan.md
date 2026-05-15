@@ -1,5 +1,9 @@
 # 聊天助手改进方案
 
+> 历史规划说明：本文包含已移除或未落地的旧模块命名，例如 `assistant_llm.py`、`dyadic_roleplay.py`、`mode_router.py`。不要再按这些文件路径实施开发。
+>
+> 当前真实代码入口以 `external-systems/partner-chat-system/chat_system/assistant_runtime.py`、`assistant_orchestrator.py`、`assistant_sessions.py`、`assistant_context.py`、`service.py` 为准。文中“主动提示 / coaching / roleplay 压测”相关段落主要用于保留历史评测与设计取舍，不代表当前仍有独立对外入口。
+
 本文档沉淀 `partner-chat-system` 中相亲聊天助手的完整改进方案，覆盖 **评估方法**、**产品边界**、**提示词与生成策略**、**延迟治理**、以及 **分阶段落地计划**。本文档是对 [聊天与 Agent 中间人架构方案](chat-agent-architecture.md) 的补充，重点回答一个更具体的问题：
 
 - 当用户或压力剧情**故意制造冷场、尬聊、误解、封闭式回复**时，应该如何衡量 AI 助手？

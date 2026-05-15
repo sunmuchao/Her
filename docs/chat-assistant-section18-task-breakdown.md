@@ -1,5 +1,9 @@
 # 第18部分任务拆解（基于当前 AI 助手能力）
 
+> 历史规划说明：本文中的若干建议文件名，如 `assistant_contract.py`、`pre_chat_context.py`、`post_chat_review.py`，并非当前代码库中的实际实现文件。
+>
+> 当前与触发式红娘助手相关的真实代码入口是 `external-systems/partner-chat-system/chat_system/assistant_runtime.py`、`assistant_orchestrator.py`、`assistant_sessions.py`、`assistant_context.py`、`service.py`、`timeline.py`。
+
 本文档把 [`chat-assistant-improvement-plan.md`](./chat-assistant-improvement-plan.md) 第 18 部分拆成具体任务，并以当前系统真实能力为前提来排优先级。
 
 当前助手的现实定位是：
@@ -89,7 +93,7 @@
   - 定义第 18 部分新增结构化字段
   - 定义聊后分流结果字段：`advance`、`clarify`、`end`
 - 建议文件：
-  - [external-systems/partner-chat-system/chat_system/assistant_contract.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/assistant_contract.py)
+  - 历史提案文件：`external-systems/partner-chat-system/chat_system/assistant_contract.py`
   - [docs/chat-assistant-improvement-plan.md](/Users/sunmuchao/Downloads/Her/docs/chat-assistant-improvement-plan.md)
   - [docs/chat-assistant-section18-gap-analysis.md](/Users/sunmuchao/Downloads/Her/docs/chat-assistant-section18-gap-analysis.md)
 - 完成标准：
@@ -139,8 +143,8 @@
   - 过滤不适合作为开场的话题
 - 建议文件：
   - 可新增：`external-systems/partner-chat-system/chat_system/pre_chat_context.py`
-  - [external-systems/partner-chat-system/chat_system/profile_loader.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/profile_loader.py)
-  - [external-systems/partner-chat-system/chat_system/assistant_llm.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/assistant_llm.py)
+  - 历史提案文件：`external-systems/partner-chat-system/chat_system/profile_loader.py`
+  - 历史提案文件：`external-systems/partner-chat-system/chat_system/assistant_llm.py`
 - 完成标准：
   - 聊天前输入不再只是“双方画像原文”
   - 能稳定提炼出 2 到 3 个自然开场方向
@@ -155,7 +159,7 @@
   - 第一轮节奏提醒
   - 期待校准提醒
 - 建议文件：
-  - [external-systems/partner-chat-system/chat_system/assistant_llm.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/assistant_llm.py)
+  - 历史提案文件：`external-systems/partner-chat-system/chat_system/assistant_llm.py`
   - 可新增：`external-systems/partner-chat-system/chat_system/pre_chat_llm.py`
 - 完成标准：
   - 输出不是代写整句
@@ -172,7 +176,7 @@
   - 高门槛开场识别
   - 画像差异点预警
 - 建议文件：
-  - [external-systems/partner-chat-system/chat_system/mode_router.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/mode_router.py)
+  - 历史提案文件：`external-systems/partner-chat-system/chat_system/mode_router.py`
   - 可新增：`external-systems/partner-chat-system/chat_system/pre_chat_rules.py`
 - 完成标准：
   - 能在开聊前给出风险提醒
@@ -202,9 +206,9 @@
   - 每类结果对应的判断理由
   - 每类结果对应的低级别证据
 - 建议文件：
-  - [external-systems/partner-chat-system/chat_system/assistant_llm.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/assistant_llm.py)
+  - 历史提案文件：`external-systems/partner-chat-system/chat_system/assistant_llm.py`
   - 可新增：`external-systems/partner-chat-system/chat_system/post_chat_review.py`
-  - [external-systems/partner-chat-system/chat_system/assistant_contract.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/assistant_contract.py)
+  - 历史提案文件：`external-systems/partner-chat-system/chat_system/assistant_contract.py`
 - 完成标准：
   - 复盘结果不再只是一段自然语言建议
   - 能明确区分“还能推进”和“主要该澄清”
@@ -219,7 +223,7 @@
   - 下一步澄清建议
   - 澄清时避免事项
 - 建议文件：
-  - [external-systems/partner-chat-system/chat_system/assistant_llm.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/assistant_llm.py)
+  - 历史提案文件：`external-systems/partner-chat-system/chat_system/assistant_llm.py`
   - 可新增：`external-systems/partner-chat-system/chat_system/clarify_strategy.py`
 - 完成标准：
   - “澄清”不再只是文案描述
@@ -236,7 +240,7 @@
 - 建议文件：
   - 可新增：`external-systems/partner-chat-system/chat_system/review_taxonomy.py`
   - [external-systems/partner-chat-system/chat_system/service.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/service.py)
-  - [external-systems/partner-chat-system/chat_system/reporting.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/reporting.py)
+  - 历史提案文件：`external-systems/partner-chat-system/chat_system/reporting.py`
 - 完成标准：
   - 结果不只是“结束了”
   - 能知道是开场方式问题、节奏问题、误会问题还是低意愿问题
@@ -252,8 +256,8 @@
   - 聊后分流准确率
   - 用户是否觉得判断更准确的指标
 - 建议文件：
-  - [external-systems/partner-chat-system/chat_system/reporting.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/reporting.py)
-  - [external-systems/partner-chat-system/chat_system/dyadic_roleplay.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/dyadic_roleplay.py)
+  - 历史提案文件：`external-systems/partner-chat-system/chat_system/reporting.py`
+  - 历史提案文件：`external-systems/partner-chat-system/chat_system/dyadic_roleplay.py`
 - 完成标准：
   - 第 18 部分能力有单独指标
   - 不再只看聊没聊成
@@ -267,7 +271,7 @@
   - 聊天后自动复盘触发规则
   - 不打扰用户的节制策略
 - 建议文件：
-  - [external-systems/partner-chat-system/chat_system/trend_state.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/trend_state.py)
+  - 历史提案文件：`external-systems/partner-chat-system/chat_system/trend_state.py`
   - [external-systems/partner-chat-system/chat_system/service.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/service.py)
 - 完成标准：
   - 自动触发不影响当前聊天中回温逻辑

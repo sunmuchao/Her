@@ -13,7 +13,7 @@ It is intentionally separate from the skill itself.
 - `recommendation_system/storage.py`
   - MySQL connection (`mysql://…` DSN only), schema bootstrap（`outer_system_mysql_schema.py`）, `reset_all_tables` 供测试/roleplay 清表；连接与 JSON 行工具与撮合侧共用仓库根目录的 `outer_mysql_compat`
 - 仓库根目录 `her_activate_repo.py`
-  - 由 `recommendation_system._path_bootstrap`（及网关）经 `importlib` 加载，再拉起 `her_monorepo_bootstrap`，保证未 `pip install` 的 checkout 也能导入 `match_domain`
+  - 由 `recommendation_system._path_bootstrap`（及网关）通过共享的 `her_repo_path_bootstrap.py` 拉起，再转到 `her_monorepo_bootstrap`，保证未 `pip install` 的 checkout 也能导入 `match_domain`
 - `recommendation_system/service.py`
   - subscription refresh, persona-driven criteria compilation, direct `partner-search` API calls, recommendation dedupe, cooldown, frequency cap, quiet-hours, run snapshots, and card generation
 - `recommendation_system/proxy_intro.py`

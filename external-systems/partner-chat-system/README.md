@@ -1,5 +1,7 @@
 # partner-chat-system
 
+> 说明（2026-05-15）：当前对外能力已经收敛到 `v2` conversations、session/task/maintenance 驱动的红娘 C 流水线。文中“已移除”指对外入口已下线；实现里仍可能保留少量内部状态枚举或审计原因码，用于兼容历史数据。
+
 MySQL-backed chat threads and messages for match cases (`docs/chat-agent-architecture.md`).
 
 - `PARTNER_CHAT_DB`: 默认 `mysql://root@127.0.0.1:3307/her_chat`
@@ -73,5 +75,5 @@ Gateway REST:
 
 - 历史侧信道
 - 草稿采纳入口
-- 主动提示 / coaching
+- 面向用户的独立主动提示 / coaching 入口
 - roleplay、延迟压测和相关脚本

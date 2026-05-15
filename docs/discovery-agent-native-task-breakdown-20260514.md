@@ -1,5 +1,7 @@
 # 发现页 Agent-Native 方案任务拆解
 
+> 文档校准说明：本文少量示例仍引用 `types.py` 等未单独落地的文件。当前 discovery 结构化 schema 主要集中在 `external-systems/partner-discovery-system/discovery_system/agent_runtime.py`、`service.py`、`view_models.py`。
+
 本文档把 [`discovery-agent-native-architecture-plan-20260514.md`](./discovery-agent-native-architecture-plan-20260514.md) 拆成可排期、可开发、可验收的任务。
 
 目标不是继续讨论理念，而是把“前端纯展示、后端不写死产品判断、发现页由 GPT agent 决策”的方案变成可执行工作项。
@@ -14,7 +16,7 @@
 
 1. 先把 discovery session、turn、action、tool-run 这些基础设施建起来
 2. 再把 GPT agent 接进去
-3. 再把 `partner-search`、空结果持续留意、资料详情承接接进去
+3. 再把 `partner-search`、`persona-memory-sync`、空结果持续留意、资料详情承接接进去
 4. 最后再补观测、质量和前端联调
 
 ### 1.2 不要先写业务规则兜底版
@@ -84,7 +86,7 @@
 | `D02` | `已完成` | `partner-discovery-system` 目录、`storage.py`、`service.py`、`agent_runtime.py`、`view_models.py` 已建立。 |
 | `D03` | `已完成` | `discovery_agent_sessions`、`turns`、`actions`、`search_runs` 表和 migration 已落地，支持内存版与 MySQL 版。 |
 | `D04` | `已完成` | discovery agent runtime 已落地，支持真实 Agents SDK 路径和 stub fallback。 |
-| `D05` | `部分完成` | 已注册 `get_discovery_session_state`、`get_requester_profile`、`search_partner_candidates`、`create_saved_search_subscription_from_last_search`；`list_recent_discovery_turns`、`load_candidate_result_set` 还没补。 |
+| `D05` | `部分完成` | 当前 runtime 仍以 `get_discovery_session_state`、`get_requester_profile`、`search_partner_candidates`、`create_saved_search_subscription_from_last_search` 为主；目标方案已收敛为 `partner-search`、`persona-memory-sync`、`create_saved_search_subscription_from_last_search` 三项核心业务能力，其余改为上下文注入或后续增强。 |
 | `D06` | `已完成` | `action_id` 生成、过期、消费、防重放都已落地。 |
 | `D07` | `已完成` | discovery 已接入 `partner-search` 作为纯搜索工具，并持久化 search run。 |
 | `D08` | `已完成` | `create_session(...)`、`process_turn(...)`、`get_session_view(...)` 主链路已跑通。 |
@@ -184,26 +186,37 @@
 ### D05：建立 discovery tool registry
 
 - 优先级：`P0`
-- 目标：把工具作为 agent 固定配置注册，而不是每轮临时讲给 agent。
+- 目标：把 discovery agent 的核心业务能力收敛成少量固定能力；状态类信息由后端注入，而不是把所有读取动作都做成 tool。
 - 产出：
   - tool registry 代码
-  - 固定工具集合注册入口
+  - 固定核心能力注册入口
+  - 上下文注入 contract
   - tool 调用结果记录机制
-- 首批 tools：
-  - `search_partner_candidates`
-  - `get_discovery_session_state`
-  - `list_recent_discovery_turns`
-  - `load_candidate_result_set`
-  - `get_candidate_profile_detail`
+- 首批核心能力：
+  - `partner-search`
+  - `persona-memory-sync`
   - `create_saved_search_subscription_from_last_search`
+- 不作为首版核心 tool 的能力：
+  - `get_discovery_session_state`
+    - 改成后端每轮直接注入 session 摘要、phase、visible actions、last search summary
+  - `get_requester_profile`
+    - 改成后端每轮直接注入 requester persona snapshot
+  - `list_recent_discovery_turns`
+    - 作为后续增强能力，不进入首版主链路
+  - `load_candidate_result_set`
+    - 作为后续增强能力，不进入首版主链路
+  - `get_candidate_profile_detail`
+    - 不放回 agent tool，继续走独立详情页读模型和接口
 - 建议文件：
   - `external-systems/partner-discovery-system/discovery_system/agent_runtime.py`
   - `service.py`
   - `storage.py`
 - 依赖：`D03`、`D04`
 - 完成标准：
-  - agent 创建时能绑定固定 tools
-  - 后端能记录每次 tool 调用及其结果引用
+  - agent 创建时能绑定固定核心能力
+  - 后端每轮会注入正式上下文，而不是依赖 agent 自己记忆
+  - 后端能记录每次核心能力调用及其结果引用
+  - 不把会话状态读取、详情读取硬塞进 `partner-search` 或 `persona-memory-sync`
 
 ### D06：实现 action_id 机制
 
@@ -513,11 +526,12 @@
 
 - 目标：把工具固定挂到 agent 上
 - 要做的事：
-  - 注册 `search_partner_candidates`
-  - 注册历史读取和 session state 读取工具
-  - 注册资料详情读取工具
+  - 注册 `partner-search`
+  - 注册 `persona-memory-sync`
+  - 注册 `create_saved_search_subscription_from_last_search`
+  - 把 session / requester profile / recent timeline / last search summary 改成后端上下文注入
 - 完成后产物：
-  - agent 创建后天然就知道能用哪些工具
+  - agent 创建后天然就知道能用哪些核心能力
 - 对应原任务：
   - `D05`
 
@@ -540,10 +554,23 @@
   - 写 tool wrapper
   - 存搜索请求和结果
   - 保持 `partner-search` 还是纯搜索工具
+  - 让搜索优先消费 `persona-memory-sync` 已同步到 `profiles` 的最新画像
 - 完成后产物：
   - agent 可自行决定何时搜索
 - 对应原任务：
   - `D07`
+
+#### 后端任务 6A：接入 `persona-memory-sync`
+
+- 目标：让 discovery agent 能把用户新说出的稳定画像写回长期记忆，再驱动后续搜索与持续留意。
+- 要做的事：
+  - 定义 discovery 到 `persona-memory-sync` 的 patch 生成规则
+  - 明确只有“明确、稳定、可落库”的信息才触发写画像
+  - 约定常见顺序为：先写画像，再搜索
+- 完成后产物：
+  - discovery 对话产生的新画像可以沉淀到 `user_personas` / `profiles`
+- 对应原任务：
+  - `D05`
 
 #### 后端任务 7：打通发现页主链路
 
@@ -851,7 +878,8 @@
   - 打通 `process_turn(...)`
 - 后端 B：
   - 接 `partner-search`
-  - 接 history / state tools
+  - 接 `persona-memory-sync`
+  - 把 history / state 信息改成上下文注入
   - 实现 view adapter
 - 网关：
   - 开 `POST /v1/discovery/sessions`

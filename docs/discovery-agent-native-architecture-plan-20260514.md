@@ -36,9 +36,10 @@
 
 1. 用户在发现页直接和 AI 红娘对话
 2. 红娘自己判断是否需要继续追问
-3. 红娘自己决定何时调用 `partner-search`
-4. 红娘自己决定如何解释结果、强调哪些卡片、下一步建议什么
-5. 前端收到稳定 JSON 后直接展示，不做产品判断
+3. 红娘自己决定何时把稳定新信息写回长期画像
+4. 红娘自己决定何时调用 `partner-search`
+5. 红娘自己决定如何解释结果、强调哪些卡片、下一步建议什么
+6. 前端收到稳定 JSON 后直接展示，不做产品判断
 
 ### 2.2 非目标
 
@@ -88,7 +89,18 @@
 
 这意味着发现页不应该直接把 `partner-search` 暴露给前端，而应该在外面再包一层“红娘发现系统”。
 
-### 3.3 网关里已有可复用的搜索和空结果能力
+### 3.3 `persona-memory-sync` 已经是纯画像写入与同步能力
+
+`persona-memory-sync` 的边界在 [`local-skills/persona-memory-sync/SKILL.md`](../local-skills/persona-memory-sync/SKILL.md) 里也写得很清楚：
+
+- 只负责写入 / 更新用户画像
+- 只负责同步 `profiles` 和公开安全字段
+- 不负责搜索
+- 不负责订阅、通知、工作流编排
+
+这意味着发现页里“用户刚刚说出的稳定信息要不要沉淀成长期画像”应该由 agent 决策，但真正的写入动作应该交给 `persona-memory-sync`。
+
+### 3.4 网关里已有可复用的搜索和空结果能力
 
 - 搜索入口：[`external-systems/partner-http-gateway/API_CONTRACT.md`](../external-systems/partner-http-gateway/API_CONTRACT.md)
   - `POST /v1/search/profiles`
@@ -96,7 +108,7 @@
   - `run_search_session(...)`
   - `handle_opt_in_decision(...)`
 
-这些都应该作为发现 agent 的工具，而不是前端直接理解的业务流程。
+这些都应该作为发现 agent 背后的可复用能力，而不是前端直接理解的业务流程。
 
 ---
 
@@ -126,10 +138,11 @@
 
 1. 先问年龄还是先问城市
 2. 什么时候停止追问
-3. 什么时候调用 `partner-search`
-4. 搜到 2 个结果后重点展示谁
-5. 结果不够好时应该怎么解释
-6. 空结果时要不要引导持续留意
+3. 什么时候把用户这轮说出的稳定信息写回画像
+4. 什么时候调用 `partner-search`
+5. 搜到 2 个结果后重点展示谁
+6. 结果不够好时应该怎么解释
+7. 空结果时要不要引导持续留意
 
 这些判断全部应该由 agent 决定。
 
@@ -295,21 +308,31 @@ agent 负责：
 6. 用户输入自然语言
 7. 前端调用 POST /v1/discovery/sessions/{session_id}/turns
 8. 后端找到这条 discovery session，并唤起一个已经绑定好 tools 的 discovery agent
-9. agent 基于当前 user message、session memory 和必要时可查询的后端历史来判断：
+9. 后端先把本轮正式上下文注入给 agent：
+   - 当前 user message
+   - 当前 session / phase
+   - 当前用户画像快照
+   - 最近几轮摘要
+   - 当前可点击 action 摘要
+   - 最近一轮搜索摘要
+10. agent 基于这些正式上下文来判断：
    - 先追问
+   - 还是先写画像
    - 还是直接搜索
-10. 如需搜索，agent 调用 search tool
-11. 后端拿到 canonical search result
-12. agent 产出最终 view intent
-13. 后端把结果适配成前端 render model
-14. 前端直接展示
+11. 如有明确、稳定、可落库的新画像，agent 先调 `persona-memory-sync`
+12. 如需搜索，agent 再调 `partner-search`
+13. 后端拿到 canonical search result，并持久化 search run
+14. agent 产出最终 view intent
+15. 后端把结果适配成前端 render model
+16. 前端直接展示
 
-15. 用户点击“只看无锡本地”
-16. 前端只上传 action_id
-17. 后端查 action payload，并恢复对应 discovery session
-18. 再次唤起同一个 discovery agent
-19. agent 决定是否重新搜索或继续追问
-20. 前端继续展示
+17. 用户点击“只看无锡本地”
+18. 前端只上传 action_id
+19. 后端查 action payload，并恢复对应 discovery session
+20. 再次唤起同一个 discovery agent
+21. 后端再次注入正式上下文
+22. agent 决定是否重新搜索、继续追问或触发持续留意
+23. 前端继续展示
 ```
 
 ---
@@ -338,59 +361,60 @@ tool 层只提供“能力”，不提供产品判断。
 - tool 是 agent 创建时就已注册好的固定能力
 - 不是每轮 turn 再临时下发一遍“你有哪些工具”
 
-### 8.2 建议的 tool 列表
+### 8.2 建议的核心能力清单
 
-#### Tool 1. `search_partner_candidates`
+这里先区分两层：
+
+- domain skill / tool：真正的业务能力
+- runtime context：后端每轮直接注入给 agent 的正式上下文
+
+不管底层最后接成 OpenAI skill 还是 `function_tool`，discovery agent 在业务上都建议只保留 3 个核心能力。
+
+#### 能力 1. `partner-search`
 
 用途：
 
 - 调 `partner-search`
-- 返回 canonical search response
+- 根据当前画像和当前条件返回候选结果
+- 产出 canonical search response，供后端持久化 `search_run` 并适配成页面卡片
 
 底层可复用：
 
 - `POST /v1/search/profiles`
 - 或 `partner_search.search_profiles(...)`
 
-输入：
+重要边界：
 
-- structured criteria
-- self profile
-- limit
+- 只负责搜人
+- 不负责会话状态
+- 不负责详情页编排
+- 不负责持续留意订阅
 
-输出：
-
-- result_count
-- has_match
-- results[]
-- trust fields
-- caution fields
-
-#### Tool 2. `get_candidate_profile_detail`
+#### 能力 2. `persona-memory-sync`
 
 用途：
 
-- 读取某个候选人的详情模型
+- 把用户本轮新说出的稳定画像写回长期记忆
+- 同步到 `profiles` / `matcher_*`
+- 让后续搜索和持续留意都基于最新画像运行
 
-输入：
+重要边界：
 
-- `profile_id`
-- `source`
+- 只负责写画像
+- 不负责搜索
+- 不负责推荐订阅
+- 不负责会话编排
 
-输出：
+触发原则：
 
-- 基础资料
-- 照片
-- verification_items
-- trust_summary
-- caution_items
-- 建议确认的问题
+- 只有“明确、稳定、可落库”的新信息才调用
+- 常见顺序是先写画像，再搜索
 
-#### Tool 3. `create_saved_search_subscription_from_last_search`
+#### 能力 3. `create_saved_search_subscription_from_last_search`
 
 用途：
 
-- 当这一轮搜不到合适人时，为用户创建“持续留意”
+- 当这一轮搜不到合适人，且用户明确同意后，为用户创建“持续留意”
 
 底层可复用：
 
@@ -400,37 +424,20 @@ tool 层只提供“能力”，不提供产品判断。
 重要边界：
 
 - agent 决定要不要向用户提出“持续留意”
-- 用户确认后，tool 只负责创建，不负责替 agent 决策
+- 用户确认后，这个能力只负责创建，不负责替 agent 决策
 
-#### Tool 4. `get_discovery_session_state`
+#### 不作为首版核心 tool 的能力
 
-用途：
-
-- 让 agent 读取当前 discovery session 的结构化状态，而不是依赖前端解释
-
-输出：
-
-- normalized criteria
-- last search snapshot ref
-- unresolved questions
-- previous action context
-
-#### Tool 5. `list_recent_discovery_turns`
-
-用途：
-
-- 让 agent 在需要时读取最近几轮发现对话
-
-注意：
-
-- 这不是说每轮都把最近几轮硬塞进 prompt
-- 而是说这份历史始终在后端，agent 需要时可以主动查
-
-#### Tool 6. `load_candidate_result_set`
-
-用途：
-
-- 给 agent 看上一轮搜索结果，便于下一轮缩小
+- `get_discovery_session_state`
+  - 改成后端每轮直接注入 session 摘要、phase、visible actions、last search summary
+- `get_requester_profile`
+  - 改成后端每轮直接注入 requester persona snapshot
+- `list_recent_discovery_turns`
+  - 作为后续增强能力，不进入首版主链路
+- `load_candidate_result_set`
+  - 作为后续增强能力，不进入首版主链路
+- `get_candidate_profile_detail`
+  - 不放回 agent tool，继续走独立详情页读模型和接口
 
 ---
 
@@ -458,19 +465,29 @@ tool 层只提供“能力”，不提供产品判断。
 更准确地说，discovery agent 每次被唤起时，运行上下文应分成三层：
 
 1. agent 固定配置
-2. 当前 session memory / state
-3. agent 可主动调用的历史和搜索 tools
+2. 后端掌握的正式 session / state
+3. agent 可调用的核心业务能力
 
 其中，直接注入本轮运行上下文的最小必要信息建议包含：
 
 - 当前用户消息
-- discovery session 当前 state
+- discovery session 当前 state / phase
 - 当前用户的画像快照
-- 最近一轮或当前有效的搜索结果引用
+- 最近几轮对话摘要
+- 当前可点击 action 摘要
+- 最近一轮搜索摘要
+- 当前页面关键摘要
 
-其余历史不要默认全量注入，而应通过下列 tools 按需读取：
+这些信息属于正式状态，不建议首版再拆成一组单独的读取 tool 给 agent 主动查。
 
-- `get_discovery_session_state`
+原因：
+
+- 它们本来就需要后端做鉴权、过期校验和 source-of-truth 维护
+- 当前 discovery runtime 也不是依赖 agent 自带长期记忆
+- 把这些正式状态每轮直接注入，更符合“后端保存状态，agent 负责决策”的边界
+
+后续如果会话明显变长，或需要支持“回看上一批候选”，再考虑补：
+
 - `list_recent_discovery_turns`
 - `load_candidate_result_set`
 
@@ -854,9 +871,10 @@ tool 层只提供“能力”，不提供产品判断。
 
 1. session 创建
 2. user_message -> agent -> assistant_message
-3. agent 调 `partner-search`
-4. 返回结果卡片
-5. suggested actions 走 `action_id`
+3. agent 可先调 `persona-memory-sync`
+4. agent 调 `partner-search`
+5. 返回结果卡片
+6. suggested actions 走 `action_id`
 
 ### Phase 2
 
