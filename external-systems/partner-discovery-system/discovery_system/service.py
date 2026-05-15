@@ -26,6 +26,14 @@ from .agent_runtime import (
 )
 from .agent_session_store import create_default_discovery_agent_session_store
 from .storage import InMemoryDiscoveryStorage, MySQLDiscoveryStorage, StoredSession
+from .service_context import (
+    DiscoveryServiceContextRuntime,
+    build_last_search_summary as _build_last_search_summary,
+    build_page_summary as _build_page_summary,
+    build_profile_detail_notes as _build_profile_detail_notes,
+    build_runtime_context as _build_runtime_context,
+    build_visible_action_summaries as _build_visible_action_summaries,
+)
 from .view_models import (
     assistant_message,
     build_profile_detail_view_from_payload,
@@ -520,77 +528,21 @@ class DiscoveryService:
         *,
         recent_timeline: list[dict[str, Any]],
     ) -> dict[str, Any]:
-        return {
-            "session_status": session.status,
-            "requester_profile_snapshot": self._load_requester_profile(session),
-            "recent_timeline_summary": list(recent_timeline),
-            "visible_actions": self._build_visible_action_summaries(session),
-            "last_search_summary": self._build_last_search_summary(session),
-            "page_summary": self._build_page_summary(session),
-        }
+        return _build_runtime_context(
+            self._build_service_context_runtime(),
+            session,
+            recent_timeline=recent_timeline,
+            requester_profile_snapshot=self._load_requester_profile(session),
+        )
 
     def _build_visible_action_summaries(self, session: StoredSession) -> list[dict[str, Any]]:
-        items: list[dict[str, Any]] = []
-        for action_id in list(session.visible_action_ids)[:3]:
-            action = self.storage.get_action(session.session_id, action_id)
-            if action is None:
-                continue
-            items.append(
-                {
-                    "action_id": action.action_id,
-                    "label": action.label,
-                    "style": action.style,
-                    "hint": deepcopy(action.semantic_payload),
-                }
-            )
-        return items
+        return _build_visible_action_summaries(self._build_service_context_runtime(), session)
 
     def _build_last_search_summary(self, session: StoredSession) -> dict[str, Any] | None:
-        search_run_id = int(session.state.get("last_search_run_id") or 0)
-        if search_run_id <= 0:
-            return None
-        search_run = self.storage.get_search_run(search_run_id)
-        if search_run is None:
-            return {
-                "search_run_id": search_run_id,
-                "result_count": int(session.state.get("last_search_result_count") or 0),
-                "has_match": bool(session.state.get("last_search_has_match")),
-            }
-        return {
-            "search_run_id": search_run.search_run_id,
-            "result_count": int(search_run.result_count or 0),
-            "has_match": bool(search_run.has_match),
-            "criteria": deepcopy(search_run.criteria),
-            "source": search_run.source,
-        }
+        return _build_last_search_summary(self._build_service_context_runtime(), session)
 
     def _build_page_summary(self, session: StoredSession) -> dict[str, Any]:
-        summary = {
-            "criteria_labels": [
-                str(item.get("label") or "").strip()
-                for item in list(session.view.get("criteria_chips") or [])
-                if str(item.get("label") or "").strip()
-            ],
-            "suggested_action_labels": [
-                str(item.get("label") or "").strip()
-                for item in self._build_visible_action_summaries(session)
-                if str(item.get("label") or "").strip()
-            ],
-            "result_cards": [],
-        }
-        for item in reversed(list(session.view.get("timeline") or [])):
-            if item.get("item_type") != "result_group":
-                continue
-            summary["result_cards"] = [
-                {
-                    "profile_id": card.get("profile_id"),
-                    "title": card.get("title"),
-                    "reason_summary": card.get("reason_summary"),
-                }
-                for card in list(item.get("cards") or [])[:3]
-            ]
-            break
-        return summary
+        return _build_page_summary(self._build_service_context_runtime(), session)
 
     def _append_tool_call(
         self,
@@ -867,19 +819,7 @@ class DiscoveryService:
         session: StoredSession | None,
         profile_id: int,
     ) -> list[str]:
-        if session is None:
-            return []
-        for item in reversed(list(session.view.get("timeline") or [])):
-            if item.get("item_type") != "result_group":
-                continue
-            for card in list(item.get("cards") or []):
-                if int(card.get("profile_id") or 0) != profile_id:
-                    continue
-                reason_summary = str(card.get("reason_summary") or "").strip()
-                if reason_summary:
-                    return [f"红娘当时把这位放到你面前，主要因为：{reason_summary}"]
-                return []
-        return []
+        return _build_profile_detail_notes(session, profile_id)
 
     def _persist_search_run(
         self,
@@ -1094,6 +1034,12 @@ class DiscoveryService:
             },
             "view": clone_view(session.view),
         }
+
+    def _build_service_context_runtime(self) -> DiscoveryServiceContextRuntime:
+        return DiscoveryServiceContextRuntime(
+            storage=self.storage,
+            clone_view=clone_view,
+        )
 
 def create_default_discovery_service(*, discovery_dsn: str | None = None) -> DiscoveryService:
     resolved_dsn = str(discovery_dsn or os.environ.get("PARTNER_DISCOVERY_DB") or "").strip()
