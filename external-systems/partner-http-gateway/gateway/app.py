@@ -182,50 +182,35 @@ from .identity import (
     GatewayAuthError,
     GatewayPermissionError,
     IdentityResolver,
-    ROLE_CUSTOMER_SUPPORT,
-    ROLE_OPS_OPERATOR,
-    ROLE_PLATFORM_ADMIN,
-    ROLE_PROFILE_REVIEWER,
-    ROLE_RISK_REVIEWER,
-    ROLE_SERVICE_WORKER,
     get_current_actor,
     set_current_actor,
 )
 from .mysql_pool import GatewayConnectionPool
 from .request_policy import client_ip, rate_limiter_from_environ
+from .role_sets import (
+    CHAT_RISK_REVIEW_ROLES,
+    INTERNAL_WRITE_ROLES,
+    PROFILE_REVIEW_ROLES,
+    STAFF_OVERRIDE_ROLES,
+    VERIFICATION_REVIEW_ROLES,
+)
+from .verification_routes import (
+    dispatch_verification_rest,
+    rest_verification_create_live_challenge as _rest_verification_create_live_challenge,
+    rest_verification_get_photo_review_request as _rest_verification_get_photo_review_request,
+    rest_verification_get_submission as _rest_verification_get_submission,
+    rest_verification_list_notifications as _rest_verification_list_notifications,
+    rest_verification_list_photo_review_requests as _rest_verification_list_photo_review_requests,
+    rest_verification_list_submissions as _rest_verification_list_submissions,
+    rest_verification_request_live_video as _rest_verification_request_live_video,
+    rest_verification_resubmit_live_video as _rest_verification_resubmit_live_video,
+    rest_verification_review_submission as _rest_verification_review_submission,
+    rest_verification_submit_live_video as _rest_verification_submit_live_video,
+)
 
 JSON_HEADERS = [("Content-Type", "application/json; charset=utf-8")]
 HTML_HEADERS = [("Content-Type", "text/html; charset=utf-8")]
 DEMO_HTML_HEADERS = HTML_HEADERS + [("Cache-Control", "no-store")]
-
-STAFF_OVERRIDE_ROLES = frozenset(
-    {
-        ROLE_OPS_OPERATOR,
-        ROLE_RISK_REVIEWER,
-        ROLE_PROFILE_REVIEWER,
-        ROLE_CUSTOMER_SUPPORT,
-        ROLE_PLATFORM_ADMIN,
-        ROLE_SERVICE_WORKER,
-    }
-)
-INTERNAL_WRITE_ROLES = frozenset({ROLE_OPS_OPERATOR, ROLE_PLATFORM_ADMIN, ROLE_SERVICE_WORKER})
-VERIFICATION_REVIEW_ROLES = frozenset(
-    {
-        ROLE_RISK_REVIEWER,
-        ROLE_PROFILE_REVIEWER,
-        ROLE_PLATFORM_ADMIN,
-        ROLE_SERVICE_WORKER,
-    }
-)
-PROFILE_REVIEW_ROLES = frozenset({ROLE_PROFILE_REVIEWER, ROLE_PLATFORM_ADMIN, ROLE_SERVICE_WORKER})
-CHAT_RISK_REVIEW_ROLES = frozenset(
-    {
-        ROLE_RISK_REVIEWER,
-        ROLE_CUSTOMER_SUPPORT,
-        ROLE_PLATFORM_ADMIN,
-        ROLE_SERVICE_WORKER,
-    }
-)
 
 
 class PartnerGateway(AsyncJobGatewayMixin):
@@ -805,143 +790,41 @@ class PartnerGateway(AsyncJobGatewayMixin):
         environ: dict[str, Any],
         body: dict[str, Any],
     ) -> tuple[int, dict[str, Any]]:
-        now = _parse_optional_now(body)
-        user_id = self._resolve_actor_bound_id(environ, body.get("user_id"), field_name="user_id")
-        submission = self._with_chat(
-            submit_live_video_verification,
-            user_id=user_id,
-            video_base64=str(body.get("video_base64") or body.get("video_bytes_base64") or ""),
-            file_name=str(body.get("file_name") or body.get("filename") or ""),
-            submission_id=body.get("submission_id"),
-            content_type=body.get("content_type"),
-            profile_id=int(body["profile_id"]) if body.get("profile_id") is not None else None,
-            source_dsn=body.get("source_dsn") or body.get("source"),
-            source_table_name=body.get("source_table_name") or body.get("table_name"),
-            challenge_token=body.get("challenge_token"),
-            challenge_phrase=body.get("challenge_phrase"),
-            metadata=body.get("metadata"),
-            now=now,
-        )
-        return 201, {"submission": _json_safe(submission)}
+        return _rest_verification_submit_live_video(self, environ, body)
 
     def rest_verification_request_live_video(
         self,
         environ: dict[str, Any],
         body: dict[str, Any],
     ) -> tuple[int, dict[str, Any]]:
-        self._require_roles(
-            environ,
-            VERIFICATION_REVIEW_ROLES | CHAT_RISK_REVIEW_ROLES,
-            message="current actor cannot request live video verification",
-        )
-        now = _parse_optional_now(body)
-        raw_due_at = body.get("due_at")
-        due_at = datetime.fromisoformat(str(raw_due_at)) if raw_due_at else None
-        user_id = body.get("user_id")
-        if not user_id:
-            raise ValueError("user_id is required")
-        request = self._with_chat(
-            request_live_video_verification,
-            user_id=str(user_id),
-            profile_id=int(body["profile_id"]) if body.get("profile_id") is not None else None,
-            source_dsn=body.get("source_dsn") or body.get("source"),
-            source_table_name=body.get("source_table_name") or body.get("table_name"),
-            request_source=str(body.get("request_source") or "risk_case_review"),
-            request_reason=body.get("request_reason") or body.get("reason_text"),
-            signal_codes=body.get("signal_codes") or body.get("reason_codes"),
-            risk_case_id=body.get("risk_case_id"),
-            report_ids=body.get("report_ids"),
-            requested_by=self._resolve_optional_operator_actor_id(
-                environ,
-                body.get("requested_by") or body.get("resolver_id"),
-                field_name="requested_by",
-                roles=VERIFICATION_REVIEW_ROLES | CHAT_RISK_REVIEW_ROLES,
-                message="current actor cannot request live video verification",
-            ),
-            due_at=due_at,
-            metadata=body.get("metadata"),
-            now=now,
-        )
-        return 201, {"request": _json_safe(request)}
+        return _rest_verification_request_live_video(self, environ, body)
 
     def rest_verification_create_live_challenge(
         self,
         environ: dict[str, Any],
         body: dict[str, Any],
     ) -> tuple[int, dict[str, Any]]:
-        now = _parse_optional_now(body)
-        user_id = self._resolve_actor_bound_id(environ, body.get("user_id"), field_name="user_id")
-        challenge = create_live_video_verification_challenge(
-            user_id=user_id,
-            profile_id=int(body["profile_id"]) if body.get("profile_id") is not None else None,
-            challenge_actions=body.get("challenge_actions") or body.get("required_actions"),
-            challenge_action_pool=body.get("challenge_action_pool") or body.get("allowed_actions"),
-            action_count=int(body.get("action_count", 3)),
-            now=now,
-        )
-        return 201, {"challenge": _json_safe(challenge)}
+        return _rest_verification_create_live_challenge(self, environ, body)
 
     def rest_verification_list_submissions(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        q = _query_dict(environ)
-        user_id = q.get("user_id") or None
-        actor = self._current_actor(environ)
-        if actor is not None and not actor.has_any_role(STAFF_OVERRIDE_ROLES):
-            user_id = self._resolve_actor_bound_id(environ, user_id, field_name="user_id")
-        limit_raw = q.get("limit") or "100"
-        try:
-            limit = int(limit_raw)
-        except ValueError:
-            limit = 100
-        rows = self._with_chat(
-            list_verification_submissions,
-            user_id=user_id,
-            statuses=_statuses_from_query(q),
-            profile_id=int(q["profile_id"]) if q.get("profile_id") is not None else None,
-            limit=limit,
-        )
-        return 200, {"submissions": _json_safe(rows)}
+        return _rest_verification_list_submissions(self, environ)
 
     def rest_verification_list_photo_review_requests(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        q = _query_dict(environ)
-        user_id = q.get("user_id") or None
-        actor = self._current_actor(environ)
-        if actor is not None and not actor.has_any_role(STAFF_OVERRIDE_ROLES):
-            user_id = self._resolve_actor_bound_id(environ, user_id, field_name="user_id")
-        limit_raw = q.get("limit") or "100"
-        try:
-            limit = int(limit_raw)
-        except ValueError:
-            limit = 100
-        rows = self._with_chat(
-            list_photo_review_requests,
-            user_id=user_id,
-            statuses=_statuses_from_query(q),
-            profile_id=int(q["profile_id"]) if q.get("profile_id") is not None else None,
-            limit=limit,
-        )
-        return 200, {"requests": _json_safe(rows)}
+        return _rest_verification_list_photo_review_requests(self, environ)
 
     def rest_verification_get_submission(
         self,
         environ: dict[str, Any],
         submission_id: str,
     ) -> tuple[int, dict[str, Any]]:
-        submission = self._with_chat(get_verification_submission, submission_id)
-        if not submission:
-            return 404, {"error": {"code": "not_found", "message": "verification submission not found"}}
-        self._assert_actor_can_access_owner(environ, submission.get("user_id"), field_name="user_id")
-        return 200, {"submission": _json_safe(submission)}
+        return _rest_verification_get_submission(self, environ, submission_id)
 
     def rest_verification_get_photo_review_request(
         self,
         environ: dict[str, Any],
         submission_id: str,
     ) -> tuple[int, dict[str, Any]]:
-        submission = self._with_chat(get_verification_submission, submission_id)
-        if not submission or not (submission.get("photo_review_task") or {}).get("task_kind"):
-            return 404, {"error": {"code": "not_found", "message": "photo review request not found"}}
-        self._assert_actor_can_access_owner(environ, submission.get("user_id"), field_name="user_id")
-        return 200, {"request": _json_safe(submission)}
+        return _rest_verification_get_photo_review_request(self, environ, submission_id)
 
     def rest_verification_resubmit_live_video(
         self,
@@ -949,41 +832,10 @@ class PartnerGateway(AsyncJobGatewayMixin):
         submission_id: str,
         body: dict[str, Any],
     ) -> tuple[int, dict[str, Any]]:
-        now = _parse_optional_now(body)
-        user_id = self._resolve_actor_bound_id(environ, body.get("user_id"), field_name="user_id")
-        submission = self._with_chat(
-            resubmit_live_video_verification,
-            submission_id,
-            user_id=user_id,
-            video_base64=str(body.get("video_base64") or body.get("video_bytes_base64") or ""),
-            file_name=str(body.get("file_name") or body.get("filename") or ""),
-            content_type=body.get("content_type"),
-            challenge_token=body.get("challenge_token"),
-            challenge_phrase=body.get("challenge_phrase"),
-            metadata=body.get("metadata"),
-            now=now,
-        )
-        return 200, {"submission": _json_safe(submission)}
+        return _rest_verification_resubmit_live_video(self, environ, submission_id, body)
 
     def rest_verification_list_notifications(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        q = _query_dict(environ)
-        user_id = q.get("user_id") or None
-        actor = self._current_actor(environ)
-        if actor is not None and not actor.has_any_role(STAFF_OVERRIDE_ROLES):
-            user_id = self._resolve_actor_bound_id(environ, user_id, field_name="user_id")
-        limit_raw = q.get("limit") or "100"
-        try:
-            limit = int(limit_raw)
-        except ValueError:
-            limit = 100
-        rows = self._with_chat(
-            list_verification_notifications,
-            submission_id=q.get("submission_id") or None,
-            user_id=user_id,
-            notification_types=_statuses_from_query(q, key="type"),
-            limit=limit,
-        )
-        return 200, {"notifications": _json_safe(rows)}
+        return _rest_verification_list_notifications(self, environ)
 
     def rest_verification_review_submission(
         self,
@@ -991,30 +843,7 @@ class PartnerGateway(AsyncJobGatewayMixin):
         submission_id: str,
         body: dict[str, Any],
     ) -> tuple[int, dict[str, Any]]:
-        now = _parse_optional_now(body)
-        reviewer_id = self._resolve_operator_actor_id(
-            environ,
-            body.get("reviewer_id"),
-            field_name="reviewer_id",
-            roles=VERIFICATION_REVIEW_ROLES,
-            message="current actor cannot review live video submissions",
-        )
-        decision = body.get("decision")
-        if not decision:
-            raise ValueError("decision is required")
-        submission = self._with_chat(
-            review_live_video_verification,
-            submission_id,
-            reviewer_id,
-            decision=str(decision),
-            review_note=body.get("review_note"),
-            liveness_result=body.get("liveness_result"),
-            face_match_result=body.get("face_match_result"),
-            profile_consistency_result=body.get("profile_consistency_result"),
-            metadata=body.get("metadata"),
-            now=now,
-        )
-        return 200, {"submission": _json_safe(submission)}
+        return _rest_verification_review_submission(self, environ, submission_id, body)
 
     def rest_profile_verification_policies(self, _environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         return 200, {"policies": _json_safe(field_verification_policies())}
@@ -2378,43 +2207,9 @@ class PartnerGateway(AsyncJobGatewayMixin):
         if discovery_response is not None:
             return discovery_response
 
-        if path == "/v1/verifications/live-video-challenges" and method == "POST":
-            return self.rest_verification_create_live_challenge(
-                environ,
-                _parse_json_body(_read_body(environ)),
-            )
-        if path == "/v1/verifications/live-video-requests" and method == "POST":
-            return self.rest_verification_request_live_video(
-                environ,
-                _parse_json_body(_read_body(environ)),
-            )
-        if path == "/v1/verifications/live-video-requests" and method == "GET":
-            return self.rest_verification_list_photo_review_requests(environ)
-        if path == "/v1/verifications/live-video-submissions" and method == "POST":
-            return self.rest_verification_submit_live_video(
-                environ,
-                _parse_json_body(_read_body(environ, max_bytes=64 * 1024 * 1024)),
-            )
-        if path == "/v1/verifications/live-video-submissions" and method == "GET":
-            return self.rest_verification_list_submissions(environ)
-        m = re.fullmatch(r"/v1/verifications/live-video-submissions/([^/]+)/resubmit", path)
-        if m and method == "POST":
-            return self.rest_verification_resubmit_live_video(
-                environ,
-                m.group(1),
-                _parse_json_body(_read_body(environ, max_bytes=64 * 1024 * 1024)),
-            )
-        m = re.fullmatch(r"/v1/verifications/live-video-submissions/([^/]+)/review", path)
-        if m and method == "POST":
-            return self.rest_verification_review_submission(environ, m.group(1), _parse_json_body(_read_body(environ)))
-        m = re.fullmatch(r"/v1/verifications/live-video-submissions/([^/]+)", path)
-        if m and method == "GET":
-            return self.rest_verification_get_submission(environ, m.group(1))
-        m = re.fullmatch(r"/v1/verifications/live-video-requests/([^/]+)", path)
-        if m and method == "GET":
-            return self.rest_verification_get_photo_review_request(environ, m.group(1))
-        if path == "/v1/verifications/notifications" and method == "GET":
-            return self.rest_verification_list_notifications(environ)
+        verification_response = dispatch_verification_rest(self, environ, method, path)
+        if verification_response is not None:
+            return verification_response
         if path == "/v1/user-center/trust-hub" and method == "GET":
             return self.rest_user_trust_hub(environ)
         if path == "/v1/profile-verifications/policies" and method == "GET":
