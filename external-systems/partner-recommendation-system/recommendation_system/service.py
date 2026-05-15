@@ -29,6 +29,7 @@ from match_domain import (  # noqa: E402
     reduce_relation_ledger,
 )
 from partner_search import load_self_profile, normalize_persona_profile, search_profiles  # noqa: E402
+from her_time_utils import bool_to_int, current_time, format_dt, parse_dt  # noqa: E402
 
 from .direct_greet_gate import (
     DEFAULT_MAX_REVIEW_CANDIDATES_PER_REFRESH,
@@ -56,37 +57,12 @@ SearchRunner = Callable[..., dict[str, Any]]
 PersonaResolver = Callable[[dict[str, Any]], Optional[dict[str, Any]]]
 run_partner_search = search_profiles
 
-
-def current_time(now: datetime | None = None) -> datetime:
-    return (now or datetime.now()).replace(microsecond=0)
-
-
-def format_dt(value: datetime | None) -> str | None:
-    if value is None:
-        return None
-    return current_time(value).isoformat(sep=" ")
-
-
-def parse_dt(value: str | datetime | None) -> datetime | None:
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return current_time(value)
-    if not value:
-        return None
-    return datetime.fromisoformat(value)
-
-
 def generate_subscription_id() -> str:
     return f"saved-search-{uuid.uuid4().hex[:12]}"
 
 
 def generate_card_id() -> str:
     return f"card-{uuid.uuid4().hex[:12]}"
-
-
-def bool_to_int(value: bool) -> int:
-    return 1 if value else 0
 
 
 def build_initial_request(

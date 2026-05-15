@@ -7,9 +7,9 @@ from dataclasses import dataclass
 from datetime import datetime
 import os
 from pathlib import Path
-import sys
 from typing import Any
 
+from her_repo_path_bootstrap import ensure_partner_system_roots_on_sys_path
 from partner_search import load_self_profile, search_profiles
 from profile_detail_reader import load_profile_detail
 
@@ -21,6 +21,7 @@ from .agent_runtime import (
     DiscoveryRuntimeResult,
     create_default_discovery_agent_runtime,
 )
+from .agent_session_store import create_default_discovery_agent_session_store
 from .storage import InMemoryDiscoveryStorage, MySQLDiscoveryStorage, StoredSession
 from .view_models import (
     assistant_message,
@@ -80,6 +81,7 @@ class DiscoveryProfileNotFoundError(DiscoveryServiceError):
 class DiscoveryService:
     storage: Any
     runtime: DiscoveryAgentRuntime
+    agent_session_store: Any | None = None
 
     def get_session_owner_id(self, session_id: str) -> int:
         session = self._require_session(session_id)
@@ -245,6 +247,7 @@ class DiscoveryService:
                 session,
                 now=now,
             ),
+            agent_session=self._agent_session_for(session.session_id),
         )
 
     def _replace_suggested_actions(
@@ -613,10 +616,7 @@ class DiscoveryService:
         return conn
 
     def _load_recommendation_bindings(self):
-        rec_root = Path(__file__).resolve().parents[2] / "partner-recommendation-system"
-        rec_root_text = str(rec_root)
-        if rec_root_text not in sys.path:
-            sys.path.insert(0, rec_root_text)
+        ensure_partner_system_roots_on_sys_path(Path(__file__).resolve().parents[3])
         from recommendation_system import (  # type: ignore[import-untyped]
             connect_db as connect_recommendation_db,
             handle_opt_in_decision,
@@ -658,6 +658,11 @@ class DiscoveryService:
             raise DiscoverySessionNotFoundError("discovery session not found")
         return session
 
+    def _agent_session_for(self, session_id: str) -> Any | None:
+        if self.agent_session_store is None:
+            return None
+        return self.agent_session_store.get_session(session_id)
+
     def _session_payload(self, session: StoredSession) -> dict[str, Any]:
         return {
             "session": {
@@ -675,4 +680,5 @@ def create_default_discovery_service(*, discovery_dsn: str | None = None) -> Dis
     return DiscoveryService(
         storage=storage,
         runtime=create_default_discovery_agent_runtime(),
+        agent_session_store=create_default_discovery_agent_session_store(discovery_dsn=resolved_dsn),
     )

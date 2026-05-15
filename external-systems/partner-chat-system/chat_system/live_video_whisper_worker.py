@@ -12,44 +12,13 @@ from typing import Any
 import ctranslate2
 from faster_whisper import WhisperModel
 
-
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[3]
-
-
-def _whisper_cache_root() -> Path:
-    raw = str(os.environ.get("HER_VERIFICATION_WHISPER_CACHE_DIR") or "").strip()
-    if raw:
-        return Path(raw).expanduser().resolve()
-    return _repo_root() / "tmp" / "verification_models" / "whisper"
-
-
-def _whisper_device_name() -> str:
-    raw = str(os.environ.get("HER_VERIFICATION_WHISPER_DEVICE") or "").strip().lower()
-    if raw:
-        if raw == "cuda" and ctranslate2.get_cuda_device_count() <= 0:
-            return "cpu"
-        return raw
-    return "cuda" if ctranslate2.get_cuda_device_count() > 0 else "cpu"
-
-
-def _whisper_compute_type() -> str:
-    raw = str(os.environ.get("HER_VERIFICATION_WHISPER_COMPUTE_TYPE") or "").strip()
-    if raw:
-        return raw
-    return "float16" if ctranslate2.get_cuda_device_count() > 0 else "int8"
-
-
-def _whisper_model_source() -> tuple[str, bool]:
-    raw_dir = str(os.environ.get("HER_VERIFICATION_WHISPER_MODEL_DIR") or "").strip()
-    if raw_dir:
-        return str(Path(raw_dir).expanduser().resolve()), True
-    return _whisper_model_name(), False
-
-
-def _whisper_model_name() -> str:
-    raw = str(os.environ.get("HER_VERIFICATION_WHISPER_MODEL") or "").strip()
-    return raw or "tiny"
+from .live_video_whisper_config import (
+    whisper_cache_root,
+    whisper_compute_type,
+    whisper_device_name,
+    whisper_model_name,
+    whisper_model_source,
+)
 
 
 def _bounded_score(value: float | int) -> int:
@@ -63,13 +32,14 @@ def _segment_confidence(avg_logprob: float | None) -> int:
 
 
 def transcribe_audio(audio_path: str | Path) -> dict[str, Any]:
-    cache_root = _whisper_cache_root()
+    cuda_available = ctranslate2.get_cuda_device_count() > 0
+    cache_root = whisper_cache_root()
     cache_root.mkdir(parents=True, exist_ok=True)
-    model_source, local_files_only = _whisper_model_source()
+    model_source, local_files_only = whisper_model_source()
     model = WhisperModel(
         model_source,
-        device=_whisper_device_name(),
-        compute_type=_whisper_compute_type(),
+        device=whisper_device_name(cuda_available=cuda_available),
+        compute_type=whisper_compute_type(cuda_available=cuda_available),
         download_root=str(cache_root),
         local_files_only=local_files_only,
     )
@@ -111,7 +81,7 @@ def transcribe_audio(audio_path: str | Path) -> dict[str, Any]:
     audio_duration_ms = ended_at if ended_at is not None else 0
     return {
         "provider": "faster_whisper",
-        "model_name": _whisper_model_name(),
+        "model_name": whisper_model_name(),
         "transcript_text": transcript_text,
         "transcript_segments": segments,
         "transcript_confidence": _bounded_score(sum(confidence_values) / len(confidence_values)) if confidence_values else 0,

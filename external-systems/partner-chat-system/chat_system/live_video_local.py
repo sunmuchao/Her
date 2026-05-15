@@ -32,6 +32,8 @@ from torch.nn import (
     Sigmoid,
 )
 
+from .live_video_whisper_config import whisper_model_name, whisper_model_source
+
 LOCAL_OSS_PROVIDER = "local_oss"
 LOCAL_OSS_PROVIDER_VERSION = "silent-face+faster-whisper-v1"
 
@@ -97,13 +99,6 @@ def _silent_face_root() -> Path:
     return _cache_root() / "silent_face_repo"
 
 
-def _whisper_cache_root() -> Path:
-    raw = str(os.environ.get("HER_VERIFICATION_WHISPER_CACHE_DIR") or "").strip()
-    if raw:
-        return Path(raw).expanduser().resolve()
-    return _cache_root() / "whisper"
-
-
 def _torch_device_name() -> str:
     raw = str(os.environ.get("HER_VERIFICATION_LOCAL_TORCH_DEVICE") or "").strip().lower()
     if raw:
@@ -111,34 +106,6 @@ def _torch_device_name() -> str:
             return "cpu"
         return raw
     return "cuda:0" if torch.cuda.is_available() else "cpu"
-
-
-def _whisper_device_name() -> str:
-    raw = str(os.environ.get("HER_VERIFICATION_WHISPER_DEVICE") or "").strip().lower()
-    if raw:
-        if raw == "cuda" and not torch.cuda.is_available():
-            return "cpu"
-        return raw
-    return "cuda" if torch.cuda.is_available() else "cpu"
-
-
-def _whisper_compute_type() -> str:
-    raw = str(os.environ.get("HER_VERIFICATION_WHISPER_COMPUTE_TYPE") or "").strip()
-    if raw:
-        return raw
-    return "float16" if torch.cuda.is_available() else "int8"
-
-
-def _whisper_model_source() -> tuple[str, bool]:
-    raw_dir = str(os.environ.get("HER_VERIFICATION_WHISPER_MODEL_DIR") or "").strip()
-    if raw_dir:
-        return str(Path(raw_dir).expanduser().resolve()), True
-    return _whisper_model_name(), False
-
-
-def _whisper_model_name() -> str:
-    raw = str(os.environ.get("HER_VERIFICATION_WHISPER_MODEL") or "").strip()
-    return raw or "tiny"
 
 
 def _reference_face_limit() -> int:
@@ -253,33 +220,8 @@ def _face_match_root() -> Path:
     return _cache_root() / "opencv_face_match"
 
 
-def _ensure_face_match_assets() -> Path:
-    root = _face_match_root()
-    if str(os.environ.get("HER_VERIFICATION_FACE_MATCH_MODEL_DIR") or "").strip():
-        return root
-    root.mkdir(parents=True, exist_ok=True)
-    for filename, url in _FACE_MATCH_ASSETS.items():
-        _download_file(url, root / filename)
-    return root
-
-
 def _bounded_score(value: float | int) -> int:
     return max(0, min(int(round(float(value))), 100))
-
-
-def _sample_indices(frame_count: int, sample_count: int) -> list[int]:
-    if frame_count <= 0:
-        return []
-    if frame_count <= sample_count:
-        return list(range(frame_count))
-    start = max(0, int(round(frame_count * 0.15)))
-    end = min(frame_count - 1, max(start, int(round(frame_count * 0.85))))
-    return sorted(
-        {
-            int(round(start + ((end - start) * index / max(1, sample_count - 1))))
-            for index in range(sample_count)
-        }
-    )
 
 
 def _inspect_media_file(video_path: Path) -> dict[str, Any]:
@@ -3204,7 +3146,7 @@ def _transcribe_video_audio(video_path: Path, *, media_info: dict[str, Any]) -> 
     if extracted_audio_path is None:
         return {
             "provider": "faster_whisper",
-            "model_name": _whisper_model_name(),
+            "model_name": whisper_model_name(),
             "transcript_text": None,
             "transcript_segments": [],
             "transcript_confidence": 0,
@@ -3228,7 +3170,7 @@ def _transcribe_video_audio(video_path: Path, *, media_info: dict[str, Any]) -> 
 
 
 def _speech_analysis_unavailable_result(media_info: dict[str, Any], exc: Exception) -> dict[str, Any]:
-    model_source, _ = _whisper_model_source()
+    model_source, _ = whisper_model_source()
     return {
         "provider": "faster_whisper",
         "model_name": model_source,
