@@ -19,6 +19,7 @@ from .agent_runtime import (
     DiscoveryDecision,
     DiscoveryRunInput,
     DiscoveryRuntimeResult,
+    DiscoveryToolCall,
     create_default_discovery_agent_runtime,
 )
 from .agent_session_store import create_default_discovery_agent_session_store
@@ -112,10 +113,11 @@ class DiscoveryService:
             state={},
         )
         self.storage.save_session(session)
-        runtime_result = self.runtime.initial_decision(self._build_runtime_input(session, now=current))
+        run_input = self._build_runtime_input(session, now=current)
+        runtime_result = self.runtime.initial_decision(run_input)
         search_run_id = self._apply_runtime_result(session, runtime_result, now=current)
         self.storage.save_session(session)
-        self.storage.create_turn(
+        turn_id = self.storage.create_turn(
             session_id=session.session_id,
             request_kind="session_opened",
             user_message_text=None,
@@ -124,6 +126,13 @@ class DiscoveryService:
             view_snapshot=clone_view(session.view),
             created_at=current,
             search_run_id=search_run_id,
+        )
+        self._record_tool_calls(
+            session_id=session.session_id,
+            turn_id=turn_id,
+            tool_calls=run_input.tool_call_buffer,
+            search_run_id=search_run_id,
+            created_at=current,
         )
         return self._session_payload(session)
 
@@ -147,12 +156,13 @@ class DiscoveryService:
         request_kind = "user_message"
         consumed_action_id: str | None = None
         normalized_user_message: str | None = None
+        run_input = self._build_runtime_input(session, now=current)
         if user_message_text is not None and user_message_text.strip():
             text = user_message_text.strip()
             normalized_user_message = text
             new_items.append(user_message(self.storage.next_item_id("msg-u"), text))
             runtime_result = self.runtime.run_turn(
-                self._build_runtime_input(session, now=current),
+                run_input,
                 user_message=text,
             )
         else:
@@ -167,7 +177,7 @@ class DiscoveryService:
             request_kind = "action_click"
             consumed_action_id = action.action_id
             runtime_result = self.runtime.run_turn(
-                self._build_runtime_input(session, now=current),
+                run_input,
                 action_context={
                     "label": action.label,
                     "semantic_payload": deepcopy(action.semantic_payload),
@@ -177,7 +187,7 @@ class DiscoveryService:
         session.view["timeline"] = list(session.view.get("timeline") or []) + new_items
         search_run_id = self._apply_runtime_result(session, runtime_result, now=current)
         self.storage.save_session(session)
-        self.storage.create_turn(
+        turn_id = self.storage.create_turn(
             session_id=session.session_id,
             request_kind=request_kind,
             user_message_text=normalized_user_message,
@@ -186,6 +196,13 @@ class DiscoveryService:
             view_snapshot=clone_view(session.view),
             created_at=current,
             search_run_id=search_run_id,
+        )
+        self._record_tool_calls(
+            session_id=session.session_id,
+            turn_id=turn_id,
+            tool_calls=run_input.tool_call_buffer,
+            search_run_id=search_run_id,
+            created_at=current,
         )
         return self._session_payload(session)
 
@@ -225,6 +242,52 @@ class DiscoveryService:
         now: datetime | None = None,
     ) -> DiscoveryRunInput:
         recent_timeline = clone_view({"timeline": session.view.get("timeline") or []}).get("timeline") or []
+        tool_call_buffer: list[DiscoveryToolCall] = []
+
+        def _search_partner_candidates(criteria: dict[str, Any], limit: int) -> dict[str, Any]:
+            response = self._search_partner_candidates(
+                session,
+                criteria=criteria,
+                limit=limit,
+            )
+            self._append_tool_call(
+                tool_call_buffer,
+                "search_partner_candidates",
+                {
+                    "criteria": deepcopy(criteria),
+                    "limit": int(limit or 0),
+                },
+                response,
+            )
+            return response
+
+        def _sync_requester_persona_memory(patch: dict[str, Any]) -> dict[str, Any]:
+            result = self._sync_requester_persona_memory(
+                session,
+                patch=patch,
+                now=now,
+            )
+            self._append_tool_call(
+                tool_call_buffer,
+                "sync_requester_persona_memory",
+                {"patch": deepcopy(patch)},
+                result,
+            )
+            return result
+
+        def _create_saved_search_subscription_from_last_search() -> dict[str, Any]:
+            result = self._create_saved_search_subscription_from_last_search(
+                session,
+                now=now,
+            )
+            self._append_tool_call(
+                tool_call_buffer,
+                "create_saved_search_subscription_from_last_search",
+                {},
+                result,
+            )
+            return result
+
         return DiscoveryRunInput(
             session_id=session.session_id,
             requester_id=session.requester_id,
@@ -236,17 +299,14 @@ class DiscoveryService:
                 if str(item.get("label") or "").strip()
             ],
             recent_timeline=recent_timeline,
-            get_discovery_session_state=lambda: self._build_session_state_snapshot(session.session_id),
-            get_requester_profile=lambda: self._load_requester_profile(session),
-            search_partner_candidates=lambda criteria, limit: self._search_partner_candidates(
+            runtime_context=self._build_runtime_context(
                 session,
-                criteria=criteria,
-                limit=limit,
+                recent_timeline=recent_timeline,
             ),
-            create_saved_search_subscription_from_last_search=lambda: self._create_saved_search_subscription_from_last_search(
-                session,
-                now=now,
-            ),
+            search_partner_candidates=_search_partner_candidates,
+            sync_requester_persona_memory=_sync_requester_persona_memory,
+            create_saved_search_subscription_from_last_search=_create_saved_search_subscription_from_last_search,
+            tool_call_buffer=tool_call_buffer,
             agent_session=self._agent_session_for(session.session_id),
         )
 
@@ -350,22 +410,129 @@ class DiscoveryService:
             )
         return cards
 
-    def _build_session_state_snapshot(self, session_id: str) -> dict[str, Any]:
-        session = self._require_session(session_id)
+    def _build_runtime_context(
+        self,
+        session: StoredSession,
+        *,
+        recent_timeline: list[dict[str, Any]],
+    ) -> dict[str, Any]:
         return {
-            "session_id": session.session_id,
-            "requester_id": session.requester_id,
-            "profile_id": session.profile_id,
-            "status": session.status,
-            "phase": session.phase,
-            "state": deepcopy(session.state),
+            "session_status": session.status,
+            "requester_profile_snapshot": self._load_requester_profile(session),
+            "recent_timeline_summary": list(recent_timeline),
+            "visible_actions": self._build_visible_action_summaries(session),
+            "last_search_summary": self._build_last_search_summary(session),
+            "page_summary": self._build_page_summary(session),
+        }
+
+    def _build_visible_action_summaries(self, session: StoredSession) -> list[dict[str, Any]]:
+        items: list[dict[str, Any]] = []
+        for action_id in list(session.visible_action_ids)[:3]:
+            action = self.storage.get_action(session.session_id, action_id)
+            if action is None:
+                continue
+            items.append(
+                {
+                    "action_id": action.action_id,
+                    "label": action.label,
+                    "style": action.style,
+                    "hint": deepcopy(action.semantic_payload),
+                }
+            )
+        return items
+
+    def _build_last_search_summary(self, session: StoredSession) -> dict[str, Any] | None:
+        search_run_id = int(session.state.get("last_search_run_id") or 0)
+        if search_run_id <= 0:
+            return None
+        search_run = self.storage.get_search_run(search_run_id)
+        if search_run is None:
+            return {
+                "search_run_id": search_run_id,
+                "result_count": int(session.state.get("last_search_result_count") or 0),
+                "has_match": bool(session.state.get("last_search_has_match")),
+            }
+        return {
+            "search_run_id": search_run.search_run_id,
+            "result_count": int(search_run.result_count or 0),
+            "has_match": bool(search_run.has_match),
+            "criteria": deepcopy(search_run.criteria),
+            "source": search_run.source,
+        }
+
+    def _build_page_summary(self, session: StoredSession) -> dict[str, Any]:
+        summary = {
             "criteria_labels": [
                 str(item.get("label") or "").strip()
                 for item in list(session.view.get("criteria_chips") or [])
                 if str(item.get("label") or "").strip()
             ],
-            "recent_timeline": list(session.view.get("timeline") or [])[-6:],
+            "suggested_action_labels": [
+                str(item.get("label") or "").strip()
+                for item in self._build_visible_action_summaries(session)
+                if str(item.get("label") or "").strip()
+            ],
+            "result_cards": [],
         }
+        for item in reversed(list(session.view.get("timeline") or [])):
+            if item.get("item_type") != "result_group":
+                continue
+            summary["result_cards"] = [
+                {
+                    "profile_id": card.get("profile_id"),
+                    "title": card.get("title"),
+                    "reason_summary": card.get("reason_summary"),
+                }
+                for card in list(item.get("cards") or [])[:3]
+            ]
+            break
+        return summary
+
+    def _append_tool_call(
+        self,
+        tool_call_buffer: list[DiscoveryToolCall],
+        tool_name: str,
+        arguments: dict[str, Any],
+        result: dict[str, Any],
+        *,
+        status: str = "succeeded",
+    ) -> None:
+        tool_call_buffer.append(
+            DiscoveryToolCall(
+                tool_name=tool_name,
+                arguments=deepcopy(arguments),
+                result=deepcopy(result),
+                status=status,
+            )
+        )
+
+    def _record_tool_calls(
+        self,
+        *,
+        session_id: str,
+        turn_id: int,
+        tool_calls: list[DiscoveryToolCall],
+        search_run_id: int | None,
+        created_at: datetime,
+    ) -> None:
+        if not tool_calls:
+            return
+        linked_search_index: int | None = None
+        if search_run_id is not None:
+            for index, tool_call in enumerate(tool_calls):
+                if tool_call.tool_name == "search_partner_candidates":
+                    linked_search_index = index
+        for index, tool_call in enumerate(tool_calls):
+            self.storage.create_tool_call(
+                session_id=session_id,
+                turn_id=turn_id,
+                tool_name=tool_call.tool_name,
+                arguments=tool_call.arguments,
+                result=tool_call.result,
+                status=tool_call.status,
+                search_run_id=search_run_id if linked_search_index == index else None,
+                created_at=created_at,
+            )
 
     def _load_requester_profile(self, session: StoredSession) -> dict[str, Any] | None:
         source = self._profile_source()
@@ -452,6 +619,72 @@ class DiscoveryService:
             if value:
                 return value
         return ""
+
+    def _persona_memory_source(self) -> str:
+        for name in (
+            "PERSONA_MEMORY_MYSQL_SOURCE",
+            "HER_DISCOVERY_PROFILE_SOURCE",
+            "PARTNER_SEARCH_MYSQL_SOURCE",
+        ):
+            value = (os.environ.get(name) or "").strip()
+            if value:
+                return value
+        return ""
+
+    def _sync_requester_persona_memory(
+        self,
+        session: StoredSession,
+        *,
+        patch: dict[str, Any],
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        normalized_patch = dict(patch or {})
+        if not normalized_patch:
+            return {
+                "synced": False,
+                "error_code": "empty_persona_patch",
+                "message": "没有可写入画像的字段。",
+            }
+        source = self._persona_memory_source()
+        if not source:
+            return {
+                "synced": False,
+                "error_code": "persona_memory_source_not_configured",
+                "message": "当前没有配置 persona-memory-sync 数据源。",
+            }
+        current = now or datetime.now()
+        try:
+            upsert_persona_memory = self._load_persona_memory_bindings()
+            upsert_result = upsert_persona_memory(
+                {
+                    "source": source,
+                    "user_key": str(session.requester_id),
+                    "source_type": "explicit",
+                    "patch": normalized_patch,
+                    "sync_profile": True,
+                    "conversation_ref": f"discovery/{session.session_id}",
+                    "basis": "discovery_agent",
+                },
+                include_normalized_patch=True,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return {
+                "synced": False,
+                "error_code": "persona_memory_sync_failed",
+                "message": str(exc)[:200],
+            }
+        session.state["last_persona_sync_at"] = current.isoformat()
+        session.state["last_persona_sync_fields"] = sorted(
+            str(key).strip()
+            for key in normalized_patch.keys()
+            if str(key or "").strip()
+        )
+        return {
+            "synced": True,
+            "user_key": str(session.requester_id),
+            "patch_keys": list(session.state["last_persona_sync_fields"]),
+            "upsert": upsert_result,
+        }
 
     def _build_profile_detail_notes(
         self,
@@ -628,6 +861,11 @@ class DiscoveryService:
             handle_opt_in_decision,
             initialize_recommendation_database,
         )
+
+    def _load_persona_memory_bindings(self):
+        from persona_memory_sync import upsert_persona_memory
+
+        return upsert_persona_memory
 
     def _decision_payload(self, decision: DiscoveryDecision) -> dict[str, Any]:
         return {

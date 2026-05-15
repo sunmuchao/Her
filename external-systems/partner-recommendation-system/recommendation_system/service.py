@@ -525,7 +525,7 @@ def _hydrate_recommendation_relation_metadata(
     return recommendation
 
 
-def _recommendation_action_insert(
+def insert_recommendation_action(
     conn,
     *,
     subscription: dict[str, Any],
@@ -602,7 +602,7 @@ def append_relation_state_revision_event(
     recommendation_row: dict[str, Any],
     now: datetime,
 ) -> None:
-    _recommendation_action_insert(
+    insert_recommendation_action(
         conn,
         subscription=subscription,
         recommendation=recommendation_row,
@@ -617,6 +617,10 @@ def append_relation_state_revision_event(
             "rule_provenance": json_loads(recommendation_row.get("rule_provenance_json"), {}),
         },
     )
+
+
+# Backward-compatible alias for older internal imports.
+_recommendation_action_insert = insert_recommendation_action
 
 
 def normalize_delivery_status(

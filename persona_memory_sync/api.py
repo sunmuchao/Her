@@ -15,7 +15,7 @@ DEFAULT_OBSERVATION_TABLE = engine.DEFAULT_OBSERVATION_TABLE
 render_public_profile_via_service = engine.execute_render_public_profile
 
 
-def _build_upsert_request(
+def coerce_upsert_request(
     request: UpsertPersonaMemoryRequest | Mapping[str, Any],
 ) -> UpsertPersonaMemoryRequest:
     if isinstance(request, UpsertPersonaMemoryRequest):
@@ -37,7 +37,7 @@ def _build_upsert_request(
     )
 
 
-def _build_sync_request(
+def coerce_sync_request(
     request: SyncPersonaProfileRequest | Mapping[str, Any],
 ) -> SyncPersonaProfileRequest:
     if isinstance(request, SyncPersonaProfileRequest):
@@ -51,7 +51,7 @@ def _build_sync_request(
     )
 
 
-def _build_render_request(
+def coerce_render_request(
     request: RenderPublicProfileRequest | Mapping[str, Any],
 ) -> RenderPublicProfileRequest:
     if isinstance(request, RenderPublicProfileRequest):
@@ -72,7 +72,7 @@ def upsert_persona_memory(
     include_normalized_patch: bool = False,
 ) -> dict[str, Any]:
     return engine.execute_upsert_persona_memory(
-        _build_upsert_request(request),
+        coerce_upsert_request(request),
         include_normalized_patch=include_normalized_patch,
     )
 
@@ -80,16 +80,25 @@ def upsert_persona_memory(
 def sync_persona_profile(
     request: SyncPersonaProfileRequest | Mapping[str, Any],
 ) -> dict[str, Any]:
-    return engine.execute_sync_persona_profile(_build_sync_request(request))
+    return engine.execute_sync_persona_profile(coerce_sync_request(request))
 
 
 def render_public_profile(
     request: RenderPublicProfileRequest | Mapping[str, Any],
 ) -> dict[str, Any]:
-    return render_public_profile_via_service(_build_render_request(request))
+    return render_public_profile_via_service(coerce_render_request(request))
+
+
+# Backward-compatible aliases for older internal callers.
+_build_upsert_request = coerce_upsert_request
+_build_sync_request = coerce_sync_request
+_build_render_request = coerce_render_request
 
 
 __all__ = [
+    "coerce_render_request",
+    "coerce_sync_request",
+    "coerce_upsert_request",
     "DEFAULT_OBSERVATION_TABLE",
     "DEFAULT_PERSONA_TABLE",
     "RenderPublicProfileRequest",

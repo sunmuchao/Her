@@ -23,12 +23,12 @@ from match_domain import (  # noqa: E402
 from observability import RECOMMENDATION_FUNNEL_PROXY_INTRO, funnel_stage  # noqa: E402
 
 from .service import (  # noqa: E402
-    _recommendation_action_insert,
     append_relation_state_revision_event,
     current_time,
     format_dt,
     get_recommendation,
     get_subscription,
+    insert_recommendation_action,
     parse_dt,
 )
 from .storage import json_dumps, json_loads, row_to_dict
@@ -474,7 +474,7 @@ def create_match_case(
         now=now,
         payload={"request_payload": request_payload or {}},
     )
-    _recommendation_action_insert(
+    insert_recommendation_action(
         conn,
         subscription=subscription,
         recommendation=recommendation,
@@ -710,7 +710,7 @@ def record_match_case_reply(
             recommendation_delivery_status="proxy_intro_accepted",
             recommendation_delivery_reason="proxy_intro_accepted",
         )
-        _recommendation_action_insert(
+        insert_recommendation_action(
             conn,
             subscription=subscription,
             recommendation=recommendation,
@@ -734,7 +734,7 @@ def record_match_case_reply(
             recommendation_delivery_status="proxy_intro_declined",
             recommendation_delivery_reason="proxy_intro_declined",
         )
-        _recommendation_action_insert(
+        insert_recommendation_action(
             conn,
             subscription=subscription,
             recommendation=recommendation,
@@ -814,7 +814,7 @@ def close_match_case(
             active=False,
             now=now,
         )
-        _recommendation_action_insert(
+        insert_recommendation_action(
             conn,
             subscription=subscription,
             recommendation=recommendation,
@@ -903,7 +903,7 @@ def close_timed_out_match_cases(
                 active=False,
                 now=now,
             )
-            _recommendation_action_insert(
+            insert_recommendation_action(
                 conn,
                 subscription=subscription,
                 recommendation=recommendation,

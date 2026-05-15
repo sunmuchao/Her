@@ -3,8 +3,9 @@ from __future__ import annotations
 import argparse
 import json
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any, Callable, Sequence
+
+from her_json_utils import json_safe
 
 
 PROFILE_FILTER_ARGUMENT_SPECS = [
@@ -530,15 +531,12 @@ class SearchRuntimeHelpers:
         return self.execute_search_request(self.build_search_request_from_args(args))
 
     def json_safe(self, value):
-        if isinstance(value, datetime):
-            return self.runtime.format_datetime(value)
-        if isinstance(value, dict):
-            return {str(key): self.json_safe(item) for key, item in value.items()}
-        if isinstance(value, set):
-            return [self.json_safe(item) for item in sorted(value, key=lambda item: repr(item))]
-        if isinstance(value, (list, tuple)):
-            return [self.json_safe(item) for item in value]
-        return value
+        return json_safe(
+            value,
+            datetime_formatter=self.runtime.format_datetime,
+            stringify_mapping_keys=True,
+            sort_sets=True,
+        )
 
     def build_structured_result_payload(self, result, include_source=False):
         profile = result.get("profile") or {}

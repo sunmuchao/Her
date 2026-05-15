@@ -12,7 +12,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from partner_search.search_candidates import *  # noqa: E402,F401,F403
+from partner_search.search_candidates import main  # noqa: E402
 
 
 if __name__ == "__main__":

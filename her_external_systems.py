@@ -8,8 +8,12 @@ from typing import Any
 
 from async_jobs import (
     AsyncJobHandler,
+    get_async_job,
+    list_async_jobs,
     enqueue_async_job,
     run_async_job_worker,
+    summarize_async_jobs,
+    summarize_async_jobs_by_type,
 )
 from db_migrations import initialize_target_database
 from observability.health import emit_async_job_gauges
@@ -125,9 +129,149 @@ def run_external_async_job_worker(
     return out
 
 
+def build_external_async_job_helpers(
+    *,
+    handlers: Mapping[str, AsyncJobHandler],
+    subsystem_name: str,
+    system: str,
+    default_worker_name: str,
+) -> tuple[
+    Callable[..., dict[str, Any]],
+    Callable[..., dict[str, Any] | None],
+    Callable[..., list[dict[str, Any]]],
+    Callable[..., dict[str, Any]],
+    Callable[..., list[dict[str, Any]]],
+    Callable[..., dict[str, Any]],
+]:
+    def enqueue_job(
+        conn,
+        *,
+        job_type: str,
+        payload: dict[str, Any] | None = None,
+        created_by: str | None = None,
+        trace_id: str | None = None,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        return enqueue_external_async_job(
+            conn,
+            handlers=handlers,
+            subsystem_name=subsystem_name,
+            job_type=job_type,
+            payload=payload,
+            created_by=created_by,
+            trace_id=trace_id,
+            now=now,
+        )
+
+    def get_job(conn, job_id: str) -> dict[str, Any] | None:
+        return get_async_job(conn, job_id)
+
+    def list_jobs(
+        conn,
+        *,
+        statuses: list[str] | None = None,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        return list_async_jobs(conn, statuses=statuses, limit=limit)
+
+    def summarize_jobs(
+        conn,
+        *,
+        now: datetime | None = None,
+        claim_timeout_seconds: int = 300,
+    ) -> dict[str, Any]:
+        return summarize_async_jobs(conn, now=now, claim_timeout_seconds=claim_timeout_seconds)
+
+    def summarize_jobs_by_type(
+        conn,
+        *,
+        now: datetime | None = None,
+        claim_timeout_seconds: int = 300,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        return summarize_async_jobs_by_type(conn, now=now, claim_timeout_seconds=claim_timeout_seconds, limit=limit)
+
+    def run_worker(
+        conn,
+        *,
+        limit: int = 10,
+        retry_delay_seconds: int = 15,
+        retry_backoff_multiplier: int = 2,
+        retry_max_delay_seconds: int = 300,
+        claim_timeout_seconds: int = 300,
+        worker_name: str = default_worker_name,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        return run_external_async_job_worker(
+            conn,
+            handlers=handlers,
+            system=system,
+            limit=limit,
+            retry_delay_seconds=retry_delay_seconds,
+            retry_backoff_multiplier=retry_backoff_multiplier,
+            retry_max_delay_seconds=retry_max_delay_seconds,
+            claim_timeout_seconds=claim_timeout_seconds,
+            worker_name=worker_name,
+            now=now,
+        )
+
+    return (
+        enqueue_job,
+        get_job,
+        list_jobs,
+        summarize_jobs,
+        summarize_jobs_by_type,
+        run_worker,
+    )
+
+
+def build_external_outbox_helpers(
+    *,
+    env_prefix: str,
+    system: str,
+    default_worker_name: str,
+) -> tuple[
+    Callable[[], dict[str, Any]],
+    Callable[..., dict[str, Any]],
+    Callable[..., dict[str, Any]],
+]:
+    from match_domain.outbox_runtime import (
+        resolve_outbox_consume_config as resolve_shared_outbox_consume_config,
+        run_outbox_worker,
+        serve_outbox_worker,
+    )
+
+    def resolve_config() -> dict[str, Any]:
+        return resolve_shared_outbox_consume_config(
+            env_prefix=env_prefix,
+            system=system,
+            default_worker_name=default_worker_name,
+        )
+
+    def run_worker(conn, **kwargs: Any) -> dict[str, Any]:
+        return run_outbox_worker(
+            conn,
+            system=system,
+            config=resolve_config(),
+            **kwargs,
+        )
+
+    def serve_worker(conn, **kwargs: Any) -> dict[str, Any]:
+        return serve_outbox_worker(
+            conn,
+            system=system,
+            config=resolve_config(),
+            **kwargs,
+        )
+
+    return resolve_config, run_worker, serve_worker
+
+
 __all__ = [
     "AsyncJobHandler",
     "MySQLCompatConnection",
+    "build_external_async_job_helpers",
+    "build_external_outbox_helpers",
     "build_external_storage_helpers",
     "connect_external_db",
     "enqueue_external_async_job",

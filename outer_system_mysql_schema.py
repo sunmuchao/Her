@@ -1658,6 +1658,31 @@ def discovery_tables() -> tuple[TableDef, ...]:
             ),
         ),
         TableDef(
+            name="discovery_agent_tool_calls",
+            columns=(
+                ColumnDef("tool_call_id", "BIGINT", nullable=False, auto_increment=True),
+                ColumnDef("session_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("turn_id", "BIGINT", nullable=False),
+                ColumnDef("tool_name", "VARCHAR(191)", nullable=False),
+                ColumnDef("tool_args_json", "LONGTEXT", nullable=False),
+                ColumnDef("tool_result_json", "LONGTEXT", nullable=False),
+                ColumnDef("status", "VARCHAR(32)", nullable=False),
+                ColumnDef("search_run_id", "BIGINT"),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("tool_call_id",),
+            indexes=(
+                IndexDef(("session_id", "created_at"), "idx_discovery_tool_calls_session_time"),
+                IndexDef(("turn_id",), "idx_discovery_tool_calls_turn_id"),
+                IndexDef(("tool_name", "created_at"), "idx_discovery_tool_calls_name_time"),
+            ),
+            foreign_keys=(
+                ForeignKeyDef(("session_id",), "discovery_agent_sessions", ("session_id",)),
+                ForeignKeyDef(("turn_id",), "discovery_agent_turns", ("turn_id",)),
+                ForeignKeyDef(("search_run_id",), "discovery_search_runs", ("search_run_id",)),
+            ),
+        ),
+        TableDef(
             name="discovery_agent_session_memory_items",
             columns=(
                 ColumnDef("item_id", "BIGINT", nullable=False, auto_increment=True),

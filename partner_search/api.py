@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import json
-from datetime import date, datetime
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Sequence
 
+from her_json_utils import json_safe
 from profile_service import get_profile, resolve_profile_source
 
 from . import search_candidates as engine
@@ -67,21 +67,6 @@ class SearchResponse:
             indent=indent,
             sort_keys=False,
         )
-
-
-def _json_safe_value(value: Any) -> Any:
-    if isinstance(value, datetime):
-        return value.isoformat(sep=" ")
-    if isinstance(value, date):
-        return value.isoformat()
-    if isinstance(value, Mapping):
-        return {key: _json_safe_value(item) for key, item in value.items()}
-    if isinstance(value, list):
-        return [_json_safe_value(item) for item in value]
-    if isinstance(value, tuple):
-        return [_json_safe_value(item) for item in value]
-    return value
-
 
 def _has_value(value: Any) -> bool:
     return value is not None and value != "" and value != [] and value != {}
@@ -204,7 +189,7 @@ def load_self_profile(
         self_id=self_id,
         profile_input=None,
     )
-    return _json_safe_value(profile)
+    return json_safe(profile)
 
 
 def normalize_persona_profile(
@@ -346,4 +331,4 @@ def normalize_persona_profile(
         if _has_value(value):
             normalized[key] = value
 
-    return _json_safe_value(normalized)
+    return json_safe(normalized)

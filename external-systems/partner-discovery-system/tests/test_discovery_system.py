@@ -146,6 +146,72 @@ class _NoMatchOptInRuntime:
         )
 
 
+class _PersonaSyncRuntime:
+    def initial_decision(self, _run_input):
+        return DiscoveryRuntimeResult(
+            decision=DiscoveryDecision(
+                phase="collecting_preferences",
+                assistant_message="先告诉我你的偏好。",
+            )
+        )
+
+    def run_turn(self, run_input, *, user_message=None, action_context=None):
+        del user_message, action_context
+        run_input.sync_requester_persona_memory(
+            {
+                "self_city": "上海",
+                "self_relationship_goal": "认真恋爱",
+                "must_not_have_tags": ["抽烟"],
+            }
+        )
+        return DiscoveryRuntimeResult(
+            decision=DiscoveryDecision(
+                phase="collecting_preferences",
+                assistant_message="我先把你刚说的稳定偏好记下来了。",
+                criteria_labels=["上海", "认真恋爱", "不接受抽烟"],
+                suggested_actions=[
+                    DiscoveryActionSuggestion(label="继续补充年龄范围"),
+                ],
+            )
+        )
+
+
+class _SearchToolRuntime:
+    def initial_decision(self, _run_input):
+        return DiscoveryRuntimeResult(
+            decision=DiscoveryDecision(
+                phase="collecting_preferences",
+                assistant_message="先告诉我你想找什么样的人。",
+            )
+        )
+
+    def run_turn(self, run_input, *, user_message=None, action_context=None):
+        del user_message, action_context
+        response = run_input.search_partner_candidates(
+            {
+                "gender": "女",
+                "cities": ["无锡"],
+                "relationship_goals": ["认真恋爱"],
+            },
+            3,
+        )
+        return DiscoveryRuntimeResult(
+            decision=DiscoveryDecision(
+                phase="results_shown",
+                assistant_message="我先给你看一位比较贴近的。",
+                criteria_labels=["无锡", "认真恋爱"],
+                result_group_title="这一轮先给你看 1 位",
+                selected_candidates=[
+                    DiscoveryCandidateSelection(
+                        profile_id=1002,
+                        reason_summary="城市一致、关系目标一致。",
+                    )
+                ],
+            ),
+            search_response=response,
+        )
+
+
 class DiscoveryServiceTests(unittest.TestCase):
     def test_in_memory_agent_session_store_persists_items_across_instances(self) -> None:
         store = InMemoryDiscoveryAgentSessionStore()
@@ -170,6 +236,10 @@ class DiscoveryServiceTests(unittest.TestCase):
         session = session_store.get_session("discovery-session-002")
         captured: dict[str, object] = {}
 
+        def _fake_agent(**kwargs):
+            captured["tools"] = kwargs.get("tools")
+            return object()
+
         def _fake_run_sync(_agent, input, **kwargs):
             captured["input"] = input
             captured["session"] = kwargs.get("session")
@@ -190,16 +260,24 @@ class DiscoveryServiceTests(unittest.TestCase):
             recent_timeline=[
                 {"item_type": "assistant_message", "body": "前面聊过城市和关系目标。"},
             ],
-            get_discovery_session_state=lambda: {"phase": "collecting_preferences"},
-            get_requester_profile=lambda: {"self_city": "上海"},
+            runtime_context={
+                "requester_profile_snapshot": {"self_city": "上海"},
+                "recent_timeline_summary": [
+                    {"item_type": "assistant_message", "body": "前面聊过城市和关系目标。"},
+                ],
+                "visible_actions": [{"label": "继续补充城市", "style": "secondary", "hint": {"kind": "followup"}}],
+                "last_search_summary": {"result_count": 0, "has_match": False},
+                "page_summary": {"criteria_labels": ["上海"]},
+            },
             search_partner_candidates=lambda _criteria, _limit: {"has_match": False, "result_count": 0, "results": []},
+            sync_requester_persona_memory=lambda _patch: {"synced": True},
             create_saved_search_subscription_from_last_search=lambda: {"created_subscription": False},
             agent_session=session,
         )
 
         with mock.patch("discovery_system.agent_runtime._configure_agents_sdk_provider"), mock.patch(
             "agents.Agent",
-            return_value=object(),
+            side_effect=_fake_agent,
         ), mock.patch("agents.Runner.run_sync", side_effect=_fake_run_sync):
             result = runtime._run_with_agents_sdk(
                 run_input,
@@ -210,7 +288,20 @@ class DiscoveryServiceTests(unittest.TestCase):
 
         self.assertIs(captured["session"], session)
         payload = json.loads(str(captured["input"]))
-        self.assertEqual(payload["recent_timeline"], [])
+        self.assertEqual(payload["official_context"]["requester_profile_snapshot"]["self_city"], "上海")
+        self.assertEqual(len(payload["official_context"]["recent_timeline_summary"]), 1)
+        tool_names = [
+            getattr(tool, "name", None) or getattr(tool, "__name__", "")
+            for tool in list(captured["tools"] or [])
+        ]
+        self.assertEqual(
+            tool_names,
+            [
+                "sync_requester_persona_memory",
+                "search_partner_candidates",
+                "create_saved_search_subscription_from_last_search",
+            ],
+        )
         self.assertEqual(result.decision.assistant_message, "先说说你的基本要求。")
 
     def test_service_renders_cards_from_canonical_search_result(self) -> None:
@@ -342,7 +433,97 @@ class DiscoveryServiceTests(unittest.TestCase):
         assert stored_session is not None
         self.assertEqual(stored_session.state["last_created_subscription_id"], "saved-search-abc123")
         self.assertEqual(stored_session.state["last_opt_in_search_run_id"], 1)
+        tool_calls = service.storage.list_tool_calls(session_id)
+        self.assertEqual(tool_calls[-1].tool_name, "create_saved_search_subscription_from_last_search")
+        self.assertTrue(tool_calls[-1].result["created_subscription"])
         fake_conn.close.assert_called_once()
+
+    def test_service_records_persona_memory_tool_call(self) -> None:
+        service = DiscoveryService(
+            storage=InMemoryDiscoveryStorage(),
+            runtime=_PersonaSyncRuntime(),
+        )
+        created = service.create_session(requester_id=70001, profile_id=10001)
+        session_id = created["session"]["session_id"]
+        captured: dict[str, object] = {}
+
+        def _fake_upsert(request, *, include_normalized_patch=False):
+            captured["request"] = request
+            captured["include_normalized_patch"] = include_normalized_patch
+            return {
+                "user_key": request["user_key"],
+                "normalized_patch": dict(request["patch"]),
+                "synced_profile": True,
+            }
+
+        with mock.patch.dict(os.environ, {"PERSONA_MEMORY_MYSQL_SOURCE": "mysql://persona-demo"}, clear=False), mock.patch.object(
+            service,
+            "_load_persona_memory_bindings",
+            return_value=_fake_upsert,
+        ):
+            service.process_turn(
+                session_id=session_id,
+                user_message_text="我在上海，不接受抽烟，想认真恋爱。",
+            )
+
+        request = dict(captured["request"] or {})
+        self.assertEqual(request["source"], "mysql://persona-demo")
+        self.assertEqual(request["user_key"], "70001")
+        self.assertTrue(request["sync_profile"])
+        self.assertTrue(captured["include_normalized_patch"])
+        tool_calls = service.storage.list_tool_calls(session_id)
+        persona_tool_calls = [item for item in tool_calls if item.tool_name == "sync_requester_persona_memory"]
+        self.assertEqual(len(persona_tool_calls), 1)
+        self.assertTrue(persona_tool_calls[0].result["synced"])
+        self.assertEqual(persona_tool_calls[0].arguments["patch"]["must_not_have_tags"], ["抽烟"])
+
+    def test_service_records_search_tool_call_with_search_run_reference(self) -> None:
+        service = DiscoveryService(
+            storage=InMemoryDiscoveryStorage(),
+            runtime=_SearchToolRuntime(),
+        )
+        created = service.create_session(requester_id=70001, profile_id=10001)
+        session_id = created["session"]["session_id"]
+
+        fake_search_response = {
+            "has_match": True,
+            "result_count": 1,
+            "results": [
+                {
+                    "id": 1002,
+                    "name": "周晴",
+                    "score": 88,
+                    "photo_preview": ["https://static.example.com/1002.jpg"],
+                    "verification_items": [],
+                    "matched_on": ["城市一致", "关系目标一致"],
+                    "trust_summary": {"headline": "真人认证"},
+                    "profile": {
+                        "age": 30,
+                        "city": "无锡",
+                        "job": "产品经理",
+                        "education": "本科",
+                    },
+                }
+            ],
+        }
+
+        with mock.patch.dict(os.environ, {"HER_DISCOVERY_PROFILE_SOURCE": "mysql://search-demo"}, clear=False), mock.patch(
+            "discovery_system.service.load_self_profile",
+            return_value={"self_city": "无锡"},
+        ), mock.patch(
+            "discovery_system.service.search_profiles",
+            return_value=dict(fake_search_response),
+        ):
+            service.process_turn(
+                session_id=session_id,
+                user_message_text="我想找无锡、认真恋爱的女生。",
+            )
+
+        tool_calls = service.storage.list_tool_calls(session_id)
+        search_tool_calls = [item for item in tool_calls if item.tool_name == "search_partner_candidates"]
+        self.assertEqual(len(search_tool_calls), 1)
+        self.assertEqual(search_tool_calls[0].search_run_id, 1)
+        self.assertEqual(search_tool_calls[0].result["result_count"], 1)
 
 
 if __name__ == "__main__":
