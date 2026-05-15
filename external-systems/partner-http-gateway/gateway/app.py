@@ -15,7 +15,6 @@ from .http_helpers import (  # noqa: E402
     _incoming_trace_id,
     _json_safe,
     _normalize_boolish,
-    _normalize_optional_now_text,
     _parse_json_body,
     _parse_optional_now,
     _query_dict,
@@ -25,7 +24,6 @@ from .http_helpers import (  # noqa: E402
 )
 
 from match_domain import (  # noqa: E402
-    get_trace_id,
     reset_actor_context,
     reset_trace_id,
     set_actor_context,
@@ -44,27 +42,8 @@ from recommendation_system.storage import (  # type: ignore[import-untyped]
 )
 from matchmaking_system import (  # type: ignore[import-untyped]
     connect_db as matchmaking_connect_db,
-    create_pool_member,
-    dispatch_case_contact,
     get_match_case,
-    get_pair,
     get_pool_member,
-    list_match_cases,
-    list_pairs,
-    record_case_reply,
-    record_feedback,
-    refresh_pool_member,
-    set_pool_member_status,
-)
-from matchmaking_system.async_tasks import (  # type: ignore[import-untyped]
-    JOB_BUILD_MUTUAL_PAIRS,
-    JOB_CLOSE_STALE_CASES,
-    JOB_OPEN_MATCH_CASES,
-    JOB_REFRESH_ACTIVE_POOL,
-    enqueue_matchmaking_async_job,
-    get_matchmaking_async_job,
-    list_matchmaking_async_jobs,
-    summarize_matchmaking_async_jobs,
 )
 from matchmaking_system.storage import (  # type: ignore[import-untyped]
     DEFAULT_MATCHMAKING_MYSQL_DSN,
@@ -150,6 +129,7 @@ from .matchmaking_routes import (
     rest_mm_reply as _rest_mm_reply,
     rest_mm_set_status as _rest_mm_set_status,
 )
+from .matchmaking_jsonrpc import JSONRPC_NOT_HANDLED as MATCHMAKING_JSONRPC_NOT_HANDLED, handle_matchmaking_jsonrpc
 from .mysql_pool import GatewayConnectionPool
 from .profile_jsonrpc import JSONRPC_NOT_HANDLED as PROFILE_JSONRPC_NOT_HANDLED, handle_profile_jsonrpc
 from .recommendation_jsonrpc import JSONRPC_NOT_HANDLED as RECOMMENDATION_JSONRPC_NOT_HANDLED, handle_recommendation_jsonrpc
@@ -1176,191 +1156,9 @@ class PartnerGateway(AsyncJobGatewayMixin):
         if handled is not RECOMMENDATION_JSONRPC_NOT_HANDLED:
             return handled
 
-        if method == "matchmaking.create_pool_member":
-            p2 = dict(p)
-            if p2.get("user_key") is not None or self._current_actor(environ) is not None:
-                p2["user_key"] = self._resolve_actor_bound_id(
-                    environ,
-                    p2.get("user_key"),
-                    field_name="user_key",
-                )
-            return self._with_mm(create_pool_member, **p2)
-        if method == "matchmaking.get_pool_member":
-            return self._get_matchmaking_member_for_actor(environ, p["member_id"])
-        if method == "matchmaking.set_pool_member_status":
-            p2 = dict(p)
-            mid = p2.pop("member_id")
-            self._get_matchmaking_member_for_actor(environ, mid)
-            return self._with_mm(set_pool_member_status, mid, **p2)
-        if method == "matchmaking.refresh_pool_member":
-            self._get_matchmaking_member_for_actor(environ, p["member_id"])
-            return self._with_mm(refresh_pool_member, p["member_id"], now=p.get("now"))
-        if method == "matchmaking.refresh_active_pool":
-            self._require_roles(
-                environ,
-                INTERNAL_WRITE_ROLES,
-                message="current actor cannot refresh the matchmaking pool",
-            )
-            ids = p.get("member_ids")
-            if ids is not None and not isinstance(ids, list):
-                raise ValueError("member_ids must be a list")
-            payload: dict[str, Any] = {}
-            if ids is not None:
-                payload["member_ids"] = [str(item) for item in ids]
-            now_text = _normalize_optional_now_text(p.get("now"))
-            if now_text is not None:
-                payload["now"] = now_text
-            actor = self._current_actor(environ)
-            job = self._with_mm(
-                enqueue_matchmaking_async_job,
-                job_type=JOB_REFRESH_ACTIVE_POOL,
-                payload=payload,
-                created_by=actor.actor_id if actor is not None else None,
-                trace_id=get_trace_id(),
-            )
-            return self._job_payload("matchmaking", job)
-        if method == "matchmaking.build_mutual_pairs":
-            self._require_roles(
-                environ,
-                INTERNAL_WRITE_ROLES,
-                message="current actor cannot build matchmaking pairs",
-            )
-            payload: dict[str, Any] = {}
-            now_text = _normalize_optional_now_text(p.get("now"))
-            if now_text is not None:
-                payload["now"] = now_text
-            actor = self._current_actor(environ)
-            job = self._with_mm(
-                enqueue_matchmaking_async_job,
-                job_type=JOB_BUILD_MUTUAL_PAIRS,
-                payload=payload,
-                created_by=actor.actor_id if actor is not None else None,
-                trace_id=get_trace_id(),
-            )
-            return self._job_payload("matchmaking", job)
-        if method == "matchmaking.open_match_cases":
-            self._require_roles(
-                environ,
-                INTERNAL_WRITE_ROLES,
-                message="current actor cannot open matchmaking cases",
-            )
-            payload: dict[str, Any] = {}
-            now_text = _normalize_optional_now_text(p.get("now"))
-            if now_text is not None:
-                payload["now"] = now_text
-            if p.get("case_expires_hours") is not None:
-                payload["case_expires_hours"] = int(p["case_expires_hours"])
-            actor = self._current_actor(environ)
-            job = self._with_mm(
-                enqueue_matchmaking_async_job,
-                job_type=JOB_OPEN_MATCH_CASES,
-                payload=payload,
-                created_by=actor.actor_id if actor is not None else None,
-                trace_id=get_trace_id(),
-            )
-            return self._job_payload("matchmaking", job)
-        if method == "matchmaking.get_async_job":
-            self._require_roles(
-                environ,
-                INTERNAL_WRITE_ROLES,
-                message="current actor cannot inspect matchmaking jobs",
-            )
-            job = self._with_mm(get_matchmaking_async_job, str(p["job_id"]))
-            if not job:
-                raise ValueError("job not found")
-            return self._job_payload("matchmaking", job)
-        if method == "matchmaking.list_async_jobs":
-            self._require_roles(
-                environ,
-                INTERNAL_WRITE_ROLES,
-                message="current actor cannot inspect matchmaking jobs",
-            )
-            statuses = p.get("statuses")
-            if statuses is not None and not isinstance(statuses, list):
-                raise ValueError("statuses must be a list")
-            limit = int(p.get("limit", 50))
-            jobs = self._with_mm(list_matchmaking_async_jobs, statuses=statuses, limit=limit)
-            summary = self._with_mm(summarize_matchmaking_async_jobs)
-            return self._job_collection_payload("matchmaking", jobs, summary)
-        if method == "matchmaking.get_match_case":
-            return self._get_matchmaking_case_for_actor(environ, p["case_id"])
-        if method == "matchmaking.list_match_cases":
-            self._require_roles(
-                environ,
-                INTERNAL_WRITE_ROLES,
-                message="current actor cannot list matchmaking cases",
-            )
-            return self._with_mm(list_match_cases, statuses=p.get("statuses"))
-        if method == "matchmaking.list_pairs":
-            self._require_roles(
-                environ,
-                INTERNAL_WRITE_ROLES,
-                message="current actor cannot list matchmaking pairs",
-            )
-            return self._with_mm(list_pairs, statuses=p.get("statuses"))
-        if method == "matchmaking.get_pair":
-            self._require_roles(
-                environ,
-                INTERNAL_WRITE_ROLES,
-                message="current actor cannot inspect matchmaking pairs",
-            )
-            return self._with_mm(get_pair, p["pair_key"])
-        if method == "matchmaking.dispatch_case_contact":
-            self._require_roles(
-                environ,
-                INTERNAL_WRITE_ROLES,
-                message="current actor cannot dispatch matchmaking contacts",
-            )
-            return self._with_mm(dispatch_case_contact, p["case_id"], now=p.get("now"))
-        if method == "matchmaking.record_case_reply":
-            p2 = dict(p)
-            cid = p2.pop("case_id")
-            case = self._get_matchmaking_case_for_actor(environ, cid)
-            actor = self._current_actor(environ)
-            if actor is not None and not actor.has_any_role(STAFF_OVERRIDE_ROLES):
-                allowed_member_ids: list[str] = []
-                for field_name in ("first_contact_member_id", "second_contact_member_id"):
-                    member_id = str(case.get(field_name) or "").strip()
-                    if not member_id:
-                        continue
-                    member = self._with_mm(get_pool_member, member_id)
-                    if str(member.get("user_key") or "").strip() == actor.actor_id:
-                        allowed_member_ids.append(member_id)
-                supplied_member_id = str(p2.get("member_id") or "").strip()
-                if supplied_member_id and supplied_member_id not in allowed_member_ids:
-                    raise GatewayPermissionError("member_id does not belong to current actor")
-                if not supplied_member_id:
-                    if len(allowed_member_ids) != 1:
-                        raise GatewayPermissionError("member_id is required for this actor")
-                    p2["member_id"] = allowed_member_ids[0]
-            return self._with_mm(record_case_reply, cid, **p2)
-        if method == "matchmaking.record_feedback":
-            p2 = dict(p)
-            if p2.get("member_id") is not None or self._current_actor(environ) is not None:
-                member = self._get_matchmaking_member_for_actor(environ, str(p2.get("member_id") or ""))
-                p2["member_id"] = member["member_id"]
-            return self._with_mm(record_feedback, **p2)
-        if method == "matchmaking.close_stale_cases":
-            self._require_roles(
-                environ,
-                INTERNAL_WRITE_ROLES,
-                message="current actor cannot close stale matchmaking cases",
-            )
-            payload: dict[str, Any] = {}
-            now_text = _normalize_optional_now_text(p.get("now"))
-            if now_text is not None:
-                payload["now"] = now_text
-            if p.get("timeout_cooling_days") is not None:
-                payload["timeout_cooling_days"] = int(p["timeout_cooling_days"])
-            actor = self._current_actor(environ)
-            job = self._with_mm(
-                enqueue_matchmaking_async_job,
-                job_type=JOB_CLOSE_STALE_CASES,
-                payload=payload,
-                created_by=actor.actor_id if actor is not None else None,
-                trace_id=get_trace_id(),
-            )
-            return self._job_payload("matchmaking", job)
+        handled = handle_matchmaking_jsonrpc(self, environ, method, p)
+        if handled is not MATCHMAKING_JSONRPC_NOT_HANDLED:
+            return handled
 
         handled = handle_chat_jsonrpc(self, environ, method, p)
         if handled is not JSONRPC_NOT_HANDLED:
