@@ -8,7 +8,8 @@
 
 - 推荐 / 代理牵线：`external-systems/partner-recommendation-system/`、`match_domain` 案例类型 `PROXY_INTRO`
 - 撮合与反馈画像同步：`external-systems/partner-matchmaking-system/matchmaking_system/service.py`（`upsert_persona_memory`）
-- 画像技能：`local-skills/persona-memory-sync/`（`persona_memory_sync.upsert_persona_memory`）
+- 画像技能实现：仓库根目录 `persona_memory_sync/`（`persona_memory_sync.upsert_persona_memory`）
+- 画像技能参考资料与兼容脚本：`local-skills/persona-memory-sync/`
 - 接入与事件习惯：`partner-http-gateway`、`match_domain.outbox`、`observability`
 
 **专项落地文档**：
@@ -181,7 +182,7 @@ flowchart TB
 
 ### 7.1 输入策略
 
-- **优先处理说话人关于自己的陈述**；对「评价对方」的内容默认 **不写入对方画像**；若需 observation 类存储，须与 `persona-memory-sync` 的 merge 规则与 visibility 策略对齐（参见 `local-skills/persona-memory-sync/references/`）。
+- **优先处理说话人关于自己的陈述**；对「评价对方」的内容默认 **不写入对方画像**；若需 observation 类存储，须与 `persona-memory-sync` 的 merge 规则与 visibility 策略对齐（实现见根目录 `persona_memory_sync/`，参考规则见 `local-skills/persona-memory-sync/references/`）。
 - 携带 **`conversation_ref`**：建议 `thread_id` + `message_id`，与 audit 脚本中的引用风格一致，便于审计。
 
 ### 7.2 置信度与合并

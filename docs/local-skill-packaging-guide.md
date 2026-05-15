@@ -10,6 +10,11 @@
 - `recommendation_system`、`matchmaking_system`、`gateway` 这些系统直接 `import partner_search` 就能跑
 - `partner-search`、`persona-memory-sync` 两个命令行脚本会稳定出现在虚拟环境里
 
+补充一句：
+
+- 当前真正的 Python 实现在仓库根目录 `partner_search/` 和 `persona_memory_sync/`
+- `local-skills/partner-search/`、`local-skills/persona-memory-sync/` 主要保留 skill 元数据、参考资料、测试和兼容脚本
+
 ## 你可以把它理解成什么
 
 以前更像：

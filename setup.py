@@ -88,6 +88,7 @@ setup(
         "generate_virtual_profiles",
         "her_activate_repo",
         "her_env",
+        "her_json_utils",
         "her_monorepo_bootstrap",
         "her_repo_path_bootstrap",
         "her_runtime_context",

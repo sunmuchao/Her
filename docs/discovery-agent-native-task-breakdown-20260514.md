@@ -86,7 +86,7 @@
 | `D02` | `已完成` | `partner-discovery-system` 目录、`storage.py`、`service.py`、`agent_runtime.py`、`view_models.py` 已建立。 |
 | `D03` | `已完成` | `discovery_agent_sessions`、`turns`、`actions`、`search_runs` 表和 migration 已落地，支持内存版与 MySQL 版。 |
 | `D04` | `已完成` | discovery agent runtime 已落地，支持真实 Agents SDK 路径和 stub fallback。 |
-| `D05` | `部分完成` | 当前 runtime 仍以 `get_discovery_session_state`、`get_requester_profile`、`search_partner_candidates`、`create_saved_search_subscription_from_last_search` 为主；目标方案已收敛为 `partner-search`、`persona-memory-sync`、`create_saved_search_subscription_from_last_search` 三项核心业务能力，其余改为上下文注入或后续增强。 |
+| `D05` | `已完成` | discovery runtime 已移除 `get_discovery_session_state`、`get_requester_profile` 两个读取型 tool，改为每轮注入正式 `official_context`；核心能力已收敛为 `search_partner_candidates`（底层接 `partner-search`）、`sync_requester_persona_memory`（底层接 `persona-memory-sync`）、`create_saved_search_subscription_from_last_search`，并补齐 tool 调用审计表与测试。 |
 | `D06` | `已完成` | `action_id` 生成、过期、消费、防重放都已落地。 |
 | `D07` | `已完成` | discovery 已接入 `partner-search` 作为纯搜索工具，并持久化 search run。 |
 | `D08` | `已完成` | `create_session(...)`、`process_turn(...)`、`get_session_view(...)` 主链路已跑通。 |
@@ -247,7 +247,7 @@
   - search request / response 引用机制
 - 建议文件：
   - `external-systems/partner-discovery-system/discovery_system/service.py`
-  - `local-skills/partner-search/partner_search/api.py` 只在必要时补适配，不改产品边界
+  - `partner_search/api.py` 只在必要时补适配，不改产品边界
 - 依赖：`D05`
 - 完成标准：
   - discovery agent 可调用搜索工具

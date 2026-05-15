@@ -15,7 +15,7 @@ def render_public_profile(request: Any | Mapping[str, Any]) -> dict[str, Any]:
     from persona_memory_sync import api as persona_api
     from persona_memory_sync import persona_memory_engine as persona_engine
 
-    return persona_engine.execute_render_public_profile(persona_api._build_render_request(request))
+    return persona_engine.execute_render_public_profile(persona_api.coerce_render_request(request))
 
 
 __all__ = [

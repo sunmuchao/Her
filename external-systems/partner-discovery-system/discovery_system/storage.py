@@ -81,6 +81,19 @@ class StoredSearchRun:
     created_at: datetime
 
 
+@dataclass
+class StoredToolCall:
+    tool_call_id: int
+    session_id: str
+    turn_id: int
+    tool_name: str
+    arguments: dict[str, Any]
+    result: dict[str, Any]
+    status: str
+    search_run_id: int | None
+    created_at: datetime
+
+
 def _discovery_tables() -> list[str]:
     import outer_system_mysql_schema as _schema  # noqa: PLC0415
 
@@ -101,9 +114,11 @@ class InMemoryDiscoveryStorage:
         self._item_seq = 0
         self._turn_seq = 0
         self._search_run_seq = 0
+        self._tool_call_seq = 0
         self._sessions: dict[str, StoredSession] = {}
         self._actions: dict[str, StoredAction] = {}
         self._search_runs: dict[int, StoredSearchRun] = {}
+        self._tool_calls: list[StoredToolCall] = []
 
     def next_session_id(self) -> str:
         self._session_seq += 1
@@ -219,6 +234,41 @@ class InMemoryDiscoveryStorage:
         if search_run is None:
             return None
         return deepcopy(search_run)
+
+    def create_tool_call(
+        self,
+        *,
+        session_id: str,
+        turn_id: int,
+        tool_name: str,
+        arguments: dict[str, Any],
+        result: dict[str, Any],
+        status: str,
+        search_run_id: int | None,
+        created_at: datetime,
+    ) -> int:
+        self._tool_call_seq += 1
+        self._tool_calls.append(
+            StoredToolCall(
+                tool_call_id=self._tool_call_seq,
+                session_id=session_id,
+                turn_id=int(turn_id),
+                tool_name=str(tool_name),
+                arguments=deepcopy(arguments),
+                result=deepcopy(result),
+                status=str(status),
+                search_run_id=int(search_run_id) if search_run_id is not None else None,
+                created_at=created_at,
+            )
+        )
+        return self._tool_call_seq
+
+    def list_tool_calls(self, session_id: str, *, turn_id: int | None = None) -> list[StoredToolCall]:
+        return [
+            deepcopy(tool_call)
+            for tool_call in self._tool_calls
+            if tool_call.session_id == session_id and (turn_id is None or tool_call.turn_id == int(turn_id))
+        ]
 
 
 class MySQLDiscoveryStorage:
@@ -539,6 +589,87 @@ class MySQLDiscoveryStorage:
             created_at=_parse_datetime(row.get("created_at")),
         )
 
+    def create_tool_call(
+        self,
+        *,
+        session_id: str,
+        turn_id: int,
+        tool_name: str,
+        arguments: dict[str, Any],
+        result: dict[str, Any],
+        status: str,
+        search_run_id: int | None,
+        created_at: datetime,
+    ) -> int:
+        conn = self._open()
+        try:
+            conn.execute(
+                """
+                INSERT INTO discovery_agent_tool_calls (
+                    session_id, turn_id, tool_name, tool_args_json,
+                    tool_result_json, status, search_run_id, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    session_id,
+                    int(turn_id),
+                    tool_name,
+                    json_dumps(arguments),
+                    json_dumps(result),
+                    status,
+                    search_run_id,
+                    created_at,
+                ),
+            )
+            tool_call_id = int(conn.lastrowid)
+            conn.commit()
+            return tool_call_id
+        finally:
+            conn.close()
+
+    def list_tool_calls(self, session_id: str, *, turn_id: int | None = None) -> list[StoredToolCall]:
+        conn = self._open()
+        try:
+            if turn_id is None:
+                rows = conn.execute(
+                    """
+                    SELECT tool_call_id, session_id, turn_id, tool_name, tool_args_json,
+                           tool_result_json, status, search_run_id, created_at
+                    FROM discovery_agent_tool_calls
+                    WHERE session_id = ?
+                    ORDER BY tool_call_id ASC
+                    """,
+                    (session_id,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT tool_call_id, session_id, turn_id, tool_name, tool_args_json,
+                           tool_result_json, status, search_run_id, created_at
+                    FROM discovery_agent_tool_calls
+                    WHERE session_id = ? AND turn_id = ?
+                    ORDER BY tool_call_id ASC
+                    """,
+                    (session_id, int(turn_id)),
+                ).fetchall()
+        finally:
+            conn.close()
+        return [
+            StoredToolCall(
+                tool_call_id=int(row["tool_call_id"]),
+                session_id=str(row["session_id"]),
+                turn_id=int(row["turn_id"]),
+                tool_name=str(row["tool_name"]),
+                arguments=dict(json_loads(str(row.get("tool_args_json") or "{}"), {}) or {}),
+                result=dict(json_loads(str(row.get("tool_result_json") or "{}"), {}) or {}),
+                status=str(row["status"]),
+                search_run_id=int(row["search_run_id"]) if row.get("search_run_id") is not None else None,
+                created_at=_parse_datetime(row.get("created_at")),
+            )
+            for row in (row_to_dict(item) for item in rows)
+            if row is not None
+        ]
+
     def _open(self) -> MySQLCompatConnection:
         return connect_db(self._dsn)
 
@@ -571,6 +702,7 @@ __all__ = [
     "StoredAction",
     "StoredSearchRun",
     "StoredSession",
+    "StoredToolCall",
     "connect_db",
     "initialize_database",
     "json_dumps",

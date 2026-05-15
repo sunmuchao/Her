@@ -270,5 +270,6 @@ python3 external-systems/partner-recommendation-system/scripts/record_match_case
 
 - This system currently targets in-app recommendation cards only.
 - Proxy intro now lives in this outer system; automatic matchmaking still does not.
-- It depends on the Phase 2 Python API from `local-skills/partner-search`.
+- It depends on the packaged `partner_search` Python API at the repository root.
+- `local-skills/partner-search/` only keeps skill metadata, examples, tests, and compatibility wrappers.
 - Run `bash scripts/run_tests.sh` in this directory to verify Phase 3/4 behavior.

@@ -64,7 +64,7 @@ class ProfileServiceTests(unittest.TestCase):
     def test_render_public_profile_delegates_to_persona_engine(self):
         request = {"profile_id": 42, "write_profile": True}
         fake_persona_api = types.SimpleNamespace(
-            _build_render_request=mock.Mock(return_value="render-request"),
+            coerce_render_request=mock.Mock(return_value="render-request"),
         )
         fake_persona_engine = types.SimpleNamespace(
             execute_render_public_profile=mock.Mock(return_value={"profile_id": 42, "public_personality": "现居上海"}),
@@ -83,7 +83,7 @@ class ProfileServiceTests(unittest.TestCase):
         ):
             result = profile_service_api.render_public_profile(request)
 
-        fake_persona_api._build_render_request.assert_called_once_with(request)
+        fake_persona_api.coerce_render_request.assert_called_once_with(request)
         fake_persona_engine.execute_render_public_profile.assert_called_once_with("render-request")
         self.assertEqual(result["profile_id"], 42)
 

@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
-from datetime import date, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import parse_qs
+
+from her_json_utils import json_safe
 
 from . import _paths  # noqa: F401 - side effect: sys.path
 
@@ -75,17 +77,7 @@ def _demo_asset_file(asset_path: str) -> Path | None:
 
 
 def _json_safe(value: Any) -> Any:
-    if isinstance(value, datetime):
-        return value.isoformat(sep=" ")
-    if isinstance(value, date):
-        return value.isoformat()
-    if isinstance(value, dict):
-        return {k: _json_safe(v) for k, v in value.items()}
-    if isinstance(value, list):
-        return [_json_safe(v) for v in value]
-    if isinstance(value, tuple):
-        return [_json_safe(v) for v in value]
-    return value
+    return json_safe(value)
 
 
 def _read_body(environ: dict[str, Any], max_bytes: int = 8 * 1024 * 1024) -> bytes:
@@ -166,4 +158,3 @@ def _augment_chat_message_metadata(environ: dict[str, Any], metadata: Any) -> di
     if risk_observation:
         payload["risk_observation"] = risk_observation
     return payload or None
-
