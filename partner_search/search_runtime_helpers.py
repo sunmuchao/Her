@@ -159,6 +159,7 @@ class SearchRuntime:
     normalize_request_criteria: Callable[[Any], dict[str, Any]]
     normalize_self_profile_input: Callable[[Any], dict[str, Any] | None]
     build_criteria_from_args: Callable[[Any], dict[str, Any]]
+    build_self_profile_input_from_args: Callable[[Any], dict[str, Any]]
     load_source: Callable[..., list[dict[str, Any]]]
     overlay_records_with_moderation: Callable[..., list[dict[str, Any]]]
     evaluate_candidate: Callable[[dict[str, Any], dict[str, Any]], dict[str, Any] | None]
@@ -359,21 +360,7 @@ class SearchRuntimeHelpers:
         }
 
     def build_cli_self_profile_input(self, args):
-        profile = {
-            "age": args.self_age,
-            "city": args.self_city,
-            "height": args.self_height,
-            "education": args.self_education,
-            "job": getattr(args, "self_job", None),
-            "marital_status": args.self_marital_status,
-            "smoking": args.self_smoking,
-            "drinking": args.self_drinking,
-        }
-        if args.self_income_wan is not None:
-            profile["income_wan"] = args.self_income_wan
-        if args.self_has_children is not None:
-            profile["has_children"] = bool(args.self_has_children)
-        return profile
+        return self.runtime.build_self_profile_input_from_args(args)
 
     def build_search_request_from_args(self, args):
         return self.build_search_request(
