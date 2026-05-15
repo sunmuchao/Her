@@ -7,6 +7,8 @@ from datetime import date, datetime
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Sequence
 
+from profile_service import get_profile, resolve_profile_source
+
 from . import search_candidates as engine
 
 
@@ -155,18 +157,48 @@ def search_profiles(
     return response.to_dict(include_text=include_text)
 
 
+def load_source_profile_record(
+    *,
+    source: str,
+    profile_id: int,
+    table_name: str | None = None,
+) -> dict[str, Any] | None:
+    normalized_source, normalized_table = resolve_profile_source(source, table_name)
+    if not normalized_source or not normalized_table:
+        return None
+    raw_profile = get_profile(
+        source_dsn=normalized_source,
+        source_table_name=normalized_table,
+        profile_id=profile_id,
+    )
+    return engine.normalize_record(
+        {
+            **dict(raw_profile),
+            "source_file": engine.build_source_file_ref(normalized_source, normalized_table),
+        }
+    )
+
+
 def load_self_profile(
     *,
     source: str,
     self_id: int,
     table_name: str | None = None,
 ) -> dict[str, Any] | None:
-    records = engine.collect_source_records_for_request(
-        [source],
+    record = load_source_profile_record(
+        source=source,
+        profile_id=self_id,
         table_name=table_name,
-        criteria={},
-        self_id=self_id,
     )
+    if record is None:
+        records = engine.collect_source_records_for_request(
+            [source],
+            table_name=table_name,
+            criteria={},
+            self_id=self_id,
+        )
+    else:
+        records = [record]
     profile = engine.build_self_profile(
         records,
         self_id=self_id,

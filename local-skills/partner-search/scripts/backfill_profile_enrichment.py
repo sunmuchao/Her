@@ -3,10 +3,10 @@
 import argparse
 import os
 import re
-from urllib.parse import parse_qs, unquote, urlparse
+
+from mysql_source_config import parse_mysql_source_config
 
 
-MYSQL_SCHEMES = {"mysql", "mysql+pymysql"}
 DEFAULT_SOURCE_ENV = "PARTNER_SEARCH_MYSQL_SOURCE"
 
 
@@ -175,24 +175,11 @@ def parse_args():
 
 
 def parse_mysql_source(source):
-    parsed = urlparse(str(source))
-    if parsed.scheme.lower() not in MYSQL_SCHEMES:
-        raise ValueError(f"Unsupported MySQL source: {source}")
-
-    database = unquote(parsed.path.lstrip("/"))
-    if not database:
-        raise ValueError("MySQL source must include a database name.")
-
-    query = parse_qs(parsed.query)
-    return {
-        "host": parsed.hostname or "127.0.0.1",
-        "port": parsed.port or 3306,
-        "user": unquote(parsed.username) if parsed.username else None,
-        "password": unquote(parsed.password) if parsed.password else None,
-        "database": database,
-        "table": query.get("table", ["profiles"])[0],
-        "charset": query.get("charset", ["utf8mb4"])[0],
-    }
+    return parse_mysql_source_config(
+        source,
+        source_label="MySQL source",
+        default_table_name="profiles",
+    )
 
 
 def resolve_connection_config(args):

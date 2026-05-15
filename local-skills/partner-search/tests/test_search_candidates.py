@@ -67,6 +67,31 @@ class SearchCandidatesTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             search_candidates.parse_mysql_source("file:///tmp/profiles.csv")
 
+    def test_load_mysql_reads_profiles_via_profile_service(self):
+        with (
+            mock.patch.object(search_candidates, "detect_profile_table", side_effect=AssertionError("should not detect table")),
+            mock.patch.object(search_candidates, "list_profile_columns", return_value=["id", "name", "gender", "profile_status"]),
+            mock.patch.object(
+                search_candidates,
+                "list_profiles",
+                return_value=[{"id": 101, "name": "Alice", "gender": "女", "profile_status": "active"}],
+            ) as mocked_list_profiles,
+        ):
+            rows = search_candidates.load_mysql(
+                "mysql://user:pass@127.0.0.1:3306/her?table=profiles",
+                criteria={"gender": "女"},
+                include_ids=[101],
+            )
+
+        self.assertEqual(rows[0]["id"], 101)
+        self.assertEqual(rows[0]["source_file"], "mysql://user:pass@127.0.0.1:3306/her?table=profiles#profiles")
+        kwargs = mocked_list_profiles.call_args.kwargs
+        self.assertEqual(kwargs["source_table_name"], "profiles")
+        self.assertIn("WHERE", kwargs["where_clause"])
+        self.assertIn("?", kwargs["where_clause"])
+        self.assertNotIn("%s", kwargs["where_clause"])
+        self.assertIn(101, kwargs["params"])
+
     def test_build_mysql_prefilter_with_include_ids(self):
         criteria = {
             "gender": "女",

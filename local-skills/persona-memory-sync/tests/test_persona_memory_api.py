@@ -108,10 +108,10 @@ class PersonaMemoryApiTests(unittest.TestCase):
 
     def test_render_public_profile_accepts_mapping_request(self):
         with mock.patch.object(
-            persona_memory_api.engine,
-            "execute_render_public_profile",
+            persona_memory_api,
+            "render_public_profile_via_service",
             return_value={"user_key": "user-4", "public_personality": "现居上海"},
-        ) as execute_mock:
+        ) as render_mock:
             result = render_public_profile(
                 {
                     "source": None,
@@ -120,7 +120,7 @@ class PersonaMemoryApiTests(unittest.TestCase):
                 }
             )
 
-        execute_mock.assert_called_once_with(
+        render_mock.assert_called_once_with(
             RenderPublicProfileRequest(
                 source=None,
                 user_key=None,
