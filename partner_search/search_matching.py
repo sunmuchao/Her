@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Callable, Sequence
 
+from partner_search.search_profile_utils import has_explicit_field_value as _has_explicit_field_value
+
 
 @dataclass(frozen=True)
 class SearchMatchingRuntime:
@@ -719,17 +721,7 @@ def has_explicit_field_value(
     record: dict[str, Any],
     field: str,
 ) -> bool:
-    if field == "has_children":
-        return runtime.effective_has_children(record) is not None
-
-    value = record.get(field)
-    if value is None or value == "":
-        return False
-
-    lowered = runtime.as_lower(value)
-    if lowered in runtime.unknown_values:
-        return False
-    return True
+    return _has_explicit_field_value(runtime, record, field)
 
 
 def build_follow_up_questions(
