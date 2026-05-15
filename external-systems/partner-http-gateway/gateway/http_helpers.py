@@ -16,8 +16,12 @@ from match_domain import new_trace_id  # noqa: E402
 
 from .request_policy import client_ip
 
-LIVE_VIDEO_DEMO_FILE = Path(__file__).with_name("live_video_verification_demo.html")
 DEMO_ASSET_ROOT = Path(__file__).with_name("demo_assets")
+DEMO_HTML_FILES = {
+    "/demo/live-video-verification": Path(__file__).with_name("live_video_verification_demo.html"),
+    "/demo/discovery": _paths._REPO_ROOT / "docs" / "frontend-prototypes" / "discovery.html",
+    "/demo/discovery/profile-detail": _paths._REPO_ROOT / "docs" / "frontend-prototypes" / "profile-detail.html",
+}
 
 
 def _incoming_trace_id(environ: dict[str, Any]) -> str:
@@ -59,8 +63,19 @@ def _gateway_error_payload(code: str, message: str, trace_id: str) -> dict[str, 
     return {"error": {"code": code, "message": message}, "trace_id": trace_id}
 
 
-def _read_live_video_demo_html() -> str:
-    return LIVE_VIDEO_DEMO_FILE.read_text(encoding="utf-8")
+def _normalize_demo_html_path(path: str) -> str:
+    return str(path or "/").rstrip("/") or "/"
+
+
+def _demo_html_file(path: str) -> Path | None:
+    return DEMO_HTML_FILES.get(_normalize_demo_html_path(path))
+
+
+def _read_demo_html(path: str) -> str | None:
+    demo_file = _demo_html_file(path)
+    if demo_file is None:
+        return None
+    return demo_file.read_text(encoding="utf-8")
 
 
 def _demo_asset_file(asset_path: str) -> Path | None:
