@@ -184,6 +184,26 @@ from .identity import (
     get_current_actor,
     set_current_actor,
 )
+from .matchmaking_routes import (
+    dispatch_matchmaking_rest,
+    rest_get_matchmaking_job as _rest_get_matchmaking_job,
+    rest_list_matchmaking_jobs as _rest_list_matchmaking_jobs,
+    rest_mm_build_pairs as _rest_mm_build_pairs,
+    rest_mm_close_stale as _rest_mm_close_stale,
+    rest_mm_create_member as _rest_mm_create_member,
+    rest_mm_dispatch as _rest_mm_dispatch,
+    rest_mm_feedback as _rest_mm_feedback,
+    rest_mm_get_case as _rest_mm_get_case,
+    rest_mm_get_member as _rest_mm_get_member,
+    rest_mm_get_pair as _rest_mm_get_pair,
+    rest_mm_list_cases as _rest_mm_list_cases,
+    rest_mm_list_pairs as _rest_mm_list_pairs,
+    rest_mm_open_cases as _rest_mm_open_cases,
+    rest_mm_refresh_member as _rest_mm_refresh_member,
+    rest_mm_refresh_pool as _rest_mm_refresh_pool,
+    rest_mm_reply as _rest_mm_reply,
+    rest_mm_set_status as _rest_mm_set_status,
+)
 from .mysql_pool import GatewayConnectionPool
 from .request_policy import client_ip, rate_limiter_from_environ
 from .profile_routes import (
@@ -868,240 +888,59 @@ class PartnerGateway(AsyncJobGatewayMixin):
         return _rest_mark_cards_read(self, _environ, body)
 
     def rest_mm_create_member(self, environ: dict[str, Any], body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        now = _parse_optional_now(body)
-        kwargs = {k: v for k, v in body.items() if k != "now"}
-        if "user_key" in kwargs or self._current_actor(environ) is not None:
-            kwargs["user_key"] = self._resolve_actor_bound_id(
-                environ,
-                kwargs.get("user_key"),
-                field_name="user_key",
-            )
-        if now is not None:
-            kwargs["now"] = now
-        member = self._with_mm(create_pool_member, **kwargs)
-        return 201, {"member": _json_safe(member)}
+        return _rest_mm_create_member(self, environ, body)
 
     def rest_mm_get_member(self, environ: dict[str, Any], member_id: str) -> tuple[int, dict[str, Any]]:
-        member = self._get_matchmaking_member_for_actor(environ, member_id)
-        return 200, {"member": _json_safe(member)}
+        return _rest_mm_get_member(self, environ, member_id)
 
     def rest_mm_set_status(self, environ: dict[str, Any], member_id: str, body: dict[str, Any]) -> tuple[
         int, dict[str, Any]
     ]:
-        self._get_matchmaking_member_for_actor(environ, member_id)
-        now = _parse_optional_now(body)
-        kwargs = {k: v for k, v in body.items() if k != "now"}
-        if now is not None:
-            kwargs["now"] = now
-        member = self._with_mm(set_pool_member_status, member_id, **kwargs)
-        return 200, {"member": _json_safe(member)}
+        return _rest_mm_set_status(self, environ, member_id, body)
 
     def rest_mm_refresh_member(self, environ: dict[str, Any], member_id: str, body: dict[str, Any]) -> tuple[
         int, dict[str, Any]
     ]:
-        self._get_matchmaking_member_for_actor(environ, member_id)
-        now = _parse_optional_now(body)
-        out = self._with_mm(refresh_pool_member, member_id, now=now)
-        return 200, _json_safe(out)
+        return _rest_mm_refresh_member(self, environ, member_id, body)
 
     def rest_mm_refresh_pool(self, environ: dict[str, Any], body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        self._require_roles(
-            environ,
-            INTERNAL_WRITE_ROLES,
-            message="current actor cannot refresh the matchmaking pool",
-        )
-        ids = body.get("member_ids")
-        if ids is not None and not isinstance(ids, list):
-            raise ValueError("member_ids must be a list")
-        payload: dict[str, Any] = {}
-        if ids is not None:
-            payload["member_ids"] = [str(item) for item in ids]
-        now_text = _normalize_optional_now_text(body.get("now"))
-        if now_text is not None:
-            payload["now"] = now_text
-        return self._enqueue_async_job(
-            environ,
-            target="matchmaking",
-            with_fn=self._with_mm,
-            enqueue_fn=enqueue_matchmaking_async_job,
-            job_type=JOB_REFRESH_ACTIVE_POOL,
-            payload=payload,
-        )
+        return _rest_mm_refresh_pool(self, environ, body)
 
     def rest_mm_build_pairs(self, environ: dict[str, Any], body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        self._require_roles(
-            environ,
-            INTERNAL_WRITE_ROLES,
-            message="current actor cannot build matchmaking pairs",
-        )
-        payload: dict[str, Any] = {}
-        now_text = _normalize_optional_now_text(body.get("now"))
-        if now_text is not None:
-            payload["now"] = now_text
-        return self._enqueue_async_job(
-            environ,
-            target="matchmaking",
-            with_fn=self._with_mm,
-            enqueue_fn=enqueue_matchmaking_async_job,
-            job_type=JOB_BUILD_MUTUAL_PAIRS,
-            payload=payload,
-        )
+        return _rest_mm_build_pairs(self, environ, body)
 
     def rest_mm_open_cases(self, environ: dict[str, Any], body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        self._require_roles(
-            environ,
-            INTERNAL_WRITE_ROLES,
-            message="current actor cannot open matchmaking cases",
-        )
-        payload: dict[str, Any] = {}
-        now_text = _normalize_optional_now_text(body.get("now"))
-        if now_text is not None:
-            payload["now"] = now_text
-        raw_case_expires = body.get("case_expires_hours")
-        if raw_case_expires is not None:
-            payload["case_expires_hours"] = int(raw_case_expires)
-        return self._enqueue_async_job(
-            environ,
-            target="matchmaking",
-            with_fn=self._with_mm,
-            enqueue_fn=enqueue_matchmaking_async_job,
-            job_type=JOB_OPEN_MATCH_CASES,
-            payload=payload,
-        )
+        return _rest_mm_open_cases(self, environ, body)
 
     def rest_mm_get_case(self, environ: dict[str, Any], case_id: str) -> tuple[int, dict[str, Any]]:
-        case = self._get_matchmaking_case_for_actor(environ, case_id)
-        return 200, {"case": _json_safe(case)}
+        return _rest_mm_get_case(self, environ, case_id)
 
     def rest_mm_list_cases(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        self._require_roles(
-            environ,
-            INTERNAL_WRITE_ROLES,
-            message="current actor cannot list matchmaking cases",
-        )
-        q = _query_dict(environ)
-        statuses = _statuses_from_query(q)
-        cases = self._with_mm(list_match_cases, statuses=statuses)
-        return 200, {"cases": _json_safe(cases)}
+        return _rest_mm_list_cases(self, environ)
 
     def rest_mm_list_pairs(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        self._require_roles(
-            environ,
-            INTERNAL_WRITE_ROLES,
-            message="current actor cannot list matchmaking pairs",
-        )
-        q = _query_dict(environ)
-        statuses = _statuses_from_query(q)
-        pairs = self._with_mm(list_pairs, statuses=statuses)
-        return 200, {"pairs": _json_safe(pairs)}
+        return _rest_mm_list_pairs(self, environ)
 
     def rest_mm_get_pair(self, environ: dict[str, Any], pair_key: str) -> tuple[int, dict[str, Any]]:
-        self._require_roles(
-            environ,
-            INTERNAL_WRITE_ROLES,
-            message="current actor cannot inspect matchmaking pairs",
-        )
-        pair_key = unquote(pair_key)
-        pair = self._with_mm(get_pair, pair_key)
-        if not pair:
-            return 404, {"error": {"code": "not_found", "message": "pair not found"}}
-        return 200, {"pair": _json_safe(pair)}
+        return _rest_mm_get_pair(self, environ, pair_key)
 
     def rest_mm_dispatch(self, environ: dict[str, Any], case_id: str, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        self._require_roles(
-            environ,
-            INTERNAL_WRITE_ROLES,
-            message="current actor cannot dispatch matchmaking contacts",
-        )
-        now = _parse_optional_now(body)
-        case = self._with_mm(dispatch_case_contact, case_id, now=now)
-        return 200, {"case": _json_safe(case)}
+        return _rest_mm_dispatch(self, environ, case_id, body)
 
     def rest_mm_reply(self, environ: dict[str, Any], case_id: str, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        case = self._get_matchmaking_case_for_actor(environ, case_id)
-        now = _parse_optional_now(body)
-        kwargs = {k: v for k, v in body.items() if k != "now"}
-        actor = self._current_actor(environ)
-        if actor is not None and not actor.has_any_role(STAFF_OVERRIDE_ROLES):
-            allowed_member_ids: list[str] = []
-            for field_name in ("first_contact_member_id", "second_contact_member_id"):
-                member_id = str(case.get(field_name) or "").strip()
-                if not member_id:
-                    continue
-                member = self._with_mm(get_pool_member, member_id)
-                if str(member.get("user_key") or "").strip() == actor.actor_id:
-                    allowed_member_ids.append(member_id)
-            supplied_member_id = str(kwargs.get("member_id") or "").strip()
-            if supplied_member_id and supplied_member_id not in allowed_member_ids:
-                raise GatewayPermissionError("member_id does not belong to current actor")
-            if not supplied_member_id:
-                if len(allowed_member_ids) != 1:
-                    raise GatewayPermissionError("member_id is required for this actor")
-                kwargs["member_id"] = allowed_member_ids[0]
-        if now is not None:
-            kwargs["now"] = now
-        case = self._with_mm(record_case_reply, case_id, **kwargs)
-        return 200, {"case": _json_safe(case)}
+        return _rest_mm_reply(self, environ, case_id, body)
 
     def rest_mm_feedback(self, environ: dict[str, Any], body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        now = _parse_optional_now(body)
-        kwargs = {k: v for k, v in body.items() if k != "now"}
-        if "member_id" in kwargs or self._current_actor(environ) is not None:
-            member = self._get_matchmaking_member_for_actor(environ, str(kwargs.get("member_id") or ""))
-            kwargs["member_id"] = member["member_id"]
-        if now is not None:
-            kwargs["now"] = now
-        fb = self._with_mm(record_feedback, **kwargs)
-        return 200, {"feedback": _json_safe(fb)}
+        return _rest_mm_feedback(self, environ, body)
 
     def rest_mm_close_stale(self, environ: dict[str, Any], body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        self._require_roles(
-            environ,
-            INTERNAL_WRITE_ROLES,
-            message="current actor cannot close stale matchmaking cases",
-        )
-        payload: dict[str, Any] = {}
-        now_text = _normalize_optional_now_text(body.get("now"))
-        if now_text is not None:
-            payload["now"] = now_text
-        raw_timeout_days = body.get("timeout_cooling_days")
-        if raw_timeout_days is not None:
-            payload["timeout_cooling_days"] = int(raw_timeout_days)
-        return self._enqueue_async_job(
-            environ,
-            target="matchmaking",
-            with_fn=self._with_mm,
-            enqueue_fn=enqueue_matchmaking_async_job,
-            job_type=JOB_CLOSE_STALE_CASES,
-            payload=payload,
-        )
+        return _rest_mm_close_stale(self, environ, body)
 
     def rest_get_matchmaking_job(self, environ: dict[str, Any], job_id: str) -> tuple[int, dict[str, Any]]:
-        self._require_roles(
-            environ,
-            INTERNAL_WRITE_ROLES,
-            message="current actor cannot inspect matchmaking jobs",
-        )
-        return self._get_async_job(
-            target="matchmaking",
-            with_fn=self._with_mm,
-            get_fn=get_matchmaking_async_job,
-            job_id=job_id,
-        )
+        return _rest_get_matchmaking_job(self, environ, job_id)
 
     def rest_list_matchmaking_jobs(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        self._require_roles(
-            environ,
-            INTERNAL_WRITE_ROLES,
-            message="current actor cannot inspect matchmaking jobs",
-        )
-        return self._list_async_jobs(
-            environ,
-            target="matchmaking",
-            with_fn=self._with_mm,
-            list_fn=list_matchmaking_async_jobs,
-            summary_fn=summarize_matchmaking_async_jobs,
-        )
+        return _rest_list_matchmaking_jobs(self, environ)
 
     def _chat_require_requester(
         self,
@@ -1867,52 +1706,11 @@ class PartnerGateway(AsyncJobGatewayMixin):
         recommendation_response = dispatch_recommendation_rest(self, environ, method, path)
         if recommendation_response is not None:
             return recommendation_response
+        matchmaking_response = dispatch_matchmaking_rest(self, environ, method, path)
+        if matchmaking_response is not None:
+            return matchmaking_response
         if path == "/v1/user-center/trust-hub" and method == "GET":
             return self.rest_user_trust_hub(environ)
-
-        # /v1/matchmaking/...
-        if path == "/v1/matchmaking/members" and method == "POST":
-            return self.rest_mm_create_member(environ, _parse_json_body(_read_body(environ)))
-        m = re.fullmatch(r"/v1/matchmaking/members/([^/]+)/status", path)
-        if m and method == "PATCH":
-            return self.rest_mm_set_status(environ, m.group(1), _parse_json_body(_read_body(environ)))
-        m = re.fullmatch(r"/v1/matchmaking/members/([^/]+)/refresh", path)
-        if m and method == "POST":
-            return self.rest_mm_refresh_member(environ, m.group(1), _parse_json_body(_read_body(environ)))
-        m = re.fullmatch(r"/v1/matchmaking/members/([^/]+)", path)
-        if m and method == "GET":
-            return self.rest_mm_get_member(environ, m.group(1))
-        if path == "/v1/matchmaking/pool/refresh" and method == "POST":
-            return self.rest_mm_refresh_pool(environ, _parse_json_body(_read_body(environ)))
-        if path == "/v1/matchmaking/jobs" and method == "GET":
-            return self.rest_list_matchmaking_jobs(environ)
-        m = re.fullmatch(r"/v1/matchmaking/jobs/([^/]+)", path)
-        if m and method == "GET":
-            return self.rest_get_matchmaking_job(environ, m.group(1))
-        if path == "/v1/matchmaking/pairs/build" and method == "POST":
-            return self.rest_mm_build_pairs(environ, _parse_json_body(_read_body(environ)))
-        if path == "/v1/matchmaking/pairs" and method == "GET":
-            return self.rest_mm_list_pairs(environ)
-        m = re.fullmatch(r"/v1/matchmaking/pairs/(.+)", path)
-        if m and method == "GET":
-            return self.rest_mm_get_pair(environ, m.group(1))
-        if path == "/v1/matchmaking/cases/open" and method == "POST":
-            return self.rest_mm_open_cases(environ, _parse_json_body(_read_body(environ)))
-        if path == "/v1/matchmaking/cases/close-stale" and method == "POST":
-            return self.rest_mm_close_stale(environ, _parse_json_body(_read_body(environ)))
-        if path == "/v1/matchmaking/cases" and method == "GET":
-            return self.rest_mm_list_cases(environ)
-        m = re.fullmatch(r"/v1/matchmaking/cases/([^/]+)/dispatch", path)
-        if m and method == "POST":
-            return self.rest_mm_dispatch(environ, m.group(1), _parse_json_body(_read_body(environ)))
-        m = re.fullmatch(r"/v1/matchmaking/cases/([^/]+)/reply", path)
-        if m and method == "POST":
-            return self.rest_mm_reply(environ, m.group(1), _parse_json_body(_read_body(environ)))
-        m = re.fullmatch(r"/v1/matchmaking/cases/([^/]+)", path)
-        if m and method == "GET":
-            return self.rest_mm_get_case(environ, m.group(1))
-        if path == "/v1/matchmaking/feedback" and method == "POST":
-            return self.rest_mm_feedback(environ, _parse_json_body(_read_body(environ)))
 
         if path == "/v1/timeline" and method == "GET":
             return self.rest_timeline(environ)
