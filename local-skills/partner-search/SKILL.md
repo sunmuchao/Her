@@ -82,7 +82,7 @@ Ensure the Python dependency is present first. Run `python3 -m pip install pymys
 2. Convert the user's request into CLI flags.
    Start with direct filters such as `--gender`, `--city`, `--relationship-goal`, and `--verified-level-min`. Add `--must-have` / `--must-not-have` for text requirements and `--self-id` or `--self-*` only when reciprocal matching matters.
 3. Choose the call shape.
-   Use `python3 scripts/search_candidates.py` for human-facing text, `--output-format json` for structured CLI output, or import `partner_search.search_profiles(...)` when another Python system wants structured data directly.
+   Use `python3 scripts/search_candidates.py` for human-facing text, `--output-format json` for structured CLI output, or call the Python API via `from partner_search import search_profiles` or `import partner_search; partner_search.search_profiles(...)` when another Python system wants structured data directly.
 4. Return the best matches with three things:
    - why they match
    - what information is missing
