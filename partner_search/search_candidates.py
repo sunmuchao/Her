@@ -64,6 +64,25 @@ from partner_search.search_no_match import (
     parse_rejection_reason as _parse_rejection_reason,
     suggestion_for_rejection as _suggestion_for_rejection,
 )
+from partner_search.search_ranking import (
+    SearchRankingRuntime,
+    build_match_result as _build_match_result,
+    diversity_job_cluster as _diversity_job_cluster,
+    diversity_penalty as _diversity_penalty,
+    diversity_signature as _diversity_signature,
+    record_ref as _record_ref,
+    result_sort_key as _result_sort_key,
+    select_diverse_results as _select_diverse_results,
+    trim_low_quality_tail as _trim_low_quality_tail,
+)
+from partner_search.search_reciprocal import (
+    SearchReciprocalRuntime,
+    evaluate_reciprocal_compatibility as _evaluate_reciprocal_compatibility,
+    exact_match as _exact_match,
+    income_range_overlaps as _income_range_overlaps,
+    match_any_exact as _match_any_exact,
+    matcher_preference_tags as _matcher_preference_tags,
+)
 from partner_search.search_trust import (
     SearchTrustRuntime,
     activity_score_info as _activity_score_info,
@@ -1818,6 +1837,39 @@ def _build_search_no_match_runtime() -> SearchNoMatchRuntime:
     )
 
 
+def _build_search_reciprocal_runtime() -> SearchReciprocalRuntime:
+    return SearchReciprocalRuntime(
+        as_int=as_int,
+        as_lower=as_lower,
+        as_text=as_text,
+        normalize_bool=normalize_bool,
+        split_keywords=split_keywords,
+        parse_json_object=parse_json_object,
+        unique_ordered=unique_ordered,
+        build_rejection_reason=build_rejection_reason,
+        normalize_strictness_state=normalize_strictness_state,
+        soft_preference_risk_flag=soft_preference_risk_flag,
+        reciprocal_city_preference_risk_flag=reciprocal_city_preference_risk_flag,
+        normalize_acceptance_state=normalize_acceptance_state,
+        location_semantics_risk_flags=location_semantics_risk_flags,
+        education_rank=education_rank,
+        marital_status_match_options=marital_status_match_options,
+        normalize_acceptance_strength=normalize_acceptance_strength,
+        marital_acceptance_risk_flag=marital_acceptance_risk_flag,
+        children_acceptance_risk_flag=children_acceptance_risk_flag,
+        habit_requires_acceptance=habit_requires_acceptance,
+    )
+
+
+def _build_search_ranking_runtime() -> SearchRankingRuntime:
+    return SearchRankingRuntime(
+        as_int=as_int,
+        as_text=as_text,
+        strip_internal_fields=strip_internal_fields,
+        diversity_job_patterns=DIVERSITY_JOB_PATTERNS,
+    )
+
+
 def parse_mysql_source(source, table_name=None):
     return _parse_mysql_source(_build_search_source_runtime(), source, table_name=table_name)
 
@@ -2158,24 +2210,15 @@ def build_self_profile_from_args(args, records):
 
 
 def exact_match(value, expected):
-    return as_lower(value) == as_lower(expected)
+    return _exact_match(_build_search_reciprocal_runtime(), value, expected)
 
 
 def match_any_exact(value, candidates):
-    lowered = as_lower(value)
-    return lowered in {as_lower(item) for item in candidates}
+    return _match_any_exact(_build_search_reciprocal_runtime(), value, candidates)
 
 
 def income_range_overlaps(min_value, max_value, required_min, required_max):
-    if min_value is None and max_value is None:
-        return None
-    candidate_min = min_value if min_value is not None else max_value
-    candidate_max = max_value if max_value is not None else min_value
-    if required_min is not None and candidate_max is not None and candidate_max < required_min:
-        return False
-    if required_max is not None and candidate_min is not None and candidate_min > required_max:
-        return False
-    return True
+    return _income_range_overlaps(min_value, max_value, required_min, required_max)
 
 
 def activity_score_info(record):
@@ -2318,298 +2361,17 @@ def format_no_match_text(diagnostics, fallback_results=None):
 
 
 def matcher_preference_tags(record):
-    preferences = record.get("matcher_preferences")
-    if not isinstance(preferences, dict):
-        preferences = parse_json_object(record.get("matcher_preferences_json"))
-    tags = []
-    for key in ("must_have_tags", "preferred_traits"):
-        value = preferences.get(key)
-        if isinstance(value, list):
-            tags.extend(value)
-        else:
-            tags.extend(split_keywords(value))
-    return unique_ordered(tags)
+    return _matcher_preference_tags(_build_search_reciprocal_runtime(), record)
 
 
 def evaluate_reciprocal_compatibility(record, self_profile, diagnostics=False, reciprocal_mode="strict"):
-    def fail(reason, detail=None):
-        if not diagnostics:
-            return None
-        return {
-            "matched": False,
-            "matched_on": [],
-            "missing_fields": [],
-            "risk_flags": [],
-            "score_bonus": 0,
-            "reject_reason": build_rejection_reason(reason, detail),
-        }
-
-    if not self_profile:
-        return {
-            "matched": True,
-            "matched_on": [],
-            "missing_fields": [],
-            "risk_flags": [],
-            "score_bonus": 0,
-            "reject_reason": None,
-        }
-
-    reasons = []
-    missing_fields = []
-    risk_flags = []
-    score_bonus = 0
-
-    self_age = as_int(self_profile.get("age"))
-    pref_age_min = as_int(record.get("preferred_age_min"))
-    pref_age_max = as_int(record.get("preferred_age_max"))
-    age_strictness = normalize_strictness_state(record.get("preferred_age_strictness"))
-    if pref_age_min is not None or pref_age_max is not None:
-        if self_age is None:
-            missing_fields.append("self_age")
-        elif pref_age_min is not None and self_age < pref_age_min:
-            if age_strictness == "hard":
-                return fail("reciprocal_age_preference")
-            risk_flag = soft_preference_risk_flag("age", age_strictness)
-            if risk_flag:
-                risk_flags.append(risk_flag)
-        elif pref_age_max is not None and self_age > pref_age_max:
-            if age_strictness == "hard":
-                return fail("reciprocal_age_preference")
-            risk_flag = soft_preference_risk_flag("age", age_strictness)
-            if risk_flag:
-                risk_flags.append(risk_flag)
-        else:
-            reasons.append("对方年龄偏好命中")
-            score_bonus += 10
-
-    pref_cities = split_keywords(record.get("preferred_cities"))
-    self_city = self_profile.get("city")
-    if pref_cities:
-        if not self_city:
-            missing_fields.append("self_city")
-        elif not match_any_exact(self_city, pref_cities):
-            city_preference_risk = reciprocal_city_preference_risk_flag(
-                normalize_acceptance_state(record.get("accept_long_distance")),
-                reciprocal_mode,
-            )
-            if city_preference_risk:
-                risk_flags.append(city_preference_risk)
-                risk_flags.extend(location_semantics_risk_flags(record))
-            else:
-                return fail("reciprocal_city_preference")
-        else:
-            reasons.append("对方城市偏好命中")
-            score_bonus += 10
-
-    self_height = as_int(self_profile.get("height"))
-    pref_height_min = as_int(record.get("preferred_height_min"))
-    pref_height_max = as_int(record.get("preferred_height_max"))
-    height_strictness = normalize_strictness_state(record.get("preferred_height_strictness"))
-    if pref_height_min is not None or pref_height_max is not None:
-        if self_height is None:
-            missing_fields.append("self_height")
-        elif pref_height_min is not None and self_height < pref_height_min:
-            if height_strictness == "hard":
-                return fail("reciprocal_height_preference")
-            risk_flag = soft_preference_risk_flag("height", height_strictness)
-            if risk_flag:
-                risk_flags.append(risk_flag)
-        elif pref_height_max is not None and self_height > pref_height_max:
-            if height_strictness == "hard":
-                return fail("reciprocal_height_preference")
-            risk_flag = soft_preference_risk_flag("height", height_strictness)
-            if risk_flag:
-                risk_flags.append(risk_flag)
-        else:
-            reasons.append("对方身高偏好命中")
-            score_bonus += 6
-
-    pref_education_min = record.get("preferred_education_min")
-    education_strictness = normalize_strictness_state(record.get("preferred_education_strictness"))
-    if pref_education_min:
-        self_education = self_profile.get("education")
-        self_rank = education_rank(self_education)
-        required_rank = education_rank(pref_education_min)
-        if not self_education:
-            missing_fields.append("self_education")
-        elif self_rank is None or required_rank is None:
-            if not exact_match(self_education, pref_education_min):
-                if education_strictness == "hard":
-                    return fail("reciprocal_education_preference")
-                risk_flag = soft_preference_risk_flag("education", education_strictness)
-                if risk_flag:
-                    risk_flags.append(risk_flag)
-        elif self_rank < required_rank:
-            if education_strictness == "hard":
-                return fail("reciprocal_education_preference")
-            risk_flag = soft_preference_risk_flag("education", education_strictness)
-            if risk_flag:
-                risk_flags.append(risk_flag)
-        else:
-            reasons.append("对方学历偏好命中")
-            score_bonus += 6
-
-    pref_income_min = as_int(record.get("preferred_income_min_wan"))
-    pref_income_max = as_int(record.get("preferred_income_max_wan"))
-    income_strictness = normalize_strictness_state(record.get("preferred_income_strictness"))
-    if pref_income_min is not None or pref_income_max is not None:
-        self_income_min = as_int(self_profile.get("income_min_wan"))
-        self_income_max = as_int(self_profile.get("income_max_wan"))
-        overlap = income_range_overlaps(self_income_min, self_income_max, pref_income_min, pref_income_max)
-        if overlap is None:
-            missing_fields.append("self_income_wan")
-        elif overlap is False:
-            if income_strictness == "hard":
-                return fail("reciprocal_income_preference")
-            risk_flag = soft_preference_risk_flag("income", income_strictness)
-            if risk_flag:
-                risk_flags.append(risk_flag)
-        else:
-            reasons.append("对方收入偏好命中")
-            score_bonus += 6
-
-    accepted_statuses = split_keywords(record.get("accept_marital_status"))
-    accept_marital_status_semantics = as_text(record.get("accept_marital_status_semantics"))
-    if accepted_statuses:
-        self_status = self_profile.get("marital_status")
-        if not self_status:
-            missing_fields.append("self_marital_status")
-        elif not any(match_any_exact(option, accepted_statuses) for option in marital_status_match_options(self_profile)):
-            return fail("reciprocal_marital_status_preference")
-        else:
-            reasons.append("对方可接受婚况命中")
-            score_bonus += 8
-            if as_lower(self_status) not in {"", "未婚"}:
-                marital_strength = normalize_acceptance_strength(
-                    record.get("accept_marital_status_strength")
-                )
-                if marital_strength == "strong":
-                    score_bonus += 2
-                else:
-                    marital_risk = marital_acceptance_risk_flag(
-                        marital_strength,
-                        accept_marital_status_semantics,
-                    )
-                    if marital_risk:
-                        risk_flags.append(marital_risk)
-    else:
-        self_status = self_profile.get("marital_status")
-        if self_status and as_lower(self_status) not in {"", "未婚"}:
-            missing_fields.append("accept_marital_status")
-
-    self_has_children = normalize_bool(self_profile.get("has_children"))
-    accept_partner_children = normalize_acceptance_state(record.get("accept_partner_children"))
-    accept_partner_children_semantics = as_text(record.get("accept_partner_children_semantics"))
-    if self_has_children is None:
-        if accept_partner_children != "missing":
-            missing_fields.append("self_has_children")
-    elif self_has_children:
-        if accept_partner_children == "rejected":
-            return fail("reciprocal_children_acceptance")
-        if accept_partner_children == "accepted":
-            reasons.append("对方接受你有孩子")
-            score_bonus += 8
-            children_strength = normalize_acceptance_strength(
-                record.get("accept_partner_children_strength")
-            )
-            if children_strength == "strong":
-                score_bonus += 2
-            else:
-                children_risk = children_acceptance_risk_flag(
-                    "accepted",
-                    children_strength,
-                    accept_partner_children_semantics,
-                )
-                if children_risk:
-                    risk_flags.append(children_risk)
-        elif accept_partner_children in {"negotiable", "guarded"}:
-            risk_flags.append(
-                children_acceptance_risk_flag(
-                    accept_partner_children,
-                    normalize_acceptance_strength(
-                        record.get("accept_partner_children_strength")
-                    ),
-                    accept_partner_children_semantics,
-                )
-            )
-        elif accept_partner_children == "unknown":
-            if reciprocal_mode == "fallback":
-                risk_flags.append("对方对子女接受度未知")
-            else:
-                return fail("reciprocal_children_acceptance_unknown")
-        else:
-            missing_fields.append("accept_partner_children")
-
-    self_smoking = self_profile.get("smoking")
-    accept_smoking = normalize_acceptance_state(record.get("accept_smoking"))
-    if not self_smoking:
-        if accept_smoking != "missing":
-            missing_fields.append("self_smoking")
-    elif habit_requires_acceptance(self_smoking):
-        if accept_smoking == "rejected":
-            return fail("reciprocal_smoking_acceptance")
-        if accept_smoking == "accepted":
-            reasons.append("对方接受你的抽烟习惯")
-            score_bonus += 4
-        elif accept_smoking == "negotiable":
-            risk_flags.append("对方对抽烟仅可协商")
-        elif accept_smoking == "unknown":
-            risk_flags.append("对方对抽烟接受度未知")
-        else:
-            missing_fields.append("accept_smoking")
-
-    self_drinking = self_profile.get("drinking")
-    accept_drinking = normalize_acceptance_state(record.get("accept_drinking"))
-    if not self_drinking:
-        if accept_drinking != "missing":
-            missing_fields.append("self_drinking")
-    elif habit_requires_acceptance(self_drinking):
-        if accept_drinking == "rejected":
-            return fail("reciprocal_drinking_acceptance")
-        if accept_drinking == "accepted":
-            reasons.append("对方接受你的喝酒习惯")
-            score_bonus += 4
-        elif accept_drinking == "negotiable":
-            risk_flags.append("对方对喝酒仅可协商")
-        elif accept_drinking == "unknown":
-            risk_flags.append("对方对喝酒接受度未知")
-        else:
-            missing_fields.append("accept_drinking")
-
-    candidate_city = record.get("city")
-    accept_long_distance = normalize_acceptance_state(record.get("accept_long_distance"))
-    if self_city and candidate_city and as_lower(self_city) != as_lower(candidate_city):
-        if accept_long_distance == "rejected":
-            return fail("reciprocal_long_distance_acceptance")
-        if accept_long_distance == "accepted":
-            reasons.append("对方接受异地")
-            score_bonus += 4
-            risk_flags.extend(location_semantics_risk_flags(record))
-        elif accept_long_distance == "negotiable":
-            risk_flags.append("对方异地仅可协商")
-            risk_flags.extend(location_semantics_risk_flags(record))
-        elif accept_long_distance == "unknown":
-            risk_flags.append("对方异地接受度未知")
-            risk_flags.extend(location_semantics_risk_flags(record))
-        else:
-            missing_fields.append("accept_long_distance")
-
-    soft_preference_tags = matcher_preference_tags(record)
-    if soft_preference_tags:
-        self_text = as_lower(self_profile.get("combined_text"))
-        matched_soft_tags = [tag for tag in soft_preference_tags if as_lower(tag) in self_text]
-        if matched_soft_tags:
-            reasons.append("对方软性偏好有重合")
-            score_bonus += min(4, len(matched_soft_tags) * 2)
-
-    return {
-        "matched": True,
-        "matched_on": reasons,
-        "missing_fields": missing_fields,
-        "risk_flags": risk_flags,
-        "score_bonus": score_bonus,
-        "reject_reason": None,
-    }
+    return _evaluate_reciprocal_compatibility(
+        _build_search_reciprocal_runtime(),
+        record,
+        self_profile,
+        diagnostics=diagnostics,
+        reciprocal_mode=reciprocal_mode,
+    )
 
 
 def evaluate_candidate(record, criteria, diagnostics=False, reciprocal_mode="strict"):
@@ -3121,28 +2883,26 @@ def build_match_result(
     matched=True,
     reject_reason=None,
 ):
-    return {
-        "matched": matched,
-        "id": record.get("id"),
-        "name": record.get("name") or "未命名",
-        "score": score,
-        "fit_score": fit_score,
-        "confidence_score": confidence_score,
-        "risk_score": risk_score,
-        "matched_on": matched_on,
-        "reciprocal_on": reciprocal_on,
-        "missing_fields": missing_fields,
-        "self_profile_gaps": self_profile_gaps,
-        "risk_flags": risk_flags,
-        "match_evidence": match_evidence,
-        "follow_up_questions": follow_up_questions,
-        "profile": strip_internal_fields(record),
-        "source_file": record.get("source_file"),
-        "verified_rank": verified_rank,
-        "activity_sort_ts": activity_sort_ts,
-        "profile_status_rank": profile_status_rank,
-        "reject_reason": reject_reason,
-    }
+    return _build_match_result(
+        _build_search_ranking_runtime(),
+        record=record,
+        score=score,
+        fit_score=fit_score,
+        confidence_score=confidence_score,
+        risk_score=risk_score,
+        matched_on=matched_on,
+        reciprocal_on=reciprocal_on,
+        missing_fields=missing_fields,
+        self_profile_gaps=self_profile_gaps,
+        risk_flags=risk_flags,
+        match_evidence=match_evidence,
+        follow_up_questions=follow_up_questions,
+        verified_rank=verified_rank,
+        activity_sort_ts=activity_sort_ts,
+        profile_status_rank=profile_status_rank,
+        matched=matched,
+        reject_reason=reject_reason,
+    )
 
 
 def unique_ordered(items):
@@ -3159,100 +2919,31 @@ def strip_internal_fields(record):
 
 
 def record_ref(record):
-    return (as_int(record.get("id")), record.get("source_file") or "")
+    return _record_ref(_build_search_ranking_runtime(), record)
 
 
 def result_sort_key(result):
-    return (
-        result["score"],
-        result["verified_rank"],
-        result["activity_sort_ts"],
-        result["profile_status_rank"],
-    )
+    return _result_sort_key(result)
 
 
 def diversity_job_cluster(job):
-    text = as_text(job)
-    if not text:
-        return ""
-    for pattern, label in DIVERSITY_JOB_PATTERNS:
-        if pattern.search(text):
-            return label
-    return text[:12]
+    return _diversity_job_cluster(_build_search_ranking_runtime(), job)
 
 
 def diversity_signature(result):
-    profile = result.get("profile") or {}
-    return (
-        diversity_job_cluster(profile.get("job")),
-        as_text(profile.get("career_intensity")),
-        as_text(profile.get("communication_style")),
-        as_text(profile.get("life_routine")),
-        as_text(profile.get("commitment_clarity")),
-    )
+    return _diversity_signature(_build_search_ranking_runtime(), result)
 
 
 def diversity_penalty(candidate, selected):
-    candidate_signature = diversity_signature(candidate)
-    max_penalty = 0
-    for existing in selected:
-        overlap = sum(
-            1
-            for left, right in zip(candidate_signature, diversity_signature(existing))
-            if left and right and left == right
-        )
-        if overlap >= 4:
-            max_penalty = max(max_penalty, 6)
-        elif overlap >= 3:
-            max_penalty = max(max_penalty, 4)
-        elif overlap >= 2:
-            max_penalty = max(max_penalty, 2)
-    return max_penalty
+    return _diversity_penalty(_build_search_ranking_runtime(), candidate, selected)
 
 
 def trim_low_quality_tail(results):
-    if len(results) <= 1:
-        return results
-
-    leader = results[0]
-    trimmed = [leader]
-    for item in results[1:]:
-        score_gap = leader.get("score", 0) - item.get("score", 0)
-        severe_concession = "多项条件需要放宽后才成立" in (item.get("risk_flags") or [])
-        high_risk_tail = item.get("risk_score", 0) >= 35
-        if severe_concession and score_gap >= 20:
-            continue
-        if high_risk_tail and score_gap >= 25:
-            continue
-        trimmed.append(item)
-    return trimmed
+    return _trim_low_quality_tail(results)
 
 
 def select_diverse_results(results, limit):
-    results = trim_low_quality_tail(results)
-    if len(results) <= limit:
-        return results[:limit]
-
-    remaining = list(results)
-    selected = []
-    while remaining and len(selected) < limit:
-        best = None
-        best_key = None
-        for item in remaining:
-            penalty = diversity_penalty(item, selected)
-            key = (
-                item["score"] - penalty,
-                item["score"],
-                item["verified_rank"],
-                item["activity_sort_ts"],
-                item["profile_status_rank"],
-            )
-            if best is None or key > best_key:
-                best = item
-                best_key = key
-        selected.append(best)
-        remaining.remove(best)
-    return selected
+    return _select_diverse_results(_build_search_ranking_runtime(), results, limit)
 
 
 def attach_photo_previews(results, preview_count, photos_table_name=None):
