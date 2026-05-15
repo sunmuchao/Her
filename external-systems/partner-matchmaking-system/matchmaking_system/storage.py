@@ -16,29 +16,26 @@ from ._path_bootstrap import ensure_her_repo_on_sys_path
 
 ensure_her_repo_on_sys_path(Path(__file__))
 
-from db_migrations import initialize_target_database  # noqa: E402
-import outer_system_mysql_schema as _schema  # noqa: E402
-
-from outer_mysql_compat import (  # noqa: E402
+from her_external_systems import (  # noqa: E402
     MySQLCompatConnection,
-    connect_mysql_repo_db,
+    build_external_storage_helpers,
     json_dumps,
     json_loads,
     row_to_dict,
 )
 
 
-def connect_db(dsn: str) -> MySQLCompatConnection:
-    return connect_mysql_repo_db(dsn, subsystem_name="Matchmaking")
+def _matchmaking_tables() -> list[str]:
+    import outer_system_mysql_schema as _schema  # noqa: PLC0415
+
+    return list(_schema.matchmaking_tables())
 
 
-def initialize_database(conn: MySQLCompatConnection, *, mode: str | None = None) -> None:
-    initialize_target_database(conn, target="matchmaking", mode=mode)
-
-
-def reset_all_tables(conn: MySQLCompatConnection) -> None:
-    _schema.clear_tables(conn._conn, _schema.matchmaking_tables(), prefix=None)
-    conn.commit()
+connect_db, initialize_database, reset_all_tables = build_external_storage_helpers(
+    subsystem_name="Matchmaking",
+    target="matchmaking",
+    table_names=_matchmaking_tables,
+)
 
 
 __all__ = [

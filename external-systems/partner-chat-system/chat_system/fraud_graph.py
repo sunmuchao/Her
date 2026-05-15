@@ -8,6 +8,8 @@ import re
 from datetime import datetime, timedelta
 from typing import Any, Iterable
 
+from her_time_utils import as_text as _as_text, current_time, unique_ordered_texts as _unique_ordered
+
 from partner_moderation import (
     ACTION_FREEZE,
     ACTION_LIMIT_CHAT,
@@ -19,7 +21,7 @@ from partner_moderation import (
     upsert_moderation_state,
 )
 
-from .storage import json_dumps, json_loads, row_to_dict
+from .storage import inflate_json_columns, json_dumps, json_loads, row_to_dict
 
 NETWORK_STATUS_CLEAN = "clean"
 NETWORK_STATUS_WATCH = "watch"
@@ -61,28 +63,6 @@ CONTACT_MARKER_PATTERNS = (
 EMAIL_PATTERN = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
 CN_PHONE_PATTERN = re.compile(r"(?<!\d)1\d{10}(?!\d)")
 NORMALIZE_BODY_PATTERN = re.compile(r"[，,。.!！?？:：;；\-_/\\|]+")
-
-
-def current_time(now: datetime | None = None) -> datetime:
-    return (now or datetime.now()).replace(microsecond=0)
-
-
-def _as_text(value: Any) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
-def _unique_ordered(values: Iterable[Any]) -> list[str]:
-    out: list[str] = []
-    seen: set[str] = set()
-    for value in values:
-        item = _as_text(value)
-        if not item or item in seen:
-            continue
-        seen.add(item)
-        out.append(item)
-    return out
 
 
 def _coerce_dict(value: Any) -> dict[str, Any]:
@@ -284,23 +264,21 @@ def _collect_entity_candidates(
 
 
 def _inflate_account_link(row: dict[str, Any] | None) -> dict[str, Any] | None:
-    if not row:
-        return None
-    out = dict(row)
-    out["shared_entity_types"] = json_loads(out.pop("shared_entity_types_json", None), [])
-    out["shared_signal_codes"] = json_loads(out.pop("shared_signal_codes_json", None), [])
-    out["evidence"] = json_loads(out.pop("evidence_json", None), {})
-    return out
+    return inflate_json_columns(
+        row,
+        shared_entity_types=("shared_entity_types_json", []),
+        shared_signal_codes=("shared_signal_codes_json", []),
+        evidence=("evidence_json", {}),
+    )
 
 
 def _inflate_network_profile(row: dict[str, Any] | None) -> dict[str, Any] | None:
-    if not row:
-        return None
-    out = dict(row)
-    out["shared_entity_type_counts"] = json_loads(out.pop("shared_entity_type_counts_json", None), {})
-    out["signal_codes"] = json_loads(out.pop("signal_codes_json", None), [])
-    out["evidence"] = json_loads(out.pop("evidence_json", None), {})
-    return out
+    return inflate_json_columns(
+        row,
+        shared_entity_type_counts=("shared_entity_type_counts_json", {}),
+        signal_codes=("signal_codes_json", []),
+        evidence=("evidence_json", {}),
+    )
 
 
 def _profile_ref_for_subject(
@@ -1004,7 +982,7 @@ def evaluate_fraud_network(
         "recent_signal_codes": recent_signal_codes,
         "high_risk_neighbor_count": high_risk_neighbor_count,
     }
-    profile = _upsert_network_profile(
+    _upsert_network_profile(
         conn,
         subject_user_id=normalized_user_id,
         source_dsn=normalized_source,
@@ -1051,7 +1029,7 @@ def evaluate_fraud_network(
             resolver_id="system:fraud_graph",
             now=ts,
         )
-        profile = _upsert_network_profile(
+        _upsert_network_profile(
             conn,
             subject_user_id=normalized_user_id,
             source_dsn=normalized_source,

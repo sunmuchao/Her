@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any, Iterable
 
+from her_time_utils import as_text as _as_text, unique_ordered_texts as _unique_ordered
+
 from partner_moderation import get_active_moderation_state, list_moderation_states
 
 from .fraud_graph import build_fraud_network_overview, list_fraud_network_profiles
@@ -16,11 +18,10 @@ from .risk import (
     get_risk_case,
     list_meeting_feedback,
     list_member_reports,
-    list_risk_cases,
     list_risk_signals,
     review_risk_case,
 )
-from .storage import json_dumps, json_loads, row_to_dict
+from .storage import inflate_json_columns, json_dumps, row_to_dict
 
 APPEAL_STATUS_SUBMITTED = "submitted"
 APPEAL_STATUS_UNDER_REVIEW = "under_review"
@@ -28,30 +29,8 @@ APPEAL_STATUS_UPHELD = "upheld"
 APPEAL_STATUS_REJECTED = "rejected"
 
 
-def _as_text(value: Any) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
-def _unique_ordered(values: Iterable[Any]) -> list[str]:
-    out: list[str] = []
-    seen: set[str] = set()
-    for value in values:
-        item = _as_text(value)
-        if not item or item in seen:
-            continue
-        seen.add(item)
-        out.append(item)
-    return out
-
-
 def _inflate_risk_appeal(row: dict[str, Any] | None) -> dict[str, Any] | None:
-    if not row:
-        return None
-    out = dict(row)
-    out["evidence"] = json_loads(out.pop("evidence_json", None), {})
-    return out
+    return inflate_json_columns(row, evidence=("evidence_json", {}))
 
 
 def get_risk_appeal(conn, appeal_id: int) -> dict[str, Any] | None:

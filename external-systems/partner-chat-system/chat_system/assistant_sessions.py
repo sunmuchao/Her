@@ -6,6 +6,8 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Any
 
+from her_time_utils import coerce_dt as _coerce_dt, current_time
+
 try:
     from pymysql.err import IntegrityError
 except ImportError:  # pragma: no cover
@@ -17,7 +19,7 @@ from .conversations import (
     get_conversation_by_case_and_key,
     list_case_conversations,
 )
-from .storage import json_dumps, json_loads, row_to_dict
+from .storage import inflate_json_columns, json_dumps, row_to_dict
 
 SESSION_STATUS_OPEN = "open"
 SESSION_STATUS_CLOSED = "closed"
@@ -41,40 +43,16 @@ TASK_STATUS_FAILED = "failed"
 POST_CHAT_PHASES = {"post_chat_ready", "post_chat_followup", "post_chat_completed"}
 
 
-def current_time(now: datetime | None = None) -> datetime:
-    return (now or datetime.now()).replace(microsecond=0)
-
-
-def _coerce_dt(value: Any) -> datetime | None:
-    if isinstance(value, datetime):
-        return value
-    text = str(value or "").strip()
-    if not text:
-        return None
-    try:
-        return datetime.fromisoformat(text)
-    except ValueError:
-        return None
-
-
 def _generate_session_id() -> str:
     return f"ags-{uuid.uuid4().hex[:16]}"
 
 
 def _inflate_session(row: dict[str, Any] | None) -> dict[str, Any] | None:
-    if not row:
-        return None
-    out = dict(row)
-    out["state"] = json_loads(out.pop("state_json", None), {})
-    return out
+    return inflate_json_columns(row, state=("state_json", {}))
 
 
 def _inflate_task(row: dict[str, Any] | None) -> dict[str, Any] | None:
-    if not row:
-        return None
-    out = dict(row)
-    out["result"] = json_loads(out.pop("result_json", None), None)
-    return out
+    return inflate_json_columns(row, result=("result_json", None))
 
 
 def _derive_case_session_spec(conn, case_id: str) -> dict[str, str]:
@@ -512,15 +490,6 @@ def _has_user_channel_message_since(
 def _post_chat_followup_status_key(side: str) -> str:
     return "followup_a_status" if side == "a" else "followup_b_status"
 
-
-def _post_chat_feedback_level_key(side: str) -> str:
-    return "followup_a_feedback_level" if side == "a" else "followup_b_feedback_level"
-
-
-def _post_chat_sent_at_key(side: str) -> str:
-    return "followup_a_sent_at" if side == "a" else "followup_b_sent_at"
-
-
 def _post_chat_side_state(session: dict[str, Any], side: str) -> tuple[str, str, str, str]:
     if side == "a":
         return (
@@ -535,10 +504,6 @@ def _post_chat_side_state(session: dict[str, Any], side: str) -> tuple[str, str,
         TASK_REASON_POST_CHAT_FOLLOWUP_B,
         _post_chat_followup_status_key("b"),
     )
-
-
-def _followup_status_blocks_reenqueue(status: Any) -> bool:
-    return bool(str(status or "").strip())
 
 
 def _has_any_post_chat_user_dm_since(

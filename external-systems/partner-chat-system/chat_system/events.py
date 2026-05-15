@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any
 
 from match_domain.ids import correlation_member_feedback, entity_id_case, format_correlation_id
 from match_domain.model import MatchEvent

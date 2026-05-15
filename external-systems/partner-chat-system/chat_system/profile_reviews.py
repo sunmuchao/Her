@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
 import os
 import re
 import uuid
 from datetime import datetime, timedelta
 from typing import Any, Iterable
-from urllib.parse import parse_qs, unquote, urlparse
 
-import outer_system_mysql_schema as schema
-from outer_mysql_compat import connect_mysql_repo_db
+from her_time_utils import as_text as _as_text, unique_ordered_texts as _unique_ordered
+
 from partner_moderation import (
     ACTION_LIMITED_EXPOSURE,
     ACTION_NONE,
@@ -20,11 +20,17 @@ from partner_moderation import (
     clear_moderation_state,
     current_time,
     get_active_moderation_state,
-    parse_source_ref,
     upsert_moderation_state,
 )
+from profile_service import (
+    apply_profile_updates,
+    get_profile,
+    list_comparison_profile_photos,
+    list_profile_photos,
+    resolve_profile_source,
+)
 
-from .storage import json_dumps, json_loads, row_to_dict
+from .storage import inflate_json_columns, json_dumps, json_loads, row_to_dict
 
 FIELD_SUBMISSION_STATUS_SUBMITTED = "submitted"
 FIELD_SUBMISSION_STATUS_UNDER_REVIEW = "under_review"
@@ -126,7 +132,6 @@ HIGH_INCOME_CITY_MISMATCH = {
     "常州",
     "无锡",
 }
-DEFAULT_PROFILE_PHOTOS_TABLE = "profile_photos"
 DEFAULT_PROFILE_PHOTO_COMPARISON_LIMIT = 24
 PHOTO_RISK_ENGINE_NAME = "local_photo_authenticity"
 PHOTO_RISK_ENGINE_VERSION = "local_photo_authenticity_v1"
@@ -143,22 +148,58 @@ def _generate_profile_review_case_id() -> str:
     return f"prc-{uuid.uuid4().hex[:16]}"
 
 
-def _as_text(value: Any) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
+def _profile_photo_authenticity_unavailable_bundle(
+    image_sources: list[str] | None,
+    *,
+    comparison_image_sources: list[str] | None = None,
+    reason: str,
+    exc: Exception,
+) -> dict[str, Any]:
+    return {
+        "review": {
+            "analysis_status": "unavailable",
+            "photo_authenticity_score": 0,
+            "risk_flags": [],
+            "analysis_reason": reason,
+            "error_type": type(exc).__name__,
+            "error_message": str(exc) or type(exc).__name__,
+            "source_count": len(list(image_sources or [])),
+            "comparison_source_count": len(list(comparison_image_sources or [])),
+            "loaded_source_count": 0,
+            "valid_face_photo_count": 0,
+            "multiple_face_photo_count": 0,
+        },
+        "photo_entries": [],
+        "comparison_entries": [],
+    }
 
 
-def _unique_ordered(values: Iterable[Any]) -> list[str]:
-    out: list[str] = []
-    seen: set[str] = set()
-    for value in values:
-        item = _as_text(value)
-        if not item or item in seen:
-            continue
-        seen.add(item)
-        out.append(item)
-    return out
+def _analyze_profile_photo_authenticity_with_fallback(
+    image_sources: list[str] | None,
+    *,
+    comparison_image_sources: list[str] | None = None,
+) -> dict[str, Any]:
+    try:
+        module = importlib.import_module(".live_video_local", __package__)
+    except Exception as exc:  # noqa: BLE001
+        return _profile_photo_authenticity_unavailable_bundle(
+            image_sources,
+            comparison_image_sources=comparison_image_sources,
+            reason="runtime_dependency_unavailable",
+            exc=exc,
+        )
+    try:
+        return module.analyze_profile_photo_authenticity_detailed(
+            image_sources,
+            comparison_image_sources=comparison_image_sources,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return _profile_photo_authenticity_unavailable_bundle(
+            image_sources,
+            comparison_image_sources=comparison_image_sources,
+            reason="analysis_exception",
+            exc=exc,
+        )
 
 
 def _as_int(value: Any) -> int | None:
@@ -329,21 +370,22 @@ def field_verification_policies() -> dict[str, Any]:
 
 
 def _inflate_field_review(row: dict[str, Any] | None) -> dict[str, Any] | None:
-    if not row:
-        return None
-    out = dict(row)
-    out["requested_documents"] = json_loads(out.pop("requested_documents_json", None), [])
-    out["metadata"] = json_loads(out.pop("metadata_json", None), {})
-    return out
+    return inflate_json_columns(
+        row,
+        requested_documents=("requested_documents_json", []),
+        metadata=("metadata_json", {}),
+    )
 
 
 def _inflate_field_submission(conn, row: dict[str, Any] | None) -> dict[str, Any] | None:
-    if not row:
+    out = inflate_json_columns(
+        row,
+        required_documents=("required_documents_json", []),
+        evidence=("evidence_json", {}),
+        dispute_evidence=("dispute_evidence_json", {}),
+    )
+    if not out:
         return None
-    out = dict(row)
-    out["required_documents"] = json_loads(out.pop("required_documents_json", None), [])
-    out["evidence"] = json_loads(out.pop("evidence_json", None), {})
-    out["dispute_evidence"] = json_loads(out.pop("dispute_evidence_json", None), {})
     out["dispute_status"] = _as_text(out.get("dispute_status")) or FIELD_DISPUTE_STATUS_NONE
     out["reviews"] = list_profile_field_verification_reviews(conn, out["submission_id"])
     out["review_count"] = len(out["reviews"])
@@ -422,7 +464,7 @@ def list_profile_field_verification_submissions(
 
 
 def _resolve_profile_source(source_dsn: str | None, source_table_name: str | None) -> tuple[str, str]:
-    dsn, table_name = parse_source_ref(source_dsn, source_table_name)
+    dsn, table_name = resolve_profile_source(source_dsn, source_table_name)
     if not dsn or not table_name:
         raise ValueError("source_dsn and source_table_name/profile table are required")
     return dsn, table_name
@@ -435,52 +477,12 @@ def _sync_profile_row(
     profile_id: int,
     updates: dict[str, Any],
 ) -> dict[str, Any]:
-    profile_conn = connect_mysql_repo_db(source_dsn, subsystem_name="ProfileReviewSync")
-    try:
-        raw_conn = profile_conn.driver_connection
-        if not schema.column_exists(raw_conn, source_table_name, "id"):
-            raise ValueError(f"profile table {source_table_name} is missing id column")
-        assignments: list[str] = []
-        values: list[Any] = []
-        updated_fields: list[str] = []
-        for column, value in updates.items():
-            if value is None:
-                continue
-            if not schema.column_exists(raw_conn, source_table_name, column):
-                continue
-            assignments.append(f"{schema.quote_mysql_ident(column)} = ?")
-            values.append(value)
-            updated_fields.append(column)
-        if schema.column_exists(raw_conn, source_table_name, "updated_at"):
-            assignments.append(f"{schema.quote_mysql_ident('updated_at')} = ?")
-            values.append(current_time())
-            updated_fields.append("updated_at")
-        if not assignments:
-            return {"status": "skipped", "reason": "no_sync_columns", "updated_fields": []}
-        sql = (
-            f"UPDATE {schema.quote_mysql_ident(source_table_name)} "
-            f"SET {', '.join(assignments)} "
-            f"WHERE {schema.quote_mysql_ident('id')} = ?"
-        )
-        values.append(int(profile_id))
-        result = profile_conn.execute(sql, tuple(values))
-        if int(result.rowcount or 0) <= 0:
-            exists = profile_conn.execute(
-                f"SELECT 1 FROM {schema.quote_mysql_ident(source_table_name)} "
-                f"WHERE {schema.quote_mysql_ident('id')} = ? LIMIT 1",
-                (int(profile_id),),
-            ).fetchone()
-            if not exists:
-                raise ValueError(f"profile {profile_id} was not found in table {source_table_name}")
-        profile_conn.commit()
-        return {
-            "status": "synced",
-            "profile_id": int(profile_id),
-            "table_name": source_table_name,
-            "updated_fields": updated_fields,
-        }
-    finally:
-        profile_conn.close()
+    return apply_profile_updates(
+        source_dsn=source_dsn,
+        source_table_name=source_table_name,
+        profile_id=profile_id,
+        updates=updates,
+    )
 
 
 def submit_profile_field_verification(
@@ -1029,18 +1031,11 @@ def expire_due_profile_field_verifications(
 
 
 def _load_profile_row(source_dsn: str, source_table_name: str, profile_id: int) -> dict[str, Any]:
-    profile_conn = connect_mysql_repo_db(source_dsn, subsystem_name="ProfileReviewLoad")
-    try:
-        row = profile_conn.execute(
-            f"SELECT * FROM {schema.quote_mysql_ident(source_table_name)} WHERE {schema.quote_mysql_ident('id')} = ? LIMIT 1",
-            (int(profile_id),),
-        ).fetchone()
-        result = row_to_dict(row)
-        if not result:
-            raise ValueError(f"profile {profile_id} was not found in table {source_table_name}")
-        return result
-    finally:
-        profile_conn.close()
+    return get_profile(
+        source_dsn=source_dsn,
+        source_table_name=source_table_name,
+        profile_id=profile_id,
+    )
 
 
 def _profile_photo_comparison_limit() -> int:
@@ -1056,101 +1051,17 @@ def _profile_photo_comparison_limit() -> int:
     return max(4, min(value, 120))
 
 
-def _resolve_profile_photo_table(source_dsn: str | None) -> str | None:
-    dsn = _as_text(source_dsn)
-    if not dsn:
-        return None
-    parsed = urlparse(dsn)
-    query = parse_qs(parsed.query)
-    table_name = query.get("photos_table", [DEFAULT_PROFILE_PHOTOS_TABLE])[0]
-    normalized = _as_text(table_name)
-    return unquote(normalized) if normalized else None
-
-
 def _load_profile_photo_records(
     *,
     source_dsn: str,
     source_table_name: str,
     profile_id: int,
 ) -> list[dict[str, Any]]:
-    photo_table = _resolve_profile_photo_table(source_dsn)
-    profile_conn = connect_mysql_repo_db(source_dsn, subsystem_name="ProfilePhotoSourceLoad")
-    try:
-        raw_conn = profile_conn.driver_connection
-        if not schema.table_exists(raw_conn, source_table_name) or not schema.column_exists(raw_conn, source_table_name, "id"):
-            return []
-        row = profile_conn.execute(
-            f"SELECT * FROM {schema.quote_mysql_ident(source_table_name)} WHERE {schema.quote_mysql_ident('id')} = ? LIMIT 1",
-            (int(profile_id),),
-        ).fetchone()
-        profile = row_to_dict(row)
-        if not profile:
-            return []
-        out: list[dict[str, Any]] = []
-        seen: set[str] = set()
-        if (
-            photo_table
-            and schema.table_exists(raw_conn, photo_table)
-            and schema.column_exists(raw_conn, photo_table, "profile_id")
-            and schema.column_exists(raw_conn, photo_table, "photo_url")
-        ):
-            order_clauses: list[str] = []
-            if schema.column_exists(raw_conn, photo_table, "is_primary"):
-                order_clauses.append(f"{schema.quote_mysql_ident('is_primary')} DESC")
-            if schema.column_exists(raw_conn, photo_table, "sort_order"):
-                order_clauses.append(f"{schema.quote_mysql_ident('sort_order')} ASC")
-            if schema.column_exists(raw_conn, photo_table, "id"):
-                order_clauses.append(f"{schema.quote_mysql_ident('id')} ASC")
-            order_sql = ", ".join(order_clauses) if order_clauses else f"{schema.quote_mysql_ident('photo_url')} ASC"
-            rows = profile_conn.execute(
-                (
-                    f"SELECT {schema.quote_mysql_ident('photo_url')} AS photo_url "
-                    f"FROM {schema.quote_mysql_ident(photo_table)} "
-                    f"WHERE {schema.quote_mysql_ident('profile_id')} = ? "
-                    f"ORDER BY {order_sql}"
-                ),
-                (int(profile_id),),
-            ).fetchall()
-            for item in rows:
-                photo_url = _as_text((row_to_dict(item) if item else {}).get("photo_url"))
-                if not photo_url or photo_url in seen:
-                    continue
-                seen.add(photo_url)
-                out.append(
-                    {
-                        "source_profile_id": int(profile_id),
-                        "photo_source": photo_url,
-                        "asset_origin": "photo_table",
-                    }
-                )
-        avatar_url = _as_text(profile.get("avatar_url"))
-        if avatar_url and avatar_url not in seen and not out:
-            out.append(
-                {
-                    "source_profile_id": int(profile_id),
-                    "photo_source": avatar_url,
-                    "asset_origin": "avatar_fallback",
-                }
-            )
-        return out
-    finally:
-        profile_conn.close()
-
-
-def _load_profile_photo_sources(
-    *,
-    source_dsn: str,
-    source_table_name: str,
-    profile_id: int,
-) -> list[str]:
-    return [
-        item["photo_source"]
-        for item in _load_profile_photo_records(
-            source_dsn=source_dsn,
-            source_table_name=source_table_name,
-            profile_id=profile_id,
-        )
-    ]
+    return list_profile_photos(
+        source_dsn=source_dsn,
+        source_table_name=source_table_name,
+        profile_id=profile_id,
+    )
 
 
 def _load_comparison_profile_photo_records(
@@ -1159,98 +1070,12 @@ def _load_comparison_profile_photo_records(
     source_table_name: str,
     profile_id: int,
 ) -> list[dict[str, Any]]:
-    photo_table = _resolve_profile_photo_table(source_dsn)
-    profile_conn = connect_mysql_repo_db(source_dsn, subsystem_name="ProfilePhotoComparisonLoad")
-    try:
-        raw_conn = profile_conn.driver_connection
-        out: list[dict[str, Any]] = []
-        seen: set[str] = set()
-        limit = _profile_photo_comparison_limit()
-        if (
-            photo_table
-            and schema.table_exists(raw_conn, photo_table)
-            and schema.column_exists(raw_conn, photo_table, "profile_id")
-            and schema.column_exists(raw_conn, photo_table, "photo_url")
-        ):
-            rows = profile_conn.execute(
-                (
-                    f"SELECT {schema.quote_mysql_ident('profile_id')} AS profile_id, "
-                    f"{schema.quote_mysql_ident('photo_url')} AS photo_url "
-                    f"FROM {schema.quote_mysql_ident(photo_table)} "
-                    f"WHERE {schema.quote_mysql_ident('profile_id')} <> ? "
-                    f"ORDER BY {schema.quote_mysql_ident('profile_id')} ASC"
-                    + (
-                        f", {schema.quote_mysql_ident('is_primary')} DESC"
-                        if schema.column_exists(raw_conn, photo_table, "is_primary")
-                        else ""
-                    )
-                    + (
-                        f", {schema.quote_mysql_ident('sort_order')} ASC"
-                        if schema.column_exists(raw_conn, photo_table, "sort_order")
-                        else ""
-                    )
-                    + f" LIMIT ?"
-                ),
-                (int(profile_id), int(limit)),
-            ).fetchall()
-            for item in rows:
-                row_dict = row_to_dict(item) if item else {}
-                photo_url = _as_text(row_dict.get("photo_url"))
-                if not photo_url or photo_url in seen:
-                    continue
-                seen.add(photo_url)
-                out.append(
-                    {
-                        "source_profile_id": _as_int(row_dict.get("profile_id")),
-                        "photo_source": photo_url,
-                        "asset_origin": "photo_table",
-                    }
-                )
-        if out:
-            return out
-        if schema.table_exists(raw_conn, source_table_name) and schema.column_exists(raw_conn, source_table_name, "avatar_url"):
-            rows = profile_conn.execute(
-                (
-                    f"SELECT {schema.quote_mysql_ident('id')} AS id, {schema.quote_mysql_ident('avatar_url')} AS avatar_url "
-                    f"FROM {schema.quote_mysql_ident(source_table_name)} "
-                    f"WHERE {schema.quote_mysql_ident('id')} <> ? "
-                    f"AND {schema.quote_mysql_ident('avatar_url')} IS NOT NULL "
-                    f"ORDER BY {schema.quote_mysql_ident('id')} ASC LIMIT ?"
-                ),
-                (int(profile_id), int(limit)),
-            ).fetchall()
-            for item in rows:
-                row_dict = row_to_dict(item) if item else {}
-                avatar_url = _as_text(row_dict.get("avatar_url"))
-                if not avatar_url or avatar_url in seen:
-                    continue
-                seen.add(avatar_url)
-                out.append(
-                    {
-                        "source_profile_id": _as_int(row_dict.get("id")),
-                        "photo_source": avatar_url,
-                        "asset_origin": "avatar_fallback",
-                    }
-                )
-        return out
-    finally:
-        profile_conn.close()
-
-
-def _load_comparison_profile_photo_sources(
-    *,
-    source_dsn: str,
-    source_table_name: str,
-    profile_id: int,
-) -> list[str]:
-    return [
-        item["photo_source"]
-        for item in _load_comparison_profile_photo_records(
-            source_dsn=source_dsn,
-            source_table_name=source_table_name,
-            profile_id=profile_id,
-        )
-    ]
+    return list_comparison_profile_photos(
+        source_dsn=source_dsn,
+        source_table_name=source_table_name,
+        profile_id=profile_id,
+        limit=_profile_photo_comparison_limit(),
+    )
 
 
 def _photo_review_signal_codes_for_hits(hits: list[dict[str, Any]]) -> list[str]:
@@ -1477,20 +1302,15 @@ def _profile_review_severity_for_hits(hits: list[dict[str, Any]]) -> str:
 
 
 def _inflate_profile_review_case(row: dict[str, Any] | None) -> dict[str, Any] | None:
-    if not row:
-        return None
-    out = dict(row)
-    out["rule_codes"] = json_loads(out.pop("rule_codes_json", None), [])
-    out["evidence_summary"] = json_loads(out.pop("evidence_summary_json", None), {})
-    return out
+    return inflate_json_columns(
+        row,
+        rule_codes=("rule_codes_json", []),
+        evidence_summary=("evidence_summary_json", {}),
+    )
 
 
 def _inflate_profile_review_appeal(row: dict[str, Any] | None) -> dict[str, Any] | None:
-    if not row:
-        return None
-    out = dict(row)
-    out["evidence"] = json_loads(out.pop("evidence_json", None), {})
-    return out
+    return inflate_json_columns(row, evidence=("evidence_json", {}))
 
 
 def list_profile_review_events(conn, profile_review_case_id: str) -> list[dict[str, Any]]:
@@ -1619,43 +1439,39 @@ def _inflate_photo_risk_asset(row: dict[str, Any] | None) -> dict[str, Any] | No
 
 
 def _inflate_photo_risk_feature_snapshot(row: dict[str, Any] | None) -> dict[str, Any] | None:
-    if not row:
-        return None
-    out = dict(row)
-    out["embedding_preview"] = json_loads(out.pop("embedding_preview_json", None), [])
-    out["photo_edit_metrics"] = json_loads(out.pop("photo_edit_metrics_json", None), None)
-    out["deepfake_metrics"] = json_loads(out.pop("deepfake_metrics_json", None), None)
-    out["metadata"] = json_loads(out.pop("metadata_json", None), {})
-    return out
+    return inflate_json_columns(
+        row,
+        embedding_preview=("embedding_preview_json", []),
+        photo_edit_metrics=("photo_edit_metrics_json", None),
+        deepfake_metrics=("deepfake_metrics_json", None),
+        metadata=("metadata_json", {}),
+    )
 
 
 def _inflate_photo_risk_score_run(row: dict[str, Any] | None) -> dict[str, Any] | None:
-    if not row:
-        return None
-    out = dict(row)
-    out["risk_flags"] = json_loads(out.pop("risk_flags_json", None), [])
-    out["score_payload"] = json_loads(out.pop("score_payload_json", None), {})
-    return out
+    return inflate_json_columns(
+        row,
+        risk_flags=("risk_flags_json", []),
+        score_payload=("score_payload_json", {}),
+    )
 
 
 def _inflate_photo_risk_decision(row: dict[str, Any] | None) -> dict[str, Any] | None:
-    if not row:
-        return None
-    out = dict(row)
-    out["required_verifications"] = json_loads(out.pop("required_verifications_json", None), [])
-    out["rule_codes"] = json_loads(out.pop("rule_codes_json", None), [])
-    out["signal_codes"] = json_loads(out.pop("signal_codes_json", None), [])
-    out["decision_payload"] = json_loads(out.pop("decision_payload_json", None), {})
-    return out
+    return inflate_json_columns(
+        row,
+        required_verifications=("required_verifications_json", []),
+        rule_codes=("rule_codes_json", []),
+        signal_codes=("signal_codes_json", []),
+        decision_payload=("decision_payload_json", {}),
+    )
 
 
 def _inflate_photo_risk_review_queue_item(row: dict[str, Any] | None) -> dict[str, Any] | None:
-    if not row:
-        return None
-    out = dict(row)
-    out["reason_codes"] = json_loads(out.pop("reason_codes_json", None), [])
-    out["queue_payload"] = json_loads(out.pop("queue_payload_json", None), {})
-    return out
+    return inflate_json_columns(
+        row,
+        reason_codes=("reason_codes_json", []),
+        queue_payload=("queue_payload_json", {}),
+    )
 
 
 def _load_photo_risk_decision_by_score_run(conn, score_run_id: int) -> dict[str, Any] | None:
@@ -2347,7 +2163,6 @@ def evaluate_profile_consistency(
     ts = current_time(now)
     normalized_source, normalized_table = _resolve_profile_source(source_dsn, source_table_name)
     profile = _load_profile_row(normalized_source, normalized_table, int(profile_id))
-    from .live_video_local import analyze_profile_photo_authenticity_detailed
     from .verification import request_live_video_verification
 
     subject_photo_records = _load_profile_photo_records(
@@ -2360,7 +2175,7 @@ def evaluate_profile_consistency(
         source_table_name=normalized_table,
         profile_id=int(profile_id),
     )
-    photo_review_bundle = analyze_profile_photo_authenticity_detailed(
+    photo_review_bundle = _analyze_profile_photo_authenticity_with_fallback(
         [item["photo_source"] for item in subject_photo_records],
         comparison_image_sources=[item["photo_source"] for item in comparison_photo_records],
     )

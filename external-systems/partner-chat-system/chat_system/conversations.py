@@ -6,6 +6,8 @@ import uuid
 from datetime import datetime
 from typing import Any
 
+from her_time_utils import current_time
+
 try:
     from pymysql.err import IntegrityError
 except ImportError:  # pragma: no cover
@@ -15,7 +17,6 @@ from match_domain.outbox import append_outbox_pending
 from match_domain.trace_context import get_trace_id
 from observability import (
     CHAT_FUNNEL_MESSAGE_SEND,
-    CHAT_FUNNEL_PERSONA_JOB_ENQUEUED,
     CHAT_FUNNEL_THREAD_OPEN,
     funnel_stage,
 )
@@ -24,7 +25,7 @@ from .events import (
     chat_conversation_message_created_event,
     chat_conversation_opened_event,
 )
-from .storage import json_dumps, json_loads, row_to_dict
+from .storage import inflate_json_columns, json_dumps, row_to_dict
 
 CONV_KIND_DM = "dm"
 CONV_KIND_GROUP = "group"
@@ -42,38 +43,25 @@ LAYOUT_ROLE_ASSISTANT_DM_A = "assistant_dm_a"
 LAYOUT_ROLE_ASSISTANT_DM_B = "assistant_dm_b"
 
 
-def current_time(now: datetime | None = None) -> datetime:
-    return (now or datetime.now()).replace(microsecond=0)
-
-
 def _generate_conversation_id() -> str:
     return f"cvt-{uuid.uuid4().hex[:16]}"
 
 
 def _inflate_conversation(row: dict[str, Any] | None) -> dict[str, Any] | None:
-    if not row:
-        return None
-    out = dict(row)
-    out["metadata"] = json_loads(out.pop("metadata_json", None), {})
-    return out
+    return inflate_json_columns(row, metadata=("metadata_json", {}))
 
 
 def _inflate_member(row: dict[str, Any] | None) -> dict[str, Any] | None:
-    if not row:
+    out = inflate_json_columns(row, metadata=("metadata_json", {}))
+    if not out:
         return None
-    out = dict(row)
-    out["metadata"] = json_loads(out.pop("metadata_json", None), {})
     out["can_read"] = bool(out.get("can_read"))
     out["can_send"] = bool(out.get("can_send"))
     return out
 
 
 def _inflate_message(row: dict[str, Any] | None) -> dict[str, Any] | None:
-    if not row:
-        return None
-    out = dict(row)
-    out["metadata"] = json_loads(out.pop("metadata_json", None), {})
-    return out
+    return inflate_json_columns(row, metadata=("metadata_json", {}))
 
 
 def _normalize_member_specs(member_specs: list[dict[str, Any]]) -> list[dict[str, Any]]:
