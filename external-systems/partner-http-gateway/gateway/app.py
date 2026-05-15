@@ -88,32 +88,13 @@ from matchmaking_system.storage import (  # type: ignore[import-untyped]
 )
 from chat_system import (  # type: ignore[import-untyped]
     create_live_video_verification_challenge,
-    dispute_profile_field_verification,
-    evaluate_profile_consistency,
-    expire_due_profile_field_verifications,
-    field_verification_policies,
-    get_photo_risk_score_run,
-    get_profile_field_verification_submission,
-    get_profile_review_case_appeal,
-    get_profile_review_case,
-    list_photo_risk_review_queue,
-    list_photo_risk_score_runs,
     list_photo_review_requests,
-    list_profile_field_verification_submissions,
-    list_profile_review_case_appeals,
-    list_profile_review_cases,
     list_verification_notifications,
     list_verification_submissions,
     get_verification_submission,
     request_live_video_verification,
-    resubmit_profile_field_verification,
     resubmit_live_video_verification,
-    review_profile_field_verification,
-    review_profile_review_case_appeal,
-    review_profile_review_case,
     review_live_video_verification,
-    submit_profile_field_verification,
-    submit_profile_review_case_appeal,
     submit_live_video_verification,
 )
 from chat_system.storage import (  # type: ignore[import-untyped]
@@ -198,6 +179,7 @@ from .matchmaking_routes import (
     rest_mm_set_status as _rest_mm_set_status,
 )
 from .mysql_pool import GatewayConnectionPool
+from .profile_jsonrpc import JSONRPC_NOT_HANDLED as PROFILE_JSONRPC_NOT_HANDLED, handle_profile_jsonrpc
 from .request_policy import client_ip, rate_limiter_from_environ
 from .profile_routes import (
     dispatch_profile_rest,
@@ -241,7 +223,6 @@ from .recommendation_routes import (
 from .role_sets import (
     CHAT_RISK_REVIEW_ROLES,
     INTERNAL_WRITE_ROLES,
-    PROFILE_REVIEW_ROLES,
     STAFF_OVERRIDE_ROLES,
     VERIFICATION_REVIEW_ROLES,
 )
@@ -1677,137 +1658,10 @@ class PartnerGateway(AsyncJobGatewayMixin):
         if handled is not JSONRPC_NOT_HANDLED:
             return handled
 
-        if method == "profile.get_field_verification_policies":
-            return field_verification_policies()
-        if method == "profile.submit_field_verification":
-            if p.get("subject_user_id") is not None or self._current_actor(environ) is not None:
-                p = {**p, "subject_user_id": self._resolve_actor_bound_id(
-                    environ,
-                    p.get("subject_user_id"),
-                    field_name="subject_user_id",
-                )}
-            return self._with_chat(submit_profile_field_verification, **p)
-        if method == "profile.list_field_verifications":
-            subject_user_id = p.get("subject_user_id")
-            actor = self._current_actor(environ)
-            if actor is not None and not actor.has_any_role(STAFF_OVERRIDE_ROLES):
-                subject_user_id = self._resolve_actor_bound_id(environ, subject_user_id, field_name="subject_user_id")
-            p = {**p, "subject_user_id": subject_user_id}
-            return self._with_chat(list_profile_field_verification_submissions, **p)
-        if method == "profile.get_field_verification":
-            submission = self._with_chat(get_profile_field_verification_submission, p["submission_id"])
-            self._assert_actor_can_access_owner(environ, (submission or {}).get("subject_user_id"), field_name="subject_user_id")
-            return submission
-        if method == "profile.resubmit_field_verification":
-            submission_id = p.pop("submission_id")
-            if p.get("subject_user_id") is not None or self._current_actor(environ) is not None:
-                p["subject_user_id"] = self._resolve_actor_bound_id(
-                    environ,
-                    p.get("subject_user_id"),
-                    field_name="subject_user_id",
-                )
-            return self._with_chat(resubmit_profile_field_verification, submission_id, **p)
-        if method == "profile.dispute_field_verification":
-            submission_id = p.pop("submission_id")
-            if p.get("subject_user_id") is not None or self._current_actor(environ) is not None:
-                p["subject_user_id"] = self._resolve_actor_bound_id(
-                    environ,
-                    p.get("subject_user_id"),
-                    field_name="subject_user_id",
-                )
-            return self._with_chat(dispute_profile_field_verification, submission_id, **p)
-        if method == "profile.review_field_verification":
-            submission_id = p.pop("submission_id")
-            reviewer_id = self._resolve_operator_actor_id(
-                environ,
-                p.pop("reviewer_id", None),
-                field_name="reviewer_id",
-                roles=PROFILE_REVIEW_ROLES,
-                message="current actor cannot review profile verifications",
-            )
-            return self._with_chat(review_profile_field_verification, submission_id, reviewer_id, **p)
-        if method == "profile.expire_due_field_verifications":
-            self._require_roles(
-                environ,
-                PROFILE_REVIEW_ROLES | INTERNAL_WRITE_ROLES,
-                message="current actor cannot expire due profile verifications",
-            )
-            return self._with_chat(expire_due_profile_field_verifications, **p)
-        if method == "profile.evaluate_risk_case":
-            self._require_roles(
-                environ,
-                PROFILE_REVIEW_ROLES | INTERNAL_WRITE_ROLES,
-                message="current actor cannot evaluate profile review cases",
-            )
-            return self._with_chat(evaluate_profile_consistency, **p)
-        if method == "profile.list_risk_cases":
-            subject_user_id = p.get("subject_user_id")
-            actor = self._current_actor(environ)
-            if actor is not None and not actor.has_any_role(STAFF_OVERRIDE_ROLES):
-                subject_user_id = self._resolve_actor_bound_id(environ, subject_user_id, field_name="subject_user_id")
-            p = {**p, "subject_user_id": subject_user_id}
-            return self._with_chat(list_profile_review_cases, **p)
-        if method == "profile.get_risk_case":
-            risk_case = self._with_chat(get_profile_review_case, p["profile_review_case_id"])
-            self._assert_actor_can_access_owner(environ, (risk_case or {}).get("subject_user_id"), field_name="subject_user_id")
-            return risk_case
-        if method == "profile.list_photo_risk_runs":
-            subject_user_id = p.get("subject_user_id")
-            actor = self._current_actor(environ)
-            if actor is not None and not actor.has_any_role(STAFF_OVERRIDE_ROLES):
-                subject_user_id = self._resolve_actor_bound_id(environ, subject_user_id, field_name="subject_user_id")
-            p = {**p, "subject_user_id": subject_user_id}
-            return self._with_chat(list_photo_risk_score_runs, **p)
-        if method == "profile.get_photo_risk_run":
-            row = self._with_chat(get_photo_risk_score_run, int(p["score_run_id"]))
-            self._assert_actor_can_access_owner(environ, (row or {}).get("subject_user_id"), field_name="subject_user_id")
-            return row
-        if method == "profile.list_photo_risk_review_queue":
-            self._require_roles(
-                environ,
-                PROFILE_REVIEW_ROLES,
-                message="current actor cannot view the photo risk review queue",
-            )
-            return self._with_chat(list_photo_risk_review_queue, **p)
-        if method == "profile.review_risk_case":
-            profile_review_case_id = p.pop("profile_review_case_id")
-            resolver_id = self._resolve_operator_actor_id(
-                environ,
-                p.pop("resolver_id", None),
-                field_name="resolver_id",
-                roles=PROFILE_REVIEW_ROLES,
-                message="current actor cannot review profile risk cases",
-            )
-            return self._with_chat(review_profile_review_case, profile_review_case_id, resolver_id, **p)
-        if method == "profile.submit_risk_case_appeal":
-            profile_review_case_id = p.pop("profile_review_case_id")
-            appellant_id = self._resolve_actor_bound_id(
-                environ,
-                p.pop("appellant_id", None),
-                field_name="appellant_id",
-            )
-            return self._with_chat(submit_profile_review_case_appeal, profile_review_case_id, appellant_id, **p)
-        if method == "profile.list_risk_case_appeals":
-            subject_user_id = p.get("subject_user_id")
-            actor = self._current_actor(environ)
-            if actor is not None and not actor.has_any_role(STAFF_OVERRIDE_ROLES):
-                subject_user_id = self._resolve_actor_bound_id(environ, subject_user_id, field_name="subject_user_id")
-            p = {**p, "subject_user_id": subject_user_id}
-            return self._with_chat(list_profile_review_case_appeals, **p)
-        if method == "profile.get_risk_case_appeal":
-            appeal = self._with_chat(get_profile_review_case_appeal, int(p["appeal_id"]))
-            self._assert_actor_can_access_owner(environ, (appeal or {}).get("subject_user_id"), field_name="subject_user_id")
-            return appeal
-        if method == "profile.review_risk_case_appeal":
-            appeal_id = int(p.pop("appeal_id"))
-            resolver_id = self._resolve_operator_actor_id(
-                environ,
-                p.pop("resolver_id", None),
-                field_name="resolver_id",
-                roles=PROFILE_REVIEW_ROLES,
-                message="current actor cannot review profile appeals",
-            )
-            return self._with_chat(review_profile_review_case_appeal, appeal_id, resolver_id, **p)
+        handled = handle_profile_jsonrpc(self, environ, method, p)
+        if handled is not PROFILE_JSONRPC_NOT_HANDLED:
+            return handled
+
         raise ValueError(f"Unknown method: {method}")
 
     def __call__(self, environ: dict[str, Any], start_response: Callable[..., Any]) -> list[bytes]:
