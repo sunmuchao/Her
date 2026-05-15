@@ -172,11 +172,11 @@ from chat_system.storage import (  # type: ignore[import-untyped]
     connect_db as chat_connect_db,
 )
 from discovery_system import (  # type: ignore[import-untyped]
-    DiscoveryServiceError,
     create_default_discovery_service,
 )
 
 from .async_jobs import AsyncJobGatewayMixin
+from .discovery_routes import dispatch_discovery_rest
 from .identity import (
     ActorPrincipal,
     GatewayAuthError,
@@ -197,8 +197,6 @@ from .request_policy import client_ip, rate_limiter_from_environ
 JSON_HEADERS = [("Content-Type", "application/json; charset=utf-8")]
 HTML_HEADERS = [("Content-Type", "text/html; charset=utf-8")]
 DEMO_HTML_HEADERS = HTML_HEADERS + [("Cache-Control", "no-store")]
-
-RouteHandler = Callable[..., tuple[int, dict[str, Any]]]
 
 STAFF_OVERRIDE_ROLES = frozenset(
     {
@@ -312,99 +310,6 @@ class PartnerGateway(AsyncJobGatewayMixin):
             "static_token_count": self._identity_resolver.static_token_count,
             "rate_limit_per_minute": int(os.environ.get("PARTNER_GATEWAY_RATE_LIMIT_PER_MINUTE", "600") or "600"),
         }
-
-    def _discovery_error(self, exc: DiscoveryServiceError) -> tuple[int, dict[str, Any]]:
-        return exc.status_code, {
-            "error": {"code": exc.code, "message": exc.message},
-            "error_code": exc.code,
-            "error_message": exc.message,
-            "retryable": exc.retryable,
-            "trace_id": get_trace_id(),
-        }
-
-    def rest_discovery_create_session(
-        self,
-        environ: dict[str, Any],
-        body: dict[str, Any],
-    ) -> tuple[int, dict[str, Any]]:
-        try:
-            requester_id = self._resolve_int_actor_bound_id(
-                environ,
-                body.get("requester_id"),
-                field_name="requester_id",
-            )
-            profile_id = int(body["profile_id"])
-            out = self._discovery.create_session(
-                requester_id=requester_id,
-                profile_id=profile_id,
-                now=_parse_optional_now(body),
-            )
-        except DiscoveryServiceError as exc:
-            return self._discovery_error(exc)
-        return 201, {**_json_safe(out), "trace_id": get_trace_id()}
-
-    def rest_discovery_process_turn(
-        self,
-        environ: dict[str, Any],
-        session_id: str,
-        body: dict[str, Any],
-    ) -> tuple[int, dict[str, Any]]:
-        try:
-            owner_id = self._discovery.get_session_owner_id(session_id)
-            self._assert_actor_can_access_owner(
-                environ,
-                owner_id,
-                field_name="requester_id",
-            )
-            out = self._discovery.process_turn(
-                session_id=session_id,
-                user_message_text=body.get("user_message"),
-                action_id=body.get("action_id"),
-                now=_parse_optional_now(body),
-            )
-        except DiscoveryServiceError as exc:
-            return self._discovery_error(exc)
-        return 200, {**_json_safe(out), "trace_id": get_trace_id()}
-
-    def rest_discovery_get_session(
-        self,
-        environ: dict[str, Any],
-        session_id: str,
-    ) -> tuple[int, dict[str, Any]]:
-        try:
-            owner_id = self._discovery.get_session_owner_id(session_id)
-            self._assert_actor_can_access_owner(
-                environ,
-                owner_id,
-                field_name="requester_id",
-            )
-            out = self._discovery.get_session_view(session_id)
-        except DiscoveryServiceError as exc:
-            return self._discovery_error(exc)
-        return 200, {**_json_safe(out), "trace_id": get_trace_id()}
-
-    def rest_discovery_get_profile_detail(
-        self,
-        environ: dict[str, Any],
-        profile_id: str,
-    ) -> tuple[int, dict[str, Any]]:
-        query = _query_dict(environ)
-        session_id = (query.get("session_id") or "").strip() or None
-        try:
-            if session_id is not None:
-                owner_id = self._discovery.get_session_owner_id(session_id)
-                self._assert_actor_can_access_owner(
-                    environ,
-                    owner_id,
-                    field_name="requester_id",
-                )
-            out = self._discovery.get_profile_detail(
-                int(profile_id),
-                session_id=session_id,
-            )
-        except DiscoveryServiceError as exc:
-            return self._discovery_error(exc)
-        return 200, {**_json_safe(out), "trace_id": get_trace_id()}
 
     def _current_actor(self, environ: dict[str, Any]) -> ActorPrincipal | None:
         return get_current_actor(environ)
@@ -2469,24 +2374,9 @@ class PartnerGateway(AsyncJobGatewayMixin):
         if path == "/v1/ops/async-jobs/dashboard" and method == "GET":
             return self.rest_async_job_dashboard(environ)
 
-        if path == "/v1/discovery/sessions" and method == "POST":
-            return self.rest_discovery_create_session(
-                environ,
-                _parse_json_body(_read_body(environ)),
-            )
-        m = re.fullmatch(r"/v1/discovery/sessions/([^/]+)/turns", path)
-        if m and method == "POST":
-            return self.rest_discovery_process_turn(
-                environ,
-                m.group(1),
-                _parse_json_body(_read_body(environ)),
-            )
-        m = re.fullmatch(r"/v1/discovery/sessions/([^/]+)", path)
-        if m and method == "GET":
-            return self.rest_discovery_get_session(environ, m.group(1))
-        m = re.fullmatch(r"/v1/discovery/profiles/([^/]+)", path)
-        if m and method == "GET":
-            return self.rest_discovery_get_profile_detail(environ, m.group(1))
+        discovery_response = dispatch_discovery_rest(self, environ, method, path)
+        if discovery_response is not None:
+            return discovery_response
 
         if path == "/v1/verifications/live-video-challenges" and method == "POST":
             return self.rest_verification_create_live_challenge(
