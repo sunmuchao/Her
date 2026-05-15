@@ -438,6 +438,30 @@ class DiscoveryServiceTests(unittest.TestCase):
         self.assertTrue(tool_calls[-1].result["created_subscription"])
         fake_conn.close.assert_called_once()
 
+    def test_service_persists_view_snapshots_for_session_restore(self) -> None:
+        service = DiscoveryService(
+            storage=InMemoryDiscoveryStorage(),
+            runtime=_FakeRuntime(),
+        )
+        created = service.create_session(requester_id=70001, profile_id=10001)
+        session_id = created["session"]["session_id"]
+
+        service.process_turn(
+            session_id=session_id,
+            user_message_text="我在无锡，想找认真恋爱的人。",
+        )
+
+        snapshots = service.storage.list_view_snapshots(session_id)
+        self.assertEqual(len(snapshots), 2)
+        self.assertEqual(snapshots[0].phase, "collecting_preferences")
+        self.assertEqual(snapshots[-1].phase, "results_shown")
+        latest_snapshot = service.storage.get_latest_view_snapshot(session_id)
+        assert latest_snapshot is not None
+        self.assertEqual(latest_snapshot.view["timeline"][-1]["item_type"], "result_group")
+
+        restored = service.get_session_view(session_id)
+        self.assertEqual(restored["view"]["timeline"][-1]["item_type"], "result_group")
+
     def test_service_records_persona_memory_tool_call(self) -> None:
         service = DiscoveryService(
             storage=InMemoryDiscoveryStorage(),
@@ -476,6 +500,28 @@ class DiscoveryServiceTests(unittest.TestCase):
         self.assertEqual(len(persona_tool_calls), 1)
         self.assertTrue(persona_tool_calls[0].result["synced"])
         self.assertEqual(persona_tool_calls[0].arguments["patch"]["must_not_have_tags"], ["抽烟"])
+
+    def test_service_marks_failed_tool_call_and_updates_metrics(self) -> None:
+        service = DiscoveryService(
+            storage=InMemoryDiscoveryStorage(),
+            runtime=_PersonaSyncRuntime(),
+        )
+        created = service.create_session(requester_id=70001, profile_id=10001)
+        session_id = created["session"]["session_id"]
+
+        with mock.patch.dict(os.environ, {"PERSONA_MEMORY_MYSQL_SOURCE": ""}, clear=False):
+            service.process_turn(
+                session_id=session_id,
+                user_message_text="我在上海，不接受抽烟，想认真恋爱。",
+            )
+
+        tool_calls = service.storage.list_tool_calls(session_id)
+        persona_tool_calls = [item for item in tool_calls if item.tool_name == "sync_requester_persona_memory"]
+        self.assertEqual(len(persona_tool_calls), 1)
+        self.assertEqual(persona_tool_calls[0].status, "failed")
+        self.assertEqual(persona_tool_calls[0].result["error_code"], "persona_memory_source_not_configured")
+        metrics = service.get_observability_snapshot()["counters"]
+        self.assertEqual(metrics["tool_calls.failed"], 1)
 
     def test_service_records_search_tool_call_with_search_run_reference(self) -> None:
         service = DiscoveryService(
@@ -524,6 +570,63 @@ class DiscoveryServiceTests(unittest.TestCase):
         self.assertEqual(len(search_tool_calls), 1)
         self.assertEqual(search_tool_calls[0].search_run_id, 1)
         self.assertEqual(search_tool_calls[0].result["result_count"], 1)
+
+    def test_service_observability_snapshot_tracks_counters(self) -> None:
+        service = DiscoveryService(
+            storage=InMemoryDiscoveryStorage(),
+            runtime=_SearchToolRuntime(),
+        )
+        created = service.create_session(requester_id=70001, profile_id=10001)
+        session_id = created["session"]["session_id"]
+
+        with mock.patch.dict(os.environ, {"HER_DISCOVERY_PROFILE_SOURCE": "mysql://search-demo"}, clear=False), mock.patch(
+            "discovery_system.service.load_self_profile",
+            return_value={"self_city": "无锡"},
+        ), mock.patch(
+            "discovery_system.service.search_profiles",
+            return_value={
+                "has_match": True,
+                "result_count": 1,
+                "results": [
+                    {
+                        "id": 1002,
+                        "name": "周晴",
+                        "score": 88,
+                        "photo_preview": [],
+                        "verification_items": [],
+                        "matched_on": [],
+                        "trust_summary": {"headline": "真人认证"},
+                        "profile": {"age": 30, "city": "无锡", "job": "产品经理", "education": "本科"},
+                    }
+                ],
+            },
+        ), mock.patch(
+            "discovery_system.service.load_profile_detail",
+            return_value={
+                "id": 1002,
+                "name": "周晴",
+                "photo_preview": [],
+                "verification_items": [],
+                "profile": {"job": "产品经理", "education": "本科", "relationship_goal": "认真恋爱"},
+            },
+        ):
+            service.process_turn(
+                session_id=session_id,
+                user_message_text="我想找无锡、认真恋爱的女生。",
+            )
+            service.get_session_view(session_id)
+            service.get_profile_detail(1002, session_id=session_id)
+
+        counters = service.get_observability_snapshot()["counters"]
+        self.assertEqual(counters["sessions.created"], 1)
+        self.assertEqual(counters["turns.created"], 2)
+        self.assertEqual(counters["turns.user_message"], 1)
+        self.assertEqual(counters["search_runs.created"], 1)
+        self.assertEqual(counters["tool_calls.total"], 1)
+        self.assertEqual(counters["tool_calls.search_partner_candidates"], 1)
+        self.assertEqual(counters["view_snapshots.written"], 2)
+        self.assertEqual(counters["session_restores"], 1)
+        self.assertEqual(counters["profile_detail_reads"], 1)
 
 
 if __name__ == "__main__":

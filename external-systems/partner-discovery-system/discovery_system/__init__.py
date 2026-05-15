@@ -36,7 +36,7 @@ from .service import (  # noqa: E402
     DiscoverySessionNotFoundError,
     create_default_discovery_service,
 )
-from .storage import InMemoryDiscoveryStorage, StoredAction, StoredSearchRun, StoredSession, StoredToolCall  # noqa: E402
+from .storage import InMemoryDiscoveryStorage, StoredAction, StoredSearchRun, StoredSession, StoredToolCall, StoredViewSnapshot  # noqa: E402
 from .storage import (  # noqa: E402
     DEFAULT_DISCOVERY_MYSQL_DSN,
     DEFAULT_DISCOVERY_TEST_MYSQL_DSN,
@@ -74,6 +74,7 @@ __all__ = [
     "StoredSearchRun",
     "StoredSession",
     "StoredToolCall",
+    "StoredViewSnapshot",
     "AgentsSdkDiscoveryAgentRuntime",
     "StubDiscoveryAgentRuntime",
     "connect_db",

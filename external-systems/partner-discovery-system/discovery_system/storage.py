@@ -91,6 +91,18 @@ class StoredToolCall:
     result: dict[str, Any]
     status: str
     search_run_id: int | None
+    trace_id: str | None
+    created_at: datetime
+
+
+@dataclass
+class StoredViewSnapshot:
+    snapshot_id: int
+    session_id: str
+    turn_id: int | None
+    phase: str
+    view: dict[str, Any]
+    trace_id: str | None
     created_at: datetime
 
 
@@ -115,10 +127,12 @@ class InMemoryDiscoveryStorage:
         self._turn_seq = 0
         self._search_run_seq = 0
         self._tool_call_seq = 0
+        self._view_snapshot_seq = 0
         self._sessions: dict[str, StoredSession] = {}
         self._actions: dict[str, StoredAction] = {}
         self._search_runs: dict[int, StoredSearchRun] = {}
         self._tool_calls: list[StoredToolCall] = []
+        self._view_snapshots: list[StoredViewSnapshot] = []
 
     def next_session_id(self) -> str:
         self._session_seq += 1
@@ -194,8 +208,9 @@ class InMemoryDiscoveryStorage:
         view_snapshot: dict[str, Any],
         created_at: datetime,
         search_run_id: int | None = None,
+        trace_id: str | None = None,
     ) -> int:
-        del session_id, request_kind, user_message_text, consumed_action_id, agent_decision, view_snapshot, created_at, search_run_id
+        del session_id, request_kind, user_message_text, consumed_action_id, agent_decision, view_snapshot, created_at, search_run_id, trace_id
         self._turn_seq += 1
         return self._turn_seq
 
@@ -246,6 +261,7 @@ class InMemoryDiscoveryStorage:
         status: str,
         search_run_id: int | None,
         created_at: datetime,
+        trace_id: str | None = None,
     ) -> int:
         self._tool_call_seq += 1
         self._tool_calls.append(
@@ -258,6 +274,7 @@ class InMemoryDiscoveryStorage:
                 result=deepcopy(result),
                 status=str(status),
                 search_run_id=int(search_run_id) if search_run_id is not None else None,
+                trace_id=str(trace_id).strip() or None if trace_id is not None else None,
                 created_at=created_at,
             )
         )
@@ -268,6 +285,43 @@ class InMemoryDiscoveryStorage:
             deepcopy(tool_call)
             for tool_call in self._tool_calls
             if tool_call.session_id == session_id and (turn_id is None or tool_call.turn_id == int(turn_id))
+        ]
+
+    def create_view_snapshot(
+        self,
+        *,
+        session_id: str,
+        turn_id: int | None,
+        phase: str,
+        view_snapshot: dict[str, Any],
+        created_at: datetime,
+        trace_id: str | None = None,
+    ) -> int:
+        self._view_snapshot_seq += 1
+        self._view_snapshots.append(
+            StoredViewSnapshot(
+                snapshot_id=self._view_snapshot_seq,
+                session_id=session_id,
+                turn_id=int(turn_id) if turn_id is not None else None,
+                phase=str(phase),
+                view=deepcopy(view_snapshot),
+                trace_id=str(trace_id).strip() or None if trace_id is not None else None,
+                created_at=created_at,
+            )
+        )
+        return self._view_snapshot_seq
+
+    def get_latest_view_snapshot(self, session_id: str) -> StoredViewSnapshot | None:
+        for snapshot in reversed(self._view_snapshots):
+            if snapshot.session_id == session_id:
+                return deepcopy(snapshot)
+        return None
+
+    def list_view_snapshots(self, session_id: str) -> list[StoredViewSnapshot]:
+        return [
+            deepcopy(snapshot)
+            for snapshot in self._view_snapshots
+            if snapshot.session_id == session_id
         ]
 
 
@@ -485,6 +539,7 @@ class MySQLDiscoveryStorage:
         view_snapshot: dict[str, Any],
         created_at: datetime,
         search_run_id: int | None = None,
+        trace_id: str | None = None,
     ) -> int:
         conn = self._open()
         try:
@@ -492,8 +547,8 @@ class MySQLDiscoveryStorage:
                 """
                 INSERT INTO discovery_agent_turns (
                     session_id, request_kind, user_message_text, consumed_action_id,
-                    agent_decision_json, view_snapshot_json, search_run_id, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    agent_decision_json, view_snapshot_json, search_run_id, trace_id, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     session_id,
@@ -503,6 +558,7 @@ class MySQLDiscoveryStorage:
                     json_dumps(agent_decision),
                     json_dumps(view_snapshot),
                     search_run_id,
+                    trace_id,
                     created_at,
                 ),
             )
@@ -600,6 +656,7 @@ class MySQLDiscoveryStorage:
         status: str,
         search_run_id: int | None,
         created_at: datetime,
+        trace_id: str | None = None,
     ) -> int:
         conn = self._open()
         try:
@@ -607,8 +664,8 @@ class MySQLDiscoveryStorage:
                 """
                 INSERT INTO discovery_agent_tool_calls (
                     session_id, turn_id, tool_name, tool_args_json,
-                    tool_result_json, status, search_run_id, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    tool_result_json, status, search_run_id, trace_id, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     session_id,
@@ -618,6 +675,7 @@ class MySQLDiscoveryStorage:
                     json_dumps(result),
                     status,
                     search_run_id,
+                    trace_id,
                     created_at,
                 ),
             )
@@ -634,7 +692,7 @@ class MySQLDiscoveryStorage:
                 rows = conn.execute(
                     """
                     SELECT tool_call_id, session_id, turn_id, tool_name, tool_args_json,
-                           tool_result_json, status, search_run_id, created_at
+                           tool_result_json, status, search_run_id, trace_id, created_at
                     FROM discovery_agent_tool_calls
                     WHERE session_id = ?
                     ORDER BY tool_call_id ASC
@@ -645,7 +703,7 @@ class MySQLDiscoveryStorage:
                 rows = conn.execute(
                     """
                     SELECT tool_call_id, session_id, turn_id, tool_name, tool_args_json,
-                           tool_result_json, status, search_run_id, created_at
+                           tool_result_json, status, search_run_id, trace_id, created_at
                     FROM discovery_agent_tool_calls
                     WHERE session_id = ? AND turn_id = ?
                     ORDER BY tool_call_id ASC
@@ -664,6 +722,97 @@ class MySQLDiscoveryStorage:
                 result=dict(json_loads(str(row.get("tool_result_json") or "{}"), {}) or {}),
                 status=str(row["status"]),
                 search_run_id=int(row["search_run_id"]) if row.get("search_run_id") is not None else None,
+                trace_id=str(row.get("trace_id") or "").strip() or None,
+                created_at=_parse_datetime(row.get("created_at")),
+            )
+            for row in (row_to_dict(item) for item in rows)
+            if row is not None
+        ]
+
+    def create_view_snapshot(
+        self,
+        *,
+        session_id: str,
+        turn_id: int | None,
+        phase: str,
+        view_snapshot: dict[str, Any],
+        created_at: datetime,
+        trace_id: str | None = None,
+    ) -> int:
+        conn = self._open()
+        try:
+            conn.execute(
+                """
+                INSERT INTO discovery_view_snapshots (
+                    session_id, turn_id, phase, view_json, trace_id, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    session_id,
+                    turn_id,
+                    phase,
+                    json_dumps(view_snapshot),
+                    trace_id,
+                    created_at,
+                ),
+            )
+            snapshot_id = int(conn.lastrowid)
+            conn.commit()
+            return snapshot_id
+        finally:
+            conn.close()
+
+    def get_latest_view_snapshot(self, session_id: str) -> StoredViewSnapshot | None:
+        conn = self._open()
+        try:
+            row = row_to_dict(
+                conn.execute(
+                    """
+                    SELECT snapshot_id, session_id, turn_id, phase, view_json, trace_id, created_at
+                    FROM discovery_view_snapshots
+                    WHERE session_id = ?
+                    ORDER BY snapshot_id DESC
+                    LIMIT 1
+                    """,
+                    (session_id,),
+                ).fetchone()
+            )
+        finally:
+            conn.close()
+        if row is None:
+            return None
+        return StoredViewSnapshot(
+            snapshot_id=int(row["snapshot_id"]),
+            session_id=str(row["session_id"]),
+            turn_id=int(row["turn_id"]) if row.get("turn_id") is not None else None,
+            phase=str(row["phase"]),
+            view=dict(json_loads(str(row.get("view_json") or "{}"), {}) or {}),
+            trace_id=str(row.get("trace_id") or "").strip() or None,
+            created_at=_parse_datetime(row.get("created_at")),
+        )
+
+    def list_view_snapshots(self, session_id: str) -> list[StoredViewSnapshot]:
+        conn = self._open()
+        try:
+            rows = conn.execute(
+                """
+                SELECT snapshot_id, session_id, turn_id, phase, view_json, trace_id, created_at
+                FROM discovery_view_snapshots
+                WHERE session_id = ?
+                ORDER BY snapshot_id ASC
+                """,
+                (session_id,),
+            ).fetchall()
+        finally:
+            conn.close()
+        return [
+            StoredViewSnapshot(
+                snapshot_id=int(row["snapshot_id"]),
+                session_id=str(row["session_id"]),
+                turn_id=int(row["turn_id"]) if row.get("turn_id") is not None else None,
+                phase=str(row["phase"]),
+                view=dict(json_loads(str(row.get("view_json") or "{}"), {}) or {}),
+                trace_id=str(row.get("trace_id") or "").strip() or None,
                 created_at=_parse_datetime(row.get("created_at")),
             )
             for row in (row_to_dict(item) for item in rows)
@@ -703,6 +852,7 @@ __all__ = [
     "StoredSearchRun",
     "StoredSession",
     "StoredToolCall",
+    "StoredViewSnapshot",
     "connect_db",
     "initialize_database",
     "json_dumps",
