@@ -17,8 +17,6 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from her_time_utils import coerce_int as as_int, unique_ordered_texts
 from mysql_source_config import MYSQL_SCHEMES as MYSQL_SOURCE_SCHEMES
-from mysql_source_config import parse_mysql_source_config
-from outer_system_mysql_schema import quote_mysql_ident as mysql_quote_ident
 from partner_moderation import overlay_records_with_moderation
 from partner_search.search_inputs import (
     KEYWORD_EVIDENCE_FIELDS,
@@ -43,6 +41,18 @@ from partner_search.search_inputs import (
     split_evidence_segments,
     split_keywords,
     split_must_have_keywords,
+)
+from partner_search.search_sources import (
+    SearchSourceRuntime,
+    attach_photo_previews as _attach_photo_previews,
+    build_mysql_prefilter as _build_mysql_prefilter,
+    detect_mysql_profile_table as _detect_mysql_profile_table,
+    load_mysql as _load_mysql,
+    load_mysql_photo_previews as _load_mysql_photo_previews,
+    load_source as _load_source,
+    parse_mysql_source as _parse_mysql_source,
+    quote_mysql_ident as _quote_mysql_ident,
+    resolve_mysql_columns as _resolve_mysql_columns,
 )
 from partner_search.search_runtime_helpers import SearchRuntime, SearchRuntimeHelpers
 from profile_source_refs import build_source_file_ref as _build_source_file_ref
@@ -1731,315 +1741,84 @@ def build_combined_text(record):
     return " | ".join(parts).lower()
 
 
+def _build_search_source_runtime() -> SearchSourceRuntime:
+    return SearchSourceRuntime(
+        alias_lookup=ALIAS_LOOKUP,
+        verified_level_order=VERIFIED_LEVEL_ORDER,
+        photo_verification_level_order=PHOTO_VERIFICATION_LEVEL_ORDER,
+        default_mysql_photos_table=DEFAULT_MYSQL_PHOTOS_TABLE,
+        as_int=as_int,
+        as_lower=as_lower,
+        as_text=as_text,
+        normalize_key=normalize_key,
+        verified_rank=verified_rank,
+        photo_verification_rank=photo_verification_rank,
+        normalize_record=normalize_record,
+        build_source_file_ref=build_source_file_ref,
+        split_source_file_ref=split_source_file_ref,
+        redact_mysql_source=redact_mysql_source,
+        resolve_profile_source=resolve_profile_source,
+        detect_profile_table=detect_profile_table,
+        list_profile_columns=list_profile_columns,
+        list_profile_previews=list_profile_photo_previews,
+        list_profiles=list_profiles,
+        load_mysql_photo_previews_fn=load_mysql_photo_previews,
+    )
+
+
 def parse_mysql_source(source, table_name=None):
-    try:
-        return parse_mysql_source_config(
-            source,
-            source_label="MySQL source",
-            table_name=table_name,
-            default_photos_table_name=DEFAULT_MYSQL_PHOTOS_TABLE,
-            default_host="localhost",
-        )
-    except ValueError as exc:
-        if str(exc) == "MySQL source must include a database name.":
-            raise ValueError(
-                "MySQL source must include a database name, for example mysql://user:pass@host:3306/db"
-            ) from exc
-        raise
+    return _parse_mysql_source(_build_search_source_runtime(), source, table_name=table_name)
 
 
 def quote_mysql_ident(identifier):
-    return mysql_quote_ident(identifier)
+    return _quote_mysql_ident(identifier)
 
 
 def resolve_mysql_columns(conn, database, table):
-    with conn.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT column_name AS column_name
-            FROM information_schema.columns
-            WHERE table_schema = %s AND table_name = %s
-            ORDER BY ordinal_position
-            """,
-            (database, table),
-        )
-        mapping = {}
-        for row in cursor.fetchall():
-            actual = row["column_name"]
-            canonical = ALIAS_LOOKUP.get(normalize_key(actual), normalize_key(actual))
-            mapping.setdefault(canonical, actual)
-        return mapping
+    return _resolve_mysql_columns(_build_search_source_runtime(), conn, database, table)
 
 
 def build_mysql_prefilter(criteria, canonical_to_actual, include_ids=None, include_ids_mode="or"):
-    include_ids = [item for item in (include_ids or []) if item is not None]
-    include_ids_mode = as_lower(include_ids_mode) or "or"
-    if include_ids_mode not in {"or", "only"}:
-        raise ValueError("include_ids_mode must be either 'or' or 'only'.")
-    if include_ids and "id" not in canonical_to_actual:
-        return None
-
-    base_clauses = []
-    base_params = []
-
-    def text_expr(actual):
-        return f"COALESCE({quote_mysql_ident(actual)}, '')"
-
-    def defaulted_text_expr(actual):
-        return f"COALESCE(NULLIF({text_expr(actual)}, ''), %s)"
-
-    def add_exact(canonical, value, allow_missing=False):
-        actual = canonical_to_actual.get(canonical)
-        if actual is None or value is None:
-            return
-        expr = text_expr(actual)
-        if allow_missing:
-            base_clauses.append(f"({expr} = %s OR {expr} = '')")
-        else:
-            base_clauses.append(f"{expr} = %s")
-        base_params.append(as_text(value))
-
-    def add_in(canonical, values, allow_missing=False, default_value=None):
-        actual = canonical_to_actual.get(canonical)
-        normalized = [as_text(item) for item in values or [] if as_text(item)]
-        if actual is None or not normalized:
-            return
-        placeholders = ", ".join(["%s"] * len(normalized))
-        if default_value is not None:
-            expr = defaulted_text_expr(actual)
-            base_clauses.append(f"{expr} IN ({placeholders})")
-            base_params.append(as_text(default_value))
-        else:
-            expr = text_expr(actual)
-            if allow_missing:
-                base_clauses.append(f"({expr} IN ({placeholders}) OR {expr} = '')")
-            else:
-                base_clauses.append(f"{expr} IN ({placeholders})")
-        base_params.extend(normalized)
-
-    def add_not_in(canonical, values):
-        actual = canonical_to_actual.get(canonical)
-        normalized = [as_text(item) for item in values or [] if as_text(item)]
-        if actual is None or not normalized:
-            return
-        placeholders = ", ".join(["%s"] * len(normalized))
-        base_clauses.append(f"{text_expr(actual)} NOT IN ({placeholders})")
-        base_params.extend(normalized)
-
-    def add_numeric_bound(canonical, operator, value, allow_missing=False):
-        actual = canonical_to_actual.get(canonical)
-        if actual is None or value is None:
-            return
-        clause = f"{quote_mysql_ident(actual)} {operator} %s"
-        if allow_missing:
-            clause = f"({quote_mysql_ident(actual)} IS NULL OR {clause})"
-        base_clauses.append(clause)
-        base_params.append(value)
-
-    add_exact("gender", criteria.get("gender"), allow_missing=True)
-    add_numeric_bound("age", ">=", criteria.get("age_min"), allow_missing=True)
-    add_numeric_bound("age", "<=", criteria.get("age_max"), allow_missing=True)
-    add_numeric_bound("height", ">=", criteria.get("height_min"), allow_missing=True)
-    add_numeric_bound("height", "<=", criteria.get("height_max"), allow_missing=True)
-    add_in("city", criteria.get("cities"), allow_missing=True)
-    add_in("district", criteria.get("districts"), allow_missing=True)
-    add_in("settlement_city", criteria.get("settlement_cities"), allow_missing=True)
-    add_in("relationship_goal", criteria.get("relationship_goals"), allow_missing=True)
-    add_exact("smoking", criteria.get("smoking"), allow_missing=True)
-    add_exact("drinking", criteria.get("drinking"), allow_missing=True)
-    add_exact("long_distance", criteria.get("long_distance"), allow_missing=True)
-    add_in("housing_status", criteria.get("housing_statuses"), allow_missing=True)
-    add_in("car_status", criteria.get("car_statuses"), allow_missing=True)
-    add_in("marital_status", criteria.get("marital_statuses"), allow_missing=True)
-    add_exact("want_children", criteria.get("want_children"), allow_missing=True)
-    add_exact("accept_partner_children", criteria.get("accept_partner_children"), allow_missing=True)
-    add_in("marriage_timeline", criteria.get("marriage_timelines"), allow_missing=True)
-    add_in("profile_status", criteria.get("profile_statuses") or ["active"], allow_missing=True)
-    add_not_in("source_channel", criteria.get("exclude_source_channels"))
-    add_in("verified_level", criteria.get("verified_levels"), default_value="none")
-    add_in("photo_verification_level", criteria.get("photo_verification_levels"), default_value="none")
-    add_numeric_bound("photo_count", ">=", criteria.get("photo_count_min"), allow_missing=True)
-
-    if criteria.get("has_children") is not None:
-        add_numeric_bound("has_children", "=", int(criteria["has_children"]), allow_missing=True)
-
-    if criteria.get("verified_level_min"):
-        actual = canonical_to_actual.get("verified_level")
-        if actual is not None:
-            required_rank = verified_rank(criteria["verified_level_min"])
-            allowed_levels = [
-                level
-                for level, rank in VERIFIED_LEVEL_ORDER.items()
-                if rank >= required_rank
-            ]
-            placeholders = ", ".join(["%s"] * len(allowed_levels))
-            base_clauses.append(
-                f"{defaulted_text_expr(actual)} IN ({placeholders})"
-            )
-            base_params.append("none")
-            base_params.extend(allowed_levels)
-
-    if criteria.get("photo_verification_level_min"):
-        actual = canonical_to_actual.get("photo_verification_level")
-        if actual is not None:
-            required_rank = photo_verification_rank(criteria["photo_verification_level_min"])
-            allowed_levels = [
-                level
-                for level, rank in PHOTO_VERIFICATION_LEVEL_ORDER.items()
-                if rank >= required_rank
-            ]
-            placeholders = ", ".join(["%s"] * len(allowed_levels))
-            base_clauses.append(
-                f"{defaulted_text_expr(actual)} IN ({placeholders})"
-            )
-            base_params.append("none")
-            base_params.extend(allowed_levels)
-
-    if criteria.get("active_within_days") is not None:
-        activity_fields = [
-            canonical_to_actual.get(field)
-            for field in ("last_active_at", "updated_at", "created_at")
-            if canonical_to_actual.get(field)
-        ]
-        if activity_fields:
-            cutoff = datetime.now() - timedelta(days=criteria["active_within_days"])
-            coalesced_activity = ", ".join(quote_mysql_ident(field) for field in activity_fields)
-            base_clauses.append(f"COALESCE({coalesced_activity}) >= %s")
-            base_params.append(cutoff.strftime("%Y-%m-%d %H:%M:%S"))
-
-    base_where = " AND ".join(f"({clause})" for clause in base_clauses)
-
-    include_where = ""
-    include_params = []
-    if include_ids:
-        actual_id = canonical_to_actual["id"]
-        placeholders = ", ".join(["%s"] * len(include_ids))
-        include_where = f"{quote_mysql_ident(actual_id)} IN ({placeholders})"
-        include_params.extend(include_ids)
-
-    if include_where and include_ids_mode == "only":
-        return f" WHERE {include_where}", include_params
-    if base_where and include_where:
-        return f" WHERE ({base_where}) OR ({include_where})", base_params + include_params
-    if base_where:
-        return f" WHERE {base_where}", base_params
-    if include_where:
-        return f" WHERE {include_where}", include_params
-    return "", []
-
-
-def load_mysql(source, table_name=None, criteria=None, include_ids=None, include_ids_mode="or"):
-    config = parse_mysql_source(source, table_name=table_name)
-    normalized_source, normalized_table = resolve_profile_source(source, config.get("table"))
-    effective_source = normalized_source or str(source)
-    table = normalized_table or detect_profile_table(source_dsn=effective_source)
-    if not table:
-        raise ValueError(f"Could not detect a candidate table in MySQL database {config['database']}")
-
-    canonical_to_actual = {}
-    for actual in list_profile_columns(source_dsn=effective_source, source_table_name=table):
-        canonical = ALIAS_LOOKUP.get(normalize_key(actual), normalize_key(actual))
-        canonical_to_actual.setdefault(canonical, actual)
-
-    prefilter = build_mysql_prefilter(
-        criteria or {},
+    return _build_mysql_prefilter(
+        _build_search_source_runtime(),
+        criteria,
         canonical_to_actual,
         include_ids=include_ids,
         include_ids_mode=include_ids_mode,
     )
-    if prefilter is None:
-        where_clause, params = "", []
-    else:
-        where_clause, params = prefilter
-    rows = list_profiles(
-        source_dsn=effective_source,
-        source_table_name=table,
-        where_clause=where_clause.replace("%s", "?"),
-        params=params,
+
+
+def load_mysql(source, table_name=None, criteria=None, include_ids=None, include_ids_mode="or"):
+    return _load_mysql(
+        _build_search_source_runtime(),
+        source,
+        table_name=table_name,
+        criteria=criteria,
+        include_ids=include_ids,
+        include_ids_mode=include_ids_mode,
     )
-    return [
-        normalize_record(dict(row, source_file=build_source_file_ref(effective_source, table)))
-        for row in rows
-    ]
 
 
 def load_mysql_photo_previews(source, profile_ids, table_name=None, photos_table_name=None, preview_count=3):
-    if preview_count <= 0 or not profile_ids:
-        return {}
-
-    config = parse_mysql_source(source, table_name=table_name)
-    return list_profile_photo_previews(
-        source_dsn=source,
-        source_table_name=config.get("table"),
-        photos_table_name=photos_table_name or config.get("photos_table") or DEFAULT_MYSQL_PHOTOS_TABLE,
-        profile_ids=[item for item in profile_ids if item is not None],
+    return _load_mysql_photo_previews(
+        _build_search_source_runtime(),
+        source,
+        profile_ids,
+        table_name=table_name,
+        photos_table_name=photos_table_name,
         preview_count=preview_count,
     )
 
 
 def detect_mysql_profile_table(conn, database):
-    with conn.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT table_name AS table_name
-            FROM information_schema.tables
-            WHERE table_schema = %s
-            ORDER BY table_name
-            """,
-            (database,),
-        )
-        tables = [row["table_name"] for row in cursor.fetchall()]
-
-        scored_tables = []
-        for table in tables:
-            cursor.execute(
-                """
-                SELECT column_name AS column_name
-                FROM information_schema.columns
-                WHERE table_schema = %s AND table_name = %s
-                """,
-                (database, table),
-            )
-            columns = {normalize_key(row["column_name"]) for row in cursor.fetchall()}
-            canonical_columns = {ALIAS_LOOKUP.get(column, column) for column in columns}
-            score = 0
-            for required, weight in {
-                "id": 2,
-                "name": 2,
-                "gender": 2,
-                "age": 2,
-                "city": 2,
-                "profile_status": 1,
-                "verified_level": 1,
-            }.items():
-                if required in canonical_columns:
-                    score += weight
-            scored_tables.append((table, score))
-
-        if not scored_tables:
-            return None
-
-        best_score = max(score for _, score in scored_tables)
-        if best_score <= 0:
-            return None
-
-        best_tables = [table for table, score in scored_tables if score == best_score]
-        if len(best_tables) > 1:
-            raise ValueError(
-                "Ambiguous MySQL candidate tables: "
-                + ", ".join(best_tables)
-                + ". Specify ?table=... in the DSN or pass --table."
-            )
-        return best_tables[0]
+    return _detect_mysql_profile_table(_build_search_source_runtime(), conn, database)
 
 
 def load_source(source, table_name=None, criteria=None, include_ids=None, include_ids_mode="or"):
-    if not is_mysql_source(source):
-        raise ValueError(
-            "Unsupported source type. Use a MySQL DSN such as mysql://user:pass@host:3306/db?table=profiles"
-        )
-    return load_mysql(
+    return _load_source(
+        _build_search_source_runtime(),
         source,
+        is_mysql_source=is_mysql_source,
         table_name=table_name,
         criteria=criteria,
         include_ids=include_ids,
@@ -4037,46 +3816,12 @@ def select_diverse_results(results, limit):
 
 
 def attach_photo_previews(results, preview_count, photos_table_name=None):
-    if preview_count <= 0 or not results:
-        return
-
-    grouped_profile_ids = {}
-    for result in results:
-        profile_id = as_int(result.get("id"))
-        source_file = result.get("source_file") or ""
-        source, table_name = split_source_file_ref(source_file)
-        if profile_id is None or not source:
-            continue
-        group_key = (source, table_name or None)
-        grouped_profile_ids.setdefault(group_key, [])
-        if profile_id not in grouped_profile_ids[group_key]:
-            grouped_profile_ids[group_key].append(profile_id)
-
-    preview_lookup = {}
-    for group_key, profile_ids in grouped_profile_ids.items():
-        source, table_name = group_key
-        try:
-            preview_lookup[group_key] = load_mysql_photo_previews(
-                source,
-                profile_ids,
-                table_name=table_name,
-                photos_table_name=photos_table_name,
-                preview_count=preview_count,
-            )
-        except Exception as exc:
-            print(
-                f"WARN: skipping photo previews for {redact_mysql_source(source)}#{table_name or ''}: {exc}",
-                file=sys.stderr,
-            )
-            preview_lookup[group_key] = {}
-
-    for result in results:
-        profile_id = as_int(result.get("id"))
-        source_file = result.get("source_file") or ""
-        source, table_name = split_source_file_ref(source_file)
-        previews = preview_lookup.get((source, table_name or None), {}).get(profile_id, [])
-        if previews:
-            result["photo_preview"] = previews
+    return _attach_photo_previews(
+        _build_search_source_runtime(),
+        results,
+        preview_count,
+        photos_table_name=photos_table_name,
+    )
 
 
 _search_runtime_helpers = SearchRuntimeHelpers(
