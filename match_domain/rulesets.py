@@ -1,4 +1,4 @@
-"""Named rule sets and version pins for recommendation/search provenance (SYSTEM_DOC §13.3)."""
+"""Named rule sets and version pins for recommendation/search provenance."""
 
 from __future__ import annotations
 

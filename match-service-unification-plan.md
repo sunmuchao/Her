@@ -345,7 +345,7 @@
 
 ### 9.2 与当前推荐 / 撮合 MySQL 库的关系
 
-仓库现状：**推荐系统、撮合系统的业务状态已写入各自独立的 MySQL 库**（DSN 可配，见 `SYSTEM_DOC.md` 环境变量）。这与本节规划的「统一 `match_relations` / `event_log` 总账」仍是两回事：前者是**分域业务表**，后者是**待建设的一账本多投影**。
+仓库现状：**推荐系统、撮合系统的业务状态已写入各自独立的 MySQL 库**（DSN 可配，分别见 `external-systems/partner-recommendation-system/README.md` 与 `external-systems/partner-matchmaking-system/README.md`）。这与本节规划的「统一 `match_relations` / `event_log` 总账」仍是两回事：前者是**分域业务表**，后者是**待建设的一账本多投影**。
 
 过渡策略建议：
 

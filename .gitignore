@@ -6,6 +6,10 @@ __pycache__/
 *.pyc
 .venv/
 *.egg-info/
+build/
+tmp/
+.pytest_cache/
+.ruff_cache/
 
 # Local MySQL runtime/data
 .partner-search-mysql/

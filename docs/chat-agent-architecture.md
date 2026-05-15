@@ -2,6 +2,8 @@
 
 本文档描述 Her 关系运营流水线中 **用户与匹配对象聊天**、**Agent C 协助**、以及 **对话触发 persona-memory-sync** 的完整架构设计，作为实现与评审的单一事实来源（与当前代码是否已落地无关）。
 
+> 历史说明（2026-05-15）：本文主体保留了早期“侧信道建议 + 草稿采纳”方案，方便回溯设计取舍；当前仓库实际落地的聊天实现已经收敛为 `v2` conversations、session/task/maintenance 驱动的红娘 C 流水线，不再提供侧信道草稿采纳、read receipt、主动 coaching 等入口。当前真实行为以 `external-systems/partner-chat-system/README.md` 与 `external-systems/partner-http-gateway/gateway/app.py` 为准。
+
 **关联代码与能力**（现状参考）：
 
 - 推荐 / 代理牵线：`external-systems/partner-recommendation-system/`、`match_domain` 案例类型 `PROXY_INTRO`
@@ -207,7 +209,7 @@ flowchart TB
 | POST | `/threads` | 按 `case_id` 创建或获取线程 |
 | GET | `/threads/{id}/messages` | 分页拉消息（按 `visibility` 过滤） |
 | POST | `/threads/{id}/messages` | 发主对话消息（`client_msg_id` 幂等） |
-| POST | `/threads/{id}/read-receipt` | 已读（可选） |
+| POST | `/threads/{id}/read-receipt` | 历史草图中的可选接口，当前实现未开放 |
 
 若与现网 JSON-RPC 统一，可镜像上述方法名。
 
@@ -258,8 +260,8 @@ flowchart TB
 
 ## 14. 文档维护
 
-- **已实现**：`chat_tables()` 含 **`chat_threads`**、**`chat_messages`**、**`chat_thread_summaries`**、**`outbox_events`**、**`persona_sync_jobs`**；消息/开线程同事务 **`append_outbox_pending`**；**`funnel_stage(system="chat", …)`** 覆盖 thread_open、message_send、persona_job_enqueued、outbox_dispatched；**`consume_chat_outbox_batch`**（维护任务默认）；**`refresh_stale_thread_summaries`**（concat 摘要）；**`/v1/timeline`** 聚合 **撮合 + 推荐** proxy-intro 案例事件；**`GET /v1/chat/threads/{id}/summary`**；详见 `API_CONTRACT.md` / `SYSTEM_DOC.md` §3.5。
-- 本方案与 **`SYSTEM_DOC.md`** 中的组件划分一致；Kafka 等外部队列、端到端加密、三人调解模式等仍可按 §1.2 / §12 演进。
+- **已实现**：`chat_tables()` 含 **`chat_threads`**、**`chat_messages`**、**`chat_thread_summaries`**、**`outbox_events`**、**`persona_sync_jobs`**；消息/开线程同事务 **`append_outbox_pending`**；**`funnel_stage(system="chat", …)`** 覆盖 thread_open、message_send、persona_job_enqueued、outbox_dispatched；**`consume_chat_outbox_batch`**（维护任务默认）；**`refresh_stale_thread_summaries`**（concat 摘要）；**`/v1/timeline`** 聚合 **撮合 + 推荐** proxy-intro 案例事件；**`GET /v1/chat/threads/{id}/summary`**；当前实现说明见 `external-systems/partner-chat-system/README.md` 与 `external-systems/partner-http-gateway/API_CONTRACT.md`。
+- 历史总文档已移除；当前组件边界与环境变量说明以各子系统 README、`partner-http-gateway/API_CONTRACT.md` 与专项设计文档为准。Kafka 等外部队列、端到端加密、三人调解模式等仍可按 §1.2 / §12 演进。
 - 画像合并与可见性细节以 `local-skills/persona-memory-sync/references/` 为准，与本方案冲突时以 skill 引用文档为实施准绳。
 
 ---

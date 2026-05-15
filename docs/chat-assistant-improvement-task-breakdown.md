@@ -1,5 +1,9 @@
 # 聊天助手改进方案整理与落地任务拆解
 
+> 历史规划说明：本文保留了方案拆解语境，但其中若出现 `assistant_llm.py`、`scenario_stress.py`、`dyadic_roleplay.py` 等文件引用，已经不是当前仓库的真实实现入口。
+>
+> 当前聊天助手实现请以 `external-systems/partner-chat-system/chat_system/assistant_runtime.py`、`assistant_orchestrator.py`、`assistant_sessions.py`、`assistant_context.py`、`service.py` 为准。文中关于独立主动 coaching、roleplay 压测链路的任务拆分属于历史方案材料，不应再按对外产品入口直接开发。
+
 本文档是对 [chat-assistant-improvement-plan.md](chat-assistant-improvement-plan.md) 的执行化整理，目标有两个：
 
 - 先把原方案压缩成清晰的主线
@@ -184,7 +188,7 @@
   - 增加 `expected_mutual_intent_assessment`
   - 增加 `expected_interaction_mode`
 - 主要文件：
-  - [external-systems/partner-chat-system/chat_system/scenario_stress.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/scenario_stress.py)
+  - 历史提案文件：`external-systems/partner-chat-system/chat_system/scenario_stress.py`
   - 相关测试：`external-systems/partner-chat-system/tests`
 - 依赖：`T01`
 - 完成标准：
@@ -201,7 +205,7 @@
   - 增加连续状态字段：`engagement_level`、`warmth_level`、`irritation_level`、`state_trend`
   - 区分真实产品字段和 `roleplay` 专用字段
 - 主要文件：
-  - [external-systems/partner-chat-system/chat_system/dyadic_roleplay.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/dyadic_roleplay.py)
+  - 历史提案文件：`external-systems/partner-chat-system/chat_system/dyadic_roleplay.py`
   - [external-systems/partner-chat-system/chat_system/service.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/service.py)
 - 依赖：`T01`
 - 完成标准：
@@ -223,7 +227,7 @@
   - 可新增：`external-systems/partner-chat-system/chat_system/mode_router.py`
   - 可新增：`external-systems/partner-chat-system/chat_system/chat_state.py`
   - [external-systems/partner-chat-system/chat_system/service.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/service.py)
-  - [external-systems/partner-chat-system/chat_system/dyadic_roleplay.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/dyadic_roleplay.py)
+  - 历史提案文件：`external-systems/partner-chat-system/chat_system/dyadic_roleplay.py`
 - 依赖：`T02`、`T03`
 - 完成标准：
   - 能区分 `repair / probe_lightly / hold / none`
@@ -242,8 +246,8 @@
   - 安全 fallback
   - 禁止直接生成可原样直发的代写句
 - 主要文件：
-  - [external-systems/partner-chat-system/chat_system/assistant_llm.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/assistant_llm.py)
-  - [external-systems/partner-chat-system/tests/test_assistant_llm.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/tests/test_assistant_llm.py)
+  - 历史提案文件：`external-systems/partner-chat-system/chat_system/assistant_llm.py`
+  - 历史提案测试：`external-systems/partner-chat-system/tests/test_assistant_llm.py`
 - 依赖：`T01`、`T04`
 - 完成标准：
   - 输出稳定包含 `mutual_intent_assessment`、`interaction_mode`、`problem_tags`、`advice`、`avoid`
@@ -275,8 +279,8 @@
   - `follow_level = none | partial | strong`
   - `follow_evidence`
 - 主要文件：
-  - [external-systems/partner-chat-system/chat_system/dyadic_roleplay.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/dyadic_roleplay.py)
-  - [external-systems/partner-chat-system/scripts/run_dyadic_agent_roleplay.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/scripts/run_dyadic_agent_roleplay.py)
+  - 历史提案文件：`external-systems/partner-chat-system/chat_system/dyadic_roleplay.py`
+  - 历史提案脚本：`external-systems/partner-chat-system/scripts/run_dyadic_agent_roleplay.py`
 - 依赖：`T05`、`T06`
 - 完成标准：
   - 能判断是否换到了建议话题类型
@@ -293,8 +297,8 @@
   - `overpush_risk_turns`
   - `clarified_low_interest_rate`
 - 主要文件：
-  - [external-systems/partner-chat-system/chat_system/dyadic_roleplay.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/dyadic_roleplay.py)
-  - [external-systems/partner-chat-system/scripts/run_dyadic_agent_roleplay.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/scripts/run_dyadic_agent_roleplay.py)
+  - 历史提案文件：`external-systems/partner-chat-system/chat_system/dyadic_roleplay.py`
+  - 历史提案脚本：`external-systems/partner-chat-system/scripts/run_dyadic_agent_roleplay.py`
 - 依赖：`T03`、`T07`
 - 完成标准：
   - 报表里能区分“局部改善”和“体面止损”
@@ -309,8 +313,8 @@
   - 一组对比结果：读模式 vs 不读模式
   - `simulated_reply_mode_alignment_rate`
 - 主要文件：
-  - [external-systems/partner-chat-system/chat_system/dyadic_roleplay.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/dyadic_roleplay.py)
-  - [external-systems/partner-chat-system/scripts/run_dyadic_agent_roleplay.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/scripts/run_dyadic_agent_roleplay.py)
+  - 历史提案文件：`external-systems/partner-chat-system/chat_system/dyadic_roleplay.py`
+  - 历史提案脚本：`external-systems/partner-chat-system/scripts/run_dyadic_agent_roleplay.py`
 - 依赖：`T04`、`T05`
 - 完成标准：
   - 可以明确区分“真实产品建议边界”和“离线模拟约束实验”
@@ -326,7 +330,7 @@
   - 当前说话人真实生活钩子次优先
   - 通用低门槛话题兜底
 - 主要文件：
-  - [external-systems/partner-chat-system/chat_system/assistant_llm.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/assistant_llm.py)
+  - 历史提案文件：`external-systems/partner-chat-system/chat_system/assistant_llm.py`
   - 可选关联：`external-systems/partner-chat-system/tests/test_profile_loader.py`
 - 依赖：`T05`
 - 完成标准：
@@ -342,8 +346,8 @@
   - 增加反例表达约束
   - 增加口语自然度评分
 - 主要文件：
-  - [external-systems/partner-chat-system/chat_system/dyadic_roleplay.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/dyadic_roleplay.py)
-  - [external-systems/partner-chat-system/tests/test_dyadic_roleplay.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/tests/test_dyadic_roleplay.py)
+  - 历史提案文件：`external-systems/partner-chat-system/chat_system/dyadic_roleplay.py`
+  - 历史提案测试：`external-systems/partner-chat-system/tests/test_dyadic_roleplay.py`
 - 依赖：无
 - 完成标准：
   - 输出里能单独看到自然度评分
@@ -378,9 +382,9 @@
 - 主要文件：
   - 可新增：`external-systems/partner-chat-system/chat_system/trend_state.py`
   - [external-systems/partner-chat-system/chat_system/service.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/service.py)
-  - [external-systems/partner-chat-system/chat_system/dyadic_roleplay.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/dyadic_roleplay.py)
+  - 历史提案文件：`external-systems/partner-chat-system/chat_system/dyadic_roleplay.py`
   - [external-systems/partner-chat-system/tests/test_chat_system.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/tests/test_chat_system.py)
-  - [external-systems/partner-chat-system/tests/test_dyadic_roleplay.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/tests/test_dyadic_roleplay.py)
+  - 历史提案测试：`external-systems/partner-chat-system/tests/test_dyadic_roleplay.py`
 - 依赖：`T04`、`T05`
 - 联动增强：`T07` 可提供 `follow_level` 作为辅助信号
 - 建议实现步骤：
@@ -422,8 +426,8 @@
   - `repair / probe_lightly / hold` 分布
   - “可见文本口径”与 “stress beat 口径”双视图
 - 主要文件：
-  - [external-systems/partner-chat-system/scripts/run_dyadic_agent_roleplay.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/scripts/run_dyadic_agent_roleplay.py)
-  - [external-systems/partner-chat-system/scripts/export_chat_thread.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/scripts/export_chat_thread.py)
+  - 历史提案脚本：`external-systems/partner-chat-system/scripts/run_dyadic_agent_roleplay.py`
+  - 历史提案脚本：`external-systems/partner-chat-system/scripts/export_chat_thread.py`
 - 依赖：`T03`、`T06`、`T07`、`T08`
 - 完成标准：
   - 跑完脚本后能直接看到关键指标
@@ -444,8 +448,8 @@
   - 延迟统计回归基线
   - timeout / fallback 统计隔离测试
 - 主要文件：
-  - [external-systems/partner-chat-system/tests/test_assistant_llm.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/tests/test_assistant_llm.py)
-  - [external-systems/partner-chat-system/tests/test_dyadic_roleplay.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/tests/test_dyadic_roleplay.py)
+  - 历史提案测试：`external-systems/partner-chat-system/tests/test_assistant_llm.py`
+  - 历史提案测试：`external-systems/partner-chat-system/tests/test_dyadic_roleplay.py`
   - [external-systems/partner-chat-system/tests/test_chat_system.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/tests/test_chat_system.py)
 - 依赖：`T04`、`T05`、`T06`、`T12`
 - 完成标准：

@@ -1,5 +1,7 @@
 # 触发式红娘 C 方案
 
+> 历史设计说明：本文仍会提到 `assistant_session_store.py`、`assistant_task_store.py` 等旧命名；当前实现已经收敛到 `assistant_sessions.py` 与 `assistant_orchestrator.py`，不要再按旧文件名查找或扩展。
+
 本文档定义一套更贴近真实产品的实现：
 
 - A / B 一开始聊天，系统自动分配一个红娘 C
