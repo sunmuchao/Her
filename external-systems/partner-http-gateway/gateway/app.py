@@ -26,7 +26,6 @@ from .http_helpers import (  # noqa: E402
     _read_body,
     _read_demo_html,
     _statuses_from_query,
-    _subscription_ids_from_query,
     _wrap_trace_headers,
 )
 
@@ -208,6 +207,23 @@ from .profile_routes import (
     rest_profile_submit_field_verification as _rest_profile_submit_field_verification,
     rest_profile_submit_review_case_appeal as _rest_profile_submit_review_case_appeal,
     rest_profile_verification_policies as _rest_profile_verification_policies,
+)
+from .recommendation_routes import (
+    dispatch_recommendation_rest,
+    rest_create_subscription as _rest_create_subscription,
+    rest_deliver as _rest_deliver,
+    rest_get_recommendation_job as _rest_get_recommendation_job,
+    rest_get_subscription as _rest_get_subscription,
+    rest_list_cards as _rest_list_cards,
+    rest_list_recommendation_jobs as _rest_list_recommendation_jobs,
+    rest_list_recommendations as _rest_list_recommendations,
+    rest_list_runs as _rest_list_runs,
+    rest_mark_cards_read as _rest_mark_cards_read,
+    rest_patch_overrides as _rest_patch_overrides,
+    rest_record_action as _rest_record_action,
+    rest_record_review as _rest_record_review,
+    rest_refresh_due as _rest_refresh_due,
+    rest_refresh_subscription as _rest_refresh_subscription,
 )
 from .role_sets import (
     CHAT_RISK_REVIEW_ROLES,
@@ -616,176 +632,47 @@ class PartnerGateway(AsyncJobGatewayMixin):
         raise GatewayPermissionError("current actor is not allowed to access this match case")
 
     def rest_get_subscription(self, environ: dict[str, Any], subscription_id: str) -> tuple[int, dict[str, Any]]:
-        sub = self._get_recommendation_subscription_for_actor(environ, subscription_id)
-        return 200, {"subscription": _json_safe(sub)}
+        return _rest_get_subscription(self, environ, subscription_id)
 
     def rest_create_subscription(self, environ: dict[str, Any], body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        now = _parse_optional_now(body)
-        kwargs = {k: v for k, v in body.items() if k != "now"}
-        if "requester_id" in kwargs or self._current_actor(environ) is not None:
-            kwargs["requester_id"] = self._resolve_int_actor_bound_id(
-                environ,
-                kwargs.get("requester_id"),
-                field_name="requester_id",
-            )
-        if now is not None:
-            kwargs["now"] = now
-        sub = self._with_rec(create_subscription, **kwargs)
-        return 201, {"subscription": _json_safe(sub)}
+        return _rest_create_subscription(self, environ, body)
 
     def rest_patch_overrides(self, environ: dict[str, Any], subscription_id: str, body: dict[str, Any]) -> tuple[
         int, dict[str, Any]
     ]:
-        self._get_recommendation_subscription_for_actor(environ, subscription_id)
-        now = _parse_optional_now(body)
-        overrides = body.get("overrides")
-        if overrides is None:
-            overrides = {k: v for k, v in body.items() if k not in {"now"}}
-        sub = self._with_rec(update_subscription_overrides, subscription_id, overrides, now=now)
-        return 200, {"subscription": _json_safe(sub)}
+        return _rest_patch_overrides(self, environ, subscription_id, body)
 
     def rest_refresh_subscription(self, environ: dict[str, Any], subscription_id: str, body: dict[str, Any]) -> tuple[
         int, dict[str, Any]
     ]:
-        self._get_recommendation_subscription_for_actor(environ, subscription_id)
-        now = _parse_optional_now(body)
-        out = self._with_rec(refresh_subscription, subscription_id, now=now)
-        return 200, _json_safe(out)
+        return _rest_refresh_subscription(self, environ, subscription_id, body)
 
     def rest_refresh_due(self, environ: dict[str, Any], body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        self._require_roles(
-            environ,
-            INTERNAL_WRITE_ROLES,
-            message="current actor cannot refresh due recommendation subscriptions",
-        )
-        q = _query_dict(environ)
-        ids = _subscription_ids_from_query(q) or body.get("subscription_ids")
-        if ids is not None and not isinstance(ids, list):
-            raise ValueError("subscription_ids must be a list")
-        payload: dict[str, Any] = {}
-        if ids is not None:
-            payload["subscription_ids"] = [str(item) for item in ids]
-        now_text = _normalize_optional_now_text(body.get("now") if body.get("now") not in (None, "") else q.get("now"))
-        if now_text is not None:
-            payload["now"] = now_text
-        return self._enqueue_async_job(
-            environ,
-            target="recommendation",
-            with_fn=self._with_rec,
-            enqueue_fn=enqueue_recommendation_async_job,
-            job_type=JOB_REFRESH_DUE_SUBSCRIPTIONS,
-            payload=payload,
-        )
+        return _rest_refresh_due(self, environ, body)
 
     def rest_list_recommendations(self, environ: dict[str, Any], subscription_id: str) -> tuple[int, dict[str, Any]]:
-        self._get_recommendation_subscription_for_actor(environ, subscription_id)
-        rows = self._with_rec(list_recommendations_for_subscription, subscription_id)
-        return 200, {"recommendations": _json_safe(rows)}
+        return _rest_list_recommendations(self, environ, subscription_id)
 
     def rest_list_runs(self, environ: dict[str, Any], subscription_id: str) -> tuple[int, dict[str, Any]]:
-        self._get_recommendation_subscription_for_actor(environ, subscription_id)
-        rows = self._with_rec(list_search_runs_for_subscription, subscription_id)
-        return 200, {"runs": _json_safe(rows)}
+        return _rest_list_runs(self, environ, subscription_id)
 
     def rest_list_cards(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        q = _query_dict(environ)
-        requester_id = q.get("requester_id")
-        rid = None
-        if requester_id not in (None, "") or self._current_actor(environ) is not None:
-            rid = self._resolve_int_actor_bound_id(
-                environ,
-                requester_id,
-                field_name="requester_id",
-            )
-        unread = str(q.get("unread_only", "")).lower() in ("1", "true", "yes")
-        cards = self._with_rec(list_in_app_cards, requester_id=rid, unread_only=unread)
-        return 200, {"cards": _json_safe(cards)}
+        return _rest_list_cards(self, environ)
 
     def rest_deliver(self, environ: dict[str, Any], body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        self._require_roles(
-            environ,
-            INTERNAL_WRITE_ROLES,
-            message="current actor cannot deliver recommendation cards",
-        )
-        payload: dict[str, Any] = {}
-        now_text = _normalize_optional_now_text(body.get("now"))
-        if now_text is not None:
-            payload["now"] = now_text
-        return self._enqueue_async_job(
-            environ,
-            target="recommendation",
-            with_fn=self._with_rec,
-            enqueue_fn=enqueue_recommendation_async_job,
-            job_type=JOB_DELIVER_IN_APP_RECOMMENDATIONS,
-            payload=payload,
-        )
+        return _rest_deliver(self, environ, body)
 
     def rest_get_recommendation_job(self, environ: dict[str, Any], job_id: str) -> tuple[int, dict[str, Any]]:
-        self._require_roles(
-            environ,
-            INTERNAL_WRITE_ROLES,
-            message="current actor cannot inspect recommendation jobs",
-        )
-        return self._get_async_job(
-            target="recommendation",
-            with_fn=self._with_rec,
-            get_fn=get_recommendation_async_job,
-            job_id=job_id,
-        )
+        return _rest_get_recommendation_job(self, environ, job_id)
 
     def rest_list_recommendation_jobs(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        self._require_roles(
-            environ,
-            INTERNAL_WRITE_ROLES,
-            message="current actor cannot inspect recommendation jobs",
-        )
-        return self._list_async_jobs(
-            environ,
-            target="recommendation",
-            with_fn=self._with_rec,
-            list_fn=list_recommendation_async_jobs,
-            summary_fn=summarize_recommendation_async_jobs,
-        )
+        return _rest_list_recommendation_jobs(self, environ)
 
     def rest_record_action(self, environ: dict[str, Any], body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        subscription = self._get_recommendation_subscription_for_actor(environ, str(body.get("subscription_id") or ""))
-        now = _parse_optional_now(body)
-        kwargs = {k: v for k, v in body.items() if k not in {"now", "idempotency_key", "client_idempotency_key"}}
-        idem = _extract_client_idempotency_key(environ, body)
-        if idem:
-            kwargs["client_idempotency_key"] = idem
-        if now is not None:
-            kwargs["now"] = now
-        kwargs["subscription_id"] = subscription["subscription_id"]
-        actor = self._current_actor(environ)
-        if actor is not None:
-            kwargs["actor_id"] = actor.actor_id
-        rec = self._with_rec(record_recommendation_action, **kwargs)
-        out: dict[str, Any] = {"recommendation": _json_safe(rec)}
-        if idem:
-            out["client_idempotency_key"] = idem
-        out["trace_id"] = get_trace_id()
-        return 200, out
+        return _rest_record_action(self, environ, body)
 
     def rest_record_review(self, environ: dict[str, Any], body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        subscription = self._get_recommendation_subscription_for_actor(environ, str(body.get("subscription_id") or ""))
-        now = _parse_optional_now(body)
-        kwargs = {k: v for k, v in body.items() if k not in {"now", "idempotency_key", "client_idempotency_key"}}
-        idem = _extract_client_idempotency_key(environ, body)
-        if idem:
-            kwargs["client_idempotency_key"] = idem
-        if now is not None:
-            kwargs["now"] = now
-        kwargs["subscription_id"] = subscription["subscription_id"]
-        actor = self._current_actor(environ)
-        if actor is not None:
-            kwargs["actor_id"] = actor.actor_id
-        rec = self._with_rec(record_user_review, **kwargs)
-        out: dict[str, Any] = {"recommendation": _json_safe(rec)}
-        if idem:
-            out["client_idempotency_key"] = idem
-        out["trace_id"] = get_trace_id()
-        return 200, out
+        return _rest_record_review(self, environ, body)
 
     def rest_search_profiles(self, _environ: dict[str, Any], body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         source = body.get("source") or body.get("sources")
@@ -978,23 +865,7 @@ class PartnerGateway(AsyncJobGatewayMixin):
         return 200, {"trust_hub": _json_safe(hub)}
 
     def rest_mark_cards_read(self, _environ: dict[str, Any], body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        now = _parse_optional_now(body)
-        rid = body.get("requester_id")
-        rid_int = self._resolve_int_actor_bound_id(
-            _environ,
-            rid,
-            field_name="requester_id",
-        )
-        card_ids = body.get("card_ids")
-        if not isinstance(card_ids, list):
-            raise ValueError("card_ids must be a list of card_id strings")
-        out = self._with_rec(
-            mark_in_app_cards_read,
-            requester_id=rid_int,
-            card_ids=[str(x) for x in card_ids],
-            now=now,
-        )
-        return 200, {**_json_safe(out), "trace_id": get_trace_id()}
+        return _rest_mark_cards_read(self, _environ, body)
 
     def rest_mm_create_member(self, environ: dict[str, Any], body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         now = _parse_optional_now(body)
@@ -1993,44 +1864,11 @@ class PartnerGateway(AsyncJobGatewayMixin):
         profile_response = dispatch_profile_rest(self, environ, method, path)
         if profile_response is not None:
             return profile_response
+        recommendation_response = dispatch_recommendation_rest(self, environ, method, path)
+        if recommendation_response is not None:
+            return recommendation_response
         if path == "/v1/user-center/trust-hub" and method == "GET":
             return self.rest_user_trust_hub(environ)
-
-        # /v1/recommendation/...
-        m = re.fullmatch(r"/v1/recommendation/subscriptions/([^/]+)", path)
-        if m and method == "GET":
-            return self.rest_get_subscription(environ, m.group(1))
-        if path == "/v1/recommendation/subscriptions" and method == "POST":
-            return self.rest_create_subscription(environ, _parse_json_body(_read_body(environ)))
-        m = re.fullmatch(r"/v1/recommendation/subscriptions/([^/]+)/overrides", path)
-        if m and method == "PATCH":
-            return self.rest_patch_overrides(environ, m.group(1), _parse_json_body(_read_body(environ)))
-        m = re.fullmatch(r"/v1/recommendation/subscriptions/([^/]+)/refresh", path)
-        if m and method == "POST":
-            return self.rest_refresh_subscription(environ, m.group(1), _parse_json_body(_read_body(environ)))
-        if path == "/v1/recommendation/subscriptions/refresh-due" and method == "POST":
-            return self.rest_refresh_due(environ, _parse_json_body(_read_body(environ)))
-        if path == "/v1/recommendation/jobs" and method == "GET":
-            return self.rest_list_recommendation_jobs(environ)
-        m = re.fullmatch(r"/v1/recommendation/jobs/([^/]+)", path)
-        if m and method == "GET":
-            return self.rest_get_recommendation_job(environ, m.group(1))
-        m = re.fullmatch(r"/v1/recommendation/subscriptions/([^/]+)/recommendations", path)
-        if m and method == "GET":
-            return self.rest_list_recommendations(environ, m.group(1))
-        m = re.fullmatch(r"/v1/recommendation/subscriptions/([^/]+)/runs", path)
-        if m and method == "GET":
-            return self.rest_list_runs(environ, m.group(1))
-        if path == "/v1/recommendation/cards/read" and method == "POST":
-            return self.rest_mark_cards_read(environ, _parse_json_body(_read_body(environ)))
-        if path == "/v1/recommendation/cards" and method == "GET":
-            return self.rest_list_cards(environ)
-        if path == "/v1/recommendation/deliver" and method == "POST":
-            return self.rest_deliver(environ, _parse_json_body(_read_body(environ)))
-        if path == "/v1/recommendation/actions" and method == "POST":
-            return self.rest_record_action(environ, _parse_json_body(_read_body(environ)))
-        if path == "/v1/recommendation/reviews" and method == "POST":
-            return self.rest_record_review(environ, _parse_json_body(_read_body(environ)))
 
         # /v1/matchmaking/...
         if path == "/v1/matchmaking/members" and method == "POST":
