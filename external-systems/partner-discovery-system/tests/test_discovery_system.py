@@ -380,8 +380,8 @@ class DiscoveryServiceTests(unittest.TestCase):
             os.environ,
             {
                 "HER_DISCOVERY_AGENT_OPENAI_API": "",
-                "HER_CHAT_AGENT_OPENAI_API": "",
-                "HER_CHAT_ASSISTANT_OPENAI_API": "",
+                "HER_CHAT_AGENT_OPENAI_API": "chat_completions",
+                "HER_CHAT_ASSISTANT_OPENAI_API": "chat_completions",
                 "HER_DISCOVERY_AGENT_BASE_URL": "",
                 "HER_CHAT_AGENT_BASE_URL": "",
                 "HER_CHAT_ASSISTANT_BASE_URL": "",

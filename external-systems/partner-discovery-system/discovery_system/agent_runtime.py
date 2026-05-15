@@ -63,8 +63,6 @@ def _configure_agents_sdk_provider() -> None:
     )
     raw_api_mode = env_first(
         "HER_DISCOVERY_AGENT_OPENAI_API",
-        "HER_CHAT_AGENT_OPENAI_API",
-        "HER_CHAT_ASSISTANT_OPENAI_API",
         default="responses",
     ).lower()
     api_mode = raw_api_mode if raw_api_mode in {"chat_completions", "responses"} else "responses"
