@@ -1600,12 +1600,14 @@ def discovery_tables() -> tuple[TableDef, ...]:
                 ColumnDef("agent_decision_json", "LONGTEXT", nullable=False),
                 ColumnDef("view_snapshot_json", "LONGTEXT", nullable=False),
                 ColumnDef("search_run_id", "BIGINT"),
+                ColumnDef("trace_id", "VARCHAR(191)"),
                 ColumnDef("created_at", "DATETIME", nullable=False),
             ),
             primary_key=("turn_id",),
             indexes=(
                 IndexDef(("session_id", "created_at"), "idx_discovery_turns_session_time"),
                 IndexDef(("consumed_action_id",), "idx_discovery_turns_action_id"),
+                IndexDef(("trace_id",), "idx_discovery_turns_trace_id"),
             ),
             foreign_keys=(
                 ForeignKeyDef(("session_id",), "discovery_agent_sessions", ("session_id",)),
@@ -1668,6 +1670,7 @@ def discovery_tables() -> tuple[TableDef, ...]:
                 ColumnDef("tool_result_json", "LONGTEXT", nullable=False),
                 ColumnDef("status", "VARCHAR(32)", nullable=False),
                 ColumnDef("search_run_id", "BIGINT"),
+                ColumnDef("trace_id", "VARCHAR(191)"),
                 ColumnDef("created_at", "DATETIME", nullable=False),
             ),
             primary_key=("tool_call_id",),
@@ -1675,11 +1678,34 @@ def discovery_tables() -> tuple[TableDef, ...]:
                 IndexDef(("session_id", "created_at"), "idx_discovery_tool_calls_session_time"),
                 IndexDef(("turn_id",), "idx_discovery_tool_calls_turn_id"),
                 IndexDef(("tool_name", "created_at"), "idx_discovery_tool_calls_name_time"),
+                IndexDef(("trace_id",), "idx_discovery_tool_calls_trace_id"),
             ),
             foreign_keys=(
                 ForeignKeyDef(("session_id",), "discovery_agent_sessions", ("session_id",)),
                 ForeignKeyDef(("turn_id",), "discovery_agent_turns", ("turn_id",)),
                 ForeignKeyDef(("search_run_id",), "discovery_search_runs", ("search_run_id",)),
+            ),
+        ),
+        TableDef(
+            name="discovery_view_snapshots",
+            columns=(
+                ColumnDef("snapshot_id", "BIGINT", nullable=False, auto_increment=True),
+                ColumnDef("session_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("turn_id", "BIGINT"),
+                ColumnDef("phase", "VARCHAR(64)", nullable=False),
+                ColumnDef("view_json", "LONGTEXT", nullable=False),
+                ColumnDef("trace_id", "VARCHAR(191)"),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("snapshot_id",),
+            indexes=(
+                IndexDef(("session_id", "created_at"), "idx_discovery_view_snapshots_session_time"),
+                IndexDef(("turn_id",), "idx_discovery_view_snapshots_turn_id"),
+                IndexDef(("trace_id",), "idx_discovery_view_snapshots_trace_id"),
+            ),
+            foreign_keys=(
+                ForeignKeyDef(("session_id",), "discovery_agent_sessions", ("session_id",)),
+                ForeignKeyDef(("turn_id",), "discovery_agent_turns", ("turn_id",)),
             ),
         ),
         TableDef(

@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 import os
 from pathlib import Path
 from typing import Any
 
 from her_repo_path_bootstrap import ensure_partner_system_roots_on_sys_path
+from her_runtime_context import get_trace_id
+from observability import audit_event, funnel_stage, metric_gauge
 from partner_search import load_self_profile, search_profiles
 from profile_detail_reader import load_profile_detail
 
@@ -83,6 +85,7 @@ class DiscoveryService:
     storage: Any
     runtime: DiscoveryAgentRuntime
     agent_session_store: Any | None = None
+    metric_counters: dict[str, int] = field(default_factory=dict)
 
     def get_session_owner_id(self, session_id: str) -> int:
         session = self._require_session(session_id)
@@ -96,6 +99,7 @@ class DiscoveryService:
         now: datetime | None = None,
     ) -> dict[str, Any]:
         current = now or datetime.now()
+        trace_id = self._current_trace_id()
         session = StoredSession(
             session_id=self.storage.next_session_id(),
             requester_id=requester_id,
@@ -126,6 +130,13 @@ class DiscoveryService:
             view_snapshot=clone_view(session.view),
             created_at=current,
             search_run_id=search_run_id,
+            trace_id=trace_id,
+        )
+        self._persist_view_snapshot(
+            session,
+            turn_id=turn_id,
+            created_at=current,
+            trace_id=trace_id,
         )
         self._record_tool_calls(
             session_id=session.session_id,
@@ -133,6 +144,25 @@ class DiscoveryService:
             tool_calls=run_input.tool_call_buffer,
             search_run_id=search_run_id,
             created_at=current,
+            trace_id=trace_id,
+        )
+        self._increment_metric("sessions.created")
+        self._increment_metric("turns.created")
+        funnel_stage(
+            system="discovery",
+            stage="session_open",
+            session_id=session.session_id,
+            requester_id=session.requester_id,
+            profile_id=session.profile_id,
+            trace_id=trace_id,
+        )
+        audit_event(
+            action="discovery.session.create",
+            resource_type="discovery_session",
+            outcome="created",
+            resource_id=session.session_id,
+            requester_id=session.requester_id,
+            profile_id=session.profile_id,
         )
         return self._session_payload(session)
 
@@ -145,6 +175,7 @@ class DiscoveryService:
         now: datetime | None = None,
     ) -> dict[str, Any]:
         current = now or datetime.now()
+        trace_id = self._current_trace_id()
         if bool((user_message_text or "").strip()) == bool((action_id or "").strip()):
             raise DiscoveryInvalidTurnInputError("exactly one of user_message or action_id is required")
         session = self._require_session(session_id)
@@ -196,6 +227,13 @@ class DiscoveryService:
             view_snapshot=clone_view(session.view),
             created_at=current,
             search_run_id=search_run_id,
+            trace_id=trace_id,
+        )
+        self._persist_view_snapshot(
+            session,
+            turn_id=turn_id,
+            created_at=current,
+            trace_id=trace_id,
         )
         self._record_tool_calls(
             session_id=session.session_id,
@@ -203,12 +241,60 @@ class DiscoveryService:
             tool_calls=run_input.tool_call_buffer,
             search_run_id=search_run_id,
             created_at=current,
+            trace_id=trace_id,
+        )
+        self._increment_metric("turns.created")
+        self._increment_metric(f"turns.{request_kind}")
+        funnel_stage(
+            system="discovery",
+            stage=request_kind,
+            session_id=session.session_id,
+            requester_id=session.requester_id,
+            profile_id=session.profile_id,
+            turn_id=turn_id,
+            trace_id=trace_id,
+        )
+        audit_event(
+            action=f"discovery.turn.{request_kind}",
+            resource_type="discovery_turn",
+            outcome="created",
+            resource_id=turn_id,
+            session_id=session.session_id,
+            requester_id=session.requester_id,
+            profile_id=session.profile_id,
+            consumed_action_id=consumed_action_id,
+            search_run_id=search_run_id,
         )
         return self._session_payload(session)
 
     def get_session_view(self, session_id: str) -> dict[str, Any]:
         session = self._require_session(session_id)
+        if not dict(session.view or {}):
+            latest_snapshot = self.storage.get_latest_view_snapshot(session_id)
+            if latest_snapshot is not None:
+                session.view = clone_view(latest_snapshot.view)
+        self._increment_metric("session_restores")
+        funnel_stage(
+            system="discovery",
+            stage="session_restore",
+            session_id=session.session_id,
+            requester_id=session.requester_id,
+            trace_id=self._current_trace_id(),
+        )
+        audit_event(
+            action="discovery.session.restore",
+            resource_type="discovery_session",
+            outcome="read",
+            resource_id=session.session_id,
+            requester_id=session.requester_id,
+            profile_id=session.profile_id,
+        )
         return self._session_payload(session)
+
+    def get_observability_snapshot(self) -> dict[str, Any]:
+        return {
+            "counters": dict(self.metric_counters),
+        }
 
     def get_profile_detail(self, profile_id: int, *, session_id: str | None = None) -> dict[str, Any]:
         if profile_id <= 0:
@@ -227,6 +313,21 @@ class DiscoveryService:
         )
         if not isinstance(detail_payload, dict):
             raise DiscoveryProfileNotFoundError("profile not found")
+        self._increment_metric("profile_detail_reads")
+        funnel_stage(
+            system="discovery",
+            stage="profile_detail_read",
+            session_id=session.session_id if session is not None else None,
+            profile_id=profile_id,
+            trace_id=self._current_trace_id(),
+        )
+        audit_event(
+            action="discovery.profile_detail.read",
+            resource_type="profile_detail",
+            outcome="read",
+            resource_id=profile_id,
+            session_id=session.session_id if session is not None else None,
+        )
         return {
             "profile_id": profile_id,
             "detail_view": build_profile_detail_view_from_payload(
@@ -258,6 +359,7 @@ class DiscoveryService:
                     "limit": int(limit or 0),
                 },
                 response,
+                status=self._tool_call_status("search_partner_candidates", response),
             )
             return response
 
@@ -272,6 +374,7 @@ class DiscoveryService:
                 "sync_requester_persona_memory",
                 {"patch": deepcopy(patch)},
                 result,
+                status=self._tool_call_status("sync_requester_persona_memory", result),
             )
             return result
 
@@ -285,6 +388,7 @@ class DiscoveryService:
                 "create_saved_search_subscription_from_last_search",
                 {},
                 result,
+                status=self._tool_call_status("create_saved_search_subscription_from_last_search", result),
             )
             return result
 
@@ -506,6 +610,19 @@ class DiscoveryService:
             )
         )
 
+    def _tool_call_status(self, tool_name: str, result: dict[str, Any]) -> str:
+        del tool_name
+        if not isinstance(result, dict):
+            return "failed"
+        if str(result.get("error_code") or "").strip():
+            return "failed"
+        diagnostics = dict(result.get("diagnostics") or {})
+        if str(diagnostics.get("error") or "").strip():
+            return "failed"
+        if result.get("synced") is False:
+            return "failed"
+        return "succeeded"
+
     def _record_tool_calls(
         self,
         *,
@@ -514,6 +631,7 @@ class DiscoveryService:
         tool_calls: list[DiscoveryToolCall],
         search_run_id: int | None,
         created_at: datetime,
+        trace_id: str | None,
     ) -> None:
         if not tool_calls:
             return
@@ -532,7 +650,65 @@ class DiscoveryService:
                 status=tool_call.status,
                 search_run_id=search_run_id if linked_search_index == index else None,
                 created_at=created_at,
+                trace_id=trace_id,
             )
+            self._increment_metric("tool_calls.total")
+            self._increment_metric(f"tool_calls.{tool_call.tool_name}")
+            if tool_call.status != "succeeded":
+                self._increment_metric("tool_calls.failed")
+            audit_event(
+                action="discovery.tool_call",
+                resource_type="discovery_tool_call",
+                outcome=tool_call.status,
+                resource_id=f"{session_id}:{turn_id}:{index + 1}",
+                session_id=session_id,
+                turn_id=turn_id,
+                tool_name=tool_call.tool_name,
+                search_run_id=search_run_id if linked_search_index == index else None,
+            )
+
+    def _persist_view_snapshot(
+        self,
+        session: StoredSession,
+        *,
+        turn_id: int | None,
+        created_at: datetime,
+        trace_id: str | None,
+    ) -> int:
+        snapshot_id = self.storage.create_view_snapshot(
+            session_id=session.session_id,
+            turn_id=turn_id,
+            phase=session.phase,
+            view_snapshot=clone_view(session.view),
+            created_at=created_at,
+            trace_id=trace_id,
+        )
+        session.state["last_view_snapshot_id"] = snapshot_id
+        self.storage.save_session(session)
+        self._increment_metric("view_snapshots.written")
+        audit_event(
+            action="discovery.view_snapshot.write",
+            resource_type="discovery_view_snapshot",
+            outcome="written",
+            resource_id=snapshot_id,
+            session_id=session.session_id,
+            turn_id=turn_id,
+            phase=session.phase,
+        )
+        return snapshot_id
+
+    def _current_trace_id(self) -> str | None:
+        return get_trace_id()
+
+    def _increment_metric(self, name: str, amount: int = 1, **tags: Any) -> int:
+        next_value = int(self.metric_counters.get(name) or 0) + int(amount)
+        self.metric_counters[name] = next_value
+        metric_gauge(
+            f"discovery.{name}",
+            next_value,
+            **{key: value for key, value in tags.items() if value not in (None, "")},
+        )
+        return next_value
 
     def _load_requester_profile(self, session: StoredSession) -> dict[str, Any] | None:
         source = self._profile_source()
@@ -730,6 +906,13 @@ class DiscoveryService:
         session.state["last_search_run_id"] = search_run_id
         session.state["last_search_result_count"] = int(search_response.get("result_count") or 0)
         session.state["last_search_has_match"] = bool(search_response.get("has_match"))
+        self._increment_metric("search_runs.created")
+        metric_gauge(
+            "discovery.search_runs.result_count",
+            int(search_response.get("result_count") or 0),
+            session_id=session.session_id,
+            search_run_id=search_run_id,
+        )
         return search_run_id
 
     def _create_saved_search_subscription_from_last_search(

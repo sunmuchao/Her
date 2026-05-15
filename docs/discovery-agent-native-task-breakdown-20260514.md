@@ -93,10 +93,10 @@
 | `D09` | `已完成` | timeline、criteria chips、candidate cards、suggested actions 的 view adapter 已落地。 |
 | `D10` | `已完成` | 资料详情页已接正式读模型；当前走独立 `profile_detail_reader`，不是把详情页职责挂在 `partner_search` 对外 API 上。 |
 | `D11` | `已完成` | 0 结果搜索后，agent 可给出持续留意 action；用户点击后可根据上一轮搜索底稿创建 saved search subscription，并继续走“最新画像重新编译有效搜索请求”的后续刷新机制。 |
-| `D12` | `部分完成` | `GET /v1/discovery/sessions/{session_id}` 和最新 view 恢复已可用；独立 `discovery_view_snapshots` 还没单独落表。 |
+| `D12` | `已完成` | `GET /v1/discovery/sessions/{session_id}` 恢复已可用；独立 `discovery_view_snapshots` 已落表并在 session open / turn 后持续写入，支持按 session 回看稳定 render model 快照。 |
 | `D13` | `已完成` | `POST /v1/discovery/sessions`、`POST /turns`、`GET /sessions/{id}`、`GET /profiles/{id}` 已开放，契约文档已更新。 |
-| `D14` | `部分完成` | discovery service / gateway / fake runtime 回归已建立，已覆盖 D11 持续留意闭环；更细的 tool 记录测试还没补齐。 |
-| `D15` | `部分完成` | 已有 trace_id、错误码、search_run 持久化等基础观测；专门的 tool-run 审计和指标计数器还没补全。 |
+| `D14` | `已完成` | discovery service / gateway / fake runtime 回归已建立，并补齐 view snapshot、tool call 成功/失败、search-run 引用、session restore、observability counter 等更细粒度测试。 |
+| `D15` | `已完成` | discovery 已补齐 tool-run 审计、view snapshot 审计、trace_id 贯穿 turn / tool / snapshot 持久化，以及 sessions / turns / restores / detail reads / search runs / tool calls 等指标计数器。 |
 
 前端联调任务当前状态：
 
