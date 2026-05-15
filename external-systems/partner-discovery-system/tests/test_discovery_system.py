@@ -24,6 +24,7 @@ from discovery_system.agent_runtime import (  # noqa: E402
     DiscoveryDecisionModel,
     DiscoveryRunInput,
     DiscoveryRuntimeResult,
+    _configure_agents_sdk_provider,
 )
 from discovery_system.agent_session_store import InMemoryDiscoveryAgentSessionStore  # noqa: E402
 from discovery_system.service import DiscoveryService  # noqa: E402
@@ -373,6 +374,42 @@ class DiscoveryServiceTests(unittest.TestCase):
         self.assertEqual(payload.target_gender, "男")
         self.assertEqual(payload.age_min, 27)
         self.assertEqual(payload.age_max, 35)
+
+    def test_configure_agents_sdk_provider_defaults_to_responses(self) -> None:
+        with mock.patch.dict(
+            os.environ,
+            {
+                "HER_DISCOVERY_AGENT_OPENAI_API": "",
+                "HER_CHAT_AGENT_OPENAI_API": "",
+                "HER_CHAT_ASSISTANT_OPENAI_API": "",
+                "HER_DISCOVERY_AGENT_BASE_URL": "",
+                "HER_CHAT_AGENT_BASE_URL": "",
+                "HER_CHAT_ASSISTANT_BASE_URL": "",
+                "OPENAI_BASE_URL": "",
+            },
+            clear=False,
+        ), mock.patch("agents.set_default_openai_api") as mocked_set_api:
+            _configure_agents_sdk_provider()
+
+        mocked_set_api.assert_called_once_with("responses")
+
+    def test_configure_agents_sdk_provider_allows_explicit_chat_completions_override(self) -> None:
+        with mock.patch.dict(
+            os.environ,
+            {
+                "HER_DISCOVERY_AGENT_OPENAI_API": "chat_completions",
+                "HER_CHAT_AGENT_OPENAI_API": "",
+                "HER_CHAT_ASSISTANT_OPENAI_API": "",
+                "HER_DISCOVERY_AGENT_BASE_URL": "",
+                "HER_CHAT_AGENT_BASE_URL": "",
+                "HER_CHAT_ASSISTANT_BASE_URL": "",
+                "OPENAI_BASE_URL": "",
+            },
+            clear=False,
+        ), mock.patch("agents.set_default_openai_api") as mocked_set_api:
+            _configure_agents_sdk_provider()
+
+        mocked_set_api.assert_called_once_with("chat_completions")
 
     def test_service_renders_cards_from_canonical_search_result(self) -> None:
         service = DiscoveryService(

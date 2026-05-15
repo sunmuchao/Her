@@ -61,11 +61,13 @@ def _configure_agents_sdk_provider() -> None:
         "OPENAI_BASE_URL",
         "HER_CHAT_ASSISTANT_BASE_URL",
     )
-    api_mode = env_first(
+    raw_api_mode = env_first(
         "HER_DISCOVERY_AGENT_OPENAI_API",
         "HER_CHAT_AGENT_OPENAI_API",
         "HER_CHAT_ASSISTANT_OPENAI_API",
+        default="responses",
     ).lower()
+    api_mode = raw_api_mode if raw_api_mode in {"chat_completions", "responses"} else "responses"
 
     if base_url:
         api_key = os.environ.get("OPENAI_API_KEY") or ""
@@ -80,7 +82,7 @@ def _configure_agents_sdk_provider() -> None:
             ),
         )
         set_default_openai_client(client, use_for_tracing=False)
-        set_default_openai_api(api_mode or "chat_completions")
+        set_default_openai_api(api_mode)
         disable_tracing = env_first(
             "HER_DISCOVERY_AGENT_DISABLE_TRACING",
             "HER_CHAT_AGENT_DISABLE_TRACING",
@@ -91,8 +93,7 @@ def _configure_agents_sdk_provider() -> None:
             set_tracing_disabled(True)
         return
 
-    if api_mode:
-        set_default_openai_api(api_mode)
+    set_default_openai_api(api_mode)
 
 
 def _compact_requester_profile(profile: dict[str, Any] | None) -> dict[str, Any]:
