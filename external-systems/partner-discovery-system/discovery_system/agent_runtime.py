@@ -51,24 +51,74 @@ class DiscoveryAgentRuntime(Protocol):
     ) -> DiscoveryRuntimeResult: ...
 
 
+_BAILIAN_RESPONSES_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+_BAILIAN_RESPONSES_DEFAULT_MODEL = "qwen3.6-plus"
+
+
+def _resolve_discovery_wire_api() -> str:
+    raw_wire_api = env_first(
+        "HER_DISCOVERY_AGENT_WIRE_API",
+        "HER_DISCOVERY_AGENT_OPENAI_API",
+        default="responses",
+    ).lower()
+    return raw_wire_api if raw_wire_api in {"chat_completions", "responses"} else "responses"
+
+
+def _resolve_discovery_api_key() -> str:
+    return env_first(
+        "HER_DISCOVERY_AGENT_API_KEY",
+        "DASHSCOPE_API_KEY",
+        "OPENAI_API_KEY",
+    )
+
+
+def _looks_like_dashscope_base_url(value: str) -> bool:
+    return "dashscope.aliyuncs.com" in str(value or "").strip().lower()
+
+
+def _resolve_discovery_base_url(*, wire_api: str) -> str:
+    explicit_base_url = env_first(
+        "HER_DISCOVERY_AGENT_BASE_URL",
+        "DASHSCOPE_BASE_URL",
+    )
+    if explicit_base_url:
+        return explicit_base_url
+
+    shared_base_url = env_first(
+        "OPENAI_BASE_URL",
+        "HER_CHAT_AGENT_BASE_URL",
+        "HER_CHAT_ASSISTANT_BASE_URL",
+    )
+    if wire_api == "responses":
+        if _looks_like_dashscope_base_url(shared_base_url):
+            return _BAILIAN_RESPONSES_BASE_URL
+        if os.environ.get("DASHSCOPE_API_KEY"):
+            return _BAILIAN_RESPONSES_BASE_URL
+    return shared_base_url
+
+
+def _resolve_discovery_model(*, wire_api: str) -> str:
+    explicit_model = env_first("HER_DISCOVERY_AGENT_MODEL")
+    if explicit_model:
+        return explicit_model
+    if wire_api == "responses":
+        return _BAILIAN_RESPONSES_DEFAULT_MODEL
+    return env_first(
+        "HER_CHAT_AGENT_MODEL",
+        "HER_CHAT_ASSISTANT_MODEL",
+        default="gpt-4.1-mini",
+    )
+
+
 def _configure_agents_sdk_provider() -> None:
     from agents import set_default_openai_api, set_default_openai_client, set_tracing_disabled
     from openai import AsyncOpenAI
 
-    base_url = env_first(
-        "HER_DISCOVERY_AGENT_BASE_URL",
-        "HER_CHAT_AGENT_BASE_URL",
-        "OPENAI_BASE_URL",
-        "HER_CHAT_ASSISTANT_BASE_URL",
-    )
-    raw_api_mode = env_first(
-        "HER_DISCOVERY_AGENT_OPENAI_API",
-        default="responses",
-    ).lower()
-    api_mode = raw_api_mode if raw_api_mode in {"chat_completions", "responses"} else "responses"
+    wire_api = _resolve_discovery_wire_api()
+    base_url = _resolve_discovery_base_url(wire_api=wire_api)
 
     if base_url:
-        api_key = os.environ.get("OPENAI_API_KEY") or ""
+        api_key = _resolve_discovery_api_key()
         client = AsyncOpenAI(
             base_url=base_url,
             api_key=api_key,
@@ -80,7 +130,9 @@ def _configure_agents_sdk_provider() -> None:
             ),
         )
         set_default_openai_client(client, use_for_tracing=False)
-        set_default_openai_api(api_mode)
+        # This only selects the Agents SDK wire API (`/responses` vs `/chat/completions`);
+        # it is not a remote provider request parameter.
+        set_default_openai_api(wire_api)
         disable_tracing = env_first(
             "HER_DISCOVERY_AGENT_DISABLE_TRACING",
             "HER_CHAT_AGENT_DISABLE_TRACING",
@@ -91,7 +143,9 @@ def _configure_agents_sdk_provider() -> None:
             set_tracing_disabled(True)
         return
 
-    set_default_openai_api(api_mode)
+    # This only selects the Agents SDK wire API (`/responses` vs `/chat/completions`);
+    # it is not a remote provider request parameter.
+    set_default_openai_api(wire_api)
 
 
 def _compact_requester_profile(profile: dict[str, Any] | None) -> dict[str, Any]:
@@ -350,7 +404,7 @@ class AgentsSdkDiscoveryAgentRuntime:
         ).lower()
         if runtime in {"stub", "heuristic", "fallback"}:
             return False
-        api_key = (os.environ.get("OPENAI_API_KEY") or "").strip()
+        api_key = _resolve_discovery_api_key().strip()
         if not api_key or api_key.startswith("replace-with-"):
             return False
         return True
@@ -447,12 +501,7 @@ official_context 里常见信息：
         agent = Agent(
             name="discovery_matchmaker",
             instructions=instructions.strip(),
-            model=env_first(
-                "HER_DISCOVERY_AGENT_MODEL",
-                "HER_CHAT_AGENT_MODEL",
-                "HER_CHAT_ASSISTANT_MODEL",
-                default="gpt-4.1-mini",
-            ),
+            model=_resolve_discovery_model(wire_api=_resolve_discovery_wire_api()),
             output_type=AgentOutputSchema(DiscoveryDecisionModel, strict_json_schema=True),
             tools=[
                 sync_requester_persona_memory,

@@ -19,6 +19,8 @@ from discovery_system.agent_runtime import (  # noqa: E402
     AgentsSdkDiscoveryAgentRuntime,
     DiscoveryActionSuggestion,
     DiscoveryActionSuggestionModel,
+    _BAILIAN_RESPONSES_BASE_URL,
+    _BAILIAN_RESPONSES_DEFAULT_MODEL,
     DiscoveryCandidateSelection,
     DiscoveryDecision,
     DiscoveryDecisionModel,
@@ -379,6 +381,7 @@ class DiscoveryServiceTests(unittest.TestCase):
         with mock.patch.dict(
             os.environ,
             {
+                "HER_DISCOVERY_AGENT_WIRE_API": "",
                 "HER_DISCOVERY_AGENT_OPENAI_API": "",
                 "HER_CHAT_AGENT_OPENAI_API": "chat_completions",
                 "HER_CHAT_ASSISTANT_OPENAI_API": "chat_completions",
@@ -397,6 +400,7 @@ class DiscoveryServiceTests(unittest.TestCase):
         with mock.patch.dict(
             os.environ,
             {
+                "HER_DISCOVERY_AGENT_WIRE_API": "",
                 "HER_DISCOVERY_AGENT_OPENAI_API": "chat_completions",
                 "HER_CHAT_AGENT_OPENAI_API": "",
                 "HER_CHAT_ASSISTANT_OPENAI_API": "",
@@ -410,6 +414,121 @@ class DiscoveryServiceTests(unittest.TestCase):
             _configure_agents_sdk_provider()
 
         mocked_set_api.assert_called_once_with("chat_completions")
+
+    def test_configure_agents_sdk_provider_maps_dashscope_shared_base_to_bailian_responses_base(self) -> None:
+        with mock.patch.dict(
+            os.environ,
+            {
+                "HER_DISCOVERY_AGENT_WIRE_API": "",
+                "HER_DISCOVERY_AGENT_OPENAI_API": "responses",
+                "HER_DISCOVERY_AGENT_BASE_URL": "",
+                "DASHSCOPE_BASE_URL": "",
+                "OPENAI_BASE_URL": "https://coding.dashscope.aliyuncs.com/v1",
+                "DASHSCOPE_API_KEY": "",
+                "OPENAI_API_KEY": "shared-key",
+            },
+            clear=False,
+        ), mock.patch("openai.AsyncOpenAI") as mocked_client, mock.patch(
+            "agents.set_default_openai_client"
+        ), mock.patch("agents.set_default_openai_api"), mock.patch("agents.set_tracing_disabled"):
+            _configure_agents_sdk_provider()
+
+        self.assertEqual(mocked_client.call_args.kwargs["base_url"], _BAILIAN_RESPONSES_BASE_URL)
+        self.assertEqual(mocked_client.call_args.kwargs["api_key"], "shared-key")
+
+    def test_configure_agents_sdk_provider_prefers_discovery_specific_api_key(self) -> None:
+        with mock.patch.dict(
+            os.environ,
+            {
+                "HER_DISCOVERY_AGENT_API_KEY": "discovery-key",
+                "OPENAI_API_KEY": "shared-key",
+                "HER_DISCOVERY_AGENT_BASE_URL": "https://api.example.com/v1",
+                "HER_DISCOVERY_AGENT_OPENAI_API": "responses",
+            },
+            clear=False,
+        ), mock.patch("openai.AsyncOpenAI") as mocked_client, mock.patch(
+            "agents.set_default_openai_client"
+        ), mock.patch("agents.set_default_openai_api"), mock.patch("agents.set_tracing_disabled"):
+            _configure_agents_sdk_provider()
+
+        self.assertEqual(mocked_client.call_args.kwargs["api_key"], "discovery-key")
+
+    def test_agents_sdk_runtime_accepts_discovery_specific_api_key(self) -> None:
+        runtime = AgentsSdkDiscoveryAgentRuntime()
+        with mock.patch.dict(
+            os.environ,
+            {
+                "HER_DISCOVERY_AGENT_RUNTIME": "agents_sdk",
+                "HER_CHAT_AGENT_RUNTIME": "",
+                "HER_DISCOVERY_AGENT_API_KEY": "discovery-key",
+                "OPENAI_API_KEY": "",
+            },
+            clear=False,
+        ):
+            self.assertTrue(runtime._should_use_agents_sdk())
+
+    def test_run_with_agents_sdk_defaults_model_to_bailian_responses_model(self) -> None:
+        runtime = AgentsSdkDiscoveryAgentRuntime()
+        session = InMemoryDiscoveryAgentSessionStore().get_session("discovery-session-003")
+        captured: dict[str, object] = {}
+
+        def _fake_agent(*args, **kwargs):
+            captured["model"] = kwargs.get("model")
+            captured["output_type"] = kwargs.get("output_type")
+            captured["tools"] = kwargs.get("tools")
+            return object()
+
+        def _fake_run_sync(_agent, *, input=None, session=None):
+            captured["input"] = input
+            captured["session"] = session
+            return type(
+                "_Result",
+                (),
+                {
+                    "final_output": {
+                        "phase": "collecting_preferences",
+                        "assistant_message": "先说说你的基本要求。",
+                        "criteria_labels": [],
+                        "suggested_actions": [],
+                    }
+                },
+            )()
+
+        run_input = DiscoveryRunInput(
+            session_id="discovery-session-003",
+            requester_id=70001,
+            profile_id=10001,
+            phase="collecting_preferences",
+            criteria_labels=[],
+            recent_timeline=[],
+            runtime_context={},
+            search_partner_candidates=lambda _criteria, _limit: {"has_match": False, "result_count": 0, "results": []},
+            sync_requester_persona_memory=lambda _patch: {"synced": True},
+            create_saved_search_subscription_from_last_search=lambda: {"created_subscription": False},
+            agent_session=session,
+        )
+
+        with mock.patch.dict(
+            os.environ,
+            {
+                "HER_DISCOVERY_AGENT_WIRE_API": "",
+                "HER_DISCOVERY_AGENT_OPENAI_API": "",
+                "HER_DISCOVERY_AGENT_MODEL": "",
+                "HER_CHAT_AGENT_MODEL": "glm-5",
+            },
+            clear=False,
+        ), mock.patch("discovery_system.agent_runtime._configure_agents_sdk_provider"), mock.patch(
+            "agents.Agent",
+            side_effect=_fake_agent,
+        ), mock.patch("agents.Runner.run_sync", side_effect=_fake_run_sync):
+            runtime._run_with_agents_sdk(
+                run_input,
+                event="user_message",
+                user_message="我在上海，想认真恋爱。",
+                action_context=None,
+            )
+
+        self.assertEqual(captured["model"], _BAILIAN_RESPONSES_DEFAULT_MODEL)
 
     def test_service_renders_cards_from_canonical_search_result(self) -> None:
         service = DiscoveryService(
