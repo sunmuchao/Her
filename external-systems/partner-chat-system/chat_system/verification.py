@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import base64
-import hashlib
 import os
 import re
 import uuid
@@ -38,6 +36,14 @@ from .verification_photo_review import (
     is_photo_review_signal_list,
     merge_photo_review_task_metadata,
     photo_review_notification_copy,
+)
+from .verification_assets import (
+    decode_video_bytes as _decode_video_bytes,
+    remove_stored_asset as _remove_stored_asset,
+    sanitize_file_name as _sanitize_file_name,
+    storage_root as _storage_root,
+    validate_video_metadata as _validate_video_metadata,
+    write_video_asset as _write_video_asset,
 )
 from .verification_speech import (
     normalize_percent_score as _normalize_percent_score,
@@ -75,8 +81,6 @@ OPEN_SUBMISSION_STATUSES = {
     SUBMISSION_STATUS_UNDER_REVIEW,
     SUBMISSION_STATUS_RESUBMISSION_REQUIRED,
 }
-ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".webm", ".mkv"}
-ALLOWED_FALLBACK_CONTENT_TYPES = {"application/octet-stream"}
 SYSTEM_AUTO_REVIEWER_ID = "system:auto_verification"
 MACHINE_NEXT_STEP_COMPLETE = "complete"
 MACHINE_NEXT_STEP_MANUAL_REVIEW = "manual_review"
@@ -473,115 +477,6 @@ def _validate_live_challenge_submission(
 
 def _generate_submission_id() -> str:
     return f"vfy-{uuid.uuid4().hex[:16]}"
-
-
-def _storage_root() -> Path:
-    raw = os.environ.get("HER_VERIFICATION_STORAGE_DIR")
-    if raw:
-        return Path(raw).expanduser().resolve()
-    return Path(__file__).resolve().parents[3] / "tmp" / "verification_uploads"
-
-
-def _max_video_bytes() -> int:
-    raw = os.environ.get("HER_VERIFICATION_MAX_BYTES", "")
-    try:
-        value = int(raw)
-    except (TypeError, ValueError):
-        value = 32 * 1024 * 1024
-    return max(value, 1024 * 1024)
-
-
-def _sanitize_file_name(file_name: str | None) -> str:
-    base = Path(str(file_name or "live-video-upload.bin")).name
-    cleaned = re.sub(r"[^0-9A-Za-z._-]+", "_", base).strip("._")
-    return cleaned or "live-video-upload.bin"
-
-
-def _strip_data_url_prefix(payload: str) -> tuple[str, str | None]:
-    raw = str(payload or "").strip()
-    if raw.startswith("data:") and "," in raw:
-        header, encoded = raw.rsplit(",", 1)
-        media_type = header[5:].split(";", 1)[0].strip() or None
-        return encoded, media_type
-    return raw, None
-
-
-def _decode_video_bytes(video_base64: str) -> tuple[bytes, str | None]:
-    encoded, inferred_content_type = _strip_data_url_prefix(video_base64)
-    compact = "".join(encoded.split())
-    if not compact:
-        raise ValueError("video_base64 is required")
-    try:
-        video_bytes = base64.b64decode(compact, validate=True)
-    except Exception as exc:  # noqa: BLE001
-        raise ValueError("video_base64 must be valid base64 content") from exc
-    if not video_bytes:
-        raise ValueError("video_base64 decoded to an empty file")
-    size_limit = _max_video_bytes()
-    if len(video_bytes) > size_limit:
-        raise ValueError(f"video file exceeds {size_limit} bytes")
-    return video_bytes, inferred_content_type
-
-
-def _validate_video_metadata(file_name: str, content_type: str | None) -> str:
-    normalized = str(content_type or "").strip().lower()
-    suffix = Path(file_name).suffix.lower()
-    if normalized:
-        if normalized.startswith("video/") or normalized in ALLOWED_FALLBACK_CONTENT_TYPES:
-            return normalized
-        raise ValueError("content_type must be a video/* value")
-    if suffix in ALLOWED_VIDEO_EXTENSIONS:
-        return {
-            ".mp4": "video/mp4",
-            ".mov": "video/quicktime",
-            ".m4v": "video/x-m4v",
-            ".webm": "video/webm",
-            ".mkv": "video/x-matroska",
-        }.get(suffix, "application/octet-stream")
-    raise ValueError("content_type is required when filename has no recognized video extension")
-
-
-def _build_storage_key(submission_id: str, file_name: str, *, attempt: int, now: datetime) -> str:
-    suffix = Path(file_name).suffix or ".bin"
-    stem = Path(file_name).stem[:40] or "video"
-    safe_stem = re.sub(r"[^0-9A-Za-z._-]+", "_", stem).strip("._") or "video"
-    token = uuid.uuid4().hex[:10]
-    return f"{submission_id}/attempt-{attempt:02d}-{now.strftime('%Y%m%d%H%M%S')}-{token}-{safe_stem}{suffix}"
-
-
-def _write_video_asset(submission_id: str, *, attempt: int, file_name: str, content_type: str, video_bytes: bytes, now: datetime) -> dict[str, Any]:
-    storage_root = _storage_root()
-    storage_root.mkdir(parents=True, exist_ok=True)
-    storage_key = _build_storage_key(submission_id, file_name, attempt=attempt, now=now)
-    destination = storage_root / storage_key
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_bytes(video_bytes)
-    return {
-        "storage_key": storage_key,
-        "original_file_name": file_name,
-        "content_type": content_type,
-        "file_size_bytes": len(video_bytes),
-        "sha256_hex": hashlib.sha256(video_bytes).hexdigest(),
-    }
-
-
-def _remove_stored_asset(storage_key: str | None) -> None:
-    if not storage_key:
-        return
-    path = _storage_root() / str(storage_key)
-    try:
-        path.unlink(missing_ok=True)
-    except TypeError:  # pragma: no cover - Python < 3.8 compatibility safeguard
-        if path.exists():
-            path.unlink()
-    parent = path.parent
-    root = _storage_root()
-    while parent != root and parent.exists():
-        try:
-            parent.rmdir()
-        except OSError:
-            break
-        parent = parent.parent
 
 
 def _parse_statuses(value: list[str] | tuple[str, ...] | str | None) -> list[str] | None:
