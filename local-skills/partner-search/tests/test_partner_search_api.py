@@ -19,6 +19,7 @@ from partner_search import (  # noqa: E402
     search,
     search_profiles,
 )
+import partner_search.api as partner_search_api  # noqa: E402
 import partner_search.search_candidates as engine  # noqa: E402
 
 
@@ -309,12 +310,40 @@ class PartnerSearchApiTests(unittest.TestCase):
         self.assertEqual(response["result_count"], 1)
         self.assertEqual(response["results"][0]["name"], "VideoVerified")
 
+    def test_load_source_profile_record_uses_profile_service_boundary(self):
+        with mock.patch.object(
+            partner_search_api,
+            "resolve_profile_source",
+            return_value=("mysql://user:pass@127.0.0.1:3306/her?table=profiles", "profiles"),
+        ) as mocked_resolve, mock.patch.object(
+            partner_search_api,
+            "get_profile",
+            return_value={"id": 90001, "city": "无锡"},
+        ) as mocked_get_profile:
+            record = partner_search_api.load_source_profile_record(
+                source="mysql://user:pass@127.0.0.1:3306/her?table=profiles",
+                profile_id=90001,
+                table_name="profiles",
+            )
+
+        mocked_resolve.assert_called_once_with(
+            "mysql://user:pass@127.0.0.1:3306/her?table=profiles",
+            "profiles",
+        )
+        mocked_get_profile.assert_called_once_with(
+            source_dsn="mysql://user:pass@127.0.0.1:3306/her?table=profiles",
+            source_table_name="profiles",
+            profile_id=90001,
+        )
+        self.assertEqual(record["id"], 90001)
+        self.assertEqual(record["source_file"], "mysql://user:pass@127.0.0.1:3306/her?table=profiles#profiles")
+
     def test_load_self_profile_uses_public_api_boundary_and_returns_json_safe_profile(self):
         with mock.patch.object(
-            engine,
-            "collect_source_records_for_request",
-            return_value=[{"id": 90001}],
-        ) as mocked_collect, mock.patch.object(
+            partner_search_api,
+            "load_source_profile_record",
+            return_value={"id": 90001, "city": "无锡", "source_file": "mysql://user:pass@127.0.0.1:3306/her?table=profiles#profiles"},
+        ) as mocked_load_record, mock.patch.object(
             engine,
             "build_self_profile",
             return_value={
@@ -329,11 +358,10 @@ class PartnerSearchApiTests(unittest.TestCase):
                 table_name="profiles",
             )
 
-        mocked_collect.assert_called_once_with(
-            ["mysql://user:pass@127.0.0.1:3306/her?table=profiles"],
+        mocked_load_record.assert_called_once_with(
+            source="mysql://user:pass@127.0.0.1:3306/her?table=profiles",
+            profile_id=90001,
             table_name="profiles",
-            criteria={},
-            self_id=90001,
         )
         mocked_build.assert_called_once()
         self.assertEqual(profile["id"], 90001)

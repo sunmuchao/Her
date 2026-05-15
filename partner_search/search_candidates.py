@@ -7,8 +7,7 @@ engine. The CLI remains available, but the search flow is split into small
 helpers so callers can reuse loading, evaluation, and rendering separately.
 """
 
-import argparse
-import json
+import argparse as _argparse
 import os
 import re
 import sys
@@ -16,7 +15,47 @@ from collections import Counter
 from datetime import datetime, timedelta
 from urllib.parse import parse_qs, unquote, urlparse
 
+from her_time_utils import coerce_int as as_int, unique_ordered_texts
+from mysql_source_config import MYSQL_SCHEMES as MYSQL_SOURCE_SCHEMES
+from mysql_source_config import parse_mysql_source_config
+from outer_system_mysql_schema import quote_mysql_ident as mysql_quote_ident
 from partner_moderation import overlay_records_with_moderation
+from partner_search.search_inputs import (
+    KEYWORD_EVIDENCE_FIELDS,
+    STRUCTURED_KEYWORD_SIGNAL_RULES,
+    TEXTUAL_KEYWORD_SIGNAL_RULES,
+    UNKNOWN_VALUES,
+    as_lower,
+    as_text,
+    contains_any_text,
+    evaluate_exclusion_keyword,
+    field_display_name,
+    first_defined,
+    habit_requires_acceptance,
+    merge_keyword_args,
+    merge_keyword_values,
+    normalize_acceptance_state,
+    normalize_acceptance_strength,
+    normalize_bool,
+    normalize_strictness_state,
+    normalize_whitespace,
+    parse_json_object,
+    split_evidence_segments,
+    split_keywords,
+    split_must_have_keywords,
+)
+from partner_search.search_runtime_helpers import SearchRuntime, SearchRuntimeHelpers
+from profile_source_refs import build_source_file_ref as _build_source_file_ref
+from profile_source_refs import split_source_file_ref as _split_source_file_ref
+from profile_service import (
+    detect_profile_table,
+    list_profile_columns,
+    list_profile_photo_previews,
+    list_profiles,
+    resolve_profile_source,
+)
+
+argparse = _argparse
 
 
 FIELD_ALIASES = {
@@ -190,7 +229,7 @@ FIELD_ALIASES = {
     "notes": {"notes", "备注", "说明"},
 }
 
-MYSQL_SCHEMES = {"mysql", "mysql+pymysql"}
+MYSQL_SCHEMES = MYSQL_SOURCE_SCHEMES
 DEFAULT_MYSQL_SOURCE = os.environ.get("PARTNER_SEARCH_MYSQL_SOURCE")
 DEFAULT_MYSQL_PHOTOS_TABLE = os.environ.get(
     "PARTNER_SEARCH_MYSQL_PHOTOS_TABLE",
@@ -323,174 +362,6 @@ EDUCATION_ORDER = {
 
 BUSY_JOB_KEYWORDS = {"医生", "护士", "审计", "金融", "投行", "新媒体", "课程顾问", "外贸"}
 
-ACCEPTED_VALUES = {"接受", "是", "可以", "ok", "accept", "accepted"}
-REJECTED_VALUES = {"不接受", "否", "不可以", "reject", "rejected"}
-NEGOTIABLE_VALUES = {"可协商", "协商", "待定"}
-GUARDED_NEGOTIABLE_VALUES = {"现阶段不太接受", "谨慎可协商", "低接受度可协商"}
-UNKNOWN_VALUES = {"未知", "不确定", "未说明", "未填写", "unknown"}
-POSITIVE_HABIT_VALUES = {"是", "偶尔", "有", "yes", "true", "1"}
-
-FIELD_DISPLAY_NAMES = {
-    "profile_status": "资料状态",
-    "age": "年龄",
-    "height": "身高",
-    "gender": "性别",
-    "city": "城市",
-    "district": "区域",
-    "settlement_city": "定居城市",
-    "relationship_goal": "关系目标",
-    "life_routine": "作息类型",
-    "communication_style": "沟通风格",
-    "dating_pace": "推进节奏",
-    "expression_style": "表达风格",
-    "relationship_capacity": "关系承接能力",
-    "interaction_comfort": "相处状态",
-    "patience_level": "耐心程度",
-    "life_texture": "生活感层次",
-    "career_intensity": "工作节奏类型",
-    "exercise_habit": "运动习惯",
-    "growth_signal": "事业势能",
-    "warmth_style": "聊天温度",
-    "aesthetic_expression": "审美表达",
-    "conversation_resonance": "聊天共鸣",
-    "personal_presence": "人物感",
-    "lightness_humor": "轻松感",
-    "consumption_attitude": "消费观锚点",
-    "chat_texture": "聊天质感",
-    "commitment_clarity": "长期意图明确度",
-    "relationship_execution": "现实推进方式",
-    "blended_family_readiness": "现实承接度",
-    "smoking": "抽烟情况",
-    "drinking": "喝酒情况",
-    "long_distance": "异地态度",
-    "housing_status": "住房情况",
-    "car_status": "车辆情况",
-    "marital_status": "婚况",
-    "has_children": "子女情况",
-    "want_children": "生育计划",
-    "accept_partner_children": "是否接受对方有孩子",
-    "marriage_timeline": "结婚节奏",
-    "accept_marital_status": "是否接受对方婚况",
-    "accept_marital_status_strength": "婚史接受真实度",
-    "accept_marital_status_semantics": "婚史接受细语义",
-    "accept_smoking": "是否接受对方抽烟",
-    "accept_drinking": "是否接受对方喝酒",
-    "accept_long_distance": "是否接受异地",
-    "accept_partner_children_strength": "对子女接受真实度",
-    "accept_partner_children_semantics": "对子女接受细语义",
-    "preferred_age_strictness": "年龄要求硬度",
-    "preferred_height_strictness": "身高要求硬度",
-    "preferred_education_strictness": "学历要求硬度",
-    "preferred_income_strictness": "收入要求硬度",
-}
-
-KEYWORD_EVIDENCE_FIELDS = [
-    ("personality", "性格"),
-    ("values", "价值观"),
-    ("lifestyle", "生活方式"),
-    ("hobbies", "爱好"),
-    ("life_routine", "作息类型"),
-    ("communication_style", "沟通风格"),
-    ("dating_pace", "推进节奏"),
-    ("expression_style", "表达风格"),
-    ("relationship_capacity", "关系承接能力"),
-    ("interaction_comfort", "相处状态"),
-    ("patience_level", "耐心程度"),
-    ("life_texture", "生活感层次"),
-    ("career_intensity", "工作节奏类型"),
-    ("exercise_habit", "运动习惯"),
-    ("growth_signal", "事业势能"),
-    ("warmth_style", "聊天温度"),
-    ("aesthetic_expression", "审美表达"),
-    ("conversation_resonance", "聊天共鸣"),
-    ("personal_presence", "人物感"),
-    ("lightness_humor", "轻松感"),
-    ("consumption_attitude", "消费观锚点"),
-    ("chat_texture", "聊天质感"),
-    ("commitment_clarity", "长期意图明确度"),
-    ("relationship_execution", "现实推进方式"),
-    ("blended_family_readiness", "现实承接度"),
-    ("notes", "备注"),
-    ("family_background", "家庭情况"),
-]
-
-NEGATIVE_KEYWORD_EVIDENCE_FIELDS = KEYWORD_EVIDENCE_FIELDS + [
-    ("relationship_goal", "关系目标"),
-    ("city", "城市"),
-    ("settlement_city", "定居城市"),
-    ("housing_status", "住房情况"),
-    ("car_status", "车辆情况"),
-    ("education", "学历"),
-    ("job", "工作"),
-    ("income_range", "收入范围"),
-    ("smoking", "抽烟情况"),
-    ("drinking", "喝酒情况"),
-    ("long_distance", "异地态度"),
-    ("marital_status", "婚况"),
-    ("want_children", "生育计划"),
-]
-
-STRUCTURED_KEYWORD_SIGNAL_RULES = {
-    "情绪稳定": [
-        ("interaction_comfort", "相处状态", {"相处轻松", "安静低压", "有边界不拧巴"}),
-        ("patience_level", "耐心程度", {"高耐心", "耐心稳定"}),
-        ("warmth_style", "聊天温度", {"有温度会接话", "理性但不冷"}),
-        ("chat_texture", "聊天质感", {"稳重顺聊", "顺着聊不费劲"}),
-        ("life_routine", "作息类型", {"生活规律", "生活稳定"}),
-        ("relationship_execution", "现实推进方式", {"稳步推进不拖拉", "会把安排说清"}),
-    ],
-    "共同兴趣": [
-        ("conversation_resonance", "聊天共鸣", {"能聊想法也能聊日常", "会接话也会接情绪"}),
-        ("aesthetic_expression", "审美表达", {"有审美输出", "有生活审美"}),
-    ],
-    "有一点审美": [
-        ("aesthetic_expression", "审美表达", {"有审美输出", "有生活审美"}),
-    ],
-    "有情绪回应": [
-        ("warmth_style", "聊天温度", {"有温度会接话", "理性但不冷"}),
-        ("conversation_resonance", "聊天共鸣", {"会接话也会接情绪", "能聊想法也能聊日常"}),
-    ],
-    "现实推进能力": [
-        ("relationship_execution", "推进方式", {"稳步推进不拖拉", "会把安排说清"}),
-        ("blended_family_readiness", "现实承接", {"愿意一起商量", "安排比较成熟"}),
-    ],
-    "婚姻诚意": [
-        ("commitment_clarity", "长期意图", {"明确奔着长期", "愿意稳定推进"}),
-        ("relationship_execution", "推进方式", {"稳步推进不拖拉", "会把安排说清"}),
-    ],
-    "责任感": [
-        ("relationship_execution", "推进方式", {"稳步推进不拖拉", "会把安排说清"}),
-        ("blended_family_readiness", "现实承接", {"愿意一起商量", "安排比较成熟"}),
-    ],
-    "稳定踏实": [
-        ("life_routine", "作息类型", {"生活规律", "生活稳定"}),
-        ("consumption_attitude", "消费观", {"清醒务实", "踏实过日子"}),
-    ],
-}
-
-TEXTUAL_KEYWORD_SIGNAL_RULES = {
-    "情绪稳定": [
-        ("personality", "性格", {"温和", "理性", "松弛", "稳重", "好相处", "有耐心", "不内耗"}),
-        ("values", "价值观", {"边界清楚", "不拧巴", "不内耗", "稳定踏实"}),
-    ],
-    "责任感": [
-        ("personality", "性格", {"有责任感", "靠谱", "有担当"}),
-        ("values", "价值观", {"愿意共同经营生活", "责任感"}),
-    ],
-    "真诚": [
-        ("personality", "性格", {"真诚", "坦诚", "不端着"}),
-        ("values", "价值观", {"真诚", "不玩套路"}),
-    ],
-    "沟通自然": [
-        ("personality", "性格", {"好相处", "不端着", "自然"}),
-        ("values", "价值观", {"沟通顺畅", "不拧巴"}),
-    ],
-    "健康习惯": [
-        ("personality", "性格", {"自律", "稳定"}),
-        ("values", "价值观", {"规律运动", "作息规律"}),
-    ],
-}
-
 CRITICAL_MISSING_FIELD_PENALTIES = {
     "smoking": 8,
     "drinking": 4,
@@ -607,89 +478,11 @@ SIGNAL_FIELD_SPECS = (
     ("interaction_comfort", "相处"),
 )
 
-SOFT_MUST_HAVE_KEYWORDS = {
-    "情绪稳定",
-    "性格稳定",
-    "愿意沟通",
-    "能沟通",
-    "好沟通",
-    "沟通顺畅",
-    "边界清楚",
-    "边界感",
-    "不暧昧",
-    "稳定工作",
-    "稳定生活",
-    "责任感",
-    "真诚",
-    "消费观正常",
-    "同城稳定发展",
-    "同城见面方便",
-    "同城更方便",
-    "长期推进明确",
-    "认真长期关系",
-    "愿意经营生活",
-    "作息相对正常",
-    "作息稳定",
-    "成长背景相近",
-    "少酒",
-}
-
-SOFT_MUST_HAVE_MARKERS = (
-    "沟通",
-    "情绪稳定",
-    "性格稳定",
-    "边界",
-    "暧昧",
-    "责任感",
-    "真诚",
-    "稳定工作",
-    "稳定生活",
-    "同城",
-    "长期推进",
-    "经营生活",
-    "消费观",
-    "作息",
-    "成长背景",
-    "少酒",
-)
-
-SOFT_EXCLUSION_KEYWORDS = {
-    "拉扯",
-    "暧昧",
-    "内耗",
-    "冷暴力",
-    "控制欲",
-    "情绪失控",
-}
-
-SOFT_EXCLUSION_MARKERS = (
-    "拉扯",
-    "暧昧",
-    "内耗",
-    "冷暴力",
-    "控制欲",
-)
-
-NEGATIVE_KEYWORD_STRUCTURED_FIELDS = {
-    "抽烟": "smoking",
-    "吸烟": "smoking",
-    "喝酒": "drinking",
-    "饮酒": "drinking",
-}
-
 RELATIONSHIP_GOAL_STRENGTH_BONUS = {
     "先接触看看": 0,
     "认真恋爱": 2,
     "结婚导向": 4,
 }
-
-STRICTNESS_HARD_VALUES = {"硬性", "严格", "必须", "不能放宽"}
-STRICTNESS_SOFT_VALUES = {"可放宽", "可商量", "弹性"}
-STRICTNESS_REFERENCE_VALUES = {"仅参考", "参考", "偏好参考"}
-
-ACCEPTANCE_STRENGTH_STRONG_VALUES = {"明确接受", "长期接受", "真接受"}
-ACCEPTANCE_STRENGTH_CAUTION_VALUES = {"谨慎接受", "了解后定", "需要磨合"}
-ACCEPTANCE_STRENGTH_SURFACE_VALUES = {"短期可聊", "表面接受", "先接触再说"}
 
 NEAR_DISTANCE_PRIORITY_MARKERS = (
     "同城",
@@ -821,8 +614,8 @@ def redact_mysql_source(source):
 def redact_source_ref(source_ref):
     if not source_ref:
         return ""
-    source, separator, table_name = str(source_ref).rpartition("#")
-    if not separator:
+    source, table_name = split_source_file_ref(source_ref)
+    if not table_name:
         return redact_mysql_source(source_ref)
     redacted = redact_mysql_source(source)
     return f"{redacted}#{table_name}" if table_name else redacted
@@ -832,289 +625,6 @@ def default_source_help_text():
     if DEFAULT_MYSQL_SOURCE:
         return f"Defaults to PARTNER_SEARCH_MYSQL_SOURCE={redact_mysql_source(DEFAULT_MYSQL_SOURCE)}."
     return "Required unless PARTNER_SEARCH_MYSQL_SOURCE is set."
-
-
-def split_keywords(value):
-    if value is None:
-        return []
-    if isinstance(value, list):
-        items = value
-    else:
-        items = re.split(r"[，,、;/\n]+", str(value))
-    return [str(item).strip() for item in items if str(item).strip()]
-
-
-def merge_keyword_args(values):
-    merged = []
-    for value in values or []:
-        merged.extend(split_keywords(value))
-    return merged
-
-
-def merge_keyword_values(value):
-    if value is None:
-        return []
-    if isinstance(value, (list, tuple, set)):
-        return unique_ordered(
-            keyword
-            for item in value
-            for keyword in split_keywords(item)
-        )
-    return unique_ordered(split_keywords(value))
-
-
-def first_defined(mapping, aliases):
-    for alias in aliases:
-        if alias in mapping and mapping[alias] is not None:
-            return mapping[alias]
-    return None
-
-
-def as_lower(value):
-    return str(value).strip().lower() if value is not None else ""
-
-
-def as_text(value):
-    return str(value).strip() if value is not None else ""
-
-
-def normalize_whitespace(value):
-    return re.sub(r"\s+", " ", str(value)).strip()
-
-
-def canonicalize_keyword(keyword):
-    return normalize_whitespace(keyword).replace("，", ",")
-
-
-def is_soft_must_have_keyword(keyword):
-    normalized = canonicalize_keyword(keyword)
-    if not normalized:
-        return False
-    if normalized in SOFT_MUST_HAVE_KEYWORDS:
-        return True
-    return any(marker in normalized for marker in SOFT_MUST_HAVE_MARKERS)
-
-
-def split_must_have_keywords(keywords):
-    hard = []
-    soft = []
-    for keyword in keywords or []:
-        if is_soft_must_have_keyword(keyword):
-            soft.append(keyword)
-        else:
-            hard.append(keyword)
-    return unique_ordered(hard), unique_ordered(soft)
-
-
-def is_soft_exclusion_keyword(keyword):
-    normalized = canonicalize_keyword(keyword)
-    if not normalized:
-        return False
-    if normalized in SOFT_EXCLUSION_KEYWORDS:
-        return True
-    return any(marker in normalized for marker in SOFT_EXCLUSION_MARKERS)
-
-
-def keyword_segment_pairs(record, keyword):
-    lowered_keyword = as_lower(keyword)
-    if not lowered_keyword:
-        return []
-
-    pairs = []
-    for field, label in NEGATIVE_KEYWORD_EVIDENCE_FIELDS:
-        value = record.get(field)
-        if not value:
-            continue
-        for segment in split_evidence_segments(value):
-            if lowered_keyword in segment.lower():
-                pairs.append((label, segment))
-    if (
-        not pairs
-        and lowered_keyword in as_lower(record.get("combined_text", ""))
-        and (
-            canonicalize_keyword(keyword) in NEGATIVE_KEYWORD_STRUCTURED_FIELDS
-            or is_soft_exclusion_keyword(keyword)
-        )
-    ):
-        pairs.append(("资料文本", keyword))
-    return pairs
-
-
-def segment_negates_keyword(segment, keyword):
-    text = normalize_whitespace(segment)
-    escaped_keyword = re.escape(as_text(keyword))
-    patterns = (
-        rf"(?:不|别|没|无|拒绝|反感|讨厌|最怕|远离|受不了)[^，。；;,.]{{0,12}}{escaped_keyword}",
-        rf"(?:不想|不要|不爱|不接受|不喜欢|不搞|不玩)[^，。；;,.]{{0,12}}{escaped_keyword}",
-        rf"{escaped_keyword}[^，。；;,.]{{0,8}}(?:不行|免谈|劝退|pass)",
-    )
-    return any(re.search(pattern, text, re.IGNORECASE) for pattern in patterns)
-
-
-def negative_keyword_structured_conflict(record, keyword):
-    field = NEGATIVE_KEYWORD_STRUCTURED_FIELDS.get(canonicalize_keyword(keyword))
-    if not field:
-        return None
-
-    value = record.get(field)
-    if not value:
-        return None
-
-    if field in {"smoking", "drinking"}:
-        return habit_requires_acceptance(value)
-    return None
-
-
-def soft_exclusion_risk_flag(keyword):
-    return f"资料里提到“{keyword}”，需要确认具体语境"
-
-
-def evaluate_exclusion_keyword(record, keyword):
-    structured_conflict = negative_keyword_structured_conflict(record, keyword)
-    if structured_conflict is True:
-        return {
-            "blocked": True,
-            "risk_flag": None,
-        }
-    if structured_conflict is False:
-        return {
-            "blocked": False,
-            "risk_flag": None,
-        }
-
-    matched_segments = []
-    for label, segment in keyword_segment_pairs(record, keyword):
-        if segment_negates_keyword(segment, keyword):
-            continue
-        matched_segments.append((label, segment))
-
-    if not matched_segments:
-        return {
-            "blocked": False,
-            "risk_flag": None,
-        }
-
-    if is_soft_exclusion_keyword(keyword):
-        return {
-            "blocked": False,
-            "risk_flag": soft_exclusion_risk_flag(keyword),
-        }
-
-    return {
-        "blocked": True,
-        "risk_flag": None,
-    }
-
-
-def parse_json_object(value):
-    if isinstance(value, dict):
-        return value
-    if not value:
-        return {}
-    try:
-        parsed = json.loads(value)
-    except (TypeError, ValueError):
-        return {}
-    return parsed if isinstance(parsed, dict) else {}
-
-
-def field_display_name(field):
-    return FIELD_DISPLAY_NAMES.get(str(field), str(field))
-
-
-def split_evidence_segments(value):
-    return [
-        normalize_whitespace(part.strip(" ,，。;；|"))
-        for part in re.split(r"[。；;\n|]+", str(value))
-        if normalize_whitespace(part.strip(" ,，。;；|"))
-    ]
-
-
-def as_int(value):
-    if value is None or value == "":
-        return None
-    if isinstance(value, bool):
-        return int(value)
-    if isinstance(value, int):
-        return value
-    match = re.search(r"-?\d+", str(value))
-    return int(match.group()) if match else None
-
-
-def normalize_bool(value):
-    if value is None or value == "":
-        return None
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, int):
-        return value != 0
-    lowered = as_lower(value)
-    if lowered in {"1", "true", "yes", "y", "是", "有"}:
-        return True
-    if lowered in {"0", "false", "no", "n", "否", "无"}:
-        return False
-    return None
-
-
-def normalize_acceptance_state(value):
-    if value is None or value == "":
-        return "missing"
-    lowered = as_lower(value)
-    if lowered in ACCEPTED_VALUES:
-        return "accepted"
-    if lowered in REJECTED_VALUES:
-        return "rejected"
-    if lowered in GUARDED_NEGOTIABLE_VALUES:
-        return "guarded"
-    if lowered in NEGOTIABLE_VALUES:
-        return "negotiable"
-    if any(marker in lowered for marker in ("短期异地", "双城过渡", "落地计划", "稳定留沪", "通勤型距离")):
-        return "negotiable"
-    if "长期异地比较谨慎" in lowered:
-        return "guarded"
-    if lowered in UNKNOWN_VALUES:
-        return "unknown"
-    normalized = normalize_bool(value)
-    if normalized is True:
-        return "accepted"
-    if normalized is False:
-        return "rejected"
-    return "unknown"
-
-
-def normalize_strictness_state(value):
-    if value is None or value == "":
-        return "hard"
-    lowered = as_lower(value)
-    if lowered in {as_lower(item) for item in STRICTNESS_HARD_VALUES}:
-        return "hard"
-    if lowered in {as_lower(item) for item in STRICTNESS_SOFT_VALUES}:
-        return "soft"
-    if lowered in {as_lower(item) for item in STRICTNESS_REFERENCE_VALUES}:
-        return "reference"
-    return "hard"
-
-
-def normalize_acceptance_strength(value):
-    if value is None or value == "":
-        return "unknown"
-    lowered = as_lower(value)
-    if lowered in {as_lower(item) for item in ACCEPTANCE_STRENGTH_STRONG_VALUES}:
-        return "strong"
-    if lowered in {as_lower(item) for item in ACCEPTANCE_STRENGTH_CAUTION_VALUES}:
-        return "cautious"
-    if lowered in {as_lower(item) for item in ACCEPTANCE_STRENGTH_SURFACE_VALUES}:
-        return "surface"
-    return "unknown"
-
-
-def contains_any_text(value, keywords):
-    lowered = as_lower(value)
-    return any(as_lower(keyword) in lowered for keyword in keywords)
-
-
-def habit_requires_acceptance(value):
-    return as_lower(value) in POSITIVE_HABIT_VALUES
 
 
 def as_datetime(value):
@@ -2204,6 +1714,14 @@ def normalize_record(raw):
     return record
 
 
+def build_source_file_ref(source, table_name=None):
+    return _build_source_file_ref(source, table_name)
+
+
+def split_source_file_ref(source_ref):
+    return _split_source_file_ref(source_ref)
+
+
 def build_combined_text(record):
     parts = []
     for key in TEXT_FIELDS:
@@ -2214,37 +1732,24 @@ def build_combined_text(record):
 
 
 def parse_mysql_source(source, table_name=None):
-    parsed = urlparse(str(source))
-    if parsed.scheme.lower() not in MYSQL_SCHEMES:
-        raise ValueError(f"Unsupported MySQL source: {source}")
-
-    database = unquote(parsed.path.lstrip("/"))
-    if not database:
-        raise ValueError("MySQL source must include a database name, for example mysql://user:pass@host:3306/db")
-
-    query = parse_qs(parsed.query)
-    resolved_table = table_name or query.get("table", [None])[0]
-    photos_table = query.get("photos_table", [DEFAULT_MYSQL_PHOTOS_TABLE])[0]
-    charset = query.get("charset", ["utf8mb4"])[0]
-    unix_socket = query.get("unix_socket", [None])[0]
-
-    config = {
-        "host": parsed.hostname or "localhost",
-        "port": parsed.port or 3306,
-        "user": unquote(parsed.username) if parsed.username else None,
-        "password": unquote(parsed.password) if parsed.password else None,
-        "database": database,
-        "table": resolved_table,
-        "photos_table": photos_table,
-        "charset": charset,
-    }
-    if unix_socket:
-        config["unix_socket"] = unquote(unix_socket)
-    return config
+    try:
+        return parse_mysql_source_config(
+            source,
+            source_label="MySQL source",
+            table_name=table_name,
+            default_photos_table_name=DEFAULT_MYSQL_PHOTOS_TABLE,
+            default_host="localhost",
+        )
+    except ValueError as exc:
+        if str(exc) == "MySQL source must include a database name.":
+            raise ValueError(
+                "MySQL source must include a database name, for example mysql://user:pass@host:3306/db"
+            ) from exc
+        raise
 
 
 def quote_mysql_ident(identifier):
-    return "`" + str(identifier).replace("`", "``") + "`"
+    return mysql_quote_ident(identifier)
 
 
 def resolve_mysql_columns(conn, database, table):
@@ -2424,131 +1929,52 @@ def build_mysql_prefilter(criteria, canonical_to_actual, include_ids=None, inclu
 
 
 def load_mysql(source, table_name=None, criteria=None, include_ids=None, include_ids_mode="or"):
-    try:
-        import pymysql
-    except ImportError as exc:
-        raise ValueError("MySQL support requires PyMySQL. Install it with `pip install pymysql`.") from exc
-
     config = parse_mysql_source(source, table_name=table_name)
-    connect_kwargs = {
-        "host": config["host"],
-        "port": config["port"],
-        "database": config["database"],
-        "charset": config["charset"],
-        "cursorclass": pymysql.cursors.DictCursor,
-    }
-    if config.get("user") is not None:
-        connect_kwargs["user"] = config["user"]
-    if config.get("password") is not None:
-        connect_kwargs["password"] = config["password"]
-    if config.get("unix_socket"):
-        connect_kwargs["unix_socket"] = config["unix_socket"]
+    normalized_source, normalized_table = resolve_profile_source(source, config.get("table"))
+    effective_source = normalized_source or str(source)
+    table = normalized_table or detect_profile_table(source_dsn=effective_source)
+    if not table:
+        raise ValueError(f"Could not detect a candidate table in MySQL database {config['database']}")
 
-    conn = pymysql.connect(**connect_kwargs)
-    try:
-        table = config["table"] or detect_mysql_profile_table(conn, config["database"])
-        if not table:
-            raise ValueError(f"Could not detect a candidate table in MySQL database {config['database']}")
-        canonical_to_actual = resolve_mysql_columns(conn, config["database"], table)
-        prefilter = build_mysql_prefilter(
-            criteria or {},
-            canonical_to_actual,
-            include_ids=include_ids,
-            include_ids_mode=include_ids_mode,
-        )
-        if prefilter is None:
-            where_clause, params = "", []
-        else:
-            where_clause, params = prefilter
-        with conn.cursor() as cursor:
-            cursor.execute(
-                f"SELECT * FROM {quote_mysql_ident(table)}{where_clause}",
-                params,
-            )
-            rows = cursor.fetchall()
-        return [
-            normalize_record(dict(row, source_file=f"{source}#{table}"))
-            for row in rows
-        ]
-    finally:
-        conn.close()
+    canonical_to_actual = {}
+    for actual in list_profile_columns(source_dsn=effective_source, source_table_name=table):
+        canonical = ALIAS_LOOKUP.get(normalize_key(actual), normalize_key(actual))
+        canonical_to_actual.setdefault(canonical, actual)
+
+    prefilter = build_mysql_prefilter(
+        criteria or {},
+        canonical_to_actual,
+        include_ids=include_ids,
+        include_ids_mode=include_ids_mode,
+    )
+    if prefilter is None:
+        where_clause, params = "", []
+    else:
+        where_clause, params = prefilter
+    rows = list_profiles(
+        source_dsn=effective_source,
+        source_table_name=table,
+        where_clause=where_clause.replace("%s", "?"),
+        params=params,
+    )
+    return [
+        normalize_record(dict(row, source_file=build_source_file_ref(effective_source, table)))
+        for row in rows
+    ]
 
 
 def load_mysql_photo_previews(source, profile_ids, table_name=None, photos_table_name=None, preview_count=3):
     if preview_count <= 0 or not profile_ids:
         return {}
 
-    try:
-        import pymysql
-    except ImportError as exc:
-        raise ValueError("MySQL support requires PyMySQL. Install it with `pip install pymysql`.") from exc
-
     config = parse_mysql_source(source, table_name=table_name)
-    photo_table = photos_table_name or config.get("photos_table") or DEFAULT_MYSQL_PHOTOS_TABLE
-    connect_kwargs = {
-        "host": config["host"],
-        "port": config["port"],
-        "database": config["database"],
-        "charset": config["charset"],
-        "cursorclass": pymysql.cursors.DictCursor,
-    }
-    if config.get("user") is not None:
-        connect_kwargs["user"] = config["user"]
-    if config.get("password") is not None:
-        connect_kwargs["password"] = config["password"]
-    if config.get("unix_socket"):
-        connect_kwargs["unix_socket"] = config["unix_socket"]
-
-    conn = pymysql.connect(**connect_kwargs)
-    try:
-        with conn.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT column_name AS column_name
-                FROM information_schema.columns
-                WHERE table_schema = %s AND table_name = %s
-                """,
-                (config["database"], photo_table),
-            )
-            photo_columns = {row["column_name"] for row in cursor.fetchall()}
-            if "profile_id" not in photo_columns or "photo_url" not in photo_columns:
-                raise ValueError(
-                    f"MySQL photos table {config['database']}.{photo_table} must contain profile_id and photo_url columns."
-                )
-
-            placeholders = ", ".join(["%s"] * len(profile_ids))
-            order_parts = ["`profile_id` ASC"]
-            if "is_primary" in photo_columns:
-                order_parts.append("CASE WHEN `is_primary` = 1 THEN 0 ELSE 1 END")
-            elif "photo_type" in photo_columns:
-                order_parts.append("CASE WHEN `photo_type` = 'avatar' THEN 0 ELSE 1 END")
-            if "sort_order" in photo_columns:
-                order_parts.append("`sort_order` ASC")
-            if "id" in photo_columns:
-                order_parts.append("`id` ASC")
-
-            cursor.execute(
-                f"""
-                SELECT `profile_id`, `photo_url`
-                FROM {quote_mysql_ident(photo_table)}
-                WHERE `profile_id` IN ({placeholders})
-                ORDER BY {", ".join(order_parts)}
-                """,
-                profile_ids,
-            )
-
-            previews = {}
-            for row in cursor.fetchall():
-                profile_id = as_int(row.get("profile_id"))
-                photo_url = row.get("photo_url")
-                if profile_id is None or not photo_url:
-                    continue
-                previews.setdefault(profile_id, [])
-                if len(previews[profile_id]) < preview_count:
-                    previews[profile_id].append(photo_url)
-            return previews
-    finally:
-        conn.close()
+    return list_profile_photo_previews(
+        source_dsn=source,
+        source_table_name=config.get("table"),
+        photos_table_name=photos_table_name or config.get("photos_table") or DEFAULT_MYSQL_PHOTOS_TABLE,
+        profile_ids=[item for item in profile_ids if item is not None],
+        preview_count=preview_count,
+    )
 
 
 def detect_mysql_profile_table(conn, database):
@@ -4501,13 +3927,7 @@ def build_match_result(
 
 
 def unique_ordered(items):
-    seen = set()
-    result = []
-    for item in items:
-        if item and item not in seen:
-            seen.add(item)
-            result.append(item)
-    return result
+    return unique_ordered_texts(items)
 
 
 def strip_internal_fields(record):
@@ -4624,7 +4044,7 @@ def attach_photo_previews(results, preview_count, photos_table_name=None):
     for result in results:
         profile_id = as_int(result.get("id"))
         source_file = result.get("source_file") or ""
-        source, _, table_name = source_file.rpartition("#")
+        source, table_name = split_source_file_ref(source_file)
         if profile_id is None or not source:
             continue
         group_key = (source, table_name or None)
@@ -4653,635 +4073,82 @@ def attach_photo_previews(results, preview_count, photos_table_name=None):
     for result in results:
         profile_id = as_int(result.get("id"))
         source_file = result.get("source_file") or ""
-        source, _, table_name = source_file.rpartition("#")
+        source, table_name = split_source_file_ref(source_file)
         previews = preview_lookup.get((source, table_name or None), {}).get(profile_id, [])
         if previews:
             result["photo_preview"] = previews
 
 
-def summarize_signal_parts(profile, limit=8):
-    parts = []
-    for field, label in SIGNAL_FIELD_SPECS:
-        value = profile.get(field)
-        if value:
-            parts.append(f"{label}={value}")
-        if len(parts) >= limit:
-            break
-    return parts
-
-
-def format_result_headline(result, profile):
-    headline_parts = [f"{profile.get('age', '未知')}岁"]
-    if profile.get("height") is not None:
-        headline_parts.append(f"{profile.get('height')}cm")
-    if profile.get("city"):
-        headline_parts.append(profile.get("city"))
-    else:
-        headline_parts.append("城市未知")
-    if profile.get("education"):
-        headline_parts.append(profile.get("education"))
-    headline_parts.append(profile.get("job", "工作未知"))
-    return f"{result['index']}. {result['name']} | score={result['score']} | " + " | ".join(headline_parts)
-
-
-def format_result_scoring_line(result):
-    return (
-        "   scoring: "
-        f"fit={result.get('fit_score', result['score'])} | "
-        f"confidence={result.get('confidence_score', 0)} | "
-        f"risk={result.get('risk_score', 0)}"
+_search_runtime_helpers = SearchRuntimeHelpers(
+    SearchRuntime(
+        signal_field_specs=SIGNAL_FIELD_SPECS,
+        default_mysql_source=DEFAULT_MYSQL_SOURCE,
+        as_int=as_int,
+        default_source_help_text=default_source_help_text,
+        normalize_request_criteria=normalize_request_criteria,
+        normalize_self_profile_input=normalize_self_profile_input,
+        build_criteria_from_args=build_criteria_from_args,
+        load_source=lambda *args, **kwargs: load_source(*args, **kwargs),
+        overlay_records_with_moderation=overlay_records_with_moderation,
+        evaluate_candidate=evaluate_candidate,
+        result_sort_key=result_sort_key,
+        select_diverse_results=select_diverse_results,
+        build_self_profile=build_self_profile,
+        record_ref=record_ref,
+        build_fallback_candidates=build_fallback_candidates,
+        build_no_match_diagnostics=build_no_match_diagnostics,
+        attach_photo_previews=lambda *args, **kwargs: attach_photo_previews(*args, **kwargs),
+        effective_activity_info=effective_activity_info,
+        effective_activity_datetime=effective_activity_datetime,
+        format_datetime=format_datetime,
+        build_trust_summary=build_trust_summary,
+        summarize_notes=summarize_notes,
+        build_verification_items=build_verification_items,
+        activity_score_info=activity_score_info,
+        redact_source_ref=redact_source_ref,
+        format_no_match_text=format_no_match_text,
     )
-
-
-def build_result_meta_parts(profile):
-    meta_parts = []
-    if profile.get("profile_status"):
-        meta_parts.append(f"status={profile.get('profile_status')}")
-    if profile.get("verified_level"):
-        meta_parts.append(f"verified={profile.get('verified_level')}")
-    if profile.get("photo_count") is not None:
-        meta_parts.append(f"photos={profile.get('photo_count')}")
-    activity_field, activity_dt = effective_activity_info(profile)
-    active_at = format_datetime(activity_dt)
-    if activity_field and active_at:
-        meta_parts.append(f"{activity_field}={active_at}")
-    return meta_parts
-
-
-def append_labeled_line(lines, label, value):
-    if value:
-        lines.append(f"   {label}: {value}")
-
-
-def append_joined_line(lines, label, values, separator=", "):
-    if values:
-        lines.append(f"   {label}: {separator.join(values)}")
-
-
-def append_result_detail_lines(lines, result, profile, include_source=False):
-    signal_parts = summarize_signal_parts(profile)
-    append_joined_line(lines, "signals", signal_parts, separator=" | ")
-    append_labeled_line(lines, "trust", build_trust_summary(profile).get("headline"))
-    append_joined_line(lines, "photo_preview", result.get("photo_preview"))
-    append_joined_line(lines, "matched_on", result["matched_on"])
-    append_joined_line(lines, "reciprocal_on", result["reciprocal_on"])
-    append_joined_line(lines, "missing_fields", result["missing_fields"])
-    append_joined_line(lines, "self_profile_gaps", result.get("self_profile_gaps"))
-    append_joined_line(lines, "risk_flags", result["risk_flags"])
-    append_labeled_line(lines, "fallback_reason", result.get("fallback_reason"))
-    append_joined_line(lines, "match_evidence", result.get("match_evidence"), separator=" | ")
-    append_joined_line(lines, "follow_up_questions", result.get("follow_up_questions"), separator=" | ")
-    if "display_notes" in result:
-        notes_summary = result.get("display_notes")
-    else:
-        notes_summary = summarize_notes(profile.get("notes"))
-    append_labeled_line(lines, "notes", notes_summary)
-    if include_source and result.get("source_file"):
-        append_labeled_line(lines, "source", redact_source_ref(result["source_file"]))
-
-
-def format_result_block(result, index, include_source=False):
-    profile = result["profile"]
-    lines = []
-    display_result = dict(result)
-    display_result["index"] = index
-    lines.append(format_result_headline(display_result, profile))
-    lines.append(format_result_scoring_line(display_result))
-    meta_parts = build_result_meta_parts(profile)
-    append_joined_line(lines, "meta", meta_parts, separator=" | ")
-    append_result_detail_lines(lines, display_result, profile, include_source=include_source)
-    return lines
-
-
-def format_text(results, include_source=False):
-    lines = []
-    for index, result in enumerate(results, start=1):
-        lines.extend(format_result_block(result, index, include_source=include_source))
-    return "\n".join(lines)
-
-
-def register_argument_specs(parser, specs):
-    for flags, kwargs in specs:
-        parser.add_argument(*flags, **kwargs)
-
-
-def build_source_argument_specs():
-    return [
-        (
-            ("--source",),
-            {
-                "action": "append",
-                "help": (
-                    "MySQL DSN such as mysql://user:pass@host:3306/db?table=profiles. "
-                    f"Repeatable. {default_source_help_text()}"
-                ),
-            },
-        ),
-        (
-            ("--table",),
-            {
-                "help": "MySQL table name when the table is not included in the DSN.",
-            },
-        ),
-    ]
-
-
-PROFILE_FILTER_ARGUMENT_SPECS = [
-    (("--gender",), {"help": "Filter by gender."}),
-    (("--age-min",), {"type": int, "help": "Minimum age."}),
-    (("--age-max",), {"type": int, "help": "Maximum age."}),
-    (("--height-min",), {"type": int, "help": "Minimum height in cm."}),
-    (("--height-max",), {"type": int, "help": "Maximum height in cm."}),
-    (("--city",), {"action": "append", "help": "Allowed city. Repeat or use comma-separated values."}),
-    (("--district",), {"action": "append", "help": "Allowed district. Repeat or use comma-separated values."}),
-    (
-        ("--settlement-city",),
-        {"action": "append", "help": "Allowed long-term settlement city. Repeat or use comma-separated values."},
-    ),
-    (
-        ("--relationship-goal",),
-        {"action": "append", "help": "Allowed relationship goal. Repeat or use comma-separated values."},
-    ),
-    (("--must-have",), {"action": "append", "help": "Required keyword. Repeat or use comma-separated values."}),
-    (("--must-not-have",), {"action": "append", "help": "Excluded keyword. Repeat or use comma-separated values."}),
-    (("--prefer",), {"action": "append", "help": "Preferred keyword. Repeat or use comma-separated values."}),
-    (
-        ("--require-known",),
-        {
-            "action": "append",
-            "help": (
-                "Require these fields to be explicitly filled instead of missing. "
-                "Repeat or use comma-separated canonical field names such as smoking,want_children,accept_partner_children."
-            ),
-        },
-    ),
-    (("--smoking",), {"help": "Exact smoking preference, for example 否."}),
-    (("--drinking",), {"help": "Exact drinking preference, for example 否."}),
-    (("--long-distance",), {"help": "Exact long-distance preference, for example 不接受."}),
-    (("--housing-status",), {"action": "append", "help": "Allowed housing status. Repeat or use comma-separated values."}),
-    (("--car-status",), {"action": "append", "help": "Allowed car status. Repeat or use comma-separated values."}),
-    (("--marital-status",), {"action": "append", "help": "Allowed candidate marital status. Repeat or use comma-separated values."}),
-    (("--has-children",), {"type": int, "choices": [0, 1], "help": "Filter whether the candidate has children."}),
-    (("--want-children",), {"help": "Candidate child plan, for example 想要 or 可协商."}),
-    (
-        ("--accept-partner-children",),
-        {"help": "Candidate acceptance of a partner who already has children."},
-    ),
-    (
-        ("--accept-marital-status-strength",),
-        {"help": "Required candidate marital-history acceptance strength, for example 明确接受."},
-    ),
-    (
-        ("--accept-partner-children-strength",),
-        {"help": "Required candidate child-acceptance strength, for example 明确接受."},
-    ),
-    (
-        ("--marriage-timeline",),
-        {"action": "append", "help": "Allowed marriage timeline. Repeat or use comma-separated values."},
-    ),
-]
-
-
-QUALITY_ARGUMENT_SPECS = [
-    (
-        ("--profile-status",),
-        {"action": "append", "help": "Allowed profile status. Defaults to active. Repeat or use comma-separated values."},
-    ),
-    (("--active-within-days",), {"type": int, "help": "Require recent activity within N days."}),
-    (
-        ("--verified-level-min",),
-        {"choices": ["none", "basic", "photo", "id", "offline"], "help": "Minimum verification level."},
-    ),
-    (
-        ("--verified-level",),
-        {"action": "append", "help": "Exact allowed verification level. Repeat or use comma-separated values."},
-    ),
-    (
-        ("--photo-verification-level-min",),
-        {
-            "choices": ["none", "uploaded", "human_verified", "live_video_verified", "offline_verified"],
-            "help": "Minimum required photo verification level.",
-        },
-    ),
-    (
-        ("--photo-verification-level",),
-        {
-            "action": "append",
-            "help": "Exact allowed photo verification level. Repeat or use comma-separated values.",
-        },
-    ),
-    (("--photo-count-min",), {"type": int, "help": "Minimum required photo count."}),
-    (
-        ("--photo-preview-count",),
-        {
-            "type": int,
-            "default": 0,
-            "help": "Return the top N photo URLs from the MySQL photos table for each result.",
-        },
-    ),
-    (
-        ("--photos-table",),
-        {
-            "help": "MySQL photos table name when not using the default profile_photos or DSN photos_table query param.",
-        },
-    ),
-]
-
-
-SELF_PROFILE_ARGUMENT_SPECS = [
-    (("--self-id",), {"type": int, "help": "Use an existing profile id as your own profile for reciprocal matching."}),
-    (("--self-age",), {"type": int, "help": "Your age for reciprocal matching."}),
-    (("--self-city",), {"help": "Your city for reciprocal matching."}),
-    (("--self-height",), {"type": int, "help": "Your height in cm for reciprocal matching."}),
-    (("--self-education",), {"help": "Your education for reciprocal matching."}),
-    (("--self-job",), {"help": "Your job for contextual matching, for example 医生 or 金融."}),
-    (("--self-income-wan",), {"type": int, "help": "Your annual income in 万 for reciprocal matching."}),
-    (("--self-marital-status",), {"help": "Your marital status for reciprocal matching."}),
-    (("--self-has-children",), {"type": int, "choices": [0, 1], "help": "Whether you have children for reciprocal matching."}),
-    (("--self-smoking",), {"help": "Your smoking habit for reciprocal matching."}),
-    (("--self-drinking",), {"help": "Your drinking habit for reciprocal matching."}),
-]
-
-
-OUTPUT_ARGUMENT_SPECS = [
-    (("--exclude-id",), {"action": "append", "type": int, "help": "Profile id to exclude from results. Repeatable."}),
-    (
-        ("--exclude-source-channel",),
-        {
-            "action": "append",
-            "help": "Profile source_channel to exclude from results. Repeatable or comma-separated.",
-        },
-    ),
-    (
-        ("--show-source",),
-        {"action": "store_true", "help": "Include the redacted source DSN and table in the text output for debugging."},
-    ),
-    (
-        ("--output-format",),
-        {
-            "choices": ["text", "json"],
-            "default": "text",
-            "help": "Render human-readable text or structured JSON output.",
-        },
-    ),
-    (("--limit",), {"type": int, "default": 10, "help": "Maximum number of results to return."}),
-]
-
-
-def add_source_arguments(parser):
-    register_argument_specs(parser, build_source_argument_specs())
-
-
-def add_profile_filter_arguments(parser):
-    register_argument_specs(parser, PROFILE_FILTER_ARGUMENT_SPECS)
-
-
-def add_quality_arguments(parser):
-    register_argument_specs(parser, QUALITY_ARGUMENT_SPECS)
-
-
-def add_self_profile_arguments(parser):
-    register_argument_specs(parser, SELF_PROFILE_ARGUMENT_SPECS)
-
-
-def add_output_arguments(parser):
-    register_argument_specs(parser, OUTPUT_ARGUMENT_SPECS)
-
-
-def build_parser():
-    parser = argparse.ArgumentParser(description="Search profile sources for partner candidates.")
-    add_source_arguments(parser)
-    add_profile_filter_arguments(parser)
-    add_quality_arguments(parser)
-    add_self_profile_arguments(parser)
-    add_output_arguments(parser)
-    return parser
-
-
-def build_search_request(
-    source=None,
-    sources=None,
-    table_name=None,
-    photos_table_name=None,
-    criteria=None,
-    self_profile=None,
-    self_id=None,
-    limit=10,
-    photo_preview_count=0,
-    moderation_dsn=None,
-    include_moderation_blocked=False,
-):
-    request_sources = sources if sources is not None else source
-    if request_sources is None:
-        normalized_sources = []
-    elif isinstance(request_sources, (list, tuple, set)):
-        normalized_sources = [item for item in request_sources if item]
-    else:
-        normalized_sources = [request_sources]
-    return {
-        "sources": normalized_sources,
-        "table_name": table_name,
-        "photos_table_name": photos_table_name,
-        "criteria": normalize_request_criteria(criteria),
-        "self_profile": normalize_self_profile_input(self_profile),
-        "self_id": as_int(self_id),
-        "limit": as_int(limit) or 10,
-        "photo_preview_count": as_int(photo_preview_count) or 0,
-        "moderation_dsn": moderation_dsn,
-        "include_moderation_blocked": bool(include_moderation_blocked),
-    }
-
-
-def build_cli_self_profile_input(args):
-    profile = {
-        "age": args.self_age,
-        "city": args.self_city,
-        "height": args.self_height,
-        "education": args.self_education,
-        "job": getattr(args, "self_job", None),
-        "marital_status": args.self_marital_status,
-        "smoking": args.self_smoking,
-        "drinking": args.self_drinking,
-    }
-    if args.self_income_wan is not None:
-        profile["income_wan"] = args.self_income_wan
-    if args.self_has_children is not None:
-        profile["has_children"] = bool(args.self_has_children)
-    return profile
-
-
-def build_search_request_from_args(args):
-    return build_search_request(
-        sources=args.source,
-        table_name=args.table,
-        photos_table_name=args.photos_table,
-        criteria=build_criteria_from_args(args),
-        self_profile=build_cli_self_profile_input(args),
-        self_id=args.self_id,
-        limit=args.limit,
-        photo_preview_count=args.photo_preview_count,
-    )
-
-
-def resolve_request_sources(request):
-    sources = request.get("sources") or ([DEFAULT_MYSQL_SOURCE] if DEFAULT_MYSQL_SOURCE else [])
-    if not sources:
-        raise ValueError(
-            "No profile source configured. Pass --source mysql://user:pass@host:3306/db?table=profiles "
-            "or set PARTNER_SEARCH_MYSQL_SOURCE."
-        )
-    return sources
-
-
-def resolve_sources(args):
-    return resolve_request_sources(build_search_request_from_args(args))
-
-
-def collect_source_records_for_request(sources, table_name=None, criteria=None, self_id=None):
-    records = []
-    include_ids = [self_id] if self_id is not None else []
-    for source in sources:
-        records.extend(
-            load_source(
-                source,
-                table_name=table_name,
-                criteria=criteria,
-                include_ids=include_ids,
-            )
-        )
-    return records
-
-
-def collect_source_records(args, criteria, sources):
-    return collect_source_records_for_request(
-        sources,
-        table_name=args.table,
-        criteria=criteria,
-        self_id=args.self_id,
-    )
-
-
-def evaluate_records(records, criteria, limit):
-    results = []
-    for record in records:
-        evaluated = evaluate_candidate(record, criteria)
-        if evaluated:
-            results.append(evaluated)
-    results.sort(key=result_sort_key, reverse=True)
-    return select_diverse_results(results, limit)
-
-
-def apply_request_self_profile_context(request, criteria, records):
-    self_profile = build_self_profile(
-        records,
-        self_id=request.get("self_id"),
-        profile_input=request.get("self_profile"),
-    )
-    if self_profile:
-        criteria["self_profile"] = self_profile
-    if request.get("self_id") is not None:
-        criteria.setdefault("exclude_record_refs", set()).add(record_ref(self_profile))
-    return self_profile
-
-
-def apply_self_profile_context(args, criteria, records):
-    return apply_request_self_profile_context(
-        build_search_request_from_args(args),
-        criteria,
-        records,
-    )
-
-
-def build_search_run(criteria, records, results):
-    return {
-        "criteria": criteria,
-        "records": records,
-        "results": results,
-        "fallback_results": None,
-        "diagnostics": None,
-    }
-
-
-def populate_no_match_details(search_run, args):
-    if search_run["results"]:
-        return search_run
-
-    search_run["fallback_results"] = build_fallback_candidates(
-        search_run["records"],
-        search_run["criteria"],
-        limit=min(args.limit, 3),
-    )
-    search_run["diagnostics"] = build_no_match_diagnostics(
-        search_run["records"],
-        search_run["criteria"],
-    )
-    return search_run
-
-
-def prepare_search_request_context(request):
-    criteria = normalize_request_criteria(request.get("criteria"))
-    sources = resolve_request_sources(request)
-    raw_records = collect_source_records_for_request(
-        sources,
-        table_name=request.get("table_name"),
-        criteria=criteria,
-        self_id=request.get("self_id"),
-    )
-    records = overlay_records_with_moderation(
-        raw_records,
-        moderation_dsn=request.get("moderation_dsn"),
-        include_blocked=bool(request.get("include_moderation_blocked")),
-    )
-    if request.get("self_id") is not None:
-        self_id = as_int(request.get("self_id"))
-        visible_ids = {as_int(record.get("id")) for record in records}
-        for record in raw_records:
-            if as_int(record.get("id")) == self_id and self_id not in visible_ids:
-                records.append(record)
-                break
-    apply_request_self_profile_context(request, criteria, records)
-    return criteria, records
-
-
-def prepare_search_context(args):
-    return prepare_search_request_context(build_search_request_from_args(args))
-
-
-def execute_search_request(request):
-    normalized_request = build_search_request(
-        sources=request.get("sources") if isinstance(request, dict) else None,
-        source=request.get("source") if isinstance(request, dict) else None,
-        table_name=request.get("table_name") if isinstance(request, dict) else None,
-        photos_table_name=request.get("photos_table_name") if isinstance(request, dict) else None,
-        criteria=request.get("criteria") if isinstance(request, dict) else None,
-        self_profile=request.get("self_profile") if isinstance(request, dict) else None,
-        self_id=request.get("self_id") if isinstance(request, dict) else None,
-        limit=request.get("limit", 10) if isinstance(request, dict) else 10,
-        photo_preview_count=request.get("photo_preview_count", 0) if isinstance(request, dict) else 0,
-        moderation_dsn=request.get("moderation_dsn") if isinstance(request, dict) else None,
-        include_moderation_blocked=request.get("include_moderation_blocked", False) if isinstance(request, dict) else False,
-    )
-    criteria, records = prepare_search_request_context(normalized_request)
-    results = evaluate_records(records, criteria, normalized_request["limit"])
-    attach_photo_previews(
-        results,
-        normalized_request["photo_preview_count"],
-        photos_table_name=normalized_request["photos_table_name"],
-    )
-    search_run = build_search_run(criteria, records, results)
-    return populate_no_match_details(
-        search_run,
-        argparse.Namespace(limit=normalized_request["limit"]),
-    )
-
-
-def execute_search(args):
-    return execute_search_request(build_search_request_from_args(args))
-
-
-def json_safe(value):
-    if isinstance(value, datetime):
-        return format_datetime(value)
-    if isinstance(value, dict):
-        return {
-            str(key): json_safe(item)
-            for key, item in value.items()
-        }
-    if isinstance(value, set):
-        return [json_safe(item) for item in sorted(value, key=lambda item: repr(item))]
-    if isinstance(value, (list, tuple)):
-        return [json_safe(item) for item in value]
-    return value
-
-
-def build_structured_result_payload(result, include_source=False):
-    profile = result.get("profile") or {}
-    verification_items = build_verification_items(profile)
-    trust_summary = build_trust_summary(profile, verification_items=verification_items)
-    activity_dt = effective_activity_datetime(profile)
-    payload = {
-        "id": result.get("id"),
-        "name": result.get("name") or "未命名",
-        "score": result.get("score"),
-        "fit_score": result.get("fit_score"),
-        "confidence_score": result.get("confidence_score"),
-        "risk_score": result.get("risk_score"),
-        "verified_level": profile.get("verified_level") or "none",
-        "verified_label": trust_summary.get("verified_label"),
-        "photo_verification_level": trust_summary.get("photo_verification_level"),
-        "photo_verification_label": trust_summary.get("photo_verification_label"),
-        "photo_count": as_int(profile.get("photo_count")),
-        "last_active_at": json_safe(activity_dt),
-        "activity_label": activity_score_info(profile)[1],
-        "verification_items": verification_items,
-        "trust_summary": trust_summary,
-        "caution_items": list(trust_summary.get("caution_items") or []),
-        "trust_actions": list(trust_summary.get("trust_actions") or []),
-        "matched_on": list(result.get("matched_on") or []),
-        "reciprocal_on": list(result.get("reciprocal_on") or []),
-        "missing_fields": list(result.get("missing_fields") or []),
-        "self_profile_gaps": list(result.get("self_profile_gaps") or []),
-        "risk_flags": list(result.get("risk_flags") or []),
-        "match_evidence": list(result.get("match_evidence") or []),
-        "follow_up_questions": list(result.get("follow_up_questions") or []),
-        "photo_preview": list(result.get("photo_preview") or []),
-        "fallback_reason": result.get("fallback_reason"),
-        "profile": json_safe(profile),
-    }
-    if include_source and result.get("source_file"):
-        payload["source"] = redact_source_ref(result["source_file"])
-    return payload
-
-
-def build_pool_summary(search_run):
-    diagnostics = search_run.get("diagnostics") or {}
-    return {
-        "scanned_count": len(search_run.get("records") or []),
-        "passed_count": len(search_run.get("results") or []),
-        "usable_count": diagnostics.get("usable_count", len(search_run.get("records") or [])),
-    }
-
-
-def build_structured_search_response(search_run, include_source=False, include_text=False):
-    response = {
-        "has_match": bool(search_run.get("results")),
-        "result_count": len(search_run.get("results") or []),
-        "pool_summary": build_pool_summary(search_run),
-        "results": [
-            build_structured_result_payload(result, include_source=include_source)
-            for result in search_run.get("results") or []
-        ],
-        "fallback_results": [
-            build_structured_result_payload(result, include_source=include_source)
-            for result in search_run.get("fallback_results") or []
-        ],
-        "diagnostics": json_safe(search_run.get("diagnostics")),
-    }
-    if include_text:
-        response["text"] = render_search_output(search_run, include_source=include_source)
-    return response
-
-
-def render_search_json(search_run, include_source=False, include_text=False):
-    return json.dumps(
-        build_structured_search_response(
-            search_run,
-            include_source=include_source,
-            include_text=include_text,
-        ),
-        ensure_ascii=False,
-        indent=2,
-        sort_keys=False,
-    )
-
-
-def render_search_output(search_run, include_source=False):
-    if search_run["results"]:
-        return format_text(search_run["results"], include_source=include_source)
-    return format_no_match_text(
-        search_run["diagnostics"],
-        fallback_results=search_run["fallback_results"],
-    )
+)
+
+summarize_signal_parts = _search_runtime_helpers.summarize_signal_parts
+format_result_headline = _search_runtime_helpers.format_result_headline
+format_result_scoring_line = _search_runtime_helpers.format_result_scoring_line
+build_result_meta_parts = _search_runtime_helpers.build_result_meta_parts
+append_labeled_line = _search_runtime_helpers.append_labeled_line
+append_joined_line = _search_runtime_helpers.append_joined_line
+append_result_detail_lines = _search_runtime_helpers.append_result_detail_lines
+format_result_block = _search_runtime_helpers.format_result_block
+format_text = _search_runtime_helpers.format_text
+register_argument_specs = _search_runtime_helpers.register_argument_specs
+build_source_argument_specs = _search_runtime_helpers.build_source_argument_specs
+add_source_arguments = _search_runtime_helpers.add_source_arguments
+add_profile_filter_arguments = _search_runtime_helpers.add_profile_filter_arguments
+add_quality_arguments = _search_runtime_helpers.add_quality_arguments
+add_self_profile_arguments = _search_runtime_helpers.add_self_profile_arguments
+add_output_arguments = _search_runtime_helpers.add_output_arguments
+build_parser = _search_runtime_helpers.build_parser
+build_search_request = _search_runtime_helpers.build_search_request
+build_cli_self_profile_input = _search_runtime_helpers.build_cli_self_profile_input
+build_search_request_from_args = _search_runtime_helpers.build_search_request_from_args
+resolve_request_sources = _search_runtime_helpers.resolve_request_sources
+resolve_sources = _search_runtime_helpers.resolve_sources
+collect_source_records_for_request = _search_runtime_helpers.collect_source_records_for_request
+collect_source_records = _search_runtime_helpers.collect_source_records
+evaluate_records = _search_runtime_helpers.evaluate_records
+apply_request_self_profile_context = _search_runtime_helpers.apply_request_self_profile_context
+apply_self_profile_context = _search_runtime_helpers.apply_self_profile_context
+build_search_run = _search_runtime_helpers.build_search_run
+populate_no_match_details = _search_runtime_helpers.populate_no_match_details
+prepare_search_request_context = _search_runtime_helpers.prepare_search_request_context
+prepare_search_context = _search_runtime_helpers.prepare_search_context
+execute_search_request = _search_runtime_helpers.execute_search_request
+execute_search = _search_runtime_helpers.execute_search
+json_safe = _search_runtime_helpers.json_safe
+build_structured_result_payload = _search_runtime_helpers.build_structured_result_payload
+build_pool_summary = _search_runtime_helpers.build_pool_summary
+build_structured_search_response = _search_runtime_helpers.build_structured_search_response
+render_search_json = _search_runtime_helpers.render_search_json
+render_search_output = _search_runtime_helpers.render_search_output
 
 
 def main(argv=None):

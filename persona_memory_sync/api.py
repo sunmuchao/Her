@@ -12,6 +12,7 @@ SyncPersonaProfileRequest = engine.SyncPersonaProfileRequest
 RenderPublicProfileRequest = engine.RenderPublicProfileRequest
 DEFAULT_PERSONA_TABLE = engine.DEFAULT_PERSONA_TABLE
 DEFAULT_OBSERVATION_TABLE = engine.DEFAULT_OBSERVATION_TABLE
+render_public_profile_via_service = engine.execute_render_public_profile
 
 
 def _build_upsert_request(
@@ -85,7 +86,7 @@ def sync_persona_profile(
 def render_public_profile(
     request: RenderPublicProfileRequest | Mapping[str, Any],
 ) -> dict[str, Any]:
-    return engine.execute_render_public_profile(_build_render_request(request))
+    return render_public_profile_via_service(_build_render_request(request))
 
 
 __all__ = [
