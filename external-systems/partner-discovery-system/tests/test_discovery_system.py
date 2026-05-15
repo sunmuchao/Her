@@ -244,6 +244,7 @@ class DiscoveryServiceTests(unittest.TestCase):
         captured: dict[str, object] = {}
 
         def _fake_agent(**kwargs):
+            captured["instructions"] = kwargs.get("instructions")
             captured["tools"] = kwargs.get("tools")
             captured["output_type"] = kwargs.get("output_type")
             return object()
@@ -314,6 +315,8 @@ class DiscoveryServiceTests(unittest.TestCase):
         self.assertIsInstance(output_type, AgentOutputSchema)
         self.assertTrue(output_type.is_strict_json_schema())
         self.assertEqual(result.decision.assistant_message, "先说说你的基本要求。")
+        instructions = str(captured.get("instructions") or "")
+        self.assertIn("不要输出形如 `{\"tool_calls\":[...]}` 的文本", instructions)
 
     def test_discovery_decision_schema_is_strict_compatible_and_enumerated(self) -> None:
         schema = AgentOutputSchema(DiscoveryDecisionModel, strict_json_schema=True).json_schema()
@@ -473,6 +476,7 @@ class DiscoveryServiceTests(unittest.TestCase):
         captured: dict[str, object] = {}
 
         def _fake_agent(*args, **kwargs):
+            captured["instructions"] = kwargs.get("instructions")
             captured["model"] = kwargs.get("model")
             captured["output_type"] = kwargs.get("output_type")
             captured["tools"] = kwargs.get("tools")
