@@ -71,6 +71,15 @@ def build_external_storage_helpers(
     return connect_db, initialize_database, reset_all_tables
 
 
+def schema_table_names(loader_name: str) -> Callable[[], list[str]]:
+    def load_table_names() -> list[str]:
+        import outer_system_mysql_schema as _schema  # noqa: PLC0415
+
+        return list(getattr(_schema, loader_name)())
+
+    return load_table_names
+
+
 def enqueue_external_async_job(
     conn,
     *,
@@ -281,4 +290,5 @@ __all__ = [
     "reset_external_tables",
     "row_to_dict",
     "run_external_async_job_worker",
+    "schema_table_names",
 ]

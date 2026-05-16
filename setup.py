@@ -93,9 +93,12 @@ setup(
         "her_repo_path_bootstrap",
         "her_runtime_context",
         "her_time_utils",
+        "mysql_source_config",
         "outer_mysql_compat",
         "outer_system_mysql_schema",
         "partner_moderation",
+        "profile_detail_reader",
+        "profile_source_refs",
         "skill_runtime",
     ],
     entry_points={

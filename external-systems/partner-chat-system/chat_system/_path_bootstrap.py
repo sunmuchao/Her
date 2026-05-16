@@ -5,14 +5,15 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-def ensure_her_repo_on_sys_path(anchor_file: Path) -> Path:
-    repo_root = Path(__file__).resolve().parents[3]
-    repo_root_str = str(repo_root)
-    if repo_root_str not in sys.path:
-        sys.path.insert(0, repo_root_str)
-    from her_repo_path_bootstrap import ensure_her_repo_on_sys_path as shared_ensure
+_EXTERNAL_SYSTEMS_ROOT = Path(__file__).resolve().parents[2]
+_EXTERNAL_SYSTEMS_ROOT_STR = str(_EXTERNAL_SYSTEMS_ROOT)
+if _EXTERNAL_SYSTEMS_ROOT_STR not in sys.path:
+    sys.path.insert(0, _EXTERNAL_SYSTEMS_ROOT_STR)
 
-    return shared_ensure(anchor_file)
+from her_external_bootstrap import load_ensure_her_repo_on_sys_path  # noqa: E402
+
+
+ensure_her_repo_on_sys_path = load_ensure_her_repo_on_sys_path()
 
 
 __all__ = ["ensure_her_repo_on_sys_path"]

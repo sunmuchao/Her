@@ -26,6 +26,7 @@ from her_external_systems import (  # noqa: E402
     json_dumps,
     json_loads,
     row_to_dict,
+    schema_table_names,
 )
 
 
@@ -104,18 +105,10 @@ class StoredViewSnapshot:
     view: dict[str, Any]
     trace_id: str | None
     created_at: datetime
-
-
-def _discovery_tables() -> list[str]:
-    import outer_system_mysql_schema as _schema  # noqa: PLC0415
-
-    return list(_schema.discovery_tables())
-
-
 connect_db, initialize_database, reset_all_tables = build_external_storage_helpers(
     subsystem_name="Discovery",
     target="discovery",
-    table_names=_discovery_tables,
+    table_names=schema_table_names("discovery_tables"),
 )
 
 
