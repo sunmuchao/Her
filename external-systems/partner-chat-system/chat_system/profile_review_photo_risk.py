@@ -10,41 +10,25 @@ from her_time_utils import as_text as _as_text, unique_ordered_texts as _unique_
 
 from partner_moderation import ACTION_NONE
 
-from .profile_review_rules import profile_review_action_for_hits, profile_review_severity_for_hits
+from .profile_review_common import as_int, json_safe_profile_value
+from .profile_review_rules import (
+    SEVERITY_HIGH,
+    SEVERITY_LOW,
+    SEVERITY_MEDIUM,
+    profile_review_action_for_hits,
+    profile_review_severity_for_hits,
+)
 from .storage import inflate_json_columns, json_dumps, row_to_dict
 
 PROFILE_REVIEW_STATUS_OPEN = "open"
 PROFILE_REVIEW_STATUS_DISMISSED = "dismissed"
 PROFILE_REVIEW_STATUS_RESOLVED = "resolved"
 
-SEVERITY_LOW = "low"
-SEVERITY_MEDIUM = "medium"
-SEVERITY_HIGH = "high"
-
 PHOTO_RISK_ENGINE_NAME = "local_photo_authenticity"
 PHOTO_RISK_ENGINE_VERSION = "local_photo_authenticity_v1"
 PHOTO_RISK_FEATURE_VERSION = "local_photo_authenticity_features_v1"
 PHOTO_RISK_ASSET_ROLE_SUBJECT = "subject_profile_photo"
 PHOTO_RISK_ASSET_ROLE_COMPARISON = "comparison_profile_photo"
-
-
-def _as_int(value: Any) -> int | None:
-    if value is None or value == "":
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _json_safe(value: Any) -> Any:
-    if isinstance(value, datetime):
-        return value.isoformat(sep=" ")
-    if isinstance(value, dict):
-        return {str(key): _json_safe(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_json_safe(item) for item in value]
-    return value
 
 
 def _sha1_hex(value: Any) -> str:
@@ -237,13 +221,13 @@ def _insert_photo_risk_feature_snapshot(
             1 if bool(feature_payload.get("embedding_available")) else 0,
             int(feature_payload.get("embedding_dim") or 0),
             json_dumps(list(feature_payload.get("embedding_preview") or [])),
-            json_dumps(_json_safe(feature_payload.get("photo_edit_metrics")))
+            json_dumps(json_safe_profile_value(feature_payload.get("photo_edit_metrics")))
             if feature_payload.get("photo_edit_metrics") is not None
             else None,
-            json_dumps(_json_safe(feature_payload.get("deepfake_metrics")))
+            json_dumps(json_safe_profile_value(feature_payload.get("deepfake_metrics")))
             if feature_payload.get("deepfake_metrics") is not None
             else None,
-            json_dumps(_json_safe(metadata)),
+            json_dumps(json_safe_profile_value(metadata)),
             now,
         ),
     )
@@ -292,7 +276,7 @@ def _create_photo_risk_score_run(
             int(review.get("multiple_face_photo_count") or 0),
             int(review.get("comparison_source_count") or 0),
             json_dumps(list(review.get("risk_flags") or [])),
-            json_dumps(_json_safe(review)),
+            json_dumps(json_safe_profile_value(review)),
             now,
         ),
     )
@@ -336,7 +320,7 @@ def _create_photo_risk_decision(
             json_dumps(required_verifications),
             json_dumps([hit["rule_code"] for hit in photo_hits]),
             json_dumps(list(photo_review_signal_codes or [])),
-            json_dumps(_json_safe(decision_payload)),
+            json_dumps(json_safe_profile_value(decision_payload)),
             now,
             now,
         ),
@@ -397,7 +381,7 @@ def _upsert_photo_risk_review_queue(
                 PROFILE_REVIEW_STATUS_OPEN,
                 _photo_risk_priority_from_severity(severity),
                 json_dumps(list(photo_review_signal_codes or [])),
-                json_dumps(_json_safe(queue_payload)),
+                json_dumps(json_safe_profile_value(queue_payload)),
                 now,
                 queue_item_id,
             ),
@@ -422,7 +406,7 @@ def _upsert_photo_risk_review_queue(
             PROFILE_REVIEW_STATUS_OPEN,
             _photo_risk_priority_from_severity(severity),
             json_dumps(list(photo_review_signal_codes or [])),
-            json_dumps(_json_safe(queue_payload)),
+            json_dumps(json_safe_profile_value(queue_payload)),
             now,
             now,
             None,
@@ -473,7 +457,7 @@ def sync_photo_risk_review_queue_status(
         """,
         (
             _as_text(status),
-            json_dumps(_json_safe(payload)),
+            json_dumps(json_safe_profile_value(payload)),
             now,
             resolved_at,
             int(item["queue_item_id"]),
@@ -669,7 +653,7 @@ def persist_photo_risk_service(
             conn,
             source_dsn=source_dsn,
             source_table_name=source_table_name,
-            source_profile_id=_as_int(record.get("source_profile_id")),
+            source_profile_id=as_int(record.get("source_profile_id")),
             asset_origin=_as_text(record.get("asset_origin")) or "photo_table",
             photo_source=photo_source,
             now=now,
@@ -691,7 +675,7 @@ def persist_photo_risk_service(
             conn,
             source_dsn=source_dsn,
             source_table_name=source_table_name,
-            source_profile_id=_as_int(record.get("source_profile_id")),
+            source_profile_id=as_int(record.get("source_profile_id")),
             asset_origin=_as_text(record.get("asset_origin")) or "photo_table",
             photo_source=photo_source,
             now=now,
