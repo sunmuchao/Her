@@ -2,49 +2,21 @@
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
 from her_time_utils import as_text as _as_text, unique_ordered_texts as _unique_ordered
+from partner_moderation import ACTION_LIMITED_EXPOSURE, ACTION_REQUIRE_VERIFICATION
+
+from .profile_review_common import (
+    HIGH_INCOME_CITY_MISMATCH,
+    LOW_WAGE_JOB_KEYWORDS,
+    as_int,
+    parse_income_max_wan,
+)
 
 SEVERITY_LOW = "low"
 SEVERITY_MEDIUM = "medium"
 SEVERITY_HIGH = "high"
-
-ACTION_LIMITED_EXPOSURE = "limited_exposure"
-ACTION_REQUIRE_VERIFICATION = "require_verification"
-
-LOW_WAGE_JOB_KEYWORDS = ("助理", "文员", "行政", "客服", "店员", "实习")
-HIGH_INCOME_CITY_MISMATCH = {
-    "镇江",
-    "扬州",
-    "湖州",
-    "嘉兴",
-    "南通",
-    "常州",
-    "无锡",
-}
-
-
-def _as_int(value: Any) -> int | None:
-    if value is None or value == "":
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _parse_income_max_wan(value: Any) -> int | None:
-    text = _as_text(value)
-    if not text:
-        return None
-    matches = [int(item) for item in re.findall(r"(\d+)", text)]
-    if not matches:
-        return None
-    if "+" in text:
-        return matches[0]
-    return max(matches)
 
 
 def photo_review_signal_codes_for_hits(hits: list[dict[str, Any]]) -> list[str]:
@@ -59,10 +31,10 @@ def build_profile_photo_rule_hits(photo_review: dict[str, Any]) -> list[dict[str
         return []
 
     hits: list[dict[str, Any]] = []
-    same_person_score = _as_int(photo_review.get("same_person_score")) or 0
-    photo_edit_risk_score = _as_int(photo_review.get("photo_edit_risk_score")) or 0
-    deepfake_risk_score = _as_int(photo_review.get("deepfake_risk_score")) or 0
-    stolen_media_risk_score = _as_int(photo_review.get("stolen_media_risk_score")) or 0
+    same_person_score = as_int(photo_review.get("same_person_score")) or 0
+    photo_edit_risk_score = as_int(photo_review.get("photo_edit_risk_score")) or 0
+    deepfake_risk_score = as_int(photo_review.get("deepfake_risk_score")) or 0
+    stolen_media_risk_score = as_int(photo_review.get("stolen_media_risk_score")) or 0
     risk_flags = set(photo_review.get("risk_flags") or [])
 
     if "mixed_identity_photos" in risk_flags or same_person_score < 45:
@@ -207,7 +179,7 @@ def build_profile_photo_rule_hits(photo_review: dict[str, Any]) -> list[dict[str
 
 def build_profile_rule_hits(profile: dict[str, Any]) -> list[dict[str, Any]]:
     hits: list[dict[str, Any]] = []
-    income_max = _parse_income_max_wan(profile.get("income_range"))
+    income_max = parse_income_max_wan(profile.get("income_range"))
     job_text = _as_text(profile.get("job"))
     city = _as_text(profile.get("city"))
     if income_max is not None and income_max >= 80 and any(keyword in job_text for keyword in LOW_WAGE_JOB_KEYWORDS):
@@ -238,7 +210,7 @@ def build_profile_rule_hits(profile: dict[str, Any]) -> list[dict[str, Any]]:
         )
     frequent_changes: dict[str, int] = {}
     for field_key in ("job_change_count_30d", "income_change_count_30d", "city_change_count_30d"):
-        count = _as_int(profile.get(field_key))
+        count = as_int(profile.get(field_key))
         if count is not None and count >= 2:
             frequent_changes[field_key] = count
     if frequent_changes:

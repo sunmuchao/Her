@@ -27,6 +27,7 @@ from profile_service import (
     resolve_profile_source,
 )
 
+from .profile_review_common import as_int, json_safe_profile_value, parse_income_max_wan
 from .profile_review_rules import (
     build_profile_photo_rule_hits,
     build_profile_rule_hits,
@@ -74,10 +75,6 @@ PROFILE_REVIEW_APPEAL_STATUS_SUBMITTED = "submitted"
 PROFILE_REVIEW_APPEAL_STATUS_UNDER_REVIEW = "under_review"
 PROFILE_REVIEW_APPEAL_STATUS_UPHELD = "upheld"
 PROFILE_REVIEW_APPEAL_STATUS_REJECTED = "rejected"
-
-SEVERITY_LOW = "low"
-SEVERITY_MEDIUM = "medium"
-SEVERITY_HIGH = "high"
 
 VALID_FIELD_KEYS = {"education", "job", "income"}
 FIELD_VALUE_COLUMNS = {
@@ -133,17 +130,6 @@ INCOME_BRACKETS = [
     "80-120万/年",
     "120万+/年",
 ]
-
-LOW_WAGE_JOB_KEYWORDS = ("助理", "文员", "行政", "客服", "店员", "实习")
-HIGH_INCOME_CITY_MISMATCH = {
-    "镇江",
-    "扬州",
-    "湖州",
-    "嘉兴",
-    "南通",
-    "常州",
-    "无锡",
-}
 DEFAULT_PROFILE_PHOTO_COMPARISON_LIMIT = 24
 
 
@@ -209,25 +195,6 @@ def _analyze_profile_photo_authenticity_with_fallback(
         )
 
 
-def _as_int(value: Any) -> int | None:
-    if value is None or value == "":
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _json_safe(value: Any) -> Any:
-    if isinstance(value, datetime):
-        return value.isoformat(sep=" ")
-    if isinstance(value, dict):
-        return {str(key): _json_safe(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_json_safe(item) for item in value]
-    return value
-
-
 def _normalize_evidence_type(field_key: str, evidence_type: Any = None, evidence: dict[str, Any] | None = None) -> str | None:
     raw = _as_text(evidence_type) or _as_text((evidence or {}).get("doc_type")) or _as_text((evidence or {}).get("evidence_type"))
     if not raw:
@@ -258,10 +225,10 @@ def _build_verification_schedule(
     reverify_strategy: Any = None,
 ) -> dict[str, Any]:
     policy = FIELD_POLICIES[field_key]
-    normalized_validity_days = _as_int(validity_days)
+    normalized_validity_days = as_int(validity_days)
     if normalized_validity_days is None or normalized_validity_days <= 0:
         normalized_validity_days = int(policy.get("default_validity_days") or 0)
-    normalized_next_review_days = _as_int(next_review_days)
+    normalized_next_review_days = as_int(next_review_days)
     if normalized_next_review_days is None or normalized_next_review_days <= 0:
         normalized_next_review_days = int(policy.get("default_next_review_days") or normalized_validity_days)
     strategy = _normalize_reverify_strategy(field_key, reverify_strategy)
@@ -298,18 +265,6 @@ def _submission_field_status(
     return "needs_review"
 
 
-def _parse_income_max_wan(value: Any) -> int | None:
-    text = _as_text(value)
-    if not text:
-        return None
-    matches = [int(item) for item in re.findall(r"(\d+)", text)]
-    if not matches:
-        return None
-    if "+" in text:
-        return matches[0]
-    return max(matches)
-
-
 def _normalize_income_bracket(value: Any) -> str | None:
     text = _as_text(value)
     if not text:
@@ -322,7 +277,7 @@ def _normalize_income_bracket(value: Any) -> str | None:
     if compact.endswith("万/年") and compact in INCOME_BRACKETS:
         return compact
     if compact.endswith("万+") or compact.endswith("万+/年"):
-        amount = _parse_income_max_wan(compact)
+        amount = parse_income_max_wan(compact)
         if amount is not None:
             return f"{amount}万+/年"
     matches = re.findall(r"(\d+)", compact)
@@ -536,7 +491,7 @@ def submit_profile_field_verification(
             None,
             0,
             json_dumps(_unique_ordered(required_documents or FIELD_POLICIES[normalized_field]["accepted_documents"])),
-            json_dumps(_json_safe(dict(evidence or {}))),
+            json_dumps(json_safe_profile_value(dict(evidence or {}))),
             normalized_evidence_type,
             normalized_evidence_channel,
             _normalize_reverify_strategy(normalized_field),
@@ -650,7 +605,7 @@ def resubmit_profile_field_verification(
             _as_text(subject_user_id) or None,
             normalized_value,
             json_dumps(merged_documents),
-            json_dumps(_json_safe(merged_evidence)),
+            json_dumps(json_safe_profile_value(merged_evidence)),
             normalized_evidence_type,
             normalized_evidence_channel,
             FIELD_DISPUTE_STATUS_NONE,
@@ -758,7 +713,7 @@ def review_profile_field_verification(
         """
         INSERT INTO profile_field_verification_reviews (
           submission_id, reviewer_id, decision, review_note, approved_value,
-          requested_documents_json, metadata_json, created_at
+            requested_documents_json, metadata_json, created_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
@@ -769,13 +724,13 @@ def review_profile_field_verification(
             approved_declared,
             json_dumps(_unique_ordered(requested_documents or [])),
             json_dumps(
-                _json_safe(
-                {
-                    **dict(metadata or {}),
-                    "profile_sync": sync_result,
-                    "verification_schedule": schedule,
-                    "dispute_status_before": current.get("dispute_status") or FIELD_DISPUTE_STATUS_NONE,
-                }
+                json_safe_profile_value(
+                    {
+                        **dict(metadata or {}),
+                        "profile_sync": sync_result,
+                        "verification_schedule": schedule,
+                        "dispute_status_before": current.get("dispute_status") or FIELD_DISPUTE_STATUS_NONE,
+                    }
                 )
             ),
             ts,
@@ -856,7 +811,7 @@ def dispute_profile_field_verification(
     if not reason:
         raise ValueError("dispute_reason is required")
     ts = current_time(now)
-    dispute_evidence = _json_safe(dict(evidence or {}))
+    dispute_evidence = json_safe_profile_value(dict(evidence or {}))
     sync_result = _sync_profile_row(
         source_dsn=current["source_dsn"],
         source_table_name=current["source_table_name"],
@@ -883,7 +838,11 @@ def dispute_profile_field_verification(
             reason,
             current.get("approved_value"),
             json_dumps([]),
-            json_dumps(_json_safe({"dispute_evidence": dispute_evidence, "profile_sync": sync_result})),
+            json_dumps(
+                json_safe_profile_value(
+                    {"dispute_evidence": dispute_evidence, "profile_sync": sync_result}
+                )
+            ),
             ts,
         ),
     )

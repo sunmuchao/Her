@@ -25,6 +25,7 @@ from .events import (
     chat_conversation_message_created_event,
     chat_conversation_opened_event,
 )
+from .persona_jobs import maybe_enqueue_persona_sync_job
 from .storage import inflate_json_columns, json_dumps, row_to_dict
 
 CONV_KIND_DM = "dm"
@@ -499,9 +500,18 @@ def _maybe_enqueue_persona_sync_job_for_conversation(
     metadata: dict[str, Any] | None,
     ts: datetime,
 ) -> None:
-    # Persona updates are intentionally deferred until post-chat review.
-    # Live conversation messages should not enqueue sync jobs directly.
-    return
+    maybe_enqueue_persona_sync_job(
+        conn,
+        conversation,
+        message_id=message_id,
+        author_id=author_id,
+        body=body,
+        visibility="dyadic",
+        source=source,
+        message_recipient_id=None,
+        metadata=metadata,
+        ts=ts,
+    )
 
 
 def post_conversation_message(
