@@ -18,6 +18,12 @@ This skill is intentionally narrow.
 
 Treat `partner-search` as a pure matching/query skill.
 
+## Current Runtime Layout
+
+- 当前真实实现位于仓库根目录 `partner_search/`。
+- `local-skills/partner-search/scripts/` 里的脚本主要是兼容包装层，方便在 skill 目录下直接调用。
+- 已安装环境优先使用控制台命令 `partner-search`；在仓库 checkout 里也可以使用 `python3 local-skills/partner-search/scripts/search_candidates.py`。
+
 ## Non-Goals
 
 Do not couple these product/system capabilities into this skill:
@@ -82,7 +88,7 @@ Ensure the Python dependency is present first. Run `python3 -m pip install pymys
 2. Convert the user's request into CLI flags.
    Start with direct filters such as `--gender`, `--city`, `--relationship-goal`, and `--verified-level-min`. Add `--must-have` / `--must-not-have` for text requirements and `--self-id` or `--self-*` only when reciprocal matching matters.
 3. Choose the call shape.
-   Use `python3 scripts/search_candidates.py` for human-facing text, `--output-format json` for structured CLI output, or call the Python API via `from partner_search import search_profiles` or `import partner_search; partner_search.search_profiles(...)` when another Python system wants structured data directly.
+   Use `partner-search` or `python3 local-skills/partner-search/scripts/search_candidates.py` for human-facing text, `--output-format json` for structured CLI output, or call the Python API via `from partner_search import search_profiles` or `import partner_search; partner_search.search_profiles(...)` when another Python system wants structured data directly.
 4. Return the best matches with three things:
    - why they match
    - what information is missing
@@ -90,11 +96,11 @@ Ensure the Python dependency is present first. Run `python3 -m pip install pymys
    - which questions to confirm next when the profile is promising but still fuzzy
    - how much is real fit versus just profile completeness
 
-Do not stretch this skill into a long-running recommendation service. If a future system wants recurring recommendations, it should persist the search criteria externally and call `scripts/search_candidates.py` or the same matching logic repeatedly from outside the skill.
+Do not stretch this skill into a long-running recommendation service. If a future system wants recurring recommendations, it should persist the search criteria externally and call `partner-search` or the same matching logic repeatedly from outside the skill.
 
 The CLI and Python API are just callable shells around the same matching capability. They are not authorization to add subscription, recommendation-history, notification, or matchmaking workflow features into this skill.
 
-Companion write scripts such as `scripts/backfill_profile_enrichment.py` and `scripts/seed_gap_profiles.py` should use the same `--source` / `PARTNER_SEARCH_MYSQL_SOURCE` entrypoint instead of relying on an implicit local root connection.
+Companion write scripts such as `local-skills/partner-search/scripts/backfill_profile_enrichment.py` and `local-skills/partner-search/scripts/seed_gap_profiles.py` should use the same `--source` / `PARTNER_SEARCH_MYSQL_SOURCE` entrypoint instead of relying on an implicit local root connection.
 
 ## Criteria Flags
 
@@ -112,7 +118,7 @@ Use only the flags you need:
 
 Repeat multi-value flags such as `--city`, `--relationship-goal`, `--must-have`, `--must-not-have`, and `--prefer` as needed, or pass comma-separated values.
 
-Run `python3 scripts/search_candidates.py --help` for the full CLI.
+Run `partner-search --help` or `python3 local-skills/partner-search/scripts/search_candidates.py --help` for the full CLI.
 
 ## Input Contract
 
@@ -137,7 +143,7 @@ If you do not pass `--self-id` or any `--self-*` flag, the skill still works, bu
 Use the local MySQL database directly:
 
 ```bash
-python3 scripts/search_candidates.py \
+partner-search \
   --gender 女 \
   --age-min 24 \
   --age-max 30 \
@@ -161,7 +167,7 @@ python3 scripts/search_candidates.py \
 Use `--self-id` for reciprocal matching against another profile's partner preferences:
 
 ```bash
-python3 scripts/search_candidates.py \
+partner-search \
   --self-id 90001 \
   --gender 女 \
   --city 无锡 \
@@ -176,7 +182,7 @@ python3 scripts/search_candidates.py \
 Use `--self-*` when your own profile is not stored in the database:
 
 ```bash
-python3 scripts/search_candidates.py \
+partner-search \
   --gender 女 \
   --city 无锡 \
   --self-age 28 \
@@ -191,7 +197,7 @@ python3 scripts/search_candidates.py \
 Use `--source` when you want to point at a specific MySQL target:
 
 ```bash
-python3 scripts/search_candidates.py \
+partner-search \
   --source 'mysql://user:pass@127.0.0.1:3306/other_db?table=profiles' \
   --gender 女 \
   --city 无锡
@@ -200,7 +206,7 @@ python3 scripts/search_candidates.py \
 Return structured JSON from the CLI when another tool wants machine-readable output:
 
 ```bash
-python3 scripts/search_candidates.py \
+partner-search \
   --source 'mysql://user:pass@127.0.0.1:3306/her?table=profiles' \
   --gender 女 \
   --city 无锡 \

@@ -3,6 +3,8 @@
 > 历史规划说明：本文保留了方案拆解语境，但其中若出现 `assistant_llm.py`、`scenario_stress.py`、`dyadic_roleplay.py` 等文件引用，已经不是当前仓库的真实实现入口。
 >
 > 当前聊天助手实现请以 `external-systems/partner-chat-system/chat_system/assistant_runtime.py`、`assistant_orchestrator.py`、`assistant_sessions.py`、`assistant_context.py`、`service.py` 为准。文中关于独立主动 coaching、roleplay 压测链路的任务拆分属于历史方案材料，不应再按对外产品入口直接开发。
+>
+> 若本文继续引用当前仓库里并不存在的文件名，应视为历史提案切分示意，而不是待补齐的真实缺口清单。
 
 本文档是对 [chat-assistant-improvement-plan.md](chat-assistant-improvement-plan.md) 的执行化整理，目标有两个：
 

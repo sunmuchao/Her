@@ -13,6 +13,12 @@ Use this skill when a dating or matchmaking conversation reveals new information
 - Phase 1 只做结构整理：把核心读写逻辑收口到公共库，CLI 脚本保留为薄包装层，补齐测试和交付说明。
 - 默认继续沿用现有表结构、字段语义、source type 规则、公开字段渲染规则，不改变已有输入输出契约。
 
+## Current Runtime Layout
+
+- 当前真实实现位于仓库根目录 `persona_memory_sync/`。
+- `local-skills/persona-memory-sync/scripts/` 里的脚本主要保留为兼容包装层和 skill 内部示例。
+- 已安装环境优先使用控制台命令 `persona-memory-sync`；在仓库 checkout 里也可以继续运行 `local-skills/persona-memory-sync/scripts/*.py`。
+
 ## Non-Goals
 
 - 不新增产品功能，不扩展新的记忆类型、工作流、后台任务、提醒机制、业务 API 或事件系统。
@@ -59,10 +65,10 @@ Rule of thumb:
 
 ## Engine Boundary
 
-- `scripts/persona_memory_engine.py` 是 Phase 2 之后的正式运行时入口层。
-- CLI 入口 `upsert_persona_memory.py`、`sync_persona_to_profile.py`、`render_public_profile.py` 以及审计脚本 `run_persona_memory_audit.py` 都应通过 engine 层调用，不再直接拼装底层读写流程。
-- `scripts/persona_memory_lib.py` 继续保留为内部实现细节，负责规则、字段映射、SQL 读写和公开文案生成；新调用方默认不要直接依赖它的运行时函数。
-- `scripts/ensure_persona_tables.py` 仍然属于建表和 schema 补齐脚本，不属于运行时 engine。
+- `persona_memory_sync/persona_memory_engine.py` 是当前正式运行时入口层。
+- CLI 入口 `persona-memory-sync upsert`、`persona-memory-sync sync-profile`、`persona-memory-sync render-public` 以及兼容脚本 `local-skills/persona-memory-sync/scripts/*.py` 都应通过 engine 层调用，不再直接拼装底层读写流程。
+- `persona_memory_sync/persona_memory_lib.py` 继续保留为内部实现细节，负责规则、字段映射、SQL 读写和公开文案生成；新调用方默认不要直接依赖它的运行时函数。
+- `persona-memory-sync ensure-schema` 或兼容脚本 `local-skills/persona-memory-sync/scripts/ensure_persona_tables.py` 仍然属于建表和 schema 补齐入口，不属于运行时 engine。
 - `engine` 和 `Python API` 只是现有能力的调用壳，不是新增功能的授权入口。
 
 Engine responsibilities:
@@ -104,15 +110,15 @@ Do not treat `profiles` as a raw public profile. The public-facing version must 
 ## Workflow
 
 1. Ensure schema exists.
-   Run `python3 scripts/ensure_persona_tables.py`.
+   Run `persona-memory-sync ensure-schema` or `python3 local-skills/persona-memory-sync/scripts/ensure_persona_tables.py`.
 2. Convert the new conversation signal into a structured patch.
    Use explicit fields whenever possible.
 3. Upsert persona memory.
-   Run `python3 scripts/upsert_persona_memory.py --user-key ... --source-type ... --patch-json ...`.
+   Run `persona-memory-sync upsert --user-key ... --source-type ... --patch-json ...`.
 4. Sync to `profiles`.
-   Run `python3 scripts/sync_persona_to_profile.py --user-key ...`.
+   Run `persona-memory-sync sync-profile --user-key ...`.
 5. Optionally preview or refresh public rendering.
-   Run `python3 scripts/render_public_profile.py --user-key ... --write-profile`.
+   Run `persona-memory-sync render-public --user-key ... --write-profile`.
 
 ## Python API
 

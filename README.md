@@ -22,6 +22,11 @@ Relationship-operations prototype covering search, persona memory, recommendatio
 - `local-skills/partner-search/` and `local-skills/persona-memory-sync/` now mainly provide skill metadata, examples, tests, and compatibility scripts.
   - The actual Python implementations are the root packages `partner_search` and `persona_memory_sync`.
 
+## Docs Notes
+
+- `external-systems/*/README.md`, root package code, and automated tests are the current implementation source of truth.
+- `docs/chat-*` and `docs/discovery-*` contain a mix of current notes and historical planning material. Treat any references to missing files in those documents as proposal/archive context, not as live implementation requirements.
+
 ## Verification
 
 ```bash

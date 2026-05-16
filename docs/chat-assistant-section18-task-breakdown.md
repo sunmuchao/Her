@@ -1,6 +1,6 @@
 # 第18部分任务拆解（基于当前 AI 助手能力）
 
-> 历史规划说明：本文中的若干建议文件名，如 `assistant_contract.py`、`pre_chat_context.py`、`post_chat_review.py`，并非当前代码库中的实际实现文件。
+> 历史规划说明：本文中的若干建议文件名，如 `assistant_contract.py`、`pre_chat_context.py`、`post_chat_review.py`，以及文中提到的 `mode_router`、`assistant_query`、`assistant_proactive_hint`，都不是当前仓库仍在对外提供的真实入口。
 >
 > 当前与触发式红娘助手相关的真实代码入口是 `external-systems/partner-chat-system/chat_system/assistant_runtime.py`、`assistant_orchestrator.py`、`assistant_sessions.py`、`assistant_context.py`、`service.py`、`timeline.py`。
 
@@ -25,12 +25,12 @@
 
 ### 1.1 不要直接推翻当前回温链路
 
-当前 `mode_router + proactive hint + assistant_query` 已经形成了“聊天中回温”闭环。
+历史实验分支里的 `mode_router + proactive hint + assistant_query` 曾形成“聊天中回温”闭环。
 
 第 18 部分新增能力时，优先原则是：
 
-- 不破坏当前 `repair / none` 主链路
-- 不强行把“聊天前 / 聊天后”逻辑塞进当前 `mode_router`
+- 不破坏当前红娘 C conversation/task/maintenance 主链路
+- 不强行把“聊天前 / 聊天后”逻辑塞进历史 `mode_router` 语义里
 - 不把“关系分流”一步到位压到当前回温判断里
 
 ### 1.2 先做阶段化入口，再做阶段化智能

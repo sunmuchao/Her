@@ -1,6 +1,6 @@
 # 聊天与 Agent 中间人架构方案
 
-本文档描述 Her 关系运营流水线中 **用户与匹配对象聊天**、**Agent C 协助**、以及 **对话触发 persona-memory-sync** 的完整架构设计，作为实现与评审的单一事实来源（与当前代码是否已落地无关）。
+本文档描述 Her 关系运营流水线中 **用户与匹配对象聊天**、**Agent C 协助**、以及 **对话触发 persona-memory-sync** 的一版历史完整架构设计，主要用于回溯设计取舍，不应再被视为当前实现的单一事实来源。
 
 > 历史说明（2026-05-15）：本文主体保留了早期“侧信道建议 + 草稿采纳”方案，方便回溯设计取舍；当前仓库实际落地的聊天实现已经收敛为 `v2` conversations、session/task/maintenance 驱动的红娘 C 流水线，不再提供侧信道草稿采纳、read receipt、主动 coaching 等入口。当前真实行为以 `external-systems/partner-chat-system/README.md` 与 `external-systems/partner-http-gateway/gateway/app.py` 为准。
 

@@ -1,6 +1,8 @@
 # 发现页 Agent-Native 方案任务拆解
 
 > 文档校准说明：本文少量示例仍引用 `types.py` 等未单独落地的文件。当前 discovery 结构化 schema 主要集中在 `external-systems/partner-discovery-system/discovery_system/decision_models.py`、`service.py`、`view_models.py`；`agent_runtime.py` 主要负责 Agents SDK 运行时和 prompt 组装。
+>
+> 若后文出现当前仓库不存在的文件名或目录结构，请按历史任务拆解材料理解，不要直接把它们当成现行代码目录的缺失项。
 
 本文档把 [`discovery-agent-native-architecture-plan-20260514.md`](./discovery-agent-native-architecture-plan-20260514.md) 拆成可排期、可开发、可验收的任务。
 

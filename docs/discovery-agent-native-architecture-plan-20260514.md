@@ -2,6 +2,10 @@
 
 日期：2026-05-14
 
+> 规划文档说明：本文保留了完整目标架构和若干理想化模块命名，用于设计评审，不等同于当前仓库已经一一落地的文件结构。
+>
+> 当前 discovery 真实实现以 `external-systems/partner-discovery-system/discovery_system/service.py`、`agent_runtime.py`、`agent_session_store.py`、`decision_models.py`、`view_models.py` 为准；若文中出现当前不存在的文件名，请按方案草稿理解。
+
 ---
 
 ## 1. 结论先行

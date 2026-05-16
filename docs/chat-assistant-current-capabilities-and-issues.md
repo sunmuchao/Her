@@ -6,7 +6,7 @@
 
 - 本文主体保留 2026-05-07 那轮聊天助手实验方案与问题梳理，供回溯设计使用，不再代表当前仓库已实现能力。
 - 当前仓库已经移除 `assistant_query`、`assistant_proactive_hint`、`assistant_mode_route`、`adopt_draft` 这些入口；可见 `external-systems/partner-chat-system/README.md` 中的“已移除”列表。
-- 当前真实落地的是 `v2` conversation、红娘 C session/task/maintenance 流水线；接口和行为以 `external-systems/partner-chat-system/README.md` 与 `partner-http-gateway/gateway/app.py` 为准。
+- 当前真实落地的是 `v2` conversation、红娘 C session/task/maintenance 流水线；接口和行为以 `external-systems/partner-chat-system/README.md` 与 `external-systems/partner-http-gateway/gateway/app.py` 为准。
 
 ## 1. 文档目的
 
