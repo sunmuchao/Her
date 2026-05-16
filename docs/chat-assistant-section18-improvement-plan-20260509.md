@@ -1,5 +1,9 @@
 # 第18部分改进方案（基于 2026-05-09 live 验证）
 
+> 历史规划说明：本文提到的阶段拆分和部分文件名仍带有当时的设计草案命名，不应视为当前仓库的完整落地结构。
+>
+> 当前真实聊天助手入口以 `external-systems/partner-chat-system/chat_system/assistant_runtime.py`、`assistant_orchestrator.py`、`assistant_sessions.py`、`assistant_context.py`、`service.py` 为准；其余未落地文件名请按历史方案阅读。
+
 本文档不是泛泛而谈的“优化建议”，而是基于这次 live 验证后的实际结论，整理一份更可执行的改进方案。
 
 目标只有一个：
@@ -557,4 +561,3 @@
   - [chat-assistant-section18-gap-analysis.md](./chat-assistant-section18-gap-analysis.md)
 - 更早的任务拆解：
   - [chat-assistant-section18-task-breakdown.md](./chat-assistant-section18-task-breakdown.md)
-
