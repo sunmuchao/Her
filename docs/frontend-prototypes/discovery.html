@@ -7,23 +7,24 @@
     <style>
       :root {
         color-scheme: light;
-        --bg: #f4ecdf;
-        --bg-deep: #e8dcc5;
-        --panel: rgba(255, 250, 244, 0.9);
-        --panel-strong: rgba(255, 253, 249, 0.98);
-        --ink: #18211f;
-        --muted: #5f6d66;
-        --line: rgba(24, 33, 31, 0.1);
+        --bg: #f3eadb;
+        --bg-deep: #e4d6bf;
+        --paper: rgba(255, 253, 249, 0.94);
+        --paper-strong: rgba(255, 255, 255, 0.98);
+        --ink: #15211e;
+        --muted: #5a6862;
+        --line: rgba(21, 33, 30, 0.08);
         --accent: #0f766e;
         --accent-strong: #115e59;
         --accent-soft: rgba(15, 118, 110, 0.12);
-        --good: #1d7a46;
-        --good-soft: rgba(29, 122, 70, 0.12);
-        --warn: #9a6f1e;
-        --warn-soft: rgba(154, 111, 30, 0.12);
-        --rose: #b74d5f;
-        --rose-soft: rgba(183, 77, 95, 0.12);
-        --shadow: 0 28px 70px rgba(43, 37, 28, 0.14);
+        --accent-wash: rgba(15, 118, 110, 0.06);
+        --good: #1e7a4b;
+        --good-soft: rgba(30, 122, 75, 0.12);
+        --warn: #95661d;
+        --warn-soft: rgba(149, 102, 29, 0.12);
+        --rose: #b14f61;
+        --rose-soft: rgba(177, 79, 97, 0.12);
+        --shadow: 0 28px 80px rgba(43, 37, 28, 0.14);
         font-family: "IBM Plex Sans", "PingFang SC", "Noto Sans SC", sans-serif;
       }
 
@@ -36,8 +37,8 @@
         min-height: 100vh;
         color: var(--ink);
         background:
-          radial-gradient(circle at top left, rgba(15, 118, 110, 0.13), transparent 28%),
-          radial-gradient(circle at 84% 12%, rgba(183, 77, 95, 0.1), transparent 22%),
+          radial-gradient(circle at 0% 0%, rgba(15, 118, 110, 0.12), transparent 24%),
+          radial-gradient(circle at 92% 10%, rgba(177, 79, 97, 0.1), transparent 20%),
           linear-gradient(180deg, #fbf6ef 0%, var(--bg) 54%, var(--bg-deep) 100%);
       }
 
@@ -47,261 +48,365 @@
         inset: 0;
         pointer-events: none;
         background-image:
-          linear-gradient(rgba(24, 33, 31, 0.035) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(24, 33, 31, 0.035) 1px, transparent 1px);
-        background-size: 22px 22px;
+          linear-gradient(rgba(21, 33, 30, 0.03) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(21, 33, 30, 0.03) 1px, transparent 1px);
+        background-size: 24px 24px;
         mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.34), transparent 82%);
       }
 
       .page {
-        width: min(520px, calc(100vw - 28px));
+        width: min(1280px, calc(100vw - 32px));
         margin: 0 auto;
-        padding: 20px 0 30px;
+        padding: 28px 0 44px;
       }
 
-      .prototype-bar {
-        display: none;
-        align-items: center;
-        gap: 10px;
-        padding: 10px 14px;
-        margin: 0 0 14px;
-        border-radius: 999px;
-        background: rgba(255, 252, 248, 0.82);
-        border: 1px solid rgba(255, 255, 255, 0.75);
-        box-shadow: 0 8px 24px rgba(43, 37, 28, 0.08);
-        color: var(--muted);
-        font-size: 13px;
+      .eyebrow,
+      .section-title,
+      .metric-label,
+      .bubble strong,
+      .module-title,
+      .result-group-title,
+      .field span {
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
       }
 
-      .dot {
-        width: 10px;
-        height: 10px;
-        border-radius: 50%;
-        background: linear-gradient(135deg, #0f766e, #115e59);
-      }
-
-      .shell {
+      .hero-shell {
+        position: relative;
         display: grid;
-        gap: 16px;
-      }
-
-      .phone {
-        position: static;
-        min-height: auto;
-        padding: 16px;
-        border-radius: 40px;
-        background:
-          linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(245, 235, 222, 0.92)),
-          rgba(255, 255, 255, 0.5);
-        border: 1px solid rgba(255, 255, 255, 0.7);
-        box-shadow: var(--shadow);
-        backdrop-filter: blur(16px);
-      }
-
-      .phone::before {
-        content: "";
-        display: block;
-        width: 138px;
-        height: 28px;
-        margin: 0 auto 14px;
-        border-radius: 999px;
-        background: rgba(24, 33, 31, 0.08);
-      }
-
-      .app {
+        grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.88fr);
+        gap: 22px;
+        padding: 24px;
+        border-radius: 34px;
         overflow: hidden;
-        border-radius: 30px;
-        background: linear-gradient(180deg, rgba(255, 253, 248, 0.98), rgba(248, 241, 230, 0.98));
-        border: 1px solid rgba(24, 33, 31, 0.06);
+        background:
+          radial-gradient(circle at 6% 0%, rgba(255, 255, 255, 0.24), transparent 24%),
+          radial-gradient(circle at 90% 16%, rgba(255, 223, 176, 0.24), transparent 20%),
+          linear-gradient(135deg, rgba(8, 34, 36, 0.98) 0%, rgba(20, 71, 73, 0.92) 48%, rgba(198, 140, 91, 0.82) 100%);
+        box-shadow: 0 34px 90px rgba(22, 30, 31, 0.2);
       }
 
-      .topbar {
-        padding: 18px 18px 14px;
-        border-bottom: 1px solid rgba(24, 33, 31, 0.06);
+      .hero-shell::after {
+        content: "";
+        position: absolute;
+        right: -80px;
+        bottom: -120px;
+        width: 280px;
+        height: 280px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(255, 246, 232, 0.3), transparent 70%);
       }
 
-      .row {
-        display: flex;
-        justify-content: space-between;
-        gap: 12px;
-        align-items: center;
+      .hero-main,
+      .hero-side,
+      .stage-card,
+      .rail {
+        position: relative;
+        z-index: 1;
       }
 
-      .header-left {
-        display: flex;
-        gap: 12px;
-        align-items: center;
+      .hero-main {
+        display: grid;
+        gap: 18px;
+        color: #f7f4ef;
       }
 
-      .agent-avatar,
-      .user-avatar,
-      .icon-btn,
-      .criteria-chip,
-      .suggestion-chip,
-      .quick-pill,
-      .nav-item,
-      .status-pill,
-      .tag {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-      }
-
-      .agent-avatar {
-        width: 44px;
-        height: 44px;
-        border-radius: 16px;
-        background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
-        color: #f7faf9;
-        font-size: 16px;
-        font-weight: 800;
-        box-shadow: 0 12px 28px rgba(15, 118, 110, 0.24);
-      }
-
-      .title h1,
-      .support h2,
-      .mini-panel h3 {
+      .hero-copy h1,
+      .stage-copy h2,
+      .rail-card h3,
+      .config-panel h3 {
+        margin: 0;
         font-family: "Iowan Old Style", "Noto Serif SC", "STSong", serif;
       }
 
-      .title h1 {
-        margin: 0;
-        font-size: 27px;
-        line-height: 1;
-        letter-spacing: -0.05em;
-      }
-
-      .title p {
-        margin: 6px 0 0;
-        color: var(--muted);
-        font-size: 13px;
-      }
-
-      .icon-btn {
-        width: 42px;
-        height: 42px;
-        border: 0;
-        border-radius: 14px;
-        background: rgba(24, 33, 31, 0.06);
-        color: var(--ink);
-        font-size: 16px;
-        cursor: pointer;
-      }
-
-      .summary-card,
-      .search-box,
-      .inline-note,
-      .followup,
-      .panel,
-      .mini-panel,
-      .config-panel,
-      .result-card,
-      .module,
-      .field input,
-      .field textarea {
-        border: 1px solid rgba(24, 33, 31, 0.06);
-      }
-
-      .summary-card {
-        margin-top: 14px;
-        padding: 16px;
-        border-radius: 22px;
-        background:
-          radial-gradient(circle at top right, rgba(183, 77, 95, 0.08), transparent 28%),
-          linear-gradient(140deg, rgba(15, 118, 110, 0.12), rgba(255, 255, 255, 0.7));
-      }
-
       .eyebrow {
-        margin: 0 0 8px;
+        margin: 0;
         font-size: 12px;
         font-weight: 800;
-        letter-spacing: 0.16em;
-        text-transform: uppercase;
         color: var(--accent);
       }
 
-      .summary-card strong,
-      .search-box strong,
-      .inline-note strong,
-      .followup strong,
-      .check strong,
-      .module-title,
-      .result-group-title,
-      .config-panel h3 {
-        display: block;
+      .hero-main .eyebrow {
+        color: rgba(247, 244, 239, 0.72);
       }
 
-      .summary-card strong {
-        font-size: 18px;
-        letter-spacing: -0.03em;
+      .hero-copy h1 {
+        margin-top: 8px;
+        max-width: 13ch;
+        font-size: clamp(36px, 4.8vw, 58px);
+        line-height: 0.98;
+        letter-spacing: -0.07em;
       }
 
-      .summary-card p,
-      .search-box p,
-      .inline-note p,
-      .followup p,
-      .check span,
-      .support p,
-      .mini-panel ul,
-      .helper-text {
-        color: var(--muted);
-        line-height: 1.7;
-      }
-
-      .summary-card p {
-        margin: 8px 0 0;
-        font-size: 13px;
+      .hero-lead {
+        max-width: 54ch;
+        margin: 14px 0 0;
+        color: rgba(247, 244, 239, 0.78);
+        font-size: 15px;
+        line-height: 1.78;
       }
 
       .status-row {
         display: flex;
         flex-wrap: wrap;
         gap: 8px;
-        margin-top: 12px;
+      }
+
+      .status-pill,
+      .criteria-chip,
+      .suggestion-chip,
+      .meta-pill,
+      .tag,
+      .quick-pill {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        white-space: nowrap;
       }
 
       .status-pill {
-        padding: 8px 12px;
+        min-height: 34px;
+        padding: 0 12px;
         border-radius: 999px;
         font-size: 12px;
-        font-weight: 700;
-        background: rgba(255, 255, 255, 0.72);
-        color: var(--ink);
+        font-weight: 800;
+        background: rgba(255, 255, 255, 0.12);
+        color: #f7f4ef;
+        border: 1px solid rgba(255, 255, 255, 0.14);
       }
 
       .status-pill.phase {
-        color: var(--accent-strong);
-        background: var(--accent-soft);
+        background: rgba(255, 246, 232, 0.18);
+        color: #fff4e6;
       }
 
       .status-pill.error {
         color: var(--rose);
-        background: var(--rose-soft);
+        background: rgba(255, 255, 255, 0.94);
+        border-color: rgba(177, 79, 97, 0.12);
       }
 
-      .search-state {
-        padding: 14px 18px 8px;
+      .hero-metrics {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
       }
 
-      .search-box {
-        padding: 14px 16px;
-        border-radius: 20px;
-        background: rgba(24, 33, 31, 0.05);
+      .metric-card {
+        padding: 16px 16px 14px;
+        border-radius: 22px;
+        background: rgba(255, 251, 247, 0.12);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        backdrop-filter: blur(10px);
       }
 
-      .search-box strong {
+      .metric-label {
+        display: block;
+        font-size: 11px;
+        font-weight: 800;
+        color: rgba(247, 244, 239, 0.64);
+      }
+
+      .metric-value {
+        display: block;
+        margin-top: 8px;
+        color: #f7f4ef;
+        font-size: 32px;
+        font-weight: 800;
+        line-height: 1;
+        letter-spacing: -0.08em;
+      }
+
+      .metric-copy {
+        display: block;
+        margin-top: 8px;
+        color: rgba(247, 244, 239, 0.72);
+        font-size: 13px;
+        line-height: 1.55;
+      }
+
+      .hero-side {
+        display: grid;
+        gap: 16px;
+      }
+
+      .summary-card {
+        padding: 20px;
+        border-radius: 26px;
+        background: rgba(255, 251, 247, 0.14);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        backdrop-filter: blur(10px);
+        color: #f7f4ef;
+      }
+
+      .summary-card strong {
+        display: block;
+        margin-top: 8px;
+        font-size: 26px;
+        line-height: 1.22;
+        letter-spacing: -0.05em;
+      }
+
+      .summary-card p {
+        margin: 10px 0 0;
+        color: rgba(247, 244, 239, 0.76);
+        line-height: 1.76;
+      }
+
+      .summary-card.compact {
+        background: rgba(13, 34, 35, 0.28);
+      }
+
+      .shell {
+        display: grid;
+        grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.82fr);
+        gap: 24px;
+        align-items: start;
+        margin-top: 24px;
+      }
+
+      .stage-card,
+      .rail-card,
+      .debug-shell {
+        border-radius: 32px;
+        border: 1px solid rgba(255, 255, 255, 0.72);
+        background:
+          linear-gradient(180deg, rgba(255, 253, 249, 0.96), rgba(245, 237, 225, 0.96)),
+          rgba(255, 255, 255, 0.55);
+        box-shadow: var(--shadow);
+      }
+
+      .stage-card {
+        display: grid;
+        gap: 18px;
+        padding: 20px;
+      }
+
+      .stage-topbar,
+      .stage-title-row,
+      .stage-actions,
+      .result-top,
+      .result-bottom,
+      .person-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: center;
+      }
+
+      .stage-title-row {
+        justify-content: flex-start;
+      }
+
+      .stage-copy h2 {
+        font-size: 28px;
+        line-height: 1;
+        letter-spacing: -0.06em;
+      }
+
+      .stage-copy p,
+      .session-note,
+      .bubble p,
+      .module p,
+      .followup p,
+      .rail-copy,
+      .guide-list li,
+      .helper-text,
+      .empty-state,
+      .inline-note p {
+        line-height: 1.72;
+        color: var(--muted);
+      }
+
+      .stage-copy p {
+        margin: 7px 0 0;
+        font-size: 13px;
+      }
+
+      .agent-avatar,
+      .user-avatar,
+      .icon-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .agent-avatar {
+        width: 54px;
+        height: 54px;
+        border-radius: 18px;
+        background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+        color: #f7faf9;
+        font-size: 15px;
+        font-weight: 800;
+        box-shadow: 0 14px 28px rgba(15, 118, 110, 0.2);
+      }
+
+      .icon-btn,
+      .btn,
+      .config-actions button,
+      .send-btn {
+        appearance: none;
+        border: 0;
+        border-radius: 18px;
+        font: inherit;
+        cursor: pointer;
+      }
+
+      .icon-btn {
+        width: 46px;
+        height: 46px;
+        background: rgba(21, 33, 30, 0.05);
+        color: var(--ink);
+        font-size: 16px;
+      }
+
+      .session-strip {
+        display: grid;
+        gap: 10px;
+        padding: 18px;
+        border-radius: 26px;
+        background:
+          radial-gradient(circle at top right, rgba(177, 79, 97, 0.08), transparent 24%),
+          linear-gradient(140deg, rgba(15, 118, 110, 0.1), rgba(255, 255, 255, 0.72));
+        border: 1px solid var(--line);
+      }
+
+      .session-strong {
+        font-size: 20px;
+        font-weight: 800;
+        letter-spacing: -0.04em;
+      }
+
+      .session-note {
         font-size: 14px;
       }
 
-      .search-box p {
-        margin: 6px 0 0;
-        font-size: 12px;
+      .criteria-panel,
+      .round-summary,
+      .followup,
+      .composer-shell,
+      .config-panel {
+        border: 1px solid var(--line);
+      }
+
+      .criteria-panel {
+        padding: 16px 18px;
+        border-radius: 26px;
+        background: rgba(255, 255, 255, 0.68);
+      }
+
+      .section-title {
+        display: block;
+        margin: 0 0 10px;
+        font-size: 11px;
+        font-weight: 800;
+        color: var(--muted);
       }
 
       .criteria-row,
       .suggestions,
-      .quick-prompts,
-      .photo-strip {
+      .quick-prompts {
         display: flex;
         gap: 8px;
         overflow-x: auto;
@@ -310,27 +415,17 @@
 
       .criteria-row::-webkit-scrollbar,
       .suggestions::-webkit-scrollbar,
-      .quick-prompts::-webkit-scrollbar,
-      .photo-strip::-webkit-scrollbar {
+      .quick-prompts::-webkit-scrollbar {
         display: none;
       }
 
-      .criteria-row {
-        padding: 0 18px 12px;
-      }
-
-      .criteria-chip,
-      .quick-pill,
-      .suggestion-chip {
-        white-space: nowrap;
-        padding: 9px 12px;
+      .criteria-chip {
+        min-height: 38px;
+        padding: 0 14px;
         border-radius: 999px;
         font-size: 12px;
-        font-weight: 700;
-      }
-
-      .criteria-chip {
-        background: rgba(24, 33, 31, 0.06);
+        font-weight: 800;
+        background: rgba(21, 33, 30, 0.06);
         color: var(--ink);
       }
 
@@ -339,26 +434,20 @@
         color: var(--accent-strong);
       }
 
-      .criteria-chip.empty,
-      .quick-pill {
+      .criteria-chip.empty {
         color: var(--muted);
-      }
-
-      .quick-pill {
-        border: 0;
-        background: rgba(24, 33, 31, 0.06);
-        cursor: pointer;
       }
 
       .dialogue {
         display: grid;
-        gap: 14px;
-        padding: 0 18px 16px;
+        gap: 18px;
+        min-height: 440px;
+        padding: 6px 2px;
       }
 
       .msg {
         display: flex;
-        gap: 10px;
+        gap: 12px;
         align-items: flex-end;
       }
 
@@ -366,60 +455,64 @@
         justify-content: flex-end;
       }
 
-      .msg.assistant .user-avatar {
-        background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
-      }
-
       .user-avatar {
-        width: 34px;
-        height: 34px;
-        border-radius: 12px;
-        background: linear-gradient(135deg, #cdb9a1, #8f7357);
+        width: 38px;
+        height: 38px;
+        border-radius: 14px;
+        flex: none;
+        background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
         color: #f7faf9;
         font-size: 12px;
         font-weight: 800;
-        flex: none;
       }
 
       .bubble {
-        max-width: 84%;
-        padding: 13px 14px;
-        border-radius: 18px 18px 18px 6px;
-        background: rgba(255, 255, 255, 0.84);
-        box-shadow: 0 10px 24px rgba(43, 37, 28, 0.06);
+        max-width: min(84%, 660px);
+        padding: 16px 18px;
+        border-radius: 24px 24px 24px 10px;
+        background: var(--paper-strong);
+        box-shadow: 0 18px 36px rgba(43, 37, 28, 0.08);
       }
 
       .msg.user .bubble {
-        border-radius: 18px 18px 6px 18px;
-        background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+        border-radius: 24px 24px 10px 24px;
+        background: linear-gradient(135deg, #134a48 0%, #0f766e 100%);
         color: #f7faf9;
       }
 
       .bubble strong {
         display: block;
-        margin-bottom: 7px;
-        font-size: 12px;
-        letter-spacing: 0.04em;
+        margin-bottom: 9px;
+        font-size: 11px;
+        font-weight: 800;
       }
 
       .bubble p {
         margin: 0;
-        font-size: 14px;
-        line-height: 1.7;
+        font-size: 15px;
         white-space: pre-wrap;
       }
 
-      .inline-note,
-      .followup {
-        padding: 14px 16px;
-        border-radius: 18px;
-        background: rgba(24, 33, 31, 0.05);
+      .msg.user .bubble p {
+        color: #f7faf9;
+      }
+
+      .empty-state,
+      .inline-note {
+        padding: 16px 18px;
+        border-radius: 22px;
+        background: rgba(21, 33, 30, 0.05);
+      }
+
+      .empty-state {
+        font-size: 14px;
       }
 
       .inline-note strong,
       .followup strong {
+        display: block;
         margin-bottom: 8px;
-        font-size: 13px;
+        font-size: 14px;
       }
 
       .inline-note p,
@@ -428,41 +521,32 @@
         font-size: 13px;
       }
 
-      .empty-state {
-        padding: 16px;
-        border-radius: 20px;
-        background: rgba(24, 33, 31, 0.05);
-        color: var(--muted);
-        font-size: 13px;
-        line-height: 1.7;
-      }
-
       .result-group-title {
-        margin: 0 0 10px;
-        font-size: 15px;
-        letter-spacing: -0.02em;
+        margin: 0 0 14px;
+        font-size: 21px;
+        font-weight: 800;
+        letter-spacing: -0.04em;
       }
 
       .result-stack {
         display: grid;
-        gap: 14px;
+        gap: 18px;
       }
 
       .result-card {
         overflow: hidden;
-        border-radius: 26px;
-        background: var(--panel-strong);
-        box-shadow: 0 18px 50px rgba(43, 37, 28, 0.09);
+        border-radius: 30px;
+        border: 1px solid var(--line);
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(249, 244, 236, 0.98));
+        box-shadow: 0 22px 58px rgba(43, 37, 28, 0.1);
       }
 
       .result-cover {
-        position: relative;
-        min-height: 148px;
-        padding: 16px;
+        display: grid;
+        gap: 22px;
+        min-height: 188px;
+        padding: 20px;
         color: #f8faf9;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
         background:
           radial-gradient(circle at 18% 20%, rgba(255, 255, 255, 0.22), transparent 16%),
           radial-gradient(circle at 82% 18%, rgba(255, 255, 255, 0.14), transparent 16%),
@@ -472,51 +556,43 @@
       }
 
       .meta-pill {
-        display: inline-flex;
-        align-items: center;
+        min-height: 34px;
         gap: 8px;
-        padding: 8px 12px;
+        padding: 0 12px;
         border-radius: 999px;
         font-size: 12px;
-        font-weight: 700;
+        font-weight: 800;
         color: #f8faf9;
-        background: rgba(12, 18, 17, 0.38);
+        background: rgba(12, 18, 17, 0.42);
         border: 1px solid rgba(255, 255, 255, 0.12);
       }
 
-      .result-top,
-      .result-bottom,
-      .person-row {
-        display: flex;
-        justify-content: space-between;
-        gap: 10px;
+      .meta-pill.subtle {
+        background: rgba(255, 255, 255, 0.16);
       }
 
-      .result-top,
-      .result-bottom {
-        align-items: center;
-      }
-
-      .score {
+      .match-label {
         display: grid;
         justify-items: end;
       }
 
-      .score small {
+      .match-label small {
         font-size: 11px;
-        letter-spacing: 0.14em;
+        letter-spacing: 0.12em;
         text-transform: uppercase;
-        opacity: 0.78;
+        opacity: 0.74;
       }
 
-      .score strong {
-        font-size: 28px;
-        line-height: 1;
-        letter-spacing: -0.08em;
+      .match-label strong {
+        font-size: 24px;
+        line-height: 1.06;
+        letter-spacing: -0.05em;
       }
 
       .result-body {
-        padding: 16px;
+        display: grid;
+        gap: 14px;
+        padding: 20px;
       }
 
       .person-row {
@@ -525,14 +601,14 @@
 
       .person-row h2 {
         margin: 0;
-        font-size: 25px;
-        line-height: 1.1;
-        letter-spacing: -0.05em;
         font-family: "Iowan Old Style", "Noto Serif SC", "STSong", serif;
+        font-size: 30px;
+        line-height: 1.02;
+        letter-spacing: -0.06em;
       }
 
       .person-row p {
-        margin: 6px 0 0;
+        margin: 8px 0 0;
         color: var(--muted);
         font-size: 14px;
       }
@@ -541,14 +617,14 @@
         display: flex;
         flex-wrap: wrap;
         gap: 8px;
-        margin-top: 14px;
       }
 
       .tag {
-        padding: 8px 12px;
+        min-height: 34px;
+        padding: 0 12px;
         border-radius: 999px;
         font-size: 12px;
-        font-weight: 700;
+        font-weight: 800;
       }
 
       .tag.good {
@@ -563,50 +639,42 @@
 
       .tag.soft {
         color: var(--muted);
-        background: rgba(24, 33, 31, 0.06);
+        background: rgba(21, 33, 30, 0.06);
       }
 
       .module {
-        margin-top: 14px;
-        padding: 14px;
-        border-radius: 20px;
-        background: rgba(24, 33, 31, 0.04);
+        padding: 16px;
+        border-radius: 22px;
+        background: rgba(21, 33, 30, 0.04);
       }
 
       .module-title {
+        display: block;
         margin: 0 0 10px;
-        font-size: 12px;
+        font-size: 11px;
         font-weight: 800;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
         color: var(--muted);
       }
 
       .module p {
         margin: 0;
-        color: var(--muted);
-        font-size: 13px;
-        line-height: 1.7;
+        font-size: 14px;
       }
 
-      .card-actions {
+      .card-actions,
+      .config-actions {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 10px;
-        margin-top: 14px;
       }
 
       .btn,
       .config-actions button,
       .send-btn {
-        appearance: none;
-        border: 0;
-        border-radius: 18px;
-        padding: 13px 14px;
-        font: inherit;
+        min-height: 52px;
+        padding: 0 16px;
         font-size: 14px;
         font-weight: 800;
-        cursor: pointer;
       }
 
       .btn.primary,
@@ -619,154 +687,231 @@
       .btn.secondary,
       .config-actions button.secondary {
         color: var(--ink);
-        background: rgba(24, 33, 31, 0.08);
+        background: rgba(21, 33, 30, 0.08);
       }
 
+      .round-summary {
+        display: grid;
+        gap: 10px;
+        padding: 16px 18px;
+        border-radius: 24px;
+        background: rgba(255, 255, 255, 0.72);
+      }
+
+      .round-summary[hidden] {
+        display: none;
+      }
+
+      .round-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .round-cell {
+        padding: 12px 14px;
+        border-radius: 18px;
+        background: rgba(21, 33, 30, 0.05);
+      }
+
+      .round-cell strong {
+        display: block;
+        font-size: 20px;
+        font-weight: 800;
+        letter-spacing: -0.04em;
+      }
+
+      .round-cell span {
+        display: block;
+        margin-top: 4px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .followup {
+        padding: 18px;
+        border-radius: 26px;
+        background: linear-gradient(180deg, rgba(255, 247, 239, 0.96), rgba(251, 242, 231, 0.96));
+      }
+
+      .suggestions {
+        margin-top: 12px;
+        flex-wrap: wrap;
+        overflow: visible;
+      }
+
+      .suggestion-chip {
+        min-height: 42px;
+        padding: 0 16px;
+        border-radius: 999px;
+        border: 0;
+        font-size: 13px;
+        font-weight: 800;
+        cursor: pointer;
+        background: rgba(255, 255, 255, 0.92);
+        color: var(--ink);
+        box-shadow: 0 12px 24px rgba(43, 37, 28, 0.08);
+      }
+
+      .suggestion-chip.primary {
+        color: #f7faf9;
+        background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+      }
+
+      .suggestion-chip.ghost {
+        background: rgba(21, 33, 30, 0.06);
+        color: var(--muted);
+        box-shadow: none;
+      }
+
+      .composer-shell {
+        display: grid;
+        gap: 12px;
+        padding: 18px;
+        border-radius: 28px;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 241, 232, 0.96)),
+          rgba(255, 255, 255, 0.55);
+      }
+
+      .rail-card h3,
+      .config-panel h3 {
+        font-size: 26px;
+        line-height: 1.06;
+        letter-spacing: -0.05em;
+      }
+
+      .rail-copy {
+        margin: 10px 0 0;
+        font-size: 14px;
+      }
+
+      .rail-metrics {
+        display: grid;
+        gap: 10px;
+        margin-top: 18px;
+      }
+
+      .rail-metrics div {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 13px 14px;
+        border-radius: 18px;
+        background: rgba(21, 33, 30, 0.05);
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .rail-metrics strong {
+        color: var(--ink);
+      }
+
+      .quick-prompts {
+        flex-wrap: wrap;
+        overflow: visible;
+      }
+
+      .quick-pill {
+        min-height: 44px;
+        padding: 0 14px;
+        border-radius: 18px;
+        border: 0;
+        background: rgba(255, 255, 255, 0.92);
+        color: var(--ink);
+        font-size: 13px;
+        font-weight: 700;
+        cursor: pointer;
+        box-shadow: 0 12px 24px rgba(43, 37, 28, 0.06);
+      }
+
+      .quick-pill:disabled,
       .btn:disabled,
       .config-actions button:disabled,
       .send-btn:disabled,
       .icon-btn:disabled,
-      .quick-pill:disabled {
+      .suggestion-chip:disabled {
         opacity: 0.5;
         cursor: not-allowed;
       }
 
-      .suggestion-chip {
-        border: 0;
-        background: rgba(255, 255, 255, 0.82);
-        color: var(--ink);
-        cursor: pointer;
+      .guide-list {
+        display: grid;
+        gap: 10px;
+        margin: 18px 0 0;
+        padding: 0 0 0 18px;
       }
 
-      .composer {
-        position: sticky;
-        bottom: 0;
-        padding: 12px 18px 18px;
-        background: linear-gradient(180deg, rgba(248, 241, 230, 0), rgba(248, 241, 230, 0.98) 34%);
+      .guide-list li {
+        font-size: 14px;
       }
 
-      .bottom-nav {
-        display: none;
-      }
-
-      .quick-prompts {
-        margin-bottom: 10px;
+      .composer-caption {
+        font-size: 13px;
+        color: var(--muted);
       }
 
       .composer-inner {
         display: grid;
-        grid-template-columns: 42px minmax(0, 1fr) 76px;
+        grid-template-columns: minmax(0, 1fr) 120px;
         gap: 10px;
-        align-items: center;
+        align-items: stretch;
       }
 
       .input-shell {
-        padding: 0;
-        border-radius: 18px;
-        background: rgba(255, 255, 255, 0.84);
-        border: 1px solid rgba(24, 33, 31, 0.06);
+        border-radius: 22px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.96);
+      }
+
+      .compose-field,
+      .field input {
+        width: 100%;
+        color: var(--ink);
+        font: inherit;
       }
 
       .compose-field {
-        width: 100%;
-        min-height: 54px;
-        max-height: 140px;
-        padding: 14px 16px;
+        min-height: 88px;
+        max-height: 180px;
+        padding: 18px;
         border: 0;
         resize: vertical;
         background: transparent;
-        color: var(--ink);
-        font: inherit;
-        font-size: 14px;
+        font-size: 15px;
       }
 
       .compose-field:focus,
-      .field input:focus,
-      .field textarea:focus {
-        outline: 2px solid rgba(15, 118, 110, 0.2);
+      .field input:focus {
+        outline: 2px solid rgba(15, 118, 110, 0.18);
         outline-offset: 0;
       }
 
-      .bottom-nav {
-        display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 10px;
-        padding: 0 18px 18px;
-      }
-
-      .nav-item {
-        flex-direction: column;
-        gap: 6px;
-        min-height: 58px;
-        border-radius: 18px;
-        color: var(--muted);
-        font-size: 11px;
-        font-weight: 800;
-        letter-spacing: 0.04em;
-        background: rgba(255, 255, 255, 0.58);
-      }
-
-      .nav-item strong {
-        font-size: 16px;
-      }
-
-      .nav-item.active {
-        color: #f7faf9;
-        background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
-        box-shadow: 0 12px 30px rgba(15, 118, 110, 0.22);
-      }
-
-      .support {
+      .rail {
         display: grid;
         gap: 18px;
       }
 
-      .panel,
-      .mini-panel,
+      .rail-card,
+      .debug-shell {
+        padding: 22px;
+      }
+
       .config-panel {
-        padding: 24px;
-        border-radius: 32px;
-        background:
-          linear-gradient(180deg, rgba(255, 252, 247, 0.95), rgba(247, 239, 227, 0.95)),
-          rgba(255, 255, 255, 0.5);
-        box-shadow: var(--shadow);
+        padding: 0;
+        border-radius: 0;
+        background: transparent;
       }
 
-      .support h2 {
+      .helper-text {
         margin: 0;
-        font-size: 34px;
-        line-height: 1;
-        letter-spacing: -0.05em;
+        font-size: 14px;
       }
 
-      .checklist,
       .config-grid {
         display: grid;
         gap: 12px;
-        margin-top: 22px;
-      }
-
-      .check {
-        padding: 16px 18px;
-        border-radius: 20px;
-        background: rgba(24, 33, 31, 0.05);
-      }
-
-      .check strong {
-        font-size: 16px;
-      }
-
-      .grid-panels {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 18px;
-      }
-
-      .mini-panel h3,
-      .config-panel h3 {
-        margin: 0 0 10px;
-        font-size: 24px;
-        letter-spacing: -0.04em;
+        margin-top: 18px;
       }
 
       .field {
@@ -777,50 +922,38 @@
       .field span {
         font-size: 12px;
         font-weight: 800;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
         color: var(--muted);
       }
 
-      .field input,
-      .field textarea {
-        width: 100%;
+      .field input {
         padding: 13px 14px;
         border-radius: 16px;
-        background: rgba(255, 255, 255, 0.84);
-        color: var(--ink);
-        font: inherit;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.9);
         font-size: 14px;
       }
 
       .config-actions {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 10px;
         margin-top: 18px;
       }
 
       .config-meta {
-        margin-top: 14px;
         display: grid;
         gap: 6px;
+        margin-top: 16px;
+        font-size: 13px;
       }
 
       .config-meta code {
         padding: 3px 7px;
         border-radius: 999px;
-        background: rgba(24, 33, 31, 0.06);
+        background: rgba(21, 33, 30, 0.06);
         color: var(--ink);
       }
 
       .debug-shell {
         overflow: hidden;
-        border-radius: 28px;
-        background:
-          linear-gradient(180deg, rgba(255, 252, 247, 0.95), rgba(247, 239, 227, 0.95)),
-          rgba(255, 255, 255, 0.5);
-        border: 1px solid rgba(24, 33, 31, 0.06);
-        box-shadow: var(--shadow);
+        border: 1px solid var(--line);
       }
 
       .debug-summary {
@@ -828,12 +961,11 @@
         justify-content: space-between;
         gap: 12px;
         align-items: center;
-        padding: 18px 20px;
+        padding: 0;
         cursor: pointer;
-        color: var(--ink);
+        list-style: none;
         font-size: 14px;
         font-weight: 800;
-        list-style: none;
       }
 
       .debug-summary::-webkit-details-marker {
@@ -843,219 +975,335 @@
       .debug-hint {
         color: var(--muted);
         font-size: 12px;
-        font-weight: 700;
       }
 
       .debug-content {
-        padding: 0 20px 20px;
+        padding-top: 18px;
       }
 
-      .debug-content .config-panel {
-        padding: 0;
-        border: 0;
-        border-radius: 0;
-        box-shadow: none;
-        background: transparent;
-      }
+      @media (max-width: 1080px) {
+        .page {
+          width: min(100vw - 20px, 980px);
+        }
 
-      @media (max-width: 1040px) {
+        .hero-shell,
         .shell {
           grid-template-columns: 1fr;
         }
 
-        .phone {
-          position: static;
-          min-height: auto;
+        .hero-copy h1 {
+          max-width: none;
         }
       }
 
       @media (max-width: 720px) {
         .page {
-          width: min(100vw - 16px, 520px);
-          padding-top: 10px;
+          width: min(100vw - 16px, 560px);
+          padding-top: 12px;
         }
 
-        .prototype-bar {
-          display: none;
+        .hero-shell,
+        .stage-card,
+        .rail-card,
+        .debug-shell {
+          border-radius: 26px;
         }
 
-        .phone {
-          padding: 10px;
-          border-radius: 28px;
+        .hero-shell,
+        .stage-card,
+        .rail-card,
+        .debug-shell {
+          padding: 18px;
         }
 
-        .app {
-          border-radius: 24px;
+        .hero-copy h1 {
+          font-size: 38px;
         }
 
-        .grid-panels,
-        .config-actions,
-        .card-actions {
+        .hero-metrics,
+        .round-grid,
+        .composer-inner,
+        .card-actions,
+        .config-actions {
           grid-template-columns: 1fr;
         }
 
-        .panel,
-        .mini-panel,
-        .config-panel {
-          padding: 20px;
-          border-radius: 24px;
+        .stage-topbar,
+        .stage-title-row {
+          flex-direction: column;
+          align-items: flex-start;
         }
 
-        .debug-shell {
-          padding: 0;
-          border-radius: 24px;
+        .stage-actions {
+          width: 100%;
+          justify-content: flex-end;
         }
 
-        .debug-content {
-          padding: 0 0 4px;
+        .dialogue {
+          min-height: auto;
         }
 
-        .support h2 {
-          font-size: 28px;
+        .bubble {
+          max-width: 100%;
         }
       }
     </style>
   </head>
   <body>
     <main class="page">
-      <div class="prototype-bar">
-        <span class="dot"></span>
-        <span>Live API prototype · 发现页直接联调 `/v1/discovery/...`</span>
-      </div>
+      <section class="hero-shell">
+        <div class="hero-main">
+          <div class="hero-copy">
+            <p class="eyebrow">Her Match Concierge</p>
+            <h1>红娘正在替你推进这一轮。</h1>
+            <p class="hero-lead">你只要把要求说清楚，发现页会自己把条件整理出来，在信息足够时直接缩人，再把下一步动作接回到同一条对话里。</p>
+          </div>
+
+          <div class="status-row">
+            <span class="status-pill phase" id="phase-pill">未连接</span>
+            <span class="status-pill" id="connection-pill">等待连接</span>
+          </div>
+
+          <div class="hero-metrics">
+            <article class="metric-card">
+              <span class="metric-label">已整理条件</span>
+              <strong class="metric-value" id="metric-criteria">0</strong>
+              <span class="metric-copy" id="metric-criteria-copy">条件会随着对话自动收拢。</span>
+            </article>
+            <article class="metric-card">
+              <span class="metric-label">最近一轮候选人</span>
+              <strong class="metric-value" id="metric-results">0</strong>
+              <span class="metric-copy" id="metric-results-copy">结果会直接落在时间线里。</span>
+            </article>
+            <article class="metric-card">
+              <span class="metric-label">下一步动作</span>
+              <strong class="metric-value" id="metric-actions">0</strong>
+              <span class="metric-copy" id="metric-actions-copy">按钮只回传 action_id。</span>
+            </article>
+          </div>
+        </div>
+
+        <div class="hero-side">
+          <article class="summary-card">
+            <p class="eyebrow">当前状态</p>
+            <strong id="summary-headline">正在连接发现页会话…</strong>
+            <p id="summary-copy">这页会优先恢复上一轮进度，避免你每次都从头开始说。</p>
+          </article>
+
+          <article class="summary-card compact">
+            <p class="eyebrow">本轮概览</p>
+            <strong id="session-strong">准备开始这一轮对话</strong>
+            <p id="session-meta">默认先用当前资料进入。你可以直接说城市、年龄、关系期待，或者明确不能接受的点。</p>
+          </article>
+        </div>
+      </section>
 
       <div class="shell">
-        <section class="phone">
-          <div class="app">
-            <header class="topbar">
-              <div class="row">
-                <div class="header-left">
-                  <div class="agent-avatar">红娘</div>
-                  <div class="title">
-                    <h1>先聊，再找合适的人</h1>
-                    <p>你只要说要求，红娘会继续追问或给结果。</p>
-                  </div>
+        <section class="stage-shell">
+          <article class="stage-card">
+            <header class="stage-topbar">
+              <div class="stage-title-row">
+                <div class="agent-avatar">红娘</div>
+                <div class="stage-copy">
+                  <h2>对话式发现页</h2>
+                  <p>对话、结果、下一步动作都在同一页推进，不把你切回筛选器。</p>
                 </div>
+              </div>
+              <div class="stage-actions">
+                <button class="icon-btn" id="new-session-btn" type="button" aria-label="新建会话">＋</button>
                 <button class="icon-btn" id="refresh-icon-btn" type="button" aria-label="恢复当前会话">↻</button>
               </div>
-
-              <section class="summary-card">
-                <p class="eyebrow">AI 红娘</p>
-                <strong id="summary-headline">正在连接发现页会话…</strong>
-                <p id="summary-copy">继续告诉她你的要求，她会决定下一步怎么走。</p>
-                <div class="status-row">
-                  <span class="status-pill phase" id="phase-pill">未连接</span>
-                  <span class="status-pill" id="connection-pill">等待 session</span>
-                </div>
-              </section>
             </header>
 
-            <section class="search-state">
-              <div class="search-box">
-                <strong id="session-strong">准备开始这一轮对话</strong>
-                <p id="session-meta">默认先用当前资料进入，有需要再去设置里切换。</p>
-              </div>
+            <section class="session-strip">
+              <strong class="session-strong" id="session-banner">本轮会话准备就绪</strong>
+              <div class="session-note" id="session-banner-copy">刷新时会优先恢复当前 session。没有历史时，页面会自动创建一轮新的 discovery session。</div>
             </section>
 
-            <section class="criteria-row" id="criteria-row" aria-label="已整理条件"></section>
+            <section class="criteria-panel" aria-label="已整理条件">
+              <span class="section-title">已整理条件</span>
+              <div class="criteria-row" id="criteria-row"></div>
+            </section>
+
             <section class="dialogue" id="dialogue"></section>
 
+            <section class="round-summary" id="round-summary" hidden>
+              <span class="section-title">最近一轮承接</span>
+              <div class="round-grid">
+                <div class="round-cell">
+                  <strong id="round-results">0</strong>
+                  <span>候选人数量</span>
+                </div>
+                <div class="round-cell">
+                  <strong id="round-criteria">0</strong>
+                  <span>当前条件数</span>
+                </div>
+                <div class="round-cell">
+                  <strong id="round-actions">0</strong>
+                  <span>可继续动作</span>
+                </div>
+              </div>
+              <div class="session-note" id="round-copy">这轮结果会随着后端返回的完整 view 一起更新。</div>
+            </section>
+
             <section class="followup" id="actions-panel" hidden>
-              <strong>这一轮可以继续点这些</strong>
-              <p id="actions-copy">点一下就行，页面会自动刷新。</p>
+              <strong>这一轮可以继续推进的方向</strong>
+              <p id="actions-copy">点一个方向，红娘会继续把这一轮往前推。</p>
               <div class="suggestions" id="suggestions"></div>
             </section>
 
-            <div class="composer">
+            <section class="composer-shell">
               <div class="quick-prompts" id="quick-prompts"></div>
+              <div class="composer-caption" id="composer-caption">继续补充你的条件，或者直接说不能接受什么。</div>
               <div class="composer-inner">
-                <button class="icon-btn" id="new-session-btn" type="button" aria-label="新建会话">＋</button>
                 <div class="input-shell">
                   <textarea
                     class="compose-field"
                     id="composer-input"
                     rows="2"
-                    placeholder="告诉红娘你的偏好，她会替你整理并搜索。"
+                    placeholder="例如：我在上海，不接受抽烟，想认真恋爱。"
                   ></textarea>
                 </div>
-                <button class="send-btn" id="send-btn" type="button">发送</button>
+                <button class="send-btn" id="send-btn" type="button">继续聊</button>
               </div>
-            </div>
-
-            <nav class="bottom-nav" aria-label="底部导航">
-              <div class="nav-item active"><strong>⌂</strong>发现</div>
-              <div class="nav-item"><strong>✉</strong>聊天</div>
-              <div class="nav-item"><strong>◎</strong>信任</div>
-              <div class="nav-item"><strong>◌</strong>我的</div>
-            </nav>
-          </div>
+            </section>
+          </article>
         </section>
 
-        <details class="debug-shell">
-          <summary class="debug-summary">
-            <span>联调设置</span>
-            <span class="debug-hint">不重要的信息都收在这里</span>
-          </summary>
-          <div class="debug-content">
-            <article class="config-panel">
-              <p class="helper-text">默认直接连当前 gateway。只有改用户、换资料或补 token 时，才需要展开这里。</p>
-              <div class="config-grid">
-                <label class="field">
-                  <span>API Base</span>
-                  <input id="api-base-input" type="text" autocomplete="off" />
-                </label>
-                <label class="field">
-                  <span>API Token</span>
-                  <input id="api-token-input" type="password" autocomplete="off" placeholder="gateway 开了鉴权时再填" />
-                </label>
-                <label class="field">
-                  <span>Requester ID</span>
-                  <input id="requester-id-input" type="number" min="1" step="1" />
-                </label>
-                <label class="field">
-                  <span>Profile ID</span>
-                  <input id="profile-id-input" type="number" min="1" step="1" />
-                </label>
-              </div>
-              <div class="config-actions">
-                <button class="secondary" id="save-config-btn" type="button">保存配置</button>
-                <button class="primary" id="restart-session-btn" type="button">重建 session</button>
-                <button class="secondary" id="restore-session-btn" type="button">恢复当前</button>
-                <button class="secondary" id="clear-session-btn" type="button">清空本地 session</button>
-              </div>
-              <div class="config-meta" id="config-meta"></div>
-            </article>
-          </div>
-        </details>
+        <aside class="rail">
+          <article class="rail-card">
+            <p class="eyebrow">本轮摘要</p>
+            <h3 id="rail-title">红娘还在接这轮需求</h3>
+            <p class="rail-copy" id="rail-copy">当条件还不够清楚时，发现页不会先给一堆人，而是先帮你把条件收清楚。</p>
+            <div class="rail-metrics" id="rail-metrics">
+              <div><span>当前 Session</span><strong id="rail-session-id">-</strong></div>
+              <div><span>当前 Trace</span><strong id="rail-trace-id">-</strong></div>
+              <div><span>详情页承接</span><strong>/demo/discovery/profile-detail</strong></div>
+            </div>
+          </article>
+
+          <article class="rail-card">
+            <p class="eyebrow">下一句可以这样说</p>
+            <h3 id="prompt-title">把最硬的要求先说给她</h3>
+            <p class="rail-copy">这组话术只是帮你更快开口。真正点完之后，前端仍然只会把自然语言发给 `/v1/discovery/sessions` 或对应 turn 接口。</p>
+          </article>
+
+          <article class="rail-card">
+            <p class="eyebrow">使用方式</p>
+            <h3>这页不让你自己拼筛选器。</h3>
+            <ul class="guide-list">
+              <li>先说你自己的城市、年龄和关系期待。</li>
+              <li>如果有硬性要求，直接说“不能接受什么”。</li>
+              <li>如果给了候选人，直接点动作继续缩，不要重新从头输入。</li>
+            </ul>
+          </article>
+
+          <details class="debug-shell">
+            <summary class="debug-summary">
+              <span>联调设置</span>
+              <span class="debug-hint">只在切用户、换资料或排错时展开</span>
+            </summary>
+            <div class="debug-content">
+              <article class="config-panel">
+                <p class="helper-text">正式版视觉已经落在这里，但联调入口仍然保留。默认直接连当前 gateway，只有改用户、换资料或补 token 时才需要展开。</p>
+                <div class="config-grid">
+                  <label class="field">
+                    <span>API Base</span>
+                    <input id="api-base-input" type="text" autocomplete="off" />
+                  </label>
+                  <label class="field">
+                    <span>API Token</span>
+                    <input id="api-token-input" type="password" autocomplete="off" placeholder="gateway 开了鉴权时再填" />
+                  </label>
+                  <label class="field">
+                    <span>Requester ID</span>
+                    <input id="requester-id-input" type="number" min="1" step="1" />
+                  </label>
+                  <label class="field">
+                    <span>Profile ID</span>
+                    <input id="profile-id-input" type="number" min="1" step="1" />
+                  </label>
+                </div>
+                <div class="config-actions">
+                  <button class="secondary" id="save-config-btn" type="button">保存配置</button>
+                  <button class="primary" id="restart-session-btn" type="button">重建 session</button>
+                  <button class="secondary" id="restore-session-btn" type="button">恢复当前</button>
+                  <button class="secondary" id="clear-session-btn" type="button">清空本地 session</button>
+                </div>
+                <div class="config-meta" id="config-meta"></div>
+              </article>
+            </div>
+          </details>
+        </aside>
       </div>
     </main>
 
     <script>
       const DEMO_CONFIG_KEY = "her.discovery.demo.config.v1";
       const DEMO_SESSION_KEY = "her.discovery.demo.session.v1";
-      const QUICK_PROMPTS = [
-        "我在上海，不接受抽烟，想认真恋爱。",
-        "只看上海本地，最好工作稳定一点。",
-        "年龄再集中一点，偏 27 到 31 岁。",
-        "真人认证优先，别太会包装。",
-      ];
+      const QUICK_PROMPT_LIBRARY = {
+        collecting_preferences: [
+          "我在上海，想认真恋爱，不接受抽烟。",
+          "先帮我按城市和年龄收一轮。",
+          "我更在意情绪稳定和工作节奏正常。",
+          "最好是长期在本地发展的。",
+        ],
+        searching: [
+          "先按这一轮条件直接缩给我看。",
+          "如果不够清楚，你先追问我最关键的一点。",
+          "先按稳定关系目标和城市一致来筛。",
+          "我可以接受你先给一轮再慢慢细化。",
+        ],
+        results_shown: [
+          "沿这类再多看几位。",
+          "把年龄范围再收紧一点。",
+          "我更看重城市和工作稳定。",
+          "这轮里如果有更自然一点的，再往前排。",
+        ],
+        no_result: [
+          "先把城市放宽一圈试试。",
+          "年龄范围可以再宽一点。",
+          "如果暂时没有，就先替我持续留意。",
+          "你告诉我该放宽哪一项最有效。",
+        ],
+      };
 
       const refs = {
-        summaryHeadline: document.getElementById("summary-headline"),
-        summaryCopy: document.getElementById("summary-copy"),
         phasePill: document.getElementById("phase-pill"),
         connectionPill: document.getElementById("connection-pill"),
+        summaryHeadline: document.getElementById("summary-headline"),
+        summaryCopy: document.getElementById("summary-copy"),
         sessionStrong: document.getElementById("session-strong"),
         sessionMeta: document.getElementById("session-meta"),
+        sessionBanner: document.getElementById("session-banner"),
+        sessionBannerCopy: document.getElementById("session-banner-copy"),
+        metricCriteria: document.getElementById("metric-criteria"),
+        metricCriteriaCopy: document.getElementById("metric-criteria-copy"),
+        metricResults: document.getElementById("metric-results"),
+        metricResultsCopy: document.getElementById("metric-results-copy"),
+        metricActions: document.getElementById("metric-actions"),
+        metricActionsCopy: document.getElementById("metric-actions-copy"),
         criteriaRow: document.getElementById("criteria-row"),
         dialogue: document.getElementById("dialogue"),
+        roundSummary: document.getElementById("round-summary"),
+        roundResults: document.getElementById("round-results"),
+        roundCriteria: document.getElementById("round-criteria"),
+        roundActions: document.getElementById("round-actions"),
+        roundCopy: document.getElementById("round-copy"),
         actionsPanel: document.getElementById("actions-panel"),
         actionsCopy: document.getElementById("actions-copy"),
         suggestions: document.getElementById("suggestions"),
         quickPrompts: document.getElementById("quick-prompts"),
+        composerCaption: document.getElementById("composer-caption"),
         composerInput: document.getElementById("composer-input"),
         sendBtn: document.getElementById("send-btn"),
         refreshIconBtn: document.getElementById("refresh-icon-btn"),
         newSessionBtn: document.getElementById("new-session-btn"),
+        railTitle: document.getElementById("rail-title"),
+        railCopy: document.getElementById("rail-copy"),
+        railSessionId: document.getElementById("rail-session-id"),
+        railTraceId: document.getElementById("rail-trace-id"),
+        promptTitle: document.getElementById("prompt-title"),
         apiBaseInput: document.getElementById("api-base-input"),
         apiTokenInput: document.getElementById("api-token-input"),
         requesterIdInput: document.getElementById("requester-id-input"),
@@ -1098,8 +1346,8 @@
         return {
           apiBase: String(query.get("api_base") || stored.apiBase || inferDefaultApiBase()).trim(),
           apiToken: String(query.get("api_token") || stored.apiToken || "").trim(),
-          requesterId: String(query.get("requester_id") || stored.requesterId || "70001").trim(),
-          profileId: String(query.get("profile_id") || stored.profileId || "10001").trim(),
+          requesterId: String(query.get("requester_id") || stored.requesterId || "1").trim(),
+          profileId: String(query.get("profile_id") || stored.profileId || "1").trim(),
         };
       }
 
@@ -1141,8 +1389,8 @@
         state.config = {
           apiBase: String(refs.apiBaseInput.value || inferDefaultApiBase()).trim(),
           apiToken: String(refs.apiTokenInput.value || "").trim(),
-          requesterId: String(refs.requesterIdInput.value || "70001").trim(),
-          profileId: String(refs.profileIdInput.value || "10001").trim(),
+          requesterId: String(refs.requesterIdInput.value || "1").trim(),
+          profileId: String(refs.profileIdInput.value || "1").trim(),
         };
         persistConfig();
       }
@@ -1238,11 +1486,188 @@
         history.replaceState(null, "", next);
       }
 
+      function currentPhase() {
+        return String((state.session || {}).phase || "collecting_preferences").trim() || "collecting_preferences";
+      }
+
+      function criteriaChips() {
+        return Array.isArray((state.view || {}).criteria_chips) ? state.view.criteria_chips : [];
+      }
+
+      function suggestedActions() {
+        return Array.isArray((state.view || {}).suggested_actions) ? state.view.suggested_actions : [];
+      }
+
+      function timelineItems() {
+        return Array.isArray((state.view || {}).timeline) ? state.view.timeline : [];
+      }
+
+      function latestResultGroup() {
+        const timeline = timelineItems();
+        for (let index = timeline.length - 1; index >= 0; index -= 1) {
+          if (timeline[index].item_type === "result_group") {
+            return timeline[index];
+          }
+        }
+        return null;
+      }
+
+      function latestResultCount() {
+        const group = latestResultGroup();
+        return Array.isArray(group?.cards) ? group.cards.length : 0;
+      }
+
+      function summaryModel() {
+        const phase = currentPhase();
+        const chips = criteriaChips().map((item) => String(item.label || "").trim()).filter(Boolean);
+        const actions = suggestedActions();
+        const resultCount = latestResultCount();
+        const sessionId = String((state.session || {}).session_id || "").trim();
+        const chipLead = chips.slice(0, 3).join("、");
+
+        if (!sessionId) {
+          return {
+            headline: "正在准备这一轮会话",
+            copy: "页面会优先尝试恢复上一轮。如果没有历史 session，就自动新建一轮 discovery 会话。",
+            strong: "还没开始收条件",
+            meta: "你可以直接说自己的城市、关系期待和最不能接受的点。",
+            banner: "本轮会话准备就绪",
+            bannerCopy: "只要红娘接上这轮，你后面的条件都会在同一个 session 里连续推进。",
+            railTitle: "红娘还没拿到这一轮上下文",
+            railCopy: "会话一旦建立，后续刷新都应该恢复同一个 discovery session，而不是重新起一轮空白页面。",
+            promptTitle: "先把最硬的要求说给她",
+            composerCaption: "优先说城市、关系期待和不能接受什么。",
+            criteriaCopy: "条件会随着对话自动收拢。",
+            resultsCopy: "结果会直接落在时间线里。",
+            actionsCopy: "按钮只回传 action_id。",
+            roundCopy: "后端返回完整 view 后，最近一轮承接会显示在这里。",
+          };
+        }
+
+        if (phase === "results_shown" && resultCount > 0) {
+          return {
+            headline: `这一轮先替你缩到 ${resultCount} 位`,
+            copy: chipLead
+              ? `红娘是按“${chipLead}”这组条件先缩出来的。你可以继续点动作，或者直接补充更细的偏好。`
+              : "这轮已经有候选人，你可以继续缩，或者直接告诉红娘还要补哪一类要求。",
+            strong: `最近一轮已经给出 ${resultCount} 位候选人`,
+            meta: "不要重新从头说条件，直接点动作或继续补一条新的硬条件就行。",
+            banner: "结果已经接回到同一条对话里",
+            bannerCopy: "正式版的重点不是把你切去列表页，而是让“为什么是她”和“下一步怎么缩”都留在这条时间线里。",
+            railTitle: "这一轮已经进入结果承接",
+            railCopy: "如果你对方向大体满意，就沿着 suggested actions 往下缩；如果方向不对，直接补硬条件比重开一轮更有效。",
+            promptTitle: "现在更适合说“怎么继续缩”",
+            composerCaption: "继续补充限制条件，或者明确告诉她这轮里你更在意哪一项。",
+            criteriaCopy: chipLead ? `当前主条件：${chipLead}` : "条件已经整理成 chips。",
+            resultsCopy: "结果不会脱离对话单独出现。",
+            actionsCopy: `${actions.length || 0} 个下一步动作可以直接承接这轮结果。`,
+            roundCopy: "这轮结果、条件和动作应该始终一起被用户看见。",
+          };
+        }
+
+        if (phase === "no_result") {
+          return {
+            headline: "这一轮暂时没命中",
+            copy: chipLead
+              ? `不是没有人，而是按“${chipLead}”这组条件这一轮没筛到合适的。现在更适合放宽一项，或者让红娘替你持续留意。`
+              : "这一轮暂时没命中合适结果。继续放宽一项限制，通常比完全重开更有效。",
+            strong: "现在更适合讨论该放宽哪一项",
+            meta: "如果你愿意持续留意，就顺着后端给的动作接下去，不要在前端自己造筛选语义。",
+            banner: "没命中也不是死路",
+            bannerCopy: "正式版需要把“放宽方向”和“持续留意”都留在当前会话里，而不是把用户扔到空状态页。",
+            railTitle: "本轮应该进入放宽或持续留意",
+            railCopy: "no_result 阶段最重要的是给用户一个明确的下一步，而不是让他怀疑是系统坏了还是资料库没人。",
+            promptTitle: "现在更适合讨论怎么放宽",
+            composerCaption: "可以直接说愿意放宽哪一项，或者让她先建议最值得放宽的条件。",
+            criteriaCopy: chipLead ? `当前限制：${chipLead}` : "这轮条件仍然会保留在会话里。",
+            resultsCopy: "这一轮没有命中，但历史条件还在。",
+            actionsCopy: `${actions.length || 0} 个动作可以把这轮继续推进下去。`,
+            roundCopy: "没结果时，页面也要继续承接，而不是变成空白。",
+          };
+        }
+
+        if (phase === "searching") {
+          return {
+            headline: "红娘正在按这一轮条件收口",
+            copy: chipLead
+              ? `她现在会优先按“${chipLead}”去缩。你也可以继续补充条件，不需要等前端先出现一个人工筛选器。`
+              : "她已经开始决定怎么缩这轮条件。你可以继续补充，但不需要自己操作复杂控件。",
+            strong: "当前会话已经进入筛选动作",
+            meta: "正式版里 searching 更像过程态，不需要把用户切去一个新页面。",
+            banner: "搜索是对话里的一个瞬时阶段",
+            bannerCopy: "用户不该被一个独立“加载页”打断，只需要知道红娘正在按这轮条件往前推进。",
+            railTitle: "当前是过程态，不是新页面",
+            railCopy: "前端只要让用户感知“这轮还在推进”，等后端返回完整 view 后直接替换即可。",
+            promptTitle: "如果还要补条件，现在继续说也可以",
+            composerCaption: "补充年龄、城市或关系期待时，不需要重新开一轮。",
+            criteriaCopy: chipLead ? `当前主条件：${chipLead}` : "还在收束条件。",
+            resultsCopy: "结果一返回就会落回这条时间线。",
+            actionsCopy: "如果后端给了动作，会在结果后面承接。",
+            roundCopy: "搜索阶段是一个过程，不是一个独立目标页。",
+          };
+        }
+
+        if (chips.length) {
+          return {
+            headline: `已经整理出 ${chips.length} 个关键条件`,
+            copy: chipLead
+              ? `当前最清楚的是“${chipLead}”。如果这几项已经够硬，你可以直接让红娘按这轮继续缩。`
+              : "红娘已经开始收这轮条件。继续补一条硬条件，通常比泛泛描述更有效。",
+            strong: "这一轮正在往可搜索的条件收口",
+            meta: "如果你知道最不能接受什么，现在直接说出来，后面的结果会更稳。",
+            banner: "对话已经开始沉淀条件",
+            bannerCopy: "发现页正式版要让用户明确看见“我刚刚说的话已经变成结构化条件了”。",
+            railTitle: "这一轮离开始筛已经不远",
+            railCopy: "chips 的作用不是给用户自己编辑语义，而是让他看见红娘已经理解了什么。",
+            promptTitle: "继续补最后一两条硬条件",
+            composerCaption: "说清楚不能接受什么，通常比补更多泛描述更有效。",
+            criteriaCopy: chipLead ? `当前主条件：${chipLead}` : "条件会继续整理成 chips。",
+            resultsCopy: "条件够清楚后会直接开始给候选人。",
+            actionsCopy: `${actions.length || 0} 个动作可以继续收条件。`,
+            roundCopy: "当结果还没出现时，这里会显示“当前会话在收什么”。",
+          };
+        }
+
+        return {
+          headline: "先把这一轮要求说清楚",
+          copy: "正式版发现页不应该让你先操作一套筛选器，而是先把自然语言说给红娘，让她决定该追问还是直接开始筛。",
+          strong: "现在最重要的是把第一句话说清楚",
+          meta: "先说城市、年龄、关系期待，再补一条不能接受什么，通常就够红娘进入下一步了。",
+          banner: "这一轮还在开场阶段",
+          bannerCopy: "当条件还没有形成时，页面重点应该是帮助用户开口，而不是展示空列表。",
+          railTitle: "先说人，再说限制，再说期待",
+          railCopy: "当前没有条件 chips 时，右侧提示和底部 prompt 都应该服务于“更快开口”，而不是讲系统原理。",
+          promptTitle: "先把你的第一句话说给她",
+          composerCaption: "先说自己的城市、年龄和关系期待，再补最硬的一条限制。",
+          criteriaCopy: "条件会随着对话自动收拢。",
+          resultsCopy: "条件够清楚后才会开始缩候选人。",
+          actionsCopy: "如果后端给了 starter actions，会直接承接在时间线后面。",
+          roundCopy: "这一轮一旦开始有结果，这里会切到结果承接。",
+        };
+      }
+
+      function matchLabel(score) {
+        const numeric = Number(score);
+        if (!Number.isFinite(numeric)) {
+          return "待继续判断";
+        }
+        if (numeric >= 90) {
+          return "优先承接";
+        }
+        if (numeric >= 80) {
+          return "较匹配";
+        }
+        if (numeric >= 70) {
+          return "可继续看";
+        }
+        return "先看整体";
+      }
+
       function renderCriteriaChips() {
-        const chips = Array.isArray((state.view || {}).criteria_chips) ? state.view.criteria_chips : [];
+        const chips = criteriaChips();
         refs.criteriaRow.innerHTML = "";
         if (!chips.length) {
-          refs.criteriaRow.innerHTML = '<span class="criteria-chip empty">这一轮还没有整理出可展示条件</span>';
+          refs.criteriaRow.innerHTML = '<span class="criteria-chip empty">红娘还在整理条件，你继续补充就行。</span>';
           return;
         }
         for (const chip of chips) {
@@ -1254,17 +1679,17 @@
       }
 
       function renderSuggestedActions() {
-        const actions = Array.isArray((state.view || {}).suggested_actions) ? state.view.suggested_actions : [];
+        const actions = suggestedActions();
         refs.suggestions.innerHTML = "";
         refs.actionsPanel.hidden = actions.length === 0;
         if (!actions.length) {
           return;
         }
-        refs.actionsCopy.textContent = "点击时前端只回传 action_id，后端会返回新的完整 view。";
+        refs.actionsCopy.textContent = "点一个方向，红娘会继续把这一轮往前推。";
         for (const action of actions) {
           const button = document.createElement("button");
           button.type = "button";
-          button.className = "suggestion-chip";
+          button.className = `suggestion-chip ${String(action.style || "secondary")}`;
           button.dataset.actionId = String(action.action_id || "");
           button.textContent = String(action.label || "继续");
           button.disabled = state.loading;
@@ -1276,37 +1701,37 @@
         const article = document.createElement("article");
         article.className = "result-card";
         const trustBadges = Array.isArray(candidate.trust_badges) ? candidate.trust_badges.slice(0, 2) : [];
-        const matchScore = candidate.match_score ?? "--";
         const cover = document.createElement("div");
         cover.className = "result-cover";
         if (candidate.cover_image_url) {
           cover.style.backgroundImage =
-            `linear-gradient(145deg, rgba(20, 38, 34, 0.68), rgba(92, 134, 123, 0.34), rgba(204, 157, 125, 0.5)), url("${String(candidate.cover_image_url).replaceAll('"', "&quot;")}")`;
+            `linear-gradient(145deg, rgba(20, 38, 34, 0.7), rgba(92, 134, 123, 0.34), rgba(204, 157, 125, 0.52)), url("${String(candidate.cover_image_url).replaceAll('"', "&quot;")}")`;
         }
         cover.innerHTML = `
           <div class="result-top">
-            <span class="meta-pill">${escapeHtml(trustBadges.join(" · ") || "待继续确认")}</span>
-            <div class="score">
-              <small>匹配感</small>
-              <strong>${escapeHtml(matchScore)}</strong>
-            </div>
+            <span class="meta-pill">${escapeHtml(matchLabel(candidate.match_score))}</span>
+            <span class="meta-pill subtle">${escapeHtml(trustBadges[0] || "待继续确认")}</span>
           </div>
           <div class="result-bottom">
-            <span class="meta-pill">profile_id ${escapeHtml(candidate.profile_id)}</span>
+            <span class="meta-pill subtle">profile_id ${escapeHtml(candidate.profile_id)}</span>
+            <div class="match-label">
+              <small>匹配参考</small>
+              <strong>${escapeHtml(candidate.match_score ?? "--")}</strong>
+            </div>
           </div>
         `;
+
         const body = document.createElement("div");
         body.className = "result-body";
-
         const tags = [];
         for (const badge of trustBadges) {
           tags.push(`<span class="tag good">${escapeHtml(badge)}</span>`);
         }
-        if (!tags.length) {
-          tags.push('<span class="tag soft">信任字段待继续确认</span>');
-        }
         if (candidate.subtitle) {
           tags.push(`<span class="tag soft">${escapeHtml(candidate.subtitle)}</span>`);
+        }
+        if (!tags.length) {
+          tags.push('<span class="tag soft">信任字段待继续确认</span>');
         }
 
         body.innerHTML = `
@@ -1318,12 +1743,12 @@
           </div>
           <div class="tag-row">${tags.join("")}</div>
           <div class="module">
-            <p class="module-title">红娘给出的当前理由</p>
-            <p>${escapeHtml(candidate.reason_summary || "这一轮先看整体资料。")}</p>
+            <span class="module-title">红娘为什么先把她放进这一轮</span>
+            <p>${escapeHtml(candidate.reason_summary || "这一轮先看整体资料，再决定要不要继续缩这类人。")}</p>
           </div>
           <div class="card-actions">
             <button class="btn secondary" type="button" data-open-profile="${escapeHtml(candidate.profile_id)}">看详情</button>
-            <button class="btn primary" type="button" data-seed-message="${escapeHtml(candidate.title || "")} 这类再多看一点">围绕这类继续聊</button>
+            <button class="btn primary" type="button" data-seed-message="${escapeHtml(candidate.title || "")} 这类再多看一点">沿这个方向再找</button>
           </div>
         `;
 
@@ -1333,10 +1758,10 @@
       }
 
       function renderTimeline() {
-        const timeline = Array.isArray((state.view || {}).timeline) ? state.view.timeline : [];
+        const timeline = timelineItems();
         refs.dialogue.innerHTML = "";
         if (!timeline.length) {
-          refs.dialogue.innerHTML = '<div class="empty-state">当前还没有 timeline。创建 session 后，这里会直接显示后端返回的首屏 view。</div>';
+          refs.dialogue.innerHTML = `<div class="empty-state">${escapeHtml(state.loading ? "红娘正在接入这一轮会话，拿到首屏 view 后会直接显示在这里。" : "这一轮还没有内容，页面拿到后端返回后会直接显示在这里。")}</div>`;
           return;
         }
         for (const item of timeline) {
@@ -1347,7 +1772,7 @@
             if (type === "assistant_message") {
               const avatar = document.createElement("div");
               avatar.className = "user-avatar";
-              avatar.textContent = "C";
+              avatar.textContent = "红娘";
               wrapper.appendChild(avatar);
             }
             const bubble = document.createElement("div");
@@ -1377,14 +1802,32 @@
           }
           const fallback = document.createElement("div");
           fallback.className = "inline-note";
-          fallback.innerHTML = `<strong>未识别的 timeline item</strong><p>${escapeHtml(JSON.stringify(item))}</p>`;
+          fallback.innerHTML = `<strong>这一轮有一段暂未适配的内容</strong><p>联调时可以继续推进主流程，不影响继续聊天和看候选人。</p>`;
           refs.dialogue.appendChild(fallback);
         }
       }
 
+      function renderRoundSummary(model) {
+        const resultCount = latestResultCount();
+        const actionCount = suggestedActions().length;
+        const chipCount = criteriaChips().length;
+        refs.roundSummary.hidden = !(resultCount || chipCount || actionCount);
+        if (refs.roundSummary.hidden) {
+          return;
+        }
+        refs.roundResults.textContent = String(resultCount);
+        refs.roundCriteria.textContent = String(chipCount);
+        refs.roundActions.textContent = String(actionCount);
+        refs.roundCopy.textContent = model.roundCopy;
+      }
+
+      function quickPromptsForCurrentPhase() {
+        return QUICK_PROMPT_LIBRARY[currentPhase()] || QUICK_PROMPT_LIBRARY.collecting_preferences;
+      }
+
       function renderQuickPrompts() {
         refs.quickPrompts.innerHTML = "";
-        for (const prompt of QUICK_PROMPTS) {
+        for (const prompt of quickPromptsForCurrentPhase()) {
           const button = document.createElement("button");
           button.type = "button";
           button.className = "quick-pill";
@@ -1396,23 +1839,29 @@
       }
 
       function renderMeta() {
+        const model = summaryModel();
         const sessionId = String((state.session || {}).session_id || "").trim();
-        const phase = String((state.session || {}).phase || "").trim();
-        refs.summaryHeadline.textContent = sessionId
-          ? "红娘已经接上了，继续补充你的要求就行。"
-          : "正在准备这一轮会话。";
-        refs.summaryCopy.textContent = sessionId
-          ? "她会自己决定是继续追问、帮你筛人，还是给你下一步动作。"
-          : "如果恢复不到历史会话，页面会自动新建一轮。";
-        refs.phasePill.textContent = phaseLabel(phase);
+        refs.summaryHeadline.textContent = model.headline;
+        refs.summaryCopy.textContent = model.copy;
+        refs.sessionStrong.textContent = model.strong;
+        refs.sessionMeta.textContent = model.meta;
+        refs.sessionBanner.textContent = model.banner;
+        refs.sessionBannerCopy.textContent = model.bannerCopy;
+        refs.phasePill.textContent = phaseLabel(currentPhase());
         refs.connectionPill.textContent = state.loading ? "请求中…" : sessionId ? "已连接" : "等待连接";
         refs.connectionPill.className = `status-pill${state.loading ? "" : ""}`;
-        refs.sessionStrong.textContent = sessionId
-          ? "红娘已经接到你的资料"
-          : "准备开始这一轮对话";
-        refs.sessionMeta.textContent = sessionId
-          ? "直接补充年龄、城市、关系期待或不能接受的点就行。"
-          : "如果要切用户或切资料，可以去下面的联调设置里改。";
+        refs.metricCriteria.textContent = String(criteriaChips().length);
+        refs.metricCriteriaCopy.textContent = model.criteriaCopy;
+        refs.metricResults.textContent = String(latestResultCount());
+        refs.metricResultsCopy.textContent = model.resultsCopy;
+        refs.metricActions.textContent = String(suggestedActions().length);
+        refs.metricActionsCopy.textContent = model.actionsCopy;
+        refs.railTitle.textContent = model.railTitle;
+        refs.railCopy.textContent = model.railCopy;
+        refs.promptTitle.textContent = model.promptTitle;
+        refs.composerCaption.textContent = model.composerCaption;
+        refs.railSessionId.textContent = sessionId || "-";
+        refs.railTraceId.textContent = state.traceId || "-";
         refs.configMeta.innerHTML = `
           <div><strong>当前 API Base：</strong> <code>${escapeHtml(state.config.apiBase)}</code></div>
           <div><strong>当前用户：</strong> <code>${escapeHtml(state.config.requesterId)}</code></div>
@@ -1420,6 +1869,7 @@
           <div><strong>当前 Session：</strong> <code>${escapeHtml(sessionId || "-")}</code></div>
           <div><strong>当前 Trace：</strong> <code>${escapeHtml(state.traceId || "-")}</code></div>
         `;
+        renderRoundSummary(model);
       }
 
       function applyViewPayload(payload) {
