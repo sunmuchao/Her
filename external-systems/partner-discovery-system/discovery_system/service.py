@@ -6,10 +6,8 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import datetime
 import os
-from pathlib import Path
 from typing import Any
 
-from her_repo_path_bootstrap import ensure_partner_system_roots_on_sys_path
 from her_runtime_context import get_trace_id
 from observability import audit_event, funnel_stage, metric_gauge
 from partner_search import load_self_profile, search_profiles
@@ -25,6 +23,18 @@ from .agent_runtime import (
     create_default_discovery_agent_runtime,
 )
 from .agent_session_store import create_default_discovery_agent_session_store
+from .service_integrations import (
+    decision_payload as _decision_payload_impl,
+    load_persona_memory_bindings as _load_persona_memory_bindings_impl,
+    load_recommendation_bindings as _load_recommendation_bindings_impl,
+    load_requester_profile as _load_requester_profile_impl,
+    open_recommendation_conn as _open_recommendation_conn_impl,
+    persona_memory_source as _persona_memory_source_impl,
+    persist_search_run as _persist_search_run_impl,
+    profile_source as _profile_source_impl,
+    search_partner_candidates as _search_partner_candidates_impl,
+    sync_requester_persona_memory as _sync_requester_persona_memory_impl,
+)
 from .storage import InMemoryDiscoveryStorage, MySQLDiscoveryStorage, StoredSession
 from .service_context import (
     DiscoveryServiceContextRuntime,
@@ -33,6 +43,7 @@ from .service_context import (
     build_profile_detail_notes as _build_profile_detail_notes,
     build_runtime_context as _build_runtime_context,
     build_visible_action_summaries as _build_visible_action_summaries,
+    search_error_summary as _search_error_summary_impl,
 )
 from .view_models import (
     assistant_message,
@@ -459,7 +470,10 @@ class DiscoveryService:
         *,
         now: datetime,
     ) -> int | None:
-        decision = runtime_result.decision
+        decision = self._coerce_search_failure_decision(
+            runtime_result.decision,
+            runtime_result.search_response,
+        )
         session.view["timeline"] = list(session.view.get("timeline") or []) + [
             assistant_message(
                 self.storage.next_item_id("msg-a"),
@@ -543,6 +557,29 @@ class DiscoveryService:
 
     def _build_page_summary(self, session: StoredSession) -> dict[str, Any]:
         return _build_page_summary(self._build_service_context_runtime(), session)
+
+    def _search_error_summary(self, search_response: dict[str, Any] | None) -> dict[str, str] | None:
+        return _search_error_summary_impl(search_response)
+
+    def _coerce_search_failure_decision(
+        self,
+        decision: DiscoveryDecision,
+        search_response: dict[str, Any] | None,
+    ) -> DiscoveryDecision:
+        error_summary = self._search_error_summary(search_response)
+        if error_summary is None:
+            return decision
+        error_code = str(error_summary.get("error_code") or "").strip()
+        if error_code == "search_source_not_configured":
+            message = "我这轮还没接上匹配资料库，先别把它当成没人。你可以稍后重试，或者继续补充条件，我再帮你筛。"
+        else:
+            message = "我这轮筛选没成功跑完，不代表没有合适人选。你可以稍后重试，或者继续补充条件，我再帮你筛。"
+        return DiscoveryDecision(
+            phase="collecting_preferences",
+            assistant_message=message,
+            criteria_labels=list(decision.criteria_labels),
+            suggested_actions=[],
+        )
 
     def _append_tool_call(
         self,
@@ -663,19 +700,11 @@ class DiscoveryService:
         return next_value
 
     def _load_requester_profile(self, session: StoredSession) -> dict[str, Any] | None:
-        source = self._profile_source()
-        if not source or session.profile_id <= 0:
-            return None
-        try:
-            profile = load_self_profile(
-                source=source,
-                self_id=session.profile_id,
-            )
-        except Exception:  # noqa: BLE001
-            return None
-        if not isinstance(profile, dict):
-            return None
-        return profile
+        return _load_requester_profile_impl(
+            session,
+            source=self._profile_source(),
+            load_profile=load_self_profile,
+        )
 
     def _search_partner_candidates(
         self,
@@ -684,80 +713,20 @@ class DiscoveryService:
         criteria: dict[str, Any],
         limit: int,
     ) -> dict[str, Any]:
-        source = self._profile_source()
-        if not source:
-            return {
-                "has_match": False,
-                "result_count": 0,
-                "results": [],
-                "fallback_results": [],
-                "diagnostics": {
-                    "error": "search_source_not_configured",
-                },
-            }
-        self_profile = self._load_requester_profile(session)
-        normalized_limit = max(1, min(int(limit or 5), 10))
-        try:
-            response = search_profiles(
-                source=source,
-                criteria=dict(criteria or {}),
-                self_profile=self_profile,
-                self_id=session.profile_id,
-                limit=normalized_limit,
-                photo_preview_count=3,
-                moderation_dsn=os.environ.get("PARTNER_CHAT_DB"),
-            )
-            response["request_meta"] = {
-                "source": source,
-                "criteria": dict(criteria or {}),
-                "self_profile": deepcopy(self_profile),
-                "self_id": session.profile_id,
-                "table_name": None,
-                "photos_table_name": None,
-                "limit_count": normalized_limit,
-            }
-            return response
-        except Exception as exc:  # noqa: BLE001
-            return {
-                "has_match": False,
-                "result_count": 0,
-                "results": [],
-                "fallback_results": [],
-                "diagnostics": {
-                    "error": str(exc)[:200],
-                },
-                "request_meta": {
-                    "source": source,
-                    "criteria": dict(criteria or {}),
-                    "self_profile": deepcopy(self_profile),
-                    "self_id": session.profile_id,
-                    "table_name": None,
-                    "photos_table_name": None,
-                    "limit_count": normalized_limit,
-                },
-            }
+        return _search_partner_candidates_impl(
+            session,
+            criteria=criteria,
+            limit=limit,
+            source=self._profile_source(),
+            load_profile=load_self_profile,
+            search=search_profiles,
+        )
 
     def _profile_source(self) -> str:
-        for name in (
-            "HER_DISCOVERY_PROFILE_SOURCE",
-            "PARTNER_SEARCH_MYSQL_SOURCE",
-            "PERSONA_MEMORY_MYSQL_SOURCE",
-        ):
-            value = (os.environ.get(name) or "").strip()
-            if value:
-                return value
-        return ""
+        return _profile_source_impl()
 
     def _persona_memory_source(self) -> str:
-        for name in (
-            "PERSONA_MEMORY_MYSQL_SOURCE",
-            "HER_DISCOVERY_PROFILE_SOURCE",
-            "PARTNER_SEARCH_MYSQL_SOURCE",
-        ):
-            value = (os.environ.get(name) or "").strip()
-            if value:
-                return value
-        return ""
+        return _persona_memory_source_impl()
 
     def _sync_requester_persona_memory(
         self,
@@ -766,53 +735,12 @@ class DiscoveryService:
         patch: dict[str, Any],
         now: datetime | None = None,
     ) -> dict[str, Any]:
-        normalized_patch = dict(patch or {})
-        if not normalized_patch:
-            return {
-                "synced": False,
-                "error_code": "empty_persona_patch",
-                "message": "没有可写入画像的字段。",
-            }
-        source = self._persona_memory_source()
-        if not source:
-            return {
-                "synced": False,
-                "error_code": "persona_memory_source_not_configured",
-                "message": "当前没有配置 persona-memory-sync 数据源。",
-            }
-        current = now or datetime.now()
-        try:
-            upsert_persona_memory = self._load_persona_memory_bindings()
-            upsert_result = upsert_persona_memory(
-                {
-                    "source": source,
-                    "user_key": str(session.requester_id),
-                    "source_type": "explicit",
-                    "patch": normalized_patch,
-                    "sync_profile": True,
-                    "conversation_ref": f"discovery/{session.session_id}",
-                    "basis": "discovery_agent",
-                },
-                include_normalized_patch=True,
-            )
-        except Exception as exc:  # noqa: BLE001
-            return {
-                "synced": False,
-                "error_code": "persona_memory_sync_failed",
-                "message": str(exc)[:200],
-            }
-        session.state["last_persona_sync_at"] = current.isoformat()
-        session.state["last_persona_sync_fields"] = sorted(
-            str(key).strip()
-            for key in normalized_patch.keys()
-            if str(key or "").strip()
+        return _sync_requester_persona_memory_impl(
+            session,
+            patch=patch,
+            now=now,
+            load_persona_memory=self._load_persona_memory_bindings(),
         )
-        return {
-            "synced": True,
-            "user_key": str(session.requester_id),
-            "patch_keys": list(session.state["last_persona_sync_fields"]),
-            "upsert": upsert_result,
-        }
 
     def _build_profile_detail_notes(
         self,
@@ -828,32 +756,13 @@ class DiscoveryService:
         search_response: dict[str, Any],
         now: datetime,
     ) -> int | None:
-        request_meta = dict(search_response.get("request_meta") or {})
-        source = str(request_meta.get("source") or "").strip()
-        if not source:
-            return None
-        search_run_id = self.storage.create_search_run(
-            session_id=session.session_id,
-            requester_id=session.requester_id,
-            profile_id=session.profile_id,
-            source=source,
-            criteria=dict(request_meta.get("criteria") or {}),
-            self_profile=request_meta.get("self_profile"),
-            limit_count=int(request_meta.get("limit_count") or 5),
-            response=search_response,
-            created_at=now,
+        return _persist_search_run_impl(
+            self.storage,
+            self._increment_metric,
+            session,
+            search_response=search_response,
+            now=now,
         )
-        session.state["last_search_run_id"] = search_run_id
-        session.state["last_search_result_count"] = int(search_response.get("result_count") or 0)
-        session.state["last_search_has_match"] = bool(search_response.get("has_match"))
-        self._increment_metric("search_runs.created")
-        metric_gauge(
-            "discovery.search_runs.result_count",
-            int(search_response.get("result_count") or 0),
-            session_id=session.session_id,
-            search_run_id=search_run_id,
-        )
-        return search_run_id
 
     def _create_saved_search_subscription_from_last_search(
         self,
@@ -888,6 +797,14 @@ class DiscoveryService:
                 "error_code": "search_run_not_found",
                 "message": "上一轮搜索记录不存在，暂时不能创建持续留意。",
             }
+        error_summary = self._search_error_summary(dict(search_run.response or {}))
+        if error_summary is not None:
+            return {
+                "created_subscription": False,
+                "error_code": "search_run_failed",
+                "message": "上一轮搜索没有成功跑完，当前不能创建持续留意。",
+                "search_error_code": str(error_summary.get("error_code") or "") or None,
+            }
         if search_run.has_match or int(search_run.result_count or 0) > 0:
             return {
                 "created_subscription": False,
@@ -896,11 +813,12 @@ class DiscoveryService:
             }
 
         request_meta = dict((search_run.response or {}).get("request_meta") or {})
+        effective_self_id = request_meta["self_id"] if "self_id" in request_meta else session.profile_id
         search_request = {
             "source": request_meta.get("source") or search_run.source,
             "criteria": dict(request_meta.get("criteria") or search_run.criteria or {}),
             "self_profile": deepcopy(request_meta.get("self_profile") or search_run.self_profile),
-            "self_id": request_meta.get("self_id") or session.profile_id,
+            "self_id": effective_self_id,
             "table_name": request_meta.get("table_name"),
             "photos_table_name": request_meta.get("photos_table_name"),
             "limit": int(request_meta.get("limit_count") or search_run.limit_count or 5),
@@ -962,56 +880,18 @@ class DiscoveryService:
         return f"持续留意 {session.requester_id}"
 
     def _open_recommendation_conn(self):
-        connect_recommendation_db, _, initialize_recommendation_database = self._load_recommendation_bindings()
-        dsn = str(os.environ.get("PARTNER_RECOMMENDATION_DB") or "mysql://root@127.0.0.1:3307/her_recommendation").strip()
-        conn = connect_recommendation_db(dsn)
-        initialize_recommendation_database(
-            conn,
-            mode=(os.environ.get("HER_SCHEMA_INIT_MODE") or "").strip() or None,
+        return _open_recommendation_conn_impl(
+            load_bindings=self._load_recommendation_bindings,
         )
-        return conn
 
     def _load_recommendation_bindings(self):
-        ensure_partner_system_roots_on_sys_path(Path(__file__).resolve().parents[3])
-        from recommendation_system import (  # type: ignore[import-untyped]
-            connect_db as connect_recommendation_db,
-            handle_opt_in_decision,
-            initialize_database as initialize_recommendation_database,
-        )
-
-        return (
-            connect_recommendation_db,
-            handle_opt_in_decision,
-            initialize_recommendation_database,
-        )
+        return _load_recommendation_bindings_impl()
 
     def _load_persona_memory_bindings(self):
-        from persona_memory_sync import upsert_persona_memory
-
-        return upsert_persona_memory
+        return _load_persona_memory_bindings_impl()
 
     def _decision_payload(self, decision: DiscoveryDecision) -> dict[str, Any]:
-        return {
-            "phase": decision.phase,
-            "assistant_message": decision.assistant_message,
-            "criteria_labels": list(decision.criteria_labels),
-            "suggested_actions": [
-                {
-                    "label": action.label,
-                    "style": action.style,
-                    "semantic_payload": deepcopy(action.semantic_payload),
-                }
-                for action in list(decision.suggested_actions)
-            ],
-            "result_group_title": decision.result_group_title,
-            "selected_candidates": [
-                {
-                    "profile_id": candidate.profile_id,
-                    "reason_summary": candidate.reason_summary,
-                }
-                for candidate in list(decision.selected_candidates)
-            ],
-        }
+        return _decision_payload_impl(decision)
 
     def _require_session(self, session_id: str) -> StoredSession:
         session = self.storage.get_session(session_id)

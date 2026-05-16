@@ -213,6 +213,15 @@ def _compact_timeline(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return compacted
 
 
+def _search_response_has_error(search_response: dict[str, Any] | None) -> bool:
+    if not isinstance(search_response, dict):
+        return False
+    if str(search_response.get("error_code") or "").strip():
+        return True
+    diagnostics = dict(search_response.get("diagnostics") or {})
+    return bool(str(diagnostics.get("error") or "").strip())
+
+
 def _build_runtime_prompt(
     *,
     run_input: DiscoveryRunInput,
@@ -476,6 +485,7 @@ official_context 里常见信息：
   - 参数 `criteria_json` 必须是 JSON 字符串，对应 partner-search 的 criteria 对象。
   - 常见字段可以用：gender, city, cities, age_min, age_max, relationship_goal, relationship_goals, must_have, prefer, smoking, drinking, verified_level_min, photo_count_min, active_within_days。
   - 例子：{"gender":"女","cities":["无锡"],"relationship_goals":["认真恋爱"],"must_have":["情绪稳定"],"prefer":["工作稳定"]}.
+  - 如果工具返回了 `error_code` 或 `diagnostics.error`，说明这轮搜索失败了，不是没有候选人。
 - `create_saved_search_subscription_from_last_search`：把上一轮 0 结果搜索保存成“持续留意”订阅。
   - 只有在用户已经明确同意“继续留意”时才能调用。
   - 不要在还有匹配结果时调用。
@@ -498,6 +508,7 @@ official_context 里常见信息：
 - 如果你刚拿到了新的明确画像，通常应先调用 `sync_requester_persona_memory`，再决定是否搜索。
 - 只有在你真的调用了搜索工具并且决定展示结果时，才填写 selected_candidates。
 - selected_candidates 里的 profile_id 必须来自最新一次搜索工具返回的 results。
+- 如果搜索工具返回 `error_code` 或 `diagnostics.error`，不要说“本地没有符合条件的人”。要自然说明这轮搜索失败了，不代表没人，并引导用户重试或继续补充条件。
 - 如果没有合适结果，phase 用 no_result，message 里自然说明，并给 1 到 2 个放宽方向。
 - 如果搜索 0 结果且你判断适合引导持续留意，可以给一个 action，semantic_payload 里放 `{"kind":"saved_search_opt_in"}`。
 - 如果本轮是 action_click，且 clicked_action.hint.kind 是 `saved_search_opt_in`，说明用户刚刚同意了持续留意；这时你应该优先调用 `create_saved_search_subscription_from_last_search`，再告诉用户你已经记下。
@@ -535,7 +546,13 @@ official_context 里常见信息：
         search_response = tool_state.get("last_search_response")
         if search_response is not None and decision.phase == "searching":
             decision = DiscoveryDecision(
-                phase="results_shown" if search_response.get("has_match") else "no_result",
+                phase=(
+                    "collecting_preferences"
+                    if _search_response_has_error(search_response)
+                    else "results_shown"
+                    if search_response.get("has_match")
+                    else "no_result"
+                ),
                 assistant_message=decision.assistant_message,
                 criteria_labels=decision.criteria_labels,
                 suggested_actions=decision.suggested_actions,

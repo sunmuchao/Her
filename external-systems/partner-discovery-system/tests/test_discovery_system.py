@@ -317,6 +317,7 @@ class DiscoveryServiceTests(unittest.TestCase):
         self.assertEqual(result.decision.assistant_message, "先说说你的基本要求。")
         instructions = str(captured.get("instructions") or "")
         self.assertIn("不要输出形如 `{\"tool_calls\":[...]}` 的文本", instructions)
+        self.assertIn("不要说“本地没有符合条件的人”", instructions)
 
     def test_discovery_decision_schema_is_strict_compatible_and_enumerated(self) -> None:
         schema = AgentOutputSchema(DiscoveryDecisionModel, strict_json_schema=True).json_schema()
@@ -800,6 +801,94 @@ class DiscoveryServiceTests(unittest.TestCase):
         self.assertEqual(len(search_tool_calls), 1)
         self.assertEqual(search_tool_calls[0].search_run_id, 1)
         self.assertEqual(search_tool_calls[0].result["result_count"], 1)
+
+    def test_service_search_omits_missing_requester_self_id(self) -> None:
+        service = DiscoveryService(
+            storage=InMemoryDiscoveryStorage(),
+            runtime=_SearchToolRuntime(),
+        )
+        created = service.create_session(requester_id=70001, profile_id=10001)
+        session_id = created["session"]["session_id"]
+
+        fake_search_response = {
+            "has_match": True,
+            "result_count": 1,
+            "results": [
+                {
+                    "id": 1002,
+                    "name": "周晴",
+                    "score": 88,
+                    "photo_preview": [],
+                    "verification_items": [],
+                    "matched_on": ["城市一致", "关系目标一致"],
+                    "trust_summary": {"headline": "真人认证"},
+                    "profile": {
+                        "age": 30,
+                        "city": "无锡",
+                        "job": "产品经理",
+                        "education": "本科",
+                    },
+                }
+            ],
+        }
+
+        with mock.patch.dict(os.environ, {"HER_DISCOVERY_PROFILE_SOURCE": "mysql://search-demo"}, clear=False), mock.patch(
+            "discovery_system.service.load_self_profile",
+            return_value=None,
+        ), mock.patch(
+            "discovery_system.service.search_profiles",
+            return_value=dict(fake_search_response),
+        ) as mocked_search:
+            result = service.process_turn(
+                session_id=session_id,
+                user_message_text="我想找无锡、认真恋爱的女生。",
+            )
+
+        self.assertIsNone(mocked_search.call_args.kwargs["self_id"])
+        self.assertIsNone(mocked_search.call_args.kwargs["self_profile"])
+        tool_calls = service.storage.list_tool_calls(session_id)
+        search_tool_call = next(item for item in tool_calls if item.tool_name == "search_partner_candidates")
+        self.assertIsNone(search_tool_call.result["request_meta"]["self_id"])
+        self.assertEqual(search_tool_call.result["request_meta"]["requested_self_id"], 10001)
+        self.assertTrue(search_tool_call.result["request_meta"]["self_profile_lookup_failed"])
+        self.assertEqual(result["session"]["phase"], "results_shown")
+        self.assertEqual(result["view"]["timeline"][-1]["item_type"], "result_group")
+
+    def test_service_coerces_failed_search_into_non_no_result_message(self) -> None:
+        service = DiscoveryService(
+            storage=InMemoryDiscoveryStorage(),
+            runtime=_SearchToolRuntime(),
+        )
+        created = service.create_session(requester_id=70001, profile_id=10001)
+        session_id = created["session"]["session_id"]
+
+        with mock.patch.dict(os.environ, {"HER_DISCOVERY_PROFILE_SOURCE": "mysql://search-demo"}, clear=False), mock.patch(
+            "discovery_system.service.load_self_profile",
+            return_value={"self_city": "无锡"},
+        ), mock.patch(
+            "discovery_system.service.search_profiles",
+            side_effect=ValueError("Could not find self profile id 10001 in the selected source."),
+        ):
+            result = service.process_turn(
+                session_id=session_id,
+                user_message_text="我想找无锡、认真恋爱的女生。",
+            )
+
+        self.assertEqual(result["session"]["phase"], "collecting_preferences")
+        self.assertIn("不代表没有合适人选", result["view"]["timeline"][-1]["body"])
+        self.assertEqual(result["view"]["suggested_actions"], [])
+        self.assertNotEqual(result["view"]["timeline"][-1]["item_type"], "result_group")
+        tool_calls = service.storage.list_tool_calls(session_id)
+        search_tool_call = next(item for item in tool_calls if item.tool_name == "search_partner_candidates")
+        self.assertEqual(search_tool_call.status, "failed")
+        self.assertEqual(search_tool_call.result["error_code"], "partner_search_failed")
+        stored_session = service.storage.get_session(session_id)
+        assert stored_session is not None
+        last_search_summary = service._build_last_search_summary(stored_session)
+        assert last_search_summary is not None
+        self.assertEqual(last_search_summary["error_code"], "partner_search_failed")
+        blocked = service._create_saved_search_subscription_from_last_search(stored_session)
+        self.assertEqual(blocked["error_code"], "search_run_failed")
 
     def test_service_observability_snapshot_tracks_counters(self) -> None:
         service = DiscoveryService(
