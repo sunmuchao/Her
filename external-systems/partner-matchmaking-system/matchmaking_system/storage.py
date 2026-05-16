@@ -22,19 +22,14 @@ from her_external_systems import (  # noqa: E402
     json_dumps,
     json_loads,
     row_to_dict,
+    schema_table_names,
 )
-
-
-def _matchmaking_tables() -> list[str]:
-    import outer_system_mysql_schema as _schema  # noqa: PLC0415
-
-    return list(_schema.matchmaking_tables())
 
 
 connect_db, initialize_database, reset_all_tables = build_external_storage_helpers(
     subsystem_name="Matchmaking",
     target="matchmaking",
-    table_names=_matchmaking_tables,
+    table_names=schema_table_names("matchmaking_tables"),
 )
 
 

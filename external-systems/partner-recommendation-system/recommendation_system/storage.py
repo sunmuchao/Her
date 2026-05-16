@@ -26,19 +26,14 @@ from her_external_systems import (  # noqa: E402
     json_dumps,
     json_loads,
     row_to_dict,
+    schema_table_names,
 )
-
-
-def _recommendation_tables() -> list[str]:
-    import outer_system_mysql_schema as _schema  # noqa: PLC0415
-
-    return list(_schema.recommendation_tables())
 
 
 connect_db, initialize_database, reset_all_tables = build_external_storage_helpers(
     subsystem_name="Recommendation",
     target="recommendation",
-    table_names=_recommendation_tables,
+    table_names=schema_table_names("recommendation_tables"),
 )
 
 
