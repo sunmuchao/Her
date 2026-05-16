@@ -15,6 +15,22 @@ class DiscoveryServiceContextRuntime:
     clone_view: Callable[[dict[str, Any]], dict[str, Any]]
 
 
+def search_error_summary(search_response: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(search_response, dict):
+        return None
+    error_code = str(search_response.get("error_code") or "").strip()
+    diagnostics = dict(search_response.get("diagnostics") or {})
+    error_message = str(diagnostics.get("error") or "").strip()
+    if not error_code and not error_message:
+        return None
+    summary: dict[str, Any] = {}
+    if error_code:
+        summary["error_code"] = error_code
+    if error_message:
+        summary["error"] = error_message
+    return summary
+
+
 def build_visible_action_summaries(
     runtime: DiscoveryServiceContextRuntime,
     session: StoredSession,
@@ -41,21 +57,45 @@ def build_last_search_summary(
 ) -> dict[str, Any] | None:
     search_run_id = int(session.state.get("last_search_run_id") or 0)
     if search_run_id <= 0:
-        return None
+        error_code = str(session.state.get("last_search_error_code") or "").strip()
+        error_message = str(session.state.get("last_search_error_message") or "").strip()
+        if not error_code and not error_message:
+            return None
+        summary = {
+            "search_run_id": None,
+            "result_count": int(session.state.get("last_search_result_count") or 0),
+            "has_match": bool(session.state.get("last_search_has_match")),
+        }
+        if error_code:
+            summary["error_code"] = error_code
+        if error_message:
+            summary["error"] = error_message
+        return summary
     search_run = runtime.storage.get_search_run(search_run_id)
     if search_run is None:
-        return {
+        summary = {
             "search_run_id": search_run_id,
             "result_count": int(session.state.get("last_search_result_count") or 0),
             "has_match": bool(session.state.get("last_search_has_match")),
         }
-    return {
+        error_code = str(session.state.get("last_search_error_code") or "").strip()
+        error_message = str(session.state.get("last_search_error_message") or "").strip()
+        if error_code:
+            summary["error_code"] = error_code
+        if error_message:
+            summary["error"] = error_message
+        return summary
+    summary = {
         "search_run_id": search_run.search_run_id,
         "result_count": int(search_run.result_count or 0),
         "has_match": bool(search_run.has_match),
         "criteria": deepcopy(search_run.criteria),
         "source": search_run.source,
     }
+    error_summary = search_error_summary(dict(search_run.response or {}))
+    if error_summary:
+        summary.update(error_summary)
+    return summary
 
 
 def build_page_summary(
@@ -133,4 +173,5 @@ __all__ = [
     "build_profile_detail_notes",
     "build_runtime_context",
     "build_visible_action_summaries",
+    "search_error_summary",
 ]

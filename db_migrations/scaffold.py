@@ -56,17 +56,12 @@ from db_migrations.helpers import {scope_fn}
 
 def apply(mysql_conn, context: MigrationContext) -> None:
     # Implement the DDL or data backfill here.
-    # Example:
-    # with mysql_conn.cursor() as cursor:
-    #     cursor.execute("ALTER TABLE ...")
     raise NotImplementedError("Implement migration apply steps.")
 
 
 def validate(mysql_conn, context: MigrationContext) -> dict[str, list[str]]:
     issues = empty_issues()
     # Add post-migration checks here.
-    # Example:
-    # issues["missing_columns"].append("outbox_events.retry_count")
     return issues
 
 
