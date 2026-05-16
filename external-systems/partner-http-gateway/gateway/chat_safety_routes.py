@@ -35,6 +35,7 @@ from .chat_routes import chat_require_requester
 from .http_helpers import (
     _json_safe,
     _normalize_boolish,
+    _parse_int,
     _parse_json_body,
     _parse_optional_now,
     _query_dict,
@@ -75,15 +76,6 @@ class ChatSafetyGateway(Protocol):
     ) -> str: ...
 
     def _with_chat(self, fn: Any, *args: Any, **kwargs: Any) -> Any: ...
-
-
-def _parse_limit(raw_value: Any, default: int = 100) -> int:
-    try:
-        return int(raw_value)
-    except (TypeError, ValueError):
-        return default
-
-
 def rest_user_trust_hub(
     gateway: ChatSafetyGateway,
     environ: dict[str, Any],
@@ -94,7 +86,7 @@ def rest_user_trust_hub(
         build_user_trust_hub,
         user_id=user_id,
         profile_id=int(q["profile_id"]) if q.get("profile_id") not in (None, "") else None,
-        limit=_parse_limit(q.get("limit", 20), 20),
+        limit=_parse_int(q.get("limit", 20), 20),
     )
     return 200, {"trust_hub": _json_safe(hub)}
 
@@ -170,7 +162,7 @@ def rest_chat_list_reports(
         thread_id=q.get("thread_id") or None,
         risk_case_id=q.get("risk_case_id") or None,
         reported_user_id=q.get("reported_user_id") or None,
-        limit=_parse_limit(q.get("limit") or "100"),
+        limit=_parse_int(q.get("limit") or "100", 100),
     )
     return 200, {"reports": _json_safe(rows)}
 
@@ -189,7 +181,7 @@ def rest_chat_list_meeting_feedback(
         thread_id=q.get("thread_id") or None,
         counterpart_user_id=q.get("counterpart_user_id") or None,
         reviewer_id=reviewer_id,
-        limit=_parse_limit(q.get("limit") or "100"),
+        limit=_parse_int(q.get("limit") or "100", 100),
     )
     return 200, {"meeting_feedback": _json_safe(rows)}
 
@@ -209,7 +201,7 @@ def rest_chat_list_risk_cases(
         statuses=_statuses_from_query(q),
         subject_user_id=q.get("subject_user_id") or None,
         thread_id=q.get("thread_id") or None,
-        limit=_parse_limit(q.get("limit") or "100"),
+        limit=_parse_int(q.get("limit") or "100", 100),
     )
     return 200, {"risk_cases": _json_safe(rows)}
 
@@ -229,7 +221,7 @@ def rest_chat_list_risk_signals(
         thread_id=q.get("thread_id") or None,
         subject_user_id=q.get("subject_user_id") or None,
         signal_code=q.get("signal_code") or None,
-        limit=_parse_limit(q.get("limit") or "100"),
+        limit=_parse_int(q.get("limit") or "100", 100),
     )
     return 200, {"risk_signals": _json_safe(rows)}
 
@@ -315,7 +307,7 @@ def rest_chat_list_fraud_networks(
         review_statuses=_statuses_from_query(q),
         subject_user_id=q.get("subject_user_id") or None,
         minimum_score=minimum_score,
-        limit=_parse_limit(q.get("limit") or "100"),
+        limit=_parse_int(q.get("limit") or "100", 100),
     )
     return 200, {"fraud_networks": _json_safe(rows)}
 
@@ -459,7 +451,7 @@ def rest_chat_list_risk_appeals(
         statuses=_statuses_from_query(q),
         risk_case_id=q.get("risk_case_id") or None,
         subject_user_id=q.get("subject_user_id") or None,
-        limit=_parse_limit(q.get("limit", 100)),
+        limit=_parse_int(q.get("limit", 100), 100),
     )
     return 200, {"appeals": _json_safe(rows)}
 
@@ -521,7 +513,7 @@ def rest_chat_risk_dashboard(
     dashboard = gateway._with_chat(
         build_risk_weekly_dashboard,
         now=now,
-        days=_parse_limit(q.get("days", 7), 7),
+        days=_parse_int(q.get("days", 7), 7),
     )
     return 200, {"dashboard": _json_safe(dashboard)}
 

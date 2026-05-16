@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import io
 import json
 import os
 import pathlib
@@ -14,27 +13,7 @@ if str(GATEWAY_ROOT) not in sys.path:
     sys.path.insert(0, str(GATEWAY_ROOT))
 
 from gateway.app import PartnerGateway  # noqa: E402
-
-
-def _wsgi_env(
-    method: str,
-    path: str,
-    body: bytes | None = None,
-    query: str = "",
-    extra: dict | None = None,
-) -> dict:
-    body = body or b""
-    env = {
-        "REQUEST_METHOD": method,
-        "PATH_INFO": path,
-        "QUERY_STRING": query,
-        "CONTENT_LENGTH": str(len(body)),
-        "wsgi.input": io.BytesIO(body),
-        "REMOTE_ADDR": "127.0.0.1",
-    }
-    if extra:
-        env.update(extra)
-    return env
+from gateway_tests.helpers import build_wsgi_env as _wsgi_env, run_wsgi_json  # noqa: E402
 
 
 def _auth_headers(token: str) -> dict[str, str]:
@@ -66,17 +45,8 @@ class GatewayWsgiTests(unittest.TestCase):
         self.start_response = start_response
 
     def _run_with_gateway(self, gateway: PartnerGateway, env: dict) -> tuple[str, dict]:
-        status = ""
-        headers: list[tuple[str, str]] = []
-
-        def start_response(current_status: str, current_headers: list[tuple[str, str]]) -> None:
-            nonlocal status, headers
-            status = current_status
-            headers = current_headers
-
-        out = b"".join(gateway(env, start_response))
+        status, payload, headers = run_wsgi_json(gateway, env)
         self.headers = headers
-        payload = json.loads(out.decode("utf-8")) if out else {}
         return status, payload
 
     def test_health(self) -> None:
@@ -289,6 +259,8 @@ class GatewayWsgiTests(unittest.TestCase):
         self.assertIn("对话式发现页", body)
         self.assertIn("/v1/discovery/sessions", body)
         self.assertIn("/demo/discovery/profile-detail", body)
+        self.assertIn('stored.requesterId || "1"', body)
+        self.assertIn('stored.profileId || "1"', body)
 
     def test_discovery_demo_route_skips_api_key_guard(self) -> None:
         with mock.patch.dict(os.environ, {"PARTNER_GATEWAY_API_KEY": "demo-secret"}, clear=False):

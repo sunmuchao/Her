@@ -35,15 +35,12 @@ from partner_search import search_profiles as partner_search_profiles  # noqa: E
 
 from recommendation_system import (  # type: ignore[import-untyped]
     connect_db as recommendation_connect_db,
-    get_subscription,
 )
 from recommendation_system.storage import (  # type: ignore[import-untyped]
     DEFAULT_RECOMMENDATION_MYSQL_DSN,
 )
 from matchmaking_system import (  # type: ignore[import-untyped]
     connect_db as matchmaking_connect_db,
-    get_match_case,
-    get_pool_member,
 )
 from matchmaking_system.storage import (  # type: ignore[import-untyped]
     DEFAULT_MATCHMAKING_MYSQL_DSN,
@@ -56,6 +53,7 @@ from discovery_system import (  # type: ignore[import-untyped]
     create_default_discovery_service,
 )
 
+from .access_control import GatewayAccessMixin
 from .async_jobs import AsyncJobGatewayMixin
 from .chat_routes import (
     chat_require_requester as _chat_require_requester,
@@ -102,11 +100,9 @@ from .chat_safety_routes import (
 )
 from .discovery_routes import dispatch_discovery_rest
 from .identity import (
-    ActorPrincipal,
     GatewayAuthError,
     GatewayPermissionError,
     IdentityResolver,
-    get_current_actor,
     set_current_actor,
 )
 from .matchmaking_routes import (
@@ -176,7 +172,6 @@ from .recommendation_routes import (
 )
 from .role_sets import (
     INTERNAL_WRITE_ROLES,
-    STAFF_OVERRIDE_ROLES,
 )
 from .verification_routes import (
     dispatch_verification_rest,
@@ -197,7 +192,7 @@ HTML_HEADERS = [("Content-Type", "text/html; charset=utf-8")]
 DEMO_HTML_HEADERS = HTML_HEADERS + [("Cache-Control", "no-store")]
 
 
-class PartnerGateway(AsyncJobGatewayMixin):
+class PartnerGateway(AsyncJobGatewayMixin, GatewayAccessMixin):
     def __init__(
         self,
         *,
@@ -225,44 +220,56 @@ class PartnerGateway(AsyncJobGatewayMixin):
         self._identity_resolver = IdentityResolver()
         self._rate_limiter = rate_limiter_from_environ()
 
-    def _with_rec(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
-        if self._rec_pool is not None:
-            conn = self._rec_pool.acquire()
+    def _with_db(
+        self,
+        pool: GatewayConnectionPool | None,
+        connect_db: Callable[[str], Any],
+        dsn: str,
+        fn: Callable[..., Any],
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
+        if pool is not None:
+            conn = pool.acquire()
             try:
                 return fn(conn, *args, **kwargs)
             finally:
-                self._rec_pool.release(conn)
-        conn = recommendation_connect_db(self._recommendation_dsn)
+                pool.release(conn)
+        conn = connect_db(dsn)
         try:
             return fn(conn, *args, **kwargs)
         finally:
             conn.close()
+
+    def _with_rec(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+        return self._with_db(
+            self._rec_pool,
+            recommendation_connect_db,
+            self._recommendation_dsn,
+            fn,
+            *args,
+            **kwargs,
+        )
 
     def _with_mm(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
-        if self._mm_pool is not None:
-            conn = self._mm_pool.acquire()
-            try:
-                return fn(conn, *args, **kwargs)
-            finally:
-                self._mm_pool.release(conn)
-        conn = matchmaking_connect_db(self._matchmaking_dsn)
-        try:
-            return fn(conn, *args, **kwargs)
-        finally:
-            conn.close()
+        return self._with_db(
+            self._mm_pool,
+            matchmaking_connect_db,
+            self._matchmaking_dsn,
+            fn,
+            *args,
+            **kwargs,
+        )
 
     def _with_chat(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
-        if self._chat_pool is not None:
-            conn = self._chat_pool.acquire()
-            try:
-                return fn(conn, *args, **kwargs)
-            finally:
-                self._chat_pool.release(conn)
-        conn = chat_connect_db(self._chat_dsn)
-        try:
-            return fn(conn, *args, **kwargs)
-        finally:
-            conn.close()
+        return self._with_db(
+            self._chat_pool,
+            chat_connect_db,
+            self._chat_dsn,
+            fn,
+            *args,
+            **kwargs,
+        )
 
     # --- REST ---
 
@@ -279,303 +286,6 @@ class PartnerGateway(AsyncJobGatewayMixin):
             "static_token_count": self._identity_resolver.static_token_count,
             "rate_limit_per_minute": int(os.environ.get("PARTNER_GATEWAY_RATE_LIMIT_PER_MINUTE", "600") or "600"),
         }
-
-    def _current_actor(self, environ: dict[str, Any]) -> ActorPrincipal | None:
-        return get_current_actor(environ)
-
-    def _audit_permission(
-        self,
-        environ: dict[str, Any],
-        *,
-        action: str,
-        resource_type: str,
-        outcome: str,
-        resource_id: Any = None,
-        reason: str | None = None,
-        impersonated_owner_id: Any = None,
-        **extra: Any,
-    ) -> None:
-        audit_event(
-            action=action,
-            resource_type=resource_type,
-            outcome=outcome,
-            resource_id=resource_id,
-            reason=reason,
-            impersonated_owner_id=impersonated_owner_id,
-            http_method=environ.get("REQUEST_METHOD"),
-            path=environ.get("PATH_INFO"),
-            **extra,
-        )
-
-    def _require_roles(
-        self,
-        environ: dict[str, Any],
-        roles: frozenset[str],
-        *,
-        message: str = "current actor is not allowed to access this route",
-    ) -> ActorPrincipal | None:
-        actor = self._current_actor(environ)
-        if actor is None:
-            return None
-        if actor.has_any_role(roles):
-            self._audit_permission(
-                environ,
-                action="gateway.role_guard",
-                resource_type="route",
-                resource_id=environ.get("PATH_INFO"),
-                outcome="allowed",
-                required_roles=sorted(roles),
-            )
-            return actor
-        self._audit_permission(
-            environ,
-            action="gateway.role_guard",
-            resource_type="route",
-            resource_id=environ.get("PATH_INFO"),
-            outcome="denied",
-            reason=message,
-            required_roles=sorted(roles),
-        )
-        raise GatewayPermissionError(message)
-
-    def _resolve_operator_actor_id(
-        self,
-        environ: dict[str, Any],
-        supplied_id: Any,
-        *,
-        field_name: str,
-        roles: frozenset[str],
-        message: str,
-    ) -> str:
-        supplied_text = str(supplied_id or "").strip()
-        actor = self._current_actor(environ)
-        if actor is None:
-            if not supplied_text:
-                raise ValueError(f"{field_name} is required")
-            return supplied_text
-        if not actor.has_any_role(roles):
-            self._audit_permission(
-                environ,
-                action="gateway.operator_binding",
-                resource_type="route",
-                resource_id=environ.get("PATH_INFO"),
-                outcome="denied",
-                reason=message,
-                field_name=field_name,
-            )
-            raise GatewayPermissionError(message)
-        if supplied_text and supplied_text != actor.actor_id:
-            self._audit_permission(
-                environ,
-                action="gateway.operator_binding",
-                resource_type="route",
-                resource_id=environ.get("PATH_INFO"),
-                outcome="denied",
-                reason=f"{field_name} must match current actor",
-                field_name=field_name,
-                impersonated_owner_id=supplied_text,
-            )
-            raise GatewayPermissionError(f"{field_name} must match current actor")
-        self._audit_permission(
-            environ,
-            action="gateway.operator_binding",
-            resource_type="route",
-            resource_id=environ.get("PATH_INFO"),
-            outcome="allowed",
-            field_name=field_name,
-        )
-        return actor.actor_id
-
-    def _resolve_optional_operator_actor_id(
-        self,
-        environ: dict[str, Any],
-        supplied_id: Any,
-        *,
-        field_name: str,
-        roles: frozenset[str],
-        message: str,
-    ) -> str | None:
-        supplied_text = str(supplied_id or "").strip() or None
-        actor = self._current_actor(environ)
-        if actor is None:
-            return supplied_text
-        if not actor.has_any_role(roles):
-            raise GatewayPermissionError(message)
-        if supplied_text and supplied_text != actor.actor_id:
-            raise GatewayPermissionError(f"{field_name} must match current actor")
-        return actor.actor_id
-
-    def _resolve_actor_bound_id(
-        self,
-        environ: dict[str, Any],
-        supplied_id: Any,
-        *,
-        field_name: str,
-        allow_override_roles: frozenset[str] = STAFF_OVERRIDE_ROLES,
-    ) -> str:
-        supplied_text = str(supplied_id or "").strip()
-        actor = self._current_actor(environ)
-        if actor is None:
-            if not supplied_text:
-                raise ValueError(f"{field_name} is required")
-            return supplied_text
-        if actor.has_any_role(allow_override_roles):
-            if supplied_text and supplied_text != actor.actor_id:
-                self._audit_permission(
-                    environ,
-                    action="gateway.staff_override",
-                    resource_type="actor_binding",
-                    resource_id=field_name,
-                    outcome="allowed",
-                    impersonated_owner_id=supplied_text,
-                )
-            return supplied_text or actor.actor_id
-        if supplied_text and supplied_text != actor.actor_id:
-            self._audit_permission(
-                environ,
-                action="gateway.owner_binding",
-                resource_type="actor_binding",
-                resource_id=field_name,
-                outcome="denied",
-                reason=f"{field_name} does not match current actor",
-                impersonated_owner_id=supplied_text,
-            )
-            raise GatewayPermissionError(f"{field_name} does not match current actor")
-        return actor.actor_id
-
-    def _assert_actor_can_access_owner(
-        self,
-        environ: dict[str, Any],
-        owner_id: Any,
-        *,
-        field_name: str,
-        allow_override_roles: frozenset[str] = STAFF_OVERRIDE_ROLES,
-    ) -> str:
-        owner_text = str(owner_id or "").strip()
-        actor = self._current_actor(environ)
-        if actor is None or not owner_text or actor.has_any_role(allow_override_roles):
-            if (
-                actor is not None
-                and owner_text
-                and actor.has_any_role(allow_override_roles)
-                and owner_text != actor.actor_id
-            ):
-                self._audit_permission(
-                    environ,
-                    action="gateway.staff_override",
-                    resource_type="resource_owner",
-                    resource_id=field_name,
-                    outcome="allowed",
-                    impersonated_owner_id=owner_text,
-                )
-            return owner_text
-        if owner_text != actor.actor_id:
-            self._audit_permission(
-                environ,
-                action="gateway.owner_check",
-                resource_type="resource_owner",
-                resource_id=field_name,
-                outcome="denied",
-                reason=f"{field_name} does not match current actor",
-                impersonated_owner_id=owner_text,
-            )
-            raise GatewayPermissionError(f"{field_name} does not match current actor")
-        return owner_text
-
-    def _resolve_int_actor_bound_id(
-        self,
-        environ: dict[str, Any],
-        supplied_id: Any,
-        *,
-        field_name: str,
-        allow_override_roles: frozenset[str] = STAFF_OVERRIDE_ROLES,
-    ) -> int:
-        value = self._resolve_actor_bound_id(
-            environ,
-            supplied_id,
-            field_name=field_name,
-            allow_override_roles=allow_override_roles,
-        )
-        try:
-            return int(value)
-        except (TypeError, ValueError) as exc:
-            raise ValueError(f"{field_name} must be an integer") from exc
-
-    def _get_recommendation_subscription_for_actor(
-        self,
-        environ: dict[str, Any],
-        subscription_id: str,
-    ) -> dict[str, Any]:
-        subscription = self._with_rec(get_subscription, subscription_id)
-        self._assert_actor_can_access_owner(
-            environ,
-            subscription.get("requester_id"),
-            field_name="requester_id",
-        )
-        return subscription
-
-    def _get_matchmaking_member_for_actor(
-        self,
-        environ: dict[str, Any],
-        member_id: str,
-    ) -> dict[str, Any]:
-        member = self._with_mm(get_pool_member, member_id)
-        self._assert_actor_can_access_owner(
-            environ,
-            member.get("user_key"),
-            field_name="user_key",
-        )
-        return member
-
-    def _get_matchmaking_case_for_actor(
-        self,
-        environ: dict[str, Any],
-        case_id: str,
-    ) -> dict[str, Any]:
-        case = self._with_mm(get_match_case, case_id)
-        actor = self._current_actor(environ)
-        if actor is None or actor.has_any_role(STAFF_OVERRIDE_ROLES):
-            if actor is not None and actor.has_any_role(STAFF_OVERRIDE_ROLES):
-                member_ids = {
-                    str(case.get("first_contact_member_id") or "").strip(),
-                    str(case.get("second_contact_member_id") or "").strip(),
-                }
-                member_ids.discard("")
-                owner_keys = sorted(
-                    {
-                        str(self._with_mm(get_pool_member, member_id).get("user_key") or "").strip()
-                        for member_id in member_ids
-                    }
-                )
-                owner_keys = [value for value in owner_keys if value and value != actor.actor_id]
-                if owner_keys:
-                    self._audit_permission(
-                        environ,
-                        action="gateway.staff_override",
-                        resource_type="matchmaking_case",
-                        resource_id=case_id,
-                        outcome="allowed",
-                        impersonated_owner_id=",".join(owner_keys),
-                    )
-            return case
-        member_ids = {
-            str(case.get("first_contact_member_id") or "").strip(),
-            str(case.get("second_contact_member_id") or "").strip(),
-        }
-        member_ids.discard("")
-        for member_id in member_ids:
-            member = self._with_mm(get_pool_member, member_id)
-            if str(member.get("user_key") or "").strip() == actor.actor_id:
-                return case
-        self._audit_permission(
-            environ,
-            action="gateway.case_access",
-            resource_type="matchmaking_case",
-            resource_id=case_id,
-            outcome="denied",
-            reason="current actor is not a participant in this match case",
-        )
-        raise GatewayPermissionError("current actor is not allowed to access this match case")
 
     def rest_get_subscription(self, environ: dict[str, Any], subscription_id: str) -> tuple[int, dict[str, Any]]:
         return _rest_get_subscription(self, environ, subscription_id)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 import json
 from datetime import datetime
 from pathlib import Path
@@ -51,12 +52,23 @@ def _extract_client_idempotency_key(environ: dict[str, Any], body: dict[str, Any
     header_value = (environ.get("HTTP_IDEMPOTENCY_KEY") or "").strip()
     if header_value:
         return header_value[:191]
-    body_value = body.get("client_idempotency_key") if isinstance(body, dict) else None
+    body_value = body.get("client_idempotency_key")
     if body_value is None and isinstance(body, dict):
         body_value = body.get("idempotency_key")
-    if body_value is not None and str(body_value).strip():
-        return str(body_value).strip()[:191]
+    return _trimmed_client_idempotency_key(body_value)
+
+
+def _trimmed_client_idempotency_key(value: Any) -> str | None:
+    if value is not None and str(value).strip():
+        return str(value).strip()[:191]
     return None
+
+
+def _payload_without_keys(
+    params: Mapping[str, Any],
+    excluded_keys: set[str] | frozenset[str],
+) -> dict[str, Any]:
+    return {key: value for key, value in params.items() if key not in excluded_keys}
 
 
 def _gateway_error_payload(code: str, message: str, trace_id: str) -> dict[str, Any]:
@@ -152,6 +164,22 @@ def _subscription_ids_from_query(q: dict[str, str]) -> list[str] | None:
     if not raw:
         return None
     return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+def _parse_int(raw_value: Any, default: int) -> int:
+    try:
+        return int(raw_value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _parse_optional_int(raw_value: Any) -> int | None:
+    if raw_value in (None, ""):
+        return None
+    try:
+        return int(raw_value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _statuses_from_query(q: dict[str, str], key: str = "status") -> list[str] | None:

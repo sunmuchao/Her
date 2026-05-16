@@ -37,12 +37,16 @@ from chat_system.async_tasks import (  # type: ignore[import-untyped]
     summarize_chat_async_jobs,
 )
 
+from .chat_access import thread_visible_to_requester
 from .http_helpers import (
     _augment_chat_message_metadata,
     _extract_client_idempotency_key,
     _json_safe,
+    _parse_int,
+    _parse_optional_int,
     _parse_json_body,
     _parse_optional_now,
+    _payload_without_keys,
     _query_dict,
     _read_body,
 )
@@ -106,22 +110,6 @@ class ChatGateway(Protocol):
     def _with_rec(self, fn: Any, *args: Any, **kwargs: Any) -> Any: ...
 
 
-def _parse_limit(raw_value: Any, default: int = 50) -> int:
-    try:
-        return int(raw_value)
-    except (TypeError, ValueError):
-        return default
-
-
-def _parse_optional_int(raw_value: Any) -> int | None:
-    if raw_value in (None, ""):
-        return None
-    try:
-        return int(raw_value)
-    except (TypeError, ValueError):
-        return None
-
-
 def chat_require_requester(
     gateway: ChatGateway,
     environ: dict[str, Any],
@@ -132,20 +120,6 @@ def chat_require_requester(
     if not requester_id and body:
         requester_id = str(body.get("requester_id") or "").strip()
     return gateway._resolve_actor_bound_id(environ, requester_id, field_name="requester_id")
-
-
-def _thread_visible_to_requester(
-    gateway: ChatGateway,
-    environ: dict[str, Any],
-    thread: dict[str, Any] | None,
-    requester_id: str,
-) -> bool:
-    if not thread:
-        return False
-    actor = gateway._current_actor(environ)
-    if requester_id in (thread["participant_a_id"], thread["participant_b_id"]):
-        return True
-    return bool(actor and actor.has_any_role(STAFF_OVERRIDE_ROLES))
 
 
 def _load_requester_thread(
@@ -159,7 +133,7 @@ def _load_requester_thread(
 
 
 def _message_page_params(q: dict[str, str]) -> tuple[int, int | None]:
-    return _parse_limit(q.get("limit") or "50"), _parse_optional_int(q.get("before_message_id"))
+    return _parse_int(q.get("limit") or "50", 50), _parse_optional_int(q.get("before_message_id"))
 
 
 def _post_chat_message(
@@ -172,11 +146,7 @@ def _post_chat_message(
     augment_metadata: bool,
 ) -> tuple[int, dict[str, Any]]:
     now = _parse_optional_now(body)
-    kwargs = {
-        key: value
-        for key, value in body.items()
-        if key not in {"now", "idempotency_key", "client_idempotency_key"}
-    }
+    kwargs = _payload_without_keys(body, {"now", "idempotency_key", "client_idempotency_key"})
     idem = _extract_client_idempotency_key(environ, body)
     if augment_metadata:
         kwargs["metadata"] = _augment_chat_message_metadata(environ, kwargs.get("metadata"))
@@ -259,7 +229,7 @@ def rest_chat_get_thread(
     requester_id, thread = _load_requester_thread(gateway, environ, thread_id)
     if not thread:
         return 404, {"error": {"code": "not_found", "message": "thread not found"}}
-    if not _thread_visible_to_requester(gateway, environ, thread, requester_id):
+    if not thread_visible_to_requester(gateway, environ, thread, requester_id):
         return 403, {"error": {"code": "forbidden", "message": "requester is not a participant"}}
     return 200, {"thread": _json_safe(thread)}
 
@@ -414,7 +384,7 @@ def rest_chat_case_conversation_timeline(
         build_case_conversation_timeline,
         str(case_id),
         requester_id,
-        message_limit=_parse_limit(q.get("message_limit") or "50"),
+        message_limit=_parse_int(q.get("message_limit") or "50", 50),
     )
     return 200, _json_safe(out)
 
@@ -432,7 +402,7 @@ def rest_timeline(
         gateway,
         case_id,
         viewer_id,
-        message_limit=_parse_limit(q.get("message_limit") or "50"),
+        message_limit=_parse_int(q.get("message_limit") or "50", 50),
     )
 
 
@@ -447,8 +417,8 @@ def rest_chat_maintenance_run(
         message="current actor cannot run chat maintenance",
     )
     payload: dict[str, Any] = {
-        "persona_limit": _parse_limit(body.get("persona_limit"), 20),
-        "summary_max_threads": _parse_limit(body.get("summary_max_threads"), 30),
+        "persona_limit": _parse_int(body.get("persona_limit"), 20),
+        "summary_max_threads": _parse_int(body.get("summary_max_threads"), 30),
     }
     raw_flush = body.get("flush_outbox")
     if isinstance(raw_flush, bool):
@@ -509,7 +479,7 @@ def rest_chat_get_summary(
     requester_id, thread = _load_requester_thread(gateway, environ, thread_id)
     if not thread:
         return 404, {"error": {"code": "not_found", "message": "thread not found"}}
-    if not _thread_visible_to_requester(gateway, environ, thread, requester_id):
+    if not thread_visible_to_requester(gateway, environ, thread, requester_id):
         return 403, {"error": {"code": "forbidden", "message": "requester is not a participant"}}
     summary = gateway._with_chat(get_thread_summary, thread_id)
     return 200, {"thread_id": thread_id, "summary": _json_safe(summary)}

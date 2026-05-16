@@ -28,6 +28,7 @@ from recommendation_system.async_tasks import (  # type: ignore[import-untyped]
 )
 
 from .http_helpers import _normalize_optional_now_text
+from .recommendation_access import recommendation_mutation_payload, resolve_optional_requester_id
 from .role_sets import INTERNAL_WRITE_ROLES
 
 JSONRPC_NOT_HANDLED = object()
@@ -65,49 +66,11 @@ class RecommendationJsonrpcGateway(Protocol):
     def _with_rec(self, fn: Any, *args: Any, **kwargs: Any) -> Any: ...
 
 
-def _resolve_optional_requester_id(
-    gateway: RecommendationJsonrpcGateway,
-    environ: dict[str, Any],
-    raw_requester_id: Any,
-) -> int | None:
-    if raw_requester_id is not None or gateway._current_actor(environ) is not None:
-        return gateway._resolve_int_actor_bound_id(
-            environ,
-            raw_requester_id,
-            field_name="requester_id",
-        )
-    return None
-
-
 def _recommendation_job_payload(params: dict[str, Any]) -> dict[str, Any]:
     payload: dict[str, Any] = {}
     now_text = _normalize_optional_now_text(params.get("now"))
     if now_text is not None:
         payload["now"] = now_text
-    return payload
-
-
-def _mutation_payload(
-    gateway: RecommendationJsonrpcGateway,
-    environ: dict[str, Any],
-    params: dict[str, Any],
-) -> dict[str, Any]:
-    payload = {
-        key: value
-        for key, value in params.items()
-        if key not in {"idempotency_key", "client_idempotency_key"}
-    }
-    subscription = gateway._get_recommendation_subscription_for_actor(
-        environ,
-        str(payload.get("subscription_id") or ""),
-    )
-    client_key = params.get("client_idempotency_key") or params.get("idempotency_key")
-    if client_key is not None and str(client_key).strip():
-        payload["client_idempotency_key"] = str(client_key).strip()[:191]
-    payload["subscription_id"] = subscription["subscription_id"]
-    actor = gateway._current_actor(environ)
-    if actor is not None:
-        payload["actor_id"] = actor.actor_id
     return payload
 
 
@@ -122,7 +85,12 @@ def handle_recommendation_jsonrpc(
         return gateway._with_rec(get_subscription, params["subscription_id"])
     if method == "recommendation.create_subscription":
         payload = dict(params)
-        requester_id = _resolve_optional_requester_id(gateway, environ, payload.get("requester_id"))
+        requester_id = resolve_optional_requester_id(
+            gateway,
+            environ,
+            payload.get("requester_id"),
+            treat_empty_as_missing=False,
+        )
         if requester_id is not None:
             payload["requester_id"] = requester_id
         return gateway._with_rec(create_subscription, **payload)
@@ -190,7 +158,12 @@ def handle_recommendation_jsonrpc(
     if method == "recommendation.list_in_app_cards":
         return gateway._with_rec(
             list_in_app_cards,
-            requester_id=_resolve_optional_requester_id(gateway, environ, params.get("requester_id")),
+            requester_id=resolve_optional_requester_id(
+                gateway,
+                environ,
+                params.get("requester_id"),
+                treat_empty_as_missing=False,
+            ),
             unread_only=bool(params.get("unread_only", False)),
         )
     if method == "recommendation.deliver_in_app_recommendations":
@@ -210,14 +183,16 @@ def handle_recommendation_jsonrpc(
         )
         return gateway._job_payload("recommendation", job)
     if method == "recommendation.record_recommendation_action":
+        payload, _client_key = recommendation_mutation_payload(gateway, environ, params)
         return gateway._with_rec(
             record_recommendation_action,
-            **_mutation_payload(gateway, environ, params),
+            **payload,
         )
     if method == "recommendation.record_user_review":
+        payload, _client_key = recommendation_mutation_payload(gateway, environ, params)
         return gateway._with_rec(
             record_user_review,
-            **_mutation_payload(gateway, environ, params),
+            **payload,
         )
     if method == "recommendation.mark_in_app_cards_read":
         requester_id = gateway._resolve_int_actor_bound_id(
