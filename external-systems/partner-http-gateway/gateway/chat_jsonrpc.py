@@ -48,8 +48,16 @@ from chat_system.async_tasks import (  # type: ignore[import-untyped]
 )
 from chat_system.persona_jobs import process_pending_persona_jobs  # type: ignore[import-untyped]
 
+from .chat_access import thread_visible_to_requester
 from .chat_routes import timeline_payload
-from .http_helpers import _augment_chat_message_metadata, _normalize_boolish
+from .http_helpers import (
+    _augment_chat_message_metadata,
+    _normalize_boolish,
+    _parse_int,
+    _parse_optional_int,
+    _payload_without_keys,
+    _trimmed_client_idempotency_key,
+)
 from .identity import GatewayPermissionError
 from .role_sets import CHAT_RISK_REVIEW_ROLES, INTERNAL_WRITE_ROLES, STAFF_OVERRIDE_ROLES
 
@@ -97,49 +105,20 @@ class ChatJsonrpcGateway(Protocol):
     def _with_rec(self, fn: Any, *args: Any, **kwargs: Any) -> Any: ...
 
 
-def _parse_int(raw_value: Any, default: int) -> int:
-    try:
-        return int(raw_value)
-    except (TypeError, ValueError):
-        return default
-
-
-def _parse_optional_int(raw_value: Any) -> int | None:
-    if raw_value is None:
-        return None
-    return int(raw_value)
-
-
-def _thread_visible_to_requester(
-    gateway: ChatJsonrpcGateway,
-    environ: dict[str, Any],
-    thread: dict[str, Any] | None,
-    requester_id: str,
-) -> bool:
-    if not thread:
-        return False
-    actor = gateway._current_actor(environ)
-    if requester_id in (thread["participant_a_id"], thread["participant_b_id"]):
-        return True
-    return bool(actor and actor.has_any_role(STAFF_OVERRIDE_ROLES))
-
-
 def _client_msg_kwargs(
     environ: dict[str, Any],
     params: dict[str, Any],
     *,
     augment_metadata: bool,
 ) -> dict[str, Any]:
-    payload = {
-        key: value
-        for key, value in params.items()
-        if key not in {"idempotency_key", "client_idempotency_key"}
-    }
-    client_key = params.get("client_idempotency_key") or params.get("idempotency_key")
+    payload = _payload_without_keys(params, {"idempotency_key", "client_idempotency_key"})
+    client_key = _trimmed_client_idempotency_key(
+        params.get("client_idempotency_key") or params.get("idempotency_key")
+    )
     if augment_metadata:
         payload["metadata"] = _augment_chat_message_metadata(environ, payload.get("metadata"))
-    if client_key is not None and str(client_key).strip():
-        payload["client_msg_id"] = str(client_key).strip()[:191]
+    if client_key is not None:
+        payload["client_msg_id"] = client_key
     return payload
 
 
@@ -168,7 +147,7 @@ def handle_chat_jsonrpc(
         thread = gateway._with_chat(get_thread, p["thread_id"])
         if not thread:
             raise ValueError("thread not found")
-        if not _thread_visible_to_requester(gateway, environ, thread, requester_id):
+        if not thread_visible_to_requester(gateway, environ, thread, requester_id):
             raise GatewayPermissionError("requester is not a participant")
         return thread
     if method == "chat.get_or_create_thread":

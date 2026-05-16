@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import io
-import json
 import pathlib
 import sys
 import unittest
@@ -22,6 +20,7 @@ from chat_system.storage import (  # noqa: E402
     reset_all_tables as reset_chat_tables,
 )
 from gateway.app import PartnerGateway  # noqa: E402
+from gateway_tests.helpers import call_gateway_json  # noqa: E402
 
 
 class GatewayChatConversationV2Tests(unittest.TestCase):
@@ -39,24 +38,7 @@ class GatewayChatConversationV2Tests(unittest.TestCase):
         )
 
     def _call(self, method: str, path: str, body: dict | None = None, query: str = "") -> tuple[str, dict]:
-        payload = json.dumps(body).encode("utf-8") if body is not None else b""
-        env = {
-            "REQUEST_METHOD": method,
-            "PATH_INFO": path,
-            "QUERY_STRING": query,
-            "CONTENT_LENGTH": str(len(payload)),
-            "wsgi.input": io.BytesIO(payload),
-            "REMOTE_ADDR": "127.0.0.1",
-        }
-        state: dict[str, object] = {"status": "", "headers": []}
-
-        def start_response(status: str, headers: list[tuple[str, str]]) -> None:
-            state["status"] = status
-            state["headers"] = headers
-
-        out = b"".join(self.gw(env, start_response))
-        data = json.loads(out.decode("utf-8")) if out else {}
-        return str(state["status"]), data
+        return call_gateway_json(self.gw, method, path, body=body, query=query)
 
     def test_assistant_layout_routes_and_visibility(self) -> None:
         status, payload = self._call(

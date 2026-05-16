@@ -37,6 +37,7 @@ from .http_helpers import (
     _read_body,
     _subscription_ids_from_query,
 )
+from .recommendation_access import recommendation_mutation_payload, resolve_optional_requester_id
 from .role_sets import INTERNAL_WRITE_ROLES
 
 
@@ -98,20 +99,6 @@ class RecommendationGateway(Protocol):
     def _with_rec(self, fn: Any, *args: Any, **kwargs: Any) -> Any: ...
 
 
-def _resolve_optional_requester_id(
-    gateway: RecommendationGateway,
-    environ: dict[str, Any],
-    raw_requester_id: Any,
-) -> int | None:
-    if raw_requester_id not in (None, "") or gateway._current_actor(environ) is not None:
-        return gateway._resolve_int_actor_bound_id(
-            environ,
-            raw_requester_id,
-            field_name="requester_id",
-        )
-    return None
-
-
 def _rest_record_recommendation_mutation(
     gateway: RecommendationGateway,
     environ: dict[str, Any],
@@ -119,25 +106,15 @@ def _rest_record_recommendation_mutation(
     *,
     record_fn: Any,
 ) -> tuple[int, dict[str, Any]]:
-    subscription = gateway._get_recommendation_subscription_for_actor(
+    kwargs, idem = recommendation_mutation_payload(
+        gateway,
         environ,
-        str(body.get("subscription_id") or ""),
+        body,
+        client_idempotency_key=_extract_client_idempotency_key(environ, body),
     )
     now = _parse_optional_now(body)
-    kwargs = {
-        key: value
-        for key, value in body.items()
-        if key not in {"now", "idempotency_key", "client_idempotency_key"}
-    }
-    idem = _extract_client_idempotency_key(environ, body)
-    if idem:
-        kwargs["client_idempotency_key"] = idem
     if now is not None:
         kwargs["now"] = now
-    kwargs["subscription_id"] = subscription["subscription_id"]
-    actor = gateway._current_actor(environ)
-    if actor is not None:
-        kwargs["actor_id"] = actor.actor_id
     rec = gateway._with_rec(record_fn, **kwargs)
     out: dict[str, Any] = {"recommendation": _json_safe(rec)}
     if idem:
@@ -162,7 +139,12 @@ def rest_create_subscription(
 ) -> tuple[int, dict[str, Any]]:
     now = _parse_optional_now(body)
     kwargs = {key: value for key, value in body.items() if key != "now"}
-    requester_id = _resolve_optional_requester_id(gateway, environ, kwargs.get("requester_id"))
+    requester_id = resolve_optional_requester_id(
+        gateway,
+        environ,
+        kwargs.get("requester_id"),
+        treat_empty_as_missing=True,
+    )
     if requester_id is not None:
         kwargs["requester_id"] = requester_id
     if now is not None:
@@ -256,7 +238,12 @@ def rest_list_cards(
     q = _query_dict(environ)
     cards = gateway._with_rec(
         list_in_app_cards,
-        requester_id=_resolve_optional_requester_id(gateway, environ, q.get("requester_id")),
+        requester_id=resolve_optional_requester_id(
+            gateway,
+            environ,
+            q.get("requester_id"),
+            treat_empty_as_missing=True,
+        ),
         unread_only=str(q.get("unread_only", "")).lower() in ("1", "true", "yes"),
     )
     return 200, {"cards": _json_safe(cards)}

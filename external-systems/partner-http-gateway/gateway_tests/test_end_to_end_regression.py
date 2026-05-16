@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import io
 import json
 import os
 import pathlib
@@ -19,8 +18,6 @@ for root in (GATEWAY_ROOT, CHAT_ROOT, RECOMMENDATION_ROOT, MATCHMAKING_ROOT, REP
     if str(root) not in sys.path:
         sys.path.insert(0, str(root))
 
-import outer_system_mysql_schema as mysql_schema  # noqa: E402
-
 from chat_system.storage import (  # noqa: E402
     DEFAULT_CHAT_TEST_MYSQL_DSN,
     connect_db as connect_chat_db,
@@ -29,6 +26,15 @@ from chat_system.storage import (  # noqa: E402
 )
 from chat_system.async_tasks import run_chat_async_job_worker  # noqa: E402
 from gateway.app import PartnerGateway  # noqa: E402
+from gateway_tests.helpers import (  # noqa: E402
+    auth_headers,
+    call_gateway_json,
+    ensure_search_schema,
+    insert_search_profile,
+    open_search_conn,
+    reset_search_rows,
+    search_test_config,
+)
 from matchmaking_system.async_tasks import run_matchmaking_async_job_worker  # noqa: E402
 from recommendation_system.async_tasks import run_recommendation_async_job_worker  # noqa: E402
 from matchmaking_system.storage import (  # noqa: E402
@@ -67,76 +73,20 @@ STATIC_TOKENS = json.dumps(
 )
 
 
-def _auth_headers(token: str | None) -> dict[str, str]:
-    if not token:
-        return {}
-    return {"HTTP_AUTHORIZATION": f"Bearer {token}"}
-
-
 class GatewayEndToEndRegressionTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.search_dsn = DEFAULT_E2E_SEARCH_TEST_DSN
-        cls.search_config = mysql_schema.parse_mysql_dsn(cls.search_dsn)
-        mysql_schema.ensure_database(cls.search_config)
+        cls.search_config = search_test_config(cls.search_dsn)
         cls._ensure_search_schema()
 
     @classmethod
     def _search_conn(cls):
-        return mysql_schema.mysql_database_connect(cls.search_config)
+        return open_search_conn(cls.search_config)
 
     @classmethod
     def _ensure_search_schema(cls) -> None:
-        conn = cls._search_conn()
-        try:
-            with conn.cursor() as cursor:
-                cursor.execute("DROP TABLE IF EXISTS `profile_photos`")
-                cursor.execute("DROP TABLE IF EXISTS `profiles`")
-                cursor.execute(
-                    """
-                    CREATE TABLE `profiles` (
-                      `id` BIGINT PRIMARY KEY,
-                      `name` VARCHAR(255),
-                      `gender` VARCHAR(32),
-                      `age` INT,
-                      `city` VARCHAR(64),
-                      `education` VARCHAR(64),
-                      `job` VARCHAR(255),
-                      `income_range` VARCHAR(64),
-                      `marital_status` VARCHAR(64),
-                      `has_children` TINYINT(1),
-                      `relationship_goal` VARCHAR(64),
-                      `profile_status` VARCHAR(32),
-                      `verified_level` VARCHAR(32),
-                      `photo_verification_level` VARCHAR(32),
-                      `education_verification_status` VARCHAR(32),
-                      `job_verification_status` VARCHAR(32),
-                      `income_verification_status` VARCHAR(32),
-                      `profile_review_status` VARCHAR(32),
-                      `job_change_count_30d` INT,
-                      `photo_count` INT,
-                      `life_routine` VARCHAR(64),
-                      `communication_style` VARCHAR(64),
-                      `values` TEXT,
-                      `notes` TEXT,
-                      `last_active_at` DATETIME
-                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-                    """
-                )
-                cursor.execute(
-                    """
-                    CREATE TABLE `profile_photos` (
-                      `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
-                      `profile_id` BIGINT NOT NULL,
-                      `photo_url` VARCHAR(512) NOT NULL,
-                      `is_primary` TINYINT(1) DEFAULT 0,
-                      `sort_order` INT DEFAULT 0
-                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-                    """
-                )
-            conn.commit()
-        finally:
-            conn.close()
+        ensure_search_schema(cls.search_config)
 
     def setUp(self) -> None:
         self._reset_search_rows()
@@ -172,54 +122,10 @@ class GatewayEndToEndRegressionTests(unittest.TestCase):
             os.environ["PARTNER_GATEWAY_STATIC_TOKENS_JSON"] = self._old_static_tokens
 
     def _reset_search_rows(self) -> None:
-        conn = self._search_conn()
-        try:
-            with conn.cursor() as cursor:
-                cursor.execute("DELETE FROM `profile_photos`")
-                cursor.execute("DELETE FROM `profiles`")
-            conn.commit()
-        finally:
-            conn.close()
+        reset_search_rows(self.search_config)
 
     def _insert_search_profile(self, row: tuple) -> None:
-        conn = self._search_conn()
-        try:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    """
-                    INSERT INTO `profiles` (
-                      `id`,
-                      `name`,
-                      `gender`,
-                      `age`,
-                      `city`,
-                      `education`,
-                      `job`,
-                      `income_range`,
-                      `marital_status`,
-                      `has_children`,
-                      `relationship_goal`,
-                      `profile_status`,
-                      `verified_level`,
-                      `photo_verification_level`,
-                      `education_verification_status`,
-                      `job_verification_status`,
-                      `income_verification_status`,
-                      `profile_review_status`,
-                      `job_change_count_30d`,
-                      `photo_count`,
-                      `life_routine`,
-                      `communication_style`,
-                      `values`,
-                      `notes`,
-                      `last_active_at`
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """,
-                    row,
-                )
-            conn.commit()
-        finally:
-            conn.close()
+        insert_search_profile(self.search_config, row)
 
     def _seed_matchmaking_profiles(self) -> None:
         active_at = datetime(2026, 5, 6, 9, 0, 0)
@@ -323,25 +229,14 @@ class GatewayEndToEndRegressionTests(unittest.TestCase):
         query: str = "",
         token: str | None = None,
     ) -> tuple[str, dict]:
-        payload = json.dumps(body).encode("utf-8") if body is not None else b""
-        env = {
-            "REQUEST_METHOD": method,
-            "PATH_INFO": path,
-            "QUERY_STRING": query,
-            "CONTENT_LENGTH": str(len(payload)),
-            "wsgi.input": io.BytesIO(payload),
-            "REMOTE_ADDR": "127.0.0.1",
-            **_auth_headers(token),
-        }
-        state: dict[str, object] = {"status": "", "headers": []}
-
-        def start_response(status: str, headers: list[tuple[str, str]]) -> None:
-            state["status"] = status
-            state["headers"] = headers
-
-        out = b"".join(self.gw(env, start_response))
-        data = json.loads(out.decode("utf-8")) if out else {}
-        return str(state["status"]), data
+        return call_gateway_json(
+            self.gw,
+            method,
+            path,
+            body=body,
+            query=query,
+            extra=auth_headers(token),
+        )
 
     def _run_matchmaking_async_jobs(self) -> dict:
         conn = connect_matchmaking_db(DEFAULT_MATCHMAKING_TEST_MYSQL_DSN)

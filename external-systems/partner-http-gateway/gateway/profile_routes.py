@@ -35,6 +35,7 @@ from .http_helpers import (
     _read_body,
     _statuses_from_query,
 )
+from .profile_access import resolve_optional_subject_user_id, resolve_visible_subject_user_id
 from .role_sets import INTERNAL_WRITE_ROLES, PROFILE_REVIEW_ROLES, STAFF_OVERRIDE_ROLES
 
 
@@ -80,35 +81,6 @@ class ProfileGateway(Protocol):
     def _with_chat(self, fn: Any, *args: Any, **kwargs: Any) -> Any: ...
 
 
-def _resolve_subject_user_id_from_body(
-    gateway: ProfileGateway,
-    environ: dict[str, Any],
-    body: dict[str, Any],
-) -> str | None:
-    if body.get("subject_user_id") not in (None, "") or gateway._current_actor(environ) is not None:
-        return gateway._resolve_actor_bound_id(
-            environ,
-            body.get("subject_user_id"),
-            field_name="subject_user_id",
-        )
-    return None
-
-
-def _resolve_subject_user_id_from_query(
-    gateway: ProfileGateway,
-    environ: dict[str, Any],
-    raw_subject_user_id: str | None,
-) -> str | None:
-    actor = gateway._current_actor(environ)
-    if actor is not None and not actor.has_any_role(STAFF_OVERRIDE_ROLES):
-        return gateway._resolve_actor_bound_id(
-            environ,
-            raw_subject_user_id,
-            field_name="subject_user_id",
-        )
-    return raw_subject_user_id
-
-
 def _dispute_statuses_from_query(q: dict[str, str]) -> list[str] | None:
     return _statuses_from_query(
         {
@@ -140,7 +112,12 @@ def rest_profile_submit_field_verification(
         profile_id=int(body["profile_id"]),
         source_dsn=str(body["source_dsn"]),
         source_table_name=body.get("source_table_name") or body.get("table_name"),
-        subject_user_id=_resolve_subject_user_id_from_body(gateway, environ, body),
+        subject_user_id=resolve_optional_subject_user_id(
+            gateway,
+            environ,
+            body.get("subject_user_id"),
+            treat_empty_as_missing=True,
+        ),
         declared_value=body.get("declared_value"),
         evidence=body.get("evidence"),
         evidence_type=body.get("evidence_type"),
@@ -159,7 +136,7 @@ def rest_profile_list_field_verifications(
     rows = gateway._with_chat(
         list_profile_field_verification_submissions,
         field_key=q.get("field_key") or None,
-        subject_user_id=_resolve_subject_user_id_from_query(
+        subject_user_id=resolve_visible_subject_user_id(
             gateway,
             environ,
             q.get("subject_user_id") or None,
@@ -194,7 +171,12 @@ def rest_profile_resubmit_field_verification(
     submission = gateway._with_chat(
         resubmit_profile_field_verification,
         submission_id,
-        subject_user_id=_resolve_subject_user_id_from_body(gateway, environ, body),
+        subject_user_id=resolve_optional_subject_user_id(
+            gateway,
+            environ,
+            body.get("subject_user_id"),
+            treat_empty_as_missing=True,
+        ),
         declared_value=body.get("declared_value"),
         evidence=body.get("evidence"),
         evidence_type=body.get("evidence_type"),
@@ -217,7 +199,12 @@ def rest_profile_dispute_field_verification(
     submission = gateway._with_chat(
         dispute_profile_field_verification,
         submission_id,
-        subject_user_id=_resolve_subject_user_id_from_body(gateway, environ, body),
+        subject_user_id=resolve_optional_subject_user_id(
+            gateway,
+            environ,
+            body.get("subject_user_id"),
+            treat_empty_as_missing=True,
+        ),
         dispute_reason=str(body["dispute_reason"]),
         evidence=body.get("evidence"),
         now=now,
@@ -310,7 +297,7 @@ def rest_profile_list_review_cases(
         list_profile_review_cases,
         statuses=_statuses_from_query(q),
         profile_id=int(q["profile_id"]) if q.get("profile_id") is not None else None,
-        subject_user_id=_resolve_subject_user_id_from_query(
+        subject_user_id=resolve_visible_subject_user_id(
             gateway,
             environ,
             q.get("subject_user_id") or None,
@@ -340,7 +327,7 @@ def rest_profile_list_photo_risk_runs(
     rows = gateway._with_chat(
         list_photo_risk_score_runs,
         profile_id=int(q["profile_id"]) if q.get("profile_id") is not None else None,
-        subject_user_id=_resolve_subject_user_id_from_query(
+        subject_user_id=resolve_visible_subject_user_id(
             gateway,
             environ,
             q.get("subject_user_id") or None,
@@ -441,7 +428,7 @@ def rest_profile_list_review_case_appeals(
         list_profile_review_case_appeals,
         statuses=_statuses_from_query(q),
         profile_review_case_id=q.get("profile_review_case_id") or None,
-        subject_user_id=_resolve_subject_user_id_from_query(
+        subject_user_id=resolve_visible_subject_user_id(
             gateway,
             environ,
             q.get("subject_user_id") or None,

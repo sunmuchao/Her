@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import base64
-import io
-import json
 import os
 import pathlib
 import sys
@@ -20,8 +18,6 @@ for root in (GATEWAY_ROOT, CHAT_ROOT, RECOMMENDATION_ROOT, REPO_ROOT):
     if str(root) not in sys.path:
         sys.path.insert(0, str(root))
 
-import outer_system_mysql_schema as mysql_schema  # noqa: E402
-
 from chat_system.storage import (  # noqa: E402
     DEFAULT_CHAT_TEST_MYSQL_DSN,
     connect_db as connect_chat_db,
@@ -29,6 +25,15 @@ from chat_system.storage import (  # noqa: E402
     reset_all_tables as reset_chat_tables,
 )
 from gateway.app import PartnerGateway  # noqa: E402
+from gateway_tests.helpers import (  # noqa: E402
+    call_gateway_json,
+    ensure_search_schema,
+    insert_search_profile,
+    insert_search_profiles,
+    open_search_conn,
+    reset_search_rows,
+    search_test_config,
+)
 from recommendation_system.async_tasks import run_recommendation_async_job_worker  # noqa: E402
 from recommendation_system.storage import (  # noqa: E402
     DEFAULT_RECOMMENDATION_TEST_MYSQL_DSN,
@@ -48,66 +53,16 @@ class GatewayRealisticUserFlowTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.search_dsn = DEFAULT_REALISTIC_SEARCH_TEST_DSN
-        cls.search_config = mysql_schema.parse_mysql_dsn(cls.search_dsn)
-        mysql_schema.ensure_database(cls.search_config)
+        cls.search_config = search_test_config(cls.search_dsn)
         cls._ensure_search_schema()
 
     @classmethod
     def _search_conn(cls):
-        return mysql_schema.mysql_database_connect(cls.search_config)
+        return open_search_conn(cls.search_config)
 
     @classmethod
     def _ensure_search_schema(cls) -> None:
-        conn = cls._search_conn()
-        try:
-            with conn.cursor() as cursor:
-                cursor.execute("DROP TABLE IF EXISTS `profile_photos`")
-                cursor.execute("DROP TABLE IF EXISTS `profiles`")
-                cursor.execute(
-                    """
-                    CREATE TABLE `profiles` (
-                      `id` BIGINT PRIMARY KEY,
-                      `name` VARCHAR(255),
-                      `gender` VARCHAR(32),
-                      `age` INT,
-                      `city` VARCHAR(64),
-                      `education` VARCHAR(64),
-                      `job` VARCHAR(255),
-                      `income_range` VARCHAR(64),
-                      `marital_status` VARCHAR(64),
-                      `has_children` TINYINT(1),
-                      `relationship_goal` VARCHAR(64),
-                      `profile_status` VARCHAR(32),
-                      `verified_level` VARCHAR(32),
-                      `photo_verification_level` VARCHAR(32),
-                      `education_verification_status` VARCHAR(32),
-                      `job_verification_status` VARCHAR(32),
-                      `income_verification_status` VARCHAR(32),
-                      `profile_review_status` VARCHAR(32),
-                      `job_change_count_30d` INT,
-                      `photo_count` INT,
-                      `life_routine` VARCHAR(64),
-                      `communication_style` VARCHAR(64),
-                      `values` TEXT,
-                      `notes` TEXT,
-                      `last_active_at` DATETIME
-                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-                    """
-                )
-                cursor.execute(
-                    """
-                    CREATE TABLE `profile_photos` (
-                      `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
-                      `profile_id` BIGINT NOT NULL,
-                      `photo_url` VARCHAR(512) NOT NULL,
-                      `is_primary` TINYINT(1) DEFAULT 0,
-                      `sort_order` INT DEFAULT 0
-                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-                    """
-                )
-            conn.commit()
-        finally:
-            conn.close()
+        ensure_search_schema(cls.search_config)
 
     def setUp(self) -> None:
         self._reset_search_rows()
@@ -152,107 +107,72 @@ class GatewayRealisticUserFlowTests(unittest.TestCase):
         self._verification_tempdir.cleanup()
 
     def _reset_search_rows(self) -> None:
-        conn = self._search_conn()
-        try:
-            with conn.cursor() as cursor:
-                cursor.execute("DELETE FROM `profile_photos`")
-                cursor.execute("DELETE FROM `profiles`")
-            conn.commit()
-        finally:
-            conn.close()
+        reset_search_rows(self.search_config)
 
     def _seed_search_profiles(self) -> None:
-        conn = self._search_conn()
         active_at = datetime(2026, 5, 5, 10, 0, 0)
+        insert_search_profiles(
+            self.search_config,
+            [
+                (
+                    1001,
+                    "林知夏",
+                    "女",
+                    29,
+                    "无锡",
+                    "硕士",
+                    "中学老师",
+                    "20-30万/年",
+                    "未婚",
+                    0,
+                    "结婚导向",
+                    "active",
+                    "offline",
+                    "offline_verified",
+                    "verified",
+                    "verified",
+                    "verified",
+                    "approved",
+                    0,
+                    5,
+                    "生活规律",
+                    "主动沟通",
+                    "消费观务实，愿意经营关系",
+                    "情绪稳定，愿意沟通，认真长期关系",
+                    active_at,
+                ),
+                (
+                    1002,
+                    "苏曼",
+                    "女",
+                    28,
+                    "无锡",
+                    "本科",
+                    "创业顾问",
+                    "80-120万/年",
+                    "未婚",
+                    0,
+                    "认真恋爱",
+                    "active",
+                    "basic",
+                    "uploaded",
+                    "self_reported",
+                    "needs_review",
+                    "self_reported",
+                    "needs_review",
+                    2,
+                    8,
+                    "生活规律",
+                    "主动沟通",
+                    "很会包装自己，收入和职业都靠自述",
+                    "情绪稳定，愿意沟通，也想认真恋爱",
+                    active_at,
+                ),
+            ],
+        )
+        conn = self._search_conn()
         try:
             with conn.cursor() as cursor:
-                cursor.executemany(
-                    """
-                    INSERT INTO `profiles` (
-                      `id`,
-                      `name`,
-                      `gender`,
-                      `age`,
-                      `city`,
-                      `education`,
-                      `job`,
-                      `income_range`,
-                      `marital_status`,
-                      `has_children`,
-                      `relationship_goal`,
-                      `profile_status`,
-                      `verified_level`,
-                      `photo_verification_level`,
-                      `education_verification_status`,
-                      `job_verification_status`,
-                      `income_verification_status`,
-                      `profile_review_status`,
-                      `job_change_count_30d`,
-                      `photo_count`,
-                      `life_routine`,
-                      `communication_style`,
-                      `values`,
-                      `notes`,
-                      `last_active_at`
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """,
-                    [
-                        (
-                            1001,
-                            "林知夏",
-                            "女",
-                            29,
-                            "无锡",
-                            "硕士",
-                            "中学老师",
-                            "20-30万/年",
-                            "未婚",
-                            0,
-                            "结婚导向",
-                            "active",
-                            "offline",
-                            "offline_verified",
-                            "verified",
-                            "verified",
-                            "verified",
-                            "approved",
-                            0,
-                            5,
-                            "生活规律",
-                            "主动沟通",
-                            "消费观务实，愿意经营关系",
-                            "情绪稳定，愿意沟通，认真长期关系",
-                            active_at,
-                        ),
-                        (
-                            1002,
-                            "苏曼",
-                            "女",
-                            28,
-                            "无锡",
-                            "本科",
-                            "创业顾问",
-                            "80-120万/年",
-                            "未婚",
-                            0,
-                            "认真恋爱",
-                            "active",
-                            "basic",
-                            "uploaded",
-                            "self_reported",
-                            "needs_review",
-                            "self_reported",
-                            "needs_review",
-                            2,
-                            8,
-                            "生活规律",
-                            "主动沟通",
-                            "很会包装自己，收入和职业都靠自述",
-                            "情绪稳定，愿意沟通，也想认真恋爱",
-                            active_at,
-                        ),
-                    ],
-                )
                 cursor.executemany(
                     """
                     INSERT INTO `profile_photos` (`profile_id`, `photo_url`, `is_primary`, `sort_order`)
@@ -269,64 +189,10 @@ class GatewayRealisticUserFlowTests(unittest.TestCase):
             conn.close()
 
     def _insert_search_profile(self, row: tuple) -> None:
-        conn = self._search_conn()
-        try:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    """
-                    INSERT INTO `profiles` (
-                      `id`,
-                      `name`,
-                      `gender`,
-                      `age`,
-                      `city`,
-                      `education`,
-                      `job`,
-                      `income_range`,
-                      `marital_status`,
-                      `has_children`,
-                      `relationship_goal`,
-                      `profile_status`,
-                      `verified_level`,
-                      `photo_verification_level`,
-                      `education_verification_status`,
-                      `job_verification_status`,
-                      `income_verification_status`,
-                      `profile_review_status`,
-                      `job_change_count_30d`,
-                      `photo_count`,
-                      `life_routine`,
-                      `communication_style`,
-                      `values`,
-                      `notes`,
-                      `last_active_at`
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """,
-                    row,
-                )
-            conn.commit()
-        finally:
-            conn.close()
+        insert_search_profile(self.search_config, row)
 
     def _call(self, method: str, path: str, body: dict | None = None, query: str = "") -> tuple[str, dict]:
-        payload = json.dumps(body).encode("utf-8") if body is not None else b""
-        env = {
-            "REQUEST_METHOD": method,
-            "PATH_INFO": path,
-            "QUERY_STRING": query,
-            "CONTENT_LENGTH": str(len(payload)),
-            "wsgi.input": io.BytesIO(payload),
-            "REMOTE_ADDR": "127.0.0.1",
-        }
-        state: dict[str, object] = {"status": "", "headers": []}
-
-        def start_response(status: str, headers: list[tuple[str, str]]) -> None:
-            state["status"] = status
-            state["headers"] = headers
-
-        out = b"".join(self.gw(env, start_response))
-        data = json.loads(out.decode("utf-8")) if out else {}
-        return str(state["status"]), data
+        return call_gateway_json(self.gw, method, path, body=body, query=query)
 
     def _run_recommendation_async_jobs(self) -> dict:
         conn = connect_recommendation_db(DEFAULT_RECOMMENDATION_TEST_MYSQL_DSN)
