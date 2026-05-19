@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Her · 手机号登录</title>
+    <link rel="stylesheet" href="/demo/assets/her-demo/styles.css" />
+  </head>
+  <body data-demo-page="auth-entry">
+    <main class="auth-live-page">
+      <section class="auth-live-shell entry-flow">
+        <section class="auth-brand-zone auth-brand-zone-live" aria-hidden="true">
+          <div class="auth-entry-status-bar">
+            <span class="auth-entry-status-time">9:41</span>
+          </div>
+          <div class="auth-entry-hero">
+            <span class="auth-entry-logo-square"></span>
+            <h1 class="auth-entry-title">遇见</h1>
+            <p class="auth-entry-tagline">遇见对的人，从这里开始</p>
+          </div>
+        </section>
+
+        <section class="auth-sheet auth-sheet-live">
+          <form id="auth-entry-form" class="auth-live-form auth-entry-form" novalidate>
+            <div class="auth-entry-intro">
+              <h2 class="auth-entry-form-title">输入手机号</h2>
+              <p class="auth-entry-form-copy">老用户直接登录，新用户自动注册</p>
+            </div>
+
+            <div class="auth-input-block auth-entry-phone-block">
+              <div class="auth-entry-phone-row">
+                <div class="auth-input-shell auth-input-shell-live" id="auth-phone-shell">
+                  <span class="auth-entry-phone-prefix">+86</span>
+                  <span class="auth-entry-phone-divider" aria-hidden="true"></span>
+                  <input
+                    id="auth-phone-input"
+                    class="auth-native-input"
+                    type="tel"
+                    inputmode="numeric"
+                    autocomplete="tel-national"
+                    maxlength="11"
+                    placeholder="请输入手机号"
+                    aria-describedby="auth-entry-error"
+                  />
+                </div>
+                <label class="auth-entry-switch" for="auth-phone-input">换号</label>
+              </div>
+              <div class="auth-error-row is-hidden" id="auth-entry-error" role="alert" aria-live="assertive">
+                <span class="alert-dot" aria-hidden="true">!</span>
+                <span>手机号格式不正确，请重新输入</span>
+              </div>
+            </div>
+
+            <button class="auth-primary-btn" id="auth-entry-submit" type="submit" disabled>
+              获取验证码
+            </button>
+
+            <div class="auth-entry-agreement-row">
+              <label class="auth-agreement-check auth-entry-agreement">
+                <input id="auth-agreement" type="checkbox" checked />
+                <span class="auth-check-indicator" aria-hidden="true"></span>
+                <span class="sr-only">同意相关协议</span>
+              </label>
+              <p class="auth-entry-terms">
+                登录即代表同意
+                <button class="auth-dialog-trigger" type="button" data-dialog-trigger="agreement">
+                  用户协议
+                </button>
+                和
+                <button class="auth-dialog-trigger" type="button" data-dialog-trigger="privacy">
+                  隐私政策
+                </button>
+              </p>
+            </div>
+
+            <div
+              class="auth-error-row is-hidden"
+              id="auth-agreement-error"
+              role="alert"
+              aria-live="assertive"
+            >
+              <span class="alert-dot" aria-hidden="true">!</span>
+              <span>继续前请先阅读并同意相关协议</span>
+            </div>
+
+            <button class="auth-entry-support" type="button" data-dialog-trigger="support">
+              遇到问题？联系客服
+            </button>
+          </form>
+        </section>
+
+        <div class="auth-entry-bottom-bar" aria-hidden="true"></div>
+      </section>
+    </main>
+
+    <section class="auth-overlay is-hidden" data-dialog="agreement" aria-hidden="true">
+      <div class="auth-dialog" role="dialog" aria-modal="true" aria-labelledby="agreement-title">
+        <div class="auth-dialog-head">
+          <h2 id="agreement-title">用户协议摘要</h2>
+          <button class="auth-dialog-close" type="button" data-dialog-close aria-label="关闭协议弹层">
+            ×
+          </button>
+        </div>
+        <p>继续登录即表示你同意在遇见内遵守以下基础规则：</p>
+        <ul>
+          <li>使用真实、可联系的手机号完成登录和账号找回。</li>
+          <li>不得发布骚扰、欺诈、导流或违法违规内容。</li>
+          <li>平台会对高风险登录和异常行为采取验证、限制或人工复核。</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="auth-overlay is-hidden" data-dialog="privacy" aria-hidden="true">
+      <div class="auth-dialog" role="dialog" aria-modal="true" aria-labelledby="privacy-title">
+        <div class="auth-dialog-head">
+          <h2 id="privacy-title">隐私政策摘要</h2>
+          <button class="auth-dialog-close" type="button" data-dialog-close aria-label="关闭隐私弹层">
+            ×
+          </button>
+        </div>
+        <p>这一步只处理登录相关的最小必要信息：</p>
+        <ul>
+          <li>手机号仅用于登录、安全验证和账号服务，不会展示给其他用户。</li>
+          <li>设备信息和登录环境只用于安全风控，不会直接公开展示。</li>
+          <li>你可以在正式版账号设置中申请查看、导出或注销账号数据。</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="auth-overlay is-hidden" data-dialog="support" aria-hidden="true">
+      <div class="auth-dialog" role="dialog" aria-modal="true" aria-labelledby="support-title">
+        <div class="auth-dialog-head">
+          <h2 id="support-title">登录帮助</h2>
+          <button class="auth-dialog-close" type="button" data-dialog-close aria-label="关闭帮助弹层">
+            ×
+          </button>
+        </div>
+        <p>如果暂时收不到验证码，优先检查下面几项：</p>
+        <ul>
+          <li>确认手机号填写无误，并处于可接收短信状态。</li>
+          <li>关闭短信拦截、境外漫游限制或飞行模式后再重试。</li>
+          <li>如果本机未配置短信通道，页面会直接返回“短信通道未配置”。</li>
+        </ul>
+      </div>
+    </section>
+
+    <script src="/demo/assets/her-demo/auth-flow.js"></script>
+  </body>
+</html>

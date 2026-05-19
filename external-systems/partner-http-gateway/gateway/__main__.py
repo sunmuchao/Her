@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 from pathlib import Path
 from wsgiref.simple_server import make_server
@@ -26,15 +27,23 @@ def _load_repo_root_dotenv() -> None:
 _load_repo_root_dotenv()
 
 from .app import application
+from .logging_setup import configure_gateway_logging
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Partner recommendation + matchmaking HTTP / JSON-RPC gateway")
     parser.add_argument("--host", default=os.environ.get("PARTNER_HTTP_HOST", "127.0.0.1"))
     parser.add_argument("--port", type=int, default=int(os.environ.get("PARTNER_HTTP_PORT", "8765")))
+    parser.add_argument("--log-level", default=os.environ.get("PARTNER_GATEWAY_LOG_LEVEL"))
+    parser.add_argument("--log-file", default=os.environ.get("PARTNER_GATEWAY_LOG_FILE"))
     args = parser.parse_args()
+    configure_gateway_logging(log_level=args.log_level, log_file=args.log_file)
     httpd = make_server(args.host, args.port, application)
-    print(f"Partner HTTP gateway at http://{args.host}:{args.port} (REST /v1/..., JSON-RPC POST /jsonrpc)")
+    logging.getLogger(__name__).info(
+        "Partner HTTP gateway at http://%s:%s (REST /v1/..., JSON-RPC POST /jsonrpc)",
+        args.host,
+        args.port,
+    )
     httpd.serve_forever()
 
 

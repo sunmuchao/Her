@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import mimetypes
 import os
 from typing import Any, Callable
@@ -54,6 +55,7 @@ from discovery_system import (  # type: ignore[import-untyped]
 )
 
 from .access_control import GatewayAccessMixin
+from .auth_routes import AuthOtpService, dispatch_public_auth_rest
 from .async_jobs import AsyncJobGatewayMixin
 from .chat_routes import (
     chat_require_requester as _chat_require_requester,
@@ -190,6 +192,7 @@ from .verification_routes import (
 JSON_HEADERS = [("Content-Type", "application/json; charset=utf-8")]
 HTML_HEADERS = [("Content-Type", "text/html; charset=utf-8")]
 DEMO_HTML_HEADERS = HTML_HEADERS + [("Cache-Control", "no-store")]
+LOGGER = logging.getLogger(__name__)
 
 
 class PartnerGateway(AsyncJobGatewayMixin, GatewayAccessMixin):
@@ -217,6 +220,7 @@ class PartnerGateway(AsyncJobGatewayMixin, GatewayAccessMixin):
             self._mm_pool = GatewayConnectionPool(self._matchmaking_dsn, "matchmaking", max_size=pool_n)
             self._chat_pool = GatewayConnectionPool(self._chat_dsn, "chat", max_size=pool_n)
         self._discovery = create_default_discovery_service()
+        self._auth_otp = AuthOtpService()
         self._identity_resolver = IdentityResolver()
         self._rate_limiter = rate_limiter_from_environ()
 
@@ -942,6 +946,24 @@ class PartnerGateway(AsyncJobGatewayMixin, GatewayAccessMixin):
                 _access_log(200)
                 return [body]
 
+            public_auth_response = dispatch_public_auth_rest(self, environ, method, path.rstrip("/") or "/")
+            if public_auth_response is not None:
+                if not self._rate_limiter.allow(client_ip(environ)):
+                    status_code = 429
+                    body = json.dumps(
+                        _gateway_error_payload("rate_limited", "Too many requests", trace_id),
+                        ensure_ascii=False,
+                    ).encode("utf-8")
+                    sr("429 Too Many Requests", JSON_HEADERS + [("Content-Length", str(len(body)))])
+                    _access_log(status_code)
+                    return [body]
+                status_code, payload = public_auth_response
+                body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+                reason = "OK" if status_code < 400 else "Error"
+                sr(f"{status_code} {reason}", JSON_HEADERS + [("Content-Length", str(len(body)))])
+                _access_log(status_code)
+                return [body]
+
             actor = self._identity_resolver.resolve(environ)
             set_current_actor(environ, actor)
             actor_token = set_actor_context(
@@ -1025,6 +1047,16 @@ class PartnerGateway(AsyncJobGatewayMixin, GatewayAccessMixin):
             _access_log(status_code)
             return [body]
         except Exception as e:  # noqa: BLE001
+            emit_pipeline_record(
+                her_kind="gateway_error",
+                trace_id=trace_id,
+                http_method=method,
+                path=path,
+                status_code=500,
+                error_type=type(e).__name__,
+                error_message=str(e),
+            )
+            LOGGER.exception("Unhandled gateway error for %s %s trace_id=%s", method, path, trace_id)
             err = {"error": {"code": "internal_error", "message": str(e)}, "trace_id": trace_id}
             body = json.dumps(err, ensure_ascii=False).encode("utf-8")
             sr("500 Internal Server Error", JSON_HEADERS + [("Content-Length", str(len(body)))])

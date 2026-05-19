@@ -20,9 +20,30 @@ from .request_policy import client_ip
 DEMO_ASSET_ROOT = Path(__file__).with_name("demo_assets")
 DEMO_HTML_FILES = {
     "/demo/live-video-verification": Path(__file__).with_name("live_video_verification_demo.html"),
+    "/demo/auth": _paths._REPO_ROOT / "docs" / "frontend-prototypes" / "auth-entry.html",
+    "/demo/auth/code": _paths._REPO_ROOT / "docs" / "frontend-prototypes" / "auth-code.html",
+    "/demo/auth/onboarding/basic": _paths._REPO_ROOT / "docs" / "frontend-prototypes" / "auth-onboarding-basic.html",
+    "/demo/auth/onboarding/profile": _paths._REPO_ROOT / "docs" / "frontend-prototypes" / "auth-onboarding-profile.html",
+    "/demo/auth/onboarding/trust": _paths._REPO_ROOT / "docs" / "frontend-prototypes" / "auth-onboarding-trust.html",
+    "/demo/search": _paths._REPO_ROOT / "docs" / "frontend-prototypes" / "search.html",
     "/demo/discovery": _paths._REPO_ROOT / "docs" / "frontend-prototypes" / "discovery.html",
     "/demo/discovery/profile-detail": _paths._REPO_ROOT / "docs" / "frontend-prototypes" / "profile-detail.html",
+    "/demo/recommendations": _paths._REPO_ROOT / "docs" / "frontend-prototypes" / "recommendations.html",
+    "/demo/chat": _paths._REPO_ROOT / "docs" / "frontend-prototypes" / "chat.html",
+    "/demo/chat/report": _paths._REPO_ROOT / "docs" / "frontend-prototypes" / "chat-report.html",
+    "/demo/chat/meeting-feedback": _paths._REPO_ROOT / "docs" / "frontend-prototypes" / "chat-meeting-feedback.html",
+    "/demo/chat/risk-sidebar": _paths._REPO_ROOT / "docs" / "frontend-prototypes" / "chat-risk-sidebar.html",
+    "/demo/trust": _paths._REPO_ROOT / "docs" / "frontend-prototypes" / "trust.html",
+    "/demo/trust/task": _paths._REPO_ROOT / "docs" / "frontend-prototypes" / "trust-task.html",
+    "/demo/trust/appeals": _paths._REPO_ROOT / "docs" / "frontend-prototypes" / "trust-appeals.html",
+    "/demo/me": _paths._REPO_ROOT / "docs" / "frontend-prototypes" / "me.html",
+    "/demo/me/profile": _paths._REPO_ROOT / "docs" / "frontend-prototypes" / "me-profile.html",
+    "/demo/me/preferences": _paths._REPO_ROOT / "docs" / "frontend-prototypes" / "me-preferences.html",
+    "/demo/me/history": _paths._REPO_ROOT / "docs" / "frontend-prototypes" / "me-history.html",
+    "/demo/notifications": _paths._REPO_ROOT / "docs" / "frontend-prototypes" / "notifications.html",
 }
+
+DEMO_RUNTIME_TAG = '<script defer src="/demo/assets/her-demo/prototypes.js"></script>'
 
 
 def _incoming_trace_id(environ: dict[str, Any]) -> str:
@@ -83,11 +104,21 @@ def _demo_html_file(path: str) -> Path | None:
     return DEMO_HTML_FILES.get(_normalize_demo_html_path(path))
 
 
+def _inject_demo_runtime(path: str, html: str) -> str:
+    normalized = _normalize_demo_html_path(path)
+    if normalized == "/demo/live-video-verification" or DEMO_RUNTIME_TAG in html:
+        return html
+    if "</body>" in html:
+        return html.replace("</body>", f"  {DEMO_RUNTIME_TAG}\n  </body>", 1)
+    return f"{html}\n{DEMO_RUNTIME_TAG}\n"
+
+
 def _read_demo_html(path: str) -> str | None:
     demo_file = _demo_html_file(path)
     if demo_file is None:
         return None
-    return demo_file.read_text(encoding="utf-8")
+    html = demo_file.read_text(encoding="utf-8")
+    return _inject_demo_runtime(path, html)
 
 
 def _demo_asset_file(asset_path: str) -> Path | None:

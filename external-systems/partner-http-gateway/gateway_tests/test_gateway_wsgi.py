@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import io
 import json
+import logging
 import os
 import pathlib
 import sys
+import tempfile
 import unittest
+from contextlib import contextmanager
 from unittest import mock
 
 
@@ -13,11 +17,58 @@ if str(GATEWAY_ROOT) not in sys.path:
     sys.path.insert(0, str(GATEWAY_ROOT))
 
 from gateway.app import PartnerGateway  # noqa: E402
+from gateway import auth_routes  # noqa: E402
+from gateway.logging_setup import configure_gateway_logging  # noqa: E402
 from gateway_tests.helpers import build_wsgi_env as _wsgi_env, run_wsgi_json  # noqa: E402
 
 
 def _auth_headers(token: str) -> dict[str, str]:
     return {"HTTP_AUTHORIZATION": f"Bearer {token}"}
+
+
+def _restore_logger_state(
+    logger: logging.Logger,
+    *,
+    handlers: list[logging.Handler],
+    level: int,
+    propagate: bool,
+) -> None:
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+        if handler not in handlers:
+            handler.close()
+    for handler in handlers:
+        logger.addHandler(handler)
+    logger.setLevel(level)
+    logger.propagate = propagate
+
+
+@contextmanager
+def _configured_gateway_logging(*, stream: io.StringIO, log_file: str | None = None):
+    root_logger = logging.getLogger()
+    pipeline_logger = logging.getLogger("her.pipeline")
+    root_handlers = root_logger.handlers[:]
+    pipeline_handlers = pipeline_logger.handlers[:]
+    root_level = root_logger.level
+    pipeline_level = pipeline_logger.level
+    root_propagate = root_logger.propagate
+    pipeline_propagate = pipeline_logger.propagate
+    try:
+        configure_gateway_logging(stream=stream, log_file=log_file)
+        yield
+    finally:
+        _restore_logger_state(
+            root_logger,
+            handlers=root_handlers,
+            level=root_level,
+            propagate=root_propagate,
+        )
+        _restore_logger_state(
+            pipeline_logger,
+            handlers=pipeline_handlers,
+            level=pipeline_level,
+            propagate=pipeline_propagate,
+        )
 
 
 class GatewayWsgiTests(unittest.TestCase):
@@ -66,6 +117,19 @@ class GatewayWsgiTests(unittest.TestCase):
         hdrs = {k.lower(): v for k, v in self.headers}
         self.assertEqual(hdrs.get("x-trace-id"), "client-trace-1")
 
+    def test_health_emits_access_log(self) -> None:
+        env = _wsgi_env("GET", "/health", extra={"HTTP_X_TRACE_ID": "trace-log-1"})
+        stream = io.StringIO()
+
+        with _configured_gateway_logging(stream=stream):
+            b"".join(self.gw(env, self.start_response))
+
+        text = stream.getvalue()
+        self.assertIn('"her_kind": "gateway_access"', text)
+        self.assertIn('"path": "/health"', text)
+        self.assertIn('"status_code": 200', text)
+        self.assertIn('"trace_id": "trace-log-1"', text)
+
     def test_health_skips_static_token_auth(self) -> None:
         tokens = json.dumps({"token-user-a": {"actor_id": "user-a", "roles": ["end_user"]}})
         with mock.patch.dict(os.environ, {"PARTNER_GATEWAY_STATIC_TOKENS_JSON": tokens}, clear=False):
@@ -86,6 +150,77 @@ class GatewayWsgiTests(unittest.TestCase):
         self.assertIn("404", self.status)
         data = json.loads(out.decode("utf-8"))
         self.assertEqual(data.get("error", {}).get("code"), "not_found")
+
+    def test_auth_sms_send_and_verify(self) -> None:
+        class FakeSmsProvider:
+            def __init__(self) -> None:
+                self.calls: list[tuple[str, str]] = []
+
+            def send_code(self, phone: str, code: str) -> dict[str, str]:
+                self.calls.append((phone, code))
+                return {"provider": "fake"}
+
+        provider = FakeSmsProvider()
+        self.gw._auth_otp._provider = provider
+
+        send_env = _wsgi_env(
+            "POST",
+            "/v1/auth/sms/send-code",
+            json.dumps({"phone": "13800138000"}).encode("utf-8"),
+        )
+        send_status, send_payload = self._run_with_gateway(self.gw, send_env)
+
+        self.assertIn("201", send_status)
+        self.assertEqual(send_payload["delivery"]["provider"], "fake")
+        self.assertEqual(send_payload["flow"]["scenario"], "existing")
+        self.assertEqual(send_payload["flow"]["next_path"], "/demo/discovery")
+        self.assertEqual(len(provider.calls), 1)
+
+        verify_env = _wsgi_env(
+            "POST",
+            "/v1/auth/sms/verify-code",
+            json.dumps({"phone": "13800138000", "code": provider.calls[0][1]}).encode("utf-8"),
+        )
+        verify_status, verify_payload = self._run_with_gateway(self.gw, verify_env)
+
+        self.assertIn("200", verify_status)
+        self.assertTrue(verify_payload["verified"])
+        self.assertEqual(verify_payload["flow"]["next_path"], "/demo/discovery")
+
+    def test_aliyun_sms_provider_request_shape(self) -> None:
+        class FakeResponse:
+            def __enter__(self) -> FakeResponse:
+                return self
+
+            def __exit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+            def read(self) -> bytes:
+                return json.dumps({"Code": "OK", "RequestId": "req-1", "BizId": "biz-1"}).encode("utf-8")
+
+        with mock.patch.dict(
+            os.environ,
+            {
+                "HER_SMS_ALIYUN_ACCESS_KEY_ID": "ak-test",
+                "HER_SMS_ALIYUN_ACCESS_KEY_SECRET": "sk-test",
+                "HER_SMS_ALIYUN_SIGN_NAME": "遇见",
+                "HER_SMS_ALIYUN_TEMPLATE_CODE": "SMS_123456789",
+            },
+            clear=False,
+        ):
+            provider = auth_routes.AliyunSmsProvider.from_env()
+
+        with mock.patch("gateway.auth_routes.urllib_request.urlopen", return_value=FakeResponse()) as urlopen:
+            result = provider.send_code("13800138000", "123456")
+
+        self.assertEqual(result["provider"], "aliyun")
+        self.assertEqual(result["request_id"], "req-1")
+        request = urlopen.call_args.args[0]
+        self.assertIn("Action=SendSms", request.full_url)
+        self.assertIn("PhoneNumbers=13800138000", request.full_url)
+        self.assertIn("TemplateCode=SMS_123456789", request.full_url)
+        self.assertIn("TemplateParam=%7B%22code%22%3A%22123456%22%7D", request.full_url)
+        self.assertIn("Signature=", request.full_url)
 
     def test_discovery_create_session_returns_render_model(self) -> None:
         env = _wsgi_env(
@@ -213,6 +348,37 @@ class GatewayWsgiTests(unittest.TestCase):
         self.assertEqual(detail_data["detail_view"]["photo_gallery"][0]["image_url"], "https://static.example.com/p/10001/1.jpg")
         self.assertIn("detail_view", detail_data)
 
+    def test_internal_error_emits_error_log(self) -> None:
+        env = _wsgi_env("GET", "/v1/failure")
+        stream = io.StringIO()
+
+        with mock.patch.object(self.gw, "dispatch_rest", side_effect=RuntimeError("boom")), _configured_gateway_logging(
+            stream=stream
+        ):
+            out = b"".join(self.gw(env, self.start_response))
+
+        self.assertIn("500", self.status)
+        data = json.loads(out.decode("utf-8"))
+        self.assertEqual(data["error"]["code"], "internal_error")
+        text = stream.getvalue()
+        self.assertIn('"her_kind": "gateway_error"', text)
+        self.assertIn('"error_type": "RuntimeError"', text)
+        self.assertIn("Unhandled gateway error for GET /v1/failure", text)
+
+    def test_access_log_can_write_to_file(self) -> None:
+        env = _wsgi_env("GET", "/health")
+        stream = io.StringIO()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_file = str(pathlib.Path(tmpdir) / "partner-http-gateway.log")
+            with _configured_gateway_logging(stream=stream, log_file=log_file):
+                b"".join(self.gw(env, self.start_response))
+
+            text = pathlib.Path(log_file).read_text(encoding="utf-8")
+
+        self.assertIn('"her_kind": "gateway_access"', text)
+        self.assertIn('"path": "/health"', text)
+
     def test_live_video_demo_route_serves_html(self) -> None:
         env = _wsgi_env("GET", "/demo/live-video-verification")
         out = b"".join(self.gw(env, self.start_response))
@@ -256,7 +422,7 @@ class GatewayWsgiTests(unittest.TestCase):
         hdrs = {k.lower(): v for k, v in self.headers}
         self.assertEqual(hdrs.get("content-type"), "text/html; charset=utf-8")
         body = out.decode("utf-8")
-        self.assertIn("对话式发现页", body)
+        self.assertIn("Her · 发现", body)
         self.assertIn("/v1/discovery/sessions", body)
         self.assertIn("/demo/discovery/profile-detail", body)
         self.assertIn('stored.requesterId || "1"', body)
@@ -283,7 +449,7 @@ class GatewayWsgiTests(unittest.TestCase):
 
         self.assertIn("200", status)
         self.assertEqual({k.lower(): v for k, v in headers}.get("content-type"), "text/html; charset=utf-8")
-        self.assertIn("对话式发现页", out.decode("utf-8"))
+        self.assertIn("Her · 发现", out.decode("utf-8"))
 
     def test_discovery_profile_detail_demo_route_serves_html(self) -> None:
         env = _wsgi_env("GET", "/demo/discovery/profile-detail")
@@ -293,8 +459,8 @@ class GatewayWsgiTests(unittest.TestCase):
         hdrs = {k.lower(): v for k, v in self.headers}
         self.assertEqual(hdrs.get("content-type"), "text/html; charset=utf-8")
         body = out.decode("utf-8")
-        self.assertIn("资料详情页", body)
-        self.assertIn("GET /v1/discovery/profiles/{profile_id}", body)
+        self.assertIn("Her · 资料详情", body)
+        self.assertTrue("聊一聊" in body or "继续问红娘" in body)
         self.assertIn("/demo/discovery", body)
 
     def test_discovery_profile_detail_demo_route_skips_api_key_guard(self) -> None:
@@ -318,7 +484,41 @@ class GatewayWsgiTests(unittest.TestCase):
 
         self.assertIn("200", status)
         self.assertEqual({k.lower(): v for k, v in headers}.get("content-type"), "text/html; charset=utf-8")
-        self.assertIn("资料详情页", out.decode("utf-8"))
+        self.assertIn("Her · 资料详情", out.decode("utf-8"))
+
+    def test_additional_demo_routes_serve_html(self) -> None:
+        expectations = [
+            ("/demo/auth", 'data-demo-page="auth-entry"'),
+            ("/demo/auth/code", 'data-demo-page="auth-code"'),
+            ("/demo/auth/onboarding/basic", 'data-demo-page="auth-onboarding-basic"'),
+            ("/demo/auth/onboarding/profile", 'data-demo-page="auth-onboarding-profile"'),
+            ("/demo/auth/onboarding/trust", 'data-demo-page="auth-onboarding-trust"'),
+            ("/demo/search", 'data-demo-page="search"'),
+            ("/demo/chat", 'data-demo-page="chat"'),
+            ("/demo/chat/report", 'data-demo-page="chat-report"'),
+            ("/demo/chat/meeting-feedback", 'data-demo-page="chat-meeting-feedback"'),
+            ("/demo/chat/risk-sidebar", 'data-demo-page="chat-risk-sidebar"'),
+            ("/demo/trust", 'data-demo-page="trust"'),
+            ("/demo/trust/task", 'data-demo-page="trust-task"'),
+            ("/demo/trust/appeals", 'data-demo-page="trust-appeals"'),
+            ("/demo/me", 'data-demo-page="me"'),
+            ("/demo/me/profile", 'data-demo-page="me-profile"'),
+            ("/demo/me/preferences", 'data-demo-page="me-preferences"'),
+            ("/demo/me/history", 'data-demo-page="me-history"'),
+            ("/demo/notifications", 'data-demo-page="notifications"'),
+        ]
+
+        for path, marker in expectations:
+            with self.subTest(path=path):
+                env = _wsgi_env("GET", path)
+                out = b"".join(self.gw(env, self.start_response))
+
+                self.assertIn("200", self.status)
+                hdrs = {k.lower(): v for k, v in self.headers}
+                self.assertEqual(hdrs.get("content-type"), "text/html; charset=utf-8")
+                body = out.decode("utf-8")
+                self.assertIn("/demo/assets/her-demo/styles.css", body)
+                self.assertIn(marker, body)
 
     def test_live_video_demo_asset_route_serves_local_module(self) -> None:
         env = _wsgi_env("GET", "/demo/assets/mediapipe/vision_bundle.mjs")

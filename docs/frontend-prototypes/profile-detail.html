@@ -3,1111 +3,129 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Her Prototype · 资料详情页</title>
-    <style>
-      :root {
-        color-scheme: light;
-        --bg: #f3eadb;
-        --bg-deep: #e4d6bf;
-        --paper: rgba(255, 253, 249, 0.94);
-        --paper-strong: rgba(255, 255, 255, 0.98);
-        --ink: #15211e;
-        --muted: #5a6862;
-        --line: rgba(21, 33, 30, 0.08);
-        --accent: #0f766e;
-        --accent-strong: #115e59;
-        --accent-soft: rgba(15, 118, 110, 0.12);
-        --good: #1e7a4b;
-        --good-soft: rgba(30, 122, 75, 0.12);
-        --warn: #95661d;
-        --warn-soft: rgba(149, 102, 29, 0.12);
-        --rose: #b14f61;
-        --rose-soft: rgba(177, 79, 97, 0.12);
-        --shadow: 0 28px 80px rgba(43, 37, 28, 0.14);
-        font-family: "IBM Plex Sans", "PingFang SC", "Noto Sans SC", sans-serif;
-      }
-
-      * {
-        box-sizing: border-box;
-      }
-
-      body {
-        margin: 0;
-        min-height: 100vh;
-        color: var(--ink);
-        background:
-          radial-gradient(circle at top left, rgba(15, 118, 110, 0.12), transparent 28%),
-          radial-gradient(circle at 86% 12%, rgba(177, 79, 97, 0.1), transparent 22%),
-          linear-gradient(180deg, #fbf6ef 0%, var(--bg) 54%, var(--bg-deep) 100%);
-      }
-
-      body::before {
-        content: "";
-        position: fixed;
-        inset: 0;
-        pointer-events: none;
-        background-image:
-          linear-gradient(rgba(21, 33, 30, 0.03) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(21, 33, 30, 0.03) 1px, transparent 1px);
-        background-size: 24px 24px;
-        mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.34), transparent 82%);
-      }
-
-      .page {
-        width: min(1260px, calc(100vw - 32px));
-        margin: 0 auto;
-        padding: 28px 0 44px;
-      }
-
-      .eyebrow,
-      .section-title,
-      .field span {
-        letter-spacing: 0.14em;
-        text-transform: uppercase;
-      }
-
-      .hero-shell {
-        position: relative;
-        display: grid;
-        grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.9fr);
-        gap: 22px;
-        padding: 24px;
-        border-radius: 34px;
-        overflow: hidden;
-        background:
-          radial-gradient(circle at 0% 0%, rgba(255, 255, 255, 0.24), transparent 24%),
-          radial-gradient(circle at 88% 18%, rgba(255, 223, 176, 0.22), transparent 22%),
-          linear-gradient(135deg, rgba(8, 34, 36, 0.98) 0%, rgba(20, 71, 73, 0.92) 48%, rgba(198, 140, 91, 0.82) 100%);
-        box-shadow: 0 34px 90px rgba(22, 30, 31, 0.2);
-      }
-
-      .hero-shell::after {
-        content: "";
-        position: absolute;
-        right: -70px;
-        bottom: -120px;
-        width: 280px;
-        height: 280px;
-        border-radius: 50%;
-        background: radial-gradient(circle, rgba(255, 246, 232, 0.3), transparent 70%);
-      }
-
-      .hero-main,
-      .hero-side,
-      .content-card,
-      .rail {
-        position: relative;
-        z-index: 1;
-      }
-
-      .hero-main {
-        display: grid;
-        gap: 18px;
-        color: #f7f4ef;
-      }
-
-      .hero-row,
-      .hero-meta,
-      .action-row,
-      .section-head {
-        display: flex;
-        justify-content: space-between;
-        gap: 12px;
-        align-items: center;
-      }
-
-      .hero-copy h1,
-      .content-card h2,
-      .rail-card h3,
-      .config-panel h3 {
-        margin: 0;
-        font-family: "Iowan Old Style", "Noto Serif SC", "STSong", serif;
-      }
-
-      .eyebrow {
-        margin: 0;
-        font-size: 12px;
-        font-weight: 800;
-        color: var(--accent);
-      }
-
-      .hero-main .eyebrow {
-        color: rgba(247, 244, 239, 0.72);
-      }
-
-      .hero-copy h1 {
-        margin-top: 8px;
-        font-size: clamp(34px, 4.6vw, 56px);
-        line-height: 0.98;
-        letter-spacing: -0.07em;
-      }
-
-      .hero-copy p,
-      .summary-copy,
-      .rail-copy,
-      .section-body,
-      .helper-text,
-      .empty-state,
-      .config-meta,
-      .guide-list li {
-        color: var(--muted);
-        line-height: 1.74;
-      }
-
-      .hero-copy p {
-        margin: 14px 0 0;
-        max-width: 54ch;
-        color: rgba(247, 244, 239, 0.78);
-        font-size: 15px;
-      }
-
-      .back-link,
-      .refresh-btn,
-      .hero-pill,
-      .tag,
-      .meta-pill,
-      .photo-frame,
-      .action-btn,
-      .config-actions button {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-      }
-
-      .back-link,
-      .refresh-btn,
-      .action-btn,
-      .config-actions button {
-        appearance: none;
-        min-height: 46px;
-        padding: 0 16px;
-        border-radius: 18px;
-        border: 0;
-        font: inherit;
-        font-size: 14px;
-        font-weight: 800;
-        text-decoration: none;
-        cursor: pointer;
-      }
-
-      .back-link,
-      .refresh-btn,
-      .action-btn.secondary,
-      .config-actions button.secondary {
-        background: rgba(255, 255, 255, 0.12);
-        color: #f7f4ef;
-        border: 1px solid rgba(255, 255, 255, 0.14);
-      }
-
-      .action-btn.primary,
-      .config-actions button.primary {
-        background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
-        color: #f7faf9;
-      }
-
-      .hero-meta {
-        flex-wrap: wrap;
-      }
-
-      .hero-pill,
-      .meta-pill,
-      .tag {
-        min-height: 36px;
-        padding: 0 12px;
-        border-radius: 999px;
-        font-size: 12px;
-        font-weight: 800;
-      }
-
-      .hero-pill,
-      .meta-pill {
-        color: #f7f4ef;
-        background: rgba(12, 18, 17, 0.38);
-        border: 1px solid rgba(255, 255, 255, 0.12);
-      }
-
-      .summary-card {
-        padding: 20px;
-        border-radius: 26px;
-        background: rgba(255, 251, 247, 0.14);
-        border: 1px solid rgba(255, 255, 255, 0.14);
-        color: #f7f4ef;
-        backdrop-filter: blur(10px);
-      }
-
-      .summary-card strong {
-        display: block;
-        margin-top: 8px;
-        font-size: 26px;
-        line-height: 1.22;
-        letter-spacing: -0.05em;
-      }
-
-      .summary-card p {
-        margin: 10px 0 0;
-        color: rgba(247, 244, 239, 0.78);
-      }
-
-      .summary-card.compact {
-        background: rgba(13, 34, 35, 0.28);
-      }
-
-      .shell {
-        display: grid;
-        grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.82fr);
-        gap: 24px;
-        align-items: start;
-        margin-top: 24px;
-      }
-
-      .content-card,
-      .rail-card,
-      .debug-shell {
-        border-radius: 32px;
-        border: 1px solid rgba(255, 255, 255, 0.72);
-        background:
-          linear-gradient(180deg, rgba(255, 253, 249, 0.96), rgba(245, 237, 225, 0.96)),
-          rgba(255, 255, 255, 0.55);
-        box-shadow: var(--shadow);
-      }
-
-      .content-card {
-        display: grid;
-        gap: 18px;
-        padding: 22px;
-      }
-
-      .content-card h2 {
-        font-size: 28px;
-        line-height: 1.02;
-        letter-spacing: -0.05em;
-      }
-
-      .lead-note {
-        display: grid;
-        gap: 10px;
-        padding: 18px;
-        border-radius: 26px;
-        border: 1px solid var(--line);
-        background:
-          radial-gradient(circle at top right, rgba(177, 79, 97, 0.08), transparent 24%),
-          linear-gradient(140deg, rgba(15, 118, 110, 0.1), rgba(255, 255, 255, 0.72));
-      }
-
-      .lead-note strong {
-        font-size: 21px;
-        font-weight: 800;
-        letter-spacing: -0.04em;
-      }
-
-      .photo-grid {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 12px;
-      }
-
-      .photo-frame {
-        overflow: hidden;
-        min-height: 180px;
-        border-radius: 22px;
-        background:
-          radial-gradient(circle at 18% 20%, rgba(255, 255, 255, 0.22), transparent 16%),
-          linear-gradient(145deg, #33534d 0%, #5d867d 52%, #cc9d7d 100%);
-      }
-
-      .photo-frame img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        display: block;
-      }
-
-      .tag-row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-      }
-
-      .tag {
-        min-height: 34px;
-        padding: 0 12px;
-        border-radius: 999px;
-        font-size: 12px;
-        font-weight: 800;
-      }
-
-      .tag.good {
-        color: var(--good);
-        background: var(--good-soft);
-      }
-
-      .tag.warn {
-        color: var(--warn);
-        background: var(--warn-soft);
-      }
-
-      .tag.rose {
-        color: var(--rose);
-        background: var(--rose-soft);
-      }
-
-      .detail-section,
-      .config-panel {
-        border: 1px solid var(--line);
-      }
-
-      .detail-section {
-        padding: 18px;
-        border-radius: 24px;
-        background: rgba(255, 255, 255, 0.72);
-      }
-
-      .section-title {
-        display: block;
-        margin: 0 0 12px;
-        font-size: 11px;
-        font-weight: 800;
-        color: var(--muted);
-      }
-
-      .section-body {
-        margin: 0;
-        font-size: 14px;
-      }
-
-      .bullet-list {
-        display: grid;
-        gap: 10px;
-      }
-
-      .bullet-row {
-        display: flex;
-        gap: 12px;
-        align-items: flex-start;
-      }
-
-      .bullet-mark {
-        flex: none;
-        min-width: 18px;
-        color: var(--accent-strong);
-        font-weight: 800;
-      }
-
-      .action-row {
-        flex-wrap: wrap;
-      }
-
-      .rail {
-        display: grid;
-        gap: 18px;
-      }
-
-      .rail-card,
-      .debug-shell {
-        padding: 22px;
-      }
-
-      .rail-card h3,
-      .config-panel h3 {
-        font-size: 26px;
-        line-height: 1.06;
-        letter-spacing: -0.05em;
-      }
-
-      .rail-copy {
-        margin: 10px 0 0;
-        font-size: 14px;
-      }
-
-      .meta-grid {
-        display: grid;
-        gap: 10px;
-        margin-top: 18px;
-      }
-
-      .meta-grid div {
-        display: flex;
-        justify-content: space-between;
-        gap: 12px;
-        padding: 13px 14px;
-        border-radius: 18px;
-        background: rgba(21, 33, 30, 0.05);
-        color: var(--muted);
-        font-size: 13px;
-      }
-
-      .meta-grid strong {
-        color: var(--ink);
-      }
-
-      .guide-list {
-        display: grid;
-        gap: 10px;
-        margin: 18px 0 0;
-        padding: 0 0 0 18px;
-      }
-
-      .guide-list li {
-        font-size: 14px;
-      }
-
-      .config-panel {
-        padding: 0;
-        border-radius: 0;
-        background: transparent;
-      }
-
-      .helper-text {
-        margin: 0;
-        font-size: 14px;
-      }
-
-      .config-grid {
-        display: grid;
-        gap: 12px;
-        margin-top: 18px;
-      }
-
-      .field {
-        display: grid;
-        gap: 6px;
-      }
-
-      .field span {
-        font-size: 12px;
-        font-weight: 800;
-        color: var(--muted);
-      }
-
-      .field input {
-        width: 100%;
-        padding: 13px 14px;
-        border-radius: 16px;
-        border: 1px solid var(--line);
-        background: rgba(255, 255, 255, 0.9);
-        color: var(--ink);
-        font: inherit;
-        font-size: 14px;
-      }
-
-      .field input:focus {
-        outline: 2px solid rgba(15, 118, 110, 0.18);
-        outline-offset: 0;
-      }
-
-      .config-actions {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 10px;
-        margin-top: 18px;
-      }
-
-      .config-meta {
-        display: grid;
-        gap: 6px;
-        margin-top: 16px;
-        font-size: 13px;
-      }
-
-      .config-meta code {
-        padding: 3px 7px;
-        border-radius: 999px;
-        background: rgba(21, 33, 30, 0.06);
-        color: var(--ink);
-      }
-
-      .debug-shell {
-        overflow: hidden;
-        border: 1px solid var(--line);
-      }
-
-      .debug-summary {
-        display: flex;
-        justify-content: space-between;
-        gap: 12px;
-        align-items: center;
-        padding: 0;
-        cursor: pointer;
-        list-style: none;
-        font-size: 14px;
-        font-weight: 800;
-      }
-
-      .debug-summary::-webkit-details-marker {
-        display: none;
-      }
-
-      .debug-hint {
-        color: var(--muted);
-        font-size: 12px;
-      }
-
-      .debug-content {
-        padding-top: 18px;
-      }
-
-      @media (max-width: 1080px) {
-        .page {
-          width: min(100vw - 20px, 980px);
-        }
-
-        .hero-shell,
-        .shell {
-          grid-template-columns: 1fr;
-        }
-      }
-
-      @media (max-width: 720px) {
-        .page {
-          width: min(100vw - 16px, 560px);
-          padding-top: 12px;
-        }
-
-        .hero-shell,
-        .content-card,
-        .rail-card,
-        .debug-shell {
-          border-radius: 26px;
-        }
-
-        .hero-shell,
-        .content-card,
-        .rail-card,
-        .debug-shell {
-          padding: 18px;
-        }
-
-        .hero-row,
-        .action-row,
-        .config-actions {
-          flex-direction: column;
-          align-items: stretch;
-        }
-
-        .photo-grid,
-        .config-actions {
-          grid-template-columns: 1fr;
-        }
-      }
-    </style>
+    <title>Her · 资料详情</title>
+    <link rel="stylesheet" href="/demo/assets/her-demo/styles.css" />
   </head>
-  <body>
-    <main class="page">
-      <section class="hero-shell">
-        <div class="hero-main">
-          <div class="hero-row">
-            <a class="back-link" id="back-link" href="./discovery.html">← 返回 /demo/discovery</a>
-            <button class="refresh-btn" id="reload-detail-btn" type="button">重载详情</button>
+  <body data-demo-page="profile-detail">
+    <main class="proto-page">
+      <aside class="copy-panel">
+        <section class="surface">
+          <p class="eyebrow">Sketch 03 / Profile</p>
+          <h1 class="lede">候选人资料详情</h1>
+          <p>详情页把“已核验信息”和“本人填写信息”清晰拆开，并在底部保留直接沟通动作。视觉上强调大图首屏和可信度提示，而不是把字段做成后台表格。</p>
+        </section>
+        <section class="surface">
+          <ul class="route-list">
+            <li class="route-item">
+              <strong>返回发现页</strong>
+              <a class="footer-link" href="/demo/discovery">/demo/discovery</a>
+            </li>
+            <li class="route-item">
+              <strong>下一步</strong>
+              <a class="footer-link" href="/demo/chat">聊一聊</a>
+            </li>
+          </ul>
+        </section>
+      </aside>
+
+      <section class="phone-shell">
+        <div class="phone-screen">
+          <div class="status-bar">
+            <span>9:41</span>
+            <div class="status-icons"><span>5G</span><span>100%</span></div>
           </div>
+          <header class="nav-bar">
+            <div class="nav-left">
+              <a class="icon-btn" href="/demo/discovery">←</a>
+              <h2>候选人资料</h2>
+            </div>
+            <div class="nav-right">
+              <button class="icon-btn" type="button" aria-label="分享候选人资料">↗</button>
+              <button class="icon-btn" type="button" aria-label="查看更多资料操作">更多</button>
+            </div>
+          </header>
+          <div class="phone-scroll">
+            <section class="wide-photo">
+              <img
+                src="/demo/assets/sketch/profile-hero.png"
+                alt="李晓雨主照片"
+                loading="eager"
+                decoding="sync"
+                fetchpriority="high"
+              />
+            </section>
 
-          <div class="hero-copy">
-            <p class="eyebrow">资料详情页</p>
-            <h1 id="hero-name">正在读取候选人资料</h1>
-            <p id="hero-headline">详情页只展示后端返回的 detail_view，不从列表卡片自己拼更多判断。</p>
+            <section class="card soft">
+              <div class="split-row">
+                <strong>可信度概览</strong>
+                <a class="footer-link" href="/demo/trust">查看核验详情</a>
+              </div>
+              <div class="badge-row" style="margin-top: 12px">
+                <span class="chip good">实名已核验</span>
+                <span class="chip blue">照片一致率 96%</span>
+                <span class="chip">资料完整度高</span>
+              </div>
+            </section>
+
+            <section class="card">
+              <div class="title-row">
+                <div>
+                  <h3>李晓雨</h3>
+                  <p class="subtle">28岁 · 北京</p>
+                </div>
+                <span class="chip good">已核验 Lv.3</span>
+              </div>
+              <p style="margin-top: 8px">认真寻找人生伴侣，不将就，也不凑合</p>
+            </section>
+
+            <section class="gallery">
+              <img src="/demo/assets/sketch/profile-gallery-1.png" alt="资料图 1" loading="eager" decoding="sync" />
+              <img src="/demo/assets/sketch/profile-gallery-2.png" alt="资料图 2" loading="eager" decoding="sync" />
+              <img src="/demo/assets/sketch/profile-gallery-3.png" alt="资料图 3" loading="eager" decoding="sync" />
+            </section>
+
+            <section class="card">
+              <h3 class="section-title">已核验信息</h3>
+              <div class="detail-list" style="margin-top: 12px">
+                <div class="detail-item"><strong>学历</strong><span>硕士研究生（已上传证书）</span></div>
+                <div class="detail-item"><strong>照片真人核验</strong><span>通过（一致率 96%）</span></div>
+                <div class="detail-item"><strong>身份证</strong><span>已核实（脱敏）</span></div>
+              </div>
+            </section>
+
+            <section class="card">
+              <h3 class="section-title">本人填写</h3>
+              <div class="kv-grid" style="margin-top: 12px">
+                <div class="kv"><span>职业</span><strong>互联网产品经理</strong></div>
+                <div class="kv"><span>身高</span><strong>163cm</strong></div>
+                <div class="kv"><span>收入</span><strong>20-30w/年</strong></div>
+                <div class="kv"><span>婚姻状况</span><strong>未婚</strong></div>
+                <div class="kv"><span>结婚意向</span><strong>1-2年内结婚</strong></div>
+                <div class="kv"><span>接受对方有孩子</span><strong>不接受</strong></div>
+              </div>
+            </section>
+
+            <section class="notice warn">
+              <strong>需谨慎确认</strong>
+              <div>收入信息未经第三方核实，建议在继续推进前补充确认。</div>
+            </section>
+
+            <section class="card">
+              <h3 class="section-title">推荐理由</h3>
+              <p style="margin-top: 8px">性格温和，沟通顺畅，家庭观念明确，结婚意向清晰。适合优先进入初聊和线下了解阶段。</p>
+            </section>
+
+            <div class="button-row">
+              <button class="btn secondary" type="button">收藏</button>
+              <button class="btn secondary" type="button">跳过</button>
+            </div>
+            <div class="button-row">
+              <a class="btn" href="/demo/chat">聊一聊</a>
+              <a class="btn ghost" href="/demo/discovery">继续问红娘</a>
+            </div>
           </div>
-
-          <div class="hero-meta">
-            <span class="hero-pill" id="hero-pill-left">等待 detail_view</span>
-            <span class="hero-pill" id="hero-pill-right">session_id -</span>
-            <span class="hero-pill" id="trace-pill">trace_id: -</span>
-            <span class="hero-pill" id="phase-pill">profile_id: -</span>
-          </div>
-        </div>
-
-        <div class="hero-side">
-          <article class="summary-card">
-            <p class="eyebrow">红娘承接</p>
-            <strong id="summary-title">先拿到 detail_view，再决定展示什么。</strong>
-            <p class="summary-copy" id="summary-copy">这页的首要任务不是替用户再做业务判断，而是先解释为什么这一轮会把这位放到面前。</p>
-          </article>
-
-          <article class="summary-card compact">
-            <p class="eyebrow">接口约束</p>
-            <strong>GET /v1/discovery/profiles/{profile_id}</strong>
-            <p class="summary-copy">详情页仍然只承接一个接口。如果后端没返回更多字段，前端不会自己从 discovery 卡片扩写更多内容。</p>
-          </article>
         </div>
       </section>
-
-      <div class="shell">
-        <section class="content-card">
-          <div class="lead-note">
-            <span class="section-title">本轮为什么值得看</span>
-            <strong id="lead-note-title">先看红娘说明，再看结构化资料。</strong>
-            <p class="section-body" id="lead-note-copy">如果后端返回了 matchmaker_notes，这块会优先承接它，而不是把原因埋到详情页下面。</p>
-          </div>
-
-          <div>
-            <div class="section-head">
-              <span class="section-title">照片</span>
-              <span class="meta-pill" id="photo-count-pill">0 张照片</span>
-            </div>
-            <div class="photo-grid" id="photo-strip"></div>
-          </div>
-
-          <div>
-            <span class="section-title">结构化标签</span>
-            <div class="tag-row" id="tag-row"></div>
-          </div>
-
-          <div id="detail-sections"></div>
-
-          <div class="action-row">
-            <a class="action-btn secondary" id="back-action-btn" href="./discovery.html">回到发现页</a>
-            <button class="action-btn primary" id="copy-session-btn" type="button">复制 session_id</button>
-          </div>
-        </section>
-
-        <aside class="rail">
-          <article class="rail-card">
-            <p class="eyebrow">本页职责</p>
-            <h3>先解释，再展开。</h3>
-            <p class="rail-copy">详情页正式版的顺序应该是：红娘为什么把她放进这一轮，照片和核验能看到什么，自述和注意事项各是什么。不要让用户自己把卡片字段重新拼一遍。</p>
-            <div class="meta-grid">
-              <div><span>当前 Profile</span><strong id="rail-profile-id">-</strong></div>
-              <div><span>当前 Session</span><strong id="rail-session-id">-</strong></div>
-              <div><span>当前 Trace</span><strong id="rail-trace-id">-</strong></div>
-            </div>
-          </article>
-
-          <article class="rail-card">
-            <p class="eyebrow">渲染原则</p>
-            <h3>不自己补，不自己猜。</h3>
-            <ul class="guide-list">
-              <li>不从 discovery 卡片字段拼出更多详情。</li>
-              <li>不自己扩写信任状态或风险判断。</li>
-              <li>不在详情页内部再发起搜索或追问。</li>
-            </ul>
-          </article>
-
-          <details class="debug-shell">
-            <summary class="debug-summary">
-              <span>联调设置</span>
-              <span class="debug-hint">只在单独调试资料详情时展开</span>
-            </summary>
-            <div class="debug-content">
-              <article class="config-panel">
-                <p class="helper-text">这页默认从 URL 里读 `profile_id` 和 `session_id`。如果你是脱离发现页单独调试，也可以在这里改完后直接重载。</p>
-                <div class="config-grid">
-                  <label class="field">
-                    <span>API Base</span>
-                    <input id="api-base-input" type="text" autocomplete="off" />
-                  </label>
-                  <label class="field">
-                    <span>API Token</span>
-                    <input id="api-token-input" type="password" autocomplete="off" />
-                  </label>
-                  <label class="field">
-                    <span>Profile ID</span>
-                    <input id="profile-id-input" type="number" min="1" step="1" />
-                  </label>
-                  <label class="field">
-                    <span>Session ID</span>
-                    <input id="session-id-input" type="text" autocomplete="off" />
-                  </label>
-                </div>
-                <div class="config-actions">
-                  <button class="secondary" id="save-config-btn" type="button">保存配置</button>
-                  <button class="primary" id="reload-config-btn" type="button">按当前配置重载</button>
-                </div>
-                <div class="config-meta" id="config-meta"></div>
-              </article>
-            </div>
-          </details>
-        </aside>
-      </div>
     </main>
-
-    <script>
-      const DEMO_CONFIG_KEY = "her.discovery.demo.config.v1";
-      const DEMO_SESSION_KEY = "her.discovery.demo.session.v1";
-
-      const refs = {
-        backLink: document.getElementById("back-link"),
-        backActionBtn: document.getElementById("back-action-btn"),
-        reloadDetailBtn: document.getElementById("reload-detail-btn"),
-        heroPillLeft: document.getElementById("hero-pill-left"),
-        heroPillRight: document.getElementById("hero-pill-right"),
-        heroName: document.getElementById("hero-name"),
-        heroHeadline: document.getElementById("hero-headline"),
-        summaryTitle: document.getElementById("summary-title"),
-        summaryCopy: document.getElementById("summary-copy"),
-        tracePill: document.getElementById("trace-pill"),
-        phasePill: document.getElementById("phase-pill"),
-        leadNoteTitle: document.getElementById("lead-note-title"),
-        leadNoteCopy: document.getElementById("lead-note-copy"),
-        photoCountPill: document.getElementById("photo-count-pill"),
-        photoStrip: document.getElementById("photo-strip"),
-        tagRow: document.getElementById("tag-row"),
-        detailSections: document.getElementById("detail-sections"),
-        copySessionBtn: document.getElementById("copy-session-btn"),
-        railProfileId: document.getElementById("rail-profile-id"),
-        railSessionId: document.getElementById("rail-session-id"),
-        railTraceId: document.getElementById("rail-trace-id"),
-        apiBaseInput: document.getElementById("api-base-input"),
-        apiTokenInput: document.getElementById("api-token-input"),
-        profileIdInput: document.getElementById("profile-id-input"),
-        sessionIdInput: document.getElementById("session-id-input"),
-        saveConfigBtn: document.getElementById("save-config-btn"),
-        reloadConfigBtn: document.getElementById("reload-config-btn"),
-        configMeta: document.getElementById("config-meta"),
-      };
-
-      const state = {
-        loading: false,
-        traceId: "",
-        profileId: "",
-        sessionId: "",
-        detailView: null,
-        config: loadConfig(),
-      };
-
-      function inferDefaultApiBase() {
-        const origin = String(window.location.origin || "").trim();
-        if (origin && origin !== "null" && /^https?:\/\//.test(origin)) {
-          return origin;
-        }
-        return "http://127.0.0.1:8765";
-      }
-
-      function safeJsonParse(raw, fallback) {
-        try {
-          const parsed = JSON.parse(String(raw || ""));
-          return parsed && typeof parsed === "object" ? parsed : fallback;
-        } catch (_error) {
-          return fallback;
-        }
-      }
-
-      function loadConfig() {
-        const stored = safeJsonParse(localStorage.getItem(DEMO_CONFIG_KEY), {});
-        const query = new URLSearchParams(window.location.search);
-        return {
-          apiBase: String(query.get("api_base") || stored.apiBase || inferDefaultApiBase()).trim(),
-          apiToken: String(query.get("api_token") || stored.apiToken || "").trim(),
-        };
-      }
-
-      function discoveryPageHref() {
-        const params = new URLSearchParams();
-        if (state.sessionId) {
-          params.set("session_id", state.sessionId);
-        }
-        if (window.location.origin === "null" && state.config.apiBase) {
-          params.set("api_base", state.config.apiBase);
-        }
-        const path = window.location.pathname.includes("/demo/discovery/profile-detail")
-          ? "/demo/discovery"
-          : "./discovery.html";
-        return `${path}${params.toString() ? `?${params.toString()}` : ""}`;
-      }
-
-      function syncConfigInputs() {
-        refs.apiBaseInput.value = state.config.apiBase;
-        refs.apiTokenInput.value = state.config.apiToken;
-        refs.profileIdInput.value = state.profileId;
-        refs.sessionIdInput.value = state.sessionId;
-      }
-
-      function readConfigInputs() {
-        state.config = {
-          apiBase: String(refs.apiBaseInput.value || inferDefaultApiBase()).trim(),
-          apiToken: String(refs.apiTokenInput.value || "").trim(),
-        };
-        localStorage.setItem(DEMO_CONFIG_KEY, JSON.stringify(state.config));
-        state.profileId = String(refs.profileIdInput.value || "").trim();
-        state.sessionId = String(refs.sessionIdInput.value || "").trim();
-        if (state.sessionId) {
-          localStorage.setItem(DEMO_SESSION_KEY, state.sessionId);
-        }
-      }
-
-      function buildHeaders() {
-        const headers = {};
-        if (state.config.apiToken) {
-          headers["Authorization"] = `Bearer ${state.config.apiToken}`;
-        }
-        return headers;
-      }
-
-      function buildApiUrl(path) {
-        const base = String(state.config.apiBase || inferDefaultApiBase()).trim() || inferDefaultApiBase();
-        return new URL(path, base.endsWith("/") ? base : `${base}/`).toString();
-      }
-
-      async function requestJson(method, path) {
-        const response = await fetch(buildApiUrl(path.replace(/^\//, "")), {
-          method,
-          headers: buildHeaders(),
-        });
-        const text = await response.text();
-        const payload = text ? safeJsonParse(text, {}) : {};
-        if (!response.ok) {
-          throw {
-            status: response.status,
-            code: payload.error_code || payload?.error?.code || `HTTP_${response.status}`,
-            message:
-              payload.error_message ||
-              payload?.error?.message ||
-              `请求失败（${response.status}）`,
-            retryable: Boolean(payload.retryable),
-            traceId: String(payload.trace_id || "").trim(),
-          };
-        }
-        return payload;
-      }
-
-      function escapeHtml(text) {
-        return String(text || "")
-          .replaceAll("&", "&amp;")
-          .replaceAll("<", "&lt;")
-          .replaceAll(">", "&gt;")
-          .replaceAll('"', "&quot;")
-          .replaceAll("'", "&#39;");
-      }
-
-      function bootstrapQueryState() {
-        const query = new URLSearchParams(window.location.search);
-        state.profileId = String(query.get("profile_id") || "").trim();
-        state.sessionId = String(query.get("session_id") || localStorage.getItem(DEMO_SESSION_KEY) || "").trim();
-      }
-
-      function syncLocation() {
-        const params = new URLSearchParams(window.location.search);
-        if (state.profileId) {
-          params.set("profile_id", state.profileId);
-        }
-        if (state.sessionId) {
-          params.set("session_id", state.sessionId);
-        } else {
-          params.delete("session_id");
-        }
-        if (window.location.origin === "null" && state.config.apiBase) {
-          params.set("api_base", state.config.apiBase);
-        }
-        history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
-        refs.backLink.href = discoveryPageHref();
-        refs.backActionBtn.href = discoveryPageHref();
-      }
-
-      function renderTags(detailView) {
-        refs.tagRow.innerHTML = "";
-        const tags = [];
-        for (const section of detailView.verified_sections || []) {
-          for (const item of section.items || []) {
-            tags.push({ kind: "good", label: item });
-          }
-        }
-        for (const section of detailView.caution_sections || []) {
-          for (const item of section.items || []) {
-            tags.push({ kind: "warn", label: item });
-          }
-        }
-        if (!tags.length) {
-          refs.tagRow.innerHTML = '<span class="tag rose">当前还没有更多结构化标签</span>';
-          return;
-        }
-        for (const tag of tags.slice(0, 8)) {
-          const span = document.createElement("span");
-          span.className = `tag ${tag.kind}`;
-          span.textContent = tag.label;
-          refs.tagRow.appendChild(span);
-        }
-      }
-
-      function renderPhotos(detailView) {
-        refs.photoStrip.innerHTML = "";
-        const photos = Array.isArray(detailView.photo_gallery) ? detailView.photo_gallery : [];
-        refs.photoCountPill.textContent = `${photos.length || 0} 张照片`;
-        if (!photos.length) {
-          refs.photoStrip.innerHTML = '<div class="photo-frame"></div>';
-          return;
-        }
-        for (const photo of photos.slice(0, 6)) {
-          const frame = document.createElement("div");
-          frame.className = "photo-frame";
-          const url = String(photo.image_url || "").trim();
-          frame.innerHTML = url ? `<img src="${escapeHtml(url)}" alt="候选人照片" />` : "";
-          refs.photoStrip.appendChild(frame);
-        }
-      }
-
-      function renderBulletSection(title, items) {
-        const values = Array.isArray(items) ? items.filter(Boolean) : [];
-        if (!values.length) {
-          return "";
-        }
-        return `
-          <section class="detail-section">
-            <span class="section-title">${escapeHtml(title)}</span>
-            <div class="bullet-list">
-              ${values
-                .map(
-                  (item) => `
-                    <div class="bullet-row">
-                      <span class="bullet-mark">•</span>
-                      <p class="section-body">${escapeHtml(item)}</p>
-                    </div>
-                  `,
-                )
-                .join("")}
-            </div>
-          </section>
-        `;
-      }
-
-      function renderSections(detailView) {
-        const blocks = [];
-        const notes = Array.isArray(detailView.matchmaker_notes) ? detailView.matchmaker_notes.filter(Boolean) : [];
-        if (notes.length) {
-          blocks.push(renderBulletSection("红娘为什么把她放进这一轮", notes));
-        }
-        for (const section of detailView.verified_sections || []) {
-          blocks.push(renderBulletSection(section.title || "已核验信息", section.items || []));
-        }
-        for (const section of detailView.self_reported_sections || []) {
-          blocks.push(renderBulletSection(section.title || "资料要点", section.items || []));
-        }
-        for (const section of detailView.caution_sections || []) {
-          blocks.push(renderBulletSection(section.title || "你需要知道", section.items || []));
-        }
-        if (!blocks.length) {
-          blocks.push(`
-            <section class="detail-section">
-              <span class="section-title">当前暂无结构化详情</span>
-              <p class="section-body">后端没有返回更多 detail_view 字段，前端也不会自己从 discovery 卡片硬拼更多内容。</p>
-            </section>
-          `);
-        }
-        refs.detailSections.innerHTML = blocks.join("");
-      }
-
-      function renderMeta() {
-        refs.tracePill.textContent = `trace_id: ${state.traceId || "-"}`;
-        refs.phasePill.textContent = `profile_id: ${state.profileId || "-"}`;
-        refs.heroPillRight.textContent = `session_id ${state.sessionId || "-"}`;
-        refs.railProfileId.textContent = state.profileId || "-";
-        refs.railSessionId.textContent = state.sessionId || "-";
-        refs.railTraceId.textContent = state.traceId || "-";
-        refs.configMeta.innerHTML = `
-          <div><strong>当前 API Base：</strong> <code>${escapeHtml(state.config.apiBase)}</code></div>
-          <div><strong>当前 Profile：</strong> <code>${escapeHtml(state.profileId || "-")}</code></div>
-          <div><strong>当前 Session：</strong> <code>${escapeHtml(state.sessionId || "-")}</code></div>
-          <div><strong>当前 Trace：</strong> <code>${escapeHtml(state.traceId || "-")}</code></div>
-        `;
-      }
-
-      function renderEmpty(message) {
-        refs.heroName.textContent = "当前无法展示候选人详情";
-        refs.heroHeadline.textContent = message;
-        refs.heroPillLeft.textContent = "等待 detail_view";
-        refs.summaryTitle.textContent = "详情页只展示后端返回的 detail_view。";
-        refs.summaryCopy.textContent = message;
-        refs.leadNoteTitle.textContent = "当前没有可承接的详情数据";
-        refs.leadNoteCopy.textContent = message;
-        refs.photoStrip.innerHTML = '<div class="photo-frame"></div>';
-        refs.tagRow.innerHTML = '<span class="tag rose">暂无详情数据</span>';
-        refs.detailSections.innerHTML = `
-          <section class="detail-section">
-            <span class="section-title">当前状态</span>
-            <p class="section-body">${escapeHtml(message)}</p>
-          </section>
-        `;
-        renderMeta();
-      }
-
-      function renderDetail(detailView) {
-        const hero = detailView.hero || {};
-        const notes = Array.isArray(detailView.matchmaker_notes) ? detailView.matchmaker_notes.filter(Boolean) : [];
-        const verifiedItems = (detailView.verified_sections || []).flatMap((section) => section.items || []);
-        refs.heroName.textContent = [hero.name, hero.age].filter((item) => item !== null && item !== undefined && item !== "").join(" ");
-        refs.heroHeadline.textContent = [hero.city, hero.headline].filter(Boolean).join(" · ") || "后端暂未返回更多 headline。";
-        refs.heroPillLeft.textContent = verifiedItems.slice(0, 2).join(" · ") || "待继续确认";
-        refs.summaryTitle.textContent = notes[0] || "红娘没有额外补充说明，前端也不会自己编造推荐理由。";
-        refs.summaryCopy.textContent =
-          notes.length > 1
-            ? `这一页还拿到了 ${notes.length} 条承接说明，下面会继续展开。`
-            : "这一页仍然只承接详情读模型，不做额外业务推断。";
-        refs.leadNoteTitle.textContent = notes[0] || "先看结构化资料，再决定要不要继续。";
-        refs.leadNoteCopy.textContent =
-          notes.length > 1
-            ? notes.slice(1).join(" ")
-            : "这块优先承接 matchmaker_notes，让用户先理解这轮为什么会把她放到面前。";
-        renderPhotos(detailView);
-        renderTags(detailView);
-        renderSections(detailView);
-        renderMeta();
-      }
-
-      async function loadDetail() {
-        state.loading = true;
-        renderMeta();
-        if (!state.profileId) {
-          renderEmpty("URL 里没有 profile_id，所以前端不知道该请求哪一个候选人详情。");
-          state.loading = false;
-          return;
-        }
-        try {
-          const query = state.sessionId ? `?session_id=${encodeURIComponent(state.sessionId)}` : "";
-          const payload = await requestJson(
-            "GET",
-            `/v1/discovery/profiles/${encodeURIComponent(state.profileId)}${query}`,
-          );
-          state.traceId = String(payload.trace_id || "").trim();
-          state.detailView = payload.detail_view || {};
-          renderDetail(state.detailView);
-        } catch (error) {
-          state.traceId = String(error.traceId || "").trim();
-          renderEmpty(error.message || "详情请求失败。");
-        } finally {
-          state.loading = false;
-          renderMeta();
-        }
-      }
-
-      function attachEvents() {
-        refs.reloadDetailBtn.addEventListener("click", () => {
-          readConfigInputs();
-          syncLocation();
-          loadDetail();
-        });
-        refs.saveConfigBtn.addEventListener("click", () => {
-          readConfigInputs();
-          syncLocation();
-          renderMeta();
-        });
-        refs.reloadConfigBtn.addEventListener("click", () => {
-          readConfigInputs();
-          syncLocation();
-          loadDetail();
-        });
-        refs.copySessionBtn.addEventListener("click", async () => {
-          if (!state.sessionId) {
-            refs.copySessionBtn.textContent = "没有 session_id";
-            return;
-          }
-          try {
-            await navigator.clipboard.writeText(state.sessionId);
-            refs.copySessionBtn.textContent = "已复制 session_id";
-            window.setTimeout(() => {
-              refs.copySessionBtn.textContent = "复制 session_id";
-            }, 1500);
-          } catch (_error) {
-            refs.copySessionBtn.textContent = "复制失败";
-          }
-        });
-      }
-
-      function bootstrap() {
-        bootstrapQueryState();
-        syncConfigInputs();
-        attachEvents();
-        syncLocation();
-        renderMeta();
-        loadDetail();
-      }
-
-      bootstrap();
-    </script>
   </body>
 </html>

@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Her · 搜索</title>
+    <link rel="stylesheet" href="/demo/assets/her-demo/styles.css" />
+    <style>
+      .search-filter-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .filter-tile {
+        padding: 12px 16px;
+        border-radius: 16px;
+        background: #faf7f4;
+        border: 1px solid rgba(139, 111, 94, 0.12);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.86);
+      }
+
+      .filter-tile strong,
+      .filter-tile span,
+      .trust-box strong,
+      .candidate-meta strong {
+        display: block;
+        margin: 0;
+      }
+
+      .filter-tile span {
+        color: var(--muted);
+        font-size: 11px;
+        letter-spacing: 0.04em;
+      }
+
+      .filter-tile strong {
+        margin-top: 8px;
+        font-size: 14px;
+        letter-spacing: -0.01em;
+      }
+
+      .search-actions {
+        grid-template-columns: minmax(0, 1.5fr) minmax(0, 0.85fr) minmax(0, 1fr);
+      }
+
+      .result-head {
+        padding-inline: 4px;
+      }
+
+      .result-head strong,
+      .score-stack strong,
+      .candidate-meta h3,
+      .candidate-meta p,
+      .trust-box p {
+        margin: 0;
+      }
+
+      .search-card {
+        gap: 16px;
+      }
+
+      .score-stack {
+        display: grid;
+        justify-items: center;
+        gap: 4px;
+      }
+
+      .score-stack .subtle {
+        font-size: 11px;
+      }
+
+      .candidate-actions {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) repeat(3, auto);
+        gap: 8px;
+        align-items: center;
+      }
+
+      .mini-action {
+        min-width: 52px;
+        min-height: 40px;
+        padding: 8px 12px;
+        border-radius: 16px;
+        border: 1px solid var(--line);
+        background: #ffffff;
+        color: #6a5b52;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+        transition:
+          transform 180ms ease,
+          box-shadow 180ms ease,
+          background 180ms ease,
+          color 180ms ease;
+      }
+
+      .mini-action:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 12px 24px rgba(91, 75, 60, 0.08);
+      }
+
+      .mini-action.warn {
+        color: var(--red);
+      }
+
+      .trust-box strong {
+        margin-bottom: 4px;
+      }
+
+      @media (max-width: 640px) {
+        .search-actions {
+          grid-template-columns: 1fr;
+        }
+
+        .candidate-actions {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .candidate-actions .btn {
+          grid-column: 1 / -1;
+        }
+      }
+    </style>
+  </head>
+  <body data-demo-page="search">
+    <main class="proto-page">
+      <aside class="copy-panel">
+        <section class="surface">
+          <p class="eyebrow">Sketch 01 / Search</p>
+          <h1 class="lede">搜索首页</h1>
+          <p>这一页对应设计稿里更直接的“条件搜索”入口。它把硬条件筛选、可信度摘要和快速动作放在同一个移动端首页里，适合已经知道自己要找什么样对象的用户。</p>
+        </section>
+        <section class="surface">
+          <ul class="route-list">
+            <li class="route-item">
+              <strong>Search API</strong>
+              <code>/v1/search/profiles</code>
+            </li>
+            <li class="route-item">
+              <strong>候选详情</strong>
+              <a class="footer-link" href="/demo/discovery/profile-detail">/demo/discovery/profile-detail</a>
+            </li>
+            <li class="route-item">
+              <strong>持续留意</strong>
+              <a class="footer-link" href="/demo/recommendations">/demo/recommendations</a>
+            </li>
+          </ul>
+        </section>
+      </aside>
+
+      <section class="phone-shell">
+        <div class="phone-screen">
+          <div class="status-bar">
+            <span>9:41</span>
+            <div class="status-icons"><span>●●●</span></div>
+          </div>
+          <header class="nav-bar">
+            <h2>筛选认真对象</h2>
+            <div class="nav-actions">
+              <button class="icon-btn" type="button" aria-label="查看筛选偏好">偏好</button>
+              <button class="icon-btn" type="button" aria-label="刷新候选结果">↻</button>
+            </div>
+          </header>
+
+          <div class="phone-scroll">
+            <section class="card">
+              <div class="title-row">
+                <h3>筛选条件</h3>
+                <span class="chip active">严肃匹配</span>
+              </div>
+
+              <div class="search-filter-grid" style="margin-top: 12px">
+                <div class="filter-tile">
+                  <span>性别</span>
+                  <strong>女</strong>
+                </div>
+                <div class="filter-tile">
+                  <span>年龄</span>
+                  <strong>25-35</strong>
+                </div>
+                <div class="filter-tile">
+                  <span>城市</span>
+                  <strong>北京</strong>
+                </div>
+                <div class="filter-tile">
+                  <span>目标</span>
+                  <strong>结婚</strong>
+                </div>
+                <div class="filter-tile">
+                  <span>核验等级</span>
+                  <strong>≥2</strong>
+                </div>
+                <div class="filter-tile">
+                  <span>婚史</span>
+                  <strong>未婚</strong>
+                </div>
+                <div class="filter-tile">
+                  <span>必须有</span>
+                  <strong>本科+</strong>
+                </div>
+                <div class="filter-tile">
+                  <span>必须没有</span>
+                  <strong>离异</strong>
+                </div>
+              </div>
+
+              <div class="button-row three search-actions" style="margin-top: 16px">
+                <a class="btn" href="#search-results">开始搜索</a>
+                <a class="btn secondary" href="/demo/search">重置</a>
+                <a class="btn ghost" href="/demo/recommendations">持续留意</a>
+              </div>
+            </section>
+
+            <section class="result-head" id="search-results">
+              <strong>搜索结果 · 3 人</strong>
+              <span class="chip">按匹配度排序</span>
+            </section>
+
+            <section class="card candidate-card search-card">
+              <div class="candidate-top">
+                <a class="candidate-image" href="/demo/discovery/profile-detail" aria-label="查看李晓雨资料">
+                  <img src="/demo/assets/sketch/search-li-xiaoyu.png" alt="李晓雨候选照片" />
+                </a>
+                <div class="candidate-meta">
+                  <div class="title-row" style="justify-content: flex-start; gap: 8px">
+                    <h3>李晓雨</h3>
+                    <span class="chip good">已核验 Lv.3</span>
+                  </div>
+                  <p class="subtle" style="margin-top: 8px">28岁 · 北京 · 互联网 · 硕士</p>
+                  <strong style="margin-top: 8px; font-size: 13px">认真找结婚对象</strong>
+                </div>
+                <div class="score-stack">
+                  <span class="score-pill">92</span>
+                  <span class="subtle">匹配</span>
+                </div>
+              </div>
+
+              <div class="badge-row">
+                <span class="chip good">照片已核验</span>
+                <span class="chip blue">收入已估算</span>
+                <span class="chip">配合度高</span>
+              </div>
+
+              <div class="trust-box">
+                <strong>可信度摘要</strong>
+                <p>学历工作已核实，照片与本人高度一致，无风险标记，推荐优先联系。</p>
+              </div>
+
+              <div class="candidate-actions">
+                <a class="btn secondary" href="/demo/discovery/profile-detail">查看资料</a>
+                <button class="mini-action" type="button">收藏</button>
+                <button class="mini-action" type="button">跳过</button>
+                <button class="mini-action warn" type="button">举报</button>
+              </div>
+            </section>
+
+            <section class="card candidate-card search-card">
+              <div class="candidate-top">
+                <a class="candidate-image" href="/demo/discovery/profile-detail" aria-label="查看张明远资料">
+                  <img src="/demo/assets/sketch/search-zhang-mingyuan.png" alt="张明远候选照片" />
+                </a>
+                <div class="candidate-meta">
+                  <div class="title-row" style="justify-content: flex-start; gap: 8px">
+                    <h3>张明远</h3>
+                    <span class="chip warn">核验 Lv.2</span>
+                  </div>
+                  <p class="subtle" style="margin-top: 8px">31岁 · 上海 · 金融 · 本科</p>
+                  <strong style="margin-top: 8px; font-size: 13px">希望认真交往</strong>
+                </div>
+                <div class="score-stack">
+                  <span class="score-pill">85</span>
+                  <span class="subtle">匹配</span>
+                </div>
+              </div>
+
+              <section class="notice warn">
+                照片核验待完成 · 收入信息缺失
+              </section>
+
+              <div class="candidate-actions">
+                <a class="btn secondary" href="/demo/discovery/profile-detail">查看资料</a>
+                <button class="mini-action" type="button">收藏</button>
+                <button class="mini-action" type="button">跳过</button>
+                <button class="mini-action warn" type="button">举报</button>
+              </div>
+            </section>
+
+            <div class="bottom-tabs">
+              <a class="tab-item active" href="/demo/search" aria-current="page">搜索</a>
+              <a class="tab-item" href="/demo/discovery">发现</a>
+              <a class="tab-item" href="/demo/recommendations">推荐</a>
+              <a class="tab-item" href="/demo/trust">信任</a>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
