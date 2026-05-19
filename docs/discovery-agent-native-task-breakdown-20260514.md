@@ -107,9 +107,7 @@
 - 发现页联调版 HTML 已接 `action_id` 点击回传
 - 资料详情页联调版 HTML 已接 `GET /v1/discovery/profiles/{profile_id}`
 - session 恢复已接 `GET /v1/discovery/sessions/{session_id}`
-- gateway 已提供同源 demo 路由：
-  - `GET /demo/discovery`
-  - `GET /demo/discovery/profile-detail`
+- 历史同源 demo 路由已移除；当前仅保留后端 discovery API 联调能力
 
 ---
 
