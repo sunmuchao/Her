@@ -5,123 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Her · 搜索</title>
     <link rel="stylesheet" href="/demo/assets/her-demo/styles.css" />
-    <style>
-      .search-filter-grid {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 12px;
-      }
-
-      .filter-tile {
-        padding: 12px 16px;
-        border-radius: 16px;
-        background: #faf7f4;
-        border: 1px solid rgba(139, 111, 94, 0.12);
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.86);
-      }
-
-      .filter-tile strong,
-      .filter-tile span,
-      .trust-box strong,
-      .candidate-meta strong {
-        display: block;
-        margin: 0;
-      }
-
-      .filter-tile span {
-        color: var(--muted);
-        font-size: 11px;
-        letter-spacing: 0.04em;
-      }
-
-      .filter-tile strong {
-        margin-top: 8px;
-        font-size: 14px;
-        letter-spacing: -0.01em;
-      }
-
-      .search-actions {
-        grid-template-columns: minmax(0, 1.5fr) minmax(0, 0.85fr) minmax(0, 1fr);
-      }
-
-      .result-head {
-        padding-inline: 4px;
-      }
-
-      .result-head strong,
-      .score-stack strong,
-      .candidate-meta h3,
-      .candidate-meta p,
-      .trust-box p {
-        margin: 0;
-      }
-
-      .search-card {
-        gap: 16px;
-      }
-
-      .score-stack {
-        display: grid;
-        justify-items: center;
-        gap: 4px;
-      }
-
-      .score-stack .subtle {
-        font-size: 11px;
-      }
-
-      .candidate-actions {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) repeat(3, auto);
-        gap: 8px;
-        align-items: center;
-      }
-
-      .mini-action {
-        min-width: 52px;
-        min-height: 40px;
-        padding: 8px 12px;
-        border-radius: 16px;
-        border: 1px solid var(--line);
-        background: #ffffff;
-        color: #6a5b52;
-        font-size: 12px;
-        font-weight: 700;
-        cursor: pointer;
-        transition:
-          transform 180ms ease,
-          box-shadow 180ms ease,
-          background 180ms ease,
-          color 180ms ease;
-      }
-
-      .mini-action:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 12px 24px rgba(91, 75, 60, 0.08);
-      }
-
-      .mini-action.warn {
-        color: var(--red);
-      }
-
-      .trust-box strong {
-        margin-bottom: 4px;
-      }
-
-      @media (max-width: 640px) {
-        .search-actions {
-          grid-template-columns: 1fr;
-        }
-
-        .candidate-actions {
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-        }
-
-        .candidate-actions .btn {
-          grid-column: 1 / -1;
-        }
-      }
-    </style>
   </head>
   <body data-demo-page="search">
     <main class="proto-page">
@@ -170,7 +53,7 @@
                 <span class="chip active">严肃匹配</span>
               </div>
 
-              <div class="search-filter-grid" style="margin-top: 12px">
+              <div class="search-filter-grid mt-12">
                 <div class="filter-tile">
                   <span>性别</span>
                   <strong>女</strong>
@@ -205,7 +88,7 @@
                 </div>
               </div>
 
-              <div class="button-row three search-actions" style="margin-top: 16px">
+              <div class="button-row three search-actions mt-16">
                 <a class="btn" href="#search-results">开始搜索</a>
                 <a class="btn secondary" href="/demo/search">重置</a>
                 <a class="btn ghost" href="/demo/recommendations">持续留意</a>
@@ -223,12 +106,12 @@
                   <img src="/demo/assets/sketch/search-li-xiaoyu.png" alt="李晓雨候选照片" />
                 </a>
                 <div class="candidate-meta">
-                  <div class="title-row" style="justify-content: flex-start; gap: 8px">
+                  <div class="title-row start-8">
                     <h3>李晓雨</h3>
                     <span class="chip good">已核验 Lv.3</span>
                   </div>
-                  <p class="subtle" style="margin-top: 8px">28岁 · 北京 · 互联网 · 硕士</p>
-                  <strong style="margin-top: 8px; font-size: 13px">认真找结婚对象</strong>
+                  <p class="subtle mt-8">28岁 · 北京 · 互联网 · 硕士</p>
+                  <strong class="candidate-intent">认真找结婚对象</strong>
                 </div>
                 <div class="score-stack">
                   <span class="score-pill">92</span>
@@ -261,12 +144,12 @@
                   <img src="/demo/assets/sketch/search-zhang-mingyuan.png" alt="张明远候选照片" />
                 </a>
                 <div class="candidate-meta">
-                  <div class="title-row" style="justify-content: flex-start; gap: 8px">
+                  <div class="title-row start-8">
                     <h3>张明远</h3>
                     <span class="chip warn">核验 Lv.2</span>
                   </div>
-                  <p class="subtle" style="margin-top: 8px">31岁 · 上海 · 金融 · 本科</p>
-                  <strong style="margin-top: 8px; font-size: 13px">希望认真交往</strong>
+                  <p class="subtle mt-8">31岁 · 上海 · 金融 · 本科</p>
+                  <strong class="candidate-intent">希望认真交往</strong>
                 </div>
                 <div class="score-stack">
                   <span class="score-pill">85</span>
