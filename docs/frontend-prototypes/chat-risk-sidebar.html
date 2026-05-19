@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Her · 风险提示</title>
+    <link rel="stylesheet" href="/demo/assets/her-demo/styles.css" />
+  </head>
+  <body data-demo-page="chat-risk-sidebar">
+    <main class="proto-page">
+      <aside class="copy-panel">
+        <section class="surface">
+          <p class="eyebrow">Sketch 08 / Risk Sidebar</p>
+          <h1 class="lede">风险提示侧栏</h1>
+          <p>这页不是“封禁结论”，而是聊天中的实时风险侧栏。用户能继续聊，但必须知道当前风险等级、触发原因和系统已采取的动作。</p>
+        </section>
+      </aside>
+
+      <section class="phone-shell">
+        <div class="phone-screen">
+          <div class="status-bar">
+            <span>9:41</span>
+            <div class="status-icons"><span>5G</span><span>100%</span></div>
+          </div>
+          <header class="nav-bar">
+            <h2>风险提示</h2>
+            <span class="chip warn">高风险提醒 1 条</span>
+          </header>
+          <div class="phone-scroll">
+            <section class="card">
+              <div class="title-row">
+                <strong>当前状态</strong>
+                <span class="chip warn">谨慎继续</span>
+              </div>
+              <p style="margin-top: 8px">系统检测到资金诱导和资料不一致信号，已对高风险互动做提醒与限制。</p>
+            </section>
+
+            <section class="card">
+              <div class="title-row">
+                <h3>触发原因</h3>
+                <div class="badge-row">
+                  <span class="chip danger">资金诱导</span>
+                  <span class="chip warn">资料不一致</span>
+                </div>
+              </div>
+              <div class="info-list" style="margin-top: 12px">
+                <div class="notice warn">对方在聊天中多次提及投资机会，存在潜在财务诈骗风险。</div>
+                <div class="notice danger">资料照片与视频核验结果存在明显差异，建议在继续推进前补充确认。</div>
+              </div>
+            </section>
+
+            <section class="card soft">
+              <strong>系统动作：高风险提醒已开启</strong>
+              <p class="subtle" style="margin-top: 8px">你仍可继续沟通，但不建议转账、借款或切换到站外联系。</p>
+            </section>
+
+            <div class="button-row">
+              <button class="btn secondary" type="button">继续谨慎沟通</button>
+              <a class="btn danger" href="/demo/chat/report">立即举报</a>
+            </div>
+            <div class="button-row">
+              <a class="btn ghost" href="/demo/chat/meeting-feedback">补充反馈</a>
+              <a class="btn secondary" href="/demo/chat">返回聊天</a>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

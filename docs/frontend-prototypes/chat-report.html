@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Her · 举报风险</title>
+    <link rel="stylesheet" href="/demo/assets/her-demo/styles.css" />
+  </head>
+  <body data-demo-page="chat-report">
+    <main class="proto-page">
+      <aside class="copy-panel">
+        <section class="surface">
+          <p class="eyebrow">Sketch 06 / Report Drawer</p>
+          <h1 class="lede">举报弹窗</h1>
+          <p>这是从聊天场景唤起的底部抽屉，不打断主流程，但信息密度足够高。风险类型、事实描述、关联消息和证据上传放在一屏内完成。</p>
+        </section>
+      </aside>
+
+      <section class="phone-shell">
+        <div class="phone-screen overlay-page">
+          <div class="drawer">
+            <div class="handle"></div>
+            <div class="title-row">
+              <h3>举报风险</h3>
+              <a class="footer-link" href="/demo/chat">← 返回聊天</a>
+            </div>
+            <p class="subtle" style="margin-top: 8px">为了保护双方安全，请尽量填写可核实的事实信息。</p>
+
+            <div class="info-list" style="margin-top: 16px">
+              <div class="detail-item"><strong>举报人</strong><span>当前账号自动带入</span></div>
+            </div>
+
+            <section class="card soft" style="margin-top: 16px">
+              <div class="title-row"><strong>举报类型</strong></div>
+              <div class="option-grid" style="margin-top: 12px">
+                <button class="option-card danger" type="button" aria-pressed="true">诈骗诱导</button>
+                <button class="option-card" type="button" aria-pressed="false">资料不实</button>
+                <button class="option-card warn" type="button" aria-pressed="false">骚扰冒犯</button>
+              </div>
+            </section>
+
+            <section class="card soft" style="margin-top: 12px">
+              <strong>事实说明</strong>
+              <div class="composer" style="margin-top: 8px; min-height: 112px; align-items: flex-start">
+                <textarea rows="4" aria-label="举报事实说明">对方多次提到投资机会，并引导我转到站外继续聊。</textarea>
+              </div>
+            </section>
+
+            <section class="card soft" style="margin-top: 12px">
+              <div class="detail-item">
+                <strong>关联消息</strong>
+                <span>最近一次提及投资的聊天内容</span>
+              </div>
+              <div class="detail-item" style="margin-top: 8px">
+                <strong>证据附件</strong>
+                <span class="chip blue">2 份材料</span>
+              </div>
+            </section>
+
+            <section class="notice good" role="status">
+              <strong>提交后会发生什么</strong>
+              <div>系统会优先审核该举报，并把处理进度同步到通知中心。</div>
+            </section>
+
+            <div class="button-row" style="margin-top: 16px">
+              <a class="btn secondary" href="/demo/chat">取消</a>
+              <button class="btn danger" type="button">提交举报</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
