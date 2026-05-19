@@ -4,14 +4,12 @@ from __future__ import annotations
 
 import json
 import logging
-import mimetypes
 import os
 from typing import Any, Callable
 
 from . import _paths  # noqa: F401 — side effect: sys.path
 from .chat_jsonrpc import JSONRPC_NOT_HANDLED, handle_chat_jsonrpc
 from .http_helpers import (  # noqa: E402
-    _demo_asset_file,
     _gateway_error_payload,
     _incoming_trace_id,
     _json_safe,
@@ -20,7 +18,6 @@ from .http_helpers import (  # noqa: E402
     _parse_optional_now,
     _query_dict,
     _read_body,
-    _read_demo_html,
     _wrap_trace_headers,
 )
 
@@ -190,8 +187,6 @@ from .verification_routes import (
 )
 
 JSON_HEADERS = [("Content-Type", "application/json; charset=utf-8")]
-HTML_HEADERS = [("Content-Type", "text/html; charset=utf-8")]
-DEMO_HTML_HEADERS = HTML_HEADERS + [("Cache-Control", "no-store")]
 LOGGER = logging.getLogger(__name__)
 
 
@@ -910,42 +905,6 @@ class PartnerGateway(AsyncJobGatewayMixin, GatewayAccessMixin):
                 sr("200 OK", JSON_HEADERS + [("Content-Length", str(len(body)))])
                 _access_log(200)
                 return [body]
-            demo_html = _read_demo_html(path) if method == "GET" else None
-            if demo_html is not None:
-                body = demo_html.encode("utf-8")
-                sr("200 OK", DEMO_HTML_HEADERS + [("Content-Length", str(len(body)))])
-                _access_log(200)
-                return [body]
-            if path.startswith("/demo/assets/") and method == "GET":
-                asset = _demo_asset_file(path[len("/demo/assets/") :])
-                if asset is None:
-                    status_code = 404
-                    body = json.dumps(
-                        _gateway_error_payload("not_found", "demo asset not found", trace_id),
-                        ensure_ascii=False,
-                    ).encode("utf-8")
-                    sr("404 Not Found", JSON_HEADERS + [("Content-Length", str(len(body)))])
-                    _access_log(status_code)
-                    return [body]
-                content_type = mimetypes.guess_type(str(asset))[0] or "application/octet-stream"
-                if content_type.startswith("text/") or content_type in {"application/javascript", "application/json"}:
-                    body = asset.read_text(encoding="utf-8").encode("utf-8")
-                    headers = [
-                        ("Content-Type", f"{content_type}; charset=utf-8"),
-                        ("Cache-Control", "public, max-age=3600"),
-                        ("Content-Length", str(len(body))),
-                    ]
-                else:
-                    body = asset.read_bytes()
-                    headers = [
-                        ("Content-Type", content_type),
-                        ("Cache-Control", "public, max-age=3600"),
-                        ("Content-Length", str(len(body))),
-                    ]
-                sr("200 OK", headers)
-                _access_log(200)
-                return [body]
-
             public_auth_response = dispatch_public_auth_rest(self, environ, method, path.rstrip("/") or "/")
             if public_auth_response is not None:
                 if not self._rate_limiter.allow(client_ip(environ)):
