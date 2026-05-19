@@ -151,6 +151,15 @@ class GatewayWsgiTests(unittest.TestCase):
         data = json.loads(out.decode("utf-8"))
         self.assertEqual(data.get("error", {}).get("code"), "not_found")
 
+    def test_removed_demo_routes_return_not_found(self) -> None:
+        for path in ("/demo/discovery", "/demo/live-video-verification", "/demo/assets/mediapipe/vision_bundle.mjs"):
+            with self.subTest(path=path):
+                env = _wsgi_env("GET", path)
+                out = b"".join(self.gw(env, self.start_response))
+                self.assertIn("404", self.status)
+                data = json.loads(out.decode("utf-8"))
+                self.assertEqual(data.get("error", {}).get("code"), "not_found")
+
     def test_auth_sms_send_and_verify(self) -> None:
         class FakeSmsProvider:
             def __init__(self) -> None:
@@ -173,7 +182,7 @@ class GatewayWsgiTests(unittest.TestCase):
         self.assertIn("201", send_status)
         self.assertEqual(send_payload["delivery"]["provider"], "fake")
         self.assertEqual(send_payload["flow"]["scenario"], "existing")
-        self.assertEqual(send_payload["flow"]["next_path"], "/demo/discovery")
+        self.assertEqual(send_payload["flow"]["next_path"], "")
         self.assertEqual(len(provider.calls), 1)
 
         verify_env = _wsgi_env(
@@ -185,7 +194,7 @@ class GatewayWsgiTests(unittest.TestCase):
 
         self.assertIn("200", verify_status)
         self.assertTrue(verify_payload["verified"])
-        self.assertEqual(verify_payload["flow"]["next_path"], "/demo/discovery")
+        self.assertEqual(verify_payload["flow"]["next_path"], "")
 
     def test_aliyun_sms_provider_request_shape(self) -> None:
         class FakeResponse:
@@ -379,175 +388,6 @@ class GatewayWsgiTests(unittest.TestCase):
         self.assertIn('"her_kind": "gateway_access"', text)
         self.assertIn('"path": "/health"', text)
 
-    def test_live_video_demo_route_serves_html(self) -> None:
-        env = _wsgi_env("GET", "/demo/live-video-verification")
-        out = b"".join(self.gw(env, self.start_response))
-
-        self.assertIn("200", self.status)
-        hdrs = {k.lower(): v for k, v in self.headers}
-        self.assertEqual(hdrs.get("content-type"), "text/html; charset=utf-8")
-        body = out.decode("utf-8")
-        self.assertIn("Live Video Verification Demo", body)
-        self.assertIn("/v1/verifications/live-video-challenges", body)
-        self.assertNotIn("machine_review_inputs", body)
-
-    def test_live_video_demo_route_skips_api_key_guard(self) -> None:
-        with mock.patch.dict(os.environ, {"PARTNER_GATEWAY_API_KEY": "demo-secret"}, clear=False):
-            gw = PartnerGateway(
-                recommendation_dsn="mysql://noop",
-                matchmaking_dsn="mysql://noop",
-                chat_dsn="mysql://noop",
-                db_pool_max=0,
-            )
-            status = ""
-            headers: list[tuple[str, str]] = []
-
-            def start_response(current_status: str, current_headers: list[tuple[str, str]]) -> None:
-                nonlocal status, headers
-                status = current_status
-                headers = current_headers
-
-            env = _wsgi_env("GET", "/demo/live-video-verification")
-            out = b"".join(gw(env, start_response))
-
-        self.assertIn("200", status)
-        self.assertEqual({k.lower(): v for k, v in headers}.get("content-type"), "text/html; charset=utf-8")
-        self.assertIn("Live Video Verification Demo", out.decode("utf-8"))
-
-    def test_discovery_demo_route_serves_html(self) -> None:
-        env = _wsgi_env("GET", "/demo/discovery")
-        out = b"".join(self.gw(env, self.start_response))
-
-        self.assertIn("200", self.status)
-        hdrs = {k.lower(): v for k, v in self.headers}
-        self.assertEqual(hdrs.get("content-type"), "text/html; charset=utf-8")
-        body = out.decode("utf-8")
-        self.assertIn("Her · 发现", body)
-        self.assertIn("/v1/discovery/sessions", body)
-        self.assertIn("/demo/discovery/profile-detail", body)
-        self.assertIn('stored.requesterId || "1"', body)
-        self.assertIn('stored.profileId || "1"', body)
-
-    def test_discovery_demo_route_skips_api_key_guard(self) -> None:
-        with mock.patch.dict(os.environ, {"PARTNER_GATEWAY_API_KEY": "demo-secret"}, clear=False):
-            gw = PartnerGateway(
-                recommendation_dsn="mysql://noop",
-                matchmaking_dsn="mysql://noop",
-                chat_dsn="mysql://noop",
-                db_pool_max=0,
-            )
-            status = ""
-            headers: list[tuple[str, str]] = []
-
-            def start_response(current_status: str, current_headers: list[tuple[str, str]]) -> None:
-                nonlocal status, headers
-                status = current_status
-                headers = current_headers
-
-            env = _wsgi_env("GET", "/demo/discovery")
-            out = b"".join(gw(env, start_response))
-
-        self.assertIn("200", status)
-        self.assertEqual({k.lower(): v for k, v in headers}.get("content-type"), "text/html; charset=utf-8")
-        self.assertIn("Her · 发现", out.decode("utf-8"))
-
-    def test_discovery_profile_detail_demo_route_serves_html(self) -> None:
-        env = _wsgi_env("GET", "/demo/discovery/profile-detail")
-        out = b"".join(self.gw(env, self.start_response))
-
-        self.assertIn("200", self.status)
-        hdrs = {k.lower(): v for k, v in self.headers}
-        self.assertEqual(hdrs.get("content-type"), "text/html; charset=utf-8")
-        body = out.decode("utf-8")
-        self.assertIn("Her · 资料详情", body)
-        self.assertTrue("聊一聊" in body or "继续问红娘" in body)
-        self.assertIn("/demo/discovery", body)
-
-    def test_discovery_profile_detail_demo_route_skips_api_key_guard(self) -> None:
-        with mock.patch.dict(os.environ, {"PARTNER_GATEWAY_API_KEY": "demo-secret"}, clear=False):
-            gw = PartnerGateway(
-                recommendation_dsn="mysql://noop",
-                matchmaking_dsn="mysql://noop",
-                chat_dsn="mysql://noop",
-                db_pool_max=0,
-            )
-            status = ""
-            headers: list[tuple[str, str]] = []
-
-            def start_response(current_status: str, current_headers: list[tuple[str, str]]) -> None:
-                nonlocal status, headers
-                status = current_status
-                headers = current_headers
-
-            env = _wsgi_env("GET", "/demo/discovery/profile-detail")
-            out = b"".join(gw(env, start_response))
-
-        self.assertIn("200", status)
-        self.assertEqual({k.lower(): v for k, v in headers}.get("content-type"), "text/html; charset=utf-8")
-        self.assertIn("Her · 资料详情", out.decode("utf-8"))
-
-    def test_additional_demo_routes_serve_html(self) -> None:
-        expectations = [
-            ("/demo/auth", 'data-demo-page="auth-entry"'),
-            ("/demo/auth/code", 'data-demo-page="auth-code"'),
-            ("/demo/auth/onboarding/basic", 'data-demo-page="auth-onboarding-basic"'),
-            ("/demo/auth/onboarding/profile", 'data-demo-page="auth-onboarding-profile"'),
-            ("/demo/auth/onboarding/trust", 'data-demo-page="auth-onboarding-trust"'),
-            ("/demo/search", 'data-demo-page="search"'),
-            ("/demo/chat", 'data-demo-page="chat"'),
-            ("/demo/chat/report", 'data-demo-page="chat-report"'),
-            ("/demo/chat/meeting-feedback", 'data-demo-page="chat-meeting-feedback"'),
-            ("/demo/chat/risk-sidebar", 'data-demo-page="chat-risk-sidebar"'),
-            ("/demo/trust", 'data-demo-page="trust"'),
-            ("/demo/trust/task", 'data-demo-page="trust-task"'),
-            ("/demo/trust/appeals", 'data-demo-page="trust-appeals"'),
-            ("/demo/me", 'data-demo-page="me"'),
-            ("/demo/me/profile", 'data-demo-page="me-profile"'),
-            ("/demo/me/preferences", 'data-demo-page="me-preferences"'),
-            ("/demo/me/history", 'data-demo-page="me-history"'),
-            ("/demo/notifications", 'data-demo-page="notifications"'),
-        ]
-
-        for path, marker in expectations:
-            with self.subTest(path=path):
-                env = _wsgi_env("GET", path)
-                out = b"".join(self.gw(env, self.start_response))
-
-                self.assertIn("200", self.status)
-                hdrs = {k.lower(): v for k, v in self.headers}
-                self.assertEqual(hdrs.get("content-type"), "text/html; charset=utf-8")
-                body = out.decode("utf-8")
-                self.assertIn("/demo/assets/her-demo/styles.css", body)
-                self.assertIn(marker, body)
-
-    def test_live_video_demo_asset_route_serves_local_module(self) -> None:
-        env = _wsgi_env("GET", "/demo/assets/mediapipe/vision_bundle.mjs")
-        out = b"".join(self.gw(env, self.start_response))
-
-        self.assertIn("200", self.status)
-        hdrs = {k.lower(): v for k, v in self.headers}
-        self.assertIn("javascript", hdrs.get("content-type", ""))
-        body = out.decode("utf-8")
-        self.assertIn("FaceLandmarker", body)
-
-    def test_live_video_demo_asset_route_skips_api_key_guard(self) -> None:
-        with mock.patch.dict(os.environ, {"PARTNER_GATEWAY_API_KEY": "demo-secret"}, clear=False):
-            gw = PartnerGateway(
-                recommendation_dsn="mysql://noop",
-                matchmaking_dsn="mysql://noop",
-                chat_dsn="mysql://noop",
-                db_pool_max=0,
-            )
-            status = ""
-
-            def start_response(current_status: str, _current_headers: list[tuple[str, str]]) -> None:
-                nonlocal status
-                status = current_status
-
-            env = _wsgi_env("GET", "/demo/assets/mediapipe/vision_bundle.mjs")
-            b"".join(gw(env, start_response))
-
-        self.assertIn("200", status)
 
     def test_jsonrpc_unknown_method(self) -> None:
         req = {

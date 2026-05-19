@@ -83,7 +83,8 @@ def _scenario_from_phone(phone: str) -> str:
 
 
 def _next_path_for_scenario(scenario: str) -> str:
-    return "/demo/discovery" if scenario == "existing" else "/demo/auth/onboarding/basic"
+    del scenario
+    return ""
 
 
 class DisabledSmsProvider:

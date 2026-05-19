@@ -14,7 +14,7 @@
 
 | 环境变量 | 行为 |
 |----------|------|
-| `PARTNER_GATEWAY_API_KEY` | 若设置：除 `GET /health`、`GET /demo/live-video-verification` 与 `GET /demo/assets/...` 外需 `Authorization: Bearer <key>` 或 `X-API-Key: <key>`。 |
+| `PARTNER_GATEWAY_API_KEY` | 若设置：除 `GET /health` 外需 `Authorization: Bearer <key>` 或 `X-API-Key: <key>`。 |
 | `PARTNER_GATEWAY_RATE_LIMIT_PER_MINUTE` | 每客户端 IP 每分钟最大请求数（默认 `600`）；`0` 表示关闭限流。 |
 | `PARTNER_GATEWAY_TRUST_X_FORWARDED_FOR` | 为 `1`/`true`/`yes` 时，客户端 IP 取自 `X-Forwarded-For` 第一段（需在反代后正确设置）。 |
 
@@ -344,13 +344,6 @@ JSON-RPC：`recommendation.record_recommendation_action` / `record_user_review` 
 - `先领取实时动作 challenge，再由前端实时完成眨眼 / 张嘴 / 转头，最后连同视频证据一起提交`
 - `开启本地开源 provider：MediaPipe 动作 + Silent-Face-Anti-Spoofing 防翻拍 + faster-whisper 语音口令`
 
-最小联调页：
-- `GET /demo/live-video-verification`
-- 作用：直接在浏览器打开摄像头，用 MediaPipe 做实时动作检测，然后顺手调 challenge / submission 两条接口跑完整链路。
-- 说明：这个 HTML 页和它依赖的 `/demo/assets/...` 本地资源为了方便联调都不受 API key 保护；但如果网关配置了 `PARTNER_GATEWAY_API_KEY`，页内发起的业务接口请求仍需要你在页面里填 key。
-- 说明：页面已改为优先加载网关本地托管的 `MediaPipe JS + WASM + face_landmarker.task`，不再依赖公网 CDN。
-- 说明：页面提交时不再注入 `machine_review_inputs` 之类的测试覆盖，默认直接走后端 `local_oss` 实检链路。
-
 服务端会把结果统一落到同一条认证单里，并自动分流为 `approved` / `under_review` / `resubmission_required`；人工复核通过后会回写资料 `photo_verification_level=live_video_verified`。当前机器预审只支持：
 - `local_oss`：后端自己跑 `Silent-Face-Anti-Spoofing` 和 `faster-whisper`。
 
@@ -418,7 +411,6 @@ JSON-RPC：`recommendation.record_recommendation_action` / `record_user_review` 
 - `action_events` 必须按真实完成顺序提交，服务端会用它核对 challenge 顺序；顺序错了会直接拒绝。
 - `challenge_phrase_rendered` 表示整句 challenge 文案已经被写进录制视频画面里。
 - `spoken_prompt_rendered` / `spoken_prompt_display_ms` 用来标记随机数字口令是否也已经展示在视频中。
-- 演示页 `/demo/live-video-verification` 现在录的是“摄像头画面 + challenge 提示合成后的视频”，不是纯原始摄像头流。
 
 `metadata.speech_challenge_result` 建议结构：
 
