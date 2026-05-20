@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Image from 'next/image'
-import { Loader2, MapPin, Briefcase, GraduationCap, Send, Sparkles, BadgeCheck, ChevronRight } from 'lucide-react'
+import { Loader2, Send, Sparkles, BadgeCheck, ChevronRight } from 'lucide-react'
 
 import { gatewayJson, queryString } from '@/lib/gateway'
 import type { HerRuntimeContext } from '@/lib/runtime-context'
@@ -42,6 +42,12 @@ type DiscoveryResponse = {
     composer?: { placeholder?: string; disabled?: boolean }
   }
   trace_id?: string
+}
+
+function isResultGroup(
+  item: DiscoveryTimelineItem,
+): item is Extract<DiscoveryTimelineItem, { item_type: 'result_group' }> {
+  return item.item_type === 'result_group'
 }
 
 function sessionStorageKey(context: HerRuntimeContext) {
@@ -230,16 +236,22 @@ export default function DiscoverPage({
               )
             }
 
+            if (!isResultGroup(item)) {
+              return null
+            }
+
+            const resultGroup = item
+
             return (
               <section
-                key={item.item_id}
+                key={resultGroup.item_id}
                 className="rounded-[28px] overflow-hidden bg-gradient-to-br from-card via-blush/15 to-rose-soft/20 border border-border/40 p-4 shadow-elevated"
               >
                 <div className="flex items-center justify-between mb-4">
                   <div>
-                    <p className="text-sm font-medium text-foreground">{item.title}</p>
+                    <p className="text-sm font-medium text-foreground">{resultGroup.title}</p>
                     <p className="text-xs text-muted-foreground">
-                      这一轮为你筛出 {item.cards.length} 位可继续了解的人
+                      这一轮为你筛出 {resultGroup.cards.length} 位可继续了解的人
                     </p>
                   </div>
                   <span className="rounded-full bg-gold-soft px-3 py-1 text-xs text-taupe">
@@ -248,7 +260,7 @@ export default function DiscoverPage({
                 </div>
 
                 <div className="space-y-3">
-                  {item.cards.map((card) => (
+                  {resultGroup.cards.map((card: DiscoveryCard) => (
                     <button
                       key={card.card_id}
                       onClick={() => onViewCandidate(String(card.profile_id))}
@@ -279,7 +291,7 @@ export default function DiscoverPage({
                           </div>
 
                           <div className="mt-3 flex flex-wrap gap-2">
-                            {(card.trust_badges || []).slice(0, 2).map((badge) => (
+                            {(card.trust_badges || []).slice(0, 2).map((badge: string) => (
                               <span
                                 key={badge}
                                 className="inline-flex items-center gap-1 rounded-full bg-rose-soft/50 px-2.5 py-1 text-[11px] text-taupe"
