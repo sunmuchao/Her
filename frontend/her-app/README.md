@@ -1,6 +1,6 @@
 # Her App Frontend
 
-当前仓库已删除用户端前端页面；`frontend/her-app` 现在仅保留 Next.js 运行壳和 `app/api/gateway` 代理接口。
+当前仓库已接入 `/Users/sunmuchao/Downloads/her-app-design_5` 的最新前端页面；`frontend/her-app` 同时保留了系统已有的 `app/api/gateway` 代理接口。
 
 ## 运行
 
@@ -28,6 +28,7 @@ pnpm install
 pnpm dev
 ```
 
-## 保留能力
+## 当前状态
 
+- 前端页面入口：`app/page.tsx`
 - API 代理：`app/api/gateway/[...path]/route.ts`
