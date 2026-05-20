@@ -1,6 +1,6 @@
 # Her App Frontend
 
-这是接入当前 `Her` 后端网关的用户端前端子应用，基于 Next.js App Router。
+当前仓库已删除用户端前端页面；`frontend/her-app` 现在仅保留 Next.js 运行壳和 `app/api/gateway` 代理接口。
 
 ## 运行
 
@@ -28,15 +28,6 @@ pnpm install
 pnpm dev
 ```
 
-## 当前已接入
+## 保留能力
 
-- 发现页：`/v1/discovery/sessions`、`/turns`、`/profiles/{id}`
-- 推荐页：`/v1/recommendation/cards`
-- 信任中心：`/v1/user-center/trust-hub`
-- 聊天 / 关系页：`/v2/chat/cases/{case_id}/timeline`、`/v2/chat/conversations/{conversation_id}`
-
-## 当前限制
-
-- 关系页和聊天页需要已存在的 `case_id`
-- 活体视频上传使用浏览器 `MediaRecorder`，依赖 HTTPS 或本机 `localhost` 环境下的摄像头权限
-- 视频与材料文件当前按后端能力边界转换为 base64 JSON 提交，不走 multipart / OSS 直传
+- API 代理：`app/api/gateway/[...path]/route.ts`
