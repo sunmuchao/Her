@@ -1,219 +1,185 @@
 'use client'
 
-import { MessageCircle, Heart, Calendar, AlertCircle, ChevronRight, BadgeCheck } from 'lucide-react'
-import Image from 'next/image'
+import { useEffect, useState } from 'react'
+import { AlertCircle, ChevronRight, Loader2, MessageCircle, ShieldCheck } from 'lucide-react'
+
+import { gatewayJson, queryString } from '@/lib/gateway'
+import type { HerRuntimeContext } from '@/lib/runtime-context'
 
 interface RelationshipsPageProps {
-  onOpenChat: (chatId: string) => void
+  runtimeContext: HerRuntimeContext
+  onOpenChat: (conversationId: string) => void
   onStartVerification: () => void
 }
 
-const activeRelationships = [
-  {
-    id: '1',
-    name: '林悦',
-    age: 28,
-    image: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&h=200&fit=crop&crop=face',
-    stage: '初步了解',
-    stageColor: 'rose',
-    lastMessage: '好的，那我们周六见面聊聊吧',
-    lastMessageTime: '刚刚',
-    unread: 2,
-    verified: true,
-  },
-  {
-    id: '2',
-    name: '陈思',
-    age: 27,
-    image: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=200&h=200&fit=crop&crop=face',
-    stage: '持续沟通',
-    stageColor: 'gold',
-    lastMessage: '那家咖啡店的环境真的很不错',
-    lastMessageTime: '2小时前',
-    unread: 0,
-    verified: true,
-  },
-]
+type TimelineResponse = {
+  case_id: string
+  requester_id: string
+  conversation_count: number
+  conversations: Array<{
+    conversation: {
+      conversation_id: string
+      display_name?: string
+      conversation_key?: string
+      layout_role?: string
+      case_id?: string
+    }
+    messages: Array<{
+      message_id: number
+      body?: string
+      created_at?: string
+    }>
+  }>
+}
 
-const pendingActions = [
-  {
-    id: '1',
-    type: 'feedback',
-    title: '见面反馈',
-    description: '与林悦的见面还顺利吗？',
-    icon: Calendar,
-    actionText: '填写反馈',
-  },
-  {
-    id: '2',
-    type: 'verification',
-    title: '完善认证',
-    description: '补充学历认证，提升可信度',
-    icon: BadgeCheck,
-    actionText: '立即认证',
-  },
-]
+export default function RelationshipsPage({
+  runtimeContext,
+  onOpenChat,
+  onStartVerification,
+}: RelationshipsPageProps) {
+  const [data, setData] = useState<TimelineResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-const recentActivities = [
-  {
-    id: '1',
-    content: '林悦查看了你的资料',
-    time: '1小时前',
-    type: 'view',
-  },
-  {
-    id: '2',
-    content: '你们的匹配度提升到了95%',
-    time: '3小时前',
-    type: 'match',
-  },
-  {
-    id: '3',
-    content: '陈思对你发起了主动招呼',
-    time: '昨天',
-    type: 'greeting',
-  },
-]
+  useEffect(() => {
+    let active = true
 
-export default function RelationshipsPage({ onOpenChat, onStartVerification }: RelationshipsPageProps) {
+    async function loadTimeline() {
+      if (!runtimeContext.caseId || !runtimeContext.userId) {
+        setLoading(false)
+        setError('关系页需要 case_id 和 user_id 才能接入真实聊天时间线。')
+        return
+      }
+      setLoading(true)
+      setError(null)
+      try {
+        const payload = await gatewayJson<TimelineResponse>(
+          `/v2/chat/cases/${runtimeContext.caseId}/timeline${queryString({
+            requester_id: runtimeContext.userId,
+          })}`,
+        )
+        if (!active) {
+          return
+        }
+        setData(payload)
+      } catch (err) {
+        if (!active) {
+          return
+        }
+        setError(err instanceof Error ? err.message : '关系页时间线加载失败')
+      } finally {
+        if (active) {
+          setLoading(false)
+        }
+      }
+    }
+
+    loadTimeline()
+    return () => {
+      active = false
+    }
+  }, [runtimeContext.caseId, runtimeContext.userId])
+
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
       <header className="sticky top-0 z-20 safe-area-top">
         <div className="glass-soft border-b border-border/30">
           <div className="px-5 py-4">
             <h1 className="editorial-title text-2xl text-foreground">关系</h1>
-            <p className="text-xs text-muted-foreground mt-0.5">你的恋爱进行时</p>
+            <p className="text-xs text-muted-foreground mt-0.5">当前关系进展与对话入口</p>
           </div>
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-6">
-        {/* Active relationships */}
-        <section>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-medium text-foreground">正在进行中</h2>
-            <span className="text-xs text-muted-foreground">{activeRelationships.length}位</span>
-          </div>
-
-          <div className="space-y-3">
-            {activeRelationships.map((relationship) => (
-              <button
-                key={relationship.id}
-                onClick={() => onOpenChat(relationship.id)}
-                className="w-full bg-card rounded-2xl p-4 shadow-soft border border-border/50 transition-all hover:shadow-elevated active:scale-[0.99] text-left"
-              >
-                <div className="flex items-start gap-3">
-                  {/* Avatar */}
-                  <div className="relative">
-                    <div className="w-14 h-14 rounded-full overflow-hidden border-2 border-rose-soft">
-                      <Image
-                        src={relationship.image}
-                        alt={relationship.name}
-                        width={56}
-                        height={56}
-                        className="object-cover"
-                      />
-                    </div>
-                    {relationship.unread > 0 && (
-                      <div className="absolute -top-1 -right-1 w-5 h-5 bg-primary rounded-full flex items-center justify-center">
-                        <span className="text-[10px] font-medium text-primary-foreground">{relationship.unread}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h3 className="font-medium text-foreground">{relationship.name}，{relationship.age}</h3>
-                      {relationship.verified && (
-                        <BadgeCheck className="w-4 h-4 text-primary shrink-0" />
-                      )}
-                      <span className={`ml-auto px-2 py-0.5 rounded-full text-[10px] font-medium ${
-                        relationship.stageColor === 'rose' 
-                          ? 'bg-rose-soft text-rose' 
-                          : 'bg-gold-soft text-gold'
-                      }`}>
-                        {relationship.stage}
-                      </span>
-                    </div>
-                    <p className="text-sm text-muted-foreground truncate">{relationship.lastMessage}</p>
-                    <span className="text-[10px] text-muted-foreground/70 mt-1 block">{relationship.lastMessageTime}</span>
-                  </div>
-                </div>
-              </button>
-            ))}
-          </div>
+      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+        <section className="rounded-3xl bg-gradient-to-br from-card to-blush/20 p-5 border border-border/40 shadow-soft">
+          <h2 className="text-sm font-medium text-foreground">关系状态</h2>
+          <p className="mt-2 text-sm leading-6 text-taupe">
+            这一页已经接到当前后端的 `case conversation timeline`。如果你传入有效的 `case_id`
+            和 `user_id`，这里会展示真实会话，而不是静态 mock。
+          </p>
         </section>
 
-        {/* Pending actions */}
-        <section>
-          <h2 className="text-sm font-medium text-foreground mb-3">待处理事项</h2>
-          <div className="space-y-3">
-            {pendingActions.map((action) => {
-              const Icon = action.icon
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-medium text-foreground">会话列表</h2>
+            {data ? (
+              <span className="text-xs text-muted-foreground">{data.conversation_count} 条会话</span>
+            ) : null}
+          </div>
+
+          {loading ? (
+            <div className="flex items-center justify-center rounded-2xl bg-card p-8 text-muted-foreground shadow-soft border border-border/30">
+              <Loader2 className="h-5 w-5 animate-spin mr-2" />
+              正在读取关系时间线
+            </div>
+          ) : error ? (
+            <div className="rounded-2xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
+              {error}
+            </div>
+          ) : (
+            data?.conversations.map((entry) => {
+              const lastMessage = entry.messages[entry.messages.length - 1]
               return (
                 <button
-                  key={action.id}
-                  onClick={action.type === 'verification' ? onStartVerification : undefined}
-                  className="w-full bg-gradient-to-r from-blush/60 to-card rounded-2xl p-4 shadow-soft border border-rose-soft/30 transition-all hover:shadow-elevated active:scale-[0.99] text-left"
+                  key={entry.conversation.conversation_id}
+                  onClick={() => onOpenChat(entry.conversation.conversation_id)}
+                  className="w-full rounded-2xl border border-border/40 bg-card p-4 text-left shadow-soft"
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-rose-soft/50 flex items-center justify-center">
-                      <Icon className="w-5 h-5 text-primary" />
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-rose-soft/40">
+                      <MessageCircle className="h-5 w-5 text-primary" />
                     </div>
-                    <div className="flex-1">
-                      <h3 className="text-sm font-medium text-foreground">{action.title}</h3>
-                      <p className="text-xs text-muted-foreground">{action.description}</p>
-                    </div>
-                    <div className="flex items-center gap-1 text-primary text-xs font-medium">
-                      {action.actionText}
-                      <ChevronRight className="w-4 h-4" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-medium text-foreground">
+                          {entry.conversation.display_name || entry.conversation.layout_role || '当前会话'}
+                        </h3>
+                        <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] text-muted-foreground">
+                          {entry.conversation.conversation_key || entry.conversation.conversation_id}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-sm text-muted-foreground line-clamp-2">
+                        {lastMessage?.body || '这条会话目前还没有消息。'}
+                      </p>
+                      <div className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary">
+                        打开会话
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      </div>
                     </div>
                   </div>
                 </button>
               )
-            })}
-          </div>
+            })
+          )}
         </section>
 
-        {/* Recent activity */}
-        <section>
-          <h2 className="text-sm font-medium text-foreground mb-3">最近动态</h2>
-          <div className="bg-card rounded-2xl shadow-soft border border-border/50 overflow-hidden">
-            {recentActivities.map((activity, index) => (
-              <div
-                key={activity.id}
-                className={`px-4 py-3 flex items-center gap-3 ${
-                  index !== recentActivities.length - 1 ? 'border-b border-border/30' : ''
-                }`}
-              >
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                  activity.type === 'view' ? 'bg-secondary' :
-                  activity.type === 'match' ? 'bg-gold-soft' : 'bg-rose-soft'
-                }`}>
-                  {activity.type === 'view' && <MessageCircle className="w-4 h-4 text-muted-foreground" />}
-                  {activity.type === 'match' && <Heart className="w-4 h-4 text-gold" />}
-                  {activity.type === 'greeting' && <Heart className="w-4 h-4 text-rose fill-rose" />}
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm text-foreground">{activity.content}</p>
-                  <span className="text-[10px] text-muted-foreground">{activity.time}</span>
-                </div>
+        <section className="space-y-3">
+          <h2 className="text-sm font-medium text-foreground">待处理事项</h2>
+          <button
+            onClick={onStartVerification}
+            className="w-full rounded-2xl border border-rose-soft/40 bg-gradient-to-r from-blush/50 to-card p-4 text-left shadow-soft"
+          >
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-rose-soft/60">
+                <ShieldCheck className="h-5 w-5 text-primary" />
               </div>
-            ))}
-          </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-foreground">完善认证与补件</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  进入信任与认证流程，处理资料核验、活体视频或申诉事项。
+                </p>
+              </div>
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            </div>
+          </button>
+          {!runtimeContext.caseId ? (
+            <div className="rounded-2xl bg-secondary/60 p-4 text-xs text-muted-foreground flex items-start gap-2">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+              如果要联调真实关系页，请在 URL 或 `.env.local` 中提供 `case_id`。
+            </div>
+          ) : null}
         </section>
-
-        {/* Tip */}
-        <div className="bg-blush/40 rounded-2xl p-4 flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 text-taupe shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm text-taupe leading-relaxed">
-              保持适度的沟通频率，让关系自然发展。如有任何疑虑，可随时联系红娘小雅。
-            </p>
-          </div>
-        </div>
       </div>
     </div>
   )
