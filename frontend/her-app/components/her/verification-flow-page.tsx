@@ -1,0 +1,449 @@
+'use client'
+
+import { useState } from 'react'
+import { ArrowLeft, Camera, RotateCcw, CheckCircle, Clock, AlertCircle, Upload, ChevronRight, X } from 'lucide-react'
+
+interface VerificationFlowPageProps {
+  onBack: () => void
+}
+
+type VerificationStep = 'select' | 'video-intro' | 'video-record' | 'video-review' | 'video-pending' | 'field-upload' | 'field-pending' | 'field-rejected' | 'appeal'
+
+const fieldVerificationTypes = [
+  {
+    id: 'education',
+    name: '学历认证',
+    description: '提供学位证书或学信网截图',
+    status: 'verified' as const,
+  },
+  {
+    id: 'occupation',
+    name: '职业认证',
+    description: '提供在职证明或工牌照片',
+    status: 'pending' as const,
+  },
+  {
+    id: 'income',
+    name: '收入认证',
+    description: '提供近三个月银行流水',
+    status: 'unverified' as const,
+  },
+  {
+    id: 'video',
+    name: '活体视频认证',
+    description: '录制真人视频确保真实性',
+    status: 'verified' as const,
+  },
+]
+
+export default function VerificationFlowPage({ onBack }: VerificationFlowPageProps) {
+  const [step, setStep] = useState<VerificationStep>('select')
+  const [selectedField, setSelectedField] = useState<string | null>(null)
+  const [isRecording, setIsRecording] = useState(false)
+  const [recordingTime, setRecordingTime] = useState(0)
+
+  const handleStartVideoVerification = () => {
+    setStep('video-intro')
+  }
+
+  const handleStartFieldVerification = (fieldId: string) => {
+    setSelectedField(fieldId)
+    setStep('field-upload')
+  }
+
+  const simulateRecording = () => {
+    setIsRecording(true)
+    setRecordingTime(0)
+    const interval = setInterval(() => {
+      setRecordingTime(prev => {
+        if (prev >= 5) {
+          clearInterval(interval)
+          setIsRecording(false)
+          setStep('video-review')
+          return 5
+        }
+        return prev + 1
+      })
+    }, 1000)
+  }
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'verified':
+        return 'bg-green-100 text-green-700'
+      case 'pending':
+        return 'bg-gold-soft text-gold'
+      default:
+        return 'bg-secondary text-muted-foreground'
+    }
+  }
+
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case 'verified':
+        return '已认证'
+      case 'pending':
+        return '审核中'
+      default:
+        return '未认证'
+    }
+  }
+
+  // Selection page
+  if (step === 'select') {
+    return (
+      <div className="min-h-screen bg-background max-w-md mx-auto flex flex-col">
+        <header className="sticky top-0 z-20 safe-area-top">
+          <div className="glass-soft border-b border-border/30">
+            <div className="px-4 py-3 flex items-center gap-3">
+              <button
+                onClick={onBack}
+                className="w-10 h-10 rounded-full hover:bg-secondary/60 flex items-center justify-center transition-colors"
+              >
+                <ArrowLeft className="w-5 h-5 text-foreground" />
+              </button>
+              <h1 className="font-medium text-foreground">认证中心</h1>
+            </div>
+          </div>
+        </header>
+
+        <div className="flex-1 overflow-y-auto px-5 py-6 space-y-4">
+          <p className="text-sm text-muted-foreground mb-4">
+            完成认证可提升你的可信度，让更多优质用户愿意了解你
+          </p>
+
+          {fieldVerificationTypes.map((field) => (
+            <button
+              key={field.id}
+              onClick={() => {
+                if (field.id === 'video' && field.status !== 'verified') {
+                  handleStartVideoVerification()
+                } else if (field.status === 'unverified') {
+                  handleStartFieldVerification(field.id)
+                }
+              }}
+              disabled={field.status === 'verified'}
+              className="w-full bg-card rounded-2xl p-4 shadow-soft border border-border/50 transition-all hover:shadow-elevated disabled:opacity-60 text-left"
+            >
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                  field.status === 'verified' ? 'bg-green-100' : 
+                  field.status === 'pending' ? 'bg-gold-soft' : 'bg-secondary'
+                }`}>
+                  {field.status === 'verified' ? (
+                    <CheckCircle className="w-5 h-5 text-green-600" />
+                  ) : field.status === 'pending' ? (
+                    <Clock className="w-5 h-5 text-gold" />
+                  ) : (
+                    <Upload className="w-5 h-5 text-muted-foreground" />
+                  )}
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-medium text-foreground">{field.name}</h3>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${getStatusColor(field.status)}`}>
+                      {getStatusText(field.status)}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">{field.description}</p>
+                </div>
+                {field.status === 'unverified' && (
+                  <ChevronRight className="w-5 h-5 text-muted-foreground" />
+                )}
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  // Video verification intro
+  if (step === 'video-intro') {
+    return (
+      <div className="min-h-screen bg-background max-w-md mx-auto flex flex-col">
+        <header className="sticky top-0 z-20 safe-area-top">
+          <div className="glass-soft border-b border-border/30">
+            <div className="px-4 py-3 flex items-center gap-3">
+              <button
+                onClick={() => setStep('select')}
+                className="w-10 h-10 rounded-full hover:bg-secondary/60 flex items-center justify-center transition-colors"
+              >
+                <ArrowLeft className="w-5 h-5 text-foreground" />
+              </button>
+              <h1 className="font-medium text-foreground">活体视频认证</h1>
+            </div>
+          </div>
+        </header>
+
+        <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
+          <div className="w-24 h-24 rounded-full bg-rose-soft/50 flex items-center justify-center mb-6">
+            <Camera className="w-12 h-12 text-primary" />
+          </div>
+          
+          <h2 className="editorial-title text-2xl text-foreground mb-3">验证真实的你</h2>
+          <p className="text-sm text-muted-foreground mb-8 leading-relaxed">
+            为了保护真实用户的体验，我们需要你完成一个简短的视频认证。
+            这个过程大约需要30秒。
+          </p>
+
+          <div className="w-full space-y-3 mb-8">
+            <div className="bg-blush/40 rounded-xl p-4 text-left">
+              <h4 className="text-sm font-medium text-foreground mb-2">你需要做什么</h4>
+              <ul className="text-sm text-taupe space-y-1">
+                <li>• 确保光线充足，面部清晰可见</li>
+                <li>• 按照提示完成指定动作</li>
+                <li>• 保持自然表情即可</li>
+              </ul>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setStep('video-record')}
+            className="w-full py-4 bg-gradient-to-r from-primary to-rose rounded-2xl text-primary-foreground font-medium shadow-soft"
+          >
+            开始认证
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // Video recording
+  if (step === 'video-record') {
+    return (
+      <div className="min-h-screen bg-foreground max-w-md mx-auto flex flex-col relative">
+        {/* Camera preview placeholder */}
+        <div className="absolute inset-0 bg-gradient-to-b from-foreground/80 to-foreground" />
+        
+        {/* Close button */}
+        <button
+          onClick={() => setStep('video-intro')}
+          className="absolute top-12 right-5 w-10 h-10 rounded-full bg-background/20 backdrop-blur-sm flex items-center justify-center z-10"
+        >
+          <X className="w-5 h-5 text-white" />
+        </button>
+
+        {/* Content overlay */}
+        <div className="relative z-10 flex-1 flex flex-col items-center justify-between py-16 px-8">
+          {/* Face guide */}
+          <div className="flex-1 flex items-center justify-center">
+            <div className="w-64 h-80 rounded-[40%] border-4 border-dashed border-white/40 flex items-center justify-center">
+              <p className="text-white/60 text-sm">将面部置于框内</p>
+            </div>
+          </div>
+
+          {/* Action prompt */}
+          <div className="text-center mb-8">
+            <h3 className="text-white text-xl font-medium mb-2">
+              {isRecording ? '请缓慢转动头部' : '准备好后点击开始'}
+            </h3>
+            <p className="text-white/60 text-sm">
+              {isRecording ? `录制中 ${recordingTime}s / 5s` : '确保面部光线充足'}
+            </p>
+          </div>
+
+          {/* Record button */}
+          <button
+            onClick={simulateRecording}
+            disabled={isRecording}
+            className={`w-20 h-20 rounded-full flex items-center justify-center transition-all ${
+              isRecording 
+                ? 'bg-rose animate-pulse' 
+                : 'bg-white hover:scale-105'
+            }`}
+          >
+            {isRecording ? (
+              <div className="w-8 h-8 rounded-md bg-white" />
+            ) : (
+              <div className="w-16 h-16 rounded-full bg-rose" />
+            )}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // Video review
+  if (step === 'video-review') {
+    return (
+      <div className="min-h-screen bg-background max-w-md mx-auto flex flex-col">
+        <header className="sticky top-0 z-20 safe-area-top">
+          <div className="glass-soft border-b border-border/30">
+            <div className="px-4 py-3 flex items-center gap-3">
+              <button
+                onClick={() => setStep('video-record')}
+                className="w-10 h-10 rounded-full hover:bg-secondary/60 flex items-center justify-center transition-colors"
+              >
+                <ArrowLeft className="w-5 h-5 text-foreground" />
+              </button>
+              <h1 className="font-medium text-foreground">确认提交</h1>
+            </div>
+          </div>
+        </header>
+
+        <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
+          {/* Video preview placeholder */}
+          <div className="w-48 h-64 rounded-3xl bg-secondary mb-6 overflow-hidden">
+            <div className="w-full h-full bg-gradient-to-b from-rose-soft to-blush flex items-center justify-center">
+              <Camera className="w-12 h-12 text-muted-foreground" />
+            </div>
+          </div>
+
+          <h2 className="text-lg font-medium text-foreground mb-2">视频录制完成</h2>
+          <p className="text-sm text-muted-foreground mb-8">
+            请确认视频清晰后提交审核
+          </p>
+
+          <div className="w-full space-y-3">
+            <button
+              onClick={() => setStep('video-pending')}
+              className="w-full py-4 bg-gradient-to-r from-primary to-rose rounded-2xl text-primary-foreground font-medium shadow-soft"
+            >
+              确认提交
+            </button>
+            <button
+              onClick={() => setStep('video-record')}
+              className="w-full py-4 bg-secondary rounded-2xl text-foreground font-medium flex items-center justify-center gap-2"
+            >
+              <RotateCcw className="w-4 h-4" />
+              重新录制
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Video pending
+  if (step === 'video-pending') {
+    return (
+      <div className="min-h-screen bg-background max-w-md mx-auto flex flex-col">
+        <header className="sticky top-0 z-20 safe-area-top">
+          <div className="glass-soft border-b border-border/30">
+            <div className="px-4 py-3 flex items-center gap-3">
+              <h1 className="font-medium text-foreground">提交成功</h1>
+            </div>
+          </div>
+        </header>
+
+        <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
+          <div className="w-20 h-20 rounded-full bg-gold-soft flex items-center justify-center mb-6">
+            <Clock className="w-10 h-10 text-gold" />
+          </div>
+
+          <h2 className="editorial-title text-2xl text-foreground mb-3">审核中</h2>
+          <p className="text-sm text-muted-foreground mb-2">
+            你的视频认证材料已提交
+          </p>
+          <p className="text-sm text-muted-foreground mb-8">
+            预计1-2个工作日内完成审核
+          </p>
+
+          <button
+            onClick={onBack}
+            className="w-full py-4 bg-primary rounded-2xl text-primary-foreground font-medium"
+          >
+            返回
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // Field upload
+  if (step === 'field-upload') {
+    const field = fieldVerificationTypes.find(f => f.id === selectedField)
+    
+    return (
+      <div className="min-h-screen bg-background max-w-md mx-auto flex flex-col">
+        <header className="sticky top-0 z-20 safe-area-top">
+          <div className="glass-soft border-b border-border/30">
+            <div className="px-4 py-3 flex items-center gap-3">
+              <button
+                onClick={() => setStep('select')}
+                className="w-10 h-10 rounded-full hover:bg-secondary/60 flex items-center justify-center transition-colors"
+              >
+                <ArrowLeft className="w-5 h-5 text-foreground" />
+              </button>
+              <h1 className="font-medium text-foreground">{field?.name}</h1>
+            </div>
+          </div>
+        </header>
+
+        <div className="flex-1 px-5 py-6">
+          <p className="text-sm text-muted-foreground mb-6">
+            {field?.description}，我们会在1-2个工作日内完成审核。
+          </p>
+
+          {/* Upload area */}
+          <div className="border-2 border-dashed border-border rounded-2xl p-8 text-center mb-6">
+            <div className="w-16 h-16 rounded-full bg-secondary mx-auto flex items-center justify-center mb-4">
+              <Upload className="w-8 h-8 text-muted-foreground" />
+            </div>
+            <p className="text-sm text-foreground mb-2">点击上传或拖拽文件到这里</p>
+            <p className="text-xs text-muted-foreground">支持 JPG、PNG、PDF 格式，最大10MB</p>
+          </div>
+
+          {/* Tips */}
+          <div className="bg-blush/40 rounded-xl p-4 mb-6">
+            <h4 className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-rose" />
+              注意事项
+            </h4>
+            <ul className="text-xs text-taupe space-y-1">
+              <li>• 请确保上传的文件清晰可读</li>
+              <li>• 敏感信息可以打码处理</li>
+              <li>• 信息仅用于认证，不会对外展示</li>
+            </ul>
+          </div>
+
+          <button
+            onClick={() => setStep('field-pending')}
+            className="w-full py-4 bg-gradient-to-r from-primary to-rose rounded-2xl text-primary-foreground font-medium shadow-soft"
+          >
+            提交审核
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // Field pending
+  if (step === 'field-pending') {
+    return (
+      <div className="min-h-screen bg-background max-w-md mx-auto flex flex-col">
+        <header className="sticky top-0 z-20 safe-area-top">
+          <div className="glass-soft border-b border-border/30">
+            <div className="px-4 py-3 flex items-center gap-3">
+              <h1 className="font-medium text-foreground">提交成功</h1>
+            </div>
+          </div>
+        </header>
+
+        <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
+          <div className="w-20 h-20 rounded-full bg-gold-soft flex items-center justify-center mb-6">
+            <CheckCircle className="w-10 h-10 text-gold" />
+          </div>
+
+          <h2 className="editorial-title text-2xl text-foreground mb-3">材料已提交</h2>
+          <p className="text-sm text-muted-foreground mb-2">
+            感谢你的配合
+          </p>
+          <p className="text-sm text-muted-foreground mb-8">
+            我们会在1-2个工作日内完成审核，届时会通知你结果
+          </p>
+
+          <button
+            onClick={onBack}
+            className="w-full py-4 bg-primary rounded-2xl text-primary-foreground font-medium"
+          >
+            返回
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return null
+}
