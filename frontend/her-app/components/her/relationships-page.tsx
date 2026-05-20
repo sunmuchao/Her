@@ -1,53 +1,114 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { MessageCircle, Heart, Calendar, ChevronRight, BadgeCheck, AlertCircle } from 'lucide-react'
 import Image from 'next/image'
+import { gatewayJson, queryString } from '@/lib/gateway'
 
 interface RelationshipsPageProps {
   onOpenChat: (chatId: string) => void
   onStartVerification: () => void
 }
 
-const activeRelationships = [
-  {
-    id: '1',
-    name: '林悦',
-    age: 28,
-    image: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&h=200&fit=crop&crop=face',
-    stage: '初步了解',
-    lastMessage: '好的，那我们周六见面聊聊吧',
-    lastMessageTime: '刚刚',
-    unread: 2,
-    verified: true,
-  },
-  {
-    id: '2',
-    name: '陈思',
-    age: 27,
-    image: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=200&h=200&fit=crop&crop=face',
-    stage: '持续沟通',
-    lastMessage: '那家咖啡店的环境真的很不错',
-    lastMessageTime: '2小时前',
-    unread: 0,
-    verified: true,
-  },
-]
+type TimelineResponse = {
+  case_id: string
+  requester_id: string
+  conversation_count: number
+  conversations: Array<{
+    conversation: {
+      conversation_id: string
+      channel_key: string
+      conversation_kind: string
+      members?: Array<{
+        participant_id: string
+        member_role: string
+      }>
+    }
+    messages: Array<{
+      message_id: number
+      author_id: string
+      body: string
+      created_at: string
+    }>
+  }>
+}
 
 const pendingActions = [
-  { id: '1', type: 'feedback', title: '见面反馈', description: '与林悦的见面还顺利吗？', icon: Calendar },
-  { id: '2', type: 'verification', title: '完善认证', description: '补充学历认证，提升可信度', icon: BadgeCheck },
-]
-
-const recentActivities = [
-  { id: '1', content: '林悦查看了你的资料', time: '1小时前', type: 'view' },
-  { id: '2', content: '你们的匹配度提升到了95%', time: '3小时前', type: 'match' },
-  { id: '3', content: '陈思对你发起了主动招呼', time: '昨天', type: 'greeting' },
+  { id: '1', type: 'feedback', title: '见面反馈', description: '与对方的进展如何？', icon: Calendar },
+  { id: '2', type: 'verification', title: '完善认证', description: '补充资料认证，提升可信度', icon: BadgeCheck },
 ]
 
 export default function RelationshipsPage({ onOpenChat, onStartVerification }: RelationshipsPageProps) {
+  const [activeRelationships, setActiveRelationships] = useState<Array<{
+    id: string
+    name: string
+    stage: string
+    lastMessage: string
+    lastMessageTime: string
+    unread: number
+    verified: boolean
+    image: string
+  }>>([])
+  const [recentActivities, setRecentActivities] = useState<Array<{ id: string; content: string; time: string; type: 'view' | 'match' | 'greeting' }>>([])
+
+  useEffect(() => {
+    const caseId = process.env.NEXT_PUBLIC_HER_CASE_ID
+    const requesterId = process.env.NEXT_PUBLIC_HER_USER_ID
+    if (!caseId || !requesterId) {
+      return
+    }
+
+    let cancelled = false
+    async function loadTimeline() {
+      try {
+        const data = await gatewayJson<TimelineResponse>(
+          `/v2/chat/cases/${caseId}/timeline${queryString({ requester_id: requesterId })}`,
+        )
+        if (cancelled) return
+        const items = data.conversations
+          .filter((item) => item.conversation.channel_key === 'main_group')
+          .map((item, index) => {
+            const otherMember =
+              item.conversation.members?.find(
+                (member) => member.participant_id !== requesterId && member.member_role !== 'agent',
+              )?.participant_id || 'user-b'
+            const lastMessage = item.messages[item.messages.length - 1]
+            return {
+              id: item.conversation.conversation_id,
+              name: otherMember,
+              stage: item.conversation.conversation_kind === 'group' ? '共同聊天' : '单独沟通',
+              lastMessage: lastMessage?.body || '还没有消息，试着主动开场吧',
+              lastMessageTime: lastMessage?.created_at || '',
+              unread: 0,
+              verified: true,
+              image:
+                index % 2 === 0
+                  ? 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&h=200&fit=crop&crop=face'
+                  : 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=200&h=200&fit=crop&crop=face',
+            }
+          })
+        setActiveRelationships(items)
+        setRecentActivities(
+          items.map((item, index) => ({
+            id: String(index),
+            content: `${item.name} 最近在会话里有新消息`,
+            time: item.lastMessageTime || '刚刚',
+            type: index % 2 === 0 ? 'greeting' : 'match',
+          })),
+        )
+      } catch {
+        // Keep empty state when timeline is unavailable.
+      }
+    }
+
+    void loadTimeline()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   return (
     <div className="flex flex-col h-full bg-background">
-      {/* Header */}
       <header className="sticky top-0 z-20 bg-background border-b border-border safe-area-top">
         <div className="px-4 py-3">
           <h1 className="text-lg font-medium">关系</h1>
@@ -56,7 +117,6 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
       </header>
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5 pb-20">
-        {/* Active relationships */}
         <section>
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-sm font-medium">正在进行中</h2>
@@ -82,7 +142,7 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="font-medium">{rel.name}，{rel.age}</span>
+                      <span className="font-medium">{rel.name}</span>
                       {rel.verified && <BadgeCheck className="w-4 h-4 text-primary" />}
                       <span className="ml-auto px-2 py-0.5 bg-secondary text-[10px] rounded-full">{rel.stage}</span>
                     </div>
@@ -92,10 +152,14 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
                 </div>
               </button>
             ))}
+            {activeRelationships.length === 0 && (
+              <div className="bg-card border border-border rounded-xl p-4 text-sm text-muted-foreground">
+                当前还没有可见的真实关系会话，关系页已切到真实后端接口。
+              </div>
+            )}
           </div>
         </section>
 
-        {/* Pending actions */}
         <section>
           <h2 className="text-sm font-medium mb-2">待处理</h2>
           <div className="space-y-2">
@@ -123,33 +187,33 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
           </div>
         </section>
 
-        {/* Recent activity */}
-        <section>
-          <h2 className="text-sm font-medium mb-2">最近动态</h2>
-          <div className="bg-card border border-border rounded-xl overflow-hidden">
-            {recentActivities.map((activity, i) => (
-              <div key={activity.id} className={`px-4 py-3 flex items-center gap-3 ${i !== recentActivities.length - 1 ? 'border-b border-border' : ''}`}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                  activity.type === 'view' ? 'bg-secondary' : activity.type === 'match' ? 'bg-gold/10' : 'bg-rose/10'
-                }`}>
-                  {activity.type === 'view' && <MessageCircle className="w-4 h-4 text-muted-foreground" />}
-                  {activity.type === 'match' && <Heart className="w-4 h-4 text-gold" />}
-                  {activity.type === 'greeting' && <Heart className="w-4 h-4 text-rose" />}
+        {recentActivities.length > 0 && (
+          <section>
+            <h2 className="text-sm font-medium mb-2">最近动态</h2>
+            <div className="bg-card border border-border rounded-xl overflow-hidden">
+              {recentActivities.map((activity, i) => (
+                <div key={activity.id} className={`px-4 py-3 flex items-center gap-3 ${i !== recentActivities.length - 1 ? 'border-b border-border' : ''}`}>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                    activity.type === 'view' ? 'bg-secondary' : activity.type === 'match' ? 'bg-gold/10' : 'bg-rose/10'
+                  }`}>
+                    {activity.type === 'view' && <MessageCircle className="w-4 h-4 text-muted-foreground" />}
+                    {activity.type === 'match' && <Heart className="w-4 h-4 text-gold" />}
+                    {activity.type === 'greeting' && <Heart className="w-4 h-4 text-rose" />}
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm">{activity.content}</p>
+                    <span className="text-[10px] text-muted-foreground">{activity.time}</span>
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <p className="text-sm">{activity.content}</p>
-                  <span className="text-[10px] text-muted-foreground">{activity.time}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
+              ))}
+            </div>
+          </section>
+        )}
 
-        {/* Tip */}
         <div className="bg-secondary rounded-xl p-3 flex items-start gap-2">
           <AlertCircle className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
           <p className="text-xs text-muted-foreground leading-relaxed">
-            保持适度的沟通频率，让关系自然发展。如有疑虑，可随时联系红娘。
+            关系页现在展示的是 `v2 chat` 真实 timeline；如果你看不到会话，优先检查 `NEXT_PUBLIC_HER_CASE_ID` 和 `NEXT_PUBLIC_HER_USER_ID`。
           </p>
         </div>
       </div>

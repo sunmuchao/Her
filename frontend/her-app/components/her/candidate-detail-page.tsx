@@ -3,9 +3,11 @@
 import { ArrowLeft, BadgeCheck, MapPin, Briefcase, GraduationCap, Heart, Sparkles, MessageCircle, AlertCircle, ChevronDown, ChevronUp, CheckCircle, Shield, ChevronLeft, ChevronRight } from 'lucide-react'
 import Image from 'next/image'
 import { useState, useEffect, useRef, TouchEvent } from 'react'
+import type { CandidatePreview } from '@/lib/her-types'
 
 interface CandidateDetailPageProps {
   candidateId: string
+  candidate?: CandidatePreview
   onBack: () => void
   onStartChat: () => void
 }
@@ -145,13 +147,27 @@ const verifiedItems = [
   { name: '收入水平', verified: false },
 ]
 
-export default function CandidateDetailPage({ candidateId, onBack, onStartChat }: CandidateDetailPageProps) {
+export default function CandidateDetailPage({ candidateId, candidate, onBack, onStartChat }: CandidateDetailPageProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['intro']))
   const touchStartX = useRef<number | null>(null)
   const touchEndX = useRef<number | null>(null)
 
-  const candidateData = candidatesDatabase[candidateId] || defaultCandidate
+  const rawCandidate = candidatesDatabase[candidateId] || defaultCandidate
+  const candidateData = {
+    ...rawCandidate,
+    id: candidate?.id || rawCandidate.id,
+    name: candidate?.name || rawCandidate.name,
+    age: candidate?.age || rawCandidate.age,
+    city: candidate?.city || rawCandidate.city,
+    occupation: candidate?.occupation || rawCandidate.occupation,
+    education: candidate?.education || rawCandidate.education,
+    verified: candidate?.verified ?? rawCandidate.verified,
+    matchScore: candidate?.matchScore || rawCandidate.matchScore,
+    headline: candidate?.matchReason || candidate?.message || rawCandidate.headline,
+    selfIntro: candidate?.message || candidate?.matchReason || rawCandidate.selfIntro,
+    images: candidate?.image ? [candidate.image, ...rawCandidate.images.slice(1)] : rawCandidate.images,
+  }
 
   const handleTouchStart = (e: TouchEvent) => { touchStartX.current = e.touches[0].clientX }
   const handleTouchMove = (e: TouchEvent) => { touchEndX.current = e.touches[0].clientX }

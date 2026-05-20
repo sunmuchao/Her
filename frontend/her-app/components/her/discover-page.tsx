@@ -7,9 +7,10 @@ import { TypingIndicator } from './ui/typing-indicator'
 import { EmptyRecommendations, EmptySearchResults } from './ui/empty-states'
 import { InboxItemSkeleton } from './ui/skeletons'
 import { gatewayJson, queryString } from '@/lib/gateway'
+import type { CandidatePreview } from '@/lib/her-types'
 
 interface DiscoverPageProps {
-  onViewCandidate: (candidateId: string) => void
+  onViewCandidate: (candidateId: string, candidate?: CandidatePreview) => void
   onOpenInbox: () => void
   inboxUnreadCount?: number
 }
@@ -265,7 +266,20 @@ export default function DiscoverPage({ onViewCandidate, onOpenInbox, inboxUnread
                 {recommendedCandidates.map((candidate, index) => (
                   <button
                     key={candidate.id}
-                    onClick={() => onViewCandidate(candidate.id)}
+                    onClick={() =>
+                      onViewCandidate(candidate.id, {
+                        id: candidate.id,
+                        name: candidate.name,
+                        age: candidate.age,
+                        city: candidate.city,
+                        occupation: candidate.occupation,
+                        education: candidate.education,
+                        verified: candidate.verified,
+                        matchScore: candidate.matchScore,
+                        image: candidate.image,
+                        matchReason: candidate.matchReason,
+                      })
+                    }
                     className="w-full bg-card border border-border rounded-xl p-3 text-left hover:border-primary/30 transition-colors"
                     style={{ animationDelay: `${index * 100}ms` }}
                   >
@@ -385,7 +399,7 @@ export function RecommendationInbox({
   onViewCandidate, 
   onBack 
 }: { 
-  onViewCandidate: (candidateId: string) => void
+  onViewCandidate: (candidateId: string, candidate?: CandidatePreview) => void
   onBack: () => void
 }) {
   const [filter, setFilter] = useState<'all' | 'delayed' | 'matched'>('all')
@@ -419,7 +433,9 @@ export function RecommendationInbox({
               age: profile?.age || 0,
               city: profile?.city || '未知',
               occupation: profile?.job || '资料待补充',
+              education: '',
               matchScore: snapshot?.score || 0,
+              verified: true,
               image: profile?.avatar_url || 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&h=200&fit=crop&crop=face',
               type: 'matched' as const,
               message: card.body || card.title || '系统为你推送了一位新候选人',
@@ -540,7 +556,19 @@ export function RecommendationInbox({
           filteredItems.map((item) => (
             <div
               key={item.id}
-              onClick={() => onViewCandidate(item.id)}
+              onClick={() =>
+                onViewCandidate(item.id, {
+                  id: item.id,
+                  name: item.name,
+                  age: item.age,
+                  city: item.city,
+                  occupation: item.occupation,
+                  verified: true,
+                  matchScore: item.matchScore,
+                  image: item.image,
+                  message: item.message,
+                })
+              }
               className="bg-card border border-border rounded-xl p-3 cursor-pointer hover:border-primary/30 transition-colors"
             >
               <div className="flex gap-3">
