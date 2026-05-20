@@ -171,6 +171,7 @@ class GatewayWsgiTests(unittest.TestCase):
 
         provider = FakeSmsProvider()
         self.gw._auth_otp._provider = provider
+        self.gw._auth_otp._chat_executor = None
 
         send_env = _wsgi_env(
             "POST",
@@ -181,8 +182,9 @@ class GatewayWsgiTests(unittest.TestCase):
 
         self.assertIn("201", send_status)
         self.assertEqual(send_payload["delivery"]["provider"], "fake")
-        self.assertEqual(send_payload["flow"]["scenario"], "existing")
-        self.assertEqual(send_payload["flow"]["next_path"], "")
+        self.assertEqual(send_payload["flow"]["scenario"], "new")
+        self.assertEqual(send_payload["flow"]["next_path"], "/onboarding")
+        self.assertTrue(str(send_payload["challenge_id"]).startswith("otp-"))
         self.assertEqual(len(provider.calls), 1)
 
         verify_env = _wsgi_env(
@@ -194,7 +196,10 @@ class GatewayWsgiTests(unittest.TestCase):
 
         self.assertIn("200", verify_status)
         self.assertTrue(verify_payload["verified"])
-        self.assertEqual(verify_payload["flow"]["next_path"], "")
+        self.assertTrue(verify_payload["user"]["is_new_user"])
+        self.assertTrue(str(verify_payload["user"]["user_id"]).startswith("usr-mem-"))
+        self.assertTrue(str(verify_payload["session"]["access_token"]).startswith("atk_mem_"))
+        self.assertEqual(verify_payload["flow"]["next_path"], "/onboarding")
 
     def test_aliyun_sms_provider_request_shape(self) -> None:
         class FakeResponse:

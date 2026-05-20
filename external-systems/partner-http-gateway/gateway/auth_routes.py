@@ -20,9 +20,18 @@ from urllib import error as urllib_error
 from urllib import parse as urllib_parse
 from urllib import request as urllib_request
 
+from chat_system import (  # type: ignore[import-untyped]
+    AuthDomainError,
+    get_current_auth_payload,
+    issue_sms_code as persist_sms_code,
+    refresh_session as persist_refresh_session,
+    revoke_session_by_access_token,
+    verify_sms_code as persist_verify_sms_code,
+)
 from match_domain import get_trace_id
 
 from .http_helpers import _parse_json_body, _read_body
+from .request_policy import client_ip
 
 _CN_PHONE_RE = re.compile(r"^1[3-9]\d{9}$")
 _CODE_RE = re.compile(r"^\d{6}$")
@@ -77,16 +86,6 @@ def _mask_phone(phone: str) -> str:
     return f"{phone[:3]}****{phone[-4:]}"
 
 
-def _scenario_from_phone(phone: str) -> str:
-    last = int(phone[-1])
-    return "existing" if last % 2 == 0 else "new"
-
-
-def _next_path_for_scenario(scenario: str) -> str:
-    del scenario
-    return ""
-
-
 class DisabledSmsProvider:
     def send_code(self, phone: str, code: str) -> dict[str, Any]:
         raise AuthRouteError(
@@ -102,6 +101,11 @@ def _first_env(*names: str) -> str:
         if value:
             return value
     return ""
+
+
+def _fixed_auth_code() -> str | None:
+    raw = str(os.environ.get("HER_AUTH_FIXED_CODE") or "").strip()
+    return raw if _CODE_RE.fullmatch(raw) else None
 
 
 class AliyunSmsProvider:
@@ -347,9 +351,16 @@ def _build_sms_provider() -> SmsProvider:
 
 
 class AuthOtpService:
-    def __init__(self, provider: SmsProvider | None = None) -> None:
+    def __init__(
+        self,
+        provider: SmsProvider | None = None,
+        *,
+        chat_executor: Any | None = None,
+    ) -> None:
         self._provider = provider or _build_sms_provider()
+        self._chat_executor = chat_executor
         self._records: dict[str, OtpRecord] = {}
+        self._users: dict[str, str] = {}
         self._lock = threading.Lock()
 
     def _prune(self, now: datetime) -> None:
@@ -357,19 +368,39 @@ class AuthOtpService:
         for phone in expired:
             self._records.pop(phone, None)
 
-    def send_code(self, phone: str) -> dict[str, Any]:
+    def send_code(
+        self,
+        phone: str,
+        *,
+        scene: str = "login",
+        client_ip_text: str | None = None,
+        device_id: str | None = None,
+    ) -> dict[str, Any]:
         now = _utcnow()
-        scenario = _scenario_from_phone(phone)
-        next_path = _next_path_for_scenario(scenario)
+        code = _fixed_auth_code() or f"{secrets.randbelow(1000000):06d}"
+        provider_meta = self._provider.send_code(phone, code)
+        if self._chat_executor is not None:
+            try:
+                return self._chat_executor(
+                    persist_sms_code,
+                    phone=phone,
+                    code=code,
+                    scene=scene,
+                    provider_name=str(provider_meta.get("provider") or "unknown"),
+                    client_ip=client_ip_text,
+                    device_id=device_id,
+                )
+            except AuthDomainError as exc:
+                raise AuthRouteError(exc.status_code, exc.code, exc.message) from exc
+
+        scenario = "existing" if phone in self._users else "new"
+        next_path = "" if scenario == "existing" else "/onboarding"
         with self._lock:
             self._prune(now)
             existing = self._records.get(phone)
             if existing is not None and now < existing.resend_at:
                 seconds = max(1, int((existing.resend_at - now).total_seconds()))
                 raise AuthRouteError(429, "sms_cooldown", f"发送过于频繁，请在 {seconds} 秒后重试")
-
-        code = f"{secrets.randbelow(1000000):06d}"
-        provider_meta = self._provider.send_code(phone, code)
         record = OtpRecord(
             phone=phone,
             code=code,
@@ -382,6 +413,7 @@ class AuthOtpService:
         with self._lock:
             self._records[phone] = record
         return {
+            "challenge_id": f"otp-mem-{phone[-4:]}",
             "delivery": {
                 "channel": "sms",
                 "masked_phone": _mask_phone(phone),
@@ -392,7 +424,30 @@ class AuthOtpService:
             "flow": {"scenario": scenario, "next_path": next_path},
         }
 
-    def verify_code(self, phone: str, code: str) -> dict[str, Any]:
+    def verify_code(
+        self,
+        phone: str,
+        code: str,
+        *,
+        challenge_id: str | None = None,
+        client_ip_text: str | None = None,
+        device_id: str | None = None,
+        client_type: str | None = None,
+    ) -> dict[str, Any]:
+        if self._chat_executor is not None:
+            try:
+                return self._chat_executor(
+                    persist_verify_sms_code,
+                    phone=phone,
+                    code=code,
+                    challenge_id=challenge_id,
+                    client_ip=client_ip_text,
+                    device_id=device_id,
+                    client_type=client_type,
+                )
+            except AuthDomainError as exc:
+                raise AuthRouteError(exc.status_code, exc.code, exc.message) from exc
+
         now = _utcnow()
         with self._lock:
             self._prune(now)
@@ -415,14 +470,33 @@ class AuthOtpService:
                     "验证码错误，请重新输入" if remaining else "输入错误次数过多，请重新获取验证码",
                 )
             self._records.pop(phone, None)
+            is_new_user = phone not in self._users
+            user_id = self._users.get(phone) or f"usr-mem-{phone[-6:]}"
+            self._users[phone] = user_id
             return {
                 "verified": True,
+                "user": {
+                    "user_id": user_id,
+                    "is_new_user": is_new_user,
+                    "account_status": "active",
+                    "onboarding_status": "not_started" if is_new_user else "completed",
+                },
+                "session": {
+                    "session_id": f"sess-mem-{phone[-6:]}",
+                    "access_token": f"atk_mem_{phone[-6:]}",
+                    "refresh_token": f"rtk_mem_{phone[-6:]}",
+                    "token_type": "Bearer",
+                    "expires_in_seconds": 7200,
+                    "refresh_expires_in_seconds": 2592000,
+                },
                 "flow": {"scenario": record.scenario, "next_path": record.next_path},
             }
 
 
 class AuthGateway(Protocol):
     _auth_otp: AuthOtpService
+    def _current_actor(self, environ: dict[str, Any]) -> Any: ...
+    def _with_chat(self, fn: Any, *args: Any, **kwargs: Any) -> Any: ...
 
 
 def _error_payload(exc: AuthRouteError) -> tuple[int, dict[str, Any]]:
@@ -434,11 +508,16 @@ def _error_payload(exc: AuthRouteError) -> tuple[int, dict[str, Any]]:
 
 def rest_auth_send_sms_code(
     gateway: AuthGateway,
-    _environ: dict[str, Any],
+    environ: dict[str, Any],
     body: dict[str, Any],
 ) -> tuple[int, dict[str, Any]]:
     try:
-        out = gateway._auth_otp.send_code(_require_cn_phone(body.get("phone") or body.get("mobile")))
+        out = gateway._auth_otp.send_code(
+            _require_cn_phone(body.get("phone") or body.get("mobile")),
+            scene=str(body.get("scene") or "login"),
+            client_ip_text=client_ip(environ),
+            device_id=str(body.get("device_id") or "").strip() or None,
+        )
     except AuthRouteError as exc:
         return _error_payload(exc)
     return 201, {**out, "trace_id": get_trace_id()}
@@ -446,16 +525,68 @@ def rest_auth_send_sms_code(
 
 def rest_auth_verify_sms_code(
     gateway: AuthGateway,
-    _environ: dict[str, Any],
+    environ: dict[str, Any],
     body: dict[str, Any],
 ) -> tuple[int, dict[str, Any]]:
     try:
         out = gateway._auth_otp.verify_code(
             _require_cn_phone(body.get("phone") or body.get("mobile")),
             _require_code(body.get("code") or body.get("otp")),
+            challenge_id=str(body.get("challenge_id") or "").strip() or None,
+            client_ip_text=client_ip(environ),
+            device_id=str(body.get("device_id") or "").strip() or None,
+            client_type=str(body.get("client_type") or "").strip() or None,
         )
     except AuthRouteError as exc:
         return _error_payload(exc)
+    return 200, {**out, "trace_id": get_trace_id()}
+
+
+def rest_auth_refresh_token(
+    gateway: AuthGateway,
+    _environ: dict[str, Any],
+    body: dict[str, Any],
+) -> tuple[int, dict[str, Any]]:
+    refresh_token = str(body.get("refresh_token") or "").strip()
+    if not refresh_token:
+        return _error_payload(AuthRouteError(400, "refresh_token_required", "refresh_token is required"))
+    try:
+        out = gateway._with_chat(persist_refresh_session, refresh_token)
+    except AuthDomainError as exc:
+        return _error_payload(AuthRouteError(exc.status_code, exc.code, exc.message))
+    return 200, {**out, "trace_id": get_trace_id()}
+
+
+def _extract_bearer_token(environ: dict[str, Any]) -> str:
+    auth = str(environ.get("HTTP_AUTHORIZATION") or "").strip()
+    if auth.startswith("Bearer "):
+        return auth[7:].strip()
+    return ""
+
+
+def rest_auth_me(
+    gateway: AuthGateway,
+    environ: dict[str, Any],
+) -> tuple[int, dict[str, Any]]:
+    actor = gateway._current_actor(environ)
+    if actor is None:
+        return _error_payload(AuthRouteError(401, "unauthorized", "登录状态已失效，请重新登录"))
+    token = _extract_bearer_token(environ)
+    try:
+        out = gateway._with_chat(get_current_auth_payload, actor.actor_id, token)
+    except AuthDomainError as exc:
+        return _error_payload(AuthRouteError(exc.status_code, exc.code, exc.message))
+    return 200, {**out, "trace_id": get_trace_id()}
+
+
+def rest_auth_logout(
+    gateway: AuthGateway,
+    environ: dict[str, Any],
+) -> tuple[int, dict[str, Any]]:
+    token = _extract_bearer_token(environ)
+    if not token:
+        return _error_payload(AuthRouteError(401, "unauthorized", "登录状态已失效，请重新登录"))
+    out = gateway._with_chat(revoke_session_by_access_token, token)
     return 200, {**out, "trace_id": get_trace_id()}
 
 
@@ -469,4 +600,19 @@ def dispatch_public_auth_rest(
         return rest_auth_send_sms_code(gateway, environ, _parse_json_body(_read_body(environ)))
     if path == "/v1/auth/sms/verify-code" and method == "POST":
         return rest_auth_verify_sms_code(gateway, environ, _parse_json_body(_read_body(environ)))
+    if path == "/v1/auth/token/refresh" and method == "POST":
+        return rest_auth_refresh_token(gateway, environ, _parse_json_body(_read_body(environ)))
+    return None
+
+
+def dispatch_private_auth_rest(
+    gateway: AuthGateway,
+    environ: dict[str, Any],
+    method: str,
+    path: str,
+) -> tuple[int, dict[str, Any]] | None:
+    if path == "/v1/auth/me" and method == "GET":
+        return rest_auth_me(gateway, environ)
+    if path == "/v1/auth/logout" and method == "POST":
+        return rest_auth_logout(gateway, environ)
     return None
