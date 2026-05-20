@@ -212,6 +212,88 @@ Response:
 
 Uses refresh token rotation and returns a new access/refresh pair.
 
+#### `POST /v1/auth/wechat/login`
+
+Request:
+
+```json
+{
+  "code": "wechat-oauth-code",
+  "device_id": "ios-device-1",
+  "client_type": "ios"
+}
+```
+
+Response:
+
+```json
+{
+  "user": {
+    "user_id": "usr_xxx",
+    "is_new_user": true,
+    "account_status": "active",
+    "onboarding_status": "not_started",
+    "phone_bound": false
+  },
+  "session": {
+    "session_id": "sess_xxx",
+    "access_token": "raw-access-token",
+    "refresh_token": "raw-refresh-token",
+    "token_type": "Bearer",
+    "expires_in_seconds": 7200,
+    "refresh_expires_in_seconds": 2592000
+  },
+  "flow": {
+    "scenario": "new",
+    "next_path": "/bind-phone"
+  },
+  "wechat_profile": {
+    "openid": "wx-openid-1",
+    "unionid": "wx-union-1",
+    "nickname": "微信昵称",
+    "avatar_url": "https://..."
+  }
+}
+```
+
+#### `POST /v1/auth/one-tap/create`
+
+Request:
+
+```json
+{
+  "device_id": "ios-device-1",
+  "client_type": "ios"
+}
+```
+
+Response:
+
+```json
+{
+  "attempt_id": "otl-xxx",
+  "provider": "carrier",
+  "masked_phone": "138****8000",
+  "expires_in_seconds": 600,
+  "provider_payload": {}
+}
+```
+
+#### `POST /v1/auth/one-tap/verify`
+
+Request:
+
+```json
+{
+  "attempt_id": "otl-xxx",
+  "operator_token": "carrier-token",
+  "device_id": "ios-device-1",
+  "client_type": "ios"
+}
+```
+
+Response shape is the same as successful phone login.
+
 ### Authenticated routes
 
 #### `GET /v1/auth/me`
@@ -221,6 +303,36 @@ Returns the current user and active session summary.
 #### `POST /v1/auth/logout`
 
 Revokes the current access session.
+
+#### `POST /v1/auth/wechat/bind-phone`
+
+Requires bearer access token.
+
+Request:
+
+```json
+{
+  "phone": "13800138000",
+  "code": "123456",
+  "challenge_id": "otp-xxx",
+  "device_id": "ios-device-1"
+}
+```
+
+Response:
+
+```json
+{
+  "ok": true,
+  "user": {
+    "user_id": "usr_xxx",
+    "phone": "13800138000",
+    "phone_bound": true,
+    "account_status": "active",
+    "onboarding_status": "not_started"
+  }
+}
+```
 
 ## Authentication Model
 
@@ -253,12 +365,16 @@ Implemented in this repo:
 
 ### Phase 2
 
-Planned next:
-
 - WeChat login
 - carrier one-tap login
 - WeChat phone binding
 - device/session management
+
+Current landing status:
+
+- gateway routes are implemented for WeChat login, one-tap create/verify, and WeChat bind-phone
+- domain persistence is implemented in `chat_system.auth_accounts`
+- local development can run with stub providers before real vendor integration
 
 ### Phase 3
 
@@ -275,3 +391,7 @@ Planned next:
 - access/refresh tokens are stored as hashes only.
 - the chat MySQL schema now owns auth tables because the gateway already uses that database and migration path.
 - a small in-memory fallback still exists in the OTP service only for tests and non-persistent development scenarios.
+- `auth_one_tap_attempts` persists carrier one-tap attempts and expiry state.
+- local WeChat stub mode uses `HER_AUTH_WECHAT_STUB_CODES_JSON`.
+- local one-tap stub mode uses `HER_AUTH_ONE_TAP_STUB_PHONE` and `HER_AUTH_ONE_TAP_STUB_TOKEN`.
+- real WeChat open-platform mode uses `HER_WECHAT_APP_ID` and `HER_WECHAT_APP_SECRET`.

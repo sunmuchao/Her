@@ -12,6 +12,7 @@ ensure_her_repo_on_sys_path(Path(__file__))
 
 _EXPORT_MODULES = {
     "AuthDomainError": ".auth_accounts",
+    "bind_phone_with_sms": ".auth_accounts",
     "CONV_KIND_DM": ".conversations",
     "CONV_KIND_GROUP": ".conversations",
     "LAYOUT_ROLE_ASSISTANT_DM_A": ".conversations",
@@ -41,6 +42,7 @@ _EXPORT_MODULES = {
     "connect_db": ".storage",
     "current_time": ".service",
     "create_live_video_verification_challenge": ".verification",
+    "create_one_tap_attempt": ".auth_accounts",
     "create_assistant_case_layout": ".conversations",
     "dispute_profile_field_verification": ".profile_reviews",
     "evaluate_profile_consistency": ".profile_reviews",
@@ -88,6 +90,7 @@ _EXPORT_MODULES = {
     "list_profile_review_case_appeals": ".profile_reviews",
     "list_profile_review_cases": ".profile_reviews",
     "list_profile_review_events": ".profile_reviews",
+    "login_with_wechat_profile": ".auth_accounts",
     "list_risk_appeals": ".moderation_ops",
     "list_risk_cases": ".risk",
     "list_risk_signals": ".risk",
@@ -122,6 +125,7 @@ _EXPORT_MODULES = {
     "submit_live_video_verification": ".verification",
     "submit_meeting_feedback": ".risk",
     "submit_member_report": ".risk",
+    "verify_one_tap_login": ".auth_accounts",
     "verify_sms_code": ".auth_accounts",
     "summarize_outbox": ".outbox_admin",
     "get_risk_appeal": ".moderation_ops",

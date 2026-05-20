@@ -18,6 +18,7 @@ if str(GATEWAY_ROOT) not in sys.path:
 
 from gateway.app import PartnerGateway  # noqa: E402
 from gateway import auth_routes  # noqa: E402
+from gateway.identity import ActorPrincipal  # noqa: E402
 from gateway.logging_setup import configure_gateway_logging  # noqa: E402
 from gateway_tests.helpers import build_wsgi_env as _wsgi_env, run_wsgi_json  # noqa: E402
 
@@ -235,6 +236,184 @@ class GatewayWsgiTests(unittest.TestCase):
         self.assertIn("TemplateCode=SMS_123456789", request.full_url)
         self.assertIn("TemplateParam=%7B%22code%22%3A%22123456%22%7D", request.full_url)
         self.assertIn("Signature=", request.full_url)
+
+    def test_auth_wechat_login_and_bind_phone(self) -> None:
+        self.gw._wechat_login_provider = auth_routes.StubWechatLoginProvider(
+            {
+                "wx-code-1": {
+                    "openid": "wx-openid-1",
+                    "unionid": "wx-union-1",
+                    "nickname": "测试微信用户",
+                    "avatar_url": "https://example.com/avatar.jpg",
+                }
+            }
+        )
+
+        def fake_with_chat(fn, *args, **kwargs):
+            if fn is auth_routes.login_with_wechat_profile:
+                return {
+                    "user": {
+                        "user_id": "usr-wechat-1",
+                        "is_new_user": True,
+                        "account_status": "active",
+                        "onboarding_status": "not_started",
+                        "phone_bound": False,
+                    },
+                    "session": {
+                        "session_id": "sess-wechat-1",
+                        "access_token": "atk-wechat-1",
+                        "refresh_token": "rtk-wechat-1",
+                        "token_type": "Bearer",
+                        "expires_in_seconds": 7200,
+                        "refresh_expires_in_seconds": 2592000,
+                    },
+                    "flow": {"scenario": "new", "next_path": "/bind-phone"},
+                    "wechat_profile": {
+                        "openid": kwargs["openid"],
+                        "unionid": kwargs["unionid"],
+                        "nickname": kwargs["nickname"],
+                        "avatar_url": kwargs["avatar_url"],
+                    },
+                }
+            if fn is auth_routes.bind_phone_with_sms:
+                self.assertEqual(kwargs["user_id"], "usr-wechat-1")
+                self.assertEqual(kwargs["phone"], "13800138000")
+                self.assertEqual(kwargs["code"], "123456")
+                return {
+                    "ok": True,
+                    "user": {
+                        "user_id": "usr-wechat-1",
+                        "phone": "13800138000",
+                        "phone_bound": True,
+                        "account_status": "active",
+                        "onboarding_status": "not_started",
+                    },
+                }
+            raise AssertionError(getattr(fn, "__name__", str(fn)))
+
+        self.gw._with_chat = fake_with_chat  # type: ignore[method-assign]
+
+        login_env = _wsgi_env(
+            "POST",
+            "/v1/auth/wechat/login",
+            json.dumps({"code": "wx-code-1", "device_id": "ios-1", "client_type": "ios"}).encode("utf-8"),
+        )
+        login_status, login_payload = self._run_with_gateway(self.gw, login_env)
+
+        self.assertIn("200", login_status)
+        self.assertEqual(login_payload["user"]["user_id"], "usr-wechat-1")
+        self.assertFalse(login_payload["user"]["phone_bound"])
+        self.assertEqual(login_payload["flow"]["next_path"], "/bind-phone")
+        self.assertEqual(login_payload["wechat_profile"]["openid"], "wx-openid-1")
+
+        actor = ActorPrincipal(
+            actor_id="usr-wechat-1",
+            roles=frozenset({"end_user"}),
+            token_id="sess-wechat-1",
+            auth_source="auth_session",
+        )
+        self.gw._identity_resolver = mock.Mock(resolve=lambda _environ: actor)
+
+        bind_env = _wsgi_env(
+            "POST",
+            "/v1/auth/wechat/bind-phone",
+            json.dumps(
+                {
+                    "phone": "13800138000",
+                    "code": "123456",
+                    "challenge_id": "otp-bind-1",
+                    "device_id": "ios-1",
+                }
+            ).encode("utf-8"),
+            extra=_auth_headers("atk-wechat-1"),
+        )
+        bind_status, bind_payload = self._run_with_gateway(self.gw, bind_env)
+
+        self.assertIn("200", bind_status)
+        self.assertTrue(bind_payload["ok"])
+        self.assertTrue(bind_payload["user"]["phone_bound"])
+        self.assertEqual(bind_payload["user"]["phone"], "13800138000")
+
+    def test_auth_one_tap_create_and_verify(self) -> None:
+        self.gw._one_tap_login_provider = auth_routes.StubOneTapLoginProvider(
+            phone="13800138000",
+            operator_token="carrier-token-1",
+        )
+
+        def fake_with_chat(fn, *args, **kwargs):
+            if fn is auth_routes.create_one_tap_attempt:
+                return {
+                    "attempt_id": "otl-1",
+                    "provider": kwargs["provider"],
+                    "masked_phone": kwargs["masked_phone"],
+                    "expires_in_seconds": 600,
+                    "provider_payload": kwargs["provider_payload"],
+                }
+            if fn is auth_routes._load_one_tap_attempt_context:
+                self.assertEqual(args[0], "otl-1")
+                return {
+                    "attempt_id": "otl-1",
+                    "provider": "stub_carrier",
+                    "masked_phone": "138****8000",
+                    "provider_payload_json": {"mode": "stub"},
+                    "client_type": "ios",
+                    "device_id": "ios-1",
+                }
+            if fn is auth_routes.verify_one_tap_login:
+                self.assertEqual(kwargs["attempt_id"], "otl-1")
+                self.assertEqual(kwargs["phone"], "13800138000")
+                return {
+                    "user": {
+                        "user_id": "usr-one-tap-1",
+                        "is_new_user": True,
+                        "account_status": "active",
+                        "onboarding_status": "not_started",
+                        "phone_bound": True,
+                    },
+                    "session": {
+                        "session_id": "sess-one-tap-1",
+                        "access_token": "atk-one-tap-1",
+                        "refresh_token": "rtk-one-tap-1",
+                        "token_type": "Bearer",
+                        "expires_in_seconds": 7200,
+                        "refresh_expires_in_seconds": 2592000,
+                    },
+                    "flow": {"scenario": "new", "next_path": "/onboarding"},
+                }
+            raise AssertionError(getattr(fn, "__name__", str(fn)))
+
+        self.gw._with_chat = fake_with_chat  # type: ignore[method-assign]
+
+        create_env = _wsgi_env(
+            "POST",
+            "/v1/auth/one-tap/create",
+            json.dumps({"device_id": "ios-1", "client_type": "ios"}).encode("utf-8"),
+        )
+        create_status, create_payload = self._run_with_gateway(self.gw, create_env)
+
+        self.assertIn("201", create_status)
+        self.assertEqual(create_payload["attempt_id"], "otl-1")
+        self.assertEqual(create_payload["provider"], "stub_carrier")
+        self.assertEqual(create_payload["masked_phone"], "138****8000")
+
+        verify_env = _wsgi_env(
+            "POST",
+            "/v1/auth/one-tap/verify",
+            json.dumps(
+                {
+                    "attempt_id": "otl-1",
+                    "operator_token": "carrier-token-1",
+                    "device_id": "ios-1",
+                    "client_type": "ios",
+                }
+            ).encode("utf-8"),
+        )
+        verify_status, verify_payload = self._run_with_gateway(self.gw, verify_env)
+
+        self.assertIn("200", verify_status)
+        self.assertEqual(verify_payload["user"]["user_id"], "usr-one-tap-1")
+        self.assertTrue(verify_payload["user"]["phone_bound"])
+        self.assertEqual(verify_payload["flow"]["next_path"], "/onboarding")
 
     def test_discovery_create_session_returns_render_model(self) -> None:
         env = _wsgi_env(

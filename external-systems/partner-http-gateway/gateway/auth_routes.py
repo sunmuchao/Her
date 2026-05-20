@@ -22,12 +22,17 @@ from urllib import request as urllib_request
 
 from chat_system import (  # type: ignore[import-untyped]
     AuthDomainError,
+    bind_phone_with_sms,
+    create_one_tap_attempt,
     get_current_auth_payload,
     issue_sms_code as persist_sms_code,
+    login_with_wechat_profile,
     refresh_session as persist_refresh_session,
     revoke_session_by_access_token,
+    verify_one_tap_login,
     verify_sms_code as persist_verify_sms_code,
 )
+from chat_system.storage import row_to_dict  # type: ignore[import-untyped]
 from match_domain import get_trace_id
 
 from .http_helpers import _json_safe, _parse_json_body, _read_body
@@ -51,6 +56,15 @@ class AuthRouteError(Exception):
 
 class SmsProvider(Protocol):
     def send_code(self, phone: str, code: str) -> dict[str, Any]: ...
+
+
+class WechatLoginProvider(Protocol):
+    def exchange_code(self, code: str) -> dict[str, Any]: ...
+
+
+class OneTapLoginProvider(Protocol):
+    def create_attempt(self, *, device_id: str | None, client_type: str | None) -> dict[str, Any]: ...
+    def verify(self, *, operator_token: str, attempt_context: dict[str, Any]) -> dict[str, Any]: ...
 
 
 @dataclass
@@ -93,6 +107,116 @@ class DisabledSmsProvider:
             "sms_provider_unavailable",
             "短信通道未配置，请接入正式短信供应商后再发送验证码",
         )
+
+
+class DisabledWechatLoginProvider:
+    def exchange_code(self, code: str) -> dict[str, Any]:
+        del code
+        raise AuthRouteError(503, "wechat_login_unavailable", "微信登录未配置，请接入正式微信开放平台后再使用")
+
+
+class StubWechatLoginProvider:
+    def __init__(self, code_map: dict[str, dict[str, Any]]) -> None:
+        self._code_map = code_map
+
+    def exchange_code(self, code: str) -> dict[str, Any]:
+        payload = self._code_map.get(code)
+        if payload is None:
+            raise AuthRouteError(400, "wechat_code_invalid", "微信授权 code 无效或已过期")
+        out = dict(payload)
+        out.setdefault("openid", f"wx-openid-{code}")
+        out.setdefault("unionid", out.get("openid"))
+        out.setdefault("nickname", "微信用户")
+        out.setdefault("avatar_url", "")
+        return out
+
+
+class WechatOpenPlatformProvider:
+    _ACCESS_TOKEN_ENDPOINT = "https://api.weixin.qq.com/sns/oauth2/access_token"
+    _USERINFO_ENDPOINT = "https://api.weixin.qq.com/sns/userinfo"
+
+    def __init__(self, *, app_id: str, app_secret: str) -> None:
+        self._app_id = str(app_id or "").strip()
+        self._app_secret = str(app_secret or "").strip()
+        if not self._app_id or not self._app_secret:
+            raise ValueError("WeChat app id and app secret are required")
+
+    def _get_json(self, url: str) -> dict[str, Any]:
+        request = urllib_request.Request(url, method="GET", headers={"Accept": "application/json"})
+        try:
+            with urllib_request.urlopen(request, timeout=20) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except (urllib_error.URLError, TimeoutError, socket.timeout) as exc:
+            raise AuthRouteError(504, "wechat_timeout", "微信登录服务响应超时，请稍后重试") from exc
+        if str(payload.get("errcode") or "").strip() not in {"", "0"}:
+            message = str(payload.get("errmsg") or "wechat error").strip()
+            raise AuthRouteError(502, "wechat_provider_error", f"微信登录失败：{message}"[:300])
+        return payload
+
+    def exchange_code(self, code: str) -> dict[str, Any]:
+        qs = urllib_parse.urlencode(
+            {
+                "appid": self._app_id,
+                "secret": self._app_secret,
+                "code": code,
+                "grant_type": "authorization_code",
+            }
+        )
+        access_payload = self._get_json(f"{self._ACCESS_TOKEN_ENDPOINT}?{qs}")
+        access_token = str(access_payload.get("access_token") or "").strip()
+        openid = str(access_payload.get("openid") or "").strip()
+        unionid = str(access_payload.get("unionid") or "").strip() or None
+        if not access_token or not openid:
+            raise AuthRouteError(502, "wechat_provider_error", "微信登录返回数据不完整")
+        user_qs = urllib_parse.urlencode(
+            {"access_token": access_token, "openid": openid, "lang": "zh_CN"}
+        )
+        profile_payload = self._get_json(f"{self._USERINFO_ENDPOINT}?{user_qs}")
+        return {
+            "openid": openid,
+            "unionid": unionid or str(profile_payload.get("unionid") or "").strip() or None,
+            "nickname": profile_payload.get("nickname"),
+            "avatar_url": profile_payload.get("headimgurl"),
+            "raw_profile": profile_payload,
+        }
+
+
+class DisabledOneTapLoginProvider:
+    def create_attempt(self, *, device_id: str | None, client_type: str | None) -> dict[str, Any]:
+        del device_id, client_type
+        raise AuthRouteError(503, "one_tap_unavailable", "一键登录未配置，请接入正式运营商认证服务后再使用")
+
+    def verify(self, *, operator_token: str, attempt_context: dict[str, Any]) -> dict[str, Any]:
+        del operator_token, attempt_context
+        raise AuthRouteError(503, "one_tap_unavailable", "一键登录未配置，请接入正式运营商认证服务后再使用")
+
+
+class StubOneTapLoginProvider:
+    def __init__(self, *, phone: str, operator_token: str) -> None:
+        self._phone = phone
+        self._operator_token = operator_token
+
+    def create_attempt(self, *, device_id: str | None, client_type: str | None) -> dict[str, Any]:
+        del device_id, client_type
+        return {
+            "provider": "stub_carrier",
+            "masked_phone": _mask_phone(self._phone),
+            "operator_request_id": f"stub-{secrets.token_hex(8)}",
+            "provider_payload": {
+                "mode": "stub",
+                "hint": "use configured operator token",
+            },
+        }
+
+    def verify(self, *, operator_token: str, attempt_context: dict[str, Any]) -> dict[str, Any]:
+        del attempt_context
+        if operator_token != self._operator_token:
+            raise AuthRouteError(400, "one_tap_token_invalid", "一键登录凭证无效或已过期")
+        return {
+            "provider": "stub_carrier",
+            "phone": self._phone,
+            "masked_phone": _mask_phone(self._phone),
+        }
 
 
 def _first_env(*names: str) -> str:
@@ -350,6 +474,47 @@ def _build_sms_provider() -> SmsProvider:
     return DisabledSmsProvider()
 
 
+def _build_wechat_login_provider() -> WechatLoginProvider:
+    configured = str(os.environ.get("HER_AUTH_WECHAT_PROVIDER") or "").strip().lower()
+    stub_json = str(os.environ.get("HER_AUTH_WECHAT_STUB_CODES_JSON") or "").strip()
+    if configured == "stub" or stub_json:
+        try:
+            parsed = json.loads(stub_json or "{}")
+        except json.JSONDecodeError as exc:
+            raise ValueError("HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON") from exc
+        if not isinstance(parsed, dict):
+            raise ValueError("HER_AUTH_WECHAT_STUB_CODES_JSON must be a JSON object")
+        code_map = {
+            str(code): value
+            for code, value in parsed.items()
+            if isinstance(value, dict)
+        }
+        return StubWechatLoginProvider(code_map)
+    if configured in {"open_platform", "wechat"}:
+        return WechatOpenPlatformProvider(
+            app_id=_first_env("HER_WECHAT_APP_ID"),
+            app_secret=_first_env("HER_WECHAT_APP_SECRET"),
+        )
+    if configured in {"disabled", "none", "off"}:
+        return DisabledWechatLoginProvider()
+    app_id = _first_env("HER_WECHAT_APP_ID")
+    app_secret = _first_env("HER_WECHAT_APP_SECRET")
+    if app_id and app_secret:
+        return WechatOpenPlatformProvider(app_id=app_id, app_secret=app_secret)
+    return DisabledWechatLoginProvider()
+
+
+def _build_one_tap_login_provider() -> OneTapLoginProvider:
+    configured = str(os.environ.get("HER_AUTH_ONE_TAP_PROVIDER") or "").strip().lower()
+    stub_phone = str(os.environ.get("HER_AUTH_ONE_TAP_STUB_PHONE") or "").strip()
+    stub_token = str(os.environ.get("HER_AUTH_ONE_TAP_STUB_TOKEN") or "").strip()
+    if configured == "stub" or (stub_phone and stub_token):
+        return StubOneTapLoginProvider(phone=_require_cn_phone(stub_phone), operator_token=stub_token)
+    if configured in {"disabled", "none", "off", ""}:
+        return DisabledOneTapLoginProvider()
+    return DisabledOneTapLoginProvider()
+
+
 class AuthOtpService:
     def __init__(
         self,
@@ -495,6 +660,8 @@ class AuthOtpService:
 
 class AuthGateway(Protocol):
     _auth_otp: AuthOtpService
+    _wechat_login_provider: WechatLoginProvider
+    _one_tap_login_provider: OneTapLoginProvider
     def _current_actor(self, environ: dict[str, Any]) -> Any: ...
     def _with_chat(self, fn: Any, *args: Any, **kwargs: Any) -> Any: ...
 
@@ -557,11 +724,129 @@ def rest_auth_refresh_token(
     return 200, _json_safe({**out, "trace_id": get_trace_id()})
 
 
+def rest_auth_wechat_login(
+    gateway: AuthGateway,
+    environ: dict[str, Any],
+    body: dict[str, Any],
+) -> tuple[int, dict[str, Any]]:
+    code = str(body.get("code") or "").strip()
+    if not code:
+        return _error_payload(AuthRouteError(400, "wechat_code_required", "微信授权 code 不能为空"))
+    try:
+        profile = gateway._wechat_login_provider.exchange_code(code)
+        out = gateway._with_chat(
+            login_with_wechat_profile,
+            openid=str(profile.get("openid") or "").strip(),
+            unionid=str(profile.get("unionid") or "").strip() or None,
+            nickname=str(profile.get("nickname") or "").strip() or None,
+            avatar_url=str(profile.get("avatar_url") or "").strip() or None,
+            raw_profile=profile.get("raw_profile") if isinstance(profile.get("raw_profile"), dict) else profile,
+            client_ip=client_ip(environ),
+            device_id=str(body.get("device_id") or "").strip() or None,
+            client_type=str(body.get("client_type") or "").strip() or None,
+        )
+    except AuthRouteError as exc:
+        return _error_payload(exc)
+    except AuthDomainError as exc:
+        return _error_payload(AuthRouteError(exc.status_code, exc.code, exc.message))
+    return 200, _json_safe({**out, "trace_id": get_trace_id()})
+
+
+def rest_auth_one_tap_create(
+    gateway: AuthGateway,
+    environ: dict[str, Any],
+    body: dict[str, Any],
+) -> tuple[int, dict[str, Any]]:
+    device_id = str(body.get("device_id") or "").strip() or None
+    client_type = str(body.get("client_type") or "").strip() or None
+    try:
+        created = gateway._one_tap_login_provider.create_attempt(
+            device_id=device_id,
+            client_type=client_type,
+        )
+        out = gateway._with_chat(
+            create_one_tap_attempt,
+            provider=str(created.get("provider") or "unknown"),
+            masked_phone=str(created.get("masked_phone") or "").strip(),
+            provider_payload=created.get("provider_payload") if isinstance(created.get("provider_payload"), dict) else {},
+            operator_request_id=str(created.get("operator_request_id") or "").strip() or None,
+            device_id=device_id,
+            client_ip=client_ip(environ),
+            client_type=client_type,
+        )
+    except AuthRouteError as exc:
+        return _error_payload(exc)
+    except AuthDomainError as exc:
+        return _error_payload(AuthRouteError(exc.status_code, exc.code, exc.message))
+    return 201, _json_safe({**out, "trace_id": get_trace_id()})
+
+
+def rest_auth_one_tap_verify(
+    gateway: AuthGateway,
+    environ: dict[str, Any],
+    body: dict[str, Any],
+) -> tuple[int, dict[str, Any]]:
+    attempt_id = str(body.get("attempt_id") or "").strip()
+    operator_token = str(body.get("operator_token") or "").strip()
+    if not attempt_id:
+        return _error_payload(AuthRouteError(400, "one_tap_attempt_required", "attempt_id is required"))
+    if not operator_token:
+        return _error_payload(AuthRouteError(400, "one_tap_token_required", "operator_token is required"))
+    device_id = str(body.get("device_id") or "").strip() or None
+    client_type = str(body.get("client_type") or "").strip() or None
+    try:
+        provider_result = gateway._with_chat(_load_one_tap_attempt_context, attempt_id)
+        if not provider_result:
+            raise AuthRouteError(404, "one_tap_attempt_not_found", "一键登录尝试不存在")
+        verified = gateway._one_tap_login_provider.verify(
+            operator_token=operator_token,
+            attempt_context=provider_result,
+        )
+        out = gateway._with_chat(
+            verify_one_tap_login,
+            attempt_id=attempt_id,
+            phone=_require_cn_phone(verified.get("phone")),
+            provider=str(verified.get("provider") or provider_result.get("provider") or "unknown"),
+            operator_token=operator_token,
+            client_ip=client_ip(environ),
+            device_id=device_id,
+            client_type=client_type,
+        )
+    except AuthRouteError as exc:
+        return _error_payload(exc)
+    except AuthDomainError as exc:
+        return _error_payload(AuthRouteError(exc.status_code, exc.code, exc.message))
+    return 200, _json_safe({**out, "trace_id": get_trace_id()})
+
+
 def _extract_bearer_token(environ: dict[str, Any]) -> str:
     auth = str(environ.get("HTTP_AUTHORIZATION") or "").strip()
     if auth.startswith("Bearer "):
         return auth[7:].strip()
     return ""
+
+
+def _load_one_tap_attempt_context(conn: Any, attempt_id: str) -> dict[str, Any] | None:
+    row = row_to_dict(
+        conn.execute(
+            """
+            SELECT attempt_id, provider, masked_phone, provider_payload_json, client_type, device_id
+            FROM auth_one_tap_attempts
+            WHERE attempt_id = ?
+            LIMIT 1
+            """,
+            (attempt_id,),
+        ).fetchone()
+    )
+    if not row:
+        return None
+    payload = row.get("provider_payload_json")
+    if isinstance(payload, str):
+        try:
+            row["provider_payload_json"] = json.loads(payload)
+        except json.JSONDecodeError:
+            row["provider_payload_json"] = {}
+    return row
 
 
 def rest_auth_me(
@@ -590,6 +875,29 @@ def rest_auth_logout(
     return 200, _json_safe({**out, "trace_id": get_trace_id()})
 
 
+def rest_auth_wechat_bind_phone(
+    gateway: AuthGateway,
+    environ: dict[str, Any],
+    body: dict[str, Any],
+) -> tuple[int, dict[str, Any]]:
+    actor = gateway._current_actor(environ)
+    if actor is None:
+        return _error_payload(AuthRouteError(401, "unauthorized", "登录状态已失效，请重新登录"))
+    try:
+        out = gateway._with_chat(
+            bind_phone_with_sms,
+            user_id=str(actor.actor_id),
+            phone=_require_cn_phone(body.get("phone") or body.get("mobile")),
+            code=_require_code(body.get("code") or body.get("otp")),
+            challenge_id=str(body.get("challenge_id") or "").strip() or None,
+            client_ip=client_ip(environ),
+            device_id=str(body.get("device_id") or "").strip() or None,
+        )
+    except AuthDomainError as exc:
+        return _error_payload(AuthRouteError(exc.status_code, exc.code, exc.message))
+    return 200, _json_safe({**out, "trace_id": get_trace_id()})
+
+
 def dispatch_public_auth_rest(
     gateway: AuthGateway,
     environ: dict[str, Any],
@@ -600,6 +908,12 @@ def dispatch_public_auth_rest(
         return rest_auth_send_sms_code(gateway, environ, _parse_json_body(_read_body(environ)))
     if path == "/v1/auth/sms/verify-code" and method == "POST":
         return rest_auth_verify_sms_code(gateway, environ, _parse_json_body(_read_body(environ)))
+    if path == "/v1/auth/wechat/login" and method == "POST":
+        return rest_auth_wechat_login(gateway, environ, _parse_json_body(_read_body(environ)))
+    if path == "/v1/auth/one-tap/create" and method == "POST":
+        return rest_auth_one_tap_create(gateway, environ, _parse_json_body(_read_body(environ)))
+    if path == "/v1/auth/one-tap/verify" and method == "POST":
+        return rest_auth_one_tap_verify(gateway, environ, _parse_json_body(_read_body(environ)))
     if path == "/v1/auth/token/refresh" and method == "POST":
         return rest_auth_refresh_token(gateway, environ, _parse_json_body(_read_body(environ)))
     return None
@@ -615,4 +929,6 @@ def dispatch_private_auth_rest(
         return rest_auth_me(gateway, environ)
     if path == "/v1/auth/logout" and method == "POST":
         return rest_auth_logout(gateway, environ)
+    if path == "/v1/auth/wechat/bind-phone" and method == "POST":
+        return rest_auth_wechat_bind_phone(gateway, environ, _parse_json_body(_read_body(environ)))
     return None

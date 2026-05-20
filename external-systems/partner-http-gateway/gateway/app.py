@@ -53,7 +53,13 @@ from discovery_system import (  # type: ignore[import-untyped]
 )
 
 from .access_control import GatewayAccessMixin
-from .auth_routes import AuthOtpService, dispatch_private_auth_rest, dispatch_public_auth_rest
+from .auth_routes import (
+    AuthOtpService,
+    _build_one_tap_login_provider,
+    _build_wechat_login_provider,
+    dispatch_private_auth_rest,
+    dispatch_public_auth_rest,
+)
 from .async_jobs import AsyncJobGatewayMixin
 from .chat_routes import (
     chat_require_requester as _chat_require_requester,
@@ -218,6 +224,8 @@ class PartnerGateway(AsyncJobGatewayMixin, GatewayAccessMixin):
             self._chat_pool = GatewayConnectionPool(self._chat_dsn, "chat", max_size=pool_n)
         self._discovery = create_default_discovery_service()
         self._auth_otp = AuthOtpService(chat_executor=self._with_chat)
+        self._wechat_login_provider = _build_wechat_login_provider()
+        self._one_tap_login_provider = _build_one_tap_login_provider()
         self._identity_resolver = IdentityResolver(session_resolver=self._resolve_auth_session_principal)
         self._rate_limiter = rate_limiter_from_environ()
 
