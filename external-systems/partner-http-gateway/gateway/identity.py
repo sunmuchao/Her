@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 ROLE_END_USER = "end_user"
 ROLE_OPS_OPERATOR = "ops_operator"
@@ -117,9 +117,9 @@ def _extract_bearer_or_api_key(environ: dict[str, Any]) -> str:
 
 
 class IdentityResolver:
-    __slots__ = ("_legacy_key", "_legacy_actor_id", "_legacy_roles", "_static_tokens")
+    __slots__ = ("_legacy_key", "_legacy_actor_id", "_legacy_roles", "_session_resolver", "_static_tokens")
 
-    def __init__(self) -> None:
+    def __init__(self, *, session_resolver: Callable[[str], ActorPrincipal | None] | None = None) -> None:
         self._legacy_key = str(os.environ.get("PARTNER_GATEWAY_API_KEY") or "").strip()
         self._legacy_actor_id = (
             str(os.environ.get("PARTNER_GATEWAY_LEGACY_API_ACTOR_ID") or "").strip()
@@ -129,6 +129,7 @@ class IdentityResolver:
             os.environ.get("PARTNER_GATEWAY_LEGACY_API_ROLES")
             or f"{ROLE_PLATFORM_ADMIN},{ROLE_SERVICE_WORKER}"
         )
+        self._session_resolver = session_resolver
         self._static_tokens = _load_static_tokens()
 
     @property
@@ -156,6 +157,10 @@ class IdentityResolver:
                     token_id="legacy-api-key",
                     auth_source="legacy_api_key",
                 )
+            if self._session_resolver is not None:
+                principal = self._session_resolver(token)
+                if principal is not None:
+                    return principal
             raise GatewayAuthError()
         if self.required:
             raise GatewayAuthError()
