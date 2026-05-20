@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 
 import SplashScreen from '@/components/her/splash-screen'
@@ -41,7 +41,7 @@ function buildRuntimeContext(searchParams: URLSearchParams): HerRuntimeContext {
   }
 }
 
-export default function HerApp() {
+function HerAppContent() {
   const searchParams = useSearchParams()
   const runtimeContext = buildRuntimeContext(searchParams)
 
@@ -144,5 +144,13 @@ export default function HerApp() {
       </main>
       <BottomNav currentTab={currentTab} onTabChange={setCurrentTab} />
     </div>
+  )
+}
+
+export default function HerApp() {
+  return (
+    <Suspense fallback={<SplashScreen onComplete={() => undefined} />}>
+      <HerAppContent />
+    </Suspense>
   )
 }
