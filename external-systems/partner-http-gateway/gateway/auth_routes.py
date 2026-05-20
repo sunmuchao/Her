@@ -30,7 +30,7 @@ from chat_system import (  # type: ignore[import-untyped]
 )
 from match_domain import get_trace_id
 
-from .http_helpers import _parse_json_body, _read_body
+from .http_helpers import _json_safe, _parse_json_body, _read_body
 from .request_policy import client_ip
 
 _CN_PHONE_RE = re.compile(r"^1[3-9]\d{9}$")
@@ -520,7 +520,7 @@ def rest_auth_send_sms_code(
         )
     except AuthRouteError as exc:
         return _error_payload(exc)
-    return 201, {**out, "trace_id": get_trace_id()}
+    return 201, _json_safe({**out, "trace_id": get_trace_id()})
 
 
 def rest_auth_verify_sms_code(
@@ -539,7 +539,7 @@ def rest_auth_verify_sms_code(
         )
     except AuthRouteError as exc:
         return _error_payload(exc)
-    return 200, {**out, "trace_id": get_trace_id()}
+    return 200, _json_safe({**out, "trace_id": get_trace_id()})
 
 
 def rest_auth_refresh_token(
@@ -554,7 +554,7 @@ def rest_auth_refresh_token(
         out = gateway._with_chat(persist_refresh_session, refresh_token)
     except AuthDomainError as exc:
         return _error_payload(AuthRouteError(exc.status_code, exc.code, exc.message))
-    return 200, {**out, "trace_id": get_trace_id()}
+    return 200, _json_safe({**out, "trace_id": get_trace_id()})
 
 
 def _extract_bearer_token(environ: dict[str, Any]) -> str:
@@ -576,7 +576,7 @@ def rest_auth_me(
         out = gateway._with_chat(get_current_auth_payload, actor.actor_id, token)
     except AuthDomainError as exc:
         return _error_payload(AuthRouteError(exc.status_code, exc.code, exc.message))
-    return 200, {**out, "trace_id": get_trace_id()}
+    return 200, _json_safe({**out, "trace_id": get_trace_id()})
 
 
 def rest_auth_logout(
@@ -587,7 +587,7 @@ def rest_auth_logout(
     if not token:
         return _error_payload(AuthRouteError(401, "unauthorized", "登录状态已失效，请重新登录"))
     out = gateway._with_chat(revoke_session_by_access_token, token)
-    return 200, {**out, "trace_id": get_trace_id()}
+    return 200, _json_safe({**out, "trace_id": get_trace_id()})
 
 
 def dispatch_public_auth_rest(
