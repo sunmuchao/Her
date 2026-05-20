@@ -11,6 +11,7 @@ from ._path_bootstrap import ensure_her_repo_on_sys_path
 ensure_her_repo_on_sys_path(Path(__file__))
 
 _EXPORT_MODULES = {
+    "AuthDomainError": ".auth_accounts",
     "CONV_KIND_DM": ".conversations",
     "CONV_KIND_GROUP": ".conversations",
     "LAYOUT_ROLE_ASSISTANT_DM_A": ".conversations",

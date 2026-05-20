@@ -43,6 +43,7 @@ from matchmaking_system import (  # type: ignore[import-untyped]
 from matchmaking_system.storage import (  # type: ignore[import-untyped]
     DEFAULT_MATCHMAKING_MYSQL_DSN,
 )
+from chat_system import get_session_by_access_token  # type: ignore[import-untyped]
 from chat_system.storage import (  # type: ignore[import-untyped]
     DEFAULT_CHAT_MYSQL_DSN,
     connect_db as chat_connect_db,
@@ -52,7 +53,7 @@ from discovery_system import (  # type: ignore[import-untyped]
 )
 
 from .access_control import GatewayAccessMixin
-from .auth_routes import AuthOtpService, dispatch_public_auth_rest
+from .auth_routes import AuthOtpService, dispatch_private_auth_rest, dispatch_public_auth_rest
 from .async_jobs import AsyncJobGatewayMixin
 from .chat_routes import (
     chat_require_requester as _chat_require_requester,
@@ -99,6 +100,7 @@ from .chat_safety_routes import (
 )
 from .discovery_routes import dispatch_discovery_rest
 from .identity import (
+    ActorPrincipal,
     GatewayAuthError,
     GatewayPermissionError,
     IdentityResolver,
@@ -215,8 +217,8 @@ class PartnerGateway(AsyncJobGatewayMixin, GatewayAccessMixin):
             self._mm_pool = GatewayConnectionPool(self._matchmaking_dsn, "matchmaking", max_size=pool_n)
             self._chat_pool = GatewayConnectionPool(self._chat_dsn, "chat", max_size=pool_n)
         self._discovery = create_default_discovery_service()
-        self._auth_otp = AuthOtpService()
-        self._identity_resolver = IdentityResolver()
+        self._auth_otp = AuthOtpService(chat_executor=self._with_chat)
+        self._identity_resolver = IdentityResolver(session_resolver=self._resolve_auth_session_principal)
         self._rate_limiter = rate_limiter_from_environ()
 
     def _with_db(
@@ -268,6 +270,26 @@ class PartnerGateway(AsyncJobGatewayMixin, GatewayAccessMixin):
             fn,
             *args,
             **kwargs,
+        )
+
+    def _resolve_auth_session_principal(self, token: str):
+        try:
+            resolved = self._with_chat(get_session_by_access_token, token)
+        except Exception:
+            return None
+        if not resolved:
+            return None
+        user = resolved.get("user") or {}
+        session = resolved.get("session") or {}
+        user_id = str(user.get("user_id") or "").strip()
+        session_id = str(session.get("session_id") or "").strip()
+        if not user_id or not session_id:
+            return None
+        return ActorPrincipal(
+            actor_id=user_id,
+            roles=frozenset({"end_user"}),
+            token_id=session_id,
+            auth_source="auth_session",
         )
 
     # --- REST ---
@@ -770,6 +792,9 @@ class PartnerGateway(AsyncJobGatewayMixin, GatewayAccessMixin):
         verification_response = dispatch_verification_rest(self, environ, method, path)
         if verification_response is not None:
             return verification_response
+        auth_response = dispatch_private_auth_rest(self, environ, method, path)
+        if auth_response is not None:
+            return auth_response
         profile_response = dispatch_profile_rest(self, environ, method, path)
         if profile_response is not None:
             return profile_response

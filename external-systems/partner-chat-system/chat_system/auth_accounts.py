@@ -199,16 +199,16 @@ def issue_sms_code(
         (phone, scene, OTP_STATUS_ISSUED),
     )
     if active:
-      resend_at = active.get("resend_available_at")
-      if isinstance(resend_at, datetime) and ts < resend_at:
-          seconds = max(1, int((resend_at - ts).total_seconds()))
-          raise AuthDomainError(429, "sms_cooldown", f"发送过于频繁，请在 {seconds} 秒后重试")
-      expires_at = active.get("expires_at")
-      if isinstance(expires_at, datetime) and expires_at <= ts:
-          conn.execute(
-              "UPDATE auth_otp_challenges SET status = ?, updated_at = ? WHERE challenge_id = ?",
-              (OTP_STATUS_EXPIRED, ts, active["challenge_id"]),
-          )
+        resend_at = active.get("resend_available_at")
+        if isinstance(resend_at, datetime) and ts < resend_at:
+            seconds = max(1, int((resend_at - ts).total_seconds()))
+            raise AuthDomainError(429, "sms_cooldown", f"发送过于频繁，请在 {seconds} 秒后重试")
+        expires_at = active.get("expires_at")
+        if isinstance(expires_at, datetime) and expires_at <= ts:
+            conn.execute(
+                "UPDATE auth_otp_challenges SET status = ?, updated_at = ? WHERE challenge_id = ?",
+                (OTP_STATUS_EXPIRED, ts, active["challenge_id"]),
+            )
 
     scenario = classify_phone_scenario(conn, phone)
     challenge_id = _generate_challenge_id()
