@@ -1,5 +1,6 @@
 'use client'
 
+import type { ChangeEvent } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import {
   AlertCircle,
@@ -518,7 +519,7 @@ export default function VerificationFlowPage({
     }
   }
 
-  async function handleFieldFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFieldFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
     if (!file) {
       setFieldFile(null)
@@ -587,8 +588,8 @@ export default function VerificationFlowPage({
           source_table_name: effectiveSourceTable,
           declared_value: declaredValue.trim(),
           evidence,
-          evidence_type,
-          evidence_channel,
+          evidence_type: evidenceType,
+          evidence_channel: evidenceChannel,
           required_documents: selectedPolicy.accepted_documents || [],
         }),
       })
