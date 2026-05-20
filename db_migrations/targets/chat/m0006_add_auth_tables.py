@@ -13,6 +13,7 @@ AUTH_TABLE_NAMES = {
     "auth_otp_challenges",
     "auth_sessions",
     "auth_login_events",
+    "auth_one_tap_attempts",
     "user_onboarding_profiles",
     "wechat_accounts",
 }

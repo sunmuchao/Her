@@ -1173,6 +1173,29 @@ def chat_tables() -> tuple[TableDef, ...]:
             ),
         ),
         TableDef(
+            name="auth_one_tap_attempts",
+            columns=(
+                ColumnDef("attempt_id", "VARCHAR(64)", nullable=False),
+                ColumnDef("provider", "VARCHAR(64)", nullable=False),
+                ColumnDef("masked_phone", "VARCHAR(32)", nullable=False),
+                ColumnDef("operator_request_id", "VARCHAR(191)", nullable=True),
+                ColumnDef("status", "VARCHAR(32)", nullable=False),
+                ColumnDef("provider_payload_json", "LONGTEXT", nullable=False),
+                ColumnDef("client_ip", "VARCHAR(64)", nullable=True),
+                ColumnDef("device_id", "VARCHAR(128)", nullable=True),
+                ColumnDef("client_type", "VARCHAR(32)", nullable=True),
+                ColumnDef("verified_phone", "VARCHAR(32)", nullable=True),
+                ColumnDef("expires_at", "DATETIME", nullable=False),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+                ColumnDef("updated_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("attempt_id",),
+            indexes=(
+                IndexDef(("status", "expires_at"), "idx_auth_one_tap_status_expires"),
+                IndexDef(("device_id", "created_at"), "idx_auth_one_tap_device_time"),
+            ),
+        ),
+        TableDef(
             name="chat_member_reports",
             columns=(
                 ColumnDef("report_id", "BIGINT", nullable=False, auto_increment=True),

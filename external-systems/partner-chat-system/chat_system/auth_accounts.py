@@ -11,6 +11,7 @@ from typing import Any
 from .storage import inflate_json_columns, json_dumps, row_to_dict
 
 OTP_SCENE_LOGIN = "login"
+OTP_SCENE_BIND_PHONE = "bind_phone"
 OTP_STATUS_ISSUED = "issued"
 OTP_STATUS_VERIFIED = "verified"
 OTP_STATUS_EXPIRED = "expired"
@@ -21,7 +22,19 @@ ONBOARDING_STATUS_NOT_STARTED = "not_started"
 ONBOARDING_STATUS_COMPLETED = "completed"
 
 LOGIN_METHOD_SMS = "sms"
+LOGIN_METHOD_WECHAT = "wechat"
+LOGIN_METHOD_ONE_TAP = "one_tap"
 ROLE_END_USER = "end_user"
+
+IDENTITY_TYPE_PHONE = "phone"
+IDENTITY_TYPE_WECHAT_OPENID = "wechat_openid"
+IDENTITY_TYPE_WECHAT_UNIONID = "wechat_unionid"
+
+ONE_TAP_STATUS_CREATED = "created"
+ONE_TAP_STATUS_VERIFIED = "verified"
+ONE_TAP_STATUS_FAILED = "failed"
+ONE_TAP_STATUS_EXPIRED = "expired"
+ONE_TAP_TTL = timedelta(minutes=10)
 
 OTP_TTL = timedelta(minutes=5)
 OTP_RESEND_COOLDOWN = timedelta(seconds=60)
@@ -100,6 +113,47 @@ def _active_user_by_phone(conn, phone: str) -> dict[str, Any] | None:
         (phone,),
     )
     return row
+
+
+def _active_user_by_wechat(
+    conn,
+    *,
+    openid: str | None,
+    unionid: str | None,
+) -> dict[str, Any] | None:
+    if unionid:
+        row = _row(
+            conn,
+            """
+            SELECT ua.*
+            FROM user_accounts ua
+            JOIN user_account_identities uai
+              ON uai.user_id = ua.user_id
+            WHERE uai.identity_type = ?
+              AND uai.identity_value = ?
+              AND uai.status = 'active'
+            LIMIT 1
+            """,
+            (IDENTITY_TYPE_WECHAT_UNIONID, unionid),
+        )
+        if row:
+            return row
+    if openid:
+        return _row(
+            conn,
+            """
+            SELECT ua.*
+            FROM user_accounts ua
+            JOIN user_account_identities uai
+              ON uai.user_id = ua.user_id
+            WHERE uai.identity_type = ?
+              AND uai.identity_value = ?
+              AND uai.status = 'active'
+            LIMIT 1
+            """,
+            (IDENTITY_TYPE_WECHAT_OPENID, openid),
+        )
+    return None
 
 
 def _user_by_id(conn, user_id: str) -> dict[str, Any] | None:
@@ -334,6 +388,201 @@ def _create_user_from_phone(conn, *, phone: str, now: datetime) -> dict[str, Any
     }
 
 
+def _create_user_without_phone(conn, *, register_source: str, now: datetime) -> dict[str, Any]:
+    user_id = _generate_user_id()
+    conn.execute(
+        """
+        INSERT INTO user_accounts (
+          user_id, account_status, primary_phone, phone_verified_at, register_source,
+          onboarding_status, first_login_at, last_login_at, created_at, updated_at
+        ) VALUES (?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            user_id,
+            ACCOUNT_STATUS_ACTIVE,
+            register_source,
+            ONBOARDING_STATUS_NOT_STARTED,
+            now,
+            now,
+            now,
+            now,
+        ),
+    )
+    conn.execute(
+        """
+        INSERT INTO user_onboarding_profiles (
+          user_id, onboarding_status, current_step, basic_info_json, preference_json,
+          completed_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, NULL, ?, ?)
+        """,
+        (
+            user_id,
+            ONBOARDING_STATUS_NOT_STARTED,
+            "basic_info",
+            json_dumps({}),
+            json_dumps({}),
+            now,
+            now,
+        ),
+    )
+    return {
+        "user_id": user_id,
+        "account_status": ACCOUNT_STATUS_ACTIVE,
+        "primary_phone": None,
+        "onboarding_status": ONBOARDING_STATUS_NOT_STARTED,
+    }
+
+
+def _ensure_identity(
+    conn,
+    *,
+    user_id: str,
+    identity_type: str,
+    identity_value: str,
+    is_primary: bool = False,
+    verified_at: datetime | None = None,
+    now: datetime,
+) -> None:
+    existing = _row(
+        conn,
+        """
+        SELECT *
+        FROM user_account_identities
+        WHERE identity_type = ? AND identity_value = ?
+        LIMIT 1
+        """,
+        (identity_type, identity_value),
+    )
+    if existing:
+        if str(existing.get("user_id") or "") != str(user_id):
+            raise AuthDomainError(409, "identity_conflict", f"{identity_type} is already bound to another account")
+        conn.execute(
+            """
+            UPDATE user_account_identities
+            SET is_primary = ?, verified_at = COALESCE(?, verified_at), status = 'active', updated_at = ?
+            WHERE identity_id = ?
+            """,
+            (1 if is_primary else 0, verified_at, now, existing["identity_id"]),
+        )
+        return
+    conn.execute(
+        """
+        INSERT INTO user_account_identities (
+          identity_id, user_id, identity_type, identity_value, is_primary, verified_at,
+          bound_at, status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+        """,
+        (
+            _generate_identity_id(),
+            user_id,
+            identity_type,
+            identity_value,
+            1 if is_primary else 0,
+            verified_at,
+            now,
+            now,
+            now,
+        ),
+    )
+
+
+def _challenge_for_phone(
+    conn,
+    *,
+    phone: str,
+    challenge_id: str | None,
+    scene: str,
+) -> dict[str, Any] | None:
+    if challenge_id:
+        return _row(
+            conn,
+            """
+            SELECT *
+            FROM auth_otp_challenges
+            WHERE challenge_id = ? AND phone = ?
+            LIMIT 1
+            """,
+            (challenge_id, phone),
+        )
+    return _row(
+        conn,
+        """
+        SELECT *
+        FROM auth_otp_challenges
+        WHERE phone = ? AND scene = ?
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (phone, scene),
+    )
+
+
+def _consume_sms_challenge(
+    conn,
+    *,
+    phone: str,
+    code: str,
+    challenge_id: str | None,
+    scene: str,
+    client_ip: str | None,
+    device_id: str | None,
+    now: datetime,
+) -> dict[str, Any]:
+    challenge = _challenge_for_phone(conn, phone=phone, challenge_id=challenge_id, scene=scene)
+    if not challenge:
+        raise AuthDomainError(400, "code_not_requested", "请先获取验证码")
+    if challenge.get("status") != OTP_STATUS_ISSUED:
+        if challenge.get("status") == OTP_STATUS_EXPIRED:
+            raise AuthDomainError(400, "code_expired", "验证码已过期，请重新获取")
+        raise AuthDomainError(400, "code_not_available", "验证码当前不可用，请重新获取")
+    expires_at = challenge.get("expires_at")
+    if isinstance(expires_at, datetime) and expires_at <= now:
+        conn.execute(
+            "UPDATE auth_otp_challenges SET status = ?, updated_at = ? WHERE challenge_id = ?",
+            (OTP_STATUS_EXPIRED, now, challenge["challenge_id"]),
+        )
+        conn.commit()
+        raise AuthDomainError(400, "code_expired", "验证码已过期，请重新获取")
+    attempts = int(challenge.get("verify_attempt_count") or 0)
+    max_attempts = int(challenge.get("max_verify_attempts") or OTP_MAX_VERIFY_ATTEMPTS)
+    expected_hash = _hash_code(phone=phone, code=code, salt=str(challenge.get("code_salt") or ""))
+    if expected_hash != str(challenge.get("code_hash") or ""):
+        attempts += 1
+        next_status = OTP_STATUS_BLOCKED if attempts >= max_attempts else OTP_STATUS_ISSUED
+        conn.execute(
+            """
+            UPDATE auth_otp_challenges
+            SET verify_attempt_count = ?, status = ?, updated_at = ?
+            WHERE challenge_id = ?
+            """,
+            (attempts, next_status, now, challenge["challenge_id"]),
+        )
+        _log_event(
+            conn,
+            user_id=None,
+            phone=phone,
+            event_type="sms_verify",
+            result="fail",
+            reason_code="code_mismatch",
+            client_ip=client_ip,
+            device_id=device_id,
+            metadata={"attempt_count": attempts, "scene": scene},
+            now=now,
+        )
+        conn.commit()
+        message = "验证码错误，请重新输入" if attempts < max_attempts else "输入错误次数过多，请重新获取验证码"
+        raise AuthDomainError(400 if attempts < max_attempts else 429, "code_mismatch", message)
+    conn.execute(
+        """
+        UPDATE auth_otp_challenges
+        SET status = ?, updated_at = ?
+        WHERE challenge_id = ?
+        """,
+        (OTP_STATUS_VERIFIED, now, challenge["challenge_id"]),
+    )
+    return challenge
+
+
 def _create_session(
     conn,
     *,
@@ -398,80 +647,15 @@ def verify_sms_code(
     now: datetime | None = None,
 ) -> dict[str, Any]:
     ts = _utcnow(now)
-    if challenge_id:
-        challenge = _row(
-            conn,
-            """
-            SELECT *
-            FROM auth_otp_challenges
-            WHERE challenge_id = ? AND phone = ?
-            LIMIT 1
-            """,
-            (challenge_id, phone),
-        )
-    else:
-        challenge = _row(
-            conn,
-            """
-            SELECT *
-            FROM auth_otp_challenges
-            WHERE phone = ? AND scene = ?
-            ORDER BY created_at DESC
-            LIMIT 1
-            """,
-            (phone, scene),
-        )
-    if not challenge:
-        raise AuthDomainError(400, "code_not_requested", "请先获取验证码")
-    if challenge.get("status") != OTP_STATUS_ISSUED:
-        if challenge.get("status") == OTP_STATUS_EXPIRED:
-            raise AuthDomainError(400, "code_expired", "验证码已过期，请重新获取")
-        raise AuthDomainError(400, "code_not_available", "验证码当前不可用，请重新获取")
-    expires_at = challenge.get("expires_at")
-    if isinstance(expires_at, datetime) and expires_at <= ts:
-        conn.execute(
-            "UPDATE auth_otp_challenges SET status = ?, updated_at = ? WHERE challenge_id = ?",
-            (OTP_STATUS_EXPIRED, ts, challenge["challenge_id"]),
-        )
-        conn.commit()
-        raise AuthDomainError(400, "code_expired", "验证码已过期，请重新获取")
-    attempts = int(challenge.get("verify_attempt_count") or 0)
-    max_attempts = int(challenge.get("max_verify_attempts") or OTP_MAX_VERIFY_ATTEMPTS)
-    expected_hash = _hash_code(phone=phone, code=code, salt=str(challenge.get("code_salt") or ""))
-    if expected_hash != str(challenge.get("code_hash") or ""):
-        attempts += 1
-        next_status = OTP_STATUS_BLOCKED if attempts >= max_attempts else OTP_STATUS_ISSUED
-        conn.execute(
-            """
-            UPDATE auth_otp_challenges
-            SET verify_attempt_count = ?, status = ?, updated_at = ?
-            WHERE challenge_id = ?
-            """,
-            (attempts, next_status, ts, challenge["challenge_id"]),
-        )
-        _log_event(
-            conn,
-            user_id=None,
-            phone=phone,
-            event_type="sms_verify",
-            result="fail",
-            reason_code="code_mismatch",
-            client_ip=client_ip,
-            device_id=device_id,
-            metadata={"attempt_count": attempts, "scene": scene},
-            now=ts,
-        )
-        conn.commit()
-        message = "验证码错误，请重新输入" if attempts < max_attempts else "输入错误次数过多，请重新获取验证码"
-        raise AuthDomainError(400 if attempts < max_attempts else 429, "code_mismatch", message)
-
-    conn.execute(
-        """
-        UPDATE auth_otp_challenges
-        SET status = ?, updated_at = ?
-        WHERE challenge_id = ?
-        """,
-        (OTP_STATUS_VERIFIED, ts, challenge["challenge_id"]),
+    _consume_sms_challenge(
+        conn,
+        phone=phone,
+        code=code,
+        challenge_id=challenge_id,
+        scene=scene,
+        client_ip=client_ip,
+        device_id=device_id,
+        now=ts,
     )
     user = _active_user_by_phone(conn, phone)
     is_new_user = user is None
@@ -520,6 +704,371 @@ def verify_sms_code(
             "is_new_user": is_new_user,
             "account_status": user.get("account_status") or ACCOUNT_STATUS_ACTIVE,
             "onboarding_status": user.get("onboarding_status") or ONBOARDING_STATUS_NOT_STARTED,
+        },
+        "session": session,
+        "flow": {
+            "scenario": "new" if is_new_user else "existing",
+            "next_path": "/onboarding" if is_new_user else "",
+        },
+    }
+
+
+def bind_phone_with_sms(
+    conn,
+    *,
+    user_id: str,
+    phone: str,
+    code: str,
+    challenge_id: str | None = None,
+    client_ip: str | None = None,
+    device_id: str | None = None,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    ts = _utcnow(now)
+    user = _user_by_id(conn, user_id)
+    if not user or user.get("account_status") != ACCOUNT_STATUS_ACTIVE:
+        raise AuthDomainError(404, "user_not_found", "user account was not found")
+    existing_user = _active_user_by_phone(conn, phone)
+    if existing_user and str(existing_user.get("user_id") or "") != str(user_id):
+        raise AuthDomainError(409, "phone_already_bound", "该手机号已绑定其他账号")
+    _consume_sms_challenge(
+        conn,
+        phone=phone,
+        code=code,
+        challenge_id=challenge_id,
+        scene=OTP_SCENE_BIND_PHONE,
+        client_ip=client_ip,
+        device_id=device_id,
+        now=ts,
+    )
+    _ensure_identity(
+        conn,
+        user_id=user_id,
+        identity_type=IDENTITY_TYPE_PHONE,
+        identity_value=phone,
+        is_primary=True,
+        verified_at=ts,
+        now=ts,
+    )
+    conn.execute(
+        """
+        UPDATE user_accounts
+        SET primary_phone = ?, phone_verified_at = ?, updated_at = ?
+        WHERE user_id = ?
+        """,
+        (phone, ts, ts, user_id),
+    )
+    _log_event(
+        conn,
+        user_id=user_id,
+        phone=phone,
+        event_type="bind_phone",
+        result="success",
+        client_ip=client_ip,
+        device_id=device_id,
+        now=ts,
+    )
+    conn.commit()
+    updated = _user_by_id(conn, user_id) or user
+    return {
+        "ok": True,
+        "user": {
+            "user_id": user_id,
+            "phone": updated.get("primary_phone"),
+            "phone_bound": bool(updated.get("primary_phone")),
+            "account_status": updated.get("account_status") or ACCOUNT_STATUS_ACTIVE,
+            "onboarding_status": updated.get("onboarding_status") or ONBOARDING_STATUS_NOT_STARTED,
+        },
+    }
+
+
+def _create_wechat_binding(
+    conn,
+    *,
+    user_id: str,
+    openid: str,
+    unionid: str | None,
+    nickname: str | None,
+    avatar_url: str | None,
+    raw_profile: dict[str, Any],
+    now: datetime,
+) -> None:
+    _ensure_identity(
+        conn,
+        user_id=user_id,
+        identity_type=IDENTITY_TYPE_WECHAT_OPENID,
+        identity_value=openid,
+        verified_at=now,
+        now=now,
+    )
+    if unionid:
+        _ensure_identity(
+            conn,
+            user_id=user_id,
+            identity_type=IDENTITY_TYPE_WECHAT_UNIONID,
+            identity_value=unionid,
+            verified_at=now,
+            now=now,
+        )
+    existing = _row(
+        conn,
+        """
+        SELECT *
+        FROM wechat_accounts
+        WHERE openid = ?
+        LIMIT 1
+        """,
+        (openid,),
+    )
+    if existing:
+        conn.execute(
+            """
+            UPDATE wechat_accounts
+            SET user_id = ?, unionid = ?, nickname = ?, avatar_url = ?, raw_profile_json = ?,
+                bound_at = COALESCE(bound_at, ?), last_login_at = ?, status = 'active', updated_at = ?
+            WHERE wechat_account_id = ?
+            """,
+            (
+                user_id,
+                unionid,
+                nickname,
+                avatar_url,
+                json_dumps(raw_profile),
+                now,
+                now,
+                now,
+                existing["wechat_account_id"],
+            ),
+        )
+        return
+    conn.execute(
+        """
+        INSERT INTO wechat_accounts (
+          wechat_account_id, user_id, openid, unionid, nickname, avatar_url, raw_profile_json,
+          bound_at, last_login_at, status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+        """,
+        (
+            f"wx-{uuid.uuid4().hex[:16]}",
+            user_id,
+            openid,
+            unionid,
+            nickname,
+            avatar_url,
+            json_dumps(raw_profile),
+            now,
+            now,
+            now,
+            now,
+        ),
+    )
+
+
+def login_with_wechat_profile(
+    conn,
+    *,
+    openid: str,
+    unionid: str | None = None,
+    nickname: str | None = None,
+    avatar_url: str | None = None,
+    raw_profile: dict[str, Any] | None = None,
+    client_ip: str | None = None,
+    device_id: str | None = None,
+    client_type: str | None = None,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    ts = _utcnow(now)
+    if not openid:
+        raise AuthDomainError(400, "wechat_openid_required", "wechat openid is required")
+    user = _active_user_by_wechat(conn, openid=openid, unionid=unionid)
+    is_new_user = user is None
+    if user is None:
+        user = _create_user_without_phone(conn, register_source=LOGIN_METHOD_WECHAT, now=ts)
+    _create_wechat_binding(
+        conn,
+        user_id=str(user["user_id"]),
+        openid=openid,
+        unionid=unionid,
+        nickname=nickname,
+        avatar_url=avatar_url,
+        raw_profile=raw_profile or {},
+        now=ts,
+    )
+    session = _create_session(
+        conn,
+        user_id=str(user["user_id"]),
+        login_method=LOGIN_METHOD_WECHAT,
+        client_type=client_type,
+        client_ip=client_ip,
+        device_id=device_id,
+        now=ts,
+    )
+    _log_event(
+        conn,
+        user_id=str(user["user_id"]),
+        phone=user.get("primary_phone"),
+        event_type="wechat_login",
+        result="success",
+        client_ip=client_ip,
+        device_id=device_id,
+        metadata={"openid": openid, "unionid": unionid, "session_id": session["session_id"]},
+        now=ts,
+    )
+    conn.commit()
+    updated = _user_by_id(conn, str(user["user_id"])) or user
+    return {
+        "user": {
+            "user_id": str(updated["user_id"]),
+            "is_new_user": is_new_user,
+            "account_status": updated.get("account_status") or ACCOUNT_STATUS_ACTIVE,
+            "onboarding_status": updated.get("onboarding_status") or ONBOARDING_STATUS_NOT_STARTED,
+            "phone_bound": bool(updated.get("primary_phone")),
+        },
+        "session": session,
+        "flow": {
+            "scenario": "new" if is_new_user else "existing",
+            "next_path": "/bind-phone" if not updated.get("primary_phone") else ("/onboarding" if is_new_user else ""),
+        },
+        "wechat_profile": {
+            "openid": openid,
+            "unionid": unionid,
+            "nickname": nickname,
+            "avatar_url": avatar_url,
+        },
+    }
+
+
+def create_one_tap_attempt(
+    conn,
+    *,
+    provider: str,
+    masked_phone: str,
+    provider_payload: dict[str, Any] | None = None,
+    operator_request_id: str | None = None,
+    device_id: str | None = None,
+    client_ip: str | None = None,
+    client_type: str | None = None,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    ts = _utcnow(now)
+    attempt_id = f"otl-{uuid.uuid4().hex[:16]}"
+    expires_at = ts + ONE_TAP_TTL
+    conn.execute(
+        """
+        INSERT INTO auth_one_tap_attempts (
+          attempt_id, provider, masked_phone, operator_request_id, status, provider_payload_json,
+          client_ip, device_id, client_type, verified_phone, expires_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)
+        """,
+        (
+            attempt_id,
+            provider,
+            masked_phone,
+            operator_request_id,
+            ONE_TAP_STATUS_CREATED,
+            json_dumps(provider_payload or {}),
+            client_ip,
+            device_id,
+            client_type,
+            expires_at,
+            ts,
+            ts,
+        ),
+    )
+    conn.commit()
+    return {
+        "attempt_id": attempt_id,
+        "provider": provider,
+        "masked_phone": masked_phone,
+        "expires_in_seconds": int(ONE_TAP_TTL.total_seconds()),
+        "provider_payload": provider_payload or {},
+    }
+
+
+def verify_one_tap_login(
+    conn,
+    *,
+    attempt_id: str,
+    phone: str,
+    provider: str,
+    operator_token: str,
+    client_ip: str | None = None,
+    device_id: str | None = None,
+    client_type: str | None = None,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    ts = _utcnow(now)
+    attempt = _row(
+        conn,
+        """
+        SELECT *
+        FROM auth_one_tap_attempts
+        WHERE attempt_id = ?
+        LIMIT 1
+        """,
+        (attempt_id,),
+    )
+    if not attempt:
+        raise AuthDomainError(404, "one_tap_attempt_not_found", "一键登录尝试不存在")
+    if attempt.get("status") != ONE_TAP_STATUS_CREATED:
+        raise AuthDomainError(400, "one_tap_attempt_invalid", "一键登录尝试当前不可用")
+    expires_at = attempt.get("expires_at")
+    if isinstance(expires_at, datetime) and expires_at <= ts:
+        conn.execute(
+            "UPDATE auth_one_tap_attempts SET status = ?, updated_at = ? WHERE attempt_id = ?",
+            (ONE_TAP_STATUS_EXPIRED, ts, attempt_id),
+        )
+        conn.commit()
+        raise AuthDomainError(400, "one_tap_attempt_expired", "一键登录已过期，请重新发起")
+    user = _active_user_by_phone(conn, phone)
+    is_new_user = user is None
+    if user is None:
+        user = _create_user_from_phone(conn, phone=phone, now=ts)
+    else:
+        conn.execute(
+            """
+            UPDATE user_accounts
+            SET last_login_at = ?, last_login_ip = ?, last_login_device_id = ?, updated_at = ?
+            WHERE user_id = ?
+            """,
+            (ts, client_ip, device_id, ts, user["user_id"]),
+        )
+    session = _create_session(
+        conn,
+        user_id=str(user["user_id"]),
+        login_method=LOGIN_METHOD_ONE_TAP,
+        client_type=client_type or str(attempt.get("client_type") or "") or None,
+        client_ip=client_ip,
+        device_id=device_id or str(attempt.get("device_id") or "") or None,
+        now=ts,
+    )
+    conn.execute(
+        """
+        UPDATE auth_one_tap_attempts
+        SET status = ?, verified_phone = ?, updated_at = ?
+        WHERE attempt_id = ?
+        """,
+        (ONE_TAP_STATUS_VERIFIED, phone, ts, attempt_id),
+    )
+    _log_event(
+        conn,
+        user_id=str(user["user_id"]),
+        phone=phone,
+        event_type="one_tap_login",
+        result="success",
+        client_ip=client_ip,
+        device_id=device_id,
+        metadata={"provider": provider, "session_id": session["session_id"], "operator_token_present": bool(operator_token)},
+        now=ts,
+    )
+    conn.commit()
+    return {
+        "user": {
+            "user_id": str(user["user_id"]),
+            "is_new_user": is_new_user,
+            "account_status": user.get("account_status") or ACCOUNT_STATUS_ACTIVE,
+            "onboarding_status": user.get("onboarding_status") or ONBOARDING_STATUS_NOT_STARTED,
+            "phone_bound": True,
         },
         "session": session,
         "flow": {
@@ -696,16 +1245,23 @@ __all__ = [
     "ACCESS_TOKEN_TTL",
     "AuthDomainError",
     "LOGIN_METHOD_SMS",
+    "LOGIN_METHOD_WECHAT",
+    "LOGIN_METHOD_ONE_TAP",
     "ONBOARDING_STATUS_COMPLETED",
     "ONBOARDING_STATUS_NOT_STARTED",
+    "OTP_SCENE_BIND_PHONE",
     "OTP_RESEND_COOLDOWN",
     "OTP_SCENE_LOGIN",
     "OTP_TTL",
+    "bind_phone_with_sms",
     "classify_phone_scenario",
+    "create_one_tap_attempt",
     "get_current_auth_payload",
     "get_session_by_access_token",
     "issue_sms_code",
+    "login_with_wechat_profile",
     "refresh_session",
     "revoke_session_by_access_token",
+    "verify_one_tap_login",
     "verify_sms_code",
 ]
