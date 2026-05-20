@@ -11,6 +11,7 @@ import CandidateDetailPage from '@/components/her/candidate-detail-page'
 import ChatPage from '@/components/her/chat-page'
 import VerificationFlowPage from '@/components/her/verification-flow-page'
 import TrustCenterPage from '@/components/her/trust-center-page'
+import type { CandidatePreview } from '@/lib/her-types'
 
 // Auth pages
 import WelcomePage from '@/components/her/auth/welcome-page'
@@ -89,6 +90,7 @@ export default function HerApp() {
   const [currentTab, setCurrentTab] = useState<TabType>('matchmaker')
   const [subView, setSubView] = useState<SubView>('main')
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null)
+  const [selectedCandidate, setSelectedCandidate] = useState<CandidatePreview | null>(null)
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null)
 
   // Mock badge counts
@@ -134,8 +136,9 @@ export default function HerApp() {
     setCurrentPage(`main-${tab}` as DemoPage)
   }
 
-  const handleViewCandidate = (candidateId: string) => {
+  const handleViewCandidate = (candidateId: string, candidate?: CandidatePreview) => {
     setSelectedCandidateId(candidateId)
+    setSelectedCandidate(candidate || null)
     setSubView('candidate-detail')
     setCurrentPage('sub-candidate-detail')
   }
@@ -276,6 +279,7 @@ export default function HerApp() {
                 <SlideInTransition key="candidate-detail" direction="right">
                   <CandidateDetailPage 
                     candidateId={selectedCandidateId} 
+                    candidate={selectedCandidate || undefined}
                     onBack={handleBackToMain}
                     onStartChat={() => handleOpenChat()}
                   />
