@@ -1,90 +1,124 @@
 'use client'
 
-import { Shield, BadgeCheck, AlertTriangle, FileText, Clock, ChevronRight, CheckCircle, XCircle, Upload } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import {
+  AlertTriangle,
+  BadgeCheck,
+  CheckCircle,
+  ChevronRight,
+  Clock,
+  FileText,
+  Loader2,
+  Shield,
+  Upload,
+  XCircle,
+} from 'lucide-react'
+
+import { gatewayJson, queryString } from '@/lib/gateway'
+import type { HerRuntimeContext } from '@/lib/runtime-context'
 
 interface TrustCenterPageProps {
+  runtimeContext: HerRuntimeContext
   onStartVerification: () => void
 }
 
-const verificationStatus = {
-  overall: '已认证',
-  overallLevel: 'verified',
-  items: [
-    { name: '身份认证', status: 'verified', description: '已通过实名认证' },
-    { name: '学历认证', status: 'verified', description: '复旦大学 · 本科' },
-    { name: '职业认证', status: 'pending', description: '审核中，预计1-2个工作日' },
-    { name: '收入认证', status: 'unverified', description: '可选认证，提升可信度' },
-  ],
+type TrustItem = {
+  item_id: string
+  title: string
+  status?: string
+  status_label?: string
+  work_state?: string
+  trigger_reasons?: string[]
+  failure_reason?: string
+  support_hint?: string
 }
 
-const pendingItems = [
-  {
-    id: '1',
-    title: '职业认证材料',
-    description: '请补充在职证明或工牌照片',
-    dueDate: '2024年3月15日前',
-    urgent: false,
-  },
-]
+type NotificationItem = {
+  title: string
+  body?: string
+  summary?: string
+  created_at?: string
+}
 
-const riskRecords = [
-  {
-    id: '1',
-    type: 'warning',
-    title: '账号安全提醒',
-    description: '检测到异地登录，请确认是否本人操作',
-    time: '3天前',
-    resolved: true,
-  },
-]
-
-const notifications = [
-  {
-    id: '1',
-    title: '学历认证已通过',
-    description: '你的学历信息已成功认证',
-    time: '1天前',
-    read: true,
-  },
-  {
-    id: '2',
-    title: '职业认证提交成功',
-    description: '材料已提交，请耐心等待审核',
-    time: '2天前',
-    read: true,
-  },
-]
-
-export default function TrustCenterPage({ onStartVerification }: TrustCenterPageProps) {
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'verified':
-        return <CheckCircle className="w-5 h-5 text-green-600" />
-      case 'pending':
-        return <Clock className="w-5 h-5 text-gold" />
-      case 'unverified':
-        return <XCircle className="w-5 h-5 text-muted-foreground" />
-      default:
-        return null
+type TrustHubResponse = {
+  trust_hub: {
+    summary: {
+      pending_verification_count: number
+      pending_appeal_count: number
+      active_risk_count: number
+      notification_count: number
     }
+    verification_center: { items: TrustItem[] }
+    appeal_center: { items: TrustItem[] }
+    risk_records: { items: TrustItem[] }
+    notifications: NotificationItem[]
   }
+}
 
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case 'verified':
-        return '已认证'
-      case 'pending':
-        return '审核中'
-      case 'unverified':
-        return '未认证'
-      default:
-        return ''
+export default function TrustCenterPage({
+  runtimeContext,
+  onStartVerification,
+}: TrustCenterPageProps) {
+  const [data, setData] = useState<TrustHubResponse['trust_hub'] | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let active = true
+
+    async function loadTrustHub() {
+      if (!runtimeContext.userId) {
+        setLoading(false)
+        setError('缺少 user_id，当前无法读取信任中心。')
+        return
+      }
+
+      setLoading(true)
+      setError(null)
+      try {
+        const payload = await gatewayJson<TrustHubResponse>(
+          `/v1/user-center/trust-hub${queryString({
+            user_id: runtimeContext.userId,
+            profile_id: runtimeContext.profileId,
+          })}`,
+        )
+        if (!active) {
+          return
+        }
+        setData(payload.trust_hub)
+      } catch (err) {
+        if (!active) {
+          return
+        }
+        setError(err instanceof Error ? err.message : '信任中心加载失败')
+      } finally {
+        if (active) {
+          setLoading(false)
+        }
+      }
     }
+
+    loadTrustHub()
+    return () => {
+      active = false
+    }
+  }, [runtimeContext.profileId, runtimeContext.userId])
+
+  function statusIcon(workState?: string) {
+    if (workState === 'complete') {
+      return <CheckCircle className="w-5 h-5 text-green-600" />
+    }
+    if (workState === 'in_progress') {
+      return <Clock className="w-5 h-5 text-gold" />
+    }
+    if (workState === 'action_required') {
+      return <Upload className="w-5 h-5 text-primary" />
+    }
+    return <XCircle className="w-5 h-5 text-muted-foreground" />
   }
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
       <header className="sticky top-0 z-20 safe-area-top">
         <div className="glass-soft border-b border-border/30">
           <div className="px-5 py-4">
@@ -94,7 +128,7 @@ export default function TrustCenterPage({ onStartVerification }: TrustCenterPage
               </div>
               <div>
                 <h1 className="editorial-title text-2xl text-foreground">信任中心</h1>
-                <p className="text-xs text-muted-foreground">安全、透明、值得信赖</p>
+                <p className="text-xs text-muted-foreground">真实、透明、可追踪</p>
               </div>
             </div>
           </div>
@@ -102,165 +136,184 @@ export default function TrustCenterPage({ onStartVerification }: TrustCenterPage
       </header>
 
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-6">
-        {/* Overall status card */}
-        <section className="bg-gradient-to-br from-card via-card to-blush/30 rounded-3xl p-5 shadow-soft border border-rose-soft/30">
-          <div className="flex items-center gap-4 mb-4">
-            <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center">
-              <BadgeCheck className="w-7 h-7 text-green-600" />
-            </div>
-            <div>
-              <h2 className="text-lg font-medium text-foreground">可信度良好</h2>
-              <p className="text-sm text-muted-foreground">3项已认证 · 1项审核中</p>
-            </div>
+        {loading ? (
+          <div className="flex items-center justify-center py-20 text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin mr-2" />
+            正在同步信任中心
           </div>
-
-          <div className="grid grid-cols-4 gap-2">
-            {verificationStatus.items.map((item, index) => (
-              <div
-                key={index}
-                className={`text-center p-2 rounded-xl ${
-                  item.status === 'verified' ? 'bg-green-50' :
-                  item.status === 'pending' ? 'bg-gold-soft/50' : 'bg-secondary/50'
-                }`}
-              >
-                <div className="flex justify-center mb-1">
-                  {getStatusIcon(item.status)}
+        ) : error ? (
+          <div className="rounded-2xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
+            {error}
+          </div>
+        ) : data ? (
+          <>
+            <section className="bg-gradient-to-br from-card via-card to-blush/30 rounded-3xl p-5 shadow-soft border border-rose-soft/30">
+              <div className="flex items-center gap-4 mb-4">
+                <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center">
+                  <BadgeCheck className="w-7 h-7 text-green-600" />
                 </div>
-                <span className="text-[10px] text-muted-foreground">{item.name.slice(0, 2)}</span>
+                <div>
+                  <h2 className="text-lg font-medium text-foreground">当前信任状态</h2>
+                  <p className="text-sm text-muted-foreground">
+                    {data.summary.pending_verification_count} 个待验证事项 · {data.summary.pending_appeal_count} 个申诉事项
+                  </p>
+                </div>
               </div>
-            ))}
-          </div>
-        </section>
-
-        {/* Verification items */}
-        <section>
-          <h2 className="text-sm font-medium text-foreground mb-3">认证状态</h2>
-          <div className="bg-card rounded-2xl shadow-soft border border-border/50 overflow-hidden">
-            {verificationStatus.items.map((item, index) => (
-              <button
-                key={index}
-                onClick={item.status === 'unverified' ? onStartVerification : undefined}
-                className={`w-full px-4 py-4 flex items-center gap-3 text-left transition-colors hover:bg-secondary/30 ${
-                  index !== verificationStatus.items.length - 1 ? 'border-b border-border/30' : ''
-                }`}
-              >
-                {getStatusIcon(item.status)}
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-medium text-foreground">{item.name}</h3>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-                      item.status === 'verified' ? 'bg-green-100 text-green-700' :
-                      item.status === 'pending' ? 'bg-gold-soft text-gold' : 'bg-secondary text-muted-foreground'
-                    }`}>
-                      {getStatusText(item.status)}
-                    </span>
+              <div className="grid grid-cols-4 gap-2">
+                {[
+                  ['待验证', data.summary.pending_verification_count],
+                  ['申诉中', data.summary.pending_appeal_count],
+                  ['风险项', data.summary.active_risk_count],
+                  ['通知', data.summary.notification_count],
+                ].map(([label, value]) => (
+                  <div key={String(label)} className="rounded-xl bg-background/70 p-3 text-center">
+                    <p className="text-lg font-semibold text-foreground">{value}</p>
+                    <p className="text-[10px] text-muted-foreground mt-1">{label}</p>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
-                </div>
-                {item.status === 'unverified' && (
-                  <ChevronRight className="w-5 h-5 text-muted-foreground" />
-                )}
-              </button>
-            ))}
-          </div>
-        </section>
+                ))}
+              </div>
+            </section>
 
-        {/* Pending items */}
-        {pendingItems.length > 0 && (
-          <section>
-            <h2 className="text-sm font-medium text-foreground mb-3">待处理事项</h2>
-            <div className="space-y-3">
-              {pendingItems.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={onStartVerification}
-                  className="w-full bg-gradient-to-r from-gold-soft/50 to-card rounded-2xl p-4 shadow-soft border border-gold/20 transition-all hover:shadow-elevated active:scale-[0.99] text-left"
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-full bg-gold/20 flex items-center justify-center">
-                      <Upload className="w-5 h-5 text-gold" />
+            <section>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-medium text-foreground">认证中心</h2>
+                <button onClick={onStartVerification} className="text-xs text-primary">
+                  去处理
+                </button>
+              </div>
+              <div className="bg-card rounded-2xl shadow-soft border border-border/50 overflow-hidden">
+                {(data.verification_center.items || []).slice(0, 6).map((item, index, items) => (
+                  <button
+                    key={item.item_id}
+                    onClick={onStartVerification}
+                    className={`w-full px-4 py-4 flex items-start gap-3 text-left hover:bg-secondary/20 ${
+                      index !== items.length - 1 ? 'border-b border-border/30' : ''
+                    }`}
+                  >
+                    {statusIcon(item.work_state)}
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="text-sm font-medium text-foreground">{item.title}</h3>
+                        {item.status_label ? (
+                          <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                            {item.status_label}
+                          </span>
+                        ) : null}
+                      </div>
+                      {item.trigger_reasons?.length ? (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {item.trigger_reasons.slice(0, 2).join('；')}
+                        </p>
+                      ) : null}
+                      {item.failure_reason ? (
+                        <p className="mt-1 text-xs text-rose">{item.failure_reason}</p>
+                      ) : null}
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-muted-foreground mt-1" />
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <section>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-medium text-foreground">申诉中心</h2>
+                <span className="text-xs text-muted-foreground">
+                  {(data.appeal_center.items || []).length} 项
+                </span>
+              </div>
+              <div className="bg-card rounded-2xl shadow-soft border border-border/50 overflow-hidden">
+                {(data.appeal_center.items || []).slice(0, 4).map((item, index, items) => (
+                  <div
+                    key={item.item_id}
+                    className={`px-4 py-4 flex items-start gap-3 ${
+                      index !== items.length - 1 ? 'border-b border-border/30' : ''
+                    }`}
+                  >
+                    <FileText className="w-5 h-5 text-primary mt-0.5" />
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="text-sm font-medium text-foreground">{item.title}</h3>
+                        {item.status_label ? (
+                          <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                            {item.status_label}
+                          </span>
+                        ) : null}
+                      </div>
+                      {item.support_hint ? (
+                        <p className="mt-1 text-xs text-muted-foreground">{item.support_hint}</p>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-medium text-foreground">风险记录</h2>
+                <span className="text-xs text-muted-foreground">
+                  {(data.risk_records.items || []).length} 条
+                </span>
+              </div>
+              <div className="bg-card rounded-2xl shadow-soft border border-border/50 overflow-hidden">
+                {(data.risk_records.items || []).slice(0, 4).map((item, index, items) => (
+                  <div
+                    key={item.item_id}
+                    className={`px-4 py-4 flex items-start gap-3 ${
+                      index !== items.length - 1 ? 'border-b border-border/30' : ''
+                    }`}
+                  >
+                    <div className="w-8 h-8 rounded-full bg-rose-soft flex items-center justify-center">
+                      <AlertTriangle className="w-4 h-4 text-rose" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="text-sm font-medium text-foreground">{item.title}</h3>
+                        {item.status_label ? (
+                          <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                            {item.status_label}
+                          </span>
+                        ) : null}
+                      </div>
+                      {item.trigger_reasons?.length ? (
+                        <p className="mt-1 text-xs text-muted-foreground">{item.trigger_reasons.join('；')}</p>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-medium text-foreground">通知</h2>
+                <span className="text-xs text-muted-foreground">{data.notifications.length} 条</span>
+              </div>
+              <div className="bg-card rounded-2xl shadow-soft border border-border/50 overflow-hidden">
+                {data.notifications.slice(0, 6).map((item, index) => (
+                  <div
+                    key={`${item.title}-${index}`}
+                    className={`px-4 py-4 flex items-start gap-3 ${
+                      index !== data.notifications.slice(0, 6).length - 1 ? 'border-b border-border/30' : ''
+                    }`}
+                  >
+                    <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center">
+                      <FileText className="w-4 h-4 text-muted-foreground" />
                     </div>
                     <div className="flex-1">
                       <h3 className="text-sm font-medium text-foreground">{item.title}</h3>
-                      <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
-                      <span className="text-[10px] text-gold mt-1 block">{item.dueDate}</span>
+                      <p className="text-xs text-muted-foreground mt-0.5">{item.summary || item.body}</p>
+                      {item.created_at ? (
+                        <span className="text-[10px] text-muted-foreground/70 mt-1 block">{item.created_at}</span>
+                      ) : null}
                     </div>
-                    <ChevronRight className="w-5 h-5 text-muted-foreground" />
                   </div>
-                </button>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* Risk records */}
-        <section>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-medium text-foreground">安全记录</h2>
-            <button className="text-xs text-primary">查看全部</button>
-          </div>
-          <div className="bg-card rounded-2xl shadow-soft border border-border/50 overflow-hidden">
-            {riskRecords.map((record, index) => (
-              <div
-                key={record.id}
-                className={`px-4 py-4 flex items-start gap-3 ${
-                  index !== riskRecords.length - 1 ? 'border-b border-border/30' : ''
-                }`}
-              >
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                  record.resolved ? 'bg-green-100' : 'bg-rose-soft'
-                }`}>
-                  <AlertTriangle className={`w-4 h-4 ${
-                    record.resolved ? 'text-green-600' : 'text-rose'
-                  }`} />
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-medium text-foreground">{record.title}</h3>
-                    {record.resolved && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700">已处理</span>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">{record.description}</p>
-                  <span className="text-[10px] text-muted-foreground/70 mt-1 block">{record.time}</span>
-                </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </section>
-
-        {/* Notifications */}
-        <section>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-medium text-foreground">审核通知</h2>
-            <button className="text-xs text-primary">查看全部</button>
-          </div>
-          <div className="bg-card rounded-2xl shadow-soft border border-border/50 overflow-hidden">
-            {notifications.map((notification, index) => (
-              <div
-                key={notification.id}
-                className={`px-4 py-4 flex items-start gap-3 ${
-                  index !== notifications.length - 1 ? 'border-b border-border/30' : ''
-                }`}
-              >
-                <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center">
-                  <FileText className="w-4 h-4 text-muted-foreground" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-sm font-medium text-foreground">{notification.title}</h3>
-                  <p className="text-xs text-muted-foreground mt-0.5">{notification.description}</p>
-                  <span className="text-[10px] text-muted-foreground/70 mt-1 block">{notification.time}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* Help */}
-        <div className="bg-blush/40 rounded-2xl p-4 text-center">
-          <p className="text-sm text-taupe mb-2">遇到问题？</p>
-          <button className="text-sm text-primary font-medium">联系客服支持</button>
-        </div>
+            </section>
+          </>
+        ) : null}
       </div>
     </div>
   )

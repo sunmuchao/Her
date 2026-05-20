@@ -1,449 +1,230 @@
 'use client'
 
-import { useState } from 'react'
-import { ArrowLeft, Camera, RotateCcw, CheckCircle, Clock, AlertCircle, Upload, ChevronRight, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import {
+  AlertCircle,
+  ArrowLeft,
+  Camera,
+  ChevronRight,
+  Clock,
+  Loader2,
+  Upload,
+} from 'lucide-react'
+
+import { gatewayJson } from '@/lib/gateway'
+import type { HerRuntimeContext } from '@/lib/runtime-context'
 
 interface VerificationFlowPageProps {
+  runtimeContext: HerRuntimeContext
   onBack: () => void
 }
 
-type VerificationStep = 'select' | 'video-intro' | 'video-record' | 'video-review' | 'video-pending' | 'field-upload' | 'field-pending' | 'field-rejected' | 'appeal'
-
-const fieldVerificationTypes = [
-  {
-    id: 'education',
-    name: '学历认证',
-    description: '提供学位证书或学信网截图',
-    status: 'verified' as const,
-  },
-  {
-    id: 'occupation',
-    name: '职业认证',
-    description: '提供在职证明或工牌照片',
-    status: 'pending' as const,
-  },
-  {
-    id: 'income',
-    name: '收入认证',
-    description: '提供近三个月银行流水',
-    status: 'unverified' as const,
-  },
-  {
-    id: 'video',
-    name: '活体视频认证',
-    description: '录制真人视频确保真实性',
-    status: 'verified' as const,
-  },
-]
-
-export default function VerificationFlowPage({ onBack }: VerificationFlowPageProps) {
-  const [step, setStep] = useState<VerificationStep>('select')
-  const [selectedField, setSelectedField] = useState<string | null>(null)
-  const [isRecording, setIsRecording] = useState(false)
-  const [recordingTime, setRecordingTime] = useState(0)
-
-  const handleStartVideoVerification = () => {
-    setStep('video-intro')
+type TrustHubResponse = {
+  trust_hub: {
+    verification_center: {
+      items: Array<{
+        item_id: string
+        title: string
+        status_label?: string
+        trigger_reasons?: string[]
+      }>
+    }
   }
+}
 
-  const handleStartFieldVerification = (fieldId: string) => {
-    setSelectedField(fieldId)
-    setStep('field-upload')
+type ChallengeResponse = {
+  challenge: {
+    challenge_phrase?: string
+    challenge_token?: string
+    required_actions?: string[]
   }
+}
 
-  const simulateRecording = () => {
-    setIsRecording(true)
-    setRecordingTime(0)
-    const interval = setInterval(() => {
-      setRecordingTime(prev => {
-        if (prev >= 5) {
-          clearInterval(interval)
-          setIsRecording(false)
-          setStep('video-review')
-          return 5
+export default function VerificationFlowPage({
+  runtimeContext,
+  onBack,
+}: VerificationFlowPageProps) {
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [items, setItems] = useState<TrustHubResponse['trust_hub']['verification_center']['items']>([])
+  const [challenge, setChallenge] = useState<ChallengeResponse['challenge'] | null>(null)
+  const [challengeLoading, setChallengeLoading] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    async function loadVerificationItems() {
+      if (!runtimeContext.userId) {
+        setLoading(false)
+        setError('缺少 user_id，当前无法读取认证事项。')
+        return
+      }
+      try {
+        const payload = await gatewayJson<TrustHubResponse>(
+          `/v1/user-center/trust-hub?user_id=${runtimeContext.userId}${runtimeContext.profileId ? `&profile_id=${runtimeContext.profileId}` : ''}`,
+        )
+        if (active) {
+          setItems(payload.trust_hub.verification_center.items || [])
         }
-        return prev + 1
+      } catch (err) {
+        if (active) {
+          setError(err instanceof Error ? err.message : '认证事项读取失败')
+        }
+      } finally {
+        if (active) {
+          setLoading(false)
+        }
+      }
+    }
+    loadVerificationItems()
+    return () => {
+      active = false
+    }
+  }, [runtimeContext.profileId, runtimeContext.userId])
+
+  async function createChallenge() {
+    if (!runtimeContext.userId || !runtimeContext.profileId) {
+      setError('活体 challenge 需要 user_id 和 profile_id。')
+      return
+    }
+    setChallengeLoading(true)
+    setError(null)
+    try {
+      const payload = await gatewayJson<ChallengeResponse>('/v1/verifications/live-video-challenges', {
+        method: 'POST',
+        body: JSON.stringify({
+          user_id: runtimeContext.userId,
+          profile_id: runtimeContext.profileId,
+        }),
       })
-    }, 1000)
-  }
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'verified':
-        return 'bg-green-100 text-green-700'
-      case 'pending':
-        return 'bg-gold-soft text-gold'
-      default:
-        return 'bg-secondary text-muted-foreground'
+      setChallenge(payload.challenge)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '活体 challenge 创建失败')
+    } finally {
+      setChallengeLoading(false)
     }
   }
 
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case 'verified':
-        return '已认证'
-      case 'pending':
-        return '审核中'
-      default:
-        return '未认证'
-    }
-  }
-
-  // Selection page
-  if (step === 'select') {
-    return (
-      <div className="min-h-screen bg-background max-w-md mx-auto flex flex-col">
-        <header className="sticky top-0 z-20 safe-area-top">
-          <div className="glass-soft border-b border-border/30">
-            <div className="px-4 py-3 flex items-center gap-3">
-              <button
-                onClick={onBack}
-                className="w-10 h-10 rounded-full hover:bg-secondary/60 flex items-center justify-center transition-colors"
-              >
-                <ArrowLeft className="w-5 h-5 text-foreground" />
-              </button>
-              <h1 className="font-medium text-foreground">认证中心</h1>
-            </div>
-          </div>
-        </header>
-
-        <div className="flex-1 overflow-y-auto px-5 py-6 space-y-4">
-          <p className="text-sm text-muted-foreground mb-4">
-            完成认证可提升你的可信度，让更多优质用户愿意了解你
-          </p>
-
-          {fieldVerificationTypes.map((field) => (
+  return (
+    <div className="min-h-screen bg-background max-w-md mx-auto flex flex-col">
+      <header className="sticky top-0 z-20 safe-area-top">
+        <div className="glass-soft border-b border-border/30">
+          <div className="px-4 py-3 flex items-center gap-3">
             <button
-              key={field.id}
-              onClick={() => {
-                if (field.id === 'video' && field.status !== 'verified') {
-                  handleStartVideoVerification()
-                } else if (field.status === 'unverified') {
-                  handleStartFieldVerification(field.id)
-                }
-              }}
-              disabled={field.status === 'verified'}
-              className="w-full bg-card rounded-2xl p-4 shadow-soft border border-border/50 transition-all hover:shadow-elevated disabled:opacity-60 text-left"
+              onClick={onBack}
+              className="w-10 h-10 rounded-full hover:bg-secondary/60 flex items-center justify-center transition-colors"
             >
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                  field.status === 'verified' ? 'bg-green-100' : 
-                  field.status === 'pending' ? 'bg-gold-soft' : 'bg-secondary'
-                }`}>
-                  {field.status === 'verified' ? (
-                    <CheckCircle className="w-5 h-5 text-green-600" />
-                  ) : field.status === 'pending' ? (
-                    <Clock className="w-5 h-5 text-gold" />
-                  ) : (
-                    <Upload className="w-5 h-5 text-muted-foreground" />
-                  )}
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-medium text-foreground">{field.name}</h3>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${getStatusColor(field.status)}`}>
-                      {getStatusText(field.status)}
-                    </span>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">{field.description}</p>
-                </div>
-                {field.status === 'unverified' && (
-                  <ChevronRight className="w-5 h-5 text-muted-foreground" />
+              <ArrowLeft className="w-5 h-5 text-foreground" />
+            </button>
+            <h1 className="font-medium text-foreground">认证与补件</h1>
+          </div>
+        </div>
+      </header>
+
+      <div className="flex-1 overflow-y-auto px-5 py-6 space-y-5">
+        <section className="rounded-3xl bg-gradient-to-br from-card to-blush/20 p-5 border border-border/40 shadow-soft">
+          <h2 className="editorial-title text-2xl text-foreground">认证中心</h2>
+          <p className="mt-2 text-sm leading-6 text-taupe">
+            这一页已经接到真实的 trust hub 认证事项，并且可以直接向后端创建活体视频 challenge。
+            浏览器端真实录像上传和文件上传还需要结合实际 OSS / 媒体采集继续补齐。
+          </p>
+        </section>
+
+        {loading ? (
+          <div className="flex items-center justify-center rounded-2xl bg-card p-10 text-muted-foreground shadow-soft border border-border/30">
+            <Loader2 className="h-5 w-5 animate-spin mr-2" />
+            正在同步认证事项
+          </div>
+        ) : error ? (
+          <div className="rounded-2xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
+            {error}
+          </div>
+        ) : null}
+
+        <section className="space-y-3">
+          <button
+            onClick={createChallenge}
+            disabled={challengeLoading}
+            className="w-full rounded-2xl border border-rose-soft/40 bg-gradient-to-r from-blush/50 to-card p-4 text-left shadow-soft"
+          >
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-rose-soft/60">
+                {challengeLoading ? (
+                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                ) : (
+                  <Camera className="h-5 w-5 text-primary" />
                 )}
               </div>
-            </button>
-          ))}
-        </div>
-      </div>
-    )
-  }
-
-  // Video verification intro
-  if (step === 'video-intro') {
-    return (
-      <div className="min-h-screen bg-background max-w-md mx-auto flex flex-col">
-        <header className="sticky top-0 z-20 safe-area-top">
-          <div className="glass-soft border-b border-border/30">
-            <div className="px-4 py-3 flex items-center gap-3">
-              <button
-                onClick={() => setStep('select')}
-                className="w-10 h-10 rounded-full hover:bg-secondary/60 flex items-center justify-center transition-colors"
-              >
-                <ArrowLeft className="w-5 h-5 text-foreground" />
-              </button>
-              <h1 className="font-medium text-foreground">活体视频认证</h1>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-foreground">创建活体视频 challenge</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  从真实后端拉取动作挑战与 challenge phrase，供前端录像页接入。
+                </p>
+              </div>
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
             </div>
-          </div>
-        </header>
-
-        <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
-          <div className="w-24 h-24 rounded-full bg-rose-soft/50 flex items-center justify-center mb-6">
-            <Camera className="w-12 h-12 text-primary" />
-          </div>
-          
-          <h2 className="editorial-title text-2xl text-foreground mb-3">验证真实的你</h2>
-          <p className="text-sm text-muted-foreground mb-8 leading-relaxed">
-            为了保护真实用户的体验，我们需要你完成一个简短的视频认证。
-            这个过程大约需要30秒。
-          </p>
-
-          <div className="w-full space-y-3 mb-8">
-            <div className="bg-blush/40 rounded-xl p-4 text-left">
-              <h4 className="text-sm font-medium text-foreground mb-2">你需要做什么</h4>
-              <ul className="text-sm text-taupe space-y-1">
-                <li>• 确保光线充足，面部清晰可见</li>
-                <li>• 按照提示完成指定动作</li>
-                <li>• 保持自然表情即可</li>
-              </ul>
-            </div>
-          </div>
-
-          <button
-            onClick={() => setStep('video-record')}
-            className="w-full py-4 bg-gradient-to-r from-primary to-rose rounded-2xl text-primary-foreground font-medium shadow-soft"
-          >
-            开始认证
           </button>
-        </div>
-      </div>
-    )
-  }
 
-  // Video recording
-  if (step === 'video-record') {
-    return (
-      <div className="min-h-screen bg-foreground max-w-md mx-auto flex flex-col relative">
-        {/* Camera preview placeholder */}
-        <div className="absolute inset-0 bg-gradient-to-b from-foreground/80 to-foreground" />
-        
-        {/* Close button */}
-        <button
-          onClick={() => setStep('video-intro')}
-          className="absolute top-12 right-5 w-10 h-10 rounded-full bg-background/20 backdrop-blur-sm flex items-center justify-center z-10"
-        >
-          <X className="w-5 h-5 text-white" />
-        </button>
-
-        {/* Content overlay */}
-        <div className="relative z-10 flex-1 flex flex-col items-center justify-between py-16 px-8">
-          {/* Face guide */}
-          <div className="flex-1 flex items-center justify-center">
-            <div className="w-64 h-80 rounded-[40%] border-4 border-dashed border-white/40 flex items-center justify-center">
-              <p className="text-white/60 text-sm">将面部置于框内</p>
+          {challenge ? (
+            <div className="rounded-2xl border border-border/40 bg-card p-4 shadow-soft">
+              <p className="text-sm font-medium text-foreground">当前 challenge</p>
+              <p className="mt-2 text-sm text-taupe">{challenge.challenge_phrase || '未返回 challenge_phrase'}</p>
+              {challenge.required_actions?.length ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {challenge.required_actions.map((action) => (
+                    <span key={action} className="rounded-full bg-secondary px-3 py-1 text-xs text-muted-foreground">
+                      {action}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
             </div>
-          </div>
+          ) : null}
+        </section>
 
-          {/* Action prompt */}
-          <div className="text-center mb-8">
-            <h3 className="text-white text-xl font-medium mb-2">
-              {isRecording ? '请缓慢转动头部' : '准备好后点击开始'}
-            </h3>
-            <p className="text-white/60 text-sm">
-              {isRecording ? `录制中 ${recordingTime}s / 5s` : '确保面部光线充足'}
-            </p>
-          </div>
-
-          {/* Record button */}
-          <button
-            onClick={simulateRecording}
-            disabled={isRecording}
-            className={`w-20 h-20 rounded-full flex items-center justify-center transition-all ${
-              isRecording 
-                ? 'bg-rose animate-pulse' 
-                : 'bg-white hover:scale-105'
-            }`}
-          >
-            {isRecording ? (
-              <div className="w-8 h-8 rounded-md bg-white" />
+        <section>
+          <h2 className="text-sm font-medium text-foreground mb-3">待处理认证事项</h2>
+          <div className="space-y-3">
+            {items.length === 0 ? (
+              <div className="rounded-2xl border border-border/30 bg-card p-4 text-sm text-muted-foreground shadow-soft">
+                当前没有待处理认证事项。
+              </div>
             ) : (
-              <div className="w-16 h-16 rounded-full bg-rose" />
+              items.map((item) => (
+                <div
+                  key={item.item_id}
+                  className="rounded-2xl border border-border/30 bg-card p-4 text-left shadow-soft"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary">
+                      <Upload className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm font-medium text-foreground">{item.title}</p>
+                        {item.status_label ? (
+                          <span className="rounded bg-secondary px-2 py-0.5 text-[10px] text-muted-foreground">
+                            {item.status_label}
+                          </span>
+                        ) : null}
+                      </div>
+                      {item.trigger_reasons?.length ? (
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          {item.trigger_reasons.join('；')}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              ))
             )}
-          </button>
+          </div>
+        </section>
+
+        <div className="rounded-2xl bg-secondary/60 p-4 text-xs text-muted-foreground flex items-start gap-2">
+          <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+          字段核验真实文件上传、活体视频录制与 base64 提交还需要继续接浏览器媒体采集与上传链路；这版先把真实 challenge 和待处理事项接进来了。
         </div>
       </div>
-    )
-  }
-
-  // Video review
-  if (step === 'video-review') {
-    return (
-      <div className="min-h-screen bg-background max-w-md mx-auto flex flex-col">
-        <header className="sticky top-0 z-20 safe-area-top">
-          <div className="glass-soft border-b border-border/30">
-            <div className="px-4 py-3 flex items-center gap-3">
-              <button
-                onClick={() => setStep('video-record')}
-                className="w-10 h-10 rounded-full hover:bg-secondary/60 flex items-center justify-center transition-colors"
-              >
-                <ArrowLeft className="w-5 h-5 text-foreground" />
-              </button>
-              <h1 className="font-medium text-foreground">确认提交</h1>
-            </div>
-          </div>
-        </header>
-
-        <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
-          {/* Video preview placeholder */}
-          <div className="w-48 h-64 rounded-3xl bg-secondary mb-6 overflow-hidden">
-            <div className="w-full h-full bg-gradient-to-b from-rose-soft to-blush flex items-center justify-center">
-              <Camera className="w-12 h-12 text-muted-foreground" />
-            </div>
-          </div>
-
-          <h2 className="text-lg font-medium text-foreground mb-2">视频录制完成</h2>
-          <p className="text-sm text-muted-foreground mb-8">
-            请确认视频清晰后提交审核
-          </p>
-
-          <div className="w-full space-y-3">
-            <button
-              onClick={() => setStep('video-pending')}
-              className="w-full py-4 bg-gradient-to-r from-primary to-rose rounded-2xl text-primary-foreground font-medium shadow-soft"
-            >
-              确认提交
-            </button>
-            <button
-              onClick={() => setStep('video-record')}
-              className="w-full py-4 bg-secondary rounded-2xl text-foreground font-medium flex items-center justify-center gap-2"
-            >
-              <RotateCcw className="w-4 h-4" />
-              重新录制
-            </button>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // Video pending
-  if (step === 'video-pending') {
-    return (
-      <div className="min-h-screen bg-background max-w-md mx-auto flex flex-col">
-        <header className="sticky top-0 z-20 safe-area-top">
-          <div className="glass-soft border-b border-border/30">
-            <div className="px-4 py-3 flex items-center gap-3">
-              <h1 className="font-medium text-foreground">提交成功</h1>
-            </div>
-          </div>
-        </header>
-
-        <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
-          <div className="w-20 h-20 rounded-full bg-gold-soft flex items-center justify-center mb-6">
-            <Clock className="w-10 h-10 text-gold" />
-          </div>
-
-          <h2 className="editorial-title text-2xl text-foreground mb-3">审核中</h2>
-          <p className="text-sm text-muted-foreground mb-2">
-            你的视频认证材料已提交
-          </p>
-          <p className="text-sm text-muted-foreground mb-8">
-            预计1-2个工作日内完成审核
-          </p>
-
-          <button
-            onClick={onBack}
-            className="w-full py-4 bg-primary rounded-2xl text-primary-foreground font-medium"
-          >
-            返回
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  // Field upload
-  if (step === 'field-upload') {
-    const field = fieldVerificationTypes.find(f => f.id === selectedField)
-    
-    return (
-      <div className="min-h-screen bg-background max-w-md mx-auto flex flex-col">
-        <header className="sticky top-0 z-20 safe-area-top">
-          <div className="glass-soft border-b border-border/30">
-            <div className="px-4 py-3 flex items-center gap-3">
-              <button
-                onClick={() => setStep('select')}
-                className="w-10 h-10 rounded-full hover:bg-secondary/60 flex items-center justify-center transition-colors"
-              >
-                <ArrowLeft className="w-5 h-5 text-foreground" />
-              </button>
-              <h1 className="font-medium text-foreground">{field?.name}</h1>
-            </div>
-          </div>
-        </header>
-
-        <div className="flex-1 px-5 py-6">
-          <p className="text-sm text-muted-foreground mb-6">
-            {field?.description}，我们会在1-2个工作日内完成审核。
-          </p>
-
-          {/* Upload area */}
-          <div className="border-2 border-dashed border-border rounded-2xl p-8 text-center mb-6">
-            <div className="w-16 h-16 rounded-full bg-secondary mx-auto flex items-center justify-center mb-4">
-              <Upload className="w-8 h-8 text-muted-foreground" />
-            </div>
-            <p className="text-sm text-foreground mb-2">点击上传或拖拽文件到这里</p>
-            <p className="text-xs text-muted-foreground">支持 JPG、PNG、PDF 格式，最大10MB</p>
-          </div>
-
-          {/* Tips */}
-          <div className="bg-blush/40 rounded-xl p-4 mb-6">
-            <h4 className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-rose" />
-              注意事项
-            </h4>
-            <ul className="text-xs text-taupe space-y-1">
-              <li>• 请确保上传的文件清晰可读</li>
-              <li>• 敏感信息可以打码处理</li>
-              <li>• 信息仅用于认证，不会对外展示</li>
-            </ul>
-          </div>
-
-          <button
-            onClick={() => setStep('field-pending')}
-            className="w-full py-4 bg-gradient-to-r from-primary to-rose rounded-2xl text-primary-foreground font-medium shadow-soft"
-          >
-            提交审核
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  // Field pending
-  if (step === 'field-pending') {
-    return (
-      <div className="min-h-screen bg-background max-w-md mx-auto flex flex-col">
-        <header className="sticky top-0 z-20 safe-area-top">
-          <div className="glass-soft border-b border-border/30">
-            <div className="px-4 py-3 flex items-center gap-3">
-              <h1 className="font-medium text-foreground">提交成功</h1>
-            </div>
-          </div>
-        </header>
-
-        <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
-          <div className="w-20 h-20 rounded-full bg-gold-soft flex items-center justify-center mb-6">
-            <CheckCircle className="w-10 h-10 text-gold" />
-          </div>
-
-          <h2 className="editorial-title text-2xl text-foreground mb-3">材料已提交</h2>
-          <p className="text-sm text-muted-foreground mb-2">
-            感谢你的配合
-          </p>
-          <p className="text-sm text-muted-foreground mb-8">
-            我们会在1-2个工作日内完成审核，届时会通知你结果
-          </p>
-
-          <button
-            onClick={onBack}
-            className="w-full py-4 bg-primary rounded-2xl text-primary-foreground font-medium"
-          >
-            返回
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  return null
+    </div>
+  )
 }
