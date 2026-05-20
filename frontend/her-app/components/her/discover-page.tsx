@@ -6,11 +6,52 @@ import Image from 'next/image'
 import { TypingIndicator } from './ui/typing-indicator'
 import { EmptyRecommendations, EmptySearchResults } from './ui/empty-states'
 import { InboxItemSkeleton } from './ui/skeletons'
+import { gatewayJson, queryString } from '@/lib/gateway'
 
 interface DiscoverPageProps {
   onViewCandidate: (candidateId: string) => void
   onOpenInbox: () => void
   inboxUnreadCount?: number
+}
+
+type DiscoverySessionResponse = {
+  session?: {
+    session_id?: string
+  }
+  view?: {
+    timeline?: Array<{
+      item_type?: string
+      item_id?: string
+      body?: string
+    }>
+    criteria_chips?: Array<{
+      label?: string
+    }>
+  }
+}
+
+type RecommendationCardsResponse = {
+  cards?: Array<{
+    card_id: string
+    candidate_id?: number
+    card_status?: string
+    title?: string
+    body?: string
+    created_at?: string
+    payload?: {
+      result_snapshot?: {
+        id?: number
+        name?: string
+        score?: number
+        profile?: {
+          age?: number
+          city?: string
+          job?: string
+          avatar_url?: string
+        }
+      }
+    }
+  }>
 }
 
 const initialMessages = [
@@ -82,10 +123,11 @@ const recommendedCandidates = [
 const currentPreferences = ['同城优先', '本科以上', '年龄相近', '性格温柔']
 
 export default function DiscoverPage({ onViewCandidate, onOpenInbox, inboxUnreadCount = 3 }: DiscoverPageProps) {
-  const [messages] = useState(initialMessages)
+  const [messages, setMessages] = useState(initialMessages)
   const [inputValue, setInputValue] = useState('')
   const [showCandidates, setShowCandidates] = useState(false)
   const [isTyping, setIsTyping] = useState(false)
+  const [currentPrefs, setCurrentPrefs] = useState(currentPreferences)
   const chatEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -106,6 +148,49 @@ export default function DiscoverPage({ onViewCandidate, onOpenInbox, inboxUnread
       chatEndRef.current.scrollIntoView({ behavior: 'smooth' })
     }
   }, [isTyping])
+
+  useEffect(() => {
+    const requesterId = process.env.NEXT_PUBLIC_HER_REQUESTER_ID
+    const profileId = process.env.NEXT_PUBLIC_HER_PROFILE_ID
+    if (!requesterId || !profileId) {
+      return
+    }
+    let cancelled = false
+    async function loadSession() {
+      try {
+        const data = await gatewayJson<DiscoverySessionResponse>('/v1/discovery/sessions', {
+          method: 'POST',
+          body: JSON.stringify({
+            requester_id: Number(requesterId),
+            profile_id: Number(profileId),
+          }),
+        })
+        if (cancelled) return
+        const nextMessages =
+          data.view?.timeline
+            ?.filter((item) => item.item_type === 'assistant_message' || item.item_type === 'user_message')
+            .map((item, index) => ({
+              id: item.item_id || String(index),
+              type: item.item_type === 'user_message' ? ('user' as const) : ('matchmaker' as const),
+              content: item.body || '',
+              timestamp: '刚刚',
+            })) || []
+        if (nextMessages.length) {
+          setMessages(nextMessages)
+        }
+        const chips = data.view?.criteria_chips?.map((item) => item.label).filter(Boolean) as string[] | undefined
+        if (chips?.length) {
+          setCurrentPrefs(chips)
+        }
+      } catch {
+        // Keep the current demo content when the gateway is not ready.
+      }
+    }
+    void loadSession()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   return (
     <div className="flex flex-col h-full bg-background">
@@ -142,7 +227,7 @@ export default function DiscoverPage({ onViewCandidate, onOpenInbox, inboxUnread
 
       {/* Preferences - simple tags */}
       <div className="px-4 py-2 flex gap-2 overflow-x-auto border-b border-border">
-        {currentPreferences.map((pref, i) => (
+        {currentPrefs.map((pref, i) => (
           <span key={i} className="shrink-0 px-2.5 py-1 bg-secondary text-muted-foreground text-xs rounded-md">
             {pref}
           </span>
@@ -308,13 +393,59 @@ export function RecommendationInbox({
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set())
   const [searchQuery, setSearchQuery] = useState('')
   const [isLoading, setIsLoading] = useState(true)
+  const [backendItems, setBackendItems] = useState(inboxItems)
 
   useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 600)
-    return () => clearTimeout(timer)
+    const requesterId = process.env.NEXT_PUBLIC_HER_REQUESTER_ID
+    if (!requesterId) {
+      const timer = setTimeout(() => setIsLoading(false), 600)
+      return () => clearTimeout(timer)
+    }
+
+    let cancelled = false
+    async function loadCards() {
+      try {
+        const response = await gatewayJson<RecommendationCardsResponse>(
+          `/v1/recommendation/cards${queryString({ requester_id: Number(requesterId) })}`,
+        )
+        if (cancelled) return
+        const cards =
+          response.cards?.map((card) => {
+            const snapshot = card.payload?.result_snapshot
+            const profile = snapshot?.profile
+            return {
+              id: String(snapshot?.id || card.candidate_id || card.card_id),
+              name: snapshot?.name || card.title?.replace(/^发现新的合适对象：/, '') || '候选人',
+              age: profile?.age || 0,
+              city: profile?.city || '未知',
+              occupation: profile?.job || '资料待补充',
+              matchScore: snapshot?.score || 0,
+              image: profile?.avatar_url || 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&h=200&fit=crop&crop=face',
+              type: 'matched' as const,
+              message: card.body || card.title || '系统为你推送了一位新候选人',
+              time: card.created_at || '刚刚',
+              isRead: card.card_status === 'read',
+            }
+          }) || []
+        if (cards.length) {
+          setBackendItems(cards)
+        }
+      } catch {
+        // Fall back to the design mock list.
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false)
+        }
+      }
+    }
+
+    void loadCards()
+    return () => {
+      cancelled = true
+    }
   }, [])
 
-  const filteredItems = inboxItems.filter(item => {
+  const filteredItems = backendItems.filter(item => {
     if (dismissedIds.has(item.id)) return false
     if (filter === 'delayed') return item.type === 'delayed'
     if (filter === 'matched') return item.type === 'matched'

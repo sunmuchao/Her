@@ -10,6 +10,7 @@ import ProfilePage from '@/components/her/profile-page'
 import CandidateDetailPage from '@/components/her/candidate-detail-page'
 import ChatPage from '@/components/her/chat-page'
 import VerificationFlowPage from '@/components/her/verification-flow-page'
+import TrustCenterPage from '@/components/her/trust-center-page'
 
 // Auth pages
 import WelcomePage from '@/components/her/auth/welcome-page'
