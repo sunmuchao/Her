@@ -6,9 +6,23 @@
 - Local:         http://127.0.0.1:3000
 - Network:       http://127.0.0.1:3000
 - Environments: .env.local
-✓ Ready in 692ms
+✓ Ready in 807ms
 
- GET /welcome 200 in 1061ms (next.js: 751ms, application-code: 309ms)
- GET /login/one-tap 200 in 64ms (next.js: 21ms, application-code: 43ms)
- DELETE /api/auth/session 200 in 149ms (next.js: 133ms, application-code: 16ms)
- GET /welcome 200 in 147ms (next.js: 6ms, application-code: 141ms)
+ GET /welcome 200 in 2.1s (next.js: 1621ms, application-code: 510ms)
+ GET /welcome 200 in 77ms (next.js: 8ms, application-code: 69ms)
+✓ Compiled in 157ms
+ GET /discover 200 in 48ms (next.js: 16ms, application-code: 32ms)
+ GET /api/gateway/v1/recommendation/cards?requester_id=70001&unread_only=true 200 in 1142ms (next.js: 1064ms, application-code: 78ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=user-a 200 in 1152ms (next.js: 1064ms, application-code: 88ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=user-a 200 in 1175ms (next.js: 1072ms, application-code: 102ms)
+ GET /api/gateway/v1/recommendation/cards?requester_id=70001&unread_only=true 200 in 1185ms (next.js: 1076ms, application-code: 110ms)
+ POST /api/gateway/v1/discovery/sessions 201 in 25.7s (next.js: 1070ms, application-code: 24.6s)
+ POST /api/gateway/v1/discovery/sessions 201 in 39.7s (next.js: 1081ms, application-code: 38.6s)
+ GET /api/gateway/v1/recommendation/cards?requester_id=70001&unread_only=true 200 in 9.6s (next.js: 6ms, application-code: 9.6s)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=user-a 200 in 9.6s (next.js: 2ms, application-code: 9.6s)
+ GET /api/gateway/v1/recommendation/cards?requester_id=70001&unread_only=true 200 in 28ms (next.js: 6ms, application-code: 22ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=user-a 200 in 38ms (next.js: 14ms, application-code: 24ms)
+ GET /api/gateway/v1/recommendation/cards?requester_id=70001&unread_only=true 200 in 22ms (next.js: 5ms, application-code: 17ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=user-a 200 in 30ms (next.js: 9ms, application-code: 21ms)
+ GET /api/gateway/v1/recommendation/cards?requester_id=70001&unread_only=true 200 in 41ms (next.js: 15ms, application-code: 26ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=user-a 200 in 59ms (next.js: 20ms, application-code: 39ms)
