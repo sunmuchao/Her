@@ -1,7 +1,7 @@
 import Image from 'next/image'
 import { cn } from '@/lib/utils'
 
-const AVATAR_SRC = '/xiaoya-avatar.png?v=5'
+const AVATAR_SRC = '/xiaoya-avatar.png'
 
 type XiaoyaAvatarProps = {
   size?: number

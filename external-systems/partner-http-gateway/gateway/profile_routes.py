@@ -36,6 +36,7 @@ from .http_helpers import (
     _statuses_from_query,
 )
 from .profile_access import resolve_optional_subject_user_id, resolve_visible_subject_user_id
+from .profile_source_defaults import body_with_default_profile_source
 from .role_sets import INTERNAL_WRITE_ROLES, PROFILE_REVIEW_ROLES, STAFF_OVERRIDE_ROLES
 
 
@@ -102,8 +103,9 @@ def rest_profile_submit_field_verification(
     environ: dict[str, Any],
     body: dict[str, Any],
 ) -> tuple[int, dict[str, Any]]:
+    body = body_with_default_profile_source(body)
     now = _parse_optional_now(body)
-    for key in ("field_key", "profile_id", "source_dsn"):
+    for key in ("field_key", "profile_id"):
         if body.get(key) in (None, ""):
             raise ValueError(f"{key} is required")
     submission = gateway._with_chat(

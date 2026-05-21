@@ -3,6 +3,10 @@
 import { useState } from 'react'
 import { ChevronLeft, ChevronRight, Calendar, Heart, Tag, Sliders } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { submitOnboarding } from '@/lib/auth/auth-api'
+import { applyLoginPayload } from '@/lib/auth/session'
+import { notifyError, notifySuccess } from '@/lib/notify'
+import { Button } from '@/components/ui/button'
 import { CustomRangeSlider } from '@/components/her/ui/custom-range-slider'
 
 interface OnboardingPageProps {
@@ -35,6 +39,7 @@ export default function OnboardingPage({
   onBack 
 }: OnboardingPageProps) {
   const [currentStep, setCurrentStep] = useState<Step>('basics')
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [profile, setProfile] = useState<ProfileData>({
     name: '',
     birthday: '',
@@ -50,12 +55,47 @@ export default function OnboardingPage({
   const currentIndex = steps.indexOf(currentStep)
   const progress = ((currentIndex + 1) / steps.length) * 100
 
-  const handleNext = () => {
+  const handleNext = async () => {
     const nextIndex = currentIndex + 1
     if (nextIndex < steps.length) {
       setCurrentStep(steps[nextIndex])
-    } else {
+      return
+    }
+    setIsSubmitting(true)
+    try {
+      const result = await submitOnboarding({
+        basic_info: {
+          name: profile.name,
+          birthday: profile.birthday,
+          gender: profile.gender,
+          location: profile.location,
+          relationship_goal: profile.relationshipGoal,
+        },
+        preference: {
+          relationship_goal: profile.relationshipGoal,
+          tags: profile.tags,
+          age_range: profile.ageRange,
+          location_pref: profile.locationPref,
+        },
+        mark_completed: true,
+      })
+      applyLoginPayload({
+        user: {
+          user_id: result.user?.user_id,
+          onboarding_status: result.user?.onboarding_status,
+          profile_id: result.profile_id,
+          requester_id: result.requester_id,
+        },
+        onboarding: {
+          profile_id: result.profile_id,
+        },
+      })
+      notifySuccess('资料已保存到用户画像库')
       onComplete()
+    } catch (error) {
+      notifyError(error, '资料保存失败，请重试')
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -357,19 +397,15 @@ export default function OnboardingPage({
 
         {/* CTA Button */}
         <div className="py-8 safe-area-bottom">
-          <button
-            onClick={handleNext}
-            disabled={!canProceed()}
-            className={cn(
-              'w-full py-4 rounded-2xl font-medium text-base transition-all duration-300 active:scale-[0.98] flex items-center justify-center gap-2 focus-ring',
-              canProceed()
-                ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/30 hover:shadow-xl hover:shadow-primary/40'
-                : 'bg-secondary text-muted-foreground cursor-not-allowed'
-            )}
+          <Button
+            onClick={() => void handleNext()}
+            disabled={!canProceed() || isSubmitting}
+            className="w-full h-12 rounded-2xl text-base gap-2"
+            size="lg"
           >
-            {currentIndex === steps.length - 1 ? '完成' : '下一步'}
+            {isSubmitting ? '保存中…' : currentIndex === steps.length - 1 ? '完成' : '下一步'}
             {currentIndex < steps.length - 1 && <ChevronRight className="w-5 h-5" aria-hidden="true" />}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

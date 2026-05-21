@@ -2,6 +2,7 @@
 
 from .api import (
     apply_profile_updates,
+    create_profile_row,
     detect_profile_table,
     get_profile,
     get_public_profile,
@@ -13,12 +14,14 @@ from .api import (
     list_profile_photos,
     list_profiles,
     resolve_profile_source,
+    upsert_profile_for_onboarding,
 )
 from .persona_bridge import apply_persona_patch, render_public_profile
 
 __all__ = [
     "apply_persona_patch",
     "apply_profile_updates",
+    "create_profile_row",
     "detect_profile_table",
     "get_profile",
     "get_public_profile",
@@ -31,4 +34,5 @@ __all__ = [
     "list_profiles",
     "render_public_profile",
     "resolve_profile_source",
+    "upsert_profile_for_onboarding",
 ]

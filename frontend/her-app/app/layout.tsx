@@ -1,16 +1,18 @@
 import type { Metadata, Viewport } from 'next'
 import { Inter, Cormorant_Garamond } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
+import { ThemeProvider } from '@/components/theme-provider'
+import { Toaster } from '@/components/ui/sonner'
 import './globals.css'
 
-const inter = Inter({ 
-  subsets: ["latin"],
+const inter = Inter({
+  subsets: ['latin'],
   variable: '--font-inter',
   display: 'swap',
 })
 
-const cormorant = Cormorant_Garamond({ 
-  subsets: ["latin"],
+const cormorant = Cormorant_Garamond({
+  subsets: ['latin'],
   weight: ['400', '500', '600', '700'],
   variable: '--font-cormorant',
   display: 'swap',
@@ -19,7 +21,6 @@ const cormorant = Cormorant_Garamond({
 export const metadata: Metadata = {
   title: '小雅 - 你的专属红娘',
   description: '认真关系，从认真了解开始',
-  generator: 'v0.app',
   icons: {
     icon: [
       {
@@ -51,19 +52,19 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="zh-CN" className={`${inter.variable} ${cormorant.variable}`}>
+    <html lang="zh-CN" suppressHydrationWarning className={`${inter.variable} ${cormorant.variable}`}>
       <body className="font-sans antialiased bg-background">
-        {/* Skip link for accessibility */}
-        <a 
-          href="#main-content" 
+        <a
+          href="#main-content"
           className="skip-link sr-only focus:not-sr-only"
         >
           跳转到主要内容
         </a>
-        <main id="main-content">
-          {children}
-        </main>
-        {process.env.NODE_ENV === 'production' && <Analytics />}
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+          <main id="main-content">{children}</main>
+          <Toaster richColors position="top-center" />
+          {process.env.NODE_ENV === 'production' && <Analytics />}
+        </ThemeProvider>
       </body>
     </html>
   )
