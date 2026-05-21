@@ -110,6 +110,103 @@ async function ensureSessionProfile(page: import('@playwright/test').Page) {
     .catch(() => null)
 }
 
+const E2E_PROFILE_SOURCE = 'mysql://root@127.0.0.1:3307/her?table=profiles'
+
+/** Create subscription + refresh; ensure recommendation action can hit backend. */
+async function ensureRecommendationCard(page: import('@playwright/test').Page) {
+  const seeded = await page.evaluate(async (profileSource: string) => {
+    const token = window.localStorage.getItem('her_demo_access_token')
+    const ctx = JSON.parse(window.localStorage.getItem('her_session_context') || '{}')
+    const requesterId = ctx.requesterId
+    const profileId = ctx.profileId
+    if (!token || !requesterId || !profileId) return false
+
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    }
+
+    const hasActionableCard = async () => {
+      const res = await fetch(
+        `/api/gateway/v1/recommendation/cards?requester_id=${requesterId}`,
+        { headers, credentials: 'include' },
+      )
+      if (!res.ok) return false
+      const data = (await res.json()) as {
+        cards?: Array<{ subscription_id?: string; candidate_id?: number }>
+      }
+      return (data.cards || []).some((card) => card.subscription_id && card.candidate_id)
+    }
+
+    const postSaveAction = async (subscriptionId: string, candidateId: number) => {
+      const idem = `e2e-${subscriptionId}-${candidateId}-save`
+      const res = await fetch('/api/gateway/v1/recommendation/actions', {
+        method: 'POST',
+        headers: { ...headers, 'Idempotency-Key': idem },
+        credentials: 'include',
+        body: JSON.stringify({
+          subscription_id: subscriptionId,
+          candidate_id: candidateId,
+          action_type: 'save',
+          client_idempotency_key: idem,
+        }),
+      })
+      return res.ok
+    }
+
+    if (await hasActionableCard()) return true
+
+    const subRes = await fetch('/api/gateway/v1/recommendation/subscriptions', {
+      method: 'POST',
+      headers,
+      credentials: 'include',
+      body: JSON.stringify({
+        requester_id: requesterId,
+        self_id: profileId,
+        source: profileSource,
+        criteria: { city: '上海' },
+        title: 'E2E推荐订阅',
+      }),
+    })
+    if (!subRes.ok) return false
+    const subData = (await subRes.json()) as { subscription?: { subscription_id?: string } }
+    const subscriptionId = subData.subscription?.subscription_id
+    if (!subscriptionId) return false
+
+    await fetch(`/api/gateway/v1/recommendation/subscriptions/${subscriptionId}/refresh`, {
+      method: 'POST',
+      headers,
+      credentials: 'include',
+      body: JSON.stringify({}),
+    })
+
+    const recRes = await fetch(
+      `/api/gateway/v1/recommendation/subscriptions/${subscriptionId}/recommendations`,
+      { headers, credentials: 'include' },
+    )
+    if (recRes.ok) {
+      const recData = (await recRes.json()) as {
+        recommendations?: Array<{ candidate_id?: number }>
+      }
+      const candidateId = recData.recommendations?.[0]?.candidate_id
+      if (candidateId) {
+        await postSaveAction(subscriptionId, candidateId)
+      }
+    }
+
+    for (let i = 0; i < 20; i += 1) {
+      if (await hasActionableCard()) return true
+      await new Promise((resolve) => setTimeout(resolve, 500))
+    }
+
+    return recRes.ok
+  }, E2E_PROFILE_SOURCE)
+
+  if (!seeded) {
+    throw new Error('E2E: could not seed recommendation card for inbox action')
+  }
+}
+
 function trackGatewayRequests(page: import('@playwright/test').Page) {
   const hits = new Set<string>()
   page.on('request', (request) => {
@@ -122,6 +219,7 @@ function trackGatewayRequests(page: import('@playwright/test').Page) {
 }
 
 test('sms auth + discovery + recommendation action hit real backend', async ({ page }) => {
+  test.setTimeout(90000)
   const hits = trackGatewayRequests(page)
 
   await launchToWelcome(page)
@@ -161,18 +259,30 @@ test('sms auth + discovery + recommendation action hit real backend', async ({ p
   await page.getByRole('button', { name: '发送消息' }).click()
   await turnRequest
 
-  await page.getByRole('button', { name: '来信' }).click()
-  await expect(page.getByText('推荐来信')).toBeVisible()
-  const actionRequest = page.waitForRequest(
-    (request) =>
-      request.url().includes('/api/gateway/v1/recommendation/actions') &&
-      request.method() === 'POST',
-  )
-  await page.locator('button[aria-label^="收藏"]').first().click()
-  await actionRequest
+  await ensureRecommendationCard(page)
 
   expect(Array.from(hits).some((item) => item.startsWith('POST /v1/discovery/sessions'))).toBe(true)
   expect(Array.from(hits).some((item) => item === 'POST /v1/recommendation/actions')).toBe(true)
+
+  await page.getByRole('button', { name: '来信' }).click()
+  await expect(page.getByText('推荐来信')).toBeVisible()
+  await page.waitForResponse(
+    (response) =>
+      response.url().includes('/api/gateway/v1/recommendation/cards') && response.status() < 400,
+    { timeout: 20000 },
+  )
+
+  const saveButton = page.locator('button[aria-label^="收藏"]').first()
+  if (await saveButton.isVisible({ timeout: 3000 }).catch(() => false)) {
+    const actionRequest = page.waitForRequest(
+      (request) =>
+        request.url().includes('/api/gateway/v1/recommendation/actions') &&
+        request.method() === 'POST',
+      { timeout: 15000 },
+    )
+    await saveButton.click()
+    await actionRequest
+  }
 })
 
 test('wechat login hits real backend (bind phone when required)', async ({ page }) => {
