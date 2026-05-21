@@ -1,13 +1,12 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Smartphone, ChevronRight } from 'lucide-react'
 import { XiaoyaAvatar } from '@/components/her/ui/xiaoya-avatar'
 import { WechatIcon } from '@/components/her/ui/wechat-icon'
-import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 interface WelcomePageProps {
+  maskedPhoneNumber?: string
   onOneClickLogin: () => void | Promise<void>
   onWeChatLogin: () => void | Promise<void>
   onPhoneLogin: () => void
@@ -15,6 +14,7 @@ interface WelcomePageProps {
 }
 
 export default function WelcomePage({
+  maskedPhoneNumber = '138****8000',
   onOneClickLogin,
   onWeChatLogin,
   onPhoneLogin,
@@ -56,6 +56,7 @@ export default function WelcomePage({
   return (
     <div className="min-h-screen bg-background flex flex-col max-w-md mx-auto">
       <div className="flex-1 flex flex-col px-8 pt-safe-area-top">
+        {/* Logo and branding area */}
         <div className="flex-1 flex flex-col justify-center items-center pt-16 pb-8">
           <div
             className={cn(
@@ -92,9 +93,10 @@ export default function WelcomePage({
           </p>
         </div>
 
+        {/* Login section */}
         <div
           className={cn(
-            'pb-10 space-y-3 transition-all duration-700 ease-out delay-500',
+            'pb-6 space-y-4 transition-all duration-700 ease-out delay-500',
             mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6',
           )}
         >
@@ -107,74 +109,69 @@ export default function WelcomePage({
             </div>
           )}
 
+          {/* Phone number display with change option */}
+          <div className="flex items-center justify-center gap-2 mb-2">
+            <span className="text-sm text-muted-foreground">本机号码</span>
+            <span className="text-base font-medium text-foreground tracking-wider">
+              {maskedPhoneNumber}
+            </span>
+            <button
+              onClick={onPhoneLogin}
+              className="text-sm text-primary hover:text-primary/80 transition-colors"
+              aria-label="使用其他手机号"
+            >
+              换号
+            </button>
+          </div>
+
+          {/* One-click login button - primary action */}
           <button
             onClick={handleOneClickLogin}
             disabled={isLoading !== null}
             className={cn(
               'w-full py-4 bg-primary rounded-2xl text-primary-foreground font-medium transition-all',
               'active:scale-[0.98] disabled:opacity-70',
-              'hover:shadow-lg hover:shadow-primary/20',
               'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
             )}
-            aria-label="使用本机号码一键登录"
+            aria-label="一键登录"
           >
-            <span className="flex items-center justify-center gap-3">
-              {isLoading === 'oneclick' ? (
+            {isLoading === 'oneclick' ? (
+              <div className="flex items-center justify-center gap-3">
                 <div className="w-5 h-5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
-              ) : (
-                <>
-                  <Smartphone className="w-5 h-5" aria-hidden="true" />
-                  本机号码一键登录
-                </>
-              )}
-            </span>
+                <span>正在验证...</span>
+              </div>
+            ) : (
+              '一键登录'
+            )}
           </button>
 
+          {/* WeChat login - secondary action */}
           <button
             onClick={handleWeChatLogin}
             disabled={isLoading !== null}
-            className={cn(
-              'w-full py-4 bg-card rounded-2xl border border-border text-foreground font-medium transition-all',
-              'active:scale-[0.98] disabled:opacity-70',
-              'hover:bg-secondary hover:border-secondary',
-              'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
-            )}
-            aria-label="使用微信登录"
+            className="w-full py-3 flex items-center justify-center gap-2 text-sm font-medium text-muted-foreground"
           >
-            <span className="flex items-center justify-center gap-3">
-              {isLoading === 'wechat' ? (
-                <div className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-              ) : (
-                <>
-                  <WechatIcon size={20} />
-                  微信登录
-                </>
-              )}
-            </span>
+            {isLoading === 'wechat' ? (
+              <div className="w-4 h-4 border-2 border-muted-foreground/30 border-t-muted-foreground rounded-full animate-spin" />
+            ) : (
+              <WechatIcon size={16} />
+            )}
+            使用微信登录
           </button>
 
-          <Button
-            variant="link"
-            onClick={onPhoneLogin}
-            disabled={isLoading !== null}
-            className="w-full text-sm"
-            aria-label="使用手机号登录"
-          >
-            手机号登录
-            <ChevronRight className="w-4 h-4" aria-hidden="true" />
-          </Button>
+          {/* Account recovery link */}
           {onAccountRecovery && (
-            <Button
-              variant="ghost"
+            <button
               onClick={onAccountRecovery}
               disabled={isLoading !== null}
-              className="w-full text-sm text-muted-foreground"
+              className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
               无法登录？找回账号
-            </Button>
+            </button>
           )}
         </div>
 
+        {/* Footer - consistent with other pages */}
         <div
           className={cn(
             'pb-8 safe-area-bottom transition-all duration-700 ease-out delay-700',
@@ -183,19 +180,9 @@ export default function WelcomePage({
         >
           <p className="text-center text-xs text-muted-foreground leading-relaxed">
             登录即表示同意
-            <button
-              className="underline underline-offset-2 mx-1 hover:text-foreground transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded"
-              aria-label="查看用户协议"
-            >
-              用户协议
-            </button>
+            <button className="underline underline-offset-2 mx-1">用户协议</button>
             和
-            <button
-              className="underline underline-offset-2 mx-1 hover:text-foreground transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded"
-              aria-label="查看隐私政策"
-            >
-              隐私政策
-            </button>
+            <button className="underline underline-offset-2 mx-1">隐私政策</button>
           </p>
         </div>
       </div>
