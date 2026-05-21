@@ -61,19 +61,19 @@ test('sms auth + discovery + recommendation action hit real backend', async ({ p
   expect(Array.from(hits).some((item) => item === 'POST /v1/recommendation/actions')).toBe(true)
 })
 
-test('wechat login + bind phone returns real backend business error', async ({ page }) => {
+test('wechat login + bind phone success hits real backend', async ({ page }) => {
   const hits = trackGatewayRequests(page)
 
   await launchToWelcome(page)
   await page.getByRole('button', { name: '微信登录' }).click()
-  await expect(page.getByText('欢迎，测试微信用户')).toBeVisible({ timeout: 15000 })
+  await expect(page.getByRole('button', { name: '绑定手机号' })).toBeVisible({ timeout: 15000 })
 
   await page.getByRole('button', { name: '绑定手机号' }).click()
-  await page.getByPlaceholder('请输入手机号').fill('13800138000')
+  await page.getByPlaceholder('请输入手机号').fill('13800138003')
   await page.getByRole('button', { name: '获取验证码' }).click()
   await expect(page.getByText('输入验证码')).toBeVisible()
   await fillVerificationCode(page)
-  await expect(page.getByText('该手机号已绑定其他账号')).toBeVisible({ timeout: 15000 })
+  await expect(page.getByRole('heading', { name: '小雅' })).toBeVisible({ timeout: 15000 })
 
   expect(Array.from(hits)).toEqual(expect.arrayContaining([
     'POST /v1/auth/wechat/login',
@@ -82,15 +82,18 @@ test('wechat login + bind phone returns real backend business error', async ({ p
   ]))
 })
 
-test('one-tap login currently blocked by backend table issue', async ({ page }) => {
+test('one-tap login success hits real backend', async ({ page }) => {
   const hits = trackGatewayRequests(page)
 
   await launchToWelcome(page)
   await page.getByRole('button', { name: '本机号码一键登录' }).click()
-  await expect(page.getByText(/auth_one_tap_attempts|one_tap/i)).toBeVisible({ timeout: 15000 })
+  await expect(page.getByRole('button', { name: '一键登录' })).toBeVisible({ timeout: 15000 })
+  await page.getByRole('button', { name: '一键登录' }).click()
+  await expect(page.getByRole('heading', { name: '小雅' })).toBeVisible({ timeout: 15000 })
 
   expect(Array.from(hits)).toEqual(expect.arrayContaining([
     'POST /v1/auth/one-tap/create',
+    'POST /v1/auth/one-tap/verify',
   ]))
 })
 
