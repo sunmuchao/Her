@@ -5,8 +5,8 @@ import { ChevronLeft, RefreshCw } from 'lucide-react'
 
 interface VerificationCodePageProps {
   phone: string // e.g., "13812341234"
-  onVerify: (code: string) => void
-  onResend: () => void
+  onVerify: (code: string) => void | Promise<void>
+  onResend: () => void | Promise<void>
   onBack: () => void
 }
 
@@ -22,6 +22,7 @@ export default function VerificationCodePage({
   const [countdown, setCountdown] = useState(60)
   const [isVerifying, setIsVerifying] = useState(false)
   const [error, setError] = useState<ErrorType>(null)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [isResending, setIsResending] = useState(false)
   const inputRefs = useRef<(HTMLInputElement | null)[]>([])
 
@@ -42,28 +43,24 @@ export default function VerificationCodePage({
   }, [])
 
   // Auto-verify when all digits entered
-  const handleVerify = useCallback((fullCode: string) => {
+  const handleVerify = useCallback(async (fullCode: string) => {
     setIsVerifying(true)
     setError(null)
-    
-    // Simulate verification
-    setTimeout(() => {
-      // Simulate different error scenarios for demo (80% success)
-      const random = Math.random()
-      if (random > 0.2) {
-        setIsVerifying(false)
-        onVerify(fullCode)
-      } else if (random > 0.15) {
-        setError('invalid')
-        setIsVerifying(false)
-      } else if (random > 0.1) {
-        setError('expired')
-        setIsVerifying(false)
-      } else {
-        setError('network')
-        setIsVerifying(false)
-      }
-    }, 1500)
+    setErrorMessage(null)
+    try {
+      await onVerify(fullCode)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '验证失败，请稍后重试'
+      setErrorMessage(message)
+      if (/过期/.test(message)) setError('expired')
+      else if (/频繁/.test(message)) setError('too_frequent')
+      else if (/验证码|无效/.test(message)) setError('invalid')
+      else setError('network')
+      setCode(['', '', '', '', '', ''])
+      inputRefs.current[0]?.focus()
+    } finally {
+      setIsVerifying(false)
+    }
   }, [onVerify])
 
   useEffect(() => {
@@ -81,6 +78,7 @@ export default function VerificationCodePage({
     newCode[index] = digit
     setCode(newCode)
     setError(null)
+    setErrorMessage(null)
 
     // Auto-focus next input
     if (digit && index < 5) {
@@ -112,21 +110,22 @@ export default function VerificationCodePage({
     
     setIsResending(true)
     setError(null)
-    
-    // Simulate resend
-    setTimeout(() => {
-      // Simulate too frequent error occasionally
-      if (Math.random() > 0.9) {
-        setError('too_frequent')
-        setIsResending(false)
-      } else {
+    setErrorMessage(null)
+    Promise.resolve(onResend())
+      .then(() => {
         setCountdown(60)
         setCode(['', '', '', '', '', ''])
-        setIsResending(false)
-        onResend()
         inputRefs.current[0]?.focus()
-      }
-    }, 800)
+      })
+      .catch((err) => {
+        const message = err instanceof Error ? err.message : '发送失败，请稍后重试'
+        setErrorMessage(message)
+        if (/频繁/.test(message)) setError('too_frequent')
+        else setError('network')
+      })
+      .finally(() => {
+        setIsResending(false)
+      })
   }
 
   const errorMessages: Record<string, string> = {
@@ -211,7 +210,7 @@ export default function VerificationCodePage({
               className="mt-4 text-sm text-center"
               style={{ color: 'oklch(0.55 0.15 20)' }}
             >
-              {errorMessages[error]}
+              {errorMessage || errorMessages[error]}
             </p>
           )}
 

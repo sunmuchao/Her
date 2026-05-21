@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Menu, X, Sparkles, User, Shield, MessageCircle, Heart, Search, CheckCircle, LogIn, Phone, KeyRound, Link2, UserPlus, ClipboardList, RotateCcw, Mail } from 'lucide-react'
 import SplashScreen from '@/components/her/splash-screen'
 import BottomNav from '@/components/her/bottom-nav'
@@ -23,6 +23,7 @@ import NewUserWelcomePage from '@/components/her/auth/new-user-welcome-page'
 import OnboardingPage from '@/components/her/auth/onboarding-page'
 import AccountRecoveryPage from '@/components/her/auth/account-recovery-page'
 import { PageTransition, SlideInTransition } from '@/components/her/ui/page-transitions'
+import { gatewayJson } from '@/lib/gateway'
 
 // 3-Tab Navigation: 红娘 | 关系 | 我的
 export type TabType = 'matchmaker' | 'relationships' | 'profile'
@@ -92,6 +93,18 @@ export default function HerApp() {
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null)
   const [selectedCandidate, setSelectedCandidate] = useState<CandidatePreview | null>(null)
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null)
+  const [authPhone, setAuthPhone] = useState('13800138000')
+  const [authMode, setAuthMode] = useState<'sms-login' | 'wechat-bind'>('sms-login')
+  const [smsChallengeId, setSmsChallengeId] = useState<string | null>(null)
+  const [oneTapAttempt, setOneTapAttempt] = useState<{ attemptId: string; maskedPhone: string; operatorToken?: string } | null>(null)
+  const [wechatProfile, setWechatProfile] = useState<{ nickname?: string; avatar_url?: string } | null>(null)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (currentPage === 'auth-welcome') {
+      window.localStorage.removeItem('her_demo_access_token')
+    }
+  }, [currentPage])
 
   // Mock badge counts
   const inboxUnreadCount = 3
@@ -169,6 +182,131 @@ export default function HerApp() {
     setCurrentPage('sub-trust-center')
   }
 
+  const completeLoginFlow = (payload: {
+    session?: { access_token?: string }
+    user?: { is_new_user?: boolean; phone_bound?: boolean }
+    flow?: { next_path?: string }
+    wechat_profile?: { nickname?: string; avatar_url?: string }
+  }) => {
+    const accessToken = payload.session?.access_token
+    if (typeof window !== 'undefined' && accessToken) {
+      window.localStorage.setItem('her_demo_access_token', accessToken)
+    }
+    if (payload.wechat_profile) {
+      setWechatProfile(payload.wechat_profile)
+    }
+    if (payload.flow?.next_path === '/bind-phone' || payload.user?.phone_bound === false) {
+      setAuthMode('wechat-bind')
+      handleNavigate('auth-wechat-binding')
+      return
+    }
+    if (payload.user?.is_new_user || payload.flow?.next_path === '/onboarding') {
+      handleNavigate('auth-new-user-welcome')
+      return
+    }
+    handleNavigate('main-matchmaker')
+  }
+
+  const requestSmsCode = async (phone: string) => {
+    const data = await gatewayJson<{ challenge_id?: string }>('/v1/auth/sms/send-code', {
+      method: 'POST',
+      body: JSON.stringify({ phone }),
+    })
+    setAuthPhone(phone)
+    setSmsChallengeId(data.challenge_id || null)
+    handleNavigate('auth-verification-code')
+  }
+
+  const verifySmsCode = async (code: string) => {
+    if (authMode === 'wechat-bind') {
+      const data = await gatewayJson('/v1/auth/wechat/bind-phone', {
+        method: 'POST',
+        body: JSON.stringify({
+          phone: authPhone,
+          code,
+          challenge_id: smsChallengeId,
+          device_id: 'ios-1',
+        }),
+      })
+      completeLoginFlow(data as {
+        session?: { access_token?: string }
+        user?: { is_new_user?: boolean; phone_bound?: boolean }
+        flow?: { next_path?: string }
+      })
+      return
+    }
+    const data = await gatewayJson('/v1/auth/sms/verify-code', {
+      method: 'POST',
+      body: JSON.stringify({ phone: authPhone, code }),
+    })
+    completeLoginFlow(data as {
+      session?: { access_token?: string }
+      user?: { is_new_user?: boolean; phone_bound?: boolean }
+      flow?: { next_path?: string }
+    })
+  }
+
+  const resendSmsCode = async () => {
+    await requestSmsCode(authPhone)
+  }
+
+  const startWechatLogin = async () => {
+    const data = await gatewayJson<{
+      session?: { access_token?: string }
+      user?: { is_new_user?: boolean; phone_bound?: boolean }
+      flow?: { next_path?: string }
+      wechat_profile?: { nickname?: string; avatar_url?: string }
+    }>('/v1/auth/wechat/login', {
+      method: 'POST',
+      body: JSON.stringify({
+        code: 'wx-code-1',
+        device_id: 'ios-1',
+        client_type: 'ios',
+      }),
+    })
+    completeLoginFlow(data)
+  }
+
+  const startOneTapLogin = async () => {
+    const data = await gatewayJson<{
+      attempt_id?: string
+      masked_phone?: string
+      provider_payload?: { operator_token?: string }
+    }>('/v1/auth/one-tap/create', {
+      method: 'POST',
+      body: JSON.stringify({
+        device_id: 'ios-1',
+        client_type: 'ios',
+      }),
+    })
+    setOneTapAttempt({
+      attemptId: data.attempt_id || '',
+      maskedPhone: data.masked_phone || '138****8000',
+      operatorToken: data.provider_payload?.operator_token,
+    })
+    handleNavigate('auth-one-click')
+  }
+
+  const verifyOneTapLogin = async () => {
+    if (!oneTapAttempt?.attemptId) {
+      throw new Error('一键登录会话不存在，请返回重试')
+    }
+    const data = await gatewayJson('/v1/auth/one-tap/verify', {
+      method: 'POST',
+      body: JSON.stringify({
+        attempt_id: oneTapAttempt.attemptId,
+        operator_token: oneTapAttempt.operatorToken || 'carrier-token-1',
+        device_id: 'ios-1',
+        client_type: 'ios',
+      }),
+    })
+    completeLoginFlow(data as {
+      session?: { access_token?: string }
+      user?: { is_new_user?: boolean; phone_bound?: boolean }
+      flow?: { next_path?: string }
+    })
+  }
+
   const renderPage = () => {
     switch (currentPage) {
       // Splash
@@ -178,32 +316,38 @@ export default function HerApp() {
       // Auth pages
       case 'auth-welcome':
         return <WelcomePage 
-          onOneClickLogin={() => handleNavigate('auth-one-click')}
-          onWeChatLogin={() => handleNavigate('auth-wechat-binding')}
+          onOneClickLogin={startOneTapLogin}
+          onWeChatLogin={startWechatLogin}
           onPhoneLogin={() => handleNavigate('auth-phone')}
         />
       case 'auth-one-click':
         return <OneClickLoginPage 
-          onLogin={() => handleNavigate('main-matchmaker')}
+          phoneNumber={oneTapAttempt?.maskedPhone || '138****8000'}
+          onLogin={verifyOneTapLogin}
           onUseOtherPhone={() => handleNavigate('auth-phone')}
           onBack={() => handleNavigate('auth-welcome')}
         />
       case 'auth-phone':
         return <PhoneLoginPage 
-          onSubmit={() => handleNavigate('auth-verification-code')}
-          onWeChatLogin={() => handleNavigate('auth-wechat-binding')}
+          onSubmit={requestSmsCode}
+          onWeChatLogin={startWechatLogin}
           onBack={() => handleNavigate('auth-welcome')}
         />
       case 'auth-verification-code':
         return <VerificationCodePage 
-          phone="13812348888"
-          onVerify={() => handleNavigate('auth-new-user-welcome')}
-          onResend={() => undefined}
+          phone={authPhone}
+          onVerify={verifySmsCode}
+          onResend={resendSmsCode}
           onBack={() => handleNavigate('auth-phone')}
         />
       case 'auth-wechat-binding':
         return <WechatBindingPage 
-          onBindPhone={() => handleNavigate('auth-phone')}
+          wechatNickname={wechatProfile?.nickname || '微信用户'}
+          wechatAvatar={wechatProfile?.avatar_url}
+          onBindPhone={() => {
+            setAuthMode('wechat-bind')
+            handleNavigate('auth-phone')
+          }}
           onSkip={() => handleNavigate('main-matchmaker')}
           onBack={() => handleNavigate('auth-welcome')}
         />

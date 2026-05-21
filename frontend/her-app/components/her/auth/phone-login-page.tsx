@@ -4,7 +4,7 @@ import { useState, useRef } from 'react'
 import { ChevronLeft, MessageCircle } from 'lucide-react'
 
 interface PhoneLoginPageProps {
-  onSubmit: (phone: string) => void
+  onSubmit: (phone: string) => void | Promise<void>
   onWeChatLogin: () => void
   onBack: () => void
 }
@@ -46,13 +46,17 @@ export default function PhoneLoginPage({
     return true
   }
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!validatePhone()) return
     setIsLoading(true)
-    setTimeout(() => {
+    setError(null)
+    try {
+      await onSubmit(phone.replace(/\D/g, ''))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '请求失败，请稍后重试')
+    } finally {
       setIsLoading(false)
-      onSubmit(phone.replace(/\D/g, ''))
-    }, 800)
+    }
   }
 
   const isValid = phone.replace(/\D/g, '').length === 11

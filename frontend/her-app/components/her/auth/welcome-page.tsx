@@ -4,8 +4,8 @@ import { useState } from 'react'
 import { Smartphone, MessageCircle, ChevronRight } from 'lucide-react'
 
 interface WelcomePageProps {
-  onOneClickLogin: () => void
-  onWeChatLogin: () => void
+  onOneClickLogin: () => void | Promise<void>
+  onWeChatLogin: () => void | Promise<void>
   onPhoneLogin: () => void
 }
 
@@ -18,18 +18,16 @@ export default function WelcomePage({
 
   const handleOneClickLogin = () => {
     setIsLoading('oneclick')
-    setTimeout(() => {
+    Promise.resolve(onOneClickLogin()).finally(() => {
       setIsLoading(null)
-      onOneClickLogin()
-    }, 800)
+    })
   }
 
   const handleWeChatLogin = () => {
     setIsLoading('wechat')
-    setTimeout(() => {
+    Promise.resolve(onWeChatLogin()).finally(() => {
       setIsLoading(null)
-      onWeChatLogin()
-    }, 800)
+    })
   }
 
   return (
