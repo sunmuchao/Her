@@ -69,7 +69,7 @@ test('wechat login + bind phone success hits real backend', async ({ page }) => 
   await expect(page.getByRole('button', { name: '绑定手机号' })).toBeVisible({ timeout: 15000 })
 
   await page.getByRole('button', { name: '绑定手机号' }).click()
-  await page.getByPlaceholder('请输入手机号').fill('13800138003')
+  await page.getByPlaceholder('请输入手机号').fill('13800138004')
   await page.getByRole('button', { name: '获取验证码' }).click()
   await expect(page.getByText('输入验证码')).toBeVisible()
   await fillVerificationCode(page)
