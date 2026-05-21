@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Apple, MessageCircle } from 'lucide-react'
 import { XiaoyaAvatar } from '@/components/her/ui/xiaoya-avatar'
+import { WechatIcon } from '@/components/her/ui/wechat-icon'
 import { cn } from '@/lib/utils'
 
 interface WelcomePageProps {
@@ -23,7 +23,6 @@ export default function WelcomePage({
   const [isLoading, setIsLoading] = useState<'oneclick' | 'wechat' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [mounted, setMounted] = useState(false)
-  const [agreedToTerms, setAgreedToTerms] = useState(false)
 
   useEffect(() => {
     const timer = setTimeout(() => setMounted(true), 100)
@@ -31,10 +30,6 @@ export default function WelcomePage({
   }, [])
 
   const handleOneClickLogin = async () => {
-    if (!agreedToTerms) {
-      setError('请先同意用户协议和隐私政策')
-      return
-    }
     setIsLoading('oneclick')
     setError(null)
     try {
@@ -47,10 +42,6 @@ export default function WelcomePage({
   }
 
   const handleWeChatLogin = async () => {
-    if (!agreedToTerms) {
-      setError('请先同意用户协议和隐私政策')
-      return
-    }
     setIsLoading('wechat')
     setError(null)
     try {
@@ -102,16 +93,16 @@ export default function WelcomePage({
           </p>
         </div>
 
-        {/* Login section - Soul style integrated */}
+        {/* Login section */}
         <div
           className={cn(
-            'pb-6 transition-all duration-700 ease-out delay-500',
+            'pb-6 space-y-4 transition-all duration-700 ease-out delay-500',
             mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6',
           )}
         >
           {error && (
             <div
-              className="rounded-2xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive animate-fade-in-up mb-4"
+              className="rounded-2xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive animate-fade-in-up"
               role="alert"
             >
               {error}
@@ -119,7 +110,7 @@ export default function WelcomePage({
           )}
 
           {/* Phone number display with change option */}
-          <div className="flex items-center justify-center gap-2 mb-4">
+          <div className="flex items-center justify-center gap-2 mb-2">
             <span className="text-sm text-muted-foreground">本机号码</span>
             <span className="text-base font-medium text-foreground tracking-wider">
               {maskedPhoneNumber}
@@ -138,15 +129,15 @@ export default function WelcomePage({
             onClick={handleOneClickLogin}
             disabled={isLoading !== null}
             className={cn(
-              'w-full py-4 bg-foreground rounded-full text-background font-medium transition-all',
+              'w-full py-4 bg-primary rounded-2xl text-primary-foreground font-medium transition-all',
               'active:scale-[0.98] disabled:opacity-70',
-              'focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-offset-2',
+              'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
             )}
             aria-label="一键登录"
           >
             {isLoading === 'oneclick' ? (
               <div className="flex items-center justify-center gap-3">
-                <div className="w-5 h-5 border-2 border-background/30 border-t-background rounded-full animate-spin" />
+                <div className="w-5 h-5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
                 <span>正在验证...</span>
               </div>
             ) : (
@@ -154,81 +145,45 @@ export default function WelcomePage({
             )}
           </button>
 
-          {/* Alternative login methods - de-emphasized icons */}
-          <div className="flex items-center justify-center gap-6 mt-6">
-            <button
-              onClick={handleWeChatLogin}
-              disabled={isLoading !== null}
-              className={cn(
-                'w-12 h-12 rounded-full border border-border/50 flex items-center justify-center transition-all',
-                'hover:bg-secondary/50 active:scale-95 disabled:opacity-50',
-                'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
-              )}
-              aria-label="微信登录"
-            >
-              {isLoading === 'wechat' ? (
-                <div className="w-5 h-5 border-2 border-muted-foreground/30 border-t-muted-foreground rounded-full animate-spin" />
-              ) : (
-                <MessageCircle className="w-6 h-6 text-muted-foreground" />
-              )}
-            </button>
-            <button
-              disabled={isLoading !== null}
-              className={cn(
-                'w-12 h-12 rounded-full border border-border/50 flex items-center justify-center transition-all',
-                'hover:bg-secondary/50 active:scale-95 disabled:opacity-50',
-                'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
-              )}
-              aria-label="Apple登录"
-            >
-              <Apple className="w-6 h-6 text-muted-foreground" />
-            </button>
-          </div>
+          {/* WeChat login - secondary action */}
+          <button
+            onClick={handleWeChatLogin}
+            disabled={isLoading !== null}
+            className="w-full py-3 flex items-center justify-center gap-2 text-sm font-medium text-muted-foreground"
+          >
+            {isLoading === 'wechat' ? (
+              <div className="w-4 h-4 border-2 border-muted-foreground/30 border-t-muted-foreground rounded-full animate-spin" />
+            ) : (
+              <WechatIcon size={16} />
+            )}
+            使用微信登录
+          </button>
 
           {/* Account recovery link */}
           {onAccountRecovery && (
             <button
               onClick={onAccountRecovery}
               disabled={isLoading !== null}
-              className="w-full mt-4 text-sm text-muted-foreground hover:text-foreground transition-colors"
+              className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
               无法登录？找回账号
             </button>
           )}
         </div>
 
-        {/* Terms agreement - Soul style with checkbox */}
+        {/* Footer - consistent with other pages */}
         <div
           className={cn(
             'pb-8 safe-area-bottom transition-all duration-700 ease-out delay-700',
             mounted ? 'opacity-100' : 'opacity-0',
           )}
         >
-          <label className="flex items-start justify-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={agreedToTerms}
-              onChange={(e) => setAgreedToTerms(e.target.checked)}
-              className="mt-0.5 w-4 h-4 rounded border-border text-primary focus:ring-primary focus:ring-offset-0"
-            />
-            <span className="text-xs text-muted-foreground leading-relaxed">
-              登录注册即表示同意
-              <button
-                className="underline underline-offset-2 mx-0.5 hover:text-foreground transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded"
-                aria-label="查看用户协议"
-              >
-                用户协议
-              </button>
-              、
-              <button
-                className="underline underline-offset-2 mx-0.5 hover:text-foreground transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded"
-                aria-label="查看隐私政策"
-              >
-                隐私政策
-              </button>
-              及移动统一认证服务条款
-            </span>
-          </label>
+          <p className="text-center text-xs text-muted-foreground leading-relaxed">
+            登录即表示同意
+            <button className="underline underline-offset-2 mx-1">用户协议</button>
+            和
+            <button className="underline underline-offset-2 mx-1">隐私政策</button>
+          </p>
         </div>
       </div>
     </div>
