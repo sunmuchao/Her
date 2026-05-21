@@ -9,13 +9,29 @@ from observability import audit_event
 from recommendation_system import get_subscription  # type: ignore[import-untyped]
 from matchmaking_system import get_match_case, get_pool_member  # type: ignore[import-untyped]
 
-from .identity import ActorPrincipal, GatewayPermissionError, get_current_actor
+from .identity import ROLE_END_USER, ActorPrincipal, GatewayPermissionError, get_current_actor
 from .role_sets import STAFF_OVERRIDE_ROLES
 
 
 class GatewayAccessMixin:
     def _current_actor(self, environ: dict[str, Any]) -> ActorPrincipal | None:
         return get_current_actor(environ)
+
+    def _is_auth_session_end_user(self, actor: ActorPrincipal | None) -> bool:
+        return (
+            actor is not None
+            and actor.auth_source == "auth_session"
+            and actor.has_any_role(frozenset({ROLE_END_USER}))
+        )
+
+    def _auth_session_requester_id(self, user_id: str) -> int:
+        from chat_system.auth_accounts import get_onboarding_profile  # type: ignore[import-untyped]
+
+        out = self._with_chat(get_onboarding_profile, str(user_id))
+        profile_id = out.get("profile_id") or out.get("requester_id")
+        if profile_id is None:
+            raise GatewayPermissionError("请先完成资料填写后再使用发现与推荐")
+        return int(profile_id)
 
     def _audit_permission(
         self,
@@ -187,6 +203,15 @@ class GatewayAccessMixin:
     ) -> str:
         owner_text = str(owner_id or "").strip()
         actor = self._current_actor(environ)
+        if self._is_auth_session_end_user(actor) and field_name == "requester_id":
+            bound = self._auth_session_requester_id(str(actor.actor_id))
+            if owner_text:
+                try:
+                    if int(owner_text) != bound:
+                        raise GatewayPermissionError(f"{field_name} does not match current actor")
+                except (TypeError, ValueError) as exc:
+                    raise GatewayPermissionError(f"{field_name} does not match current actor") from exc
+            return str(bound)
         if actor is None or not owner_text or actor.has_any_role(allow_override_roles):
             if (
                 actor is not None
@@ -224,6 +249,27 @@ class GatewayAccessMixin:
         field_name: str,
         allow_override_roles: frozenset[str] = STAFF_OVERRIDE_ROLES,
     ) -> int:
+        actor = self._current_actor(environ)
+        if self._is_auth_session_end_user(actor) and field_name == "requester_id":
+            bound = self._auth_session_requester_id(str(actor.actor_id))
+            supplied_text = str(supplied_id or "").strip()
+            if supplied_text:
+                try:
+                    if int(supplied_text) != bound:
+                        self._audit_permission(
+                            environ,
+                            action="gateway.owner_binding",
+                            resource_type="actor_binding",
+                            resource_id=field_name,
+                            outcome="denied",
+                            reason=f"{field_name} does not match current actor",
+                            impersonated_owner_id=supplied_text,
+                        )
+                        raise GatewayPermissionError(f"{field_name} does not match current actor")
+                except (TypeError, ValueError) as exc:
+                    raise GatewayPermissionError(f"{field_name} must be an integer") from exc
+            return bound
+
         value = self._resolve_actor_bound_id(
             environ,
             supplied_id,
