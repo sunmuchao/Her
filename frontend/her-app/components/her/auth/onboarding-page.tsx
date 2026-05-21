@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import { ChevronLeft, ChevronRight, User, Heart, Camera, Sparkles, Plus, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, User, Heart, Camera, Plus, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { submitOnboarding } from '@/lib/auth/auth-api'
 import { applyLoginPayload } from '@/lib/auth/session'
@@ -13,7 +13,7 @@ interface OnboardingPageProps {
   onBack: () => void
 }
 
-type Step = 'basics' | 'details' | 'photos' | 'optional'
+type Step = 'basics' | 'details' | 'photos'
 
 interface ProfileData {
   // Required
@@ -26,13 +26,6 @@ interface ProfileData {
   relationshipGoal: string
   marriageStatus: string
   hasChildren: string
-  // Optional
-  height: string
-  occupation: string
-  education: string
-  acceptLongDistance: string
-  meetingPace: string
-  bio: string
 }
 
 export default function OnboardingPage({ 
@@ -53,15 +46,9 @@ export default function OnboardingPage({
     relationshipGoal: '',
     marriageStatus: '',
     hasChildren: '',
-    height: '',
-    occupation: '',
-    education: '',
-    acceptLongDistance: '',
-    meetingPace: '',
-    bio: '',
   })
 
-  const steps: Step[] = ['basics', 'details', 'photos', 'optional']
+  const steps: Step[] = ['basics', 'details', 'photos']
   const currentIndex = steps.indexOf(currentStep)
   const progress = ((currentIndex + 1) / steps.length) * 100
 
@@ -83,15 +70,9 @@ export default function OnboardingPage({
           relationship_goal: profile.relationshipGoal,
           marriage_status: profile.marriageStatus,
           has_children: profile.hasChildren,
-          height: profile.height,
-          occupation: profile.occupation,
-          education: profile.education,
-          bio: profile.bio,
         },
         preference: {
           relationship_goal: profile.relationshipGoal,
-          accept_long_distance: profile.acceptLongDistance,
-          meeting_pace: profile.meetingPace,
         },
         photos: profile.photos,
         mark_completed: true,
@@ -124,43 +105,6 @@ export default function OnboardingPage({
     }
   }
 
-  const handleSkipOptional = async () => {
-    setIsSubmitting(true)
-    try {
-      const result = await submitOnboarding({
-        basic_info: {
-          name: profile.name,
-          birthday: profile.birthday,
-          gender: profile.gender,
-          sexual_orientation: profile.sexualOrientation,
-          location: profile.currentCity,
-          relationship_goal: profile.relationshipGoal,
-          marriage_status: profile.marriageStatus,
-          has_children: profile.hasChildren,
-        },
-        photos: profile.photos,
-        mark_completed: true,
-      })
-      applyLoginPayload({
-        user: {
-          user_id: result.user?.user_id,
-          onboarding_status: result.user?.onboarding_status,
-          profile_id: result.profile_id,
-          requester_id: result.requester_id,
-        },
-        onboarding: {
-          profile_id: result.profile_id,
-        },
-      })
-      notifySuccess('资料已保存')
-      onComplete()
-    } catch (error) {
-      notifyError(error, '资料保存失败，请重试')
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (files) {
@@ -189,8 +133,6 @@ export default function OnboardingPage({
         return profile.currentCity && profile.relationshipGoal && profile.marriageStatus && profile.hasChildren
       case 'photos':
         return profile.photos.length >= 1
-      case 'optional':
-        return true
       default:
         return false
     }
@@ -200,7 +142,6 @@ export default function OnboardingPage({
     basics: { icon: User, title: '基本信息', subtitle: '让我先认识你' },
     details: { icon: Heart, title: '更多信息', subtitle: '帮助我们更好地匹配' },
     photos: { icon: Camera, title: '上传照片', subtitle: '至少上传 1 张照片' },
-    optional: { icon: Sparkles, title: '补充信息', subtitle: '选填，可以跳过' },
   }
 
   const config = stepConfig[currentStep]
@@ -516,162 +457,10 @@ export default function OnboardingPage({
               </p>
             </div>
           )}
-
-          {currentStep === 'optional' && (
-            <div className="space-y-5">
-              {/* Height */}
-              <div>
-                <label htmlFor="height" className="block text-sm font-medium mb-2 text-secondary-foreground">
-                  身高
-                </label>
-                <input
-                  id="height"
-                  type="text"
-                  value={profile.height}
-                  onChange={(e) => setProfile({ ...profile, height: e.target.value })}
-                  placeholder="例如：170cm"
-                  className="w-full px-4 py-3.5 rounded-xl text-base outline-none transition-all bg-input border-2 border-border text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary"
-                />
-              </div>
-
-              {/* Occupation */}
-              <div>
-                <label htmlFor="occupation" className="block text-sm font-medium mb-2 text-secondary-foreground">
-                  职业
-                </label>
-                <input
-                  id="occupation"
-                  type="text"
-                  value={profile.occupation}
-                  onChange={(e) => setProfile({ ...profile, occupation: e.target.value })}
-                  placeholder="你的职业"
-                  className="w-full px-4 py-3.5 rounded-xl text-base outline-none transition-all bg-input border-2 border-border text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary"
-                />
-              </div>
-
-              {/* Education */}
-              <fieldset>
-                <legend className="block text-sm font-medium mb-2 text-secondary-foreground">
-                  学历
-                </legend>
-                <div className="flex flex-wrap gap-2">
-                  {[
-                    { value: 'high_school', label: '高中' },
-                    { value: 'college', label: '大专' },
-                    { value: 'bachelor', label: '本科' },
-                    { value: 'master', label: '硕士' },
-                    { value: 'phd', label: '博士' },
-                  ].map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => setProfile({ ...profile, education: option.value })}
-                      className={cn(
-                        'px-4 py-2.5 rounded-xl text-sm font-medium transition-all border-2 focus-ring',
-                        profile.education === option.value 
-                          ? 'bg-rose-soft border-rose text-primary'
-                          : 'bg-input border-border text-muted-foreground hover:border-border/80'
-                      )}
-                      aria-pressed={profile.education === option.value}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
-              </fieldset>
-
-              {/* Accept Long Distance */}
-              <fieldset>
-                <legend className="block text-sm font-medium mb-2 text-secondary-foreground">
-                  是否接受异地
-                </legend>
-                <div className="flex gap-3">
-                  {[
-                    { value: 'yes', label: '接受' },
-                    { value: 'no', label: '不接受' },
-                    { value: 'depends', label: '看情况' },
-                  ].map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => setProfile({ ...profile, acceptLongDistance: option.value })}
-                      className={cn(
-                        'flex-1 py-3 rounded-xl text-sm font-medium transition-all border-2 focus-ring',
-                        profile.acceptLongDistance === option.value 
-                          ? 'bg-rose-soft border-rose text-primary'
-                          : 'bg-input border-border text-muted-foreground hover:border-border/80'
-                      )}
-                      aria-pressed={profile.acceptLongDistance === option.value}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
-              </fieldset>
-
-              {/* Meeting Pace */}
-              <fieldset>
-                <legend className="block text-sm font-medium mb-2 text-secondary-foreground">
-                  是否愿意见面节奏快一点
-                </legend>
-                <div className="flex gap-3">
-                  {[
-                    { value: 'fast', label: '愿意' },
-                    { value: 'slow', label: '慢慢来' },
-                  ].map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => setProfile({ ...profile, meetingPace: option.value })}
-                      className={cn(
-                        'flex-1 py-3 rounded-xl text-sm font-medium transition-all border-2 focus-ring',
-                        profile.meetingPace === option.value 
-                          ? 'bg-rose-soft border-rose text-primary'
-                          : 'bg-input border-border text-muted-foreground hover:border-border/80'
-                      )}
-                      aria-pressed={profile.meetingPace === option.value}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
-              </fieldset>
-
-              {/* Bio */}
-              <div>
-                <label htmlFor="bio" className="block text-sm font-medium mb-2 text-secondary-foreground">
-                  个人一句话介绍
-                </label>
-                <textarea
-                  id="bio"
-                  value={profile.bio}
-                  onChange={(e) => setProfile({ ...profile, bio: e.target.value })}
-                  placeholder="用一句话介绍自己"
-                  rows={2}
-                  maxLength={50}
-                  className="w-full px-4 py-3.5 rounded-xl text-base outline-none transition-all bg-input border-2 border-border text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary resize-none"
-                />
-                <p className="text-xs text-muted-foreground mt-1 text-right">
-                  {profile.bio.length}/50
-                </p>
-              </div>
-            </div>
-          )}
         </div>
 
         {/* CTA Buttons */}
-        <div className="py-6 safe-area-bottom space-y-3">
-          {currentStep === 'optional' && (
-            <Button
-              variant="outline"
-              onClick={() => void handleSkipOptional()}
-              disabled={isSubmitting}
-              className="w-full h-12 rounded-2xl text-base"
-              size="lg"
-            >
-              跳过，稍后再填
-            </Button>
-          )}
+        <div className="py-6 safe-area-bottom">
           <Button
             onClick={() => void handleNext()}
             disabled={!canProceed() || isSubmitting}
