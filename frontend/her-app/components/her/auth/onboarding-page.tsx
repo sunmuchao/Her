@@ -449,7 +449,7 @@ export default function OnboardingPage({
                 />
               </div>
 
-              {/* Gender - 3 options */}
+              {/* Gender - 2 options */}
               <fieldset>
                 <legend className="block text-sm font-medium mb-3 text-foreground">
                   性别
@@ -458,7 +458,6 @@ export default function OnboardingPage({
                   {[
                     { value: 'female', label: '女' },
                     { value: 'male', label: '男' },
-                    { value: 'other', label: '其他' },
                   ].map((option) => (
                     <button
                       key={option.value}
@@ -488,7 +487,6 @@ export default function OnboardingPage({
                     { value: 'like_male', label: '喜欢男生' },
                     { value: 'like_female', label: '喜欢女生' },
                     { value: 'both', label: '都可以' },
-                    { value: 'undecided', label: '还不想细分' },
                   ].map((option) => (
                     <button
                       key={option.value}
