@@ -3,6 +3,8 @@ import fs from 'node:fs/promises'
 
 test.setTimeout(60000)
 
+const bindPhone = process.env.HER_E2E_BIND_PHONE || '13800138004'
+
 async function launchToWelcome(page: import('@playwright/test').Page) {
   await page.goto('http://127.0.0.1:3000')
   await page.getByRole('button', { name: '开始遇见' }).click()
@@ -69,7 +71,7 @@ test('wechat login + bind phone success hits real backend', async ({ page }) => 
   await expect(page.getByRole('button', { name: '绑定手机号' })).toBeVisible({ timeout: 15000 })
 
   await page.getByRole('button', { name: '绑定手机号' }).click()
-  await page.getByPlaceholder('请输入手机号').fill('13800138004')
+  await page.getByPlaceholder('请输入手机号').fill(bindPhone)
   await page.getByRole('button', { name: '获取验证码' }).click()
   await expect(page.getByText('输入验证码')).toBeVisible()
   await fillVerificationCode(page)

@@ -28,6 +28,40 @@ pnpm install
 pnpm dev
 ```
 
+## 联调回归
+
+当前仓库已经内置了真实前端联调用例：
+
+- 手机验证码登录
+- 微信登录 + 绑定手机号
+- 本机号码一键登录
+- 发现页会话 / 推荐动作
+- 关系页 / 聊天发消息
+
+先启动前端：
+
+```bash
+pnpm dev --hostname 127.0.0.1 --port 3000
+```
+
+如果你要直接跑一套可重复的 stub 联调回归：
+
+```bash
+pnpm e2e:her:stub
+```
+
+这个命令会：
+
+- 自动起一个带 fresh 微信 stub 身份的 gateway
+- 自动生成一个新的绑定手机号用于微信绑号测试
+- 运行 `tests/e2e/her-flow.spec.ts`
+
+如果你只想在当前环境直接跑 Playwright：
+
+```bash
+pnpm e2e:her
+```
+
 ## 当前状态
 
 - 前端页面入口：`app/page.tsx`

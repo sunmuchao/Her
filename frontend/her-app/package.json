@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "e2e:her": "playwright test tests/e2e/her-flow.spec.ts --reporter=line",
+    "e2e:her:stub": "bash ./scripts/run-her-e2e.sh"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
