@@ -1,38 +1,39 @@
 'use client'
 
-import { useState } from 'react'
-import { ChevronLeft, ChevronRight, Calendar, Heart, Tag, Sliders } from 'lucide-react'
+import { useState, useRef } from 'react'
+import { ChevronLeft, ChevronRight, User, Heart, Camera, Sparkles, Plus, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { submitOnboarding } from '@/lib/auth/auth-api'
 import { applyLoginPayload } from '@/lib/auth/session'
 import { notifyError, notifySuccess } from '@/lib/notify'
 import { Button } from '@/components/ui/button'
-import { CustomRangeSlider } from '@/components/her/ui/custom-range-slider'
 
 interface OnboardingPageProps {
   onComplete: () => void
   onBack: () => void
 }
 
-type Step = 'basics' | 'goals' | 'tags' | 'preferences'
+type Step = 'basics' | 'details' | 'photos' | 'optional'
 
 interface ProfileData {
+  // Required
   name: string
-  birthday: string
   gender: string
-  location: string
+  sexualOrientation: string
+  birthday: string
+  currentCity: string
+  photos: string[]
   relationshipGoal: string
-  tags: string[]
-  ageRange: [number, number]
-  locationPref: string
+  marriageStatus: string
+  hasChildren: string
+  // Optional
+  height: string
+  occupation: string
+  education: string
+  acceptLongDistance: string
+  meetingPace: string
+  bio: string
 }
-
-const AVAILABLE_TAGS = [
-  '爱读书', '热爱旅行', '美食家', '健身达人', '电影迷', 
-  '音乐爱好者', '猫奴', '狗派', '咖啡控', '喜欢户外',
-  '追剧', '摄影', '瑜伽', '烘焙', '画画',
-  '独立', '温柔', '幽默', '有上进心', '善于倾听',
-]
 
 export default function OnboardingPage({ 
   onComplete,
@@ -40,18 +41,27 @@ export default function OnboardingPage({
 }: OnboardingPageProps) {
   const [currentStep, setCurrentStep] = useState<Step>('basics')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  
   const [profile, setProfile] = useState<ProfileData>({
     name: '',
-    birthday: '',
     gender: '',
-    location: '',
+    sexualOrientation: '',
+    birthday: '',
+    currentCity: '',
+    photos: [],
     relationshipGoal: '',
-    tags: [],
-    ageRange: [25, 35],
-    locationPref: '',
+    marriageStatus: '',
+    hasChildren: '',
+    height: '',
+    occupation: '',
+    education: '',
+    acceptLongDistance: '',
+    meetingPace: '',
+    bio: '',
   })
 
-  const steps: Step[] = ['basics', 'goals', 'tags', 'preferences']
+  const steps: Step[] = ['basics', 'details', 'photos', 'optional']
   const currentIndex = steps.indexOf(currentStep)
   const progress = ((currentIndex + 1) / steps.length) * 100
 
@@ -68,15 +78,22 @@ export default function OnboardingPage({
           name: profile.name,
           birthday: profile.birthday,
           gender: profile.gender,
-          location: profile.location,
+          sexual_orientation: profile.sexualOrientation,
+          location: profile.currentCity,
           relationship_goal: profile.relationshipGoal,
+          marriage_status: profile.marriageStatus,
+          has_children: profile.hasChildren,
+          height: profile.height,
+          occupation: profile.occupation,
+          education: profile.education,
+          bio: profile.bio,
         },
         preference: {
           relationship_goal: profile.relationshipGoal,
-          tags: profile.tags,
-          age_range: profile.ageRange,
-          location_pref: profile.locationPref,
+          accept_long_distance: profile.acceptLongDistance,
+          meeting_pace: profile.meetingPace,
         },
+        photos: profile.photos,
         mark_completed: true,
       })
       applyLoginPayload({
@@ -90,7 +107,7 @@ export default function OnboardingPage({
           profile_id: result.profile_id,
         },
       })
-      notifySuccess('资料已保存到用户画像库')
+      notifySuccess('资料已保存')
       onComplete()
     } catch (error) {
       notifyError(error, '资料保存失败，请重试')
@@ -107,37 +124,83 @@ export default function OnboardingPage({
     }
   }
 
+  const handleSkipOptional = async () => {
+    setIsSubmitting(true)
+    try {
+      const result = await submitOnboarding({
+        basic_info: {
+          name: profile.name,
+          birthday: profile.birthday,
+          gender: profile.gender,
+          sexual_orientation: profile.sexualOrientation,
+          location: profile.currentCity,
+          relationship_goal: profile.relationshipGoal,
+          marriage_status: profile.marriageStatus,
+          has_children: profile.hasChildren,
+        },
+        photos: profile.photos,
+        mark_completed: true,
+      })
+      applyLoginPayload({
+        user: {
+          user_id: result.user?.user_id,
+          onboarding_status: result.user?.onboarding_status,
+          profile_id: result.profile_id,
+          requester_id: result.requester_id,
+        },
+        onboarding: {
+          profile_id: result.profile_id,
+        },
+      })
+      notifySuccess('资料已保存')
+      onComplete()
+    } catch (error) {
+      notifyError(error, '资料保存失败，请重试')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (files) {
+      // In real app, upload to server and get URLs
+      // For now, create object URLs as placeholders
+      const newPhotos = Array.from(files).map(file => URL.createObjectURL(file))
+      setProfile(prev => ({
+        ...prev,
+        photos: [...prev.photos, ...newPhotos].slice(0, 6) // Max 6 photos
+      }))
+    }
+  }
+
+  const removePhoto = (index: number) => {
+    setProfile(prev => ({
+      ...prev,
+      photos: prev.photos.filter((_, i) => i !== index)
+    }))
+  }
+
   const canProceed = () => {
     switch (currentStep) {
       case 'basics':
-        return profile.name && profile.birthday && profile.gender && profile.location
-      case 'goals':
-        return profile.relationshipGoal
-      case 'tags':
-        return profile.tags.length >= 3
-      case 'preferences':
+        return profile.name && profile.gender && profile.sexualOrientation && profile.birthday
+      case 'details':
+        return profile.currentCity && profile.relationshipGoal && profile.marriageStatus && profile.hasChildren
+      case 'photos':
+        return profile.photos.length >= 1
+      case 'optional':
         return true
       default:
         return false
     }
   }
 
-  const toggleTag = (tag: string) => {
-    setProfile(prev => ({
-      ...prev,
-      tags: prev.tags.includes(tag)
-        ? prev.tags.filter(t => t !== tag)
-        : prev.tags.length < 8
-          ? [...prev.tags, tag]
-          : prev.tags
-    }))
-  }
-
   const stepConfig = {
-    basics: { icon: Calendar, title: '基本信息', subtitle: '让我先认识你' },
-    goals: { icon: Heart, title: '恋爱期待', subtitle: '你在寻找什么样的关系' },
-    tags: { icon: Tag, title: '个人标签', subtitle: '让别人更快了解你' },
-    preferences: { icon: Sliders, title: '偏好设置', subtitle: '告诉我你期待的 TA' },
+    basics: { icon: User, title: '基本信息', subtitle: '让我先认识你' },
+    details: { icon: Heart, title: '更多信息', subtitle: '帮助我们更好地匹配' },
+    photos: { icon: Camera, title: '上传照片', subtitle: '至少上传 1 张照片' },
+    optional: { icon: Sparkles, title: '补充信息', subtitle: '选填，可以跳过' },
   }
 
   const config = stepConfig[currentStep]
@@ -183,10 +246,10 @@ export default function OnboardingPage({
       </header>
 
       {/* Content */}
-      <div className="relative z-10 flex-1 flex flex-col px-8 pt-4">
+      <div className="relative z-10 flex-1 flex flex-col px-8 pt-4 overflow-y-auto">
         
         {/* Step header */}
-        <div className="flex items-center gap-4 mb-8 animate-fade-in-up">
+        <div className="flex items-center gap-4 mb-6 animate-fade-in-up">
           <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-gradient-to-br from-rose-soft to-gold-soft shadow-sm">
             <StepIcon className="w-6 h-6 text-primary" aria-hidden="true" />
           </div>
@@ -207,7 +270,7 @@ export default function OnboardingPage({
               {/* Name */}
               <div>
                 <label htmlFor="name" className="block text-sm font-medium mb-2 text-secondary-foreground">
-                  你的名字
+                  姓名 <span className="text-rose">*</span>
                 </label>
                 <input
                   id="name"
@@ -219,39 +282,23 @@ export default function OnboardingPage({
                 />
               </div>
 
-              {/* Birthday */}
-              <div>
-                <label htmlFor="birthday" className="block text-sm font-medium mb-2 text-secondary-foreground">
-                  生日
-                </label>
-                <input
-                  id="birthday"
-                  type="date"
-                  value={profile.birthday}
-                  onChange={(e) => setProfile({ ...profile, birthday: e.target.value })}
-                  className={cn(
-                    'w-full px-4 py-3.5 rounded-xl text-base outline-none transition-all bg-input border-2 border-border focus:border-primary focus:ring-1 focus:ring-primary',
-                    profile.birthday ? 'text-foreground' : 'text-muted-foreground'
-                  )}
-                />
-              </div>
-
               {/* Gender */}
               <fieldset>
                 <legend className="block text-sm font-medium mb-2 text-secondary-foreground">
-                  性别
+                  性别 <span className="text-rose">*</span>
                 </legend>
                 <div className="flex gap-3">
                   {[
-                    { value: 'female', label: '女生' },
-                    { value: 'male', label: '男生' },
+                    { value: 'female', label: '女' },
+                    { value: 'male', label: '男' },
+                    { value: 'other', label: '其他' },
                   ].map((option) => (
                     <button
                       key={option.value}
                       type="button"
                       onClick={() => setProfile({ ...profile, gender: option.value })}
                       className={cn(
-                        'flex-1 py-3.5 rounded-xl text-sm font-medium transition-all border-2 focus-ring',
+                        'flex-1 py-3 rounded-xl text-sm font-medium transition-all border-2 focus-ring',
                         profile.gender === option.value 
                           ? 'bg-rose-soft border-rose text-primary'
                           : 'bg-input border-border text-muted-foreground hover:border-border/80'
@@ -264,127 +311,151 @@ export default function OnboardingPage({
                 </div>
               </fieldset>
 
-              {/* Location */}
-              <div>
-                <label htmlFor="location" className="block text-sm font-medium mb-2 text-secondary-foreground">
-                  所在城市
-                </label>
-                <input
-                  id="location"
-                  type="text"
-                  value={profile.location}
-                  onChange={(e) => setProfile({ ...profile, location: e.target.value })}
-                  placeholder="你现在住在哪里"
-                  className="w-full px-4 py-3.5 rounded-xl text-base outline-none transition-all bg-input border-2 border-border text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary"
-                />
-              </div>
-            </div>
-          )}
-
-          {currentStep === 'goals' && (
-            <fieldset className="space-y-3">
-              <legend className="sr-only">选择你的恋爱期待</legend>
-              {[
-                { value: 'serious', label: '认真寻找长期伴侣', desc: '想找一个能一起走下去的人' },
-                { value: 'explore', label: '慢慢了解，随缘发展', desc: '先从朋友开始，看看感觉' },
-                { value: 'marriage', label: '以结婚为目标', desc: '目标明确，希望尽快步入婚姻' },
-              ].map((option, index) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => setProfile({ ...profile, relationshipGoal: option.value })}
-                  className={cn(
-                    'w-full p-5 rounded-2xl text-left transition-all border-2 focus-ring animate-fade-in-up',
-                    profile.relationshipGoal === option.value 
-                      ? 'bg-gradient-to-br from-rose-soft to-gold-soft/50 border-rose shadow-sm'
-                      : 'bg-card border-border hover:border-border/80'
-                  )}
-                  style={{ animationDelay: `${index * 50}ms` }}
-                  aria-pressed={profile.relationshipGoal === option.value}
-                >
-                  <div className={cn(
-                    'font-medium mb-1',
-                    profile.relationshipGoal === option.value ? 'text-primary' : 'text-foreground'
-                  )}>
-                    {option.label}
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    {option.desc}
-                  </div>
-                </button>
-              ))}
-            </fieldset>
-          )}
-
-          {currentStep === 'tags' && (
-            <div>
-              <p className="text-sm mb-5 text-muted-foreground">
-                选择 3-8 个最能代表你的标签
-                <span className="ml-2 text-rose font-medium">
-                  ({profile.tags.length}/8)
-                </span>
-              </p>
-              
-              <div className="flex flex-wrap gap-2.5" role="group" aria-label="个人标签选择">
-                {AVAILABLE_TAGS.map((tag, index) => (
-                  <button
-                    key={tag}
-                    type="button"
-                    onClick={() => toggleTag(tag)}
-                    className={cn(
-                      'px-4 py-2.5 rounded-full text-sm font-medium transition-all border animate-scale-in focus-ring',
-                      profile.tags.includes(tag) 
-                        ? 'bg-primary text-primary-foreground border-transparent shadow-md shadow-primary/20'
-                        : 'bg-card border-border text-secondary-foreground hover:border-primary/30'
-                    )}
-                    style={{ animationDelay: `${index * 20}ms` }}
-                    aria-pressed={profile.tags.includes(tag)}
-                  >
-                    {tag}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {currentStep === 'preferences' && (
-            <div className="space-y-8">
-              {/* Age range with custom slider */}
-              <div>
-                <label className="block text-sm font-medium mb-4 text-secondary-foreground">
-                  期望 TA 的年龄范围
-                </label>
-                <CustomRangeSlider
-                  min={18}
-                  max={60}
-                  value={profile.ageRange}
-                  onChange={(value) => setProfile({ ...profile, ageRange: value })}
-                  formatLabel={(v) => `${v}岁`}
-                />
-              </div>
-
-              {/* Location preference */}
+              {/* Sexual Orientation */}
               <fieldset>
-                <legend className="block text-sm font-medium mb-3 text-secondary-foreground">
-                  期望 TA 的位置
+                <legend className="block text-sm font-medium mb-2 text-secondary-foreground">
+                  性取向 <span className="text-rose">*</span>
                 </legend>
-                <div className="space-y-2">
+                <div className="flex flex-wrap gap-2">
                   {[
-                    { value: 'same_city', label: '同城' },
-                    { value: 'nearby', label: '附近城市也可以' },
-                    { value: 'any', label: '不限制' },
+                    { value: 'straight', label: '异性恋' },
+                    { value: 'gay', label: '同性恋' },
+                    { value: 'bisexual', label: '双性恋' },
+                    { value: 'other', label: '其他' },
                   ].map((option) => (
                     <button
                       key={option.value}
                       type="button"
-                      onClick={() => setProfile({ ...profile, locationPref: option.value })}
+                      onClick={() => setProfile({ ...profile, sexualOrientation: option.value })}
                       className={cn(
-                        'w-full py-3.5 px-4 rounded-xl text-sm font-medium text-left transition-all border-2 focus-ring',
-                        profile.locationPref === option.value 
+                        'px-4 py-2.5 rounded-xl text-sm font-medium transition-all border-2 focus-ring',
+                        profile.sexualOrientation === option.value 
                           ? 'bg-rose-soft border-rose text-primary'
                           : 'bg-input border-border text-muted-foreground hover:border-border/80'
                       )}
-                      aria-pressed={profile.locationPref === option.value}
+                      aria-pressed={profile.sexualOrientation === option.value}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+
+              {/* Birthday */}
+              <div>
+                <label htmlFor="birthday" className="block text-sm font-medium mb-2 text-secondary-foreground">
+                  出生年月日 <span className="text-rose">*</span>
+                </label>
+                <input
+                  id="birthday"
+                  type="date"
+                  value={profile.birthday}
+                  onChange={(e) => setProfile({ ...profile, birthday: e.target.value })}
+                  className={cn(
+                    'w-full px-4 py-3.5 rounded-xl text-base outline-none transition-all bg-input border-2 border-border focus:border-primary focus:ring-1 focus:ring-primary',
+                    profile.birthday ? 'text-foreground' : 'text-muted-foreground'
+                  )}
+                />
+              </div>
+            </div>
+          )}
+
+          {currentStep === 'details' && (
+            <div className="space-y-5">
+              {/* Current City */}
+              <div>
+                <label htmlFor="currentCity" className="block text-sm font-medium mb-2 text-secondary-foreground">
+                  当前常驻城市 <span className="text-rose">*</span>
+                </label>
+                <input
+                  id="currentCity"
+                  type="text"
+                  value={profile.currentCity}
+                  onChange={(e) => setProfile({ ...profile, currentCity: e.target.value })}
+                  placeholder="你现在住在哪里"
+                  className="w-full px-4 py-3.5 rounded-xl text-base outline-none transition-all bg-input border-2 border-border text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary"
+                />
+              </div>
+
+              {/* Relationship Goal */}
+              <fieldset>
+                <legend className="block text-sm font-medium mb-2 text-secondary-foreground">
+                  核心期望 <span className="text-rose">*</span>
+                </legend>
+                <div className="space-y-2">
+                  {[
+                    { value: 'marriage', label: '奔着结婚去' },
+                    { value: 'dating', label: '先谈恋爱看' },
+                    { value: 'friends', label: '找搭子 / 扩列' },
+                  ].map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setProfile({ ...profile, relationshipGoal: option.value })}
+                      className={cn(
+                        'w-full py-3.5 px-4 rounded-xl text-sm font-medium text-left transition-all border-2 focus-ring',
+                        profile.relationshipGoal === option.value 
+                          ? 'bg-rose-soft border-rose text-primary'
+                          : 'bg-input border-border text-muted-foreground hover:border-border/80'
+                      )}
+                      aria-pressed={profile.relationshipGoal === option.value}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+
+              {/* Marriage Status */}
+              <fieldset>
+                <legend className="block text-sm font-medium mb-2 text-secondary-foreground">
+                  婚况 <span className="text-rose">*</span>
+                </legend>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { value: 'never_married', label: '未婚' },
+                    { value: 'divorced', label: '离异' },
+                    { value: 'widowed', label: '丧偶' },
+                  ].map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setProfile({ ...profile, marriageStatus: option.value })}
+                      className={cn(
+                        'px-4 py-2.5 rounded-xl text-sm font-medium transition-all border-2 focus-ring',
+                        profile.marriageStatus === option.value 
+                          ? 'bg-rose-soft border-rose text-primary'
+                          : 'bg-input border-border text-muted-foreground hover:border-border/80'
+                      )}
+                      aria-pressed={profile.marriageStatus === option.value}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+
+              {/* Has Children */}
+              <fieldset>
+                <legend className="block text-sm font-medium mb-2 text-secondary-foreground">
+                  是否有孩子 <span className="text-rose">*</span>
+                </legend>
+                <div className="flex gap-3">
+                  {[
+                    { value: 'no', label: '没有' },
+                    { value: 'yes', label: '有' },
+                  ].map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setProfile({ ...profile, hasChildren: option.value })}
+                      className={cn(
+                        'flex-1 py-3 rounded-xl text-sm font-medium transition-all border-2 focus-ring',
+                        profile.hasChildren === option.value 
+                          ? 'bg-rose-soft border-rose text-primary'
+                          : 'bg-input border-border text-muted-foreground hover:border-border/80'
+                      )}
+                      aria-pressed={profile.hasChildren === option.value}
                     >
                       {option.label}
                     </button>
@@ -393,10 +464,214 @@ export default function OnboardingPage({
               </fieldset>
             </div>
           )}
+
+          {currentStep === 'photos' && (
+            <div>
+              <p className="text-sm mb-4 text-muted-foreground">
+                上传 1-6 张照片展示真实的你
+              </p>
+              
+              <div className="grid grid-cols-3 gap-3">
+                {profile.photos.map((photo, index) => (
+                  <div key={index} className="relative aspect-square rounded-xl overflow-hidden bg-secondary">
+                    <img 
+                      src={photo} 
+                      alt={`照片 ${index + 1}`}
+                      className="w-full h-full object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removePhoto(index)}
+                      className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/50 flex items-center justify-center text-white hover:bg-black/70 transition-colors"
+                      aria-label={`删除照片 ${index + 1}`}
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+                
+                {profile.photos.length < 6 && (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="aspect-square rounded-xl border-2 border-dashed border-border flex flex-col items-center justify-center gap-2 text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+                  >
+                    <Plus className="w-6 h-6" />
+                    <span className="text-xs">添加照片</span>
+                  </button>
+                )}
+              </div>
+              
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handlePhotoUpload}
+                className="hidden"
+              />
+              
+              <p className="text-xs text-muted-foreground mt-4">
+                建议上传清晰的正面照，展示你的真实样貌
+              </p>
+            </div>
+          )}
+
+          {currentStep === 'optional' && (
+            <div className="space-y-5">
+              {/* Height */}
+              <div>
+                <label htmlFor="height" className="block text-sm font-medium mb-2 text-secondary-foreground">
+                  身高
+                </label>
+                <input
+                  id="height"
+                  type="text"
+                  value={profile.height}
+                  onChange={(e) => setProfile({ ...profile, height: e.target.value })}
+                  placeholder="例如：170cm"
+                  className="w-full px-4 py-3.5 rounded-xl text-base outline-none transition-all bg-input border-2 border-border text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary"
+                />
+              </div>
+
+              {/* Occupation */}
+              <div>
+                <label htmlFor="occupation" className="block text-sm font-medium mb-2 text-secondary-foreground">
+                  职业
+                </label>
+                <input
+                  id="occupation"
+                  type="text"
+                  value={profile.occupation}
+                  onChange={(e) => setProfile({ ...profile, occupation: e.target.value })}
+                  placeholder="你的职业"
+                  className="w-full px-4 py-3.5 rounded-xl text-base outline-none transition-all bg-input border-2 border-border text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary"
+                />
+              </div>
+
+              {/* Education */}
+              <fieldset>
+                <legend className="block text-sm font-medium mb-2 text-secondary-foreground">
+                  学历
+                </legend>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { value: 'high_school', label: '高中' },
+                    { value: 'college', label: '大专' },
+                    { value: 'bachelor', label: '本科' },
+                    { value: 'master', label: '硕士' },
+                    { value: 'phd', label: '博士' },
+                  ].map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setProfile({ ...profile, education: option.value })}
+                      className={cn(
+                        'px-4 py-2.5 rounded-xl text-sm font-medium transition-all border-2 focus-ring',
+                        profile.education === option.value 
+                          ? 'bg-rose-soft border-rose text-primary'
+                          : 'bg-input border-border text-muted-foreground hover:border-border/80'
+                      )}
+                      aria-pressed={profile.education === option.value}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+
+              {/* Accept Long Distance */}
+              <fieldset>
+                <legend className="block text-sm font-medium mb-2 text-secondary-foreground">
+                  是否接受异地
+                </legend>
+                <div className="flex gap-3">
+                  {[
+                    { value: 'yes', label: '接受' },
+                    { value: 'no', label: '不接受' },
+                    { value: 'depends', label: '看情况' },
+                  ].map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setProfile({ ...profile, acceptLongDistance: option.value })}
+                      className={cn(
+                        'flex-1 py-3 rounded-xl text-sm font-medium transition-all border-2 focus-ring',
+                        profile.acceptLongDistance === option.value 
+                          ? 'bg-rose-soft border-rose text-primary'
+                          : 'bg-input border-border text-muted-foreground hover:border-border/80'
+                      )}
+                      aria-pressed={profile.acceptLongDistance === option.value}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+
+              {/* Meeting Pace */}
+              <fieldset>
+                <legend className="block text-sm font-medium mb-2 text-secondary-foreground">
+                  是否愿意见面节奏快一点
+                </legend>
+                <div className="flex gap-3">
+                  {[
+                    { value: 'fast', label: '愿意' },
+                    { value: 'slow', label: '慢慢来' },
+                  ].map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setProfile({ ...profile, meetingPace: option.value })}
+                      className={cn(
+                        'flex-1 py-3 rounded-xl text-sm font-medium transition-all border-2 focus-ring',
+                        profile.meetingPace === option.value 
+                          ? 'bg-rose-soft border-rose text-primary'
+                          : 'bg-input border-border text-muted-foreground hover:border-border/80'
+                      )}
+                      aria-pressed={profile.meetingPace === option.value}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+
+              {/* Bio */}
+              <div>
+                <label htmlFor="bio" className="block text-sm font-medium mb-2 text-secondary-foreground">
+                  个人一句话介绍
+                </label>
+                <textarea
+                  id="bio"
+                  value={profile.bio}
+                  onChange={(e) => setProfile({ ...profile, bio: e.target.value })}
+                  placeholder="用一句话介绍自己"
+                  rows={2}
+                  maxLength={50}
+                  className="w-full px-4 py-3.5 rounded-xl text-base outline-none transition-all bg-input border-2 border-border text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary resize-none"
+                />
+                <p className="text-xs text-muted-foreground mt-1 text-right">
+                  {profile.bio.length}/50
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* CTA Button */}
-        <div className="py-8 safe-area-bottom">
+        {/* CTA Buttons */}
+        <div className="py-6 safe-area-bottom space-y-3">
+          {currentStep === 'optional' && (
+            <Button
+              variant="outline"
+              onClick={() => void handleSkipOptional()}
+              disabled={isSubmitting}
+              className="w-full h-12 rounded-2xl text-base"
+              size="lg"
+            >
+              跳过，稍后再填
+            </Button>
+          )}
           <Button
             onClick={() => void handleNext()}
             disabled={!canProceed() || isSubmitting}
