@@ -15,6 +15,23 @@ const HOP_BY_HOP_HEADERS = new Set([
   'upgrade',
 ])
 
+function upstreamUnavailableResponse(baseUrl: string, error: unknown) {
+  const detail =
+    error instanceof Error && error.message.trim()
+      ? error.message.trim()
+      : 'Unknown upstream fetch error'
+  return Response.json(
+    {
+      error: {
+        code: 'gateway_unavailable',
+        message: `上游网关不可用，请确认 ${baseUrl} 已启动`,
+        detail,
+      },
+    },
+    { status: 502 },
+  )
+}
+
 async function proxy(request: NextRequest, pathSegments: string[]) {
   const baseUrl = (process.env.PARTNER_GATEWAY_BASE_URL || 'http://127.0.0.1:8765').replace(/\/+$/, '')
   const upstreamUrl = `${baseUrl}/${pathSegments.join('/')}${request.nextUrl.search}`
@@ -41,13 +58,18 @@ async function proxy(request: NextRequest, pathSegments: string[]) {
     body = await request.text()
   }
 
-  const upstream = await fetch(upstreamUrl, {
-    method: request.method,
-    headers,
-    body,
-    cache: 'no-store',
-    redirect: 'manual',
-  })
+  let upstream: Response
+  try {
+    upstream = await fetch(upstreamUrl, {
+      method: request.method,
+      headers,
+      body,
+      cache: 'no-store',
+      redirect: 'manual',
+    })
+  } catch (error) {
+    return upstreamUnavailableResponse(baseUrl, error)
+  }
 
   const responseHeaders = new Headers()
   upstream.headers.forEach((value, key) => {
