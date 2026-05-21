@@ -60,7 +60,7 @@ export default function WelcomePage({
         <div className="flex-1 flex flex-col justify-center items-center pt-16 pb-8">
           <div
             className={cn(
-              'mb-10 transition-all duration-700 ease-out',
+              'mb-10 transition-all duration-500 ease-out',
               mounted
                 ? 'opacity-100 translate-y-0 scale-100'
                 : 'opacity-0 translate-y-4 scale-95',
@@ -76,7 +76,7 @@ export default function WelcomePage({
 
           <h1
             className={cn(
-              'font-serif text-5xl text-foreground mb-4 transition-all duration-700 ease-out delay-150',
+              'font-serif text-5xl text-foreground mb-4 transition-all duration-500 ease-out delay-100',
               mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4',
             )}
           >
@@ -85,7 +85,7 @@ export default function WelcomePage({
 
           <p
             className={cn(
-              'text-center text-lg text-muted-foreground font-light leading-relaxed max-w-[280px] transition-all duration-700 ease-out delay-300',
+              'text-center text-lg text-muted-foreground font-light leading-relaxed max-w-[280px] transition-all duration-500 ease-out delay-150',
               mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4',
             )}
           >
@@ -96,7 +96,7 @@ export default function WelcomePage({
         {/* Login section */}
         <div
           className={cn(
-            'pb-6 space-y-4 transition-all duration-700 ease-out delay-500',
+            'pb-6 space-y-4 transition-all duration-500 ease-out delay-250',
             mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6',
           )}
         >
@@ -174,7 +174,7 @@ export default function WelcomePage({
         {/* Footer - consistent with other pages */}
         <div
           className={cn(
-            'pb-8 safe-area-bottom transition-all duration-700 ease-out delay-700',
+            'pb-8 safe-area-bottom transition-all duration-500 ease-out delay-300',
             mounted ? 'opacity-100' : 'opacity-0',
           )}
         >
