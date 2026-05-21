@@ -4,7 +4,6 @@ import { DemoNav } from '@/components/app/demo-nav'
 import { AppShell } from '@/components/app/app-shell'
 import SplashScreen from '@/components/her/splash-screen'
 import WelcomePage from '@/components/her/auth/welcome-page'
-import OneClickLoginPage from '@/components/her/auth/one-click-login-page'
 import PhoneLoginPage from '@/components/her/auth/phone-login-page'
 import VerificationCodePage from '@/components/her/auth/verification-code-page'
 import WechatBindingPage from '@/components/her/auth/wechat-binding-page'
@@ -44,7 +43,14 @@ export function HerApp() {
       case 'auth-welcome':
         return (
           <WelcomePage
-            onOneClickLogin={auth.startOneTapLogin}
+            maskedPhoneNumber={auth.oneTapAttempt?.maskedPhone || '138****8000'}
+            onOneClickLogin={async () => {
+              // If no one-tap attempt exists, create one first then verify
+              if (!auth.oneTapAttempt) {
+                await auth.startOneTapLogin()
+              }
+              await auth.verifyOneTapLogin()
+            }}
             onWeChatLogin={auth.startWechatLogin}
             onPhoneLogin={() => {
               auth.setAuthMode('sms-login')
@@ -54,17 +60,9 @@ export function HerApp() {
           />
         )
       case 'auth-one-click':
-        return (
-          <OneClickLoginPage
-            phoneNumber={auth.oneTapAttempt?.maskedPhone || '138****8000'}
-            onLogin={auth.verifyOneTapLogin}
-            onUseOtherPhone={() => {
-              auth.setAuthMode('sms-login')
-              handleNavigate('auth-phone')
-            }}
-            onBack={() => handleNavigate('auth-welcome')}
-          />
-        )
+        // Redirect to welcome page since one-click is now merged
+        handleNavigate('auth-welcome')
+        return null
       case 'auth-phone':
         return (
           <PhoneLoginPage
