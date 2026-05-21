@@ -471,7 +471,7 @@ Phase 3 开工前与后端确认：
 | Phase 0 止血 | ✅ | Demo 导航仅 dev / `NEXT_PUBLIC_ENABLE_DEMO_NAV`；gateway 鉴权与 JSON 安全；客户端无 DSN |
 | Phase 1 工程基线 | ✅ | TS 构建校验；ESLint；`lib/env.ts` zod；死代码清理；GitHub Actions `frontend-her-app.yml` |
 | Phase 2 架构 | ✅ | `app/page.tsx` 薄入口；`HerApp` / `AppShell` / hooks；`lib/api` / `lib/auth` |
-| Phase 3 数据 | ✅ 核心 / ⚠️ 边缘 | 发现/聊天/关系/详情/`auth/me`/Onboarding（`PATCH /v1/auth/onboarding`）/未读来信；认证流程页拉取 `verifications` 列表；账号找回仅演示 Banner |
+| Phase 3 数据 | ✅ | 发现/聊天/关系/详情/`auth/me`/Onboarding/未读来信/认证状态/账号找回 API |
 | Phase 4 UI | ✅ | Toaster、ErrorState、DemoDataBanner、next-themes；登录/Onboarding 使用 shadcn `Button`/`Input`；`components/ui` 仅保留 3 个文件 |
 | Phase 5 测试 | ✅ | `vitest` 5 用例；`pnpm e2e:her:stub` 4/4 通过；CI workflow 已加 |
 | Phase 6 App Router | ✅ | `app/[...slug]` + `lib/navigation/routes.ts` + `useAppRouter`（`/discover`、`/chat/:id` 等） |

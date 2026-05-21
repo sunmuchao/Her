@@ -151,9 +151,8 @@ export function useAuthFlow(onNavigate: (page: AppPage) => void) {
       window.sessionStorage.setItem(PENDING_ONE_TAP_KEY, JSON.stringify(attempt))
     }
     flushSync(() => setOneTapAttempt(attempt))
-    // Return attempt for immediate use without navigation
-    return attempt
-  }, [])
+    onNavigate('auth-one-click')
+  }, [onNavigate])
 
   const verifyOneTapLogin = useCallback(async () => {
     const attempt = oneTapAttempt || readPendingOneTap()
