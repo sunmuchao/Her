@@ -88,7 +88,9 @@ test('one-tap login success hits real backend', async ({ page }) => {
   const hits = trackGatewayRequests(page)
 
   await launchToWelcome(page)
+  const createRequest = page.waitForRequest((request) => request.url().includes('/api/gateway/v1/auth/one-tap/create') && request.method() === 'POST')
   await page.getByRole('button', { name: '本机号码一键登录' }).click()
+  await createRequest
   await expect(page.getByRole('button', { name: '一键登录' })).toBeVisible({ timeout: 15000 })
   await page.getByRole('button', { name: '一键登录' }).click()
   await expect(page.getByRole('heading', { name: '小雅' })).toBeVisible({ timeout: 15000 })
@@ -106,9 +108,17 @@ test('relationships and chat pages hit real backend', async ({ page }) => {
   await page.getByRole('button', { name: '开始遇见' }).click()
   const demoToggle = page.locator('button.fixed.bottom-6.right-6')
   await demoToggle.click()
+  const timelineRequest = page.waitForRequest((request) => request.url().includes('/api/gateway/v2/chat/cases/case-frontend-demo/timeline') && request.method() === 'GET')
   await page.getByRole('button', { name: '关系' }).click()
+  await timelineRequest
   await expect(page.getByRole('heading', { name: '关系' })).toBeVisible()
-  await page.getByRole('button', { name: /user-b/ }).click()
+  const activeRelationship = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: '正在进行中' }) })
+    .getByRole('button')
+    .first()
+  await expect(activeRelationship).toBeVisible({ timeout: 15000 })
+  await activeRelationship.click()
   await page.getByPlaceholder('输入消息...').fill('前端联调消息')
   await page.getByRole('button', { name: '发送消息' }).click()
   await page.waitForTimeout(1500)

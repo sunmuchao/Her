@@ -42,7 +42,21 @@ cleanup() {
 }
 trap cleanup EXIT
 
-sleep 2
+ready=0
+for _ in $(seq 1 20); do
+  if curl -fsS -X POST http://127.0.0.1:8765/v1/auth/one-tap/create \
+    -H 'Content-Type: application/json' \
+    --data '{"device_id":"ios-1","client_type":"ios"}' >/dev/null 2>&1; then
+    ready=1
+    break
+  fi
+  sleep 1
+done
+
+if [ "$ready" -ne 1 ]; then
+  echo "gateway failed readiness check, see /tmp/her-gateway-e2e.log"
+  exit 1
+fi
 
 cd "$APP_DIR"
 HER_E2E_BIND_PHONE="$bind_phone" pnpm exec playwright test tests/e2e/her-flow.spec.ts --reporter=line

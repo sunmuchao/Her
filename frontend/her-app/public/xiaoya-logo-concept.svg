@@ -1,0 +1,79 @@
+<svg width="1600" height="900" viewBox="0 0 1600 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="220" y1="140" x2="1360" y2="760" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF9F6"/>
+      <stop offset="1" stop-color="#F6EEEA"/>
+    </linearGradient>
+    <linearGradient id="rose" x1="312" y1="268" x2="598" y2="548" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#C8888F"/>
+      <stop offset="1" stop-color="#A96B75"/>
+    </linearGradient>
+    <linearGradient id="taupe" x1="740" y1="360" x2="1230" y2="570" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#855A62"/>
+      <stop offset="1" stop-color="#B77A84"/>
+    </linearGradient>
+    <filter id="glow" x="228" y="208" width="434" height="400" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feBlend mode="normal" in="SourceGraphic" in2="BackgroundImageFix" result="shape"/>
+      <feGaussianBlur stdDeviation="22" result="effect1_foregroundBlur_1_1"/>
+    </filter>
+  </defs>
+
+  <rect width="1600" height="900" rx="60" fill="url(#bg)"/>
+
+  <g opacity="0.55">
+    <path d="M1246 198C1313 225 1364 276 1393 348" stroke="#E8D8D1" stroke-width="3" stroke-linecap="round"/>
+    <path d="M194 704C284 760 396 790 502 788" stroke="#E6D9D3" stroke-width="3" stroke-linecap="round"/>
+  </g>
+
+  <g filter="url(#glow)" opacity="0.18">
+    <circle cx="445" cy="408" r="132" fill="#C79097"/>
+  </g>
+
+  <g>
+    <path
+      d="M354 548C294 494 269 421 281 351C293 280 339 220 409 204C462 192 512 212 552 251"
+      stroke="url(#rose)"
+      stroke-width="42"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+    <path
+      d="M550 550C612 499 642 428 631 354C619 281 575 223 505 204C452 190 402 211 364 250"
+      stroke="#DDB3B2"
+      stroke-width="22"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      opacity="0.95"
+    />
+    <path
+      d="M404 558C454 516 484 480 506 438C527 399 551 348 597 300"
+      stroke="#D7A8A8"
+      stroke-width="10"
+      stroke-linecap="round"
+      opacity="0.85"
+    />
+    <circle cx="476" cy="316" r="14" fill="#D8B17A"/>
+  </g>
+
+  <g>
+    <text
+      x="706"
+      y="510"
+      fill="url(#taupe)"
+      font-family="'Hiragino Sans GB', 'Hiragino Sans', 'PingFang SC', 'Songti SC', sans-serif"
+      font-size="220"
+      font-weight="300"
+      letter-spacing="14"
+    >小雅</text>
+    <text
+      x="720"
+      y="590"
+      fill="#A98E86"
+      font-family="'Hiragino Sans GB', 'Hiragino Sans', 'PingFang SC', sans-serif"
+      font-size="34"
+      font-weight="400"
+      letter-spacing="8"
+    >认真关系，从认真了解开始</text>
+  </g>
+</svg>
