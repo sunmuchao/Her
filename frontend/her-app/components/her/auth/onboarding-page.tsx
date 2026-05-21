@@ -22,7 +22,6 @@ interface ProfileData {
   sexualOrientation: string
   birthday: string
   currentCity: string
-  futureCity: string
   photos: string[]
   relationshipGoal: string
   marriageStatus: string
@@ -50,7 +49,6 @@ export default function OnboardingPage({
     sexualOrientation: '',
     birthday: '',
     currentCity: '',
-    futureCity: '',
     photos: [],
     relationshipGoal: '',
     marriageStatus: '',
@@ -82,7 +80,6 @@ export default function OnboardingPage({
           gender: profile.gender,
           sexual_orientation: profile.sexualOrientation,
           location: profile.currentCity,
-          future_city: profile.futureCity,
           relationship_goal: profile.relationshipGoal,
           marriage_status: profile.marriageStatus,
           has_children: profile.hasChildren,
@@ -137,7 +134,6 @@ export default function OnboardingPage({
           gender: profile.gender,
           sexual_orientation: profile.sexualOrientation,
           location: profile.currentCity,
-          future_city: profile.futureCity,
           relationship_goal: profile.relationshipGoal,
           marriage_status: profile.marriageStatus,
           has_children: profile.hasChildren,
@@ -190,7 +186,7 @@ export default function OnboardingPage({
       case 'basics':
         return profile.name && profile.gender && profile.sexualOrientation && profile.birthday
       case 'details':
-        return profile.currentCity && profile.futureCity && profile.relationshipGoal && profile.marriageStatus && profile.hasChildren
+        return profile.currentCity && profile.relationshipGoal && profile.marriageStatus && profile.hasChildren
       case 'photos':
         return profile.photos.length >= 1
       case 'optional':
@@ -377,21 +373,6 @@ export default function OnboardingPage({
                   value={profile.currentCity}
                   onChange={(e) => setProfile({ ...profile, currentCity: e.target.value })}
                   placeholder="你现在住在哪里"
-                  className="w-full px-4 py-3.5 rounded-xl text-base outline-none transition-all bg-input border-2 border-border text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary"
-                />
-              </div>
-
-              {/* Future City */}
-              <div>
-                <label htmlFor="futureCity" className="block text-sm font-medium mb-2 text-secondary-foreground">
-                  未来定居意向 <span className="text-rose">*</span>
-                </label>
-                <input
-                  id="futureCity"
-                  type="text"
-                  value={profile.futureCity}
-                  onChange={(e) => setProfile({ ...profile, futureCity: e.target.value })}
-                  placeholder="打算在哪里定居"
                   className="w-full px-4 py-3.5 rounded-xl text-base outline-none transition-all bg-input border-2 border-border text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary"
                 />
               </div>
