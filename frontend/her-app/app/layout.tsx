@@ -53,7 +53,16 @@ export default function RootLayout({
   return (
     <html lang="zh-CN" className={`${inter.variable} ${cormorant.variable}`}>
       <body className="font-sans antialiased bg-background">
-        {children}
+        {/* Skip link for accessibility */}
+        <a 
+          href="#main-content" 
+          className="skip-link sr-only focus:not-sr-only"
+        >
+          跳转到主要内容
+        </a>
+        <main id="main-content">
+          {children}
+        </main>
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>
