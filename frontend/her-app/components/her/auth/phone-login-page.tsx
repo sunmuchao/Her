@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import { ChevronLeft, MessageCircle } from 'lucide-react'
+import { ChevronLeft } from 'lucide-react'
+import { WechatIcon } from '@/components/her/ui/wechat-icon'
 
 interface PhoneLoginPageProps {
   onSubmit: (phone: string) => void | Promise<void>
@@ -152,7 +153,7 @@ export default function PhoneLoginPage({
             onClick={onWeChatLogin}
             className="w-full py-3 flex items-center justify-center gap-2 text-sm font-medium text-muted-foreground"
           >
-            <MessageCircle className="w-4 h-4 text-primary" />
+            <WechatIcon size={16} />
             使用微信登录
           </button>
         </div>

@@ -1,8 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { Smartphone, MessageCircle, ChevronRight } from 'lucide-react'
+import { Smartphone, ChevronRight } from 'lucide-react'
 import { XiaoyaAvatar } from '@/components/her/ui/xiaoya-avatar'
+import { WechatIcon } from '@/components/her/ui/wechat-icon'
 
 interface WelcomePageProps {
   onOneClickLogin: () => void | Promise<void>
@@ -50,8 +51,8 @@ export default function WelcomePage({
         {/* Hero section */}
         <div className="flex-1 flex flex-col justify-center items-center pt-16 pb-8">
           {/* Logo */}
-          <div className="mb-10 shadow-[0_12px_40px_oklch(0.55_0.12_15/0.12)]">
-            <XiaoyaAvatar size={96} priority />
+          <div className="mb-10">
+            <XiaoyaAvatar size={112} priority />
           </div>
 
           {/* Brand name */}
@@ -97,7 +98,7 @@ export default function WelcomePage({
               <div className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
             ) : (
               <>
-                <MessageCircle className="w-5 h-5 text-primary" />
+                <WechatIcon size={20} />
                 微信登录
               </>
             )}

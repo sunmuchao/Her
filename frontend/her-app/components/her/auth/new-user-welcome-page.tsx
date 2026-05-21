@@ -66,7 +66,7 @@ export default function NewUserWelcomePage({
             isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
           }`}
         >
-          <XiaoyaAvatar size={80} priority />
+          <XiaoyaAvatar size={96} priority />
         </div>
 
         {/* Welcome text */}
