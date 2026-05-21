@@ -2,8 +2,11 @@
 
 import { ArrowLeft, BadgeCheck, MapPin, Briefcase, GraduationCap, Heart, Sparkles, MessageCircle, AlertCircle, ChevronDown, ChevronUp, CheckCircle, Shield, ChevronLeft, ChevronRight } from 'lucide-react'
 import Image from 'next/image'
-import { useState, useEffect, useRef, TouchEvent } from 'react'
+import { useState, useRef, TouchEvent } from 'react'
 import type { CandidatePreview } from '@/lib/her-types'
+import { cn } from '@/lib/utils'
+import { FadeIn, Heartbeat, PageTransition } from './ui/animations'
+import { ImageCarousel } from './ui/image-carousel'
 
 interface CandidateDetailPageProps {
   candidateId: string
@@ -195,78 +198,47 @@ export default function CandidateDetailPage({ candidateId, candidate, onBack, on
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Hero Image */}
-      <div 
-        className="relative h-[480px]"
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-      >
-        <Image
-          src={candidateData.images[currentImageIndex]}
+    <PageTransition className="min-h-screen bg-background">
+      {/* Hero Image with improved carousel */}
+      <div className="relative h-[480px]">
+        <ImageCarousel
+          images={candidateData.images}
           alt={candidateData.name}
-          fill
-          className="object-cover"
-          priority
+          aspectRatio="portrait"
+          showArrows={true}
+          indicatorStyle="pills"
+          className="h-full"
         />
         
-        {/* Gradient overlay - simple */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/30" />
+        {/* Gradient overlay */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/30 pointer-events-none" />
         
         {/* Back button */}
         <button
           onClick={onBack}
-          className="absolute top-12 left-4 w-10 h-10 rounded-full bg-black/30 flex items-center justify-center z-10"
+          className="absolute top-12 left-4 w-10 h-10 rounded-full bg-black/30 backdrop-blur-sm flex items-center justify-center z-10 focus-ring transition-transform active:scale-95"
+          aria-label="返回"
         >
           <ArrowLeft className="w-5 h-5 text-white" />
         </button>
 
         {/* Match score */}
-        <div className="absolute top-12 right-4 px-3 py-1.5 bg-black/30 rounded-full">
+        <div className="absolute top-12 right-4 px-3 py-1.5 bg-black/30 backdrop-blur-sm rounded-full">
           <span className="text-sm font-medium text-white">{candidateData.matchScore}% 匹配</span>
         </div>
 
-        {/* Image pagination */}
-        {candidateData.images.length > 1 && (
-          <>
-            <div className="absolute top-12 left-1/2 -translate-x-1/2 px-2 py-1 bg-black/30 rounded-full">
-              <span className="text-xs text-white">{currentImageIndex + 1}/{candidateData.images.length}</span>
-            </div>
-            <div className="absolute bottom-32 left-1/2 -translate-x-1/2 flex gap-1.5">
-              {candidateData.images.map((_, i) => (
-                <button
-                  key={i}
-                  onClick={() => setCurrentImageIndex(i)}
-                  className={`h-1 rounded-full transition-all ${i === currentImageIndex ? 'bg-white w-6' : 'bg-white/50 w-3'}`}
-                />
-              ))}
-            </div>
-            {currentImageIndex > 0 && (
-              <button onClick={() => setCurrentImageIndex(i => i - 1)} className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/30 flex items-center justify-center">
-                <ChevronLeft className="w-4 h-4 text-white" />
-              </button>
-            )}
-            {currentImageIndex < candidateData.images.length - 1 && (
-              <button onClick={() => setCurrentImageIndex(i => i + 1)} className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/30 flex items-center justify-center">
-                <ChevronRight className="w-4 h-4 text-white" />
-              </button>
-            )}
-          </>
-        )}
-
         {/* Basic info overlay */}
-        <div className="absolute bottom-0 left-0 right-0 p-5">
+        <div className="absolute bottom-0 left-0 right-0 p-5 pointer-events-none">
           <div className="flex items-center gap-2 mb-1">
             <h1 className="text-3xl font-semibold text-white">{candidateData.name}</h1>
             <span className="text-xl text-white/80">{candidateData.age}</span>
-            {candidateData.verified && <BadgeCheck className="w-5 h-5 text-primary" />}
+            {candidateData.verified && <BadgeCheck className="w-5 h-5 text-primary" aria-label="已认证" />}
           </div>
-          <p className="text-white/80 italic mb-3">&ldquo;{candidateData.headline}&rdquo;</p>
+          <p className="text-white/80 italic mb-3 text-balance">&ldquo;{candidateData.headline}&rdquo;</p>
           <div className="flex items-center gap-4 text-sm text-white/70">
-            <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5" />{candidateData.city}</span>
-            <span className="flex items-center gap-1"><Briefcase className="w-3.5 h-3.5" />{candidateData.occupation}</span>
-            <span className="flex items-center gap-1"><GraduationCap className="w-3.5 h-3.5" />{candidateData.education}</span>
+            <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5" aria-hidden="true" />{candidateData.city}</span>
+            <span className="flex items-center gap-1"><Briefcase className="w-3.5 h-3.5" aria-hidden="true" />{candidateData.occupation}</span>
+            <span className="flex items-center gap-1"><GraduationCap className="w-3.5 h-3.5" aria-hidden="true" />{candidateData.education}</span>
           </div>
         </div>
       </div>
@@ -274,115 +246,149 @@ export default function CandidateDetailPage({ candidateId, candidate, onBack, on
       {/* Content */}
       <div className="px-4 py-5 space-y-4 pb-28">
         {/* Match reasons - highlighted */}
-        <section className="bg-primary/5 border border-primary/10 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Sparkles className="w-4 h-4 text-primary" />
-            <h3 className="font-medium text-foreground">为什么推荐给你</h3>
-          </div>
-          <div className="space-y-2">
-            {candidateData.matchReasons.map((reason, i) => (
-              <div key={i} className="flex items-start gap-2">
-                <CheckCircle className="w-4 h-4 text-primary mt-0.5 shrink-0" />
-                <span className="text-sm text-muted-foreground">{reason}</span>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* Verified items */}
-        <section className="bg-card border border-border rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Shield className="w-4 h-4 text-primary" />
-            <h3 className="font-medium">已核验信息</h3>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            {verifiedItems.map((item, i) => (
-              <div key={i} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${
-                item.verified ? 'bg-primary/10 text-primary' : 'bg-secondary text-muted-foreground'
-              }`}>
-                {item.verified ? <CheckCircle className="w-4 h-4" /> : <div className="w-4 h-4 rounded-full border-2 border-current" />}
-                {item.name}
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* Self intro - collapsible */}
-        <section className="bg-card border border-border rounded-xl overflow-hidden">
-          <button onClick={() => toggleSection('intro')} className="w-full flex items-center justify-between p-4">
-            <h3 className="font-medium">自我介绍</h3>
-            {expandedSections.has('intro') ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
-          </button>
-          {expandedSections.has('intro') && (
-            <div className="px-4 pb-4">
-              <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">{candidateData.selfIntro}</p>
+        <FadeIn delay={100}>
+          <section className="bg-primary/5 border border-primary/10 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Sparkles className="w-4 h-4 text-primary" aria-hidden="true" />
+              <h3 className="font-medium text-foreground">为什么推荐给你</h3>
             </div>
-          )}
-        </section>
-
-        {/* Key points - collapsible */}
-        <section className="bg-card border border-border rounded-xl overflow-hidden">
-          <button onClick={() => toggleSection('keypoints')} className="w-full flex items-center justify-between p-4">
-            <h3 className="font-medium">基本信息</h3>
-            {expandedSections.has('keypoints') ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
-          </button>
-          {expandedSections.has('keypoints') && (
-            <div className="px-4 pb-4">
-              <div className="grid grid-cols-2 gap-3">
-                {candidateData.keyPoints.map((point, i) => (
-                  <div key={i} className="flex flex-col">
-                    <span className="text-xs text-muted-foreground">{point.label}</span>
-                    <span className="text-sm">{point.value}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </section>
-
-        {/* Need to know */}
-        <section className="bg-card border border-border rounded-xl overflow-hidden">
-          <button onClick={() => toggleSection('needtoknow')} className="w-full flex items-center justify-between p-4">
-            <div className="flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-gold" />
-              <h3 className="font-medium">需要了解</h3>
-            </div>
-            {expandedSections.has('needtoknow') ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
-          </button>
-          {expandedSections.has('needtoknow') && (
-            <div className="px-4 pb-4 space-y-2">
-              {candidateData.needToKnow.map((item, i) => (
-                <div key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
-                  <span className="text-gold">•</span>
-                  {item}
+            <div className="space-y-2">
+              {candidateData.matchReasons.map((reason, i) => (
+                <div key={i} className="flex items-start gap-2 animate-fade-in-up" style={{ animationDelay: `${i * 50}ms` }}>
+                  <CheckCircle className="w-4 h-4 text-primary mt-0.5 shrink-0" aria-hidden="true" />
+                  <span className="text-sm text-muted-foreground">{reason}</span>
                 </div>
               ))}
             </div>
-          )}
-        </section>
+          </section>
+        </FadeIn>
+
+        {/* Verified items */}
+        <FadeIn delay={200}>
+          <section className="bg-card border border-border rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Shield className="w-4 h-4 text-primary" aria-hidden="true" />
+              <h3 className="font-medium">已核验信息</h3>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {verifiedItems.map((item, i) => (
+                <div key={i} className={cn(
+                  'flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors',
+                  item.verified ? 'bg-primary/10 text-primary' : 'bg-secondary text-muted-foreground'
+                )}>
+                  {item.verified ? <CheckCircle className="w-4 h-4" aria-hidden="true" /> : <div className="w-4 h-4 rounded-full border-2 border-current" aria-hidden="true" />}
+                  {item.name}
+                </div>
+              ))}
+            </div>
+          </section>
+        </FadeIn>
+
+        {/* Self intro - collapsible, expanded by default */}
+        <FadeIn delay={300}>
+          <section className="bg-card border border-border rounded-xl overflow-hidden">
+            <button 
+              onClick={() => toggleSection('intro')} 
+              className="w-full flex items-center justify-between p-4 focus-ring"
+              aria-expanded={expandedSections.has('intro')}
+            >
+              <h3 className="font-medium">自我介绍</h3>
+              {expandedSections.has('intro') ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+            </button>
+            {expandedSections.has('intro') && (
+              <div className="px-4 pb-4 animate-fade-in-up">
+                <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">{candidateData.selfIntro}</p>
+              </div>
+            )}
+          </section>
+        </FadeIn>
+
+        {/* Key points - collapsible, collapsed by default */}
+        <FadeIn delay={400}>
+          <section className="bg-card border border-border rounded-xl overflow-hidden">
+            <button 
+              onClick={() => toggleSection('keypoints')} 
+              className="w-full flex items-center justify-between p-4 focus-ring"
+              aria-expanded={expandedSections.has('keypoints')}
+            >
+              <h3 className="font-medium">基本信息</h3>
+              {expandedSections.has('keypoints') ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+            </button>
+            {expandedSections.has('keypoints') && (
+              <div className="px-4 pb-4 animate-fade-in-up">
+                <div className="grid grid-cols-2 gap-3">
+                  {candidateData.keyPoints.map((point, i) => (
+                    <div key={i} className="flex flex-col">
+                      <span className="text-xs text-muted-foreground">{point.label}</span>
+                      <span className="text-sm">{point.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </section>
+        </FadeIn>
+
+        {/* Need to know - collapsed by default */}
+        <FadeIn delay={500}>
+          <section className="bg-card border border-border rounded-xl overflow-hidden">
+            <button 
+              onClick={() => toggleSection('needtoknow')} 
+              className="w-full flex items-center justify-between p-4 focus-ring"
+              aria-expanded={expandedSections.has('needtoknow')}
+            >
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-gold" aria-hidden="true" />
+                <h3 className="font-medium">需要了解</h3>
+              </div>
+              {expandedSections.has('needtoknow') ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+            </button>
+            {expandedSections.has('needtoknow') && (
+              <div className="px-4 pb-4 space-y-2 animate-fade-in-up">
+                {candidateData.needToKnow.map((item, i) => (
+                  <div key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
+                    <span className="text-gold" aria-hidden="true">•</span>
+                    {item}
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </FadeIn>
 
         {/* Matchmaker note */}
-        <section className="bg-card border border-border rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <MessageCircle className="w-4 h-4 text-primary" />
-            <h3 className="font-medium">红娘点评</h3>
-          </div>
-          <p className="text-sm text-muted-foreground leading-relaxed">{candidateData.matchmakerNote}</p>
-        </section>
+        <FadeIn delay={600}>
+          <section className="bg-card border border-border rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <MessageCircle className="w-4 h-4 text-primary" aria-hidden="true" />
+              <h3 className="font-medium">红娘点评</h3>
+            </div>
+            <p className="text-sm text-muted-foreground leading-relaxed">{candidateData.matchmakerNote}</p>
+          </section>
+        </FadeIn>
       </div>
 
-      {/* Bottom CTA - simple */}
+      {/* Bottom CTA with heartbeat animation */}
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-background border-t border-border safe-area-bottom">
         <div className="flex gap-3 max-w-md mx-auto">
-          <button className="flex-1 py-3 border border-border rounded-xl text-foreground font-medium hover:bg-secondary transition-colors">
+          <button 
+            className="flex-1 py-3 border border-border rounded-xl text-foreground font-medium hover:bg-secondary transition-colors focus-ring"
+            aria-label="暂时跳过这位候选人"
+          >
             暂时跳过
           </button>
-          <button onClick={onStartChat} className="flex-1 py-3 bg-primary rounded-xl text-primary-foreground font-medium flex items-center justify-center gap-2 hover:bg-primary/90 transition-colors">
-            <Heart className="w-4 h-4" />
-            开始聊天
-          </button>
+          <Heartbeat>
+            <button 
+              onClick={onStartChat} 
+              className="flex-1 py-3 bg-primary rounded-xl text-primary-foreground font-medium flex items-center justify-center gap-2 hover:bg-primary/90 transition-all focus-ring shadow-lg shadow-primary/20"
+              aria-label={`开始和${candidateData.name}聊天`}
+            >
+              <Heart className="w-4 h-4" aria-hidden="true" />
+              开始聊天
+            </button>
+          </Heartbeat>
         </div>
       </div>
-    </div>
+    </PageTransition>
   )
 }

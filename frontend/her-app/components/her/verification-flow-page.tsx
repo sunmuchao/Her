@@ -1,7 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { ArrowLeft, Camera, RotateCcw, CheckCircle, Clock, AlertCircle, Upload, ChevronRight, X } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { FadeIn, PageTransition } from './ui/animations'
+import { ProgressRing } from './ui/progress-ring'
 
 interface VerificationFlowPageProps {
   onBack: () => void
@@ -41,6 +44,8 @@ export default function VerificationFlowPage({ onBack }: VerificationFlowPagePro
   const [selectedField, setSelectedField] = useState<string | null>(null)
   const [isRecording, setIsRecording] = useState(false)
   const [recordingTime, setRecordingTime] = useState(0)
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleStartVideoVerification = () => {
     setStep('video-intro')
@@ -88,13 +93,17 @@ export default function VerificationFlowPage({ onBack }: VerificationFlowPagePro
 
   // Selection page
   if (step === 'select') {
+    const verifiedCount = fieldVerificationTypes.filter(f => f.status === 'verified').length
+    const progress = (verifiedCount / fieldVerificationTypes.length) * 100
+    
     return (
-      <div className="min-h-screen bg-background max-w-md mx-auto flex flex-col">
+      <PageTransition className="min-h-screen bg-background max-w-md mx-auto flex flex-col">
         <header className="sticky top-0 z-20 bg-background border-b border-border safe-area-top">
           <div className="px-4 py-3 flex items-center gap-3">
             <button
               onClick={onBack}
-              className="w-10 h-10 rounded-full hover:bg-secondary flex items-center justify-center transition-colors"
+              className="w-10 h-10 rounded-full hover:bg-secondary flex items-center justify-center transition-colors focus-ring"
+              aria-label="返回"
             >
               <ArrowLeft className="w-5 h-5 text-foreground" />
             </button>
@@ -102,54 +111,70 @@ export default function VerificationFlowPage({ onBack }: VerificationFlowPagePro
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto px-5 py-6 space-y-3">
-          <p className="text-sm text-muted-foreground mb-4">
+        <div className="flex-1 overflow-y-auto px-5 py-6 space-y-4">
+          {/* Progress overview */}
+          <FadeIn>
+            <div className="flex items-center gap-4 p-4 bg-card border border-border rounded-xl">
+              <ProgressRing progress={progress} size={56} strokeWidth={4} color="rose" showPercentage />
+              <div>
+                <h2 className="font-medium">认证进度</h2>
+                <p className="text-sm text-muted-foreground">{verifiedCount}/{fieldVerificationTypes.length} 项已完成</p>
+              </div>
+            </div>
+          </FadeIn>
+          
+          <p className="text-sm text-muted-foreground">
             完成认证可提升你的可信度，让更多优质用户愿意了解你
           </p>
 
-          {fieldVerificationTypes.map((field) => {
+          {fieldVerificationTypes.map((field, index) => {
             const styles = getStatusStyles(field.status)
             return (
-              <button
-                key={field.id}
-                onClick={() => {
-                  if (field.id === 'video' && field.status !== 'verified') {
-                    handleStartVideoVerification()
-                  } else if (field.status === 'unverified') {
-                    handleStartFieldVerification(field.id)
-                  }
-                }}
-                disabled={field.status === 'verified'}
-                className="w-full bg-card rounded-xl p-4 border border-border transition-colors hover:bg-secondary/30 disabled:opacity-60 text-left"
-              >
-                <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center ${styles.bg}`}>
-                    {field.status === 'verified' ? (
-                      <CheckCircle className={`w-5 h-5 ${styles.icon}`} />
-                    ) : field.status === 'pending' ? (
-                      <Clock className={`w-5 h-5 ${styles.icon}`} />
-                    ) : (
-                      <Upload className={`w-5 h-5 ${styles.icon}`} />
+              <FadeIn key={field.id} delay={index * 50}>
+                <button
+                  onClick={() => {
+                    if (field.id === 'video' && field.status !== 'verified') {
+                      handleStartVideoVerification()
+                    } else if (field.status === 'unverified') {
+                      handleStartFieldVerification(field.id)
+                    }
+                  }}
+                  disabled={field.status === 'verified'}
+                  className={cn(
+                    'w-full bg-card rounded-xl p-4 border border-border transition-all text-left focus-ring',
+                    field.status !== 'verified' && 'hover:bg-secondary/30 hover:border-primary/20'
+                  )}
+                  aria-label={`${field.name}：${getStatusText(field.status)}`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={cn('w-10 h-10 rounded-full flex items-center justify-center', styles.bg)}>
+                      {field.status === 'verified' ? (
+                        <CheckCircle className={cn('w-5 h-5', styles.icon)} />
+                      ) : field.status === 'pending' ? (
+                        <Clock className={cn('w-5 h-5', styles.icon)} />
+                      ) : (
+                        <Upload className={cn('w-5 h-5', styles.icon)} />
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-medium text-foreground">{field.name}</h3>
+                        <span className={cn('text-[10px] px-1.5 py-0.5 rounded', styles.bg, styles.text)}>
+                          {getStatusText(field.status)}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">{field.description}</p>
+                    </div>
+                    {field.status === 'unverified' && (
+                      <ChevronRight className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
                     )}
                   </div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-sm font-medium text-foreground">{field.name}</h3>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${styles.bg} ${styles.text}`}>
-                        {getStatusText(field.status)}
-                      </span>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">{field.description}</p>
-                  </div>
-                  {field.status === 'unverified' && (
-                    <ChevronRight className="w-5 h-5 text-muted-foreground" />
-                  )}
-                </div>
-              </button>
+                </button>
+              </FadeIn>
             )
           })}
         </div>
-      </div>
+      </PageTransition>
     )
   }
 
