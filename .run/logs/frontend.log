@@ -151,3 +151,20 @@ Read more: https://nextjs.org/docs/app/api-reference/components/image#loading (f
  GET /login/one-tap 200 in 199ms (next.js: 47ms, application-code: 152ms)
  DELETE /api/auth/session 200 in 11ms (next.js: 3ms, application-code: 8ms)
  GET /welcome 200 in 141ms (next.js: 9ms, application-code: 132ms)
+ POST /api/gateway/v1/auth/one-tap/create 201 in 564ms (next.js: 181ms, application-code: 382ms)
+⚠ Server is approaching the used memory threshold, restarting...
+▲ Next.js 16.2.6 (Turbopack)
+- Local:         http://127.0.0.1:3000
+- Network:       http://127.0.0.1:3000
+- Environments: .env.local
+✓ Ready in 1050ms
+⚠ Turbopack's filesystem cache has been deleted because we previously detected an internal error in Turbopack. Builds or page loads may be slower as a result.
+
+ GET /login/phone 200 in 4.1s (next.js: 3.6s, application-code: 496ms)
+ GET /login/phone 200 in 25ms (next.js: 9ms, application-code: 15ms)
+ GET /login/phone 200 in 26ms (next.js: 3ms, application-code: 23ms)
+ GET /login/one-tap 200 in 41ms (next.js: 10ms, application-code: 32ms)
+ GET /login/one-tap 200 in 69ms (next.js: 8ms, application-code: 60ms)
+ GET /login/phone 200 in 40ms (next.js: 7ms, application-code: 33ms)
+ GET /welcome 200 in 37ms (next.js: 6ms, application-code: 30ms)
+ DELETE /api/auth/session 200 in 430ms (next.js: 408ms, application-code: 21ms)
