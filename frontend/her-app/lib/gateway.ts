@@ -21,12 +21,16 @@ export function queryString(params: Record<string, string | number | boolean | u
   return text ? `?${text}` : ''
 }
 
-function buildGatewayHeaders(init?: RequestInit) {
+type GatewayRequestInit = RequestInit & {
+  includeAuth?: boolean
+}
+
+function buildGatewayHeaders(init?: GatewayRequestInit) {
   const headers = new Headers(init?.headers || {})
   if (!headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json')
   }
-  if (typeof window !== 'undefined' && !headers.has('Authorization')) {
+  if (init?.includeAuth && typeof window !== 'undefined' && !headers.has('Authorization')) {
     const accessToken = window.localStorage.getItem('her_demo_access_token')
     if (accessToken) {
       headers.set('Authorization', `Bearer ${accessToken}`)
@@ -35,7 +39,7 @@ function buildGatewayHeaders(init?: RequestInit) {
   return headers
 }
 
-export async function gatewayJson<T>(path: string, init?: RequestInit): Promise<T> {
+export async function gatewayJson<T>(path: string, init?: GatewayRequestInit): Promise<T> {
   const response = await fetch(`/api/gateway${path}`, {
     ...init,
     headers: buildGatewayHeaders(init),

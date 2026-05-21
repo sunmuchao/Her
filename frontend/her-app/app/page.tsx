@@ -210,7 +210,11 @@ export default function HerApp() {
   const requestSmsCode = async (phone: string) => {
     const data = await gatewayJson<{ challenge_id?: string }>('/v1/auth/sms/send-code', {
       method: 'POST',
-      body: JSON.stringify({ phone }),
+      body: JSON.stringify({
+        phone,
+        scene: authMode === 'wechat-bind' ? 'bind_phone' : 'login',
+        device_id: 'ios-1',
+      }),
     })
     setAuthPhone(phone)
     setSmsChallengeId(data.challenge_id || null)
@@ -221,6 +225,7 @@ export default function HerApp() {
     if (authMode === 'wechat-bind') {
       const data = await gatewayJson('/v1/auth/wechat/bind-phone', {
         method: 'POST',
+        includeAuth: true,
         body: JSON.stringify({
           phone: authPhone,
           code,
@@ -228,11 +233,11 @@ export default function HerApp() {
           device_id: 'ios-1',
         }),
       })
-      completeLoginFlow(data as {
-        session?: { access_token?: string }
-        user?: { is_new_user?: boolean; phone_bound?: boolean }
-        flow?: { next_path?: string }
-      })
+      const bindResult = data as { ok?: boolean }
+      if (bindResult.ok) {
+        handleNavigate('main-matchmaker')
+        return
+      }
       return
     }
     const data = await gatewayJson('/v1/auth/sms/verify-code', {
