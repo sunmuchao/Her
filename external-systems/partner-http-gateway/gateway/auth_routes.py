@@ -25,10 +25,12 @@ from chat_system import (  # type: ignore[import-untyped]
     bind_phone_with_sms,
     create_one_tap_attempt,
     get_current_auth_payload,
+    get_onboarding_profile,
     issue_sms_code as persist_sms_code,
     login_with_wechat_profile,
     refresh_session as persist_refresh_session,
     revoke_session_by_access_token,
+    submit_onboarding_profile,
     verify_one_tap_login,
     verify_sms_code as persist_verify_sms_code,
 )
@@ -849,6 +851,41 @@ def _load_one_tap_attempt_context(conn: Any, attempt_id: str) -> dict[str, Any] 
     return row
 
 
+def rest_auth_get_onboarding(
+    gateway: AuthGateway,
+    environ: dict[str, Any],
+) -> tuple[int, dict[str, Any]]:
+    actor = gateway._current_actor(environ)
+    if actor is None:
+        return _error_payload(AuthRouteError(401, "unauthorized", "登录状态已失效，请重新登录"))
+    try:
+        out = gateway._with_chat(get_onboarding_profile, str(actor.actor_id))
+    except AuthDomainError as exc:
+        return _error_payload(AuthRouteError(exc.status_code, exc.code, exc.message))
+    return 200, _json_safe({**out, "trace_id": get_trace_id()})
+
+
+def rest_auth_patch_onboarding(
+    gateway: AuthGateway,
+    environ: dict[str, Any],
+    body: dict[str, Any],
+) -> tuple[int, dict[str, Any]]:
+    actor = gateway._current_actor(environ)
+    if actor is None:
+        return _error_payload(AuthRouteError(401, "unauthorized", "登录状态已失效，请重新登录"))
+    try:
+        out = gateway._with_chat(
+            submit_onboarding_profile,
+            str(actor.actor_id),
+            basic_info=body.get("basic_info"),
+            preference=body.get("preference"),
+            mark_completed=bool(body.get("mark_completed", True)),
+        )
+    except AuthDomainError as exc:
+        return _error_payload(AuthRouteError(exc.status_code, exc.code, exc.message))
+    return 200, _json_safe({**out, "trace_id": get_trace_id()})
+
+
 def rest_auth_me(
     gateway: AuthGateway,
     environ: dict[str, Any],
@@ -927,6 +964,10 @@ def dispatch_private_auth_rest(
 ) -> tuple[int, dict[str, Any]] | None:
     if path == "/v1/auth/me" and method == "GET":
         return rest_auth_me(gateway, environ)
+    if path == "/v1/auth/onboarding" and method == "GET":
+        return rest_auth_get_onboarding(gateway, environ)
+    if path == "/v1/auth/onboarding" and method in {"PATCH", "POST"}:
+        return rest_auth_patch_onboarding(gateway, environ, _parse_json_body(_read_body(environ)))
     if path == "/v1/auth/logout" and method == "POST":
         return rest_auth_logout(gateway, environ)
     if path == "/v1/auth/wechat/bind-phone" and method == "POST":

@@ -2,6 +2,8 @@
 
 import { useState, useRef } from 'react'
 import { ChevronLeft } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { WechatIcon } from '@/components/her/ui/wechat-icon'
 
 interface PhoneLoginPageProps {
@@ -98,7 +100,7 @@ export default function PhoneLoginPage({
               +86
             </span>
             
-            <input
+            <Input
               ref={inputRef}
               type="tel"
               value={phone}
@@ -106,7 +108,7 @@ export default function PhoneLoginPage({
               onFocus={() => setIsFocused(true)}
               onBlur={() => setIsFocused(false)}
               placeholder="请输入手机号"
-              className="flex-1 text-lg bg-transparent outline-none text-foreground placeholder:text-muted-foreground"
+              className="flex-1 border-0 bg-transparent text-lg shadow-none focus-visible:ring-0"
               autoComplete="tel"
             />
 
@@ -133,21 +135,14 @@ export default function PhoneLoginPage({
 
         {/* Actions */}
         <div className="pb-6 space-y-4">
-          <button
+          <Button
             onClick={handleSubmit}
             disabled={!isValid || isLoading}
-            className={`w-full py-4 rounded-2xl font-medium transition-all active:scale-[0.98] flex items-center justify-center ${
-              isValid 
-                ? 'bg-primary text-primary-foreground' 
-                : 'bg-secondary text-muted-foreground'
-            }`}
+            className="w-full h-12 rounded-2xl text-base"
+            size="lg"
           >
-            {isLoading ? (
-              <div className="w-5 h-5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
-            ) : (
-              '获取验证码'
-            )}
-          </button>
+            {isLoading ? '发送中…' : '获取验证码'}
+          </Button>
 
           <button
             onClick={onWeChatLogin}

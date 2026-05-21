@@ -1,45 +1,18 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useTheme as useNextTheme } from 'next-themes'
 import { Moon, Sun } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 type Theme = 'light' | 'dark' | 'system'
 
 export function useTheme() {
-  const [theme, setTheme] = useState<Theme>('system')
-  const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('light')
-
-  useEffect(() => {
-    const stored = localStorage.getItem('theme') as Theme | null
-    if (stored) {
-      setTheme(stored)
-    }
-  }, [])
-
-  useEffect(() => {
-    const root = document.documentElement
-    
-    if (theme === 'system') {
-      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
-      const handleChange = (e: MediaQueryListEvent) => {
-        setResolvedTheme(e.matches ? 'dark' : 'light')
-        root.classList.toggle('dark', e.matches)
-      }
-      
-      setResolvedTheme(mediaQuery.matches ? 'dark' : 'light')
-      root.classList.toggle('dark', mediaQuery.matches)
-      
-      mediaQuery.addEventListener('change', handleChange)
-      return () => mediaQuery.removeEventListener('change', handleChange)
-    } else {
-      setResolvedTheme(theme)
-      root.classList.toggle('dark', theme === 'dark')
-      localStorage.setItem('theme', theme)
-    }
-  }, [theme])
-
-  return { theme, setTheme, resolvedTheme }
+  const { theme, setTheme, resolvedTheme } = useNextTheme()
+  return {
+    theme: (theme || 'system') as 'light' | 'dark' | 'system',
+    setTheme,
+    resolvedTheme: (resolvedTheme || 'light') as 'light' | 'dark',
+  }
 }
 
 interface ThemeToggleProps {

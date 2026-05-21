@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
+
+from profile_service import resolve_profile_source, upsert_profile_for_onboarding
 
 from .storage import inflate_json_columns, json_dumps, row_to_dict
 
@@ -1115,13 +1118,197 @@ def get_session_by_access_token(conn, access_token: str, *, now: datetime | None
     return {"session": session, "user": user}
 
 
+def _profile_source_from_env() -> tuple[str, str]:
+    for key in (
+        "HER_PROFILE_SOURCE_DSN",
+        "HER_DISCOVERY_PROFILE_SOURCE",
+        "PERSONA_MEMORY_MYSQL_SOURCE",
+        "PARTNER_SEARCH_MYSQL_SOURCE",
+    ):
+        raw = (os.environ.get(key) or "").strip()
+        if not raw:
+            continue
+        source_dsn, table_name = resolve_profile_source(raw)
+        if source_dsn and table_name:
+            return source_dsn, table_name
+    raise AuthDomainError(
+        503,
+        "profile_source_unconfigured",
+        "服务端未配置用户画像库（HER_DISCOVERY_PROFILE_SOURCE 或 HER_PROFILE_SOURCE_DSN）",
+    )
+
+
+def _age_from_birthday(birthday: str | None) -> int | None:
+    text = str(birthday or "").strip()
+    if not text:
+        return None
+    try:
+        if len(text) >= 4 and text[:4].isdigit():
+            birth_year = int(text[:4])
+            return max(18, datetime.now(timezone.utc).year - birth_year)
+    except ValueError:
+        return None
+    return None
+
+
+def _map_onboarding_to_profile_fields(
+    basic_info: dict[str, Any] | None,
+    preference: dict[str, Any] | None,
+) -> dict[str, Any]:
+    basic = dict(basic_info or {})
+    pref = dict(preference or {})
+    tags = pref.get("tags")
+    tag_text = ", ".join(str(item) for item in tags) if isinstance(tags, list) else str(tags or "")
+    fields: dict[str, Any] = {
+        "name": basic.get("name"),
+        "gender": basic.get("gender"),
+        "city": basic.get("location") or basic.get("city"),
+        "relationship_goal": pref.get("relationship_goal") or basic.get("relationship_goal"),
+    }
+    age = _age_from_birthday(basic.get("birthday"))
+    if age is not None:
+        fields["age"] = age
+    if tag_text:
+        fields["values"] = tag_text
+    return {key: value for key, value in fields.items() if value not in (None, "")}
+
+
+def _linked_profile_id(onboarding: dict[str, Any] | None) -> int | None:
+    if not onboarding:
+        return None
+    basic = onboarding.get("basic_info") or {}
+    raw = basic.get("profile_id")
+    try:
+        return int(raw) if raw is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def get_onboarding_profile(conn, user_id: str) -> dict[str, Any]:
+    onboarding = _onboarding_state(conn, user_id)
+    if not onboarding:
+        raise AuthDomainError(404, "onboarding_not_found", "未找到新用户资料记录")
+    profile_id = _linked_profile_id(onboarding)
+    return {
+        "onboarding_status": onboarding.get("onboarding_status") or ONBOARDING_STATUS_NOT_STARTED,
+        "current_step": onboarding.get("current_step"),
+        "basic_info": onboarding.get("basic_info") or {},
+        "preference": onboarding.get("preference") or {},
+        "profile_id": profile_id,
+        "requester_id": profile_id,
+        "completed_at": onboarding.get("completed_at"),
+    }
+
+
+def submit_onboarding_profile(
+    conn,
+    user_id: str,
+    *,
+    basic_info: dict[str, Any] | None = None,
+    preference: dict[str, Any] | None = None,
+    mark_completed: bool = True,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    ts = _utcnow(now)
+    user = _user_by_id(conn, user_id)
+    if not user or user.get("account_status") != ACCOUNT_STATUS_ACTIVE:
+        raise AuthDomainError(401, "unauthorized", "登录状态已失效，请重新登录")
+
+    onboarding = _onboarding_state(conn, user_id)
+    if not onboarding:
+        raise AuthDomainError(404, "onboarding_not_found", "未找到新用户资料记录")
+
+    merged_basic = dict(onboarding.get("basic_info") or {})
+    merged_pref = dict(onboarding.get("preference") or {})
+    if basic_info:
+        merged_basic.update(dict(basic_info))
+    if preference:
+        merged_pref.update(dict(preference))
+
+    source_dsn, source_table = _profile_source_from_env()
+    profile_fields = _map_onboarding_to_profile_fields(merged_basic, merged_pref)
+    if not profile_fields.get("name"):
+        raise AuthDomainError(400, "name_required", "请填写姓名后再提交")
+
+    existing_profile_id = _linked_profile_id({"basic_info": merged_basic, "preference": merged_pref})
+    profile_id, write_mode = upsert_profile_for_onboarding(
+        source_dsn=source_dsn,
+        source_table_name=source_table,
+        profile_id=existing_profile_id,
+        fields=profile_fields,
+    )
+    merged_basic["profile_id"] = profile_id
+
+    next_status = (
+        ONBOARDING_STATUS_COMPLETED
+        if mark_completed
+        else (onboarding.get("onboarding_status") or ONBOARDING_STATUS_NOT_STARTED)
+    )
+    completed_at = ts if mark_completed else onboarding.get("completed_at")
+
+    conn.execute(
+        """
+        UPDATE user_onboarding_profiles
+        SET onboarding_status = ?, current_step = ?, basic_info_json = ?, preference_json = ?,
+            completed_at = ?, updated_at = ?
+        WHERE user_id = ?
+        """,
+        (
+            next_status,
+            "completed" if mark_completed else (onboarding.get("current_step") or "basic_info"),
+            json_dumps(merged_basic),
+            json_dumps(merged_pref),
+            completed_at,
+            ts,
+            user_id,
+        ),
+    )
+    conn.execute(
+        """
+        UPDATE user_accounts
+        SET onboarding_status = ?, updated_at = ?
+        WHERE user_id = ?
+        """,
+        (next_status, ts, user_id),
+    )
+    _log_event(
+        conn,
+        user_id=user_id,
+        phone=user.get("primary_phone"),
+        event_type="onboarding_submit",
+        result="success",
+        metadata={"profile_id": profile_id, "write_mode": write_mode},
+        now=ts,
+    )
+    conn.commit()
+
+    return {
+        "ok": True,
+        "profile_id": profile_id,
+        "requester_id": profile_id,
+        "write_mode": write_mode,
+        "user": {
+            "user_id": str(user_id),
+            "onboarding_status": next_status,
+        },
+        "onboarding": {
+            "onboarding_status": next_status,
+            "basic_info": merged_basic,
+            "preference": merged_pref,
+            "completed_at": completed_at,
+        },
+    }
+
+
 def get_current_auth_payload(conn, user_id: str, access_token: str, *, now: datetime | None = None) -> dict[str, Any]:
     resolved = get_session_by_access_token(conn, access_token, now=now)
     if not resolved or str((resolved["user"] or {}).get("user_id") or "") != str(user_id):
         raise AuthDomainError(401, "unauthorized", "登录状态已失效，请重新登录")
     session = resolved["session"]
     user = resolved["user"]
-    return {
+    onboarding = _onboarding_state(conn, str(user["user_id"]))
+    profile_id = _linked_profile_id(onboarding)
+    payload: dict[str, Any] = {
         "user": {
             "user_id": str(user["user_id"]),
             "phone": user.get("primary_phone"),
@@ -1137,6 +1324,17 @@ def get_current_auth_payload(conn, user_id: str, access_token: str, *, now: date
             "refresh_expires_at": session.get("refresh_expires_at"),
         },
     }
+    if profile_id is not None:
+        payload["user"]["profile_id"] = profile_id
+        payload["user"]["requester_id"] = profile_id
+    if onboarding:
+        payload["onboarding"] = {
+            "onboarding_status": onboarding.get("onboarding_status"),
+            "basic_info": onboarding.get("basic_info") or {},
+            "preference": onboarding.get("preference") or {},
+            "profile_id": profile_id,
+        }
+    return payload
 
 
 def revoke_session_by_access_token(
@@ -1257,11 +1455,13 @@ __all__ = [
     "classify_phone_scenario",
     "create_one_tap_attempt",
     "get_current_auth_payload",
+    "get_onboarding_profile",
     "get_session_by_access_token",
     "issue_sms_code",
     "login_with_wechat_profile",
     "refresh_session",
     "revoke_session_by_access_token",
+    "submit_onboarding_profile",
     "verify_one_tap_login",
     "verify_sms_code",
 ]

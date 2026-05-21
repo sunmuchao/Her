@@ -1,0 +1,36 @@
+name: frontend-her-app
+
+on:
+  push:
+    paths:
+      - 'frontend/her-app/**'
+      - '.github/workflows/frontend-her-app.yml'
+  pull_request:
+    paths:
+      - 'frontend/her-app/**'
+      - '.github/workflows/frontend-her-app.yml'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend/her-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: frontend/her-app/pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Lint
+        run: pnpm run lint
+      - name: Unit tests
+        run: pnpm run test:unit
+      - name: Build
+        run: pnpm run build

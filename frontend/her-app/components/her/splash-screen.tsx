@@ -73,6 +73,8 @@ export default function SplashScreen({ onComplete }: SplashScreenProps) {
 
         {/* CTA Button */}
         <button
+          type="button"
+          aria-label="开始了解"
           onClick={onComplete}
           className={`mt-16 px-12 py-4 bg-primary rounded-full text-primary-foreground font-medium transition-all duration-700 hover:opacity-90 active:scale-[0.98] ${
             stage !== 'cta' ? 'opacity-0 translate-y-10' : 'opacity-100 translate-y-0'

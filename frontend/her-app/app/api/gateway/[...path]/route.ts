@@ -26,6 +26,11 @@ async function proxy(request: NextRequest, pathSegments: string[]) {
     }
   })
 
+  const cookieToken = request.cookies.get('her_access_token')?.value?.trim()
+  if (cookieToken && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${cookieToken}`)
+  }
+
   const apiKey = (process.env.PARTNER_GATEWAY_API_KEY || '').trim()
   if (apiKey && !headers.has('Authorization') && !headers.has('X-API-Key')) {
     headers.set('Authorization', `Bearer ${apiKey}`)

@@ -1,10 +1,21 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import { ArrowLeft, Camera, RotateCcw, CheckCircle, Clock, AlertCircle, Upload, ChevronRight, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import {
+  createLiveVideoChallenge,
+  listVerificationNotifications,
+  listVerificationSubmissions,
+  submitLiveVideoVerification,
+  type LiveVideoChallenge,
+} from '@/lib/api/endpoints/verification'
+import { notifyError, notifySuccess } from '@/lib/notify'
+import { getUserId } from '@/lib/auth/session'
+import { getErrorMessage } from '@/lib/api/errors'
 import { FadeIn, PageTransition } from './ui/animations'
 import { ProgressRing } from './ui/progress-ring'
+import { ErrorState } from './ui/error-state'
 
 interface VerificationFlowPageProps {
   onBack: () => void
@@ -12,40 +23,108 @@ interface VerificationFlowPageProps {
 
 type VerificationStep = 'select' | 'video-intro' | 'video-record' | 'video-review' | 'video-pending' | 'field-upload' | 'field-pending'
 
-const fieldVerificationTypes = [
+type FieldItem = {
+  id: string
+  name: string
+  description: string
+  status: 'verified' | 'pending' | 'unverified'
+}
+
+const DEFAULT_FIELDS: FieldItem[] = [
   {
     id: 'education',
     name: '学历认证',
     description: '提供学位证书或学信网截图',
-    status: 'verified' as const,
+    status: 'unverified',
   },
   {
     id: 'occupation',
     name: '职业认证',
     description: '提供在职证明或工牌照片',
-    status: 'pending' as const,
+    status: 'unverified',
   },
   {
     id: 'income',
     name: '收入认证',
     description: '提供近三个月银行流水',
-    status: 'unverified' as const,
+    status: 'unverified',
   },
   {
     id: 'video',
     name: '活体视频认证',
     description: '录制真人视频确保真实性',
-    status: 'verified' as const,
+    status: 'unverified',
   },
 ]
 
+function mapSubmissionStatus(status?: string): FieldItem['status'] {
+  const text = (status || '').toLowerCase()
+  if (['approved', 'verified', 'completed'].includes(text)) return 'verified'
+  if (['submitted', 'under_review', 'awaiting_submission', 'resubmission_required'].includes(text)) {
+    return 'pending'
+  }
+  return 'unverified'
+}
+
 export default function VerificationFlowPage({ onBack }: VerificationFlowPageProps) {
+  const [fieldVerificationTypes, setFieldVerificationTypes] = useState<FieldItem[]>(DEFAULT_FIELDS)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
   const [step, setStep] = useState<VerificationStep>('select')
   const [selectedField, setSelectedField] = useState<string | null>(null)
   const [isRecording, setIsRecording] = useState(false)
   const [recordingTime, setRecordingTime] = useState(0)
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [liveChallenge, setLiveChallenge] = useState<LiveVideoChallenge | null>(null)
+  const [isSubmittingVideo, setIsSubmittingVideo] = useState(false)
+
+  useEffect(() => {
+    const userId = getUserId()
+    if (!userId) {
+      setIsLoading(false)
+      setLoadError('请先登录后再进行认证')
+      return
+    }
+
+    let cancelled = false
+    async function loadVerificationState() {
+      try {
+        const [submissions, notifications] = await Promise.all([
+          listVerificationSubmissions(),
+          listVerificationNotifications(),
+        ])
+        if (cancelled) return
+        const latest = submissions[0]
+        const videoStatus = mapSubmissionStatus(latest?.status)
+        const pendingHint =
+          notifications.find((n) => n.type?.includes('resubmission'))?.body ||
+          notifications[0]?.body ||
+          '按提示完成活体视频认证'
+
+        setFieldVerificationTypes(
+          DEFAULT_FIELDS.map((item) =>
+            item.id === 'video'
+              ? {
+                  ...item,
+                  status: videoStatus,
+                  description: videoStatus === 'pending' ? pendingHint : item.description,
+                }
+              : item,
+          ),
+        )
+        setLoadError(null)
+      } catch (error) {
+        if (cancelled) return
+        setLoadError(getErrorMessage(error, '认证状态加载失败'))
+      } finally {
+        if (!cancelled) setIsLoading(false)
+      }
+    }
+
+    void loadVerificationState()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const handleStartVideoVerification = () => {
     setStep('video-intro')
@@ -56,15 +135,38 @@ export default function VerificationFlowPage({ onBack }: VerificationFlowPagePro
     setStep('field-upload')
   }
 
+  const finishVideoSubmission = async () => {
+    const token = liveChallenge?.challenge_token
+    if (!token) {
+      notifyError(new Error('缺少 challenge_token，请返回重试'))
+      setStep('video-intro')
+      return
+    }
+    setIsSubmittingVideo(true)
+    try {
+      await submitLiveVideoVerification({
+        challengeToken: token,
+        challengePhrase: liveChallenge?.challenge_phrase,
+      })
+      notifySuccess('活体视频已提交，等待审核')
+      setStep('video-pending')
+    } catch (error) {
+      notifyError(error, '视频提交失败')
+      setStep('video-review')
+    } finally {
+      setIsSubmittingVideo(false)
+    }
+  }
+
   const simulateRecording = () => {
     setIsRecording(true)
     setRecordingTime(0)
     const interval = setInterval(() => {
-      setRecordingTime(prev => {
+      setRecordingTime((prev) => {
         if (prev >= 5) {
           clearInterval(interval)
           setIsRecording(false)
-          setStep('video-review')
+          void finishVideoSubmission()
           return 5
         }
         return prev + 1
@@ -107,11 +209,17 @@ export default function VerificationFlowPage({ onBack }: VerificationFlowPagePro
             >
               <ArrowLeft className="w-5 h-5 text-foreground" />
             </button>
-            <h1 className="font-medium text-foreground">认证中心</h1>
+            <h1 className="font-medium text-foreground">去认证</h1>
           </div>
         </header>
 
         <div className="flex-1 overflow-y-auto px-5 py-6 space-y-4">
+          {loadError && (
+            <ErrorState message={loadError} onRetry={() => window.location.reload()} />
+          )}
+          {isLoading && !loadError && (
+            <p className="text-sm text-muted-foreground px-1">正在同步认证状态…</p>
+          )}
           {/* Progress overview */}
           <FadeIn>
             <div className="flex items-center gap-4 p-4 bg-card border border-border rounded-xl">
@@ -214,11 +322,29 @@ export default function VerificationFlowPage({ onBack }: VerificationFlowPagePro
           </div>
 
           <button
-            onClick={() => setStep('video-record')}
-            className="w-full py-4 bg-primary rounded-2xl text-primary-foreground font-medium"
+            type="button"
+            disabled={isSubmittingVideo}
+            onClick={() => {
+              void (async () => {
+                setIsSubmittingVideo(true)
+                try {
+                  const challenge = await createLiveVideoChallenge()
+                  setLiveChallenge(challenge)
+                  setStep('video-record')
+                } catch (error) {
+                  notifyError(error, '无法创建认证挑战')
+                } finally {
+                  setIsSubmittingVideo(false)
+                }
+              })()
+            }}
+            className="w-full py-4 bg-primary rounded-2xl text-primary-foreground font-medium disabled:opacity-60"
           >
-            开始认证
+            {isSubmittingVideo ? '准备中…' : '开始认证'}
           </button>
+          {liveChallenge?.challenge_phrase && (
+            <p className="mt-4 text-sm text-muted-foreground">{liveChallenge.challenge_phrase}</p>
+          )}
         </div>
       </div>
     )

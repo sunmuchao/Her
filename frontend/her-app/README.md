@@ -14,12 +14,15 @@ cp .env.example .env.local
 
 - `PARTNER_GATEWAY_BASE_URL`：当前后端 gateway 地址，例如 `http://127.0.0.1:8765`
 - `PARTNER_GATEWAY_API_KEY`：如果 gateway 开启了 API key，则在这里配置
-- `NEXT_PUBLIC_HER_REQUESTER_ID`：推荐 / discovery 使用的用户请求者 ID
-- `NEXT_PUBLIC_HER_PROFILE_ID`：discovery 和 trust hub 绑定的当前资料 ID，本地 demo 可直接用 `1`
+- `NEXT_PUBLIC_HER_REQUESTER_ID`：推荐 / discovery 使用的用户请求者 ID（登录后 session 可覆盖）
+- `NEXT_PUBLIC_HER_PROFILE_ID`：discovery 和 trust hub 绑定的当前资料 ID
 - `NEXT_PUBLIC_HER_USER_ID`：聊天 / trust hub 使用的用户 ID
-- `NEXT_PUBLIC_HER_CASE_ID`：如果要直接联调关系页 / 聊天页，可填一个已有 case_id
-- `NEXT_PUBLIC_HER_PROFILE_SOURCE_DSN`：字段认证写回资料所需的数据源 DSN
-- `NEXT_PUBLIC_HER_PROFILE_SOURCE_TABLE`：字段认证写回资料所需的表名，默认 `profiles`
+- `NEXT_PUBLIC_HER_CASE_ID`：关系页 / 聊天页联调用的 case_id，例如 `case-frontend-demo`
+- `NEXT_PUBLIC_ALLOW_MOCK_FALLBACK`：开发环境是否在接口失败时回退演示数据（生产务必 `false`）
+- `NEXT_PUBLIC_ENABLE_DEMO_NAV`：非 development 时是否显示右下角页面导航（联调 E2E 可设 `true`）
+- `NEXT_PUBLIC_USE_AUTH_STUB`：开发环境是否使用微信/一键登录 stub 凭证
+
+字段认证写回的 `HER_PROFILE_SOURCE_DSN` / `HER_PROFILE_SOURCE_TABLE` 应配置在 **Gateway 服务端**，不要放入 `NEXT_PUBLIC_*`。
 
 3. 安装并运行：
 
@@ -27,6 +30,32 @@ cp .env.example .env.local
 pnpm install
 pnpm dev
 ```
+
+## 质量检查
+
+```bash
+pnpm run lint        # ESLint（typescript-eslint flat config）
+pnpm run test:unit   # Vitest 单元测试
+pnpm run build       # 生产构建 + TypeScript 校验
+```
+
+CI：仓库根目录 `.github/workflows/frontend-her-app.yml`（push/PR 触及 `frontend/her-app` 时运行）。
+
+## 路由（App Router）
+
+| 路径 | 页面 |
+|------|------|
+| `/splash` | 启动页 |
+| `/welcome` | 登录欢迎 |
+| `/login/phone`、`/login/verify`、`/login/one-tap` | 登录流程 |
+| `/recovery` | 账号找回 |
+| `/discover`、`/relationships`、`/profile` | 主 Tab |
+| `/inbox` | 推荐来信 |
+| `/candidates/:id` | 候选人详情 |
+| `/chat/:conversationId` | 聊天 |
+| `/verification`、`/trust` | 认证 / 信任中心 |
+
+根路径 `/` 会重定向到 `/splash`。会话 Token 通过 httpOnly Cookie（`/api/auth/session`）保存。
 
 ## 联调回归
 
@@ -66,3 +95,9 @@ pnpm e2e:her
 
 - 前端页面入口：`app/page.tsx`
 - API 代理：`app/api/gateway/[...path]/route.ts`
+
+## 改进方案
+
+前端现状问题、分阶段改造计划、验收清单与 PR 拆分见：
+
+- [`docs/frontend-improvement-plan.md`](../../docs/frontend-improvement-plan.md)

@@ -2,7 +2,13 @@
 
 import { useState } from 'react'
 import { ChevronLeft, Shield, RefreshCw, Phone } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { WechatIcon } from '@/components/her/ui/wechat-icon'
+import { sendSmsCode, verifySmsCode, wechatLogin } from '@/lib/auth/auth-api'
+import { applyLoginPayload } from '@/lib/auth/session'
+import { getErrorMessage } from '@/lib/api/errors'
+import { notifyError } from '@/lib/notify'
 
 interface AccountRecoveryPageProps {
   onVerifyComplete: () => void
@@ -21,45 +27,78 @@ export default function AccountRecoveryPage({
   const [countdown, setCountdown] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [challengeId, setChallengeId] = useState<string | null>(null)
 
-  const handleSendCode = () => {
-    if (phone.replace(/\D/g, '').length !== 11) {
+  const startCountdown = () => {
+    setCountdown(60)
+    const timer = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer)
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+  }
+
+  const handleSendCode = async () => {
+    const digits = phone.replace(/\D/g, '')
+    if (digits.length !== 11) {
       setError('请输入正确的手机号')
       return
     }
-    
+
     setIsLoading(true)
     setError(null)
-    
-    setTimeout(() => {
-      setIsLoading(false)
+    try {
+      const response = await sendSmsCode({ phone: digits, scene: 'login' })
+      setChallengeId(response.challenge_id ?? null)
       setCurrentStep('verify-code')
-      setCountdown(60)
-      
-      // Start countdown
-      const timer = setInterval(() => {
-        setCountdown(prev => {
-          if (prev <= 1) {
-            clearInterval(timer)
-            return 0
-          }
-          return prev - 1
-        })
-      }, 1000)
-    }, 800)
+      startCountdown()
+    } catch (err) {
+      setError(getErrorMessage(err, '验证码发送失败'))
+    } finally {
+      setIsLoading(false)
+    }
   }
 
-  const handleVerifyCode = () => {
+  const handleVerifyCode = async () => {
     const fullCode = code.join('')
     if (fullCode.length !== 6) return
-    
+
     setIsLoading(true)
     setError(null)
-    
-    setTimeout(() => {
-      setIsLoading(false)
+    try {
+      const digits = phone.replace(/\D/g, '')
+      const payload = await verifySmsCode({
+        phone: digits,
+        code: fullCode,
+        challengeId,
+      })
+      applyLoginPayload(payload)
       setCurrentStep('success')
-    }, 1500)
+      setTimeout(() => onVerifyComplete(), 800)
+    } catch (err) {
+      setError(getErrorMessage(err, '验证失败，请重试'))
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleWechatRecovery = async () => {
+    setIsLoading(true)
+    setError(null)
+    try {
+      const payload = await wechatLogin()
+      applyLoginPayload(payload)
+      onVerifyComplete()
+    } catch (err) {
+      setError(getErrorMessage(err, '微信验证失败'))
+      notifyError(err, '微信验证失败')
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const formatPhone = (value: string) => {
@@ -174,7 +213,10 @@ export default function AccountRecoveryPage({
               </button>
 
               <button
-                className="w-full p-5 rounded-2xl flex items-center gap-4 text-left transition-all active:scale-[0.99]"
+                type="button"
+                onClick={() => void handleWechatRecovery()}
+                disabled={isLoading}
+                className="w-full p-5 rounded-2xl flex items-center gap-4 text-left transition-all active:scale-[0.99] disabled:opacity-60"
                 style={{
                   background: 'oklch(0.98 0.008 80)',
                   border: '2px solid oklch(0.9 0.02 80)',
