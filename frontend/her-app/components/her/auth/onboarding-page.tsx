@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { ChevronLeft, ChevronRight, Calendar, Heart, Tag, Sliders } from 'lucide-react'
+import { useState, useRef, useEffect, useCallback, type TouchEvent } from 'react'
+import { ChevronLeft, ChevronRight, Calendar, Heart, Tag, Sliders, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { submitOnboarding } from '@/lib/auth/auth-api'
 import { applyLoginPayload } from '@/lib/auth/session'
@@ -40,6 +40,12 @@ export default function OnboardingPage({
 }: OnboardingPageProps) {
   const [currentStep, setCurrentStep] = useState<Step>('basics')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [direction, setDirection] = useState<'forward' | 'backward'>('forward')
+  const [isTransitioning, setIsTransitioning] = useState(false)
+  const contentRef = useRef<HTMLDivElement>(null)
+  const touchStartX = useRef(0)
+  const touchEndX = useRef(0)
+  
   const [profile, setProfile] = useState<ProfileData>({
     name: '',
     birthday: '',
@@ -55,10 +61,56 @@ export default function OnboardingPage({
   const currentIndex = steps.indexOf(currentStep)
   const progress = ((currentIndex + 1) / steps.length) * 100
 
+  // Smooth step transition
+  const transitionToStep = useCallback((newStep: Step, dir: 'forward' | 'backward') => {
+    setDirection(dir)
+    setIsTransitioning(true)
+    
+    // Short delay for exit animation
+    setTimeout(() => {
+      setCurrentStep(newStep)
+      // Reset transition state after enter animation
+      setTimeout(() => setIsTransitioning(false), 50)
+    }, 150)
+  }, [])
+
+  // Handle swipe gestures
+  const handleTouchStart = (e: TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX
+  }
+
+  const handleTouchMove = (e: TouchEvent) => {
+    touchEndX.current = e.touches[0].clientX
+  }
+
+  const handleTouchEnd = () => {
+    const swipeThreshold = 80
+    const diff = touchStartX.current - touchEndX.current
+
+    if (Math.abs(diff) > swipeThreshold) {
+      if (diff > 0 && canProceed() && currentIndex < steps.length - 1) {
+        // Swipe left - next step
+        transitionToStep(steps[currentIndex + 1], 'forward')
+      } else if (diff < 0 && currentIndex > 0) {
+        // Swipe right - previous step
+        transitionToStep(steps[currentIndex - 1], 'backward')
+      }
+    }
+    touchStartX.current = 0
+    touchEndX.current = 0
+  }
+
+  // Auto-scroll content into view when step changes
+  useEffect(() => {
+    if (contentRef.current) {
+      contentRef.current.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+  }, [currentStep])
+
   const handleNext = async () => {
     const nextIndex = currentIndex + 1
     if (nextIndex < steps.length) {
-      setCurrentStep(steps[nextIndex])
+      transitionToStep(steps[nextIndex], 'forward')
       return
     }
     setIsSubmitting(true)
@@ -103,7 +155,7 @@ export default function OnboardingPage({
     if (currentIndex === 0) {
       onBack()
     } else {
-      setCurrentStep(steps[currentIndex - 1])
+      transitionToStep(steps[currentIndex - 1], 'backward')
     }
   }
 
@@ -169,24 +221,38 @@ export default function OnboardingPage({
 
         {/* Progress bar */}
         <div 
-          className="h-1.5 rounded-full overflow-hidden bg-secondary"
+          className="h-1 rounded-full overflow-hidden bg-secondary"
           role="progressbar"
           aria-valuenow={progress}
           aria-valuemin={0}
           aria-valuemax={100}
         >
           <div 
-            className="h-full rounded-full transition-all duration-500 ease-out bg-gradient-to-r from-rose to-primary"
-            style={{ width: `${progress}%` }}
+            className="h-full rounded-full bg-gradient-to-r from-rose to-primary"
+            style={{ 
+              width: `${progress}%`,
+              transition: 'width 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
+            }}
           />
         </div>
       </header>
 
-      {/* Content */}
-      <div className="relative z-10 flex-1 flex flex-col px-8 pt-4">
+      {/* Content with touch gestures */}
+      <div 
+        ref={contentRef}
+        className="relative z-10 flex-1 flex flex-col px-8 pt-4 overflow-y-auto scrollbar-hide"
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+      >
         
-        {/* Step header */}
-        <div className="flex items-center gap-4 mb-8 animate-fade-in-up">
+        {/* Step header with smooth transition */}
+        <div 
+          className={cn(
+            'flex items-center gap-4 mb-8 transition-all duration-300',
+            isTransitioning ? 'opacity-0 translate-y-2' : 'opacity-100 translate-y-0'
+          )}
+        >
           <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-gradient-to-br from-rose-soft to-gold-soft shadow-sm">
             <StepIcon className="w-6 h-6 text-primary" aria-hidden="true" />
           </div>
@@ -200,12 +266,21 @@ export default function OnboardingPage({
           </div>
         </div>
 
-        {/* Step content */}
-        <div className="flex-1 animate-fade-in-up" style={{ animationDelay: '100ms' }}>
+        {/* Step content with smooth transitions */}
+        <div 
+          className={cn(
+            'flex-1 transition-all duration-300 ease-out',
+            isTransitioning 
+              ? direction === 'forward' 
+                ? 'opacity-0 translate-x-8' 
+                : 'opacity-0 -translate-x-8'
+              : 'opacity-100 translate-x-0'
+          )}
+        >
           {currentStep === 'basics' && (
             <div className="space-y-5">
               {/* Name */}
-              <div>
+              <div className="animate-fade-in-up" style={{ animationDelay: '0ms' }}>
                 <label htmlFor="name" className="block text-sm font-medium mb-2 text-secondary-foreground">
                   你的名字
                 </label>
@@ -215,12 +290,13 @@ export default function OnboardingPage({
                   value={profile.name}
                   onChange={(e) => setProfile({ ...profile, name: e.target.value })}
                   placeholder="怎么称呼你"
-                  className="w-full px-4 py-3.5 rounded-xl text-base outline-none transition-all bg-input border-2 border-border text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary"
+                  className="w-full px-4 py-3.5 rounded-xl text-base outline-none transition-all duration-200 bg-input border-2 border-border text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 focus:bg-background"
+                  autoComplete="name"
                 />
               </div>
 
               {/* Birthday */}
-              <div>
+              <div className="animate-fade-in-up" style={{ animationDelay: '50ms' }}>
                 <label htmlFor="birthday" className="block text-sm font-medium mb-2 text-secondary-foreground">
                   生日
                 </label>
@@ -230,14 +306,14 @@ export default function OnboardingPage({
                   value={profile.birthday}
                   onChange={(e) => setProfile({ ...profile, birthday: e.target.value })}
                   className={cn(
-                    'w-full px-4 py-3.5 rounded-xl text-base outline-none transition-all bg-input border-2 border-border focus:border-primary focus:ring-1 focus:ring-primary',
+                    'w-full px-4 py-3.5 rounded-xl text-base outline-none transition-all duration-200 bg-input border-2 border-border focus:border-primary focus:ring-2 focus:ring-primary/20 focus:bg-background',
                     profile.birthday ? 'text-foreground' : 'text-muted-foreground'
                   )}
                 />
               </div>
 
               {/* Gender */}
-              <fieldset>
+              <fieldset className="animate-fade-in-up" style={{ animationDelay: '100ms' }}>
                 <legend className="block text-sm font-medium mb-2 text-secondary-foreground">
                   性别
                 </legend>
@@ -251,13 +327,18 @@ export default function OnboardingPage({
                       type="button"
                       onClick={() => setProfile({ ...profile, gender: option.value })}
                       className={cn(
-                        'flex-1 py-3.5 rounded-xl text-sm font-medium transition-all border-2 focus-ring',
+                        'flex-1 py-3.5 rounded-xl text-sm font-medium transition-all duration-200 border-2 focus-ring relative overflow-hidden',
                         profile.gender === option.value 
-                          ? 'bg-rose-soft border-rose text-primary'
-                          : 'bg-input border-border text-muted-foreground hover:border-border/80'
+                          ? 'bg-rose-soft border-rose text-primary scale-[1.02]'
+                          : 'bg-input border-border text-muted-foreground hover:border-border/80 active:scale-[0.98]'
                       )}
                       aria-pressed={profile.gender === option.value}
                     >
+                      {profile.gender === option.value && (
+                        <span className="absolute right-2 top-1/2 -translate-y-1/2">
+                          <Check className="w-4 h-4 text-primary" />
+                        </span>
+                      )}
                       {option.label}
                     </button>
                   ))}
@@ -265,7 +346,7 @@ export default function OnboardingPage({
               </fieldset>
 
               {/* Location */}
-              <div>
+              <div className="animate-fade-in-up" style={{ animationDelay: '150ms' }}>
                 <label htmlFor="location" className="block text-sm font-medium mb-2 text-secondary-foreground">
                   所在城市
                 </label>
@@ -275,7 +356,8 @@ export default function OnboardingPage({
                   value={profile.location}
                   onChange={(e) => setProfile({ ...profile, location: e.target.value })}
                   placeholder="你现在住在哪里"
-                  className="w-full px-4 py-3.5 rounded-xl text-base outline-none transition-all bg-input border-2 border-border text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary"
+                  className="w-full px-4 py-3.5 rounded-xl text-base outline-none transition-all duration-200 bg-input border-2 border-border text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 focus:bg-background"
+                  autoComplete="address-level2"
                 />
               </div>
             </div>
@@ -294,16 +376,23 @@ export default function OnboardingPage({
                   type="button"
                   onClick={() => setProfile({ ...profile, relationshipGoal: option.value })}
                   className={cn(
-                    'w-full p-5 rounded-2xl text-left transition-all border-2 focus-ring animate-fade-in-up',
+                    'w-full p-5 rounded-2xl text-left transition-all duration-200 border-2 focus-ring animate-fade-in-up relative overflow-hidden',
                     profile.relationshipGoal === option.value 
-                      ? 'bg-gradient-to-br from-rose-soft to-gold-soft/50 border-rose shadow-sm'
-                      : 'bg-card border-border hover:border-border/80'
+                      ? 'bg-gradient-to-br from-rose-soft to-gold-soft/50 border-rose shadow-md scale-[1.01]'
+                      : 'bg-card border-border hover:border-border/80 hover:bg-secondary/30 active:scale-[0.99]'
                   )}
-                  style={{ animationDelay: `${index * 50}ms` }}
+                  style={{ animationDelay: `${index * 80}ms` }}
                   aria-pressed={profile.relationshipGoal === option.value}
                 >
+                  {profile.relationshipGoal === option.value && (
+                    <span className="absolute right-4 top-4">
+                      <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center">
+                        <Check className="w-4 h-4 text-primary-foreground" />
+                      </div>
+                    </span>
+                  )}
                   <div className={cn(
-                    'font-medium mb-1',
+                    'font-medium mb-1 transition-colors duration-200',
                     profile.relationshipGoal === option.value ? 'text-primary' : 'text-foreground'
                   )}>
                     {option.label}
@@ -318,39 +407,63 @@ export default function OnboardingPage({
 
           {currentStep === 'tags' && (
             <div>
-              <p className="text-sm mb-5 text-muted-foreground">
+              <p className="text-sm mb-5 text-muted-foreground animate-fade-in-up">
                 选择 3-8 个最能代表你的标签
-                <span className="ml-2 text-rose font-medium">
+                <span className={cn(
+                  'ml-2 font-medium transition-colors duration-200',
+                  profile.tags.length >= 3 ? 'text-primary' : 'text-rose'
+                )}>
                   ({profile.tags.length}/8)
                 </span>
               </p>
               
               <div className="flex flex-wrap gap-2.5" role="group" aria-label="个人标签选择">
-                {AVAILABLE_TAGS.map((tag, index) => (
-                  <button
-                    key={tag}
-                    type="button"
-                    onClick={() => toggleTag(tag)}
-                    className={cn(
-                      'px-4 py-2.5 rounded-full text-sm font-medium transition-all border animate-scale-in focus-ring',
-                      profile.tags.includes(tag) 
-                        ? 'bg-primary text-primary-foreground border-transparent shadow-md shadow-primary/20'
-                        : 'bg-card border-border text-secondary-foreground hover:border-primary/30'
-                    )}
-                    style={{ animationDelay: `${index * 20}ms` }}
-                    aria-pressed={profile.tags.includes(tag)}
-                  >
-                    {tag}
-                  </button>
-                ))}
+                {AVAILABLE_TAGS.map((tag, index) => {
+                  const isSelected = profile.tags.includes(tag)
+                  return (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => toggleTag(tag)}
+                      className={cn(
+                        'px-4 py-2.5 rounded-full text-sm font-medium transition-all duration-200 border animate-scale-in focus-ring',
+                        isSelected 
+                          ? 'bg-primary text-primary-foreground border-transparent shadow-lg shadow-primary/25 scale-105'
+                          : 'bg-card border-border text-secondary-foreground hover:border-primary/30 hover:bg-secondary/50 active:scale-95'
+                      )}
+                      style={{ animationDelay: `${index * 25}ms` }}
+                      aria-pressed={isSelected}
+                    >
+                      {isSelected && <Check className="w-3.5 h-3.5 inline-block mr-1 -ml-1" />}
+                      {tag}
+                    </button>
+                  )
+                })}
               </div>
+              
+              {/* Selected tags summary */}
+              {profile.tags.length > 0 && (
+                <div className="mt-6 pt-4 border-t border-border animate-fade-in-up">
+                  <p className="text-xs text-muted-foreground mb-2">已选择的标签：</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {profile.tags.map((tag) => (
+                      <span 
+                        key={tag}
+                        className="px-2.5 py-1 bg-rose-soft text-primary text-xs rounded-full"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
           {currentStep === 'preferences' && (
             <div className="space-y-8">
               {/* Age range with custom slider */}
-              <div>
+              <div className="animate-fade-in-up">
                 <label className="block text-sm font-medium mb-4 text-secondary-foreground">
                   期望 TA 的年龄范围
                 </label>
@@ -364,29 +477,43 @@ export default function OnboardingPage({
               </div>
 
               {/* Location preference */}
-              <fieldset>
+              <fieldset className="animate-fade-in-up" style={{ animationDelay: '100ms' }}>
                 <legend className="block text-sm font-medium mb-3 text-secondary-foreground">
                   期望 TA 的位置
                 </legend>
                 <div className="space-y-2">
                   {[
-                    { value: 'same_city', label: '同城' },
-                    { value: 'nearby', label: '附近城市也可以' },
-                    { value: 'any', label: '不限制' },
-                  ].map((option) => (
+                    { value: 'same_city', label: '同城', desc: '优先匹配同城' },
+                    { value: 'nearby', label: '附近城市也可以', desc: '扩大搜索范围' },
+                    { value: 'any', label: '不限制', desc: '全国范围匹配' },
+                  ].map((option, index) => (
                     <button
                       key={option.value}
                       type="button"
                       onClick={() => setProfile({ ...profile, locationPref: option.value })}
                       className={cn(
-                        'w-full py-3.5 px-4 rounded-xl text-sm font-medium text-left transition-all border-2 focus-ring',
+                        'w-full py-3.5 px-4 rounded-xl text-sm font-medium text-left transition-all duration-200 border-2 focus-ring flex items-center justify-between',
                         profile.locationPref === option.value 
                           ? 'bg-rose-soft border-rose text-primary'
-                          : 'bg-input border-border text-muted-foreground hover:border-border/80'
+                          : 'bg-input border-border text-muted-foreground hover:border-border/80 hover:bg-secondary/30 active:scale-[0.99]'
                       )}
+                      style={{ animationDelay: `${150 + index * 50}ms` }}
                       aria-pressed={profile.locationPref === option.value}
                     >
-                      {option.label}
+                      <div>
+                        <div className={cn(
+                          'transition-colors duration-200',
+                          profile.locationPref === option.value ? 'text-primary' : 'text-foreground'
+                        )}>
+                          {option.label}
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                          {option.desc}
+                        </div>
+                      </div>
+                      {profile.locationPref === option.value && (
+                        <Check className="w-5 h-5 text-primary flex-shrink-0" />
+                      )}
                     </button>
                   ))}
                 </div>
@@ -396,16 +523,50 @@ export default function OnboardingPage({
         </div>
 
         {/* CTA Button */}
-        <div className="py-8 safe-area-bottom">
+        <div className="py-6 safe-area-bottom">
           <Button
             onClick={() => void handleNext()}
-            disabled={!canProceed() || isSubmitting}
-            className="w-full h-12 rounded-2xl text-base gap-2"
+            disabled={!canProceed() || isSubmitting || isTransitioning}
+            className={cn(
+              'w-full h-12 rounded-2xl text-base gap-2 transition-all duration-300',
+              canProceed() && !isSubmitting ? 'shadow-lg shadow-primary/25' : ''
+            )}
             size="lg"
           >
-            {isSubmitting ? '保存中…' : currentIndex === steps.length - 1 ? '完成' : '下一步'}
-            {currentIndex < steps.length - 1 && <ChevronRight className="w-5 h-5" aria-hidden="true" />}
+            {isSubmitting ? (
+              <>
+                <div className="w-5 h-5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+                保存中…
+              </>
+            ) : currentIndex === steps.length - 1 ? (
+              <>
+                <Check className="w-5 h-5" />
+                完成
+              </>
+            ) : (
+              <>
+                下一步
+                <ChevronRight className="w-5 h-5" aria-hidden="true" />
+              </>
+            )}
           </Button>
+          
+          {/* Step indicator dots */}
+          <div className="flex justify-center gap-2 mt-4">
+            {steps.map((step, index) => (
+              <div
+                key={step}
+                className={cn(
+                  'w-2 h-2 rounded-full transition-all duration-300',
+                  index === currentIndex 
+                    ? 'bg-primary w-6' 
+                    : index < currentIndex 
+                      ? 'bg-primary/60' 
+                      : 'bg-border'
+                )}
+              />
+            ))}
+          </div>
         </div>
       </div>
     </div>
