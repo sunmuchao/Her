@@ -560,7 +560,7 @@ def create_profile_row(
         if schema.column_exists(raw_conn, source_table_name, "profile_status") and "profile_status" not in insert_fields:
             insert_fields["profile_status"] = "active"
         if schema.column_exists(raw_conn, source_table_name, "verified_level") and "verified_level" not in insert_fields:
-            insert_fields["verified_level"] = "unverified"
+            insert_fields["verified_level"] = "none"
         if schema.column_exists(raw_conn, source_table_name, "last_active_at") and "last_active_at" not in insert_fields:
             insert_fields["last_active_at"] = current_time()
 
