@@ -1,0 +1,120 @@
+'use client'
+
+import { useState, useEffect } from 'react'
+import { Moon, Sun } from 'lucide-react'
+import { cn } from '@/lib/utils'
+
+type Theme = 'light' | 'dark' | 'system'
+
+export function useTheme() {
+  const [theme, setTheme] = useState<Theme>('system')
+  const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('light')
+
+  useEffect(() => {
+    const stored = localStorage.getItem('theme') as Theme | null
+    if (stored) {
+      setTheme(stored)
+    }
+  }, [])
+
+  useEffect(() => {
+    const root = document.documentElement
+    
+    if (theme === 'system') {
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+      const handleChange = (e: MediaQueryListEvent) => {
+        setResolvedTheme(e.matches ? 'dark' : 'light')
+        root.classList.toggle('dark', e.matches)
+      }
+      
+      setResolvedTheme(mediaQuery.matches ? 'dark' : 'light')
+      root.classList.toggle('dark', mediaQuery.matches)
+      
+      mediaQuery.addEventListener('change', handleChange)
+      return () => mediaQuery.removeEventListener('change', handleChange)
+    } else {
+      setResolvedTheme(theme)
+      root.classList.toggle('dark', theme === 'dark')
+      localStorage.setItem('theme', theme)
+    }
+  }, [theme])
+
+  return { theme, setTheme, resolvedTheme }
+}
+
+interface ThemeToggleProps {
+  className?: string
+  size?: 'sm' | 'md' | 'lg'
+}
+
+export function ThemeToggle({ className, size = 'md' }: ThemeToggleProps) {
+  const { resolvedTheme, setTheme } = useTheme()
+
+  const sizeClasses = {
+    sm: 'w-8 h-8',
+    md: 'w-10 h-10',
+    lg: 'w-12 h-12'
+  }
+
+  const iconSizes = {
+    sm: 'w-4 h-4',
+    md: 'w-5 h-5',
+    lg: 'w-6 h-6'
+  }
+
+  const toggleTheme = () => {
+    setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')
+  }
+
+  return (
+    <button
+      onClick={toggleTheme}
+      className={cn(
+        'rounded-full flex items-center justify-center transition-colors',
+        'bg-secondary hover:bg-secondary/80',
+        'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
+        sizeClasses[size],
+        className
+      )}
+      aria-label={`切换到${resolvedTheme === 'dark' ? '浅色' : '深色'}模式`}
+    >
+      {resolvedTheme === 'dark' ? (
+        <Sun className={cn(iconSizes[size], 'text-foreground')} />
+      ) : (
+        <Moon className={cn(iconSizes[size], 'text-foreground')} />
+      )}
+    </button>
+  )
+}
+
+// Three-way theme selector
+export function ThemeSelector({ className }: { className?: string }) {
+  const { theme, setTheme } = useTheme()
+
+  const options: { value: Theme; label: string; icon: typeof Sun }[] = [
+    { value: 'light', label: '浅色', icon: Sun },
+    { value: 'dark', label: '深色', icon: Moon },
+    { value: 'system', label: '跟随系统', icon: Sun }
+  ]
+
+  return (
+    <div className={cn('flex gap-2', className)}>
+      {options.map(({ value, label, icon: Icon }) => (
+        <button
+          key={value}
+          onClick={() => setTheme(value)}
+          className={cn(
+            'flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+            theme === value
+              ? 'bg-primary text-primary-foreground'
+              : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+          )}
+          aria-pressed={theme === value}
+        >
+          <Icon className="w-4 h-4" />
+          {label}
+        </button>
+      ))}
+    </div>
+  )
+}

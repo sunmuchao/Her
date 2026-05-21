@@ -1,50 +1,154 @@
 'use client'
 
-import { Heart, MessageCircle, Search } from 'lucide-react'
+import { Heart, MessageCircle, Search, Mail, Users, Sparkles, UserPlus } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { FadeIn, Heartbeat } from './animations'
 
-export function EmptyRecommendations({ onRefresh }: { onRefresh?: () => void }) {
+interface EmptyStateProps {
+  icon?: React.ReactNode
+  title: string
+  description: string
+  action?: {
+    label: string
+    onClick: () => void
+  }
+  className?: string
+}
+
+function EmptyState({ icon, title, description, action, className }: EmptyStateProps) {
   return (
-    <div className="flex flex-col items-center justify-center py-16 px-8">
-      <div className="w-16 h-16 bg-secondary rounded-full flex items-center justify-center mb-4">
-        <Heart className="w-7 h-7 text-muted-foreground" />
-      </div>
-      <h3 className="font-medium text-foreground mb-1">暂时没有新的推荐</h3>
-      <p className="text-sm text-muted-foreground text-center mb-4">
-        小雅正在为你寻找合适的人选
-      </p>
-      {onRefresh && (
-        <button onClick={onRefresh} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium">
-          告诉小雅你的期待
-        </button>
+    <FadeIn className={cn('flex flex-col items-center justify-center py-16 px-8', className)}>
+      {icon && (
+        <div className="w-20 h-20 bg-gradient-to-br from-rose-soft to-gold-soft rounded-full flex items-center justify-center mb-5 shadow-sm">
+          {icon}
+        </div>
       )}
-    </div>
+      <h3 className="font-semibold text-foreground text-lg mb-2 text-center">{title}</h3>
+      <p className="text-sm text-muted-foreground text-center max-w-[260px] leading-relaxed mb-5">
+        {description}
+      </p>
+      {action && (
+        <Heartbeat>
+          <button 
+            onClick={action.onClick} 
+            className="px-6 py-2.5 bg-primary text-primary-foreground rounded-full text-sm font-medium shadow-md hover:shadow-lg transition-shadow focus-ring"
+          >
+            {action.label}
+          </button>
+        </Heartbeat>
+      )}
+    </FadeIn>
   )
 }
 
-export function EmptyConversations() {
+export function EmptyRecommendations({ onRefresh }: { onRefresh?: () => void }) {
   return (
-    <div className="flex flex-col items-center justify-center py-16 px-8">
-      <div className="w-16 h-16 bg-secondary rounded-full flex items-center justify-center mb-4">
-        <MessageCircle className="w-7 h-7 text-muted-foreground" />
-      </div>
-      <h3 className="font-medium text-foreground mb-1">还没有进行中的对话</h3>
-      <p className="text-sm text-muted-foreground text-center">
-        去和小雅聊聊，她会帮你找到合适的人
-      </p>
-    </div>
+    <EmptyState
+      icon={<Heart className="w-9 h-9 text-rose" />}
+      title="暂时没有新的推荐"
+      description="小雅正在为你寻找合适的人选，告诉她你的期待可以加快匹配速度哦"
+      action={onRefresh ? {
+        label: '告诉小雅你的期待',
+        onClick: onRefresh
+      } : undefined}
+    />
+  )
+}
+
+export function EmptyConversations({ onStart }: { onStart?: () => void }) {
+  return (
+    <EmptyState
+      icon={<MessageCircle className="w-9 h-9 text-primary" />}
+      title="还没有进行中的对话"
+      description="去和小雅聊聊吧，她会帮你找到合适的人，开启美好的缘分"
+      action={onStart ? {
+        label: '和小雅聊聊',
+        onClick: onStart
+      } : undefined}
+    />
   )
 }
 
 export function EmptySearchResults({ keyword }: { keyword: string }) {
   return (
-    <div className="flex flex-col items-center justify-center py-12 px-8">
-      <div className="w-14 h-14 bg-secondary rounded-full flex items-center justify-center mb-4">
-        <Search className="w-6 h-6 text-muted-foreground" />
-      </div>
-      <h3 className="font-medium text-foreground mb-1">没有找到相关结果</h3>
-      <p className="text-sm text-muted-foreground text-center">
-        尝试其他关键词搜索「{keyword}」
-      </p>
+    <EmptyState
+      icon={<Search className="w-8 h-8 text-muted-foreground" />}
+      title="没有找到相关结果"
+      description={`尝试其他关键词搜索，或者让小雅帮你推荐类似「${keyword}」的人选`}
+    />
+  )
+}
+
+export function EmptyInbox({ onExplore }: { onExplore?: () => void }) {
+  return (
+    <EmptyState
+      icon={<Mail className="w-9 h-9 text-gold" />}
+      title="收件箱空空如也"
+      description="还没有收到推荐来信，去发现页看看有没有心动的人吧"
+      action={onExplore ? {
+        label: '去发现页看看',
+        onClick: onExplore
+      } : undefined}
+    />
+  )
+}
+
+export function EmptyRelationships({ onDiscover }: { onDiscover?: () => void }) {
+  return (
+    <EmptyState
+      icon={<Users className="w-9 h-9 text-primary" />}
+      title="还没有进行中的关系"
+      description="去发现页认识新朋友吧，小雅会帮你找到志同道合的人"
+      action={onDiscover ? {
+        label: '去发现页',
+        onClick: onDiscover
+      } : undefined}
+    />
+  )
+}
+
+export function EmptyMatches({ onChat }: { onChat?: () => void }) {
+  return (
+    <EmptyState
+      icon={<Sparkles className="w-9 h-9 text-gold" />}
+      title="还没有匹配成功"
+      description="和小雅多聊聊你的想法，她会帮你找到最适合的那个人"
+      action={onChat ? {
+        label: '和小雅聊聊',
+        onClick: onChat
+      } : undefined}
+    />
+  )
+}
+
+export function EmptyPending({ onWait }: { onWait?: () => void }) {
+  return (
+    <EmptyState
+      icon={<UserPlus className="w-9 h-9 text-rose" />}
+      title="没有待处理的请求"
+      description="当有人对你感兴趣时，会在这里显示"
+      action={onWait ? {
+        label: '继续等待',
+        onClick: onWait
+      } : undefined}
+    />
+  )
+}
+
+// Inline empty state for smaller spaces
+export function InlineEmpty({ 
+  message, 
+  className 
+}: { 
+  message: string
+  className?: string 
+}) {
+  return (
+    <div className={cn(
+      'flex items-center justify-center py-8 px-4 text-sm text-muted-foreground',
+      className
+    )}>
+      {message}
     </div>
   )
 }
