@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Sparkles } from 'lucide-react'
+import { XiaoyaAvatar } from '@/components/her/ui/xiaoya-avatar'
 
 interface NewUserWelcomePageProps {
   onStartProfile: () => void
@@ -66,15 +66,7 @@ export default function NewUserWelcomePage({
             isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
           }`}
         >
-          <div 
-            className="w-20 h-20 rounded-full flex items-center justify-center"
-            style={{
-              background: 'linear-gradient(135deg, oklch(0.95 0.04 15 / 0.8), oklch(0.92 0.06 80 / 0.6))',
-              boxShadow: '0 8px 32px oklch(0.55 0.12 15 / 0.15)',
-            }}
-          >
-            <Sparkles className="w-9 h-9" style={{ color: 'oklch(0.55 0.12 15)' }} />
-          </div>
+          <XiaoyaAvatar size={80} priority />
         </div>
 
         {/* Welcome text */}
@@ -87,7 +79,7 @@ export default function NewUserWelcomePage({
             className="editorial-title text-4xl mb-6"
             style={{ color: 'oklch(0.32 0.05 20)' }}
           >
-            欢迎来到 Her
+            欢迎来到小雅
           </h1>
           
           <p 

@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Smartphone, MessageCircle, ChevronRight } from 'lucide-react'
+import { XiaoyaAvatar } from '@/components/her/ui/xiaoya-avatar'
 
 interface WelcomePageProps {
   onOneClickLogin: () => void | Promise<void>
@@ -49,20 +50,16 @@ export default function WelcomePage({
         {/* Hero section */}
         <div className="flex-1 flex flex-col justify-center items-center pt-16 pb-8">
           {/* Logo */}
-          <div className="mb-10">
-            <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
-              <span className="text-3xl font-serif font-medium text-primary">H</span>
-            </div>
+          <div className="mb-10 shadow-[0_12px_40px_oklch(0.55_0.12_15/0.12)]">
+            <XiaoyaAvatar size={96} priority />
           </div>
 
           {/* Brand name */}
-          <h1 className="font-serif text-5xl text-foreground mb-4">Her</h1>
+          <h1 className="font-serif text-5xl text-foreground mb-4">小雅</h1>
 
           {/* Tagline */}
-          <p className="text-center text-lg text-muted-foreground font-light leading-relaxed max-w-[260px]">
-            也许在这里
-            <br />
-            你会遇见一个很特别的人
+          <p className="text-center text-lg text-muted-foreground font-light leading-relaxed max-w-[280px]">
+            认真关系，从认真了解开始
           </p>
         </div>
 

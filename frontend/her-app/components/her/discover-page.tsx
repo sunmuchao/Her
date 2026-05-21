@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { ArrowLeft, BadgeCheck, Bookmark, ChevronRight, Mail, MapPin, Search, Send, Sparkles, X } from 'lucide-react'
+import { ArrowLeft, BadgeCheck, Bookmark, ChevronRight, Mail, MapPin, Search, Send, X } from 'lucide-react'
+import { XiaoyaAvatar } from '@/components/her/ui/xiaoya-avatar'
 import Image from 'next/image'
 import { EmptyRecommendations, EmptySearchResults } from './ui/empty-states'
 import { InboxItemSkeleton } from './ui/skeletons'
@@ -265,9 +266,7 @@ export default function DiscoverPage({ onViewCandidate, onOpenInbox, inboxUnread
         <div className="px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center">
-                <Sparkles className="w-5 h-5 text-primary" />
-              </div>
+              <XiaoyaAvatar size={40} />
               <div>
                 <h1 className="font-medium text-foreground">小雅</h1>
                 <p className="text-xs text-muted-foreground">你的专属红娘</p>

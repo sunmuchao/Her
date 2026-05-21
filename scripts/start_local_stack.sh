@@ -138,7 +138,7 @@ start_service \
   "${FRONTEND_DIR}" \
   "${PID_DIR}/frontend.pid" \
   "${LOG_DIR}/frontend.log" \
-  pnpm dev
+  pnpm dev --hostname 127.0.0.1 --port 3000
 
 if [[ "${WITH_SCHEDULER}" == "1" ]]; then
   start_service \

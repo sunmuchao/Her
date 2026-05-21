@@ -17,8 +17,8 @@ const cormorant = Cormorant_Garamond({
 })
 
 export const metadata: Metadata = {
-  title: 'Her - 遇见心动',
-  description: '也许在这里，你会遇见一个很特别的人',
+  title: '小雅 - 你的专属红娘',
+  description: '认真关系，从认真了解开始',
   generator: 'v0.app',
   icons: {
     icon: [
@@ -31,8 +31,8 @@ export const metadata: Metadata = {
         media: '(prefers-color-scheme: dark)',
       },
       {
-        url: '/icon.svg',
-        type: 'image/svg+xml',
+        url: '/xiaoya-avatar.png',
+        type: 'image/png',
       },
     ],
     apple: '/apple-icon.png',
