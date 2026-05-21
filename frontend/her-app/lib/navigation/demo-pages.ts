@@ -11,7 +11,6 @@ import {
   RotateCcw,
   Shield,
   Sparkles,
-  User,
   UserPlus,
 } from 'lucide-react'
 import type { AppPage } from '@/lib/navigation/types'
@@ -25,7 +24,6 @@ export const demoPageCategories: Array<{
     pages: [
       { id: 'splash', name: '启动页', icon: Sparkles },
       { id: 'auth-welcome', name: '欢迎页', icon: LogIn },
-      { id: 'auth-one-click', name: '一键登录', icon: User },
       { id: 'auth-phone', name: '手机号登录', icon: Phone },
       { id: 'auth-verification-code', name: '验证码', icon: KeyRound },
       { id: 'auth-wechat-binding', name: '微信绑定', icon: Link2 },
