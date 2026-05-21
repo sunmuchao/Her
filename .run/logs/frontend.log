@@ -1,0 +1,19 @@
+
+> my-project@0.1.0 dev /Users/sunmuchao/Downloads/Her/frontend/her-app
+> next dev
+
+▲ Next.js 16.2.6 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://172.20.10.3:3000
+- Environments: .env.local
+✓ Ready in 1163ms
+⨯ Another next dev server is already running.
+
+- Local:        http://localhost:3000
+- PID:          99555
+- Dir:          /Users/sunmuchao/Downloads/Her/frontend/her-app
+- Log:          .next/dev/logs/next-development.log
+
+Run kill 99555 to stop it.
+[?25h
+ ELIFECYCLE  Command failed with exit code 1.

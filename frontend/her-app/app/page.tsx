@@ -318,13 +318,19 @@ export default function HerApp() {
         return <WelcomePage 
           onOneClickLogin={startOneTapLogin}
           onWeChatLogin={startWechatLogin}
-          onPhoneLogin={() => handleNavigate('auth-phone')}
+          onPhoneLogin={() => {
+            setAuthMode('sms-login')
+            handleNavigate('auth-phone')
+          }}
         />
       case 'auth-one-click':
         return <OneClickLoginPage 
           phoneNumber={oneTapAttempt?.maskedPhone || '138****8000'}
           onLogin={verifyOneTapLogin}
-          onUseOtherPhone={() => handleNavigate('auth-phone')}
+          onUseOtherPhone={() => {
+            setAuthMode('sms-login')
+            handleNavigate('auth-phone')
+          }}
           onBack={() => handleNavigate('auth-welcome')}
         />
       case 'auth-phone':

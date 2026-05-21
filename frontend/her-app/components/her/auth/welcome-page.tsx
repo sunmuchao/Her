@@ -15,19 +15,30 @@ export default function WelcomePage({
   onPhoneLogin 
 }: WelcomePageProps) {
   const [isLoading, setIsLoading] = useState<'oneclick' | 'wechat' | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
-  const handleOneClickLogin = () => {
+  const handleOneClickLogin = async () => {
     setIsLoading('oneclick')
-    Promise.resolve(onOneClickLogin()).finally(() => {
+    setError(null)
+    try {
+      await onOneClickLogin()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '登录失败，请稍后重试')
+    } finally {
       setIsLoading(null)
-    })
+    }
   }
 
-  const handleWeChatLogin = () => {
+  const handleWeChatLogin = async () => {
     setIsLoading('wechat')
-    Promise.resolve(onWeChatLogin()).finally(() => {
+    setError(null)
+    try {
+      await onWeChatLogin()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '登录失败，请稍后重试')
+    } finally {
       setIsLoading(null)
-    })
+    }
   }
 
   return (
@@ -57,6 +68,11 @@ export default function WelcomePage({
 
         {/* Login buttons */}
         <div className="pb-10 space-y-3">
+          {error ? (
+            <div className="rounded-2xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              {error}
+            </div>
+          ) : null}
           
           {/* Primary: One-click login */}
           <button
