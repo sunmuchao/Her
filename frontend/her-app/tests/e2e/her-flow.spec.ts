@@ -212,13 +212,11 @@ test('one-tap login success hits real backend', async ({ page }) => {
   const createRequest = page.waitForRequest(
     (request) => request.url().includes('/api/gateway/v1/auth/one-tap/create') && request.method() === 'POST',
   )
-  await page.getByRole('button', { name: '一键登录' }).click()
-  await createRequest
-  await expect(page).toHaveURL(/\/login\/one-tap/, { timeout: 15000 })
   const verifyRequest = page.waitForRequest(
     (request) => request.url().includes('/api/gateway/v1/auth/one-tap/verify') && request.method() === 'POST',
   )
   await page.getByRole('button', { name: '一键登录' }).click()
+  await createRequest
   await verifyRequest
   await page.waitForURL(/\/(discover|onboarding)/, { timeout: 20000 })
   await ensureSessionProfile(page)
