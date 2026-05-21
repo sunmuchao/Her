@@ -16,7 +16,7 @@ async function launchToWelcome(page: import('@playwright/test').Page) {
   await expect(startButton).toBeVisible({ timeout: 10000 })
   await startButton.click()
   await expect(page).toHaveURL(/\/welcome/)
-  await expect(page.getByRole('button', { name: '手机号登录' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '使用其他手机号' })).toBeVisible()
 }
 
 async function fillVerificationCode(page: import('@playwright/test').Page) {
@@ -41,27 +41,33 @@ async function fillVerificationCode(page: import('@playwright/test').Page) {
 
 /** Ensure login session has profile/requester IDs (via /auth/me or onboarding PATCH). */
 async function ensureSessionProfile(page: import('@playwright/test').Page) {
-  await page
-    .waitForResponse(
-      (response) =>
-        response.url().includes('/api/gateway/v1/auth/me') && response.status() === 200,
-      { timeout: 20000 },
-    )
-    .catch(() => null)
-
-  const linked = await page.evaluate(() => {
-    try {
-      const ctx = JSON.parse(window.localStorage.getItem('her_session_context') || '{}')
-      return Boolean(ctx.profileLinked || (ctx.requesterId && ctx.profileId))
-    } catch {
-      return false
-    }
-  })
-  if (linked) return
-
-  await page.evaluate(async () => {
+  const ready = await page.evaluate(async () => {
     const token = window.localStorage.getItem('her_demo_access_token')
-    if (!token) return
+    if (!token) return false
+
+    const syncMe = async () => {
+      const meRes = await fetch('/api/gateway/v1/auth/me', {
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
+      })
+      if (!meRes.ok) return false
+      const me = (await meRes.json()) as {
+        user?: { profile_id?: number; requester_id?: number; user_id?: string }
+      }
+      const profileId = me.user?.profile_id
+      const requesterId = me.user?.requester_id ?? profileId
+      if (!profileId || !requesterId) return false
+      const ctx = JSON.parse(window.localStorage.getItem('her_session_context') || '{}')
+      ctx.requesterId = requesterId
+      ctx.profileId = profileId
+      ctx.profileLinked = true
+      ctx.userId = me.user?.user_id ?? ctx.userId
+      window.localStorage.setItem('her_session_context', JSON.stringify(ctx))
+      return true
+    }
+
+    if (await syncMe()) return true
+
     const res = await fetch('/api/gateway/v1/auth/onboarding', {
       method: 'PATCH',
       headers: {
@@ -84,16 +90,24 @@ async function ensureSessionProfile(page: import('@playwright/test').Page) {
         mark_completed: true,
       }),
     })
-    if (!res.ok) return
-    const data = (await res.json()) as { profile_id?: number; requester_id?: number }
-    const profileId = data.profile_id ?? data.requester_id
-    if (!profileId) return
-    const ctx = JSON.parse(window.localStorage.getItem('her_session_context') || '{}')
-    ctx.requesterId = profileId
-    ctx.profileId = profileId
-    ctx.profileLinked = true
-    window.localStorage.setItem('her_session_context', JSON.stringify(ctx))
+    if (!res.ok) return false
+    return syncMe()
   })
+
+  if (!ready) {
+    throw new Error('E2E: could not link requester/profile for discovery')
+  }
+
+  await page.goto('http://127.0.0.1:3000/discover')
+  await page
+    .waitForResponse(
+      (response) =>
+        response.url().includes('/api/gateway/v1/discovery/sessions') &&
+        response.request().method() === 'POST' &&
+        response.status() < 400,
+      { timeout: 25000 },
+    )
+    .catch(() => null)
 }
 
 function trackGatewayRequests(page: import('@playwright/test').Page) {
@@ -111,7 +125,7 @@ test('sms auth + discovery + recommendation action hit real backend', async ({ p
   const hits = trackGatewayRequests(page)
 
   await launchToWelcome(page)
-  await page.getByRole('button', { name: '手机号登录' }).click()
+  await page.getByRole('button', { name: '使用其他手机号' }).click()
   await page.getByPlaceholder('请输入手机号').fill('13800138000')
   const sendCodeRequest = page.waitForRequest(
     (request) =>
@@ -124,9 +138,6 @@ test('sms auth + discovery + recommendation action hit real backend', async ({ p
   await fillVerificationCode(page)
   await page.waitForURL(/\/(discover|onboarding)/, { timeout: 20000 })
   await ensureSessionProfile(page)
-  if (!page.url().includes('/discover')) {
-    await page.goto('http://127.0.0.1:3000/discover')
-  }
   await expect(page).toHaveURL(/\/discover/, { timeout: 15000 })
 
   expect(Array.from(hits)).toEqual(
@@ -201,7 +212,7 @@ test('one-tap login success hits real backend', async ({ page }) => {
   const createRequest = page.waitForRequest(
     (request) => request.url().includes('/api/gateway/v1/auth/one-tap/create') && request.method() === 'POST',
   )
-  await page.getByRole('button', { name: '本机号码一键登录' }).click()
+  await page.getByRole('button', { name: '一键登录' }).click()
   await createRequest
   await expect(page).toHaveURL(/\/login\/one-tap/, { timeout: 15000 })
   const verifyRequest = page.waitForRequest(
@@ -209,6 +220,8 @@ test('one-tap login success hits real backend', async ({ page }) => {
   )
   await page.getByRole('button', { name: '一键登录' }).click()
   await verifyRequest
+  await page.waitForURL(/\/(discover|onboarding)/, { timeout: 20000 })
+  await ensureSessionProfile(page)
   await expect(page).toHaveURL(/\/discover/, { timeout: 15000 })
 
   expect(Array.from(hits)).toEqual(expect.arrayContaining([
