@@ -21,13 +21,24 @@ export function queryString(params: Record<string, string | number | boolean | u
   return text ? `?${text}` : ''
 }
 
+function buildGatewayHeaders(init?: RequestInit) {
+  const headers = new Headers(init?.headers || {})
+  if (!headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json')
+  }
+  if (typeof window !== 'undefined' && !headers.has('Authorization')) {
+    const accessToken = window.localStorage.getItem('her_demo_access_token')
+    if (accessToken) {
+      headers.set('Authorization', `Bearer ${accessToken}`)
+    }
+  }
+  return headers
+}
+
 export async function gatewayJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api/gateway${path}`, {
     ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init?.headers || {}),
-    },
+    headers: buildGatewayHeaders(init),
     cache: 'no-store',
   })
 

@@ -5,7 +5,7 @@ import { ChevronLeft, Shield, Smartphone } from 'lucide-react'
 
 interface OneClickLoginPageProps {
   phoneNumber?: string
-  onLogin: () => void
+  onLogin: () => void | Promise<void>
   onUseOtherPhone: () => void
   onBack: () => void
 }
@@ -19,18 +19,16 @@ export default function OneClickLoginPage({
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     setIsLoading(true)
     setError(null)
-    setTimeout(() => {
-      if (Math.random() > 0.8) {
-        setError('网络请求失败，请重试或使用其他方式登录')
-        setIsLoading(false)
-      } else {
-        setIsLoading(false)
-        onLogin()
-      }
-    }, 1500)
+    try {
+      await onLogin()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '网络请求失败，请重试或使用其他方式登录')
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (

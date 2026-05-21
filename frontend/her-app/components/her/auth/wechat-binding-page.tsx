@@ -6,8 +6,8 @@ import { ChevronLeft, User } from 'lucide-react'
 interface WeChatBindingPageProps {
   wechatNickname?: string
   wechatAvatar?: string
-  onBindPhone: () => void
-  onSkip?: () => void
+  onBindPhone: () => void | Promise<void>
+  onSkip?: () => void | Promise<void>
   onBack: () => void
 }
 
@@ -22,10 +22,9 @@ export default function WeChatBindingPage({
 
   const handleBindPhone = () => {
     setIsLoading(true)
-    setTimeout(() => {
+    Promise.resolve(onBindPhone()).finally(() => {
       setIsLoading(false)
-      onBindPhone()
-    }, 300)
+    })
   }
 
   return (
