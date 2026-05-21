@@ -1,6 +1,6 @@
 import Image from 'next/image'
 
-const AVATAR_SRC = '/xiaoya-avatar.png'
+const AVATAR_SRC = '/xiaoya-avatar.png?v=5'
 
 type XiaoyaAvatarProps = {
   size?: number
@@ -10,18 +10,14 @@ type XiaoyaAvatarProps = {
 
 export function XiaoyaAvatar({ size = 40, className = '', priority = false }: XiaoyaAvatarProps) {
   return (
-    <div
-      className={`relative shrink-0 overflow-hidden rounded-full ${className}`}
-      style={{ width: size, height: size }}
-    >
-      <Image
-        src={AVATAR_SRC}
-        alt="小雅"
-        width={size}
-        height={size}
-        className="h-full w-full object-cover"
-        priority={priority}
-      />
-    </div>
+    <Image
+      src={AVATAR_SRC}
+      alt="小雅"
+      width={size}
+      height={size}
+      className={`block shrink-0 rounded-full object-cover ${className}`}
+      style={{ width: size, height: size, background: 'transparent' }}
+      priority={priority}
+    />
   )
 }
