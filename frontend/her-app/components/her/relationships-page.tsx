@@ -3,7 +3,11 @@
 import { useEffect, useState } from 'react'
 import { MessageCircle, Heart, Calendar, ChevronRight, BadgeCheck, AlertCircle } from 'lucide-react'
 import Image from 'next/image'
+import { cn } from '@/lib/utils'
 import { gatewayJson, queryString } from '@/lib/gateway'
+import { EmptyRelationships } from './ui/empty-states'
+import { FadeIn, StaggerContainer } from './ui/animations'
+import { RelationshipsPageSkeleton } from './ui/skeletons'
 
 interface RelationshipsPageProps {
   onOpenChat: (chatId: string) => void
@@ -123,11 +127,13 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
             <span className="text-xs text-muted-foreground">{activeRelationships.length}位</span>
           </div>
           <div className="space-y-3">
-            {activeRelationships.map((rel) => (
+            {activeRelationships.map((rel, index) => (
               <button
                 key={rel.id}
                 onClick={() => onOpenChat(rel.id)}
-                className="w-full bg-card border border-border rounded-xl p-3 text-left hover:border-primary/30 transition-colors"
+                className="w-full bg-card border border-border rounded-xl p-3 text-left hover:border-primary/30 hover:shadow-sm transition-all focus-ring animate-fade-in-up"
+                style={{ animationDelay: `${index * 50}ms` }}
+                aria-label={`查看与${rel.name}的对话`}
               >
                 <div className="flex items-center gap-3">
                   <div className="relative">
@@ -153,9 +159,7 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
               </button>
             ))}
             {activeRelationships.length === 0 && (
-              <div className="bg-card border border-border rounded-xl p-4 text-sm text-muted-foreground">
-                当前还没有可见的真实关系会话，关系页已切到真实后端接口。
-              </div>
+              <EmptyRelationships onDiscover={() => {}} />
             )}
           </div>
         </section>
