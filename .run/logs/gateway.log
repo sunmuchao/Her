@@ -41,3 +41,11 @@
 127.0.0.1 - - [21/May/2026 19:05:49] "GET /v1/recommendation/cards?requester_id=70001&unread_only=true HTTP/1.1" 200 18891
 {"ts": "2026-05-21T11:05:49.919629+00:00", "her_schema": "1", "trace_id": "264eaba84f924d3194fcd0c9ca30f218", "her_kind": "gateway_access", "http_method": "GET", "path": "/v2/chat/cases/case-frontend-demo/timeline", "status_code": 200, "client_ip": "127.0.0.1"}
 127.0.0.1 - - [21/May/2026 19:05:49] "GET /v2/chat/cases/case-frontend-demo/timeline?requester_id=user-a HTTP/1.1" 200 8290
+{"ts": "2026-05-21T11:06:12.973267+00:00", "her_schema": "1", "trace_id": "426669feb7fb4e32b11e855c8e4db03d", "her_kind": "gateway_access", "http_method": "GET", "path": "/v1/recommendation/cards", "status_code": 200, "client_ip": "127.0.0.1"}
+127.0.0.1 - - [21/May/2026 19:06:12] "GET /v1/recommendation/cards?requester_id=70001&unread_only=true HTTP/1.1" 200 18891
+{"ts": "2026-05-21T11:06:12.985066+00:00", "her_schema": "1", "trace_id": "f55b9d208cce4064a0dd5aff9134cdd6", "her_kind": "gateway_access", "http_method": "GET", "path": "/v2/chat/cases/case-frontend-demo/timeline", "status_code": 200, "client_ip": "127.0.0.1"}
+127.0.0.1 - - [21/May/2026 19:06:12] "GET /v2/chat/cases/case-frontend-demo/timeline?requester_id=user-a HTTP/1.1" 200 8290
+{"ts": "2026-05-21T11:06:15.919577+00:00", "her_schema": "1", "trace_id": "479e782ce00a4e228dc22f3114299d14", "her_kind": "gateway_access", "http_method": "GET", "path": "/v1/recommendation/cards", "status_code": 200, "client_ip": "127.0.0.1"}
+127.0.0.1 - - [21/May/2026 19:06:15] "GET /v1/recommendation/cards?requester_id=70001&unread_only=true HTTP/1.1" 200 18891
+{"ts": "2026-05-21T11:06:15.937943+00:00", "her_schema": "1", "trace_id": "a5c303aef3e5468480615224df81b619", "her_kind": "gateway_access", "http_method": "GET", "path": "/v2/chat/cases/case-frontend-demo/timeline", "status_code": 200, "client_ip": "127.0.0.1"}
+127.0.0.1 - - [21/May/2026 19:06:15] "GET /v2/chat/cases/case-frontend-demo/timeline?requester_id=user-a HTTP/1.1" 200 8290
