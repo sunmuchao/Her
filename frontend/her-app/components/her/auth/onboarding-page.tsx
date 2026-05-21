@@ -1,12 +1,16 @@
 'use client'
 
-import { useState, useRef } from 'react'
-import { ChevronLeft, Plus, X, Check } from 'lucide-react'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { ChevronLeft, Plus, X, Check, ImagePlus, Heart, Users, Sparkles, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { submitOnboarding } from '@/lib/auth/auth-api'
 import { applyLoginPayload } from '@/lib/auth/session'
 import { notifyError, notifySuccess } from '@/lib/notify'
 import { Button } from '@/components/ui/button'
+import { CitySelector } from '@/components/her/ui/city-selector'
+import { DateWheelPicker } from '@/components/her/ui/date-wheel-picker'
+
+const STORAGE_KEY = 'her_onboarding_draft'
 
 interface OnboardingPageProps {
   onComplete: () => void
@@ -27,32 +31,140 @@ interface ProfileData {
   hasChildren: string
 }
 
+// Compress image before upload
+async function compressImage(file: File, maxWidth = 1200, quality = 0.8): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const img = new Image()
+      img.crossOrigin = 'anonymous'
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        let width = img.width
+        let height = img.height
+
+        if (width > maxWidth) {
+          height = (height * maxWidth) / width
+          width = maxWidth
+        }
+
+        canvas.width = width
+        canvas.height = height
+
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          reject(new Error('Failed to get canvas context'))
+          return
+        }
+
+        ctx.drawImage(img, 0, 0, width, height)
+        resolve(canvas.toDataURL('image/jpeg', quality))
+      }
+      img.onerror = reject
+      img.src = e.target?.result as string
+    }
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
 export default function OnboardingPage({ 
   onComplete,
   onBack 
 }: OnboardingPageProps) {
   const [currentStep, setCurrentStep] = useState<Step>('intro')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
   const [slideDirection, setSlideDirection] = useState<'left' | 'right'>('left')
+  const [validationErrors, setValidationErrors] = useState<string[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
   
-  const [profile, setProfile] = useState<ProfileData>({
-    name: '',
-    gender: '',
-    sexualOrientation: '',
-    birthday: '',
-    currentCity: '',
-    photos: [],
-    relationshipGoal: '',
-    marriageStatus: '',
-    hasChildren: '',
+  // Load draft from localStorage on mount
+  const [profile, setProfile] = useState<ProfileData>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(STORAGE_KEY)
+      if (saved) {
+        try {
+          return JSON.parse(saved)
+        } catch {
+          // ignore parse errors
+        }
+      }
+    }
+    return {
+      name: '',
+      gender: '',
+      sexualOrientation: '',
+      birthday: '',
+      currentCity: '',
+      photos: [],
+      relationshipGoal: '',
+      marriageStatus: '',
+      hasChildren: '',
+    }
   })
+
+  // Save draft to localStorage when profile changes
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(profile))
+    }
+  }, [profile])
+
+  // Clear draft on successful completion
+  const clearDraft = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(STORAGE_KEY)
+    }
+  }, [])
 
   const steps: Step[] = ['intro', 'reality', 'goals']
   const currentIndex = steps.indexOf(currentStep)
   const progress = ((currentIndex + 1) / steps.length) * 100
 
+  // Scroll to top when step changes
+  useEffect(() => {
+    if (contentRef.current) {
+      contentRef.current.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+  }, [currentStep])
+
+  // Get missing fields for current step
+  const getMissingFields = (): string[] => {
+    switch (currentStep) {
+      case 'intro':
+        const introMissing: string[] = []
+        if (profile.photos.length < 1) introMissing.push('照片')
+        if (!profile.name) introMissing.push('名字')
+        if (!profile.gender) introMissing.push('性别')
+        if (!profile.sexualOrientation) introMissing.push('喜欢的类型')
+        return introMissing
+      case 'reality':
+        const realityMissing: string[] = []
+        if (!profile.birthday) realityMissing.push('生日')
+        if (!profile.currentCity) realityMissing.push('城市')
+        if (!profile.marriageStatus) realityMissing.push('婚况')
+        if (!profile.hasChildren) realityMissing.push('是否有孩子')
+        return realityMissing
+      case 'goals':
+        if (!profile.relationshipGoal) return ['关系目标']
+        return []
+      default:
+        return []
+    }
+  }
+
   const handleNext = async () => {
+    const missing = getMissingFields()
+    if (missing.length > 0) {
+      setValidationErrors(missing)
+      // Auto-clear after 3 seconds
+      setTimeout(() => setValidationErrors([]), 3000)
+      return
+    }
+
+    setValidationErrors([])
     const nextIndex = currentIndex + 1
     if (nextIndex < steps.length) {
       setSlideDirection('left')
@@ -90,6 +202,7 @@ export default function OnboardingPage({
           profile_id: result.profile_id,
         },
       })
+      clearDraft()
       notifySuccess('资料已保存')
       onComplete()
     } catch (error) {
@@ -100,6 +213,7 @@ export default function OnboardingPage({
   }
 
   const handlePrev = () => {
+    setValidationErrors([])
     if (currentIndex === 0) {
       onBack()
     } else {
@@ -108,14 +222,29 @@ export default function OnboardingPage({
     }
   }
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
-    if (files) {
-      const newPhotos = Array.from(files).map(file => URL.createObjectURL(file))
+    if (!files || files.length === 0) return
+
+    setIsUploading(true)
+    try {
+      const newPhotos: string[] = []
+      for (const file of Array.from(files)) {
+        const compressed = await compressImage(file)
+        newPhotos.push(compressed)
+      }
       setProfile(prev => ({
         ...prev,
         photos: [...prev.photos, ...newPhotos].slice(0, 6)
       }))
+    } catch (error) {
+      notifyError(error, '图片处理失败')
+    } finally {
+      setIsUploading(false)
+      // Reset input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
     }
   }
 
@@ -155,6 +284,13 @@ export default function OnboardingPage({
     return '下一步'
   }
 
+  // Goal icons and colors
+  const goalConfig = {
+    marriage: { icon: Heart, color: 'text-rose', bgColor: 'bg-rose-soft' },
+    dating: { icon: Sparkles, color: 'text-gold', bgColor: 'bg-gold-soft' },
+    friends: { icon: Users, color: 'text-primary', bgColor: 'bg-primary/10' },
+  }
+
   return (
     <div className="min-h-screen bg-background flex flex-col max-w-md mx-auto relative overflow-hidden">
       {/* Soft background */}
@@ -191,7 +327,10 @@ export default function OnboardingPage({
       </header>
 
       {/* Content */}
-      <div className="relative z-10 flex-1 flex flex-col px-6 pt-6 overflow-y-auto">
+      <div 
+        ref={contentRef}
+        className="relative z-10 flex-1 flex flex-col px-6 pt-6 overflow-y-auto scrollbar-hide"
+      >
         
         {/* Step header - simple, no icons */}
         <div 
@@ -208,6 +347,15 @@ export default function OnboardingPage({
             {config.subtitle}
           </p>
         </div>
+
+        {/* Validation errors */}
+        {validationErrors.length > 0 && (
+          <div className="mb-4 px-4 py-3 rounded-xl bg-destructive/10 border border-destructive/20 animate-fade-in-up">
+            <p className="text-sm text-destructive">
+              请填写：{validationErrors.join('、')}
+            </p>
+          </div>
+        )}
 
         {/* Step content with slide animation */}
         <div 
@@ -253,15 +401,24 @@ export default function OnboardingPage({
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
+                      disabled={isUploading}
                       className={cn(
                         'w-20 h-20 rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-1 transition-all',
-                        profile.photos.length === 0 
-                          ? 'border-primary bg-primary/5 text-primary' 
-                          : 'border-border text-muted-foreground hover:border-primary hover:text-primary'
+                        isUploading 
+                          ? 'border-muted cursor-not-allowed' 
+                          : profile.photos.length === 0 
+                            ? 'border-primary bg-primary/5 text-primary' 
+                            : 'border-border text-muted-foreground hover:border-primary hover:text-primary'
                       )}
                     >
-                      <Plus className="w-5 h-5" />
-                      <span className="text-xs">{profile.photos.length === 0 ? '选择' : '添加'}</span>
+                      {isUploading ? (
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                      ) : (
+                        <>
+                          <ImagePlus className="w-5 h-5" />
+                          <span className="text-xs">{profile.photos.length === 0 ? '选择' : '添加'}</span>
+                        </>
+                      )}
                     </button>
                   )}
                 </div>
@@ -288,10 +445,11 @@ export default function OnboardingPage({
                   onChange={(e) => setProfile({ ...profile, name: e.target.value })}
                   placeholder="怎么称呼你"
                   className="w-full px-4 py-3.5 rounded-xl text-base outline-none transition-all bg-input border-2 border-border text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary"
+                  autoComplete="off"
                 />
               </div>
 
-              {/* Gender - 3 options */}
+              {/* Gender - 2 options */}
               <fieldset>
                 <legend className="block text-sm font-medium mb-3 text-foreground">
                   性别
@@ -300,7 +458,6 @@ export default function OnboardingPage({
                   {[
                     { value: 'female', label: '女' },
                     { value: 'male', label: '男' },
-                    { value: 'other', label: '其他' },
                   ].map((option) => (
                     <button
                       key={option.value}
@@ -330,7 +487,6 @@ export default function OnboardingPage({
                     { value: 'like_male', label: '喜欢男生' },
                     { value: 'like_female', label: '喜欢女生' },
                     { value: 'both', label: '都可以' },
-                    { value: 'undecided', label: '还不想细分' },
                   ].map((option) => (
                     <button
                       key={option.value}
@@ -355,35 +511,27 @@ export default function OnboardingPage({
           {/* Step 2: 现实情况 - stacked short modules */}
           {currentStep === 'reality' && (
             <div className="space-y-5">
-              {/* Birthday - no extra explanation */}
+              {/* Birthday - wheel picker */}
               <div>
-                <label htmlFor="birthday" className="block text-sm font-medium mb-2 text-foreground">
+                <label className="block text-sm font-medium mb-2 text-foreground">
                   出生年月日
                 </label>
-                <input
-                  id="birthday"
-                  type="date"
+                <DateWheelPicker
                   value={profile.birthday}
-                  onChange={(e) => setProfile({ ...profile, birthday: e.target.value })}
-                  className={cn(
-                    'w-full px-4 py-3.5 rounded-xl text-base outline-none transition-all bg-input border-2 border-border focus:border-primary focus:ring-1 focus:ring-primary',
-                    profile.birthday ? 'text-foreground' : 'text-muted-foreground'
-                  )}
+                  onChange={(date) => setProfile({ ...profile, birthday: date })}
+                  placeholder="选择你的生日"
                 />
               </div>
 
-              {/* Current City */}
+              {/* Current City - selector */}
               <div>
-                <label htmlFor="currentCity" className="block text-sm font-medium mb-2 text-foreground">
+                <label className="block text-sm font-medium mb-2 text-foreground">
                   你现在长期在哪座城市
                 </label>
-                <input
-                  id="currentCity"
-                  type="text"
+                <CitySelector
                   value={profile.currentCity}
-                  onChange={(e) => setProfile({ ...profile, currentCity: e.target.value })}
-                  placeholder="例如 上海"
-                  className="w-full px-4 py-3.5 rounded-xl text-base outline-none transition-all bg-input border-2 border-border text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary"
+                  onChange={(city) => setProfile({ ...profile, currentCity: city })}
+                  placeholder="选择城市"
                 />
               </div>
 
@@ -446,7 +594,7 @@ export default function OnboardingPage({
             </div>
           )}
 
-          {/* Step 3: 关系目标 - 3 large cards only */}
+          {/* Step 3: 关系目标 - 3 large cards with icons */}
           {currentStep === 'goals' && (
             <div className="space-y-4">
               {[
@@ -467,6 +615,8 @@ export default function OnboardingPage({
                 },
               ].map((option) => {
                 const isSelected = profile.relationshipGoal === option.value
+                const config = goalConfig[option.value as keyof typeof goalConfig]
+                const IconComponent = config.icon
                 return (
                   <button
                     key={option.value}
@@ -480,6 +630,31 @@ export default function OnboardingPage({
                     )}
                     aria-pressed={isSelected}
                   >
+                    <div className="flex items-start gap-4">
+                      {/* Icon */}
+                      <div className={cn(
+                        'w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 transition-all',
+                        isSelected ? config.bgColor : 'bg-secondary'
+                      )}>
+                        <IconComponent className={cn(
+                          'w-6 h-6 transition-colors',
+                          isSelected ? config.color : 'text-muted-foreground'
+                        )} />
+                      </div>
+                      
+                      <div className="flex-1 pr-8">
+                        <div className={cn(
+                          'font-semibold text-base mb-1 transition-colors duration-200',
+                          isSelected ? 'text-primary' : 'text-foreground'
+                        )}>
+                          {option.title}
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          {option.desc}
+                        </div>
+                      </div>
+                    </div>
+                    
                     {isSelected && (
                       <span className="absolute right-4 top-1/2 -translate-y-1/2">
                         <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center">
@@ -487,15 +662,6 @@ export default function OnboardingPage({
                         </div>
                       </span>
                     )}
-                    <div className={cn(
-                      'font-semibold text-base mb-1 pr-8 transition-colors duration-200',
-                      isSelected ? 'text-primary' : 'text-foreground'
-                    )}>
-                      {option.title}
-                    </div>
-                    <div className="text-sm text-muted-foreground pr-8">
-                      {option.desc}
-                    </div>
                   </button>
                 )
               })}
