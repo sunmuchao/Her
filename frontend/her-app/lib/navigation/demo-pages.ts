@@ -11,6 +11,7 @@ import {
   RotateCcw,
   Shield,
   Sparkles,
+  User,
   UserPlus,
 } from 'lucide-react'
 import type { AppPage } from '@/lib/navigation/types'
