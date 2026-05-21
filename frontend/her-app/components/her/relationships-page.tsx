@@ -5,6 +5,11 @@ import { MessageCircle, Heart, Calendar, ChevronRight, BadgeCheck, AlertCircle }
 import Image from 'next/image'
 import { cn } from '@/lib/utils'
 import { gatewayJson, queryString } from '@/lib/gateway'
+import { getErrorMessage } from '@/lib/api/errors'
+import { getCaseId, getChatParticipantId, getUserId } from '@/lib/auth/session'
+import { canUseMockFallback } from '@/lib/mock'
+import { DemoDataBanner } from './ui/demo-data-banner'
+import { ErrorState } from './ui/error-state'
 import { EmptyRelationships } from './ui/empty-states'
 import { FadeIn, StaggerContainer } from './ui/animations'
 import { RelationshipsPageSkeleton } from './ui/skeletons'
@@ -54,19 +59,27 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
     image: string
   }>>([])
   const [recentActivities, setRecentActivities] = useState<Array<{ id: string; content: string; time: string; type: 'view' | 'match' | 'greeting' }>>([])
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [usingMockData, setUsingMockData] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    const caseId = process.env.NEXT_PUBLIC_HER_CASE_ID
-    const requesterId = process.env.NEXT_PUBLIC_HER_USER_ID
-    if (!caseId || !requesterId) {
+    const caseId = getCaseId()
+    const timelineActorId = getUserId()
+    const participantId = getChatParticipantId()
+    if (!caseId || !timelineActorId) {
+      setIsLoading(false)
+      setLoadError('未配置 case_id 或 user_id，无法加载关系时间线')
       return
     }
 
     let cancelled = false
     async function loadTimeline() {
+      setIsLoading(true)
+      setLoadError(null)
       try {
         const data = await gatewayJson<TimelineResponse>(
-          `/v2/chat/cases/${caseId}/timeline${queryString({ requester_id: requesterId })}`,
+          `/v2/chat/cases/${caseId}/timeline${queryString({ requester_id: timelineActorId })}`,
         )
         if (cancelled) return
         const items = data.conversations
@@ -74,16 +87,21 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
           .map((item, index) => {
             const otherMember =
               item.conversation.members?.find(
-                (member) => member.participant_id !== requesterId && member.member_role !== 'agent',
+                (member) =>
+                  member.participant_id !== participantId && member.member_role !== 'agent',
               )?.participant_id || 'user-b'
             const lastMessage = item.messages[item.messages.length - 1]
+            const unread =
+              lastMessage && participantId && lastMessage.author_id !== participantId
+                ? 1
+                : 0
             return {
               id: item.conversation.conversation_id,
               name: otherMember,
               stage: item.conversation.conversation_kind === 'group' ? '共同聊天' : '单独沟通',
               lastMessage: lastMessage?.body || '还没有消息，试着主动开场吧',
               lastMessageTime: lastMessage?.created_at || '',
-              unread: 0,
+              unread,
               verified: true,
               image:
                 index % 2 === 0
@@ -100,8 +118,13 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
             type: index % 2 === 0 ? 'greeting' : 'match',
           })),
         )
-      } catch {
-        // Keep empty state when timeline is unavailable.
+        setUsingMockData(false)
+      } catch (error) {
+        if (cancelled) return
+        setLoadError(getErrorMessage(error, '关系页加载失败'))
+        if (canUseMockFallback()) setUsingMockData(true)
+      } finally {
+        if (!cancelled) setIsLoading(false)
       }
     }
 
@@ -111,8 +134,22 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
     }
   }, [])
 
+  if (isLoading) {
+    return <RelationshipsPageSkeleton />
+  }
+
+  if (loadError && !canUseMockFallback() && activeRelationships.length === 0) {
+    return (
+      <ErrorState
+        message={loadError}
+        onRetry={() => window.location.reload()}
+      />
+    )
+  }
+
   return (
     <div className="flex flex-col h-full bg-background">
+      {usingMockData && <DemoDataBanner />}
       <header className="sticky top-0 z-20 bg-background border-b border-border safe-area-top">
         <div className="px-4 py-3">
           <h1 className="text-lg font-medium">关系</h1>

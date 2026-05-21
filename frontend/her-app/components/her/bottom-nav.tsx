@@ -1,7 +1,7 @@
 'use client'
 
 import { Sparkles, Heart, User } from 'lucide-react'
-import type { TabType } from '@/app/page'
+import type { TabType } from '@/lib/navigation/types'
 import { cn } from '@/lib/utils'
 
 interface BottomNavProps {

@@ -536,6 +536,98 @@ def list_comparison_profile_photo_sources(
     )
 
 
+def create_profile_row(
+    *,
+    source_dsn: str,
+    source_table_name: str,
+    fields: Mapping[str, Any],
+) -> int:
+    """Insert a new row into the partner profile table and return its id."""
+    _require_profile_source(source_dsn=source_dsn, source_table_name=source_table_name)
+    profile_conn = _connect_profile_db(source_dsn)
+    try:
+        raw_conn = profile_conn.driver_connection
+        if not schema.column_exists(raw_conn, source_table_name, "id"):
+            raise ValueError(f"profile table {source_table_name} is missing id column")
+
+        insert_fields: dict[str, Any] = {}
+        for column, value in dict(fields).items():
+            if value is None:
+                continue
+            if schema.column_exists(raw_conn, source_table_name, column):
+                insert_fields[column] = value
+
+        if schema.column_exists(raw_conn, source_table_name, "profile_status") and "profile_status" not in insert_fields:
+            insert_fields["profile_status"] = "active"
+        if schema.column_exists(raw_conn, source_table_name, "verified_level") and "verified_level" not in insert_fields:
+            insert_fields["verified_level"] = "unverified"
+        if schema.column_exists(raw_conn, source_table_name, "last_active_at") and "last_active_at" not in insert_fields:
+            insert_fields["last_active_at"] = current_time()
+
+        if not insert_fields:
+            raise ValueError("no profile columns available for insert")
+
+        columns = list(insert_fields.keys())
+        placeholders = ", ".join("?" for _ in columns)
+        quoted_columns = ", ".join(schema.quote_mysql_ident(column) for column in columns)
+        values = [insert_fields[column] for column in columns]
+
+        try:
+            result = profile_conn.execute(
+                f"INSERT INTO {schema.quote_mysql_ident(source_table_name)} "
+                f"({quoted_columns}) VALUES ({placeholders})",
+                tuple(values),
+            )
+            profile_id = int(getattr(result, "lastrowid", 0) or 0)
+            if profile_id > 0:
+                profile_conn.commit()
+                return profile_id
+        except Exception:
+            pass
+
+        next_row = profile_conn.execute(
+            f"SELECT COALESCE(MAX({schema.quote_mysql_ident('id')}), 0) + 1 AS next_id "
+            f"FROM {schema.quote_mysql_ident(source_table_name)}"
+        ).fetchone()
+        next_id = int((next_row or {}).get("next_id") or 0)
+        if next_id <= 0:
+            raise ValueError(f"Could not allocate profile id from {source_table_name}")
+
+        profile_conn.execute(
+            f"INSERT INTO {schema.quote_mysql_ident(source_table_name)} "
+            f"({schema.quote_mysql_ident('id')}, {quoted_columns}) "
+            f"VALUES (?, {placeholders})",
+            (next_id,) + tuple(values),
+        )
+        profile_conn.commit()
+        return next_id
+    finally:
+        profile_conn.close()
+
+
+def upsert_profile_for_onboarding(
+    *,
+    source_dsn: str,
+    source_table_name: str,
+    profile_id: int | None,
+    fields: Mapping[str, Any],
+) -> tuple[int, str]:
+    if profile_id is not None and int(profile_id) > 0:
+        apply_profile_updates(
+            source_dsn=source_dsn,
+            source_table_name=source_table_name,
+            profile_id=int(profile_id),
+            updates=fields,
+        )
+        return int(profile_id), "updated"
+    new_id = create_profile_row(
+        source_dsn=source_dsn,
+        source_table_name=source_table_name,
+        fields=fields,
+    )
+    return new_id, "created"
+
+
 def apply_profile_updates(
     *,
     source_dsn: str,

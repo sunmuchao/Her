@@ -1,0 +1,136 @@
+'use client'
+
+import { useBadgeCounts } from '@/hooks/use-badge-counts'
+import BottomNav from '@/components/her/bottom-nav'
+import CandidateDetailPage from '@/components/her/candidate-detail-page'
+import ChatPage from '@/components/her/chat-page'
+import DiscoverPage, { RecommendationInbox } from '@/components/her/discover-page'
+import ProfilePage from '@/components/her/profile-page'
+import RelationshipsPage from '@/components/her/relationships-page'
+import TrustCenterPage from '@/components/her/trust-center-page'
+import VerificationFlowPage from '@/components/her/verification-flow-page'
+import { PageTransition, SlideInTransition } from '@/components/her/ui/page-transitions'
+import type { CandidatePreview } from '@/lib/types/candidate'
+import { DEMO_DEFAULT_CHAT_ID } from '@/lib/navigation/defaults'
+import type { AppPage, SubView, TabType } from '@/lib/navigation/types'
+
+type AppShellProps = {
+  currentTab: TabType
+  subView: SubView
+  selectedCandidateId: string | null
+  selectedCandidate: CandidatePreview | null
+  selectedChatId: string | null
+  discoverySessionId: string | null
+  onDiscoverySessionId: (sessionId: string | null) => void
+  onTabChange: (tab: TabType) => void
+  onViewCandidate: (candidateId: string, candidate?: CandidatePreview) => void
+  onOpenInbox: () => void
+  onOpenChat: (chatId: string) => void
+  onBackToMain: () => void
+  onStartVerification: (from?: 'trust-center') => void
+  onBackFromVerification: () => void
+  onOpenTrustCenter: () => void
+}
+
+export function AppShell({
+  currentTab,
+  subView,
+  selectedCandidateId,
+  selectedCandidate,
+  selectedChatId,
+  discoverySessionId,
+  onDiscoverySessionId,
+  onTabChange,
+  onViewCandidate,
+  onOpenInbox,
+  onOpenChat,
+  onBackToMain,
+  onStartVerification,
+  onBackFromVerification,
+  onOpenTrustCenter,
+}: AppShellProps) {
+  const { inboxUnreadCount, relationshipsBadge, refreshBadges } = useBadgeCounts()
+
+  return (
+    <div className="min-h-screen bg-background flex flex-col max-w-md mx-auto relative overflow-hidden">
+      <div className="absolute inset-0 bg-gradient-to-b from-rose-soft/30 via-background to-background pointer-events-none" />
+      <main className="flex-1 overflow-y-auto pb-24 relative z-10">
+        {currentTab === 'matchmaker' && subView === 'main' && (
+          <PageTransition key="matchmaker-main">
+            <DiscoverPage
+              onViewCandidate={(id, candidate) => onViewCandidate(id, candidate)}
+              onOpenInbox={onOpenInbox}
+              inboxUnreadCount={inboxUnreadCount}
+              onSessionIdChange={onDiscoverySessionId}
+            />
+          </PageTransition>
+        )}
+        {currentTab === 'matchmaker' && subView === 'recommendation-inbox' && (
+          <SlideInTransition key="inbox" direction="right">
+            <RecommendationInbox
+              onViewCandidate={onViewCandidate}
+              onBack={onBackToMain}
+              onBadgesRefresh={refreshBadges}
+            />
+          </SlideInTransition>
+        )}
+
+        {currentTab === 'relationships' && subView === 'main' && (
+          <PageTransition key="relationships-main">
+            <RelationshipsPage
+              onOpenChat={onOpenChat}
+              onStartVerification={onStartVerification}
+            />
+          </PageTransition>
+        )}
+
+        {currentTab === 'profile' && subView === 'main' && (
+          <PageTransition key="profile-main">
+            <ProfilePage
+              onStartVerification={onStartVerification}
+              onOpenTrustCenter={onOpenTrustCenter}
+            />
+          </PageTransition>
+        )}
+
+        {subView === 'candidate-detail' && selectedCandidateId && (
+          <SlideInTransition key="candidate-detail" direction="right">
+            <CandidateDetailPage
+              candidateId={selectedCandidateId}
+              candidate={selectedCandidate || undefined}
+              sessionId={discoverySessionId}
+              onBack={onBackToMain}
+              onStartChat={() => onOpenChat(selectedChatId || DEMO_DEFAULT_CHAT_ID)}
+            />
+          </SlideInTransition>
+        )}
+        {subView === 'chat' && selectedChatId && (
+          <SlideInTransition key="chat" direction="right">
+            <ChatPage chatId={selectedChatId} onBack={onBackToMain} />
+          </SlideInTransition>
+        )}
+        {subView === 'verification' && (
+          <SlideInTransition key="verification" direction="up">
+            <VerificationFlowPage onBack={onBackFromVerification} />
+          </SlideInTransition>
+        )}
+        {subView === 'trust-center' && (
+          <SlideInTransition key="trust-center" direction="right">
+            <TrustCenterPage
+              onStartVerification={() => onStartVerification('trust-center')}
+            />
+          </SlideInTransition>
+        )}
+      </main>
+
+      {subView === 'main' && (
+        <BottomNav
+          currentTab={currentTab}
+          onTabChange={onTabChange}
+          matchmakerBadge={inboxUnreadCount}
+          relationshipsBadge={relationshipsBadge}
+        />
+      )}
+    </div>
+  )
+}

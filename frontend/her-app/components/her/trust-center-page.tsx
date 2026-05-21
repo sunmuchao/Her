@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { Shield, BadgeCheck, AlertTriangle, FileText, Clock, ChevronRight, CheckCircle, XCircle, Upload } from 'lucide-react'
-import { gatewayJson, queryString } from '@/lib/gateway'
+import { gatewayJson, queryString } from '@/lib/api/client'
+import { getProfileId, getUserId } from '@/lib/auth/session'
 
 interface TrustCenterPageProps {
   onStartVerification: () => void
@@ -75,8 +76,8 @@ export default function TrustCenterPage({ onStartVerification }: TrustCenterPage
   const [notifications, setNotifications] = useState<Array<{ id: string; title: string; description: string; time: string }>>([])
 
   useEffect(() => {
-    const userId = process.env.NEXT_PUBLIC_HER_USER_ID
-    const profileId = process.env.NEXT_PUBLIC_HER_PROFILE_ID
+    const userId = getUserId()
+    const profileId = getProfileId()
     if (!userId) {
       setIsLoading(false)
       setLoadError('缺少 NEXT_PUBLIC_HER_USER_ID，已回退到演示数据。')

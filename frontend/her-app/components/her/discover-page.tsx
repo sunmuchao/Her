@@ -8,39 +8,24 @@ import { EmptyRecommendations, EmptySearchResults, EmptyInbox } from './ui/empty
 import { InboxItemSkeleton, DiscoverPageSkeleton } from './ui/skeletons'
 import { TypingIndicator } from './ui/typing-indicator'
 import { FadeIn, StaggerContainer, OnlineIndicator } from './ui/animations'
+import { resolveProfileImageUrl } from '@/lib/image-url'
 import { cn } from '@/lib/utils'
 import { gatewayJson, queryString } from '@/lib/gateway'
-import type { CandidatePreview } from '@/lib/her-types'
+import { createDiscoverySession, submitDiscoveryTurn } from '@/lib/api/endpoints/discovery'
+import { getErrorMessage } from '@/lib/api/errors'
+import { getProfileId, getRequesterId } from '@/lib/auth/session'
+import { canUseMockFallback } from '@/lib/mock'
+import { notifyError } from '@/lib/notify'
+import type { CandidatePreview } from '@/lib/types/candidate'
+import type { DiscoveryView } from '@/lib/types/discovery'
+import { DemoDataBanner } from './ui/demo-data-banner'
+import { ErrorState } from './ui/error-state'
 
 interface DiscoverPageProps {
   onViewCandidate: (candidateId: string, candidate?: CandidatePreview) => void
   onOpenInbox: () => void
   inboxUnreadCount?: number
-}
-
-type DiscoveryView = {
-  timeline?: Array<{
-    item_type?: string
-    item_id?: string
-    body?: string
-    cards?: Array<{
-      card_id?: string
-      profile_id?: string | number
-      title?: string
-      subtitle?: string
-      cover_image_url?: string
-      match_score?: number
-      reason_summary?: string
-    }>
-  }>
-  criteria_chips?: Array<{ label?: string }>
-  suggested_actions?: Array<{ action_id?: string; label?: string }>
-  composer?: { placeholder?: string; disabled?: boolean }
-}
-
-type DiscoverySessionResponse = {
-  session?: { session_id?: string }
-  view?: DiscoveryView
+  onSessionIdChange?: (sessionId: string | null) => void
 }
 
 type RecommendationCardsResponse = {
@@ -88,9 +73,16 @@ type InboxItem = {
   isRead: boolean
 }
 
-const initialMessages = [
-  { id: '1', type: 'matchmaker' as const, content: '你好，我是你的专属红娘小雅。接下来我会帮你找到那个对的人。', timestamp: '09:30' },
-  { id: '2', type: 'matchmaker' as const, content: '你理想中的伴侣是什么样的？', timestamp: '09:31' },
+type ChatMessage = {
+  id: string
+  type: 'matchmaker' | 'user'
+  content: string
+  timestamp: string
+}
+
+const initialMessages: ChatMessage[] = [
+  { id: '1', type: 'matchmaker', content: '你好，我是你的专属红娘小雅。接下来我会帮你找到那个对的人。', timestamp: '09:30' },
+  { id: '2', type: 'matchmaker', content: '你理想中的伴侣是什么样的？', timestamp: '09:31' },
 ]
 
 const fallbackCandidates: CandidatePreview[] = [
@@ -177,7 +169,12 @@ function mapDiscoveryView(view?: DiscoveryView) {
   }
 }
 
-export default function DiscoverPage({ onViewCandidate, onOpenInbox, inboxUnreadCount = 3 }: DiscoverPageProps) {
+export default function DiscoverPage({
+  onViewCandidate,
+  onOpenInbox,
+  inboxUnreadCount = 0,
+  onSessionIdChange,
+}: DiscoverPageProps) {
   const [messages, setMessages] = useState(initialMessages)
   const [inputValue, setInputValue] = useState('')
   const [isTyping, setIsTyping] = useState(false)
@@ -188,6 +185,9 @@ export default function DiscoverPage({ onViewCandidate, onOpenInbox, inboxUnread
   const [composerDisabled, setComposerDisabled] = useState(false)
   const [isSubmittingTurn, setIsSubmittingTurn] = useState(false)
   const [backendCandidates, setBackendCandidates] = useState<CandidatePreview[]>([])
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [usingMockData, setUsingMockData] = useState(false)
+  const [isLoadingSession, setIsLoadingSession] = useState(true)
   const chatEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -205,22 +205,31 @@ export default function DiscoverPage({ onViewCandidate, onOpenInbox, inboxUnread
   }, [messages, isTyping, suggestedActions, backendCandidates])
 
   useEffect(() => {
-    const requesterId = process.env.NEXT_PUBLIC_HER_REQUESTER_ID
-    const profileId = process.env.NEXT_PUBLIC_HER_PROFILE_ID
-    if (!requesterId || !profileId) return
+    const requesterId = getRequesterId()
+    const profileId = getProfileId()
+    if (!requesterId || !profileId) {
+      setIsLoadingSession(false)
+      setLoadError('未配置用户 ID，请在 .env.local 设置 NEXT_PUBLIC_HER_REQUESTER_ID 与 NEXT_PUBLIC_HER_PROFILE_ID')
+      if (canUseMockFallback()) {
+        setUsingMockData(true)
+      }
+      return
+    }
     let cancelled = false
 
     async function loadSession() {
+      setIsLoadingSession(true)
+      setLoadError(null)
       try {
-        const data = await gatewayJson<DiscoverySessionResponse>('/v1/discovery/sessions', {
-          method: 'POST',
-          body: JSON.stringify({
-            requester_id: Number(requesterId),
-            profile_id: Number(profileId),
-          }),
+        const data = await createDiscoverySession({
+          requesterId: requesterId!,
+          profileId: profileId!,
         })
         if (cancelled) return
-        setSessionId(data.session?.session_id || null)
+        const sid = data.session?.session_id || null
+        setSessionId(sid)
+        onSessionIdChange?.(sid)
+        setUsingMockData(false)
         const mapped = mapDiscoveryView(data.view)
         if (mapped.messages.length) setMessages(mapped.messages)
         if (mapped.chips?.length) setCurrentPrefs(mapped.chips)
@@ -228,8 +237,17 @@ export default function DiscoverPage({ onViewCandidate, onOpenInbox, inboxUnread
         setComposerPlaceholder(mapped.composerPlaceholder)
         setComposerDisabled(mapped.composerDisabled)
         if (mapped.candidates.length) setBackendCandidates(mapped.candidates)
-      } catch {
-        // Keep design fallback when backend session is unavailable.
+      } catch (error) {
+        if (cancelled) return
+        const message = getErrorMessage(error, '发现页会话加载失败')
+        setLoadError(message)
+        if (canUseMockFallback()) {
+          setUsingMockData(true)
+        } else {
+          notifyError(error, message)
+        }
+      } finally {
+        if (!cancelled) setIsLoadingSession(false)
       }
     }
 
@@ -237,15 +255,19 @@ export default function DiscoverPage({ onViewCandidate, onOpenInbox, inboxUnread
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [onSessionIdChange])
 
   const submitTurn = async (payload: { user_message?: string; action_id?: string }) => {
-    if (!sessionId) return
+    if (!sessionId) {
+      notifyError(new Error('会话未就绪'), '请稍后重试或刷新页面')
+      return
+    }
     setIsSubmittingTurn(true)
     try {
-      const data = await gatewayJson<DiscoverySessionResponse>(`/v1/discovery/sessions/${sessionId}/turns`, {
-        method: 'POST',
-        body: JSON.stringify(payload),
+      const data = await submitDiscoveryTurn({
+        sessionId,
+        userMessage: payload.user_message,
+        actionId: payload.action_id,
       })
       const mapped = mapDiscoveryView(data.view)
       if (mapped.messages.length) setMessages(mapped.messages)
@@ -255,6 +277,8 @@ export default function DiscoverPage({ onViewCandidate, onOpenInbox, inboxUnread
       setComposerDisabled(mapped.composerDisabled)
       if (mapped.candidates.length) setBackendCandidates(mapped.candidates)
       if (payload.user_message) setInputValue('')
+    } catch (error) {
+      notifyError(error, '发送失败，请重试')
     } finally {
       setIsSubmittingTurn(false)
     }
@@ -262,8 +286,22 @@ export default function DiscoverPage({ onViewCandidate, onOpenInbox, inboxUnread
 
   const visibleCandidates = backendCandidates.length ? backendCandidates : fallbackCandidates
 
+  if (isLoadingSession) {
+    return <DiscoverPageSkeleton />
+  }
+
+  if (loadError && !canUseMockFallback()) {
+    return (
+      <ErrorState
+        message={loadError}
+        onRetry={() => window.location.reload()}
+      />
+    )
+  }
+
   return (
     <div className="flex flex-col h-full bg-background">
+      {usingMockData && <DemoDataBanner />}
       <header className="sticky top-0 z-20 bg-background border-b border-border safe-area-top">
         <div className="px-4 py-3">
           <div className="flex items-center justify-between">
@@ -429,9 +467,11 @@ export default function DiscoverPage({ onViewCandidate, onOpenInbox, inboxUnread
 export function RecommendationInbox({
   onViewCandidate,
   onBack,
+  onBadgesRefresh,
 }: {
   onViewCandidate: (candidateId: string, candidate?: CandidatePreview) => void
   onBack: () => void
+  onBadgesRefresh?: () => void
 }) {
   const [filter, setFilter] = useState<'all' | 'delayed' | 'matched'>('all')
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set())
@@ -441,7 +481,7 @@ export function RecommendationInbox({
   const [backendItems, setBackendItems] = useState<InboxItem[]>(fallbackInboxItems)
 
   useEffect(() => {
-    const requesterId = process.env.NEXT_PUBLIC_HER_REQUESTER_ID
+    const requesterId = getRequesterId()
     if (!requesterId) {
       setIsLoading(false)
       return
@@ -469,7 +509,10 @@ export function RecommendationInbox({
               city: profile?.city || '未知',
               occupation: profile?.job || '资料待补充',
               matchScore: snapshot?.score || 0,
-              image: profile?.avatar_url || 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&h=200&fit=crop&crop=face',
+              image: resolveProfileImageUrl(
+                profile?.avatar_url,
+                'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&h=200&fit=crop&crop=face',
+              ),
               type: 'matched' as const,
               message: card.body || card.title || '系统为你推送了一位新候选人',
               time: card.created_at || '刚刚',
@@ -502,8 +545,9 @@ export function RecommendationInbox({
   })
 
   const markRead = async (item: InboxItem) => {
-    const requesterId = process.env.NEXT_PUBLIC_HER_REQUESTER_ID
+    const requesterId = getRequesterId()
     if (!requesterId || !item.cardId) return
+    try {
     await gatewayJson('/v1/recommendation/cards/read', {
       method: 'POST',
       body: JSON.stringify({
@@ -511,11 +555,16 @@ export function RecommendationInbox({
         card_ids: [item.cardId],
       }),
     })
+      onBadgesRefresh?.()
+    } catch (error) {
+      notifyError(error, '标记已读失败')
+    }
   }
 
   const recordAction = async (item: InboxItem, actionType: string) => {
     if (!item.subscriptionId || !item.candidateId) return
     const idem = `${item.subscriptionId}:${item.candidateId}:${actionType}`
+    try {
     await gatewayJson('/v1/recommendation/actions', {
       method: 'POST',
       headers: { 'Idempotency-Key': idem },
@@ -526,6 +575,9 @@ export function RecommendationInbox({
         client_idempotency_key: idem,
       }),
     })
+    } catch (error) {
+      notifyError(error, '操作失败，请重试')
+    }
   }
 
   return (

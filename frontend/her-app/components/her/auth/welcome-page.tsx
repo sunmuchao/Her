@@ -4,18 +4,21 @@ import { useState, useEffect } from 'react'
 import { Smartphone, ChevronRight } from 'lucide-react'
 import { XiaoyaAvatar } from '@/components/her/ui/xiaoya-avatar'
 import { WechatIcon } from '@/components/her/ui/wechat-icon'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 interface WelcomePageProps {
   onOneClickLogin: () => void | Promise<void>
   onWeChatLogin: () => void | Promise<void>
   onPhoneLogin: () => void
+  onAccountRecovery?: () => void
 }
 
 export default function WelcomePage({
   onOneClickLogin,
   onWeChatLogin,
   onPhoneLogin,
+  onAccountRecovery,
 }: WelcomePageProps) {
   const [isLoading, setIsLoading] = useState<'oneclick' | 'wechat' | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -150,19 +153,26 @@ export default function WelcomePage({
             </span>
           </button>
 
-          <button
+          <Button
+            variant="link"
             onClick={onPhoneLogin}
             disabled={isLoading !== null}
-            className={cn(
-              'w-full py-3 flex items-center justify-center gap-1 text-sm font-medium text-primary transition-colors',
-              'hover:text-primary/80',
-              'focus:outline-none focus-visible:underline',
-            )}
+            className="w-full text-sm"
             aria-label="使用手机号登录"
           >
             手机号登录
             <ChevronRight className="w-4 h-4" aria-hidden="true" />
-          </button>
+          </Button>
+          {onAccountRecovery && (
+            <Button
+              variant="ghost"
+              onClick={onAccountRecovery}
+              disabled={isLoading !== null}
+              className="w-full text-sm text-muted-foreground"
+            >
+              无法登录？找回账号
+            </Button>
+          )}
         </div>
 
         <div

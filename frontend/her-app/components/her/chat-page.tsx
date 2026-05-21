@@ -6,6 +6,13 @@ import Image from 'next/image'
 import { ChatTypingIndicator } from './ui/typing-indicator'
 import { cn } from '@/lib/utils'
 import { gatewayJson, queryString } from '@/lib/gateway'
+import { getErrorMessage } from '@/lib/api/errors'
+import { getChatParticipantId } from '@/lib/auth/session'
+import { canUseMockFallback } from '@/lib/mock'
+import { notifyError } from '@/lib/notify'
+import { DEMO_DEFAULT_CHAT_ID } from '@/lib/navigation/defaults'
+import { DemoDataBanner } from './ui/demo-data-banner'
+import { ErrorState } from './ui/error-state'
 
 interface ChatPageProps {
   chatId: string | null
@@ -86,29 +93,40 @@ function MessageStatusIndicator({ status }: { status?: MessageStatus }) {
 }
 
 export default function ChatPage({ chatId, onBack }: ChatPageProps) {
+  const resolvedChatId = chatId === 'demo' ? DEMO_DEFAULT_CHAT_ID : chatId
   const [inputValue, setInputValue] = useState('')
   const [isTyping, setIsTyping] = useState(false)
   const [messages, setMessages] = useState<Message[]>(fallbackMessages)
   const [chatTitle, setChatTitle] = useState('聊天')
   const [verified, setVerified] = useState(true)
   const [isSending, setIsSending] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [usingMockData, setUsingMockData] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    if (!chatId) return
-    const requesterId = process.env.NEXT_PUBLIC_HER_USER_ID
-    if (!requesterId) return
+    if (!resolvedChatId) return
+    const requesterId = getChatParticipantId()
+    if (!requesterId) {
+      setIsLoading(false)
+      setLoadError('未配置 NEXT_PUBLIC_HER_USER_ID')
+      if (canUseMockFallback()) setUsingMockData(true)
+      return
+    }
 
     let cancelled = false
     async function loadConversation() {
+      setIsLoading(true)
+      setLoadError(null)
       try {
         const [conversationData, messageData] = await Promise.all([
           gatewayJson<ConversationResponse>(
-            `/v2/chat/conversations/${chatId}${queryString({ requester_id: requesterId })}`,
+            `/v2/chat/conversations/${resolvedChatId}${queryString({ requester_id: requesterId })}`,
           ),
           gatewayJson<MessagesResponse>(
-            `/v2/chat/conversations/${chatId}/messages${queryString({ requester_id: requesterId })}`,
+            `/v2/chat/conversations/${resolvedChatId}/messages${queryString({ requester_id: requesterId })}`,
           ),
         ])
         if (cancelled) return
@@ -129,8 +147,18 @@ export default function ChatPage({ chatId, onBack }: ChatPageProps) {
               : undefined,
           })),
         )
-      } catch {
-        // Fall back to demo conversation when backend chat is unavailable for this entry.
+        setUsingMockData(false)
+      } catch (error) {
+        if (cancelled) return
+        const message = getErrorMessage(error, '聊天加载失败')
+        setLoadError(message)
+        if (canUseMockFallback()) {
+          setUsingMockData(true)
+        } else {
+          notifyError(error, message)
+        }
+      } finally {
+        if (!cancelled) setIsLoading(false)
       }
     }
 
@@ -138,7 +166,7 @@ export default function ChatPage({ chatId, onBack }: ChatPageProps) {
     return () => {
       cancelled = true
     }
-  }, [chatId])
+  }, [resolvedChatId])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -146,8 +174,8 @@ export default function ChatPage({ chatId, onBack }: ChatPageProps) {
 
   const handleSend = async () => {
     const body = inputValue.trim()
-    if (!body || !chatId || isSending) return
-    const authorId = process.env.NEXT_PUBLIC_HER_USER_ID
+    if (!body || !resolvedChatId || isSending) return
+    const authorId = getChatParticipantId()
     if (!authorId) return
     
     setInputValue('')
@@ -165,7 +193,7 @@ export default function ChatPage({ chatId, onBack }: ChatPageProps) {
     setMessages(prev => [...prev, optimisticMessage])
 
     try {
-      await gatewayJson(`/v2/chat/conversations/${chatId}/messages`, {
+      await gatewayJson(`/v2/chat/conversations/${resolvedChatId}/messages`, {
         method: 'POST',
         body: JSON.stringify({
           author_id: authorId,
@@ -195,11 +223,9 @@ export default function ChatPage({ chatId, onBack }: ChatPageProps) {
         ))
       }, 1500)
       
-    } catch {
-      // On error, still keep the message but without status
-      setMessages(prev => prev.map(msg => 
-        msg.id === tempId ? { ...msg, status: 'sent' as const } : msg
-      ))
+    } catch (error) {
+      setMessages((prev) => prev.filter((msg) => msg.id !== tempId))
+      notifyError(error, '消息发送失败')
     } finally {
       setIsSending(false)
     }
@@ -212,8 +238,21 @@ export default function ChatPage({ chatId, onBack }: ChatPageProps) {
     }
   }
 
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <p className="text-sm text-muted-foreground">加载对话中…</p>
+      </div>
+    )
+  }
+
+  if (loadError && !canUseMockFallback()) {
+    return <ErrorState message={loadError} onBack={onBack} />
+  }
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
+      {usingMockData && <DemoDataBanner />}
       {/* Header */}
       <header className="sticky top-0 z-20 bg-background border-b border-border safe-area-top">
         <div className="px-4 py-3 flex items-center gap-3">

@@ -2,15 +2,20 @@
 
 import { ArrowLeft, BadgeCheck, MapPin, Briefcase, GraduationCap, Heart, Sparkles, MessageCircle, AlertCircle, ChevronDown, ChevronUp, CheckCircle, Shield, ChevronLeft, ChevronRight } from 'lucide-react'
 import Image from 'next/image'
-import { useState, useRef, TouchEvent } from 'react'
-import type { CandidatePreview } from '@/lib/her-types'
+import { useEffect, useState, useRef, TouchEvent } from 'react'
+import type { CandidatePreview } from '@/lib/types/candidate'
+import { fetchDiscoveryProfileDetail } from '@/lib/api/endpoints/discovery'
+import { getErrorMessage } from '@/lib/api/errors'
+import { canUseMockFallback } from '@/lib/mock'
+import { mapProfileImageUrls, resolveProfileImageUrl } from '@/lib/image-url'
 import { cn } from '@/lib/utils'
 import { FadeIn, Heartbeat, PageTransition } from './ui/animations'
 import { ImageCarousel } from './ui/image-carousel'
-
+import { DemoDataBanner } from './ui/demo-data-banner'
 interface CandidateDetailPageProps {
   candidateId: string
   candidate?: CandidatePreview
+  sessionId?: string | null
   onBack: () => void
   onStartChat: () => void
 }
@@ -150,11 +155,67 @@ const verifiedItems = [
   { name: '收入水平', verified: false },
 ]
 
-export default function CandidateDetailPage({ candidateId, candidate, onBack, onStartChat }: CandidateDetailPageProps) {
+export default function CandidateDetailPage({
+  candidateId,
+  candidate,
+  sessionId,
+  onBack,
+  onStartChat,
+}: CandidateDetailPageProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['intro']))
+  const [apiDetail, setApiDetail] = useState<{
+    headline?: string
+    selfIntro?: string
+    images?: string[]
+    matchmakerNote?: string
+    matchReasons?: string[]
+  } | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [usingMockData, setUsingMockData] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
   const touchStartX = useRef<number | null>(null)
   const touchEndX = useRef<number | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      setIsLoading(true)
+      try {
+        const data = await fetchDiscoveryProfileDetail({
+          profileId: candidateId,
+          sessionId,
+        })
+        if (cancelled) return
+        const view = data.detail_view
+        const hero = view?.hero
+        const gallery =
+          view?.photo_gallery
+            ?.map((p) => p.url || p.image_url)
+            .filter((u): u is string => Boolean(u)) || []
+        setApiDetail({
+          headline: hero?.headline,
+          selfIntro:
+            view?.self_reported_sections?.[0]?.items?.join(' ') ||
+            view?.verified_sections?.[0]?.items?.join(' '),
+          images: gallery.length ? gallery : undefined,
+          matchmakerNote: view?.matchmaker_notes?.[0],
+          matchReasons: view?.caution_sections?.[0]?.items,
+        })
+        setUsingMockData(false)
+      } catch (error) {
+        if (cancelled) return
+        setLoadError(getErrorMessage(error, '资料详情加载失败'))
+        if (canUseMockFallback()) setUsingMockData(true)
+      } finally {
+        if (!cancelled) setIsLoading(false)
+      }
+    }
+    void load()
+    return () => {
+      cancelled = true
+    }
+  }, [candidateId, sessionId])
 
   const rawCandidate = candidatesDatabase[candidateId] || defaultCandidate
   const candidateData = {
@@ -167,9 +228,30 @@ export default function CandidateDetailPage({ candidateId, candidate, onBack, on
     education: candidate?.education || rawCandidate.education,
     verified: candidate?.verified ?? rawCandidate.verified,
     matchScore: candidate?.matchScore || rawCandidate.matchScore,
-    headline: candidate?.matchReason || candidate?.message || rawCandidate.headline,
-    selfIntro: candidate?.message || candidate?.matchReason || rawCandidate.selfIntro,
-    images: candidate?.image ? [candidate.image, ...rawCandidate.images.slice(1)] : rawCandidate.images,
+    headline:
+      apiDetail?.headline ||
+      candidate?.matchReason ||
+      candidate?.message ||
+      rawCandidate.headline,
+    selfIntro:
+      apiDetail?.selfIntro ||
+      candidate?.message ||
+      candidate?.matchReason ||
+      rawCandidate.selfIntro,
+    images: mapProfileImageUrls(
+      apiDetail?.images ||
+        (candidate?.image ? [candidate.image, ...rawCandidate.images.slice(1)] : rawCandidate.images),
+    ),
+    matchmakerNote: apiDetail?.matchmakerNote || rawCandidate.matchmakerNote,
+    matchReasons: apiDetail?.matchReasons || rawCandidate.matchReasons,
+  }
+
+  if (isLoading) {
+    return (
+      <PageTransition className="min-h-screen bg-background flex items-center justify-center">
+        <p className="text-sm text-muted-foreground">加载详情中…</p>
+      </PageTransition>
+    )
   }
 
   const handleTouchStart = (e: TouchEvent) => { touchStartX.current = e.touches[0].clientX }
@@ -199,6 +281,12 @@ export default function CandidateDetailPage({ candidateId, candidate, onBack, on
 
   return (
     <PageTransition className="min-h-screen bg-background">
+      {usingMockData && <DemoDataBanner />}
+      {loadError && !usingMockData && (
+        <div className="mx-4 mt-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+          {loadError}（已展示本地示例资料）
+        </div>
+      )}
       {/* Hero Image with improved carousel */}
       <div className="relative h-[480px]">
         <ImageCarousel
