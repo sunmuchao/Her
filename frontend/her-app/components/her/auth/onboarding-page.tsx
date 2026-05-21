@@ -2,6 +2,8 @@
 
 import { useState } from 'react'
 import { ChevronLeft, ChevronRight, Calendar, Heart, Tag, Sliders } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { CustomRangeSlider } from '@/components/her/ui/custom-range-slider'
 
 interface OnboardingPageProps {
   onComplete: () => void
@@ -114,28 +116,28 @@ export default function OnboardingPage({
         <div className="flex items-center justify-between mb-4">
           <button 
             onClick={handlePrev}
-            className="w-10 h-10 rounded-full flex items-center justify-center transition-colors"
-            style={{ background: 'oklch(0.95 0.01 80)' }}
+            className="w-10 h-10 rounded-full flex items-center justify-center transition-colors bg-secondary hover:bg-secondary/80 focus-ring"
+            aria-label={currentIndex === 0 ? '返回' : '上一步'}
           >
-            <ChevronLeft className="w-5 h-5" style={{ color: 'oklch(0.4 0.03 30)' }} />
+            <ChevronLeft className="w-5 h-5 text-foreground" />
           </button>
           
-          <span className="text-sm" style={{ color: 'oklch(0.55 0.02 30)' }}>
+          <span className="text-sm text-muted-foreground" aria-live="polite">
             {currentIndex + 1} / {steps.length}
           </span>
         </div>
 
         {/* Progress bar */}
         <div 
-          className="h-1 rounded-full overflow-hidden"
-          style={{ background: 'oklch(0.92 0.02 80)' }}
+          className="h-1.5 rounded-full overflow-hidden bg-secondary"
+          role="progressbar"
+          aria-valuenow={progress}
+          aria-valuemin={0}
+          aria-valuemax={100}
         >
           <div 
-            className="h-full rounded-full transition-all duration-500 ease-out"
-            style={{ 
-              width: `${progress}%`,
-              background: 'linear-gradient(90deg, oklch(0.65 0.1 15), oklch(0.55 0.12 15))',
-            }}
+            className="h-full rounded-full transition-all duration-500 ease-out bg-gradient-to-r from-rose to-primary"
+            style={{ width: `${progress}%` }}
           />
         </div>
       </header>
@@ -144,75 +146,61 @@ export default function OnboardingPage({
       <div className="relative z-10 flex-1 flex flex-col px-8 pt-4">
         
         {/* Step header */}
-        <div className="flex items-center gap-4 mb-8">
-          <div 
-            className="w-14 h-14 rounded-2xl flex items-center justify-center"
-            style={{
-              background: 'linear-gradient(135deg, oklch(0.95 0.04 15 / 0.8), oklch(0.92 0.05 80 / 0.5))',
-              boxShadow: '0 4px 16px oklch(0.55 0.12 15 / 0.1)',
-            }}
-          >
-            <StepIcon className="w-6 h-6" style={{ color: 'oklch(0.55 0.12 15)' }} />
+        <div className="flex items-center gap-4 mb-8 animate-fade-in-up">
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-gradient-to-br from-rose-soft to-gold-soft shadow-sm">
+            <StepIcon className="w-6 h-6 text-primary" aria-hidden="true" />
           </div>
           <div>
-            <h1 
-              className="editorial-title text-2xl mb-1"
-              style={{ color: 'oklch(0.3 0.03 25)' }}
-            >
+            <h1 className="editorial-title text-2xl mb-1 text-foreground">
               {config.title}
             </h1>
-            <p className="text-sm" style={{ color: 'oklch(0.55 0.02 30)' }}>
+            <p className="text-sm text-muted-foreground">
               {config.subtitle}
             </p>
           </div>
         </div>
 
         {/* Step content */}
-        <div className="flex-1">
+        <div className="flex-1 animate-fade-in-up" style={{ animationDelay: '100ms' }}>
           {currentStep === 'basics' && (
             <div className="space-y-5">
               {/* Name */}
               <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: 'oklch(0.4 0.03 30)' }}>
+                <label htmlFor="name" className="block text-sm font-medium mb-2 text-secondary-foreground">
                   你的名字
                 </label>
                 <input
+                  id="name"
                   type="text"
                   value={profile.name}
                   onChange={(e) => setProfile({ ...profile, name: e.target.value })}
                   placeholder="怎么称呼你"
-                  className="w-full px-4 py-3.5 rounded-xl text-base outline-none transition-all"
-                  style={{
-                    background: 'oklch(0.97 0.008 80)',
-                    border: '2px solid oklch(0.9 0.02 80)',
-                    color: 'oklch(0.3 0.03 25)',
-                  }}
+                  className="w-full px-4 py-3.5 rounded-xl text-base outline-none transition-all bg-input border-2 border-border text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary"
                 />
               </div>
 
               {/* Birthday */}
               <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: 'oklch(0.4 0.03 30)' }}>
+                <label htmlFor="birthday" className="block text-sm font-medium mb-2 text-secondary-foreground">
                   生日
                 </label>
                 <input
+                  id="birthday"
                   type="date"
                   value={profile.birthday}
                   onChange={(e) => setProfile({ ...profile, birthday: e.target.value })}
-                  className="w-full px-4 py-3.5 rounded-xl text-base outline-none transition-all"
-                  style={{
-                    background: 'oklch(0.97 0.008 80)',
-                    border: '2px solid oklch(0.9 0.02 80)',
-                    color: profile.birthday ? 'oklch(0.3 0.03 25)' : 'oklch(0.6 0.02 30)',
-                  }}
+                  className={cn(
+                    'w-full px-4 py-3.5 rounded-xl text-base outline-none transition-all bg-input border-2 border-border focus:border-primary focus:ring-1 focus:ring-primary',
+                    profile.birthday ? 'text-foreground' : 'text-muted-foreground'
+                  )}
                 />
               </div>
 
               {/* Gender */}
-              <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: 'oklch(0.4 0.03 30)' }}>
+              <fieldset>
+                <legend className="block text-sm font-medium mb-2 text-secondary-foreground">
                   性别
-                </label>
+                </legend>
                 <div className="flex gap-3">
                   {[
                     { value: 'female', label: '女生' },
@@ -220,105 +208,97 @@ export default function OnboardingPage({
                   ].map((option) => (
                     <button
                       key={option.value}
+                      type="button"
                       onClick={() => setProfile({ ...profile, gender: option.value })}
-                      className="flex-1 py-3.5 rounded-xl text-sm font-medium transition-all"
-                      style={{
-                        background: profile.gender === option.value 
-                          ? 'linear-gradient(135deg, oklch(0.92 0.06 15), oklch(0.88 0.08 15))'
-                          : 'oklch(0.97 0.008 80)',
-                        border: `2px solid ${profile.gender === option.value ? 'oklch(0.7 0.1 15)' : 'oklch(0.9 0.02 80)'}`,
-                        color: profile.gender === option.value ? 'oklch(0.45 0.1 15)' : 'oklch(0.5 0.03 30)',
-                      }}
+                      className={cn(
+                        'flex-1 py-3.5 rounded-xl text-sm font-medium transition-all border-2 focus-ring',
+                        profile.gender === option.value 
+                          ? 'bg-rose-soft border-rose text-primary'
+                          : 'bg-input border-border text-muted-foreground hover:border-border/80'
+                      )}
+                      aria-pressed={profile.gender === option.value}
                     >
                       {option.label}
                     </button>
                   ))}
                 </div>
-              </div>
+              </fieldset>
 
               {/* Location */}
               <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: 'oklch(0.4 0.03 30)' }}>
+                <label htmlFor="location" className="block text-sm font-medium mb-2 text-secondary-foreground">
                   所在城市
                 </label>
                 <input
+                  id="location"
                   type="text"
                   value={profile.location}
                   onChange={(e) => setProfile({ ...profile, location: e.target.value })}
                   placeholder="你现在住在哪里"
-                  className="w-full px-4 py-3.5 rounded-xl text-base outline-none transition-all"
-                  style={{
-                    background: 'oklch(0.97 0.008 80)',
-                    border: '2px solid oklch(0.9 0.02 80)',
-                    color: 'oklch(0.3 0.03 25)',
-                  }}
+                  className="w-full px-4 py-3.5 rounded-xl text-base outline-none transition-all bg-input border-2 border-border text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary"
                 />
               </div>
             </div>
           )}
 
           {currentStep === 'goals' && (
-            <div className="space-y-3">
+            <fieldset className="space-y-3">
+              <legend className="sr-only">选择你的恋爱期待</legend>
               {[
                 { value: 'serious', label: '认真寻找长期伴侣', desc: '想找一个能一起走下去的人' },
                 { value: 'explore', label: '慢慢了解，随缘发展', desc: '先从朋友开始，看看感觉' },
                 { value: 'marriage', label: '以结婚为目标', desc: '目标明确，希望尽快步入婚姻' },
-              ].map((option) => (
+              ].map((option, index) => (
                 <button
                   key={option.value}
+                  type="button"
                   onClick={() => setProfile({ ...profile, relationshipGoal: option.value })}
-                  className="w-full p-5 rounded-2xl text-left transition-all"
-                  style={{
-                    background: profile.relationshipGoal === option.value 
-                      ? 'linear-gradient(135deg, oklch(0.96 0.04 15), oklch(0.92 0.05 80 / 0.5))'
-                      : 'oklch(0.98 0.008 80)',
-                    border: `2px solid ${profile.relationshipGoal === option.value ? 'oklch(0.7 0.1 15)' : 'oklch(0.9 0.02 80)'}`,
-                    boxShadow: profile.relationshipGoal === option.value ? '0 4px 16px oklch(0.55 0.12 15 / 0.1)' : 'none',
-                  }}
+                  className={cn(
+                    'w-full p-5 rounded-2xl text-left transition-all border-2 focus-ring animate-fade-in-up',
+                    profile.relationshipGoal === option.value 
+                      ? 'bg-gradient-to-br from-rose-soft to-gold-soft/50 border-rose shadow-sm'
+                      : 'bg-card border-border hover:border-border/80'
+                  )}
+                  style={{ animationDelay: `${index * 50}ms` }}
+                  aria-pressed={profile.relationshipGoal === option.value}
                 >
-                  <div 
-                    className="font-medium mb-1"
-                    style={{ color: profile.relationshipGoal === option.value ? 'oklch(0.4 0.08 15)' : 'oklch(0.35 0.03 30)' }}
-                  >
+                  <div className={cn(
+                    'font-medium mb-1',
+                    profile.relationshipGoal === option.value ? 'text-primary' : 'text-foreground'
+                  )}>
                     {option.label}
                   </div>
-                  <div 
-                    className="text-sm"
-                    style={{ color: 'oklch(0.55 0.02 30)' }}
-                  >
+                  <div className="text-sm text-muted-foreground">
                     {option.desc}
                   </div>
                 </button>
               ))}
-            </div>
+            </fieldset>
           )}
 
           {currentStep === 'tags' && (
             <div>
-              <p 
-                className="text-sm mb-5"
-                style={{ color: 'oklch(0.55 0.02 30)' }}
-              >
+              <p className="text-sm mb-5 text-muted-foreground">
                 选择 3-8 个最能代表你的标签
-                <span className="ml-2" style={{ color: 'oklch(0.6 0.08 15)' }}>
+                <span className="ml-2 text-rose font-medium">
                   ({profile.tags.length}/8)
                 </span>
               </p>
               
-              <div className="flex flex-wrap gap-2.5">
-                {AVAILABLE_TAGS.map((tag) => (
+              <div className="flex flex-wrap gap-2.5" role="group" aria-label="个人标签选择">
+                {AVAILABLE_TAGS.map((tag, index) => (
                   <button
                     key={tag}
+                    type="button"
                     onClick={() => toggleTag(tag)}
-                    className="px-4 py-2.5 rounded-full text-sm font-medium transition-all"
-                    style={{
-                      background: profile.tags.includes(tag) 
-                        ? 'linear-gradient(135deg, oklch(0.55 0.12 15), oklch(0.5 0.14 20))'
-                        : 'oklch(0.97 0.01 80)',
-                      border: `1.5px solid ${profile.tags.includes(tag) ? 'transparent' : 'oklch(0.88 0.02 80)'}`,
-                      color: profile.tags.includes(tag) ? 'oklch(0.98 0.005 85)' : 'oklch(0.45 0.03 30)',
-                      boxShadow: profile.tags.includes(tag) ? '0 2px 8px oklch(0.55 0.12 15 / 0.25)' : 'none',
-                    }}
+                    className={cn(
+                      'px-4 py-2.5 rounded-full text-sm font-medium transition-all border animate-scale-in focus-ring',
+                      profile.tags.includes(tag) 
+                        ? 'bg-primary text-primary-foreground border-transparent shadow-md shadow-primary/20'
+                        : 'bg-card border-border text-secondary-foreground hover:border-primary/30'
+                    )}
+                    style={{ animationDelay: `${index * 20}ms` }}
+                    aria-pressed={profile.tags.includes(tag)}
                   >
                     {tag}
                   </button>
@@ -329,59 +309,25 @@ export default function OnboardingPage({
 
           {currentStep === 'preferences' && (
             <div className="space-y-8">
-              {/* Age range */}
+              {/* Age range with custom slider */}
               <div>
-                <label className="block text-sm font-medium mb-4" style={{ color: 'oklch(0.4 0.03 30)' }}>
+                <label className="block text-sm font-medium mb-4 text-secondary-foreground">
                   期望 TA 的年龄范围
                 </label>
-                <div 
-                  className="text-center py-4 rounded-xl mb-4"
-                  style={{ background: 'oklch(0.96 0.02 15 / 0.3)' }}
-                >
-                  <span 
-                    className="text-2xl font-medium"
-                    style={{ color: 'oklch(0.45 0.1 15)' }}
-                  >
-                    {profile.ageRange[0]} - {profile.ageRange[1]} 岁
-                  </span>
-                </div>
-                <div className="flex gap-4">
-                  <div className="flex-1">
-                    <span className="block text-xs mb-2" style={{ color: 'oklch(0.55 0.02 30)' }}>最小年龄</span>
-                    <input
-                      type="range"
-                      min="18"
-                      max="60"
-                      value={profile.ageRange[0]}
-                      onChange={(e) => setProfile({
-                        ...profile,
-                        ageRange: [Math.min(Number(e.target.value), profile.ageRange[1] - 1), profile.ageRange[1]]
-                      })}
-                      className="w-full accent-rose"
-                    />
-                  </div>
-                  <div className="flex-1">
-                    <span className="block text-xs mb-2" style={{ color: 'oklch(0.55 0.02 30)' }}>最大年龄</span>
-                    <input
-                      type="range"
-                      min="18"
-                      max="60"
-                      value={profile.ageRange[1]}
-                      onChange={(e) => setProfile({
-                        ...profile,
-                        ageRange: [profile.ageRange[0], Math.max(Number(e.target.value), profile.ageRange[0] + 1)]
-                      })}
-                      className="w-full accent-rose"
-                    />
-                  </div>
-                </div>
+                <CustomRangeSlider
+                  min={18}
+                  max={60}
+                  value={profile.ageRange}
+                  onChange={(value) => setProfile({ ...profile, ageRange: value })}
+                  formatLabel={(v) => `${v}岁`}
+                />
               </div>
 
               {/* Location preference */}
-              <div>
-                <label className="block text-sm font-medium mb-3" style={{ color: 'oklch(0.4 0.03 30)' }}>
+              <fieldset>
+                <legend className="block text-sm font-medium mb-3 text-secondary-foreground">
                   期望 TA 的位置
-                </label>
+                </legend>
                 <div className="space-y-2">
                   {[
                     { value: 'same_city', label: '同城' },
@@ -390,21 +336,21 @@ export default function OnboardingPage({
                   ].map((option) => (
                     <button
                       key={option.value}
+                      type="button"
                       onClick={() => setProfile({ ...profile, locationPref: option.value })}
-                      className="w-full py-3.5 px-4 rounded-xl text-sm font-medium text-left transition-all"
-                      style={{
-                        background: profile.locationPref === option.value 
-                          ? 'linear-gradient(135deg, oklch(0.92 0.06 15), oklch(0.88 0.08 15))'
-                          : 'oklch(0.97 0.008 80)',
-                        border: `2px solid ${profile.locationPref === option.value ? 'oklch(0.7 0.1 15)' : 'oklch(0.9 0.02 80)'}`,
-                        color: profile.locationPref === option.value ? 'oklch(0.45 0.1 15)' : 'oklch(0.5 0.03 30)',
-                      }}
+                      className={cn(
+                        'w-full py-3.5 px-4 rounded-xl text-sm font-medium text-left transition-all border-2 focus-ring',
+                        profile.locationPref === option.value 
+                          ? 'bg-rose-soft border-rose text-primary'
+                          : 'bg-input border-border text-muted-foreground hover:border-border/80'
+                      )}
+                      aria-pressed={profile.locationPref === option.value}
                     >
                       {option.label}
                     </button>
                   ))}
                 </div>
-              </div>
+              </fieldset>
             </div>
           )}
         </div>
@@ -414,17 +360,15 @@ export default function OnboardingPage({
           <button
             onClick={handleNext}
             disabled={!canProceed()}
-            className="w-full py-4 rounded-2xl font-medium text-base transition-all duration-300 active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2"
-            style={{
-              background: canProceed()
-                ? 'linear-gradient(135deg, oklch(0.55 0.12 15), oklch(0.5 0.14 20))'
-                : 'oklch(0.9 0.02 80)',
-              color: canProceed() ? 'oklch(0.98 0.005 85)' : 'oklch(0.6 0.02 30)',
-              boxShadow: canProceed() ? '0 4px 20px oklch(0.55 0.12 15 / 0.3)' : 'none',
-            }}
+            className={cn(
+              'w-full py-4 rounded-2xl font-medium text-base transition-all duration-300 active:scale-[0.98] flex items-center justify-center gap-2 focus-ring',
+              canProceed()
+                ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/30 hover:shadow-xl hover:shadow-primary/40'
+                : 'bg-secondary text-muted-foreground cursor-not-allowed'
+            )}
           >
             {currentIndex === steps.length - 1 ? '完成' : '下一步'}
-            {currentIndex < steps.length - 1 && <ChevronRight className="w-5 h-5" />}
+            {currentIndex < steps.length - 1 && <ChevronRight className="w-5 h-5" aria-hidden="true" />}
           </button>
         </div>
       </div>

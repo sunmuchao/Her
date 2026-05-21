@@ -4,9 +4,11 @@ import { useEffect, useRef, useState } from 'react'
 import { ArrowLeft, BadgeCheck, Bookmark, ChevronRight, Mail, MapPin, Search, Send, X } from 'lucide-react'
 import { XiaoyaAvatar } from '@/components/her/ui/xiaoya-avatar'
 import Image from 'next/image'
-import { EmptyRecommendations, EmptySearchResults } from './ui/empty-states'
-import { InboxItemSkeleton } from './ui/skeletons'
+import { EmptyRecommendations, EmptySearchResults, EmptyInbox } from './ui/empty-states'
+import { InboxItemSkeleton, DiscoverPageSkeleton } from './ui/skeletons'
 import { TypingIndicator } from './ui/typing-indicator'
+import { FadeIn, StaggerContainer, OnlineIndicator } from './ui/animations'
+import { cn } from '@/lib/utils'
 import { gatewayJson, queryString } from '@/lib/gateway'
 import type { CandidatePreview } from '@/lib/her-types'
 
@@ -266,31 +268,46 @@ export default function DiscoverPage({ onViewCandidate, onOpenInbox, inboxUnread
         <div className="px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <XiaoyaAvatar size={40} />
+              <div className="relative">
+                <XiaoyaAvatar size={40} />
+                <OnlineIndicator className="absolute -bottom-0.5 -right-0.5" size="sm" />
+              </div>
               <div>
                 <h1 className="font-medium text-foreground">小雅</h1>
                 <p className="text-xs text-muted-foreground">你的专属红娘</p>
               </div>
             </div>
-            <button onClick={onOpenInbox} className="relative flex items-center gap-2 px-3 py-2 bg-secondary rounded-lg hover:bg-secondary/80 transition-colors">
-              <Mail className="w-4 h-4 text-muted-foreground" />
+            <button 
+              onClick={onOpenInbox} 
+              className="relative flex items-center gap-2 px-3 py-2 bg-secondary rounded-lg hover:bg-secondary/80 transition-colors focus-ring"
+              aria-label={`查看推荐来信，${inboxUnreadCount}条未读`}
+            >
+              <Mail className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
               <span className="text-sm">来信</span>
-              {inboxUnreadCount > 0 ? (
-                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-rose text-[10px] font-medium text-white rounded-full flex items-center justify-center">
+              {inboxUnreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-rose text-[10px] font-medium text-white rounded-full flex items-center justify-center animate-scale-in">
                   {inboxUnreadCount}
                 </span>
-              ) : null}
+              )}
             </button>
           </div>
         </div>
       </header>
 
-      <div className="px-4 py-2 flex gap-2 overflow-x-auto border-b border-border">
-        {currentPrefs.map((pref, i) => (
-          <span key={i} className="shrink-0 px-2.5 py-1 bg-secondary text-muted-foreground text-xs rounded-md">
-            {pref}
-          </span>
-        ))}
+      {/* Preference chips with scroll fade */}
+      <div className="relative px-4 py-2 border-b border-border">
+        <div className="flex gap-2 overflow-x-auto scrollbar-hide scroll-fade-right" role="list" aria-label="当前偏好设置">
+          {currentPrefs.map((pref, i) => (
+            <span 
+              key={i} 
+              className="shrink-0 px-2.5 py-1 bg-secondary text-muted-foreground text-xs rounded-md animate-fade-in-up"
+              style={{ animationDelay: `${i * 50}ms` }}
+              role="listitem"
+            >
+              {pref}
+            </span>
+          ))}
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -323,63 +340,85 @@ export default function DiscoverPage({ onViewCandidate, onOpenInbox, inboxUnread
             </div>
           ) : null}
 
-          {visibleCandidates.length ? (
-            <div className="pt-4">
+          {visibleCandidates.length > 0 && (
+            <FadeIn className="pt-4" delay={200}>
               <p className="text-xs text-muted-foreground mb-3">为你精心挑选</p>
               <div className="space-y-3">
                 {visibleCandidates.map((candidate, index) => (
                   <button
                     key={candidate.id}
                     onClick={() => onViewCandidate(candidate.id, candidate)}
-                    className="w-full bg-card border border-border rounded-xl p-3 text-left hover:border-primary/30 transition-colors"
+                    className={cn(
+                      'w-full bg-card border border-border rounded-xl p-3 text-left transition-all',
+                      'hover:border-primary/30 hover:shadow-sm',
+                      'focus-ring animate-fade-in-up'
+                    )}
                     style={{ animationDelay: `${index * 100}ms` }}
+                    aria-label={`查看候选人 ${candidate.name} 的详细资料`}
                   >
                     <div className="flex gap-3">
                       <div className="relative w-16 h-20 rounded-lg overflow-hidden shrink-0 bg-secondary">
-                        {candidate.image ? <Image src={candidate.image} alt={candidate.name} fill className="object-cover" /> : null}
+                        {candidate.image && <Image src={candidate.image} alt={candidate.name} fill className="object-cover" sizes="64px" loading="lazy" />}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="font-medium text-foreground">{candidate.name}</span>
-                          {candidate.age ? <span className="text-sm text-muted-foreground">{candidate.age}岁</span> : null}
-                          {candidate.verified ? <BadgeCheck className="w-4 h-4 text-primary" /> : null}
+                          {candidate.age && <span className="text-sm text-muted-foreground">{candidate.age}岁</span>}
+                          {candidate.verified && <BadgeCheck className="w-4 h-4 text-primary" aria-label="已认证" />}
                         </div>
                         <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                          {candidate.city ? <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{candidate.city}</span> : null}
-                          {candidate.occupation ? <span>{candidate.occupation}</span> : null}
+                          {candidate.city && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" aria-hidden="true" />{candidate.city}</span>}
+                          {candidate.occupation && <span>{candidate.occupation}</span>}
                         </div>
-                        {candidate.matchReason ? <p className="text-xs text-primary mt-2">{candidate.matchReason}</p> : null}
+                        {candidate.matchReason && <p className="text-xs text-primary mt-2 line-clamp-2">{candidate.matchReason}</p>}
                       </div>
                       <div className="flex flex-col items-end justify-between">
                         {candidate.matchScore ? <span className="text-sm font-medium text-primary">{candidate.matchScore}%</span> : <span />}
-                        <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                        <ChevronRight className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
                       </div>
                     </div>
                   </button>
                 ))}
               </div>
-            </div>
-          ) : null}
+            </FadeIn>
+          )}
           <div ref={chatEndRef} />
         </div>
       </div>
 
+      {/* Input area */}
       <div className="sticky bottom-0 px-4 py-3 bg-background border-t border-border safe-area-bottom">
-        <div className="flex items-center gap-2 bg-secondary rounded-xl px-3 py-2">
+        <div className="flex items-center gap-2 bg-secondary rounded-xl px-3 py-2 transition-all focus-within:ring-2 focus-within:ring-primary/30">
           <input
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey && inputValue.trim()) {
+                e.preventDefault()
+                void submitTurn({ user_message: inputValue.trim() })
+              }
+            }}
             placeholder={composerPlaceholder}
             disabled={composerDisabled || isSubmittingTurn}
-            className="flex-1 bg-transparent text-sm placeholder:text-muted-foreground focus:outline-none"
+            className="flex-1 bg-transparent text-sm placeholder:text-muted-foreground focus:outline-none disabled:opacity-60"
+            aria-label="输入消息"
           />
           <button
-            aria-label="发送发现页消息"
+            aria-label="发送消息"
             onClick={() => void submitTurn({ user_message: inputValue.trim() })}
             disabled={composerDisabled || isSubmittingTurn || !inputValue.trim()}
-            className="w-8 h-8 rounded-full bg-primary flex items-center justify-center disabled:opacity-60"
+            className={cn(
+              'w-8 h-8 rounded-full flex items-center justify-center transition-all',
+              inputValue.trim() 
+                ? 'bg-primary hover:bg-primary/90' 
+                : 'bg-muted'
+            )}
           >
-            <Send className="w-4 h-4 text-primary-foreground" />
+            {isSubmittingTurn ? (
+              <div className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+            ) : (
+              <Send className={cn('w-4 h-4', inputValue.trim() ? 'text-primary-foreground' : 'text-muted-foreground')} />
+            )}
           </button>
         </div>
       </div>
@@ -584,7 +623,7 @@ export function RecommendationInbox({
               <div className="flex items-center justify-between mt-3 pt-2 border-t border-border">
                 <div className="flex items-center gap-1">
                   <span className={`px-2 py-0.5 rounded text-[10px] ${item.type === 'delayed' ? 'bg-gold/20 text-gold' : 'bg-rose/20 text-rose'}`}>
-                    {item.type === 'delayed' ? '延迟推荐' : '主动撮合'}
+                    {item.type === 'delayed' ? '延迟推荐' : '主��撮合'}
                   </span>
                   <span className="text-xs text-primary font-medium">{item.matchScore}% 匹配</span>
                 </div>
