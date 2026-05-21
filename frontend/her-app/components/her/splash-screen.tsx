@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { XiaoyaAvatar } from '@/components/her/ui/xiaoya-avatar'
 
 interface SplashScreenProps {
   onComplete: () => void
@@ -31,13 +32,11 @@ export default function SplashScreen({ onComplete }: SplashScreenProps) {
         
         {/* Brand mark */}
         <div 
-          className={`relative mb-12 transition-all duration-1000 ease-out ${
+          className={`relative mb-12 shadow-[0_16px_48px_oklch(0.55_0.12_15/0.14)] transition-all duration-1000 ease-out ${
             stage === 'initial' ? 'opacity-0 scale-90' : 'opacity-100 scale-100'
           }`}
         >
-          <div className="w-24 h-24 rounded-full bg-primary flex items-center justify-center">
-            <span className="font-serif text-4xl text-primary-foreground">H</span>
-          </div>
+          <XiaoyaAvatar size={112} priority />
         </div>
 
         {/* Brand wordmark */}
@@ -46,16 +45,16 @@ export default function SplashScreen({ onComplete }: SplashScreenProps) {
             stage === 'initial' ? 'opacity-0 translate-y-6' : 'opacity-100 translate-y-0'
           }`}
         >
-          Her
+          小雅
         </h1>
 
         {/* Subtle tagline */}
         <p 
-          className={`text-sm text-muted-foreground tracking-widest uppercase mb-16 transition-all duration-1000 delay-300 ease-out ${
+          className={`text-sm text-muted-foreground tracking-widest mb-16 transition-all duration-1000 delay-300 ease-out ${
             stage !== 'cta' && stage !== 'tagline' ? 'opacity-0 translate-y-4' : 'opacity-100 translate-y-0'
           }`}
         >
-          遇见心动
+          你的专属红娘
         </p>
 
         {/* Hero statement */}
@@ -65,10 +64,10 @@ export default function SplashScreen({ onComplete }: SplashScreenProps) {
           }`}
         >
           <p className="font-serif text-2xl text-foreground leading-relaxed">
-            也许在这里
+            认真关系
           </p>
           <p className="font-serif text-2xl text-foreground leading-relaxed">
-            你会遇见一个很特别的人
+            从认真了解开始
           </p>
         </div>
 
@@ -79,7 +78,7 @@ export default function SplashScreen({ onComplete }: SplashScreenProps) {
             stage !== 'cta' ? 'opacity-0 translate-y-10' : 'opacity-100 translate-y-0'
           }`}
         >
-          开始遇见
+          开始了解
         </button>
 
         {/* Bottom decorative element */}
@@ -89,7 +88,7 @@ export default function SplashScreen({ onComplete }: SplashScreenProps) {
           }`}
         >
           <div className="w-8 h-px bg-border" />
-          <span className="text-xs text-muted-foreground tracking-widest uppercase">认真恋爱</span>
+          <span className="text-xs text-muted-foreground tracking-widest">认真恋爱</span>
           <div className="w-8 h-px bg-border" />
         </div>
       </div>
