@@ -31,12 +31,12 @@ export default function SplashScreen({ onComplete }: SplashScreenProps) {
       <div className="relative z-10 flex flex-col items-center justify-center min-h-screen px-8">
         
         {/* Brand mark */}
-        <div 
-          className={`relative mb-12 shadow-[0_16px_48px_oklch(0.55_0.12_15/0.14)] transition-all duration-1000 ease-out ${
+        <div
+          className={`mb-12 transition-all duration-1000 ease-out ${
             stage === 'initial' ? 'opacity-0 scale-90' : 'opacity-100 scale-100'
           }`}
         >
-          <XiaoyaAvatar size={112} priority />
+          <XiaoyaAvatar size={128} priority />
         </div>
 
         {/* Brand wordmark */}

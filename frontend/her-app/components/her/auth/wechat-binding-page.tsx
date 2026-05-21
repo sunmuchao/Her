@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { ChevronLeft, User } from 'lucide-react'
+import { WechatIcon } from '@/components/her/ui/wechat-icon'
 
 interface WeChatBindingPageProps {
   wechatNickname?: string
@@ -77,16 +78,8 @@ export default function WeChatBindingPage({
             </div>
             
             {/* WeChat badge */}
-            <div 
-              className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full flex items-center justify-center"
-              style={{ 
-                background: 'oklch(0.55 0.15 145)',
-                boxShadow: '0 2px 8px oklch(0.55 0.15 145 / 0.4)',
-              }}
-            >
-              <svg viewBox="0 0 24 24" className="w-5 h-5" fill="white">
-                <path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.328.328 0 0 0 .186-.059l1.873-1.12a.593.593 0 0 1 .452-.076c1.022.275 2.118.426 3.113.426 4.8 0 8.691-3.288 8.691-7.342 0-4.054-3.891-7.374-8.691-7.374zm10.987 7.342c0 2.877-1.776 5.447-4.496 6.847a9.026 9.026 0 0 1-.482 2.542c-.32.822-.888 1.612-1.503 2.228l.012.017-.045-.017a.474.474 0 0 1-.245.067.293.293 0 0 1-.29-.295c0-.072.023-.143.048-.213l.36-1.354a.592.592 0 0 0-.207-.618 7.616 7.616 0 0 1-2.17-2.293c1.01.15 2.071.228 3.155.228 5.41 0 9.838-3.627 9.838-8.134 0-.296-.024-.587-.06-.875 1.553 1.303 2.52 3.1 2.52 5.095 0 2.212-1.17 4.203-3.002 5.55a.59.59 0 0 0-.213.665l.39 1.48c.019.07.048.141.048.213 0 .163-.13.295-.29.295a.328.328 0 0 1-.186-.059l-1.873-1.12a.593.593 0 0 0-.452-.076 10.46 10.46 0 0 1-2.356.271c-.123 0-.244-.005-.366-.009-.01-.022-.013-.047-.024-.068z"/>
-              </svg>
+            <div className="absolute -bottom-1 -right-1 rounded-full shadow-md ring-2 ring-background">
+              <WechatIcon size={32} />
             </div>
           </div>
 

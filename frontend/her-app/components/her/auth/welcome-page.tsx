@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Smartphone, MessageCircle, ChevronRight } from 'lucide-react'
+import { Smartphone, ChevronRight } from 'lucide-react'
 import { XiaoyaAvatar } from '@/components/her/ui/xiaoya-avatar'
+import { WechatIcon } from '@/components/her/ui/wechat-icon'
 import { cn } from '@/lib/utils'
 
 interface WelcomePageProps {
@@ -11,17 +12,16 @@ interface WelcomePageProps {
   onPhoneLogin: () => void
 }
 
-export default function WelcomePage({ 
-  onOneClickLogin, 
-  onWeChatLogin, 
-  onPhoneLogin 
+export default function WelcomePage({
+  onOneClickLogin,
+  onWeChatLogin,
+  onPhoneLogin,
 }: WelcomePageProps) {
   const [isLoading, setIsLoading] = useState<'oneclick' | 'wechat' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
-    // Trigger animations after mount
     const timer = setTimeout(() => setMounted(true), 100)
     return () => clearTimeout(timer)
   }, [])
@@ -52,67 +52,58 @@ export default function WelcomePage({
 
   return (
     <div className="min-h-screen bg-background flex flex-col max-w-md mx-auto">
-      {/* Content */}
       <div className="flex-1 flex flex-col px-8 pt-safe-area-top">
-        
-        {/* Hero section */}
         <div className="flex-1 flex flex-col justify-center items-center pt-16 pb-8">
-          {/* Logo with animation */}
-          <div 
+          <div
             className={cn(
               'mb-10 transition-all duration-700 ease-out',
-              mounted 
-                ? 'opacity-100 translate-y-0 scale-100' 
-                : 'opacity-0 translate-y-4 scale-95'
+              mounted
+                ? 'opacity-100 translate-y-0 scale-100'
+                : 'opacity-0 translate-y-4 scale-95',
             )}
           >
             <div className="relative">
-              {/* Soft glow behind avatar */}
               <div className="absolute inset-0 bg-gradient-to-br from-rose-soft to-gold-soft rounded-full blur-xl opacity-60 scale-110" />
-              <div className="relative shadow-lg rounded-full">
-                <XiaoyaAvatar size={96} priority />
+              <div className="relative rounded-full shadow-lg">
+                <XiaoyaAvatar size={112} priority />
               </div>
             </div>
           </div>
 
-          {/* Brand name with animation */}
-          <h1 
+          <h1
             className={cn(
               'font-serif text-5xl text-foreground mb-4 transition-all duration-700 ease-out delay-150',
-              mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+              mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4',
             )}
           >
             小雅
           </h1>
 
-          {/* Tagline with animation */}
-          <p 
+          <p
             className={cn(
               'text-center text-lg text-muted-foreground font-light leading-relaxed max-w-[280px] transition-all duration-700 ease-out delay-300',
-              mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+              mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4',
             )}
           >
             认真关系，从认真了解开始
           </p>
         </div>
 
-        {/* Login buttons with staggered animation */}
-        <div 
+        <div
           className={cn(
             'pb-10 space-y-3 transition-all duration-700 ease-out delay-500',
-            mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'
+            mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6',
           )}
         >
           {error && (
-            <div 
+            <div
               className="rounded-2xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive animate-fade-in-up"
               role="alert"
             >
               {error}
             </div>
           )}
-          
-          {/* Primary: One-click login */}
+
           <button
             onClick={handleOneClickLogin}
             disabled={isLoading !== null}
@@ -120,7 +111,7 @@ export default function WelcomePage({
               'w-full py-4 bg-primary rounded-2xl text-primary-foreground font-medium transition-all',
               'active:scale-[0.98] disabled:opacity-70',
               'hover:shadow-lg hover:shadow-primary/20',
-              'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2'
+              'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
             )}
             aria-label="使用本机号码一键登录"
           >
@@ -136,7 +127,6 @@ export default function WelcomePage({
             </span>
           </button>
 
-          {/* Secondary: WeChat login */}
           <button
             onClick={handleWeChatLogin}
             disabled={isLoading !== null}
@@ -144,7 +134,7 @@ export default function WelcomePage({
               'w-full py-4 bg-card rounded-2xl border border-border text-foreground font-medium transition-all',
               'active:scale-[0.98] disabled:opacity-70',
               'hover:bg-secondary hover:border-secondary',
-              'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2'
+              'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
             )}
             aria-label="使用微信登录"
           >
@@ -153,21 +143,20 @@ export default function WelcomePage({
                 <div className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
               ) : (
                 <>
-                  <MessageCircle className="w-5 h-5 text-primary" aria-hidden="true" />
+                  <WechatIcon size={20} />
                   微信登录
                 </>
               )}
             </span>
           </button>
 
-          {/* Tertiary: Phone login */}
           <button
             onClick={onPhoneLogin}
             disabled={isLoading !== null}
             className={cn(
               'w-full py-3 flex items-center justify-center gap-1 text-sm font-medium text-primary transition-colors',
               'hover:text-primary/80',
-              'focus:outline-none focus-visible:underline'
+              'focus:outline-none focus-visible:underline',
             )}
             aria-label="使用手机号登录"
           >
@@ -176,23 +165,22 @@ export default function WelcomePage({
           </button>
         </div>
 
-        {/* Footer */}
-        <div 
+        <div
           className={cn(
             'pb-8 safe-area-bottom transition-all duration-700 ease-out delay-700',
-            mounted ? 'opacity-100' : 'opacity-0'
+            mounted ? 'opacity-100' : 'opacity-0',
           )}
         >
           <p className="text-center text-xs text-muted-foreground leading-relaxed">
             登录即表示同意
-            <button 
+            <button
               className="underline underline-offset-2 mx-1 hover:text-foreground transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded"
               aria-label="查看用户协议"
             >
               用户协议
             </button>
             和
-            <button 
+            <button
               className="underline underline-offset-2 mx-1 hover:text-foreground transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded"
               aria-label="查看隐私政策"
             >

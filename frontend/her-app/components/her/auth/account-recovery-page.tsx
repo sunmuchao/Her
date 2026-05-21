@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { ChevronLeft, Shield, RefreshCw, Phone, MessageCircle } from 'lucide-react'
+import { ChevronLeft, Shield, RefreshCw, Phone } from 'lucide-react'
+import { WechatIcon } from '@/components/her/ui/wechat-icon'
 
 interface AccountRecoveryPageProps {
   onVerifyComplete: () => void
@@ -183,7 +184,7 @@ export default function AccountRecoveryPage({
                   className="w-12 h-12 rounded-xl flex items-center justify-center"
                   style={{ background: 'oklch(0.9 0.04 145 / 0.3)' }}
                 >
-                  <MessageCircle className="w-5 h-5" style={{ color: 'oklch(0.55 0.15 145)' }} />
+                  <WechatIcon size={20} />
                 </div>
                 <div className="flex-1">
                   <div className="font-medium mb-1" style={{ color: 'oklch(0.35 0.03 30)' }}>
