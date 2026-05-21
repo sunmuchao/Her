@@ -1,4 +1,4 @@
-import { getAccessToken, hasLinkedProfileIdentity } from '@/lib/auth/session'
+import { getAccessToken } from '@/lib/auth/session'
 import { GatewayClientError } from '@/lib/api/errors'
 
 export { GatewayClientError, getErrorMessage, isGatewayClientError } from '@/lib/api/errors'
@@ -18,7 +18,7 @@ export type GatewayRequestInit = RequestInit & {
   /**
    * - `true`: always attach Bearer when token exists (e.g. /v1/auth/me).
    * - `false`: never attach (pre-login auth calls).
-   * - default: attach only when login linked a profile (avoids requester_id vs actor mismatch in dev).
+   * - default: attach Bearer when a login access token exists.
    */
   includeAuth?: boolean
 }
@@ -26,7 +26,7 @@ export type GatewayRequestInit = RequestInit & {
 function shouldAttachGatewayAuth(init?: GatewayRequestInit): boolean {
   if (init?.includeAuth === false) return false
   if (init?.includeAuth === true) return true
-  return hasLinkedProfileIdentity()
+  return Boolean(getAccessToken())
 }
 
 function buildGatewayHeaders(init?: GatewayRequestInit) {
