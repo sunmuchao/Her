@@ -10,6 +10,7 @@ import {
   verifySmsCode,
   wechatLogin,
 } from '@/lib/auth/auth-api'
+import { hydrateSessionFromAuthMe } from '@/lib/auth/hydrate-session'
 import {
   applyLoginPayload,
   clearSession,
@@ -62,8 +63,9 @@ export function useAuthFlow(onNavigate: (page: AppPage) => void) {
   } | null>(null)
 
   const completeLoginFlow = useCallback(
-    (payload: LoginPayload) => {
+    async (payload: LoginPayload) => {
       applyLoginPayload(payload)
+      await hydrateSessionFromAuthMe()
       if (payload.wechat_profile) {
         setWechatProfile(payload.wechat_profile)
       }
@@ -126,7 +128,7 @@ export function useAuthFlow(onNavigate: (page: AppPage) => void) {
         code,
         challengeId: smsChallengeId,
       })
-      completeLoginFlow(data)
+      await completeLoginFlow(data)
     },
     [authMode, authPhone, smsChallengeId, completeLoginFlow, onNavigate],
   )
@@ -137,7 +139,7 @@ export function useAuthFlow(onNavigate: (page: AppPage) => void) {
 
   const startWechatLogin = useCallback(async () => {
     const data = await wechatLogin()
-    completeLoginFlow(data)
+    await completeLoginFlow(data)
   }, [completeLoginFlow])
 
   const startOneTapLogin = useCallback(async () => {
@@ -163,7 +165,7 @@ export function useAuthFlow(onNavigate: (page: AppPage) => void) {
       attemptId: attempt.attemptId,
       operatorToken: attempt.operatorToken,
     })
-    completeLoginFlow(data)
+    await completeLoginFlow(data)
   }, [oneTapAttempt, completeLoginFlow])
 
   return {
