@@ -6,6 +6,7 @@ test.setTimeout(60000)
 const bindPhone = process.env.HER_E2E_BIND_PHONE || '13800138004'
 
 async function launchToWelcome(page: import('@playwright/test').Page) {
+  await page.context().clearCookies()
   await page.goto('http://127.0.0.1:3000/splash')
   await page.evaluate(() => {
     window.localStorage.clear()
@@ -38,6 +39,63 @@ async function fillVerificationCode(page: import('@playwright/test').Page) {
   }
 }
 
+/** Ensure login session has profile/requester IDs (via /auth/me or onboarding PATCH). */
+async function ensureSessionProfile(page: import('@playwright/test').Page) {
+  await page
+    .waitForResponse(
+      (response) =>
+        response.url().includes('/api/gateway/v1/auth/me') && response.status() === 200,
+      { timeout: 20000 },
+    )
+    .catch(() => null)
+
+  const linked = await page.evaluate(() => {
+    try {
+      const ctx = JSON.parse(window.localStorage.getItem('her_session_context') || '{}')
+      return Boolean(ctx.profileLinked || (ctx.requesterId && ctx.profileId))
+    } catch {
+      return false
+    }
+  })
+  if (linked) return
+
+  await page.evaluate(async () => {
+    const token = window.localStorage.getItem('her_demo_access_token')
+    if (!token) return
+    const res = await fetch('/api/gateway/v1/auth/onboarding', {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({
+        basic_info: {
+          name: 'E2E用户',
+          birthday: '1995-01-01',
+          gender: 'female',
+          location: '无锡',
+          relationship_goal: 'long_term',
+        },
+        preference: {
+          relationship_goal: 'long_term',
+          tags: ['阅读', '旅行', '美食'],
+        },
+        mark_completed: true,
+      }),
+    })
+    if (!res.ok) return
+    const data = (await res.json()) as { profile_id?: number; requester_id?: number }
+    const profileId = data.profile_id ?? data.requester_id
+    if (!profileId) return
+    const ctx = JSON.parse(window.localStorage.getItem('her_session_context') || '{}')
+    ctx.requesterId = profileId
+    ctx.profileId = profileId
+    ctx.profileLinked = true
+    window.localStorage.setItem('her_session_context', JSON.stringify(ctx))
+  })
+}
+
 function trackGatewayRequests(page: import('@playwright/test').Page) {
   const hits = new Set<string>()
   page.on('request', (request) => {
@@ -65,47 +123,45 @@ test('sms auth + discovery + recommendation action hit real backend', async ({ p
   await expect(page.getByText('输入验证码')).toBeVisible()
   await fillVerificationCode(page)
   await page.waitForURL(/\/(discover|onboarding)/, { timeout: 20000 })
-  if (page.url().includes('/onboarding')) {
-    const skipProfile = page.getByRole('button', { name: /先逛逛|稍后|跳过/ })
-    if (await skipProfile.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await skipProfile.click()
-    } else {
-      await page.goto('http://127.0.0.1:3000/discover')
-    }
+  await ensureSessionProfile(page)
+  if (!page.url().includes('/discover')) {
+    await page.goto('http://127.0.0.1:3000/discover')
   }
   await expect(page).toHaveURL(/\/discover/, { timeout: 15000 })
 
   expect(Array.from(hits)).toEqual(
-    expect.arrayContaining(['POST /v1/auth/sms/send-code', 'POST /v1/auth/sms/verify-code']),
+    expect.arrayContaining([
+      'POST /v1/auth/sms/send-code',
+      'POST /v1/auth/sms/verify-code',
+      'GET /v1/auth/me',
+    ]),
   )
 
   const composer = page.getByPlaceholder(/继续告诉红娘你的要求|输入你的想法/)
-  if (await composer.isVisible({ timeout: 5000 }).catch(() => false)) {
-    await page.waitForTimeout(1500)
-    const turnRequest = page.waitForRequest(
-      (request) =>
-        request.url().includes('/api/gateway/v1/discovery/sessions/') && request.method() === 'POST',
-      { timeout: 20000 },
-    )
-    await page.getByPlaceholder(/继续告诉红娘你的要求|输入你的想法/).fill('我在无锡，想找认真恋爱的人')
-    await page.getByRole('button', { name: '发送消息' }).click()
-    await turnRequest
+  await expect(composer).toBeVisible({ timeout: 15000 })
 
-    await page.getByRole('button', { name: '来信' }).click()
-    await expect(page.getByText('推荐来信')).toBeVisible()
-    const actionRequest = page.waitForRequest(
-      (request) =>
-        request.url().includes('/api/gateway/v1/recommendation/actions') &&
-        request.method() === 'POST',
-    )
-    await page.locator('button[aria-label^="收藏"]').first().click()
-    await actionRequest
+  await page.waitForTimeout(1500)
+  const turnRequest = page.waitForRequest(
+    (request) =>
+      request.url().includes('/api/gateway/v1/discovery/sessions/') && request.method() === 'POST',
+    { timeout: 20000 },
+  )
+  await composer.fill('我在无锡，想找认真恋爱的人')
+  await page.getByRole('button', { name: '发送消息' }).click()
+  await turnRequest
 
-    expect(Array.from(hits).some((item) => item.startsWith('POST /v1/discovery/sessions'))).toBe(
-      true,
-    )
-    expect(Array.from(hits).some((item) => item === 'POST /v1/recommendation/actions')).toBe(true)
-  }
+  await page.getByRole('button', { name: '来信' }).click()
+  await expect(page.getByText('推荐来信')).toBeVisible()
+  const actionRequest = page.waitForRequest(
+    (request) =>
+      request.url().includes('/api/gateway/v1/recommendation/actions') &&
+      request.method() === 'POST',
+  )
+  await page.locator('button[aria-label^="收藏"]').first().click()
+  await actionRequest
+
+  expect(Array.from(hits).some((item) => item.startsWith('POST /v1/discovery/sessions'))).toBe(true)
+  expect(Array.from(hits).some((item) => item === 'POST /v1/recommendation/actions')).toBe(true)
 })
 
 test('wechat login hits real backend (bind phone when required)', async ({ page }) => {

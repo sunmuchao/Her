@@ -13,7 +13,8 @@ import { cn } from '@/lib/utils'
 import { gatewayJson, queryString } from '@/lib/gateway'
 import { createDiscoverySession, submitDiscoveryTurn } from '@/lib/api/endpoints/discovery'
 import { getErrorMessage } from '@/lib/api/errors'
-import { getProfileId, getRequesterId } from '@/lib/auth/session'
+import { hydrateSessionFromAuthMe } from '@/lib/auth/hydrate-session'
+import { getAccessToken, getProfileId, getRequesterId } from '@/lib/auth/session'
 import { canUseMockFallback } from '@/lib/mock'
 import { notifyError } from '@/lib/notify'
 import type { CandidatePreview } from '@/lib/types/candidate'
@@ -205,25 +206,35 @@ export default function DiscoverPage({
   }, [messages, isTyping, suggestedActions, backendCandidates])
 
   useEffect(() => {
-    const requesterId = getRequesterId()
-    const profileId = getProfileId()
-    if (!requesterId || !profileId) {
-      setIsLoadingSession(false)
-      setLoadError('未配置用户 ID，请在 .env.local 设置 NEXT_PUBLIC_HER_REQUESTER_ID 与 NEXT_PUBLIC_HER_PROFILE_ID')
-      if (canUseMockFallback()) {
-        setUsingMockData(true)
-      }
-      return
-    }
     let cancelled = false
 
     async function loadSession() {
+      if (getAccessToken()) {
+        await hydrateSessionFromAuthMe()
+      }
+      if (cancelled) return
+
+      const requesterId = getRequesterId()
+      const profileId = getProfileId()
+      if (!requesterId || !profileId) {
+        setIsLoadingSession(false)
+        setLoadError(
+          getAccessToken()
+            ? '请先完成资料填写后再使用发现与推荐'
+            : '未配置用户 ID，请在 .env.local 设置 NEXT_PUBLIC_HER_REQUESTER_ID 与 NEXT_PUBLIC_HER_PROFILE_ID',
+        )
+        if (canUseMockFallback()) {
+          setUsingMockData(true)
+        }
+        return
+      }
+
       setIsLoadingSession(true)
       setLoadError(null)
       try {
         const data = await createDiscoverySession({
-          requesterId: requesterId!,
-          profileId: profileId!,
+          requesterId,
+          profileId,
         })
         if (cancelled) return
         const sid = data.session?.session_id || null

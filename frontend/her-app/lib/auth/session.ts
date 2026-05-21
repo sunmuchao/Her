@@ -117,11 +117,20 @@ export function applyAuthMePayload(data: {
   })
 }
 
+function isAuthenticated(): boolean {
+  return Boolean(getAccessToken())
+}
+
+/** Resolved session: env defaults only when not logged in (demo / dev without token). */
 export function getSessionContext(): SessionContext {
   const ctx = readStoredContext()
+  const accessToken = ctx.accessToken || getAccessToken() || undefined
+  if (isAuthenticated()) {
+    return { ...ctx, accessToken }
+  }
   return {
     ...ctx,
-    accessToken: ctx.accessToken || getAccessToken() || undefined,
+    accessToken,
     requesterId: ctx.requesterId ?? getDefaultRequesterId(),
     profileId: ctx.profileId ?? getDefaultProfileId(),
     userId: ctx.userId ?? getDefaultUserId(),
@@ -136,24 +145,34 @@ export function patchSessionContext(patch: Partial<SessionContext>) {
 }
 
 export function getRequesterId(): number | undefined {
-  return getSessionContext().requesterId
+  const ctx = readStoredContext()
+  if (isAuthenticated()) return ctx.requesterId
+  return ctx.requesterId ?? getDefaultRequesterId()
 }
 
 export function getProfileId(): number | undefined {
-  return getSessionContext().profileId
+  const ctx = readStoredContext()
+  if (isAuthenticated()) return ctx.profileId
+  return ctx.profileId ?? getDefaultProfileId()
 }
 
 export function getUserId(): string | undefined {
-  return getSessionContext().userId
+  const ctx = readStoredContext()
+  if (isAuthenticated()) return ctx.userId
+  return ctx.userId ?? getDefaultUserId()
 }
 
-/** Chat timeline uses case member ids (e.g. user-a), not auth account ids (usr-...). */
+/** Chat timeline: demo env user when logged out; auth user id when logged in. */
 export function getChatParticipantId(): string | undefined {
-  const envDefault = getDefaultUserId()
-  if (envDefault) return envDefault
+  if (!isAuthenticated()) {
+    const envDefault = getDefaultUserId()
+    if (envDefault) return envDefault
+  }
   return readStoredContext().userId
 }
 
 export function getCaseId(): string | undefined {
-  return getSessionContext().caseId
+  const ctx = readStoredContext()
+  if (isAuthenticated()) return ctx.caseId
+  return ctx.caseId ?? getDefaultCaseId()
 }
