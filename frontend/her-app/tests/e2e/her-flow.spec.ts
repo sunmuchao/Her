@@ -189,8 +189,8 @@ async function ensureRecommendationCard(page: import('@playwright/test').Page) {
         recommendations?: Array<{ candidate_id?: number }>
       }
       const candidateId = recData.recommendations?.[0]?.candidate_id
-      if (candidateId) {
-        await postSaveAction(subscriptionId, candidateId)
+      if (candidateId && (await postSaveAction(subscriptionId, candidateId))) {
+        return true
       }
     }
 
@@ -199,7 +199,7 @@ async function ensureRecommendationCard(page: import('@playwright/test').Page) {
       await new Promise((resolve) => setTimeout(resolve, 500))
     }
 
-    return recRes.ok
+    return false
   }, E2E_PROFILE_SOURCE)
 
   if (!seeded) {
