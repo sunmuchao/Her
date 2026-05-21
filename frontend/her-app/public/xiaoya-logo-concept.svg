@@ -30,7 +30,7 @@
     <circle cx="445" cy="408" r="132" fill="#C79097"/>
   </g>
 
-  <g>
+  <g transform="translate(-20 0)">
     <path
       d="M354 548C294 494 269 421 281 351C293 280 339 220 409 204C462 192 512 212 552 251"
       stroke="url(#rose)"
@@ -58,22 +58,22 @@
 
   <g>
     <text
-      x="706"
-      y="510"
+      x="570"
+      y="494"
       fill="url(#taupe)"
       font-family="'Hiragino Sans GB', 'Hiragino Sans', 'PingFang SC', 'Songti SC', sans-serif"
-      font-size="220"
+      font-size="172"
       font-weight="300"
-      letter-spacing="14"
+      letter-spacing="4"
     >小雅</text>
     <text
-      x="720"
-      y="590"
+      x="582"
+      y="556"
       fill="#A98E86"
       font-family="'Hiragino Sans GB', 'Hiragino Sans', 'PingFang SC', sans-serif"
-      font-size="34"
+      font-size="26"
       font-weight="400"
-      letter-spacing="8"
+      letter-spacing="4"
     >认真关系，从认真了解开始</text>
   </g>
 </svg>
