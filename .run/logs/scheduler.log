@@ -1,0 +1,18 @@
+2026-05-22 08:49:49,605 WARNING task_scheduler.build HER_SCHED_RECOMMENDATION_DB unset; recommendation scheduler jobs skipped
+2026-05-22 08:49:49,606 WARNING task_scheduler.build HER_SCHED_MATCHMAKING_DB unset; matchmaking scheduler jobs skipped
+2026-05-22 08:49:49,606 WARNING task_scheduler.build HER_SCHED_CHAT_DB unset; chat scheduler jobs skipped
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/sunmuchao/Downloads/Her/task_scheduler/__main__.py", line 72, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/task_scheduler/__main__.py", line 37, in main
+    return int(args.handler(args, settings))
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/task_scheduler/__main__.py", line 41, in _cmd_run
+    scheduler = create_blocking_scheduler(settings)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/task_scheduler/build.py", line 331, in create_blocking_scheduler
+    raise RuntimeError(
+RuntimeError: No scheduler jobs registered. Set HER_SCHED_RECOMMENDATION_DB, HER_SCHED_MATCHMAKING_DB, and/or HER_SCHED_CHAT_DB to MySQL DSNs.
