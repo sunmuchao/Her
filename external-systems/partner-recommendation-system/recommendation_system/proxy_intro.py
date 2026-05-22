@@ -328,6 +328,7 @@ def _sync_recommendation_for_case(
     *,
     recommendation: dict[str, Any],
     case_id: str | None,
+    case_status: str | None,
     delivery_status: str,
     delivery_reason: str,
     cooling_until: datetime | None = None,
@@ -341,6 +342,7 @@ def _sync_recommendation_for_case(
         SET delivery_status = ?,
             delivery_reason = ?,
             active_match_case_id = ?,
+            active_case_status = ?,
             cooling_until = ?
         WHERE recommendation_id = ?
         """,
@@ -348,6 +350,7 @@ def _sync_recommendation_for_case(
             delivery_status,
             delivery_reason,
             case_id if active else None,
+            case_status if active else None,
             format_dt(cooling_until),
             recommendation["recommendation_id"],
         ),
@@ -383,9 +386,9 @@ def create_match_case(
     recommendation = get_recommendation(conn, subscription_id, int(candidate_id))
     if not recommendation:
         raise ValueError(f"Unknown recommendation for subscription={subscription_id} candidate_id={candidate_id}")
-    if recommendation.get("delivery_status") == "direct_greeted":
+    if recommendation.get("delivery_status") in {"direct_greeted", "direct_greet_started"}:
         raise ValueError("Cannot request proxy intro after direct_greet has already started.")
-    if recommendation.get("delivery_status") in {"proxy_intro_accepted", "proxy_intro_handed_off"}:
+    if recommendation.get("delivery_status") == "escalated_to_case" and not recommendation.get("active_match_case_id"):
         raise ValueError("Candidate already completed the proxy-intro flow.")
 
     active_case = get_active_match_case_for_recommendation(conn, recommendation["recommendation_id"])
@@ -491,7 +494,8 @@ def create_match_case(
         conn,
         recommendation=recommendation,
         case_id=case_id,
-        delivery_status="proxy_intro_in_progress",
+        case_status="pending_outreach",
+        delivery_status="escalated_to_case",
         delivery_reason="proxy_intro_requested",
         active=True,
         now=now,
@@ -521,6 +525,7 @@ def _update_case_status(
     reply_payload: dict[str, Any] | None = None,
     cooling_until: datetime | None = None,
     active_match_case_id: str | None = None,
+    active_case_status: str | None = None,
     recommendation_delivery_status: str | None = None,
     recommendation_delivery_reason: str | None = None,
 ) -> dict[str, Any]:
@@ -553,6 +558,7 @@ def _update_case_status(
                 conn,
                 recommendation=recommendation,
                 case_id=active_match_case_id,
+                case_status=active_case_status or new_status,
                 delivery_status=recommendation_delivery_status,
                 delivery_reason=recommendation_delivery_reason,
                 cooling_until=cooling_until,
@@ -636,6 +642,18 @@ def dispatch_match_case_outreach(
         now=now,
         payload=dispatch_payload,
     )
+    recommendation = get_recommendation(conn, case["subscription_id"], int(case["candidate_id"]))
+    if recommendation:
+        _sync_recommendation_for_case(
+            conn,
+            recommendation=recommendation,
+            case_id=case["case_id"],
+            case_status="awaiting_reply",
+            delivery_status="escalated_to_case",
+            delivery_reason="proxy_intro_outreach_sent",
+            active=True,
+            now=now,
+        )
     conn.commit()
     return get_match_case(conn, case_id)
 
@@ -707,7 +725,8 @@ def record_match_case_reply(
             actor_type="candidate",
             reply_payload=reply_payload,
             active_match_case_id=case["case_id"],
-            recommendation_delivery_status="proxy_intro_accepted",
+            active_case_status="accepted",
+            recommendation_delivery_status="escalated_to_case",
             recommendation_delivery_reason="proxy_intro_accepted",
         )
         insert_recommendation_action(
@@ -731,7 +750,8 @@ def record_match_case_reply(
             actor_type="candidate",
             reply_payload=reply_payload,
             cooling_until=cooling_until,
-            recommendation_delivery_status="proxy_intro_declined",
+            active_case_status=None,
+            recommendation_delivery_status="cooled_down",
             recommendation_delivery_reason="proxy_intro_declined",
         )
         insert_recommendation_action(
@@ -767,7 +787,7 @@ def close_match_case(
     subscription = get_subscription(conn, case["subscription_id"])
     recommendation = get_recommendation(conn, case["subscription_id"], int(case["candidate_id"]))
     if close_reason == "handoff_completed":
-        delivery_status = "proxy_intro_handed_off"
+        delivery_status = "escalated_to_case"
         delivery_reason = "proxy_intro_handoff_completed"
         cooling_until = None
     elif close_reason == "requester_cancelled":
@@ -808,6 +828,7 @@ def close_match_case(
             conn,
             recommendation=recommendation,
             case_id=None,
+            case_status=None,
             delivery_status=delivery_status,
             delivery_reason=delivery_reason,
             cooling_until=cooling_until,
@@ -897,7 +918,8 @@ def close_timed_out_match_cases(
                 conn,
                 recommendation=recommendation,
                 case_id=None,
-                delivery_status="proxy_intro_timed_out",
+                case_status=None,
+                delivery_status="cooled_down",
                 delivery_reason="proxy_intro_timed_out",
                 cooling_until=cooling_until,
                 active=False,

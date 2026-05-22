@@ -612,8 +612,10 @@ def append_relation_state_revision_event(
         now=now,
         action_payload={
             "delivery_status": recommendation_row.get("delivery_status"),
+            "delivery_reason": recommendation_row.get("delivery_reason"),
             "last_action_type": recommendation_row.get("last_action_type"),
             "active_match_case_id": recommendation_row.get("active_match_case_id"),
+            "active_case_status": recommendation_row.get("active_case_status"),
             "rule_provenance": json_loads(recommendation_row.get("rule_provenance_json"), {}),
         },
     )
@@ -633,16 +635,20 @@ def normalize_delivery_status(
     if existing:
         active_match_case_id = existing.get("active_match_case_id")
         if active_match_case_id:
-            return ("proxy_intro_in_progress", "proxy_intro_case_active")
+            return ("escalated_to_case", "proxy_intro_case_active")
         delivery_status = existing.get("delivery_status")
         if delivery_status in {"proxy_intro_accepted", "proxy_intro_handed_off"}:
-            return (delivery_status, existing.get("delivery_reason") or "proxy_intro_already_resolved")
+            return ("escalated_to_case", existing.get("delivery_reason") or "proxy_intro_already_resolved")
         if delivery_status in {"proxy_intro_declined", "proxy_intro_timed_out"}:
             cooling_until = parse_dt(existing.get("cooling_until"))
             if cooling_until and now < cooling_until:
-                return (delivery_status, existing.get("delivery_reason") or "proxy_intro_cooling_active")
+                return ("cooled_down", existing.get("delivery_reason") or "proxy_intro_cooling_active")
 
     skip_cooldown_expired = False
+    if existing and existing.get("delivery_status") == "cooled_down":
+        cooling_until = parse_dt(existing.get("cooling_until"))
+        if cooling_until and now < cooling_until:
+            return ("cooled_down", existing.get("delivery_reason") or "cooldown_active")
     if existing and existing.get("last_action_type") == "save":
         return ("saved_by_user", "user_saved_candidate")
     if existing and existing.get("last_action_type") == "direct_greet":
@@ -657,7 +663,7 @@ def normalize_delivery_status(
         return ("suppressed_low_score", "score_below_notify_threshold")
 
     if existing and existing.get("notified_at") and not skip_cooldown_expired:
-        return ("already_delivered", "candidate_already_notified")
+        return ("delivered", "candidate_already_notified")
 
     recommendation_mode = normalize_recommendation_mode(subscription.get("recommendation_mode"))
     final_review_status = final_review["status"]
