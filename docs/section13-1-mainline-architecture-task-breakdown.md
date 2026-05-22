@@ -554,3 +554,180 @@
 3. Gateway 不再承担深业务编排
 4. recommendation -> matchmaking -> chat 有明确交接契约和自动化测试
 5. verification、risk、review、persona/profile 都退回支撑角色
+
+## 10. 近期执行优先级
+
+下面这部分用于把前面的阶段任务压缩成更适合排期的执行清单。
+
+原则：
+
+- `P0` 解决“主线不清、真相源不清、边界不清”
+- `P1` 解决“主链路交接不稳、Gateway 过重”
+- `P2` 解决“跨域可观测性不足、支撑域反向长成流程域”
+
+### P0：先把主线和边界定死
+
+目标：
+
+- 让团队先对“系统最核心在做什么”达成一致
+- 让 recommendation、matchmaking、chat 的边界先稳定下来
+
+包含任务：
+
+1. `1.1` 固化唯一主线
+2. `1.2` 定义主域职责表
+3. `1.3` 定义四个真相源
+4. `2.1` 盘点 recommendation 域越界逻辑
+5. `2.2` 定义 relationship 建立统一入口
+6. `2.3` 定义 chat 开聊准入规则
+
+建议产出：
+
+- 一张主链路图
+- 一张主域职责表
+- 一张真相源表
+- 一张 recommendation -> matchmaking -> chat 交接图
+
+建议涉及文件：
+
+- `SYSTEM_DOC.md`
+- `docs/section13-1-mainline-architecture-improvement-plan.md`
+- `external-systems/partner-recommendation-system/recommendation_system/service.py`
+- `external-systems/partner-recommendation-system/recommendation_system/proxy_intro.py`
+- `external-systems/partner-matchmaking-system/matchmaking_system/service.py`
+- `external-systems/partner-chat-system/chat_system/service.py`
+- `external-systems/partner-chat-system/chat_system/conversations.py`
+- `external-systems/partner-http-gateway/gateway/chat_access.py`
+- `match_domain/model.py`
+
+验收标准：
+
+- “推没推”只问 recommendation
+- “连没连上”只问 matchmaking
+- “能不能聊、聊了什么”只问 chat
+- chat 的开聊规则明确依赖 relationship/risk，而不是自行定义
+
+### P1：把主链路交接固化成代码和测试
+
+目标：
+
+- 让 recommendation -> matchmaking -> chat 的交接方式可运行、可回归
+- 把 Gateway 从隐式业务中枢降回接入层
+
+包含任务：
+
+1. `2.4` 补主链路交接测试
+2. `3.1` 盘点 Gateway 内的深业务判断
+3. `3.2` 把跨域编排迁回主域
+4. `3.3` 更新 API 契约说明
+
+建议产出：
+
+- 一组主链路回归测试
+- 一份 Gateway 越界逻辑清单
+- 一版瘦身后的 Gateway 边界说明
+
+建议涉及文件：
+
+- `external-systems/partner-http-gateway/gateway/app.py`
+- `external-systems/partner-http-gateway/gateway/recommendation_routes.py`
+- `external-systems/partner-http-gateway/gateway/matchmaking_routes.py`
+- `external-systems/partner-http-gateway/gateway/chat_routes.py`
+- `external-systems/partner-http-gateway/gateway/recommendation_jsonrpc.py`
+- `external-systems/partner-http-gateway/gateway/matchmaking_jsonrpc.py`
+- `external-systems/partner-http-gateway/gateway/chat_jsonrpc.py`
+- `external-systems/partner-http-gateway/gateway_tests/test_realistic_user_flows.py`
+- `external-systems/partner-http-gateway/gateway_tests/test_end_to_end_regression.py`
+- `external-systems/partner-matchmaking-system/tests/test_matchmaking_system.py`
+- `external-systems/partner-chat-system/tests/test_chat_conversations.py`
+- `external-systems/partner-http-gateway/API_CONTRACT.md`
+
+验收标准：
+
+- 主链路关键交接有自动化保护
+- Gateway 只处理接入逻辑，不再维护主流程真相
+- 外部调用方可以通过 API 契约判断该去哪个域拿哪个事实
+
+### P2：把主链路变成可追踪系统
+
+目标：
+
+- 让跨域协作从隐式调用变成显式事件
+- 让主链路能被追踪、统计和排障
+
+包含任务：
+
+1. `4.1` 定义主链路领域事件
+2. `4.2` 补事件生产与消费链路
+3. `4.3` 补端到端链路监控
+4. `5.1` 收敛 verification 输出
+5. `5.2` 收敛 risk 输出
+6. `5.3` 收敛 profile review 输出
+7. `5.4` 收敛 persona/profile 输出
+
+建议产出：
+
+- 一份主链路事件清单
+- 一份事件载荷规范
+- 一份主链路漏斗与排障视图定义
+- 一组支撑域输出契约
+
+建议涉及文件：
+
+- `match_domain/outbox.py`
+- `match_domain/outbox_runtime.py`
+- `match_domain/case_events.py`
+- `external-systems/partner-recommendation-system/recommendation_system/outbox.py`
+- `external-systems/partner-matchmaking-system/matchmaking_system/outbox.py`
+- `external-systems/partner-chat-system/chat_system/events.py`
+- `external-systems/partner-chat-system/chat_system/outbox_consumer.py`
+- `external-systems/partner-chat-system/chat_system/outbox_worker.py`
+- `external-systems/partner-chat-system/chat_system/verification.py`
+- `external-systems/partner-chat-system/chat_system/risk.py`
+- `external-systems/partner-chat-system/chat_system/profile_reviews.py`
+- `persona_memory_sync/api.py`
+- `profile_service/api.py`
+- `observability/`
+
+验收标准：
+
+- 至少可以追踪一个用户从“找对象”到“进入聊天”的完整链路
+- 支撑域只输出结果，不再反向改写主流程
+
+## 11. 推荐执行顺序
+
+如果只按“最少投入，最大收益”的方式推进，建议顺序如下：
+
+1. 先完成 `P0`
+2. 再完成 `P1`
+3. 最后做 `P2`
+
+原因：
+
+- 没有 `P0`，后面的代码改造会反复返工
+- 没有 `P1`，边界即使说清楚了，也没有自动化保护
+- 没有 `P2`，系统能运行，但很难长期稳定演进
+
+## 12. 一个月落地建议
+
+如果按四周推进，可以压成下面这个节奏。
+
+### 第 1 周
+
+- 完成 `P0` 中的主线定义、职责表、真相源表
+
+### 第 2 周
+
+- 完成 recommendation -> matchmaking 交接定义
+- 完成 relationship -> chat 开聊准入定义
+
+### 第 3 周
+
+- 补主链路交接测试
+- 开始收 Gateway 越界逻辑
+
+### 第 4 周
+
+- 完成 Gateway 边界收敛
+- 更新 API 契约
+- 形成下一阶段事件化改造输入
