@@ -27,22 +27,16 @@ def relation_status_from_row_snapshot(
         return RelationStatus.PROXY_INTRO_ACTIVE, active
     ds = delivery_status
     reason = str(delivery_reason or "").strip()
-    if ds in {"proxy_intro_in_progress", "proxy_intro_accepted"}:
-        return RelationStatus.PROXY_INTRO_ACTIVE, None
-    if ds == "proxy_intro_handed_off":
-        return RelationStatus.CLOSED, None
     if ds == "escalated_to_case":
         if reason == "proxy_intro_handoff_completed":
             return RelationStatus.CLOSED, None
         return RelationStatus.PROXY_INTRO_ACTIVE, None
-    if ds in {"cooled_down", "proxy_intro_declined", "proxy_intro_timed_out"}:
+    if ds == "cooled_down":
         return RelationStatus.COOLING, None
-    if ds in {"saved_by_user", "save_only"}:
+    if ds == "saved_by_user":
         return RelationStatus.SAVED, None
-    if ds in {"direct_greeted", "direct_greet_started"}:
-        return RelationStatus.DIRECT_GREETED, None
-    if ds == "review_skipped":
-        return RelationStatus.SKIPPED, None
+    if ds == "direct_greet_started":
+        return RelationStatus.DIRECT_GREET_STARTED, None
     if last_action_type == "skip":
         return RelationStatus.SKIPPED, None
     if ds:
@@ -227,7 +221,7 @@ def reduce_relation_ledger(events: Sequence[MatchEvent]) -> RelationLedgerState:
         elif t == "save":
             status, active_case = RelationStatus.SAVED, None
         elif t == "direct_greet":
-            status, active_case = RelationStatus.DIRECT_GREETED, None
+            status, active_case = RelationStatus.DIRECT_GREET_STARTED, None
         elif t == "relation_state_revision":
             st, ac = relation_status_from_row_snapshot(
                 delivery_status=payload.get("delivery_status"),
