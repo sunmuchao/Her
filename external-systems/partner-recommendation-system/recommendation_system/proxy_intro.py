@@ -803,7 +803,7 @@ def close_match_case(
         delivery_reason = "proxy_intro_duplicate_merged"
         cooling_until = None
     else:
-        delivery_status = "proxy_intro_handed_off"
+        delivery_status = "escalated_to_case"
         delivery_reason = close_reason
         cooling_until = None
 
