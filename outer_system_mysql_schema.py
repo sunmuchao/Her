@@ -450,6 +450,7 @@ def recommendation_tables() -> tuple[TableDef, ...]:
                 ColumnDef("owner_profile_ref_json", "LONGTEXT", nullable=False),
                 ColumnDef("target_profile_ref_json", "LONGTEXT", nullable=False),
                 ColumnDef("active_match_case_id", "VARCHAR(191)"),
+                ColumnDef("active_case_status", "VARCHAR(64)"),
                 ColumnDef("latest_card_id", "VARCHAR(191)"),
                 ColumnDef("rule_provenance_json", "LONGTEXT"),
             ),

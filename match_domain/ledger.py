@@ -16,6 +16,7 @@ AGGREGATE_CASE = "case"
 def relation_status_from_row_snapshot(
     *,
     delivery_status: str | None,
+    delivery_reason: str | None = None,
     last_action_type: str | None = None,
     active_match_case_id: str | None = None,
 ) -> tuple[RelationStatus, str | None]:
@@ -25,10 +26,15 @@ def relation_status_from_row_snapshot(
     if active:
         return RelationStatus.PROXY_INTRO_ACTIVE, active
     ds = delivery_status
+    reason = str(delivery_reason or "").strip()
     if ds in {"proxy_intro_in_progress", "proxy_intro_accepted"}:
         return RelationStatus.PROXY_INTRO_ACTIVE, None
     if ds == "proxy_intro_handed_off":
         return RelationStatus.CLOSED, None
+    if ds == "escalated_to_case":
+        if reason == "proxy_intro_handoff_completed":
+            return RelationStatus.CLOSED, None
+        return RelationStatus.PROXY_INTRO_ACTIVE, None
     if ds in {"cooled_down", "proxy_intro_declined", "proxy_intro_timed_out"}:
         return RelationStatus.COOLING, None
     if ds in {"saved_by_user", "save_only"}:
@@ -225,6 +231,7 @@ def reduce_relation_ledger(events: Sequence[MatchEvent]) -> RelationLedgerState:
         elif t == "relation_state_revision":
             st, ac = relation_status_from_row_snapshot(
                 delivery_status=payload.get("delivery_status"),
+                delivery_reason=payload.get("delivery_reason"),
                 last_action_type=payload.get("last_action_type"),
                 active_match_case_id=payload.get("active_match_case_id"),
             )

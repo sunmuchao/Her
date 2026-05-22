@@ -112,8 +112,9 @@ class ProxyIntroSystemTests(unittest.TestCase):
         self.assertEqual(case["safe_summary"]["height_bracket"], "175-179cm")
         self.assertEqual(case["outreach_payload"]["safe_summary"]["city"], "无锡")
         recommendations = list_recommendations_for_subscription(self.conn, subscription["subscription_id"])
-        self.assertEqual(recommendations[0]["delivery_status"], "proxy_intro_in_progress")
+        self.assertEqual(recommendations[0]["delivery_status"], "escalated_to_case")
         self.assertEqual(recommendations[0]["active_match_case_id"], case["case_id"])
+        self.assertEqual(recommendations[0]["active_case_status"], "pending_outreach")
 
     def test_dispatch_reply_and_close_flow(self):
         subscription = self.seed_delivered_recommendation(candidate_id=90002)
@@ -143,7 +144,7 @@ class ProxyIntroSystemTests(unittest.TestCase):
         self.assertEqual(replied["case_status"], "accepted")
         self.assertEqual(
             list_recommendations_for_subscription(self.conn, subscription["subscription_id"])[0]["delivery_status"],
-            "proxy_intro_accepted",
+            "escalated_to_case",
         )
 
         closed = close_match_case(
@@ -154,8 +155,9 @@ class ProxyIntroSystemTests(unittest.TestCase):
         )
         self.assertEqual(closed["case_status"], "closed")
         recommendation = list_recommendations_for_subscription(self.conn, subscription["subscription_id"])[0]
-        self.assertEqual(recommendation["delivery_status"], "proxy_intro_handed_off")
+        self.assertEqual(recommendation["delivery_status"], "escalated_to_case")
         self.assertIsNone(recommendation["active_match_case_id"])
+        self.assertIsNone(recommendation["active_case_status"])
         self.assertEqual(recommendation["canonical_relation_status"], "closed")
 
         events = list_match_case_outreach_attempts(self.conn, case["case_id"])
@@ -276,7 +278,7 @@ class ProxyIntroSystemTests(unittest.TestCase):
 
         self.assertEqual(declined["case_status"], "declined")
         recommendation = list_recommendations_for_subscription(self.conn, subscription["subscription_id"])[0]
-        self.assertEqual(recommendation["delivery_status"], "proxy_intro_declined")
+        self.assertEqual(recommendation["delivery_status"], "cooled_down")
         self.assertIsNotNone(recommendation["cooling_until"])
 
         with self.assertRaises(ValueError):
@@ -303,7 +305,7 @@ class ProxyIntroSystemTests(unittest.TestCase):
         timed_out_case = get_match_case(self.conn, case["case_id"])
         self.assertEqual(timed_out_case["case_status"], "timed_out")
         recommendation = list_recommendations_for_subscription(self.conn, subscription["subscription_id"])[0]
-        self.assertEqual(recommendation["delivery_status"], "proxy_intro_timed_out")
+        self.assertEqual(recommendation["delivery_status"], "cooled_down")
         self.assertIsNotNone(recommendation["cooling_until"])
 
         refresh_subscription(
@@ -313,7 +315,7 @@ class ProxyIntroSystemTests(unittest.TestCase):
             search_runner=lambda **_: {"results": [build_result(90004, "候选A", 80)]},
         )
         recommendation = list_recommendations_for_subscription(self.conn, subscription["subscription_id"])[0]
-        self.assertEqual(recommendation["delivery_status"], "proxy_intro_timed_out")
+        self.assertEqual(recommendation["delivery_status"], "cooled_down")
 
 
 if __name__ == "__main__":
