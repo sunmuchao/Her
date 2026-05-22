@@ -56,8 +56,8 @@ It is intentionally separate from the skill itself.
 - `profile_recommendations`
   - recommendation history per `(subscription, candidate)`
   - latest score snapshot
-  - delivery status
-  - cooldown state
+  - recommendation delivery status plus cooldown state
+  - active proxy-intro case mirror fields: `active_match_case_id` and `active_case_status`
   - final proactive-review status such as `direct_greet_ready`, `save_only`, or `rejected`
   - user review status such as `pending_review`, `direct_greet`, or `save`
 - `recommendation_actions`
@@ -113,7 +113,7 @@ It is intentionally separate from the skill itself.
 - `request_proxy_intro`
   - creates a `match_case`
   - stores only a safe summary before outreach
-  - moves the recommendation into `proxy_intro_in_progress`
+  - moves the recommendation into `escalated_to_case` and mirrors case progress through `active_case_status`
 - `accepted`
   - keeps the case active until handoff is explicitly closed
 - `declined` / `timed_out`
