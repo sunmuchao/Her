@@ -1091,6 +1091,15 @@ System               System               / Verification       System           
 
 而认证、审核、风控、画像、运营任务等能力应作为支撑域存在，负责放行、拦截、校验和辅助决策，而不应与主链路并列定义产品主流程。
 
+这一收敛方向在当前代码中已经开始落地，尤其体现在 recommendation 与 proxy-intro / case 的边界调整上：
+
+- `profile_recommendations.delivery_status` 已开始收缩为纯推荐主状态
+- proxy-intro 生命周期由 `match_cases.case_status` 继续作为 owner
+- recommendation 侧新增 `active_case_status` 作为活跃 case 的镜像字段，用于展示而不是定义主事实
+- 已新增 recommendation 数据迁移，将历史 `proxy_intro_*`、`save_only`、`review_skipped` 等旧 `delivery_status` 值回填到新语义
+
+这意味着系统正从“单字段混合表达推荐、关系、case 三层含义”，逐步过渡到“推荐状态、关系状态、案例状态分层管理”。
+
 ### 13.2 前端与后端真实程度不完全一致
 
 前端中仍存在：
@@ -1249,6 +1258,11 @@ Gateway 当前同时负责：
 - 支持 A/B 调优
 - 支持运营迭代
 - 降低频繁改代码发版的成本
+
+补充说明：
+
+- recommendation 近期已完成一轮状态语义收敛，把 `delivery_status` 从混合流程字段收缩为推荐主状态字段
+- 下一步更适合继续把 `final_review_status`、`user_review_status`、case 镜像字段与可配置规则平台对应起来，而不是再把更多决策语义堆回主状态字段
 
 ### 15.3 建议三：补强真实数据接入，减少前端 fallback
 
