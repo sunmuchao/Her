@@ -213,7 +213,7 @@ class RecommendationSystemTests(unittest.TestCase):
         recommendations = list_recommendations_for_subscription(self.conn, subscription["subscription_id"])
         self.assertEqual(len(recommendations), 2)
         self.assertEqual(recommendations[0]["delivery_status"], "review_pending")
-        self.assertEqual(recommendations[1]["delivery_status"], "suppressed_low_score")
+        self.assertEqual(recommendations[1]["delivery_status"], "suppressed")
         self.assertEqual(recommendations[0]["final_review_status"], "direct_greet_ready")
         self.assertEqual(recommendations[0]["user_review_status"], "pending_review")
         self.assertEqual(recommendations[0]["canonical_relation_status"], "recommended")
@@ -479,7 +479,7 @@ class RecommendationSystemTests(unittest.TestCase):
 
         self.assertEqual(summary["delivered_count"], 0)
         recommendations = list_recommendations_for_subscription(self.conn, subscription["subscription_id"])
-        self.assertEqual(recommendations[0]["delivery_status"], "save_only")
+        self.assertEqual(recommendations[0]["delivery_status"], "review_pending")
         self.assertEqual(recommendations[0]["final_review_status"], "save_only")
         self.assertEqual(list_in_app_cards(self.conn, requester_id=70001), [])
 
@@ -499,7 +499,7 @@ class RecommendationSystemTests(unittest.TestCase):
             now=datetime(2026, 4, 30, 9, 20, 0),
             review_payload={"reason": "满意，但还不到主动打招呼"},
         )
-        self.assertEqual(review["delivery_status"], "save_only")
+        self.assertEqual(review["delivery_status"], "saved_by_user")
         self.assertEqual(review["user_review_status"], "save")
 
         summary = deliver_in_app_recommendations(
@@ -511,7 +511,7 @@ class RecommendationSystemTests(unittest.TestCase):
         recommendations = list_recommendations_for_subscription(self.conn, subscription["subscription_id"])
         self.assertEqual(recommendations[0]["final_review_status"], "direct_greet_ready")
         self.assertEqual(recommendations[0]["user_review_status"], "save")
-        self.assertEqual(recommendations[0]["delivery_status"], "save_only")
+        self.assertEqual(recommendations[0]["delivery_status"], "saved_by_user")
 
     def test_match_based_mode_can_still_push_candidate_that_is_not_direct_greet_ready(self):
         subscription = self.create_active_subscription(recommendation_mode="match_based")

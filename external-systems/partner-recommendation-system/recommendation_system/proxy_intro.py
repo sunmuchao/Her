@@ -795,7 +795,7 @@ def close_match_case(
         delivery_reason = "proxy_intro_requester_cancelled"
         cooling_until = None
     elif close_reason == "delivery_failed":
-        delivery_status = "save_only"
+        delivery_status = "cooled_down"
         delivery_reason = "proxy_intro_delivery_failed"
         cooling_until = now + timedelta(days=DEFAULT_TIMEOUT_COOLDOWN_DAYS)
     elif close_reason == "duplicate_merged":
