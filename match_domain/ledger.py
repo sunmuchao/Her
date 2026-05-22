@@ -39,7 +39,7 @@ def relation_status_from_row_snapshot(
         return RelationStatus.COOLING, None
     if ds in {"saved_by_user", "save_only"}:
         return RelationStatus.SAVED, None
-    if ds == "direct_greeted":
+    if ds in {"direct_greeted", "direct_greet_started"}:
         return RelationStatus.DIRECT_GREETED, None
     if ds == "review_skipped":
         return RelationStatus.SKIPPED, None

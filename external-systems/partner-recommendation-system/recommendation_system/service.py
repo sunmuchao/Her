@@ -652,7 +652,7 @@ def normalize_delivery_status(
     if existing and existing.get("last_action_type") == "save":
         return ("saved_by_user", "user_saved_candidate")
     if existing and existing.get("last_action_type") == "direct_greet":
-        return ("direct_greeted", "user_started_direct_greet")
+        return ("direct_greet_started", "user_started_direct_greet")
     if existing and existing.get("last_action_type") == "skip":
         cooling_until = parse_dt(existing.get("cooling_until"))
         if cooling_until and now < cooling_until:
@@ -660,7 +660,7 @@ def normalize_delivery_status(
         skip_cooldown_expired = True
 
     if int(result.get("score") or 0) < int(subscription.get("min_notify_score") or 0):
-        return ("suppressed_low_score", "score_below_notify_threshold")
+        return ("suppressed", "score_below_notify_threshold")
 
     if existing and existing.get("notified_at") and not skip_cooldown_expired:
         return ("delivered", "candidate_already_notified")
@@ -669,19 +669,19 @@ def normalize_delivery_status(
     final_review_status = final_review["status"]
     if recommendation_mode == "direct_greet_only":
         if final_review_status == "review_deferred":
-            return ("review_deferred", final_review["reason"])
+            return ("review_pending", final_review["reason"])
         if final_review_status == "rejected":
-            return ("rejected_by_gate", final_review["reason"])
+            return ("suppressed", final_review["reason"])
         if final_review_status == "save_only":
-            return ("save_only", final_review["reason"])
+            return ("review_pending", final_review["reason"])
         if final_review_status == "direct_greet_ready":
             user_review_status = (existing or {}).get("user_review_status")
             if user_review_status == "direct_greet":
                 return ("pending_delivery", "user_review_direct_greet")
             if user_review_status == "save":
-                return ("save_only", "user_review_save")
+                return ("saved_by_user", "user_review_save")
             if user_review_status == "skip":
-                return ("review_skipped", "user_review_skip")
+                return ("cooled_down", "user_review_skip")
             return ("review_pending", final_review["reason"])
 
     if skip_cooldown_expired:
@@ -1401,7 +1401,7 @@ def record_recommendation_action(
         new_status = "saved_by_user"
     elif action_type == "direct_greet":
         cooling_until = None
-        new_status = "direct_greeted"
+        new_status = "direct_greet_started"
 
     _recommendation_action_insert(
         conn,
@@ -1500,11 +1500,11 @@ def record_user_review(
         delivery_reason = "user_review_direct_greet"
     elif review_type == "save":
         user_review_status = "save"
-        delivery_status = "save_only"
+        delivery_status = "saved_by_user"
         delivery_reason = "user_review_save"
     else:
         user_review_status = "skip"
-        delivery_status = "review_skipped"
+        delivery_status = "cooled_down"
         delivery_reason = "user_review_skip"
 
     _recommendation_action_insert(

@@ -151,13 +151,13 @@ class NoMatchRoleplayFlowTests(unittest.TestCase):
             now=datetime(2026, 5, 3, 10, 15, 0),
             action_payload={"reason": "同城稳定，目标明确，愿意直接开始聊"},
         )
-        self.assertEqual(greeted["delivery_status"], "direct_greeted")
+        self.assertEqual(greeted["delivery_status"], "direct_greet_started")
         self.assertEqual(greeted["last_action_type"], "direct_greet")
 
         recommendations = list_recommendations_for_subscription(self.conn, subscription["subscription_id"])
         self.assertEqual(len(recommendations), 1)
         self.assertEqual(recommendations[0]["final_review_status"], "direct_greet_ready")
-        self.assertEqual(recommendations[0]["delivery_status"], "direct_greeted")
+        self.assertEqual(recommendations[0]["delivery_status"], "direct_greet_started")
         self.assertEqual(recommendations[0]["candidate_name"], "周砚川")
 
 
