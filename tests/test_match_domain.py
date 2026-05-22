@@ -99,6 +99,7 @@ class MatchDomainTests(unittest.TestCase):
     def test_canonical_status_vocab_matches_design_doc(self):
         self.assertEqual(RelationStatus.COOLING.value, "cooling")
         self.assertEqual(RelationStatus.PROXY_INTRO_ACTIVE.value, "proxy_intro_active")
+        self.assertEqual(RelationStatus.DIRECT_GREET_STARTED.value, "direct_greet_started")
         self.assertEqual(PairStatus.NEEDS_REVALIDATION.value, "needs_revalidation")
         self.assertEqual(PairStatus.MUTUAL_ACCEPT.value, "mutual_accept")
         self.assertEqual(CaseType.MATCHMAKING.value, "matchmaking")

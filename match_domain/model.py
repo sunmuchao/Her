@@ -14,8 +14,8 @@ class RelationStatus(str, Enum):
     SAVED = "saved"
     SKIPPED = "skipped"
     COOLING = "cooling"
-    DIRECT_GREETED = "direct_greeted"
-    PROXY_INTRO_REQUESTED = "proxy_intro_requested"
+    DIRECT_GREET_STARTED = "direct_greet_started"
+    DIRECT_GREETED = "direct_greet_started"
     PROXY_INTRO_ACTIVE = "proxy_intro_active"
     CLOSED = "closed"
 
