@@ -54,6 +54,9 @@ class FakeCursor:
             )
             self._rows = []
             return
+        if query.startswith("UPDATE profile_recommendations"):
+            self._rows = []
+            return
         raise AssertionError(f"Unexpected SQL in fake cursor: {query}")
 
     def fetchone(self) -> dict[str, object] | None:
@@ -145,6 +148,16 @@ def test_upgrade_target_database_records_baseline_migration() -> None:
             "migration_id": "0003_add_async_jobs",
             "description": "Add persisted async jobs to recommendation",
         },
+        {
+            "scope": "recommendation",
+            "migration_id": "0004_add_active_case_status",
+            "description": "Add active_case_status mirror field to profile recommendations",
+        },
+        {
+            "scope": "recommendation",
+            "migration_id": "0005_normalize_delivery_statuses",
+            "description": "Normalize legacy recommendation delivery_status values",
+        },
     ]
     assert result["already_applied"] == []
     assert fake_conn.commits == 1
@@ -160,6 +173,14 @@ def test_upgrade_target_database_records_baseline_migration() -> None:
     assert ("recommendation", "0003_add_async_jobs") == (
         fake_conn.migration_rows[2]["scope"],
         fake_conn.migration_rows[2]["migration_id"],
+    )
+    assert ("recommendation", "0004_add_active_case_status") == (
+        fake_conn.migration_rows[3]["scope"],
+        fake_conn.migration_rows[3]["migration_id"],
+    )
+    assert ("recommendation", "0005_normalize_delivery_statuses") == (
+        fake_conn.migration_rows[4]["scope"],
+        fake_conn.migration_rows[4]["migration_id"],
     )
 
 
@@ -178,6 +199,8 @@ def test_validate_target_database_raises_when_migration_row_missing() -> None:
         "recommendation:0001_baseline",
         "recommendation:0002_add_outbox_delivery_state",
         "recommendation:0003_add_async_jobs",
+        "recommendation:0004_add_active_case_status",
+        "recommendation:0005_normalize_delivery_statuses",
     ]
 
 
@@ -195,6 +218,8 @@ def test_load_target_migrations_reads_baseline_module() -> None:
         "0001_baseline",
         "0002_add_outbox_delivery_state",
         "0003_add_async_jobs",
+        "0004_add_active_case_status",
+        "0005_normalize_delivery_statuses",
     ]
 
 

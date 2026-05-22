@@ -208,7 +208,7 @@
 - `skipped`
 - `cooling`
 - `direct_greet_started`
-- `proxy_intro_requested`
+- `request_proxy_intro`
 - `proxy_intro_active`
 - `closed`
 
@@ -287,7 +287,7 @@
 - `relation_cooling_started`
 - `relation_cooling_expired`
 - `relation_direct_greet_started`
-- `relation_proxy_intro_requested`
+- `request_proxy_intro`
 - `relation_proxy_intro_closed`
 
 #### Pair 事件
