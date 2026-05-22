@@ -410,8 +410,7 @@ System               System               / Verification       System           
 - `saved`
 - `skipped`
 - `cooling`
-- `direct_greeted`
-- `proxy_intro_requested`
+- `direct_greet_started`
 - `proxy_intro_active`
 - `closed`
 

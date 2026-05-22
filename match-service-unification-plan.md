@@ -43,7 +43,7 @@
 
 现有状态分散在多处：
 
-- 推荐侧：`pending_delivery`、`cooled_down`、`saved_by_user`、`proxy_intro_in_progress`
+- 推荐侧：`pending_delivery`、`cooled_down`、`saved_by_user`、`escalated_to_case`
 - 代理转介绍侧：`pending_outreach`、`awaiting_reply`、`accepted`、`declined`、`timed_out`
 - 撮合侧：`eligible`、`blocked`、`cooling`、`case_opened`、`mutual_accept`、`needs_revalidation`
 
@@ -207,7 +207,7 @@
 - `saved`
 - `skipped`
 - `cooling`
-- `direct_greeted`
+- `direct_greet_started`
 - `proxy_intro_requested`
 - `proxy_intro_active`
 - `closed`
