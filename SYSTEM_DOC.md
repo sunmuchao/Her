@@ -1108,7 +1108,7 @@ System               System               / Verification       System           
 1. recommendation / matchmaking 边界只拆了一半
    - recommendation 主状态、case 镜像字段、refresh 统计口径，以及 recommendation -> action -> case 的统一转化视图已经完成第一轮收敛
    - review 字段与可配置规则平台也还没有完全对齐，后续仍可能出现“review 决策散落在多个字段里”的问题
-   - recommendation -> matchmaking -> chat 的跨系统集成测试也还需要补齐
+   - recommendation -> proxy-intro handoff -> chat 的首条跨系统集成测试已经补上，当前仍缺的是更完整的 recommendation / matchmaking / chat 多场景回归矩阵
 
 2. `profile` / `persona` / 搜索使用条件三层仍然混在一起
    - 理想上应区分：
