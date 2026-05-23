@@ -345,7 +345,9 @@
 
 ### 9.2 与当前推荐 / 撮合 MySQL 库的关系
 
-仓库现状：**推荐系统、撮合系统的业务状态已写入各自独立的 MySQL 库**（DSN 可配，分别见 `external-systems/partner-recommendation-system/README.md` 与 `external-systems/partner-matchmaking-system/README.md`）。这与本节规划的「统一 `match_relations` / `event_log` 总账」仍是两回事：前者是**分域业务表**，后者是**待建设的一账本多投影**。
+仓库现状：**推荐系统、撮合系统的业务状态已写入各自独立的 MySQL 库**（DSN 可配，分别见 `external-systems/partner-recommendation-system/README.md` 与 `external-systems/partner-matchmaking-system/README.md`）。另外，仓库中已新增独立的 `relationship_ledger` 目标库，落地了第一版 `match_relations` / `match_relation_cases` / `match_relation_events` 统一总账，用于接住 recommendation action、proxy-intro case event、chat thread/message event。  
+
+这意味着本节规划的「统一 `match_relations` / `event_log` 总账」已经开始落地，但仍未完全覆盖全部域：当前 ledger 主要覆盖 recommendation -> proxy-intro -> chat 主链路，matchmaking pool / pair 及更完整读侧切换仍待继续完成。
 
 过渡策略建议：
 

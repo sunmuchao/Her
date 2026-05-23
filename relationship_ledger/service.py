@@ -1,0 +1,505 @@
+"""Unified relation/case/event ledger built from canonical cross-system events."""
+
+from __future__ import annotations
+
+import hashlib
+from datetime import datetime
+from typing import Any, Mapping
+
+from match_domain import (
+    AGGREGATE_CASE,
+    AGGREGATE_RELATION,
+    MatchEvent,
+    ProfileRef,
+    match_event_from_mapping,
+    profile_ref_to_dict,
+    reduce_case_ledger,
+    reduce_relation_ledger,
+)
+
+from .storage import json_dumps, json_loads, row_to_dict
+
+
+def relation_id_from_key(relation_key: str) -> str:
+    digest = hashlib.sha1(str(relation_key).encode("utf-8")).hexdigest()[:20]
+    return f"rel-{digest}"
+
+
+def _event_payload(event: MatchEvent) -> dict[str, Any]:
+    return dict(event.payload or {})
+
+
+def _normalize_profile_ref(value: ProfileRef | Mapping[str, Any] | None) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    if isinstance(value, ProfileRef):
+        return profile_ref_to_dict(value)
+    if isinstance(value, Mapping):
+        return dict(value)
+    raise TypeError("profile ref must be ProfileRef or mapping")
+
+
+def _upsert_relation_shell(
+    conn,
+    *,
+    relation_id: str,
+    relation_key: str,
+    owner_profile_ref: dict[str, Any] | None,
+    target_profile_ref: dict[str, Any] | None,
+    occurred_at: str,
+) -> None:
+    existing = conn.execute(
+        "SELECT * FROM match_relations WHERE relation_id = ?",
+        (relation_id,),
+    ).fetchone()
+    if existing:
+        updates: list[str] = ["updated_at = ?", "last_event_at = ?"]
+        params: list[Any] = [occurred_at, occurred_at]
+        if owner_profile_ref:
+            updates.append("owner_profile_ref_json = ?")
+            params.append(json_dumps(owner_profile_ref))
+        if target_profile_ref:
+            updates.append("target_profile_ref_json = ?")
+            params.append(json_dumps(target_profile_ref))
+        params.append(relation_id)
+        conn.execute(
+            f"UPDATE match_relations SET {', '.join(updates)} WHERE relation_id = ?",
+            params,
+        )
+        return
+    conn.execute(
+        """
+        INSERT INTO match_relations (
+          relation_id,
+          relation_key,
+          owner_profile_ref_json,
+          target_profile_ref_json,
+          relation_status,
+          current_phase,
+          active_case_id,
+          active_case_type,
+          active_case_status,
+          latest_chat_thread_id,
+          last_chat_message_at,
+          source_summary_json,
+          last_event_type,
+          last_event_at,
+          created_at,
+          updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, ?, NULL, ?, ?, ?)
+        """,
+        (
+            relation_id,
+            relation_key,
+            json_dumps(owner_profile_ref) if owner_profile_ref else None,
+            json_dumps(target_profile_ref) if target_profile_ref else None,
+            "new",
+            "new",
+            json_dumps({}),
+            occurred_at,
+            occurred_at,
+            occurred_at,
+        ),
+    )
+
+
+def _derive_case_identity(event: MatchEvent, explicit_case_id: str | None, explicit_case_type: str | None) -> tuple[str | None, str | None]:
+    payload = _event_payload(event)
+    case_id = str(explicit_case_id or payload.get("case_id") or "").strip() or None
+    case_type = str(explicit_case_type or payload.get("case_type") or "").strip() or None
+    if event.aggregate_type == AGGREGATE_CASE and case_id is None:
+        case_id = str(event.aggregate_id)
+    return case_id, case_type
+
+
+def _load_relation_events(conn, relation_id: str) -> list[MatchEvent]:
+    rows = conn.execute(
+        """
+        SELECT canonical_event_json
+        FROM match_relation_events
+        WHERE relation_id = ?
+        ORDER BY occurred_at ASC, ledger_event_id ASC
+        """,
+        (relation_id,),
+    ).fetchall()
+    events: list[MatchEvent] = []
+    for row in rows:
+        canon = json_loads(row.get("canonical_event_json"), {})
+        if isinstance(canon, Mapping):
+            events.append(match_event_from_mapping(canon))
+    return events
+
+
+def _load_case_events(conn, case_id: str) -> list[MatchEvent]:
+    rows = conn.execute(
+        """
+        SELECT canonical_event_json
+        FROM match_relation_events
+        WHERE case_id = ?
+        ORDER BY occurred_at ASC, ledger_event_id ASC
+        """,
+        (case_id,),
+    ).fetchall()
+    events: list[MatchEvent] = []
+    for row in rows:
+        canon = json_loads(row.get("canonical_event_json"), {})
+        if isinstance(canon, Mapping):
+            events.append(match_event_from_mapping(canon))
+    return events
+
+
+def _upsert_case_projection(
+    conn,
+    *,
+    relation_id: str,
+    event: MatchEvent,
+    case_id: str,
+    case_type: str,
+    owner_service: str,
+) -> None:
+    occurred_at = str(event.occurred_at.isoformat(sep=" "))
+    existing = row_to_dict(
+        conn.execute("SELECT * FROM match_relation_cases WHERE case_id = ?", (case_id,)).fetchone()
+    )
+    case_events = _load_case_events(conn, case_id)
+    reduced = reduce_case_ledger(case_events)
+    close_reason = None
+    payload = _event_payload(event)
+    if event.event_type == "case_closed":
+        close_reason = payload.get("close_reason")
+    elif event.event_type.startswith("case_closed_"):
+        close_reason = event.event_type.removeprefix("case_closed_")
+    closed_at = occurred_at if reduced.status.value == "closed" else None
+    opened_at = existing.get("opened_at") if existing else occurred_at
+    metadata = {
+        "owner_service": owner_service,
+        "latest_payload": payload,
+    }
+    if existing:
+        conn.execute(
+            """
+            UPDATE match_relation_cases
+            SET case_status = ?,
+                close_reason = COALESCE(?, close_reason),
+                linked_aggregate_type = ?,
+                linked_aggregate_id = ?,
+                latest_event_type = ?,
+                closed_at = COALESCE(?, closed_at),
+                last_event_at = ?,
+                metadata_json = ?,
+                updated_at = ?
+            WHERE case_id = ?
+            """,
+            (
+                reduced.status.value,
+                close_reason,
+                event.aggregate_type,
+                event.aggregate_id,
+                event.event_type,
+                closed_at,
+                occurred_at,
+                json_dumps(metadata),
+                occurred_at,
+                case_id,
+            ),
+        )
+        return
+    conn.execute(
+        """
+        INSERT INTO match_relation_cases (
+          case_id,
+          relation_id,
+          case_type,
+          owner_service,
+          case_status,
+          close_reason,
+          linked_aggregate_type,
+          linked_aggregate_id,
+          latest_event_type,
+          opened_at,
+          closed_at,
+          last_event_at,
+          metadata_json,
+          created_at,
+          updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            case_id,
+            relation_id,
+            case_type,
+            owner_service,
+            reduced.status.value,
+            close_reason,
+            event.aggregate_type,
+            event.aggregate_id,
+            event.event_type,
+            opened_at,
+            closed_at,
+            occurred_at,
+            json_dumps(metadata),
+            occurred_at,
+            occurred_at,
+        ),
+    )
+
+
+def _project_relation_current_phase(
+    *,
+    relation_status: str,
+    active_case: dict[str, Any] | None,
+    latest_chat_thread_id: str | None,
+    last_chat_message_at: str | None,
+) -> str:
+    if last_chat_message_at:
+        return "chat_active"
+    if latest_chat_thread_id:
+        return "chat_opened"
+    if active_case:
+        return "case_active"
+    return relation_status
+
+
+def _refresh_relation_projection(
+    conn,
+    *,
+    relation_id: str,
+    relation_key: str,
+    event: MatchEvent,
+    owner_profile_ref: dict[str, Any] | None,
+    target_profile_ref: dict[str, Any] | None,
+) -> None:
+    relation_events = _load_relation_events(conn, relation_id)
+    reduced = reduce_relation_ledger(relation_events)
+    active_case = None
+    if reduced.active_match_case_id:
+        active_case = row_to_dict(
+            conn.execute(
+                "SELECT * FROM match_relation_cases WHERE case_id = ?",
+                (reduced.active_match_case_id,),
+            ).fetchone()
+        )
+    existing = row_to_dict(conn.execute("SELECT * FROM match_relations WHERE relation_id = ?", (relation_id,)).fetchone())
+    payload = _event_payload(event)
+    latest_chat_thread_id = existing.get("latest_chat_thread_id") if existing else None
+    last_chat_message_at = existing.get("last_chat_message_at") if existing else None
+    if event.event_type == "chat.thread.opened":
+        latest_chat_thread_id = str(payload.get("thread_id") or event.aggregate_id)
+    if event.event_type == "chat.message.created":
+        last_chat_message_at = event.occurred_at.isoformat(sep=" ")
+        latest_chat_thread_id = str(payload.get("thread_id") or event.aggregate_id)
+    source_summary = json_loads((existing or {}).get("source_summary_json"), {})
+    source_summary.update(
+        {
+            "latest_source_service": event.source_service,
+            "latest_aggregate_type": event.aggregate_type,
+            "latest_aggregate_id": event.aggregate_id,
+        }
+    )
+    conn.execute(
+        """
+        UPDATE match_relations
+        SET owner_profile_ref_json = COALESCE(?, owner_profile_ref_json),
+            target_profile_ref_json = COALESCE(?, target_profile_ref_json),
+            relation_status = ?,
+            current_phase = ?,
+            active_case_id = ?,
+            active_case_type = ?,
+            active_case_status = ?,
+            latest_chat_thread_id = ?,
+            last_chat_message_at = ?,
+            source_summary_json = ?,
+            last_event_type = ?,
+            last_event_at = ?,
+            updated_at = ?
+        WHERE relation_id = ?
+        """,
+        (
+            json_dumps(owner_profile_ref) if owner_profile_ref else None,
+            json_dumps(target_profile_ref) if target_profile_ref else None,
+            reduced.status.value,
+            _project_relation_current_phase(
+                relation_status=reduced.status.value,
+                active_case=active_case,
+                latest_chat_thread_id=latest_chat_thread_id,
+                last_chat_message_at=last_chat_message_at,
+            ),
+            None if active_case is None else active_case.get("case_id"),
+            None if active_case is None else active_case.get("case_type"),
+            None if active_case is None else active_case.get("case_status"),
+            latest_chat_thread_id,
+            last_chat_message_at,
+            json_dumps(source_summary),
+            event.event_type,
+            event.occurred_at.isoformat(sep=" "),
+            event.occurred_at.isoformat(sep=" "),
+            relation_id,
+        ),
+    )
+
+
+def append_event(
+    conn,
+    *,
+    event: MatchEvent,
+    relation_key: str,
+    owner_profile_ref: ProfileRef | Mapping[str, Any] | None = None,
+    target_profile_ref: ProfileRef | Mapping[str, Any] | None = None,
+    case_id: str | None = None,
+    case_type: str | None = None,
+) -> dict[str, Any]:
+    relation_key = str(relation_key or "").strip()
+    if not relation_key:
+        raise ValueError("relation_key is required")
+    relation_id = relation_id_from_key(relation_key)
+    owner_ref_dict = _normalize_profile_ref(owner_profile_ref)
+    target_ref_dict = _normalize_profile_ref(target_profile_ref)
+    occurred_at = event.occurred_at.isoformat(sep=" ")
+    _upsert_relation_shell(
+        conn,
+        relation_id=relation_id,
+        relation_key=relation_key,
+        owner_profile_ref=owner_ref_dict,
+        target_profile_ref=target_ref_dict,
+        occurred_at=occurred_at,
+    )
+    derived_case_id, derived_case_type = _derive_case_identity(event, case_id, case_type)
+    conn.execute(
+        """
+        INSERT IGNORE INTO match_relation_events (
+          relation_id,
+          canonical_event_id,
+          aggregate_type,
+          aggregate_id,
+          case_id,
+          case_type,
+          event_type,
+          source_service,
+          actor_type,
+          actor_id,
+          canonical_event_json,
+          event_payload_json,
+          occurred_at,
+          created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            relation_id,
+            event.event_id,
+            event.aggregate_type,
+            event.aggregate_id,
+            derived_case_id,
+            derived_case_type,
+            event.event_type,
+            event.source_service,
+            event.actor_type,
+            event.actor_id,
+            json_dumps(event.to_dict()),
+            json_dumps(_event_payload(event)),
+            occurred_at,
+            occurred_at,
+        ),
+    )
+    if conn.execute(
+        "SELECT * FROM match_relation_events WHERE canonical_event_id = ?",
+        (event.event_id,),
+    ).fetchone() is None:
+        conn.commit()
+        return get_relation(conn, relation_id)
+    if derived_case_id and derived_case_type:
+        _upsert_case_projection(
+            conn,
+            relation_id=relation_id,
+            event=event,
+            case_id=derived_case_id,
+            case_type=derived_case_type,
+            owner_service=event.source_service,
+        )
+    _refresh_relation_projection(
+        conn,
+        relation_id=relation_id,
+        relation_key=relation_key,
+        event=event,
+        owner_profile_ref=owner_ref_dict,
+        target_profile_ref=target_ref_dict,
+    )
+    conn.commit()
+    return get_relation(conn, relation_id)
+
+
+def get_relation(conn, relation_id: str) -> dict[str, Any] | None:
+    row = row_to_dict(conn.execute("SELECT * FROM match_relations WHERE relation_id = ?", (relation_id,)).fetchone())
+    if not row:
+        return None
+    row["owner_profile_ref"] = json_loads(row.pop("owner_profile_ref_json"), None)
+    row["target_profile_ref"] = json_loads(row.pop("target_profile_ref_json"), None)
+    row["source_summary"] = json_loads(row.pop("source_summary_json"), {})
+    row["events"] = list_events_for_relation(conn, relation_id)
+    row["cases"] = list_cases_for_relation(conn, relation_id)
+    return row
+
+
+def get_relation_by_key(conn, relation_key: str) -> dict[str, Any] | None:
+    relation_id = relation_id_from_key(relation_key)
+    return get_relation(conn, relation_id)
+
+
+def list_relations(conn) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        "SELECT relation_id FROM match_relations ORDER BY last_event_at DESC, relation_id DESC",
+        (),
+    ).fetchall()
+    return [item for item in (get_relation(conn, str(row["relation_id"])) for row in rows) if item]
+
+
+def list_cases_for_relation(conn, relation_id: str) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT *
+        FROM match_relation_cases
+        WHERE relation_id = ?
+        ORDER BY last_event_at DESC, case_id DESC
+        """,
+        (relation_id,),
+    ).fetchall()
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        item = row_to_dict(row)
+        if not item:
+            continue
+        item["metadata"] = json_loads(item.pop("metadata_json"), {})
+        out.append(item)
+    return out
+
+
+def list_events_for_relation(conn, relation_id: str) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT *
+        FROM match_relation_events
+        WHERE relation_id = ?
+        ORDER BY occurred_at ASC, ledger_event_id ASC
+        """,
+        (relation_id,),
+    ).fetchall()
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        item = row_to_dict(row)
+        if not item:
+            continue
+        item["canonical_event"] = json_loads(item.pop("canonical_event_json"), {})
+        item["event_payload"] = json_loads(item.pop("event_payload_json"), {})
+        out.append(item)
+    return out
+
+
+__all__ = [
+    "append_event",
+    "get_relation",
+    "get_relation_by_key",
+    "list_cases_for_relation",
+    "list_events_for_relation",
+    "list_relations",
+    "relation_id_from_key",
+]
+

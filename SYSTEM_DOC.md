@@ -1119,10 +1119,11 @@ System               System               / Verification       System           
    - 但当前实现里，`persona_memory_sync` 仍会把一部分 persona 推断结果写回 profile，再被 discovery / recommendation / search 消费
    - 这意味着“用户明说的”和“系统猜出来的”还没有彻底分开，后续需要明确哪些字段可以同步，哪些只能停留在 persona 层，哪些只能作为搜索层编译结果存在
 
-3. 统一关系总账仍未建设
-   - 当前 recommendation、matchmaking 各自有独立 MySQL 业务表，这解决的是“分域落库”，还不是“跨域统一主事实”
-   - 文档里规划的 `match_relations` / `event_log` 一账本多投影方案尚未落地
-   - 在这件事完成前，关系推进、case 变化、后续 chat 进入关系链路时，仍然要靠跨库映射和对账来判断“哪边才是真相”
+3. 统一关系总账已落地最小正式版本，但读侧切换还未完成
+   - 新增独立 `relationship_ledger` 目标库，已包含 `match_relations`、`match_relation_cases`、`match_relation_events` 三张核心表
+   - recommendation action、proxy-intro case event、chat thread/message event 现已自动镜像到 ledger，形成跨 recommendation / case / chat 的统一 timeline 与 relation/case 投影
+   - 这意味着系统第一次有了正式的跨域主事实层，不再只能靠 recommendation / matchmaking / chat 三边人工对账
+   - 这一层仍未全部收尾：matchmaking pool / pair 流程尚未并入同一 ledger，前端与报表读侧也还没有全面切到 ledger 投影
 
 4. 支撑域和主链路的职责隔离还停留在方向，不是实现
    - 理想主线应是：找对象 -> 建立连接 -> 聊天

@@ -47,6 +47,10 @@ TARGETS: dict[str, TargetDefinition] = {
         env_var="PERSONA_MEMORY_MYSQL_SOURCE",
         package="db_migrations.targets.persona",
     ),
+    "relationship_ledger": TargetDefinition(
+        env_var="HER_RELATION_LEDGER_DB",
+        package="db_migrations.targets.relationship_ledger",
+    ),
 }
 _MIGRATION_MODULE_RE = re.compile(r"m\d{4}_[a-z0-9_]+$")
 

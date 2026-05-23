@@ -25,6 +25,7 @@ from .events import chat_message_created_event, chat_thread_opened_event
 from .persona_jobs import maybe_enqueue_persona_sync_job
 from .risk import assert_message_allowed, maybe_capture_message_risk_signal
 from .storage import inflate_json_columns, json_dumps, row_to_dict
+from relationship_ledger.runtime import append_event_to_default_ledger
 
 VIS_DYADIC = "dyadic"
 VIS_OWNER_ONLY = "owner_only"
@@ -78,6 +79,14 @@ def get_or_create_thread(
     ts = current_time(now)
     thread_id = _generate_thread_id()
     try:
+        opened_event = chat_thread_opened_event(
+            thread_id=thread_id,
+            case_id=case_id,
+            relation_key=relation_key,
+            participant_a_id=participant_a_id,
+            participant_b_id=participant_b_id,
+            occurred_at=ts,
+        )
         conn.execute(
             """
             INSERT INTO chat_threads (
@@ -99,17 +108,15 @@ def get_or_create_thread(
         )
         append_outbox_pending(
             conn,
-            event=chat_thread_opened_event(
-                thread_id=thread_id,
-                case_id=case_id,
-                relation_key=relation_key,
-                participant_a_id=participant_a_id,
-                participant_b_id=participant_b_id,
-                occurred_at=ts,
-            ),
+            event=opened_event,
             source_row_table="chat_threads",
             source_row_id=None,
             created_at_str=ts.isoformat(sep=" "),
+        )
+        append_event_to_default_ledger(
+            event=opened_event,
+            relation_key=relation_key,
+            case_id=case_id,
         )
         conn.commit()
         funnel_stage(
@@ -342,21 +349,27 @@ def post_message(
             "UPDATE chat_threads SET updated_at = ? WHERE thread_id = ?",
             (ts, thread_id),
         )
+        message_event = chat_message_created_event(
+            thread_id=thread_id,
+            case_id=str(thread["case_id"]),
+            message_id=inserted_id,
+            author_id=author,
+            body=body,
+            visibility=visibility,
+            source=source,
+            occurred_at=ts,
+        )
         append_outbox_pending(
             conn,
-            event=chat_message_created_event(
-                thread_id=thread_id,
-                case_id=str(thread["case_id"]),
-                message_id=inserted_id,
-                author_id=author,
-                body=body,
-                visibility=visibility,
-                source=source,
-                occurred_at=ts,
-            ),
+            event=message_event,
             source_row_table="chat_messages",
             source_row_id=inserted_id,
             created_at_str=ts.isoformat(sep=" "),
+        )
+        append_event_to_default_ledger(
+            event=message_event,
+            relation_key=str(thread["relation_key"]),
+            case_id=str(thread["case_id"]),
         )
         conn.commit()
     except IntegrityError:

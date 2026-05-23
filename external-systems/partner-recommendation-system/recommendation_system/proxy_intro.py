@@ -32,6 +32,7 @@ from .service import (  # noqa: E402
     parse_dt,
 )
 from .storage import json_dumps, json_loads, row_to_dict
+from relationship_ledger.runtime import append_event_to_default_ledger
 
 
 DEFAULT_OUTREACH_CHANNEL = "in_app_proxy_intro"
@@ -260,6 +261,7 @@ def _record_case_event(
     now: datetime,
     payload: dict[str, Any] | None = None,
 ) -> None:
+    recommendation = get_recommendation(conn, case["subscription_id"], int(case["candidate_id"]))
     event = build_case_aggregate_event(
         event_type=event_type,
         case_id=str(case["case_id"]),
@@ -321,6 +323,15 @@ def _record_case_event(
         source_row_id=conn.lastrowid or None,
         created_at_str=occurred_str,
     )
+    if recommendation:
+        append_event_to_default_ledger(
+            event=event,
+            relation_key=str(recommendation["relation_key"]),
+            owner_profile_ref=recommendation.get("owner_profile_ref"),
+            target_profile_ref=recommendation.get("target_profile_ref"),
+            case_id=str(case["case_id"]),
+            case_type=CaseType.PROXY_INTRO.value,
+        )
 
 
 def _sync_recommendation_for_case(
