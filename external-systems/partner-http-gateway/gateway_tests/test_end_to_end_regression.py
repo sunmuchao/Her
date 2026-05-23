@@ -50,6 +50,12 @@ from recommendation_system.storage import (  # noqa: E402
     initialize_database as initialize_recommendation_db,
     reset_all_tables as reset_recommendation_tables,
 )
+from relationship_ledger.storage import (  # noqa: E402
+    DEFAULT_RELATION_LEDGER_TEST_MYSQL_DSN,
+    connect_db as connect_relation_ledger_db,
+    initialize_database as initialize_relation_ledger_db,
+    reset_all_tables as reset_relation_ledger_tables,
+)
 
 
 DEFAULT_E2E_SEARCH_TEST_DSN = os.environ.get(
@@ -91,7 +97,9 @@ class GatewayEndToEndRegressionTests(unittest.TestCase):
     def setUp(self) -> None:
         self._reset_search_rows()
         self._old_static_tokens = os.environ.get("PARTNER_GATEWAY_STATIC_TOKENS_JSON")
+        self._old_relation_ledger_db = os.environ.get("HER_RELATION_LEDGER_DB")
         os.environ["PARTNER_GATEWAY_STATIC_TOKENS_JSON"] = STATIC_TOKENS
+        os.environ["HER_RELATION_LEDGER_DB"] = DEFAULT_RELATION_LEDGER_TEST_MYSQL_DSN
 
         rec_conn = connect_recommendation_db(DEFAULT_RECOMMENDATION_TEST_MYSQL_DSN)
         initialize_recommendation_db(rec_conn)
@@ -108,10 +116,16 @@ class GatewayEndToEndRegressionTests(unittest.TestCase):
         reset_chat_tables(chat_conn)
         chat_conn.close()
 
+        ledger_conn = connect_relation_ledger_db(DEFAULT_RELATION_LEDGER_TEST_MYSQL_DSN)
+        initialize_relation_ledger_db(ledger_conn)
+        reset_relation_ledger_tables(ledger_conn)
+        ledger_conn.close()
+
         self.gw = PartnerGateway(
             recommendation_dsn=DEFAULT_RECOMMENDATION_TEST_MYSQL_DSN,
             matchmaking_dsn=DEFAULT_MATCHMAKING_TEST_MYSQL_DSN,
             chat_dsn=DEFAULT_CHAT_TEST_MYSQL_DSN,
+            relation_ledger_dsn=DEFAULT_RELATION_LEDGER_TEST_MYSQL_DSN,
             db_pool_max=0,
         )
 
@@ -120,6 +134,10 @@ class GatewayEndToEndRegressionTests(unittest.TestCase):
             os.environ.pop("PARTNER_GATEWAY_STATIC_TOKENS_JSON", None)
         else:
             os.environ["PARTNER_GATEWAY_STATIC_TOKENS_JSON"] = self._old_static_tokens
+        if self._old_relation_ledger_db is None:
+            os.environ.pop("HER_RELATION_LEDGER_DB", None)
+        else:
+            os.environ["HER_RELATION_LEDGER_DB"] = self._old_relation_ledger_db
 
     def _reset_search_rows(self) -> None:
         reset_search_rows(self.search_config)
@@ -453,6 +471,9 @@ class GatewayEndToEndRegressionTests(unittest.TestCase):
         self.assertEqual(payload["matchmaking"]["case"]["case_id"], case_id)
         self.assertGreaterEqual(len(payload["matchmaking"]["events"]), 2)
         self.assertIsNone(payload["recommendation"]["case"])
+        self.assertEqual(payload["ledger"]["summary"]["current_phase"], "chat_active")
+        self.assertEqual(payload["ledger"]["summary"]["active_case_id"], case_id)
+        self.assertGreaterEqual(payload["ledger"]["summary"]["event_count"], 4)
 
     def test_end_to_end_recommendation_proxy_case_can_flow_into_timeline(self) -> None:
         self._seed_recommendation_profiles()
@@ -554,6 +575,8 @@ class GatewayEndToEndRegressionTests(unittest.TestCase):
         self.assertIsNone(payload["matchmaking"]["case"])
         self.assertEqual(payload["recommendation"]["case"]["case_id"], case_id)
         self.assertGreaterEqual(len(payload["recommendation"]["events"]), 1)
+        self.assertEqual(payload["ledger"]["summary"]["current_phase"], "chat_active")
+        self.assertGreaterEqual(payload["ledger"]["summary"]["event_count"], 3)
 
     def test_end_to_end_async_jobs_are_observable_across_three_systems(self) -> None:
         self._seed_recommendation_profiles()
@@ -732,6 +755,8 @@ class GatewayEndToEndRegressionTests(unittest.TestCase):
         dashboard = payload
         self.assertGreaterEqual(dashboard["totals"]["succeeded"], 3)
         self.assertEqual(dashboard["totals"]["backlog_open"], 0)
+        self.assertIn("ledger", dashboard)
+        self.assertIn("by_phase", dashboard["ledger"])
 
         recommendation_types = {
             item["job_type"]: item for item in dashboard["systems"]["recommendation"]["job_types"]
