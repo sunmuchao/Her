@@ -244,6 +244,13 @@ def test_load_chat_target_migrations_reads_real_0002_module() -> None:
     assert migration_ids == sorted(migration_ids)
 
 
+def test_load_relationship_ledger_target_migrations_reads_baseline_module() -> None:
+    migrations = runner.load_target_migrations("relationship_ledger")
+    assert [migration.migration_id for migration in migrations] == [
+        "0001_baseline",
+    ]
+
+
 def test_create_migration_file_generates_next_0002_template(tmp_path) -> None:
     target_dir = tmp_path / "db_migrations" / "targets" / "recommendation"
     target_dir.mkdir(parents=True)

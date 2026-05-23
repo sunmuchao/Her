@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pathlib
+import os
 import sys
 import unittest
 from datetime import datetime
@@ -44,6 +45,13 @@ from chat_system import (  # noqa: E402
     reset_all_tables as reset_chat_tables,
 )
 from chat_system.storage import DEFAULT_CHAT_TEST_MYSQL_DSN  # noqa: E402
+from relationship_ledger import (  # noqa: E402
+    connect_db as connect_relation_ledger_db,
+    get_relation_by_key,
+    initialize_database as initialize_relation_ledger_database,
+    reset_all_tables as reset_relation_ledger_tables,
+)
+from relationship_ledger.storage import DEFAULT_RELATION_LEDGER_TEST_MYSQL_DSN  # noqa: E402
 
 
 def build_result(candidate_id: int, name: str, score: int) -> dict[str, object]:
@@ -74,6 +82,8 @@ def build_result(candidate_id: int, name: str, score: int) -> dict[str, object]:
 
 class RecommendationChatIntegrationTests(unittest.TestCase):
     def setUp(self) -> None:
+        self._old_relation_ledger_db = os.environ.get("HER_RELATION_LEDGER_DB")
+        os.environ["HER_RELATION_LEDGER_DB"] = DEFAULT_RELATION_LEDGER_TEST_MYSQL_DSN
         self.recommendation_conn = connect_recommendation_db(DEFAULT_RECOMMENDATION_TEST_MYSQL_DSN)
         initialize_recommendation_database(self.recommendation_conn)
         reset_recommendation_tables(self.recommendation_conn)
@@ -82,9 +92,18 @@ class RecommendationChatIntegrationTests(unittest.TestCase):
         initialize_chat_database(self.chat_conn)
         reset_chat_tables(self.chat_conn)
 
+        self.ledger_conn = connect_relation_ledger_db(DEFAULT_RELATION_LEDGER_TEST_MYSQL_DSN)
+        initialize_relation_ledger_database(self.ledger_conn)
+        reset_relation_ledger_tables(self.ledger_conn)
+
     def tearDown(self) -> None:
         self.recommendation_conn.close()
         self.chat_conn.close()
+        self.ledger_conn.close()
+        if self._old_relation_ledger_db is None:
+            os.environ.pop("HER_RELATION_LEDGER_DB", None)
+        else:
+            os.environ["HER_RELATION_LEDGER_DB"] = self._old_relation_ledger_db
 
     def test_proxy_intro_handoff_can_open_chat_on_same_case_and_relation(self) -> None:
         subscription = create_subscription(
@@ -210,6 +229,7 @@ class RecommendationChatIntegrationTests(unittest.TestCase):
             case["case_id"],
             requester_id=requester_user_id,
         )
+        relation = get_relation_by_key(self.ledger_conn, relation_key)
 
         self.assertEqual(thread["case_id"], case["case_id"])
         self.assertEqual(thread["relation_key"], relation_key)
@@ -225,6 +245,18 @@ class RecommendationChatIntegrationTests(unittest.TestCase):
             {item["metadata"]["layout_role"] for item in visible_conversations},
             {"main_group", "assistant_dm_a"},
         )
+        assert relation is not None
+        self.assertEqual(relation["relation_key"], relation_key)
+        self.assertEqual(relation["relation_status"], "closed")
+        self.assertEqual(relation["current_phase"], "chat_active")
+        self.assertEqual(relation["active_case_id"], None)
+        self.assertEqual(relation["latest_chat_thread_id"], thread["thread_id"])
+        self.assertEqual(len(relation["cases"]), 1)
+        self.assertEqual(relation["cases"][0]["case_id"], case["case_id"])
+        self.assertEqual(relation["cases"][0]["case_status"], "closed")
+        self.assertGreaterEqual(len(relation["events"]), 6)
+        self.assertIn("chat.thread.opened", {event["event_type"] for event in relation["events"]})
+        self.assertIn("chat.message.created", {event["event_type"] for event in relation["events"]})
 
 
 if __name__ == "__main__":
