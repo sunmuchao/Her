@@ -48,6 +48,12 @@ from chat_system.storage import (  # type: ignore[import-untyped]
     DEFAULT_CHAT_MYSQL_DSN,
     connect_db as chat_connect_db,
 )
+from relationship_ledger import (  # type: ignore[import-untyped]
+    connect_db as relation_ledger_connect_db,
+)
+from relationship_ledger.storage import (  # type: ignore[import-untyped]
+    DEFAULT_RELATION_LEDGER_MYSQL_DSN,
+)
 from discovery_system import (  # type: ignore[import-untyped]
     create_default_discovery_service,
 )
@@ -205,6 +211,7 @@ class PartnerGateway(AsyncJobGatewayMixin, GatewayAccessMixin):
         recommendation_dsn: str | None = None,
         matchmaking_dsn: str | None = None,
         chat_dsn: str | None = None,
+        relation_ledger_dsn: str | None = None,
         db_pool_max: int | None = None,
     ) -> None:
         self._recommendation_dsn = recommendation_dsn or os.environ.get(
@@ -214,14 +221,19 @@ class PartnerGateway(AsyncJobGatewayMixin, GatewayAccessMixin):
             "PARTNER_MATCHMAKING_DB", DEFAULT_MATCHMAKING_MYSQL_DSN
         )
         self._chat_dsn = chat_dsn or os.environ.get("PARTNER_CHAT_DB", DEFAULT_CHAT_MYSQL_DSN)
+        self._relation_ledger_dsn = relation_ledger_dsn or os.environ.get(
+            "HER_RELATION_LEDGER_DB", DEFAULT_RELATION_LEDGER_MYSQL_DSN
+        )
         pool_n = db_pool_max if db_pool_max is not None else int(os.environ.get("PARTNER_GATEWAY_DB_POOL_MAX", "0") or "0")
         self._rec_pool: GatewayConnectionPool | None = None
         self._mm_pool: GatewayConnectionPool | None = None
         self._chat_pool: GatewayConnectionPool | None = None
+        self._ledger_pool: GatewayConnectionPool | None = None
         if pool_n > 0:
             self._rec_pool = GatewayConnectionPool(self._recommendation_dsn, "recommendation", max_size=pool_n)
             self._mm_pool = GatewayConnectionPool(self._matchmaking_dsn, "matchmaking", max_size=pool_n)
             self._chat_pool = GatewayConnectionPool(self._chat_dsn, "chat", max_size=pool_n)
+            self._ledger_pool = GatewayConnectionPool(self._relation_ledger_dsn, "relationship_ledger", max_size=pool_n)
         self._discovery = create_default_discovery_service()
         self._auth_otp = AuthOtpService(chat_executor=self._with_chat)
         self._wechat_login_provider = _build_wechat_login_provider()
@@ -280,6 +292,16 @@ class PartnerGateway(AsyncJobGatewayMixin, GatewayAccessMixin):
             **kwargs,
         )
 
+    def _with_ledger(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+        return self._with_db(
+            self._ledger_pool,
+            relation_ledger_connect_db,
+            self._relation_ledger_dsn,
+            fn,
+            *args,
+            **kwargs,
+        )
+
     def _resolve_auth_session_principal(self, token: str):
         try:
             resolved = self._with_chat(get_session_by_access_token, token)
@@ -309,7 +331,8 @@ class PartnerGateway(AsyncJobGatewayMixin, GatewayAccessMixin):
             "recommendation_db_configured": bool(self._recommendation_dsn),
             "matchmaking_db_configured": bool(self._matchmaking_dsn),
             "chat_db_configured": bool(self._chat_dsn),
-            "db_connection_pool": bool(self._rec_pool and self._mm_pool and self._chat_pool),
+            "relation_ledger_db_configured": bool(self._relation_ledger_dsn),
+            "db_connection_pool": bool(self._rec_pool and self._mm_pool and self._chat_pool and self._ledger_pool),
             "auth_required": self._identity_resolver.required,
             "api_key_required": self._identity_resolver.legacy_api_required,
             "static_token_count": self._identity_resolver.static_token_count,

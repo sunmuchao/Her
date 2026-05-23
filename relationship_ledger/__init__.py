@@ -2,6 +2,7 @@
 
 from .service import (
     append_event,
+    build_relation_dashboard,
     get_relation,
     get_relation_by_key,
     list_cases_for_relation,
@@ -21,6 +22,7 @@ __all__ = [
     "DEFAULT_RELATION_LEDGER_MYSQL_DSN",
     "DEFAULT_RELATION_LEDGER_TEST_MYSQL_DSN",
     "append_event",
+    "build_relation_dashboard",
     "connect_db",
     "get_relation",
     "get_relation_by_key",
@@ -31,4 +33,3 @@ __all__ = [
     "relation_id_from_key",
     "reset_all_tables",
 ]
-
