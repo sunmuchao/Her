@@ -263,6 +263,121 @@ def list_recommendations_for_subscription(conn, subscription_id: str) -> list[di
     return [inflate_recommendation(row_to_dict(row), conn=conn) for row in rows]
 
 
+def _inflate_recommendation_action_row(action: dict[str, Any]) -> dict[str, Any]:
+    inflated = dict(action)
+    inflated["action_payload"] = json_loads(inflated.pop("action_payload_json", None), {})
+    return inflated
+
+
+def _classify_conversion_stage(
+    recommendation: dict[str, Any],
+    *,
+    latest_case: dict[str, Any] | None,
+    action_types: set[str],
+) -> tuple[str, str]:
+    if latest_case:
+        latest_case_status = str(latest_case.get("case_status") or "").strip()
+        if latest_case_status:
+            return (f"case_{latest_case_status}", "matchmaking")
+    if "request_proxy_intro" in action_types:
+        return ("case_requested", "matchmaking")
+    recommendation_phase = str(recommendation.get("recommendation_phase") or "").strip()
+    if recommendation_phase:
+        return (recommendation_phase, "recommendation")
+    recommendation_status = str(recommendation.get("recommendation_status") or "").strip()
+    if recommendation_status:
+        return (recommendation_status, "recommendation")
+    return ("unknown", "system")
+
+
+def build_recommendation_conversion_view(
+    conn,
+    recommendation: dict[str, Any],
+) -> dict[str, Any]:
+    from .proxy_intro import list_match_case_events, list_match_cases_for_recommendation
+
+    recommendation_id = int(recommendation["recommendation_id"])
+    actions = [
+        _inflate_recommendation_action_row(row)
+        for row in list_recommendation_actions_for_recommendation(conn, recommendation_id)
+    ]
+    cases = list_match_cases_for_recommendation(conn, recommendation_id)
+    latest_case = cases[0] if cases else None
+    latest_action = actions[-1] if actions else None
+    action_types = {
+        str(action.get("action_type") or "").strip()
+        for action in actions
+        if str(action.get("action_type") or "").strip()
+    }
+    conversion_stage, stage_owner = _classify_conversion_stage(
+        recommendation,
+        latest_case=latest_case,
+        action_types=action_types,
+    )
+    timeline = [
+        {
+            "source": "recommendation_action",
+            "event_type": action["action_type"],
+            "occurred_at": action["occurred_at"],
+            "payload": action.get("action_payload") or {},
+        }
+        for action in actions
+    ]
+    for case in reversed(cases):
+        for event in list_match_case_events(conn, str(case["case_id"])):
+            timeline.append(
+                {
+                    "source": "match_case_event",
+                    "case_id": case["case_id"],
+                    "event_type": event["event_type"],
+                    "from_status": event.get("from_status"),
+                    "to_status": event.get("to_status"),
+                    "occurred_at": event["occurred_at"],
+                    "actor_type": event.get("actor_type"),
+                    "payload": event.get("payload") or {},
+                }
+            )
+    timeline.sort(
+        key=lambda item: (
+            str(item.get("occurred_at") or ""),
+            0 if item.get("source") == "recommendation_action" else 1,
+            str(item.get("event_type") or ""),
+        )
+    )
+    return {
+        "subscription_id": recommendation["subscription_id"],
+        "recommendation_id": recommendation_id,
+        "requester_id": recommendation["requester_id"],
+        "candidate_id": recommendation["candidate_id"],
+        "candidate_name": recommendation.get("candidate_name"),
+        "recommendation_status": recommendation.get("recommendation_status"),
+        "recommendation_phase": recommendation.get("recommendation_phase"),
+        "final_review_status": recommendation.get("final_review_status"),
+        "user_review_status": recommendation.get("user_review_status"),
+        "conversion_stage": conversion_stage,
+        "conversion_stage_owner": stage_owner,
+        "latest_action_type": latest_action.get("action_type") if latest_action else None,
+        "latest_action_at": latest_action.get("occurred_at") if latest_action else None,
+        "action_count": len(actions),
+        "action_types": [action["action_type"] for action in actions],
+        "case_count": len(cases),
+        "active_match_case_id": recommendation.get("active_match_case_id"),
+        "case_progress_status": recommendation.get("case_progress_status"),
+        "latest_case_id": latest_case.get("case_id") if latest_case else None,
+        "latest_case_status": latest_case.get("case_status") if latest_case else None,
+        "latest_case_close_reason": latest_case.get("close_reason") if latest_case else None,
+        "timeline": timeline,
+    }
+
+
+def list_recommendation_conversion_views_for_subscription(
+    conn,
+    subscription_id: str,
+) -> list[dict[str, Any]]:
+    recommendations = list_recommendations_for_subscription(conn, subscription_id)
+    return [build_recommendation_conversion_view(conn, recommendation) for recommendation in recommendations]
+
+
 def list_in_app_cards(conn, requester_id: int | None = None, unread_only: bool = False) -> list[dict[str, Any]]:
     clauses = []
     params: list[Any] = []
