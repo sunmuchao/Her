@@ -154,6 +154,8 @@ def list_search_runs_for_subscription(conn, subscription_id: str) -> list[dict[s
         run["top_candidate_ids"] = json_loads(run.pop("top_candidate_ids_json"), [])
         run["status_counts"] = json_loads(run.pop("status_counts_json"), {})
         run["review_counts"] = json_loads(run.pop("review_counts_json"), {})
+        run["recommendation_status_counts"] = dict(run["status_counts"])
+        run["review_status_counts"] = dict(run["review_counts"])
         run["rule_provenance"] = json_loads(run.pop("rule_provenance_json", None), {})
         runs.append(run)
     return runs
@@ -522,7 +524,46 @@ def _hydrate_recommendation_relation_metadata(
         recommendation["relation_ledger_active_match_case_id"] = reduced.active_match_case_id
     else:
         recommendation.pop("relation_ledger_active_match_case_id", None)
+    _apply_recommendation_boundary_projection(recommendation)
     return recommendation
+
+
+def _derive_recommendation_phase(delivery_status: str | None) -> str | None:
+    phase_map = {
+        "review_pending": "review_queue",
+        "pending_delivery": "delivery_queue",
+        "delivered": "delivered",
+        "direct_greet_started": "direct_greet",
+        "saved_by_user": "saved",
+        "cooled_down": "cooldown",
+        "suppressed": "suppressed",
+        "escalated_to_case": "case_handoff",
+    }
+    return phase_map.get(str(delivery_status or "").strip() or None)
+
+
+def _derive_case_progress_status(recommendation: dict[str, Any]) -> str | None:
+    active_case_status = str(recommendation.get("active_case_status") or "").strip()
+    if active_case_status:
+        return active_case_status
+    if recommendation.get("delivery_status") != "escalated_to_case":
+        return None
+    canonical_relation_status = str(recommendation.get("canonical_relation_status") or "").strip()
+    if canonical_relation_status == "closed":
+        return "closed"
+    return "historical"
+
+
+def _apply_recommendation_boundary_projection(recommendation: dict[str, Any]) -> None:
+    recommendation["recommendation_status"] = recommendation.get("delivery_status")
+    recommendation["recommendation_phase"] = _derive_recommendation_phase(
+        recommendation.get("delivery_status")
+    )
+    recommendation["case_progress_status"] = _derive_case_progress_status(recommendation)
+    recommendation["recommendation_status_owner"] = "recommendation"
+    recommendation["case_progress_owner"] = (
+        "matchmaking" if recommendation.get("case_progress_status") is not None else None
+    )
 
 
 def insert_recommendation_action(
@@ -636,13 +677,6 @@ def normalize_delivery_status(
         active_match_case_id = existing.get("active_match_case_id")
         if active_match_case_id:
             return ("escalated_to_case", "proxy_intro_case_active")
-        delivery_status = existing.get("delivery_status")
-        if delivery_status in {"proxy_intro_accepted", "proxy_intro_handed_off"}:
-            return ("escalated_to_case", existing.get("delivery_reason") or "proxy_intro_already_resolved")
-        if delivery_status in {"proxy_intro_declined", "proxy_intro_timed_out"}:
-            cooling_until = parse_dt(existing.get("cooling_until"))
-            if cooling_until and now < cooling_until:
-                return ("cooled_down", existing.get("delivery_reason") or "proxy_intro_cooling_active")
 
     skip_cooldown_expired = False
     if existing and existing.get("delivery_status") == "cooled_down":
