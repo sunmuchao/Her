@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Her 系统核心逻辑流程图</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <style>
+    :root {
+      --primary: #2563EB;
+      --secondary: #0F766E;
+      --warning: #F97316;
+      --danger: #DC2626;
+      --success: #16A34A;
+      --text: #1E293B;
+      --muted: #64748B;
+      --bg: #F8FAFC;
+      --card: #FFFFFF;
+      --border: #E2E8F0;
+      --sidebar-w: 240px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+        "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    .layout {
+      display: flex;
+      min-height: 100vh;
+    }
+
+    nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: var(--sidebar-w);
+      height: 100vh;
+      background: var(--card);
+      border-right: 1px solid var(--border);
+      padding: 1.5rem 1rem;
+      overflow-y: auto;
+      z-index: 100;
+    }
+
+    nav h2 {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 0.75rem;
+      padding-left: 0.5rem;
+    }
+
+    nav a {
+      display: block;
+      padding: 0.45rem 0.75rem;
+      border-radius: 6px;
+      color: var(--text);
+      text-decoration: none;
+      font-size: 0.875rem;
+      margin-bottom: 2px;
+      transition: background 0.15s;
+    }
+
+    nav a:hover, nav a.active {
+      background: #EFF6FF;
+      color: var(--primary);
+    }
+
+    main {
+      margin-left: var(--sidebar-w);
+      flex: 1;
+      padding: 2rem 2.5rem 4rem;
+      max-width: 1200px;
+    }
+
+  header.hero {
+      background: linear-gradient(135deg, #1E40AF 0%, #0F766E 100%);
+      color: white;
+      border-radius: 12px;
+      padding: 2rem 2.5rem;
+      margin-bottom: 2rem;
+    }
+
+    header.hero h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+    }
+
+    header.hero p {
+      opacity: 0.9;
+      max-width: 680px;
+      font-size: 0.95rem;
+    }
+
+    .mainline-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: rgba(255,255,255,0.15);
+      border-radius: 999px;
+      padding: 0.35rem 1rem;
+      margin-top: 1rem;
+      font-size: 0.85rem;
+    }
+
+    section {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.75rem 2rem;
+      margin-bottom: 1.5rem;
+      scroll-margin-top: 1.5rem;
+    }
+
+    section h2 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-bottom: 0.35rem;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    section h2 .num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 1.75rem;
+      height: 1.75rem;
+      background: var(--primary);
+      color: white;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      font-weight: 700;
+    }
+
+    section .desc {
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+
+    .dot-main { background: var(--primary); }
+    .dot-support { background: var(--secondary); }
+    .dot-infra { background: var(--warning); }
+    .dot-data { background: #7C3AED; }
+
+    .mermaid {
+      display: flex;
+      justify-content: center;
+      overflow-x: auto;
+      padding: 0.5rem 0;
+    }
+
+    .code-ref {
+      margin-top: 1rem;
+      padding: 0.75rem 1rem;
+      background: #F1F5F9;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .code-ref code {
+      color: var(--primary);
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 0.78rem;
+    }
+
+    .state-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+
+    .state-card {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      background: #FAFBFC;
+    }
+
+    .state-card h4 {
+      font-size: 0.85rem;
+      color: var(--primary);
+      margin-bottom: 0.5rem;
+    }
+
+    .state-card ul {
+      list-style: none;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .state-card li {
+      padding: 0.15rem 0;
+    }
+
+    .state-card li::before {
+      content: "→ ";
+      color: var(--secondary);
+    }
+
+    footer {
+      margin-left: var(--sidebar-w);
+      padding: 1rem 2.5rem 2rem;
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    @media (max-width: 768px) {
+      nav { display: none; }
+      main, footer { margin-left: 0; padding: 1rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <nav>
+      <h2>导航</h2>
+      <a href="#overview">总览</a>
+      <a href="#architecture">系统架构</a>
+      <a href="#mainline">核心主链路</a>
+      <a href="#auth">登录与入驻</a>
+      <a href="#discovery">发现式找对象</a>
+      <a href="#recommendation">持续推荐</a>
+      <a href="#matchmaking">撮合建立连接</a>
+      <a href="#chat">聊天与关系</a>
+      <a href="#support">支撑域</a>
+      <a href="#async">异步与调度</a>
+      <a href="#states">状态机</a>
+    </nav>
+
+    <main>
+      <header class="hero" id="overview">
+        <h1>Her 系统核心逻辑流程图</h1>
+        <p>
+          基于当前代码仓库实现梳理。Her 是「关系运营 / 红娘协作」产品原型，
+          核心主线为：<strong>找对象 → 建立连接 → 聊天</strong>。
+          认证、风控、画像、运营任务等作为支撑域，负责放行、拦截、校验与辅助决策。
+        </p>
+        <div class="mainline-badge">
+          <span>🎯</span>
+          <span>discovery / search / recommendation → matchmaking → chat</span>
+        </div>
+      </header>
+
+      <div class="legend">
+        <div class="legend-item"><span class="dot dot-main"></span> 主链路域</div>
+        <div class="legend-item"><span class="dot dot-support"></span> 支撑域</div>
+        <div class="legend-item"><span class="dot dot-infra"></span> 基础设施</div>
+        <div class="legend-item"><span class="dot dot-data"></span> 数据存储</div>
+      </div>
+
+      <!-- Architecture -->
+      <section id="architecture">
+        <h2><span class="num">1</span> 总体架构</h2>
+        <p class="desc">
+          Monorepo 组合式架构：共享领域内核 + 多业务子系统 + 统一 HTTP Gateway + Next.js 前端。
+          前端通过 BFF 代理 <code>/api/gateway/*</code> 访问 Gateway。
+        </p>
+        <pre class="mermaid">
+flowchart TB
+  subgraph FE["表现层"]
+    APP["Next.js her-app<br/>登录 / 发现 / 推荐 / 关系 / 聊天 / 认证"]
+  end
+
+  subgraph GW["接入层"]
+    GATE["Partner HTTP Gateway<br/>鉴权 · 限流 · 路由 · 连接池"]
+  end
+
+  subgraph BIZ["业务服务层"]
+    DISC["Discovery System<br/>对话式发现"]
+    REC["Recommendation System<br/>持续推荐 · 投递 · 动作"]
+    MM["Matchmaking System<br/>撮合池 · Pair · Case"]
+    CHAT["Chat System<br/>会话 · 风控 · 认证"]
+  end
+
+  subgraph SHARED["共享能力层"]
+    SEARCH["partner_search<br/>候选检索引擎"]
+    PERSONA["persona_memory_sync<br/>画像记忆"]
+    PROFILE["profile_service<br/>资料读写"]
+    DOMAIN["match_domain<br/>状态 · 事件 · Outbox"]
+    JOBS["async_jobs + task_scheduler"]
+    OBS["observability"]
+  end
+
+  subgraph DB["数据层 (多 MySQL 库)"]
+    DB_REC[("Recommendation DB")]
+    DB_MM[("Matchmaking DB")]
+    DB_CHAT[("Chat DB")]
+    DB_DISC[("Discovery DB")]
+    DB_PROFILE[("Profile / Persona Source")]
+  end
+
+  APP -->|"REST /api/gateway"| GATE
+  GATE --> DISC
+  GATE --> REC
+  GATE --> MM
+  GATE --> CHAT
+
+  DISC --> SEARCH
+  REC --> SEARCH
+  MM --> PERSONA
+  CHAT --> PERSONA
+  DISC --> PROFILE
+  REC --> DOMAIN
+  MM --> DOMAIN
+  CHAT --> DOMAIN
+
+  REC --> DB_REC
+  MM --> DB_MM
+  CHAT --> DB_CHAT
+  DISC --> DB_DISC
+  PROFILE --> DB_PROFILE
+  PERSONA --> DB_PROFILE
+  JOBS --> REC
+  JOBS --> MM
+  JOBS --> CHAT
+
+  classDef main fill:#DBEAFE,stroke:#2563EB,color:#1E293B
+  classDef support fill:#CCFBF1,stroke:#0F766E,color:#1E293B
+  classDef infra fill:#FFEDD5,stroke:#F97316,color:#1E293B
+  classDef data fill:#EDE9FE,stroke:#7C3AED,color:#1E293B
+
+  class DISC,REC,MM,CHAT,APP main
+  class SEARCH,PERSONA,PROFILE support
+  class DOMAIN,JOBS,OBS,GATE infra
+  class DB_REC,DB_MM,DB_CHAT,DB_DISC,DB_PROFILE data
+        </pre>
+        <div class="code-ref">
+          关键代码：<code>external-systems/partner-http-gateway/gateway/app.py</code> ·
+          <code>match_domain/</code> · <code>partner_search/</code>
+        </div>
+      </section>
+
+      <!-- Mainline -->
+      <section id="mainline">
+        <h2><span class="num">2</span> 核心主链路全景</h2>
+        <p class="desc">
+          用户从登录入驻开始，经发现/搜索/推荐找到对象，通过撮合建立双边连接，最终进入聊天与关系维护。
+          各阶段由独立子系统负责，通过 match_domain 事件与 outbox 联动。
+        </p>
+        <pre class="mermaid">
+flowchart LR
+  A["① 登录入驻<br/>Auth + Onboarding"] --> B["② 找对象<br/>Discovery / Search / Recommendation"]
+  B --> C["③ 建立连接<br/>Matchmaking / Proxy Intro"]
+  C --> D["④ 聊天维护<br/>Chat + Agent C"]
+
+  B -.->|"画像沉淀"| P["Persona Memory"]
+  C -.->|"反馈回流"| P
+  D -.->|"对话触发"| P
+
+  B -.->|"风险标记"| S["风控 / 认证"]
+  C -.->|"准入校验"| S
+  D -.->|"举报 / 审核"| S
+
+  classDef main fill:#DBEAFE,stroke:#2563EB,stroke-width:2px
+  classDef support fill:#CCFBF1,stroke:#0F766E
+  class A,B,C,D main
+  class P,S support
+        </pre>
+      </section>
+
+      <!-- Auth -->
+      <section id="auth">
+        <h2><span class="num">3</span> 登录与入驻流程</h2>
+        <p class="desc">Gateway 调用 chat_system 账户服务，根据 onboarding 状态决定分流。</p>
+        <pre class="mermaid">
+flowchart TD
+  START([用户打开 App]) --> LOGIN{选择登录方式}
+  LOGIN -->|短信验证码| SMS["POST /v1/auth/sms/send-code<br/>→ verify-code"]
+  LOGIN -->|微信| WX["微信 OAuth"]
+  LOGIN -->|一键登录| OTP["运营商一键登录"]
+
+  SMS --> TOKEN["签发 access / refresh token"]
+  WX --> TOKEN
+  OTP --> TOKEN
+
+  TOKEN --> ME["GET auth/me"]
+  ME --> CHECK{phone_bound?<br/>is_new_user?<br/>onboarding_status?}
+
+  CHECK -->|未绑手机| BIND["微信后绑定手机号"]
+  CHECK -->|新用户| WELCOME["新用户欢迎页"]
+  CHECK -->|需 onboarding| ONBOARD["Onboarding 表单<br/>基础信息 + 偏好"]
+  CHECK -->|已完成| MAIN["进入主界面<br/>Matchmaker / Relationships / Profile"]
+
+  BIND --> ONBOARD
+  WELCOME --> ONBOARD
+  ONBOARD --> WRITE["写入 profile / onboarding 表<br/>profile_service"]
+  WRITE --> MAIN
+
+  classDef action fill:#DBEAFE,stroke:#2563EB
+  classDef decision fill:#FEF3C7,stroke:#F97316
+  class START,MAIN action
+  class LOGIN,CHECK decision
+        </pre>
+        <div class="code-ref">
+          关键代码：<code>gateway/auth_routes.py</code> · <code>chat_system/auth_accounts.py</code> ·
+          <code>frontend/her-app/hooks/use-auth-flow.ts</code>
+        </div>
+      </section>
+
+      <!-- Discovery -->
+      <section id="discovery">
+        <h2><span class="num">4</span> 发现式找对象流程</h2>
+        <p class="desc">Discovery Agent 驱动红娘式对话，在合适时机调用 partner_search 检索候选。</p>
+        <pre class="mermaid">
+flowchart TD
+  S1["POST /v1/discovery/sessions<br/>创建 discovery session"] --> S2["Agent 输出开场白<br/>+ suggested actions"]
+  S2 --> S3["用户输入偏好 / 点击动作<br/>POST .../turns"]
+  S3 --> S4{Agent 决策}
+  S4 -->|继续追问| S2
+  S4 -->|条件足够| S5["调用 partner_search<br/>search_profiles"]
+  S5 --> S6["过滤 · 互选 · 风险标记<br/>排序 · 多样性"]
+  S6 --> S7["组织 result groups<br/>criteria chips · timeline"]
+  S7 --> S8{用户动作}
+  S8 -->|查看详情| DETAIL["GET /discovery/profiles/{id}"]
+  S8 -->|继续 refine| S3
+  S8 -->|满意条件| SUB["可选：创建 saved search<br/>subscription"]
+  DETAIL --> S8
+
+  S3 -.->|"偏好沉淀"| PM["persona_memory_sync"]
+  SUB --> REC_FLOW["进入持续推荐流程 →"]
+
+  classDef action fill:#DBEAFE,stroke:#2563EB
+  classDef agent fill:#CCFBF1,stroke:#0F766E
+  class S2,S4,S5 agent
+        </pre>
+        <div class="code-ref">
+          关键代码：<code>discovery_system/service.py</code> · <code>discovery_system/agent_runtime.py</code> ·
+          <code>partner_search/search_candidates.py</code>
+        </div>
+      </section>
+
+      <!-- Recommendation -->
+      <section id="recommendation">
+        <h2><span class="num">5</span> 持续推荐流程</h2>
+        <p class="desc">订阅驱动的持续经营：定时刷新搜索 → 入池审核 → 投递推荐卡 → 用户动作。</p>
+        <pre class="mermaid">
+flowchart TD
+  CREATE["创建 subscription<br/>保存搜索条件 + overrides"] --> SCHED["task_scheduler<br/>发现到期订阅"]
+  SCHED --> REFRESH["刷新搜索条件<br/>partner_search"]
+  REFRESH --> UPSERT["upsert profile_recommendations<br/>fit / confidence / risk score"]
+  UPSERT --> GATE{投递 Gate}
+  GATE -->|review_pending| REVIEW["人工/规则 review"]
+  GATE -->|pending_delivery| DELIVER["投递 worker<br/>构建 in-app card"]
+  GATE -->|direct_greet gate| DG_CHECK["direct_greet 前置校验"]
+  REVIEW --> DELIVER
+
+  DELIVER --> INBOX["用户推荐来信收件箱<br/>GET /recommendation/cards"]
+  INBOX --> ACTION{用户动作}
+  ACTION -->|skip| SKIP["跳过 + 冷却期"]
+  ACTION -->|save| SAVE["收藏 relation_status=saved"]
+  ACTION -->|direct_greet| DG["direct_greet_started<br/>→ 进入撮合/代理牵线"]
+  ACTION -->|proxy intro| PI["proxy_intro.py<br/>创建牵线 case"]
+
+  SKIP --> EVENT["写入 MatchEvent<br/>+ outbox"]
+  SAVE --> EVENT
+  DG --> MM["→ Matchmaking 流程"]
+  PI --> MM
+
+  classDef action fill:#DBEAFE,stroke:#2563EB
+  classDef decision fill:#FEF3C7,stroke:#F97316
+  class GATE,ACTION decision
+        </pre>
+        <div class="code-ref">
+          关键代码：<code>recommendation_system/service.py</code> ·
+          <code>recommendation_system/proxy_intro.py</code> ·
+          <code>recommendation_system/direct_greet_gate.py</code>
+        </div>
+      </section>
+
+      <!-- Matchmaking -->
+      <section id="matchmaking">
+        <h2><span class="num">6</span> 撮合建立连接流程</h2>
+        <p class="desc">双边候选池 → edge 汇聚 pair → 满足阈值开 case → 回复推进 → 反馈回流画像。</p>
+        <pre class="mermaid">
+flowchart TD
+  MEMBER["创建/更新 pool member<br/>状态 · case cap · min_pair_score"] --> REFRESH["refresh pool member<br/>生成候选 edge"]
+  REFRESH --> EDGE["单向 edge 写入"]
+  EDGE --> RECIP{检查 reciprocal edge}
+  RECIP -->|双边存在| PAIR["合成 pair<br/>eligible / blocked / stale / cooling"]
+  RECIP -->|仅单边| WAIT["等待对向 edge"]
+
+  PAIR --> CHECK{pair 可用?<br/>score ≥ threshold<br/>双方仍在找对象}
+  CHECK -->|否| RECYCLE["回收 / 标记 stale"]
+  CHECK -->|是| CASE["open case<br/>检查 daily cap · 有效期"]
+  CASE --> REPLY["记录 reply 事件<br/>case 状态推进"]
+  REPLY --> OUTCOME{结果}
+  OUTCOME -->|mutual_accept| ACCEPT["双边接受"]
+  OUTCOME -->|关闭| CLOSE["关闭 case"]
+  OUTCOME -->|需重验证| REVAL["needs_revalidation"]
+
+  REPLY --> FB["member feedback<br/>+ persona patch"]
+  FB --> PM["upsert_persona_memory<br/>→ 影响后续 pair"]
+
+  ACCEPT --> CHAT_FLOW["→ 创建 chat thread / conversation"]
+
+  classDef action fill:#DBEAFE,stroke:#2563EB
+  classDef decision fill:#FEF3C7,stroke:#F97316
+  class CHECK,OUTCOME,RECIP decision
+        </pre>
+        <div class="code-ref">
+          关键代码：<code>matchmaking_system/service.py</code> · <code>match_domain/model.py</code> ·
+          <code>match_domain/case_events.py</code>
+        </div>
+      </section>
+
+      <!-- Chat -->
+      <section id="chat">
+        <h2><span class="num">7</span> 聊天与关系维护流程</h2>
+        <p class="desc">Case 对应会话线程，消息 append-only，outbox 驱动 Agent C 与 persona 同步。</p>
+        <pre class="mermaid">
+flowchart TD
+  REL["关系页 GET timeline<br/>列出 case conversations"] --> OPEN["进入 chat 会话"]
+  OPEN --> THREAD["按 case_id 获取/创建 thread<br/>visibility: dyadic / owner_only / system"]
+  THREAD --> SEND["POST message<br/>client_msg_id 幂等"]
+  SEND --> STORE["持久化 chat_messages<br/>+ append_outbox_pending"]
+  STORE --> OUTBOX["outbox worker 消费"]
+
+  OUTBOX --> AGENT["Agent C 编排<br/>assistant_orchestrator"]
+  OUTBOX --> PERSONA_JOB["persona_sync_jobs<br/>画像候选抽取"]
+  OUTBOX --> RISK["风险信号检测"]
+
+  AGENT --> CONTEXT["收集 case 消息窗口<br/>+ safe profile 摘要"]
+  PERSONA_JOB --> UPSERT["persona_memory_sync<br/>upsert_persona_memory"]
+
+  SEND --> REPORT{用户举报?}
+  REPORT -->|是| RC["risk case 创建<br/>→ 人工 review"]
+  REPORT -->|否| CONTINUE["正常对话继续"]
+
+  RC --> APPEAL["风险申诉流程"]
+  APPEAL --> TRUST["信任中心汇总"]
+
+  classDef action fill:#DBEAFE,stroke:#2563EB
+  classDef support fill:#CCFBF1,stroke:#0F766E
+  class AGENT,PERSONA_JOB,RISK,RC support
+        </pre>
+        <div class="code-ref">
+          关键代码：<code>chat_system/conversations.py</code> · <code>chat_system/assistant_orchestrator.py</code> ·
+          <code>chat_system/risk.py</code> · <code>match_domain/outbox_runtime.py</code>
+        </div>
+      </section>
+
+      <!-- Support -->
+      <section id="support">
+        <h2><span class="num">8</span> 支撑域横切流程</h2>
+        <p class="desc">认证、审核、风控贯穿主链路，负责放行/拦截/校验，不定义主流程。</p>
+        <pre class="mermaid">
+flowchart LR
+  subgraph TRUST["信任与认证"]
+    T1["字段核验<br/>profile_reviews"]
+    T2["照片风险跑分"]
+    T3["活体视频 challenge<br/>→ 本地检测 → 人工 review"]
+    T4["信任中心 trust-hub"]
+  end
+
+  subgraph SAFETY["风控与安全"]
+    R1["消息风险信号"]
+    R2["举报 → risk case"]
+    R3["欺诈网络分析<br/>fraud_graph"]
+    R4["申诉 review"]
+  end
+
+  subgraph PERSONA["画像记忆"]
+    P1["discovery 偏好沉淀"]
+    P2["matchmaking 反馈回流"]
+    P3["chat persona_sync_jobs"]
+    P4["→ public profile 渲染"]
+  end
+
+  MAIN["主链路各节点"] --> TRUST
+  MAIN --> SAFETY
+  MAIN --> PERSONA
+  TRUST --> GATE_DEC{"放行 / 拦截 / 需补件"}
+  SAFETY --> GATE_DEC
+  GATE_DEC --> MAIN
+
+  classDef support fill:#CCFBF1,stroke:#0F766E
+  class TRUST,SAFETY,PERSONA support
+        </pre>
+      </section>
+
+      <!-- Async -->
+      <section id="async">
+        <h2><span class="num">9</span> 异步任务与后台调度</h2>
+        <p class="desc">task_scheduler + async_jobs + outbox worker 保证跨系统一致性与批处理。</p>
+        <pre class="mermaid">
+flowchart TD
+  SCHED["task_scheduler<br/>APScheduler"] --> J1["recommendation 定时刷新"]
+  SCHED --> J2["recommendation 投递 worker"]
+  SCHED --> J3["matchmaking 刷池 / 建 pair / 开 case"]
+  SCHED --> J4["chat maintenance<br/>摘要刷新 · outbox consume"]
+
+  OUTBOX["match_domain outbox<br/>transactional outbox"] --> W1["consume_recommendation_outbox"]
+  OUTBOX --> W2["consume_matchmaking_outbox"]
+  OUTBOX --> W3["consume_chat_outbox_batch"]
+
+  ASYNC["async_jobs 队列"] --> AW["worker: claim → process → retry/backoff"]
+  AW --> TARGET["目标子系统 handler"]
+
+  J1 --> OBS["observability<br/>funnel · metric · audit · alert"]
+  W3 --> OBS
+  AW --> OBS
+
+  classDef infra fill:#FFEDD5,stroke:#F97316
+  class SCHED,OUTBOX,ASYNC,OBS infra
+        </pre>
+        <div class="code-ref">
+          关键代码：<code>task_scheduler/jobs.py</code> · <code>async_jobs/queue.py</code> ·
+          <code>match_domain/outbox_runtime.py</code>
+        </div>
+      </section>
+
+      <!-- States -->
+      <section id="states">
+        <h2><span class="num">10</span> 核心状态机</h2>
+        <p class="desc">match_domain 统一定义跨系统状态枚举，各子系统分层管理推荐/关系/案例状态。</p>
+        <div class="state-grid">
+          <div class="state-card">
+            <h4>RelationStatus（推荐关系）</h4>
+            <ul>
+              <li>new → recommended</li>
+              <li>saved / skipped / cooling</li>
+              <li>direct_greet_started</li>
+              <li>proxy_intro_active</li>
+              <li>closed</li>
+            </ul>
+          </div>
+          <div class="state-card">
+            <h4>PairStatus（双边 Pair）</h4>
+            <ul>
+              <li>eligible → case_opened</li>
+              <li>below_threshold / blocked</li>
+              <li>cooling / stale</li>
+              <li>mutual_accept</li>
+              <li>needs_revalidation</li>
+            </ul>
+          </div>
+          <div class="state-card">
+            <h4>Recommendation Delivery</h4>
+            <ul>
+              <li>review_pending</li>
+              <li>pending_delivery</li>
+              <li>delivered</li>
+              <li>（与 case_status 分层）</li>
+            </ul>
+          </div>
+          <div class="state-card">
+            <h4>MatchEvent（统一事件）</h4>
+            <ul>
+              <li>event_type + aggregate</li>
+              <li>actor + source_service</li>
+              <li>correlation / idempotency</li>
+              <li>→ outbox 传播</li>
+            </ul>
+          </div>
+        </div>
+        <pre class="mermaid" style="margin-top:1.5rem">
+stateDiagram-v2
+  direction LR
+  [*] --> new: 搜索命中
+  new --> recommended: 入池
+  recommended --> saved: 用户收藏
+  recommended --> skipped: 用户跳过
+  recommended --> direct_greet_started: 直接打招呼
+  recommended --> proxy_intro_active: 代理牵线
+  direct_greet_started --> case_opened: matchmaking 开 case
+  proxy_intro_active --> case_opened: 牵线成功
+  case_opened --> mutual_accept: 双边接受
+  case_opened --> closed: 关闭/超时
+  saved --> recommended: 重新激活
+  skipped --> cooling: 冷却期
+  cooling --> recommended: 冷却结束
+        </pre>
+      </section>
+    </main>
+  </div>
+
+  <footer>
+    基于 Her 仓库 SYSTEM_DOC.md 与代码实现梳理 · 生成于 docs/her-core-flow-diagram.html
+  </footer>
+
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: "base",
+      themeVariables: {
+        primaryColor: "#DBEAFE",
+        primaryTextColor: "#1E293B",
+        primaryBorderColor: "#2563EB",
+        lineColor: "#64748B",
+        secondaryColor: "#CCFBF1",
+        tertiaryColor: "#F8FAFC",
+        fontFamily: "-apple-system, BlinkMacSystemFont, PingFang SC, sans-serif",
+        fontSize: "14px"
+      },
+      flowchart: { curve: "basis", padding: 16 },
+      stateDiagram: { padding: 12 }
+    });
+
+    // Highlight active nav link on scroll
+    const sections = document.querySelectorAll("section, header.hero");
+    const navLinks = document.querySelectorAll("nav a");
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            const id = entry.target.id;
+            navLinks.forEach((link) => {
+              link.classList.toggle("active", link.getAttribute("href") === "#" + id);
+            });
+          }
+        });
+      },
+      { rootMargin: "-20% 0px -70% 0px" }
+    );
+    sections.forEach((s) => observer.observe(s));
+  </script>
+</body>
+</html>
