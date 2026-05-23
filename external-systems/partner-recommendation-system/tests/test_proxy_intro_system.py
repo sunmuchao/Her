@@ -113,8 +113,13 @@ class ProxyIntroSystemTests(unittest.TestCase):
         self.assertEqual(case["outreach_payload"]["safe_summary"]["city"], "无锡")
         recommendations = list_recommendations_for_subscription(self.conn, subscription["subscription_id"])
         self.assertEqual(recommendations[0]["delivery_status"], "escalated_to_case")
+        self.assertEqual(recommendations[0]["recommendation_status"], "escalated_to_case")
+        self.assertEqual(recommendations[0]["recommendation_phase"], "case_handoff")
         self.assertEqual(recommendations[0]["active_match_case_id"], case["case_id"])
         self.assertEqual(recommendations[0]["active_case_status"], "pending_outreach")
+        self.assertEqual(recommendations[0]["case_progress_status"], "pending_outreach")
+        self.assertEqual(recommendations[0]["recommendation_status_owner"], "recommendation")
+        self.assertEqual(recommendations[0]["case_progress_owner"], "matchmaking")
 
     def test_dispatch_reply_and_close_flow(self):
         subscription = self.seed_delivered_recommendation(candidate_id=90002)
@@ -156,8 +161,11 @@ class ProxyIntroSystemTests(unittest.TestCase):
         self.assertEqual(closed["case_status"], "closed")
         recommendation = list_recommendations_for_subscription(self.conn, subscription["subscription_id"])[0]
         self.assertEqual(recommendation["delivery_status"], "escalated_to_case")
+        self.assertEqual(recommendation["recommendation_status"], "escalated_to_case")
         self.assertIsNone(recommendation["active_match_case_id"])
         self.assertIsNone(recommendation["active_case_status"])
+        self.assertEqual(recommendation["case_progress_status"], "closed")
+        self.assertEqual(recommendation["case_progress_owner"], "matchmaking")
         self.assertEqual(recommendation["canonical_relation_status"], "closed")
 
         events = list_match_case_outreach_attempts(self.conn, case["case_id"])

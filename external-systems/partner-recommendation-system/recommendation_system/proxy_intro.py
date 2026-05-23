@@ -386,7 +386,7 @@ def create_match_case(
     recommendation = get_recommendation(conn, subscription_id, int(candidate_id))
     if not recommendation:
         raise ValueError(f"Unknown recommendation for subscription={subscription_id} candidate_id={candidate_id}")
-    if recommendation.get("delivery_status") in {"direct_greeted", "direct_greet_started"}:
+    if recommendation.get("delivery_status") == "direct_greet_started":
         raise ValueError("Cannot request proxy intro after direct_greet has already started.")
     if recommendation.get("delivery_status") == "escalated_to_case" and not recommendation.get("active_match_case_id"):
         raise ValueError("Candidate already completed the proxy-intro flow.")

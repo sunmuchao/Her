@@ -265,6 +265,8 @@ class RecommendationSystemTests(unittest.TestCase):
         self.assertEqual(runs[0]["effective_criteria"]["cities"], ["苏州", "无锡"])
         self.assertEqual(runs[0]["persona_profile"]["target_age_min"], 27)
         self.assertEqual(runs[0]["search_request"]["self_id"], 90001)
+        self.assertEqual(runs[0]["recommendation_status_counts"], runs[0]["status_counts"])
+        self.assertEqual(runs[0]["review_status_counts"], runs[0]["review_counts"])
         prov = runs[0]["rule_provenance"]
         self.assertEqual(prov.get("schema"), RULE_PROVENANCE_SCHEMA)
         self.assertIn("partner_search.scoring", prov.get("rule_sets", {}))
@@ -273,6 +275,11 @@ class RecommendationSystemTests(unittest.TestCase):
         recs = list_recommendations_for_subscription(self.conn, subscription["subscription_id"])
         self.assertEqual(len(recs), 1)
         self.assertEqual(recs[0]["rule_provenance"].get("schema"), RULE_PROVENANCE_SCHEMA)
+        self.assertEqual(recs[0]["recommendation_status"], recs[0]["delivery_status"])
+        self.assertEqual(recs[0]["recommendation_phase"], "review_queue")
+        self.assertIsNone(recs[0]["case_progress_status"])
+        self.assertEqual(recs[0]["recommendation_status_owner"], "recommendation")
+        self.assertIsNone(recs[0]["case_progress_owner"])
 
     def test_refresh_subscription_rehydrates_synced_profile_row_into_persona_criteria(self):
         subscription = self.create_active_subscription(
