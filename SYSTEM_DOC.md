@@ -1097,14 +1097,16 @@ System               System               / Verification       System           
 - proxy-intro 生命周期由 `match_cases.case_status` 继续作为 owner
 - recommendation 侧新增 `active_case_status` 作为活跃 case 的镜像字段，用于展示而不是定义主事实
 - 已新增 recommendation 数据迁移，将历史 `proxy_intro_*`、`save_only`、`review_skipped` 等旧 `delivery_status` 值回填到新语义
+- recommendation 读模型现已显式暴露 `recommendation_status` / `recommendation_phase` 与 `case_progress_status`，用来区分“推荐侧状态”和“matchmaking 侧 case 进度展示”
+- recommendation refresh run 现已显式暴露 `recommendation_status_counts` / `review_status_counts`，避免把 recommendation 自己的统计误读为 case 统计
 
 这意味着系统正从“单字段混合表达推荐、关系、case 三层含义”，逐步过渡到“推荐状态、关系状态、案例状态分层管理”。
 
 但这只完成了第一段，`13.1` 想要的“主链路清晰分层”还没有收口，当前仍有几类任务未完成：
 
 1. recommendation / matchmaking 边界只拆了一半
-   - recommendation 主状态已经开始收缩，但 review 字段、case 镜像字段、转化统计、跨域规则仍未完全统一
-   - 下一步仍需继续整理 recommendation -> action -> case 的状态映射、转化视图与指标口径，避免再次退回“一个字段混多层语义”
+   - recommendation 主状态、case 镜像字段与 refresh 统计口径已经完成第一轮收敛，但 recommendation -> action -> case 的统一转化视图还未形成正式读模型
+   - review 字段与可配置规则平台也还没有完全对齐，后续仍可能出现“review 决策散落在多个字段里”的问题
    - recommendation -> matchmaking -> chat 的跨系统集成测试也还需要补齐
 
 2. `profile` / `persona` / 搜索使用条件三层仍然混在一起
