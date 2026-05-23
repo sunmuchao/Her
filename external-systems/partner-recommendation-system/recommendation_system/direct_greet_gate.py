@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from typing import Any, Mapping
 
+from .storage import json_loads
+
 
 DEFAULT_RECOMMENDATION_MODE = "direct_greet_only"
 RECOMMENDATION_MODES = {"match_based", "direct_greet_only"}
@@ -62,6 +64,59 @@ def _load_direct_greet_profile(raw: Any) -> dict[str, Any]:
     raise ValueError("direct_greet_profile_json must be a JSON object when present.")
 
 
+def _load_review_policy_overrides(subscription: Mapping[str, Any]) -> dict[str, Any]:
+    overrides = json_loads(subscription.get("subscription_overrides_json"), {})
+    if not isinstance(overrides, Mapping):
+        return {}
+    review_policy = overrides.get("review_policy")
+    if not isinstance(review_policy, Mapping):
+        return {}
+    return dict(review_policy)
+
+
+def resolve_review_policy(subscription: Mapping[str, Any]) -> dict[str, Any]:
+    review_policy_overrides = _load_review_policy_overrides(subscription)
+    direct_greet_profile_raw = review_policy_overrides.get(
+        "direct_greet_profile",
+        subscription.get("direct_greet_profile_json"),
+    )
+    return {
+        "recommendation_mode": normalize_recommendation_mode(
+            review_policy_overrides.get("recommendation_mode", subscription.get("recommendation_mode"))
+        ),
+        "max_review_candidates_per_refresh": _normalize_int(
+            review_policy_overrides.get(
+                "max_review_candidates_per_refresh",
+                subscription.get("max_review_candidates_per_refresh"),
+            ),
+            DEFAULT_MAX_REVIEW_CANDIDATES_PER_REFRESH,
+        ),
+        "min_direct_greet_score": _normalize_int(
+            review_policy_overrides.get(
+                "min_direct_greet_score",
+                subscription.get("min_direct_greet_score"),
+            ),
+            DEFAULT_MIN_DIRECT_GREET_SCORE,
+        ),
+        "auto_reject_on_follow_up_questions": _normalize_bool(
+            review_policy_overrides.get(
+                "auto_reject_on_follow_up_questions",
+                subscription.get("auto_reject_on_follow_up_questions"),
+            ),
+            True,
+        ),
+        "auto_reject_on_risk_flags": _normalize_bool(
+            review_policy_overrides.get(
+                "auto_reject_on_risk_flags",
+                subscription.get("auto_reject_on_risk_flags"),
+            ),
+            True,
+        ),
+        "direct_greet_profile": _load_direct_greet_profile(direct_greet_profile_raw),
+        "policy_source": "subscription_overrides.review_policy" if review_policy_overrides else "subscription_defaults",
+    }
+
+
 def _value_matches_requirement(actual: Any, expected: Any) -> bool:
     if isinstance(expected, list):
         return actual in expected
@@ -74,7 +129,8 @@ def review_candidate_for_proactive_delivery(
     *,
     review_rank: int,
 ) -> dict[str, Any]:
-    mode = normalize_recommendation_mode(subscription.get("recommendation_mode"))
+    review_policy = resolve_review_policy(subscription)
+    mode = review_policy["recommendation_mode"]
     base_score = int(result.get("score") or 0)
     matched_on = [str(item) for item in _as_list(result.get("matched_on")) if item]
     reciprocal_on = [str(item) for item in _as_list(result.get("reciprocal_on")) if item]
@@ -84,23 +140,11 @@ def review_candidate_for_proactive_delivery(
     self_profile_gaps = [str(item) for item in _as_list(result.get("self_profile_gaps")) if item]
     profile = dict(result.get("profile") or {})
 
-    max_review_candidates = _normalize_int(
-        subscription.get("max_review_candidates_per_refresh"),
-        DEFAULT_MAX_REVIEW_CANDIDATES_PER_REFRESH,
-    )
-    min_direct_greet_score = _normalize_int(
-        subscription.get("min_direct_greet_score"),
-        DEFAULT_MIN_DIRECT_GREET_SCORE,
-    )
-    auto_reject_on_follow_up_questions = _normalize_bool(
-        subscription.get("auto_reject_on_follow_up_questions"),
-        True,
-    )
-    auto_reject_on_risk_flags = _normalize_bool(
-        subscription.get("auto_reject_on_risk_flags"),
-        True,
-    )
-    direct_greet_profile = _load_direct_greet_profile(subscription.get("direct_greet_profile_json"))
+    max_review_candidates = int(review_policy["max_review_candidates_per_refresh"])
+    min_direct_greet_score = int(review_policy["min_direct_greet_score"])
+    auto_reject_on_follow_up_questions = bool(review_policy["auto_reject_on_follow_up_questions"])
+    auto_reject_on_risk_flags = bool(review_policy["auto_reject_on_risk_flags"])
+    direct_greet_profile = dict(review_policy["direct_greet_profile"])
 
     review_score = base_score
     review_score += min(9, len(reciprocal_on) * 3)
@@ -122,6 +166,15 @@ def review_candidate_for_proactive_delivery(
         "self_profile_gaps_count": len(self_profile_gaps),
         "reciprocal_signal_count": len(reciprocal_on),
         "matched_on_count": len(matched_on),
+        "review_policy": {
+            "recommendation_mode": review_policy["recommendation_mode"],
+            "max_review_candidates_per_refresh": max_review_candidates,
+            "min_direct_greet_score": min_direct_greet_score,
+            "auto_reject_on_follow_up_questions": auto_reject_on_follow_up_questions,
+            "auto_reject_on_risk_flags": auto_reject_on_risk_flags,
+            "direct_greet_profile": direct_greet_profile,
+            "policy_source": review_policy["policy_source"],
+        },
     }
 
     if mode == "match_based":

@@ -53,11 +53,13 @@ It is intentionally separate from the skill itself.
   - the original request, persona snapshot fallback, and subscription-level overrides
   - refresh cadence, quiet hours, daily cap, score threshold, skip cooldown
   - recommendation mode and the extra bar for proactive `direct_greet` pushes
+  - `subscription_overrides_json` now distinguishes search-criteria overrides from `review_policy` overrides; `review_policy` no longer leaks into partner-search request criteria
 - `profile_recommendations`
   - recommendation history per `(subscription, candidate)`
   - latest score snapshot
   - recommendation-owned status fields: `delivery_status`, `recommendation_status`, `recommendation_phase`
   - case-progress mirror fields for display only: `active_match_case_id`, `active_case_status`, `case_progress_status`
+  - explicit review projection fields: `review_policy`, `system_review_decision`, `user_review_decision`, `review_decision_stage`
   - final proactive-review status such as `direct_greet_ready`, `save_only`, or `rejected`
   - user review status such as `pending_review`, `direct_greet`, or `save`
 - `recommendation_actions`

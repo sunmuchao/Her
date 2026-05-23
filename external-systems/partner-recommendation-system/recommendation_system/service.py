@@ -36,6 +36,7 @@ from .direct_greet_gate import (
     DEFAULT_MIN_DIRECT_GREET_SCORE,
     DEFAULT_RECOMMENDATION_MODE,
     normalize_recommendation_mode,
+    resolve_review_policy,
     review_candidate_for_proactive_delivery,
 )
 from .criteria_compiler import build_effective_search_request
@@ -352,8 +353,15 @@ def build_recommendation_conversion_view(
         "candidate_name": recommendation.get("candidate_name"),
         "recommendation_status": recommendation.get("recommendation_status"),
         "recommendation_phase": recommendation.get("recommendation_phase"),
+        "review_policy": recommendation.get("review_policy") or {},
         "final_review_status": recommendation.get("final_review_status"),
+        "system_review_decision": recommendation.get("system_review_decision"),
+        "system_review_reason": recommendation.get("system_review_reason"),
         "user_review_status": recommendation.get("user_review_status"),
+        "user_review_decision": recommendation.get("user_review_decision"),
+        "user_review_reason_detail": recommendation.get("user_review_reason_detail"),
+        "review_decision_stage": recommendation.get("review_decision_stage"),
+        "requires_user_review": recommendation.get("requires_user_review"),
         "conversion_stage": conversion_stage,
         "conversion_stage_owner": stage_owner,
         "latest_action_type": latest_action.get("action_type") if latest_action else None,
@@ -639,7 +647,7 @@ def _hydrate_recommendation_relation_metadata(
         recommendation["relation_ledger_active_match_case_id"] = reduced.active_match_case_id
     else:
         recommendation.pop("relation_ledger_active_match_case_id", None)
-    _apply_recommendation_boundary_projection(recommendation)
+    _apply_recommendation_boundary_projection(recommendation, conn=conn)
     return recommendation
 
 
@@ -669,7 +677,35 @@ def _derive_case_progress_status(recommendation: dict[str, Any]) -> str | None:
     return "historical"
 
 
-def _apply_recommendation_boundary_projection(recommendation: dict[str, Any]) -> None:
+def _apply_review_projection(recommendation: dict[str, Any], *, conn=None) -> None:
+    review_policy_source = recommendation
+    if "subscription_overrides_json" not in recommendation and conn is not None:
+        subscription_id = str(recommendation.get("subscription_id") or "").strip()
+        if subscription_id:
+            try:
+                review_policy_source = get_subscription(conn, subscription_id)
+            except Exception:
+                review_policy_source = recommendation
+    review_policy = resolve_review_policy(review_policy_source)
+    recommendation["review_policy"] = review_policy
+    recommendation["system_review_decision"] = recommendation.get("final_review_status")
+    recommendation["system_review_reason"] = recommendation.get("final_review_reason")
+    recommendation["user_review_decision"] = recommendation.get("user_review_status")
+    recommendation["user_review_reason_detail"] = recommendation.get("user_review_reason")
+    recommendation["review_policy_owner"] = "recommendation"
+    recommendation["requires_user_review"] = (
+        review_policy["recommendation_mode"] == "direct_greet_only"
+        and recommendation.get("final_review_status") == "direct_greet_ready"
+    )
+    if recommendation.get("user_review_status") in {"direct_greet", "save", "skip"}:
+        recommendation["review_decision_stage"] = "user_decided"
+    elif recommendation.get("user_review_status") == "pending_review":
+        recommendation["review_decision_stage"] = "awaiting_user_review"
+    else:
+        recommendation["review_decision_stage"] = "system_decided"
+
+
+def _apply_recommendation_boundary_projection(recommendation: dict[str, Any], *, conn=None) -> None:
     recommendation["recommendation_status"] = recommendation.get("delivery_status")
     recommendation["recommendation_phase"] = _derive_recommendation_phase(
         recommendation.get("delivery_status")
@@ -679,6 +715,7 @@ def _apply_recommendation_boundary_projection(recommendation: dict[str, Any]) ->
     recommendation["case_progress_owner"] = (
         "matchmaking" if recommendation.get("case_progress_status") is not None else None
     )
+    _apply_review_projection(recommendation, conn=conn)
 
 
 def insert_recommendation_action(
