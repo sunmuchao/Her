@@ -18,6 +18,7 @@ from recommendation_system import (  # noqa: E402
     dispatch_match_case_outreach,
     get_match_case,
     initialize_database,
+    list_recommendation_conversion_views_for_subscription,
     list_pending_outbox,
     list_match_case_events,
     list_match_case_outreach_attempts,
@@ -167,6 +168,22 @@ class ProxyIntroSystemTests(unittest.TestCase):
         self.assertEqual(recommendation["case_progress_status"], "closed")
         self.assertEqual(recommendation["case_progress_owner"], "matchmaking")
         self.assertEqual(recommendation["canonical_relation_status"], "closed")
+
+        conversion_views = list_recommendation_conversion_views_for_subscription(
+            self.conn,
+            subscription["subscription_id"],
+        )
+        self.assertEqual(len(conversion_views), 1)
+        self.assertEqual(conversion_views[0]["conversion_stage"], "case_closed")
+        self.assertEqual(conversion_views[0]["conversion_stage_owner"], "matchmaking")
+        self.assertEqual(conversion_views[0]["case_count"], 1)
+        self.assertEqual(conversion_views[0]["latest_case_status"], "closed")
+        self.assertEqual(conversion_views[0]["latest_case_close_reason"], "handoff_completed")
+        self.assertIn("request_proxy_intro", conversion_views[0]["action_types"])
+        self.assertIn("proxy_intro_reply_accepted", conversion_views[0]["action_types"])
+        self.assertIn("proxy_intro_closed_handoff_completed", conversion_views[0]["action_types"])
+        self.assertIn("recommendation_action", {event["source"] for event in conversion_views[0]["timeline"]})
+        self.assertIn("match_case_event", {event["source"] for event in conversion_views[0]["timeline"]})
 
         events = list_match_case_outreach_attempts(self.conn, case["case_id"])
         self.assertEqual(len(events), 1)
