@@ -150,7 +150,11 @@ def build_initial_request(subscription: Mapping[str, Any]) -> dict[str, Any]:
 
 def build_subscription_overrides(subscription: Mapping[str, Any]) -> dict[str, Any]:
     overrides = json_loads(subscription.get("subscription_overrides_json"), {})
-    return dict(overrides or {})
+    if not isinstance(overrides, Mapping):
+        return {}
+    filtered = dict(overrides or {})
+    filtered.pop("review_policy", None)
+    return filtered
 
 
 def compile_effective_criteria(
