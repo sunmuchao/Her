@@ -56,8 +56,8 @@ It is intentionally separate from the skill itself.
 - `profile_recommendations`
   - recommendation history per `(subscription, candidate)`
   - latest score snapshot
-  - recommendation delivery status plus cooldown state
-  - active proxy-intro case mirror fields: `active_match_case_id` and `active_case_status`
+  - recommendation-owned status fields: `delivery_status`, `recommendation_status`, `recommendation_phase`
+  - case-progress mirror fields for display only: `active_match_case_id`, `active_case_status`, `case_progress_status`
   - final proactive-review status such as `direct_greet_ready`, `save_only`, or `rejected`
   - user review status such as `pending_review`, `direct_greet`, or `save`
 - `recommendation_actions`
@@ -67,6 +67,7 @@ It is intentionally separate from the skill itself.
 - `saved_search_runs`
   - one snapshot per refresh
   - the resolved persona snapshot, effective criteria, and top candidate ids used for that run
+  - recommendation refresh counters are exposed as `recommendation_status_counts` and `review_status_counts`
 - `match_cases`
   - proxy-intro case state, safe summary, deadlines, and cooling
 - `match_case_events`
