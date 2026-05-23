@@ -68,6 +68,9 @@ It is intentionally separate from the skill itself.
   - one snapshot per refresh
   - the resolved persona snapshot, effective criteria, and top candidate ids used for that run
   - recommendation refresh counters are exposed as `recommendation_status_counts` and `review_status_counts`
+- `list_recommendation_conversion_views_for_subscription(...)`
+  - a formal read model that joins recommendation state, recommendation actions, and proxy-intro case progress
+  - intended for UI rendering, funnel inspection, and debugging without re-deriving state from three separate tables
 - `match_cases`
   - proxy-intro case state, safe summary, deadlines, and cooling
 - `match_case_events`

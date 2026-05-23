@@ -1099,13 +1099,14 @@ System               System               / Verification       System           
 - 已新增 recommendation 数据迁移，将历史 `proxy_intro_*`、`save_only`、`review_skipped` 等旧 `delivery_status` 值回填到新语义
 - recommendation 读模型现已显式暴露 `recommendation_status` / `recommendation_phase` 与 `case_progress_status`，用来区分“推荐侧状态”和“matchmaking 侧 case 进度展示”
 - recommendation refresh run 现已显式暴露 `recommendation_status_counts` / `review_status_counts`，避免把 recommendation 自己的统计误读为 case 统计
+- recommendation system 现已提供正式的 recommendation conversion view，把 recommendation 主状态、用户动作、proxy-intro case 进度聚合为单一读模型，便于前端展示、转化统计和排障
 
 这意味着系统正从“单字段混合表达推荐、关系、case 三层含义”，逐步过渡到“推荐状态、关系状态、案例状态分层管理”。
 
 但这只完成了第一段，`13.1` 想要的“主链路清晰分层”还没有收口，当前仍有几类任务未完成：
 
 1. recommendation / matchmaking 边界只拆了一半
-   - recommendation 主状态、case 镜像字段与 refresh 统计口径已经完成第一轮收敛，但 recommendation -> action -> case 的统一转化视图还未形成正式读模型
+   - recommendation 主状态、case 镜像字段、refresh 统计口径，以及 recommendation -> action -> case 的统一转化视图已经完成第一轮收敛
    - review 字段与可配置规则平台也还没有完全对齐，后续仍可能出现“review 决策散落在多个字段里”的问题
    - recommendation -> matchmaking -> chat 的跨系统集成测试也还需要补齐
 

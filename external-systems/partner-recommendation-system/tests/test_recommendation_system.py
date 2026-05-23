@@ -11,6 +11,7 @@ if str(SYSTEM_ROOT) not in sys.path:
 
 from recommendation_system import (  # noqa: E402
     DEFAULT_NO_MATCH_OPT_IN_PROMPT,
+    list_recommendation_conversion_views_for_subscription,
     connect_db,
     create_subscription,
     deliver_in_app_recommendations,
@@ -280,6 +281,20 @@ class RecommendationSystemTests(unittest.TestCase):
         self.assertIsNone(recs[0]["case_progress_status"])
         self.assertEqual(recs[0]["recommendation_status_owner"], "recommendation")
         self.assertIsNone(recs[0]["case_progress_owner"])
+
+        conversion_views = list_recommendation_conversion_views_for_subscription(
+            self.conn,
+            subscription["subscription_id"],
+        )
+        self.assertEqual(len(conversion_views), 1)
+        self.assertEqual(conversion_views[0]["recommendation_status"], "review_pending")
+        self.assertEqual(conversion_views[0]["conversion_stage"], "review_queue")
+        self.assertEqual(conversion_views[0]["conversion_stage_owner"], "recommendation")
+        self.assertEqual(conversion_views[0]["action_count"], 1)
+        self.assertEqual(conversion_views[0]["action_types"], ["relation_state_revision"])
+        self.assertEqual(conversion_views[0]["case_count"], 0)
+        self.assertEqual(conversion_views[0]["timeline"][0]["source"], "recommendation_action")
+        self.assertEqual(conversion_views[0]["timeline"][0]["event_type"], "relation_state_revision")
 
     def test_refresh_subscription_rehydrates_synced_profile_row_into_persona_criteria(self):
         subscription = self.create_active_subscription(
