@@ -41,6 +41,7 @@ from .direct_greet_gate import (
 )
 from .criteria_compiler import build_effective_search_request
 from .storage import json_dumps, json_loads, row_to_dict
+from relationship_ledger.runtime import append_event_to_default_ledger
 
 from observability import (  # noqa: E402
     RECOMMENDATION_FUNNEL_ACTION,
@@ -733,6 +734,14 @@ def insert_recommendation_action(
     relation_key = recommendation.get("relation_key")
     if not relation_key:
         relation_key = recommendation_relation_key(subscription, int(recommendation["candidate_id"]))
+    owner_profile_ref = recommendation.get("owner_profile_ref") or json_loads(
+        recommendation.get("owner_profile_ref_json"),
+        None,
+    )
+    target_profile_ref = recommendation.get("target_profile_ref") or json_loads(
+        recommendation.get("target_profile_ref_json"),
+        None,
+    )
     rid = int(recommendation["recommendation_id"])
     idem_key = (
         idempotency_client_relation_action(rid, client_idempotency_key)
@@ -785,6 +794,12 @@ def insert_recommendation_action(
             str(client_idempotency_key).strip() if client_idempotency_key else None,
             format_dt(now),
         ),
+    )
+    append_event_to_default_ledger(
+        event=event,
+        relation_key=str(relation_key),
+        owner_profile_ref=owner_profile_ref,
+        target_profile_ref=target_profile_ref,
     )
 
 

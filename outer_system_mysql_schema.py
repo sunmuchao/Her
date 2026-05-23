@@ -2112,11 +2112,106 @@ def matchmaking_tables() -> tuple[TableDef, ...]:
     )
 
 
+def relationship_ledger_tables() -> tuple[TableDef, ...]:
+    return (
+        TableDef(
+            name="match_relations",
+            columns=(
+                ColumnDef("relation_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("relation_key", "VARCHAR(255)", nullable=False),
+                ColumnDef("owner_profile_ref_json", "LONGTEXT"),
+                ColumnDef("target_profile_ref_json", "LONGTEXT"),
+                ColumnDef("relation_status", "VARCHAR(64)", nullable=False),
+                ColumnDef("current_phase", "VARCHAR(64)", nullable=False),
+                ColumnDef("active_case_id", "VARCHAR(191)"),
+                ColumnDef("active_case_type", "VARCHAR(32)"),
+                ColumnDef("active_case_status", "VARCHAR(64)"),
+                ColumnDef("latest_chat_thread_id", "VARCHAR(191)"),
+                ColumnDef("last_chat_message_at", "DATETIME"),
+                ColumnDef("source_summary_json", "LONGTEXT"),
+                ColumnDef("last_event_type", "VARCHAR(128)"),
+                ColumnDef("last_event_at", "DATETIME", nullable=False),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+                ColumnDef("updated_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("relation_id",),
+            uniques=(
+                UniqueKeyDef(("relation_key",), name="uniq_match_relations_relation_key"),
+            ),
+            indexes=(
+                IndexDef(("relation_status", "last_event_at"), "idx_match_relations_status_time"),
+                IndexDef(("current_phase", "last_event_at"), "idx_match_relations_phase_time"),
+            ),
+        ),
+        TableDef(
+            name="match_relation_cases",
+            columns=(
+                ColumnDef("case_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("relation_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("case_type", "VARCHAR(32)", nullable=False),
+                ColumnDef("owner_service", "VARCHAR(64)", nullable=False),
+                ColumnDef("case_status", "VARCHAR(64)", nullable=False),
+                ColumnDef("close_reason", "VARCHAR(64)"),
+                ColumnDef("linked_aggregate_type", "VARCHAR(32)", nullable=False),
+                ColumnDef("linked_aggregate_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("latest_event_type", "VARCHAR(128)"),
+                ColumnDef("opened_at", "DATETIME", nullable=False),
+                ColumnDef("closed_at", "DATETIME"),
+                ColumnDef("last_event_at", "DATETIME", nullable=False),
+                ColumnDef("metadata_json", "LONGTEXT"),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+                ColumnDef("updated_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("case_id",),
+            indexes=(
+                IndexDef(("relation_id", "last_event_at"), "idx_match_relation_cases_relation_time"),
+                IndexDef(("case_status", "last_event_at"), "idx_match_relation_cases_status_time"),
+            ),
+            foreign_keys=(
+                ForeignKeyDef(("relation_id",), "match_relations", ("relation_id",)),
+            ),
+        ),
+        TableDef(
+            name="match_relation_events",
+            columns=(
+                ColumnDef("ledger_event_id", "BIGINT", nullable=False, auto_increment=True),
+                ColumnDef("relation_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("canonical_event_id", "VARCHAR(64)", nullable=False),
+                ColumnDef("aggregate_type", "VARCHAR(32)", nullable=False),
+                ColumnDef("aggregate_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("case_id", "VARCHAR(191)"),
+                ColumnDef("case_type", "VARCHAR(32)"),
+                ColumnDef("event_type", "VARCHAR(128)", nullable=False),
+                ColumnDef("source_service", "VARCHAR(64)", nullable=False),
+                ColumnDef("actor_type", "VARCHAR(32)", nullable=False),
+                ColumnDef("actor_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("canonical_event_json", "LONGTEXT", nullable=False),
+                ColumnDef("event_payload_json", "LONGTEXT"),
+                ColumnDef("occurred_at", "DATETIME", nullable=False),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("ledger_event_id",),
+            uniques=(
+                UniqueKeyDef(("canonical_event_id",), name="uniq_match_relation_events_canonical_event_id"),
+            ),
+            indexes=(
+                IndexDef(("relation_id", "occurred_at"), "idx_match_relation_events_relation_time"),
+                IndexDef(("case_id", "occurred_at"), "idx_match_relation_events_case_time"),
+                IndexDef(("aggregate_type", "aggregate_id", "occurred_at"), "idx_match_relation_events_aggregate_time"),
+            ),
+            foreign_keys=(
+                ForeignKeyDef(("relation_id",), "match_relations", ("relation_id",)),
+            ),
+        ),
+    )
+
+
 SYSTEM_TABLES: dict[str, tuple[TableDef, ...]] = {
     "recommendation": recommendation_tables(),
     "matchmaking": matchmaking_tables(),
     "chat": chat_tables(),
     "discovery": discovery_tables(),
+    "relationship_ledger": relationship_ledger_tables(),
 }
 
 def ensure_schema(
