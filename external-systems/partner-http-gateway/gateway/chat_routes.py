@@ -29,6 +29,7 @@ from chat_system import (  # type: ignore[import-untyped]
     post_conversation_message,
     post_message,
 )
+from relationship_ledger import get_relation_by_key  # type: ignore[import-untyped]
 from chat_system.async_tasks import (  # type: ignore[import-untyped]
     JOB_RUN_CHAT_MAINTENANCE,
     enqueue_chat_async_job,
@@ -109,6 +110,8 @@ class ChatGateway(Protocol):
 
     def _with_rec(self, fn: Any, *args: Any, **kwargs: Any) -> Any: ...
 
+    def _with_ledger(self, fn: Any, *args: Any, **kwargs: Any) -> Any: ...
+
 
 def chat_require_requester(
     gateway: ChatGateway,
@@ -177,6 +180,7 @@ def timeline_payload(
     message_limit: int = 50,
 ) -> dict[str, Any]:
     chat_part = gateway._with_chat(build_chat_timeline, case_id, viewer_id, message_limit=message_limit)
+    ledger_part: dict[str, Any] = {"relation": None, "cases": [], "events": [], "summary": None}
     try:
         case = gateway._with_mm(get_match_case, case_id)
         events = gateway._with_mm(list_match_case_events, case_id)
@@ -191,12 +195,43 @@ def timeline_payload(
             rec_part = {"case": _json_safe(rec_case), "events": _json_safe(rec_events)}
     except Exception:
         rec_part = {"case": None, "events": []}
+    relation_key = None
+    if chat_part.get("thread"):
+        relation_key = chat_part["thread"].get("relation_key")
+    elif mm_part.get("case"):
+        relation_key = mm_part["case"].get("canonical_pair_key") or mm_part["case"].get("pair_key")
+    elif rec_part.get("case"):
+        relation_key = (
+            rec_part["case"].get("relation_key")
+            or rec_part["case"].get("canonical_relation_key")
+            or rec_part["case"].get("pair_key")
+        )
+    if relation_key:
+        try:
+            relation = gateway._with_ledger(get_relation_by_key, relation_key)
+            if relation:
+                ledger_part = {
+                    "relation": _json_safe(relation),
+                    "cases": _json_safe(relation.get("cases") or []),
+                    "events": _json_safe(relation.get("events") or []),
+                    "summary": {
+                        "relation_status": relation.get("relation_status"),
+                        "current_phase": relation.get("current_phase"),
+                        "active_case_id": relation.get("active_case_id"),
+                        "latest_chat_thread_id": relation.get("latest_chat_thread_id"),
+                        "event_count": len(relation.get("events") or []),
+                        "case_count": len(relation.get("cases") or []),
+                    },
+                }
+        except Exception:
+            ledger_part = {"relation": None, "cases": [], "events": [], "summary": None}
     return {
         "case_id": case_id,
         "viewer_id": viewer_id,
         "chat": _json_safe(chat_part),
         "matchmaking": mm_part,
         "recommendation": rec_part,
+        "ledger": ledger_part,
     }
 
 

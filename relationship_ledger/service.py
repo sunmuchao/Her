@@ -25,6 +25,17 @@ def relation_id_from_key(relation_key: str) -> str:
     return f"rel-{digest}"
 
 
+def _bounded_aggregate_id(value: str | None, *, limit: int = 191) -> str | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    if len(raw) <= limit:
+        return raw
+    digest = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
+    prefix_limit = max(limit - len(digest) - 1, 1)
+    return f"{raw[:prefix_limit]}:{digest}"
+
+
 def _event_payload(event: MatchEvent) -> dict[str, Any]:
     return dict(event.payload or {})
 
@@ -194,7 +205,7 @@ def _upsert_case_projection(
                 reduced.status.value,
                 close_reason,
                 event.aggregate_type,
-                event.aggregate_id,
+                _bounded_aggregate_id(event.aggregate_id),
                 event.event_type,
                 closed_at,
                 occurred_at,
@@ -232,7 +243,7 @@ def _upsert_case_projection(
             reduced.status.value,
             close_reason,
             event.aggregate_type,
-            event.aggregate_id,
+            _bounded_aggregate_id(event.aggregate_id),
             event.event_type,
             opened_at,
             closed_at,
@@ -277,6 +288,20 @@ def _refresh_relation_projection(
             conn.execute(
                 "SELECT * FROM match_relation_cases WHERE case_id = ?",
                 (reduced.active_match_case_id,),
+            ).fetchone()
+        )
+    if active_case is None:
+        active_case = row_to_dict(
+            conn.execute(
+                """
+                SELECT *
+                FROM match_relation_cases
+                WHERE relation_id = ?
+                  AND case_status IN ('pending_contact', 'awaiting_reply', 'accepted')
+                ORDER BY last_event_at DESC, case_id DESC
+                LIMIT 1
+                """,
+                (relation_id,),
             ).fetchone()
         )
     existing = row_to_dict(conn.execute("SELECT * FROM match_relations WHERE relation_id = ?", (relation_id,)).fetchone())
@@ -436,6 +461,23 @@ def get_relation(conn, relation_id: str) -> dict[str, Any] | None:
     row["source_summary"] = json_loads(row.pop("source_summary_json"), {})
     row["events"] = list_events_for_relation(conn, relation_id)
     row["cases"] = list_cases_for_relation(conn, relation_id)
+    if not row["cases"]:
+        row["cases"] = _synthesized_cases_from_events(row["events"])
+    if not row.get("active_case_id"):
+        active_case = next(
+            (
+                case
+                for case in row["cases"]
+                if str(case.get("case_status") or "") in {"pending_contact", "awaiting_reply", "accepted"}
+            ),
+            None,
+        )
+        if active_case:
+            row["active_case_id"] = active_case.get("case_id")
+            row["active_case_type"] = active_case.get("case_type")
+            row["active_case_status"] = active_case.get("case_status")
+            if not row.get("current_phase") or row.get("current_phase") == row.get("relation_status"):
+                row["current_phase"] = "case_active"
     return row
 
 
@@ -450,6 +492,58 @@ def list_relations(conn) -> list[dict[str, Any]]:
         (),
     ).fetchall()
     return [item for item in (get_relation(conn, str(row["relation_id"])) for row in rows) if item]
+
+
+def build_relation_dashboard(conn) -> dict[str, Any]:
+    rows = conn.execute(
+        """
+        SELECT relation_status, current_phase, COUNT(*) AS relation_count
+        FROM match_relations
+        GROUP BY relation_status, current_phase
+        ORDER BY relation_status ASC, current_phase ASC
+        """
+    ).fetchall()
+    by_status: dict[str, int] = {}
+    by_phase: dict[str, int] = {}
+    matrix: list[dict[str, Any]] = []
+    total = 0
+    for row in rows:
+        relation_status = str(row["relation_status"] or "")
+        current_phase = str(row["current_phase"] or "")
+        count = int(row["relation_count"] or 0)
+        total += count
+        by_status[relation_status] = by_status.get(relation_status, 0) + count
+        by_phase[current_phase] = by_phase.get(current_phase, 0) + count
+        matrix.append(
+            {
+                "relation_status": relation_status,
+                "current_phase": current_phase,
+                "relation_count": count,
+            }
+        )
+    case_rows = conn.execute(
+        """
+        SELECT case_type, case_status, COUNT(*) AS case_count
+        FROM match_relation_cases
+        GROUP BY case_type, case_status
+        ORDER BY case_type ASC, case_status ASC
+        """
+    ).fetchall()
+    case_matrix = [
+        {
+            "case_type": str(row["case_type"] or ""),
+            "case_status": str(row["case_status"] or ""),
+            "case_count": int(row["case_count"] or 0),
+        }
+        for row in case_rows
+    ]
+    return {
+        "relation_total": total,
+        "by_status": by_status,
+        "by_phase": by_phase,
+        "status_phase_matrix": matrix,
+        "case_status_matrix": case_matrix,
+    }
 
 
 def list_cases_for_relation(conn, relation_id: str) -> list[dict[str, Any]]:
@@ -493,6 +587,41 @@ def list_events_for_relation(conn, relation_id: str) -> list[dict[str, Any]]:
     return out
 
 
+def _synthesized_cases_from_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[str, list[MatchEvent]] = {}
+    case_types: dict[str, str | None] = {}
+    last_event_types: dict[str, str | None] = {}
+    last_event_at: dict[str, str | None] = {}
+    for item in events:
+        case_id = str(item.get("case_id") or "").strip()
+        payload = item.get("event_payload") or {}
+        if not case_id:
+            case_id = str(payload.get("case_id") or "").strip()
+        if not case_id:
+            continue
+        canonical = item.get("canonical_event") or {}
+        if isinstance(canonical, Mapping):
+            grouped.setdefault(case_id, []).append(match_event_from_mapping(canonical))
+        case_types[case_id] = str(item.get("case_type") or payload.get("case_type") or "").strip() or None
+        last_event_types[case_id] = str(item.get("event_type") or "").strip() or None
+        last_event_at[case_id] = str(item.get("occurred_at") or "").strip() or None
+    out: list[dict[str, Any]] = []
+    for case_id, case_events in grouped.items():
+        reduced = reduce_case_ledger(case_events)
+        out.append(
+            {
+                "case_id": case_id,
+                "case_type": case_types.get(case_id),
+                "case_status": reduced.status.value,
+                "latest_event_type": last_event_types.get(case_id),
+                "last_event_at": last_event_at.get(case_id),
+                "metadata": {"source": "event_fallback"},
+            }
+        )
+    out.sort(key=lambda item: (str(item.get("last_event_at") or ""), str(item.get("case_id") or "")), reverse=True)
+    return out
+
+
 __all__ = [
     "append_event",
     "get_relation",
@@ -502,4 +631,3 @@ __all__ = [
     "list_relations",
     "relation_id_from_key",
 ]
-

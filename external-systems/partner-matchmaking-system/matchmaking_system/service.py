@@ -23,7 +23,9 @@ from match_domain import (  # noqa: E402
     canonical_pair_key_for_members,
     canonical_pair_status,
     correlation_member_feedback,
+    entity_id_pair,
     entity_id_pool_member,
+    format_correlation_id,
     idempotency_feedback,
     match_events_from_case_event_rows,
     merge_payload_with_event,
@@ -49,6 +51,7 @@ from observability import (  # noqa: E402
     funnel_stage,
     metric_gauge,
 )
+from relationship_ledger.runtime import append_event_to_default_ledger
 
 
 SearchRunner = Callable[..., dict[str, Any]]
@@ -154,6 +157,50 @@ def _attach_pair_profile_refs(conn, pair: dict[str, Any] | None) -> dict[str, An
     pair["member_high_profile_ref"] = member_high["profile_ref"]
     pair["canonical_pair_key"] = canonical_pair_key_for_members(member_low, member_high)
     return pair
+
+
+def _matchmaking_relation_key(member_low: Mapping[str, Any], member_high: Mapping[str, Any]) -> str:
+    return canonical_pair_key_for_members(member_low, member_high)
+
+
+def _append_pair_event_to_ledger(
+    *,
+    pair_event_type: str,
+    member_low: Mapping[str, Any],
+    member_high: Mapping[str, Any],
+    pair_key: str,
+    now: datetime,
+    actor_type: str,
+    actor_id: str,
+    payload: Mapping[str, Any] | None = None,
+) -> None:
+    relation_key = _matchmaking_relation_key(member_low, member_high)
+    event = build_canonical_event(
+        event_type=pair_event_type,
+        aggregate_type="relation",
+        aggregate_id=relation_key,
+        actor_type=actor_type,
+        actor_id=actor_id,
+        source_service="matchmaking-system",
+        correlation_id=format_correlation_id(entity_id_pair(pair_key), pair_event_type, format_dt(now)),
+        idempotency_key=f"her:idem:{entity_id_pair(pair_key)}:{pair_event_type}:{format_dt(now)}",
+        occurred_at=now,
+        payload={
+            "pair_key": pair_key,
+            **dict(payload or {}),
+        },
+        entity_ids={
+            "pair": entity_id_pair(pair_key),
+            "member_low": entity_id_pool_member(str(member_low["member_id"])),
+            "member_high": entity_id_pool_member(str(member_high["member_id"])),
+        },
+    )
+    append_event_to_default_ledger(
+        event=event,
+        relation_key=relation_key,
+        owner_profile_ref=pool_member_profile_ref(member_low),
+        target_profile_ref=pool_member_profile_ref(member_high),
+    )
 
 
 def get_pool_member(conn, member_id: str) -> dict[str, Any]:
@@ -286,7 +333,8 @@ def create_pool_member(
             ),
         )
         conn.commit()
-        return get_pool_member(conn, member_id)
+        out = get_pool_member(conn, member_id)
+        return out
 
     member_id = member_id or generate_member_id()
     conn.execute(
@@ -335,7 +383,8 @@ def create_pool_member(
         ),
     )
     conn.commit()
-    return get_pool_member(conn, member_id)
+    out = get_pool_member(conn, member_id)
+    return out
 
 
 def set_pool_member_status(
@@ -576,6 +625,15 @@ def _record_case_event(
     now: datetime | None = None,
 ) -> None:
     event_now = current_time(now)
+    relation_key = None
+    owner_profile_ref = None
+    target_profile_ref = None
+    if first_contact_member_id and second_contact_member_id:
+        member_low = get_pool_member(conn, str(first_contact_member_id))
+        member_high = get_pool_member(conn, str(second_contact_member_id))
+        relation_key = _matchmaking_relation_key(member_low, member_high)
+        owner_profile_ref = pool_member_profile_ref(member_low)
+        target_profile_ref = pool_member_profile_ref(member_high)
     event = build_case_aggregate_event(
         event_type=event_type,
         case_id=case_id,
@@ -623,6 +681,15 @@ def _record_case_event(
         source_row_id=conn.lastrowid or None,
         created_at_str=occurred_str,
     )
+    if relation_key:
+        append_event_to_default_ledger(
+            event=event,
+            relation_key=relation_key,
+            owner_profile_ref=owner_profile_ref,
+            target_profile_ref=target_profile_ref,
+            case_id=case_id,
+            case_type=CaseType.MATCHMAKING.value,
+        )
 
 
 def refresh_pool_member(
@@ -890,6 +957,20 @@ def _update_pair_status(
         """,
         (pair_status, block_reason, format_dt(now), pair_key),
     )
+    pair = get_pair(conn, pair_key)
+    if pair:
+        member_low = get_pool_member(conn, pair["member_low_id"])
+        member_high = get_pool_member(conn, pair["member_high_id"])
+        _append_pair_event_to_ledger(
+            pair_event_type=f"pair_{pair_status}",
+            member_low=member_low,
+            member_high=member_high,
+            pair_key=pair_key,
+            now=now,
+            actor_type="system",
+            actor_id="system",
+            payload={"block_reason": block_reason},
+        )
 
 
 def _evaluate_pair_state(
@@ -1044,6 +1125,20 @@ def build_mutual_pairs(
                 ),
             )
         updated_pair_keys.append(pair_key)
+        pair_row = get_pair(conn, pair_key)
+        if pair_row:
+            member_low_live = get_pool_member(conn, pair_row["member_low_id"])
+            member_high_live = get_pool_member(conn, pair_row["member_high_id"])
+            _append_pair_event_to_ledger(
+                pair_event_type=f"pair_{pair_status}",
+                member_low=member_low_live,
+                member_high=member_high_live,
+                pair_key=pair_key,
+                now=now,
+                actor_type="system",
+                actor_id="system",
+                payload={"pair_score": pair_score, "block_reason": block_reason},
+            )
 
     for pair in list_pairs(conn):
         if pair["pair_key"] in processed:
@@ -1259,6 +1354,16 @@ def open_match_cases(
             payload={"initiator_type": "system"},
             now=now,
         )
+        _append_pair_event_to_ledger(
+            pair_event_type="pair_case_opened",
+            member_low=member_low,
+            member_high=member_high,
+            pair_key=pair_key,
+            now=now,
+            actor_type="system",
+            actor_id="system",
+            payload={"case_id": case_id, "case_type": CaseType.MATCHMAKING.value},
+        )
         funnel_stage(
             system="matchmaking",
             stage=MATCHMAKING_FUNNEL_CASE,
@@ -1347,6 +1452,18 @@ def _apply_pair_cooling(
         """,
         (reason, format_dt(cooling_until), format_dt(now), pair_key),
     )
+    pair = get_pair(conn, pair_key)
+    if pair:
+        _append_pair_event_to_ledger(
+            pair_event_type="pair_cooling",
+            member_low=get_pool_member(conn, pair["member_low_id"]),
+            member_high=get_pool_member(conn, pair["member_high_id"]),
+            pair_key=pair_key,
+            now=now,
+            actor_type="system",
+            actor_id="system",
+            payload={"block_reason": reason, "cooling_until": format_dt(cooling_until)},
+        )
 
 
 def record_case_reply(
@@ -1457,6 +1574,18 @@ def record_case_reply(
                 """,
                 (format_dt(now), case["pair_key"]),
             )
+            pair = get_pair(conn, case["pair_key"])
+            if pair:
+                _append_pair_event_to_ledger(
+                    pair_event_type="pair_mutual_accept",
+                    member_low=get_pool_member(conn, pair["member_low_id"]),
+                    member_high=get_pool_member(conn, pair["member_high_id"]),
+                    pair_key=case["pair_key"],
+                    now=now,
+                    actor_type="member",
+                    actor_id=str(member_id),
+                    payload={"case_id": case_id},
+                )
             _record_case_event(
                 conn,
                 case_id=case_id,

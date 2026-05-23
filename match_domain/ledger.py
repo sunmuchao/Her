@@ -234,6 +234,39 @@ def reduce_relation_ledger(events: Sequence[MatchEvent]) -> RelationLedgerState:
             case_id = payload.get("case_id")
             active_case = str(case_id) if case_id else active_case
             status = RelationStatus.PROXY_INTRO_ACTIVE
+        elif t == "pair_eligible":
+            status = RelationStatus.MATCHED
+        elif t == "pair_case_opened":
+            case_id = payload.get("case_id")
+            active_case = str(case_id) if case_id else active_case
+            status = RelationStatus.MATCHED
+        elif t == "case_created":
+            case_id = payload.get("case_id")
+            active_case = str(case_id) if case_id else active_case
+            status = RelationStatus.MATCHED
+        elif t in {"first_contact_sent", "second_contact_sent", "first_reply_accepted"}:
+            status = RelationStatus.MATCHED
+        elif t in {"first_reply_decline", "first_reply_declined", "first_reply_timeout", "second_reply_decline", "second_reply_declined", "second_reply_timeout", "case_expired"}:
+            active_case = None
+            status = RelationStatus.COOLING
+        elif t == "second_reply_accepted":
+            active_case = None
+            status = RelationStatus.MATCHED
+        elif t == "pair_mutual_accept":
+            active_case = None
+            status = RelationStatus.MATCHED
+        elif t == "pair_needs_revalidation":
+            active_case = None
+            status = RelationStatus.RECOMMENDED
+        elif t == "pair_stale":
+            active_case = None
+            status = RelationStatus.RECOMMENDED
+        elif t == "pair_cooling":
+            active_case = None
+            status = RelationStatus.COOLING
+        elif t == "pair_blocked":
+            active_case = None
+            status = RelationStatus.RECOMMENDED
         elif t == "proxy_intro_reply_accepted":
             status = RelationStatus.PROXY_INTRO_ACTIVE
         elif t == "proxy_intro_reply_declined":

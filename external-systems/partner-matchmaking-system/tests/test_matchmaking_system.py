@@ -1,6 +1,7 @@
 import pathlib
 import sys
 import unittest
+import os
 from datetime import datetime
 
 
@@ -32,6 +33,13 @@ from matchmaking_system import (  # noqa: E402
     set_pool_member_status,
 )
 from matchmaking_system.storage import DEFAULT_MATCHMAKING_TEST_MYSQL_DSN  # noqa: E402
+from relationship_ledger import (  # noqa: E402
+    connect_db as connect_ledger_db,
+    get_relation_by_key,
+    initialize_database as initialize_ledger_db,
+    reset_all_tables as reset_ledger_tables,
+)
+from relationship_ledger.storage import DEFAULT_RELATION_LEDGER_TEST_MYSQL_DSN  # noqa: E402
 
 
 def build_result(candidate_id, name, score, *, city="无锡", risk_flags=None, follow_up_questions=None):
@@ -62,13 +70,28 @@ def build_result(candidate_id, name, score, *, city="无锡", risk_flags=None, f
 
 class MatchmakingSystemTests(unittest.TestCase):
     def setUp(self):
+        self._old_relation_ledger_db = os.environ.get("HER_RELATION_LEDGER_DB")
+        os.environ["HER_RELATION_LEDGER_DB"] = DEFAULT_RELATION_LEDGER_TEST_MYSQL_DSN
         self.conn = connect_db(DEFAULT_MATCHMAKING_TEST_MYSQL_DSN)
         initialize_database(self.conn)
         reset_all_tables(self.conn)
+        self.ledger_conn = connect_ledger_db(DEFAULT_RELATION_LEDGER_TEST_MYSQL_DSN)
+        initialize_ledger_db(self.ledger_conn)
+        reset_ledger_tables(self.ledger_conn)
         self.source = "mysql://user:pass@127.0.0.1:3306/her?table=profiles"
 
     def tearDown(self):
         self.conn.close()
+        self.ledger_conn.close()
+        if self._old_relation_ledger_db is None:
+            os.environ.pop("HER_RELATION_LEDGER_DB", None)
+        else:
+            os.environ["HER_RELATION_LEDGER_DB"] = self._old_relation_ledger_db
+
+    def load_relation(self, relation_key: str):
+        self.ledger_conn.close()
+        self.ledger_conn = connect_ledger_db(DEFAULT_RELATION_LEDGER_TEST_MYSQL_DSN)
+        return get_relation_by_key(self.ledger_conn, relation_key)
 
     def create_member(self, user_key, self_id, **overrides):
         base = {
@@ -122,6 +145,10 @@ class MatchmakingSystemTests(unittest.TestCase):
         self.assertEqual(pair["pair_score"], 88)
         self.assertEqual(pair["canonical_pair_status"], "eligible")
         self.assertIn("<->", pair["canonical_pair_key"])
+        relation = self.load_relation(pair["canonical_pair_key"])
+        self.assertIsNotNone(relation)
+        self.assertEqual(relation["relation_status"], "matched")
+        self.assertEqual(relation["current_phase"], "matched")
 
         cases = open_match_cases(
             self.conn,
@@ -132,6 +159,11 @@ class MatchmakingSystemTests(unittest.TestCase):
         self.assertEqual(case["status"], "pending_first_contact")
         self.assertEqual(case["case_type"], "matchmaking")
         self.assertEqual(case["canonical_case_status"], "pending_contact")
+        relation = self.load_relation(pair["canonical_pair_key"])
+        self.assertIsNotNone(relation)
+        self.assertEqual(relation["active_case_id"], case["case_id"])
+        self.assertEqual(relation["current_phase"], "case_active")
+        self.assertIn("pair_case_opened", {event["event_type"] for event in relation["events"]})
 
         case = dispatch_case_contact(
             self.conn,
@@ -167,6 +199,10 @@ class MatchmakingSystemTests(unittest.TestCase):
 
         pair = get_pair(self.conn, pair["pair_key"])
         self.assertEqual(pair["pair_status"], "mutual_accept")
+        relation = self.load_relation(pair["canonical_pair_key"])
+        self.assertIsNotNone(relation)
+        self.assertEqual(relation["relation_status"], "matched")
+        self.assertIn("pair_mutual_accept", {event["event_type"] for event in relation["events"]})
         events = list_match_case_events(self.conn, case["case_id"])
         self.assertEqual(
             [event["event_type"] for event in events],

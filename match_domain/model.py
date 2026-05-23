@@ -17,6 +17,7 @@ class RelationStatus(str, Enum):
     DIRECT_GREET_STARTED = "direct_greet_started"
     DIRECT_GREETED = "direct_greet_started"
     PROXY_INTRO_ACTIVE = "proxy_intro_active"
+    MATCHED = "matched"
     CLOSED = "closed"
 
 
