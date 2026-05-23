@@ -441,6 +441,55 @@ class RecommendationSystemTests(unittest.TestCase):
         self.assertEqual(called["criteria"]["gender"], "女")
         self.assertEqual(called["criteria"]["cities"], ["上海"])
         self.assertEqual(called["criteria"]["verified_level_min"], "id")
+        self.assertNotIn("review_policy", called["criteria"])
+
+    def test_review_policy_overrides_drive_gate_without_leaking_into_search_criteria(self):
+        subscription = self.create_active_subscription(
+            self_id=90001,
+            criteria={"gender": "男", "cities": ["无锡"], "verified_level_min": "photo"},
+        )
+        update_subscription_overrides(
+            self.conn,
+            subscription["subscription_id"],
+            {
+                "cities": ["上海"],
+                "review_policy": {
+                    "min_direct_greet_score": 80,
+                    "max_review_candidates_per_refresh": 1,
+                    "auto_reject_on_follow_up_questions": False,
+                },
+            },
+            now=datetime(2026, 4, 30, 8, 30, 0),
+        )
+        called = {}
+
+        refresh_subscription(
+            self.conn,
+            subscription["subscription_id"],
+            now=datetime(2026, 4, 30, 9, 0, 0),
+            persona_resolver=lambda _: build_persona_profile(target_cities="苏州", target_gender="女"),
+            search_runner=lambda **kwargs: called.update(kwargs) or {"results": [build_result(214, "策略覆盖候选", 66)]},
+        )
+
+        self.assertEqual(called["criteria"]["cities"], ["上海"])
+        self.assertNotIn("review_policy", called["criteria"])
+        recommendation = list_recommendations_for_subscription(self.conn, subscription["subscription_id"])[0]
+        self.assertEqual(recommendation["final_review_status"], "save_only")
+        self.assertEqual(recommendation["system_review_decision"], "save_only")
+        self.assertEqual(recommendation["review_policy"]["min_direct_greet_score"], 80)
+        self.assertEqual(recommendation["review_policy"]["max_review_candidates_per_refresh"], 1)
+        self.assertFalse(recommendation["review_policy"]["auto_reject_on_follow_up_questions"])
+        self.assertEqual(recommendation["review_policy"]["policy_source"], "subscription_overrides.review_policy")
+        self.assertEqual(recommendation["review_decision_stage"], "system_decided")
+        self.assertFalse(recommendation["requires_user_review"])
+
+        conversion_view = list_recommendation_conversion_views_for_subscription(
+            self.conn,
+            subscription["subscription_id"],
+        )[0]
+        self.assertEqual(conversion_view["system_review_decision"], "save_only")
+        self.assertEqual(conversion_view["review_policy"]["min_direct_greet_score"], 80)
+        self.assertEqual(conversion_view["review_decision_stage"], "system_decided")
 
     def test_deliver_pending_recommendations_creates_in_app_card(self):
         subscription = self.create_active_subscription()
@@ -474,6 +523,10 @@ class RecommendationSystemTests(unittest.TestCase):
         self.assertEqual(recommendations[0]["delivery_status"], "delivered")
         self.assertEqual(recommendations[0]["final_review_status"], "direct_greet_ready")
         self.assertEqual(recommendations[0]["user_review_status"], "direct_greet")
+        self.assertEqual(recommendations[0]["system_review_decision"], "direct_greet_ready")
+        self.assertEqual(recommendations[0]["user_review_decision"], "direct_greet")
+        self.assertEqual(recommendations[0]["review_decision_stage"], "user_decided")
+        self.assertTrue(recommendations[0]["requires_user_review"])
         self.assertIsNotNone(recommendations[0]["latest_card_id"])
 
     def test_direct_greet_only_mode_keeps_save_level_candidate_out_of_notifications(self):
