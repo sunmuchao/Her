@@ -1108,8 +1108,8 @@ System               System               / Verification       System           
 1. recommendation / matchmaking 边界只拆了一半
    - recommendation 主状态、case 镜像字段、refresh 统计口径，以及 recommendation -> action -> case 的统一转化视图已经完成第一轮收敛
    - review 字段与规则参数入口已完成第一轮收敛：`subscription_overrides` 已区分搜索条件 override 与 `review_policy` override，recommendation 读模型也已显式投影 `review_policy`、`system_review_decision`、`user_review_decision`
-   - 这一层仍未完全结束，后续还需要把 recommendation / matchmaking / chat 的统一指标口径和更完整的多场景回归矩阵补齐
-   - recommendation -> proxy-intro handoff -> chat 的首条跨系统集成测试已经补上，当前仍缺的是更完整的 recommendation / matchmaking / chat 多场景回归矩阵
+   - recommendation -> proxy-intro -> chat、matchmaking -> case -> chat 的关键跨系统回归已补上，gateway timeline 与 async dashboard 也已开始按统一链路联调验证
+   - 这一层仍未完全结束，当前真正还缺的是 recommendation / matchmaking / chat 的统一指标口径，以及覆盖接受、拒绝、超时、cooling、重开、handoff 等分支的完整多场景回归矩阵
 
 2. `profile` / `persona` / 搜索使用条件三层仍然混在一起
    - 理想上应区分：
@@ -1121,9 +1121,10 @@ System               System               / Verification       System           
 
 3. 统一关系总账已落地最小正式版本，但读侧切换还未完成
    - 新增独立 `relationship_ledger` 目标库，已包含 `match_relations`、`match_relation_cases`、`match_relation_events` 三张核心表
-   - recommendation action、proxy-intro case event、chat thread/message event 现已自动镜像到 ledger，形成跨 recommendation / case / chat 的统一 timeline 与 relation/case 投影
+   - recommendation action、proxy-intro case event、matchmaking pair/case event、chat thread/message event 现已自动镜像到 ledger，形成跨 recommendation / matchmaking / case / chat 的统一 timeline 与 relation/case 投影
    - 这意味着系统第一次有了正式的跨域主事实层，不再只能靠 recommendation / matchmaking / chat 三边人工对账
-   - 这一层仍未全部收尾：matchmaking pool / pair 流程尚未并入同一 ledger，前端与报表读侧也还没有全面切到 ledger 投影
+   - gateway `/v1/timeline` 与 async dashboard 已开始切到 ledger 读侧，说明第一轮读侧接管已经启动
+   - 这一层仍未全部收尾：虽然 matchmaking pool / pair 已并入同一 ledger，前端与报表也已有部分入口切到 ledger 投影，但还没有全面替换所有旧读路径，报表口径和更多页面仍在过渡期
 
 4. 支撑域和主链路的职责隔离还停留在方向，不是实现
    - 理想主线应是：找对象 -> 建立连接 -> 聊天
