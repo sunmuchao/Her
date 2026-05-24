@@ -1171,7 +1171,7 @@ System               System               / Verification       System           
    - 核心原则是：系统可以猜，但不能自动把猜测升级成正式档案；只有用户确认后，部分内容才允许升格为正式偏好，`P0` 强事实字段则必须始终经过显式确认
    - 结合当前代码，这一层的实施顺序建议分三期推进：
      - 第一期止血：收紧 `persona_memory_sync -> profiles` 的同步白名单，禁止推断写入 `P0` 强事实字段，资料页只读正式资料源，并为推荐日志补充字段来源标记
-     - 第二期拆层：新增或显式化 `user_preferences` / `persona_inferences` 读写模型，把历史 persona blob 中的“明确表达”与“系统推断”拆开，并补齐 `source`、`confidence`、`strength`、`evidence`
+    - 第二期拆层：保持 `profiles` 只承载资料填写事实，同时把聊天记忆继续统一留在 `persona_memory` / `user_personas` 一侧，但要求每条记忆显式标注“用户明确表达”还是“系统推断”，并补齐 `confidence`、`evidence`、`source_channel` 等元数据
      - 第三期统一编译：让 recommendation / matchmaking / search 统一消费 `effective_criteria` 编译结果，同时保留必要的 criteria snapshot 以支持推荐解释、AB 实验和排障
    - 这一改造完成后，系统会从“把聊天理解直接写进资料”转成“把聊天理解先记为笔记，再按规则编译进推荐”，从而真正完成 `profile` / `persona` / 推荐使用条件三层的边界收敛
    - 为了把这一方案真正落地，后续可以继续拆成以下 6 组具体任务：
@@ -1251,22 +1251,31 @@ System               System               / Verification       System           
        - 为同步逻辑补充来源标记：`profile_form`、`explicit_confirmation`、`explicit_statement`、`strong_inference`、`weak_inference`
        - 为资料页读模型加保护，确保只读正式资料源
        - 验收标准：对话推断不能再改年龄、城市、婚姻状态等正式资料字段，资料页也不再展示推断内容
-     - 任务包 3：新的画像存储模型拆层
-       - 设计并落库 `user_preferences`
-       - 设计并落库 `persona_inferences`
-       - 明确 `profiles` 只保留正式资料事实
-       - 为 `persona_inferences` 增加标准字段：`field`、`value`、`source`、`strength`、`confidence`、`evidence`、`updated_at`、`status`
-       - 为 `user_preferences` 增加来源字段：`profile_form`、`explicit_statement`、`user_confirmed`
-       - 为推断字段定义状态流转：`inferred_weak`、`inferred_strong`、`user_confirmed`、`user_rejected`
-       - 补 migration，把历史 persona 数据迁移分类
-       - 为迁移过程增加审计日志，避免静默丢数据
-       - 验收标准：明确表达和系统推断不再共用一个混合结构，任意画像字段都能回答“它从哪来、现在处于什么状态”
+     - 任务包 3：轻量化画像存储边界收敛
+       - 明确 `profiles` 只保留用户资料填写或资料编辑确认后的正式事实，不再承载聊天中产生的偏好和推断
+       - `persona_memory` / `user_personas` 继续作为聊天记忆主容器，统一接收来自 AI 红娘对话和匹配对象聊天的补充信息
+       - 但每条聊天记忆必须最少补齐以下元数据：`field`、`value`、`source_type`、`source_channel`、`confidence`、`evidence`、`updated_at`
+       - `source_type` 至少区分两类：`explicit`（用户明确说的）与 `inferred`（系统推断出的）
+       - `source_channel` 至少区分两类：`matchmaker_chat` 与 `candidate_chat`
+       - `confidence` 不做拍脑袋打标，而是根据信号强弱逐步累积：
+         - `explicit`：用户只明确表达过 1 次通常为 `low`；跨 session 多次一致表达提升到 `medium`；跨场景稳定表达或用户主动确认后提升到 `high`
+         - `inferred`：单条弱证据通常为 `low`；多条独立证据且语义一致提升到 `medium`；跨场景长期一致且无反证提升到 `high`
+         - 同一会话内机械重复不应线性加分；跨 session、跨 channel 的独立重复权重更高
+         - 出现反向表达或用户否定时，`confidence` 必须下降，严重冲突时应标记为 `contradicted` 或 `rejected`
+       - 每条聊天记忆建议同时记录辅助统计字段，以支持后续置信度计算：`evidence_count`、`distinct_session_count`、`distinct_channel_count`、`last_seen_at`、`status`
+       - 历史数据不要求一次性重拆成多张新表，但需要补 migration / backfill，把旧 persona blob 中后续还要参与推荐的字段补上来源标记和最小可用置信度
+       - 为迁移与回填过程增加审计日志，避免“旧字段来源不明却被当成高可信输入”
+       - 验收标准：
+         - `profiles` 中只剩正式资料事实
+         - 聊天得到的信息不再回写正式资料
+         - 推荐系统能够区分“用户明确说的”和“系统推断的”
+         - 每条参与推荐的聊天记忆都能回答“它从哪来、出现过几次、当前可信度如何”
      - 任务包 4：`effective_criteria` 编译层建设
        - 设计 `compile_effective_criteria(user_id, scene)` 接口
-       - 定义标准输入：`profile_facts`、`user_preferences`、`persona_inferences`、`scene`、`strategy params`
+       - 定义标准输入：`profile_facts`、`persona_memory`、`scene`、`strategy params`
        - 定义标准输出：`hard_filters`、`soft_preferences`、`ranking_features`、`source_map`、`strategy_flags`
-       - 制定优先级规则：`profile_facts` > `explicit_statement/user_confirmed` > `strong_inference` > `weak_inference`
-       - 制定冲突合并规则：用户填写覆盖推断、用户拒绝压制推断、弱推断不能变成硬过滤
+       - 制定优先级规则：`profile_facts` > `persona_memory[source_type=explicit]` > `persona_memory[source_type=inferred, confidence=high/medium/low]`
+       - 制定冲突合并规则：用户资料填写覆盖聊天记忆；`explicit` 高于 `inferred`；低置信度推断不能变成硬过滤；被 `rejected` / `contradicted` 的记忆不应继续进入有效条件
        - 让 recommendation 改为只消费编译结果
        - 让 search 改为只消费编译结果
        - 让 discovery 的后续订阅 / 搜索条件保存也改走编译层
@@ -1274,8 +1283,8 @@ System               System               / Verification       System           
        - 验收标准：推荐、搜索、发现不再各自直接拼接 profile 与 persona，系统可以解释某个推荐条件来自哪里
      - 任务包 5：前端与 API 读侧拆分
        - 拆分资料页 API，只返回 `profile_facts`
-       - 拆分偏好页 API，返回 `user_preferences`
-       - 新增 AI 理解页 API，返回 `persona_inferences`
+       - 偏好 / 记忆页 API 改为返回按 `source_type`、`source_channel`、`confidence` 分组后的 `persona_memory`
+       - 新增 AI 理解页 API 或在现有偏好页中显式区分“你明确说过的”和“系统推测的”
        - AI 理解页支持用户确认、忽略、纠正推断结果
        - 推荐解释接口读取 `effective_criteria` 与 `source_map`
        - 前端文案明确区分“你填写的”“你明确说过的”“系统推测的”
@@ -1297,15 +1306,15 @@ System               System               / Verification       System           
      - 2. 定义字段写入来源与展示规则
      - 3. 收紧 `persona_memory_sync -> profiles` 同步白名单
      - 4. 禁止推断写入 `P0` 强事实字段
-     - 5. 新增 `user_preferences` 数据模型
-     - 6. 新增 `persona_inferences` 数据模型
-     - 7. 为推断字段补 `source / confidence / strength / evidence / status`
-     - 8. 设计并实现历史 persona 数据迁移
+     - 5. 明确 `profiles` 只承载资料填写事实
+     - 6. 为 `persona_memory` / `user_personas` 补 `source_type / source_channel / confidence / evidence / status`
+     - 7. 建立 `confidence` 提升 / 降级规则，并补 `evidence_count / distinct_session_count / distinct_channel_count`
+     - 8. 设计并实现历史 persona 数据回填与来源标记迁移
      - 9. 实现 `compile_effective_criteria(user_id, scene)`
      - 10. 统一 recommendation 消费 `effective_criteria`
      - 11. 统一 search 消费 `effective_criteria`
      - 12. 统一 discovery 后续条件保存 / 消费逻辑
-     - 13. 拆分资料页 / 偏好页 / AI 理解页 API
+     - 13. 拆分资料页 / 记忆页 / AI 理解页 API
      - 14. 增加用户确认 / 忽略 / 纠正推断的接口
      - 15. 增加推荐解释 `source_map`
      - 16. 补完整测试矩阵与审计指标
