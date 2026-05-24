@@ -756,7 +756,11 @@ class GatewayEndToEndRegressionTests(unittest.TestCase):
         self.assertGreaterEqual(dashboard["totals"]["succeeded"], 3)
         self.assertEqual(dashboard["totals"]["backlog_open"], 0)
         self.assertIn("ledger", dashboard)
+        self.assertIn("funnel", dashboard)
         self.assertIn("by_phase", dashboard["ledger"])
+        self.assertIn("relation_stages", dashboard["funnel"])
+        self.assertIn("case_stages", dashboard["funnel"])
+        self.assertGreaterEqual(dashboard["funnel"]["relation_stages"]["relation_total"], 1)
 
         recommendation_types = {
             item["job_type"]: item for item in dashboard["systems"]["recommendation"]["job_types"]
