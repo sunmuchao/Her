@@ -2,6 +2,7 @@
 
 from .service import (
     append_event,
+    build_cross_system_funnel_dashboard,
     build_relation_dashboard,
     get_relation,
     get_relation_by_key,
@@ -22,6 +23,7 @@ __all__ = [
     "DEFAULT_RELATION_LEDGER_MYSQL_DSN",
     "DEFAULT_RELATION_LEDGER_TEST_MYSQL_DSN",
     "append_event",
+    "build_cross_system_funnel_dashboard",
     "build_relation_dashboard",
     "connect_db",
     "get_relation",

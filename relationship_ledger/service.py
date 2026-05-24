@@ -546,6 +546,97 @@ def build_relation_dashboard(conn) -> dict[str, Any]:
     }
 
 
+def build_cross_system_funnel_dashboard(conn) -> dict[str, Any]:
+    relation_rows = conn.execute(
+        """
+        SELECT relation_status, current_phase, COUNT(*) AS relation_count
+        FROM match_relations
+        GROUP BY relation_status, current_phase
+        ORDER BY relation_status ASC, current_phase ASC
+        """
+    ).fetchall()
+    relation_stages = {
+        "relation_total": 0,
+        "relationship_established": 0,
+        "case_active": 0,
+        "chat_opened": 0,
+        "chat_active": 0,
+        "cooling": 0,
+        "closed": 0,
+    }
+    relation_stage_matrix: list[dict[str, Any]] = []
+    for row in relation_rows:
+        relation_status = str(row["relation_status"] or "")
+        current_phase = str(row["current_phase"] or "")
+        count = int(row["relation_count"] or 0)
+        relation_stages["relation_total"] += count
+        if relation_status in {"recommended", "saved", "direct_greet_started", "proxy_intro_active", "matched"}:
+            relation_stages["relationship_established"] += count
+        if current_phase == "case_active":
+            relation_stages["case_active"] += count
+        if current_phase == "chat_opened":
+            relation_stages["chat_opened"] += count
+        if current_phase == "chat_active":
+            relation_stages["chat_active"] += count
+        if relation_status == "cooling":
+            relation_stages["cooling"] += count
+        if relation_status == "closed":
+            relation_stages["closed"] += count
+        relation_stage_matrix.append(
+            {
+                "relation_status": relation_status,
+                "current_phase": current_phase,
+                "relation_count": count,
+            }
+        )
+
+    case_rows = conn.execute(
+        """
+        SELECT case_type, case_status, COUNT(*) AS case_count
+        FROM match_relation_cases
+        GROUP BY case_type, case_status
+        ORDER BY case_type ASC, case_status ASC
+        """
+    ).fetchall()
+    case_stages = {
+        "case_total": 0,
+        "proxy_intro_cases": 0,
+        "matchmaking_cases": 0,
+        "pending_contact": 0,
+        "awaiting_reply": 0,
+        "accepted": 0,
+        "declined": 0,
+        "timed_out": 0,
+        "closed": 0,
+    }
+    case_stage_matrix: list[dict[str, Any]] = []
+    for row in case_rows:
+        case_type = str(row["case_type"] or "")
+        case_status = str(row["case_status"] or "")
+        count = int(row["case_count"] or 0)
+        case_stages["case_total"] += count
+        if case_type == "proxy_intro":
+            case_stages["proxy_intro_cases"] += count
+        if case_type == "matchmaking":
+            case_stages["matchmaking_cases"] += count
+        if case_status in case_stages:
+            case_stages[case_status] += count
+        case_stage_matrix.append(
+            {
+                "case_type": case_type,
+                "case_status": case_status,
+                "case_count": count,
+            }
+        )
+
+    return {
+        "relation_stages": relation_stages,
+        "case_stages": case_stages,
+        "relation_stage_matrix": relation_stage_matrix,
+        "case_stage_matrix": case_stage_matrix,
+    }
+
+
 def list_cases_for_relation(conn, relation_id: str) -> list[dict[str, Any]]:
     rows = conn.execute(
         """
@@ -624,6 +715,8 @@ def _synthesized_cases_from_events(events: list[dict[str, Any]]) -> list[dict[st
 
 __all__ = [
     "append_event",
+    "build_cross_system_funnel_dashboard",
+    "build_relation_dashboard",
     "get_relation",
     "get_relation_by_key",
     "list_cases_for_relation",
