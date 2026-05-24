@@ -19,7 +19,7 @@ from chat_system.async_tasks import (  # type: ignore[import-untyped]
     summarize_chat_async_jobs,
     summarize_chat_async_jobs_by_type,
 )
-from relationship_ledger import build_relation_dashboard  # type: ignore[import-untyped]
+from relationship_ledger import build_cross_system_funnel_dashboard, build_relation_dashboard  # type: ignore[import-untyped]
 
 from .http_helpers import _json_safe, _query_dict, _statuses_from_query
 
@@ -139,6 +139,7 @@ class AsyncJobGatewayMixin:
         return {
             "systems": systems,
             "ledger": getattr(self, "_relation_ledger_summary", {}),
+            "funnel": getattr(self, "_relation_funnel_summary", {}),
             "totals": totals,
             "job_types": job_types,
             "trace_id": get_trace_id(),
@@ -150,6 +151,10 @@ class AsyncJobGatewayMixin:
             self._relation_ledger_summary = _json_safe(self._with_ledger(build_relation_dashboard))
         except Exception:
             self._relation_ledger_summary = {}
+        try:
+            self._relation_funnel_summary = _json_safe(self._with_ledger(build_cross_system_funnel_dashboard))
+        except Exception:
+            self._relation_funnel_summary = {}
         systems = {
             "recommendation": self._async_job_dashboard_system(
                 target="recommendation",

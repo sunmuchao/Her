@@ -34,6 +34,7 @@ from matchmaking_system import (  # noqa: E402
 )
 from matchmaking_system.storage import DEFAULT_MATCHMAKING_TEST_MYSQL_DSN  # noqa: E402
 from relationship_ledger import (  # noqa: E402
+    build_cross_system_funnel_dashboard,
     connect_db as connect_ledger_db,
     get_relation_by_key,
     initialize_database as initialize_ledger_db,
@@ -696,6 +697,47 @@ class MatchmakingSystemTests(unittest.TestCase):
         self.assertEqual(open_match_cases(self.conn, now=datetime(2026, 5, 2, 9, 10, 0)), [])
         self.assertEqual(get_pair(self.conn, pair["pair_key"])["pair_status"], "eligible")
         self.assertEqual(list_match_cases(self.conn), [])
+
+    def test_close_stale_cases_updates_unified_funnel_counts(self):
+        self.create_member("user-a", 1001)
+        self.create_member("user-b", 1002)
+
+        def fake_search_runner(**kwargs):
+            self_id = kwargs.get("self_id")
+            if self_id == 1001:
+                return {"results": [build_result(1002, "小张", 90)]}
+            if self_id == 1002:
+                return {"results": [build_result(1001, "小李", 90)]}
+            return {"results": []}
+
+        refresh_active_pool(
+            self.conn,
+            now=datetime(2026, 5, 2, 9, 0, 0),
+            search_runner=fake_search_runner,
+        )
+        build_mutual_pairs(self.conn, now=datetime(2026, 5, 2, 9, 5, 0))
+        case = open_match_cases(self.conn, now=datetime(2026, 5, 2, 9, 10, 0))[0]
+        dispatch_case_contact(
+            self.conn,
+            case["case_id"],
+            now=datetime(2026, 5, 2, 9, 11, 0),
+        )
+        self.conn.execute(
+            "UPDATE match_cases SET expires_at = ? WHERE case_id = ?",
+            ("2026-05-01 09:00:00", case["case_id"]),
+        )
+        self.conn.commit()
+
+        close_stale_cases(
+            self.conn,
+            now=datetime(2026, 5, 2, 10, 0, 0),
+        )
+        self.ledger_conn.close()
+        self.ledger_conn = connect_ledger_db(DEFAULT_RELATION_LEDGER_TEST_MYSQL_DSN)
+        funnel = build_cross_system_funnel_dashboard(self.ledger_conn)
+
+        self.assertGreaterEqual(funnel["relation_stages"]["cooling"], 1)
+        self.assertGreaterEqual(funnel["case_stages"]["timed_out"], 1)
 
 
 if __name__ == "__main__":  # pragma: no cover

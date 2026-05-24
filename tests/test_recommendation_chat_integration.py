@@ -17,6 +17,7 @@ for path in (REPO_ROOT, RECOMMENDATION_ROOT, CHAT_ROOT):
 
 from recommendation_system import (  # noqa: E402
     close_match_case,
+    close_timed_out_match_cases,
     connect_db as connect_recommendation_db,
     create_match_case,
     create_subscription,
@@ -46,6 +47,7 @@ from chat_system import (  # noqa: E402
 )
 from chat_system.storage import DEFAULT_CHAT_TEST_MYSQL_DSN  # noqa: E402
 from relationship_ledger import (  # noqa: E402
+    build_cross_system_funnel_dashboard,
     connect_db as connect_relation_ledger_db,
     get_relation_by_key,
     initialize_database as initialize_relation_ledger_database,
@@ -104,6 +106,16 @@ class RecommendationChatIntegrationTests(unittest.TestCase):
             os.environ.pop("HER_RELATION_LEDGER_DB", None)
         else:
             os.environ["HER_RELATION_LEDGER_DB"] = self._old_relation_ledger_db
+
+    def load_relation(self, relation_key: str):
+        self.ledger_conn.close()
+        self.ledger_conn = connect_relation_ledger_db(DEFAULT_RELATION_LEDGER_TEST_MYSQL_DSN)
+        return get_relation_by_key(self.ledger_conn, relation_key)
+
+    def load_funnel(self):
+        self.ledger_conn.close()
+        self.ledger_conn = connect_relation_ledger_db(DEFAULT_RELATION_LEDGER_TEST_MYSQL_DSN)
+        return build_cross_system_funnel_dashboard(self.ledger_conn)
 
     def test_proxy_intro_handoff_can_open_chat_on_same_case_and_relation(self) -> None:
         subscription = create_subscription(
@@ -229,7 +241,7 @@ class RecommendationChatIntegrationTests(unittest.TestCase):
             case["case_id"],
             requester_id=requester_user_id,
         )
-        relation = get_relation_by_key(self.ledger_conn, relation_key)
+        relation = self.load_relation(relation_key)
 
         self.assertEqual(thread["case_id"], case["case_id"])
         self.assertEqual(thread["relation_key"], relation_key)
@@ -257,6 +269,63 @@ class RecommendationChatIntegrationTests(unittest.TestCase):
         self.assertGreaterEqual(len(relation["events"]), 6)
         self.assertIn("chat.thread.opened", {event["event_type"] for event in relation["events"]})
         self.assertIn("chat.message.created", {event["event_type"] for event in relation["events"]})
+
+    def test_proxy_intro_timeout_flows_into_cooling_funnel_stage(self) -> None:
+        subscription = create_subscription(
+            self.recommendation_conn,
+            requester_id=72002,
+            title="跨系统超时测试",
+            source="mysql://user:pass@127.0.0.1:3306/her?table=profiles",
+            criteria={"gender": "女", "cities": ["无锡"], "relationship_goals": ["认真恋爱"]},
+            self_profile={"age": 29, "city": "无锡", "height": 180},
+            now=datetime(2026, 5, 10, 9, 0, 0),
+        )
+        refresh_subscription(
+            self.recommendation_conn,
+            subscription["subscription_id"],
+            now=datetime(2026, 5, 10, 9, 5, 0),
+            search_runner=lambda **_: {"results": [build_result(92002, "候选超时", 67)]},
+        )
+        record_user_review(
+            self.recommendation_conn,
+            subscription_id=subscription["subscription_id"],
+            candidate_id=92002,
+            review_type="direct_greet",
+            now=datetime(2026, 5, 10, 9, 10, 0),
+        )
+        deliver_in_app_recommendations(self.recommendation_conn, now=datetime(2026, 5, 10, 9, 20, 0))
+        case = create_match_case(
+            self.recommendation_conn,
+            subscription_id=subscription["subscription_id"],
+            candidate_id=92002,
+            now=datetime(2026, 5, 10, 10, 0, 0),
+        )
+        dispatch_match_case_outreach(
+            self.recommendation_conn,
+            case_id=case["case_id"],
+            now=datetime(2026, 5, 10, 10, 5, 0),
+        )
+        self.recommendation_conn.execute(
+            "UPDATE match_cases SET reply_deadline_at = ? WHERE case_id = ?",
+            ("2026-05-10 10:10:00", case["case_id"]),
+        )
+        self.recommendation_conn.commit()
+        close_timed_out_match_cases(
+            self.recommendation_conn,
+            now=datetime(2026, 5, 10, 12, 0, 0),
+        )
+
+        recommendation = list_recommendations_for_subscription(
+            self.recommendation_conn,
+            subscription["subscription_id"],
+        )[0]
+        relation = self.load_relation(recommendation["relation_key"])
+        funnel = self.load_funnel()
+
+        assert relation is not None
+        self.assertEqual(relation["relation_status"], "cooling")
+        self.assertGreaterEqual(funnel["relation_stages"]["cooling"], 1)
+        self.assertGreaterEqual(funnel["case_stages"]["timed_out"], 1)
 
 
 if __name__ == "__main__":
