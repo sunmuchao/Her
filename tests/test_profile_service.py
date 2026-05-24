@@ -7,6 +7,7 @@ from datetime import datetime
 from unittest import mock
 
 import profile_service.api as profile_service_api
+from persona_memory_sync import persona_memory_lib
 
 
 class _FakeResult:
@@ -49,6 +50,51 @@ class _FakeConnection:
 
 
 class ProfileServiceTests(unittest.TestCase):
+    def test_persona_profile_sync_blocks_profile_fact_fields(self):
+        payload = persona_memory_lib.build_profile_payload(
+            {
+                "display_name": "Alice",
+                "self_age": 31,
+                "self_city": "上海",
+                "self_height": 168,
+                "self_marital_status": "未婚",
+                "self_has_children": 0,
+                "target_age_min": 29,
+                "target_age_max": 35,
+                "target_accept_long_distance": "不接受",
+                "preferred_traits": ["成熟稳重"],
+            },
+            existing_profile={},
+            include_null_persona_fields=set(),
+        )
+
+        self.assertNotIn("age", payload)
+        self.assertNotIn("city", payload)
+        self.assertNotIn("height", payload)
+        self.assertNotIn("marital_status", payload)
+        self.assertNotIn("has_children", payload)
+        self.assertNotIn("income_range", payload)
+        self.assertEqual(payload.get("preferred_age_min"), 29)
+        self.assertEqual(payload.get("preferred_age_max"), 35)
+        self.assertEqual(payload.get("accept_long_distance"), "不接受")
+
+    def test_persona_profile_sync_columns_skip_blocked_profile_facts(self):
+        columns = persona_memory_lib.profile_columns_for_persona_patch(
+            {
+                "self_city": "上海",
+                "self_age": 31,
+                "target_age_min": 29,
+                "target_age_max": 35,
+                "target_location_semantics": "接受同城，长期异地不考虑",
+            }
+        )
+
+        self.assertNotIn("city", columns)
+        self.assertNotIn("age", columns)
+        self.assertIn("preferred_age_min", columns)
+        self.assertIn("preferred_age_max", columns)
+        self.assertIn("location_preference_semantics", columns)
+
     def test_apply_persona_patch_delegates_to_persona_memory_sync(self):
         request = {"user_key": "user-1", "source_type": "explicit", "patch": {"city": "上海"}}
         fake_persona_module = types.ModuleType("persona_memory_sync")
