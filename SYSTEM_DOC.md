@@ -1174,6 +1174,81 @@ System               System               / Verification       System           
      - 第二期拆层：新增或显式化 `user_preferences` / `persona_inferences` 读写模型，把历史 persona blob 中的“明确表达”与“系统推断”拆开，并补齐 `source`、`confidence`、`strength`、`evidence`
      - 第三期统一编译：让 recommendation / matchmaking / search 统一消费 `effective_criteria` 编译结果，同时保留必要的 criteria snapshot 以支持推荐解释、AB 实验和排障
    - 这一改造完成后，系统会从“把聊天理解直接写进资料”转成“把聊天理解先记为笔记，再按规则编译进推荐”，从而真正完成 `profile` / `persona` / 推荐使用条件三层的边界收敛
+   - 为了把这一方案真正落地，后续可以继续拆成以下 6 组具体任务：
+     - 任务包 1：字段分层与规则冻结
+       - 盘点当前所有 `profile / persona / search criteria` 相关字段
+       - 为每个字段标注所属层：`P0 强事实字段`、`P1 明确偏好字段`、`P2 推断字段`、`P3 运行时条件`
+       - 为每个字段补写入规则：只能资料填写、只能显式确认、可来自明确表达、可来自强推断、可来自弱推断
+       - 为每个字段补展示规则：是否允许出现在资料页、偏好页、AI 理解页、内部推荐解释
+       - 为每个字段补推荐使用规则：是否允许进入 `effective_criteria`、是硬过滤还是软偏好、推断权重上限是多少
+       - 验收标准：所有现有画像字段都被归类，且不再存在“来源不明、权限不明”的字段
+     - 任务包 2：`persona_memory_sync` 写入止血
+       - 梳理 `persona_memory_sync` 当前所有写 `profiles` 的入口
+       - 梳理哪些字段现在会从 persona 自动同步到 profile
+       - 建立 `profile sync allowlist`
+       - 禁止推断写入所有 `P0` 强事实字段
+       - 将非白名单字段改为写入 `persona_inference` 或临时观察记录，而不是继续写 `profiles`
+       - 为同步逻辑补充来源标记：`profile_form`、`explicit_confirmation`、`explicit_statement`、`strong_inference`、`weak_inference`
+       - 为资料页读模型加保护，确保只读正式资料源
+       - 验收标准：对话推断不能再改年龄、城市、婚姻状态等正式资料字段，资料页也不再展示推断内容
+     - 任务包 3：新的画像存储模型拆层
+       - 设计并落库 `user_preferences`
+       - 设计并落库 `persona_inferences`
+       - 明确 `profiles` 只保留正式资料事实
+       - 为 `persona_inferences` 增加标准字段：`field`、`value`、`source`、`strength`、`confidence`、`evidence`、`updated_at`、`status`
+       - 为 `user_preferences` 增加来源字段：`profile_form`、`explicit_statement`、`user_confirmed`
+       - 为推断字段定义状态流转：`inferred_weak`、`inferred_strong`、`user_confirmed`、`user_rejected`
+       - 补 migration，把历史 persona 数据迁移分类
+       - 为迁移过程增加审计日志，避免静默丢数据
+       - 验收标准：明确表达和系统推断不再共用一个混合结构，任意画像字段都能回答“它从哪来、现在处于什么状态”
+     - 任务包 4：`effective_criteria` 编译层建设
+       - 设计 `compile_effective_criteria(user_id, scene)` 接口
+       - 定义标准输入：`profile_facts`、`user_preferences`、`persona_inferences`、`scene`、`strategy params`
+       - 定义标准输出：`hard_filters`、`soft_preferences`、`ranking_features`、`source_map`、`strategy_flags`
+       - 制定优先级规则：`profile_facts` > `explicit_statement/user_confirmed` > `strong_inference` > `weak_inference`
+       - 制定冲突合并规则：用户填写覆盖推断、用户拒绝压制推断、弱推断不能变成硬过滤
+       - 让 recommendation 改为只消费编译结果
+       - 让 search 改为只消费编译结果
+       - 让 discovery 的后续订阅 / 搜索条件保存也改走编译层
+       - 增加 `criteria snapshot` 或调试日志，用于推荐解释和排障
+       - 验收标准：推荐、搜索、发现不再各自直接拼接 profile 与 persona，系统可以解释某个推荐条件来自哪里
+     - 任务包 5：前端与 API 读侧拆分
+       - 拆分资料页 API，只返回 `profile_facts`
+       - 拆分偏好页 API，返回 `user_preferences`
+       - 新增 AI 理解页 API，返回 `persona_inferences`
+       - AI 理解页支持用户确认、忽略、纠正推断结果
+       - 推荐解释接口读取 `effective_criteria` 与 `source_map`
+       - 前端文案明确区分“你填写的”“你明确说过的”“系统推测的”
+       - 逐步下线旧的混合画像接口
+       - 验收标准：资料页只显示正式资料，推断内容不会再冒充资料展示，用户也可以干预系统推断
+     - 任务包 6：测试、审计与迁移收尾
+       - 补字段写入边界测试
+       - 补资料页展示隔离测试
+       - 补 `effective_criteria` 编译测试
+       - 补来源优先级测试
+       - 补用户确认 / 拒绝后的状态流转测试
+       - 补推荐解释 `source_map` 测试
+       - 补历史 persona 迁移回归测试
+       - 补跨 recommendation / search / discovery 的端到端回归
+       - 增加后台审计报表：推断写入次数、被用户确认次数、被用户拒绝次数、不同来源字段占比
+       - 验收标准：改造后不会再出现“推断偷偷写进资料”，推荐链路也具备可解释、可回放、可审计能力
+   - 若继续往执行层排期，建议按以下顺序推进：
+     - 1. 盘点并分类现有 persona / profile / search 字段
+     - 2. 定义字段写入来源与展示规则
+     - 3. 收紧 `persona_memory_sync -> profiles` 同步白名单
+     - 4. 禁止推断写入 `P0` 强事实字段
+     - 5. 新增 `user_preferences` 数据模型
+     - 6. 新增 `persona_inferences` 数据模型
+     - 7. 为推断字段补 `source / confidence / strength / evidence / status`
+     - 8. 设计并实现历史 persona 数据迁移
+     - 9. 实现 `compile_effective_criteria(user_id, scene)`
+     - 10. 统一 recommendation 消费 `effective_criteria`
+     - 11. 统一 search 消费 `effective_criteria`
+     - 12. 统一 discovery 后续条件保存 / 消费逻辑
+     - 13. 拆分资料页 / 偏好页 / AI 理解页 API
+     - 14. 增加用户确认 / 忽略 / 纠正推断的接口
+     - 15. 增加推荐解释 `source_map`
+     - 16. 补完整测试矩阵与审计指标
 
 3. 统一关系总账已落地最小正式版本，但读侧切换还未完成
    - 新增独立 `relationship_ledger` 目标库，已包含 `match_relations`、`match_relation_cases`、`match_relation_events` 三张核心表
