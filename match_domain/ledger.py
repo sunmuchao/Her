@@ -204,89 +204,112 @@ def reduce_relation_ledger(events: Sequence[MatchEvent]) -> RelationLedgerState:
     last_type: str | None = None
 
     for evt in ordered:
-        if evt.aggregate_type != AGGREGATE_RELATION:
-            continue
         t = evt.event_type
-        last_type = t
         payload = evt.payload
+        aggregate_type = evt.aggregate_type
 
-        if t == "review_skip":
-            status, active_case = RelationStatus.SKIPPED, None
-        elif t == "review_save":
-            status, active_case = RelationStatus.SAVED, None
-        elif t == "review_direct_greet":
-            status, active_case = RelationStatus.RECOMMENDED, None
-        elif t == "skip":
-            status, active_case = RelationStatus.SKIPPED, None
-        elif t == "save":
-            status, active_case = RelationStatus.SAVED, None
-        elif t == "direct_greet":
-            status, active_case = RelationStatus.DIRECT_GREET_STARTED, None
-        elif t == "relation_state_revision":
-            st, ac = relation_status_from_row_snapshot(
-                delivery_status=payload.get("delivery_status"),
-                delivery_reason=payload.get("delivery_reason"),
-                last_action_type=payload.get("last_action_type"),
-                active_match_case_id=payload.get("active_match_case_id"),
-            )
-            status, active_case = st, ac
-        elif t == "request_proxy_intro":
-            case_id = payload.get("case_id")
-            active_case = str(case_id) if case_id else active_case
-            status = RelationStatus.PROXY_INTRO_ACTIVE
-        elif t == "pair_eligible":
-            status = RelationStatus.MATCHED
-        elif t == "pair_case_opened":
-            case_id = payload.get("case_id")
-            active_case = str(case_id) if case_id else active_case
-            status = RelationStatus.MATCHED
-        elif t == "case_created":
-            case_id = payload.get("case_id")
-            active_case = str(case_id) if case_id else active_case
-            status = RelationStatus.MATCHED
-        elif t in {"first_contact_sent", "second_contact_sent", "first_reply_accepted"}:
-            status = RelationStatus.MATCHED
-        elif t in {"first_reply_decline", "first_reply_declined", "first_reply_timeout", "second_reply_decline", "second_reply_declined", "second_reply_timeout", "case_expired"}:
-            active_case = None
-            status = RelationStatus.COOLING
-        elif t == "second_reply_accepted":
-            active_case = None
-            status = RelationStatus.MATCHED
-        elif t == "pair_mutual_accept":
-            active_case = None
-            status = RelationStatus.MATCHED
-        elif t == "pair_needs_revalidation":
-            active_case = None
-            status = RelationStatus.RECOMMENDED
-        elif t == "pair_stale":
-            active_case = None
-            status = RelationStatus.RECOMMENDED
-        elif t == "pair_cooling":
-            active_case = None
-            status = RelationStatus.COOLING
-        elif t == "pair_blocked":
-            active_case = None
-            status = RelationStatus.RECOMMENDED
-        elif t == "proxy_intro_reply_accepted":
-            status = RelationStatus.PROXY_INTRO_ACTIVE
-        elif t == "proxy_intro_reply_declined":
-            status, active_case = RelationStatus.COOLING, None
-        elif t == "proxy_intro_timed_out":
-            status, active_case = RelationStatus.COOLING, None
-        elif t.startswith("proxy_intro_closed_"):
-            reason = t.removeprefix("proxy_intro_closed_")
-            active_case = None
-            if reason == "handoff_completed":
-                status = RelationStatus.CLOSED
-            elif reason in {"requester_cancelled", "duplicate_merged"}:
-                status = RelationStatus.SAVED
-            elif reason == "delivery_failed":
+        if aggregate_type == AGGREGATE_RELATION:
+            last_type = t
+
+            if t == "review_skip":
+                status, active_case = RelationStatus.SKIPPED, None
+            elif t == "review_save":
+                status, active_case = RelationStatus.SAVED, None
+            elif t == "review_direct_greet":
+                status, active_case = RelationStatus.RECOMMENDED, None
+            elif t == "skip":
+                status, active_case = RelationStatus.SKIPPED, None
+            elif t == "save":
+                status, active_case = RelationStatus.SAVED, None
+            elif t == "direct_greet":
+                status, active_case = RelationStatus.DIRECT_GREET_STARTED, None
+            elif t == "relation_state_revision":
+                st, ac = relation_status_from_row_snapshot(
+                    delivery_status=payload.get("delivery_status"),
+                    delivery_reason=payload.get("delivery_reason"),
+                    last_action_type=payload.get("last_action_type"),
+                    active_match_case_id=payload.get("active_match_case_id"),
+                )
+                status, active_case = st, ac
+            elif t == "request_proxy_intro":
+                case_id = payload.get("case_id")
+                active_case = str(case_id) if case_id else active_case
+                status = RelationStatus.PROXY_INTRO_ACTIVE
+            elif t == "pair_eligible":
+                status = RelationStatus.MATCHED
+            elif t == "pair_case_opened":
+                case_id = payload.get("case_id")
+                active_case = str(case_id) if case_id else active_case
+                status = RelationStatus.MATCHED
+            elif t == "pair_mutual_accept":
+                active_case = None
+                status = RelationStatus.MATCHED
+            elif t == "pair_needs_revalidation":
+                active_case = None
+                status = RelationStatus.RECOMMENDED
+            elif t == "pair_stale":
+                active_case = None
+                status = RelationStatus.RECOMMENDED
+            elif t == "pair_cooling":
+                active_case = None
                 status = RelationStatus.COOLING
-            else:
-                status = RelationStatus.CLOSED
-        else:
-            # Unknown relation events do not clear proxy-intro state
-            pass
+            elif t == "pair_blocked":
+                active_case = None
+                status = RelationStatus.RECOMMENDED
+            elif t == "proxy_intro_reply_accepted":
+                status = RelationStatus.PROXY_INTRO_ACTIVE
+            elif t == "proxy_intro_reply_declined":
+                status, active_case = RelationStatus.COOLING, None
+            elif t == "proxy_intro_timed_out":
+                status, active_case = RelationStatus.COOLING, None
+            elif t.startswith("proxy_intro_closed_"):
+                reason = t.removeprefix("proxy_intro_closed_")
+                active_case = None
+                if reason == "handoff_completed":
+                    status = RelationStatus.CLOSED
+                elif reason in {"requester_cancelled", "duplicate_merged"}:
+                    status = RelationStatus.SAVED
+                elif reason == "delivery_failed":
+                    status = RelationStatus.COOLING
+                else:
+                    status = RelationStatus.CLOSED
+            continue
+
+        if aggregate_type == AGGREGATE_CASE:
+            case_id = payload.get("case_id") or evt.aggregate_id
+            if case_id:
+                active_case = str(case_id)
+            if t == "case_created":
+                status = RelationStatus.MATCHED if payload.get("pair_key") else RelationStatus.PROXY_INTRO_ACTIVE
+            elif t in {"outreach_sent", "first_contact_sent", "second_contact_sent", "first_reply_accepted", "reply_accepted"}:
+                if status != RelationStatus.MATCHED:
+                    status = RelationStatus.PROXY_INTRO_ACTIVE
+            elif t in {"proxy_intro_reply_declined", "reply_declined"}:
+                status, active_case = RelationStatus.COOLING, None
+            elif t in {"proxy_intro_timed_out", "case_timed_out", "case_expired", "first_reply_timeout", "second_reply_timeout"}:
+                status, active_case = RelationStatus.COOLING, None
+            elif t in {"first_reply_decline", "first_reply_declined", "second_reply_decline", "second_reply_declined"}:
+                status, active_case = RelationStatus.COOLING, None
+            elif t in {"second_reply_accepted"}:
+                status = RelationStatus.MATCHED
+            elif t == "case_closed" or t.startswith("case_closed_") or t.startswith("proxy_intro_closed_"):
+                active_case = None
+                if t.startswith("proxy_intro_closed_"):
+                    reason = t.removeprefix("proxy_intro_closed_")
+                    if reason == "handoff_completed":
+                        status = RelationStatus.CLOSED
+                    elif reason in {"requester_cancelled", "duplicate_merged"}:
+                        status = RelationStatus.SAVED
+                    elif reason == "delivery_failed":
+                        status = RelationStatus.COOLING
+                    else:
+                        status = RelationStatus.CLOSED
+                else:
+                    status = RelationStatus.CLOSED
+            continue
+
+        if t == "chat.thread.opened" or t == "chat.message.created":
+            last_type = t
 
     return RelationLedgerState(
         status=status,
