@@ -1119,6 +1119,61 @@ System               System               / Verification       System           
      - `effective_criteria`：最终给搜索/排序用的编译后条件
    - 但当前实现里，`persona_memory_sync` 仍会把一部分 persona 推断结果写回 profile，再被 discovery / recommendation / search 消费
    - 这意味着“用户明说的”和“系统猜出来的”还没有彻底分开，后续需要明确哪些字段可以同步，哪些只能停留在 persona 层，哪些只能作为搜索层编译结果存在
+   - 更完整的目标状态应进一步收敛为四层，而不是只停留在概念区分：
+     - `profile_facts`：用户自己填写或明确确认的正式资料事实
+     - `preference_memory`：用户明确表达过、但不一定适合公开展示的择偶偏好
+     - `persona_inference`：系统从对话、行为中推断出的理解，且必须区分 `strong_inference` 与 `weak_inference`
+     - `effective_criteria`：推荐 / 搜索 / 排序运行时真正消费的编译后条件
+   - 这四层在产品上的直白含义分别是：
+     - `profile_facts`：用户档案
+     - `preference_memory`：用户明确说过的偏好记录
+     - `persona_inference`：系统自己的理解笔记
+     - `effective_criteria`：系统内部拿去筛人的工作单
+   - 后续收敛时应遵守以下强规则：
+     - 基础且重要的事实字段不能通过对话推测直接写入正式资料，只能来自资料表单或用户显式确认
+     - 用户资料展示页只能展示 `profile_facts`，不能把系统推断内容伪装成用户已填写资料
+     - 对话和行为产生的信息必须至少区分 `explicit_statement`、`strong_inference`、`weak_inference`
+     - 推荐运行时可以同时使用正式资料、明确偏好和推断信号，但系统必须清楚知道每个字段的来源与置信度
+     - 用户后续显式填写或确认的内容，优先级必须高于系统推断
+   - 字段层面建议进一步分层为：
+     - `P0 强事实字段`：年龄、身高、城市、婚姻状态、是否要孩子、学历、职业等，只能通过资料填写或显式确认写入 `profile_facts`
+     - `P1 明确偏好字段`：年龄范围、城市偏好、介意抽烟、关系目标、喜欢成熟型等，可来自资料填写或用户明确表达，进入 `preference_memory`
+     - `P2 推断字段`：沟通风格、安全感需求、对节奏的偏好、对某类对象的隐性倾向等，只能进入 `persona_inference`
+     - `P3 运行时条件`：过滤条件、排序权重、探索系数、场景策略修正等，只存在于 `effective_criteria`
+   - 其中 `persona_inference` 不能只是一个松散 blob，而应至少带上：
+     - `source`
+     - `confidence`
+     - `strength`
+     - `evidence`
+     - `updated_at`
+   - 这意味着 `persona_memory_sync` 的职责也要收敛：它应从“既记忆 persona、又顺手改 profile”的混合模块，调整为三段式流程：
+     - `signal extraction`：从对话、行为、历史记录中提取信号
+     - `memory classification`：判断该信号应进入 `profile_facts`、`preference_memory` 还是 `persona_inference`
+     - `safe persistence`：按层落库，并通过字段白名单禁止跨层乱写
+   - 推荐 / 搜索 / discovery 后续不应继续各自直接拼接 profile 与 persona，而应统一改为消费类似 `compile_effective_criteria(user_id, scene)` 的编译入口：
+     - 输入：`profile_facts`、`preference_memory`、`persona_inference`、当前场景与策略参数
+     - 输出：`hard_filters`、`soft_preferences`、`ranking_features`、`source_map`
+   - 其中 `source_map` 很关键，因为它决定系统能否回答“这条推荐为什么出现”，并区分：
+     - 哪些条件来自用户正式资料
+     - 哪些来自用户明确表达
+     - 哪些只是强推断
+     - 哪些只是弱推断
+   - 前端读侧也应同步拆开，而不是继续共用同一份混合画像：
+     - 资料页只读 `profile_facts`
+     - 偏好管理页读取 `preference_memory`
+     - AI 理解页可选读取 `persona_inference`，并允许用户确认、忽略或纠正
+     - 推荐解释与排序审计读取 `effective_criteria` 与 `source_map`
+   - 从状态流转上看，推断字段至少应支持：
+     - `inferred_weak`
+     - `inferred_strong`
+     - `user_confirmed`
+     - `user_rejected`
+   - 核心原则是：系统可以猜，但不能自动把猜测升级成正式档案；只有用户确认后，部分内容才允许升格为正式偏好，`P0` 强事实字段则必须始终经过显式确认
+   - 结合当前代码，这一层的实施顺序建议分三期推进：
+     - 第一期止血：收紧 `persona_memory_sync -> profiles` 的同步白名单，禁止推断写入 `P0` 强事实字段，资料页只读正式资料源，并为推荐日志补充字段来源标记
+     - 第二期拆层：新增或显式化 `user_preferences` / `persona_inferences` 读写模型，把历史 persona blob 中的“明确表达”与“系统推断”拆开，并补齐 `source`、`confidence`、`strength`、`evidence`
+     - 第三期统一编译：让 recommendation / matchmaking / search 统一消费 `effective_criteria` 编译结果，同时保留必要的 criteria snapshot 以支持推荐解释、AB 实验和排障
+   - 这一改造完成后，系统会从“把聊天理解直接写进资料”转成“把聊天理解先记为笔记，再按规则编译进推荐”，从而真正完成 `profile` / `persona` / 推荐使用条件三层的边界收敛
 
 3. 统一关系总账已落地最小正式版本，但读侧切换还未完成
    - 新增独立 `relationship_ledger` 目标库，已包含 `match_relations`、`match_relation_cases`、`match_relation_events` 三张核心表
