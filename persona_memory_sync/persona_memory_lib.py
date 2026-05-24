@@ -211,6 +211,30 @@ PERSONA_TO_PROFILE_FIELD_MAP = {
     "target_requires_partner_accept_my_children": "requires_partner_accept_my_children",
 }
 
+PROFILE_FACT_PERSONA_FIELDS = {
+    "display_name",
+    "self_gender",
+    "self_age",
+    "self_city",
+    "self_district",
+    "self_height",
+    "self_education",
+    "self_income_wan",
+    "self_job",
+    "self_marital_status",
+    "self_has_children",
+    "self_children_count",
+    "self_children_living_with_self",
+}
+
+AUTO_PROFILE_SYNC_BLOCKED_PERSONA_FIELDS = PROFILE_FACT_PERSONA_FIELDS
+
+AUTO_PROFILE_SYNC_PERSONA_TO_PROFILE_FIELD_MAP = {
+    persona_field: profile_field
+    for persona_field, profile_field in PERSONA_TO_PROFILE_FIELD_MAP.items()
+    if persona_field not in AUTO_PROFILE_SYNC_BLOCKED_PERSONA_FIELDS
+}
+
 PROFILE_EXTENSION_COLUMNS = {
     "matcher_traits_json": "JSON NULL",
     "matcher_preferences_json": "JSON NULL",
@@ -228,9 +252,8 @@ PROFILE_EXTENSION_COLUMNS = {
     "public_notes": "TEXT NULL",
 }
 
-PROFILE_SYNC_PERSONA_FIELDS = set(PERSONA_TO_PROFILE_FIELD_MAP) | {
+PROFILE_SYNC_PERSONA_FIELDS = set(AUTO_PROFILE_SYNC_PERSONA_TO_PROFILE_FIELD_MAP) | {
     "display_name",
-    "self_income_wan",
     "self_life_rhythm",
     "self_work_pattern",
     "self_expression_style",
@@ -623,7 +646,7 @@ def persona_field_affects_profile(field_name: str) -> bool:
 def profile_columns_for_persona_patch(patch: Dict[str, Any]) -> List[str]:
     columns = set()
     for field_name in patch:
-        profile_field = PERSONA_TO_PROFILE_FIELD_MAP.get(field_name)
+        profile_field = AUTO_PROFILE_SYNC_PERSONA_TO_PROFILE_FIELD_MAP.get(field_name)
         if profile_field:
             columns.add(profile_field)
         columns.update(PATCH_DERIVED_PROFILE_COLUMNS.get(field_name, set()))
@@ -1222,12 +1245,15 @@ def build_profile_payload(
     existing_profile = existing_profile or {}
     include_null_persona_fields = set(include_null_persona_fields or [])
     payload: Dict[str, Any] = {}
-    for persona_field, profile_field in PERSONA_TO_PROFILE_FIELD_MAP.items():
+    for persona_field, profile_field in AUTO_PROFILE_SYNC_PERSONA_TO_PROFILE_FIELD_MAP.items():
         value = persona.get(persona_field)
         if value is not None or persona_field in include_null_persona_fields:
             payload[profile_field] = value
 
-    if persona.get("self_income_wan") is not None:
+    if (
+        persona.get("self_income_wan") is not None
+        and "self_income_wan" not in AUTO_PROFILE_SYNC_BLOCKED_PERSONA_FIELDS
+    ):
         payload["income_range"] = income_wan_to_range(persona.get("self_income_wan"))
     if persona.get("target_accept_long_distance") is not None:
         canonical_long_distance = canonicalize_long_distance_state(

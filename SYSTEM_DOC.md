@@ -1182,7 +1182,7 @@ System               System               / Verification       System           
        - 为每个字段补展示规则：是否允许出现在资料页、偏好页、AI 理解页、内部推荐解释
        - 为每个字段补推荐使用规则：是否允许进入 `effective_criteria`、是硬过滤还是软偏好、推断权重上限是多少
        - 验收标准：所有现有画像字段都被归类，且不再存在“来源不明、权限不明”的字段
-       - 当前代码基线下的第一版字段户口表可先冻结如下：
+     - 当前代码基线下的第一版字段户口表可先冻结如下：
          - `P0 强事实字段（正式资料事实）`
            - 当前字段：`display_name`、`self_gender`、`self_age`、`self_city`、`self_district`、`self_height`、`self_education`、`self_income_wan`、`self_job`、`self_marital_status`、`self_has_children`、`self_children_count`、`self_children_living_with_self`
            - 边界说明：这些字段定义“我是谁、我当前现实情况如何”，属于正式资料，不允许系统靠对话推测直接写入
@@ -1229,6 +1229,11 @@ System               System               / Verification       System           
          - `partner_search/api.py::normalize_persona_profile(...)` 当前把 `self_*`、`target_*`、`must_have_tags`、`preferred_traits` 等混入同一对象消费，说明 `P0/P1/P2` 仍未真正分开
          - `persona_memory_sync/persona_memory_lib.py::build_profile_payload(...)` 当前会把 persona 字段重新写回 profile payload，这是 `P2 -> P0/P1` 污染的主要入口
          - `persona_memory_sync/audit.py` 已经隐含了一部分正确边界：`strong_inference_patch` 仅允许 `must_have_tags`、`must_not_have_tags`、`preferred_traits`、`disliked_traits`、`persona_summary_internal`、`preference_summary_internal`、`public_*_draft`
+       - 该任务包的第一轮落地已完成：
+         - 已在 `persona_memory_sync/persona_memory_lib.py` 中把 `display_name`、`self_gender`、`self_age`、`self_city`、`self_district`、`self_height`、`self_education`、`self_income_wan`、`self_job`、`self_marital_status`、`self_has_children`、`self_children_count`、`self_children_living_with_self` 从 persona 自动回写 profile 的映射中摘除
+         - 这意味着 `build_profile_payload(...)` 与 `profile_columns_for_persona_patch(...)` 的自动 profile 同步路径，已不再更新上述 `P0` 强事实字段
+         - 同时保留了 `target_*` 偏好字段以及 `matcher/public` 相关安全投影的同步能力，避免 recommendation / search / public profile 依赖被一次性打断
+         - 已补单元测试验证：persona patch 仍可更新安全偏好列，但不会再生成 `age`、`city`、`height`、`marital_status`、`has_children` 等正式资料列更新
        - 因此，任务包 1 的最终冻结结果应当形成一张正式字段表，至少包含以下列：
          - `field_name`
          - `current_source`
