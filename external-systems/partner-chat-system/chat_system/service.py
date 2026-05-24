@@ -46,6 +46,11 @@ def _inflate_message(row: dict[str, Any] | None) -> dict[str, Any] | None:
     return inflate_json_columns(row, metadata=("metadata_json", {}))
 
 
+def _ledger_relation_key(thread: dict[str, Any]) -> str:
+    metadata = thread.get("metadata") or {}
+    return str(metadata.get("ledger_relation_key") or thread["relation_key"])
+
+
 def get_thread(conn, thread_id: str) -> dict[str, Any] | None:
     cur = conn.execute(
         "SELECT * FROM chat_threads WHERE thread_id = ? LIMIT 1",
@@ -115,7 +120,7 @@ def get_or_create_thread(
         )
         append_event_to_default_ledger(
             event=opened_event,
-            relation_key=relation_key,
+            relation_key=str((metadata or {}).get("ledger_relation_key") or relation_key),
             case_id=case_id,
         )
         conn.commit()
@@ -368,7 +373,7 @@ def post_message(
         )
         append_event_to_default_ledger(
             event=message_event,
-            relation_key=str(thread["relation_key"]),
+            relation_key=_ledger_relation_key(thread),
             case_id=str(thread["case_id"]),
         )
         conn.commit()

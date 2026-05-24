@@ -131,6 +131,17 @@ def inflate_match_case(case: dict[str, Any] | None, *, conn=None) -> dict[str, A
     inflated["outreach_payload"] = json_loads(inflated.pop("outreach_payload_json"), {})
     inflated["reply_payload"] = json_loads(inflated.pop("reply_payload_json"), {})
     inflated["case_type"] = inflated.get("case_type") or CaseType.PROXY_INTRO.value
+    recommendation = None
+    if conn is not None:
+        recommendation_id = inflated.get("recommendation_id")
+        subscription_id = inflated.get("subscription_id")
+        candidate_id = inflated.get("candidate_id")
+        if recommendation_id is not None and subscription_id and candidate_id is not None:
+            recommendation = get_recommendation(conn, str(subscription_id), int(candidate_id))
+    if recommendation:
+        inflated["relation_key"] = recommendation.get("relation_key")
+        inflated["owner_profile_ref"] = recommendation.get("owner_profile_ref")
+        inflated["target_profile_ref"] = recommendation.get("target_profile_ref")
     cid = inflated.get("case_id")
     ledger_events = []
     if conn is not None and cid:
