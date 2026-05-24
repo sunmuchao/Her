@@ -1182,6 +1182,61 @@ System               System               / Verification       System           
        - 为每个字段补展示规则：是否允许出现在资料页、偏好页、AI 理解页、内部推荐解释
        - 为每个字段补推荐使用规则：是否允许进入 `effective_criteria`、是硬过滤还是软偏好、推断权重上限是多少
        - 验收标准：所有现有画像字段都被归类，且不再存在“来源不明、权限不明”的字段
+       - 当前代码基线下的第一版字段户口表可先冻结如下：
+         - `P0 强事实字段（正式资料事实）`
+           - 当前字段：`display_name`、`self_gender`、`self_age`、`self_city`、`self_district`、`self_height`、`self_education`、`self_income_wan`、`self_job`、`self_marital_status`、`self_has_children`、`self_children_count`、`self_children_living_with_self`
+           - 边界说明：这些字段定义“我是谁、我当前现实情况如何”，属于正式资料，不允许系统靠对话推测直接写入
+           - 写入规则：仅允许 `profile_form` 或 `explicit_confirmation`
+           - 展示规则：资料页可展示；推荐解释可引用；AI 理解页不可把它们展示成“系统猜测结果”
+           - 推荐规则：允许进入 `effective_criteria`，必要时可作为硬过滤或候选特征
+         - `P0-P1 过渡字段（建议按正式偏好事实管理，不允许弱推断写入）`
+           - 当前字段：`self_smoking`、`self_drinking`、`self_relationship_goal`
+           - 边界说明：这几项既像自我资料，又带偏好/表达性，短期内应按“正式填写或明确确认后生效”的方式管理，而不是开放给推断自动改写
+           - 写入规则：允许 `profile_form`、`explicit_confirmation`、`explicit_statement`，不允许 `weak_inference`
+           - 展示规则：资料页可展示，但必须只展示用户填写或确认后的值
+           - 推荐规则：允许进入 `effective_criteria`
+         - `P1 明确偏好字段（用户明说的择偶条件与接受边界）`
+           - 当前字段：`target_gender`、`target_age_min`、`target_age_max`、`target_cities`、`target_height_min`、`target_height_max`、`target_education_min`、`target_income_min_wan`、`target_income_max_wan`、`target_marital_statuses`、`target_marital_status_strength`、`target_accept_partner_children`、`target_accept_partner_children_strength`、`target_accept_long_distance`、`target_location_semantics`、`target_requires_partner_accept_my_children`、`target_want_children`、`target_marriage_timeline`
+           - 边界说明：这些字段定义“我想找什么样的人、边界在哪里”，不是自我事实，也不应伪装成公开资料
+           - 写入规则：允许 `profile_form`、`explicit_statement`、`explicit_confirmation`；不允许 `weak_inference` 直接写成正式偏好
+           - 展示规则：偏好页可展示；资料公开页默认不展示；推荐解释可展示来源
+           - 推荐规则：允许进入 `effective_criteria`；其中年龄、城市、婚况、子女接受度、异地接受度可按场景进入硬过滤，其余更多作为软偏好
+         - `P2 推断标签字段（系统理解出的偏好标签）`
+           - 当前字段：`must_have_tags`、`must_not_have_tags`、`preferred_traits`、`disliked_traits`
+           - 边界说明：这些字段当前最混，代码里既被当成 matcher 偏好，又被当成 persona 推断；后续应统一归到 `persona_inference`
+           - 写入规则：允许 `explicit_statement`、`strong_inference`、`weak_inference`，但必须带 `source`、`confidence`、`strength`
+           - 展示规则：AI 理解页可展示；资料页不可展示成正式资料；偏好页只展示用户已确认或明确表达部分
+           - 推荐规则：允许进入 `effective_criteria`，但默认只能作为软偏好，不能直接当硬过滤
+         - `P2 推断总结字段（系统内部理解与公开草稿）`
+           - 当前字段：`persona_summary_internal`、`preference_summary_internal`、`public_profile_summary_draft`、`public_preference_summary_draft`
+           - 边界说明：这些字段是系统总结和文案草稿，不是用户正式资料，也不是可直接用于硬过滤的结构化条件
+           - 写入规则：允许 `strong_inference`；其中 `public_*_draft` 允许运营或用户确认后再发布，不允许自动当正式资料
+           - 展示规则：`*_internal` 仅内部可见；`public_*_draft` 仅作为草稿预览，不直接等同于资料页事实
+           - 推荐规则：不直接当硬过滤；如要使用，只能经过结构化编译后转成软特征
+         - `P2 软自我描述字段（当前代码里仍放在 explicit-only，但建议后续从正式事实中拆出）`
+           - 当前字段：`self_life_rhythm`、`self_work_pattern`、`self_expression_style`
+           - 边界说明：这类字段比年龄、城市更主观，更像“自我风格描述”；短期可继续要求明确表达，长期更适合落在 `persona_inference` 或“已确认的自我描述”层
+           - 写入规则：短期允许 `explicit_statement` / `explicit_confirmation`；长期不建议让弱推断直接入正式资料
+           - 展示规则：可在 AI 理解页或用户自我描述页展示；资料公开页谨慎展示
+           - 推荐规则：允许作为软排序特征
+         - `P3 运行时条件（搜索 / 推荐编译后条件）`
+           - 当前代码中已散落存在的运行时字段包括：`height_min/max`、`cities`、`settlement_cities`、`relationship_goals`、`smoking`、`drinking`、`marital_statuses`、`want_children`、`accept_partner_children`、`must_not_have`，以及排序时使用的 `communication_style`、`relationship_capacity`、strictness、risk_flags 等
+           - 边界说明：这些字段不是长期档案，而是每次搜索 / 推荐前由 `profile_facts + preference_memory + persona_inference` 编译出来的执行条件
+           - 写入规则：不允许人工直接长期写库为主事实；应由 `compile_effective_criteria(...)` 动态生成
+           - 展示规则：不在资料页展示；可在推荐解释、调试页、运营报表中展示
+           - 推荐规则：这是推荐 / 搜索真正消费的一层，其中要明确区分 `hard_filters`、`soft_preferences`、`ranking_features`、`risk_controls`
+       - 基于当前代码，还需要同步冻结以下跨层冲突判断：
+         - `partner_search/api.py::normalize_persona_profile(...)` 当前把 `self_*`、`target_*`、`must_have_tags`、`preferred_traits` 等混入同一对象消费，说明 `P0/P1/P2` 仍未真正分开
+         - `persona_memory_sync/persona_memory_lib.py::build_profile_payload(...)` 当前会把 persona 字段重新写回 profile payload，这是 `P2 -> P0/P1` 污染的主要入口
+         - `persona_memory_sync/audit.py` 已经隐含了一部分正确边界：`strong_inference_patch` 仅允许 `must_have_tags`、`must_not_have_tags`、`preferred_traits`、`disliked_traits`、`persona_summary_internal`、`preference_summary_internal`、`public_*_draft`
+       - 因此，任务包 1 的最终冻结结果应当形成一张正式字段表，至少包含以下列：
+         - `field_name`
+         - `current_source`
+         - `target_layer`
+         - `allowed_write_sources`
+         - `display_surface`
+         - `criteria_usage`
+         - `notes`
      - 任务包 2：`persona_memory_sync` 写入止血
        - 梳理 `persona_memory_sync` 当前所有写 `profiles` 的入口
        - 梳理哪些字段现在会从 persona 自动同步到 profile
