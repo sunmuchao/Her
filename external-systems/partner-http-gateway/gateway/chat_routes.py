@@ -196,9 +196,7 @@ def timeline_payload(
     except Exception:
         rec_part = {"case": None, "events": []}
     relation_key = None
-    if chat_part.get("thread"):
-        relation_key = chat_part["thread"].get("relation_key")
-    elif mm_part.get("case"):
+    if mm_part.get("case"):
         relation_key = mm_part["case"].get("canonical_pair_key") or mm_part["case"].get("pair_key")
     elif rec_part.get("case"):
         relation_key = (
@@ -206,6 +204,9 @@ def timeline_payload(
             or rec_part["case"].get("canonical_relation_key")
             or rec_part["case"].get("pair_key")
         )
+    elif chat_part.get("thread"):
+        thread_metadata = chat_part["thread"].get("metadata") or {}
+        relation_key = thread_metadata.get("ledger_relation_key") or chat_part["thread"].get("relation_key")
     if relation_key:
         try:
             relation = gateway._with_ledger(get_relation_by_key, relation_key)
@@ -252,6 +253,21 @@ def rest_chat_create_thread(
     for key in ("case_id", "relation_key", "participant_a_id", "participant_b_id"):
         if not kwargs.get(key):
             raise ValueError(f"{key} is required")
+    metadata = dict(kwargs.get("metadata") or {})
+    case_id = str(kwargs.get("case_id") or "").strip()
+    if case_id:
+        try:
+            rec_case = gateway._with_rec(recommendation_get_match_case, case_id)
+        except Exception:
+            rec_case = None
+        if rec_case and rec_case.get("relation_key"):
+            metadata["ledger_relation_key"] = rec_case["relation_key"]
+        elif rec_case and rec_case.get("canonical_relation_key"):
+            metadata["ledger_relation_key"] = rec_case["canonical_relation_key"]
+        elif rec_case and rec_case.get("pair_key"):
+            metadata["ledger_relation_key"] = rec_case["pair_key"]
+    if metadata:
+        kwargs["metadata"] = metadata
     thread = gateway._with_chat(get_or_create_thread, **kwargs)
     return 201, {"thread": _json_safe(thread)}
 

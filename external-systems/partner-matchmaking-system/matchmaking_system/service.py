@@ -67,6 +67,7 @@ OPEN_CASE_STATUSES = {
     "awaiting_second_reply",
 }
 FINAL_CASE_STATUSES = {"mutual_accept", "declined", "timed_out", "closed"}
+LedgerMirrorEntry = dict[str, Any]
 
 
 def member_is_available(member: Mapping[str, Any]) -> bool:
@@ -159,8 +160,13 @@ def _attach_pair_profile_refs(conn, pair: dict[str, Any] | None) -> dict[str, An
     return pair
 
 
-def _matchmaking_relation_key(member_low: Mapping[str, Any], member_high: Mapping[str, Any]) -> str:
-    return canonical_pair_key_for_members(member_low, member_high)
+def _matchmaking_relation_key(pair_key: str) -> str:
+    return pair_key
+
+
+def _flush_ledger_mirror(entries: list[LedgerMirrorEntry]) -> None:
+    for entry in entries:
+        append_event_to_default_ledger(**entry)
 
 
 def _append_pair_event_to_ledger(
@@ -173,8 +179,9 @@ def _append_pair_event_to_ledger(
     actor_type: str,
     actor_id: str,
     payload: Mapping[str, Any] | None = None,
+    ledger_mirror: list[LedgerMirrorEntry] | None = None,
 ) -> None:
-    relation_key = _matchmaking_relation_key(member_low, member_high)
+    relation_key = _matchmaking_relation_key(pair_key)
     event = build_canonical_event(
         event_type=pair_event_type,
         aggregate_type="relation",
@@ -195,6 +202,15 @@ def _append_pair_event_to_ledger(
             "member_high": entity_id_pool_member(str(member_high["member_id"])),
         },
     )
+    entry: LedgerMirrorEntry = {
+        "event": event,
+        "relation_key": relation_key,
+        "owner_profile_ref": pool_member_profile_ref(member_low),
+        "target_profile_ref": pool_member_profile_ref(member_high),
+    }
+    if ledger_mirror is not None:
+        ledger_mirror.append(entry)
+        return
     append_event_to_default_ledger(
         event=event,
         relation_key=relation_key,
@@ -623,6 +639,7 @@ def _record_case_event(
     second_contact_member_id: str | None = None,
     payload: Mapping[str, Any] | None = None,
     now: datetime | None = None,
+    ledger_mirror: list[LedgerMirrorEntry] | None = None,
 ) -> None:
     event_now = current_time(now)
     relation_key = None
@@ -631,7 +648,7 @@ def _record_case_event(
     if first_contact_member_id and second_contact_member_id:
         member_low = get_pool_member(conn, str(first_contact_member_id))
         member_high = get_pool_member(conn, str(second_contact_member_id))
-        relation_key = _matchmaking_relation_key(member_low, member_high)
+        relation_key = _matchmaking_relation_key(pair_key)
         owner_profile_ref = pool_member_profile_ref(member_low)
         target_profile_ref = pool_member_profile_ref(member_high)
     event = build_case_aggregate_event(
@@ -682,14 +699,18 @@ def _record_case_event(
         created_at_str=occurred_str,
     )
     if relation_key:
-        append_event_to_default_ledger(
-            event=event,
-            relation_key=relation_key,
-            owner_profile_ref=owner_profile_ref,
-            target_profile_ref=target_profile_ref,
-            case_id=case_id,
-            case_type=CaseType.MATCHMAKING.value,
-        )
+        entry: LedgerMirrorEntry = {
+            "event": event,
+            "relation_key": relation_key,
+            "owner_profile_ref": owner_profile_ref,
+            "target_profile_ref": target_profile_ref,
+            "case_id": case_id,
+            "case_type": CaseType.MATCHMAKING.value,
+        }
+        if ledger_mirror is not None:
+            ledger_mirror.append(entry)
+        else:
+            append_event_to_default_ledger(**entry)
 
 
 def refresh_pool_member(
@@ -946,6 +967,7 @@ def _update_pair_status(
     pair_status: str,
     block_reason: str | None,
     now: datetime,
+    ledger_mirror: list[LedgerMirrorEntry] | None = None,
 ) -> None:
     conn.execute(
         """
@@ -970,6 +992,7 @@ def _update_pair_status(
             actor_type="system",
             actor_id="system",
             payload={"block_reason": block_reason},
+            ledger_mirror=ledger_mirror,
         )
 
 
@@ -1009,6 +1032,7 @@ def build_mutual_pairs(
     now: datetime | None = None,
 ) -> list[dict[str, Any]]:
     now = current_time(now)
+    ledger_mirror: list[LedgerMirrorEntry] = []
     edges = list_active_edges(conn)
     edge_by_direction = {
         (edge["owner_member_id"], edge["candidate_member_id"]): edge
@@ -1138,6 +1162,7 @@ def build_mutual_pairs(
                 actor_type="system",
                 actor_id="system",
                 payload={"pair_score": pair_score, "block_reason": block_reason},
+                ledger_mirror=ledger_mirror,
             )
 
     for pair in list_pairs(conn):
@@ -1172,10 +1197,12 @@ def build_mutual_pairs(
             pair_status="stale",
             block_reason=block_reason,
             now=now,
+            ledger_mirror=ledger_mirror,
         )
         updated_pair_keys.append(pair["pair_key"])
 
     conn.commit()
+    _flush_ledger_mirror(ledger_mirror)
     row_elig = conn.execute(
         "SELECT COUNT(*) AS c FROM matchmaking_pairs WHERE pair_status = 'eligible'",
     ).fetchone()
@@ -1238,6 +1265,7 @@ def open_match_cases(
     case_expires_hours: int = 72,
 ) -> list[dict[str, Any]]:
     now = current_time(now)
+    ledger_mirror: list[LedgerMirrorEntry] = []
     created_case_ids: list[str] = []
     for pair in list_pairs(conn, statuses=["eligible"]):
         pair_key = pair["pair_key"]
@@ -1252,6 +1280,7 @@ def open_match_cases(
                 if member_low["status"] != ACTIVE_MEMBER_STATUS or member_high["status"] != ACTIVE_MEMBER_STATUS
                 else "member_not_searching",
                 now=now,
+                ledger_mirror=ledger_mirror,
             )
             continue
 
@@ -1269,6 +1298,7 @@ def open_match_cases(
                 pair_status="stale",
                 block_reason="reciprocal_edge_missing",
                 now=now,
+                ledger_mirror=ledger_mirror,
             )
             continue
 
@@ -1295,6 +1325,7 @@ def open_match_cases(
                 pair_status=pair_status,
                 block_reason=block_reason,
                 now=now,
+                ledger_mirror=ledger_mirror,
             )
             continue
 
@@ -1353,6 +1384,7 @@ def open_match_cases(
             second_contact_member_id=second_contact_member_id,
             payload={"initiator_type": "system"},
             now=now,
+            ledger_mirror=ledger_mirror,
         )
         _append_pair_event_to_ledger(
             pair_event_type="pair_case_opened",
@@ -1363,6 +1395,7 @@ def open_match_cases(
             actor_type="system",
             actor_id="system",
             payload={"case_id": case_id, "case_type": CaseType.MATCHMAKING.value},
+            ledger_mirror=ledger_mirror,
         )
         funnel_stage(
             system="matchmaking",
@@ -1372,6 +1405,7 @@ def open_match_cases(
         )
         created_case_ids.append(case_id)
     conn.commit()
+    _flush_ledger_mirror(ledger_mirror)
     metric_gauge("matchmaking.cases.opened_batch", len(created_case_ids))
     return [get_match_case(conn, case_id) for case_id in created_case_ids]
 
@@ -1383,6 +1417,7 @@ def dispatch_case_contact(
     now: datetime | None = None,
 ) -> dict[str, Any]:
     now = current_time(now)
+    ledger_mirror: list[LedgerMirrorEntry] = []
     case = get_match_case(conn, case_id)
     if case["status"] == "pending_first_contact":
         conn.execute(
@@ -1404,6 +1439,7 @@ def dispatch_case_contact(
             first_contact_member_id=case["first_contact_member_id"],
             second_contact_member_id=case["second_contact_member_id"],
             now=now,
+            ledger_mirror=ledger_mirror,
         )
     elif case["status"] == "pending_second_contact":
         conn.execute(
@@ -1425,10 +1461,12 @@ def dispatch_case_contact(
             first_contact_member_id=case["first_contact_member_id"],
             second_contact_member_id=case["second_contact_member_id"],
             now=now,
+            ledger_mirror=ledger_mirror,
         )
     else:
         raise ValueError(f"Case {case_id} cannot dispatch outreach from status {case['status']}.")
     conn.commit()
+    _flush_ledger_mirror(ledger_mirror)
     return get_match_case(conn, case_id)
 
 
@@ -1439,6 +1477,7 @@ def _apply_pair_cooling(
     days: int,
     reason: str,
     now: datetime,
+    ledger_mirror: list[LedgerMirrorEntry] | None = None,
 ) -> None:
     cooling_until = now + timedelta(days=days)
     conn.execute(
@@ -1463,6 +1502,7 @@ def _apply_pair_cooling(
             actor_type="system",
             actor_id="system",
             payload={"block_reason": reason, "cooling_until": format_dt(cooling_until)},
+            ledger_mirror=ledger_mirror,
         )
 
 
@@ -1477,6 +1517,7 @@ def record_case_reply(
     timeout_cooling_days: int = 30,
 ) -> dict[str, Any]:
     now = current_time(now)
+    ledger_mirror: list[LedgerMirrorEntry] = []
     case = get_match_case(conn, case_id)
     normalized_reply = str(reply_type).strip().lower()
     if normalized_reply not in {"accept", "decline", "timeout"}:
@@ -1539,6 +1580,7 @@ def record_case_reply(
                 days=cooling_days,
                 reason=f"first_contact_{normalized_reply}",
                 now=now,
+                ledger_mirror=ledger_mirror,
             )
             _record_case_event(
                 conn,
@@ -1549,6 +1591,7 @@ def record_case_reply(
                 first_contact_member_id=case["first_contact_member_id"],
                 second_contact_member_id=case["second_contact_member_id"],
                 now=now,
+                ledger_mirror=ledger_mirror,
             )
     elif case["status"] == "awaiting_second_reply":
         if member_id != case["second_contact_member_id"]:
@@ -1585,6 +1628,7 @@ def record_case_reply(
                     actor_type="member",
                     actor_id=str(member_id),
                     payload={"case_id": case_id},
+                    ledger_mirror=ledger_mirror,
                 )
             _record_case_event(
                 conn,
@@ -1595,6 +1639,7 @@ def record_case_reply(
                 first_contact_member_id=case["first_contact_member_id"],
                 second_contact_member_id=case["second_contact_member_id"],
                 now=now,
+                ledger_mirror=ledger_mirror,
             )
             funnel_stage(
                 system="matchmaking",
@@ -1635,6 +1680,7 @@ def record_case_reply(
                 days=cooling_days,
                 reason=f"second_contact_{normalized_reply}",
                 now=now,
+                ledger_mirror=ledger_mirror,
             )
             _record_case_event(
                 conn,
@@ -1645,10 +1691,12 @@ def record_case_reply(
                 first_contact_member_id=case["first_contact_member_id"],
                 second_contact_member_id=case["second_contact_member_id"],
                 now=now,
+                ledger_mirror=ledger_mirror,
             )
     else:
         raise ValueError(f"Case {case_id} cannot record a reply from status {case['status']}.")
     conn.commit()
+    _flush_ledger_mirror(ledger_mirror)
     return get_match_case(conn, case_id)
 
 
@@ -1659,6 +1707,7 @@ def close_stale_cases(
     timeout_cooling_days: int = 30,
 ) -> dict[str, Any]:
     now = current_time(now)
+    ledger_mirror: list[LedgerMirrorEntry] = []
     placeholders = ", ".join(["?"] * len(OPEN_CASE_STATUSES))
     rows = conn.execute(
         f"""
@@ -1689,6 +1738,7 @@ def close_stale_cases(
             days=timeout_cooling_days,
             reason="case_expired",
             now=now,
+            ledger_mirror=ledger_mirror,
         )
         _record_case_event(
             conn,
@@ -1698,9 +1748,11 @@ def close_stale_cases(
             first_contact_member_id=case["first_contact_member_id"],
             second_contact_member_id=case["second_contact_member_id"],
             now=now,
+            ledger_mirror=ledger_mirror,
         )
         case_ids.append(case["case_id"])
     conn.commit()
+    _flush_ledger_mirror(ledger_mirror)
     return {"closed_count": len(case_ids), "case_ids": case_ids}
 
 
@@ -1712,6 +1764,7 @@ def revalidate_member_matches(
     now: datetime | None = None,
 ) -> dict[str, Any]:
     now = current_time(now)
+    ledger_mirror: list[LedgerMirrorEntry] = []
     member = get_pool_member(conn, member_id)
     related_rows = conn.execute(
         """
@@ -1803,8 +1856,10 @@ def revalidate_member_matches(
                 second_contact_member_id=case["second_contact_member_id"],
                 payload={"reason": reason},
                 now=now,
+                ledger_mirror=ledger_mirror,
             )
     conn.commit()
+    _flush_ledger_mirror(ledger_mirror)
     return {
         "member_id": member_id,
         "user_key": member["user_key"],
