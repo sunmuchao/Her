@@ -11,6 +11,7 @@ import { getChatParticipantId } from '@/lib/auth/session'
 import { canUseMockFallback } from '@/lib/mock'
 import { notifyError } from '@/lib/notify'
 import { DEMO_CHAT_MESSAGES } from '@/lib/fixtures/demo-profiles'
+import { formatRelativeTime } from '@/lib/format-relative-time'
 import { PLACEHOLDER_AVATAR } from '@/lib/image-url'
 import { DEMO_DEFAULT_CHAT_ID } from '@/lib/navigation/defaults'
 import { DemoDataBanner } from './ui/demo-data-banner'
@@ -51,24 +52,6 @@ type MessagesResponse = {
     body: string
     created_at: string
   }>
-}
-
-function formatTime(timestamp: string): string {
-  if (!timestamp || timestamp === '刚刚') return '刚刚'
-  
-  try {
-    const date = new Date(timestamp)
-    const now = new Date()
-    const diff = now.getTime() - date.getTime()
-    
-    if (diff < 60000) return '刚刚'
-    if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`
-    
-    return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-  } catch {
-    return timestamp
-  }
 }
 
 // Message status indicator component
@@ -323,7 +306,7 @@ export default function ChatPage({ chatId, onBack }: ChatPageProps) {
                 </div>
                 {showTime && (
                   <div className={cn('flex items-center gap-1.5 mt-1', isSent ? 'justify-end' : 'justify-start')}>
-                    <p className="text-[10px] text-muted-foreground">{formatTime(msg.timestamp)}</p>
+                    <p className="text-[10px] text-muted-foreground">{formatRelativeTime(msg.timestamp)}</p>
                     {isSent && <MessageStatusIndicator status={msg.status} />}
                   </div>
                 )}

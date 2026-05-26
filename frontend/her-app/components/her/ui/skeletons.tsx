@@ -40,7 +40,8 @@ export function InboxItemSkeleton() {
 
 export function DiscoverPageSkeleton() {
   return (
-    <div className="min-h-screen bg-background p-4 space-y-4">
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background">
+      <div className="flex-shrink-0 p-4 space-y-4 border-b border-border">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <Shimmer className="h-8 w-24" />
@@ -66,11 +67,14 @@ export function DiscoverPageSkeleton() {
         ))}
       </div>
 
-      {/* Candidate Cards */}
-      <div className="flex gap-3 overflow-hidden">
-        {[1, 2, 3].map((i) => (
-          <CandidateCardSkeleton key={i} />
-        ))}
+      </div>
+      <div className="flex-1 min-h-0 overflow-hidden p-4 space-y-3">
+        <Shimmer className="h-16 w-[80%] rounded-2xl" />
+        <Shimmer className="h-12 w-[60%] rounded-2xl ml-auto" />
+        <Shimmer className="h-20 w-full rounded-2xl" />
+      </div>
+      <div className="flex-shrink-0 p-4 border-t border-border">
+        <Shimmer className="h-11 w-full rounded-xl" />
       </div>
     </div>
   )

@@ -1,10 +1,15 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import { createDiscoverySession, submitDiscoveryTurn } from '@/lib/api/endpoints/discovery'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
+import {
+  createDiscoverySession,
+  getDiscoverySession,
+  submitDiscoveryTurn,
+} from '@/lib/api/endpoints/discovery'
 import { fetchCollectedStatements, formatCollectedPreferenceChips } from '@/lib/api/endpoints/collected'
 import { saveDiscoveryAsSubscription } from '@/lib/api/endpoints/recommendation'
-import { getErrorMessage } from '@/lib/api/errors'
+import { GatewayClientError, getErrorMessage } from '@/lib/api/errors'
 import { hydrateSessionFromAuthMe } from '@/lib/auth/hydrate-session'
 import { getAccessToken, getProfileId } from '@/lib/auth/session'
 import { canUseMockFallback } from '@/lib/mock'
@@ -12,7 +17,17 @@ import { notifyError, notifySuccess } from '@/lib/notify'
 import { logDataProvenance, usePageDataSource } from '@/lib/data-provenance'
 import { DEMO_CANDIDATES } from '@/lib/fixtures/demo-profiles'
 import type { CandidatePreview } from '@/lib/types/candidate'
-import { mapDiscoveryView, type DiscoveryChatMessage } from '@/lib/discovery/map-discovery-view'
+import {
+  mapDiscoveryView,
+  type DiscoveryChatMessage,
+  type MappedDiscoveryView,
+} from '@/lib/discovery/map-discovery-view'
+import {
+  clearStoredDiscoverySessionId,
+  readStoredDiscoverySessionId,
+  writeStoredDiscoverySessionId,
+} from '@/lib/discovery/session-storage'
+import type { DiscoverySessionResponse } from '@/lib/types/discovery'
 
 const SAVE_SUBSCRIPTION_ACTIONS = new Set([
   'save_subscription',
@@ -21,15 +36,15 @@ const SAVE_SUBSCRIPTION_ACTIONS = new Set([
   'save_as_subscription',
 ])
 
-const initialMessages: DiscoveryChatMessage[] = [
-  { id: '1', type: 'matchmaker', content: '你好，我是你的专属红娘小雅。接下来我会帮你找到那个对的人。', timestamp: '09:30' },
-  { id: '2', type: 'matchmaker', content: '你理想中的伴侣是什么样的？', timestamp: '09:31' },
-]
+function isNotFoundError(error: unknown): boolean {
+  return error instanceof GatewayClientError && error.status === 404
+}
 
 export function useDiscoverySession(onSessionIdChange?: (sessionId: string | null) => void) {
-  const [messages, setMessages] = useState(initialMessages)
+  const searchParams = useSearchParams()
+  const sessionFromUrlQuery = searchParams.get('session')
+  const [messages, setMessages] = useState<DiscoveryChatMessage[]>([])
   const [inputValue, setInputValue] = useState('')
-  const [isTyping, setIsTyping] = useState(false)
   const [currentPrefs, setCurrentPrefs] = useState<string[]>([])
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [suggestedActions, setSuggestedActions] = useState<Array<{ action_id: string; label: string }>>([])
@@ -42,17 +57,58 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
   const [isLoadingSession, setIsLoadingSession] = useState(true)
   const chatEndRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsTyping(true)
-      setTimeout(() => setIsTyping(false), 2500)
-    }, 1500)
-    return () => clearTimeout(timer)
+  const applyMappedView = useCallback((mapped: MappedDiscoveryView) => {
+    setMessages(mapped.messages)
+    if (mapped.chips?.length) setCurrentPrefs(mapped.chips)
+    setSuggestedActions(mapped.actions)
+    setComposerPlaceholder(mapped.composerPlaceholder)
+    setComposerDisabled(mapped.composerDisabled)
+    setBackendCandidates(mapped.candidates.length ? mapped.candidates : [])
   }, [])
+
+  const persistSessionId = useCallback(
+    (profileId: number, sid: string) => {
+      writeStoredDiscoverySessionId(profileId, sid)
+      onSessionIdChange?.(sid)
+    },
+    [onSessionIdChange],
+  )
+
+  const hydrateFromResponse = useCallback(
+    async (data: DiscoverySessionResponse, profileId: number, apiPath: string) => {
+      const sid = data.session?.session_id || null
+      setSessionId(sid)
+      if (sid) {
+        persistSessionId(profileId, sid)
+      } else {
+        onSessionIdChange?.(null)
+      }
+      applyProvenance(false, true, apiPath)
+      const mapped = mapDiscoveryView(data.view)
+      applyMappedView(mapped)
+      try {
+        const collected = await fetchCollectedStatements(profileId)
+        const collectedChips = formatCollectedPreferenceChips(collected.collected_statements || {})
+        if (collectedChips.length) {
+          setCurrentPrefs((prev) => {
+            const merged = [...collectedChips]
+            for (const chip of prev) {
+              if (!merged.includes(chip)) merged.push(chip)
+            }
+            return merged.slice(0, 12)
+          })
+        }
+      } catch {
+        // Discovery view chips remain when collected API is unavailable.
+      }
+      logDataProvenance('discover', applyProvenance(false, mapped.candidates.length > 0, apiPath))
+    },
+    [applyMappedView, applyProvenance, onSessionIdChange, persistSessionId],
+  )
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, isTyping, suggestedActions, backendCandidates])
+  }, [messages, suggestedActions, backendCandidates])
 
   useEffect(() => {
     let cancelled = false
@@ -83,36 +139,32 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
 
       setIsLoadingSession(true)
       setLoadError(null)
+      const sessionFromUrl = sessionFromUrlQuery?.trim() || null
+      const storedSessionId = readStoredDiscoverySessionId(profileId)
+      const candidateSessionId = sessionFromUrl || storedSessionId
+
       try {
-        const data = await createDiscoverySession({ profileId })
-        if (cancelled) return
-        const sid = data.session?.session_id || null
-        setSessionId(sid)
-        onSessionIdChange?.(sid)
-        applyProvenance(false, true, '/v1/discovery/sessions')
-        const mapped = mapDiscoveryView(data.view)
-        if (mapped.messages.length) setMessages(mapped.messages)
-        if (mapped.chips?.length) setCurrentPrefs(mapped.chips)
-        try {
-          const collected = await fetchCollectedStatements(profileId)
-          const collectedChips = formatCollectedPreferenceChips(collected.collected_statements || {})
-          if (collectedChips.length) {
-            setCurrentPrefs((prev) => {
-              const merged = [...collectedChips]
-              for (const chip of prev) {
-                if (!merged.includes(chip)) merged.push(chip)
-              }
-              return merged.slice(0, 12)
-            })
+        if (candidateSessionId) {
+          try {
+            const restored = await getDiscoverySession(candidateSessionId)
+            if (cancelled) return
+            await hydrateFromResponse(
+              restored,
+              profileId,
+              `/v1/discovery/sessions/${candidateSessionId}`,
+            )
+            return
+          } catch (error) {
+            if (!isNotFoundError(error)) {
+              throw error
+            }
+            clearStoredDiscoverySessionId(profileId)
           }
-        } catch {
-          // Discovery view chips remain when collected API is unavailable.
         }
-        setSuggestedActions(mapped.actions)
-        setComposerPlaceholder(mapped.composerPlaceholder)
-        setComposerDisabled(mapped.composerDisabled)
-        setBackendCandidates(mapped.candidates.length ? mapped.candidates : [])
-        logDataProvenance('discover', applyProvenance(false, mapped.candidates.length > 0, '/v1/discovery/sessions'))
+
+        const created = await createDiscoverySession({ profileId })
+        if (cancelled) return
+        await hydrateFromResponse(created, profileId, '/v1/discovery/sessions')
       } catch (error) {
         if (cancelled) return
         const message = getErrorMessage(error, '发现页会话加载失败')
@@ -134,7 +186,7 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
     return () => {
       cancelled = true
     }
-  }, [onSessionIdChange, applyProvenance])
+  }, [applyProvenance, hydrateFromResponse, sessionFromUrlQuery])
 
   const submitTurn = async (payload: { user_message?: string; action_id?: string }) => {
     if (!sessionId) {
@@ -163,12 +215,10 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
         actionId: payload.action_id,
       })
       const mapped = mapDiscoveryView(data.view)
-      if (mapped.messages.length) setMessages(mapped.messages)
-      if (mapped.chips) setCurrentPrefs(mapped.chips)
-      setSuggestedActions(mapped.actions)
-      setComposerPlaceholder(mapped.composerPlaceholder)
-      setComposerDisabled(mapped.composerDisabled)
-      setBackendCandidates(mapped.candidates.length ? mapped.candidates : [])
+      applyMappedView(mapped)
+      if (profileId && sessionId) {
+        writeStoredDiscoverySessionId(profileId, sessionId)
+      }
       if (payload.user_message) setInputValue('')
     } catch (error) {
       notifyError(error, '发送失败，请重试')
@@ -181,7 +231,7 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
     messages,
     inputValue,
     setInputValue,
-    isTyping,
+    isTyping: false,
     currentPrefs,
     suggestedActions,
     composerPlaceholder,

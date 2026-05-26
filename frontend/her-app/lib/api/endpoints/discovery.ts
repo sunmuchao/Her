@@ -10,6 +10,10 @@ export async function createDiscoverySession(params: { profileId: number }) {
   })
 }
 
+export async function getDiscoverySession(sessionId: string) {
+  return gatewayJson<DiscoverySessionResponse>(`/v1/discovery/sessions/${encodeURIComponent(sessionId)}`)
+}
+
 export async function submitDiscoveryTurn(params: {
   sessionId: string
   userMessage?: string

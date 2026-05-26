@@ -1,3 +1,4 @@
+import { formatRelativeTime } from '@/lib/format-relative-time'
 import type { CandidatePreview } from '@/lib/types/candidate'
 import type { DiscoveryView } from '@/lib/types/discovery'
 
@@ -25,7 +26,7 @@ export function mapDiscoveryView(view?: DiscoveryView): MappedDiscoveryView {
         id: item.item_id || String(index),
         type: item.item_type === 'user_message' ? ('user' as const) : ('matchmaker' as const),
         content: item.body || '',
-        timestamp: '刚刚',
+        timestamp: formatRelativeTime(item.created_at),
       })) || []
 
   const chips = view?.criteria_chips?.map((item) => item.label).filter(Boolean) as string[] | undefined
