@@ -61,23 +61,32 @@ export default function DiscoverPage({
       ? ['同城优先', '本科以上']
       : []
 
+  const pageShellClass =
+    'flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background pb-14'
+
   if (isLoadingSession) {
-    return <DiscoverPageSkeleton />
+    return (
+      <div className={pageShellClass}>
+        <DiscoverPageSkeleton />
+      </div>
+    )
   }
 
   if (loadError && !canUseMockFallback()) {
     return (
-      <ErrorState
-        message={loadError}
-        onRetry={() => window.location.reload()}
-      />
+      <div className={pageShellClass}>
+        <ErrorState
+          message={loadError}
+          onRetry={() => window.location.reload()}
+        />
+      </div>
     )
   }
 
   return (
-    <div className="flex flex-col h-full bg-background">
+    <div className={pageShellClass}>
       {usingMockData && <DemoDataBanner />}
-      <header className="sticky top-0 z-20 bg-background border-b border-border safe-area-top">
+      <header className="flex-shrink-0 z-20 bg-background border-b border-border safe-area-top">
         <div className="px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -108,7 +117,7 @@ export default function DiscoverPage({
       </header>
 
       {/* Preference chips with scroll fade */}
-      <div className="relative px-4 py-2 border-b border-border">
+      <div className="relative flex-shrink-0 px-4 py-2 border-b border-border">
         <div className="flex gap-2 overflow-x-auto scrollbar-hide scroll-fade-right" role="list" aria-label="已收集偏好">
           {currentPrefs.length === 0 && !usingMockData ? (
             <span className="shrink-0 px-2.5 py-1 bg-secondary text-muted-foreground text-xs rounded-md">
@@ -128,7 +137,7 @@ export default function DiscoverPage({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
         <div className="px-4 py-4 space-y-4">
           {messages.map((msg) => (
             <div key={msg.id} className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -199,15 +208,13 @@ export default function DiscoverPage({
                 ))}
               </div>
             </FadeIn>
-          ) : !usingMockData && !isLoadingSession ? (
-            <EmptySearchResults keyword="本轮推荐" />
           ) : null}
           <div ref={chatEndRef} />
         </div>
       </div>
 
-      {/* Input area */}
-      <div className="sticky bottom-0 px-4 py-3 bg-background border-t border-border safe-area-bottom">
+      {/* Input pinned below scrollable messages; app shell bottom nav is outside this column */}
+      <div className="flex-shrink-0 px-4 py-3 bg-background border-t border-border safe-area-bottom">
         <div className="flex items-center gap-2 bg-secondary rounded-xl px-3 py-2 transition-all focus-within:ring-2 focus-within:ring-primary/30">
           <input
             value={inputValue}

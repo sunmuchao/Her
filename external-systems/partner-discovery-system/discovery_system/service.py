@@ -210,7 +210,13 @@ class DiscoveryService:
         if user_message_text is not None and user_message_text.strip():
             text = user_message_text.strip()
             normalized_user_message = text
-            new_items.append(user_message(self.storage.next_item_id("msg-u"), text))
+            new_items.append(
+                user_message(
+                    self.storage.next_item_id("msg-u"),
+                    text,
+                    created_at=current,
+                )
+            )
             runtime_result = self.runtime.run_turn(
                 run_input,
                 user_message=text,
@@ -478,6 +484,7 @@ class DiscoveryService:
             assistant_message(
                 self.storage.next_item_id("msg-a"),
                 decision.assistant_message,
+                created_at=now,
             )
         ]
         if decision.criteria_labels:

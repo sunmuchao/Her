@@ -3,23 +3,48 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from datetime import datetime
 from typing import Any
 
 
-def assistant_message(item_id: str, body: str) -> dict[str, Any]:
-    return {
+def _format_created_at(created_at: datetime | None) -> str | None:
+    if created_at is None:
+        return None
+    return created_at.isoformat()
+
+
+def assistant_message(
+    item_id: str,
+    body: str,
+    *,
+    created_at: datetime | None = None,
+) -> dict[str, Any]:
+    item: dict[str, Any] = {
         "item_type": "assistant_message",
         "item_id": item_id,
         "body": body,
     }
+    formatted = _format_created_at(created_at)
+    if formatted is not None:
+        item["created_at"] = formatted
+    return item
 
 
-def user_message(item_id: str, body: str) -> dict[str, Any]:
-    return {
+def user_message(
+    item_id: str,
+    body: str,
+    *,
+    created_at: datetime | None = None,
+) -> dict[str, Any]:
+    item: dict[str, Any] = {
         "item_type": "user_message",
         "item_id": item_id,
         "body": body,
     }
+    formatted = _format_created_at(created_at)
+    if formatted is not None:
+        item["created_at"] = formatted
+    return item
 
 
 def result_group(item_id: str, title: str, cards: list[dict[str, Any]]) -> dict[str, Any]:
