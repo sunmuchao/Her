@@ -10,4 +10,5 @@ export type CandidatePreview = {
   image?: string
   matchReason?: string
   message?: string
+  recommendationId?: number
 }

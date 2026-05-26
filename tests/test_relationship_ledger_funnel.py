@@ -114,7 +114,9 @@ def build_matchmaking_result(candidate_id: int, name: str, score: int) -> dict[s
 class RelationshipLedgerFunnelTests(unittest.TestCase):
     def setUp(self) -> None:
         self._old_relation_ledger_db = os.environ.get("HER_RELATION_LEDGER_DB")
+        self._old_proxy_intro_storage = os.environ.get("HER_PROXY_INTRO_STORAGE")
         os.environ["HER_RELATION_LEDGER_DB"] = DEFAULT_RELATION_LEDGER_TEST_MYSQL_DSN
+        os.environ["HER_PROXY_INTRO_STORAGE"] = "matchmaking"
 
         self.rec_conn = connect_recommendation_db(DEFAULT_RECOMMENDATION_TEST_MYSQL_DSN)
         initialize_recommendation_database(self.rec_conn)
@@ -141,6 +143,10 @@ class RelationshipLedgerFunnelTests(unittest.TestCase):
             os.environ.pop("HER_RELATION_LEDGER_DB", None)
         else:
             os.environ["HER_RELATION_LEDGER_DB"] = self._old_relation_ledger_db
+        if self._old_proxy_intro_storage is None:
+            os.environ.pop("HER_PROXY_INTRO_STORAGE", None)
+        else:
+            os.environ["HER_PROXY_INTRO_STORAGE"] = self._old_proxy_intro_storage
 
     def load_funnel(self):
         self.ledger_conn.close()
@@ -172,25 +178,29 @@ class RelationshipLedgerFunnelTests(unittest.TestCase):
         )
         deliver_in_app_recommendations(self.rec_conn, now=datetime(2026, 5, 11, 9, 20, 0))
         case = create_match_case(
-            self.rec_conn,
+            self.mm_conn,
+            recommendation_conn=self.rec_conn,
             subscription_id=subscription["subscription_id"],
             candidate_id=93001,
             now=datetime(2026, 5, 11, 10, 0, 0),
         )
         dispatch_match_case_outreach(
-            self.rec_conn,
+            self.mm_conn,
+            recommendation_conn=self.rec_conn,
             case_id=case["case_id"],
             now=datetime(2026, 5, 11, 10, 5, 0),
         )
         record_match_case_reply(
-            self.rec_conn,
+            self.mm_conn,
+            recommendation_conn=self.rec_conn,
             case_id=case["case_id"],
             reply_type="accepted",
             now=datetime(2026, 5, 11, 10, 30, 0),
             reply_payload={"note": "愿意继续了解"},
         )
         close_match_case(
-            self.rec_conn,
+            self.mm_conn,
+            recommendation_conn=self.rec_conn,
             case_id=case["case_id"],
             close_reason="handoff_completed",
             now=datetime(2026, 5, 11, 11, 0, 0),

@@ -10,9 +10,12 @@ import { getErrorMessage } from '@/lib/api/errors'
 import { getChatParticipantId } from '@/lib/auth/session'
 import { canUseMockFallback } from '@/lib/mock'
 import { notifyError } from '@/lib/notify'
+import { DEMO_CHAT_MESSAGES } from '@/lib/fixtures/demo-profiles'
+import { PLACEHOLDER_AVATAR } from '@/lib/image-url'
 import { DEMO_DEFAULT_CHAT_ID } from '@/lib/navigation/defaults'
 import { DemoDataBanner } from './ui/demo-data-banner'
 import { ErrorState } from './ui/error-state'
+import { EmptyConversations } from './ui/empty-states'
 
 interface ChatPageProps {
   chatId: string | null
@@ -50,12 +53,6 @@ type MessagesResponse = {
   }>
 }
 
-const fallbackMessages: Message[] = [
-  { id: '1', type: 'received', content: '你好呀，很高兴认识你～', timestamp: '10:30' },
-  { id: '2', type: 'sent', content: '你好！很高兴认识你。', timestamp: '10:32', status: 'read' },
-]
-
-// Format timestamp to relative time
 function formatTime(timestamp: string): string {
   if (!timestamp || timestamp === '刚刚') return '刚刚'
   
@@ -96,7 +93,7 @@ export default function ChatPage({ chatId, onBack }: ChatPageProps) {
   const resolvedChatId = chatId === 'demo' ? DEMO_DEFAULT_CHAT_ID : chatId
   const [inputValue, setInputValue] = useState('')
   const [isTyping, setIsTyping] = useState(false)
-  const [messages, setMessages] = useState<Message[]>(fallbackMessages)
+  const [messages, setMessages] = useState<Message[]>([])
   const [chatTitle, setChatTitle] = useState('聊天')
   const [verified, setVerified] = useState(true)
   const [isSending, setIsSending] = useState(false)
@@ -112,7 +109,10 @@ export default function ChatPage({ chatId, onBack }: ChatPageProps) {
     if (!requesterId) {
       setIsLoading(false)
       setLoadError('未配置 NEXT_PUBLIC_HER_USER_ID')
-      if (canUseMockFallback()) setUsingMockData(true)
+      if (canUseMockFallback()) {
+        setUsingMockData(true)
+        setMessages(DEMO_CHAT_MESSAGES)
+      }
       return
     }
 
@@ -154,6 +154,7 @@ export default function ChatPage({ chatId, onBack }: ChatPageProps) {
         setLoadError(message)
         if (canUseMockFallback()) {
           setUsingMockData(true)
+          setMessages(DEMO_CHAT_MESSAGES)
         } else {
           notifyError(error, message)
         }
@@ -265,7 +266,7 @@ export default function ChatPage({ chatId, onBack }: ChatPageProps) {
           </button>
           <div className="w-8 h-8 rounded-full overflow-hidden bg-secondary flex items-center justify-center">
             <Image
-              src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&h=200&fit=crop&crop=face"
+              src={PLACEHOLDER_AVATAR}
               alt={chatTitle}
               width={32}
               height={32}
@@ -296,7 +297,10 @@ export default function ChatPage({ chatId, onBack }: ChatPageProps) {
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3" role="log" aria-label="聊天消息">
-        {messages.map((msg, index) => {
+        {messages.length === 0 && !isTyping ? (
+          <EmptyConversations />
+        ) : (
+          messages.map((msg, index) => {
           const isSent = msg.type === 'sent'
           const showTime = index === 0 || 
             messages[index - 1]?.type !== msg.type ||
@@ -326,7 +330,8 @@ export default function ChatPage({ chatId, onBack }: ChatPageProps) {
               </div>
             </div>
           )
-        })}
+        })
+        )}
         {isTyping && <ChatTypingIndicator />}
         <div ref={messagesEndRef} />
       </div>

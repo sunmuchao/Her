@@ -25,4 +25,11 @@ describe('lib/env', () => {
     const { isDemoNavEnabled } = await import('@/lib/env')
     expect(isDemoNavEnabled()).toBe(true)
   })
+
+  it('disallows auth stub in production', async () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    vi.stubEnv('NEXT_PUBLIC_USE_AUTH_STUB', 'true')
+    const { isAuthStubEnabled } = await import('@/lib/env')
+    expect(isAuthStubEnabled()).toBe(false)
+  })
 })

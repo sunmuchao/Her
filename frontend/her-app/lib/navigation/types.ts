@@ -7,6 +7,7 @@ export type SubView =
   | 'chat'
   | 'verification'
   | 'trust-center'
+  | 'collected-preferences'
 
 export type AppPage =
   | 'splash'
@@ -26,6 +27,8 @@ export type AppPage =
   | 'sub-chat'
   | 'sub-verification'
   | 'sub-trust-center'
+  | 'sub-collected-preferences'
+  | 'ops-workbench'
 
 /** @deprecated Use AppPage */
 export type DemoPage = AppPage

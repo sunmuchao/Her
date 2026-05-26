@@ -488,6 +488,7 @@ class SearchRuntimeHelpers:
         return self.prepare_search_request_context(self.build_search_request_from_args(args))
 
     def execute_search_request(self, request):
+        rule_resolution = request.get("rule_resolution") if isinstance(request, dict) else None
         normalized_request = self.build_search_request(
             sources=request.get("sources") if isinstance(request, dict) else None,
             source=request.get("source") if isinstance(request, dict) else None,
@@ -502,7 +503,10 @@ class SearchRuntimeHelpers:
             include_moderation_blocked=request.get("include_moderation_blocked", False) if isinstance(request, dict) else False,
         )
         criteria, records = self.prepare_search_request_context(normalized_request)
-        results = self.evaluate_records(records, criteria, normalized_request["limit"])
+        from match_domain.search_rule_context import search_rule_context
+
+        with search_rule_context(rule_resolution=rule_resolution):
+            results = self.evaluate_records(records, criteria, normalized_request["limit"])
         self.runtime.attach_photo_previews(
             results,
             normalized_request["photo_preview_count"],

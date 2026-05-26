@@ -1,17 +1,24 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { MessageCircle, Heart, Calendar, ChevronRight, BadgeCheck, AlertCircle } from 'lucide-react'
+import { MessageCircle, Heart, ChevronRight, BadgeCheck, AlertCircle } from 'lucide-react'
 import Image from 'next/image'
-import { cn } from '@/lib/utils'
-import { gatewayJson, queryString } from '@/lib/gateway'
+import {
+  fetchCrossDomainTimeline,
+  formatLedgerPhaseLabel,
+  summarizeTimelineEvents,
+} from '@/lib/api/endpoints/relations'
+import { fetchTrustHub } from '@/lib/api/endpoints/trust-hub'
 import { getErrorMessage } from '@/lib/api/errors'
-import { getCaseId, getChatParticipantId, getUserId } from '@/lib/auth/session'
+import { resolveCaseIdForTimeline } from '@/lib/auth/resolve-case'
+import { getChatParticipantId, getProfileId, getUserId } from '@/lib/auth/session'
 import { canUseMockFallback } from '@/lib/mock'
+import { logDataProvenance, usePageDataSource } from '@/lib/data-provenance'
+import { PLACEHOLDER_AVATAR } from '@/lib/image-url'
+import { mapTrustHubPendingActions } from '@/lib/trust/map-trust-hub'
 import { DemoDataBanner } from './ui/demo-data-banner'
 import { ErrorState } from './ui/error-state'
 import { EmptyRelationships } from './ui/empty-states'
-import { FadeIn, StaggerContainer } from './ui/animations'
 import { RelationshipsPageSkeleton } from './ui/skeletons'
 
 interface RelationshipsPageProps {
@@ -19,33 +26,13 @@ interface RelationshipsPageProps {
   onStartVerification: () => void
 }
 
-type TimelineResponse = {
-  case_id: string
-  requester_id: string
-  conversation_count: number
-  conversations: Array<{
-    conversation: {
-      conversation_id: string
-      channel_key: string
-      conversation_kind: string
-      members?: Array<{
-        participant_id: string
-        member_role: string
-      }>
-    }
-    messages: Array<{
-      message_id: number
-      author_id: string
-      body: string
-      created_at: string
-    }>
-  }>
+type PendingAction = {
+  id: string
+  type: 'verification'
+  title: string
+  description: string
+  icon: typeof BadgeCheck
 }
-
-const pendingActions = [
-  { id: '1', type: 'feedback', title: '见面反馈', description: '与对方的进展如何？', icon: Calendar },
-  { id: '2', type: 'verification', title: '完善认证', description: '补充资料认证，提升可信度', icon: BadgeCheck },
-]
 
 export default function RelationshipsPage({ onOpenChat, onStartVerification }: RelationshipsPageProps) {
   const [activeRelationships, setActiveRelationships] = useState<Array<{
@@ -59,32 +46,50 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
     image: string
   }>>([])
   const [recentActivities, setRecentActivities] = useState<Array<{ id: string; content: string; time: string; type: 'view' | 'match' | 'greeting' }>>([])
+  const [pendingActions, setPendingActions] = useState<PendingAction[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [usingMockData, setUsingMockData] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const { usingMockData, applyProvenance } = usePageDataSource()
+  const [relationPhase, setRelationPhase] = useState<string | null>(null)
+  const [sourceMode, setSourceMode] = useState<string | null>(null)
 
   useEffect(() => {
-    const caseId = getCaseId()
-    const timelineActorId = getUserId()
-    const participantId = getChatParticipantId()
-    if (!caseId || !timelineActorId) {
-      setIsLoading(false)
-      setLoadError('未配置 case_id 或 user_id，无法加载关系时间线')
-      return
-    }
-
     let cancelled = false
+
     async function loadTimeline() {
       setIsLoading(true)
       setLoadError(null)
+
+      const timelineActorId = getUserId()
+      if (!timelineActorId) {
+        setIsLoading(false)
+        setLoadError('请先登录后再查看关系时间线')
+        return
+      }
+
+      const caseId = await resolveCaseIdForTimeline()
+      const participantId = getChatParticipantId()
+      if (!caseId) {
+        setIsLoading(false)
+        setLoadError('未找到活跃 case_id，无法加载关系时间线')
+        return
+      }
+
       try {
-        const data = await gatewayJson<TimelineResponse>(
-          `/v2/chat/cases/${caseId}/timeline${queryString({ requester_id: timelineActorId })}`,
-        )
+        const [data, trustHub] = await Promise.all([
+          fetchCrossDomainTimeline(caseId, timelineActorId),
+          fetchTrustHub({ userId: timelineActorId, profileId: getProfileId() }).catch(() => null),
+        ])
         if (cancelled) return
-        const items = data.conversations
+
+        const phaseLabel = formatLedgerPhaseLabel(data.ledger?.summary?.current_phase)
+        setRelationPhase(phaseLabel)
+        setSourceMode(data.source_mode || null)
+
+        const chatConversations = data.chat?.conversations || []
+        const items = chatConversations
           .filter((item) => item.conversation.channel_key === 'main_group')
-          .map((item, index) => {
+          .map((item) => {
             const otherMember =
               item.conversation.members?.find(
                 (member) =>
@@ -92,37 +97,50 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
               )?.participant_id || 'user-b'
             const lastMessage = item.messages[item.messages.length - 1]
             const unread =
-              lastMessage && participantId && lastMessage.author_id !== participantId
-                ? 1
-                : 0
+              lastMessage && participantId && lastMessage.author_id !== participantId ? 1 : 0
             return {
               id: item.conversation.conversation_id,
               name: otherMember,
-              stage: item.conversation.conversation_kind === 'group' ? '共同聊天' : '单独沟通',
+              stage: phaseLabel || (item.conversation.conversation_kind === 'group' ? '共同聊天' : '单独沟通'),
               lastMessage: lastMessage?.body || '还没有消息，试着主动开场吧',
               lastMessageTime: lastMessage?.created_at || '',
               unread,
               verified: true,
-              image:
-                index % 2 === 0
-                  ? 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&h=200&fit=crop&crop=face'
-                  : 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=200&h=200&fit=crop&crop=face',
+              image: PLACEHOLDER_AVATAR,
             }
           })
+
         setActiveRelationships(items)
         setRecentActivities(
-          items.map((item, index) => ({
-            id: String(index),
-            content: `${item.name} 最近在会话里有新消息`,
-            time: item.lastMessageTime || '刚刚',
-            type: index % 2 === 0 ? 'greeting' : 'match',
-          })),
+          summarizeTimelineEvents(data.unified_timeline).length
+            ? summarizeTimelineEvents(data.unified_timeline)
+            : items.map((item, index) => ({
+                id: String(index),
+                content: `${item.name} 最近在会话里有新消息`,
+                time: item.lastMessageTime || '刚刚',
+                type: index % 2 === 0 ? ('greeting' as const) : ('match' as const),
+              })),
         )
-        setUsingMockData(false)
+
+        const trustPending = mapTrustHubPendingActions(
+          trustHub?.trust_hub?.verification_center?.items,
+        ).map((item) => ({
+          id: item.id,
+          type: 'verification' as const,
+          title: item.title,
+          description: item.description,
+          icon: BadgeCheck,
+        }))
+        setPendingActions(trustPending)
+
+        const provenance = applyProvenance(false, items.length > 0, '/v1/ledger/timeline', data.source_mode)
+        logDataProvenance('relationships', provenance)
       } catch (error) {
         if (cancelled) return
         setLoadError(getErrorMessage(error, '关系页加载失败'))
-        if (canUseMockFallback()) setUsingMockData(true)
+        if (canUseMockFallback()) {
+          applyProvenance(true, false, '/v1/ledger/timeline')
+        }
       } finally {
         if (!cancelled) setIsLoading(false)
       }
@@ -132,7 +150,7 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [applyProvenance])
 
   if (isLoading) {
     return <RelationshipsPageSkeleton />
@@ -153,7 +171,10 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
       <header className="sticky top-0 z-20 bg-background border-b border-border safe-area-top">
         <div className="px-4 py-3">
           <h1 className="text-lg font-medium">关系</h1>
-          <p className="text-xs text-muted-foreground">你的恋爱进行时</p>
+          <p className="text-xs text-muted-foreground">
+            {relationPhase ? `当前阶段：${relationPhase}` : '你的恋爱进行时'}
+            {sourceMode === 'ledger_primary' ? ' · 统一账本' : ''}
+          </p>
         </div>
       </header>
 
@@ -201,32 +222,34 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
           </div>
         </section>
 
-        <section>
-          <h2 className="text-sm font-medium mb-2">待处理</h2>
-          <div className="space-y-2">
-            {pendingActions.map((action) => {
-              const Icon = action.icon
-              return (
-                <button
-                  key={action.id}
-                  onClick={action.type === 'verification' ? onStartVerification : undefined}
-                  className="w-full bg-card border border-border rounded-xl p-3 text-left hover:border-primary/30 transition-colors"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center">
-                      <Icon className="w-4 h-4 text-muted-foreground" />
+        {pendingActions.length > 0 && (
+          <section>
+            <h2 className="text-sm font-medium mb-2">待处理</h2>
+            <div className="space-y-2">
+              {pendingActions.map((action) => {
+                const Icon = action.icon
+                return (
+                  <button
+                    key={action.id}
+                    onClick={onStartVerification}
+                    className="w-full bg-card border border-border rounded-xl p-3 text-left hover:border-primary/30 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center">
+                        <Icon className="w-4 h-4 text-muted-foreground" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-sm font-medium">{action.title}</h3>
+                        <p className="text-xs text-muted-foreground">{action.description}</p>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-muted-foreground" />
                     </div>
-                    <div className="flex-1">
-                      <h3 className="text-sm font-medium">{action.title}</h3>
-                      <p className="text-xs text-muted-foreground">{action.description}</p>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-        </section>
+                  </button>
+                )
+              })}
+            </div>
+          </section>
+        )}
 
         {recentActivities.length > 0 && (
           <section>
@@ -254,7 +277,7 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
         <div className="bg-secondary rounded-xl p-3 flex items-start gap-2">
           <AlertCircle className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
           <p className="text-xs text-muted-foreground leading-relaxed">
-            关系页现在展示的是 `v2 chat` 真实 timeline；如果你看不到会话，优先检查 `NEXT_PUBLIC_HER_CASE_ID` 和 `NEXT_PUBLIC_HER_USER_ID`。
+            关系页展示 v2 会话与 ledger 统一时间线；登录后会自动解析活跃 case_id。
           </p>
         </div>
       </div>

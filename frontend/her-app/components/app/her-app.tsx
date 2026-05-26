@@ -10,6 +10,7 @@ import WechatBindingPage from '@/components/her/auth/wechat-binding-page'
 import NewUserWelcomePage from '@/components/her/auth/new-user-welcome-page'
 import OnboardingPage from '@/components/her/auth/onboarding-page'
 import AccountRecoveryPage from '@/components/her/auth/account-recovery-page'
+import OpsWorkbenchPage from '@/components/her/ops-workbench-page'
 import { useAuthFlow } from '@/hooks/use-auth-flow'
 import { useAppRouter } from '@/hooks/use-app-router'
 import { isDemoNavEnabled } from '@/lib/env'
@@ -118,6 +119,11 @@ export function HerApp() {
           />
         )
 
+      case 'ops-workbench':
+        return (
+          <OpsWorkbenchPage onBack={() => handleNavigate('main-matchmaker')} />
+        )
+
       default:
         if (isMainShellPage(nav.currentPage)) {
           return (
@@ -139,6 +145,8 @@ export function HerApp() {
               onStartVerification={nav.handleStartVerification}
               onBackFromVerification={nav.handleBackFromVerification}
               onOpenTrustCenter={nav.handleOpenTrustCenter}
+              onOpenCollectedPreferences={nav.handleOpenCollectedPreferences}
+              onOpenOnboarding={() => handleNavigate('auth-onboarding')}
             />
           )
         }

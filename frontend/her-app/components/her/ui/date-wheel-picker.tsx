@@ -173,7 +173,7 @@ function WheelColumn({ items, value, onChange, suffix }: WheelColumnProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const itemHeight = 40
   const isScrolling = useRef(false)
-  const scrollTimeout = useRef<ReturnType<typeof setTimeout>>()
+  const scrollTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Scroll to selected value on mount
   useEffect(() => {

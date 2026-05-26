@@ -6,10 +6,15 @@ from typing import Any
 
 from observability import audit_event
 
-from recommendation_system import get_subscription  # type: ignore[import-untyped]
+from recommendation_system import get_recommendation_by_id, get_subscription  # type: ignore[import-untyped]
+from matchmaking_system.proxy_intro import get_match_case as get_proxy_intro_match_case  # type: ignore[import-untyped]
 from matchmaking_system import get_match_case, get_pool_member  # type: ignore[import-untyped]
+from relationship_ledger import get_relation_by_case_id  # type: ignore[import-untyped]
+
+from match_domain.principal import PROFILE_ID_FIELD_ALIASES
 
 from .identity import ROLE_END_USER, ActorPrincipal, GatewayPermissionError, get_current_actor
+from .resolved_principal import resolve_end_user_principal
 from .role_sets import STAFF_OVERRIDE_ROLES
 
 
@@ -24,14 +29,34 @@ class GatewayAccessMixin:
             and actor.has_any_role(frozenset({ROLE_END_USER}))
         )
 
-    def _auth_session_requester_id(self, user_id: str) -> int:
-        from chat_system.auth_accounts import get_onboarding_profile  # type: ignore[import-untyped]
+    def _resolve_end_user_principal(self, environ: dict[str, Any], *, require_profile: bool = False):
+        return resolve_end_user_principal(self, environ, require_profile=require_profile)
 
-        out = self._with_chat(get_onboarding_profile, str(user_id))
-        profile_id = out.get("profile_id") or out.get("requester_id")
-        if profile_id is None:
-            raise GatewayPermissionError("请先完成资料填写后再使用发现与推荐")
-        return int(profile_id)
+    def _auth_session_profile_id(
+        self,
+        user_id: str,
+        *,
+        environ: dict[str, Any],
+    ) -> int:
+        actor = self._current_actor(environ)
+        if (
+            self._is_auth_session_end_user(actor)
+            and actor is not None
+            and str(actor.actor_id) == str(user_id)
+        ):
+            principal = self._resolve_end_user_principal(environ, require_profile=True)
+            if principal is not None and principal.profile_id is not None:
+                return int(principal.profile_id)
+        raise GatewayPermissionError("请先完成资料填写后再使用发现与推荐")
+
+    def _auth_session_requester_id(
+        self,
+        user_id: str,
+        *,
+        environ: dict[str, Any],
+    ) -> int:
+        """Deprecated alias for _auth_session_profile_id (§13.3)."""
+        return self._auth_session_profile_id(user_id, environ=environ)
 
     def _audit_permission(
         self,
@@ -203,8 +228,8 @@ class GatewayAccessMixin:
     ) -> str:
         owner_text = str(owner_id or "").strip()
         actor = self._current_actor(environ)
-        if self._is_auth_session_end_user(actor) and field_name == "requester_id":
-            bound = self._auth_session_requester_id(str(actor.actor_id))
+        if self._is_auth_session_end_user(actor) and field_name in PROFILE_ID_FIELD_ALIASES:
+            bound = self._auth_session_profile_id(str(actor.actor_id), environ=environ)
             if owner_text:
                 try:
                     if int(owner_text) != bound:
@@ -250,8 +275,8 @@ class GatewayAccessMixin:
         allow_override_roles: frozenset[str] = STAFF_OVERRIDE_ROLES,
     ) -> int:
         actor = self._current_actor(environ)
-        if self._is_auth_session_end_user(actor) and field_name == "requester_id":
-            bound = self._auth_session_requester_id(str(actor.actor_id))
+        if self._is_auth_session_end_user(actor) and field_name in PROFILE_ID_FIELD_ALIASES:
+            bound = self._auth_session_profile_id(str(actor.actor_id), environ=environ)
             supplied_text = str(supplied_id or "").strip()
             if supplied_text:
                 try:
@@ -294,6 +319,21 @@ class GatewayAccessMixin:
         )
         return subscription
 
+    def _get_recommendation_for_actor(
+        self,
+        environ: dict[str, Any],
+        recommendation_id: int,
+    ) -> dict[str, Any]:
+        recommendation = self._with_rec(get_recommendation_by_id, int(recommendation_id))
+        if not recommendation:
+            raise ValueError("recommendation not found")
+        self._assert_actor_can_access_owner(
+            environ,
+            recommendation.get("requester_id"),
+            field_name="requester_id",
+        )
+        return recommendation
+
     def _get_matchmaking_member_for_actor(
         self,
         environ: dict[str, Any],
@@ -306,6 +346,70 @@ class GatewayAccessMixin:
             field_name="user_key",
         )
         return member
+
+    def _get_case_for_actor(
+        self,
+        environ: dict[str, Any],
+        case_id: str,
+    ) -> dict[str, Any]:
+        try:
+            return self._get_matchmaking_case_for_actor(environ, case_id)
+        except GatewayPermissionError:
+            raise
+        except Exception:
+            pass
+        rec_case = self._with_proxy_intro(get_proxy_intro_match_case, case_id)
+        if not rec_case:
+            raise GatewayPermissionError("current actor is not allowed to access this match case")
+        actor = self._current_actor(environ)
+        if actor is None or actor.has_any_role(STAFF_OVERRIDE_ROLES):
+            return rec_case
+        requester_id = str(rec_case.get("requester_id") or "").strip()
+        candidate_id = str(rec_case.get("candidate_id") or "").strip()
+        if actor.actor_id in {requester_id, candidate_id}:
+            return rec_case
+        self._audit_permission(
+            environ,
+            action="gateway.case_access",
+            resource_type="proxy_intro_case",
+            resource_id=case_id,
+            outcome="denied",
+            reason="current actor is not a participant in this proxy-intro case",
+        )
+        raise GatewayPermissionError("current actor is not allowed to access this proxy-intro case")
+
+    def _assert_actor_can_access_ledger_relation(
+        self,
+        environ: dict[str, Any],
+        relation: dict[str, Any],
+    ) -> None:
+        actor = self._current_actor(environ)
+        if actor is None or actor.has_any_role(STAFF_OVERRIDE_ROLES):
+            return
+        owner_ref = str(relation.get("owner_profile_ref") or "").strip()
+        target_ref = str(relation.get("target_profile_ref") or "").strip()
+        allowed_refs: set[str] = set()
+        if self._is_auth_session_end_user(actor):
+            try:
+                profile_id = self._auth_session_profile_id(str(actor.actor_id), environ=environ)
+                allowed_refs.add(f"profile:{profile_id}")
+            except GatewayPermissionError:
+                pass
+        if owner_ref and owner_ref == actor.actor_id:
+            allowed_refs.add(owner_ref)
+        if target_ref and target_ref == actor.actor_id:
+            allowed_refs.add(target_ref)
+        if owner_ref in allowed_refs or target_ref in allowed_refs:
+            return
+        self._audit_permission(
+            environ,
+            action="gateway.ledger_access",
+            resource_type="relation",
+            resource_id=relation.get("relation_key"),
+            outcome="denied",
+            reason="current actor is not a participant in this relation",
+        )
+        raise GatewayPermissionError("current actor is not allowed to access this relation")
 
     def _get_matchmaking_case_for_actor(
         self,

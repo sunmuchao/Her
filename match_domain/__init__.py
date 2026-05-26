@@ -4,6 +4,7 @@ from .adapters import (
     build_canonical_event,
     canonical_pair_key_for_members,
     canonical_pair_status,
+    matchmaking_relation_key,
     merge_payload_with_event,
     pool_member_profile_ref,
     profile_ref_to_dict,
@@ -76,7 +77,33 @@ from .rulesets import (
     build_subscription_refresh_provenance,
     stable_content_fingerprint,
 )
+from .status_vocab import canonical_case_status_value, is_open_case_status
 from .trace_context import get_trace_id, new_trace_id, reset_trace_id, set_trace_id
+from .collected_profile import (
+    COLLECTED_PERSONA_FIELDS,
+    INFERENCE_ONLY_PERSONA_FIELDS,
+    INFERENCE_SOURCE_TYPES,
+    PERSISTABLE_SOURCE_TYPES,
+    PROFILE_FACT_PROFILE_COLUMNS,
+    extract_collected_statements,
+    extract_profile_facts,
+    filter_explicit_patch,
+)
+from .criteria_compiler import (
+    CompiledCriteria,
+    SCENE_DISCOVERY_SEARCH,
+    SCENE_RECOMMENDATION_REFRESH,
+    SCENE_SAVED_SEARCH,
+    build_discovery_search_request,
+    build_effective_search_request,
+    compile_effective_criteria,
+)
+from .criteria_snapshots import (
+    CriteriaSnapshotRecord,
+    get_criteria_snapshot_store,
+    save_compiled_snapshot,
+    snapshot_to_dict,
+)
 from .actor_context import (
     ActorContext,
     get_actor_context,
@@ -151,6 +178,7 @@ __all__ = [
     "build_canonical_event",
     "build_case_aggregate_event",
     "case_event_time_bucket",
+    "canonical_case_status_value",
     "canonical_pair_key_for_members",
     "canonical_pair_status",
     "correlation_case_event",
@@ -160,7 +188,8 @@ __all__ = [
     "match_event_from_merged_action_payload",
     "match_events_from_action_rows",
     "match_events_from_case_event_rows",
-    "merge_payload_with_event",
+    "is_open_case_status",
+    "matchmaking_relation_key",
     "pool_member_profile_ref",
     "profile_ref_to_dict",
     "recommendation_owner_ref",
@@ -178,4 +207,23 @@ __all__ = [
     "sort_ledger_events",
     "pair_key",
     "relation_key",
+    "COLLECTED_PERSONA_FIELDS",
+    "INFERENCE_ONLY_PERSONA_FIELDS",
+    "INFERENCE_SOURCE_TYPES",
+    "PERSISTABLE_SOURCE_TYPES",
+    "PROFILE_FACT_PROFILE_COLUMNS",
+    "CompiledCriteria",
+    "SCENE_DISCOVERY_SEARCH",
+    "SCENE_RECOMMENDATION_REFRESH",
+    "SCENE_SAVED_SEARCH",
+    "build_discovery_search_request",
+    "build_effective_search_request",
+    "compile_effective_criteria",
+    "CriteriaSnapshotRecord",
+    "get_criteria_snapshot_store",
+    "save_compiled_snapshot",
+    "snapshot_to_dict",
+    "extract_collected_statements",
+    "extract_profile_facts",
+    "filter_explicit_patch",
 ]

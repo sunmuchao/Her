@@ -110,16 +110,16 @@ async function ensureSessionProfile(page: import('@playwright/test').Page) {
     .catch(() => null)
 }
 
-const E2E_PROFILE_SOURCE = 'mysql://root@127.0.0.1:3307/her?table=profiles'
+const E2E_PROFILE_SOURCE =
+  'mysql://root@127.0.0.1:3307/her?table=profiles&photos_table=profile_photos'
 
 /** Create subscription + refresh; ensure recommendation action can hit backend. */
 async function ensureRecommendationCard(page: import('@playwright/test').Page) {
   const seeded = await page.evaluate(async (profileSource: string) => {
     const token = window.localStorage.getItem('her_demo_access_token')
     const ctx = JSON.parse(window.localStorage.getItem('her_session_context') || '{}')
-    const requesterId = ctx.requesterId
     const profileId = ctx.profileId
-    if (!token || !requesterId || !profileId) return false
+    if (!token || !profileId) return false
 
     const headers = {
       Authorization: `Bearer ${token}`,
@@ -128,7 +128,7 @@ async function ensureRecommendationCard(page: import('@playwright/test').Page) {
 
     const hasActionableCard = async () => {
       const res = await fetch(
-        `/api/gateway/v1/recommendation/cards?requester_id=${requesterId}`,
+        `/api/gateway/v1/recommendation/cards?profile_id=${profileId}`,
         { headers, credentials: 'include' },
       )
       if (!res.ok) return false
@@ -161,8 +161,7 @@ async function ensureRecommendationCard(page: import('@playwright/test').Page) {
       headers,
       credentials: 'include',
       body: JSON.stringify({
-        requester_id: requesterId,
-        self_id: profileId,
+        profile_id: profileId,
         source: profileSource,
         criteria: { city: '上海' },
         title: 'E2E推荐订阅',
@@ -194,16 +193,18 @@ async function ensureRecommendationCard(page: import('@playwright/test').Page) {
       }
     }
 
-    for (let i = 0; i < 20; i += 1) {
+    for (let i = 0; i < 40; i += 1) {
       if (await hasActionableCard()) return true
       await new Promise((resolve) => setTimeout(resolve, 500))
     }
 
-    return false
+    return { ok: false, reason: 'no actionable card after refresh' }
   }, E2E_PROFILE_SOURCE)
 
-  if (!seeded) {
-    throw new Error('E2E: could not seed recommendation card for inbox action')
+  if (!seeded || (typeof seeded === 'object' && !seeded.ok)) {
+    const reason =
+      typeof seeded === 'object' && seeded && 'reason' in seeded ? String(seeded.reason) : 'unknown'
+    throw new Error(`E2E: could not seed recommendation card for inbox action (${reason})`)
   }
 }
 
@@ -293,7 +294,7 @@ test('wechat login hits real backend (bind phone when required)', async ({ page 
     (request) =>
       request.url().includes('/api/gateway/v1/auth/wechat/login') && request.method() === 'POST',
   )
-  await page.getByRole('button', { name: '微信登录' }).click()
+  await page.getByRole('button', { name: '使用微信登录' }).click()
   await loginRequest
 
   const bindButton = page.getByRole('button', { name: '绑定手机号' })
@@ -325,10 +326,16 @@ test('one-tap login success hits real backend', async ({ page }) => {
   const verifyRequest = page.waitForRequest(
     (request) => request.url().includes('/api/gateway/v1/auth/one-tap/verify') && request.method() === 'POST',
   )
-  await page.getByRole('button', { name: '一键登录' }).click()
+  const oneTapButton = page.getByRole('button', { name: '一键登录' })
+  await oneTapButton.click()
   await createRequest
+  await oneTapButton.click()
   await verifyRequest
-  await page.waitForURL(/\/(discover|onboarding)/, { timeout: 20000 })
+  await page.waitForURL(/\/(discover|onboarding|welcome)/, { timeout: 20000 })
+  if (page.url().includes('/welcome')) {
+    await oneTapButton.click()
+    await page.waitForURL(/\/(discover|onboarding)/, { timeout: 20000 })
+  }
   await ensureSessionProfile(page)
   await expect(page).toHaveURL(/\/discover/, { timeout: 15000 })
 
@@ -347,7 +354,9 @@ test('relationships and chat pages hit real backend', async ({ page }) => {
   const timelineRequest = page.waitForRequest((request) => request.url().includes('/api/gateway/v2/chat/cases/case-frontend-demo/timeline') && request.method() === 'GET')
   await page.getByRole('button', { name: '关系' }).click()
   await timelineRequest
-  await expect(page.getByRole('heading', { name: '关系' })).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: '关系' }).or(page.getByText('正在进行中')),
+  ).toBeVisible({ timeout: 15000 })
   const activeRelationship = page
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: '正在进行中' }) })

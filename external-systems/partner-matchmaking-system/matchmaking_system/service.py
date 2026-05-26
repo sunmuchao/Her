@@ -28,12 +28,14 @@ from match_domain import (  # noqa: E402
     format_correlation_id,
     idempotency_feedback,
     match_events_from_case_event_rows,
+    matchmaking_relation_key,
     merge_payload_with_event,
     pool_member_profile_ref,
     profile_ref_to_dict,
     reduce_case_ledger,
 )
 from partner_search import search_profiles  # noqa: E402
+from match_domain.search_visibility import search_profiles_with_visibility_gate  # noqa: E402
 from profile_service import apply_persona_patch  # noqa: E402
 from her_time_utils import bool_to_int, current_time, format_dt, parse_dt  # noqa: E402
 
@@ -56,7 +58,12 @@ from relationship_ledger.runtime import append_event_to_default_ledger
 
 SearchRunner = Callable[..., dict[str, Any]]
 PersonaSyncRunner = Callable[[Mapping[str, Any]], dict[str, Any]]
-run_partner_search = search_profiles
+
+
+def run_partner_search(**kwargs: Any) -> dict[str, Any]:
+    return search_profiles_with_visibility_gate(search_profiles, **kwargs)
+
+
 sync_persona_memory = apply_persona_patch
 
 ACTIVE_MEMBER_STATUS = "active_single"
@@ -136,6 +143,19 @@ def inflate_case(case: dict[str, Any] | None, *, conn=None) -> dict[str, Any] | 
     inflated["case_ledger_event_count"] = len(ledger_events)
     reduced = reduce_case_ledger(ledger_events)
     inflated["canonical_case_status"] = reduced.status.value
+    if conn is not None:
+        first_id = inflated.get("first_contact_member_id")
+        second_id = inflated.get("second_contact_member_id")
+        if first_id and second_id:
+            try:
+                member_low = get_pool_member(conn, str(first_id))
+                member_high = get_pool_member(conn, str(second_id))
+                inflated["relation_key"] = matchmaking_relation_key(member_low, member_high)
+                inflated["canonical_pair_key"] = canonical_pair_key_for_members(member_low, member_high)
+                inflated["owner_profile_ref"] = profile_ref_to_dict(pool_member_profile_ref(member_low))
+                inflated["target_profile_ref"] = profile_ref_to_dict(pool_member_profile_ref(member_high))
+            except ValueError:
+                pass
     return inflated
 
 
@@ -160,8 +180,11 @@ def _attach_pair_profile_refs(conn, pair: dict[str, Any] | None) -> dict[str, An
     return pair
 
 
-def _matchmaking_relation_key(pair_key: str) -> str:
-    return pair_key
+def _matchmaking_relation_key_for_members(
+    member_low: Mapping[str, Any],
+    member_high: Mapping[str, Any],
+) -> str:
+    return matchmaking_relation_key(member_low, member_high)
 
 
 def _flush_ledger_mirror(entries: list[LedgerMirrorEntry]) -> None:
@@ -181,7 +204,7 @@ def _append_pair_event_to_ledger(
     payload: Mapping[str, Any] | None = None,
     ledger_mirror: list[LedgerMirrorEntry] | None = None,
 ) -> None:
-    relation_key = _matchmaking_relation_key(pair_key)
+    relation_key = _matchmaking_relation_key_for_members(member_low, member_high)
     event = build_canonical_event(
         event_type=pair_event_type,
         aggregate_type="relation",
@@ -648,7 +671,7 @@ def _record_case_event(
     if first_contact_member_id and second_contact_member_id:
         member_low = get_pool_member(conn, str(first_contact_member_id))
         member_high = get_pool_member(conn, str(second_contact_member_id))
-        relation_key = _matchmaking_relation_key(pair_key)
+        relation_key = _matchmaking_relation_key_for_members(member_low, member_high)
         owner_profile_ref = pool_member_profile_ref(member_low)
         target_profile_ref = pool_member_profile_ref(member_high)
     event = build_case_aggregate_event(

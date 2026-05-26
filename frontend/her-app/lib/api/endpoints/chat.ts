@@ -1,12 +1,5 @@
-import { gatewayJson, queryString } from '@/lib/api/client'
+import { fetchCaseConversationTimeline } from '@/lib/api/endpoints/relations'
 import { getCaseId, getChatParticipantId, getUserId } from '@/lib/auth/session'
-
-type TimelineResponse = {
-  conversations: Array<{
-    conversation: { conversation_id: string; channel_key: string }
-    messages: Array<{ author_id: string }>
-  }>
-}
 
 export async function fetchRelationshipsUnreadCount(): Promise<number> {
   const caseId = getCaseId()
@@ -15,9 +8,7 @@ export async function fetchRelationshipsUnreadCount(): Promise<number> {
   if (!caseId || !timelineActorId || !participantId) return 0
 
   try {
-    const data = await gatewayJson<TimelineResponse>(
-      `/v2/chat/cases/${caseId}/timeline${queryString({ requester_id: timelineActorId })}`,
-    )
+    const data = await fetchCaseConversationTimeline(caseId, timelineActorId)
     return data.conversations
       .filter((item) => item.conversation.channel_key === 'main_group')
       .reduce((sum, item) => {

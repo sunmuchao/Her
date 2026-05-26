@@ -2,75 +2,29 @@
 
 import { useEffect, useState } from 'react'
 import { Shield, BadgeCheck, AlertTriangle, FileText, Clock, ChevronRight, CheckCircle, XCircle, Upload } from 'lucide-react'
-import { gatewayJson, queryString } from '@/lib/api/client'
+import { fetchTrustHub } from '@/lib/api/endpoints/trust-hub'
 import { getProfileId, getUserId } from '@/lib/auth/session'
+import {
+  mapTrustHubPendingActions,
+  mapTrustHubVerificationItems,
+  type VerificationItemView,
+} from '@/lib/trust/map-trust-hub'
+import { InlineEmpty } from './ui/empty-states'
 
 interface TrustCenterPageProps {
   onStartVerification: () => void
 }
 
-type TrustHubResponse = {
-  trust_hub: {
-    summary?: {
-      pending_verification_count?: number
-      pending_appeal_count?: number
-      active_risk_count?: number
-      notification_count?: number
-    }
-    verification_center?: {
-      items?: Array<{
-        item_id?: string
-        title?: string
-        status?: string
-        status_label?: string
-        review_eta?: string
-        support_hint?: string
-      }>
-    }
-    risk_records?: {
-      items?: Array<{
-        title?: string
-        description?: string
-        time?: string
-        status?: string
-      }>
-    }
-    notifications?: Array<{
-      title?: string
-      body?: string
-      created_at?: string
-    }>
-  }
-}
-
-type VerificationItemView = {
-  name: string
-  status: 'verified' | 'pending' | 'unverified'
-  description: string
-}
-
-const FALLBACK_ITEMS: VerificationItemView[] = [
-  { name: '身份认证', status: 'verified', description: '已通过实名认证' },
-  { name: '学历认证', status: 'pending', description: '审核中，预计1-3个工作日' },
-  { name: '职业认证', status: 'unverified', description: '可补充在职证明或工牌照片' },
-]
-
-function normalizeStatus(status?: string): VerificationItemView['status'] {
-  const text = (status || '').toLowerCase()
-  if (['approved', 'verified', 'completed'].includes(text)) {
-    return 'verified'
-  }
-  if (['submitted', 'in_progress', 'pending', 'under_review'].includes(text)) {
-    return 'pending'
-  }
-  return 'unverified'
-}
-
 export default function TrustCenterPage({ onStartVerification }: TrustCenterPageProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [summary, setSummary] = useState<TrustHubResponse['trust_hub']['summary']>()
-  const [verificationItems, setVerificationItems] = useState<VerificationItemView[]>(FALLBACK_ITEMS)
+  const [summary, setSummary] = useState<{
+    pending_verification_count?: number
+    pending_appeal_count?: number
+    active_risk_count?: number
+    notification_count?: number
+  }>()
+  const [verificationItems, setVerificationItems] = useState<VerificationItemView[]>([])
   const [pendingItems, setPendingItems] = useState<Array<{ id: string; title: string; description: string; dueDate: string }>>([])
   const [riskRecords, setRiskRecords] = useState<Array<{ id: string; title: string; description: string; time: string; resolved: boolean }>>([])
   const [notifications, setNotifications] = useState<Array<{ id: string; title: string; description: string; time: string }>>([])
@@ -80,39 +34,21 @@ export default function TrustCenterPage({ onStartVerification }: TrustCenterPage
     const profileId = getProfileId()
     if (!userId) {
       setIsLoading(false)
-      setLoadError('缺少 NEXT_PUBLIC_HER_USER_ID，已回退到演示数据。')
+      setLoadError('请先登录后再查看信任中心')
       return
     }
 
+    const resolvedUserId = userId
     let cancelled = false
     async function loadTrustHub() {
       try {
-        const response = await gatewayJson<TrustHubResponse>(
-          `/v1/user-center/trust-hub${queryString({
-            user_id: userId,
-            profile_id: profileId,
-          })}`,
-        )
+        const response = await fetchTrustHub({ userId: resolvedUserId, profileId })
         if (cancelled) return
         const trustHub = response.trust_hub
-        const items =
-          trustHub.verification_center?.items?.map((item) => ({
-            name: item.title || '待认证项目',
-            status: normalizeStatus(item.status),
-            description: item.status_label || item.review_eta || item.support_hint || '等待进一步处理',
-          })) || []
+        const items = mapTrustHubVerificationItems(trustHub.verification_center?.items)
         setSummary(trustHub.summary)
-        setVerificationItems(items.length ? items : FALLBACK_ITEMS)
-        setPendingItems(
-          (trustHub.verification_center?.items || [])
-            .filter((item) => normalizeStatus(item.status) !== 'verified')
-            .map((item) => ({
-              id: item.item_id || item.title || Math.random().toString(36).slice(2),
-              title: item.title || '待补充材料',
-              description: item.support_hint || item.status_label || '请补充相关信息',
-              dueDate: item.review_eta || '请尽快处理',
-            })),
-        )
+        setVerificationItems(items)
+        setPendingItems(mapTrustHubPendingActions(trustHub.verification_center?.items))
         setRiskRecords(
           (trustHub.risk_records?.items || []).map((record, index) => ({
             id: String(index),
@@ -168,7 +104,6 @@ export default function TrustCenterPage({ onStartVerification }: TrustCenterPage
 
   return (
     <div className="flex flex-col h-full bg-background">
-      {/* Header */}
       <header className="sticky top-0 z-20 bg-background border-b border-border safe-area-top">
         <div className="px-4 py-3">
           <div className="flex items-center gap-3">
@@ -190,7 +125,6 @@ export default function TrustCenterPage({ onStartVerification }: TrustCenterPage
           </section>
         )}
 
-        {/* Overall status */}
         <section className="bg-card border border-border rounded-xl p-4">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
@@ -207,51 +141,57 @@ export default function TrustCenterPage({ onStartVerification }: TrustCenterPage
               </p>
             </div>
           </div>
-          <div className="grid grid-cols-4 gap-2">
-            {verificationItems.slice(0, 4).map((item, i) => {
-              const styles = getStatusStyles(item.status)
-              return (
-                <div key={i} className={`text-center p-2 rounded-lg ${styles.bg}`}>
-                  <div className="flex justify-center mb-1">{getStatusIcon(item.status)}</div>
-                  <span className="text-[10px] text-muted-foreground">{item.name.slice(0, 4)}</span>
-                </div>
-              )
-            })}
-          </div>
+          {verificationItems.length > 0 ? (
+            <div className="grid grid-cols-4 gap-2">
+              {verificationItems.slice(0, 4).map((item, i) => {
+                const styles = getStatusStyles(item.status)
+                return (
+                  <div key={i} className={`text-center p-2 rounded-lg ${styles.bg}`}>
+                    <div className="flex justify-center mb-1">{getStatusIcon(item.status)}</div>
+                    <span className="text-[10px] text-muted-foreground">{item.name.slice(0, 4)}</span>
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <InlineEmpty message="暂无认证项目" />
+          )}
         </section>
 
-        {/* Verification items */}
         <section>
           <h2 className="text-sm font-medium mb-2">认证状态</h2>
           <div className="bg-card border border-border rounded-xl overflow-hidden">
-            {verificationItems.map((item, i) => {
-              const styles = getStatusStyles(item.status)
-              return (
-                <button
-                  key={i}
-                  onClick={item.status === 'unverified' ? onStartVerification : undefined}
-                  className={`w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-secondary/50 ${
-                    i !== verificationItems.length - 1 ? 'border-b border-border' : ''
-                  }`}
-                >
-                  {getStatusIcon(item.status)}
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">{item.name}</span>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${styles.bg} ${styles.text}`}>
-                        {getStatusText(item.status)}
-                      </span>
+            {verificationItems.length === 0 ? (
+              <InlineEmpty message="还没有认证记录，完成认证可提升可信度" />
+            ) : (
+              verificationItems.map((item, i) => {
+                const styles = getStatusStyles(item.status)
+                return (
+                  <button
+                    key={i}
+                    onClick={item.status === 'unverified' ? onStartVerification : undefined}
+                    className={`w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-secondary/50 ${
+                      i !== verificationItems.length - 1 ? 'border-b border-border' : ''
+                    }`}
+                  >
+                    {getStatusIcon(item.status)}
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">{item.name}</span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${styles.bg} ${styles.text}`}>
+                          {getStatusText(item.status)}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
-                  </div>
-                  {item.status === 'unverified' && <ChevronRight className="w-4 h-4 text-muted-foreground" />}
-                </button>
-              )
-            })}
+                    {item.status === 'unverified' && <ChevronRight className="w-4 h-4 text-muted-foreground" />}
+                  </button>
+                )
+              })
+            )}
           </div>
         </section>
 
-        {/* Pending items */}
         {pendingItems.length > 0 && (
           <section>
             <h2 className="text-sm font-medium mb-2">待处理</h2>
@@ -275,7 +215,6 @@ export default function TrustCenterPage({ onStartVerification }: TrustCenterPage
           </section>
         )}
 
-        {/* Risk records */}
         {riskRecords.length > 0 && (
           <section>
             <h2 className="text-sm font-medium mb-2">安全记录</h2>
@@ -299,7 +238,6 @@ export default function TrustCenterPage({ onStartVerification }: TrustCenterPage
           </section>
         )}
 
-        {/* Notifications */}
         {notifications.length > 0 && (
           <section>
             <h2 className="text-sm font-medium mb-2">审核通知</h2>

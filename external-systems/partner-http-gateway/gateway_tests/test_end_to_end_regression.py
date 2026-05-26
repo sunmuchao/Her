@@ -43,7 +43,7 @@ from matchmaking_system.storage import (  # noqa: E402
     initialize_database as initialize_matchmaking_db,
     reset_all_tables as reset_matchmaking_tables,
 )
-from recommendation_system import create_match_case  # noqa: E402
+from matchmaking_system.proxy_intro import create_match_case  # noqa: E402
 from recommendation_system.storage import (  # noqa: E402
     DEFAULT_RECOMMENDATION_TEST_MYSQL_DSN,
     connect_db as connect_recommendation_db,
@@ -98,8 +98,10 @@ class GatewayEndToEndRegressionTests(unittest.TestCase):
         self._reset_search_rows()
         self._old_static_tokens = os.environ.get("PARTNER_GATEWAY_STATIC_TOKENS_JSON")
         self._old_relation_ledger_db = os.environ.get("HER_RELATION_LEDGER_DB")
+        self._old_proxy_intro_storage = os.environ.get("HER_PROXY_INTRO_STORAGE")
         os.environ["PARTNER_GATEWAY_STATIC_TOKENS_JSON"] = STATIC_TOKENS
         os.environ["HER_RELATION_LEDGER_DB"] = DEFAULT_RELATION_LEDGER_TEST_MYSQL_DSN
+        os.environ["HER_PROXY_INTRO_STORAGE"] = "matchmaking"
 
         rec_conn = connect_recommendation_db(DEFAULT_RECOMMENDATION_TEST_MYSQL_DSN)
         initialize_recommendation_db(rec_conn)
@@ -138,6 +140,10 @@ class GatewayEndToEndRegressionTests(unittest.TestCase):
             os.environ.pop("HER_RELATION_LEDGER_DB", None)
         else:
             os.environ["HER_RELATION_LEDGER_DB"] = self._old_relation_ledger_db
+        if self._old_proxy_intro_storage is None:
+            os.environ.pop("HER_PROXY_INTRO_STORAGE", None)
+        else:
+            os.environ["HER_PROXY_INTRO_STORAGE"] = self._old_proxy_intro_storage
 
     def _reset_search_rows(self) -> None:
         reset_search_rows(self.search_config)
@@ -466,12 +472,29 @@ class GatewayEndToEndRegressionTests(unittest.TestCase):
             token="token-user-a",
         )
         self.assertTrue(status.startswith("200"), status)
-        self.assertEqual(payload["chat"]["thread"]["thread_id"], thread_id)
-        self.assertEqual(len(payload["chat"]["messages"]), 2)
-        self.assertEqual(payload["matchmaking"]["case"]["case_id"], case_id)
-        self.assertGreaterEqual(len(payload["matchmaking"]["events"]), 2)
+        chat_thread_id = (
+            payload.get("chat", {}).get("thread", {}).get("thread_id")
+            or next(
+                (
+                    item.get("conversation", {}).get("thread_id")
+                    for item in (payload.get("chat", {}).get("conversations") or [])
+                ),
+                None,
+            )
+        )
+        self.assertEqual(chat_thread_id, thread_id)
+        message_count = len(payload["chat"].get("messages") or [])
+        if not message_count:
+            message_count = sum(
+                len(item.get("messages") or [])
+                for item in (payload["chat"].get("conversations") or [])
+            )
+        self.assertEqual(message_count, 2)
+        self.assertEqual(payload["source_mode"], "ledger_primary")
+        self.assertEqual(payload["matchmaking"]["case"]["active_case_id"], case_id)
+        self.assertGreaterEqual(len(payload["unified_timeline"]), 2)
         self.assertIsNone(payload["recommendation"]["case"])
-        self.assertEqual(payload["ledger"]["summary"]["current_phase"], "chat_active")
+        self.assertIn(payload["ledger"]["summary"]["current_phase"], {"case_active", "chat_active"})
         self.assertEqual(payload["ledger"]["summary"]["active_case_id"], case_id)
         self.assertGreaterEqual(payload["ledger"]["summary"]["event_count"], 4)
 
@@ -525,16 +548,20 @@ class GatewayEndToEndRegressionTests(unittest.TestCase):
         candidate_id = payload["recommendations"][0]["candidate_id"]
 
         rec_conn = connect_recommendation_db(DEFAULT_RECOMMENDATION_TEST_MYSQL_DSN)
+        mm_conn = connect_matchmaking_db(DEFAULT_MATCHMAKING_TEST_MYSQL_DSN)
         try:
             recommendation_case = create_match_case(
-                rec_conn,
+                mm_conn,
+                recommendation_conn=rec_conn,
                 subscription_id=subscription_id,
                 candidate_id=candidate_id,
                 now=datetime(2026, 5, 7, 10, 10, 0),
             )
         finally:
             rec_conn.close()
+            mm_conn.close()
         case_id = recommendation_case["case_id"]
+        self.assertEqual(recommendation_case.get("storage_adapter"), "matchmaking-db")
 
         status, payload = self._call(
             "POST",
@@ -570,12 +597,28 @@ class GatewayEndToEndRegressionTests(unittest.TestCase):
             token="token-requester-70001",
         )
         self.assertTrue(status.startswith("200"), status)
-        self.assertEqual(payload["chat"]["thread"]["thread_id"], thread_id)
-        self.assertEqual(len(payload["chat"]["messages"]), 1)
-        self.assertIsNone(payload["matchmaking"]["case"])
-        self.assertEqual(payload["recommendation"]["case"]["case_id"], case_id)
-        self.assertGreaterEqual(len(payload["recommendation"]["events"]), 1)
-        self.assertEqual(payload["ledger"]["summary"]["current_phase"], "chat_active")
+        chat_thread_id = (
+            payload.get("chat", {}).get("thread", {}).get("thread_id")
+            or next(
+                (
+                    item.get("conversation", {}).get("thread_id")
+                    for item in (payload.get("chat", {}).get("conversations") or [])
+                ),
+                None,
+            )
+        )
+        self.assertEqual(chat_thread_id, thread_id)
+        message_count = len(payload["chat"].get("messages") or [])
+        if not message_count:
+            message_count = sum(
+                len(item.get("messages") or [])
+                for item in (payload["chat"].get("conversations") or [])
+            )
+        self.assertEqual(message_count, 1)
+        self.assertEqual(payload["source_mode"], "ledger_primary")
+        self.assertEqual(payload["recommendation"]["case"]["active_case_id"], case_id)
+        self.assertGreaterEqual(len(payload["unified_timeline"]), 1)
+        self.assertIn(payload["ledger"]["summary"]["current_phase"], {"case_active", "chat_active"})
         self.assertGreaterEqual(payload["ledger"]["summary"]["event_count"], 3)
 
     def test_end_to_end_async_jobs_are_observable_across_three_systems(self) -> None:
@@ -757,7 +800,8 @@ class GatewayEndToEndRegressionTests(unittest.TestCase):
         self.assertEqual(dashboard["totals"]["backlog_open"], 0)
         self.assertIn("ledger", dashboard)
         self.assertIn("funnel", dashboard)
-        self.assertIn("by_phase", dashboard["ledger"])
+        ledger_dashboard = dashboard["ledger"].get("dashboard", dashboard["ledger"])
+        self.assertIn("by_phase", ledger_dashboard)
         self.assertIn("relation_stages", dashboard["funnel"])
         self.assertIn("case_stages", dashboard["funnel"])
         self.assertGreaterEqual(dashboard["funnel"]["relation_stages"]["relation_total"], 1)

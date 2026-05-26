@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime
 from typing import Any, Mapping
 
 from match_domain import (
     AGGREGATE_CASE,
-    AGGREGATE_RELATION,
     MatchEvent,
     ProfileRef,
+    canonical_case_status_value,
     match_event_from_mapping,
     profile_ref_to_dict,
     reduce_case_ledger,
@@ -18,6 +17,16 @@ from match_domain import (
 )
 
 from .storage import json_dumps, json_loads, row_to_dict
+
+
+OPEN_LEDGER_CASE_STATUSES = frozenset(
+    {
+        "pending_contact",
+        "pending_outreach",
+        "awaiting_reply",
+        "accepted",
+    }
+)
 
 
 def relation_id_from_key(relation_key: str) -> str:
@@ -297,7 +306,7 @@ def _refresh_relation_projection(
                 SELECT *
                 FROM match_relation_cases
                 WHERE relation_id = ?
-                  AND case_status IN ('pending_contact', 'awaiting_reply', 'accepted')
+                  AND case_status IN ('pending_contact', 'pending_outreach', 'awaiting_reply', 'accepted')
                 ORDER BY last_event_at DESC, case_id DESC
                 LIMIT 1
                 """,
@@ -468,7 +477,7 @@ def get_relation(conn, relation_id: str) -> dict[str, Any] | None:
             (
                 case
                 for case in row["cases"]
-                if str(case.get("case_status") or "") in {"pending_contact", "awaiting_reply", "accepted"}
+                if str(case.get("case_status") or "") in OPEN_LEDGER_CASE_STATUSES
             ),
             None,
         )
@@ -490,6 +499,31 @@ def list_relations(conn) -> list[dict[str, Any]]:
     rows = conn.execute(
         "SELECT relation_id FROM match_relations ORDER BY last_event_at DESC, relation_id DESC",
         (),
+    ).fetchall()
+    return [item for item in (get_relation(conn, str(row["relation_id"])) for row in rows) if item]
+
+
+def list_relations_for_profile_refs(
+    conn,
+    profile_refs: list[str],
+    *,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    refs = [str(ref).strip() for ref in profile_refs if str(ref).strip()]
+    if not refs:
+        return []
+    safe_limit = max(int(limit), 1)
+    placeholders = ", ".join(["?"] * len(refs))
+    rows = conn.execute(
+        f"""
+        SELECT relation_id
+        FROM match_relations
+        WHERE owner_profile_ref IN ({placeholders})
+           OR target_profile_ref IN ({placeholders})
+        ORDER BY last_event_at DESC, relation_id DESC
+        LIMIT ?
+        """,
+        (*refs, *refs, safe_limit),
     ).fetchall()
     return [item for item in (get_relation(conn, str(row["relation_id"])) for row in rows) if item]
 
@@ -713,14 +747,133 @@ def _synthesized_cases_from_events(events: list[dict[str, Any]]) -> list[dict[st
     return out
 
 
+def get_relation_by_case_id(conn, case_id: str) -> dict[str, Any] | None:
+    case_id = str(case_id or "").strip()
+    if not case_id:
+        return None
+    row = conn.execute(
+        """
+        SELECT relation_id
+        FROM match_relation_cases
+        WHERE case_id = ?
+        ORDER BY last_event_at DESC, case_id DESC
+        LIMIT 1
+        """,
+        (case_id,),
+    ).fetchone()
+    if not row:
+        row = conn.execute(
+            """
+            SELECT relation_id
+            FROM match_relation_events
+            WHERE case_id = ?
+            ORDER BY occurred_at DESC, ledger_event_id DESC
+            LIMIT 1
+            """,
+            (case_id,),
+        ).fetchone()
+    if not row:
+        return None
+    return get_relation(conn, str(row["relation_id"]))
+
+
+def get_relation_for_lookup_keys(
+    conn,
+    lookup_keys: list[str | None],
+    *,
+    case_id: str | None = None,
+) -> tuple[dict[str, Any] | None, str | None]:
+    if case_id:
+        relation = get_relation_by_case_id(conn, case_id)
+        if relation:
+            return relation, str(relation.get("relation_key") or "")
+    seen: set[str] = set()
+    for raw_key in lookup_keys:
+        key = str(raw_key or "").strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        relation = get_relation_by_key(conn, key)
+        if relation and (relation.get("events") or relation.get("cases")):
+            return relation, key
+    for raw_key in lookup_keys:
+        key = str(raw_key or "").strip()
+        if not key or key in seen:
+            continue
+        relation = get_relation_by_key(conn, key)
+        if relation:
+            return relation, key
+    return None, None
+
+
+def build_unified_timeline_from_ledger(relation: Mapping[str, Any]) -> list[dict[str, Any]]:
+    events = list(relation.get("events") or [])
+    timeline: list[dict[str, Any]] = []
+    for item in events:
+        if not isinstance(item, Mapping):
+            continue
+        canonical = item.get("canonical_event") or {}
+        timeline.append(
+            {
+                "source": "relationship_ledger",
+                "occurred_at": item.get("occurred_at"),
+                "event_type": item.get("event_type"),
+                "source_service": item.get("source_service"),
+                "case_id": item.get("case_id"),
+                "case_type": item.get("case_type"),
+                "aggregate_type": item.get("aggregate_type"),
+                "aggregate_id": item.get("aggregate_id"),
+                "actor_type": item.get("actor_type"),
+                "actor_id": item.get("actor_id"),
+                "canonical_event": canonical,
+            }
+        )
+    timeline.sort(key=lambda row: (str(row.get("occurred_at") or ""), str(row.get("event_type") or "")))
+    return timeline
+
+
+def summarize_ledger_relation_for_timeline(relation: Mapping[str, Any]) -> dict[str, Any]:
+    from match_domain.boundary import case_progress_owner
+
+    active_case = next(
+        (
+            case
+            for case in (relation.get("cases") or [])
+            if str(case.get("case_status") or "") in OPEN_LEDGER_CASE_STATUSES
+        ),
+        None,
+    )
+    return {
+        "relation_key": relation.get("relation_key"),
+        "relation_status": relation.get("relation_status"),
+        "current_phase": relation.get("current_phase"),
+        "recommendation_status_owner": "recommendation",
+        "case_progress_owner": case_progress_owner(active_case) if active_case else None,
+        "case_progress_status": canonical_case_status_value(
+            active_case.get("case_status") if active_case else relation.get("active_case_status")
+        ),
+        "active_case_id": relation.get("active_case_id"),
+        "active_case_type": relation.get("active_case_type"),
+        "active_case_status": canonical_case_status_value(relation.get("active_case_status")),
+        "latest_chat_thread_id": relation.get("latest_chat_thread_id"),
+        "event_count": len(relation.get("events") or []),
+        "case_count": len(relation.get("cases") or []),
+    }
+
+
 __all__ = [
     "append_event",
     "build_cross_system_funnel_dashboard",
     "build_relation_dashboard",
+    "build_unified_timeline_from_ledger",
     "get_relation",
+    "get_relation_by_case_id",
     "get_relation_by_key",
+    "get_relation_for_lookup_keys",
     "list_cases_for_relation",
     "list_events_for_relation",
     "list_relations",
+    "list_relations_for_profile_refs",
     "relation_id_from_key",
+    "summarize_ledger_relation_for_timeline",
 ]

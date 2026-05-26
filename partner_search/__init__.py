@@ -4,7 +4,6 @@ from .api import (
     SearchRequest,
     SearchResponse,
     load_self_profile,
-    normalize_persona_profile,
     search,
     search_profiles,
 )
@@ -13,7 +12,6 @@ __all__ = [
     "SearchRequest",
     "SearchResponse",
     "load_self_profile",
-    "normalize_persona_profile",
     "search",
     "search_profiles",
 ]

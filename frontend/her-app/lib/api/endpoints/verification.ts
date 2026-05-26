@@ -45,7 +45,7 @@ export type LiveVideoChallenge = {
   required_actions?: string[]
 }
 
-/** Minimal stub payload for dev / E2E (not a real video). */
+/** Minimal stub payload for automated tests only (not production). */
 const STUB_VIDEO_BASE64 =
   'GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQRChYECGFOAZwEAAAAAAAHTEU2bdLpNu4tAA5'
 
@@ -75,9 +75,19 @@ export async function createLiveVideoChallenge(): Promise<LiveVideoChallenge> {
 export async function submitLiveVideoVerification(params: {
   challengeToken: string
   challengePhrase?: string
+  videoBase64?: string
+  fileName?: string
+  contentType?: string
 }) {
   const userId = getUserId()
   if (!userId) throw new Error('请先登录')
+
+  const videoBase64 =
+    params.videoBase64 ??
+    (process.env.NODE_ENV === 'test' ? STUB_VIDEO_BASE64 : undefined)
+  if (!videoBase64) {
+    throw new Error('请先录制视频后再提交')
+  }
 
   return gatewayJson<{ submission?: VerificationSubmission }>(
     '/v1/verifications/live-video-submissions',
@@ -86,9 +96,9 @@ export async function submitLiveVideoVerification(params: {
       body: JSON.stringify({
         user_id: userId,
         profile_id: getProfileId(),
-        video_base64: STUB_VIDEO_BASE64,
-        file_name: 'verification-stub.webm',
-        content_type: 'video/webm',
+        video_base64: videoBase64,
+        file_name: params.fileName || 'verification-recording.webm',
+        content_type: params.contentType || 'video/webm',
         challenge_token: params.challengeToken,
         challenge_phrase: params.challengePhrase,
         metadata: { action_result: [], source: 'her-app' },

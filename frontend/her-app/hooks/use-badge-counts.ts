@@ -3,21 +3,21 @@
 import { useCallback, useEffect, useState } from 'react'
 import { fetchRelationshipsUnreadCount } from '@/lib/api/endpoints/chat'
 import { fetchInboxUnreadCount } from '@/lib/api/endpoints/recommendation'
-import { getRequesterId } from '@/lib/auth/session'
+import { getProfileId } from '@/lib/auth/session'
 
 export function useBadgeCounts() {
   const [inboxUnreadCount, setInboxUnreadCount] = useState(0)
   const [relationshipsBadge, setRelationshipsBadge] = useState(0)
 
   const refresh = useCallback(async () => {
-    const requesterId = getRequesterId()
-    if (!requesterId) {
+    const profileId = getProfileId()
+    if (!profileId) {
       setInboxUnreadCount(0)
       return
     }
     try {
       const [inbox, relationships] = await Promise.all([
-        fetchInboxUnreadCount(requesterId),
+        fetchInboxUnreadCount(profileId),
         fetchRelationshipsUnreadCount(),
       ])
       setInboxUnreadCount(inbox)

@@ -5,6 +5,7 @@ import BottomNav from '@/components/her/bottom-nav'
 import CandidateDetailPage from '@/components/her/candidate-detail-page'
 import ChatPage from '@/components/her/chat-page'
 import DiscoverPage, { RecommendationInbox } from '@/components/her/discover-page'
+import CollectedPreferencesPage from '@/components/her/collected-preferences-page'
 import ProfilePage from '@/components/her/profile-page'
 import RelationshipsPage from '@/components/her/relationships-page'
 import TrustCenterPage from '@/components/her/trust-center-page'
@@ -30,6 +31,8 @@ type AppShellProps = {
   onStartVerification: (from?: 'trust-center') => void
   onBackFromVerification: () => void
   onOpenTrustCenter: () => void
+  onOpenCollectedPreferences: () => void
+  onOpenOnboarding?: () => void
 }
 
 export function AppShell({
@@ -48,6 +51,8 @@ export function AppShell({
   onStartVerification,
   onBackFromVerification,
   onOpenTrustCenter,
+  onOpenCollectedPreferences,
+  onOpenOnboarding,
 }: AppShellProps) {
   const { inboxUnreadCount, relationshipsBadge, refreshBadges } = useBadgeCounts()
 
@@ -89,6 +94,8 @@ export function AppShell({
             <ProfilePage
               onStartVerification={onStartVerification}
               onOpenTrustCenter={onOpenTrustCenter}
+              onOpenCollectedPreferences={onOpenCollectedPreferences}
+              onOpenOnboarding={onOpenOnboarding}
             />
           </PageTransition>
         )}
@@ -112,6 +119,11 @@ export function AppShell({
         {subView === 'verification' && (
           <SlideInTransition key="verification" direction="up">
             <VerificationFlowPage onBack={onBackFromVerification} />
+          </SlideInTransition>
+        )}
+        {subView === 'collected-preferences' && (
+          <SlideInTransition key="collected-preferences" direction="right">
+            <CollectedPreferencesPage onBack={onBackToMain} />
           </SlideInTransition>
         )}
         {subView === 'trust-center' && (

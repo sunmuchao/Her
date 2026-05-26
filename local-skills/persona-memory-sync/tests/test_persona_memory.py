@@ -125,10 +125,8 @@ class PersonaMemoryTests(unittest.TestCase):
         patch = {"self_city": "上海", "preferred_traits": "沟通顺畅"}
         merged, field_results = persona_memory_lib.merge_persona(existing, patch, "strong_inference")
         self.assertEqual(merged["self_city"], "无锡")
-        self.assertEqual(merged["preferred_traits"], "稳定,沟通顺畅")
-        city_result = [item for item in field_results if item["field_name"] == "self_city"][0]
-        self.assertFalse(city_result["applied_to_persona"])
-        self.assertEqual(city_result["note"], "explicit_only_scalar")
+        self.assertEqual(merged["preferred_traits"], "稳定")
+        self.assertTrue(all(item["note"] == "inference_not_persisted" for item in field_results))
 
     def test_strong_inference_can_update_soft_self_description_fields(self):
         merged, field_results = persona_memory_lib.merge_persona(
@@ -141,16 +139,11 @@ class PersonaMemoryTests(unittest.TestCase):
             },
             "strong_inference",
         )
-        self.assertEqual(merged["self_life_rhythm"], "生活规律")
-        self.assertEqual(merged["self_work_pattern"], "工作节奏波动较多")
-        self.assertEqual(merged["self_expression_style"], "表达直接")
+        self.assertNotIn("self_life_rhythm", merged)
+        self.assertNotIn("self_work_pattern", merged)
+        self.assertNotIn("self_expression_style", merged)
         self.assertNotIn("self_job", merged)
-        applied_fields = {item["field_name"]: item for item in field_results}
-        self.assertTrue(applied_fields["self_life_rhythm"]["applied_to_persona"])
-        self.assertTrue(applied_fields["self_work_pattern"]["applied_to_persona"])
-        self.assertTrue(applied_fields["self_expression_style"]["applied_to_persona"])
-        self.assertFalse(applied_fields["self_job"]["applied_to_persona"])
-        self.assertEqual(applied_fields["self_job"]["note"], "explicit_only_scalar")
+        self.assertTrue(all(not item["applied_to_persona"] for item in field_results))
 
     def test_apply_persona_patch_observation_only_skips_persona_and_profile_upsert(self):
         class FakeCursor:
@@ -272,9 +265,12 @@ class PersonaMemoryTests(unittest.TestCase):
             },
             "explicit",
         )
-        self.assertEqual(merged["persona_summary_internal"], "现居无锡，结婚导向，偏务实。")
-        summary_result = [item for item in field_results if item["field_name"] == "persona_summary_internal"][0]
-        self.assertEqual(summary_result["stored_value"], "现居无锡，结婚导向，偏务实。")
+        self.assertEqual(merged["self_relationship_goal"], "结婚导向")
+        self.assertNotIn("persona_summary_internal", merged)
+        self.assertEqual(
+            [item for item in field_results if item["field_name"] == "persona_summary_internal"],
+            [],
+        )
 
     def test_build_profile_payload_maps_acceptance_fields(self):
         persona = {
@@ -300,8 +296,8 @@ class PersonaMemoryTests(unittest.TestCase):
             "target_marital_status_strength": "谨慎接受",
             "must_have_tags": "情绪稳定,消费观正常",
         }
-        payload = persona_memory_lib.build_profile_payload(persona)
-        self.assertEqual(payload["gender"], "男")
+        payload = persona_memory_lib.build_profile_payload(persona, profile_sync_mode="legacy")
+        self.assertNotIn("gender", payload)
         self.assertEqual(payload["preferred_age_min"], 24)
         self.assertEqual(payload["preferred_age_max"], 30)
         self.assertEqual(payload["preferred_cities"], "无锡")
@@ -312,14 +308,15 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertEqual(payload["accept_marital_status"], "未婚")
         self.assertEqual(payload["accept_marital_status_strength"], "谨慎接受")
         self.assertEqual(payload["accept_marital_status_semantics"], "能接受，但更看具体人和相处质量")
-        self.assertEqual(payload["income_range"], "36-45万/年")
-        self.assertEqual(payload["education"], "专升本")
+        self.assertNotIn("income_range", payload)
+        self.assertNotIn("education", payload)
         self.assertEqual(payload["public_education"], "本科")
         self.assertEqual(payload["personality"], "慢热但反馈稳定，认真推进关系。")
         self.assertEqual(payload["values"], "看重沟通效率，也看重情绪稳定。")
         self.assertEqual(payload["public_job"], "产品经理")
         self.assertEqual(payload["public_display_name"], "用户0074")
-        self.assertIn("matcher_traits_json", payload)
+        self.assertNotIn("matcher_traits_json", payload)
+        self.assertNotIn("matcher_preferences_json", payload)
         self.assertIn("public_personality", payload)
         self.assertIn("你对对方孩子情况=现阶段接受度偏低，需结合具体情况判断", payload["notes"])
 
@@ -329,7 +326,8 @@ class PersonaMemoryTests(unittest.TestCase):
                 "profile_id": 30074,
                 "target_accept_partner_children": "现阶段不太接受",
                 "target_accept_partner_children_strength": "谨慎接受",
-            }
+            },
+            profile_sync_mode="legacy",
         )
         self.assertEqual(payload["accept_partner_children"], "现阶段不太接受")
         self.assertEqual(payload["accept_partner_children_strength"], "谨慎接受")
@@ -341,7 +339,8 @@ class PersonaMemoryTests(unittest.TestCase):
             {
                 "target_accept_long_distance": "短期通勤可了解，长期异地谨慎",
                 "target_location_semantics": "江浙沪范围内优先；短期通勤型距离可了解，但长期异地比较谨慎。",
-            }
+            },
+            profile_sync_mode="legacy",
         )
         self.assertEqual(payload["long_distance"], "短期通勤可了解，长期异地谨慎")
         self.assertEqual(payload["accept_long_distance"], "短期通勤可了解，长期异地谨慎")
@@ -491,11 +490,11 @@ class PersonaMemoryTests(unittest.TestCase):
                 "self_children_living_with_self": 0,
                 "target_requires_partner_accept_my_children": 1,
                 "persona_summary_internal": "有一女但不随身，认真找长期关系。",
-            }
+            },
+            profile_sync_mode="legacy",
         )
-        self.assertEqual(payload["has_children"], 1)
-        self.assertEqual(payload["children_count"], 1)
-        self.assertEqual(payload["children_living_with_self"], 0)
+        self.assertNotIn("has_children", payload)
+        self.assertNotIn("children_count", payload)
         self.assertEqual(payload["requires_partner_accept_my_children"], 1)
         self.assertIn("对方需能接受你的孩子现实", payload["notes"])
 
@@ -690,6 +689,7 @@ class PersonaMemoryTests(unittest.TestCase):
         payload = persona_memory_lib.build_profile_payload(
             {"target_education_min": None},
             include_null_persona_fields={"target_education_min"},
+            profile_sync_mode="legacy",
         )
         self.assertIn("preferred_education_min", payload)
         self.assertIsNone(payload["preferred_education_min"])
@@ -706,7 +706,11 @@ class PersonaMemoryTests(unittest.TestCase):
             "values": "看重沟通和现实执行感。",
             "notes": "明确不接受长期拉扯。",
         }
-        payload = persona_memory_lib.build_profile_payload(persona, existing_profile=existing_profile)
+        payload = persona_memory_lib.build_profile_payload(
+            persona,
+            existing_profile=existing_profile,
+            profile_sync_mode="legacy",
+        )
         self.assertEqual(payload["personality"], existing_profile["personality"])
         self.assertEqual(payload["values"], existing_profile["values"])
         self.assertEqual(payload["notes"], existing_profile["notes"])
@@ -721,7 +725,11 @@ class PersonaMemoryTests(unittest.TestCase):
         existing_profile = {
             "personality": "上海本地，1-2年内往结婚推进导向",
         }
-        payload = persona_memory_lib.build_profile_payload(persona, existing_profile=existing_profile)
+        payload = persona_memory_lib.build_profile_payload(
+            persona,
+            existing_profile=existing_profile,
+            profile_sync_mode="legacy",
+        )
         self.assertEqual(payload["personality"], "现居上海，认真相处，合适就认真往后走")
 
     def test_build_profile_payload_sanitizes_existing_internal_personality_without_dropping_extra_context(self):
@@ -732,14 +740,19 @@ class PersonaMemoryTests(unittest.TestCase):
         existing_profile = {
             "personality": "无锡本地，结婚导向，偏务实，倾向稳定清晰的长期关系。",
         }
-        payload = persona_memory_lib.build_profile_payload(persona, existing_profile=existing_profile)
+        payload = persona_memory_lib.build_profile_payload(
+            persona,
+            existing_profile=existing_profile,
+            profile_sync_mode="legacy",
+        )
         self.assertEqual(payload["personality"], "现居无锡，结婚导向，偏务实，倾向稳定清晰的长期关系。")
 
     def test_build_profile_payload_keeps_four_disliked_traits_in_internal_notes(self):
         payload = persona_memory_lib.build_profile_payload(
             {
                 "disliked_traits": "控制欲强,长期回避沟通,消费观失衡,感情态度飘",
-            }
+            },
+            profile_sync_mode="legacy",
         )
         self.assertIn("感情态度飘", payload["notes"])
 
@@ -748,18 +761,19 @@ class PersonaMemoryTests(unittest.TestCase):
             {
                 "must_not_have_tags": "抽烟",
                 "disliked_traits": "长期失联,抽烟",
-            }
+            },
+            profile_sync_mode="legacy",
         )
         self.assertEqual(payload["notes"].count("抽烟"), 1)
 
     def test_mark_profile_sync_results_only_marks_profile_affecting_fields(self):
         field_results = [
-            {"field_name": "self_city", "applied_to_persona": True},
+            {"field_name": "target_age_min", "applied_to_persona": True},
             {"field_name": "profile_id", "applied_to_persona": True},
             {"field_name": "self_age", "applied_to_persona": False},
         ]
         persona_memory_lib.mark_profile_sync_results(field_results, synced_profile=True)
-        self.assertTrue(field_results[0]["applied_to_profile"])
+        self.assertFalse(field_results[0]["applied_to_profile"])
         self.assertFalse(field_results[1]["applied_to_profile"])
         self.assertFalse(field_results[2]["applied_to_profile"])
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ArrowLeft, Camera, RotateCcw, CheckCircle, Clock, AlertCircle, Upload, ChevronRight, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
@@ -10,6 +10,11 @@ import {
   submitLiveVideoVerification,
   type LiveVideoChallenge,
 } from '@/lib/api/endpoints/verification'
+import {
+  listFieldVerifications,
+  submitFieldVerification,
+} from '@/lib/api/endpoints/field-verification'
+import { recordVideoFromCamera, type RecordedVideo } from '@/lib/media/video-recorder'
 import { notifyError, notifySuccess } from '@/lib/notify'
 import { getUserId } from '@/lib/auth/session'
 import { getErrorMessage } from '@/lib/api/errors'
@@ -66,6 +71,20 @@ function mapSubmissionStatus(status?: string): FieldItem['status'] {
   return 'unverified'
 }
 
+const API_TO_UI_FIELD: Record<string, string> = {
+  education: 'education',
+  job: 'occupation',
+  income: 'income',
+}
+
+function mapApiFieldToUi(fieldKey?: string): string | undefined {
+  if (!fieldKey) return undefined
+  const direct = API_TO_UI_FIELD[fieldKey]
+  if (direct) return direct
+  if (fieldKey === 'occupation') return 'occupation'
+  return Object.entries(API_TO_UI_FIELD).find(([, ui]) => ui === fieldKey)?.[1] || fieldKey
+}
+
 export default function VerificationFlowPage({ onBack }: VerificationFlowPageProps) {
   const [fieldVerificationTypes, setFieldVerificationTypes] = useState<FieldItem[]>(DEFAULT_FIELDS)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -75,7 +94,11 @@ export default function VerificationFlowPage({ onBack }: VerificationFlowPagePro
   const [isRecording, setIsRecording] = useState(false)
   const [recordingTime, setRecordingTime] = useState(0)
   const [liveChallenge, setLiveChallenge] = useState<LiveVideoChallenge | null>(null)
+  const [recordedVideo, setRecordedVideo] = useState<RecordedVideo | null>(null)
   const [isSubmittingVideo, setIsSubmittingVideo] = useState(false)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [isSubmittingField, setIsSubmittingField] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const userId = getUserId()
@@ -88,9 +111,10 @@ export default function VerificationFlowPage({ onBack }: VerificationFlowPagePro
     let cancelled = false
     async function loadVerificationState() {
       try {
-        const [submissions, notifications] = await Promise.all([
+        const [submissions, notifications, fieldSubmissions] = await Promise.all([
           listVerificationSubmissions(),
           listVerificationNotifications(),
+          listFieldVerifications(),
         ])
         if (cancelled) return
         const latest = submissions[0]
@@ -100,16 +124,26 @@ export default function VerificationFlowPage({ onBack }: VerificationFlowPagePro
           notifications[0]?.body ||
           '按提示完成活体视频认证'
 
+        const fieldStatusByUi = new Map<string, FieldItem['status']>()
+        for (const submission of fieldSubmissions) {
+          const uiField = mapApiFieldToUi(submission.field_key)
+          if (uiField) {
+            fieldStatusByUi.set(uiField, mapSubmissionStatus(submission.status))
+          }
+        }
+
         setFieldVerificationTypes(
-          DEFAULT_FIELDS.map((item) =>
-            item.id === 'video'
-              ? {
-                  ...item,
-                  status: videoStatus,
-                  description: videoStatus === 'pending' ? pendingHint : item.description,
-                }
-              : item,
-          ),
+          DEFAULT_FIELDS.map((item) => {
+            if (item.id === 'video') {
+              return {
+                ...item,
+                status: videoStatus,
+                description: videoStatus === 'pending' ? pendingHint : item.description,
+              }
+            }
+            const fieldStatus = fieldStatusByUi.get(item.id)
+            return fieldStatus ? { ...item, status: fieldStatus } : item
+          }),
         )
         setLoadError(null)
       } catch (error) {
@@ -147,6 +181,8 @@ export default function VerificationFlowPage({ onBack }: VerificationFlowPagePro
       await submitLiveVideoVerification({
         challengeToken: token,
         challengePhrase: liveChallenge?.challenge_phrase,
+        videoBase64: recordedVideo?.base64,
+        contentType: recordedVideo?.mimeType,
       })
       notifySuccess('活体视频已提交，等待审核')
       setStep('video-pending')
@@ -158,20 +194,40 @@ export default function VerificationFlowPage({ onBack }: VerificationFlowPagePro
     }
   }
 
-  const simulateRecording = () => {
+  const handleRecordVideo = async () => {
     setIsRecording(true)
     setRecordingTime(0)
-    const interval = setInterval(() => {
-      setRecordingTime((prev) => {
-        if (prev >= 5) {
-          clearInterval(interval)
-          setIsRecording(false)
-          void finishVideoSubmission()
-          return 5
-        }
-        return prev + 1
-      })
+    const timer = window.setInterval(() => {
+      setRecordingTime((prev) => prev + 1)
     }, 1000)
+    try {
+      const video = await recordVideoFromCamera(6000)
+      setRecordedVideo(video)
+      setStep('video-review')
+    } catch (error) {
+      notifyError(error, '录制失败')
+    } finally {
+      window.clearInterval(timer)
+      setIsRecording(false)
+    }
+  }
+
+  const handleSubmitField = async () => {
+    if (!selectedField) return
+    if (!selectedFile) {
+      notifyError(new Error('请先选择要上传的文件'))
+      return
+    }
+    setIsSubmittingField(true)
+    try {
+      await submitFieldVerification({ fieldId: selectedField, file: selectedFile })
+      notifySuccess('材料已提交，等待审核')
+      setStep('field-pending')
+    } catch (error) {
+      notifyError(error, '材料提交失败')
+    } finally {
+      setIsSubmittingField(false)
+    }
   }
 
   const getStatusStyles = (status: string) => {
@@ -375,12 +431,12 @@ export default function VerificationFlowPage({ onBack }: VerificationFlowPagePro
               {isRecording ? '请缓慢转动头部' : '准备好后点击开始'}
             </h3>
             <p className="text-white/60 text-sm">
-              {isRecording ? `录制中 ${recordingTime}s / 5s` : '确保面部光线充足'}
+              {isRecording ? `录制中 ${recordingTime}s / 6s` : '确保面部光线充足'}
             </p>
           </div>
 
           <button
-            onClick={simulateRecording}
+            onClick={() => void handleRecordVideo()}
             disabled={isRecording}
             className={`w-20 h-20 rounded-full flex items-center justify-center transition-all ${
               isRecording ? 'bg-rose animate-pulse' : 'bg-white hover:scale-105'
@@ -427,13 +483,17 @@ export default function VerificationFlowPage({ onBack }: VerificationFlowPagePro
 
           <div className="w-full space-y-3">
             <button
-              onClick={() => setStep('video-pending')}
-              className="w-full py-4 bg-primary rounded-2xl text-primary-foreground font-medium"
+              onClick={() => void finishVideoSubmission()}
+              disabled={isSubmittingVideo || !recordedVideo}
+              className="w-full py-4 bg-primary rounded-2xl text-primary-foreground font-medium disabled:opacity-60"
             >
-              确认提交
+              {isSubmittingVideo ? '提交中…' : '确认提交'}
             </button>
             <button
-              onClick={() => setStep('video-record')}
+              onClick={() => {
+                setRecordedVideo(null)
+                setStep('video-record')
+              }}
               className="w-full py-4 bg-secondary rounded-2xl text-foreground font-medium flex items-center justify-center gap-2"
             >
               <RotateCcw className="w-4 h-4" />
@@ -502,13 +562,29 @@ export default function VerificationFlowPage({ onBack }: VerificationFlowPagePro
             {field?.description}，我们会在1-2个工作日内完成审核。
           </p>
 
-          <div className="border-2 border-dashed border-border rounded-xl p-8 text-center mb-6">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,application/pdf"
+            className="hidden"
+            onChange={(event) => {
+              setSelectedFile(event.target.files?.[0] || null)
+            }}
+          />
+
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="w-full border-2 border-dashed border-border rounded-xl p-8 text-center mb-6 hover:border-primary/30 transition-colors"
+          >
             <div className="w-14 h-14 rounded-full bg-secondary mx-auto flex items-center justify-center mb-4">
               <Upload className="w-7 h-7 text-muted-foreground" />
             </div>
-            <p className="text-sm text-foreground mb-2">点击上传或拖拽文件到这里</p>
+            <p className="text-sm text-foreground mb-2">
+              {selectedFile ? selectedFile.name : '点击选择文件上传'}
+            </p>
             <p className="text-xs text-muted-foreground">支持 JPG、PNG、PDF 格式，最大10MB</p>
-          </div>
+          </button>
 
           <div className="bg-secondary/50 rounded-xl p-4 mb-6">
             <h4 className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
@@ -523,10 +599,11 @@ export default function VerificationFlowPage({ onBack }: VerificationFlowPagePro
           </div>
 
           <button
-            onClick={() => setStep('field-pending')}
-            className="w-full py-4 bg-primary rounded-2xl text-primary-foreground font-medium"
+            onClick={() => void handleSubmitField()}
+            disabled={isSubmittingField || !selectedFile}
+            className="w-full py-4 bg-primary rounded-2xl text-primary-foreground font-medium disabled:opacity-60"
           >
-            提交审核
+            {isSubmittingField ? '提交中…' : '提交审核'}
           </button>
         </div>
       </div>

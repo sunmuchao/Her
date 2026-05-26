@@ -798,7 +798,22 @@ def _apply_runtime_policy(run_input: MatchmakerRunInput, decision: dict[str, Any
             "chat_end_reason": list(decision_out.get("reason_codes") or []),
         }
         decision_out["public_followup"] = {"active": False, "mode": _inferred_public_followup_mode(run_input)}
-        decision_out["cooldown_seconds"] = max(int(decision_out.get("cooldown_seconds") or 0), 1800)
+        try:
+            from match_domain.rule_config_schema import (
+                DEFAULT_POST_CHAT_COOLDOWN_FLOOR,
+                SLICE_CHAT_ASSISTANT_COOLDOWN,
+                code_defaults_for_slice,
+            )
+
+            floor = int(
+                code_defaults_for_slice(SLICE_CHAT_ASSISTANT_COOLDOWN).get(
+                    "post_chat_ready_floor_seconds",
+                    DEFAULT_POST_CHAT_COOLDOWN_FLOOR,
+                )
+            )
+        except Exception:  # noqa: BLE001
+            floor = 1800
+        decision_out["cooldown_seconds"] = max(int(decision_out.get("cooldown_seconds") or 0), floor)
         return MatchmakerDecision.model_validate(_normalize_decision_payload(decision_out)).model_dump()
     decision_out = _apply_post_chat_review_defaults(run_input, decision_out)
     decision_out = _apply_close_mode_guardrails(decision_out)
@@ -830,6 +845,12 @@ def _apply_runtime_policy(run_input: MatchmakerRunInput, decision: dict[str, Any
                     ),
                 }
     decision_out = _apply_public_followup_policy(run_input, decision_out)
+    try:
+        from match_domain.chat_cooldown import apply_configured_cooldown
+
+        decision_out = apply_configured_cooldown(decision_out)
+    except Exception:  # noqa: BLE001
+        pass
     return MatchmakerDecision.model_validate(_normalize_decision_payload(decision_out)).model_dump()
 
 

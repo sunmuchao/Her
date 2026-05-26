@@ -427,6 +427,28 @@ class MatchDomainTests(unittest.TestCase):
         self.assertEqual(len(prov["fingerprints"]["persona_profile"]), 64)
         self.assertEqual(len(prov["fingerprints"]["search_request"]), 64)
         self.assertIn("partner_search.scoring", prov["rule_sets"])
+        subscription = {
+            "subscription_id": "saved-search-abc",
+            "min_direct_greet_score": 60,
+            "max_review_candidates_per_refresh": 3,
+            "recommendation_mode": "direct_greet_only",
+            "auto_reject_on_follow_up_questions": True,
+            "auto_reject_on_risk_flags": True,
+            "direct_greet_profile_json": "{}",
+            "subscription_overrides_json": "{}",
+            "quiet_hours_start": 22,
+            "quiet_hours_end": 9,
+            "daily_notification_cap": 2,
+            "skip_cooldown_days": 30,
+            "min_notify_score": 40,
+        }
+        prov_with_params = build_subscription_refresh_provenance(
+            subscription_id="saved-search-abc",
+            persona_profile={"target_gender": "女", "target_age_min": 27},
+            search_request={"criteria": {"cities": ["无锡"]}, "limit": 5},
+            subscription=subscription,
+        )
+        self.assertIn("effective_params", prov_with_params)
 
 
 if __name__ == "__main__":
