@@ -10,12 +10,8 @@ import {
   verifySmsCode,
   wechatLogin,
 } from '@/lib/auth/auth-api'
-import { hydrateSessionFromAuthMe } from '@/lib/auth/hydrate-session'
-import {
-  applyLoginPayload,
-  clearSession,
-  type LoginPayload,
-} from '@/lib/auth/session'
+import { navigateAfterAuthSession, navigateAfterLogin } from '@/lib/auth/post-login'
+import { clearSession, type LoginPayload } from '@/lib/auth/session'
 import type { AppPage } from '@/lib/navigation/types'
 import { getErrorMessage } from '@/lib/api/errors'
 
@@ -64,21 +60,13 @@ export function useAuthFlow(onNavigate: (page: AppPage) => void) {
 
   const completeLoginFlow = useCallback(
     async (payload: LoginPayload) => {
-      applyLoginPayload(payload)
-      await hydrateSessionFromAuthMe()
       if (payload.wechat_profile) {
         setWechatProfile(payload.wechat_profile)
       }
-      if (payload.flow?.next_path === '/bind-phone' || payload.user?.phone_bound === false) {
+      const page = await navigateAfterLogin(payload, onNavigate)
+      if (page === 'auth-wechat-binding') {
         setAuthMode('wechat-bind')
-        onNavigate('auth-wechat-binding')
-        return
       }
-      if (payload.user?.is_new_user || payload.flow?.next_path === '/onboarding') {
-        onNavigate('auth-new-user-welcome')
-        return
-      }
-      onNavigate('main-matchmaker')
     },
     [onNavigate],
   )
@@ -118,7 +106,7 @@ export function useAuthFlow(onNavigate: (page: AppPage) => void) {
           challengeId: smsChallengeId,
         })
         if (data.ok) {
-          onNavigate('main-matchmaker')
+          await navigateAfterAuthSession(onNavigate)
         }
         return
       }

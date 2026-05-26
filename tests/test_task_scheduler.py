@@ -17,6 +17,35 @@ def test_settings_defaults() -> None:
         assert s.recommendation_refresh_subscriptions_sec == 300
 
 
+def test_settings_falls_back_to_partner_db_env() -> None:
+    with mock.patch.dict(
+        os.environ,
+        {
+            "PARTNER_RECOMMENDATION_DB": "mysql://root@127.0.0.1:3307/her_recommendation",
+            "PARTNER_MATCHMAKING_DB": "mysql://root@127.0.0.1:3307/her_matchmaking",
+            "PARTNER_CHAT_DB": "mysql://root@127.0.0.1:3307/her_chat",
+        },
+        clear=True,
+    ):
+        s = SchedulerSettings.from_environ()
+        assert s.recommendation_db == "mysql://root@127.0.0.1:3307/her_recommendation"
+        assert s.matchmaking_db == "mysql://root@127.0.0.1:3307/her_matchmaking"
+        assert s.chat_db == "mysql://root@127.0.0.1:3307/her_chat"
+
+
+def test_settings_prefers_explicit_sched_db_over_partner() -> None:
+    with mock.patch.dict(
+        os.environ,
+        {
+            "HER_SCHED_CHAT_DB": "mysql://root@127.0.0.1:3307/her_chat_sched",
+            "PARTNER_CHAT_DB": "mysql://root@127.0.0.1:3307/her_chat",
+        },
+        clear=True,
+    ):
+        s = SchedulerSettings.from_environ()
+        assert s.chat_db == "mysql://root@127.0.0.1:3307/her_chat_sched"
+
+
 def test_all_job_ids_respects_env() -> None:
     s = SchedulerSettings(
         recommendation_db="/tmp/rec.db",

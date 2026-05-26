@@ -4,12 +4,12 @@ import { useState } from 'react'
 import { ChevronLeft, Shield, RefreshCw, Phone } from 'lucide-react'
 import { WechatIcon } from '@/components/her/ui/wechat-icon'
 import { sendSmsCode, verifySmsCode, wechatLogin } from '@/lib/auth/auth-api'
-import { applyLoginPayload } from '@/lib/auth/session'
+import type { LoginPayload } from '@/lib/auth/session'
 import { getErrorMessage } from '@/lib/api/errors'
 import { notifyError } from '@/lib/notify'
 
 interface AccountRecoveryPageProps {
-  onVerifyComplete: () => void
+  onVerifyComplete: (payload: LoginPayload) => void | Promise<void>
   onBack: () => void
 }
 
@@ -26,6 +26,11 @@ export default function AccountRecoveryPage({
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [challengeId, setChallengeId] = useState<string | null>(null)
+  const [verifiedPayload, setVerifiedPayload] = useState<LoginPayload | null>(null)
+
+  const finishRecovery = async (payload: LoginPayload) => {
+    await onVerifyComplete(payload)
+  }
 
   const startCountdown = () => {
     setCountdown(60)
@@ -74,9 +79,11 @@ export default function AccountRecoveryPage({
         code: fullCode,
         challengeId,
       })
-      applyLoginPayload(payload)
+      setVerifiedPayload(payload)
       setCurrentStep('success')
-      setTimeout(() => onVerifyComplete(), 800)
+      setTimeout(() => {
+        void finishRecovery(payload)
+      }, 800)
     } catch (err) {
       setError(getErrorMessage(err, '验证失败，请重试'))
     } finally {
@@ -89,8 +96,8 @@ export default function AccountRecoveryPage({
     setError(null)
     try {
       const payload = await wechatLogin()
-      applyLoginPayload(payload)
-      onVerifyComplete()
+      setVerifiedPayload(payload)
+      await finishRecovery(payload)
     } catch (err) {
       setError(getErrorMessage(err, '微信验证失败'))
       notifyError(err, '微信验证失败')
@@ -457,7 +464,9 @@ export default function AccountRecoveryPage({
             </p>
 
             <button
-              onClick={onVerifyComplete}
+              onClick={() => {
+                if (verifiedPayload) void finishRecovery(verifiedPayload)
+              }}
               className="w-full py-4 rounded-2xl font-medium text-base transition-all duration-300 active:scale-[0.98]"
               style={{
                 background: 'linear-gradient(135deg, oklch(0.55 0.12 15), oklch(0.5 0.14 20))',
