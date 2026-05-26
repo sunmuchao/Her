@@ -893,3 +893,6 @@ Read more: https://nextjs.org/docs/app/api-reference/components/image#loading
  GET /api/gateway/v1/auth/me 200 in 57ms (next.js: 5ms, application-code: 52ms)
  GET /api/gateway/v1/recommendation/cards?profile_id=9005&unread_only=true 200 in 134ms (next.js: 84ms, application-code: 50ms)
  GET /api/gateway/v1/recommendation/cards?profile_id=9005&unread_only=true 200 in 51ms (next.js: 11ms, application-code: 40ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=9005&unread_only=true 200 in 30ms (next.js: 7ms, application-code: 23ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=9005&unread_only=true 200 in 29ms (next.js: 8ms, application-code: 21ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=9005&unread_only=true 200 in 46ms (next.js: 14ms, application-code: 32ms)
