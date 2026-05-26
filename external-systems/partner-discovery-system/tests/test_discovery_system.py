@@ -222,6 +222,30 @@ class _SearchToolRuntime:
         )
 
 
+class _PhantomSearchingRuntime:
+    def initial_decision(self, _run_input):
+        return DiscoveryRuntimeResult(
+            decision=DiscoveryDecision(
+                phase="collecting_preferences",
+                assistant_message="先告诉我你想找什么样的人。",
+            )
+        )
+
+    def run_turn(self, _run_input, *, user_message=None, action_context=None):
+        del user_message, action_context
+        return DiscoveryRuntimeResult(
+            decision=DiscoveryDecision(
+                phase="searching",
+                assistant_message="我先帮你搜一下。",
+                criteria_labels=["无锡", "25-30岁"],
+                suggested_actions=[
+                    DiscoveryActionSuggestion(label="先看看有没有人", style="primary"),
+                ],
+            ),
+            search_response=None,
+        )
+
+
 class DiscoveryServiceTests(unittest.TestCase):
     def setUp(self) -> None:
         self._old_profile_source = os.environ.get("HER_DISCOVERY_PROFILE_SOURCE")
@@ -912,6 +936,25 @@ class DiscoveryServiceTests(unittest.TestCase):
         self.assertEqual(last_search_summary["error_code"], "partner_search_failed")
         blocked = service._create_saved_search_subscription_from_last_search(stored_session)
         self.assertEqual(blocked["error_code"], "search_run_failed")
+
+    def test_service_coerces_searching_without_tool_call_back_to_collecting(self) -> None:
+        service = DiscoveryService(
+            storage=InMemoryDiscoveryStorage(),
+            runtime=_PhantomSearchingRuntime(),
+        )
+        created = service.create_session(requester_id=70001, profile_id=10001)
+        session_id = created["session"]["session_id"]
+
+        result = service.process_turn(
+            session_id=session_id,
+            user_message_text="帮我找对象",
+        )
+
+        self.assertEqual(result["session"]["phase"], "collecting_preferences")
+        self.assertIn("还没真正发起筛选", result["view"]["timeline"][-1]["body"])
+        self.assertEqual(result["view"]["suggested_actions"][0]["label"], "先看看有没有人")
+        tool_calls = service.storage.list_tool_calls(session_id)
+        self.assertEqual(tool_calls, [])
 
     def test_service_observability_snapshot_tracks_counters(self) -> None:
         service = DiscoveryService(

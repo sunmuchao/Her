@@ -913,3 +913,5 @@ Read more: https://nextjs.org/docs/app/api-reference/components/image#loading
  GET /api/gateway/v1/persona/collected?profile_id=9005 200 in 41ms (next.js: 3ms, application-code: 38ms)
  GET /api/gateway/v1/recommendation/cards?profile_id=9005&unread_only=true 200 in 171ms (next.js: 7ms, application-code: 165ms)
  GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-7cf705415d2e4065&message_limit=50 200 in 189ms (next.js: 12ms, application-code: 177ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-7cf705415d2e4065&message_limit=50 200 in 59ms (next.js: 16ms, application-code: 43ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=9005&unread_only=true 200 in 35ms (next.js: 2ms, application-code: 33ms)
