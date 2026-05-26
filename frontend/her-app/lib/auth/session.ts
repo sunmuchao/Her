@@ -159,6 +159,6 @@ export function getChatParticipantId(): string | undefined {
 
 export function getCaseId(): string | undefined {
   const ctx = readStoredContext()
-  if (isAuthenticated()) return ctx.caseId
+  if (isAuthenticated()) return ctx.caseId ?? getDefaultCaseId()
   return ctx.caseId ?? getDefaultCaseId()
 }
