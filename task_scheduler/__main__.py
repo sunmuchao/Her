@@ -3,9 +3,22 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+from pathlib import Path
 
 from .build import all_job_ids, create_blocking_scheduler, run_job_once
 from .config import SchedulerSettings
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _load_dotenv() -> None:
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    env_path = _REPO_ROOT / ".env"
+    if env_path.is_file():
+        load_dotenv(env_path, override=False)
 
 
 def _configure_logging(verbose: bool) -> None:
@@ -33,6 +46,7 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
     _configure_logging(args.verbose)
+    _load_dotenv()
     settings = SchedulerSettings.from_environ()
     return int(args.handler(args, settings))
 

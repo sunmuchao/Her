@@ -31,6 +31,18 @@ interface ProfileData {
   hasChildren: string
 }
 
+const EMPTY_PROFILE: ProfileData = {
+  name: '',
+  gender: '',
+  sexualOrientation: '',
+  birthday: '',
+  currentCity: '',
+  photos: [],
+  relationshipGoal: '',
+  marriageStatus: '',
+  hasChildren: '',
+}
+
 // Compress image before upload
 async function compressImage(file: File, maxWidth = 1200, quality = 0.8): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -80,37 +92,26 @@ export default function OnboardingPage({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   
-  // Load draft from localStorage on mount
-  const [profile, setProfile] = useState<ProfileData>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem(STORAGE_KEY)
-      if (saved) {
-        try {
-          return JSON.parse(saved)
-        } catch {
-          // ignore parse errors
-        }
+  // Same initial state on server and client; load draft after mount to avoid hydration mismatch
+  const [profile, setProfile] = useState<ProfileData>(EMPTY_PROFILE)
+  const [draftLoaded, setDraftLoaded] = useState(false)
+
+  useEffect(() => {
+    const saved = localStorage.getItem(STORAGE_KEY)
+    if (saved) {
+      try {
+        setProfile(JSON.parse(saved) as ProfileData)
+      } catch {
+        // ignore parse errors
       }
     }
-    return {
-      name: '',
-      gender: '',
-      sexualOrientation: '',
-      birthday: '',
-      currentCity: '',
-      photos: [],
-      relationshipGoal: '',
-      marriageStatus: '',
-      hasChildren: '',
-    }
-  })
+    setDraftLoaded(true)
+  }, [])
 
-  // Save draft to localStorage when profile changes
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(profile))
-    }
-  }, [profile])
+    if (!draftLoaded) return
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(profile))
+  }, [profile, draftLoaded])
 
   // Clear draft on successful completion
   const clearDraft = useCallback(() => {

@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
+
+_logger = logging.getLogger(__name__)
 
 from her_env import env_first, env_float
 
@@ -370,6 +373,9 @@ class AgentsSdkDiscoveryAgentRuntime:
         action_context: dict[str, Any] | None = None,
     ) -> DiscoveryRuntimeResult:
         if not self._should_use_agents_sdk():
+            _logger.warning(
+                "discovery agent using stub runtime: agents_sdk disabled or API key missing"
+            )
             return self._fallback_result(
                 run_input,
                 user_message=user_message,
@@ -386,6 +392,11 @@ class AgentsSdkDiscoveryAgentRuntime:
             recovered = _recover_decision_from_exception(exc)
             if recovered is not None:
                 return DiscoveryRuntimeResult(decision=recovered)
+            _logger.warning(
+                "discovery agent fell back to stub after model error: %s: %s",
+                type(exc).__name__,
+                exc,
+            )
             return self._fallback_result(
                 run_input,
                 user_message=user_message,

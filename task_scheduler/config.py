@@ -11,6 +11,12 @@ def _env_int(name: str, default: int) -> int:
     return int(raw)
 
 
+def _sched_db(sched_var: str, partner_var: str) -> str | None:
+    """Scheduler DSN; falls back to the matching PARTNER_*_DB used by gateway/services."""
+    raw = os.environ.get(sched_var) or os.environ.get(partner_var) or ""
+    return raw.strip() or None
+
+
 @dataclass(frozen=True)
 class SchedulerSettings:
     """Load MySQL DSNs for outer systems and per-job intervals from the environment."""
@@ -36,9 +42,9 @@ class SchedulerSettings:
 
     @classmethod
     def from_environ(cls) -> SchedulerSettings:
-        rec_db = os.environ.get("HER_SCHED_RECOMMENDATION_DB") or None
-        mm_db = os.environ.get("HER_SCHED_MATCHMAKING_DB") or None
-        chat_db = os.environ.get("HER_SCHED_CHAT_DB") or None
+        rec_db = _sched_db("HER_SCHED_RECOMMENDATION_DB", "PARTNER_RECOMMENDATION_DB")
+        mm_db = _sched_db("HER_SCHED_MATCHMAKING_DB", "PARTNER_MATCHMAKING_DB")
+        chat_db = _sched_db("HER_SCHED_CHAT_DB", "PARTNER_CHAT_DB")
         return cls(
             recommendation_db=rec_db,
             matchmaking_db=mm_db,
