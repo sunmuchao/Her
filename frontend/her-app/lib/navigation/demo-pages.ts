@@ -3,6 +3,7 @@ import {
   ClipboardList,
   Heart,
   KeyRound,
+  LayoutDashboard,
   Link2,
   LogIn,
   Mail,
@@ -49,6 +50,7 @@ export const demoPageCategories: Array<{
       { id: 'sub-chat', name: '聊天', icon: MessageCircle },
       { id: 'sub-verification', name: '去认证', icon: CheckCircle },
       { id: 'sub-trust-center', name: '信任中心', icon: Shield },
+      { id: 'ops-workbench', name: '运营协作台', icon: LayoutDashboard },
     ],
   },
 ]

@@ -36,9 +36,11 @@ from chat_system import (  # type: ignore[import-untyped]
 )
 from chat_system.storage import row_to_dict  # type: ignore[import-untyped]
 from match_domain import get_trace_id
+from match_domain.principal import principal_identity_table, sync_user_block_from_principal
 
 from .http_helpers import _json_safe, _parse_json_body, _read_body
 from .request_policy import client_ip
+from .resolved_principal import principal_payload_for_actor
 
 _CN_PHONE_RE = re.compile(r"^1[3-9]\d{9}$")
 _CODE_RE = re.compile(r"^\d{6}$")
@@ -666,6 +668,7 @@ class AuthGateway(Protocol):
     _one_tap_login_provider: OneTapLoginProvider
     def _current_actor(self, environ: dict[str, Any]) -> Any: ...
     def _with_chat(self, fn: Any, *args: Any, **kwargs: Any) -> Any: ...
+    def _resolve_end_user_principal(self, environ: dict[str, Any], *, require_profile: bool = False) -> Any: ...
 
 
 def _error_payload(exc: AuthRouteError) -> tuple[int, dict[str, Any]]:
@@ -898,7 +901,37 @@ def rest_auth_me(
         out = gateway._with_chat(get_current_auth_payload, actor.actor_id, token)
     except AuthDomainError as exc:
         return _error_payload(AuthRouteError(exc.status_code, exc.code, exc.message))
-    return 200, _json_safe({**out, "trace_id": get_trace_id()})
+    return 200, _json_safe(
+        {
+            **out,
+            "user": sync_user_block_from_principal(out.get("user"), principal_payload_for_actor(gateway, environ)),
+            "principal": principal_payload_for_actor(gateway, environ),
+            "trace_id": get_trace_id(),
+            "read_apis": {
+                "profile_facts": "/v1/profile/me",
+                "collected_statements": "/v1/persona/collected",
+                "principal": "/v1/auth/principal",
+            },
+            "identity_vocabulary": principal_identity_table(),
+        }
+    )
+
+
+def rest_auth_principal(
+    gateway: AuthGateway,
+    environ: dict[str, Any],
+) -> tuple[int, dict[str, Any]]:
+    actor = gateway._current_actor(environ)
+    if actor is None:
+        return _error_payload(AuthRouteError(401, "unauthorized", "登录状态已失效，请重新登录"))
+    principal = principal_payload_for_actor(gateway, environ)
+    return 200, _json_safe(
+        {
+            "principal": principal,
+            "identity_vocabulary": principal_identity_table(),
+            "trace_id": get_trace_id(),
+        }
+    )
 
 
 def rest_auth_logout(
@@ -964,6 +997,8 @@ def dispatch_private_auth_rest(
 ) -> tuple[int, dict[str, Any]] | None:
     if path == "/v1/auth/me" and method == "GET":
         return rest_auth_me(gateway, environ)
+    if path == "/v1/auth/principal" and method == "GET":
+        return rest_auth_principal(gateway, environ)
     if path == "/v1/auth/onboarding" and method == "GET":
         return rest_auth_get_onboarding(gateway, environ)
     if path == "/v1/auth/onboarding" and method in {"PATCH", "POST"}:

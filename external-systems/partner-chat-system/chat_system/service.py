@@ -25,7 +25,7 @@ from .events import chat_message_created_event, chat_thread_opened_event
 from .persona_jobs import maybe_enqueue_persona_sync_job
 from .risk import assert_message_allowed, maybe_capture_message_risk_signal
 from .storage import inflate_json_columns, json_dumps, row_to_dict
-from relationship_ledger.runtime import append_event_to_default_ledger
+from relationship_ledger.runtime import LedgerMirrorEntry, append_event_to_default_ledger, flush_ledger_mirror
 
 VIS_DYADIC = "dyadic"
 VIS_OWNER_ONLY = "owner_only"
@@ -118,12 +118,15 @@ def get_or_create_thread(
             source_row_id=None,
             created_at_str=ts.isoformat(sep=" "),
         )
-        append_event_to_default_ledger(
-            event=opened_event,
-            relation_key=str((metadata or {}).get("ledger_relation_key") or relation_key),
-            case_id=case_id,
-        )
+        ledger_mirror: list[LedgerMirrorEntry] = [
+            {
+                "event": opened_event,
+                "relation_key": str((metadata or {}).get("ledger_relation_key") or relation_key),
+                "case_id": case_id,
+            }
+        ]
         conn.commit()
+        flush_ledger_mirror(ledger_mirror)
         funnel_stage(
             system="chat",
             stage=CHAT_FUNNEL_THREAD_OPEN,
@@ -371,12 +374,15 @@ def post_message(
             source_row_id=inserted_id,
             created_at_str=ts.isoformat(sep=" "),
         )
-        append_event_to_default_ledger(
-            event=message_event,
-            relation_key=_ledger_relation_key(thread),
-            case_id=str(thread["case_id"]),
-        )
+        ledger_mirror: list[LedgerMirrorEntry] = [
+            {
+                "event": message_event,
+                "relation_key": _ledger_relation_key(thread),
+                "case_id": str(thread["case_id"]),
+            }
+        ]
         conn.commit()
+        flush_ledger_mirror(ledger_mirror)
     except IntegrityError:
         conn.rollback()
         if cmid:

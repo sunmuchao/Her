@@ -120,9 +120,12 @@ export type OnboardingPayload = {
     name?: string
     birthday?: string
     gender?: string
+    sexual_orientation?: string
     location?: string
     city?: string
     relationship_goal?: string
+    marriage_status?: string
+    has_children?: string
     profile_id?: number
   }
   preference?: {
@@ -131,6 +134,7 @@ export type OnboardingPayload = {
     age_range?: [number, number]
     location_pref?: string
   }
+  photos?: string[]
   mark_completed?: boolean
 }
 
@@ -152,6 +156,15 @@ export async function fetchAuthMe() {
       preference?: Record<string, unknown>
     }
     profile?: Record<string, unknown>
+    principal?: {
+      user_id?: string
+      profile_id?: number
+      requester_id?: number
+      user_key?: string
+      roles?: string[]
+      auth_source?: string
+    }
+    identity_vocabulary?: Array<{ field: string; scope: string; meaning: string }>
   }>('/v1/auth/me', {
     method: 'GET',
     includeAuth: true,

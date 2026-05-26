@@ -12,6 +12,9 @@ class SearchRankingRuntime:
     as_text: Callable[[Any], str]
     strip_internal_fields: Callable[[dict[str, Any]], dict[str, Any]]
     diversity_job_patterns: Sequence[tuple[Any, str]]
+    diversity_penalty_tiers: Sequence[int] = (6, 4, 2)
+    score_gap_severe_concession: int = 20
+    score_gap_high_risk_tail: int = 25
 
 
 def build_match_result(
@@ -108,16 +111,20 @@ def diversity_penalty(
             for left, right in zip(candidate_signature, diversity_signature(runtime, existing))
             if left and right and left == right
         )
+        tiers = list(runtime.diversity_penalty_tiers) or [6, 4, 2]
         if overlap >= 4:
-            max_penalty = max(max_penalty, 6)
+            max_penalty = max(max_penalty, int(tiers[0]))
         elif overlap >= 3:
-            max_penalty = max(max_penalty, 4)
+            max_penalty = max(max_penalty, int(tiers[1] if len(tiers) > 1 else tiers[0]))
         elif overlap >= 2:
-            max_penalty = max(max_penalty, 2)
+            max_penalty = max(max_penalty, int(tiers[2] if len(tiers) > 2 else tiers[-1]))
     return max_penalty
 
 
-def trim_low_quality_tail(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def trim_low_quality_tail(
+    runtime: SearchRankingRuntime,
+    results: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
     if len(results) <= 1:
         return results
 
@@ -127,9 +134,9 @@ def trim_low_quality_tail(results: list[dict[str, Any]]) -> list[dict[str, Any]]
         score_gap = leader.get("score", 0) - item.get("score", 0)
         severe_concession = "多项条件需要放宽后才成立" in (item.get("risk_flags") or [])
         high_risk_tail = item.get("risk_score", 0) >= 35
-        if severe_concession and score_gap >= 20:
+        if severe_concession and score_gap >= runtime.score_gap_severe_concession:
             continue
-        if high_risk_tail and score_gap >= 25:
+        if high_risk_tail and score_gap >= runtime.score_gap_high_risk_tail:
             continue
         trimmed.append(item)
     return trimmed
@@ -140,7 +147,7 @@ def select_diverse_results(
     results: list[dict[str, Any]],
     limit: int,
 ) -> list[dict[str, Any]]:
-    results = trim_low_quality_tail(results)
+    results = trim_low_quality_tail(runtime, results)
     if len(results) <= limit:
         return results[:limit]
 

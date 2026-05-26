@@ -79,6 +79,9 @@ def evaluate_reciprocal_compatibility(
     diagnostics: bool = False,
     reciprocal_mode: str = "strict",
 ) -> dict[str, Any] | None:
+    from match_domain.reciprocal_preferences import enrich_record_for_reciprocal
+
+    record = enrich_record_for_reciprocal(record)
     def fail(reason: str, detail: Any = None) -> dict[str, Any] | None:
         if not diagnostics:
             return None

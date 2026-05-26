@@ -27,8 +27,10 @@ from recommendation_system.async_tasks import (  # type: ignore[import-untyped]
     summarize_recommendation_async_jobs,
 )
 
+from match_domain.principal import coalesce_profile_id_param
+
 from .http_helpers import _normalize_optional_now_text
-from .recommendation_access import recommendation_mutation_payload, resolve_optional_requester_id
+from .recommendation_access import recommendation_mutation_payload, resolve_optional_profile_id
 from .role_sets import INTERNAL_WRITE_ROLES
 
 JSONRPC_NOT_HANDLED = object()
@@ -85,14 +87,17 @@ def handle_recommendation_jsonrpc(
         return gateway._with_rec(get_subscription, params["subscription_id"])
     if method == "recommendation.create_subscription":
         payload = dict(params)
-        requester_id = resolve_optional_requester_id(
+        requester_id = resolve_optional_profile_id(
             gateway,
             environ,
-            payload.get("requester_id"),
+            payload.get("profile_id"),
+            raw_requester_id=payload.get("requester_id"),
             treat_empty_as_missing=False,
         )
         if requester_id is not None:
             payload["requester_id"] = requester_id
+            if payload.get("self_id") in (None, ""):
+                payload["self_id"] = requester_id
         return gateway._with_rec(create_subscription, **payload)
     if method == "recommendation.update_subscription_overrides":
         gateway._get_recommendation_subscription_for_actor(environ, params["subscription_id"])
@@ -158,10 +163,11 @@ def handle_recommendation_jsonrpc(
     if method == "recommendation.list_in_app_cards":
         return gateway._with_rec(
             list_in_app_cards,
-            requester_id=resolve_optional_requester_id(
+            requester_id=resolve_optional_profile_id(
                 gateway,
                 environ,
-                params.get("requester_id"),
+                params.get("profile_id"),
+                raw_requester_id=params.get("requester_id"),
                 treat_empty_as_missing=False,
             ),
             unread_only=bool(params.get("unread_only", False)),
@@ -197,8 +203,8 @@ def handle_recommendation_jsonrpc(
     if method == "recommendation.mark_in_app_cards_read":
         requester_id = gateway._resolve_int_actor_bound_id(
             environ,
-            params.get("requester_id"),
-            field_name="requester_id",
+            coalesce_profile_id_param(params.get("profile_id"), params.get("requester_id")),
+            field_name="profile_id",
         )
         card_ids = params.get("card_ids")
         if not isinstance(card_ids, list):

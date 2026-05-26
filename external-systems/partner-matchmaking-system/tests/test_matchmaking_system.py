@@ -33,10 +33,11 @@ from matchmaking_system import (  # noqa: E402
     set_pool_member_status,
 )
 from matchmaking_system.storage import DEFAULT_MATCHMAKING_TEST_MYSQL_DSN  # noqa: E402
+from match_domain import matchmaking_relation_key  # noqa: E402
 from relationship_ledger import (  # noqa: E402
     build_cross_system_funnel_dashboard,
     connect_db as connect_ledger_db,
-    get_relation_by_key,
+    get_relation_for_lookup_keys,
     initialize_database as initialize_ledger_db,
     reset_all_tables as reset_ledger_tables,
 )
@@ -89,10 +90,17 @@ class MatchmakingSystemTests(unittest.TestCase):
         else:
             os.environ["HER_RELATION_LEDGER_DB"] = self._old_relation_ledger_db
 
-    def load_relation(self, relation_key: str):
+    def load_relation(self, pair_key: str):
         self.ledger_conn.close()
         self.ledger_conn = connect_ledger_db(DEFAULT_RELATION_LEDGER_TEST_MYSQL_DSN)
-        return get_relation_by_key(self.ledger_conn, relation_key)
+        lookup_keys = [pair_key]
+        pair = get_pair(self.conn, pair_key)
+        if pair:
+            member_low = get_pool_member(self.conn, pair["member_low_id"])
+            member_high = get_pool_member(self.conn, pair["member_high_id"])
+            lookup_keys.insert(0, matchmaking_relation_key(member_low, member_high))
+        relation, _resolved = get_relation_for_lookup_keys(self.ledger_conn, lookup_keys)
+        return relation
 
     def create_member(self, user_key, self_id, **overrides):
         base = {

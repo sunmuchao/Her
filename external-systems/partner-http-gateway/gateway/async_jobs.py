@@ -138,7 +138,10 @@ class AsyncJobGatewayMixin:
         )
         return {
             "systems": systems,
-            "ledger": getattr(self, "_relation_ledger_summary", {}),
+            "ledger": {
+                "available": bool(getattr(self, "_relation_ledger_available", False)),
+                "dashboard": getattr(self, "_relation_ledger_summary", {}),
+            },
             "funnel": getattr(self, "_relation_funnel_summary", {}),
             "totals": totals,
             "job_types": job_types,
@@ -147,14 +150,18 @@ class AsyncJobGatewayMixin:
 
     def _build_async_job_dashboard(self, *, limit: int) -> dict[str, Any]:
         safe_limit = max(int(limit), 1)
+        ledger_available = True
         try:
             self._relation_ledger_summary = _json_safe(self._with_ledger(build_relation_dashboard))
         except Exception:
             self._relation_ledger_summary = {}
+            ledger_available = False
         try:
             self._relation_funnel_summary = _json_safe(self._with_ledger(build_cross_system_funnel_dashboard))
         except Exception:
             self._relation_funnel_summary = {}
+            ledger_available = False
+        self._relation_ledger_available = ledger_available
         systems = {
             "recommendation": self._async_job_dashboard_system(
                 target="recommendation",

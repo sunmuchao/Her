@@ -3,15 +3,25 @@
 from __future__ import annotations
 
 import json
+import os
 from typing import Any, Mapping
+
+from match_domain.experiment_bucket import (
+    profile_id_from_subscription,
+    resolve_experiment_bucket_for_subscription,
+)
+from match_domain.rule_config import RuleResolutionContext, resolve_effective_rules
+from match_domain.rule_config_schema import (
+    DEFAULT_MAX_REVIEW_CANDIDATES_PER_REFRESH,
+    DEFAULT_MIN_DIRECT_GREET_SCORE,
+    DEFAULT_RECOMMENDATION_MODE,
+    SLICE_RECOMMENDATION_DIRECT_GREET_GATE,
+)
 
 from .storage import json_loads
 
 
-DEFAULT_RECOMMENDATION_MODE = "direct_greet_only"
 RECOMMENDATION_MODES = {"match_based", "direct_greet_only"}
-DEFAULT_MAX_REVIEW_CANDIDATES_PER_REFRESH = 3
-DEFAULT_MIN_DIRECT_GREET_SCORE = 60
 
 
 def normalize_recommendation_mode(value: Any) -> str:
@@ -74,46 +84,50 @@ def _load_review_policy_overrides(subscription: Mapping[str, Any]) -> dict[str, 
     return dict(review_policy)
 
 
-def resolve_review_policy(subscription: Mapping[str, Any]) -> dict[str, Any]:
-    review_policy_overrides = _load_review_policy_overrides(subscription)
-    direct_greet_profile_raw = review_policy_overrides.get(
-        "direct_greet_profile",
-        subscription.get("direct_greet_profile_json"),
+def resolve_review_policy(subscription: Mapping[str, Any], *, conn=None) -> dict[str, Any]:
+    experiment_bucket = resolve_experiment_bucket_for_subscription(subscription, conn=conn)
+    bundle = resolve_effective_rules(
+        SLICE_RECOMMENDATION_DIRECT_GREET_GATE,
+        RuleResolutionContext(
+            subscription=subscription,
+            subscription_id=str(subscription.get("subscription_id") or "") or None,
+            profile_id=profile_id_from_subscription(subscription),
+            experiment_bucket=experiment_bucket,
+        ),
+        conn=conn,
     )
+    params = dict(bundle.params)
+    policy_source = "code_defaults"
+    if any(label.startswith("global:") for label in bundle.resolution_chain):
+        policy_source = "global_rule_config"
+    elif _load_review_policy_overrides(subscription):
+        policy_source = "subscription_overrides.review_policy"
+    elif any(label == "subscription_columns" for label in bundle.resolution_chain):
+        policy_source = "subscription_columns"
+    elif any(
+        os.environ.get(key)
+        for key in (
+            "HER_RECOMMENDATION_MODE",
+            "HER_RECOMMENDATION_MAX_REVIEW_CANDIDATES_PER_REFRESH",
+            "HER_RECOMMENDATION_MIN_DIRECT_GREET_SCORE",
+            "HER_RECOMMENDATION_AUTO_REJECT_ON_FOLLOW_UP_QUESTIONS",
+            "HER_RECOMMENDATION_AUTO_REJECT_ON_RISK_FLAGS",
+        )
+    ):
+        policy_source = "environment_defaults"
+    direct_greet_profile = params.get("direct_greet_profile") or {}
+    if isinstance(direct_greet_profile, str):
+        direct_greet_profile = json.loads(direct_greet_profile) if direct_greet_profile.strip() else {}
     return {
-        "recommendation_mode": normalize_recommendation_mode(
-            review_policy_overrides.get("recommendation_mode", subscription.get("recommendation_mode"))
-        ),
-        "max_review_candidates_per_refresh": _normalize_int(
-            review_policy_overrides.get(
-                "max_review_candidates_per_refresh",
-                subscription.get("max_review_candidates_per_refresh"),
-            ),
-            DEFAULT_MAX_REVIEW_CANDIDATES_PER_REFRESH,
-        ),
-        "min_direct_greet_score": _normalize_int(
-            review_policy_overrides.get(
-                "min_direct_greet_score",
-                subscription.get("min_direct_greet_score"),
-            ),
-            DEFAULT_MIN_DIRECT_GREET_SCORE,
-        ),
-        "auto_reject_on_follow_up_questions": _normalize_bool(
-            review_policy_overrides.get(
-                "auto_reject_on_follow_up_questions",
-                subscription.get("auto_reject_on_follow_up_questions"),
-            ),
-            True,
-        ),
-        "auto_reject_on_risk_flags": _normalize_bool(
-            review_policy_overrides.get(
-                "auto_reject_on_risk_flags",
-                subscription.get("auto_reject_on_risk_flags"),
-            ),
-            True,
-        ),
-        "direct_greet_profile": _load_direct_greet_profile(direct_greet_profile_raw),
-        "policy_source": "subscription_overrides.review_policy" if review_policy_overrides else "subscription_defaults",
+        "recommendation_mode": normalize_recommendation_mode(params.get("recommendation_mode")),
+        "max_review_candidates_per_refresh": int(params.get("max_review_candidates_per_refresh")),
+        "min_direct_greet_score": int(params.get("min_direct_greet_score")),
+        "auto_reject_on_follow_up_questions": bool(params.get("auto_reject_on_follow_up_questions")),
+        "auto_reject_on_risk_flags": bool(params.get("auto_reject_on_risk_flags")),
+        "direct_greet_profile": dict(direct_greet_profile),
+        "policy_source": policy_source,
+        "resolution_chain": list(bundle.resolution_chain),
+        "version_id": bundle.version_id,
     }
 
 
@@ -128,8 +142,9 @@ def review_candidate_for_proactive_delivery(
     result: Mapping[str, Any],
     *,
     review_rank: int,
+    conn=None,
 ) -> dict[str, Any]:
-    review_policy = resolve_review_policy(subscription)
+    review_policy = resolve_review_policy(subscription, conn=conn)
     mode = review_policy["recommendation_mode"]
     base_score = int(result.get("score") or 0)
     matched_on = [str(item) for item in _as_list(result.get("matched_on")) if item]

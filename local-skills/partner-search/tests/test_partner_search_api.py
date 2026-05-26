@@ -15,7 +15,6 @@ if str(REPO_ROOT) not in sys.path:
 from partner_search import (  # noqa: E402
     SearchRequest,
     load_self_profile,
-    normalize_persona_profile,
     search,
     search_profiles,
 )
@@ -367,36 +366,29 @@ class PartnerSearchApiTests(unittest.TestCase):
         self.assertEqual(profile["id"], 90001)
         self.assertEqual(profile["last_active_at"], "2099-01-01 08:00:00")
 
-    def test_normalize_persona_profile_maps_synced_profile_into_saved_search_shape(self):
-        normalized = normalize_persona_profile(
+    def test_enrich_record_for_reciprocal_maps_collected_preferences(self):
+        from match_domain.reciprocal_preferences import enrich_record_for_reciprocal
+
+        enriched = enrich_record_for_reciprocal(
             {
                 "gender": "男",
                 "age": 28,
                 "city": "无锡",
-                "last_active_at": datetime(2099, 1, 1, 8, 0, 0),
-                "preferred_age_min": 27,
-                "preferred_age_max": 32,
-                "accept_marital_status": "未婚,离异无孩",
-                "matcher_preferences": {
-                    "target_gender": "女",
-                    "target_cities": ["苏州", "无锡"],
-                    "must_have_tags": ["情绪稳定", "愿意沟通"],
-                },
-                "matcher_risks": {
-                    "must_not_have_tags": ["抽烟"],
-                },
-            },
-            fallback_profile={"target_marital_statuses": ["旧值"]},
+                "target_age_min": 27,
+                "target_age_max": 32,
+                "target_marital_statuses": "未婚,离异无孩",
+                "target_gender": "女",
+                "target_cities": "苏州,无锡",
+                "must_have_tags": "情绪稳定,愿意沟通",
+                "must_not_have_tags": "抽烟",
+            }
         )
 
-        self.assertEqual(normalized["self_gender"], "男")
-        self.assertEqual(normalized["target_gender"], "女")
-        self.assertEqual(normalized["target_cities"], ["苏州", "无锡"])
-        self.assertEqual(normalized["target_age_min"], 27)
-        self.assertEqual(normalized["target_marital_statuses"], "未婚,离异无孩")
-        self.assertEqual(normalized["must_have_tags"], ["情绪稳定", "愿意沟通"])
-        self.assertEqual(normalized["must_not_have_tags"], ["抽烟"])
-        self.assertEqual(normalized["last_active_at"], "2099-01-01 08:00:00")
+        self.assertEqual(enriched["preferred_age_min"], 27)
+        self.assertEqual(enriched["preferred_age_max"], 32)
+        self.assertEqual(enriched["accept_marital_status"], "未婚,离异无孩")
+        self.assertIn("matcher_preferences", enriched)
+        self.assertIn("matcher_risks", enriched)
 
     def test_main_outputs_json_when_requested(self):
         fake_records = [

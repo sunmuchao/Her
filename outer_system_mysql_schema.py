@@ -451,6 +451,11 @@ def recommendation_tables() -> tuple[TableDef, ...]:
                 ColumnDef("target_profile_ref_json", "LONGTEXT", nullable=False),
                 ColumnDef("active_match_case_id", "VARCHAR(191)"),
                 ColumnDef("active_case_status", "VARCHAR(64)"),
+                ColumnDef("gate_outcome", "VARCHAR(16)"),
+                ColumnDef("gate_reason_codes_json", "LONGTEXT"),
+                ColumnDef("gate_owner_service", "VARCHAR(64)"),
+                ColumnDef("gate_details_ref", "VARCHAR(255)"),
+                ColumnDef("gate_evaluated_at", "DATETIME"),
                 ColumnDef("latest_card_id", "VARCHAR(191)"),
                 ColumnDef("rule_provenance_json", "LONGTEXT"),
             ),
@@ -651,7 +656,89 @@ def recommendation_tables() -> tuple[TableDef, ...]:
                 IndexDef(("publish_status", "created_at"), "idx_outbox_pending_time"),
             ),
         ),
+        TableDef(
+            name="criteria_snapshots",
+            columns=(
+                ColumnDef("snapshot_id", "BIGINT", nullable=False, auto_increment=True),
+                ColumnDef("scene", "VARCHAR(64)", nullable=False),
+                ColumnDef("criteria_hash", "VARCHAR(64)", nullable=False),
+                ColumnDef("compiled_json", "LONGTEXT", nullable=False),
+                ColumnDef("source_map_json", "LONGTEXT", nullable=False),
+                ColumnDef("runtime_explanation_json", "LONGTEXT"),
+                ColumnDef("profile_id", "BIGINT"),
+                ColumnDef("requester_id", "BIGINT"),
+                ColumnDef("user_key", "VARCHAR(191)"),
+                ColumnDef("subscription_id", "VARCHAR(191)"),
+                ColumnDef("discovery_session_id", "VARCHAR(191)"),
+                ColumnDef("recommendation_id", "BIGINT"),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("snapshot_id",),
+            indexes=(
+                IndexDef(("recommendation_id", "created_at"), "idx_criteria_snapshots_recommendation_time"),
+                IndexDef(("profile_id", "created_at"), "idx_criteria_snapshots_profile_time"),
+                IndexDef(("discovery_session_id", "created_at"), "idx_criteria_snapshots_discovery_time"),
+                IndexDef(("criteria_hash",), "idx_criteria_snapshots_hash"),
+            ),
+            foreign_keys=(
+                ForeignKeyDef(("recommendation_id",), "profile_recommendations", ("recommendation_id",)),
+            ),
+        ),
         ASYNC_JOB_TABLE,
+        TableDef(
+            name="rule_config_versions",
+            columns=(
+                ColumnDef("version_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("slice_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("params_json", "LONGTEXT", nullable=False),
+                ColumnDef("schema_version", "VARCHAR(32)", nullable=False),
+                ColumnDef("status", "VARCHAR(32)", nullable=False),
+                ColumnDef("created_by", "VARCHAR(191)", nullable=False),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("version_id",),
+            indexes=(
+                IndexDef(("slice_id", "status", "created_at"), "idx_rule_config_versions_slice_status"),
+            ),
+        ),
+        TableDef(
+            name="rule_config_assignments",
+            columns=(
+                ColumnDef("assignment_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("version_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("slice_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("scope_type", "VARCHAR(64)", nullable=False),
+                ColumnDef("scope_key", "VARCHAR(191)", nullable=False),
+                ColumnDef("priority", "INT", nullable=False),
+                ColumnDef("effective_from", "DATETIME"),
+                ColumnDef("effective_until", "DATETIME"),
+                ColumnDef("created_by", "VARCHAR(191)", nullable=False),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("assignment_id",),
+            indexes=(
+                IndexDef(
+                    ("slice_id", "scope_type", "scope_key", "priority"),
+                    "idx_rule_config_assignments_scope",
+                ),
+            ),
+            foreign_keys=(
+                ForeignKeyDef(("version_id",), "rule_config_versions", ("version_id",)),
+            ),
+        ),
+        TableDef(
+            name="experiment_bucket_members",
+            columns=(
+                ColumnDef("profile_id", "BIGINT", nullable=False),
+                ColumnDef("bucket_key", "VARCHAR(191)", nullable=False),
+                ColumnDef("updated_by", "VARCHAR(191)", nullable=False),
+                ColumnDef("updated_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("profile_id",),
+            indexes=(
+                IndexDef(("bucket_key", "updated_at"), "idx_experiment_bucket_members_bucket"),
+            ),
+        ),
     )
 
 
@@ -2108,7 +2195,105 @@ def matchmaking_tables() -> tuple[TableDef, ...]:
                 IndexDef(("publish_status", "created_at"), "idx_outbox_pending_time"),
             ),
         ),
+        *proxy_intro_matchmaking_tables(),
         ASYNC_JOB_TABLE,
+    )
+
+
+def proxy_intro_matchmaking_tables() -> tuple[TableDef, ...]:
+    """Proxy-intro cases owned by matchmaking; recommendation rows stay on rec DB."""
+    return (
+        TableDef(
+            name="proxy_intro_cases",
+            columns=(
+                ColumnDef("case_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("subscription_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("recommendation_id", "BIGINT", nullable=False),
+                ColumnDef("requester_id", "BIGINT", nullable=False),
+                ColumnDef("candidate_id", "BIGINT", nullable=False),
+                ColumnDef("candidate_name", "VARCHAR(255)", nullable=False),
+                ColumnDef("initiated_by", "VARCHAR(64)", nullable=False),
+                ColumnDef("case_type", "VARCHAR(64)", nullable=False),
+                ColumnDef("case_status", "VARCHAR(64)", nullable=False),
+                ColumnDef("close_reason", "VARCHAR(191)"),
+                ColumnDef("outreach_channel", "VARCHAR(64)", nullable=False),
+                ColumnDef("safe_summary_json", "LONGTEXT", nullable=False),
+                ColumnDef("requester_profile_snapshot_json", "LONGTEXT", nullable=False),
+                ColumnDef("candidate_snapshot_json", "LONGTEXT", nullable=False),
+                ColumnDef("outreach_payload_json", "LONGTEXT", nullable=False),
+                ColumnDef("reply_payload_json", "LONGTEXT", nullable=False),
+                ColumnDef("reply_deadline_at", "DATETIME"),
+                ColumnDef("outreach_sent_at", "DATETIME"),
+                ColumnDef("replied_at", "DATETIME"),
+                ColumnDef("cooling_until", "DATETIME"),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+                ColumnDef("updated_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("case_id",),
+            indexes=(
+                IndexDef(
+                    ("subscription_id", "case_status", "created_at"),
+                    "idx_proxy_intro_cases_subscription_status",
+                ),
+                IndexDef(
+                    ("recommendation_id", "case_status", "updated_at"),
+                    "idx_proxy_intro_cases_recommendation_status",
+                ),
+                IndexDef(
+                    ("requester_id", "case_status", "updated_at"),
+                    "idx_proxy_intro_cases_requester_status",
+                ),
+            ),
+        ),
+        TableDef(
+            name="proxy_intro_case_events",
+            columns=(
+                ColumnDef("event_id", "BIGINT", nullable=False, auto_increment=True),
+                ColumnDef("case_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("subscription_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("recommendation_id", "BIGINT", nullable=False),
+                ColumnDef("requester_id", "BIGINT", nullable=False),
+                ColumnDef("candidate_id", "BIGINT", nullable=False),
+                ColumnDef("event_type", "VARCHAR(64)", nullable=False),
+                ColumnDef("from_status", "VARCHAR(64)"),
+                ColumnDef("to_status", "VARCHAR(64)"),
+                ColumnDef("actor_type", "VARCHAR(32)", nullable=False),
+                ColumnDef("canonical_event_json", "LONGTEXT", nullable=True),
+                ColumnDef("payload_json", "LONGTEXT", nullable=False),
+                ColumnDef("occurred_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("event_id",),
+            indexes=(
+                IndexDef(("case_id", "occurred_at"), "idx_proxy_intro_case_events_case_time"),
+            ),
+            foreign_keys=(
+                ForeignKeyDef(("case_id",), "proxy_intro_cases", ("case_id",)),
+            ),
+        ),
+        TableDef(
+            name="proxy_intro_case_outreach_attempts",
+            columns=(
+                ColumnDef("attempt_id", "BIGINT", nullable=False, auto_increment=True),
+                ColumnDef("case_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("attempt_number", "INT", nullable=False),
+                ColumnDef("channel", "VARCHAR(64)", nullable=False),
+                ColumnDef("delivery_status", "VARCHAR(64)", nullable=False),
+                ColumnDef("payload_json", "LONGTEXT", nullable=False),
+                ColumnDef("provider_message_id", "VARCHAR(191)"),
+                ColumnDef("error_code", "VARCHAR(64)"),
+                ColumnDef("sent_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("attempt_id",),
+            uniques=(
+                UniqueKeyDef(("case_id", "attempt_number")),
+            ),
+            indexes=(
+                IndexDef(("case_id", "sent_at"), "idx_proxy_intro_attempts_case_time"),
+            ),
+            foreign_keys=(
+                ForeignKeyDef(("case_id",), "proxy_intro_cases", ("case_id",)),
+            ),
+        ),
     )
 
 

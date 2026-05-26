@@ -87,6 +87,7 @@ CREATE TABLE IF NOT EXISTS {observation_table} (
   confidence_score INT DEFAULT NULL,
   evidence_text TEXT,
   conversation_ref VARCHAR(128) DEFAULT NULL,
+  source_channel VARCHAR(64) DEFAULT NULL,
   action_type ENUM('insert','update','skip') NOT NULL DEFAULT 'insert',
   applied_to_persona TINYINT(1) NOT NULL DEFAULT 0,
   applied_to_profile TINYINT(1) NOT NULL DEFAULT 0,
@@ -181,6 +182,10 @@ PERSONA_REQUIRED_COLUMNS = (
     "updated_at",
 )
 
+OBSERVATION_EXTENSION_COLUMNS = {
+    "source_channel": "VARCHAR(64) DEFAULT NULL",
+}
+
 OBSERVATION_REQUIRED_COLUMNS = (
     "id",
     "user_key",
@@ -191,6 +196,7 @@ OBSERVATION_REQUIRED_COLUMNS = (
     "confidence_score",
     "evidence_text",
     "conversation_ref",
+    "source_channel",
     "action_type",
     "applied_to_persona",
     "applied_to_profile",
@@ -284,6 +290,16 @@ def ensure_persona_schema(
                 continue
             cursor.execute(
                 f"ALTER TABLE {quote_mysql_ident(resolved.persona_table)} "
+                f"ADD COLUMN {quote_mysql_ident(column_name)} {column_type}"
+            )
+
+        cursor.execute(f"SHOW COLUMNS FROM {quote_mysql_ident(resolved.observation_table)}")
+        existing_observation_columns = {row["Field"] for row in cursor.fetchall()}
+        for column_name, column_type in OBSERVATION_EXTENSION_COLUMNS.items():
+            if column_name in existing_observation_columns:
+                continue
+            cursor.execute(
+                f"ALTER TABLE {quote_mysql_ident(resolved.observation_table)} "
                 f"ADD COLUMN {quote_mysql_ident(column_name)} {column_type}"
             )
 

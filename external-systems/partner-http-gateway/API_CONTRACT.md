@@ -562,11 +562,32 @@ JSON-RPC：`recommendation.record_recommendation_action` / `record_user_review` 
 
 - **JSON-RPC**：`chat.list_pending_outbox`（`limit`）、`chat.process_persona_jobs`（`limit`）、`chat.run_maintenance`（`persona_limit`、`flush_outbox`）。
 
-## 统一时间线（跨聊天 + 撮合案例）
+## 关系总账（relationship_ledger）
+
+读侧以 ledger 为跨域真相；`HER_RELATION_LEDGER_READ_MODE=ledger_primary`（默认，需配置 `HER_RELATION_LEDGER_DB`）时不再合并各域 `match_case_events` 作为 `unified_timeline`。
+
+- **`GET /v1/relations?relation_key=...`**  
+  返回 `relation`、`summary`、`unified_timeline`。参与者须为 `owner_profile_ref` / `target_profile_ref` 之一（或运营角色）。
+
+- **`GET /v1/relations/by-case/{case_id}`**  
+  按案例 ID 解析关系；ACL 同上。
+
+- **`GET /v1/relations/mine`**  
+  登录用户（`auth_session` + `end_user`）按 `profile:{requester_id}` 列出本人相关关系（上限 50）。
+
+- **`GET /v1/relations/list`**、**`GET /v1/relations/dashboard`**  
+  仅内部写角色（运营/worker）。
+
+写侧：各域在本地事务 `commit` 后通过 `commit_conn_with_ledger` / `defer_ledger_event` 镜像事件；代理牵线 owner 为 `matchmaking-system`，case 表默认在撮合库 `proxy_intro_*`（gateway `_with_proxy_intro` 双连接写推荐镜像）。`HER_PROXY_INTRO_STORAGE=recommendation` 时仍用推荐库 `match_cases`。legacy timeline 回退仅当 `HER_ALLOW_LEGACY_TIMELINE_FALLBACK=1`。
+
+## 统一时间线（跨聊天 + 撮合 + 推荐 + ledger）
 
 - **`GET /v1/timeline`**  
-  Query：`case_id`、`viewer_id`（须为聊天参与者之一）、可选 `message_limit`。  
-  响应：`chat`（`build_chat_timeline`：线程 + 对该 `viewer_id` 可见的消息）、`matchmaking`（若能用同一 `case_id` 在撮合库命中则含 `case` 与 `match_case_events`，否则为空列表）、`recommendation` 当前为 `null`（预留）。
+  Query：`case_id`、`viewer_id`（须能访问该案例：撮合成员或代理牵线 requester/candidate）、可选 `message_limit`。  
+  响应：`source_mode`（`ledger_primary` | `ledger_unavailable` | `legacy_fallback`）、`unified_timeline`、`ledger`（含 `summary`、`read_mode`）、`chat`（`build_case_conversation_timeline`）、`matchmaking` / `recommendation`（ledger 主读时为摘要镜像，否则为域内 case/events）。
+
+- **`GET /v2/chat/cases/{case_id}/timeline`**  
+  在会话时间线基础上附加 `ledger_summary` 与 `unified_timeline`（优先 ledger）。
 
 - **JSON-RPC**：`timeline.get_for_case`，`params`：`case_id`、`viewer_id`、可选 `message_limit`。
 

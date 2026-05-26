@@ -39,7 +39,7 @@ pnpm run test:unit   # Vitest 单元测试
 pnpm run build       # 生产构建 + TypeScript 校验
 ```
 
-CI：仓库根目录 `.github/workflows/frontend-her-app.yml`（push/PR 触及 `frontend/her-app` 时运行）。
+CI：仓库根目录 `.github/workflows/frontend-her-app.yml`（push/PR 触及 `frontend/her-app` 或 E2E 依赖的后端路径时运行）。阻塞项包括 `e2e`（全栈 Playwright，`MOCK_FALLBACK=false`）与 `mock-fallback-regression`（开发 Mock 黄条回归）。Dev Mock 策略见 [`docs/MOCK_DEVELOPMENT.md`](docs/MOCK_DEVELOPMENT.md)。
 
 ## 路由（App Router）
 
@@ -89,6 +89,13 @@ pnpm e2e:her:stub
 
 ```bash
 pnpm e2e:her
+```
+
+CI 同款全栈 E2E（MySQL bootstrap → gateway → production build → Playwright，mock 开关全关）：
+
+```bash
+# 需本地 MySQL 127.0.0.1:3307（见仓库根 start_partner_mysql.sh）
+pnpm e2e:her:ci
 ```
 
 ## 当前状态

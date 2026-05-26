@@ -27,6 +27,7 @@ from .jobs import (
     JOB_REC_REFRESH,
     make_chat_job,
     make_matchmaking_job,
+    make_proxy_intro_job,
     make_recommendation_job,
 )
 from .paths import (
@@ -60,9 +61,7 @@ def _recommendation_job_specs(settings: SchedulerSettings) -> list[_ConfiguredJo
         if built_jobs is None:
             ensure_recommendation_system_on_path()
             from recommendation_system import (  # noqa: PLC0415
-                close_timed_out_match_cases,
                 deliver_in_app_recommendations,
-                dispatch_pending_match_cases,
                 refresh_due_subscriptions,
             )
             from recommendation_system.async_tasks import run_recommendation_async_job_worker  # noqa: PLC0415
@@ -89,16 +88,6 @@ def _recommendation_job_specs(settings: SchedulerSettings) -> list[_ConfiguredJo
                     deliver_in_app_recommendations,
                     db=db,
                 ),
-                JOB_REC_DISPATCH: make_recommendation_job(
-                    JOB_REC_DISPATCH,
-                    dispatch_pending_match_cases,
-                    db=db,
-                ),
-                JOB_REC_CLOSE_TIMEOUT: make_recommendation_job(
-                    JOB_REC_CLOSE_TIMEOUT,
-                    close_timed_out_match_cases,
-                    db=db,
-                ),
             }
         return built_jobs
 
@@ -123,16 +112,6 @@ def _recommendation_job_specs(settings: SchedulerSettings) -> list[_ConfiguredJo
             settings.recommendation_deliver_cards_sec,
             lambda: get_jobs()[JOB_REC_DELIVER],
         ),
-        _ConfiguredJobSpec(
-            JOB_REC_DISPATCH,
-            settings.recommendation_dispatch_proxy_sec,
-            lambda: get_jobs()[JOB_REC_DISPATCH],
-        ),
-        _ConfiguredJobSpec(
-            JOB_REC_CLOSE_TIMEOUT,
-            settings.recommendation_close_proxy_timeout_sec,
-            lambda: get_jobs()[JOB_REC_CLOSE_TIMEOUT],
-        ),
     ]
 
 
@@ -155,7 +134,13 @@ def _matchmaking_job_specs(settings: SchedulerSettings) -> list[_ConfiguredJobSp
             )
             from matchmaking_system.async_tasks import run_matchmaking_async_job_worker  # noqa: PLC0415
             from matchmaking_system.outbox import run_matchmaking_outbox_worker  # noqa: PLC0415
+            from match_domain.proxy_intro_storage import use_matchmaking_storage  # noqa: PLC0415
+            from matchmaking_system.proxy_intro import (  # noqa: PLC0415
+                close_timed_out_match_cases,
+                dispatch_pending_match_cases,
+            )
 
+            rec_db = settings.recommendation_db or ""
             built_jobs = {
                 JOB_MM_ASYNC_WORKER: make_matchmaking_job(
                     JOB_MM_ASYNC_WORKER,
@@ -188,7 +173,47 @@ def _matchmaking_job_specs(settings: SchedulerSettings) -> list[_ConfiguredJobSp
                     db=db,
                 ),
             }
+            if rec_db:
+                if use_matchmaking_storage():
+                    built_jobs[JOB_REC_DISPATCH] = make_proxy_intro_job(
+                        JOB_REC_DISPATCH,
+                        dispatch_pending_match_cases,
+                        matchmaking_db=db,
+                        recommendation_db=rec_db,
+                    )
+                    built_jobs[JOB_REC_CLOSE_TIMEOUT] = make_proxy_intro_job(
+                        JOB_REC_CLOSE_TIMEOUT,
+                        close_timed_out_match_cases,
+                        matchmaking_db=db,
+                        recommendation_db=rec_db,
+                    )
+                else:
+                    built_jobs[JOB_REC_DISPATCH] = make_recommendation_job(
+                        JOB_REC_DISPATCH,
+                        dispatch_pending_match_cases,
+                        db=rec_db,
+                    )
+                    built_jobs[JOB_REC_CLOSE_TIMEOUT] = make_recommendation_job(
+                        JOB_REC_CLOSE_TIMEOUT,
+                        close_timed_out_match_cases,
+                        db=rec_db,
+                    )
         return built_jobs
+
+    proxy_specs: list[_ConfiguredJobSpec] = []
+    if settings.recommendation_db:
+        proxy_specs = [
+            _ConfiguredJobSpec(
+                JOB_REC_DISPATCH,
+                settings.recommendation_dispatch_proxy_sec,
+                lambda: get_jobs()[JOB_REC_DISPATCH],
+            ),
+            _ConfiguredJobSpec(
+                JOB_REC_CLOSE_TIMEOUT,
+                settings.recommendation_close_proxy_timeout_sec,
+                lambda: get_jobs()[JOB_REC_CLOSE_TIMEOUT],
+            ),
+        ]
 
     return [
         _ConfiguredJobSpec(
@@ -221,6 +246,7 @@ def _matchmaking_job_specs(settings: SchedulerSettings) -> list[_ConfiguredJobSp
             settings.matchmaking_close_stale_sec,
             lambda: get_jobs()[JOB_MM_STALE],
         ),
+        *proxy_specs,
     ]
 
 

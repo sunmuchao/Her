@@ -133,20 +133,22 @@ export default function OnboardingPage({
   // Get missing fields for current step
   const getMissingFields = (): string[] => {
     switch (currentStep) {
-      case 'intro':
+      case 'intro': {
         const introMissing: string[] = []
         if (profile.photos.length < 1) introMissing.push('照片')
         if (!profile.name) introMissing.push('名字')
         if (!profile.gender) introMissing.push('性别')
         if (!profile.sexualOrientation) introMissing.push('喜欢的类型')
         return introMissing
-      case 'reality':
+      }
+      case 'reality': {
         const realityMissing: string[] = []
         if (!profile.birthday) realityMissing.push('生日')
         if (!profile.currentCity) realityMissing.push('城市')
         if (!profile.marriageStatus) realityMissing.push('婚况')
         if (!profile.hasChildren) realityMissing.push('是否有孩子')
         return realityMissing
+      }
       case 'goals':
         if (!profile.relationshipGoal) return ['关系目标']
         return []

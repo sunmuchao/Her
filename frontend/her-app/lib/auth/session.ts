@@ -1,3 +1,4 @@
+import { applyAuthPrincipalPayload } from '@/lib/auth/principal'
 import {
   getDefaultCaseId,
   getDefaultProfileId,
@@ -103,18 +104,15 @@ export function applyLoginPayload(payload: LoginPayload): SessionContext {
 
 export function applyAuthMePayload(data: {
   user?: { requester_id?: number; profile_id?: number; user_id?: string; case_id?: string }
+  principal?: {
+    requester_id?: number
+    profile_id?: number
+    user_id?: string
+    user_key?: string
+  }
 }) {
-  const user = data.user || {}
-  const profileId = user.profile_id
-  const requesterId = user.requester_id ?? profileId
-  const profileLinked = requesterId != null && profileId != null
-  return patchSessionContext({
-    userId: user.user_id,
-    requesterId,
-    profileId,
-    profileLinked,
-    caseId: user.case_id,
-  })
+  const patch = applyAuthPrincipalPayload(data)
+  return patchSessionContext(patch)
 }
 
 function isAuthenticated(): boolean {
@@ -145,9 +143,7 @@ export function patchSessionContext(patch: Partial<SessionContext>) {
 }
 
 export function getRequesterId(): number | undefined {
-  const ctx = readStoredContext()
-  if (isAuthenticated()) return ctx.requesterId
-  return ctx.requesterId ?? getDefaultRequesterId()
+  return getProfileId()
 }
 
 export function getProfileId(): number | undefined {

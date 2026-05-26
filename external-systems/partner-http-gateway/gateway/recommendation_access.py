@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
+from match_domain.principal import coalesce_profile_id_param
+
 from .http_helpers import _payload_without_keys, _trimmed_client_idempotency_key
 
 
@@ -25,6 +27,26 @@ class RecommendationAccessGateway(Protocol):
     ) -> int: ...
 
 
+def resolve_optional_profile_id(
+    gateway: RecommendationAccessGateway,
+    environ: dict[str, Any],
+    raw_profile_id: Any,
+    *,
+    raw_requester_id: Any = None,
+    raw_user_key: Any = None,
+    treat_empty_as_missing: bool,
+) -> int | None:
+    raw = coalesce_profile_id_param(raw_profile_id, raw_requester_id, raw_user_key)
+    missing_values = (None, "") if treat_empty_as_missing else (None,)
+    if raw not in missing_values or gateway._current_actor(environ) is not None:
+        return gateway._resolve_int_actor_bound_id(
+            environ,
+            raw,
+            field_name="profile_id",
+        )
+    return None
+
+
 def resolve_optional_requester_id(
     gateway: RecommendationAccessGateway,
     environ: dict[str, Any],
@@ -32,14 +54,14 @@ def resolve_optional_requester_id(
     *,
     treat_empty_as_missing: bool,
 ) -> int | None:
-    missing_values = (None, "") if treat_empty_as_missing else (None,)
-    if raw_requester_id not in missing_values or gateway._current_actor(environ) is not None:
-        return gateway._resolve_int_actor_bound_id(
-            environ,
-            raw_requester_id,
-            field_name="requester_id",
-        )
-    return None
+    """Backward-compatible alias; prefer resolve_optional_profile_id."""
+    return resolve_optional_profile_id(
+        gateway,
+        environ,
+        None,
+        raw_requester_id=raw_requester_id,
+        treat_empty_as_missing=treat_empty_as_missing,
+    )
 
 
 def recommendation_mutation_payload(
@@ -68,4 +90,8 @@ def recommendation_mutation_payload(
     return payload, client_key
 
 
-__all__ = ["recommendation_mutation_payload", "resolve_optional_requester_id"]
+__all__ = [
+    "recommendation_mutation_payload",
+    "resolve_optional_profile_id",
+    "resolve_optional_requester_id",
+]

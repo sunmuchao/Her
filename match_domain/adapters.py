@@ -119,6 +119,16 @@ def recommendation_relation_key(subscription: Mapping[str, Any], candidate_id: i
     return relation_key(owner_ref, target_ref)
 
 
+def matchmaking_relation_key(
+    member_low: Mapping[str, Any],
+    member_high: Mapping[str, Any],
+) -> str:
+    """Canonical relation key for a matchmaking dyad (same format as recommendation)."""
+    low_ref = pool_member_profile_ref(member_low)
+    high_ref = pool_member_profile_ref(member_high)
+    return relation_key(low_ref, high_ref)
+
+
 def canonical_pair_key_for_members(
     member_a: Mapping[str, Any],
     member_b: Mapping[str, Any],
@@ -144,6 +154,7 @@ __all__ = [
     "pool_member_profile_ref",
     "profile_ref_to_dict",
     "recommendation_owner_ref",
+    "matchmaking_relation_key",
     "recommendation_relation_key",
     "recommendation_relation_refs",
     "recommendation_target_ref",

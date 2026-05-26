@@ -4,19 +4,24 @@ import { useEffect, useRef, useState } from 'react'
 import { ArrowLeft, BadgeCheck, Bookmark, ChevronRight, Mail, MapPin, Search, Send, X } from 'lucide-react'
 import { XiaoyaAvatar } from '@/components/her/ui/xiaoya-avatar'
 import Image from 'next/image'
-import { EmptyRecommendations, EmptySearchResults, EmptyInbox } from './ui/empty-states'
+import { EmptyRecommendations, EmptySearchResults } from './ui/empty-states'
 import { InboxItemSkeleton, DiscoverPageSkeleton } from './ui/skeletons'
 import { TypingIndicator } from './ui/typing-indicator'
-import { FadeIn, StaggerContainer, OnlineIndicator } from './ui/animations'
-import { resolveProfileImageUrl } from '@/lib/image-url'
+import { FadeIn, OnlineIndicator } from './ui/animations'
+import { PLACEHOLDER_AVATAR, resolveProfileImageUrl } from '@/lib/image-url'
 import { cn } from '@/lib/utils'
 import { gatewayJson, queryString } from '@/lib/gateway'
 import { createDiscoverySession, submitDiscoveryTurn } from '@/lib/api/endpoints/discovery'
+import { fetchCollectedStatements, formatCollectedPreferenceChips } from '@/lib/api/endpoints/collected'
+import { fetchConversionViewsForSubscription, saveDiscoveryAsSubscription } from '@/lib/api/endpoints/recommendation'
+import { fetchRelationsMine, formatConversionStageLabel } from '@/lib/api/endpoints/relations'
 import { getErrorMessage } from '@/lib/api/errors'
 import { hydrateSessionFromAuthMe } from '@/lib/auth/hydrate-session'
-import { getAccessToken, getProfileId, getRequesterId } from '@/lib/auth/session'
+import { getAccessToken, getProfileId } from '@/lib/auth/session'
 import { canUseMockFallback } from '@/lib/mock'
-import { notifyError } from '@/lib/notify'
+import { notifyError, notifySuccess } from '@/lib/notify'
+import { logDataProvenance, usePageDataSource } from '@/lib/data-provenance'
+import { DEMO_CANDIDATES, EMPTY_PREFS_PLACEHOLDER } from '@/lib/fixtures/demo-profiles'
 import type { CandidatePreview } from '@/lib/types/candidate'
 import type { DiscoveryView } from '@/lib/types/discovery'
 import { DemoDataBanner } from './ui/demo-data-banner'
@@ -72,6 +77,7 @@ type InboxItem = {
   message: string
   time: string
   isRead: boolean
+  conversionStage?: string
 }
 
 type ChatMessage = {
@@ -86,50 +92,12 @@ const initialMessages: ChatMessage[] = [
   { id: '2', type: 'matchmaker', content: '你理想中的伴侣是什么样的？', timestamp: '09:31' },
 ]
 
-const fallbackCandidates: CandidatePreview[] = [
-  {
-    id: '1',
-    name: '林悦',
-    age: 28,
-    city: '上海',
-    occupation: '产品设计师',
-    education: '复旦大学',
-    verified: true,
-    matchScore: 95,
-    image: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400&h=600&fit=crop&crop=face',
-    matchReason: '性格温和、同城、审美品味相近',
-  },
-  {
-    id: '2',
-    name: '陈思',
-    age: 27,
-    city: '上海',
-    occupation: '品牌策划',
-    education: '浙江大学',
-    verified: true,
-    matchScore: 92,
-    image: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=400&h=600&fit=crop&crop=face',
-    matchReason: '价值观相似、兴趣爱好匹配',
-  },
-]
-
-const fallbackInboxItems: InboxItem[] = [
-  {
-    id: '1',
-    name: '林悦',
-    age: 28,
-    city: '上海',
-    occupation: '产品设计师',
-    matchScore: 95,
-    image: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&h=200&fit=crop&crop=face',
-    type: 'delayed',
-    message: '她符合你的期待，性格温和，同在上海',
-    time: '2小时前',
-    isRead: false,
-  },
-]
-
-const fallbackPrefs = ['同城优先', '本科以上', '年龄相近', '性格温柔']
+const SAVE_SUBSCRIPTION_ACTIONS = new Set([
+  'save_subscription',
+  'save_for_later',
+  'create_subscription',
+  'save_as_subscription',
+])
 
 function mapDiscoveryView(view?: DiscoveryView) {
   const messages =
@@ -179,7 +147,7 @@ export default function DiscoverPage({
   const [messages, setMessages] = useState(initialMessages)
   const [inputValue, setInputValue] = useState('')
   const [isTyping, setIsTyping] = useState(false)
-  const [currentPrefs, setCurrentPrefs] = useState(fallbackPrefs)
+  const [currentPrefs, setCurrentPrefs] = useState<string[]>([])
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [suggestedActions, setSuggestedActions] = useState<Array<{ action_id: string; label: string }>>([])
   const [composerPlaceholder, setComposerPlaceholder] = useState('输入你的想法...')
@@ -187,7 +155,7 @@ export default function DiscoverPage({
   const [isSubmittingTurn, setIsSubmittingTurn] = useState(false)
   const [backendCandidates, setBackendCandidates] = useState<CandidatePreview[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [usingMockData, setUsingMockData] = useState(false)
+  const { usingMockData, applyProvenance } = usePageDataSource()
   const [isLoadingSession, setIsLoadingSession] = useState(true)
   const chatEndRef = useRef<HTMLDivElement>(null)
 
@@ -214,17 +182,20 @@ export default function DiscoverPage({
       }
       if (cancelled) return
 
-      const requesterId = getRequesterId()
       const profileId = getProfileId()
-      if (!requesterId || !profileId) {
+      if (!profileId) {
         setIsLoadingSession(false)
         setLoadError(
           getAccessToken()
             ? '请先完成资料填写后再使用发现与推荐'
-            : '未配置用户 ID，请在 .env.local 设置 NEXT_PUBLIC_HER_REQUESTER_ID 与 NEXT_PUBLIC_HER_PROFILE_ID',
+            : '未配置用户 ID，请在 .env.local 设置 NEXT_PUBLIC_HER_PROFILE_ID',
         )
         if (canUseMockFallback()) {
-          setUsingMockData(true)
+          applyProvenance(true, true, '/v1/discovery/sessions')
+          setBackendCandidates(DEMO_CANDIDATES)
+          setCurrentPrefs(['同城优先', '本科以上'])
+        } else {
+          applyProvenance(false, false, '/v1/discovery/sessions')
         }
         return
       }
@@ -232,29 +203,46 @@ export default function DiscoverPage({
       setIsLoadingSession(true)
       setLoadError(null)
       try {
-        const data = await createDiscoverySession({
-          requesterId,
-          profileId,
-        })
+        const data = await createDiscoverySession({ profileId })
         if (cancelled) return
         const sid = data.session?.session_id || null
         setSessionId(sid)
         onSessionIdChange?.(sid)
-        setUsingMockData(false)
+        applyProvenance(false, true, '/v1/discovery/sessions')
         const mapped = mapDiscoveryView(data.view)
         if (mapped.messages.length) setMessages(mapped.messages)
         if (mapped.chips?.length) setCurrentPrefs(mapped.chips)
+        try {
+          const collected = await fetchCollectedStatements(profileId)
+          const collectedChips = formatCollectedPreferenceChips(collected.collected_statements || {})
+          if (collectedChips.length) {
+            setCurrentPrefs((prev) => {
+              const merged = [...collectedChips]
+              for (const chip of prev) {
+                if (!merged.includes(chip)) merged.push(chip)
+              }
+              return merged.slice(0, 12)
+            })
+          }
+        } catch {
+          // Discovery view chips remain when collected API is unavailable.
+        }
         setSuggestedActions(mapped.actions)
         setComposerPlaceholder(mapped.composerPlaceholder)
         setComposerDisabled(mapped.composerDisabled)
         if (mapped.candidates.length) setBackendCandidates(mapped.candidates)
+        else setBackendCandidates([])
+        logDataProvenance('discover', applyProvenance(false, mapped.candidates.length > 0, '/v1/discovery/sessions'))
       } catch (error) {
         if (cancelled) return
         const message = getErrorMessage(error, '发现页会话加载失败')
         setLoadError(message)
         if (canUseMockFallback()) {
-          setUsingMockData(true)
+          applyProvenance(true, true, '/v1/discovery/sessions')
+          setBackendCandidates(DEMO_CANDIDATES)
+          setCurrentPrefs(['同城优先', '本科以上'])
         } else {
+          applyProvenance(false, false, '/v1/discovery/sessions')
           notifyError(error, message)
         }
       } finally {
@@ -273,6 +261,24 @@ export default function DiscoverPage({
       notifyError(new Error('会话未就绪'), '请稍后重试或刷新页面')
       return
     }
+
+    const profileId = getProfileId()
+    if (
+      payload.action_id &&
+      SAVE_SUBSCRIPTION_ACTIONS.has(payload.action_id) &&
+      profileId
+    ) {
+      setIsSubmittingTurn(true)
+      try {
+        await saveDiscoveryAsSubscription({ profileId })
+        notifySuccess('已保存为长期留意')
+      } catch (error) {
+        notifyError(error, '保存订阅失败')
+      } finally {
+        setIsSubmittingTurn(false)
+      }
+    }
+
     setIsSubmittingTurn(true)
     try {
       const data = await submitDiscoveryTurn({
@@ -282,11 +288,12 @@ export default function DiscoverPage({
       })
       const mapped = mapDiscoveryView(data.view)
       if (mapped.messages.length) setMessages(mapped.messages)
-      if (mapped.chips) setCurrentPrefs(mapped.chips.length ? mapped.chips : fallbackPrefs)
+      if (mapped.chips) setCurrentPrefs(mapped.chips)
       setSuggestedActions(mapped.actions)
       setComposerPlaceholder(mapped.composerPlaceholder)
       setComposerDisabled(mapped.composerDisabled)
       if (mapped.candidates.length) setBackendCandidates(mapped.candidates)
+      else setBackendCandidates([])
       if (payload.user_message) setInputValue('')
     } catch (error) {
       notifyError(error, '发送失败，请重试')
@@ -295,7 +302,12 @@ export default function DiscoverPage({
     }
   }
 
-  const visibleCandidates = backendCandidates.length ? backendCandidates : fallbackCandidates
+  const visibleCandidates = backendCandidates
+  const prefChips = currentPrefs.length
+    ? currentPrefs
+    : usingMockData
+      ? ['同城优先', '本科以上']
+      : []
 
   if (isLoadingSession) {
     return <DiscoverPageSkeleton />
@@ -345,8 +357,13 @@ export default function DiscoverPage({
 
       {/* Preference chips with scroll fade */}
       <div className="relative px-4 py-2 border-b border-border">
-        <div className="flex gap-2 overflow-x-auto scrollbar-hide scroll-fade-right" role="list" aria-label="当前偏好设置">
-          {currentPrefs.map((pref, i) => (
+        <div className="flex gap-2 overflow-x-auto scrollbar-hide scroll-fade-right" role="list" aria-label="已收集偏好">
+          {currentPrefs.length === 0 && !usingMockData ? (
+            <span className="shrink-0 px-2.5 py-1 bg-secondary text-muted-foreground text-xs rounded-md">
+              {EMPTY_PREFS_PLACEHOLDER}
+            </span>
+          ) : (
+            prefChips.map((pref, i) => (
             <span 
               key={i} 
               className="shrink-0 px-2.5 py-1 bg-secondary text-muted-foreground text-xs rounded-md animate-fade-in-up"
@@ -355,7 +372,7 @@ export default function DiscoverPage({
             >
               {pref}
             </span>
-          ))}
+          )))}
         </div>
       </div>
 
@@ -389,7 +406,7 @@ export default function DiscoverPage({
             </div>
           ) : null}
 
-          {visibleCandidates.length > 0 && (
+          {visibleCandidates.length > 0 ? (
             <FadeIn className="pt-4" delay={200}>
               <p className="text-xs text-muted-foreground mb-3">为你精心挑选</p>
               <div className="space-y-3">
@@ -430,7 +447,9 @@ export default function DiscoverPage({
                 ))}
               </div>
             </FadeIn>
-          )}
+          ) : !usingMockData && !isLoadingSession ? (
+            <EmptySearchResults keyword="本轮推荐" />
+          ) : null}
           <div ref={chatEndRef} />
         </div>
       </div>
@@ -489,11 +508,11 @@ export function RecommendationInbox({
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set())
   const [searchQuery, setSearchQuery] = useState('')
   const [isLoading, setIsLoading] = useState(true)
-  const [backendItems, setBackendItems] = useState<InboxItem[]>(fallbackInboxItems)
+  const [backendItems, setBackendItems] = useState<InboxItem[]>([])
 
   useEffect(() => {
-    const requesterId = getRequesterId()
-    if (!requesterId) {
+    const profileId = getProfileId()
+    if (!profileId) {
       setIsLoading(false)
       return
     }
@@ -502,7 +521,7 @@ export function RecommendationInbox({
     async function loadCards() {
       try {
         const response = await gatewayJson<RecommendationCardsResponse>(
-          `/v1/recommendation/cards${queryString({ requester_id: Number(requesterId) })}`,
+          `/v1/recommendation/cards${queryString({ profile_id: Number(profileId) })}`,
         )
         if (cancelled) return
         const cards =
@@ -520,19 +539,55 @@ export function RecommendationInbox({
               city: profile?.city || '未知',
               occupation: profile?.job || '资料待补充',
               matchScore: snapshot?.score || 0,
-              image: resolveProfileImageUrl(
-                profile?.avatar_url,
-                'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&h=200&fit=crop&crop=face',
-              ),
+              image: resolveProfileImageUrl(profile?.avatar_url, PLACEHOLDER_AVATAR),
               type: 'matched' as const,
               message: card.body || card.title || '系统为你推送了一位新候选人',
               time: card.created_at || '刚刚',
               isRead: card.card_status === 'read',
+              conversionStage: undefined,
             }
           }) || []
-        if (cards.length) {
-          setBackendItems(cards)
+        const conversionByCandidate = new Map<number, string>()
+        try {
+          const mine = await fetchRelationsMine()
+          for (const relation of mine.relations || []) {
+            const targetRef = String(relation.target_profile_ref || '')
+            const match = targetRef.match(/^profile:(\d+)$/)
+            if (!match) continue
+            const candidateId = Number(match[1])
+            const phase = String(relation.current_phase || relation.relation_status || '')
+            if (phase) {
+              conversionByCandidate.set(candidateId, formatConversionStageLabel(phase))
+            }
+          }
+        } catch {
+          const subscriptionIds = [...new Set(cards.map((card) => card.subscriptionId).filter(Boolean))] as string[]
+          await Promise.all(
+            subscriptionIds.map(async (subscriptionId) => {
+              try {
+                const views = await fetchConversionViewsForSubscription(subscriptionId)
+                views.forEach((view) => {
+                  if (view.candidate_id && view.conversion_stage) {
+                    conversionByCandidate.set(
+                      Number(view.candidate_id),
+                      formatConversionStageLabel(view.conversion_stage),
+                    )
+                  }
+                })
+              } catch {
+                // conversion views are optional enrichment
+              }
+            }),
+          )
         }
+        const enrichedCards = cards.map((card) => ({
+          ...card,
+          conversionStage:
+            card.candidateId != null
+              ? conversionByCandidate.get(Number(card.candidateId))
+              : undefined,
+        }))
+        setBackendItems(enrichedCards)
       } finally {
         if (!cancelled) setIsLoading(false)
       }
@@ -556,13 +611,13 @@ export function RecommendationInbox({
   })
 
   const markRead = async (item: InboxItem) => {
-    const requesterId = getRequesterId()
-    if (!requesterId || !item.cardId) return
+    const profileId = getProfileId()
+    if (!profileId || !item.cardId) return
     try {
     await gatewayJson('/v1/recommendation/cards/read', {
       method: 'POST',
       body: JSON.stringify({
-        requester_id: Number(requesterId),
+        profile_id: Number(profileId),
         card_ids: [item.cardId],
       }),
     })
@@ -662,6 +717,7 @@ export function RecommendationInbox({
                   matchScore: item.matchScore,
                   image: item.image,
                   message: item.message,
+                  recommendationId: item.recommendationId,
                 })
               }}
               className="bg-card border border-border rounded-xl p-3 cursor-pointer hover:border-primary/30 transition-colors"
@@ -686,7 +742,7 @@ export function RecommendationInbox({
               <div className="flex items-center justify-between mt-3 pt-2 border-t border-border">
                 <div className="flex items-center gap-1">
                   <span className={`px-2 py-0.5 rounded text-[10px] ${item.type === 'delayed' ? 'bg-gold/20 text-gold' : 'bg-rose/20 text-rose'}`}>
-                    {item.type === 'delayed' ? '延迟推荐' : '主��撮合'}
+                    {item.conversionStage || (item.type === 'delayed' ? '延迟推荐' : '主动撮合')}
                   </span>
                   <span className="text-xs text-primary font-medium">{item.matchScore}% 匹配</span>
                 </div>

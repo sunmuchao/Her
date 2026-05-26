@@ -227,13 +227,9 @@ PROFILE_FACT_PERSONA_FIELDS = {
     "self_children_living_with_self",
 }
 
-AUTO_PROFILE_SYNC_BLOCKED_PERSONA_FIELDS = PROFILE_FACT_PERSONA_FIELDS
+AUTO_PROFILE_SYNC_BLOCKED_PERSONA_FIELDS = PROFILE_FACT_PERSONA_FIELDS | set(PERSONA_TO_PROFILE_FIELD_MAP)
 
-AUTO_PROFILE_SYNC_PERSONA_TO_PROFILE_FIELD_MAP = {
-    persona_field: profile_field
-    for persona_field, profile_field in PERSONA_TO_PROFILE_FIELD_MAP.items()
-    if persona_field not in AUTO_PROFILE_SYNC_BLOCKED_PERSONA_FIELDS
-}
+AUTO_PROFILE_SYNC_PERSONA_TO_PROFILE_FIELD_MAP: dict[str, str] = {}
 
 PROFILE_EXTENSION_COLUMNS = {
     "matcher_traits_json": "JSON NULL",
@@ -646,10 +642,20 @@ def persona_field_affects_profile(field_name: str) -> bool:
 def profile_columns_for_persona_patch(patch: Dict[str, Any]) -> List[str]:
     columns = set()
     for field_name in patch:
+        if field_name in PROFILE_FACT_PERSONA_FIELDS:
+            columns.update(
+                col
+                for col in PATCH_DERIVED_PROFILE_COLUMNS.get(field_name, set())
+                if col.startswith("public_")
+            )
+            continue
         profile_field = AUTO_PROFILE_SYNC_PERSONA_TO_PROFILE_FIELD_MAP.get(field_name)
+        if profile_field is None:
+            profile_field = PERSONA_TO_PROFILE_FIELD_MAP.get(field_name)
         if profile_field:
             columns.add(profile_field)
-        columns.update(PATCH_DERIVED_PROFILE_COLUMNS.get(field_name, set()))
+        if profile_field or field_name in PROFILE_SYNC_PERSONA_FIELDS:
+            columns.update(PATCH_DERIVED_PROFILE_COLUMNS.get(field_name, set()))
     return sorted(columns)
 
 
@@ -1030,8 +1036,34 @@ def merge_persona(existing: Optional[Dict[str, Any]], patch: Dict[str, Any], sou
     merged = deepcopy(existing)
     field_results: List[Dict[str, Any]] = []
 
-    if source_type not in {"explicit", "strong_inference", "weak_inference"}:
+    if source_type not in {"explicit", "strong_inference", "weak_inference", "profile_form", "explicit_confirmation"}:
         raise ValueError(f"Unsupported source_type: {source_type}")
+
+    if source_type in {"strong_inference", "weak_inference"}:
+        for field_name, new_value in patch.items():
+            field_results.append(
+                {
+                    "field_name": field_name,
+                    "old_value": merged.get(field_name),
+                    "new_value": new_value,
+                    "stored_value": merged.get(field_name),
+                    "action_type": "skip",
+                    "applied_to_persona": False,
+                    "note": "inference_not_persisted",
+                }
+            )
+        merged = sanitize_persona_summary_fields(merged)
+        for item in field_results:
+            item["stored_value"] = merged.get(item["field_name"])
+        merged["updated_at"] = now_string()
+        return merged, field_results
+
+    try:
+        from match_domain.collected_profile import filter_explicit_patch
+
+        patch = filter_explicit_patch(patch, source_type)
+    except ImportError:
+        pass
 
     for field_name, new_value in patch.items():
         old_value = merged.get(field_name)
@@ -1039,40 +1071,23 @@ def merge_persona(existing: Optional[Dict[str, Any]], patch: Dict[str, Any], sou
         applied = False
         note = ""
 
-        if source_type == "weak_inference":
-            note = "weak_inference_only"
-        elif field_name in LIST_FIELDS:
+        if field_name in LIST_FIELDS:
             old_items = items_from_csv(old_value)
             new_items = items_from_csv(new_value)
-            if source_type == "explicit":
-                candidate_value = csv_from_items(new_items)
-            elif field_name in INFERENCE_MUTABLE_LIST_FIELDS:
-                candidate_value = csv_from_items(old_items + new_items)
-            else:
-                candidate_value = old_value
-                note = "explicit_only_list"
-            if candidate_value != old_value and note == "":
+            candidate_value = csv_from_items(new_items)
+            if candidate_value != old_value:
                 merged[field_name] = candidate_value
                 action_type = "insert" if old_value in {None, ""} else "update"
                 applied = True
-            elif note == "":
+            else:
                 note = "no_change"
         else:
-            if source_type == "explicit":
-                candidate_value = new_value
-            elif field_name in STRONG_INFERENCE_MUTABLE_SCALARS or field_name in SOFT_SELF_DESCRIPTION_FIELDS:
-                candidate_value = new_value
-            elif field_name in EXPLICIT_ONLY_FIELDS:
-                candidate_value = old_value
-                note = "explicit_only_scalar"
-            else:
-                candidate_value = old_value
-                note = "not_mutable"
-            if note == "" and candidate_value != old_value:
+            candidate_value = new_value
+            if candidate_value != old_value:
                 merged[field_name] = candidate_value
                 action_type = "insert" if old_value in {None, ""} else "update"
                 applied = True
-            elif note == "":
+            else:
                 note = "no_change"
 
         field_results.append(
@@ -1092,10 +1107,8 @@ def merge_persona(existing: Optional[Dict[str, Any]], patch: Dict[str, Any], sou
         item["stored_value"] = merged.get(item["field_name"])
 
     merged["updated_at"] = now_string()
-    if source_type == "explicit":
+    if source_type in {"explicit", "profile_form", "explicit_confirmation"}:
         merged["last_confirmed_at"] = merged["updated_at"]
-    elif source_type == "strong_inference":
-        merged["last_inferred_at"] = merged["updated_at"]
     return merged, field_results
 
 
@@ -1241,11 +1254,22 @@ def build_profile_payload(
     persona: Dict[str, Any],
     existing_profile: Optional[Dict[str, Any]] = None,
     include_null_persona_fields: Optional[Iterable[str]] = None,
+    profile_sync_mode: str = "public_only",
 ) -> Dict[str, Any]:
+    if profile_sync_mode == "none":
+        return {}
+    if profile_sync_mode == "public_only":
+        return dict(build_public_profile(persona))
+
     existing_profile = existing_profile or {}
     include_null_persona_fields = set(include_null_persona_fields or [])
     payload: Dict[str, Any] = {}
-    for persona_field, profile_field in AUTO_PROFILE_SYNC_PERSONA_TO_PROFILE_FIELD_MAP.items():
+    legacy_sync_map = {
+        persona_field: profile_field
+        for persona_field, profile_field in PERSONA_TO_PROFILE_FIELD_MAP.items()
+        if persona_field not in PROFILE_FACT_PERSONA_FIELDS
+    }
+    for persona_field, profile_field in legacy_sync_map.items():
         value = persona.get(persona_field)
         if value is not None or persona_field in include_null_persona_fields:
             payload[profile_field] = value
@@ -1287,9 +1311,7 @@ def build_profile_payload(
         )
 
     public_payload = build_public_profile(persona)
-    matcher_payload = build_matcher_payload(persona)
     payload.update(public_payload)
-    payload.update(matcher_payload)
     must_have = items_from_csv(persona.get("must_have_tags"))
     must_not_have = items_from_csv(persona.get("must_not_have_tags"))
     preferred_traits = items_from_csv(persona.get("preferred_traits"))
@@ -1355,7 +1377,6 @@ def build_profile_payload(
     internal_notes = (
         "；".join(internal_note_parts)
         or clean_text(existing_profile.get("notes"))
-        or matcher_payload["matcher_summary_internal"]
         or public_payload["public_notes"]
     )
 
@@ -1502,7 +1523,15 @@ def insert_observations(
     evidence_text,
     conversation_ref,
     field_results: List[Dict[str, Any]],
+    source_channel: str | None = None,
 ):
+    from match_domain.collected_metadata import infer_source_channel
+
+    resolved_channel = infer_source_channel(
+        conversation_ref=conversation_ref,
+        basis=source_channel,
+        explicit_source_channel=source_channel if source_channel in {"matchmaker_chat", "candidate_chat", "profile_form"} else None,
+    )
     for item in field_results:
         sanitized_evidence = summarize_observation_evidence(
             item["field_name"],
@@ -1513,8 +1542,9 @@ def insert_observations(
             f"""
             INSERT INTO {quote_mysql_ident(observation_table)}
               (user_key, persona_id, field_name, field_value, source_type, confidence_score,
-               evidence_text, conversation_ref, action_type, applied_to_persona, applied_to_profile, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+               evidence_text, conversation_ref, source_channel, action_type, applied_to_persona,
+               applied_to_profile, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 user_key,
@@ -1525,6 +1555,7 @@ def insert_observations(
                 confidence_score,
                 sanitized_evidence,
                 conversation_ref,
+                resolved_channel,
                 item["action_type"],
                 1 if item["applied_to_persona"] else 0,
                 1 if item.get("applied_to_profile") else 0,
@@ -1552,7 +1583,7 @@ def ensure_persona_profile_binding(cursor, persona_table: str, profile_table: st
     if profile_id is not None:
         return profile_id
 
-    initial_payload = build_profile_payload(persona, existing_profile={})
+    initial_payload = build_profile_payload(persona, existing_profile={}, profile_sync_mode="public_only")
     profile_id = insert_profile_stub(cursor, profile_table, initial_payload)
     cursor.execute(
         f"UPDATE {quote_mysql_ident(persona_table)} SET profile_id = %s WHERE id = %s",
@@ -1632,6 +1663,7 @@ def apply_persona_patch(
     conversation_ref=None,
     apply_scope: str = "persona_only",
     sync_profile: bool = False,
+    source_channel: str | None = None,
 ) -> Dict[str, Any]:
     if apply_scope not in VALID_APPLY_SCOPES:
         raise ValueError(f"Unsupported apply_scope: {apply_scope}")
@@ -1655,7 +1687,7 @@ def apply_persona_patch(
                 saved_persona = upsert_persona(cursor, persona_table, merged)
                 persona_id = saved_persona["id"]
 
-                if apply_scope == "persona_and_profile" and sync_profile and source_type != "weak_inference":
+                if apply_scope == "persona_and_profile" and sync_profile and source_type in {"explicit", "profile_form", "explicit_confirmation"}:
                     persona_for_profile = dict(saved_persona)
                     persona_for_profile["user_key"] = user_key
                     profile_id = ensure_persona_profile_binding(
@@ -1669,15 +1701,17 @@ def apply_persona_patch(
                         persona_for_profile,
                         existing_profile=existing_profile,
                         include_null_persona_fields=normalized_patch.keys(),
+                        profile_sync_mode="public_only",
                     )
-                    upsert_profile(
-                        cursor,
-                        profile_table,
-                        payload,
-                        profile_id,
-                        force_columns=profile_columns_for_persona_patch(normalized_patch),
-                    )
-                    profile_synced = True
+                    if payload:
+                        upsert_profile(
+                            cursor,
+                            profile_table,
+                            payload,
+                            profile_id,
+                            force_columns=sorted(payload.keys()),
+                        )
+                        profile_synced = True
 
             mark_profile_sync_results(field_results, synced_profile=profile_synced)
             insert_observations(
@@ -1690,6 +1724,7 @@ def apply_persona_patch(
                 evidence_text=evidence_text,
                 conversation_ref=conversation_ref,
                 field_results=field_results,
+                source_channel=source_channel,
             )
 
         conn.commit()
@@ -1738,7 +1773,11 @@ def sync_persona_profile(
                 persona["profile_id"] = bound_profile_id
 
             existing_profile = fetch_profile(cursor, profile_table, bound_profile_id) or {}
-            payload = build_profile_payload(persona, existing_profile=existing_profile)
+            payload = build_profile_payload(
+                persona,
+                existing_profile=existing_profile,
+                profile_sync_mode="public_only",
+            )
             update_columns = upsert_profile(
                 cursor,
                 profile_table,
@@ -1802,7 +1841,11 @@ def render_public_profile_result(
                 else:
                     persona["profile_id"] = target_profile_id
                 existing_profile = fetch_profile(cursor, profile_table, target_profile_id) or {}
-                profile_payload = build_profile_payload(persona, existing_profile=existing_profile)
+                profile_payload = build_profile_payload(
+                    persona,
+                    existing_profile=existing_profile,
+                    profile_sync_mode="public_only",
+                )
                 write_public_profile_fields(
                     cursor,
                     profile_table,

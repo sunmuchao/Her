@@ -14,6 +14,7 @@ from ._path_bootstrap import ensure_her_repo_on_sys_path  # noqa: E402
 ensure_her_repo_on_sys_path(Path(__file__))
 
 from match_domain import (  # noqa: E402
+    CaseType,
     build_canonical_event,
     build_subscription_refresh_provenance,
     bundle_recommendation_action_entities,
@@ -27,8 +28,11 @@ from match_domain import (  # noqa: E402
     recommendation_relation_key,
     recommendation_relation_refs,
     reduce_relation_ledger,
+    canonical_case_status_value,
 )
-from partner_search import load_self_profile, normalize_persona_profile, search_profiles  # noqa: E402
+from match_domain.gate_runner import evaluate_recommendation_gate, recommendation_row_gate_fields  # noqa: E402
+from match_domain.search_visibility import search_profiles_with_visibility_gate  # noqa: E402
+from partner_search import load_self_profile, search_profiles  # noqa: E402
 from her_time_utils import bool_to_int, current_time, format_dt, parse_dt  # noqa: E402
 
 from .direct_greet_gate import (
@@ -41,7 +45,12 @@ from .direct_greet_gate import (
 )
 from .criteria_compiler import build_effective_search_request
 from .storage import json_dumps, json_loads, row_to_dict
-from relationship_ledger.runtime import append_event_to_default_ledger
+from relationship_ledger.runtime import (
+    LedgerMirrorEntry,
+    commit_conn_with_ledger,
+    defer_ledger_event,
+    try_get_relation_by_key,
+)
 
 from observability import (  # noqa: E402
     RECOMMENDATION_FUNNEL_ACTION,
@@ -57,7 +66,10 @@ from observability import (  # noqa: E402
 
 SearchRunner = Callable[..., dict[str, Any]]
 PersonaResolver = Callable[[dict[str, Any]], Optional[dict[str, Any]]]
-run_partner_search = search_profiles
+
+
+def run_partner_search(**kwargs: Any) -> dict[str, Any]:
+    return search_profiles_with_visibility_gate(search_profiles, **kwargs)
 
 def generate_subscription_id() -> str:
     return f"saved-search-{uuid.uuid4().hex[:12]}"
@@ -96,6 +108,64 @@ def normalize_subscription_overrides(overrides: dict[str, Any] | None) -> dict[s
     return dict(overrides or {})
 
 
+def load_requester_profile_row(
+    *,
+    source: str,
+    self_id: int | None,
+    table_name: str | None = None,
+) -> dict[str, Any] | None:
+    if self_id is None:
+        return None
+    try:
+        return load_self_profile(
+            source=source,
+            self_id=self_id,
+            table_name=table_name,
+        )
+    except Exception:
+        return None
+
+
+def resolve_subscription_compile_inputs(
+    subscription: dict[str, Any],
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    profile_row = load_requester_profile_row(
+        source=subscription["source"],
+        self_id=int(subscription["self_id"]) if subscription.get("self_id") is not None else None,
+        table_name=subscription.get("table_name"),
+    )
+    persona_row = None
+    requester_id = subscription.get("requester_id")
+    if requester_id is not None:
+        try:
+            from match_domain.persona_loader import load_persona_row
+
+            persona_row = load_persona_row(
+                source=subscription["source"],
+                user_key=str(requester_id),
+            )
+        except Exception:
+            persona_row = None
+    if persona_row is None:
+        stored_profile = json_loads(subscription.get("self_profile_json"), None)
+        if isinstance(stored_profile, dict):
+            persona_row = stored_profile
+    return profile_row, persona_row
+
+
+def resolve_subscription_persona_profile(subscription: dict[str, Any]) -> dict[str, Any] | None:
+    """Backward-compatible persona dict for audit payloads (collected fields only)."""
+
+    _profile_row, persona_row = resolve_subscription_compile_inputs(subscription)
+    if persona_row:
+        from match_domain.collected_profile import extract_collected_statements
+
+        collected = extract_collected_statements(persona_row)
+        if collected:
+            return {**persona_row, **collected}
+    return json_loads(subscription.get("self_profile_json"), None)
+
+
 def load_requester_profile(
     *,
     source: str,
@@ -103,38 +173,16 @@ def load_requester_profile(
     table_name: str | None = None,
     self_profile: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
-    """Resolve the latest requester profile row for persona-driven refreshes."""
+    """Deprecated: use load_requester_profile_row + load_persona_row for compile."""
 
-    if self_id is None:
-        return self_profile
-
-    try:
-        profile = load_self_profile(
-            source=source,
-            self_id=self_id,
-            table_name=table_name,
-        )
-        return normalize_persona_profile(
-            profile,
-            fallback_profile=self_profile,
-        )
-    except Exception:
-        return normalize_persona_profile(
-            self_profile,
-            fallback_profile=self_profile,
-        )
-
-
-def resolve_subscription_persona_profile(subscription: dict[str, Any]) -> dict[str, Any] | None:
-    stored_profile = json_loads(subscription.get("self_profile_json"), None)
-    if subscription.get("self_id") is None:
-        return stored_profile
-    return load_requester_profile(
-        source=subscription["source"],
-        self_id=int(subscription["self_id"]),
-        table_name=subscription.get("table_name"),
-        self_profile=stored_profile,
+    profile_row = load_requester_profile_row(
+        source=source,
+        self_id=self_id,
+        table_name=table_name,
     )
+    if profile_row is not None:
+        return profile_row
+    return self_profile
 
 
 def list_search_runs_for_subscription(conn, subscription_id: str) -> list[dict[str, Any]]:
@@ -237,7 +285,7 @@ def update_subscription_overrides(
             subscription_id,
         ),
     )
-    conn.commit()
+    commit_recommendation_transaction(conn)
     return get_subscription(conn, subscription_id)
 
 
@@ -277,12 +325,15 @@ def _classify_conversion_stage(
     latest_case: dict[str, Any] | None,
     action_types: set[str],
 ) -> tuple[str, str]:
+    from match_domain.boundary import case_status_owner
+
     if latest_case:
         latest_case_status = str(latest_case.get("case_status") or "").strip()
         if latest_case_status:
-            return (f"case_{latest_case_status}", "matchmaking")
+            owner = case_status_owner(str(latest_case.get("case_type") or ""))
+            return (f"case_{latest_case_status}", owner)
     if "request_proxy_intro" in action_types:
-        return ("case_requested", "matchmaking")
+        return ("case_requested", case_status_owner(CaseType.PROXY_INTRO.value))
     recommendation_phase = str(recommendation.get("recommendation_phase") or "").strip()
     if recommendation_phase:
         return (recommendation_phase, "recommendation")
@@ -292,6 +343,28 @@ def _classify_conversion_stage(
     return ("unknown", "system")
 
 
+def commit_recommendation_transaction(
+    conn,
+    ledger_mirror: list[LedgerMirrorEntry] | None = None,
+) -> None:
+    commit_conn_with_ledger(conn, extra_mirror=ledger_mirror)
+
+
+def _timeline_from_ledger_relation(relation: dict[str, Any]) -> list[dict[str, Any]]:
+    from relationship_ledger.service import build_unified_timeline_from_ledger
+
+    return [
+        {
+            "source": "relationship_ledger",
+            "event_type": item.get("event_type"),
+            "occurred_at": item.get("occurred_at"),
+            "case_id": item.get("case_id"),
+            "payload": item.get("canonical_event") or {},
+        }
+        for item in build_unified_timeline_from_ledger(relation)
+    ]
+
+
 def build_recommendation_conversion_view(
     conn,
     recommendation: dict[str, Any],
@@ -299,6 +372,8 @@ def build_recommendation_conversion_view(
     from .proxy_intro import list_match_case_events, list_match_cases_for_recommendation
 
     recommendation_id = int(recommendation["recommendation_id"])
+    relation_key = str(recommendation.get("relation_key") or "").strip()
+    ledger_relation = try_get_relation_by_key(relation_key) if relation_key else None
     actions = [
         _inflate_recommendation_action_row(row)
         for row in list_recommendation_actions_for_recommendation(conn, recommendation_id)
@@ -311,41 +386,64 @@ def build_recommendation_conversion_view(
         for action in actions
         if str(action.get("action_type") or "").strip()
     }
+    db_latest_case = latest_case
+    if ledger_relation and ledger_relation.get("events"):
+        ledger_cases = list(ledger_relation.get("cases") or [])
+        ledger_latest = ledger_cases[0] if ledger_cases else None
+        if ledger_latest:
+            latest_case = dict(ledger_latest)
+            if db_latest_case and not str(latest_case.get("case_type") or "").strip():
+                latest_case["case_type"] = db_latest_case.get("case_type")
+        action_types = {
+            str(item.get("event_type") or "").strip()
+            for item in ledger_relation.get("events") or []
+            if str(item.get("event_type") or "").strip()
+        }
+        action_types.update(
+            str(action.get("action_type") or "").strip()
+            for action in actions
+            if str(action.get("action_type") or "").strip()
+        )
     conversion_stage, stage_owner = _classify_conversion_stage(
         recommendation,
         latest_case=latest_case,
         action_types=action_types,
     )
-    timeline = [
-        {
-            "source": "recommendation_action",
-            "event_type": action["action_type"],
-            "occurred_at": action["occurred_at"],
-            "payload": action.get("action_payload") or {},
-        }
-        for action in actions
-    ]
-    for case in reversed(cases):
-        for event in list_match_case_events(conn, str(case["case_id"])):
-            timeline.append(
-                {
-                    "source": "match_case_event",
-                    "case_id": case["case_id"],
-                    "event_type": event["event_type"],
-                    "from_status": event.get("from_status"),
-                    "to_status": event.get("to_status"),
-                    "occurred_at": event["occurred_at"],
-                    "actor_type": event.get("actor_type"),
-                    "payload": event.get("payload") or {},
-                }
+    if ledger_relation and ledger_relation.get("events"):
+        timeline = _timeline_from_ledger_relation(ledger_relation)
+        timeline_source = "relationship_ledger"
+    else:
+        timeline_source = "domain_fallback"
+        timeline = [
+            {
+                "source": "recommendation_action",
+                "event_type": action["action_type"],
+                "occurred_at": action["occurred_at"],
+                "payload": action.get("action_payload") or {},
+            }
+            for action in actions
+        ]
+        for case in reversed(cases):
+            for event in list_match_case_events(conn, str(case["case_id"])):
+                timeline.append(
+                    {
+                        "source": "match_case_event",
+                        "case_id": case["case_id"],
+                        "event_type": event["event_type"],
+                        "from_status": event.get("from_status"),
+                        "to_status": event.get("to_status"),
+                        "occurred_at": event["occurred_at"],
+                        "actor_type": event.get("actor_type"),
+                        "payload": event.get("payload") or {},
+                    }
+                )
+        timeline.sort(
+            key=lambda item: (
+                str(item.get("occurred_at") or ""),
+                0 if item.get("source") == "recommendation_action" else 1,
+                str(item.get("event_type") or ""),
             )
-    timeline.sort(
-        key=lambda item: (
-            str(item.get("occurred_at") or ""),
-            0 if item.get("source") == "recommendation_action" else 1,
-            str(item.get("event_type") or ""),
         )
-    )
     return {
         "subscription_id": recommendation["subscription_id"],
         "recommendation_id": recommendation_id,
@@ -376,6 +474,7 @@ def build_recommendation_conversion_view(
         "latest_case_status": latest_case.get("case_status") if latest_case else None,
         "latest_case_close_reason": latest_case.get("close_reason") if latest_case else None,
         "timeline": timeline,
+        "timeline_source": timeline_source,
     }
 
 
@@ -440,7 +539,7 @@ def mark_in_app_cards_read(
             (ts, cid, int(requester_id)),
         )
         updated += res.rowcount
-    conn.commit()
+    commit_recommendation_transaction(conn)
     return {"updated_count": updated, "requester_id": int(requester_id)}
 
 
@@ -556,7 +655,7 @@ def create_subscription(
           created_at,
         ),
     )
-    conn.commit()
+    commit_recommendation_transaction(conn)
     return get_subscription(conn, subscription_id)
 
 
@@ -599,8 +698,17 @@ def load_subscription_search_args(
     subscription: dict[str, Any],
     *,
     persona_profile: dict[str, Any] | None = None,
+    profile_row: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    request = build_effective_search_request(subscription, persona_profile=persona_profile)
+    if profile_row is None or persona_profile is None:
+        resolved_profile, resolved_persona = resolve_subscription_compile_inputs(subscription)
+        profile_row = profile_row if profile_row is not None else resolved_profile
+        persona_profile = persona_profile if persona_profile is not None else resolved_persona
+    request = build_effective_search_request(
+        subscription,
+        persona_profile=persona_profile,
+        profile_row=profile_row,
+    )
     request["include_source"] = True
     request["include_text"] = False
     request["moderation_dsn"] = os.environ.get("HER_CHAT_MODERATION_DB") or os.environ.get("PARTNER_CHAT_DB")
@@ -667,7 +775,7 @@ def _derive_recommendation_phase(delivery_status: str | None) -> str | None:
 
 
 def _derive_case_progress_status(recommendation: dict[str, Any]) -> str | None:
-    active_case_status = str(recommendation.get("active_case_status") or "").strip()
+    active_case_status = canonical_case_status_value(recommendation.get("active_case_status"))
     if active_case_status:
         return active_case_status
     if recommendation.get("delivery_status") != "escalated_to_case":
@@ -730,6 +838,7 @@ def insert_recommendation_action(
     now: datetime,
     action_payload: dict[str, Any] | None = None,
     client_idempotency_key: str | None = None,
+    ledger_mirror: list[LedgerMirrorEntry] | None = None,
 ) -> None:
     relation_key = recommendation.get("relation_key")
     if not relation_key:
@@ -795,12 +904,16 @@ def insert_recommendation_action(
             format_dt(now),
         ),
     )
-    append_event_to_default_ledger(
-        event=event,
-        relation_key=str(relation_key),
-        owner_profile_ref=owner_profile_ref,
-        target_profile_ref=target_profile_ref,
-    )
+    entry: LedgerMirrorEntry = {
+        "event": event,
+        "relation_key": str(relation_key),
+        "owner_profile_ref": owner_profile_ref,
+        "target_profile_ref": target_profile_ref,
+    }
+    if ledger_mirror is not None:
+        ledger_mirror.append(entry)
+    else:
+        defer_ledger_event(conn, entry)
 
 
 def append_relation_state_revision_event(
@@ -908,6 +1021,15 @@ def inflate_recommendation(
     inflated["owner_profile_ref"] = json_loads(inflated.pop("owner_profile_ref_json", None), {})
     inflated["target_profile_ref"] = json_loads(inflated.pop("target_profile_ref_json", None), {})
     inflated["rule_provenance"] = json_loads(inflated.pop("rule_provenance_json", None), {})
+    inflated["gate_reason_codes"] = json_loads(inflated.pop("gate_reason_codes_json", None), [])
+    if inflated.get("gate_outcome"):
+        inflated["gate_decision"] = {
+            "outcome": inflated.get("gate_outcome"),
+            "reason_codes": inflated.get("gate_reason_codes") or [],
+            "owner_service": inflated.get("gate_owner_service"),
+            "details_ref": inflated.get("gate_details_ref"),
+            "evaluated_at": inflated.get("gate_evaluated_at"),
+        }
     return _hydrate_recommendation_relation_metadata(inflated, conn=conn)
 
 
@@ -919,6 +1041,21 @@ def get_recommendation(conn, subscription_id: str, candidate_id: int) -> dict[st
         WHERE subscription_id = ? AND candidate_id = ?
         """,
         (subscription_id, candidate_id),
+    ).fetchone()
+    row_dict = row_to_dict(row)
+    if not row_dict:
+        return None
+    return inflate_recommendation(row_dict, conn=conn)
+
+
+def get_recommendation_by_id(conn, recommendation_id: int) -> dict[str, Any] | None:
+    row = conn.execute(
+        """
+        SELECT *
+        FROM profile_recommendations
+        WHERE recommendation_id = ?
+        """,
+        (int(recommendation_id),),
     ).fetchone()
     row_dict = row_to_dict(row)
     if not row_dict:
@@ -944,12 +1081,19 @@ def upsert_recommendation(
         subscription,
         result,
         review_rank=review_rank,
+        conn=conn,
     )
     prev_delivery_status = (existing or {}).get("delivery_status")
     delivery_status, delivery_reason = normalize_delivery_status(existing, result, subscription, now, final_review)
+    gate_decision = evaluate_recommendation_gate(
+        candidate_id=int(candidate_id),
+        final_review=final_review,
+        risk_flags=list(result.get("risk_flags") or []),
+    )
+    gate_fields = recommendation_row_gate_fields(gate_decision)
     payload_json = json_dumps(result)
     matched_on_json = json_dumps(result.get("matched_on") or [])
-    risk_flags_json = json_dumps(result.get("risk_flags") or [])
+    risk_flags_json = json_dumps([] if gate_fields.get("gate_details_ref") else (result.get("risk_flags") or []))
     final_review_payload_json = json_dumps(final_review.get("payload") or {})
     reviewed_at = format_dt(now)
     snapshot_hash = candidate_snapshot_hash(result)
@@ -1006,7 +1150,12 @@ def upsert_recommendation(
                 relation_key = ?,
                 owner_profile_ref_json = ?,
                 target_profile_ref_json = ?,
-                rule_provenance_json = ?
+                rule_provenance_json = ?,
+                gate_outcome = ?,
+                gate_reason_codes_json = ?,
+                gate_owner_service = ?,
+                gate_details_ref = ?,
+                gate_evaluated_at = ?
             WHERE recommendation_id = ?
             """,
             (
@@ -1035,6 +1184,11 @@ def upsert_recommendation(
                 owner_profile_ref_json,
                 target_profile_ref_json,
                 rule_provenance_json,
+                gate_fields["gate_outcome"],
+                gate_fields["gate_reason_codes_json"],
+                gate_fields["gate_owner_service"],
+                gate_fields["gate_details_ref"],
+                format_dt(gate_fields["gate_evaluated_at"]),
                 existing["recommendation_id"],
             ),
         )
@@ -1070,8 +1224,13 @@ def upsert_recommendation(
               relation_key,
               owner_profile_ref_json,
               target_profile_ref_json,
-              rule_provenance_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              rule_provenance_json,
+              gate_outcome,
+              gate_reason_codes_json,
+              gate_owner_service,
+              gate_details_ref,
+              gate_evaluated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 subscription["subscription_id"],
@@ -1103,6 +1262,11 @@ def upsert_recommendation(
                 owner_profile_ref_json,
                 target_profile_ref_json,
                 rule_provenance_json,
+                gate_fields["gate_outcome"],
+                gate_fields["gate_reason_codes_json"],
+                gate_fields["gate_owner_service"],
+                gate_fields["gate_details_ref"],
+                format_dt(gate_fields["gate_evaluated_at"]),
             ),
         )
     rec_id = int(existing["recommendation_id"]) if existing else int(conn.lastrowid)
@@ -1113,7 +1277,7 @@ def upsert_recommendation(
     rec_row = row_to_dict(row)
     if rec_row:
         append_relation_state_revision_event(conn, subscription=subscription, recommendation_row=rec_row, now=now)
-    conn.commit()
+    commit_recommendation_transaction(conn)
     out = get_recommendation(conn, subscription["subscription_id"], int(candidate_id))
     if out:
         rid = int(out["recommendation_id"])
@@ -1149,16 +1313,39 @@ def _refresh_subscription_core(
     subscription = get_subscription(conn, subscription_id)
     persona_profile = persona_resolver(subscription)
     search_request = load_subscription_search_args(subscription, persona_profile=persona_profile)
+    compiled = dict(search_request.get("compiled") or {})
+    from match_domain.experiment_bucket import resolve_experiment_bucket_for_subscription
+
+    experiment_bucket = resolve_experiment_bucket_for_subscription(subscription, conn=conn)
     rule_provenance = build_subscription_refresh_provenance(
         subscription_id=subscription_id,
         persona_profile=persona_profile,
         search_request=search_request,
+        subscription=subscription,
+        conn=conn,
+        experiment_bucket=experiment_bucket,
     )
-    response = search_runner(**search_request)
+    if compiled.get("source_map"):
+        rule_provenance = {
+            **rule_provenance,
+            "source_map": compiled.get("source_map"),
+            "criteria_hash": compiled.get("criteria_hash"),
+        }
+    from match_domain.experiment_bucket import profile_id_from_subscription
+    from match_domain.search_rule_context import search_rule_context
+
+    search_payload = {key: value for key, value in search_request.items() if key != "rule_resolution"}
+    with search_rule_context(
+        experiment_bucket=experiment_bucket,
+        profile_id=profile_id_from_subscription(subscription),
+        conn=conn,
+    ):
+        response = search_runner(**search_payload)
     results = list(response.get("results") or [])[: int(subscription.get("top_k") or 5)]
 
     status_counts: dict[str, int] = {}
     review_counts: dict[str, int] = {}
+    first_recommendation_id: int | None = None
     for index, result in enumerate(results, start=1):
         recommendation = upsert_recommendation(
             conn,
@@ -1168,6 +1355,8 @@ def _refresh_subscription_core(
             review_rank=index,
             rule_provenance=rule_provenance,
         )
+        if index == 1:
+            first_recommendation_id = int(recommendation["recommendation_id"])
         status = recommendation["delivery_status"]
         status_counts[status] = status_counts.get(status, 0) + 1
         review_status = recommendation["final_review_status"]
@@ -1185,6 +1374,20 @@ def _refresh_subscription_core(
         now=now,
         rule_provenance=rule_provenance,
     )
+    if compiled:
+        try:
+            from match_domain.criteria_snapshots import save_compiled_snapshot
+
+            save_compiled_snapshot(
+                compiled,
+                scene="recommendation_refresh",
+                profile_id=int(subscription.get("self_id") or 0) or None,
+                requester_id=int(subscription.get("requester_id") or 0) or None,
+                subscription_id=str(subscription.get("subscription_id") or ""),
+                recommendation_id=first_recommendation_id,
+            )
+        except Exception:  # noqa: BLE001
+            pass
     conn.execute(
         """
         UPDATE saved_search_subscriptions
@@ -1198,7 +1401,7 @@ def _refresh_subscription_core(
             subscription_id,
         ),
     )
-    conn.commit()
+    commit_recommendation_transaction(conn)
 
     return {
         "subscription_id": subscription_id,
@@ -1322,52 +1525,36 @@ def count_cards_delivered_today(conn, requester_id: int, now: datetime) -> int:
 
 
 def recommendation_verified_label(payload: dict[str, Any], profile: dict[str, Any]) -> str | None:
+    from match_domain.trust_summary import build_trust_summary
+
+    trust = build_trust_summary(profile, payload=payload)
+    if trust.verified_label:
+        return trust.verified_label
     label = payload.get("verified_label")
     if label:
         return str(label)
-    trust_summary = payload.get("trust_summary") or {}
-    if isinstance(trust_summary, dict) and trust_summary.get("verified_label"):
-        return str(trust_summary["verified_label"])
-    level = str(profile.get("verified_level") or "").strip().lower()
-    labels = {
-        "basic": "基础认证",
-        "photo": "照片认证",
-        "id": "实名认证",
-        "offline": "线下核验",
-    }
-    return labels.get(level)
+    return None
 
 
 def recommendation_photo_verification_label(payload: dict[str, Any], profile: dict[str, Any]) -> str | None:
+    from match_domain.trust_summary import build_trust_summary
+
+    trust = build_trust_summary(profile, payload=payload)
+    if trust.photo_verification_label:
+        return trust.photo_verification_label
     label = payload.get("photo_verification_label")
     if label:
         return str(label)
-    trust_summary = payload.get("trust_summary") or {}
-    if isinstance(trust_summary, dict) and trust_summary.get("photo_verification_label"):
-        return str(trust_summary["photo_verification_label"])
-    level = str(payload.get("photo_verification_level") or trust_summary.get("photo_verification_level") or "").strip().lower()
-    labels = {
-        "uploaded": "普通上传照片",
-        "human_verified": "真人照片认证",
-        "live_video_verified": "活体自拍视频认证",
-        "offline_verified": "线下核验照片",
-    }
-    return labels.get(level)
+    return None
 
 
 def recommendation_trust_headline(payload: dict[str, Any], profile: dict[str, Any]) -> str | None:
-    trust_summary = payload.get("trust_summary") or {}
-    if isinstance(trust_summary, dict):
-        headline = trust_summary.get("headline")
-        if headline:
-            return str(headline)
-    elif trust_summary:
-        return str(trust_summary)
+    from match_domain.trust_summary import build_trust_summary
 
-    verified_label = recommendation_verified_label(payload, profile)
-    if verified_label:
-        return verified_label
-    return None
+    trust = build_trust_summary(profile, payload=payload)
+    if trust.headline:
+        return trust.headline
+    return recommendation_verified_label(payload, profile)
 
 
 def build_in_app_card(recommendation: dict[str, Any], subscription_title: str) -> dict[str, Any]:
@@ -1544,7 +1731,7 @@ def deliver_in_app_recommendations(conn, *, now: datetime | None = None) -> dict
             card_id=card_id,
         )
 
-    conn.commit()
+    commit_recommendation_transaction(conn)
     metric_gauge("recommendation.deliver.delivered_count", delivered_count)
     metric_gauge("recommendation.deliver.held_quiet_hours", held_quiet_hours)
     metric_gauge("recommendation.deliver.held_daily_cap", held_daily_cap)
@@ -1639,7 +1826,7 @@ def record_recommendation_action(
     rec_row = row_to_dict(row)
     if rec_row:
         append_relation_state_revision_event(conn, subscription=subscription, recommendation_row=rec_row, now=now)
-    conn.commit()
+    commit_recommendation_transaction(conn)
     out = get_recommendation(conn, subscription_id, int(candidate_id))
     funnel_stage(
         system="recommendation",
@@ -1747,7 +1934,7 @@ def record_user_review(
     rec_row = row_to_dict(row)
     if rec_row:
         append_relation_state_revision_event(conn, subscription=subscription, recommendation_row=rec_row, now=now)
-    conn.commit()
+    commit_recommendation_transaction(conn)
     out = get_recommendation(conn, subscription_id, int(candidate_id))
     if review_type == "direct_greet":
         funnel_stage(

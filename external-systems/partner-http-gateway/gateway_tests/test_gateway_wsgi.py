@@ -1410,7 +1410,7 @@ class GatewayWsgiTests(unittest.TestCase):
                 }
             ],
         }
-        with mock.patch("gateway.app.partner_search_profiles", return_value=fake_response) as mocked_search:
+        with mock.patch("gateway.bff.search_profiles.partner_search_profiles", return_value=fake_response) as mocked_search:
             env = _wsgi_env(
                 "POST",
                 "/v1/search/profiles",
