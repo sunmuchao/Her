@@ -13,7 +13,10 @@ import AccountRecoveryPage from '@/components/her/auth/account-recovery-page'
 import OpsWorkbenchPage from '@/components/her/ops-workbench-page'
 import { useAuthFlow } from '@/hooks/use-auth-flow'
 import { useAppRouter } from '@/hooks/use-app-router'
+import { useOnboardingGuard } from '@/hooks/use-onboarding-guard'
+import { navigateAfterLogin } from '@/lib/auth/post-login'
 import { isDemoNavEnabled } from '@/lib/env'
+import type { LoginPayload } from '@/lib/auth/session'
 import type { AppPage } from '@/lib/navigation/types'
 
 function isMainShellPage(page: AppPage): boolean {
@@ -35,6 +38,8 @@ export function HerApp() {
     }
     nav.handleNavigate(page)
   }
+
+  useOnboardingGuard(nav.currentPage, handleNavigate)
 
   const renderPage = () => {
     switch (nav.currentPage) {
@@ -114,7 +119,9 @@ export function HerApp() {
       case 'auth-recovery':
         return (
           <AccountRecoveryPage
-            onVerifyComplete={() => handleNavigate('main-matchmaker')}
+            onVerifyComplete={async (payload: LoginPayload) => {
+              await navigateAfterLogin(payload, handleNavigate)
+            }}
             onBack={() => handleNavigate('auth-welcome')}
           />
         )
