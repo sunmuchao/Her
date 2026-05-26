@@ -17,8 +17,8 @@ logger = logging.getLogger(__name__)
 
 JOB_REC_REFRESH = "recommendation.refresh_saved_searches"
 JOB_REC_DELIVER = "recommendation.deliver_in_app_recommendations"
-JOB_REC_DISPATCH = "recommendation.dispatch_proxy_intro_outreach"
-JOB_REC_CLOSE_TIMEOUT = "recommendation.close_timed_out_proxy_cases"
+JOB_REC_DISPATCH = "matchmaking.dispatch_proxy_intro_outreach"
+JOB_REC_CLOSE_TIMEOUT = "matchmaking.close_timed_out_proxy_cases"
 JOB_REC_OUTBOX = "recommendation.outbox_worker"
 JOB_REC_ASYNC_WORKER = "recommendation.async_job_worker"
 JOB_MM_REFRESH = "matchmaking.refresh_active_pool"
@@ -166,6 +166,29 @@ def make_matchmaking_job(job_id: str, fn: Callable[..., Any], **kwargs: Any) -> 
         ensure_on_path=ensure_matchmaking_system_on_path,
         load_runtime=_load_matchmaking_runtime,
     )
+
+
+def make_proxy_intro_job(
+    job_id: str,
+    fn: Callable[..., Any],
+    *,
+    matchmaking_db: str,
+    recommendation_db: str,
+) -> Callable[[], None]:
+    """Run proxy-intro workers on matchmaking DB with recommendation DB for mirrors."""
+
+    def run(case_conn: Any) -> Any:
+        ensure_recommendation_system_on_path()
+        from recommendation_system import connect_db as rec_connect, initialize_database as rec_init  # noqa: PLC0415
+
+        rec_conn = rec_connect(recommendation_db)
+        try:
+            rec_init(rec_conn)
+            return fn(case_conn, recommendation_conn=rec_conn)
+        finally:
+            rec_conn.close()
+
+    return make_matchmaking_job(job_id, run, db=matchmaking_db)
 
 
 def make_chat_job(job_id: str, fn: Callable[..., Any], **kwargs: Any) -> Callable[[], None]:

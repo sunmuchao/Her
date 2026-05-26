@@ -179,8 +179,13 @@ def _machine_review_provider_name() -> str:
 
 
 def _auto_triage_enabled() -> bool:
-    raw = str(os.environ.get("HER_VERIFICATION_AUTO_TRIAGE", "1") or "1").strip().lower()
-    return raw not in {"0", "false", "no", "off"}
+    try:
+        from match_domain.verification_triage import auto_triage_enabled
+
+        return auto_triage_enabled()
+    except Exception:  # noqa: BLE001
+        raw = str(os.environ.get("HER_VERIFICATION_AUTO_TRIAGE", "1") or "1").strip().lower()
+        return raw not in {"0", "false", "no", "off"}
 def _machine_review_inputs(metadata: dict[str, Any]) -> dict[str, Any]:
     value = metadata.get("machine_review_inputs")
     if isinstance(value, dict):

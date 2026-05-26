@@ -1,3 +1,4 @@
+import os
 import pathlib
 import sys
 import unittest
@@ -62,6 +63,7 @@ def build_result(candidate_id, name, score, city="无锡", profile_overrides=Non
 
 class ProxyIntroSystemTests(unittest.TestCase):
     def setUp(self):
+        os.environ["HER_PROXY_INTRO_STORAGE"] = "recommendation"
         self.test_dsn = DEFAULT_RECOMMENDATION_TEST_MYSQL_DSN
         self.conn = connect_db(self.test_dsn)
         initialize_database(self.conn)
@@ -118,7 +120,7 @@ class ProxyIntroSystemTests(unittest.TestCase):
         self.assertEqual(recommendations[0]["recommendation_phase"], "case_handoff")
         self.assertEqual(recommendations[0]["active_match_case_id"], case["case_id"])
         self.assertEqual(recommendations[0]["active_case_status"], "pending_outreach")
-        self.assertEqual(recommendations[0]["case_progress_status"], "pending_outreach")
+        self.assertEqual(recommendations[0]["case_progress_status"], "pending_contact")
         self.assertEqual(recommendations[0]["recommendation_status_owner"], "recommendation")
         self.assertEqual(recommendations[0]["case_progress_owner"], "matchmaking")
 
@@ -175,15 +177,19 @@ class ProxyIntroSystemTests(unittest.TestCase):
         )
         self.assertEqual(len(conversion_views), 1)
         self.assertEqual(conversion_views[0]["conversion_stage"], "case_closed")
-        self.assertEqual(conversion_views[0]["conversion_stage_owner"], "matchmaking")
+        self.assertEqual(conversion_views[0]["conversion_stage_owner"], "recommendation")
         self.assertEqual(conversion_views[0]["case_count"], 1)
         self.assertEqual(conversion_views[0]["latest_case_status"], "closed")
         self.assertEqual(conversion_views[0]["latest_case_close_reason"], "handoff_completed")
         self.assertIn("request_proxy_intro", conversion_views[0]["action_types"])
         self.assertIn("proxy_intro_reply_accepted", conversion_views[0]["action_types"])
         self.assertIn("proxy_intro_closed_handoff_completed", conversion_views[0]["action_types"])
-        self.assertIn("recommendation_action", {event["source"] for event in conversion_views[0]["timeline"]})
-        self.assertIn("match_case_event", {event["source"] for event in conversion_views[0]["timeline"]})
+        timeline_sources = {event["source"] for event in conversion_views[0]["timeline"]}
+        if conversion_views[0].get("timeline_source") == "relationship_ledger":
+            self.assertIn("relationship_ledger", timeline_sources)
+        else:
+            self.assertIn("recommendation_action", timeline_sources)
+            self.assertIn("match_case_event", timeline_sources)
 
         events = list_match_case_outreach_attempts(self.conn, case["case_id"])
         self.assertEqual(len(events), 1)

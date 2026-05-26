@@ -66,6 +66,7 @@ class ProfileServiceTests(unittest.TestCase):
             },
             existing_profile={},
             include_null_persona_fields=set(),
+            profile_sync_mode="public_only",
         )
 
         self.assertNotIn("age", payload)
@@ -74,6 +75,20 @@ class ProfileServiceTests(unittest.TestCase):
         self.assertNotIn("marital_status", payload)
         self.assertNotIn("has_children", payload)
         self.assertNotIn("income_range", payload)
+        self.assertNotIn("preferred_age_min", payload)
+        self.assertNotIn("preferred_age_max", payload)
+        self.assertNotIn("accept_long_distance", payload)
+
+    def test_persona_profile_sync_legacy_mode_still_maps_preferences(self):
+        payload = persona_memory_lib.build_profile_payload(
+            {
+                "target_age_min": 29,
+                "target_age_max": 35,
+                "target_accept_long_distance": "不接受",
+            },
+            existing_profile={},
+            profile_sync_mode="legacy",
+        )
         self.assertEqual(payload.get("preferred_age_min"), 29)
         self.assertEqual(payload.get("preferred_age_max"), 35)
         self.assertEqual(payload.get("accept_long_distance"), "不接受")

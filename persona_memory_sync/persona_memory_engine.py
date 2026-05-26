@@ -79,6 +79,7 @@ def execute_upsert_persona_memory(
         conversation_ref=request.conversation_ref,
         apply_scope=apply_scope,
         sync_profile=apply_scope == "persona_and_profile",
+        source_channel=request.basis,
     )
     if not include_normalized_patch:
         return result

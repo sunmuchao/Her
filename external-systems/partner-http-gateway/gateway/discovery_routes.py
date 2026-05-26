@@ -7,6 +7,7 @@ from typing import Any, Protocol
 
 from discovery_system import DiscoveryServiceError  # type: ignore[import-untyped]
 from match_domain import get_trace_id  # noqa: E402
+from match_domain.principal import coalesce_profile_id_param
 
 from .http_helpers import (  # noqa: E402
     _json_safe,
@@ -53,14 +54,13 @@ def rest_discovery_create_session(
     body: dict[str, Any],
 ) -> tuple[int, dict[str, Any]]:
     try:
-        requester_id = gateway._resolve_int_actor_bound_id(
+        profile_id = gateway._resolve_int_actor_bound_id(
             environ,
-            body.get("requester_id"),
-            field_name="requester_id",
+            coalesce_profile_id_param(body.get("profile_id"), body.get("requester_id")),
+            field_name="profile_id",
         )
-        profile_id = int(body["profile_id"])
         out = gateway._discovery.create_session(
-            requester_id=requester_id,
+            requester_id=profile_id,
             profile_id=profile_id,
             now=_parse_optional_now(body),
         )
@@ -80,7 +80,7 @@ def rest_discovery_process_turn(
         gateway._assert_actor_can_access_owner(
             environ,
             owner_id,
-            field_name="requester_id",
+            field_name="profile_id",
         )
         out = gateway._discovery.process_turn(
             session_id=session_id,
@@ -103,7 +103,7 @@ def rest_discovery_get_session(
         gateway._assert_actor_can_access_owner(
             environ,
             owner_id,
-            field_name="requester_id",
+            field_name="profile_id",
         )
         out = gateway._discovery.get_session_view(session_id)
     except DiscoveryServiceError as exc:
@@ -124,7 +124,7 @@ def rest_discovery_get_profile_detail(
             gateway._assert_actor_can_access_owner(
                 environ,
                 owner_id,
-                field_name="requester_id",
+                field_name="profile_id",
             )
         out = gateway._discovery.get_profile_detail(
             int(profile_id),

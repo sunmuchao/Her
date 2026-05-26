@@ -1004,15 +1004,24 @@ def _build_search_reciprocal_runtime() -> SearchReciprocalRuntime:
 
 
 def _build_search_ranking_runtime() -> SearchRankingRuntime:
+    from match_domain.search_scoring_config import build_ranking_rule_params
+
+    ranking_params = build_ranking_rule_params()
     return SearchRankingRuntime(
         as_int=as_int,
         as_text=as_text,
         strip_internal_fields=strip_internal_fields,
         diversity_job_patterns=DIVERSITY_JOB_PATTERNS,
+        diversity_penalty_tiers=ranking_params["diversity_penalty_tiers"],
+        score_gap_severe_concession=ranking_params["score_gap_severe_concession"],
+        score_gap_high_risk_tail=ranking_params["score_gap_high_risk_tail"],
     )
 
 
 def _build_search_matching_runtime() -> SearchMatchingRuntime:
+    from match_domain.search_scoring_config import build_effective_risk_flag_penalties
+
+    effective_penalties = build_effective_risk_flag_penalties(RISK_FLAG_PENALTIES)
     return SearchMatchingRuntime(
         as_int=as_int,
         as_lower=as_lower,
@@ -1054,7 +1063,7 @@ def _build_search_matching_runtime() -> SearchMatchingRuntime:
         unknown_values=UNKNOWN_VALUES,
         critical_missing_field_penalties=CRITICAL_MISSING_FIELD_PENALTIES,
         self_profile_gap_penalties=SELF_PROFILE_GAP_PENALTIES,
-        risk_flag_penalties=RISK_FLAG_PENALTIES,
+        risk_flag_penalties=effective_penalties,
         relationship_goal_strength_bonus=RELATIONSHIP_GOAL_STRENGTH_BONUS,
         education_order=EDUCATION_ORDER,
         busy_job_keywords=BUSY_JOB_KEYWORDS,
@@ -1407,7 +1416,7 @@ def diversity_penalty(candidate, selected):
 
 
 def trim_low_quality_tail(results):
-    return _trim_low_quality_tail(results)
+    return _trim_low_quality_tail(_build_search_ranking_runtime(), results)
 
 
 def select_diverse_results(results, limit):

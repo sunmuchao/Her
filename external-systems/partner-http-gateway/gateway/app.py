@@ -8,109 +8,19 @@ import os
 from typing import Any, Callable
 
 from . import _paths  # noqa: F401 — side effect: sys.path
-from .chat_jsonrpc import JSONRPC_NOT_HANDLED, handle_chat_jsonrpc
-from .http_helpers import (  # noqa: E402
-    _gateway_error_payload,
-    _incoming_trace_id,
-    _json_safe,
-    _normalize_boolish,
-    _parse_json_body,
-    _parse_optional_now,
-    _query_dict,
-    _read_body,
-    _wrap_trace_headers,
-)
-
-from match_domain import (  # noqa: E402
-    reset_actor_context,
-    reset_trace_id,
-    set_actor_context,
-    set_trace_id,
-)
-from observability import audit_event, emit_pipeline_record  # noqa: E402
-
-from partner_search import search_profiles as partner_search_profiles  # noqa: E402
-
-from recommendation_system import (  # type: ignore[import-untyped]
-    connect_db as recommendation_connect_db,
-)
-from recommendation_system.storage import (  # type: ignore[import-untyped]
-    DEFAULT_RECOMMENDATION_MYSQL_DSN,
-)
-from matchmaking_system import (  # type: ignore[import-untyped]
-    connect_db as matchmaking_connect_db,
-)
-from matchmaking_system.storage import (  # type: ignore[import-untyped]
-    DEFAULT_MATCHMAKING_MYSQL_DSN,
-)
-from chat_system import get_session_by_access_token  # type: ignore[import-untyped]
-from chat_system.storage import (  # type: ignore[import-untyped]
-    DEFAULT_CHAT_MYSQL_DSN,
-    connect_db as chat_connect_db,
-)
-from relationship_ledger import (  # type: ignore[import-untyped]
-    connect_db as relation_ledger_connect_db,
-)
-from relationship_ledger.storage import (  # type: ignore[import-untyped]
-    DEFAULT_RELATION_LEDGER_MYSQL_DSN,
-)
-from discovery_system import (  # type: ignore[import-untyped]
-    create_default_discovery_service,
-)
-
 from .access_control import GatewayAccessMixin
+from .async_jobs import AsyncJobGatewayMixin
 from .auth_routes import (
     AuthOtpService,
     _build_one_tap_login_provider,
     _build_wechat_login_provider,
-    dispatch_private_auth_rest,
     dispatch_public_auth_rest,
 )
-from .async_jobs import AsyncJobGatewayMixin
-from .chat_routes import (
-    chat_require_requester as _chat_require_requester,
-    dispatch_chat_rest,
-    rest_chat_case_conversation_timeline as _rest_chat_case_conversation_timeline,
-    rest_chat_create_assistant_layout as _rest_chat_create_assistant_layout,
-    rest_chat_create_thread as _rest_chat_create_thread,
-    rest_chat_get_conversation as _rest_chat_get_conversation,
-    rest_chat_get_summary as _rest_chat_get_summary,
-    rest_chat_get_thread as _rest_chat_get_thread,
-    rest_chat_list_case_conversations as _rest_chat_list_case_conversations,
-    rest_chat_list_conversation_messages as _rest_chat_list_conversation_messages,
-    rest_chat_list_messages as _rest_chat_list_messages,
-    rest_chat_maintenance_run as _rest_chat_maintenance_run,
-    rest_chat_post_conversation_message as _rest_chat_post_conversation_message,
-    rest_chat_post_message as _rest_chat_post_message,
-    rest_get_chat_job as _rest_get_chat_job,
-    rest_list_chat_jobs as _rest_list_chat_jobs,
-    rest_timeline as _rest_timeline,
-    timeline_payload as _chat_timeline_payload,
+from .http_helpers import (
+    _gateway_error_payload,
+    _incoming_trace_id,
+    _wrap_trace_headers,
 )
-from .chat_safety_routes import (
-    dispatch_chat_safety_rest,
-    rest_chat_batch_review_risk_cases as _rest_chat_batch_review_risk_cases,
-    rest_chat_evaluate_fraud_network as _rest_chat_evaluate_fraud_network,
-    rest_chat_get_fraud_network as _rest_chat_get_fraud_network,
-    rest_chat_get_risk_appeal as _rest_chat_get_risk_appeal,
-    rest_chat_get_risk_case as _rest_chat_get_risk_case,
-    rest_chat_list_fraud_networks as _rest_chat_list_fraud_networks,
-    rest_chat_list_meeting_feedback as _rest_chat_list_meeting_feedback,
-    rest_chat_list_reports as _rest_chat_list_reports,
-    rest_chat_list_risk_appeals as _rest_chat_list_risk_appeals,
-    rest_chat_list_risk_cases as _rest_chat_list_risk_cases,
-    rest_chat_list_risk_signals as _rest_chat_list_risk_signals,
-    rest_chat_record_fraud_network_observation as _rest_chat_record_fraud_network_observation,
-    rest_chat_review_risk_appeal as _rest_chat_review_risk_appeal,
-    rest_chat_review_risk_case as _rest_chat_review_risk_case,
-    rest_chat_risk_dashboard as _rest_chat_risk_dashboard,
-    rest_chat_submit_meeting_feedback as _rest_chat_submit_meeting_feedback,
-    rest_chat_submit_report as _rest_chat_submit_report,
-    rest_chat_submit_risk_appeal as _rest_chat_submit_risk_appeal,
-    rest_chat_thread_risk_overview as _rest_chat_thread_risk_overview,
-    rest_user_trust_hub as _rest_user_trust_hub,
-)
-from .discovery_routes import dispatch_discovery_rest
 from .identity import (
     ActorPrincipal,
     GatewayAuthError,
@@ -118,87 +28,32 @@ from .identity import (
     IdentityResolver,
     set_current_actor,
 )
-from .matchmaking_routes import (
-    dispatch_matchmaking_rest,
-    rest_get_matchmaking_job as _rest_get_matchmaking_job,
-    rest_list_matchmaking_jobs as _rest_list_matchmaking_jobs,
-    rest_mm_build_pairs as _rest_mm_build_pairs,
-    rest_mm_close_stale as _rest_mm_close_stale,
-    rest_mm_create_member as _rest_mm_create_member,
-    rest_mm_dispatch as _rest_mm_dispatch,
-    rest_mm_feedback as _rest_mm_feedback,
-    rest_mm_get_case as _rest_mm_get_case,
-    rest_mm_get_member as _rest_mm_get_member,
-    rest_mm_get_pair as _rest_mm_get_pair,
-    rest_mm_list_cases as _rest_mm_list_cases,
-    rest_mm_list_pairs as _rest_mm_list_pairs,
-    rest_mm_open_cases as _rest_mm_open_cases,
-    rest_mm_refresh_member as _rest_mm_refresh_member,
-    rest_mm_refresh_pool as _rest_mm_refresh_pool,
-    rest_mm_reply as _rest_mm_reply,
-    rest_mm_set_status as _rest_mm_set_status,
-)
-from .matchmaking_jsonrpc import JSONRPC_NOT_HANDLED as MATCHMAKING_JSONRPC_NOT_HANDLED, handle_matchmaking_jsonrpc
+from .jsonrpc_dispatch import dispatch_gateway_jsonrpc
 from .mysql_pool import GatewayConnectionPool
-from .profile_jsonrpc import JSONRPC_NOT_HANDLED as PROFILE_JSONRPC_NOT_HANDLED, handle_profile_jsonrpc
-from .recommendation_jsonrpc import JSONRPC_NOT_HANDLED as RECOMMENDATION_JSONRPC_NOT_HANDLED, handle_recommendation_jsonrpc
 from .request_policy import client_ip, rate_limiter_from_environ
-from .verification_jsonrpc import JSONRPC_NOT_HANDLED as VERIFICATION_JSONRPC_NOT_HANDLED, handle_verification_jsonrpc
-from .profile_routes import (
-    dispatch_profile_rest,
-    rest_profile_dispute_field_verification as _rest_profile_dispute_field_verification,
-    rest_profile_evaluate_review as _rest_profile_evaluate_review,
-    rest_profile_expire_due_field_verifications as _rest_profile_expire_due_field_verifications,
-    rest_profile_get_field_verification as _rest_profile_get_field_verification,
-    rest_profile_get_photo_risk_run as _rest_profile_get_photo_risk_run,
-    rest_profile_get_review_case as _rest_profile_get_review_case,
-    rest_profile_get_review_case_appeal as _rest_profile_get_review_case_appeal,
-    rest_profile_list_field_verifications as _rest_profile_list_field_verifications,
-    rest_profile_list_photo_risk_review_queue as _rest_profile_list_photo_risk_review_queue,
-    rest_profile_list_photo_risk_runs as _rest_profile_list_photo_risk_runs,
-    rest_profile_list_review_case_appeals as _rest_profile_list_review_case_appeals,
-    rest_profile_list_review_cases as _rest_profile_list_review_cases,
-    rest_profile_resubmit_field_verification as _rest_profile_resubmit_field_verification,
-    rest_profile_review_case as _rest_profile_review_case,
-    rest_profile_review_field_verification as _rest_profile_review_field_verification,
-    rest_profile_review_review_case_appeal as _rest_profile_review_review_case_appeal,
-    rest_profile_submit_field_verification as _rest_profile_submit_field_verification,
-    rest_profile_submit_review_case_appeal as _rest_profile_submit_review_case_appeal,
-    rest_profile_verification_policies as _rest_profile_verification_policies,
+from .rest_dispatch import dispatch_gateway_rest
+from .surface_config import gateway_surface, jsonrpc_enabled
+
+from match_domain import (
+    reset_actor_context,
+    reset_trace_id,
+    set_actor_context,
+    set_trace_id,
 )
-from .recommendation_routes import (
-    dispatch_recommendation_rest,
-    rest_create_subscription as _rest_create_subscription,
-    rest_deliver as _rest_deliver,
-    rest_get_recommendation_job as _rest_get_recommendation_job,
-    rest_get_subscription as _rest_get_subscription,
-    rest_list_cards as _rest_list_cards,
-    rest_list_recommendation_jobs as _rest_list_recommendation_jobs,
-    rest_list_recommendations as _rest_list_recommendations,
-    rest_list_runs as _rest_list_runs,
-    rest_mark_cards_read as _rest_mark_cards_read,
-    rest_patch_overrides as _rest_patch_overrides,
-    rest_record_action as _rest_record_action,
-    rest_record_review as _rest_record_review,
-    rest_refresh_due as _rest_refresh_due,
-    rest_refresh_subscription as _rest_refresh_subscription,
+from observability import audit_event, emit_pipeline_record
+
+from chat_system import get_session_by_access_token  # type: ignore[import-untyped]
+from chat_system.storage import (  # type: ignore[import-untyped]
+    DEFAULT_CHAT_MYSQL_DSN,
+    connect_db as chat_connect_db,
 )
-from .role_sets import (
-    INTERNAL_WRITE_ROLES,
-)
-from .verification_routes import (
-    dispatch_verification_rest,
-    rest_verification_create_live_challenge as _rest_verification_create_live_challenge,
-    rest_verification_get_photo_review_request as _rest_verification_get_photo_review_request,
-    rest_verification_get_submission as _rest_verification_get_submission,
-    rest_verification_list_notifications as _rest_verification_list_notifications,
-    rest_verification_list_photo_review_requests as _rest_verification_list_photo_review_requests,
-    rest_verification_list_submissions as _rest_verification_list_submissions,
-    rest_verification_request_live_video as _rest_verification_request_live_video,
-    rest_verification_resubmit_live_video as _rest_verification_resubmit_live_video,
-    rest_verification_review_submission as _rest_verification_review_submission,
-    rest_verification_submit_live_video as _rest_verification_submit_live_video,
-)
+from discovery_system import create_default_discovery_service  # type: ignore[import-untyped]
+from matchmaking_system import connect_db as matchmaking_connect_db  # type: ignore[import-untyped]
+from matchmaking_system.storage import DEFAULT_MATCHMAKING_MYSQL_DSN  # type: ignore[import-untyped]
+from recommendation_system import connect_db as recommendation_connect_db  # type: ignore[import-untyped]
+from recommendation_system.storage import DEFAULT_RECOMMENDATION_MYSQL_DSN  # type: ignore[import-untyped]
+from relationship_ledger import connect_db as relation_ledger_connect_db  # type: ignore[import-untyped]
+from relationship_ledger.storage import DEFAULT_RELATION_LEDGER_MYSQL_DSN  # type: ignore[import-untyped]
 
 JSON_HEADERS = [("Content-Type", "application/json; charset=utf-8")]
 LOGGER = logging.getLogger(__name__)
@@ -302,6 +157,27 @@ class PartnerGateway(AsyncJobGatewayMixin, GatewayAccessMixin):
             **kwargs,
         )
 
+    def _with_proxy_intro(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+        from match_domain.proxy_intro_storage import use_matchmaking_storage
+
+        if not use_matchmaking_storage():
+            return self._with_rec(fn, *args, **kwargs)
+
+        def _dual(mm_conn: Any) -> Any:
+            if self._rec_pool is not None:
+                rec_conn = self._rec_pool.acquire()
+                try:
+                    return fn(mm_conn, *args, recommendation_conn=rec_conn, **kwargs)
+                finally:
+                    self._rec_pool.release(rec_conn)
+            rec_conn = recommendation_connect_db(self._recommendation_dsn)
+            try:
+                return fn(mm_conn, *args, recommendation_conn=rec_conn, **kwargs)
+            finally:
+                rec_conn.close()
+
+        return self._with_mm(_dual)
+
     def _resolve_auth_session_principal(self, token: str):
         try:
             resolved = self._with_chat(get_session_by_access_token, token)
@@ -322,11 +198,11 @@ class PartnerGateway(AsyncJobGatewayMixin, GatewayAccessMixin):
             auth_source="auth_session",
         )
 
-    # --- REST ---
-
     def handle_health(self, _environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         return 200, {
             "ok": True,
+            "surface": gateway_surface(),
+            "jsonrpc_enabled": jsonrpc_enabled(),
             "services": ["recommendation", "matchmaking", "chat"],
             "recommendation_db_configured": bool(self._recommendation_dsn),
             "matchmaking_db_configured": bool(self._matchmaking_dsn),
@@ -339,601 +215,11 @@ class PartnerGateway(AsyncJobGatewayMixin, GatewayAccessMixin):
             "rate_limit_per_minute": int(os.environ.get("PARTNER_GATEWAY_RATE_LIMIT_PER_MINUTE", "600") or "600"),
         }
 
-    def rest_get_subscription(self, environ: dict[str, Any], subscription_id: str) -> tuple[int, dict[str, Any]]:
-        return _rest_get_subscription(self, environ, subscription_id)
-
-    def rest_create_subscription(self, environ: dict[str, Any], body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_create_subscription(self, environ, body)
-
-    def rest_patch_overrides(self, environ: dict[str, Any], subscription_id: str, body: dict[str, Any]) -> tuple[
-        int, dict[str, Any]
-    ]:
-        return _rest_patch_overrides(self, environ, subscription_id, body)
-
-    def rest_refresh_subscription(self, environ: dict[str, Any], subscription_id: str, body: dict[str, Any]) -> tuple[
-        int, dict[str, Any]
-    ]:
-        return _rest_refresh_subscription(self, environ, subscription_id, body)
-
-    def rest_refresh_due(self, environ: dict[str, Any], body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_refresh_due(self, environ, body)
-
-    def rest_list_recommendations(self, environ: dict[str, Any], subscription_id: str) -> tuple[int, dict[str, Any]]:
-        return _rest_list_recommendations(self, environ, subscription_id)
-
-    def rest_list_runs(self, environ: dict[str, Any], subscription_id: str) -> tuple[int, dict[str, Any]]:
-        return _rest_list_runs(self, environ, subscription_id)
-
-    def rest_list_cards(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_list_cards(self, environ)
-
-    def rest_deliver(self, environ: dict[str, Any], body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_deliver(self, environ, body)
-
-    def rest_get_recommendation_job(self, environ: dict[str, Any], job_id: str) -> tuple[int, dict[str, Any]]:
-        return _rest_get_recommendation_job(self, environ, job_id)
-
-    def rest_list_recommendation_jobs(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_list_recommendation_jobs(self, environ)
-
-    def rest_record_action(self, environ: dict[str, Any], body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_record_action(self, environ, body)
-
-    def rest_record_review(self, environ: dict[str, Any], body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_record_review(self, environ, body)
-
-    def rest_search_profiles(self, _environ: dict[str, Any], body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        source = body.get("source") or body.get("sources")
-        if not source:
-            raise ValueError("source or sources is required")
-        response = partner_search_profiles(
-            source=source,
-            criteria=body.get("criteria") or {},
-            self_profile=body.get("self_profile"),
-            self_id=body.get("self_id"),
-            table_name=body.get("table_name"),
-            photos_table_name=body.get("photos_table_name"),
-            limit=int(body.get("limit", 10)),
-            photo_preview_count=int(body.get("photo_preview_count", 0)),
-            include_source=_normalize_boolish(body.get("include_source"), False),
-            include_text=_normalize_boolish(body.get("include_text"), False),
-            moderation_dsn=self._chat_dsn,
-            include_moderation_blocked=_normalize_boolish(body.get("include_moderation_blocked"), False),
-        )
-        return 200, _json_safe(response)
-
-    def rest_verification_submit_live_video(
-        self,
-        environ: dict[str, Any],
-        body: dict[str, Any],
-    ) -> tuple[int, dict[str, Any]]:
-        return _rest_verification_submit_live_video(self, environ, body)
-
-    def rest_verification_request_live_video(
-        self,
-        environ: dict[str, Any],
-        body: dict[str, Any],
-    ) -> tuple[int, dict[str, Any]]:
-        return _rest_verification_request_live_video(self, environ, body)
-
-    def rest_verification_create_live_challenge(
-        self,
-        environ: dict[str, Any],
-        body: dict[str, Any],
-    ) -> tuple[int, dict[str, Any]]:
-        return _rest_verification_create_live_challenge(self, environ, body)
-
-    def rest_verification_list_submissions(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_verification_list_submissions(self, environ)
-
-    def rest_verification_list_photo_review_requests(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_verification_list_photo_review_requests(self, environ)
-
-    def rest_verification_get_submission(
-        self,
-        environ: dict[str, Any],
-        submission_id: str,
-    ) -> tuple[int, dict[str, Any]]:
-        return _rest_verification_get_submission(self, environ, submission_id)
-
-    def rest_verification_get_photo_review_request(
-        self,
-        environ: dict[str, Any],
-        submission_id: str,
-    ) -> tuple[int, dict[str, Any]]:
-        return _rest_verification_get_photo_review_request(self, environ, submission_id)
-
-    def rest_verification_resubmit_live_video(
-        self,
-        environ: dict[str, Any],
-        submission_id: str,
-        body: dict[str, Any],
-    ) -> tuple[int, dict[str, Any]]:
-        return _rest_verification_resubmit_live_video(self, environ, submission_id, body)
-
-    def rest_verification_list_notifications(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_verification_list_notifications(self, environ)
-
-    def rest_verification_review_submission(
-        self,
-        environ: dict[str, Any],
-        submission_id: str,
-        body: dict[str, Any],
-    ) -> tuple[int, dict[str, Any]]:
-        return _rest_verification_review_submission(self, environ, submission_id, body)
-
-    def rest_profile_verification_policies(self, _environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_profile_verification_policies(self, _environ)
-
-    def rest_profile_submit_field_verification(
-        self,
-        environ: dict[str, Any],
-        body: dict[str, Any],
-    ) -> tuple[int, dict[str, Any]]:
-        return _rest_profile_submit_field_verification(self, environ, body)
-
-    def rest_profile_list_field_verifications(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_profile_list_field_verifications(self, environ)
-
-    def rest_profile_get_field_verification(self, environ: dict[str, Any], submission_id: str) -> tuple[int, dict[str, Any]]:
-        return _rest_profile_get_field_verification(self, environ, submission_id)
-
-    def rest_profile_resubmit_field_verification(
-        self,
-        environ: dict[str, Any],
-        submission_id: str,
-        body: dict[str, Any],
-    ) -> tuple[int, dict[str, Any]]:
-        return _rest_profile_resubmit_field_verification(self, environ, submission_id, body)
-
-    def rest_profile_dispute_field_verification(
-        self,
-        environ: dict[str, Any],
-        submission_id: str,
-        body: dict[str, Any],
-    ) -> tuple[int, dict[str, Any]]:
-        return _rest_profile_dispute_field_verification(self, environ, submission_id, body)
-
-    def rest_profile_review_field_verification(
-        self,
-        environ: dict[str, Any],
-        submission_id: str,
-        body: dict[str, Any],
-    ) -> tuple[int, dict[str, Any]]:
-        return _rest_profile_review_field_verification(self, environ, submission_id, body)
-
-    def rest_profile_expire_due_field_verifications(
-        self,
-        environ: dict[str, Any],
-        body: dict[str, Any],
-    ) -> tuple[int, dict[str, Any]]:
-        return _rest_profile_expire_due_field_verifications(self, environ, body)
-
-    def rest_profile_evaluate_review(
-        self,
-        environ: dict[str, Any],
-        body: dict[str, Any],
-    ) -> tuple[int, dict[str, Any]]:
-        return _rest_profile_evaluate_review(self, environ, body)
-
-    def rest_profile_list_review_cases(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_profile_list_review_cases(self, environ)
-
-    def rest_profile_get_review_case(self, environ: dict[str, Any], profile_review_case_id: str) -> tuple[int, dict[str, Any]]:
-        return _rest_profile_get_review_case(self, environ, profile_review_case_id)
-
-    def rest_profile_list_photo_risk_runs(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_profile_list_photo_risk_runs(self, environ)
-
-    def rest_profile_get_photo_risk_run(self, environ: dict[str, Any], score_run_id: int) -> tuple[int, dict[str, Any]]:
-        return _rest_profile_get_photo_risk_run(self, environ, score_run_id)
-
-    def rest_profile_list_photo_risk_review_queue(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_profile_list_photo_risk_review_queue(self, environ)
-
-    def rest_profile_review_case(
-        self,
-        environ: dict[str, Any],
-        profile_review_case_id: str,
-        body: dict[str, Any],
-    ) -> tuple[int, dict[str, Any]]:
-        return _rest_profile_review_case(self, environ, profile_review_case_id, body)
-
-    def rest_profile_submit_review_case_appeal(
-        self,
-        environ: dict[str, Any],
-        profile_review_case_id: str,
-        body: dict[str, Any],
-    ) -> tuple[int, dict[str, Any]]:
-        return _rest_profile_submit_review_case_appeal(self, environ, profile_review_case_id, body)
-
-    def rest_profile_list_review_case_appeals(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_profile_list_review_case_appeals(self, environ)
-
-    def rest_profile_get_review_case_appeal(self, environ: dict[str, Any], appeal_id: int) -> tuple[int, dict[str, Any]]:
-        return _rest_profile_get_review_case_appeal(self, environ, appeal_id)
-
-    def rest_profile_review_review_case_appeal(
-        self,
-        environ: dict[str, Any],
-        appeal_id: int,
-        body: dict[str, Any],
-    ) -> tuple[int, dict[str, Any]]:
-        return _rest_profile_review_review_case_appeal(self, environ, appeal_id, body)
-
-    def rest_user_trust_hub(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_user_trust_hub(self, environ)
-
-    def rest_mark_cards_read(self, _environ: dict[str, Any], body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_mark_cards_read(self, _environ, body)
-
-    def rest_mm_create_member(self, environ: dict[str, Any], body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_mm_create_member(self, environ, body)
-
-    def rest_mm_get_member(self, environ: dict[str, Any], member_id: str) -> tuple[int, dict[str, Any]]:
-        return _rest_mm_get_member(self, environ, member_id)
-
-    def rest_mm_set_status(self, environ: dict[str, Any], member_id: str, body: dict[str, Any]) -> tuple[
-        int, dict[str, Any]
-    ]:
-        return _rest_mm_set_status(self, environ, member_id, body)
-
-    def rest_mm_refresh_member(self, environ: dict[str, Any], member_id: str, body: dict[str, Any]) -> tuple[
-        int, dict[str, Any]
-    ]:
-        return _rest_mm_refresh_member(self, environ, member_id, body)
-
-    def rest_mm_refresh_pool(self, environ: dict[str, Any], body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_mm_refresh_pool(self, environ, body)
-
-    def rest_mm_build_pairs(self, environ: dict[str, Any], body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_mm_build_pairs(self, environ, body)
-
-    def rest_mm_open_cases(self, environ: dict[str, Any], body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_mm_open_cases(self, environ, body)
-
-    def rest_mm_get_case(self, environ: dict[str, Any], case_id: str) -> tuple[int, dict[str, Any]]:
-        return _rest_mm_get_case(self, environ, case_id)
-
-    def rest_mm_list_cases(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_mm_list_cases(self, environ)
-
-    def rest_mm_list_pairs(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_mm_list_pairs(self, environ)
-
-    def rest_mm_get_pair(self, environ: dict[str, Any], pair_key: str) -> tuple[int, dict[str, Any]]:
-        return _rest_mm_get_pair(self, environ, pair_key)
-
-    def rest_mm_dispatch(self, environ: dict[str, Any], case_id: str, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_mm_dispatch(self, environ, case_id, body)
-
-    def rest_mm_reply(self, environ: dict[str, Any], case_id: str, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_mm_reply(self, environ, case_id, body)
-
-    def rest_mm_feedback(self, environ: dict[str, Any], body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_mm_feedback(self, environ, body)
-
-    def rest_mm_close_stale(self, environ: dict[str, Any], body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_mm_close_stale(self, environ, body)
-
-    def rest_get_matchmaking_job(self, environ: dict[str, Any], job_id: str) -> tuple[int, dict[str, Any]]:
-        return _rest_get_matchmaking_job(self, environ, job_id)
-
-    def rest_list_matchmaking_jobs(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_list_matchmaking_jobs(self, environ)
-
-    def _chat_require_requester(
-        self,
-        environ: dict[str, Any],
-        q: dict[str, str],
-        body: dict[str, Any] | None = None,
-    ) -> str:
-        return _chat_require_requester(self, environ, q, body)
-
-    def rest_chat_create_thread(self, environ: dict[str, Any], body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_chat_create_thread(self, environ, body)
-
-    def rest_chat_get_thread(self, environ: dict[str, Any], thread_id: str) -> tuple[int, dict[str, Any]]:
-        return _rest_chat_get_thread(self, environ, thread_id)
-
-    def rest_chat_list_messages(self, environ: dict[str, Any], thread_id: str) -> tuple[int, dict[str, Any]]:
-        return _rest_chat_list_messages(self, environ, thread_id)
-
-    def rest_chat_post_message(self, environ: dict[str, Any], thread_id: str, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_chat_post_message(self, environ, thread_id, body)
-
-    def rest_chat_create_assistant_layout(
-        self,
-        environ: dict[str, Any],
-        case_id: str,
-        body: dict[str, Any],
-    ) -> tuple[int, dict[str, Any]]:
-        return _rest_chat_create_assistant_layout(self, environ, case_id, body)
-
-    def rest_chat_list_case_conversations(
-        self,
-        environ: dict[str, Any],
-        case_id: str,
-    ) -> tuple[int, dict[str, Any]]:
-        return _rest_chat_list_case_conversations(self, environ, case_id)
-
-    def rest_chat_get_conversation(
-        self,
-        environ: dict[str, Any],
-        conversation_id: str,
-    ) -> tuple[int, dict[str, Any]]:
-        return _rest_chat_get_conversation(self, environ, conversation_id)
-
-    def rest_chat_list_conversation_messages(
-        self,
-        environ: dict[str, Any],
-        conversation_id: str,
-    ) -> tuple[int, dict[str, Any]]:
-        return _rest_chat_list_conversation_messages(self, environ, conversation_id)
-
-    def rest_chat_post_conversation_message(
-        self,
-        environ: dict[str, Any],
-        conversation_id: str,
-        body: dict[str, Any],
-    ) -> tuple[int, dict[str, Any]]:
-        return _rest_chat_post_conversation_message(self, environ, conversation_id, body)
-
-    def rest_chat_case_conversation_timeline(
-        self,
-        environ: dict[str, Any],
-        case_id: str,
-    ) -> tuple[int, dict[str, Any]]:
-        return _rest_chat_case_conversation_timeline(self, environ, case_id)
-
-    def _timeline_payload(self, case_id: str, viewer_id: str, *, message_limit: int = 50) -> dict[str, Any]:
-        return _chat_timeline_payload(self, case_id, viewer_id, message_limit=message_limit)
-
-    def rest_timeline(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_timeline(self, environ)
-
-    def rest_chat_maintenance_run(self, environ: dict[str, Any], body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_chat_maintenance_run(self, environ, body)
-
-    def rest_get_chat_job(self, environ: dict[str, Any], job_id: str) -> tuple[int, dict[str, Any]]:
-        return _rest_get_chat_job(self, environ, job_id)
-
-    def rest_list_chat_jobs(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_list_chat_jobs(self, environ)
-
-    def rest_chat_get_summary(self, environ: dict[str, Any], thread_id: str) -> tuple[int, dict[str, Any]]:
-        return _rest_chat_get_summary(self, environ, thread_id)
-
-    def rest_chat_submit_report(self, environ: dict[str, Any], thread_id: str, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_chat_submit_report(self, environ, thread_id, body)
-
-    def rest_chat_submit_meeting_feedback(
-        self,
-        environ: dict[str, Any],
-        thread_id: str,
-        body: dict[str, Any],
-    ) -> tuple[int, dict[str, Any]]:
-        return _rest_chat_submit_meeting_feedback(self, environ, thread_id, body)
-
-    def rest_chat_list_reports(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_chat_list_reports(self, environ)
-
-    def rest_chat_list_meeting_feedback(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_chat_list_meeting_feedback(self, environ)
-
-    def rest_chat_list_risk_cases(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_chat_list_risk_cases(self, environ)
-
-    def rest_chat_list_risk_signals(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_chat_list_risk_signals(self, environ)
-
-    def rest_chat_record_fraud_network_observation(
-        self,
-        environ: dict[str, Any],
-        body: dict[str, Any],
-    ) -> tuple[int, dict[str, Any]]:
-        return _rest_chat_record_fraud_network_observation(self, environ, body)
-
-    def rest_chat_evaluate_fraud_network(
-        self,
-        environ: dict[str, Any],
-        body: dict[str, Any],
-    ) -> tuple[int, dict[str, Any]]:
-        return _rest_chat_evaluate_fraud_network(self, environ, body)
-
-    def rest_chat_list_fraud_networks(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_chat_list_fraud_networks(self, environ)
-
-    def rest_chat_get_fraud_network(self, environ: dict[str, Any], subject_user_id: str) -> tuple[int, dict[str, Any]]:
-        return _rest_chat_get_fraud_network(self, environ, subject_user_id)
-
-    def rest_chat_get_risk_case(self, environ: dict[str, Any], risk_case_id: str) -> tuple[int, dict[str, Any]]:
-        return _rest_chat_get_risk_case(self, environ, risk_case_id)
-
-    def rest_chat_thread_risk_overview(self, environ: dict[str, Any], thread_id: str) -> tuple[int, dict[str, Any]]:
-        return _rest_chat_thread_risk_overview(self, environ, thread_id)
-
-    def rest_chat_review_risk_case(
-        self,
-        environ: dict[str, Any],
-        risk_case_id: str,
-        body: dict[str, Any],
-    ) -> tuple[int, dict[str, Any]]:
-        return _rest_chat_review_risk_case(self, environ, risk_case_id, body)
-
-    def rest_chat_batch_review_risk_cases(self, environ: dict[str, Any], body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_chat_batch_review_risk_cases(self, environ, body)
-
-    def rest_chat_submit_risk_appeal(
-        self,
-        environ: dict[str, Any],
-        risk_case_id: str,
-        body: dict[str, Any],
-    ) -> tuple[int, dict[str, Any]]:
-        return _rest_chat_submit_risk_appeal(self, environ, risk_case_id, body)
-
-    def rest_chat_list_risk_appeals(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_chat_list_risk_appeals(self, environ)
-
-    def rest_chat_get_risk_appeal(self, environ: dict[str, Any], appeal_id: int) -> tuple[int, dict[str, Any]]:
-        return _rest_chat_get_risk_appeal(self, environ, appeal_id)
-
-    def rest_chat_review_risk_appeal(
-        self,
-        environ: dict[str, Any],
-        appeal_id: int,
-        body: dict[str, Any],
-    ) -> tuple[int, dict[str, Any]]:
-        return _rest_chat_review_risk_appeal(self, environ, appeal_id, body)
-
-    def rest_chat_risk_dashboard(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return _rest_chat_risk_dashboard(self, environ)
-
-    def rest_async_job_dashboard(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        self._require_roles(
-            environ,
-            INTERNAL_WRITE_ROLES,
-            message="current actor cannot inspect the async job dashboard",
-        )
-        q = _query_dict(environ)
-        try:
-            limit = int(q.get("limit", 5))
-        except ValueError:
-            limit = 5
-        return 200, self._build_async_job_dashboard(limit=limit)
-
     def dispatch_rest(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        method = environ.get("REQUEST_METHOD", "GET").upper()
-        path = environ.get("PATH_INFO") or "/"
-        path = path.rstrip("/") or "/"
-
-        if path == "/health" and method == "GET":
-            return self.handle_health(environ)
-
-        if path == "/v1/search/profiles" and method == "POST":
-            return self.rest_search_profiles(environ, _parse_json_body(_read_body(environ)))
-
-        if path == "/v1/ops/async-jobs/dashboard" and method == "GET":
-            return self.rest_async_job_dashboard(environ)
-
-        discovery_response = dispatch_discovery_rest(self, environ, method, path)
-        if discovery_response is not None:
-            return discovery_response
-
-        verification_response = dispatch_verification_rest(self, environ, method, path)
-        if verification_response is not None:
-            return verification_response
-        auth_response = dispatch_private_auth_rest(self, environ, method, path)
-        if auth_response is not None:
-            return auth_response
-        profile_response = dispatch_profile_rest(self, environ, method, path)
-        if profile_response is not None:
-            return profile_response
-        recommendation_response = dispatch_recommendation_rest(self, environ, method, path)
-        if recommendation_response is not None:
-            return recommendation_response
-        matchmaking_response = dispatch_matchmaking_rest(self, environ, method, path)
-        if matchmaking_response is not None:
-            return matchmaking_response
-        chat_response = dispatch_chat_rest(self, environ, method, path)
-        if chat_response is not None:
-            return chat_response
-        chat_safety_response = dispatch_chat_safety_rest(self, environ, method, path)
-        if chat_safety_response is not None:
-            return chat_safety_response
-
-        return 404, {"error": {"code": "not_found", "message": f"No route for {method} {path}"}}
-
-    # --- JSON-RPC 2.0 ---
+        return dispatch_gateway_rest(self, environ)
 
     def dispatch_jsonrpc(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        try:
-            raw = _read_body(environ)
-            req = json.loads(raw.decode("utf-8"))
-        except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as e:
-            return 400, {"jsonrpc": "2.0", "error": {"code": -32700, "message": str(e)}, "id": None}
-        if not isinstance(req, dict):
-            return 400, {"jsonrpc": "2.0", "error": {"code": -32600, "message": "Invalid Request"}, "id": None}
-
-        rpc_id = req.get("id")
-        method = req.get("method")
-        params = req.get("params") or {}
-        if not isinstance(method, str):
-            return 200, {"jsonrpc": "2.0", "error": {"code": -32600, "message": "method required"}, "id": rpc_id}
-        if isinstance(params, list):
-            return 200, {
-                "jsonrpc": "2.0",
-                "error": {"code": -32602, "message": "params must be a JSON object"},
-                "id": rpc_id,
-            }
-        if not isinstance(params, dict):
-            params = {}
-
-        now = _parse_optional_now(params)
-        p = {k: v for k, v in params.items() if k != "now"}
-        if now is not None:
-            p["now"] = now
-
-        try:
-            result = self._jsonrpc_call(environ, method, p)
-        except ValueError as e:
-            return 200, {"jsonrpc": "2.0", "error": {"code": -32602, "message": str(e)}, "id": rpc_id}
-        except GatewayPermissionError as e:
-            return 200, {"jsonrpc": "2.0", "error": {"code": -32001, "message": str(e)}, "id": rpc_id}
-        except Exception as e:  # noqa: BLE001 — surface as application error
-            return 200, {"jsonrpc": "2.0", "error": {"code": -32000, "message": str(e)}, "id": rpc_id}
-
-        if rpc_id is None:
-            return 204, {}
-        return 200, {"jsonrpc": "2.0", "result": _json_safe(result), "id": rpc_id}
-
-    def _jsonrpc_call(self, environ: dict[str, Any], method: str, p: dict[str, Any]) -> Any:
-        if method == "search.search_profiles":
-            return partner_search_profiles(
-                source=p.get("source") or p.get("sources"),
-                criteria=p.get("criteria") or {},
-                self_profile=p.get("self_profile"),
-                self_id=p.get("self_id"),
-                table_name=p.get("table_name"),
-                photos_table_name=p.get("photos_table_name"),
-                limit=int(p.get("limit", 10)),
-                photo_preview_count=int(p.get("photo_preview_count", 0)),
-                include_source=_normalize_boolish(p.get("include_source"), False),
-                include_text=_normalize_boolish(p.get("include_text"), False),
-                moderation_dsn=self._chat_dsn,
-                include_moderation_blocked=_normalize_boolish(p.get("include_moderation_blocked"), False),
-            )
-        if method == "ops.get_async_job_dashboard":
-            self._require_roles(
-                environ,
-                INTERNAL_WRITE_ROLES,
-                message="current actor cannot inspect the async job dashboard",
-            )
-            try:
-                limit = int(p.get("limit", 5))
-            except (TypeError, ValueError):
-                limit = 5
-            return self._build_async_job_dashboard(limit=limit)
-        handled = handle_verification_jsonrpc(self, environ, method, p)
-        if handled is not VERIFICATION_JSONRPC_NOT_HANDLED:
-            return handled
-        handled = handle_recommendation_jsonrpc(self, environ, method, p)
-        if handled is not RECOMMENDATION_JSONRPC_NOT_HANDLED:
-            return handled
-
-        handled = handle_matchmaking_jsonrpc(self, environ, method, p)
-        if handled is not MATCHMAKING_JSONRPC_NOT_HANDLED:
-            return handled
-
-        handled = handle_chat_jsonrpc(self, environ, method, p)
-        if handled is not JSONRPC_NOT_HANDLED:
-            return handled
-
-        handled = handle_profile_jsonrpc(self, environ, method, p)
-        if handled is not PROFILE_JSONRPC_NOT_HANDLED:
-            return handled
-
-        raise ValueError(f"Unknown method: {method}")
+        return dispatch_gateway_jsonrpc(self, environ)
 
     def __call__(self, environ: dict[str, Any], start_response: Callable[..., Any]) -> list[bytes]:
         path = environ.get("PATH_INFO") or "/"
@@ -961,6 +247,7 @@ class PartnerGateway(AsyncJobGatewayMixin, GatewayAccessMixin):
                 sr("200 OK", JSON_HEADERS + [("Content-Length", str(len(body)))])
                 _access_log(200)
                 return [body]
+
             public_auth_response = dispatch_public_auth_rest(self, environ, method, path.rstrip("/") or "/")
             if public_auth_response is not None:
                 if not self._rate_limiter.allow(client_ip(environ)):

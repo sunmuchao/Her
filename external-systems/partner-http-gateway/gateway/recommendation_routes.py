@@ -6,10 +6,12 @@ import re
 from typing import Any, Protocol
 
 from match_domain import get_trace_id  # noqa: E402
+from match_domain.principal import coalesce_profile_id_param
 
 from recommendation_system import (  # type: ignore[import-untyped]
     create_subscription,
     list_in_app_cards,
+    list_recommendation_conversion_views_for_subscription,
     list_recommendations_for_subscription,
     list_search_runs_for_subscription,
     mark_in_app_cards_read,
@@ -37,7 +39,7 @@ from .http_helpers import (
     _read_body,
     _subscription_ids_from_query,
 )
-from .recommendation_access import recommendation_mutation_payload, resolve_optional_requester_id
+from .recommendation_access import recommendation_mutation_payload, resolve_optional_profile_id
 from .role_sets import INTERNAL_WRITE_ROLES
 
 
@@ -139,14 +141,17 @@ def rest_create_subscription(
 ) -> tuple[int, dict[str, Any]]:
     now = _parse_optional_now(body)
     kwargs = {key: value for key, value in body.items() if key != "now"}
-    requester_id = resolve_optional_requester_id(
+    requester_id = resolve_optional_profile_id(
         gateway,
         environ,
-        kwargs.get("requester_id"),
+        kwargs.get("profile_id"),
+        raw_requester_id=kwargs.get("requester_id"),
         treat_empty_as_missing=True,
     )
     if requester_id is not None:
         kwargs["requester_id"] = requester_id
+        if kwargs.get("self_id") in (None, ""):
+            kwargs["self_id"] = requester_id
     if now is not None:
         kwargs["now"] = now
     sub = gateway._with_rec(create_subscription, **kwargs)
@@ -221,6 +226,16 @@ def rest_list_recommendations(
     return 200, {"recommendations": _json_safe(rows)}
 
 
+def rest_list_conversion_views(
+    gateway: RecommendationGateway,
+    environ: dict[str, Any],
+    subscription_id: str,
+) -> tuple[int, dict[str, Any]]:
+    gateway._get_recommendation_subscription_for_actor(environ, subscription_id)
+    rows = gateway._with_rec(list_recommendation_conversion_views_for_subscription, subscription_id)
+    return 200, {"conversion_views": _json_safe(rows), "trace_id": get_trace_id()}
+
+
 def rest_list_runs(
     gateway: RecommendationGateway,
     environ: dict[str, Any],
@@ -238,10 +253,11 @@ def rest_list_cards(
     q = _query_dict(environ)
     cards = gateway._with_rec(
         list_in_app_cards,
-        requester_id=resolve_optional_requester_id(
+        requester_id=resolve_optional_profile_id(
             gateway,
             environ,
-            q.get("requester_id"),
+            q.get("profile_id"),
+            raw_requester_id=q.get("requester_id"),
             treat_empty_as_missing=True,
         ),
         unread_only=str(q.get("unread_only", "")).lower() in ("1", "true", "yes"),
@@ -343,8 +359,8 @@ def rest_mark_cards_read(
     now = _parse_optional_now(body)
     rid_int = gateway._resolve_int_actor_bound_id(
         environ,
-        body.get("requester_id"),
-        field_name="requester_id",
+        coalesce_profile_id_param(body.get("profile_id"), body.get("requester_id")),
+        field_name="profile_id",
     )
     card_ids = body.get("card_ids")
     if not isinstance(card_ids, list):
@@ -403,6 +419,9 @@ def dispatch_recommendation_rest(
     match = re.fullmatch(r"/v1/recommendation/subscriptions/([^/]+)/recommendations", path)
     if match and method == "GET":
         return rest_list_recommendations(gateway, environ, match.group(1))
+    match = re.fullmatch(r"/v1/recommendation/subscriptions/([^/]+)/conversion-views", path)
+    if match and method == "GET":
+        return rest_list_conversion_views(gateway, environ, match.group(1))
     match = re.fullmatch(r"/v1/recommendation/subscriptions/([^/]+)/runs", path)
     if match and method == "GET":
         return rest_list_runs(gateway, environ, match.group(1))

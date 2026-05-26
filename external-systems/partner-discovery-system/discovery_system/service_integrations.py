@@ -9,6 +9,10 @@ from pathlib import Path
 from typing import Any, Callable
 
 from her_repo_path_bootstrap import ensure_partner_system_roots_on_sys_path
+from match_domain.criteria_compiler import build_discovery_search_request
+from match_domain.criteria_snapshots import save_compiled_snapshot
+from match_domain.persona_loader import load_persona_row
+from match_domain.search_visibility import search_profiles_with_visibility_gate
 from observability import metric_gauge
 from partner_search import load_self_profile, search_profiles
 
@@ -83,6 +87,7 @@ def _search_request_meta(
     self_profile: dict[str, Any] | None,
     effective_self_id: int | None,
     normalized_limit: int,
+    compiled: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "source": source,
@@ -94,6 +99,8 @@ def _search_request_meta(
         "table_name": None,
         "photos_table_name": None,
         "limit_count": normalized_limit,
+        "compiled": deepcopy(compiled or {}),
+        "source_map": deepcopy((compiled or {}).get("source_map") or {}),
     }
 
 
@@ -143,19 +150,39 @@ def search_partner_candidates_with(
     )
     effective_self_id = session.profile_id if isinstance(self_profile, dict) and self_profile else None
     normalized_limit = max(1, min(int(limit or 5), 10))
+    persona_row = load_persona_row(source=persona_memory_source() or source, user_key=str(session.requester_id))
+    compiled_request = build_discovery_search_request(
+        source=source,
+        profile_row=self_profile,
+        persona_row=persona_row,
+        criteria_overrides=dict(criteria or {}),
+        self_id=effective_self_id,
+        limit=normalized_limit,
+    )
+    compiled = dict(compiled_request.get("compiled") or {})
     request_meta = _search_request_meta(
         session,
         source=source,
-        criteria=criteria,
-        self_profile=self_profile,
+        criteria=compiled_request.get("criteria") or {},
+        self_profile=compiled_request.get("self_profile"),
         effective_self_id=effective_self_id,
         normalized_limit=normalized_limit,
+        compiled=compiled,
     )
     try:
-        response = search(
+        save_compiled_snapshot(
+            compiled,
+            scene="discovery_search",
+            profile_id=session.profile_id,
+            requester_id=session.requester_id,
+            user_key=str(session.requester_id),
+            discovery_session_id=session.session_id,
+        )
+        response = search_profiles_with_visibility_gate(
+            search,
             source=source,
-            criteria=dict(criteria or {}),
-            self_profile=self_profile,
+            criteria=dict(compiled_request.get("criteria") or {}),
+            self_profile=compiled_request.get("self_profile"),
             self_id=effective_self_id,
             limit=normalized_limit,
             photo_preview_count=3,
@@ -207,7 +234,7 @@ def sync_requester_persona_memory(
                 "user_key": str(session.requester_id),
                 "source_type": "explicit",
                 "patch": normalized_patch,
-                "sync_profile": True,
+                "sync_profile": False,
                 "conversation_ref": f"discovery/{session.session_id}",
                 "basis": "discovery_agent",
             },
@@ -230,6 +257,41 @@ def sync_requester_persona_memory(
         "user_key": str(session.requester_id),
         "patch_keys": list(session.state["last_persona_sync_fields"]),
         "upsert": upsert_result,
+    }
+
+
+def run_discovery_collect_then_search(
+    session: StoredSession,
+    *,
+    persona_patch: dict[str, Any] | None = None,
+    criteria: dict[str, Any] | None = None,
+    limit: int = 5,
+    source: str | None = None,
+    load_profile: Callable[..., Any] | None = None,
+    search: Callable[..., dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Service-layer orchestration: explicit collect first, then compile/search."""
+    collect_result = None
+    if persona_patch:
+        collect_result = sync_requester_persona_memory(session, patch=persona_patch)
+        if not collect_result.get("synced"):
+            return {
+                "orchestration": "collect_failed",
+                "collect": collect_result,
+                "search": None,
+            }
+    search_response = search_partner_candidates(
+        session,
+        criteria=criteria or {},
+        limit=limit,
+        source=source,
+        load_profile=load_profile,
+        search=search,
+    )
+    return {
+        "orchestration": "collect_then_search" if persona_patch else "search_only",
+        "collect": collect_result,
+        "search": search_response,
     }
 
 
@@ -347,6 +409,7 @@ __all__ = [
     "persona_memory_source",
     "persist_search_run",
     "profile_source",
+    "run_discovery_collect_then_search",
     "search_partner_candidates",
     "sync_requester_persona_memory",
 ]

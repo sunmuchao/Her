@@ -8,7 +8,13 @@ export async function hydrateSessionFromAuthMe(): Promise<boolean> {
     const data = await fetchAuthMe()
     applyAuthMePayload(data)
     const user = data.user || {}
-    return user.requester_id != null || user.profile_id != null
+    const principal = data.principal
+    return (
+      user.requester_id != null ||
+      user.profile_id != null ||
+      principal?.requester_id != null ||
+      principal?.profile_id != null
+    )
   } catch {
     return false
   }

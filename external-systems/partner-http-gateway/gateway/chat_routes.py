@@ -7,9 +7,8 @@ from typing import Any, Protocol
 
 from match_domain import get_trace_id  # noqa: E402
 
-from recommendation_system import (  # type: ignore[import-untyped]
-    get_match_case as recommendation_get_match_case,
-    list_match_case_events as recommendation_list_match_case_events,
+from matchmaking_system.proxy_intro import (  # type: ignore[import-untyped]
+    get_match_case as proxy_intro_get_match_case,
 )
 from matchmaking_system import (  # type: ignore[import-untyped]
     get_match_case,
@@ -22,6 +21,7 @@ from chat_system import (  # type: ignore[import-untyped]
     get_conversation,
     get_or_create_thread,
     get_thread,
+    get_thread_by_case,
     get_thread_summary,
     list_case_conversations,
     list_conversation_messages,
@@ -29,7 +29,17 @@ from chat_system import (  # type: ignore[import-untyped]
     post_conversation_message,
     post_message,
 )
-from relationship_ledger import get_relation_by_key  # type: ignore[import-untyped]
+from relationship_ledger import (  # type: ignore[import-untyped]
+    build_unified_timeline_from_ledger,
+    get_relation_by_case_id,
+    get_relation_for_lookup_keys,
+    summarize_ledger_relation_for_timeline,
+)
+from relationship_ledger.runtime import (  # type: ignore[import-untyped]
+    ledger_allow_legacy_fallback,
+    ledger_read_mode,
+    ledger_reads_require_primary,
+)
 from chat_system.async_tasks import (  # type: ignore[import-untyped]
     JOB_RUN_CHAT_MAINTENANCE,
     enqueue_chat_async_job,
@@ -172,6 +182,40 @@ def _post_chat_message(
     return 201, out
 
 
+def _collect_timeline_relation_keys(
+    *,
+    mm_case: dict[str, Any] | None,
+    rec_case: dict[str, Any] | None,
+    chat_thread: dict[str, Any] | None,
+) -> list[str | None]:
+    keys: list[str | None] = []
+    if rec_case:
+        keys.extend(
+            [
+                rec_case.get("relation_key"),
+                rec_case.get("canonical_relation_key"),
+            ]
+        )
+    if mm_case:
+        keys.extend(
+            [
+                mm_case.get("relation_key"),
+                mm_case.get("canonical_relation_key"),
+                mm_case.get("canonical_pair_key"),
+                mm_case.get("pair_key"),
+            ]
+        )
+    if chat_thread:
+        thread_metadata = chat_thread.get("metadata") or {}
+        keys.extend(
+            [
+                thread_metadata.get("ledger_relation_key"),
+                chat_thread.get("relation_key"),
+            ]
+        )
+    return keys
+
+
 def timeline_payload(
     gateway: ChatGateway,
     case_id: str,
@@ -179,59 +223,135 @@ def timeline_payload(
     *,
     message_limit: int = 50,
 ) -> dict[str, Any]:
-    chat_part = gateway._with_chat(build_chat_timeline, case_id, viewer_id, message_limit=message_limit)
-    ledger_part: dict[str, Any] = {"relation": None, "cases": [], "events": [], "summary": None}
+    chat_part = gateway._with_chat(
+        build_case_conversation_timeline,
+        case_id,
+        viewer_id,
+        message_limit=message_limit,
+    )
+    try:
+        thread_row = gateway._with_chat(get_thread_by_case, case_id)
+    except Exception:
+        thread_row = None
+    if thread_row:
+        chat_part = {**chat_part, "thread": _json_safe(thread_row)}
+        flat_messages: list[dict[str, Any]] = []
+        for item in chat_part.get("conversations") or []:
+            flat_messages.extend(item.get("messages") or [])
+        if not flat_messages:
+            flat_messages = gateway._with_chat(
+                list_messages,
+                str(thread_row["thread_id"]),
+                viewer_id,
+                limit=message_limit,
+            )
+        chat_part["messages"] = _json_safe(flat_messages)
+    relation = None
+    resolved_key: str | None = None
+    try:
+        relation = gateway._with_ledger(get_relation_by_case_id, case_id)
+        if relation:
+            resolved_key = str(relation.get("relation_key") or "").strip() or None
+    except Exception:
+        relation = None
+
+    mm_part: dict[str, Any] = {"case": None, "events": []}
+    rec_part: dict[str, Any] = {"case": None, "events": []}
+    load_domain_events = not ledger_reads_require_primary() or ledger_allow_legacy_fallback()
     try:
         case = gateway._with_mm(get_match_case, case_id)
-        events = gateway._with_mm(list_match_case_events, case_id)
+        events = (
+            gateway._with_mm(list_match_case_events, case_id) if load_domain_events else []
+        )
         mm_part = {"case": _json_safe(case), "events": _json_safe(events)}
     except ValueError:
         mm_part = {"case": None, "events": []}
-    rec_part: dict[str, Any] = {"case": None, "events": []}
     try:
-        rec_case = gateway._with_rec(recommendation_get_match_case, case_id)
+        rec_case = gateway._with_proxy_intro(proxy_intro_get_match_case, case_id)
         if rec_case:
-            rec_events = gateway._with_rec(recommendation_list_match_case_events, case_id)
-            rec_part = {"case": _json_safe(rec_case), "events": _json_safe(rec_events)}
+            rec_part = {"case": _json_safe(rec_case), "events": []}
     except Exception:
         rec_part = {"case": None, "events": []}
-    relation_key = None
-    if mm_part.get("case"):
-        relation_key = mm_part["case"].get("canonical_pair_key") or mm_part["case"].get("pair_key")
-    elif rec_part.get("case"):
-        relation_key = (
-            rec_part["case"].get("relation_key")
-            or rec_part["case"].get("canonical_relation_key")
-            or rec_part["case"].get("pair_key")
+    if not relation:
+        lookup_keys = _collect_timeline_relation_keys(
+            mm_case=mm_part.get("case"),
+            rec_case=rec_part.get("case"),
+            chat_thread=chat_part.get("thread"),
         )
-    elif chat_part.get("thread"):
-        thread_metadata = chat_part["thread"].get("metadata") or {}
-        relation_key = thread_metadata.get("ledger_relation_key") or chat_part["thread"].get("relation_key")
-    if relation_key:
         try:
-            relation = gateway._with_ledger(get_relation_by_key, relation_key)
-            if relation:
-                ledger_part = {
-                    "relation": _json_safe(relation),
-                    "cases": _json_safe(relation.get("cases") or []),
-                    "events": _json_safe(relation.get("events") or []),
-                    "summary": {
-                        "relation_status": relation.get("relation_status"),
-                        "current_phase": relation.get("current_phase"),
-                        "active_case_id": relation.get("active_case_id"),
-                        "latest_chat_thread_id": relation.get("latest_chat_thread_id"),
-                        "event_count": len(relation.get("events") or []),
-                        "case_count": len(relation.get("cases") or []),
-                    },
-                }
+            relation, resolved_key = gateway._with_ledger(
+                get_relation_for_lookup_keys,
+                lookup_keys,
+                case_id=case_id,
+            )
         except Exception:
-            ledger_part = {"relation": None, "cases": [], "events": [], "summary": None}
+            relation = None
+
+    lookup_keys = _collect_timeline_relation_keys(
+        mm_case=mm_part.get("case"),
+        rec_case=rec_part.get("case"),
+        chat_thread=chat_part.get("thread"),
+    )
+    ledger_part: dict[str, Any] = {
+        "relation": None,
+        "cases": [],
+        "events": [],
+        "summary": None,
+        "lookup_keys": [key for key in lookup_keys if key],
+        "read_mode": ledger_read_mode(),
+    }
+    if relation:
+        ledger_part = {
+            "relation": _json_safe(relation),
+            "cases": _json_safe(relation.get("cases") or []),
+            "events": _json_safe(relation.get("events") or []),
+            "summary": _json_safe(summarize_ledger_relation_for_timeline(relation)),
+            "resolved_relation_key": resolved_key,
+            "lookup_keys": [key for key in lookup_keys if key],
+            "read_mode": ledger_read_mode(),
+        }
+
+    unified_timeline = build_unified_timeline_from_ledger(relation) if relation else []
+    if unified_timeline:
+        source_mode = "ledger_primary"
+    elif ledger_reads_require_primary():
+        source_mode = "ledger_unavailable"
+    elif ledger_allow_legacy_fallback():
+        source_mode = "legacy_fallback"
+        legacy_events: list[dict[str, Any]] = []
+        for event in rec_part.get("events") or []:
+            legacy_events.append({**event, "source": "recommendation_case_event"})
+        for event in mm_part.get("events") or []:
+            legacy_events.append({**event, "source": "matchmaking_case_event"})
+        legacy_events.sort(key=lambda row: str(row.get("occurred_at") or ""))
+        unified_timeline = legacy_events
+    else:
+        source_mode = "ledger_unavailable"
+
+    if source_mode == "ledger_primary":
+        ledger_summary = ledger_part.get("summary") or {}
+        case_mirror = {
+            **ledger_summary,
+            "active_case_id": ledger_summary.get("active_case_id") or case_id,
+            "case_status": ledger_summary.get("case_progress_status")
+            or ledger_summary.get("active_case_status"),
+        }
+        mm_out = {"case": case_mirror if mm_part.get("case") else None, "events": []}
+        rec_out = {"case": case_mirror if rec_part.get("case") else None, "events": []}
+        if not mm_out["case"] and not rec_out["case"]:
+            mm_out = {"case": case_mirror, "events": []}
+    else:
+        mm_out = mm_part
+        rec_out = rec_part
+
     return {
         "case_id": case_id,
         "viewer_id": viewer_id,
+        "source_mode": source_mode,
+        "unified_timeline": _json_safe(unified_timeline),
         "chat": _json_safe(chat_part),
-        "matchmaking": mm_part,
-        "recommendation": rec_part,
+        "matchmaking": mm_out,
+        "recommendation": rec_out,
         "ledger": ledger_part,
     }
 
@@ -256,16 +376,30 @@ def rest_chat_create_thread(
     metadata = dict(kwargs.get("metadata") or {})
     case_id = str(kwargs.get("case_id") or "").strip()
     if case_id:
+        ledger_relation_key = None
         try:
-            rec_case = gateway._with_rec(recommendation_get_match_case, case_id)
-        except Exception:
-            rec_case = None
-        if rec_case and rec_case.get("relation_key"):
-            metadata["ledger_relation_key"] = rec_case["relation_key"]
-        elif rec_case and rec_case.get("canonical_relation_key"):
-            metadata["ledger_relation_key"] = rec_case["canonical_relation_key"]
-        elif rec_case and rec_case.get("pair_key"):
-            metadata["ledger_relation_key"] = rec_case["pair_key"]
+            mm_case = gateway._with_mm(get_match_case, case_id)
+            ledger_relation_key = (
+                mm_case.get("relation_key")
+                or mm_case.get("canonical_relation_key")
+                or mm_case.get("canonical_pair_key")
+                or mm_case.get("pair_key")
+            )
+        except ValueError:
+            pass
+        if not ledger_relation_key:
+            try:
+                rec_case = gateway._with_proxy_intro(proxy_intro_get_match_case, case_id)
+            except Exception:
+                rec_case = None
+            if rec_case:
+                ledger_relation_key = (
+                    rec_case.get("relation_key")
+                    or rec_case.get("canonical_relation_key")
+                    or rec_case.get("pair_key")
+                )
+        if ledger_relation_key:
+            metadata["ledger_relation_key"] = ledger_relation_key
     if metadata:
         kwargs["metadata"] = metadata
     thread = gateway._with_chat(get_or_create_thread, **kwargs)
@@ -437,7 +571,28 @@ def rest_chat_case_conversation_timeline(
         requester_id,
         message_limit=_parse_int(q.get("message_limit") or "50", 50),
     )
-    return 200, _json_safe(out)
+    ledger_summary = None
+    unified_timeline: list[dict[str, Any]] = []
+    source_mode = "ledger_unavailable"
+    relation = None
+    try:
+        relation = gateway._with_ledger(get_relation_by_case_id, str(case_id))
+    except Exception:
+        relation = None
+    if relation and relation.get("events"):
+        ledger_summary = summarize_ledger_relation_for_timeline(relation)
+        unified_timeline = build_unified_timeline_from_ledger(relation)
+        source_mode = "ledger_primary"
+    elif ledger_allow_legacy_fallback():
+        source_mode = "legacy_fallback"
+    return 200, _json_safe(
+        {
+            **out,
+            "source_mode": source_mode,
+            "ledger_summary": ledger_summary,
+            "unified_timeline": unified_timeline,
+        }
+    )
 
 
 def rest_timeline(
@@ -449,6 +604,7 @@ def rest_timeline(
     viewer_id = gateway._resolve_actor_bound_id(environ, q.get("viewer_id"), field_name="viewer_id")
     if not case_id:
         raise ValueError("case_id is required")
+    gateway._get_case_for_actor(environ, case_id)
     return 200, timeline_payload(
         gateway,
         case_id,

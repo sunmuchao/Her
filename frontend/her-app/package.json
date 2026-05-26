@@ -9,7 +9,9 @@
     "lint": "eslint .",
     "test:unit": "vitest run",
     "e2e:her": "playwright test tests/e2e/her-flow.spec.ts --reporter=line",
-    "e2e:her:stub": "bash ./scripts/run-her-e2e.sh"
+    "e2e:her:stub": "bash ./scripts/run-her-e2e.sh",
+    "e2e:her:ci": "bash ./scripts/run-her-e2e-ci.sh",
+    "e2e:mock-banner": "playwright test tests/e2e/mock-fallback-banner.spec.ts --reporter=line"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",

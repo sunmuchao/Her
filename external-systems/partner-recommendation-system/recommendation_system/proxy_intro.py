@@ -32,7 +32,38 @@ from .service import (  # noqa: E402
     parse_dt,
 )
 from .storage import json_dumps, json_loads, row_to_dict
-from relationship_ledger.runtime import append_event_to_default_ledger
+
+from match_domain.proxy_intro_storage import (
+    event_source_service,
+    storage_adapter_label,
+    table_names,
+    use_matchmaking_storage,
+)
+from relationship_ledger.runtime import defer_ledger_event, flush_ledger_mirror
+from relationship_ledger.runtime import _CONN_LEDGER_MIRRORS  # noqa: PLC2701
+
+
+def _t():
+    return table_names()
+
+
+def _rec_conn(recommendation_conn, case_conn):
+    return recommendation_conn if recommendation_conn is not None else case_conn
+
+
+def _pair(case_conn, recommendation_conn=None):
+    rec = _rec_conn(recommendation_conn, case_conn)
+    return case_conn, rec
+
+
+def commit_proxy_intro_transaction(case_conn, recommendation_conn=None) -> None:
+    rec = _rec_conn(recommendation_conn, case_conn)
+    rec.commit()
+    if id(case_conn) != id(rec):
+        case_conn.commit()
+    entries = list(_CONN_LEDGER_MIRRORS.pop(id(rec), []))
+    entries.extend(_CONN_LEDGER_MIRRORS.pop(id(case_conn), []))
+    flush_ledger_mirror(entries)
 
 
 DEFAULT_OUTREACH_CHANNEL = "in_app_proxy_intro"
@@ -118,7 +149,12 @@ def build_outreach_payload(
     }
 
 
-def inflate_match_case(case: dict[str, Any] | None, *, conn=None) -> dict[str, Any] | None:
+def inflate_match_case(
+    case: dict[str, Any] | None,
+    *,
+    conn=None,
+    recommendation_conn=None,
+) -> dict[str, Any] | None:
     if not case:
         return None
     inflated = dict(case)
@@ -132,20 +168,21 @@ def inflate_match_case(case: dict[str, Any] | None, *, conn=None) -> dict[str, A
     inflated["reply_payload"] = json_loads(inflated.pop("reply_payload_json"), {})
     inflated["case_type"] = inflated.get("case_type") or CaseType.PROXY_INTRO.value
     recommendation = None
-    if conn is not None:
+    case_conn, rec_conn = _pair(conn, recommendation_conn) if conn is not None else (None, None)
+    if rec_conn is not None:
         recommendation_id = inflated.get("recommendation_id")
         subscription_id = inflated.get("subscription_id")
         candidate_id = inflated.get("candidate_id")
         if recommendation_id is not None and subscription_id and candidate_id is not None:
-            recommendation = get_recommendation(conn, str(subscription_id), int(candidate_id))
+            recommendation = get_recommendation(rec_conn, str(subscription_id), int(candidate_id))
     if recommendation:
         inflated["relation_key"] = recommendation.get("relation_key")
         inflated["owner_profile_ref"] = recommendation.get("owner_profile_ref")
         inflated["target_profile_ref"] = recommendation.get("target_profile_ref")
     cid = inflated.get("case_id")
     ledger_events = []
-    if conn is not None and cid:
-        event_rows = list_match_case_events(conn, str(cid))
+    if case_conn is not None and cid:
+        event_rows = list_match_case_events(case_conn, str(cid))
         ledger_events = match_events_from_case_event_rows(event_rows)
     inflated["case_ledger_event_count"] = len(ledger_events)
     reduced = reduce_case_ledger(ledger_events)
@@ -175,16 +212,52 @@ def inflate_match_case_attempt(attempt: dict[str, Any] | None) -> dict[str, Any]
     return inflated
 
 
-def get_match_case(conn, case_id: str) -> dict[str, Any] | None:
-    row = conn.execute("SELECT * FROM match_cases WHERE case_id = ?", (case_id,)).fetchone()
-    return inflate_match_case(row_to_dict(row), conn=conn)
+
+
+def get_legacy_proxy_intro_case(recommendation_conn, case_id: str) -> dict[str, Any] | None:
+    """Read proxy-intro row from legacy recommendation ``match_cases`` table."""
+    import os
+
+    row = recommendation_conn.execute(
+        "SELECT * FROM match_cases WHERE case_id = ?",
+        (case_id,),
+    ).fetchone()
+    if not row:
+        return None
+    prev = os.environ.get("HER_PROXY_INTRO_STORAGE")
+    os.environ["HER_PROXY_INTRO_STORAGE"] = "recommendation"
+    try:
+        return inflate_match_case(
+            row_to_dict(row),
+            conn=recommendation_conn,
+            recommendation_conn=recommendation_conn,
+        )
+    finally:
+        if prev is None:
+            os.environ.pop("HER_PROXY_INTRO_STORAGE", None)
+        else:
+            os.environ["HER_PROXY_INTRO_STORAGE"] = prev
+
+
+def get_match_case(
+    case_conn,
+    case_id: str,
+    *,
+    recommendation_conn=None,
+) -> dict[str, Any] | None:
+    row = case_conn.execute(f"SELECT * FROM {_t().cases} WHERE case_id = ?", (case_id,)).fetchone()
+    return inflate_match_case(
+        row_to_dict(row),
+        conn=case_conn,
+        recommendation_conn=recommendation_conn,
+    )
 
 
 def list_match_cases_for_subscription(conn, subscription_id: str) -> list[dict[str, Any]]:
     rows = conn.execute(
-        """
+        f"""
         SELECT *
-        FROM match_cases
+        FROM {_t().cases}
         WHERE subscription_id = ?
         ORDER BY created_at DESC, case_id DESC
         """,
@@ -195,9 +268,9 @@ def list_match_cases_for_subscription(conn, subscription_id: str) -> list[dict[s
 
 def list_match_case_events(conn, case_id: str) -> list[dict[str, Any]]:
     rows = conn.execute(
-        """
+        f"""
         SELECT *
-        FROM match_case_events
+        FROM {_t().events}
         WHERE case_id = ?
         ORDER BY occurred_at ASC, event_id ASC
         """,
@@ -208,9 +281,9 @@ def list_match_case_events(conn, case_id: str) -> list[dict[str, Any]]:
 
 def list_match_case_outreach_attempts(conn, case_id: str) -> list[dict[str, Any]]:
     rows = conn.execute(
-        """
+        f"""
         SELECT *
-        FROM match_case_outreach_attempts
+        FROM {_t().attempts}
         WHERE case_id = ?
         ORDER BY sent_at ASC, attempt_id ASC
         """,
@@ -221,9 +294,9 @@ def list_match_case_outreach_attempts(conn, case_id: str) -> list[dict[str, Any]
 
 def list_match_cases_for_recommendation(conn, recommendation_id: int) -> list[dict[str, Any]]:
     rows = conn.execute(
-        """
+        f"""
         SELECT *
-        FROM match_cases
+        FROM {_t().cases}
         WHERE recommendation_id = ?
         ORDER BY created_at DESC, case_id DESC
         """,
@@ -234,9 +307,9 @@ def list_match_cases_for_recommendation(conn, recommendation_id: int) -> list[di
 
 def get_latest_match_case_for_recommendation(conn, recommendation_id: int) -> dict[str, Any] | None:
     row = conn.execute(
-        """
+        f"""
         SELECT *
-        FROM match_cases
+        FROM {_t().cases}
         WHERE recommendation_id = ?
         ORDER BY created_at DESC, case_id DESC
         LIMIT 1
@@ -248,9 +321,9 @@ def get_latest_match_case_for_recommendation(conn, recommendation_id: int) -> di
 
 def get_active_match_case_for_recommendation(conn, recommendation_id: int) -> dict[str, Any] | None:
     row = conn.execute(
-        """
+        f"""
         SELECT *
-        FROM match_cases
+        FROM {_t().cases}
         WHERE recommendation_id = ?
           AND case_status IN ('pending_outreach', 'awaiting_reply', 'accepted')
         ORDER BY created_at DESC, case_id DESC
@@ -262,8 +335,10 @@ def get_active_match_case_for_recommendation(conn, recommendation_id: int) -> di
 
 
 def _record_case_event(
-    conn,
+    case_conn,
     *,
+    recommendation_conn=None,
+
     case: dict[str, Any],
     event_type: str,
     actor_type: str,
@@ -272,12 +347,13 @@ def _record_case_event(
     now: datetime,
     payload: dict[str, Any] | None = None,
 ) -> None:
-    recommendation = get_recommendation(conn, case["subscription_id"], int(case["candidate_id"]))
+    _, rec_conn = _pair(case_conn, recommendation_conn)
+    recommendation = get_recommendation(rec_conn, case["subscription_id"], int(case["candidate_id"]))
     event = build_case_aggregate_event(
         event_type=event_type,
         case_id=str(case["case_id"]),
         case_type=CaseType.PROXY_INTRO,
-        source_service="recommendation-system",
+        source_service=event_source_service(),
         actor_type=actor_type,
         actor_id=(
             str(case["candidate_id"])
@@ -295,9 +371,9 @@ def _record_case_event(
     )
     occurred_str = format_dt(now)
     domain_payload = dict(payload or {})
-    conn.execute(
-        """
-        INSERT INTO match_case_events (
+    case_conn.execute(
+        f"""
+        INSERT INTO {_t().events} (
           case_id,
           subscription_id,
           recommendation_id,
@@ -328,25 +404,28 @@ def _record_case_event(
         ),
     )
     append_outbox_pending(
-        conn,
+        case_conn,
         event=event,
-        source_row_table="match_case_events",
-        source_row_id=conn.lastrowid or None,
+        source_row_table=_t().events,
+        source_row_id=case_conn.lastrowid or None,
         created_at_str=occurred_str,
     )
     if recommendation:
-        append_event_to_default_ledger(
-            event=event,
-            relation_key=str(recommendation["relation_key"]),
-            owner_profile_ref=recommendation.get("owner_profile_ref"),
-            target_profile_ref=recommendation.get("target_profile_ref"),
-            case_id=str(case["case_id"]),
-            case_type=CaseType.PROXY_INTRO.value,
+        defer_ledger_event(
+            rec_conn,
+            {
+                "event": event,
+                "relation_key": str(recommendation["relation_key"]),
+                "owner_profile_ref": recommendation.get("owner_profile_ref"),
+                "target_profile_ref": recommendation.get("target_profile_ref"),
+                "case_id": str(case["case_id"]),
+                "case_type": CaseType.PROXY_INTRO.value,
+            },
         )
 
 
 def _sync_recommendation_for_case(
-    conn,
+    recommendation_conn,
     *,
     recommendation: dict[str, Any],
     case_id: str | None,
@@ -358,7 +437,7 @@ def _sync_recommendation_for_case(
     now: datetime | None = None,
 ) -> None:
     _now = current_time(now)
-    conn.execute(
+    recommendation_conn.execute(
         """
         UPDATE profile_recommendations
         SET delivery_status = ?,
@@ -377,15 +456,15 @@ def _sync_recommendation_for_case(
             recommendation["recommendation_id"],
         ),
     )
-    row = conn.execute(
+    row = recommendation_conn.execute(
         "SELECT * FROM profile_recommendations WHERE recommendation_id = ?",
         (recommendation["recommendation_id"],),
     ).fetchone()
     rec_row = row_to_dict(row)
     if rec_row:
-        subscription = get_subscription(conn, rec_row["subscription_id"])
+        subscription = get_subscription(recommendation_conn, rec_row["subscription_id"])
         append_relation_state_revision_event(
-            conn,
+            recommendation_conn,
             subscription=subscription,
             recommendation_row=rec_row,
             now=_now,
@@ -393,8 +472,10 @@ def _sync_recommendation_for_case(
 
 
 def create_match_case(
-    conn,
+    case_conn,
     *,
+    recommendation_conn=None,
+
     subscription_id: str,
     candidate_id: int,
     now: datetime | None = None,
@@ -404,8 +485,9 @@ def create_match_case(
     request_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     now = current_time(now)
-    subscription = get_subscription(conn, subscription_id)
-    recommendation = get_recommendation(conn, subscription_id, int(candidate_id))
+    _, rec_conn = _pair(case_conn, recommendation_conn)
+    subscription = get_subscription(rec_conn, subscription_id)
+    recommendation = get_recommendation(rec_conn, subscription_id, int(candidate_id))
     if not recommendation:
         raise ValueError(f"Unknown recommendation for subscription={subscription_id} candidate_id={candidate_id}")
     if recommendation.get("delivery_status") == "direct_greet_started":
@@ -413,11 +495,11 @@ def create_match_case(
     if recommendation.get("delivery_status") == "escalated_to_case" and not recommendation.get("active_match_case_id"):
         raise ValueError("Candidate already completed the proxy-intro flow.")
 
-    active_case = get_active_match_case_for_recommendation(conn, recommendation["recommendation_id"])
+    active_case = get_active_match_case_for_recommendation(case_conn, recommendation["recommendation_id"])
     if active_case:
         raise ValueError(f"Candidate already has an active match case: {active_case['case_id']}")
 
-    latest_case = get_latest_match_case_for_recommendation(conn, recommendation["recommendation_id"])
+    latest_case = get_latest_match_case_for_recommendation(case_conn, recommendation["recommendation_id"])
     if latest_case and latest_case["case_status"] == "accepted":
         raise ValueError("Candidate already accepted a proxy-intro case.")
     if latest_case and latest_case["case_status"] in {"declined", "timed_out"}:
@@ -439,9 +521,9 @@ def create_match_case(
     }
     candidate_snapshot = dict(recommendation.get("latest_payload") or {})
 
-    conn.execute(
-        """
-        INSERT INTO match_cases (
+    case_conn.execute(
+        f"""
+        INSERT INTO {_t().cases} (
           case_id,
           subscription_id,
           recommendation_id,
@@ -484,7 +566,8 @@ def create_match_case(
         ),
     )
     _record_case_event(
-        conn,
+        case_conn,
+        recommendation_conn=recommendation_conn,
         case={
             "case_id": case_id,
             "subscription_id": subscription_id,
@@ -500,7 +583,7 @@ def create_match_case(
         payload={"request_payload": request_payload or {}},
     )
     insert_recommendation_action(
-        conn,
+        rec_conn,
         subscription=subscription,
         recommendation=recommendation,
         action_type="request_proxy_intro",
@@ -513,7 +596,7 @@ def create_match_case(
         },
     )
     _sync_recommendation_for_case(
-        conn,
+        rec_conn,
         recommendation=recommendation,
         case_id=case_id,
         case_status="pending_outreach",
@@ -522,7 +605,7 @@ def create_match_case(
         active=True,
         now=now,
     )
-    conn.commit()
+    commit_proxy_intro_transaction(case_conn, recommendation_conn)
     funnel_stage(
         system="recommendation",
         stage=RECOMMENDATION_FUNNEL_PROXY_INTRO,
@@ -532,12 +615,13 @@ def create_match_case(
         candidate_id=int(candidate_id),
         initiated_by=initiated_by,
     )
-    return get_match_case(conn, case_id)
+    return get_match_case(case_conn, case_id, recommendation_conn=recommendation_conn)
 
 
 def _update_case_status(
-    conn,
+    case_conn,
     *,
+    recommendation_conn=None,
     case: dict[str, Any],
     new_status: str,
     now: datetime,
@@ -551,10 +635,11 @@ def _update_case_status(
     recommendation_delivery_status: str | None = None,
     recommendation_delivery_reason: str | None = None,
 ) -> dict[str, Any]:
+    _, rec_conn = _pair(case_conn, recommendation_conn)
     reply_payload_json = json_dumps(reply_payload) if reply_payload is not None else None
-    conn.execute(
-        """
-        UPDATE match_cases
+    case_conn.execute(
+        f"""
+        UPDATE {_t().cases}
         SET case_status = ?,
             close_reason = COALESCE(?, close_reason),
             reply_payload_json = COALESCE(?, reply_payload_json),
@@ -574,10 +659,10 @@ def _update_case_status(
         ),
     )
     if recommendation_delivery_status is not None and recommendation_delivery_reason is not None:
-        recommendation = get_recommendation(conn, case["subscription_id"], int(case["candidate_id"]))
+        recommendation = get_recommendation(rec_conn, case["subscription_id"], int(case["candidate_id"]))
         if recommendation:
             _sync_recommendation_for_case(
-                conn,
+                rec_conn,
                 recommendation=recommendation,
                 case_id=active_match_case_id,
                 case_status=active_case_status or new_status,
@@ -588,7 +673,8 @@ def _update_case_status(
                 now=now,
             )
     _record_case_event(
-        conn,
+        case_conn,
+        recommendation_conn=recommendation_conn,
         case=case,
         event_type=event_type,
         actor_type=actor_type,
@@ -597,30 +683,32 @@ def _update_case_status(
         now=now,
         payload={"close_reason": close_reason, "reply_payload": reply_payload or {}},
     )
-    return get_match_case(conn, case["case_id"])
+    return get_match_case(case_conn, case["case_id"], recommendation_conn=recommendation_conn)
 
 
 def dispatch_match_case_outreach(
-    conn,
+    case_conn,
     *,
+    recommendation_conn=None,
     case_id: str,
     now: datetime | None = None,
     provider_message_id: str | None = None,
     payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     now = current_time(now)
-    case = get_match_case(conn, case_id)
+    _, rec_conn = _pair(case_conn, recommendation_conn)
+    case = get_match_case(case_conn, case_id, recommendation_conn=recommendation_conn)
     if not case:
         raise ValueError(f"Unknown match case: {case_id}")
     if case["case_status"] != "pending_outreach":
         raise ValueError("Only pending_outreach cases can be dispatched.")
 
-    attempts = list_match_case_outreach_attempts(conn, case_id)
+    attempts = list_match_case_outreach_attempts(case_conn, case_id)
     attempt_number = len(attempts) + 1
     dispatch_payload = payload or case.get("outreach_payload") or {}
-    conn.execute(
-        """
-        INSERT INTO match_case_outreach_attempts (
+    case_conn.execute(
+        f"""
+        INSERT INTO {_t().attempts} (
           case_id,
           attempt_number,
           channel,
@@ -640,9 +728,9 @@ def dispatch_match_case_outreach(
             format_dt(now),
         ),
     )
-    conn.execute(
-        """
-        UPDATE match_cases
+    case_conn.execute(
+        f"""
+        UPDATE {_t().cases}
         SET case_status = 'awaiting_reply',
             outreach_sent_at = COALESCE(outreach_sent_at, ?),
             updated_at = ?
@@ -655,7 +743,8 @@ def dispatch_match_case_outreach(
         ),
     )
     _record_case_event(
-        conn,
+        case_conn,
+        recommendation_conn=recommendation_conn,
         case=case,
         event_type="outreach_sent",
         actor_type="system",
@@ -664,10 +753,10 @@ def dispatch_match_case_outreach(
         now=now,
         payload=dispatch_payload,
     )
-    recommendation = get_recommendation(conn, case["subscription_id"], int(case["candidate_id"]))
+    recommendation = get_recommendation(rec_conn, case["subscription_id"], int(case["candidate_id"]))
     if recommendation:
         _sync_recommendation_for_case(
-            conn,
+            rec_conn,
             recommendation=recommendation,
             case_id=case["case_id"],
             case_status="awaiting_reply",
@@ -676,13 +765,14 @@ def dispatch_match_case_outreach(
             active=True,
             now=now,
         )
-    conn.commit()
-    return get_match_case(conn, case_id)
+    commit_proxy_intro_transaction(case_conn, recommendation_conn)
+    return get_match_case(case_conn, case_id, recommendation_conn=recommendation_conn)
 
 
 def dispatch_pending_match_cases(
-    conn,
+    case_conn,
     *,
+    recommendation_conn=None,
     now: datetime | None = None,
     case_ids: Iterable[str] | None = None,
 ) -> dict[str, Any]:
@@ -690,10 +780,10 @@ def dispatch_pending_match_cases(
     if case_ids:
         case_ids = list(case_ids)
         placeholders = ", ".join(["?"] * len(case_ids))
-        rows = conn.execute(
+        rows = case_conn.execute(
             f"""
             SELECT *
-            FROM match_cases
+            FROM {_t().cases}
             WHERE case_status = 'pending_outreach'
               AND case_id IN ({placeholders})
             ORDER BY created_at ASC, case_id ASC
@@ -701,31 +791,43 @@ def dispatch_pending_match_cases(
             case_ids,
         ).fetchall()
     else:
-        rows = conn.execute(
-            """
+        rows = case_conn.execute(
+            f"""
             SELECT *
-            FROM match_cases
+            FROM {_t().cases}
             WHERE case_status = 'pending_outreach'
             ORDER BY created_at ASC, case_id ASC
             """
         ).fetchall()
-    cases = [inflate_match_case(row_to_dict(row), conn=conn) for row in rows]
+    cases = [
+        inflate_match_case(row_to_dict(row), conn=case_conn, recommendation_conn=recommendation_conn)
+        for row in rows
+    ]
     dispatched = []
     for case in cases:
-        dispatched.append(dispatch_match_case_outreach(conn, case_id=case["case_id"], now=now))
+        dispatched.append(
+            dispatch_match_case_outreach(
+                case_conn,
+                recommendation_conn=recommendation_conn,
+                case_id=case["case_id"],
+                now=now,
+            )
+        )
     return {"dispatched_count": len(dispatched), "cases": dispatched}
 
 
 def record_match_case_reply(
-    conn,
+    case_conn,
     *,
+    recommendation_conn=None,
     case_id: str,
     reply_type: str,
     now: datetime | None = None,
     reply_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     now = current_time(now)
-    case = get_match_case(conn, case_id)
+    _, rec_conn = _pair(case_conn, recommendation_conn)
+    case = get_match_case(case_conn, case_id, recommendation_conn=recommendation_conn)
     if not case:
         raise ValueError(f"Unknown match case: {case_id}")
     if case["case_status"] != "awaiting_reply":
@@ -734,12 +836,13 @@ def record_match_case_reply(
     reply_type = str(reply_type).strip().lower()
     if reply_type not in {"accepted", "declined"}:
         raise ValueError(f"Unsupported reply_type: {reply_type}")
-    subscription = get_subscription(conn, case["subscription_id"])
-    recommendation = get_recommendation(conn, case["subscription_id"], int(case["candidate_id"]))
+    subscription = get_subscription(rec_conn, case["subscription_id"])
+    recommendation = get_recommendation(rec_conn, case["subscription_id"], int(case["candidate_id"]))
 
     if reply_type == "accepted":
         updated_case = _update_case_status(
-            conn,
+            case_conn,
+            recommendation_conn=recommendation_conn,
             case=case,
             new_status="accepted",
             now=now,
@@ -752,7 +855,7 @@ def record_match_case_reply(
             recommendation_delivery_reason="proxy_intro_accepted",
         )
         insert_recommendation_action(
-            conn,
+            rec_conn,
             subscription=subscription,
             recommendation=recommendation,
             action_type="proxy_intro_reply_accepted",
@@ -764,7 +867,8 @@ def record_match_case_reply(
     else:
         cooling_until = now + timedelta(days=DEFAULT_DECLINE_COOLDOWN_DAYS)
         updated_case = _update_case_status(
-            conn,
+            case_conn,
+            recommendation_conn=recommendation_conn,
             case=case,
             new_status="declined",
             now=now,
@@ -777,7 +881,7 @@ def record_match_case_reply(
             recommendation_delivery_reason="proxy_intro_declined",
         )
         insert_recommendation_action(
-            conn,
+            rec_conn,
             subscription=subscription,
             recommendation=recommendation,
             action_type="proxy_intro_reply_declined",
@@ -786,13 +890,14 @@ def record_match_case_reply(
             now=now,
             action_payload=reply_payload or {},
         )
-    conn.commit()
+    commit_proxy_intro_transaction(case_conn, recommendation_conn)
     return updated_case
 
 
 def close_match_case(
-    conn,
+    case_conn,
     *,
+    recommendation_conn=None,
     case_id: str,
     close_reason: str = "handoff_completed",
     now: datetime | None = None,
@@ -800,14 +905,15 @@ def close_match_case(
     close_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     now = current_time(now)
-    case = get_match_case(conn, case_id)
+    _, rec_conn = _pair(case_conn, recommendation_conn)
+    case = get_match_case(case_conn, case_id, recommendation_conn=recommendation_conn)
     if not case:
         raise ValueError(f"Unknown match case: {case_id}")
     if case["case_status"] not in {"accepted", "awaiting_reply", "pending_outreach"}:
         raise ValueError("Only open match cases can be closed.")
 
-    subscription = get_subscription(conn, case["subscription_id"])
-    recommendation = get_recommendation(conn, case["subscription_id"], int(case["candidate_id"]))
+    subscription = get_subscription(rec_conn, case["subscription_id"])
+    recommendation = get_recommendation(rec_conn, case["subscription_id"], int(case["candidate_id"]))
     if close_reason == "handoff_completed":
         delivery_status = "escalated_to_case"
         delivery_reason = "proxy_intro_handoff_completed"
@@ -829,9 +935,9 @@ def close_match_case(
         delivery_reason = close_reason
         cooling_until = None
 
-    conn.execute(
-        """
-        UPDATE match_cases
+    case_conn.execute(
+        f"""
+        UPDATE {_t().cases}
         SET case_status = 'closed',
             close_reason = ?,
             cooling_until = ?,
@@ -847,7 +953,7 @@ def close_match_case(
     )
     if recommendation:
         _sync_recommendation_for_case(
-            conn,
+            rec_conn,
             recommendation=recommendation,
             case_id=None,
             case_status=None,
@@ -858,7 +964,7 @@ def close_match_case(
             now=now,
         )
         insert_recommendation_action(
-            conn,
+            rec_conn,
             subscription=subscription,
             recommendation=recommendation,
             action_type=f"proxy_intro_closed_{close_reason}",
@@ -868,7 +974,8 @@ def close_match_case(
             action_payload=close_payload or {},
         )
     _record_case_event(
-        conn,
+        case_conn,
+        recommendation_conn=recommendation_conn,
         case=case,
         event_type="case_closed",
         actor_type=actor_type,
@@ -877,13 +984,14 @@ def close_match_case(
         now=now,
         payload=close_payload or {"close_reason": close_reason},
     )
-    conn.commit()
-    return get_match_case(conn, case_id)
+    commit_proxy_intro_transaction(case_conn, recommendation_conn)
+    return get_match_case(case_conn, case_id, recommendation_conn=recommendation_conn)
 
 
 def close_timed_out_match_cases(
-    conn,
+    case_conn,
     *,
+    recommendation_conn=None,
     now: datetime | None = None,
     case_ids: Iterable[str] | None = None,
 ) -> dict[str, Any]:
@@ -891,10 +999,10 @@ def close_timed_out_match_cases(
     if case_ids:
         case_ids = list(case_ids)
         placeholders = ", ".join(["?"] * len(case_ids))
-        rows = conn.execute(
+        rows = case_conn.execute(
             f"""
             SELECT *
-            FROM match_cases
+            FROM {_t().cases}
             WHERE case_status = 'awaiting_reply'
               AND case_id IN ({placeholders})
               AND reply_deadline_at <= ?
@@ -903,10 +1011,10 @@ def close_timed_out_match_cases(
             [*case_ids, format_dt(now)],
         ).fetchall()
     else:
-        rows = conn.execute(
-            """
+        rows = case_conn.execute(
+            f"""
             SELECT *
-            FROM match_cases
+            FROM {_t().cases}
             WHERE case_status = 'awaiting_reply'
               AND reply_deadline_at <= ?
             ORDER BY reply_deadline_at ASC, case_id ASC
@@ -914,13 +1022,18 @@ def close_timed_out_match_cases(
             (format_dt(now),),
         ).fetchall()
 
+    _, rec_conn = _pair(case_conn, recommendation_conn)
     timed_out_cases = []
     for row in rows:
-        case = inflate_match_case(row_to_dict(row), conn=conn)
+        case = inflate_match_case(
+            row_to_dict(row),
+            conn=case_conn,
+            recommendation_conn=recommendation_conn,
+        )
         cooling_until = now + timedelta(days=DEFAULT_TIMEOUT_COOLDOWN_DAYS)
-        conn.execute(
-            """
-            UPDATE match_cases
+        case_conn.execute(
+            f"""
+            UPDATE {_t().cases}
             SET case_status = 'timed_out',
                 close_reason = 'reply_timeout',
                 cooling_until = ?,
@@ -933,11 +1046,11 @@ def close_timed_out_match_cases(
                 case["case_id"],
             ),
         )
-        recommendation = get_recommendation(conn, case["subscription_id"], int(case["candidate_id"]))
+        recommendation = get_recommendation(rec_conn, case["subscription_id"], int(case["candidate_id"]))
         if recommendation:
-            subscription = get_subscription(conn, case["subscription_id"])
+            subscription = get_subscription(rec_conn, case["subscription_id"])
             _sync_recommendation_for_case(
-                conn,
+                rec_conn,
                 recommendation=recommendation,
                 case_id=None,
                 case_status=None,
@@ -948,7 +1061,7 @@ def close_timed_out_match_cases(
                 now=now,
             )
             insert_recommendation_action(
-                conn,
+                rec_conn,
                 subscription=subscription,
                 recommendation=recommendation,
                 action_type="proxy_intro_timed_out",
@@ -958,7 +1071,8 @@ def close_timed_out_match_cases(
                 action_payload={"reason": "reply_deadline_elapsed"},
             )
         _record_case_event(
-            conn,
+            case_conn,
+            recommendation_conn=recommendation_conn,
             case=case,
             event_type="case_timed_out",
             actor_type="system",
@@ -967,6 +1081,8 @@ def close_timed_out_match_cases(
             now=now,
             payload={"reason": "reply_deadline_elapsed"},
         )
-        timed_out_cases.append(get_match_case(conn, case["case_id"]))
-    conn.commit()
+        timed_out_cases.append(
+            get_match_case(case_conn, case["case_id"], recommendation_conn=recommendation_conn)
+        )
+    commit_proxy_intro_transaction(case_conn, recommendation_conn)
     return {"timed_out_count": len(timed_out_cases), "cases": timed_out_cases}
