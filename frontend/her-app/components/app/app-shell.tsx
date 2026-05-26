@@ -13,6 +13,7 @@ import VerificationFlowPage from '@/components/her/verification-flow-page'
 import { PageTransition, SlideInTransition } from '@/components/her/ui/page-transitions'
 import type { CandidatePreview } from '@/lib/types/candidate'
 import { DEMO_DEFAULT_CHAT_ID } from '@/lib/navigation/defaults'
+import { cn } from '@/lib/utils'
 import type { SubView, TabType } from '@/lib/navigation/types'
 
 type AppShellProps = {
@@ -55,13 +56,24 @@ export function AppShell({
   onOpenOnboarding,
 }: AppShellProps) {
   const { inboxUnreadCount, relationshipsBadge, refreshBadges } = useBadgeCounts()
+  const isMatchmakerMain = currentTab === 'matchmaker' && subView === 'main'
 
   return (
-    <div className="min-h-screen bg-background flex flex-col max-w-md mx-auto relative overflow-hidden">
+    <div className="flex h-dvh max-h-dvh w-full max-w-md mx-auto flex-col relative overflow-hidden bg-background">
       <div className="absolute inset-0 bg-gradient-to-b from-rose-soft/30 via-background to-background pointer-events-none" />
-      <main className="flex-1 overflow-y-auto pb-24 relative z-10">
-        {currentTab === 'matchmaker' && subView === 'main' && (
-          <PageTransition key="matchmaker-main">
+      <main
+        className={cn(
+          'relative z-10 min-h-0',
+          isMatchmakerMain
+            ? 'flex flex-1 flex-col overflow-hidden'
+            : 'flex-1 overflow-y-auto pb-24',
+        )}
+      >
+        {isMatchmakerMain && (
+          <PageTransition
+            key="matchmaker-main"
+            className="flex h-full min-h-0 flex-1 flex-col overflow-hidden"
+          >
             <DiscoverPage
               onViewCandidate={(id, candidate) => onViewCandidate(id, candidate)}
               onOpenInbox={onOpenInbox}

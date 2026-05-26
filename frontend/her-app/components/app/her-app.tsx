@@ -134,6 +134,7 @@ export function HerApp() {
       default:
         if (isMainShellPage(nav.currentPage)) {
           return (
+            <div className="h-dvh w-full overflow-hidden">
             <AppShell
               currentTab={nav.currentTab}
               subView={nav.subView}
@@ -155,6 +156,7 @@ export function HerApp() {
               onOpenCollectedPreferences={nav.handleOpenCollectedPreferences}
               onOpenOnboarding={() => handleNavigate('auth-onboarding')}
             />
+            </div>
           )
         }
         return <SplashScreen onComplete={() => handleNavigate('auth-welcome')} />
