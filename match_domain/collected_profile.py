@@ -108,6 +108,45 @@ def extract_collected_statements(persona: Mapping[str, Any] | None) -> dict[str,
     }
 
 
+def _flatten_matcher_nested(record: Mapping[str, Any]) -> dict[str, Any]:
+    flat: dict[str, Any] = {}
+    for nested_key in ("matcher_preferences", "matcher_risks"):
+        nested = record.get(nested_key)
+        if not isinstance(nested, dict):
+            continue
+        for key, value in nested.items():
+            if _has_value(value):
+                flat[key] = value
+    return flat
+
+
+def merge_collected_for_compile(
+    *,
+    profile_row: Mapping[str, Any] | None = None,
+    persona_row: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Merge persona collected fields with synced profile preferences (profile wins on conflict)."""
+
+    from match_domain.reciprocal_preferences import enrich_record_for_reciprocal
+
+    persona_collected = extract_collected_statements(persona_row or {})
+    profile_collected: dict[str, Any] = {}
+    if profile_row:
+        enriched = enrich_record_for_reciprocal(profile_row)
+        profile_collected = dict(extract_collected_statements(enriched))
+        for key, value in _flatten_matcher_nested(enriched).items():
+            if key in COLLECTED_PERSONA_FIELDS and _has_value(value):
+                profile_collected[key] = value
+        if _has_value(enriched.get("relationship_goal")) and not profile_collected.get(
+            "self_relationship_goal"
+        ):
+            profile_collected["self_relationship_goal"] = enriched["relationship_goal"]
+
+    merged = dict(persona_collected)
+    merged.update(profile_collected)
+    return merged
+
+
 def filter_explicit_patch(patch: Mapping[str, Any], source_type: str) -> dict[str, Any]:
     if source_type in INFERENCE_SOURCE_TYPES:
         return {}

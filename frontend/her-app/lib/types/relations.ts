@@ -1,4 +1,4 @@
-export type LedgerSummary = {
+type LedgerSummary = {
   relation_key?: string
   relation_status?: string
   current_phase?: string

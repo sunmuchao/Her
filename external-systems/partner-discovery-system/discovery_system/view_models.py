@@ -134,39 +134,6 @@ def build_profile_detail_view_from_payload(
     }
 
 
-def build_profile_detail_view(profile_id: int) -> dict[str, Any]:
-    return {
-        "hero": {
-            "name": f"候选人 {profile_id}",
-            "age": None,
-            "city": "待接真实资料",
-            "headline": "发现页资料详情骨架",
-        },
-        "photo_gallery": [],
-        "verified_sections": [
-            {
-                "title": "已核验信息",
-                "items": ["待接真实认证数据"],
-            }
-        ],
-        "self_reported_sections": [
-            {
-                "title": "自我介绍",
-                "items": ["待接真实资料正文"],
-            }
-        ],
-        "caution_sections": [
-            {
-                "title": "你需要知道",
-                "items": ["当前仍是 discovery 接入骨架，尚未接真实详情读模型。"],
-            }
-        ],
-        "matchmaker_notes": [
-            "这里预留给 GPT 红娘或后端读模型返回的承接说明。",
-        ],
-    }
-
-
 def _build_detail_headline(profile: dict[str, Any]) -> str:
     parts = [
         str(item).strip()

@@ -8,15 +8,12 @@ import json
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-for extra in (
-    REPO_ROOT,
-    REPO_ROOT / "external-systems" / "partner-recommendation-system",
-    REPO_ROOT / "external-systems" / "partner-matchmaking-system",
-    REPO_ROOT / "external-systems" / "partner-chat-system",
-):
-    if str(extra) not in sys.path:
-        sys.path.insert(0, str(extra))
+_SCRIPTS_DIR = Path(__file__).resolve().parent
+if str(_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR))
+from _repo_bootstrap import bootstrap_repo  # noqa: E402
+
+REPO_ROOT = bootstrap_repo()
 
 from match_domain import (  # noqa: E402
     match_event_from_mapping,

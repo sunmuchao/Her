@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 from typing import Any, Protocol
-from urllib.parse import unquote
 
 from match_domain import get_trace_id  # noqa: E402
 
@@ -12,7 +11,6 @@ from relationship_ledger import (  # type: ignore[import-untyped]
     build_cross_system_funnel_dashboard,
     build_relation_dashboard,
     build_unified_timeline_from_ledger,
-    get_relation_by_case_id,
     get_relation_by_key,
     list_relations,
     list_relations_for_profile_refs,
@@ -61,24 +59,6 @@ def rest_get_relation(
         return 404, {"error": {"code": "not_found", "message": "relation not found"}}
     gateway._assert_actor_can_access_ledger_relation(environ, relation)
     return 200, {
-        "relation": _json_safe(relation),
-        "summary": _json_safe(summarize_ledger_relation_for_timeline(relation)),
-        "unified_timeline": _json_safe(build_unified_timeline_from_ledger(relation)),
-        "trace_id": get_trace_id(),
-    }
-
-
-def rest_get_relation_by_case(
-    gateway: LedgerGateway,
-    environ: dict[str, Any],
-    case_id: str,
-) -> tuple[int, dict[str, Any]]:
-    relation = gateway._with_ledger(get_relation_by_case_id, case_id)
-    if not relation:
-        return 404, {"error": {"code": "not_found", "message": "relation not found for case"}}
-    gateway._assert_actor_can_access_ledger_relation(environ, relation)
-    return 200, {
-        "case_id": case_id,
         "relation": _json_safe(relation),
         "summary": _json_safe(summarize_ledger_relation_for_timeline(relation)),
         "unified_timeline": _json_safe(build_unified_timeline_from_ledger(relation)),
@@ -154,7 +134,4 @@ def dispatch_ledger_rest(
         return rest_list_relations(gateway, environ)
     if path == "/v1/relations/dashboard" and method == "GET":
         return rest_ledger_dashboard(gateway, environ)
-    match = re.fullmatch(r"/v1/relations/by-case/([^/]+)", path)
-    if match and method == "GET":
-        return rest_get_relation_by_case(gateway, environ, unquote(match.group(1)))
     return None

@@ -54,25 +54,3 @@ export async function fetchRecommendationDecisionTrace(recommendationId: number 
     { includeAuth: true },
   )
 }
-
-export async function activateRuleConfigVersion(versionId: string) {
-  return gatewayJson<{ version: Record<string, unknown> }>(
-    `/v1/ops/rule-config/versions/${encodeURIComponent(versionId)}/activate`,
-    { method: 'POST', includeAuth: true },
-  )
-}
-
-export async function createRuleConfigAssignment(payload: {
-  assignment_id: string
-  version_id: string
-  slice_id: string
-  scope_type: string
-  scope_key: string
-  priority?: number
-}) {
-  return gatewayJson<{ assignment: Record<string, unknown> }>('/v1/ops/rule-config/assignments', {
-    method: 'POST',
-    includeAuth: true,
-    body: JSON.stringify(payload),
-  })
-}

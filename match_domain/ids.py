@@ -11,7 +11,7 @@ from typing import Any, Mapping
 
 from .adapters import recommendation_owner_ref, recommendation_target_ref
 from .model import ProfileRef
-from .trace_context import (
+from her_runtime_context import (
     TRACE_ID_HEX_LEN,
     get_trace_id,
     new_trace_id,

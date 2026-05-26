@@ -13,7 +13,7 @@ except ImportError:  # pragma: no cover
 
 from datetime import datetime
 
-from match_domain.trace_context import get_trace_id
+from her_runtime_context import get_trace_id
 from observability import CHAT_FUNNEL_PERSONA_JOB_ENQUEUED, funnel_stage
 from profile_service import apply_persona_patch
 

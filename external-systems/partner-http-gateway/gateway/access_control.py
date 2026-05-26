@@ -9,7 +9,6 @@ from observability import audit_event
 from recommendation_system import get_recommendation_by_id, get_subscription  # type: ignore[import-untyped]
 from matchmaking_system.proxy_intro import get_match_case as get_proxy_intro_match_case  # type: ignore[import-untyped]
 from matchmaking_system import get_match_case, get_pool_member  # type: ignore[import-untyped]
-from relationship_ledger import get_relation_by_case_id  # type: ignore[import-untyped]
 
 from match_domain.principal import PROFILE_ID_FIELD_ALIASES
 

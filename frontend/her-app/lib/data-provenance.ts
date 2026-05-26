@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from 'react'
 
-export type DataProvenanceSource = 'api' | 'mock_fallback' | 'empty'
+type DataProvenanceSource = 'api' | 'mock_fallback' | 'empty'
 
 export type DataProvenance = {
   source: DataProvenanceSource

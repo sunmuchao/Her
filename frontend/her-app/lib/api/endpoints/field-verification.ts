@@ -14,7 +14,7 @@ const FIELD_KEY_MAP: Record<string, string> = {
   income: 'income',
 }
 
-export function mapUiFieldToApiKey(fieldId: string): string {
+function mapUiFieldToApiKey(fieldId: string): string {
   return FIELD_KEY_MAP[fieldId] || fieldId
 }
 

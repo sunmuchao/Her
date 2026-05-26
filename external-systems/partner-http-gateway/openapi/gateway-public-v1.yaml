@@ -1,0 +1,58 @@
+openapi: 3.0.3
+info:
+  title: Her Partner Gateway (public surface)
+  version: 1.0.0
+  description: Contract subset for CI schema checks (§10.3).
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        "200":
+          description: OK
+  /v1/search/profiles:
+    post:
+      summary: Search candidate profiles
+      responses:
+        "200":
+          description: Search results
+        "403":
+          description: Forbidden
+  /v1/recommendation/cards:
+    get:
+      summary: List in-app recommendation cards
+      responses:
+        "200":
+          description: Cards
+  /v1/auth/sms/send-code:
+    post:
+      summary: Send SMS verification code
+      responses:
+        "200":
+          description: Sent
+        "503":
+          description: SMS provider unavailable
+  /v1/auth/sms/verify-code:
+    post:
+      summary: Verify SMS code and issue session
+      responses:
+        "200":
+          description: Session issued
+  /v1/auth/wechat/login:
+    post:
+      summary: WeChat OAuth login
+      responses:
+        "200":
+          description: Session issued
+  /v1/profile/me:
+    get:
+      summary: Current user profile facts
+      responses:
+        "200":
+          description: Profile
+  /v1/timeline:
+    get:
+      summary: Relationship timeline (ledger_primary)
+      responses:
+        "200":
+          description: Timeline events

@@ -8,9 +8,12 @@ import os
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+_SCRIPTS_DIR = Path(__file__).resolve().parent
+if str(_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR))
+from _repo_bootstrap import bootstrap_repo  # noqa: E402
+
+REPO_ROOT = bootstrap_repo()
 
 from persona_memory_sync.persona_memory_lib import (  # noqa: E402
     DEFAULT_PERSONA_TABLE,

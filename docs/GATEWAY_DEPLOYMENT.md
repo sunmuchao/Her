@@ -17,7 +17,9 @@ her-gateway-ops      SURFACE=ops      ENABLE_JSONRPC=0   → /v1/ops/* workbench
 her-gateway-internal SURFACE=internal ENABLE_JSONRPC=1   → schedulers / scripts
 ```
 
-Local development keeps `SURFACE=all`.
+Local development keeps `SURFACE=all`, or use `docker compose up` for three gateway services (see root `docker-compose.yml`).
+
+Production cutover checklist: [`TECH_OPTIMIZATION_10_3_IMPLEMENTATION.md`](./TECH_OPTIMIZATION_10_3_IMPLEMENTATION.md).
 
 ## Route faces
 

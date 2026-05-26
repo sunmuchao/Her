@@ -25,11 +25,17 @@ export function ErrorState({
         className,
       )}
       role="alert"
+      aria-labelledby="error-state-title"
+      aria-describedby="error-state-message"
     >
       <AlertCircle className="w-10 h-10 text-destructive" aria-hidden="true" />
       <div>
-        <p className="text-sm font-medium text-foreground">{title}</p>
-        <p className="text-sm text-muted-foreground mt-1">{message}</p>
+        <p id="error-state-title" className="text-sm font-medium text-foreground">
+          {title}
+        </p>
+        <p id="error-state-message" className="text-sm text-muted-foreground mt-1">
+          {message}
+        </p>
       </div>
       <div className="flex flex-wrap gap-2 justify-center">
         {onBack && (
@@ -45,6 +51,7 @@ export function ErrorState({
           <button
             type="button"
             onClick={onRetry}
+            aria-label="重试加载"
             className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary text-primary-foreground text-sm font-medium"
           >
             <RefreshCw className="w-4 h-4" aria-hidden="true" />

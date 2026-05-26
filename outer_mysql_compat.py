@@ -52,12 +52,13 @@ def _normalize_row(row: Any) -> Mapping[str, Any] | None:
 class MySQLCompatConnection:
     """Thin facade: `execute` maps `?` → `%s`, returns a result with `fetchone` / `fetchall`; plus `commit`, `rollback`, `close`."""
 
-    __slots__ = ("_conn", "config", "_lastrowid")
+    __slots__ = ("_conn", "config", "_lastrowid", "dsn")
 
-    def __init__(self, pymysql_conn: Any, config: dict[str, Any]) -> None:
+    def __init__(self, pymysql_conn: Any, config: dict[str, Any], *, dsn: str | None = None) -> None:
         self._conn = pymysql_conn
         self.config = config
         self._lastrowid = 0
+        self.dsn = str(dsn).strip() if dsn else None
 
     def execute(self, sql: str, parameters: Iterable[Any] | None = None) -> _CursorResult:
         mysql_sql = sql.replace("?", "%s")
@@ -119,4 +120,4 @@ def connect_mysql_repo_db(dsn: str, *, subsystem_name: str) -> MySQLCompatConnec
     config = _schema.parse_mysql_dsn(str(dsn))
     _schema.ensure_database(config)
     raw = _schema.mysql_database_connect(config)
-    return MySQLCompatConnection(raw, config)
+    return MySQLCompatConnection(raw, config, dsn=str(dsn))

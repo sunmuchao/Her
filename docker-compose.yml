@@ -1,0 +1,168 @@
+# Her local / staging stack (§10.3 DevEx)
+# Usage:
+#   docker compose up -d
+#   docker compose --profile frontend up -d
+#   scripts/compose_bootstrap.sh
+
+services:
+  mysql:
+    image: mysql:8.0
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+    ports:
+      - "3307:3306"
+    volumes:
+      - her_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  bootstrap:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.her
+    env_file:
+      - .env.example
+    environment:
+      HER_E2E_MYSQL_HOST: mysql
+      HER_E2E_MYSQL_PORT: "3306"
+      HER_RELATION_LEDGER_DB: mysql://root@mysql:3306/her_relationship_ledger
+      PARTNER_RECOMMENDATION_DB: mysql://root@mysql:3306/her_recommendation
+      PARTNER_MATCHMAKING_DB: mysql://root@mysql:3306/her_matchmaking
+      PARTNER_CHAT_DB: mysql://root@mysql:3306/her_chat
+      PARTNER_DISCOVERY_DB: mysql://root@mysql:3306/her_discovery
+      PERSONA_MEMORY_MYSQL_SOURCE: mysql://root@mysql:3306/her?table=profiles
+      HER_PROFILE_SOURCE_DSN: mysql://root@mysql:3306/her?table=profiles
+      HER_PROXY_INTRO_STORAGE: matchmaking
+      HER_RELATION_LEDGER_READ_MODE: ledger_primary
+      PARTNER_SEARCH_CACHE_TTL_SECONDS: "120"
+      PARTNER_SEARCH_CACHE_MAX_ENTRIES: "256"
+      PARTNER_SEARCH_SNAPSHOT_PERSIST: "1"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    command: ["python", "scripts/compose_bootstrap.py"]
+    restart: "no"
+
+  gateway-public:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.her
+    env_file:
+      - .env.example
+    environment:
+      PARTNER_GATEWAY_SURFACE: public
+      PARTNER_GATEWAY_ENABLE_JSONRPC: "0"
+      PARTNER_GATEWAY_DB_POOL_MAX: "16"
+      HER_E2E_MYSQL_HOST: mysql
+      HER_E2E_MYSQL_PORT: "3306"
+      HER_RELATION_LEDGER_DB: mysql://root@mysql:3306/her_relationship_ledger
+      PARTNER_RECOMMENDATION_DB: mysql://root@mysql:3306/her_recommendation
+      PARTNER_MATCHMAKING_DB: mysql://root@mysql:3306/her_matchmaking
+      PARTNER_CHAT_DB: mysql://root@mysql:3306/her_chat
+      PARTNER_DISCOVERY_DB: mysql://root@mysql:3306/her_discovery
+      PERSONA_MEMORY_MYSQL_SOURCE: mysql://root@mysql:3306/her?table=profiles
+      HER_PROFILE_SOURCE_DSN: mysql://root@mysql:3306/her?table=profiles
+    ports:
+      - "8080:8080"
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+    command: ["python", "-m", "gateway", "--host", "0.0.0.0", "--port", "8080"]
+
+  gateway-ops:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.her
+    env_file:
+      - .env.example
+    environment:
+      PARTNER_GATEWAY_SURFACE: ops
+      PARTNER_GATEWAY_ENABLE_JSONRPC: "0"
+      PARTNER_GATEWAY_DB_POOL_MAX: "8"
+      HER_E2E_MYSQL_HOST: mysql
+      HER_E2E_MYSQL_PORT: "3306"
+      HER_RELATION_LEDGER_DB: mysql://root@mysql:3306/her_relationship_ledger
+      PARTNER_RECOMMENDATION_DB: mysql://root@mysql:3306/her_recommendation
+      PARTNER_MATCHMAKING_DB: mysql://root@mysql:3306/her_matchmaking
+      PARTNER_CHAT_DB: mysql://root@mysql:3306/her_chat
+      PARTNER_DISCOVERY_DB: mysql://root@mysql:3306/her_discovery
+      PERSONA_MEMORY_MYSQL_SOURCE: mysql://root@mysql:3306/her?table=profiles
+      HER_PROFILE_SOURCE_DSN: mysql://root@mysql:3306/her?table=profiles
+    ports:
+      - "8081:8080"
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+    command: ["python", "-m", "gateway", "--host", "0.0.0.0", "--port", "8080"]
+
+  gateway-internal:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.her
+    env_file:
+      - .env.example
+    environment:
+      PARTNER_GATEWAY_SURFACE: internal
+      PARTNER_GATEWAY_ENABLE_JSONRPC: "1"
+      PARTNER_GATEWAY_DB_POOL_MAX: "8"
+      HER_E2E_MYSQL_HOST: mysql
+      HER_E2E_MYSQL_PORT: "3306"
+      HER_RELATION_LEDGER_DB: mysql://root@mysql:3306/her_relationship_ledger
+      PARTNER_RECOMMENDATION_DB: mysql://root@mysql:3306/her_recommendation
+      PARTNER_MATCHMAKING_DB: mysql://root@mysql:3306/her_matchmaking
+      PARTNER_CHAT_DB: mysql://root@mysql:3306/her_chat
+      PARTNER_DISCOVERY_DB: mysql://root@mysql:3306/her_discovery
+      PERSONA_MEMORY_MYSQL_SOURCE: mysql://root@mysql:3306/her?table=profiles
+      HER_PROFILE_SOURCE_DSN: mysql://root@mysql:3306/her?table=profiles
+    ports:
+      - "8082:8080"
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+    command: ["python", "-m", "gateway", "--host", "0.0.0.0", "--port", "8080"]
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.her
+    env_file:
+      - .env.example
+    environment:
+      HER_E2E_MYSQL_HOST: mysql
+      HER_E2E_MYSQL_PORT: "3306"
+      HER_RELATION_LEDGER_DB: mysql://root@mysql:3306/her_relationship_ledger
+      PARTNER_RECOMMENDATION_DB: mysql://root@mysql:3306/her_recommendation
+      PARTNER_MATCHMAKING_DB: mysql://root@mysql:3306/her_matchmaking
+      PARTNER_CHAT_DB: mysql://root@mysql:3306/her_chat
+      PARTNER_DISCOVERY_DB: mysql://root@mysql:3306/her_discovery
+      PERSONA_MEMORY_MYSQL_SOURCE: mysql://root@mysql:3306/her?table=profiles
+      HER_PROFILE_SOURCE_DSN: mysql://root@mysql:3306/her?table=profiles
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+      gateway-internal:
+        condition: service_started
+    command: ["python", "-m", "task_scheduler"]
+
+  frontend:
+    profiles: ["frontend"]
+    image: node:22-bookworm
+    working_dir: /app
+    volumes:
+      - ./frontend/her-app:/app
+    environment:
+      GATEWAY_URL: http://gateway-public:8080
+      NEXT_PUBLIC_ALLOW_MOCK_FALLBACK: "false"
+      NEXT_PUBLIC_USE_AUTH_STUB: "true"
+    ports:
+      - "3000:3000"
+    depends_on:
+      - gateway-public
+    command: ["sh", "-c", "corepack enable && pnpm install && pnpm dev --hostname 0.0.0.0"]
+
+volumes:
+  her_mysql_data:

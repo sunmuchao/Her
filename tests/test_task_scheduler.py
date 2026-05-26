@@ -99,7 +99,7 @@ def test_register_jobs_recommendation(tmp_path: Path) -> None:
     )
     sched = BlockingScheduler()
     registered = register_jobs(sched, s)
-    assert len(registered) == 6
+    assert len(registered) == 4
     assert sched.get_job("recommendation.async_job_worker") is not None
     assert sched.get_job("recommendation.outbox_worker") is not None
     assert sched.get_job("recommendation.refresh_saved_searches") is not None

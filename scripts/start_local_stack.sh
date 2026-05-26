@@ -126,6 +126,11 @@ ensure_frontend_deps
 echo "Starting local MySQL"
 (cd "${REPO_ROOT}" && ./start_partner_mysql.sh)
 
+echo "Running §10.3 cutover (proxy intro migration + ledger backfill)"
+if ! "${VENV_PY}" "${REPO_ROOT}/scripts/tech_optimization_cutover.py"; then
+  echo "Warning: tech optimization cutover failed; stack may still start but data may be incomplete." >&2
+fi
+
 start_service \
   "gateway" \
   "${GATEWAY_DIR}" \

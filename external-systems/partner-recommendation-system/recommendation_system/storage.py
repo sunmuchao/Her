@@ -34,6 +34,7 @@ connect_db, initialize_database, reset_all_tables = build_external_storage_helpe
     subsystem_name="Recommendation",
     target="recommendation",
     table_names=schema_table_names("recommendation_tables"),
+    default_dsn=DEFAULT_RECOMMENDATION_MYSQL_DSN,
 )
 
 

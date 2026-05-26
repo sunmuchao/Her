@@ -70,25 +70,3 @@ export function ProgressRing({
     </div>
   )
 }
-
-// Verification progress with multiple steps
-interface VerificationProgressProps {
-  steps: { label: string; completed: boolean }[]
-  className?: string
-}
-
-export function VerificationProgress({ steps, className }: VerificationProgressProps) {
-  const completedCount = steps.filter(s => s.completed).length
-  const progress = (completedCount / steps.length) * 100
-
-  return (
-    <div className={cn('flex flex-col items-center gap-2', className)}>
-      <ProgressRing progress={progress} size={48} strokeWidth={3} color="rose">
-        <span className="text-xs font-medium">{completedCount}/{steps.length}</span>
-      </ProgressRing>
-      <span className="text-xs text-muted-foreground">
-        {completedCount === steps.length ? '认证完成' : '认证进度'}
-      </span>
-    </div>
-  )
-}

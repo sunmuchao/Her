@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import outer_system_mysql_schema as _schema
 
-from db_migrations.core import MigrationContext, MigrationSpec
+from db_migrations.core import MigrationSpec
 from db_migrations.helpers import apply_system_schema, default_scope, validate_system_schema
 
 

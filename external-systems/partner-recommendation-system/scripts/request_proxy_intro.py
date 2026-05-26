@@ -6,17 +6,15 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
 
+from _cli_common import bootstrap_script_paths, load_json_arg
 
-_partner_rec_root = Path(__file__).resolve().parents[1]
-_repo_root = Path(__file__).resolve().parents[3]
-for root in (_partner_rec_root, _repo_root):
-    if str(root) not in sys.path:
-        sys.path.insert(0, str(root))
+bootstrap_script_paths()
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 
 from recommendation_system import connect_db, create_match_case, initialize_database  # noqa: E402
 from match_domain.script_actor import (  # noqa: E402
@@ -26,14 +24,6 @@ from match_domain.script_actor import (  # noqa: E402
     clear_actor,
 )
 from recommendation_system.storage import DEFAULT_RECOMMENDATION_MYSQL_DSN  # noqa: E402
-
-
-def load_json_arg(value: str | None) -> dict:
-    if not value:
-        return {}
-    if value.startswith("@"):
-        return json.loads(Path(value[1:]).read_text(encoding="utf-8"))
-    return json.loads(value)
 
 
 def parse_args() -> argparse.Namespace:
@@ -58,7 +48,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
-    load_dotenv(_repo_root / ".env", override=True)
+    load_dotenv(_REPO_ROOT / ".env", override=True)
     args = parse_args()
     actor_token = activate_actor_from_args(
         args,

@@ -140,7 +140,7 @@ def rest_create_subscription(
     body: dict[str, Any],
 ) -> tuple[int, dict[str, Any]]:
     now = _parse_optional_now(body)
-    kwargs = {key: value for key, value in body.items() if key != "now"}
+    kwargs = {key: value for key, value in body.items() if key not in {"now", "profile_id"}}
     requester_id = resolve_optional_profile_id(
         gateway,
         environ,

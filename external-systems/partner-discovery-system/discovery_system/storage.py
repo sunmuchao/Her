@@ -109,6 +109,7 @@ connect_db, initialize_database, reset_all_tables = build_external_storage_helpe
     subsystem_name="Discovery",
     target="discovery",
     table_names=schema_table_names("discovery_tables"),
+    default_dsn=DEFAULT_DISCOVERY_MYSQL_DSN,
 )
 
 
@@ -156,6 +157,17 @@ class InMemoryDiscoveryStorage:
         if action is None or action.session_id != session_id:
             return None
         return deepcopy(action)
+
+    def get_actions(self, session_id: str, action_ids: list[str]) -> dict[str, StoredAction]:
+        out: dict[str, StoredAction] = {}
+        for raw_action_id in action_ids:
+            action_id = str(raw_action_id or "").strip()
+            if not action_id:
+                continue
+            action = self.get_action(session_id, action_id)
+            if action is not None:
+                out[action_id] = action
+        return out
 
     def mark_action_consumed(self, action_id: str, now: datetime) -> None:
         action = self._actions[action_id]
@@ -450,6 +462,20 @@ class MySQLDiscoveryStorage:
         finally:
             conn.close()
 
+    def _stored_action_from_row(self, row: dict[str, Any] | None) -> StoredAction | None:
+        if row is None:
+            return None
+        return StoredAction(
+            action_id=str(row["action_id"]),
+            session_id=str(row["session_id"]),
+            label=str(row["label"]),
+            style=str(row["style"]),
+            semantic_payload=dict(json_loads(str(row.get("semantic_payload_json") or "{}"), {}) or {}),
+            created_at=_parse_datetime(row.get("created_at")),
+            expires_at=_parse_optional_datetime(row.get("expires_at")),
+            consumed_at=_parse_optional_datetime(row.get("consumed_at")),
+        )
+
     def get_action(self, session_id: str, action_id: str) -> StoredAction | None:
         conn = self._open()
         try:
@@ -467,18 +493,33 @@ class MySQLDiscoveryStorage:
             )
         finally:
             conn.close()
-        if row is None:
-            return None
-        return StoredAction(
-            action_id=str(row["action_id"]),
-            session_id=str(row["session_id"]),
-            label=str(row["label"]),
-            style=str(row["style"]),
-            semantic_payload=dict(json_loads(str(row.get("semantic_payload_json") or "{}"), {}) or {}),
-            created_at=_parse_datetime(row.get("created_at")),
-            expires_at=_parse_optional_datetime(row.get("expires_at")),
-            consumed_at=_parse_optional_datetime(row.get("consumed_at")),
-        )
+        return self._stored_action_from_row(row)
+
+    def get_actions(self, session_id: str, action_ids: list[str]) -> dict[str, StoredAction]:
+        normalized = [str(item or "").strip() for item in action_ids if str(item or "").strip()]
+        if not normalized:
+            return {}
+        placeholders = ", ".join(["?"] * len(normalized))
+        conn = self._open()
+        try:
+            rows = conn.execute(
+                f"""
+                SELECT action_id, session_id, label, style, semantic_payload_json,
+                       created_at, expires_at, consumed_at
+                FROM discovery_agent_actions
+                WHERE session_id = ?
+                  AND action_id IN ({placeholders})
+                """,
+                [session_id, *normalized],
+            ).fetchall()
+        finally:
+            conn.close()
+        out: dict[str, StoredAction] = {}
+        for raw_row in rows:
+            action = self._stored_action_from_row(row_to_dict(raw_row))
+            if action is not None:
+                out[action.action_id] = action
+        return out
 
     def mark_action_consumed(self, action_id: str, now: datetime) -> None:
         conn = self._open()

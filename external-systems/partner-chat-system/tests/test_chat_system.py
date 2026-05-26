@@ -9,9 +9,12 @@ import unittest
 from datetime import datetime, timedelta
 from unittest import mock
 
-import cv2
-from huggingface_hub.errors import LocalEntryNotFoundError
-import numpy as np
+import pytest
+
+pytest.importorskip("cv2")
+import cv2  # noqa: E402
+from huggingface_hub.errors import LocalEntryNotFoundError  # noqa: E402
+import numpy as np  # noqa: E402
 
 
 SYSTEM_ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -56,7 +59,7 @@ import chat_system.verification as verification_module  # noqa: E402
 import chat_system.live_video_local as live_video_local_module  # noqa: E402
 import chat_system.persona_jobs as persona_jobs_module  # noqa: E402
 import chat_system.profile_reviews as profile_reviews_module  # noqa: E402
-from chat_system.outbox_admin import (  # noqa: E402
+from chat_system.outbox import (  # noqa: E402
     claim_pending_outbox_batch,
     get_outbox_row,
     list_failed_outbox,
@@ -67,7 +70,7 @@ from chat_system.outbox_admin import (  # noqa: E402
     summarize_outbox,
 )
 from chat_system.outbox_consumer import consume_chat_outbox_batch  # noqa: E402
-from chat_system.outbox_worker import (  # noqa: E402
+from chat_system.outbox import (  # noqa: E402
     resolve_outbox_consume_config,
     run_chat_outbox_worker,
     serve_chat_outbox_worker,

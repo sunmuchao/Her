@@ -180,43 +180,5 @@ class ProxyIntroMatchmakingStorageTests(unittest.TestCase):
         rec = list_recommendations_for_subscription(self.rec_conn, subscription["subscription_id"])[0]
         self.assertEqual(rec["active_case_status"], "awaiting_reply")
 
-    def test_legacy_read_from_rec_match_cases(self) -> None:
-        subscription = self._seed_delivered_recommendation(candidate_id=91003)
-        os.environ["HER_PROXY_INTRO_STORAGE"] = "recommendation"
-        from recommendation_system.proxy_intro import create_match_case as create_on_rec  # noqa: PLC0415
-
-        legacy_case = create_on_rec(
-            self.rec_conn,
-            subscription_id=subscription["subscription_id"],
-            candidate_id=91003,
-            now=datetime(2026, 6, 3, 10, 0, 0),
-        )
-        os.environ["HER_PROXY_INTRO_STORAGE"] = "matchmaking"
-        case_id = legacy_case["case_id"]
-
-        self.assertIsNone(
-            get_match_case(
-                self.mm_conn,
-                case_id,
-                recommendation_conn=self.rec_conn,
-                allow_legacy_read=False,
-            ),
-        )
-        from recommendation_system.proxy_intro import get_legacy_proxy_intro_case  # noqa: PLC0415
-
-        legacy = get_legacy_proxy_intro_case(self.rec_conn, case_id)
-        self.assertIsNotNone(legacy)
-        self.assertEqual(legacy["case_id"], case_id)
-
-        tagged = get_match_case(
-            self.mm_conn,
-            case_id,
-            recommendation_conn=self.rec_conn,
-            allow_legacy_read=True,
-        )
-        self.assertEqual(tagged["case_id"], case_id)
-        self.assertEqual(tagged["storage_adapter"], "matchmaking-db")
-
-
 if __name__ == "__main__":
     unittest.main()

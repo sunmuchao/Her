@@ -15,7 +15,7 @@ export function coalesceProfileRequester(principal: ResolvedPrincipal | null | u
   return profileId ?? undefined
 }
 
-export function applyPrincipalToSession(
+function applyPrincipalToSession(
   principal: ResolvedPrincipal | null | undefined,
   patch: Partial<SessionContext> = {},
 ): Partial<SessionContext> {

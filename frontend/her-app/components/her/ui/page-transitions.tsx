@@ -59,27 +59,3 @@ export function SlideInTransition({ children, className = '', direction = 'right
     </div>
   )
 }
-
-// Scale-up transition for modal-like pages
-export function ScaleTransition({ children, className = '' }: PageTransitionProps) {
-  const [isVisible, setIsVisible] = useState(false)
-
-  useEffect(() => {
-    const timer = requestAnimationFrame(() => {
-      setIsVisible(true)
-    })
-    return () => cancelAnimationFrame(timer)
-  }, [])
-
-  return (
-    <div 
-      className={`transition-all duration-300 ease-out ${
-        isVisible 
-          ? 'opacity-100 scale-100' 
-          : 'opacity-0 scale-95'
-      } ${className}`}
-    >
-      {children}
-    </div>
-  )
-}

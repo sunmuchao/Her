@@ -1,6 +1,6 @@
 'use client'
 
-import { Heart, MessageCircle, Search, Mail, Users, Sparkles, UserPlus } from 'lucide-react'
+import { Heart, MessageCircle, Search, Users } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { FadeIn, Heartbeat } from './animations'
 
@@ -79,20 +79,6 @@ export function EmptySearchResults({ keyword }: { keyword: string }) {
   )
 }
 
-export function EmptyInbox({ onExplore }: { onExplore?: () => void }) {
-  return (
-    <EmptyState
-      icon={<Mail className="w-9 h-9 text-gold" />}
-      title="收件箱空空如也"
-      description="还没有收到推荐来信，去发现页看看有没有心动的人吧"
-      action={onExplore ? {
-        label: '去发现页看看',
-        onClick: onExplore
-      } : undefined}
-    />
-  )
-}
-
 export function EmptyRelationships({ onDiscover }: { onDiscover?: () => void }) {
   return (
     <EmptyState
@@ -102,34 +88,6 @@ export function EmptyRelationships({ onDiscover }: { onDiscover?: () => void }) 
       action={onDiscover ? {
         label: '去发现页',
         onClick: onDiscover
-      } : undefined}
-    />
-  )
-}
-
-export function EmptyMatches({ onChat }: { onChat?: () => void }) {
-  return (
-    <EmptyState
-      icon={<Sparkles className="w-9 h-9 text-gold" />}
-      title="还没有匹配成功"
-      description="和小雅多聊聊你的想法，她会帮你找到最适合的那个人"
-      action={onChat ? {
-        label: '和小雅聊聊',
-        onClick: onChat
-      } : undefined}
-    />
-  )
-}
-
-export function EmptyPending({ onWait }: { onWait?: () => void }) {
-  return (
-    <EmptyState
-      icon={<UserPlus className="w-9 h-9 text-rose" />}
-      title="没有待处理的请求"
-      description="当有人对你感兴趣时，会在这里显示"
-      action={onWait ? {
-        label: '继续等待',
-        onClick: onWait
       } : undefined}
     />
   )

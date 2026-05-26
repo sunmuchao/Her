@@ -10,6 +10,7 @@ from her_json_utils import json_safe
 from profile_service import get_profile, resolve_profile_source
 
 from . import search_candidates as engine
+from .search_cache import get_cached_search_run, store_cached_search_run
 
 
 @dataclass
@@ -87,8 +88,26 @@ def search(request: SearchRequest | Mapping[str, Any]) -> SearchResponse:
             include_moderation_blocked=bool(request.get("include_moderation_blocked", False)),
         )
 
+    engine_request = search_request.to_engine_request()
+    cached = get_cached_search_run(
+        criteria=dict(search_request.criteria or {}),
+        self_id=search_request.self_id,
+        limit=int(search_request.limit),
+        source=str(search_request.source) if search_request.source is not None else None,
+    )
+    if cached is not None:
+        search_run = cached
+    else:
+        search_run = engine.execute_search_request(engine_request)
+        store_cached_search_run(
+            criteria=dict(search_request.criteria or {}),
+            self_id=search_request.self_id,
+            limit=int(search_request.limit),
+            source=str(search_request.source) if search_request.source is not None else None,
+            search_run=search_run,
+        )
     return SearchResponse(
-        search_run=engine.execute_search_request(search_request.to_engine_request()),
+        search_run=search_run,
         include_source=search_request.include_source,
     )
 

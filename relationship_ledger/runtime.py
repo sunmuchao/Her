@@ -103,7 +103,9 @@ def try_get_relation_by_key(
     relation_key = str(relation_key or "").strip()
     if not relation_key:
         return None
-    resolved_dsn = dsn or os.environ.get("HER_RELATION_LEDGER_DB") or DEFAULT_RELATION_LEDGER_MYSQL_DSN
+    resolved_dsn = dsn or os.environ.get("HER_RELATION_LEDGER_DB")
+    if not resolved_dsn:
+        return None
     conn = connect_db(resolved_dsn)
     try:
         initialize_database(conn)

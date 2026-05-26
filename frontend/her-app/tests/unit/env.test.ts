@@ -26,10 +26,19 @@ describe('lib/env', () => {
     expect(isDemoNavEnabled()).toBe(true)
   })
 
-  it('disallows auth stub in production', async () => {
+  it('disallows auth stub in production without e2e gateway flag', async () => {
     vi.stubEnv('NODE_ENV', 'production')
     vi.stubEnv('NEXT_PUBLIC_USE_AUTH_STUB', 'true')
+    vi.stubEnv('NEXT_PUBLIC_E2E_GATEWAY_AUTH', 'false')
     const { isAuthStubEnabled } = await import('@/lib/env')
     expect(isAuthStubEnabled()).toBe(false)
+  })
+
+  it('allows e2e gateway auth in production build when explicitly enabled', async () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    vi.stubEnv('NEXT_PUBLIC_E2E_GATEWAY_AUTH', 'true')
+    const { isE2EGatewayAuthEnabled, isAuthStubEnabled } = await import('@/lib/env')
+    expect(isE2EGatewayAuthEnabled()).toBe(true)
+    expect(isAuthStubEnabled()).toBe(true)
   })
 })

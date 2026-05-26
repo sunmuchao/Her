@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from match_domain.criteria_compiler import build_discovery_search_request, build_effective_search_request
 from match_domain.deprecated_profile_columns import DEPRECATED_PROFILE_COLUMNS

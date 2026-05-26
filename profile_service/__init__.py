@@ -13,6 +13,7 @@ from .api import (
     list_profile_photo_previews,
     list_profile_photos,
     list_profiles,
+    iter_profile_batches,
     resolve_profile_source,
     upsert_profile_for_onboarding,
 )
@@ -32,6 +33,7 @@ __all__ = [
     "list_profile_photo_previews",
     "list_profile_photos",
     "list_profiles",
+    "iter_profile_batches",
     "render_public_profile",
     "resolve_profile_source",
     "upsert_profile_for_onboarding",

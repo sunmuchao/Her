@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import unittest
-from datetime import datetime
 
 from match_domain.reason_codes import (
     normalize_reason_code,
@@ -23,12 +22,14 @@ from match_domain.rule_config_schema import (
 from match_domain.rule_config_store import (
     SCOPE_EXPERIMENT_BUCKET,
     SCOPE_GLOBAL,
+    STATUS_ACTIVE,
+    activate_version,
     create_assignment,
     create_version,
     get_active_assignment,
     seed_global_defaults_from_code,
 )
-from match_domain.search_scoring_config import build_effective_risk_flag_penalties
+from match_domain.search_scoring_config import NEGOTIABLE_RISK_FLAGS, build_effective_risk_flag_penalties
 from match_domain.verification_triage import auto_triage_enabled
 from partner_search.search_candidates import RISK_FLAG_PENALTIES, SOFT_CONCESSION_RISK_FLAGS
 from match_domain.rule_decision_trace import build_recommendation_decision_trace
@@ -154,8 +155,10 @@ class RuleConfigTests(unittest.TestCase):
             version_id="rcfg_gate_test_v2",
             slice_id=SLICE_RECOMMENDATION_DIRECT_GREET_GATE,
             params={"min_direct_greet_score": 58},
+            status=STATUS_ACTIVE,
             created_by="test",
         )
+        activate_version(conn, "rcfg_gate_test_v2", operator_id="test")
         create_assignment(
             conn,
             assignment_id="assign_gate_test_v2",
@@ -193,6 +196,7 @@ class RuleConfigTests(unittest.TestCase):
             version_id="rcfg_gate_exp_55",
             slice_id=SLICE_RECOMMENDATION_DIRECT_GREET_GATE,
             params={"min_direct_greet_score": 55},
+            status=STATUS_ACTIVE,
             created_by="test",
         )
         create_assignment(
@@ -227,7 +231,7 @@ class RuleConfigTests(unittest.TestCase):
 
     def test_search_scoring_applies_negotiable_tier(self):
         penalties = build_effective_risk_flag_penalties(RISK_FLAG_PENALTIES)
-        sample_flag = next(iter(SOFT_CONCESSION_RISK_FLAGS))
+        sample_flag = next(flag for flag in SOFT_CONCESSION_RISK_FLAGS if flag in NEGOTIABLE_RISK_FLAGS)
         self.assertEqual(penalties[sample_flag], 7)
 
     def test_chat_cooldown_defaults(self):

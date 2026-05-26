@@ -46,31 +46,3 @@ export function XiaoyaAvatar({
     </div>
   )
 }
-
-// Typing indicator version of avatar
-export function XiaoyaAvatarTyping({
-  size = 40,
-  className = '',
-}: Omit<XiaoyaAvatarProps, 'showOnlineStatus' | 'isOnline'>) {
-  return (
-    <div className={cn('relative', className)}>
-      <XiaoyaAvatar size={size} showOnlineStatus={false} />
-      <span className="absolute -bottom-1 -right-1 flex items-center justify-center">
-        <span className="flex gap-0.5">
-          <span
-            className="h-1.5 w-1.5 animate-bounce-dot rounded-full bg-primary"
-            style={{ animationDelay: '0ms' }}
-          />
-          <span
-            className="h-1.5 w-1.5 animate-bounce-dot rounded-full bg-primary"
-            style={{ animationDelay: '150ms' }}
-          />
-          <span
-            className="h-1.5 w-1.5 animate-bounce-dot rounded-full bg-primary"
-            style={{ animationDelay: '300ms' }}
-          />
-        </span>
-      </span>
-    </div>
-  )
-}

@@ -4,9 +4,7 @@ import { useTheme as useNextTheme } from 'next-themes'
 import { Moon, Sun } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-type Theme = 'light' | 'dark' | 'system'
-
-export function useTheme() {
+function useTheme() {
   const { theme, setTheme, resolvedTheme } = useNextTheme()
   return {
     theme: (theme || 'system') as 'light' | 'dark' | 'system',
@@ -57,37 +55,5 @@ export function ThemeToggle({ className, size = 'md' }: ThemeToggleProps) {
         <Moon className={cn(iconSizes[size], 'text-foreground')} />
       )}
     </button>
-  )
-}
-
-// Three-way theme selector
-export function ThemeSelector({ className }: { className?: string }) {
-  const { theme, setTheme } = useTheme()
-
-  const options: { value: Theme; label: string; icon: typeof Sun }[] = [
-    { value: 'light', label: '浅色', icon: Sun },
-    { value: 'dark', label: '深色', icon: Moon },
-    { value: 'system', label: '跟随系统', icon: Sun }
-  ]
-
-  return (
-    <div className={cn('flex gap-2', className)}>
-      {options.map(({ value, label, icon: Icon }) => (
-        <button
-          key={value}
-          onClick={() => setTheme(value)}
-          className={cn(
-            'flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-            theme === value
-              ? 'bg-primary text-primary-foreground'
-              : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
-          )}
-          aria-pressed={theme === value}
-        >
-          <Icon className="w-4 h-4" />
-          {label}
-        </button>
-      ))}
-    </div>
   )
 }

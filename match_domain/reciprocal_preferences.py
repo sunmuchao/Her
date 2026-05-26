@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
-from .deprecated_profile_columns import COLLECTED_TO_RECIPROCAL_PROFILE_ALIASES
+from .deprecated_profile_columns import (
+    COLLECTED_TO_RECIPROCAL_PROFILE_ALIASES,
+    PROFILE_PREFERENCE_TO_PERSONA,
+)
 
 
 def _has_value(value: Any) -> bool:
@@ -22,6 +25,22 @@ def enrich_record_for_reciprocal(record: Mapping[str, Any] | None) -> dict[str, 
         collected_value = enriched.get(collected_key)
         if _has_value(collected_value):
             enriched[legacy_key] = collected_value
+
+    for legacy_key, collected_key in PROFILE_PREFERENCE_TO_PERSONA.items():
+        if _has_value(enriched.get(collected_key)):
+            continue
+        legacy_value = enriched.get(legacy_key)
+        if _has_value(legacy_value):
+            enriched[collected_key] = legacy_value
+
+    for legacy_key, collected_key in COLLECTED_TO_RECIPROCAL_PROFILE_ALIASES.items():
+        if legacy_key in PROFILE_PREFERENCE_TO_PERSONA:
+            continue
+        if _has_value(enriched.get(collected_key)):
+            continue
+        legacy_value = enriched.get(legacy_key)
+        if _has_value(legacy_value):
+            enriched[collected_key] = legacy_value
 
     if not _has_value(enriched.get("matcher_preferences")) and not _has_value(
         enriched.get("matcher_preferences_json")

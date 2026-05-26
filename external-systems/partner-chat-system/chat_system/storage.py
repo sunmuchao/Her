@@ -32,6 +32,7 @@ connect_db, initialize_database, reset_all_tables = build_external_storage_helpe
     subsystem_name="Chat",
     target="chat",
     table_names=schema_table_names("chat_tables"),
+    default_dsn=DEFAULT_CHAT_MYSQL_DSN,
 )
 
 

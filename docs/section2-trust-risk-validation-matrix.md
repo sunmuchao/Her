@@ -1,6 +1,6 @@
 # 第 2 部分场景验证矩阵（货不对板 / 信任焦虑）
 
-本文档只验证 [planning-her-debrief.md](/Users/sunmuchao/Downloads/Her/docs/planning-her-debrief.md) 第 2 部分里**已经实现**的能力，不把还没做完的前端、审核后台和真人核验流程混进来。
+本文档只验证 [planning-her-debrief.md](archive/planning-her-debrief.md) 第 2 部分里**已经实现**的能力，不把还没做完的前端、审核后台和真人核验流程混进来。
 
 这份矩阵要回答的问题只有一个：
 

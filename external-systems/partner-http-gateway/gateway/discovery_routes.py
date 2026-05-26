@@ -111,30 +111,6 @@ def rest_discovery_get_session(
     return 200, {**_json_safe(out), "trace_id": get_trace_id()}
 
 
-def rest_discovery_get_profile_detail(
-    gateway: DiscoveryGateway,
-    environ: dict[str, Any],
-    profile_id: str,
-) -> tuple[int, dict[str, Any]]:
-    query = _query_dict(environ)
-    session_id = (query.get("session_id") or "").strip() or None
-    try:
-        if session_id is not None:
-            owner_id = gateway._discovery.get_session_owner_id(session_id)
-            gateway._assert_actor_can_access_owner(
-                environ,
-                owner_id,
-                field_name="profile_id",
-            )
-        out = gateway._discovery.get_profile_detail(
-            int(profile_id),
-            session_id=session_id,
-        )
-    except DiscoveryServiceError as exc:
-        return _discovery_error(exc)
-    return 200, {**_json_safe(out), "trace_id": get_trace_id()}
-
-
 def dispatch_discovery_rest(
     gateway: DiscoveryGateway,
     environ: dict[str, Any],
@@ -158,7 +134,4 @@ def dispatch_discovery_rest(
     match = re.fullmatch(r"/v1/discovery/sessions/([^/]+)", path)
     if match and method == "GET":
         return rest_discovery_get_session(gateway, environ, match.group(1))
-    match = re.fullmatch(r"/v1/discovery/profiles/([^/]+)", path)
-    if match and method == "GET":
-        return rest_discovery_get_profile_detail(gateway, environ, match.group(1))
     return None

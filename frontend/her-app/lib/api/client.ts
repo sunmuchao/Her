@@ -1,7 +1,7 @@
 import { getAccessToken } from '@/lib/auth/session'
 import { GatewayClientError } from '@/lib/api/errors'
 
-export { GatewayClientError, getErrorMessage, isGatewayClientError } from '@/lib/api/errors'
+export { GatewayClientError } from '@/lib/api/errors'
 
 export function queryString(params: Record<string, string | number | boolean | undefined | null>) {
   const query = new URLSearchParams()

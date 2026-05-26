@@ -28,6 +28,7 @@ connect_db, initialize_database, reset_all_tables = build_external_storage_helpe
     subsystem_name="RelationshipLedger",
     target="relationship_ledger",
     table_names=schema_table_names("relationship_ledger_tables"),
+    default_dsn=DEFAULT_RELATION_LEDGER_MYSQL_DSN,
 )
 
 
