@@ -573,6 +573,13 @@ class DiscoveryService:
         decision: DiscoveryDecision,
         search_response: dict[str, Any] | None,
     ) -> DiscoveryDecision:
+        if decision.phase == "searching" and search_response is None:
+            return DiscoveryDecision(
+                phase="collecting_preferences",
+                assistant_message="我这轮还没真正发起筛选，你再点一次“先看看有没有人”，或者直接说“开始搜索”，我马上给你跑。",
+                criteria_labels=list(decision.criteria_labels),
+                suggested_actions=list(decision.suggested_actions),
+            )
         error_summary = self._search_error_summary(search_response)
         if error_summary is None:
             return decision
