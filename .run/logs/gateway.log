@@ -1026,3 +1026,205 @@ pymysql.err.OperationalError: (1054, "Unknown column 'owner_profile_ref' in 'whe
 127.0.0.1 - - [26/May/2026 19:01:13] "GET /v1/profile/me?profile_id=9004 HTTP/1.1" 200 152
 {"ts": "2026-05-26T11:01:13.447687+00:00", "her_schema": "1", "trace_id": "dd6653d5bae54f5c98ccb5d6cbc9b34d", "actor_id": "usr-fb7a3e979f414ac8", "actor_roles": ["end_user"], "actor_auth_source": "auth_session", "actor_token_id": "sess-96cf7fc75a8d4613", "her_kind": "gateway_access", "http_method": "GET", "path": "/v1/user-center/trust-hub", "status_code": 200, "client_ip": "127.0.0.1"}
 127.0.0.1 - - [26/May/2026 19:01:13] "GET /v1/user-center/trust-hub?user_id=usr-fb7a3e979f414ac8&profile_id=9004 HTTP/1.1" 200 824
+{"ts": "2026-05-26T11:02:03.137361+00:00", "her_schema": "1", "trace_id": "6a77866431dd431ebfda5c7d7527637a", "actor_id": "usr-fb7a3e979f414ac8", "actor_roles": ["end_user"], "actor_auth_source": "auth_session", "actor_token_id": "sess-96cf7fc75a8d4613", "her_kind": "gateway_access", "http_method": "GET", "path": "/v1/recommendation/cards", "status_code": 200, "client_ip": "127.0.0.1"}
+127.0.0.1 - - [26/May/2026 19:02:03] "GET /v1/recommendation/cards?profile_id=9004&unread_only=true HTTP/1.1" 200 13
+{"ts": "2026-05-26T11:02:04.536755+00:00", "her_schema": "1", "trace_id": "2bf9dc1f481b4837b0fa929cb032aacc", "actor_id": "usr-fb7a3e979f414ac8", "actor_roles": ["end_user"], "actor_auth_source": "auth_session", "actor_token_id": "sess-96cf7fc75a8d4613", "her_kind": "gateway_access", "http_method": "GET", "path": "/v1/recommendation/cards", "status_code": 200, "client_ip": "127.0.0.1"}
+127.0.0.1 - - [26/May/2026 19:02:04] "GET /v1/recommendation/cards?profile_id=9004&unread_only=true HTTP/1.1" 200 13
+{"ts": "2026-05-26T11:02:06.554134+00:00", "her_schema": "1", "trace_id": "9b1ca3b7416f46d39002786fd3e435da", "actor_id": "usr-fb7a3e979f414ac8", "actor_roles": ["end_user"], "actor_auth_source": "auth_session", "actor_token_id": "sess-96cf7fc75a8d4613", "her_kind": "gateway_error", "http_method": "GET", "path": "/v1/ops/workbench/summary", "status_code": 500, "error_type": "AttributeError", "error_message": "'ActorPrincipal' object has no attribute 'get'"}
+2026-05-26 19:02:06,555 ERROR gateway.app Unhandled gateway error for GET /v1/ops/workbench/summary trace_id=9b1ca3b7416f46d39002786fd3e435da
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 302, in __call__
+    status_code, payload = self.dispatch_rest(environ)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 219, in dispatch_rest
+    return dispatch_gateway_rest(self, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rest_dispatch.py", line 66, in dispatch_gateway_rest
+    response = dispatcher(gateway, environ, method, path)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/support_routes.py", line 224, in dispatch_support_rest
+    return rest_ops_workbench_summary(gateway, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/support_routes.py", line 168, in rest_ops_workbench_summary
+    gateway._require_roles(
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/access_control.py", line 91, in _require_roles
+    actor = self._current_actor(environ)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/access_control.py", line 22, in _current_actor
+    return get_current_actor(environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/identity.py", line 171, in get_current_actor
+    actor = environ.get(ENVIRO_ACTOR_KEY)
+            ^^^^^^^^^^^
+AttributeError: 'ActorPrincipal' object has no attribute 'get'
+{"ts": "2026-05-26T11:02:06.606021+00:00", "her_schema": "1", "trace_id": "9b1ca3b7416f46d39002786fd3e435da", "actor_id": "usr-fb7a3e979f414ac8", "actor_roles": ["end_user"], "actor_auth_source": "auth_session", "actor_token_id": "sess-96cf7fc75a8d4613", "her_kind": "gateway_access", "http_method": "GET", "path": "/v1/ops/workbench/summary", "status_code": 500, "client_ip": "127.0.0.1"}
+127.0.0.1 - - [26/May/2026 19:02:06] "GET /v1/ops/workbench/summary?limit=5 HTTP/1.1" 500 146
+{"ts": "2026-05-26T11:02:06.613182+00:00", "her_schema": "1", "trace_id": "f689dee1600c453b93a45045e28f0b2b", "actor_id": "usr-fb7a3e979f414ac8", "actor_roles": ["end_user"], "actor_auth_source": "auth_session", "actor_token_id": "sess-96cf7fc75a8d4613", "her_kind": "gateway_error", "http_method": "GET", "path": "/v1/ops/rule-config/active", "status_code": 500, "error_type": "AttributeError", "error_message": "'ActorPrincipal' object has no attribute 'get'"}
+2026-05-26 19:02:06,613 ERROR gateway.app Unhandled gateway error for GET /v1/ops/rule-config/active trace_id=f689dee1600c453b93a45045e28f0b2b
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 302, in __call__
+    status_code, payload = self.dispatch_rest(environ)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 219, in dispatch_rest
+    return dispatch_gateway_rest(self, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rest_dispatch.py", line 66, in dispatch_gateway_rest
+    response = dispatcher(gateway, environ, method, path)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/support_routes.py", line 213, in dispatch_support_rest
+    routed = dispatch_rule_config_rest(gateway, environ, method, path)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rule_config_routes.py", line 273, in dispatch_rule_config_rest
+    return rest_ops_rule_config_active(gateway, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rule_config_routes.py", line 53, in rest_ops_rule_config_active
+    _, err = _require_ops_actor(gateway, environ)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rule_config_routes.py", line 40, in _require_ops_actor
+    gateway._require_roles(
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/access_control.py", line 91, in _require_roles
+    actor = self._current_actor(environ)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/access_control.py", line 22, in _current_actor
+    return get_current_actor(environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/identity.py", line 171, in get_current_actor
+    actor = environ.get(ENVIRO_ACTOR_KEY)
+            ^^^^^^^^^^^
+AttributeError: 'ActorPrincipal' object has no attribute 'get'
+{"ts": "2026-05-26T11:02:06.623432+00:00", "her_schema": "1", "trace_id": "f689dee1600c453b93a45045e28f0b2b", "actor_id": "usr-fb7a3e979f414ac8", "actor_roles": ["end_user"], "actor_auth_source": "auth_session", "actor_token_id": "sess-96cf7fc75a8d4613", "her_kind": "gateway_access", "http_method": "GET", "path": "/v1/ops/rule-config/active", "status_code": 500, "client_ip": "127.0.0.1"}
+127.0.0.1 - - [26/May/2026 19:02:06] "GET /v1/ops/rule-config/active HTTP/1.1" 500 146
+{"ts": "2026-05-26T11:02:06.629399+00:00", "her_schema": "1", "trace_id": "ab02fdd09fff47e5bca6ea1212f4019e", "actor_id": "usr-fb7a3e979f414ac8", "actor_roles": ["end_user"], "actor_auth_source": "auth_session", "actor_token_id": "sess-96cf7fc75a8d4613", "her_kind": "gateway_error", "http_method": "GET", "path": "/v1/ops/workbench/summary", "status_code": 500, "error_type": "AttributeError", "error_message": "'ActorPrincipal' object has no attribute 'get'"}
+2026-05-26 19:02:06,629 ERROR gateway.app Unhandled gateway error for GET /v1/ops/workbench/summary trace_id=ab02fdd09fff47e5bca6ea1212f4019e
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 302, in __call__
+    status_code, payload = self.dispatch_rest(environ)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 219, in dispatch_rest
+    return dispatch_gateway_rest(self, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rest_dispatch.py", line 66, in dispatch_gateway_rest
+    response = dispatcher(gateway, environ, method, path)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/support_routes.py", line 224, in dispatch_support_rest
+    return rest_ops_workbench_summary(gateway, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/support_routes.py", line 168, in rest_ops_workbench_summary
+    gateway._require_roles(
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/access_control.py", line 91, in _require_roles
+    actor = self._current_actor(environ)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/access_control.py", line 22, in _current_actor
+    return get_current_actor(environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/identity.py", line 171, in get_current_actor
+    actor = environ.get(ENVIRO_ACTOR_KEY)
+            ^^^^^^^^^^^
+AttributeError: 'ActorPrincipal' object has no attribute 'get'
+{"ts": "2026-05-26T11:02:06.631711+00:00", "her_schema": "1", "trace_id": "ab02fdd09fff47e5bca6ea1212f4019e", "actor_id": "usr-fb7a3e979f414ac8", "actor_roles": ["end_user"], "actor_auth_source": "auth_session", "actor_token_id": "sess-96cf7fc75a8d4613", "her_kind": "gateway_access", "http_method": "GET", "path": "/v1/ops/workbench/summary", "status_code": 500, "client_ip": "127.0.0.1"}
+127.0.0.1 - - [26/May/2026 19:02:06] "GET /v1/ops/workbench/summary?limit=5 HTTP/1.1" 500 146
+{"ts": "2026-05-26T11:02:06.637813+00:00", "her_schema": "1", "trace_id": "5fc29bdd9d704101a541c2adac9db96e", "actor_id": "usr-fb7a3e979f414ac8", "actor_roles": ["end_user"], "actor_auth_source": "auth_session", "actor_token_id": "sess-96cf7fc75a8d4613", "her_kind": "gateway_error", "http_method": "GET", "path": "/v1/ops/rule-config/active", "status_code": 500, "error_type": "AttributeError", "error_message": "'ActorPrincipal' object has no attribute 'get'"}
+2026-05-26 19:02:06,638 ERROR gateway.app Unhandled gateway error for GET /v1/ops/rule-config/active trace_id=5fc29bdd9d704101a541c2adac9db96e
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 302, in __call__
+    status_code, payload = self.dispatch_rest(environ)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 219, in dispatch_rest
+    return dispatch_gateway_rest(self, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rest_dispatch.py", line 66, in dispatch_gateway_rest
+    response = dispatcher(gateway, environ, method, path)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/support_routes.py", line 213, in dispatch_support_rest
+    routed = dispatch_rule_config_rest(gateway, environ, method, path)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rule_config_routes.py", line 273, in dispatch_rule_config_rest
+    return rest_ops_rule_config_active(gateway, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rule_config_routes.py", line 53, in rest_ops_rule_config_active
+    _, err = _require_ops_actor(gateway, environ)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rule_config_routes.py", line 40, in _require_ops_actor
+    gateway._require_roles(
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/access_control.py", line 91, in _require_roles
+    actor = self._current_actor(environ)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/access_control.py", line 22, in _current_actor
+    return get_current_actor(environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/identity.py", line 171, in get_current_actor
+    actor = environ.get(ENVIRO_ACTOR_KEY)
+            ^^^^^^^^^^^
+AttributeError: 'ActorPrincipal' object has no attribute 'get'
+{"ts": "2026-05-26T11:02:06.641322+00:00", "her_schema": "1", "trace_id": "5fc29bdd9d704101a541c2adac9db96e", "actor_id": "usr-fb7a3e979f414ac8", "actor_roles": ["end_user"], "actor_auth_source": "auth_session", "actor_token_id": "sess-96cf7fc75a8d4613", "her_kind": "gateway_access", "http_method": "GET", "path": "/v1/ops/rule-config/active", "status_code": 500, "client_ip": "127.0.0.1"}
+127.0.0.1 - - [26/May/2026 19:02:06] "GET /v1/ops/rule-config/active HTTP/1.1" 500 146
+{"ts": "2026-05-26T11:02:06.647685+00:00", "her_schema": "1", "trace_id": "a19552f3a0624401863a680da65e5f06", "actor_id": "usr-fb7a3e979f414ac8", "actor_roles": ["end_user"], "actor_auth_source": "auth_session", "actor_token_id": "sess-96cf7fc75a8d4613", "her_kind": "gateway_error", "http_method": "GET", "path": "/v1/ops/rule-config/experiment-members", "status_code": 500, "error_type": "AttributeError", "error_message": "'ActorPrincipal' object has no attribute 'get'"}
+2026-05-26 19:02:06,647 ERROR gateway.app Unhandled gateway error for GET /v1/ops/rule-config/experiment-members trace_id=a19552f3a0624401863a680da65e5f06
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 302, in __call__
+    status_code, payload = self.dispatch_rest(environ)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 219, in dispatch_rest
+    return dispatch_gateway_rest(self, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rest_dispatch.py", line 66, in dispatch_gateway_rest
+    response = dispatcher(gateway, environ, method, path)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/support_routes.py", line 213, in dispatch_support_rest
+    routed = dispatch_rule_config_rest(gateway, environ, method, path)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rule_config_routes.py", line 292, in dispatch_rule_config_rest
+    return rest_ops_rule_config_experiment_members(gateway, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rule_config_routes.py", line 180, in rest_ops_rule_config_experiment_members
+    _, err = _require_ops_actor(gateway, environ)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rule_config_routes.py", line 40, in _require_ops_actor
+    gateway._require_roles(
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/access_control.py", line 91, in _require_roles
+    actor = self._current_actor(environ)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/access_control.py", line 22, in _current_actor
+    return get_current_actor(environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/identity.py", line 171, in get_current_actor
+    actor = environ.get(ENVIRO_ACTOR_KEY)
+            ^^^^^^^^^^^
+AttributeError: 'ActorPrincipal' object has no attribute 'get'
+{"ts": "2026-05-26T11:02:06.652006+00:00", "her_schema": "1", "trace_id": "a19552f3a0624401863a680da65e5f06", "actor_id": "usr-fb7a3e979f414ac8", "actor_roles": ["end_user"], "actor_auth_source": "auth_session", "actor_token_id": "sess-96cf7fc75a8d4613", "her_kind": "gateway_access", "http_method": "GET", "path": "/v1/ops/rule-config/experiment-members", "status_code": 500, "client_ip": "127.0.0.1"}
+127.0.0.1 - - [26/May/2026 19:02:06] "GET /v1/ops/rule-config/experiment-members?limit=20 HTTP/1.1" 500 146
+{"ts": "2026-05-26T11:02:06.658372+00:00", "her_schema": "1", "trace_id": "c4b63682257840c8a82ddcda76a09c55", "actor_id": "usr-fb7a3e979f414ac8", "actor_roles": ["end_user"], "actor_auth_source": "auth_session", "actor_token_id": "sess-96cf7fc75a8d4613", "her_kind": "gateway_error", "http_method": "GET", "path": "/v1/ops/rule-config/experiment-members", "status_code": 500, "error_type": "AttributeError", "error_message": "'ActorPrincipal' object has no attribute 'get'"}
+2026-05-26 19:02:06,659 ERROR gateway.app Unhandled gateway error for GET /v1/ops/rule-config/experiment-members trace_id=c4b63682257840c8a82ddcda76a09c55
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 302, in __call__
+    status_code, payload = self.dispatch_rest(environ)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 219, in dispatch_rest
+    return dispatch_gateway_rest(self, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rest_dispatch.py", line 66, in dispatch_gateway_rest
+    response = dispatcher(gateway, environ, method, path)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/support_routes.py", line 213, in dispatch_support_rest
+    routed = dispatch_rule_config_rest(gateway, environ, method, path)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rule_config_routes.py", line 292, in dispatch_rule_config_rest
+    return rest_ops_rule_config_experiment_members(gateway, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rule_config_routes.py", line 180, in rest_ops_rule_config_experiment_members
+    _, err = _require_ops_actor(gateway, environ)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rule_config_routes.py", line 40, in _require_ops_actor
+    gateway._require_roles(
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/access_control.py", line 91, in _require_roles
+    actor = self._current_actor(environ)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/access_control.py", line 22, in _current_actor
+    return get_current_actor(environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/identity.py", line 171, in get_current_actor
+    actor = environ.get(ENVIRO_ACTOR_KEY)
+            ^^^^^^^^^^^
+AttributeError: 'ActorPrincipal' object has no attribute 'get'
+{"ts": "2026-05-26T11:02:06.664235+00:00", "her_schema": "1", "trace_id": "c4b63682257840c8a82ddcda76a09c55", "actor_id": "usr-fb7a3e979f414ac8", "actor_roles": ["end_user"], "actor_auth_source": "auth_session", "actor_token_id": "sess-96cf7fc75a8d4613", "her_kind": "gateway_access", "http_method": "GET", "path": "/v1/ops/rule-config/experiment-members", "status_code": 500, "client_ip": "127.0.0.1"}
+127.0.0.1 - - [26/May/2026 19:02:06] "GET /v1/ops/rule-config/experiment-members?limit=20 HTTP/1.1" 500 146
