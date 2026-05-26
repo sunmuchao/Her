@@ -79,12 +79,20 @@ export function EmptySearchResults({ keyword }: { keyword: string }) {
   )
 }
 
-export function EmptyRelationships({ onDiscover }: { onDiscover?: () => void }) {
+export function EmptyRelationships({
+  onDiscover,
+  title,
+  description,
+}: {
+  onDiscover?: () => void
+  title?: string
+  description?: string
+}) {
   return (
     <EmptyState
       icon={<Users className="w-9 h-9 text-primary" />}
-      title="还没有进行中的关系"
-      description="去发现页认识新朋友吧，小雅会帮你找到志同道合的人"
+      title={title || '还没有进行中的关系'}
+      description={description || '去发现页认识新朋友吧，小雅会帮你找到志同道合的人'}
       action={onDiscover ? {
         label: '去发现页',
         onClick: onDiscover
