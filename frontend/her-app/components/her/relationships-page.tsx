@@ -48,6 +48,7 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
   const [recentActivities, setRecentActivities] = useState<Array<{ id: string; content: string; time: string; type: 'view' | 'match' | 'greeting' }>>([])
   const [pendingActions, setPendingActions] = useState<PendingAction[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [emptyHint, setEmptyHint] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const { usingMockData, applyProvenance } = usePageDataSource()
   const [relationPhase, setRelationPhase] = useState<string | null>(null)
@@ -59,6 +60,7 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
     async function loadTimeline() {
       setIsLoading(true)
       setLoadError(null)
+      setEmptyHint(null)
 
       const timelineActorId = getUserId()
       if (!timelineActorId) {
@@ -71,7 +73,7 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
       const participantId = getChatParticipantId()
       if (!caseId) {
         setIsLoading(false)
-        setLoadError('未找到活跃 case_id，无法加载关系时间线')
+        setEmptyHint('当前还没有进行中的关系')
         return
       }
 
@@ -137,7 +139,12 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
         logDataProvenance('relationships', provenance)
       } catch (error) {
         if (cancelled) return
-        setLoadError(getErrorMessage(error, '关系页加载失败'))
+        const message = getErrorMessage(error, '关系页加载失败')
+        if (message.includes('current actor is not allowed to access this match case')) {
+          setEmptyHint('当前账号暂时无法查看这段关系')
+        } else {
+          setLoadError(message)
+        }
         if (canUseMockFallback()) {
           applyProvenance(true, false, '/v1/ledger/timeline')
         }
@@ -217,7 +224,11 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
               </button>
             ))}
             {activeRelationships.length === 0 && (
-              <EmptyRelationships onDiscover={() => {}} />
+              <EmptyRelationships
+                onDiscover={() => {}}
+                title={emptyHint === '当前账号暂时无法查看这段关系' ? '暂时无法查看这段关系' : undefined}
+                description={emptyHint || undefined}
+              />
             )}
           </div>
         </section>
