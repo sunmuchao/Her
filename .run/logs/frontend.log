@@ -799,3 +799,4 @@ Read more: https://nextjs.org/docs/app/api-reference/components/image#loading
  GET /api/gateway/v1/recommendation/cards?profile_id=9004&unread_only=true 200 in 68ms (next.js: 14ms, application-code: 55ms)
  GET /api/gateway/v1/recommendation/cards?profile_id=9004&unread_only=true 200 in 117ms (next.js: 36ms, application-code: 81ms)
  GET /api/gateway/v1/recommendation/cards?profile_id=9004&unread_only=true 200 in 145ms (next.js: 40ms, application-code: 106ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=9004&unread_only=true 200 in 43ms (next.js: 14ms, application-code: 29ms)
