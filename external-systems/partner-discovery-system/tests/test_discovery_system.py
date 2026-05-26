@@ -15,6 +15,9 @@ DISCOVERY_ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(DISCOVERY_ROOT) not in sys.path:
     sys.path.insert(0, str(DISCOVERY_ROOT))
 
+_DISCOVERY_TEST_PROFILE_SOURCE = "mysql://root@127.0.0.1:3307/her_discovery_test?table=profiles"
+_DISCOVERY_TEST_PERSONA_SOURCE = "mysql://root@127.0.0.1:3307/her_discovery_test?table=user_personas"
+
 from discovery_system.agent_runtime import (  # noqa: E402
     AgentsSdkDiscoveryAgentRuntime,
     DiscoveryActionSuggestion,
@@ -220,6 +223,22 @@ class _SearchToolRuntime:
 
 
 class DiscoveryServiceTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._old_profile_source = os.environ.get("HER_DISCOVERY_PROFILE_SOURCE")
+        self._old_persona_source = os.environ.get("PERSONA_MEMORY_MYSQL_SOURCE")
+        os.environ["HER_DISCOVERY_PROFILE_SOURCE"] = _DISCOVERY_TEST_PROFILE_SOURCE
+        os.environ["PERSONA_MEMORY_MYSQL_SOURCE"] = _DISCOVERY_TEST_PERSONA_SOURCE
+
+    def tearDown(self) -> None:
+        if self._old_profile_source is None:
+            os.environ.pop("HER_DISCOVERY_PROFILE_SOURCE", None)
+        else:
+            os.environ["HER_DISCOVERY_PROFILE_SOURCE"] = self._old_profile_source
+        if self._old_persona_source is None:
+            os.environ.pop("PERSONA_MEMORY_MYSQL_SOURCE", None)
+        else:
+            os.environ["PERSONA_MEMORY_MYSQL_SOURCE"] = self._old_persona_source
+
     def test_in_memory_agent_session_store_persists_items_across_instances(self) -> None:
         store = InMemoryDiscoveryAgentSessionStore()
         session = store.get_session("discovery-session-001")
@@ -711,7 +730,7 @@ class DiscoveryServiceTests(unittest.TestCase):
                 "synced_profile": True,
             }
 
-        with mock.patch.dict(os.environ, {"PERSONA_MEMORY_MYSQL_SOURCE": "mysql://persona-demo"}, clear=False), mock.patch.object(
+        with mock.patch.object(
             service,
             "_load_persona_memory_bindings",
             return_value=_fake_upsert,
@@ -722,7 +741,7 @@ class DiscoveryServiceTests(unittest.TestCase):
             )
 
         request = dict(captured["request"] or {})
-        self.assertEqual(request["source"], "mysql://persona-demo")
+        self.assertEqual(request["source"], _DISCOVERY_TEST_PERSONA_SOURCE)
         self.assertEqual(request["user_key"], "70001")
         self.assertTrue(request["sync_profile"])
         self.assertTrue(captured["include_normalized_patch"])
@@ -740,7 +759,11 @@ class DiscoveryServiceTests(unittest.TestCase):
         created = service.create_session(requester_id=70001, profile_id=10001)
         session_id = created["session"]["session_id"]
 
-        with mock.patch.dict(os.environ, {"PERSONA_MEMORY_MYSQL_SOURCE": ""}, clear=False):
+        with mock.patch.dict(
+            os.environ,
+            {"PERSONA_MEMORY_MYSQL_SOURCE": "", "HER_DISCOVERY_PROFILE_SOURCE": ""},
+            clear=False,
+        ):
             service.process_turn(
                 session_id=session_id,
                 user_message_text="我在上海，不接受抽烟，想认真恋爱。",
@@ -784,7 +807,7 @@ class DiscoveryServiceTests(unittest.TestCase):
             ],
         }
 
-        with mock.patch.dict(os.environ, {"HER_DISCOVERY_PROFILE_SOURCE": "mysql://search-demo"}, clear=False), mock.patch(
+        with mock.patch(
             "discovery_system.service.load_self_profile",
             return_value={"self_city": "无锡"},
         ), mock.patch(
@@ -832,7 +855,7 @@ class DiscoveryServiceTests(unittest.TestCase):
             ],
         }
 
-        with mock.patch.dict(os.environ, {"HER_DISCOVERY_PROFILE_SOURCE": "mysql://search-demo"}, clear=False), mock.patch(
+        with mock.patch(
             "discovery_system.service.load_self_profile",
             return_value=None,
         ), mock.patch(
@@ -862,7 +885,7 @@ class DiscoveryServiceTests(unittest.TestCase):
         created = service.create_session(requester_id=70001, profile_id=10001)
         session_id = created["session"]["session_id"]
 
-        with mock.patch.dict(os.environ, {"HER_DISCOVERY_PROFILE_SOURCE": "mysql://search-demo"}, clear=False), mock.patch(
+        with mock.patch(
             "discovery_system.service.load_self_profile",
             return_value={"self_city": "无锡"},
         ), mock.patch(
@@ -898,7 +921,7 @@ class DiscoveryServiceTests(unittest.TestCase):
         created = service.create_session(requester_id=70001, profile_id=10001)
         session_id = created["session"]["session_id"]
 
-        with mock.patch.dict(os.environ, {"HER_DISCOVERY_PROFILE_SOURCE": "mysql://search-demo"}, clear=False), mock.patch(
+        with mock.patch(
             "discovery_system.service.load_self_profile",
             return_value={"self_city": "无锡"},
         ), mock.patch(

@@ -2,6 +2,8 @@
 
 原 `DESIGN.md` 的“逐页详细 UI 描述”已拆分为独立文档，便于按页面维护。
 
+> **实现状态：** 以 `frontend/her-app` 路由与 Gateway `/v1/*` 为准。设计稿可能领先或滞后于代码；冲突时以 [`SYSTEM_DOC.md`](../../SYSTEM_DOC.md) 与可运行代码为准。
+
 1. [1. 短信验证码登录页](./01-sms-login.md)
 2. [2. 智能发现会话页](./02-discovery-session.md)
 3. [3. 候选人档案详情页 / 详情抽屉](./03-candidate-profile-detail.md)

@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Mapping
 
-from .trace_context import get_trace_id
+from her_runtime_context import get_trace_id
 from .model import (
     MatchEvent,
     PairStatus,

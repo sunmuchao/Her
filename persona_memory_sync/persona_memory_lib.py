@@ -1072,7 +1072,6 @@ def merge_persona(existing: Optional[Dict[str, Any]], patch: Dict[str, Any], sou
         note = ""
 
         if field_name in LIST_FIELDS:
-            old_items = items_from_csv(old_value)
             new_items = items_from_csv(new_value)
             candidate_value = csv_from_items(new_items)
             if candidate_value != old_value:

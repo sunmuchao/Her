@@ -21,15 +21,6 @@ export type CollectedStatementsResponse = {
   >
 }
 
-export type RecommendationExplainResponse = {
-  recommendation_id: number
-  source_map: Record<string, string>
-  compiled?: Record<string, unknown>
-  runtime_explanation?: Record<string, unknown> | null
-  snapshot_id?: number
-  created_at?: string
-}
-
 const COLLECTED_FIELD_LABELS: Record<string, string> = {
   target_age_min: '年龄下限',
   target_age_max: '年龄上限',
@@ -127,13 +118,4 @@ export function formatExplainSourceMap(sourceMap: Record<string, string>): strin
           : source
     return `${label}（来源：${sourceLabel}）`
   })
-}
-
-export async function fetchRecommendationExplain(
-  recommendationId: number,
-): Promise<RecommendationExplainResponse> {
-  return gatewayJson<RecommendationExplainResponse>(
-    `/v1/recommendations/${encodeURIComponent(String(recommendationId))}/explain`,
-    { includeAuth: true },
-  )
 }

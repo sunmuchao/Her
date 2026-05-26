@@ -10,7 +10,7 @@ from typing import Any, Mapping
 
 from her_time_utils import clean_text as _clean_text
 
-from .collected_profile import extract_collected_statements, extract_profile_facts
+from .collected_profile import extract_profile_facts, merge_collected_for_compile
 
 LIST_FIELD_KEYS = frozenset(
     {
@@ -288,7 +288,7 @@ def compile_effective_criteria(
     fallback_self_profile: Mapping[str, Any] | None = None,
 ) -> CompiledCriteria:
     profile_facts = extract_profile_facts(profile_row or {})
-    collected = extract_collected_statements(persona_row or {})
+    collected = merge_collected_for_compile(profile_row=profile_row, persona_row=persona_row)
 
     if subscription is not None:
         initial = build_initial_request(subscription)
@@ -332,19 +332,6 @@ def compile_effective_criteria(
         criteria_hash=criteria_hash,
         scene=scene,
     )
-
-
-def compile_effective_criteria_legacy(
-    subscription: Mapping[str, Any],
-    persona_profile: Mapping[str, Any] | None = None,
-) -> dict[str, Any]:
-    compiled = compile_effective_criteria(
-        scene=SCENE_RECOMMENDATION_REFRESH,
-        persona_row=persona_profile,
-        subscription=subscription,
-        fallback_self_profile=persona_profile,
-    )
-    return compiled.criteria
 
 
 def build_effective_search_request(

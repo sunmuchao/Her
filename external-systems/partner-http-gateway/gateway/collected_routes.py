@@ -8,7 +8,6 @@ from typing import Any, Protocol
 
 from match_domain.collected_profile import extract_collected_statements, extract_profile_facts
 from match_domain.collected_metadata import build_collected_items
-from match_domain.criteria_snapshots import get_criteria_snapshot_store, snapshot_to_dict
 from match_domain.persona_loader import load_collected_bundle
 from profile_service import get_profile
 
@@ -116,40 +115,6 @@ def rest_persona_collected(gateway: CollectedGateway, environ: dict[str, Any]) -
     }
 
 
-def rest_recommendation_explain(
-    gateway: CollectedGateway,
-    environ: dict[str, Any],
-    recommendation_id: int,
-) -> tuple[int, dict[str, Any]]:
-    recommendation = gateway._get_recommendation_for_actor(environ, int(recommendation_id))
-    store = get_criteria_snapshot_store()
-    snapshot = store.get_latest_for_recommendation(int(recommendation_id))
-    if snapshot is None:
-        provenance = dict(recommendation.get("rule_provenance") or {})
-        source_map = provenance.get("source_map") or {}
-        if not source_map:
-            return 404, {
-                "error": {
-                    "code": "explain_unavailable",
-                    "message": "no criteria snapshot or source_map for this recommendation",
-                }
-            }
-        return 200, {
-            "recommendation_id": int(recommendation_id),
-            "source_map": _json_safe(source_map),
-            "runtime_explanation": provenance.get("runtime_explanation"),
-        }
-    payload = snapshot_to_dict(snapshot)
-    return 200, {
-        "recommendation_id": int(recommendation_id),
-        "source_map": _json_safe(payload.get("source_map") or {}),
-        "compiled": _json_safe(payload.get("compiled") or {}),
-        "runtime_explanation": _json_safe(payload.get("runtime_explanation")),
-        "snapshot_id": payload.get("snapshot_id"),
-        "created_at": payload.get("created_at"),
-    }
-
-
 def dispatch_collected_rest(
     gateway: CollectedGateway,
     environ: dict[str, Any],
@@ -160,9 +125,6 @@ def dispatch_collected_rest(
         return rest_profile_me(gateway, environ)
     if path == "/v1/persona/collected" and method == "GET":
         return rest_persona_collected(gateway, environ)
-    match = re.fullmatch(r"/v1/recommendations/([^/]+)/explain", path)
-    if match and method == "GET":
-        return rest_recommendation_explain(gateway, environ, int(match.group(1)))
     return None
 
 
@@ -170,5 +132,4 @@ __all__ = [
     "dispatch_collected_rest",
     "rest_persona_collected",
     "rest_profile_me",
-    "rest_recommendation_explain",
 ]

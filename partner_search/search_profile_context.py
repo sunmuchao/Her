@@ -316,12 +316,20 @@ def build_self_profile(
     profile: dict[str, Any] = {}
 
     if self_id is not None:
-        matched = resolve_self_profile_record(runtime, self_id, records)
-        profile.update(runtime.strip_internal_fields(dict(matched)))
-        profile["source_file"] = matched.get("source_file") or ""
-        income_min, income_max = runtime.parse_income_range_to_wan(matched.get("income_range"))
-        profile["income_min_wan"] = income_min
-        profile["income_max_wan"] = income_max
+        try:
+            matched = resolve_self_profile_record(runtime, self_id, records)
+        except ValueError as exc:
+            if "ambiguous across multiple sources" in str(exc):
+                raise
+            matched = None
+        if matched is not None:
+            profile.update(runtime.strip_internal_fields(dict(matched)))
+            profile["source_file"] = matched.get("source_file") or ""
+            income_min, income_max = runtime.parse_income_range_to_wan(matched.get("income_range"))
+            profile["income_min_wan"] = income_min
+            profile["income_max_wan"] = income_max
+        elif normalize_self_profile_input(runtime, profile_input) is None:
+            raise ValueError(f"Could not find self profile id {self_id} in the selected source.")
 
     normalized_input = normalize_self_profile_input(runtime, profile_input)
     if normalized_input:

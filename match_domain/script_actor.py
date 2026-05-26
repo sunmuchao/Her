@@ -7,7 +7,7 @@ from typing import Iterable
 
 from observability import audit_event
 
-from .actor_context import reset_actor_context, set_actor_context
+from her_runtime_context import reset_actor_context, set_actor_context
 
 
 def add_actor_cli_args(

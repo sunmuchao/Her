@@ -18,7 +18,7 @@ It is intentionally separate from the skill itself.
   - subscription refresh, persona-driven criteria compilation, direct `partner-search` API calls, recommendation dedupe, cooldown, frequency cap, quiet-hours, run snapshots, and card generation
 - `recommendation_system/proxy_intro.py`
   - proxy-intro case creation, dispatch, reply handling, timeout handling, and audit sync
-- `recommendation_system/criteria_compiler.py`
+- `match_domain/criteria_compiler.py` (used by `recommendation_system/service.py`)
   - compile `persona + subscription overrides -> effective criteria`
 - `recommendation_system/no_match_opt_in.py`
   - outer search-session wrapper for the "no result -> ask whether to keep looking" flow

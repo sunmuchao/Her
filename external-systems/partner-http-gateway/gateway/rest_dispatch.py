@@ -12,7 +12,6 @@ from .chat_safety_routes import dispatch_chat_safety_rest
 from .collected_routes import dispatch_collected_rest
 from .discovery_routes import dispatch_discovery_rest
 from .http_helpers import _parse_json_body, _read_body
-from .identity import GatewayPermissionError
 from .ledger_routes import dispatch_ledger_rest
 from .matchmaking_routes import dispatch_matchmaking_rest
 from .ops_routes import dispatch_ops_rest

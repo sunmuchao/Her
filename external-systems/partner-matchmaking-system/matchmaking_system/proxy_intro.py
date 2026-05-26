@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from match_domain.proxy_intro_storage import storage_adapter_label, use_matchmaking_storage
-from recommendation_system.proxy_intro import (  # noqa: E402
+from match_domain.proxy_intro_storage import storage_adapter_label
+from .proxy_intro_core import (  # noqa: E402
     close_match_case as _close_match_case,
     close_timed_out_match_cases,
     create_match_case as _create_match_case,
@@ -13,7 +13,6 @@ from recommendation_system.proxy_intro import (  # noqa: E402
     dispatch_pending_match_cases,
     get_active_match_case_for_recommendation,
     get_latest_match_case_for_recommendation,
-    get_legacy_proxy_intro_case,
     get_match_case as _get_match_case_raw,
     list_match_case_events,
     list_match_case_outreach_attempts,
@@ -65,18 +64,14 @@ def get_match_case(
     recommendation_conn=None,
     allow_legacy_read: bool = True,
 ) -> dict[str, Any] | None:
-    case = _tag_proxy_intro_case(
+    del allow_legacy_read
+    return _tag_proxy_intro_case(
         _get_match_case_raw(
             case_conn,
             case_id,
             recommendation_conn=recommendation_conn,
         )
     )
-    if case or not allow_legacy_read or not use_matchmaking_storage():
-        return case
-    rec = recommendation_conn or case_conn
-    legacy = get_legacy_proxy_intro_case(rec, case_id)
-    return _tag_proxy_intro_case(legacy)
 
 
 __all__ = [

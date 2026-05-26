@@ -57,6 +57,14 @@ class FakeCursor:
         if query.startswith("UPDATE profile_recommendations"):
             self._rows = []
             return
+        if query.startswith("CREATE TABLE IF NOT EXISTS"):
+            table_name = query.split("`", 2)[1]
+            self.conn.tables.add(table_name)
+            self._rows = []
+            return
+        if query.startswith("ALTER TABLE"):
+            self._rows = []
+            return
         raise AssertionError(f"Unexpected SQL in fake cursor: {query}")
 
     def fetchone(self) -> dict[str, object] | None:
@@ -119,6 +127,10 @@ def test_initialize_target_database_dispatches_validate() -> None:
     assert result == {"ok": True}
 
 
+def _expected_migration_ids(target: str) -> list[str]:
+    return [migration.migration_id for migration in runner.load_target_migrations(target)]
+
+
 def test_upgrade_target_database_records_baseline_migration() -> None:
     fake_conn = FakeConn()
     with (
@@ -130,58 +142,17 @@ def test_upgrade_target_database_records_baseline_migration() -> None:
     ):
         result = runner.upgrade_target_database(fake_conn, target="recommendation", config=fake_conn.config)
 
+    expected_ids = _expected_migration_ids("recommendation")
     assert result["target"] == "recommendation"
     assert result["mode"] == "migrate"
-    assert result["applied"] == [
-        {
-            "scope": "recommendation",
-            "migration_id": "0001_baseline",
-            "description": "Baseline recommendation schema",
-        },
-        {
-            "scope": "recommendation",
-            "migration_id": "0002_add_outbox_delivery_state",
-            "description": "Add delivery state to recommendation outbox events",
-        },
-        {
-            "scope": "recommendation",
-            "migration_id": "0003_add_async_jobs",
-            "description": "Add persisted async jobs to recommendation",
-        },
-        {
-            "scope": "recommendation",
-            "migration_id": "0004_add_active_case_status",
-            "description": "Add active_case_status mirror field to profile recommendations",
-        },
-        {
-            "scope": "recommendation",
-            "migration_id": "0005_normalize_delivery_statuses",
-            "description": "Normalize legacy recommendation delivery_status values",
-        },
-    ]
+    assert [entry["migration_id"] for entry in result["applied"]] == expected_ids
+    assert all(entry["scope"] == "recommendation" for entry in result["applied"])
     assert result["already_applied"] == []
     assert fake_conn.commits == 1
     assert fake_conn.rollbacks == 0
-    assert ("recommendation", "0001_baseline") == (
-        fake_conn.migration_rows[0]["scope"],
-        fake_conn.migration_rows[0]["migration_id"],
-    )
-    assert ("recommendation", "0002_add_outbox_delivery_state") == (
-        fake_conn.migration_rows[1]["scope"],
-        fake_conn.migration_rows[1]["migration_id"],
-    )
-    assert ("recommendation", "0003_add_async_jobs") == (
-        fake_conn.migration_rows[2]["scope"],
-        fake_conn.migration_rows[2]["migration_id"],
-    )
-    assert ("recommendation", "0004_add_active_case_status") == (
-        fake_conn.migration_rows[3]["scope"],
-        fake_conn.migration_rows[3]["migration_id"],
-    )
-    assert ("recommendation", "0005_normalize_delivery_statuses") == (
-        fake_conn.migration_rows[4]["scope"],
-        fake_conn.migration_rows[4]["migration_id"],
-    )
+    assert [
+        (row["scope"], row["migration_id"]) for row in fake_conn.migration_rows
+    ] == [("recommendation", migration_id) for migration_id in expected_ids]
 
 
 def test_validate_target_database_raises_when_migration_row_missing() -> None:
@@ -196,11 +167,7 @@ def test_validate_target_database_raises_when_migration_row_missing() -> None:
 
     assert excinfo.value.issues["missing_tables"] == ["schema_migrations"]
     assert excinfo.value.issues["missing_migrations"] == [
-        "recommendation:0001_baseline",
-        "recommendation:0002_add_outbox_delivery_state",
-        "recommendation:0003_add_async_jobs",
-        "recommendation:0004_add_active_case_status",
-        "recommendation:0005_normalize_delivery_statuses",
+        f"recommendation:{migration_id}" for migration_id in _expected_migration_ids("recommendation")
     ]
 
 
@@ -214,22 +181,17 @@ def test_build_persona_scope_uses_profile_table_from_source_query() -> None:
 
 def test_load_target_migrations_reads_baseline_module() -> None:
     migrations = runner.load_target_migrations("recommendation")
-    assert [migration.migration_id for migration in migrations] == [
-        "0001_baseline",
-        "0002_add_outbox_delivery_state",
-        "0003_add_async_jobs",
-        "0004_add_active_case_status",
-        "0005_normalize_delivery_statuses",
-    ]
+    migration_ids = [migration.migration_id for migration in migrations]
+    assert migration_ids == _expected_migration_ids("recommendation")
+    assert migration_ids[0] == "0001_baseline"
+    assert migration_ids[-1] == "0009_experiment_bucket_members"
 
 
 def test_load_matchmaking_target_migrations_reads_real_0002_module() -> None:
     migrations = runner.load_target_migrations("matchmaking")
-    assert [migration.migration_id for migration in migrations] == [
-        "0001_baseline",
-        "0002_add_outbox_delivery_state",
-        "0003_add_async_jobs",
-    ]
+    migration_ids = [migration.migration_id for migration in migrations]
+    assert migration_ids == _expected_migration_ids("matchmaking")
+    assert migration_ids[-1] == "0004_add_proxy_intro_cases"
 
 
 def test_load_chat_target_migrations_reads_real_0002_module() -> None:

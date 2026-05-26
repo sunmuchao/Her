@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
+from her_monorepo_bootstrap import ensure_her_repo_on_sys_path
+from her_repo_path_bootstrap import ensure_partner_system_roots_on_sys_path
 
-REPO_ROOT = Path(__file__).resolve().parent
-repo_text = str(REPO_ROOT)
-if repo_text in sys.path:
-    sys.path.remove(repo_text)
-sys.path.insert(0, repo_text)
+REPO_ROOT = ensure_her_repo_on_sys_path(Path(__file__))
+ensure_partner_system_roots_on_sys_path(REPO_ROOT)

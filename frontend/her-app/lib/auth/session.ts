@@ -51,11 +51,6 @@ function readStoredContext(): SessionContext {
   }
 }
 
-/** Whether the logged-in user has a backend-linked profile/requester (safe to send Bearer on data APIs). */
-export function hasLinkedProfileIdentity(): boolean {
-  return readStoredContext().profileLinked === true
-}
-
 function writeContext(ctx: SessionContext) {
   if (typeof window === 'undefined') return
   window.localStorage.setItem(SESSION_CONTEXT_KEY, JSON.stringify(ctx))
@@ -119,8 +114,7 @@ function isAuthenticated(): boolean {
   return Boolean(getAccessToken())
 }
 
-/** Resolved session: env defaults only when not logged in (demo / dev without token). */
-export function getSessionContext(): SessionContext {
+function getSessionContext(): SessionContext {
   const ctx = readStoredContext()
   const accessToken = ctx.accessToken || getAccessToken() || undefined
   if (isAuthenticated()) {
@@ -140,10 +134,6 @@ export function patchSessionContext(patch: Partial<SessionContext>) {
   const next = { ...readStoredContext(), ...patch }
   writeContext(next)
   return next
-}
-
-export function getRequesterId(): number | undefined {
-  return getProfileId()
 }
 
 export function getProfileId(): number | undefined {

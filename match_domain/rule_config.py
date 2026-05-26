@@ -164,7 +164,6 @@ def resolve_effective_rules(
     if subscription is not None:
         if slice_id == SLICE_RECOMMENDATION_DIRECT_GREET_GATE:
             review_overrides = _load_review_policy_overrides(subscription)
-            params = _merge_params(params, review_overrides, "subscription_overrides.review_policy", chain)
             column_overlay = {
                 "recommendation_mode": subscription.get("recommendation_mode"),
                 "max_review_candidates_per_refresh": subscription.get("max_review_candidates_per_refresh"),
@@ -178,6 +177,7 @@ def resolve_effective_rules(
                 "subscription_columns",
                 chain,
             )
+            params = _merge_params(params, review_overrides, "subscription_overrides.review_policy", chain)
             if review_overrides:
                 params["direct_greet_profile"] = review_overrides.get(
                     "direct_greet_profile",

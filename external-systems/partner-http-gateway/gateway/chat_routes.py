@@ -16,7 +16,6 @@ from matchmaking_system import (  # type: ignore[import-untyped]
 )
 from chat_system import (  # type: ignore[import-untyped]
     build_case_conversation_timeline,
-    build_chat_timeline,
     create_assistant_case_layout,
     get_conversation,
     get_or_create_thread,

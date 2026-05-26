@@ -6,6 +6,7 @@ from match_domain.collected_profile import (
     extract_collected_statements,
     extract_profile_facts,
     filter_explicit_patch,
+    merge_collected_for_compile,
 )
 from match_domain.criteria_compiler import compile_effective_criteria
 from match_domain.criteria_snapshots import get_criteria_snapshot_store, save_compiled_snapshot
@@ -52,6 +53,21 @@ class MatchDomainCriteriaTests(unittest.TestCase):
         )
         self.assertEqual(collected.get("target_age_min"), 27)
         self.assertNotIn("persona_summary_internal", collected)
+
+    def test_merge_collected_prefers_synced_profile_over_stale_persona(self):
+        collected = merge_collected_for_compile(
+            persona_row={"target_age_min": 24, "target_age_max": 36},
+            profile_row={
+                "gender": "男",
+                "preferred_age_min": 31,
+                "preferred_age_max": 37,
+                "matcher_preferences": {"target_gender": "女", "target_cities": ["苏州"]},
+            },
+        )
+        self.assertEqual(collected.get("target_gender"), "女")
+        self.assertEqual(collected.get("target_age_min"), 31)
+        self.assertEqual(collected.get("target_age_max"), 37)
+        self.assertEqual(collected.get("target_cities"), ["苏州"])
 
     def test_filter_explicit_patch_rejects_inference(self):
         self.assertEqual(

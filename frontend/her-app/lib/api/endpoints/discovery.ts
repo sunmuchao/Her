@@ -1,6 +1,5 @@
 import { gatewayJson } from '@/lib/api/client'
-import { queryString } from '@/lib/api/client'
-import type { DiscoveryProfileDetailResponse, DiscoverySessionResponse } from '@/lib/types/discovery'
+import type { DiscoverySessionResponse } from '@/lib/types/discovery'
 
 export async function createDiscoverySession(params: { profileId: number }) {
   return gatewayJson<DiscoverySessionResponse>('/v1/discovery/sessions', {
@@ -26,17 +25,5 @@ export async function submitDiscoveryTurn(params: {
           : { user_message: params.userMessage },
       ),
     },
-  )
-}
-
-export async function fetchDiscoveryProfileDetail(params: {
-  profileId: string | number
-  sessionId?: string | null
-}) {
-  return gatewayJson<DiscoveryProfileDetailResponse>(
-    `/v1/discovery/profiles/${params.profileId}${queryString({
-      session_id: params.sessionId,
-    })}`,
-    { method: 'GET' },
   )
 }

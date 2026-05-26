@@ -14,6 +14,8 @@ from .http_helpers import _json_safe, _normalize_boolish, _parse_optional_now, _
 from .identity import GatewayPermissionError
 from .matchmaking_jsonrpc import JSONRPC_NOT_HANDLED as MATCHMAKING_JSONRPC_NOT_HANDLED, handle_matchmaking_jsonrpc
 from .profile_jsonrpc import JSONRPC_NOT_HANDLED as PROFILE_JSONRPC_NOT_HANDLED, handle_profile_jsonrpc
+from profile_source_refs import resolve_profile_source
+
 from .profile_source_defaults import default_profile_source
 from .recommendation_jsonrpc import JSONRPC_NOT_HANDLED as RECOMMENDATION_JSONRPC_NOT_HANDLED, handle_recommendation_jsonrpc
 from .role_sets import INTERNAL_WRITE_ROLES

@@ -14,7 +14,7 @@ except ImportError:  # pragma: no cover
     IntegrityError = Exception  # type: ignore[misc,assignment]
 
 from match_domain.outbox import append_outbox_pending
-from match_domain.trace_context import get_trace_id
+from her_runtime_context import get_trace_id
 from observability import (
     CHAT_FUNNEL_MESSAGE_SEND,
     CHAT_FUNNEL_THREAD_OPEN,
@@ -25,7 +25,7 @@ from .events import chat_message_created_event, chat_thread_opened_event
 from .persona_jobs import maybe_enqueue_persona_sync_job
 from .risk import assert_message_allowed, maybe_capture_message_risk_signal
 from .storage import inflate_json_columns, json_dumps, row_to_dict
-from relationship_ledger.runtime import LedgerMirrorEntry, append_event_to_default_ledger, flush_ledger_mirror
+from relationship_ledger.runtime import LedgerMirrorEntry, flush_ledger_mirror
 
 VIS_DYADIC = "dyadic"
 VIS_OWNER_ONLY = "owner_only"

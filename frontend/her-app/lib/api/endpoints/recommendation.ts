@@ -2,13 +2,66 @@ import { gatewayJson, queryString } from '@/lib/api/client'
 import type { ConversionView } from '@/lib/types/relations'
 import { getProfileId } from '@/lib/auth/session'
 
-type RecommendationCard = {
-  card_id?: string
+export type RecommendationCard = {
+  card_id: string
+  subscription_id?: string
+  recommendation_id?: number
+  candidate_id?: number
   card_status?: string
+  title?: string
+  body?: string
+  created_at?: string
+  payload?: {
+    result_snapshot?: {
+      id?: number
+      name?: string
+      score?: number
+      profile?: {
+        age?: number
+        city?: string
+        job?: string
+        avatar_url?: string
+      }
+    }
+  }
 }
 
 type RecommendationCardsResponse = {
   cards?: RecommendationCard[]
+}
+
+export async function fetchRecommendationCards(profileId: number) {
+  return gatewayJson<RecommendationCardsResponse>(
+    `/v1/recommendation/cards${queryString({ profile_id: profileId })}`,
+  )
+}
+
+export async function markRecommendationCardsRead(profileId: number, cardIds: string[]) {
+  return gatewayJson('/v1/recommendation/cards/read', {
+    method: 'POST',
+    body: JSON.stringify({
+      profile_id: profileId,
+      card_ids: cardIds,
+    }),
+  })
+}
+
+export async function postRecommendationAction(params: {
+  subscriptionId: string
+  candidateId: number
+  actionType: string
+  idempotencyKey: string
+}) {
+  return gatewayJson('/v1/recommendation/actions', {
+    method: 'POST',
+    headers: { 'Idempotency-Key': params.idempotencyKey },
+    body: JSON.stringify({
+      subscription_id: params.subscriptionId,
+      candidate_id: params.candidateId,
+      action_type: params.actionType,
+      client_idempotency_key: params.idempotencyKey,
+    }),
+  })
 }
 
 export async function fetchInboxUnreadCount(profileId?: number): Promise<number> {
@@ -33,7 +86,7 @@ export async function fetchConversionViewsForSubscription(
   return response.conversion_views || []
 }
 
-export async function createRecommendationSubscription(params: {
+async function createRecommendationSubscription(params: {
   profileId: number
   criteria?: Record<string, unknown>
   title?: string
@@ -44,7 +97,7 @@ export async function createRecommendationSubscription(params: {
     {
       method: 'POST',
       body: JSON.stringify({
-        profile_id: params.profileId,
+        requester_id: params.profileId,
         criteria: params.criteria || {},
         title: params.title || '发现页长期留意',
         source: params.source,

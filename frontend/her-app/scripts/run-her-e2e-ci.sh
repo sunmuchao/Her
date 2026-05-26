@@ -8,14 +8,28 @@ GATEWAY_DIR="$ROOT_DIR/external-systems/partner-http-gateway"
 LOG_DIR="${HER_E2E_LOG_DIR:-/tmp/her-e2e-ci}"
 mkdir -p "$LOG_DIR"
 
-export PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH:-$HOME/Library/Caches/ms-playwright}"
-if [ "$(uname -s)" = "Linux" ]; then
-  export PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH:-$HOME/.cache/ms-playwright}"
-fi
+_resolve_playwright_browsers_path() {
+  local candidate="${1:-}"
+  if [ -n "$candidate" ]; then
+    for marker in "$candidate"/chromium-*/INSTALLATION_COMPLETE; do
+      if [ -f "$marker" ]; then
+        echo "$candidate"
+        return 0
+      fi
+    done
+  fi
+  if [ "$(uname -s)" = "Linux" ]; then
+    echo "${HOME}/.cache/ms-playwright"
+  else
+    echo "${HOME}/Library/Caches/ms-playwright"
+  fi
+}
+export PLAYWRIGHT_BROWSERS_PATH="$(_resolve_playwright_browsers_path "${PLAYWRIGHT_BROWSERS_PATH:-}")"
 
 export NEXT_PUBLIC_ALLOW_MOCK_FALLBACK=false
 export NEXT_PUBLIC_ENABLE_DEMO_NAV=true
 export NEXT_PUBLIC_USE_AUTH_STUB=false
+export NEXT_PUBLIC_E2E_GATEWAY_AUTH=true
 export NODE_ENV=production
 
 echo "[e2e-ci] bootstrapping MySQL schemas and seed data..."

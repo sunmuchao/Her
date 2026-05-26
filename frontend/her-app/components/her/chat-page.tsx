@@ -5,7 +5,7 @@ import { ArrowLeft, Phone, MoreVertical, Send, Image as ImageIcon, BadgeCheck, M
 import Image from 'next/image'
 import { ChatTypingIndicator } from './ui/typing-indicator'
 import { cn } from '@/lib/utils'
-import { gatewayJson, queryString } from '@/lib/gateway'
+import { gatewayJson, queryString } from '@/lib/api/client'
 import { getErrorMessage } from '@/lib/api/errors'
 import { getChatParticipantId } from '@/lib/auth/session'
 import { canUseMockFallback } from '@/lib/mock'

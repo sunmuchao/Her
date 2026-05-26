@@ -7,7 +7,7 @@ from typing import Any, Protocol
 from match_domain.principal import coalesce_profile_requester, user_key_from_profile_id
 from match_domain.support_contracts import Principal, principal_from_actor
 
-from .identity import ROLE_END_USER, GatewayPermissionError, get_current_actor
+from .identity import GatewayPermissionError, get_current_actor
 
 ENV_RESOLVED_PRINCIPAL = "partner_gateway.resolved_principal"
 

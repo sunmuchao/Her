@@ -487,7 +487,7 @@ class GatewayWsgiTests(unittest.TestCase):
         self.assertEqual(replay_data["error_code"], "DISCOVERY_ACTION_EXPIRED")
         self.assertTrue(replay_data["retryable"])
 
-    def test_discovery_get_session_and_profile_detail(self) -> None:
+    def test_discovery_get_session_and_candidate_bff_detail(self) -> None:
         create_env = _wsgi_env(
             "POST",
             "/v1/discovery/sessions",
@@ -503,33 +503,29 @@ class GatewayWsgiTests(unittest.TestCase):
         session_data = json.loads(session_out.decode("utf-8"))
         self.assertEqual(session_data["session"]["session_id"], session_id)
 
-        detail_payload = {
-            "id": 10001,
-            "name": "林知夏",
-            "photo_preview": ["https://static.example.com/p/10001/1.jpg"],
-            "verification_items": [
-                {"key": "photo", "status": "verified", "summary": "已真人照片认证（4张）"},
-            ],
-            "trust_summary": {"headline": "已实名认证"},
-            "caution_items": ["工作日回复可能偏晚。"],
-            "trust_actions": ["建议先视频核验真人状态"],
-            "notes_summary": "平时作息规律，周末喜欢徒步和看展。",
-            "profile": {
-                "age": 29,
-                "city": "无锡",
-                "job": "中学老师",
-                "education": "硕士",
-                "relationship_goal": "认真恋爱",
-            },
+        detail_view = {
+            "hero": {"name": "林知夏", "age": 29, "city": "无锡", "headline": "中学老师 · 硕士"},
+            "photo_gallery": [{"image_url": "https://static.example.com/p/10001/1.jpg"}],
         }
 
-        with mock.patch.dict(os.environ, {"HER_DISCOVERY_PROFILE_SOURCE": "mysql://demo"}, clear=False), mock.patch(
-            "discovery_system.service.load_profile_detail",
-            return_value=detail_payload,
+        with mock.patch.dict(
+            os.environ,
+            {"HER_PROFILE_SOURCE_DSN": "mysql://demo?table=profiles", "HER_DISCOVERY_PROFILE_SOURCE": "mysql://demo"},
+            clear=False,
+        ), mock.patch(
+            "gateway.bff.candidate_detail.get_profile",
+            return_value={"id": 10001, "name": "林知夏", "verified_level": "basic"},
+        ), mock.patch(
+            "gateway.bff.candidate_detail.build_trust_summary",
+            return_value=mock.MagicMock(to_dict=lambda: {"headline": "已实名认证"}),
+        ), mock.patch.object(
+            self.gw._discovery,
+            "get_profile_detail",
+            return_value={"profile_id": 10001, "detail_view": detail_view},
         ):
             detail_env = _wsgi_env(
                 "GET",
-                "/v1/discovery/profiles/10001",
+                "/v1/candidates/10001",
                 query=f"session_id={session_id}",
             )
             detail_out = b"".join(self.gw(detail_env, self.start_response))
@@ -537,9 +533,9 @@ class GatewayWsgiTests(unittest.TestCase):
         self.assertIn("200", self.status)
         detail_data = json.loads(detail_out.decode("utf-8"))
         self.assertEqual(detail_data["profile_id"], 10001)
+        self.assertEqual(detail_data["detail_source"], "discovery")
         self.assertEqual(detail_data["detail_view"]["hero"]["name"], "林知夏")
         self.assertEqual(detail_data["detail_view"]["photo_gallery"][0]["image_url"], "https://static.example.com/p/10001/1.jpg")
-        self.assertIn("detail_view", detail_data)
 
     def test_internal_error_emits_error_log(self) -> None:
         env = _wsgi_env("GET", "/v1/failure")

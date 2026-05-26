@@ -29,6 +29,3 @@ export type AppPage =
   | 'sub-trust-center'
   | 'sub-collected-preferences'
   | 'ops-workbench'
-
-/** @deprecated Use AppPage */
-export type DemoPage = AppPage

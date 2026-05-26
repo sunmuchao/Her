@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { ArrowLeft, BadgeCheck, Bookmark, ChevronRight, Mail, MapPin, Search, Send, X } from 'lucide-react'
 import { XiaoyaAvatar } from '@/components/her/ui/xiaoya-avatar'
 import Image from 'next/image'
@@ -8,22 +8,18 @@ import { EmptyRecommendations, EmptySearchResults } from './ui/empty-states'
 import { InboxItemSkeleton, DiscoverPageSkeleton } from './ui/skeletons'
 import { TypingIndicator } from './ui/typing-indicator'
 import { FadeIn, OnlineIndicator } from './ui/animations'
-import { PLACEHOLDER_AVATAR, resolveProfileImageUrl } from '@/lib/image-url'
 import { cn } from '@/lib/utils'
-import { gatewayJson, queryString } from '@/lib/gateway'
-import { createDiscoverySession, submitDiscoveryTurn } from '@/lib/api/endpoints/discovery'
-import { fetchCollectedStatements, formatCollectedPreferenceChips } from '@/lib/api/endpoints/collected'
-import { fetchConversionViewsForSubscription, saveDiscoveryAsSubscription } from '@/lib/api/endpoints/recommendation'
-import { fetchRelationsMine, formatConversionStageLabel } from '@/lib/api/endpoints/relations'
-import { getErrorMessage } from '@/lib/api/errors'
-import { hydrateSessionFromAuthMe } from '@/lib/auth/hydrate-session'
-import { getAccessToken, getProfileId } from '@/lib/auth/session'
+import { getProfileId } from '@/lib/auth/session'
+import {
+  markRecommendationCardsRead,
+  postRecommendationAction,
+} from '@/lib/api/endpoints/recommendation'
+import { useRecommendationInbox, type InboxItem } from '@/hooks/use-recommendation-inbox'
 import { canUseMockFallback } from '@/lib/mock'
-import { notifyError, notifySuccess } from '@/lib/notify'
-import { logDataProvenance, usePageDataSource } from '@/lib/data-provenance'
-import { DEMO_CANDIDATES, EMPTY_PREFS_PLACEHOLDER } from '@/lib/fixtures/demo-profiles'
+import { notifyError } from '@/lib/notify'
+import { EMPTY_PREFS_PLACEHOLDER } from '@/lib/fixtures/demo-profiles'
 import type { CandidatePreview } from '@/lib/types/candidate'
-import type { DiscoveryView } from '@/lib/types/discovery'
+import { useDiscoverySession } from '@/hooks/use-discovery-session'
 import { DemoDataBanner } from './ui/demo-data-banner'
 import { ErrorState } from './ui/error-state'
 
@@ -34,273 +30,29 @@ interface DiscoverPageProps {
   onSessionIdChange?: (sessionId: string | null) => void
 }
 
-type RecommendationCardsResponse = {
-  cards?: Array<{
-    card_id: string
-    subscription_id?: string
-    recommendation_id?: number
-    candidate_id?: number
-    card_status?: string
-    title?: string
-    body?: string
-    created_at?: string
-    payload?: {
-      cta_actions?: Array<{ id?: string; label?: string }>
-      result_snapshot?: {
-        id?: number
-        name?: string
-        score?: number
-        profile?: {
-          age?: number
-          city?: string
-          job?: string
-          avatar_url?: string
-        }
-      }
-    }
-  }>
-}
-
-type InboxItem = {
-  id: string
-  cardId?: string
-  subscriptionId?: string
-  recommendationId?: number
-  candidateId?: number
-  name: string
-  age: number
-  city: string
-  occupation: string
-  matchScore: number
-  image: string
-  type: 'delayed' | 'matched'
-  message: string
-  time: string
-  isRead: boolean
-  conversionStage?: string
-}
-
-type ChatMessage = {
-  id: string
-  type: 'matchmaker' | 'user'
-  content: string
-  timestamp: string
-}
-
-const initialMessages: ChatMessage[] = [
-  { id: '1', type: 'matchmaker', content: '你好，我是你的专属红娘小雅。接下来我会帮你找到那个对的人。', timestamp: '09:30' },
-  { id: '2', type: 'matchmaker', content: '你理想中的伴侣是什么样的？', timestamp: '09:31' },
-]
-
-const SAVE_SUBSCRIPTION_ACTIONS = new Set([
-  'save_subscription',
-  'save_for_later',
-  'create_subscription',
-  'save_as_subscription',
-])
-
-function mapDiscoveryView(view?: DiscoveryView) {
-  const messages =
-    view?.timeline
-      ?.filter((item) => item.item_type === 'assistant_message' || item.item_type === 'user_message')
-      .map((item, index) => ({
-        id: item.item_id || String(index),
-        type: item.item_type === 'user_message' ? ('user' as const) : ('matchmaker' as const),
-        content: item.body || '',
-        timestamp: '刚刚',
-      })) || []
-
-  const chips = view?.criteria_chips?.map((item) => item.label).filter(Boolean) as string[] | undefined
-  const actions =
-    view?.suggested_actions
-      ?.filter((item): item is { action_id: string; label: string } => Boolean(item.action_id && item.label))
-      .map((item) => ({ action_id: item.action_id, label: item.label })) || []
-  const candidates =
-    view?.timeline
-      ?.flatMap((item) => (item.item_type === 'result_group' ? item.cards || [] : []))
-      .map((card) => ({
-        id: String(card.profile_id || card.card_id || ''),
-        name: card.title || '候选人',
-        city: card.subtitle || undefined,
-        image: card.cover_image_url,
-        matchScore: card.match_score,
-        matchReason: card.reason_summary,
-      }))
-      .filter((item) => item.id) || []
-
-  return {
-    messages,
-    chips,
-    actions,
-    candidates,
-    composerPlaceholder: view?.composer?.placeholder || '输入你的想法...',
-    composerDisabled: Boolean(view?.composer?.disabled),
-  }
-}
-
 export default function DiscoverPage({
   onViewCandidate,
   onOpenInbox,
   inboxUnreadCount = 0,
   onSessionIdChange,
 }: DiscoverPageProps) {
-  const [messages, setMessages] = useState(initialMessages)
-  const [inputValue, setInputValue] = useState('')
-  const [isTyping, setIsTyping] = useState(false)
-  const [currentPrefs, setCurrentPrefs] = useState<string[]>([])
-  const [sessionId, setSessionId] = useState<string | null>(null)
-  const [suggestedActions, setSuggestedActions] = useState<Array<{ action_id: string; label: string }>>([])
-  const [composerPlaceholder, setComposerPlaceholder] = useState('输入你的想法...')
-  const [composerDisabled, setComposerDisabled] = useState(false)
-  const [isSubmittingTurn, setIsSubmittingTurn] = useState(false)
-  const [backendCandidates, setBackendCandidates] = useState<CandidatePreview[]>([])
-  const [loadError, setLoadError] = useState<string | null>(null)
-  const { usingMockData, applyProvenance } = usePageDataSource()
-  const [isLoadingSession, setIsLoadingSession] = useState(true)
-  const chatEndRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsTyping(true)
-      setTimeout(() => setIsTyping(false), 2500)
-    }, 1500)
-    return () => clearTimeout(timer)
-  }, [])
-
-  useEffect(() => {
-    if (chatEndRef.current) {
-      chatEndRef.current.scrollIntoView({ behavior: 'smooth' })
-    }
-  }, [messages, isTyping, suggestedActions, backendCandidates])
-
-  useEffect(() => {
-    let cancelled = false
-
-    async function loadSession() {
-      if (getAccessToken()) {
-        await hydrateSessionFromAuthMe()
-      }
-      if (cancelled) return
-
-      const profileId = getProfileId()
-      if (!profileId) {
-        setIsLoadingSession(false)
-        setLoadError(
-          getAccessToken()
-            ? '请先完成资料填写后再使用发现与推荐'
-            : '未配置用户 ID，请在 .env.local 设置 NEXT_PUBLIC_HER_PROFILE_ID',
-        )
-        if (canUseMockFallback()) {
-          applyProvenance(true, true, '/v1/discovery/sessions')
-          setBackendCandidates(DEMO_CANDIDATES)
-          setCurrentPrefs(['同城优先', '本科以上'])
-        } else {
-          applyProvenance(false, false, '/v1/discovery/sessions')
-        }
-        return
-      }
-
-      setIsLoadingSession(true)
-      setLoadError(null)
-      try {
-        const data = await createDiscoverySession({ profileId })
-        if (cancelled) return
-        const sid = data.session?.session_id || null
-        setSessionId(sid)
-        onSessionIdChange?.(sid)
-        applyProvenance(false, true, '/v1/discovery/sessions')
-        const mapped = mapDiscoveryView(data.view)
-        if (mapped.messages.length) setMessages(mapped.messages)
-        if (mapped.chips?.length) setCurrentPrefs(mapped.chips)
-        try {
-          const collected = await fetchCollectedStatements(profileId)
-          const collectedChips = formatCollectedPreferenceChips(collected.collected_statements || {})
-          if (collectedChips.length) {
-            setCurrentPrefs((prev) => {
-              const merged = [...collectedChips]
-              for (const chip of prev) {
-                if (!merged.includes(chip)) merged.push(chip)
-              }
-              return merged.slice(0, 12)
-            })
-          }
-        } catch {
-          // Discovery view chips remain when collected API is unavailable.
-        }
-        setSuggestedActions(mapped.actions)
-        setComposerPlaceholder(mapped.composerPlaceholder)
-        setComposerDisabled(mapped.composerDisabled)
-        if (mapped.candidates.length) setBackendCandidates(mapped.candidates)
-        else setBackendCandidates([])
-        logDataProvenance('discover', applyProvenance(false, mapped.candidates.length > 0, '/v1/discovery/sessions'))
-      } catch (error) {
-        if (cancelled) return
-        const message = getErrorMessage(error, '发现页会话加载失败')
-        setLoadError(message)
-        if (canUseMockFallback()) {
-          applyProvenance(true, true, '/v1/discovery/sessions')
-          setBackendCandidates(DEMO_CANDIDATES)
-          setCurrentPrefs(['同城优先', '本科以上'])
-        } else {
-          applyProvenance(false, false, '/v1/discovery/sessions')
-          notifyError(error, message)
-        }
-      } finally {
-        if (!cancelled) setIsLoadingSession(false)
-      }
-    }
-
-    void loadSession()
-    return () => {
-      cancelled = true
-    }
-  }, [onSessionIdChange])
-
-  const submitTurn = async (payload: { user_message?: string; action_id?: string }) => {
-    if (!sessionId) {
-      notifyError(new Error('会话未就绪'), '请稍后重试或刷新页面')
-      return
-    }
-
-    const profileId = getProfileId()
-    if (
-      payload.action_id &&
-      SAVE_SUBSCRIPTION_ACTIONS.has(payload.action_id) &&
-      profileId
-    ) {
-      setIsSubmittingTurn(true)
-      try {
-        await saveDiscoveryAsSubscription({ profileId })
-        notifySuccess('已保存为长期留意')
-      } catch (error) {
-        notifyError(error, '保存订阅失败')
-      } finally {
-        setIsSubmittingTurn(false)
-      }
-    }
-
-    setIsSubmittingTurn(true)
-    try {
-      const data = await submitDiscoveryTurn({
-        sessionId,
-        userMessage: payload.user_message,
-        actionId: payload.action_id,
-      })
-      const mapped = mapDiscoveryView(data.view)
-      if (mapped.messages.length) setMessages(mapped.messages)
-      if (mapped.chips) setCurrentPrefs(mapped.chips)
-      setSuggestedActions(mapped.actions)
-      setComposerPlaceholder(mapped.composerPlaceholder)
-      setComposerDisabled(mapped.composerDisabled)
-      if (mapped.candidates.length) setBackendCandidates(mapped.candidates)
-      else setBackendCandidates([])
-      if (payload.user_message) setInputValue('')
-    } catch (error) {
-      notifyError(error, '发送失败，请重试')
-    } finally {
-      setIsSubmittingTurn(false)
-    }
-  }
+  const {
+    messages,
+    inputValue,
+    setInputValue,
+    isTyping,
+    currentPrefs,
+    suggestedActions,
+    composerPlaceholder,
+    composerDisabled,
+    isSubmittingTurn,
+    backendCandidates,
+    loadError,
+    usingMockData,
+    isLoadingSession,
+    chatEndRef,
+    submitTurn,
+  } = useDiscoverySession(onSessionIdChange)
 
   const visibleCandidates = backendCandidates
   const prefChips = currentPrefs.length
@@ -507,97 +259,7 @@ export function RecommendationInbox({
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set())
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set())
   const [searchQuery, setSearchQuery] = useState('')
-  const [isLoading, setIsLoading] = useState(true)
-  const [backendItems, setBackendItems] = useState<InboxItem[]>([])
-
-  useEffect(() => {
-    const profileId = getProfileId()
-    if (!profileId) {
-      setIsLoading(false)
-      return
-    }
-
-    let cancelled = false
-    async function loadCards() {
-      try {
-        const response = await gatewayJson<RecommendationCardsResponse>(
-          `/v1/recommendation/cards${queryString({ profile_id: Number(profileId) })}`,
-        )
-        if (cancelled) return
-        const cards =
-          response.cards?.map((card) => {
-            const snapshot = card.payload?.result_snapshot
-            const profile = snapshot?.profile
-            return {
-              id: String(snapshot?.id || card.candidate_id || card.card_id),
-              cardId: card.card_id,
-              subscriptionId: card.subscription_id,
-              recommendationId: card.recommendation_id,
-              candidateId: snapshot?.id || card.candidate_id,
-              name: snapshot?.name || card.title?.replace(/^发现新的合适对象：/, '') || '候选人',
-              age: profile?.age || 0,
-              city: profile?.city || '未知',
-              occupation: profile?.job || '资料待补充',
-              matchScore: snapshot?.score || 0,
-              image: resolveProfileImageUrl(profile?.avatar_url, PLACEHOLDER_AVATAR),
-              type: 'matched' as const,
-              message: card.body || card.title || '系统为你推送了一位新候选人',
-              time: card.created_at || '刚刚',
-              isRead: card.card_status === 'read',
-              conversionStage: undefined,
-            }
-          }) || []
-        const conversionByCandidate = new Map<number, string>()
-        try {
-          const mine = await fetchRelationsMine()
-          for (const relation of mine.relations || []) {
-            const targetRef = String(relation.target_profile_ref || '')
-            const match = targetRef.match(/^profile:(\d+)$/)
-            if (!match) continue
-            const candidateId = Number(match[1])
-            const phase = String(relation.current_phase || relation.relation_status || '')
-            if (phase) {
-              conversionByCandidate.set(candidateId, formatConversionStageLabel(phase))
-            }
-          }
-        } catch {
-          const subscriptionIds = [...new Set(cards.map((card) => card.subscriptionId).filter(Boolean))] as string[]
-          await Promise.all(
-            subscriptionIds.map(async (subscriptionId) => {
-              try {
-                const views = await fetchConversionViewsForSubscription(subscriptionId)
-                views.forEach((view) => {
-                  if (view.candidate_id && view.conversion_stage) {
-                    conversionByCandidate.set(
-                      Number(view.candidate_id),
-                      formatConversionStageLabel(view.conversion_stage),
-                    )
-                  }
-                })
-              } catch {
-                // conversion views are optional enrichment
-              }
-            }),
-          )
-        }
-        const enrichedCards = cards.map((card) => ({
-          ...card,
-          conversionStage:
-            card.candidateId != null
-              ? conversionByCandidate.get(Number(card.candidateId))
-              : undefined,
-        }))
-        setBackendItems(enrichedCards)
-      } finally {
-        if (!cancelled) setIsLoading(false)
-      }
-    }
-
-    void loadCards()
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  const { isLoading, backendItems } = useRecommendationInbox()
 
   const filteredItems = backendItems.filter((item) => {
     if (dismissedIds.has(item.id)) return false
@@ -614,13 +276,7 @@ export function RecommendationInbox({
     const profileId = getProfileId()
     if (!profileId || !item.cardId) return
     try {
-    await gatewayJson('/v1/recommendation/cards/read', {
-      method: 'POST',
-      body: JSON.stringify({
-        profile_id: Number(profileId),
-        card_ids: [item.cardId],
-      }),
-    })
+    await markRecommendationCardsRead(Number(profileId), [item.cardId])
       onBadgesRefresh?.()
     } catch (error) {
       notifyError(error, '标记已读失败')
@@ -631,15 +287,11 @@ export function RecommendationInbox({
     if (!item.subscriptionId || !item.candidateId) return
     const idem = `${item.subscriptionId}:${item.candidateId}:${actionType}`
     try {
-    await gatewayJson('/v1/recommendation/actions', {
-      method: 'POST',
-      headers: { 'Idempotency-Key': idem },
-      body: JSON.stringify({
-        subscription_id: item.subscriptionId,
-        candidate_id: item.candidateId,
-        action_type: actionType,
-        client_idempotency_key: idem,
-      }),
+    await postRecommendationAction({
+      subscriptionId: item.subscriptionId,
+      candidateId: item.candidateId,
+      actionType,
+      idempotencyKey: idem,
     })
     } catch (error) {
       notifyError(error, '操作失败，请重试')

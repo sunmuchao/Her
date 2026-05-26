@@ -13,9 +13,9 @@ from .assistant_sessions import (
     enqueue_due_post_chat_followup_tasks,
     enqueue_due_silence_probe_tasks,
 )
-from .outbox_admin import mark_pending_outbox_published_batch
+from .outbox import mark_pending_outbox_published_batch
 from .outbox_consumer import consume_chat_outbox_batch
-from .outbox_worker import resolve_outbox_consume_config
+from .outbox import resolve_outbox_consume_config
 from .persona_jobs import process_pending_persona_jobs
 from .summaries import refresh_stale_thread_summaries
 

@@ -1,6 +1,6 @@
 # Her App Frontend
 
-当前仓库已接入 `/Users/sunmuchao/Downloads/her-app-design_5` 的最新前端页面；`frontend/her-app` 同时保留了系统已有的 `app/api/gateway` 代理接口。
+Her 主应用前端（Next.js App Router），通过 `app/api/gateway` 代理访问 partner-http-gateway，并保留开发环境 Mock 回退能力。
 
 ## 运行
 

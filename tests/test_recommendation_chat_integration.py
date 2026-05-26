@@ -9,24 +9,33 @@ from datetime import datetime
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 RECOMMENDATION_ROOT = REPO_ROOT / "external-systems" / "partner-recommendation-system"
+MATCHMAKING_ROOT = REPO_ROOT / "external-systems" / "partner-matchmaking-system"
 CHAT_ROOT = REPO_ROOT / "external-systems" / "partner-chat-system"
 
-for path in (REPO_ROOT, RECOMMENDATION_ROOT, CHAT_ROOT):
+for path in (REPO_ROOT, RECOMMENDATION_ROOT, MATCHMAKING_ROOT, CHAT_ROOT):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
-from recommendation_system import (  # noqa: E402
+from matchmaking_system.proxy_intro import (  # noqa: E402
     close_match_case,
     close_timed_out_match_cases,
-    connect_db as connect_recommendation_db,
     create_match_case,
+    dispatch_match_case_outreach,
+    record_match_case_reply,
+)
+from matchmaking_system import (  # noqa: E402
+    connect_db as connect_matchmaking_db,
+    initialize_database as initialize_matchmaking_database,
+    reset_all_tables as reset_matchmaking_tables,
+)
+from matchmaking_system.storage import DEFAULT_MATCHMAKING_TEST_MYSQL_DSN  # noqa: E402
+from recommendation_system import (  # noqa: E402
+    connect_db as connect_recommendation_db,
     create_subscription,
     deliver_in_app_recommendations,
-    dispatch_match_case_outreach,
     initialize_database as initialize_recommendation_database,
     list_recommendation_conversion_views_for_subscription,
     list_recommendations_for_subscription,
-    record_match_case_reply,
     record_user_review,
     refresh_subscription,
     reset_all_tables as reset_recommendation_tables,
@@ -35,7 +44,6 @@ from recommendation_system.storage import DEFAULT_RECOMMENDATION_TEST_MYSQL_DSN 
 
 from chat_system import (  # noqa: E402
     build_case_conversation_timeline,
-    build_chat_timeline,
     connect_db as connect_chat_db,
     create_assistant_case_layout,
     get_or_create_thread,
@@ -85,10 +93,16 @@ def build_result(candidate_id: int, name: str, score: int) -> dict[str, object]:
 class RecommendationChatIntegrationTests(unittest.TestCase):
     def setUp(self) -> None:
         self._old_relation_ledger_db = os.environ.get("HER_RELATION_LEDGER_DB")
+        self._old_proxy_intro_storage = os.environ.get("HER_PROXY_INTRO_STORAGE")
         os.environ["HER_RELATION_LEDGER_DB"] = DEFAULT_RELATION_LEDGER_TEST_MYSQL_DSN
+        os.environ["HER_PROXY_INTRO_STORAGE"] = "matchmaking"
         self.recommendation_conn = connect_recommendation_db(DEFAULT_RECOMMENDATION_TEST_MYSQL_DSN)
         initialize_recommendation_database(self.recommendation_conn)
         reset_recommendation_tables(self.recommendation_conn)
+
+        self.matchmaking_conn = connect_matchmaking_db(DEFAULT_MATCHMAKING_TEST_MYSQL_DSN)
+        initialize_matchmaking_database(self.matchmaking_conn)
+        reset_matchmaking_tables(self.matchmaking_conn)
 
         self.chat_conn = connect_chat_db(DEFAULT_CHAT_TEST_MYSQL_DSN)
         initialize_chat_database(self.chat_conn)
@@ -100,12 +114,17 @@ class RecommendationChatIntegrationTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.recommendation_conn.close()
+        self.matchmaking_conn.close()
         self.chat_conn.close()
         self.ledger_conn.close()
         if self._old_relation_ledger_db is None:
             os.environ.pop("HER_RELATION_LEDGER_DB", None)
         else:
             os.environ["HER_RELATION_LEDGER_DB"] = self._old_relation_ledger_db
+        if self._old_proxy_intro_storage is None:
+            os.environ.pop("HER_PROXY_INTRO_STORAGE", None)
+        else:
+            os.environ["HER_PROXY_INTRO_STORAGE"] = self._old_proxy_intro_storage
 
     def load_relation(self, relation_key: str):
         self.ledger_conn.close()
@@ -142,25 +161,29 @@ class RecommendationChatIntegrationTests(unittest.TestCase):
         )
         deliver_in_app_recommendations(self.recommendation_conn, now=datetime(2026, 5, 10, 9, 20, 0))
         case = create_match_case(
-            self.recommendation_conn,
+            self.matchmaking_conn,
+            recommendation_conn=self.recommendation_conn,
             subscription_id=subscription["subscription_id"],
             candidate_id=92001,
             now=datetime(2026, 5, 10, 10, 0, 0),
         )
         dispatch_match_case_outreach(
-            self.recommendation_conn,
+            self.matchmaking_conn,
+            recommendation_conn=self.recommendation_conn,
             case_id=case["case_id"],
             now=datetime(2026, 5, 10, 10, 5, 0),
         )
         record_match_case_reply(
-            self.recommendation_conn,
+            self.matchmaking_conn,
+            recommendation_conn=self.recommendation_conn,
             case_id=case["case_id"],
             reply_type="accepted",
             now=datetime(2026, 5, 10, 11, 0, 0),
             reply_payload={"note": "愿意继续了解"},
         )
         close_match_case(
-            self.recommendation_conn,
+            self.matchmaking_conn,
+            recommendation_conn=self.recommendation_conn,
             case_id=case["case_id"],
             close_reason="handoff_completed",
             now=datetime(2026, 5, 10, 11, 30, 0),
@@ -230,12 +253,6 @@ class RecommendationChatIntegrationTests(unittest.TestCase):
             requester_user_id,
             message_limit=20,
         )
-        chat_timeline = build_chat_timeline(
-            self.chat_conn,
-            case["case_id"],
-            requester_user_id,
-            message_limit=20,
-        )
         visible_conversations = list_case_conversations(
             self.chat_conn,
             case["case_id"],
@@ -248,10 +265,6 @@ class RecommendationChatIntegrationTests(unittest.TestCase):
         self.assertEqual(layout["case_id"], case["case_id"])
         self.assertEqual(layout["relation_key"], relation_key)
         self.assertEqual(layout["conversation_count"], 3)
-        self.assertEqual(chat_timeline["thread"]["case_id"], case["case_id"])
-        self.assertEqual(chat_timeline["thread"]["relation_key"], relation_key)
-        self.assertEqual(len(chat_timeline["messages"]), 1)
-        self.assertEqual(chat_timeline["messages"][0]["body"], "你好，很高兴认识你。")
         self.assertEqual(conversation_timeline["conversation_count"], 2)
         self.assertEqual(
             {item["metadata"]["layout_role"] for item in visible_conversations},
@@ -295,23 +308,26 @@ class RecommendationChatIntegrationTests(unittest.TestCase):
         )
         deliver_in_app_recommendations(self.recommendation_conn, now=datetime(2026, 5, 10, 9, 20, 0))
         case = create_match_case(
-            self.recommendation_conn,
+            self.matchmaking_conn,
+            recommendation_conn=self.recommendation_conn,
             subscription_id=subscription["subscription_id"],
             candidate_id=92002,
             now=datetime(2026, 5, 10, 10, 0, 0),
         )
         dispatch_match_case_outreach(
-            self.recommendation_conn,
+            self.matchmaking_conn,
+            recommendation_conn=self.recommendation_conn,
             case_id=case["case_id"],
             now=datetime(2026, 5, 10, 10, 5, 0),
         )
-        self.recommendation_conn.execute(
-            "UPDATE match_cases SET reply_deadline_at = ? WHERE case_id = ?",
+        self.matchmaking_conn.execute(
+            "UPDATE proxy_intro_cases SET reply_deadline_at = ? WHERE case_id = ?",
             ("2026-05-10 10:10:00", case["case_id"]),
         )
-        self.recommendation_conn.commit()
+        self.matchmaking_conn.commit()
         close_timed_out_match_cases(
-            self.recommendation_conn,
+            self.matchmaking_conn,
+            recommendation_conn=self.recommendation_conn,
             now=datetime(2026, 5, 10, 12, 0, 0),
         )
 

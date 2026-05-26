@@ -1,7 +1,7 @@
 import { gatewayJson } from '@/lib/api/client'
 import { getDeviceId } from '@/lib/auth/device-id'
 import type { LoginPayload } from '@/lib/auth/session'
-import { isAuthStubEnabled } from '@/lib/env'
+import { isAuthStubEnabled, isE2EGatewayAuthEnabled } from '@/lib/env'
 
 export type SmsSendCodeResponse = {
   challenge_id?: string
@@ -15,12 +15,14 @@ export type OneTapCreateResponse = {
 }
 
 function wechatCode(): string {
-  return isAuthStubEnabled() ? 'wx-code-1' : ''
+  if (isAuthStubEnabled() || isE2EGatewayAuthEnabled()) return 'wx-code-1'
+  return ''
 }
 
 function oneTapToken(fallback?: string): string {
   if (fallback) return fallback
-  return isAuthStubEnabled() ? 'carrier-token-1' : ''
+  if (isAuthStubEnabled() || isE2EGatewayAuthEnabled()) return 'carrier-token-1'
+  return ''
 }
 
 export async function sendSmsCode(params: {
@@ -74,7 +76,7 @@ export async function bindPhoneWithSms(params: {
 
 export async function wechatLogin() {
   const code = wechatCode()
-  if (!code && !isAuthStubEnabled()) {
+  if (!code) {
     throw new Error('微信登录尚未接入，请在开发环境开启 NEXT_PUBLIC_USE_AUTH_STUB')
   }
   return gatewayJson<LoginPayload>('/v1/auth/wechat/login', {

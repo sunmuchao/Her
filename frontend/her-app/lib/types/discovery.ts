@@ -22,19 +22,3 @@ export type DiscoverySessionResponse = {
   session?: { session_id?: string }
   view?: DiscoveryView
 }
-
-export type DiscoveryProfileDetailResponse = {
-  detail_view?: {
-    hero?: {
-      name?: string
-      age?: number
-      city?: string
-      headline?: string
-    }
-    photo_gallery?: Array<{ url?: string; image_url?: string }>
-    verified_sections?: Array<{ title?: string; items?: string[] }>
-    self_reported_sections?: Array<{ title?: string; items?: string[] }>
-    caution_sections?: Array<{ title?: string; items?: string[] }>
-    matchmaker_notes?: string[]
-  }
-}

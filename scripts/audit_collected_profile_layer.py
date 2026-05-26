@@ -10,9 +10,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+_SCRIPTS_DIR = Path(__file__).resolve().parent
+if str(_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR))
+from _repo_bootstrap import bootstrap_repo  # noqa: E402
+
+REPO_ROOT = bootstrap_repo()
 
 from match_domain.collected_metadata import TAG_FIELDS_REQUIRING_EXPLICIT_OBS  # noqa: E402
 from match_domain.collected_profile import INFERENCE_ONLY_PERSONA_FIELDS  # noqa: E402

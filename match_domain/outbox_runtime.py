@@ -21,7 +21,7 @@ from .outbox import (
     PUBLISH_STATUS_PUBLISHED,
     PUBLISH_STATUS_RETRY_PENDING,
 )
-from .trace_context import get_trace_id
+from her_runtime_context import get_trace_id
 
 OutboxHandler = Callable[[Any, dict[str, Any], dict[str, Any], datetime], Optional[Any]]
 
@@ -792,6 +792,17 @@ def run_outbox_worker(
         if int(batch.get("examined") or 0) <= 0:
             break
     after = summarize_outbox(conn, now=now, claim_timeout_seconds=consume_claim_timeout)
+    try:
+        from observability.outbox_health import emit_outbox_health_alerts  # noqa: PLC0415
+
+        emit_outbox_health_alerts(
+            conn,
+            system=system,
+            now=now,
+            claim_timeout_seconds=consume_claim_timeout,
+        )
+    except Exception:  # noqa: BLE001 — health must not break consumption
+        pass
     return {
         "config": {
             "limit": consume_limit,

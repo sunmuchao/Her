@@ -35,7 +35,6 @@ from .ledger import (
 )
 from .ids import (
     HER_NS,
-    TRACE_ID_HEX_LEN,
     bundle_matchmaking_case_entities,
     bundle_proxy_intro_case_entities,
     bundle_recommendation_action_entities,
@@ -78,7 +77,6 @@ from .rulesets import (
     stable_content_fingerprint,
 )
 from .status_vocab import canonical_case_status_value, is_open_case_status
-from .trace_context import get_trace_id, new_trace_id, reset_trace_id, set_trace_id
 from .collected_profile import (
     COLLECTED_PERSONA_FIELDS,
     INFERENCE_ONLY_PERSONA_FIELDS,
@@ -104,12 +102,17 @@ from .criteria_snapshots import (
     save_compiled_snapshot,
     snapshot_to_dict,
 )
-from .actor_context import (
+from her_runtime_context import (
     ActorContext,
+    TRACE_ID_HEX_LEN,
     get_actor_context,
+    get_trace_id,
+    new_trace_id,
     normalize_actor_roles,
     reset_actor_context,
+    reset_trace_id,
     set_actor_context,
+    set_trace_id,
 )
 from .model import (
     CaseStatus,
@@ -176,6 +179,7 @@ __all__ = [
     "bundle_recommendation_action_entities",
     "CASE_EVENT_PAYLOAD_SCHEMA",
     "build_canonical_event",
+    "merge_payload_with_event",
     "build_case_aggregate_event",
     "case_event_time_bucket",
     "canonical_case_status_value",

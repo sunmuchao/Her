@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { ChevronLeft, Plus, X, Check, ImagePlus, Heart, Users, Sparkles, Loader2 } from 'lucide-react'
+import { ChevronLeft, X, Check, ImagePlus, Heart, Users, Sparkles, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { submitOnboarding } from '@/lib/auth/auth-api'
 import { applyLoginPayload } from '@/lib/auth/session'

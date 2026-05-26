@@ -7,7 +7,7 @@ from datetime import datetime
 
 from match_domain.ids import correlation_member_feedback, entity_id_case, format_correlation_id
 from match_domain.model import MatchEvent
-from match_domain.trace_context import get_trace_id
+from her_runtime_context import get_trace_id
 
 
 def chat_message_created_event(

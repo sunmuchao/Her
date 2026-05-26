@@ -1,0 +1,44 @@
+# External fraud_graph scoring rules (§10.3). Reload on process restart.
+# Override path: HER_FRAUD_GRAPH_RULES_PATH
+
+entity_type_weights:
+  device_fingerprint: 50
+  external_contact: 45
+  payment_handle: 45
+  avatar_fingerprint: 35
+  image_fingerprint: 30
+  ip_address: 25
+  session_fingerprint: 22
+  ip_segment: 18
+  message_pattern: 15
+  registration_path: 12
+  user_agent: 10
+  login_city: 8
+
+action_thresholds:
+  freeze: 160
+  limit_chat: 100
+  require_verification: 60
+  warn: 30
+
+retention:
+  recent_signal_window_days: 30
+  entity_retention_days: 90
+
+limits:
+  max_linked_subjects: 50
+  max_propagation_subjects: 10
+
+contact_marker_patterns:
+  - name: wechat
+    pattern: "(?:微信|vx|v信|wechat)[号是为:：\\s\\-]*([a-zA-Z][a-zA-Z0-9_\\-]{4,31})"
+    flags: IGNORECASE
+  - name: telegram
+    pattern: "(?:telegram|tg)[号是为:：\\s\\-]*([a-zA-Z0-9_]{3,32})"
+    flags: IGNORECASE
+  - name: whatsapp
+    pattern: "(?:whatsapp|wa)[号是为:：\\s\\-]*([a-zA-Z0-9_]{3,32})"
+    flags: IGNORECASE
+  - name: line
+    pattern: "(?:line)[号是为:：\\s\\-]*([a-zA-Z0-9_]{3,32})"
+    flags: IGNORECASE

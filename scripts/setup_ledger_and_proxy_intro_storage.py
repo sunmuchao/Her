@@ -10,9 +10,12 @@ import sys
 from pathlib import Path
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+_SCRIPTS_DIR = Path(__file__).resolve().parent
+if str(_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR))
+from _repo_bootstrap import bootstrap_repo  # noqa: E402
+
+REPO_ROOT = bootstrap_repo()
 
 
 def _load_dotenv() -> None:
@@ -58,11 +61,19 @@ def _migrate_schemas() -> None:
             conn.close()
 
 
+def ensure_snapshot_table() -> None:
+    from partner_search.search_snapshot_store import ensure_search_snapshot_table
+
+    print("\n==> ensure partner_search_snapshots table")
+    ensure_search_snapshot_table()
+
+
 def main() -> int:
     _load_dotenv()
     py = sys.executable
 
     _migrate_schemas()
+    ensure_snapshot_table()
 
     _run(
         [py, str(REPO_ROOT / "scripts" / "migrate_proxy_intro_to_matchmaking.py")],

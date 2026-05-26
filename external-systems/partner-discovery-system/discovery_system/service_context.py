@@ -35,9 +35,11 @@ def build_visible_action_summaries(
     runtime: DiscoveryServiceContextRuntime,
     session: StoredSession,
 ) -> list[dict[str, Any]]:
+    visible_action_ids = [str(action_id) for action_id in list(session.visible_action_ids)[:3]]
+    actions_by_id = runtime.storage.get_actions(session.session_id, visible_action_ids)
     items: list[dict[str, Any]] = []
-    for action_id in list(session.visible_action_ids)[:3]:
-        action = runtime.storage.get_action(session.session_id, action_id)
+    for action_id in visible_action_ids:
+        action = actions_by_id.get(action_id)
         if action is None:
             continue
         items.append(
