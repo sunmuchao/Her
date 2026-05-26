@@ -898,3 +898,7 @@ Read more: https://nextjs.org/docs/app/api-reference/components/image#loading
  GET /api/gateway/v1/recommendation/cards?profile_id=9005&unread_only=true 200 in 46ms (next.js: 14ms, application-code: 32ms)
  GET /api/gateway/v1/recommendation/cards?profile_id=9005&unread_only=true 200 in 71ms (next.js: 14ms, application-code: 57ms)
  GET /api/gateway/v1/recommendation/cards?profile_id=9005&unread_only=true 200 in 56ms (next.js: 23ms, application-code: 33ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=9005&unread_only=true 200 in 78ms (next.js: 34ms, application-code: 44ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=9005&unread_only=true 200 in 63ms (next.js: 15ms, application-code: 48ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=9005&unread_only=true 200 in 52ms (next.js: 16ms, application-code: 36ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=9005&unread_only=true 200 in 60ms (next.js: 15ms, application-code: 45ms)
