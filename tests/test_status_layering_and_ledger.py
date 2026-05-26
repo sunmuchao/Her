@@ -5,7 +5,6 @@ import unittest
 from match_domain import (
     canonical_case_status_value,
     matchmaking_relation_key,
-    pool_member_profile_ref,
     recommendation_relation_key,
 )
 

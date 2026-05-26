@@ -145,6 +145,7 @@ jobs:
       NEXT_PUBLIC_ALLOW_MOCK_FALLBACK: 'false'
       NEXT_PUBLIC_ENABLE_DEMO_NAV: 'true'
       NEXT_PUBLIC_USE_AUTH_STUB: 'false'
+      NEXT_PUBLIC_E2E_GATEWAY_AUTH: 'true'
       NODE_ENV: production
       CI: 'true'
     steps:

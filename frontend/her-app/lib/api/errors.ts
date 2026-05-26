@@ -19,7 +19,3 @@ export function getErrorMessage(error: unknown, fallback = '请求失败，请�
   }
   return fallback
 }
-
-export function isGatewayClientError(error: unknown): error is GatewayClientError {
-  return error instanceof GatewayClientError
-}

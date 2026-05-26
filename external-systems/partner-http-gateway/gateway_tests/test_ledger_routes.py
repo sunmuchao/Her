@@ -6,7 +6,7 @@ import unittest
 from typing import Any
 from unittest.mock import MagicMock
 
-from gateway.ledger_routes import rest_get_relation_by_case, rest_list_relations_mine
+from gateway.ledger_routes import rest_list_relations_mine
 
 
 class _LedgerGatewayStub:
@@ -47,25 +47,6 @@ class _LedgerGatewayStub:
 
 
 class LedgerRoutesTests(unittest.TestCase):
-    def test_get_relation_by_case_allows_participant(self) -> None:
-        gateway = _LedgerGatewayStub()
-        relation = {
-            "relation_key": "rel-test",
-            "owner_profile_ref": "profile:42",
-            "target_profile_ref": "profile:99",
-            "events": [{"event_type": "request_proxy_intro", "occurred_at": "2026-01-01"}],
-            "cases": [],
-        }
-        gateway._with_ledger = MagicMock(return_value=relation)  # type: ignore[method-assign]
-        actor = MagicMock(actor_id="profile:42", auth_source="auth_session")
-        status, body = rest_get_relation_by_case(
-            gateway,
-            {"_actor": actor},
-            "case-1",
-        )
-        self.assertEqual(status, 200)
-        self.assertEqual(body["relation"]["relation_key"], "rel-test")
-
     def test_list_relations_mine(self) -> None:
         gateway = _LedgerGatewayStub()
         gateway._with_ledger = MagicMock(  # type: ignore[method-assign]

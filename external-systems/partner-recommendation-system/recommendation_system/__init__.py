@@ -11,26 +11,6 @@ from .no_match_opt_in import (
     run_search_session,
     subscribe_after_opt_in,
 )
-from .proxy_intro import (
-    DEFAULT_DECLINE_COOLDOWN_DAYS,
-    DEFAULT_OUTREACH_CHANNEL,
-    DEFAULT_REPLY_WINDOW_HOURS,
-    DEFAULT_TIMEOUT_COOLDOWN_DAYS,
-    build_safe_summary,
-    close_match_case,
-    close_timed_out_match_cases,
-    create_match_case,
-    dispatch_match_case_outreach,
-    dispatch_pending_match_cases,
-    get_active_match_case_for_recommendation,
-    get_latest_match_case_for_recommendation,
-    get_match_case,
-    list_match_case_events,
-    list_match_case_outreach_attempts,
-    list_match_cases_for_recommendation,
-    list_match_cases_for_subscription,
-    record_match_case_reply,
-)
 from .service import (
     build_in_app_card,
     create_subscription,
@@ -84,6 +64,7 @@ __all__ = [
     "get_active_match_case_for_recommendation",
     "get_latest_match_case_for_recommendation",
     "get_match_case",
+    "get_proxy_intro_case",
     "get_subscription",
     "get_recommendation_by_id",
     "handle_opt_in_decision",
@@ -115,3 +96,35 @@ __all__ = [
     "summarize_outbox",
     "update_subscription_overrides",
 ]
+
+_PROXY_INTRO_EXPORTS = frozenset(
+    {
+        "DEFAULT_DECLINE_COOLDOWN_DAYS",
+        "DEFAULT_OUTREACH_CHANNEL",
+        "DEFAULT_REPLY_WINDOW_HOURS",
+        "DEFAULT_TIMEOUT_COOLDOWN_DAYS",
+        "build_safe_summary",
+        "close_match_case",
+        "close_timed_out_match_cases",
+        "create_match_case",
+        "dispatch_match_case_outreach",
+        "dispatch_pending_match_cases",
+        "get_active_match_case_for_recommendation",
+        "get_latest_match_case_for_recommendation",
+        "get_match_case",
+        "get_proxy_intro_case",
+        "list_match_case_events",
+        "list_match_case_outreach_attempts",
+        "list_match_cases_for_recommendation",
+        "list_match_cases_for_subscription",
+        "record_match_case_reply",
+    }
+)
+
+
+def __getattr__(name: str):
+    if name in _PROXY_INTRO_EXPORTS:
+        from matchmaking_system import proxy_intro_core as _core  # noqa: PLC0415
+
+        return getattr(_core, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

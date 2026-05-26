@@ -148,9 +148,17 @@ def search_partner_candidates_with(
         source=source,
         load_profile=load_profile,
     )
+    if isinstance(self_profile, dict) and not self_profile:
+        self_profile = None
     effective_self_id = session.profile_id if isinstance(self_profile, dict) and self_profile else None
     normalized_limit = max(1, min(int(limit or 5), 10))
-    persona_row = load_persona_row(source=persona_memory_source() or source, user_key=str(session.requester_id))
+    persona_row = None
+    persona_source = persona_memory_source() or source
+    if persona_source:
+        try:
+            persona_row = load_persona_row(source=persona_source, user_key=str(session.requester_id))
+        except Exception:  # noqa: BLE001
+            persona_row = None
     compiled_request = build_discovery_search_request(
         source=source,
         profile_row=self_profile,
@@ -178,11 +186,14 @@ def search_partner_candidates_with(
             user_key=str(session.requester_id),
             discovery_session_id=session.session_id,
         )
+        compiled_self_profile = compiled_request.get("self_profile")
+        if isinstance(compiled_self_profile, dict) and not compiled_self_profile:
+            compiled_self_profile = None
         response = search_profiles_with_visibility_gate(
             search,
             source=source,
             criteria=dict(compiled_request.get("criteria") or {}),
-            self_profile=compiled_request.get("self_profile"),
+            self_profile=compiled_self_profile,
             self_id=effective_self_id,
             limit=normalized_limit,
             photo_preview_count=3,
@@ -234,7 +245,7 @@ def sync_requester_persona_memory(
                 "user_key": str(session.requester_id),
                 "source_type": "explicit",
                 "patch": normalized_patch,
-                "sync_profile": False,
+                "sync_profile": True,
                 "conversation_ref": f"discovery/{session.session_id}",
                 "basis": "discovery_agent",
             },

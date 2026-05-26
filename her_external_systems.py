@@ -54,13 +54,17 @@ def build_external_storage_helpers(
     subsystem_name: str,
     target: str,
     table_names: Callable[[], Sequence[str]],
+    default_dsn: str | None = None,
 ) -> tuple[
-    Callable[[str], MySQLCompatConnection],
+    Callable[[str | None], MySQLCompatConnection],
     Callable[[MySQLCompatConnection], None],
     Callable[[MySQLCompatConnection], None],
 ]:
-    def connect_db(dsn: str) -> MySQLCompatConnection:
-        return connect_external_db(dsn, subsystem_name=subsystem_name)
+    def connect_db(dsn: str | None = None) -> MySQLCompatConnection:
+        resolved = str(dsn or default_dsn or "").strip()
+        if not resolved:
+            raise ValueError(f"{subsystem_name} database DSN is required")
+        return connect_external_db(resolved, subsystem_name=subsystem_name)
 
     def initialize_database(conn: MySQLCompatConnection, *, mode: str | None = None) -> None:
         initialize_external_database(conn, target=target, mode=mode)
@@ -239,6 +243,8 @@ def build_external_outbox_helpers(
     env_prefix: str,
     system: str,
     default_worker_name: str,
+    handler: Callable[..., Any] | None = None,
+    enrich_worker_result: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
 ) -> tuple[
     Callable[[], dict[str, Any]],
     Callable[..., dict[str, Any]],
@@ -258,20 +264,28 @@ def build_external_outbox_helpers(
         )
 
     def run_worker(conn, **kwargs: Any) -> dict[str, Any]:
-        return run_outbox_worker(
+        result = run_outbox_worker(
             conn,
             system=system,
             config=resolve_config(),
+            handler=handler,
             **kwargs,
         )
+        if enrich_worker_result is not None:
+            return enrich_worker_result(result)
+        return result
 
     def serve_worker(conn, **kwargs: Any) -> dict[str, Any]:
-        return serve_outbox_worker(
+        result = serve_outbox_worker(
             conn,
             system=system,
             config=resolve_config(),
+            handler=handler,
             **kwargs,
         )
+        if enrich_worker_result is not None:
+            return enrich_worker_result(result)
+        return result
 
     return resolve_config, run_worker, serve_worker
 

@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from typing import Any, Mapping
 
 from async_jobs import summarize_async_jobs
+from match_domain.proxy_intro_storage import table_names
 
 from . import alert_signal, metric_gauge
 
@@ -36,12 +37,13 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
-def count_proxy_cases_past_deadline(conn, *, now: datetime) -> int:
+def count_proxy_intro_cases_past_deadline(conn, *, now: datetime) -> int:
+    tn = table_names()
     placeholders = ", ".join(["?"] * len(OPEN_PROXY_CASE_STATUSES))
     row = conn.execute(
         f"""
         SELECT COUNT(*) AS c
-        FROM match_cases
+        FROM {tn.cases}
         WHERE case_status IN ({placeholders})
           AND reply_deadline_at IS NOT NULL
           AND reply_deadline_at < ?
@@ -49,6 +51,11 @@ def count_proxy_cases_past_deadline(conn, *, now: datetime) -> int:
         [*OPEN_PROXY_CASE_STATUSES, _sql_datetime(now)],
     ).fetchone()
     return int(row["c"]) if row else 0
+
+
+def count_proxy_cases_past_deadline(conn, *, now: datetime) -> int:
+    """Deprecated alias — use count_proxy_intro_cases_past_deadline on matchmaking DB."""
+    return count_proxy_intro_cases_past_deadline(conn, now=now)
 
 
 def count_matchmaking_cases_past_expiry(conn, *, now: datetime) -> int:
@@ -222,17 +229,6 @@ def run_recommendation_health(
 ) -> None:
     emit_recommendation_gauges(conn)
     emit_async_job_gauges(conn, system="recommendation", now=now)
-    proxy_backlog = count_proxy_cases_past_deadline(conn, now=now)
-    metric_gauge("recommendation.proxy_cases_past_reply_deadline", proxy_backlog)
-    max_proxy = _env_int("HER_ALERT_PROXY_CASE_BACKLOG", 20)
-    if proxy_backlog >= max_proxy:
-        alert_signal(
-            "recommendation.proxy_case_backlog",
-            f"{proxy_backlog} proxy intro cases past reply_deadline (threshold {max_proxy}).",
-            severity="warning",
-            backlog=proxy_backlog,
-            threshold=max_proxy,
-        )
 
     if refresh_summaries:
         check_low_refresh_scan(refresh_summaries)
@@ -248,6 +244,17 @@ def run_matchmaking_health(
 ) -> None:
     emit_matchmaking_gauges(conn)
     emit_async_job_gauges(conn, system="matchmaking", now=now)
+    proxy_backlog = count_proxy_intro_cases_past_deadline(conn, now=now)
+    metric_gauge("matchmaking.proxy_intro_cases_past_reply_deadline", proxy_backlog)
+    max_proxy = _env_int("HER_ALERT_PROXY_CASE_BACKLOG", 20)
+    if proxy_backlog >= max_proxy:
+        alert_signal(
+            "matchmaking.proxy_intro_case_backlog",
+            f"{proxy_backlog} proxy intro cases past reply_deadline (threshold {max_proxy}).",
+            severity="warning",
+            backlog=proxy_backlog,
+            threshold=max_proxy,
+        )
     mm_backlog = count_matchmaking_cases_past_expiry(conn, now=now)
     metric_gauge("matchmaking.cases_past_expires_at", mm_backlog)
     max_mm = _env_int("HER_ALERT_MATCHMAKING_CASE_BACKLOG", 10)

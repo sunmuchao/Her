@@ -442,7 +442,11 @@ def overlay_records_with_moderation(
     if not grouped_ids:
         return list(records)
 
-    conn = connect_mysql_repo_db(moderation_dsn, subsystem_name="ModerationOverlay")
+    try:
+        conn = connect_mysql_repo_db(moderation_dsn, subsystem_name="ModerationOverlay")
+    except Exception:
+        return list(records)
+
     try:
         state_lookup: dict[tuple[str, str, int], dict[str, Any]] = {}
         for (source_dsn, table_name), profile_ids in grouped_ids.items():
@@ -479,6 +483,8 @@ def overlay_records_with_moderation(
                 continue
             out.append(updated)
         return out
+    except Exception:
+        return list(records)
     finally:
         conn.close()
 

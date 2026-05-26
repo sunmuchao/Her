@@ -5,9 +5,12 @@ import unittest
 from datetime import datetime
 
 
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
 SYSTEM_ROOT = pathlib.Path(__file__).resolve().parents[1]
-if str(SYSTEM_ROOT) not in sys.path:
-    sys.path.insert(0, str(SYSTEM_ROOT))
+MATCHMAKING_ROOT = REPO_ROOT / "external-systems" / "partner-matchmaking-system"
+for root in (REPO_ROOT, SYSTEM_ROOT, MATCHMAKING_ROOT):
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
 
 from recommendation_system import (  # noqa: E402
     close_match_case,
@@ -61,16 +64,40 @@ def build_result(candidate_id, name, score, city="无锡", profile_overrides=Non
     }
 
 
+from matchmaking_system import (  # noqa: E402
+    connect_db as connect_matchmaking_db,
+    initialize_database as initialize_matchmaking_database,
+    reset_all_tables as reset_matchmaking_tables,
+)
+from matchmaking_system.storage import DEFAULT_MATCHMAKING_TEST_MYSQL_DSN  # noqa: E402
+
+
 class ProxyIntroSystemTests(unittest.TestCase):
     def setUp(self):
-        os.environ["HER_PROXY_INTRO_STORAGE"] = "recommendation"
-        self.test_dsn = DEFAULT_RECOMMENDATION_TEST_MYSQL_DSN
-        self.conn = connect_db(self.test_dsn)
+        self._old_storage = os.environ.get("HER_PROXY_INTRO_STORAGE")
+        os.environ["HER_PROXY_INTRO_STORAGE"] = "matchmaking"
+        os.environ["PARTNER_MATCHMAKING_DB"] = DEFAULT_MATCHMAKING_TEST_MYSQL_DSN
+        self.conn = connect_db(DEFAULT_RECOMMENDATION_TEST_MYSQL_DSN)
         initialize_database(self.conn)
         reset_all_tables(self.conn)
+        self.mm_conn = connect_matchmaking_db(DEFAULT_MATCHMAKING_TEST_MYSQL_DSN)
+        initialize_matchmaking_database(self.mm_conn)
+        reset_matchmaking_tables(self.mm_conn)
 
     def tearDown(self):
         self.conn.close()
+        self.mm_conn.close()
+        if self._old_storage is None:
+            os.environ.pop("HER_PROXY_INTRO_STORAGE", None)
+        else:
+            os.environ["HER_PROXY_INTRO_STORAGE"] = self._old_storage
+        os.environ.pop("PARTNER_MATCHMAKING_DB", None)
+
+    def _case_conn(self):
+        return self.mm_conn
+
+    def _rec_conn(self):
+        return self.conn
 
     def seed_delivered_recommendation(self, candidate_id=90001, score=66):
         subscription = create_subscription(
@@ -101,7 +128,8 @@ class ProxyIntroSystemTests(unittest.TestCase):
     def test_create_match_case_syncs_recommendation_and_redacts_summary(self):
         subscription = self.seed_delivered_recommendation()
         case = create_match_case(
-            self.conn,
+            self._case_conn(),
+            recommendation_conn=self._rec_conn(),
             subscription_id=subscription["subscription_id"],
             candidate_id=90001,
             now=datetime(2026, 4, 30, 10, 0, 0),
@@ -127,23 +155,26 @@ class ProxyIntroSystemTests(unittest.TestCase):
     def test_dispatch_reply_and_close_flow(self):
         subscription = self.seed_delivered_recommendation(candidate_id=90002)
         case = create_match_case(
-            self.conn,
+            self._case_conn(),
+            recommendation_conn=self._rec_conn(),
             subscription_id=subscription["subscription_id"],
             candidate_id=90002,
             now=datetime(2026, 4, 30, 10, 0, 0),
         )
 
         dispatched = dispatch_match_case_outreach(
-            self.conn,
+            self._case_conn(),
+            recommendation_conn=self._rec_conn(),
             case_id=case["case_id"],
             now=datetime(2026, 4, 30, 10, 5, 0),
             provider_message_id="msg-1",
         )
         self.assertEqual(dispatched["case_status"], "awaiting_reply")
-        self.assertEqual(len(list_match_case_outreach_attempts(self.conn, case["case_id"])), 1)
+        self.assertEqual(len(list_match_case_outreach_attempts(self._case_conn(), case["case_id"])), 1)
 
         replied = record_match_case_reply(
-            self.conn,
+            self._case_conn(),
+            recommendation_conn=self._rec_conn(),
             case_id=case["case_id"],
             reply_type="accepted",
             now=datetime(2026, 4, 30, 12, 0, 0),
@@ -156,7 +187,8 @@ class ProxyIntroSystemTests(unittest.TestCase):
         )
 
         closed = close_match_case(
-            self.conn,
+            self._case_conn(),
+            recommendation_conn=self._rec_conn(),
             case_id=case["case_id"],
             close_reason="handoff_completed",
             now=datetime(2026, 4, 30, 15, 0, 0),
@@ -191,22 +223,24 @@ class ProxyIntroSystemTests(unittest.TestCase):
             self.assertIn("recommendation_action", timeline_sources)
             self.assertIn("match_case_event", timeline_sources)
 
-        events = list_match_case_outreach_attempts(self.conn, case["case_id"])
+        events = list_match_case_outreach_attempts(self._case_conn(), case["case_id"])
         self.assertEqual(len(events), 1)
-        case_events = list_match_case_events(self.conn, case["case_id"])
+        case_events = list_match_case_events(self._case_conn(), case["case_id"])
         self.assertEqual(case_events[-1]["payload"]["canonical_event"]["aggregate_type"], "case")
         self.assertEqual(case_events[-1]["payload"]["canonical_event"]["payload"]["case_type"], "proxy_intro")
 
     def test_outbox_worker_consumes_proxy_intro_events(self):
         subscription = self.seed_delivered_recommendation(candidate_id=90008)
         case = create_match_case(
-            self.conn,
+            self._case_conn(),
+            recommendation_conn=self._rec_conn(),
             subscription_id=subscription["subscription_id"],
             candidate_id=90008,
             now=datetime(2026, 4, 30, 10, 0, 0),
         )
         dispatch_match_case_outreach(
-            self.conn,
+            self._case_conn(),
+            recommendation_conn=self._rec_conn(),
             case_id=case["case_id"],
             now=datetime(2026, 4, 30, 10, 5, 0),
         )
@@ -225,18 +259,21 @@ class ProxyIntroSystemTests(unittest.TestCase):
     def test_accepted_case_blocks_duplicate_creation_until_closed_then_can_reopen(self):
         subscription = self.seed_delivered_recommendation(candidate_id=90006)
         case = create_match_case(
-            self.conn,
+            self._case_conn(),
+            recommendation_conn=self._rec_conn(),
             subscription_id=subscription["subscription_id"],
             candidate_id=90006,
             now=datetime(2026, 4, 30, 10, 0, 0),
         )
         dispatch_match_case_outreach(
-            self.conn,
+            self._case_conn(),
+            recommendation_conn=self._rec_conn(),
             case_id=case["case_id"],
             now=datetime(2026, 4, 30, 10, 5, 0),
         )
         record_match_case_reply(
-            self.conn,
+            self._case_conn(),
+            recommendation_conn=self._rec_conn(),
             case_id=case["case_id"],
             reply_type="accepted",
             now=datetime(2026, 4, 30, 11, 0, 0),
@@ -244,14 +281,16 @@ class ProxyIntroSystemTests(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             create_match_case(
-                self.conn,
+            self._case_conn(),
+            recommendation_conn=self._rec_conn(),
                 subscription_id=subscription["subscription_id"],
                 candidate_id=90006,
                 now=datetime(2026, 4, 30, 11, 5, 0),
             )
 
         closed = close_match_case(
-            self.conn,
+            self._case_conn(),
+            recommendation_conn=self._rec_conn(),
             case_id=case["case_id"],
             close_reason="requester_cancelled",
             now=datetime(2026, 4, 30, 11, 10, 0),
@@ -263,7 +302,8 @@ class ProxyIntroSystemTests(unittest.TestCase):
         self.assertIsNone(recommendation["active_match_case_id"])
 
         reopened = create_match_case(
-            self.conn,
+            self._case_conn(),
+            recommendation_conn=self._rec_conn(),
             subscription_id=subscription["subscription_id"],
             candidate_id=90006,
             now=datetime(2026, 4, 30, 11, 20, 0),
@@ -274,13 +314,15 @@ class ProxyIntroSystemTests(unittest.TestCase):
     def test_dispatch_with_payload_keeps_summary_shape(self):
         subscription = self.seed_delivered_recommendation(candidate_id=90005)
         case = create_match_case(
-            self.conn,
+            self._case_conn(),
+            recommendation_conn=self._rec_conn(),
             subscription_id=subscription["subscription_id"],
             candidate_id=90005,
             now=datetime(2026, 4, 30, 10, 0, 0),
         )
         dispatched = dispatch_match_case_outreach(
-            self.conn,
+            self._case_conn(),
+            recommendation_conn=self._rec_conn(),
             case_id=case["case_id"],
             now=datetime(2026, 4, 30, 10, 5, 0),
             payload={"operator": "test"},
@@ -294,14 +336,18 @@ class ProxyIntroSystemTests(unittest.TestCase):
     def test_declined_case_applies_cooling_and_blocks_duplicate_creation(self):
         subscription = self.seed_delivered_recommendation(candidate_id=90003)
         case = create_match_case(
-            self.conn,
+            self._case_conn(),
+            recommendation_conn=self._rec_conn(),
             subscription_id=subscription["subscription_id"],
             candidate_id=90003,
             now=datetime(2026, 4, 30, 10, 0, 0),
         )
-        dispatch_match_case_outreach(self.conn, case_id=case["case_id"], now=datetime(2026, 4, 30, 10, 5, 0))
+        dispatch_match_case_outreach(
+            self._case_conn(),
+            recommendation_conn=self._rec_conn(), case_id=case["case_id"], now=datetime(2026, 4, 30, 10, 5, 0))
         declined = record_match_case_reply(
-            self.conn,
+            self._case_conn(),
+            recommendation_conn=self._rec_conn(),
             case_id=case["case_id"],
             reply_type="declined",
             now=datetime(2026, 4, 30, 11, 0, 0),
@@ -314,7 +360,8 @@ class ProxyIntroSystemTests(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             create_match_case(
-                self.conn,
+            self._case_conn(),
+            recommendation_conn=self._rec_conn(),
                 subscription_id=subscription["subscription_id"],
                 candidate_id=90003,
                 now=datetime(2026, 5, 1, 10, 0, 0),
@@ -323,17 +370,26 @@ class ProxyIntroSystemTests(unittest.TestCase):
     def test_timed_out_case_remains_cold_until_cooling_expires(self):
         subscription = self.seed_delivered_recommendation(candidate_id=90004)
         case = create_match_case(
-            self.conn,
+            self._case_conn(),
+            recommendation_conn=self._rec_conn(),
             subscription_id=subscription["subscription_id"],
             candidate_id=90004,
             now=datetime(2026, 4, 30, 10, 0, 0),
             reply_window_hours=1,
         )
-        dispatch_match_case_outreach(self.conn, case_id=case["case_id"], now=datetime(2026, 4, 30, 10, 5, 0))
+        dispatch_match_case_outreach(
+            self._case_conn(),
+            recommendation_conn=self._rec_conn(), case_id=case["case_id"], now=datetime(2026, 4, 30, 10, 5, 0))
 
-        summary = close_timed_out_match_cases(self.conn, now=datetime(2026, 4, 30, 12, 0, 0))
+        summary = close_timed_out_match_cases(
+            self._case_conn(),
+            recommendation_conn=self._rec_conn(), now=datetime(2026, 4, 30, 12, 0, 0))
         self.assertEqual(summary["timed_out_count"], 1)
-        timed_out_case = get_match_case(self.conn, case["case_id"])
+        timed_out_case = get_match_case(
+            self._case_conn(),
+            recommendation_conn=self._rec_conn(),
+            case_id=case["case_id"],
+        )
         self.assertEqual(timed_out_case["case_status"], "timed_out")
         recommendation = list_recommendations_for_subscription(self.conn, subscription["subscription_id"])[0]
         self.assertEqual(recommendation["delivery_status"], "cooled_down")

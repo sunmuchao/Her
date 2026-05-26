@@ -70,7 +70,8 @@ JSON-RPC：`recommendation.record_recommendation_action` / `record_user_review` 
 | `POST` | `/v1/discovery/sessions` | Body：`requester_id`、`profile_id`，可选 `now`。创建一个发现页 session，返回 `trace_id`、`session` 和首屏 `view`。 |
 | `POST` | `/v1/discovery/sessions/{session_id}/turns` | Body 二选一：`user_message` 或 `action_id`，可选 `now`。提交一轮自然语言输入，或回传一个服务端生成的 `action_id`。返回新的 `trace_id`、`session`、`view`。 |
 | `GET` | `/v1/discovery/sessions/{session_id}` | 返回当前 session 的完整 `view`，用于刷新恢复。前端不应自己重建消息、卡片或筛选状态。 |
-| `GET` | `/v1/discovery/profiles/{profile_id}` | Query：可选 `session_id`。返回资料详情页专用 `detail_view`，不建议前端用列表卡片字段自行拼详情页。 |
+
+资料详情请使用 BFF **`GET /v1/candidates/{profile_id}`**（聚合 discovery detail + recommendation explain），不再单独暴露 `/v1/discovery/profiles/{profile_id}`。
 
 发现页主接口成功返回统一结构：
 
@@ -568,9 +569,6 @@ JSON-RPC：`recommendation.record_recommendation_action` / `record_user_review` 
 
 - **`GET /v1/relations?relation_key=...`**  
   返回 `relation`、`summary`、`unified_timeline`。参与者须为 `owner_profile_ref` / `target_profile_ref` 之一（或运营角色）。
-
-- **`GET /v1/relations/by-case/{case_id}`**  
-  按案例 ID 解析关系；ACL 同上。
 
 - **`GET /v1/relations/mine`**  
   登录用户（`auth_session` + `end_user`）按 `profile:{requester_id}` 列出本人相关关系（上限 50）。

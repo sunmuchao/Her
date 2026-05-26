@@ -1,3 +1,4 @@
+import os
 import pathlib
 import sys
 import unittest
@@ -153,12 +154,24 @@ def build_synced_requester_profile(**overrides):
 
 class RecommendationSystemTests(unittest.TestCase):
     def setUp(self):
+        self._old_relation_ledger_db = os.environ.get("HER_RELATION_LEDGER_DB")
+        self._old_relation_ledger_read_mode = os.environ.get("HER_RELATION_LEDGER_READ_MODE")
+        os.environ.pop("HER_RELATION_LEDGER_DB", None)
+        os.environ.pop("HER_RELATION_LEDGER_READ_MODE", None)
         self.conn = connect_db(DEFAULT_RECOMMENDATION_TEST_MYSQL_DSN)
         initialize_database(self.conn)
         reset_all_tables(self.conn)
 
     def tearDown(self):
         self.conn.close()
+        if self._old_relation_ledger_db is None:
+            os.environ.pop("HER_RELATION_LEDGER_DB", None)
+        else:
+            os.environ["HER_RELATION_LEDGER_DB"] = self._old_relation_ledger_db
+        if self._old_relation_ledger_read_mode is None:
+            os.environ.pop("HER_RELATION_LEDGER_READ_MODE", None)
+        else:
+            os.environ["HER_RELATION_LEDGER_READ_MODE"] = self._old_relation_ledger_read_mode
 
     def create_active_subscription(self, **overrides):
         base = {

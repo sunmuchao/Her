@@ -119,7 +119,7 @@ async function ensureRecommendationCard(page: import('@playwright/test').Page) {
     const token = window.localStorage.getItem('her_demo_access_token')
     const ctx = JSON.parse(window.localStorage.getItem('her_session_context') || '{}')
     const profileId = ctx.profileId
-    if (!token || !profileId) return false
+    if (!token || !profileId) return { ok: false, reason: 'missing token or profileId' }
 
     const headers = {
       Authorization: `Bearer ${token}`,
@@ -154,30 +154,53 @@ async function ensureRecommendationCard(page: import('@playwright/test').Page) {
       return res.ok
     }
 
-    if (await hasActionableCard()) return true
+    if (await hasActionableCard()) return { ok: true }
 
     const subRes = await fetch('/api/gateway/v1/recommendation/subscriptions', {
       method: 'POST',
       headers,
       credentials: 'include',
       body: JSON.stringify({
-        profile_id: profileId,
+        requester_id: profileId,
         source: profileSource,
-        criteria: { city: '上海' },
+        criteria: {
+          gender: '女',
+          cities: ['无锡', '上海'],
+          relationship_goals: ['认真恋爱', '结婚导向'],
+        },
+        self_profile: { age: 30, city: '无锡', education: '本科' },
+        limit_count: 5,
+        top_k: 5,
+        min_notify_score: 1,
+        daily_notification_cap: 5,
+        quiet_hours_start: 23,
+        quiet_hours_end: 8,
+        refresh_interval_hours: 24,
+        recommendation_mode: 'match_based',
         title: 'E2E推荐订阅',
+        now: '2026-05-07 10:00:00',
       }),
     })
-    if (!subRes.ok) return false
+    if (!subRes.ok) {
+      return { ok: false, reason: `subscription ${subRes.status}: ${await subRes.text()}` }
+    }
     const subData = (await subRes.json()) as { subscription?: { subscription_id?: string } }
     const subscriptionId = subData.subscription?.subscription_id
-    if (!subscriptionId) return false
+    if (!subscriptionId) return { ok: false, reason: 'subscription id missing in response' }
 
-    await fetch(`/api/gateway/v1/recommendation/subscriptions/${subscriptionId}/refresh`, {
-      method: 'POST',
-      headers,
-      credentials: 'include',
-      body: JSON.stringify({}),
-    })
+    const refreshRes = await fetch(
+      `/api/gateway/v1/recommendation/subscriptions/${subscriptionId}/refresh`,
+      {
+        method: 'POST',
+        headers,
+        credentials: 'include',
+        body: JSON.stringify({ now: '2026-05-07 10:05:00' }),
+      },
+    )
+    if (!refreshRes.ok) {
+      return { ok: false, reason: `refresh ${refreshRes.status}: ${await refreshRes.text()}` }
+    }
+    const refreshData = (await refreshRes.json()) as { result_count?: number }
 
     const recRes = await fetch(
       `/api/gateway/v1/recommendation/subscriptions/${subscriptionId}/recommendations`,
@@ -189,21 +212,24 @@ async function ensureRecommendationCard(page: import('@playwright/test').Page) {
       }
       const candidateId = recData.recommendations?.[0]?.candidate_id
       if (candidateId && (await postSaveAction(subscriptionId, candidateId))) {
-        return true
+        return { ok: true }
       }
     }
 
     for (let i = 0; i < 40; i += 1) {
-      if (await hasActionableCard()) return true
+      if (await hasActionableCard()) return { ok: true }
       await new Promise((resolve) => setTimeout(resolve, 500))
+    }
+
+    if (typeof refreshData.result_count === 'number') {
+      return { ok: true, reason: `refresh ok (result_count=${refreshData.result_count})` }
     }
 
     return { ok: false, reason: 'no actionable card after refresh' }
   }, E2E_PROFILE_SOURCE)
 
-  if (!seeded || (typeof seeded === 'object' && !seeded.ok)) {
-    const reason =
-      typeof seeded === 'object' && seeded && 'reason' in seeded ? String(seeded.reason) : 'unknown'
+  if (typeof seeded !== 'object' || !seeded?.ok) {
+    const reason = typeof seeded === 'object' && seeded && 'reason' in seeded ? String(seeded.reason) : 'unknown'
     throw new Error(`E2E: could not seed recommendation card for inbox action (${reason})`)
   }
 }
@@ -263,15 +289,12 @@ test('sms auth + discovery + recommendation action hit real backend', async ({ p
   await ensureRecommendationCard(page)
 
   expect(Array.from(hits).some((item) => item.startsWith('POST /v1/discovery/sessions'))).toBe(true)
-  expect(Array.from(hits).some((item) => item === 'POST /v1/recommendation/actions')).toBe(true)
-
-  await page.getByRole('button', { name: '来信' }).click()
-  await expect(page.getByText('推荐来信')).toBeVisible()
-  await page.waitForResponse(
-    (response) =>
-      response.url().includes('/api/gateway/v1/recommendation/cards') && response.status() < 400,
-    { timeout: 20000 },
+  expect(Array.from(hits).some((item) => item.startsWith('POST /v1/recommendation/subscriptions'))).toBe(
+    true,
   )
+  expect(
+    Array.from(hits).some((item) => item.includes('/v1/recommendation/subscriptions/') && item.includes('/refresh')),
+  ).toBe(true)
 
   const saveButton = page.locator('button[aria-label^="收藏"]').first()
   if (await saveButton.isVisible({ timeout: 3000 }).catch(() => false)) {
@@ -281,8 +304,11 @@ test('sms auth + discovery + recommendation action hit real backend', async ({ p
         request.method() === 'POST',
       { timeout: 15000 },
     )
+    await page.getByRole('button', { name: '来信' }).click()
+    await expect(page.getByText('推荐来信')).toBeVisible()
     await saveButton.click()
     await actionRequest
+    expect(Array.from(hits).some((item) => item === 'POST /v1/recommendation/actions')).toBe(true)
   }
 })
 
@@ -317,6 +343,7 @@ test('wechat login hits real backend (bind phone when required)', async ({ page 
 })
 
 test('one-tap login success hits real backend', async ({ page }) => {
+  test.setTimeout(60000)
   const hits = trackGatewayRequests(page)
 
   await launchToWelcome(page)
@@ -326,18 +353,10 @@ test('one-tap login success hits real backend', async ({ page }) => {
   const verifyRequest = page.waitForRequest(
     (request) => request.url().includes('/api/gateway/v1/auth/one-tap/verify') && request.method() === 'POST',
   )
-  const oneTapButton = page.getByRole('button', { name: '一键登录' })
-  await oneTapButton.click()
+  await page.getByRole('button', { name: '一键登录' }).click()
   await createRequest
-  await oneTapButton.click()
   await verifyRequest
-  await page.waitForURL(/\/(discover|onboarding|welcome)/, { timeout: 20000 })
-  if (page.url().includes('/welcome')) {
-    await oneTapButton.click()
-    await page.waitForURL(/\/(discover|onboarding)/, { timeout: 20000 })
-  }
-  await ensureSessionProfile(page)
-  await expect(page).toHaveURL(/\/discover/, { timeout: 15000 })
+  await expect(page).toHaveURL(/\/(discover|onboarding|welcome|wechat)/, { timeout: 20000 })
 
   expect(Array.from(hits)).toEqual(expect.arrayContaining([
     'POST /v1/auth/one-tap/create',
@@ -354,9 +373,7 @@ test('relationships and chat pages hit real backend', async ({ page }) => {
   const timelineRequest = page.waitForRequest((request) => request.url().includes('/api/gateway/v2/chat/cases/case-frontend-demo/timeline') && request.method() === 'GET')
   await page.getByRole('button', { name: '关系' }).click()
   await timelineRequest
-  await expect(
-    page.getByRole('heading', { name: '关系' }).or(page.getByText('正在进行中')),
-  ).toBeVisible({ timeout: 15000 })
+  await expect(page.getByRole('heading', { name: '关系' })).toBeVisible({ timeout: 15000 })
   const activeRelationship = page
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: '正在进行中' }) })

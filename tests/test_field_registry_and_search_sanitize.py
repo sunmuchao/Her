@@ -6,7 +6,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from match_domain.criteria_compiler import build_discovery_search_request, build_effective_search_request
-from match_domain.field_registry import FIELD_REGISTRY, registry_entry
+from match_domain.field_registry import registry_entry
 from match_domain.search_self_profile import strip_mixed_self_profile_fields
 
 

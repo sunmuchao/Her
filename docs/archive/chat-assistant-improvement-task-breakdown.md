@@ -1,0 +1,857 @@
+# 聊天助手改进方案整理与落地任务拆解
+
+> 历史规划说明：本文保留了方案拆解语境，但其中若出现 `assistant_llm.py`、`scenario_stress.py`、`dyadic_roleplay.py` 等文件引用，已经不是当前仓库的真实实现入口。
+>
+> 当前聊天助手实现请以 `external-systems/partner-chat-system/chat_system/assistant_runtime.py`、`assistant_orchestrator.py`、`assistant_sessions.py`、`assistant_context.py`、`service.py` 为准。文中关于独立主动 coaching、roleplay 压测链路的任务拆分属于历史方案材料，不应再按对外产品入口直接开发。
+>
+> 若本文继续引用当前仓库里并不存在的文件名，应视为历史提案切分示意，而不是待补齐的真实缺口清单。
+
+本文档是对 [chat-assistant-improvement-plan.md](chat-assistant-improvement-plan.md) 的执行化整理，目标有两个：
+
+- 先把原方案压缩成清晰的主线
+- 再把主线拆成可排期、可开发、可验收的任务
+
+---
+
+## 1. 文档整理
+
+### 1.1 这份方案其实分成两条线
+
+**主线 A：线上聊天教练助手**
+
+- 面向真实聊天用户
+- 助手的职责是判断局势、给建议、提醒风险
+- 助手不是代聊，不直接决定用户下一句怎么发
+
+**主线 B：线下见面型红娘助手**
+
+- 面向见面中和见面后的辅助判断
+- 职责是破冰、观察、轻量回场、误会澄清、关系分流
+- 这是后续扩展方向，不应和主线 A 混在同一阶段开发
+
+当前应该优先落地的是**主线 A**。
+
+### 1.2 主线 A 的一句话定义
+
+把助手从“看到冷场就给点泛泛建议”，升级成“先判断局势，再给有分寸的方向性建议，并且能被正确评估”的聊天教练系统。
+
+### 1.3 主线 A 的产品边界
+
+- 助手是教练，不是嘴替。
+- 助手可以影响用户，但不能控制用户。
+- 助手输出的是建议，不是控制信号。
+- 对真实产品，`interaction_mode` 只约束助手自己的建议输出，不约束用户回复。
+- 对 `roleplay / 压测`，可以让模拟 agent 读取 `interaction_mode` 做离线实验，但这不代表线上产品会干预真人用户。
+
+### 1.4 方案的核心判断模型
+
+先判断局面属于哪一类：
+
+- `communication_problem`
+- `interest_unclear`
+- `interest_low / boundary_risk`
+
+再映射成四种处理模式：
+
+- `repair`
+- `probe_lightly`
+- `hold`
+- `none`
+
+这套模式是整份方案的核心中轴，后续的提示、评测、压测、延迟治理都围绕它展开。
+
+### 1.5 当前最主要的问题
+
+- 该出手时出手太少，出手也偏晚
+- 助手能指出问题，但建议不够具体，用户执行率不稳定
+- 建议不够贴画像，容易泛化成通用聊天课
+- 主对话生成还有解释腔、分析腔，不够像真人
+- 系统分不清“不会聊”和“没兴趣”
+- 提示链路太慢，真实产品里来不及用
+- 评测口径太粗，容易把“没救活聊天”和“助手无效”混为一谈
+- 真实产品里缺少“用户是否采纳建议”的评估
+- `roleplay` 压测里缺少“模拟回复是否按模式输出”的单独评估
+
+### 1.6 目标架构的本质
+
+目标不是“做一个更会聊天的模型”，而是把系统拆成几层：
+
+1. 看懂局势
+2. 判定模式
+3. 生成建议
+4. 决定要不要提示
+5. 评估建议有没有被采纳、局面有没有变好
+
+对真实产品来说，最终落点是**建议层和评测层**。
+
+对 `roleplay` 来说，额外还会有一个**模拟回复层**，用于离线验证策略是否可执行。
+
+### 1.7 评测口径的真正变化
+
+从过去的：
+
+- 最后有没有聊成
+
+改成后续的：
+
+- 判得准不准
+- 出手时机对不对
+- 建议是否具体、可执行、符合人设
+- 用户是否采纳
+- 建议后 `1-3` 轮有没有局部改善
+- 不该继续推进时，有没有做到体面止损
+
+### 1.8 实施优先级结论
+
+当前不应该先做“更多建议模板”，而应该先做下面六件事：
+
+1. 把 `repair / probe_lightly / hold` 判准，尤其补强多轮风险状态识别
+2. 把 `heuristic_clear_continue` 收紧，避免危险局被洗回 `none`
+3. 把助手输出改成可落库、可评测的结构化建议
+4. 把 `hold` 做成风险感知止损，而不是提醒一次就闭嘴
+5. 把延迟和超时压到真实聊天可用
+6. 把“建议质量”“用户是否采纳”“可见文本风险”分开评估
+
+人设化建议、口语自然度，要建立在这套底盘跑顺之后再继续打磨。
+
+如果后续验证发现：
+
+- 主动提醒用户可见延迟长期做不到几秒级
+- 或者建议经常赶不上用户下一句
+
+那就不该继续死磕“实时插嘴”，而应该切到另一种更务实的产品形态：
+
+- **后台逐句判断**
+- **前台按阶段挂建议入口**
+
+也就是把助手从“实时副驾驶”改成“阶段性聊天教练”。
+
+---
+
+## 2. 落地拆分原则
+
+### 2.1 先做基础设施，再做效果优化
+
+建议顺序：
+
+1. 数据结构和评测字段
+2. 模式判断和结构化输出
+3. 延迟与链路埋点
+4. 跟随度与局部恢复评估
+5. 人设化与自然度优化
+6. 提示触发策略
+7. 线下见面型助手单独立项
+
+### 2.2 不要把真实产品和 roleplay 压测混成一套逻辑
+
+产品逻辑关注：
+
+- 助手怎么判断
+- 助手怎么提示
+- 用户有没有采纳
+
+压测逻辑关注：
+
+- 模拟 agent 是否按模式输出
+- 离线评测能否稳定复现问题
+
+同一个 `interaction_mode` 可以同时服务这两条线，但验收口径必须分开。
+
+---
+
+## 3. 具体落地任务
+
+### T01：统一术语、字段和边界定义
+
+- 优先级：`P0`
+- 目标：把文档里的模式、字段、边界统一成一套实现语言，避免研发各自理解。
+- 产出：
+  - 明确 `mutual_intent_assessment`、`interaction_mode`、`follow_level`、`assistant_mode_compliance` 等字段定义
+  - 明确“真实产品”和“roleplay 压测”的边界说明
+  - 输出一版结构化字段说明，供后续代码和评测复用
+- 主要文件：
+  - [archive/chat-assistant-improvement-plan.md](/Users/sunmuchao/Downloads/Her/archive/chat-assistant-improvement-plan.md)
+  - [archive/chat-assistant-improvement-task-breakdown.md](/Users/sunmuchao/Downloads/Her/archive/chat-assistant-improvement-task-breakdown.md)
+  - 可选新增：`external-systems/partner-chat-system/chat_system/types.py`
+- 依赖：无
+- 完成标准：
+  - 所有核心字段都有统一定义
+  - 文档里不再出现“助手直接约束真实用户回复”的模糊表述
+
+### T02：补齐 `StressBeat` 的弱标注字段
+
+- 优先级：`P0`
+- 目标：让压测场景天然带有可评测的 gold 元数据。
+- 产出：
+  - 为每个 `StressBeat` 增加 `severity`
+  - 增加 `expected_problem_tags`
+  - 增加 `suggested_strategy_tags`
+  - 增加 `expected_need_rescue_after_turns`
+  - 增加 `expected_mutual_intent_assessment`
+  - 增加 `expected_interaction_mode`
+- 主要文件：
+  - 历史提案文件：`external-systems/partner-chat-system/chat_system/scenario_stress.py`
+  - 相关测试：`external-systems/partner-chat-system/tests`
+- 依赖：`T01`
+- 完成标准：
+  - 所有现有压力剧情都能导出上述元数据
+  - 压测脚本可以读取这些字段，不再只依赖自然语言场景描述
+
+### T03：定义每轮评测记录结构
+
+- 优先级：`P0`
+- 目标：把“一个可能需要救场的时刻”固化成结构化记录。
+- 产出：
+  - 每轮记录 schema
+  - 至少包含 `turn_index`、`interaction_mode_gold/pred`、`follow_level`、`recovery_score_1to3_turns`、`graceful_exit_score`
+  - 增加连续状态字段：`engagement_level`、`warmth_level`、`irritation_level`、`state_trend`
+  - 区分真实产品字段和 `roleplay` 专用字段
+- 主要文件：
+  - 历史提案文件：`external-systems/partner-chat-system/chat_system/dyadic_roleplay.py`
+  - [external-systems/partner-chat-system/chat_system/service.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/service.py)
+- 依赖：`T01`
+- 完成标准：
+  - 压测运行后能产出逐轮结构化记录
+  - 字段不再散落在日志字符串中
+
+### T04：实现一级轻判断模块
+
+- 优先级：`P0`
+- 目标：先把“什么时候该出手”做成快速、稳定的前置判断。
+- 关键原则：不要把每一轮当成独立分类题；轻判断必须带最小跨轮记忆。
+- 产出：
+  - 基于规则的快路径
+  - 小模型或轻判断逻辑
+  - 轻量状态累积逻辑，至少维护 `engagement / warmth / irritation` 三条连续状态轴
+  - 输出 `need_rescue`、`problem_tags`、`interaction_mode`
+  - 输出 `engagement_level`、`warmth_level`、`irritation_level`、`state_trend`
+- 主要文件：
+  - 可新增：`external-systems/partner-chat-system/chat_system/mode_router.py`
+  - 可新增：`external-systems/partner-chat-system/chat_system/chat_state.py`
+  - [external-systems/partner-chat-system/chat_system/service.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/service.py)
+  - 历史提案文件：`external-systems/partner-chat-system/chat_system/dyadic_roleplay.py`
+- 依赖：`T02`、`T03`
+- 完成标准：
+  - 能区分 `repair / probe_lightly / hold / none`
+  - 不是只看当前一句，而是能结合最近 `1-3` 轮状态做判断
+  - 有规则覆盖一字回复、终结语、连续低投入、敏感话题等场景
+  - 能覆盖“热情 -> 平淡 -> 冷淡 -> 不耐烦”这类连续变化场景
+  - 能单独统计轻判断耗时
+
+### T05：改造 `assistant_llm.py` 为结构化建议输出
+
+- 优先级：`P0`
+- 目标：把助手从纯文本建议改成“结构化 JSON + 人类可读文案”。
+- 产出：
+  - 结构化字段输出
+  - JSON 解析与校验
+  - 安全 fallback
+  - 禁止直接生成可原样直发的代写句
+- 主要文件：
+  - 历史提案文件：`external-systems/partner-chat-system/chat_system/assistant_llm.py`
+  - 历史提案测试：`external-systems/partner-chat-system/tests/test_assistant_llm.py`
+- 依赖：`T01`、`T04`
+- 完成标准：
+  - 输出稳定包含 `mutual_intent_assessment`、`interaction_mode`、`problem_tags`、`advice`、`avoid`
+  - 非 `repair` 模式下会说明“为什么别硬推”
+  - 测试能覆盖 schema 缺失、JSON 解析失败、fallback 生效
+
+### T06：补齐服务层落库与埋点
+
+- 优先级：`P0`
+- 目标：把助手建议、延迟、采纳证据变成可追踪数据。
+- 产出：
+  - 保存结构化建议
+  - 记录各阶段耗时
+  - 保留 `follow_evidence`、`overpush_risk` 等字段入口
+- 主要文件：
+  - [external-systems/partner-chat-system/chat_system/service.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/service.py)
+  - [external-systems/partner-chat-system/tests/test_chat_system.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/tests/test_chat_system.py)
+- 依赖：`T03`、`T05`
+- 完成标准：
+  - 结构化建议能持久化或稳定输出到结果对象
+  - 能区分轻判断耗时和重建议耗时
+
+### T07：实现用户采纳度评估
+
+- 优先级：`P0`
+- 目标：把“建议好不好”和“用户有没有照做”拆开。
+- 产出：
+  - `followed_assistant`
+  - `follow_level = none | partial | strong`
+  - `follow_evidence`
+- 主要文件：
+  - 历史提案文件：`external-systems/partner-chat-system/chat_system/dyadic_roleplay.py`
+  - 历史提案脚本：`external-systems/partner-chat-system/scripts/run_dyadic_agent_roleplay.py`
+- 依赖：`T05`、`T06`
+- 完成标准：
+  - 能判断是否换到了建议话题类型
+  - 能判断是否避免了明确禁止动作
+  - 结果里能单独输出采纳率
+
+### T08：实现局部恢复、止损与过推指标
+
+- 优先级：`P0`
+- 目标：让评测不再只看“整段聊没聊成”。
+- 产出：
+  - `recovery_score_1to3_turns`
+  - `graceful_exit_score`
+  - `overpush_risk_turns`
+  - `clarified_low_interest_rate`
+- 主要文件：
+  - 历史提案文件：`external-systems/partner-chat-system/chat_system/dyadic_roleplay.py`
+  - 历史提案脚本：`external-systems/partner-chat-system/scripts/run_dyadic_agent_roleplay.py`
+- 依赖：`T03`、`T07`
+- 完成标准：
+  - 报表里能区分“局部改善”和“体面止损”
+  - `interest_low / boundary_risk` 场景可以单独统计是否被误推
+
+### T09：实现 `roleplay` 模式对齐实验
+
+- 优先级：`P1`
+- 目标：只在离线压测里验证“模式建议是否可执行”。
+- 产出：
+  - 一个开关，控制模拟 agent 是否读取 `interaction_mode`
+  - 一组对比结果：读模式 vs 不读模式
+  - `simulated_reply_mode_alignment_rate`
+- 主要文件：
+  - 历史提案文件：`external-systems/partner-chat-system/chat_system/dyadic_roleplay.py`
+  - 历史提案脚本：`external-systems/partner-chat-system/scripts/run_dyadic_agent_roleplay.py`
+- 依赖：`T04`、`T05`
+- 完成标准：
+  - 可以明确区分“真实产品建议边界”和“离线模拟约束实验”
+  - 结果导出时带上实验开关状态
+
+### T10：实现画像钩子排序与上下文裁剪
+
+- 优先级：`P1`
+- 目标：让建议更像这个人会真的聊出来的方向。
+- 产出：
+  - 安全裁剪的画像摘要
+  - 双方交集钩子优先
+  - 当前说话人真实生活钩子次优先
+  - 通用低门槛话题兜底
+- 主要文件：
+  - 历史提案文件：`external-systems/partner-chat-system/chat_system/assistant_llm.py`
+  - 可选关联：`external-systems/partner-chat-system/tests/test_profile_loader.py`
+- 依赖：`T05`
+- 完成标准：
+  - 输出中能记录 `profile_hooks_used`
+  - 建议不再默认回退到电影、旅行、运动等泛话题
+
+### T11：改造主对话口语自然度
+
+- 优先级：`P1`
+- 目标：降低解释腔、分析腔、模板腔。
+- 产出：
+  - 更新 `persona prompt`
+  - 增加反例表达约束
+  - 增加口语自然度评分
+- 主要文件：
+  - 历史提案文件：`external-systems/partner-chat-system/chat_system/dyadic_roleplay.py`
+  - 历史提案测试：`external-systems/partner-chat-system/tests/test_dyadic_roleplay.py`
+- 依赖：无
+- 完成标准：
+  - 输出里能单独看到自然度评分
+  - 典型分析腔句式被列入反例并能被压低
+
+### T12：实现提示触发器与重复提示抑制
+
+- 优先级：`P1`
+- 目标：后台逐句看，前台只在还能明显帮助沟通时按趋势提醒。
+- 产出：
+  - 产品原则：**帮助沟通，不帮助硬撑**
+  - 产品边界：
+    - 只作用于系统主动提示，不影响用户主动询问助手
+    - 只生成 `owner_only` 教练建议，不自动改写用户消息、不代发、不拦截发送
+  - 实现铁律：
+    - `repair`：顺水推舟。双方仍有沟通意愿但这轮卡住时，允许积极提醒，帮助把沟通拉顺。
+    - `probe_lightly`：只轻扶，不猛推。看不清对方意愿时，只允许低压、低频提醒。
+    - `hold`：见好就收。目标是止损，不是继续把聊天硬维持下去。
+      - `interest_low` 型 `hold`：偏克制，不要反复打扰用户。
+      - `boundary_risk` 型 `hold`：如果用户继续沿敏感 / 施压 / 比较 / 推进见面方向加码，就要继续止损提醒。
+    - `normal`：别添乱。聊天本身顺的时候默认不提示。
+  - 趋势状态器：记录上一模式、上次提示时点、持续未缓解轮数、风险等级、`hold` 子类型、当前风险轴、上次提示原因，以及连续态度状态
+  - 建议状态字段：`current_mode`、`previous_mode`、`same_mode_turns`、`unresolved_turns`、`risk_flags`、`hold_subtype`、`risk_axis`、`same_risk_axis_turns`、`engagement_level`、`warmth_level`、`irritation_level`、`state_trend`、`last_hint_turn`、`last_hint_mode`、`last_hint_reason`、`last_hint_trigger_type`、`last_hint_follow_level`、`last_stoploss_strength`、`has_user_acted_since_last_hint`、`cooldown_until_turn`
+  - 连续状态原则：这些状态不是每轮清零，而是像小型状态机一样逐轮更新
+  - 模式分层触发规则：`repair` 可相对积极提醒，`probe_lightly` 只做低频提醒，`hold` 最克制但不能一刀切静音
+  - 首次触发规则：`normal -> repair`、`normal -> probe_lightly`、`probe_lightly -> hold`、`repair -> hold`、首次进入 `boundary_risk hold`
+  - 再触发规则：只有在再次提示仍有新增价值时才允许触发，例如沟通问题仍可修复但连续数轮未缓解、风险明显升级、用户继续沿同一风险轴推进、冷却窗口后仍无改善
+  - 重复提示抑制：刚提示过、状态未变、严重度未升高、用户还没来得及行动、当前轮没有新增止损价值时不重复
+  - `follow_level / follow_evidence` 只作为“提示是否仍有新增价值”的辅助信号，不作为监督用户是否听话的主目标
+  - 建议提示事件字段：`turn_index`、`speaker`、`mode_before`、`mode_after`、`hold_subtype`、`risk_axis`、`trigger_type`、`suppression_reason`、`hint_posted`、`risk_flags`、`last_hint_turn_gap`
+  - `hint_trigger_rate`、`duplicate_hint_rate`、`mode_change_hint_rate`、`boundary_risk_hold_repeat_recall`
+- 主要文件：
+  - 可新增：`external-systems/partner-chat-system/chat_system/trend_state.py`
+  - [external-systems/partner-chat-system/chat_system/service.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/service.py)
+  - 历史提案文件：`external-systems/partner-chat-system/chat_system/dyadic_roleplay.py`
+  - [external-systems/partner-chat-system/tests/test_chat_system.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/tests/test_chat_system.py)
+  - 历史提案测试：`external-systems/partner-chat-system/tests/test_dyadic_roleplay.py`
+- 依赖：`T04`、`T05`
+- 联动增强：`T07` 可提供 `follow_level` 作为辅助信号
+- 建议实现步骤：
+  1. 抽出 `trend_state.py`，实现连续状态更新、重复提示抑制、触发决策三个纯函数
+  2. 在 `service.py` 中把主动提示入口改成“先更新趋势状态，再决定是否提示”
+  3. 在 `dyadic_roleplay.py` 中复用同一套触发逻辑，输出 `trigger_type / suppression_reason / hint_posted`
+  4. 为 `hold` 增加 `interest_low / boundary_risk` 子类型判断，以及 `hold_stoploss` 触发类型
+  5. 在导出结果中增加 `hint_trigger_rate / duplicate_hint_rate / mode_change_hint_rate / boundary_risk_hold_repeat_recall`
+  6. 补齐 `repair / probe_lightly / hold / normal` 四类回归测试
+- 完成标准：
+  - 没有新信息时不复读，但在“仍值得帮忙”的窗口里允许再次提示
+  - 能区分首次触发、风险升级触发、持续未缓解但仍可修复的再触发、`boundary_risk` 同风险轴持续推进时的止损再触发
+  - `interest_low` 型 `hold` 默认不连续提示
+  - `boundary_risk` 型 `hold` 不要求“模式升级后才能再提醒”，只要用户继续沿风险方向推进，就允许再次止损提醒
+  - `normal` 场景默认不打断，`repair` 场景提醒最积极，`probe_lightly` 次之，`hold` 最克制
+  - 用户主动询问助手时，不受 `T12` 冷却和去重规则影响
+  - 至少覆盖以下验收样例：
+    - `normal -> repair` 触发一次；下一轮同模式默认不重复
+    - `repair` 连续 `2` 轮未缓解、用户已行动、冷却结束后可再触发
+    - `normal -> probe_lightly` 触发一次；相邻轮次默认不复读
+    - 首次进入 `interest_low hold` 触发一次；稳定冷淡但无新风险时不重复
+    - 首次进入 `boundary_risk hold` 触发一次；后续继续问照片 / 收入 / 前任 / 见面，或继续比较施压时，可按 `hold_stoploss` 再触发
+  - 能统计重复提示率
+
+### T13：补齐运行脚本和导出报表
+
+- 优先级：`P1`
+- 目标：让压测结果可以直接看，不需要人工翻日志。
+- 产出：
+  - 识别准确率
+  - `risky_none_rate`
+  - `boundary_risk_hold_recall`
+  - 建议质量分
+  - 用户采纳率
+  - 局部恢复率
+  - 延迟统计
+  - `assistant_invoke_timeout_rate`
+  - `fallback_message_rate`
+  - `repair / probe_lightly / hold` 分布
+  - “可见文本口径”与 “stress beat 口径”双视图
+- 主要文件：
+  - 历史提案脚本：`external-systems/partner-chat-system/scripts/run_dyadic_agent_roleplay.py`
+  - 历史提案脚本：`external-systems/partner-chat-system/scripts/export_chat_thread.py`
+- 依赖：`T03`、`T06`、`T07`、`T08`
+- 完成标准：
+  - 跑完脚本后能直接看到关键指标
+  - 能直接看出“哪些危险局被判成了 none / repair”
+  - 能区分“策略没判到”还是“模型 timeout / fallback 把效果冲掉了”
+  - 导出结果能把主对话、助手建议、评测摘要分区展示
+
+### T14：建立回归测试和验收基线
+
+- 优先级：`P0`
+- 目标：让后续改动不会把边界、时机或输出格式改坏。
+- 产出：
+  - 结构化输出测试
+  - 模式判断测试
+  - `heuristic_clear_continue` 防误放测试
+  - `interest_low hold / boundary_risk hold` 回归样例
+  - 采纳度评测测试
+  - 延迟统计回归基线
+  - timeout / fallback 统计隔离测试
+- 主要文件：
+  - 历史提案测试：`external-systems/partner-chat-system/tests/test_assistant_llm.py`
+  - 历史提案测试：`external-systems/partner-chat-system/tests/test_dyadic_roleplay.py`
+  - [external-systems/partner-chat-system/tests/test_chat_system.py](/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/tests/test_chat_system.py)
+- 依赖：`T04`、`T05`、`T06`、`T12`
+- 完成标准：
+  - 关键结构字段有测试
+  - `repair / probe_lightly / hold` 至少各有回归样例
+  - `hold` 至少拆成 `interest_low` 和 `boundary_risk` 两套回归样例
+  - “表面正常提问，但最近几轮已持续施压/别扭”的局，不能再被误放成 `none`
+  - 明确代写违规率可被测试覆盖
+
+### T15：线下见面型红娘助手单独立项
+
+- 优先级：`P2`
+- 目标：把第 18 节从“理念说明”变成独立需求，不与线上聊天教练混开发。
+- 产出：
+  - 单独 PRD 或设计文档
+  - 见面中状态机
+  - 见面后关系分流规则
+  - 单独成功指标
+- 主要文件：
+  - 建议新增独立文档，不与当前聊天助手方案混写
+- 依赖：无
+- 完成标准：
+  - 明确和线上聊天教练的职责分界
+  - 排期上不占用当前主线 A 的 P0 / P1 资源
+
+### 3.1 补充专项：从“看单句”升级到“看走势”的细化任务
+
+这组 `S01-S13` 不是替代 `T01-T15`，而是把当前最关键的修复方向继续细化成更好排期、更好开发、更好验收的小任务。
+
+建议理解方式：
+
+- `T01-T15` 是主任务骨架
+- `S01-S13` 是“看气氛走势一样看聊天”这条主线下的执行切片
+- 每个 `S` 任务都明确挂靠到已有 `T` 任务，避免文档里出现两套互相竞争的排期体系
+
+### S01：定义连续状态字段
+
+- 优先级：`P0`
+- 挂靠：`T01`、`T03`
+- 目标：把“态度和情绪是连续状态”正式变成字段，而不是口头理解。
+- 产出：
+  - `engagement_level`
+  - `warmth_level`
+  - `irritation_level`
+  - `state_trend`
+- 第一版建议：
+  - `engagement_level = high | medium | low | closed`
+  - `warmth_level = warm | neutral | cold | sharp`
+  - `irritation_level = none | mild | medium | high`
+  - `state_trend = warming | stable | cooling | worsening | recovering`
+- 完成标准：
+  - 文档、代码、报表、测试统一使用同一组字段名
+  - 不再把“热情 / 冷淡 / 厌烦”只写成自由文本描述
+
+### S02：扩展逐轮记录，保留气氛走势
+
+- 优先级：`P0`
+- 挂靠：`T03`
+- 目标：让每轮评测不只记录“这一句说了什么”，还记录“整体状态走到了哪”。
+- 产出：
+  - 逐轮记录新增 `engagement_level`、`warmth_level`、`irritation_level`、`state_trend`
+  - 逐轮记录新增 `risk_axis`、`hold_subtype`
+- 完成标准：
+  - 跑一次 roleplay 后，逐轮记录能直接看出“从热情到变冷”或“从冷淡到厌烦”的连续变化
+
+### S03：实现连续状态更新器
+
+- 优先级：`P0`
+- 挂靠：`T04`
+- 目标：让系统对同一段聊天有记忆，不再每轮清零。
+- 产出：
+  - 可新增 `chat_state.py` 或并入 `trend_state.py`
+  - 一个纯函数：输入“上一轮状态 + 当前消息信号”，输出“新状态”
+- 第一版要求：
+  - 能处理连续变冷
+  - 能处理连续施压
+  - 能处理从僵住到缓和
+- 完成标准：
+  - 至少有单测覆盖“连续三轮变冷”“连续两轮施压”“先冷后缓和”
+
+### S04：把一级轻判断改成多轮判断
+
+- 优先级：`P0`
+- 挂靠：`T04`
+- 目标：把判断从“只看当前一句”升级成“看最近 `1-3` 轮”。
+- 产出：
+  - `mode_router` 除了当前句，还要吃最近几轮状态摘要
+  - 轻判断输出继续保留 `need_rescue / problem_tags / interaction_mode`
+- 第一版要求：
+  - 当前句只是输入的一部分
+  - 最近走势同样参与最终模式判断
+- 完成标准：
+  - 不能再因为“最后一句像问句”就把前面已经恶化的局直接放成 `none`
+
+### S05：给 `heuristic_clear_continue` 加风险守门
+
+- 优先级：`P0`
+- 挂靠：`T04`
+- 目标：修掉“表面正常就直接放行”的误判。
+- 产出：
+  - `clear_continue` 前置守门逻辑
+  - 最近几轮风险信号检查：`dismissive / pressure / boundary / ghosting`
+- 第一版要求：
+  - 先看最近几轮有没有风险积累
+  - 只有没有明显风险积累时，才允许回 `none`
+- 完成标准：
+  - “像正常问句，但其实在施压 / 冒犯 / 试探边界”的局，不能再被洗白
+
+### S06：引入 `risk_axis` 判定
+
+- 优先级：`P0`
+- 挂靠：`T04`
+- 目标：让系统知道这轮危险到底是沿哪条线在发展。
+- 产出：
+  - `risk_axis`
+- 第一版建议枚举：
+  - `appearance`
+  - `income_condition`
+  - `privacy_ex`
+  - `meetup_push`
+  - `pressure_compare`
+  - `other`
+- 完成标准：
+  - 系统能区分“这是新问题”还是“还是上一轮那条风险线在继续”
+
+### S07：拆分 `hold_subtype`
+
+- 优先级：`P0`
+- 挂靠：`T04`、`T12`
+- 目标：把 `hold` 从一个粗标签拆成两种不同打法。
+- 产出：
+  - `hold_subtype = interest_low | boundary_risk`
+- 第一版要求：
+  - 冷淡型 `hold` 和危险型 `hold` 不共用同一套触发规则
+- 完成标准：
+  - 系统能区分“只是没兴趣”和“已经有施压 / 冒犯 / 越界风险”
+
+### S08：实现趋势触发器
+
+- 优先级：`P0`
+- 挂靠：`T12`
+- 目标：让提示按走势工作，不按单轮拍脑袋。
+- 产出：
+  - 固定触发流程：轻判断 -> 更新状态 -> 计算触发原因 -> 检查抑制 -> 决定是否提示
+  - `trigger_type`
+  - `suppression_reason`
+- 完成标准：
+  - 每轮都能解释“为什么提示了”或“为什么没提示”
+
+### S09：实现重复抑制和止损再触发
+
+- 优先级：`P0`
+- 挂靠：`T12`
+- 目标：既不复读，也不装死。
+- 产出：
+  - `interest_low hold` 默认低频提醒
+  - `boundary_risk hold` 可沿同一风险轴继续止损
+  - `hold_stoploss`、`hold_no_new_risk` 等触发 / 抑制原因
+- 完成标准：
+  - 不会每轮都复读
+  - 也不会提醒一次后彻底闭嘴
+
+### S10：把建议从模板话术改成动作约束
+
+- 优先级：`P1`
+- 挂靠：`T05`
+- 目标：让建议更像现场打法，而不是聊天课程。
+- 产出：
+  - `repair` 的动作约束
+  - `probe_lightly` 的动作约束
+  - `hold` 的动作约束
+- `hold` 第一版至少能明确说：
+  - 别继续解释
+  - 别继续推进见面
+  - 别再碰敏感点
+  - 对方明显不舒服时直接收口
+- 完成标准：
+  - 建议不再反复落成“先回应、再换题、最后轻问”的统一模板
+
+### S11：做 hard-user 风格适配
+
+- 优先级：`P1`
+- 挂靠：`T05`、`T11`
+- 目标：让建议更像急躁、闷、带刺、没耐心用户真会照做的一步。
+- 产出：
+  - 短句化 advice
+  - 低课程感 advice
+  - 可选的“标准版 / hard-user 版”渲染差异
+- 完成标准：
+  - 同一策略下，建议不仅“理论正确”，还更像真实用户会采纳
+
+### S12：单独治理延迟、超时、fallback
+
+- 优先级：`P1`
+- 挂靠：`T06`、`T13`
+- 目标：别把链路炸了误当成策略问题。
+- 产出：
+  - 两级链路埋点
+  - timeout / fallback 独立统计
+  - 短 prompt、短输出的落地要求
+- 关键指标：
+  - `assistant_invoke_timeout_rate`
+  - `fallback_message_rate`
+- 完成标准：
+  - 报表能区分“策略没判到”和“模型超时 / fallback 把效果冲掉了”
+
+### S13：补指标、报表、回归测试
+
+- 优先级：`P0`
+- 挂靠：`T13`、`T14`
+- 目标：防止系统又退回“看单句、吃词表、被问句骗”的老路。
+- 产出：
+  - 新指标：`risky_none_rate`
+  - 新指标：`boundary_risk_hold_recall`
+  - roleplay 双口径报表：`visible_text_view`、`stress_beat_view`
+  - 连续状态相关回归样例
+- 关键回归样例：
+  - 热情 -> 平淡 -> 冷淡
+  - 冷淡 -> 不耐烦 -> 厌烦
+  - 危险问句被 `clear_continue` 误放
+  - `boundary_risk hold` 连续再触发
+- 完成标准：
+  - 这些场景都有自动化测试，不再靠人工翻日志定位
+
+### 3.2 这组专项任务的建议执行顺序
+
+建议顺序：
+
+1. `S01-S07`
+2. `S08-S11`
+3. `S12-S13`
+
+阶段目标：
+
+- 第一段先把“看错局”和 `hold` 太粗的问题修掉
+- 第二段再把提示和建议变聪明、变像真人
+- 第三段补齐速度、稳定性、评测和回归
+
+### 3.3 补充专项：从“实时插嘴”切到“阶段性建议入口”
+
+这组任务不是默认立刻做，而是在下面条件满足时优先启用：
+
+- 主动提醒的用户可见延迟长期达不到实时标准
+- 建议经常在用户下一句之后才回来
+- 产品上已经不再适合继续强做同步提醒
+
+#### E01：定义“阶段性建议入口”的产品边界
+
+- 优先级：`P0`
+- 目标：先把职责说清楚，避免代码改了但产品定位还停在“实时插嘴”。
+- 产出：
+  - 明确“入口是建议，不是控制”
+  - 明确“用户不点开也不影响正常聊天”
+  - 明确“详细建议失败时不显示”
+
+#### E02：实现“聊天开始变干”的阶段识别
+
+- 优先级：`P0`
+- 目标：识别“连续开始变干”这一段，而不是只看某一句短不短。
+- 产出：
+  - 阶段字段，例如 `coaching_stage`
+  - 至少区分：`none / drying / suggested / viewed`
+  - 触发条件：连续 `2-3` 轮变干，但还不是明显低意愿或边界风险
+
+#### E03：把主动提示正文改成轻入口
+
+- 优先级：`P0`
+- 目标：先让用户看到“这里可以看建议”，而不是被一大段正文打断。
+- 产出：
+  - 轻入口文案
+  - 入口展示状态
+  - 避免同一段聊天里重复刷入口
+
+#### E04：详细建议改成异步生成
+
+- 优先级：`P0`
+- 目标：把“能不能先让入口出现”和“详细建议多久回来”拆开。
+- 产出：
+  - 异步详细建议任务
+  - 详细建议回填接口
+  - 失败时静默不展示的处理逻辑
+
+#### E05：把建议文案改成“阶段复盘风格”
+
+- 优先级：`P1`
+- 目标：不再强调“你下一句马上怎么发”，而是强调“这段为什么开始聊干、后面怎么试更顺”。
+- 产出：
+  - 新文案结构：`现在怎么了 / 为什么会这样 / 如果还想继续，可以怎么试`
+  - 去掉强控制感和课堂感
+
+#### E06：补状态和埋点
+
+- 优先级：`P1`
+- 目标：能知道入口有没有展示、用户有没有点开、详细建议有没有成功回来。
+- 产出：
+  - `entry_exposed`
+  - `entry_opened`
+  - `detail_ready`
+  - `detail_hidden_on_failure`
+
+#### E07：补评测口径
+
+- 优先级：`P1`
+- 目标：新形态不能再只用“repair recall”这种实时提醒指标评价。
+- 产出：
+  - 入口展示率
+  - 点开率
+  - 详细建议成功率
+  - 建议返回耗时
+  - 看完建议后聊天是否继续
+
+这组任务建议顺序：
+
+1. `E01-E03`
+2. `E04-E05`
+3. `E06-E07`
+
+阶段目标：
+
+- 第一段先把产品形态从“同步插嘴”切成“建议入口”
+- 第二段再把内容和异步链路补齐
+- 第三段补埋点、评测和回归
+
+---
+
+## 4. 建议排期
+
+### 第一阶段：先把底盘搭起来
+
+建议先做：
+
+- `T01` 统一术语、字段和边界
+- `T02` 补齐 `StressBeat` 弱标注
+- `T03` 定义每轮评测记录结构
+- `T04` 实现一级轻判断模块
+- `T05` 结构化建议输出
+- `T06` 服务层落库与埋点
+- `T14` 回归测试和验收基线
+
+阶段目标：
+
+- 先把“判什么、怎么记、怎么测”做稳
+
+### 第二阶段：把评测做对
+
+建议再做：
+
+- `T07` 用户采纳度评估
+- `T08` 局部恢复、止损与过推指标
+- `T12` 提示触发器与重复提示抑制
+- `T13` 运行脚本和导出报表
+
+阶段目标：
+
+- 能分清“策略没判到”“提示没触发”“建议没被采纳”
+
+### 第三阶段：把效果和体验做起来
+
+建议再做：
+
+- `T09` `roleplay` 模式对齐实验
+- `T10` 画像钩子排序
+- `T11` 口语自然度改造
+
+阶段目标：
+
+- 让建议更像人话、更像这个人、更像真实产品里的提示
+
+如果这时主动提醒的用户可见延迟仍长期达不到实时标准，应插入 `E01-E07` 这组专项，把产品形态切成“阶段性建议入口”，不要继续强做同步插嘴。
+
+### 第四阶段：单独推进线下红娘助手
+
+建议最后做：
+
+- `T15` 线下见面型红娘助手单独立项
+
+阶段目标：
+
+- 不让第二条产品线打乱当前聊天助手主线
+
+---
+
+## 5. 推荐的最小闭环
+
+如果当前只做一个最小可落地版本，建议范围是：
+
+- `T01` + `T02` + `T03` + `T04` + `T05` + `T06` + `T07` + `T08` + `T12` + `T13` + `T14`
+
+做完这批之后，系统至少可以回答下面几个关键问题：
+
+- 这轮到底该不该介入
+- 该介入时应该给哪种模式的建议
+- 建议有没有结构化输出
+- 用户有没有采纳
+- 采纳后局面有没有局部变好
+- 危险局为什么被放过，或者为什么继续提醒
+- 不该救的时候有没有避免乱推
+
+这才是后续继续打磨人设化、自然度和提示体验的基础。
+
+---
+
+*文档版本：2026-05-06。后续如果原方案文档继续变更，这份任务拆解也需要同步更新。*

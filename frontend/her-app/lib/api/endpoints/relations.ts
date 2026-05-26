@@ -2,7 +2,6 @@ import { gatewayJson, queryString } from '@/lib/api/client'
 import type {
   CaseConversationTimelineResponse,
   CrossDomainTimelineResponse,
-  LedgerSummary,
   UnifiedTimelineEvent,
 } from '@/lib/types/relations'
 
@@ -100,13 +99,4 @@ export async function fetchRelationsMine(limit = 50) {
     count: number
     read_mode?: string
   }>(`/v1/relations/mine${queryString({ limit })}`)
-}
-
-export async function fetchRelationByCase(caseId: string) {
-  return gatewayJson<{
-    case_id: string
-    relation: Record<string, unknown>
-    summary: LedgerSummary
-    unified_timeline: UnifiedTimelineEvent[]
-  }>(`/v1/relations/by-case/${encodeURIComponent(caseId)}`)
 }

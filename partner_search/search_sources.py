@@ -279,43 +279,56 @@ def load_mysql(
         where_clause, params = "", []
     else:
         where_clause, params = prefilter
-    rows = runtime.list_profiles(
-        source_dsn=effective_source,
-        source_table_name=table,
-        where_clause=where_clause.replace("%s", "?"),
-        params=params,
-    )
-    profile_ids = [int(row["id"]) for row in rows if row.get("id") is not None]
-    personas_by_profile: dict[int, dict[str, Any]] = {}
-    if profile_ids:
-        try:
-            from match_domain.persona_loader import load_personas_by_profile_ids
+    normalized_where = where_clause.replace("%s", "?")
+    from her_env import env_int
+    from profile_service import iter_profile_batches
 
-            personas_by_profile = load_personas_by_profile_ids(
-                source=effective_source,
-                profile_ids=profile_ids,
-            )
-        except Exception:  # noqa: BLE001
-            personas_by_profile = {}
+    batch_size = env_int("PARTNER_SEARCH_PROFILE_BATCH_SIZE", 500)
+    try:
+        from match_domain.persona_loader import load_personas_by_profile_ids
+    except Exception:  # noqa: BLE001
+        load_personas_by_profile_ids = None  # type: ignore[assignment,misc]
 
     try:
         from match_domain.reciprocal_preferences import merge_persona_into_profile_record
     except Exception:  # noqa: BLE001
         merge_persona_into_profile_record = None  # type: ignore[assignment,misc]
 
-    def _normalize_row(row: dict[str, Any]) -> dict[str, Any]:
-        profile_id = int(row["id"]) if row.get("id") is not None else None
-        persona_row = personas_by_profile.get(profile_id) if profile_id is not None else None
-        if persona_row is not None and merge_persona_into_profile_record is not None:
-            row = merge_persona_into_profile_record(row, persona_row)
-        return runtime.normalize_record(
-            dict(
-                row,
-                source_file=runtime.build_source_file_ref(effective_source, table),
-            )
-        )
+    records: list[dict[str, Any]] = []
+    for batch in iter_profile_batches(
+        source_dsn=effective_source,
+        source_table_name=table,
+        where_clause=normalized_where,
+        params=params,
+        batch_size=batch_size,
+    ):
+        profile_ids = [int(row["id"]) for row in batch if row.get("id") is not None]
+        personas_by_profile: dict[int, dict[str, Any]] = {}
+        if profile_ids and load_personas_by_profile_ids is not None:
+            try:
+                personas_by_profile = load_personas_by_profile_ids(
+                    source=effective_source,
+                    profile_ids=profile_ids,
+                )
+            except Exception:  # noqa: BLE001
+                personas_by_profile = {}
 
-    return [_normalize_row(dict(row)) for row in rows]
+        for row in batch:
+            row_dict = dict(row)
+            profile_id = int(row_dict["id"]) if row_dict.get("id") is not None else None
+            persona_row = personas_by_profile.get(profile_id) if profile_id is not None else None
+            if persona_row is not None and merge_persona_into_profile_record is not None:
+                row_dict = merge_persona_into_profile_record(row_dict, persona_row)
+            records.append(
+                runtime.normalize_record(
+                    dict(
+                        row_dict,
+                        source_file=runtime.build_source_file_ref(effective_source, table),
+                    )
+                )
+            )
+
+    return records
 
 
 def load_mysql_photo_previews(

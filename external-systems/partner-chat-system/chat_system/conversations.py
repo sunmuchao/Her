@@ -14,7 +14,7 @@ except ImportError:  # pragma: no cover
     IntegrityError = Exception  # type: ignore[misc,assignment]
 
 from match_domain.outbox import append_outbox_pending
-from match_domain.trace_context import get_trace_id
+from her_runtime_context import get_trace_id
 from observability import (
     CHAT_FUNNEL_MESSAGE_SEND,
     CHAT_FUNNEL_THREAD_OPEN,
@@ -488,6 +488,62 @@ def list_conversation_messages(
     return list(reversed(rows))
 
 
+def list_conversation_messages_for_conversations(
+    conn,
+    conversation_ids: Iterable[str],
+    requester_id: str,
+    *,
+    limit: int = 50,
+) -> dict[str, list[dict[str, Any]]]:
+    normalized_ids = [str(item).strip() for item in conversation_ids if str(item or "").strip()]
+    if not normalized_ids:
+        return {}
+    requester = str(requester_id or "").strip()
+    lim = max(1, min(int(limit), 500))
+    out: dict[str, list[dict[str, Any]]] = {cid: [] for cid in normalized_ids}
+    if not requester:
+        return out
+
+    placeholders = ", ".join(["?"] * len(normalized_ids))
+    cur = conn.execute(
+        f"""
+        SELECT conversation_id
+        FROM chat_conversation_members
+        WHERE conversation_id IN ({placeholders})
+          AND participant_id = ?
+          AND can_read = 1
+        """,
+        [*normalized_ids, requester],
+    )
+    allowed_ids = [str(row["conversation_id"]) for row in cur.fetchall()]
+    if not allowed_ids:
+        return out
+
+    allowed_placeholders = ", ".join(["?"] * len(allowed_ids))
+    cur = conn.execute(
+        f"""
+        SELECT * FROM chat_conversation_messages
+        WHERE conversation_id IN ({allowed_placeholders})
+        ORDER BY conversation_id ASC, message_id DESC
+        """,
+        allowed_ids,
+    )
+    grouped: dict[str, list[dict[str, Any]]] = {cid: [] for cid in allowed_ids}
+    for row in cur.fetchall():
+        row_dict = row_to_dict(row)
+        message = _inflate_message(row_dict)
+        if not message:
+            continue
+        cid = str(row_dict.get("conversation_id") or "")
+        bucket = grouped.get(cid)
+        if bucket is None or len(bucket) >= lim:
+            continue
+        bucket.append(message)
+    for cid, messages in grouped.items():
+        out[cid] = list(reversed(messages))
+    return out
+
+
 def _maybe_enqueue_persona_sync_job_for_conversation(
     conn,
     conversation: dict[str, Any],
@@ -669,17 +725,20 @@ def build_case_conversation_timeline(
     message_limit: int = 50,
 ) -> dict[str, Any]:
     conversations = list_case_conversations(conn, case_id, requester_id=requester_id)
+    conversation_ids = [str(conversation["conversation_id"]) for conversation in conversations]
+    messages_by_conversation_id = list_conversation_messages_for_conversations(
+        conn,
+        conversation_ids,
+        requester_id,
+        limit=message_limit,
+    )
     out: list[dict[str, Any]] = []
     for conversation in conversations:
+        conversation_id = str(conversation["conversation_id"])
         out.append(
             {
                 "conversation": conversation,
-                "messages": list_conversation_messages(
-                    conn,
-                    str(conversation["conversation_id"]),
-                    requester_id,
-                    limit=message_limit,
-                ),
+                "messages": messages_by_conversation_id.get(conversation_id, []),
             }
         )
     return {
@@ -712,5 +771,6 @@ __all__ = [
     "list_case_conversations",
     "list_conversation_members",
     "list_conversation_messages",
+    "list_conversation_messages_for_conversations",
     "post_conversation_message",
 ]

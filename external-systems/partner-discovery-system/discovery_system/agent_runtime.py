@@ -112,8 +112,10 @@ def _resolve_discovery_model(*, wire_api: str) -> str:
 
 def _configure_agents_sdk_provider() -> None:
     from agents import set_default_openai_api, set_default_openai_client, set_tracing_disabled
+    from her_production import assert_production_discovery_agent_isolation
     from openai import AsyncOpenAI
 
+    assert_production_discovery_agent_isolation()
     wire_api = _resolve_discovery_wire_api()
     base_url = _resolve_discovery_base_url(wire_api=wire_api)
 

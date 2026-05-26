@@ -28,20 +28,15 @@ NETWORK_STATUS_WATCH = "watch"
 NETWORK_STATUS_UNDER_REVIEW = "under_review"
 NETWORK_STATUS_ACTION_APPLIED = "action_applied"
 
-ENTITY_TYPE_WEIGHTS = {
-    "device_fingerprint": 50,
-    "external_contact": 45,
-    "payment_handle": 45,
-    "avatar_fingerprint": 35,
-    "image_fingerprint": 30,
-    "ip_address": 25,
-    "session_fingerprint": 22,
-    "ip_segment": 18,
-    "message_pattern": 15,
-    "registration_path": 12,
-    "user_agent": 10,
-    "login_city": 8,
-}
+from .fraud_graph_config import (  # noqa: E402
+    action_threshold,
+    contact_marker_patterns as _configured_contact_patterns,
+    entity_type_weights,
+    limit_value,
+    retention_days,
+)
+
+ENTITY_TYPE_WEIGHTS = entity_type_weights()
 
 NETWORK_REVIEWABLE_ACTIONS = {
     ACTION_REQUIRE_VERIFICATION,
@@ -49,17 +44,12 @@ NETWORK_REVIEWABLE_ACTIONS = {
     ACTION_FREEZE,
 }
 
-RECENT_SIGNAL_WINDOW_DAYS = 30
-ENTITY_RETENTION_DAYS = 90
-MAX_LINKED_SUBJECTS = 50
-MAX_PROPAGATION_SUBJECTS = 10
+RECENT_SIGNAL_WINDOW_DAYS = retention_days("recent_signal_window_days", default=30)
+ENTITY_RETENTION_DAYS = retention_days("entity_retention_days", default=90)
+MAX_LINKED_SUBJECTS = limit_value("max_linked_subjects", default=50)
+MAX_PROPAGATION_SUBJECTS = limit_value("max_propagation_subjects", default=10)
 
-CONTACT_MARKER_PATTERNS = (
-    ("wechat", re.compile(r"(?:微信|vx|v信|wechat)[号是为:：\s\-]*([a-zA-Z][a-zA-Z0-9_\-]{4,31})", re.IGNORECASE)),
-    ("telegram", re.compile(r"(?:telegram|tg)[号是为:：\s\-]*([a-zA-Z0-9_]{3,32})", re.IGNORECASE)),
-    ("whatsapp", re.compile(r"(?:whatsapp|wa)[号是为:：\s\-]*([a-zA-Z0-9_]{3,32})", re.IGNORECASE)),
-    ("line", re.compile(r"(?:line)[号是为:：\s\-]*([a-zA-Z0-9_]{3,32})", re.IGNORECASE)),
-)
+CONTACT_MARKER_PATTERNS = _configured_contact_patterns()
 EMAIL_PATTERN = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
 CN_PHONE_PATTERN = re.compile(r"(?<!\d)1\d{10}(?!\d)")
 NORMALIZE_BODY_PATTERN = re.compile(r"[，,。.!！?？:：;；\-_/\\|]+")
@@ -514,13 +504,17 @@ def _risk_score_for_network(
 
 
 def _risk_level_from_score(score: int) -> str:
-    if score >= 160:
+    freeze = action_threshold("freeze", default=160)
+    limit_chat = action_threshold("limit_chat", default=100)
+    require_verification = action_threshold("require_verification", default=60)
+    warn = action_threshold("warn", default=30)
+    if score >= freeze:
         return "critical"
-    if score >= 100:
+    if score >= limit_chat:
         return "high"
-    if score >= 60:
+    if score >= require_verification:
         return "medium"
-    if score >= 30:
+    if score >= warn:
         return "low"
     return "minimal"
 
@@ -531,19 +525,23 @@ def _recommended_action_for_network(
     connected_subject_count: int,
     high_risk_neighbor_count: int,
 ) -> str | None:
-    if score >= 160 or (
+    freeze = action_threshold("freeze", default=160)
+    limit_chat = action_threshold("limit_chat", default=100)
+    require_verification = action_threshold("require_verification", default=60)
+    warn = action_threshold("warn", default=30)
+    if score >= freeze or (
         connected_subject_count >= 3
         and int(shared_entity_type_counts.get("device_fingerprint") or 0) > 0
         and int(shared_entity_type_counts.get("external_contact") or 0) > 0
     ):
         return ACTION_FREEZE
-    if score >= 100 or (
+    if score >= limit_chat or (
         high_risk_neighbor_count > 0 and int(shared_entity_type_counts.get("device_fingerprint") or 0) > 0
     ):
         return ACTION_LIMIT_CHAT
-    if score >= 60:
+    if score >= require_verification:
         return ACTION_REQUIRE_VERIFICATION
-    if score >= 30:
+    if score >= warn:
         return ACTION_WARN
     return None
 
@@ -1049,7 +1047,18 @@ def evaluate_fraud_network(
         )
     if propagate:
         for link in account_links[:MAX_PROPAGATION_SUBJECTS]:
-            evaluate_fraud_network(conn, link["linked_user_id"], now=ts, propagate=False)
+            linked_profile_id = link.get("profile_id")
+            if linked_profile_id is None:
+                _, _, linked_profile_id = _profile_ref_for_subject(conn, link["linked_user_id"])
+            evaluate_fraud_network(
+                conn,
+                link["linked_user_id"],
+                source_dsn=link.get("source_dsn") or normalized_source,
+                source_table_name=link.get("source_table_name") or normalized_table,
+                profile_id=linked_profile_id,
+                now=ts,
+                propagate=False,
+            )
     return build_fraud_network_overview(conn, normalized_user_id)
 
 

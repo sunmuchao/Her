@@ -41,6 +41,7 @@ class PersonaMemoryEngineTests(unittest.TestCase):
             conversation_ref=None,
             apply_scope="persona_and_profile",
             sync_profile=True,
+            source_channel=None,
         )
         self.assertEqual(result, {"user_key": "user-1", "synced_profile": True})
 
@@ -107,6 +108,7 @@ class PersonaMemoryEngineTests(unittest.TestCase):
             conversation_ref=None,
             apply_scope="observation_only",
             sync_profile=False,
+            source_channel=None,
         )
         self.assertEqual(result["apply_scope"], "observation_only")
 

@@ -206,6 +206,28 @@ def list_profiles(
     where_clause: str = "",
     params: Sequence[Any] | None = None,
 ) -> list[dict[str, Any]]:
+    return [
+        row
+        for batch in iter_profile_batches(
+            source_dsn=source_dsn,
+            source_table_name=source_table_name,
+            where_clause=where_clause,
+            params=params,
+            batch_size=0,
+        )
+        for row in batch
+    ]
+
+
+def iter_profile_batches(
+    *,
+    source_dsn: str,
+    source_table_name: str,
+    where_clause: str = "",
+    params: Sequence[Any] | None = None,
+    batch_size: int = 500,
+):
+    """Yield profile rows in batches. batch_size=0 yields a single batch (full fetch)."""
     _require_profile_source(source_dsn=source_dsn, source_table_name=source_table_name)
     profile_conn = _connect_profile_db(source_dsn)
     try:
@@ -213,11 +235,28 @@ def list_profiles(
         if not schema.table_exists(raw_conn, source_table_name):
             raise ValueError(f"profile table {source_table_name} was not found")
         normalized_where = str(where_clause or "").strip()
-        sql = f"SELECT * FROM {schema.quote_mysql_ident(source_table_name)}"
+        base_sql = f"SELECT * FROM {schema.quote_mysql_ident(source_table_name)}"
         if normalized_where:
-            sql = f"{sql} {normalized_where}"
-        rows = profile_conn.execute(sql, tuple(params or ())).fetchall()
-        return [dict(row) for row in rows]
+            base_sql = f"{base_sql} {normalized_where}"
+        query_params = tuple(params or ())
+
+        if int(batch_size or 0) <= 0:
+            rows = profile_conn.execute(base_sql, query_params).fetchall()
+            if rows:
+                yield [dict(row) for row in rows]
+            return
+
+        offset = 0
+        page_size = max(1, int(batch_size))
+        while True:
+            paged_sql = f"{base_sql} LIMIT {page_size} OFFSET {offset}"
+            rows = profile_conn.execute(paged_sql, query_params).fetchall()
+            if not rows:
+                break
+            yield [dict(row) for row in rows]
+            if len(rows) < page_size:
+                break
+            offset += page_size
     finally:
         profile_conn.close()
 

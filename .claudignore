@@ -1,0 +1,14 @@
+# Non-production / deprecated — do not treat as active implementation reference.
+
+# One-off validation artifacts and experiment outputs (May 2026)
+tmp/
+
+# Persona offline eval (CI-only; not runtime stack)
+local-skills/persona-eval/
+artifacts/persona-eval/
+
+# Historical planning docs (superseded by SYSTEM_DOC.md + package READMEs)
+docs/archive/
+
+# Staging area during cleanup (removed after verification)
+# deprecated_archive/

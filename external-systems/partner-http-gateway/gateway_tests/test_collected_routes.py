@@ -9,7 +9,6 @@ from unittest.mock import MagicMock, patch
 from gateway.collected_routes import (
     rest_persona_collected,
     rest_profile_me,
-    rest_recommendation_explain,
 )
 
 
@@ -99,34 +98,6 @@ class CollectedRoutesTests(unittest.TestCase):
         self.assertEqual(collected["target_age_min"], 25)
         self.assertNotIn("persona_summary_internal", collected)
         self.assertIn("target_cities", body["collected_items"])
-
-    @patch("gateway.collected_routes.get_criteria_snapshot_store")
-    def test_recommendation_explain_from_snapshot(self, store_factory: MagicMock) -> None:
-        from match_domain.criteria_snapshots import CriteriaSnapshotRecord
-
-        store = MagicMock()
-        store.get_latest_for_recommendation.return_value = CriteriaSnapshotRecord(
-            snapshot_id=9,
-            scene="recommendation_refresh",
-            criteria_hash="abc",
-            compiled_json={"criteria": {"age_min": 25}},
-            source_map_json={"age_min": "explicit_statement"},
-            runtime_explanation_json={"summary": "runtime only"},
-            profile_id=42,
-            requester_id=42,
-            user_key="42",
-            subscription_id="sub-1",
-            discovery_session_id=None,
-            recommendation_id=100,
-            created_at="2026-05-01 10:00:00",
-        )
-        store_factory.return_value = store
-        gateway = _CollectedGatewayStub()
-        status, body = rest_recommendation_explain(gateway, {}, 100)
-        self.assertEqual(status, 200)
-        self.assertEqual(body["snapshot_id"], 9)
-        self.assertEqual(body["source_map"]["age_min"], "explicit_statement")
-        self.assertEqual(body["runtime_explanation"]["summary"], "runtime only")
 
 
 if __name__ == "__main__":

@@ -99,7 +99,6 @@ setup(
         "partner_moderation",
         "profile_detail_reader",
         "profile_source_refs",
-        "skill_runtime",
     ],
     entry_points={
         "console_scripts": [

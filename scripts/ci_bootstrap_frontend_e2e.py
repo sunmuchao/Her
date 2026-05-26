@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 import time
 from datetime import datetime
@@ -111,6 +112,12 @@ def migrate_targets() -> None:
         finally:
             conn.close()
 
+    os.environ["HER_PROFILE_SOURCE_DSN"] = SEARCH_DSN
+    from partner_search.search_snapshot_store import ensure_search_snapshot_table
+
+    ensure_search_snapshot_table()
+    print("[e2e-bootstrap] ensured partner_search_snapshots")
+
 
 def seed_search_profiles() -> None:
     config = search_test_config(SEARCH_DSN)
@@ -143,6 +150,36 @@ def seed_search_profiles() -> None:
             "主动沟通",
             "愿意长期关系",
             "E2E seed",
+            active_at,
+        ),
+    )
+    insert_search_profile(
+        config,
+        (
+            9002,
+            "E2E无锡候选人",
+            "女",
+            29,
+            "无锡",
+            "硕士",
+            "中学老师",
+            "20-30万/年",
+            "未婚",
+            0,
+            "认真恋爱",
+            "active",
+            "offline",
+            "offline_verified",
+            "verified",
+            "verified",
+            "verified",
+            "approved",
+            0,
+            3,
+            "生活规律",
+            "主动沟通",
+            "愿意长期关系",
+            "E2E seed wuxi",
             active_at,
         ),
     )
@@ -322,7 +359,13 @@ def export_env_file(path: Path) -> None:
         f"PARTNER_MATCHMAKING_DB={TARGET_DSNS['matchmaking']}",
         f"PARTNER_DISCOVERY_DB={TARGET_DSNS['discovery']}",
         f"HER_RELATION_LEDGER_DB={TARGET_DSNS['relationship_ledger']}",
+        "HER_RELATION_LEDGER_READ_MODE=ledger_primary",
+        "HER_PROXY_INTRO_STORAGE=matchmaking",
         f"HER_PROFILE_SOURCE_DSN={SEARCH_DSN}",
+        "PARTNER_GATEWAY_DB_POOL_MAX=16",
+        "PARTNER_SEARCH_CACHE_TTL_SECONDS=120",
+        "PARTNER_SEARCH_CACHE_MAX_ENTRIES=256",
+        "PARTNER_SEARCH_SNAPSHOT_PERSIST=1",
         "NEXT_PUBLIC_HER_REQUESTER_ID=70001",
         "NEXT_PUBLIC_HER_PROFILE_ID=10001",
         "NEXT_PUBLIC_HER_USER_ID=user-a",
@@ -330,6 +373,7 @@ def export_env_file(path: Path) -> None:
         "NEXT_PUBLIC_ALLOW_MOCK_FALLBACK=false",
         "NEXT_PUBLIC_ENABLE_DEMO_NAV=true",
         "NEXT_PUBLIC_USE_AUTH_STUB=false",
+        "NEXT_PUBLIC_E2E_GATEWAY_AUTH=true",
         "",
     ]
     path.write_text("\n".join(lines), encoding="utf-8")
@@ -346,6 +390,14 @@ def main() -> None:
 
     env_local = REPO_ROOT / "frontend" / "her-app" / ".env.local"
     export_env_file(env_local)
+    try:
+        subprocess.run(
+            [sys.executable, str(REPO_ROOT / "scripts" / "tech_optimization_cutover.py"), "--skip-validate-env"],
+            cwd=str(REPO_ROOT),
+            check=True,
+        )
+    except Exception as exc:
+        print(f"[e2e-bootstrap] warning: tech optimization cutover skipped: {exc}")
 
     for key, value in TARGET_DSNS.items():
         os.environ[target_env_var(key)] = value

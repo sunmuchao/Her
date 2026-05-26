@@ -6,7 +6,7 @@ from typing import Any, Protocol
 
 from match_domain import get_trace_id
 
-from .http_helpers import _json_safe, _query_dict
+from .http_helpers import _query_dict
 from .role_sets import INTERNAL_WRITE_ROLES
 
 

@@ -263,7 +263,7 @@ def _chat_job_specs(settings: SchedulerSettings) -> list[_ConfiguredJobSpec]:
             ensure_chat_system_on_path()
             from chat_system.async_tasks import run_chat_async_job_worker  # noqa: PLC0415
             from chat_system.maintenance import run_chat_maintenance  # noqa: PLC0415
-            from chat_system.outbox_worker import run_chat_outbox_worker  # noqa: PLC0415
+            from chat_system.outbox import run_chat_outbox_worker  # noqa: PLC0415
 
             built_jobs = {
                 JOB_CHAT_ASYNC_WORKER: make_chat_job(

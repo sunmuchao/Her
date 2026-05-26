@@ -9,6 +9,8 @@ SYSTEM_ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(SYSTEM_ROOT) not in sys.path:
     sys.path.insert(0, str(SYSTEM_ROOT))
 
+from matchmaking_system.matchmaking_inflate import inflate_feedback  # noqa: E402
+from matchmaking_system.storage import row_to_dict  # noqa: E402
 from matchmaking_system import (  # noqa: E402
     build_mutual_pairs,
     close_stale_cases,
@@ -20,7 +22,6 @@ from matchmaking_system import (  # noqa: E402
     get_pool_member,
     initialize_database,
     list_pending_outbox,
-    list_feedback_events,
     list_match_case_events,
     list_match_cases,
     list_pairs,
@@ -336,11 +337,21 @@ class MatchmakingSystemTests(unittest.TestCase):
         )[0]
         self.assertEqual(rebuilt_pair["pair_status"], "eligible")
 
-        feedback_events = list_feedback_events(self.conn, member_a["member_id"])
-        self.assertEqual(len(feedback_events), 1)
-        self.assertEqual(feedback_events[0]["feedback_type"], "reject_long_distance")
+        feedback_rows = self.conn.execute(
+            """
+            SELECT *
+            FROM matchmaking_feedback_events
+            WHERE member_id = ?
+            ORDER BY created_at DESC, feedback_id DESC
+            """,
+            (member_a["member_id"],),
+        ).fetchall()
+        self.assertEqual(len(feedback_rows), 1)
+        feedback = inflate_feedback(row_to_dict(feedback_rows[0]))
+        assert feedback is not None
+        self.assertEqual(feedback["feedback_type"], "reject_long_distance")
         self.assertEqual(
-            feedback_events[0]["raw_payload"]["canonical_event"]["aggregate_type"],
+            feedback["raw_payload"]["canonical_event"]["aggregate_type"],
             "member_feedback",
         )
 

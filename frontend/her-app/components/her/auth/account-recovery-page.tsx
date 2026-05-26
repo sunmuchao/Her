@@ -2,8 +2,6 @@
 
 import { useState } from 'react'
 import { ChevronLeft, Shield, RefreshCw, Phone } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { WechatIcon } from '@/components/her/ui/wechat-icon'
 import { sendSmsCode, verifySmsCode, wechatLogin } from '@/lib/auth/auth-api'
 import { applyLoginPayload } from '@/lib/auth/session'

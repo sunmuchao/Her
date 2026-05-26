@@ -8,17 +8,14 @@ import os
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+_SCRIPTS_DIR = Path(__file__).resolve().parent
+if str(_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR))
+from _repo_bootstrap import bootstrap_repo  # noqa: E402
+
+REPO_ROOT = bootstrap_repo()
 
 from match_domain.proxy_intro_storage import table_names  # noqa: E402
-
-REC_ROOT = REPO_ROOT / "external-systems" / "partner-recommendation-system"
-MM_ROOT = REPO_ROOT / "external-systems" / "partner-matchmaking-system"
-for root in (REC_ROOT, MM_ROOT):
-    if str(root) not in sys.path:
-        sys.path.insert(0, str(root))
 
 from recommendation_system import connect_db as connect_rec  # noqa: E402
 from recommendation_system.storage import DEFAULT_RECOMMENDATION_TEST_MYSQL_DSN  # noqa: E402

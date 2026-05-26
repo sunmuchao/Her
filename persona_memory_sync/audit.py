@@ -340,10 +340,6 @@ PRIVATE_BOUNDARY_FIELD_BLOCKLIST = {
 }
 
 
-def mentions_income_privacy(private_boundaries: Optional[Iterable[str]]) -> bool:
-    return "income" in detect_private_boundary_categories(private_boundaries)
-
-
 INCOME_TEXT_PATTERNS = (
     re.compile(r"年收入约?\s*\d+\s*万"),
     re.compile(r"\d+\s*-\s*\d+\s*万/年"),

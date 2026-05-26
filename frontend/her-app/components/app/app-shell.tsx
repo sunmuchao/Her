@@ -13,7 +13,7 @@ import VerificationFlowPage from '@/components/her/verification-flow-page'
 import { PageTransition, SlideInTransition } from '@/components/her/ui/page-transitions'
 import type { CandidatePreview } from '@/lib/types/candidate'
 import { DEMO_DEFAULT_CHAT_ID } from '@/lib/navigation/defaults'
-import type { AppPage, SubView, TabType } from '@/lib/navigation/types'
+import type { SubView, TabType } from '@/lib/navigation/types'
 
 type AppShellProps = {
   currentTab: TabType

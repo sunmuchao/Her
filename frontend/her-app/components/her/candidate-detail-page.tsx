@@ -1,8 +1,7 @@
 'use client'
 
-import { ArrowLeft, BadgeCheck, MapPin, Briefcase, GraduationCap, Heart, Sparkles, MessageCircle, AlertCircle, ChevronDown, ChevronUp, CheckCircle, Shield, ChevronLeft, ChevronRight } from 'lucide-react'
-import Image from 'next/image'
-import { useEffect, useState, useRef, TouchEvent } from 'react'
+import { ArrowLeft, BadgeCheck, MapPin, Briefcase, GraduationCap, Heart, Sparkles, MessageCircle, AlertCircle, ChevronDown, ChevronUp, CheckCircle, Shield } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import type { CandidatePreview } from '@/lib/types/candidate'
 import { fetchCandidateDetail } from '@/lib/api/endpoints/candidates'
 import { formatExplainSourceMap } from '@/lib/api/endpoints/collected'
@@ -34,7 +33,6 @@ export default function CandidateDetailPage({
   onBack,
   onStartChat,
 }: CandidateDetailPageProps) {
-  const [currentImageIndex, setCurrentImageIndex] = useState(0)
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['intro']))
   const [apiDetail, setApiDetail] = useState<{
     headline?: string
@@ -48,8 +46,6 @@ export default function CandidateDetailPage({
   const [loadError, setLoadError] = useState<string | null>(null)
   const [usingMockData, setUsingMockData] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
-  const touchStartX = useRef<number | null>(null)
-  const touchEndX = useRef<number | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -169,22 +165,6 @@ export default function CandidateDetailPage({
         <ErrorState message={loadError} onBack={onBack} />
       </PageTransition>
     )
-  }
-
-  const handleTouchStart = (e: TouchEvent) => { touchStartX.current = e.touches[0].clientX }
-  const handleTouchMove = (e: TouchEvent) => { touchEndX.current = e.touches[0].clientX }
-  const handleTouchEnd = () => {
-    if (!touchStartX.current || !touchEndX.current) return
-    const diff = touchStartX.current - touchEndX.current
-    if (Math.abs(diff) > 50) {
-      if (diff > 0 && currentImageIndex < candidateData.images.length - 1) {
-        setCurrentImageIndex(prev => prev + 1)
-      } else if (diff < 0 && currentImageIndex > 0) {
-        setCurrentImageIndex(prev => prev - 1)
-      }
-    }
-    touchStartX.current = null
-    touchEndX.current = null
   }
 
   const toggleSection = (section: string) => {
