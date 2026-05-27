@@ -41,11 +41,22 @@ export default function CandidateDetailPage({
     matchmakerNote?: string
     matchReasons?: string[]
   } | null>(null)
+  const [profileFacts, setProfileFacts] = useState<Record<string, unknown>>({})
   const [collectedMatchReasons, setCollectedMatchReasons] = useState<string[]>([])
   const [trustLabels, setTrustLabels] = useState<string[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
   const [usingMockData, setUsingMockData] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+
+  function formatHeight(value: unknown): string {
+    const num = typeof value === 'number' ? value : Number(value)
+    return Number.isFinite(num) && num > 0 ? `${num}cm` : ''
+  }
+
+  function formatIncome(value: unknown): string {
+    if (value == null || value === '') return ''
+    return String(value)
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -59,16 +70,19 @@ export default function CandidateDetailPage({
         })
         if (cancelled) return
         const view = data.detail_view
+        const facts = data.profile_facts || {}
         const hero = view?.hero
         const gallery =
           view?.photo_gallery
             ?.map((p) => p.url || p.image_url)
             .filter((u): u is string => Boolean(u)) || []
+        setProfileFacts(facts)
         setApiDetail({
           headline: hero?.headline,
           selfIntro:
             view?.self_reported_sections?.[0]?.items?.join(' ') ||
-            view?.verified_sections?.[0]?.items?.join(' '),
+            view?.verified_sections?.[0]?.items?.join(' ') ||
+            String(facts.public_notes || facts.public_personality || ''),
           images: gallery.length ? gallery : undefined,
           matchmakerNote: view?.matchmaker_notes?.[0],
           matchReasons: view?.caution_sections?.[0]?.items,
@@ -95,6 +109,36 @@ export default function CandidateDetailPage({
   const rawCandidate = usingMockData
     ? (DEMO_CANDIDATES_DATABASE[candidateId] || DEFAULT_DEMO_CANDIDATE)
     : null
+
+  const factImages = mapProfileImageUrls(
+    [profileFacts.avatar_url, profileFacts.photo_url, profileFacts.cover_url].filter(Boolean).map(String),
+  )
+  const factName = String(profileFacts.display_name || profileFacts.name || candidate?.name || '候选人')
+  const factHeadline = String(
+    profileFacts.public_notes ||
+      profileFacts.public_personality ||
+      profileFacts.relationship_goal ||
+      candidate?.matchReason ||
+      candidate?.message ||
+      '',
+  )
+  const factSelfIntro = String(
+    profileFacts.public_notes ||
+      profileFacts.public_personality ||
+      profileFacts.public_values ||
+      profileFacts.public_job ||
+      '',
+  )
+  const factKeyPoints = [
+    profileFacts.city ? { label: '城市', value: String(profileFacts.city) } : null,
+    profileFacts.age ? { label: '年龄', value: String(profileFacts.age) } : null,
+    profileFacts.job ? { label: '职业', value: String(profileFacts.job) } : null,
+    profileFacts.education ? { label: '学历', value: String(profileFacts.education) } : null,
+    profileFacts.relationship_goal ? { label: '关系目标', value: String(profileFacts.relationship_goal) } : null,
+    profileFacts.marital_status ? { label: '婚况', value: String(profileFacts.marital_status) } : null,
+    formatHeight(profileFacts.height) ? { label: '身高', value: formatHeight(profileFacts.height) } : null,
+    profileFacts.income_range ? { label: '收入', value: formatIncome(profileFacts.income_range) } : null,
+  ].filter((item): item is { label: string; value: string } => Boolean(item))
 
   const candidateData = rawCandidate
     ? {
@@ -129,22 +173,22 @@ export default function CandidateDetailPage({
       }
     : {
         id: candidate?.id || candidateId,
-        name: candidate?.name || '候选人',
-        age: candidate?.age || 0,
-        city: candidate?.city || '',
-        occupation: candidate?.occupation || '',
-        education: candidate?.education || '',
+        name: factName,
+        age: candidate?.age || (typeof profileFacts.age === 'number' ? profileFacts.age : 0),
+        city: candidate?.city || String(profileFacts.city || ''),
+        occupation: candidate?.occupation || String(profileFacts.job || ''),
+        education: candidate?.education || String(profileFacts.education || ''),
         height: '',
-        headline: apiDetail?.headline || candidate?.matchReason || candidate?.message || '',
-        verified: candidate?.verified ?? false,
+        headline: apiDetail?.headline || factHeadline,
+        verified: candidate?.verified ?? Boolean(profileFacts.verified || profileFacts.live_video_verified),
         matchScore: candidate?.matchScore || 0,
         images: mapProfileImageUrls(
-          apiDetail?.images || (candidate?.image ? [candidate.image] : [PLACEHOLDER_AVATAR]),
+          apiDetail?.images || factImages || (candidate?.image ? [candidate.image] : [PLACEHOLDER_AVATAR]),
         ),
-        selfIntro: apiDetail?.selfIntro || candidate?.message || candidate?.matchReason || '',
-        keyPoints: [] as { label: string; value: string }[],
+        selfIntro: apiDetail?.selfIntro || factSelfIntro || candidate?.message || candidate?.matchReason || '',
+        keyPoints: factKeyPoints,
         needToKnow: apiDetail?.matchReasons || [],
-        matchmakerNote: apiDetail?.matchmakerNote || '',
+        matchmakerNote: apiDetail?.matchmakerNote || String(profileFacts.public_notes || ''),
         matchReasons:
           collectedMatchReasons.length
             ? collectedMatchReasons
@@ -188,6 +232,7 @@ export default function CandidateDetailPage({
           showArrows={true}
           indicatorStyle="pills"
           className="h-full"
+          autoPlay
         />
         
         {/* Gradient overlay */}
