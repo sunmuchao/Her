@@ -1,0 +1,81 @@
+'use client'
+
+import Image from 'next/image'
+import { BadgeCheck, ChevronRight, MapPin } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import type { CandidatePreview } from '@/lib/types/candidate'
+
+type DiscoveryCandidateCardProps = {
+  candidate: CandidatePreview
+  onViewCandidate: (candidateId: string, candidate?: CandidatePreview) => void
+  className?: string
+  style?: React.CSSProperties
+}
+
+export function DiscoveryCandidateCard({
+  candidate,
+  onViewCandidate,
+  className,
+  style,
+}: DiscoveryCandidateCardProps) {
+  return (
+    <button
+      type="button"
+      onClick={() => onViewCandidate(candidate.id, candidate)}
+      className={cn(
+        'w-full bg-card border border-border rounded-xl p-3 text-left transition-all',
+        'hover:border-primary/30 hover:shadow-sm',
+        'focus-ring',
+        className,
+      )}
+      style={style}
+      aria-label={`查看候选人 ${candidate.name} 的详细资料`}
+    >
+      <div className="flex gap-3">
+        <div className="relative w-16 h-20 rounded-lg overflow-hidden shrink-0 bg-secondary">
+          {candidate.image ? (
+            <Image
+              src={candidate.image}
+              alt={candidate.name}
+              fill
+              className="object-cover"
+              sizes="64px"
+              loading="lazy"
+            />
+          ) : null}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="font-medium text-foreground">{candidate.name}</span>
+            {candidate.age ? (
+              <span className="text-sm text-muted-foreground">{candidate.age}岁</span>
+            ) : null}
+            {candidate.verified ? (
+              <BadgeCheck className="w-4 h-4 text-primary" aria-label="已认证" />
+            ) : null}
+          </div>
+          <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+            {candidate.city ? (
+              <span className="flex items-center gap-1">
+                <MapPin className="w-3 h-3" aria-hidden="true" />
+                {candidate.city}
+              </span>
+            ) : null}
+            {candidate.occupation ? <span>{candidate.occupation}</span> : null}
+          </div>
+          {candidate.matchReason ? (
+            <p className="text-xs text-primary mt-2 line-clamp-2">{candidate.matchReason}</p>
+          ) : null}
+        </div>
+        <div className="flex flex-col items-end justify-between">
+          {candidate.matchScore ? (
+            <span className="text-sm font-medium text-primary">{candidate.matchScore}%</span>
+          ) : (
+            <span />
+          )}
+          <ChevronRight className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+        </div>
+      </div>
+    </button>
+  )
+}

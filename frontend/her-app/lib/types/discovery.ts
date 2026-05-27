@@ -3,6 +3,7 @@ export type DiscoveryView = {
     item_type?: string
     item_id?: string
     body?: string
+    title?: string
     created_at?: string
     cards?: Array<{
       card_id?: string
