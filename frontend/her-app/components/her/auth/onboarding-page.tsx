@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useId } from 'react'
 import { ChevronLeft, X, Check, ImagePlus, Heart, Users, Sparkles, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { submitOnboarding } from '@/lib/auth/auth-api'
@@ -89,6 +89,7 @@ export default function OnboardingPage({
   const [isUploading, setIsUploading] = useState(false)
   const [slideDirection, setSlideDirection] = useState<'left' | 'right'>('left')
   const [validationErrors, setValidationErrors] = useState<string[]>([])
+  const photoInputId = useId()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   
@@ -110,7 +111,11 @@ export default function OnboardingPage({
 
   useEffect(() => {
     if (!draftLoaded) return
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(profile))
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(profile))
+    } catch {
+      // Ignore quota errors from large photo drafts.
+    }
   }, [profile, draftLoaded])
 
   // Clear draft on successful completion
@@ -298,7 +303,7 @@ export default function OnboardingPage({
     <div className="min-h-screen bg-background flex flex-col max-w-md mx-auto relative overflow-hidden">
       {/* Soft background */}
       <div className="absolute inset-0">
-        <div className="absolute inset-0 bg-gradient-to-b from-rose-soft/20 via-background to-background" />
+        <div className="absolute inset-0 bg-gradient-to-b from-rose-soft/20 via-background to-background pointer-events-none" />
         <div className="grain-texture absolute inset-0" />
       </div>
 
@@ -373,10 +378,29 @@ export default function OnboardingPage({
             <div className="space-y-6">
               {/* Photo Upload Card - prominent, first thing user sees */}
               <div className="rounded-2xl border-2 border-dashed border-border p-6 bg-card/50">
-                <div className="text-center mb-4">
+                <input
+                  id={photoInputId}
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/*"
+                  multiple
+                  onChange={handlePhotoUpload}
+                  className="sr-only"
+                  disabled={isUploading || profile.photos.length >= 6}
+                />
+
+                <label
+                  htmlFor={photoInputId}
+                  className={cn(
+                    'block text-center mb-4 transition-opacity',
+                    isUploading || profile.photos.length >= 6
+                      ? 'cursor-default opacity-60'
+                      : 'cursor-pointer'
+                  )}
+                >
                   <h3 className="font-medium text-foreground mb-1">上传一张本人照片</h3>
                   <p className="text-sm text-muted-foreground">先传 1 张就可以，后面再补也行</p>
-                </div>
+                </label>
                 
                 <div className="flex flex-wrap gap-3 justify-center">
                   {profile.photos.map((photo, index) => (
@@ -401,17 +425,16 @@ export default function OnboardingPage({
                   ))}
                   
                   {profile.photos.length < 6 && (
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={isUploading}
+                    <label
+                      htmlFor={photoInputId}
+                      aria-label={profile.photos.length === 0 ? '选择照片' : '添加照片'}
                       className={cn(
                         'w-20 h-20 rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-1 transition-all',
-                        isUploading 
-                          ? 'border-muted cursor-not-allowed' 
-                          : profile.photos.length === 0 
-                            ? 'border-primary bg-primary/5 text-primary' 
-                            : 'border-border text-muted-foreground hover:border-primary hover:text-primary'
+                        isUploading
+                          ? 'border-muted cursor-not-allowed opacity-60'
+                          : profile.photos.length === 0
+                            ? 'border-primary bg-primary/5 text-primary cursor-pointer'
+                            : 'border-border text-muted-foreground hover:border-primary hover:text-primary cursor-pointer'
                       )}
                     >
                       {isUploading ? (
@@ -422,18 +445,9 @@ export default function OnboardingPage({
                           <span className="text-xs">{profile.photos.length === 0 ? '选择' : '添加'}</span>
                         </>
                       )}
-                    </button>
+                    </label>
                   )}
                 </div>
-                
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={handlePhotoUpload}
-                  className="hidden"
-                />
               </div>
 
               {/* Name */}

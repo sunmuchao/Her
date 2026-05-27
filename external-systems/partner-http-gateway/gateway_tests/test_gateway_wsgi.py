@@ -76,7 +76,10 @@ class GatewayWsgiTests(unittest.TestCase):
     def setUp(self) -> None:
         self._discovery_runtime_patch = mock.patch.dict(
             os.environ,
-            {"HER_DISCOVERY_AGENT_RUNTIME": "stub"},
+            {
+                "HER_DISCOVERY_AGENT_RUNTIME": "stub",
+                "HER_DISCOVERY_CREATE_SESSION_MODE": "agent",
+            },
             clear=False,
         )
         self._discovery_runtime_patch.start()
