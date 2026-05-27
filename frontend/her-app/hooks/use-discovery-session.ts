@@ -96,9 +96,11 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
   const { usingMockData, applyProvenance } = usePageDataSource()
   const [isLoadingSession, setIsLoadingSession] = useState(true)
   const chatEndRef = useRef<HTMLDivElement>(null)
+  const hasSessionCriteriaChipsRef = useRef(false)
 
   const applyMappedView = useCallback((mapped: MappedDiscoveryView) => {
     setTimelineItems(mapped.timelineItems)
+    hasSessionCriteriaChipsRef.current = Boolean(mapped.chips?.length)
     if (mapped.chips?.length) setCurrentPrefs(mapped.chips)
     setSuggestedActions(mapped.actions)
     setComposerPlaceholder(mapped.composerPlaceholder)
@@ -135,6 +137,7 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
       void fetchCollectedStatements(profileId)
         .then((collected) => {
           if (cancelled()) return
+          if (hasSessionCriteriaChipsRef.current) return
           mergeCollectedChips(setCurrentPrefs, collected.collected_statements || {})
         })
         .catch(() => {
@@ -155,6 +158,7 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
     async function loadSession() {
       setIsLoadingSession(true)
       setLoadError(null)
+      hasSessionCriteriaChipsRef.current = false
 
       const sessionFromUrl = sessionFromUrlQuery?.trim() || null
       const authTask = getAccessToken() ? hydrateSessionFromAuthMe() : Promise.resolve(null)
@@ -309,6 +313,17 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
     }
   }
 
+  const reloadSession = useCallback(async () => {
+    const profileId = getProfileId()
+    if (!profileId || !sessionId) return
+    try {
+      const restored = await getDiscoverySession(sessionId)
+      applyDiscoveryResponse(restored, profileId, `/v1/discovery/sessions/${sessionId}`)
+    } catch (error) {
+      notifyError(error, '刷新会话失败')
+    }
+  }, [applyDiscoveryResponse, sessionId])
+
   return {
     timelineItems,
     inputValue,
@@ -324,5 +339,7 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
     isLoadingSession,
     chatEndRef,
     submitTurn,
+    sessionId,
+    reloadSession,
   }
 }

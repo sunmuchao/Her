@@ -134,4 +134,67 @@ def dispatch_discovery_rest(
     match = re.fullmatch(r"/v1/discovery/sessions/([^/]+)", path)
     if match and method == "GET":
         return rest_discovery_get_session(gateway, environ, match.group(1))
+
+    match = re.fullmatch(
+        r"/v1/discovery/sessions/([^/]+)/profile-updates/([^/]+)/confirm",
+        path,
+    )
+    if match and method == "POST":
+        return rest_discovery_confirm_profile_update(
+            gateway,
+            environ,
+            match.group(1),
+            match.group(2),
+        )
+
+    match = re.fullmatch(
+        r"/v1/discovery/sessions/([^/]+)/profile-updates/([^/]+)/reject",
+        path,
+    )
+    if match and method == "POST":
+        return rest_discovery_reject_profile_update(
+            gateway,
+            environ,
+            match.group(1),
+            match.group(2),
+        )
+
     return None
+
+
+def rest_discovery_confirm_profile_update(
+    gateway: DiscoveryGateway,
+    environ: dict[str, Any],
+    session_id: str,
+    request_id: str,
+) -> tuple[int, dict[str, Any]]:
+    try:
+        owner_id = gateway._discovery.get_session_owner_id(session_id)
+        gateway._assert_actor_can_access_owner(
+            environ,
+            owner_id,
+            field_name="profile_id",
+        )
+        out = gateway._discovery.confirm_profile_update(session_id, request_id)
+    except DiscoveryServiceError as exc:
+        return _discovery_error(exc)
+    return 200, {**_json_safe(out), "trace_id": get_trace_id()}
+
+
+def rest_discovery_reject_profile_update(
+    gateway: DiscoveryGateway,
+    environ: dict[str, Any],
+    session_id: str,
+    request_id: str,
+) -> tuple[int, dict[str, Any]]:
+    try:
+        owner_id = gateway._discovery.get_session_owner_id(session_id)
+        gateway._assert_actor_can_access_owner(
+            environ,
+            owner_id,
+            field_name="profile_id",
+        )
+        out = gateway._discovery.reject_profile_update(session_id, request_id)
+    except DiscoveryServiceError as exc:
+        return _discovery_error(exc)
+    return 200, {**_json_safe(out), "trace_id": get_trace_id()}

@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from match_domain.onboarding_search import format_criteria_labels
+
 from .agent_runtime import (
     DiscoveryActionSuggestion,
     DiscoveryCandidateSelection,
@@ -15,11 +17,15 @@ from .agent_runtime import (
 PROFILE_FIRST_OPEN_MESSAGE = (
     "我根据你刚填的资料筛了几位，你先看看有没有眼缘。觉得不合适，随时跟我说。"
 )
+PROFILE_FIRST_LOW_QUALITY_HINT = (
+    "按你现在的条件，库里匹配的人还不多；想多看几位可以直接说放宽城市或年龄。"
+)
 PROFILE_FIRST_EMPTY_MESSAGE = (
     "根据你刚填的资料，我先帮你筛了一轮，暂时没找到特别贴近的。你可以直接跟我说想怎么调整条件。"
 )
 PROFILE_FIRST_RESULT_TITLE = "根据你的资料，先给你看这些"
 PROFILE_FIRST_SEARCH_LIMIT = 5
+LOW_QUALITY_SCORE_THRESHOLD = 40
 
 
 def discovery_create_session_mode() -> str:
@@ -30,41 +36,7 @@ def discovery_create_session_mode() -> str:
 
 
 def criteria_labels_from_search_criteria(criteria: dict[str, Any]) -> list[str]:
-    labels: list[str] = []
-    cities = criteria.get("cities")
-    if isinstance(cities, list):
-        labels.extend(str(item).strip() for item in cities if str(item or "").strip())
-    elif str(cities or "").strip():
-        labels.append(str(cities).strip())
-
-    gender = str(criteria.get("gender") or "").strip()
-    if gender:
-        labels.append(gender)
-
-    age_min = criteria.get("age_min")
-    age_max = criteria.get("age_max")
-    if age_min is not None and age_max is not None:
-        labels.append(f"{age_min}-{age_max}岁")
-    elif age_min is not None:
-        labels.append(f"{age_min}岁以上")
-    elif age_max is not None:
-        labels.append(f"{age_max}岁以内")
-
-    goals = criteria.get("relationship_goals")
-    if isinstance(goals, list):
-        labels.extend(str(item).strip() for item in goals if str(item or "").strip())
-    elif str(goals or "").strip():
-        labels.append(str(goals).strip())
-
-    must_have = criteria.get("must_have")
-    if isinstance(must_have, list):
-        labels.extend(str(item).strip() for item in must_have if str(item or "").strip())
-
-    deduped: list[str] = []
-    for label in labels:
-        if label not in deduped:
-            deduped.append(label)
-    return deduped[:6]
+    return format_criteria_labels(criteria)
 
 
 def default_profile_first_suggested_actions() -> list[DiscoveryActionSuggestion]:
@@ -95,6 +67,33 @@ def selected_candidates_from_search(
     return selections
 
 
+def _should_append_low_quality_hint(
+    search_response: dict[str, Any],
+    *,
+    selection_count: int,
+) -> bool:
+    if selection_count <= 0:
+        return False
+    results = list(search_response.get("results") or [])[:selection_count]
+    top_score = max(int(item.get("score") or item.get("fit_score") or 0) for item in results)
+    pool = dict(search_response.get("pool_summary") or {})
+    scanned_count = int(pool.get("scanned_count") or 0)
+    if top_score < LOW_QUALITY_SCORE_THRESHOLD:
+        return True
+    return selection_count <= 1 and scanned_count <= 3
+
+
+def _profile_first_open_message(
+    search_response: dict[str, Any],
+    *,
+    selection_count: int,
+) -> str:
+    message = PROFILE_FIRST_OPEN_MESSAGE
+    if _should_append_low_quality_hint(search_response, selection_count=selection_count):
+        return f"{message} {PROFILE_FIRST_LOW_QUALITY_HINT}"
+    return message
+
+
 def build_profile_first_open_result(
     search_response: dict[str, Any],
     *,
@@ -107,7 +106,10 @@ def build_profile_first_open_result(
         return DiscoveryRuntimeResult(
             decision=DiscoveryDecision(
                 phase="results_shown",
-                assistant_message=PROFILE_FIRST_OPEN_MESSAGE,
+                assistant_message=_profile_first_open_message(
+                    search_response,
+                    selection_count=len(selections),
+                ),
                 criteria_labels=list(criteria_labels),
                 suggested_actions=[],
                 result_group_title=PROFILE_FIRST_RESULT_TITLE,
@@ -131,6 +133,7 @@ def build_profile_first_open_result(
 
 __all__ = [
     "PROFILE_FIRST_EMPTY_MESSAGE",
+    "PROFILE_FIRST_LOW_QUALITY_HINT",
     "PROFILE_FIRST_OPEN_MESSAGE",
     "PROFILE_FIRST_RESULT_TITLE",
     "PROFILE_FIRST_SEARCH_LIMIT",

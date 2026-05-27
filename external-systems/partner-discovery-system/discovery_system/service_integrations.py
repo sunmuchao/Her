@@ -11,12 +11,14 @@ from typing import Any, Callable
 from her_repo_path_bootstrap import ensure_partner_system_roots_on_sys_path
 from match_domain.criteria_compiler import build_discovery_search_request
 from match_domain.criteria_snapshots import save_compiled_snapshot
-from match_domain.persona_loader import load_persona_row
+from match_domain.persona_loader import load_persona_for_discovery
+from match_domain.profile_write_guard import is_search_criteria_key, merge_working_criteria, split_persona_patch
 from match_domain.search_visibility import search_profiles_with_visibility_gate
 from observability import metric_gauge
 from partner_search import load_self_profile, search_profiles
 
 from .agent_runtime import DiscoveryDecision
+from .profile_updates import propose_profile_update as _propose_profile_update_impl
 from .service_context import search_error_summary
 from .storage import StoredSession
 
@@ -152,18 +154,28 @@ def search_partner_candidates_with(
         self_profile = None
     effective_self_id = session.profile_id if isinstance(self_profile, dict) and self_profile else None
     normalized_limit = max(1, min(int(limit or 5), 10))
+    merged_criteria = merge_working_criteria(session.state, criteria)
+    session.state["working_criteria"] = {
+        key: merged_criteria[key]
+        for key in merged_criteria
+        if is_search_criteria_key(key)
+    }
     persona_row = None
     persona_source = persona_memory_source() or source
     if persona_source:
         try:
-            persona_row = load_persona_row(source=persona_source, user_key=str(session.requester_id))
+            persona_row = load_persona_for_discovery(
+                source=persona_source,
+                profile_id=session.profile_id,
+                requester_id=session.requester_id,
+            )
         except Exception:  # noqa: BLE001
             persona_row = None
     compiled_request = build_discovery_search_request(
         source=source,
         profile_row=self_profile,
         persona_row=persona_row,
-        criteria_overrides=dict(criteria or {}),
+        criteria_overrides=merged_criteria,
         self_id=effective_self_id,
         limit=normalized_limit,
     )
@@ -215,12 +227,48 @@ def search_partner_candidates_with(
         }
 
 
+def propose_requester_profile_update(
+    storage: Any,
+    session: StoredSession,
+    *,
+    patch: dict[str, Any],
+    evidence_text: str | None = None,
+    load_profile: Callable[..., Any] | None = None,
+    source: str | None = None,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    profile_part, _, _ = split_persona_patch(patch)
+    if not profile_part:
+        return {
+            "proposed": False,
+            "error_code": "empty_profile_patch",
+            "message": "没有需要确认的资料字段。",
+        }
+    resolved_source = source if source is not None else profile_source()
+    current_profile = load_requester_profile_with(
+        session,
+        source=resolved_source,
+        load_profile=load_profile or load_self_profile,
+    )
+    return _propose_profile_update_impl(
+        storage,
+        session,
+        patch=profile_part,
+        evidence_text=evidence_text,
+        current_profile=current_profile,
+        now=now,
+    )
+
+
 def sync_requester_persona_memory(
     session: StoredSession,
     *,
     patch: dict[str, Any],
     now: datetime | None = None,
     load_persona_memory: Callable[..., dict[str, Any]] | None = None,
+    storage: Any | None = None,
+    load_profile: Callable[..., Any] | None = None,
+    source: str | None = None,
 ) -> dict[str, Any]:
     normalized_patch = dict(patch or {})
     if not normalized_patch:
@@ -229,23 +277,71 @@ def sync_requester_persona_memory(
             "error_code": "empty_persona_patch",
             "message": "没有可写入画像的字段。",
         }
-    source = persona_memory_source()
-    if not source:
+
+    profile_part, persona_part, search_part = split_persona_patch(normalized_patch)
+    profile_proposals: list[dict[str, Any]] = []
+
+    if search_part:
+        merged = merge_working_criteria(session.state, search_part)
+        session.state["working_criteria"] = {
+            key: merged[key] for key in merged if is_search_criteria_key(key)
+        }
+
+    if profile_part:
+        if storage is None:
+            return {
+                "synced": False,
+                "error_code": "profile_update_requires_confirmation",
+                "message": "资料字段变更需要用户确认，当前存储未配置。",
+                "profile_fields": sorted(profile_part.keys()),
+            }
+        proposal = propose_requester_profile_update(
+            storage,
+            session,
+            patch=profile_part,
+            load_profile=load_profile,
+            source=source,
+            now=now,
+        )
+        if proposal.get("proposed"):
+            profile_proposals.append(proposal)
+            pending_timeline = list(session.state.get("profile_prompts_for_timeline") or [])
+            pending_timeline.append(proposal)
+            session.state["profile_prompts_for_timeline"] = pending_timeline
+
+    if not persona_part:
+        if profile_proposals:
+            return {
+                "synced": True,
+                "user_key": str(session.requester_id),
+                "patch_keys": [],
+                "profile_proposals": profile_proposals,
+                "persona_synced": False,
+            }
+        return {
+            "synced": False,
+            "error_code": "empty_persona_patch",
+            "message": "没有可写入偏好画像的字段。",
+        }
+
+    persona_source = persona_memory_source()
+    if not persona_source:
         return {
             "synced": False,
             "error_code": "persona_memory_source_not_configured",
             "message": "当前没有配置 persona-memory-sync 数据源。",
+            "profile_proposals": profile_proposals,
         }
     current = now or datetime.now()
     try:
         upsert_persona_memory = load_persona_memory or load_persona_memory_bindings()
         upsert_result = upsert_persona_memory(
             {
-                "source": source,
+                "source": persona_source,
                 "user_key": str(session.requester_id),
                 "source_type": "explicit",
-                "patch": normalized_patch,
-                "sync_profile": True,
+                "patch": persona_part,
+                "sync_profile": False,
                 "conversation_ref": f"discovery/{session.session_id}",
                 "basis": "discovery_agent",
             },
@@ -256,18 +352,19 @@ def sync_requester_persona_memory(
             "synced": False,
             "error_code": "persona_memory_sync_failed",
             "message": str(exc)[:200],
+            "profile_proposals": profile_proposals,
         }
     session.state["last_persona_sync_at"] = current.isoformat()
     session.state["last_persona_sync_fields"] = sorted(
-        str(key).strip()
-        for key in normalized_patch.keys()
-        if str(key or "").strip()
+        str(key).strip() for key in persona_part.keys() if str(key or "").strip()
     )
     return {
         "synced": True,
         "user_key": str(session.requester_id),
         "patch_keys": list(session.state["last_persona_sync_fields"]),
         "upsert": upsert_result,
+        "profile_proposals": profile_proposals,
+        "persona_synced": True,
     }
 
 
@@ -420,6 +517,7 @@ __all__ = [
     "persona_memory_source",
     "persist_search_run",
     "profile_source",
+    "propose_requester_profile_update",
     "run_discovery_collect_then_search",
     "search_partner_candidates",
     "sync_requester_persona_memory",

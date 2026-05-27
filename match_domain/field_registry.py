@@ -67,7 +67,7 @@ def _entries_for_fields(
 
 P0_PROFILE_FACTS = _entries_for_fields(
     frozenset(
-        PROFILE_FACT_PROFILE_COLUMNS
+        (PROFILE_FACT_PROFILE_COLUMNS)
         - {
             "id",
             "avatar_url",

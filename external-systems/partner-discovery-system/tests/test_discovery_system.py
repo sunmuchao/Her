@@ -329,6 +329,7 @@ class DiscoveryServiceTests(unittest.TestCase):
             },
             search_partner_candidates=lambda _criteria, _limit: {"has_match": False, "result_count": 0, "results": []},
             sync_requester_persona_memory=lambda _patch: {"synced": True},
+            propose_requester_profile_update=lambda _patch_json, _evidence="": {"proposed": False},
             create_saved_search_subscription_from_last_search=lambda: {"created_subscription": False},
             agent_session=session,
         )
@@ -558,6 +559,7 @@ class DiscoveryServiceTests(unittest.TestCase):
             runtime_context={},
             search_partner_candidates=lambda _criteria, _limit: {"has_match": False, "result_count": 0, "results": []},
             sync_requester_persona_memory=lambda _patch: {"synced": True},
+            propose_requester_profile_update=lambda _patch_json, _evidence="": {"proposed": False},
             create_saved_search_subscription_from_last_search=lambda: {"created_subscription": False},
             agent_session=session,
         )
@@ -773,7 +775,7 @@ class DiscoveryServiceTests(unittest.TestCase):
         request = dict(captured["request"] or {})
         self.assertEqual(request["source"], _DISCOVERY_TEST_PERSONA_SOURCE)
         self.assertEqual(request["user_key"], "70001")
-        self.assertTrue(request["sync_profile"])
+        self.assertFalse(request["sync_profile"])
         self.assertTrue(captured["include_normalized_patch"])
         tool_calls = service.storage.list_tool_calls(session_id)
         persona_tool_calls = [item for item in tool_calls if item.tool_name == "sync_requester_persona_memory"]
@@ -1101,6 +1103,86 @@ class DiscoveryProfileFirstSessionTests(unittest.TestCase):
         self.assertIn("暂时没找到", timeline[0]["body"])
         self.assertTrue(created["view"]["suggested_actions"])
         self.assertEqual(created["session"]["phase"], "collecting_preferences")
+
+
+class DiscoveryProfileUpdateFlowTests(unittest.TestCase):
+    def test_confirm_profile_update_applies_profiles_and_updates_timeline(self) -> None:
+        from datetime import datetime
+
+        from discovery_system.profile_updates import propose_profile_update
+        from discovery_system.storage import StoredSession
+
+        storage = InMemoryDiscoveryStorage()
+        session = StoredSession(
+            session_id="discovery-session-profile-update",
+            requester_id=80001,
+            profile_id=80001,
+            status="active",
+            phase="collecting_preferences",
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            view={"timeline": []},
+            state={},
+        )
+        storage.save_session(session)
+
+        proposed = propose_profile_update(
+            storage,
+            session,
+            patch={"city": "杭州"},
+            current_profile={"city": "上海", "age": 31},
+        )
+        self.assertTrue(proposed["proposed"])
+        request_id = proposed["request_id"]
+        storage.save_session(session)
+
+        service = DiscoveryService(storage=storage, runtime=_FakeRuntime())
+        with mock.patch("profile_service.apply_profile_updates") as apply_mock:
+            out = service.confirm_profile_update(session.session_id, request_id)
+        apply_mock.assert_called_once()
+        self.assertTrue(out["ok"])
+        self.assertEqual(out["status"], "confirmed")
+        self.assertIn("city", out.get("applied_fields", []))
+
+        record = storage.get_profile_update_request(request_id)
+        assert record is not None
+        self.assertEqual(record["status"], "confirmed")
+
+    def test_reject_profile_update_marks_request_rejected(self) -> None:
+        from datetime import datetime
+
+        from discovery_system.profile_updates import propose_profile_update
+        from discovery_system.storage import StoredSession
+
+        storage = InMemoryDiscoveryStorage()
+        session = StoredSession(
+            session_id="discovery-session-profile-reject",
+            requester_id=80002,
+            profile_id=80002,
+            status="active",
+            phase="collecting_preferences",
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            view={"timeline": []},
+            state={},
+        )
+        storage.save_session(session)
+
+        proposed = propose_profile_update(
+            storage,
+            session,
+            patch={"city": "杭州"},
+            current_profile={"city": "上海"},
+        )
+        request_id = proposed["request_id"]
+        storage.save_session(session)
+        service = DiscoveryService(storage=storage, runtime=_FakeRuntime())
+        out = service.reject_profile_update(session.session_id, request_id)
+        self.assertTrue(out["ok"])
+        self.assertEqual(out["status"], "rejected")
+        record = storage.get_profile_update_request(request_id)
+        assert record is not None
+        self.assertEqual(record["status"], "rejected")
 
 
 if __name__ == "__main__":
