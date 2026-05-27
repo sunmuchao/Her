@@ -431,7 +431,7 @@ export default function CandidateDetailPage({
               aria-label={`向${candidateData.name}发起认识意愿`}
             >
               <Heart className="w-4 h-4" aria-hidden="true" />
-              {interestSent ? '已发送意愿' : isExpressingInterest ? '发送中' : '我愿意认识'}
+              {interestSent ? '已发送意愿' : isExpressingInterest ? '发送中' : '愿意认识'}
             </button>
           </Heartbeat>
         </div>
