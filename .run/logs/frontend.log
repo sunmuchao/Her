@@ -19,3 +19,373 @@
  GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 26ms (next.js: 12ms, application-code: 14ms)
  GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 33ms (next.js: 10ms, application-code: 23ms)
  GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 37ms (next.js: 18ms, application-code: 19ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 30ms (next.js: 11ms, application-code: 19ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 34ms (next.js: 17ms, application-code: 17ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 19ms (next.js: 6ms, application-code: 14ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 24ms (next.js: 10ms, application-code: 15ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 26ms (next.js: 8ms, application-code: 18ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 30ms (next.js: 13ms, application-code: 17ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 23ms (next.js: 6ms, application-code: 18ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 29ms (next.js: 10ms, application-code: 19ms)
+⨯ ./components/her/ui/image-carousel.tsx:30:3
+Expected ',', got 'ident'
+  [90m28 |[0m   showIndicators = [36mtrue[0m,
+  [90m29 |[0m   indicatorStyle = [32m'pills'[0m
+[31m[1m>[0m [90m30 |[0m   autoPlay = [36mtrue[0m,
+  [90m   |[0m   [31m[1m^^^^^^^^[0m
+  [90m31 |[0m   autoPlayIntervalMs = [35m3000[0m,
+  [90m32 |[0m   pauseOnHover = [36mtrue[0m,
+  [90m33 |[0m }: [33mImageCarouselProps[0m) {
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./components/her/ui/image-carousel.tsx [Client Component Browser]
+    ./components/her/candidate-detail-page.tsx [Client Component Browser]
+    ./components/app/app-shell.tsx [Client Component Browser]
+    ./components/app/her-app.tsx [Client Component Browser]
+    ./app/[...slug]/page.tsx [Client Component Browser]
+    ./app/[...slug]/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/her/ui/image-carousel.tsx [Client Component SSR]
+    ./components/her/candidate-detail-page.tsx [Client Component SSR]
+    ./components/app/app-shell.tsx [Client Component SSR]
+    ./components/app/her-app.tsx [Client Component SSR]
+    ./app/[...slug]/page.tsx [Client Component SSR]
+    ./app/[...slug]/page.tsx [Server Component]
+
+
+✓ Compiled in 238ms
+[browser] ./components/her/ui/image-carousel.tsx:30:3
+Expected ',', got 'ident'
+  28 |   showIndicators = true,
+  29 |   indicatorStyle = 'pills'
+> 30 |   autoPlay = true,
+     |   ^^^^^^^^
+  31 |   autoPlayIntervalMs = 3000,
+  32 |   pauseOnHover = true,
+  33 | }: ImageCarouselProps) {
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./components/her/ui/image-carousel.tsx [Client Component Browser]
+    ./components/her/candidate-detail-page.tsx [Client Component Browser]
+    ./components/app/app-shell.tsx [Client Component Browser]
+    ./components/app/her-app.tsx [Client Component Browser]
+    ./app/[...slug]/page.tsx [Client Component Browser]
+    ./app/[...slug]/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/her/ui/image-carousel.tsx [Client Component SSR]
+    ./components/her/candidate-detail-page.tsx [Client Component SSR]
+    ./components/app/app-shell.tsx [Client Component SSR]
+    ./components/app/her-app.tsx [Client Component SSR]
+    ./app/[...slug]/page.tsx [Client Component SSR]
+    ./app/[...slug]/page.tsx [Server Component] 
+[browser] ./components/her/ui/image-carousel.tsx:30:3
+Expected ',', got 'ident'
+  28 |   showIndicators = true,
+  29 |   indicatorStyle = 'pills'
+> 30 |   autoPlay = true,
+     |   ^^^^^^^^
+  31 |   autoPlayIntervalMs = 3000,
+  32 |   pauseOnHover = true,
+  33 | }: ImageCarouselProps) {
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./components/her/ui/image-carousel.tsx [Client Component Browser]
+    ./components/her/candidate-detail-page.tsx [Client Component Browser]
+    ./components/app/app-shell.tsx [Client Component Browser]
+    ./components/app/her-app.tsx [Client Component Browser]
+    ./app/[...slug]/page.tsx [Client Component Browser]
+    ./app/[...slug]/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/her/ui/image-carousel.tsx [Client Component SSR]
+    ./components/her/candidate-detail-page.tsx [Client Component SSR]
+    ./components/app/app-shell.tsx [Client Component SSR]
+    ./components/app/her-app.tsx [Client Component SSR]
+    ./app/[...slug]/page.tsx [Client Component SSR]
+    ./app/[...slug]/page.tsx [Server Component] 
+ GET /candidates/7152?session=discovery-session-24e366fe25d1 500 in 2.2s (next.js: 1890ms, application-code: 278ms)
+[browser] ./components/her/ui/image-carousel.tsx:30:3
+Expected ',', got 'ident'
+  28 |   showIndicators = true,
+  29 |   indicatorStyle = 'pills'
+> 30 |   autoPlay = true,
+     |   ^^^^^^^^
+  31 |   autoPlayIntervalMs = 3000,
+  32 |   pauseOnHover = true,
+  33 | }: ImageCarouselProps) {
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./components/her/ui/image-carousel.tsx [Client Component Browser]
+    ./components/her/candidate-detail-page.tsx [Client Component Browser]
+    ./components/app/app-shell.tsx [Client Component Browser]
+    ./components/app/her-app.tsx [Client Component Browser]
+    ./app/[...slug]/page.tsx [Client Component Browser]
+    ./app/[...slug]/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/her/ui/image-carousel.tsx [Client Component SSR]
+    ./components/her/candidate-detail-page.tsx [Client Component SSR]
+    ./components/app/app-shell.tsx [Client Component SSR]
+    ./components/app/her-app.tsx [Client Component SSR]
+    ./app/[...slug]/page.tsx [Client Component SSR]
+    ./app/[...slug]/page.tsx [Server Component] 
+⨯ ./components/her/ui/image-carousel.tsx:30:3
+Expected ',', got 'ident'
+  [90m28 |[0m   showIndicators = [36mtrue[0m,
+  [90m29 |[0m   indicatorStyle = [32m'pills'[0m
+[31m[1m>[0m [90m30 |[0m   autoPlay = [36mtrue[0m,
+  [90m   |[0m   [31m[1m^^^^^^^^[0m
+  [90m31 |[0m   autoPlayIntervalMs = [35m3000[0m,
+  [90m32 |[0m   pauseOnHover = [36mtrue[0m,
+  [90m33 |[0m }: [33mImageCarouselProps[0m) {
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./components/her/ui/image-carousel.tsx [Client Component Browser]
+    ./components/her/candidate-detail-page.tsx [Client Component Browser]
+    ./components/app/app-shell.tsx [Client Component Browser]
+    ./components/app/her-app.tsx [Client Component Browser]
+    ./app/[...slug]/page.tsx [Client Component Browser]
+    ./app/[...slug]/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/her/ui/image-carousel.tsx [Client Component SSR]
+    ./components/her/candidate-detail-page.tsx [Client Component SSR]
+    ./components/app/app-shell.tsx [Client Component SSR]
+    ./components/app/her-app.tsx [Client Component SSR]
+    ./app/[...slug]/page.tsx [Client Component SSR]
+    ./app/[...slug]/page.tsx [Server Component]
+
+
+ GET /candidates/7152?session=discovery-session-24e366fe25d1 500 in 42ms (next.js: 22ms, application-code: 20ms)
+⨯ ./components/her/ui/image-carousel.tsx:30:3
+Expected ',', got 'ident'
+  [90m28 |[0m   showIndicators = [36mtrue[0m,
+  [90m29 |[0m   indicatorStyle = [32m'pills'[0m
+[31m[1m>[0m [90m30 |[0m   autoPlay = [36mtrue[0m,
+  [90m   |[0m   [31m[1m^^^^^^^^[0m
+  [90m31 |[0m   autoPlayIntervalMs = [35m3000[0m,
+  [90m32 |[0m   pauseOnHover = [36mtrue[0m,
+  [90m33 |[0m }: [33mImageCarouselProps[0m) {
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./components/her/ui/image-carousel.tsx [Client Component Browser]
+    ./components/her/candidate-detail-page.tsx [Client Component Browser]
+    ./components/app/app-shell.tsx [Client Component Browser]
+    ./components/app/her-app.tsx [Client Component Browser]
+    ./app/[...slug]/page.tsx [Client Component Browser]
+    ./app/[...slug]/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/her/ui/image-carousel.tsx [Client Component SSR]
+    ./components/her/candidate-detail-page.tsx [Client Component SSR]
+    ./components/app/app-shell.tsx [Client Component SSR]
+    ./components/app/her-app.tsx [Client Component SSR]
+    ./app/[...slug]/page.tsx [Client Component SSR]
+    ./app/[...slug]/page.tsx [Server Component]
+
+
+ GET /candidates/7152?session=discovery-session-24e366fe25d1 500 in 50ms (next.js: 15ms, application-code: 35ms)
+⨯ ./components/her/ui/image-carousel.tsx:30:3
+Expected ',', got 'ident'
+  [90m28 |[0m   showIndicators = [36mtrue[0m,
+  [90m29 |[0m   indicatorStyle = [32m'pills'[0m
+[31m[1m>[0m [90m30 |[0m   autoPlay = [36mtrue[0m,
+  [90m   |[0m   [31m[1m^^^^^^^^[0m
+  [90m31 |[0m   autoPlayIntervalMs = [35m3000[0m,
+  [90m32 |[0m   pauseOnHover = [36mtrue[0m,
+  [90m33 |[0m }: [33mImageCarouselProps[0m) {
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./components/her/ui/image-carousel.tsx [Client Component Browser]
+    ./components/her/candidate-detail-page.tsx [Client Component Browser]
+    ./components/app/app-shell.tsx [Client Component Browser]
+    ./components/app/her-app.tsx [Client Component Browser]
+    ./app/[...slug]/page.tsx [Client Component Browser]
+    ./app/[...slug]/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/her/ui/image-carousel.tsx [Client Component SSR]
+    ./components/her/candidate-detail-page.tsx [Client Component SSR]
+    ./components/app/app-shell.tsx [Client Component SSR]
+    ./components/app/her-app.tsx [Client Component SSR]
+    ./app/[...slug]/page.tsx [Client Component SSR]
+    ./app/[...slug]/page.tsx [Server Component]
+
+
+[browser] Uncaught Error: ./components/her/ui/image-carousel.tsx:30:3
+Expected ',', got 'ident'
+  28 |   showIndicators = true,
+  29 |   indicatorStyle = 'pills'
+> 30 |   autoPlay = true,
+     |   ^^^^^^^^
+  31 |   autoPlayIntervalMs = 3000,
+  32 |   pauseOnHover = true,
+  33 | }: ImageCarouselProps) {
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./components/her/ui/image-carousel.tsx [Client Component Browser]
+    ./components/her/candidate-detail-page.tsx [Client Component Browser]
+    ./components/app/app-shell.tsx [Client Component Browser]
+    ./components/app/her-app.tsx [Client Component Browser]
+    ./app/[...slug]/page.tsx [Client Component Browser]
+    ./app/[...slug]/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/her/ui/image-carousel.tsx [Client Component SSR]
+    ./components/her/candidate-detail-page.tsx [Client Component SSR]
+    ./components/app/app-shell.tsx [Client Component SSR]
+    ./components/app/her-app.tsx [Client Component SSR]
+    ./app/[...slug]/page.tsx [Client Component SSR]
+    ./app/[...slug]/page.tsx [Server Component]
+
+
+    at <unknown> (Error: ./components/her/ui/image-carousel.tsx:30:3)
+    at <unknown> (Error: (./components/her/ui/image-carousel.tsx:30:3)
+[browser] ./components/her/ui/image-carousel.tsx:30:3
+Expected ',', got 'ident'
+  28 |   showIndicators = true,
+  29 |   indicatorStyle = 'pills'
+> 30 |   autoPlay = true,
+     |   ^^^^^^^^
+  31 |   autoPlayIntervalMs = 3000,
+  32 |   pauseOnHover = true,
+  33 | }: ImageCarouselProps) {
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./components/her/ui/image-carousel.tsx [Client Component Browser]
+    ./components/her/candidate-detail-page.tsx [Client Component Browser]
+    ./components/app/app-shell.tsx [Client Component Browser]
+    ./components/app/her-app.tsx [Client Component Browser]
+    ./app/[...slug]/page.tsx [Client Component Browser]
+    ./app/[...slug]/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/her/ui/image-carousel.tsx [Client Component SSR]
+    ./components/her/candidate-detail-page.tsx [Client Component SSR]
+    ./components/app/app-shell.tsx [Client Component SSR]
+    ./components/app/her-app.tsx [Client Component SSR]
+    ./app/[...slug]/page.tsx [Client Component SSR]
+    ./app/[...slug]/page.tsx [Server Component] 
+[browser] ./components/her/ui/image-carousel.tsx:30:3
+Expected ',', got 'ident'
+  28 |   showIndicators = true,
+  29 |   indicatorStyle = 'pills'
+> 30 |   autoPlay = true,
+     |   ^^^^^^^^
+  31 |   autoPlayIntervalMs = 3000,
+  32 |   pauseOnHover = true,
+  33 | }: ImageCarouselProps) {
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./components/her/ui/image-carousel.tsx [Client Component Browser]
+    ./components/her/candidate-detail-page.tsx [Client Component Browser]
+    ./components/app/app-shell.tsx [Client Component Browser]
+    ./components/app/her-app.tsx [Client Component Browser]
+    ./app/[...slug]/page.tsx [Client Component Browser]
+    ./app/[...slug]/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/her/ui/image-carousel.tsx [Client Component SSR]
+    ./components/her/candidate-detail-page.tsx [Client Component SSR]
+    ./components/app/app-shell.tsx [Client Component SSR]
+    ./components/app/her-app.tsx [Client Component SSR]
+    ./app/[...slug]/page.tsx [Client Component SSR]
+    ./app/[...slug]/page.tsx [Server Component] 
+⨯ ./components/her/ui/image-carousel.tsx:30:3
+Expected ',', got 'ident'
+  [90m28 |[0m   showIndicators = [36mtrue[0m,
+  [90m29 |[0m   indicatorStyle = [32m'pills'[0m
+[31m[1m>[0m [90m30 |[0m   autoPlay = [36mtrue[0m,
+  [90m   |[0m   [31m[1m^^^^^^^^[0m
+  [90m31 |[0m   autoPlayIntervalMs = [35m3000[0m,
+  [90m32 |[0m   pauseOnHover = [36mtrue[0m,
+  [90m33 |[0m }: [33mImageCarouselProps[0m) {
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./components/her/ui/image-carousel.tsx [Client Component Browser]
+    ./components/her/candidate-detail-page.tsx [Client Component Browser]
+    ./components/app/app-shell.tsx [Client Component Browser]
+    ./components/app/her-app.tsx [Client Component Browser]
+    ./app/[...slug]/page.tsx [Client Component Browser]
+    ./app/[...slug]/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/her/ui/image-carousel.tsx [Client Component SSR]
+    ./components/her/candidate-detail-page.tsx [Client Component SSR]
+    ./components/app/app-shell.tsx [Client Component SSR]
+    ./components/app/her-app.tsx [Client Component SSR]
+    ./app/[...slug]/page.tsx [Client Component SSR]
+    ./app/[...slug]/page.tsx [Server Component]
+
+
+[browser] ./components/her/ui/image-carousel.tsx:30:3
+Expected ',', got 'ident'
+  28 |   showIndicators = true,
+  29 |   indicatorStyle = 'pills'
+> 30 |   autoPlay = true,
+     |   ^^^^^^^^
+  31 |   autoPlayIntervalMs = 3000,
+  32 |   pauseOnHover = true,
+  33 | }: ImageCarouselProps) {
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./components/her/ui/image-carousel.tsx [Client Component Browser]
+    ./components/her/candidate-detail-page.tsx [Client Component Browser]
+    ./components/app/app-shell.tsx [Client Component Browser]
+    ./components/app/her-app.tsx [Client Component Browser]
+    ./app/[...slug]/page.tsx [Client Component Browser]
+    ./app/[...slug]/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./components/her/ui/image-carousel.tsx [Client Component SSR]
+    ./components/her/candidate-detail-page.tsx [Client Component SSR]
+    ./components/app/app-shell.tsx [Client Component SSR]
+    ./components/app/her-app.tsx [Client Component SSR]
+    ./app/[...slug]/page.tsx [Client Component SSR]
+    ./app/[...slug]/page.tsx [Server Component] 
+ GET /candidates/7152?session=discovery-session-24e366fe25d1 200 in 251ms (next.js: 48ms, application-code: 204ms)
+ GET /api/gateway/v1/candidates/7152 200 in 84ms (next.js: 30ms, application-code: 54ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 87ms (next.js: 42ms, application-code: 45ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 87ms (next.js: 46ms, application-code: 41ms)
+ GET /api/gateway/v1/auth/me 200 in 97ms (next.js: 50ms, application-code: 48ms)
+ GET /api/gateway/v1/candidates/7152?session_id=discovery-session-24e366fe25d1 200 in 98ms (next.js: 3ms, application-code: 96ms)
+ GET /api/gateway/v1/auth/me 200 in 108ms (next.js: 8ms, application-code: 100ms)
+ GET /.well-known/appspecific/com.chrome.devtools.json 200 in 68ms (next.js: 8ms, application-code: 60ms)

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Image from 'next/image'
 import { isLocalDevCdnUrl } from '@/lib/image-url'
 import { cn } from '@/lib/utils'
@@ -14,6 +14,9 @@ interface ImageCarouselProps {
   showArrows?: boolean
   showIndicators?: boolean
   indicatorStyle?: 'dots' | 'pills' | 'numbers'
+  autoPlay?: boolean
+  autoPlayIntervalMs?: number
+  pauseOnHover?: boolean
 }
 
 export function ImageCarousel({
@@ -23,12 +26,16 @@ export function ImageCarousel({
   aspectRatio = 'portrait',
   showArrows = false,
   showIndicators = true,
-  indicatorStyle = 'pills'
+  indicatorStyle = 'pills',
+  autoPlay = true,
+  autoPlayIntervalMs = 3000,
+  pauseOnHover = true,
 }: ImageCarouselProps) {
   const [currentIndex, setCurrentIndex] = useState(0)
   const containerRef = useRef<HTMLDivElement>(null)
   const touchStartX = useRef(0)
   const touchEndX = useRef(0)
+  const [isPaused, setIsPaused] = useState(false)
 
   const aspectClasses = {
     square: 'aspect-square',
@@ -71,10 +78,30 @@ export function ImageCarousel({
     }
   }, [currentIndex])
 
+  useEffect(() => {
+    setCurrentIndex((prev) => Math.min(prev, Math.max(0, images.length - 1)))
+  }, [images.length])
+
+  useEffect(() => {
+    if (!autoPlay || images.length <= 1 || isPaused) return
+    const timer = window.setInterval(() => {
+      setCurrentIndex((prev) => (prev + 1) % images.length)
+    }, autoPlayIntervalMs)
+    return () => window.clearInterval(timer)
+  }, [autoPlay, autoPlayIntervalMs, images.length, isPaused])
+
   if (images.length === 0) return null
 
   return (
-    <div className={cn('relative w-full overflow-hidden', aspectClasses[aspectRatio], className)}>
+    <div
+      className={cn('relative w-full overflow-hidden', aspectClasses[aspectRatio], className)}
+      onMouseEnter={() => pauseOnHover && setIsPaused(true)}
+      onMouseLeave={() => pauseOnHover && setIsPaused(false)}
+      onTouchStart={() => setIsPaused(true)}
+      onTouchEnd={() => setIsPaused(false)}
+      onFocusCapture={() => setIsPaused(true)}
+      onBlurCapture={() => setIsPaused(false)}
+    >
       {/* Images container */}
       <div
         ref={containerRef}
