@@ -689,3 +689,10 @@ TypeError: fetch failed
  GET /api/gateway/v1/auth/me 200 in 68ms (next.js: 2ms, application-code: 66ms)
 ⨯ upstream image response timed out for https://cdn.her.local/profiles/07225/avatar.jpg
 ⨯ upstream image response timed out for https://cdn.her.local/profiles/03735/avatar.jpg
+⨯ upstream image response timed out for https://cdn.her.local/profiles/00389/avatar.jpg
+⨯ upstream image response timed out for https://cdn.her.local/profiles/06260/avatar.jpg
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 18ms (next.js: 5ms, application-code: 13ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 21ms (next.js: 8ms, application-code: 13ms)
+✓ Compiled in 44ms
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 19ms (next.js: 5ms, application-code: 14ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 22ms (next.js: 9ms, application-code: 13ms)
