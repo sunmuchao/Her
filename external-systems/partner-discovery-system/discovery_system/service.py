@@ -490,6 +490,8 @@ class DiscoveryService:
                     },
                 )
 
+            deliver_in_app_recommendations(conn, now=current)
+
             recommendation = record_recommendation_action(
                 conn,
                 subscription_id=subscription_id,
@@ -504,7 +506,6 @@ class DiscoveryService:
                 },
                 client_idempotency_key=f"{session.session_id}:{candidate_id}:direct_greet",
             )
-            deliver_in_app_recommendations(conn, now=current)
         except DiscoveryServiceError:
             raise
         except ValueError as exc:
