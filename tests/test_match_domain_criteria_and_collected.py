@@ -28,7 +28,7 @@ class MatchDomainCriteriaTests(unittest.TestCase):
         )
         self.assertEqual(compiled.criteria.get("age_min"), 25)
         self.assertEqual(compiled.criteria.get("age_max"), 32)
-        self.assertEqual(compiled.criteria.get("gender"), "女")
+        self.assertEqual(compiled.criteria.get("gender"), "female")
         self.assertIn("age_min", compiled.source_map)
 
     def test_extract_profile_facts_filters_preference_columns(self):

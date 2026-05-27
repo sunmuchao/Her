@@ -5,6 +5,7 @@ import { ChevronLeft, X, Check, ImagePlus, Heart, Users, Sparkles, Loader2 } fro
 import { cn } from '@/lib/utils'
 import { submitOnboarding } from '@/lib/auth/auth-api'
 import { applyLoginPayload } from '@/lib/auth/session'
+import { clearStoredDiscoverySessionId } from '@/lib/discovery/session-storage'
 import { notifyError, notifySuccess } from '@/lib/notify'
 import { Button } from '@/components/ui/button'
 import { CitySelector } from '@/components/her/ui/city-selector'
@@ -210,6 +211,9 @@ export default function OnboardingPage({
           profile_id: result.profile_id,
         },
       })
+      if (typeof result.profile_id === 'number' && result.profile_id > 0) {
+        clearStoredDiscoverySessionId(result.profile_id)
+      }
       clearDraft()
       notifySuccess('资料已保存')
       onComplete()

@@ -7,8 +7,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 
-OUTPUT_PATH = Path("/Users/sunmuchao/Downloads/Her/virtual_profiles_10000.csv")
-PHOTOS_OUTPUT_PATH = Path("/Users/sunmuchao/Downloads/Her/virtual_profile_photos_10000.csv")
+OUTPUT_PATH = Path(__file__).resolve().parent / "virtual_profiles_10000.csv"
+PHOTOS_OUTPUT_PATH = Path(__file__).resolve().parent / "virtual_profile_photos_10000.csv"
 ROW_COUNT = 10_000
 SEED = 20260428
 DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
@@ -86,6 +86,96 @@ PHOTO_FIELDNAMES = [
     "created_at",
     "updated_at",
 ]
+
+PROFILE_DB_COLUMNS = [
+    "id",
+    "name",
+    "gender",
+    "sexual_orientation",
+    "age",
+    "city",
+    "education",
+    "job",
+    "income_range",
+    "marital_status",
+    "has_children",
+    "relationship_goal",
+    "profile_status",
+    "verified_level",
+    "photo_count",
+    "life_routine",
+    "communication_style",
+    "values",
+    "notes",
+    "last_active_at",
+    "public_display_name",
+    "public_education",
+    "public_job",
+    "public_personality",
+    "public_values",
+    "public_notes",
+]
+
+PERSONA_DB_COLUMNS = [
+    "user_key",
+    "display_name",
+    "profile_id",
+    "self_gender",
+    "self_age",
+    "self_city",
+    "self_district",
+    "self_height",
+    "self_education",
+    "self_income_wan",
+    "self_job",
+    "self_marital_status",
+    "self_has_children",
+    "self_children_count",
+    "self_children_living_with_self",
+    "self_smoking",
+    "self_drinking",
+    "self_relationship_goal",
+    "target_gender",
+    "target_age_min",
+    "target_age_max",
+    "target_cities",
+    "target_height_min",
+    "target_height_max",
+    "target_education_min",
+    "target_income_min_wan",
+    "target_income_max_wan",
+    "target_marital_statuses",
+    "target_accept_partner_children",
+    "target_accept_long_distance",
+    "target_want_children",
+    "target_marriage_timeline",
+    "preferred_traits",
+    "created_at",
+    "updated_at",
+]
+
+PHOTO_DB_COLUMNS = [
+    "profile_id",
+    "photo_url",
+    "is_primary",
+    "sort_order",
+]
+
+HER_USER_TABLES = (
+    "partner_search_snapshots",
+    "user_persona_observations",
+    "user_personas",
+    "profile_photos",
+    "profiles",
+)
+
+OTHER_USER_DATABASES = (
+    "her_chat",
+    "her_discovery",
+    "her_matchmaking",
+    "her_recommendation",
+    "her_relationship_ledger",
+)
 
 CITY_DISTRICTS = {
     "无锡": ["梁溪区", "滨湖区", "锡山区", "惠山区", "新吴区", "江阴市", "宜兴市"],
@@ -737,13 +827,136 @@ def write_csv(path, fieldnames, records):
         writer.writerows(records)
 
 
-def load_mysql(records, photo_records, mysql_config):
+def income_midpoint_wan(record: dict) -> int:
+    text = str(record.get("income_range") or "")
+    digits = [int(part) for part in text.replace("万/年", "").split("-") if part.isdigit()]
+    if len(digits) >= 2:
+        return (digits[0] + digits[1]) // 2
+    if digits:
+        return digits[0]
+    return 0
+
+
+def opposite_gender(gender: str) -> str:
+    if gender == "男":
+        return "女"
+    if gender == "女":
+        return "男"
+    return "不限"
+
+
+def to_profile_row(record: dict) -> dict:
+    personality = str(record.get("personality") or "")
+    values = str(record.get("values") or "")
+    lifestyle = str(record.get("lifestyle") or "")
+    return {
+        "id": record["id"],
+        "name": record["name"],
+        "gender": record["gender"],
+        "sexual_orientation": "异性恋",
+        "age": record["age"],
+        "city": record["city"],
+        "education": record["education"],
+        "job": record["job"],
+        "income_range": record["income_range"],
+        "marital_status": record["marital_status"],
+        "has_children": record["has_children"],
+        "relationship_goal": record["relationship_goal"],
+        "profile_status": record["profile_status"],
+        "verified_level": record["verified_level"],
+        "photo_count": record["photo_count"],
+        "life_routine": lifestyle,
+        "communication_style": personality.split(",")[0].strip() if personality else None,
+        "values": values,
+        "notes": record.get("notes"),
+        "last_active_at": record.get("last_active_at"),
+        "public_display_name": record["name"],
+        "public_education": record["education"],
+        "public_job": record["job"],
+        "public_personality": personality,
+        "public_values": values,
+        "public_notes": record.get("notes"),
+    }
+
+
+def to_persona_row(record: dict) -> dict:
+    return {
+        "user_key": str(record["id"]),
+        "display_name": record["name"],
+        "profile_id": record["id"],
+        "self_gender": record["gender"],
+        "self_age": record["age"],
+        "self_city": record["city"],
+        "self_district": record.get("district"),
+        "self_height": record.get("height"),
+        "self_education": record.get("education"),
+        "self_income_wan": income_midpoint_wan(record),
+        "self_job": record.get("job"),
+        "self_marital_status": record.get("marital_status"),
+        "self_has_children": record.get("has_children"),
+        "self_children_count": record.get("children_count"),
+        "self_children_living_with_self": record.get("children_living_with_self"),
+        "self_smoking": record.get("smoking"),
+        "self_drinking": record.get("drinking"),
+        "self_relationship_goal": record.get("relationship_goal"),
+        "target_gender": opposite_gender(str(record.get("gender") or "")),
+        "target_age_min": record.get("preferred_age_min"),
+        "target_age_max": record.get("preferred_age_max"),
+        "target_cities": record.get("preferred_cities"),
+        "target_height_min": record.get("preferred_height_min"),
+        "target_height_max": record.get("preferred_height_max"),
+        "target_education_min": record.get("preferred_education_min"),
+        "target_income_min_wan": record.get("preferred_income_min_wan"),
+        "target_income_max_wan": record.get("preferred_income_max_wan"),
+        "target_marital_statuses": record.get("accept_marital_status"),
+        "target_accept_partner_children": record.get("accept_partner_children"),
+        "target_accept_long_distance": record.get("accept_long_distance"),
+        "target_want_children": record.get("want_children"),
+        "target_marriage_timeline": record.get("marriage_timeline"),
+        "preferred_traits": record.get("personality"),
+        "created_at": record.get("created_at"),
+        "updated_at": record.get("updated_at"),
+    }
+
+
+def to_photo_db_rows(record: dict, photo_records: list[dict]) -> list[dict]:
+    profile_id = record["id"]
+    rows: list[dict] = []
+    avatar_url = str(record.get("avatar_url") or "").strip()
+    if avatar_url:
+        rows.append(
+            {
+                "profile_id": profile_id,
+                "photo_url": avatar_url,
+                "is_primary": 1,
+                "sort_order": 0,
+            }
+        )
+    sort_order = 1
+    for photo in photo_records:
+        if int(photo.get("profile_id") or 0) != profile_id:
+            continue
+        if str(photo.get("photo_type") or "") == "avatar":
+            continue
+        rows.append(
+            {
+                "profile_id": profile_id,
+                "photo_url": photo["photo_url"],
+                "is_primary": 0,
+                "sort_order": sort_order,
+            }
+        )
+        sort_order += 1
+    return rows
+
+
+def connect_mysql(mysql_config: dict):
     try:
         import pymysql
     except ImportError as exc:  # pragma: no cover - environment-specific path
         raise SystemExit("PyMySQL is required to load generated data into MySQL.") from exc
 
-    conn = pymysql.connect(
+    return pymysql.connect(
         host=mysql_config["host"],
         port=mysql_config["port"],
         user=mysql_config["user"],
@@ -752,36 +965,103 @@ def load_mysql(records, photo_records, mysql_config):
         charset=mysql_config["charset"],
         autocommit=False,
     )
-    profile_columns = FIELDNAMES
-    profile_placeholders = ", ".join(["%s"] * len(profile_columns))
-    profile_column_sql = ", ".join(f"`{column}`" for column in profile_columns)
-    profile_insert_sql = f"INSERT INTO `{mysql_config['table']}` ({profile_column_sql}) VALUES ({profile_placeholders})"
-    photo_columns = PHOTO_FIELDNAMES
-    photo_placeholders = ", ".join(["%s"] * len(photo_columns))
-    photo_column_sql = ", ".join(f"`{column}`" for column in photo_columns)
-    photo_table = mysql_config.get("photos_table", "profile_photos")
-    photo_insert_sql = f"INSERT INTO `{photo_table}` ({photo_column_sql}) VALUES ({photo_placeholders})"
 
+
+def truncate_tables(conn, table_names: tuple[str, ...]) -> None:
+    with conn.cursor() as cursor:
+        cursor.execute("SET FOREIGN_KEY_CHECKS = 0")
+        try:
+            for table_name in table_names:
+                cursor.execute(f"TRUNCATE TABLE `{table_name}`")
+        finally:
+            cursor.execute("SET FOREIGN_KEY_CHECKS = 1")
+
+
+def truncate_database_except_migrations(conn) -> None:
+    with conn.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT table_name
+            FROM information_schema.tables
+            WHERE table_schema = DATABASE()
+              AND table_type = 'BASE TABLE'
+              AND table_name <> 'schema_migrations'
+            """
+        )
+        table_names = [
+            (row["table_name"] if isinstance(row, dict) else row[0]) for row in cursor.fetchall()
+        ]
+    truncate_tables(conn, tuple(table_names))
+
+
+def clean_all_user_databases(mysql_config: dict, *, clean_other_dbs: bool) -> None:
+    conn = connect_mysql(mysql_config)
+    try:
+        truncate_tables(conn, HER_USER_TABLES)
+        conn.commit()
+    finally:
+        conn.close()
+
+    if not clean_other_dbs:
+        return
+
+    for database in OTHER_USER_DATABASES:
+        other_config = dict(mysql_config)
+        other_config["database"] = database
+        conn = connect_mysql(other_config)
+        try:
+            truncate_database_except_migrations(conn)
+            conn.commit()
+            print(f"Cleared all user tables in {database}")
+        finally:
+            conn.close()
+
+
+def executemany_batched(cursor, sql: str, rows: list[tuple], *, batch_size: int = 1000) -> None:
+    batch: list[tuple] = []
+    for row in rows:
+        batch.append(row)
+        if len(batch) >= batch_size:
+            cursor.executemany(sql, batch)
+            batch.clear()
+    if batch:
+        cursor.executemany(sql, batch)
+
+
+def load_mysql(records, photo_records, mysql_config, *, clean_other_dbs: bool):
+    clean_all_user_databases(mysql_config, clean_other_dbs=clean_other_dbs)
+
+    profile_table = mysql_config["table"]
+    photo_table = mysql_config.get("photos_table", "profile_photos")
+    profile_insert_sql = (
+        f"INSERT INTO `{profile_table}` "
+        f"({', '.join(f'`{column}`' for column in PROFILE_DB_COLUMNS)}) "
+        f"VALUES ({', '.join(['%s'] * len(PROFILE_DB_COLUMNS))})"
+    )
+    persona_insert_sql = (
+        "INSERT INTO `user_personas` "
+        f"({', '.join(f'`{column}`' for column in PERSONA_DB_COLUMNS)}) "
+        f"VALUES ({', '.join(['%s'] * len(PERSONA_DB_COLUMNS))})"
+    )
+    photo_insert_sql = (
+        f"INSERT INTO `{photo_table}` "
+        f"({', '.join(f'`{column}`' for column in PHOTO_DB_COLUMNS)}) "
+        f"VALUES ({', '.join(['%s'] * len(PHOTO_DB_COLUMNS))})"
+    )
+
+    profile_rows = [tuple(to_profile_row(record)[column] for column in PROFILE_DB_COLUMNS) for record in records]
+    persona_rows = [tuple(to_persona_row(record)[column] for column in PERSONA_DB_COLUMNS) for record in records]
+    photo_db_rows: list[tuple] = []
+    for record in records:
+        for row in to_photo_db_rows(record, photo_records):
+            photo_db_rows.append(tuple(row[column] for column in PHOTO_DB_COLUMNS))
+
+    conn = connect_mysql(mysql_config)
     try:
         with conn.cursor() as cursor:
-            cursor.execute(f"TRUNCATE TABLE `{photo_table}`")
-            cursor.execute(f"TRUNCATE TABLE `{mysql_config['table']}`")
-            batch = []
-            for record in records:
-                batch.append(tuple(record[column] for column in profile_columns))
-                if len(batch) >= 1000:
-                    cursor.executemany(profile_insert_sql, batch)
-                    batch.clear()
-            if batch:
-                cursor.executemany(profile_insert_sql, batch)
-            batch = []
-            for record in photo_records:
-                batch.append(tuple(record[column] for column in photo_columns))
-                if len(batch) >= 1000:
-                    cursor.executemany(photo_insert_sql, batch)
-                    batch.clear()
-            if batch:
-                cursor.executemany(photo_insert_sql, batch)
+            executemany_batched(cursor, profile_insert_sql, profile_rows)
+            executemany_batched(cursor, persona_insert_sql, persona_rows)
+            executemany_batched(cursor, photo_insert_sql, photo_db_rows)
         conn.commit()
     except Exception:
         conn.rollback()
@@ -796,7 +1076,16 @@ def parse_args():
     parser.add_argument("--seed", type=int, default=SEED, help="Random seed.")
     parser.add_argument("--output", default=str(OUTPUT_PATH), help="CSV output path.")
     parser.add_argument("--photos-output", default=str(PHOTOS_OUTPUT_PATH), help="Photo CSV output path.")
-    parser.add_argument("--load-mysql", action="store_true", help="Replace the target MySQL table with generated rows.")
+    parser.add_argument(
+        "--load-mysql",
+        action="store_true",
+        help="Truncate persona/profile tables in `her`, optionally other DBs, then load generated rows.",
+    )
+    parser.add_argument(
+        "--clean-all-dbs",
+        action="store_true",
+        help="With --load-mysql, also truncate all non-migration tables in chat/discovery/matchmaking/recommendation/ledger DBs.",
+    )
     parser.add_argument("--mysql-host", default=DEFAULT_MYSQL["host"], help="MySQL host.")
     parser.add_argument("--mysql-port", type=int, default=DEFAULT_MYSQL["port"], help="MySQL port.")
     parser.add_argument("--mysql-user", default=DEFAULT_MYSQL["user"], help="MySQL user.")
@@ -828,15 +1117,15 @@ def main():
             "photos_table": args.mysql_photos_table,
             "charset": DEFAULT_MYSQL["charset"],
         }
-        load_mysql(records, photo_records, mysql_config)
+        load_mysql(records, photo_records, mysql_config, clean_other_dbs=args.clean_all_dbs)
         print(
-            f"Loaded {len(records)} records into "
-            f"{mysql_config['database']}.{mysql_config['table']} on {mysql_config['host']}:{mysql_config['port']}"
+            f"Loaded {len(records)} profiles + personas into "
+            f"{mysql_config['database']} on {mysql_config['host']}:{mysql_config['port']}"
         )
-        print(
-            f"Loaded {len(photo_records)} photo rows into "
-            f"{mysql_config['database']}.{mysql_config['photos_table']} on {mysql_config['host']}:{mysql_config['port']}"
-        )
+        photo_count = sum(len(to_photo_db_rows(record, photo_records)) for record in records)
+        print(f"Loaded {photo_count} photo rows into {mysql_config['database']}.{mysql_config['photos_table']}")
+        if args.clean_all_dbs:
+            print("Also cleared chat/discovery/matchmaking/recommendation/ledger databases.")
 
 
 if __name__ == "__main__":

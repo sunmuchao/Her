@@ -1,3 +1,18 @@
+export type DiscoveryProfileUpdateChange = {
+  field?: string
+  label?: string
+  from?: unknown
+  to?: unknown
+}
+
+export type DiscoveryProfileUpdatePrompt = {
+  request_id?: string
+  title?: string
+  summary?: string
+  changes?: DiscoveryProfileUpdateChange[]
+  status?: 'pending' | 'confirmed' | 'rejected'
+}
+
 export type DiscoveryView = {
   timeline?: Array<{
     item_type?: string
@@ -5,6 +20,7 @@ export type DiscoveryView = {
     body?: string
     title?: string
     created_at?: string
+    prompt?: DiscoveryProfileUpdatePrompt
     cards?: Array<{
       card_id?: string
       profile_id?: string | number

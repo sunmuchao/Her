@@ -20,7 +20,26 @@ export type DiscoveryMessageItem = DiscoveryChatMessage & {
   kind: 'message'
 }
 
-export type DiscoveryTimelineItem = DiscoveryMessageItem | DiscoveryResultGroupItem
+export type DiscoveryProfileUpdatePromptItem = {
+  kind: 'profile_update_prompt'
+  id: string
+  requestId: string
+  title: string
+  summary: string
+  changes: Array<{
+    field: string
+    label: string
+    from?: unknown
+    to?: unknown
+  }>
+  status: 'pending' | 'confirmed' | 'rejected'
+  timestamp?: string
+}
+
+export type DiscoveryTimelineItem =
+  | DiscoveryMessageItem
+  | DiscoveryResultGroupItem
+  | DiscoveryProfileUpdatePromptItem
 
 export type MappedDiscoveryView = {
   /** Ordered chat stream: messages and result groups interleaved as returned by the API. */
@@ -71,6 +90,30 @@ export function mapDiscoveryView(view?: DiscoveryView): MappedDiscoveryView {
         id: item.item_id || `result-group-${index}`,
         title: item.title,
         candidates,
+      })
+      continue
+    }
+    if (itemType === 'profile_update_prompt') {
+      const prompt = item.prompt || {}
+      const requestId = String(prompt.request_id || item.item_id || '').trim()
+      if (!requestId) continue
+      const rawStatus = String(prompt.status || 'pending').trim().toLowerCase()
+      const status: DiscoveryProfileUpdatePromptItem['status'] =
+        rawStatus === 'confirmed' || rawStatus === 'rejected' ? rawStatus : 'pending'
+      timelineItems.push({
+        kind: 'profile_update_prompt',
+        id: item.item_id || requestId,
+        requestId,
+        title: String(prompt.title || '是否更新你的资料？'),
+        summary: String(prompt.summary || ''),
+        changes: (prompt.changes || []).map((change) => ({
+          field: String(change.field || ''),
+          label: String(change.label || change.field || ''),
+          from: change.from,
+          to: change.to,
+        })),
+        status,
+        timestamp: formatRelativeTime(item.created_at),
       })
     }
   }

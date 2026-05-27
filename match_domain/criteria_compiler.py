@@ -11,6 +11,7 @@ from typing import Any, Mapping
 from her_time_utils import clean_text as _clean_text
 
 from .collected_profile import extract_profile_facts, merge_collected_for_compile
+from .onboarding_search import build_profile_search_defaults, normalize_compiled_criteria
 
 LIST_FIELD_KEYS = frozenset(
     {
@@ -184,8 +185,10 @@ def _build_source_map(
             }
         elif overrides and criteria_key in overrides:
             source_map[criteria_key] = {"source": "explicit_override", "field": criteria_key}
-        elif criteria_key in {"gender"} and profile_facts.get("gender"):
-            source_map[criteria_key] = {"source": "profile_form", "field": "gender"}
+        elif criteria_key == "gender" and profile_facts.get("sexual_orientation"):
+            source_map[criteria_key] = {"source": "profile_form", "field": "sexual_orientation"}
+        elif criteria_key in build_profile_search_defaults(profile_facts):
+            source_map[criteria_key] = {"source": "profile_form", "field": criteria_key}
     return source_map
 
 
@@ -299,10 +302,12 @@ def compile_effective_criteria(
         criteria_base = dict(base_criteria or {})
         subscription_overrides = {}
 
-    criteria = _apply_patch(criteria_base, _build_collected_criteria_patch(collected))
+    criteria = _apply_patch(criteria_base, build_profile_search_defaults(profile_row or {}))
+    criteria = _apply_patch(criteria, _build_collected_criteria_patch(collected))
     explicit_overrides = dict(overrides or {})
     explicit_overrides.update(subscription_overrides)
     criteria = _apply_patch(criteria, explicit_overrides)
+    criteria = normalize_compiled_criteria(criteria)
 
     hard_filters, soft_preferences = _split_criteria(criteria)
     source_map = _build_source_map(

@@ -37,6 +37,7 @@ class DiscoveryRunInput:
     runtime_context: dict[str, Any]
     search_partner_candidates: Callable[[dict[str, Any], int], dict[str, Any]]
     sync_requester_persona_memory: Callable[[dict[str, Any]], dict[str, Any]]
+    propose_requester_profile_update: Callable[[str, str], dict[str, Any]]
     create_saved_search_subscription_from_last_search: Callable[[], dict[str, Any]]
     tool_call_buffer: list["DiscoveryToolCall"] = field(default_factory=list)
     agent_session: Any | None = None
@@ -455,6 +456,10 @@ class AgentsSdkDiscoveryAgentRuntime:
             return run_input.sync_requester_persona_memory(patch)
 
         @function_tool
+        def propose_requester_profile_update(patch_json: str, evidence_text: str = "") -> dict[str, Any]:
+            return run_input.propose_requester_profile_update(patch_json, evidence_text)
+
+        @function_tool
         def search_partner_candidates(criteria_json: str, limit: int = 5) -> dict[str, Any]:
             criteria = json.loads(str(criteria_json or "{}"))
             if not isinstance(criteria, dict):
@@ -476,7 +481,9 @@ class AgentsSdkDiscoveryAgentRuntime:
 2. 后端已经把当前正式状态放进 official_context。你要以它为准。
 3. 你自己决定什么时候继续追问，什么时候先写画像，什么时候调用搜索工具。
 4. 只有用户说出了明确、稳定、适合落库的新信息时，才调用画像写回工具。
-5. 常见顺序是：先写画像，再搜索。
+5. 涉及用户本人正式资料（城市、年龄、婚况、恋爱目标等）时，用 `propose_requester_profile_update`，不要直接写 profiles；用户确认后才会落库。
+6. 扩大搜索范围（城市、年龄等）优先写入搜索条件或 persona 偏好，用 `search_partner_candidates` / `sync_requester_persona_memory` 的 target_* 字段。
+7. 常见顺序是：先写偏好，再搜索。
 6. 如果条件还不够，就只问 1 个最关键的问题。
 7. 如果条件已经够用，就调用搜索工具。
 8. 如果搜索到结果，你负责决定展示哪几位、重点强调什么。
@@ -490,10 +497,13 @@ official_context 里常见信息：
 - page_summary：当前页面上的 criteria chips、结果卡片摘要等
 
 工具说明：
-- `sync_requester_persona_memory`：把用户刚刚明确说出的稳定画像写回 persona-memory-sync。
-  - 参数 `patch_json` 必须是 JSON 字符串，对应 persona-memory-sync 的 patch 对象。
-  - 常见字段可以用：self_city, self_relationship_goal, self_smoking, self_drinking, target_gender, target_age_min, target_age_max, target_cities, must_have_tags, must_not_have_tags, preferred_traits, disliked_traits。
-  - 例子：{"self_city":"上海","self_relationship_goal":"认真恋爱","must_not_have_tags":["抽烟"]}.
+- `sync_requester_persona_memory`：写择偶偏好到 persona（不会直接改 profiles 正式资料）。
+  - 参数 `patch_json` 必须是 JSON 字符串。
+  - 常用：target_gender, target_age_min, target_age_max, target_cities, must_have_tags, must_not_have_tags, preferred_traits, disliked_traits。
+  - 例子：{"target_cities":"上海,苏州","target_age_min":24,"target_age_max":38}.
+- `propose_requester_profile_update`：提议修改用户本人正式资料，前端会弹出确认框。
+  - 用于 self_city→city、婚况、恋爱目标等 profile 字段；参数 `patch_json` 用 profiles 字段名或 self_* 字段名。
+  - 例子：{"city":"杭州"} 或 {"self_city":"杭州"}；可附 evidence_text 简述依据。
 - `search_partner_candidates`：执行候选搜索。
   - 参数 `criteria_json` 必须是 JSON 字符串，对应 partner-search 的 criteria 对象。
   - 常见字段可以用：gender, city, cities, age_min, age_max, relationship_goal, relationship_goals, must_have, prefer, smoking, drinking, verified_level_min, photo_count_min, active_within_days。
@@ -518,7 +528,7 @@ official_context 里常见信息：
 - suggested_actions 最多 3 个，标签要短。
 - suggested_actions.style 只能是：primary、secondary、ghost。
 - semantic_payload.kind 只用这些值：starter_prompt、followup_prompt、saved_search_opt_in、refine_candidates、add_criteria、refine_preferences、show_more_candidates、age_preference。
-- 如果你刚拿到了新的明确画像，通常应先调用 `sync_requester_persona_memory`，再决定是否搜索。
+- 如果用户更新了本人资料，先 `propose_requester_profile_update`；如果只是择偶偏好，用 `sync_requester_persona_memory`。
 - 只有在你真的调用了搜索工具并且决定展示结果时，才填写 selected_candidates。
 - selected_candidates 里的 profile_id 必须来自最新一次搜索工具返回的 results。
 - 如果搜索工具返回 `error_code` 或 `diagnostics.error`，不要说“本地没有符合条件的人”。要自然说明这轮搜索失败了，不代表没人，并引导用户重试或继续补充条件。
@@ -536,6 +546,7 @@ official_context 里常见信息：
             output_type=AgentOutputSchema(DiscoveryDecisionModel, strict_json_schema=True),
             tools=[
                 sync_requester_persona_memory,
+                propose_requester_profile_update,
                 search_partner_candidates,
                 create_saved_search_subscription_from_last_search,
             ],

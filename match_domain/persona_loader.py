@@ -136,6 +136,41 @@ def load_personas_by_profile_ids(
         conn.close()
 
 
+def load_persona_for_discovery(
+    *,
+    source: str,
+    profile_id: int | None = None,
+    requester_id: int | None = None,
+) -> dict[str, Any] | None:
+    if not source:
+        return None
+    user_keys: list[str] = []
+    for raw in (profile_id, requester_id):
+        if raw is None:
+            continue
+        try:
+            normalized = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if normalized <= 0:
+            continue
+        key = str(normalized)
+        if key not in user_keys:
+            user_keys.append(key)
+    for user_key in user_keys:
+        row = load_persona_row(source=source, user_key=user_key)
+        if row:
+            return row
+    if profile_id is not None:
+        try:
+            normalized_profile_id = int(profile_id)
+        except (TypeError, ValueError):
+            normalized_profile_id = 0
+        if normalized_profile_id > 0:
+            return load_persona_by_profile_id(source=source, profile_id=normalized_profile_id)
+    return None
+
+
 def load_collected_bundle(*, source: str, user_key: str) -> dict[str, Any]:
     persona = load_persona_row(source=source, user_key=user_key) or {}
     observations = load_persona_observations(source=source, user_key=user_key)
@@ -152,6 +187,7 @@ def load_collected_bundle(*, source: str, user_key: str) -> dict[str, Any]:
 __all__ = [
     "load_collected_bundle",
     "load_persona_by_profile_id",
+    "load_persona_for_discovery",
     "load_personas_by_profile_ids",
     "load_persona_observations",
     "load_persona_row",

@@ -309,6 +309,12 @@ refresh_active_pool → build_mutual_pairs → open_match_cases
   → 可 saveDiscoveryAsSubscription 进入推荐订阅
 ```
 
+**资料 vs 择偶偏好**：
+
+- 对话中修改 **本人正式资料**（`profiles` 表字段，如城市、年龄）须走 `propose_requester_profile_update` → 时间线 `profile_update_prompt` 卡片 → 用户确认后 `POST .../profile-updates/{id}/confirm` 才写库。
+- **择偶偏好 / persona** 走 `sync_requester_persona_memory`（`sync_profile=False`），无需确认卡。
+- 表 `discovery_profile_update_requests`（迁移 `0006_profile_update_requests`）。
+
 **性能与交互演进（方案，待落地）**：首屏按 onboarding 资料直接搜人（不调 AI 开场）、聊天中不写 persona、聊后自动批量更新画像，以及前端并行/体感优化，见 [`docs/discovery-matchmaker-performance-plan.md`](docs/discovery-matchmaker-performance-plan.md)。
 
 ---

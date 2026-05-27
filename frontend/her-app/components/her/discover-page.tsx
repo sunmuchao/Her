@@ -9,6 +9,7 @@ import { InboxItemSkeleton, DiscoverPageSkeleton } from './ui/skeletons'
 import { TypingIndicator } from './ui/typing-indicator'
 import { OnlineIndicator } from './ui/animations'
 import { DiscoveryCandidateCard } from './discovery-candidate-card'
+import { DiscoveryProfileUpdatePrompt } from './discovery-profile-update-prompt'
 import type { DiscoveryTimelineItem } from '@/lib/discovery/map-discovery-view'
 import { cn } from '@/lib/utils'
 import { getProfileId } from '@/lib/auth/session'
@@ -34,11 +35,26 @@ interface DiscoverPageProps {
 
 function DiscoveryTimelineEntry({
   item,
+  sessionId,
   onViewCandidate,
+  onProfileUpdateResolved,
 }: {
   item: DiscoveryTimelineItem
+  sessionId: string | null
   onViewCandidate: (candidateId: string, candidate?: CandidatePreview) => void
+  onProfileUpdateResolved?: () => void
 }) {
+  if (item.kind === 'profile_update_prompt') {
+    if (!sessionId) return null
+    return (
+      <DiscoveryProfileUpdatePrompt
+        sessionId={sessionId}
+        item={item}
+        onResolved={() => onProfileUpdateResolved?.()}
+      />
+    )
+  }
+
   if (item.kind === 'message') {
     const isUser = item.type === 'user'
     return (
@@ -101,6 +117,8 @@ export default function DiscoverPage({
     isLoadingSession,
     chatEndRef,
     submitTurn,
+    sessionId,
+    reloadSession,
   } = useDiscoverySession(onSessionIdChange)
   const prefChips = currentPrefs.length
     ? currentPrefs
@@ -165,6 +183,7 @@ export default function DiscoverPage({
 
       {/* Preference chips with scroll fade */}
       <div className="relative flex-shrink-0 px-4 py-2 border-b border-border">
+        <p className="text-[10px] text-muted-foreground mb-1.5">当前条件</p>
         <div className="flex gap-2 overflow-x-auto scrollbar-hide scroll-fade-right" role="list" aria-label="已收集偏好">
           {currentPrefs.length === 0 && !usingMockData ? (
             <span className="shrink-0 px-2.5 py-1 bg-secondary text-muted-foreground text-xs rounded-md">
@@ -190,7 +209,11 @@ export default function DiscoverPage({
             <DiscoveryTimelineEntry
               key={item.id}
               item={item}
+              sessionId={sessionId}
               onViewCandidate={onViewCandidate}
+              onProfileUpdateResolved={() => {
+                void reloadSession()
+              }}
             />
           ))}
 
@@ -405,7 +428,6 @@ export function RecommendationInbox({
                   <span className={`px-2 py-0.5 rounded text-[10px] ${item.type === 'delayed' ? 'bg-gold/20 text-gold' : 'bg-rose/20 text-rose'}`}>
                     {item.conversionStage || (item.type === 'delayed' ? '延迟推荐' : '主动撮合')}
                   </span>
-                  <span className="text-xs text-primary font-medium">{item.matchScore}% 匹配</span>
                 </div>
                 <div className="flex items-center gap-1">
                   <button

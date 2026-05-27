@@ -29,6 +29,13 @@ from .service_session_open import (
     discovery_create_session_mode,
 )
 from .agent_session_store import create_default_discovery_agent_session_store
+from .profile_updates import (
+    ProfileUpdateRequestConflictError,
+    ProfileUpdateRequestNotFoundError,
+    confirm_profile_update as _confirm_profile_update_impl,
+    profile_update_prompt_item,
+    reject_profile_update as _reject_profile_update_impl,
+)
 from .service_integrations import (
     decision_payload as _decision_payload_impl,
     load_persona_memory_bindings as _load_persona_memory_bindings_impl,
@@ -38,6 +45,7 @@ from .service_integrations import (
     persona_memory_source as _persona_memory_source_impl,
     persist_search_run as _persist_search_run_impl,
     profile_source as _profile_source_impl,
+    propose_requester_profile_update as _propose_requester_profile_update_impl,
     search_partner_candidates as _search_partner_candidates_impl,
     sync_requester_persona_memory as _sync_requester_persona_memory_impl,
 )
@@ -103,6 +111,16 @@ class DiscoveryActionExpiredError(DiscoveryServiceError):
 class DiscoveryProfileNotFoundError(DiscoveryServiceError):
     code = "DISCOVERY_PROFILE_NOT_FOUND"
     status_code = 404
+
+
+class DiscoveryProfileUpdateNotFoundError(DiscoveryServiceError):
+    code = "DISCOVERY_PROFILE_UPDATE_NOT_FOUND"
+    status_code = 404
+
+
+class DiscoveryProfileUpdateConflictError(DiscoveryServiceError):
+    code = "DISCOVERY_PROFILE_UPDATE_CONFLICT"
+    status_code = 409
 
 
 @dataclass
@@ -416,6 +434,31 @@ class DiscoveryService:
             )
             return result
 
+        def _propose_requester_profile_update(patch_json: str, evidence_text: str = "") -> dict[str, Any]:
+            import json
+
+            patch = json.loads(str(patch_json or "{}"))
+            if not isinstance(patch, dict):
+                raise ValueError("patch_json must decode into a JSON object")
+            result = self._propose_requester_profile_update(
+                session,
+                patch=patch,
+                evidence_text=str(evidence_text or "").strip() or None,
+                now=now,
+            )
+            if result.get("proposed"):
+                pending_timeline = list(session.state.get("profile_prompts_for_timeline") or [])
+                pending_timeline.append(result)
+                session.state["profile_prompts_for_timeline"] = pending_timeline
+            self._append_tool_call(
+                tool_call_buffer,
+                "propose_requester_profile_update",
+                {"patch": deepcopy(patch), "evidence_text": evidence_text},
+                result,
+                status="succeeded" if result.get("proposed") else "skipped",
+            )
+            return result
+
         def _create_saved_search_subscription_from_last_search() -> dict[str, Any]:
             result = self._create_saved_search_subscription_from_last_search(
                 session,
@@ -447,6 +490,7 @@ class DiscoveryService:
             ),
             search_partner_candidates=_search_partner_candidates,
             sync_requester_persona_memory=_sync_requester_persona_memory,
+            propose_requester_profile_update=_propose_requester_profile_update,
             create_saved_search_subscription_from_last_search=_create_saved_search_subscription_from_last_search,
             tool_call_buffer=tool_call_buffer,
             agent_session=self._agent_session_for(session.session_id),
@@ -500,6 +544,16 @@ class DiscoveryService:
                 created_at=now,
             )
         ]
+        for proposal in list(session.state.pop("profile_prompts_for_timeline", []) or []):
+            if not proposal.get("proposed"):
+                continue
+            session.view["timeline"].append(
+                profile_update_prompt_item(
+                    item_id=self.storage.next_item_id("pur"),
+                    request=proposal,
+                    created_at=now,
+                )
+            )
         if decision.criteria_labels:
             session.view["criteria_chips"] = [
                 criteria_chip(f"chip-{index + 1}", label)
@@ -794,7 +848,98 @@ class DiscoveryService:
             patch=patch,
             now=now,
             load_persona_memory=self._load_persona_memory_bindings(),
+            storage=self.storage,
+            load_profile=load_self_profile,
+            source=self._profile_source(),
         )
+
+    def _propose_requester_profile_update(
+        self,
+        session: StoredSession,
+        *,
+        patch: dict[str, Any],
+        evidence_text: str | None = None,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        return _propose_requester_profile_update_impl(
+            self.storage,
+            session,
+            patch=patch,
+            evidence_text=evidence_text,
+            load_profile=load_self_profile,
+            source=self._profile_source(),
+            now=now,
+        )
+
+    def confirm_profile_update(
+        self,
+        session_id: str,
+        request_id: str,
+        *,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        session = self._require_session(session_id)
+        try:
+            from profile_service import apply_profile_updates, resolve_profile_source
+
+            source_dsn, source_table = resolve_profile_source(self._profile_source())
+            result = _confirm_profile_update_impl(
+                self.storage,
+                session,
+                request_id=request_id,
+                apply_profile_updates_fn=apply_profile_updates,
+                source_dsn=source_dsn,
+                source_table_name=source_table,
+                now=now,
+            )
+        except ProfileUpdateRequestNotFoundError as exc:
+            raise DiscoveryProfileUpdateNotFoundError(str(exc)) from exc
+        except ProfileUpdateRequestConflictError as exc:
+            raise DiscoveryProfileUpdateConflictError(str(exc)) from exc
+        self._refresh_profile_update_prompt_status(session, request_id, "confirmed", now=now or datetime.now())
+        self.storage.save_session(session)
+        return result
+
+    def reject_profile_update(
+        self,
+        session_id: str,
+        request_id: str,
+        *,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        session = self._require_session(session_id)
+        try:
+            result = _reject_profile_update_impl(
+                self.storage,
+                session,
+                request_id=request_id,
+                now=now,
+            )
+        except ProfileUpdateRequestNotFoundError as exc:
+            raise DiscoveryProfileUpdateNotFoundError(str(exc)) from exc
+        except ProfileUpdateRequestConflictError as exc:
+            raise DiscoveryProfileUpdateConflictError(str(exc)) from exc
+        self._refresh_profile_update_prompt_status(session, request_id, "rejected", now=now or datetime.now())
+        self.storage.save_session(session)
+        return result
+
+    def _refresh_profile_update_prompt_status(
+        self,
+        session: StoredSession,
+        request_id: str,
+        status: str,
+        *,
+        now: datetime,
+    ) -> None:
+        for item in list(session.view.get("timeline") or []):
+            if str(item.get("item_type") or "") != "profile_update_prompt":
+                continue
+            prompt = dict(item.get("prompt") or {})
+            if str(prompt.get("request_id") or "") != str(request_id):
+                continue
+            prompt["status"] = status
+            item["prompt"] = prompt
+        session.updated_at = now
 
     def _build_profile_detail_notes(
         self,

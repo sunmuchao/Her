@@ -490,6 +490,48 @@ class GatewayWsgiTests(unittest.TestCase):
         self.assertEqual(replay_data["error_code"], "DISCOVERY_ACTION_EXPIRED")
         self.assertTrue(replay_data["retryable"])
 
+    def test_discovery_profile_update_confirm_and_reject(self) -> None:
+        create_env = _wsgi_env(
+            "POST",
+            "/v1/discovery/sessions",
+            json.dumps({"requester_id": 70001, "profile_id": 10001}).encode("utf-8"),
+        )
+        created = json.loads(b"".join(self.gw(create_env, self.start_response)).decode("utf-8"))
+        session_id = created["session"]["session_id"]
+        request_id = "pur-test-confirm"
+
+        with mock.patch.object(
+            self.gw._discovery,
+            "confirm_profile_update",
+            return_value={"ok": True, "request_id": request_id, "status": "confirmed"},
+        ) as confirm_mock:
+            confirm_env = _wsgi_env(
+                "POST",
+                f"/v1/discovery/sessions/{session_id}/profile-updates/{request_id}/confirm",
+            )
+            confirm_out = b"".join(self.gw(confirm_env, self.start_response))
+
+        self.assertIn("200", self.status)
+        confirm_data = json.loads(confirm_out.decode("utf-8"))
+        self.assertTrue(confirm_data["ok"])
+        confirm_mock.assert_called_once_with(session_id, request_id)
+
+        with mock.patch.object(
+            self.gw._discovery,
+            "reject_profile_update",
+            return_value={"ok": True, "request_id": request_id, "status": "rejected"},
+        ) as reject_mock:
+            reject_env = _wsgi_env(
+                "POST",
+                f"/v1/discovery/sessions/{session_id}/profile-updates/{request_id}/reject",
+            )
+            reject_out = b"".join(self.gw(reject_env, self.start_response))
+
+        self.assertIn("200", self.status)
+        reject_data = json.loads(reject_out.decode("utf-8"))
+        self.assertEqual(reject_data["status"], "rejected")
+        reject_mock.assert_called_once_with(session_id, request_id)
+
     def test_discovery_get_session_and_candidate_bff_detail(self) -> None:
         create_env = _wsgi_env(
             "POST",

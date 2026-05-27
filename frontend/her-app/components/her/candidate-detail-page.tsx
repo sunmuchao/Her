@@ -202,11 +202,6 @@ export default function CandidateDetailPage({
           <ArrowLeft className="w-5 h-5 text-white" />
         </button>
 
-        {/* Match score */}
-        <div className="absolute top-12 right-4 px-3 py-1.5 bg-black/30 backdrop-blur-sm rounded-full">
-          <span className="text-sm font-medium text-white">{candidateData.matchScore}% 匹配</span>
-        </div>
-
         {/* Basic info overlay */}
         <div className="absolute bottom-0 left-0 right-0 p-5 pointer-events-none">
           <div className="flex items-center gap-2 mb-1">
