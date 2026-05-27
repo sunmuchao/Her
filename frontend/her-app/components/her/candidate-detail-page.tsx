@@ -115,6 +115,7 @@ export default function CandidateDetailPage({
     : null
   const recommendationTargetId = candidate?.recommendationId
   const subscriptionId = candidate?.subscriptionId
+  const canExpressInterest = Boolean(subscriptionId && candidate?.id)
 
   const factImages = mapProfileImageUrls(
     [profileFacts.avatar_url, profileFacts.photo_url, profileFacts.cover_url].filter(Boolean).map(String),
@@ -229,7 +230,7 @@ export default function CandidateDetailPage({
   const handleExpressInterest = async () => {
     if (isExpressingInterest) return
     if (!subscriptionId || !candidateData.id) {
-      notifyError(new Error('interest_not_available'), '当前候选人暂时不能直接发起认识，请先通过推荐来信进入')
+      notifyError(new Error('interest_unavailable'), '当前入口暂不支持直接发起认识，请先通过推荐来信进入')
       return
     }
     setIsExpressingInterest(true)
@@ -432,12 +433,12 @@ export default function CandidateDetailPage({
           <Heartbeat>
             <button
               onClick={() => void handleExpressInterest()}
-              disabled={isExpressingInterest}
+              disabled={isExpressingInterest || !canExpressInterest}
               className="flex-1 py-3 bg-primary rounded-xl text-primary-foreground font-medium flex items-center justify-center gap-2 hover:bg-primary/90 transition-all focus-ring shadow-lg shadow-primary/20 disabled:opacity-70"
               aria-label={`向${candidateData.name}发起认识意愿`}
             >
               <Heart className="w-4 h-4" aria-hidden="true" />
-              {isExpressingInterest ? '发送中' : '愿意认识'}
+              {!canExpressInterest ? '暂不可发起' : isExpressingInterest ? '发送中' : '愿意认识'}
             </button>
           </Heartbeat>
         </div>
@@ -452,6 +453,8 @@ export default function CandidateDetailPage({
               去关系页
             </button>
           </div>
+        ) : !canExpressInterest ? (
+          <p className="mt-2 text-center text-xs text-muted-foreground">请先通过推荐来信进入后再发起认识</p>
         ) : null}
       </div>
     </PageTransition>
