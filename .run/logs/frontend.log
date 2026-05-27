@@ -510,3 +510,100 @@ TypeError: fetch failed
  GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 24ms (next.js: 9ms, application-code: 15ms)
  GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 30ms (next.js: 9ms, application-code: 21ms)
  GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 35ms (next.js: 13ms, application-code: 22ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 32ms (next.js: 5ms, application-code: 28ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 26ms (next.js: 4ms, application-code: 21ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 20ms (next.js: 5ms, application-code: 15ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 24ms (next.js: 10ms, application-code: 14ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 20ms (next.js: 7ms, application-code: 13ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 23ms (next.js: 10ms, application-code: 13ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 21ms (next.js: 6ms, application-code: 15ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 26ms (next.js: 10ms, application-code: 16ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 43ms (next.js: 10ms, application-code: 34ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 48ms (next.js: 15ms, application-code: 33ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 44ms (next.js: 10ms, application-code: 34ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 48ms (next.js: 12ms, application-code: 36ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 22ms (next.js: 8ms, application-code: 14ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 25ms (next.js: 12ms, application-code: 13ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 20ms (next.js: 6ms, application-code: 14ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 22ms (next.js: 10ms, application-code: 13ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 32ms (next.js: 12ms, application-code: 21ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 40ms (next.js: 16ms, application-code: 23ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 23ms (next.js: 8ms, application-code: 14ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 26ms (next.js: 11ms, application-code: 15ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 19ms (next.js: 5ms, application-code: 14ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 23ms (next.js: 9ms, application-code: 14ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 22ms (next.js: 7ms, application-code: 15ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 24ms (next.js: 12ms, application-code: 12ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 22ms (next.js: 6ms, application-code: 16ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 26ms (next.js: 12ms, application-code: 14ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 19ms (next.js: 6ms, application-code: 14ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 23ms (next.js: 9ms, application-code: 14ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 19ms (next.js: 6ms, application-code: 13ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 23ms (next.js: 10ms, application-code: 13ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 19ms (next.js: 6ms, application-code: 13ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 23ms (next.js: 9ms, application-code: 14ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 29ms (next.js: 6ms, application-code: 23ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 34ms (next.js: 11ms, application-code: 24ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 25ms (next.js: 8ms, application-code: 17ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 27ms (next.js: 14ms, application-code: 13ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 19ms (next.js: 5ms, application-code: 14ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 22ms (next.js: 9ms, application-code: 13ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 25ms (next.js: 8ms, application-code: 17ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 28ms (next.js: 13ms, application-code: 15ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 23ms (next.js: 7ms, application-code: 16ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 27ms (next.js: 13ms, application-code: 15ms)
+✓ Compiled in 213ms
+ GET /discover 200 in 249ms (next.js: 138ms, application-code: 111ms)
+ GET /discover 200 in 137ms (next.js: 3ms, application-code: 134ms)
+ GET /api/gateway/v1/auth/me 200 in 104ms (next.js: 50ms, application-code: 54ms)
+ GET /api/gateway/v1/discovery/sessions/discovery-session-24e366fe25d1 200 in 105ms (next.js: 61ms, application-code: 44ms)
+ GET /api/gateway/v1/persona/collected?profile_id=10001 200 in 49ms (next.js: 8ms, application-code: 41ms)
+ GET /discover 200 in 41ms (next.js: 1922µs, application-code: 39ms)
+ GET /api/gateway/v1/auth/me 200 in 25ms (next.js: 3ms, application-code: 22ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 17ms (next.js: 4ms, application-code: 13ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 21ms (next.js: 8ms, application-code: 13ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 43ms (next.js: 8ms, application-code: 35ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 46ms (next.js: 13ms, application-code: 34ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 41ms (next.js: 3ms, application-code: 38ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 53ms (next.js: 15ms, application-code: 38ms)
+[browser] [v0] Speech recognition error: not-allowed 
+    at useVoiceInput.useCallback[startRecording] (hooks/use-voice-input.ts:158:17)
+  156 |
+  157 |       recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+> 158 |         console.error('[v0] Speech recognition error:', event.error)
+      |                 ^
+  159 |         if (event.error !== 'aborted') {
+  160 |           onError?.('语音识别失败，请重试')
+  161 |         } (hooks/use-voice-input.ts:158:17)
+[browser] [v0] Speech recognition error: not-allowed 
+    at useVoiceInput.useCallback[startRecording] (hooks/use-voice-input.ts:158:17)
+  156 |
+  157 |       recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+> 158 |         console.error('[v0] Speech recognition error:', event.error)
+      |                 ^
+  159 |         if (event.error !== 'aborted') {
+  160 |           onError?.('语音识别失败，请重试')
+  161 |         } (hooks/use-voice-input.ts:158:17)
+⨯ upstream image response timed out for https://cdn.her.local/profiles/06609/avatar.jpg
+⨯ upstream image response timed out for https://cdn.her.local/profiles/00573/avatar.jpg
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 23ms (next.js: 5ms, application-code: 18ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 29ms (next.js: 12ms, application-code: 17ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 20ms (next.js: 2ms, application-code: 18ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 17ms (next.js: 1954µs, application-code: 15ms)
+[browser] [v0] Speech recognition error: not-allowed 
+    at useVoiceInput.useCallback[startRecording] (hooks/use-voice-input.ts:158:17)
+  156 |
+  157 |       recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+> 158 |         console.error('[v0] Speech recognition error:', event.error)
+      |                 ^
+  159 |         if (event.error !== 'aborted') {
+  160 |           onError?.('语音识别失败，请重试')
+  161 |         } (hooks/use-voice-input.ts:158:17)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 24ms (next.js: 7ms, application-code: 18ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 34ms (next.js: 14ms, application-code: 21ms)
+⨯ upstream image response timed out for https://cdn.her.local/profiles/07225/avatar.jpg
+⨯ upstream image response timed out for https://cdn.her.local/profiles/06260/avatar.jpg
+⨯ upstream image response timed out for https://cdn.her.local/profiles/03735/avatar.jpg
+⨯ upstream image response timed out for https://cdn.her.local/profiles/00389/avatar.jpg
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 18ms (next.js: 5ms, application-code: 12ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 22ms (next.js: 8ms, application-code: 13ms)
