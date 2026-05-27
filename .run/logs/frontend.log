@@ -386,3 +386,7 @@ TypeError: fetch failed
  GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 25ms (next.js: 10ms, application-code: 15ms)
  GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 20ms (next.js: 6ms, application-code: 14ms)
  GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 24ms (next.js: 9ms, application-code: 15ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 15ms (next.js: 5ms, application-code: 10ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 12ms (next.js: 2ms, application-code: 10ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 15ms (next.js: 4ms, application-code: 11ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 15ms (next.js: 1513µs, application-code: 14ms)
