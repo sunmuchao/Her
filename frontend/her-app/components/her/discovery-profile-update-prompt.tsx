@@ -57,9 +57,6 @@ export function DiscoveryProfileUpdatePrompt({
   return (
     <div className="max-w-[92%] rounded-2xl border border-border bg-card p-4 shadow-sm">
       <p className="text-sm font-medium text-foreground">{item.title}</p>
-      {item.summary ? (
-        <p className="mt-1 text-xs text-muted-foreground">{item.summary}</p>
-      ) : null}
       <ul className="mt-3 space-y-2 text-sm">
         {item.changes.map(change => (
           <li key={change.field} className="flex flex-wrap items-center gap-1">
@@ -91,7 +88,7 @@ export function DiscoveryProfileUpdatePrompt({
             status === 'confirmed' ? 'text-emerald-600' : 'text-muted-foreground',
           )}
         >
-          {status === 'confirmed' ? '已更新到你的资料' : '已忽略本次资料修改'}
+          {status === 'confirmed' ? '已更新' : '已忽略'}
         </p>
       )}
       {item.timestamp ? (

@@ -52,6 +52,16 @@ def propose_profile_update(
             "message": "资料没有实际变化。",
         }
 
+    compact_changes = [
+        {
+            "field": row.get("field"),
+            "label": row.get("label") or row.get("field"),
+            "from": row.get("from"),
+            "to": row.get("to"),
+        }
+        for row in changes[:3]
+    ]
+
     ts = _utcnow(now)
     request_id = _new_request_id()
     record = storage.create_profile_update_request(
@@ -72,9 +82,9 @@ def propose_profile_update(
         "proposed": True,
         "request_id": record["request_id"],
         "status": record["status"],
-        "changes": changes,
-        "title": "是否更新你的资料？",
-        "summary": str(evidence_text or "").strip() or "你在对话里提到了资料变化",
+        "changes": compact_changes,
+        "title": "更新资料",
+        "summary": "",
     }
 
 
@@ -157,7 +167,7 @@ def profile_update_prompt_item(
         "item_id": item_id,
         "prompt": {
             "request_id": request.get("request_id"),
-            "title": request.get("title") or "是否更新你的资料？",
+            "title": request.get("title") or "更新资料",
             "summary": request.get("summary") or "",
             "changes": list(request.get("changes") or []),
             "status": request.get("status") or "pending",
