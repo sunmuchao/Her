@@ -696,3 +696,13 @@ TypeError: fetch failed
 ✓ Compiled in 44ms
  GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 19ms (next.js: 5ms, application-code: 14ms)
  GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 22ms (next.js: 9ms, application-code: 13ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 18ms (next.js: 4ms, application-code: 14ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 20ms (next.js: 8ms, application-code: 12ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 38ms (next.js: 5ms, application-code: 33ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 33ms (next.js: 8ms, application-code: 25ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 18ms (next.js: 5ms, application-code: 13ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 20ms (next.js: 8ms, application-code: 12ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 17ms (next.js: 5ms, application-code: 12ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 20ms (next.js: 9ms, application-code: 12ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 20ms (next.js: 5ms, application-code: 15ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 38ms (next.js: 8ms, application-code: 30ms)
