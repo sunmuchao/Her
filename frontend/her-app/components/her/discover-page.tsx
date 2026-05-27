@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { ArrowLeft, BadgeCheck, Bookmark, ChevronRight, Mail, MapPin, Search, Send, X } from 'lucide-react'
+import { ArrowLeft, BadgeCheck, Bookmark, ChevronRight, Mail, MapPin, Mic, Search, Send, X } from 'lucide-react'
 import { XiaoyaAvatar } from '@/components/her/ui/xiaoya-avatar'
 import Image from 'next/image'
 import { EmptyRecommendations, EmptySearchResults } from './ui/empty-states'
@@ -20,9 +20,11 @@ import {
 import { useRecommendationInbox, type InboxItem } from '@/hooks/use-recommendation-inbox'
 import { canUseMockFallback } from '@/lib/mock'
 import { notifyError } from '@/lib/notify'
+import { toast } from 'sonner'
 import { EMPTY_PREFS_PLACEHOLDER } from '@/lib/fixtures/demo-profiles'
 import type { CandidatePreview } from '@/lib/types/candidate'
 import { useDiscoverySession } from '@/hooks/use-discovery-session'
+import { useVoiceInput } from '@/hooks/use-voice-input'
 import { DemoDataBanner } from './ui/demo-data-banner'
 import { ErrorState } from './ui/error-state'
 
@@ -120,6 +122,40 @@ export default function DiscoverPage({
     sessionId,
     reloadSession,
   } = useDiscoverySession(onSessionIdChange)
+
+  // Voice input functionality
+  const {
+    isRecording,
+    isProcessing,
+    startRecording,
+    stopRecording,
+    cancelRecording,
+    recordingDuration,
+  } = useVoiceInput({
+    onTranscript: (text) => {
+      setInputValue((prev) => prev + text)
+    },
+    onError: (error) => {
+      toast.error(error)
+    },
+    maxDurationMs: 60000,
+  })
+
+  const handleVoiceClick = () => {
+    if (isRecording) {
+      stopRecording()
+    } else {
+      void startRecording()
+    }
+  }
+
+  const formatRecordingTime = (ms: number) => {
+    const seconds = Math.floor(ms / 1000)
+    const minutes = Math.floor(seconds / 60)
+    const remainingSeconds = seconds % 60
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
+  }
+
   const prefChips = currentPrefs.length
     ? currentPrefs
     : usingMockData
@@ -240,6 +276,31 @@ export default function DiscoverPage({
 
       {/* Input pinned below scrollable messages; app shell bottom nav is outside this column */}
       <div className="flex-shrink-0 px-4 py-3 bg-background border-t border-border safe-area-bottom">
+        {/* Recording indicator */}
+        {isRecording && (
+          <div className="flex items-center justify-between mb-2 px-3 py-2 bg-rose/10 rounded-lg animate-fade-in-up">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 bg-rose rounded-full animate-pulse" />
+              <span className="text-sm text-rose font-medium">正在录音</span>
+              <span className="text-sm text-muted-foreground">{formatRecordingTime(recordingDuration)}</span>
+            </div>
+            <button
+              onClick={cancelRecording}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+              aria-label="取消录音"
+            >
+              取消
+            </button>
+          </div>
+        )}
+        
+        {isProcessing && (
+          <div className="flex items-center gap-2 mb-2 px-3 py-2 bg-secondary rounded-lg animate-fade-in-up">
+            <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+            <span className="text-sm text-muted-foreground">识别中...</span>
+          </div>
+        )}
+
         <div className="flex items-center gap-2 bg-secondary rounded-xl px-3 py-2 transition-all focus-within:ring-2 focus-within:ring-primary/30">
           <input
             value={inputValue}
@@ -250,18 +311,34 @@ export default function DiscoverPage({
                 void submitTurn({ user_message: inputValue.trim() })
               }
             }}
-            placeholder={composerPlaceholder}
-            disabled={composerDisabled || isSubmittingTurn}
+            placeholder={isRecording ? '请说话...' : composerPlaceholder}
+            disabled={composerDisabled || isSubmittingTurn || isRecording}
             className="flex-1 bg-transparent text-sm placeholder:text-muted-foreground focus:outline-none disabled:opacity-60"
             aria-label="输入消息"
           />
+          
+          {/* Voice input button */}
+          <button
+            aria-label={isRecording ? '停止录音' : '语音输入'}
+            onClick={handleVoiceClick}
+            disabled={composerDisabled || isSubmittingTurn || isProcessing}
+            className={cn(
+              'w-8 h-8 rounded-full flex items-center justify-center transition-all',
+              isRecording
+                ? 'bg-rose text-white animate-pulse'
+                : 'text-muted-foreground hover:text-foreground hover:bg-secondary/80'
+            )}
+          >
+            <Mic className="w-5 h-5" />
+          </button>
+          
           <button
             aria-label="发送消息"
             onClick={() => void submitTurn({ user_message: inputValue.trim() })}
-            disabled={composerDisabled || isSubmittingTurn || !inputValue.trim()}
+            disabled={composerDisabled || isSubmittingTurn || !inputValue.trim() || isRecording}
             className={cn(
               'w-8 h-8 rounded-full flex items-center justify-center transition-all',
-              inputValue.trim() 
+              inputValue.trim() && !isRecording
                 ? 'bg-primary hover:bg-primary/90' 
                 : 'bg-muted'
             )}
@@ -269,7 +346,7 @@ export default function DiscoverPage({
             {isSubmittingTurn ? (
               <div className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
             ) : (
-              <Send className={cn('w-4 h-4', inputValue.trim() ? 'text-primary-foreground' : 'text-muted-foreground')} />
+              <Send className={cn('w-4 h-4', inputValue.trim() && !isRecording ? 'text-primary-foreground' : 'text-muted-foreground')} />
             )}
           </button>
         </div>
