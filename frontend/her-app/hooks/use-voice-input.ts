@@ -274,10 +274,13 @@ export function useVoiceInput({
     if (state !== 'recording') return
     
     const recorder = mediaRecorderRef.current
-    if (recorder && 'abort' in recorder && typeof (recorder as SpeechRecognition).abort === 'function') {
-      (recorder as unknown as SpeechRecognition).abort()
-    } else if (recorder && recorder.state === 'recording') {
-      recorder.stop()
+    if (recorder) {
+      // Check if it's a SpeechRecognition (has abort method) or MediaRecorder
+      if ('abort' in recorder) {
+        (recorder as unknown as SpeechRecognition).abort()
+      } else if ('state' in recorder && (recorder as MediaRecorder).state === 'recording') {
+        (recorder as MediaRecorder).stop()
+      }
     }
     
     cleanup()
