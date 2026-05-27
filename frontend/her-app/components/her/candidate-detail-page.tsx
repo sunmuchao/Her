@@ -19,6 +19,7 @@ import { ImageCarousel } from './ui/image-carousel'
 import { DemoDataBanner } from './ui/demo-data-banner'
 import { ErrorState } from './ui/error-state'
 import { postRecommendationAction } from '@/lib/api/endpoints/recommendation'
+import { expressDiscoveryCandidateInterest } from '@/lib/api/endpoints/discovery'
 import { notifyError } from '@/lib/notify'
 interface CandidateDetailPageProps {
   candidateId: string
@@ -115,7 +116,7 @@ export default function CandidateDetailPage({
     : null
   const recommendationTargetId = candidate?.recommendationId
   const subscriptionId = candidate?.subscriptionId
-  const canExpressInterest = Boolean(subscriptionId && candidate?.id)
+  const canExpressInterest = Boolean(candidate?.id && (subscriptionId || sessionId))
 
   const factImages = mapProfileImageUrls(
     [profileFacts.avatar_url, profileFacts.photo_url, profileFacts.cover_url].filter(Boolean).map(String),
@@ -229,19 +230,28 @@ export default function CandidateDetailPage({
 
   const handleExpressInterest = async () => {
     if (isExpressingInterest) return
-    if (!subscriptionId || !candidateData.id) {
-      notifyError(new Error('interest_unavailable'), '当前入口暂不支持直接发起认识，请先通过推荐来信进入')
+    if (!candidateData.id) {
+      notifyError(new Error('interest_unavailable'), '当前候选人暂时无法发起认识')
       return
     }
     setIsExpressingInterest(true)
     try {
-      const idempotencyKey = `${subscriptionId}:${candidateData.id}:direct_greet`
-      await postRecommendationAction({
-        subscriptionId,
-        candidateId: Number(candidateData.id),
-        actionType: 'direct_greet',
-        idempotencyKey,
-      })
+      if (subscriptionId) {
+        const idempotencyKey = `${subscriptionId}:${candidateData.id}:direct_greet`
+        await postRecommendationAction({
+          subscriptionId,
+          candidateId: Number(candidateData.id),
+          actionType: 'direct_greet',
+          idempotencyKey,
+        })
+      } else if (sessionId) {
+        await expressDiscoveryCandidateInterest({
+          sessionId,
+          candidateId: candidateData.id,
+        })
+      } else {
+        throw new Error('interest_unavailable')
+      }
       setShowSubmittedHint(true)
     } catch (error) {
       notifyError(error, '发起意愿失败，请稍后重试')
