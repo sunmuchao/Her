@@ -854,3 +854,44 @@
 127.0.0.1 - - [27/May/2026 18:42:37] "GET /v1/candidates/3735?session_id=discovery-session-24e366fe25d1 HTTP/1.1" 200 2292
 {"ts": "2026-05-27T10:42:37.571190+00:00", "her_schema": "1", "trace_id": "e2d65c8175f34796bfaed2c5f3680411", "actor_id": "usr-aee799b1e77147b7", "actor_roles": ["end_user"], "actor_auth_source": "auth_session", "actor_token_id": "sess-79ea068044a340eb", "her_kind": "gateway_access", "http_method": "GET", "path": "/v1/auth/me", "status_code": 200, "client_ip": "127.0.0.1"}
 127.0.0.1 - - [27/May/2026 18:42:37] "GET /v1/auth/me HTTP/1.1" 200 1840
+{"ts": "2026-05-27T10:43:08.049142+00:00", "her_schema": "1", "trace_id": "55d92d52efdd4d05a996cc2236e34412", "actor_id": "usr-aee799b1e77147b7", "actor_roles": ["end_user"], "actor_auth_source": "auth_session", "actor_token_id": "sess-79ea068044a340eb", "her_kind": "gateway_access", "http_method": "GET", "path": "/v1/recommendation/cards", "status_code": 200, "client_ip": "127.0.0.1"}
+127.0.0.1 - - [27/May/2026 18:43:08] "GET /v1/recommendation/cards?profile_id=10001&unread_only=true HTTP/1.1" 200 13
+{"ts": "2026-05-27T10:43:08.053065+00:00", "her_schema": "1", "trace_id": "9a057e1b82ee440a87d7a3bdb871ce13", "actor_id": "usr-aee799b1e77147b7", "actor_roles": ["end_user"], "actor_auth_source": "auth_session", "actor_token_id": "sess-79ea068044a340eb", "her_kind": "gateway_access", "http_method": "GET", "path": "/v2/chat/cases/case-frontend-demo/timeline", "status_code": 200, "client_ip": "127.0.0.1"}
+127.0.0.1 - - [27/May/2026 18:43:08] "GET /v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 HTTP/1.1" 200 204
+{"ts": "2026-05-27T10:43:21.625377+00:00", "her_schema": "1", "trace_id": "78abb739f5bf489b99de02dcf9d5adb7", "actor_id": "usr-aee799b1e77147b7", "actor_roles": ["end_user"], "actor_auth_source": "auth_session", "actor_token_id": "sess-79ea068044a340eb", "her_kind": "gateway_access", "http_method": "GET", "path": "/v1/recommendation/cards", "status_code": 200, "client_ip": "127.0.0.1"}
+127.0.0.1 - - [27/May/2026 18:43:21] "GET /v1/recommendation/cards?profile_id=10001&unread_only=true HTTP/1.1" 200 13
+{"ts": "2026-05-27T10:43:21.632442+00:00", "her_schema": "1", "trace_id": "52cdfbb073d74985a94a3cb2ea14525c", "actor_id": "usr-aee799b1e77147b7", "actor_roles": ["end_user"], "actor_auth_source": "auth_session", "actor_token_id": "sess-79ea068044a340eb", "her_kind": "gateway_access", "http_method": "GET", "path": "/v2/chat/cases/case-frontend-demo/timeline", "status_code": 200, "client_ip": "127.0.0.1"}
+127.0.0.1 - - [27/May/2026 18:43:21] "GET /v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 HTTP/1.1" 200 204
+{"ts": "2026-05-27T10:43:22.202444+00:00", "her_schema": "1", "trace_id": "24e303218396429782ab4bb046411f8e", "actor_id": "usr-aee799b1e77147b7", "actor_roles": ["end_user"], "actor_auth_source": "auth_session", "actor_token_id": "sess-79ea068044a340eb", "her_kind": "gateway_error", "http_method": "POST", "path": "/v1/ops/overrides", "status_code": 500, "error_type": "AttributeError", "error_message": "'ActorPrincipal' object has no attribute 'get'"}
+2026-05-27 18:43:22,202 ERROR gateway.app Unhandled gateway error for POST /v1/ops/overrides trace_id=24e303218396429782ab4bb046411f8e
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 302, in __call__
+    status_code, payload = self.dispatch_rest(environ)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 219, in dispatch_rest
+    return dispatch_gateway_rest(self, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rest_dispatch.py", line 66, in dispatch_gateway_rest
+    response = dispatcher(gateway, environ, method, path)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/support_routes.py", line 222, in dispatch_support_rest
+    return rest_ops_override(gateway, environ, _parse_json_body(_read_body(environ)))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/support_routes.py", line 100, in rest_ops_override
+    gateway._require_roles(
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/access_control.py", line 91, in _require_roles
+    actor = self._current_actor(environ)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/access_control.py", line 22, in _current_actor
+    return get_current_actor(environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/identity.py", line 171, in get_current_actor
+    actor = environ.get(ENVIRO_ACTOR_KEY)
+            ^^^^^^^^^^^
+AttributeError: 'ActorPrincipal' object has no attribute 'get'
+{"ts": "2026-05-27T10:43:22.204606+00:00", "her_schema": "1", "trace_id": "24e303218396429782ab4bb046411f8e", "actor_id": "usr-aee799b1e77147b7", "actor_roles": ["end_user"], "actor_auth_source": "auth_session", "actor_token_id": "sess-79ea068044a340eb", "her_kind": "gateway_access", "http_method": "POST", "path": "/v1/ops/overrides", "status_code": 500, "client_ip": "127.0.0.1"}
+127.0.0.1 - - [27/May/2026 18:43:22] "POST /v1/ops/overrides HTTP/1.1" 500 146
+{"ts": "2026-05-27T10:43:38.048944+00:00", "her_schema": "1", "trace_id": "2e7f88798933454880183d56bcb52996", "actor_id": "usr-aee799b1e77147b7", "actor_roles": ["end_user"], "actor_auth_source": "auth_session", "actor_token_id": "sess-79ea068044a340eb", "her_kind": "gateway_access", "http_method": "GET", "path": "/v1/recommendation/cards", "status_code": 200, "client_ip": "127.0.0.1"}
+127.0.0.1 - - [27/May/2026 18:43:38] "GET /v1/recommendation/cards?profile_id=10001&unread_only=true HTTP/1.1" 200 13
+{"ts": "2026-05-27T10:43:38.053474+00:00", "her_schema": "1", "trace_id": "af28e12a68b24b3fa93d9b864f305f40", "actor_id": "usr-aee799b1e77147b7", "actor_roles": ["end_user"], "actor_auth_source": "auth_session", "actor_token_id": "sess-79ea068044a340eb", "her_kind": "gateway_access", "http_method": "GET", "path": "/v2/chat/cases/case-frontend-demo/timeline", "status_code": 200, "client_ip": "127.0.0.1"}
+127.0.0.1 - - [27/May/2026 18:43:38] "GET /v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 HTTP/1.1" 200 204
