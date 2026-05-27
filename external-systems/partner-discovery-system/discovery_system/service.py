@@ -438,10 +438,11 @@ class DiscoveryService:
 
         conn = self._open_recommendation_conn()
         try:
-            create_subscription, _, refresh_subscription = self._load_recommendation_bindings()
             from recommendation_system import (  # type: ignore[import-untyped]
+                create_subscription,
                 deliver_in_app_recommendations,
                 record_recommendation_action,
+                refresh_subscription,
             )
             from recommendation_system.recommendation_rows import (  # type: ignore[import-untyped]
                 get_recommendation,
