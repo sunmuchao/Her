@@ -19,6 +19,7 @@ import { ImageCarousel } from './ui/image-carousel'
 import { DemoDataBanner } from './ui/demo-data-banner'
 import { ErrorState } from './ui/error-state'
 import { postRecommendationAction } from '@/lib/api/endpoints/recommendation'
+import { notifyError } from '@/lib/notify'
 interface CandidateDetailPageProps {
   candidateId: string
   candidate?: CandidatePreview
@@ -228,7 +229,7 @@ export default function CandidateDetailPage({
   const handleExpressInterest = async () => {
     if (isExpressingInterest) return
     if (!subscriptionId || !candidateData.id) {
-      setLoadError('当前候选人暂时不能直接发起认识，请先通过推荐来信进入')
+      notifyError(new Error('interest_not_available'), '当前候选人暂时不能直接发起认识，请先通过推荐来信进入')
       return
     }
     setIsExpressingInterest(true)
@@ -242,8 +243,7 @@ export default function CandidateDetailPage({
       })
       setShowSubmittedHint(true)
     } catch (error) {
-      console.error(error)
-      setLoadError('发起意愿失败，请稍后重试')
+      notifyError(error, '发起意愿失败，请稍后重试')
     } finally {
       setIsExpressingInterest(false)
     }
