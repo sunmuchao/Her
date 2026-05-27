@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import secrets
 import uuid
@@ -10,8 +11,17 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from profile_service import resolve_profile_source, upsert_profile_for_onboarding
+from profile_service.persona_bridge import apply_persona_patch
+
+from match_domain.onboarding_search import (
+    age_from_birthday,
+    build_onboarding_persona_patch,
+    build_onboarding_profile_fields,
+)
 
 from .storage import inflate_json_columns, json_dumps, row_to_dict
+
+logger = logging.getLogger(__name__)
 
 OTP_SCENE_LOGIN = "login"
 OTP_SCENE_BIND_PHONE = "bind_phone"
@@ -1139,38 +1149,61 @@ def _profile_source_from_env() -> tuple[str, str]:
 
 
 def _age_from_birthday(birthday: str | None) -> int | None:
-    text = str(birthday or "").strip()
-    if not text:
-        return None
+    return age_from_birthday(birthday)
+
+
+def _persona_memory_source() -> str:
+    for key in (
+        "PERSONA_MEMORY_MYSQL_SOURCE",
+        "HER_DISCOVERY_PROFILE_SOURCE",
+        "HER_PROFILE_SOURCE_DSN",
+        "PARTNER_SEARCH_MYSQL_SOURCE",
+    ):
+        raw = (os.environ.get(key) or "").strip()
+        if raw:
+            return raw
+    return ""
+
+
+def _sync_onboarding_persona_memory(*, profile_id: int, patch: dict[str, Any]) -> None:
+    if profile_id <= 0 or not patch:
+        return
+    source = _persona_memory_source()
+    if not source:
+        return
     try:
-        if len(text) >= 4 and text[:4].isdigit():
-            birth_year = int(text[:4])
-            return max(18, datetime.now(timezone.utc).year - birth_year)
-    except ValueError:
-        return None
-    return None
+        apply_persona_patch(
+            {
+                "source": source,
+                "user_key": str(profile_id),
+                "source_type": "profile_form",
+                "patch": patch,
+                "sync_profile": False,
+                "basis": "onboarding_submit",
+                "conversation_ref": f"onboarding/{profile_id}",
+            }
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "onboarding persona sync failed profile_id=%s: %s",
+            profile_id,
+            exc,
+            exc_info=True,
+        )
+        return
 
 
 def _map_onboarding_to_profile_fields(
     basic_info: dict[str, Any] | None,
     preference: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    basic = dict(basic_info or {})
+    fields = build_onboarding_profile_fields(basic_info, preference)
     pref = dict(preference or {})
     tags = pref.get("tags")
     tag_text = ", ".join(str(item) for item in tags) if isinstance(tags, list) else str(tags or "")
-    fields: dict[str, Any] = {
-        "name": basic.get("name"),
-        "gender": basic.get("gender"),
-        "city": basic.get("location") or basic.get("city"),
-        "relationship_goal": pref.get("relationship_goal") or basic.get("relationship_goal"),
-    }
-    age = _age_from_birthday(basic.get("birthday"))
-    if age is not None:
-        fields["age"] = age
     if tag_text:
         fields["values"] = tag_text
-    return {key: value for key, value in fields.items() if value not in (None, "")}
+    return fields
 
 
 def _linked_profile_id(onboarding: dict[str, Any] | None) -> int | None:
@@ -1238,6 +1271,8 @@ def submit_onboarding_profile(
         fields=profile_fields,
     )
     merged_basic["profile_id"] = profile_id
+    persona_patch = build_onboarding_persona_patch(merged_basic, merged_pref)
+    _sync_onboarding_persona_memory(profile_id=profile_id, patch=persona_patch)
 
     next_status = (
         ONBOARDING_STATUS_COMPLETED

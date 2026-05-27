@@ -127,6 +127,7 @@ class InMemoryDiscoveryStorage:
         self._search_runs: dict[int, StoredSearchRun] = {}
         self._tool_calls: list[StoredToolCall] = []
         self._view_snapshots: list[StoredViewSnapshot] = []
+        self._profile_update_requests: dict[str, dict[str, Any]] = {}
 
     def next_session_id(self) -> str:
         self._session_seq += 1
@@ -328,6 +329,57 @@ class InMemoryDiscoveryStorage:
             for snapshot in self._view_snapshots
             if snapshot.session_id == session_id
         ]
+
+    def create_profile_update_request(
+        self,
+        *,
+        request_id: str,
+        session_id: str,
+        profile_id: int,
+        proposed_patch: dict[str, Any],
+        current_snapshot: dict[str, Any] | None,
+        evidence_text: str | None,
+        expires_at: datetime | None,
+        created_at: datetime,
+    ) -> dict[str, Any]:
+        record = {
+            "request_id": request_id,
+            "session_id": session_id,
+            "profile_id": int(profile_id),
+            "status": "pending",
+            "proposed_patch": deepcopy(proposed_patch),
+            "current_snapshot": deepcopy(current_snapshot or {}),
+            "evidence_text": evidence_text,
+            "expires_at": expires_at,
+            "confirmed_at": None,
+            "rejected_at": None,
+            "created_at": created_at,
+            "updated_at": created_at,
+        }
+        self._profile_update_requests[request_id] = deepcopy(record)
+        return deepcopy(record)
+
+    def get_profile_update_request(self, request_id: str) -> dict[str, Any] | None:
+        record = self._profile_update_requests.get(str(request_id or "").strip())
+        return deepcopy(record) if record else None
+
+    def mark_profile_update_request(
+        self,
+        *,
+        request_id: str,
+        status: str,
+        now: datetime,
+    ) -> None:
+        record = self._profile_update_requests.get(request_id)
+        if record is None:
+            return
+        record["status"] = status
+        record["updated_at"] = now
+        if status == "confirmed":
+            record["confirmed_at"] = now
+        if status == "rejected":
+            record["rejected_at"] = now
+        self._profile_update_requests[request_id] = record
 
 
 class MySQLDiscoveryStorage:
@@ -852,6 +904,116 @@ class MySQLDiscoveryStorage:
             for row in (row_to_dict(item) for item in rows)
             if row is not None
         ]
+
+    def create_profile_update_request(
+        self,
+        *,
+        request_id: str,
+        session_id: str,
+        profile_id: int,
+        proposed_patch: dict[str, Any],
+        current_snapshot: dict[str, Any] | None,
+        evidence_text: str | None,
+        expires_at: datetime | None,
+        created_at: datetime,
+    ) -> dict[str, Any]:
+        conn = self._open()
+        try:
+            conn.execute(
+                """
+                INSERT INTO discovery_profile_update_requests (
+                    request_id, session_id, profile_id, status,
+                    proposed_patch_json, current_snapshot_json, evidence_text,
+                    expires_at, confirmed_at, rejected_at, created_at, updated_at
+                ) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, NULL, NULL, ?, ?)
+                """,
+                (
+                    request_id,
+                    session_id,
+                    int(profile_id),
+                    json_dumps(proposed_patch),
+                    json_dumps(current_snapshot or {}),
+                    evidence_text,
+                    expires_at,
+                    created_at,
+                    created_at,
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        return {
+            "request_id": request_id,
+            "session_id": session_id,
+            "profile_id": int(profile_id),
+            "status": "pending",
+            "proposed_patch": deepcopy(proposed_patch),
+            "current_snapshot": deepcopy(current_snapshot or {}),
+            "evidence_text": evidence_text,
+            "expires_at": expires_at,
+            "confirmed_at": None,
+            "rejected_at": None,
+            "created_at": created_at,
+            "updated_at": created_at,
+        }
+
+    def get_profile_update_request(self, request_id: str) -> dict[str, Any] | None:
+        conn = self._open()
+        try:
+            row = row_to_dict(
+                conn.execute(
+                    """
+                    SELECT request_id, session_id, profile_id, status,
+                           proposed_patch_json, current_snapshot_json, evidence_text,
+                           expires_at, confirmed_at, rejected_at, created_at, updated_at
+                    FROM discovery_profile_update_requests
+                    WHERE request_id = ?
+                    LIMIT 1
+                    """,
+                    (request_id,),
+                ).fetchone()
+            )
+        finally:
+            conn.close()
+        if row is None:
+            return None
+        return {
+            "request_id": str(row["request_id"]),
+            "session_id": str(row["session_id"]),
+            "profile_id": int(row["profile_id"]),
+            "status": str(row["status"]),
+            "proposed_patch": dict(json_loads(str(row.get("proposed_patch_json") or "{}"), {}) or {}),
+            "current_snapshot": dict(json_loads(str(row.get("current_snapshot_json") or "{}"), {}) or {}),
+            "evidence_text": row.get("evidence_text"),
+            "expires_at": _parse_optional_datetime(row.get("expires_at")),
+            "confirmed_at": _parse_optional_datetime(row.get("confirmed_at")),
+            "rejected_at": _parse_optional_datetime(row.get("rejected_at")),
+            "created_at": _parse_datetime(row.get("created_at")),
+            "updated_at": _parse_datetime(row.get("updated_at")),
+        }
+
+    def mark_profile_update_request(
+        self,
+        *,
+        request_id: str,
+        status: str,
+        now: datetime,
+    ) -> None:
+        conn = self._open()
+        try:
+            confirmed_at = now if status == "confirmed" else None
+            rejected_at = now if status == "rejected" else None
+            conn.execute(
+                """
+                UPDATE discovery_profile_update_requests
+                SET status = ?, confirmed_at = ?, rejected_at = ?, updated_at = ?
+                WHERE request_id = ?
+                """,
+                (status, confirmed_at, rejected_at, now, request_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
 
     def _open(self) -> MySQLCompatConnection:
         return connect_db(self._dsn)

@@ -67,4 +67,29 @@ describe('mapDiscoveryView', () => {
     const group = mapped.timelineItems[1]
     expect(group.kind === 'result_group' && group.candidates[0]?.id).toBe('1001')
   })
+
+  it('maps profile_update_prompt timeline items', () => {
+    const mapped = mapDiscoveryView({
+      timeline: [
+        {
+          item_type: 'profile_update_prompt',
+          item_id: 'pur-1',
+          prompt: {
+            request_id: 'pur-req-1',
+            title: '是否更新你的资料？',
+            summary: '你提到搬到了杭州',
+            changes: [{ field: 'city', label: '城市', from: '上海', to: '杭州' }],
+            status: 'pending',
+          },
+        },
+      ],
+    })
+    expect(mapped.timelineItems).toHaveLength(1)
+    const prompt = mapped.timelineItems[0]
+    expect(prompt.kind).toBe('profile_update_prompt')
+    if (prompt.kind !== 'profile_update_prompt') return
+    expect(prompt.requestId).toBe('pur-req-1')
+    expect(prompt.changes[0]?.to).toBe('杭州')
+    expect(prompt.status).toBe('pending')
+  })
 })

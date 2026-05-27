@@ -64,15 +64,13 @@ export function DiscoveryCandidateCard({
             {candidate.occupation ? <span>{candidate.occupation}</span> : null}
           </div>
           {candidate.matchReason ? (
-            <p className="text-xs text-primary mt-2 line-clamp-2">{candidate.matchReason}</p>
+            <p className="text-xs text-primary mt-2 line-clamp-2">
+              <span className="text-muted-foreground">匹配点：</span>
+              {candidate.matchReason}
+            </p>
           ) : null}
         </div>
-        <div className="flex flex-col items-end justify-between">
-          {candidate.matchScore ? (
-            <span className="text-sm font-medium text-primary">{candidate.matchScore}%</span>
-          ) : (
-            <span />
-          )}
+        <div className="flex flex-col items-end justify-center">
           <ChevronRight className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
         </div>
       </div>

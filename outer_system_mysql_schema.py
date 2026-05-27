@@ -2007,6 +2007,31 @@ def discovery_tables() -> tuple[TableDef, ...]:
                 ForeignKeyDef(("session_id",), "discovery_agent_sessions", ("session_id",)),
             ),
         ),
+        TableDef(
+            name="discovery_profile_update_requests",
+            columns=(
+                ColumnDef("request_id", "VARCHAR(64)", nullable=False),
+                ColumnDef("session_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("profile_id", "BIGINT", nullable=False),
+                ColumnDef("status", "VARCHAR(32)", nullable=False),
+                ColumnDef("proposed_patch_json", "LONGTEXT", nullable=False),
+                ColumnDef("current_snapshot_json", "LONGTEXT"),
+                ColumnDef("evidence_text", "TEXT"),
+                ColumnDef("expires_at", "DATETIME"),
+                ColumnDef("confirmed_at", "DATETIME"),
+                ColumnDef("rejected_at", "DATETIME"),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+                ColumnDef("updated_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("request_id",),
+            indexes=(
+                IndexDef(("session_id", "status"), "idx_discovery_profile_updates_session_status"),
+                IndexDef(("profile_id", "status"), "idx_discovery_profile_updates_profile_status"),
+            ),
+            foreign_keys=(
+                ForeignKeyDef(("session_id",), "discovery_agent_sessions", ("session_id",)),
+            ),
+        ),
     )
 
 

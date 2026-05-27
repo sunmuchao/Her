@@ -1686,7 +1686,11 @@ def apply_persona_patch(
                 saved_persona = upsert_persona(cursor, persona_table, merged)
                 persona_id = saved_persona["id"]
 
-                if apply_scope == "persona_and_profile" and sync_profile and source_type in {"explicit", "profile_form", "explicit_confirmation"}:
+                if (
+                    apply_scope == "persona_and_profile"
+                    and sync_profile
+                    and source_type in {"profile_form", "explicit_confirmation"}
+                ):
                     persona_for_profile = dict(saved_persona)
                     persona_for_profile["user_key"] = user_key
                     profile_id = ensure_persona_profile_binding(

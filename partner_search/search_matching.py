@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from typing import Any, Callable, Sequence
 
 from partner_search.search_profile_utils import has_explicit_field_value as _has_explicit_field_value
+from match_domain.onboarding_search import genders_match_for_search
 
 
 @dataclass(frozen=True)
@@ -1017,7 +1018,7 @@ def evaluate_candidate(
         gender = runtime.as_lower(record.get("gender"))
         if not gender:
             missing_fields.append("gender")
-        elif gender != criteria["gender"]:
+        elif not genders_match_for_search(record.get("gender"), criteria["gender"]):
             return fail("gender_mismatch")
         else:
             reasons.append(f"性别 {record.get('gender')}")

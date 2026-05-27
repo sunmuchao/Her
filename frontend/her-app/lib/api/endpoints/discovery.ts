@@ -31,3 +31,17 @@ export async function submitDiscoveryTurn(params: {
     },
   )
 }
+
+export async function confirmDiscoveryProfileUpdate(sessionId: string, requestId: string) {
+  return gatewayJson<{ ok?: boolean; request_id?: string; status?: string }>(
+    `/v1/discovery/sessions/${encodeURIComponent(sessionId)}/profile-updates/${encodeURIComponent(requestId)}/confirm`,
+    { method: 'POST', body: JSON.stringify({}) },
+  )
+}
+
+export async function rejectDiscoveryProfileUpdate(sessionId: string, requestId: string) {
+  return gatewayJson<{ ok?: boolean; request_id?: string; status?: string }>(
+    `/v1/discovery/sessions/${encodeURIComponent(sessionId)}/profile-updates/${encodeURIComponent(requestId)}/reject`,
+    { method: 'POST', body: JSON.stringify({}) },
+  )
+}

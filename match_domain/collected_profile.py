@@ -11,6 +11,7 @@ PROFILE_FACT_PROFILE_COLUMNS = frozenset(
         "name",
         "display_name",
         "gender",
+        "sexual_orientation",
         "age",
         "city",
         "district",

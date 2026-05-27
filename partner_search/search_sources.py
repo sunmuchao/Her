@@ -10,6 +10,8 @@ from typing import Any, Callable, Mapping
 from mysql_source_config import parse_mysql_source_config
 from outer_system_mysql_schema import quote_mysql_ident as mysql_quote_ident
 
+from match_domain.onboarding_search import expand_search_gender_values
+
 
 @dataclass(frozen=True)
 class SearchSourceRuntime:
@@ -160,7 +162,9 @@ def build_mysql_prefilter(
         base_clauses.append(clause)
         base_params.append(value)
 
-    add_exact("gender", criteria.get("gender"), allow_missing=True)
+    gender_values = expand_search_gender_values(criteria.get("gender"))
+    if gender_values:
+        add_in("gender", gender_values, allow_missing=True)
     add_numeric_bound("age", ">=", criteria.get("age_min"), allow_missing=True)
     add_numeric_bound("age", "<=", criteria.get("age_max"), allow_missing=True)
     add_numeric_bound("height", ">=", criteria.get("height_min"), allow_missing=True)
