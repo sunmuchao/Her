@@ -6,620 +6,16 @@
 - Local:         http://127.0.0.1:3000
 - Network:       http://127.0.0.1:3000
 - Environments: .env.local
-✓ Ready in 681ms
+✓ Ready in 654ms
 
- GET /candidates/7152?session=discovery-session-24e366fe25d1 200 in 1243ms (next.js: 803ms, application-code: 440ms)
- GET /api/gateway/v1/candidates/7152 200 in 838ms (next.js: 796ms, application-code: 42ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 842ms (next.js: 796ms, application-code: 46ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 848ms (next.js: 795ms, application-code: 53ms)
- GET /api/gateway/v1/auth/me 200 in 768ms (next.js: 711ms, application-code: 57ms)
- GET /api/gateway/v1/candidates/7152?session_id=discovery-session-24e366fe25d1 200 in 805ms (next.js: 709ms, application-code: 96ms)
- GET /api/gateway/v1/auth/me 200 in 809ms (next.js: 708ms, application-code: 101ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 23ms (next.js: 6ms, application-code: 16ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 26ms (next.js: 12ms, application-code: 14ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 33ms (next.js: 10ms, application-code: 23ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 37ms (next.js: 18ms, application-code: 19ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 30ms (next.js: 11ms, application-code: 19ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 34ms (next.js: 17ms, application-code: 17ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 19ms (next.js: 6ms, application-code: 14ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 24ms (next.js: 10ms, application-code: 15ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 26ms (next.js: 8ms, application-code: 18ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 30ms (next.js: 13ms, application-code: 17ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 23ms (next.js: 6ms, application-code: 18ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 29ms (next.js: 10ms, application-code: 19ms)
-⨯ ./components/her/ui/image-carousel.tsx:30:3
-Expected ',', got 'ident'
-  [90m28 |[0m   showIndicators = [36mtrue[0m,
-  [90m29 |[0m   indicatorStyle = [32m'pills'[0m
-[31m[1m>[0m [90m30 |[0m   autoPlay = [36mtrue[0m,
-  [90m   |[0m   [31m[1m^^^^^^^^[0m
-  [90m31 |[0m   autoPlayIntervalMs = [35m3000[0m,
-  [90m32 |[0m   pauseOnHover = [36mtrue[0m,
-  [90m33 |[0m }: [33mImageCarouselProps[0m) {
-
-Parsing ecmascript source code failed
-
-Import traces:
-  Client Component Browser:
-    ./components/her/ui/image-carousel.tsx [Client Component Browser]
-    ./components/her/candidate-detail-page.tsx [Client Component Browser]
-    ./components/app/app-shell.tsx [Client Component Browser]
-    ./components/app/her-app.tsx [Client Component Browser]
-    ./app/[...slug]/page.tsx [Client Component Browser]
-    ./app/[...slug]/page.tsx [Server Component]
-
-  Client Component SSR:
-    ./components/her/ui/image-carousel.tsx [Client Component SSR]
-    ./components/her/candidate-detail-page.tsx [Client Component SSR]
-    ./components/app/app-shell.tsx [Client Component SSR]
-    ./components/app/her-app.tsx [Client Component SSR]
-    ./app/[...slug]/page.tsx [Client Component SSR]
-    ./app/[...slug]/page.tsx [Server Component]
-
-
-✓ Compiled in 238ms
-[browser] ./components/her/ui/image-carousel.tsx:30:3
-Expected ',', got 'ident'
-  28 |   showIndicators = true,
-  29 |   indicatorStyle = 'pills'
-> 30 |   autoPlay = true,
-     |   ^^^^^^^^
-  31 |   autoPlayIntervalMs = 3000,
-  32 |   pauseOnHover = true,
-  33 | }: ImageCarouselProps) {
-
-Parsing ecmascript source code failed
-
-Import traces:
-  Client Component Browser:
-    ./components/her/ui/image-carousel.tsx [Client Component Browser]
-    ./components/her/candidate-detail-page.tsx [Client Component Browser]
-    ./components/app/app-shell.tsx [Client Component Browser]
-    ./components/app/her-app.tsx [Client Component Browser]
-    ./app/[...slug]/page.tsx [Client Component Browser]
-    ./app/[...slug]/page.tsx [Server Component]
-
-  Client Component SSR:
-    ./components/her/ui/image-carousel.tsx [Client Component SSR]
-    ./components/her/candidate-detail-page.tsx [Client Component SSR]
-    ./components/app/app-shell.tsx [Client Component SSR]
-    ./components/app/her-app.tsx [Client Component SSR]
-    ./app/[...slug]/page.tsx [Client Component SSR]
-    ./app/[...slug]/page.tsx [Server Component] 
-[browser] ./components/her/ui/image-carousel.tsx:30:3
-Expected ',', got 'ident'
-  28 |   showIndicators = true,
-  29 |   indicatorStyle = 'pills'
-> 30 |   autoPlay = true,
-     |   ^^^^^^^^
-  31 |   autoPlayIntervalMs = 3000,
-  32 |   pauseOnHover = true,
-  33 | }: ImageCarouselProps) {
-
-Parsing ecmascript source code failed
-
-Import traces:
-  Client Component Browser:
-    ./components/her/ui/image-carousel.tsx [Client Component Browser]
-    ./components/her/candidate-detail-page.tsx [Client Component Browser]
-    ./components/app/app-shell.tsx [Client Component Browser]
-    ./components/app/her-app.tsx [Client Component Browser]
-    ./app/[...slug]/page.tsx [Client Component Browser]
-    ./app/[...slug]/page.tsx [Server Component]
-
-  Client Component SSR:
-    ./components/her/ui/image-carousel.tsx [Client Component SSR]
-    ./components/her/candidate-detail-page.tsx [Client Component SSR]
-    ./components/app/app-shell.tsx [Client Component SSR]
-    ./components/app/her-app.tsx [Client Component SSR]
-    ./app/[...slug]/page.tsx [Client Component SSR]
-    ./app/[...slug]/page.tsx [Server Component] 
- GET /candidates/7152?session=discovery-session-24e366fe25d1 500 in 2.2s (next.js: 1890ms, application-code: 278ms)
-[browser] ./components/her/ui/image-carousel.tsx:30:3
-Expected ',', got 'ident'
-  28 |   showIndicators = true,
-  29 |   indicatorStyle = 'pills'
-> 30 |   autoPlay = true,
-     |   ^^^^^^^^
-  31 |   autoPlayIntervalMs = 3000,
-  32 |   pauseOnHover = true,
-  33 | }: ImageCarouselProps) {
-
-Parsing ecmascript source code failed
-
-Import traces:
-  Client Component Browser:
-    ./components/her/ui/image-carousel.tsx [Client Component Browser]
-    ./components/her/candidate-detail-page.tsx [Client Component Browser]
-    ./components/app/app-shell.tsx [Client Component Browser]
-    ./components/app/her-app.tsx [Client Component Browser]
-    ./app/[...slug]/page.tsx [Client Component Browser]
-    ./app/[...slug]/page.tsx [Server Component]
-
-  Client Component SSR:
-    ./components/her/ui/image-carousel.tsx [Client Component SSR]
-    ./components/her/candidate-detail-page.tsx [Client Component SSR]
-    ./components/app/app-shell.tsx [Client Component SSR]
-    ./components/app/her-app.tsx [Client Component SSR]
-    ./app/[...slug]/page.tsx [Client Component SSR]
-    ./app/[...slug]/page.tsx [Server Component] 
-⨯ ./components/her/ui/image-carousel.tsx:30:3
-Expected ',', got 'ident'
-  [90m28 |[0m   showIndicators = [36mtrue[0m,
-  [90m29 |[0m   indicatorStyle = [32m'pills'[0m
-[31m[1m>[0m [90m30 |[0m   autoPlay = [36mtrue[0m,
-  [90m   |[0m   [31m[1m^^^^^^^^[0m
-  [90m31 |[0m   autoPlayIntervalMs = [35m3000[0m,
-  [90m32 |[0m   pauseOnHover = [36mtrue[0m,
-  [90m33 |[0m }: [33mImageCarouselProps[0m) {
-
-Parsing ecmascript source code failed
-
-Import traces:
-  Client Component Browser:
-    ./components/her/ui/image-carousel.tsx [Client Component Browser]
-    ./components/her/candidate-detail-page.tsx [Client Component Browser]
-    ./components/app/app-shell.tsx [Client Component Browser]
-    ./components/app/her-app.tsx [Client Component Browser]
-    ./app/[...slug]/page.tsx [Client Component Browser]
-    ./app/[...slug]/page.tsx [Server Component]
-
-  Client Component SSR:
-    ./components/her/ui/image-carousel.tsx [Client Component SSR]
-    ./components/her/candidate-detail-page.tsx [Client Component SSR]
-    ./components/app/app-shell.tsx [Client Component SSR]
-    ./components/app/her-app.tsx [Client Component SSR]
-    ./app/[...slug]/page.tsx [Client Component SSR]
-    ./app/[...slug]/page.tsx [Server Component]
-
-
- GET /candidates/7152?session=discovery-session-24e366fe25d1 500 in 42ms (next.js: 22ms, application-code: 20ms)
-⨯ ./components/her/ui/image-carousel.tsx:30:3
-Expected ',', got 'ident'
-  [90m28 |[0m   showIndicators = [36mtrue[0m,
-  [90m29 |[0m   indicatorStyle = [32m'pills'[0m
-[31m[1m>[0m [90m30 |[0m   autoPlay = [36mtrue[0m,
-  [90m   |[0m   [31m[1m^^^^^^^^[0m
-  [90m31 |[0m   autoPlayIntervalMs = [35m3000[0m,
-  [90m32 |[0m   pauseOnHover = [36mtrue[0m,
-  [90m33 |[0m }: [33mImageCarouselProps[0m) {
-
-Parsing ecmascript source code failed
-
-Import traces:
-  Client Component Browser:
-    ./components/her/ui/image-carousel.tsx [Client Component Browser]
-    ./components/her/candidate-detail-page.tsx [Client Component Browser]
-    ./components/app/app-shell.tsx [Client Component Browser]
-    ./components/app/her-app.tsx [Client Component Browser]
-    ./app/[...slug]/page.tsx [Client Component Browser]
-    ./app/[...slug]/page.tsx [Server Component]
-
-  Client Component SSR:
-    ./components/her/ui/image-carousel.tsx [Client Component SSR]
-    ./components/her/candidate-detail-page.tsx [Client Component SSR]
-    ./components/app/app-shell.tsx [Client Component SSR]
-    ./components/app/her-app.tsx [Client Component SSR]
-    ./app/[...slug]/page.tsx [Client Component SSR]
-    ./app/[...slug]/page.tsx [Server Component]
-
-
- GET /candidates/7152?session=discovery-session-24e366fe25d1 500 in 50ms (next.js: 15ms, application-code: 35ms)
-⨯ ./components/her/ui/image-carousel.tsx:30:3
-Expected ',', got 'ident'
-  [90m28 |[0m   showIndicators = [36mtrue[0m,
-  [90m29 |[0m   indicatorStyle = [32m'pills'[0m
-[31m[1m>[0m [90m30 |[0m   autoPlay = [36mtrue[0m,
-  [90m   |[0m   [31m[1m^^^^^^^^[0m
-  [90m31 |[0m   autoPlayIntervalMs = [35m3000[0m,
-  [90m32 |[0m   pauseOnHover = [36mtrue[0m,
-  [90m33 |[0m }: [33mImageCarouselProps[0m) {
-
-Parsing ecmascript source code failed
-
-Import traces:
-  Client Component Browser:
-    ./components/her/ui/image-carousel.tsx [Client Component Browser]
-    ./components/her/candidate-detail-page.tsx [Client Component Browser]
-    ./components/app/app-shell.tsx [Client Component Browser]
-    ./components/app/her-app.tsx [Client Component Browser]
-    ./app/[...slug]/page.tsx [Client Component Browser]
-    ./app/[...slug]/page.tsx [Server Component]
-
-  Client Component SSR:
-    ./components/her/ui/image-carousel.tsx [Client Component SSR]
-    ./components/her/candidate-detail-page.tsx [Client Component SSR]
-    ./components/app/app-shell.tsx [Client Component SSR]
-    ./components/app/her-app.tsx [Client Component SSR]
-    ./app/[...slug]/page.tsx [Client Component SSR]
-    ./app/[...slug]/page.tsx [Server Component]
-
-
-[browser] Uncaught Error: ./components/her/ui/image-carousel.tsx:30:3
-Expected ',', got 'ident'
-  28 |   showIndicators = true,
-  29 |   indicatorStyle = 'pills'
-> 30 |   autoPlay = true,
-     |   ^^^^^^^^
-  31 |   autoPlayIntervalMs = 3000,
-  32 |   pauseOnHover = true,
-  33 | }: ImageCarouselProps) {
-
-Parsing ecmascript source code failed
-
-Import traces:
-  Client Component Browser:
-    ./components/her/ui/image-carousel.tsx [Client Component Browser]
-    ./components/her/candidate-detail-page.tsx [Client Component Browser]
-    ./components/app/app-shell.tsx [Client Component Browser]
-    ./components/app/her-app.tsx [Client Component Browser]
-    ./app/[...slug]/page.tsx [Client Component Browser]
-    ./app/[...slug]/page.tsx [Server Component]
-
-  Client Component SSR:
-    ./components/her/ui/image-carousel.tsx [Client Component SSR]
-    ./components/her/candidate-detail-page.tsx [Client Component SSR]
-    ./components/app/app-shell.tsx [Client Component SSR]
-    ./components/app/her-app.tsx [Client Component SSR]
-    ./app/[...slug]/page.tsx [Client Component SSR]
-    ./app/[...slug]/page.tsx [Server Component]
-
-
-    at <unknown> (Error: ./components/her/ui/image-carousel.tsx:30:3)
-    at <unknown> (Error: (./components/her/ui/image-carousel.tsx:30:3)
-[browser] ./components/her/ui/image-carousel.tsx:30:3
-Expected ',', got 'ident'
-  28 |   showIndicators = true,
-  29 |   indicatorStyle = 'pills'
-> 30 |   autoPlay = true,
-     |   ^^^^^^^^
-  31 |   autoPlayIntervalMs = 3000,
-  32 |   pauseOnHover = true,
-  33 | }: ImageCarouselProps) {
-
-Parsing ecmascript source code failed
-
-Import traces:
-  Client Component Browser:
-    ./components/her/ui/image-carousel.tsx [Client Component Browser]
-    ./components/her/candidate-detail-page.tsx [Client Component Browser]
-    ./components/app/app-shell.tsx [Client Component Browser]
-    ./components/app/her-app.tsx [Client Component Browser]
-    ./app/[...slug]/page.tsx [Client Component Browser]
-    ./app/[...slug]/page.tsx [Server Component]
-
-  Client Component SSR:
-    ./components/her/ui/image-carousel.tsx [Client Component SSR]
-    ./components/her/candidate-detail-page.tsx [Client Component SSR]
-    ./components/app/app-shell.tsx [Client Component SSR]
-    ./components/app/her-app.tsx [Client Component SSR]
-    ./app/[...slug]/page.tsx [Client Component SSR]
-    ./app/[...slug]/page.tsx [Server Component] 
-[browser] ./components/her/ui/image-carousel.tsx:30:3
-Expected ',', got 'ident'
-  28 |   showIndicators = true,
-  29 |   indicatorStyle = 'pills'
-> 30 |   autoPlay = true,
-     |   ^^^^^^^^
-  31 |   autoPlayIntervalMs = 3000,
-  32 |   pauseOnHover = true,
-  33 | }: ImageCarouselProps) {
-
-Parsing ecmascript source code failed
-
-Import traces:
-  Client Component Browser:
-    ./components/her/ui/image-carousel.tsx [Client Component Browser]
-    ./components/her/candidate-detail-page.tsx [Client Component Browser]
-    ./components/app/app-shell.tsx [Client Component Browser]
-    ./components/app/her-app.tsx [Client Component Browser]
-    ./app/[...slug]/page.tsx [Client Component Browser]
-    ./app/[...slug]/page.tsx [Server Component]
-
-  Client Component SSR:
-    ./components/her/ui/image-carousel.tsx [Client Component SSR]
-    ./components/her/candidate-detail-page.tsx [Client Component SSR]
-    ./components/app/app-shell.tsx [Client Component SSR]
-    ./components/app/her-app.tsx [Client Component SSR]
-    ./app/[...slug]/page.tsx [Client Component SSR]
-    ./app/[...slug]/page.tsx [Server Component] 
-⨯ ./components/her/ui/image-carousel.tsx:30:3
-Expected ',', got 'ident'
-  [90m28 |[0m   showIndicators = [36mtrue[0m,
-  [90m29 |[0m   indicatorStyle = [32m'pills'[0m
-[31m[1m>[0m [90m30 |[0m   autoPlay = [36mtrue[0m,
-  [90m   |[0m   [31m[1m^^^^^^^^[0m
-  [90m31 |[0m   autoPlayIntervalMs = [35m3000[0m,
-  [90m32 |[0m   pauseOnHover = [36mtrue[0m,
-  [90m33 |[0m }: [33mImageCarouselProps[0m) {
-
-Parsing ecmascript source code failed
-
-Import traces:
-  Client Component Browser:
-    ./components/her/ui/image-carousel.tsx [Client Component Browser]
-    ./components/her/candidate-detail-page.tsx [Client Component Browser]
-    ./components/app/app-shell.tsx [Client Component Browser]
-    ./components/app/her-app.tsx [Client Component Browser]
-    ./app/[...slug]/page.tsx [Client Component Browser]
-    ./app/[...slug]/page.tsx [Server Component]
-
-  Client Component SSR:
-    ./components/her/ui/image-carousel.tsx [Client Component SSR]
-    ./components/her/candidate-detail-page.tsx [Client Component SSR]
-    ./components/app/app-shell.tsx [Client Component SSR]
-    ./components/app/her-app.tsx [Client Component SSR]
-    ./app/[...slug]/page.tsx [Client Component SSR]
-    ./app/[...slug]/page.tsx [Server Component]
-
-
-[browser] ./components/her/ui/image-carousel.tsx:30:3
-Expected ',', got 'ident'
-  28 |   showIndicators = true,
-  29 |   indicatorStyle = 'pills'
-> 30 |   autoPlay = true,
-     |   ^^^^^^^^
-  31 |   autoPlayIntervalMs = 3000,
-  32 |   pauseOnHover = true,
-  33 | }: ImageCarouselProps) {
-
-Parsing ecmascript source code failed
-
-Import traces:
-  Client Component Browser:
-    ./components/her/ui/image-carousel.tsx [Client Component Browser]
-    ./components/her/candidate-detail-page.tsx [Client Component Browser]
-    ./components/app/app-shell.tsx [Client Component Browser]
-    ./components/app/her-app.tsx [Client Component Browser]
-    ./app/[...slug]/page.tsx [Client Component Browser]
-    ./app/[...slug]/page.tsx [Server Component]
-
-  Client Component SSR:
-    ./components/her/ui/image-carousel.tsx [Client Component SSR]
-    ./components/her/candidate-detail-page.tsx [Client Component SSR]
-    ./components/app/app-shell.tsx [Client Component SSR]
-    ./components/app/her-app.tsx [Client Component SSR]
-    ./app/[...slug]/page.tsx [Client Component SSR]
-    ./app/[...slug]/page.tsx [Server Component] 
- GET /candidates/7152?session=discovery-session-24e366fe25d1 200 in 251ms (next.js: 48ms, application-code: 204ms)
- GET /api/gateway/v1/candidates/7152 200 in 84ms (next.js: 30ms, application-code: 54ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 87ms (next.js: 42ms, application-code: 45ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 87ms (next.js: 46ms, application-code: 41ms)
- GET /api/gateway/v1/auth/me 200 in 97ms (next.js: 50ms, application-code: 48ms)
- GET /api/gateway/v1/candidates/7152?session_id=discovery-session-24e366fe25d1 200 in 98ms (next.js: 3ms, application-code: 96ms)
- GET /api/gateway/v1/auth/me 200 in 108ms (next.js: 8ms, application-code: 100ms)
- GET /.well-known/appspecific/com.chrome.devtools.json 200 in 68ms (next.js: 8ms, application-code: 60ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 28ms (next.js: 9ms, application-code: 19ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 18ms (next.js: 3ms, application-code: 15ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 20ms (next.js: 5ms, application-code: 15ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 25ms (next.js: 10ms, application-code: 15ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 18ms (next.js: 6ms, application-code: 11ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 14ms (next.js: 1758µs, application-code: 12ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 19ms (next.js: 5ms, application-code: 14ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 22ms (next.js: 9ms, application-code: 13ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 43ms (next.js: 15ms, application-code: 28ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 52ms (next.js: 28ms, application-code: 23ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 23ms (next.js: 7ms, application-code: 16ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 29ms (next.js: 11ms, application-code: 17ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 32ms (next.js: 6ms, application-code: 26ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 33ms (next.js: 3ms, application-code: 30ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 19ms (next.js: 5ms, application-code: 14ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 23ms (next.js: 10ms, application-code: 14ms)
- GET /chat/cvt-e85e4e9266f64d1a 200 in 41ms (next.js: 6ms, application-code: 35ms)
- GET /api/gateway/v2/chat/conversations/cvt-e85e4e9266f64d1a?requester_id=usr-aee799b1e77147b7 404 in 49ms (next.js: 11ms, application-code: 38ms)
- GET /api/gateway/v2/chat/conversations/cvt-e85e4e9266f64d1a?requester_id=usr-aee799b1e77147b7 404 in 53ms (next.js: 17ms, application-code: 36ms)
- GET /api/gateway/v2/chat/conversations/cvt-e85e4e9266f64d1a/messages?requester_id=usr-aee799b1e77147b7 400 in 62ms (next.js: 20ms, application-code: 42ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 100ms (next.js: 25ms, application-code: 75ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 100ms (next.js: 14ms, application-code: 86ms)
- GET /api/gateway/v1/auth/me 200 in 95ms (next.js: 3ms, application-code: 92ms)
- GET /api/gateway/v2/chat/conversations/cvt-e85e4e9266f64d1a/messages?requester_id=usr-aee799b1e77147b7 400 in 132ms (next.js: 11ms, application-code: 121ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 133ms (next.js: 15ms, application-code: 118ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 106ms (next.js: 25ms, application-code: 80ms)
- GET /api/gateway/v1/auth/me 200 in 102ms (next.js: 50ms, application-code: 52ms)
- GET /discover 200 in 29ms (next.js: 5ms, application-code: 24ms)
- GET /api/gateway/v1/auth/me 200 in 59ms (next.js: 10ms, application-code: 49ms)
- GET /api/gateway/v1/discovery/sessions/discovery-session-24e366fe25d1 200 in 75ms (next.js: 16ms, application-code: 59ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 106ms (next.js: 24ms, application-code: 82ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 90ms (next.js: 9ms, application-code: 81ms)
- GET /api/gateway/v1/auth/me 200 in 96ms (next.js: 17ms, application-code: 78ms)
- GET /api/gateway/v1/persona/collected?profile_id=10001 200 in 164ms (next.js: 22ms, application-code: 142ms)
- GET /api/gateway/v1/auth/me 200 in 127ms (next.js: 3ms, application-code: 123ms)
- GET /api/gateway/v1/discovery/sessions/discovery-session-24e366fe25d1 200 in 97ms (next.js: 6ms, application-code: 91ms)
- GET /api/gateway/v1/persona/collected?profile_id=10001 200 in 103ms (next.js: 4ms, application-code: 100ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 115ms (next.js: 9ms, application-code: 107ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 125ms (next.js: 13ms, application-code: 112ms)
- GET /api/gateway/v1/auth/me 200 in 91ms (next.js: 2ms, application-code: 89ms)
- GET /api/gateway/v1/auth/me 200 in 44ms (next.js: 3ms, application-code: 41ms)
- GET /api/gateway/v1/auth/me 200 in 42ms (next.js: 6ms, application-code: 36ms)
- GET /candidates/7152?session=discovery-session-24e366fe25d1 200 in 36ms (next.js: 6ms, application-code: 30ms)
- GET /api/gateway/v1/candidates/7152 200 in 46ms (next.js: 8ms, application-code: 38ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 43ms (next.js: 4ms, application-code: 39ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 53ms (next.js: 7ms, application-code: 46ms)
- GET /api/gateway/v1/candidates/7152 200 in 62ms (next.js: 14ms, application-code: 48ms)
- GET /api/gateway/v1/auth/me 200 in 75ms (next.js: 18ms, application-code: 58ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 83ms (next.js: 21ms, application-code: 61ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 55ms (next.js: 7ms, application-code: 47ms)
- GET /api/gateway/v1/auth/me 200 in 42ms (next.js: 3ms, application-code: 39ms)
- GET /api/gateway/v1/candidates/7152?session_id=discovery-session-24e366fe25d1 200 in 112ms (next.js: 4ms, application-code: 108ms)
- GET /api/gateway/v1/auth/me 200 in 108ms (next.js: 4ms, application-code: 104ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 46ms (next.js: 16ms, application-code: 30ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 52ms (next.js: 25ms, application-code: 27ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 32ms (next.js: 5ms, application-code: 26ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 38ms (next.js: 13ms, application-code: 25ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 21ms (next.js: 6ms, application-code: 15ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 24ms (next.js: 10ms, application-code: 14ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 34ms (next.js: 9ms, application-code: 25ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 46ms (next.js: 17ms, application-code: 28ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 16ms (next.js: 4ms, application-code: 11ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 14ms (next.js: 1719µs, application-code: 12ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 28ms (next.js: 10ms, application-code: 19ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 35ms (next.js: 14ms, application-code: 21ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 29ms (next.js: 7ms, application-code: 22ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 33ms (next.js: 10ms, application-code: 23ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 20ms (next.js: 6ms, application-code: 14ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 23ms (next.js: 10ms, application-code: 13ms)
- GET /candidates/7152?session=discovery-session-24e366fe25d1 200 in 77ms (next.js: 5ms, application-code: 72ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 19ms (next.js: 5ms, application-code: 14ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 22ms (next.js: 10ms, application-code: 13ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 20ms (next.js: 5ms, application-code: 15ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 25ms (next.js: 9ms, application-code: 16ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 43ms (next.js: 14ms, application-code: 29ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 35ms (next.js: 5ms, application-code: 31ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 32ms (next.js: 7ms, application-code: 25ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 35ms (next.js: 16ms, application-code: 19ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 19ms (next.js: 5ms, application-code: 14ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 23ms (next.js: 9ms, application-code: 14ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 42ms (next.js: 11ms, application-code: 31ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 53ms (next.js: 18ms, application-code: 35ms)
- GET /discover 200 in 31ms (next.js: 5ms, application-code: 25ms)
- GET /api/gateway/v1/auth/me 200 in 168ms (next.js: 11ms, application-code: 157ms)
- GET /api/gateway/v1/discovery/sessions/discovery-session-24e366fe25d1 200 in 172ms (next.js: 17ms, application-code: 155ms)
- GET /api/gateway/v1/persona/collected?profile_id=10001 200 in 221ms (next.js: 19ms, application-code: 202ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 230ms (next.js: 24ms, application-code: 206ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 225ms (next.js: 117ms, application-code: 108ms)
- GET /api/gateway/v1/auth/me 200 in 135ms (next.js: 43ms, application-code: 91ms)
- GET /api/gateway/v1/auth/me 200 in 58ms (next.js: 12ms, application-code: 46ms)
- GET /api/gateway/v1/discovery/sessions/discovery-session-24e366fe25d1 200 in 71ms (next.js: 17ms, application-code: 54ms)
- GET /api/gateway/v1/persona/collected?profile_id=10001 200 in 75ms (next.js: 20ms, application-code: 55ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 81ms (next.js: 25ms, application-code: 56ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 55ms (next.js: 3ms, application-code: 52ms)
- GET /api/gateway/v1/auth/me 200 in 64ms (next.js: 3ms, application-code: 61ms)
- GET /api/gateway/v1/auth/me 200 in 29ms (next.js: 4ms, application-code: 26ms)
- GET /candidates/6130?session=discovery-session-24e366fe25d1 200 in 40ms (next.js: 12ms, application-code: 27ms)
- GET /api/gateway/v1/auth/me 200 in 49ms (next.js: 6ms, application-code: 43ms)
- GET /api/gateway/v1/candidates/6130 200 in 34ms (next.js: 2ms, application-code: 31ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 63ms (next.js: 8ms, application-code: 55ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 66ms (next.js: 11ms, application-code: 55ms)
- GET /api/gateway/v1/auth/me 200 in 81ms (next.js: 15ms, application-code: 65ms)
- GET /api/gateway/v1/candidates/6130 200 in 83ms (next.js: 22ms, application-code: 61ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 94ms (next.js: 26ms, application-code: 68ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 43ms (next.js: 4ms, application-code: 40ms)
- GET /api/gateway/v1/auth/me 200 in 37ms (next.js: 7ms, application-code: 29ms)
- GET /api/gateway/v1/candidates/6130?session_id=discovery-session-24e366fe25d1 200 in 104ms (next.js: 15ms, application-code: 89ms)
- GET /api/gateway/v1/auth/me 200 in 94ms (next.js: 4ms, application-code: 90ms)
-✓ Compiled in 68ms
- GET /discover 200 in 38ms (next.js: 11ms, application-code: 27ms)
- GET /api/gateway/v1/auth/me 200 in 45ms (next.js: 11ms, application-code: 34ms)
- GET /api/gateway/v1/discovery/sessions/discovery-session-24e366fe25d1 200 in 61ms (next.js: 17ms, application-code: 44ms)
- GET /api/gateway/v1/persona/collected?profile_id=10001 200 in 53ms (next.js: 12ms, application-code: 41ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 52ms (next.js: 10ms, application-code: 42ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 56ms (next.js: 15ms, application-code: 41ms)
- GET /api/gateway/v1/auth/me 200 in 51ms (next.js: 8ms, application-code: 42ms)
- GET /api/gateway/v1/auth/me 200 in 47ms (next.js: 12ms, application-code: 35ms)
- GET /api/gateway/v1/discovery/sessions/discovery-session-24e366fe25d1 200 in 63ms (next.js: 14ms, application-code: 48ms)
- GET /api/gateway/v1/persona/collected?profile_id=10001 200 in 99ms (next.js: 6ms, application-code: 93ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 124ms (next.js: 11ms, application-code: 112ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 127ms (next.js: 5ms, application-code: 122ms)
- GET /api/gateway/v1/auth/me 200 in 123ms (next.js: 10ms, application-code: 113ms)
- GET /api/gateway/v1/auth/me 200 in 63ms (next.js: 8ms, application-code: 56ms)
- GET /candidates/1941?session=discovery-session-24e366fe25d1 200 in 41ms (next.js: 15ms, application-code: 26ms)
- GET /api/gateway/v1/auth/me 200 in 54ms (next.js: 6ms, application-code: 49ms)
- GET /api/gateway/v1/candidates/1941 200 in 54ms (next.js: 3ms, application-code: 51ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 45ms (next.js: 7ms, application-code: 38ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 50ms (next.js: 10ms, application-code: 41ms)
- GET /api/gateway/v1/auth/me 200 in 67ms (next.js: 12ms, application-code: 55ms)
- GET /api/gateway/v1/candidates/1941 200 in 73ms (next.js: 19ms, application-code: 54ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 78ms (next.js: 26ms, application-code: 53ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 41ms (next.js: 5ms, application-code: 36ms)
- GET /api/gateway/v1/auth/me 200 in 50ms (next.js: 8ms, application-code: 42ms)
- GET /api/gateway/v1/candidates/1941?session_id=discovery-session-24e366fe25d1 200 in 95ms (next.js: 7ms, application-code: 88ms)
- GET /api/gateway/v1/auth/me 200 in 86ms (next.js: 3ms, application-code: 83ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 33ms (next.js: 10ms, application-code: 23ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 40ms (next.js: 17ms, application-code: 23ms)
-✓ Compiled in 49ms
- GET /api/gateway/v1/candidates/1941?session_id=discovery-session-24e366fe25d1 200 in 47ms (next.js: 5ms, application-code: 43ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 11ms (next.js: 1457µs, application-code: 10ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 9ms (next.js: 1422µs, application-code: 7ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 17ms (next.js: 5ms, application-code: 12ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 21ms (next.js: 8ms, application-code: 12ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 17ms (next.js: 4ms, application-code: 13ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 20ms (next.js: 8ms, application-code: 12ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 34ms (next.js: 11ms, application-code: 23ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 21ms (next.js: 2ms, application-code: 18ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 23ms (next.js: 7ms, application-code: 16ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 30ms (next.js: 11ms, application-code: 19ms)
- GET /candidates/1941?session=discovery-session-24e366fe25d1 200 in 70ms (next.js: 8ms, application-code: 62ms)
- GET /api/gateway/v1/candidates/1941 200 in 40ms (next.js: 8ms, application-code: 32ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 59ms (next.js: 12ms, application-code: 47ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 63ms (next.js: 16ms, application-code: 47ms)
- GET /api/gateway/v1/auth/me 200 in 48ms (next.js: 3ms, application-code: 45ms)
- GET /api/gateway/v1/candidates/1941?session_id=discovery-session-24e366fe25d1 200 in 128ms (next.js: 10ms, application-code: 118ms)
- GET /api/gateway/v1/auth/me 200 in 140ms (next.js: 15ms, application-code: 124ms)
- GET /discover 200 in 38ms (next.js: 8ms, application-code: 29ms)
- GET /api/gateway/v1/auth/me 200 in 40ms (next.js: 11ms, application-code: 29ms)
- GET /api/gateway/v1/discovery/sessions/discovery-session-24e366fe25d1 200 in 47ms (next.js: 6ms, application-code: 41ms)
- GET /api/gateway/v1/persona/collected?profile_id=10001 200 in 49ms (next.js: 11ms, application-code: 38ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 48ms (next.js: 15ms, application-code: 34ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 46ms (next.js: 11ms, application-code: 35ms)
- GET /api/gateway/v1/auth/me 200 in 52ms (next.js: 9ms, application-code: 43ms)
- GET /api/gateway/v1/auth/me 200 in 36ms (next.js: 10ms, application-code: 26ms)
- GET /api/gateway/v1/discovery/sessions/discovery-session-24e366fe25d1 200 in 43ms (next.js: 5ms, application-code: 38ms)
- GET /api/gateway/v1/persona/collected?profile_id=10001 200 in 45ms (next.js: 8ms, application-code: 37ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 45ms (next.js: 9ms, application-code: 36ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 43ms (next.js: 11ms, application-code: 32ms)
- GET /api/gateway/v1/auth/me 200 in 33ms (next.js: 2ms, application-code: 31ms)
- GET /api/gateway/v1/auth/me 200 in 22ms (next.js: 3ms, application-code: 19ms)
- GET /candidates/7152?session=discovery-session-24e366fe25d1 200 in 53ms (next.js: 14ms, application-code: 39ms)
- GET /api/gateway/v1/auth/me 200 in 62ms (next.js: 6ms, application-code: 56ms)
- GET /api/gateway/v1/candidates/7152 200 in 38ms (next.js: 5ms, application-code: 33ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 43ms (next.js: 4ms, application-code: 39ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 47ms (next.js: 9ms, application-code: 38ms)
- GET /api/gateway/v1/auth/me 200 in 53ms (next.js: 13ms, application-code: 40ms)
- GET /api/gateway/v1/candidates/7152 200 in 60ms (next.js: 16ms, application-code: 44ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 75ms (next.js: 20ms, application-code: 56ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 48ms (next.js: 1904µs, application-code: 46ms)
- GET /api/gateway/v1/auth/me 200 in 36ms (next.js: 6ms, application-code: 30ms)
- GET /api/gateway/v1/candidates/7152?session_id=discovery-session-24e366fe25d1 200 in 80ms (next.js: 8ms, application-code: 72ms)
- GET /api/gateway/v1/auth/me 200 in 68ms (next.js: 2ms, application-code: 66ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 21ms (next.js: 5ms, application-code: 15ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 23ms (next.js: 12ms, application-code: 12ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 16ms (next.js: 4ms, application-code: 12ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 19ms (next.js: 7ms, application-code: 12ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 17ms (next.js: 4ms, application-code: 13ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 21ms (next.js: 8ms, application-code: 12ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 16ms (next.js: 4ms, application-code: 12ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 18ms (next.js: 8ms, application-code: 10ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 18ms (next.js: 5ms, application-code: 14ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 21ms (next.js: 9ms, application-code: 13ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 19ms (next.js: 6ms, application-code: 12ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 22ms (next.js: 9ms, application-code: 13ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 18ms (next.js: 5ms, application-code: 13ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 21ms (next.js: 9ms, application-code: 12ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 15ms (next.js: 4ms, application-code: 11ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 11ms (next.js: 1677µs, application-code: 9ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 26ms (next.js: 6ms, application-code: 20ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 32ms (next.js: 11ms, application-code: 22ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 22ms (next.js: 4ms, application-code: 19ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 26ms (next.js: 9ms, application-code: 17ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 23ms (next.js: 8ms, application-code: 15ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 30ms (next.js: 12ms, application-code: 18ms)
- GET /discover 200 in 28ms (next.js: 5ms, application-code: 22ms)
- GET /api/gateway/v1/discovery/sessions/discovery-session-24e366fe25d1 200 in 62ms (next.js: 14ms, application-code: 49ms)
- GET /api/gateway/v1/auth/me 200 in 66ms (next.js: 19ms, application-code: 47ms)
- GET /api/gateway/v1/persona/collected?profile_id=10001 200 in 102ms (next.js: 23ms, application-code: 79ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 106ms (next.js: 15ms, application-code: 91ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 135ms (next.js: 9ms, application-code: 125ms)
- GET /api/gateway/v1/auth/me 200 in 137ms (next.js: 10ms, application-code: 126ms)
- GET /api/gateway/v1/auth/me 200 in 113ms (next.js: 5ms, application-code: 108ms)
- GET /api/gateway/v1/discovery/sessions/discovery-session-24e366fe25d1 200 in 133ms (next.js: 5ms, application-code: 127ms)
- GET /api/gateway/v1/persona/collected?profile_id=10001 200 in 118ms (next.js: 8ms, application-code: 110ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 101ms (next.js: 4ms, application-code: 97ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 96ms (next.js: 6ms, application-code: 89ms)
- GET /api/gateway/v1/auth/me 200 in 90ms (next.js: 10ms, application-code: 81ms)
- GET /api/gateway/v1/auth/me 200 in 28ms (next.js: 9ms, application-code: 19ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 29ms (next.js: 9ms, application-code: 19ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 30ms (next.js: 13ms, application-code: 16ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 27ms (next.js: 8ms, application-code: 19ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 31ms (next.js: 15ms, application-code: 16ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 20ms (next.js: 6ms, application-code: 14ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 23ms (next.js: 9ms, application-code: 14ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 38ms (next.js: 11ms, application-code: 27ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 44ms (next.js: 23ms, application-code: 21ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 20ms (next.js: 5ms, application-code: 15ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 24ms (next.js: 9ms, application-code: 14ms)
- POST /api/gateway/v1/discovery/sessions/discovery-session-24e366fe25d1/turns 200 in 32.4s (next.js: 5ms, application-code: 32.4s)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 17.1s (next.js: 6ms, application-code: 17.1s)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 17.1s (next.js: 9ms, application-code: 17.1s)
+ GET /discover 200 in 934ms (next.js: 637ms, application-code: 297ms)
+ GET /api/gateway/v1/auth/me 200 in 855ms (next.js: 801ms, application-code: 54ms)
+ GET /api/gateway/v1/discovery/sessions/discovery-session-24e366fe25d1 200 in 861ms (next.js: 800ms, application-code: 60ms)
+ GET /api/gateway/v1/persona/collected?profile_id=10001 200 in 889ms (next.js: 799ms, application-code: 89ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 893ms (next.js: 797ms, application-code: 95ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 820ms (next.js: 718ms, application-code: 101ms)
+ GET /api/gateway/v1/auth/me 200 in 818ms (next.js: 711ms, application-code: 107ms)
+ GET /api/gateway/v1/auth/me 200 in 22ms (next.js: 6ms, application-code: 16ms)
 TypeError: fetch failed
     at ignore-listed frames {
   [cause]: Error: getaddrinfo ENOTFOUND cdn.her.local
@@ -630,11 +26,9 @@ TypeError: fetch failed
     hostname: 'cdn.her.local'
   }
 }
- GET /_next/image?url=https%3A%2F%2Fcdn.her.local%2Fprofiles%2F00573%2Favatar.jpg&w=128&q=75 500 in 10.1s (next.js: 10.1s, application-code: 34ms)
- GET /_next/image?url=https%3A%2F%2Fcdn.her.local%2Fprofiles%2F00573%2Favatar.jpg&w=128&q=75 500 in 10.1s (next.js: 10.1s, application-code: 34ms)
+ GET /_next/image?url=https%3A%2F%2Fcdn.her.local%2Fprofiles%2F00573%2Favatar.jpg&w=128&q=75 500 in 10.2s (next.js: 10.2s, application-code: 38ms)
+ GET /_next/image?url=https%3A%2F%2Fcdn.her.local%2Fprofiles%2F00573%2Favatar.jpg&w=128&q=75 500 in 10.2s (next.js: 10.2s, application-code: 38ms)
 ⨯ upstream image response timed out for https://cdn.her.local/profiles/06609/avatar.jpg
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 21ms (next.js: 6ms, application-code: 16ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 24ms (next.js: 10ms, application-code: 13ms)
 TypeError: fetch failed
     at ignore-listed frames {
   [cause]: Error: getaddrinfo ENOTFOUND cdn.her.local
@@ -645,18 +39,61 @@ TypeError: fetch failed
     hostname: 'cdn.her.local'
   }
 }
- GET /_next/image?url=https%3A%2F%2Fcdn.her.local%2Fprofiles%2F07225%2Favatar.jpg&w=128&q=75 500 in 15.0s (next.js: 15.0s, application-code: 12ms)
- GET /_next/image?url=https%3A%2F%2Fcdn.her.local%2Fprofiles%2F07225%2Favatar.jpg&w=128&q=75 500 in 15.0s (next.js: 15.0s, application-code: 12ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 24ms (next.js: 7ms, application-code: 17ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 27ms (next.js: 14ms, application-code: 13ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 19ms (next.js: 5ms, application-code: 15ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 22ms (next.js: 9ms, application-code: 14ms)
+ GET /_next/image?url=https%3A%2F%2Fcdn.her.local%2Fprofiles%2F07225%2Favatar.jpg&w=128&q=75 500 in 15.1s (next.js: 15.0s, application-code: 14ms)
+ GET /_next/image?url=https%3A%2F%2Fcdn.her.local%2Fprofiles%2F07225%2Favatar.jpg&w=128&q=75 500 in 15.1s (next.js: 15.0s, application-code: 14ms)
+ POST /api/gateway/v1/discovery/sessions/discovery-session-24e366fe25d1/turns 200 in 33.3s (next.js: 6ms, application-code: 33.3s)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 15.1s (next.js: 7ms, application-code: 15.1s)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 15.1s (next.js: 15ms, application-code: 15.1s)
+TypeError: fetch failed
+    at ignore-listed frames {
+  [cause]: Error: getaddrinfo ENOTFOUND cdn.her.local
+      at ignore-listed frames {
+    errno: -3008,
+    code: 'ENOTFOUND',
+    syscall: 'getaddrinfo',
+    hostname: 'cdn.her.local'
+  }
+}
+ GET /_next/image?url=https%3A%2F%2Fcdn.her.local%2Fprofiles%2F03735%2Favatar.jpg&w=128&q=75 500 in 10.1s (next.js: 10.0s, application-code: 14ms)
+ GET /_next/image?url=https%3A%2F%2Fcdn.her.local%2Fprofiles%2F03735%2Favatar.jpg&w=128&q=75 500 in 10.1s (next.js: 10.0s, application-code: 14ms)
+⨯ upstream image response timed out for https://cdn.her.local/profiles/00389/avatar.jpg
  GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 21ms (next.js: 6ms, application-code: 15ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 25ms (next.js: 10ms, application-code: 15ms)
-✓ Compiled in 39ms
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 19ms (next.js: 5ms, application-code: 14ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 23ms (next.js: 9ms, application-code: 13ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 37ms (next.js: 15ms, application-code: 22ms)
- GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 41ms (next.js: 19ms, application-code: 22ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 20ms (next.js: 4ms, application-code: 15ms)
  GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 24ms (next.js: 10ms, application-code: 14ms)
+TypeError: fetch failed
+    at ignore-listed frames {
+  [cause]: Error: getaddrinfo ENOTFOUND cdn.her.local
+      at ignore-listed frames {
+    errno: -3008,
+    code: 'ENOTFOUND',
+    syscall: 'getaddrinfo',
+    hostname: 'cdn.her.local'
+  }
+}
+ GET /_next/image?url=https%3A%2F%2Fcdn.her.local%2Fprofiles%2F06260%2Favatar.jpg&w=128&q=75 500 in 15.0s (next.js: 15.0s, application-code: 11ms)
+ GET /_next/image?url=https%3A%2F%2Fcdn.her.local%2Fprofiles%2F06260%2Favatar.jpg&w=128&q=75 500 in 15.0s (next.js: 15.0s, application-code: 12ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 20ms (next.js: 5ms, application-code: 15ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 23ms (next.js: 10ms, application-code: 13ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 27ms (next.js: 7ms, application-code: 20ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 31ms (next.js: 10ms, application-code: 20ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 21ms (next.js: 6ms, application-code: 14ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 24ms (next.js: 10ms, application-code: 14ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 32ms (next.js: 7ms, application-code: 25ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 37ms (next.js: 17ms, application-code: 19ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 29ms (next.js: 10ms, application-code: 19ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 36ms (next.js: 16ms, application-code: 20ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 19ms (next.js: 5ms, application-code: 13ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 22ms (next.js: 9ms, application-code: 13ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 47ms (next.js: 13ms, application-code: 34ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 56ms (next.js: 23ms, application-code: 34ms)
+ GET /candidates/3735?session=discovery-session-24e366fe25d1 200 in 45ms (next.js: 14ms, application-code: 30ms)
+ GET /api/gateway/v1/auth/me 200 in 54ms (next.js: 6ms, application-code: 48ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 79ms (next.js: 5ms, application-code: 74ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 82ms (next.js: 15ms, application-code: 67ms)
+ GET /api/gateway/v1/candidates/3735 200 in 93ms (next.js: 20ms, application-code: 73ms)
+ GET /api/gateway/v1/candidates/3735 200 in 126ms (next.js: 5ms, application-code: 121ms)
+ GET /api/gateway/v1/auth/me 200 in 138ms (next.js: 15ms, application-code: 124ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=10001&unread_only=true 200 in 136ms (next.js: 34ms, application-code: 102ms)
+ GET /api/gateway/v2/chat/cases/case-frontend-demo/timeline?requester_id=usr-aee799b1e77147b7&message_limit=50 200 in 36ms (next.js: 5ms, application-code: 31ms)
+ GET /api/gateway/v1/auth/me 200 in 41ms (next.js: 12ms, application-code: 29ms)
+ GET /api/gateway/v1/candidates/3735?session_id=discovery-session-24e366fe25d1 200 in 115ms (next.js: 16ms, application-code: 99ms)
+ GET /api/gateway/v1/auth/me 200 in 121ms (next.js: 21ms, application-code: 100ms)
