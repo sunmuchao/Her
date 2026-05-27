@@ -7,6 +7,7 @@ import { fetchCandidateDetail } from '@/lib/api/endpoints/candidates'
 import { formatExplainSourceMap } from '@/lib/api/endpoints/collected'
 import { getErrorMessage } from '@/lib/api/errors'
 import { canUseMockFallback } from '@/lib/mock'
+import { getProfileId } from '@/lib/auth/session'
 import {
   DEFAULT_DEMO_CANDIDATE,
   DEMO_CANDIDATES_DATABASE,
@@ -18,12 +19,12 @@ import { FadeIn, Heartbeat, PageTransition } from './ui/animations'
 import { ImageCarousel } from './ui/image-carousel'
 import { DemoDataBanner } from './ui/demo-data-banner'
 import { ErrorState } from './ui/error-state'
+import { submitOpsOverride } from '@/lib/api/endpoints/ops'
 interface CandidateDetailPageProps {
   candidateId: string
   candidate?: CandidatePreview
   sessionId?: string | null
   onBack: () => void
-  onStartChat: () => void
 }
 
 export default function CandidateDetailPage({
@@ -31,7 +32,6 @@ export default function CandidateDetailPage({
   candidate,
   sessionId,
   onBack,
-  onStartChat,
 }: CandidateDetailPageProps) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['intro']))
   const [apiDetail, setApiDetail] = useState<{
@@ -47,6 +47,8 @@ export default function CandidateDetailPage({
   const [loadError, setLoadError] = useState<string | null>(null)
   const [usingMockData, setUsingMockData] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [isExpressingInterest, setIsExpressingInterest] = useState(false)
+  const [interestSent, setInterestSent] = useState(false)
 
   function formatHeight(value: unknown): string {
     const num = typeof value === 'number' ? value : Number(value)
@@ -109,6 +111,7 @@ export default function CandidateDetailPage({
   const rawCandidate = usingMockData
     ? (DEMO_CANDIDATES_DATABASE[candidateId] || DEFAULT_DEMO_CANDIDATE)
     : null
+  const recommendationTargetId = candidate?.recommendationId
 
   const factImages = mapProfileImageUrls(
     [profileFacts.avatar_url, profileFacts.photo_url, profileFacts.cover_url].filter(Boolean).map(String),
@@ -218,6 +221,26 @@ export default function CandidateDetailPage({
       else next.add(section)
       return next
     })
+  }
+
+  const handleExpressInterest = async () => {
+    if (isExpressingInterest || interestSent) return
+    const profileId = getProfileId()
+    if (!profileId || !candidateData.id) return
+    setIsExpressingInterest(true)
+    try {
+      await submitOpsOverride({
+        target_owner: 'recommendation',
+        target_id: recommendationTargetId || candidateData.id,
+        action: 'direct_greet',
+        reason: 'candidate_detail_interest',
+      })
+      setInterestSent(true)
+    } catch {
+      setLoadError('发起意愿失败，请稍后重试')
+    } finally {
+      setIsExpressingInterest(false)
+    }
   }
 
   return (
@@ -402,15 +425,19 @@ export default function CandidateDetailPage({
           </button>
           <Heartbeat>
             <button 
-              onClick={onStartChat} 
-              className="flex-1 py-3 bg-primary rounded-xl text-primary-foreground font-medium flex items-center justify-center gap-2 hover:bg-primary/90 transition-all focus-ring shadow-lg shadow-primary/20"
-              aria-label={`开始和${candidateData.name}聊天`}
+              onClick={() => void handleExpressInterest()}
+              disabled={isExpressingInterest || interestSent}
+              className="flex-1 py-3 bg-primary rounded-xl text-primary-foreground font-medium flex items-center justify-center gap-2 hover:bg-primary/90 transition-all focus-ring shadow-lg shadow-primary/20 disabled:opacity-70"
+              aria-label={`向${candidateData.name}发起认识意愿`}
             >
               <Heart className="w-4 h-4" aria-hidden="true" />
-              开始聊天
+              {interestSent ? '已发送意愿' : isExpressingInterest ? '发送中' : '我愿意认识'}
             </button>
           </Heartbeat>
         </div>
+        {interestSent ? (
+          <p className="mt-2 text-center text-xs text-muted-foreground">已提交，等待对方确认</p>
+        ) : null}
       </div>
     </PageTransition>
   )

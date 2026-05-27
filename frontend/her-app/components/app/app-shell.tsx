@@ -119,7 +119,6 @@ export function AppShell({
               candidate={selectedCandidate || undefined}
               sessionId={discoverySessionId}
               onBack={onBackToMain}
-              onStartChat={() => onOpenChat(selectedChatId || DEMO_DEFAULT_CHAT_ID)}
             />
           </SlideInTransition>
         )}
