@@ -479,6 +479,7 @@ export function RecommendationInbox({
                   image: item.image,
                   message: item.message,
                   recommendationId: item.recommendationId,
+                  subscriptionId: item.subscriptionId,
                 })
               }}
               className="bg-card border border-border rounded-xl p-3 cursor-pointer hover:border-primary/30 transition-colors"
