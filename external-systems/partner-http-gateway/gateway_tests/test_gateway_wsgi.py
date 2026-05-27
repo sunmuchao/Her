@@ -582,6 +582,37 @@ class GatewayWsgiTests(unittest.TestCase):
         self.assertEqual(detail_data["detail_view"]["hero"]["name"], "林知夏")
         self.assertEqual(detail_data["detail_view"]["photo_gallery"][0]["image_url"], "https://static.example.com/p/10001/1.jpg")
 
+    def test_discovery_express_interest(self) -> None:
+        session_id = "discovery-session-abc"
+        candidate_id = 7152
+
+        with mock.patch.object(
+            self.gw._discovery,
+            "get_session_owner_id",
+            return_value=10001,
+        ), mock.patch.object(
+            self.gw._discovery,
+            "express_interest",
+            return_value={
+                "ok": True,
+                "session_id": session_id,
+                "candidate_id": candidate_id,
+                "subscription_id": "sub-123",
+            },
+        ) as express_mock:
+            env = _wsgi_env(
+                "POST",
+                f"/v1/discovery/sessions/{session_id}/candidates/{candidate_id}/express-interest",
+                json.dumps({}).encode("utf-8"),
+            )
+            out = b"".join(self.gw(env, self.start_response))
+
+        self.assertIn("200", self.status)
+        data = json.loads(out.decode("utf-8"))
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["subscription_id"], "sub-123")
+        express_mock.assert_called_once()
+
     def test_internal_error_emits_error_log(self) -> None:
         env = _wsgi_env("GET", "/v1/failure")
         stream = io.StringIO()
