@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { useSearchParams } from 'next/navigation'
 import {
   createDiscoverySession,
@@ -40,6 +40,47 @@ function isNotFoundError(error: unknown): boolean {
   return error instanceof GatewayClientError && error.status === 404
 }
 
+function mergeCollectedChips(
+  setCurrentPrefs: Dispatch<SetStateAction<string[]>>,
+  statements: Record<string, unknown>,
+) {
+  const collectedChips = formatCollectedPreferenceChips(statements)
+  if (!collectedChips.length) return
+  setCurrentPrefs((prev) => {
+    const merged = [...collectedChips]
+    for (const chip of prev) {
+      if (!merged.includes(chip)) merged.push(chip)
+    }
+    return merged.slice(0, 12)
+  })
+}
+
+async function resolveDiscoverySession(
+  profileId: number,
+  sessionFromUrl: string | null,
+): Promise<{ data: DiscoverySessionResponse; apiPath: string }> {
+  const storedSessionId = readStoredDiscoverySessionId(profileId)
+  const candidateSessionId = sessionFromUrl || storedSessionId
+
+  if (candidateSessionId) {
+    try {
+      const restored = await getDiscoverySession(candidateSessionId)
+      return {
+        data: restored,
+        apiPath: `/v1/discovery/sessions/${candidateSessionId}`,
+      }
+    } catch (error) {
+      if (!isNotFoundError(error)) {
+        throw error
+      }
+      clearStoredDiscoverySessionId(profileId)
+    }
+  }
+
+  const created = await createDiscoverySession({ profileId })
+  return { data: created, apiPath: '/v1/discovery/sessions' }
+}
+
 export function useDiscoverySession(onSessionIdChange?: (sessionId: string | null) => void) {
   const searchParams = useSearchParams()
   const sessionFromUrlQuery = searchParams.get('session')
@@ -74,8 +115,8 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
     [onSessionIdChange],
   )
 
-  const hydrateFromResponse = useCallback(
-    async (data: DiscoverySessionResponse, profileId: number, apiPath: string) => {
+  const applyDiscoveryResponse = useCallback(
+    (data: DiscoverySessionResponse, profileId: number, apiPath: string) => {
       const sid = data.session?.session_id || null
       setSessionId(sid)
       if (sid) {
@@ -86,37 +127,51 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
       applyProvenance(false, true, apiPath)
       const mapped = mapDiscoveryView(data.view)
       applyMappedView(mapped)
-      try {
-        const collected = await fetchCollectedStatements(profileId)
-        const collectedChips = formatCollectedPreferenceChips(collected.collected_statements || {})
-        if (collectedChips.length) {
-          setCurrentPrefs((prev) => {
-            const merged = [...collectedChips]
-            for (const chip of prev) {
-              if (!merged.includes(chip)) merged.push(chip)
-            }
-            return merged.slice(0, 12)
-          })
-        }
-      } catch {
-        // Discovery view chips remain when collected API is unavailable.
-      }
       logDataProvenance('discover', applyProvenance(false, mapped.candidates.length > 0, apiPath))
     },
     [applyMappedView, applyProvenance, onSessionIdChange, persistSessionId],
   )
 
+  const loadCollectedPreferences = useCallback(
+    (profileId: number, cancelled: () => boolean) => {
+      void fetchCollectedStatements(profileId)
+        .then((collected) => {
+          if (cancelled()) return
+          mergeCollectedChips(setCurrentPrefs, collected.collected_statements || {})
+        })
+        .catch(() => {
+          // Discovery view chips remain when collected API is unavailable.
+        })
+    },
+    [],
+  )
+
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, suggestedActions, backendCandidates])
+  }, [messages, suggestedActions, backendCandidates, isSubmittingTurn])
 
   useEffect(() => {
     let cancelled = false
+    const isCancelled = () => cancelled
 
     async function loadSession() {
-      if (getAccessToken()) {
-        await hydrateSessionFromAuthMe()
+      setIsLoadingSession(true)
+      setLoadError(null)
+
+      const sessionFromUrl = sessionFromUrlQuery?.trim() || null
+      const authTask = getAccessToken() ? hydrateSessionFromAuthMe() : Promise.resolve(null)
+
+      const profileIdBeforeAuth = getProfileId()
+      let discoveryTask: Promise<{ data: DiscoverySessionResponse; apiPath: string }> | null =
+        profileIdBeforeAuth
+          ? resolveDiscoverySession(profileIdBeforeAuth, sessionFromUrl)
+          : null
+
+      if (profileIdBeforeAuth) {
+        loadCollectedPreferences(profileIdBeforeAuth, isCancelled)
       }
+
+      await authTask
       if (cancelled) return
 
       const profileId = getProfileId()
@@ -137,34 +192,15 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
         return
       }
 
-      setIsLoadingSession(true)
-      setLoadError(null)
-      const sessionFromUrl = sessionFromUrlQuery?.trim() || null
-      const storedSessionId = readStoredDiscoverySessionId(profileId)
-      const candidateSessionId = sessionFromUrl || storedSessionId
+      if (!discoveryTask || profileId !== profileIdBeforeAuth) {
+        loadCollectedPreferences(profileId, isCancelled)
+        discoveryTask = resolveDiscoverySession(profileId, sessionFromUrl)
+      }
 
       try {
-        if (candidateSessionId) {
-          try {
-            const restored = await getDiscoverySession(candidateSessionId)
-            if (cancelled) return
-            await hydrateFromResponse(
-              restored,
-              profileId,
-              `/v1/discovery/sessions/${candidateSessionId}`,
-            )
-            return
-          } catch (error) {
-            if (!isNotFoundError(error)) {
-              throw error
-            }
-            clearStoredDiscoverySessionId(profileId)
-          }
-        }
-
-        const created = await createDiscoverySession({ profileId })
+        const { data, apiPath } = await discoveryTask
         if (cancelled) return
-        await hydrateFromResponse(created, profileId, '/v1/discovery/sessions')
+        applyDiscoveryResponse(data, profileId, apiPath)
       } catch (error) {
         if (cancelled) return
         const message = getErrorMessage(error, '发现页会话加载失败')
@@ -186,7 +222,7 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
     return () => {
       cancelled = true
     }
-  }, [applyProvenance, hydrateFromResponse, sessionFromUrlQuery])
+  }, [applyDiscoveryResponse, applyProvenance, loadCollectedPreferences, sessionFromUrlQuery])
 
   const submitTurn = async (payload: { user_message?: string; action_id?: string }) => {
     if (!sessionId) {
@@ -207,11 +243,27 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
       }
     }
 
+    const trimmedMessage = payload.user_message?.trim() || ''
+    const optimisticId = trimmedMessage ? `optimistic-${Date.now()}` : null
+
+    if (optimisticId && trimmedMessage) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: optimisticId,
+          type: 'user',
+          content: trimmedMessage,
+          timestamp: '刚刚',
+        },
+      ])
+      setInputValue('')
+    }
+
     setIsSubmittingTurn(true)
     try {
       const data = await submitDiscoveryTurn({
         sessionId,
-        userMessage: payload.user_message,
+        userMessage: trimmedMessage || undefined,
         actionId: payload.action_id,
       })
       const mapped = mapDiscoveryView(data.view)
@@ -219,8 +271,11 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
       if (profileId && sessionId) {
         writeStoredDiscoverySessionId(profileId, sessionId)
       }
-      if (payload.user_message) setInputValue('')
     } catch (error) {
+      if (optimisticId) {
+        setMessages((prev) => prev.filter((message) => message.id !== optimisticId))
+        setInputValue(trimmedMessage)
+      }
       notifyError(error, '发送失败，请重试')
     } finally {
       setIsSubmittingTurn(false)
@@ -231,7 +286,7 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
     messages,
     inputValue,
     setInputValue,
-    isTyping: false,
+    isTyping: isSubmittingTurn,
     currentPrefs,
     suggestedActions,
     composerPlaceholder,
