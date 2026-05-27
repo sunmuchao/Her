@@ -20,6 +20,7 @@ import { DemoDataBanner } from './ui/demo-data-banner'
 import { ErrorState } from './ui/error-state'
 import { EmptyRelationships } from './ui/empty-states'
 import { RelationshipsPageSkeleton } from './ui/skeletons'
+import { useRecommendationInbox } from '@/hooks/use-recommendation-inbox'
 
 interface RelationshipsPageProps {
   onOpenChat: (chatId: string) => void
@@ -53,6 +54,7 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
   const { usingMockData, applyProvenance } = usePageDataSource()
   const [relationPhase, setRelationPhase] = useState<string | null>(null)
   const [sourceMode, setSourceMode] = useState<string | null>(null)
+  const { backendItems } = useRecommendationInbox()
 
   useEffect(() => {
     let cancelled = false
@@ -172,6 +174,12 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
     )
   }
 
+  const pendingIntroItems = backendItems.filter((item) => {
+    const stage = String(item.conversionStage || '').trim()
+    if (!stage) return false
+    return !['聊天中', '已开聊', '已匹配'].includes(stage)
+  })
+
   return (
     <div className="flex flex-col h-full bg-background">
       {usingMockData && <DemoDataBanner />}
@@ -230,6 +238,44 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
                 description={emptyHint || undefined}
               />
             )}
+          </div>
+        </section>
+
+        <section>
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-sm font-medium">牵线中</h2>
+            <span className="text-xs text-muted-foreground">{pendingIntroItems.length}条</span>
+          </div>
+          <div className="space-y-3">
+            {pendingIntroItems.map((item, index) => (
+              <div
+                key={`pending-${item.id}`}
+                className="bg-card border border-border rounded-xl p-3 animate-fade-in-up"
+                style={{ animationDelay: `${index * 50}ms` }}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="relative w-12 h-12 rounded-full overflow-hidden">
+                    <Image src={item.image} alt={item.name} fill className="object-cover" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{item.name}</span>
+                      <span className="text-xs text-muted-foreground">{item.age}岁 · {item.city}</span>
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-0.5 truncate">{item.occupation}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{item.message}</p>
+                  </div>
+                  <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-[10px] text-muted-foreground">
+                    {item.conversionStage}
+                  </span>
+                </div>
+              </div>
+            ))}
+            {pendingIntroItems.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-border px-4 py-5 text-sm text-muted-foreground">
+                暂无进行中的牵线记录
+              </div>
+            ) : null}
           </div>
         </section>
 
