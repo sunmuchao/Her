@@ -393,7 +393,6 @@ export default function ProfilePage({
           </section>
         </FadeIn>
 
-        <p className="text-center text-xs text-muted-foreground pt-4">Her</p>
       </div>
     </PageTransition>
   )

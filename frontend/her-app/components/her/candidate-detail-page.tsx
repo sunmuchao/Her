@@ -7,7 +7,6 @@ import { fetchCandidateDetail } from '@/lib/api/endpoints/candidates'
 import { formatExplainSourceMap } from '@/lib/api/endpoints/collected'
 import { getErrorMessage } from '@/lib/api/errors'
 import { canUseMockFallback } from '@/lib/mock'
-import { getProfileId } from '@/lib/auth/session'
 import {
   DEFAULT_DEMO_CANDIDATE,
   DEMO_CANDIDATES_DATABASE,
@@ -19,12 +18,13 @@ import { FadeIn, Heartbeat, PageTransition } from './ui/animations'
 import { ImageCarousel } from './ui/image-carousel'
 import { DemoDataBanner } from './ui/demo-data-banner'
 import { ErrorState } from './ui/error-state'
-import { submitOpsOverride } from '@/lib/api/endpoints/ops'
+import { postRecommendationAction } from '@/lib/api/endpoints/recommendation'
 interface CandidateDetailPageProps {
   candidateId: string
   candidate?: CandidatePreview
   sessionId?: string | null
   onBack: () => void
+  onOpenRelationships: () => void
 }
 
 export default function CandidateDetailPage({
@@ -32,6 +32,7 @@ export default function CandidateDetailPage({
   candidate,
   sessionId,
   onBack,
+  onOpenRelationships,
 }: CandidateDetailPageProps) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['intro']))
   const [apiDetail, setApiDetail] = useState<{
@@ -48,7 +49,7 @@ export default function CandidateDetailPage({
   const [usingMockData, setUsingMockData] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isExpressingInterest, setIsExpressingInterest] = useState(false)
-  const [interestSent, setInterestSent] = useState(false)
+  const [showSubmittedHint, setShowSubmittedHint] = useState(false)
 
   function formatHeight(value: unknown): string {
     const num = typeof value === 'number' ? value : Number(value)
@@ -112,6 +113,7 @@ export default function CandidateDetailPage({
     ? (DEMO_CANDIDATES_DATABASE[candidateId] || DEFAULT_DEMO_CANDIDATE)
     : null
   const recommendationTargetId = candidate?.recommendationId
+  const subscriptionId = candidate?.subscriptionId
 
   const factImages = mapProfileImageUrls(
     [profileFacts.avatar_url, profileFacts.photo_url, profileFacts.cover_url].filter(Boolean).map(String),
@@ -224,19 +226,23 @@ export default function CandidateDetailPage({
   }
 
   const handleExpressInterest = async () => {
-    if (isExpressingInterest || interestSent) return
-    const profileId = getProfileId()
-    if (!profileId || !candidateData.id) return
+    if (isExpressingInterest) return
+    if (!subscriptionId || !candidateData.id) {
+      setLoadError('当前候选人暂时不能直接发起认识，请先通过推荐来信进入')
+      return
+    }
     setIsExpressingInterest(true)
     try {
-      await submitOpsOverride({
-        target_owner: 'recommendation',
-        target_id: recommendationTargetId || candidateData.id,
-        action: 'direct_greet',
-        reason: 'candidate_detail_interest',
+      const idempotencyKey = `${subscriptionId}:${candidateData.id}:direct_greet`
+      await postRecommendationAction({
+        subscriptionId,
+        candidateId: Number(candidateData.id),
+        actionType: 'direct_greet',
+        idempotencyKey,
       })
-      setInterestSent(true)
-    } catch {
+      setShowSubmittedHint(true)
+    } catch (error) {
+      console.error(error)
       setLoadError('发起意愿失败，请稍后重试')
     } finally {
       setIsExpressingInterest(false)
@@ -424,19 +430,28 @@ export default function CandidateDetailPage({
             暂时跳过
           </button>
           <Heartbeat>
-            <button 
+            <button
               onClick={() => void handleExpressInterest()}
-              disabled={isExpressingInterest || interestSent}
+              disabled={isExpressingInterest}
               className="flex-1 py-3 bg-primary rounded-xl text-primary-foreground font-medium flex items-center justify-center gap-2 hover:bg-primary/90 transition-all focus-ring shadow-lg shadow-primary/20 disabled:opacity-70"
               aria-label={`向${candidateData.name}发起认识意愿`}
             >
               <Heart className="w-4 h-4" aria-hidden="true" />
-              {interestSent ? '已发送意愿' : isExpressingInterest ? '发送中' : '愿意认识'}
+              {isExpressingInterest ? '发送中' : '愿意认识'}
             </button>
           </Heartbeat>
         </div>
-        {interestSent ? (
-          <p className="mt-2 text-center text-xs text-muted-foreground">已提交，等待对方确认</p>
+        {showSubmittedHint ? (
+          <div className="mt-2 flex items-center justify-center gap-3">
+            <p className="text-xs text-muted-foreground">已提交，可在关系里查看进度</p>
+            <button
+              type="button"
+              onClick={onOpenRelationships}
+              className="text-xs font-medium text-primary"
+            >
+              去关系页
+            </button>
+          </div>
         ) : null}
       </div>
     </PageTransition>

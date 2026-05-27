@@ -11,4 +11,5 @@ export type CandidatePreview = {
   matchReason?: string
   message?: string
   recommendationId?: number
+  subscriptionId?: string
 }
