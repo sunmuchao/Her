@@ -111,6 +111,30 @@ def rest_discovery_get_session(
     return 200, {**_json_safe(out), "trace_id": get_trace_id()}
 
 
+def rest_discovery_express_interest(
+    gateway: DiscoveryGateway,
+    environ: dict[str, Any],
+    session_id: str,
+    candidate_id: int,
+    body: dict[str, Any],
+) -> tuple[int, dict[str, Any]]:
+    try:
+        owner_id = gateway._discovery.get_session_owner_id(session_id)
+        gateway._assert_actor_can_access_owner(
+            environ,
+            owner_id,
+            field_name="profile_id",
+        )
+        out = gateway._discovery.express_interest(
+            session_id,
+            candidate_id=candidate_id,
+            now=_parse_optional_now(body),
+        )
+    except DiscoveryServiceError as exc:
+        return _discovery_error(exc)
+    return 200, {**_json_safe(out), "trace_id": get_trace_id()}
+
+
 def dispatch_discovery_rest(
     gateway: DiscoveryGateway,
     environ: dict[str, Any],
@@ -129,6 +153,15 @@ def dispatch_discovery_rest(
             gateway,
             environ,
             match.group(1),
+            _parse_json_body(_read_body(environ)),
+        )
+    match = re.fullmatch(r"/v1/discovery/sessions/([^/]+)/candidates/(\d+)/express-interest", path)
+    if match and method == "POST":
+        return rest_discovery_express_interest(
+            gateway,
+            environ,
+            match.group(1),
+            int(match.group(2)),
             _parse_json_body(_read_body(environ)),
         )
     match = re.fullmatch(r"/v1/discovery/sessions/([^/]+)", path)

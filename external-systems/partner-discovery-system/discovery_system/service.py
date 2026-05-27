@@ -113,6 +113,16 @@ class DiscoveryProfileNotFoundError(DiscoveryServiceError):
     status_code = 404
 
 
+class DiscoveryCandidateNotFoundError(DiscoveryServiceError):
+    code = "DISCOVERY_CANDIDATE_NOT_FOUND"
+    status_code = 404
+
+
+class DiscoveryInterestNotAvailableError(DiscoveryServiceError):
+    code = "DISCOVERY_INTEREST_NOT_AVAILABLE"
+    status_code = 409
+
+
 class DiscoveryProfileUpdateNotFoundError(DiscoveryServiceError):
     code = "DISCOVERY_PROFILE_UPDATE_NOT_FOUND"
     status_code = 404
@@ -390,6 +400,148 @@ class DiscoveryService:
                 detail_payload,
                 matchmaker_notes=self._build_profile_detail_notes(session, profile_id),
             ),
+        }
+
+    def express_interest(
+        self,
+        session_id: str,
+        *,
+        candidate_id: int,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        if candidate_id <= 0:
+            raise DiscoveryCandidateNotFoundError("candidate not found")
+
+        current = now or datetime.now()
+        session = self._require_session(session_id)
+        if session.status != "active":
+            raise DiscoverySessionClosedError("discovery session is closed")
+
+        search_run_id = int(session.state.get("last_search_run_id") or 0)
+        if search_run_id <= 0:
+            raise DiscoveryInterestNotAvailableError("当前还没有可发起认识的推荐结果。")
+
+        search_run = self.storage.get_search_run(search_run_id)
+        if search_run is None:
+            raise DiscoveryInterestNotAvailableError("推荐结果已失效，请让红娘重新搜一轮。")
+
+        candidate = self._find_candidate_in_search_run(search_run.response, candidate_id)
+        if candidate is None:
+            raise DiscoveryCandidateNotFoundError("candidate not found in latest discovery results")
+
+        request_meta = dict((search_run.response or {}).get("request_meta") or {})
+        criteria = dict(request_meta.get("criteria") or search_run.criteria or {})
+        self_profile = deepcopy(request_meta.get("self_profile") or search_run.self_profile or {})
+        effective_self_id = request_meta.get("self_id")
+        if effective_self_id in (None, ""):
+            effective_self_id = session.profile_id
+
+        conn = self._open_recommendation_conn()
+        try:
+            create_subscription, _, refresh_subscription = self._load_recommendation_bindings()
+            from recommendation_system import (  # type: ignore[import-untyped]
+                deliver_in_app_recommendations,
+                record_recommendation_action,
+            )
+            from recommendation_system.recommendation_rows import (  # type: ignore[import-untyped]
+                get_recommendation,
+                upsert_recommendation,
+            )
+
+            subscription = create_subscription(
+                conn,
+                requester_id=session.requester_id,
+                self_id=int(effective_self_id) if effective_self_id is not None else None,
+                source=request_meta.get("source") or search_run.source,
+                criteria=criteria,
+                self_profile=self_profile if isinstance(self_profile, dict) else {},
+                title=self._build_proxy_intro_title(session, candidate),
+                limit_count=max(int(search_run.limit_count or 0), int(search_run.result_count or 0), 10),
+                recommendation_mode="match_based",
+                initial_request={
+                    "source": request_meta.get("source") or search_run.source,
+                    "criteria": criteria,
+                    "self_profile": self_profile if isinstance(self_profile, dict) else {},
+                    "self_id": effective_self_id,
+                    "limit_count": max(int(search_run.limit_count or 0), int(search_run.result_count or 0), 10),
+                },
+                now=current,
+            )
+            subscription_id = str(subscription.get("subscription_id") or "").strip()
+            if not subscription_id:
+                raise DiscoveryInterestNotAvailableError("正式牵线单创建失败，请稍后重试。")
+
+            refresh_subscription(conn, subscription_id, now=current)
+
+            recommendation = get_recommendation(conn, subscription_id, int(candidate_id))
+            if recommendation is None:
+                recommendation = upsert_recommendation(
+                    conn,
+                    subscription,
+                    candidate,
+                    current,
+                    review_rank=1,
+                    rule_provenance={
+                        "source": "discovery_session",
+                        "session_id": session.session_id,
+                        "search_run_id": search_run_id,
+                        "hydrated_from_search_run": True,
+                    },
+                )
+
+            recommendation = record_recommendation_action(
+                conn,
+                subscription_id=subscription_id,
+                candidate_id=int(candidate_id),
+                action_type="direct_greet",
+                actor_id=str(session.requester_id),
+                now=current,
+                action_payload={
+                    "source": "discovery_session",
+                    "session_id": session.session_id,
+                    "search_run_id": search_run_id,
+                },
+                client_idempotency_key=f"{session.session_id}:{candidate_id}:direct_greet",
+            )
+            deliver_in_app_recommendations(conn, now=current)
+        except DiscoveryServiceError:
+            raise
+        except ValueError as exc:
+            raise DiscoveryInterestNotAvailableError(str(exc)[:200]) from exc
+        except Exception as exc:  # noqa: BLE001
+            raise DiscoveryInterestNotAvailableError("发起认识失败，请稍后重试。") from exc
+        finally:
+            conn.close()
+
+        session.state["last_created_subscription_id"] = subscription_id
+        session.state["last_interest_candidate_id"] = int(candidate_id)
+        session.state["last_interest_at"] = current.isoformat()
+        self.storage.save_session(session)
+
+        self._increment_metric("interest_expressions.created")
+        funnel_stage(
+            system="discovery",
+            stage="express_interest",
+            session_id=session.session_id,
+            requester_id=session.requester_id,
+            profile_id=candidate_id,
+            trace_id=self._current_trace_id(),
+        )
+        audit_event(
+            action="discovery.express_interest",
+            resource_type="discovery_candidate",
+            outcome="created",
+            resource_id=candidate_id,
+            session_id=session.session_id,
+            requester_id=session.requester_id,
+            profile_id=session.profile_id,
+        )
+        return {
+            "ok": True,
+            "session_id": session.session_id,
+            "candidate_id": int(candidate_id),
+            "subscription_id": subscription_id,
+            "recommendation": recommendation,
         }
 
     def _build_runtime_input(
@@ -1091,6 +1243,29 @@ class DiscoveryService:
 
     def _decision_payload(self, decision: DiscoveryDecision) -> dict[str, Any]:
         return _decision_payload_impl(decision)
+
+    def _build_proxy_intro_title(self, session: StoredSession, candidate: dict[str, Any]) -> str:
+        candidate_name = str(candidate.get("name") or "").strip()
+        if candidate_name:
+            return f"牵线中：{candidate_name}"
+        return self._build_saved_search_title(session)
+
+    def _find_candidate_in_search_run(
+        self,
+        response: dict[str, Any] | None,
+        candidate_id: int,
+    ) -> dict[str, Any] | None:
+        normalized_id = int(candidate_id)
+        payload = dict(response or {})
+        for key in ("results", "fallback_results"):
+            for item in list(payload.get(key) or []):
+                try:
+                    item_id = int(item.get("id") or 0)
+                except (TypeError, ValueError):
+                    item_id = 0
+                if item_id == normalized_id:
+                    return deepcopy(item)
+        return None
 
     def _require_session(self, session_id: str) -> StoredSession:
         session = self.storage.get_session(session_id)
