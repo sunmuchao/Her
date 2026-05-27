@@ -250,8 +250,10 @@ class DiscoveryServiceTests(unittest.TestCase):
     def setUp(self) -> None:
         self._old_profile_source = os.environ.get("HER_DISCOVERY_PROFILE_SOURCE")
         self._old_persona_source = os.environ.get("PERSONA_MEMORY_MYSQL_SOURCE")
+        self._old_create_session_mode = os.environ.get("HER_DISCOVERY_CREATE_SESSION_MODE")
         os.environ["HER_DISCOVERY_PROFILE_SOURCE"] = _DISCOVERY_TEST_PROFILE_SOURCE
         os.environ["PERSONA_MEMORY_MYSQL_SOURCE"] = _DISCOVERY_TEST_PERSONA_SOURCE
+        os.environ["HER_DISCOVERY_CREATE_SESSION_MODE"] = "agent"
 
     def tearDown(self) -> None:
         if self._old_profile_source is None:
@@ -262,6 +264,10 @@ class DiscoveryServiceTests(unittest.TestCase):
             os.environ.pop("PERSONA_MEMORY_MYSQL_SOURCE", None)
         else:
             os.environ["PERSONA_MEMORY_MYSQL_SOURCE"] = self._old_persona_source
+        if self._old_create_session_mode is None:
+            os.environ.pop("HER_DISCOVERY_CREATE_SESSION_MODE", None)
+        else:
+            os.environ["HER_DISCOVERY_CREATE_SESSION_MODE"] = self._old_create_session_mode
 
     def test_in_memory_agent_session_store_persists_items_across_instances(self) -> None:
         store = InMemoryDiscoveryAgentSessionStore()
@@ -1012,6 +1018,89 @@ class DiscoveryServiceTests(unittest.TestCase):
         self.assertEqual(counters["view_snapshots.written"], 2)
         self.assertEqual(counters["session_restores"], 1)
         self.assertEqual(counters["profile_detail_reads"], 1)
+
+
+class DiscoveryProfileFirstSessionTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._old_create_session_mode = os.environ.get("HER_DISCOVERY_CREATE_SESSION_MODE")
+        os.environ["HER_DISCOVERY_CREATE_SESSION_MODE"] = "profile_first"
+
+    def tearDown(self) -> None:
+        if self._old_create_session_mode is None:
+            os.environ.pop("HER_DISCOVERY_CREATE_SESSION_MODE", None)
+        else:
+            os.environ["HER_DISCOVERY_CREATE_SESSION_MODE"] = self._old_create_session_mode
+
+    def test_create_session_profile_first_skips_initial_decision_and_searches(self) -> None:
+        runtime = _FakeRuntime()
+        service = DiscoveryService(storage=InMemoryDiscoveryStorage(), runtime=runtime)
+        search_response = {
+            "has_match": True,
+            "result_count": 1,
+            "results": [
+                {
+                    "id": 1001,
+                    "name": "林知夏",
+                    "score": 92,
+                    "matched_on": ["城市一致", "关系目标一致"],
+                    "profile": {"age": 29, "city": "无锡", "job": "中学老师", "education": "硕士"},
+                }
+            ],
+            "request_meta": {
+                "criteria": {
+                    "cities": ["无锡"],
+                    "gender": "女",
+                    "age_min": 26,
+                    "age_max": 30,
+                    "relationship_goals": ["认真恋爱"],
+                }
+            },
+        }
+
+        with mock.patch.object(service, "_search_partner_candidates", return_value=search_response) as search_mock:
+            created = service.create_session(requester_id=70001, profile_id=10001)
+
+        search_mock.assert_called_once()
+        self.assertEqual(search_mock.call_args.kwargs["criteria"], {})
+        self.assertEqual(search_mock.call_args.kwargs["limit"], 5)
+
+        timeline = created["view"]["timeline"]
+        self.assertEqual(timeline[0]["item_type"], "assistant_message")
+        self.assertIn("有没有眼缘", timeline[0]["body"])
+        self.assertEqual(timeline[-1]["item_type"], "result_group")
+        self.assertEqual(timeline[-1]["cards"][0]["profile_id"], 1001)
+        self.assertEqual(created["session"]["phase"], "results_shown")
+        self.assertEqual(
+            [chip["label"] for chip in created["view"]["criteria_chips"]],
+            ["无锡", "女", "26-30岁", "认真恋爱"],
+        )
+
+        tool_calls = service.storage.list_tool_calls(created["session"]["session_id"])
+        self.assertEqual(len(tool_calls), 1)
+        self.assertEqual(tool_calls[0].tool_name, "search_partner_candidates")
+
+        stored_session = service.storage.get_session(created["session"]["session_id"])
+        assert stored_session is not None
+        self.assertEqual(stored_session.state["create_session_mode"], "profile_first")
+
+    def test_create_session_profile_first_empty_search_keeps_starter_actions(self) -> None:
+        service = DiscoveryService(storage=InMemoryDiscoveryStorage(), runtime=_FakeRuntime())
+        search_response = {
+            "has_match": False,
+            "result_count": 0,
+            "results": [],
+            "request_meta": {"criteria": {"cities": ["上海"]}},
+        }
+
+        with mock.patch.object(service, "_search_partner_candidates", return_value=search_response):
+            created = service.create_session(requester_id=70001, profile_id=10001)
+
+        timeline = created["view"]["timeline"]
+        self.assertEqual(len(timeline), 1)
+        self.assertEqual(timeline[0]["item_type"], "assistant_message")
+        self.assertIn("暂时没找到", timeline[0]["body"])
+        self.assertTrue(created["view"]["suggested_actions"])
+        self.assertEqual(created["session"]["phase"], "collecting_preferences")
 
 
 if __name__ == "__main__":

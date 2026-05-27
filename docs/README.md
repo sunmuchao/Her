@@ -2,6 +2,7 @@
 
 - **System overview (code-scanned):** [`../SYSTEM_DOC.md`](../SYSTEM_DOC.md)
 - **Performance optimization (implemented):** [`PERFORMANCE_OPTIMIZATION.md`](./PERFORMANCE_OPTIMIZATION.md)
+- **Discovery / 红娘页性能与交互方案（待落地）:** [`discovery-matchmaker-performance-plan.md`](./discovery-matchmaker-performance-plan.md)
 - Frontend improvement plan: [`frontend-improvement-plan.md`](./frontend-improvement-plan.md)
 - **Archived planning / validation notes:** [`archive/`](./archive/) — chat-assistant、discovery、section13.1 等历史材料（仅供参考，以代码为准）
 - **Live design pages:** [`design-pages/README.md`](./design-pages/README.md) — 按实现状态标注

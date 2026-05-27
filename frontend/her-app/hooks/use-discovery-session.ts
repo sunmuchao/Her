@@ -16,10 +16,10 @@ import { canUseMockFallback } from '@/lib/mock'
 import { notifyError, notifySuccess } from '@/lib/notify'
 import { logDataProvenance, usePageDataSource } from '@/lib/data-provenance'
 import { DEMO_CANDIDATES } from '@/lib/fixtures/demo-profiles'
-import type { CandidatePreview } from '@/lib/types/candidate'
 import {
   mapDiscoveryView,
-  type DiscoveryChatMessage,
+  timelineHasCandidates,
+  type DiscoveryTimelineItem,
   type MappedDiscoveryView,
 } from '@/lib/discovery/map-discovery-view'
 import {
@@ -84,7 +84,7 @@ async function resolveDiscoverySession(
 export function useDiscoverySession(onSessionIdChange?: (sessionId: string | null) => void) {
   const searchParams = useSearchParams()
   const sessionFromUrlQuery = searchParams.get('session')
-  const [messages, setMessages] = useState<DiscoveryChatMessage[]>([])
+  const [timelineItems, setTimelineItems] = useState<DiscoveryTimelineItem[]>([])
   const [inputValue, setInputValue] = useState('')
   const [currentPrefs, setCurrentPrefs] = useState<string[]>([])
   const [sessionId, setSessionId] = useState<string | null>(null)
@@ -92,19 +92,17 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
   const [composerPlaceholder, setComposerPlaceholder] = useState('输入你的想法...')
   const [composerDisabled, setComposerDisabled] = useState(false)
   const [isSubmittingTurn, setIsSubmittingTurn] = useState(false)
-  const [backendCandidates, setBackendCandidates] = useState<CandidatePreview[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
   const { usingMockData, applyProvenance } = usePageDataSource()
   const [isLoadingSession, setIsLoadingSession] = useState(true)
   const chatEndRef = useRef<HTMLDivElement>(null)
 
   const applyMappedView = useCallback((mapped: MappedDiscoveryView) => {
-    setMessages(mapped.messages)
+    setTimelineItems(mapped.timelineItems)
     if (mapped.chips?.length) setCurrentPrefs(mapped.chips)
     setSuggestedActions(mapped.actions)
     setComposerPlaceholder(mapped.composerPlaceholder)
     setComposerDisabled(mapped.composerDisabled)
-    setBackendCandidates(mapped.candidates.length ? mapped.candidates : [])
   }, [])
 
   const persistSessionId = useCallback(
@@ -127,7 +125,7 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
       applyProvenance(false, true, apiPath)
       const mapped = mapDiscoveryView(data.view)
       applyMappedView(mapped)
-      logDataProvenance('discover', applyProvenance(false, mapped.candidates.length > 0, apiPath))
+      logDataProvenance('discover', applyProvenance(false, timelineHasCandidates(mapped.timelineItems), apiPath))
     },
     [applyMappedView, applyProvenance, onSessionIdChange, persistSessionId],
   )
@@ -148,7 +146,7 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, suggestedActions, backendCandidates, isSubmittingTurn])
+  }, [timelineItems, suggestedActions, isSubmittingTurn])
 
   useEffect(() => {
     let cancelled = false
@@ -184,7 +182,21 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
         )
         if (canUseMockFallback()) {
           applyProvenance(true, true, '/v1/discovery/sessions')
-          setBackendCandidates(DEMO_CANDIDATES)
+          setTimelineItems([
+            {
+              kind: 'message',
+              id: 'demo-msg',
+              type: 'matchmaker',
+              content: '根据你的资料，我先帮你看了这几位（演示数据）。',
+              timestamp: '刚刚',
+            },
+            {
+              kind: 'result_group',
+              id: 'demo-group',
+              title: '为你精心挑选',
+              candidates: DEMO_CANDIDATES,
+            },
+          ])
           setCurrentPrefs(['同城优先', '本科以上'])
         } else {
           applyProvenance(false, false, '/v1/discovery/sessions')
@@ -207,7 +219,21 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
         setLoadError(message)
         if (canUseMockFallback()) {
           applyProvenance(true, true, '/v1/discovery/sessions')
-          setBackendCandidates(DEMO_CANDIDATES)
+          setTimelineItems([
+            {
+              kind: 'message',
+              id: 'demo-msg',
+              type: 'matchmaker',
+              content: '根据你的资料，我先帮你看了这几位（演示数据）。',
+              timestamp: '刚刚',
+            },
+            {
+              kind: 'result_group',
+              id: 'demo-group',
+              title: '为你精心挑选',
+              candidates: DEMO_CANDIDATES,
+            },
+          ])
           setCurrentPrefs(['同城优先', '本科以上'])
         } else {
           applyProvenance(false, false, '/v1/discovery/sessions')
@@ -247,9 +273,10 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
     const optimisticId = trimmedMessage ? `optimistic-${Date.now()}` : null
 
     if (optimisticId && trimmedMessage) {
-      setMessages((prev) => [
+      setTimelineItems((prev) => [
         ...prev,
         {
+          kind: 'message',
           id: optimisticId,
           type: 'user',
           content: trimmedMessage,
@@ -273,7 +300,7 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
       }
     } catch (error) {
       if (optimisticId) {
-        setMessages((prev) => prev.filter((message) => message.id !== optimisticId))
+        setTimelineItems((prev) => prev.filter((item) => item.kind !== 'message' || item.id !== optimisticId))
         setInputValue(trimmedMessage)
       }
       notifyError(error, '发送失败，请重试')
@@ -283,7 +310,7 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
   }
 
   return {
-    messages,
+    timelineItems,
     inputValue,
     setInputValue,
     isTyping: isSubmittingTurn,
@@ -292,7 +319,6 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
     composerPlaceholder,
     composerDisabled,
     isSubmittingTurn,
-    backendCandidates,
     loadError,
     usingMockData,
     isLoadingSession,

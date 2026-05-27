@@ -309,6 +309,8 @@ refresh_active_pool → build_mutual_pairs → open_match_cases
   → 可 saveDiscoveryAsSubscription 进入推荐订阅
 ```
 
+**性能与交互演进（方案，待落地）**：首屏按 onboarding 资料直接搜人（不调 AI 开场）、聊天中不写 persona、聊后自动批量更新画像，以及前端并行/体感优化，见 [`docs/discovery-matchmaker-performance-plan.md`](docs/discovery-matchmaker-performance-plan.md)。
+
 ---
 
 ### 5.6 人格记忆与资料（persona_memory_sync + profile_service）

@@ -7,7 +7,9 @@ import Image from 'next/image'
 import { EmptyRecommendations, EmptySearchResults } from './ui/empty-states'
 import { InboxItemSkeleton, DiscoverPageSkeleton } from './ui/skeletons'
 import { TypingIndicator } from './ui/typing-indicator'
-import { FadeIn, OnlineIndicator } from './ui/animations'
+import { OnlineIndicator } from './ui/animations'
+import { DiscoveryCandidateCard } from './discovery-candidate-card'
+import type { DiscoveryTimelineItem } from '@/lib/discovery/map-discovery-view'
 import { cn } from '@/lib/utils'
 import { getProfileId } from '@/lib/auth/session'
 import {
@@ -30,6 +32,54 @@ interface DiscoverPageProps {
   onSessionIdChange?: (sessionId: string | null) => void
 }
 
+function DiscoveryTimelineEntry({
+  item,
+  onViewCandidate,
+}: {
+  item: DiscoveryTimelineItem
+  onViewCandidate: (candidateId: string, candidate?: CandidatePreview) => void
+}) {
+  if (item.kind === 'message') {
+    const isUser = item.type === 'user'
+    return (
+      <div className={cn('flex', isUser ? 'justify-end' : 'justify-start')}>
+        <div className={cn('max-w-[80%]', isUser ? 'order-1' : '')}>
+          <div
+            className={cn(
+              'px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed',
+              isUser
+                ? 'bg-primary text-primary-foreground rounded-br-md'
+                : 'bg-card border border-border rounded-bl-md',
+            )}
+          >
+            {item.content}
+          </div>
+          <p className={cn('text-[10px] text-muted-foreground mt-1', isUser ? 'text-right' : '')}>
+            {item.timestamp}
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-2 max-w-[92%]">
+      {item.title ? <p className="text-xs text-muted-foreground">{item.title}</p> : null}
+      <div className="space-y-3">
+        {item.candidates.map((candidate, index) => (
+          <DiscoveryCandidateCard
+            key={`${item.id}-${candidate.id}`}
+            candidate={candidate}
+            onViewCandidate={onViewCandidate}
+            className="animate-fade-in-up"
+            style={{ animationDelay: `${index * 80}ms` }}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function DiscoverPage({
   onViewCandidate,
   onOpenInbox,
@@ -37,7 +87,7 @@ export default function DiscoverPage({
   onSessionIdChange,
 }: DiscoverPageProps) {
   const {
-    messages,
+    timelineItems,
     inputValue,
     setInputValue,
     isTyping,
@@ -46,15 +96,12 @@ export default function DiscoverPage({
     composerPlaceholder,
     composerDisabled,
     isSubmittingTurn,
-    backendCandidates,
     loadError,
     usingMockData,
     isLoadingSession,
     chatEndRef,
     submitTurn,
   } = useDiscoverySession(onSessionIdChange)
-
-  const visibleCandidates = backendCandidates
   const prefChips = currentPrefs.length
     ? currentPrefs
     : usingMockData
@@ -139,15 +186,12 @@ export default function DiscoverPage({
 
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
         <div className="px-4 py-4 space-y-4">
-          {messages.map((msg) => (
-            <div key={msg.id} className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[80%] ${msg.type === 'user' ? 'order-1' : ''}`}>
-                <div className={`px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed ${msg.type === 'user' ? 'bg-primary text-primary-foreground rounded-br-md' : 'bg-card border border-border rounded-bl-md'}`}>
-                  {msg.content}
-                </div>
-                <p className={`text-[10px] text-muted-foreground mt-1 ${msg.type === 'user' ? 'text-right' : ''}`}>{msg.timestamp}</p>
-              </div>
-            </div>
+          {timelineItems.map((item) => (
+            <DiscoveryTimelineEntry
+              key={item.id}
+              item={item}
+              onViewCandidate={onViewCandidate}
+            />
           ))}
 
           {isTyping ? <TypingIndicator name="小雅" /> : null}
@@ -167,48 +211,6 @@ export default function DiscoverPage({
             </div>
           ) : null}
 
-          {visibleCandidates.length > 0 ? (
-            <FadeIn className="pt-4" delay={200}>
-              <p className="text-xs text-muted-foreground mb-3">为你精心挑选</p>
-              <div className="space-y-3">
-                {visibleCandidates.map((candidate, index) => (
-                  <button
-                    key={candidate.id}
-                    onClick={() => onViewCandidate(candidate.id, candidate)}
-                    className={cn(
-                      'w-full bg-card border border-border rounded-xl p-3 text-left transition-all',
-                      'hover:border-primary/30 hover:shadow-sm',
-                      'focus-ring animate-fade-in-up'
-                    )}
-                    style={{ animationDelay: `${index * 100}ms` }}
-                    aria-label={`查看候选人 ${candidate.name} 的详细资料`}
-                  >
-                    <div className="flex gap-3">
-                      <div className="relative w-16 h-20 rounded-lg overflow-hidden shrink-0 bg-secondary">
-                        {candidate.image && <Image src={candidate.image} alt={candidate.name} fill className="object-cover" sizes="64px" loading="lazy" />}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-foreground">{candidate.name}</span>
-                          {candidate.age && <span className="text-sm text-muted-foreground">{candidate.age}岁</span>}
-                          {candidate.verified && <BadgeCheck className="w-4 h-4 text-primary" aria-label="已认证" />}
-                        </div>
-                        <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                          {candidate.city && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" aria-hidden="true" />{candidate.city}</span>}
-                          {candidate.occupation && <span>{candidate.occupation}</span>}
-                        </div>
-                        {candidate.matchReason && <p className="text-xs text-primary mt-2 line-clamp-2">{candidate.matchReason}</p>}
-                      </div>
-                      <div className="flex flex-col items-end justify-between">
-                        {candidate.matchScore ? <span className="text-sm font-medium text-primary">{candidate.matchScore}%</span> : <span />}
-                        <ChevronRight className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </FadeIn>
-          ) : null}
           <div ref={chatEndRef} />
         </div>
       </div>

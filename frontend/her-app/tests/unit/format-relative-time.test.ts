@@ -31,7 +31,40 @@ describe('mapDiscoveryView', () => {
         },
       ],
     })
-    expect(mapped.messages[0]?.timestamp).toBe('15分钟前')
+    const message = mapped.timelineItems.find((item) => item.kind === 'message')
+    expect(message && message.kind === 'message' ? message.timestamp : '').toBe('15分钟前')
     vi.useRealTimers()
+  })
+
+  it('preserves timeline order for messages and result groups', () => {
+    const mapped = mapDiscoveryView({
+      timeline: [
+        {
+          item_type: 'assistant_message',
+          item_id: 'msg-a-1',
+          body: '先给你看几位。',
+        },
+        {
+          item_type: 'result_group',
+          item_id: 'group-1',
+          title: '根据你的资料，先给你看这些',
+          cards: [
+            {
+              profile_id: 1001,
+              title: '林知夏 29',
+              reason_summary: '城市一致',
+            },
+          ],
+        },
+        {
+          item_type: 'user_message',
+          item_id: 'msg-u-1',
+          body: '第二个不错',
+        },
+      ],
+    })
+    expect(mapped.timelineItems.map((item) => item.kind)).toEqual(['message', 'result_group', 'message'])
+    const group = mapped.timelineItems[1]
+    expect(group.kind === 'result_group' && group.candidates[0]?.id).toBe('1001')
   })
 })

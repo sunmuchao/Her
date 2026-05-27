@@ -22,6 +22,12 @@ from .agent_runtime import (
     DiscoveryToolCall,
     create_default_discovery_agent_runtime,
 )
+from .service_session_open import (
+    PROFILE_FIRST_SEARCH_LIMIT,
+    build_profile_first_open_result,
+    criteria_labels_from_search_criteria,
+    discovery_create_session_mode,
+)
 from .agent_session_store import create_default_discovery_agent_session_store
 from .service_integrations import (
     decision_payload as _decision_payload_impl,
@@ -136,8 +142,14 @@ class DiscoveryService:
             state={},
         )
         self.storage.save_session(session)
-        run_input = self._build_runtime_input(session, now=current)
-        runtime_result = self.runtime.initial_decision(run_input)
+        open_mode = discovery_create_session_mode()
+        session.state["create_session_mode"] = open_mode
+        if open_mode == "profile_first":
+            runtime_result, open_tool_calls = self._profile_first_session_open(session)
+        else:
+            run_input = self._build_runtime_input(session, now=current)
+            runtime_result = self.runtime.initial_decision(run_input)
+            open_tool_calls = list(run_input.tool_call_buffer)
         search_run_id = self._apply_runtime_result(session, runtime_result, now=current)
         self.storage.save_session(session)
         turn_id = self.storage.create_turn(
@@ -160,16 +172,17 @@ class DiscoveryService:
         self._record_tool_calls(
             session_id=session.session_id,
             turn_id=turn_id,
-            tool_calls=run_input.tool_call_buffer,
+            tool_calls=open_tool_calls,
             search_run_id=search_run_id,
             created_at=current,
             trace_id=trace_id,
         )
         self._increment_metric("sessions.created")
         self._increment_metric("turns.created")
+        self._increment_metric(f"sessions.create.{open_mode}")
         funnel_stage(
             system="discovery",
-            stage="session_open",
+            stage="session_open_profile_first" if open_mode == "profile_first" else "session_open",
             session_id=session.session_id,
             requester_id=session.requester_id,
             profile_id=session.profile_id,
@@ -542,6 +555,33 @@ class DiscoveryService:
                 )
             )
         return cards
+
+    def _profile_first_session_open(
+        self,
+        session: StoredSession,
+    ) -> tuple[DiscoveryRuntimeResult, list[DiscoveryToolCall]]:
+        tool_call_buffer: list[DiscoveryToolCall] = []
+        search_response = self._search_partner_candidates(
+            session,
+            criteria={},
+            limit=PROFILE_FIRST_SEARCH_LIMIT,
+        )
+        self._append_tool_call(
+            tool_call_buffer,
+            "search_partner_candidates",
+            {"criteria": {}, "limit": PROFILE_FIRST_SEARCH_LIMIT},
+            search_response,
+            status=self._tool_call_status("search_partner_candidates", search_response),
+        )
+        request_meta = dict(search_response.get("request_meta") or {})
+        criteria_labels = criteria_labels_from_search_criteria(
+            dict(request_meta.get("criteria") or {})
+        )
+        runtime_result = build_profile_first_open_result(
+            search_response,
+            criteria_labels=criteria_labels,
+        )
+        return runtime_result, tool_call_buffer
 
     def _build_runtime_context(
         self,
