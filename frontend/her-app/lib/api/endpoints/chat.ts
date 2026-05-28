@@ -1,5 +1,6 @@
 import { fetchCaseConversationTimeline } from '@/lib/api/endpoints/relations'
 import { fetchMyProxyIntroCases } from '@/lib/api/endpoints/proxy-intro'
+import { gatewayJson, queryString } from '@/lib/api/client'
 import type { CaseConversationTimelineResponse } from '@/lib/types/relations'
 import { getChatParticipantId, getUserId } from '@/lib/auth/session'
 
@@ -131,4 +132,95 @@ export async function fetchRelationshipsUnreadSummary(): Promise<{
 export async function fetchRelationshipsUnreadCount(): Promise<number> {
   const summary = await fetchRelationshipsUnreadSummary()
   return summary.total
+}
+
+/**
+ * 获取案例下所有会话（群聊 + 私信）
+ */
+export type CaseConversation = {
+  conversationId: string
+  channelKey: string
+  conversationKind: string
+  members: Array<{
+    participantId: string
+    memberRole: string
+  }>
+}
+
+export async function fetchCaseConversations(
+  caseId: string,
+  requesterId: string,
+): Promise<CaseConversation[]> {
+  const data = await fetchCaseConversationTimeline(caseId, requesterId, 1)
+  return (data.conversations || []).map((item) => ({
+    conversationId: item.conversation.conversation_id,
+    channelKey: item.conversation.channel_key,
+    conversationKind: item.conversation.conversation_kind,
+    members: (item.conversation.members || []).map((m) => ({
+      participantId: m.participant_id,
+      memberRole: m.member_role,
+    })),
+  }))
+}
+
+/**
+ * 获取私信会话ID（assistant_dm_xxx）
+ */
+export async function fetchPrivateChatConversationId(
+  caseId: string,
+  requesterId: string,
+): Promise<string | null> {
+  const conversations = await fetchCaseConversations(caseId, requesterId)
+  // 私信会话的 channel_key 格式为 assistant_dm_{user_id}
+  const dmConversation = conversations.find(
+    (c) => c.channelKey.startsWith('assistant_dm_') && c.channelKey.includes(requesterId),
+  )
+  return dmConversation?.conversationId || null
+}
+
+/**
+ * 获取私信消息列表
+ */
+export type PrivateMessage = {
+  id: string
+  authorId: string
+  body: string
+  createdAt: string
+  isFromMe: boolean
+}
+
+export async function fetchPrivateMessages(
+  conversationId: string,
+  requesterId: string,
+): Promise<PrivateMessage[]> {
+  const data = await gatewayJson<{
+    messages: Array<{
+      message_id: number
+      author_id: string
+      body: string
+      created_at: string
+    }>
+  }>(`/v2/chat/conversations/${conversationId}/messages${queryString({ requester_id: requesterId })}`)
+  
+  return (data.messages || []).map((m) => ({
+    id: String(m.message_id),
+    authorId: m.author_id,
+    body: m.body,
+    createdAt: m.created_at,
+    isFromMe: m.author_id === requesterId,
+  }))
+}
+
+/**
+ * 发送私信
+ */
+export async function sendPrivateMessage(
+  conversationId: string,
+  authorId: string,
+  body: string,
+): Promise<void> {
+  await gatewayJson(`/v2/chat/conversations/${conversationId}/messages`, {
+    method: 'POST',
+    body: JSON.stringify({ author_id: authorId, body }),
+  })
 }
