@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { BadgeCheck, ChevronRight, Heart, MessageCircle, AlertCircle } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { AlertCircle, BadgeCheck, ChevronRight, Heart, MailOpen, MessageCircle, Pin, Trash2 } from 'lucide-react'
 import Image from 'next/image'
 import { fetchRelationshipsUnreadSummary } from '@/lib/api/endpoints/chat'
 import { fetchTrustHub } from '@/lib/api/endpoints/trust-hub'
@@ -48,6 +48,134 @@ type ActiveRelationship = {
   unreadCount: number
 }
 
+type SwipeAction = {
+  key: string
+  label: string
+  icon: typeof Pin
+  tone?: 'default' | 'destructive'
+  onClick: () => void
+}
+
+type SwipeableCardProps = {
+  open: boolean
+  onOpenChange: (next: boolean) => void
+  actions: SwipeAction[]
+  onMainClick?: () => void
+  ariaLabel?: string
+  className?: string
+  style?: React.CSSProperties
+  children: React.ReactNode
+}
+
+function SwipeableCard({
+  open,
+  onOpenChange,
+  actions,
+  onMainClick,
+  ariaLabel,
+  className,
+  style,
+  children,
+}: SwipeableCardProps) {
+  const actionsWidth = actions.length * 76
+  const [dragOffset, setDragOffset] = useState(0)
+  const gesture = useRef({
+    startX: 0,
+    startY: 0,
+    dragging: false,
+    horizontal: false,
+    pointerId: -1,
+  })
+
+  useEffect(() => {
+    if (!open) setDragOffset(0)
+  }, [open])
+
+  function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    const target = event.target as HTMLElement | null
+    if (target?.closest('button')) return
+    gesture.current = {
+      startX: event.clientX,
+      startY: event.clientY,
+      dragging: true,
+      horizontal: false,
+      pointerId: event.pointerId,
+    }
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+
+  function handlePointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    if (!gesture.current.dragging || gesture.current.pointerId !== event.pointerId) return
+    const deltaX = event.clientX - gesture.current.startX
+    const deltaY = event.clientY - gesture.current.startY
+    if (!gesture.current.horizontal) {
+      if (Math.abs(deltaX) < 8) return
+      if (Math.abs(deltaY) > Math.abs(deltaX)) return
+      gesture.current.horizontal = true
+    }
+    const nextOffset = open ? Math.max(0, Math.min(actionsWidth, actionsWidth - deltaX)) : Math.max(0, Math.min(actionsWidth, -deltaX))
+    setDragOffset(nextOffset)
+  }
+
+  function finishGesture(event: React.PointerEvent<HTMLDivElement>) {
+    if (gesture.current.pointerId !== event.pointerId) return
+    const shouldOpen = dragOffset > actionsWidth * 0.4
+    const wasHorizontal = gesture.current.horizontal
+    gesture.current = {
+      startX: 0,
+      startY: 0,
+      dragging: false,
+      horizontal: false,
+      pointerId: -1,
+    }
+    setDragOffset(shouldOpen ? actionsWidth : 0)
+    onOpenChange(shouldOpen)
+    if (!wasHorizontal && !open && onMainClick) onMainClick()
+  }
+
+  const offset = open ? Math.max(actionsWidth, dragOffset) : dragOffset
+
+  return (
+    <div className={className} style={style} aria-label={ariaLabel}>
+      <div className="relative overflow-hidden rounded-xl">
+        <div className="absolute inset-y-0 right-0 flex" style={{ width: actionsWidth }}>
+          {actions.map((action) => {
+            const Icon = action.icon
+            return (
+              <button
+                key={action.key}
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  action.onClick()
+                  onOpenChange(false)
+                  setDragOffset(0)
+                }}
+                className={`flex flex-1 flex-col items-center justify-center gap-1 text-xs text-white ${
+                  action.tone === 'destructive' ? 'bg-destructive' : 'bg-primary'
+                }`}
+              >
+                <Icon className="w-4 h-4" />
+                <span>{action.label}</span>
+              </button>
+            )
+          })}
+        </div>
+        <div
+          className="relative z-10 transition-transform duration-200 ease-out"
+          style={{ transform: `translateX(${-offset}px)` }}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={finishGesture}
+          onPointerCancel={finishGesture}
+        >
+          {children}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function buildActivityText(item: ProxyIntroCase): string {
   const name = item.counterpart_name || '对方'
   const stage = item.stage_label || '牵线中'
@@ -62,11 +190,14 @@ function buildActivityText(item: ProxyIntroCase): string {
 export default function RelationshipsPage({ onOpenChat, onStartVerification }: RelationshipsPageProps) {
   const [cases, setCases] = useState<ProxyIntroCase[]>([])
   const [pendingActions, setPendingActions] = useState<PendingAction[]>([])
+  const [pinnedCardIds, setPinnedCardIds] = useState<Record<string, boolean>>({})
+  const [readCardIds, setReadCardIds] = useState<Record<string, boolean>>({})
   const [loadError, setLoadError] = useState<string | null>(null)
   const [emptyHint, setEmptyHint] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [actingCaseId, setActingCaseId] = useState<string | null>(null)
   const [unreadByCaseId, setUnreadByCaseId] = useState<Record<string, number>>({})
+  const [openCardId, setOpenCardId] = useState<string | null>(null)
   const { usingMockData, applyProvenance } = usePageDataSource()
 
   useEffect(() => {
@@ -171,6 +302,19 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
     }
   }
 
+  function togglePinned(cardId: string) {
+    setPinnedCardIds((prev) => ({ ...prev, [cardId]: !prev[cardId] }))
+  }
+
+  function markAsRead(cardId: string) {
+    setReadCardIds((prev) => ({ ...prev, [cardId]: true }))
+  }
+
+  function deleteCard(cardId: string) {
+    setCases((prev) => prev.filter((item) => String(item.case_id) !== cardId))
+    setOpenCardId((prev) => (prev === cardId ? null : prev))
+  }
+
   if (isLoading) {
     return <RelationshipsPageSkeleton />
   }
@@ -185,11 +329,6 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
   const activeRelationships: ActiveRelationship[] = cases
     .filter((item) => item.main_conversation_id)
     .map((item) => {
-      console.log('[relationships] 构建活跃关系:', {
-        case_id: item.case_id,
-        counterpart_name: item.counterpart_name,
-        counterpart_image: item.counterpart_image,
-      })
       return {
         id: String(item.main_conversation_id),
         caseId: String(item.case_id),
@@ -201,6 +340,13 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
         image: resolveProfileImageUrl(item.counterpart_image ?? undefined, PLACEHOLDER_AVATAR),
         unreadCount: unreadByCaseId[String(item.case_id)] || 0,
       }
+    })
+    .sort((a, b) => {
+      const pinDiff = Number(Boolean(pinnedCardIds[b.caseId])) - Number(Boolean(pinnedCardIds[a.caseId]))
+      if (pinDiff !== 0) return pinDiff
+      const unreadDiff = Number(b.unreadCount > 0) - Number(a.unreadCount > 0)
+      if (unreadDiff !== 0) return unreadDiff
+      return String(b.lastMessageTime).localeCompare(String(a.lastMessageTime))
     })
   const recentActivities = cases.slice(0, 5).map((item, index) => ({
     id: String(item.case_id || index),
@@ -236,17 +382,38 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
           </div>
           <div className="space-y-3">
             {activeRelationships.map((rel, index) => (
-              <button
+              <SwipeableCard
                 key={rel.id}
-                onClick={() => {
-                  console.log('[relationships] 点击活跃关系卡片:', { id: rel.id, name: rel.name, image: rel.image })
-                  onOpenChat(rel.id, { title: rel.name, avatar: rel.image })
-                }}
-                className="w-full bg-card border border-border rounded-xl p-3 text-left hover:border-primary/30 hover:shadow-sm transition-all focus-ring animate-fade-in-up"
+                open={openCardId === rel.caseId}
+                onOpenChange={(next) => setOpenCardId(next ? rel.caseId : null)}
+                actions={[
+                  {
+                    key: 'pin',
+                    label: pinnedCardIds[rel.caseId] ? '取消置顶' : '置顶',
+                    icon: Pin,
+                    onClick: () => togglePinned(rel.caseId),
+                  },
+                  {
+                    key: 'read',
+                    label: '标记已读',
+                    icon: MailOpen,
+                    onClick: () => markAsRead(rel.caseId),
+                  },
+                  {
+                    key: 'delete',
+                    label: '删除',
+                    icon: Trash2,
+                    tone: 'destructive',
+                    onClick: () => deleteCard(rel.caseId),
+                  },
+                ]}
+                onMainClick={() => onOpenChat(rel.id, { title: rel.name, avatar: rel.image })}
                 style={{ animationDelay: `${index * 50}ms` }}
                 aria-label={`查看与${rel.name}的对话`}
+                className="bg-card border border-border rounded-xl hover:border-primary/30 hover:shadow-sm transition-all focus-ring animate-fade-in-up"
               >
-                <div className="flex items-center gap-3">
+                <div className="p-3">
+                  <div className="flex items-center gap-3">
                   <div className="relative w-12 h-12 rounded-full overflow-hidden">
                     <Image src={rel.image} alt={rel.name} fill className="object-cover" />
                     {rel.unreadCount > 0 ? (
@@ -259,6 +426,8 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
                     <div className="flex items-center gap-2">
                       <span className="font-medium">{rel.name}</span>
                       {rel.verified && <BadgeCheck className="w-4 h-4 text-primary" />}
+                      {pinnedCardIds[rel.caseId] ? <span className="px-2 py-0.5 bg-gold/10 text-[10px] text-gold rounded-full">置顶</span> : null}
+                      {readCardIds[rel.caseId] ? <span className="px-2 py-0.5 bg-secondary text-[10px] rounded-full">已读</span> : null}
                       <span className="ml-auto px-2 py-0.5 bg-secondary text-[10px] rounded-full">{rel.stage}</span>
                     </div>
                     <p className="text-sm text-muted-foreground truncate mt-0.5">
@@ -267,7 +436,8 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
                     <span className="text-[10px] text-muted-foreground">{rel.lastMessageTime}</span>
                   </div>
                 </div>
-              </button>
+                </div>
+              </SwipeableCard>
             ))}
             {activeRelationships.length === 0 && (
               <EmptyRelationships
@@ -285,12 +455,36 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
           </div>
           <div className="space-y-3">
             {pendingIntroItems.map((item, index) => (
-              <div
+              <SwipeableCard
                 key={`pending-${item.case_id}`}
-                className="bg-card border border-border rounded-xl p-3 animate-fade-in-up"
+                open={openCardId === String(item.case_id)}
+                onOpenChange={(next) => setOpenCardId(next ? String(item.case_id) : null)}
+                actions={[
+                  {
+                    key: 'pin',
+                    label: pinnedCardIds[String(item.case_id)] ? '取消置顶' : '置顶',
+                    icon: Pin,
+                    onClick: () => togglePinned(String(item.case_id)),
+                  },
+                  {
+                    key: 'read',
+                    label: '标记已读',
+                    icon: MailOpen,
+                    onClick: () => markAsRead(String(item.case_id)),
+                  },
+                  {
+                    key: 'delete',
+                    label: '删除',
+                    icon: Trash2,
+                    tone: 'destructive',
+                    onClick: () => deleteCard(String(item.case_id)),
+                  },
+                ]}
                 style={{ animationDelay: `${index * 50}ms` }}
+                className="bg-card border border-border rounded-xl animate-fade-in-up"
               >
-                <div className="flex items-center gap-3">
+                <div className="p-3">
+                  <div className="flex items-center gap-3">
                   <div className="relative w-12 h-12 rounded-full overflow-hidden">
                     <Image
                       src={resolveProfileImageUrl(item.counterpart_image ?? undefined, PLACEHOLDER_AVATAR)}
@@ -316,6 +510,10 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
                   <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-[10px] text-muted-foreground">
                     {item.stage_label}
                   </span>
+                </div>
+                <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground">
+                  {pinnedCardIds[String(item.case_id)] ? <span className="px-2 py-0.5 rounded-full bg-gold/10 text-gold">置顶</span> : null}
+                  {readCardIds[String(item.case_id)] ? <span className="px-2 py-0.5 rounded-full bg-secondary">已读</span> : null}
                 </div>
                 {item.can_reply ? (
                   <div className="mt-3 flex gap-2">
@@ -346,7 +544,8 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
                     {actingCaseId === item.case_id ? '处理中' : '开始聊天'}
                   </button>
                 ) : null}
-              </div>
+                </div>
+              </SwipeableCard>
             ))}
             {pendingIntroItems.length === 0 ? (
               <div className="rounded-xl border border-dashed border-border px-4 py-5 text-sm text-muted-foreground">

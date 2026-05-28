@@ -7,6 +7,7 @@ import Image from 'next/image'
 import { ChatTypingIndicator } from './ui/typing-indicator'
 import { cn } from '@/lib/utils'
 import { gatewayJson, queryString } from '@/lib/api/client'
+import { markConversationRead } from '@/lib/api/endpoints/chat'
 import { getErrorMessage } from '@/lib/api/errors'
 import { getChatParticipantId } from '@/lib/auth/session'
 import { canUseMockFallback } from '@/lib/mock'
@@ -102,6 +103,7 @@ export default function ChatPage({ chatId, onBack }: ChatPageProps) {
 
   useEffect(() => {
     if (!resolvedChatId) return
+    const resolvedConversationId = resolvedChatId
     const requesterId = getChatParticipantId()
     if (!requesterId) {
       setIsLoading(false)
@@ -147,6 +149,10 @@ export default function ChatPage({ chatId, onBack }: ChatPageProps) {
               : undefined,
           })),
         )
+        const latestMessage = messageData.messages[messageData.messages.length - 1]
+        if (latestMessage && latestMessage.author_id !== requesterId) {
+          markConversationRead(resolvedConversationId, Number(latestMessage.message_id))
+        }
         setUsingMockData(false)
       } catch (error) {
         if (cancelled) return
