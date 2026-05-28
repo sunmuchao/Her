@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { AlertCircle, BadgeCheck, ChevronRight, Heart, MailOpen, MessageCircle, Pin, Trash2 } from 'lucide-react'
+import { AlertCircle, BadgeCheck, ChevronRight, MailOpen, Pin, Trash2 } from 'lucide-react'
 import Image from 'next/image'
 import { fetchRelationshipsUnreadSummary } from '@/lib/api/endpoints/chat'
 import { fetchTrustHub } from '@/lib/api/endpoints/trust-hub'
@@ -348,13 +348,6 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
       if (unreadDiff !== 0) return unreadDiff
       return String(b.lastMessageTime).localeCompare(String(a.lastMessageTime))
     })
-  const recentActivities = cases.slice(0, 5).map((item, index) => ({
-    id: String(item.case_id || index),
-    content: buildActivityText(item),
-    time: item.updated_at || item.created_at || '刚刚',
-    type: item.main_conversation_id ? 'greeting' as const : item.case_status === 'accepted' ? 'match' as const : 'view' as const,
-  }))
-
   if (loadError && !canUseMockFallback() && activeRelationships.length === 0 && cases.length === 0) {
     return (
       <ErrorState
@@ -580,29 +573,6 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
                   </button>
                 )
               })}
-            </div>
-          </section>
-        )}
-
-        {recentActivities.length > 0 && (
-          <section>
-            <h2 className="text-sm font-medium mb-2">最近动态</h2>
-            <div className="bg-card border border-border rounded-xl overflow-hidden">
-              {recentActivities.map((activity, i) => (
-                <div key={activity.id} className={`px-4 py-3 flex items-center gap-3 ${i !== recentActivities.length - 1 ? 'border-b border-border' : ''}`}>
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                    activity.type === 'view' ? 'bg-secondary' : activity.type === 'match' ? 'bg-gold/10' : 'bg-rose/10'
-                  }`}>
-                    {activity.type === 'view' && <MessageCircle className="w-4 h-4 text-muted-foreground" />}
-                    {activity.type === 'match' && <Heart className="w-4 h-4 text-gold" />}
-                    {activity.type === 'greeting' && <Heart className="w-4 h-4 text-rose" />}
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm">{activity.content}</p>
-                    <span className="text-[10px] text-muted-foreground">{activity.time}</span>
-                  </div>
-                </div>
-              ))}
             </div>
           </section>
         )}
