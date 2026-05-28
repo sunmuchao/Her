@@ -3,6 +3,49 @@ import { fetchMyProxyIntroCases } from '@/lib/api/endpoints/proxy-intro'
 import type { CaseConversationTimelineResponse } from '@/lib/types/relations'
 import { getChatParticipantId, getUserId } from '@/lib/auth/session'
 
+const RELATIONSHIP_READ_MARKERS_KEY = 'her_relationship_read_markers'
+export const RELATIONSHIP_READ_EVENT = 'her:relationships-read-state-changed'
+
+type RelationshipReadMarkers = Record<string, number>
+
+function readRelationshipReadMarkers(): RelationshipReadMarkers {
+  if (typeof window === 'undefined') return {}
+  const raw = window.localStorage.getItem(RELATIONSHIP_READ_MARKERS_KEY)
+  if (!raw) return {}
+  try {
+    return JSON.parse(raw) as RelationshipReadMarkers
+  } catch {
+    return {}
+  }
+}
+
+function writeRelationshipReadMarkers(markers: RelationshipReadMarkers) {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(RELATIONSHIP_READ_MARKERS_KEY, JSON.stringify(markers))
+}
+
+export function getConversationReadMarker(conversationId: string): number {
+  const normalizedConversationId = String(conversationId || '').trim()
+  if (!normalizedConversationId) return 0
+  return Number(readRelationshipReadMarkers()[normalizedConversationId] || 0)
+}
+
+export function markConversationRead(conversationId: string, lastSeenMessageId: number) {
+  const normalizedConversationId = String(conversationId || '').trim()
+  const normalizedMessageId = Number(lastSeenMessageId || 0)
+  if (!normalizedConversationId || !Number.isFinite(normalizedMessageId) || normalizedMessageId <= 0) return
+  const markers = readRelationshipReadMarkers()
+  const previous = Number(markers[normalizedConversationId] || 0)
+  if (normalizedMessageId <= previous) return
+  markers[normalizedConversationId] = normalizedMessageId
+  writeRelationshipReadMarkers(markers)
+  if (typeof CustomEvent === 'function') {
+    window.dispatchEvent(new CustomEvent(RELATIONSHIP_READ_EVENT, {
+      detail: { conversationId: normalizedConversationId, lastSeenMessageId: normalizedMessageId },
+    }))
+  }
+}
+
 export function countUnreadMessagesFromTimeline(
   data: CaseConversationTimelineResponse | null | undefined,
   participantId: string,
@@ -13,7 +56,13 @@ export function countUnreadMessagesFromTimeline(
     .filter((item) => item.conversation.channel_key === 'main_group')
     .reduce((sum, item) => {
       const last = item.messages[item.messages.length - 1]
-      if (last && last.author_id !== normalizedParticipantId) {
+      const conversationId = String(item.conversation.conversation_id || '').trim()
+      const readMarker = getConversationReadMarker(conversationId)
+      if (
+        last &&
+        last.author_id !== normalizedParticipantId &&
+        Number(last.message_id || 0) > readMarker
+      ) {
         return sum + 1
       }
       return sum

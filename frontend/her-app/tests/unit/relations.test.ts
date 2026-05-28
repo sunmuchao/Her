@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { countUnreadMessagesFromTimeline } from '@/lib/api/endpoints/chat'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { countUnreadMessagesFromTimeline, markConversationRead } from '@/lib/api/endpoints/chat'
 import {
   formatConversionStageLabel,
   formatLedgerPhaseLabel,
@@ -7,6 +7,22 @@ import {
 } from '@/lib/api/endpoints/relations'
 
 describe('relations helpers', () => {
+  beforeEach(() => {
+    const storage = new Map<string, string>()
+    vi.stubGlobal('window', {
+      localStorage: {
+        getItem: (key: string) => storage.get(key) ?? null,
+        setItem: (key: string, value: string) => {
+          storage.set(key, value)
+        },
+        clear: () => {
+          storage.clear()
+        },
+      },
+      dispatchEvent: () => true,
+    })
+  })
+
   it('maps ledger phases to readable labels', () => {
     expect(formatLedgerPhaseLabel('chat_active')).toBe('聊天中')
     expect(formatLedgerPhaseLabel('case_active')).toBe('撮合进行中')
@@ -59,5 +75,31 @@ describe('relations helpers', () => {
       'user-b',
     )
     expect(unread).toBe(1)
+  })
+
+  it('does not count a conversation after it is marked read locally', () => {
+    markConversationRead('conv-main', 2)
+    const unread = countUnreadMessagesFromTimeline(
+      {
+        case_id: 'case-1',
+        requester_id: 'user-b',
+        conversation_count: 1,
+        conversations: [
+          {
+            conversation: {
+              conversation_id: 'conv-main',
+              channel_key: 'main_group',
+              conversation_kind: 'group',
+            },
+            messages: [
+              { message_id: 1, author_id: 'user-b', body: 'hi', created_at: '2026-05-01 10:00:00' },
+              { message_id: 2, author_id: 'user-a', body: 'hello', created_at: '2026-05-01 10:01:00' },
+            ],
+          },
+        ],
+      },
+      'user-b',
+    )
+    expect(unread).toBe(0)
   })
 })
