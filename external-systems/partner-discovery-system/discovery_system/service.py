@@ -8,6 +8,7 @@ from datetime import datetime
 import os
 from typing import Any
 
+from her_json_utils import json_safe
 from her_runtime_context import get_trace_id
 from observability import audit_event, funnel_stage, metric_gauge
 from partner_search import load_self_profile, search_profiles
@@ -430,11 +431,21 @@ class DiscoveryService:
             raise DiscoveryCandidateNotFoundError("candidate not found in latest discovery results")
 
         request_meta = dict((search_run.response or {}).get("request_meta") or {})
-        criteria = dict(request_meta.get("criteria") or search_run.criteria or {})
-        self_profile = deepcopy(request_meta.get("self_profile") or search_run.self_profile or {})
+        criteria = json_safe(dict(request_meta.get("criteria") or search_run.criteria or {}))
+        self_profile = json_safe(deepcopy(request_meta.get("self_profile") or search_run.self_profile or {}))
         effective_self_id = request_meta.get("self_id")
         if effective_self_id in (None, ""):
             effective_self_id = session.profile_id
+
+        initial_request = json_safe(
+            {
+                "source": request_meta.get("source") or search_run.source,
+                "criteria": criteria,
+                "self_profile": self_profile if isinstance(self_profile, dict) else {},
+                "self_id": effective_self_id,
+                "limit_count": max(int(search_run.limit_count or 0), int(search_run.result_count or 0), 10),
+            }
+        )
 
         conn = self._open_recommendation_conn()
         try:
@@ -459,13 +470,7 @@ class DiscoveryService:
                 title=self._build_proxy_intro_title(session, candidate),
                 limit_count=max(int(search_run.limit_count or 0), int(search_run.result_count or 0), 10),
                 recommendation_mode="match_based",
-                initial_request={
-                    "source": request_meta.get("source") or search_run.source,
-                    "criteria": criteria,
-                    "self_profile": self_profile if isinstance(self_profile, dict) else {},
-                    "self_id": effective_self_id,
-                    "limit_count": max(int(search_run.limit_count or 0), int(search_run.result_count or 0), 10),
-                },
+                initial_request=initial_request,
                 now=current,
             )
             subscription_id = str(subscription.get("subscription_id") or "").strip()
