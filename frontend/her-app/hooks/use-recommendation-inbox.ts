@@ -12,6 +12,7 @@ import { PLACEHOLDER_AVATAR, resolveProfileImageUrl } from '@/lib/image-url'
 
 export type InboxItem = {
   id: string
+  listKey: string
   cardId?: string
   subscriptionId?: string
   recommendationId?: number
@@ -32,12 +33,18 @@ export type InboxItem = {
 function mapCardToInboxItem(card: RecommendationCard): InboxItem {
   const snapshot = card.payload?.result_snapshot
   const profile = snapshot?.profile
+  const candidateId = snapshot?.id || card.candidate_id
+  const listKey =
+    String(card.card_id || '').trim() ||
+    (card.recommendation_id != null ? `rec:${card.recommendation_id}` : '') ||
+    (candidateId != null ? `candidate:${candidateId}:${card.subscription_id || 'unknown'}` : '')
   return {
-    id: String(snapshot?.id || card.candidate_id || card.card_id),
+    id: String(candidateId || card.card_id),
+    listKey,
     cardId: card.card_id,
     subscriptionId: card.subscription_id,
     recommendationId: card.recommendation_id,
-    candidateId: snapshot?.id || card.candidate_id,
+    candidateId,
     name: snapshot?.name || card.title?.replace(/^发现新的合适对象：/, '') || '候选人',
     age: profile?.age || 0,
     city: profile?.city || '未知',

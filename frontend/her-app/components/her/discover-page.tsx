@@ -371,7 +371,7 @@ export function RecommendationInbox({
   const { isLoading, backendItems } = useRecommendationInbox()
 
   const filteredItems = backendItems.filter((item) => {
-    if (dismissedIds.has(item.id)) return false
+    if (dismissedIds.has(item.listKey)) return false
     if (filter === 'delayed') return item.type === 'delayed'
     if (filter === 'matched') return item.type === 'matched'
     if (searchQuery.trim()) {
@@ -465,7 +465,7 @@ export function RecommendationInbox({
         ) : (
           filteredItems.map((item) => (
             <div
-              key={item.id}
+              key={item.listKey}
               onClick={() => {
                 void markRead(item)
                 onViewCandidate(item.id, {
@@ -513,7 +513,7 @@ export function RecommendationInbox({
                     onClick={(e) => {
                       e.stopPropagation()
                       void recordAction(item, 'skip')
-                      setDismissedIds((prev) => new Set(prev).add(item.id))
+                      setDismissedIds((prev) => new Set(prev).add(item.listKey))
                     }}
                     className="p-1.5 text-muted-foreground hover:text-foreground transition-colors"
                   >
