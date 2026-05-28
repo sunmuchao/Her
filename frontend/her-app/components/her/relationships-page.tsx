@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { AlertCircle, BadgeCheck, ChevronRight, Loader2, MailOpen, Pin, RefreshCw, Trash2 } from 'lucide-react'
+import { AlertCircle, BadgeCheck, ChevronRight, Loader2, MailOpen, Pin, Trash2 } from 'lucide-react'
 import Image from 'next/image'
 import { fetchRelationshipsUnreadSummary } from '@/lib/api/endpoints/chat'
 import { fetchTrustHub } from '@/lib/api/endpoints/trust-hub'
@@ -19,6 +19,7 @@ import { getProfileId, getUserId, patchSessionContext } from '@/lib/auth/session
 import { PLACEHOLDER_AVATAR, resolveProfileImageUrl } from '@/lib/image-url'
 import { mapTrustHubPendingActions } from '@/lib/trust/map-trust-hub'
 import type { ChatUserInfo } from '@/hooks/use-app-router'
+import type { CandidatePreview } from '@/lib/types/candidate'
 import { DemoDataBanner } from './ui/demo-data-banner'
 import { ErrorState } from './ui/error-state'
 import { EmptyRelationships } from './ui/empty-states'
@@ -28,6 +29,7 @@ interface RelationshipsPageProps {
   onOpenChat: (chatId: string, info?: ChatUserInfo) => void
   onStartVerification: () => void
   onNavigateToDiscover?: () => void
+  onViewCandidate?: (candidateId: string, candidate?: CandidatePreview) => void
 }
 
 type PendingAction = {
@@ -48,6 +50,7 @@ type ActiveRelationship = {
   verified: boolean
   image: string
   unreadCount: number
+  counterpartId?: string
 }
 
 type SwipeAction = {
@@ -202,7 +205,7 @@ function buildStageTip(item: ProxyIntroCase): string {
   return `${name}当前状态：${stage}`
 }
 
-export default function RelationshipsPage({ onOpenChat, onStartVerification, onNavigateToDiscover }: RelationshipsPageProps) {
+export default function RelationshipsPage({ onOpenChat, onStartVerification, onNavigateToDiscover, onViewCandidate }: RelationshipsPageProps) {
   const [cases, setCases] = useState<ProxyIntroCase[]>([])
   const [pendingActions, setPendingActions] = useState<PendingAction[]>([])
   const [pinnedCardIds, setPinnedCardIds] = useState<Record<string, boolean>>({})
@@ -211,7 +214,9 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification, onN
   const [emptyHint, setEmptyHint] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
-  const [refreshSuccess, setRefreshSuccess] = useState(false)
+  const [pullDistance, setPullDistance] = useState(0)
+  const [isPulling, setIsPulling] = useState(false)
+  const touchStartY = useRef(0)
   const [actingCaseId, setActingCaseId] = useState<string | null>(null)
   const [unreadByCaseId, setUnreadByCaseId] = useState<Record<string, number>>({})
   const [lastMessagesByCaseId, setLastMessagesByCaseId] = useState<Record<string, { content: string; time: string }>>({})
@@ -292,11 +297,6 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification, onN
       }
       const provenance = applyProvenance(false, nextCases.length > 0, '/v1/proxy-intro/cases/mine', 'proxy_intro')
       logDataProvenance('relationships', provenance)
-
-      if (showRefreshIndicator) {
-        setRefreshSuccess(true)
-        setTimeout(() => setRefreshSuccess(false), 2000)
-      }
     } catch (error) {
       const message = getErrorMessage(error, '关系页加载失败')
       setLoadError(message)
@@ -350,6 +350,8 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification, onN
       const userInfo: ChatUserInfo | undefined = currentCase ? {
         title: currentCase.counterpart_name || undefined,
         avatar: resolveProfileImageUrl(currentCase.counterpart_image ?? undefined, PLACEHOLDER_AVATAR),
+        caseId: String(currentCase.case_id),
+        counterpartId: currentCase.counterpart_profile_id ? String(currentCase.counterpart_profile_id) : undefined,
       } : undefined
 
       const response = await openProxyIntroChat({
@@ -456,6 +458,7 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification, onN
         verified: true,
         image: resolveProfileImageUrl(item.counterpart_image ?? undefined, PLACEHOLDER_AVATAR),
         unreadCount: unreadByCaseId[caseIdStr] || 0,
+        counterpartId: item.counterpart_profile_id ? String(item.counterpart_profile_id) : undefined,
       }
     })
     .sort((a, b) => {
@@ -512,27 +515,10 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification, onN
       )}
 
       <header className="sticky top-0 z-20 bg-background border-b border-border safe-area-top">
-        <div className="px-4 py-3 flex items-center justify-between">
-          <div>
-            <h1 className="text-lg font-medium">关系</h1>
-            <p className="text-xs text-muted-foreground">管理你的缘分进度</p>
-          </div>
-          <button
-            type="button"
-            onClick={() => void loadCases(true)}
-            disabled={isRefreshing}
-            className="p-2 rounded-full hover:bg-secondary transition-colors disabled:opacity-50"
-            aria-label="刷新"
-          >
-            <RefreshCw className={`w-5 h-5 text-muted-foreground ${isRefreshing ? 'animate-spin' : ''}`} />
-          </button>
+        <div className="px-4 py-3">
+          <h1 className="text-lg font-medium">关系</h1>
+          <p className="text-xs text-muted-foreground">管理你的缘分进度</p>
         </div>
-        {/* 刷新成功提示 */}
-        {refreshSuccess && (
-          <div className="absolute left-0 right-0 top-full bg-primary/10 text-primary text-xs text-center py-1.5 animate-fade-in">
-            刷新成功
-          </div>
-        )}
       </header>
 
       {/* 待处理事项置顶显示 */}
@@ -558,7 +544,57 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification, onN
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5 pb-20">
+      {/* 下拉刷新指示器 */}
+      <div
+        className="flex items-center justify-center py-2 text-muted-foreground transition-all"
+        style={{
+          height: isRefreshing ? 40 : pullDistance,
+          opacity: pullDistance > 0 || isRefreshing ? 1 : 0,
+        }}
+      >
+        {isRefreshing ? (
+          <Loader2 className="w-5 h-5 animate-spin" />
+        ) : pullDistance > 60 ? (
+          <span className="text-xs">释放刷新</span>
+        ) : pullDistance > 0 ? (
+          <span className="text-xs">下拉刷新</span>
+        ) : null}
+      </div>
+
+      <div
+        className="flex-1 overflow-y-auto px-4 py-4 space-y-5 pb-20"
+        onTouchStart={(e) => {
+          const scrollEl = e.currentTarget
+          if (scrollEl.scrollTop <= 0) {
+            touchStartY.current = e.touches[0].clientY
+            setIsPulling(true)
+          }
+        }}
+        onTouchMove={(e) => {
+          if (!isPulling) return
+          const scrollEl = e.currentTarget
+          if (scrollEl.scrollTop > 0) {
+            setIsPulling(false)
+            setPullDistance(0)
+            return
+          }
+          const deltaY = e.touches[0].clientY - touchStartY.current
+          if (deltaY > 0) {
+            const distance = Math.max(0, Math.min(100, deltaY))
+            setPullDistance(distance)
+          } else {
+            setPullDistance(0)
+          }
+        }}
+        onTouchEnd={() => {
+          if (pullDistance > 60 && !isRefreshing) {
+            void loadCases(true)
+          }
+          setPullDistance(0)
+          setIsPulling(false)
+          touchStartY.current = 0
+        }}
+      >
         <section>
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-sm font-medium">正在进行中</h2>
@@ -593,7 +629,7 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification, onN
                     onClick: () => deleteCard(rel.caseId),
                   },
                 ]}
-                onMainClick={() => onOpenChat(rel.id, { title: rel.name, avatar: rel.image, caseId: rel.caseId })}
+                onMainClick={() => onOpenChat(rel.id, { title: rel.name, avatar: rel.image, caseId: rel.caseId, counterpartId: rel.counterpartId })}
                 ariaLabel={`查看与${rel.name}的对话`}
                 style={{ animationDelay: `${index * 50}ms` }}
                 className={`bg-card border rounded-xl hover:border-primary/30 hover:shadow-sm transition-all focus-ring animate-fade-in-up ${
@@ -653,6 +689,22 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification, onN
                 open={openCardId === String(item.case_id)}
                 onOpenChange={(next) => setOpenCardId(next ? String(item.case_id) : null)}
                 isPinned={pinnedCardIds[String(item.case_id)]}
+                onMainClick={() => {
+                  if (onViewCandidate && item.counterpart_profile_id) {
+                    const candidate: CandidatePreview = {
+                      id: String(item.counterpart_profile_id),
+                      name: item.counterpart_name || '对方',
+                      image: resolveProfileImageUrl(item.counterpart_image ?? undefined, PLACEHOLDER_AVATAR),
+                      caseId: String(item.case_id),
+                      viewType: 'interest',
+                      age: item.counterpart_profile?.age as number | undefined,
+                      city: item.counterpart_profile?.city as string | undefined,
+                      occupation: item.counterpart_profile?.job as string | undefined,
+                      education: item.counterpart_profile?.education as string | undefined,
+                    }
+                    onViewCandidate(String(item.counterpart_profile_id), candidate)
+                  }
+                }}
                 actions={[
                   {
                     key: 'pin',

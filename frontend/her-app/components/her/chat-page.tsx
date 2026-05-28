@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { ArrowLeft, Phone, MoreVertical, Send, Image as ImageIcon, BadgeCheck, Mic, MessageCircle, X } from 'lucide-react'
+import { ArrowLeft, Phone, MoreVertical, Send, Image as ImageIcon, BadgeCheck, Mic, X } from 'lucide-react'
 import Image from 'next/image'
 import { cn } from '@/lib/utils'
 import { gatewayJson, queryString } from '@/lib/api/client'
@@ -14,13 +14,18 @@ import { notifyError } from '@/lib/notify'
 import { DEMO_CHAT_MESSAGES } from '@/lib/fixtures/demo-profiles'
 import { PLACEHOLDER_AVATAR } from '@/lib/image-url'
 import { DEMO_DEFAULT_CHAT_ID } from '@/lib/navigation/defaults'
+import type { CandidatePreview } from '@/lib/types/candidate'
 import { DemoDataBanner } from './ui/demo-data-banner'
 import { ErrorState } from './ui/error-state'
 
 interface ChatPageProps {
   chatId: string | null
   caseId?: string | null
+  counterpartId?: string | null
+  counterpartName?: string
+  counterpartImage?: string
   onBack: () => void
+  onViewCandidate?: (candidateId: string, candidate?: CandidatePreview) => void
 }
 
 type Message = {
@@ -137,19 +142,41 @@ function PrivateChatFab({
 
   return (
     <>
-      {/* 悬浮球 */}
+      {/* 品牌化悬浮球 */}
       <button
         type="button"
         onClick={() => setIsOpen(true)}
+        title="私信小雅 - 你的智能助手"
         className={cn(
-          'fixed bottom-24 right-4 z-30 w-14 h-14 rounded-full bg-primary shadow-lg flex items-center justify-center transition-transform hover:scale-105 active:scale-95',
+          'fixed bottom-24 right-4 z-30 w-16 h-16 rounded-full flex items-center justify-center transition-all duration-300',
+          'bg-gradient-to-br from-primary via-primary to-primary/90',
+          'shadow-lg shadow-primary/30',
+          'ring-2 ring-primary/20',
+          'hover:shadow-xl hover:shadow-primary/40 hover:ring-4 hover:ring-primary/30 hover:scale-110',
+          'active:scale-95',
+          'animate-[pulse_3s_ease-in-out_infinite]',
           isOpen && 'hidden',
         )}
-        aria-label="私信小C"
+        aria-label="私信小雅"
       >
-        <MessageCircle className="w-6 h-6 text-primary-foreground" />
+        {/* 光晕效果 */}
+        <div className="absolute inset-0 rounded-full bg-gradient-to-br from-white/20 to-transparent animate-pulse" />
+
+        {/* 小雅头像 */}
+        <div className="relative w-12 h-12 rounded-full overflow-hidden bg-white/10 backdrop-blur-sm ring-1 ring-white/30">
+          <Image
+            src="/xiaoya-avatar.png"
+            alt="小雅"
+            width={48}
+            height={48}
+            className="object-cover"
+            priority
+          />
+        </div>
+
+        {/* 未读消息指示 */}
         {hasUnread && (
-          <span className="absolute -top-1 -right-1 w-4 h-4 bg-rose rounded-full animate-pulse" />
+          <span className="absolute -top-1 -right-1 w-5 h-5 bg-rose-500 rounded-full animate-pulse ring-2 ring-white" />
         )}
       </button>
 
@@ -162,19 +189,29 @@ function PrivateChatFab({
           >
             {/* 弹窗头部 */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                  <MessageCircle className="w-4 h-4 text-primary" />
+              <div className="flex items-center gap-2.5">
+                {/* 小雅头像 */}
+                <div className="w-9 h-9 rounded-full overflow-hidden bg-gradient-to-br from-primary/20 to-primary/10 ring-1 ring-primary/30">
+                  <Image
+                    src="/xiaoya-avatar.png"
+                    alt="小雅"
+                    width={36}
+                    height={36}
+                    className="object-cover"
+                  />
                 </div>
                 <div>
-                  <h3 className="text-sm font-medium">私信小C</h3>
-                  <p className="text-[10px] text-muted-foreground">对方看不到这里的消息</p>
+                  <h3 className="text-sm font-medium flex items-center gap-1">
+                    私信小雅
+                    <span className="text-xs text-primary animate-pulse">✨</span>
+                  </h3>
+                  <p className="text-[10px] text-muted-foreground">你的智能助手 · 对方看不到这里的消息</p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setIsOpen(false)}
-                className="w-8 h-8 rounded-full hover:bg-secondary flex items-center justify-center"
+                className="w-8 h-8 rounded-full hover:bg-secondary flex items-center justify-center transition-colors"
                 aria-label="关闭"
               >
                 <X className="w-5 h-5" />
@@ -188,10 +225,27 @@ function PrivateChatFab({
                   <p className="text-sm text-muted-foreground">加载中...</p>
                 </div>
               ) : messages.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full gap-2 text-center">
-                  <MessageCircle className="w-10 h-10 text-muted-foreground/30" />
-                  <p className="text-sm text-muted-foreground">有什么想悄悄跟小C说的？</p>
-                  <p className="text-xs text-muted-foreground/70">比如：帮我问问对方的兴趣爱好</p>
+                <div className="flex flex-col items-center justify-center h-full gap-3 text-center">
+                  {/* 小雅头像 */}
+                  <div className="w-14 h-14 rounded-full overflow-hidden bg-gradient-to-br from-primary/20 to-primary/10 ring-2 ring-primary/30 shadow-lg">
+                    <Image
+                      src="/xiaoya-avatar.png"
+                      alt="小雅"
+                      width={56}
+                      height={56}
+                      className="object-cover"
+                    />
+                  </div>
+                  {/* 欢迎语 */}
+                  <div className="space-y-1">
+                    <p className="text-base font-medium text-foreground">你好呀！我是小雅 💬</p>
+                    <p className="text-sm text-muted-foreground">有什么想悄悄跟我说的吗？</p>
+                  </div>
+                  {/* 示例提示 */}
+                  <div className="flex flex-col gap-1 text-xs text-muted-foreground/70">
+                    <p>✨ 比如：帮我问问对方的兴趣爱好</p>
+                    <p>✨ 或者：给我们的聊天提点建议</p>
+                  </div>
                 </div>
               ) : (
                 messages.map((msg) => (
@@ -230,7 +284,7 @@ function PrivateChatFab({
                       void handleSend()
                     }
                   }}
-                  placeholder="跟小C说点悄悄话..."
+                  placeholder="跟小雅说点悄悄话..."
                   className="flex-1 bg-transparent text-sm placeholder:text-muted-foreground focus:outline-none"
                   disabled={!conversationId || isLoading}
                 />
@@ -260,7 +314,7 @@ function PrivateChatFab({
   )
 }
 
-export default function ChatPage({ chatId, caseId, onBack }: ChatPageProps) {
+export default function ChatPage({ chatId, caseId, counterpartId, counterpartName, counterpartImage, onBack, onViewCandidate }: ChatPageProps) {
   const searchParams = useSearchParams()
   const urlChatTitle = searchParams.get('chatTitle')
   const urlCaseId = searchParams.get('caseId')
@@ -427,14 +481,33 @@ export default function ChatPage({ chatId, caseId, onBack }: ChatPageProps) {
       {/* Header */}
       <header className="sticky top-0 flex-shrink-0 z-20 bg-background border-b border-border safe-area-top">
         <div className="px-4 py-3 flex items-center gap-3">
-          <button 
-            onClick={onBack} 
+          <button
+            onClick={onBack}
             className="w-8 h-8 flex items-center justify-center focus-ring rounded-full"
             aria-label="返回"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
-          <div className="w-8 h-8 rounded-full overflow-hidden bg-secondary flex items-center justify-center">
+          <button
+            onClick={() => {
+              if (onViewCandidate && counterpartId) {
+                const candidate: CandidatePreview = {
+                  id: counterpartId,
+                  name: chatTitle,
+                  image: chatAvatar,
+                  caseId: resolvedCaseId || undefined,
+                  viewType: 'matched',
+                }
+                onViewCandidate(counterpartId, candidate)
+              }
+            }}
+            disabled={!onViewCandidate || !counterpartId}
+            className={cn(
+              'w-8 h-8 rounded-full overflow-hidden bg-secondary flex items-center justify-center',
+              onViewCandidate && counterpartId ? 'cursor-pointer hover:opacity-80 transition-opacity' : 'cursor-default'
+            )}
+            aria-label={onViewCandidate && counterpartId ? '查看对方资料' : undefined}
+          >
             <Image
               src={chatAvatar}
               alt={chatTitle}
@@ -442,21 +515,21 @@ export default function ChatPage({ chatId, caseId, onBack }: ChatPageProps) {
               height={32}
               className="object-cover"
             />
-          </div>
+          </button>
           <div className="flex-1">
             <div className="flex items-center gap-1.5">
               <span className="font-medium text-sm">{chatTitle}</span>
               {verified && <BadgeCheck className="w-4 h-4 text-primary" aria-label="已认证" />}
             </div>
           </div>
-          <button 
+          <button
             className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors focus-ring rounded-full"
             aria-label="语音通话（即将上线）"
             disabled
           >
             <Phone className="w-5 h-5" />
           </button>
-          <button 
+          <button
             className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors focus-ring rounded-full"
             aria-label="更多选项"
           >

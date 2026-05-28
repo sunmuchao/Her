@@ -27,6 +27,7 @@ export type ChatUserInfo = {
   title?: string
   avatar?: string
   caseId?: string
+  counterpartId?: string
 }
 
 export function useAppRouter() {
@@ -55,6 +56,9 @@ export function useAppRouter() {
   
   // 从 URL 或状态获取 caseId
   const selectedCaseId = searchParams.get('caseId') || null
+
+  // 从 URL 获取 counterpartId
+  const selectedCounterpartId = searchParams.get('counterpartId') || null
 
   // 从 URL 解析 caseId 和 viewType
   const urlCaseId = searchParams.get('caseId')
@@ -85,6 +89,7 @@ export function useAppRouter() {
       caseId?: string
       viewType?: 'delayed' | 'matched' | 'interest' | 'candidate'
       chatTitle?: string
+      counterpartId?: string
     }) => {
       const href = pageToPath(page, {
         candidateId: params?.candidateId,
@@ -92,6 +97,7 @@ export function useAppRouter() {
         caseId: params?.caseId,
         viewType: params?.viewType,
         chatTitle: params?.chatTitle,
+        counterpartId: params?.counterpartId,
       })
       // session 已经在 pageToPath 中处理了，但这里需要额外处理 sessionId
       if (params?.sessionId && page === 'sub-candidate-detail') {
@@ -153,8 +159,8 @@ export function useAppRouter() {
   const handleOpenChat = useCallback(
     (chatId: string, info?: ChatUserInfo) => {
       console.log('[handleOpenChat] 调用参数:', { chatId, info })
-      // 使用 URL 参数传递 chatTitle 和 caseId
-      pushPage('sub-chat', { chatId, chatTitle: info?.title, caseId: info?.caseId })
+      // 使用 URL 参数传递 chatTitle、caseId 和 counterpartId
+      pushPage('sub-chat', { chatId, chatTitle: info?.title, caseId: info?.caseId, counterpartId: info?.counterpartId })
     },
     [pushPage],
   )
@@ -202,6 +208,7 @@ export function useAppRouter() {
     selectedCandidate: resolvedCandidate,
     selectedChatId,
     selectedCaseId,
+    selectedCounterpartId,
     discoverySessionId,
     setDiscoverySessionId,
     handleNavigate,

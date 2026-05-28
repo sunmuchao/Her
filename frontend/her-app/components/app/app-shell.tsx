@@ -23,6 +23,7 @@ type AppShellProps = {
   selectedCandidate: CandidatePreview | null
   selectedChatId: string | null
   selectedCaseId: string | null
+  selectedCounterpartId: string | null
   discoverySessionId: string | null
   onDiscoverySessionId: (sessionId: string | null) => void
   onTabChange: (tab: TabType) => void
@@ -44,6 +45,7 @@ export function AppShell({
   selectedCandidate,
   selectedChatId,
   selectedCaseId,
+  selectedCounterpartId,
   discoverySessionId,
   onDiscoverySessionId,
   onTabChange,
@@ -103,6 +105,7 @@ export function AppShell({
               onOpenChat={onOpenChat}
               onStartVerification={onStartVerification}
               onNavigateToDiscover={() => onTabChange('matchmaker')}
+              onViewCandidate={onViewCandidate}
             />
           </PageTransition>
         )}
@@ -138,7 +141,9 @@ export function AppShell({
             <ChatPage
               chatId={selectedChatId}
               caseId={selectedCaseId}
+              counterpartId={selectedCounterpartId}
               onBack={onBackToMain}
+              onViewCandidate={onViewCandidate}
             />
           </SlideInTransition>
         )}

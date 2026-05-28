@@ -142,6 +142,7 @@ export function HerApp() {
               selectedCandidate={nav.selectedCandidate}
               selectedChatId={nav.selectedChatId}
               selectedCaseId={nav.selectedCaseId}
+              selectedCounterpartId={nav.selectedCounterpartId}
               discoverySessionId={nav.discoverySessionId}
               onDiscoverySessionId={nav.setDiscoverySessionId}
               onTabChange={nav.handleTabChange}
