@@ -16,6 +16,22 @@ export type ProxyIntroCase = {
   close_reason?: string | null
   created_at?: string
   updated_at?: string
+  // 新增：用于提取 requester 信息
+  outreach_payload?: {
+    requester_summary?: {
+      requester_name?: string
+      age_bracket?: string
+      city?: string
+      occupation?: string
+      education?: string
+      relationship_goal?: string
+      summary_text?: string
+      avatar_url?: string
+    }
+  } | null
+  requester_profile_snapshot?: {
+    self_profile?: Record<string, unknown>
+  } | null
 }
 
 export async function createProxyIntroRequest(params: {
