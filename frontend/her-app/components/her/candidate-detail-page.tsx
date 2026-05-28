@@ -252,9 +252,6 @@ export default function CandidateDetailPage({
         throw new Error('interest_unavailable')
       }
       setShowSubmittedHint(true)
-      window.setTimeout(() => {
-        onOpenRelationships()
-      }, 300)
     } catch (error) {
       notifyError(error, '发起意愿失败，请稍后重试')
     } finally {
@@ -445,18 +442,18 @@ export default function CandidateDetailPage({
           <Heartbeat>
             <button
               onClick={() => void handleExpressInterest()}
-              disabled={isExpressingInterest || !canExpressInterest}
+              disabled={isExpressingInterest || !canExpressInterest || showSubmittedHint}
               className="flex-1 py-3 bg-primary rounded-xl text-primary-foreground font-medium flex items-center justify-center gap-2 hover:bg-primary/90 transition-all focus-ring shadow-lg shadow-primary/20 disabled:opacity-70"
               aria-label={`向${candidateData.name}发起认识意愿`}
             >
               <Heart className="w-4 h-4" aria-hidden="true" />
-              {!canExpressInterest ? '暂不可发起' : isExpressingInterest ? '发送中' : '愿意认识'}
+              {!canExpressInterest ? '暂不可发起' : showSubmittedHint ? '已提交意愿' : isExpressingInterest ? '发送中' : '愿意认识'}
             </button>
           </Heartbeat>
         </div>
         {showSubmittedHint ? (
           <div className="mt-2 flex items-center justify-center gap-3">
-            <p className="text-xs text-muted-foreground">已提交，可在关系里查看进度</p>
+            <p className="text-xs text-muted-foreground">已提交，对方回复后会在关系页更新</p>
             <button
               type="button"
               onClick={onOpenRelationships}
