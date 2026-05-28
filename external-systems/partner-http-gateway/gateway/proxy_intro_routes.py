@@ -136,6 +136,9 @@ def _build_case_view(
         "main_conversation_id": (
             str(main_conversation.get("conversation_id") or "").strip() if main_conversation else None
         ),
+        # 新增：返回 outreach_payload 和 requester_profile_snapshot，供前端提取发起方信息
+        "outreach_payload": case.get("outreach_payload") or {},
+        "requester_profile_snapshot": case.get("requester_profile_snapshot") or {},
     }
 
 
