@@ -257,11 +257,13 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification, onN
         timelines.forEach((result) => {
           if (result.status === 'fulfilled' && result.value.data?.conversations) {
             const item = result.value
+            const data = item.data
+            if (!data) return
             // 找到 main_group 对话的最新消息
-            const mainConv = item.data.conversations.find(
+            const mainConv = data.conversations.find(
               (c) => c.conversation.channel_key === 'main_group',
             )
-            if (mainConv?.messages?.length > 0) {
+            if (mainConv?.messages && mainConv.messages.length > 0) {
               const lastMsg = mainConv.messages[mainConv.messages.length - 1]
               lastMessages[item.caseId] = {
                 content: lastMsg.body || '',
@@ -591,7 +593,7 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification, onN
                     onClick: () => deleteCard(rel.caseId),
                   },
                 ]}
-                onMainClick={() => onOpenChat(rel.id, { title: rel.name, avatar: rel.image })}
+                onMainClick={() => onOpenChat(rel.id, { title: rel.name, avatar: rel.image, caseId: rel.caseId })}
                 ariaLabel={`查看与${rel.name}的对话`}
                 style={{ animationDelay: `${index * 50}ms` }}
                 className={`bg-card border rounded-xl hover:border-primary/30 hover:shadow-sm transition-all focus-ring animate-fade-in-up ${
