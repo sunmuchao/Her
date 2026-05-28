@@ -22,6 +22,7 @@ type AppShellProps = {
   selectedCandidateId: string | null
   selectedCandidate: CandidatePreview | null
   selectedChatId: string | null
+  selectedCaseId: string | null
   discoverySessionId: string | null
   onDiscoverySessionId: (sessionId: string | null) => void
   onTabChange: (tab: TabType) => void
@@ -42,6 +43,7 @@ export function AppShell({
   selectedCandidateId,
   selectedCandidate,
   selectedChatId,
+  selectedCaseId,
   discoverySessionId,
   onDiscoverySessionId,
   onTabChange,
@@ -135,6 +137,7 @@ export function AppShell({
           <SlideInTransition key="chat" direction="right" className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
             <ChatPage
               chatId={selectedChatId}
+              caseId={selectedCaseId}
               onBack={onBackToMain}
             />
           </SlideInTransition>
