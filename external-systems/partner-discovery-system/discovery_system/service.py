@@ -446,6 +446,7 @@ class DiscoveryService:
                 "limit_count": max(int(search_run.limit_count or 0), int(search_run.result_count or 0), 10),
             }
         )
+        safe_candidate = json_safe(candidate)
 
         conn = self._open_recommendation_conn()
         try:
@@ -453,7 +454,6 @@ class DiscoveryService:
                 create_subscription,
                 deliver_in_app_recommendations,
                 record_recommendation_action,
-                refresh_subscription,
             )
             from recommendation_system.recommendation_rows import (  # type: ignore[import-untyped]
                 get_recommendation,
@@ -476,24 +476,19 @@ class DiscoveryService:
             subscription_id = str(subscription.get("subscription_id") or "").strip()
             if not subscription_id:
                 raise DiscoveryInterestNotAvailableError("正式牵线单创建失败，请稍后重试。")
-
-            refresh_subscription(conn, subscription_id, now=current)
-
-            recommendation = get_recommendation(conn, subscription_id, int(candidate_id))
-            if recommendation is None:
-                recommendation = upsert_recommendation(
-                    conn,
-                    subscription,
-                    candidate,
-                    current,
-                    review_rank=1,
-                    rule_provenance={
-                        "source": "discovery_session",
-                        "session_id": session.session_id,
-                        "search_run_id": search_run_id,
-                        "hydrated_from_search_run": True,
-                    },
-                )
+            recommendation = upsert_recommendation(
+                conn,
+                subscription,
+                safe_candidate,
+                current,
+                review_rank=1,
+                rule_provenance={
+                    "source": "discovery_session",
+                    "session_id": session.session_id,
+                    "search_run_id": search_run_id,
+                    "hydrated_from_search_run": True,
+                },
+            )
 
             deliver_in_app_recommendations(conn, now=current)
 
