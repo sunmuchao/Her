@@ -5,6 +5,7 @@ import { BadgeCheck, ChevronRight, MailOpen, Pin, Trash2 } from 'lucide-react'
 import Image from 'next/image'
 import { fetchRelationshipsUnreadSummary } from '@/lib/api/endpoints/chat'
 import { fetchTrustHub } from '@/lib/api/endpoints/trust-hub'
+import { fetchCaseConversationTimeline } from '@/lib/api/endpoints/relations'
 import {
   fetchMyProxyIntroCases,
   openProxyIntroChat,
@@ -176,11 +177,16 @@ function SwipeableCard({
   )
 }
 
-function buildActivityText(item: ProxyIntroCase): string {
+function buildStageTip(item: ProxyIntroCase): string {
   const name = item.counterpart_name || '对方'
   const stage = item.stage_label || '牵线中'
   if (item.main_conversation_id) return `你和${name}已经进入聊天`
-  if (item.case_status === 'awaiting_reply') return `已把${name}推荐给对方，等她回复`
+  if (item.case_status === 'awaiting_reply') {
+    if (item.role === 'requester') {
+      return '已把您推荐给对方，等他回复'
+    }
+    return `已把${name}推荐给对方，等她回复`
+  }
   if (item.case_status === 'accepted') return `${name}也愿意认识，可以开始聊天了`
   if (item.case_status === 'declined') return `${name}这次先不考虑`
   if (item.case_status === 'timed_out') return `${name}暂时没有回复`
@@ -197,7 +203,10 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
   const [isLoading, setIsLoading] = useState(true)
   const [actingCaseId, setActingCaseId] = useState<string | null>(null)
   const [unreadByCaseId, setUnreadByCaseId] = useState<Record<string, number>>({})
+  const [lastMessagesByCaseId, setLastMessagesByCaseId] = useState<Record<string, { content: string; time: string }>>({})
   const [openCardId, setOpenCardId] = useState<string | null>(null)
+  const [stageTipText, setStageTipText] = useState<string | null>(null)
+  const [showStageTipForCase, setShowStageTipForCase] = useState<string | null>(null)
   const { usingMockData, applyProvenance } = usePageDataSource()
 
   useEffect(() => {
@@ -217,6 +226,40 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
         if (cancelled) return
         const nextCases = caseData.cases || []
         setCases(nextCases)
+
+        // 获取活跃对话的最新消息
+        const activeCaseIds = nextCases
+          .filter((item) => item.main_conversation_id && item.case_id)
+          .map((item) => String(item.case_id))
+
+        if (activeCaseIds.length > 0 && userId) {
+          const timelines = await Promise.all(
+            activeCaseIds.map(async (caseId) => ({
+              caseId,
+              data: await fetchCaseConversationTimeline(caseId, userId).catch(() => null),
+            })),
+          )
+          if (!cancelled) {
+            const lastMessages: Record<string, { content: string; time: string }> = {}
+            timelines.forEach((item) => {
+              if (item.data?.conversations) {
+                // 找到 main_group 对话的最新消息
+                const mainConv = item.data.conversations.find(
+                  (c) => c.conversation.channel_key === 'main_group',
+                )
+                if (mainConv?.messages?.length > 0) {
+                  const lastMsg = mainConv.messages[mainConv.messages.length - 1]
+                  lastMessages[item.caseId] = {
+                    content: lastMsg.body || '',
+                    time: lastMsg.created_at || '',
+                  }
+                }
+              }
+            })
+            setLastMessagesByCaseId(lastMessages)
+          }
+        }
+
         const unreadSummary = await fetchRelationshipsUnreadSummary().catch(() => null)
         if (cancelled) return
         setUnreadByCaseId(unreadSummary?.byCaseId || {})
@@ -329,16 +372,18 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
   const activeRelationships: ActiveRelationship[] = cases
     .filter((item) => item.main_conversation_id)
     .map((item) => {
+      const caseIdStr = String(item.case_id)
+      const lastMsgData = lastMessagesByCaseId[caseIdStr]
       return {
         id: String(item.main_conversation_id),
-        caseId: String(item.case_id),
+        caseId: caseIdStr,
         name: item.counterpart_name || '对方',
         stage: item.stage_label || '已开聊',
-        lastMessage: item.case_status === 'closed' ? '已进入双向聊天' : '已进入聊天，继续了解吧',
-        lastMessageTime: item.updated_at || item.created_at || '刚刚',
+        lastMessage: lastMsgData?.content || '开始聊天吧',
+        lastMessageTime: lastMsgData?.time || item.updated_at || item.created_at || '刚刚',
         verified: true,
         image: resolveProfileImageUrl(item.counterpart_image ?? undefined, PLACEHOLDER_AVATAR),
-        unreadCount: unreadByCaseId[String(item.case_id)] || 0,
+        unreadCount: unreadByCaseId[caseIdStr] || 0,
       }
     })
     .sort((a, b) => {
@@ -498,11 +543,37 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
                       <p className="text-sm text-muted-foreground mt-0.5 truncate">
                         {String(item.counterpart_profile?.job || item.counterpart_profile?.education || '资料待补充')}
                       </p>
-                      <p className="text-xs text-muted-foreground mt-1">{buildActivityText(item)}</p>
                     </div>
-                    <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-[10px] text-muted-foreground">
+                    <div className="relative shrink-0">
+                    <span
+                      onMouseEnter={() => {
+                        setStageTipText(buildStageTip(item))
+                        setShowStageTipForCase(String(item.case_id))
+                      }}
+                      onMouseLeave={() => {
+                        setShowStageTipForCase(null)
+                        setStageTipText(null)
+                      }}
+                      onTouchStart={() => {
+                        setStageTipText(buildStageTip(item))
+                        setShowStageTipForCase(String(item.case_id))
+                      }}
+                      onTouchEnd={() => {
+                        setTimeout(() => {
+                          setShowStageTipForCase(null)
+                          setStageTipText(null)
+                        }, 1500)
+                      }}
+                      className="rounded-full bg-secondary px-2 py-0.5 text-[10px] text-muted-foreground cursor-default"
+                    >
                       {item.stage_label}
                     </span>
+                    {showStageTipForCase === String(item.case_id) && stageTipText && (
+                      <div className="absolute top-full right-0 mt-1 px-2 py-1 rounded bg-secondary/90 text-[10px] text-muted-foreground whitespace-nowrap z-10 shadow-sm animate-fade-in">
+                        {stageTipText}
+                      </div>
+                    )}
+                  </div>
                   </div>
                   <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground">
                     {pinnedCardIds[String(item.case_id)] ? <span className="px-2 py-0.5 rounded-full bg-gold/10 text-gold">置顶</span> : null}
