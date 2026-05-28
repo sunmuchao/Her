@@ -160,7 +160,13 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
     return <RelationshipsPageSkeleton />
   }
 
-  const pendingIntroItems = cases.filter((item) => !item.main_conversation_id)
+  const pendingIntroItems = cases.filter((item) => {
+    // 排除掉作为被请求方且等待回复的 case（这些显示在推荐来信中）
+    if (item.role === 'candidate' && item.case_status === 'awaiting_reply') {
+      return false
+    }
+    return !item.main_conversation_id
+  })
   const activeRelationships: ActiveRelationship[] = cases
     .filter((item) => item.main_conversation_id)
     .map((item) => ({
