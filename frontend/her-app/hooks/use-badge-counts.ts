@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { fetchRelationshipsUnreadSummary } from '@/lib/api/endpoints/chat'
+import { fetchRelationshipsUnreadSummary, RELATIONSHIP_READ_EVENT } from '@/lib/api/endpoints/chat'
 import { fetchInboxUnreadCount } from '@/lib/api/endpoints/recommendation'
 import { fetchMyProxyIntroCases } from '@/lib/api/endpoints/proxy-intro'
 import { getProfileId } from '@/lib/auth/session'
@@ -49,10 +49,13 @@ export function useBadgeCounts() {
   useEffect(() => {
     void refresh()
     const onFocus = () => void refresh()
+    const onReadStateChange = () => void refresh()
     const poll = window.setInterval(() => void refresh(), 30000)
     window.addEventListener('focus', onFocus)
+    window.addEventListener(RELATIONSHIP_READ_EVENT, onReadStateChange)
     return () => {
       window.removeEventListener('focus', onFocus)
+      window.removeEventListener(RELATIONSHIP_READ_EVENT, onReadStateChange)
       window.clearInterval(poll)
     }
   }, [refresh])
