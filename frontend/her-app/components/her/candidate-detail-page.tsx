@@ -20,6 +20,7 @@ import { DemoDataBanner } from './ui/demo-data-banner'
 import { ErrorState } from './ui/error-state'
 import { expressDiscoveryCandidateInterest } from '@/lib/api/endpoints/discovery'
 import { createProxyIntroRequest } from '@/lib/api/endpoints/proxy-intro'
+import { fetchMyProxyIntroCases } from '@/lib/api/endpoints/proxy-intro'
 import { notifyError } from '@/lib/notify'
 interface CandidateDetailPageProps {
   candidateId: string
@@ -118,6 +119,35 @@ export default function CandidateDetailPage({
   const subscriptionId = candidate?.subscriptionId
   const resolvedCandidateId = candidate?.id || candidateId
   const canExpressInterest = Boolean(resolvedCandidateId && (subscriptionId || sessionId))
+
+  useEffect(() => {
+    let cancelled = false
+    const numericCandidateId = Number(resolvedCandidateId)
+    if (!Number.isFinite(numericCandidateId) || numericCandidateId <= 0) {
+      setShowSubmittedHint(false)
+      return
+    }
+
+    async function loadSubmittedState() {
+      try {
+        const response = await fetchMyProxyIntroCases()
+        if (cancelled) return
+        const hasExistingCase = (response.cases || []).some(
+          (item) =>
+            item.role === 'requester' &&
+            Number(item.counterpart_profile_id || 0) === numericCandidateId,
+        )
+        setShowSubmittedHint(hasExistingCase)
+      } catch {
+        if (!cancelled) setShowSubmittedHint(false)
+      }
+    }
+
+    void loadSubmittedState()
+    return () => {
+      cancelled = true
+    }
+  }, [resolvedCandidateId])
 
   const factImages = mapProfileImageUrls(
     [profileFacts.avatar_url, profileFacts.photo_url, profileFacts.cover_url].filter(Boolean).map(String),
