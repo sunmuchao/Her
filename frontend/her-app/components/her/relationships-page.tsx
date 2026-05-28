@@ -170,7 +170,7 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
       lastMessage: item.case_status === 'closed' ? '已进入双向聊天' : '已进入聊天，继续了解吧',
       lastMessageTime: item.updated_at || item.created_at || '刚刚',
       verified: true,
-      image: resolveProfileImageUrl(item.counterpart_image, PLACEHOLDER_AVATAR),
+      image: resolveProfileImageUrl(item.counterpart_image ?? undefined, PLACEHOLDER_AVATAR),
     }))
   const recentActivities = cases.slice(0, 5).map((item, index) => ({
     id: String(item.case_id || index),
@@ -253,7 +253,7 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
                 <div className="flex items-center gap-3">
                   <div className="relative w-12 h-12 rounded-full overflow-hidden">
                     <Image
-                      src={resolveProfileImageUrl(item.counterpart_image, PLACEHOLDER_AVATAR)}
+                      src={resolveProfileImageUrl(item.counterpart_image ?? undefined, PLACEHOLDER_AVATAR)}
                       alt={item.counterpart_name || '对方'}
                       fill
                       className="object-cover"
