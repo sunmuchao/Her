@@ -16,6 +16,7 @@ from .ledger_routes import dispatch_ledger_rest
 from .matchmaking_routes import dispatch_matchmaking_rest
 from .ops_routes import dispatch_ops_rest
 from .profile_routes import dispatch_profile_rest
+from .proxy_intro_routes import dispatch_proxy_intro_rest
 from .recommendation_routes import dispatch_recommendation_rest
 from .support_routes import dispatch_support_rest
 from .surface_config import gateway_surface, is_rest_path_allowed
@@ -58,6 +59,7 @@ def dispatch_gateway_rest(
         dispatch_verification_rest,
         dispatch_private_auth_rest,
         dispatch_profile_rest,
+        dispatch_proxy_intro_rest,
         dispatch_recommendation_rest,
         dispatch_matchmaking_rest,
         dispatch_chat_rest,

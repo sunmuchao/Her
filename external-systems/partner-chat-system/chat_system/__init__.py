@@ -61,6 +61,7 @@ _EXPORT_MODULES = {
     "get_profile_review_case_appeal": ".profile_reviews",
     "get_profile_review_case": ".profile_reviews",
     "get_current_auth_payload": ".auth_accounts",
+    "find_user_id_by_profile_id": ".auth_accounts",
     "get_onboarding_profile": ".auth_accounts",
     "get_session_by_access_token": ".auth_accounts",
     "get_or_create_thread": ".service",

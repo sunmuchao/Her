@@ -55,7 +55,7 @@ export async function expressDiscoveryCandidateInterest(params: {
     session_id?: string
     candidate_id?: number
     subscription_id?: string
-    recommendation?: Record<string, unknown>
+    case?: Record<string, unknown>
   }>(
     `/v1/discovery/sessions/${encodeURIComponent(params.sessionId)}/candidates/${encodeURIComponent(String(params.candidateId))}/express-interest`,
     { method: 'POST', body: JSON.stringify({}) },

@@ -43,6 +43,7 @@ from .proxy_intro import (
     get_latest_match_case_for_recommendation,
     get_match_case as get_proxy_intro_match_case,
     list_match_case_events as list_proxy_intro_case_events,
+    list_match_cases_for_participant,
     list_match_cases_for_recommendation,
     record_match_case_reply as record_proxy_intro_case_reply,
 )
@@ -71,6 +72,7 @@ __all__ = [
     "list_failed_outbox",
     "list_due_pool_members",
     "list_match_case_events",
+    "list_match_cases_for_participant",
     "list_proxy_intro_case_events",
     "list_match_cases_for_recommendation",
     "list_match_cases",
