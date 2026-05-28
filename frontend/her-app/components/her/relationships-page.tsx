@@ -408,34 +408,34 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
                   },
                 ]}
                 onMainClick={() => onOpenChat(rel.id, { title: rel.name, avatar: rel.image })}
+                ariaLabel={`查看与${rel.name}的对话`}
                 style={{ animationDelay: `${index * 50}ms` }}
-                aria-label={`查看与${rel.name}的对话`}
                 className="bg-card border border-border rounded-xl hover:border-primary/30 hover:shadow-sm transition-all focus-ring animate-fade-in-up"
               >
                 <div className="p-3">
                   <div className="flex items-center gap-3">
-                  <div className="relative w-12 h-12 rounded-full overflow-hidden">
-                    <Image src={rel.image} alt={rel.name} fill className="object-cover" />
-                    {rel.unreadCount > 0 ? (
-                      <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 bg-rose text-[10px] font-medium text-white rounded-full flex items-center justify-center shadow-sm">
-                        {rel.unreadCount > 99 ? '99+' : rel.unreadCount}
-                      </span>
-                    ) : null}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{rel.name}</span>
-                      {rel.verified && <BadgeCheck className="w-4 h-4 text-primary" />}
-                      {pinnedCardIds[rel.caseId] ? <span className="px-2 py-0.5 bg-gold/10 text-[10px] text-gold rounded-full">置顶</span> : null}
-                      {readCardIds[rel.caseId] ? <span className="px-2 py-0.5 bg-secondary text-[10px] rounded-full">已读</span> : null}
-                      <span className="ml-auto px-2 py-0.5 bg-secondary text-[10px] rounded-full">{rel.stage}</span>
+                    <div className="relative w-12 h-12 rounded-full overflow-hidden">
+                      <Image src={rel.image} alt={rel.name} fill className="object-cover" />
+                      {rel.unreadCount > 0 ? (
+                        <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 bg-rose text-[10px] font-medium text-white rounded-full flex items-center justify-center shadow-sm">
+                          {rel.unreadCount > 99 ? '99+' : rel.unreadCount}
+                        </span>
+                      ) : null}
                     </div>
-                    <p className="text-sm text-muted-foreground truncate mt-0.5">
-                      {rel.unreadCount > 0 ? `有${rel.unreadCount}条新消息` : rel.lastMessage}
-                    </p>
-                    <span className="text-[10px] text-muted-foreground">{rel.lastMessageTime}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{rel.name}</span>
+                        {rel.verified && <BadgeCheck className="w-4 h-4 text-primary" />}
+                        {pinnedCardIds[rel.caseId] ? <span className="px-2 py-0.5 bg-gold/10 text-[10px] text-gold rounded-full">置顶</span> : null}
+                        {readCardIds[rel.caseId] ? <span className="px-2 py-0.5 bg-secondary text-[10px] rounded-full">已读</span> : null}
+                        <span className="ml-auto px-2 py-0.5 bg-secondary text-[10px] rounded-full">{rel.stage}</span>
+                      </div>
+                      <p className="text-sm text-muted-foreground truncate mt-0.5">
+                        {rel.unreadCount > 0 ? `有${rel.unreadCount}条新消息` : rel.lastMessage}
+                      </p>
+                      <span className="text-[10px] text-muted-foreground">{rel.lastMessageTime}</span>
+                    </div>
                   </div>
-                </div>
                 </div>
               </SwipeableCard>
             ))}
@@ -485,65 +485,65 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
               >
                 <div className="p-3">
                   <div className="flex items-center gap-3">
-                  <div className="relative w-12 h-12 rounded-full overflow-hidden">
-                    <Image
-                      src={resolveProfileImageUrl(item.counterpart_image ?? undefined, PLACEHOLDER_AVATAR)}
-                      alt={item.counterpart_name || '对方'}
-                      fill
-                      className="object-cover"
-                    />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{item.counterpart_name || '对方'}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {String(item.counterpart_profile?.age || '')}
-                        {item.counterpart_profile?.age ? '岁' : ''}
-                        {item.counterpart_profile?.city ? ` · ${String(item.counterpart_profile.city)}` : ''}
-                      </span>
+                    <div className="relative w-12 h-12 rounded-full overflow-hidden">
+                      <Image
+                        src={resolveProfileImageUrl(item.counterpart_image ?? undefined, PLACEHOLDER_AVATAR)}
+                        alt={item.counterpart_name || '对方'}
+                        fill
+                        className="object-cover"
+                      />
                     </div>
-                    <p className="text-sm text-muted-foreground mt-0.5 truncate">
-                      {String(item.counterpart_profile?.job || item.counterpart_profile?.education || '资料待补充')}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">{buildActivityText(item)}</p>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{item.counterpart_name || '对方'}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {String(item.counterpart_profile?.age || '')}
+                          {item.counterpart_profile?.age ? '岁' : ''}
+                          {item.counterpart_profile?.city ? ` · ${String(item.counterpart_profile.city)}` : ''}
+                        </span>
+                      </div>
+                      <p className="text-sm text-muted-foreground mt-0.5 truncate">
+                        {String(item.counterpart_profile?.job || item.counterpart_profile?.education || '资料待补充')}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">{buildActivityText(item)}</p>
+                    </div>
+                    <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-[10px] text-muted-foreground">
+                      {item.stage_label}
+                    </span>
                   </div>
-                  <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-[10px] text-muted-foreground">
-                    {item.stage_label}
-                  </span>
-                </div>
-                <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground">
-                  {pinnedCardIds[String(item.case_id)] ? <span className="px-2 py-0.5 rounded-full bg-gold/10 text-gold">置顶</span> : null}
-                  {readCardIds[String(item.case_id)] ? <span className="px-2 py-0.5 rounded-full bg-secondary">已读</span> : null}
-                </div>
-                {item.can_reply ? (
-                  <div className="mt-3 flex gap-2">
+                  <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground">
+                    {pinnedCardIds[String(item.case_id)] ? <span className="px-2 py-0.5 rounded-full bg-gold/10 text-gold">置顶</span> : null}
+                    {readCardIds[String(item.case_id)] ? <span className="px-2 py-0.5 rounded-full bg-secondary">已读</span> : null}
+                  </div>
+                  {item.can_reply ? (
+                    <div className="mt-3 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void handleReply(String(item.case_id), 'declined')}
+                        disabled={actingCaseId === item.case_id}
+                        className="flex-1 rounded-lg border border-border px-3 py-2 text-sm"
+                      >
+                        暂不考虑
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleReply(String(item.case_id), 'accepted')}
+                        disabled={actingCaseId === item.case_id}
+                        className="flex-1 rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground"
+                      >
+                        愿意认识
+                      </button>
+                    </div>
+                  ) : item.can_open_chat ? (
                     <button
                       type="button"
-                      onClick={() => void handleReply(String(item.case_id), 'declined')}
+                      onClick={() => void handleOpenChat(String(item.case_id))}
                       disabled={actingCaseId === item.case_id}
-                      className="flex-1 rounded-lg border border-border px-3 py-2 text-sm"
+                      className="mt-3 w-full rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground"
                     >
-                      暂不考虑
+                      {actingCaseId === item.case_id ? '处理中' : '开始聊天'}
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleReply(String(item.case_id), 'accepted')}
-                      disabled={actingCaseId === item.case_id}
-                      className="flex-1 rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground"
-                    >
-                      愿意认识
-                    </button>
-                  </div>
-                ) : item.can_open_chat ? (
-                  <button
-                    type="button"
-                    onClick={() => void handleOpenChat(String(item.case_id))}
-                    disabled={actingCaseId === item.case_id}
-                    className="mt-3 w-full rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground"
-                  >
-                    {actingCaseId === item.case_id ? '处理中' : '开始聊天'}
-                  </button>
-                ) : null}
+                  ) : null}
                 </div>
               </SwipeableCard>
             ))}
