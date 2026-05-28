@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { ArrowLeft, Phone, MoreVertical, Send, Image as ImageIcon, BadgeCheck, Mic, Check, CheckCheck, Clock, MessageCircle, X } from 'lucide-react'
+import { ArrowLeft, Phone, MoreVertical, Send, Image as ImageIcon, BadgeCheck, Mic, MessageCircle, X } from 'lucide-react'
 import Image from 'next/image'
 import { cn } from '@/lib/utils'
 import { gatewayJson, queryString } from '@/lib/api/client'
@@ -12,7 +12,6 @@ import { getChatParticipantId, getAvatarUrl } from '@/lib/auth/session'
 import { canUseMockFallback } from '@/lib/mock'
 import { notifyError } from '@/lib/notify'
 import { DEMO_CHAT_MESSAGES } from '@/lib/fixtures/demo-profiles'
-import { formatRelativeTime } from '@/lib/format-relative-time'
 import { PLACEHOLDER_AVATAR } from '@/lib/image-url'
 import { DEMO_DEFAULT_CHAT_ID } from '@/lib/navigation/defaults'
 import { DemoDataBanner } from './ui/demo-data-banner'
@@ -24,14 +23,11 @@ interface ChatPageProps {
   onBack: () => void
 }
 
-type MessageStatus = 'sending' | 'sent' | 'delivered' | 'read'
-
 type Message = {
   id: string
   type: 'sent' | 'received'
   content: string
   timestamp: string
-  status?: MessageStatus
 }
 
 type ConversationResponse = {
@@ -55,23 +51,6 @@ type MessagesResponse = {
   }>
 }
 
-// Message status indicator component
-function MessageStatusIndicator({ status }: { status?: MessageStatus }) {
-  if (!status) return null
-  
-  switch (status) {
-    case 'sending':
-      return <Clock className="w-3 h-3 text-muted-foreground" aria-label="发送中" />
-    case 'sent':
-      return <Check className="w-3 h-3 text-muted-foreground" aria-label="已发送" />
-    case 'delivered':
-      return <CheckCheck className="w-3 h-3 text-muted-foreground" aria-label="已送达" />
-    case 'read':
-      return <CheckCheck className="w-3 h-3 text-primary" aria-label="已读" />
-    default:
-      return null
-  }
-}
 
 // 私信悬浮球和弹窗组件
 function PrivateChatFab({
@@ -351,14 +330,11 @@ export default function ChatPage({ chatId, caseId, onBack }: ChatPageProps) {
         }
         setVerified(true)
         setMessages(
-          messageData.messages.map((message, index, arr) => ({
+          messageData.messages.map((message) => ({
             id: String(message.message_id),
             type: message.author_id === requesterId ? 'sent' : 'received',
             content: message.body,
             timestamp: message.created_at,
-            status: message.author_id === requesterId 
-              ? (index === arr.length - 1 ? 'read' : 'delivered')
-              : undefined,
           })),
         )
         const latestMessage = messageData.messages[messageData.messages.length - 1]
@@ -399,15 +375,14 @@ export default function ChatPage({ chatId, caseId, onBack }: ChatPageProps) {
     
     setInputValue('')
     setIsSending(true)
-    
-    // Optimistic update - add message with 'sending' status
+
+    // Optimistic update
     const tempId = `temp-${Date.now()}`
     const optimisticMessage: Message = {
       id: tempId,
       type: 'sent',
       content: body,
       timestamp: '刚刚',
-      status: 'sending'
     }
     setMessages(prev => [...prev, optimisticMessage])
 
@@ -419,18 +394,6 @@ export default function ChatPage({ chatId, caseId, onBack }: ChatPageProps) {
           body,
         }),
       })
-      
-      // Update message status to sent
-      setMessages(prev => prev.map(msg => 
-        msg.id === tempId ? { ...msg, status: 'sent' as const } : msg
-      ))
-      
-      // Simulate delivery after short delay
-      setTimeout(() => {
-        setMessages(prev => prev.map(msg => 
-          msg.id === tempId ? { ...msg, status: 'delivered' as const } : msg
-        ))
-      }, 500)
     } catch (error) {
       setMessages((prev) => prev.filter((msg) => msg.id !== tempId))
       notifyError(error, '消息发送失败')
@@ -509,9 +472,6 @@ export default function ChatPage({ chatId, caseId, onBack }: ChatPageProps) {
           const prevMsg = messages[index - 1]
           // 显示头像的条件：第一条消息，或上一条是对方发的（切换发送者时显示头像）
           const showAvatar = index === 0 || prevMsg?.type !== msg.type
-          const showTime = index === 0 ||
-            messages[index - 1]?.type !== msg.type ||
-            (index > 0 && msg.timestamp !== messages[index - 1]?.timestamp)
 
           return (
             <div
@@ -539,13 +499,7 @@ export default function ChatPage({ chatId, caseId, onBack }: ChatPageProps) {
                 )}>
                   {msg.content}
                 </div>
-                {showTime && (
-                  <div className={cn('flex items-center gap-1.5 mt-1', isSent ? 'justify-end' : 'justify-start')}>
-                    <p className="text-[10px] text-muted-foreground">{formatRelativeTime(msg.timestamp)}</p>
-                    {isSent && <MessageStatusIndicator status={msg.status} />}
-                  </div>
-                )}
-              </div>
+                              </div>
               {isSent && (
                 <div className={cn('w-8 h-8 rounded-full overflow-hidden bg-secondary flex-shrink-0', showAvatar ? 'opacity-100' : 'opacity-0')}>
                   <Image
