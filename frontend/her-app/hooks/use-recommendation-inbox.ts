@@ -7,6 +7,7 @@ import {
   type RecommendationCard,
 } from '@/lib/api/endpoints/recommendation'
 import { fetchRelationsMine, formatConversionStageLabel } from '@/lib/api/endpoints/relations'
+import { fetchMyProxyIntroCases, type ProxyIntroCase } from '@/lib/api/endpoints/proxy-intro'
 import { getProfileId } from '@/lib/auth/session'
 import { PLACEHOLDER_AVATAR, resolveProfileImageUrl } from '@/lib/image-url'
 
@@ -17,13 +18,14 @@ export type InboxItem = {
   subscriptionId?: string
   recommendationId?: number
   candidateId?: number
+  caseId?: string  // 新增：用于 ProxyIntroCase
   name: string
   age: number
   city: string
   occupation: string
   matchScore: number
   image: string
-  type: 'delayed' | 'matched'
+  type: 'delayed' | 'matched' | 'interest'  // 新增：interest 类型
   message: string
   time: string
   isRead: boolean
@@ -59,6 +61,37 @@ function mapCardToInboxItem(card: RecommendationCard): InboxItem {
   }
 }
 
+function mapProxyIntroCaseToInboxItem(caseItem: ProxyIntroCase): InboxItem {
+  // 从 outreach_payload 中提取 requester 的信息
+  // outreach_payload.requester_summary 包含发起方的信息（由 build_requester_safe_summary 生成）
+  const requesterSummary = caseItem.outreach_payload?.requester_summary || {}
+  const requesterProfile = caseItem.requester_profile_snapshot?.self_profile || {}
+  const counterpartProfile = caseItem.counterpart_profile || {}
+
+  // 使用 requester_summary 中的信息（如果存在），否则从 requester_profile_snapshot 中提取
+  const name = requesterSummary.requester_name || counterpartProfile.display_name || counterpartProfile.name || '有人'
+  const age = requesterSummary.age_bracket ? parseInt(requesterSummary.age_bracket.split('-')[0]) : (requesterProfile.age || counterpartProfile.age || 0)
+  const city = requesterSummary.city || requesterProfile.city || counterpartProfile.city || '未知'
+  const occupation = requesterSummary.occupation || requesterProfile.job || counterpartProfile.job || '资料待补充'
+
+  return {
+    id: String(caseItem.case_id),
+    listKey: `case:${caseItem.case_id}`,
+    caseId: String(caseItem.case_id),
+    name,
+    age,
+    city,
+    occupation,
+    matchScore: 0,  // 被动推荐暂无匹配分数
+    image: resolveProfileImageUrl(requesterSummary.avatar_url || requesterProfile.avatar_url, PLACEHOLDER_AVATAR),
+    type: 'interest',  // 新增类型：有人想认识你
+    message: requesterSummary.summary_text || '有人想通过平台进一步认识你',
+    time: caseItem.created_at || '刚刚',
+    isRead: caseItem.case_status !== 'awaiting_reply',  // awaiting_reply 视为未读
+    conversionStage: undefined,
+  }
+}
+
 export function useRecommendationInbox() {
   const [isLoading, setIsLoading] = useState(true)
   const [backendItems, setBackendItems] = useState<InboxItem[]>([])
@@ -73,9 +106,28 @@ export function useRecommendationInbox() {
     let cancelled = false
     async function loadCards() {
       try {
+        // 加载推荐卡片
         const response = await fetchRecommendationCards(Number(profileId))
         if (cancelled) return
         const cards = response.cards?.map(mapCardToInboxItem) || []
+
+        // 加载被动推荐 case（有人想认识你）
+        let interestCards: InboxItem[] = []
+        try {
+          const casesResponse = await fetchMyProxyIntroCases()
+          if (cancelled) return
+          // 过滤出当前用户作为被请求方且等待回复的 case
+          const interestCases = (casesResponse.cases || []).filter(
+            (c) => c.role === 'candidate' && c.case_status === 'awaiting_reply'
+          )
+          interestCards = interestCases.map(mapProxyIntroCaseToInboxItem)
+        } catch {
+          // 加载失败时忽略
+        }
+
+        // 合并推荐卡片和被动推荐
+        const allItems = [...cards, ...interestCards]
+
         const conversionByCandidate = new Map<number, string>()
         try {
           const mine = await fetchRelationsMine()
@@ -109,7 +161,7 @@ export function useRecommendationInbox() {
             }),
           )
         }
-        const enrichedCards = cards.map((card) => ({
+        const enrichedCards = allItems.map((card) => ({
           ...card,
           conversionStage:
             card.candidateId != null

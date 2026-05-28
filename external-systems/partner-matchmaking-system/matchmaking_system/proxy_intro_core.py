@@ -102,6 +102,7 @@ def _height_bracket(height: Any) -> str | None:
 
 
 def build_safe_summary(subscription: dict[str, Any], recommendation: dict[str, Any]) -> dict[str, Any]:
+    """构建候选人（被推荐方）的信息摘要，用于存储在案件中。"""
     payload = dict(recommendation.get("latest_payload") or {})
     profile = dict(payload.get("profile") or {})
     safe_summary = {
@@ -127,12 +128,56 @@ def build_safe_summary(subscription: dict[str, Any], recommendation: dict[str, A
     return safe_summary
 
 
+def build_requester_safe_summary(subscription: dict[str, Any]) -> dict[str, Any]:
+    """构建发起方（requester）的信息摘要，用于发送给被请求方。
+
+    与 build_safe_summary 不同，此函数从 subscription（发起方的订阅）提取发起方的信息，
+    用于构建发给被请求方的消息内容。
+
+    Args:
+        subscription: 发起方的订阅记录，包含 self_profile_json（发起方的资料）
+
+    Returns:
+        发起方的信息摘要，包含年龄、城市、职业等
+    """
+    self_profile = json_loads(subscription.get("self_profile_json"), {})
+
+    safe_summary = {
+        "requester_name": self_profile.get("display_name") or self_profile.get("name") or "有人",
+        "age_bracket": _age_bracket(self_profile.get("age")),
+        "city": self_profile.get("city") or self_profile.get("settlement_city"),
+        "height_bracket": _height_bracket(self_profile.get("height")),
+        "education": self_profile.get("education"),
+        "occupation": self_profile.get("job") or self_profile.get("occupation"),
+        "relationship_goal": self_profile.get("relationship_goal"),
+        "matched_on": [],  # TODO: 可以从 subscription 的 criteria 中提取匹配点
+        "subscription_title": subscription.get("title"),
+        "avatar_url": self_profile.get("avatar_url") or self_profile.get("photo_url"),
+    }
+
+    safe_summary["summary_text"] = "；".join(
+        part for part in [
+            safe_summary["age_bracket"],
+            safe_summary["city"],
+            safe_summary["education"],
+            safe_summary["occupation"],
+            safe_summary["relationship_goal"],
+        ] if part
+    )
+    return safe_summary
+
+
 def build_outreach_payload(
     subscription: dict[str, Any],
     safe_summary: dict[str, Any],
     *,
     outreach_channel: str = DEFAULT_OUTREACH_CHANNEL,
 ) -> dict[str, Any]:
+    """构建发给被请求方的消息。
+
+    注意：此函数的 safe_summary 参数应该是候选人（被推荐方）的信息，
+    用于历史兼容。新代码应使用 build_outreach_payload_from_requester。
+    """
     parts = [
         "有人想通过平台进一步认识你。",
         safe_summary.get("age_bracket"),
@@ -148,6 +193,44 @@ def build_outreach_payload(
         "body": body,
         "safe_summary": safe_summary,
         "subscription_title": subscription.get("title"),
+    }
+
+
+def build_outreach_payload_from_requester(
+    requester_summary: dict[str, Any],
+    *,
+    outreach_channel: str = DEFAULT_OUTREACH_CHANNEL,
+) -> dict[str, Any]:
+    """构建发给被请求方的消息，内容是发起方的信息。
+
+    与 build_outreach_payload 不同，此函数使用发起方的信息摘要构建消息，
+    让被请求方看到"谁想认识你"的具体信息。
+
+    Args:
+        requester_summary: 发起方的信息摘要（由 build_requester_safe_summary 生成）
+        outreach_channel: 投递渠道
+
+    Returns:
+        发给被请求方的消息 payload，包含发起方的年龄、城市、职业等
+    """
+    requester_name = requester_summary.get("requester_name") or "有人"
+    parts = [
+        f"{requester_name}想通过平台进一步认识你。",
+        requester_summary.get("age_bracket"),
+        requester_summary.get("city"),
+        requester_summary.get("occupation"),
+        requester_summary.get("relationship_goal"),
+    ]
+    if requester_summary.get("matched_on"):
+        parts.append("匹配点：" + "；".join(str(item) for item in requester_summary["matched_on"]))
+
+    body = "\n".join(part for part in parts if part)
+
+    return {
+        "channel": outreach_channel,
+        "title": "有人想通过平台进一步了解你",
+        "body": body,
+        "requester_summary": requester_summary,  # 使用 requester_summary 而非 safe_summary
     }
 
 
@@ -624,10 +707,13 @@ def create_match_case(
             raise ValueError("Candidate is still cooling down after the last proxy-intro case.")
 
     case_id = generate_case_id()
+    # 构建候选人（B）的信息摘要，用于存储在案件中
     safe_summary = build_safe_summary(subscription, recommendation)
-    outreach_payload = build_outreach_payload(
-        subscription,
-        safe_summary,
+    # 构建发起方（A）的信息摘要，用于发给被请求方（B）
+    requester_summary = build_requester_safe_summary(subscription)
+    # 使用发起方的信息构建发给被请求方的消息
+    outreach_payload = build_outreach_payload_from_requester(
+        requester_summary,
         outreach_channel=outreach_channel,
     )
     reply_deadline_at = now + timedelta(hours=int(reply_window_hours or DEFAULT_REPLY_WINDOW_HOURS))
