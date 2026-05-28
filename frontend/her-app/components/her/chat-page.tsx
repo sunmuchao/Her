@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { ArrowLeft, Phone, MoreVertical, Send, Image as ImageIcon, BadgeCheck, Mic, Check, CheckCheck, Clock } from 'lucide-react'
 import Image from 'next/image'
 import { ChatTypingIndicator } from './ui/typing-indicator'
@@ -16,7 +17,6 @@ import { PLACEHOLDER_AVATAR } from '@/lib/image-url'
 import { DEMO_DEFAULT_CHAT_ID } from '@/lib/navigation/defaults'
 import { DemoDataBanner } from './ui/demo-data-banner'
 import { ErrorState } from './ui/error-state'
-import { EmptyConversations } from './ui/empty-states'
 
 interface ChatPageProps {
   chatId: string | null
@@ -73,11 +73,16 @@ function MessageStatusIndicator({ status }: { status?: MessageStatus }) {
 }
 
 export default function ChatPage({ chatId, onBack }: ChatPageProps) {
+  const searchParams = useSearchParams()
+  const urlChatTitle = searchParams.get('chatTitle')
+  console.log('[ChatPage] URL 参数 chatTitle:', urlChatTitle)
+
   const resolvedChatId = chatId === 'demo' ? DEMO_DEFAULT_CHAT_ID : chatId
   const [inputValue, setInputValue] = useState('')
   const [isTyping, setIsTyping] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
-  const [chatTitle, setChatTitle] = useState('聊天')
+  const [chatTitle, setChatTitle] = useState(urlChatTitle || '聊天')
+  const [chatAvatar, setChatAvatar] = useState(PLACEHOLDER_AVATAR)
   const [verified, setVerified] = useState(true)
   const [isSending, setIsSending] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -85,6 +90,15 @@ export default function ChatPage({ chatId, onBack }: ChatPageProps) {
   const [isLoading, setIsLoading] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // 使用 ref 保存最新的 urlChatTitle，避免闭包问题
+  const chatTitleRef = useRef(urlChatTitle)
+  useEffect(() => {
+    chatTitleRef.current = urlChatTitle
+    if (urlChatTitle) {
+      setChatTitle(urlChatTitle)
+    }
+  }, [urlChatTitle])
 
   useEffect(() => {
     if (!resolvedChatId) return
@@ -113,11 +127,14 @@ export default function ChatPage({ chatId, onBack }: ChatPageProps) {
           ),
         ])
         if (cancelled) return
-        const otherMember =
-          conversationData.conversation.members?.find(
-            (member) => member.participant_id !== requesterId && member.member_role !== 'agent',
-          )?.participant_id || '对方'
-        setChatTitle(otherMember)
+        // 只有在没有 URL 参数 chatTitle 时才从 API 获取标题
+        if (!chatTitleRef.current) {
+          const otherMember =
+            conversationData.conversation.members?.find(
+              (member) => member.participant_id !== requesterId && member.member_role !== 'agent',
+            )?.participant_id || '对方'
+          setChatTitle(otherMember)
+        }
         setVerified(true)
         setMessages(
           messageData.messages.map((message, index, arr) => ({
@@ -249,7 +266,7 @@ export default function ChatPage({ chatId, onBack }: ChatPageProps) {
           </button>
           <div className="w-8 h-8 rounded-full overflow-hidden bg-secondary flex items-center justify-center">
             <Image
-              src={PLACEHOLDER_AVATAR}
+              src={chatAvatar}
               alt={chatTitle}
               width={32}
               height={32}
@@ -280,10 +297,7 @@ export default function ChatPage({ chatId, onBack }: ChatPageProps) {
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto min-h-0 px-4 py-4 space-y-3" role="log" aria-label="聊天消息">
-        {messages.length === 0 && !isTyping ? (
-          <EmptyConversations />
-        ) : (
-          messages.map((msg, index) => {
+        {messages.map((msg, index) => {
           const isSent = msg.type === 'sent'
           const showTime = index === 0 || 
             messages[index - 1]?.type !== msg.type ||
@@ -313,8 +327,7 @@ export default function ChatPage({ chatId, onBack }: ChatPageProps) {
               </div>
             </div>
           )
-        })
-        )}
+        })}
         {isTyping && <ChatTypingIndicator />}
         <div ref={messagesEndRef} />
       </div>

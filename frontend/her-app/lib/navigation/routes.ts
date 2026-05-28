@@ -4,6 +4,9 @@ import type { AppPage } from '@/lib/navigation/types'
 export type RouteParams = {
   candidateId?: string
   chatId?: string
+  caseId?: string
+  viewType?: 'delayed' | 'matched' | 'interest' | 'candidate'
+  chatTitle?: string
 }
 
 export type ParsedRoute = RouteParams & {
@@ -11,48 +14,86 @@ export type ParsedRoute = RouteParams & {
 }
 
 export function pageToPath(page: AppPage, params: RouteParams = {}): string {
+  let path: string
   switch (page) {
     case 'splash':
-      return '/splash'
+      path = '/splash'
+      break
     case 'auth-welcome':
-      return '/welcome'
+      path = '/welcome'
+      break
     case 'auth-one-click':
-      return '/login/one-tap'
+      path = '/login/one-tap'
+      break
     case 'auth-phone':
-      return '/login/phone'
+      path = '/login/phone'
+      break
     case 'auth-verification-code':
-      return '/login/verify'
+      path = '/login/verify'
+      break
     case 'auth-wechat-binding':
-      return '/wechat/bind'
+      path = '/wechat/bind'
+      break
     case 'auth-new-user-welcome':
-      return '/onboarding/welcome'
+      path = '/onboarding/welcome'
+      break
     case 'auth-onboarding':
-      return '/onboarding'
+      path = '/onboarding'
+      break
     case 'auth-recovery':
-      return '/recovery'
+      path = '/recovery'
+      break
     case 'main-matchmaker':
-      return '/discover'
+      path = '/discover'
+      break
     case 'main-relationships':
-      return '/relationships'
+      path = '/relationships'
+      break
     case 'main-profile':
-      return '/profile'
+      path = '/profile'
+      break
     case 'sub-recommendation-inbox':
-      return '/inbox'
+      path = '/inbox'
+      break
     case 'sub-candidate-detail':
-      return `/candidates/${params.candidateId ?? DEMO_DEFAULT_CANDIDATE_ID}`
+      path = `/candidates/${params.candidateId ?? DEMO_DEFAULT_CANDIDATE_ID}`
+      break
     case 'sub-chat':
-      return `/chat/${params.chatId ?? DEMO_DEFAULT_CHAT_ID}`
+      path = `/chat/${params.chatId ?? DEMO_DEFAULT_CHAT_ID}`
+      break
     case 'sub-verification':
-      return '/verification'
+      path = '/verification'
+      break
     case 'sub-trust-center':
-      return '/trust'
+      path = '/trust'
+      break
     case 'sub-collected-preferences':
-      return '/profile/collected'
+      path = '/profile/collected'
+      break
     case 'ops-workbench':
-      return '/ops/workbench'
+      path = '/ops/workbench'
+      break
     default:
-      return '/splash'
+      path = '/splash'
+      break
   }
+
+  // 添加 query 参数：caseId, viewType, chatTitle
+  const queryParams: string[] = []
+  if (params.caseId) {
+    queryParams.push(`caseId=${encodeURIComponent(params.caseId)}`)
+  }
+  if (params.viewType) {
+    queryParams.push(`viewType=${encodeURIComponent(params.viewType)}`)
+  }
+  if (params.chatTitle) {
+    queryParams.push(`chatTitle=${encodeURIComponent(params.chatTitle)}`)
+  }
+  if (queryParams.length > 0) {
+    path += '?' + queryParams.join('&')
+  }
+
+  return path
 }
 
 export function pathToPage(pathname: string): ParsedRoute {

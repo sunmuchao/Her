@@ -12,6 +12,7 @@ import TrustCenterPage from '@/components/her/trust-center-page'
 import VerificationFlowPage from '@/components/her/verification-flow-page'
 import { PageTransition, SlideInTransition } from '@/components/her/ui/page-transitions'
 import type { CandidatePreview } from '@/lib/types/candidate'
+import type { ChatUserInfo } from '@/hooks/use-app-router'
 import { cn } from '@/lib/utils'
 import type { SubView, TabType } from '@/lib/navigation/types'
 
@@ -26,7 +27,7 @@ type AppShellProps = {
   onTabChange: (tab: TabType) => void
   onViewCandidate: (candidateId: string, candidate?: CandidatePreview) => void
   onOpenInbox: () => void
-  onOpenChat: (chatId: string) => void
+  onOpenChat: (chatId: string, info?: ChatUserInfo) => void
   onBackToMain: () => void
   onStartVerification: (from?: 'trust-center') => void
   onBackFromVerification: () => void
@@ -117,6 +118,8 @@ export function AppShell({
               candidateId={selectedCandidateId}
               candidate={selectedCandidate || undefined}
               sessionId={discoverySessionId}
+              caseId={selectedCandidate?.caseId}
+              viewType={selectedCandidate?.viewType}
               onBack={onBackToMain}
               onOpenRelationships={() => {
                 onTabChange('relationships')
@@ -126,7 +129,10 @@ export function AppShell({
         )}
         {subView === 'chat' && selectedChatId && (
           <SlideInTransition key="chat" direction="right">
-            <ChatPage chatId={selectedChatId} onBack={onBackToMain} />
+            <ChatPage
+              chatId={selectedChatId}
+              onBack={onBackToMain}
+            />
           </SlideInTransition>
         )}
         {subView === 'verification' && (

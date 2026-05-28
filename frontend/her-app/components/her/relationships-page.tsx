@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { BadgeCheck, ChevronRight, Heart, MessageCircle, AlertCircle } from 'lucide-react'
 import Image from 'next/image'
+import { fetchRelationshipsUnreadSummary } from '@/lib/api/endpoints/chat'
 import { fetchTrustHub } from '@/lib/api/endpoints/trust-hub'
 import {
   fetchMyProxyIntroCases,
@@ -16,13 +17,14 @@ import { logDataProvenance, usePageDataSource } from '@/lib/data-provenance'
 import { getProfileId, getUserId, patchSessionContext } from '@/lib/auth/session'
 import { PLACEHOLDER_AVATAR, resolveProfileImageUrl } from '@/lib/image-url'
 import { mapTrustHubPendingActions } from '@/lib/trust/map-trust-hub'
+import type { ChatUserInfo } from '@/hooks/use-app-router'
 import { DemoDataBanner } from './ui/demo-data-banner'
 import { ErrorState } from './ui/error-state'
 import { EmptyRelationships } from './ui/empty-states'
 import { RelationshipsPageSkeleton } from './ui/skeletons'
 
 interface RelationshipsPageProps {
-  onOpenChat: (chatId: string) => void
+  onOpenChat: (chatId: string, info?: ChatUserInfo) => void
   onStartVerification: () => void
 }
 
@@ -36,12 +38,14 @@ type PendingAction = {
 
 type ActiveRelationship = {
   id: string
+  caseId: string
   name: string
   stage: string
   lastMessage: string
   lastMessageTime: string
   verified: boolean
   image: string
+  unreadCount: number
 }
 
 function buildActivityText(item: ProxyIntroCase): string {
@@ -62,6 +66,7 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
   const [emptyHint, setEmptyHint] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [actingCaseId, setActingCaseId] = useState<string | null>(null)
+  const [unreadByCaseId, setUnreadByCaseId] = useState<Record<string, number>>({})
   const { usingMockData, applyProvenance } = usePageDataSource()
 
   useEffect(() => {
@@ -81,6 +86,9 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
         if (cancelled) return
         const nextCases = caseData.cases || []
         setCases(nextCases)
+        const unreadSummary = await fetchRelationshipsUnreadSummary().catch(() => null)
+        if (cancelled) return
+        setUnreadByCaseId(unreadSummary?.byCaseId || {})
         const trustPending = mapTrustHubPendingActions(
           trustHub?.trust_hub?.verification_center?.items,
         ).map((item) => ({
@@ -136,6 +144,13 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
     if (actingCaseId) return
     setActingCaseId(caseId)
     try {
+      // 先获取当前 case 的用户信息
+      const currentCase = cases.find((item) => String(item.case_id) === caseId)
+      const userInfo: ChatUserInfo | undefined = currentCase ? {
+        title: currentCase.counterpart_name || undefined,
+        avatar: resolveProfileImageUrl(currentCase.counterpart_image ?? undefined, PLACEHOLDER_AVATAR),
+      } : undefined
+
       const response = await openProxyIntroChat({
         caseId,
         source: 'relationships_page',
@@ -148,7 +163,7 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
         setCases((prev) => prev.map((item) => (item.case_id === caseId ? response.case! : item)))
       }
       patchSessionContext({ caseId })
-      onOpenChat(conversationId)
+      onOpenChat(conversationId, userInfo)
     } catch (error) {
       setLoadError(getErrorMessage(error, '开始聊天失败'))
     } finally {
@@ -169,15 +184,24 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
   })
   const activeRelationships: ActiveRelationship[] = cases
     .filter((item) => item.main_conversation_id)
-    .map((item) => ({
-      id: String(item.main_conversation_id),
-      name: item.counterpart_name || '对方',
-      stage: item.stage_label || '已开聊',
-      lastMessage: item.case_status === 'closed' ? '已进入双向聊天' : '已进入聊天，继续了解吧',
-      lastMessageTime: item.updated_at || item.created_at || '刚刚',
-      verified: true,
-      image: resolveProfileImageUrl(item.counterpart_image ?? undefined, PLACEHOLDER_AVATAR),
-    }))
+    .map((item) => {
+      console.log('[relationships] 构建活跃关系:', {
+        case_id: item.case_id,
+        counterpart_name: item.counterpart_name,
+        counterpart_image: item.counterpart_image,
+      })
+      return {
+        id: String(item.main_conversation_id),
+        caseId: String(item.case_id),
+        name: item.counterpart_name || '对方',
+        stage: item.stage_label || '已开聊',
+        lastMessage: item.case_status === 'closed' ? '已进入双向聊天' : '已进入聊天，继续了解吧',
+        lastMessageTime: item.updated_at || item.created_at || '刚刚',
+        verified: true,
+        image: resolveProfileImageUrl(item.counterpart_image ?? undefined, PLACEHOLDER_AVATAR),
+        unreadCount: unreadByCaseId[String(item.case_id)] || 0,
+      }
+    })
   const recentActivities = cases.slice(0, 5).map((item, index) => ({
     id: String(item.case_id || index),
     content: buildActivityText(item),
@@ -214,7 +238,10 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
             {activeRelationships.map((rel, index) => (
               <button
                 key={rel.id}
-                onClick={() => onOpenChat(rel.id)}
+                onClick={() => {
+                  console.log('[relationships] 点击活跃关系卡片:', { id: rel.id, name: rel.name, image: rel.image })
+                  onOpenChat(rel.id, { title: rel.name, avatar: rel.image })
+                }}
                 className="w-full bg-card border border-border rounded-xl p-3 text-left hover:border-primary/30 hover:shadow-sm transition-all focus-ring animate-fade-in-up"
                 style={{ animationDelay: `${index * 50}ms` }}
                 aria-label={`查看与${rel.name}的对话`}
@@ -222,6 +249,11 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
                 <div className="flex items-center gap-3">
                   <div className="relative w-12 h-12 rounded-full overflow-hidden">
                     <Image src={rel.image} alt={rel.name} fill className="object-cover" />
+                    {rel.unreadCount > 0 ? (
+                      <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 bg-rose text-[10px] font-medium text-white rounded-full flex items-center justify-center shadow-sm">
+                        {rel.unreadCount > 99 ? '99+' : rel.unreadCount}
+                      </span>
+                    ) : null}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
@@ -229,7 +261,9 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
                       {rel.verified && <BadgeCheck className="w-4 h-4 text-primary" />}
                       <span className="ml-auto px-2 py-0.5 bg-secondary text-[10px] rounded-full">{rel.stage}</span>
                     </div>
-                    <p className="text-sm text-muted-foreground truncate mt-0.5">{rel.lastMessage}</p>
+                    <p className="text-sm text-muted-foreground truncate mt-0.5">
+                      {rel.unreadCount > 0 ? `有${rel.unreadCount}条新消息` : rel.lastMessage}
+                    </p>
                     <span className="text-[10px] text-muted-foreground">{rel.lastMessageTime}</span>
                   </div>
                 </div>
