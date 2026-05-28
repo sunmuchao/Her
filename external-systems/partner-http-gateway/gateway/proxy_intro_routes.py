@@ -244,6 +244,16 @@ def rest_proxy_intro_open_chat(
         if not (case_status == "closed" and close_reason == "handoff_completed"):
             raise ValueError("双方还没都同意，暂时不能开始聊天")
 
+    if main_conversation and case_status == "accepted":
+        case = gateway._with_proxy_intro(
+            close_match_case,
+            case_id=case_id,
+            close_reason="handoff_completed",
+            now=_parse_optional_now(body),
+            close_payload={"opened_by_profile_id": int(principal.profile_id), "reused_existing_conversation": True},
+        )
+        case_status = str(case.get("case_status") or "").strip()
+
     requester_user_id = gateway._with_chat(find_user_id_by_profile_id, int(case["requester_id"]))
     candidate_user_id = gateway._with_chat(find_user_id_by_profile_id, int(case["candidate_id"]))
     if not requester_user_id or not candidate_user_id:
@@ -327,4 +337,3 @@ def dispatch_proxy_intro_rest(
     if match and method == "GET":
         return rest_proxy_intro_get_case(gateway, environ, match.group(1))
     return None
-
