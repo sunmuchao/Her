@@ -24,10 +24,11 @@ type AppShellProps = {
   selectedChatId: string | null
   selectedCaseId: string | null
   selectedCounterpartId: string | null
+  fromChatId: string | null
   discoverySessionId: string | null
   onDiscoverySessionId: (sessionId: string | null) => void
   onTabChange: (tab: TabType) => void
-  onViewCandidate: (candidateId: string, candidate?: CandidatePreview) => void
+  onViewCandidate: (candidateId: string, candidate?: CandidatePreview, sessionId?: string | null, fromChatId?: string) => void
   onOpenInbox: () => void
   onOpenChat: (chatId: string, info?: ChatUserInfo) => void
   onBackToMain: () => void
@@ -46,6 +47,7 @@ export function AppShell({
   selectedChatId,
   selectedCaseId,
   selectedCounterpartId,
+  fromChatId,
   discoverySessionId,
   onDiscoverySessionId,
   onTabChange,
@@ -129,7 +131,17 @@ export function AppShell({
               sessionId={discoverySessionId}
               caseId={selectedCandidate?.caseId}
               viewType={selectedCandidate?.viewType}
-              onBack={onBackToMain}
+              onBack={() => {
+                // 如果有 fromChatId，返回时回到聊天页面
+                if (fromChatId) {
+                  onOpenChat(fromChatId, {
+                    caseId: selectedCaseId || undefined,
+                    counterpartId: selectedCounterpartId || undefined,
+                  })
+                } else {
+                  onBackToMain()
+                }
+              }}
               onOpenRelationships={() => {
                 onTabChange('relationships')
               }}

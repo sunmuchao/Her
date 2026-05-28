@@ -8,6 +8,7 @@ export type RouteParams = {
   viewType?: 'delayed' | 'matched' | 'interest' | 'candidate'
   chatTitle?: string
   counterpartId?: string
+  fromChatId?: string
 }
 
 export type ParsedRoute = RouteParams & {
@@ -79,7 +80,7 @@ export function pageToPath(page: AppPage, params: RouteParams = {}): string {
       break
   }
 
-  // 添加 query 参数：caseId, viewType, chatTitle, counterpartId
+  // 添加 query 参数：caseId, viewType, chatTitle, counterpartId, fromChatId
   const queryParams: string[] = []
   if (params.caseId) {
     queryParams.push(`caseId=${encodeURIComponent(params.caseId)}`)
@@ -92,6 +93,9 @@ export function pageToPath(page: AppPage, params: RouteParams = {}): string {
   }
   if (params.counterpartId) {
     queryParams.push(`counterpartId=${encodeURIComponent(params.counterpartId)}`)
+  }
+  if (params.fromChatId) {
+    queryParams.push(`fromChatId=${encodeURIComponent(params.fromChatId)}`)
   }
   if (queryParams.length > 0) {
     path += '?' + queryParams.join('&')
