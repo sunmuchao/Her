@@ -116,7 +116,8 @@ export default function CandidateDetailPage({
     : null
   const recommendationTargetId = candidate?.recommendationId
   const subscriptionId = candidate?.subscriptionId
-  const canExpressInterest = Boolean(candidate?.id && (subscriptionId || sessionId))
+  const resolvedCandidateId = candidate?.id || candidateId
+  const canExpressInterest = Boolean(resolvedCandidateId && (subscriptionId || sessionId))
 
   const factImages = mapProfileImageUrls(
     [profileFacts.avatar_url, profileFacts.photo_url, profileFacts.cover_url].filter(Boolean).map(String),
