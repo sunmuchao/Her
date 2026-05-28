@@ -137,8 +137,8 @@ function SwipeableCard({
 
   return (
     <div className={className} style={style} aria-label={ariaLabel}>
-      <div className="relative overflow-hidden rounded-xl">
-        <div className="absolute inset-y-0 right-0 flex" style={{ width: actionsWidth }}>
+      <div className="relative w-full overflow-hidden rounded-xl">
+        <div className="absolute inset-y-0 right-0 flex justify-end" style={{ width: actionsWidth }}>
           {actions.map((action) => {
             const Icon = action.icon
             return (
@@ -162,7 +162,7 @@ function SwipeableCard({
           })}
         </div>
         <div
-          className="relative z-10 transition-transform duration-200 ease-out"
+          className="relative z-10 w-full bg-card transition-transform duration-200 ease-out touch-pan-y"
           style={{ transform: `translateX(${-offset}px)` }}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
