@@ -16,6 +16,7 @@ from .proxy_intro_core import (  # noqa: E402
     get_match_case as _get_match_case_raw,
     list_match_case_events,
     list_match_case_outreach_attempts,
+    list_match_cases_for_participant,
     list_match_cases_for_recommendation,
     record_match_case_reply as _record_match_case_reply,
 )
@@ -87,6 +88,7 @@ __all__ = [
     "get_match_case",
     "list_match_case_events",
     "list_match_case_outreach_attempts",
+    "list_match_cases_for_participant",
     "list_match_cases_for_recommendation",
     "record_match_case_reply",
 ]

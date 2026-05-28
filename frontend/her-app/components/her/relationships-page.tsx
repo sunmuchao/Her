@@ -1,26 +1,25 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { MessageCircle, Heart, ChevronRight, BadgeCheck, AlertCircle } from 'lucide-react'
+import { BadgeCheck, ChevronRight, Heart, MessageCircle, AlertCircle } from 'lucide-react'
 import Image from 'next/image'
-import {
-  fetchCrossDomainTimeline,
-  formatLedgerPhaseLabel,
-  summarizeTimelineEvents,
-} from '@/lib/api/endpoints/relations'
 import { fetchTrustHub } from '@/lib/api/endpoints/trust-hub'
+import {
+  fetchMyProxyIntroCases,
+  openProxyIntroChat,
+  replyProxyIntroCase,
+  type ProxyIntroCase,
+} from '@/lib/api/endpoints/proxy-intro'
 import { getErrorMessage } from '@/lib/api/errors'
-import { resolveCaseIdForTimeline } from '@/lib/auth/resolve-case'
-import { getChatParticipantId, getProfileId, getUserId } from '@/lib/auth/session'
 import { canUseMockFallback } from '@/lib/mock'
 import { logDataProvenance, usePageDataSource } from '@/lib/data-provenance'
-import { PLACEHOLDER_AVATAR } from '@/lib/image-url'
+import { getProfileId, getUserId, patchSessionContext } from '@/lib/auth/session'
+import { PLACEHOLDER_AVATAR, resolveProfileImageUrl } from '@/lib/image-url'
 import { mapTrustHubPendingActions } from '@/lib/trust/map-trust-hub'
 import { DemoDataBanner } from './ui/demo-data-banner'
 import { ErrorState } from './ui/error-state'
 import { EmptyRelationships } from './ui/empty-states'
 import { RelationshipsPageSkeleton } from './ui/skeletons'
-import { useRecommendationInbox } from '@/hooks/use-recommendation-inbox'
 
 interface RelationshipsPageProps {
   onOpenChat: (chatId: string) => void
@@ -35,97 +34,53 @@ type PendingAction = {
   icon: typeof BadgeCheck
 }
 
+type ActiveRelationship = {
+  id: string
+  name: string
+  stage: string
+  lastMessage: string
+  lastMessageTime: string
+  verified: boolean
+  image: string
+}
+
+function buildActivityText(item: ProxyIntroCase): string {
+  const name = item.counterpart_name || '对方'
+  const stage = item.stage_label || '牵线中'
+  if (item.main_conversation_id) return `你和${name}已经进入聊天`
+  if (item.case_status === 'awaiting_reply') return `已把${name}推荐给对方，等她回复`
+  if (item.case_status === 'accepted') return `${name}也愿意认识，可以开始聊天了`
+  if (item.case_status === 'declined') return `${name}这次先不考虑`
+  if (item.case_status === 'timed_out') return `${name}暂时没有回复`
+  return `${name}当前状态：${stage}`
+}
+
 export default function RelationshipsPage({ onOpenChat, onStartVerification }: RelationshipsPageProps) {
-  const [activeRelationships, setActiveRelationships] = useState<Array<{
-    id: string
-    name: string
-    stage: string
-    lastMessage: string
-    lastMessageTime: string
-    unread: number
-    verified: boolean
-    image: string
-  }>>([])
-  const [recentActivities, setRecentActivities] = useState<Array<{ id: string; content: string; time: string; type: 'view' | 'match' | 'greeting' }>>([])
+  const [cases, setCases] = useState<ProxyIntroCase[]>([])
   const [pendingActions, setPendingActions] = useState<PendingAction[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
   const [emptyHint, setEmptyHint] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [actingCaseId, setActingCaseId] = useState<string | null>(null)
   const { usingMockData, applyProvenance } = usePageDataSource()
-  const [relationPhase, setRelationPhase] = useState<string | null>(null)
-  const [sourceMode, setSourceMode] = useState<string | null>(null)
-  const { backendItems } = useRecommendationInbox()
 
   useEffect(() => {
     let cancelled = false
 
-    async function loadTimeline() {
+    async function loadCases() {
       setIsLoading(true)
       setLoadError(null)
       setEmptyHint(null)
-
-      const timelineActorId = getUserId()
-      if (!timelineActorId) {
-        setIsLoading(false)
-        setLoadError('请先登录后再查看关系时间线')
-        return
-      }
-
-      const caseId = await resolveCaseIdForTimeline()
-      const participantId = getChatParticipantId()
-      if (!caseId) {
-        setIsLoading(false)
-        setEmptyHint('当前还没有进行中的关系')
-        return
-      }
-
       try {
-        const [data, trustHub] = await Promise.all([
-          fetchCrossDomainTimeline(caseId, timelineActorId),
-          fetchTrustHub({ userId: timelineActorId, profileId: getProfileId() }).catch(() => null),
+        const userId = getUserId()
+        const profileId = getProfileId()
+        const [caseData, trustHub] = await Promise.all([
+          fetchMyProxyIntroCases(),
+          userId ? fetchTrustHub({ userId, profileId }).catch(() => null) : Promise.resolve(null),
         ])
         if (cancelled) return
-
-        const phaseLabel = formatLedgerPhaseLabel(data.ledger?.summary?.current_phase)
-        setRelationPhase(phaseLabel)
-        setSourceMode(data.source_mode || null)
-
-        const chatConversations = data.chat?.conversations || []
-        const items = chatConversations
-          .filter((item) => item.conversation.channel_key === 'main_group')
-          .map((item) => {
-            const otherMember =
-              item.conversation.members?.find(
-                (member) =>
-                  member.participant_id !== participantId && member.member_role !== 'agent',
-              )?.participant_id || 'user-b'
-            const lastMessage = item.messages[item.messages.length - 1]
-            const unread =
-              lastMessage && participantId && lastMessage.author_id !== participantId ? 1 : 0
-            return {
-              id: item.conversation.conversation_id,
-              name: otherMember,
-              stage: phaseLabel || (item.conversation.conversation_kind === 'group' ? '共同聊天' : '单独沟通'),
-              lastMessage: lastMessage?.body || '还没有消息，试着主动开场吧',
-              lastMessageTime: lastMessage?.created_at || '',
-              unread,
-              verified: true,
-              image: PLACEHOLDER_AVATAR,
-            }
-          })
-
-        setActiveRelationships(items)
-        setRecentActivities(
-          summarizeTimelineEvents(data.unified_timeline).length
-            ? summarizeTimelineEvents(data.unified_timeline)
-            : items.map((item, index) => ({
-                id: String(index),
-                content: `${item.name} 最近在会话里有新消息`,
-                time: item.lastMessageTime || '刚刚',
-                type: index % 2 === 0 ? ('greeting' as const) : ('match' as const),
-              })),
-        )
-
+        const nextCases = caseData.cases || []
+        setCases(nextCases)
         const trustPending = mapTrustHubPendingActions(
           trustHub?.trust_hub?.verification_center?.items,
         ).map((item) => ({
@@ -136,36 +91,95 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
           icon: BadgeCheck,
         }))
         setPendingActions(trustPending)
-
-        const provenance = applyProvenance(false, items.length > 0, '/v1/ledger/timeline', data.source_mode)
+        if (nextCases.length === 0) {
+          setEmptyHint('暂时还没有进行中的牵线记录')
+        }
+        const provenance = applyProvenance(false, nextCases.length > 0, '/v1/proxy-intro/cases/mine', 'proxy_intro')
         logDataProvenance('relationships', provenance)
       } catch (error) {
         if (cancelled) return
         const message = getErrorMessage(error, '关系页加载失败')
-        if (message.includes('current actor is not allowed to access this match case')) {
-          setEmptyHint('当前账号暂时无法查看这段关系')
-        } else {
-          setLoadError(message)
-        }
+        setLoadError(message)
         if (canUseMockFallback()) {
-          applyProvenance(true, false, '/v1/ledger/timeline')
+          applyProvenance(true, false, '/v1/proxy-intro/cases/mine')
         }
       } finally {
         if (!cancelled) setIsLoading(false)
       }
     }
 
-    void loadTimeline()
+    void loadCases()
     return () => {
       cancelled = true
     }
   }, [applyProvenance])
 
+  async function handleReply(caseId: string, replyType: 'accepted' | 'declined') {
+    if (actingCaseId) return
+    setActingCaseId(caseId)
+    try {
+      const response = await replyProxyIntroCase({
+        caseId,
+        replyType,
+        source: 'relationships_page',
+      })
+      if (!response.case) return
+      setCases((prev) => prev.map((item) => (item.case_id === caseId ? response.case! : item)))
+    } catch (error) {
+      setLoadError(getErrorMessage(error, replyType === 'accepted' ? '接受失败' : '暂不考虑失败'))
+    } finally {
+      setActingCaseId(null)
+    }
+  }
+
+  async function handleOpenChat(caseId: string) {
+    if (actingCaseId) return
+    setActingCaseId(caseId)
+    try {
+      const response = await openProxyIntroChat({
+        caseId,
+        source: 'relationships_page',
+      })
+      const conversationId = String(response.conversation?.conversation_id || '').trim()
+      if (!conversationId) {
+        throw new Error('conversation_missing')
+      }
+      if (response.case) {
+        setCases((prev) => prev.map((item) => (item.case_id === caseId ? response.case! : item)))
+      }
+      patchSessionContext({ caseId })
+      onOpenChat(conversationId)
+    } catch (error) {
+      setLoadError(getErrorMessage(error, '开始聊天失败'))
+    } finally {
+      setActingCaseId(null)
+    }
+  }
+
   if (isLoading) {
     return <RelationshipsPageSkeleton />
   }
 
-  if (loadError && !canUseMockFallback() && activeRelationships.length === 0) {
+  const pendingIntroItems = cases.filter((item) => !item.main_conversation_id)
+  const activeRelationships: ActiveRelationship[] = cases
+    .filter((item) => item.main_conversation_id)
+    .map((item) => ({
+      id: String(item.main_conversation_id),
+      name: item.counterpart_name || '对方',
+      stage: item.stage_label || '已开聊',
+      lastMessage: item.case_status === 'closed' ? '已进入双向聊天' : '已进入聊天，继续了解吧',
+      lastMessageTime: item.updated_at || item.created_at || '刚刚',
+      verified: true,
+      image: resolveProfileImageUrl(item.counterpart_image, PLACEHOLDER_AVATAR),
+    }))
+  const recentActivities = cases.slice(0, 5).map((item, index) => ({
+    id: String(item.case_id || index),
+    content: buildActivityText(item),
+    time: item.updated_at || item.created_at || '刚刚',
+    type: item.main_conversation_id ? 'greeting' as const : item.case_status === 'accepted' ? 'match' as const : 'view' as const,
+  }))
+
+  if (loadError && !canUseMockFallback() && activeRelationships.length === 0 && cases.length === 0) {
     return (
       <ErrorState
         message={loadError}
@@ -174,22 +188,13 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
     )
   }
 
-  const pendingIntroItems = backendItems.filter((item) => {
-    const stage = String(item.conversionStage || '').trim()
-    if (!stage) return false
-    return !['聊天中', '已开聊', '已匹配'].includes(stage)
-  })
-
   return (
     <div className="flex flex-col h-full bg-background">
       {usingMockData && <DemoDataBanner />}
       <header className="sticky top-0 z-20 bg-background border-b border-border safe-area-top">
         <div className="px-4 py-3">
           <h1 className="text-lg font-medium">关系</h1>
-          <p className="text-xs text-muted-foreground">
-            {relationPhase ? `当前阶段：${relationPhase}` : '你的恋爱进行时'}
-            {sourceMode === 'ledger_primary' ? ' · 统一账本' : ''}
-          </p>
+          <p className="text-xs text-muted-foreground">双向意愿、牵线进度、开聊入口都在这里</p>
         </div>
       </header>
 
@@ -209,15 +214,8 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
                 aria-label={`查看与${rel.name}的对话`}
               >
                 <div className="flex items-center gap-3">
-                  <div className="relative">
-                    <div className="w-12 h-12 rounded-full overflow-hidden">
-                      <Image src={rel.image} alt={rel.name} width={48} height={48} className="object-cover" />
-                    </div>
-                    {rel.unread > 0 && (
-                      <span className="absolute -top-1 -right-1 w-5 h-5 bg-rose text-[10px] font-medium text-white rounded-full flex items-center justify-center">
-                        {rel.unread}
-                      </span>
-                    )}
+                  <div className="relative w-12 h-12 rounded-full overflow-hidden">
+                    <Image src={rel.image} alt={rel.name} fill className="object-cover" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
@@ -234,7 +232,6 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
             {activeRelationships.length === 0 && (
               <EmptyRelationships
                 onDiscover={() => {}}
-                title={emptyHint === '当前账号暂时无法查看这段关系' ? '暂时无法查看这段关系' : undefined}
                 description={emptyHint || undefined}
               />
             )}
@@ -249,26 +246,66 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
           <div className="space-y-3">
             {pendingIntroItems.map((item, index) => (
               <div
-                key={`pending-${item.id}`}
+                key={`pending-${item.case_id}`}
                 className="bg-card border border-border rounded-xl p-3 animate-fade-in-up"
                 style={{ animationDelay: `${index * 50}ms` }}
               >
                 <div className="flex items-center gap-3">
                   <div className="relative w-12 h-12 rounded-full overflow-hidden">
-                    <Image src={item.image} alt={item.name} fill className="object-cover" />
+                    <Image
+                      src={resolveProfileImageUrl(item.counterpart_image, PLACEHOLDER_AVATAR)}
+                      alt={item.counterpart_name || '对方'}
+                      fill
+                      className="object-cover"
+                    />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="font-medium">{item.name}</span>
-                      <span className="text-xs text-muted-foreground">{item.age}岁 · {item.city}</span>
+                      <span className="font-medium">{item.counterpart_name || '对方'}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {String(item.counterpart_profile?.age || '')}
+                        {item.counterpart_profile?.age ? '岁' : ''}
+                        {item.counterpart_profile?.city ? ` · ${String(item.counterpart_profile.city)}` : ''}
+                      </span>
                     </div>
-                    <p className="text-sm text-muted-foreground mt-0.5 truncate">{item.occupation}</p>
-                    <p className="text-xs text-muted-foreground mt-1">{item.message}</p>
+                    <p className="text-sm text-muted-foreground mt-0.5 truncate">
+                      {String(item.counterpart_profile?.job || item.counterpart_profile?.education || '资料待补充')}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">{buildActivityText(item)}</p>
                   </div>
                   <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-[10px] text-muted-foreground">
-                    {item.conversionStage}
+                    {item.stage_label}
                   </span>
                 </div>
+                {item.can_reply ? (
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void handleReply(String(item.case_id), 'declined')}
+                      disabled={actingCaseId === item.case_id}
+                      className="flex-1 rounded-lg border border-border px-3 py-2 text-sm"
+                    >
+                      暂不考虑
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleReply(String(item.case_id), 'accepted')}
+                      disabled={actingCaseId === item.case_id}
+                      className="flex-1 rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground"
+                    >
+                      愿意认识
+                    </button>
+                  </div>
+                ) : item.can_open_chat ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleOpenChat(String(item.case_id))}
+                    disabled={actingCaseId === item.case_id}
+                    className="mt-3 w-full rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground"
+                  >
+                    {actingCaseId === item.case_id ? '处理中' : '开始聊天'}
+                  </button>
+                ) : null}
               </div>
             ))}
             {pendingIntroItems.length === 0 ? (
@@ -334,7 +371,7 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
         <div className="bg-secondary rounded-xl p-3 flex items-start gap-2">
           <AlertCircle className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
           <p className="text-xs text-muted-foreground leading-relaxed">
-            关系页展示 v2 会话与 ledger 统一时间线；登录后会自动解析活跃 case_id。
+            详情页只表达意愿；真正的状态变化、对方回复、开聊入口统一放在关系页。
           </p>
         </div>
       </div>
