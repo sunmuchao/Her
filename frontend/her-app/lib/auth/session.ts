@@ -18,6 +18,8 @@ export type SessionContext = {
   caseId?: string
   /** True when login/onboarding linked a real profile (not env defaults). */
   profileLinked?: boolean
+  /** User's own avatar URL */
+  avatarUrl?: string
 }
 
 export type LoginPayload = {
@@ -89,6 +91,7 @@ export function applyLoginPayload(payload: LoginPayload): SessionContext {
     profileId: linkedProfileId,
     profileLinked,
     caseId: payload.user?.case_id || prev.caseId,
+    avatarUrl: payload.wechat_profile?.avatar_url || prev.avatarUrl,
   }
   writeContext(next)
   if (accessToken) {
@@ -161,4 +164,8 @@ export function getCaseId(): string | undefined {
   const ctx = readStoredContext()
   if (isAuthenticated()) return ctx.caseId ?? getDefaultCaseId()
   return ctx.caseId ?? getDefaultCaseId()
+}
+
+export function getAvatarUrl(): string | undefined {
+  return readStoredContext().avatarUrl
 }

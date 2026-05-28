@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils'
 import { gatewayJson, queryString } from '@/lib/api/client'
 import { markConversationRead } from '@/lib/api/endpoints/chat'
 import { getErrorMessage } from '@/lib/api/errors'
-import { getChatParticipantId } from '@/lib/auth/session'
+import { getChatParticipantId, getAvatarUrl } from '@/lib/auth/session'
 import { canUseMockFallback } from '@/lib/mock'
 import { notifyError } from '@/lib/notify'
 import { DEMO_CHAT_MESSAGES } from '@/lib/fixtures/demo-profiles'
@@ -82,6 +82,7 @@ export default function ChatPage({ chatId, onBack }: ChatPageProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [chatTitle, setChatTitle] = useState(urlChatTitle || '聊天')
   const [chatAvatar, setChatAvatar] = useState(PLACEHOLDER_AVATAR)
+  const [myAvatar, setMyAvatar] = useState(getAvatarUrl() || PLACEHOLDER_AVATAR)
   const [verified, setVerified] = useState(true)
   const [isSending, setIsSending] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -292,21 +293,35 @@ export default function ChatPage({ chatId, onBack }: ChatPageProps) {
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4 space-y-3" role="log" aria-label="聊天消息">
         {messages.map((msg, index) => {
           const isSent = msg.type === 'sent'
-          const showTime = index === 0 || 
+          const prevMsg = messages[index - 1]
+          // 显示头像的条件：第一条消息，或上一条是对方发的（切换发送者时显示头像）
+          const showAvatar = index === 0 || prevMsg?.type !== msg.type
+          const showTime = index === 0 ||
             messages[index - 1]?.type !== msg.type ||
             (index > 0 && msg.timestamp !== messages[index - 1]?.timestamp)
-          
+
           return (
-            <div 
-              key={msg.id} 
-              className={cn('flex animate-fade-in-up', isSent ? 'justify-end' : 'justify-start')}
+            <div
+              key={msg.id}
+              className={cn('flex animate-fade-in-up', isSent ? 'justify-end items-end gap-2' : 'justify-start items-end gap-2')}
               style={{ animationDelay: `${index * 30}ms` }}
             >
+              {!isSent && (
+                <div className={cn('w-8 h-8 rounded-full overflow-hidden bg-secondary flex-shrink-0', showAvatar ? 'opacity-100' : 'opacity-0')}>
+                  <Image
+                    src={chatAvatar}
+                    alt={chatTitle}
+                    width={32}
+                    height={32}
+                    className="object-cover"
+                  />
+                </div>
+              )}
               <div className="max-w-[75%]">
                 <div className={cn(
                   'px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed',
-                  isSent 
-                    ? 'bg-primary text-primary-foreground rounded-br-md' 
+                  isSent
+                    ? 'bg-primary text-primary-foreground rounded-br-md'
                     : 'bg-card border border-border rounded-bl-md'
                 )}>
                   {msg.content}
@@ -318,6 +333,17 @@ export default function ChatPage({ chatId, onBack }: ChatPageProps) {
                   </div>
                 )}
               </div>
+              {isSent && (
+                <div className={cn('w-8 h-8 rounded-full overflow-hidden bg-secondary flex-shrink-0', showAvatar ? 'opacity-100' : 'opacity-0')}>
+                  <Image
+                    src={myAvatar}
+                    alt="我"
+                    width={32}
+                    height={32}
+                    className="object-cover"
+                  />
+                </div>
+              )}
             </div>
           )
         })}
