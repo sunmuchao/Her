@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { AlertCircle, BadgeCheck, ChevronRight, MailOpen, Pin, Trash2 } from 'lucide-react'
+import { BadgeCheck, ChevronRight, MailOpen, Pin, Trash2 } from 'lucide-react'
 import Image from 'next/image'
 import { fetchRelationshipsUnreadSummary } from '@/lib/api/endpoints/chat'
 import { fetchTrustHub } from '@/lib/api/endpoints/trust-hub'
@@ -577,13 +577,7 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification }: R
           </section>
         )}
 
-        <div className="bg-secondary rounded-xl p-3 flex items-start gap-2">
-          <AlertCircle className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            详情页只表达意愿；真正的状态变化、对方回复、开聊入口统一放在关系页。
-          </p>
-        </div>
-      </div>
+              </div>
     </div>
   )
 }
