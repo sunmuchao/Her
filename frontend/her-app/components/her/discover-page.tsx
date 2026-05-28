@@ -17,6 +17,7 @@ import {
   markRecommendationCardsRead,
   postRecommendationAction,
 } from '@/lib/api/endpoints/recommendation'
+import { replyProxyIntroCase } from '@/lib/api/endpoints/proxy-intro'
 import { useRecommendationInbox, type InboxItem } from '@/hooks/use-recommendation-inbox'
 import { canUseMockFallback } from '@/lib/mock'
 import { notifyError } from '@/lib/notify'
@@ -364,22 +365,45 @@ export function RecommendationInbox({
   onBack: () => void
   onBadgesRefresh?: () => void
 }) {
-  const [filter, setFilter] = useState<'all' | 'delayed' | 'matched'>('all')
+  const [filter, setFilter] = useState<'all' | 'delayed' | 'matched' | 'interest'>('all')
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set())
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set())
   const [searchQuery, setSearchQuery] = useState('')
+  const [actingCaseId, setActingCaseId] = useState<string | null>(null)  // 正在处理的 case
   const { isLoading, backendItems } = useRecommendationInbox()
 
   const filteredItems = backendItems.filter((item) => {
     if (dismissedIds.has(item.listKey)) return false
     if (filter === 'delayed') return item.type === 'delayed'
     if (filter === 'matched') return item.type === 'matched'
+    if (filter === 'interest') return item.type === 'interest'  // 新增：有人想认识你
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase()
       return item.name.toLowerCase().includes(q) || item.city.toLowerCase().includes(q) || item.occupation.toLowerCase().includes(q)
     }
     return true
   })
+
+  // 处理被动推荐卡片的回复
+  const handleInterestReply = async (caseId: string, replyType: 'accepted' | 'declined') => {
+    if (actingCaseId) return  // 防止重复点击
+    setActingCaseId(caseId)
+    try {
+      await replyProxyIntroCase({
+        caseId,
+        replyType,
+        source: 'recommendation_inbox',
+      })
+      if (replyType === 'declined') {
+        setDismissedIds((prev) => new Set(prev).add(`case:${caseId}`))
+      }
+      toast.success(replyType === 'accepted' ? '已表达意愿，可以开始聊天了' : '已暂不考虑')
+    } catch (error) {
+      notifyError(error, replyType === 'accepted' ? '接受失败' : '暂不考虑失败')
+    } finally {
+      setActingCaseId(null)
+    }
+  }
 
   const markRead = async (item: InboxItem) => {
     const profileId = getProfileId()
@@ -424,6 +448,7 @@ export function RecommendationInbox({
             { id: 'all' as const, label: '全部' },
             { id: 'delayed' as const, label: '延迟推荐' },
             { id: 'matched' as const, label: '主动撮合' },
+            { id: 'interest' as const, label: '有人想认识你' },  // 新增
           ].map((tab) => (
             <button
               key={tab.id}
@@ -467,22 +492,25 @@ export function RecommendationInbox({
             <div
               key={item.listKey}
               onClick={() => {
-                void markRead(item)
-                onViewCandidate(item.id, {
-                  id: item.id,
-                  name: item.name,
-                  age: item.age,
-                  city: item.city,
-                  occupation: item.occupation,
-                  verified: true,
-                  matchScore: item.matchScore,
-                  image: item.image,
-                  message: item.message,
-                  recommendationId: item.recommendationId,
-                  subscriptionId: item.subscriptionId,
-                })
+                // 被动推荐卡片（有人想认识你）不跳转到详情页，直接显示操作按钮
+                if (item.type !== 'interest') {
+                  void markRead(item)
+                  onViewCandidate(item.id, {
+                    id: item.id,
+                    name: item.name,
+                    age: item.age,
+                    city: item.city,
+                    occupation: item.occupation,
+                    verified: true,
+                    matchScore: item.matchScore,
+                    image: item.image,
+                    message: item.message,
+                    recommendationId: item.recommendationId,
+                    subscriptionId: item.subscriptionId,
+                  })
+                }
               }}
-              className="bg-card border border-border rounded-xl p-3 cursor-pointer hover:border-primary/30 transition-colors"
+              className={`bg-card border border-border rounded-xl p-3 transition-colors ${item.type !== 'interest' ? 'cursor-pointer hover:border-primary/30' : ''}`}
             >
               <div className="flex gap-3">
                 <div className="relative w-14 h-14 rounded-lg overflow-hidden shrink-0">
@@ -503,39 +531,75 @@ export function RecommendationInbox({
               </div>
               <div className="flex items-center justify-between mt-3 pt-2 border-t border-border">
                 <div className="flex items-center gap-1">
-                  <span className={`px-2 py-0.5 rounded text-[10px] ${item.type === 'delayed' ? 'bg-gold/20 text-gold' : 'bg-rose/20 text-rose'}`}>
-                    {item.conversionStage || (item.type === 'delayed' ? '延迟推荐' : '主动撮合')}
+                  <span className={`px-2 py-0.5 rounded text-[10px] ${
+                    item.type === 'delayed' ? 'bg-gold/20 text-gold' :
+                    item.type === 'interest' ? 'bg-primary/20 text-primary' :
+                    'bg-rose/20 text-rose'
+                  }`}>
+                    {item.conversionStage || (
+                      item.type === 'delayed' ? '延迟推荐' :
+                      item.type === 'interest' ? '有人想认识你' :
+                      '主动撮合'
+                    )}
                   </span>
                 </div>
-                <div className="flex items-center gap-1">
-                  <button
-                    aria-label={`跳过${item.name}`}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      void recordAction(item, 'skip')
-                      setDismissedIds((prev) => new Set(prev).add(item.listKey))
-                    }}
-                    className="p-1.5 text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                  <button
-                    aria-label={`收藏${item.name}`}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      void recordAction(item, 'save')
-                      setSavedIds((prev) => {
-                        const next = new Set(prev)
-                        if (next.has(item.id)) next.delete(item.id)
-                        else next.add(item.id)
-                        return next
-                      })
-                    }}
-                    className={`p-1.5 transition-colors ${savedIds.has(item.id) ? 'text-gold' : 'text-muted-foreground hover:text-foreground'}`}
-                  >
-                    <Bookmark className={`w-4 h-4 ${savedIds.has(item.id) ? 'fill-current' : ''}`} />
-                  </button>
-                </div>
+                {/* 被动推荐卡片显示操作按钮 */}
+                {item.type === 'interest' && item.caseId ? (
+                  <div className="flex gap-2">
+                    <button
+                      aria-label={`暂不考虑${item.name}`}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        void handleInterestReply(item.caseId!, 'declined')
+                      }}
+                      disabled={actingCaseId === item.caseId}
+                      className="px-3 py-1 rounded-lg border border-border text-xs disabled:opacity-50"
+                    >
+                      {actingCaseId === item.caseId ? '处理中' : '暂不考虑'}
+                    </button>
+                    <button
+                      aria-label={`愿意认识${item.name}`}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        void handleInterestReply(item.caseId!, 'accepted')
+                      }}
+                      disabled={actingCaseId === item.caseId}
+                      className="px-3 py-1 rounded-lg bg-primary text-xs text-primary-foreground disabled:opacity-50"
+                    >
+                      {actingCaseId === item.caseId ? '处理中' : '愿意认识'}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1">
+                    <button
+                      aria-label={`跳过${item.name}`}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        void recordAction(item, 'skip')
+                        setDismissedIds((prev) => new Set(prev).add(item.listKey))
+                      }}
+                      className="p-1.5 text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                    <button
+                      aria-label={`收藏${item.name}`}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        void recordAction(item, 'save')
+                        setSavedIds((prev) => {
+                          const next = new Set(prev)
+                          if (next.has(item.id)) next.delete(item.id)
+                          else next.add(item.id)
+                          return next
+                        })
+                      }}
+                      className={`p-1.5 transition-colors ${savedIds.has(item.id) ? 'text-gold' : 'text-muted-foreground hover:text-foreground'}`}
+                    >
+                      <Bookmark className={`w-4 h-4 ${savedIds.has(item.id) ? 'fill-current' : ''}`} />
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ))
