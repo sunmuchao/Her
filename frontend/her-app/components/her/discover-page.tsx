@@ -492,25 +492,36 @@ export function RecommendationInbox({
             <div
               key={item.listKey}
               onClick={() => {
-                // 被动推荐卡片（有人想认识你）不跳转到详情页，直接显示操作按钮
-                if (item.type !== 'interest') {
-                  void markRead(item)
-                  onViewCandidate(item.id, {
+                // DEBUG: 调试参数传递
+                console.log('[RecommendationInbox] 点击卡片传递的参数:', {
+                  item_id: item.id,
+                  item_caseId: item.caseId,
+                  item_type: item.type,
+                  candidate_preview: {
                     id: item.id,
-                    name: item.name,
-                    age: item.age,
-                    city: item.city,
-                    occupation: item.occupation,
-                    verified: true,
-                    matchScore: item.matchScore,
-                    image: item.image,
-                    message: item.message,
-                    recommendationId: item.recommendationId,
-                    subscriptionId: item.subscriptionId,
-                  })
-                }
+                    caseId: item.caseId,
+                    viewType: item.type,
+                  },
+                })
+                void markRead(item)
+                onViewCandidate(item.id, {
+                  id: item.id,
+                  name: item.name,
+                  age: item.age,
+                  city: item.city,
+                  occupation: item.occupation,
+                  verified: true,
+                  matchScore: item.matchScore,
+                  image: item.image,
+                  message: item.message,
+                  recommendationId: item.recommendationId,
+                  subscriptionId: item.subscriptionId,
+                  // 新增：传递案件信息，让详情页知道这是被动推荐场景
+                  caseId: item.caseId,
+                  viewType: item.type, // 'interest' 表示被动推荐
+                })
               }}
-              className={`bg-card border border-border rounded-xl p-3 transition-colors ${item.type !== 'interest' ? 'cursor-pointer hover:border-primary/30' : ''}`}
+              className="bg-card border border-border rounded-xl p-3 transition-colors cursor-pointer hover:border-primary/30"
             >
               <div className="flex gap-3">
                 <div className="relative w-14 h-14 rounded-lg overflow-hidden shrink-0">
@@ -543,33 +554,12 @@ export function RecommendationInbox({
                     )}
                   </span>
                 </div>
-                {/* 被动推荐卡片显示操作按钮 */}
-                {item.type === 'interest' && item.caseId ? (
-                  <div className="flex gap-2">
-                    <button
-                      aria-label={`暂不考虑${item.name}`}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        void handleInterestReply(item.caseId!, 'declined')
-                      }}
-                      disabled={actingCaseId === item.caseId}
-                      className="px-3 py-1 rounded-lg border border-border text-xs disabled:opacity-50"
-                    >
-                      {actingCaseId === item.caseId ? '处理中' : '暂不考虑'}
-                    </button>
-                    <button
-                      aria-label={`愿意认识${item.name}`}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        void handleInterestReply(item.caseId!, 'accepted')
-                      }}
-                      disabled={actingCaseId === item.caseId}
-                      className="px-3 py-1 rounded-lg bg-primary text-xs text-primary-foreground disabled:opacity-50"
-                    >
-                      {actingCaseId === item.caseId ? '处理中' : '愿意认识'}
-                    </button>
-                  </div>
+                {/* 操作按钮区域 */}
+                {item.type === 'interest' ? (
+                  // 被动推荐卡片：提示用户点击查看详情
+                  <span className="text-xs text-muted-foreground">点击查看完整资料 →</span>
                 ) : (
+                  // 其他类型卡片：跳过/收藏按钮
                   <div className="flex items-center gap-1">
                     <button
                       aria-label={`跳过${item.name}`}

@@ -3,7 +3,10 @@
     "allow": [
       "Bash(ls -la /Users/sunmuchao/.claude/skills/excalidraw/)",
       "Read(//Users/sunmuchao/.claude/skills/excalidraw/**)",
-      "Bash(node /Users/sunmuchao/.claude/skills/excalidraw/scripts/generate-excalidraw.mjs --router grid --in /tmp/willing-to-know-flow-spec.json --out /Users/sunmuchao/Downloads/Her/docs/willing-to-know-flow.excalidraw)"
+      "Bash(node /Users/sunmuchao/.claude/skills/excalidraw/scripts/generate-excalidraw.mjs --router grid --in /tmp/willing-to-know-flow-spec.json --out /Users/sunmuchao/Downloads/Her/docs/willing-to-know-flow.excalidraw)",
+      "Bash(find /Users/sunmuchao/Downloads/ai_incubation_platform/Her -name \"discover-page.tsx\" -o -name \"relationships-page.tsx\" 2>/dev/null)",
+      "Read(//Users/sunmuchao/Downloads/ai_incubation_platform/Her/**)",
+      "Bash(find /Users/sunmuchao/Downloads/ai_incubation_platform/Her -name \"proxy_intro_core.py\" 2>/dev/null)"
     ]
   }
 }

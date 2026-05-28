@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { fetchRelationshipsUnreadCount } from '@/lib/api/endpoints/chat'
+import { fetchRelationshipsUnreadSummary } from '@/lib/api/endpoints/chat'
 import { fetchInboxUnreadCount } from '@/lib/api/endpoints/recommendation'
 import { fetchMyProxyIntroCases } from '@/lib/api/endpoints/proxy-intro'
 import { getProfileId } from '@/lib/auth/session'
@@ -21,7 +21,7 @@ export function useBadgeCounts() {
       const inboxPromise = fetchInboxUnreadCount(profileId)
       // 加载被动推荐 case（有人想认识你）未读数
       const interestPromise = fetchMyProxyIntroCases()
-      const relationshipsPromise = fetchRelationshipsUnreadCount()
+      const relationshipsPromise = fetchRelationshipsUnreadSummary()
 
       const [inbox, interestResponse, relationships] = await Promise.all([
         inboxPromise,
@@ -39,7 +39,7 @@ export function useBadgeCounts() {
       console.log('[Badge] 推荐卡片未读:', inbox, '被动推荐未读:', interestUnread, '总计:', totalInboxUnread)
 
       setInboxUnreadCount(totalInboxUnread)
-      setRelationshipsBadge(relationships)
+      setRelationshipsBadge(relationships.total)
     } catch {
       setInboxUnreadCount(0)
       setRelationshipsBadge(0)

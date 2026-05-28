@@ -23,6 +23,11 @@ function pageToSubView(page: AppPage): SubView {
   return 'main'
 }
 
+export type ChatUserInfo = {
+  title?: string
+  avatar?: string
+}
+
 export function useAppRouter() {
   const router = useRouter()
   const pathname = usePathname()
@@ -36,11 +41,30 @@ export function useAppRouter() {
   const [selectedCandidate, setSelectedCandidate] = useState<CandidatePreview | null>(null)
   const [discoverySessionId, setDiscoverySessionId] = useState<string | null>(null)
 
+  // DEBUG: 监控 selectedCandidate 状态变化
+  useEffect(() => {
+    console.log('[useAppRouter] selectedCandidate 状态变化:', selectedCandidate)
+  }, [selectedCandidate])
+
   const selectedCandidateId =
     parsed.candidateId ??
     (currentPage === 'sub-candidate-detail' ? DEMO_DEFAULT_CANDIDATE_ID : null)
   const selectedChatId =
     parsed.chatId ?? (currentPage === 'sub-chat' ? DEMO_DEFAULT_CHAT_ID : null)
+
+  // 从 URL 解析 caseId 和 viewType
+  const urlCaseId = searchParams.get('caseId')
+  const urlViewType = searchParams.get('viewType') as 'delayed' | 'matched' | 'interest' | 'candidate' | null
+
+  // 合并 selectedCandidate 和 URL 参数（URL 参数优先）
+  const resolvedCandidate: CandidatePreview | null = useMemo(() => {
+    if (!selectedCandidate && !urlCaseId && !urlViewType) return null
+    return {
+      ...(selectedCandidate || {}),
+      caseId: urlCaseId ?? selectedCandidate?.caseId,
+      viewType: urlViewType ?? selectedCandidate?.viewType,
+    } as CandidatePreview
+  }, [selectedCandidate, urlCaseId, urlViewType])
 
   useEffect(() => {
     const sessionFromUrl = searchParams.get('session')
@@ -50,15 +74,29 @@ export function useAppRouter() {
   }, [searchParams])
 
   const pushPage = useCallback(
-    (page: AppPage, params?: { candidateId?: string; chatId?: string; sessionId?: string | null }) => {
-      let href = pageToPath(page, {
+    (page: AppPage, params?: {
+      candidateId?: string
+      chatId?: string
+      sessionId?: string | null
+      caseId?: string
+      viewType?: 'delayed' | 'matched' | 'interest' | 'candidate'
+      chatTitle?: string
+    }) => {
+      const href = pageToPath(page, {
         candidateId: params?.candidateId,
         chatId: params?.chatId,
+        caseId: params?.caseId,
+        viewType: params?.viewType,
+        chatTitle: params?.chatTitle,
       })
+      // session 已经在 pageToPath 中处理了，但这里需要额外处理 sessionId
       if (params?.sessionId && page === 'sub-candidate-detail') {
-        href += `?session=${encodeURIComponent(params.sessionId)}`
+        // 需要合并 session 参数
+        const separator = href.includes('?') ? '&' : '?'
+        router.push(href + separator + `session=${encodeURIComponent(params.sessionId)}`)
+      } else {
+        router.push(href)
       }
-      router.push(href)
     },
     [router],
   )
@@ -84,6 +122,16 @@ export function useAppRouter() {
 
   const handleViewCandidate = useCallback(
     (candidateId: string, candidate?: CandidatePreview, sessionId?: string | null) => {
+      // DEBUG: 调试参数接收
+      console.log('[useAppRouter] handleViewCandidate 接收到:', {
+        candidateId,
+        candidate: candidate ? {
+          id: candidate.id,
+          caseId: candidate.caseId,
+          viewType: candidate.viewType,
+        } : null,
+        sessionId,
+      })
       setSelectedCandidate(candidate || null)
       if (sessionId !== undefined) {
         setDiscoverySessionId(sessionId)
@@ -91,14 +139,18 @@ export function useAppRouter() {
       pushPage('sub-candidate-detail', {
         candidateId,
         sessionId: sessionId ?? discoverySessionId,
+        caseId: candidate?.caseId,
+        viewType: candidate?.viewType,
       })
     },
     [discoverySessionId, pushPage],
   )
 
   const handleOpenChat = useCallback(
-    (chatId: string) => {
-      pushPage('sub-chat', { chatId })
+    (chatId: string, info?: ChatUserInfo) => {
+      console.log('[handleOpenChat] 调用参数:', { chatId, info })
+      // 使用 URL 参数传递 chatTitle，避免状态在路由变化时丢失
+      pushPage('sub-chat', { chatId, chatTitle: info?.title })
     },
     [pushPage],
   )
@@ -143,7 +195,7 @@ export function useAppRouter() {
     currentTab,
     subView,
     selectedCandidateId,
-    selectedCandidate,
+    selectedCandidate: resolvedCandidate,
     selectedChatId,
     discoverySessionId,
     setDiscoverySessionId,

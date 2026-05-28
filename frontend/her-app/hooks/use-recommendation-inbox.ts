@@ -105,8 +105,12 @@ function mapProxyIntroCaseToInboxItem(caseItem: ProxyIntroCase): InboxItem {
   )
 
   return {
-    id: String(caseItem.case_id),
+    id: String(caseItem.counterpart_profile_id || caseItem.case_id),
     listKey: `case:${caseItem.case_id}`,
+    cardId: undefined,
+    subscriptionId: undefined,
+    recommendationId: undefined,
+    candidateId: caseItem.counterpart_profile_id ?? undefined,
     caseId: String(caseItem.case_id),
     name,
     age,
