@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>点击愿意认识后的完整流程图</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <style>
+    :root {
+      --ink: #172033;
+      --muted: #5b6475;
+      --line: #d8dfeb;
+      --paper: #f4f7fb;
+      --card: #ffffff;
+      --blue: #2563eb;
+      --teal: #0f766e;
+      --amber: #d97706;
+      --red: #dc2626;
+      --green: #16a34a;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+        "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      background:
+        radial-gradient(circle at top right, rgba(37, 99, 235, 0.08), transparent 28%),
+        linear-gradient(180deg, #f8fbff 0%, #f4f7fb 100%);
+      color: var(--ink);
+      line-height: 1.6;
+    }
+
+    .page {
+      max-width: 1260px;
+      margin: 0 auto;
+      padding: 32px 20px 56px;
+    }
+
+    .hero {
+      background: linear-gradient(135deg, #163b8c 0%, #0f766e 100%);
+      color: #fff;
+      border-radius: 18px;
+      padding: 28px 30px;
+      box-shadow: 0 22px 60px rgba(15, 23, 42, 0.18);
+      margin-bottom: 20px;
+    }
+
+    .hero h1 {
+      margin: 0 0 10px;
+      font-size: 30px;
+      line-height: 1.2;
+    }
+
+    .hero p {
+      margin: 0;
+      max-width: 900px;
+      color: rgba(255, 255, 255, 0.9);
+      font-size: 15px;
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .chip {
+      padding: 7px 12px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.14);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      font-size: 13px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 18px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 22px 22px 18px;
+      box-shadow: 0 8px 30px rgba(15, 23, 42, 0.05);
+    }
+
+    .card h2 {
+      margin: 0 0 6px;
+      font-size: 20px;
+    }
+
+    .card p.lead {
+      margin: 0 0 14px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 18px;
+      margin-bottom: 14px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .swatch {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      display: inline-block;
+    }
+
+    .flow-wrap {
+      overflow-x: auto;
+      padding-bottom: 6px;
+    }
+
+    .mermaid {
+      min-width: 1100px;
+      display: flex;
+      justify-content: center;
+      padding: 4px 0;
+    }
+
+    .notes {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .note {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px 15px;
+      background: #fbfdff;
+    }
+
+    .note h3 {
+      margin: 0 0 8px;
+      font-size: 14px;
+      color: var(--blue);
+    }
+
+    .note ul {
+      margin: 0;
+      padding-left: 18px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .code-list {
+      margin: 0;
+      padding-left: 18px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .code-list code {
+      color: var(--blue);
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    }
+
+    .footer {
+      margin-top: 16px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    @media (max-width: 768px) {
+      .page {
+        padding: 16px 12px 36px;
+      }
+
+      .hero {
+        padding: 22px 18px;
+      }
+
+      .hero h1 {
+        font-size: 24px;
+      }
+
+      .card {
+        padding: 18px 16px 14px;
+      }
+
+      .mermaid {
+        min-width: 980px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <section class="hero">
+      <h1>点击“愿意认识”后的完整流程图</h1>
+      <p>
+        这张图把当前仓库里已经实现的 discovery 发起链路、推荐/牵线中间态，以及产品定义里的接收方决策、双向同意、开聊和失败分支放到同一张图里，方便产品、前端、后端一起对齐。
+      </p>
+      <div class="chips">
+        <span class="chip">入口：候选详情页</span>
+        <span class="chip">中台：discovery / recommendation / matchmaking</span>
+        <span class="chip">结果页：关系页</span>
+        <span class="chip">原则：候选详情只负责表达意愿，不直接开聊</span>
+      </div>
+    </section>
+
+    <div class="grid">
+      <section class="card">
+        <h2>完整流程</h2>
+        <p class="lead">蓝色为主链路，绿色为成功结果，橙色为处理中间态，红色为失败/结束分支。</p>
+        <div class="legend">
+          <span><i class="swatch" style="background:#2563eb"></i>主流程</span>
+          <span><i class="swatch" style="background:#0f766e"></i>已实现服务动作</span>
+          <span><i class="swatch" style="background:#16a34a"></i>成功闭环</span>
+          <span><i class="swatch" style="background:#d97706"></i>处理中状态</span>
+          <span><i class="swatch" style="background:#dc2626"></i>异常/关闭</span>
+        </div>
+        <div class="flow-wrap">
+          <div class="mermaid">
+flowchart TD
+    A[用户A在候选详情页点击 愿意认识] --> B{入口来源}
+
+    B -->|Discovery候选详情| C[前端调用 POST /v1/discovery/sessions/{sessionId}/candidates/{candidateId}/express-interest]
+    B -->|推荐收件箱候选详情| C2[前端调用 recommendation action 或 proxy intro 接口]
+
+    subgraph S1[Discovery 已实现链路]
+      direction TD
+      C --> D[Gateway 校验 session owner 与当前用户]
+      D --> E[DiscoveryService.express_interest]
+      E --> F{session 是否 active}
+      F -->|否| F1[返回 session closed]
+      F -->|是| G{last_search_run_id 是否存在}
+      G -->|否| G1[返回 当前还没有可发起认识的推荐结果]
+      G -->|是| H[读取 search_run]
+      H --> I{search_run 是否仍有效}
+      I -->|否| I1[返回 推荐结果已失效 请重新搜索]
+      I -->|是| J{candidate 是否在最新 search_run 内}
+      J -->|否| J1[返回 candidate not found]
+      J -->|是| K[提取 criteria self_profile self_id request_meta]
+      K --> L[create_subscription]
+      L --> M{subscription_id 是否创建成功}
+      M -->|否| M1[返回 正式牵线单创建失败]
+      M -->|是| N[upsert_recommendation]
+      N --> O[create_match_case]
+      O --> P[dispatch_match_case_outreach]
+      P --> Q[更新 session.state:
+last_created_subscription_id
+last_interest_candidate_id
+last_interest_at]
+      Q --> R[记录 funnel_stage 与 audit_event]
+      R --> S[返回 ok + subscription_id + case]
+    end
+
+    subgraph S2[前端即时反馈]
+      direction TD
+      S --> T[详情页提示 已提交 可在关系里查看进度]
+      C2 --> T
+      T --> U[候选详情页不直接开聊]
+      U --> V[用户A转到关系页查看]
+    end
+
+    subgraph S3[关系/牵线主状态]
+      direction TD
+      V --> W[关系页展示牵线记录]
+      P --> X[状态进入 pending_delivery / awaiting_reply]
+      W --> X
+      X --> X1[用户文案:
+已提交
+等待对方看到
+等待对方决定]
+    end
+
+    subgraph S4[接收方B侧]
+      direction TD
+      X1 --> Y[系统以 红娘推荐 形式把A推荐给B]
+      Y --> Z[用户B查看推荐卡或候选详情]
+      Z --> AA{B是否点击 愿意认识}
+      AA -->|是| AD[记录 B accepted]
+      AA -->|否 点击暂不考虑| AB[状态变为 declined]
+      AA -->|超时未处理| AC[状态变为 timed_out]
+    end
+
+    subgraph S5[双向同意后]
+      direction TD
+      AD --> AE{A与B是否都 accepted}
+      AE -->|否| X
+      AE -->|是| AF[状态变为 bilateral_accept_ready]
+      AF --> AG[创建 relation / chat handoff]
+      AG --> AH[状态变为 chat_opened]
+      AH --> AI[关系页出现 可以聊天了 / 聊天入口]
+    end
+
+    subgraph S6[关闭分支]
+      direction TD
+      AB --> AJ[A在关系页看到 对方暂不考虑]
+      AC --> AK[A在关系页看到 已超时]
+      AH --> AL[进入聊天主链路]
+    end
+
+    classDef main fill:#e8f1ff,stroke:#2563eb,color:#163b8c,stroke-width:1.4px;
+    classDef service fill:#e8fbf8,stroke:#0f766e,color:#115e59,stroke-width:1.4px;
+    classDef state fill:#fff8eb,stroke:#d97706,color:#9a3412,stroke-width:1.2px;
+    classDef success fill:#edfdf2,stroke:#16a34a,color:#166534,stroke-width:1.4px;
+    classDef fail fill:#fff1f2,stroke:#dc2626,color:#991b1b,stroke-width:1.2px;
+
+    class A,B,C,C2,T,U,V,W,Y,Z main;
+    class D,E,H,K,L,N,O,P,Q,R,S,AD,AG service;
+    class X,X1,AF,AH,AI,AL state;
+    class AE success;
+    class F1,G1,I1,J1,M1,AB,AC,AJ,AK fail;
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>关键说明</h2>
+        <p class="lead">这部分用于区分“代码里已经打通的部分”和“文档定义但仍在完善的部分”。</p>
+        <div class="notes">
+          <div class="note">
+            <h3>当前已实现</h3>
+            <ul>
+              <li>Discovery 点击愿意认识会创建 formal subscription。</li>
+              <li>会把候选人 upsert 成 recommendation 记录。</li>
+              <li>会创建并 dispatch 一个 proxy intro / match case。</li>
+              <li>详情页成功后引导去关系页，不直接开聊。</li>
+            </ul>
+          </div>
+          <div class="note">
+            <h3>产品目标链路</h3>
+            <ul>
+              <li>接收方B以“红娘推荐”方式看到A，而不是暴露谁先点了按钮。</li>
+              <li>只有双方都点了愿意认识，才进入 chat handoff。</li>
+              <li>聊天入口应该从关系页出现，而不是候选详情页。</li>
+            </ul>
+          </div>
+          <div class="note">
+            <h3>异常分支</h3>
+            <ul>
+              <li>session 关闭、search run 失效、candidate 不在最新结果中都会直接失败。</li>
+              <li>B 拒绝会进入 declined。</li>
+              <li>B 超时不回复会进入 timed_out。</li>
+            </ul>
+          </div>
+          <div class="note">
+            <h3>状态展示原则</h3>
+            <ul>
+              <li>候选详情按钮只负责提交，不承载长期流程。</li>
+              <li>长期状态统一在关系页展示。</li>
+              <li>用户看到的是人话文案，不直接暴露底层状态名。</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>代码对应位置</h2>
+        <p class="lead">下面这些文件是这张图的主要依据，打开即可继续往下追调用链。</p>
+        <ul class="code-list">
+          <li><code>frontend/her-app/lib/api/endpoints/discovery.ts</code>：前端发起 <code>express-interest</code> 请求。</li>
+          <li><code>external-systems/partner-http-gateway/gateway/discovery_routes.py</code>：Gateway 路由与权限校验。</li>
+          <li><code>external-systems/partner-discovery-system/discovery_system/service.py</code>：<code>express_interest</code> 主逻辑。</li>
+          <li><code>docs/mutual-intent-and-proxy-intro-flow.md</code>：双向意愿、关系页、开聊原则的产品定义。</li>
+        </ul>
+        <div class="footer">
+          文档时间基线：2026-05-28。若代码与规划文档不一致，以代码实现为准。
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: "base",
+      securityLevel: "loose",
+      themeVariables: {
+        primaryColor: "#e8f1ff",
+        primaryTextColor: "#172033",
+        primaryBorderColor: "#2563eb",
+        lineColor: "#72809a",
+        secondaryColor: "#e8fbf8",
+        tertiaryColor: "#fff8eb",
+        background: "#ffffff",
+        fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif'
+      },
+      flowchart: {
+        curve: "basis",
+        useMaxWidth: false,
+        htmlLabels: true
+      }
+    });
+  </script>
+</body>
+</html>
