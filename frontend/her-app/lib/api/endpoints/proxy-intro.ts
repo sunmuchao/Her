@@ -6,6 +6,7 @@ export type ProxyIntroCase = {
   stage_label?: string
   role?: 'requester' | 'candidate'
   counterpart_name?: string
+  counterpart_profile_id?: number | null
   counterpart_image?: string | null
   counterpart_profile?: Record<string, unknown>
   can_reply?: boolean
