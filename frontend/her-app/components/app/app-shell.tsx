@@ -100,6 +100,7 @@ export function AppShell({
             <RelationshipsPage
               onOpenChat={onOpenChat}
               onStartVerification={onStartVerification}
+              onNavigateToDiscover={() => onTabChange('matchmaker')}
             />
           </PageTransition>
         )}
