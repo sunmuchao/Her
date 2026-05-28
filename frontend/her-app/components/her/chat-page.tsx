@@ -247,7 +247,7 @@ export default function ChatPage({ chatId, onBack }: ChatPageProps) {
 
   if (isLoading) {
     return (
-      <div className="h-screen bg-background flex items-center justify-center">
+      <div className="h-full min-h-0 bg-background flex items-center justify-center">
         <p className="text-sm text-muted-foreground">加载对话中…</p>
       </div>
     )
@@ -258,10 +258,10 @@ export default function ChatPage({ chatId, onBack }: ChatPageProps) {
   }
 
   return (
-    <div className="h-screen bg-background flex flex-col overflow-hidden">
+    <div className="h-full min-h-0 bg-background flex flex-col overflow-hidden">
       {usingMockData && <DemoDataBanner />}
       {/* Header */}
-      <header className="flex-shrink-0 z-20 bg-background border-b border-border safe-area-top">
+      <header className="sticky top-0 flex-shrink-0 z-20 bg-background border-b border-border safe-area-top">
         <div className="px-4 py-3 flex items-center gap-3">
           <button 
             onClick={onBack} 
@@ -302,7 +302,7 @@ export default function ChatPage({ chatId, onBack }: ChatPageProps) {
       </header>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto min-h-0 px-4 py-4 space-y-3" role="log" aria-label="聊天消息">
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4 space-y-3" role="log" aria-label="聊天消息">
         {messages.map((msg, index) => {
           const isSent = msg.type === 'sent'
           const showTime = index === 0 || 

@@ -57,6 +57,7 @@ export function AppShell({
 }: AppShellProps) {
   const { inboxUnreadCount, relationshipsBadge, refreshBadges } = useBadgeCounts()
   const isMatchmakerMain = currentTab === 'matchmaker' && subView === 'main'
+  const isFullscreenSubView = subView === 'chat'
 
   return (
     <div className="flex h-dvh max-h-dvh w-full max-w-md mx-auto flex-col relative overflow-hidden bg-background">
@@ -66,7 +67,9 @@ export function AppShell({
           'relative z-10 min-h-0',
           isMatchmakerMain
             ? 'flex flex-1 flex-col overflow-hidden'
-            : 'flex-1 overflow-y-auto pb-24',
+            : isFullscreenSubView
+              ? 'flex flex-1 flex-col overflow-hidden'
+              : 'flex-1 overflow-y-auto pb-24',
         )}
       >
         {isMatchmakerMain && (
@@ -128,7 +131,7 @@ export function AppShell({
           </SlideInTransition>
         )}
         {subView === 'chat' && selectedChatId && (
-          <SlideInTransition key="chat" direction="right">
+          <SlideInTransition key="chat" direction="right" className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
             <ChatPage
               chatId={selectedChatId}
               onBack={onBackToMain}
