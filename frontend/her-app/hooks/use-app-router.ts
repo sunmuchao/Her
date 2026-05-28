@@ -26,6 +26,7 @@ function pageToSubView(page: AppPage): SubView {
 export type ChatUserInfo = {
   title?: string
   avatar?: string
+  caseId?: string
 }
 
 export function useAppRouter() {
@@ -51,6 +52,9 @@ export function useAppRouter() {
     (currentPage === 'sub-candidate-detail' ? DEMO_DEFAULT_CANDIDATE_ID : null)
   const selectedChatId =
     parsed.chatId ?? (currentPage === 'sub-chat' ? DEMO_DEFAULT_CHAT_ID : null)
+  
+  // 从 URL 或状态获取 caseId
+  const selectedCaseId = searchParams.get('caseId') || null
 
   // 从 URL 解析 caseId 和 viewType
   const urlCaseId = searchParams.get('caseId')
@@ -149,8 +153,8 @@ export function useAppRouter() {
   const handleOpenChat = useCallback(
     (chatId: string, info?: ChatUserInfo) => {
       console.log('[handleOpenChat] 调用参数:', { chatId, info })
-      // 使用 URL 参数传递 chatTitle，避免状态在路由变化时丢失
-      pushPage('sub-chat', { chatId, chatTitle: info?.title })
+      // 使用 URL 参数传递 chatTitle 和 caseId
+      pushPage('sub-chat', { chatId, chatTitle: info?.title, caseId: info?.caseId })
     },
     [pushPage],
   )
@@ -197,6 +201,7 @@ export function useAppRouter() {
     selectedCandidateId,
     selectedCandidate: resolvedCandidate,
     selectedChatId,
+    selectedCaseId,
     discoverySessionId,
     setDiscoverySessionId,
     handleNavigate,
