@@ -5,6 +5,7 @@ import json
 import os
 import pathlib
 import sys
+import types
 import unittest
 from unittest import mock
 
@@ -743,6 +744,93 @@ class DiscoveryServiceTests(unittest.TestCase):
 
         restored = service.get_session_view(session_id)
         self.assertEqual(restored["view"]["timeline"][-1]["item_type"], "result_group")
+
+    def test_express_interest_from_discovery_does_not_deliver_recommendation_card(self) -> None:
+        service = DiscoveryService(
+            storage=InMemoryDiscoveryStorage(),
+            runtime=_FakeRuntime(),
+        )
+        created = service.create_session(requester_id=70001, profile_id=10001)
+        session_id = created["session"]["session_id"]
+        current = created["session"]["updated_at"]
+        search_run_id = service.storage.create_search_run(
+            session_id=session_id,
+            requester_id=70001,
+            profile_id=10001,
+            source="discovery_session",
+            criteria={"cities": ["无锡"], "relationship_goals": ["认真恋爱"]},
+            self_profile={"city": "无锡"},
+            limit_count=5,
+            response={
+                "has_match": True,
+                "result_count": 1,
+                "results": [
+                    {
+                        "id": 1001,
+                        "name": "林知夏",
+                        "score": 92,
+                        "matched_on": ["城市一致", "关系目标一致"],
+                        "profile": {"age": 29, "city": "无锡", "job": "中学老师"},
+                    }
+                ],
+                "request_meta": {
+                    "source": "discovery_session",
+                    "criteria": {"cities": ["无锡"], "relationship_goals": ["认真恋爱"]},
+                    "self_profile": {"city": "无锡"},
+                    "self_id": 10001,
+                },
+            },
+            created_at=current,
+        )
+        stored_session = service.storage.get_session(session_id)
+        assert stored_session is not None
+        stored_session.state["last_search_run_id"] = search_run_id
+        service.storage.save_session(stored_session)
+
+        fake_conn = mock.Mock()
+        fake_case_conn = mock.Mock()
+        create_subscription = mock.Mock(return_value={"subscription_id": "saved-search-proxy-123"})
+        deliver_in_app_recommendations = mock.Mock()
+        upsert_recommendation = mock.Mock(return_value={"recommendation_id": 1, "candidate_id": 1001})
+        create_match_case = mock.Mock(return_value={"case_id": "match-case-1", "case_status": "pending_outreach"})
+        dispatch_match_case_outreach = mock.Mock(
+            return_value={"case_id": "match-case-1", "case_status": "awaiting_reply"}
+        )
+
+        recommendation_module = types.ModuleType("recommendation_system")
+        recommendation_module.create_subscription = create_subscription
+        recommendation_module.deliver_in_app_recommendations = deliver_in_app_recommendations
+
+        recommendation_rows_module = types.ModuleType("recommendation_system.recommendation_rows")
+        recommendation_rows_module.upsert_recommendation = upsert_recommendation
+
+        proxy_intro_module = types.ModuleType("matchmaking_system.proxy_intro")
+        proxy_intro_module.create_match_case = create_match_case
+        proxy_intro_module.dispatch_match_case_outreach = dispatch_match_case_outreach
+
+        proxy_intro_storage_module = types.ModuleType("match_domain.proxy_intro_storage")
+        proxy_intro_storage_module.open_proxy_intro_case_connection = mock.Mock(return_value=fake_case_conn)
+
+        with mock.patch.object(service, "_open_recommendation_conn", return_value=fake_conn), mock.patch.dict(
+            sys.modules,
+            {
+                "recommendation_system": recommendation_module,
+                "recommendation_system.recommendation_rows": recommendation_rows_module,
+                "matchmaking_system.proxy_intro": proxy_intro_module,
+                "match_domain.proxy_intro_storage": proxy_intro_storage_module,
+            },
+        ):
+            out = service.express_interest(session_id, candidate_id=1001)
+
+        self.assertTrue(out["ok"])
+        self.assertEqual(out["subscription_id"], "saved-search-proxy-123")
+        self.assertEqual(out["candidate_id"], 1001)
+        deliver_in_app_recommendations.assert_not_called()
+        create_subscription.assert_called_once()
+        upsert_recommendation.assert_called_once()
+        create_match_case.assert_called_once()
+        dispatch_match_case_outreach.assert_called_once()
+        fake_conn.close.assert_called_once()
 
     def test_service_records_persona_memory_tool_call(self) -> None:
         service = DiscoveryService(

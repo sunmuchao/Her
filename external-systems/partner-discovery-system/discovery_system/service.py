@@ -454,7 +454,6 @@ class DiscoveryService:
             from match_domain.proxy_intro_storage import open_proxy_intro_case_connection  # type: ignore[import-untyped]
             from recommendation_system import (  # type: ignore[import-untyped]
                 create_subscription,
-                deliver_in_app_recommendations,
             )
             from recommendation_system.recommendation_rows import (  # type: ignore[import-untyped]
                 upsert_recommendation,
@@ -493,8 +492,6 @@ class DiscoveryService:
                     "hydrated_from_search_run": True,
                 },
             )
-
-            deliver_in_app_recommendations(conn, now=current)
 
             case_conn = open_proxy_intro_case_connection(conn)
             case = create_match_case(
