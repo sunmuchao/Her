@@ -366,6 +366,7 @@ class GatewayAccessMixin:
         requester_id = str(rec_case.get("requester_id") or "").strip()
         candidate_id = str(rec_case.get("candidate_id") or "").strip()
         participant_ids = {requester_id, candidate_id}
+        matches_participant = actor.actor_id in participant_ids
         if self._is_auth_session_end_user(actor):
             try:
                 resolved_profile_id = self._auth_session_profile_id(str(actor.actor_id), environ=environ)
@@ -373,7 +374,9 @@ class GatewayAccessMixin:
                 resolved_profile_id = None
             if resolved_profile_id is not None:
                 participant_ids.add(str(resolved_profile_id))
-        if actor.actor_id in participant_ids:
+                if str(resolved_profile_id) in {requester_id, candidate_id}:
+                    matches_participant = True
+        if matches_participant:
             return rec_case
         self._audit_permission(
             environ,
