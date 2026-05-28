@@ -696,7 +696,8 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification, onN
                       name: item.counterpart_name || '对方',
                       image: resolveProfileImageUrl(item.counterpart_image ?? undefined, PLACEHOLDER_AVATAR),
                       caseId: String(item.case_id),
-                      viewType: 'interest',
+                      // 牵线中的候选人使用 matched 类型，隐藏操作按钮
+                      viewType: 'matched',
                       age: item.counterpart_profile?.age as number | undefined,
                       city: item.counterpart_profile?.city as string | undefined,
                       occupation: item.counterpart_profile?.job as string | undefined,

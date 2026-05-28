@@ -30,6 +30,9 @@ export type ChatUserInfo = {
   counterpartId?: string
 }
 
+// 记录来源 tab，用于详情页返回
+let lastSourceTab: TabType | null = null
+
 export function useAppRouter() {
   const router = useRouter()
   const pathname = usePathname()
@@ -37,7 +40,10 @@ export function useAppRouter() {
 
   const parsed = useMemo(() => pathToPage(pathname), [pathname])
   const currentPage = parsed.page
-  const currentTab = pageToTab(currentPage)
+  // 当进入详情页时，使用记录的来源 tab
+  const currentTab = currentPage === 'sub-candidate-detail' && lastSourceTab
+    ? lastSourceTab
+    : pageToTab(currentPage)
   const subView = pageToSubView(currentPage)
 
   const [selectedCandidate, setSelectedCandidate] = useState<CandidatePreview | null>(null)
@@ -148,6 +154,8 @@ export function useAppRouter() {
         sessionId,
         fromChatId,
       })
+      // 记录来源 tab，用于详情页返回
+      lastSourceTab = currentTab
       setSelectedCandidate(candidate || null)
       if (sessionId !== undefined) {
         setDiscoverySessionId(sessionId)
@@ -160,7 +168,7 @@ export function useAppRouter() {
         fromChatId,
       })
     },
-    [discoverySessionId, pushPage],
+    [currentTab, discoverySessionId, pushPage],
   )
 
   const handleOpenChat = useCallback(
