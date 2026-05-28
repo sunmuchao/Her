@@ -256,6 +256,28 @@ def list_match_cases_for_subscription(
     ]
 
 
+def list_match_cases_for_participant(
+    conn,
+    profile_id: int,
+    *,
+    recommendation_conn=None,
+) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        f"""
+        SELECT *
+        FROM {_t().cases}
+        WHERE requester_id = ? OR candidate_id = ?
+        ORDER BY created_at DESC, case_id DESC
+        """,
+        (int(profile_id), int(profile_id)),
+    ).fetchall()
+    rec = _rec_conn(recommendation_conn, conn)
+    return [
+        inflate_match_case(row_to_dict(row), conn=conn, recommendation_conn=rec)
+        for row in rows
+    ]
+
+
 def list_match_case_events(conn, case_id: str) -> list[dict[str, Any]]:
     rows = conn.execute(
         f"""

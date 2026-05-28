@@ -1233,6 +1233,23 @@ def get_onboarding_profile(conn, user_id: str) -> dict[str, Any]:
     }
 
 
+def find_user_id_by_profile_id(conn, profile_id: int) -> str | None:
+    row = row_to_dict(
+        conn.execute(
+            """
+            SELECT user_id
+            FROM user_onboarding_profiles
+            WHERE JSON_EXTRACT(basic_info_json, '$.profile_id') = ?
+            ORDER BY updated_at DESC, created_at DESC
+            LIMIT 1
+            """,
+            (int(profile_id),),
+        ).fetchone()
+    )
+    user_id = str((row or {}).get("user_id") or "").strip()
+    return user_id or None
+
+
 def submit_onboarding_profile(
     conn,
     user_id: str,

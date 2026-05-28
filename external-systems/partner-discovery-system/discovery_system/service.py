@@ -449,15 +449,19 @@ class DiscoveryService:
         safe_candidate = json_safe(candidate)
 
         conn = self._open_recommendation_conn()
+        case_conn = None
         try:
+            from match_domain.proxy_intro_storage import open_proxy_intro_case_connection  # type: ignore[import-untyped]
             from recommendation_system import (  # type: ignore[import-untyped]
                 create_subscription,
                 deliver_in_app_recommendations,
-                record_recommendation_action,
             )
             from recommendation_system.recommendation_rows import (  # type: ignore[import-untyped]
-                get_recommendation,
                 upsert_recommendation,
+            )
+            from matchmaking_system.proxy_intro import (  # type: ignore[import-untyped]
+                create_match_case,
+                dispatch_match_case_outreach,
             )
 
             subscription = create_subscription(
@@ -492,19 +496,29 @@ class DiscoveryService:
 
             deliver_in_app_recommendations(conn, now=current)
 
-            recommendation = record_recommendation_action(
-                conn,
+            case_conn = open_proxy_intro_case_connection(conn)
+            case = create_match_case(
+                case_conn,
+                recommendation_conn=conn,
                 subscription_id=subscription_id,
                 candidate_id=int(candidate_id),
-                action_type="direct_greet",
-                actor_id=str(session.requester_id),
                 now=current,
-                action_payload={
+                request_payload={
                     "source": "discovery_session",
                     "session_id": session.session_id,
                     "search_run_id": search_run_id,
                 },
-                client_idempotency_key=f"{session.session_id}:{candidate_id}:direct_greet",
+            )
+            case = dispatch_match_case_outreach(
+                case_conn,
+                recommendation_conn=conn,
+                case_id=str(case["case_id"]),
+                now=current,
+                payload={
+                    "source": "discovery_session",
+                    "session_id": session.session_id,
+                    "search_run_id": search_run_id,
+                },
             )
         except DiscoveryServiceError:
             raise
@@ -513,6 +527,8 @@ class DiscoveryService:
         except Exception as exc:  # noqa: BLE001
             raise DiscoveryInterestNotAvailableError("发起认识失败，请稍后重试。") from exc
         finally:
+            if case_conn is not None and case_conn is not conn:
+                case_conn.close()
             conn.close()
 
         session.state["last_created_subscription_id"] = subscription_id
@@ -543,7 +559,7 @@ class DiscoveryService:
             "session_id": session.session_id,
             "candidate_id": int(candidate_id),
             "subscription_id": subscription_id,
-            "recommendation": recommendation,
+            "case": json_safe(case),
         }
 
     def _build_runtime_input(

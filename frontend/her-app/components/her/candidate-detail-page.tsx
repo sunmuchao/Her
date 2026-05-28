@@ -18,8 +18,8 @@ import { FadeIn, Heartbeat, PageTransition } from './ui/animations'
 import { ImageCarousel } from './ui/image-carousel'
 import { DemoDataBanner } from './ui/demo-data-banner'
 import { ErrorState } from './ui/error-state'
-import { postRecommendationAction } from '@/lib/api/endpoints/recommendation'
 import { expressDiscoveryCandidateInterest } from '@/lib/api/endpoints/discovery'
+import { createProxyIntroRequest } from '@/lib/api/endpoints/proxy-intro'
 import { notifyError } from '@/lib/notify'
 interface CandidateDetailPageProps {
   candidateId: string
@@ -238,12 +238,10 @@ export default function CandidateDetailPage({
     setIsExpressingInterest(true)
     try {
       if (subscriptionId) {
-        const idempotencyKey = `${subscriptionId}:${candidateData.id}:direct_greet`
-        await postRecommendationAction({
+        await createProxyIntroRequest({
           subscriptionId,
           candidateId: Number(candidateData.id),
-          actionType: 'direct_greet',
-          idempotencyKey,
+          source: 'candidate_detail',
         })
       } else if (sessionId) {
         await expressDiscoveryCandidateInterest({
@@ -254,6 +252,9 @@ export default function CandidateDetailPage({
         throw new Error('interest_unavailable')
       }
       setShowSubmittedHint(true)
+      window.setTimeout(() => {
+        onOpenRelationships()
+      }, 300)
     } catch (error) {
       notifyError(error, '发起意愿失败，请稍后重试')
     } finally {
