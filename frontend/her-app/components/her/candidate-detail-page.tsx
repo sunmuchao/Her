@@ -19,15 +19,19 @@ import { ImageCarousel } from './ui/image-carousel'
 import { DemoDataBanner } from './ui/demo-data-banner'
 import { ErrorState } from './ui/error-state'
 import { expressDiscoveryCandidateInterest } from '@/lib/api/endpoints/discovery'
-import { createProxyIntroRequest } from '@/lib/api/endpoints/proxy-intro'
+import { createProxyIntroRequest, replyProxyIntroCase } from '@/lib/api/endpoints/proxy-intro'
 import { fetchMyProxyIntroCases } from '@/lib/api/endpoints/proxy-intro'
 import { notifyError } from '@/lib/notify'
+
 interface CandidateDetailPageProps {
   candidateId: string
   candidate?: CandidatePreview
   sessionId?: string | null
   onBack: () => void
   onOpenRelationships: () => void
+  // 新增：被动推荐场景需要的参数
+  caseId?: string // 案件 ID（被动推荐场景）
+  viewType?: 'delayed' | 'matched' | 'interest' | 'candidate' // 卡片类型，interest 表示被动推荐
 }
 
 export default function CandidateDetailPage({
@@ -36,8 +40,26 @@ export default function CandidateDetailPage({
   sessionId,
   onBack,
   onOpenRelationships,
+  caseId,
+  viewType,
 }: CandidateDetailPageProps) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['intro']))
+
+  // DEBUG: 调试参数传递
+  useEffect(() => {
+    console.log('[CandidateDetailPage] 接收到的参数:', {
+      candidateId,
+      candidate: candidate ? {
+        id: candidate.id,
+        caseId: candidate.caseId,
+        viewType: candidate.viewType,
+        subscriptionId: candidate.subscriptionId,
+      } : null,
+      sessionId,
+      caseId_prop: caseId,
+      viewType_prop: viewType,
+    })
+  }, [candidateId, candidate, sessionId, caseId, viewType])
   const [apiDetail, setApiDetail] = useState<{
     headline?: string
     selfIntro?: string
@@ -118,7 +140,48 @@ export default function CandidateDetailPage({
   const recommendationTargetId = candidate?.recommendationId
   const subscriptionId = candidate?.subscriptionId
   const resolvedCandidateId = candidate?.id || candidateId
-  const canExpressInterest = Boolean(resolvedCandidateId && (subscriptionId || sessionId))
+  // 主动发起场景：需要有 candidateId 和 subscriptionId/sessionId
+  // 被动推荐场景：只需要有 caseId
+  const canExpressInterest = viewType === 'interest' && caseId
+    ? Boolean(caseId)
+    : Boolean(resolvedCandidateId && (subscriptionId || sessionId))
+
+  // DEBUG: 调试按钮状态
+  console.log('[CandidateDetailPage] canExpressInterest 计算:', {
+    viewType,
+    caseId,
+    resolvedCandidateId,
+    subscriptionId,
+    sessionId,
+    result: canExpressInterest,
+    condition_check: {
+      is_interest_type: viewType === 'interest',
+      has_caseId: Boolean(caseId),
+      first_branch: viewType === 'interest' && caseId ? Boolean(caseId) : 'N/A',
+      second_branch: Boolean(resolvedCandidateId && (subscriptionId || sessionId)),
+    },
+  })
+
+  // 处理"暂不考虑"（被动推荐场景）
+  const handleDecline = async () => {
+    if (isExpressingInterest) return
+    if (viewType !== 'interest' || !caseId) return
+
+    setIsExpressingInterest(true)
+    try {
+      await replyProxyIntroCase({
+        caseId,
+        replyType: 'declined',
+        source: 'candidate_detail_reply',
+      })
+      // 返回上一页
+      onBack()
+    } catch (error) {
+      notifyError(error, '暂不考虑失败，请稍后重试')
+    } finally {
+      setIsExpressingInterest(false)
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -261,6 +324,26 @@ export default function CandidateDetailPage({
 
   const handleExpressInterest = async () => {
     if (isExpressingInterest) return
+
+    // 场景1：被动推荐（有人想认识你）→ 点击愿意认识 = 回复案件
+    if (viewType === 'interest' && caseId) {
+      setIsExpressingInterest(true)
+      try {
+        await replyProxyIntroCase({
+          caseId,
+          replyType: 'accepted',
+          source: 'candidate_detail_reply',
+        })
+        setShowSubmittedHint(true)
+      } catch (error) {
+        notifyError(error, '接受失败，请稍后重试')
+      } finally {
+        setIsExpressingInterest(false)
+      }
+      return
+    }
+
+    // 场景2：主动发起认识请求
     if (!candidateData.id) {
       notifyError(new Error('interest_unavailable'), '当前候选人暂时无法发起认识')
       return
@@ -463,21 +546,37 @@ export default function CandidateDetailPage({
       {/* Bottom CTA with heartbeat animation */}
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-background border-t border-border safe-area-bottom">
         <div className="flex gap-3 max-w-md mx-auto">
-          <button 
-            className="flex-1 py-3 border border-border rounded-xl text-foreground font-medium hover:bg-secondary transition-colors focus-ring"
-            aria-label="暂时跳过这位候选人"
+          <button
+            onClick={() => {
+              if (viewType === 'interest' && caseId) {
+                void handleDecline()
+              } else {
+                onBack()
+              }
+            }}
+            disabled={isExpressingInterest}
+            className="flex-1 py-3 border border-border rounded-xl text-foreground font-medium hover:bg-secondary transition-colors focus-ring disabled:opacity-70"
+            aria-label={viewType === 'interest' ? '暂不考虑这位候选人' : '暂时跳过这位候选人'}
           >
-            暂时跳过
+            {isExpressingInterest && viewType === 'interest' ? '处理中' : viewType === 'interest' ? '暂不考虑' : '暂时跳过'}
           </button>
           <Heartbeat>
             <button
               onClick={() => void handleExpressInterest()}
               disabled={isExpressingInterest || !canExpressInterest || showSubmittedHint}
               className="flex-1 py-3 bg-primary rounded-xl text-primary-foreground font-medium flex items-center justify-center gap-2 hover:bg-primary/90 transition-all focus-ring shadow-lg shadow-primary/20 disabled:opacity-70"
-              aria-label={`向${candidateData.name}发起认识意愿`}
+              aria-label={viewType === 'interest' ? `接受${candidateData.name}的认识请求` : `向${candidateData.name}发起认识意愿`}
             >
               <Heart className="w-4 h-4" aria-hidden="true" />
-              {!canExpressInterest ? '暂不可发起' : showSubmittedHint ? '已提交意愿' : isExpressingInterest ? '发送中' : '愿意认识'}
+              {!canExpressInterest
+                ? '暂不可发起'
+                : showSubmittedHint
+                  ? '已提交意愿'
+                  : isExpressingInterest
+                    ? '发送中'
+                    : viewType === 'interest'
+                      ? '愿意认识'
+                      : '愿意认识TA'}
             </button>
           </Heartbeat>
         </div>
