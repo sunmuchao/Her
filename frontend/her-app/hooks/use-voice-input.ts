@@ -21,6 +21,13 @@ interface UseVoiceInputReturn {
   isSupported: boolean
 }
 
+function getSpeechRecognitionCtor() {
+  if (typeof window === 'undefined') {
+    return null
+  }
+  return window.SpeechRecognition || window.webkitSpeechRecognition || null
+}
+
 export function useVoiceInput({
   onTranscript,
   onError,
@@ -36,10 +43,11 @@ export function useVoiceInput({
   const startTimeRef = useRef<number>(0)
   const maxDurationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const isSupported = typeof window !== 'undefined' && 
-    'mediaDevices' in navigator && 
-    'getUserMedia' in navigator.mediaDevices &&
-    'webkitSpeechRecognition' in window || 'SpeechRecognition' in window
+  const isSupported =
+    typeof window !== 'undefined' &&
+    typeof navigator !== 'undefined' &&
+    !!navigator.mediaDevices?.getUserMedia &&
+    !!getSpeechRecognitionCtor()
 
   const cleanup = useCallback(() => {
     if (timerRef.current) {
@@ -67,7 +75,7 @@ export function useVoiceInput({
     setState('processing')
     
     // Use Web Speech API for speech-to-text
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+    const SpeechRecognition = getSpeechRecognitionCtor()
     
     if (!SpeechRecognition) {
       // Fallback: just notify that recording is complete
@@ -124,7 +132,7 @@ export function useVoiceInput({
     if (state !== 'idle') return
 
     // Use Web Speech API directly for real-time speech recognition
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+    const SpeechRecognition = getSpeechRecognitionCtor()
     
     if (SpeechRecognition) {
       setState('recording')
@@ -295,6 +303,6 @@ export function useVoiceInput({
     stopRecording,
     cancelRecording,
     recordingDuration,
-    isSupported: true, // We'll show UI and handle errors gracefully
+    isSupported,
   }
 }
