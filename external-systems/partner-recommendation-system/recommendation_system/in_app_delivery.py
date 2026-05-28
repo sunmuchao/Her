@@ -19,15 +19,18 @@ def list_in_app_cards(conn, requester_id: int | None = None, unread_only: bool =
         params.append(requester_id)
     if unread_only:
         clauses.append("card_status = 'unread'")
+    clauses.append("(r.recommendation_id IS NULL OR (r.delivery_status != 'escalated_to_case' AND COALESCE(r.active_match_case_id, '') = ''))")
     where_clause = ""
     if clauses:
         where_clause = "WHERE " + " AND ".join(clauses)
     rows = conn.execute(
         f"""
-        SELECT *
-        FROM in_app_recommendation_cards
+        SELECT c.*
+        FROM in_app_recommendation_cards AS c
+        LEFT JOIN profile_recommendations AS r
+          ON r.recommendation_id = c.recommendation_id
         {where_clause}
-        ORDER BY delivered_at DESC, card_id DESC
+        ORDER BY c.delivered_at DESC, c.card_id DESC
         """,
         params,
     ).fetchall()
