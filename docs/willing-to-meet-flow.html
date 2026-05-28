@@ -231,14 +231,14 @@
           <span><i class="swatch" style="background:#dc2626"></i>异常/关闭</span>
         </div>
         <div class="flow-wrap">
-          <div class="mermaid">
+        <div class="mermaid">
 flowchart TD
     A[用户A在候选详情页点击 愿意认识] --> B{入口来源}
 
     B -->|Discovery候选详情| C[前端调用 POST /v1/discovery/sessions/{sessionId}/candidates/{candidateId}/express-interest]
     B -->|推荐收件箱候选详情| C2[前端调用 recommendation action 或 proxy intro 接口]
 
-    subgraph S1[Discovery 已实现链路]
+    subgraph S1["Discovery 已实现链路"]
       direction TD
       C --> D[Gateway 校验 session owner 与当前用户]
       D --> E[DiscoveryService.express_interest]
@@ -258,15 +258,12 @@ flowchart TD
       M -->|是| N[upsert_recommendation]
       N --> O[create_match_case]
       O --> P[dispatch_match_case_outreach]
-      P --> Q[更新 session.state:
-last_created_subscription_id
-last_interest_candidate_id
-last_interest_at]
+      P --> Q[更新 session.state<br/>last_created_subscription_id<br/>last_interest_candidate_id<br/>last_interest_at]
       Q --> R[记录 funnel_stage 与 audit_event]
       R --> S[返回 ok + subscription_id + case]
     end
 
-    subgraph S2[前端即时反馈]
+    subgraph S2["前端即时反馈"]
       direction TD
       S --> T[详情页提示 已提交 可在关系里查看进度]
       C2 --> T
@@ -274,18 +271,15 @@ last_interest_at]
       U --> V[用户A转到关系页查看]
     end
 
-    subgraph S3[关系/牵线主状态]
+    subgraph S3["关系/牵线主状态"]
       direction TD
       V --> W[关系页展示牵线记录]
       P --> X[状态进入 pending_delivery / awaiting_reply]
       W --> X
-      X --> X1[用户文案:
-已提交
-等待对方看到
-等待对方决定]
+      X --> X1[用户文案<br/>已提交<br/>等待对方看到<br/>等待对方决定]
     end
 
-    subgraph S4[接收方B侧]
+    subgraph S4["接收方B侧"]
       direction TD
       X1 --> Y[系统以 红娘推荐 形式把A推荐给B]
       Y --> Z[用户B查看推荐卡或候选详情]
@@ -295,7 +289,7 @@ last_interest_at]
       AA -->|超时未处理| AC[状态变为 timed_out]
     end
 
-    subgraph S5[双向同意后]
+    subgraph S5["双向同意后"]
       direction TD
       AD --> AE{A与B是否都 accepted}
       AE -->|否| X
@@ -305,7 +299,7 @@ last_interest_at]
       AH --> AI[关系页出现 可以聊天了 / 聊天入口]
     end
 
-    subgraph S6[关闭分支]
+    subgraph S6["关闭分支"]
       direction TD
       AB --> AJ[A在关系页看到 对方暂不考虑]
       AC --> AK[A在关系页看到 已超时]
