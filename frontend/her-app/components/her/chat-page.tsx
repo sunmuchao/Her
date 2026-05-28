@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { ArrowLeft, Phone, MoreVertical, Send, Image as ImageIcon, BadgeCheck, Mic, Check, CheckCheck, Clock } from 'lucide-react'
 import Image from 'next/image'
-import { ChatTypingIndicator } from './ui/typing-indicator'
 import { cn } from '@/lib/utils'
 import { gatewayJson, queryString } from '@/lib/api/client'
 import { markConversationRead } from '@/lib/api/endpoints/chat'
@@ -80,7 +79,6 @@ export default function ChatPage({ chatId, onBack }: ChatPageProps) {
 
   const resolvedChatId = chatId === 'demo' ? DEMO_DEFAULT_CHAT_ID : chatId
   const [inputValue, setInputValue] = useState('')
-  const [isTyping, setIsTyping] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
   const [chatTitle, setChatTitle] = useState(urlChatTitle || '聊天')
   const [chatAvatar, setChatAvatar] = useState(PLACEHOLDER_AVATAR)
@@ -177,7 +175,7 @@ export default function ChatPage({ chatId, onBack }: ChatPageProps) {
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [isTyping, messages])
+  }, [messages])
 
   const handleSend = async () => {
     const body = inputValue.trim()
@@ -219,17 +217,6 @@ export default function ChatPage({ chatId, onBack }: ChatPageProps) {
           msg.id === tempId ? { ...msg, status: 'delivered' as const } : msg
         ))
       }, 500)
-      
-      // Show typing indicator
-      setIsTyping(true)
-      setTimeout(() => {
-        setIsTyping(false)
-        // Mark as read when they "respond"
-        setMessages(prev => prev.map(msg => 
-          msg.id === tempId ? { ...msg, status: 'read' as const } : msg
-        ))
-      }, 1500)
-      
     } catch (error) {
       setMessages((prev) => prev.filter((msg) => msg.id !== tempId))
       notifyError(error, '消息发送失败')
@@ -334,7 +321,6 @@ export default function ChatPage({ chatId, onBack }: ChatPageProps) {
             </div>
           )
         })}
-        {isTyping && <ChatTypingIndicator />}
         <div ref={messagesEndRef} />
       </div>
 
