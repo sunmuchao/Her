@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(ls -la /Users/sunmuchao/.claude/skills/excalidraw/)",
-      "Read(//Users/sunmuchao/.claude/skills/excalidraw/**)"
+      "Read(//Users/sunmuchao/.claude/skills/excalidraw/**)",
+      "Bash(node /Users/sunmuchao/.claude/skills/excalidraw/scripts/generate-excalidraw.mjs --router grid --in /tmp/willing-to-know-flow-spec.json --out /Users/sunmuchao/Downloads/Her/docs/willing-to-know-flow.excalidraw)"
     ]
   }
 }
