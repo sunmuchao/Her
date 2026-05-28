@@ -143,11 +143,12 @@ export function HerApp() {
               selectedChatId={nav.selectedChatId}
               selectedCaseId={nav.selectedCaseId}
               selectedCounterpartId={nav.selectedCounterpartId}
+              fromChatId={nav.fromChatId}
               discoverySessionId={nav.discoverySessionId}
               onDiscoverySessionId={nav.setDiscoverySessionId}
               onTabChange={nav.handleTabChange}
-              onViewCandidate={(id, c) =>
-                nav.handleViewCandidate(id, c, nav.discoverySessionId)
+              onViewCandidate={(id, c, sessionId, fromChatId) =>
+                nav.handleViewCandidate(id, c, sessionId || nav.discoverySessionId, fromChatId)
               }
               onOpenInbox={nav.handleOpenInbox}
               onOpenChat={nav.handleOpenChat}

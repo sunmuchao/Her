@@ -2,11 +2,17 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { ArrowLeft, Phone, MoreVertical, Send, Image as ImageIcon, BadgeCheck, Mic, X } from 'lucide-react'
+import { ArrowLeft, Phone, MoreVertical, Send, Image as ImageIcon, BadgeCheck, Mic, X, Sparkles } from 'lucide-react'
 import Image from 'next/image'
 import { cn } from '@/lib/utils'
 import { gatewayJson, queryString } from '@/lib/api/client'
 import { markConversationRead, fetchPrivateChatConversationId, fetchPrivateMessages, sendPrivateMessage, type PrivateMessage } from '@/lib/api/endpoints/chat'
+import {
+  fetchCaseTimeline,
+  extractMainGroupMessages,
+  type ChatMessageDisplay,
+  type CaseTimelineResponse,
+} from '@/lib/api/endpoints/chat-timeline'
 import { getErrorMessage } from '@/lib/api/errors'
 import { getChatParticipantId, getAvatarUrl } from '@/lib/auth/session'
 import { canUseMockFallback } from '@/lib/mock'
@@ -25,15 +31,10 @@ interface ChatPageProps {
   counterpartName?: string
   counterpartImage?: string
   onBack: () => void
-  onViewCandidate?: (candidateId: string, candidate?: CandidatePreview) => void
+  onViewCandidate?: (candidateId: string, candidate?: CandidatePreview, sessionId?: string | null, fromChatId?: string) => void
 }
 
-type Message = {
-  id: string
-  type: 'sent' | 'received'
-  content: string
-  timestamp: string
-}
+type Message = ChatMessageDisplay
 
 type ConversationResponse = {
   conversation: {
@@ -82,19 +83,35 @@ function PrivateChatFab({
     async function load() {
       setIsLoading(true)
       try {
+        console.log('[PrivateChatFab] 开始加载会话, caseId:', caseId, 'requesterId:', requesterId)
         const convId = await fetchPrivateChatConversationId(caseId, requesterId)
-        if (cancelled || !convId) {
+        console.log('[PrivateChatFab] 获取到的会话ID:', convId)
+
+        if (cancelled) {
           setIsLoading(false)
           return
         }
+
+        if (!convId) {
+          console.warn('[PrivateChatFab] 未找到私信会话ID')
+          setIsLoading(false)
+          // 不设置 conversationId，显示提示信息
+          return
+        }
+
         setConversationId(convId)
+        console.log('[PrivateChatFab] 设置会话ID:', convId)
+
         const msgs = await fetchPrivateMessages(convId, requesterId)
+        console.log('[PrivateChatFab] 获取到的消息数量:', msgs.length)
+
         if (!cancelled) {
           setMessages(msgs)
           setHasUnread(false)
         }
       } catch (error) {
         if (!cancelled) {
+          console.error('[PrivateChatFab] 加载失败:', error)
           notifyError(error, '加载私信失败')
         }
       } finally {
@@ -225,17 +242,7 @@ function PrivateChatFab({
                   <p className="text-sm text-muted-foreground">加载中...</p>
                 </div>
               ) : messages.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full gap-3 text-center">
-                  {/* 小雅头像 */}
-                  <div className="w-14 h-14 rounded-full overflow-hidden bg-gradient-to-br from-primary/20 to-primary/10 ring-2 ring-primary/30 shadow-lg">
-                    <Image
-                      src="/xiaoya-avatar.png"
-                      alt="小雅"
-                      width={56}
-                      height={56}
-                      className="object-cover"
-                    />
-                  </div>
+                <div className="flex flex-col items-center justify-center h-full gap-3 text-center pt-6">
                   {/* 欢迎语 */}
                   <div className="space-y-1">
                     <p className="text-base font-medium text-foreground">你好呀！我是小雅 💬</p>
@@ -286,7 +293,7 @@ function PrivateChatFab({
                   }}
                   placeholder="跟小雅说点悄悄话..."
                   className="flex-1 bg-transparent text-sm placeholder:text-muted-foreground focus:outline-none"
-                  disabled={!conversationId || isLoading}
+                  disabled={isLoading}
                 />
                 <button
                   type="button"
@@ -306,6 +313,12 @@ function PrivateChatFab({
                   )}
                 </button>
               </div>
+              {/* 连接状态提示 */}
+              {!conversationId && !isLoading && (
+                <p className="text-xs text-muted-foreground mt-1.5 text-center">
+                  💡 当前私信功能暂未开通，请稍后再试
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -362,40 +375,39 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
 
     let cancelled = false
     async function loadConversation() {
+      // TypeScript 类型收窄在 async 函数内不生效，需要显式断言
+      const currentRequesterId = requesterId as string
       setIsLoading(true)
       setLoadError(null)
       try {
-        const [conversationData, messageData] = await Promise.all([
-          gatewayJson<ConversationResponse>(
-            `/v2/chat/conversations/${resolvedChatId}${queryString({ requester_id: requesterId })}`,
-          ),
-          gatewayJson<MessagesResponse>(
-            `/v2/chat/conversations/${resolvedChatId}/messages${queryString({ requester_id: requesterId })}`,
-          ),
-        ])
+        // ✅ 使用timeline API加载消息（包含AI红娘主动提示）
+        const timelineData = await fetchCaseTimeline(resolvedCaseId || '', currentRequesterId)
         if (cancelled) return
-        // 只有在没有 URL 参数 chatTitle 时才从 API 获取标题
+
+        // 提取main_group会话的消息（用户对话 + AI红娘提示）
+        const mappedMessages = extractMainGroupMessages(timelineData, currentRequesterId)
+        setMessages(mappedMessages)
+
+        // 更新聊天标题
         if (!chatTitleRef.current) {
+          const mainGroup = timelineData.conversations.find(
+            (c) => c.conversation.channel_key === 'main_group',
+          )
           const otherMember =
-            conversationData.conversation.members?.find(
-              (member) => member.participant_id !== requesterId && member.member_role !== 'agent',
+            mainGroup?.conversation.members?.find(
+              (member) => member.participant_id !== currentRequesterId && member.member_role !== 'agent',
             )?.participant_id || '对方'
           setChatTitle(otherMember)
         }
+
         setVerified(true)
-        setMessages(
-          messageData.messages.map((message) => ({
-            id: String(message.message_id),
-            type: message.author_id === requesterId ? 'sent' : 'received',
-            content: message.body,
-            timestamp: message.created_at,
-          })),
-        )
-        const latestMessage = messageData.messages[messageData.messages.length - 1]
-        if (latestMessage && latestMessage.author_id !== requesterId) {
-          markConversationRead(resolvedConversationId, Number(latestMessage.message_id))
-        }
         setUsingMockData(false)
+
+        // 标记消息已读
+        const latestMessage = mappedMessages[mappedMessages.length - 1]
+        if (latestMessage && latestMessage.authorId !== currentRequesterId) {
+          markConversationRead(resolvedChatId || '', Number(latestMessage.id))
+        }
       } catch (error) {
         if (cancelled) return
         const message = getErrorMessage(error, '聊天加载失败')
@@ -416,6 +428,34 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
       cancelled = true
     }
   }, [resolvedChatId])
+
+  // ✅ 轮询更新：每30秒获取最新消息（包括AI红娘的新提示）
+  useEffect(() => {
+    if (!resolvedCaseId || !resolvedChatId) return
+    const requesterId = getChatParticipantId()
+    if (!requesterId) return
+
+    const interval = setInterval(async () => {
+      try {
+        const timelineData = await fetchCaseTimeline(resolvedCaseId || '', requesterId)
+        const mappedMessages = extractMainGroupMessages(timelineData, requesterId)
+
+        // 只在有新消息时更新
+        if (mappedMessages.length > messages.length) {
+          setMessages(mappedMessages)
+          // 标记新消息已读
+          const latestMessage = mappedMessages[mappedMessages.length - 1]
+          if (latestMessage && latestMessage.authorId !== requesterId) {
+            markConversationRead(resolvedChatId, Number(latestMessage.id))
+          }
+        }
+      } catch (error) {
+        console.error('[ChatPage] 轮询更新失败:', error)
+      }
+    }, 30000) // 30秒轮询
+
+    return () => clearInterval(interval)
+  }, [resolvedCaseId, resolvedChatId, messages.length])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -498,7 +538,7 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
                   caseId: resolvedCaseId || undefined,
                   viewType: 'matched',
                 }
-                onViewCandidate(counterpartId, candidate)
+                onViewCandidate(counterpartId, candidate, undefined, resolvedChatId || undefined)
               }
             }}
             disabled={!onViewCandidate || !counterpartId}
@@ -542,6 +582,7 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4 space-y-3" role="log" aria-label="聊天消息">
         {messages.map((msg, index) => {
           const isSent = msg.type === 'sent'
+          const isAssistant = msg.type === 'assistant'
           const prevMsg = messages[index - 1]
           // 显示头像的条件：第一条消息，或上一条是对方发的（切换发送者时显示头像）
           const showAvatar = index === 0 || prevMsg?.type !== msg.type
@@ -549,10 +590,36 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
           return (
             <div
               key={msg.id}
-              className={cn('flex animate-fade-in-up', isSent ? 'justify-end items-end gap-2' : 'justify-start items-end gap-2')}
+              className={cn(
+                'flex animate-fade-in-up',
+                isAssistant ? 'justify-center' : isSent ? 'justify-end items-end gap-2' : 'justify-start items-end gap-2',
+              )}
               style={{ animationDelay: `${index * 30}ms` }}
             >
-              {!isSent && (
+              {/* ✅ AI红娘消息特殊样式 */}
+              {isAssistant && (
+                <div className="max-w-[85%] bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-xl p-3 shadow-sm">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-5 h-5 rounded-full overflow-hidden bg-gradient-to-br from-purple-400 to-blue-400">
+                      <Image
+                        src="/xiaoya-avatar.png"
+                        alt="小雅"
+                        width={20}
+                        height={20}
+                        className="object-cover"
+                      />
+                    </div>
+                    <span className="text-xs text-purple-600 font-medium flex items-center gap-1">
+                      <Sparkles className="w-3 h-3" />
+                      小雅的建议
+                    </span>
+                  </div>
+                  <p className="text-sm text-purple-900 leading-relaxed">{msg.content}</p>
+                </div>
+              )}
+
+              {/* 用户消息 */}
+              {!isAssistant && !isSent && (
                 <div className={cn('w-8 h-8 rounded-full overflow-hidden bg-secondary flex-shrink-0', showAvatar ? 'opacity-100' : 'opacity-0')}>
                   <Image
                     src={chatAvatar}

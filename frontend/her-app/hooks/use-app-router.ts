@@ -60,6 +60,9 @@ export function useAppRouter() {
   // 从 URL 获取 counterpartId
   const selectedCounterpartId = searchParams.get('counterpartId') || null
 
+  // 从 URL 获取 fromChatId（用于返回时回到聊天页面）
+  const fromChatId = searchParams.get('fromChatId') || null
+
   // 从 URL 解析 caseId 和 viewType
   const urlCaseId = searchParams.get('caseId')
   const urlViewType = searchParams.get('viewType') as 'delayed' | 'matched' | 'interest' | 'candidate' | null
@@ -90,6 +93,7 @@ export function useAppRouter() {
       viewType?: 'delayed' | 'matched' | 'interest' | 'candidate'
       chatTitle?: string
       counterpartId?: string
+      fromChatId?: string
     }) => {
       const href = pageToPath(page, {
         candidateId: params?.candidateId,
@@ -98,6 +102,7 @@ export function useAppRouter() {
         viewType: params?.viewType,
         chatTitle: params?.chatTitle,
         counterpartId: params?.counterpartId,
+        fromChatId: params?.fromChatId,
       })
       // session 已经在 pageToPath 中处理了，但这里需要额外处理 sessionId
       if (params?.sessionId && page === 'sub-candidate-detail') {
@@ -131,7 +136,7 @@ export function useAppRouter() {
   )
 
   const handleViewCandidate = useCallback(
-    (candidateId: string, candidate?: CandidatePreview, sessionId?: string | null) => {
+    (candidateId: string, candidate?: CandidatePreview, sessionId?: string | null, fromChatId?: string) => {
       // DEBUG: 调试参数接收
       console.log('[useAppRouter] handleViewCandidate 接收到:', {
         candidateId,
@@ -141,6 +146,7 @@ export function useAppRouter() {
           viewType: candidate.viewType,
         } : null,
         sessionId,
+        fromChatId,
       })
       setSelectedCandidate(candidate || null)
       if (sessionId !== undefined) {
@@ -151,6 +157,7 @@ export function useAppRouter() {
         sessionId: sessionId ?? discoverySessionId,
         caseId: candidate?.caseId,
         viewType: candidate?.viewType,
+        fromChatId,
       })
     },
     [discoverySessionId, pushPage],
@@ -209,6 +216,7 @@ export function useAppRouter() {
     selectedChatId,
     selectedCaseId,
     selectedCounterpartId,
+    fromChatId,
     discoverySessionId,
     setDiscoverySessionId,
     handleNavigate,

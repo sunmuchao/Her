@@ -544,6 +544,8 @@ export default function CandidateDetailPage({
       </div>
 
       {/* Bottom CTA with heartbeat animation */}
+      {/* 已匹配的候选人（matched 类型）不显示操作按钮 */}
+      {viewType !== 'matched' && (
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-background border-t border-border safe-area-bottom">
         <div className="flex gap-3 max-w-md mx-auto">
           <button
@@ -595,6 +597,7 @@ export default function CandidateDetailPage({
           <p className="mt-2 text-center text-xs text-muted-foreground">请先通过推荐来信进入后再发起认识</p>
         ) : null}
       </div>
+      )}
     </PageTransition>
   )
 }
