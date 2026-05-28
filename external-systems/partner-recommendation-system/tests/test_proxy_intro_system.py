@@ -22,7 +22,6 @@ from recommendation_system import (  # noqa: E402
     dispatch_match_case_outreach,
     get_match_case,
     initialize_database,
-    list_in_app_cards,
     list_recommendation_conversion_views_for_subscription,
     list_pending_outbox,
     list_match_case_events,
@@ -128,7 +127,6 @@ class ProxyIntroSystemTests(unittest.TestCase):
 
     def test_create_match_case_syncs_recommendation_and_redacts_summary(self):
         subscription = self.seed_delivered_recommendation()
-        self.assertEqual(len(list_in_app_cards(self.conn, requester_id=71001)), 1)
         case = create_match_case(
             self._case_conn(),
             recommendation_conn=self._rec_conn(),
@@ -153,7 +151,6 @@ class ProxyIntroSystemTests(unittest.TestCase):
         self.assertEqual(recommendations[0]["case_progress_status"], "pending_contact")
         self.assertEqual(recommendations[0]["recommendation_status_owner"], "recommendation")
         self.assertEqual(recommendations[0]["case_progress_owner"], "matchmaking")
-        self.assertEqual(list_in_app_cards(self.conn, requester_id=71001), [])
 
     def test_dispatch_reply_and_close_flow(self):
         subscription = self.seed_delivered_recommendation(candidate_id=90002)

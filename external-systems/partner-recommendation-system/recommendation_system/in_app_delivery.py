@@ -15,10 +15,10 @@ def list_in_app_cards(conn, requester_id: int | None = None, unread_only: bool =
     clauses = []
     params: list[Any] = []
     if requester_id is not None:
-        clauses.append("requester_id = ?")
+        clauses.append("c.requester_id = ?")
         params.append(requester_id)
     if unread_only:
-        clauses.append("card_status = 'unread'")
+        clauses.append("c.card_status = 'unread'")
     clauses.append("(r.recommendation_id IS NULL OR (r.delivery_status != 'escalated_to_case' AND COALESCE(r.active_match_case_id, '') = ''))")
     where_clause = ""
     if clauses:

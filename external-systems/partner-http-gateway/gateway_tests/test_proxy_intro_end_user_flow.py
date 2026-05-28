@@ -277,6 +277,14 @@ class ProxyIntroEndUserFlowTests(unittest.TestCase):
 
         status, payload = self._call(
             "GET",
+            "/v1/recommendation/cards",
+            token=str(requester["access_token"]),
+        )
+        self.assertTrue(status.startswith("200"), status)
+        self.assertEqual(payload["cards"], [])
+
+        status, payload = self._call(
+            "GET",
             "/v1/proxy-intro/cases/mine",
             token=str(requester["access_token"]),
         )
