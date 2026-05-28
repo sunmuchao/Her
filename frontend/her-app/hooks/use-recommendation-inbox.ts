@@ -62,17 +62,47 @@ function mapCardToInboxItem(card: RecommendationCard): InboxItem {
 }
 
 function mapProxyIntroCaseToInboxItem(caseItem: ProxyIntroCase): InboxItem {
-  // 从 outreach_payload 中提取 requester 的信息
-  // outreach_payload.requester_summary 包含发起方的信息（由 build_requester_safe_summary 生成）
+  // 获取发起方信息（对于被动推荐，counterpart 就是发起方）
+  // 优先使用 outreach_payload.requester_summary（新格式）
+  // 否则使用 counterpart_profile 或 requester_profile_snapshot（旧格式兼容）
   const requesterSummary = caseItem.outreach_payload?.requester_summary || {}
-  const requesterProfile = caseItem.requester_profile_snapshot?.self_profile || {}
   const counterpartProfile = caseItem.counterpart_profile || {}
+  const requesterProfile = caseItem.requester_profile_snapshot?.self_profile || {}
 
-  // 使用 requester_summary 中的信息（如果存在），否则从 requester_profile_snapshot 中提取
-  const name = requesterSummary.requester_name || counterpartProfile.display_name || counterpartProfile.name || '有人'
-  const age = requesterSummary.age_bracket ? parseInt(requesterSummary.age_bracket.split('-')[0]) : (requesterProfile.age || counterpartProfile.age || 0)
-  const city = requesterSummary.city || requesterProfile.city || counterpartProfile.city || '未知'
-  const occupation = requesterSummary.occupation || requesterProfile.job || counterpartProfile.job || '资料待补充'
+  // 提取名字：优先 requester_summary，然后 counterpart，最后 requester_profile
+  const name = requesterSummary.requester_name
+    || String(counterpartProfile.display_name || counterpartProfile.name || '')
+    || String(requesterProfile.display_name || requesterProfile.name || '')
+    || '有人'
+
+  // 提取年龄
+  let age = 0
+  if (requesterSummary.age_bracket) {
+    const bracketMatch = requesterSummary.age_bracket.match(/(\d+)-(\d+)/)
+    if (bracketMatch) age = parseInt(bracketMatch[1])
+  } else {
+    age = parseInt(String(counterpartProfile.age || requesterProfile.age || '0')) || 0
+  }
+
+  // 提取城市
+  const city = requesterSummary.city
+    || String(counterpartProfile.city || '')
+    || String(requesterProfile.city || '')
+    || '未知'
+
+  // 提取职业
+  const occupation = requesterSummary.occupation
+    || String(counterpartProfile.job || counterpartProfile.occupation || '')
+    || String(requesterProfile.job || requesterProfile.occupation || '')
+    || '资料待补充'
+
+  // 提取头像
+  const image = resolveProfileImageUrl(
+    requesterSummary.avatar_url
+    || String(counterpartProfile.avatar_url || counterpartProfile.photo_url || '')
+    || String(requesterProfile.avatar_url || requesterProfile.photo_url || ''),
+    PLACEHOLDER_AVATAR
+  )
 
   return {
     id: String(caseItem.case_id),
@@ -82,12 +112,12 @@ function mapProxyIntroCaseToInboxItem(caseItem: ProxyIntroCase): InboxItem {
     age,
     city,
     occupation,
-    matchScore: 0,  // 被动推荐暂无匹配分数
-    image: resolveProfileImageUrl(requesterSummary.avatar_url || requesterProfile.avatar_url, PLACEHOLDER_AVATAR),
-    type: 'interest',  // 新增类型：有人想认识你
-    message: requesterSummary.summary_text || '有人想通过平台进一步认识你',
+    matchScore: 0,
+    image,
+    type: 'interest',
+    message: requesterSummary.summary_text || `${name}想通过平台进一步认识你`,
     time: caseItem.created_at || '刚刚',
-    isRead: caseItem.case_status !== 'awaiting_reply',  // awaiting_reply 视为未读
+    isRead: caseItem.case_status !== 'awaiting_reply',
     conversionStage: undefined,
   }
 }
@@ -116,17 +146,21 @@ export function useRecommendationInbox() {
         try {
           const casesResponse = await fetchMyProxyIntroCases()
           if (cancelled) return
+          console.log('[推荐来信] 加载 ProxyIntroCase:', casesResponse)
           // 过滤出当前用户作为被请求方且等待回复的 case
           const interestCases = (casesResponse.cases || []).filter(
             (c) => c.role === 'candidate' && c.case_status === 'awaiting_reply'
           )
+          console.log('[推荐来信] 过滤后的被动推荐 case:', interestCases)
           interestCards = interestCases.map(mapProxyIntroCaseToInboxItem)
-        } catch {
+        } catch (err) {
           // 加载失败时忽略
+          console.error('[推荐来信] 加载 ProxyIntroCase 失败:', err)
         }
 
         // 合并推荐卡片和被动推荐
         const allItems = [...cards, ...interestCards]
+        console.log('[推荐来信] 合并后的总列表:', allItems.length, '其中被动推荐:', interestCards.length)
 
         const conversionByCandidate = new Map<number, string>()
         try {
