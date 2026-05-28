@@ -120,7 +120,6 @@ export function AppShell({
               onBack={onBackToMain}
               onOpenRelationships={() => {
                 onTabChange('relationships')
-                onBackToMain()
               }}
             />
           </SlideInTransition>
