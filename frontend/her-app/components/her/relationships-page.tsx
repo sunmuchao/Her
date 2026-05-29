@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { AlertCircle, BadgeCheck, ChevronDown, ChevronRight, Loader2, MailOpen, Pin, Trash2, X } from 'lucide-react'
+import { AlertCircle, BadgeCheck, ChevronDown, ChevronRight, Loader2, MailOpen, Pin, Trash2, X, MessageCircle, Clock, CheckCheck, Eye } from 'lucide-react'
 import Image from 'next/image'
 import { fetchRelationshipsUnreadSummary } from '@/lib/api/endpoints/chat'
 import { fetchTrustHub } from '@/lib/api/endpoints/trust-hub'
@@ -699,19 +699,19 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification, onN
                       ) : null}
                     </div>
                     <div className="flex-1 min-w-0">
+                      {/* 第一行：姓名 + 认证徽章 */}
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{rel.name}</span>
-                        {rel.verified && <BadgeCheck className="w-4 h-4 text-primary" />}
-                        {pinnedCardIds[rel.caseId] ? <span className="px-2 py-0.5 bg-gold/20 text-[10px] text-gold font-medium rounded-full">置顶</span> : null}
-                        {readCardIds[rel.caseId] ? <span className="px-2 py-0.5 bg-secondary text-[10px] rounded-full">已读</span> : null}
-                        <span className="ml-auto px-2 py-0.5 bg-secondary text-[10px] rounded-full">{rel.stage}</span>
+                        {rel.verified && <BadgeCheck className="w-4 h-4 text-primary" aria-label="已认证" />}
                       </div>
-                      <p className="text-sm text-muted-foreground truncate mt-0.5">
+                      {/* 第二行：最后消息预览 - 使用更浅的颜色 */}
+                      <p className="text-sm text-muted-foreground/70 truncate mt-0.5 leading-relaxed">
                         {rel.lastMessage}
                       </p>
+                      {/* 第三行：时间 + 小雅入口 */}
                       <div className="flex items-center gap-2 mt-1">
-                        <span className="text-[10px] text-muted-foreground">{formatRelativeTime(rel.lastMessageTime)}</span>
-                        {/* 小雅复盘入口 */}
+                        <span className="text-[10px] text-muted-foreground/60">{formatRelativeTime(rel.lastMessageTime)}</span>
+                        {/* 小雅复盘入口 - 使用 gold 主题色 */}
                         {rel.hasXiaoyaUnread && rel.xiaoyaConversationId && (
                           <button
                             type="button"
@@ -719,7 +719,8 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification, onN
                               e.stopPropagation()
                               setOpenXiaoyaCaseId(openXiaoyaCaseId === rel.caseId ? null : rel.caseId)
                             }}
-                            className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-100/80 text-purple-600 text-[10px] hover:bg-purple-100 transition-colors"
+                            className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-gold-soft text-gold text-[10px] hover:bg-gold/20 transition-colors"
+                            aria-label="查看小雅复盘"
                           >
                             <Image
                               src="/xiaoya-avatar.png"
@@ -729,43 +730,62 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification, onN
                               className="rounded-full"
                             />
                             <span>小雅复盘</span>
-                            <span className="w-1.5 h-1.5 rounded-full bg-rose animate-pulse" />
+                            <span className="w-1.5 h-1.5 rounded-full bg-gold animate-pulse" />
                           </button>
                         )}
                       </div>
                     </div>
+                    {/* 右侧状态图标区域 */}
+                    <div className="flex flex-col items-end gap-1.5 shrink-0">
+                      {/* 状态图标组 */}
+                      <div className="flex items-center gap-1">
+                        {pinnedCardIds[rel.caseId] && (
+                          <div className="w-5 h-5 rounded-full bg-gold/20 flex items-center justify-center" title="已置顶">
+                            <Pin className="w-3 h-3 text-gold" />
+                          </div>
+                        )}
+                        {readCardIds[rel.caseId] && (
+                          <div className="w-5 h-5 rounded-full bg-secondary flex items-center justify-center" title="已读">
+                            <CheckCheck className="w-3 h-3 text-muted-foreground" />
+                          </div>
+                        )}
+                      </div>
+                      {/* 阶段标签 */}
+                      <span className="px-2 py-0.5 bg-secondary text-[10px] text-muted-foreground rounded-full whitespace-nowrap">{rel.stage}</span>
+                    </div>
                   </div>
 
-                  {/* 小雅复盘面板 */}
-                  {openXiaoyaCaseId === rel.caseId && rel.xiaoyaConversationId && (
-                    <div className="px-3 pb-3 animate-fade-in">
-                      <div className="bg-gradient-to-r from-purple-50/50 to-blue-50/50 rounded-xl p-3 border border-purple-100/50">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <Image
-                              src="/xiaoya-avatar.png"
-                              alt="小雅"
-                              width={20}
-                              height={20}
-                              className="rounded-full"
-                            />
-                            <span className="text-sm font-medium text-purple-700">小雅 · 复盘助手</span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => setOpenXiaoyaCaseId(null)}
-                            className="w-6 h-6 rounded-full hover:bg-purple-100 flex items-center justify-center"
-                          >
-                            <X className="w-4 h-4 text-purple-600" />
-                          </button>
-                        </div>
-                        <p className="text-xs text-purple-600/80 mb-2">
-                          {rel.xiaoyaLastMessage || '刚才聊得怎么样呀？有需要我帮忙跟进的吗？'}
-                        </p>
-                        <p className="text-[10px] text-purple-400/60">点击进入聊天页与小雅私聊更多～</p>
-                      </div>
-                    </div>
-                  )}
+                  {/* 小雅复盘面板 - 使用 gold 主题色 */}
+                                  {openXiaoyaCaseId === rel.caseId && rel.xiaoyaConversationId && (
+                                    <div className="px-3 pb-3 animate-fade-in">
+                                      <div className="bg-gradient-to-r from-gold-soft/50 to-gold-soft/30 rounded-xl p-3 border border-gold/20">
+                                        <div className="flex items-center justify-between mb-2">
+                                          <div className="flex items-center gap-2">
+                                            <Image
+                                              src="/xiaoya-avatar.png"
+                                              alt="小雅"
+                                              width={20}
+                                              height={20}
+                                              className="rounded-full"
+                                            />
+                                            <span className="text-sm font-medium text-gold">小雅 · 复盘助手</span>
+                                          </div>
+                                          <button
+                                            type="button"
+                                            onClick={() => setOpenXiaoyaCaseId(null)}
+                                            className="w-6 h-6 rounded-full hover:bg-gold/20 flex items-center justify-center transition-colors"
+                                            aria-label="关闭复盘面板"
+                                          >
+                                            <X className="w-4 h-4 text-gold" />
+                                          </button>
+                                        </div>
+                                        <p className="text-xs text-foreground/80 mb-2">
+                                          {rel.xiaoyaLastMessage || '刚才聊得怎么样呀？有需要我帮忙跟进的吗？'}
+                                        </p>
+                                        <p className="text-[10px] text-muted-foreground">点击进入聊天页与小雅私聊更多</p>
+                                      </div>
+                                    </div>
+                                  )}
                 </div>
               </SwipeableCard>
             ))}
@@ -894,9 +914,20 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification, onN
                     )}
                   </div>
                   </div>
-                  <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground">
-                    {pinnedCardIds[String(item.case_id)] ? <span className="px-2 py-0.5 rounded-full bg-gold/20 text-gold font-medium">置顶</span> : null}
-                    {readCardIds[String(item.case_id)] ? <span className="px-2 py-0.5 rounded-full bg-secondary">已读</span> : null}
+                  <div className="mt-1 flex items-center justify-between">
+                    {/* 状态图标 */}
+                    <div className="flex items-center gap-1">
+                      {pinnedCardIds[String(item.case_id)] && (
+                        <div className="w-5 h-5 rounded-full bg-gold/20 flex items-center justify-center" title="已置顶">
+                          <Pin className="w-3 h-3 text-gold" />
+                        </div>
+                      )}
+                      {readCardIds[String(item.case_id)] && (
+                        <div className="w-5 h-5 rounded-full bg-secondary flex items-center justify-center" title="已读">
+                          <CheckCheck className="w-3 h-3 text-muted-foreground" />
+                        </div>
+                      )}
+                    </div>
                   </div>
                   {item.can_reply ? (
                     <div className="mt-3 flex gap-2">
