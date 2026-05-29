@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { ArrowLeft, MoreVertical, Send, BadgeCheck, Mic, X, Sparkles, Plus, Video, Image as ImageIcon, Phone } from 'lucide-react'
+import { ArrowLeft, MoreVertical, Send, BadgeCheck, Mic, X, Sparkles, Plus, Video, Image as ImageIcon, Phone, MapPin, Smile, User, Star, BellOff, Flag, ChevronDown } from 'lucide-react'
 import Image from 'next/image'
 import { cn } from '@/lib/utils'
 import { gatewayJson, queryString } from '@/lib/api/client'
@@ -102,6 +102,26 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
   const [showVideoCall, setShowVideoCall] = useState(false)
   const [videoCallType, setVideoCallType] = useState<'audio' | 'video'>('video')
   const [videoCallId, setVideoCallId] = useState<string | null>(null)
+
+  // 图片预览模态框状态
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null)
+  const [imageScale, setImageScale] = useState(1)
+  const lastTapRef = useRef<number>(0)
+
+  // Header 更多菜单状态
+  const [showHeaderMenu, setShowHeaderMenu] = useState(false)
+
+  // 新消息提示状态
+  const [hasNewMessage, setHasNewMessage] = useState(false)
+  const [newMessagePreview, setNewMessagePreview] = useState<{ content: string; avatar: string } | null>(null)
+  const [isAtBottom, setIsAtBottom] = useState(true)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
+
+  // 小雅底部面板状态
+  const [xiaoyaSheetHeight, setXiaoyaSheetHeight] = useState<'collapsed' | 'half' | 'full'>('half')
+  const [xiaoyaIsTyping, setXiaoyaIsTyping] = useState(false)
+  const xiaoyaDragStartY = useRef(0)
+  const xiaoyaDragStartHeight = useRef<'collapsed' | 'half' | 'full'>('half')
 
   // 加载小雅私信会话
   useEffect(() => {
@@ -516,17 +536,143 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
               {verified && <BadgeCheck className="w-4 h-4 text-primary" aria-label="已认证" />}
             </div>
           </div>
-          <button
-            className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors focus-ring rounded-full"
-            aria-label="更多选项"
-          >
-            <MoreVertical className="w-5 h-5" />
-          </button>
+          {/* 更多选项按钮 + 下拉菜单 */}
+          <div className="relative">
+            <button
+              onClick={() => setShowHeaderMenu(!showHeaderMenu)}
+              className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors focus-ring rounded-full"
+              aria-label="更多选项"
+              aria-expanded={showHeaderMenu}
+              aria-haspopup="menu"
+            >
+              <MoreVertical className="w-5 h-5" />
+            </button>
+            {/* 下拉菜单 */}
+            {showHeaderMenu && (
+              <>
+                <div 
+                  className="fixed inset-0 z-30" 
+                  onClick={() => setShowHeaderMenu(false)}
+                  aria-hidden="true"
+                />
+                <div 
+                  className="absolute right-0 top-full mt-1 w-40 bg-card border border-border rounded-xl shadow-lg z-40 py-1 animate-scale-in"
+                  role="menu"
+                  aria-label="更多选项菜单"
+                >
+                  <button
+                    onClick={() => {
+                      if (onViewCandidate && counterpartId) {
+                        const candidate: CandidatePreview = {
+                          id: counterpartId,
+                          name: chatTitle,
+                          image: chatAvatar,
+                          caseId: resolvedCaseId || undefined,
+                          viewType: 'matched',
+                        }
+                        onViewCandidate(counterpartId, candidate, undefined, resolvedChatId || undefined)
+                      }
+                      setShowHeaderMenu(false)
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-foreground hover:bg-secondary transition-colors"
+                    role="menuitem"
+                  >
+                    <User className="w-4 h-4 text-muted-foreground" />
+                    查看资料
+                  </button>
+                  <button
+                    onClick={() => {
+                      // TODO: 设为特别关注
+                      setShowHeaderMenu(false)
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-foreground hover:bg-secondary transition-colors"
+                    role="menuitem"
+                  >
+                    <Star className="w-4 h-4 text-muted-foreground" />
+                    设为特别关注
+                  </button>
+                  <button
+                    onClick={() => {
+                      // TODO: 消息免打扰
+                      setShowHeaderMenu(false)
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-foreground hover:bg-secondary transition-colors"
+                    role="menuitem"
+                  >
+                    <BellOff className="w-4 h-4 text-muted-foreground" />
+                    消息免打扰
+                  </button>
+                  <div className="h-px bg-border my-1" role="separator" />
+                  <button
+                    onClick={() => {
+                      // TODO: 举报
+                      setShowHeaderMenu(false)
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-destructive hover:bg-secondary transition-colors"
+                    role="menuitem"
+                  >
+                    <Flag className="w-4 h-4" />
+                    举报
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </header>
 
+      {/* 新消息提示浮动条 */}
+      {hasNewMessage && newMessagePreview && !isAtBottom && (
+        <div 
+          className="sticky top-16 z-10 mx-4 animate-slide-in-right"
+          onClick={() => {
+            messagesContainerRef.current?.scrollTo({
+              top: messagesContainerRef.current.scrollHeight,
+              behavior: 'smooth'
+            })
+            setHasNewMessage(false)
+            setNewMessagePreview(null)
+          }}
+        >
+          <button
+            className="w-full flex items-center gap-3 bg-card border border-border rounded-xl p-3 shadow-md hover:bg-secondary/50 transition-colors"
+            aria-label="跳转到新消息"
+          >
+            <div className="w-8 h-8 rounded-full overflow-hidden bg-secondary flex-shrink-0">
+              <Image
+                src={newMessagePreview.avatar}
+                alt="新消息"
+                width={32}
+                height={32}
+                className="object-cover"
+              />
+            </div>
+            <div className="flex-1 text-left min-w-0">
+              <p className="text-xs text-muted-foreground">新消息</p>
+              <p className="text-sm text-foreground truncate">{newMessagePreview.content}</p>
+            </div>
+            <ChevronDown className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+          </button>
+        </div>
+      )}
+
       {/* Messages */}
-      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4 space-y-3" role="log" aria-label="聊天消息">
+      <div 
+        ref={messagesContainerRef}
+        className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4 space-y-3" 
+        role="log" 
+        aria-label="聊天消息"
+        aria-live="polite"
+        onScroll={(e) => {
+          const container = e.currentTarget
+          const isBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 50
+          setIsAtBottom(isBottom)
+          if (isBottom) {
+            setHasNewMessage(false)
+            setNewMessagePreview(null)
+          }
+        }}
+      >
         {messages.map((msg, index) => {
           const isSent = msg.type === 'sent'
           const isAssistant = msg.type === 'assistant'
@@ -543,27 +689,27 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
               )}
               style={{ animationDelay: `${index * 30}ms` }}
             >
-              {/* ✅ AI红娘消息特殊样式 */}
-              {isAssistant && (
-                <div className="max-w-[85%] bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-xl p-3 shadow-sm">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="w-5 h-5 rounded-full overflow-hidden bg-gradient-to-br from-purple-400 to-blue-400">
-                      <Image
-                        src="/xiaoya-avatar.png"
-                        alt="小雅"
-                        width={20}
-                        height={20}
-                        className="object-cover"
-                      />
-                    </div>
-                    <span className="text-xs text-purple-600 font-medium flex items-center gap-1">
-                      <Sparkles className="w-3 h-3" />
-                      小雅的建议
-                    </span>
-                  </div>
-                  <p className="text-sm text-purple-900 leading-relaxed">{msg.content}</p>
-                </div>
-              )}
+              {/* AI红娘消息 - 使用 gold 主题色 */}
+                              {isAssistant && (
+                                <div className="max-w-[85%] bg-gradient-to-r from-gold-soft to-gold-soft/60 border border-gold/30 rounded-xl p-3 shadow-sm">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <div className="w-5 h-5 rounded-full overflow-hidden bg-gradient-to-br from-gold to-gold/70">
+                                      <Image
+                                        src="/xiaoya-avatar.png"
+                                        alt="小雅"
+                                        width={20}
+                                        height={20}
+                                        className="object-cover"
+                                      />
+                                    </div>
+                                    <span className="text-xs text-gold font-medium flex items-center gap-1">
+                                      <Sparkles className="w-3 h-3" />
+                                      小雅的建议
+                                    </span>
+                                  </div>
+                                  <p className="text-sm text-foreground leading-relaxed">{msg.content}</p>
+                                </div>
+                              )}
 
               {/* 用户消息 */}
               {!isAssistant && !isSent && (
@@ -584,17 +730,45 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
                     ? 'bg-primary text-primary-foreground rounded-br-md'
                     : 'bg-card border border-border rounded-bl-md'
                 )}>
-                  {/* 图片消息 */}
-                  {msg.mediaType === 'image' && msg.mediaUrl ? (
-                    <div className="max-w-[200px]">
-                      <img
-                        src={msg.mediaUrl}
-                        alt="图片消息"
-                        className="w-full h-auto rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
-                        onClick={() => window.open(msg.mediaUrl, '_blank')}
-                      />
-                    </div>
-                  ) : (
+                  {/* 图片消息 - 支持长按预览、双击放大 */}
+                                  {msg.mediaType === 'image' && msg.mediaUrl ? (
+                                    <div 
+                                      className="max-w-[200px]"
+                                      onContextMenu={(e) => {
+                                        e.preventDefault()
+                                        setPreviewImageUrl(msg.mediaUrl || null)
+                                        setImageScale(1)
+                                      }}
+                                      onClick={() => {
+                                        const now = Date.now()
+                                        const timeSinceLastTap = now - lastTapRef.current
+                                        if (timeSinceLastTap < 300) {
+                                          // 双击放大
+                                          setPreviewImageUrl(msg.mediaUrl || null)
+                                          setImageScale(2)
+                                        }
+                                        lastTapRef.current = now
+                                      }}
+                                      onTouchStart={(e) => {
+                                        const touchTimer = setTimeout(() => {
+                                          setPreviewImageUrl(msg.mediaUrl || null)
+                                          setImageScale(1)
+                                        }, 500)
+                                        const handleTouchEnd = () => {
+                                          clearTimeout(touchTimer)
+                                          e.currentTarget.removeEventListener('touchend', handleTouchEnd)
+                                        }
+                                        e.currentTarget.addEventListener('touchend', handleTouchEnd)
+                                      }}
+                                    >
+                                      <img
+                                        src={msg.mediaUrl}
+                                        alt="图片消息"
+                                        className="w-full h-auto rounded-lg cursor-pointer hover:opacity-90 transition-opacity select-none"
+                                        draggable={false}
+                                      />
+                                    </div>
+                                  ) : (
                     /* 文本消息 */
                     msg.content
                   )}
@@ -617,106 +791,215 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input area */}
-      <div className="flex-shrink-0 bg-background border-t border-border safe-area-bottom">
-        {/* 小雅私信悬浮面板（输入框上方，不遮挡对话） */}
-        {showXiaoyaChat && resolvedCaseId && (
-          <div className="flex-shrink-0 px-4 py-3 bg-gradient-to-r from-purple-50/50 to-blue-50/50 animate-slide-down">
-            {/* 面板内容 */}
-            <div className="bg-white/80 backdrop-blur-sm rounded-xl shadow-sm border border-purple-100">
-              {/* 头部 */}
-              <div className="flex items-center justify-between px-3 py-2.5 border-b border-purple-100/50">
-                <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-full overflow-hidden bg-gradient-to-br from-purple-400 to-blue-400 flex items-center justify-center">
-                    <Image
-                      src="/xiaoya-avatar.png"
-                      alt="小雅"
-                      width={28}
-                      height={28}
-                      className="object-cover"
-                    />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-medium text-purple-700">小雅 · 私信助手</h3>
-                    <p className="text-[10px] text-purple-500/70">对方看不到这些对话</p>
-                  </div>
+      {/* 小雅私信底部面板 - 可拖动调整高度，支持全屏模式 */}
+      {showXiaoyaChat && resolvedCaseId && (
+        <div 
+          className="fixed inset-0 z-50 flex flex-col justify-end"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowXiaoyaChat(false)
+            }
+          }}
+        >
+          {/* 背景遮罩 */}
+          <div className="absolute inset-0 bg-black/30 animate-fade-in" />
+          
+          {/* 底部面板 */}
+          <div 
+            className={cn(
+              'relative bg-background rounded-t-2xl shadow-xl transition-all duration-300 ease-out animate-slide-up',
+              xiaoyaSheetHeight === 'full' ? 'h-[90vh]' : xiaoyaSheetHeight === 'half' ? 'h-[50vh]' : 'h-[200px]'
+            )}
+          >
+            {/* 拖动手柄 */}
+            <div 
+              className="flex justify-center py-3 cursor-grab active:cursor-grabbing touch-none"
+              onPointerDown={(e) => {
+                xiaoyaDragStartY.current = e.clientY
+                xiaoyaDragStartHeight.current = xiaoyaSheetHeight
+                e.currentTarget.setPointerCapture(e.pointerId)
+              }}
+              onPointerMove={(e) => {
+                if (!e.currentTarget.hasPointerCapture(e.pointerId)) return
+                const delta = xiaoyaDragStartY.current - e.clientY
+                if (delta > 100 && xiaoyaDragStartHeight.current !== 'full') {
+                  setXiaoyaSheetHeight('full')
+                } else if (delta < -100 && xiaoyaDragStartHeight.current === 'full') {
+                  setXiaoyaSheetHeight('half')
+                } else if (delta < -100 && xiaoyaDragStartHeight.current === 'half') {
+                  setXiaoyaSheetHeight('collapsed')
+                } else if (delta > 50 && xiaoyaDragStartHeight.current === 'collapsed') {
+                  setXiaoyaSheetHeight('half')
+                }
+              }}
+              onPointerUp={(e) => {
+                e.currentTarget.releasePointerCapture(e.pointerId)
+              }}
+            >
+              <div className="w-10 h-1 rounded-full bg-border" />
+            </div>
+
+            {/* 头部 - 使用 gold 主题色 */}
+            <div className="flex items-center justify-between px-4 pb-3 border-b border-border">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full overflow-hidden bg-gradient-to-br from-gold to-gold/70 flex items-center justify-center">
+                  <Image
+                    src="/xiaoya-avatar.png"
+                    alt="小雅"
+                    width={36}
+                    height={36}
+                    className="object-cover"
+                  />
                 </div>
+                <div>
+                  <h3 className="text-sm font-medium text-foreground">小雅 · 私信助手</h3>
+                  <p className="text-[10px] text-muted-foreground">
+                    {xiaoyaIsTyping ? (
+                      <span className="flex items-center gap-1 text-gold">
+                        正在输入
+                        <span className="flex gap-0.5">
+                          <span className="w-1 h-1 rounded-full bg-gold animate-bounce-dot" style={{ animationDelay: '0ms' }} />
+                          <span className="w-1 h-1 rounded-full bg-gold animate-bounce-dot" style={{ animationDelay: '150ms' }} />
+                          <span className="w-1 h-1 rounded-full bg-gold animate-bounce-dot" style={{ animationDelay: '300ms' }} />
+                        </span>
+                      </span>
+                    ) : (
+                      '对方看不到这些对话'
+                    )}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {/* 切换高度按钮 */}
+                <button
+                  type="button"
+                  onClick={() => setXiaoyaSheetHeight(xiaoyaSheetHeight === 'full' ? 'half' : 'full')}
+                  className="w-8 h-8 rounded-full hover:bg-secondary flex items-center justify-center transition-colors"
+                  aria-label={xiaoyaSheetHeight === 'full' ? '缩小' : '全屏'}
+                >
+                  <ChevronDown className={cn('w-4 h-4 text-muted-foreground transition-transform', xiaoyaSheetHeight === 'full' ? '' : 'rotate-180')} />
+                </button>
                 <button
                   type="button"
                   onClick={() => setShowXiaoyaChat(false)}
-                  className="w-7 h-7 rounded-full hover:bg-purple-100 flex items-center justify-center transition-colors"
-                  aria-label="收起"
+                  className="w-8 h-8 rounded-full hover:bg-secondary flex items-center justify-center transition-colors"
+                  aria-label="关闭"
                 >
-                  <X className="w-4 h-4 text-purple-600" />
+                  <X className="w-4 h-4 text-muted-foreground" />
                 </button>
               </div>
+            </div>
 
-              {/* 消息列表 - 最多显示3条 */}
-              <div className="max-h-[120px] overflow-y-auto px-3 py-2 space-y-2">
-                {xiaoyaMessages.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-3 gap-2 text-center">
-                    <p className="text-xs text-purple-600/80">有什么想悄悄问小雅的吗？</p>
-                    <p className="text-[10px] text-purple-400/60">比如：帮我分析下对方说的话</p>
+            {/* 消息列表 - 支持滚动，带时间分割线 */}
+            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3" style={{ maxHeight: xiaoyaSheetHeight === 'full' ? 'calc(90vh - 140px)' : xiaoyaSheetHeight === 'half' ? 'calc(50vh - 140px)' : '60px' }}>
+              {xiaoyaMessages.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-8 gap-3 text-center">
+                  <div className="w-16 h-16 rounded-full bg-gold-soft flex items-center justify-center">
+                    <Sparkles className="w-8 h-8 text-gold" />
                   </div>
-                ) : (
-                  xiaoyaMessages.slice(-3).map((msg) => (
-                    <div
-                      key={msg.id}
-                      className={cn('flex', msg.isFromMe ? 'justify-end' : 'justify-start')}
-                    >
-                      <div
-                        className={cn(
-                          'max-w-[85%] px-2.5 py-1.5 rounded-xl text-xs',
-                          msg.isFromMe
-                            ? 'bg-purple-100 text-purple-700 rounded-br-md'
-                            : 'bg-secondary text-foreground rounded-bl-md',
-                        )}
-                      >
-                        {msg.body}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              {/* 输入框 */}
-              <div className="px-3 py-2 border-t border-purple-100/50">
-                <div className="flex items-center gap-2 bg-white/60 rounded-lg px-2.5 py-1.5 border border-purple-100/30">
-                  <input
-                    value={xiaoyaInputValue}
-                    onChange={(e) => setXiaoyaInputValue(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault()
-                        void handleSendXiaoyaMessage()
-                      }
-                    }}
-                    placeholder="跟小雅说点悄悄话..."
-                    className="flex-1 bg-transparent text-xs placeholder:text-purple-400/50 focus:outline-none"
-                    disabled={!xiaoyaConversationId}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => void handleSendXiaoyaMessage()}
-                    disabled={!xiaoyaInputValue.trim() || xiaoyaIsSending || !xiaoyaConversationId}
-                    className={cn(
-                      'w-6 h-6 rounded-full flex items-center justify-center transition-all',
-                      xiaoyaInputValue.trim() && !xiaoyaIsSending
-                        ? 'bg-purple-500 hover:bg-purple-600'
-                        : 'bg-purple-100 cursor-not-allowed',
-                    )}
-                  >
-                    {xiaoyaIsSending ? (
-                      <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    ) : (
-                      <Send className={cn('w-3 h-3', xiaoyaInputValue.trim() ? 'text-white' : 'text-purple-300')} />
-                    )}
-                  </button>
+                  <div>
+                    <p className="text-sm text-foreground">有什么想悄悄问小雅的吗？</p>
+                    <p className="text-xs text-muted-foreground mt-1">比如：帮我分析下对方说的话</p>
+                  </div>
                 </div>
+              ) : (
+                <>
+                  {xiaoyaMessages.map((msg, index) => {
+                    // 时间分割线逻辑
+                    const showDateDivider = index === 0 || (() => {
+                      const prevDate = new Date(xiaoyaMessages[index - 1]?.createdAt || '').toDateString()
+                      const currDate = new Date(msg.createdAt).toDateString()
+                      return prevDate !== currDate
+                    })()
+                    
+                    return (
+                      <div key={msg.id}>
+                        {/* 时间分割线 */}
+                        {showDateDivider && (
+                          <div className="flex items-center gap-3 py-2">
+                            <div className="flex-1 h-px bg-border" />
+                            <span className="text-[10px] text-muted-foreground">
+                              {new Date(msg.createdAt).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                            <div className="flex-1 h-px bg-border" />
+                          </div>
+                        )}
+                        <div className={cn('flex', msg.isFromMe ? 'justify-end' : 'justify-start')}>
+                          {!msg.isFromMe && (
+                            <div className="w-7 h-7 rounded-full overflow-hidden bg-gradient-to-br from-gold to-gold/70 mr-2 flex-shrink-0">
+                              <Image src="/xiaoya-avatar.png" alt="小雅" width={28} height={28} className="object-cover" />
+                            </div>
+                          )}
+                          <div
+                            className={cn(
+                              'max-w-[75%] px-3 py-2 rounded-2xl text-sm',
+                              msg.isFromMe
+                                ? 'bg-gold text-white rounded-br-md'
+                                : 'bg-secondary text-foreground rounded-bl-md',
+                            )}
+                          >
+                            {msg.body}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                  <div ref={xiaoyaMessagesEndRef} />
+                </>
+              )}
+            </div>
+
+            {/* 输入框 - 使用 gold 主题色 */}
+            <div className="px-4 py-3 border-t border-border bg-background">
+              <div className="flex items-center gap-2 bg-secondary rounded-xl px-3 py-2">
+                {/* 表情面板入口 */}
+                <button
+                  type="button"
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                  aria-label="表情"
+                >
+                  <Smile className="w-5 h-5" />
+                </button>
+                <input
+                  value={xiaoyaInputValue}
+                  onChange={(e) => setXiaoyaInputValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      void handleSendXiaoyaMessage()
+                    }
+                  }}
+                  placeholder="跟小雅说点悄悄话..."
+                  className="flex-1 bg-transparent text-sm placeholder:text-muted-foreground focus:outline-none"
+                  disabled={!xiaoyaConversationId}
+                  aria-label="输入私信内容"
+                />
+                <button
+                  type="button"
+                  onClick={() => void handleSendXiaoyaMessage()}
+                  disabled={!xiaoyaInputValue.trim() || xiaoyaIsSending || !xiaoyaConversationId}
+                  className={cn(
+                    'w-8 h-8 rounded-full flex items-center justify-center transition-all',
+                    xiaoyaInputValue.trim() && !xiaoyaIsSending
+                      ? 'bg-gold hover:bg-gold/90'
+                      : 'bg-muted cursor-not-allowed',
+                  )}
+                  aria-label={xiaoyaIsSending ? '发送中' : '发送'}
+                >
+                  {xiaoyaIsSending ? (
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <Send className={cn('w-4 h-4', xiaoyaInputValue.trim() ? 'text-white' : 'text-muted-foreground')} />
+                  )}
+                </button>
               </div>
             </div>
           </div>
-        )}
+        </div>
+      )}
+
+      {/* Input area */}
+      <div className="flex-shrink-0 bg-background border-t border-border safe-area-bottom">
 
         {/* 隐藏的文件输入 */}
         <input
@@ -832,20 +1115,37 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
               </button>
               {/* 小雅助手 */}
               <button
-                onClick={() => setShowXiaoyaChat(!showXiaoyaChat)}
+                onClick={() => {
+                  setShowXiaoyaChat(!showXiaoyaChat)
+                  setShowActionMenu(false)
+                }}
                 className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-secondary hover:bg-secondary/80 transition-colors"
                 aria-label="私信小雅"
               >
-                <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center overflow-hidden">
+                <div className="w-12 h-12 rounded-full bg-gold-soft flex items-center justify-center overflow-hidden">
                   <Image
                     src="/xiaoya-avatar.png"
                     alt="小雅"
                     width={24}
                     height={24}
-                    className="object-cover opacity-70"
+                    className="object-cover"
                   />
                 </div>
-                <span className="text-xs text-muted-foreground">小雅</span>
+                <span className="text-xs text-gold">小雅</span>
+              </button>
+              {/* 位置分享 */}
+              <button
+                onClick={() => {
+                  // TODO: 位置分享功能
+                  setShowActionMenu(false)
+                }}
+                className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-secondary hover:bg-secondary/80 transition-colors"
+                aria-label="分享位置"
+              >
+                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                  <MapPin className="w-6 h-6 text-primary" />
+                </div>
+                <span className="text-xs text-foreground">位置</span>
               </button>
             </div>
           </div>
@@ -867,7 +1167,14 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
             >
               <Plus className="w-5 h-5" />
             </button>
-            {/* 语音按钮（直接显示在输入框旁边） */}
+            {/* 表情按钮 */}
+            <button
+              aria-label="表情"
+              className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Smile className="w-5 h-5" />
+            </button>
+            {/* 语音按钮 */}
             <button
               aria-label="语音输入（即将上线）"
               className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
@@ -927,6 +1234,65 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
             setVideoCallId(null)
           }}
         />
+      )}
+
+      {/* 图片预览模态框 - 支持缩放和拖动 */}
+      {previewImageUrl && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center animate-fade-in"
+          onClick={() => {
+            setPreviewImageUrl(null)
+            setImageScale(1)
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="图片预览"
+        >
+          <button
+            className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors z-10"
+            onClick={() => {
+              setPreviewImageUrl(null)
+              setImageScale(1)
+            }}
+            aria-label="关闭预览"
+          >
+            <X className="w-6 h-6 text-white" />
+          </button>
+          <img
+            src={previewImageUrl}
+            alt="图片预览"
+            className="max-w-[90vw] max-h-[90vh] object-contain transition-transform duration-200"
+            style={{ transform: `scale(${imageScale})` }}
+            onClick={(e) => {
+              e.stopPropagation()
+              setImageScale(imageScale === 1 ? 2 : 1)
+            }}
+            draggable={false}
+          />
+          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-4">
+            <button
+              className="px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 text-white text-sm transition-colors"
+              onClick={(e) => {
+                e.stopPropagation()
+                setImageScale(Math.max(0.5, imageScale - 0.5))
+              }}
+              aria-label="缩小"
+            >
+              缩小
+            </button>
+            <span className="text-white text-sm">{Math.round(imageScale * 100)}%</span>
+            <button
+              className="px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 text-white text-sm transition-colors"
+              onClick={(e) => {
+                e.stopPropagation()
+                setImageScale(Math.min(3, imageScale + 0.5))
+              }}
+              aria-label="放大"
+            >
+              放大
+            </button>
+          </div>
+        </div>
       )}
     </div>
   )
