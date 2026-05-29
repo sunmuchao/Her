@@ -165,15 +165,19 @@ export async function fetchCaseConversations(
 
 /**
  * 获取私信会话ID（assistant_dm_xxx）
+ * 根据会话成员列表判断哪个 assistant_dm 属于当前用户
  */
 export async function fetchPrivateChatConversationId(
   caseId: string,
   requesterId: string,
 ): Promise<string | null> {
   const conversations = await fetchCaseConversations(caseId, requesterId)
-  // 私信会话的 channel_key 格式为 assistant_dm_{user_id}
+  // 私信会话的 channel_key 为 assistant_dm_a 或 assistant_dm_b
+  // 需要检查会话成员列表来确定属于当前用户的会话
   const dmConversation = conversations.find(
-    (c) => c.channelKey.startsWith('assistant_dm_') && c.channelKey.includes(requesterId),
+    (c) =>
+      c.channelKey.startsWith('assistant_dm_') &&
+      c.members.some((m) => m.participantId === requesterId && m.memberRole === 'human'),
   )
   return dmConversation?.conversationId || null
 }

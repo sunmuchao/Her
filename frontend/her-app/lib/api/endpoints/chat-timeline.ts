@@ -146,6 +146,15 @@ export type ChatMessageDisplay = {
   timestamp: string
   authorId?: string
   source?: string
+  // 消息状态（用于异步上传、已读标记等场景）
+  status?: 'pending' | 'sending' | 'sent' | 'failed' | 'read'
+  // 重试数据（用于失败后重新发送）
+  retryData?: {
+    file?: File
+    content?: string
+  }
+  // 本地预览 URL（上传前显示）
+  localPreviewUrl?: string
   // 媒体消息字段
   mediaType?: 'image' | 'video' | 'audio'
   mediaUrl?: string

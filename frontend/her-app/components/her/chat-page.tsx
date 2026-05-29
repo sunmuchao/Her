@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { ArrowLeft, MoreVertical, Send, BadgeCheck, Mic, X, Sparkles, Plus, Video, Image as ImageIcon, Phone, MapPin, Smile, User, Star, BellOff, Flag, ChevronDown } from 'lucide-react'
+import { ArrowLeft, MoreVertical, Send, BadgeCheck, Mic, X, Sparkles, Plus, Video, Image as ImageIcon, Phone, MapPin, Smile, User, Star, BellOff, Flag, ChevronDown, RotateCcw } from 'lucide-react'
 import Image from 'next/image'
 import { cn } from '@/lib/utils'
 import { gatewayJson, queryString } from '@/lib/api/client'
@@ -95,7 +95,6 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
   // 图片发送相关状态
   const [selectedImage, setSelectedImage] = useState<File | null>(null)
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null)
-  const [isUploadingImage, setIsUploadingImage] = useState(false)
   const imageInputRef = useRef<HTMLInputElement>(null)
 
   // 视频通话相关状态
@@ -117,11 +116,14 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
   const [isAtBottom, setIsAtBottom] = useState(true)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
 
-  // 小雅底部面板状态
-  const [xiaoyaSheetHeight, setXiaoyaSheetHeight] = useState<'collapsed' | 'half' | 'full'>('half')
+  // 小雅底部面板状态 - 使用具体高度值而非档位，支持流畅拖拽
+  const [xiaoyaSheetHeight, setXiaoyaSheetHeight] = useState(300) // 默认300px高度
   const [xiaoyaIsTyping, setXiaoyaIsTyping] = useState(false)
   const xiaoyaDragStartY = useRef(0)
-  const xiaoyaDragStartHeight = useRef<'collapsed' | 'half' | 'full'>('half')
+  const xiaoyaDragStartHeight = useRef(300)
+  // 最小/最大高度常量（需要在渲染时计算）
+  const MIN_SHEET_HEIGHT = 180 // 最小高度
+  const MAX_SHEET_HEIGHT = typeof window !== 'undefined' ? window.innerHeight * 0.85 : 600 // 最大高度（85vh）
 
   // 加载小雅私信会话
   useEffect(() => {
@@ -234,8 +236,13 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
         setMessages(mappedMessages)
 
         // ✅ 检测 assistant_dm 会话（小雅私信，channel_key 为 assistant_dm_a 或 assistant_dm_b）
+        // 需要检查会话成员列表来确定属于当前用户的会话
         const assistantDm = timelineData.conversations.find(
-          (c) => c.conversation.channel_key.startsWith('assistant_dm'),
+          (c) =>
+            c.conversation.channel_key.startsWith('assistant_dm_') &&
+            c.conversation.members?.some(
+              (m) => m.participant_id === currentRequesterId && m.member_role === 'human',
+            ),
         )
 
         if (assistantDm && assistantDm.messages && assistantDm.messages.length > 0) {
@@ -318,8 +325,13 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
         }
 
         // ✅ 检测 assistant_dm 新消息（小雅私信主动提示）
+        // 需要检查会话成员列表来确定属于当前用户的会话
         const assistantDm = timelineData.conversations.find(
-          (c) => c.conversation.channel_key === 'assistant_dm',
+          (c) =>
+            c.conversation.channel_key.startsWith('assistant_dm_') &&
+            c.conversation.members?.some(
+              (m) => m.participant_id === requesterId && m.member_role === 'human',
+            ),
         )
 
         if (assistantDm && assistantDm.messages && assistantDm.messages.length > 0 && !hasAutoOpenedXiaoyaRef.current) {
@@ -429,22 +441,46 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
     }
   }
 
-  // 发送图片消息
-  const handleSendImage = async () => {
-    if (!selectedImage || !resolvedChatId || isUploadingImage) return
+  // 发送图片消息（异步流程：立即显示，后台上传）
+  const handleSendImage = () => {
+    if (!selectedImage || !resolvedChatId) return
     const authorId = getChatParticipantId()
     if (!authorId) return
 
-    setIsUploadingImage(true)
+    // 1. 立即添加乐观消息（sending 状态，使用本地预览）
+    const tempId = `temp-${Date.now()}`
+    const localPreviewUrl = getImagePreviewUrl(selectedImage)
 
+    const optimisticMessage: Message = {
+      id: tempId,
+      type: 'sent',
+      content: '',
+      timestamp: '刚刚',
+      status: 'sending',
+      mediaType: 'image',
+      mediaUrl: localPreviewUrl,
+      localPreviewUrl,
+      retryData: { file: selectedImage },
+    }
+    setMessages(prev => [...prev, optimisticMessage])
+
+    // 2. 清理选择状态，用户可继续操作
+    handleCancelImage()
+
+    // 3. 后台异步执行上传（不阻塞 UI）
+    processImageUploadAsync(tempId, selectedImage, authorId)
+  }
+
+  // 异步处理图片上传流程
+  const processImageUploadAsync = async (tempId: string, file: File, authorId: string) => {
     try {
       // 压缩图片
-      const compressedImage = await compressImage(selectedImage)
+      const compressedImage = await compressImage(file)
 
-      // 上传图片
+      // 上传到 MinIO
       const uploadResult = await uploadImage(compressedImage)
 
-      // 发送图片消息
+      // 发送消息到会话
       await gatewayJson(`/v2/chat/conversations/${resolvedChatId}/messages`, {
         method: 'POST',
         body: JSON.stringify({
@@ -456,25 +492,36 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
         }),
       })
 
-      // 乐观更新：添加图片消息到列表
-      const tempId = `temp-${Date.now()}`
-      const optimisticMessage: Message = {
-        id: tempId,
-        type: 'sent',
-        content: '', // 图片消息没有文本内容
-        timestamp: '刚刚',
-        mediaType: 'image',
-        mediaUrl: uploadResult.mediaUrl,
-      }
-      setMessages(prev => [...prev, optimisticMessage])
-
-      // 清理选择状态
-      handleCancelImage()
+      // 更新消息状态为 sent，替换为真实 URL
+      setMessages(prev => prev.map(msg =>
+        msg.id === tempId
+          ? { ...msg, status: 'sent', mediaUrl: uploadResult.mediaUrl, localPreviewUrl: undefined }
+          : msg
+      ))
     } catch (error) {
+      // 更新消息状态为 failed
+      setMessages(prev => prev.map(msg =>
+        msg.id === tempId
+          ? { ...msg, status: 'failed' }
+          : msg
+      ))
       notifyError(error, '图片发送失败')
-    } finally {
-      setIsUploadingImage(false)
     }
+  }
+
+  // 重试发送失败的图片消息
+  const retryImageMessage = (message: Message) => {
+    if (!message.retryData?.file) return
+    const authorId = getChatParticipantId()
+    if (!authorId) return
+
+    // 更新状态为 sending
+    setMessages(prev => prev.map(msg =>
+      msg.id === message.id ? { ...msg, status: 'sending' } : msg
+    ))
+
+    // 重新执行上传流程
+    processImageUploadAsync(message.id, message.retryData.file, authorId)
   }
 
   if (isLoading) {
@@ -732,16 +779,18 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
                       ? 'bg-primary text-primary-foreground rounded-br-md'
                       : 'bg-card border border-border rounded-bl-md'
                   )}>
-                    {/* 图片消息 - 支持长按预览、双击放大 */}
+                    {/* 图片消息 - 支持长按预览、双击放大、状态覆盖层 */}
                     {msg.mediaType === 'image' && msg.mediaUrl ? (
                       <div
-                        className="max-w-[200px]"
+                        className="max-w-[200px] relative"
                         onContextMenu={(e) => {
                           e.preventDefault()
                           setPreviewImageUrl(msg.mediaUrl || null)
                           setImageScale(1)
                         }}
                         onClick={() => {
+                          // failed 状态不触发预览
+                          if (msg.status === 'failed') return
                           const now = Date.now()
                           const timeSinceLastTap = now - lastTapRef.current
                           if (timeSinceLastTap < 300) {
@@ -752,6 +801,8 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
                           lastTapRef.current = now
                         }}
                         onTouchStart={(e) => {
+                          // failed 状态不触发长按
+                          if (msg.status === 'failed') return
                           const touchTimer = setTimeout(() => {
                             setPreviewImageUrl(msg.mediaUrl || null)
                             setImageScale(1)
@@ -766,9 +817,34 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
                         <img
                           src={msg.mediaUrl}
                           alt="图片消息"
-                          className="w-full h-auto rounded-lg cursor-pointer hover:opacity-90 transition-opacity select-none"
+                          className={cn(
+                            "w-full h-auto rounded-lg select-none",
+                            msg.status === 'sending' || msg.status === 'failed'
+                              ? 'opacity-70'
+                              : 'cursor-pointer hover:opacity-90 transition-opacity'
+                          )}
                           draggable={false}
                         />
+                        {/* sending 状态显示加载动画 */}
+                        {msg.status === 'sending' && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-lg">
+                            <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          </div>
+                        )}
+                        {/* failed 状态显示重试按钮 */}
+                        {msg.status === 'failed' && (
+                          <div
+                            className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-lg cursor-pointer"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              retryImageMessage(msg)
+                            }}
+                          >
+                            <div className="w-8 h-8 rounded-full bg-white/90 flex items-center justify-center">
+                              <RotateCcw className="w-4 h-4 text-primary" />
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ) : (
                       /* 文本消息 */
@@ -807,16 +883,14 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
           {/* 背景遮罩 */}
           <div className="absolute inset-0 bg-black/30 animate-fade-in" />
           
-          {/* 底部面板 */}
-          <div 
-            className={cn(
-              'relative bg-background rounded-t-2xl shadow-xl transition-all duration-300 ease-out animate-slide-up',
-              xiaoyaSheetHeight === 'full' ? 'h-[90vh]' : xiaoyaSheetHeight === 'half' ? 'h-[50vh]' : 'h-[200px]'
-            )}
+          {/* 底部面板 - 固定在底部，拖拽上边缘调整高度 */}
+          <div
+            className="relative bg-background rounded-t-2xl shadow-xl animate-slide-up flex flex-col"
+            style={{ height: `${xiaoyaSheetHeight}px` }}
           >
-            {/* 拖动手柄 */}
-            <div 
-              className="flex justify-center py-3 cursor-grab active:cursor-grabbing touch-none"
+            {/* 拖动上边缘 - 整个头部区域可拖拽 */}
+            <div
+              className="flex flex-col cursor-grab active:cursor-grabbing touch-none select-none"
               onPointerDown={(e) => {
                 xiaoyaDragStartY.current = e.clientY
                 xiaoyaDragStartHeight.current = xiaoyaSheetHeight
@@ -825,63 +899,49 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
               onPointerMove={(e) => {
                 if (!e.currentTarget.hasPointerCapture(e.pointerId)) return
                 const delta = xiaoyaDragStartY.current - e.clientY
-                if (delta > 100 && xiaoyaDragStartHeight.current !== 'full') {
-                  setXiaoyaSheetHeight('full')
-                } else if (delta < -100 && xiaoyaDragStartHeight.current === 'full') {
-                  setXiaoyaSheetHeight('half')
-                } else if (delta < -100 && xiaoyaDragStartHeight.current === 'half') {
-                  setXiaoyaSheetHeight('collapsed')
-                } else if (delta > 50 && xiaoyaDragStartHeight.current === 'collapsed') {
-                  setXiaoyaSheetHeight('half')
-                }
+                const newHeight = Math.max(MIN_SHEET_HEIGHT, Math.min(MAX_SHEET_HEIGHT, xiaoyaDragStartHeight.current + delta))
+                setXiaoyaSheetHeight(newHeight)
               }}
               onPointerUp={(e) => {
                 e.currentTarget.releasePointerCapture(e.pointerId)
               }}
             >
-              <div className="w-10 h-1 rounded-full bg-border" />
-            </div>
-
-            {/* 头部 - 使用 gold 主题色 */}
-            <div className="flex items-center justify-between px-4 pb-3 border-b border-border">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full overflow-hidden bg-gradient-to-br from-gold to-gold/70 flex items-center justify-center">
-                  <Image
-                    src="/xiaoya-avatar.png"
-                    alt="小雅"
-                    width={36}
-                    height={36}
-                    className="object-cover"
-                  />
-                </div>
-                <div>
-                  <h3 className="text-sm font-medium text-foreground">小雅 · 私信助手</h3>
-                  <p className="text-[10px] text-muted-foreground">
-                    {xiaoyaIsTyping ? (
-                      <span className="flex items-center gap-1 text-gold">
-                        正在输入
-                        <span className="flex gap-0.5">
-                          <span className="w-1 h-1 rounded-full bg-gold animate-bounce-dot" style={{ animationDelay: '0ms' }} />
-                          <span className="w-1 h-1 rounded-full bg-gold animate-bounce-dot" style={{ animationDelay: '150ms' }} />
-                          <span className="w-1 h-1 rounded-full bg-gold animate-bounce-dot" style={{ animationDelay: '300ms' }} />
-                        </span>
-                      </span>
-                    ) : (
-                      '对方看不到这些对话'
-                    )}
-                  </p>
-                </div>
+              {/* 拖动指示条 */}
+              <div className="flex justify-center py-2">
+                <div className="w-10 h-1 rounded-full bg-border" />
               </div>
-              <div className="flex items-center gap-2">
-                {/* 切换高度按钮 */}
-                <button
-                  type="button"
-                  onClick={() => setXiaoyaSheetHeight(xiaoyaSheetHeight === 'full' ? 'half' : 'full')}
-                  className="w-8 h-8 rounded-full hover:bg-secondary flex items-center justify-center transition-colors"
-                  aria-label={xiaoyaSheetHeight === 'full' ? '缩小' : '全屏'}
-                >
-                  <ChevronDown className={cn('w-4 h-4 text-muted-foreground transition-transform', xiaoyaSheetHeight === 'full' ? '' : 'rotate-180')} />
-                </button>
+
+              {/* 头部 - 使用 gold 主题色 */}
+              <div className="flex items-center justify-between px-4 pb-3 border-b border-border">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-full overflow-hidden bg-gradient-to-br from-gold to-gold/70 flex items-center justify-center">
+                    <Image
+                      src="/xiaoya-avatar.png"
+                      alt="小雅"
+                      width={36}
+                      height={36}
+                      className="object-cover"
+                    />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium text-foreground">小雅 · 私信助手</h3>
+                    <p className="text-[10px] text-muted-foreground">
+                      {xiaoyaIsTyping ? (
+                        <span className="flex items-center gap-1 text-gold">
+                          正在输入
+                          <span className="flex gap-0.5">
+                            <span className="w-1 h-1 rounded-full bg-gold animate-bounce-dot" style={{ animationDelay: '0ms' }} />
+                            <span className="w-1 h-1 rounded-full bg-gold animate-bounce-dot" style={{ animationDelay: '150ms' }} />
+                            <span className="w-1 h-1 rounded-full bg-gold animate-bounce-dot" style={{ animationDelay: '300ms' }} />
+                          </span>
+                        </span>
+                      ) : (
+                        '对方看不到这些对话'
+                      )}
+                    </p>
+                  </div>
+                </div>
+                {/* 关闭按钮 */}
                 <button
                   type="button"
                   onClick={() => setShowXiaoyaChat(false)}
@@ -893,8 +953,11 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
               </div>
             </div>
 
-            {/* 消息列表 - 支持滚动，带时间分割线 */}
-            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3" style={{ maxHeight: xiaoyaSheetHeight === 'full' ? 'calc(90vh - 140px)' : xiaoyaSheetHeight === 'half' ? 'calc(50vh - 140px)' : '60px' }}>
+            {/* 消息列表 - 支持滚动，动态高度 */}
+            <div
+              className="flex-1 overflow-y-auto px-4 py-3 space-y-3 min-h-0"
+              style={{ maxHeight: `${xiaoyaSheetHeight - 140}px` }}
+            >
               {xiaoyaMessages.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-8 gap-3 text-center">
                   <div className="w-16 h-16 rounded-full bg-gold-soft flex items-center justify-center">
@@ -1046,15 +1109,9 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
               <div className="mt-3 flex justify-end">
                 <button
                   onClick={() => void handleSendImage()}
-                  disabled={isUploadingImage}
-                  className={cn(
-                    'px-4 py-2 rounded-lg text-sm font-medium transition-all',
-                    isUploadingImage
-                      ? 'bg-muted text-muted-foreground cursor-not-allowed'
-                      : 'bg-primary text-primary-foreground hover:bg-primary/90'
-                  )}
+                  className="px-4 py-2 rounded-lg text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-all"
                 >
-                  {isUploadingImage ? '发送中...' : '发送图片'}
+                  发送图片
                 </button>
               </div>
             </div>

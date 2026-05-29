@@ -497,13 +497,21 @@ def _run_heuristic_fallback(run_input: MatchmakerRunInput) -> dict[str, Any]:
             cooldown_seconds=120,
         ).model_dump()
     if str(run_input.task.get("reason") or "") == "silence_probe":
+        # ✅ 兜底逻辑：当 AI 调用失败时，发送一条默认的帮助消息
+        recent_messages = list(run_input.bootstrap.get("recent_messages") or [])
+        latest_body = str((recent_messages[-1] if recent_messages else {}).get("body") or "").strip()
+        # 根据最后一条消息生成简单的跟进
+        fallback_reply = "我看你们刚才聊得挺好的，要是有想继续了解的可以顺势问一下～"
+        if any(keyword in latest_body for keyword in ("运动", "跑步", "健身", "看书", "电影", "音乐", "旅游", "美食")):
+            fallback_reply = "顺着刚才聊的兴趣点，可以问问对方平时怎么安排或者有没有推荐～"
         return MatchmakerDecision(
-            should_reply=False,
-            target_channel_key=None,
-            reply_body=None,
-            reason_codes=["heuristic_fallback", "silence_probe_conservative_noop"],
+            should_reply=True,
+            target_channel_key="main_group",
+            reply_body=fallback_reply,
+            reason_codes=["heuristic_fallback", "silence_probe_default_intervention"],
             state_patch={"relationship_stage": "monitoring"},
-            cooldown_seconds=0,
+            cooldown_seconds=180,
+            public_followup={"active": True, "mode": "silence"},
         ).model_dump()
     target_channel_key = _session_side_for_author(run_input)
     recent_messages = list(run_input.bootstrap.get("recent_messages") or [])
