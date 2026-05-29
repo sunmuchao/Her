@@ -30,9 +30,21 @@ export async function uploadImage(
   formData.append('file', file)
   formData.append('media_type', 'image')
 
-  const response = await fetch('/api/v2/media/upload', {
+  // 获取访问令牌
+  const accessToken = typeof window !== 'undefined'
+    ? document.cookie.split('; ').find(row => row.startsWith('her_access_token='))?.split('=')[1]
+    : null
+
+  const headers = new Headers()
+  if (accessToken) {
+    headers.set('Authorization', `Bearer ${accessToken}`)
+  }
+
+  const response = await fetch('/api/gateway/v2/media/upload', {
     method: 'POST',
+    headers,
     body: formData,
+    credentials: 'include',
   })
 
   if (!response.ok) {

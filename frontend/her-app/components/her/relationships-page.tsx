@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { AlertCircle, BadgeCheck, ChevronRight, Loader2, MailOpen, Pin, Trash2, X } from 'lucide-react'
+import { AlertCircle, BadgeCheck, ChevronDown, ChevronRight, Loader2, MailOpen, Pin, Trash2, X } from 'lucide-react'
 import Image from 'next/image'
 import { fetchRelationshipsUnreadSummary } from '@/lib/api/endpoints/chat'
 import { fetchTrustHub } from '@/lib/api/endpoints/trust-hub'
@@ -237,6 +237,9 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification, onN
     lastMessage: string
   }>>({})
   const [openXiaoyaCaseId, setOpenXiaoyaCaseId] = useState<string | null>(null) // 当前展开的复盘面板
+
+  // 牵线中折叠状态：如果"正在进行中"有卡片，则默认折叠"牵线中"
+  const [isPendingSectionCollapsed, setIsPendingSectionCollapsed] = useState(true)
 
   // 加载数据的核心函数
   const loadCases = useCallback(async (showRefreshIndicator = false) => {
@@ -642,12 +645,14 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification, onN
           touchStartY.current = 0
         }}
       >
-        <section>
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="text-sm font-medium">正在进行中</h2>
-            <span className="text-xs text-muted-foreground">{activeRelationships.length}位</span>
-          </div>
-          <div className="space-y-3">
+        {/* 正在进行中 - 只有有卡片时才显示 */}
+        {activeRelationships.length > 0 && (
+          <section>
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-sm font-medium">正在进行中</h2>
+              <span className="text-xs text-muted-foreground">{activeRelationships.length}位</span>
+            </div>
+            <div className="space-y-3">
             {activeRelationships.map((rel, index) => (
               <SwipeableCard
                 key={rel.id}
@@ -764,21 +769,33 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification, onN
                 </div>
               </SwipeableCard>
             ))}
-            {activeRelationships.length === 0 && (
-              <EmptyRelationships
-                onDiscover={onNavigateToDiscover}
-                description={emptyHint || undefined}
-              />
-            )}
           </div>
         </section>
+        )}
 
-        <section>
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="text-sm font-medium">牵线中</h2>
-            <span className="text-xs text-muted-foreground">{pendingIntroItems.length}条</span>
-          </div>
-          <div className="space-y-3">
+        {/* 牵线中 - 只有有卡片时才显示 */}
+        {pendingIntroItems.length > 0 && (
+          <section>
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-sm font-medium">牵线中</h2>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">{pendingIntroItems.length}条</span>
+                {/* 折叠/展开按钮 - 只有当"正在进行中"有卡片时才显示 */}
+                {activeRelationships.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setIsPendingSectionCollapsed(!isPendingSectionCollapsed)}
+                    className="w-6 h-6 rounded-full hover:bg-secondary flex items-center justify-center transition-colors"
+                    aria-label={isPendingSectionCollapsed ? '展开牵线中' : '折叠牵线中'}
+                  >
+                    <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${isPendingSectionCollapsed ? '' : 'rotate-180'}`} />
+                  </button>
+                )}
+              </div>
+            </div>
+            {/* 卡片列表 - 根据折叠状态显示/隐藏 */}
+            {!isPendingSectionCollapsed && (
+              <div className="space-y-3">
             {pendingIntroItems.map((item, index) => {
               const waitingDays = getWaitingDays(item)
               const stageLabel = waitingDays !== null && waitingDays > 0
@@ -914,15 +931,19 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification, onN
               </SwipeableCard>
               )
             })}
-            {pendingIntroItems.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-border px-4 py-5 text-sm text-muted-foreground">
-                暂无进行中的牵线记录
-              </div>
-            ) : null}
-          </div>
-        </section>
+            </div>
+            )}
+          </section>
+        )}
 
-              </div>
+        {/* 全局空状态 - 当两个section都没有卡片时显示 */}
+        {activeRelationships.length === 0 && pendingIntroItems.length === 0 && (
+          <EmptyRelationships
+            onDiscover={onNavigateToDiscover}
+            description={emptyHint || undefined}
+          />
+        )}
+      </div>
     </div>
   )
 }
