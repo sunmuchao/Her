@@ -689,25 +689,25 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
               )}
               style={{ animationDelay: `${index * 30}ms` }}
             >
-              {/* AI红娘消息 - 使用 gold 主题色 */}
+              {/* AI红娘消息 - 低调辅助样式，不喧宾夺主 */}
                               {isAssistant && (
-                                <div className="max-w-[85%] bg-gradient-to-r from-gold-soft to-gold-soft/60 border border-gold/30 rounded-xl p-3 shadow-sm">
-                                  <div className="flex items-center gap-2 mb-2">
-                                    <div className="w-5 h-5 rounded-full overflow-hidden bg-gradient-to-br from-gold to-gold/70">
+                                <div className="max-w-[85%] bg-secondary/50 border border-border/60 rounded-xl p-3">
+                                  <div className="flex items-center gap-2 mb-1.5">
+                                    <div className="w-4 h-4 rounded-full overflow-hidden bg-muted">
                                       <Image
                                         src="/xiaoya-avatar.png"
                                         alt="小雅"
-                                        width={20}
-                                        height={20}
-                                        className="object-cover"
+                                        width={16}
+                                        height={16}
+                                        className="object-cover opacity-70"
                                       />
                                     </div>
-                                    <span className="text-xs text-gold font-medium flex items-center gap-1">
-                                      <Sparkles className="w-3 h-3" />
-                                      小雅的建议
+                                    <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+                                      <Sparkles className="w-2.5 h-2.5" />
+                                      小雅提示
                                     </span>
                                   </div>
-                                  <p className="text-sm text-foreground leading-relaxed">{msg.content}</p>
+                                  <p className="text-sm text-muted-foreground leading-relaxed">{msg.content}</p>
                                 </div>
                               )}
 
@@ -791,7 +791,7 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
         <div ref={messagesEndRef} />
       </div>
 
-      {/* 小雅私信底部面板 - 可拖动调整高度，支持全屏模式 */}
+      {/* 小雅私信底部面板 - 可拖动调整高���，支持全屏模式 */}
       {showXiaoyaChat && resolvedCaseId && (
         <div 
           className="fixed inset-0 z-50 flex flex-col justify-end"
