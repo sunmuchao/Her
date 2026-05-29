@@ -55,6 +55,7 @@ from observability import (  # noqa: E402
     metric_gauge,
 )
 from relationship_ledger.runtime import append_event_to_default_ledger
+from chat_system.conversations import get_or_create_conversation, ROLE_AGENT, ROLE_HUMAN, CONV_KIND_DM, LAYOUT_ROLE_ASSISTANT_DM_A, LAYOUT_ROLE_ASSISTANT_DM_B
 
 SearchRunner = Callable[..., dict[str, Any]]
 PersonaSyncRunner = Callable[[Mapping[str, Any]], dict[str, Any]]
@@ -86,6 +87,90 @@ from .pairs import (
     members_with_open_cases,
 )
 from .pool_members import get_pool_member, get_pool_members_by_ids, list_active_pool_members
+
+def get_agent_participant_id(conn, case_id: str) -> str | None:
+    """获取案例中的agent participant ID，如果没有则返回固定的虚拟agent ID"""
+    # 尝试从现有的会话中获取agent ID
+    from chat_system.conversations import list_case_conversations
+    conversations = list_case_conversations(conn, case_id)
+    for conv in conversations or []:
+        for member in conv.get("members") or []:
+            if member.get("member_role") == ROLE_AGENT:
+                return str(member.get("participant_id") or "").strip()
+
+    # 如果没有找到，返回固定的虚拟agent ID
+    # TODO: 应该从配置或数据库中获取真实的agent ID
+    return "usr-virt-agent-00001"
+
+
+def _create_assistant_dm_conversations(
+    conn,
+    *,
+    case_id: str,
+    pair_key: str,
+    member_low: dict[str, Any],
+    member_high: dict[str, Any],
+    now: datetime | None = None,
+) -> None:
+    """创建助手私信会话（assistant_dm_a 和 assistant_dm_b）"""
+    ts = current_time(now)
+    relation_key = _matchmaking_relation_key_for_members(member_low, member_high)
+
+    # 获取或创建 agent participant ID
+    agent_participant_id = get_agent_participant_id(conn, case_id)
+    if not agent_participant_id:
+        return
+
+    # 获取用户的 user_key (participant ID)
+    member_low_user_key = str(member_low.get("user_key") or "").strip()
+    member_high_user_key = str(member_high.get("user_key") or "").strip()
+
+    if not member_low_user_key or not member_high_user_key:
+        # 如果没有 user_key，使用 member_id 作为临时方案
+        member_low_user_key = str(member_low.get("member_id") or "").strip()
+        member_high_user_key = str(member_high.get("member_id") or "").strip()
+
+    if not member_low_user_key or not member_high_user_key:
+        return
+
+    # 创建 assistant_dm_a 会话（member_low 和 agent）
+    try:
+        get_or_create_conversation(
+            conn,
+            case_id=case_id,
+            relation_key=relation_key,
+            channel_key=f"assistant_dm_{member_low_user_key}",
+            conversation_kind=CONV_KIND_DM,
+            member_specs=[
+                {"participant_id": member_low_user_key, "member_role": ROLE_HUMAN, "can_read": True, "can_send": True},
+                {"participant_id": agent_participant_id, "member_role": ROLE_AGENT, "can_read": True, "can_send": True},
+            ],
+            metadata={"layout_role": LAYOUT_ROLE_ASSISTANT_DM_A, "participant_a_id": member_low_user_key},
+            now=ts,
+        )
+    except Exception as e:
+        # 创建失败时记录错误，但不中断流程
+        print(f"创建 assistant_dm_a 会话失败: {e}")
+
+    # 创建 assistant_dm_b 会话（member_high 和 agent）
+    try:
+        get_or_create_conversation(
+            conn,
+            case_id=case_id,
+            relation_key=relation_key,
+            channel_key=f"assistant_dm_{member_high_user_key}",
+            conversation_kind=CONV_KIND_DM,
+            member_specs=[
+                {"participant_id": member_high_user_key, "member_role": ROLE_HUMAN, "can_read": True, "can_send": True},
+                {"participant_id": agent_participant_id, "member_role": ROLE_AGENT, "can_read": True, "can_send": True},
+            ],
+            metadata={"layout_role": LAYOUT_ROLE_ASSISTANT_DM_B, "participant_b_id": member_high_user_key},
+            now=ts,
+        )
+    except Exception as e:
+        # 创建失败时记录错误，但不中断流程
+        print(f"创建 assistant_dm_b 会话失败: {e}")
+
 
 def get_match_case(conn, case_id: str) -> dict[str, Any]:
     row = conn.execute(
@@ -350,6 +435,15 @@ def open_match_cases(
             stage=MATCHMAKING_FUNNEL_CASE,
             case_id=case_id,
             pair_key=pair_key,
+        )
+        # 创建助手私信会话
+        _create_assistant_dm_conversations(
+            conn,
+            case_id=case_id,
+            pair_key=pair_key,
+            member_low=member_low,
+            member_high=member_high,
+            now=now,
         )
         created_case_ids.append(case_id)
     conn.commit()

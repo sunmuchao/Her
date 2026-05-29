@@ -7,6 +7,7 @@ from typing import Any, Protocol
 from .auth_routes import dispatch_private_auth_rest
 from .bff.candidate_detail import dispatch_candidate_bff
 from .bff.search_profiles import rest_search_profiles
+from .call_routes import dispatch_call_rest
 from .chat_routes import dispatch_chat_rest
 from .chat_safety_routes import dispatch_chat_safety_rest
 from .collected_routes import dispatch_collected_rest
@@ -14,6 +15,7 @@ from .discovery_routes import dispatch_discovery_rest
 from .http_helpers import _parse_json_body, _read_body
 from .ledger_routes import dispatch_ledger_rest
 from .matchmaking_routes import dispatch_matchmaking_rest
+from .media_routes import dispatch_media_rest
 from .ops_routes import dispatch_ops_rest
 from .profile_routes import dispatch_profile_rest
 from .proxy_intro_routes import dispatch_proxy_intro_rest
@@ -64,6 +66,8 @@ def dispatch_gateway_rest(
         dispatch_matchmaking_rest,
         dispatch_chat_rest,
         dispatch_chat_safety_rest,
+        dispatch_call_rest,
+        dispatch_media_rest,
     ):
         response = dispatcher(gateway, environ, method, path)
         if response is not None:
