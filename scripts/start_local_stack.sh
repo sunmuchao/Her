@@ -12,7 +12,7 @@ RUN_DIR="${REPO_ROOT}/.run"
 LOG_DIR="${RUN_DIR}/logs"
 PID_DIR="${RUN_DIR}/pids"
 
-WITH_SCHEDULER=0
+WITH_SCHEDULER=1  # 默认开启调度器（触发 opening_probe、silence_probe、post_chat_followup）
 
 usage() {
   cat <<'EOF'

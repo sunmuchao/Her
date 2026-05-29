@@ -1,18 +1,437 @@
-2026-05-22 08:49:49,605 WARNING task_scheduler.build HER_SCHED_RECOMMENDATION_DB unset; recommendation scheduler jobs skipped
-2026-05-22 08:49:49,606 WARNING task_scheduler.build HER_SCHED_MATCHMAKING_DB unset; matchmaking scheduler jobs skipped
-2026-05-22 08:49:49,606 WARNING task_scheduler.build HER_SCHED_CHAT_DB unset; chat scheduler jobs skipped
-Traceback (most recent call last):
-  File "<frozen runpy>", line 198, in _run_module_as_main
-  File "<frozen runpy>", line 88, in _run_code
-  File "/Users/sunmuchao/Downloads/Her/task_scheduler/__main__.py", line 72, in <module>
-    raise SystemExit(main())
-                     ^^^^^^
-  File "/Users/sunmuchao/Downloads/Her/task_scheduler/__main__.py", line 37, in main
-    return int(args.handler(args, settings))
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/Users/sunmuchao/Downloads/Her/task_scheduler/__main__.py", line 41, in _cmd_run
-    scheduler = create_blocking_scheduler(settings)
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/Users/sunmuchao/Downloads/Her/task_scheduler/build.py", line 331, in create_blocking_scheduler
-    raise RuntimeError(
-RuntimeError: No scheduler jobs registered. Set HER_SCHED_RECOMMENDATION_DB, HER_SCHED_MATCHMAKING_DB, and/or HER_SCHED_CHAT_DB to MySQL DSNs.
+2026-05-29 11:29:01,010 INFO apscheduler.scheduler Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-05-29 11:29:01,011 INFO task_scheduler.build registered job recommendation.async_job_worker every 10s
+2026-05-29 11:29:01,011 INFO apscheduler.scheduler Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-05-29 11:29:01,011 INFO task_scheduler.build registered job recommendation.outbox_worker every 30s
+2026-05-29 11:29:01,011 INFO apscheduler.scheduler Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-05-29 11:29:01,011 INFO task_scheduler.build registered job recommendation.refresh_saved_searches every 300s
+2026-05-29 11:29:01,011 INFO apscheduler.scheduler Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-05-29 11:29:01,011 INFO task_scheduler.build registered job recommendation.deliver_in_app_recommendations every 60s
+2026-05-29 11:29:01,111 INFO apscheduler.scheduler Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-05-29 11:29:01,111 INFO task_scheduler.build registered job matchmaking.async_job_worker every 10s
+2026-05-29 11:29:01,111 INFO apscheduler.scheduler Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-05-29 11:29:01,111 INFO task_scheduler.build registered job matchmaking.outbox_worker every 30s
+2026-05-29 11:29:01,112 INFO apscheduler.scheduler Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-05-29 11:29:01,112 INFO task_scheduler.build registered job matchmaking.refresh_active_pool every 600s
+2026-05-29 11:29:01,112 INFO apscheduler.scheduler Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-05-29 11:29:01,112 INFO task_scheduler.build registered job matchmaking.build_mutual_pairs every 300s
+2026-05-29 11:29:01,113 INFO apscheduler.scheduler Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-05-29 11:29:01,113 INFO task_scheduler.build registered job matchmaking.open_match_cases every 120s
+2026-05-29 11:29:01,114 INFO apscheduler.scheduler Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-05-29 11:29:01,114 INFO task_scheduler.build registered job matchmaking.close_stale_cases every 600s
+2026-05-29 11:29:01,114 INFO apscheduler.scheduler Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-05-29 11:29:01,115 INFO task_scheduler.build registered job matchmaking.dispatch_proxy_intro_outreach every 120s
+2026-05-29 11:29:01,115 INFO apscheduler.scheduler Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-05-29 11:29:01,116 INFO task_scheduler.build registered job matchmaking.close_timed_out_proxy_cases every 300s
+2026-05-29 11:29:01,336 INFO apscheduler.scheduler Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-05-29 11:29:01,336 INFO task_scheduler.build registered job chat.async_job_worker every 10s
+2026-05-29 11:29:01,337 INFO apscheduler.scheduler Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-05-29 11:29:01,337 INFO task_scheduler.build registered job chat.outbox_worker every 15s
+2026-05-29 11:29:01,337 INFO apscheduler.scheduler Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-05-29 11:29:01,337 INFO task_scheduler.build registered job chat.maintenance every 120s
+2026-05-29 11:29:01,337 INFO __main__ scheduler started; Ctrl+C to stop
+2026-05-29 11:29:01,338 INFO apscheduler.scheduler Added job "_build_db_job.<locals>.run" to job store "default"
+2026-05-29 11:29:01,338 INFO apscheduler.scheduler Added job "_build_db_job.<locals>.run" to job store "default"
+2026-05-29 11:29:01,338 INFO apscheduler.scheduler Added job "_build_db_job.<locals>.run" to job store "default"
+2026-05-29 11:29:01,339 INFO apscheduler.scheduler Added job "_build_db_job.<locals>.run" to job store "default"
+2026-05-29 11:29:01,339 INFO apscheduler.scheduler Added job "_build_db_job.<locals>.run" to job store "default"
+2026-05-29 11:29:01,339 INFO apscheduler.scheduler Added job "_build_db_job.<locals>.run" to job store "default"
+2026-05-29 11:29:01,339 INFO apscheduler.scheduler Added job "_build_db_job.<locals>.run" to job store "default"
+2026-05-29 11:29:01,339 INFO apscheduler.scheduler Added job "_build_db_job.<locals>.run" to job store "default"
+2026-05-29 11:29:01,339 INFO apscheduler.scheduler Added job "_build_db_job.<locals>.run" to job store "default"
+2026-05-29 11:29:01,339 INFO apscheduler.scheduler Added job "_build_db_job.<locals>.run" to job store "default"
+2026-05-29 11:29:01,340 INFO apscheduler.scheduler Added job "_build_db_job.<locals>.run" to job store "default"
+2026-05-29 11:29:01,340 INFO apscheduler.scheduler Added job "_build_db_job.<locals>.run" to job store "default"
+2026-05-29 11:29:01,340 INFO apscheduler.scheduler Added job "_build_db_job.<locals>.run" to job store "default"
+2026-05-29 11:29:01,340 INFO apscheduler.scheduler Added job "_build_db_job.<locals>.run" to job store "default"
+2026-05-29 11:29:01,340 INFO apscheduler.scheduler Added job "_build_db_job.<locals>.run" to job store "default"
+2026-05-29 11:29:01,340 INFO apscheduler.scheduler Scheduler started
+2026-05-29 11:29:11,015 INFO apscheduler.executors.default Running job "_build_db_job.<locals>.run (trigger: interval[0:00:10], next run at: 2026-05-29 11:29:11 CST)" (scheduled at 2026-05-29 11:29:11.010674+08:00)
+2026-05-29 11:29:11,049 INFO her.pipeline {"ts": "2026-05-29T03:29:11.049643+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.total", "value": 0}
+2026-05-29 11:29:11,049 INFO her.pipeline {"ts": "2026-05-29T03:29:11.049837+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.backlog_open", "value": 0}
+2026-05-29 11:29:11,049 INFO her.pipeline {"ts": "2026-05-29T03:29:11.049938+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.due_now", "value": 0}
+2026-05-29 11:29:11,050 INFO her.pipeline {"ts": "2026-05-29T03:29:11.050022+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.processing_overdue", "value": 0}
+2026-05-29 11:29:11,050 INFO her.pipeline {"ts": "2026-05-29T03:29:11.050103+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.pending", "value": 0}
+2026-05-29 11:29:11,050 INFO her.pipeline {"ts": "2026-05-29T03:29:11.050182+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.processing", "value": 0}
+2026-05-29 11:29:11,050 INFO her.pipeline {"ts": "2026-05-29T03:29:11.050260+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.retry_pending", "value": 0}
+2026-05-29 11:29:11,050 INFO her.pipeline {"ts": "2026-05-29T03:29:11.050332+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.succeeded", "value": 0}
+2026-05-29 11:29:11,050 INFO her.pipeline {"ts": "2026-05-29T03:29:11.050404+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.failed", "value": 0}
+2026-05-29 11:29:11,050 INFO task_scheduler.jobs recommendation.async_job_worker finished: {"processed_count": 0, "success_count": 0, "retry_count": 0, "failed_count": 0, "recovered_count": 0, "unknown_job_count": 0, "jobs": [], "summary": {"total": 0, "backlog_open": 0, "due_now": 0, "processing_overdue": 0, "oldest_due_created_at": null, "latest_finished_at": null, "by_status": {"pending": 0, "processing": 0, "retry_pending": 0, "succeeded": 0, "failed": 0}}}
+2026-05-29 11:29:11,051 INFO her.pipeline {"ts": "2026-05-29T03:29:11.051599+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.queue.review_pending", "value": 0}
+2026-05-29 11:29:11,051 INFO her.pipeline {"ts": "2026-05-29T03:29:11.051741+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.queue.pending_delivery", "value": 97}
+2026-05-29 11:29:11,051 INFO her.pipeline {"ts": "2026-05-29T03:29:11.051834+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.queue.delivered", "value": 16}
+2026-05-29 11:29:11,052 INFO her.pipeline {"ts": "2026-05-29T03:29:11.052222+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.active_subscriptions", "value": 26}
+2026-05-29 11:29:11,053 INFO her.pipeline {"ts": "2026-05-29T03:29:11.053669+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.total", "value": 0}
+2026-05-29 11:29:11,053 INFO her.pipeline {"ts": "2026-05-29T03:29:11.053791+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.backlog_open", "value": 0}
+2026-05-29 11:29:11,053 INFO her.pipeline {"ts": "2026-05-29T03:29:11.053879+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.due_now", "value": 0}
+2026-05-29 11:29:11,053 INFO her.pipeline {"ts": "2026-05-29T03:29:11.053958+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.processing_overdue", "value": 0}
+2026-05-29 11:29:11,054 INFO her.pipeline {"ts": "2026-05-29T03:29:11.054038+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.pending", "value": 0}
+2026-05-29 11:29:11,054 INFO her.pipeline {"ts": "2026-05-29T03:29:11.054111+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.processing", "value": 0}
+2026-05-29 11:29:11,054 INFO her.pipeline {"ts": "2026-05-29T03:29:11.054183+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.retry_pending", "value": 0}
+2026-05-29 11:29:11,054 INFO her.pipeline {"ts": "2026-05-29T03:29:11.054253+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.succeeded", "value": 0}
+2026-05-29 11:29:11,054 INFO her.pipeline {"ts": "2026-05-29T03:29:11.054321+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.failed", "value": 0}
+2026-05-29 11:29:11,054 INFO apscheduler.executors.default Job "_build_db_job.<locals>.run (trigger: interval[0:00:10], next run at: 2026-05-29 11:29:21 CST)" executed successfully
+2026-05-29 11:29:11,113 INFO apscheduler.executors.default Running job "_build_db_job.<locals>.run (trigger: interval[0:00:10], next run at: 2026-05-29 11:29:21 CST)" (scheduled at 2026-05-29 11:29:11.111272+08:00)
+2026-05-29 11:29:11,131 INFO her.pipeline {"ts": "2026-05-29T03:29:11.131716+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.total", "value": 0}
+2026-05-29 11:29:11,131 INFO her.pipeline {"ts": "2026-05-29T03:29:11.131860+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.backlog_open", "value": 0}
+2026-05-29 11:29:11,131 INFO her.pipeline {"ts": "2026-05-29T03:29:11.131943+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.due_now", "value": 0}
+2026-05-29 11:29:11,132 INFO her.pipeline {"ts": "2026-05-29T03:29:11.132016+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.processing_overdue", "value": 0}
+2026-05-29 11:29:11,132 INFO her.pipeline {"ts": "2026-05-29T03:29:11.132090+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.pending", "value": 0}
+2026-05-29 11:29:11,132 INFO her.pipeline {"ts": "2026-05-29T03:29:11.132159+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.processing", "value": 0}
+2026-05-29 11:29:11,132 INFO her.pipeline {"ts": "2026-05-29T03:29:11.132225+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.retry_pending", "value": 0}
+2026-05-29 11:29:11,132 INFO her.pipeline {"ts": "2026-05-29T03:29:11.132290+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.succeeded", "value": 0}
+2026-05-29 11:29:11,132 INFO her.pipeline {"ts": "2026-05-29T03:29:11.132355+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.failed", "value": 0}
+2026-05-29 11:29:11,132 INFO task_scheduler.jobs matchmaking.async_job_worker finished: {"processed_count": 0, "success_count": 0, "retry_count": 0, "failed_count": 0, "recovered_count": 0, "unknown_job_count": 0, "jobs": [], "summary": {"total": 0, "backlog_open": 0, "due_now": 0, "processing_overdue": 0, "oldest_due_created_at": null, "latest_finished_at": null, "by_status": {"pending": 0, "processing": 0, "retry_pending": 0, "succeeded": 0, "failed": 0}}}
+2026-05-29 11:29:11,132 INFO her.pipeline {"ts": "2026-05-29T03:29:11.132784+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.active_pool_members", "value": 0}
+2026-05-29 11:29:11,133 INFO her.pipeline {"ts": "2026-05-29T03:29:11.133142+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.pool.needs_refresh_members", "value": 0}
+2026-05-29 11:29:11,133 INFO her.pipeline {"ts": "2026-05-29T03:29:11.133440+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.active_edges", "value": 0}
+2026-05-29 11:29:11,133 INFO her.pipeline {"ts": "2026-05-29T03:29:11.133784+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.pairs_eligible", "value": 0}
+2026-05-29 11:29:11,135 INFO her.pipeline {"ts": "2026-05-29T03:29:11.135163+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.total", "value": 0}
+2026-05-29 11:29:11,135 INFO her.pipeline {"ts": "2026-05-29T03:29:11.135315+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.backlog_open", "value": 0}
+2026-05-29 11:29:11,135 INFO her.pipeline {"ts": "2026-05-29T03:29:11.135405+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.due_now", "value": 0}
+2026-05-29 11:29:11,135 INFO her.pipeline {"ts": "2026-05-29T03:29:11.135482+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.processing_overdue", "value": 0}
+2026-05-29 11:29:11,135 INFO her.pipeline {"ts": "2026-05-29T03:29:11.135558+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.pending", "value": 0}
+2026-05-29 11:29:11,135 INFO her.pipeline {"ts": "2026-05-29T03:29:11.135631+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.processing", "value": 0}
+2026-05-29 11:29:11,135 INFO her.pipeline {"ts": "2026-05-29T03:29:11.135701+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.retry_pending", "value": 0}
+2026-05-29 11:29:11,135 INFO her.pipeline {"ts": "2026-05-29T03:29:11.135769+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.succeeded", "value": 0}
+2026-05-29 11:29:11,135 INFO her.pipeline {"ts": "2026-05-29T03:29:11.135838+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.failed", "value": 0}
+2026-05-29 11:29:11,136 INFO her.pipeline {"ts": "2026-05-29T03:29:11.136257+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.proxy_intro_cases_past_reply_deadline", "value": 0}
+2026-05-29 11:29:11,136 INFO her.pipeline {"ts": "2026-05-29T03:29:11.136697+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.cases_past_expires_at", "value": 0}
+2026-05-29 11:29:11,137 INFO apscheduler.executors.default Job "_build_db_job.<locals>.run (trigger: interval[0:00:10], next run at: 2026-05-29 11:29:21 CST)" executed successfully
+2026-05-29 11:29:11,341 INFO apscheduler.executors.default Running job "_build_db_job.<locals>.run (trigger: interval[0:00:10], next run at: 2026-05-29 11:29:21 CST)" (scheduled at 2026-05-29 11:29:11.336650+08:00)
+2026-05-29 11:29:11,371 INFO her.pipeline {"ts": "2026-05-29T03:29:11.371709+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.total", "value": 1}
+2026-05-29 11:29:11,371 INFO her.pipeline {"ts": "2026-05-29T03:29:11.371860+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.backlog_open", "value": 0}
+2026-05-29 11:29:11,371 INFO her.pipeline {"ts": "2026-05-29T03:29:11.371949+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.due_now", "value": 0}
+2026-05-29 11:29:11,372 INFO her.pipeline {"ts": "2026-05-29T03:29:11.372050+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.processing_overdue", "value": 0}
+2026-05-29 11:29:11,372 INFO her.pipeline {"ts": "2026-05-29T03:29:11.372130+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.pending", "value": 0}
+2026-05-29 11:29:11,372 INFO her.pipeline {"ts": "2026-05-29T03:29:11.372207+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.processing", "value": 0}
+2026-05-29 11:29:11,372 INFO her.pipeline {"ts": "2026-05-29T03:29:11.372281+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.retry_pending", "value": 0}
+2026-05-29 11:29:11,372 INFO her.pipeline {"ts": "2026-05-29T03:29:11.372352+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.succeeded", "value": 1}
+2026-05-29 11:29:11,372 INFO her.pipeline {"ts": "2026-05-29T03:29:11.372421+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.failed", "value": 0}
+2026-05-29 11:29:11,372 INFO task_scheduler.jobs chat.async_job_worker finished: {"processed_count": 0, "success_count": 0, "retry_count": 0, "failed_count": 0, "recovered_count": 0, "unknown_job_count": 0, "jobs": [], "summary": {"total": 1, "backlog_open": 0, "due_now": 0, "processing_overdue": 0, "oldest_due_created_at": null, "latest_finished_at": "2026-05-29 11:25:58", "by_status": {"pending": 0, "processing": 0, "retry_pending": 0, "succeeded": 1, "failed": 0}}}
+2026-05-29 11:29:11,372 INFO apscheduler.executors.default Job "_build_db_job.<locals>.run (trigger: interval[0:00:10], next run at: 2026-05-29 11:29:21 CST)" executed successfully
+2026-05-29 11:29:16,341 INFO apscheduler.executors.default Running job "_build_db_job.<locals>.run (trigger: interval[0:00:15], next run at: 2026-05-29 11:29:31 CST)" (scheduled at 2026-05-29 11:29:16.336969+08:00)
+2026-05-29 11:29:16,364 INFO her.pipeline {"ts": "2026-05-29T03:29:16.364185+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.outbox.pending", "value": 0}
+2026-05-29 11:29:16,364 INFO her.pipeline {"ts": "2026-05-29T03:29:16.364334+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.outbox.retry_due", "value": 0}
+2026-05-29 11:29:16,364 INFO her.pipeline {"ts": "2026-05-29T03:29:16.364429+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.outbox.failed", "value": 0}
+2026-05-29 11:29:16,364 INFO her.pipeline {"ts": "2026-05-29T03:29:16.364514+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.outbox.processing_stale", "value": 0}
+2026-05-29 11:29:16,364 INFO her.pipeline {"ts": "2026-05-29T03:29:16.364595+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.outbox.backlog_open", "value": 0}
+2026-05-29 11:29:16,364 INFO task_scheduler.jobs chat.outbox_worker finished: {"config": {"limit": 200, "worker_name": "chat-outbox-worker", "retry_delay_seconds": 60, "retry_backoff_multiplier": 2, "retry_max_delay_seconds": 600, "max_attempts": 3, "claim_timeout_seconds": 300, "max_batches": 1}, "summary_before": {"total_rows": 25, "pending_rows": 0, "processing_rows": 0, "processing_stale_rows": 0, "retry_pending_rows": 0, "retry_due_rows": 0, "retry_waiting_rows": 0, "failed_rows": 0, "published_rows": 25}, "summary_after": {"total_rows": 25, "pending_rows": 0, "processing_rows": 0, "processing_stale_rows": 0, "retry_pending_rows": 0, "retry_due_rows": 0, "retry_waiting_rows": 0, "failed_rows": 0, "published_rows": 25}, "totals": {"claimed": 0, "examined": 0, "marked_published": 0, "handler_result_count": 0, "retry_scheduled": 0, "failed": 0, "stale_recovered": 0, "error_count": 0, "agent_tasks_enqueued": 0}, "batches": [{"worker_name": "chat-outbox-worker", "claimed": 0, "examined": 0, "marked_published": 0, "handler_result_count": 0, "handler_results": [], "retry_scheduled": 0, "failed": 0, "stale_recovered": 0, "errors": [], "agent_tasks_enqueued": 0, "agent_task_refs": []}]}
+2026-05-29 11:29:16,364 INFO apscheduler.executors.default Job "_build_db_job.<locals>.run (trigger: interval[0:00:15], next run at: 2026-05-29 11:29:31 CST)" executed successfully
+2026-05-29 11:29:21,014 INFO apscheduler.executors.default Running job "_build_db_job.<locals>.run (trigger: interval[0:00:10], next run at: 2026-05-29 11:29:31 CST)" (scheduled at 2026-05-29 11:29:21.010674+08:00)
+2026-05-29 11:29:21,040 INFO her.pipeline {"ts": "2026-05-29T03:29:21.040437+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.total", "value": 0}
+2026-05-29 11:29:21,040 INFO her.pipeline {"ts": "2026-05-29T03:29:21.040615+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.backlog_open", "value": 0}
+2026-05-29 11:29:21,040 INFO her.pipeline {"ts": "2026-05-29T03:29:21.040714+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.due_now", "value": 0}
+2026-05-29 11:29:21,040 INFO her.pipeline {"ts": "2026-05-29T03:29:21.040802+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.processing_overdue", "value": 0}
+2026-05-29 11:29:21,040 INFO her.pipeline {"ts": "2026-05-29T03:29:21.040890+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.pending", "value": 0}
+2026-05-29 11:29:21,041 INFO her.pipeline {"ts": "2026-05-29T03:29:21.040972+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.processing", "value": 0}
+2026-05-29 11:29:21,041 INFO her.pipeline {"ts": "2026-05-29T03:29:21.041052+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.retry_pending", "value": 0}
+2026-05-29 11:29:21,041 INFO her.pipeline {"ts": "2026-05-29T03:29:21.041132+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.succeeded", "value": 0}
+2026-05-29 11:29:21,041 INFO her.pipeline {"ts": "2026-05-29T03:29:21.041212+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.failed", "value": 0}
+2026-05-29 11:29:21,041 INFO task_scheduler.jobs recommendation.async_job_worker finished: {"processed_count": 0, "success_count": 0, "retry_count": 0, "failed_count": 0, "recovered_count": 0, "unknown_job_count": 0, "jobs": [], "summary": {"total": 0, "backlog_open": 0, "due_now": 0, "processing_overdue": 0, "oldest_due_created_at": null, "latest_finished_at": null, "by_status": {"pending": 0, "processing": 0, "retry_pending": 0, "succeeded": 0, "failed": 0}}}
+2026-05-29 11:29:21,042 INFO her.pipeline {"ts": "2026-05-29T03:29:21.042277+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.queue.review_pending", "value": 0}
+2026-05-29 11:29:21,042 INFO her.pipeline {"ts": "2026-05-29T03:29:21.042387+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.queue.pending_delivery", "value": 97}
+2026-05-29 11:29:21,042 INFO her.pipeline {"ts": "2026-05-29T03:29:21.042475+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.queue.delivered", "value": 16}
+2026-05-29 11:29:21,042 INFO her.pipeline {"ts": "2026-05-29T03:29:21.042852+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.active_subscriptions", "value": 26}
+2026-05-29 11:29:21,044 INFO her.pipeline {"ts": "2026-05-29T03:29:21.044215+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.total", "value": 0}
+2026-05-29 11:29:21,044 INFO her.pipeline {"ts": "2026-05-29T03:29:21.044342+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.backlog_open", "value": 0}
+2026-05-29 11:29:21,044 INFO her.pipeline {"ts": "2026-05-29T03:29:21.044438+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.due_now", "value": 0}
+2026-05-29 11:29:21,044 INFO her.pipeline {"ts": "2026-05-29T03:29:21.044524+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.processing_overdue", "value": 0}
+2026-05-29 11:29:21,044 INFO her.pipeline {"ts": "2026-05-29T03:29:21.044608+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.pending", "value": 0}
+2026-05-29 11:29:21,044 INFO her.pipeline {"ts": "2026-05-29T03:29:21.044708+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.processing", "value": 0}
+2026-05-29 11:29:21,044 INFO her.pipeline {"ts": "2026-05-29T03:29:21.044788+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.retry_pending", "value": 0}
+2026-05-29 11:29:21,044 INFO her.pipeline {"ts": "2026-05-29T03:29:21.044863+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.succeeded", "value": 0}
+2026-05-29 11:29:21,044 INFO her.pipeline {"ts": "2026-05-29T03:29:21.044936+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.failed", "value": 0}
+2026-05-29 11:29:21,045 INFO apscheduler.executors.default Job "_build_db_job.<locals>.run (trigger: interval[0:00:10], next run at: 2026-05-29 11:29:31 CST)" executed successfully
+2026-05-29 11:29:21,116 INFO apscheduler.executors.default Running job "_build_db_job.<locals>.run (trigger: interval[0:00:10], next run at: 2026-05-29 11:29:31 CST)" (scheduled at 2026-05-29 11:29:21.111272+08:00)
+2026-05-29 11:29:21,136 INFO her.pipeline {"ts": "2026-05-29T03:29:21.136046+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.total", "value": 0}
+2026-05-29 11:29:21,136 INFO her.pipeline {"ts": "2026-05-29T03:29:21.136207+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.backlog_open", "value": 0}
+2026-05-29 11:29:21,136 INFO her.pipeline {"ts": "2026-05-29T03:29:21.136302+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.due_now", "value": 0}
+2026-05-29 11:29:21,136 INFO her.pipeline {"ts": "2026-05-29T03:29:21.136385+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.processing_overdue", "value": 0}
+2026-05-29 11:29:21,136 INFO her.pipeline {"ts": "2026-05-29T03:29:21.136465+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.pending", "value": 0}
+2026-05-29 11:29:21,136 INFO her.pipeline {"ts": "2026-05-29T03:29:21.136542+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.processing", "value": 0}
+2026-05-29 11:29:21,136 INFO her.pipeline {"ts": "2026-05-29T03:29:21.136618+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.retry_pending", "value": 0}
+2026-05-29 11:29:21,136 INFO her.pipeline {"ts": "2026-05-29T03:29:21.136693+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.succeeded", "value": 0}
+2026-05-29 11:29:21,136 INFO her.pipeline {"ts": "2026-05-29T03:29:21.136766+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.failed", "value": 0}
+2026-05-29 11:29:21,136 INFO task_scheduler.jobs matchmaking.async_job_worker finished: {"processed_count": 0, "success_count": 0, "retry_count": 0, "failed_count": 0, "recovered_count": 0, "unknown_job_count": 0, "jobs": [], "summary": {"total": 0, "backlog_open": 0, "due_now": 0, "processing_overdue": 0, "oldest_due_created_at": null, "latest_finished_at": null, "by_status": {"pending": 0, "processing": 0, "retry_pending": 0, "succeeded": 0, "failed": 0}}}
+2026-05-29 11:29:21,137 INFO her.pipeline {"ts": "2026-05-29T03:29:21.137204+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.active_pool_members", "value": 0}
+2026-05-29 11:29:21,137 INFO her.pipeline {"ts": "2026-05-29T03:29:21.137540+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.pool.needs_refresh_members", "value": 0}
+2026-05-29 11:29:21,137 INFO her.pipeline {"ts": "2026-05-29T03:29:21.137848+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.active_edges", "value": 0}
+2026-05-29 11:29:21,138 INFO her.pipeline {"ts": "2026-05-29T03:29:21.138192+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.pairs_eligible", "value": 0}
+2026-05-29 11:29:21,139 INFO her.pipeline {"ts": "2026-05-29T03:29:21.139707+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.total", "value": 0}
+2026-05-29 11:29:21,139 INFO her.pipeline {"ts": "2026-05-29T03:29:21.139833+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.backlog_open", "value": 0}
+2026-05-29 11:29:21,139 INFO her.pipeline {"ts": "2026-05-29T03:29:21.139929+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.due_now", "value": 0}
+2026-05-29 11:29:21,140 INFO her.pipeline {"ts": "2026-05-29T03:29:21.140015+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.processing_overdue", "value": 0}
+2026-05-29 11:29:21,140 INFO her.pipeline {"ts": "2026-05-29T03:29:21.140100+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.pending", "value": 0}
+2026-05-29 11:29:21,140 INFO her.pipeline {"ts": "2026-05-29T03:29:21.140179+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.processing", "value": 0}
+2026-05-29 11:29:21,140 INFO her.pipeline {"ts": "2026-05-29T03:29:21.140256+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.retry_pending", "value": 0}
+2026-05-29 11:29:21,140 INFO her.pipeline {"ts": "2026-05-29T03:29:21.140332+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.succeeded", "value": 0}
+2026-05-29 11:29:21,140 INFO her.pipeline {"ts": "2026-05-29T03:29:21.140407+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.failed", "value": 0}
+2026-05-29 11:29:21,140 INFO her.pipeline {"ts": "2026-05-29T03:29:21.140795+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.proxy_intro_cases_past_reply_deadline", "value": 0}
+2026-05-29 11:29:21,141 INFO her.pipeline {"ts": "2026-05-29T03:29:21.141205+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.cases_past_expires_at", "value": 0}
+2026-05-29 11:29:21,141 INFO apscheduler.executors.default Job "_build_db_job.<locals>.run (trigger: interval[0:00:10], next run at: 2026-05-29 11:29:31 CST)" executed successfully
+2026-05-29 11:29:21,341 INFO apscheduler.executors.default Running job "_build_db_job.<locals>.run (trigger: interval[0:00:10], next run at: 2026-05-29 11:29:31 CST)" (scheduled at 2026-05-29 11:29:21.336650+08:00)
+2026-05-29 11:29:21,362 INFO her.pipeline {"ts": "2026-05-29T03:29:21.362367+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.total", "value": 1}
+2026-05-29 11:29:21,362 INFO her.pipeline {"ts": "2026-05-29T03:29:21.362529+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.backlog_open", "value": 0}
+2026-05-29 11:29:21,362 INFO her.pipeline {"ts": "2026-05-29T03:29:21.362627+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.due_now", "value": 0}
+2026-05-29 11:29:21,362 INFO her.pipeline {"ts": "2026-05-29T03:29:21.362714+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.processing_overdue", "value": 0}
+2026-05-29 11:29:21,362 INFO her.pipeline {"ts": "2026-05-29T03:29:21.362797+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.pending", "value": 0}
+2026-05-29 11:29:21,362 INFO her.pipeline {"ts": "2026-05-29T03:29:21.362877+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.processing", "value": 0}
+2026-05-29 11:29:21,362 INFO her.pipeline {"ts": "2026-05-29T03:29:21.362954+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.retry_pending", "value": 0}
+2026-05-29 11:29:21,363 INFO her.pipeline {"ts": "2026-05-29T03:29:21.363030+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.succeeded", "value": 1}
+2026-05-29 11:29:21,363 INFO her.pipeline {"ts": "2026-05-29T03:29:21.363106+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.failed", "value": 0}
+2026-05-29 11:29:21,363 INFO task_scheduler.jobs chat.async_job_worker finished: {"processed_count": 0, "success_count": 0, "retry_count": 0, "failed_count": 0, "recovered_count": 0, "unknown_job_count": 0, "jobs": [], "summary": {"total": 1, "backlog_open": 0, "due_now": 0, "processing_overdue": 0, "oldest_due_created_at": null, "latest_finished_at": "2026-05-29 11:25:58", "by_status": {"pending": 0, "processing": 0, "retry_pending": 0, "succeeded": 1, "failed": 0}}}
+2026-05-29 11:29:21,363 INFO apscheduler.executors.default Job "_build_db_job.<locals>.run (trigger: interval[0:00:10], next run at: 2026-05-29 11:29:31 CST)" executed successfully
+2026-05-29 11:29:31,015 INFO apscheduler.executors.default Running job "_build_db_job.<locals>.run (trigger: interval[0:00:10], next run at: 2026-05-29 11:29:41 CST)" (scheduled at 2026-05-29 11:29:31.010674+08:00)
+2026-05-29 11:29:31,016 INFO apscheduler.executors.default Running job "_build_db_job.<locals>.run (trigger: interval[0:00:30], next run at: 2026-05-29 11:30:01 CST)" (scheduled at 2026-05-29 11:29:31.011269+08:00)
+2026-05-29 11:29:31,043 INFO her.pipeline {"ts": "2026-05-29T03:29:31.043066+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.total", "value": 0}
+2026-05-29 11:29:31,043 INFO her.pipeline {"ts": "2026-05-29T03:29:31.043291+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.backlog_open", "value": 0}
+2026-05-29 11:29:31,043 INFO her.pipeline {"ts": "2026-05-29T03:29:31.043424+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.due_now", "value": 0}
+2026-05-29 11:29:31,043 INFO her.pipeline {"ts": "2026-05-29T03:29:31.043517+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.processing_overdue", "value": 0}
+2026-05-29 11:29:31,043 INFO her.pipeline {"ts": "2026-05-29T03:29:31.043651+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.pending", "value": 0}
+2026-05-29 11:29:31,043 INFO her.pipeline {"ts": "2026-05-29T03:29:31.043814+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.processing", "value": 0}
+2026-05-29 11:29:31,044 INFO her.pipeline {"ts": "2026-05-29T03:29:31.044013+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.retry_pending", "value": 0}
+2026-05-29 11:29:31,044 INFO her.pipeline {"ts": "2026-05-29T03:29:31.044150+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.succeeded", "value": 0}
+2026-05-29 11:29:31,044 INFO her.pipeline {"ts": "2026-05-29T03:29:31.044371+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.failed", "value": 0}
+2026-05-29 11:29:31,044 INFO task_scheduler.jobs recommendation.async_job_worker finished: {"processed_count": 0, "success_count": 0, "retry_count": 0, "failed_count": 0, "recovered_count": 0, "unknown_job_count": 0, "jobs": [], "summary": {"total": 0, "backlog_open": 0, "due_now": 0, "processing_overdue": 0, "oldest_due_created_at": null, "latest_finished_at": null, "by_status": {"pending": 0, "processing": 0, "retry_pending": 0, "succeeded": 0, "failed": 0}}}
+2026-05-29 11:29:31,045 INFO her.pipeline {"ts": "2026-05-29T03:29:31.045507+00:00", "her_schema": "1", "her_kind": "funnel", "funnel_system": "recommendation", "funnel_stage": "outbox_dispatched", "trace_id": null, "outbox_id": 45, "event_type": "case_created", "aggregate_id": "match-case-ec89c534e220", "case_id": null, "source_row_table": "proxy_intro_case_events", "source_row_id": 45}
+2026-05-29 11:29:31,045 INFO her.pipeline {"ts": "2026-05-29T03:29:31.045719+00:00", "her_schema": "1", "her_kind": "funnel", "funnel_system": "recommendation", "funnel_stage": "outbox_dispatched", "trace_id": null, "outbox_id": 46, "event_type": "outreach_sent", "aggregate_id": "match-case-ec89c534e220", "case_id": null, "source_row_table": "proxy_intro_case_events", "source_row_id": 46}
+2026-05-29 11:29:31,045 INFO her.pipeline {"ts": "2026-05-29T03:29:31.045836+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.queue.review_pending", "value": 0}
+2026-05-29 11:29:31,046 INFO her.pipeline {"ts": "2026-05-29T03:29:31.046060+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.queue.pending_delivery", "value": 97}
+2026-05-29 11:29:31,046 INFO her.pipeline {"ts": "2026-05-29T03:29:31.046152+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.queue.delivered", "value": 16}
+2026-05-29 11:29:31,046 INFO her.pipeline {"ts": "2026-05-29T03:29:31.046580+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.active_subscriptions", "value": 26}
+2026-05-29 11:29:31,048 INFO her.pipeline {"ts": "2026-05-29T03:29:31.048311+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.outbox.pending", "value": 0}
+2026-05-29 11:29:31,048 INFO her.pipeline {"ts": "2026-05-29T03:29:31.048456+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.outbox.retry_due", "value": 0}
+2026-05-29 11:29:31,048 INFO her.pipeline {"ts": "2026-05-29T03:29:31.048620+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.outbox.failed", "value": 0}
+2026-05-29 11:29:31,048 INFO her.pipeline {"ts": "2026-05-29T03:29:31.048718+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.outbox.processing_stale", "value": 0}
+2026-05-29 11:29:31,048 INFO her.pipeline {"ts": "2026-05-29T03:29:31.048813+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.outbox.backlog_open", "value": 0}
+2026-05-29 11:29:31,048 INFO task_scheduler.jobs recommendation.outbox_worker finished: {"config": {"limit": 200, "worker_name": "recommendation-outbox-worker", "retry_delay_seconds": 60, "retry_backoff_multiplier": 2, "retry_max_delay_seconds": 600, "max_attempts": 3, "claim_timeout_seconds": 300, "max_batches": 1}, "summary_before": {"total_rows": 46, "pending_rows": 2, "processing_rows": 0, "processing_stale_rows": 0, "retry_pending_rows": 0, "retry_due_rows": 0, "retry_waiting_rows": 0, "failed_rows": 0, "published_rows": 44}, "summary_after": {"total_rows": 46, "pending_rows": 0, "processing_rows": 0, "processing_stale_rows": 0, "retry_pending_rows": 0, "retry_due_rows": 0, "retry_waiting_rows": 0, "failed_rows": 0, "published_rows": 46}, "totals": {"claimed": 2, "examined": 2, "marked_published": 2, "handler_result_count": 0, "retry_scheduled": 0, "failed": 0, "stale_recovered": 0, "error_count": 0}, "batches": [{"worker_name": "recommendation-outbox-worker", "claimed": 2, "examined": 2, "marked_published": 2, "handler_result_count": 0, "handler_results": [], "retry_scheduled": 0, "failed": 0, "stale_recovered": 0, "errors": []}]}
+2026-05-29 11:29:31,049 INFO her.pipeline {"ts": "2026-05-29T03:29:31.049085+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.total", "value": 0}
+2026-05-29 11:29:31,049 INFO her.pipeline {"ts": "2026-05-29T03:29:31.049198+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.backlog_open", "value": 0}
+2026-05-29 11:29:31,049 INFO her.pipeline {"ts": "2026-05-29T03:29:31.049316+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.due_now", "value": 0}
+2026-05-29 11:29:31,049 INFO her.pipeline {"ts": "2026-05-29T03:29:31.049453+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.processing_overdue", "value": 0}
+2026-05-29 11:29:31,049 INFO her.pipeline {"ts": "2026-05-29T03:29:31.049551+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.pending", "value": 0}
+2026-05-29 11:29:31,049 INFO her.pipeline {"ts": "2026-05-29T03:29:31.049635+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.processing", "value": 0}
+2026-05-29 11:29:31,049 INFO her.pipeline {"ts": "2026-05-29T03:29:31.049743+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.retry_pending", "value": 0}
+2026-05-29 11:29:31,049 INFO her.pipeline {"ts": "2026-05-29T03:29:31.049867+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.succeeded", "value": 0}
+2026-05-29 11:29:31,050 INFO her.pipeline {"ts": "2026-05-29T03:29:31.050019+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.failed", "value": 0}
+2026-05-29 11:29:31,050 INFO her.pipeline {"ts": "2026-05-29T03:29:31.050421+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.queue.review_pending", "value": 0}
+2026-05-29 11:29:31,050 INFO her.pipeline {"ts": "2026-05-29T03:29:31.050548+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.queue.pending_delivery", "value": 97}
+2026-05-29 11:29:31,050 INFO apscheduler.executors.default Job "_build_db_job.<locals>.run (trigger: interval[0:00:10], next run at: 2026-05-29 11:29:41 CST)" executed successfully
+2026-05-29 11:29:31,050 INFO her.pipeline {"ts": "2026-05-29T03:29:31.050708+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.queue.delivered", "value": 16}
+2026-05-29 11:29:31,051 INFO her.pipeline {"ts": "2026-05-29T03:29:31.051347+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.active_subscriptions", "value": 26}
+2026-05-29 11:29:31,052 INFO her.pipeline {"ts": "2026-05-29T03:29:31.052939+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.total", "value": 0}
+2026-05-29 11:29:31,053 INFO her.pipeline {"ts": "2026-05-29T03:29:31.053064+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.backlog_open", "value": 0}
+2026-05-29 11:29:31,053 INFO her.pipeline {"ts": "2026-05-29T03:29:31.053205+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.due_now", "value": 0}
+2026-05-29 11:29:31,053 INFO her.pipeline {"ts": "2026-05-29T03:29:31.053301+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.processing_overdue", "value": 0}
+2026-05-29 11:29:31,053 INFO her.pipeline {"ts": "2026-05-29T03:29:31.053385+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.pending", "value": 0}
+2026-05-29 11:29:31,053 INFO her.pipeline {"ts": "2026-05-29T03:29:31.053463+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.processing", "value": 0}
+2026-05-29 11:29:31,053 INFO her.pipeline {"ts": "2026-05-29T03:29:31.053540+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.retry_pending", "value": 0}
+2026-05-29 11:29:31,053 INFO her.pipeline {"ts": "2026-05-29T03:29:31.053614+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.succeeded", "value": 0}
+2026-05-29 11:29:31,053 INFO her.pipeline {"ts": "2026-05-29T03:29:31.053688+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.failed", "value": 0}
+2026-05-29 11:29:31,053 INFO apscheduler.executors.default Job "_build_db_job.<locals>.run (trigger: interval[0:00:30], next run at: 2026-05-29 11:30:01 CST)" executed successfully
+2026-05-29 11:29:31,116 INFO apscheduler.executors.default Running job "_build_db_job.<locals>.run (trigger: interval[0:00:10], next run at: 2026-05-29 11:29:41 CST)" (scheduled at 2026-05-29 11:29:31.111272+08:00)
+2026-05-29 11:29:31,116 INFO apscheduler.executors.default Running job "_build_db_job.<locals>.run (trigger: interval[0:00:30], next run at: 2026-05-29 11:30:01 CST)" (scheduled at 2026-05-29 11:29:31.111518+08:00)
+2026-05-29 11:29:31,136 INFO her.pipeline {"ts": "2026-05-29T03:29:31.136632+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.outbox.pending", "value": 0}
+2026-05-29 11:29:31,136 INFO her.pipeline {"ts": "2026-05-29T03:29:31.136823+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.outbox.retry_due", "value": 0}
+2026-05-29 11:29:31,136 INFO her.pipeline {"ts": "2026-05-29T03:29:31.136924+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.outbox.failed", "value": 0}
+2026-05-29 11:29:31,137 INFO her.pipeline {"ts": "2026-05-29T03:29:31.137045+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.total", "value": 0}
+2026-05-29 11:29:31,137 INFO her.pipeline {"ts": "2026-05-29T03:29:31.137140+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.outbox.processing_stale", "value": 0}
+2026-05-29 11:29:31,137 INFO her.pipeline {"ts": "2026-05-29T03:29:31.137294+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.backlog_open", "value": 0}
+2026-05-29 11:29:31,137 INFO her.pipeline {"ts": "2026-05-29T03:29:31.137434+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.outbox.backlog_open", "value": 0}
+2026-05-29 11:29:31,137 INFO her.pipeline {"ts": "2026-05-29T03:29:31.137572+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.due_now", "value": 0}
+2026-05-29 11:29:31,137 INFO task_scheduler.jobs matchmaking.outbox_worker finished: {"config": {"limit": 200, "worker_name": "matchmaking-outbox-worker", "retry_delay_seconds": 60, "retry_backoff_multiplier": 2, "retry_max_delay_seconds": 600, "max_attempts": 3, "claim_timeout_seconds": 300, "max_batches": 1}, "summary_before": {"total_rows": 0, "pending_rows": 0, "processing_rows": 0, "processing_stale_rows": 0, "retry_pending_rows": 0, "retry_due_rows": 0, "retry_waiting_rows": 0, "failed_rows": 0, "published_rows": 0}, "summary_after": {"total_rows": 0, "pending_rows": 0, "processing_rows": 0, "processing_stale_rows": 0, "retry_pending_rows": 0, "retry_due_rows": 0, "retry_waiting_rows": 0, "failed_rows": 0, "published_rows": 0}, "totals": {"claimed": 0, "examined": 0, "marked_published": 0, "handler_result_count": 0, "retry_scheduled": 0, "failed": 0, "stale_recovered": 0, "error_count": 0}, "batches": [{"worker_name": "matchmaking-outbox-worker", "claimed": 0, "examined": 0, "marked_published": 0, "handler_result_count": 0, "handler_results": [], "retry_scheduled": 0, "failed": 0, "stale_recovered": 0, "errors": []}]}
+2026-05-29 11:29:31,137 INFO her.pipeline {"ts": "2026-05-29T03:29:31.137813+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.processing_overdue", "value": 0}
+2026-05-29 11:29:31,138 INFO her.pipeline {"ts": "2026-05-29T03:29:31.138005+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.pending", "value": 0}
+2026-05-29 11:29:31,138 INFO her.pipeline {"ts": "2026-05-29T03:29:31.138158+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.processing", "value": 0}
+2026-05-29 11:29:31,138 INFO her.pipeline {"ts": "2026-05-29T03:29:31.138371+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.retry_pending", "value": 0}
+2026-05-29 11:29:31,138 INFO her.pipeline {"ts": "2026-05-29T03:29:31.138693+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.active_pool_members", "value": 0}
+2026-05-29 11:29:31,138 INFO her.pipeline {"ts": "2026-05-29T03:29:31.138806+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.succeeded", "value": 0}
+2026-05-29 11:29:31,139 INFO her.pipeline {"ts": "2026-05-29T03:29:31.139081+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.failed", "value": 0}
+2026-05-29 11:29:31,139 INFO task_scheduler.jobs matchmaking.async_job_worker finished: {"processed_count": 0, "success_count": 0, "retry_count": 0, "failed_count": 0, "recovered_count": 0, "unknown_job_count": 0, "jobs": [], "summary": {"total": 0, "backlog_open": 0, "due_now": 0, "processing_overdue": 0, "oldest_due_created_at": null, "latest_finished_at": null, "by_status": {"pending": 0, "processing": 0, "retry_pending": 0, "succeeded": 0, "failed": 0}}}
+2026-05-29 11:29:31,139 INFO her.pipeline {"ts": "2026-05-29T03:29:31.139542+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.pool.needs_refresh_members", "value": 0}
+2026-05-29 11:29:31,139 INFO her.pipeline {"ts": "2026-05-29T03:29:31.139846+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.active_pool_members", "value": 0}
+2026-05-29 11:29:31,140 INFO her.pipeline {"ts": "2026-05-29T03:29:31.140143+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.active_edges", "value": 0}
+2026-05-29 11:29:31,140 INFO her.pipeline {"ts": "2026-05-29T03:29:31.140509+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.pool.needs_refresh_members", "value": 0}
+2026-05-29 11:29:31,140 INFO her.pipeline {"ts": "2026-05-29T03:29:31.140771+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.pairs_eligible", "value": 0}
+2026-05-29 11:29:31,141 INFO her.pipeline {"ts": "2026-05-29T03:29:31.141086+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.active_edges", "value": 0}
+2026-05-29 11:29:31,141 INFO her.pipeline {"ts": "2026-05-29T03:29:31.141530+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.pairs_eligible", "value": 0}
+2026-05-29 11:29:31,142 INFO her.pipeline {"ts": "2026-05-29T03:29:31.142612+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.total", "value": 0}
+2026-05-29 11:29:31,142 INFO her.pipeline {"ts": "2026-05-29T03:29:31.142760+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.backlog_open", "value": 0}
+2026-05-29 11:29:31,142 INFO her.pipeline {"ts": "2026-05-29T03:29:31.142898+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.due_now", "value": 0}
+2026-05-29 11:29:31,143 INFO her.pipeline {"ts": "2026-05-29T03:29:31.143000+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.processing_overdue", "value": 0}
+2026-05-29 11:29:31,143 INFO her.pipeline {"ts": "2026-05-29T03:29:31.143119+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.pending", "value": 0}
+2026-05-29 11:29:31,143 INFO her.pipeline {"ts": "2026-05-29T03:29:31.143245+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.total", "value": 0}
+2026-05-29 11:29:31,143 INFO her.pipeline {"ts": "2026-05-29T03:29:31.143333+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.processing", "value": 0}
+2026-05-29 11:29:31,143 INFO her.pipeline {"ts": "2026-05-29T03:29:31.143442+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.backlog_open", "value": 0}
+2026-05-29 11:29:31,143 INFO her.pipeline {"ts": "2026-05-29T03:29:31.143544+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.retry_pending", "value": 0}
+2026-05-29 11:29:31,143 INFO her.pipeline {"ts": "2026-05-29T03:29:31.143641+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.due_now", "value": 0}
+2026-05-29 11:29:31,143 INFO her.pipeline {"ts": "2026-05-29T03:29:31.143739+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.succeeded", "value": 0}
+2026-05-29 11:29:31,143 INFO her.pipeline {"ts": "2026-05-29T03:29:31.143834+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.processing_overdue", "value": 0}
+2026-05-29 11:29:31,143 INFO her.pipeline {"ts": "2026-05-29T03:29:31.143928+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.failed", "value": 0}
+2026-05-29 11:29:31,144 INFO her.pipeline {"ts": "2026-05-29T03:29:31.144023+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.pending", "value": 0}
+2026-05-29 11:29:31,144 INFO her.pipeline {"ts": "2026-05-29T03:29:31.144232+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.processing", "value": 0}
+2026-05-29 11:29:31,144 INFO her.pipeline {"ts": "2026-05-29T03:29:31.144314+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.retry_pending", "value": 0}
+2026-05-29 11:29:31,144 INFO her.pipeline {"ts": "2026-05-29T03:29:31.144409+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.succeeded", "value": 0}
+2026-05-29 11:29:31,144 INFO her.pipeline {"ts": "2026-05-29T03:29:31.144550+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.failed", "value": 0}
+2026-05-29 11:29:31,144 INFO her.pipeline {"ts": "2026-05-29T03:29:31.144648+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.proxy_intro_cases_past_reply_deadline", "value": 0}
+2026-05-29 11:29:31,145 INFO her.pipeline {"ts": "2026-05-29T03:29:31.145156+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.proxy_intro_cases_past_reply_deadline", "value": 0}
+2026-05-29 11:29:31,145 INFO her.pipeline {"ts": "2026-05-29T03:29:31.145443+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.cases_past_expires_at", "value": 0}
+2026-05-29 11:29:31,145 INFO her.pipeline {"ts": "2026-05-29T03:29:31.145694+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.cases_past_expires_at", "value": 0}
+2026-05-29 11:29:31,146 INFO apscheduler.executors.default Job "_build_db_job.<locals>.run (trigger: interval[0:00:30], next run at: 2026-05-29 11:30:01 CST)" executed successfully
+2026-05-29 11:29:31,146 INFO apscheduler.executors.default Job "_build_db_job.<locals>.run (trigger: interval[0:00:10], next run at: 2026-05-29 11:29:41 CST)" executed successfully
+2026-05-29 11:29:31,341 INFO apscheduler.executors.default Running job "_build_db_job.<locals>.run (trigger: interval[0:00:10], next run at: 2026-05-29 11:29:41 CST)" (scheduled at 2026-05-29 11:29:31.336650+08:00)
+2026-05-29 11:29:31,341 INFO apscheduler.executors.default Running job "_build_db_job.<locals>.run (trigger: interval[0:00:15], next run at: 2026-05-29 11:29:46 CST)" (scheduled at 2026-05-29 11:29:31.336969+08:00)
+2026-05-29 11:29:31,364 INFO her.pipeline {"ts": "2026-05-29T03:29:31.364678+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.total", "value": 1}
+2026-05-29 11:29:31,364 INFO her.pipeline {"ts": "2026-05-29T03:29:31.364869+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.backlog_open", "value": 0}
+2026-05-29 11:29:31,365 INFO her.pipeline {"ts": "2026-05-29T03:29:31.364972+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.due_now", "value": 0}
+2026-05-29 11:29:31,365 INFO her.pipeline {"ts": "2026-05-29T03:29:31.365084+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.processing_overdue", "value": 0}
+2026-05-29 11:29:31,365 INFO her.pipeline {"ts": "2026-05-29T03:29:31.365263+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.pending", "value": 0}
+2026-05-29 11:29:31,365 INFO her.pipeline {"ts": "2026-05-29T03:29:31.365423+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.processing", "value": 0}
+2026-05-29 11:29:31,365 INFO her.pipeline {"ts": "2026-05-29T03:29:31.365645+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.retry_pending", "value": 0}
+2026-05-29 11:29:31,365 INFO her.pipeline {"ts": "2026-05-29T03:29:31.365772+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.succeeded", "value": 1}
+2026-05-29 11:29:31,365 INFO her.pipeline {"ts": "2026-05-29T03:29:31.365867+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.failed", "value": 0}
+2026-05-29 11:29:31,366 INFO task_scheduler.jobs chat.async_job_worker finished: {"processed_count": 0, "success_count": 0, "retry_count": 0, "failed_count": 0, "recovered_count": 0, "unknown_job_count": 0, "jobs": [], "summary": {"total": 1, "backlog_open": 0, "due_now": 0, "processing_overdue": 0, "oldest_due_created_at": null, "latest_finished_at": "2026-05-29 11:25:58", "by_status": {"pending": 0, "processing": 0, "retry_pending": 0, "succeeded": 1, "failed": 0}}}
+2026-05-29 11:29:31,366 INFO her.pipeline {"ts": "2026-05-29T03:29:31.366481+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.outbox.pending", "value": 0}
+2026-05-29 11:29:31,366 INFO her.pipeline {"ts": "2026-05-29T03:29:31.366723+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.outbox.retry_due", "value": 0}
+2026-05-29 11:29:31,366 INFO apscheduler.executors.default Job "_build_db_job.<locals>.run (trigger: interval[0:00:10], next run at: 2026-05-29 11:29:41 CST)" executed successfully
+2026-05-29 11:29:31,367 INFO her.pipeline {"ts": "2026-05-29T03:29:31.366963+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.outbox.failed", "value": 0}
+2026-05-29 11:29:31,367 INFO her.pipeline {"ts": "2026-05-29T03:29:31.367241+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.outbox.processing_stale", "value": 0}
+2026-05-29 11:29:31,367 INFO her.pipeline {"ts": "2026-05-29T03:29:31.367340+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.outbox.backlog_open", "value": 0}
+2026-05-29 11:29:31,367 INFO task_scheduler.jobs chat.outbox_worker finished: {"config": {"limit": 200, "worker_name": "chat-outbox-worker", "retry_delay_seconds": 60, "retry_backoff_multiplier": 2, "retry_max_delay_seconds": 600, "max_attempts": 3, "claim_timeout_seconds": 300, "max_batches": 1}, "summary_before": {"total_rows": 25, "pending_rows": 0, "processing_rows": 0, "processing_stale_rows": 0, "retry_pending_rows": 0, "retry_due_rows": 0, "retry_waiting_rows": 0, "failed_rows": 0, "published_rows": 25}, "summary_after": {"total_rows": 25, "pending_rows": 0, "processing_rows": 0, "processing_stale_rows": 0, "retry_pending_rows": 0, "retry_due_rows": 0, "retry_waiting_rows": 0, "failed_rows": 0, "published_rows": 25}, "totals": {"claimed": 0, "examined": 0, "marked_published": 0, "handler_result_count": 0, "retry_scheduled": 0, "failed": 0, "stale_recovered": 0, "error_count": 0, "agent_tasks_enqueued": 0}, "batches": [{"worker_name": "chat-outbox-worker", "claimed": 0, "examined": 0, "marked_published": 0, "handler_result_count": 0, "handler_results": [], "retry_scheduled": 0, "failed": 0, "stale_recovered": 0, "errors": [], "agent_tasks_enqueued": 0, "agent_task_refs": []}]}
+2026-05-29 11:29:31,367 INFO apscheduler.executors.default Job "_build_db_job.<locals>.run (trigger: interval[0:00:15], next run at: 2026-05-29 11:29:46 CST)" executed successfully
+2026-05-29 11:29:41,014 INFO apscheduler.executors.default Running job "_build_db_job.<locals>.run (trigger: interval[0:00:10], next run at: 2026-05-29 11:29:51 CST)" (scheduled at 2026-05-29 11:29:41.010674+08:00)
+2026-05-29 11:29:41,039 INFO her.pipeline {"ts": "2026-05-29T03:29:41.039440+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.total", "value": 0}
+2026-05-29 11:29:41,039 INFO her.pipeline {"ts": "2026-05-29T03:29:41.039616+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.backlog_open", "value": 0}
+2026-05-29 11:29:41,039 INFO her.pipeline {"ts": "2026-05-29T03:29:41.039714+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.due_now", "value": 0}
+2026-05-29 11:29:41,039 INFO her.pipeline {"ts": "2026-05-29T03:29:41.039800+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.processing_overdue", "value": 0}
+2026-05-29 11:29:41,039 INFO her.pipeline {"ts": "2026-05-29T03:29:41.039883+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.pending", "value": 0}
+2026-05-29 11:29:41,039 INFO her.pipeline {"ts": "2026-05-29T03:29:41.039962+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.processing", "value": 0}
+2026-05-29 11:29:41,040 INFO her.pipeline {"ts": "2026-05-29T03:29:41.040039+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.retry_pending", "value": 0}
+2026-05-29 11:29:41,040 INFO her.pipeline {"ts": "2026-05-29T03:29:41.040114+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.succeeded", "value": 0}
+2026-05-29 11:29:41,040 INFO her.pipeline {"ts": "2026-05-29T03:29:41.040187+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.failed", "value": 0}
+2026-05-29 11:29:41,040 INFO task_scheduler.jobs recommendation.async_job_worker finished: {"processed_count": 0, "success_count": 0, "retry_count": 0, "failed_count": 0, "recovered_count": 0, "unknown_job_count": 0, "jobs": [], "summary": {"total": 0, "backlog_open": 0, "due_now": 0, "processing_overdue": 0, "oldest_due_created_at": null, "latest_finished_at": null, "by_status": {"pending": 0, "processing": 0, "retry_pending": 0, "succeeded": 0, "failed": 0}}}
+2026-05-29 11:29:41,041 INFO her.pipeline {"ts": "2026-05-29T03:29:41.041406+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.queue.review_pending", "value": 0}
+2026-05-29 11:29:41,041 INFO her.pipeline {"ts": "2026-05-29T03:29:41.041548+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.queue.pending_delivery", "value": 97}
+2026-05-29 11:29:41,041 INFO her.pipeline {"ts": "2026-05-29T03:29:41.041643+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.queue.delivered", "value": 16}
+2026-05-29 11:29:41,042 INFO her.pipeline {"ts": "2026-05-29T03:29:41.042050+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.active_subscriptions", "value": 26}
+2026-05-29 11:29:41,044 INFO her.pipeline {"ts": "2026-05-29T03:29:41.044369+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.total", "value": 0}
+2026-05-29 11:29:41,044 INFO her.pipeline {"ts": "2026-05-29T03:29:41.044558+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.backlog_open", "value": 0}
+2026-05-29 11:29:41,044 INFO her.pipeline {"ts": "2026-05-29T03:29:41.044654+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.due_now", "value": 0}
+2026-05-29 11:29:41,044 INFO her.pipeline {"ts": "2026-05-29T03:29:41.044740+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.processing_overdue", "value": 0}
+2026-05-29 11:29:41,044 INFO her.pipeline {"ts": "2026-05-29T03:29:41.044821+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.pending", "value": 0}
+2026-05-29 11:29:41,044 INFO her.pipeline {"ts": "2026-05-29T03:29:41.044903+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.processing", "value": 0}
+2026-05-29 11:29:41,045 INFO her.pipeline {"ts": "2026-05-29T03:29:41.044981+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.retry_pending", "value": 0}
+2026-05-29 11:29:41,045 INFO her.pipeline {"ts": "2026-05-29T03:29:41.045055+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.succeeded", "value": 0}
+2026-05-29 11:29:41,045 INFO her.pipeline {"ts": "2026-05-29T03:29:41.045129+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.failed", "value": 0}
+2026-05-29 11:29:41,045 INFO apscheduler.executors.default Job "_build_db_job.<locals>.run (trigger: interval[0:00:10], next run at: 2026-05-29 11:29:51 CST)" executed successfully
+2026-05-29 11:29:41,115 INFO apscheduler.executors.default Running job "_build_db_job.<locals>.run (trigger: interval[0:00:10], next run at: 2026-05-29 11:29:51 CST)" (scheduled at 2026-05-29 11:29:41.111272+08:00)
+2026-05-29 11:29:41,135 INFO her.pipeline {"ts": "2026-05-29T03:29:41.135420+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.total", "value": 0}
+2026-05-29 11:29:41,135 INFO her.pipeline {"ts": "2026-05-29T03:29:41.135622+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.backlog_open", "value": 0}
+2026-05-29 11:29:41,135 INFO her.pipeline {"ts": "2026-05-29T03:29:41.135720+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.due_now", "value": 0}
+2026-05-29 11:29:41,135 INFO her.pipeline {"ts": "2026-05-29T03:29:41.135804+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.processing_overdue", "value": 0}
+2026-05-29 11:29:41,135 INFO her.pipeline {"ts": "2026-05-29T03:29:41.135886+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.pending", "value": 0}
+2026-05-29 11:29:41,136 INFO her.pipeline {"ts": "2026-05-29T03:29:41.135992+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.processing", "value": 0}
+2026-05-29 11:29:41,136 INFO her.pipeline {"ts": "2026-05-29T03:29:41.136070+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.retry_pending", "value": 0}
+2026-05-29 11:29:41,136 INFO her.pipeline {"ts": "2026-05-29T03:29:41.136145+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.succeeded", "value": 0}
+2026-05-29 11:29:41,136 INFO her.pipeline {"ts": "2026-05-29T03:29:41.136220+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.failed", "value": 0}
+2026-05-29 11:29:41,136 INFO task_scheduler.jobs matchmaking.async_job_worker finished: {"processed_count": 0, "success_count": 0, "retry_count": 0, "failed_count": 0, "recovered_count": 0, "unknown_job_count": 0, "jobs": [], "summary": {"total": 0, "backlog_open": 0, "due_now": 0, "processing_overdue": 0, "oldest_due_created_at": null, "latest_finished_at": null, "by_status": {"pending": 0, "processing": 0, "retry_pending": 0, "succeeded": 0, "failed": 0}}}
+2026-05-29 11:29:41,136 INFO her.pipeline {"ts": "2026-05-29T03:29:41.136733+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.active_pool_members", "value": 0}
+2026-05-29 11:29:41,137 INFO her.pipeline {"ts": "2026-05-29T03:29:41.137160+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.pool.needs_refresh_members", "value": 0}
+2026-05-29 11:29:41,137 INFO her.pipeline {"ts": "2026-05-29T03:29:41.137548+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.active_edges", "value": 0}
+2026-05-29 11:29:41,137 INFO her.pipeline {"ts": "2026-05-29T03:29:41.137913+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.pairs_eligible", "value": 0}
+2026-05-29 11:29:41,139 INFO her.pipeline {"ts": "2026-05-29T03:29:41.139427+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.total", "value": 0}
+2026-05-29 11:29:41,139 INFO her.pipeline {"ts": "2026-05-29T03:29:41.139554+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.backlog_open", "value": 0}
+2026-05-29 11:29:41,139 INFO her.pipeline {"ts": "2026-05-29T03:29:41.139646+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.due_now", "value": 0}
+2026-05-29 11:29:41,139 INFO her.pipeline {"ts": "2026-05-29T03:29:41.139727+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.processing_overdue", "value": 0}
+2026-05-29 11:29:41,139 INFO her.pipeline {"ts": "2026-05-29T03:29:41.139806+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.pending", "value": 0}
+2026-05-29 11:29:41,139 INFO her.pipeline {"ts": "2026-05-29T03:29:41.139881+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.processing", "value": 0}
+2026-05-29 11:29:41,139 INFO her.pipeline {"ts": "2026-05-29T03:29:41.139955+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.retry_pending", "value": 0}
+2026-05-29 11:29:41,140 INFO her.pipeline {"ts": "2026-05-29T03:29:41.140027+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.succeeded", "value": 0}
+2026-05-29 11:29:41,140 INFO her.pipeline {"ts": "2026-05-29T03:29:41.140099+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.failed", "value": 0}
+2026-05-29 11:29:41,140 INFO her.pipeline {"ts": "2026-05-29T03:29:41.140506+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.proxy_intro_cases_past_reply_deadline", "value": 0}
+2026-05-29 11:29:41,140 INFO her.pipeline {"ts": "2026-05-29T03:29:41.140919+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.cases_past_expires_at", "value": 0}
+2026-05-29 11:29:41,141 INFO apscheduler.executors.default Job "_build_db_job.<locals>.run (trigger: interval[0:00:10], next run at: 2026-05-29 11:29:51 CST)" executed successfully
+2026-05-29 11:29:41,341 INFO apscheduler.executors.default Running job "_build_db_job.<locals>.run (trigger: interval[0:00:10], next run at: 2026-05-29 11:29:51 CST)" (scheduled at 2026-05-29 11:29:41.336650+08:00)
+2026-05-29 11:29:41,362 INFO her.pipeline {"ts": "2026-05-29T03:29:41.362097+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.total", "value": 1}
+2026-05-29 11:29:41,362 INFO her.pipeline {"ts": "2026-05-29T03:29:41.362262+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.backlog_open", "value": 0}
+2026-05-29 11:29:41,362 INFO her.pipeline {"ts": "2026-05-29T03:29:41.362359+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.due_now", "value": 0}
+2026-05-29 11:29:41,362 INFO her.pipeline {"ts": "2026-05-29T03:29:41.362444+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.processing_overdue", "value": 0}
+2026-05-29 11:29:41,362 INFO her.pipeline {"ts": "2026-05-29T03:29:41.362527+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.pending", "value": 0}
+2026-05-29 11:29:41,362 INFO her.pipeline {"ts": "2026-05-29T03:29:41.362607+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.processing", "value": 0}
+2026-05-29 11:29:41,362 INFO her.pipeline {"ts": "2026-05-29T03:29:41.362683+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.retry_pending", "value": 0}
+2026-05-29 11:29:41,362 INFO her.pipeline {"ts": "2026-05-29T03:29:41.362757+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.succeeded", "value": 1}
+2026-05-29 11:29:41,362 INFO her.pipeline {"ts": "2026-05-29T03:29:41.362832+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.failed", "value": 0}
+2026-05-29 11:29:41,362 INFO task_scheduler.jobs chat.async_job_worker finished: {"processed_count": 0, "success_count": 0, "retry_count": 0, "failed_count": 0, "recovered_count": 0, "unknown_job_count": 0, "jobs": [], "summary": {"total": 1, "backlog_open": 0, "due_now": 0, "processing_overdue": 0, "oldest_due_created_at": null, "latest_finished_at": "2026-05-29 11:25:58", "by_status": {"pending": 0, "processing": 0, "retry_pending": 0, "succeeded": 1, "failed": 0}}}
+2026-05-29 11:29:41,363 INFO apscheduler.executors.default Job "_build_db_job.<locals>.run (trigger: interval[0:00:10], next run at: 2026-05-29 11:29:51 CST)" executed successfully
+2026-05-29 11:29:46,341 INFO apscheduler.executors.default Running job "_build_db_job.<locals>.run (trigger: interval[0:00:15], next run at: 2026-05-29 11:30:01 CST)" (scheduled at 2026-05-29 11:29:46.336969+08:00)
+2026-05-29 11:29:46,364 INFO her.pipeline {"ts": "2026-05-29T03:29:46.364187+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.outbox.pending", "value": 0}
+2026-05-29 11:29:46,364 INFO her.pipeline {"ts": "2026-05-29T03:29:46.364366+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.outbox.retry_due", "value": 0}
+2026-05-29 11:29:46,364 INFO her.pipeline {"ts": "2026-05-29T03:29:46.364464+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.outbox.failed", "value": 0}
+2026-05-29 11:29:46,364 INFO her.pipeline {"ts": "2026-05-29T03:29:46.364552+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.outbox.processing_stale", "value": 0}
+2026-05-29 11:29:46,364 INFO her.pipeline {"ts": "2026-05-29T03:29:46.364632+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.outbox.backlog_open", "value": 0}
+2026-05-29 11:29:46,364 INFO task_scheduler.jobs chat.outbox_worker finished: {"config": {"limit": 200, "worker_name": "chat-outbox-worker", "retry_delay_seconds": 60, "retry_backoff_multiplier": 2, "retry_max_delay_seconds": 600, "max_attempts": 3, "claim_timeout_seconds": 300, "max_batches": 1}, "summary_before": {"total_rows": 25, "pending_rows": 0, "processing_rows": 0, "processing_stale_rows": 0, "retry_pending_rows": 0, "retry_due_rows": 0, "retry_waiting_rows": 0, "failed_rows": 0, "published_rows": 25}, "summary_after": {"total_rows": 25, "pending_rows": 0, "processing_rows": 0, "processing_stale_rows": 0, "retry_pending_rows": 0, "retry_due_rows": 0, "retry_waiting_rows": 0, "failed_rows": 0, "published_rows": 25}, "totals": {"claimed": 0, "examined": 0, "marked_published": 0, "handler_result_count": 0, "retry_scheduled": 0, "failed": 0, "stale_recovered": 0, "error_count": 0, "agent_tasks_enqueued": 0}, "batches": [{"worker_name": "chat-outbox-worker", "claimed": 0, "examined": 0, "marked_published": 0, "handler_result_count": 0, "handler_results": [], "retry_scheduled": 0, "failed": 0, "stale_recovered": 0, "errors": [], "agent_tasks_enqueued": 0, "agent_task_refs": []}]}
+2026-05-29 11:29:46,365 INFO apscheduler.executors.default Job "_build_db_job.<locals>.run (trigger: interval[0:00:15], next run at: 2026-05-29 11:30:01 CST)" executed successfully
+2026-05-29 11:29:51,015 INFO apscheduler.executors.default Running job "_build_db_job.<locals>.run (trigger: interval[0:00:10], next run at: 2026-05-29 11:30:01 CST)" (scheduled at 2026-05-29 11:29:51.010674+08:00)
+2026-05-29 11:29:51,049 INFO her.pipeline {"ts": "2026-05-29T03:29:51.049641+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.total", "value": 0}
+2026-05-29 11:29:51,050 INFO her.pipeline {"ts": "2026-05-29T03:29:51.049948+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.backlog_open", "value": 0}
+2026-05-29 11:29:51,050 INFO her.pipeline {"ts": "2026-05-29T03:29:51.050085+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.due_now", "value": 0}
+2026-05-29 11:29:51,050 INFO her.pipeline {"ts": "2026-05-29T03:29:51.050181+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.processing_overdue", "value": 0}
+2026-05-29 11:29:51,050 INFO her.pipeline {"ts": "2026-05-29T03:29:51.050272+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.pending", "value": 0}
+2026-05-29 11:29:51,050 INFO her.pipeline {"ts": "2026-05-29T03:29:51.050358+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.processing", "value": 0}
+2026-05-29 11:29:51,050 INFO her.pipeline {"ts": "2026-05-29T03:29:51.050442+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.retry_pending", "value": 0}
+2026-05-29 11:29:51,050 INFO her.pipeline {"ts": "2026-05-29T03:29:51.050523+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.succeeded", "value": 0}
+2026-05-29 11:29:51,050 INFO her.pipeline {"ts": "2026-05-29T03:29:51.050603+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.failed", "value": 0}
+2026-05-29 11:29:51,050 INFO task_scheduler.jobs recommendation.async_job_worker finished: {"processed_count": 0, "success_count": 0, "retry_count": 0, "failed_count": 0, "recovered_count": 0, "unknown_job_count": 0, "jobs": [], "summary": {"total": 0, "backlog_open": 0, "due_now": 0, "processing_overdue": 0, "oldest_due_created_at": null, "latest_finished_at": null, "by_status": {"pending": 0, "processing": 0, "retry_pending": 0, "succeeded": 0, "failed": 0}}}
+2026-05-29 11:29:51,052 INFO her.pipeline {"ts": "2026-05-29T03:29:51.052193+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.queue.review_pending", "value": 0}
+2026-05-29 11:29:51,052 INFO her.pipeline {"ts": "2026-05-29T03:29:51.052384+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.queue.pending_delivery", "value": 97}
+2026-05-29 11:29:51,052 INFO her.pipeline {"ts": "2026-05-29T03:29:51.052485+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.queue.delivered", "value": 16}
+2026-05-29 11:29:51,053 INFO her.pipeline {"ts": "2026-05-29T03:29:51.053029+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.active_subscriptions", "value": 26}
+2026-05-29 11:29:51,054 INFO her.pipeline {"ts": "2026-05-29T03:29:51.054808+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.total", "value": 0}
+2026-05-29 11:29:51,054 INFO her.pipeline {"ts": "2026-05-29T03:29:51.054960+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.backlog_open", "value": 0}
+2026-05-29 11:29:51,055 INFO her.pipeline {"ts": "2026-05-29T03:29:51.055055+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.due_now", "value": 0}
+2026-05-29 11:29:51,055 INFO her.pipeline {"ts": "2026-05-29T03:29:51.055141+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.processing_overdue", "value": 0}
+2026-05-29 11:29:51,055 INFO her.pipeline {"ts": "2026-05-29T03:29:51.055225+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.pending", "value": 0}
+2026-05-29 11:29:51,055 INFO her.pipeline {"ts": "2026-05-29T03:29:51.055334+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.processing", "value": 0}
+2026-05-29 11:29:51,055 INFO her.pipeline {"ts": "2026-05-29T03:29:51.055469+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.retry_pending", "value": 0}
+2026-05-29 11:29:51,055 INFO her.pipeline {"ts": "2026-05-29T03:29:51.055577+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.succeeded", "value": 0}
+2026-05-29 11:29:51,055 INFO her.pipeline {"ts": "2026-05-29T03:29:51.055670+00:00", "her_schema": "1", "her_kind": "metric", "metric": "recommendation.async_jobs.failed", "value": 0}
+2026-05-29 11:29:51,055 INFO apscheduler.executors.default Job "_build_db_job.<locals>.run (trigger: interval[0:00:10], next run at: 2026-05-29 11:30:01 CST)" executed successfully
+2026-05-29 11:29:51,116 INFO apscheduler.executors.default Running job "_build_db_job.<locals>.run (trigger: interval[0:00:10], next run at: 2026-05-29 11:30:01 CST)" (scheduled at 2026-05-29 11:29:51.111272+08:00)
+2026-05-29 11:29:51,138 INFO her.pipeline {"ts": "2026-05-29T03:29:51.138847+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.total", "value": 0}
+2026-05-29 11:29:51,139 INFO her.pipeline {"ts": "2026-05-29T03:29:51.139036+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.backlog_open", "value": 0}
+2026-05-29 11:29:51,139 INFO her.pipeline {"ts": "2026-05-29T03:29:51.139135+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.due_now", "value": 0}
+2026-05-29 11:29:51,139 INFO her.pipeline {"ts": "2026-05-29T03:29:51.139222+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.processing_overdue", "value": 0}
+2026-05-29 11:29:51,139 INFO her.pipeline {"ts": "2026-05-29T03:29:51.139311+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.pending", "value": 0}
+2026-05-29 11:29:51,139 INFO her.pipeline {"ts": "2026-05-29T03:29:51.139393+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.processing", "value": 0}
+2026-05-29 11:29:51,139 INFO her.pipeline {"ts": "2026-05-29T03:29:51.139472+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.retry_pending", "value": 0}
+2026-05-29 11:29:51,139 INFO her.pipeline {"ts": "2026-05-29T03:29:51.139550+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.succeeded", "value": 0}
+2026-05-29 11:29:51,139 INFO her.pipeline {"ts": "2026-05-29T03:29:51.139629+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.failed", "value": 0}
+2026-05-29 11:29:51,139 INFO task_scheduler.jobs matchmaking.async_job_worker finished: {"processed_count": 0, "success_count": 0, "retry_count": 0, "failed_count": 0, "recovered_count": 0, "unknown_job_count": 0, "jobs": [], "summary": {"total": 0, "backlog_open": 0, "due_now": 0, "processing_overdue": 0, "oldest_due_created_at": null, "latest_finished_at": null, "by_status": {"pending": 0, "processing": 0, "retry_pending": 0, "succeeded": 0, "failed": 0}}}
+2026-05-29 11:29:51,140 INFO her.pipeline {"ts": "2026-05-29T03:29:51.140138+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.active_pool_members", "value": 0}
+2026-05-29 11:29:51,140 INFO her.pipeline {"ts": "2026-05-29T03:29:51.140548+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.pool.needs_refresh_members", "value": 0}
+2026-05-29 11:29:51,141 INFO her.pipeline {"ts": "2026-05-29T03:29:51.140950+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.active_edges", "value": 0}
+2026-05-29 11:29:51,141 INFO her.pipeline {"ts": "2026-05-29T03:29:51.141408+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.pairs_eligible", "value": 0}
+2026-05-29 11:29:51,143 INFO her.pipeline {"ts": "2026-05-29T03:29:51.143784+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.total", "value": 0}
+2026-05-29 11:29:51,144 INFO her.pipeline {"ts": "2026-05-29T03:29:51.144024+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.backlog_open", "value": 0}
+2026-05-29 11:29:51,144 INFO her.pipeline {"ts": "2026-05-29T03:29:51.144131+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.due_now", "value": 0}
+2026-05-29 11:29:51,144 INFO her.pipeline {"ts": "2026-05-29T03:29:51.144222+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.processing_overdue", "value": 0}
+2026-05-29 11:29:51,144 INFO her.pipeline {"ts": "2026-05-29T03:29:51.144345+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.pending", "value": 0}
+2026-05-29 11:29:51,144 INFO her.pipeline {"ts": "2026-05-29T03:29:51.144436+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.processing", "value": 0}
+2026-05-29 11:29:51,144 INFO her.pipeline {"ts": "2026-05-29T03:29:51.144520+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.retry_pending", "value": 0}
+2026-05-29 11:29:51,144 INFO her.pipeline {"ts": "2026-05-29T03:29:51.144601+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.succeeded", "value": 0}
+2026-05-29 11:29:51,144 INFO her.pipeline {"ts": "2026-05-29T03:29:51.144680+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.async_jobs.failed", "value": 0}
+2026-05-29 11:29:51,145 INFO her.pipeline {"ts": "2026-05-29T03:29:51.145386+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.proxy_intro_cases_past_reply_deadline", "value": 0}
+2026-05-29 11:29:51,145 INFO her.pipeline {"ts": "2026-05-29T03:29:51.145850+00:00", "her_schema": "1", "her_kind": "metric", "metric": "matchmaking.cases_past_expires_at", "value": 0}
+2026-05-29 11:29:51,146 INFO apscheduler.executors.default Job "_build_db_job.<locals>.run (trigger: interval[0:00:10], next run at: 2026-05-29 11:30:01 CST)" executed successfully
+2026-05-29 11:29:51,341 INFO apscheduler.executors.default Running job "_build_db_job.<locals>.run (trigger: interval[0:00:10], next run at: 2026-05-29 11:30:01 CST)" (scheduled at 2026-05-29 11:29:51.336650+08:00)
+2026-05-29 11:29:51,371 INFO her.pipeline {"ts": "2026-05-29T03:29:51.371834+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.total", "value": 1}
+2026-05-29 11:29:51,372 INFO her.pipeline {"ts": "2026-05-29T03:29:51.372071+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.backlog_open", "value": 0}
+2026-05-29 11:29:51,372 INFO her.pipeline {"ts": "2026-05-29T03:29:51.372190+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.due_now", "value": 0}
+2026-05-29 11:29:51,372 INFO her.pipeline {"ts": "2026-05-29T03:29:51.372282+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.processing_overdue", "value": 0}
+2026-05-29 11:29:51,372 INFO her.pipeline {"ts": "2026-05-29T03:29:51.372454+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.pending", "value": 0}
+2026-05-29 11:29:51,372 INFO her.pipeline {"ts": "2026-05-29T03:29:51.372634+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.processing", "value": 0}
+2026-05-29 11:29:51,372 INFO her.pipeline {"ts": "2026-05-29T03:29:51.372761+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.retry_pending", "value": 0}
+2026-05-29 11:29:51,372 INFO her.pipeline {"ts": "2026-05-29T03:29:51.372862+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.succeeded", "value": 1}
+2026-05-29 11:29:51,373 INFO her.pipeline {"ts": "2026-05-29T03:29:51.372977+00:00", "her_schema": "1", "her_kind": "metric", "metric": "chat.async_jobs.failed", "value": 0}
+2026-05-29 11:29:51,373 INFO task_scheduler.jobs chat.async_job_worker finished: {"processed_count": 0, "success_count": 0, "retry_count": 0, "failed_count": 0, "recovered_count": 0, "unknown_job_count": 0, "jobs": [], "summary": {"total": 1, "backlog_open": 0, "due_now": 0, "processing_overdue": 0, "oldest_due_created_at": null, "latest_finished_at": "2026-05-29 11:25:58", "by_status": {"pending": 0, "processing": 0, "retry_pending": 0, "succeeded": 1, "failed": 0}}}
+2026-05-29 11:29:51,373 INFO apscheduler.executors.default Job "_build_db_job.<locals>.run (trigger: interval[0:00:10], next run at: 2026-05-29 11:30:01 CST)" executed successfully

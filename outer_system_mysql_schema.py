@@ -1848,6 +1848,30 @@ def chat_tables() -> tuple[TableDef, ...]:
                 ForeignKeyDef(("profile_review_case_id",), "profile_review_cases", ("profile_review_case_id",)),
             ),
         ),
+        TableDef(
+            name="call_sessions",
+            columns=(
+                ColumnDef("call_id", "VARCHAR(64)", nullable=False),
+                ColumnDef("case_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("conversation_id", "VARCHAR(64)", nullable=True),
+                ColumnDef("caller_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("callee_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("call_type", "VARCHAR(32)", nullable=False),
+                ColumnDef("room_id", "VARCHAR(64)", nullable=False),
+                ColumnDef("status", "VARCHAR(32)", nullable=False),
+                ColumnDef("started_at", "DATETIME"),
+                ColumnDef("ended_at", "DATETIME"),
+                ColumnDef("duration_seconds", "INT"),
+                ColumnDef("end_reason", "VARCHAR(64)"),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("call_id",),
+            indexes=(
+                IndexDef(("case_id", "created_at"), "idx_call_sessions_case_time"),
+                IndexDef(("caller_id", "status", "created_at"), "idx_call_sessions_caller_status"),
+                IndexDef(("callee_id", "status", "created_at"), "idx_call_sessions_callee_status"),
+            ),
+        ),
     )
 
 
