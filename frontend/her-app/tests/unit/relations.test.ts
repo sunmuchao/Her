@@ -56,8 +56,8 @@ describe('relations helpers', () => {
               conversation_kind: 'group',
             },
             messages: [
-              { message_id: 1, author_id: 'user-b', body: 'hi', created_at: '2026-05-01 10:00:00' },
-              { message_id: 2, author_id: 'user-a', body: 'hello', created_at: '2026-05-01 10:01:00' },
+              { message_id: 1, author_id: 'user-b', source: 'user', body: 'hi', created_at: '2026-05-01 10:00:00' },
+              { message_id: 2, author_id: 'user-a', source: 'user', body: 'hello', created_at: '2026-05-01 10:01:00' },
             ],
           },
           {
@@ -67,7 +67,7 @@ describe('relations helpers', () => {
               conversation_kind: 'dm',
             },
             messages: [
-              { message_id: 3, author_id: 'agent-c', body: 'note', created_at: '2026-05-01 10:02:00' },
+              { message_id: 3, author_id: 'agent-c', source: 'agent', body: 'note', created_at: '2026-05-01 10:02:00' },
             ],
           },
         ],
@@ -92,8 +92,8 @@ describe('relations helpers', () => {
               conversation_kind: 'group',
             },
             messages: [
-              { message_id: 1, author_id: 'user-b', body: 'hi', created_at: '2026-05-01 10:00:00' },
-              { message_id: 2, author_id: 'user-a', body: 'hello', created_at: '2026-05-01 10:01:00' },
+              { message_id: 1, author_id: 'user-b', source: 'user', body: 'hi', created_at: '2026-05-01 10:00:00' },
+              { message_id: 2, author_id: 'user-a', source: 'user', body: 'hello', created_at: '2026-05-01 10:01:00' },
             ],
           },
         ],
