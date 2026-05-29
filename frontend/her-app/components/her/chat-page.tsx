@@ -2,11 +2,12 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { ArrowLeft, Phone, MoreVertical, Send, Image as ImageIcon, BadgeCheck, Mic, X, Sparkles } from 'lucide-react'
+import { ArrowLeft, MoreVertical, Send, BadgeCheck, Mic, X, Sparkles, Plus, Video, Image as ImageIcon, Phone } from 'lucide-react'
 import Image from 'next/image'
 import { cn } from '@/lib/utils'
 import { gatewayJson, queryString } from '@/lib/api/client'
 import { markConversationRead, fetchPrivateChatConversationId, fetchPrivateMessages, sendPrivateMessage, type PrivateMessage } from '@/lib/api/endpoints/chat'
+import { uploadImage, compressImage, getImagePreviewUrl, type UploadMediaResponse } from '@/lib/api/endpoints/media'
 import {
   fetchCaseTimeline,
   extractMainGroupMessages,
@@ -23,6 +24,7 @@ import { DEMO_DEFAULT_CHAT_ID } from '@/lib/navigation/defaults'
 import type { CandidatePreview } from '@/lib/types/candidate'
 import { DemoDataBanner } from './ui/demo-data-banner'
 import { ErrorState } from './ui/error-state'
+import { VideoCallModal, type CallType } from './video-call-modal'
 
 interface ChatPageProps {
   chatId: string | null
@@ -57,276 +59,6 @@ type MessagesResponse = {
   }>
 }
 
-
-// 私信悬浮球和弹窗组件
-function PrivateChatFab({
-  caseId,
-  requesterId,
-}: {
-  caseId: string
-  requesterId: string
-}) {
-  const [isOpen, setIsOpen] = useState(false)
-  const [messages, setMessages] = useState<PrivateMessage[]>([])
-  const [inputValue, setInputValue] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
-  const [isSending, setIsSending] = useState(false)
-  const [conversationId, setConversationId] = useState<string | null>(null)
-  const [hasUnread, setHasUnread] = useState(false)
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-
-  // 加载私信会话
-  useEffect(() => {
-    if (!isOpen || !caseId || !requesterId) return
-
-    let cancelled = false
-    async function load() {
-      setIsLoading(true)
-      try {
-        console.log('[PrivateChatFab] 开始加载会话, caseId:', caseId, 'requesterId:', requesterId)
-        const convId = await fetchPrivateChatConversationId(caseId, requesterId)
-        console.log('[PrivateChatFab] 获取到的会话ID:', convId)
-
-        if (cancelled) {
-          setIsLoading(false)
-          return
-        }
-
-        if (!convId) {
-          console.warn('[PrivateChatFab] 未找到私信会话ID')
-          setIsLoading(false)
-          // 不设置 conversationId，显示提示信息
-          return
-        }
-
-        setConversationId(convId)
-        console.log('[PrivateChatFab] 设置会话ID:', convId)
-
-        const msgs = await fetchPrivateMessages(convId, requesterId)
-        console.log('[PrivateChatFab] 获取到的消息数量:', msgs.length)
-
-        if (!cancelled) {
-          setMessages(msgs)
-          setHasUnread(false)
-        }
-      } catch (error) {
-        if (!cancelled) {
-          console.error('[PrivateChatFab] 加载失败:', error)
-          notifyError(error, '加载私信失败')
-        }
-      } finally {
-        if (!cancelled) setIsLoading(false)
-      }
-    }
-    void load()
-    return () => { cancelled = true }
-  }, [isOpen, caseId, requesterId])
-
-  // 滚动到底部
-  useEffect(() => {
-    if (isOpen) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-    }
-  }, [messages, isOpen])
-
-  const handleSend = async () => {
-    const body = inputValue.trim()
-    if (!body || !conversationId || isSending) return
-
-    setInputValue('')
-    setIsSending(true)
-
-    // 乐观更新
-    const tempId = `temp-${Date.now()}`
-    const optimisticMsg: PrivateMessage = {
-      id: tempId,
-      authorId: requesterId,
-      body,
-      createdAt: new Date().toISOString(),
-      isFromMe: true,
-    }
-    setMessages((prev) => [...prev, optimisticMsg])
-
-    try {
-      await sendPrivateMessage(conversationId, requesterId, body)
-    } catch (error) {
-      setMessages((prev) => prev.filter((m) => m.id !== tempId))
-      notifyError(error, '发送失败')
-    } finally {
-      setIsSending(false)
-    }
-  }
-
-  return (
-    <>
-      {/* 品牌化悬浮球 */}
-      <button
-        type="button"
-        onClick={() => setIsOpen(true)}
-        title="私信小雅 - 你的智能助手"
-        className={cn(
-          'fixed bottom-24 right-4 z-30 w-16 h-16 rounded-full flex items-center justify-center transition-all duration-300',
-          'bg-gradient-to-br from-primary via-primary to-primary/90',
-          'shadow-lg shadow-primary/30',
-          'ring-2 ring-primary/20',
-          'hover:shadow-xl hover:shadow-primary/40 hover:ring-4 hover:ring-primary/30 hover:scale-110',
-          'active:scale-95',
-          'animate-[pulse_3s_ease-in-out_infinite]',
-          isOpen && 'hidden',
-        )}
-        aria-label="私信小雅"
-      >
-        {/* 光晕效果 */}
-        <div className="absolute inset-0 rounded-full bg-gradient-to-br from-white/20 to-transparent animate-pulse" />
-
-        {/* 小雅头像 */}
-        <div className="relative w-12 h-12 rounded-full overflow-hidden bg-white/10 backdrop-blur-sm ring-1 ring-white/30">
-          <Image
-            src="/xiaoya-avatar.png"
-            alt="小雅"
-            width={48}
-            height={48}
-            className="object-cover"
-            priority
-          />
-        </div>
-
-        {/* 未读消息指示 */}
-        {hasUnread && (
-          <span className="absolute -top-1 -right-1 w-5 h-5 bg-rose-500 rounded-full animate-pulse ring-2 ring-white" />
-        )}
-      </button>
-
-      {/* 私信弹窗 */}
-      {isOpen && (
-        <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/30 animate-fade-in">
-          <div
-            className="w-full max-w-md bg-background rounded-t-2xl shadow-2xl flex flex-col animate-slide-up"
-            style={{ maxHeight: '70vh' }}
-          >
-            {/* 弹窗头部 */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-              <div className="flex items-center gap-2.5">
-                {/* 小雅头像 */}
-                <div className="w-9 h-9 rounded-full overflow-hidden bg-gradient-to-br from-primary/20 to-primary/10 ring-1 ring-primary/30">
-                  <Image
-                    src="/xiaoya-avatar.png"
-                    alt="小雅"
-                    width={36}
-                    height={36}
-                    className="object-cover"
-                  />
-                </div>
-                <div>
-                  <h3 className="text-sm font-medium flex items-center gap-1">
-                    私信小雅
-                    <span className="text-xs text-primary animate-pulse">✨</span>
-                  </h3>
-                  <p className="text-[10px] text-muted-foreground">你的智能助手 · 对方看不到这里的消息</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsOpen(false)}
-                className="w-8 h-8 rounded-full hover:bg-secondary flex items-center justify-center transition-colors"
-                aria-label="关闭"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* 消息列表 */}
-            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 min-h-[200px]">
-              {isLoading ? (
-                <div className="flex items-center justify-center h-full">
-                  <p className="text-sm text-muted-foreground">加载中...</p>
-                </div>
-              ) : messages.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full gap-3 text-center pt-6">
-                  {/* 欢迎语 */}
-                  <div className="space-y-1">
-                    <p className="text-base font-medium text-foreground">你好呀！我是小雅 💬</p>
-                    <p className="text-sm text-muted-foreground">有什么想悄悄跟我说的吗？</p>
-                  </div>
-                  {/* 示例提示 */}
-                  <div className="flex flex-col gap-1 text-xs text-muted-foreground/70">
-                    <p>✨ 比如：帮我问问对方的兴趣爱好</p>
-                    <p>✨ 或者：给我们的聊天提点建议</p>
-                  </div>
-                </div>
-              ) : (
-                messages.map((msg) => (
-                  <div
-                    key={msg.id}
-                    className={cn(
-                      'flex',
-                      msg.isFromMe ? 'justify-end' : 'justify-start',
-                    )}
-                  >
-                    <div
-                      className={cn(
-                        'max-w-[80%] px-3 py-2 rounded-2xl text-sm',
-                        msg.isFromMe
-                          ? 'bg-primary text-primary-foreground rounded-br-md'
-                          : 'bg-secondary rounded-bl-md',
-                      )}
-                    >
-                      {msg.body}
-                    </div>
-                  </div>
-                ))
-              )}
-              <div ref={messagesEndRef} />
-            </div>
-
-            {/* 输入框 */}
-            <div className="px-4 py-3 border-t border-border safe-area-bottom">
-              <div className="flex items-center gap-2 bg-secondary rounded-xl px-3 py-2">
-                <input
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault()
-                      void handleSend()
-                    }
-                  }}
-                  placeholder="跟小雅说点悄悄话..."
-                  className="flex-1 bg-transparent text-sm placeholder:text-muted-foreground focus:outline-none"
-                  disabled={isLoading}
-                />
-                <button
-                  type="button"
-                  onClick={() => void handleSend()}
-                  disabled={!inputValue.trim() || isSending || !conversationId}
-                  className={cn(
-                    'w-8 h-8 rounded-full flex items-center justify-center transition-all',
-                    inputValue.trim() && !isSending
-                      ? 'bg-primary hover:bg-primary/90'
-                      : 'bg-muted cursor-not-allowed',
-                  )}
-                >
-                  {isSending ? (
-                    <div className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
-                  ) : (
-                    <Send className={cn('w-4 h-4', inputValue.trim() ? 'text-primary-foreground' : 'text-muted-foreground')} />
-                  )}
-                </button>
-              </div>
-              {/* 连接状态提示 */}
-              {!conversationId && !isLoading && (
-                <p className="text-xs text-muted-foreground mt-1.5 text-center">
-                  💡 当前私信功能暂未开通，请稍后再试
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-    </>
-  )
-}
-
 export default function ChatPage({ chatId, caseId, counterpartId, counterpartName, counterpartImage, onBack, onViewCandidate }: ChatPageProps) {
   const searchParams = useSearchParams()
   const urlChatTitle = searchParams.get('chatTitle')
@@ -347,6 +79,99 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
   const [loadError, setLoadError] = useState<string | null>(null)
   const [usingMockData, setUsingMockData] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [showActionMenu, setShowActionMenu] = useState(false)
+  const [showXiaoyaChat, setShowXiaoyaChat] = useState(false)
+  const [xiaoyaMessages, setXiaoyaMessages] = useState<PrivateMessage[]>([])
+  const [xiaoyaInputValue, setXiaoyaInputValue] = useState('')
+  const [xiaoyaConversationId, setXiaoyaConversationId] = useState<string | null>(null)
+  const [xiaoyaIsSending, setXiaoyaIsSending] = useState(false)
+  const xiaoyaMessagesEndRef = useRef<HTMLDivElement>(null)
+
+  // 小雅主动提示相关状态
+  const xiaoyaLastCheckTimeRef = useRef<string>('') // 记录上次检查时间，避免重复触发
+  const [xiaoyaTriggerReason, setXiaoyaTriggerReason] = useState<string | null>(null)
+  const hasAutoOpenedXiaoyaRef = useRef(false) // 是否已自动展开过（避免反复弹出）
+
+  // 图片发送相关状态
+  const [selectedImage, setSelectedImage] = useState<File | null>(null)
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null)
+  const [isUploadingImage, setIsUploadingImage] = useState(false)
+  const imageInputRef = useRef<HTMLInputElement>(null)
+
+  // 视频通话相关状态
+  const [showVideoCall, setShowVideoCall] = useState(false)
+  const [videoCallType, setVideoCallType] = useState<'audio' | 'video'>('video')
+  const [videoCallId, setVideoCallId] = useState<string | null>(null)
+
+  // 加载小雅私信会话
+  useEffect(() => {
+    if (!showXiaoyaChat || !resolvedCaseId) return
+
+    const requesterId = getChatParticipantId()
+    if (!requesterId) return
+
+    let cancelled = false
+    async function loadXiaoyaChat() {
+      try {
+        const currentCaseId = resolvedCaseId
+        const currentRequesterId = requesterId
+        if (!currentCaseId || !currentRequesterId) return
+
+        const convId = await fetchPrivateChatConversationId(currentCaseId, currentRequesterId)
+        if (cancelled || !convId) return
+
+        setXiaoyaConversationId(convId)
+        const msgs = await fetchPrivateMessages(convId, currentRequesterId)
+        if (!cancelled) {
+          setXiaoyaMessages(msgs)
+        }
+      } catch (error) {
+        console.error('[XiaoyaChat] 加载失败:', error)
+      }
+    }
+    void loadXiaoyaChat()
+    return () => { cancelled = true }
+  }, [showXiaoyaChat, resolvedCaseId])
+
+  // 小雅消息滚动到底部
+  useEffect(() => {
+    if (showXiaoyaChat) {
+      xiaoyaMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [xiaoyaMessages, showXiaoyaChat])
+
+  // 发送小雅私信
+  const handleSendXiaoyaMessage = async () => {
+    const body = xiaoyaInputValue.trim()
+    if (!body || !xiaoyaConversationId || xiaoyaIsSending) return
+
+    const requesterId = getChatParticipantId()
+    if (!requesterId) return
+
+    setXiaoyaInputValue('')
+    setXiaoyaIsSending(true)
+
+    // 乐观更新
+    const tempId = `temp-${Date.now()}`
+    const optimisticMsg: PrivateMessage = {
+      id: tempId,
+      authorId: requesterId,
+      body,
+      createdAt: new Date().toISOString(),
+      isFromMe: true,
+    }
+    setXiaoyaMessages((prev) => [...prev, optimisticMsg])
+
+    try {
+      await sendPrivateMessage(xiaoyaConversationId, requesterId, body)
+    } catch (error) {
+      setXiaoyaMessages((prev) => prev.filter((m) => m.id !== tempId))
+      notifyError(error, '发送失败')
+    } finally {
+      setXiaoyaIsSending(false)
+    }
+  }
+
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -387,6 +212,28 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
         // 提取main_group会话的消息（用户对话 + AI红娘提示）
         const mappedMessages = extractMainGroupMessages(timelineData, currentRequesterId)
         setMessages(mappedMessages)
+
+        // ✅ 检测 assistant_dm 会话（小雅私信，channel_key 为 assistant_dm_a 或 assistant_dm_b）
+        const assistantDm = timelineData.conversations.find(
+          (c) => c.conversation.channel_key.startsWith('assistant_dm'),
+        )
+
+        if (assistantDm && assistantDm.messages && assistantDm.messages.length > 0) {
+          // 设置会话ID，以便私信功能可用
+          setXiaoyaConversationId(assistantDm.conversation.conversation_id)
+
+          // 记录最新消息时间，用于后续轮询判断
+          const latestDmMsg = assistantDm.messages[assistantDm.messages.length - 1]
+          xiaoyaLastCheckTimeRef.current = latestDmMsg.created_at
+
+          // 如果是聊天前阶段（刚匹配），且有 agent 私信消息，自动展开面板
+          if (mappedMessages.length === 0 && latestDmMsg.source === 'agent' && !hasAutoOpenedXiaoyaRef.current) {
+            console.log('[ChatPage] 聊天前阶段，检测到小雅私信，自动展开')
+            setShowXiaoyaChat(true)
+            setXiaoyaTriggerReason('opening_probe')
+            hasAutoOpenedXiaoyaRef.current = true
+          }
+        }
 
         // 更新聊天标题
         if (!chatTitleRef.current) {
@@ -449,6 +296,31 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
             markConversationRead(resolvedChatId, Number(latestMessage.id))
           }
         }
+
+        // ✅ 检测 assistant_dm 新消息（小雅私信主动提示）
+        const assistantDm = timelineData.conversations.find(
+          (c) => c.conversation.channel_key === 'assistant_dm',
+        )
+
+        if (assistantDm && assistantDm.messages && assistantDm.messages.length > 0 && !hasAutoOpenedXiaoyaRef.current) {
+          const latestDmMsg = assistantDm.messages[assistantDm.messages.length - 1]
+
+          // 判断是否是新消息（比上次检查时间更晚）
+          if (latestDmMsg.created_at > xiaoyaLastCheckTimeRef.current && latestDmMsg.source === 'agent') {
+            console.log('[ChatPage] 检测到小雅新私信:', latestDmMsg.body)
+
+            // 自动展开小雅私信面板
+            setShowXiaoyaChat(true)
+            setXiaoyaTriggerReason(latestDmMsg.source || 'assistant_dm')
+            hasAutoOpenedXiaoyaRef.current = true
+
+            // 更新上次检查时间
+            xiaoyaLastCheckTimeRef.current = latestDmMsg.created_at
+
+            // 设置会话ID
+            setXiaoyaConversationId(assistantDm.conversation.conversation_id)
+          }
+        }
       } catch (error) {
         console.error('[ChatPage] 轮询更新失败:', error)
       }
@@ -500,6 +372,88 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       void handleSend()
+    }
+  }
+
+  // 图片选择处理
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // 验证文件类型
+    if (!file.type.startsWith('image/')) {
+      notifyError(new Error('请选择图片文件'), '文件格式错误')
+      return
+    }
+
+    // 验证文件大小（最大 10MB）
+    if (file.size > 10 * 1024 * 1024) {
+      notifyError(new Error('图片大小不能超过 10MB'), '文件过大')
+      return
+    }
+
+    setSelectedImage(file)
+    setImagePreviewUrl(getImagePreviewUrl(file))
+    setShowActionMenu(false)
+  }
+
+  // 取消图片选择
+  const handleCancelImage = () => {
+    if (imagePreviewUrl) {
+      URL.revokeObjectURL(imagePreviewUrl)
+    }
+    setSelectedImage(null)
+    setImagePreviewUrl(null)
+    if (imageInputRef.current) {
+      imageInputRef.current.value = ''
+    }
+  }
+
+  // 发送图片消息
+  const handleSendImage = async () => {
+    if (!selectedImage || !resolvedChatId || isUploadingImage) return
+    const authorId = getChatParticipantId()
+    if (!authorId) return
+
+    setIsUploadingImage(true)
+
+    try {
+      // 压缩图片
+      const compressedImage = await compressImage(selectedImage)
+
+      // 上传图片
+      const uploadResult = await uploadImage(compressedImage)
+
+      // 发送图片消息
+      await gatewayJson(`/v2/chat/conversations/${resolvedChatId}/messages`, {
+        method: 'POST',
+        body: JSON.stringify({
+          author_id: authorId,
+          body: '',
+          media_type: 'image',
+          media_url: uploadResult.mediaUrl,
+          media_metadata: uploadResult.metadata,
+        }),
+      })
+
+      // 乐观更新：添加图片消息到列表
+      const tempId = `temp-${Date.now()}`
+      const optimisticMessage: Message = {
+        id: tempId,
+        type: 'sent',
+        content: '', // 图片消息没有文本内容
+        timestamp: '刚刚',
+        mediaType: 'image',
+        mediaUrl: uploadResult.mediaUrl,
+      }
+      setMessages(prev => [...prev, optimisticMessage])
+
+      // 清理选择状态
+      handleCancelImage()
+    } catch (error) {
+      notifyError(error, '图片发送失败')
+    } finally {
+      setIsUploadingImage(false)
     }
   }
 
@@ -562,13 +516,6 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
               {verified && <BadgeCheck className="w-4 h-4 text-primary" aria-label="已认证" />}
             </div>
           </div>
-          <button
-            className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors focus-ring rounded-full"
-            aria-label="语音通话（即将上线）"
-            disabled
-          >
-            <Phone className="w-5 h-5" />
-          </button>
           <button
             className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors focus-ring rounded-full"
             aria-label="更多选项"
@@ -637,10 +584,23 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
                     ? 'bg-primary text-primary-foreground rounded-br-md'
                     : 'bg-card border border-border rounded-bl-md'
                 )}>
-                  {msg.content}
+                  {/* 图片消息 */}
+                  {msg.mediaType === 'image' && msg.mediaUrl ? (
+                    <div className="max-w-[200px]">
+                      <img
+                        src={msg.mediaUrl}
+                        alt="图片消息"
+                        className="w-full h-auto rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                        onClick={() => window.open(msg.mediaUrl, '_blank')}
+                      />
+                    </div>
+                  ) : (
+                    /* 文本消息 */
+                    msg.content
+                  )}
                 </div>
-                              </div>
-              {isSent && (
+              </div>
+              {!isAssistant && isSent && (
                 <div className={cn('w-8 h-8 rounded-full overflow-hidden bg-secondary flex-shrink-0', showAvatar ? 'opacity-100' : 'opacity-0')}>
                   <Image
                     src={myAvatar}
@@ -658,56 +618,314 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
       </div>
 
       {/* Input area */}
-      <div className="flex-shrink-0 px-4 py-3 bg-background border-t border-border safe-area-bottom">
-        <div className="flex items-center gap-2 bg-secondary rounded-xl px-3 py-2 transition-all focus-within:ring-2 focus-within:ring-primary/30">
-          <button 
-            aria-label="发送图片（即将上线）" 
-            className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
-            disabled
+      <div className="flex-shrink-0 bg-background border-t border-border safe-area-bottom">
+        {/* 小雅私信悬浮面板（输入框上方，不遮挡对话） */}
+        {showXiaoyaChat && resolvedCaseId && (
+          <div className="flex-shrink-0 px-4 py-3 bg-gradient-to-r from-purple-50/50 to-blue-50/50 animate-slide-down">
+            {/* 面板内容 */}
+            <div className="bg-white/80 backdrop-blur-sm rounded-xl shadow-sm border border-purple-100">
+              {/* 头部 */}
+              <div className="flex items-center justify-between px-3 py-2.5 border-b border-purple-100/50">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-full overflow-hidden bg-gradient-to-br from-purple-400 to-blue-400 flex items-center justify-center">
+                    <Image
+                      src="/xiaoya-avatar.png"
+                      alt="小雅"
+                      width={28}
+                      height={28}
+                      className="object-cover"
+                    />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium text-purple-700">小雅 · 私信助手</h3>
+                    <p className="text-[10px] text-purple-500/70">对方看不到这些对话</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowXiaoyaChat(false)}
+                  className="w-7 h-7 rounded-full hover:bg-purple-100 flex items-center justify-center transition-colors"
+                  aria-label="收起"
+                >
+                  <X className="w-4 h-4 text-purple-600" />
+                </button>
+              </div>
+
+              {/* 消息列表 - 最多显示3条 */}
+              <div className="max-h-[120px] overflow-y-auto px-3 py-2 space-y-2">
+                {xiaoyaMessages.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-3 gap-2 text-center">
+                    <p className="text-xs text-purple-600/80">有什么想悄悄问小雅的吗？</p>
+                    <p className="text-[10px] text-purple-400/60">比如：帮我分析下对方说的话</p>
+                  </div>
+                ) : (
+                  xiaoyaMessages.slice(-3).map((msg) => (
+                    <div
+                      key={msg.id}
+                      className={cn('flex', msg.isFromMe ? 'justify-end' : 'justify-start')}
+                    >
+                      <div
+                        className={cn(
+                          'max-w-[85%] px-2.5 py-1.5 rounded-xl text-xs',
+                          msg.isFromMe
+                            ? 'bg-purple-100 text-purple-700 rounded-br-md'
+                            : 'bg-secondary text-foreground rounded-bl-md',
+                        )}
+                      >
+                        {msg.body}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* 输入框 */}
+              <div className="px-3 py-2 border-t border-purple-100/50">
+                <div className="flex items-center gap-2 bg-white/60 rounded-lg px-2.5 py-1.5 border border-purple-100/30">
+                  <input
+                    value={xiaoyaInputValue}
+                    onChange={(e) => setXiaoyaInputValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault()
+                        void handleSendXiaoyaMessage()
+                      }
+                    }}
+                    placeholder="跟小雅说点悄悄话..."
+                    className="flex-1 bg-transparent text-xs placeholder:text-purple-400/50 focus:outline-none"
+                    disabled={!xiaoyaConversationId}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void handleSendXiaoyaMessage()}
+                    disabled={!xiaoyaInputValue.trim() || xiaoyaIsSending || !xiaoyaConversationId}
+                    className={cn(
+                      'w-6 h-6 rounded-full flex items-center justify-center transition-all',
+                      xiaoyaInputValue.trim() && !xiaoyaIsSending
+                        ? 'bg-purple-500 hover:bg-purple-600'
+                        : 'bg-purple-100 cursor-not-allowed',
+                    )}
+                  >
+                    {xiaoyaIsSending ? (
+                      <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <Send className={cn('w-3 h-3', xiaoyaInputValue.trim() ? 'text-white' : 'text-purple-300')} />
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 隐藏的文件输入 */}
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={handleImageSelect}
+        />
+
+        {/* 图片预览区域 */}
+        {imagePreviewUrl && selectedImage && (
+          <div className="px-4 py-3 bg-background animate-fade-in-up">
+            <div className="relative bg-secondary rounded-xl p-3">
+              <div className="flex items-center gap-3">
+                {/* 预览图片 */}
+                <div className="w-20 h-20 rounded-lg overflow-hidden bg-muted flex-shrink-0">
+                  <img
+                    src={imagePreviewUrl}
+                    alt="预览"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                {/* 文件信息 */}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{selectedImage.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {(selectedImage.size / 1024).toFixed(1)} KB
+                  </p>
+                </div>
+                {/* 取消按钮 */}
+                <button
+                  onClick={handleCancelImage}
+                  className="w-8 h-8 rounded-full bg-muted hover:bg-muted/80 flex items-center justify-center"
+                  aria-label="取消"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              {/* 发送按钮 */}
+              <div className="mt-3 flex justify-end">
+                <button
+                  onClick={() => void handleSendImage()}
+                  disabled={isUploadingImage}
+                  className={cn(
+                    'px-4 py-2 rounded-lg text-sm font-medium transition-all',
+                    isUploadingImage
+                      ? 'bg-muted text-muted-foreground cursor-not-allowed'
+                      : 'bg-primary text-primary-foreground hover:bg-primary/90'
+                  )}
+                >
+                  {isUploadingImage ? '发送中...' : '发送图片'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 加号弹出菜单 */}
+        {showActionMenu && !imagePreviewUrl && (
+          <div
+            className="px-4 py-3 bg-background animate-fade-in-up"
+            onClick={(e) => {
+              // 点击背景关闭菜单，但不关闭文件输入弹出的选择窗口
+              if (e.target === e.currentTarget) {
+                setShowActionMenu(false)
+              }
+            }}
           >
-            <ImageIcon className="w-5 h-5" />
-          </button>
-          <input
-            ref={inputRef}
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="输入消息..."
-            className="flex-1 bg-transparent text-sm placeholder:text-muted-foreground focus:outline-none"
-            aria-label="输入消息"
-          />
-          <button 
-            aria-label="语音输入（即将上线）" 
-            className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
-            disabled
-          >
-            <Mic className="w-5 h-5" />
-          </button>
-          <button
-            aria-label={isSending ? '发送中' : '发送消息'}
-            onClick={() => void handleSend()}
-            disabled={!inputValue.trim() || isSending}
-            className={cn(
-              'w-8 h-8 rounded-full flex items-center justify-center transition-all',
-              inputValue.trim() && !isSending
-                ? 'bg-primary hover:bg-primary/90' 
-                : 'bg-muted cursor-not-allowed'
-            )}
-          >
-            {isSending ? (
-              <div className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
-            ) : (
-              <Send className={cn('w-4 h-4', inputValue.trim() ? 'text-primary-foreground' : 'text-muted-foreground')} />
-            )}
-          </button>
+            <div className="grid grid-cols-4 gap-4">
+              {/* 图片 */}
+              <button
+                onClick={() => imageInputRef.current?.click()}
+                className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-secondary hover:bg-secondary/80 transition-colors"
+                aria-label="发送图片"
+              >
+                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                  <ImageIcon className="w-6 h-6 text-primary" />
+                </div>
+                <span className="text-xs text-foreground">图片</span>
+              </button>
+              {/* 视频通话 */}
+              <button
+                onClick={() => {
+                  setVideoCallType('video')
+                  setVideoCallId(`call-${Date.now()}`)
+                  setShowVideoCall(true)
+                  setShowActionMenu(false)
+                }}
+                className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-secondary hover:bg-secondary/80 transition-colors"
+                aria-label="视频通话"
+              >
+                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Video className="w-6 h-6 text-primary" />
+                </div>
+                <span className="text-xs text-foreground">视频</span>
+              </button>
+              {/* 语音通话 */}
+              <button
+                onClick={() => {
+                  setVideoCallType('audio')
+                  setVideoCallId(`call-${Date.now()}`)
+                  setShowVideoCall(true)
+                  setShowActionMenu(false)
+                }}
+                className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-secondary hover:bg-secondary/80 transition-colors"
+                aria-label="语音通话"
+              >
+                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Phone className="w-6 h-6 text-primary" />
+                </div>
+                <span className="text-xs text-foreground">语音</span>
+              </button>
+              {/* 小雅助手 */}
+              <button
+                onClick={() => setShowXiaoyaChat(!showXiaoyaChat)}
+                className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-secondary hover:bg-secondary/80 transition-colors"
+                aria-label="私信小雅"
+              >
+                <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center overflow-hidden">
+                  <Image
+                    src="/xiaoya-avatar.png"
+                    alt="小雅"
+                    width={24}
+                    height={24}
+                    className="object-cover opacity-70"
+                  />
+                </div>
+                <span className="text-xs text-muted-foreground">小雅</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* 输入框区域 */}
+        <div className="px-4 py-3">
+          <div className="flex items-center gap-2 bg-secondary rounded-xl px-3 py-2 transition-all focus-within:ring-2 focus-within:ring-primary/30">
+            {/* 加号按钮 */}
+            <button
+              aria-label={showActionMenu ? '收起菜单' : '展开菜单'}
+              onClick={() => setShowActionMenu(!showActionMenu)}
+              className={cn(
+                'w-8 h-8 rounded-full flex items-center justify-center transition-all',
+                showActionMenu
+                  ? 'bg-primary text-primary-foreground rotate-45'
+                  : 'bg-muted hover:bg-primary/10',
+              )}
+            >
+              <Plus className="w-5 h-5" />
+            </button>
+            {/* 语音按钮（直接显示在输入框旁边） */}
+            <button
+              aria-label="语音输入（即将上线）"
+              className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+              disabled
+            >
+              <Mic className="w-5 h-5" />
+            </button>
+            {/* 输入框 */}
+            <input
+              ref={inputRef}
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onFocus={() => setShowActionMenu(false)}
+              placeholder="输入消息..."
+              className="flex-1 bg-transparent text-sm placeholder:text-muted-foreground focus:outline-none"
+              aria-label="输入消息"
+            />
+            {/* 发送按钮 */}
+            <button
+              aria-label={isSending ? '发送中' : '发送消息'}
+              onClick={() => void handleSend()}
+              disabled={!inputValue.trim() || isSending}
+              className={cn(
+                'w-8 h-8 rounded-full flex items-center justify-center transition-all',
+                inputValue.trim() && !isSending
+                  ? 'bg-primary hover:bg-primary/90'
+                  : 'bg-muted cursor-not-allowed'
+              )}
+            >
+              {isSending ? (
+                <div className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+              ) : (
+                <Send className={cn('w-4 h-4', inputValue.trim() ? 'text-primary-foreground' : 'text-muted-foreground')} />
+              )}
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* 私信悬浮球 */}
-      {resolvedCaseId && (
-        <PrivateChatFab
-          caseId={resolvedCaseId}
-          requesterId={getChatParticipantId() || ''}
+      {/* 视频通话弹窗 */}
+      {showVideoCall && videoCallId && resolvedCaseId && (
+        <VideoCallModal
+          callId={videoCallId}
+          callerId={getChatParticipantId() || ''}
+          calleeId={counterpartId || ''}
+          callType={videoCallType}
+          callerName="我"
+          callerAvatar={myAvatar}
+          calleeName={chatTitle}
+          calleeAvatar={chatAvatar}
+          isInitiator={true}
+          userId={getChatParticipantId() || ''}
+          signalingServerUrl={process.env.NEXT_PUBLIC_SIGNALING_SERVER_URL || 'ws://localhost:8080'}
+          onClose={() => {
+            setShowVideoCall(false)
+            setVideoCallId(null)
+          }}
         />
       )}
     </div>
