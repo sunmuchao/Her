@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { AlertCircle, BadgeCheck, ChevronDown, ChevronRight, Loader2, MailOpen, Pin, Trash2, X, MessageCircle, Clock, CheckCheck, Eye } from 'lucide-react'
+import { AlertCircle, BadgeCheck, ChevronDown, ChevronRight, Loader2, MailOpen, Pin, Trash2, X, MessageCircle, Clock, CheckCheck, Eye, Send, Sparkles, Smile, ExternalLink } from 'lucide-react'
 import Image from 'next/image'
 import { fetchRelationshipsUnreadSummary } from '@/lib/api/endpoints/chat'
 import { fetchTrustHub } from '@/lib/api/endpoints/trust-hub'
@@ -238,8 +238,92 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification, onN
   }>>({})
   const [openXiaoyaCaseId, setOpenXiaoyaCaseId] = useState<string | null>(null) // 当前展开的复盘面板
 
+  // 小雅底部面板状态
+  const [xiaoyaSheetHeight, setXiaoyaSheetHeight] = useState<'collapsed' | 'half' | 'full'>('half')
+  const [xiaoyaIsTyping, setXiaoyaIsTyping] = useState(false)
+  const [xiaoyaInputValue, setXiaoyaInputValue] = useState('')
+  const [xiaoyaIsSending, setXiaoyaIsSending] = useState(false)
+  const [xiaoyaMessages, setXiaoyaMessages] = useState<Array<{
+    id: string
+    body: string
+    isFromMe: boolean
+    createdAt: string
+  }>>([])
+  const xiaoyaDragStartY = useRef(0)
+  const xiaoyaDragStartHeight = useRef<'collapsed' | 'half' | 'full'>('half')
+  const xiaoyaMessagesEndRef = useRef<HTMLDivElement>(null)
+
   // 牵线中折叠状态：如果"正在进行中"有卡片，则默认折叠"牵线中"
   const [isPendingSectionCollapsed, setIsPendingSectionCollapsed] = useState(true)
+
+  // 当打开小雅面板时，加载消息并模拟正在输入
+  useEffect(() => {
+    if (openXiaoyaCaseId) {
+      const xiaoyaData = xiaoyaUnreadByCaseId[openXiaoyaCaseId]
+      if (xiaoyaData) {
+        // 模拟加载历史消息
+        setXiaoyaMessages([
+          {
+            id: '1',
+            body: xiaoyaData.lastMessage || '刚才聊得怎么样呀？有需要我帮忙跟进的吗？',
+            isFromMe: false,
+            createdAt: new Date().toISOString(),
+          },
+        ])
+        // 模拟小雅正在输入
+        setXiaoyaIsTyping(true)
+        const timer = setTimeout(() => {
+          setXiaoyaIsTyping(false)
+        }, 2000)
+        return () => clearTimeout(timer)
+      }
+    } else {
+      setXiaoyaMessages([])
+      setXiaoyaInputValue('')
+    }
+  }, [openXiaoyaCaseId, xiaoyaUnreadByCaseId])
+
+  // 自动滚动到最新消息
+  useEffect(() => {
+    xiaoyaMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [xiaoyaMessages])
+
+  // 发送小雅消息
+  async function handleSendXiaoyaMessage() {
+    if (!xiaoyaInputValue.trim() || xiaoyaIsSending) return
+    const messageContent = xiaoyaInputValue.trim()
+    setXiaoyaInputValue('')
+    setXiaoyaIsSending(true)
+    
+    // 添加用户消息
+    const userMessage = {
+      id: `user-${Date.now()}`,
+      body: messageContent,
+      isFromMe: true,
+      createdAt: new Date().toISOString(),
+    }
+    setXiaoyaMessages((prev) => [...prev, userMessage])
+    
+    // 模拟小雅回复
+    setXiaoyaIsTyping(true)
+    await new Promise((resolve) => setTimeout(resolve, 1500))
+    setXiaoyaIsTyping(false)
+    
+    const xiaoyaReply = {
+      id: `xiaoya-${Date.now()}`,
+      body: '好的，我收到啦！我会帮你分析一下，稍后给你建议哦～',
+      isFromMe: false,
+      createdAt: new Date().toISOString(),
+    }
+    setXiaoyaMessages((prev) => [...prev, xiaoyaReply])
+    setXiaoyaIsSending(false)
+  }
+
+  // 获取当前打开的关系信息
+  function getOpenXiaoyaRelationship(): ActiveRelationship | undefined {
+    if (!openXiaoyaCaseId) return undefined
+    return activeRelationships.find((rel) => rel.caseId === openXiaoyaCaseId)
+  }
 
   // 加载数据的核心函数
   const loadCases = useCallback(async (showRefreshIndicator = false) => {
@@ -711,7 +795,7 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification, onN
                       {/* 第三行：时间 + 小雅入口 */}
                       <div className="flex items-center gap-2 mt-1">
                         <span className="text-[10px] text-muted-foreground/60">{formatRelativeTime(rel.lastMessageTime)}</span>
-                        {/* 小雅复盘入口 - 使用 gold 主题色 */}
+                        {/* 小雅复盘入口 - 使用 gold 主题色，更醒目的脉冲动画 */}
                         {rel.hasXiaoyaUnread && rel.xiaoyaConversationId && (
                           <button
                             type="button"
@@ -719,18 +803,20 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification, onN
                               e.stopPropagation()
                               setOpenXiaoyaCaseId(openXiaoyaCaseId === rel.caseId ? null : rel.caseId)
                             }}
-                            className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-gold-soft text-gold text-[10px] hover:bg-gold/20 transition-colors"
+                            className="relative flex items-center gap-1 px-2 py-0.5 rounded-full bg-gold-soft text-gold text-[10px] hover:bg-gold/20 transition-colors group"
                             aria-label="查看小雅复盘"
                           >
+                            {/* 脉冲动画背景 */}
+                            <span className="absolute inset-0 rounded-full bg-gold/30 animate-ping-slow" />
                             <Image
                               src="/xiaoya-avatar.png"
                               alt="小雅"
                               width={12}
                               height={12}
-                              className="rounded-full"
+                              className="rounded-full relative z-10"
                             />
-                            <span>小雅复盘</span>
-                            <span className="w-1.5 h-1.5 rounded-full bg-gold animate-pulse" />
+                            <span className="relative z-10">小雅复盘</span>
+                            <span className="relative z-10 w-2 h-2 rounded-full bg-gold animate-pulse shadow-[0_0_8px_rgba(212,175,55,0.6)]" />
                           </button>
                         )}
                       </div>
@@ -753,39 +839,7 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification, onN
                       {/* 阶段标签 */}
                       <span className="px-2 py-0.5 bg-secondary text-[10px] text-muted-foreground rounded-full whitespace-nowrap">{rel.stage}</span>
                     </div>
-                  </div>
-
-                  {/* 小雅复盘面板 - 使用 gold 主题色 */}
-                                  {openXiaoyaCaseId === rel.caseId && rel.xiaoyaConversationId && (
-                                    <div className="px-3 pb-3 animate-fade-in">
-                                      <div className="bg-gradient-to-r from-gold-soft/50 to-gold-soft/30 rounded-xl p-3 border border-gold/20">
-                                        <div className="flex items-center justify-between mb-2">
-                                          <div className="flex items-center gap-2">
-                                            <Image
-                                              src="/xiaoya-avatar.png"
-                                              alt="小雅"
-                                              width={20}
-                                              height={20}
-                                              className="rounded-full"
-                                            />
-                                            <span className="text-sm font-medium text-gold">小雅 · 复盘助手</span>
-                                          </div>
-                                          <button
-                                            type="button"
-                                            onClick={() => setOpenXiaoyaCaseId(null)}
-                                            className="w-6 h-6 rounded-full hover:bg-gold/20 flex items-center justify-center transition-colors"
-                                            aria-label="关闭复盘面板"
-                                          >
-                                            <X className="w-4 h-4 text-gold" />
-                                          </button>
-                                        </div>
-                                        <p className="text-xs text-foreground/80 mb-2">
-                                          {rel.xiaoyaLastMessage || '刚才聊得怎么样呀？有需要我帮忙跟进的吗？'}
-                                        </p>
-                                        <p className="text-[10px] text-muted-foreground">点击进入聊天页与小雅私聊更多</p>
-                                      </div>
-                                    </div>
-                                  )}
+                    </div>
                 </div>
               </SwipeableCard>
             ))}
@@ -975,6 +1029,240 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification, onN
           />
         )}
       </div>
+
+      {/* 小雅复盘底部面板 - Bottom Sheet */}
+      {openXiaoyaCaseId && (
+        <div 
+          className="fixed inset-0 z-50 flex flex-col justify-end"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setOpenXiaoyaCaseId(null)
+            }
+          }}
+        >
+          {/* 背景遮罩 */}
+          <div className="absolute inset-0 bg-black/30 animate-fade-in" />
+          
+          {/* 底部面板 */}
+          <div 
+            className={`relative bg-background rounded-t-2xl shadow-xl transition-all duration-300 ease-out animate-slide-up ${
+              xiaoyaSheetHeight === 'full' ? 'h-[90vh]' : xiaoyaSheetHeight === 'half' ? 'h-[55vh]' : 'h-[200px]'
+            }`}
+          >
+            {/* 拖动手柄 */}
+            <div 
+              className="flex justify-center py-3 cursor-grab active:cursor-grabbing touch-none"
+              onPointerDown={(e) => {
+                xiaoyaDragStartY.current = e.clientY
+                xiaoyaDragStartHeight.current = xiaoyaSheetHeight
+                e.currentTarget.setPointerCapture(e.pointerId)
+              }}
+              onPointerMove={(e) => {
+                if (!e.currentTarget.hasPointerCapture(e.pointerId)) return
+                const delta = xiaoyaDragStartY.current - e.clientY
+                if (delta > 100 && xiaoyaDragStartHeight.current !== 'full') {
+                  setXiaoyaSheetHeight('full')
+                } else if (delta < -100 && xiaoyaDragStartHeight.current === 'full') {
+                  setXiaoyaSheetHeight('half')
+                } else if (delta < -100 && xiaoyaDragStartHeight.current === 'half') {
+                  setXiaoyaSheetHeight('collapsed')
+                } else if (delta > 50 && xiaoyaDragStartHeight.current === 'collapsed') {
+                  setXiaoyaSheetHeight('half')
+                }
+              }}
+              onPointerUp={(e) => {
+                e.currentTarget.releasePointerCapture(e.pointerId)
+              }}
+            >
+              <div className="w-10 h-1 rounded-full bg-border" />
+            </div>
+
+            {/* 头部 - 使用 gold 主题色 */}
+            <div className="flex items-center justify-between px-4 pb-3 border-b border-border">
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <div className="w-10 h-10 rounded-full overflow-hidden bg-gradient-to-br from-gold to-gold/70 flex items-center justify-center">
+                    <Image
+                      src="/xiaoya-avatar.png"
+                      alt="小雅"
+                      width={40}
+                      height={40}
+                      className="object-cover"
+                    />
+                  </div>
+                  {/* 在线状态指示 */}
+                  <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-background" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-gold" />
+                    小雅 · 复盘助手
+                  </h3>
+                  <p className="text-[10px] text-muted-foreground">
+                    {xiaoyaIsTyping ? (
+                      <span className="flex items-center gap-1 text-gold">
+                        正在输入
+                        <span className="flex gap-0.5">
+                          <span className="w-1 h-1 rounded-full bg-gold animate-bounce" style={{ animationDelay: '0ms' }} />
+                          <span className="w-1 h-1 rounded-full bg-gold animate-bounce" style={{ animationDelay: '150ms' }} />
+                          <span className="w-1 h-1 rounded-full bg-gold animate-bounce" style={{ animationDelay: '300ms' }} />
+                        </span>
+                      </span>
+                    ) : (
+                      `关于「${getOpenXiaoyaRelationship()?.name || '对方'}」的复盘`
+                    )}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {/* 查看完整对话按钮 */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const rel = getOpenXiaoyaRelationship()
+                    if (rel) {
+                      onOpenChat(rel.id, {
+                        title: rel.name,
+                        avatar: rel.image,
+                        caseId: rel.caseId,
+                        counterpartId: rel.counterpartId,
+                      })
+                      setOpenXiaoyaCaseId(null)
+                    }
+                  }}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-gold/10 text-gold text-xs hover:bg-gold/20 transition-colors"
+                  aria-label="查看完整对话"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  进入聊天
+                </button>
+                {/* 切换高度按钮 */}
+                <button
+                  type="button"
+                  onClick={() => setXiaoyaSheetHeight(xiaoyaSheetHeight === 'full' ? 'half' : 'full')}
+                  className="w-8 h-8 rounded-full hover:bg-secondary flex items-center justify-center transition-colors"
+                  aria-label={xiaoyaSheetHeight === 'full' ? '缩小' : '全屏'}
+                >
+                  <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${xiaoyaSheetHeight === 'full' ? '' : 'rotate-180'}`} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOpenXiaoyaCaseId(null)}
+                  className="w-8 h-8 rounded-full hover:bg-secondary flex items-center justify-center transition-colors"
+                  aria-label="关闭"
+                >
+                  <X className="w-4 h-4 text-muted-foreground" />
+                </button>
+              </div>
+            </div>
+
+            {/* 消息列表 - 完整私信历史，带时间分割线 */}
+            <div 
+              className="flex-1 overflow-y-auto px-4 py-3 space-y-3" 
+              style={{ maxHeight: xiaoyaSheetHeight === 'full' ? 'calc(90vh - 160px)' : xiaoyaSheetHeight === 'half' ? 'calc(55vh - 160px)' : '40px' }}
+            >
+              {xiaoyaMessages.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-8 gap-3 text-center">
+                  <div className="w-16 h-16 rounded-full bg-gold-soft flex items-center justify-center">
+                    <Sparkles className="w-8 h-8 text-gold" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-foreground">有什么想悄悄问小雅的吗？</p>
+                    <p className="text-xs text-muted-foreground mt-1">比如：帮我分析下对方说的话</p>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {xiaoyaMessages.map((msg, index) => {
+                    // 时间分割线逻辑
+                    const showDateDivider = index === 0 || (() => {
+                      const prevDate = new Date(xiaoyaMessages[index - 1]?.createdAt || '').toDateString()
+                      const currDate = new Date(msg.createdAt).toDateString()
+                      return prevDate !== currDate
+                    })()
+                    
+                    return (
+                      <div key={msg.id}>
+                        {/* 时间分割线 */}
+                        {showDateDivider && (
+                          <div className="flex items-center gap-3 py-2">
+                            <div className="flex-1 h-px bg-border" />
+                            <span className="text-[10px] text-muted-foreground">
+                              {new Date(msg.createdAt).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                            <div className="flex-1 h-px bg-border" />
+                          </div>
+                        )}
+                        <div className={`flex ${msg.isFromMe ? 'justify-end' : 'justify-start'}`}>
+                          {!msg.isFromMe && (
+                            <div className="w-8 h-8 rounded-full overflow-hidden bg-gradient-to-br from-gold to-gold/70 mr-2 flex-shrink-0">
+                              <Image src="/xiaoya-avatar.png" alt="小雅" width={32} height={32} className="object-cover" />
+                            </div>
+                          )}
+                          <div
+                            className={`max-w-[75%] px-3 py-2 rounded-2xl text-sm ${
+                              msg.isFromMe
+                                ? 'bg-gold text-white rounded-br-md'
+                                : 'bg-secondary text-foreground rounded-bl-md'
+                            }`}
+                          >
+                            {msg.body}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                  <div ref={xiaoyaMessagesEndRef} />
+                </>
+              )}
+            </div>
+
+            {/* 输入框 - 支持直接回复 */}
+            <div className="px-4 py-3 border-t border-border bg-background">
+              <div className="flex items-center gap-2 bg-secondary rounded-xl px-3 py-2">
+                {/* 表情面板入口 */}
+                <button
+                  type="button"
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                  aria-label="表情"
+                >
+                  <Smile className="w-5 h-5" />
+                </button>
+                <input
+                  value={xiaoyaInputValue}
+                  onChange={(e) => setXiaoyaInputValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      void handleSendXiaoyaMessage()
+                    }
+                  }}
+                  placeholder="跟小雅说点悄悄话..."
+                  className="flex-1 bg-transparent text-sm placeholder:text-muted-foreground focus:outline-none"
+                  aria-label="输入私信内容"
+                />
+                <button
+                  type="button"
+                  onClick={() => void handleSendXiaoyaMessage()}
+                  disabled={!xiaoyaInputValue.trim() || xiaoyaIsSending}
+                  className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
+                    xiaoyaInputValue.trim() && !xiaoyaIsSending
+                      ? 'bg-gold hover:bg-gold/90'
+                      : 'bg-muted cursor-not-allowed'
+                  }`}
+                  aria-label={xiaoyaIsSending ? '发送中' : '发送'}
+                >
+                  {xiaoyaIsSending ? (
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <Send className={`w-4 h-4 ${xiaoyaInputValue.trim() ? 'text-white' : 'text-muted-foreground'}`} />
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
