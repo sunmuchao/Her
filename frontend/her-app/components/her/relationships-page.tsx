@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { AlertCircle, BadgeCheck, ChevronRight, Loader2, MailOpen, Pin, Trash2 } from 'lucide-react'
+import { AlertCircle, BadgeCheck, ChevronRight, Loader2, MailOpen, Pin, Trash2, X } from 'lucide-react'
 import Image from 'next/image'
 import { fetchRelationshipsUnreadSummary } from '@/lib/api/endpoints/chat'
 import { fetchTrustHub } from '@/lib/api/endpoints/trust-hub'
@@ -51,6 +51,10 @@ type ActiveRelationship = {
   image: string
   unreadCount: number
   counterpartId?: string
+  // 小雅私信相关字段
+  hasXiaoyaUnread?: boolean        // 小雅是否有未读私信
+  xiaoyaConversationId?: string    // 小雅会话ID
+  xiaoyaLastMessage?: string       // 小雅最新私信内容
 }
 
 type SwipeAction = {
@@ -226,6 +230,14 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification, onN
   const [deleteConfirmCaseId, setDeleteConfirmCaseId] = useState<string | null>(null)
   const { usingMockData, applyProvenance } = usePageDataSource()
 
+  // 小雅私信状态
+  const [xiaoyaUnreadByCaseId, setXiaoyaUnreadByCaseId] = useState<Record<string, {
+    hasUnread: boolean
+    conversationId: string
+    lastMessage: string
+  }>>({})
+  const [openXiaoyaCaseId, setOpenXiaoyaCaseId] = useState<string | null>(null) // 当前展开的复盘面板
+
   // 加载数据的核心函数
   const loadCases = useCallback(async (showRefreshIndicator = false) => {
     if (showRefreshIndicator) {
@@ -259,11 +271,19 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification, onN
           })),
         )
         const lastMessages: Record<string, { content: string; time: string }> = {}
+        // 小雅私信状态
+        const xiaoyaUnreadByCaseId: Record<string, {
+          hasUnread: boolean
+          conversationId: string
+          lastMessage: string
+        }> = {}
+
         timelines.forEach((result) => {
           if (result.status === 'fulfilled' && result.value.data?.conversations) {
             const item = result.value
             const data = item.data
             if (!data) return
+
             // 找到 main_group 对话的最新消息
             const mainConv = data.conversations.find(
               (c) => c.conversation.channel_key === 'main_group',
@@ -275,9 +295,31 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification, onN
                 time: lastMsg.created_at || '',
               }
             }
+
+            // ✅ 检测 assistant_dm 会话（小雅私信，channel_key 为 assistant_dm_a 或 assistant_dm_b）
+            const assistantDm = data.conversations.find(
+              (c) => c.conversation.channel_key.startsWith('assistant_dm'),
+            )
+            if (assistantDm && assistantDm.messages && assistantDm.messages.length > 0) {
+              // 检查会话成员中是否有 agent 角色
+              const agentMember = assistantDm.conversation.members?.find(
+                (m) => m.member_role === 'agent',
+              )
+              const lastDmMsg = assistantDm.messages[assistantDm.messages.length - 1]
+
+              // 如果消息作者是 agent，则是小雅私信
+              if (agentMember && lastDmMsg.author_id === agentMember.participant_id) {
+                xiaoyaUnreadByCaseId[item.caseId] = {
+                  hasUnread: true,
+                  conversationId: assistantDm.conversation.conversation_id,
+                  lastMessage: lastDmMsg.body,
+                }
+              }
+            }
           }
         })
         setLastMessagesByCaseId(lastMessages)
+        setXiaoyaUnreadByCaseId(xiaoyaUnreadByCaseId)
       }
 
       const unreadSummary = await fetchRelationshipsUnreadSummary().catch(() => null)
@@ -448,6 +490,7 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification, onN
     .map((item) => {
       const caseIdStr = String(item.case_id)
       const lastMsgData = lastMessagesByCaseId[caseIdStr]
+      const xiaoyaData = xiaoyaUnreadByCaseId[caseIdStr]
       return {
         id: String(item.main_conversation_id),
         caseId: caseIdStr,
@@ -459,6 +502,10 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification, onN
         image: resolveProfileImageUrl(item.counterpart_image ?? undefined, PLACEHOLDER_AVATAR),
         unreadCount: unreadByCaseId[caseIdStr] || 0,
         counterpartId: item.counterpart_profile_id ? String(item.counterpart_profile_id) : undefined,
+        // 小雅私信相关字段
+        hasXiaoyaUnread: xiaoyaData?.hasUnread || false,
+        xiaoyaConversationId: xiaoyaData?.conversationId,
+        xiaoyaLastMessage: xiaoyaData?.lastMessage,
       }
     })
     .sort((a, b) => {
@@ -657,9 +704,63 @@ export default function RelationshipsPage({ onOpenChat, onStartVerification, onN
                       <p className="text-sm text-muted-foreground truncate mt-0.5">
                         {rel.lastMessage}
                       </p>
-                      <span className="text-[10px] text-muted-foreground">{formatRelativeTime(rel.lastMessageTime)}</span>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-[10px] text-muted-foreground">{formatRelativeTime(rel.lastMessageTime)}</span>
+                        {/* 小雅复盘入口 */}
+                        {rel.hasXiaoyaUnread && rel.xiaoyaConversationId && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setOpenXiaoyaCaseId(openXiaoyaCaseId === rel.caseId ? null : rel.caseId)
+                            }}
+                            className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-100/80 text-purple-600 text-[10px] hover:bg-purple-100 transition-colors"
+                          >
+                            <Image
+                              src="/xiaoya-avatar.png"
+                              alt="小雅"
+                              width={12}
+                              height={12}
+                              className="rounded-full"
+                            />
+                            <span>小雅复盘</span>
+                            <span className="w-1.5 h-1.5 rounded-full bg-rose animate-pulse" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
+
+                  {/* 小雅复盘面板 */}
+                  {openXiaoyaCaseId === rel.caseId && rel.xiaoyaConversationId && (
+                    <div className="px-3 pb-3 animate-fade-in">
+                      <div className="bg-gradient-to-r from-purple-50/50 to-blue-50/50 rounded-xl p-3 border border-purple-100/50">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <Image
+                              src="/xiaoya-avatar.png"
+                              alt="小雅"
+                              width={20}
+                              height={20}
+                              className="rounded-full"
+                            />
+                            <span className="text-sm font-medium text-purple-700">小雅 · 复盘助手</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setOpenXiaoyaCaseId(null)}
+                            className="w-6 h-6 rounded-full hover:bg-purple-100 flex items-center justify-center"
+                          >
+                            <X className="w-4 h-4 text-purple-600" />
+                          </button>
+                        </div>
+                        <p className="text-xs text-purple-600/80 mb-2">
+                          {rel.xiaoyaLastMessage || '刚才聊得怎么样呀？有需要我帮忙跟进的吗？'}
+                        </p>
+                        <p className="text-[10px] text-purple-400/60">点击进入聊天页与小雅私聊更多～</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </SwipeableCard>
             ))}

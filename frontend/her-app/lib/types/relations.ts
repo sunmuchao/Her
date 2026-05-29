@@ -43,6 +43,7 @@ export type CaseConversationTimelineResponse = {
     messages: Array<{
       message_id: number
       author_id: string
+      source: string
       body: string
       created_at: string
     }>
