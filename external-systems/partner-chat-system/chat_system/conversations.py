@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 import uuid
 from datetime import datetime
 from typing import Any
@@ -571,26 +570,6 @@ def _maybe_enqueue_persona_sync_job_for_conversation(
     )
 
 
-def _dedupe_message_body(body: str) -> str:
-    """Remove duplicate paragraphs from message body (common AI output issue)."""
-    if not body:
-        return body
-    # Split by common paragraph separators (double newline or single newline)
-    paragraphs = re.split(r"\n\s*\n|\n", body.strip())
-    # Remove empty paragraphs and dedupe
-    seen: set[str] = set()
-    unique_paragraphs: list[str] = []
-    for para in paragraphs:
-        stripped = para.strip()
-        if not stripped:
-            continue
-        if stripped not in seen:
-            seen.add(stripped)
-            unique_paragraphs.append(stripped)
-    # Rejoin with single newline
-    return "\n".join(unique_paragraphs)
-
-
 def post_conversation_message(
     conn,
     conversation_id: str,
@@ -612,9 +591,6 @@ def post_conversation_message(
     body_text = str(body or "")
     if not body_text:
         raise ValueError("body is required")
-
-    # ✅ Dedupe message body to fix AI-generated duplicate content issue
-    body_text = _dedupe_message_body(body_text)
 
     author_member = get_conversation_member(conn, conversation_id, author_id)
     resolved_source = str(source or "").strip() or None

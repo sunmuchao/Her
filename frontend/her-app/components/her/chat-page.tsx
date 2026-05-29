@@ -723,57 +723,60 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
                   />
                 </div>
               )}
-              <div className="max-w-[75%]">
-                <div className={cn(
-                  'px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed',
-                  isSent
-                    ? 'bg-primary text-primary-foreground rounded-br-md'
-                    : 'bg-card border border-border rounded-bl-md'
-                )}>
-                  {/* 图片消息 - 支持长按预览、双击放大 */}
-                                  {msg.mediaType === 'image' && msg.mediaUrl ? (
-                                    <div 
-                                      className="max-w-[200px]"
-                                      onContextMenu={(e) => {
-                                        e.preventDefault()
-                                        setPreviewImageUrl(msg.mediaUrl || null)
-                                        setImageScale(1)
-                                      }}
-                                      onClick={() => {
-                                        const now = Date.now()
-                                        const timeSinceLastTap = now - lastTapRef.current
-                                        if (timeSinceLastTap < 300) {
-                                          // 双击放大
-                                          setPreviewImageUrl(msg.mediaUrl || null)
-                                          setImageScale(2)
-                                        }
-                                        lastTapRef.current = now
-                                      }}
-                                      onTouchStart={(e) => {
-                                        const touchTimer = setTimeout(() => {
-                                          setPreviewImageUrl(msg.mediaUrl || null)
-                                          setImageScale(1)
-                                        }, 500)
-                                        const handleTouchEnd = () => {
-                                          clearTimeout(touchTimer)
-                                          e.currentTarget.removeEventListener('touchend', handleTouchEnd)
-                                        }
-                                        e.currentTarget.addEventListener('touchend', handleTouchEnd)
-                                      }}
-                                    >
-                                      <img
-                                        src={msg.mediaUrl}
-                                        alt="图片消息"
-                                        className="w-full h-auto rounded-lg cursor-pointer hover:opacity-90 transition-opacity select-none"
-                                        draggable={false}
-                                      />
-                                    </div>
-                                  ) : (
-                    /* 文本消息 */
-                    msg.content
-                  )}
+              {/* ✅ 气泡框只对用户消息显示，不对小雅消息显示 */}
+              {!isAssistant && (
+                <div className="max-w-[75%]">
+                  <div className={cn(
+                    'px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed',
+                    isSent
+                      ? 'bg-primary text-primary-foreground rounded-br-md'
+                      : 'bg-card border border-border rounded-bl-md'
+                  )}>
+                    {/* 图片消息 - 支持长按预览、双击放大 */}
+                    {msg.mediaType === 'image' && msg.mediaUrl ? (
+                      <div
+                        className="max-w-[200px]"
+                        onContextMenu={(e) => {
+                          e.preventDefault()
+                          setPreviewImageUrl(msg.mediaUrl || null)
+                          setImageScale(1)
+                        }}
+                        onClick={() => {
+                          const now = Date.now()
+                          const timeSinceLastTap = now - lastTapRef.current
+                          if (timeSinceLastTap < 300) {
+                            // 双击放大
+                            setPreviewImageUrl(msg.mediaUrl || null)
+                            setImageScale(2)
+                          }
+                          lastTapRef.current = now
+                        }}
+                        onTouchStart={(e) => {
+                          const touchTimer = setTimeout(() => {
+                            setPreviewImageUrl(msg.mediaUrl || null)
+                            setImageScale(1)
+                          }, 500)
+                          const handleTouchEnd = () => {
+                            clearTimeout(touchTimer)
+                            e.currentTarget.removeEventListener('touchend', handleTouchEnd)
+                          }
+                          e.currentTarget.addEventListener('touchend', handleTouchEnd)
+                        }}
+                      >
+                        <img
+                          src={msg.mediaUrl}
+                          alt="图片消息"
+                          className="w-full h-auto rounded-lg cursor-pointer hover:opacity-90 transition-opacity select-none"
+                          draggable={false}
+                        />
+                      </div>
+                    ) : (
+                      /* 文本消息 */
+                      msg.content
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
               {!isAssistant && isSent && (
                 <div className={cn('w-8 h-8 rounded-full overflow-hidden bg-secondary flex-shrink-0', showAvatar ? 'opacity-100' : 'opacity-0')}>
                   <Image
