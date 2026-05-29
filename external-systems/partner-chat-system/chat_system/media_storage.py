@@ -119,9 +119,30 @@ def upload_image(
 ) -> dict[str, Any]:
     if not MINIO_AVAILABLE:
         raise RuntimeError("MinIO client not available; install minio package")
+
+    # Quick health check before attempting upload
+    config = _get_minio_config()
+    endpoint = config["endpoint"]
+    try:
+        import socket
+        host, port_str = endpoint.split(":")
+        port = int(port_str)
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(2)
+            if sock.connect_ex((host, port)) != 0:
+                raise RuntimeError(
+                    f"MinIO service unavailable at {endpoint}. "
+                    f"Start it with: docker compose up -d minio"
+                )
+    except (ValueError, OSError) as e:
+        LOGGER.warning("MinIO endpoint check failed: %s", e)
+
     client = _get_minio_client()
     if client is None:
-        raise RuntimeError("Failed to initialize MinIO client")
+        raise RuntimeError(
+            f"Failed to initialize MinIO client for endpoint {endpoint}. "
+            f"Check if MinIO is running: docker compose up -d minio"
+        )
     config = _get_minio_config()
     bucket = config["bucket"]
     _ensure_bucket_exists(client, bucket)
