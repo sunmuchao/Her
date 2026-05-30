@@ -1,0 +1,64 @@
+[2026-05-30 11:40:19 +0800] [16999] [INFO] Starting gunicorn 26.0.0
+[2026-05-30 11:40:19 +0800] [16999] [INFO] Listening at: http://127.0.0.1:8765 (16999)
+[2026-05-30 11:40:19 +0800] [16999] [INFO] Using worker: sync
+[2026-05-30 11:40:19 +0800] [17001] [INFO] Booting worker with pid: 17001
+[2026-05-30 11:40:19 +0800] [17002] [INFO] Booting worker with pid: 17002
+[2026-05-30 11:40:20 +0800] [17003] [INFO] Booting worker with pid: 17003
+[2026-05-30 11:40:20 +0800] [17004] [INFO] Booting worker with pid: 17004
+[2026-05-30 11:40:20 +0800] [17005] [INFO] Booting worker with pid: 17005
+[2026-05-30 11:40:20 +0800] [17006] [INFO] Booting worker with pid: 17006
+[2026-05-30 11:40:20 +0800] [17007] [INFO] Booting worker with pid: 17007
+[2026-05-30 11:40:20 +0800] [17008] [INFO] Booting worker with pid: 17008
+[2026-05-30 11:40:20 +0800] [17009] [INFO] Booting worker with pid: 17009
+[2026-05-30 11:40:20 +0800] [17010] [INFO] Booting worker with pid: 17010
+[2026-05-30 11:40:20 +0800] [17011] [INFO] Booting worker with pid: 17011
+[2026-05-30 11:40:20 +0800] [17012] [INFO] Booting worker with pid: 17012
+[2026-05-30 11:40:20 +0800] [17013] [INFO] Booting worker with pid: 17013
+[2026-05-30 11:40:20 +0800] [17014] [INFO] Booting worker with pid: 17014
+[2026-05-30 11:40:20 +0800] [17015] [INFO] Booting worker with pid: 17015
+[2026-05-30 11:40:20 +0800] [17016] [INFO] Booting worker with pid: 17016
+[2026-05-30 11:40:20 +0800] [17017] [INFO] Booting worker with pid: 17017
+[2026-05-30 11:40:20 +0800] [17018] [INFO] Booting worker with pid: 17018
+[2026-05-30 11:40:20 +0800] [17019] [INFO] Booting worker with pid: 17019
+[2026-05-30 11:40:20 +0800] [17020] [INFO] Booting worker with pid: 17020
+[2026-05-30 11:40:20 +0800] [17021] [INFO] Booting worker with pid: 17021
+[2026-05-30 11:40:21 +0800] [17022] [INFO] Booting worker with pid: 17022
+[2026-05-30 11:40:21 +0800] [17023] [INFO] Booting worker with pid: 17023
+[2026-05-30 11:40:21 +0800] [17024] [INFO] Booting worker with pid: 17024
+[2026-05-30 11:40:21 +0800] [17025] [INFO] Booting worker with pid: 17025
+[2026-05-30 11:40:21 +0800] [16999] [INFO] Control socket listening at /Users/sunmuchao/.gunicorn/gunicorn.ctl
+[2026-05-30 11:42:52 +0800] [17004] [INFO] Worker exiting (pid: 17004)
+[2026-05-30 11:42:52 +0800] [16999] [INFO] Handling signal: term
+[2026-05-30 11:42:52 +0800] [17008] [INFO] Worker exiting (pid: 17008)
+[2026-05-30 11:42:52 +0800] [17005] [INFO] Worker exiting (pid: 17005)
+[2026-05-30 11:42:52 +0800] [17016] [INFO] Worker exiting (pid: 17016)
+[2026-05-30 11:42:52 +0800] [17017] [INFO] Worker exiting (pid: 17017)
+[2026-05-30 11:42:52 +0800] [17018] [INFO] Worker exiting (pid: 17018)
+[2026-05-30 11:42:52 +0800] [17021] [INFO] Worker exiting (pid: 17021)
+[2026-05-30 11:42:52 +0800] [17013] [INFO] Worker exiting (pid: 17013)
+[2026-05-30 11:42:52 +0800] [17019] [INFO] Worker exiting (pid: 17019)
+[2026-05-30 11:42:52 +0800] [17002] [INFO] Worker exiting (pid: 17002)
+[2026-05-30 11:42:52 +0800] [17010] [INFO] Worker exiting (pid: 17010)
+[2026-05-30 11:42:52 +0800] [17006] [INFO] Worker exiting (pid: 17006)
+[2026-05-30 11:42:52 +0800] [17009] [INFO] Worker exiting (pid: 17009)
+[2026-05-30 11:42:52 +0800] [17007] [INFO] Worker exiting (pid: 17007)
+[2026-05-30 11:42:52 +0800] [17012] [INFO] Worker exiting (pid: 17012)
+[2026-05-30 11:42:52 +0800] [17011] [INFO] Worker exiting (pid: 17011)
+[2026-05-30 11:42:52 +0800] [17025] [INFO] Worker exiting (pid: 17025)
+[2026-05-30 11:42:52 +0800] [17015] [INFO] Worker exiting (pid: 17015)
+[2026-05-30 11:42:52 +0800] [17001] [INFO] Worker exiting (pid: 17001)
+[2026-05-30 11:42:52 +0800] [17003] [INFO] Worker exiting (pid: 17003)
+[2026-05-30 11:42:52 +0800] [17023] [INFO] Worker exiting (pid: 17023)
+[2026-05-30 11:42:52 +0800] [17020] [INFO] Worker exiting (pid: 17020)
+[2026-05-30 11:42:52 +0800] [17022] [INFO] Worker exiting (pid: 17022)
+[2026-05-30 11:42:52 +0800] [17024] [INFO] Worker exiting (pid: 17024)
+[2026-05-30 11:42:52 +0800] [17014] [INFO] Worker exiting (pid: 17014)
+[2026-05-30 11:42:52 +0800] [16999] [INFO] Worker (pid:17021) was sent SIGTERM!
+[2026-05-30 11:42:52 +0800] [16999] [INFO] Worker (pid:17019) was sent SIGTERM!
+[2026-05-30 11:42:52 +0800] [16999] [INFO] Worker (pid:17018) was sent SIGTERM!
+[2026-05-30 11:42:52 +0800] [16999] [INFO] Worker (pid:17017) was sent SIGTERM!
+[2026-05-30 11:42:52 +0800] [16999] [INFO] Worker (pid:17016) was sent SIGTERM!
+[2026-05-30 11:42:52 +0800] [16999] [INFO] Worker (pid:17013) was sent SIGTERM!
+[2026-05-30 11:42:52 +0800] [16999] [INFO] Worker (pid:17008) was sent SIGTERM!
+[2026-05-30 11:42:52 +0800] [16999] [INFO] Worker (pid:17005) was sent SIGTERM!
+[2026-05-30 11:42:54 +0800] [16999] [INFO] Shutting down: Master
