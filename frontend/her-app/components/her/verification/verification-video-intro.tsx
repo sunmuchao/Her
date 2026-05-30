@@ -34,21 +34,10 @@ export function VerificationVideoIntro({
         <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mb-6">
           <Camera className="w-10 h-10 text-primary" />
         </div>
-
         <h2 className="font-serif text-xl text-foreground mb-3">验证真实的你</h2>
         <p className="text-sm text-muted-foreground mb-8 leading-relaxed">
           为了保护真实用户的体验，我们需要你完成一个简短的视频认证。
         </p>
-
-        <div className="w-full bg-secondary/50 rounded-xl p-4 text-left mb-8">
-          <h4 className="text-sm font-medium text-foreground mb-2">你需要做什么</h4>
-          <ul className="text-sm text-muted-foreground space-y-1">
-            <li>• 确保光线充足，面部清晰可见</li>
-            <li>• 按照提示完成指定动作</li>
-            <li>• 保持自然表情即可</li>
-          </ul>
-        </div>
-
         <button
           type="button"
           disabled={isSubmittingVideo}

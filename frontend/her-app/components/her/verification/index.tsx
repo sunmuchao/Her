@@ -1,7 +1,6 @@
 'use client'
 
 import { useVerificationFlow } from './use-verification-flow'
-import { VerificationSelectStep } from './verification-select-step'
 import { VerificationVideoIntro } from './verification-video-intro'
 import { VerificationVideoRecord } from './verification-video-record'
 import { VerificationVideoReview } from './verification-video-review'
@@ -17,7 +16,6 @@ export default function VerificationFlowPage({ onBack }: VerificationFlowPagePro
   const {
     fieldVerificationTypes,
     loadError,
-    isLoading,
     step,
     setStep,
     selectedField,
@@ -31,49 +29,41 @@ export default function VerificationFlowPage({ onBack }: VerificationFlowPagePro
     setSelectedFile,
     isSubmittingField,
     fileInputRef,
-    verifiedCount,
-    progress,
-    directEntry,
+    handleDirectBack,
     startVideoVerification,
     handleRecordVideo,
     finishVideoSubmission,
-    handleStartFieldVerification,
     handleSubmitField,
-    getStatusStyles,
-    getStatusText,
-  } = useVerificationFlow()
+  } = useVerificationFlow(onBack)
 
-  // 选择认证类型页面
-  if (step === 'select') {
+  if (loadError) {
     return (
-      <VerificationSelectStep
-        verifiedCount={verifiedCount}
-        progress={progress}
-        fieldVerificationTypes={fieldVerificationTypes}
-        loadError={loadError}
-        isLoading={isLoading}
-        onBack={onBack}
-        onStartVideoVerification={() => setStep('video-intro')}
-        onStartFieldVerification={handleStartFieldVerification}
-        getStatusStyles={getStatusStyles}
-        getStatusText={getStatusText}
-      />
+      <div className="min-h-screen bg-background flex items-center justify-center px-6 text-center">
+        <div>
+          <p className="text-sm text-muted-foreground mb-4">{loadError}</p>
+          <button
+            type="button"
+            onClick={onBack}
+            className="rounded-xl bg-primary px-4 py-3 text-sm font-medium text-primary-foreground"
+          >
+            返回
+          </button>
+        </div>
+      </div>
     )
   }
 
-  // 视频认证介绍
   if (step === 'video-intro') {
     return (
       <VerificationVideoIntro
         isSubmittingVideo={isSubmittingVideo}
         liveChallenge={liveChallenge}
-        onBack={directEntry ? onBack : () => setStep('select')}
+        onBack={handleDirectBack}
         onStartVideoVerification={() => void startVideoVerification()}
       />
     )
   }
 
-  // 视频录制
   if (step === 'video-record') {
     return (
       <VerificationVideoRecord
@@ -85,7 +75,6 @@ export default function VerificationFlowPage({ onBack }: VerificationFlowPagePro
     )
   }
 
-  // 视频预览确认
   if (step === 'video-review') {
     return (
       <VerificationVideoReview
@@ -101,12 +90,10 @@ export default function VerificationFlowPage({ onBack }: VerificationFlowPagePro
     )
   }
 
-  // 视频提交成功
   if (step === 'video-pending') {
     return <VerificationVideoPending onBack={onBack} />
   }
 
-  // 文件上传
   if (step === 'field-upload') {
     return (
       <VerificationFieldUpload
@@ -115,14 +102,13 @@ export default function VerificationFlowPage({ onBack }: VerificationFlowPagePro
         selectedFile={selectedFile}
         isSubmittingField={isSubmittingField}
         fileInputRef={fileInputRef}
-        onBack={directEntry ? onBack : () => setStep('select')}
+        onBack={handleDirectBack}
         onFileSelect={setSelectedFile}
         onSubmit={handleSubmitField}
       />
     )
   }
 
-  // 文件提交成功
   if (step === 'field-pending') {
     return <VerificationFieldPending onBack={onBack} />
   }

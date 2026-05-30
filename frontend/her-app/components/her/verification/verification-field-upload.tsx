@@ -26,7 +26,7 @@ export function VerificationFieldUpload({
   onFileSelect,
   onSubmit,
 }: VerificationFieldUploadProps) {
-  const field = fieldVerificationTypes.find(f => f.id === selectedField)
+  const field = fieldVerificationTypes.find((f) => f.id === selectedField)
   const internalFileInputRef = useRef<HTMLInputElement>(null)
   const activeRef = fileInputRef?.current ? fileInputRef : internalFileInputRef
 
@@ -34,31 +34,21 @@ export function VerificationFieldUpload({
     <PageTransition className="min-h-screen bg-background max-w-md mx-auto flex flex-col">
       <header className="sticky top-0 z-20 bg-background border-b border-border safe-area-top">
         <div className="px-4 py-3 flex items-center gap-3">
-          <button
-            onClick={onBack}
-            className="w-10 h-10 rounded-full hover:bg-secondary flex items-center justify-center transition-colors"
-          >
+          <button onClick={onBack} className="w-10 h-10 rounded-full hover:bg-secondary flex items-center justify-center transition-colors">
             <ArrowLeft className="w-5 h-5 text-foreground" />
           </button>
           <h1 className="font-medium text-foreground">{field?.name}</h1>
         </div>
       </header>
-
       <div className="flex-1 px-5 py-6">
-        <p className="text-sm text-muted-foreground mb-6">
-          {field?.description}，我们会在1-2个工作日内完成审核。
-        </p>
-
+        <p className="text-sm text-muted-foreground mb-6">{field?.description}，我们会在1-2个工作日内完成审核。</p>
         <input
           ref={activeRef}
           type="file"
           accept="image/jpeg,image/png,application/pdf"
           className="hidden"
-          onChange={(event) => {
-            onFileSelect(event.target.files?.[0] || null)
-          }}
+          onChange={(event) => onFileSelect(event.target.files?.[0] || null)}
         />
-
         <button
           type="button"
           onClick={() => activeRef?.current?.click()}
@@ -67,12 +57,9 @@ export function VerificationFieldUpload({
           <div className="w-14 h-14 rounded-full bg-secondary mx-auto flex items-center justify-center mb-4">
             <Upload className="w-7 h-7 text-muted-foreground" />
           </div>
-          <p className="text-sm text-foreground mb-2">
-            {selectedFile ? selectedFile.name : '点击选择文件上传'}
-          </p>
+          <p className="text-sm text-foreground mb-2">{selectedFile ? selectedFile.name : '点击选择文件上传'}</p>
           <p className="text-xs text-muted-foreground">支持 JPG、PNG、PDF 格式，最大10MB</p>
         </button>
-
         <div className="bg-secondary/50 rounded-xl p-4 mb-6">
           <h4 className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
             <AlertCircle className="w-4 h-4 text-primary" />
@@ -84,7 +71,6 @@ export function VerificationFieldUpload({
             <li>• 信息仅用于认证，不会对外展示</li>
           </ul>
         </div>
-
         <button
           onClick={() => void onSubmit()}
           disabled={isSubmittingField || !selectedFile}
