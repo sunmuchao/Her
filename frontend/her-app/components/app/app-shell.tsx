@@ -6,6 +6,7 @@ import CandidateDetailPage from '@/components/her/candidate-detail-page'
 import ChatPage from '@/components/her/chat-page'
 import DiscoverPage, { RecommendationInbox } from '@/components/her/discover-page'
 import CollectedPreferencesPage from '@/components/her/collected-preferences-page'
+import EditProfilePage from '@/components/her/edit-profile-page'
 import ProfilePage from '@/components/her/profile-page'
 import RelationshipsPage from '@/components/her/relationships-page'
 import TrustCenterPage from '@/components/her/trust-center-page'
@@ -37,6 +38,7 @@ type AppShellProps = {
   onBackFromVerification: () => void
   onOpenTrustCenter: () => void
   onOpenCollectedPreferences: () => void
+  onOpenEditProfile: () => void
   onOpenSettings: () => void
   onOpenOnboarding?: () => void
 }
@@ -61,6 +63,7 @@ export function AppShell({
   onBackFromVerification,
   onOpenTrustCenter,
   onOpenCollectedPreferences,
+  onOpenEditProfile,
   onOpenSettings,
   onOpenOnboarding,
 }: AppShellProps) {
@@ -120,8 +123,8 @@ export function AppShell({
             <ProfilePage
               onStartVerification={onStartVerification}
               onOpenTrustCenter={onOpenTrustCenter}
-              onOpenCollectedPreferences={onOpenCollectedPreferences}
               onOpenOnboarding={onOpenOnboarding}
+              onOpenEditProfile={onOpenEditProfile}
               onOpenSettings={onOpenSettings}
             />
           </PageTransition>
@@ -171,6 +174,14 @@ export function AppShell({
         {subView === 'collected-preferences' && (
           <SlideInTransition key="collected-preferences" direction="right">
             <CollectedPreferencesPage onBack={onBackToMain} />
+          </SlideInTransition>
+        )}
+        {subView === 'edit-profile' && (
+          <SlideInTransition key="edit-profile" direction="right">
+            <EditProfilePage
+              onBack={onBackToMain}
+              onSaved={onBackToMain}
+            />
           </SlideInTransition>
         )}
         {subView === 'trust-center' && (
