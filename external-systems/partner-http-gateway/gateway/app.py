@@ -105,8 +105,11 @@ class PartnerGateway(AsyncJobGatewayMixin, GatewayAccessMixin):
         *args: Any,
         **kwargs: Any,
     ) -> Any:
+        # 数据库连接超时保护：最长等待 10 秒
+        DB_TIMEOUT = 10.0
+
         if pool is not None:
-            conn = pool.acquire()
+            conn = pool.acquire(timeout=DB_TIMEOUT)
             try:
                 return fn(conn, *args, **kwargs)
             finally:
