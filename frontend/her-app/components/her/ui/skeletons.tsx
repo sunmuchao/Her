@@ -3,7 +3,7 @@
 import { cn } from '@/lib/utils'
 
 // Base shimmer skeleton
-function Shimmer({ className }: { className?: string }) {
+export function Shimmer({ className }: { className?: string }) {
   return (
     <div className={cn('relative overflow-hidden bg-secondary rounded', className)}>
       <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/20 to-transparent" />

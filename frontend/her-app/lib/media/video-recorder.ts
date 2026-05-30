@@ -1,5 +1,6 @@
 export type RecordedVideo = {
   blob: Blob
+  blobUrl: string
   base64: string
   mimeType: string
 }
@@ -65,9 +66,11 @@ export async function recordVideoFromCamera(maxDurationMs = 6000): Promise<Recor
 
   const blob = await recorded
   const base64 = await blobToBase64(blob)
+  const blobUrl = URL.createObjectURL(blob)
 
   return {
     blob,
+    blobUrl,
     base64,
     mimeType: blob.type || 'video/webm',
   }

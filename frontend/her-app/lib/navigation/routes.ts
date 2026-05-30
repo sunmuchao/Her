@@ -72,6 +72,9 @@ export function pageToPath(page: AppPage, params: RouteParams = {}): string {
     case 'sub-collected-preferences':
       path = '/profile/collected'
       break
+    case 'sub-settings':
+      path = '/settings'
+      break
     case 'ops-workbench':
       path = '/ops/workbench'
       break
@@ -123,6 +126,7 @@ export function pathToPage(pathname: string): ParsedRoute {
   if (path === '/verification') return { page: 'sub-verification' }
   if (path === '/trust') return { page: 'sub-trust-center' }
   if (path === '/profile/collected') return { page: 'sub-collected-preferences' }
+  if (path === '/settings') return { page: 'sub-settings' }
   if (path === '/ops/workbench') return { page: 'ops-workbench' }
 
   const candidate = path.match(/^\/candidates\/([^/]+)$/)

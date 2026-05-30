@@ -157,6 +157,7 @@ export function HerApp() {
               onBackFromVerification={nav.handleBackFromVerification}
               onOpenTrustCenter={nav.handleOpenTrustCenter}
               onOpenCollectedPreferences={nav.handleOpenCollectedPreferences}
+              onOpenSettings={nav.handleOpenSettings}
               onOpenOnboarding={() => handleNavigate('auth-onboarding')}
             />
             </div>
