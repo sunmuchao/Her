@@ -24,6 +24,7 @@ from .persona_memory_lib import (
     DEFAULT_PERSONA_TABLE,
     mysql_connect,
     quote_mysql_ident,
+    release_persona_connection,
     resolve_mysql_source,
 )
 
@@ -308,7 +309,7 @@ def allocate_profile_ids(source: str, count: int) -> List[int]:
             cursor.execute("SELECT COALESCE(MAX(id), 0) AS max_id FROM `profiles`")
             max_id = int(cursor.fetchone()["max_id"] or 0)
     finally:
-        conn.close()
+        release_persona_connection(source, conn)
     return [max_id + offset for offset in range(1, count + 1)]
 
 
@@ -581,7 +582,7 @@ def fetch_snapshot(
             )
             public_row = cursor.fetchone() or {}
     finally:
-        conn.close()
+        release_persona_connection(source, conn)
 
     persona_excerpt = {field: persona_row.get(field) for field in PERSONA_SNAPSHOT_FIELDS}
     profile_excerpt = {field: profile_row.get(field) for field in PROFILE_SNAPSHOT_FIELDS}
