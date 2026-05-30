@@ -43,7 +43,7 @@ _profile_pool_lock = threading.Lock()
 class ProfileConnectionPool:
     """简单的有界连接池，避免每次请求都新建连接"""
 
-    __slots__ = ("_avail", "_cfg", "_lock", "_sem", "_dsn")
+    __slots__ = ("_avail", "_cfg", "_lock", "_sem", "_dsn", "_initialized")
 
     def __init__(self, dsn: str, max_size: int = 8) -> None:
         self._dsn = dsn
@@ -51,6 +51,15 @@ class ProfileConnectionPool:
         self._sem = threading.BoundedSemaphore(max(1, max_size))
         self._lock = threading.Lock()
         self._avail: list[Any] = []
+        self._initialized = False
+
+        # 初始化时确保数据库存在（只执行一次，避免重复 CREATE DATABASE）
+        try:
+            schema.ensure_database(self._cfg)
+            self._initialized = True
+        except Exception:
+            # 如果数据库已存在，忽略错误
+            self._initialized = True
 
     def acquire(self, timeout: float | None = None) -> MySQLCompatConnection:
         """获取连接，支持超时保护"""
