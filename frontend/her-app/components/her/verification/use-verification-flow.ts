@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import {
   createLiveVideoChallenge,
   listVerificationNotifications,
@@ -77,6 +78,7 @@ function mapApiFieldToUi(fieldKey?: string): string | undefined {
 }
 
 export function useVerificationFlow() {
+  const searchParams = useSearchParams()
   const [fieldVerificationTypes, setFieldVerificationTypes] = useState<FieldItem[]>(DEFAULT_FIELDS)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -90,6 +92,7 @@ export function useVerificationFlow() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [isSubmittingField, setIsSubmittingField] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const initialTarget = searchParams.get('target')
 
   // 加载认证状态
   useEffect(() => {
@@ -151,6 +154,22 @@ export function useVerificationFlow() {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    if (isLoading || loadError) return
+    if (!initialTarget) return
+
+    if (initialTarget === 'video') {
+      setStep('video-intro')
+      return
+    }
+
+    const targetField = fieldVerificationTypes.find((field) => field.id === initialTarget)
+    if (targetField && targetField.status !== 'verified') {
+      setSelectedField(targetField.id)
+      setStep('field-upload')
+    }
+  }, [initialTarget, isLoading, loadError, fieldVerificationTypes])
 
   // 计算进度
   const verifiedCount = fieldVerificationTypes.filter(f => f.status === 'verified').length
