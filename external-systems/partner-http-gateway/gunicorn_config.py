@@ -10,8 +10,8 @@ worker_class = "sync"  # 同步 worker，适合数据库密集型应用
 threads = 1  # 每个 worker 的线程数（sync worker 不支持多线程）
 
 # 超时配置
-timeout = 30  # worker 超时时间（秒），超时后会被重启
-graceful_timeout = 10  # 优雅关闭超时时间
+timeout = 60  # worker 超时时间（秒），增加到 60秒避免数据库认证中断
+graceful_timeout = 15  # 优雅关闭超时时间
 keepalive = 5  # HTTP keep-alive 时间
 
 # 进程管理
