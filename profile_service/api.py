@@ -232,7 +232,7 @@ def _photo_sources(items: Sequence[Mapping[str, Any]]) -> list[str]:
 
 
 def detect_profile_table(*, source_dsn: str) -> str | None:
-    profile_conn = _connect_profile_db(source_dsn)
+    profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
     try:
         scored_tables: list[tuple[str, int]] = []
         for table_name in _list_schema_tables(profile_conn):
@@ -252,7 +252,7 @@ def detect_profile_table(*, source_dsn: str) -> str | None:
             )
         return best_tables[0]
     finally:
-        profile_conn.close()
+        release_profile_connection(source_dsn, profile_conn)
 
 
 def list_profile_columns(
@@ -261,14 +261,14 @@ def list_profile_columns(
     source_table_name: str,
 ) -> list[str]:
     _require_profile_source(source_dsn=source_dsn, source_table_name=source_table_name)
-    profile_conn = _connect_profile_db(source_dsn)
+    profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
     try:
         raw_conn = profile_conn.driver_connection
         if not schema.table_exists(raw_conn, source_table_name):
             raise ValueError(f"profile table {source_table_name} was not found")
         return _list_table_columns(profile_conn, source_table_name)
     finally:
-        profile_conn.close()
+        release_profile_connection(source_dsn, profile_conn)
 
 
 def list_profiles(
@@ -301,7 +301,7 @@ def iter_profile_batches(
 ):
     """Yield profile rows in batches. batch_size=0 yields a single batch (full fetch)."""
     _require_profile_source(source_dsn=source_dsn, source_table_name=source_table_name)
-    profile_conn = _connect_profile_db(source_dsn)
+    profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
     try:
         raw_conn = profile_conn.driver_connection
         if not schema.table_exists(raw_conn, source_table_name):
@@ -330,7 +330,7 @@ def iter_profile_batches(
                 break
             offset += page_size
     finally:
-        profile_conn.close()
+        release_profile_connection(source_dsn, profile_conn)
 
 
 def apply_persona_patch(
@@ -413,7 +413,7 @@ def list_profile_photo_previews(
     normalized_profile_ids = [int(item) for item in profile_ids if item is not None]
     if preview_count <= 0 or not normalized_profile_ids:
         return {}
-    profile_conn = _connect_profile_db(source_dsn)
+    profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
     try:
         raw_conn = profile_conn.driver_connection
         photo_table = _resolve_profile_photos_table(source_dsn, photos_table_name=photos_table_name)
@@ -466,7 +466,7 @@ def list_profile_photo_previews(
             previews[profile_id].append(photo_url)
         return previews
     finally:
-        profile_conn.close()
+        release_profile_connection(source_dsn, profile_conn)
 
 
 def list_profile_photos(
@@ -480,7 +480,7 @@ def list_profile_photos(
     _require_profile_source(source_dsn=source_dsn, source_table_name=source_table_name)
     if limit is not None and int(limit) <= 0:
         return []
-    profile_conn = _connect_profile_db(source_dsn)
+    profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
     try:
         raw_conn = profile_conn.driver_connection
         if not schema.table_exists(raw_conn, source_table_name) or not schema.column_exists(raw_conn, source_table_name, "id"):
@@ -540,7 +540,7 @@ def list_profile_photos(
             )
         return out
     finally:
-        profile_conn.close()
+        release_profile_connection(source_dsn, profile_conn)
 
 
 def list_profile_photo_sources(
@@ -572,7 +572,7 @@ def list_comparison_profile_photos(
 ) -> list[dict[str, Any]]:
     _require_profile_source(source_dsn=source_dsn, source_table_name=source_table_name)
     normalized_limit = max(1, int(limit))
-    profile_conn = _connect_profile_db(source_dsn)
+    profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
     try:
         raw_conn = profile_conn.driver_connection
         photo_table = _resolve_profile_photos_table(source_dsn, photos_table_name=photos_table_name)
@@ -627,7 +627,7 @@ def list_comparison_profile_photos(
             )
         return out
     finally:
-        profile_conn.close()
+        release_profile_connection(source_dsn, profile_conn)
 
 
 def list_comparison_profile_photo_sources(
@@ -657,7 +657,7 @@ def create_profile_row(
 ) -> int:
     """Insert a new row into the partner profile table and return its id."""
     _require_profile_source(source_dsn=source_dsn, source_table_name=source_table_name)
-    profile_conn = _connect_profile_db(source_dsn)
+    profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
     try:
         raw_conn = profile_conn.driver_connection
         if not schema.column_exists(raw_conn, source_table_name, "id"):
@@ -715,7 +715,7 @@ def create_profile_row(
         profile_conn.commit()
         return next_id
     finally:
-        profile_conn.close()
+        release_profile_connection(source_dsn, profile_conn)
 
 
 def upsert_profile_for_onboarding(
@@ -749,7 +749,7 @@ def apply_profile_updates(
     updates: Mapping[str, Any],
 ) -> dict[str, Any]:
     _require_profile_source(source_dsn=source_dsn, source_table_name=source_table_name)
-    profile_conn = _connect_profile_db(source_dsn)
+    profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
     try:
         raw_conn = profile_conn.driver_connection
         if not schema.column_exists(raw_conn, source_table_name, "id"):
@@ -797,4 +797,4 @@ def apply_profile_updates(
             "updated_fields": updated_fields,
         }
     finally:
-        profile_conn.close()
+        release_profile_connection(source_dsn, profile_conn)
