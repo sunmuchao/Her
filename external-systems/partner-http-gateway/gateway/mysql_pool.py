@@ -45,8 +45,19 @@ class GatewayConnectionPool:
         self._lock = threading.Lock()
         self._avail: list[Any] = []
 
-    def acquire(self) -> MySQLCompatConnection:
-        self._sem.acquire()
+    def acquire(self, timeout: float | None = None) -> MySQLCompatConnection:
+        """获取数据库连接，支持超时保护
+
+        Args:
+            timeout: 最长等待时间（秒），None 表示无限等待
+
+        Raises:
+            TimeoutError: 超时未获取到连接
+        """
+        acquired = self._sem.acquire(timeout=timeout)
+        if not acquired:
+            raise TimeoutError(f"数据库连接池等待超时（{timeout}秒）")
+
         try:
             with self._lock:
                 raw = self._avail.pop() if self._avail else mysql_database_connect(self._cfg)
