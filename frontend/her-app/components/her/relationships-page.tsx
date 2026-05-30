@@ -29,7 +29,6 @@ import { FadeIn, PageTransition } from './ui/animations'
 
 interface RelationshipsPageProps {
   onOpenChat: (chatId: string, info?: ChatUserInfo) => void
-  onStartVerification: () => void
   onNavigateToDiscover?: () => void
   onViewCandidate?: (candidateId: string, candidate?: CandidatePreview) => void
 }
@@ -47,7 +46,6 @@ interface RelationshipsPageProps {
  */
 export default function RelationshipsPage({
   onOpenChat,
-  onStartVerification,
   onNavigateToDiscover,
   onViewCandidate,
 }: RelationshipsPageProps) {
@@ -319,29 +317,6 @@ export default function RelationshipsPage({
         title="关系"
         subtitle="管理你的缘分进度"
       />
-
-      {/* 待处理认证项置顶显示 */}
-      {pendingVerificationActions.length > 0 && (
-        <div className="px-4 pt-3">
-          <div className="bg-gold/10 border border-gold/30 rounded-xl p-3">
-            <div className="flex items-center gap-2 mb-2">
-              <BadgeCheck className="w-4 h-4 text-gold" />
-              <span className="text-sm font-medium text-gold">待处理事项</span>
-              <span className="ml-auto text-xs text-gold/70">{pendingVerificationActions.length}项</span>
-            </div>
-            {pendingVerificationActions.slice(0, 2).map((action) => (
-              <button
-                key={action.id}
-                onClick={onStartVerification}
-                className="w-full flex items-center gap-2 py-2 text-left hover:bg-gold/5 rounded-lg transition-colors"
-              >
-                <span className="text-sm">{action.title}</span>
-                <ChevronRight className="w-4 h-4 text-muted-foreground ml-auto" />
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* 下拉刷新指示器 */}
       <div

@@ -28,8 +28,6 @@ import { PageHeader } from './ui/page-header'
 import { ProfilePageSkeleton } from './ui/skeletons/profile-skeleton'
 
 interface ProfilePageProps {
-  onStartVerification: (from?: 'trust-center' | 'profile', target?: string) => void
-  onOpenTrustCenter?: () => void
   onOpenOnboarding?: () => void
   onOpenEditProfile?: () => void
   onOpenSettings?: () => void
@@ -41,8 +39,6 @@ interface ProfilePageProps {
  * 使用 React Query hooks 管理数据获取，组件只负责渲染
  */
 export default function ProfilePage({
-  onStartVerification,
-  onOpenTrustCenter: _onOpenTrustCenter,
   onOpenOnboarding,
   onOpenEditProfile,
   onOpenSettings,
@@ -239,7 +235,7 @@ export default function ProfilePage({
     : '我的认证'
   const verificationCardDescription = hasCompletedAllVerifications
     ? '全部认证已完成'
-    : '点任一卡片直接去认证'
+    : '在这里查看你的认证状态'
 
   // 判断是否使用 Mock 数据
   const usingMockData = useMemo(() => {
@@ -455,27 +451,17 @@ export default function ProfilePage({
               {verificationItems.length > 0 ? (
                 <div className="space-y-2">
                   {verificationItems.map((item, i) => {
-                    const target = verificationPriorityMap[item.name]?.target
-                    const actionable = item.status !== 'verified'
                     return (
-                      <button
+                      <div
                         key={`${item.name}-${i}`}
-                        type="button"
-                        onClick={() => {
-                          if (!actionable) return
-                          onStartVerification('profile', target)
-                        }}
-                        disabled={!actionable}
                         className={cn(
                           'w-full rounded-lg border border-border/70 px-3 py-3 text-left transition-colors',
                           item.status === 'verified'
                             ? 'bg-primary/5'
                             : item.status === 'pending'
-                              ? 'bg-gold/5 hover:bg-gold/10'
-                              : 'bg-secondary/30 hover:bg-secondary/50',
-                          actionable && 'cursor-pointer',
+                              ? 'bg-gold/5'
+                              : 'bg-secondary/30',
                         )}
-                        aria-label={`${item.name}：${item.status === 'verified' ? '已认证' : '未认证'}`}
                       >
                         <div className="flex items-center gap-3">
                           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-background">
@@ -500,12 +486,11 @@ export default function ProfilePage({
                                 ? '已完成'
                                 : item.status === 'pending'
                                   ? item.description
-                                  : '点这里直接去认证'}
+                                  : item.description}
                             </p>
                           </div>
-                          {actionable && <ChevronRight className="w-4 h-4 text-primary" aria-hidden="true" />}
                         </div>
-                      </button>
+                      </div>
                     )
                   })}
                 </div>
