@@ -77,13 +77,25 @@ function mapApiFieldToUi(fieldKey?: string): string | undefined {
   return Object.entries(API_TO_UI_FIELD).find(([, ui]) => ui === fieldKey)?.[1] || fieldKey
 }
 
+function resolveInitialStep(target: string | null): VerificationStep {
+  if (target === 'video') return 'video-intro'
+  if (target === 'education' || target === 'occupation' || target === 'income') return 'field-upload'
+  return 'select'
+}
+
 export function useVerificationFlow() {
   const searchParams = useSearchParams()
+  const initialTarget = searchParams.get('target')
+  const directEntry = Boolean(initialTarget)
   const [fieldVerificationTypes, setFieldVerificationTypes] = useState<FieldItem[]>(DEFAULT_FIELDS)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [step, setStep] = useState<VerificationStep>('select')
-  const [selectedField, setSelectedField] = useState<string | null>(null)
+  const [step, setStep] = useState<VerificationStep>(() => resolveInitialStep(initialTarget))
+  const [selectedField, setSelectedField] = useState<string | null>(() =>
+    initialTarget === 'education' || initialTarget === 'occupation' || initialTarget === 'income'
+      ? initialTarget
+      : null,
+  )
   const [isRecording, setIsRecording] = useState(false)
   const [recordingTime, setRecordingTime] = useState(0)
   const [liveChallenge, setLiveChallenge] = useState<LiveVideoChallenge | null>(null)
@@ -92,7 +104,6 @@ export function useVerificationFlow() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [isSubmittingField, setIsSubmittingField] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const initialTarget = searchParams.get('target')
 
   // 加载认证状态
   useEffect(() => {
@@ -160,16 +171,18 @@ export function useVerificationFlow() {
     if (!initialTarget) return
 
     if (initialTarget === 'video') {
-      setStep('video-intro')
+      if (step === 'select') {
+        setStep('video-intro')
+      }
       return
     }
 
     const targetField = fieldVerificationTypes.find((field) => field.id === initialTarget)
-    if (targetField && targetField.status !== 'verified') {
+    if (targetField && targetField.status !== 'verified' && step === 'select') {
       setSelectedField(targetField.id)
       setStep('field-upload')
     }
-  }, [initialTarget, isLoading, loadError, fieldVerificationTypes])
+  }, [initialTarget, isLoading, loadError, fieldVerificationTypes, step])
 
   // 计算进度
   const verifiedCount = fieldVerificationTypes.filter(f => f.status === 'verified').length
@@ -297,6 +310,7 @@ export function useVerificationFlow() {
     fileInputRef,
     verifiedCount,
     progress,
+    directEntry,
     // 方法
     startVideoVerification,
     handleRecordVideo,

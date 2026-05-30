@@ -33,6 +33,7 @@ export default function VerificationFlowPage({ onBack }: VerificationFlowPagePro
     fileInputRef,
     verifiedCount,
     progress,
+    directEntry,
     startVideoVerification,
     handleRecordVideo,
     finishVideoSubmission,
@@ -66,7 +67,7 @@ export default function VerificationFlowPage({ onBack }: VerificationFlowPagePro
       <VerificationVideoIntro
         isSubmittingVideo={isSubmittingVideo}
         liveChallenge={liveChallenge}
-        onBack={() => setStep('select')}
+        onBack={directEntry ? onBack : () => setStep('select')}
         onStartVideoVerification={() => void startVideoVerification()}
       />
     )
@@ -114,7 +115,7 @@ export default function VerificationFlowPage({ onBack }: VerificationFlowPagePro
         selectedFile={selectedFile}
         isSubmittingField={isSubmittingField}
         fileInputRef={fileInputRef}
-        onBack={() => setStep('select')}
+        onBack={directEntry ? onBack : () => setStep('select')}
         onFileSelect={setSelectedFile}
         onSubmit={handleSubmitField}
       />
