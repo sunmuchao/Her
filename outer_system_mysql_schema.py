@@ -179,7 +179,7 @@ def ensure_database(config: dict[str, Any]) -> None:
         with conn.cursor() as cursor:
             cursor.execute(
                 "SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA "
-                "WHERE SCHEMA_NAME = ?",
+                "WHERE SCHEMA_NAME = %s",
                 (database_name,)
             )
             result = cursor.fetchone()

@@ -17,7 +17,7 @@ from .persona_memory_engine import (
     execute_upsert_persona_memory,
     parse_patch_json,
 )
-from .persona_memory_lib import DEFAULT_PUBLIC_VIEW, mysql_connect
+from .persona_memory_lib import DEFAULT_PUBLIC_VIEW, mysql_connect, release_persona_connection
 from .schema_tools import ensure_persona_schema
 
 
@@ -40,7 +40,7 @@ def run_ensure_schema(
             public_view=public_view,
         )
     finally:
-        conn.close()
+        release_persona_connection(source, conn)
 
 
 def _build_parser() -> argparse.ArgumentParser:

@@ -13,11 +13,12 @@ def load_persona_row(*, source: str, user_key: str) -> dict[str, Any] | None:
             DEFAULT_PERSONA_TABLE,
             fetch_persona,
             mysql_connect,
+            release_persona_connection,
         )
     except ImportError:
         return None
 
-    conn = mysql_connect(source)
+    conn = mysql_connect(source, use_pool=True, timeout=10.0)
     try:
         with conn.cursor() as cursor:
             row = fetch_persona(cursor, DEFAULT_PERSONA_TABLE, user_key=str(user_key))
@@ -25,7 +26,7 @@ def load_persona_row(*, source: str, user_key: str) -> dict[str, Any] | None:
     except Exception:  # noqa: BLE001
         return None
     finally:
-        conn.close()
+        release_persona_connection(source, conn)
 
 
 def load_persona_observations(*, source: str, user_key: str) -> list[dict[str, Any]]:
@@ -36,11 +37,12 @@ def load_persona_observations(*, source: str, user_key: str) -> list[dict[str, A
             DEFAULT_OBSERVATION_TABLE,
             mysql_connect,
             quote_mysql_ident,
+            release_persona_connection,
         )
     except ImportError:
         return []
 
-    conn = mysql_connect(source)
+    conn = mysql_connect(source, use_pool=True, timeout=10.0)
     try:
         with conn.cursor() as cursor:
             cursor.execute(
@@ -58,7 +60,7 @@ def load_persona_observations(*, source: str, user_key: str) -> list[dict[str, A
     except Exception:  # noqa: BLE001
         return []
     finally:
-        conn.close()
+        release_persona_connection(source, conn)
 
 
 def load_persona_by_profile_id(*, source: str, profile_id: int) -> dict[str, Any] | None:
@@ -69,11 +71,12 @@ def load_persona_by_profile_id(*, source: str, profile_id: int) -> dict[str, Any
             DEFAULT_PERSONA_TABLE,
             mysql_connect,
             quote_mysql_ident,
+            release_persona_connection,
         )
     except ImportError:
         return None
 
-    conn = mysql_connect(source)
+    conn = mysql_connect(source, use_pool=True, timeout=10.0)
     try:
         with conn.cursor() as cursor:
             cursor.execute(
@@ -91,7 +94,7 @@ def load_persona_by_profile_id(*, source: str, profile_id: int) -> dict[str, Any
     except Exception:  # noqa: BLE001
         return None
     finally:
-        conn.close()
+        release_persona_connection(source, conn)
 
 
 def load_personas_by_profile_ids(
@@ -106,12 +109,13 @@ def load_personas_by_profile_ids(
             DEFAULT_PERSONA_TABLE,
             mysql_connect,
             quote_mysql_ident,
+            release_persona_connection,
         )
     except ImportError:
         return {}
 
     placeholders = ", ".join(["%s"] * len(profile_ids))
-    conn = mysql_connect(source)
+    conn = mysql_connect(source, use_pool=True, timeout=10.0)
     try:
         with conn.cursor() as cursor:
             cursor.execute(
@@ -133,7 +137,7 @@ def load_personas_by_profile_ids(
     except Exception:  # noqa: BLE001
         return {}
     finally:
-        conn.close()
+        release_persona_connection(source, conn)
 
 
 def load_persona_for_discovery(
