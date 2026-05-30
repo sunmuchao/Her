@@ -74,10 +74,20 @@ def rest_profile_me(gateway: CollectedGateway, environ: dict[str, Any]) -> tuple
     source = (q.get("source") or _default_profile_source()).strip()
     if not source:
         return 503, {"error": {"code": "profile_source_not_configured", "message": "profile source is not configured"}}
-
-    # 暂时禁用 profile API，避免数据库连接数爆炸
-    # TODO: 修复 profile_service 使用连接池
-    return 503, {"error": {"code": "service_temporarily_disabled", "message": "profile API 暂时禁用，等待修复"}}
+    normalized_source, table_name = _parse_profile_source(source)
+    try:
+        row = get_profile(
+            source_dsn=normalized_source,
+            source_table_name=table_name or "profiles",
+            profile_id=int(profile_id),
+        )
+        if not row:
+            return 404, {"error": {"code": "not_found", "message": "profile not found"}}
+        return 200, {"profile_id": int(profile_id), "profile_facts": _json_safe(extract_profile_facts(row))}
+    except TimeoutError as e:
+        return 503, {"error": {"code": "db_timeout", "message": f"数据库连接超时: {str(e)}"}}
+    except Exception as e:
+        return 500, {"error": {"code": "internal_error", "message": str(e)}}
 
 
 def rest_persona_collected(gateway: CollectedGateway, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
@@ -95,10 +105,24 @@ def rest_persona_collected(gateway: CollectedGateway, environ: dict[str, Any]) -
     source = (q.get("source") or _default_profile_source()).strip()
     if not source:
         return 503, {"error": {"code": "persona_source_not_configured", "message": "persona source is not configured"}}
-
-    # 暂时禁用 persona API，避免数据库连接数爆炸
-    # TODO: 修复 persona_service 使用连接池
-    return 503, {"error": {"code": "service_temporarily_disabled", "message": "persona API 暂时禁用，等待修复"}}
+    try:
+        bundle = load_collected_bundle(source=source, user_key=str(profile_id))
+        persona = bundle.get("persona") or {}
+        collected_items = bundle.get("collected_items") or build_collected_items(
+            persona,
+            bundle.get("observations") or [],
+        )
+        flat_statements = extract_collected_statements(persona)
+        return 200, {
+            "profile_id": int(profile_id),
+            "user_key": str(profile_id),
+            "collected_statements": _json_safe(flat_statements),
+            "collected_items": _json_safe(collected_items),
+        }
+    except TimeoutError as e:
+        return 503, {"error": {"code": "db_timeout", "message": f"数据库连接超时: {str(e)}"}}
+    except Exception as e:
+        return 500, {"error": {"code": "internal_error", "message": str(e)}}
 
 
 def dispatch_collected_rest(
