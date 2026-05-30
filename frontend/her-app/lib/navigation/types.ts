@@ -8,6 +8,7 @@ export type SubView =
   | 'verification'
   | 'trust-center'
   | 'collected-preferences'
+  | 'settings'
 
 export type AppPage =
   | 'splash'
@@ -28,4 +29,5 @@ export type AppPage =
   | 'sub-verification'
   | 'sub-trust-center'
   | 'sub-collected-preferences'
+  | 'sub-settings'
   | 'ops-workbench'

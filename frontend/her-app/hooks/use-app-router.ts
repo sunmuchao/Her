@@ -9,7 +9,7 @@ import type { AppPage, SubView, TabType } from '@/lib/navigation/types'
 
 function pageToTab(page: AppPage): TabType {
   if (page === 'main-relationships' || page === 'sub-chat') return 'relationships'
-  if (page === 'main-profile' || page === 'sub-trust-center' || page === 'sub-collected-preferences') return 'profile'
+  if (page === 'main-profile' || page === 'sub-trust-center' || page === 'sub-collected-preferences' || page === 'sub-settings') return 'profile'
   return 'matchmaker'
 }
 
@@ -20,6 +20,7 @@ function pageToSubView(page: AppPage): SubView {
   if (page === 'sub-verification') return 'verification'
   if (page === 'sub-trust-center') return 'trust-center'
   if (page === 'sub-collected-preferences') return 'collected-preferences'
+  if (page === 'sub-settings') return 'settings'
   return 'main'
 }
 
@@ -215,6 +216,10 @@ export function useAppRouter() {
     pushPage('sub-collected-preferences')
   }, [pushPage])
 
+  const handleOpenSettings = useCallback(() => {
+    pushPage('sub-settings')
+  }, [pushPage])
+
   return {
     currentPage,
     currentTab,
@@ -237,5 +242,6 @@ export function useAppRouter() {
     handleBackFromVerification,
     handleOpenTrustCenter,
     handleOpenCollectedPreferences,
+    handleOpenSettings,
   }
 }

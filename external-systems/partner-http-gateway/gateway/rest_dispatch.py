@@ -17,6 +17,7 @@ from .ledger_routes import dispatch_ledger_rest
 from .matchmaking_routes import dispatch_matchmaking_rest
 from .media_routes import dispatch_media_rest
 from .ops_routes import dispatch_ops_rest
+from .persona_routes import dispatch_persona_rest
 from .profile_routes import dispatch_profile_rest
 from .proxy_intro_routes import dispatch_proxy_intro_rest
 from .recommendation_routes import dispatch_recommendation_rest
@@ -53,6 +54,7 @@ def dispatch_gateway_rest(
 
     for dispatcher in (
         dispatch_ops_rest,
+        dispatch_persona_rest,
         dispatch_candidate_bff,
         dispatch_ledger_rest,
         dispatch_collected_rest,

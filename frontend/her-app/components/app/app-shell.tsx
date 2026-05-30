@@ -9,7 +9,8 @@ import CollectedPreferencesPage from '@/components/her/collected-preferences-pag
 import ProfilePage from '@/components/her/profile-page'
 import RelationshipsPage from '@/components/her/relationships-page'
 import TrustCenterPage from '@/components/her/trust-center-page'
-import VerificationFlowPage from '@/components/her/verification-flow-page'
+import VerificationFlowPage from '@/components/her/verification'
+import SettingsPage from '@/components/her/settings-page'
 import { PageTransition, SlideInTransition } from '@/components/her/ui/page-transitions'
 import type { CandidatePreview } from '@/lib/types/candidate'
 import type { ChatUserInfo } from '@/hooks/use-app-router'
@@ -36,6 +37,7 @@ type AppShellProps = {
   onBackFromVerification: () => void
   onOpenTrustCenter: () => void
   onOpenCollectedPreferences: () => void
+  onOpenSettings: () => void
   onOpenOnboarding?: () => void
 }
 
@@ -59,6 +61,7 @@ export function AppShell({
   onBackFromVerification,
   onOpenTrustCenter,
   onOpenCollectedPreferences,
+  onOpenSettings,
   onOpenOnboarding,
 }: AppShellProps) {
   const { inboxUnreadCount, relationshipsBadge, refreshBadges } = useBadgeCounts()
@@ -119,6 +122,7 @@ export function AppShell({
               onOpenTrustCenter={onOpenTrustCenter}
               onOpenCollectedPreferences={onOpenCollectedPreferences}
               onOpenOnboarding={onOpenOnboarding}
+              onOpenSettings={onOpenSettings}
             />
           </PageTransition>
         )}
@@ -173,6 +177,15 @@ export function AppShell({
           <SlideInTransition key="trust-center" direction="right">
             <TrustCenterPage
               onStartVerification={() => onStartVerification('trust-center')}
+              onBack={onBackToMain}
+            />
+          </SlideInTransition>
+        )}
+        {subView === 'settings' && (
+          <SlideInTransition key="settings" direction="right">
+            <SettingsPage
+              onBack={onBackToMain}
+              onOpenOnboarding={onOpenOnboarding}
             />
           </SlideInTransition>
         )}

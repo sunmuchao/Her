@@ -1,88 +1,69 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { Shield, BadgeCheck, AlertTriangle, FileText, Clock, ChevronRight, CheckCircle, XCircle, Upload } from 'lucide-react'
-import { fetchTrustHub } from '@/lib/api/endpoints/trust-hub'
-import { getProfileId, getUserId } from '@/lib/auth/session'
+import { Shield, AlertTriangle, FileText, ChevronRight, CheckCircle, XCircle, Upload, Clock, Loader2 } from 'lucide-react'
+import { useTrustHub } from '@/lib/hooks/use-trust-hub'
 import {
   mapTrustHubPendingActions,
   mapTrustHubVerificationItems,
   type VerificationItemView,
 } from '@/lib/trust/map-trust-hub'
+import { useMemo, useRef, useState } from 'react'
+import { PageHeader } from './ui/page-header'
+import { PageErrorState } from './ui/error-handling'
 import { InlineEmpty } from './ui/empty-states'
+import { TrustCenterPageSkeleton } from './ui/skeletons/trust-skeleton'
 
 interface TrustCenterPageProps {
   onStartVerification: () => void
+  onBack?: () => void
 }
 
-export default function TrustCenterPage({ onStartVerification }: TrustCenterPageProps) {
-  const [isLoading, setIsLoading] = useState(true)
-  const [loadError, setLoadError] = useState<string | null>(null)
-  const [summary, setSummary] = useState<{
-    pending_verification_count?: number
-    pending_appeal_count?: number
-    active_risk_count?: number
-    notification_count?: number
-  }>()
-  const [verificationItems, setVerificationItems] = useState<VerificationItemView[]>([])
-  const [pendingItems, setPendingItems] = useState<Array<{ id: string; title: string; description: string; dueDate: string }>>([])
-  const [riskRecords, setRiskRecords] = useState<Array<{ id: string; title: string; description: string; time: string; resolved: boolean }>>([])
-  const [notifications, setNotifications] = useState<Array<{ id: string; title: string; description: string; time: string }>>([])
+/**
+ * 信任中心页面
+ *
+ * 使用 React Query hook 管理数据获取
+ * 支持下拉刷新
+ */
+export default function TrustCenterPage({ onStartVerification, onBack }: TrustCenterPageProps) {
+  const { data, isLoading, error, refetch, isFetching } = useTrustHub()
 
-  useEffect(() => {
-    const userId = getUserId()
-    const profileId = getProfileId()
-    if (!userId) {
-      setIsLoading(false)
-      setLoadError('请先登录后再查看信任中心')
-      return
-    }
+  // 下拉刷新状态
+  const [pullDistance, setPullDistance] = useState(0)
+  const [isPulling, setIsPulling] = useState(false)
+  const touchStartY = useRef(0)
 
-    const resolvedUserId = userId
-    let cancelled = false
-    async function loadTrustHub() {
-      try {
-        const response = await fetchTrustHub({ userId: resolvedUserId, profileId })
-        if (cancelled) return
-        const trustHub = response.trust_hub
-        const items = mapTrustHubVerificationItems(trustHub.verification_center?.items)
-        setSummary(trustHub.summary)
-        setVerificationItems(items)
-        setPendingItems(mapTrustHubPendingActions(trustHub.verification_center?.items))
-        setRiskRecords(
-          (trustHub.risk_records?.items || []).map((record, index) => ({
-            id: String(index),
-            title: record.title || '安全提醒',
-            description: record.description || '',
-            time: record.time || '',
-            resolved: record.status === 'resolved',
-          })),
-        )
-        setNotifications(
-          (trustHub.notifications || []).map((item, index) => ({
-            id: String(index),
-            title: item.title || '通知',
-            description: item.body || '',
-            time: item.created_at || '',
-          })),
-        )
-        setLoadError(null)
-      } catch (error) {
-        if (cancelled) return
-        setLoadError(error instanceof Error ? error.message : '加载信任中心失败')
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false)
-        }
-      }
-    }
+  // 解析数据
+  const verificationItems = useMemo(
+    () => mapTrustHubVerificationItems(data?.trust_hub?.verification_center?.items),
+    [data],
+  )
+  const pendingItems = useMemo(
+    () => mapTrustHubPendingActions(data?.trust_hub?.verification_center?.items),
+    [data],
+  )
+  const riskRecords = useMemo(
+    () =>
+      (data?.trust_hub?.risk_records?.items || []).map((record, index) => ({
+        id: String(index),
+        title: record.title || '安全提醒',
+        description: record.description || '',
+        time: record.time || '',
+        resolved: record.status === 'resolved',
+      })),
+    [data],
+  )
+  const notifications = useMemo(
+    () =>
+      (data?.trust_hub?.notifications || []).map((item, index) => ({
+        id: String(index),
+        title: item.title || '通知',
+        description: item.body || '',
+        time: item.created_at || '',
+      })),
+    [data],
+  )
 
-    void loadTrustHub()
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
+  // 状态样式映射
   const getStatusStyles = (status: string) => {
     if (status === 'verified') return { bg: 'bg-primary/10', text: 'text-primary', icon: 'text-primary' }
     if (status === 'pending') return { bg: 'bg-gold/10', text: 'text-gold', icon: 'text-gold' }
@@ -102,62 +83,92 @@ export default function TrustCenterPage({ onStartVerification }: TrustCenterPage
     return '未认证'
   }
 
+  // 下拉刷新处理
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const scrollEl = e.currentTarget
+    if (scrollEl.scrollTop <= 0) {
+      touchStartY.current = e.touches[0].clientY
+      setIsPulling(true)
+    }
+  }
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isPulling) return
+    const scrollEl = e.currentTarget
+    if (scrollEl.scrollTop > 0) {
+      setIsPulling(false)
+      setPullDistance(0)
+      return
+    }
+    const deltaY = e.touches[0].clientY - touchStartY.current
+    if (deltaY > 0) {
+      const distance = Math.max(0, Math.min(100, deltaY))
+      setPullDistance(distance)
+    } else {
+      setPullDistance(0)
+    }
+  }
+
+  const handleTouchEnd = () => {
+    if (pullDistance > 60 && !isFetching) {
+      void refetch()
+    }
+    setPullDistance(0)
+    setIsPulling(false)
+    touchStartY.current = 0
+  }
+
+  // 加载状态
+  if (isLoading) {
+    return <TrustCenterPageSkeleton />
+  }
+
+  // 错误状态 - 使用统一错误组件
+  if (error) {
+    return (
+      <PageErrorState
+        message={error instanceof Error ? error.message : '加载信任中心失败'}
+        onRetry={() => void refetch()}
+        variant="full"
+      />
+    )
+  }
+
   return (
     <div className="flex flex-col h-full bg-background">
-      <header className="sticky top-0 z-20 bg-background border-b border-border safe-area-top">
-        <div className="px-4 py-3">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-              <Shield className="w-5 h-5 text-primary" />
-            </div>
-            <div>
-              <h1 className="font-medium">信任中心</h1>
-              <p className="text-xs text-muted-foreground">安全、透明、值得信赖</p>
-            </div>
-          </div>
+      {/* Header - 使用统一组件 */}
+      <PageHeader
+        title="信任中心"
+        subtitle="安全、透明、值得信赖"
+        icon={<Shield className="w-5 h-5 text-primary" />}
+        showBack={!!onBack}
+        onBack={onBack}
+      />
+
+      <div
+        className="flex-1 overflow-y-auto px-4 py-4 space-y-4 pb-20"
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+      >
+        {/* 下拉刷新指示器 */}
+        <div
+          className="flex items-center justify-center py-2 text-muted-foreground transition-all"
+          style={{
+            height: isFetching ? 40 : pullDistance,
+            opacity: pullDistance > 0 || isFetching ? 1 : 0,
+          }}
+        >
+          {isFetching ? (
+            <Loader2 className="w-5 h-5 animate-spin" />
+          ) : pullDistance > 60 ? (
+            <span className="text-xs">释放刷新</span>
+          ) : pullDistance > 0 ? (
+            <span className="text-xs">下拉刷新</span>
+          ) : null}
         </div>
-      </header>
 
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 pb-20">
-        {loadError && (
-          <section className="bg-gold/10 border border-gold/30 rounded-xl p-3">
-            <p className="text-xs text-gold">{loadError}</p>
-          </section>
-        )}
-
-        <section className="bg-card border border-border rounded-xl p-4">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-              <BadgeCheck className="w-6 h-6 text-primary" />
-            </div>
-            <div>
-              <h2 className="font-medium">可信度良好</h2>
-              <p className="text-xs text-muted-foreground">
-                {summary
-                  ? `${summary.pending_verification_count || 0}项待处理 · ${summary.notification_count || 0}条通知`
-                  : isLoading
-                    ? '正在同步信任中心数据'
-                    : '展示最新认证状态'}
-              </p>
-            </div>
-          </div>
-          {verificationItems.length > 0 ? (
-            <div className="grid grid-cols-4 gap-2">
-              {verificationItems.slice(0, 4).map((item, i) => {
-                const styles = getStatusStyles(item.status)
-                return (
-                  <div key={i} className={`text-center p-2 rounded-lg ${styles.bg}`}>
-                    <div className="flex justify-center mb-1">{getStatusIcon(item.status)}</div>
-                    <span className="text-[10px] text-muted-foreground">{item.name.slice(0, 4)}</span>
-                  </div>
-                )
-              })}
-            </div>
-          ) : (
-            <InlineEmpty message="暂无认证项目" />
-          )}
-        </section>
-
+        {/* 认证状态列表 */}
         <section>
           <h2 className="text-sm font-medium mb-2">认证状态</h2>
           <div className="bg-card border border-border rounded-xl overflow-hidden">
@@ -192,12 +203,17 @@ export default function TrustCenterPage({ onStartVerification }: TrustCenterPage
           </div>
         </section>
 
+        {/* 待处理项 */}
         {pendingItems.length > 0 && (
           <section>
             <h2 className="text-sm font-medium mb-2">待处理</h2>
             <div className="space-y-2">
               {pendingItems.map((item) => (
-                <button key={item.id} onClick={onStartVerification} className="w-full bg-card border border-border rounded-xl p-3 text-left hover:border-primary/30 transition-colors">
+                <button
+                  key={item.id}
+                  onClick={onStartVerification}
+                  className="w-full bg-card border border-border rounded-xl p-3 text-left hover:border-primary/30 transition-colors"
+                >
                   <div className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-full bg-gold/10 flex items-center justify-center">
                       <Upload className="w-4 h-4 text-gold" />
@@ -215,12 +231,16 @@ export default function TrustCenterPage({ onStartVerification }: TrustCenterPage
           </section>
         )}
 
+        {/* 安全记录 */}
         {riskRecords.length > 0 && (
           <section>
             <h2 className="text-sm font-medium mb-2">安全记录</h2>
             <div className="bg-card border border-border rounded-xl overflow-hidden">
               {riskRecords.map((record, i) => (
-                <div key={record.id} className={`px-4 py-3 flex items-center gap-3 ${i !== riskRecords.length - 1 ? 'border-b border-border' : ''}`}>
+                <div
+                  key={record.id}
+                  className={`px-4 py-3 flex items-center gap-3 ${i !== riskRecords.length - 1 ? 'border-b border-border' : ''}`}
+                >
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center ${record.resolved ? 'bg-primary/10' : 'bg-rose/10'}`}>
                     <AlertTriangle className={`w-4 h-4 ${record.resolved ? 'text-primary' : 'text-rose'}`} />
                   </div>
@@ -238,12 +258,16 @@ export default function TrustCenterPage({ onStartVerification }: TrustCenterPage
           </section>
         )}
 
+        {/* 审核通知 */}
         {notifications.length > 0 && (
           <section>
             <h2 className="text-sm font-medium mb-2">审核通知</h2>
             <div className="bg-card border border-border rounded-xl overflow-hidden">
               {notifications.map((n, i) => (
-                <div key={n.id} className={`px-4 py-3 flex items-center gap-3 ${i !== notifications.length - 1 ? 'border-b border-border' : ''}`}>
+                <div
+                  key={n.id}
+                  className={`px-4 py-3 flex items-center gap-3 ${i !== notifications.length - 1 ? 'border-b border-border' : ''}`}
+                >
                   <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center">
                     <FileText className="w-4 h-4 text-muted-foreground" />
                   </div>
@@ -258,6 +282,7 @@ export default function TrustCenterPage({ onStartVerification }: TrustCenterPage
           </section>
         )}
 
+        {/* 客服支持 */}
         <div className="bg-secondary rounded-xl p-4 text-center">
           <p className="text-sm text-muted-foreground mb-1">遇到问题？</p>
           <button className="text-sm text-primary font-medium">联系客服支持</button>

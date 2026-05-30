@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import {
   Settings,
   ChevronRight,
@@ -12,231 +12,279 @@ import {
   CheckCircle,
   Clock,
   XCircle,
+  X,
+  Plus,
 } from 'lucide-react'
 import Image from 'next/image'
-import { fetchAuthMe } from '@/lib/auth/auth-api'
-import { ensureDevAuthSession } from '@/lib/auth/dev-bootstrap'
-import { applyAuthMePayload, getAccessToken, getProfileId, getUserId } from '@/lib/auth/session'
-import {
-  fetchCollectedStatements,
-  fetchProfileFacts,
-  formatCollectedPreferenceChips,
-  mapCollectedToPreferenceGrid,
-} from '@/lib/api/endpoints/collected'
-import { fetchTrustHub } from '@/lib/api/endpoints/trust-hub'
-import { getErrorMessage } from '@/lib/api/errors'
-import { canUseMockFallback } from '@/lib/mock'
-import { isAuthStubEnabled } from '@/lib/env'
-import { DEMO_PROFILE } from '@/lib/fixtures/demo-profiles'
-import { PLACEHOLDER_AVATAR } from '@/lib/image-url'
-import {
-  mapTrustHubVerificationItems,
-  trustVerificationProgress,
-  type VerificationItemView,
-} from '@/lib/trust/map-trust-hub'
-import { usePageDataSource } from '@/lib/data-provenance'
+import { useProfilePageData } from '@/lib/hooks/use-profile-page-data'
+import { buildProfileView, calculateVerificationProgress } from '@/lib/mappers/profile-view'
+import { patchPersonaTags } from '@/lib/api/endpoints/persona'
 import { cn } from '@/lib/utils'
 import { ProgressRing } from './ui/progress-ring'
 import { FadeIn, PageTransition } from './ui/animations'
 import { ThemeToggle } from './ui/theme-toggle'
 import { DemoDataBanner } from './ui/demo-data-banner'
-import { ErrorState } from './ui/error-state'
+import { PageErrorState } from './ui/error-handling'
+import { PageHeader } from './ui/page-header'
+import { ProfilePageSkeleton } from './ui/skeletons/profile-skeleton'
 
 interface ProfilePageProps {
   onStartVerification: () => void
   onOpenTrustCenter?: () => void
   onOpenCollectedPreferences?: () => void
   onOpenOnboarding?: () => void
+  onOpenSettings?: () => void
 }
 
-const fallbackProfile = {
-  name: '用户',
-  age: undefined as number | undefined,
-  city: '待完善',
-  avatar: PLACEHOLDER_AVATAR,
-  headline: '登录后完善你的资料',
-  verified: false,
-  occupation: '待完善',
-  education: '',
-  relationshipGoal: '',
-}
-
-const fallbackTags = ['待完善']
-
-const fallbackPreferences: Record<string, string> = {
-  ageRange: '待设置',
-  location: '待设置',
-  education: '待设置',
-  height: '待设置',
-}
-
+/**
+ * Profile 页面 - 个人中心主页
+ *
+ * 使用 React Query hooks 管理数据获取，组件只负责渲染
+ */
 export default function ProfilePage({
   onStartVerification,
   onOpenTrustCenter,
   onOpenCollectedPreferences,
   onOpenOnboarding,
+  onOpenSettings,
 }: ProfilePageProps) {
-  const [profile, setProfile] = useState(fallbackProfile)
-  const [tags, setTags] = useState(fallbackTags)
-  const [preferences, setPreferences] = useState(fallbackPreferences)
-  const [verificationItems, setVerificationItems] = useState<VerificationItemView[]>([])
-  const [loadError, setLoadError] = useState<string | null>(null)
-  const { usingMockData, applyProvenance } = usePageDataSource()
-  const [isLoading, setIsLoading] = useState(true)
+  // 使用聚合数据 hook
+  const { auth, facts, collected, trust, isLoading, error, queries, refetch } = useProfilePageData()
 
+  // 标签编辑状态
+  const [isEditingTags, setIsEditingTags] = useState(false)
+  const [editedTags, setEditedTags] = useState<string[]>([])
+  const [isAddingTag, setIsAddingTag] = useState(false)
+  const [newTagInput, setNewTagInput] = useState('')
+  const [editingTagIndex, setEditingTagIndex] = useState<number | null>(null)
+  const [editingTagValue, setEditingTagValue] = useState('')
+  const [isSavingTags, setIsSavingTags] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const editInputRef = useRef<HTMLInputElement>(null)
+  const tagsAreaRef = useRef<HTMLDivElement>(null)
+
+  // 构建视图数据
+  const profile = useMemo(
+    () => buildProfileView(auth, facts, collected, trust),
+    [auth, facts, collected, trust],
+  )
+
+  // 点击外部区域自动保存并退出
   useEffect(() => {
-    let cancelled = false
+    if (!isEditingTags) return
 
-    async function load() {
-      setIsLoading(true)
-      setLoadError(null)
-
-      let token = getAccessToken()
-      if (!token && isAuthStubEnabled()) {
-        const ok = await ensureDevAuthSession()
-        if (cancelled) return
-        token = ok ? getAccessToken() : null
-      }
-
-      if (!token) {
-        if (canUseMockFallback()) {
-          applyProvenance(true, true, '/v1/auth/me')
-          setProfile({
-            name: DEMO_PROFILE.name,
-            age: DEMO_PROFILE.age,
-            city: DEMO_PROFILE.city,
-            avatar: DEMO_PROFILE.avatar,
-            headline: DEMO_PROFILE.headline,
-            verified: DEMO_PROFILE.verified,
-            occupation: DEMO_PROFILE.occupation,
-            education: DEMO_PROFILE.education,
-            relationshipGoal: DEMO_PROFILE.relationshipGoal,
-          })
-          setTags(DEMO_PROFILE.tags)
-          setVerificationItems([
-            { name: '身份', status: 'verified', description: '演示数据' },
-            { name: '学历', status: 'pending', description: '演示数据' },
-          ])
-        } else {
-          setLoadError('请先登录后查看个人资料')
-        }
-        setIsLoading(false)
-        return
-      }
-
-      try {
-        const data = await fetchAuthMe()
-        if (cancelled) return
-        applyAuthMePayload(data)
-        const user = data.user || {}
-        let rawProfile: Record<string, unknown> = {}
-
-        try {
-          const [factsResponse, collectedResponse] = await Promise.all([
-            fetchProfileFacts(),
-            fetchCollectedStatements(),
-          ])
-          if (factsResponse.profile_facts) {
-            rawProfile = { ...factsResponse.profile_facts }
-          }
-          const collectedStatements = collectedResponse.collected_statements || {}
-          const chips = formatCollectedPreferenceChips(collectedStatements)
-          if (chips.length) {
-            setTags(chips.slice(0, 6))
-            setPreferences(mapCollectedToPreferenceGrid(collectedStatements))
-          }
-        } catch {
-          setLoadError('资料加载失败，请稍后重试')
-          setIsLoading(false)
-          return
-        }
-
-        const userId = getUserId()
-        if (userId) {
-          try {
-            const trustResponse = await fetchTrustHub({
-              userId,
-              profileId: user.profile_id ?? getProfileId(),
-            })
-            const items = mapTrustHubVerificationItems(
-              trustResponse.trust_hub.verification_center?.items,
-            )
-            setVerificationItems(items)
-          } catch {
-            setVerificationItems([])
-          }
-        }
-
-        setProfile({
-          name: String(user.display_name || rawProfile.name || '用户'),
-          age: typeof rawProfile.age === 'number' ? rawProfile.age : undefined,
-          city: String(rawProfile.city || rawProfile.settlement_city || '待完善'),
-          avatar: String(user.avatar_url || rawProfile.avatar_url || PLACEHOLDER_AVATAR),
-          headline: String(rawProfile.headline || rawProfile.bio || rawProfile.public_notes || '认真关系，从认真了解开始'),
-          verified: Boolean(rawProfile.verified || rawProfile.live_video_verified),
-          occupation: String(rawProfile.public_job || rawProfile.job || rawProfile.occupation || '待完善'),
-          education: String(rawProfile.public_education || rawProfile.education || ''),
-          relationshipGoal: String(rawProfile.relationship_goal || ''),
-        })
-        applyProvenance(false, true, '/v1/auth/me')
-        setLoadError(null)
-      } catch (error) {
-        if (cancelled) return
-        setLoadError(getErrorMessage(error, '资料加载失败'))
-        if (canUseMockFallback()) {
-          applyProvenance(true, true, '/v1/auth/me')
-        }
-      } finally {
-        if (!cancelled) setIsLoading(false)
+    const handleClickOutside = (e: MouseEvent) => {
+      if (tagsAreaRef.current && !tagsAreaRef.current.contains(e.target as Node)) {
+        handleSaveAndExit()
       }
     }
-    void load()
+
+    // 延迟添加监听，避免双击事件立即触发退出
+    const timer = setTimeout(() => {
+      document.addEventListener('click', handleClickOutside)
+    }, 100)
+
     return () => {
-      cancelled = true
+      clearTimeout(timer)
+      document.removeEventListener('click', handleClickOutside)
     }
-  }, [])
+  }, [isEditingTags, editedTags, isAddingTag, newTagInput])
 
+  // 双击进入编辑模式
+  const handleDoubleClickTags = () => {
+    if (isSavingTags) return
+    setEditedTags(profile.tags)
+    setIsEditingTags(true)
+    setIsAddingTag(false)
+    setNewTagInput('')
+    setEditingTagIndex(null)
+    setEditingTagValue('')
+  }
+
+  // 点击标签进入编辑
+  const handleEditTag = (index: number) => {
+    setEditingTagIndex(index)
+    setEditingTagValue(editedTags[index])
+    setTimeout(() => {
+      editInputRef.current?.focus()
+    }, 50)
+  }
+
+  // 确认编辑标签
+  const handleConfirmEditTag = () => {
+    const trimmed = editingTagValue.trim().slice(0, 20)
+    if (trimmed && editingTagIndex !== null) {
+      const newTags = [...editedTags]
+      // 检查是否与其他标签重复
+      if (!newTags.some((t, i) => i !== editingTagIndex && t === trimmed)) {
+        newTags[editingTagIndex] = trimmed
+        setEditedTags(newTags)
+      }
+    }
+    setEditingTagIndex(null)
+    setEditingTagValue('')
+  }
+
+  // 编辑标签键盘事件
+  const handleEditTagKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      handleConfirmEditTag()
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      setEditingTagIndex(null)
+      setEditingTagValue('')
+    }
+  }
+
+  // 添加新标签
+  const handleAddTag = () => {
+    if (editedTags.length >= 6) return
+    setIsAddingTag(true)
+    setNewTagInput('')
+    // 自动聚焦输入框
+    setTimeout(() => {
+      inputRef.current?.focus()
+    }, 50)
+  }
+
+  // 确认添加标签
+  const handleConfirmAddTag = () => {
+    const trimmed = newTagInput.trim().slice(0, 20)
+    if (trimmed && !editedTags.includes(trimmed) && editedTags.length < 6) {
+      setEditedTags([...editedTags, trimmed])
+    }
+    setIsAddingTag(false)
+    setNewTagInput('')
+    // 保持编辑模式，不退出
+  }
+
+  // 删除标签
+  const handleRemoveTag = (index: number) => {
+    const newTags = [...editedTags]
+    newTags.splice(index, 1)
+    setEditedTags(newTags)
+  }
+
+  // 保存并退出编辑
+  const handleSaveAndExit = useCallback(async () => {
+    if (isSavingTags) return
+
+    // 如果正在输入，先确认添加
+    const tagsToSave = [...editedTags]
+    if (isAddingTag && newTagInput.trim()) {
+      const trimmed = newTagInput.trim().slice(0, 20)
+      if (!tagsToSave.includes(trimmed) && tagsToSave.length < 6) {
+        tagsToSave.push(trimmed)
+      }
+    }
+
+    setIsEditingTags(false)
+    setIsAddingTag(false)
+    setNewTagInput('')
+
+    // 保存
+    setIsSavingTags(true)
+    try {
+      await patchPersonaTags(tagsToSave)
+      await refetch()
+    } catch (e) {
+      console.error('保存标签失败:', e)
+    } finally {
+      setIsSavingTags(false)
+    }
+  }, [isSavingTags, editedTags, isAddingTag, newTagInput, refetch])
+
+  // 点击外部区域自动保存并退出
+  useEffect(() => {
+    if (!isEditingTags) return
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (tagsAreaRef.current && !tagsAreaRef.current.contains(e.target as Node)) {
+        handleSaveAndExit()
+      }
+    }
+
+    // 延迟添加监听，避免双击事件立即触发退出
+    const timer = setTimeout(() => {
+      document.addEventListener('click', handleClickOutside)
+    }, 100)
+
+    return () => {
+      clearTimeout(timer)
+      document.removeEventListener('click', handleClickOutside)
+    }
+  }, [isEditingTags, handleSaveAndExit])
+
+  // 处理输入框键盘事件
+  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      handleConfirmAddTag()
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      setIsAddingTag(false)
+      setNewTagInput('')
+    }
+  }
+
+  const { verifiedCount, total: verificationTotal, progress: verificationProgress } = useMemo(
+    () => calculateVerificationProgress(profile.verificationItems),
+    [profile.verificationItems],
+  )
+
+  // 判断是否使用 Mock 数据
+  const usingMockData = useMemo(() => {
+    return queries.auth.data?.user?.user_id === 'demo-user'
+  }, [queries.auth.data])
+
+  // 获取状态图标
   const getStatusIcon = (status: string) => {
     if (status === 'verified') return <CheckCircle className="w-4 h-4 text-primary" />
     if (status === 'pending') return <Clock className="w-4 h-4 text-gold" />
     return <XCircle className="w-4 h-4 text-muted-foreground" />
   }
 
-  const { verifiedCount, total: verificationTotal, progress: verificationProgress } =
-    trustVerificationProgress(verificationItems)
-
+  // 加载状态
   if (isLoading) {
-    return (
-      <PageTransition className="flex flex-col h-full bg-background items-center justify-center">
-        <p className="text-sm text-muted-foreground">加载资料中…</p>
-      </PageTransition>
-    )
+    return <ProfilePageSkeleton />
   }
 
-  if (loadError && !canUseMockFallback()) {
-    return <ErrorState message={loadError} onRetry={() => window.location.reload()} />
+  // 错误状态
+  if (error) {
+    return (
+      <PageErrorState
+        message={error}
+        onRetry={() => queries.auth.refetch()}
+        variant="full"
+      />
+    )
   }
 
   return (
     <PageTransition className="flex flex-col h-full bg-background">
       {usingMockData && <DemoDataBanner />}
-      <header className="sticky top-0 z-20 bg-background border-b border-border safe-area-top">
-        <div className="px-4 py-3 flex items-center justify-between">
-          <h1 className="text-lg font-medium">我的</h1>
+
+      {/* Header - 使用统一组件 */}
+      <PageHeader
+        title="我的"
+        rightActions={
           <div className="flex items-center gap-2">
             <ThemeToggle size="sm" />
             <button
               type="button"
-              className="w-8 h-8 flex items-center justify-center focus-ring rounded-full"
+              onClick={onOpenSettings}
+              className="w-8 h-8 flex items-center justify-center focus-ring rounded-full hover:bg-secondary/50 transition-colors"
               aria-label="设置"
             >
               <Settings className="w-5 h-5 text-muted-foreground" />
             </button>
           </div>
-        </div>
-      </header>
+        }
+      />
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 pb-20">
+        {/* 用户资料卡片 */}
         <FadeIn delay={100}>
           <section className="bg-card border border-border rounded-xl p-4">
             <div className="flex items-center gap-3 mb-3">
@@ -272,19 +320,116 @@ export default function ProfilePage({
               </div>
             </div>
             <p className="text-sm text-muted-foreground mb-3">{profile.headline}</p>
-            <div className="flex flex-wrap gap-1.5">
-              {tags.map((tag, i) => (
-                <span
-                  key={i}
-                  className="px-2 py-1 bg-secondary text-xs text-muted-foreground rounded-md"
-                >
-                  {tag}
-                </span>
-              ))}
+
+            {/* 标签区域 - 双击编辑 */}
+            <div
+              ref={tagsAreaRef}
+              className={cn(
+                'flex flex-wrap gap-1.5 items-center min-h-[28px]',
+                !isEditingTags && 'cursor-pointer',
+              )}
+              onDoubleClick={!isEditingTags ? handleDoubleClickTags : undefined}
+            >
+              {isEditingTags ? (
+                <>
+                  {/* 编辑模式：显示标签+删除按钮 */}
+                  {editedTags.map((tag, i) => (
+                    editingTagIndex === i ? (
+                      // 正在编辑的标签显示输入框
+                      <input
+                        key={`edit-${i}`}
+                        ref={editInputRef}
+                        type="text"
+                        value={editingTagValue}
+                        onChange={(e) => setEditingTagValue(e.target.value)}
+                        onKeyDown={handleEditTagKeyDown}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onBlur={handleConfirmEditTag}
+                        placeholder="输入..."
+                        maxLength={20}
+                        autoFocus
+                        className="w-[80px] px-2 py-1 text-xs bg-background border border-primary rounded-md outline-none"
+                      />
+                    ) : (
+                      // 普通标签：点击可编辑
+                      <span
+                        key={`${tag}-${i}`}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleEditTag(i)
+                        }}
+                        className="inline-flex items-center gap-1 px-2 py-1 bg-secondary text-xs text-muted-foreground rounded-md cursor-pointer hover:bg-secondary/80 transition-colors"
+                      >
+                        {tag}
+                        <button
+                          type="button"
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleRemoveTag(i)
+                          }}
+                          className="w-4 h-4 flex items-center justify-center hover:text-destructive transition-colors"
+                          aria-label={`删除标签 ${tag}`}
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    )
+                  ))}
+
+                  {/* 加号按钮或输入框 */}
+                  {isAddingTag ? (
+                    <input
+                      ref={inputRef}
+                      type="text"
+                      value={newTagInput}
+                      onChange={(e) => setNewTagInput(e.target.value)}
+                      onKeyDown={handleInputKeyDown}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      placeholder="输入..."
+                      maxLength={20}
+                      autoFocus
+                      className="w-[80px] px-2 py-1 text-xs bg-background border border-primary rounded-md outline-none"
+                    />
+                  ) : (
+                    editedTags.length < 6 && (
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleAddTag()
+                        }}
+                        className="w-6 h-6 flex items-center justify-center bg-primary/10 hover:bg-primary/20 text-primary rounded-md transition-colors"
+                        aria-label="添加标签"
+                      >
+                        <Plus className="w-4 h-4" />
+                      </button>
+                    )
+                  )}
+                </>
+              ) : (
+                <>
+                  {/* 展示模式：只显示标签 */}
+                  {profile.tags.length > 0 ? (
+                    profile.tags.map((tag, i) => (
+                      <span
+                        key={i}
+                        className="px-2 py-1 bg-secondary text-xs text-muted-foreground rounded-md"
+                      >
+                        {tag}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-xs text-muted-foreground/50 italic">双击添加标签</span>
+                  )}
+                </>
+              )}
             </div>
           </section>
         </FadeIn>
 
+        {/* 信任中心入口 */}
         <FadeIn delay={200}>
           <section>
             <button
@@ -307,9 +452,9 @@ export default function ProfilePage({
                 </div>
                 <ChevronRight className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
               </div>
-              {verificationItems.length ? (
+              {profile.verificationItems.length > 0 ? (
                 <div className="grid grid-cols-4 gap-2">
-                  {verificationItems.slice(0, 4).map((item, i) => (
+                  {profile.verificationItems.slice(0, 4).map((item, i) => (
                     <div
                       key={i}
                       className={cn(
@@ -333,42 +478,12 @@ export default function ProfilePage({
           </section>
         </FadeIn>
 
+        {/* 操作入口 */}
         <FadeIn delay={300}>
-          <section className="bg-card border border-border rounded-xl p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-medium text-sm">已收集偏好</h3>
-              <button
-                type="button"
-                onClick={onOpenCollectedPreferences}
-                className="text-xs text-primary hover:underline focus-ring rounded"
-              >
-                查看全部
-              </button>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              {Object.entries(preferences).map(([key, value]) => (
-                <div key={key} className="bg-secondary rounded-lg px-3 py-2">
-                  <span className="text-[10px] text-muted-foreground block">
-                    {key === 'ageRange'
-                      ? '年龄'
-                      : key === 'location'
-                        ? '城市'
-                        : key === 'education'
-                          ? '学历'
-                          : '身高'}
-                  </span>
-                  <span className="text-sm">{value}</span>
-                </div>
-              ))}
-            </div>
-          </section>
-        </FadeIn>
-
-        <FadeIn delay={400}>
           <section className="bg-card border border-border rounded-xl overflow-hidden">
             {[
               { icon: Edit3, label: '编辑资料', onClick: onOpenOnboarding },
-              { icon: Heart, label: '理想类型', onClick: onOpenCollectedPreferences, badge: '已收集' },
+              { icon: Heart, label: '理想类型', onClick: onOpenCollectedPreferences },
             ].map((item, i, arr) => {
               const Icon = item.icon
               if (!item.onClick) return null
@@ -385,14 +500,12 @@ export default function ProfilePage({
                 >
                   <Icon className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
                   <span className="flex-1 text-sm">{item.label}</span>
-                  {item.badge ? <span className="text-xs text-muted-foreground">{item.badge}</span> : null}
                   <ChevronRight className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
                 </button>
               )
             })}
           </section>
         </FadeIn>
-
       </div>
     </PageTransition>
   )

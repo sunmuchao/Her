@@ -4,6 +4,7 @@ import { Analytics } from '@vercel/analytics/next'
 import { AppConnectivityProvider, OfflineBanner } from '@/components/her/ui/app-connectivity'
 import { ThemeProvider } from '@/components/theme-provider'
 import { Toaster } from '@/components/ui/sonner'
+import { QueryProvider } from '@/lib/query-provider'
 import './globals.css'
 
 const inter = Inter({
@@ -62,12 +63,14 @@ export default function RootLayout({
           跳转到主要内容
         </a>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-          <AppConnectivityProvider>
-            <OfflineBanner />
-            <main id="main-content">{children}</main>
-            <Toaster richColors position="top-center" />
-            {process.env.NODE_ENV === 'production' && <Analytics />}
-          </AppConnectivityProvider>
+          <QueryProvider>
+            <AppConnectivityProvider>
+              <OfflineBanner />
+              <main id="main-content">{children}</main>
+              <Toaster richColors position="top-center" />
+              {process.env.NODE_ENV === 'production' && <Analytics />}
+            </AppConnectivityProvider>
+          </QueryProvider>
         </ThemeProvider>
       </body>
     </html>

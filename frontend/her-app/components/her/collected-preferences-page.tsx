@@ -1,14 +1,13 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { ArrowLeft, MessageSquare, Calendar, FileText } from 'lucide-react'
-import { fetchCollectedStatements } from '@/lib/api/endpoints/collected'
-import { getErrorMessage } from '@/lib/api/errors'
-import { canUseMockFallback } from '@/lib/mock'
-import { usePageDataSource } from '@/lib/data-provenance'
-import { FadeIn, PageTransition } from './ui/animations'
+import { MessageSquare, Calendar, FileText } from 'lucide-react'
+import { useCollectedStatements } from '@/lib/hooks/use-collected'
+import { useMemo } from 'react'
+import { PageHeader } from './ui/page-header'
+import { PageErrorState } from './ui/error-handling'
 import { DemoDataBanner } from './ui/demo-data-banner'
-import { ErrorState } from './ui/error-state'
+import { FadeIn, PageTransition } from './ui/animations'
+import { CollectedPreferencesSkeleton } from './ui/skeletons/collected-preferences-skeleton'
 
 export type CollectedItem = {
   value: unknown
@@ -55,69 +54,49 @@ interface CollectedPreferencesPageProps {
   onBack: () => void
 }
 
+/**
+ * 已收集偏好页面
+ *
+ * 展示用户明确说过的择偶偏好
+ * 使用 React Query hook 管理数据获取
+ */
 export default function CollectedPreferencesPage({ onBack }: CollectedPreferencesPageProps) {
-  const [items, setItems] = useState<Record<string, CollectedItem>>({})
-  const [loadError, setLoadError] = useState<string | null>(null)
-  const { usingMockData, applyProvenance } = usePageDataSource()
-  const [isLoading, setIsLoading] = useState(true)
+  const { data, isLoading, error, isFetching } = useCollectedStatements()
 
-  useEffect(() => {
-    let cancelled = false
-
-    async function load() {
-      setIsLoading(true)
-      setLoadError(null)
-      try {
-        const data = await fetchCollectedStatements()
-        if (cancelled) return
-        const collectedItems = (data.collected_items || {}) as Record<string, CollectedItem>
-        if (Object.keys(collectedItems).length) {
-          setItems(collectedItems)
-        } else {
-          const flat = data.collected_statements || {}
-          const mapped: Record<string, CollectedItem> = {}
-          for (const [key, value] of Object.entries(flat)) {
-            mapped[key] = { value }
-          }
-          setItems(mapped)
-        }
-        applyProvenance(false, Object.keys(collectedItems).length > 0 || Object.keys(data.collected_statements || {}).length > 0)
-      } catch (error) {
-        if (cancelled) return
-        setLoadError(getErrorMessage(error, '已收集偏好加载失败'))
-        if (canUseMockFallback()) {
-          applyProvenance(true, true)
-          setItems({
-            target_age_min: { value: 25, source_channel: 'matchmaker_chat', collected_at: '2026-05-01' },
-            target_age_max: { value: 32, source_channel: 'matchmaker_chat', collected_at: '2026-05-01' },
-            target_cities: {
-              value: '上海',
-              source_channel: 'matchmaker_chat',
-              evidence: '对话中明确提到城市=上海',
-            },
-          })
-        }
-      } finally {
-        if (!cancelled) setIsLoading(false)
-      }
+  // 解析数据
+  const items = useMemo(() => {
+    const collectedItems = (data?.collected_items || {}) as Record<string, CollectedItem>
+    if (Object.keys(collectedItems).length > 0) {
+      return collectedItems
     }
-
-    void load()
-    return () => {
-      cancelled = true
+    // fallback: 从 collected_statements 映射
+    const statements = data?.collected_statements || {}
+    const mapped: Record<string, CollectedItem> = {}
+    for (const [key, value] of Object.entries(statements)) {
+      mapped[key] = { value }
     }
-  }, [applyProvenance])
+    return mapped
+  }, [data])
 
+  // 判断是否使用 Mock 数据
+  const usingMockData = useMemo(() => {
+    return isFetching && !data
+  }, [isFetching, data])
+
+  // 加载状态 - 使用骨架屏
   if (isLoading) {
-    return (
-      <PageTransition className="flex flex-col h-full bg-background items-center justify-center">
-        <p className="text-sm text-muted-foreground">加载已收集偏好…</p>
-      </PageTransition>
-    )
+    return <CollectedPreferencesSkeleton onBack={onBack} />
   }
 
-  if (loadError && !canUseMockFallback()) {
-    return <ErrorState message={loadError} onRetry={() => window.location.reload()} />
+  // 错误状态 - 使用统一错误组件
+  if (error) {
+    return (
+      <PageErrorState
+        message={error instanceof Error ? error.message : '已收集偏好加载失败'}
+        onRetry={() => window.location.reload()}
+        variant="full"
+      />
+    )
   }
 
   const entries = Object.entries(items)
@@ -125,22 +104,14 @@ export default function CollectedPreferencesPage({ onBack }: CollectedPreference
   return (
     <PageTransition className="flex flex-col h-full bg-background">
       {usingMockData && <DemoDataBanner />}
-      <header className="sticky top-0 z-20 bg-background border-b border-border safe-area-top">
-        <div className="px-4 py-3 flex items-center gap-3">
-          <button
-            type="button"
-            onClick={onBack}
-            className="w-8 h-8 flex items-center justify-center focus-ring rounded-full"
-            aria-label="返回"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <div>
-            <h1 className="text-lg font-medium">已收集偏好</h1>
-            <p className="text-xs text-muted-foreground">仅展示你明确说过的内容</p>
-          </div>
-        </div>
-      </header>
+
+      {/* Header - 使用统一组件 */}
+      <PageHeader
+        title="已收集偏好"
+        subtitle="仅展示你明确说过的内容"
+        showBack
+        onBack={onBack}
+      />
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 pb-20">
         {entries.length === 0 ? (

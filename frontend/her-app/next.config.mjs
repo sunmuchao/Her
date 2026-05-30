@@ -3,6 +3,12 @@ const nextConfig = {
   // Next.js 16 blocks dev HMR/assets when the page host differs from the dev server host
   // (e.g. opening http://127.0.0.1:3000 while the server advertises localhost).
   allowedDevOrigins: ['127.0.0.1', 'localhost'],
+
+  // 明确指定 Turbopack 根目录，避免多个 lockfiles 导致的推断错误
+  turbopack: {
+    root: '.',
+  },
+
   images: {
     localPatterns: [
       { pathname: '/**' },
