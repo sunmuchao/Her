@@ -213,8 +213,13 @@ export function useAppRouter() {
   )
 
   const handleBackFromVerification = useCallback(() => {
-    if (searchParams.get('from') === 'trust') {
+    const from = searchParams.get('from')
+    if (from === 'trust') {
       pushPage('sub-trust-center')
+      return
+    }
+    if (from === 'profile') {
+      pushPage('main-profile')
       return
     }
     pushPage(`main-${currentTab}` as AppPage)
