@@ -9,8 +9,6 @@ import CollectedPreferencesPage from '@/components/her/collected-preferences-pag
 import EditProfilePage from '@/components/her/edit-profile-page'
 import ProfilePage from '@/components/her/profile-page'
 import RelationshipsPage from '@/components/her/relationships-page'
-import TrustCenterPage from '@/components/her/trust-center-page'
-import VerificationFlowPage from '@/components/her/verification'
 import SettingsPage from '@/components/her/settings-page'
 import { PageTransition, SlideInTransition } from '@/components/her/ui/page-transitions'
 import type { CandidatePreview } from '@/lib/types/candidate'
@@ -34,9 +32,6 @@ type AppShellProps = {
   onOpenInbox: () => void
   onOpenChat: (chatId: string, info?: ChatUserInfo) => void
   onBackToMain: () => void
-  onStartVerification: (from?: 'trust-center' | 'profile', target?: string) => void
-  onBackFromVerification: () => void
-  onOpenTrustCenter: () => void
   onOpenCollectedPreferences: () => void
   onOpenEditProfile: () => void
   onOpenSettings: () => void
@@ -59,9 +54,6 @@ export function AppShell({
   onOpenInbox,
   onOpenChat,
   onBackToMain,
-  onStartVerification,
-  onBackFromVerification,
-  onOpenTrustCenter,
   onOpenCollectedPreferences: _onOpenCollectedPreferences,
   onOpenEditProfile,
   onOpenSettings,
@@ -111,7 +103,6 @@ export function AppShell({
           <PageTransition key="relationships-main">
             <RelationshipsPage
               onOpenChat={onOpenChat}
-              onStartVerification={onStartVerification}
               onNavigateToDiscover={() => onTabChange('matchmaker')}
               onViewCandidate={onViewCandidate}
             />
@@ -121,8 +112,6 @@ export function AppShell({
         {currentTab === 'profile' && subView === 'main' && (
           <PageTransition key="profile-main">
             <ProfilePage
-              onStartVerification={onStartVerification}
-              onOpenTrustCenter={onOpenTrustCenter}
               onOpenOnboarding={onOpenOnboarding}
               onOpenEditProfile={onOpenEditProfile}
               onOpenSettings={onOpenSettings}
@@ -166,11 +155,6 @@ export function AppShell({
             />
           </SlideInTransition>
         )}
-        {subView === 'verification' && (
-          <SlideInTransition key="verification" direction="up">
-            <VerificationFlowPage onBack={onBackFromVerification} />
-          </SlideInTransition>
-        )}
         {subView === 'collected-preferences' && (
           <SlideInTransition key="collected-preferences" direction="right">
             <CollectedPreferencesPage onBack={onBackToMain} />
@@ -181,14 +165,6 @@ export function AppShell({
             <EditProfilePage
               onBack={onBackToMain}
               onSaved={onBackToMain}
-            />
-          </SlideInTransition>
-        )}
-        {subView === 'trust-center' && (
-          <SlideInTransition key="trust-center" direction="right">
-            <TrustCenterPage
-              onStartVerification={() => onStartVerification('trust-center')}
-              onBack={onBackToMain}
             />
           </SlideInTransition>
         )}

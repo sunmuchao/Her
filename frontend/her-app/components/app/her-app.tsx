@@ -153,9 +153,6 @@ export function HerApp() {
               onOpenInbox={nav.handleOpenInbox}
               onOpenChat={nav.handleOpenChat}
               onBackToMain={nav.handleBackToMain}
-              onStartVerification={nav.handleStartVerification}
-              onBackFromVerification={nav.handleBackFromVerification}
-              onOpenTrustCenter={nav.handleOpenTrustCenter}
               onOpenCollectedPreferences={nav.handleOpenCollectedPreferences}
               onOpenEditProfile={nav.handleOpenEditProfile}
               onOpenSettings={nav.handleOpenSettings}

@@ -1,5 +1,4 @@
 import {
-  CheckCircle,
   ClipboardList,
   Heart,
   KeyRound,
@@ -10,7 +9,6 @@ import {
   MessageCircle,
   Phone,
   RotateCcw,
-  Shield,
   Sparkles,
   User,
   UserPlus,
@@ -48,8 +46,6 @@ export const demoPageCategories: Array<{
       { id: 'sub-recommendation-inbox', name: '推荐来信', icon: Mail },
       { id: 'sub-candidate-detail', name: '候选人详情', icon: User },
       { id: 'sub-chat', name: '聊天', icon: MessageCircle },
-      { id: 'sub-verification', name: '去认证', icon: CheckCircle },
-      { id: 'sub-trust-center', name: '信任中心', icon: Shield },
       { id: 'ops-workbench', name: '运营协作台', icon: LayoutDashboard },
     ],
   },
