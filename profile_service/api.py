@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import os
 import re
+import threading
+from collections.abc import Callable
 from typing import Any, Mapping, Sequence
 from urllib.parse import parse_qs, unquote, urlparse
 
@@ -32,6 +35,63 @@ PROFILE_TABLE_DETECTION_WEIGHTS = {
 }
 
 
+# 全局 profile 连接池缓存
+_profile_pool_cache: dict[str, ProfileConnectionPool] = {}
+_profile_pool_lock = threading.Lock()
+
+
+class ProfileConnectionPool:
+    """简单的有界连接池，避免每次请求都新建连接"""
+
+    __slots__ = ("_avail", "_cfg", "_lock", "_sem", "_dsn")
+
+    def __init__(self, dsn: str, max_size: int = 8) -> None:
+        self._dsn = dsn
+        self._cfg = schema.parse_mysql_dsn(dsn)
+        self._sem = threading.BoundedSemaphore(max(1, max_size))
+        self._lock = threading.Lock()
+        self._avail: list[Any] = []
+
+    def acquire(self, timeout: float | None = None) -> MySQLCompatConnection:
+        """获取连接，支持超时保护"""
+        acquired = self._sem.acquire(timeout=timeout)
+        if not acquired:
+            raise TimeoutError(f"Profile 连接池等待超时（{timeout}秒）")
+
+        try:
+            with self._lock:
+                raw = self._avail.pop() if self._avail else schema.mysql_database_connect(self._cfg)
+        except Exception:
+            self._sem.release()
+            raise
+        return MySQLCompatConnection(raw, self._cfg)
+
+    def release(self, conn: MySQLCompatConnection) -> None:
+        """释放连接回池"""
+        try:
+            conn.rollback()
+        except Exception:
+            try:
+                conn.close()
+            except Exception:
+                pass
+            self._sem.release()
+            return
+        raw = conn.driver_connection
+        with self._lock:
+            self._avail.append(raw)
+        self._sem.release()
+
+
+def _get_profile_pool(source_dsn: str) -> ProfileConnectionPool:
+    """获取或创建 profile 连接池"""
+    with _profile_pool_lock:
+        if source_dsn not in _profile_pool_cache:
+            max_pool_size = int(os.environ.get("PROFILE_DB_POOL_MAX", "8") or "8")
+            _profile_pool_cache[source_dsn] = ProfileConnectionPool(source_dsn, max_size=max_pool_size)
+        return _profile_pool_cache[source_dsn]
+
+
 def resolve_profile_source(
     source_dsn: str | None,
     source_table_name: str | None = None,
@@ -46,10 +106,22 @@ def _require_profile_source(*, source_dsn: str, source_table_name: str) -> None:
         raise ValueError("source_table_name is required")
 
 
-def _connect_profile_db(source_dsn: str) -> MySQLCompatConnection:
-    config = schema.parse_mysql_dsn(str(source_dsn))
-    raw = schema.mysql_database_connect(config)
-    return MySQLCompatConnection(raw, config)
+def _connect_profile_db(source_dsn: str, use_pool: bool = True, timeout: float = 10.0) -> MySQLCompatConnection:
+    """连接 profile 数据库，默认使用连接池"""
+    if use_pool:
+        pool = _get_profile_pool(source_dsn)
+        return pool.acquire(timeout=timeout)
+    else:
+        # 不使用连接池，直接创建连接（用于特殊场景）
+        config = schema.parse_mysql_dsn(str(source_dsn))
+        raw = schema.mysql_database_connect(config)
+        return MySQLCompatConnection(raw, config)
+
+
+def release_profile_connection(source_dsn: str, conn: MySQLCompatConnection) -> None:
+    """释放连接回连接池"""
+    pool = _get_profile_pool(source_dsn)
+    pool.release(conn)
 
 
 def _normalize_column_key(value: Any) -> str:
@@ -284,7 +356,7 @@ def get_profile(
     profile_id: int,
 ) -> dict[str, Any]:
     _require_profile_source(source_dsn=source_dsn, source_table_name=source_table_name)
-    profile_conn = _connect_profile_db(source_dsn)
+    profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
     try:
         raw_conn = profile_conn.driver_connection
         if not schema.column_exists(raw_conn, source_table_name, "id"):
@@ -298,7 +370,8 @@ def get_profile(
             raise ValueError(f"profile {profile_id} was not found in table {source_table_name}")
         return dict(row)
     finally:
-        profile_conn.close()
+        # 释放连接回连接池，而不是关闭
+        release_profile_connection(source_dsn, profile_conn)
 
 
 def get_public_profile(
@@ -311,7 +384,7 @@ def get_public_profile(
     public_view_name = str(public_view_name or "").strip() or "public_profile_view"
     if not source_dsn:
         raise ValueError("source_dsn is required")
-    profile_conn = _connect_profile_db(source_dsn)
+    profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
     try:
         raw_conn = profile_conn.driver_connection
         if not schema.table_exists(raw_conn, public_view_name):
@@ -325,7 +398,8 @@ def get_public_profile(
             raise ValueError(f"public profile {profile_id} was not found in view {public_view_name}")
         return dict(row)
     finally:
-        profile_conn.close()
+        # 释放连接回连接池，而不是关闭
+        release_profile_connection(source_dsn, profile_conn)
 
 
 def list_profile_photo_previews(
