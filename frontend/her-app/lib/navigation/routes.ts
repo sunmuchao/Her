@@ -63,6 +63,9 @@ export function pageToPath(page: AppPage, params: RouteParams = {}): string {
     case 'sub-chat':
       path = `/chat/${params.chatId ?? DEMO_DEFAULT_CHAT_ID}`
       break
+    case 'sub-verification':
+      path = '/verification'
+      break
     case 'sub-collected-preferences':
       path = '/profile/collected'
       break
@@ -120,7 +123,7 @@ export function pathToPage(pathname: string): ParsedRoute {
   if (path === '/relationships') return { page: 'main-relationships' }
   if (path === '/profile') return { page: 'main-profile' }
   if (path === '/inbox') return { page: 'sub-recommendation-inbox' }
-  if (path === '/verification') return { page: 'main-profile' }
+  if (path === '/verification') return { page: 'sub-verification' }
   if (path === '/trust') return { page: 'main-profile' }
   if (path === '/profile/collected') return { page: 'sub-collected-preferences' }
   if (path === '/profile/edit') return { page: 'sub-edit-profile' }

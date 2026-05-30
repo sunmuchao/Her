@@ -18,7 +18,7 @@ import { notifyError, notifySuccess } from '@/lib/notify'
 import { getUserId } from '@/lib/auth/session'
 import { getErrorMessage } from '@/lib/api/errors'
 
-export type VerificationStep = 'select' | 'video-intro' | 'video-record' | 'video-review' | 'video-pending' | 'field-upload' | 'field-pending'
+export type VerificationStep = 'video-intro' | 'video-record' | 'video-review' | 'video-pending' | 'field-upload' | 'field-pending'
 
 export type FieldItem = {
   id: string
@@ -28,38 +28,16 @@ export type FieldItem = {
 }
 
 const DEFAULT_FIELDS: FieldItem[] = [
-  {
-    id: 'education',
-    name: '学历认证',
-    description: '提供学位证书或学信网截图',
-    status: 'unverified',
-  },
-  {
-    id: 'occupation',
-    name: '职业认证',
-    description: '提供在职证明或工牌照片',
-    status: 'unverified',
-  },
-  {
-    id: 'income',
-    name: '收入认证',
-    description: '提供近三个月银行流水',
-    status: 'unverified',
-  },
-  {
-    id: 'video',
-    name: '活体视频认证',
-    description: '录制真人视频确保真实性',
-    status: 'unverified',
-  },
+  { id: 'education', name: '学历认证', description: '提供学位证书或学信网截图', status: 'unverified' },
+  { id: 'occupation', name: '职业认证', description: '提供在职证明或工牌照片', status: 'unverified' },
+  { id: 'income', name: '收入认证', description: '提供近三个月银行流水', status: 'unverified' },
+  { id: 'video', name: '活体视频认证', description: '录制真人视频确保真实性', status: 'unverified' },
 ]
 
 function mapSubmissionStatus(status?: string): FieldItem['status'] {
   const text = (status || '').toLowerCase()
   if (['approved', 'verified', 'completed'].includes(text)) return 'verified'
-  if (['submitted', 'under_review', 'awaiting_submission', 'resubmission_required'].includes(text)) {
-    return 'pending'
-  }
+  if (['submitted', 'under_review', 'awaiting_submission', 'resubmission_required'].includes(text)) return 'pending'
   return 'unverified'
 }
 
@@ -78,23 +56,18 @@ function mapApiFieldToUi(fieldKey?: string): string | undefined {
 }
 
 function resolveInitialStep(target: string | null): VerificationStep {
-  if (target === 'video') return 'video-intro'
   if (target === 'education' || target === 'occupation' || target === 'income') return 'field-upload'
-  return 'select'
+  return 'video-intro'
 }
 
-export function useVerificationFlow() {
+export function useVerificationFlow(onBack: () => void) {
   const searchParams = useSearchParams()
   const initialTarget = searchParams.get('target')
-  const directEntry = Boolean(initialTarget)
   const [fieldVerificationTypes, setFieldVerificationTypes] = useState<FieldItem[]>(DEFAULT_FIELDS)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
   const [step, setStep] = useState<VerificationStep>(() => resolveInitialStep(initialTarget))
-  const [selectedField, setSelectedField] = useState<string | null>(() =>
-    initialTarget === 'education' || initialTarget === 'occupation' || initialTarget === 'income'
-      ? initialTarget
-      : null,
+  const [selectedField] = useState<string | null>(() =>
+    initialTarget === 'education' || initialTarget === 'occupation' || initialTarget === 'income' ? initialTarget : null,
   )
   const [isRecording, setIsRecording] = useState(false)
   const [recordingTime, setRecordingTime] = useState(0)
@@ -105,11 +78,9 @@ export function useVerificationFlow() {
   const [isSubmittingField, setIsSubmittingField] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // 加载认证状态
   useEffect(() => {
     const userId = getUserId()
     if (!userId) {
-      setIsLoading(false)
       setLoadError('请先登录后再进行认证')
       return
     }
@@ -133,9 +104,7 @@ export function useVerificationFlow() {
         const fieldStatusByUi = new Map<string, FieldItem['status']>()
         for (const submission of fieldSubmissions) {
           const uiField = mapApiFieldToUi(submission.field_key)
-          if (uiField) {
-            fieldStatusByUi.set(uiField, mapSubmissionStatus(submission.status))
-          }
+          if (uiField) fieldStatusByUi.set(uiField, mapSubmissionStatus(submission.status))
         }
 
         setFieldVerificationTypes(
@@ -155,8 +124,6 @@ export function useVerificationFlow() {
       } catch (error) {
         if (cancelled) return
         setLoadError(getErrorMessage(error, '认证状态加载失败'))
-      } finally {
-        if (!cancelled) setIsLoading(false)
       }
     }
 
@@ -166,29 +133,6 @@ export function useVerificationFlow() {
     }
   }, [])
 
-  useEffect(() => {
-    if (isLoading || loadError) return
-    if (!initialTarget) return
-
-    if (initialTarget === 'video') {
-      if (step === 'select') {
-        setStep('video-intro')
-      }
-      return
-    }
-
-    const targetField = fieldVerificationTypes.find((field) => field.id === initialTarget)
-    if (targetField && targetField.status !== 'verified' && step === 'select') {
-      setSelectedField(targetField.id)
-      setStep('field-upload')
-    }
-  }, [initialTarget, isLoading, loadError, fieldVerificationTypes, step])
-
-  // 计算进度
-  const verifiedCount = fieldVerificationTypes.filter(f => f.status === 'verified').length
-  const progress = (verifiedCount / fieldVerificationTypes.length) * 100
-
-  // 视频认证相关方法
   const startVideoVerification = async () => {
     setIsSubmittingVideo(true)
     try {
@@ -205,9 +149,7 @@ export function useVerificationFlow() {
   const handleRecordVideo = async () => {
     setIsRecording(true)
     setRecordingTime(0)
-    const timer = window.setInterval(() => {
-      setRecordingTime((prev) => prev + 1)
-    }, 1000)
+    const timer = window.setInterval(() => setRecordingTime((prev) => prev + 1), 1000)
     try {
       const video = await recordVideoFromCamera(6000)
       setRecordedVideo(video)
@@ -245,12 +187,6 @@ export function useVerificationFlow() {
     }
   }
 
-  // 文件认证相关方法
-  const handleStartFieldVerification = (fieldId: string) => {
-    setSelectedField(fieldId)
-    setStep('field-upload')
-  }
-
   const handleSubmitField = async () => {
     if (!selectedField) return
     if (!selectedFile) {
@@ -269,35 +205,12 @@ export function useVerificationFlow() {
     }
   }
 
-  // 状态样式辅助函数
-  const getStatusStyles = (status: string) => {
-    switch (status) {
-      case 'verified':
-        return { bg: 'bg-primary/10', text: 'text-primary', icon: 'text-primary' }
-      case 'pending':
-        return { bg: 'bg-gold/10', text: 'text-gold', icon: 'text-gold' }
-      default:
-        return { bg: 'bg-secondary', text: 'text-muted-foreground', icon: 'text-muted-foreground' }
-    }
-  }
-
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case 'verified': return '已认证'
-      case 'pending': return '审核中'
-      default: return '未认证'
-    }
-  }
-
   return {
-    // 状态
     fieldVerificationTypes,
     loadError,
-    isLoading,
     step,
     setStep,
     selectedField,
-    setSelectedField,
     isRecording,
     recordingTime,
     liveChallenge,
@@ -308,16 +221,10 @@ export function useVerificationFlow() {
     setSelectedFile,
     isSubmittingField,
     fileInputRef,
-    verifiedCount,
-    progress,
-    directEntry,
-    // 方法
+    handleDirectBack: onBack,
     startVideoVerification,
     handleRecordVideo,
     finishVideoSubmission,
-    handleStartFieldVerification,
     handleSubmitField,
-    getStatusStyles,
-    getStatusText,
   }
 }
