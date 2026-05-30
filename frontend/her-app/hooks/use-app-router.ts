@@ -191,10 +191,21 @@ export function useAppRouter() {
   }, [currentTab, pushPage])
 
   const handleStartVerification = useCallback(
-    (from?: 'trust-center') => {
+    (from?: 'trust-center' | 'profile', target?: string) => {
       let href = pageToPath('sub-verification')
+      const params = new URLSearchParams()
       if (from === 'trust-center') {
-        href += '?from=trust'
+        params.set('from', 'trust')
+      }
+      if (from === 'profile') {
+        params.set('from', 'profile')
+      }
+      if (target) {
+        params.set('target', target)
+      }
+      const query = params.toString()
+      if (query) {
+        href += `?${query}`
       }
       router.push(href)
     },
