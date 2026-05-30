@@ -5,7 +5,6 @@ import {
   Settings,
   ChevronRight,
   BadgeCheck,
-  Heart,
   MapPin,
   Edit3,
   Shield,
@@ -31,8 +30,8 @@ import { ProfilePageSkeleton } from './ui/skeletons/profile-skeleton'
 interface ProfilePageProps {
   onStartVerification: () => void
   onOpenTrustCenter?: () => void
-  onOpenCollectedPreferences?: () => void
   onOpenOnboarding?: () => void
+  onOpenEditProfile?: () => void
   onOpenSettings?: () => void
 }
 
@@ -44,8 +43,8 @@ interface ProfilePageProps {
 export default function ProfilePage({
   onStartVerification,
   onOpenTrustCenter,
-  onOpenCollectedPreferences,
   onOpenOnboarding,
+  onOpenEditProfile,
   onOpenSettings,
 }: ProfilePageProps) {
   // 使用聚合数据 hook
@@ -69,31 +68,10 @@ export default function ProfilePage({
     [auth, facts, collected, trust],
   )
 
-  // 点击外部区域自动保存并退出
-  useEffect(() => {
-    if (!isEditingTags) return
-
-    const handleClickOutside = (e: MouseEvent) => {
-      if (tagsAreaRef.current && !tagsAreaRef.current.contains(e.target as Node)) {
-        handleSaveAndExit()
-      }
-    }
-
-    // 延迟添加监听，避免双击事件立即触发退出
-    const timer = setTimeout(() => {
-      document.addEventListener('click', handleClickOutside)
-    }, 100)
-
-    return () => {
-      clearTimeout(timer)
-      document.removeEventListener('click', handleClickOutside)
-    }
-  }, [isEditingTags, editedTags, isAddingTag, newTagInput])
-
-  // 双击进入编辑模式
-  const handleDoubleClickTags = () => {
+  // 进入编辑模式（单击触发）
+  const handleEnterEdit = () => {
     if (isSavingTags) return
-    setEditedTags(profile.tags)
+    setEditedTags([...profile.tags])
     setIsEditingTags(true)
     setIsAddingTag(false)
     setNewTagInput('')
@@ -167,33 +145,23 @@ export default function ProfilePage({
   }
 
   // 保存并退出编辑
-  const handleSaveAndExit = useCallback(async () => {
-    if (isSavingTags) return
-
-    // 如果正在输入，先确认添加
-    const tagsToSave = [...editedTags]
-    if (isAddingTag && newTagInput.trim()) {
-      const trimmed = newTagInput.trim().slice(0, 20)
-      if (!tagsToSave.includes(trimmed) && tagsToSave.length < 6) {
-        tagsToSave.push(trimmed)
-      }
-    }
-
+  const handleSaveAndExit = useCallback(async (currentTags: string[]) => {
     setIsEditingTags(false)
     setIsAddingTag(false)
     setNewTagInput('')
-
-    // 保存
+    setEditingTagIndex(null)
+    setEditingTagValue('')
     setIsSavingTags(true)
+
     try {
-      await patchPersonaTags(tagsToSave)
+      await patchPersonaTags(currentTags)
       await refetch()
     } catch (e) {
       console.error('保存标签失败:', e)
     } finally {
       setIsSavingTags(false)
     }
-  }, [isSavingTags, editedTags, isAddingTag, newTagInput, refetch])
+  }, [refetch])
 
   // 点击外部区域自动保存并退出
   useEffect(() => {
@@ -201,20 +169,34 @@ export default function ProfilePage({
 
     const handleClickOutside = (e: MouseEvent) => {
       if (tagsAreaRef.current && !tagsAreaRef.current.contains(e.target as Node)) {
-        handleSaveAndExit()
+        // 先确认正在编辑的内容
+        let finalTags = [...editedTags]
+        if (editingTagIndex !== null && editingTagValue.trim()) {
+          const trimmed = editingTagValue.trim().slice(0, 20)
+          if (!finalTags.some((t, i) => i !== editingTagIndex && t === trimmed)) {
+            finalTags[editingTagIndex] = trimmed
+          }
+        }
+        if (isAddingTag && newTagInput.trim()) {
+          const trimmed = newTagInput.trim().slice(0, 20)
+          if (!finalTags.includes(trimmed) && finalTags.length < 6) {
+            finalTags.push(trimmed)
+          }
+        }
+        handleSaveAndExit(finalTags)
       }
     }
 
-    // 延迟添加监听，避免双击事件立即触发退出
+    // 延迟添加监听，避免进入编辑的点击立即触发退出
     const timer = setTimeout(() => {
       document.addEventListener('click', handleClickOutside)
-    }, 100)
+    }, 200)
 
     return () => {
       clearTimeout(timer)
       document.removeEventListener('click', handleClickOutside)
     }
-  }, [isEditingTags, handleSaveAndExit])
+  }, [isEditingTags]) // 只依赖 isEditingTags，避免循环
 
   // 处理输入框键盘事件
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -321,14 +303,14 @@ export default function ProfilePage({
             </div>
             <p className="text-sm text-muted-foreground mb-3">{profile.headline}</p>
 
-            {/* 标签区域 - 双击编辑 */}
+            {/* 标签区域 - 点击编辑 */}
             <div
               ref={tagsAreaRef}
               className={cn(
                 'flex flex-wrap gap-1.5 items-center min-h-[28px]',
                 !isEditingTags && 'cursor-pointer',
               )}
-              onDoubleClick={!isEditingTags ? handleDoubleClickTags : undefined}
+              onClick={!isEditingTags ? handleEnterEdit : undefined}
             >
               {isEditingTags ? (
                 <>
@@ -421,7 +403,7 @@ export default function ProfilePage({
                       </span>
                     ))
                   ) : (
-                    <span className="text-xs text-muted-foreground/50 italic">双击添加标签</span>
+                    <span className="text-xs text-muted-foreground/50 italic">点击添加标签</span>
                   )}
                 </>
               )}
@@ -482,9 +464,8 @@ export default function ProfilePage({
         <FadeIn delay={300}>
           <section className="bg-card border border-border rounded-xl overflow-hidden">
             {[
-              { icon: Edit3, label: '编辑资料', onClick: onOpenOnboarding },
-              { icon: Heart, label: '理想类型', onClick: onOpenCollectedPreferences },
-            ].map((item, i, arr) => {
+              { icon: Edit3, label: '编辑资料', onClick: onOpenEditProfile || onOpenOnboarding },
+            ].map((item) => {
               const Icon = item.icon
               if (!item.onClick) return null
               return (
@@ -492,10 +473,7 @@ export default function ProfilePage({
                   key={item.label}
                   type="button"
                   onClick={item.onClick}
-                  className={cn(
-                    'w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-secondary/50 transition-colors focus-ring',
-                    i !== arr.length - 1 && 'border-b border-border',
-                  )}
+                  className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-secondary/50 transition-colors focus-ring"
                   aria-label={item.label}
                 >
                   <Icon className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
