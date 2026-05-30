@@ -332,3 +332,6 @@
  GET /api/gateway/v1/proxy-intro/cases/mine 200 in 90ms (next.js: 14ms, application-code: 76ms)
  GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 90ms (next.js: 1783µs, application-code: 88ms)
  GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 119ms (next.js: 6ms, application-code: 113ms)
+ GET /api/gateway/v1/auth/me 200 in 39ms (next.js: 8ms, application-code: 31ms)
+✓ Compiled in 567ms
+✓ Compiled in 78ms
