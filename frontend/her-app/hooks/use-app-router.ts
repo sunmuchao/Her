@@ -9,7 +9,7 @@ import type { AppPage, SubView, TabType } from '@/lib/navigation/types'
 
 function pageToTab(page: AppPage): TabType {
   if (page === 'main-relationships' || page === 'sub-chat') return 'relationships'
-  if (page === 'main-profile' || page === 'sub-collected-preferences' || page === 'sub-edit-profile' || page === 'sub-settings') return 'profile'
+  if (page === 'main-profile' || page === 'sub-verification' || page === 'sub-collected-preferences' || page === 'sub-edit-profile' || page === 'sub-settings') return 'profile'
   return 'matchmaker'
 }
 
@@ -17,6 +17,7 @@ function pageToSubView(page: AppPage): SubView {
   if (page === 'sub-recommendation-inbox') return 'recommendation-inbox'
   if (page === 'sub-candidate-detail') return 'candidate-detail'
   if (page === 'sub-chat') return 'chat'
+  if (page === 'sub-verification') return 'verification'
   if (page === 'sub-collected-preferences') return 'collected-preferences'
   if (page === 'sub-edit-profile') return 'edit-profile'
   if (page === 'sub-settings') return 'settings'
@@ -218,8 +219,36 @@ export function useAppRouter() {
     handleOpenChat,
     handleOpenInbox,
     handleBackToMain,
+    handleStartVerification,
+    handleBackFromVerification,
     handleOpenCollectedPreferences,
     handleOpenEditProfile,
     handleOpenSettings,
   }
 }
+  const handleStartVerification = useCallback(
+    (from?: 'profile', target?: string) => {
+      let href = pageToPath('sub-verification')
+      const params = new URLSearchParams()
+      if (from === 'profile') {
+        params.set('from', 'profile')
+      }
+      if (target) {
+        params.set('target', target)
+      }
+      const query = params.toString()
+      if (query) {
+        href += `?${query}`
+      }
+      router.push(href)
+    },
+    [router],
+  )
+
+  const handleBackFromVerification = useCallback(() => {
+    if (searchParams.get('from') === 'profile') {
+      pushPage('main-profile')
+      return
+    }
+    pushPage(`main-${currentTab}` as AppPage)
+  }, [currentTab, pushPage, searchParams])

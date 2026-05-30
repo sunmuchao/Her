@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, useMemo } from 'react'
-import { BadgeCheck, ChevronDown, ChevronRight, Loader2, MailOpen, Pin, Trash2 } from 'lucide-react'
+import { BadgeCheck, ChevronDown, Loader2, MailOpen, Pin, Trash2 } from 'lucide-react'
 import Image from 'next/image'
 import { openProxyIntroChat, replyProxyIntroCase } from '@/lib/api/endpoints/proxy-intro'
 import { fetchCaseConversationTimeline } from '@/lib/api/endpoints/relations'
@@ -13,7 +13,6 @@ import { useRelationshipsPageData } from '@/lib/hooks/use-relationships-page-dat
 import {
   buildActiveRelationships,
   buildPendingIntroItems,
-  buildPendingVerificationActions,
   buildStageTip,
   formatRelativeTime,
   type XiaoyaUnreadData,
@@ -52,7 +51,6 @@ export default function RelationshipsPage({
   // 使用聚合数据 hook
   const {
     cases,
-    trustHub,
     unreadSummary,
     isLoading,
     isRefreshing,
@@ -85,12 +83,6 @@ export default function RelationshipsPage({
 
   // 未读统计
   const unreadByCaseId = useMemo(() => unreadSummary?.byCaseId || {}, [unreadSummary])
-
-  // 待处理认证项
-  const pendingVerificationActions = useMemo(
-    () => buildPendingVerificationActions(trustHub),
-    [trustHub]
-  )
 
   // 活跃关系列表
   const activeRelationships = useMemo(
