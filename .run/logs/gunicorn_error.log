@@ -2861,3 +2861,894 @@ SystemExit: 1
 [2026-05-30 12:30:23 +0800] [21732] [INFO] Worker exiting (pid: 21732)
 [2026-05-30 12:30:23 +0800] [21709] [INFO] Control socket listening at /Users/sunmuchao/.gunicorn/gunicorn.ctl
 [2026-05-30 12:30:23 +0800] [21896] [INFO] Booting worker with pid: 21896
+[2026-05-30 12:31:23 +0800] [21709] [CRITICAL] WORKER TIMEOUT (pid:21736)
+[2026-05-30 12:31:23 +0800] [21736] [ERROR] Error handling request GET /v1/persona/collected?profile_id=2478
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 184, in handle_request
+    respiter = self.wsgi(environ, resp.start_response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 325, in __call__
+    status_code, payload = self.dispatch_rest(environ)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 242, in dispatch_rest
+    return dispatch_gateway_rest(self, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rest_dispatch.py", line 74, in dispatch_gateway_rest
+    response = dispatcher(gateway, environ, method, path)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 137, in dispatch_collected_rest
+    return rest_persona_collected(gateway, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 109, in rest_persona_collected
+    bundle = load_collected_bundle(source=source, user_key=str(profile_id))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/match_domain/persona_loader.py", line 175, in load_collected_bundle
+    persona = load_persona_row(source=source, user_key=user_key) or {}
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/match_domain/persona_loader.py", line 20, in load_persona_row
+    conn = mysql_connect(source)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/persona_memory_sync/persona_memory_lib.py", line 631, in mysql_connect
+    return pymysql.connect(**kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 365, in __init__
+    self.connect()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 681, in connect
+    self._request_authentication()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 958, in _request_authentication
+    auth_packet = self._read_packet()
+                  ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 751, in _read_packet
+    packet_header = self._read_bytes(4)
+                    ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 789, in _read_bytes
+    data = self._rfile.read(num_bytes)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/socket.py", line 720, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+SystemExit: 1
+[2026-05-30 12:31:23 +0800] [21736] [INFO] Worker exiting (pid: 21736)
+[2026-05-30 12:31:23 +0800] [21709] [INFO] Control socket listening at /Users/sunmuchao/.gunicorn/gunicorn.ctl
+[2026-05-30 12:31:23 +0800] [21996] [INFO] Booting worker with pid: 21996
+[2026-05-30 12:31:28 +0800] [21709] [CRITICAL] WORKER TIMEOUT (pid:21734)
+[2026-05-30 12:31:28 +0800] [21709] [CRITICAL] WORKER TIMEOUT (pid:21896)
+[2026-05-30 12:31:28 +0800] [21734] [ERROR] Error handling request GET /v1/persona/collected?profile_id=2478
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 184, in handle_request
+    respiter = self.wsgi(environ, resp.start_response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 325, in __call__
+    status_code, payload = self.dispatch_rest(environ)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 242, in dispatch_rest
+    return dispatch_gateway_rest(self, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rest_dispatch.py", line 74, in dispatch_gateway_rest
+    response = dispatcher(gateway, environ, method, path)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 137, in dispatch_collected_rest
+    return rest_persona_collected(gateway, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 109, in rest_persona_collected
+    bundle = load_collected_bundle(source=source, user_key=str(profile_id))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/match_domain/persona_loader.py", line 175, in load_collected_bundle
+    persona = load_persona_row(source=source, user_key=user_key) or {}
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/match_domain/persona_loader.py", line 20, in load_persona_row
+    conn = mysql_connect(source)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/persona_memory_sync/persona_memory_lib.py", line 631, in mysql_connect
+    return pymysql.connect(**kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 365, in __init__
+    self.connect()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 681, in connect
+    self._request_authentication()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 958, in _request_authentication
+    auth_packet = self._read_packet()
+                  ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 751, in _read_packet
+    packet_header = self._read_bytes(4)
+                    ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 789, in _read_bytes
+    data = self._rfile.read(num_bytes)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/socket.py", line 720, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+SystemExit: 1
+[2026-05-30 12:31:28 +0800] [21896] [ERROR] Error handling request GET /v1/profile/me?profile_id=2478
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 184, in handle_request
+    respiter = self.wsgi(environ, resp.start_response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 325, in __call__
+    status_code, payload = self.dispatch_rest(environ)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 242, in dispatch_rest
+    return dispatch_gateway_rest(self, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rest_dispatch.py", line 74, in dispatch_gateway_rest
+    response = dispatcher(gateway, environ, method, path)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 135, in dispatch_collected_rest
+    return rest_profile_me(gateway, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 79, in rest_profile_me
+    row = get_profile(
+          ^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/profile_service/api.py", line 359, in get_profile
+    profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/profile_service/api.py", line 113, in _connect_profile_db
+    return pool.acquire(timeout=timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/profile_service/api.py", line 63, in acquire
+    raw = self._avail.pop() if self._avail else schema.mysql_database_connect(self._cfg)
+                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/outer_system_mysql_schema.py", line 161, in mysql_database_connect
+    return pymysql.connect(
+           ^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 365, in __init__
+    self.connect()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 681, in connect
+    self._request_authentication()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 958, in _request_authentication
+    auth_packet = self._read_packet()
+                  ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 751, in _read_packet
+    packet_header = self._read_bytes(4)
+                    ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 789, in _read_bytes
+    data = self._rfile.read(num_bytes)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/socket.py", line 720, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+SystemExit: 1
+[2026-05-30 12:31:28 +0800] [21734] [INFO] Worker exiting (pid: 21734)
+[2026-05-30 12:31:28 +0800] [21896] [INFO] Worker exiting (pid: 21896)
+[2026-05-30 12:31:29 +0800] [21709] [INFO] Control socket listening at /Users/sunmuchao/.gunicorn/gunicorn.ctl
+[2026-05-30 12:31:29 +0800] [22003] [INFO] Booting worker with pid: 22003
+[2026-05-30 12:31:29 +0800] [21709] [INFO] Control socket listening at /Users/sunmuchao/.gunicorn/gunicorn.ctl
+[2026-05-30 12:31:29 +0800] [22004] [INFO] Booting worker with pid: 22004
+[2026-05-30 12:31:30 +0800] [21709] [CRITICAL] WORKER TIMEOUT (pid:21712)
+[2026-05-30 12:31:30 +0800] [21709] [CRITICAL] WORKER TIMEOUT (pid:21733)
+[2026-05-30 12:31:30 +0800] [21712] [ERROR] Error handling request GET /v1/profile/me?profile_id=2478
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 184, in handle_request
+    respiter = self.wsgi(environ, resp.start_response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 325, in __call__
+    status_code, payload = self.dispatch_rest(environ)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 242, in dispatch_rest
+    return dispatch_gateway_rest(self, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rest_dispatch.py", line 74, in dispatch_gateway_rest
+    response = dispatcher(gateway, environ, method, path)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 135, in dispatch_collected_rest
+    return rest_profile_me(gateway, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 79, in rest_profile_me
+    row = get_profile(
+          ^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/profile_service/api.py", line 359, in get_profile
+    profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/profile_service/api.py", line 113, in _connect_profile_db
+    return pool.acquire(timeout=timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/profile_service/api.py", line 63, in acquire
+    raw = self._avail.pop() if self._avail else schema.mysql_database_connect(self._cfg)
+                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/outer_system_mysql_schema.py", line 161, in mysql_database_connect
+    return pymysql.connect(
+           ^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 365, in __init__
+    self.connect()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 681, in connect
+    self._request_authentication()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 958, in _request_authentication
+    auth_packet = self._read_packet()
+                  ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 751, in _read_packet
+    packet_header = self._read_bytes(4)
+                    ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 789, in _read_bytes
+    data = self._rfile.read(num_bytes)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/socket.py", line 720, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+SystemExit: 1
+[2026-05-30 12:31:30 +0800] [21733] [ERROR] Error handling request GET /v1/persona/collected?profile_id=2478
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 184, in handle_request
+    respiter = self.wsgi(environ, resp.start_response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 325, in __call__
+    status_code, payload = self.dispatch_rest(environ)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 242, in dispatch_rest
+    return dispatch_gateway_rest(self, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rest_dispatch.py", line 74, in dispatch_gateway_rest
+    response = dispatcher(gateway, environ, method, path)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 137, in dispatch_collected_rest
+    return rest_persona_collected(gateway, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 109, in rest_persona_collected
+    bundle = load_collected_bundle(source=source, user_key=str(profile_id))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/match_domain/persona_loader.py", line 175, in load_collected_bundle
+    persona = load_persona_row(source=source, user_key=user_key) or {}
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/match_domain/persona_loader.py", line 20, in load_persona_row
+    conn = mysql_connect(source)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/persona_memory_sync/persona_memory_lib.py", line 631, in mysql_connect
+    return pymysql.connect(**kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 365, in __init__
+    self.connect()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 681, in connect
+    self._request_authentication()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 958, in _request_authentication
+    auth_packet = self._read_packet()
+                  ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 751, in _read_packet
+    packet_header = self._read_bytes(4)
+                    ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 789, in _read_bytes
+    data = self._rfile.read(num_bytes)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/socket.py", line 720, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+SystemExit: 1
+[2026-05-30 12:31:30 +0800] [21733] [INFO] Worker exiting (pid: 21733)
+[2026-05-30 12:31:30 +0800] [21712] [INFO] Worker exiting (pid: 21712)
+[2026-05-30 12:31:30 +0800] [21709] [INFO] Control socket listening at /Users/sunmuchao/.gunicorn/gunicorn.ctl
+[2026-05-30 12:31:30 +0800] [22008] [INFO] Booting worker with pid: 22008
+[2026-05-30 12:31:30 +0800] [21709] [ERROR] Worker (pid:21733) was sent SIGKILL! Perhaps out of memory?
+[2026-05-30 12:31:30 +0800] [21709] [INFO] Control socket listening at /Users/sunmuchao/.gunicorn/gunicorn.ctl
+[2026-05-30 12:31:30 +0800] [22009] [INFO] Booting worker with pid: 22009
+[2026-05-30 12:32:31 +0800] [21709] [CRITICAL] WORKER TIMEOUT (pid:21721)
+[2026-05-30 12:32:31 +0800] [21721] [ERROR] Error handling request GET /v1/profile/me?profile_id=2478
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 184, in handle_request
+    respiter = self.wsgi(environ, resp.start_response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 325, in __call__
+    status_code, payload = self.dispatch_rest(environ)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 242, in dispatch_rest
+    return dispatch_gateway_rest(self, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rest_dispatch.py", line 74, in dispatch_gateway_rest
+    response = dispatcher(gateway, environ, method, path)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 135, in dispatch_collected_rest
+    return rest_profile_me(gateway, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 79, in rest_profile_me
+    row = get_profile(
+          ^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/profile_service/api.py", line 359, in get_profile
+    profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/profile_service/api.py", line 113, in _connect_profile_db
+    return pool.acquire(timeout=timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/profile_service/api.py", line 63, in acquire
+    raw = self._avail.pop() if self._avail else schema.mysql_database_connect(self._cfg)
+                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/outer_system_mysql_schema.py", line 161, in mysql_database_connect
+    return pymysql.connect(
+           ^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 365, in __init__
+    self.connect()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 681, in connect
+    self._request_authentication()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 958, in _request_authentication
+    auth_packet = self._read_packet()
+                  ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 751, in _read_packet
+    packet_header = self._read_bytes(4)
+                    ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 789, in _read_bytes
+    data = self._rfile.read(num_bytes)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/socket.py", line 720, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+SystemExit: 1
+[2026-05-30 12:32:31 +0800] [21721] [INFO] Worker exiting (pid: 21721)
+[2026-05-30 12:32:32 +0800] [21709] [INFO] Control socket listening at /Users/sunmuchao/.gunicorn/gunicorn.ctl
+[2026-05-30 12:32:32 +0800] [22095] [INFO] Booting worker with pid: 22095
+[2026-05-30 12:32:39 +0800] [21709] [CRITICAL] WORKER TIMEOUT (pid:21719)
+[2026-05-30 12:32:39 +0800] [21709] [CRITICAL] WORKER TIMEOUT (pid:21722)
+[2026-05-30 12:32:39 +0800] [21719] [ERROR] Error handling request GET /v1/profile/me?profile_id=2478
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 184, in handle_request
+    respiter = self.wsgi(environ, resp.start_response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 325, in __call__
+    status_code, payload = self.dispatch_rest(environ)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 242, in dispatch_rest
+    return dispatch_gateway_rest(self, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rest_dispatch.py", line 74, in dispatch_gateway_rest
+    response = dispatcher(gateway, environ, method, path)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 135, in dispatch_collected_rest
+    return rest_profile_me(gateway, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 79, in rest_profile_me
+    row = get_profile(
+          ^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/profile_service/api.py", line 359, in get_profile
+    profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/profile_service/api.py", line 113, in _connect_profile_db
+    return pool.acquire(timeout=timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/profile_service/api.py", line 63, in acquire
+    raw = self._avail.pop() if self._avail else schema.mysql_database_connect(self._cfg)
+                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/outer_system_mysql_schema.py", line 161, in mysql_database_connect
+    return pymysql.connect(
+           ^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 365, in __init__
+    self.connect()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 681, in connect
+    self._request_authentication()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 958, in _request_authentication
+    auth_packet = self._read_packet()
+                  ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 751, in _read_packet
+    packet_header = self._read_bytes(4)
+                    ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 789, in _read_bytes
+    data = self._rfile.read(num_bytes)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/socket.py", line 720, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+SystemExit: 1
+[2026-05-30 12:32:39 +0800] [21722] [ERROR] Error handling request GET /v1/persona/collected?profile_id=2478
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 184, in handle_request
+    respiter = self.wsgi(environ, resp.start_response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 325, in __call__
+    status_code, payload = self.dispatch_rest(environ)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 242, in dispatch_rest
+    return dispatch_gateway_rest(self, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rest_dispatch.py", line 74, in dispatch_gateway_rest
+    response = dispatcher(gateway, environ, method, path)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 137, in dispatch_collected_rest
+    return rest_persona_collected(gateway, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 109, in rest_persona_collected
+    bundle = load_collected_bundle(source=source, user_key=str(profile_id))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/match_domain/persona_loader.py", line 175, in load_collected_bundle
+    persona = load_persona_row(source=source, user_key=user_key) or {}
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/match_domain/persona_loader.py", line 20, in load_persona_row
+    conn = mysql_connect(source)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/persona_memory_sync/persona_memory_lib.py", line 631, in mysql_connect
+    return pymysql.connect(**kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 365, in __init__
+    self.connect()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 681, in connect
+    self._request_authentication()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 958, in _request_authentication
+    auth_packet = self._read_packet()
+                  ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 751, in _read_packet
+    packet_header = self._read_bytes(4)
+                    ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 789, in _read_bytes
+    data = self._rfile.read(num_bytes)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/socket.py", line 720, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+SystemExit: 1
+[2026-05-30 12:32:39 +0800] [21719] [INFO] Worker exiting (pid: 21719)
+[2026-05-30 12:32:39 +0800] [21722] [INFO] Worker exiting (pid: 21722)
+[2026-05-30 12:32:39 +0800] [21709] [INFO] Control socket listening at /Users/sunmuchao/.gunicorn/gunicorn.ctl
+[2026-05-30 12:32:39 +0800] [22108] [INFO] Booting worker with pid: 22108
+[2026-05-30 12:32:39 +0800] [21709] [INFO] Control socket listening at /Users/sunmuchao/.gunicorn/gunicorn.ctl
+[2026-05-30 12:32:39 +0800] [22109] [INFO] Booting worker with pid: 22109
+[2026-05-30 12:32:40 +0800] [21709] [CRITICAL] WORKER TIMEOUT (pid:21714)
+[2026-05-30 12:32:40 +0800] [21709] [CRITICAL] WORKER TIMEOUT (pid:21728)
+[2026-05-30 12:32:40 +0800] [21714] [ERROR] Error handling request GET /v1/profile/me?profile_id=2478
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 184, in handle_request
+    respiter = self.wsgi(environ, resp.start_response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 325, in __call__
+    status_code, payload = self.dispatch_rest(environ)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 242, in dispatch_rest
+    return dispatch_gateway_rest(self, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rest_dispatch.py", line 74, in dispatch_gateway_rest
+    response = dispatcher(gateway, environ, method, path)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 135, in dispatch_collected_rest
+    return rest_profile_me(gateway, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 79, in rest_profile_me
+    row = get_profile(
+          ^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/profile_service/api.py", line 359, in get_profile
+    profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/profile_service/api.py", line 113, in _connect_profile_db
+    return pool.acquire(timeout=timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/profile_service/api.py", line 63, in acquire
+    raw = self._avail.pop() if self._avail else schema.mysql_database_connect(self._cfg)
+                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/outer_system_mysql_schema.py", line 161, in mysql_database_connect
+    return pymysql.connect(
+           ^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 365, in __init__
+    self.connect()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 681, in connect
+    self._request_authentication()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 958, in _request_authentication
+    auth_packet = self._read_packet()
+                  ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 751, in _read_packet
+    packet_header = self._read_bytes(4)
+                    ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 789, in _read_bytes
+    data = self._rfile.read(num_bytes)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/socket.py", line 720, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+SystemExit: 1
+[2026-05-30 12:32:40 +0800] [21728] [ERROR] Error handling request GET /v1/persona/collected?profile_id=2478
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 184, in handle_request
+    respiter = self.wsgi(environ, resp.start_response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 325, in __call__
+    status_code, payload = self.dispatch_rest(environ)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 242, in dispatch_rest
+    return dispatch_gateway_rest(self, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rest_dispatch.py", line 74, in dispatch_gateway_rest
+    response = dispatcher(gateway, environ, method, path)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 137, in dispatch_collected_rest
+    return rest_persona_collected(gateway, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 109, in rest_persona_collected
+    bundle = load_collected_bundle(source=source, user_key=str(profile_id))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/match_domain/persona_loader.py", line 175, in load_collected_bundle
+    persona = load_persona_row(source=source, user_key=user_key) or {}
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/match_domain/persona_loader.py", line 20, in load_persona_row
+    conn = mysql_connect(source)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/persona_memory_sync/persona_memory_lib.py", line 631, in mysql_connect
+    return pymysql.connect(**kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 365, in __init__
+    self.connect()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 681, in connect
+    self._request_authentication()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 958, in _request_authentication
+    auth_packet = self._read_packet()
+                  ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 751, in _read_packet
+    packet_header = self._read_bytes(4)
+                    ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 789, in _read_bytes
+    data = self._rfile.read(num_bytes)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/socket.py", line 720, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+SystemExit: 1
+[2026-05-30 12:32:40 +0800] [21714] [INFO] Worker exiting (pid: 21714)
+[2026-05-30 12:32:40 +0800] [21728] [INFO] Worker exiting (pid: 21728)
+[2026-05-30 12:32:40 +0800] [21709] [INFO] Control socket listening at /Users/sunmuchao/.gunicorn/gunicorn.ctl
+[2026-05-30 12:32:40 +0800] [22113] [INFO] Booting worker with pid: 22113
+[2026-05-30 12:32:41 +0800] [21709] [ERROR] Worker (pid:21728) was sent SIGKILL! Perhaps out of memory?
+[2026-05-30 12:32:41 +0800] [21709] [INFO] Control socket listening at /Users/sunmuchao/.gunicorn/gunicorn.ctl
+[2026-05-30 12:32:41 +0800] [22115] [INFO] Booting worker with pid: 22115
+[2026-05-30 12:33:17 +0800] [21709] [CRITICAL] WORKER TIMEOUT (pid:21723)
+[2026-05-30 12:33:17 +0800] [21709] [CRITICAL] WORKER TIMEOUT (pid:21727)
+[2026-05-30 12:33:17 +0800] [21727] [ERROR] Error handling request GET /v1/profile/me?profile_id=2478
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 184, in handle_request
+    respiter = self.wsgi(environ, resp.start_response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 325, in __call__
+    status_code, payload = self.dispatch_rest(environ)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 242, in dispatch_rest
+    return dispatch_gateway_rest(self, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rest_dispatch.py", line 74, in dispatch_gateway_rest
+    response = dispatcher(gateway, environ, method, path)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 135, in dispatch_collected_rest
+    return rest_profile_me(gateway, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 79, in rest_profile_me
+    row = get_profile(
+          ^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/profile_service/api.py", line 359, in get_profile
+    profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/profile_service/api.py", line 113, in _connect_profile_db
+    return pool.acquire(timeout=timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/profile_service/api.py", line 63, in acquire
+    raw = self._avail.pop() if self._avail else schema.mysql_database_connect(self._cfg)
+                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/outer_system_mysql_schema.py", line 161, in mysql_database_connect
+    return pymysql.connect(
+           ^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 365, in __init__
+    self.connect()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 681, in connect
+    self._request_authentication()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 958, in _request_authentication
+    auth_packet = self._read_packet()
+                  ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 751, in _read_packet
+    packet_header = self._read_bytes(4)
+                    ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 789, in _read_bytes
+    data = self._rfile.read(num_bytes)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/socket.py", line 720, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+SystemExit: 1
+[2026-05-30 12:33:17 +0800] [21723] [ERROR] Error handling request GET /v1/persona/collected?profile_id=2478
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 184, in handle_request
+    respiter = self.wsgi(environ, resp.start_response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 325, in __call__
+    status_code, payload = self.dispatch_rest(environ)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 242, in dispatch_rest
+    return dispatch_gateway_rest(self, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rest_dispatch.py", line 74, in dispatch_gateway_rest
+    response = dispatcher(gateway, environ, method, path)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 137, in dispatch_collected_rest
+    return rest_persona_collected(gateway, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 109, in rest_persona_collected
+    bundle = load_collected_bundle(source=source, user_key=str(profile_id))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/match_domain/persona_loader.py", line 175, in load_collected_bundle
+    persona = load_persona_row(source=source, user_key=user_key) or {}
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/match_domain/persona_loader.py", line 20, in load_persona_row
+    conn = mysql_connect(source)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/persona_memory_sync/persona_memory_lib.py", line 631, in mysql_connect
+    return pymysql.connect(**kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 365, in __init__
+    self.connect()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 681, in connect
+    self._request_authentication()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 958, in _request_authentication
+    auth_packet = self._read_packet()
+                  ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 751, in _read_packet
+    packet_header = self._read_bytes(4)
+                    ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 789, in _read_bytes
+    data = self._rfile.read(num_bytes)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/socket.py", line 720, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+SystemExit: 1
+[2026-05-30 12:33:17 +0800] [21727] [INFO] Worker exiting (pid: 21727)
+[2026-05-30 12:33:17 +0800] [21723] [INFO] Worker exiting (pid: 21723)
+[2026-05-30 12:33:17 +0800] [21709] [INFO] Control socket listening at /Users/sunmuchao/.gunicorn/gunicorn.ctl
+[2026-05-30 12:33:17 +0800] [22147] [INFO] Booting worker with pid: 22147
+[2026-05-30 12:33:17 +0800] [21709] [INFO] Control socket listening at /Users/sunmuchao/.gunicorn/gunicorn.ctl
+[2026-05-30 12:33:17 +0800] [22148] [INFO] Booting worker with pid: 22148
+[2026-05-30 12:33:36 +0800] [21709] [CRITICAL] WORKER TIMEOUT (pid:21715)
+[2026-05-30 12:33:36 +0800] [21709] [CRITICAL] WORKER TIMEOUT (pid:21720)
+[2026-05-30 12:33:36 +0800] [21715] [ERROR] Error handling request GET /v1/persona/collected?profile_id=2478
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 184, in handle_request
+    respiter = self.wsgi(environ, resp.start_response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 325, in __call__
+    status_code, payload = self.dispatch_rest(environ)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 242, in dispatch_rest
+    return dispatch_gateway_rest(self, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rest_dispatch.py", line 74, in dispatch_gateway_rest
+    response = dispatcher(gateway, environ, method, path)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 137, in dispatch_collected_rest
+    return rest_persona_collected(gateway, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 109, in rest_persona_collected
+    bundle = load_collected_bundle(source=source, user_key=str(profile_id))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/match_domain/persona_loader.py", line 175, in load_collected_bundle
+    persona = load_persona_row(source=source, user_key=user_key) or {}
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/match_domain/persona_loader.py", line 20, in load_persona_row
+    conn = mysql_connect(source)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/persona_memory_sync/persona_memory_lib.py", line 631, in mysql_connect
+    return pymysql.connect(**kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 365, in __init__
+    self.connect()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 681, in connect
+    self._request_authentication()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 958, in _request_authentication
+    auth_packet = self._read_packet()
+                  ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 751, in _read_packet
+    packet_header = self._read_bytes(4)
+                    ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 789, in _read_bytes
+    data = self._rfile.read(num_bytes)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/socket.py", line 720, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+SystemExit: 1
+[2026-05-30 12:33:36 +0800] [21715] [INFO] Worker exiting (pid: 21715)
+[2026-05-30 12:33:36 +0800] [21720] [ERROR] Error handling request GET /v1/profile/me?profile_id=2478
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 184, in handle_request
+    respiter = self.wsgi(environ, resp.start_response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 325, in __call__
+    status_code, payload = self.dispatch_rest(environ)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 242, in dispatch_rest
+    return dispatch_gateway_rest(self, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rest_dispatch.py", line 74, in dispatch_gateway_rest
+    response = dispatcher(gateway, environ, method, path)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 135, in dispatch_collected_rest
+    return rest_profile_me(gateway, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 79, in rest_profile_me
+    row = get_profile(
+          ^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/profile_service/api.py", line 359, in get_profile
+    profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/profile_service/api.py", line 113, in _connect_profile_db
+    return pool.acquire(timeout=timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/profile_service/api.py", line 63, in acquire
+    raw = self._avail.pop() if self._avail else schema.mysql_database_connect(self._cfg)
+                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/outer_system_mysql_schema.py", line 161, in mysql_database_connect
+    return pymysql.connect(
+           ^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 365, in __init__
+    self.connect()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 681, in connect
+    self._request_authentication()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 958, in _request_authentication
+    auth_packet = self._read_packet()
+                  ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 751, in _read_packet
+    packet_header = self._read_bytes(4)
+                    ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 789, in _read_bytes
+    data = self._rfile.read(num_bytes)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/socket.py", line 720, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+SystemExit: 1
+[2026-05-30 12:33:36 +0800] [21720] [INFO] Worker exiting (pid: 21720)
+[2026-05-30 12:33:37 +0800] [21709] [INFO] Control socket listening at /Users/sunmuchao/.gunicorn/gunicorn.ctl
+[2026-05-30 12:33:37 +0800] [22226] [INFO] Booting worker with pid: 22226
+[2026-05-30 12:33:37 +0800] [21709] [INFO] Control socket listening at /Users/sunmuchao/.gunicorn/gunicorn.ctl
+[2026-05-30 12:33:37 +0800] [22227] [INFO] Booting worker with pid: 22227
+[2026-05-30 12:34:38 +0800] [21709] [CRITICAL] WORKER TIMEOUT (pid:22004)
+[2026-05-30 12:34:38 +0800] [21709] [CRITICAL] WORKER TIMEOUT (pid:22008)
+[2026-05-30 12:34:38 +0800] [22004] [ERROR] Error handling request GET /v1/profile/me?profile_id=2478
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 184, in handle_request
+    respiter = self.wsgi(environ, resp.start_response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 325, in __call__
+    status_code, payload = self.dispatch_rest(environ)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 242, in dispatch_rest
+    return dispatch_gateway_rest(self, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rest_dispatch.py", line 74, in dispatch_gateway_rest
+    response = dispatcher(gateway, environ, method, path)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 135, in dispatch_collected_rest
+    return rest_profile_me(gateway, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 79, in rest_profile_me
+    row = get_profile(
+          ^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/profile_service/api.py", line 359, in get_profile
+    profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/profile_service/api.py", line 113, in _connect_profile_db
+    return pool.acquire(timeout=timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/profile_service/api.py", line 63, in acquire
+    raw = self._avail.pop() if self._avail else schema.mysql_database_connect(self._cfg)
+                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/outer_system_mysql_schema.py", line 161, in mysql_database_connect
+    return pymysql.connect(
+           ^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 365, in __init__
+    self.connect()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 681, in connect
+    self._request_authentication()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 958, in _request_authentication
+    auth_packet = self._read_packet()
+                  ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 751, in _read_packet
+    packet_header = self._read_bytes(4)
+                    ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 789, in _read_bytes
+    data = self._rfile.read(num_bytes)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/socket.py", line 720, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+SystemExit: 1
+[2026-05-30 12:34:38 +0800] [22008] [ERROR] Error handling request GET /v1/persona/collected?profile_id=2478
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 184, in handle_request
+    respiter = self.wsgi(environ, resp.start_response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 325, in __call__
+    status_code, payload = self.dispatch_rest(environ)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 242, in dispatch_rest
+    return dispatch_gateway_rest(self, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rest_dispatch.py", line 74, in dispatch_gateway_rest
+    response = dispatcher(gateway, environ, method, path)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 137, in dispatch_collected_rest
+    return rest_persona_collected(gateway, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 109, in rest_persona_collected
+    bundle = load_collected_bundle(source=source, user_key=str(profile_id))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/match_domain/persona_loader.py", line 175, in load_collected_bundle
+    persona = load_persona_row(source=source, user_key=user_key) or {}
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/match_domain/persona_loader.py", line 20, in load_persona_row
+    conn = mysql_connect(source)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/persona_memory_sync/persona_memory_lib.py", line 631, in mysql_connect
+    return pymysql.connect(**kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 365, in __init__
+    self.connect()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 681, in connect
+    self._request_authentication()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 958, in _request_authentication
+    auth_packet = self._read_packet()
+                  ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 751, in _read_packet
+    packet_header = self._read_bytes(4)
+                    ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 789, in _read_bytes
+    data = self._rfile.read(num_bytes)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/socket.py", line 720, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+SystemExit: 1
+[2026-05-30 12:34:38 +0800] [22004] [INFO] Worker exiting (pid: 22004)
+[2026-05-30 12:34:38 +0800] [22008] [INFO] Worker exiting (pid: 22008)
+[2026-05-30 12:34:38 +0800] [21709] [INFO] Control socket listening at /Users/sunmuchao/.gunicorn/gunicorn.ctl
+[2026-05-30 12:34:38 +0800] [22435] [INFO] Booting worker with pid: 22435
+[2026-05-30 12:34:38 +0800] [21709] [ERROR] Worker (pid:22008) was sent SIGKILL! Perhaps out of memory?
+[2026-05-30 12:34:38 +0800] [21709] [INFO] Control socket listening at /Users/sunmuchao/.gunicorn/gunicorn.ctl
+[2026-05-30 12:34:38 +0800] [22436] [INFO] Booting worker with pid: 22436
