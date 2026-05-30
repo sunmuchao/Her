@@ -409,3 +409,16 @@
  GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 502 in 10.5s (next.js: 5ms, application-code: 10.5s)
  GET /api/gateway/v1/proxy-intro/cases/mine 502 in 10.5s (next.js: 5ms, application-code: 10.5s)
  GET /api/gateway/v1/proxy-intro/cases/mine 502 in 10.5s (next.js: 1669µs, application-code: 10.5s)
+ GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 502 in 19ms (next.js: 6ms, application-code: 13ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 502 in 20ms (next.js: 9ms, application-code: 11ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 502 in 22ms (next.js: 13ms, application-code: 9ms)
+✓ Compiled in 44ms
+ GET /api/gateway/v1/proxy-intro/cases/mine 502 in 1918ms (next.js: 9ms, application-code: 1908ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 502 in 1920ms (next.js: 5ms, application-code: 1914ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 502 in 1920ms (next.js: 12ms, application-code: 1908ms)
+✓ Compiled in 47ms
+ GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 2.9s (next.js: 6ms, application-code: 2.9s)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 2.9s (next.js: 12ms, application-code: 2.9s)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 2.9s (next.js: 15ms, application-code: 2.9s)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 175ms (next.js: 13ms, application-code: 161ms)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 190ms (next.js: 7ms, application-code: 182ms)
