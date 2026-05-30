@@ -1,17 +1,8 @@
 'use client'
 
-import { useTheme as useNextTheme } from 'next-themes'
+import { useTheme } from '@/components/theme-provider'
 import { Moon, Sun } from 'lucide-react'
 import { cn } from '@/lib/utils'
-
-function useTheme() {
-  const { theme, setTheme, resolvedTheme } = useNextTheme()
-  return {
-    theme: (theme || 'system') as 'light' | 'dark' | 'system',
-    setTheme,
-    resolvedTheme: (resolvedTheme || 'light') as 'light' | 'dark',
-  }
-}
 
 interface ThemeToggleProps {
   className?: string
