@@ -189,6 +189,33 @@ export function useAppRouter() {
     pushPage(`main-${currentTab}` as AppPage)
   }, [currentTab, pushPage])
 
+  const handleStartVerification = useCallback(
+    (from?: 'profile', target?: string) => {
+      let href = pageToPath('sub-verification')
+      const params = new URLSearchParams()
+      if (from === 'profile') {
+        params.set('from', 'profile')
+      }
+      if (target) {
+        params.set('target', target)
+      }
+      const query = params.toString()
+      if (query) {
+        href += `?${query}`
+      }
+      router.push(href)
+    },
+    [router],
+  )
+
+  const handleBackFromVerification = useCallback(() => {
+    if (searchParams.get('from') === 'profile') {
+      pushPage('main-profile')
+      return
+    }
+    pushPage(`main-${currentTab}` as AppPage)
+  }, [currentTab, pushPage, searchParams])
+
   const handleOpenCollectedPreferences = useCallback(() => {
     pushPage('sub-collected-preferences')
   }, [pushPage])
@@ -226,29 +253,3 @@ export function useAppRouter() {
     handleOpenSettings,
   }
 }
-  const handleStartVerification = useCallback(
-    (from?: 'profile', target?: string) => {
-      let href = pageToPath('sub-verification')
-      const params = new URLSearchParams()
-      if (from === 'profile') {
-        params.set('from', 'profile')
-      }
-      if (target) {
-        params.set('target', target)
-      }
-      const query = params.toString()
-      if (query) {
-        href += `?${query}`
-      }
-      router.push(href)
-    },
-    [router],
-  )
-
-  const handleBackFromVerification = useCallback(() => {
-    if (searchParams.get('from') === 'profile') {
-      pushPage('main-profile')
-      return
-    }
-    pushPage(`main-${currentTab}` as AppPage)
-  }, [currentTab, pushPage, searchParams])
