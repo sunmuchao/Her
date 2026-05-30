@@ -62,7 +62,7 @@ export function AppShell({
   onStartVerification,
   onBackFromVerification,
   onOpenTrustCenter,
-  onOpenCollectedPreferences,
+  onOpenCollectedPreferences: _onOpenCollectedPreferences,
   onOpenEditProfile,
   onOpenSettings,
   onOpenOnboarding,
