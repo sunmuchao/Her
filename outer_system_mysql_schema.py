@@ -171,13 +171,26 @@ def mysql_database_connect(config: dict[str, Any]):
 
 
 def ensure_database(config: dict[str, Any]) -> None:
+    """确保数据库存在，先检查后创建，避免不必要的 metadata lock"""
+    database_name = config['database']
+
+    # 先检查数据库是否已存在
     with mysql_server_connect(config) as conn:
         with conn.cursor() as cursor:
             cursor.execute(
-                f"CREATE DATABASE IF NOT EXISTS {quote_mysql_ident(config['database'])} "
-                f"CHARACTER SET {config.get('charset') or DEFAULT_CHARSET} "
-                f"COLLATE {config.get('collation') or DEFAULT_COLLATION}"
+                "SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA "
+                "WHERE SCHEMA_NAME = ?",
+                (database_name,)
             )
+            result = cursor.fetchone()
+
+            # 只有数据库不存在时才创建
+            if not result:
+                cursor.execute(
+                    f"CREATE DATABASE {quote_mysql_ident(database_name)} "
+                    f"CHARACTER SET {config.get('charset') or DEFAULT_CHARSET} "
+                    f"COLLATE {config.get('collation') or DEFAULT_COLLATION}"
+                )
 
 
 def build_create_table_sql(table: TableDef, *, prefix: str | None = None, config: dict[str, Any] | None = None) -> str:
