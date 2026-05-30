@@ -46,6 +46,33 @@ function safeBoolean(value: unknown): boolean {
   return false
 }
 
+function buildFallbackVerificationItems(rawProfile: Record<string, unknown>): VerificationItemView[] {
+  const videoVerified = safeBoolean(rawProfile.live_video_verified) || safeBoolean(rawProfile.verified)
+
+  return [
+    {
+      name: '活体视频认证',
+      status: videoVerified ? 'verified' : 'unverified',
+      description: videoVerified ? '已完成真人核验' : '录制一段简短视频完成认证',
+    },
+    {
+      name: '学历认证',
+      status: 'unverified',
+      description: '上传学位证书或学信网截图',
+    },
+    {
+      name: '职业认证',
+      status: 'unverified',
+      description: '上传工牌或在职证明',
+    },
+    {
+      name: '收入认证',
+      status: 'unverified',
+      description: '上传近三个月收入材料',
+    },
+  ]
+}
+
 /**
  * 构建 Profile 视图数据
  *
@@ -65,8 +92,6 @@ export function buildProfileView(
   const user = auth?.user ?? {}
   const rawProfile = facts?.profile_facts ?? {}
   const collectedStatements = collected?.collected_statements ?? {}
-  const collectedItems = collected?.collected_items ?? {}
-
   // 提取标签（从 preferred_traits 字段，用户手动编辑）
   let tags: string[] = []
   if (Object.keys(collectedStatements).length > 0) {
@@ -79,6 +104,9 @@ export function buildProfileView(
     verificationItems = mapTrustHubVerificationItems(
       trust.trust_hub.verification_center.items,
     )
+  }
+  if (verificationItems.length === 0) {
+    verificationItems = buildFallbackVerificationItems(rawProfile)
   }
 
   return {
