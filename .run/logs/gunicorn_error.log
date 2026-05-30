@@ -2741,3 +2741,66 @@ SystemExit: 1
 [2026-05-30 12:18:44 +0800] [20613] [INFO] Booting worker with pid: 20613
 [2026-05-30 12:18:44 +0800] [20615] [INFO] Booting worker with pid: 20615
 [2026-05-30 12:18:44 +0800] [20587] [INFO] Control socket listening at /Users/sunmuchao/.gunicorn/gunicorn.ctl
+[2026-05-30 12:29:03 +0800] [20587] [INFO] Handling signal: term
+[2026-05-30 12:29:03 +0800] [20598] [INFO] Worker exiting (pid: 20598)
+[2026-05-30 12:29:03 +0800] [20601] [INFO] Worker exiting (pid: 20601)
+[2026-05-30 12:29:03 +0800] [20596] [INFO] Worker exiting (pid: 20596)
+[2026-05-30 12:29:03 +0800] [20597] [INFO] Worker exiting (pid: 20597)
+[2026-05-30 12:29:03 +0800] [20604] [INFO] Worker exiting (pid: 20604)
+[2026-05-30 12:29:03 +0800] [20607] [INFO] Worker exiting (pid: 20607)
+[2026-05-30 12:29:03 +0800] [20606] [INFO] Worker exiting (pid: 20606)
+[2026-05-30 12:29:03 +0800] [20602] [INFO] Worker exiting (pid: 20602)
+[2026-05-30 12:29:03 +0800] [20609] [INFO] Worker exiting (pid: 20609)
+[2026-05-30 12:29:03 +0800] [20611] [INFO] Worker exiting (pid: 20611)
+[2026-05-30 12:29:03 +0800] [20593] [INFO] Worker exiting (pid: 20593)
+[2026-05-30 12:29:03 +0800] [20590] [INFO] Worker exiting (pid: 20590)
+[2026-05-30 12:29:03 +0800] [20591] [INFO] Worker exiting (pid: 20591)
+[2026-05-30 12:29:03 +0800] [20592] [INFO] Worker exiting (pid: 20592)
+[2026-05-30 12:29:03 +0800] [20594] [INFO] Worker exiting (pid: 20594)
+[2026-05-30 12:29:03 +0800] [20605] [INFO] Worker exiting (pid: 20605)
+[2026-05-30 12:29:03 +0800] [20608] [INFO] Worker exiting (pid: 20608)
+[2026-05-30 12:29:03 +0800] [20603] [INFO] Worker exiting (pid: 20603)
+[2026-05-30 12:29:03 +0800] [20600] [INFO] Worker exiting (pid: 20600)
+[2026-05-30 12:29:03 +0800] [20599] [INFO] Worker exiting (pid: 20599)
+[2026-05-30 12:29:03 +0800] [20615] [INFO] Worker exiting (pid: 20615)
+[2026-05-30 12:29:03 +0800] [20612] [INFO] Worker exiting (pid: 20612)
+[2026-05-30 12:29:03 +0800] [20595] [INFO] Worker exiting (pid: 20595)
+[2026-05-30 12:29:03 +0800] [20613] [INFO] Worker exiting (pid: 20613)
+[2026-05-30 12:29:03 +0800] [20610] [INFO] Worker exiting (pid: 20610)
+[2026-05-30 12:29:03 +0800] [20587] [INFO] Worker (pid:20607) was sent SIGTERM!
+[2026-05-30 12:29:03 +0800] [20587] [INFO] Worker (pid:20606) was sent SIGTERM!
+[2026-05-30 12:29:03 +0800] [20587] [INFO] Worker (pid:20604) was sent SIGTERM!
+[2026-05-30 12:29:03 +0800] [20587] [INFO] Worker (pid:20602) was sent SIGTERM!
+[2026-05-30 12:29:03 +0800] [20587] [INFO] Worker (pid:20598) was sent SIGTERM!
+[2026-05-30 12:29:03 +0800] [20587] [INFO] Worker (pid:20597) was sent SIGTERM!
+[2026-05-30 12:29:03 +0800] [20587] [INFO] Worker (pid:20596) was sent SIGTERM!
+[2026-05-30 12:29:04 +0800] [20587] [INFO] Shutting down: Master
+[2026-05-30 12:29:05 +0800] [21709] [INFO] Starting gunicorn 26.0.0
+[2026-05-30 12:29:05 +0800] [21709] [INFO] Listening at: http://127.0.0.1:8765 (21709)
+[2026-05-30 12:29:05 +0800] [21709] [INFO] Using worker: sync
+[2026-05-30 12:29:05 +0800] [21712] [INFO] Booting worker with pid: 21712
+[2026-05-30 12:29:05 +0800] [21713] [INFO] Booting worker with pid: 21713
+[2026-05-30 12:29:05 +0800] [21714] [INFO] Booting worker with pid: 21714
+[2026-05-30 12:29:05 +0800] [21715] [INFO] Booting worker with pid: 21715
+[2026-05-30 12:29:05 +0800] [21717] [INFO] Booting worker with pid: 21717
+[2026-05-30 12:29:05 +0800] [21718] [INFO] Booting worker with pid: 21718
+[2026-05-30 12:29:05 +0800] [21719] [INFO] Booting worker with pid: 21719
+[2026-05-30 12:29:05 +0800] [21720] [INFO] Booting worker with pid: 21720
+[2026-05-30 12:29:05 +0800] [21721] [INFO] Booting worker with pid: 21721
+[2026-05-30 12:29:06 +0800] [21722] [INFO] Booting worker with pid: 21722
+[2026-05-30 12:29:06 +0800] [21723] [INFO] Booting worker with pid: 21723
+[2026-05-30 12:29:06 +0800] [21724] [INFO] Booting worker with pid: 21724
+[2026-05-30 12:29:06 +0800] [21725] [INFO] Booting worker with pid: 21725
+[2026-05-30 12:29:06 +0800] [21726] [INFO] Booting worker with pid: 21726
+[2026-05-30 12:29:06 +0800] [21727] [INFO] Booting worker with pid: 21727
+[2026-05-30 12:29:06 +0800] [21728] [INFO] Booting worker with pid: 21728
+[2026-05-30 12:29:06 +0800] [21729] [INFO] Booting worker with pid: 21729
+[2026-05-30 12:29:06 +0800] [21730] [INFO] Booting worker with pid: 21730
+[2026-05-30 12:29:06 +0800] [21731] [INFO] Booting worker with pid: 21731
+[2026-05-30 12:29:06 +0800] [21732] [INFO] Booting worker with pid: 21732
+[2026-05-30 12:29:06 +0800] [21733] [INFO] Booting worker with pid: 21733
+[2026-05-30 12:29:06 +0800] [21734] [INFO] Booting worker with pid: 21734
+[2026-05-30 12:29:06 +0800] [21735] [INFO] Booting worker with pid: 21735
+[2026-05-30 12:29:06 +0800] [21736] [INFO] Booting worker with pid: 21736
+[2026-05-30 12:29:06 +0800] [21737] [INFO] Booting worker with pid: 21737
+[2026-05-30 12:29:06 +0800] [21709] [INFO] Control socket listening at /Users/sunmuchao/.gunicorn/gunicorn.ctl
