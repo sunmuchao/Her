@@ -5,13 +5,19 @@ from __future__ import annotations
 import json
 import os
 import re
+import threading
 from copy import deepcopy
 from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from her_time_utils import clean_text, coerce_int as as_int
 from mysql_source_config import parse_mysql_source_config
-from outer_system_mysql_schema import quote_mysql_ident as mysql_quote_ident
+from outer_system_mysql_schema import (
+    ensure_database,
+    mysql_database_connect,
+    parse_mysql_dsn,
+    quote_mysql_ident as mysql_quote_ident,
+)
 from persona_memory_sync.field_normalization import (
     csv_from_items,
     items_from_csv,
@@ -42,6 +48,76 @@ DEFAULT_PERSONA_TABLE = "user_personas"
 DEFAULT_OBSERVATION_TABLE = "user_persona_observations"
 DEFAULT_PUBLIC_VIEW = "public_profile_view"
 VALID_APPLY_SCOPES = {"observation_only", "persona_only", "persona_and_profile"}
+
+
+# 全局 persona 连接池缓存
+_persona_pool_cache: Dict[str, PersonaConnectionPool] = {}
+_persona_pool_lock = threading.Lock()
+
+
+class PersonaConnectionPool:
+    """Persona 数据库连接池，避免每次新建连接"""
+
+    __slots__ = ("_avail", "_cfg", "_lock", "_sem", "_dsn", "_initialized")
+
+    def __init__(self, dsn: str, max_size: int = 8) -> None:
+        self._dsn = dsn
+        self._cfg = parse_mysql_dsn(dsn)
+        self._sem = threading.BoundedSemaphore(max(1, max_size))
+        self._lock = threading.Lock()
+        self._avail: List[Any] = []
+        self._initialized = False
+
+        # 初始化时确保数据库存在（只执行一次）
+        try:
+            ensure_database(self._cfg)
+            self._initialized = True
+        except Exception:
+            self._initialized = True
+
+    def acquire(self, timeout: float | None = None) -> Any:
+        """获取连接，支持超时保护"""
+        acquired = self._sem.acquire(timeout=timeout)
+        if not acquired:
+            raise TimeoutError(f"Persona 连接池等待超时（{timeout}秒）")
+
+        try:
+            with self._lock:
+                raw = self._avail.pop() if self._avail else mysql_database_connect(self._cfg)
+        except Exception:
+            self._sem.release()
+            raise
+        return raw
+
+    def release(self, conn: Any) -> None:
+        """释放连接回池"""
+        try:
+            conn.rollback()
+        except Exception:
+            try:
+                release_persona_connection(source, conn)
+            except Exception:
+                pass
+            self._sem.release()
+            return
+        with self._lock:
+            self._avail.append(conn)
+        self._sem.release()
+
+
+def _get_persona_pool(source_dsn: str) -> PersonaConnectionPool:
+    """获取或创建 persona 连接池"""
+    with _persona_pool_lock:
+        if source_dsn not in _persona_pool_cache:
+            max_pool_size = int(os.environ.get("PERSONA_DB_POOL_MAX", "8") or "8")
+            _persona_pool_cache[source_dsn] = PersonaConnectionPool(source_dsn, max_size=max_pool_size)
+        return _persona_pool_cache[source_dsn]
+
+
+def release_persona_connection(source_dsn: str, conn: Any) -> None:
+    """释放 persona 连接回连接池"""
+    pool = _get_persona_pool(source_dsn)
+    pool.release(conn)
 
 USER_PERSONA_FIELDS = {
     "profile_id",
@@ -610,25 +686,43 @@ def parse_mysql_source(source: Optional[str] = None) -> Dict[str, Any]:
     )
 
 
-def mysql_connect(source: Optional[str] = None):
+def mysql_connect(source: Optional[str] = None, use_pool: bool = True, timeout: float = 10.0):
+    """连接 Persona 数据库，默认使用连接池
+
+    Args:
+        source: MySQL DSN 字符串
+        use_pool: 是否使用连接池（默认 True）
+        timeout: 连接等待超时时间（秒）
+
+    Returns:
+        MySQL 连接对象
+    """
     try:
         import pymysql
     except ImportError as exc:  # pragma: no cover - environment dependent
         raise ValueError("PyMySQL is required. Install it with `python3 -m pip install pymysql`.") from exc
 
     config = parse_mysql_source(source)
-    kwargs = {
-        "host": config["host"],
-        "port": config["port"],
-        "database": config["database"],
-        "charset": config["charset"],
-        "cursorclass": pymysql.cursors.DictCursor,
-    }
-    if config["user"] is not None:
-        kwargs["user"] = config["user"]
-    if config["password"] is not None:
-        kwargs["password"] = config["password"]
-    return pymysql.connect(**kwargs)
+
+    if use_pool:
+        # 使用连接池
+        source_dsn = source or os.environ.get(DEFAULT_SOURCE_ENV, "")
+        pool = _get_persona_pool(source_dsn)
+        return pool.acquire(timeout=timeout)
+    else:
+        # 直接创建连接（用于特殊场景）
+        kwargs = {
+            "host": config["host"],
+            "port": config["port"],
+            "database": config["database"],
+            "charset": config["charset"],
+            "cursorclass": pymysql.cursors.DictCursor,
+        }
+        if config["user"] is not None:
+            kwargs["user"] = config["user"]
+        if config["password"] is not None:
+            kwargs["password"] = config["password"]
+        return pymysql.connect(**kwargs)
 
 
 def quote_mysql_ident(identifier: str) -> str:
@@ -1732,7 +1826,7 @@ def apply_persona_patch(
 
         conn.commit()
     finally:
-        conn.close()
+        release_persona_connection(source, conn)
 
     return {
         "user_key": user_key,
@@ -1799,7 +1893,7 @@ def sync_persona_profile(
 
         conn.commit()
     finally:
-        conn.close()
+        release_persona_connection(source, conn)
 
     return summary
 
@@ -1869,7 +1963,7 @@ def render_public_profile_result(
 
         conn.commit()
     finally:
-        conn.close()
+        release_persona_connection(source, conn)
 
     return output
 
