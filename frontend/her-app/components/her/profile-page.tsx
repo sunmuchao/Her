@@ -170,7 +170,7 @@ export default function ProfilePage({
     const handleClickOutside = (e: MouseEvent) => {
       if (tagsAreaRef.current && !tagsAreaRef.current.contains(e.target as Node)) {
         // 先确认正在编辑的内容
-        let finalTags = [...editedTags]
+        const finalTags = [...editedTags]
         if (editingTagIndex !== null && editingTagValue.trim()) {
           const trimmed = editingTagValue.trim().slice(0, 20)
           if (!finalTags.some((t, i) => i !== editingTagIndex && t === trimmed)) {
@@ -214,6 +214,45 @@ export default function ProfilePage({
     () => calculateVerificationProgress(profile.verificationItems),
     [profile.verificationItems],
   )
+  const pendingVerificationItems = useMemo(
+    () => profile.verificationItems.filter((item) => item.status !== 'verified'),
+    [profile.verificationItems],
+  )
+  const priorityVerificationItems = useMemo(() => {
+    const priorityMap: Record<string, number> = {
+      '活体视频认证': 0,
+      '真人认证': 0,
+      '身份认证': 1,
+      '学历认证': 2,
+      '职业认证': 3,
+      '收入认证': 4,
+    }
+
+    return [...pendingVerificationItems]
+      .sort((a, b) => {
+        const aPriority = priorityMap[a.name] ?? 99
+        const bPriority = priorityMap[b.name] ?? 99
+        if (aPriority !== bPriority) return aPriority - bPriority
+        if (a.status !== b.status) return a.status === 'unverified' ? -1 : 1
+        return a.name.localeCompare(b.name, 'zh-CN')
+      })
+      .slice(0, 2)
+  }, [pendingVerificationItems])
+  const hasCompletedAllVerifications = verificationTotal > 0 && pendingVerificationItems.length === 0
+  const verificationCardTitle = hasCompletedAllVerifications
+    ? '已完成全部认证'
+    : pendingVerificationItems.length > 0
+      ? `还差 ${pendingVerificationItems.length} 项认证`
+      : '开始完成认证'
+  const verificationCardDescription = hasCompletedAllVerifications
+    ? '你的资料可信度更高，关键信息已更完整。'
+    : priorityVerificationItems.length > 0
+      ? `推荐先完成：${priorityVerificationItems.map((item) => item.name).join('、')}`
+      : '完成认证后，资料会更容易被信任。'
+  const verificationPrimaryActionLabel = hasCompletedAllVerifications ? '查看认证详情' : '去完成认证'
+  const handleOpenVerification = hasCompletedAllVerifications && onOpenTrustCenter
+    ? onOpenTrustCenter
+    : (onOpenTrustCenter || onStartVerification)
 
   // 判断是否使用 Mock 数据
   const usingMockData = useMemo(() => {
@@ -416,45 +455,84 @@ export default function ProfilePage({
           <section>
             <button
               type="button"
-              onClick={onOpenTrustCenter || onStartVerification}
+              onClick={handleOpenVerification}
               className="w-full bg-card border border-border rounded-xl p-4 text-left hover:border-primary/30 hover:shadow-sm transition-all focus-ring"
-              aria-label={`信任中心，已完成${verifiedCount}项认证`}
+              aria-label={`信任中心，${verificationCardTitle}`}
             >
               <div className="flex items-center gap-3 mb-3">
                 <ProgressRing progress={verificationProgress} size={48} strokeWidth={4} color="rose">
                   <Shield className="w-5 h-5 text-primary" />
                 </ProgressRing>
                 <div className="flex-1">
-                  <h3 className="font-medium">信任中心</h3>
-                  <p className="text-xs text-muted-foreground">
-                    {verificationTotal
-                      ? `${verifiedCount}/${verificationTotal} 项已认证`
-                      : '查看认证进度'}
-                  </p>
+                  <p className="text-xs text-primary font-medium mb-1">认证情况</p>
+                  <h3 className="font-medium">{verificationCardTitle}</h3>
+                  <p className="text-xs text-muted-foreground mt-1">{verificationCardDescription}</p>
                 </div>
                 <ChevronRight className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
               </div>
               {profile.verificationItems.length > 0 ? (
-                <div className="grid grid-cols-4 gap-2">
-                  {profile.verificationItems.slice(0, 4).map((item, i) => (
-                    <div
-                      key={i}
-                      className={cn(
-                        'text-center p-2 rounded-lg transition-colors',
-                        item.status === 'verified'
-                          ? 'bg-primary/10'
-                          : item.status === 'pending'
-                            ? 'bg-gold/10'
-                            : 'bg-secondary',
-                      )}
-                    >
-                      <div className="flex justify-center mb-1">{getStatusIcon(item.status)}</div>
-                      <span className="text-[10px] text-muted-foreground">{item.name}</span>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">
+                      {verificationTotal ? `${verifiedCount}/${verificationTotal} 项已完成` : '查看认证进度'}
+                    </span>
+                    <span className="inline-flex items-center rounded-full bg-primary/10 px-2 py-1 text-primary">
+                      {verificationPrimaryActionLabel}
+                    </span>
+                  </div>
+                  {priorityVerificationItems.length > 0 ? (
+                    <div className="grid grid-cols-1 gap-2">
+                      {priorityVerificationItems.map((item, i) => (
+                        <div
+                          key={`${item.name}-${i}`}
+                          className={cn(
+                            'flex items-center gap-3 rounded-lg border border-border/70 px-3 py-3 transition-colors',
+                            item.status === 'pending' ? 'bg-gold/5' : 'bg-secondary/40',
+                          )}
+                        >
+                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-background">
+                            {getStatusIcon(item.status)}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium">{item.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {item.status === 'pending' ? item.description : '现在完成会更容易获得信任'}
+                            </p>
+                          </div>
+                          <span className="text-xs text-primary font-medium">
+                            {item.status === 'pending' ? '去处理' : '去认证'}
+                          </span>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  ) : (
+                    <div className="grid grid-cols-4 gap-2">
+                      {profile.verificationItems.slice(0, 4).map((item, i) => (
+                        <div
+                          key={i}
+                          className={cn(
+                            'text-center p-2 rounded-lg transition-colors',
+                            item.status === 'verified'
+                              ? 'bg-primary/10'
+                              : item.status === 'pending'
+                                ? 'bg-gold/10'
+                                : 'bg-secondary',
+                          )}
+                        >
+                          <div className="flex justify-center mb-1">{getStatusIcon(item.status)}</div>
+                          <span className="text-[10px] text-muted-foreground">{item.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ) : (
-                <p className="text-xs text-muted-foreground">暂无认证项，点击前往信任中心补充</p>
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">完成关键认证后，资料会更容易被信任。</p>
+                  <span className="inline-flex items-center rounded-full bg-primary/10 px-2 py-1 text-xs text-primary">
+                    去完成认证
+                  </span>
+                </div>
               )}
             </button>
           </section>

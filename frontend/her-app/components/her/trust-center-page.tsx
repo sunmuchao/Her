@@ -62,6 +62,47 @@ export default function TrustCenterPage({ onStartVerification, onBack }: TrustCe
       })),
     [data],
   )
+  const priorityItems = useMemo(() => {
+    const priorityMap: Record<string, number> = {
+      '活体视频认证': 0,
+      '真人认证': 0,
+      '身份认证': 1,
+      '学历认证': 2,
+      '职业认证': 3,
+      '收入认证': 4,
+    }
+
+    return verificationItems
+      .filter((item) => item.status === 'unverified')
+      .sort((a, b) => {
+        const aPriority = priorityMap[a.name] ?? 99
+        const bPriority = priorityMap[b.name] ?? 99
+        if (aPriority !== bPriority) return aPriority - bPriority
+        return a.name.localeCompare(b.name, 'zh-CN')
+      })
+  }, [verificationItems])
+  const reviewingItems = useMemo(
+    () => verificationItems.filter((item) => item.status === 'pending'),
+    [verificationItems],
+  )
+  const completedItems = useMemo(
+    () => verificationItems.filter((item) => item.status === 'verified'),
+    [verificationItems],
+  )
+  const summaryTitle = priorityItems.length > 0
+    ? `还差 ${priorityItems.length} 项认证`
+    : reviewingItems.length > 0
+      ? '认证材料审核中'
+      : completedItems.length > 0
+        ? '已完成全部认证'
+        : '开始建立你的认证'
+  const summaryDescription = priorityItems.length > 0
+    ? `推荐先完成：${priorityItems.slice(0, 2).map((item) => item.name).join('、')}`
+    : reviewingItems.length > 0
+      ? '你已提交部分材料，审核结果会在这里同步。'
+      : completedItems.length > 0
+        ? '你的资料可信度更高，关键信息已更完整。'
+        : '完成认证后，资料会更容易被信任。'
 
   // 状态样式映射
   const getStatusStyles = (status: string) => {
@@ -81,6 +122,14 @@ export default function TrustCenterPage({ onStartVerification, onBack }: TrustCe
     if (status === 'verified') return '已认证'
     if (status === 'pending') return '审核中'
     return '未认证'
+  }
+  const getActionLabel = (item: VerificationItemView) => {
+    if (item.status === 'pending') return '查看进度'
+    if (item.name.includes('视频') || item.name.includes('真人')) return '开始认证'
+    if (item.name.includes('学历')) return '上传学历材料'
+    if (item.name.includes('职业')) return '上传职业材料'
+    if (item.name.includes('收入')) return '上传收入材料'
+    return '去认证'
   }
 
   // 下拉刷新处理
@@ -168,21 +217,33 @@ export default function TrustCenterPage({ onStartVerification, onBack }: TrustCe
           ) : null}
         </div>
 
-        {/* 认证状态列表 */}
+        <section className="rounded-2xl border border-primary/15 bg-gradient-to-br from-primary/[0.08] via-background to-background p-4">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
+              <Shield className="w-5 h-5 text-primary" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-medium text-primary mb-1">认证提醒</p>
+              <h2 className="text-base font-medium">{summaryTitle}</h2>
+              <p className="text-sm text-muted-foreground mt-1">{summaryDescription}</p>
+            </div>
+          </div>
+        </section>
+
         <section>
-          <h2 className="text-sm font-medium mb-2">认证状态</h2>
+          <h2 className="text-sm font-medium mb-2">优先完成</h2>
           <div className="bg-card border border-border rounded-xl overflow-hidden">
-            {verificationItems.length === 0 ? (
+            {priorityItems.length === 0 ? (
               <InlineEmpty message="还没有认证记录，完成认证可提升可信度" />
             ) : (
-              verificationItems.map((item, i) => {
+              priorityItems.map((item, i) => {
                 const styles = getStatusStyles(item.status)
                 return (
                   <button
-                    key={i}
-                    onClick={item.status === 'unverified' ? onStartVerification : undefined}
+                    key={`${item.name}-${i}`}
+                    onClick={onStartVerification}
                     className={`w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-secondary/50 ${
-                      i !== verificationItems.length - 1 ? 'border-b border-border' : ''
+                      i !== priorityItems.length - 1 ? 'border-b border-border' : ''
                     }`}
                   >
                     {getStatusIcon(item.status)}
@@ -195,13 +256,51 @@ export default function TrustCenterPage({ onStartVerification, onBack }: TrustCe
                       </div>
                       <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
                     </div>
-                    {item.status === 'unverified' && <ChevronRight className="w-4 h-4 text-muted-foreground" />}
+                    <div className="flex items-center gap-1 text-primary">
+                      <span className="text-xs font-medium">{getActionLabel(item)}</span>
+                      <ChevronRight className="w-4 h-4" />
+                    </div>
                   </button>
                 )
               })
             )}
           </div>
         </section>
+
+        {reviewingItems.length > 0 && (
+          <section>
+            <h2 className="text-sm font-medium mb-2">审核中 / 待处理</h2>
+            <div className="bg-card border border-border rounded-xl overflow-hidden">
+              {reviewingItems.map((item, i) => {
+                const styles = getStatusStyles(item.status)
+                return (
+                  <button
+                    key={`${item.name}-pending-${i}`}
+                    onClick={onStartVerification}
+                    className={`w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-secondary/50 ${
+                      i !== reviewingItems.length - 1 ? 'border-b border-border' : ''
+                    }`}
+                  >
+                    {getStatusIcon(item.status)}
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">{item.name}</span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${styles.bg} ${styles.text}`}>
+                          {getStatusText(item.status)}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
+                    </div>
+                    <div className="flex items-center gap-1 text-primary">
+                      <span className="text-xs font-medium">{getActionLabel(item)}</span>
+                      <ChevronRight className="w-4 h-4" />
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </section>
+        )}
 
         {/* 待处理项 */}
         {pendingItems.length > 0 && (
@@ -227,6 +326,36 @@ export default function TrustCenterPage({ onStartVerification, onBack }: TrustCe
                   </div>
                 </button>
               ))}
+            </div>
+          </section>
+        )}
+
+        {completedItems.length > 0 && (
+          <section>
+            <h2 className="text-sm font-medium mb-2">已完成</h2>
+            <div className="bg-card border border-border rounded-xl overflow-hidden">
+              {completedItems.map((item, i) => {
+                const styles = getStatusStyles(item.status)
+                return (
+                  <div
+                    key={`${item.name}-verified-${i}`}
+                    className={`px-4 py-3 flex items-center gap-3 ${
+                      i !== completedItems.length - 1 ? 'border-b border-border' : ''
+                    }`}
+                  >
+                    {getStatusIcon(item.status)}
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">{item.name}</span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${styles.bg} ${styles.text}`}>
+                          {getStatusText(item.status)}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           </section>
         )}
