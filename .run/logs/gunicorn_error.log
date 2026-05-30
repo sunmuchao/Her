@@ -2688,3 +2688,27 @@ SystemExit: 1
 [2026-05-30 12:14:11 +0800] [19975] [ERROR] Connection in use: ('127.0.0.1', 8765)
 [2026-05-30 12:14:11 +0800] [19975] [ERROR] connection to ('127.0.0.1', 8765) failed: [Errno 48] Address already in use
 [2026-05-30 12:14:12 +0800] [19975] [ERROR] Can't connect to ('127.0.0.1', 8765)
+[2026-05-30 12:16:44 +0800] [20245] [INFO] Starting gunicorn 26.0.0
+[2026-05-30 12:16:44 +0800] [20245] [ERROR] Connection in use: ('127.0.0.1', 8765)
+[2026-05-30 12:16:44 +0800] [20245] [ERROR] connection to ('127.0.0.1', 8765) failed: [Errno 48] Address already in use
+[2026-05-30 12:16:45 +0800] [20245] [ERROR] Connection in use: ('127.0.0.1', 8765)
+[2026-05-30 12:16:45 +0800] [20245] [ERROR] connection to ('127.0.0.1', 8765) failed: [Errno 48] Address already in use
+[2026-05-30 12:16:46 +0800] [20245] [ERROR] Connection in use: ('127.0.0.1', 8765)
+[2026-05-30 12:16:46 +0800] [20245] [ERROR] connection to ('127.0.0.1', 8765) failed: [Errno 48] Address already in use
+[2026-05-30 12:16:47 +0800] [20245] [ERROR] Connection in use: ('127.0.0.1', 8765)
+[2026-05-30 12:16:47 +0800] [20245] [ERROR] connection to ('127.0.0.1', 8765) failed: [Errno 48] Address already in use
+[2026-05-30 12:16:48 +0800] [20245] [ERROR] Connection in use: ('127.0.0.1', 8765)
+[2026-05-30 12:16:48 +0800] [20245] [ERROR] connection to ('127.0.0.1', 8765) failed: [Errno 48] Address already in use
+[2026-05-30 12:16:49 +0800] [20245] [ERROR] Can't connect to ('127.0.0.1', 8765)
+[2026-05-30 12:17:28 +0800] [20310] [INFO] Starting gunicorn 26.0.0
+[2026-05-30 12:17:28 +0800] [20310] [ERROR] Connection in use: ('127.0.0.1', 8765)
+[2026-05-30 12:17:28 +0800] [20310] [ERROR] connection to ('127.0.0.1', 8765) failed: [Errno 48] Address already in use
+[2026-05-30 12:17:29 +0800] [20310] [ERROR] Connection in use: ('127.0.0.1', 8765)
+[2026-05-30 12:17:29 +0800] [20310] [ERROR] connection to ('127.0.0.1', 8765) failed: [Errno 48] Address already in use
+[2026-05-30 12:17:30 +0800] [20310] [ERROR] Connection in use: ('127.0.0.1', 8765)
+[2026-05-30 12:17:30 +0800] [20310] [ERROR] connection to ('127.0.0.1', 8765) failed: [Errno 48] Address already in use
+[2026-05-30 12:17:31 +0800] [20310] [ERROR] Connection in use: ('127.0.0.1', 8765)
+[2026-05-30 12:17:31 +0800] [20310] [ERROR] connection to ('127.0.0.1', 8765) failed: [Errno 48] Address already in use
+[2026-05-30 12:17:32 +0800] [20310] [ERROR] Connection in use: ('127.0.0.1', 8765)
+[2026-05-30 12:17:32 +0800] [20310] [ERROR] connection to ('127.0.0.1', 8765) failed: [Errno 48] Address already in use
+[2026-05-30 12:17:33 +0800] [20310] [ERROR] Can't connect to ('127.0.0.1', 8765)
