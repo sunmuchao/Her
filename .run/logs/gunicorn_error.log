@@ -62,3 +62,2304 @@
 [2026-05-30 11:42:52 +0800] [16999] [INFO] Worker (pid:17008) was sent SIGTERM!
 [2026-05-30 11:42:52 +0800] [16999] [INFO] Worker (pid:17005) was sent SIGTERM!
 [2026-05-30 11:42:54 +0800] [16999] [INFO] Shutting down: Master
+[2026-05-30 11:43:01 +0800] [17301] [INFO] Starting gunicorn 26.0.0
+[2026-05-30 11:43:01 +0800] [17301] [INFO] Listening at: http://127.0.0.1:8765 (17301)
+[2026-05-30 11:43:01 +0800] [17301] [INFO] Using worker: sync
+[2026-05-30 11:43:01 +0800] [17303] [INFO] Booting worker with pid: 17303
+[2026-05-30 11:43:01 +0800] [17304] [INFO] Booting worker with pid: 17304
+[2026-05-30 11:43:01 +0800] [17305] [INFO] Booting worker with pid: 17305
+[2026-05-30 11:43:01 +0800] [17306] [INFO] Booting worker with pid: 17306
+[2026-05-30 11:43:01 +0800] [17307] [INFO] Booting worker with pid: 17307
+[2026-05-30 11:43:01 +0800] [17308] [INFO] Booting worker with pid: 17308
+[2026-05-30 11:43:01 +0800] [17309] [INFO] Booting worker with pid: 17309
+[2026-05-30 11:43:01 +0800] [17310] [INFO] Booting worker with pid: 17310
+[2026-05-30 11:43:01 +0800] [17312] [INFO] Booting worker with pid: 17312
+[2026-05-30 11:43:01 +0800] [17313] [INFO] Booting worker with pid: 17313
+[2026-05-30 11:43:01 +0800] [17314] [INFO] Booting worker with pid: 17314
+[2026-05-30 11:43:01 +0800] [17315] [INFO] Booting worker with pid: 17315
+[2026-05-30 11:43:01 +0800] [17316] [INFO] Booting worker with pid: 17316
+[2026-05-30 11:43:01 +0800] [17318] [INFO] Booting worker with pid: 17318
+[2026-05-30 11:43:01 +0800] [17319] [INFO] Booting worker with pid: 17319
+[2026-05-30 11:43:01 +0800] [17320] [INFO] Booting worker with pid: 17320
+[2026-05-30 11:43:01 +0800] [17321] [INFO] Booting worker with pid: 17321
+[2026-05-30 11:43:01 +0800] [17322] [INFO] Booting worker with pid: 17322
+[2026-05-30 11:43:01 +0800] [17323] [INFO] Booting worker with pid: 17323
+[2026-05-30 11:43:01 +0800] [17324] [INFO] Booting worker with pid: 17324
+[2026-05-30 11:43:01 +0800] [17325] [INFO] Booting worker with pid: 17325
+[2026-05-30 11:43:02 +0800] [17326] [INFO] Booting worker with pid: 17326
+[2026-05-30 11:43:02 +0800] [17327] [INFO] Booting worker with pid: 17327
+[2026-05-30 11:43:02 +0800] [17328] [INFO] Booting worker with pid: 17328
+[2026-05-30 11:43:02 +0800] [17330] [INFO] Booting worker with pid: 17330
+[2026-05-30 11:43:02 +0800] [17301] [INFO] Control socket listening at /Users/sunmuchao/.gunicorn/gunicorn.ctl
+[2026-05-30 11:43:06 +0800] [17304] [ERROR] Exception in worker process
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 410, in build_wechat_login_provider
+    parsed = json.loads(stub_json or "{}")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 353, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ^^^^^^^^^^^^^^^^^^^^^^
+json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/arbiter.py", line 713, in spawn_worker
+    worker.init_process()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 136, in init_process
+    self.load_wsgi()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 148, in load_wsgi
+    self.wsgi = self.app.wsgi()
+                ^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/base.py", line 66, in wsgi
+    self.callable = self.load()
+                    ^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
+    return self.load_wsgiapp()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
+    return util.import_app(self.app_uri)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/util.py", line 411, in import_app
+    mod = importlib.import_module(module)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 375, in <module>
+    _default_gateway = PartnerGateway()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 94, in __init__
+    self._wechat_login_provider = _build_wechat_login_provider()
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 412, in build_wechat_login_provider
+    raise ValueError("HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON") from exc
+ValueError: HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+[2026-05-30 11:43:06 +0800] [17304] [INFO] Worker exiting (pid: 17304)
+[2026-05-30 11:43:07 +0800] [17305] [ERROR] Exception in worker process
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 410, in build_wechat_login_provider
+    parsed = json.loads(stub_json or "{}")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 353, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ^^^^^^^^^^^^^^^^^^^^^^
+json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/arbiter.py", line 713, in spawn_worker
+    worker.init_process()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 136, in init_process
+    self.load_wsgi()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 148, in load_wsgi
+    self.wsgi = self.app.wsgi()
+                ^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/base.py", line 66, in wsgi
+    self.callable = self.load()
+                    ^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
+    return self.load_wsgiapp()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
+    return util.import_app(self.app_uri)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/util.py", line 411, in import_app
+    mod = importlib.import_module(module)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 375, in <module>
+    _default_gateway = PartnerGateway()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 94, in __init__
+    self._wechat_login_provider = _build_wechat_login_provider()
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 412, in build_wechat_login_provider
+    raise ValueError("HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON") from exc
+ValueError: HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+[2026-05-30 11:43:07 +0800] [17305] [INFO] Worker exiting (pid: 17305)
+[2026-05-30 11:43:07 +0800] [17303] [ERROR] Exception in worker process
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 410, in build_wechat_login_provider
+    parsed = json.loads(stub_json or "{}")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 353, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ^^^^^^^^^^^^^^^^^^^^^^
+json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/arbiter.py", line 713, in spawn_worker
+    worker.init_process()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 136, in init_process
+    self.load_wsgi()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 148, in load_wsgi
+    self.wsgi = self.app.wsgi()
+                ^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/base.py", line 66, in wsgi
+    self.callable = self.load()
+                    ^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
+    return self.load_wsgiapp()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
+    return util.import_app(self.app_uri)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/util.py", line 411, in import_app
+    mod = importlib.import_module(module)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 375, in <module>
+    _default_gateway = PartnerGateway()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 94, in __init__
+    self._wechat_login_provider = _build_wechat_login_provider()
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 412, in build_wechat_login_provider
+    raise ValueError("HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON") from exc
+ValueError: HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+[2026-05-30 11:43:07 +0800] [17303] [INFO] Worker exiting (pid: 17303)
+[2026-05-30 11:43:07 +0800] [17306] [ERROR] Exception in worker process
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 410, in build_wechat_login_provider
+    parsed = json.loads(stub_json or "{}")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 353, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ^^^^^^^^^^^^^^^^^^^^^^
+json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/arbiter.py", line 713, in spawn_worker
+    worker.init_process()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 136, in init_process
+    self.load_wsgi()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 148, in load_wsgi
+    self.wsgi = self.app.wsgi()
+                ^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/base.py", line 66, in wsgi
+    self.callable = self.load()
+                    ^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
+    return self.load_wsgiapp()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
+    return util.import_app(self.app_uri)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/util.py", line 411, in import_app
+    mod = importlib.import_module(module)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 375, in <module>
+    _default_gateway = PartnerGateway()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 94, in __init__
+    self._wechat_login_provider = _build_wechat_login_provider()
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 412, in build_wechat_login_provider
+    raise ValueError("HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON") from exc
+ValueError: HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+[2026-05-30 11:43:07 +0800] [17306] [INFO] Worker exiting (pid: 17306)
+[2026-05-30 11:43:07 +0800] [17307] [ERROR] Exception in worker process
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 410, in build_wechat_login_provider
+    parsed = json.loads(stub_json or "{}")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 353, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ^^^^^^^^^^^^^^^^^^^^^^
+json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/arbiter.py", line 713, in spawn_worker
+    worker.init_process()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 136, in init_process
+    self.load_wsgi()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 148, in load_wsgi
+    self.wsgi = self.app.wsgi()
+                ^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/base.py", line 66, in wsgi
+    self.callable = self.load()
+                    ^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
+    return self.load_wsgiapp()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
+    return util.import_app(self.app_uri)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/util.py", line 411, in import_app
+    mod = importlib.import_module(module)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 375, in <module>
+    _default_gateway = PartnerGateway()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 94, in __init__
+    self._wechat_login_provider = _build_wechat_login_provider()
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 412, in build_wechat_login_provider
+    raise ValueError("HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON") from exc
+ValueError: HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+[2026-05-30 11:43:07 +0800] [17307] [INFO] Worker exiting (pid: 17307)
+[2026-05-30 11:43:07 +0800] [17308] [ERROR] Exception in worker process
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 410, in build_wechat_login_provider
+    parsed = json.loads(stub_json or "{}")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 353, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ^^^^^^^^^^^^^^^^^^^^^^
+json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/arbiter.py", line 713, in spawn_worker
+    worker.init_process()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 136, in init_process
+    self.load_wsgi()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 148, in load_wsgi
+    self.wsgi = self.app.wsgi()
+                ^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/base.py", line 66, in wsgi
+    self.callable = self.load()
+                    ^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
+    return self.load_wsgiapp()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
+    return util.import_app(self.app_uri)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/util.py", line 411, in import_app
+    mod = importlib.import_module(module)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 375, in <module>
+    _default_gateway = PartnerGateway()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 94, in __init__
+    self._wechat_login_provider = _build_wechat_login_provider()
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 412, in build_wechat_login_provider
+    raise ValueError("HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON") from exc
+ValueError: HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+[2026-05-30 11:43:07 +0800] [17308] [INFO] Worker exiting (pid: 17308)
+[2026-05-30 11:43:07 +0800] [17301] [ERROR] Worker (pid:17304) exited with code 3.
+[2026-05-30 11:43:07 +0800] [17309] [ERROR] Exception in worker process
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 410, in build_wechat_login_provider
+    parsed = json.loads(stub_json or "{}")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 353, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ^^^^^^^^^^^^^^^^^^^^^^
+json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/arbiter.py", line 713, in spawn_worker
+    worker.init_process()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 136, in init_process
+    self.load_wsgi()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 148, in load_wsgi
+    self.wsgi = self.app.wsgi()
+                ^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/base.py", line 66, in wsgi
+    self.callable = self.load()
+                    ^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
+    return self.load_wsgiapp()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
+    return util.import_app(self.app_uri)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/util.py", line 411, in import_app
+    mod = importlib.import_module(module)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 375, in <module>
+    _default_gateway = PartnerGateway()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 94, in __init__
+    self._wechat_login_provider = _build_wechat_login_provider()
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 412, in build_wechat_login_provider
+    raise ValueError("HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON") from exc
+ValueError: HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+[2026-05-30 11:43:07 +0800] [17309] [INFO] Worker exiting (pid: 17309)
+[2026-05-30 11:43:07 +0800] [17301] [INFO] Worker (pid:17308) was sent SIGTERM!
+[2026-05-30 11:43:07 +0800] [17301] [INFO] Worker (pid:17307) was sent SIGTERM!
+[2026-05-30 11:43:07 +0800] [17301] [INFO] Worker (pid:17306) was sent SIGTERM!
+[2026-05-30 11:43:07 +0800] [17301] [INFO] Worker (pid:17305) was sent SIGTERM!
+[2026-05-30 11:43:07 +0800] [17301] [INFO] Worker (pid:17303) was sent SIGTERM!
+[2026-05-30 11:43:07 +0800] [17310] [ERROR] Exception in worker process
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 410, in build_wechat_login_provider
+    parsed = json.loads(stub_json or "{}")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 353, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ^^^^^^^^^^^^^^^^^^^^^^
+json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/arbiter.py", line 713, in spawn_worker
+    worker.init_process()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 136, in init_process
+    self.load_wsgi()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 148, in load_wsgi
+    self.wsgi = self.app.wsgi()
+                ^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/base.py", line 66, in wsgi
+    self.callable = self.load()
+                    ^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
+    return self.load_wsgiapp()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
+    return util.import_app(self.app_uri)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/util.py", line 411, in import_app
+    mod = importlib.import_module(module)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 375, in <module>
+    _default_gateway = PartnerGateway()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 94, in __init__
+    self._wechat_login_provider = _build_wechat_login_provider()
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 412, in build_wechat_login_provider
+    raise ValueError("HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON") from exc
+ValueError: HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+[2026-05-30 11:43:07 +0800] [17310] [INFO] Worker exiting (pid: 17310)
+[2026-05-30 11:43:08 +0800] [17313] [ERROR] Exception in worker process
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 410, in build_wechat_login_provider
+    parsed = json.loads(stub_json or "{}")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 353, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ^^^^^^^^^^^^^^^^^^^^^^
+json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/arbiter.py", line 713, in spawn_worker
+    worker.init_process()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 136, in init_process
+    self.load_wsgi()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 148, in load_wsgi
+    self.wsgi = self.app.wsgi()
+                ^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/base.py", line 66, in wsgi
+    self.callable = self.load()
+                    ^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
+    return self.load_wsgiapp()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
+    return util.import_app(self.app_uri)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/util.py", line 411, in import_app
+    mod = importlib.import_module(module)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 375, in <module>
+    _default_gateway = PartnerGateway()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 94, in __init__
+    self._wechat_login_provider = _build_wechat_login_provider()
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 412, in build_wechat_login_provider
+    raise ValueError("HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON") from exc
+ValueError: HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+[2026-05-30 11:43:08 +0800] [17314] [ERROR] Exception in worker process
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 410, in build_wechat_login_provider
+    parsed = json.loads(stub_json or "{}")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 353, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ^^^^^^^^^^^^^^^^^^^^^^
+json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/arbiter.py", line 713, in spawn_worker
+    worker.init_process()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 136, in init_process
+    self.load_wsgi()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 148, in load_wsgi
+    self.wsgi = self.app.wsgi()
+                ^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/base.py", line 66, in wsgi
+    self.callable = self.load()
+                    ^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
+    return self.load_wsgiapp()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
+    return util.import_app(self.app_uri)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/util.py", line 411, in import_app
+    mod = importlib.import_module(module)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 375, in <module>
+    _default_gateway = PartnerGateway()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 94, in __init__
+    self._wechat_login_provider = _build_wechat_login_provider()
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 412, in build_wechat_login_provider
+    raise ValueError("HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON") from exc
+ValueError: HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+[2026-05-30 11:43:08 +0800] [17313] [INFO] Worker exiting (pid: 17313)
+[2026-05-30 11:43:08 +0800] [17314] [INFO] Worker exiting (pid: 17314)
+[2026-05-30 11:43:08 +0800] [17315] [ERROR] Exception in worker process
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 410, in build_wechat_login_provider
+    parsed = json.loads(stub_json or "{}")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 353, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ^^^^^^^^^^^^^^^^^^^^^^
+json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/arbiter.py", line 713, in spawn_worker
+    worker.init_process()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 136, in init_process
+    self.load_wsgi()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 148, in load_wsgi
+    self.wsgi = self.app.wsgi()
+                ^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/base.py", line 66, in wsgi
+    self.callable = self.load()
+                    ^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
+    return self.load_wsgiapp()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
+    return util.import_app(self.app_uri)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/util.py", line 411, in import_app
+    mod = importlib.import_module(module)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 375, in <module>
+    _default_gateway = PartnerGateway()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 94, in __init__
+    self._wechat_login_provider = _build_wechat_login_provider()
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 412, in build_wechat_login_provider
+    raise ValueError("HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON") from exc
+ValueError: HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+[2026-05-30 11:43:08 +0800] [17315] [INFO] Worker exiting (pid: 17315)
+[2026-05-30 11:43:08 +0800] [17312] [ERROR] Exception in worker process
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 410, in build_wechat_login_provider
+    parsed = json.loads(stub_json or "{}")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 353, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ^^^^^^^^^^^^^^^^^^^^^^
+json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/arbiter.py", line 713, in spawn_worker
+    worker.init_process()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 136, in init_process
+    self.load_wsgi()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 148, in load_wsgi
+    self.wsgi = self.app.wsgi()
+                ^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/base.py", line 66, in wsgi
+    self.callable = self.load()
+                    ^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
+    return self.load_wsgiapp()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
+    return util.import_app(self.app_uri)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/util.py", line 411, in import_app
+    mod = importlib.import_module(module)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 375, in <module>
+    _default_gateway = PartnerGateway()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 94, in __init__
+    self._wechat_login_provider = _build_wechat_login_provider()
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 412, in build_wechat_login_provider
+    raise ValueError("HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON") from exc
+ValueError: HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+[2026-05-30 11:43:08 +0800] [17312] [INFO] Worker exiting (pid: 17312)
+[2026-05-30 11:43:08 +0800] [17301] [ERROR] Worker (pid:17309) exited with code 3.
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/arbiter.py", line 246, in run
+    handler()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/arbiter.py", line 271, in handle_chld
+    self.reap_workers()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/arbiter.py", line 641, in reap_workers
+    raise HaltServer(reason, self.WORKER_BOOT_ERROR)
+gunicorn.errors.HaltServer: <HaltServer 'Worker failed to boot.' 3>
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/bin/gunicorn", line 6, in <module>
+    sys.exit(run())
+             ^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 66, in run
+    WSGIApplication("%(prog)s [OPTIONS] [APP_MODULE]", prog=prog).run()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/base.py", line 235, in run
+    super().run()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/base.py", line 71, in run
+    Arbiter(self).run()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/arbiter.py", line 254, in run
+    self.halt(reason=inst.reason, exit_status=inst.exit_status)
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/arbiter.py", line 378, in halt
+    self.stop()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/arbiter.py", line 458, in stop
+    self.reap_workers()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/arbiter.py", line 641, in reap_workers
+    raise HaltServer(reason, self.WORKER_BOOT_ERROR)
+gunicorn.errors.HaltServer: <HaltServer 'Worker failed to boot.' 3>
+[2026-05-30 11:43:08 +0800] [17316] [ERROR] Exception in worker process
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 410, in build_wechat_login_provider
+    parsed = json.loads(stub_json or "{}")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 353, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ^^^^^^^^^^^^^^^^^^^^^^
+json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/arbiter.py", line 713, in spawn_worker
+    worker.init_process()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 136, in init_process
+    self.load_wsgi()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 148, in load_wsgi
+    self.wsgi = self.app.wsgi()
+                ^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/base.py", line 66, in wsgi
+    self.callable = self.load()
+                    ^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
+    return self.load_wsgiapp()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
+    return util.import_app(self.app_uri)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/util.py", line 411, in import_app
+    mod = importlib.import_module(module)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 375, in <module>
+    _default_gateway = PartnerGateway()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 94, in __init__
+    self._wechat_login_provider = _build_wechat_login_provider()
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 412, in build_wechat_login_provider
+    raise ValueError("HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON") from exc
+ValueError: HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+[2026-05-30 11:43:08 +0800] [17316] [INFO] Worker exiting (pid: 17316)
+[2026-05-30 11:43:08 +0800] [17318] [ERROR] Exception in worker process
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 410, in build_wechat_login_provider
+    parsed = json.loads(stub_json or "{}")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 353, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ^^^^^^^^^^^^^^^^^^^^^^
+json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/arbiter.py", line 713, in spawn_worker
+    worker.init_process()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 136, in init_process
+    self.load_wsgi()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 148, in load_wsgi
+    self.wsgi = self.app.wsgi()
+                ^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/base.py", line 66, in wsgi
+    self.callable = self.load()
+                    ^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
+    return self.load_wsgiapp()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
+    return util.import_app(self.app_uri)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/util.py", line 411, in import_app
+    mod = importlib.import_module(module)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 375, in <module>
+    _default_gateway = PartnerGateway()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 94, in __init__
+    self._wechat_login_provider = _build_wechat_login_provider()
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 412, in build_wechat_login_provider
+    raise ValueError("HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON") from exc
+ValueError: HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+[2026-05-30 11:43:08 +0800] [17318] [INFO] Worker exiting (pid: 17318)
+[2026-05-30 11:43:08 +0800] [17321] [ERROR] Exception in worker process
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 410, in build_wechat_login_provider
+    parsed = json.loads(stub_json or "{}")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 353, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ^^^^^^^^^^^^^^^^^^^^^^
+json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/arbiter.py", line 713, in spawn_worker
+    worker.init_process()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 136, in init_process
+    self.load_wsgi()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 148, in load_wsgi
+    self.wsgi = self.app.wsgi()
+                ^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/base.py", line 66, in wsgi
+    self.callable = self.load()
+                    ^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
+    return self.load_wsgiapp()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
+    return util.import_app(self.app_uri)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/util.py", line 411, in import_app
+    mod = importlib.import_module(module)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 375, in <module>
+    _default_gateway = PartnerGateway()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 94, in __init__
+    self._wechat_login_provider = _build_wechat_login_provider()
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 412, in build_wechat_login_provider
+    raise ValueError("HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON") from exc
+ValueError: HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+[2026-05-30 11:43:08 +0800] [17321] [INFO] Worker exiting (pid: 17321)
+[2026-05-30 11:43:08 +0800] [17319] [ERROR] Exception in worker process
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 410, in build_wechat_login_provider
+    parsed = json.loads(stub_json or "{}")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 353, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ^^^^^^^^^^^^^^^^^^^^^^
+json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/arbiter.py", line 713, in spawn_worker
+    worker.init_process()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 136, in init_process
+    self.load_wsgi()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 148, in load_wsgi
+    self.wsgi = self.app.wsgi()
+                ^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/base.py", line 66, in wsgi
+    self.callable = self.load()
+                    ^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
+    return self.load_wsgiapp()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
+    return util.import_app(self.app_uri)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/util.py", line 411, in import_app
+    mod = importlib.import_module(module)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 375, in <module>
+    _default_gateway = PartnerGateway()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 94, in __init__
+    self._wechat_login_provider = _build_wechat_login_provider()
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 412, in build_wechat_login_provider
+    raise ValueError("HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON") from exc
+ValueError: HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+[2026-05-30 11:43:08 +0800] [17319] [INFO] Worker exiting (pid: 17319)
+[2026-05-30 11:43:08 +0800] [17320] [ERROR] Exception in worker process
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 410, in build_wechat_login_provider
+    parsed = json.loads(stub_json or "{}")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 353, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ^^^^^^^^^^^^^^^^^^^^^^
+json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/arbiter.py", line 713, in spawn_worker
+    worker.init_process()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 136, in init_process
+    self.load_wsgi()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 148, in load_wsgi
+    self.wsgi = self.app.wsgi()
+                ^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/base.py", line 66, in wsgi
+    self.callable = self.load()
+                    ^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
+    return self.load_wsgiapp()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
+    return util.import_app(self.app_uri)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/util.py", line 411, in import_app
+    mod = importlib.import_module(module)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 375, in <module>
+    _default_gateway = PartnerGateway()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 94, in __init__
+    self._wechat_login_provider = _build_wechat_login_provider()
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 412, in build_wechat_login_provider
+    raise ValueError("HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON") from exc
+ValueError: HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+[2026-05-30 11:43:08 +0800] [17320] [INFO] Worker exiting (pid: 17320)
+[2026-05-30 11:43:08 +0800] [17323] [ERROR] Exception in worker process
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 410, in build_wechat_login_provider
+    parsed = json.loads(stub_json or "{}")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 353, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ^^^^^^^^^^^^^^^^^^^^^^
+json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/arbiter.py", line 713, in spawn_worker
+    worker.init_process()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 136, in init_process
+    self.load_wsgi()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 148, in load_wsgi
+    self.wsgi = self.app.wsgi()
+                ^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/base.py", line 66, in wsgi
+    self.callable = self.load()
+                    ^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
+    return self.load_wsgiapp()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
+    return util.import_app(self.app_uri)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/util.py", line 411, in import_app
+    mod = importlib.import_module(module)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 375, in <module>
+    _default_gateway = PartnerGateway()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 94, in __init__
+    self._wechat_login_provider = _build_wechat_login_provider()
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 412, in build_wechat_login_provider
+    raise ValueError("HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON") from exc
+ValueError: HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+[2026-05-30 11:43:08 +0800] [17323] [INFO] Worker exiting (pid: 17323)
+[2026-05-30 11:43:08 +0800] [17322] [ERROR] Exception in worker process
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 410, in build_wechat_login_provider
+    parsed = json.loads(stub_json or "{}")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 353, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ^^^^^^^^^^^^^^^^^^^^^^
+json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/arbiter.py", line 713, in spawn_worker
+    worker.init_process()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 136, in init_process
+    self.load_wsgi()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 148, in load_wsgi
+    self.wsgi = self.app.wsgi()
+                ^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/base.py", line 66, in wsgi
+    self.callable = self.load()
+                    ^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
+    return self.load_wsgiapp()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
+    return util.import_app(self.app_uri)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/util.py", line 411, in import_app
+    mod = importlib.import_module(module)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 375, in <module>
+    _default_gateway = PartnerGateway()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 94, in __init__
+    self._wechat_login_provider = _build_wechat_login_provider()
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 412, in build_wechat_login_provider
+    raise ValueError("HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON") from exc
+ValueError: HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+[2026-05-30 11:43:08 +0800] [17322] [INFO] Worker exiting (pid: 17322)
+[2026-05-30 11:43:08 +0800] [17325] [ERROR] Exception in worker process
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 410, in build_wechat_login_provider
+    parsed = json.loads(stub_json or "{}")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 353, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ^^^^^^^^^^^^^^^^^^^^^^
+json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/arbiter.py", line 713, in spawn_worker
+    worker.init_process()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 136, in init_process
+    self.load_wsgi()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 148, in load_wsgi
+    self.wsgi = self.app.wsgi()
+                ^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/base.py", line 66, in wsgi
+    self.callable = self.load()
+                    ^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
+    return self.load_wsgiapp()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
+    return util.import_app(self.app_uri)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/util.py", line 411, in import_app
+    mod = importlib.import_module(module)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 375, in <module>
+    _default_gateway = PartnerGateway()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 94, in __init__
+    self._wechat_login_provider = _build_wechat_login_provider()
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 412, in build_wechat_login_provider
+    raise ValueError("HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON") from exc
+ValueError: HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+[2026-05-30 11:43:08 +0800] [17325] [INFO] Worker exiting (pid: 17325)
+[2026-05-30 11:43:08 +0800] [17324] [ERROR] Exception in worker process
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 410, in build_wechat_login_provider
+    parsed = json.loads(stub_json or "{}")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 353, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ^^^^^^^^^^^^^^^^^^^^^^
+json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/arbiter.py", line 713, in spawn_worker
+    worker.init_process()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 136, in init_process
+    self.load_wsgi()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 148, in load_wsgi
+    self.wsgi = self.app.wsgi()
+                ^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/base.py", line 66, in wsgi
+    self.callable = self.load()
+                    ^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
+    return self.load_wsgiapp()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
+    return util.import_app(self.app_uri)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/util.py", line 411, in import_app
+    mod = importlib.import_module(module)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 375, in <module>
+    _default_gateway = PartnerGateway()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 94, in __init__
+    self._wechat_login_provider = _build_wechat_login_provider()
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 412, in build_wechat_login_provider
+    raise ValueError("HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON") from exc
+ValueError: HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+[2026-05-30 11:43:08 +0800] [17324] [INFO] Worker exiting (pid: 17324)
+[2026-05-30 11:43:08 +0800] [17327] [ERROR] Exception in worker process
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 410, in build_wechat_login_provider
+    parsed = json.loads(stub_json or "{}")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 353, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ^^^^^^^^^^^^^^^^^^^^^^
+json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/arbiter.py", line 713, in spawn_worker
+    worker.init_process()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 136, in init_process
+    self.load_wsgi()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 148, in load_wsgi
+    self.wsgi = self.app.wsgi()
+                ^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/base.py", line 66, in wsgi
+    self.callable = self.load()
+                    ^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
+    return self.load_wsgiapp()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
+    return util.import_app(self.app_uri)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/util.py", line 411, in import_app
+    mod = importlib.import_module(module)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 375, in <module>
+    _default_gateway = PartnerGateway()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 94, in __init__
+    self._wechat_login_provider = _build_wechat_login_provider()
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 412, in build_wechat_login_provider
+    raise ValueError("HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON") from exc
+ValueError: HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+[2026-05-30 11:43:08 +0800] [17327] [INFO] Worker exiting (pid: 17327)
+[2026-05-30 11:43:08 +0800] [17326] [ERROR] Exception in worker process
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 410, in build_wechat_login_provider
+    parsed = json.loads(stub_json or "{}")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 353, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ^^^^^^^^^^^^^^^^^^^^^^
+json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/arbiter.py", line 713, in spawn_worker
+    worker.init_process()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 136, in init_process
+    self.load_wsgi()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 148, in load_wsgi
+    self.wsgi = self.app.wsgi()
+                ^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/base.py", line 66, in wsgi
+    self.callable = self.load()
+                    ^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
+    return self.load_wsgiapp()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
+    return util.import_app(self.app_uri)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/util.py", line 411, in import_app
+    mod = importlib.import_module(module)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 375, in <module>
+    _default_gateway = PartnerGateway()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 94, in __init__
+    self._wechat_login_provider = _build_wechat_login_provider()
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 412, in build_wechat_login_provider
+    raise ValueError("HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON") from exc
+ValueError: HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+[2026-05-30 11:43:08 +0800] [17326] [INFO] Worker exiting (pid: 17326)
+[2026-05-30 11:43:08 +0800] [17328] [ERROR] Exception in worker process
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 410, in build_wechat_login_provider
+    parsed = json.loads(stub_json or "{}")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 353, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ^^^^^^^^^^^^^^^^^^^^^^
+json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/arbiter.py", line 713, in spawn_worker
+    worker.init_process()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 136, in init_process
+    self.load_wsgi()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 148, in load_wsgi
+    self.wsgi = self.app.wsgi()
+                ^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/base.py", line 66, in wsgi
+    self.callable = self.load()
+                    ^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
+    return self.load_wsgiapp()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
+    return util.import_app(self.app_uri)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/util.py", line 411, in import_app
+    mod = importlib.import_module(module)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 375, in <module>
+    _default_gateway = PartnerGateway()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 94, in __init__
+    self._wechat_login_provider = _build_wechat_login_provider()
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 412, in build_wechat_login_provider
+    raise ValueError("HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON") from exc
+ValueError: HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+[2026-05-30 11:43:08 +0800] [17328] [INFO] Worker exiting (pid: 17328)
+[2026-05-30 11:43:08 +0800] [17330] [ERROR] Exception in worker process
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 410, in build_wechat_login_provider
+    parsed = json.loads(stub_json or "{}")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py", line 353, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ^^^^^^^^^^^^^^^^^^^^^^
+json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/arbiter.py", line 713, in spawn_worker
+    worker.init_process()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 136, in init_process
+    self.load_wsgi()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 148, in load_wsgi
+    self.wsgi = self.app.wsgi()
+                ^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/base.py", line 66, in wsgi
+    self.callable = self.load()
+                    ^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
+    return self.load_wsgiapp()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
+    return util.import_app(self.app_uri)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/util.py", line 411, in import_app
+    mod = importlib.import_module(module)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 375, in <module>
+    _default_gateway = PartnerGateway()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 94, in __init__
+    self._wechat_login_provider = _build_wechat_login_provider()
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/auth_providers.py", line 412, in build_wechat_login_provider
+    raise ValueError("HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON") from exc
+ValueError: HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+HER_AUTH_WECHAT_STUB_CODES_JSON must be valid JSON
+[2026-05-30 11:43:08 +0800] [17330] [INFO] Worker exiting (pid: 17330)
+[2026-05-30 11:44:20 +0800] [17442] [INFO] Starting gunicorn 26.0.0
+[2026-05-30 11:44:20 +0800] [17442] [INFO] Listening at: http://127.0.0.1:8765 (17442)
+[2026-05-30 11:44:20 +0800] [17442] [INFO] Using worker: sync
+[2026-05-30 11:44:20 +0800] [17444] [INFO] Booting worker with pid: 17444
+[2026-05-30 11:44:20 +0800] [17445] [INFO] Booting worker with pid: 17445
+[2026-05-30 11:44:20 +0800] [17446] [INFO] Booting worker with pid: 17446
+[2026-05-30 11:44:20 +0800] [17447] [INFO] Booting worker with pid: 17447
+[2026-05-30 11:44:20 +0800] [17448] [INFO] Booting worker with pid: 17448
+[2026-05-30 11:44:20 +0800] [17449] [INFO] Booting worker with pid: 17449
+[2026-05-30 11:44:20 +0800] [17450] [INFO] Booting worker with pid: 17450
+[2026-05-30 11:44:20 +0800] [17451] [INFO] Booting worker with pid: 17451
+[2026-05-30 11:44:20 +0800] [17452] [INFO] Booting worker with pid: 17452
+[2026-05-30 11:44:20 +0800] [17453] [INFO] Booting worker with pid: 17453
+[2026-05-30 11:44:21 +0800] [17454] [INFO] Booting worker with pid: 17454
+[2026-05-30 11:44:21 +0800] [17455] [INFO] Booting worker with pid: 17455
+[2026-05-30 11:44:21 +0800] [17456] [INFO] Booting worker with pid: 17456
+[2026-05-30 11:44:21 +0800] [17457] [INFO] Booting worker with pid: 17457
+[2026-05-30 11:44:21 +0800] [17458] [INFO] Booting worker with pid: 17458
+[2026-05-30 11:44:21 +0800] [17459] [INFO] Booting worker with pid: 17459
+[2026-05-30 11:44:21 +0800] [17460] [INFO] Booting worker with pid: 17460
+[2026-05-30 11:44:21 +0800] [17461] [INFO] Booting worker with pid: 17461
+[2026-05-30 11:44:21 +0800] [17462] [INFO] Booting worker with pid: 17462
+[2026-05-30 11:44:21 +0800] [17464] [INFO] Booting worker with pid: 17464
+[2026-05-30 11:44:21 +0800] [17465] [INFO] Booting worker with pid: 17465
+[2026-05-30 11:44:21 +0800] [17466] [INFO] Booting worker with pid: 17466
+[2026-05-30 11:44:21 +0800] [17467] [INFO] Booting worker with pid: 17467
+[2026-05-30 11:44:21 +0800] [17468] [INFO] Booting worker with pid: 17468
+[2026-05-30 11:44:21 +0800] [17469] [INFO] Booting worker with pid: 17469
+[2026-05-30 11:44:22 +0800] [17442] [INFO] Control socket listening at /Users/sunmuchao/.gunicorn/gunicorn.ctl
+[2026-05-30 11:45:32 +0800] [17442] [INFO] Handling signal: term
+[2026-05-30 11:45:32 +0800] [17450] [INFO] Worker exiting (pid: 17450)
+[2026-05-30 11:45:32 +0800] [17447] [INFO] Worker exiting (pid: 17447)
+[2026-05-30 11:45:32 +0800] [17445] [INFO] Worker exiting (pid: 17445)
+[2026-05-30 11:45:32 +0800] [17446] [INFO] Worker exiting (pid: 17446)
+[2026-05-30 11:45:32 +0800] [17448] [INFO] Worker exiting (pid: 17448)
+[2026-05-30 11:45:32 +0800] [17449] [INFO] Worker exiting (pid: 17449)
+[2026-05-30 11:45:32 +0800] [17452] [INFO] Worker exiting (pid: 17452)
+[2026-05-30 11:45:32 +0800] [17456] [INFO] Worker exiting (pid: 17456)
+[2026-05-30 11:45:32 +0800] [17457] [INFO] Worker exiting (pid: 17457)
+[2026-05-30 11:45:32 +0800] [17454] [INFO] Worker exiting (pid: 17454)
+[2026-05-30 11:45:32 +0800] [17455] [INFO] Worker exiting (pid: 17455)
+[2026-05-30 11:45:32 +0800] [17458] [INFO] Worker exiting (pid: 17458)
+[2026-05-30 11:45:32 +0800] [17459] [INFO] Worker exiting (pid: 17459)
+[2026-05-30 11:45:32 +0800] [17461] [INFO] Worker exiting (pid: 17461)
+[2026-05-30 11:45:32 +0800] [17460] [INFO] Worker exiting (pid: 17460)
+[2026-05-30 11:45:32 +0800] [17462] [INFO] Worker exiting (pid: 17462)
+[2026-05-30 11:45:32 +0800] [17465] [INFO] Worker exiting (pid: 17465)
+[2026-05-30 11:45:32 +0800] [17466] [INFO] Worker exiting (pid: 17466)
+[2026-05-30 11:45:32 +0800] [17464] [INFO] Worker exiting (pid: 17464)
+[2026-05-30 11:45:32 +0800] [17467] [INFO] Worker exiting (pid: 17467)
+[2026-05-30 11:45:32 +0800] [17468] [INFO] Worker exiting (pid: 17468)
+[2026-05-30 11:45:32 +0800] [17444] [INFO] Worker exiting (pid: 17444)
+[2026-05-30 11:45:32 +0800] [17451] [INFO] Worker exiting (pid: 17451)
+[2026-05-30 11:45:32 +0800] [17469] [INFO] Worker exiting (pid: 17469)
+[2026-05-30 11:45:32 +0800] [17453] [INFO] Worker exiting (pid: 17453)
+[2026-05-30 11:45:33 +0800] [17442] [INFO] Worker (pid:17469) was sent SIGTERM!
+[2026-05-30 11:45:33 +0800] [17442] [INFO] Worker (pid:17468) was sent SIGTERM!
+[2026-05-30 11:45:33 +0800] [17442] [INFO] Worker (pid:17467) was sent SIGTERM!
+[2026-05-30 11:45:33 +0800] [17442] [INFO] Worker (pid:17466) was sent SIGTERM!
+[2026-05-30 11:45:33 +0800] [17442] [INFO] Worker (pid:17465) was sent SIGTERM!
+[2026-05-30 11:45:33 +0800] [17442] [INFO] Worker (pid:17464) was sent SIGTERM!
+[2026-05-30 11:45:33 +0800] [17442] [INFO] Worker (pid:17462) was sent SIGTERM!
+[2026-05-30 11:45:33 +0800] [17442] [INFO] Worker (pid:17461) was sent SIGTERM!
+[2026-05-30 11:45:33 +0800] [17442] [INFO] Worker (pid:17460) was sent SIGTERM!
+[2026-05-30 11:45:33 +0800] [17442] [INFO] Worker (pid:17459) was sent SIGTERM!
+[2026-05-30 11:45:33 +0800] [17442] [INFO] Worker (pid:17458) was sent SIGTERM!
+[2026-05-30 11:45:33 +0800] [17442] [INFO] Worker (pid:17457) was sent SIGTERM!
+[2026-05-30 11:45:33 +0800] [17442] [INFO] Worker (pid:17456) was sent SIGTERM!
+[2026-05-30 11:45:33 +0800] [17442] [INFO] Worker (pid:17455) was sent SIGTERM!
+[2026-05-30 11:45:33 +0800] [17442] [INFO] Worker (pid:17454) was sent SIGTERM!
+[2026-05-30 11:45:33 +0800] [17442] [INFO] Worker (pid:17453) was sent SIGTERM!
+[2026-05-30 11:45:33 +0800] [17442] [INFO] Worker (pid:17452) was sent SIGTERM!
+[2026-05-30 11:45:33 +0800] [17442] [INFO] Worker (pid:17451) was sent SIGTERM!
+[2026-05-30 11:45:33 +0800] [17442] [INFO] Worker (pid:17450) was sent SIGTERM!
+[2026-05-30 11:45:33 +0800] [17442] [INFO] Worker (pid:17449) was sent SIGTERM!
+[2026-05-30 11:45:33 +0800] [17442] [INFO] Worker (pid:17448) was sent SIGTERM!
+[2026-05-30 11:45:33 +0800] [17442] [INFO] Worker (pid:17447) was sent SIGTERM!
+[2026-05-30 11:45:33 +0800] [17442] [INFO] Worker (pid:17446) was sent SIGTERM!
+[2026-05-30 11:45:33 +0800] [17442] [INFO] Worker (pid:17445) was sent SIGTERM!
+[2026-05-30 11:45:33 +0800] [17442] [INFO] Worker (pid:17444) was sent SIGTERM!
+[2026-05-30 11:45:33 +0800] [17442] [INFO] Shutting down: Master
+[2026-05-30 11:45:35 +0800] [17568] [INFO] Starting gunicorn 26.0.0
+[2026-05-30 11:45:35 +0800] [17568] [INFO] Listening at: http://127.0.0.1:8765 (17568)
+[2026-05-30 11:45:35 +0800] [17568] [INFO] Using worker: sync
+[2026-05-30 11:45:35 +0800] [17570] [INFO] Booting worker with pid: 17570
+[2026-05-30 11:45:35 +0800] [17571] [INFO] Booting worker with pid: 17571
+[2026-05-30 11:45:35 +0800] [17572] [INFO] Booting worker with pid: 17572
+[2026-05-30 11:45:35 +0800] [17573] [INFO] Booting worker with pid: 17573
+[2026-05-30 11:45:35 +0800] [17574] [INFO] Booting worker with pid: 17574
+[2026-05-30 11:45:35 +0800] [17575] [INFO] Booting worker with pid: 17575
+[2026-05-30 11:45:35 +0800] [17576] [INFO] Booting worker with pid: 17576
+[2026-05-30 11:45:35 +0800] [17577] [INFO] Booting worker with pid: 17577
+[2026-05-30 11:45:35 +0800] [17578] [INFO] Booting worker with pid: 17578
+[2026-05-30 11:45:35 +0800] [17581] [INFO] Booting worker with pid: 17581
+[2026-05-30 11:45:35 +0800] [17582] [INFO] Booting worker with pid: 17582
+[2026-05-30 11:45:35 +0800] [17583] [INFO] Booting worker with pid: 17583
+[2026-05-30 11:45:35 +0800] [17584] [INFO] Booting worker with pid: 17584
+[2026-05-30 11:45:36 +0800] [17585] [INFO] Booting worker with pid: 17585
+[2026-05-30 11:45:36 +0800] [17586] [INFO] Booting worker with pid: 17586
+[2026-05-30 11:45:36 +0800] [17587] [INFO] Booting worker with pid: 17587
+[2026-05-30 11:45:36 +0800] [17588] [INFO] Booting worker with pid: 17588
+[2026-05-30 11:45:36 +0800] [17589] [INFO] Booting worker with pid: 17589
+[2026-05-30 11:45:36 +0800] [17590] [INFO] Booting worker with pid: 17590
+[2026-05-30 11:45:36 +0800] [17591] [INFO] Booting worker with pid: 17591
+[2026-05-30 11:45:36 +0800] [17592] [INFO] Booting worker with pid: 17592
+[2026-05-30 11:45:36 +0800] [17593] [INFO] Booting worker with pid: 17593
+[2026-05-30 11:45:36 +0800] [17594] [INFO] Booting worker with pid: 17594
+[2026-05-30 11:45:36 +0800] [17595] [INFO] Booting worker with pid: 17595
+[2026-05-30 11:45:36 +0800] [17596] [INFO] Booting worker with pid: 17596
+[2026-05-30 11:45:36 +0800] [17568] [INFO] Control socket listening at /Users/sunmuchao/.gunicorn/gunicorn.ctl
+[2026-05-30 11:46:11 +0800] [17568] [CRITICAL] WORKER TIMEOUT (pid:17570)
+[2026-05-30 11:46:11 +0800] [17570] [ERROR] Error handling request GET /v1/profile/me?profile_id=2478
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 184, in handle_request
+    respiter = self.wsgi(environ, resp.start_response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 325, in __call__
+    status_code, payload = self.dispatch_rest(environ)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 242, in dispatch_rest
+    return dispatch_gateway_rest(self, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rest_dispatch.py", line 74, in dispatch_gateway_rest
+    response = dispatcher(gateway, environ, method, path)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 125, in dispatch_collected_rest
+    return rest_profile_me(gateway, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 78, in rest_profile_me
+    row = get_profile(
+          ^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/profile_service/api.py", line 287, in get_profile
+    profile_conn = _connect_profile_db(source_dsn)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/profile_service/api.py", line 51, in _connect_profile_db
+    raw = schema.mysql_database_connect(config)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/outer_system_mysql_schema.py", line 161, in mysql_database_connect
+    return pymysql.connect(
+           ^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 365, in __init__
+    self.connect()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 681, in connect
+    self._request_authentication()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 958, in _request_authentication
+    auth_packet = self._read_packet()
+                  ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 751, in _read_packet
+    packet_header = self._read_bytes(4)
+                    ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 789, in _read_bytes
+    data = self._rfile.read(num_bytes)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/socket.py", line 720, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+SystemExit: 1
+[2026-05-30 11:46:11 +0800] [17570] [INFO] Worker exiting (pid: 17570)
+[2026-05-30 11:46:11 +0800] [17568] [INFO] Control socket listening at /Users/sunmuchao/.gunicorn/gunicorn.ctl
+[2026-05-30 11:46:11 +0800] [17646] [INFO] Booting worker with pid: 17646
+[2026-05-30 11:46:59 +0800] [17568] [CRITICAL] WORKER TIMEOUT (pid:17596)
+[2026-05-30 11:46:59 +0800] [17596] [ERROR] Error handling request GET /v1/profile/me?profile_id=2478
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 184, in handle_request
+    respiter = self.wsgi(environ, resp.start_response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 325, in __call__
+    status_code, payload = self.dispatch_rest(environ)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 242, in dispatch_rest
+    return dispatch_gateway_rest(self, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rest_dispatch.py", line 74, in dispatch_gateway_rest
+    response = dispatcher(gateway, environ, method, path)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 125, in dispatch_collected_rest
+    return rest_profile_me(gateway, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 78, in rest_profile_me
+    row = get_profile(
+          ^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/profile_service/api.py", line 287, in get_profile
+    profile_conn = _connect_profile_db(source_dsn)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/profile_service/api.py", line 51, in _connect_profile_db
+    raw = schema.mysql_database_connect(config)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/outer_system_mysql_schema.py", line 161, in mysql_database_connect
+    return pymysql.connect(
+           ^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 365, in __init__
+    self.connect()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 681, in connect
+    self._request_authentication()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 958, in _request_authentication
+    auth_packet = self._read_packet()
+                  ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 751, in _read_packet
+    packet_header = self._read_bytes(4)
+                    ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 789, in _read_bytes
+    data = self._rfile.read(num_bytes)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/socket.py", line 720, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+SystemExit: 1
+[2026-05-30 11:46:59 +0800] [17596] [INFO] Worker exiting (pid: 17596)
+[2026-05-30 11:46:59 +0800] [17568] [INFO] Control socket listening at /Users/sunmuchao/.gunicorn/gunicorn.ctl
+[2026-05-30 11:46:59 +0800] [17698] [INFO] Booting worker with pid: 17698
+[2026-05-30 11:48:30 +0800] [17568] [CRITICAL] WORKER TIMEOUT (pid:17585)
+[2026-05-30 11:48:30 +0800] [17585] [ERROR] Error handling request GET /v1/profile/me?profile_id=2478
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 184, in handle_request
+    respiter = self.wsgi(environ, resp.start_response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 325, in __call__
+    status_code, payload = self.dispatch_rest(environ)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 242, in dispatch_rest
+    return dispatch_gateway_rest(self, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rest_dispatch.py", line 74, in dispatch_gateway_rest
+    response = dispatcher(gateway, environ, method, path)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 125, in dispatch_collected_rest
+    return rest_profile_me(gateway, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 78, in rest_profile_me
+    row = get_profile(
+          ^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/profile_service/api.py", line 287, in get_profile
+    profile_conn = _connect_profile_db(source_dsn)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/profile_service/api.py", line 51, in _connect_profile_db
+    raw = schema.mysql_database_connect(config)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/outer_system_mysql_schema.py", line 161, in mysql_database_connect
+    return pymysql.connect(
+           ^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 365, in __init__
+    self.connect()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 681, in connect
+    self._request_authentication()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 958, in _request_authentication
+    auth_packet = self._read_packet()
+                  ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 751, in _read_packet
+    packet_header = self._read_bytes(4)
+                    ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 789, in _read_bytes
+    data = self._rfile.read(num_bytes)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/socket.py", line 720, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+SystemExit: 1
+[2026-05-30 11:48:30 +0800] [17585] [INFO] Worker exiting (pid: 17585)
+[2026-05-30 11:48:30 +0800] [17568] [INFO] Control socket listening at /Users/sunmuchao/.gunicorn/gunicorn.ctl
+[2026-05-30 11:48:30 +0800] [17799] [INFO] Booting worker with pid: 17799
+[2026-05-30 11:49:01 +0800] [17568] [CRITICAL] WORKER TIMEOUT (pid:17582)
+[2026-05-30 11:49:01 +0800] [17582] [ERROR] Error handling request GET /v1/persona/collected?profile_id=2478
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 184, in handle_request
+    respiter = self.wsgi(environ, resp.start_response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 325, in __call__
+    status_code, payload = self.dispatch_rest(environ)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 242, in dispatch_rest
+    return dispatch_gateway_rest(self, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rest_dispatch.py", line 74, in dispatch_gateway_rest
+    response = dispatcher(gateway, environ, method, path)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 127, in dispatch_collected_rest
+    return rest_persona_collected(gateway, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 103, in rest_persona_collected
+    bundle = load_collected_bundle(source=source, user_key=str(profile_id))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/match_domain/persona_loader.py", line 175, in load_collected_bundle
+    persona = load_persona_row(source=source, user_key=user_key) or {}
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/match_domain/persona_loader.py", line 20, in load_persona_row
+    conn = mysql_connect(source)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/persona_memory_sync/persona_memory_lib.py", line 631, in mysql_connect
+    return pymysql.connect(**kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 365, in __init__
+    self.connect()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 681, in connect
+    self._request_authentication()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 958, in _request_authentication
+    auth_packet = self._read_packet()
+                  ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 751, in _read_packet
+    packet_header = self._read_bytes(4)
+                    ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 789, in _read_bytes
+    data = self._rfile.read(num_bytes)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/socket.py", line 720, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+SystemExit: 1
+[2026-05-30 11:49:01 +0800] [17582] [INFO] Worker exiting (pid: 17582)
+[2026-05-30 11:49:01 +0800] [17568] [INFO] Control socket listening at /Users/sunmuchao/.gunicorn/gunicorn.ctl
+[2026-05-30 11:49:01 +0800] [17827] [INFO] Booting worker with pid: 17827
+[2026-05-30 11:50:17 +0800] [17568] [INFO] Handling signal: term
+[2026-05-30 11:50:17 +0800] [17573] [INFO] Worker exiting (pid: 17573)
+[2026-05-30 11:50:17 +0800] [17572] [INFO] Worker exiting (pid: 17572)
+[2026-05-30 11:50:17 +0800] [17576] [INFO] Worker exiting (pid: 17576)
+[2026-05-30 11:50:17 +0800] [17571] [INFO] Worker exiting (pid: 17571)
+[2026-05-30 11:50:17 +0800] [17574] [INFO] Worker exiting (pid: 17574)
+[2026-05-30 11:50:17 +0800] [17577] [INFO] Worker exiting (pid: 17577)
+[2026-05-30 11:50:17 +0800] [17581] [INFO] Worker exiting (pid: 17581)
+[2026-05-30 11:50:17 +0800] [17575] [INFO] Worker exiting (pid: 17575)
+[2026-05-30 11:50:17 +0800] [17578] [INFO] Worker exiting (pid: 17578)
+[2026-05-30 11:50:17 +0800] [17583] [INFO] Worker exiting (pid: 17583)
+[2026-05-30 11:50:17 +0800] [17586] [INFO] Worker exiting (pid: 17586)
+[2026-05-30 11:50:17 +0800] [17584] [INFO] Worker exiting (pid: 17584)
+[2026-05-30 11:50:17 +0800] [17590] [INFO] Worker exiting (pid: 17590)
+[2026-05-30 11:50:17 +0800] [17591] [INFO] Worker exiting (pid: 17591)
+[2026-05-30 11:50:17 +0800] [17593] [INFO] Worker exiting (pid: 17593)
+[2026-05-30 11:50:17 +0800] [17589] [INFO] Worker exiting (pid: 17589)
+[2026-05-30 11:50:17 +0800] [17587] [INFO] Worker exiting (pid: 17587)
+[2026-05-30 11:50:17 +0800] [17698] [INFO] Worker exiting (pid: 17698)
+[2026-05-30 11:50:17 +0800] [17646] [INFO] Worker exiting (pid: 17646)
+[2026-05-30 11:50:17 +0800] [17827] [INFO] Worker exiting (pid: 17827)
+[2026-05-30 11:50:17 +0800] [17799] [INFO] Worker exiting (pid: 17799)
+[2026-05-30 11:50:17 +0800] [17588] [INFO] Worker exiting (pid: 17588)
+[2026-05-30 11:50:17 +0800] [17592] [INFO] Worker exiting (pid: 17592)
+[2026-05-30 11:50:17 +0800] [17594] [INFO] Worker exiting (pid: 17594)
+[2026-05-30 11:50:17 +0800] [17595] [INFO] Worker exiting (pid: 17595)
+[2026-05-30 11:50:17 +0800] [17568] [INFO] Worker (pid:17799) was sent SIGTERM!
+[2026-05-30 11:50:17 +0800] [17568] [INFO] Worker (pid:17827) was sent SIGTERM!
+[2026-05-30 11:50:17 +0800] [17568] [INFO] Worker (pid:17698) was sent SIGTERM!
+[2026-05-30 11:50:17 +0800] [17568] [INFO] Worker (pid:17646) was sent SIGTERM!
+[2026-05-30 11:50:17 +0800] [17568] [INFO] Worker (pid:17595) was sent SIGTERM!
+[2026-05-30 11:50:17 +0800] [17568] [INFO] Worker (pid:17594) was sent SIGTERM!
+[2026-05-30 11:50:17 +0800] [17568] [INFO] Worker (pid:17593) was sent SIGTERM!
+[2026-05-30 11:50:17 +0800] [17568] [INFO] Worker (pid:17592) was sent SIGTERM!
+[2026-05-30 11:50:17 +0800] [17568] [INFO] Worker (pid:17591) was sent SIGTERM!
+[2026-05-30 11:50:17 +0800] [17568] [INFO] Worker (pid:17590) was sent SIGTERM!
+[2026-05-30 11:50:17 +0800] [17568] [INFO] Worker (pid:17589) was sent SIGTERM!
+[2026-05-30 11:50:17 +0800] [17568] [INFO] Worker (pid:17588) was sent SIGTERM!
+[2026-05-30 11:50:17 +0800] [17568] [INFO] Worker (pid:17587) was sent SIGTERM!
+[2026-05-30 11:50:17 +0800] [17568] [INFO] Worker (pid:17586) was sent SIGTERM!
+[2026-05-30 11:50:17 +0800] [17568] [INFO] Worker (pid:17584) was sent SIGTERM!
+[2026-05-30 11:50:17 +0800] [17568] [INFO] Worker (pid:17583) was sent SIGTERM!
+[2026-05-30 11:50:17 +0800] [17568] [INFO] Worker (pid:17581) was sent SIGTERM!
+[2026-05-30 11:50:17 +0800] [17568] [INFO] Worker (pid:17578) was sent SIGTERM!
+[2026-05-30 11:50:17 +0800] [17568] [INFO] Worker (pid:17577) was sent SIGTERM!
+[2026-05-30 11:50:17 +0800] [17568] [INFO] Worker (pid:17576) was sent SIGTERM!
+[2026-05-30 11:50:17 +0800] [17568] [INFO] Worker (pid:17575) was sent SIGTERM!
+[2026-05-30 11:50:17 +0800] [17568] [INFO] Worker (pid:17574) was sent SIGTERM!
+[2026-05-30 11:50:17 +0800] [17568] [INFO] Worker (pid:17573) was sent SIGTERM!
+[2026-05-30 11:50:17 +0800] [17568] [INFO] Worker (pid:17572) was sent SIGTERM!
+[2026-05-30 11:50:17 +0800] [17568] [INFO] Worker (pid:17571) was sent SIGTERM!
+[2026-05-30 11:50:18 +0800] [17568] [INFO] Shutting down: Master
+[2026-05-30 11:50:21 +0800] [17930] [INFO] Starting gunicorn 26.0.0
+[2026-05-30 11:50:21 +0800] [17930] [INFO] Listening at: http://127.0.0.1:8765 (17930)
+[2026-05-30 11:50:21 +0800] [17930] [INFO] Using worker: sync
+[2026-05-30 11:50:21 +0800] [17932] [INFO] Booting worker with pid: 17932
+[2026-05-30 11:50:21 +0800] [17933] [INFO] Booting worker with pid: 17933
+[2026-05-30 11:50:21 +0800] [17934] [INFO] Booting worker with pid: 17934
+[2026-05-30 11:50:21 +0800] [17935] [INFO] Booting worker with pid: 17935
+[2026-05-30 11:50:21 +0800] [17936] [INFO] Booting worker with pid: 17936
+[2026-05-30 11:50:21 +0800] [17937] [INFO] Booting worker with pid: 17937
+[2026-05-30 11:50:21 +0800] [17938] [INFO] Booting worker with pid: 17938
+[2026-05-30 11:50:21 +0800] [17939] [INFO] Booting worker with pid: 17939
+[2026-05-30 11:50:21 +0800] [17940] [INFO] Booting worker with pid: 17940
+[2026-05-30 11:50:21 +0800] [17941] [INFO] Booting worker with pid: 17941
+[2026-05-30 11:50:21 +0800] [17942] [INFO] Booting worker with pid: 17942
+[2026-05-30 11:50:21 +0800] [17943] [INFO] Booting worker with pid: 17943
+[2026-05-30 11:50:21 +0800] [17944] [INFO] Booting worker with pid: 17944
+[2026-05-30 11:50:21 +0800] [17945] [INFO] Booting worker with pid: 17945
+[2026-05-30 11:50:21 +0800] [17946] [INFO] Booting worker with pid: 17946
+[2026-05-30 11:50:21 +0800] [17947] [INFO] Booting worker with pid: 17947
+[2026-05-30 11:50:21 +0800] [17948] [INFO] Booting worker with pid: 17948
+[2026-05-30 11:50:21 +0800] [17949] [INFO] Booting worker with pid: 17949
+[2026-05-30 11:50:21 +0800] [17950] [INFO] Booting worker with pid: 17950
+[2026-05-30 11:50:22 +0800] [17951] [INFO] Booting worker with pid: 17951
+[2026-05-30 11:50:22 +0800] [17952] [INFO] Booting worker with pid: 17952
+[2026-05-30 11:50:22 +0800] [17953] [INFO] Booting worker with pid: 17953
+[2026-05-30 11:50:22 +0800] [17954] [INFO] Booting worker with pid: 17954
+[2026-05-30 11:50:22 +0800] [17955] [INFO] Booting worker with pid: 17955
+[2026-05-30 11:50:22 +0800] [17956] [INFO] Booting worker with pid: 17956
+[2026-05-30 11:50:22 +0800] [17930] [INFO] Control socket listening at /Users/sunmuchao/.gunicorn/gunicorn.ctl
+[2026-05-30 11:51:45 +0800] [17930] [CRITICAL] WORKER TIMEOUT (pid:17934)
+[2026-05-30 11:51:45 +0800] [17934] [ERROR] Error handling request GET /v1/profile/me?profile_id=2478
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 184, in handle_request
+    respiter = self.wsgi(environ, resp.start_response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 325, in __call__
+    status_code, payload = self.dispatch_rest(environ)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 242, in dispatch_rest
+    return dispatch_gateway_rest(self, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rest_dispatch.py", line 74, in dispatch_gateway_rest
+    response = dispatcher(gateway, environ, method, path)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 125, in dispatch_collected_rest
+    return rest_profile_me(gateway, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 78, in rest_profile_me
+    row = get_profile(
+          ^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/profile_service/api.py", line 287, in get_profile
+    profile_conn = _connect_profile_db(source_dsn)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/profile_service/api.py", line 51, in _connect_profile_db
+    raw = schema.mysql_database_connect(config)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/outer_system_mysql_schema.py", line 161, in mysql_database_connect
+    return pymysql.connect(
+           ^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 365, in __init__
+    self.connect()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 681, in connect
+    self._request_authentication()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 958, in _request_authentication
+    auth_packet = self._read_packet()
+                  ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 751, in _read_packet
+    packet_header = self._read_bytes(4)
+                    ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 789, in _read_bytes
+    data = self._rfile.read(num_bytes)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/socket.py", line 720, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+SystemExit: 1
+[2026-05-30 11:51:45 +0800] [17934] [INFO] Worker exiting (pid: 17934)
+[2026-05-30 11:51:45 +0800] [17930] [INFO] Control socket listening at /Users/sunmuchao/.gunicorn/gunicorn.ctl
+[2026-05-30 11:51:45 +0800] [18029] [INFO] Booting worker with pid: 18029
+[2026-05-30 11:52:46 +0800] [17930] [CRITICAL] WORKER TIMEOUT (pid:17939)
+[2026-05-30 11:52:46 +0800] [17939] [ERROR] Error handling request GET /v1/persona/collected?profile_id=2478
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 184, in handle_request
+    respiter = self.wsgi(environ, resp.start_response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 325, in __call__
+    status_code, payload = self.dispatch_rest(environ)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 242, in dispatch_rest
+    return dispatch_gateway_rest(self, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rest_dispatch.py", line 74, in dispatch_gateway_rest
+    response = dispatcher(gateway, environ, method, path)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 127, in dispatch_collected_rest
+    return rest_persona_collected(gateway, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 103, in rest_persona_collected
+    bundle = load_collected_bundle(source=source, user_key=str(profile_id))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/match_domain/persona_loader.py", line 175, in load_collected_bundle
+    persona = load_persona_row(source=source, user_key=user_key) or {}
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/match_domain/persona_loader.py", line 20, in load_persona_row
+    conn = mysql_connect(source)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/persona_memory_sync/persona_memory_lib.py", line 631, in mysql_connect
+    return pymysql.connect(**kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 365, in __init__
+    self.connect()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 681, in connect
+    self._request_authentication()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 958, in _request_authentication
+    auth_packet = self._read_packet()
+                  ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 751, in _read_packet
+    packet_header = self._read_bytes(4)
+                    ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 789, in _read_bytes
+    data = self._rfile.read(num_bytes)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/socket.py", line 720, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+SystemExit: 1
+[2026-05-30 11:52:46 +0800] [17939] [INFO] Worker exiting (pid: 17939)
+[2026-05-30 11:52:46 +0800] [17930] [INFO] Control socket listening at /Users/sunmuchao/.gunicorn/gunicorn.ctl
+[2026-05-30 11:52:46 +0800] [18092] [INFO] Booting worker with pid: 18092
+[2026-05-30 11:53:02 +0800] [17930] [CRITICAL] WORKER TIMEOUT (pid:17940)
+[2026-05-30 11:53:02 +0800] [17930] [CRITICAL] WORKER TIMEOUT (pid:17955)
+[2026-05-30 11:53:02 +0800] [17955] [ERROR] Error handling request GET /v1/persona/collected?profile_id=2478
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 184, in handle_request
+    respiter = self.wsgi(environ, resp.start_response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 325, in __call__
+    status_code, payload = self.dispatch_rest(environ)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 242, in dispatch_rest
+    return dispatch_gateway_rest(self, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rest_dispatch.py", line 74, in dispatch_gateway_rest
+    response = dispatcher(gateway, environ, method, path)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 127, in dispatch_collected_rest
+    return rest_persona_collected(gateway, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 103, in rest_persona_collected
+    bundle = load_collected_bundle(source=source, user_key=str(profile_id))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/match_domain/persona_loader.py", line 175, in load_collected_bundle
+    persona = load_persona_row(source=source, user_key=user_key) or {}
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/match_domain/persona_loader.py", line 20, in load_persona_row
+    conn = mysql_connect(source)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/persona_memory_sync/persona_memory_lib.py", line 631, in mysql_connect
+    return pymysql.connect(**kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 365, in __init__
+    self.connect()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 681, in connect
+    self._request_authentication()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 958, in _request_authentication
+    auth_packet = self._read_packet()
+                  ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 751, in _read_packet
+    packet_header = self._read_bytes(4)
+                    ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 789, in _read_bytes
+    data = self._rfile.read(num_bytes)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/socket.py", line 720, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+SystemExit: 1
+[2026-05-30 11:53:02 +0800] [17940] [ERROR] Error handling request GET /v1/profile/me?profile_id=2478
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 184, in handle_request
+    respiter = self.wsgi(environ, resp.start_response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 325, in __call__
+    status_code, payload = self.dispatch_rest(environ)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 242, in dispatch_rest
+    return dispatch_gateway_rest(self, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rest_dispatch.py", line 74, in dispatch_gateway_rest
+    response = dispatcher(gateway, environ, method, path)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 125, in dispatch_collected_rest
+    return rest_profile_me(gateway, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 78, in rest_profile_me
+    row = get_profile(
+          ^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/profile_service/api.py", line 287, in get_profile
+    profile_conn = _connect_profile_db(source_dsn)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/profile_service/api.py", line 51, in _connect_profile_db
+    raw = schema.mysql_database_connect(config)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/outer_system_mysql_schema.py", line 161, in mysql_database_connect
+    return pymysql.connect(
+           ^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 365, in __init__
+    self.connect()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 681, in connect
+    self._request_authentication()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 958, in _request_authentication
+    auth_packet = self._read_packet()
+                  ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 751, in _read_packet
+    packet_header = self._read_bytes(4)
+                    ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 789, in _read_bytes
+    data = self._rfile.read(num_bytes)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/socket.py", line 720, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+SystemExit: 1
+[2026-05-30 11:53:02 +0800] [17955] [INFO] Worker exiting (pid: 17955)
+[2026-05-30 11:53:02 +0800] [17940] [INFO] Worker exiting (pid: 17940)
+[2026-05-30 11:53:02 +0800] [17930] [INFO] Control socket listening at /Users/sunmuchao/.gunicorn/gunicorn.ctl
+[2026-05-30 11:53:02 +0800] [18113] [INFO] Booting worker with pid: 18113
+[2026-05-30 11:53:02 +0800] [17930] [INFO] Control socket listening at /Users/sunmuchao/.gunicorn/gunicorn.ctl
+[2026-05-30 11:53:02 +0800] [18114] [INFO] Booting worker with pid: 18114
+[2026-05-30 11:53:05 +0800] [17930] [CRITICAL] WORKER TIMEOUT (pid:17945)
+[2026-05-30 11:53:05 +0800] [17945] [ERROR] Error handling request GET /v1/profile/me?profile_id=2478
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 184, in handle_request
+    respiter = self.wsgi(environ, resp.start_response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 325, in __call__
+    status_code, payload = self.dispatch_rest(environ)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 242, in dispatch_rest
+    return dispatch_gateway_rest(self, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rest_dispatch.py", line 74, in dispatch_gateway_rest
+    response = dispatcher(gateway, environ, method, path)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 125, in dispatch_collected_rest
+    return rest_profile_me(gateway, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 78, in rest_profile_me
+    row = get_profile(
+          ^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/profile_service/api.py", line 287, in get_profile
+    profile_conn = _connect_profile_db(source_dsn)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/profile_service/api.py", line 51, in _connect_profile_db
+    raw = schema.mysql_database_connect(config)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/outer_system_mysql_schema.py", line 161, in mysql_database_connect
+    return pymysql.connect(
+           ^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 365, in __init__
+    self.connect()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 681, in connect
+    self._request_authentication()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 958, in _request_authentication
+    auth_packet = self._read_packet()
+                  ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 751, in _read_packet
+    packet_header = self._read_bytes(4)
+                    ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 789, in _read_bytes
+    data = self._rfile.read(num_bytes)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/socket.py", line 720, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+SystemExit: 1
+[2026-05-30 11:53:05 +0800] [17945] [INFO] Worker exiting (pid: 17945)
+[2026-05-30 11:53:06 +0800] [17930] [CRITICAL] WORKER TIMEOUT (pid:17950)
+[2026-05-30 11:53:06 +0800] [17930] [INFO] Control socket listening at /Users/sunmuchao/.gunicorn/gunicorn.ctl
+[2026-05-30 11:53:06 +0800] [17950] [ERROR] Error handling request GET /v1/persona/collected?profile_id=2478
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 184, in handle_request
+    respiter = self.wsgi(environ, resp.start_response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 325, in __call__
+    status_code, payload = self.dispatch_rest(environ)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 242, in dispatch_rest
+    return dispatch_gateway_rest(self, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rest_dispatch.py", line 74, in dispatch_gateway_rest
+    response = dispatcher(gateway, environ, method, path)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 127, in dispatch_collected_rest
+    return rest_persona_collected(gateway, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 103, in rest_persona_collected
+    bundle = load_collected_bundle(source=source, user_key=str(profile_id))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/match_domain/persona_loader.py", line 175, in load_collected_bundle
+    persona = load_persona_row(source=source, user_key=user_key) or {}
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/match_domain/persona_loader.py", line 20, in load_persona_row
+    conn = mysql_connect(source)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/persona_memory_sync/persona_memory_lib.py", line 631, in mysql_connect
+    return pymysql.connect(**kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 365, in __init__
+    self.connect()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 681, in connect
+    self._request_authentication()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 958, in _request_authentication
+    auth_packet = self._read_packet()
+                  ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 751, in _read_packet
+    packet_header = self._read_bytes(4)
+                    ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 789, in _read_bytes
+    data = self._rfile.read(num_bytes)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/socket.py", line 720, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+SystemExit: 1
+[2026-05-30 11:53:06 +0800] [18116] [INFO] Booting worker with pid: 18116
+[2026-05-30 11:53:06 +0800] [17950] [INFO] Worker exiting (pid: 17950)
+[2026-05-30 11:53:06 +0800] [17930] [INFO] Control socket listening at /Users/sunmuchao/.gunicorn/gunicorn.ctl
+[2026-05-30 11:53:06 +0800] [18119] [INFO] Booting worker with pid: 18119
+[2026-05-30 11:53:56 +0800] [17930] [CRITICAL] WORKER TIMEOUT (pid:18092)
+[2026-05-30 11:53:56 +0800] [18092] [ERROR] Error handling request GET /v1/profile/me?profile_id=2478
+Traceback (most recent call last):
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 141, in handle
+    self.handle_request(listener, req, client, addr)
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 184, in handle_request
+    respiter = self.wsgi(environ, resp.start_response)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 325, in __call__
+    status_code, payload = self.dispatch_rest(environ)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 242, in dispatch_rest
+    return dispatch_gateway_rest(self, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/rest_dispatch.py", line 74, in dispatch_gateway_rest
+    response = dispatcher(gateway, environ, method, path)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 125, in dispatch_collected_rest
+    return rest_profile_me(gateway, environ)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/collected_routes.py", line 78, in rest_profile_me
+    row = get_profile(
+          ^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/profile_service/api.py", line 287, in get_profile
+    profile_conn = _connect_profile_db(source_dsn)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/profile_service/api.py", line 51, in _connect_profile_db
+    raw = schema.mysql_database_connect(config)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/outer_system_mysql_schema.py", line 161, in mysql_database_connect
+    return pymysql.connect(
+           ^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 365, in __init__
+    self.connect()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 681, in connect
+    self._request_authentication()
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 958, in _request_authentication
+    auth_packet = self._read_packet()
+                  ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 751, in _read_packet
+    packet_header = self._read_bytes(4)
+                    ^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/pymysql/connections.py", line 789, in _read_bytes
+    data = self._rfile.read(num_bytes)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/Cellar/python@3.12/3.12.7_1/Frameworks/Python.framework/Versions/3.12/lib/python3.12/socket.py", line 720, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sunmuchao/Downloads/Her/.venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 198, in handle_abort
+    sys.exit(1)
+SystemExit: 1
+[2026-05-30 11:53:56 +0800] [18092] [INFO] Worker exiting (pid: 18092)
+[2026-05-30 11:53:56 +0800] [17930] [INFO] Control socket listening at /Users/sunmuchao/.gunicorn/gunicorn.ctl
+[2026-05-30 11:53:56 +0800] [18157] [INFO] Booting worker with pid: 18157

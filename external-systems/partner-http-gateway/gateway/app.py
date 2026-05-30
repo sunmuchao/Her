@@ -5,7 +5,27 @@ from __future__ import annotations
 import json
 import logging
 import os
+from pathlib import Path
 from typing import Any, Callable
+
+
+def _load_repo_root_dotenv() -> None:
+    """Load monorepo ``Her/.env`` before any imports."""
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    here = Path(__file__).resolve()
+    for p in (here.parent, *here.parents):
+        if (p / "match_domain").is_dir() and (p / "pyproject.toml").is_file():
+            env_path = p / ".env"
+            if env_path.is_file():
+                load_dotenv(env_path, override=True)
+            return
+
+
+# 在所有其他导入之前加载 .env
+_load_repo_root_dotenv()
 
 from . import _paths  # noqa: F401 — side effect: sys.path
 from .access_control import GatewayAccessMixin
