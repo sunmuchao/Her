@@ -42,7 +42,7 @@ interface ProfilePageProps {
  */
 export default function ProfilePage({
   onStartVerification,
-  onOpenTrustCenter,
+  onOpenTrustCenter: _onOpenTrustCenter,
   onOpenOnboarding,
   onOpenEditProfile,
   onOpenSettings,
@@ -210,7 +210,7 @@ export default function ProfilePage({
     }
   }
 
-  const { verifiedCount, total: verificationTotal, progress: verificationProgress } = useMemo(
+  const { progress: verificationProgress } = useMemo(
     () => calculateVerificationProgress(profile.verificationItems),
     [profile.verificationItems],
   )
@@ -456,13 +456,13 @@ export default function ProfilePage({
                 <div className="space-y-2">
                   {verificationItems.map((item, i) => {
                     const target = verificationPriorityMap[item.name]?.target
-                    const actionable = item.status !== 'verified' && Boolean(target)
+                    const actionable = item.status !== 'verified'
                     return (
                       <button
                         key={`${item.name}-${i}`}
                         type="button"
                         onClick={() => {
-                          if (!actionable || !target) return
+                          if (!actionable) return
                           onStartVerification('profile', target)
                         }}
                         disabled={!actionable}
