@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback, useId } from 'react'
+import { useState, useRef, useEffect, useId } from 'react'
 import { X, Check, ImagePlus, Heart, Users, Sparkles, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { submitOnboarding } from '@/lib/auth/auth-api'
@@ -28,6 +28,72 @@ interface ProfileData {
   relationshipGoal: string
   marriageStatus: string
   hasChildren: string
+}
+
+function firstString(...values: unknown[]): string {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) {
+      return value
+    }
+  }
+  return ''
+}
+
+function firstStringArray(...values: unknown[]): string[] {
+  for (const value of values) {
+    if (Array.isArray(value)) {
+      const normalized = value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+      if (normalized.length > 0) {
+        return normalized
+      }
+    }
+  }
+  return []
+}
+
+function normalizeBooleanChoice(value: unknown): string {
+  if (value === 'yes' || value === 'no') return value
+  if (value === true || value === 1 || value === '1') return 'yes'
+  if (value === false || value === 0 || value === '0') return 'no'
+  if (typeof value === 'string') {
+    if (['有', '是', 'yes', 'true'].includes(value.toLowerCase())) return 'yes'
+    if (['没有', '否', 'no', 'false'].includes(value.toLowerCase())) return 'no'
+  }
+  return ''
+}
+
+function normalizeGender(value: unknown): string {
+  if (value === 'male' || value === 'female') return value
+  if (value === '男') return 'male'
+  if (value === '女') return 'female'
+  return ''
+}
+
+function normalizeRelationshipGoal(value: unknown): string {
+  if (value === 'marriage' || value === 'dating' || value === 'friends') return value
+  if (typeof value !== 'string') return ''
+  if (value.includes('结婚')) return 'marriage'
+  if (value.includes('恋爱')) return 'dating'
+  if (value.includes('搭子') || value.includes('扩列') || value.includes('朋友')) return 'friends'
+  return ''
+}
+
+function normalizeMarriageStatus(value: unknown): string {
+  if (value === 'never_married' || value === 'divorced' || value === 'widowed') return value
+  if (typeof value !== 'string') return ''
+  if (value.includes('未婚')) return 'never_married'
+  if (value.includes('离异') || value.includes('离婚')) return 'divorced'
+  if (value.includes('丧偶')) return 'widowed'
+  return ''
+}
+
+function normalizeOrientation(value: unknown): string {
+  if (value === 'like_male' || value === 'like_female' || value === 'both') return value
+  if (typeof value !== 'string') return ''
+  if (value.includes('男')) return 'like_male'
+  if (value.includes('女')) return 'like_female'
+  if (value.includes('都')) return 'both'
+  return ''
 }
 
 // Compress image before upload
@@ -95,17 +161,60 @@ export default function EditProfilePage({ onBack, onSaved }: EditProfilePageProp
     if (!isLoading && (auth || facts)) {
       const rawProfile = facts?.profile_facts ?? {}
       const user = auth?.user ?? {}
+      const onboardingBasicInfo = auth?.onboarding?.basic_info ?? {}
+      const authProfile = auth?.profile ?? {}
 
       setProfile({
-        name: (rawProfile.name as string) || (user.display_name as string) || '',
-        gender: (rawProfile.gender as string) || '',
-        sexualOrientation: (rawProfile.sexual_orientation as string) || '',
-        birthday: (rawProfile.birthday as string) || '',
-        currentCity: (rawProfile.city as string) || (rawProfile.settlement_city as string) || '',
-        photos: (rawProfile.photos as string[]) || (rawProfile.avatar_url ? [rawProfile.avatar_url as string] : []),
-        relationshipGoal: (rawProfile.relationship_goal as string) || '',
-        marriageStatus: (rawProfile.marital_status as string) || (rawProfile.marriage_status as string) || '',
-        hasChildren: (rawProfile.has_children as string) || (rawProfile.parenting_status as string) || '',
+        name: firstString(
+          rawProfile.name,
+          onboardingBasicInfo.name,
+          authProfile.name,
+          user.display_name,
+        ),
+        gender: normalizeGender(
+          rawProfile.gender,
+        ) || normalizeGender(onboardingBasicInfo.gender) || normalizeGender(authProfile.gender),
+        sexualOrientation:
+          normalizeOrientation(rawProfile.sexual_orientation) ||
+          normalizeOrientation(onboardingBasicInfo.sexual_orientation) ||
+          normalizeOrientation(authProfile.sexual_orientation),
+        birthday: firstString(
+          rawProfile.birthday,
+          onboardingBasicInfo.birthday,
+          authProfile.birthday,
+        ),
+        currentCity: firstString(
+          rawProfile.city,
+          rawProfile.settlement_city,
+          onboardingBasicInfo.city,
+          onboardingBasicInfo.location,
+          authProfile.city,
+          authProfile.settlement_city,
+        ),
+        photos: [
+          ...firstStringArray(rawProfile.photos, authProfile.photos),
+          ...firstStringArray(rawProfile.photo_urls, authProfile.photo_urls),
+          ...(() => {
+            const avatar = firstString(rawProfile.avatar_url, authProfile.avatar_url, user.avatar_url)
+            return avatar ? [avatar] : []
+          })(),
+        ].filter((photo, index, arr) => arr.indexOf(photo) === index).slice(0, 6),
+        relationshipGoal:
+          normalizeRelationshipGoal(rawProfile.relationship_goal) ||
+          normalizeRelationshipGoal(onboardingBasicInfo.relationship_goal) ||
+          normalizeRelationshipGoal(authProfile.relationship_goal),
+        marriageStatus:
+          normalizeMarriageStatus(rawProfile.marital_status) ||
+          normalizeMarriageStatus(rawProfile.marriage_status) ||
+          normalizeMarriageStatus(onboardingBasicInfo.marriage_status) ||
+          normalizeMarriageStatus(authProfile.marital_status) ||
+          normalizeMarriageStatus(authProfile.marriage_status),
+        hasChildren:
+          normalizeBooleanChoice(rawProfile.has_children) ||
+          normalizeBooleanChoice(rawProfile.parenting_status) ||
+          normalizeBooleanChoice(onboardingBasicInfo.has_children) ||
+          normalizeBooleanChoice(authProfile.has_children) ||
+          normalizeBooleanChoice(authProfile.parenting_status),
       })
     }
   }, [isLoading, auth, facts])
