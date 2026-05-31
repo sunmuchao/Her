@@ -33,15 +33,15 @@ def test_assessment_start_route_returns_intro_card() -> None:
             "gateway.assessment_routes.start_assessment",
             return_value={
                 "card_type": "assessment_intro",
-                "assessment_type": "big_five",
-                "assessment_id": "bf_demo",
-                "intro_data": {"title": "大五人格测试", "description": "了解你的性格底色", "duration": "约5分钟 · 20题", "reward": "匹配质量提升10%"},
+                "assessment_type": "mbti_16",
+                "assessment_id": "mbti_demo",
+                "intro_data": {"title": "MBTI 16型人格测评", "description": "快速看清你的相处风格和关系偏好", "duration": "约5分钟 · 20题", "reward": "匹配质量提升10%"},
             },
         ) as start_mock,
     ):
         status, payload, _headers = run_wsgi_json(
             gw,
-            build_wsgi_env("POST", "/v1/assessment/start", {"assessment_type": "big_five"}),
+            build_wsgi_env("POST", "/v1/assessment/start", {"assessment_type": "mbti_16"}),
         )
 
     assert "200" in status
@@ -49,7 +49,7 @@ def test_assessment_start_route_returns_intro_card() -> None:
     start_mock.assert_called_once_with(
         source="mysql://root@127.0.0.1:3307/her?table=profiles",
         user_key="42",
-        assessment_type="big_five",
+        assessment_type="mbti_16",
     )
 
 
@@ -63,20 +63,20 @@ def test_assessment_answer_route_returns_feedback_card() -> None:
             "gateway.assessment_routes.answer_assessment",
             return_value={
                 "card_type": "assessment_feedback",
-                "assessment_id": "bf_demo",
+                "assessment_id": "mbti_demo",
                 "feedback_data": {
-                    "dimension": "openness",
-                    "dimension_name": "开放性",
+                    "dimension": "ei",
+                    "dimension_name": "外向 E / 内向 I",
                     "score": 75.0,
-                    "feedback_text": "你很有好奇心，喜欢探索新事物",
+                    "feedback_text": "你更偏外向，倾向从互动和表达里获取能量。",
                 },
                 "next_question": {
-                    "current_question": 5,
+                    "current_question": 6,
                     "total_questions": 20,
-                    "question_text": "你做事前会制定详细的计划吗？",
+                    "question_text": "你更关注眼前的事实和细节，而不是抽象可能性吗？",
                     "options": [],
-                    "progress": 25,
-                    "assessment_id": "bf_demo",
+                    "progress": 30,
+                    "assessment_id": "mbti_demo",
                 },
             },
         ) as answer_mock,
@@ -87,8 +87,8 @@ def test_assessment_answer_route_returns_feedback_card() -> None:
                 "POST",
                 "/v1/assessment/answer",
                 {
-                    "assessment_id": "bf_demo",
-                    "question_index": 3,
+                    "assessment_id": "mbti_demo",
+                    "question_index": 4,
                     "answer": "A",
                 },
             ),
@@ -96,11 +96,11 @@ def test_assessment_answer_route_returns_feedback_card() -> None:
 
     assert "200" in status
     assert payload["card_type"] == "assessment_feedback"
-    assert payload["feedback_data"]["dimension_name"] == "开放性"
+    assert payload["feedback_data"]["dimension_name"] == "外向 E / 内向 I"
     answer_mock.assert_called_once_with(
         source="mysql://root@127.0.0.1:3307/her?table=profiles",
-        assessment_id="bf_demo",
-        question_index=3,
+        assessment_id="mbti_demo",
+        question_index=4,
         answer="A",
         user_key="42",
     )
@@ -115,7 +115,7 @@ def test_personality_traits_route_reads_assessment_traits() -> None:
         mock.patch(
             "gateway.persona_routes.get_personality_traits",
             return_value={
-                "big_five": {"scores": {"openness": 75}},
+                "mbti": {"type_code": "ENTJ"},
                 "attachment": {},
                 "love_language": {},
             },
@@ -128,7 +128,7 @@ def test_personality_traits_route_reads_assessment_traits() -> None:
 
     assert "200" in status
     assert payload["user_key"] == "108"
-    assert payload["big_five"]["scores"]["openness"] == 75
+    assert payload["mbti"]["type_code"] == "ENTJ"
     traits_mock.assert_called_once_with(
         source="mysql://root@127.0.0.1:3307/her?table=profiles",
         user_key="108",

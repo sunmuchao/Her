@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from assessment.big_five_questions import (
-    BIG_FIVE_QUESTIONS,
+from assessment.mbti_questions import (
+    MBTI_QUESTIONS,
     DIMENSIONS,
     DIMENSION_NAMES,
     DIMENSION_QUESTION_RANGES,
@@ -14,6 +14,8 @@ from assessment.big_five_questions import (
     calculate_all_scores,
     get_dimension_feedback,
 )
+
+BIG_FIVE_QUESTIONS = MBTI_QUESTIONS
 from assessment.service import (
     answer_assessment,
     begin_assessment,
@@ -23,6 +25,7 @@ from assessment.service import (
 )
 
 __all__ = [
+    "MBTI_QUESTIONS",
     "BIG_FIVE_QUESTIONS",
     "DIMENSIONS",
     "DIMENSION_NAMES",

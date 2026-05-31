@@ -6,8 +6,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from assessment.big_five_questions import (
-    BIG_FIVE_QUESTIONS,
+from assessment.mbti_questions import (
+    MBTI_QUESTIONS,
     DIMENSIONS,
     calculate_all_scores,
     get_dimension_feedback,
@@ -24,27 +24,25 @@ from persona_memory_sync.persona_memory_lib import (
 )
 
 
-TOTAL_QUESTIONS = len(BIG_FIVE_QUESTIONS)
-ASSESSMENT_TYPE_BIG_FIVE = "big_five"
+TOTAL_QUESTIONS = len(MBTI_QUESTIONS)
+ASSESSMENT_TYPE_MBTI = "mbti_16"
 ASSESSMENT_SESSION_FIELD = "assessment.session"
 ASSESSMENT_RESULT_FIELD = "assessment.result"
 ASSESSMENT_INTERPRETATION_FIELD = "assessment.interpretation"
 
 
 DIMENSION_LABELS = {
-    "openness": "开放性",
-    "conscientiousness": "尽责性",
-    "extraversion": "外向性",
-    "agreeableness": "宜人性",
-    "neuroticism": "神经质",
+    "ei": "外向 E / 内向 I",
+    "sn": "实感 S / 直觉 N",
+    "tf": "思考 T / 情感 F",
+    "jp": "判断 J / 知觉 P",
 }
 
 DIMENSION_TRAITS = {
-    "openness": "喜欢新鲜感",
-    "conscientiousness": "做事靠谱",
-    "extraversion": "社交主动",
-    "agreeableness": "温和体贴",
-    "neuroticism": "情绪稳定",
+    "ei": {"high": "外向表达", "medium": "社交灵活", "low": "安静内敛"},
+    "sn": {"high": "关注细节", "medium": "事实与想法并重", "low": "偏好可能性"},
+    "tf": {"high": "逻辑判断", "medium": "理性与感受平衡", "low": "重视共情"},
+    "jp": {"high": "计划清晰", "medium": "计划弹性兼顾", "low": "灵活开放"},
 }
 
 
@@ -166,7 +164,7 @@ def _load_session_and_answers(
             created_at = row.get("created_at") if isinstance(row, dict) else row[2]
             session = AssessmentSession(
                 assessment_id=str(data.get("assessment_id") or assessment_id),
-                assessment_type=str(data.get("assessment_type") or ASSESSMENT_TYPE_BIG_FIVE),
+                assessment_type=str(data.get("assessment_type") or ASSESSMENT_TYPE_MBTI),
                 user_key=str(data.get("user_key") or user_key),
                 status=str(data.get("status") or "in_progress"),
                 created_at=str(data.get("created_at") or created_at or ""),
@@ -197,7 +195,7 @@ def _question_payload(question_index: int, assessment_id: str) -> dict[str, Any]
 
 
 def _feedback_payload(question_index: int, scores: dict[str, float]) -> dict[str, Any]:
-    dimension = BIG_FIVE_QUESTIONS[question_index]["dimension"]
+    dimension = MBTI_QUESTIONS[question_index]["dimension"]
     score = scores.get(dimension, 0.0)
     return {
         "dimension": dimension,
@@ -217,44 +215,59 @@ def _dimension_rows(scores: dict[str, float]) -> list[dict[str, Any]]:
                 "name": DIMENSION_LABELS[dimension],
                 "score": score,
                 "level": "high" if score >= 70 else "medium" if score >= 40 else "low",
-                "trait": DIMENSION_TRAITS[dimension],
+                "trait": DIMENSION_TRAITS[dimension]["high" if score >= 70 else "medium" if score >= 40 else "low"],
             }
         )
     return rows
 
 
+def _type_code_from_scores(scores: dict[str, float]) -> str:
+    return "".join(
+        [
+            "E" if scores.get("ei", 50) >= 50 else "I",
+            "S" if scores.get("sn", 50) >= 50 else "N",
+            "T" if scores.get("tf", 50) >= 50 else "F",
+            "J" if scores.get("jp", 50) >= 50 else "P",
+        ]
+    )
+
+
 def _labels_from_scores(scores: dict[str, float]) -> list[str]:
-    ranked = sorted(scores.items(), key=lambda item: item[1], reverse=True)
-    labels: list[str] = []
-    for dimension, score in ranked[:3]:
-        if score >= 60:
-            labels.append(DIMENSION_TRAITS[dimension])
-    if not labels:
-        labels.append("你是一个比较均衡的人")
+    type_code = _type_code_from_scores(scores)
+    labels = [f"MBTI：{type_code}"]
+    for dimension in DIMENSIONS:
+        score = scores.get(dimension, 0.0)
+        if score >= 70 or score <= 30:
+            labels.append(DIMENSION_TRAITS[dimension]["high" if score >= 70 else "low"])
     return labels[:3]
 
 
 def _interpretation_from_result(result: dict[str, Any]) -> dict[str, Any]:
     scores = dict(result.get("scores") or {})
-    summary_parts = []
-    if scores.get("conscientiousness", 0) >= 70:
-        summary_parts.append("你做事有计划，稳定可靠。")
-    if scores.get("extraversion", 0) >= 70:
-        summary_parts.append("你在社交中更容易主动。")
-    if scores.get("agreeableness", 0) >= 70:
-        summary_parts.append("你通常更温和、好相处。")
-    if scores.get("openness", 0) >= 70:
-        summary_parts.append("你对新鲜事物接受度高。")
-    if scores.get("neuroticism", 0) <= 30:
-        summary_parts.append("你面对压力时更稳。")
-    if not summary_parts:
-        summary_parts.append("你的性格比较均衡，适合结合具体相处来判断匹配度。")
+    type_code = str(result.get("type_code") or _type_code_from_scores(scores))
+    summary_parts = [f"你的结果更接近 {type_code}。"]
+    if scores.get("ei", 50) >= 60:
+        summary_parts.append("你在关系里通常更主动。")
+    elif scores.get("ei", 50) <= 40:
+        summary_parts.append("你更适合先熟起来再慢慢打开。")
+    if scores.get("sn", 50) >= 60:
+        summary_parts.append("你会更关注现实条件和相处细节。")
+    elif scores.get("sn", 50) <= 40:
+        summary_parts.append("你更容易被想法、气质和未来感吸引。")
+    if scores.get("tf", 50) >= 60:
+        summary_parts.append("你处理分歧时更偏讲逻辑。")
+    elif scores.get("tf", 50) <= 40:
+        summary_parts.append("你处理关系时更在意感受和氛围。")
+    if scores.get("jp", 50) >= 60:
+        summary_parts.append("你喜欢节奏明确、边界清楚的相处。")
+    elif scores.get("jp", 50) <= 40:
+        summary_parts.append("你更适合轻松、不被管得太死的关系。")
     return {
         "summary": "".join(summary_parts),
-        "love_style": "更适合和节奏稳定、沟通清楚的人相处。",
+        "love_style": f"{type_code} 在亲密关系里更适合和沟通直接、节奏对得上的人相处。",
         "match_suggestions": [
-            "优先找相处舒服、沟通顺畅的人",
-            "把你最在意的生活节奏和边界提前说清楚",
+            "先看聊天节奏和做事方式合不合拍",
+            "尽早把你在意的沟通方式、见面频率和边界说清楚",
         ],
     }
 
@@ -263,14 +276,14 @@ def start_assessment(
     *,
     source: str | None,
     user_key: str,
-    assessment_type: str = ASSESSMENT_TYPE_BIG_FIVE,
+    assessment_type: str = ASSESSMENT_TYPE_MBTI,
     persona_table: str = "user_personas",
     observation_table: str = "user_persona_observations",
 ) -> dict[str, Any]:
-    if assessment_type != ASSESSMENT_TYPE_BIG_FIVE:
+    if assessment_type != ASSESSMENT_TYPE_MBTI:
         raise ValueError("unsupported assessment_type")
     normalized_source, _ = _resolve_source(source)
-    assessment_id = f"bf_{uuid.uuid4().hex[:12]}"
+    assessment_id = f"mbti_{uuid.uuid4().hex[:12]}"
     conn = mysql_connect(normalized_source)
     try:
         with conn.cursor() as cursor:
@@ -291,8 +304,8 @@ def start_assessment(
         "assessment_type": assessment_type,
         "assessment_id": assessment_id,
         "intro_data": {
-            "title": "大五人格测试",
-            "description": "了解你的性格底色",
+            "title": "MBTI 16型人格测评",
+            "description": "快速看清你的相处风格和关系偏好",
             "duration": "约5分钟 · 20题",
             "reward": "匹配质量提升10%",
         },
@@ -401,8 +414,10 @@ def answer_assessment(
 
             answered_count = len(answers)
             if answered_count >= TOTAL_QUESTIONS:
+                type_code = _type_code_from_scores(scores)
                 labels = _labels_from_scores(scores)
                 result_data = {
+                    "type_code": type_code,
                     "scores": scores,
                     "dimension_rows": _dimension_rows(scores),
                     "labels": labels,
@@ -419,8 +434,9 @@ def answer_assessment(
                     evidence_text="assessment completed",
                 )
                 traits_payload = {
-                    "big_five": {
+                    "mbti": {
                         "assessment_id": assessment_id,
+                        "type_code": type_code,
                         "scores": scores,
                         "dimension_rows": _dimension_rows(scores),
                         "labels": labels,
@@ -437,7 +453,7 @@ def answer_assessment(
                     ),
                     persona_table=persona_table,
                     observation_table=observation_table,
-                    evidence_text=f"用户完成大五人格测评（{assessment_id}）",
+                    evidence_text=f"用户完成 MBTI 16 型人格测评（{assessment_id}）",
                     conversation_ref=assessment_id,
                     apply_scope="persona_only",
                     sync_profile=False,
@@ -450,7 +466,7 @@ def answer_assessment(
                     "result_data": result_data,
                 }
 
-            if answered_count % 4 == 0:
+            if answered_count % 5 == 0:
                 feedback_data = _feedback_payload(answered_count - 1, scores)
                 next_index = answered_count
                 return {
@@ -523,10 +539,10 @@ def get_personality_traits(
         with conn.cursor() as cursor:
             persona = fetch_persona(cursor, persona_table, user_key=user_key)
             if not persona:
-                return {"big_five": {}, "attachment": {}, "love_language": {}}
+                return {"mbti": {}, "attachment": {}, "love_language": {}}
             traits = _parse_json(persona.get("self_personality_traits_json"))
             return {
-                "big_five": traits.get("big_five") or {},
+                "mbti": traits.get("mbti") or {},
                 "attachment": traits.get("attachment") or {},
                 "love_language": traits.get("love_language") or {},
             }
