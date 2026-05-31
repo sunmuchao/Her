@@ -1,6 +1,4 @@
 'use client'
-
-import { useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 
 export function AssessmentResultCard({
@@ -24,11 +22,6 @@ export function AssessmentResultCard({
   onInterpretation: () => void
   onContinueChat: () => void
 }) {
-  useEffect(() => {
-    const timer = setTimeout(onInterpretation, 2000)
-    return () => clearTimeout(timer)
-  }, [onInterpretation])
-
   return (
     <div className="rounded-3xl border border-border bg-card p-5 shadow-sm">
       <div className="text-xs uppercase tracking-[0.24em] text-muted-foreground">测评结果</div>
