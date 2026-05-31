@@ -14,6 +14,13 @@ from assessment.big_five_questions import (
     calculate_all_scores,
     get_dimension_feedback,
 )
+from assessment.service import (
+    answer_assessment,
+    begin_assessment,
+    get_assessment_interpretation,
+    get_personality_traits,
+    start_assessment,
+)
 
 __all__ = [
     "BIG_FIVE_QUESTIONS",
@@ -26,4 +33,9 @@ __all__ = [
     "calculate_dimension_score",
     "calculate_all_scores",
     "get_dimension_feedback",
+    "start_assessment",
+    "begin_assessment",
+    "answer_assessment",
+    "get_assessment_interpretation",
+    "get_personality_traits",
 ]
