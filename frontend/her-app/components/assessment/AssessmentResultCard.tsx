@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button'
 export function AssessmentResultCard({
   data,
   onInterpretation,
-  onContinueChat,
 }: {
   data: {
     type_code: string
@@ -20,7 +19,6 @@ export function AssessmentResultCard({
     reward: string
   }
   onInterpretation: () => void
-  onContinueChat: () => void
 }) {
   return (
     <div className="rounded-3xl border border-border bg-card p-5 shadow-sm">
@@ -45,10 +43,7 @@ export function AssessmentResultCard({
         ))}
       </div>
       <p className="mt-4 text-sm text-muted-foreground">{data.reward}</p>
-      <div className="mt-4 grid grid-cols-2 gap-2">
-        <Button variant="outline" onClick={onInterpretation}>查看解读</Button>
-        <Button onClick={onContinueChat}>继续聊天</Button>
-      </div>
+      <Button className="mt-4 w-full" variant="outline" onClick={onInterpretation}>查看解读</Button>
     </div>
   )
 }
