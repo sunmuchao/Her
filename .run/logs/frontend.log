@@ -1051,3 +1051,342 @@
  GET /api/gateway/v1/auth/me 200 in 291ms (next.js: 3ms, application-code: 288ms)
  GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 292ms (next.js: 2ms, application-code: 290ms)
  GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 536ms (next.js: 5ms, application-code: 532ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 29ms (next.js: 7ms, application-code: 22ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 216ms (next.js: 12ms, application-code: 205ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 343ms (next.js: 14ms, application-code: 328ms)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 296ms (next.js: 1796µs, application-code: 294ms)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 510ms (next.js: 6ms, application-code: 505ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 45ms (next.js: 12ms, application-code: 33ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 295ms (next.js: 3ms, application-code: 293ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 166ms (next.js: 1920µs, application-code: 164ms)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 330ms (next.js: 2ms, application-code: 328ms)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 269ms (next.js: 3ms, application-code: 266ms)
+ POST /api/gateway/v1/assessment/start 200 in 22ms (next.js: 6ms, application-code: 16ms)
+ POST /api/gateway/v1/assessment/begin 200 in 16ms (next.js: 5ms, application-code: 11ms)
+ POST /api/gateway/v1/assessment/answer 200 in 20ms (next.js: 6ms, application-code: 15ms)
+ POST /api/gateway/v1/assessment/answer 200 in 22ms (next.js: 5ms, application-code: 17ms)
+ POST /api/gateway/v1/assessment/answer 200 in 16ms (next.js: 1883µs, application-code: 14ms)
+ POST /api/gateway/v1/assessment/answer 200 in 19ms (next.js: 5ms, application-code: 14ms)
+ POST /api/gateway/v1/assessment/answer 200 in 20ms (next.js: 5ms, application-code: 15ms)
+ POST /api/gateway/v1/assessment/answer 200 in 20ms (next.js: 6ms, application-code: 14ms)
+⨯ upstream image response timed out for https://cdn.her.local/profiles/01318/avatar.jpg
+⨯ upstream image response timed out for https://cdn.her.local/profiles/07724/avatar.jpg
+ POST /api/gateway/v1/assessment/answer 200 in 22ms (next.js: 6ms, application-code: 15ms)
+ POST /api/gateway/v1/assessment/answer 200 in 16ms (next.js: 2ms, application-code: 13ms)
+ POST /api/gateway/v1/assessment/answer 200 in 32ms (next.js: 5ms, application-code: 27ms)
+ POST /api/gateway/v1/assessment/answer 200 in 16ms (next.js: 1426µs, application-code: 14ms)
+ POST /api/gateway/v1/assessment/answer 200 in 17ms (next.js: 5ms, application-code: 13ms)
+ POST /api/gateway/v1/assessment/answer 200 in 26ms (next.js: 6ms, application-code: 20ms)
+⨯ upstream image response timed out for https://cdn.her.local/profiles/02288/avatar.jpg
+⨯ upstream image response timed out for https://cdn.her.local/profiles/09452/avatar.jpg
+ POST /api/gateway/v1/assessment/answer 200 in 21ms (next.js: 2ms, application-code: 19ms)
+ POST /api/gateway/v1/assessment/answer 200 in 21ms (next.js: 5ms, application-code: 16ms)
+ POST /api/gateway/v1/assessment/answer 200 in 16ms (next.js: 2ms, application-code: 14ms)
+⨯ upstream image response timed out for https://cdn.her.local/profiles/07885/avatar.jpg
+ POST /api/gateway/v1/assessment/answer 200 in 19ms (next.js: 5ms, application-code: 14ms)
+ POST /api/gateway/v1/assessment/answer 200 in 16ms (next.js: 1643µs, application-code: 14ms)
+ POST /api/gateway/v1/assessment/answer 200 in 22ms (next.js: 7ms, application-code: 16ms)
+ POST /api/gateway/v1/assessment/answer 200 in 21ms (next.js: 5ms, application-code: 16ms)
+ POST /api/gateway/v1/assessment/answer 200 in 35ms (next.js: 6ms, application-code: 30ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 23ms (next.js: 3ms, application-code: 20ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 230ms (next.js: 6ms, application-code: 224ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 373ms (next.js: 2ms, application-code: 371ms)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 381ms (next.js: 5ms, application-code: 376ms)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 670ms (next.js: 9ms, application-code: 661ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 33ms (next.js: 7ms, application-code: 25ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 238ms (next.js: 13ms, application-code: 225ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 392ms (next.js: 17ms, application-code: 376ms)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 337ms (next.js: 2ms, application-code: 335ms)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 687ms (next.js: 8ms, application-code: 679ms)
+Persisting failed: Unable to write SST file 00001615.sst
+
+Caused by:
+    No such file or directory (os error 2)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+⨯ Error: ENOENT: no such file or directory, open '/Users/sunmuchao/Downloads/Her/frontend/her-app/.next/dev/server/app/api/gateway/[...path]/[__metadata_id__]/route/app-paths-manifest.json'
+    at ignore-listed frames {
+  errno: -2,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: '/Users/sunmuchao/Downloads/Her/frontend/her-app/.next/dev/server/app/api/gateway/[...path]/[__metadata_id__]/route/app-paths-manifest.json'
+}
+
+thread 'tokio-runtime-worker' (727344) panicked at turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:619:14:
+Failed to lookup task ids: Looking up task id for CachedTaskType { native_fn: NativeFunction { name: "get_written_endpoint_with_issues_operation", global_name: "next_napi_bindings::next_api::endpoint::get_written_endpoint_with_issues_operation", .. }, this: None, arg: (OperationVc { node: RawVc::TaskOutput(249) },) } from database failed
+
+Caused by:
+    0: Unable to open static sorted file referenced from 00000959.meta
+    1: Unable to open static sorted file 00000957.sst
+    2: Failed to open SST file /Users/sunmuchao/Downloads/Her/frontend/her-app/.next/dev/cache/turbopack/ee6e79b1/00000957.sst
+    3: No such file or directory (os error 2)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+-----
+[1m[31mFATAL[39m[0m: An unexpected Turbopack error occurred. A panic log has been written to /var/folders/z1/vrlbr8m91k98ysr_64ckxv640000gn/T/next-panic-b9507876c25aa3e7bef6031fb995d5be.log.
+
+To help make Turbopack better, report this error by ]8;;https://bugs.nextjs.org/search?category=turbopack-error-report&title=Turbopack%20Error%3A%20Failed%20to%20lookup%20task%20ids%3A%20Looking%20up%20task%20id%20for%20CachedTaskType%20%7B%20native_fn%3A%20NativeFunction%20%7B%20name%3A%20%22get_written_endpoint_with_issues_operation%22%2C%20global_name%3A%20%22next_napi_bindings%3A%3Anext_api%3A%3Aendpoint%3A%3Aget_written_endpoint_with_issues_operation%22%2C%20..%20%7D%2C%20this%3A%20None%2C%20arg%3A%20%28OperationVc%20%7B%20node%3A%20RawVc%3A%3ATaskOutput%28249%29%20%7D%2C%29%20%7D%20from%20database%20failed&body=Turbopack%20version%3A%20%60ee6e79b1%60%0ANext.js%20version%3A%20%600.0.0%60%0A%0AError%20message%3A%0A%60%60%60%0AFailed%20to%20lookup%20task%20ids%3A%20Looking%20up%20task%20id%20for%20CachedTaskType%20%7B%20native_fn%3A%20NativeFunction%20%7B%20name%3A%20%22get_written_endpoint_with_issues_operation%22%2C%20global_name%3A%20%22next_napi_bindings%3A%3Anext_api%3A%3Aendpoint%3A%3Aget_written_endpoint_with_issues_operation%22%2C%20..%20%7D%2C%20this%3A%20None%2C%20arg%3A%20%28OperationVc%20%7B%20node%3A%20RawVc%3A%3ATaskOutput%28249%29%20%7D%2C%29%20%7D%20from%20database%20failed%0A%0ADebug%20info%3A%0A-%20Failed%20to%20lookup%20task%20ids%3A%20Looking%20up%20task%20id%20for%20CachedTaskType%20%7B%20native_fn%3A%20NativeFunction%20%7B%20name%3A%20%22get_written_endpoint_with_issues_operation%22%2C%20global_name%3A%20%22next_napi_bindings%3A%3Anext_api%3A%3Aendpoint%3A%3Aget_written_endpoint_with_issues_operation%22%2C%20..%20%7D%2C%20this%3A%20None%2C%20arg%3A%20%28OperationVc%20%7B%20node%3A%20RawVc%3A%3ATaskOutput%28249%29%20%7D%2C%29%20%7D%20from%20database%20failed%0A%20%20%0A%20%20Caused%20by%3A%0A%20%20%20%20%20%200%3A%20Unable%20to%20open%20static%20sorted%20file%20referenced%20from%2000000959.meta%0A%20%20%20%20%20%201%3A%20Unable%20to%20open%20static%20sorted%20file%2000000957.sst%0A%20%20%20%20%20%202%3A%20Failed%20to%20open%20SST%20file%20%2FUsers%2Fsunmuchao%2FDownloads%2FHer%2Ffrontend%2Fher-app%2F.next%2Fdev%2Fcache%2Fturbopack%2Fee6e79b1%2F00000957.sst%0A%20%20%20%20%20%203%3A%20No%20such%20file%20or%20directory%20%28os%20error%202%29%0A%60%60%60&labels=Turbopack,Turbopack%20Panic%20Backtrace\clicking here.]8;;\
+-----
+
+⨯ Error: ENOENT: no such file or directory, open '/Users/sunmuchao/Downloads/Her/frontend/her-app/.next/dev/server/app/api/gateway/[...path]/[__metadata_id__]/route/app-paths-manifest.json'
+    at ignore-listed frames {
+  errno: -2,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: '/Users/sunmuchao/Downloads/Her/frontend/her-app/.next/dev/server/app/api/gateway/[...path]/[__metadata_id__]/route/app-paths-manifest.json'
+}
+
+thread 'tokio-runtime-worker' (715863) panicked at turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:619:14:
+Failed to lookup task ids: Looking up task id for CachedTaskType { native_fn: NativeFunction { name: "get_written_endpoint_with_issues_operation", global_name: "next_napi_bindings::next_api::endpoint::get_written_endpoint_with_issues_operation", .. }, this: None, arg: (OperationVc { node: RawVc::TaskOutput(249) },) } from database failed
+
+Caused by:
+    0: Unable to open static sorted file referenced from 00000959.meta
+    1: Unable to open static sorted file 00000957.sst
+    2: Failed to open SST file /Users/sunmuchao/Downloads/Her/frontend/her-app/.next/dev/cache/turbopack/ee6e79b1/00000957.sst
+    3: No such file or directory (os error 2)
+⨯ Error: ENOENT: no such file or directory, open '/Users/sunmuchao/Downloads/Her/frontend/her-app/.next/dev/server/app/api/gateway/[...path]/[__metadata_id__]/route/app-paths-manifest.json'
+    at ignore-listed frames {
+  errno: -2,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: '/Users/sunmuchao/Downloads/Her/frontend/her-app/.next/dev/server/app/api/gateway/[...path]/[__metadata_id__]/route/app-paths-manifest.json'
+}
+
+thread 'tokio-runtime-worker' (724639) panicked at turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:619:14:
+Failed to lookup task ids: Looking up task id for CachedTaskType { native_fn: NativeFunction { name: "get_written_endpoint_with_issues_operation", global_name: "next_napi_bindings::next_api::endpoint::get_written_endpoint_with_issues_operation", .. }, this: None, arg: (OperationVc { node: RawVc::TaskOutput(249) },) } from database failed
+
+Caused by:
+    0: Unable to open static sorted file referenced from 00000959.meta
+    1: Unable to open static sorted file 00000957.sst
+    2: Failed to open SST file /Users/sunmuchao/Downloads/Her/frontend/her-app/.next/dev/cache/turbopack/ee6e79b1/00000957.sst
+    3: No such file or directory (os error 2)
+
+thread 'tokio-runtime-worker' (715863) panicked at turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:197:17:
+Failed to restore task data (corrupted database or bug): Meta for TaskId 175226)
+
+Caused by:
+    0: Looking up task storage for TaskId 175226 from database failed
+    1: Unable to open static sorted file referenced from 00000336.meta
+    2: Unable to open static sorted file 00000332.sst
+    3: Failed to open SST file /Users/sunmuchao/Downloads/Her/frontend/her-app/.next/dev/cache/turbopack/ee6e79b1/00000332.sst
+    4: No such file or directory (os error 2)
+⨯ Error [TurbopackInternalError]: Failed to lookup task ids: Looking up task id for CachedTaskType { native_fn: NativeFunction { name: "get_written_endpoint_with_issues_operation", global_name: "next_napi_bindings::next_api::endpoint::get_written_endpoint_with_issues_operation", .. }, this: None, arg: (OperationVc { node: RawVc::TaskOutput(249) },) } from database failed
+
+Debug info:
+- Failed to lookup task ids: Looking up task id for CachedTaskType { native_fn: NativeFunction { name: "get_written_endpoint_with_issues_operation", global_name: "next_napi_bindings::next_api::endpoint::get_written_endpoint_with_issues_operation", .. }, this: None, arg: (OperationVc { node: RawVc::TaskOutput(249) },) } from database failed
+  
+  Caused by:
+      0: Unable to open static sorted file referenced from 00000959.meta
+      1: Unable to open static sorted file 00000957.sst
+      2: Failed to open SST file /Users/sunmuchao/Downloads/Her/frontend/her-app/.next/dev/cache/turbopack/ee6e79b1/00000957.sst
+      3: No such file or directory (os error 2)
+    at <unknown> (TurbopackInternalError: Failed to lookup task ids: Looking up task id for CachedTaskType { native_fn: NativeFunction { name: "get_written_endpoint_with_issues_operation", global_name: "next_napi_bindings::next_api::endpoint::get_written_endpoint_with_issues_operation", .. }, this: None, arg: (OperationVc { node: RawVc::TaskOutput(249) },) } from database failed) {
+  location: 'turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:619:14'
+}
+
+thread 'tokio-runtime-worker' (724639) panicked at turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:619:14:
+Failed to lookup task ids: Looking up task id for CachedTaskType { native_fn: NativeFunction { name: "get_written_endpoint_with_issues_operation", global_name: "next_napi_bindings::next_api::endpoint::get_written_endpoint_with_issues_operation", .. }, this: None, arg: (OperationVc { node: RawVc::TaskOutput(249) },) } from database failed
+
+Caused by:
+    0: Unable to open static sorted file referenced from 00000959.meta
+    1: Unable to open static sorted file 00000957.sst
+    2: Failed to open SST file /Users/sunmuchao/Downloads/Her/frontend/her-app/.next/dev/cache/turbopack/ee6e79b1/00000957.sst
+    3: No such file or directory (os error 2)
+⨯ Error [TurbopackInternalError]: Failed to lookup task ids: Looking up task id for CachedTaskType { native_fn: NativeFunction { name: "get_written_endpoint_with_issues_operation", global_name: "next_napi_bindings::next_api::endpoint::get_written_endpoint_with_issues_operation", .. }, this: None, arg: (OperationVc { node: RawVc::TaskOutput(249) },) } from database failed
+
+Debug info:
+- Failed to lookup task ids: Looking up task id for CachedTaskType { native_fn: NativeFunction { name: "get_written_endpoint_with_issues_operation", global_name: "next_napi_bindings::next_api::endpoint::get_written_endpoint_with_issues_operation", .. }, this: None, arg: (OperationVc { node: RawVc::TaskOutput(249) },) } from database failed
+  
+  Caused by:
+      0: Unable to open static sorted file referenced from 00000959.meta
+      1: Unable to open static sorted file 00000957.sst
+      2: Failed to open SST file /Users/sunmuchao/Downloads/Her/frontend/her-app/.next/dev/cache/turbopack/ee6e79b1/00000957.sst
+      3: No such file or directory (os error 2)
+    at <unknown> (TurbopackInternalError: Failed to lookup task ids: Looking up task id for CachedTaskType { native_fn: NativeFunction { name: "get_written_endpoint_with_issues_operation", global_name: "next_napi_bindings::next_api::endpoint::get_written_endpoint_with_issues_operation", .. }, this: None, arg: (OperationVc { node: RawVc::TaskOutput(249) },) } from database failed) {
+  location: 'turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:619:14'
+}
+
+thread 'tokio-runtime-worker' (724639) panicked at turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:619:14:
+Failed to lookup task ids: Looking up task id for CachedTaskType { native_fn: NativeFunction { name: "get_written_endpoint_with_issues_operation", global_name: "next_napi_bindings::next_api::endpoint::get_written_endpoint_with_issues_operation", .. }, this: None, arg: (OperationVc { node: RawVc::TaskOutput(249) },) } from database failed
+
+Caused by:
+    0: Unable to open static sorted file referenced from 00000959.meta
+    1: Unable to open static sorted file 00000957.sst
+    2: Failed to open SST file /Users/sunmuchao/Downloads/Her/frontend/her-app/.next/dev/cache/turbopack/ee6e79b1/00000957.sst
+    3: No such file or directory (os error 2)
+⨯ Error [TurbopackInternalError]: Failed to lookup task ids: Looking up task id for CachedTaskType { native_fn: NativeFunction { name: "get_written_endpoint_with_issues_operation", global_name: "next_napi_bindings::next_api::endpoint::get_written_endpoint_with_issues_operation", .. }, this: None, arg: (OperationVc { node: RawVc::TaskOutput(249) },) } from database failed
+
+Debug info:
+- Failed to lookup task ids: Looking up task id for CachedTaskType { native_fn: NativeFunction { name: "get_written_endpoint_with_issues_operation", global_name: "next_napi_bindings::next_api::endpoint::get_written_endpoint_with_issues_operation", .. }, this: None, arg: (OperationVc { node: RawVc::TaskOutput(249) },) } from database failed
+  
+  Caused by:
+      0: Unable to open static sorted file referenced from 00000959.meta
+      1: Unable to open static sorted file 00000957.sst
+      2: Failed to open SST file /Users/sunmuchao/Downloads/Her/frontend/her-app/.next/dev/cache/turbopack/ee6e79b1/00000957.sst
+      3: No such file or directory (os error 2)
+    at <unknown> (TurbopackInternalError: Failed to lookup task ids: Looking up task id for CachedTaskType { native_fn: NativeFunction { name: "get_written_endpoint_with_issues_operation", global_name: "next_napi_bindings::next_api::endpoint::get_written_endpoint_with_issues_operation", .. }, this: None, arg: (OperationVc { node: RawVc::TaskOutput(249) },) } from database failed) {
+  location: 'turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:619:14'
+}
+
+thread 'tokio-runtime-worker' (715863) panicked at turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:619:14:
+Failed to lookup task ids: Looking up task id for CachedTaskType { native_fn: NativeFunction { name: "get_written_endpoint_with_issues_operation", global_name: "next_napi_bindings::next_api::endpoint::get_written_endpoint_with_issues_operation", .. }, this: None, arg: (OperationVc { node: RawVc::TaskOutput(249) },) } from database failed
+
+Caused by:
+    0: Unable to open static sorted file referenced from 00000959.meta
+    1: Unable to open static sorted file 00000957.sst
+    2: Failed to open SST file /Users/sunmuchao/Downloads/Her/frontend/her-app/.next/dev/cache/turbopack/ee6e79b1/00000957.sst
+    3: No such file or directory (os error 2)
+Error: ENOENT: no such file or directory, open '/Users/sunmuchao/Downloads/Her/frontend/her-app/.next/dev/server/app/api/gateway/[...path]/[__metadata_id__]/route/app-paths-manifest.json'
+    at ignore-listed frames {
+  errno: -2,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: '/Users/sunmuchao/Downloads/Her/frontend/her-app/.next/dev/server/app/api/gateway/[...path]/[__metadata_id__]/route/app-paths-manifest.json'
+}
+
+thread 'tokio-runtime-worker' (727344) panicked at turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:619:14:
+Failed to lookup task ids: Looking up task id for CachedTaskType { native_fn: NativeFunction { name: "get_written_endpoint_with_issues_operation", global_name: "next_napi_bindings::next_api::endpoint::get_written_endpoint_with_issues_operation", .. }, this: None, arg: (OperationVc { node: RawVc::TaskOutput(249) },) } from database failed
+
+Caused by:
+    0: Unable to open static sorted file referenced from 00000959.meta
+    1: Unable to open static sorted file 00000957.sst
+    2: Failed to open SST file /Users/sunmuchao/Downloads/Her/frontend/her-app/.next/dev/cache/turbopack/ee6e79b1/00000957.sst
+    3: No such file or directory (os error 2)
+Error: ENOENT: no such file or directory, open '/Users/sunmuchao/Downloads/Her/frontend/her-app/.next/dev/server/app/api/gateway/[...path]/[__metadata_id__]/route/app-paths-manifest.json'
+    at ignore-listed frames {
+  errno: -2,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: '/Users/sunmuchao/Downloads/Her/frontend/her-app/.next/dev/server/app/api/gateway/[...path]/[__metadata_id__]/route/app-paths-manifest.json'
+}
+
+thread 'tokio-runtime-worker' (724638) panicked at turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:619:14:
+Failed to lookup task ids: Looking up task id for CachedTaskType { native_fn: NativeFunction { name: "get_written_endpoint_with_issues_operation", global_name: "next_napi_bindings::next_api::endpoint::get_written_endpoint_with_issues_operation", .. }, this: None, arg: (OperationVc { node: RawVc::TaskOutput(249) },) } from database failed
+
+Caused by:
+    0: Unable to open static sorted file referenced from 00000959.meta
+    1: Unable to open static sorted file 00000957.sst
+    2: Failed to open SST file /Users/sunmuchao/Downloads/Her/frontend/her-app/.next/dev/cache/turbopack/ee6e79b1/00000957.sst
+    3: No such file or directory (os error 2)
+Error: ENOENT: no such file or directory, open '/Users/sunmuchao/Downloads/Her/frontend/her-app/.next/dev/server/app/api/gateway/[...path]/[__metadata_id__]/route/app-paths-manifest.json'
+    at ignore-listed frames {
+  errno: -2,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: '/Users/sunmuchao/Downloads/Her/frontend/her-app/.next/dev/server/app/api/gateway/[...path]/[__metadata_id__]/route/app-paths-manifest.json'
+}
+
+thread 'tokio-runtime-worker' (715863) panicked at turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:619:14:
+Failed to lookup task ids: Looking up task id for CachedTaskType { native_fn: NativeFunction { name: "get_written_endpoint_with_issues_operation", global_name: "next_napi_bindings::next_api::endpoint::get_written_endpoint_with_issues_operation", .. }, this: None, arg: (OperationVc { node: RawVc::TaskOutput(249) },) } from database failed
+
+Caused by:
+    0: Unable to open static sorted file referenced from 00000959.meta
+    1: Unable to open static sorted file 00000957.sst
+    2: Failed to open SST file /Users/sunmuchao/Downloads/Her/frontend/her-app/.next/dev/cache/turbopack/ee6e79b1/00000957.sst
+    3: No such file or directory (os error 2)
+⨯ Error [TurbopackInternalError]: Failed to lookup task ids: Looking up task id for CachedTaskType { native_fn: NativeFunction { name: "get_written_endpoint_with_issues_operation", global_name: "next_napi_bindings::next_api::endpoint::get_written_endpoint_with_issues_operation", .. }, this: None, arg: (OperationVc { node: RawVc::TaskOutput(249) },) } from database failed
+
+Debug info:
+- Failed to lookup task ids: Looking up task id for CachedTaskType { native_fn: NativeFunction { name: "get_written_endpoint_with_issues_operation", global_name: "next_napi_bindings::next_api::endpoint::get_written_endpoint_with_issues_operation", .. }, this: None, arg: (OperationVc { node: RawVc::TaskOutput(249) },) } from database failed
+  
+  Caused by:
+      0: Unable to open static sorted file referenced from 00000959.meta
+      1: Unable to open static sorted file 00000957.sst
+      2: Failed to open SST file /Users/sunmuchao/Downloads/Her/frontend/her-app/.next/dev/cache/turbopack/ee6e79b1/00000957.sst
+      3: No such file or directory (os error 2)
+    at <unknown> (TurbopackInternalError: Failed to lookup task ids: Looking up task id for CachedTaskType { native_fn: NativeFunction { name: "get_written_endpoint_with_issues_operation", global_name: "next_napi_bindings::next_api::endpoint::get_written_endpoint_with_issues_operation", .. }, this: None, arg: (OperationVc { node: RawVc::TaskOutput(249) },) } from database failed) {
+  location: 'turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:619:14'
+}
+
+thread 'tokio-runtime-worker' (715863) panicked at turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:619:14:
+Failed to lookup task ids: Looking up task id for CachedTaskType { native_fn: NativeFunction { name: "get_written_endpoint_with_issues_operation", global_name: "next_napi_bindings::next_api::endpoint::get_written_endpoint_with_issues_operation", .. }, this: None, arg: (OperationVc { node: RawVc::TaskOutput(249) },) } from database failed
+
+Caused by:
+    0: Unable to open static sorted file referenced from 00000959.meta
+    1: Unable to open static sorted file 00000957.sst
+    2: Failed to open SST file /Users/sunmuchao/Downloads/Her/frontend/her-app/.next/dev/cache/turbopack/ee6e79b1/00000957.sst
+    3: No such file or directory (os error 2)
+⨯ Error [TurbopackInternalError]: Failed to lookup task ids: Looking up task id for CachedTaskType { native_fn: NativeFunction { name: "get_written_endpoint_with_issues_operation", global_name: "next_napi_bindings::next_api::endpoint::get_written_endpoint_with_issues_operation", .. }, this: None, arg: (OperationVc { node: RawVc::TaskOutput(249) },) } from database failed
+
+Debug info:
+- Failed to lookup task ids: Looking up task id for CachedTaskType { native_fn: NativeFunction { name: "get_written_endpoint_with_issues_operation", global_name: "next_napi_bindings::next_api::endpoint::get_written_endpoint_with_issues_operation", .. }, this: None, arg: (OperationVc { node: RawVc::TaskOutput(249) },) } from database failed
+  
+  Caused by:
+      0: Unable to open static sorted file referenced from 00000959.meta
+      1: Unable to open static sorted file 00000957.sst
+      2: Failed to open SST file /Users/sunmuchao/Downloads/Her/frontend/her-app/.next/dev/cache/turbopack/ee6e79b1/00000957.sst
+      3: No such file or directory (os error 2)
+    at <unknown> (TurbopackInternalError: Failed to lookup task ids: Looking up task id for CachedTaskType { native_fn: NativeFunction { name: "get_written_endpoint_with_issues_operation", global_name: "next_napi_bindings::next_api::endpoint::get_written_endpoint_with_issues_operation", .. }, this: None, arg: (OperationVc { node: RawVc::TaskOutput(249) },) } from database failed) {
+  location: 'turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:619:14'
+}
+
+thread 'tokio-runtime-worker' (715863) panicked at turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:619:14:
+Failed to lookup task ids: Looking up task id for CachedTaskType { native_fn: NativeFunction { name: "get_written_endpoint_with_issues_operation", global_name: "next_napi_bindings::next_api::endpoint::get_written_endpoint_with_issues_operation", .. }, this: None, arg: (OperationVc { node: RawVc::TaskOutput(249) },) } from database failed
+
+Caused by:
+    0: Unable to open static sorted file referenced from 00000959.meta
+    1: Unable to open static sorted file 00000957.sst
+    2: Failed to open SST file /Users/sunmuchao/Downloads/Her/frontend/her-app/.next/dev/cache/turbopack/ee6e79b1/00000957.sst
+    3: No such file or directory (os error 2)
+⨯ Error [TurbopackInternalError]: Failed to lookup task ids: Looking up task id for CachedTaskType { native_fn: NativeFunction { name: "get_written_endpoint_with_issues_operation", global_name: "next_napi_bindings::next_api::endpoint::get_written_endpoint_with_issues_operation", .. }, this: None, arg: (OperationVc { node: RawVc::TaskOutput(249) },) } from database failed
+
+Debug info:
+- Failed to lookup task ids: Looking up task id for CachedTaskType { native_fn: NativeFunction { name: "get_written_endpoint_with_issues_operation", global_name: "next_napi_bindings::next_api::endpoint::get_written_endpoint_with_issues_operation", .. }, this: None, arg: (OperationVc { node: RawVc::TaskOutput(249) },) } from database failed
+  
+  Caused by:
+      0: Unable to open static sorted file referenced from 00000959.meta
+      1: Unable to open static sorted file 00000957.sst
+      2: Failed to open SST file /Users/sunmuchao/Downloads/Her/frontend/her-app/.next/dev/cache/turbopack/ee6e79b1/00000957.sst
+      3: No such file or directory (os error 2)
+    at <unknown> (TurbopackInternalError: Failed to lookup task ids: Looking up task id for CachedTaskType { native_fn: NativeFunction { name: "get_written_endpoint_with_issues_operation", global_name: "next_napi_bindings::next_api::endpoint::get_written_endpoint_with_issues_operation", .. }, this: None, arg: (OperationVc { node: RawVc::TaskOutput(249) },) } from database failed) {
+  location: 'turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:619:14'
+}
+
+thread 'tokio-runtime-worker' (715863) panicked at turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:619:14:
+Failed to lookup task ids: Looking up task id for CachedTaskType { native_fn: NativeFunction { name: "get_written_endpoint_with_issues_operation", global_name: "next_napi_bindings::next_api::endpoint::get_written_endpoint_with_issues_operation", .. }, this: None, arg: (OperationVc { node: RawVc::TaskOutput(249) },) } from database failed
+
+Caused by:
+    0: Unable to open static sorted file referenced from 00000959.meta
+    1: Unable to open static sorted file 00000957.sst
+    2: Failed to open SST file /Users/sunmuchao/Downloads/Her/frontend/her-app/.next/dev/cache/turbopack/ee6e79b1/00000957.sst
+    3: No such file or directory (os error 2)
+Error [TurbopackInternalError]: Failed to lookup task ids: Looking up task id for CachedTaskType { native_fn: NativeFunction { name: "get_written_endpoint_with_issues_operation", global_name: "next_napi_bindings::next_api::endpoint::get_written_endpoint_with_issues_operation", .. }, this: None, arg: (OperationVc { node: RawVc::TaskOutput(249) },) } from database failed
+
+Debug info:
+- Failed to lookup task ids: Looking up task id for CachedTaskType { native_fn: NativeFunction { name: "get_written_endpoint_with_issues_operation", global_name: "next_napi_bindings::next_api::endpoint::get_written_endpoint_with_issues_operation", .. }, this: None, arg: (OperationVc { node: RawVc::TaskOutput(249) },) } from database failed
+  
+  Caused by:
+      0: Unable to open static sorted file referenced from 00000959.meta
+      1: Unable to open static sorted file 00000957.sst
+      2: Failed to open SST file /Users/sunmuchao/Downloads/Her/frontend/her-app/.next/dev/cache/turbopack/ee6e79b1/00000957.sst
+      3: No such file or directory (os error 2)
+    at <unknown> (TurbopackInternalError: Failed to lookup task ids: Looking up task id for CachedTaskType { native_fn: NativeFunction { name: "get_written_endpoint_with_issues_operation", global_name: "next_napi_bindings::next_api::endpoint::get_written_endpoint_with_issues_operation", .. }, this: None, arg: (OperationVc { node: RawVc::TaskOutput(249) },) } from database failed) {
+  location: 'turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:619:14'
+}
+Error [TurbopackInternalError]: Failed to lookup task ids: Looking up task id for CachedTaskType { native_fn: NativeFunction { name: "get_written_endpoint_with_issues_operation", global_name: "next_napi_bindings::next_api::endpoint::get_written_endpoint_with_issues_operation", .. }, this: None, arg: (OperationVc { node: RawVc::TaskOutput(249) },) } from database failed
+
+Debug info:
+- Failed to lookup task ids: Looking up task id for CachedTaskType { native_fn: NativeFunction { name: "get_written_endpoint_with_issues_operation", global_name: "next_napi_bindings::next_api::endpoint::get_written_endpoint_with_issues_operation", .. }, this: None, arg: (OperationVc { node: RawVc::TaskOutput(249) },) } from database failed
+  
+  Caused by:
+      0: Unable to open static sorted file referenced from 00000959.meta
+      1: Unable to open static sorted file 00000957.sst
+      2: Failed to open SST file /Users/sunmuchao/Downloads/Her/frontend/her-app/.next/dev/cache/turbopack/ee6e79b1/00000957.sst
+      3: No such file or directory (os error 2)
+    at <unknown> (TurbopackInternalError: Failed to lookup task ids: Looking up task id for CachedTaskType { native_fn: NativeFunction { name: "get_written_endpoint_with_issues_operation", global_name: "next_napi_bindings::next_api::endpoint::get_written_endpoint_with_issues_operation", .. }, this: None, arg: (OperationVc { node: RawVc::TaskOutput(249) },) } from database failed) {
+  location: 'turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:619:14'
+}
+Error [TurbopackInternalError]: Failed to lookup task ids: Looking up task id for CachedTaskType { native_fn: NativeFunction { name: "get_written_endpoint_with_issues_operation", global_name: "next_napi_bindings::next_api::endpoint::get_written_endpoint_with_issues_operation", .. }, this: None, arg: (OperationVc { node: RawVc::TaskOutput(249) },) } from database failed
+
+Debug info:
+- Failed to lookup task ids: Looking up task id for CachedTaskType { native_fn: NativeFunction { name: "get_written_endpoint_with_issues_operation", global_name: "next_napi_bindings::next_api::endpoint::get_written_endpoint_with_issues_operation", .. }, this: None, arg: (OperationVc { node: RawVc::TaskOutput(249) },) } from database failed
+  
+  Caused by:
+      0: Unable to open static sorted file referenced from 00000959.meta
+      1: Unable to open static sorted file 00000957.sst
+      2: Failed to open SST file /Users/sunmuchao/Downloads/Her/frontend/her-app/.next/dev/cache/turbopack/ee6e79b1/00000957.sst
+      3: No such file or directory (os error 2)
+    at <unknown> (TurbopackInternalError: Failed to lookup task ids: Looking up task id for CachedTaskType { native_fn: NativeFunction { name: "get_written_endpoint_with_issues_operation", global_name: "next_napi_bindings::next_api::endpoint::get_written_endpoint_with_issues_operation", .. }, this: None, arg: (OperationVc { node: RawVc::TaskOutput(249) },) } from database failed) {
+  location: 'turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs:619:14'
+}
+Persisting failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
+Compaction failed: Another write batch or compaction is already active (Only a single write operations is allowed at a time)
