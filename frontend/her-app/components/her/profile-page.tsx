@@ -8,11 +8,13 @@ import {
   MapPin,
   Edit3,
   Shield,
-  CheckCircle,
-  Clock,
-  XCircle,
   X,
   Plus,
+  Video,
+  UserCheck,
+  GraduationCap,
+  Briefcase,
+  Wallet,
 } from 'lucide-react'
 import Image from 'next/image'
 import { useProfilePageData } from '@/lib/hooks/use-profile-page-data'
@@ -212,13 +214,13 @@ export default function ProfilePage({
     () => calculateVerificationProgress(profile.verificationItems),
     [profile.verificationItems],
   )
-  const verificationPriorityMap: Record<string, { order: number; target?: string }> = {
-    '活体视频认证': { order: 0, target: 'video' },
-    '真人认证': { order: 0, target: 'video' },
-    '身份认证': { order: 1 },
-    '学历认证': { order: 2, target: 'education' },
-    '职业认证': { order: 3, target: 'occupation' },
-    '收入认证': { order: 4, target: 'income' },
+  const verificationPriorityMap: Record<string, { order: number; target?: string; icon: React.ElementType }> = {
+    '活体视频认证': { order: 0, target: 'video', icon: Video },
+    '真人认证': { order: 0, target: 'video', icon: Video },
+    '身份认证': { order: 1, icon: UserCheck },
+    '学历认证': { order: 2, target: 'education', icon: GraduationCap },
+    '职业认证': { order: 3, target: 'occupation', icon: Briefcase },
+    '收入认证': { order: 4, target: 'income', icon: Wallet },
   }
   const verificationItems = useMemo(
     () =>
@@ -243,13 +245,6 @@ export default function ProfilePage({
   const usingMockData = useMemo(() => {
     return queries.auth.data?.user?.user_id === 'demo-user'
   }, [queries.auth.data])
-
-  // 获取状态图标
-  const getStatusIcon = (status: string) => {
-    if (status === 'verified') return <CheckCircle className="w-4 h-4 text-primary" />
-    if (status === 'pending') return <Clock className="w-4 h-4 text-gold" />
-    return <XCircle className="w-4 h-4 text-muted-foreground" />
-  }
 
   // 加载状态
   if (isLoading) {
@@ -451,10 +446,13 @@ export default function ProfilePage({
               </div>
 
               {verificationItems.length > 0 ? (
-                <div className="space-y-2">
+                <div className="grid grid-cols-4 gap-3">
                   {verificationItems.map((item, i) => {
-                    const target = verificationPriorityMap[item.name]?.target
+                    const config = verificationPriorityMap[item.name]
+                    const target = config?.target
+                    const Icon = config?.icon || Shield
                     const actionable = item.status !== 'verified' && Boolean(target)
+                    
                     return (
                       <button
                         key={`${item.name}-${i}`}
@@ -465,43 +463,45 @@ export default function ProfilePage({
                         }}
                         disabled={!actionable}
                         className={cn(
-                          'w-full rounded-lg border border-border/70 px-3 py-3 text-left transition-colors',
-                          item.status === 'verified'
-                            ? 'bg-primary/5'
-                            : item.status === 'pending'
-                              ? 'bg-gold/5 hover:bg-gold/10'
-                              : 'bg-secondary/30 hover:bg-secondary/50',
-                          actionable && 'cursor-pointer',
+                          'flex flex-col items-center gap-1.5 py-3 rounded-lg transition-colors',
+                          actionable && 'active:scale-95',
                         )}
                       >
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-background">
-                            {getStatusIcon(item.status)}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium">{item.name}</span>
-                              <span className={cn(
-                                'text-[10px] px-1.5 py-0.5 rounded',
-                                item.status === 'verified'
-                                  ? 'bg-primary/10 text-primary'
-                                  : item.status === 'pending'
-                                    ? 'bg-gold/10 text-gold'
-                                    : 'bg-secondary text-muted-foreground',
-                              )}>
-                                {item.status === 'verified' ? '已认证' : item.status === 'pending' ? '审核中' : '未认证'}
-                              </span>
-                            </div>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              {item.status === 'verified'
-                                ? '已完成'
-                                : item.status === 'pending'
-                                  ? item.description
-                                  : '点这里直接去认证'}
-                            </p>
-                          </div>
-                          {actionable && <ChevronRight className="w-4 h-4 text-primary" aria-hidden="true" />}
+                        {/* 图标容器 */}
+                        <div className={cn(
+                          'w-12 h-12 rounded-full flex items-center justify-center transition-colors',
+                          item.status === 'verified'
+                            ? 'bg-primary/10'
+                            : item.status === 'pending'
+                              ? 'bg-gold/10'
+                              : 'bg-secondary',
+                        )}>
+                          <Icon className={cn(
+                            'w-5 h-5',
+                            item.status === 'verified'
+                              ? 'text-primary'
+                              : item.status === 'pending'
+                                ? 'text-gold'
+                                : 'text-muted-foreground',
+                          )} />
                         </div>
+                        
+                        {/* 认证名称 */}
+                        <span className="text-xs text-foreground font-medium truncate max-w-full px-1">
+                          {item.name.replace('认证', '')}
+                        </span>
+                        
+                        {/* 认证状态 */}
+                        <span className={cn(
+                          'text-[10px]',
+                          item.status === 'verified'
+                            ? 'text-primary'
+                            : item.status === 'pending'
+                              ? 'text-gold'
+                              : 'text-muted-foreground',
+                        )}>
+                          {item.status === 'verified' ? '已认证' : item.status === 'pending' ? '审核中' : '未认证'}
+                        </span>
                       </button>
                     )
                   })}
