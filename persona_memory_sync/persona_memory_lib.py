@@ -140,6 +140,7 @@ USER_PERSONA_FIELDS = {
     "self_smoking",
     "self_drinking",
     "self_relationship_goal",
+    "self_personality_traits_json",  # 性格特质测评结果（JSON格式）
     "target_gender",
     "target_age_min",
     "target_age_max",
