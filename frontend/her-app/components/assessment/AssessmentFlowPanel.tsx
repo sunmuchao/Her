@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button'
 import {
   answerAssessment,
   beginAssessment,
-  fetchAssessmentInterpretation,
   type AssessmentCard,
   type AssessmentQuestionCard,
   startAssessment,
@@ -86,10 +85,6 @@ export function AssessmentFlowPanel({
             onContinue={async () => {
               if (card.card_type !== 'assessment_feedback') return
               setCard({ card_type: 'assessment_question', assessment_id: assessmentId, question_data: card.next_question })
-            }}
-            onInterpretation={async () => {
-              const next = await fetchAssessmentInterpretation({ assessmentId, userKey })
-              setCard(next)
             }}
             onContinueChat={close}
             onPrevious={

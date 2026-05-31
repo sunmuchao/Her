@@ -32,7 +32,6 @@ import { ErrorState } from './ui/error-state'
 import {
   answerAssessment,
   beginAssessment,
-  fetchAssessmentInterpretation,
   startAssessment,
   type AssessmentCard,
   type AssessmentQuestionCard,
@@ -317,10 +316,6 @@ export default function DiscoverPage({
                       assessment_id: assessmentId,
                       question_data: assessmentCard.next_question,
                     })
-                  }}
-                  onInterpretation={async () => {
-                    const next = await fetchAssessmentInterpretation({ assessmentId, userKey })
-                    setAssessmentCard(next)
                   }}
                   onContinueChat={clearAssessmentCard}
                   onPrevious={

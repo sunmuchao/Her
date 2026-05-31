@@ -51,6 +51,11 @@ export type AssessmentResultCard = {
       trait: string
     }>
     labels: string[]
+    interpretation_data: {
+      summary: string
+      love_style: string
+      match_suggestions: string[]
+    }
     reward: string
     assessment_id: string
   }

@@ -416,11 +416,18 @@ def answer_assessment(
             if answered_count >= TOTAL_QUESTIONS:
                 type_code = _type_code_from_scores(scores)
                 labels = _labels_from_scores(scores)
+                interpretation = _interpretation_from_result(
+                    {
+                        "type_code": type_code,
+                        "scores": scores,
+                    }
+                )
                 result_data = {
                     "type_code": type_code,
                     "scores": scores,
                     "dimension_rows": _dimension_rows(scores),
                     "labels": labels,
+                    "interpretation_data": interpretation,
                     "reward": "匹配质量提升10%",
                     "assessment_id": assessment_id,
                 }
@@ -432,6 +439,15 @@ def answer_assessment(
                     field_value=result_data,
                     assessment_id=assessment_id,
                     evidence_text="assessment completed",
+                )
+                _save_observation(
+                    cursor,
+                    observation_table=observation_table,
+                    user_key=user_key,
+                    field_name=ASSESSMENT_INTERPRETATION_FIELD,
+                    field_value=interpretation,
+                    assessment_id=assessment_id,
+                    evidence_text="assessment interpretation",
                 )
                 traits_payload = {
                     "mbti": {
