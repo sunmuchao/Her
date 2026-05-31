@@ -8,7 +8,6 @@ import { cn } from '@/lib/utils'
 import { gatewayJson, queryString } from '@/lib/api/client'
 import { markConversationRead, fetchPrivateChatConversationId, fetchPrivateMessages, sendPrivateMessage, type PrivateMessage } from '@/lib/api/endpoints/chat'
 import { uploadImage, compressImage, getImagePreviewUrl, type UploadMediaResponse } from '@/lib/api/endpoints/media'
-import { AssessmentFlowPanel } from '@/components/assessment/AssessmentFlowPanel'
 import {
   fetchCaseTimeline,
   extractMainGroupMessages,
@@ -16,7 +15,7 @@ import {
   type CaseTimelineResponse,
 } from '@/lib/api/endpoints/chat-timeline'
 import { getErrorMessage } from '@/lib/api/errors'
-import { getChatParticipantId, getAvatarUrl, getProfileId } from '@/lib/auth/session'
+import { getChatParticipantId, getAvatarUrl } from '@/lib/auth/session'
 import { canUseMockFallback } from '@/lib/mock'
 import { notifyError } from '@/lib/notify'
 import { DEMO_CHAT_MESSAGES } from '@/lib/fixtures/demo-profiles'
@@ -110,7 +109,6 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
 
   // Header 更多菜单状态
   const [showHeaderMenu, setShowHeaderMenu] = useState(false)
-  const [showAssessmentFlow, setShowAssessmentFlow] = useState(false)
 
   // 新消息提示状态
   const [hasNewMessage, setHasNewMessage] = useState(false)
@@ -1209,20 +1207,6 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
                 </div>
                 <span className="text-xs text-foreground">位置</span>
               </button>
-              {/* 性格测评 */}
-              <button
-                onClick={() => {
-                  setShowAssessmentFlow(true)
-                  setShowActionMenu(false)
-                }}
-                className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-secondary hover:bg-secondary/80 transition-colors"
-                aria-label="性格测评"
-              >
-                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Sparkles className="w-6 h-6 text-primary" />
-                </div>
-                <span className="text-xs text-foreground">测评</span>
-              </button>
             </div>
           </div>
         )}
@@ -1370,12 +1354,6 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
           </div>
         </div>
       )}
-
-      <AssessmentFlowPanel
-        open={showAssessmentFlow}
-        userKey={String(getProfileId() || getChatParticipantId() || '')}
-        onClose={() => setShowAssessmentFlow(false)}
-      />
     </div>
   )
 }
