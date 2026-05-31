@@ -157,6 +157,9 @@ def filter_explicit_patch(patch: Mapping[str, Any], source_type: str) -> dict[st
     for key, value in patch.items():
         if key in INFERENCE_ONLY_PERSONA_FIELDS:
             continue
+        if key == "self_personality_traits_json":
+            filtered[key] = value
+            continue
         if key in COLLECTED_PERSONA_FIELDS or key.startswith("target_") or key.startswith("self_"):
             filtered[key] = value
         elif key in {"display_name"}:
