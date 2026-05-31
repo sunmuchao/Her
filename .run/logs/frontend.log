@@ -1048,3 +1048,8 @@ TypeError: fetch failed
  GET /api/gateway/v1/proxy-intro/cases/mine 200 in 319ms (next.js: 15ms, application-code: 303ms)
  GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 294ms (next.js: 2ms, application-code: 292ms)
  GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 574ms (next.js: 5ms, application-code: 569ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 30ms (next.js: 6ms, application-code: 24ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 164ms (next.js: 11ms, application-code: 154ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 304ms (next.js: 14ms, application-code: 290ms)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 308ms (next.js: 1710µs, application-code: 306ms)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 612ms (next.js: 5ms, application-code: 607ms)
