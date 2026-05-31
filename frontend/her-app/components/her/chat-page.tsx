@@ -611,17 +611,6 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
                 >
                   <button
                     onClick={() => {
-                      setShowAssessmentFlow(true)
-                      setShowHeaderMenu(false)
-                    }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-foreground hover:bg-secondary transition-colors"
-                    role="menuitem"
-                  >
-                    <Sparkles className="w-4 h-4 text-muted-foreground" />
-                    性格测评
-                  </button>
-                  <button
-                    onClick={() => {
                       if (onViewCandidate && counterpartId) {
                         const candidate: CandidatePreview = {
                           id: counterpartId,
@@ -1219,6 +1208,20 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
                   <MapPin className="w-6 h-6 text-primary" />
                 </div>
                 <span className="text-xs text-foreground">位置</span>
+              </button>
+              {/* 性格测评 */}
+              <button
+                onClick={() => {
+                  setShowAssessmentFlow(true)
+                  setShowActionMenu(false)
+                }}
+                className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-secondary hover:bg-secondary/80 transition-colors"
+                aria-label="性格测评"
+              >
+                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Sparkles className="w-6 h-6 text-primary" />
+                </div>
+                <span className="text-xs text-foreground">测评</span>
               </button>
             </div>
           </div>
