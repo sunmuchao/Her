@@ -879,3 +879,111 @@
  GET /api/gateway/v1/proxy-intro/cases/mine 200 in 293ms (next.js: 14ms, application-code: 280ms)
  GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 292ms (next.js: 1650µs, application-code: 291ms)
  GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 568ms (next.js: 5ms, application-code: 563ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 29ms (next.js: 6ms, application-code: 23ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 177ms (next.js: 11ms, application-code: 166ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 273ms (next.js: 15ms, application-code: 258ms)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 236ms (next.js: 1431µs, application-code: 235ms)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 441ms (next.js: 4ms, application-code: 436ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 41ms (next.js: 7ms, application-code: 34ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 232ms (next.js: 15ms, application-code: 217ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 351ms (next.js: 19ms, application-code: 331ms)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 289ms (next.js: 1720µs, application-code: 288ms)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 547ms (next.js: 6ms, application-code: 541ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 28ms (next.js: 6ms, application-code: 22ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 186ms (next.js: 11ms, application-code: 175ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 296ms (next.js: 14ms, application-code: 282ms)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 261ms (next.js: 1438µs, application-code: 259ms)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 477ms (next.js: 5ms, application-code: 472ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 29ms (next.js: 7ms, application-code: 22ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 148ms (next.js: 12ms, application-code: 136ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 311ms (next.js: 5ms, application-code: 306ms)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 210ms (next.js: 1597µs, application-code: 208ms)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 484ms (next.js: 5ms, application-code: 479ms)
+✓ Compiled in 0ms
+ GET /discover 200 in 375ms (next.js: 103ms, application-code: 272ms)
+ GET /discover 200 in 190ms (next.js: 90ms, application-code: 100ms)
+ GET /discover 200 in 60ms (next.js: 2ms, application-code: 57ms)
+ GET /discover 200 in 55ms (next.js: 2ms, application-code: 52ms)
+ GET /discover 200 in 58ms (next.js: 2ms, application-code: 56ms)
+ GET /discover 200 in 61ms (next.js: 2ms, application-code: 59ms)
+ GET /discover 200 in 38ms (next.js: 3ms, application-code: 35ms)
+[browser] Uncaught ReferenceError: AssessmentFlowPanel is not defined
+    at DiscoverPage (components/her/discover-page.tsx:404:8)
+    at AppShell (file:///Users/sunmuchao/Downloads/Her/frontend/her-app/.next/dev/static/chunks/components_0ixarck._.js:234:403)
+    at renderPage (file:///Users/sunmuchao/Downloads/Her/frontend/her-app/.next/dev/static/chunks/components_0ixarck._.js:608:403)
+    at HerApp (file:///Users/sunmuchao/Downloads/Her/frontend/her-app/.next/dev/static/chunks/components_0ixarck._.js:653:13)
+    at HerSlugPage (app/[[...slug]]/page.tsx:9:7)
+  402 |       </div>
+  403 |
+> 404 |       <AssessmentFlowPanel
+      |        ^
+  405 |         open={showAssessmentFlow}
+  406 |         userKey={String(getProfileId() || '')}
+  407 |         onClose={() => setShowAssessmentFlow(false)}
+✓ Compiled in 128ms
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+ GET /discover 200 in 615ms (next.js: 118ms, application-code: 497ms)
+ GET /api/gateway/v1/auth/me 200 in 91ms (next.js: 54ms, application-code: 37ms)
+ GET /api/gateway/v1/discovery/sessions/discovery-session-7638098cd3b3 200 in 101ms (next.js: 64ms, application-code: 37ms)
+ GET /api/gateway/v1/persona/collected?profile_id=2478 200 in 108ms (next.js: 67ms, application-code: 41ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 127ms (next.js: 67ms, application-code: 60ms)
+[browser] Uncaught ReferenceError: AssessmentFlowPanel is not defined
+    at DiscoverPage (components/her/discover-page.tsx:429:8)
+    at AppShell (components/app/app-shell.tsx:89:13)
+    at renderPage (components/app/her-app.tsx:138:13)
+    at HerApp (components/app/her-app.tsx:172:8)
+    at HerSlugPage (app/[[...slug]]/page.tsx:9:7)
+  427 |       </div>
+  428 |
+> 429 |       <AssessmentFlowPanel
+      |        ^
+  430 |         open={showAssessmentFlow}
+  431 |         userKey={String(getProfileId() || '')}
+  432 |         onClose={() => setShowAssessmentFlow(false)}
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 356ms (next.js: 70ms, application-code: 286ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 679ms (next.js: 11ms, application-code: 668ms)
+ GET /api/gateway/v1/auth/me 200 in 685ms (next.js: 2ms, application-code: 682ms)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 229ms (next.js: 2ms, application-code: 226ms)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 452ms (next.js: 7ms, application-code: 445ms)
+✓ Compiled in 133ms
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+ GET /discover 200 in 442ms (next.js: 127ms, application-code: 314ms)
+ GET /api/gateway/v1/auth/me 200 in 99ms (next.js: 62ms, application-code: 37ms)
+ GET /api/gateway/v1/discovery/sessions/discovery-session-7638098cd3b3 200 in 122ms (next.js: 75ms, application-code: 47ms)
+ GET /api/gateway/v1/persona/collected?profile_id=2478 200 in 128ms (next.js: 78ms, application-code: 50ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 70ms (next.js: 3ms, application-code: 67ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 226ms (next.js: 11ms, application-code: 214ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 412ms (next.js: 11ms, application-code: 401ms)
+ GET /api/gateway/v1/auth/me 200 in 390ms (next.js: 3ms, application-code: 387ms)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 217ms (next.js: 1865µs, application-code: 215ms)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 497ms (next.js: 5ms, application-code: 492ms)
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+✓ Compiled in 48ms
+ GET /discover 200 in 69ms (next.js: 12ms, application-code: 57ms)
+ GET /api/gateway/v1/auth/me 200 in 69ms (next.js: 10ms, application-code: 59ms)
+ GET /api/gateway/v1/discovery/sessions/discovery-session-7638098cd3b3 200 in 77ms (next.js: 34ms, application-code: 42ms)
+ GET /api/gateway/v1/persona/collected?profile_id=2478 200 in 83ms (next.js: 43ms, application-code: 40ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 75ms (next.js: 25ms, application-code: 50ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 272ms (next.js: 26ms, application-code: 246ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 377ms (next.js: 10ms, application-code: 366ms)
+ GET /api/gateway/v1/auth/me 200 in 370ms (next.js: 1622µs, application-code: 369ms)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 281ms (next.js: 2ms, application-code: 279ms)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 550ms (next.js: 7ms, application-code: 543ms)
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+✓ Compiled in 47ms
+ GET /discover 200 in 74ms (next.js: 8ms, application-code: 65ms)
+ GET /api/gateway/v1/auth/me 200 in 58ms (next.js: 7ms, application-code: 50ms)
+ GET /api/gateway/v1/discovery/sessions/discovery-session-7638098cd3b3 200 in 66ms (next.js: 11ms, application-code: 54ms)
+ GET /api/gateway/v1/persona/collected?profile_id=2478 200 in 73ms (next.js: 16ms, application-code: 57ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 62ms (next.js: 5ms, application-code: 57ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 225ms (next.js: 13ms, application-code: 212ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 342ms (next.js: 11ms, application-code: 331ms)
+ GET /api/gateway/v1/auth/me 200 in 336ms (next.js: 2ms, application-code: 334ms)
+ GET /api/gateway/v1/auth/me 200 in 263ms (next.js: 1541µs, application-code: 261ms)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 289ms (next.js: 1745µs, application-code: 287ms)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 534ms (next.js: 5ms, application-code: 528ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 32ms (next.js: 8ms, application-code: 25ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 211ms (next.js: 15ms, application-code: 195ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 326ms (next.js: 6ms, application-code: 320ms)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 322ms (next.js: 2ms, application-code: 320ms)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 592ms (next.js: 6ms, application-code: 586ms)
