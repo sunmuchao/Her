@@ -1,7 +1,5 @@
 'use client'
 
-import { useEffect } from 'react'
-
 export function AssessmentFeedbackCard({
   data,
   onContinue,
@@ -13,11 +11,6 @@ export function AssessmentFeedbackCard({
   }
   onContinue: () => void
 }) {
-  useEffect(() => {
-    const timer = setTimeout(onContinue, 2000)
-    return () => clearTimeout(timer)
-  }, [onContinue])
-
   return (
     <div className="rounded-3xl border border-border bg-card p-5 shadow-sm">
       <div className="text-xs uppercase tracking-[0.24em] text-muted-foreground">阶段反馈</div>
@@ -26,7 +19,12 @@ export function AssessmentFeedbackCard({
         <span className="text-sm text-muted-foreground">{data.score.toFixed(0)}%</span>
       </div>
       <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{data.feedback_text}</p>
-      <p className="mt-4 text-xs text-muted-foreground">正在进入下一题…</p>
+      <button
+        className="mt-4 w-full rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground"
+        onClick={onContinue}
+      >
+        下一题
+      </button>
     </div>
   )
 }
