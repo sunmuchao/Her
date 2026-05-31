@@ -13,7 +13,7 @@ import { DiscoveryCandidateCard } from './discovery-candidate-card'
 import { DiscoveryProfileUpdatePrompt } from './discovery-profile-update-prompt'
 import type { DiscoveryTimelineItem } from '@/lib/discovery/map-discovery-view'
 import { cn } from '@/lib/utils'
-import { getProfileId } from '@/lib/auth/session'
+import { getProfileId, getUserId } from '@/lib/auth/session'
 import {
   markRecommendationCardsRead,
   postRecommendationAction,
@@ -176,7 +176,7 @@ export default function DiscoverPage({
   const [assessmentId, setAssessmentId] = useState<string | null>(null)
   const [assessmentQuestionHistory, setAssessmentQuestionHistory] = useState<AssessmentQuestionCard['question_data'][]>([])
   const [assessmentBusy, setAssessmentBusy] = useState(false)
-  const userKey = String(getProfileId() || '')
+  const userKey = String(getProfileId() || getUserId() || '')
 
   const openAssessmentCard = async () => {
     if (!userKey || assessmentBusy) return
