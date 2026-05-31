@@ -19,3 +19,7 @@ tmp/
 *.sock
 *.sock.lock
 *.err
+
+# Runtime logs
+.run/logs/
+*.log
