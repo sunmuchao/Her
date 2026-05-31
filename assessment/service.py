@@ -176,7 +176,7 @@ def _load_session_and_answers(
                 continue
             answers[question_index] = data
         elif field_name == ASSESSMENT_RESULT_FIELD:
-            result = data
+            result = _result_with_interpretation(data)
     return session, answers, result
 
 
@@ -270,6 +270,16 @@ def _interpretation_from_result(result: dict[str, Any]) -> dict[str, Any]:
             "尽早把你在意的沟通方式、见面频率和边界说清楚",
         ],
     }
+
+
+def _result_with_interpretation(result: dict[str, Any]) -> dict[str, Any]:
+    if not result:
+        return {}
+    if result.get("interpretation_data"):
+        return result
+    merged = dict(result)
+    merged["interpretation_data"] = _interpretation_from_result(merged)
+    return merged
 
 
 def start_assessment(
