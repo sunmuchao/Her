@@ -187,7 +187,7 @@ export default function DiscoverPage({
       setAssessmentCard(intro)
       setAssessmentQuestionHistory([])
     } catch (error) {
-      notifyError(error, '打开测评失败')
+      notifyError(error, '打开 MBTI 测评失败')
     } finally {
       setAssessmentBusy(false)
     }
@@ -381,12 +381,12 @@ export default function DiscoverPage({
                 }}
                 disabled={assessmentBusy || !userKey}
                 className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-secondary hover:bg-secondary/80 transition-colors disabled:opacity-60"
-                aria-label="性格测评"
+                aria-label="MBTI测评"
               >
                 <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
                   <Sparkles className="w-6 h-6 text-primary" />
                 </div>
-                <span className="text-xs text-foreground">性格测评</span>
+                <span className="text-xs text-foreground">MBTI测评</span>
               </button>
             </div>
           </div>

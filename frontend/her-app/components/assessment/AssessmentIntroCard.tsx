@@ -25,7 +25,7 @@ export function AssessmentIntroCard({
         <div className="flex justify-between"><span>时长</span><span>{data.duration}</span></div>
         <div className="flex justify-between"><span>奖励</span><span>{data.reward}</span></div>
       </div>
-      <Button className="mt-4 w-full" onClick={onStart}>开始测评</Button>
+      <Button className="mt-4 w-full" onClick={onStart}>开始 MBTI 测评</Button>
     </div>
   )
 }
