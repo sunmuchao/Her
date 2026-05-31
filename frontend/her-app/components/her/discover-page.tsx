@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { ArrowLeft, BadgeCheck, Bookmark, ChevronRight, Mail, Mic, Plus, Search, Send, Sparkles, X } from 'lucide-react'
-import { AssessmentFlowPanel } from '@/components/assessment/AssessmentFlowPanel'
+import { AssessmentCardRenderer } from '@/components/assessment/AssessmentCardRenderer'
 import { XiaoyaAvatar } from '@/components/her/ui/xiaoya-avatar'
 import Image from 'next/image'
 import { EmptyRecommendations, EmptySearchResults } from './ui/empty-states'
@@ -29,6 +29,14 @@ import { useDiscoverySession } from '@/hooks/use-discovery-session'
 import { useVoiceInput } from '@/hooks/use-voice-input'
 import { DemoDataBanner } from './ui/demo-data-banner'
 import { ErrorState } from './ui/error-state'
+import {
+  answerAssessment,
+  beginAssessment,
+  fetchAssessmentInterpretation,
+  startAssessment,
+  type AssessmentCard,
+  type AssessmentQuestionCard,
+} from '@/lib/api/endpoints/assessment'
 
 interface DiscoverPageProps {
   onViewCandidate: (candidateId: string, candidate?: CandidatePreview) => void
@@ -164,7 +172,32 @@ export default function DiscoverPage({
       ? ['同城优先', '本科以上']
       : []
   const [showActionMenu, setShowActionMenu] = useState(false)
-  const [showAssessmentFlow, setShowAssessmentFlow] = useState(false)
+  const [assessmentCard, setAssessmentCard] = useState<AssessmentCard | null>(null)
+  const [assessmentId, setAssessmentId] = useState<string | null>(null)
+  const [assessmentQuestionHistory, setAssessmentQuestionHistory] = useState<AssessmentQuestionCard['question_data'][]>([])
+  const [assessmentBusy, setAssessmentBusy] = useState(false)
+  const userKey = String(getProfileId() || '')
+
+  const openAssessmentCard = async () => {
+    if (!userKey || assessmentBusy) return
+    setAssessmentBusy(true)
+    try {
+      const intro = await startAssessment(userKey)
+      setAssessmentId(intro.assessment_id)
+      setAssessmentCard(intro)
+      setAssessmentQuestionHistory([])
+    } catch (error) {
+      notifyError(error, '打开测评失败')
+    } finally {
+      setAssessmentBusy(false)
+    }
+  }
+
+  const clearAssessmentCard = () => {
+    setAssessmentCard(null)
+    setAssessmentId(null)
+    setAssessmentQuestionHistory([])
+  }
 
   const pageShellClass =
     'flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background pb-14'
@@ -257,6 +290,57 @@ export default function DiscoverPage({
             />
           ))}
 
+          {assessmentCard && assessmentId ? (
+            <div className="flex justify-start">
+              <div className="w-full max-w-[92%]">
+                <AssessmentCardRenderer
+                  card={assessmentCard}
+                  onStart={async () => {
+                    const next = await beginAssessment(assessmentId)
+                    setAssessmentCard(next)
+                  }}
+                  onAnswer={async (answer) => {
+                    if (assessmentCard.card_type !== 'assessment_question') return
+                    setAssessmentQuestionHistory((prev) => [...prev, assessmentCard.question_data])
+                    const next = await answerAssessment({
+                      assessmentId,
+                      questionIndex: assessmentCard.question_data.current_question - 1,
+                      answer,
+                      userKey,
+                    })
+                    setAssessmentCard(next)
+                  }}
+                  onContinue={async () => {
+                    if (assessmentCard.card_type !== 'assessment_feedback') return
+                    setAssessmentCard({
+                      card_type: 'assessment_question',
+                      assessment_id: assessmentId,
+                      question_data: assessmentCard.next_question,
+                    })
+                  }}
+                  onInterpretation={async () => {
+                    const next = await fetchAssessmentInterpretation({ assessmentId, userKey })
+                    setAssessmentCard(next)
+                  }}
+                  onContinueChat={clearAssessmentCard}
+                  onPrevious={
+                    assessmentQuestionHistory.length > 0
+                      ? () => {
+                          const previous = assessmentQuestionHistory[assessmentQuestionHistory.length - 1]
+                          setAssessmentQuestionHistory((prev) => prev.slice(0, -1))
+                          setAssessmentCard({
+                            card_type: 'assessment_question',
+                            assessment_id: assessmentId,
+                            question_data: previous,
+                          })
+                        }
+                      : undefined
+                  }
+                />
+              </div>
+            </div>
+          ) : null}
+
           {isTyping ? <TypingIndicator name="小雅" /> : null}
 
           {suggestedActions.length ? (
@@ -292,10 +376,11 @@ export default function DiscoverPage({
             <div className="grid grid-cols-4 gap-4 rounded-2xl border border-border bg-card p-3">
               <button
                 onClick={() => {
-                  setShowAssessmentFlow(true)
+                  void openAssessmentCard()
                   setShowActionMenu(false)
                 }}
-                className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-secondary hover:bg-secondary/80 transition-colors"
+                disabled={assessmentBusy || !userKey}
+                className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-secondary hover:bg-secondary/80 transition-colors disabled:opacity-60"
                 aria-label="性格测评"
               >
                 <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
@@ -393,11 +478,6 @@ export default function DiscoverPage({
         </div>
       </div>
 
-      <AssessmentFlowPanel
-        open={showAssessmentFlow}
-        userKey={String(getProfileId() || '')}
-        onClose={() => setShowAssessmentFlow(false)}
-      />
     </div>
   )
 }
