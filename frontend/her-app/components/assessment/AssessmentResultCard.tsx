@@ -1,9 +1,7 @@
 'use client'
-import { Button } from '@/components/ui/button'
 
 export function AssessmentResultCard({
   data,
-  onInterpretation,
 }: {
   data: {
     type_code: string
@@ -16,9 +14,13 @@ export function AssessmentResultCard({
       trait: string
     }>
     labels: string[]
+    interpretation_data: {
+      summary: string
+      love_style: string
+      match_suggestions: string[]
+    }
     reward: string
   }
-  onInterpretation: () => void
 }) {
   return (
     <div className="rounded-3xl border border-border bg-card p-5 shadow-sm">
@@ -43,7 +45,18 @@ export function AssessmentResultCard({
         ))}
       </div>
       <p className="mt-4 text-sm text-muted-foreground">{data.reward}</p>
-      <Button className="mt-4 w-full" variant="outline" onClick={onInterpretation}>查看解读</Button>
+      <div className="mt-5 rounded-2xl bg-secondary/40 p-4">
+        <div className="text-xs uppercase tracking-[0.24em] text-muted-foreground">AI 解读</div>
+        <p className="mt-3 text-sm leading-relaxed">{data.interpretation_data.summary}</p>
+        <p className="mt-3 text-sm text-muted-foreground">{data.interpretation_data.love_style}</p>
+        <div className="mt-4 space-y-2">
+          {data.interpretation_data.match_suggestions.map((item) => (
+            <div key={item} className="rounded-2xl bg-background px-3 py-2 text-sm">
+              {item}
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }

@@ -71,7 +71,15 @@ describe('assessment endpoints', () => {
           JSON.stringify({
             card_type: 'assessment_result',
             assessment_id: 'mbti_demo',
-            result_data: { type_code: 'ENTJ', scores: {}, dimension_rows: [], labels: [], reward: 'ok', assessment_id: 'mbti_demo' },
+            result_data: {
+              type_code: 'ENTJ',
+              scores: {},
+              dimension_rows: [],
+              labels: [],
+              interpretation_data: { summary: '总结', love_style: '风格', match_suggestions: ['建议'] },
+              reward: 'ok',
+              assessment_id: 'mbti_demo',
+            },
           }),
       })
       .mockResolvedValueOnce({
