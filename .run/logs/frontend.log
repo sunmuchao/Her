@@ -1022,3 +1022,32 @@
  GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 741ms (next.js: 6ms, application-code: 735ms)
 ⨯ upstream image response timed out for https://cdn.her.local/profiles/07885/avatar.jpg
 ✓ Compiled in 38ms
+[browser] Uncaught TypeError: Cannot read properties of undefined (reading 'summary')
+    at AssessmentResultCard (components/assessment/AssessmentResultCard.tsx:50:79)
+    at Set.forEach (<anonymous>)
+    at AssessmentCardRenderer (components/assessment/AssessmentCardRenderer.tsx:43:9)
+    at DiscoverPage (components/her/discover-page.tsx:295:17)
+    at AppShell (components/app/app-shell.tsx:89:13)
+    at renderPage (components/app/her-app.tsx:138:13)
+    at HerApp (components/app/her-app.tsx:172:8)
+    at HerSlugPage (app/[[...slug]]/page.tsx:9:7)
+  48 | ...2xl bg-secondary/40 p-4">
+  49 | ...ercase tracking-[0.24em] text-muted-foreground">AI 解读</div>
+> 50 | ...leading-relaxed">{data.interpretation_data.summary}</p>
+     |                                               ^
+  51 | ...text-muted-foreground">{data.interpretation_data.love_style}</p>
+  52 | ...y-2">
+  53 | ....match_suggestions.map((item) => (
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+✓ Compiled in 47ms
+ GET /discover 200 in 352ms (next.js: 30ms, application-code: 322ms)
+ GET /api/gateway/v1/auth/me 200 in 104ms (next.js: 20ms, application-code: 84ms)
+ GET /api/gateway/v1/discovery/sessions/discovery-session-7638098cd3b3 200 in 109ms (next.js: 25ms, application-code: 83ms)
+ GET /api/gateway/v1/persona/collected?profile_id=2478 200 in 128ms (next.js: 31ms, application-code: 97ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 138ms (next.js: 48ms, application-code: 90ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 292ms (next.js: 51ms, application-code: 241ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 429ms (next.js: 55ms, application-code: 374ms)
+ GET /api/gateway/v1/auth/me 200 in 354ms (next.js: 4ms, application-code: 350ms)
+ GET /api/gateway/v1/auth/me 200 in 291ms (next.js: 3ms, application-code: 288ms)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 292ms (next.js: 2ms, application-code: 290ms)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 536ms (next.js: 5ms, application-code: 532ms)
