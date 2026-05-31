@@ -377,17 +377,23 @@ interface MatchAnalysis {
 ```
 场景：用户在聊天中提到某个话题
 
-用户：我不知道他是不是够专一
+用户：我想测测我的性格
 
-AI：你对专一很看重啊。要不要做个价值观测试？
-    看看你们价值观合不合
-    [开始测试] [不用了]
+AI：好的，我们来测测你的性格底色
+    （返回测评介绍卡片）
 
-用户点"开始测试"：
-↓ 自然切入价值观拍卖
-↓ 完成后显示："你是专一至上型"
-↓ 显示对方结果（如果对方也做过）
-↓ AI 预警："你们价值观可能冲突，建议聊聊"
+┌─────────────────────────────────────┐
+│  📊 大五人格测试                     │
+│  了解你的性格底色                     │
+│  约5分钟 · 20题                      │
+│  完成后匹配质量提升10%               │
+│  [开始测评]                          │
+└─────────────────────────────────────┘
+
+用户点"开始测评"：
+↓ AI 返回第一题卡片（在对话界面中）
+↓ 用户在对话界面答题
+↓ 完成后显示结果卡片
 ```
 
 #### 方案 B：输入框加号入口（用户主动测评）
@@ -400,6 +406,7 @@ AI：你对专一很看重啊。要不要做个价值观测试？
 ├─────────────────────────────────┤
 │                                 │
 │  [消息记录区域]                  │
+│  （测评卡片也在这里显示）        │
 │                                 │
 │  ┌─────────────────────┐       │
 │  │ 输入消息...      [+] │ ← 点这里
@@ -420,65 +427,58 @@ AI：你对专一很看重啊。要不要做个价值观测试？
 │  └─ ...更多                      │
 └─────────────────────────────────┘
 
-用户选择后，测评卡片发送到聊天中：
-↓ 对方也可以参与
-↓ 双人互动完成
-↓ 结果双方可见
+用户选择后：
+↓ 测评卡片发送到聊天中
+↓ 用户在对话界面完成测评
+↓ 结果卡片也在对话界面显示
 ```
 
-### 5.2 分阶段引导策略
+### 5.2 对话式测评卡片流程
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                     用户测评路径                              │
+│               对话式测评完整流程（卡片式）                    │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
-│  【注册后 - 核心画像】                                        │
-│   ↓                                                         │
-│  界面显示：                                                  │
-│  "想找到更合适的人？                                          │
-│   花5分钟了解你的性格，匹配质量提升20%"                       │
-│  [开始了解] [暂时跳过]                                        │
-│   ↓                                                         │
-│  用户点"开始了解"                                            │
-│   ↓                                                         │
-│  大五人格精简版（20题）→ 快速答题 → 即时反馈                  │
-│   ↓                                                         │
-│  接着显示：                                                  │
-│  "再测测你的恋爱安全感（3分钟），匹配质量再提升10%"            │
-│  [继续测试] [暂时跳过]                                        │
-│   ↓                                                         │
-│  依恋风格精简版（12题）→ 快速答题 → 即时反馈                  │
-│   ↓                                                         │
-│  核心画像完成 → 显示匹配质量提升 → 可以开始匹配               │
+│  1. 用户说："我想测测我的性格"                               │
+│     ↓                                                       │
+│  2. AI 返回测评介绍卡片                                     │
+│     ├─ card_type: 'assessment_intro'                        │
+│     ├─ 内容：测评介绍 + [开始测评] 按钮                      │
+│     └─ 用户在对话界面看到卡片                               │
 │                                                             │
-│  ────────────────────────────────────────────────────────   │
+│  3. 用户点 [开始测评]                                        │
+│     ↓                                                       │
+│  4. AI 返回第一题卡片                                       │
+│     ├─ card_type: 'assessment_question'                     │
+│     ├─ 内容：第1题 + 选项 A/B/C/D/E                         │
+│     └─ 用户在对话界面答题                                   │
 │                                                             │
-│  【匹配成功后 - 破冰测评】                                    │
-│   ↓                                                         │
-│  显示：                                                      │
-│  "你们匹配上了！要不要做个小测试看看合不合拍？"               │
-│  [开始测试] [暂时跳过]                                        │
-│   ↓                                                         │
-│  用户点"+"或对话中自然切入                                   │
-│   ↓                                                         │
-│  做恋爱语言测试（10题）→ 解锁相处建议                         │
-│   ↓                                                         │
-│  显示相处建议 + 建议话题                                     │
-│   ↓                                                         │
-│  可选：36个问题/价值观拍卖/房树人                             │
+│  5. 用户点选项（如选 A）                                     │
+│     ↓                                                       │
+│  6. 后端保存答案，判断下一步                                 │
+│     ├─ 答完4题 → 返回反馈卡片 + 下一题                      │
+│     ├─ 答完20题 → 计算结果 → 写入偏好表 → 返回结果卡片      │
+│     ├─ 否则 → 返回下一题卡片                                │
 │                                                             │
-│  ────────────────────────────────────────────────────────   │
+│  7. 对话界面渲染对应卡片                                    │
+│     ├─ 反馈卡片：显示2秒后自动消失                          │
+│     ├─ 题目卡片：等待用户选择                               │
+│     └─ 结果卡片：显示结果 + 按钮                            │
 │                                                             │
-│  【在一起后 - 关系诊断】                                      │
-│   ↓                                                         │
-│  AI 发现关系状态变化                                         │
-│   ↓                                                         │
-│  自然切入：                                                  │
-│  "你们在一起一段时间了，要不要测测关系健康度？"               │
-│  [开始测试] [暂时跳过]                                        │
-│   ↓                                                         │
-│  做 Gottman 检查 → 诊断 + 建议                               │
+│  8. 结果卡片显示后                                          │
+│     ├─ 立即显示基础结果（分数 + 标签）                      │
+│     ├─ 异步请求 AI 解读（等2秒）                            │
+│     └─ 显示解读卡片                                         │
+│                                                             │
+│  9. 用户选择下一步                                          │
+│     ├─ [分享朋友圈] → 生成分享卡片                          │
+│     ├─ [查看匹配建议] → 返回匹配建议卡片                    │
+│     └─ [继续聊天] → 回到正常对话                            │
+│                                                             │
+│  10. 测评结果已写入偏好表                                    │
+│     ├─ user_personas.self_personality_traits_json           │
+│     └─ 后续匹配时使用这些数据                               │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -591,135 +591,325 @@ interface MatchWeights {
 
 ## 七、测评实现要点
 
-### 7.1 分层处理模式（解决 AI 响应慢问题）
+### 7.1 对话中生成测评卡片UI
 
-**核心思路**：把"问卷部分"和"AI 解读部分"分开
+**核心思路**：测评不是跳转页面，而是在对话界面中以卡片形式展示
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    分层处理模式                              │
+│                   对话式测评卡片流程                          │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
-│  【第一层：问卷部分 - 快速、无卡顿】                          │
+│  用户消息："我想测测我的性格"                                │
+│     ↓                                                       │
+│  AI 返回测评介绍卡片                                        │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │  📊 大五人格测试                                      │   │
+│  │  了解你的性格底色                                      │   │
+│  │  约5分钟 · 20题                                       │   │
+│  │  [开始测评]                                           │   │
+│  └─────────────────────────────────────────────────────┘   │
 │                                                             │
-│   用传统问卷形式（预设选项），用户快速选择                    │
-│   ↓                                                         │
-│   用户选完所有题目后，后台异步计算结果                        │
-│   ↓                                                         │
-│   答题过程中即时反馈（答完每组题给小反馈）                    │
+│  用户点 [开始测评]                                           │
+│     ↓                                                       │
+│  AI 返回题目卡片（在对话界面中）                             │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │  第1题/共20题                                         │   │
+│  │  你喜欢尝试新的餐厅、新的食物吗？                     │   │
+│  │  ○ A. 非常喜欢  ○ B. 比较喜欢  ○ C. 无所谓          │   │
+│  │  ○ D. 不太喜欢  ○ E. 非常不喜欢                      │   │
+│  │  进度：■○○○○○○○○○○○○○○○○○○○○                      │   │
+│  └─────────────────────────────────────────────────────┘   │
 │                                                             │
-│  【第二层：结果展示 - 立即显示】                              │
+│  用户点选项 → AI 返回下一题卡片                              │
+│     ↓                                                       │
+│  答完每4题 → AI 返回反馈卡片（显示2秒后消失）                │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │  💡 小提示                                            │   │
+│  │  你的开放性：65分                                      │   │
+│  │  你愿意尝试新事物，但不会太冲动                        │   │
+│  └─────────────────────────────────────────────────────┘   │
 │                                                             │
-│   答题完成后，立即显示基础结果（无等待）                      │
-│   ↓                                                         │
-│   用户看到结果概览                                          │
+│  答完20题 → AI 返回结果卡片                                 │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │  🎉 测评完成！                                        │   │
+│  │  "你是安静的观察者"                                    │   │
+│  │  开放性：65 ████████░░                                │   │
+│  │  尽责性：78 █████████░                                │   │
+│  │  外向性：35 ███░░░░░░░░                               │   │
+│  │  宜人性：72 ███████░░░                                │   │
+│  │  神经质：28 ██░░░░░░░░░░                              │   │
+│  │  [分享朋友圈] [查看匹配建议]                          │   │
+│  └─────────────────────────────────────────────────────┘   │
 │                                                             │
-│  【第三层：AI 解读部分 - 慢但有价值】                         │
-│                                                             │
-│   AI 生成个性化解读（等2秒出现）                             │
-│   ↓                                                         │
-│   用户看完解读后，可以继续和 AI 对话                         │
+│  等2秒后 → AI 返回解读卡片                                  │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │  AI 解读                                              │   │
+│  │  "你是一个内向但稳重的人..."                          │   │
+│  └─────────────────────────────────────────────────────┘   │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**具体例子：大五人格怎么做**
+### 7.2 测评卡片数据结构
+
+```typescript
+// 测评卡片类型定义
+interface AssessmentCard {
+  card_type: 'assessment_intro' | 'assessment_question' | 'assessment_feedback' | 'assessment_result' | 'assessment_interpretation';
+  
+  // 测评元数据
+  assessment_type: 'big_five' | 'attachment' | 'love_language';
+  assessment_id: string;
+  
+  // 题目数据（question类型）
+  question_data?: {
+    current_question: number;
+    total_questions: number;
+    question_text: string;
+    options: Array<{
+      label: string;      // A, B, C, D, E
+      text: string;       // 选项文字
+      score: number;      // 分数（前端可选使用）
+    }>;
+    progress: number;     // 0-100
+  };
+  
+  // 反馈数据（feedback类型）
+  feedback_data?: {
+    dimension: string;    // 'openness', 'conscientiousness', etc.
+    dimension_name: string; // '开放性', '尽责性', etc.
+    score: number;        // 0-100
+    feedback_text: string;
+  };
+  
+  // 结果数据（result类型）
+  result_data?: {
+    scores: {
+      openness: number;
+      conscientiousness: number;
+      extraversion: number;
+      agreeableness: number;
+      neuroticism: number;
+    };
+    labels: string[];
+    match_quality_boost: number;
+    badges: string[];
+  };
+  
+  // 解读数据（interpretation类型）
+  interpretation_data?: {
+    summary: string;
+    love_style: string;
+    match_suggestions: string[];
+  };
+}
+```
+
+### 7.3 前端卡片渲染逻辑
+
+```typescript
+// 消息渲染组件
+const MessageRenderer = ({ message }) => {
+  // 判断是否有卡片类型
+  if (message.card_type) {
+    return <CardRenderer card={message} />;
+  }
+  
+  // 渲染普通文本消息
+  return <TextMessage content={message.content} />;
+};
+
+// 卡片渲染组件
+const CardRenderer = ({ card }) => {
+  switch (card.card_type) {
+    case 'assessment_intro':
+      return <AssessmentIntroCard data={card} />;
+    
+    case 'assessment_question':
+      return <AssessmentQuestionCard data={card} />;
+    
+    case 'assessment_feedback':
+      return <AssessmentFeedbackCard data={card} />;
+    
+    case 'assessment_result':
+      return <AssessmentResultCard data={card} />;
+    
+    case 'assessment_interpretation':
+      return <AssessmentInterpretationCard data={card} />;
+    
+    default:
+      return <GenericCard data={card} />;
+  }
+};
+
+// 题目卡片交互逻辑
+const AssessmentQuestionCard = ({ data }) => {
+  const handleSelect = async (option) => {
+    // 发送答案到后端
+    const response = await submitAnswer({
+      assessment_id: data.assessment_id,
+      question_index: data.question_data.current_question - 1,
+      answer: option.label
+    });
+    
+    // 后端返回下一题卡片或反馈卡片
+    // 前端自动渲染返回的卡片
+  };
+  
+  return (
+    <div className="assessment-question-card">
+      <div className="progress">
+        第{data.question_data.current_question}题/共{data.question_data.total_questions}题
+      </div>
+      <div className="question-text">
+        {data.question_data.question_text}
+      </div>
+      <div className="options">
+        {data.question_data.options.map(option => (
+          <button onClick={() => handleSelect(option)}>
+            {option.label}. {option.text}
+          </button>
+        ))}
+      </div>
+      <ProgressBar value={data.question_data.progress} />
+    </div>
+  );
+};
+```
+
+### 7.4 后端卡片生成接口
+
+```python
+# 开始测评
+@router.post("/assessment/start")
+async def start_assessment(
+    user_key: str,
+    assessment_type: str
+):
+    """返回测评介绍卡片"""
+    assessment_id = generate_assessment_id()
+    
+    return {
+        "card_type": "assessment_intro",
+        "assessment_type": assessment_type,
+        "assessment_id": assessment_id,
+        "intro_data": {
+            "title": "大五人格测试",
+            "description": "了解你的性格底色",
+            "duration": "约5分钟 · 20题",
+            "reward": "匹配质量提升10%"
+        }
+    }
+
+# 用户点开始后，获取第一题
+@router.post("/assessment/begin")
+async def begin_assessment(assessment_id: str):
+    """返回第一题卡片"""
+    return {
+        "card_type": "assessment_question",
+        "assessment_id": assessment_id,
+        "question_data": {
+            "current_question": 1,
+            "total_questions": 20,
+            "question_text": "你喜欢尝试新的餐厅、新的食物吗？",
+            "options": [
+                {"label": "A", "text": "非常喜欢", "score": 5},
+                {"label": "B", "text": "比较喜欢", "score": 4},
+                {"label": "C", "text": "无所谓", "score": 3},
+                {"label": "D", "text": "不太喜欢", "score": 2},
+                {"label": "E", "text": "非常不喜欢", "score": 1}
+            ],
+            "progress": 5
+        }
+    }
+
+# 提交答案，获取下一题或反馈
+@router.post("/assessment/answer")
+async def submit_answer(
+    assessment_id: str,
+    question_index: int,
+    answer: str
+):
+    """返回下一题卡片或反馈卡片"""
+    # 保存答案
+    save_answer(assessment_id, question_index, answer)
+    
+    # 答完每4题显示反馈
+    if (question_index + 1) % 4 == 0:
+        dimension_scores = calculate_dimension_scores(assessment_id, question_index)
+        
+        return {
+            "card_type": "assessment_feedback",
+            "feedback_data": {
+                "dimension": get_dimension_name(question_index),
+                "dimension_name": "开放性",
+                "score": dimension_scores,
+                "feedback_text": "你愿意尝试新事物，但不会太冲动"
+            },
+            # 同时返回下一题
+            "next_question": {
+                "card_type": "assessment_question",
+                "question_data": get_next_question(question_index + 1)
+            }
+        }
+    
+    # 答完20题显示结果
+    if question_index + 1 >= 20:
+        final_scores = calculate_final_scores(assessment_id)
+        
+        # 写入偏好表
+        save_to_persona(user_key, final_scores)
+        
+        return {
+            "card_type": "assessment_result",
+            "result_data": {
+                "scores": final_scores,
+                "labels": generate_labels(final_scores),
+                "match_quality_boost": 10,
+                "badges": ["画像建立"]
+            }
+        }
+    
+    # 返回下一题
+    return {
+        "card_type": "assessment_question",
+        "question_data": get_next_question(question_index + 1)
+    }
+
+# 获取AI解读
+@router.post("/assessment/interpretation")
+async def get_interpretation(assessment_id: str):
+    """返回AI解读卡片"""
+    scores = get_assessment_scores(assessment_id)
+    interpretation = await generate_ai_interpretation(scores)
+    
+    return {
+        "card_type": "assessment_interpretation",
+        "interpretation_data": interpretation
+    }
+```
+
+### 7.5 即时反馈设计
+
+**答完每4题后显示小反馈卡片**：
 
 ```
-界面显示：
-第1题：你喜欢热闹的聚会吗？
-A. 非常喜欢  B. 喜欢  C. 无所谓  D. 不喜欢  E. 非常不喜欢
-↓ 用户直接点（0秒等待）
+答完开放性4题后：
 
-第2题：你容易感到焦虑吗？
-A. 经常  B. 有时  C. 偶尔  D. 很少  E. 几乎从不
-↓ 用户直接点（0秒等待）
-
-...连续答题（20题，约5分钟完成）
-
-答题过程中即时反馈：
-答完第5题（外向性4题）：
-界面显示："你有点内向，喜欢安静生活"
-
-答完第10题（尽责性4题）：
-界面显示："你做事很有计划，很靠谱"
-
-答题完成后：
-立即显示完整结果 + AI 解读（等2秒）
-"你是安静的观察者，内向但稳重..."
-```
-
-**技术实现：预加载 + 异步处理**
-
-```
-用户答题过程中：
-├─ 后台已经在异步计算结果
-├─ 答题完成后，结果已算好
-├─ 立即显示基础结果（无等待）
-└─ AI 解读异步加载（等2秒出现）
-
-用户感觉：
-"答题很快，结果立马出来，解读等了2秒但可以接受"
-```
-
-### 7.2 即时反馈设计
-
-**每答完一组题，给一个小反馈**：
-
-```
-大五人格20题：
-
-答完第5题（外向性4题）：
-┌─────────────────────────┐
-│  你有点内向，喜欢安静生活 │ ← 小反馈卡片
-└─────────────────────────┘
-
-答完第10题（尽责性4题）：
-┌─────────────────────────┐
-│  你做事很有计划，很靠谱   │
-└─────────────────────────┘
-
-答完第15题（开放性4题）：
-┌─────────────────────────────┐
-│  你愿意尝试新事物，但不太冲动 │
-└─────────────────────────────┘
-
-答完第20题：
 ┌─────────────────────────────────────┐
-│  完整结果 + AI 解读                  │
-│  "你是安静的观察者..."               │
+│  💡 小提示                           │
+│                                     │
+│  你的开放性：65分                    │
+│                                     │
+│  你愿意尝试新事物，但不会太冲动       │
+│                                     │
 └─────────────────────────────────────┘
-```
 
-**即时反馈的好处**：
-- 用户答题过程中就有收获感
-- 不觉得无聊，愿意继续答完
-- 小反馈积累起来，最后完整结果更有说服力
-
-### 7.3 结果展示设计
-
-**结果要有趣 + 可分享**：
-
-```
-不要这样：
-"你是内向型人格"
-↓ 太平淡
-
-要这样：
-┌─────────────────────────────────────┐
-│  "你是安静的观察者"                  │
-│                                     │
-│  ├─ 你喜欢在角落观察世界             │
-│  ├─ 你内心丰富但不太表达             │
-│  ├─ 你的朋友圈不大但都是真心朋友     │
-│  ├─ 你在恋爱中是默默付出的类型       │
-│  └─ 你适合找一个能读懂你的人         │
-│                                     │
-│  标签：                              │
-│  "安静观察者" "深情内向" "稳重靠谱" │
-│                                     │
-│  [分享朋友圈] [查看匹配建议]         │
-└─────────────────────────────────────┘
+显示方式：
+- 在对话界面中作为一条消息出现
+- 显示2秒后自动消失（或用户点继续）
+- 同时显示下一题卡片
 ```
 
 ---
@@ -1020,5 +1210,452 @@ A. 经常  B. 有时  C. 偶尔  D. 很少  E. 几乎从不
 > - 问卷太长 → 精简版（大五20题、依恋12题、恋爱语言10题）
 > - 切入点 → 对话中自然切入 + 输入框加号入口
 > - 奖励机制 → 即时反馈 + 结果可分享 + 功能解锁 + 匹配提升 + 勋章成就
+> - **UI展示 → 对话中生成卡片UI，不跳转页面**
+> - **数据存储 → 写入现有 user_personas.self_personality_traits_json 字段**
 >
 > **下一步**：确认技术决策问题（11.2 节），然后进入具体测评内容设计。
+
+---
+
+## 附录 C：大五人格完整落地方案
+
+### C.1 大五人格五维度
+
+| 维度 | 中文名称 | 测什么 | 高分特征 | 低分特征 |
+|------|---------|--------|---------|---------|
+| **Openness** | 开放性 | 是否愿意尝试新事物 | 好奇、创意、冒险 | 传统、务实、保守 |
+| **Conscientiousness** | 尽责性 | 做事是否靠谱、有计划 | 负责、自律、有计划 | 随性、拖延、散漫 |
+| **Extraversion** | 外向性 | 是否外向、喜欢社交 | 热情、健谈、活跃 | 内向、安静、独处 |
+| **Agreeableness** | 宜人性 | 是否好相处、善良 | 善良、合作、信任 | 竞争、批判、冷漠 |
+| **Neuroticism** | 神经质 | 情绪是否稳定 | 焦虑、情绪化、敏感 | 稳定、冷静、从容 |
+
+### C.2 精简版20题具体内容
+
+每维度4题，共20题：
+
+#### 开放性（4题）
+
+```
+第1题：你喜欢尝试新的餐厅、新的食物吗？
+A. 非常喜欢  B. 比较喜欢  C. 无所谓  D. 不太喜欢  E. 非常不喜欢
+
+第2题：你对艺术、音乐、文学感兴趣吗？
+A. 非常感兴趣  B. 比较感兴趣  C. 一般  D. 不太感兴趣  E. 完全不感兴趣
+
+第3题：你喜欢思考抽象的问题、探索新的想法吗？
+A. 非常喜欢  B. 比较喜欢  C. 一般  D. 不太喜欢  E. 非常不喜欢
+
+第4题：你更喜欢熟悉的事物，还是新奇的事物？
+A. 更喜欢新奇  B. 都可以  C. 无所谓  D. 更喜欢熟悉  E. 只喜欢熟悉
+```
+
+#### 尽责性（4题）
+
+```
+第5题：你做事前会制定详细的计划吗？
+A. 总是如此  B. 经常如此  C. 有时如此  D. 很少如此  E. 几乎从不
+
+第6题：你能按时完成任务，不拖延吗？
+A. 总是如此  B. 经常如此  C. 有时如此  D. 很少如此  E. 几乎从不
+
+第7题：你注重细节，做事追求完美吗？
+A. 总是如此  B. 经常如此  C. 有时如此  D. 很少如此  E. 几乎从不
+
+第8题：你有明确的目标，并为之努力吗？
+A. 总是如此  B. 经常如此  C. 有时如此  D. 很少如此  E. 几乎从不
+```
+
+#### 外向性（4题）
+
+```
+第9题：你喜欢参加热闹的聚会、社交活动吗？
+A. 非常喜欢  B. 比较喜欢  C. 无所谓  D. 不太喜欢  E. 非常不喜欢
+
+第10题：你容易和陌生人聊天、交朋友吗？
+A. 非常容易  B. 比较容易  C. 一般  D. 不太容易  E. 非常困难
+
+第11题：你更喜欢独处，还是和一群人在一起？
+A. 更喜欢一群人  B. 都可以  C. 无所谓  D. 更喜欢独处  E. 只喜欢独处
+
+第12题：你是一个活泼、健谈的人吗？
+A. 非常活泼  B. 比较活泼  C. 一般  D. 不太活泼  E. 非常安静
+```
+
+#### 宜人性（4题）
+
+```
+第13题：你愿意帮助别人，即使对自己没好处吗？
+A. 非常愿意  B. 比较愿意  C. 一般  D. 不太愿意  E. 非常不愿意
+
+第14题：你相信大多数人都是善良的、值得信任的吗？
+A. 非常相信  B. 比较相信  C. 一般  D. 不太相信  E. 完全不相信
+
+第15题：你避免和别人发生冲突，愿意妥协吗？
+A. 总是如此  B. 经常如此  C. 有时如此  D. 很少如此  E. 几乎从不
+
+第16题：你是一个善良、体贴的人吗？
+A. 非常善良  B. 比较善良  C. 一般  D. 不太善良  E. 非常冷漠
+```
+
+#### 神经质（4题）
+
+```
+第17题：你容易感到焦虑、紧张吗？
+A. 经常如此  B. 有时如此  C. 偶尔如此  D. 很少如此  E. 几乎从不
+
+第18题：你情绪波动大吗？（容易生气、伤心、情绪化）
+A. 经常如此  B. 有时如此  C. 偶尔如此  D. 很少如此  E. 几乎从不
+
+第19题：你容易感到沮丧、失落吗？
+A. 经常如此  B. 有时如此  C. 偶尔如此  D. 很少如此  E. 几乎从不
+
+第20题：你面对压力时能保持冷静吗？
+A. 非常冷静  B. 比较冷静  C. 一般  D. 不太冷静  E. 非常焦虑
+```
+
+### C.3 数据存储：写入现有偏好表
+
+#### C.3.1 字段设计
+
+```sql
+-- 新增字段到 user_personas 表
+ALTER TABLE user_personas 
+ADD COLUMN self_personality_traits_json TEXT DEFAULT NULL 
+COMMENT '性格特质测评结果（JSON格式，包含大五人格、依恋风格、恋爱语言等）';
+```
+
+#### C.3.2 存储内容结构
+
+```json
+// self_personality_traits_json 存储内容示例
+{
+  "big_five": {
+    "assessed_at": "2026-05-31T10:00:00Z",
+    "scores": {
+      "openness": 65,
+      "conscientiousness": 78,
+      "extraversion": 35,
+      "agreeableness": 72,
+      "neuroticism": 28
+    },
+    "labels": ["安静的观察者", "稳重靠谱", "内心细腻"],
+    "confidence": 0.75,
+    "version": "v1.0"
+  },
+  
+  "attachment": {
+    "assessed_at": "2026-05-31T10:05:00Z",
+    "type": "secure",
+    "scores": {
+      "secure": 85,
+      "anxious": 15,
+      "avoidant": 10,
+      "fearful": 5
+    },
+    "confidence": 0.80
+  },
+  
+  "love_language": {
+    "assessed_at": "2026-05-31T10:10:00Z",
+    "primary": "肯定言词",
+    "secondary": "精心时刻",
+    "ranking": [
+      {"language": "肯定言词", "score": 85},
+      {"language": "精心时刻", "score": 70},
+      {"language": "身体接触", "score": 60},
+      {"language": "服务行动", "score": 50},
+      {"language": "接受礼物", "score": 40}
+    ]
+  }
+}
+```
+
+#### C.3.3 写入逻辑
+
+```python
+# 写入性格特质到偏好表
+async def save_personality_traits_to_persona(
+    user_key: str,
+    assessment_type: str,  # 'big_five', 'attachment', etc.
+    traits_data: dict
+):
+    """
+    将性格特质测评结果写入 user_personas 表
+    """
+    # 1. 获取现有 personality_traits_json
+    persona = get_user_persona(user_key)
+    existing_traits = persona.get("self_personality_traits_json") or {}
+    
+    # 2. 更新对应测评类型的数据
+    existing_traits[assessment_type] = traits_data
+    
+    # 3. 写入 user_personas 表
+    update_user_persona(
+        user_key,
+        {"self_personality_traits_json": json.dumps(existing_traits)}
+    )
+    
+    # 4. 同时写入 user_persona_observations 表（记录来源）
+    insert_observation(
+        user_key=user_key,
+        field_name=f"self_personality_traits_json.{assessment_type}",
+        field_value=json.dumps(traits_data),
+        source_type="explicit",  # 用户主动测评
+        confidence_score=traits_data.get("confidence", 0.75),
+        evidence_text=f"用户完成{assessment_type}测评",
+        source_channel="assessment"
+    )
+
+# 具体写入大五人格
+async def save_big_five_to_persona(
+    user_key: str,
+    scores: dict,
+    labels: list
+):
+    """
+    写入大五人格测评结果
+    """
+    traits_data = {
+        "assessed_at": datetime.now().isoformat(),
+        "scores": scores,
+        "labels": labels,
+        "confidence": 0.75,  # 精简版可信度
+        "version": "v1.0"
+    }
+    
+    await save_personality_traits_to_persona(
+        user_key,
+        "big_five",
+        traits_data
+    )
+```
+
+### C.4 匹配算法应用
+
+#### C.4.1 匹配权重设计
+
+```
+总体匹配分 = 
+  外向性匹配分 × 0.3
+  + 尽责性匹配分 × 0.2
+  + 神经质匹配分 × 0.3
+  + 开放性匹配分 × 0.1
+  + 宜人性匹配分 × 0.1
+
+权重解释：
+- 外向性权重高（0.3）：影响相处方式，内向+外向=互补高分
+- 神经质权重高（0.3）：影响关系稳定性，情绪稳定=高分
+- 尽责性权重中等（0.2）：影响生活规划，相似=高分
+- 开放性权重低（0.1）：影响兴趣爱好，差异可以互补
+- 宜人性权重低（0.1）：影响相处融洽，相似=高分
+```
+
+#### C.4.2 各维度匹配逻辑
+
+**外向性匹配**：
+```
+用户A外向性：35（内向）
+用户B外向性：70（外向）
+
+差值 = |35 - 70| = 35
+互补评分：差值在20-50之间 = 90分（互补高分）
+
+公式：
+差值在20-50 → 匹配分 = 90（互补）
+差值 < 20 → 匹配分 = 70（相似）
+差值 > 50 → 匹配分 = 50（差异太大）
+```
+
+**神经质匹配**：
+```
+用户A神经质：28（稳定）
+用户B神经质：30（稳定）
+
+都低 → 匹配分 = 95（最健康组合）
+一高一低 → 匹配分 = 70（一个稳住另一个）
+都高 → 匹配分 = 40（互相引发情绪）
+```
+
+#### C.4.3 匹配实现代码
+
+```python
+# 读取性格特质用于匹配
+def get_user_personality_traits(user_key: str) -> dict:
+    """从 user_personas 表读取性格特质"""
+    persona = get_user_persona(user_key)
+    traits_json = persona.get("self_personality_traits_json")
+    
+    if traits_json:
+        return json.loads(traits_json)
+    
+    return {}
+
+# 计算大五人格匹配分
+def calculate_big_five_match_score(
+    user_key1: str,
+    user_key2: str
+) -> dict:
+    """计算大五人格匹配分"""
+    traits1 = get_user_personality_traits(user_key1)
+    traits2 = get_user_personality_traits(user_key2)
+    
+    big_five1 = traits1.get("big_five", {}).get("scores", {})
+    big_five2 = traits2.get("big_five", {}).get("scores", {})
+    
+    if not big_five1 or not big_five2:
+        return {"score": None, "reason": "缺少大五人格数据"}
+    
+    # 计算各维度匹配分
+    extraversion_match = calculate_extraversion_match(
+        big_five1.get("extraversion", 50),
+        big_five2.get("extraversion", 50)
+    )
+    
+    neuroticism_match = calculate_neuroticism_match(
+        big_five1.get("neuroticism", 50),
+        big_five2.get("neuroticism", 50)
+    )
+    
+    conscientiousness_match = calculate_conscientiousness_match(
+        big_five1.get("conscientiousness", 50),
+        big_five2.get("conscientiousness", 50)
+    )
+    
+    openness_match = calculate_openness_match(
+        big_five1.get("openness", 50),
+        big_five2.get("openness", 50)
+    )
+    
+    agreeableness_match = calculate_agreeableness_match(
+        big_five1.get("agreeableness", 50),
+        big_five2.get("agreeableness", 50)
+    )
+    
+    # 综合匹配分
+    total_score = (
+        extraversion_match * 0.3 +
+        neuroticism_match * 0.3 +
+        conscientiousness_match * 0.2 +
+        openness_match * 0.1 +
+        agreeableness_match * 0.1
+    )
+    
+    return {
+        "score": total_score,
+        "dimension_scores": {
+            "extraversion": extraversion_match,
+            "neuroticism": neuroticism_match,
+            "conscientiousness": conscientiousness_match,
+            "openness": openness_match,
+            "agreeableness": agreeableness_match
+        }
+    }
+```
+
+### C.5 破冰话题生成
+
+#### C.5.1 话题生成规则
+
+根据双方大五人格差异，生成话题建议：
+
+```
+外向性差异大（用户内向，对方外向）：
+→ "你平时喜欢热闹还是安静的活动？"
+→ "你周末通常怎么过？在家还是出门？"
+
+神经质相似（都情绪稳定）：
+→ "你面对压力时会怎么处理？"
+→ "你觉得恋爱中最重要的是什么？"
+
+尽责性相似（都做事有计划）：
+→ "你做事喜欢提前计划还是随性？"
+→ "你对未来有什么规划？"
+
+开放性差异大：
+→ "你喜欢尝试新事物还是喜欢熟悉的？"
+→ "你最近有什么新的兴趣或爱好？"
+```
+
+#### C.5.2 话题数据结构
+
+```typescript
+interface IcebreakerTopic {
+  topicId: string;
+  topicContent: string;         // 话题内容
+  source: string;               // 来源维度（如：外向性差异）
+  reason: string;               // 为什么推荐这个话题
+  type: 'question' | 'discussion' | 'activity';
+  suitableFor: 'first_chat' | 'deep_chat' | 'conflict';
+}
+```
+
+### C.6 完整用户流程
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│               大五人格测评完整流程                            │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  1. 用户说："我想测测我的性格"                                │
+│     ↓                                                       │
+│  2. AI 返回测评介绍卡片                                     │
+│     └─────────────────────────────────────┐               │
+│     │ 📊 大五人格测试                       │               │
+│     │ 约5分钟 · 20题                       │               │
+│     │ [开始测评]                            │               │
+│     └─────────────────────────────────────┘               │
+│                                                             │
+│  3. 用户点 [开始测评]                                        │
+│     ↓                                                       │
+│  4. AI 返回第1题卡片（在对话界面中）                         │
+│     └─────────────────────────────────────┐               │
+│     │ 第1题/共20题                          │               │
+│     │ 你喜欢尝试新的餐厅吗？                │               │
+│     │ ○ A. 非常喜欢 ○ B. 喜欢 ○ C. 无所谓  │               │
+│     │ ○ D. 不太喜欢 ○ E. 非常不喜欢        │               │
+│     │ 进度：■○○○○○○○○○○○○○○○○○○○○          │               │
+│     └─────────────────────────────────────┘               │
+│                                                             │
+│  5. 用户连续答题（点选项 → 下一题卡片）                      │
+│     ↓                                                       │
+│  6. 答完4题后，显示反馈卡片                                  │
+│     └─────────────────────────────────────┐               │
+│     │ 💡 你的开放性：65分                   │               │
+│     │ 你愿意尝试新事物，但不会太冲动        │               │
+│     └─────────────────────────────────────┘               │
+│     （显示2秒后消失，继续答题）                              │
+│                                                             │
+│  7. 答完20题后，显示结果卡片                                 │
+│     └─────────────────────────────────────┐               │
+│     │ 🎉 测评完成！                         │               │
+│     │ "你是安静的观察者"                    │               │
+│     │ 开放性：65 ████████░░                 │               │
+│     │ 尽责性：78 █████████░                 │               │
+│     │ 外向性：35 ███░░░░░░░░                │               │
+│     │ 宜人性：72 ███████░░░                 │               │
+│     │ 神经质：28 ██░░░░░░░░░░               │               │
+│     │ [分享朋友圈] [查看匹配建议]           │               │
+│     └─────────────────────────────────────┘               │
+│                                                             │
+│  8. 等2秒后，显示AI解读卡片                                 │
+│     └─────────────────────────────────────┐               │
+│     │ AI 解读                               │               │
+│     │ "你是一个内向但稳重的人..."           │               │
+│     │ "建议你找一个外向性60-80的人..."      │               │
+│     └─────────────────────────────────────┘               │
+│                                                             │
+│  9. 测评结果写入偏好表                                       │
+│     ├─ user_personas.self_personality_traits_json           │
+│     └─ 后续匹配时使用这些数据                               │
+│                                                             │
+│  10. 用户选择下一步                                         │
+│     ├─ [分享朋友圈] → 生成分享卡片                          │
+│     ├─ [查看匹配建议] → 返回匹配建议卡片                    │
+│     └─ [继续聊天] → 回到正常对话                            │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+**附录 C 结束**
