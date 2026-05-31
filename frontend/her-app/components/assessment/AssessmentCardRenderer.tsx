@@ -19,7 +19,6 @@ export function AssessmentCardRenderer({
   onStart,
   onAnswer,
   onContinue,
-  onInterpretation,
   onContinueChat,
   onPrevious,
 }: {
@@ -27,7 +26,6 @@ export function AssessmentCardRenderer({
   onStart: () => void
   onAnswer: (answer: string) => void
   onContinue: () => void
-  onInterpretation: () => void
   onContinueChat: () => void
   onPrevious?: () => void
 }) {
@@ -39,7 +37,7 @@ export function AssessmentCardRenderer({
     case 'assessment_feedback':
       return <AssessmentFeedbackCard data={(card as AssessmentFeedbackCardType).feedback_data} onContinue={onContinue} />
     case 'assessment_result':
-      return <AssessmentResultCard data={(card as AssessmentResultCardType).result_data} onInterpretation={onInterpretation} />
+      return <AssessmentResultCard data={(card as AssessmentResultCardType).result_data} />
     case 'assessment_interpretation':
       return (
         <div className="rounded-3xl border border-border bg-card p-5 shadow-sm">
