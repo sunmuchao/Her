@@ -32,8 +32,10 @@ import { ErrorState } from './ui/error-state'
 import {
   answerAssessment,
   beginAssessment,
+  fetchAssessmentInterpretation,
   startAssessment,
   type AssessmentCard,
+  type AssessmentResultCard,
   type AssessmentQuestionCard,
 } from '@/lib/api/endpoints/assessment'
 
@@ -177,6 +179,27 @@ export default function DiscoverPage({
   const [assessmentBusy, setAssessmentBusy] = useState(false)
   const userKey = String(getProfileId() || getUserId() || '')
 
+  const ensureResultInterpretation = async (card: AssessmentCard): Promise<AssessmentCard> => {
+    if (card.card_type !== 'assessment_result' || card.result_data.interpretation_data || !userKey) {
+      return card
+    }
+    try {
+      const interpretation = await fetchAssessmentInterpretation({
+        assessmentId: card.assessment_id,
+        userKey,
+      })
+      return {
+        ...card,
+        result_data: {
+          ...card.result_data,
+          interpretation_data: interpretation.interpretation_data,
+        },
+      } satisfies AssessmentResultCard
+    } catch {
+      return card
+    }
+  }
+
   const openAssessmentCard = async () => {
     if (!userKey || assessmentBusy) return
     setAssessmentBusy(true)
@@ -307,7 +330,7 @@ export default function DiscoverPage({
                       answer,
                       userKey,
                     })
-                    setAssessmentCard(next)
+                    setAssessmentCard(await ensureResultInterpretation(next))
                   }}
                   onContinue={async () => {
                     if (assessmentCard.card_type !== 'assessment_feedback') return
