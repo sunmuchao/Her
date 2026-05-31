@@ -35,7 +35,7 @@ def _resolve_user_key(gateway: AssessmentGateway, environ: dict[str, Any], body:
 def rest_assessment_start(gateway: AssessmentGateway, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
     body = _parse_json_body(_read_body(environ))
     user_key = _resolve_user_key(gateway, environ, body)
-    assessment_type = str(body.get("assessment_type") or "big_five")
+    assessment_type = str(body.get("assessment_type") or "mbti_16")
     source = _default_profile_source()
     if not source:
         return 503, {"error": {"code": "source_not_configured", "message": "数据源未配置"}}

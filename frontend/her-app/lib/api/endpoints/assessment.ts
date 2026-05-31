@@ -2,7 +2,7 @@ import { gatewayJson, queryString } from '@/lib/api/client'
 
 export type AssessmentIntroCard = {
   card_type: 'assessment_intro'
-  assessment_type: 'big_five'
+  assessment_type: 'mbti_16'
   assessment_id: string
   intro_data: {
     title: string
@@ -41,6 +41,7 @@ export type AssessmentResultCard = {
   card_type: 'assessment_result'
   assessment_id: string
   result_data: {
+    type_code: string
     scores: Record<string, number>
     dimension_rows: Array<{
       key: string
@@ -78,7 +79,7 @@ export async function startAssessment(userKey: string): Promise<AssessmentIntroC
     includeAuth: true,
     body: JSON.stringify({
       user_key: userKey,
-      assessment_type: 'big_five',
+      assessment_type: 'mbti_16',
     }),
   })
 }
@@ -124,7 +125,7 @@ export async function fetchAssessmentInterpretation(params: {
 }
 
 export async function fetchPersonalityTraits(userKey: string) {
-  return gatewayJson<{ user_key: string; big_five: unknown; attachment: unknown; love_language: unknown }>(
+  return gatewayJson<{ user_key: string; mbti: unknown; attachment: unknown; love_language: unknown }>(
     `/v1/persona/personality-traits${queryString({ user_key: userKey })}`,
     { includeAuth: true },
   )
