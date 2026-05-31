@@ -67,7 +67,7 @@ AI Native 模式：
 
 | 测评名称 | 测评内容 | 选择理由 | 用户价值 | 实现方式 |
 |---------|---------|---------|---------|---------|
-| **大五人格测试** | 开放性、尽责性、外向性、宜人性、神经质五个维度 | 心理学界黄金标准，科学背书最强 | 了解性格底色，预测行为模式 | **精简版问卷（20题）** → 快速答题 → AI 个性化解读 |
+| **MBTI 16型人格** | 外向/内向(E/I)、感性/理性(S/N)、思考/情感(T/F)、判断/感知(J/P)四个维度 | 知名度高、用户接受度强、话题性强、有恋爱版(MBTI Dating) | 了解性格类型，知道恋爱中会吸引谁、抗拒谁 | **精简版问卷（20题）** → 快速答题 → AI 个性化解读 |
 | **依恋风格测验** | 安全型、焦虑型、回避型、恐惧型四种依恋类型 | 直接关联恋爱模式，预测关系质量 | 了解恋爱中的安全感来源 | **精简版问卷（12题）** → 快速答题 → AI 解读 + 匹配建议 |
 | **恋爱五种语言** | 肯定言词、精心时刻、接受礼物、服务行动、身体接触 | 实用性强，直接指导相处方式 | 知道怎么表达爱对方才舒服 | **精简版问卷（10题）** → 快速答题 → AI 解读 + 破冰话题 |
 
@@ -75,13 +75,26 @@ AI Native 模式：
 
 | 测评 | 原版题数 | 精简版题数 | 精简逻辑 | 完成时间 |
 |------|---------|-----------|---------|---------|
-| 大五人格 | 60题 | **20题** | 每维度4题，保留核心判断 | 约5分钟 |
+| MBTI | 60-90题 | **20题** | 每维度5题，直接判断类型 | 约5分钟 |
 | 依恋风格 | 36题 | **12题** | 每类型3题，直接判断类型 | 约3分钟 |
 | 恋爱语言 | 30题 | **10题** | 每语言2题，直接排序 | 约2分钟 |
 
+**为什么选择MBTI而非大五人格？**
+
+| 对比维度 | MBTI | 大五人格 |
+|---------|------|---------|
+| **用户接受度** | ✅ 高，用户都知道MBTI | ❌ 低，用户不熟悉 |
+| **话题性** | ✅ 强，"你是ENFP还是INFJ？"是常见话题 | ❌ 弱，五个维度不好聊 |
+| **传播性** | ✅ 强，16型人格容易分享 | ❌ 弱，分数不好分享 |
+| **恋爱场景** | ✅ 有MBTI Dating恋爱版 | ⚠️ 可用但不够直观 |
+| **科学性** | ⚠️ 学术界认可度较低 | ✅ 心理学界黄金标准 |
+| **匹配应用** | ✅ 16型可匹配（如ENFP+INFJ） | ✅ 五维度可量化匹配 |
+
+**结论**：MBTI更适合红娘场景（用户熟悉、话题性强、易传播），大五人格更学术但用户接受度低。
+
 **组合逻辑**:
 ```
-大五人格 → 性格底色（稳定特质）
+MBTI → 性格类型（16型，用户熟悉）
 依恋风格 → 拀恋安全感（关系模式）
 恋爱语言 → 沟通偏好（相处方式）
 ```
@@ -90,8 +103,8 @@ AI Native 模式：
 - **问卷部分**：传统问卷形式（预设选项），用户快速选择，无卡顿感
 - **答题过程**：后台异步计算结果，答题完成后结果已算好
 - **结果展示**：立即显示基础结果，AI 解读异步加载（等2秒出现）
-- **即时反馈**：答完每组题给小反馈（如答完外向性4题显示"你有点内向"）
-- **AI 解读**：结果出来后，AI 生成个性化解读（非模板），结合用户上下文
+- **即时反馈**：答完每组题给小反馈（如答完E/I维度显示"你是外向型"）
+- **AI 解读**：结果出来后，AI 生成个性化解读（恋爱版），结合用户上下文
 
 ---
 
@@ -560,21 +573,16 @@ interface MatchWeights {
 
 ### 6.2 匹配规则示例
 
-**大五人格匹配规则**:
+**MBTI匹配规则**:
 ```
-外向性:
-- 高外向 + 低外向 = 互补高分（一个带动气氛，一个享受安静）
-- 高外向 + 高外向 = 相似高分（一起热闹）
-- 低外向 + 低外向 = 相似中分（一起安静，但可能缺乏活力）
+ENFP + INFJ = 最佳匹配（理想主义者，深度共鸣）
+ENFP + INTJ = 最佳匹配（互补，创意+战略）
+INFJ + ENTP = 最佳匹配（深度对话，互相激发）
 
-神经质:
-- 低神经质 + 低神经质 = 高分（情绪都稳定）
-- 低神经质 + 高神经质 = 中分（一个稳住另一个）
-- 高神经质 + 高神经质 = 低分（容易互相引发情绪）
-
-开放性:
-- 高开放 + 高开放 = 高分（一起探索新事物）
-- 高开放 + 低开放 = 中分（可能产生分歧）
+E + I 互补 = 高分（能量平衡）
+S + N 互补 = 高分（务实+创意）
+T + F 互补 = 中分（逻辑+情感）
+J + P 差异 = 需磨合（计划型vs随性型）
 ```
 
 **依恋类型匹配规则**:
@@ -892,17 +900,28 @@ async def get_interpretation(assessment_id: str):
 
 ### 7.5 即时反馈设计
 
-**答完每4题后显示小反馈卡片**：
+**答完每5题后显示小反馈卡片（每个维度）**：
 
 ```
-答完开放性4题后：
+答完E/I维度5题后：
 
 ┌─────────────────────────────────────┐
 │  💡 小提示                           │
 │                                     │
-│  你的开放性：65分                    │
+│  你的能量来源：外向（E）             │
 │                                     │
-│  你愿意尝试新事物，但不会太冲动       │
+│  你喜欢社交，能量来自外部            │
+│                                     │
+└─────────────────────────────────────┘
+
+答完S/N维度5题后：
+
+┌─────────────────────────────────────┐
+│  💡 小提示                           │
+│                                     │
+│  你的信息获取：直觉（N）             │
+│                                     │
+│  你关注抽象概念和创新想法            │
 │                                     │
 └─────────────────────────────────────┘
 
@@ -938,7 +957,7 @@ async def get_interpretation(assessment_id: str):
 │   └─ 完成核心画像 → 解锁详细匹配分析                         │
 │                                                             │
 │  【匹配质量提升】实际价值奖励                                 │
-│   ├─ 完成大五人格 → 匹配质量提升10%                          │
+│   ├─ 完成MBTI → 匹配质量提升10%                              │
 │   ├─ 完成依恋风格 → 匹配质量提升10%                          │
 │   └─ 完成核心画像 → 匹配质量提升20%                          │
 │                                                             │
@@ -954,7 +973,7 @@ async def get_interpretation(assessment_id: str):
 
 | 做完的测评 | 即时奖励 | 功能奖励 | 匹配奖励 | 勋章奖励 |
 |-----------|---------|---------|---------|---------|
-| **大五人格** | 每答5题给小反馈 | - | 匹配质量 +10% | - |
+| **MBTI** | 每答5题给小反馈 | - | 匹配质量 +10% | - |
 | **依恋风格** | 每答4题给小反馈 | - | 匹配质量 +10% | - |
 | **恋爱语言** | 每答2题给小反馈 | 解锁"相处建议" | - | - |
 | **核心画像全部完成** | - | 解锁详细匹配分析 | 匹配质量 +20% | "自我认知达人"勋章 |
@@ -971,7 +990,7 @@ async def get_interpretation(assessment_id: str):
 ├─────────────────────────────────────┤
 │                                     │
 │  🏅 自我认知达人                     │
-│     完成核心画像（大五+依恋+恋爱语言） │
+│     完成核心画像（MBTI+依恋+恋爱语言） │
 │                                     │
 │  🎯 深度对话者                       │
 │     完成36个问题                     │
@@ -1141,9 +1160,10 @@ async def get_interpretation(assessment_id: str):
 | 问题 | 确认方案 |
 |------|---------|
 | **AI 响应慢怎么办？** | ✅ 问卷部分用传统形式（快速无卡顿），AI 只做结果解读 |
-| **问卷太长怎么办？** | ✅ 精简版（大五20题、依恋12题、恋爱语言10题），分批做 |
+| **问卷太长怎么办？** | ✅ 精简版（MBTI 20题、依恋12题、恋爱语言10题），分批做 |
 | **切入点怎么设计？** | ✅ 对话中自然切入 + 输入框加号入口（用户可主动测评） |
 | **如何激励用户做完？** | ✅ 即时反馈 + 结果有趣可分享 + 功能解锁 + 匹配质量提升 + 勋章成就 |
+| **MBTI vs 大五人格？** | ✅ 用MBTI替代大五人格（用户接受度高、话题性强、易传播） |
 
 ### 11.2 技术决策问题（待确认）
 
@@ -1207,110 +1227,193 @@ async def get_interpretation(assessment_id: str):
 
 > **已确认方案**：
 > - AI 响应慢 → 问卷用传统形式，AI 只做结果解读
-> - 问卷太长 → 精简版（大五20题、依恋12题、恋爱语言10题）
+> - 问卷太长 → 精简版（MBTI 20题、依恋12题、恋爱语言10题）
 > - 切入点 → 对话中自然切入 + 输入框加号入口
 > - 奖励机制 → 即时反馈 + 结果可分享 + 功能解锁 + 匹配提升 + 勋章成就
 > - **UI展示 → 对话中生成卡片UI，不跳转页面**
 > - **数据存储 → 写入现有 user_personas.self_personality_traits_json 字段**
+> - **核心测评 → MBTI替代大五人格（用户接受度高、话题性强）**
 >
 > **下一步**：确认技术决策问题（11.2 节），然后进入具体测评内容设计。
 
 ---
 
-## 附录 C：大五人格完整落地方案
+## 附录 C：MBTI 完整落地方案
 
-### C.1 大五人格五维度
+### C.1 MBTI 四个维度
 
 | 维度 | 中文名称 | 测什么 | 高分特征 | 低分特征 |
 |------|---------|--------|---------|---------|
-| **Openness** | 开放性 | 是否愿意尝试新事物 | 好奇、创意、冒险 | 传统、务实、保守 |
-| **Conscientiousness** | 尽责性 | 做事是否靠谱、有计划 | 负责、自律、有计划 | 随性、拖延、散漫 |
-| **Extraversion** | 外向性 | 是否外向、喜欢社交 | 热情、健谈、活跃 | 内向、安静、独处 |
-| **Agreeableness** | 宜人性 | 是否好相处、善良 | 善良、合作、信任 | 竞争、批判、冷漠 |
-| **Neuroticism** | 神经质 | 情绪是否稳定 | 焦虑、情绪化、敏感 | 稳定、冷静、从容 |
+| **Extraversion (E/I)** | 外向/内向 | 能量来源是外部还是内部 | E：热情、健谈、活跃 | I：内向、安静、独处 |
+| **Sensing (S/N)** | 感性/理性 | 获取信息的方式 | S：务实、细节、经验 | N：抽象、创意、想象 |
+| **Thinking (T/F)** | 思考/情感 | 做决策的方式 | T：逻辑、客观、分析 | F：情感、价值、和谐 |
+| **Judging (J/P)** | 判断/感知 | 生活态度 | J：计划、结构、决断 | P：灵活、随性、开放 |
+
+**16型人格组合**：
+- ENFP：竞选者（热情、创意、自由）
+- INFJ：提倡者（理想、洞察、坚定）
+- INTJ：建筑师（战略、独立、决断）
+- ENFJ：主人公（魅力、同理心、领导）
+- ...共16种类型
 
 ### C.2 精简版20题具体内容
 
-每维度4题，共20题：
+每维度5题，共20题：
 
-#### 开放性（4题）
-
-```
-第1题：你喜欢尝试新的餐厅、新的食物吗？
-A. 非常喜欢  B. 比较喜欢  C. 无所谓  D. 不太喜欢  E. 非常不喜欢
-
-第2题：你对艺术、音乐、文学感兴趣吗？
-A. 非常感兴趣  B. 比较感兴趣  C. 一般  D. 不太感兴趣  E. 完全不感兴趣
-
-第3题：你喜欢思考抽象的问题、探索新的想法吗？
-A. 非常喜欢  B. 比较喜欢  C. 一般  D. 不太喜欢  E. 非常不喜欢
-
-第4题：你更喜欢熟悉的事物，还是新奇的事物？
-A. 更喜欢新奇  B. 都可以  C. 无所谓  D. 更喜欢熟悉  E. 只喜欢熟悉
-```
-
-#### 尽责性（4题）
+#### 外向/内向（E/I）维度（5题）
 
 ```
-第5题：你做事前会制定详细的计划吗？
-A. 总是如此  B. 经常如此  C. 有时如此  D. 很少如此  E. 几乎从不
+第1题：你喜欢参加热闹的聚会吗？
+A. 非常喜欢（E）
+B. 比较喜欢（E）
+C. 无所谓
+D. 不太喜欢（I）
+E. 非常不喜欢（I）
 
-第6题：你能按时完成任务，不拖延吗？
-A. 总是如此  B. 经常如此  C. 有时如此  D. 很少如此  E. 几乎从不
+第2题：你容易和陌生人聊天交朋友吗？
+A. 非常容易（E）
+B. 比较容易（E）
+C. 一般
+D. 不太容易（I）
+E. 非常困难（I）
 
-第7题：你注重细节，做事追求完美吗？
-A. 总是如此  B. 经常如此  C. 有时如此  D. 很少如此  E. 几乎从不
+第3题：你更喜欢独处还是和一群人在一起？
+A. 更喜欢一群人（E）
+B. 都可以
+C. 无所谓
+D. 更喜欢独处（I）
+E. 只喜欢独处（I）
 
-第8题：你有明确的目标，并为之努力吗？
-A. 总是如此  B. 经常如此  C. 有时如此  D. 很少如此  E. 几乎从不
+第4题：你是一个活泼健谈的人吗？
+A. 非常活泼（E）
+B. 比较活泼（E）
+C. 一般
+D. 不太活泼（I）
+E. 非常安静（I）
+
+第5题：你在社交场合感到精力充沛还是疲惫？
+A. 精力充沛（E）
+B. 还可以
+C. 无所谓
+D. 有些疲惫（I）
+E. 非常疲惫（I）
 ```
 
-#### 外向性（4题）
+#### 感性/理性（S/N）维度（5题）
 
 ```
-第9题：你喜欢参加热闹的聚会、社交活动吗？
-A. 非常喜欢  B. 比较喜欢  C. 无所谓  D. 不太喜欢  E. 非常不喜欢
+第6题：你更关注具体细节还是抽象概念？
+A. 具体细节（S）
+B. 都关注
+C. 无所谓
+D. 抽象概念（N）
+E. 只关注抽象（N）
 
-第10题：你容易和陌生人聊天、交朋友吗？
-A. 非常容易  B. 比较容易  C. 一般  D. 不太容易  E. 非常困难
+第7题：你更喜欢务实的方法还是创新的想法？
+A. 务实方法（S）
+B. 都可以
+C. 无所谓
+D. 创新想法（N）
+E. 只喜欢创新（N）
 
-第11题：你更喜欢独处，还是和一群人在一起？
-A. 更喜欢一群人  B. 都可以  C. 无所谓  D. 更喜欢独处  E. 只喜欢独处
+第8题：你相信经验还是直觉？
+A. 经验（S）
+B. 都相信
+C. 无所谓
+D. 直觉（N）
+E. 只相信直觉（N）
 
-第12题：你是一个活泼、健谈的人吗？
-A. 非常活泼  B. 比较活泼  C. 一般  D. 不太活泼  E. 非常安静
+第9题：你更喜欢描述事实还是探讨理论？
+A. 描述事实（S）
+B. 都可以
+C. 无所谓
+D. 探讨理论（N）
+E. 只探讨理论（N）
+
+第10题：你关注当下还是未来可能性？
+A. 当下（S）
+B. 都关注
+C. 无所谓
+D. 未来可能性（N）
+E. 只关注未来（N）
 ```
 
-#### 宜人性（4题）
+#### 思考/情感（T/F）维度（5题）
 
 ```
-第13题：你愿意帮助别人，即使对自己没好处吗？
-A. 非常愿意  B. 比较愿意  C. 一般  D. 不太愿意  E. 非常不愿意
+第11题：你做决定时更依赖逻辑还是情感？
+A. 逻辑（T）
+B. 都依赖
+C. 无所谓
+D. 情感（F）
+E. 只依赖情感（F）
 
-第14题：你相信大多数人都是善良的、值得信任的吗？
-A. 非常相信  B. 比较相信  C. 一般  D. 不太相信  E. 完全不相信
+第12题：你更看重公平公正还是人际和谐？
+A. 公平公正（T）
+B. 都看重
+C. 无所谓
+D. 人际和谐（F）
+E. 只看重和谐（F）
 
-第15题：你避免和别人发生冲突，愿意妥协吗？
-A. 总是如此  B. 经常如此  C. 有时如此  D. 很少如此  E. 几乎从不
+第13题：你批评别人时会直接指出还是委婉表达？
+A. 直接指出（T）
+B. 都可以
+C. 无所谓
+D. 委婉表达（F）
+E. 避免批评（F）
 
-第16题：你是一个善良、体贴的人吗？
-A. 非常善良  B. 比较善良  C. 一般  D. 不太善良  E. 非常冷漠
+第14题：你更看重结果还是过程感受？
+A. 结果（T）
+B. 都看重
+C. 无所谓
+D. 过程感受（F）
+E. 只看重感受（F）
+
+第15题：你觉得规则重要还是人情重要？
+A. 规则重要（T）
+B. 都重要
+C. 无所谓
+D. 人情重要（F）
+E. 只看重人情（F）
 ```
 
-#### 神经质（4题）
+#### 判断/感知（J/P）维度（5题）
 
 ```
-第17题：你容易感到焦虑、紧张吗？
-A. 经常如此  B. 有时如此  C. 偶尔如此  D. 很少如此  E. 几乎从不
+第16题：你做事前会制定详细计划吗？
+A. 总是制定（J）
+B. 经常制定（J）
+C. 有时制定
+D. 很少制定（P）
+E. 几乎从不（P）
 
-第18题：你情绪波动大吗？（容易生气、伤心、情绪化）
-A. 经常如此  B. 有时如此  C. 偶尔如此  D. 很少如此  E. 几乎从不
+第17题：你喜欢按计划行事还是随机应变？
+A. 按计划（J）
+B. 都可以
+C. 无所谓
+D. 随机应变（P）
+E. 只喜欢随机（P）
 
-第19题：你容易感到沮丧、失落吗？
-A. 经常如此  B. 有时如此  C. 偶尔如此  D. 很少如此  E. 几乎从不
+第18题：你能按时完成任务不拖延吗？
+A. 总是如此（J）
+B. 经常如此（J）
+C. 有时如此
+D. 很少如此（P）
+E. 几乎从不（P）
 
-第20题：你面对压力时能保持冷静吗？
-A. 非常冷静  B. 比较冷静  C. 一般  D. 不太冷静  E. 非常焦虑
+第19题：你喜欢结构化的生活还是灵活的生活？
+A. 结构化（J）
+B. 都可以
+C. 无所谓
+D. 灵活的（P）
+E. 只喜欢灵活（P）
+
+第20题：你做决定时果断还是犹豫？
+A. 果断（J）
+B. 都可以
+C. 无所谓
+D. 犹豫（P）
+E. 非常犹豫（P）
 ```
 
 ### C.3 数据存储：写入现有偏好表
@@ -1329,17 +1432,23 @@ COMMENT '性格特质测评结果（JSON格式，包含大五人格、依恋风�
 ```json
 // self_personality_traits_json 存储内容示例
 {
-  "big_five": {
+  "mbti": {
     "assessed_at": "2026-05-31T10:00:00Z",
-    "scores": {
-      "openness": 65,
-      "conscientiousness": 78,
-      "extraversion": 35,
-      "agreeableness": 72,
-      "neuroticism": 28
+    "type": "ENFP",
+    "dimensions": {
+      "EI": "E",  // 外向
+      "SN": "N",  // 直觉
+      "TF": "F",  // 情感
+      "JP": "P"   // 感知
     },
-    "labels": ["安静的观察者", "稳重靠谱", "内心细腻"],
-    "confidence": 0.75,
+    "scores": {
+      "EI": 70,   // 外向程度 (0-100, >50 = E)
+      "SN": 65,   // 直觉程度 (0-100, >50 = N)
+      "TF": 75,   // 情感程度 (0-100, >50 = F)
+      "JP": 60    // 感知程度 (0-100, >50 = P)
+    },
+    "labels": ["竞选者", "热情创意", "自由灵魂"],
+    "confidence": 0.80,
     "version": "v1.0"
   },
   
@@ -1406,77 +1515,65 @@ async def save_personality_traits_to_persona(
         source_channel="assessment"
     )
 
-# 具体写入大五人格
-async def save_big_five_to_persona(
+# 具体写入MBTI
+async def save_mbti_to_persona(
     user_key: str,
+    mbti_type: str,  # 'ENFP', 'INFJ', etc.
+    dimensions: dict,
     scores: dict,
     labels: list
 ):
     """
-    写入大五人格测评结果
+    写入MBTI测评结果
     """
     traits_data = {
         "assessed_at": datetime.now().isoformat(),
-        "scores": scores,
+        "type": mbti_type,
+        "dimensions": dimensions,  # {"EI": "E", "SN": "N", "TF": "F", "JP": "P"}
+        "scores": scores,          # {"EI": 70, "SN": 65, "TF": 75, "JP": 60}
         "labels": labels,
-        "confidence": 0.75,  # 精简版可信度
+        "confidence": 0.80,
         "version": "v1.0"
     }
     
     await save_personality_traits_to_persona(
         user_key,
-        "big_five",
+        "mbti",
         traits_data
     )
 ```
 
 ### C.4 匹配算法应用
 
-#### C.4.1 匹配权重设计
+#### C.4.1 MBTI匹配规则
 
-```
-总体匹配分 = 
-  外向性匹配分 × 0.3
-  + 尽责性匹配分 × 0.2
-  + 神经质匹配分 × 0.3
-  + 开放性匹配分 × 0.1
-  + 宜人性匹配分 × 0.1
+**MBTI 16型人格恋爱匹配表**：
 
-权重解释：
-- 外向性权重高（0.3）：影响相处方式，内向+外向=互补高分
-- 神经质权重高（0.3）：影响关系稳定性，情绪稳定=高分
-- 尽责性权重中等（0.2）：影响生活规划，相似=高分
-- 开放性权重低（0.1）：影响兴趣爱好，差异可以互补
-- 宜人性权重低（0.1）：影响相处融洽，相似=高分
-```
+| 你的类型 | 最佳匹配 | 良好匹配 | 可能冲突 |
+|---------|---------|---------|---------|
+| **ENFP** | INFJ, INTJ | ENFJ, INFP, ENTP | ISTJ, ESTJ |
+| **INFJ** | ENFP, ENTP | INFP, INTJ, ENFJ | ESTP, ESFP |
+| **INTJ** | ENFP, ENTP | INFJ, INTP, ENTJ | ESFP, ESTP |
+| **ENTJ** | INFP, INTJ | ENTP, ENTJ, INFJ | ISFP, ESFP |
+| **ENFJ** | INFP, INTJ | ENFP, INFJ, ENTP | ISTP, ESTP |
+| **INFP** | ENFJ, ENTJ | INFJ, ENFP, INTJ | ESTJ, ESTP |
+| **INTP** | ENTJ, ENFJ | INTJ, INFP, ENTP | ESFJ, ESTJ |
+| **ENTP** | INFJ, INTJ | ENFP, INTP, ENTJ | ISFJ, ESFJ |
+| **ESFJ** | ISFP, INFP | ESFP, ESTJ, ISFJ | INTP, ENTJ |
+| **ISFJ** | ESFP, ENFP | ISFP, ESFJ, INFJ | ENTP, INTP |
+| **ESFP** | ISFJ, INFJ | ESFJ, ISFP, ENFP | INTJ, ENTJ |
+| **ISFP** | ESFJ, ENFJ | ISFJ, ESFP, INFP | ENTJ, ESTJ |
+| **ESTJ** | ISTP, INTP | ESTP, ESFJ, ISTJ | INFP, ENFP |
+| **ISTJ** | ESTP, ESFP | ISTP, ESTJ, ISFJ | ENFP, ENTP |
+| **ESTP** | ISTJ, INFJ | ESTJ, ESFP, ISTP | INFJ, INTJ |
+| **ISTP** | ESTJ, ENFJ | ISTJ, ESTP, INTP | ENFJ, INFJ |
 
-#### C.4.2 各维度匹配逻辑
+**匹配逻辑**：
+- **最佳匹配**：通常是"互补型"（E配I、S配N、T配F、J配P中的部分互补）
+- **良好匹配**：相似或部分互补
+- **可能冲突**：维度完全相反或生活方式差异太大
 
-**外向性匹配**：
-```
-用户A外向性：35（内向）
-用户B外向性：70（外向）
-
-差值 = |35 - 70| = 35
-互补评分：差值在20-50之间 = 90分（互补高分）
-
-公式：
-差值在20-50 → 匹配分 = 90（互补）
-差值 < 20 → 匹配分 = 70（相似）
-差值 > 50 → 匹配分 = 50（差异太大）
-```
-
-**神经质匹配**：
-```
-用户A神经质：28（稳定）
-用户B神经质：30（稳定）
-
-都低 → 匹配分 = 95（最健康组合）
-一高一低 → 匹配分 = 70（一个稳住另一个）
-都高 → 匹配分 = 40（互相引发情绪）
-```
-
-#### C.4.3 匹配实现代码
+#### C.4.2 匹配算法实现
 
 ```python
 # 读取性格特质用于匹配
@@ -1490,66 +1587,87 @@ def get_user_personality_traits(user_key: str) -> dict:
     
     return {}
 
-# 计算大五人格匹配分
-def calculate_big_five_match_score(
+# 计算MBTI匹配分
+def calculate_mbti_match_score(
     user_key1: str,
     user_key2: str
 ) -> dict:
-    """计算大五人格匹配分"""
+    """计算MBTI匹配分"""
     traits1 = get_user_personality_traits(user_key1)
     traits2 = get_user_personality_traits(user_key2)
     
-    big_five1 = traits1.get("big_five", {}).get("scores", {})
-    big_five2 = traits2.get("big_five", {}).get("scores", {})
+    mbti1 = traits1.get("mbti", {})
+    mbti2 = traits2.get("mbti", {})
     
-    if not big_five1 or not big_five2:
-        return {"score": None, "reason": "缺少大五人格数据"}
+    type1 = mbti1.get("type")  # 如 "ENFP"
+    type2 = mbti2.get("type")  # 如 "INFJ"
     
-    # 计算各维度匹配分
-    extraversion_match = calculate_extraversion_match(
-        big_five1.get("extraversion", 50),
-        big_five2.get("extraversion", 50)
-    )
+    if not type1 or not type2:
+        return {"score": None, "reason": "缺少MBTI数据"}
     
-    neuroticism_match = calculate_neuroticism_match(
-        big_five1.get("neuroticism", 50),
-        big_five2.get("neuroticism", 50)
-    )
+    # 查表匹配
+    match_result = MBTI_MATCH_TABLE.get(type1, {})
     
-    conscientiousness_match = calculate_conscientiousness_match(
-        big_five1.get("conscientiousness", 50),
-        big_five2.get("conscientiousness", 50)
-    )
+    if type2 in match_result.get("best_match", []):
+        score = 95
+        match_type = "最佳匹配"
+    elif type2 in match_result.get("good_match", []):
+        score = 80
+        match_type = "良好匹配"
+    elif type2 in match_result.get("possible_conflict", []):
+        score = 40
+        match_type = "可能冲突"
+    else:
+        # 中等匹配（不在表中）
+        score = 60
+        match_type = "中等匹配"
     
-    openness_match = calculate_openness_match(
-        big_five1.get("openness", 50),
-        big_five2.get("openness", 50)
-    )
+    # 细化维度匹配分析
+    dim1 = mbti1.get("dimensions", {})  # {"EI": "E", "SN": "N", "TF": "F", "JP": "P"}
+    dim2 = mbti2.get("dimensions", {})
     
-    agreeableness_match = calculate_agreeableness_match(
-        big_five1.get("agreeableness", 50),
-        big_five2.get("agreeableness", 50)
-    )
-    
-    # 综合匹配分
-    total_score = (
-        extraversion_match * 0.3 +
-        neuroticism_match * 0.3 +
-        conscientiousness_match * 0.2 +
-        openness_match * 0.1 +
-        agreeableness_match * 0.1
-    )
+    # 维度互补/相似分析
+    ei_match = analyze_dimension_match(dim1.get("EI"), dim2.get("EI"), "EI")
+    sn_match = analyze_dimension_match(dim1.get("SN"), dim2.get("SN"), "SN")
+    tf_match = analyze_dimension_match(dim1.get("TF"), dim2.get("TF"), "TF")
+    jp_match = analyze_dimension_match(dim1.get("JP"), dim2.get("JP"), "JP")
     
     return {
-        "score": total_score,
-        "dimension_scores": {
-            "extraversion": extraversion_match,
-            "neuroticism": neuroticism_match,
-            "conscientiousness": conscientiousness_match,
-            "openness": openness_match,
-            "agreeableness": agreeableness_match
-        }
+        "score": score,
+        "match_type": match_type,
+        "dimension_analysis": {
+            "EI": ei_match,  # "互补" 或 "相似"
+            "SN": sn_match,
+            "TF": tf_match,
+            "JP": jp_match
+        },
+        "analysis": generate_match_analysis(type1, type2, match_type)
     }
+
+# 分析维度匹配
+def analyze_dimension_match(dim1: str, dim2: str, dimension: str):
+    """
+    分析单个维度的匹配
+    
+    某些维度互补更好（如E/I），某些维度相似更好（如J/P）
+    """
+    if dim1 == dim2:
+        return "相似"
+    else:
+        # E/I互补是好的
+        if dimension == "EI":
+            return "互补（能量来源不同，互相平衡）"
+        # S/N互补也是好的（务实+创意）
+        elif dimension == "SN":
+            return "互补（务实+创意）"
+        # T/F互补可以（逻辑+情感）
+        elif dimension == "TF":
+            return "互补（逻辑+情感）"
+        # J/P差异可能导致生活方式冲突
+        elif dimension == "JP":
+            return "差异（计划型vs随性型，需要磨合）"
+        else:
+            return "差异"
 ```
 
 ### C.5 破冰话题生成

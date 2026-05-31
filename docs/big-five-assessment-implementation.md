@@ -1,6 +1,6 @@
 # 大五人格测试完整落地方案
 
-> **文档版本**: v1.0
+> **文档版本**: v1.1
 > **创建日期**: 2026-05-31
 > **所属项目**: Her 红娘测评体系
 > **测评类型**: 核心画像层（P0 - 必做）
@@ -32,12 +32,118 @@
 
 | 设计要点 | 方案 |
 |---------|------|
-| **UI展示方式** | 对话中生成卡片UI，不跳转页面 |
+| **触发方式** | AI 发现画像缺失 → 自然引导 → 用户说不知道 → 推荐测评 |
+| **提问方式** | 硬编码20题（保证响应速度），用卡片UI展示 |
+| **UI展示** | 对话中生成卡片UI，不跳转页面 |
 | **问卷长度** | 精简版20题（原版60题），约5分钟完成 |
 | **数据存储** | 写入现有偏好表 `user_personas.self_personality_traits_json` |
-| **即时反馈** | 答完每4题显示维度反馈 |
-| **AI解读** | 结果出来后，AI生成个性化解读（等2秒） |
-| **匹配应用** | 性格匹配分用于匹配算法增强 |
+| **匹配应用** | 存入数据库后，AI 自主读取判断，不硬编码规则 |
+
+### 1.4 自然引导设计（通过提示词 + Skill 实现）
+
+**核心思路**：不硬编码流程，让 AI 自己判断时机并引导
+
+**实现方式**：
+```
+提示词告诉 AI：
+├─ 什么时候需要引导用户做测评
+├─ 如何自然地引导用户
+└─ 用户同意后调用 Skill 开始测评
+
+Skill 提供：
+├─ 推荐测评的能力
+├─ 开始测评的能力
+└─ 返回测评卡片的能力
+```
+
+### 1.4.1 提示词设计
+
+**在 AI 的系统提示词中加入**：
+
+```markdown
+## 性格画像引导
+
+当以下情况发生时，考虑引导用户完成性格测评：
+
+1. **画像缺失**：用户的性格画像（大五人格）缺失或未完成
+2. **相关话题**：用户聊到性格、兴趣爱好、生活方式等话题
+3. **匹配请求**：用户请求匹配，但性格画像缺失
+
+**引导方式**：
+- 不要直接说"你需要做测评"
+- 先自然地问用户觉得自己是什么性格
+- 如果用户说"不知道/不清楚/不确定"，自然推荐测评
+- 说明测评的好处（了解自己、匹配更精准）
+- 说明测评很短（约5分钟）
+
+**用户同意后**：
+- 调用 `start_assessment` skill 开始测评
+
+**示例对话**：
+用户："我喜欢看书"
+AI："那你觉得自己是内向还是外向的人？"
+用户："我不太清楚"
+AI："很多人都不太了解自己的性格。要不做个小测试？
+     大概5分钟，我帮你看看你的性格类型，
+     这样以后匹配会更准确。"
+用户："好啊"
+AI：调用 `start_assessment` skill → 返回测评卡片
+```
+
+### 1.4.2 Skill 设计
+
+**一个 Skill：开始测评（推荐 + 开始合并）**
+
+```typescript
+// skill: start_assessment
+{
+  name: "start_assessment",
+  description: "开始性格测评。当用户同意做测评，或需要推荐测评时调用。",
+  parameters: {
+    assessment_type: {
+      type: "string",
+      enum: ["big_five", "attachment", "love_language"],
+      description: "测评类型"
+    }
+  },
+  returns: {
+    card_type: "assessment_intro",
+    // 返回测评介绍卡片，包含开始按钮
+  }
+}
+```
+
+**说明**：
+- 推荐测评和开始测评合并为一个 Skill
+- AI 在提示词里自己判断什么时候调用
+- 调用后返回测评介绍卡片
+- 用户点"开始"后进入第一题
+
+### 1.4.3 AI 自主判断流程
+
+```
+用户与 AI 对话
+    ↓
+AI 根据提示词判断：
+    ├─ 是否需要引导测评？（画像缺失 + 相关话题）
+    ├─ 什么时候引导？（聊到性格话题时）
+    ├─ 怎么引导？（先问用户觉得自己什么性格）
+    └─ 用户说不知道 → 自然推荐 → 用户同意 → 调用 skill
+    ↓
+AI 调用 start_assessment skill
+    ↓
+返回测评介绍卡片
+    ↓
+用户点"开始"
+    ↓
+进入第一题 → 开始测评
+```
+
+**AI 自己决定**：
+- 什么时候引导（不固定时机）
+- 怎么引导（不固定话术）
+- 说什么话（个性化表达）
+- 用户同意后调用 start_assessment skill
 
 ---
 
@@ -612,363 +718,92 @@ def get_big_five_scores(user_key: str) -> dict:
 
 ---
 
-## 五、匹配算法应用
+## 五、数据使用说明
 
-### 5.1 匹配权重设计
+### 5.1 AI 匹配时的使用方式
 
-```
-总体性格匹配分 = 
-  外向性匹配分 × 0.30
-  + 神经质匹配分 × 0.30
-  + 尽责性匹配分 × 0.20
-  + 开放性匹配分 × 0.10
-  + 宜人性匹配分 × 0.10
-
-权重解释：
-├─ 外向性权重高（0.30）：直接影响相处方式，内向+外向=互补高分
-├─ 神经质权重高（0.30）：直接影响关系稳定性，情绪稳定=高分
-├─ 尽责性权重中（0.20）：影响生活规划，相似=高分
-├─ 开放性权重低（0.10）：影响兴趣爱好，差异可以互补
-└─ 宜人性权重低（0.10）：影响相处融洽，相似=高分
-```
-
-### 5.2 各维度匹配逻辑
-
-#### 外向性匹配
+**核心原则**：不硬编码匹配规则，让 AI 自主判断
 
 ```
-匹配原则：互补优先，相似次之，差异太大最低
+数据存储后，AI 在匹配时的流程：
 
-计算公式：
-diff = |用户A外向性 - 用户B外向性|
-
-if diff 在 20-50 之间：
-    匹配分 = 90  # 互补高分（内向+外向）
-elif diff < 20：
-    匹配分 = 70  # 相似（都内向或都外向）
-else:
-    匹配分 = 50  # 差异太大
-
-示例：
-用户A外向35（内向）+ 用户B外向70（外向）→ diff=35 → 匹配分90
-用户A外向35（内向）+ 用户B外向40（偏内向）→ diff=5 → 匹配分70
-用户A外向10（极度内向）+ 用户B外向90（极度外向）→ diff=80 → 匹配分50
+用户发起匹配请求
+    ↓
+AI 读取双方画像数据
+    ├─ user_personas.self_personality_traits_json
+    ├─ 包括大五人格、依恋风格、恋爱语言等
+    └─ AI 获取完整画像
+    ↓
+AI 自主判断匹配度
+    ├─ AI 理解双方性格特征
+    ├─ AI 分析是否合适
+    ├─ AI 生成匹配建议
+    └─ AI 给出匹配分（AI 自主决定）
+    ↓
+返回匹配结果
 ```
 
-#### 神经质匹配
+### 5.2 AI 如何使用画像数据
 
+AI 在匹配时会：
+- 读取双方的 `self_personality_traits_json`
+- 理解双方的性格特征（如："内向"、"情绪稳定"）
+- 自主判断是否匹配（不是按硬编码规则）
+- 给出个性化建议（如："你们互补，他能带动气氛"）
+
+**示例**：
 ```
-匹配原则：都低最好，一高一低次之，都高最差
+AI 看到：
+用户A：外向35、尽责78、神经28 → 内向、稳重、情绪稳定
+用户B：外向70、尽责75、神经30 → 外向、稳重、情绪稳定
 
-计算公式：
-avg_neuroticism = (用户A神经质 + 用户B神经质) / 2
-
-if avg_neuroticism < 30：
-    匹配分 = 95  # 都情绪稳定（最健康组合）
-elif 用户A神经质 < 30 and 用户B神经质 > 60：
-    匹配分 = 70  # 一个稳住另一个
-elif 用户A神经质 > 60 and 用户B神经质 < 30：
-    匹配分 = 70  # 一个稳住另一个
-elif avg_neuroticism > 60：
-    匹配分 = 40  # 都情绪不稳定（互相引发情绪）
-else：
-    匹配分 = 75  # 都中等
-
-示例：
-用户A神经28 + 用户B神经30 → avg=29 → 匹配分95
-用户A神经28 + 用户B神经70 → 匹配分70（稳住对方）
-用户A神经70 + 用户B神经75 → avg=72.5 → 匹配分40
+AI 自主判断：
+"你们性格互补，你内向他外向，他能带动气氛。
+ 你们都情绪稳定，相处会很舒服。
+ 匹配度：85分"
 ```
 
-#### 尽责性匹配
+### 5.3 只需要存储，不需要规则
 
-```
-匹配原则：相似优先，适度差异次之
+**我们只需要做**：
+- 测评结果存入数据库 ✓
+- AI 能读取这些数据 ✓
 
-计算公式：
-diff = |用户A尽责性 - 用户B尽责性|
+**不需要做**：
+- ❌ 硬编码匹配规则（如：外向差20-50=90分）
+- ❌ 预设匹配算法
+- ❌ 固定的匹配建议模板
 
-if diff < 15：
-    匹配分 = 85  # 相似（都做事有计划）
-elif diff 在 15-30：
-    匹配分 = 65  # 适度差异（互补）
-else：
-    匹配分 = 50  # 差异太大（可能冲突）
-
-示例：
-用户A尽责78 + 用户B尽责72 → diff=6 → 匹配分85
-用户A尽责78 + 用户B尽责50 → diff=28 → 匹配分65
-用户A尽责90 + 用户B尽责20 → diff=70 → 匹配分50
-```
-
-#### 开放性匹配
-
-```
-匹配原则：差异可以互补，不太重要
-
-计算公式：
-diff = |用户A开放性 - 用户B开放性|
-
-if diff < 30：
-    匹配分 = 80  # 相似或适度差异
-else：
-    匹配分 = 60  # 差异大（可以互补）
-```
-
-#### 宜人性匹配
-
-```
-匹配原则：相似优先，都高最好
-
-计算公式：
-avg_agreeableness = (用户A宜人性 + 用户B宜人性) / 2
-
-if avg_agreeableness > 60：
-    匹配分 = 85  # 都善良好相处
-elif diff < 20：
-    匹配分 = 70  # 相似
-else：
-    匹配分 = 60  # 差异大
-```
-
-### 5.3 匹配算法实现
-
-```python
-def calculate_big_five_match_score(
-    user_key1: str,
-    user_key2: str
-) -> dict:
-    """
-    计算大五人格匹配分
-    
-    Returns:
-        dict: {
-            "score": 总体匹配分(0-100),
-            "dimension_scores": 各维度匹配分,
-            "analysis": AI分析文本,
-            "has_data": 是否双方都有数据
-        }
-    """
-    # 获取双方大五人格得分
-    scores1 = get_big_five_scores(user_key1)
-    scores2 = get_big_five_scores(user_key2)
-    
-    if not scores1 or not scores2:
-        return {
-            "score": None,
-            "has_data": False,
-            "reason": "缺少大五人格数据"
-        }
-    
-    # 计算各维度匹配分
-    extraversion_match = calculate_extraversion_match(
-        scores1.get("extraversion", 50),
-        scores2.get("extraversion", 50)
-    )
-    
-    neuroticism_match = calculate_neuroticism_match(
-        scores1.get("neuroticism", 50),
-        scores2.get("neuroticism", 50)
-    )
-    
-    conscientiousness_match = calculate_conscientiousness_match(
-        scores1.get("conscientiousness", 50),
-        scores2.get("conscientiousness", 50)
-    )
-    
-    openness_match = calculate_openness_match(
-        scores1.get("openness", 50),
-        scores2.get("openness", 50)
-    )
-    
-    agreeableness_match = calculate_agreeableness_match(
-        scores1.get("agreeableness", 50),
-        scores2.get("agreeableness", 50)
-    )
-    
-    # 计算总体匹配分
-    total_score = (
-        extraversion_match * 0.30 +
-        neuroticism_match * 0.30 +
-        conscientiousness_match * 0.20 +
-        openness_match * 0.10 +
-        agreeableness_match * 0.10
-    )
-    
-    # 生成分析文本
-    analysis = generate_match_analysis(
-        scores1, scores2,
-        {
-            "extraversion": extraversion_match,
-            "neuroticism": neuroticism_match,
-            "conscientiousness": conscientiousness_match,
-            "openness": openness_match,
-            "agreeableness": agreeableness_match
-        }
-    )
-    
-    return {
-        "score": round(total_score, 1),
-        "dimension_scores": {
-            "extraversion": extraversion_match,
-            "neuroticism": neuroticism_match,
-            "conscientiousness": conscientiousness_match,
-            "openness": openness_match,
-            "agreeableness": agreeableness_match
-        },
-        "analysis": analysis,
-        "has_data": True
-    }
-
-def generate_match_analysis(scores1: dict, scores2: dict, dimension_matches: dict) -> str:
-    """
-    生成匹配分析文本
-    """
-    analysis_parts = []
-    
-    # 外向性分析
-    ext_diff = abs(scores1["extraversion"] - scores2["extraversion"])
-    if ext_diff > 20 and ext_diff < 50:
-        if scores1["extraversion"] < scores2["extraversion"]:
-            analysis_parts.append("你内向，对方外向，你们是互补组合，对方能带动气氛。")
-        else:
-            analysis_parts.append("你外向，对方内向，你们是互补组合，你能带动气氛。")
-    elif ext_diff < 20:
-        analysis_parts.append("你们性格相似，都偏内向或都偏外向。")
-    
-    # 神经质分析
-    neuro_avg = (scores1["neuroticism"] + scores2["neuroticism"]) / 2
-    if neuro_avg < 30:
-        analysis_parts.append("你们情绪都很稳定，这是最健康的组合。")
-    elif scores1["neuroticism"] < 30 and scores2["neuroticism"] > 60:
-        analysis_parts.append("你情绪稳定，对方情绪敏感，你能给对方安全感。")
-    elif neuro_avg > 60:
-        analysis_parts.append("你们情绪都较敏感，可能需要更多互相理解。")
-    
-    # 尽责性分析
-    con_diff = abs(scores1["conscientiousness"] - scores2["conscientiousness"])
-    if con_diff < 15:
-        analysis_parts.append("你们做事风格相似，都很有计划或都比较随性。")
-    elif con_diff > 30:
-        analysis_parts.append("你们做事风格差异较大，可能需要磨合。")
-    
-    return " ".join(analysis_parts)
-```
+**AI 会自己处理**：
+- AI 根据画像数据自主判断匹配度
+- AI 生成个性化的匹配建议
+- AI 可能考虑我们没有想到的因素
 
 ---
 
-## 六、破冰话题生成
+## 六、总结
 
-### 6.1 话题生成规则
+**本方案核心要点**：
 
-根据双方大五人格差异，生成个性化话题建议：
+1. **对话中生成UI**：测评卡片在对话界面中展示，不跳转页面
+2. **精简版20题**：每维度4题，约5分钟完成
+3. **写入现有偏好表**：`user_personas.self_personality_traits_json`
+4. **AI 自主判断匹配**：不硬编码规则，AI 根据画像自主判断
 
-| 维度差异 | 话题建议 |
-|---------|---------|
-| **外向性差异大** | "你平时喜欢热闹还是安静的活动？"<br>"你周末通常怎么过？在家还是出门？" |
-| **神经质相似（都稳定）** | "你面对压力时会怎么处理？"<br>"你觉得恋爱中最重要的是什么？" |
-| **尽责性相似** | "你做事喜欢提前计划还是随性？"<br>"你对未来有什么规划？" |
-| **开放性差异大** | "你喜欢尝试新事物还是喜欢熟悉的？"<br>"你最近有什么新的兴趣或爱好？" |
-| **宜人性差异** | "你觉得恋爱中怎么处理分歧比较好？"<br>"你是一个愿意妥协的人吗？" |
+**不需要我们设计的**：
+- ❌ 硬编码的匹配规则
+- ❌ 固定的匹配算法
+- ❌ 预设的话题生成逻辑
 
-### 6.2 话题数据结构
-
-```typescript
-interface IcebreakerTopic {
-  topic_id: string;
-  topic_content: string;         // 话题内容
-  source_dimension: string;      // 来源维度
-  reason: string;                // 为什么推荐
-  type: 'question' | 'discussion';
-  priority: number;              // 推荐优先级（0-100）
-}
-```
-
-### 6.3 话题生成实现
-
-```python
-def generate_icebreaker_topics(
-    user_key1: str,
-    user_key2: str,
-    limit: int = 3
-) -> list:
-    """
-    根据大五人格差异生成破冰话题
-    
-    Args:
-        user_key1: 用户A
-        user_key2: 用户B
-        limit: 返回话题数量
-    
-    Returns:
-        list: IcebreakerTopic列表
-    """
-    scores1 = get_big_five_scores(user_key1)
-    scores2 = get_big_five_scores(user_key2)
-    
-    if not scores1 or not scores2:
-        return get_default_topics(limit)
-    
-    topics = []
-    
-    # 外向性差异话题
-    ext_diff = abs(scores1["extraversion"] - scores2["extraversion"])
-    if ext_diff > 20:
-        topics.append({
-            "topic_id": "ext_1",
-            "topic_content": "你平时喜欢热闹还是安静的活动？",
-            "source_dimension": "extraversion",
-            "reason": f"你们外向性差异{ext_diff}分，可以聊聊相处方式",
-            "type": "question",
-            "priority": 90
-        })
-    
-    # 神经质话题
-    neuro_avg = (scores1["neuroticism"] + scores2["neuroticism"]) / 2
-    if neuro_avg < 30:
-        topics.append({
-            "topic_id": "neuro_1",
-            "topic_content": "你面对压力时会怎么处理？",
-            "source_dimension": "neuroticism",
-            "reason": "你们情绪都稳定，可以聊聊应对压力的方式",
-            "type": "question",
-            "priority": 85
-        })
-    
-    # 尽责性话题
-    con_diff = abs(scores1["conscientiousness"] - scores2["conscientiousness"])
-    if con_diff < 20:
-        topics.append({
-            "topic_id": "con_1",
-            "topic_content": "你做事喜欢提前计划还是随性？",
-            "source_dimension": "conscientiousness",
-            "reason": "你们做事风格相似，可以聊聊生活规划",
-            "type": "question",
-            "priority": 80
-        })
-    
-    # 开放性话题
-    open_diff = abs(scores1["openness"] - scores2["openness"])
-    if open_diff > 30:
-        topics.append({
-            "topic_id": "open_1",
-            "topic_content": "你喜欢尝试新事物还是喜欢熟悉的？",
-            "source_dimension": "openness",
-            "reason": "你们开放性差异大，可以聊聊兴趣爱好",
-            "type": "question",
-            "priority": 75
-        })
-    
-    # 按优先级排序，返回前N个
-    topics.sort(key=lambda x: x["priority"], reverse=True)
-    return topics[:limit]
-```
+**AI 会自己处理**：
+- AI 读取画像数据
+- AI 自主判断匹配度
+- AI 生成个性化建议
+- AI 生成破冰话题
 
 ---
 
 ## 七、完整用户流程
-
-### 7.1 流程图
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -978,59 +813,32 @@ def generate_icebreaker_topics(
 │  1. 用户在对话中说："我想测测我的性格"                        │
 │     ↓                                                       │
 │  2. AI 返回测评介绍卡片                                     │
-│     ├─ 显示测评介绍                                         │
-│     ├─ 显示时长、奖励                                       │
-│     └─ [开始测评] 按钮                                      │
+│     [开始测评]                                              │
 │                                                             │
-│  3. 用户点 [开始测评]                                        │
-│     ↓                                                       │
-│  4. AI 返回第1题卡片（在对话界面中）                         │
-│     ├─ 第1题 + 5个选项                                      │
-│     ├─ 进度条显示5%                                         │
-│     └─ 用户点选项 → 自动跳下一题                            │
+│  3. 用户点开始 → AI 返回题目卡片                            │
+│     用户在对话界面答题                                       │
 │                                                             │
-│  5. 用户连续答题                                            │
-│     ├─ 第1题 → 点选项 → 第2题                               │
-│     ├─ 第2题 → 点选项 → 第3题                               │
-│     ├─ 第3题 → 点选项 → 第4题                               │
-│     └─ 第4题 → 点选项 → 显示反馈卡片                        │
+│  4. 答完每4题 → 显示维度反馈（2秒消失）                      │
+│     继续下一题                                              │
 │                                                             │
-│  6. 反馈卡片出现                                            │
-│     ├─ "你的开放性：65分"                                   │
-│     ├─ 显示2秒后消失                                        │
-│     └─ 继续第5题                                            │
-│                                                             │
-│  7. 重复步骤5-6                                             │
-│     ├─ 第5-8题 → 尽责性反馈                                 │
-│     ├─ 第9-12题 → 外向性反馈                                │
-│     ├─ 第13-16题 → 宜人性反馈                               │
-│     └─ 第17-20题 → 神经质反馈                               │
-│                                                             │
-│  8. 答完第20题                                              │
-│     ├─ 后端计算完整结果                                     │
-│     ├─ 写入偏好表                                           │
-│     └─ 返回结果卡片                                         │
-│                                                             │
-│  9. 结果卡片显示                                            │
-│     ├─ 五个维度得分                                         │
+│  5. 答完20题 → 显示结果卡片                                 │
+│     ├─ 五维度得分                                           │
 │     ├─ 趣味标签                                             │
-│     ├─ 勋章奖励                                             │
-│     └─ [分享朋友圈] [查看匹配建议] 按钮                     │
+│     └─ 写入偏好表                                           │
 │                                                             │
-│  10. 等2秒后                                                │
-│      ├─ 异步请求 AI 解读                                    │
-│      └─ 显示解读卡片                                        │
+│  6. 等2秒 → 显示AI解读卡片                                  │
+│     ├─ 性格总结                                             │
+│     ├─ 恋爱表现                                             │
+│     └─ AI 匹配建议                                          │
 │                                                             │
-│  11. AI解读卡片显示                                         │
-│      ├─ 性格总结                                            │
-│      ├─ 恋爱中的表现                                        │
-│      ├─ 匹配建议                                            │
-│      └─ "我帮你匹配看看..."                                 │
+│  7. 用户选择下一步                                          │
+│     ├─ [分享朋友圈]                                         │
+│     ├─ [继续聊天]                                           │
+│     └─ 测评数据已存入数据库                                 │
 │                                                             │
-│  12. 用户选择下一步                                         │
-│      ├─ [分享朋友圈] → 生成分享卡片                         │
-│      ├─ [查看匹配建议] → 返回匹配建议卡片                   │
-│      └─ [继续聊天] → 回到正常对话                           │
+│  8. 后续：AI 匹配时使用这些数据                              │
+│     AI 自主判断匹配度                                       │
+│     AI 生成个性化建议                                       │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -1039,11 +847,11 @@ def generate_icebreaker_topics(
 
 | 步骤 | 时间 |
 |------|------|
-| 答题（20题） | 约5分钟（每题约15秒） |
-| 反馈显示（5次） | 约10秒（每次2秒） |
+| 答题（20题） | 约5分钟 |
+| 反馈显示 | 约10秒 |
 | 结果展示 | 约30秒 |
 | AI解读 | 约2秒等待 + 30秒查看 |
-| 总计 | 约6-7分钟 |
+| 总计 | 约6分钟 |
 
 ---
 
@@ -1061,13 +869,6 @@ async def start_assessment(
 ):
     """
     开始测评，返回介绍卡片
-    
-    Request:
-        user_key: 用户标识
-        assessment_type: 测评类型
-    
-    Response:
-        AssessmentCard (intro类型)
     """
     assessment_id = f"bf_{uuid.uuid4().hex[:12]}"
     
@@ -1088,9 +889,6 @@ async def start_assessment(
 async def begin_assessment(assessment_id: str):
     """
     用户点开始后，返回第一题
-    
-    Response:
-        AssessmentCard (question类型)
     """
     return {
         "card_type": "assessment_question",
@@ -1115,51 +913,35 @@ async def submit_answer(
     """
     提交答案，返回下一题或反馈或结果
     
-    Request:
-        assessment_id: 测评ID
-        question_index: 题目索引（0-19）
-        answer: 答案（A/B/C/D/E）
-        user_key: 用户标识
-    
-    Response:
-        AssessmentCard (question/feedback/result类型)
+    关键：答完20题后，写入偏好表
     """
     # 保存答案
     save_answer(assessment_id, question_index, answer)
     
     # 答完每4题显示反馈
     if (question_index + 1) % 4 == 0 and question_index < 19:
-        dimension_index = question_index // 4
-        dimension_scores = calculate_dimension_scores(assessment_id, dimension_index)
+        dimension_scores = calculate_dimension_scores(assessment_id, question_index // 4)
         
         return {
             "card_type": "assessment_feedback",
             "feedback_data": {
-                "dimension": DIMENSIONS[dimension_index],
-                "dimension_name": DIMENSION_NAMES[dimension_index],
-                "dimension_index": dimension_index,
+                "dimension": ...,
                 "score": dimension_scores,
-                "feedback_text": generate_dimension_feedback(dimension_scores)
+                "feedback_text": ...
             },
-            # 同时返回下一题
-            "next_question": {
-                "card_type": "assessment_question",
-                "assessment_id": assessment_id,
-                "question_data": get_question_data(question_index + 1)
-            }
+            "next_question": {...}
         }
     
-    # 答完20题显示结果
+    # 答完20题显示结果 + 写入偏好表
     if question_index >= 19:
         final_scores = calculate_final_scores(assessment_id)
         labels = generate_labels(final_scores)
         
-        # 写入偏好表
+        # ★ 核心：写入偏好表
         save_big_five_to_persona(user_key, assessment_id, final_scores, labels)
         
         return {
             "card_type": "assessment_result",
-            "assessment_id": assessment_id,
             "result_data": {
                 "scores": final_scores,
                 "labels": labels,
@@ -1171,7 +953,6 @@ async def submit_answer(
     # 返回下一题
     return {
         "card_type": "assessment_question",
-        "assessment_id": assessment_id,
         "question_data": get_question_data(question_index + 1)
     }
 
@@ -1180,50 +961,35 @@ async def submit_answer(
 async def get_interpretation(assessment_id: str, user_key: str):
     """
     获取AI解读
-    
-    Response:
-        AssessmentCard (interpretation类型)
     """
     scores = get_assessment_scores(assessment_id)
-    
-    # 调用AI生成解读
     interpretation = await generate_ai_interpretation(user_key, scores)
     
     return {
         "card_type": "assessment_interpretation",
-        "assessment_id": assessment_id,
         "interpretation_data": interpretation
     }
 
 
-# 匹配相关接口
+# 画像读取接口（供 AI 使用）
 
-@router.post("/match/big-five/score")
-async def calculate_match_score(user_key1: str, user_key2: str):
+@router.get("/persona/personality-traits")
+async def get_personality_traits(user_key: str):
     """
-    计算大五人格匹配分
+    获取用户性格特质画像
     
-    Response:
-        {
-            "score": 匹配分,
-            "dimension_scores": 各维度分,
-            "analysis": 分析文本,
-            "has_data": bool
-        }
+    AI 在匹配时会调用此接口获取画像数据
     """
-    return calculate_big_five_match_score(user_key1, user_key2)
-
-
-@router.post("/match/icebreaker/topics")
-async def generate_topics(user_key1: str, user_key2: str, limit: int = 3):
-    """
-    生成破冰话题
+    persona = get_user_persona(user_key)
+    traits_json = persona.get("self_personality_traits_json")
     
-    Response:
-        list[IcebreakerTopic]
-    """
-    return generate_icebreaker_topics(user_key1, user_key2, limit)
+    if traits_json:
+        return json.loads(traits_json)
+    
+    return {}
 ```
+
+**注意**：不需要匹配相关的接口，AI 会自己读取画像数据并判断匹配度。
 
 ### 8.2 前端卡片组件设计
 
@@ -1537,28 +1303,26 @@ async def generate_ai_interpretation(user_key: str, scores: dict) -> dict:
 
 ## 十、后续扩展
 
-### 10.1 后续可接入的测评
+完成大五人格后，后续测评也写入同一字段：
 
-完成大五人格后，后续可接入：
-
-| 测评 | 存储位置 | 用于 |
-|------|---------|------|
-| **依恋风格** | `self_personality_traits_json.attachment` | 预测关系安全感 |
-| **恋爱语言** | `self_personality_traits_json.love_language` | 相处建议 |
-| **九型人格** | `self_personality_traits_json.enneagram` | 核心动机分析 |
-
-### 10.2 数据更新机制
-
+```json
+// self_personality_traits_json 存储结构
+{
+  "big_five": {...},           // 大五人格
+  "attachment": {...},         // 依恋风格
+  "love_language": {...},      // 恋爱语言
+  "enneagram": {...}           // 九型人格（可选）
+}
 ```
-用户重新测评时：
-├─ 保留历史记录（user_persona_observations）
-├─ 更新 self_personality_traits_json
-├─ 记录测评时间
-└─ 更新匹配算法使用的画像
-```
+
+AI 在匹配时会读取完整画像，自主判断匹配度。
 
 ---
 
 **文档结束**
 
-> 本方案为 Her 红娘测评体系的第一个核心测评，后续测评（依恋风格、恋爱语言等）可参考此方案进行设计。
+> **核心要点**：
+> - 对话中生成卡片UI
+> - 精简版20题
+> - 写入 `self_personality_traits_json`
+> - AI 自主判断匹配（不硬编码规则）
