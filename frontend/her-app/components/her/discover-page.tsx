@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { ArrowLeft, BadgeCheck, Bookmark, ChevronRight, Mail, MapPin, Mic, Search, Send, X } from 'lucide-react'
+import { ArrowLeft, BadgeCheck, Bookmark, ChevronRight, Mail, Mic, Plus, Search, Send, Sparkles, X } from 'lucide-react'
+import { AssessmentFlowPanel } from '@/components/assessment/AssessmentFlowPanel'
 import { XiaoyaAvatar } from '@/components/her/ui/xiaoya-avatar'
 import Image from 'next/image'
 import { EmptyRecommendations, EmptySearchResults } from './ui/empty-states'
@@ -162,6 +163,8 @@ export default function DiscoverPage({
     : usingMockData
       ? ['同城优先', '本科以上']
       : []
+  const [showActionMenu, setShowActionMenu] = useState(false)
+  const [showAssessmentFlow, setShowAssessmentFlow] = useState(false)
 
   const pageShellClass =
     'flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background pb-14'
@@ -277,6 +280,33 @@ export default function DiscoverPage({
 
       {/* Input pinned below scrollable messages; app shell bottom nav is outside this column */}
       <div className="flex-shrink-0 px-4 py-3 bg-background border-t border-border safe-area-bottom">
+        {showActionMenu && (
+          <div
+            className="mb-2 rounded-2xl bg-background animate-fade-in-up"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) {
+                setShowActionMenu(false)
+              }
+            }}
+          >
+            <div className="grid grid-cols-4 gap-4 rounded-2xl border border-border bg-card p-3">
+              <button
+                onClick={() => {
+                  setShowAssessmentFlow(true)
+                  setShowActionMenu(false)
+                }}
+                className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-secondary hover:bg-secondary/80 transition-colors"
+                aria-label="性格测评"
+              >
+                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Sparkles className="w-6 h-6 text-primary" />
+                </div>
+                <span className="text-xs text-foreground">性格测评</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Recording indicator */}
         {isRecording && (
           <div className="flex items-center justify-between mb-2 px-3 py-2 bg-rose/10 rounded-lg animate-fade-in-up">
@@ -303,6 +333,16 @@ export default function DiscoverPage({
         )}
 
         <div className="flex items-center gap-2 bg-secondary rounded-xl px-3 py-2 transition-all focus-within:ring-2 focus-within:ring-primary/30">
+          <button
+            aria-label={showActionMenu ? '收起菜单' : '展开菜单'}
+            onClick={() => setShowActionMenu((prev) => !prev)}
+            className={cn(
+              'w-8 h-8 rounded-full flex items-center justify-center transition-all',
+              showActionMenu ? 'bg-primary text-primary-foreground rotate-45' : 'bg-muted hover:bg-primary/10 text-muted-foreground',
+            )}
+          >
+            <Plus className="w-5 h-5" />
+          </button>
           <input
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
@@ -352,6 +392,12 @@ export default function DiscoverPage({
           </button>
         </div>
       </div>
+
+      <AssessmentFlowPanel
+        open={showAssessmentFlow}
+        userKey={String(getProfileId() || '')}
+        onClose={() => setShowAssessmentFlow(false)}
+      />
     </div>
   )
 }
