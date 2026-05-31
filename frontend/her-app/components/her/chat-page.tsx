@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils'
 import { gatewayJson, queryString } from '@/lib/api/client'
 import { markConversationRead, fetchPrivateChatConversationId, fetchPrivateMessages, sendPrivateMessage, type PrivateMessage } from '@/lib/api/endpoints/chat'
 import { uploadImage, compressImage, getImagePreviewUrl, type UploadMediaResponse } from '@/lib/api/endpoints/media'
+import { AssessmentFlowPanel } from '@/components/assessment/AssessmentFlowPanel'
 import {
   fetchCaseTimeline,
   extractMainGroupMessages,
@@ -15,7 +16,7 @@ import {
   type CaseTimelineResponse,
 } from '@/lib/api/endpoints/chat-timeline'
 import { getErrorMessage } from '@/lib/api/errors'
-import { getChatParticipantId, getAvatarUrl } from '@/lib/auth/session'
+import { getChatParticipantId, getAvatarUrl, getProfileId } from '@/lib/auth/session'
 import { canUseMockFallback } from '@/lib/mock'
 import { notifyError } from '@/lib/notify'
 import { DEMO_CHAT_MESSAGES } from '@/lib/fixtures/demo-profiles'
@@ -109,6 +110,7 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
 
   // Header 更多菜单状态
   const [showHeaderMenu, setShowHeaderMenu] = useState(false)
+  const [showAssessmentFlow, setShowAssessmentFlow] = useState(false)
 
   // 新消息提示状态
   const [hasNewMessage, setHasNewMessage] = useState(false)
@@ -607,6 +609,17 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
                   role="menu"
                   aria-label="更多选项菜单"
                 >
+                  <button
+                    onClick={() => {
+                      setShowAssessmentFlow(true)
+                      setShowHeaderMenu(false)
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-foreground hover:bg-secondary transition-colors"
+                    role="menuitem"
+                  >
+                    <Sparkles className="w-4 h-4 text-muted-foreground" />
+                    性格测评
+                  </button>
                   <button
                     onClick={() => {
                       if (onViewCandidate && counterpartId) {
@@ -1354,6 +1367,12 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
           </div>
         </div>
       )}
+
+      <AssessmentFlowPanel
+        open={showAssessmentFlow}
+        userKey={String(getProfileId() || getChatParticipantId() || '')}
+        onClose={() => setShowAssessmentFlow(false)}
+      />
     </div>
   )
 }

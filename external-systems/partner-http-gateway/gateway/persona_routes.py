@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from typing import Any, Protocol
 
+from assessment.service import get_personality_traits
 from persona_memory_sync.persona_memory_lib import apply_persona_patch, normalize_patch
 
 from .http_helpers import _json_safe, _read_body, _parse_json_body
@@ -90,6 +91,22 @@ def dispatch_persona_rest(
     """Dispatch persona REST routes."""
     if path == "/v1/persona/patch" and method == "PATCH":
         return rest_persona_patch(gateway, environ)
+    if path == "/v1/persona/personality-traits" and method == "GET":
+        q = (environ.get("QUERY_STRING") or "").strip()
+        user_key = ""
+        for part in q.split("&"):
+            if part.startswith("user_key="):
+                user_key = part.split("=", 1)[-1].strip()
+                break
+        resolved = gateway._resolve_end_user_principal(environ, require_profile=True)
+        if resolved is not None and resolved.profile_id is not None:
+            user_key = str(resolved.profile_id)
+        if not user_key:
+            return 400, {"error": {"code": "invalid_request", "message": "user_key is required"}}
+        source = _default_profile_source()
+        if not source:
+            return 503, {"error": {"code": "source_not_configured", "message": "数据源未配置"}}
+        return 200, {"user_key": user_key, **_json_safe(get_personality_traits(source=source, user_key=user_key))}
     return None
 
 
