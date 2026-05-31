@@ -14,7 +14,7 @@ export function AssessmentResultCard({
       trait: string
     }>
     labels: string[]
-    interpretation_data: {
+    interpretation_data?: {
       summary: string
       love_style: string
       match_suggestions: string[]
@@ -22,6 +22,12 @@ export function AssessmentResultCard({
     reward: string
   }
 }) {
+  const interpretation = data.interpretation_data ?? {
+    summary: '结果已经出来了，解读内容正在准备中。',
+    love_style: '你可以先根据上面的维度结果继续聊天和了解对方。',
+    match_suggestions: ['先看聊天节奏是否舒服', '重点观察相处方式和边界感是否合拍'],
+  }
+
   return (
     <div className="rounded-3xl border border-border bg-card p-5 shadow-sm">
       <div className="text-xs uppercase tracking-[0.24em] text-muted-foreground">测评结果</div>
@@ -47,10 +53,10 @@ export function AssessmentResultCard({
       <p className="mt-4 text-sm text-muted-foreground">{data.reward}</p>
       <div className="mt-5 rounded-2xl bg-secondary/40 p-4">
         <div className="text-xs uppercase tracking-[0.24em] text-muted-foreground">AI 解读</div>
-        <p className="mt-3 text-sm leading-relaxed">{data.interpretation_data.summary}</p>
-        <p className="mt-3 text-sm text-muted-foreground">{data.interpretation_data.love_style}</p>
+        <p className="mt-3 text-sm leading-relaxed">{interpretation.summary}</p>
+        <p className="mt-3 text-sm text-muted-foreground">{interpretation.love_style}</p>
         <div className="mt-4 space-y-2">
-          {data.interpretation_data.match_suggestions.map((item) => (
+          {interpretation.match_suggestions.map((item) => (
             <div key={item} className="rounded-2xl bg-background px-3 py-2 text-sm">
               {item}
             </div>
