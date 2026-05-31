@@ -7,8 +7,10 @@ import { Button } from '@/components/ui/button'
 import {
   answerAssessment,
   beginAssessment,
+  fetchAssessmentInterpretation,
   type AssessmentCard,
   type AssessmentQuestionCard,
+  type AssessmentResultCard,
   startAssessment,
 } from '@/lib/api/endpoints/assessment'
 
@@ -26,6 +28,27 @@ export function AssessmentFlowPanel({
   const [card, setCard] = useState<AssessmentCard | null>(null)
   const [assessmentId, setAssessmentId] = useState<string | null>(null)
   const [questionHistory, setQuestionHistory] = useState<AssessmentQuestionCard['question_data'][]>([])
+
+  const ensureResultInterpretation = async (nextCard: AssessmentCard): Promise<AssessmentCard> => {
+    if (nextCard.card_type !== 'assessment_result' || nextCard.result_data.interpretation_data) {
+      return nextCard
+    }
+    try {
+      const interpretation = await fetchAssessmentInterpretation({
+        assessmentId: nextCard.assessment_id,
+        userKey,
+      })
+      return {
+        ...nextCard,
+        result_data: {
+          ...nextCard.result_data,
+          interpretation_data: interpretation.interpretation_data,
+        },
+      } satisfies AssessmentResultCard
+    } catch {
+      return nextCard
+    }
+  }
 
   useEffect(() => {
     if (!open) return
@@ -80,7 +103,7 @@ export function AssessmentFlowPanel({
                 answer,
                 userKey,
               })
-              setCard(next)
+              setCard(await ensureResultInterpretation(next))
             }}
             onContinue={async () => {
               if (card.card_type !== 'assessment_feedback') return
