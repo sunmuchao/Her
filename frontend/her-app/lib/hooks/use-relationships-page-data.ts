@@ -1,7 +1,7 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { fetchMyProxyIntroCases } from '@/lib/api/endpoints/proxy-intro'
 import { fetchTrustHub } from '@/lib/api/endpoints/trust-hub'
 import { fetchRelationshipsUnreadSummary } from '@/lib/api/endpoints/chat'
@@ -17,16 +17,23 @@ import { getErrorMessage } from '@/lib/api/errors'
  * 对应 ProfilePage 的 useProfilePageData 模式
  */
 export function useRelationshipsPageData() {
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
   const accessToken = getAccessToken()
   const userId = getUserId()
   const profileId = getProfileId()
+  const canQuery = mounted && !!accessToken
 
   // 牵线 cases 查询
   const casesQuery = useQuery({
     queryKey: ['relationships', 'cases', userId],
     queryFn: () => fetchMyProxyIntroCases(),
     staleTime: 30000, // 30 秒内不重新请求
-    enabled: !!accessToken && !!userId,
+    enabled: canQuery && !!userId,
   })
 
   // TrustHub 查询（用于获取待处理认证项）
@@ -34,7 +41,7 @@ export function useRelationshipsPageData() {
     queryKey: ['trust-hub', userId, profileId],
     queryFn: () => fetchTrustHub({ userId: userId!, profileId }),
     staleTime: 60000, // 60 秒内不重新请求
-    enabled: !!accessToken && !!userId && !!profileId,
+    enabled: canQuery && !!userId && !!profileId,
   })
 
   // 未读统计查询
@@ -42,16 +49,18 @@ export function useRelationshipsPageData() {
     queryKey: ['relationships', 'unread-summary', userId],
     queryFn: () => fetchRelationshipsUnreadSummary(),
     staleTime: 20000, // 20 秒内不重新请求
-    enabled: !!accessToken,
+    enabled: canQuery,
   })
 
   // 计算整体加载状态
   const isLoading = useMemo(() => {
+    if (!mounted) return true
     return casesQuery.isLoading || unreadQuery.isLoading
-  }, [casesQuery.isLoading, unreadQuery.isLoading])
+  }, [mounted, casesQuery.isLoading, unreadQuery.isLoading])
 
   // 计算整体错误状态
   const error = useMemo(() => {
+    if (!mounted) return null
     if (casesQuery.error) {
       return getErrorMessage(casesQuery.error, '牵线记录加载失败')
     }
@@ -59,7 +68,7 @@ export function useRelationshipsPageData() {
       return '未读统计加载失败'
     }
     return null
-  }, [casesQuery.error, unreadQuery.error])
+  }, [mounted, casesQuery.error, unreadQuery.error])
 
   // 是否正在刷新（已加载但正在后台刷新）
   const isRefreshing = useMemo(() => {
