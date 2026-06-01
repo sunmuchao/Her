@@ -686,6 +686,7 @@ class DiscoveryService:
                     action.action_id,
                     action.label,
                     action.style,
+                    action.semantic_payload,
                 )
             )
         session.visible_action_ids = visible_action_ids

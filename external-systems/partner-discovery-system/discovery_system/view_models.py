@@ -80,12 +80,20 @@ def criteria_chip(chip_id: str, label: str) -> dict[str, Any]:
     }
 
 
-def suggested_action(action_id: str, label: str, style: str = "secondary") -> dict[str, Any]:
-    return {
+def suggested_action(
+    action_id: str,
+    label: str,
+    style: str = "secondary",
+    semantic_payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    result = {
         "action_id": action_id,
         "label": label,
         "style": style,
     }
+    if semantic_payload:
+        result["semantic_payload"] = semantic_payload
+    return result
 
 
 def composer(placeholder: str, disabled: bool = False) -> dict[str, Any]:
