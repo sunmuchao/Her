@@ -358,6 +358,7 @@ class DiscoveryServiceTests(unittest.TestCase):
             tool_names,
             [
                 "sync_requester_persona_memory",
+                "propose_requester_profile_update",
                 "search_partner_candidates",
                 "create_saved_search_subscription_from_last_search",
             ],
@@ -369,6 +370,81 @@ class DiscoveryServiceTests(unittest.TestCase):
         instructions = str(captured.get("instructions") or "")
         self.assertIn("不要输出形如 `{\"tool_calls\":[...]}` 的文本", instructions)
         self.assertIn("不要说“本地没有符合条件的人”", instructions)
+
+    def test_agents_runtime_passes_assessment_result_in_recent_timeline_summary(self) -> None:
+        runtime = AgentsSdkDiscoveryAgentRuntime()
+        session = InMemoryDiscoveryAgentSessionStore().get_session("discovery-session-004")
+        captured: dict[str, object] = {}
+
+        def _fake_agent(**kwargs):
+            captured["output_type"] = kwargs.get("output_type")
+            return object()
+
+        def _fake_run_sync(_agent, input, **kwargs):
+            captured["input"] = input
+            captured["session"] = kwargs.get("session")
+            return {
+                "phase": "collecting_preferences",
+                "assistant_message": "继续问我你的匹配建议。",
+                "criteria_labels": [],
+                "suggested_actions": [],
+                "selected_candidates": [],
+            }
+
+        run_input = DiscoveryRunInput(
+            session_id="discovery-session-004",
+            requester_id=70001,
+            profile_id=10001,
+            phase="collecting_preferences",
+            criteria_labels=[],
+            recent_timeline=[
+                {
+                    "item_type": "assessment_result",
+                    "card": {
+                        "result_data": {
+                            "type_code": "INTJ",
+                            "interpretation_data": {"summary": "偏理性，慢热但稳定。"},
+                        }
+                    },
+                },
+                {"item_type": "assistant_message", "body": "亲爱的，你的测试结果出来啦！"},
+            ],
+            runtime_context={
+                "recent_timeline_summary": [
+                    {
+                        "item_type": "assessment_result",
+                        "card": {
+                            "result_data": {
+                                "type_code": "INTJ",
+                                "interpretation_data": {"summary": "偏理性，慢热但稳定。"},
+                            }
+                        },
+                    }
+                ]
+            },
+            search_partner_candidates=lambda _criteria, _limit: {"has_match": False, "result_count": 0, "results": []},
+            sync_requester_persona_memory=lambda _patch: {"synced": True},
+            propose_requester_profile_update=lambda _patch_json, _evidence="": {"proposed": False},
+            create_saved_search_subscription_from_last_search=lambda: {"created_subscription": False},
+            agent_session=session,
+        )
+
+        with mock.patch("discovery_system.agent_runtime._configure_agents_sdk_provider"), mock.patch(
+            "agents.Agent",
+            side_effect=_fake_agent,
+        ), mock.patch("agents.Runner.run_sync", side_effect=_fake_run_sync):
+            runtime._run_with_agents_sdk(
+                run_input,
+                event="user_message",
+                user_message="我的 MBTI 适合什么人？",
+                action_context=None,
+            )
+
+        payload = json.loads(str(captured["input"]))
+        summary = payload["official_context"]["recent_timeline_summary"]
+        self.assertEqual(summary[0]["item_type"], "assessment_result")
+        self.assertEqual(summary[0]["type_code"], "INTJ")
+        self.assertEqual(summary[0]["summary"], "偏理性，慢热但稳定。")
 
     def test_discovery_decision_schema_is_strict_compatible_and_enumerated(self) -> None:
         schema = AgentOutputSchema(DiscoveryDecisionModel, strict_json_schema=True).json_schema()
