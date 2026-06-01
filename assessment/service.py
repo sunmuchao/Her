@@ -286,10 +286,10 @@ def start_assessment(
         "assessment_type": assessment_type,
         "assessment_id": assessment_id,
         "intro_data": {
-            "title": "MBTI 恋爱说明书",
-            "description": "测测你在恋爱里是什么派",
-            "duration": "约5分钟 · 20题",
-            "reward": "测完知道自己恋爱里的优势和坑",
+            "title": "MBTI 恋爱测试",
+            "description": "测测你在恋爱中是哪一型",
+            "duration": "5分钟 · 20题",
+            "reward": "测完了解你的恋爱优势与雷区",
         },
     }
 
@@ -502,7 +502,7 @@ def answer_assessment(
                     "dimension_rows": _dimension_rows(scores),
                     "labels": labels,
                     "interpretation_data": interpretation,
-                    "reward": "测完知道自己恋爱里的优势和坑",
+                    "reward": "测完了解你的恋爱优势与雷区",
                     "assessment_id": assessment_id,
                 }
                 _save_observation(
