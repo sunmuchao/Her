@@ -230,7 +230,7 @@ export function XiaoyaReviewPanel({
                       </div>
                     )}
                     <div
-                      className={`max-w-[75%] px-3 py-2 rounded-2xl text-sm ${
+                      className={`max-w-[75%] px-3 py-2 rounded-2xl text-sm whitespace-pre-line ${
                         msg.isFromMe
                           ? 'bg-gold text-white rounded-br-md'
                           : 'bg-secondary text-foreground rounded-bl-md'
