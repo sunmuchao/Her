@@ -37,11 +37,21 @@ const ATTACHMENT_NICKNAMES: Record<string, string> = {
 
 // Love language type nicknames
 const LOVE_LANGUAGE_NICKNAMES: Record<string, string> = {
-  words: '肯定言词型',
-  time: '精心时刻型',
-  gifts: '礼物型',
-  service: '服务行动型',
-  touch: '身体接触型',
+  words_of_affirmation: '肯定言词',
+  quality_time: '精心时刻',
+  receiving_gifts: '接受礼物',
+  acts_of_service: '服务行动',
+  physical_touch: '身体接触',
+  // 兼容可能的简写形式
+  words: '肯定言词',
+  time: '精心时刻',
+  gifts: '接受礼物',
+  service: '服务行动',
+  touch: '身体接触',
+}
+
+function normalizeTypeCode(typeCode?: string) {
+  return typeCode?.trim().toLowerCase()
 }
 
 interface DimensionRow {
@@ -68,7 +78,7 @@ interface ResultData {
   type_code?: string
   scores: Record<string, number>
   dimension_rows?: DimensionRow[]
-  labels: string[]
+  labels?: string[]  // 改为可选，因为后端可能不返回
   interpretation_data?: InterpretationData
   reward: string
   assessment_id: string
@@ -76,10 +86,22 @@ interface ResultData {
 
 // Dimension label mapping with explanations (matching backend keys)
 const DIMENSION_LABELS: Record<string, { high: string; low: string }> = {
+  // MBTI dimensions
   'ei': { high: '外向', low: '内向' },
   'sn': { high: '直觉', low: '感觉' },
   'tf': { high: '思考', low: '情感' },
   'jp': { high: '判断', low: '感知' },
+  // Love language dimensions (雷达图高低标签)
+  'words_of_affirmation': { high: '肯定言词敏感', low: '肯定言词不敏感' },
+  'quality_time': { high: '精心时刻敏感', low: '精心时刻不敏感' },
+  'receiving_gifts': { high: '接受礼物敏感', low: '接受礼物不敏感' },
+  'acts_of_service': { high: '服务行动敏感', low: '服务行动不敏感' },
+  'physical_touch': { high: '身体接触敏感', low: '身体接触不敏感' },
+  // Attachment dimensions (雷达图高低标签)
+  'secure': { high: '安全感强', low: '安全感弱' },
+  'anxious': { high: '焦虑度高', low: '焦虑度低' },
+  'avoidant': { high: '回避度高', low: '回避度低' },
+  'fearful': { high: '恐惧度高', low: '恐惧度低' },
 }
 
 // Radar Chart Component
@@ -244,13 +266,14 @@ function getTypeNickname(typeCode?: string, assessmentType?: AssessmentType): st
     return ''
   }
 
+  const normalizedTypeCode = normalizeTypeCode(typeCode)
   if (assessmentType === 'attachment_style') {
-    return ATTACHMENT_NICKNAMES[typeCode.toLowerCase()] || ''
+    return ATTACHMENT_NICKNAMES[normalizedTypeCode || ''] || ''
   }
   if (assessmentType === 'love_language') {
-    return LOVE_LANGUAGE_NICKNAMES[typeCode.toLowerCase()] || ''
+    return LOVE_LANGUAGE_NICKNAMES[normalizedTypeCode || ''] || ''
   }
-  return TYPE_NICKNAMES[typeCode] || ''
+  return TYPE_NICKNAMES[typeCode.trim()] || ''
 }
 
 export function AssessmentResultCard({
@@ -271,9 +294,34 @@ export function AssessmentResultCard({
     label: string
   }>({ open: false, label: '' })
 
-  const safeTypeCode = data.type_code || '--'
+  // DEBUG: 检查接收到的数据
+  console.log('[AssessmentResultCard] 接收到的 data:', {
+    type_code: data.type_code,
+    has_dimension_rows: !!data.dimension_rows,
+    dimension_rows_count: data.dimension_rows?.length || 0,
+    has_labels: !!data.labels,
+    labels_count: data.labels?.length || 0,
+    labels: data.labels,
+    dimension_rows: data.dimension_rows,
+  })
+
+  // 对于恋爱语言测评，优先显示中文昵称而不是英文 type_code
   const typeNickname = getTypeNickname(data.type_code, assessmentType)
-  
+  const rawTypeCode = data.type_code?.trim()
+  const safeTypeCode = assessmentType === 'love_language'
+    ? (typeNickname || rawTypeCode || '--')
+    : (rawTypeCode || '--')
+
+  // DEBUG: 检查显示逻辑
+  console.log('[AssessmentResultCard] 显示逻辑:', {
+    assessmentType,
+    original_type_code: data.type_code,
+    typeNickname,
+    safeTypeCode,
+    LOVE_LANGUAGE_NICKNAMES_keys: Object.keys(LOVE_LANGUAGE_NICKNAMES),
+    lookup_result: data.type_code ? LOVE_LANGUAGE_NICKNAMES[data.type_code.toLowerCase()] : null,
+  })
+
   // Theme-based colors
   const extremeTagBg = assessmentType === 'attachment_style' 
     ? 'bg-coral-soft/60 border-coral/20' 
@@ -338,7 +386,7 @@ export function AssessmentResultCard({
             )}>
               {safeTypeCode}
             </span>
-            {typeNickname && (
+            {typeNickname && typeNickname !== safeTypeCode && (
               <span className="text-sm text-muted-foreground">{"- "}{typeNickname}</span>
             )}
           </div>
@@ -386,7 +434,7 @@ export function AssessmentResultCard({
           {"你的恋爱标签（点击添加到我的主页）："}
         </div>
         <div className="flex flex-wrap gap-2">
-          {data.labels.map((label) => (
+          {(data.labels || []).map((label) => (
             <button
               key={label}
               onClick={() => handleLabelClick(label)}
@@ -409,6 +457,11 @@ export function AssessmentResultCard({
               )}
             </button>
           ))}
+          {(data.labels || []).length === 0 && (
+            <div className="text-xs text-muted-foreground italic">
+              {"暂无标签数据"}
+            </div>
+          )}
         </div>
       </div>
 

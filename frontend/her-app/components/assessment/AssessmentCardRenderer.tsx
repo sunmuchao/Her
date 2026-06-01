@@ -118,6 +118,18 @@ export function AssessmentCardRenderer({
   }
 
   if (isResultCard(card)) {
+    // DEBUG: 检查传递给 AssessmentResultCard 的数据
+    console.log('[AssessmentCardRenderer] result card:', {
+      cardType: card.card_type,
+      assessmentId: card.assessment_id,
+      hasResultData: !!card.result_data,
+      resultDataKeys: card.result_data ? Object.keys(card.result_data) : [],
+      dimensionRowsCount: card.result_data?.dimension_rows?.length || 0,
+      labelsCount: card.result_data?.labels?.length || 0,
+      dimensionRows: card.result_data?.dimension_rows,
+      labels: card.result_data?.labels,
+    })
+
     return (
       <Suspense fallback={<AssessmentResultSkeleton />}>
         <AssessmentResultCard

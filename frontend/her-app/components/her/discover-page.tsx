@@ -78,6 +78,17 @@ function DiscoveryTimelineEntry({
   }
 
   if (item.kind === 'assessment_result') {
+    // DEBUG: 检查传递给 AssessmentCardRenderer 的数据
+    console.log('[DiscoverPage] assessment_result item:', {
+      itemId: item.id,
+      cardType: item.card?.card_type,
+      assessmentId: item.card?.assessment_id,
+      hasResultData: !!item.card?.result_data,
+      resultDataKeys: item.card?.result_data ? Object.keys(item.card.result_data) : [],
+      dimensionRows: item.card?.result_data?.dimension_rows,
+      labels: item.card?.result_data?.labels,
+    })
+
     return (
       <AssessmentCardRenderer
         card={item.card}
