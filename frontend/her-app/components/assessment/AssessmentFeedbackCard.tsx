@@ -3,13 +3,13 @@
 import { Button } from '@/components/ui/button'
 import { ArrowRight, Lightbulb } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { type AssessmentType, getAssessmentTheme } from './assessment-themes'
+import { type AssessmentType } from './assessment-themes'
 
 interface FeedbackData {
-  dimension: string
-  dimension_name: string
-  score: number
-  feedback_text: string
+  dimension?: string
+  dimension_name?: string
+  score?: number
+  feedback_text?: string
 }
 
 // MBTI Dimension configs (fallback)
@@ -37,7 +37,11 @@ const LOVE_LANGUAGE_DIMENSION_CONFIG: Record<string, { icon: string; color: stri
   touch: { icon: 'TC', color: 'text-rose', bgColor: 'bg-rose-soft', label: '身体接触' },
 }
 
-function getDimensionConfig(dimension: string, assessmentType?: AssessmentType) {
+function getDimensionConfig(dimension?: string, assessmentType?: AssessmentType) {
+  if (!dimension) {
+    return undefined
+  }
+
   if (assessmentType === 'attachment_style') {
     return ATTACHMENT_DIMENSION_CONFIG[dimension.toLowerCase()]
   }
@@ -127,16 +131,20 @@ export function AssessmentFeedbackCard({
   onContinue: () => void
   assessmentType?: AssessmentType
 }) {
+  const safeScore = typeof data.score === 'number' ? data.score : 0
+  const fallbackLabel = data.dimension_name || data.dimension || '阶段反馈'
+  const fallbackIcon = (data.dimension || data.dimension_name || '--').slice(0, 2).toUpperCase()
+
   const config = getDimensionConfig(data.dimension, assessmentType) || {
-    icon: data.dimension.slice(0, 2).toUpperCase(),
+    icon: fallbackIcon,
     color: assessmentType === 'attachment_style' ? 'text-coral' : 
            assessmentType === 'love_language' ? 'text-lavender' : 'text-primary',
     bgColor: assessmentType === 'attachment_style' ? 'bg-coral-soft' : 
              assessmentType === 'love_language' ? 'bg-lavender-soft' : 'bg-secondary',
-    label: data.dimension_name,
+    label: fallbackLabel,
   }
   
-  const scoreLevel = getScoreLevel(data.score, assessmentType)
+  const scoreLevel = getScoreLevel(safeScore, assessmentType)
   
   // Button color based on theme
   const buttonClass = assessmentType === 'attachment_style' 
@@ -167,7 +175,7 @@ export function AssessmentFeedbackCard({
           {config.icon}
         </div>
         <div>
-          <h3 className="text-xl font-semibold">{data.dimension_name}</h3>
+          <h3 className="text-xl font-semibold">{fallbackLabel}</h3>
           <span className={cn('text-sm', scoreLevel.color)}>
             {scoreLevel.label}{"倾向"}
           </span>
@@ -177,7 +185,7 @@ export function AssessmentFeedbackCard({
       {/* Circular Progress */}
       <div className="flex justify-center my-6">
         <CircularProgress 
-          score={data.score} 
+          score={safeScore} 
           size={120} 
           strokeWidth={10}
           colorClass={config.color}
@@ -191,7 +199,7 @@ export function AssessmentFeedbackCard({
         assessmentType === 'love_language' ? 'bg-lavender-soft/40' : 'bg-secondary/40'
       )}>
         <p className="text-sm leading-relaxed text-muted-foreground">
-          {data.feedback_text}
+          {data.feedback_text || '结果已生成，继续查看下一维度。'}
         </p>
       </div>
 
