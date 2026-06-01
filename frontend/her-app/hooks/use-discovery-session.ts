@@ -88,7 +88,15 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
   const [inputValue, setInputValue] = useState('')
   const [currentPrefs, setCurrentPrefs] = useState<string[]>([])
   const [sessionId, setSessionId] = useState<string | null>(null)
-  const [suggestedActions, setSuggestedActions] = useState<Array<{ action_id: string; label: string }>>([])
+  const [suggestedActions, setSuggestedActions] = useState<Array<{
+    action_id: string
+    label: string
+    semantic_payload?: {
+      kind: string
+      assessment_type?: string
+      [key: string]: unknown
+    }
+  }>>([])
   const [composerPlaceholder, setComposerPlaceholder] = useState('输入你的想法...')
   const [composerDisabled, setComposerDisabled] = useState(false)
   const [isSubmittingTurn, setIsSubmittingTurn] = useState(false)

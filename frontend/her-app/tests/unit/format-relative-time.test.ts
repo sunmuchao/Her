@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { formatRelativeTime } from '@/lib/format-relative-time'
 import { mapDiscoveryView } from '@/lib/discovery/map-discovery-view'
+import { PLACEHOLDER_AVATAR } from '@/lib/image-url'
 
 describe('formatRelativeTime', () => {
   it('returns 刚刚 for missing or invalid timestamps', () => {
@@ -37,6 +38,8 @@ describe('mapDiscoveryView', () => {
   })
 
   it('preserves timeline order for messages and result groups', () => {
+    const originalNodeEnv = process.env.NODE_ENV
+    process.env.NODE_ENV = 'development'
     const mapped = mapDiscoveryView({
       timeline: [
         {
@@ -52,6 +55,7 @@ describe('mapDiscoveryView', () => {
             {
               profile_id: 1001,
               title: '林知夏 29',
+              cover_image_url: 'https://cdn.her.local/1001.jpg',
               reason_summary: '城市一致',
             },
           ],
@@ -66,6 +70,8 @@ describe('mapDiscoveryView', () => {
     expect(mapped.timelineItems.map((item) => item.kind)).toEqual(['message', 'result_group', 'message'])
     const group = mapped.timelineItems[1]
     expect(group.kind === 'result_group' && group.candidates[0]?.id).toBe('1001')
+    expect(group.kind === 'result_group' && group.candidates[0]?.image).toBe(PLACEHOLDER_AVATAR)
+    process.env.NODE_ENV = originalNodeEnv
   })
 
   it('maps profile_update_prompt timeline items', () => {
