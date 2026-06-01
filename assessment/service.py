@@ -688,7 +688,8 @@ def get_xiaoya_message(
 
 def add_xiaoya_message_to_discovery_session(
     *,
-    discovery_source: str | None,
+    discovery_source: str | None = None,
+    discovery_service: Any | None = None,
     session_id: str,
     user_key: str,
     message: str,
@@ -698,13 +699,12 @@ def add_xiaoya_message_to_discovery_session(
 
     这样消息会固定在对话流中，AI也能看到。
     """
-    from discovery_system import create_default_discovery_service
     from discovery_system.view_models import assistant_message, assessment_result
+    if discovery_service is None:
+        from discovery_system import create_default_discovery_service
 
-    normalized_discovery_source, _ = _resolve_source(discovery_source)
-
-    # 创建discovery service
-    discovery_service = create_default_discovery_service(discovery_dsn=normalized_discovery_source)
+        normalized_discovery_source, _ = _resolve_source(discovery_source)
+        discovery_service = create_default_discovery_service(discovery_dsn=normalized_discovery_source)
 
     # 获取session
     session = discovery_service._require_session(session_id)

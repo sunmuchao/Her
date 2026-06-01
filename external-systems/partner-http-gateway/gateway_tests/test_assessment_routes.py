@@ -12,15 +12,18 @@ if str(GATEWAY_ROOT) not in sys.path:
 
 from gateway.app import PartnerGateway  # noqa: E402
 from gateway_tests.helpers import build_wsgi_env, run_wsgi_json  # noqa: E402
+from discovery_system import DiscoverySessionNotFoundError  # noqa: E402
 
 
 def _gateway() -> PartnerGateway:
-    return PartnerGateway(
+    gw = PartnerGateway(
         recommendation_dsn="mysql://noop",
         matchmaking_dsn="mysql://noop",
         chat_dsn="mysql://noop",
         db_pool_max=0,
     )
+    gw._discovery = mock.Mock()
+    return gw
 
 
 def test_assessment_start_route_returns_intro_card() -> None:
@@ -217,9 +220,9 @@ def test_personality_traits_route_reads_assessment_traits() -> None:
 def test_assessment_add_xiaoya_to_discovery_route_passes_result_data() -> None:
     gw = _gateway()
     gw._resolve_end_user_principal = mock.Mock(return_value=types.SimpleNamespace(profile_id=42))  # type: ignore[method-assign]
+    gw._discovery.get_session_owner_id.return_value = 42
 
     with (
-        mock.patch("gateway.assessment_routes._default_profile_source", return_value="mysql://root@127.0.0.1:3307/her?table=profiles"),
         mock.patch(
             "gateway.assessment_routes.add_xiaoya_message_to_discovery_session",
             return_value={
@@ -249,7 +252,7 @@ def test_assessment_add_xiaoya_to_discovery_route_passes_result_data() -> None:
     assert "200" in status
     assert payload["success"] is True
     add_mock.assert_called_once_with(
-        discovery_source="mysql://root@127.0.0.1:3307/her?table=profiles",
+        discovery_service=gw._discovery,
         session_id="session-1",
         user_key="42",
         message="亲爱的，你的测试结果出来啦！",
@@ -259,3 +262,24 @@ def test_assessment_add_xiaoya_to_discovery_route_passes_result_data() -> None:
             "labels": ["理性"],
         },
     )
+
+
+def test_assessment_add_xiaoya_to_discovery_route_returns_not_found_for_missing_session() -> None:
+    gw = _gateway()
+    gw._resolve_end_user_principal = mock.Mock(return_value=types.SimpleNamespace(profile_id=42))  # type: ignore[method-assign]
+    gw._discovery.get_session_owner_id.side_effect = DiscoverySessionNotFoundError("discovery session not found")
+
+    status, payload, _headers = run_wsgi_json(
+        gw,
+        build_wsgi_env(
+            "POST",
+            "/v1/assessment/add-xiaoya-to-discovery",
+            {
+                "session_id": "missing-session",
+                "message": "亲爱的，你的测试结果出来啦！",
+            },
+        ),
+    )
+
+    assert "404" in status
+    assert payload["error_code"] == "DISCOVERY_SESSION_NOT_FOUND"
