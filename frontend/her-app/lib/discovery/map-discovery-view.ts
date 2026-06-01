@@ -1,4 +1,5 @@
 import { formatRelativeTime } from '@/lib/format-relative-time'
+import type { AssessmentResultCard } from '@/lib/api/endpoints/assessment'
 import type { CandidatePreview } from '@/lib/types/candidate'
 import type { DiscoveryView } from '@/lib/types/discovery'
 
@@ -36,10 +37,18 @@ export type DiscoveryProfileUpdatePromptItem = {
   timestamp?: string
 }
 
+export type DiscoveryAssessmentResultItem = {
+  kind: 'assessment_result'
+  id: string
+  card: AssessmentResultCard
+  timestamp?: string
+}
+
 export type DiscoveryTimelineItem =
   | DiscoveryMessageItem
   | DiscoveryResultGroupItem
   | DiscoveryProfileUpdatePromptItem
+  | DiscoveryAssessmentResultItem
 
 export type MappedDiscoveryView = {
   /** Ordered chat stream: messages and result groups interleaved as returned by the API. */
@@ -114,6 +123,15 @@ export function mapDiscoveryView(view?: DiscoveryView): MappedDiscoveryView {
         })),
         status,
         timestamp: formatRelativeTime(item.created_at),
+      })
+      continue
+    }
+    if (itemType === 'assessment_result' && item.card) {
+      timelineItems.push({
+        kind: 'assessment_result',
+        id: item.item_id || `assessment-result-${index}`,
+        card: item.card as AssessmentResultCard,
+        timestamp: item.created_at ? formatRelativeTime(item.created_at) : undefined,
       })
     }
   }

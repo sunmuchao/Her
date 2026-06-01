@@ -1,3 +1,12 @@
+"""依恋风格测评服务逻辑
+
+参考 MBTI service.py 的完整实现模式：
+- 断点续传机制
+- 每3题给维度反馈
+- 结果写入 user_personas.self_personality_traits_json
+- 小雅消息单独存储和展示
+"""
+
 from __future__ import annotations
 
 import json
@@ -6,19 +15,18 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from assessment.mbti_questions import (
-    MBTI_QUESTIONS,
-    DIMENSIONS,
+from assessment.attachment_questions import (
+    ATTACHMENT_QUESTIONS,
+    ATTACHMENT_TYPES,
     calculate_all_scores,
     get_dimension_feedback,
     get_question,
     get_type_info,
     get_extreme_tags,
+    get_primary_attachment_type,
+    _interpretation_from_result,
+    xiaoya_message_from_result,
     calculate_love_match,
-    _type_code_from_scores as mbti_type_code,
-    _labels_from_scores as mbti_labels,
-    _interpretation_from_result as mbti_interpretation,
-    xiaoya_message_from_result,  # 新增：小雅消息生成
 )
 from persona_memory_sync.persona_memory_lib import (
     apply_persona_patch,
@@ -31,31 +39,32 @@ from persona_memory_sync.persona_memory_lib import (
 )
 
 
-TOTAL_QUESTIONS = len(MBTI_QUESTIONS)
-ASSESSMENT_TYPE_MBTI = "mbti_16"
+TOTAL_QUESTIONS = len(ATTACHMENT_QUESTIONS)
+ASSESSMENT_TYPE_ATTACHMENT = "attachment_style"
 ASSESSMENT_SESSION_FIELD = "assessment.session"
 ASSESSMENT_RESULT_FIELD = "assessment.result"
 ASSESSMENT_INTERPRETATION_FIELD = "assessment.interpretation"
-ASSESSMENT_XIAOYA_MESSAGE_FIELD = "assessment.xiaoya_message"  # 新增：小雅解读消息
+ASSESSMENT_XIAOYA_MESSAGE_FIELD = "assessment.xiaoya_message"
 
 
-DIMENSION_LABELS = {
-    "ei": "社交能量",
-    "sn": "关注焦点",
-    "tf": "决策方式",
-    "jp": "生活节奏",
+ATTACHMENT_DIMENSION_LABELS = {
+    "secure": "安全感稳定性",
+    "anxious": "焦虑黏人度",
+    "avoidant": "回避冷暴力",
+    "fearful": "恐惧矛盾度",
 }
 
-DIMENSION_TRAITS = {
-    "ei": {"high": "社交达人", "medium": "灵活切换", "low": "独处爱好者"},
-    "sn": {"high": "务实派", "medium": "事实与氛围并重", "low": "氛围感派"},
-    "tf": {"high": "逻辑派", "medium": "道理与感受平衡", "low": "感受派"},
-    "jp": {"high": "计划派", "medium": "计划弹性兼顾", "low": "随性派"},
+
+ATTACHMENT_DIMENSION_TRAITS = {
+    "secure": {"high": "情绪稳定萨摩耶", "medium": "基本稳定", "low": "情绪波动大"},
+    "anxious": {"high": "黏人精认证", "medium": "适度黏人", "low": "独立冷淡"},
+    "avoidant": {"high": "冷暴力大师", "medium": "适度回避", "low": "黏贴暖宝宝"},
+    "fearful": {"high": "矛盾纠结体", "medium": "适度矛盾", "low": "清晰稳定"},
 }
 
 
 @dataclass(frozen=True)
-class AssessmentSession:
+class AttachmentAssessmentSession:
     assessment_id: str
     assessment_type: str
     user_key: str
@@ -149,7 +158,7 @@ def _load_session_and_answers(
     *,
     observation_table: str,
     assessment_id: str,
-) -> tuple[AssessmentSession | None, dict[int, dict[str, Any]], dict[str, Any]]:
+) -> tuple[AttachmentAssessmentSession | None, dict[int, dict[str, Any]], dict[str, Any]]:
     cursor.execute(
         f"""
         SELECT field_name, field_value, created_at, user_key
@@ -160,7 +169,7 @@ def _load_session_and_answers(
         (assessment_id,),
     )
     rows = cursor.fetchall() or []
-    session: AssessmentSession | None = None
+    session: AttachmentAssessmentSession | None = None
     answers: dict[int, dict[str, Any]] = {}
     result: dict[str, Any] = {}
     for row in rows:
@@ -170,9 +179,9 @@ def _load_session_and_answers(
         data = _parse_json(field_value)
         if field_name == ASSESSMENT_SESSION_FIELD:
             created_at = row.get("created_at") if isinstance(row, dict) else row[2]
-            session = AssessmentSession(
+            session = AttachmentAssessmentSession(
                 assessment_id=str(data.get("assessment_id") or assessment_id),
-                assessment_type=str(data.get("assessment_type") or ASSESSMENT_TYPE_MBTI),
+                assessment_type=str(data.get("assessment_type") or ASSESSMENT_TYPE_ATTACHMENT),
                 user_key=str(data.get("user_key") or user_key),
                 status=str(data.get("status") or "in_progress"),
                 created_at=str(data.get("created_at") or created_at or ""),
@@ -203,48 +212,49 @@ def _question_payload(question_index: int, assessment_id: str) -> dict[str, Any]
 
 
 def _feedback_payload(question_index: int, scores: dict[str, float]) -> dict[str, Any]:
-    dimension = MBTI_QUESTIONS[question_index]["dimension"]
+    """反馈卡片：每答完3题给该类型的反馈"""
+    # 判断当前答完了哪个类型的3题
+    dimension = None
+    if question_index == 2:  # 答完第3题（安全型）
+        dimension = "secure"
+    elif question_index == 5:  # 答完第6题（焦虑型）
+        dimension = "anxious"
+    elif question_index == 8:  # 答完第9题（回避型）
+        dimension = "avoidant"
+    elif question_index == 11:  # 答完第12题（恐惧型）
+        dimension = "fearful"
+
+    if dimension is None:
+        return {}
+
     score = scores.get(dimension, 0.0)
     return {
         "dimension": dimension,
-        "dimension_name": DIMENSION_LABELS[dimension],
+        "dimension_name": ATTACHMENT_DIMENSION_LABELS[dimension],
         "score": score,
         "feedback_text": get_dimension_feedback(dimension, score),
     }
 
 
 def _dimension_rows(scores: dict[str, float]) -> list[dict[str, Any]]:
+    """生成维度得分列表"""
     rows = []
-    for dimension in DIMENSIONS:
+    for dimension in ATTACHMENT_TYPES:
         score = float(scores.get(dimension, 0.0))
         rows.append(
             {
                 "key": dimension,
-                "name": DIMENSION_LABELS[dimension],
+                "name": ATTACHMENT_DIMENSION_LABELS[dimension],
                 "score": score,
                 "level": "high" if score >= 70 else "medium" if score >= 40 else "low",
-                "trait": DIMENSION_TRAITS[dimension]["high" if score >= 70 else "medium" if score >= 40 else "low"],
+                "trait": ATTACHMENT_DIMENSION_TRAITS[dimension]["high" if score >= 70 else "medium" if score >= 40 else "low"],
             }
         )
     return rows
 
 
-def _type_code_from_scores(scores: dict[str, float]) -> str:
-    """使用题库模块的类型码计算"""
-    return mbti_type_code(scores)
-
-
-def _labels_from_scores(scores: dict[str, float]) -> list[str]:
-    """使用题库模块的标签生成"""
-    return mbti_labels(scores)
-
-
-def _interpretation_from_result(result: dict[str, Any]) -> dict[str, Any]:
-    """生成恋爱说明书式解读"""
-    return mbti_interpretation(result)
-
-
 def _result_with_interpretation(result: dict[str, Any]) -> dict[str, Any]:
+    """结果卡片带解读"""
     if not result:
         return {}
     if result.get("interpretation_data"):
@@ -254,28 +264,22 @@ def _result_with_interpretation(result: dict[str, Any]) -> dict[str, Any]:
     return merged
 
 
-def start_assessment(
+def start_attachment_assessment(
     *,
     source: str | None,
     user_key: str,
-    assessment_type: str = ASSESSMENT_TYPE_MBTI,
+    assessment_type: str = ASSESSMENT_TYPE_ATTACHMENT,
     persona_table: str = "user_personas",
     observation_table: str = "user_persona_observations",
 ) -> dict[str, Any]:
-    """创建新的测评会话
-
-    注意：每次点击MBTI都会创建新的测评会话，
-    用户可以从第1题重新开始。旧的测评数据保留在数据库中，
-    但前端只显示当前最新的测评会话。
-    """
-    if assessment_type != ASSESSMENT_TYPE_MBTI:
+    """创建新的依恋风格测评会话"""
+    if assessment_type != ASSESSMENT_TYPE_ATTACHMENT:
         raise ValueError("unsupported assessment_type")
     normalized_source, _ = _resolve_source(source)
-    assessment_id = f"mbti_{uuid.uuid4().hex[:12]}"
+    assessment_id = f"attachment_{uuid.uuid4().hex[:12]}"
     conn = mysql_connect(normalized_source)
     try:
         with conn.cursor() as cursor:
-            # 保存新的测评会话（不删除旧数据，避免卡顿）
             _save_observation(
                 cursor,
                 observation_table=observation_table,
@@ -283,7 +287,7 @@ def start_assessment(
                 field_name=ASSESSMENT_SESSION_FIELD,
                 field_value=_session_payload(assessment_id, assessment_type, user_key),
                 assessment_id=assessment_id,
-                evidence_text="assessment started",
+                evidence_text="attachment assessment started",
             )
         conn.commit()
     finally:
@@ -293,32 +297,24 @@ def start_assessment(
         "assessment_type": assessment_type,
         "assessment_id": assessment_id,
         "intro_data": {
-            "title": "MBTI 恋爱测试",
-            "description": "测测你在恋爱中是哪一型",
-            "duration": "5分钟 · 20题",
-            "reward": "测完了解你的恋爱优势与雷区",
+            "title": "依恋风格测验",
+            "description": "测测你在恋爱里有没有安全感",
+            "duration": "3分钟 · 12题",
+            "reward": "测完了解你的恋爱安全感来源",
         },
     }
 
 
-def get_or_create_assessment(
+def get_or_create_attachment_assessment(
     *,
     source: str | None,
     user_key: str,
-    assessment_type: str = ASSESSMENT_TYPE_MBTI,
+    assessment_type: str = ASSESSMENT_TYPE_ATTACHMENT,
     persona_table: str = "user_personas",
     observation_table: str = "user_persona_observations",
 ) -> dict[str, Any]:
-    """获取未完成的测评（断点续传），或者创建新测评
-
-    防呆机制：用户退出App后，下次进来能接着上次的进度继续做，
-    不会从第1题重新开始。
-
-    Returns:
-        - 如果有未完成的测评：返回 assessment_question，标记 resumed=True
-        - 如果没有：返回 assessment_intro（新测评）
-    """
-    if assessment_type != ASSESSMENT_TYPE_MBTI:
+    """获取未完成的依恋风格测评（断点续传），或者创建新测评"""
+    if assessment_type != ASSESSMENT_TYPE_ATTACHMENT:
         raise ValueError("unsupported assessment_type")
 
     normalized_source, _ = _resolve_source(source)
@@ -326,7 +322,7 @@ def get_or_create_assessment(
 
     try:
         with conn.cursor() as cursor:
-            # 1. 查找用户最近的未完成测评
+            # 查找用户最近的未完成依恋风格测评
             cursor.execute(
                 f"""
                 SELECT conversation_ref, field_value, created_at
@@ -334,15 +330,15 @@ def get_or_create_assessment(
                 WHERE user_key = %s
                   AND field_name = %s
                   AND source_channel = 'assessment'
+                  AND JSON_EXTRACT(field_value, '$.assessment_type') = %s
                 ORDER BY created_at DESC
                 LIMIT 1
                 """,
-                (user_key, ASSESSMENT_SESSION_FIELD),
+                (user_key, ASSESSMENT_SESSION_FIELD, f'"{ASSESSMENT_TYPE_ATTACHMENT}"'),
             )
             recent_session = cursor.fetchone()
 
             if recent_session:
-                # 2. 解析session数据
                 session_data = _parse_json(
                     recent_session.get("field_value") if isinstance(recent_session, dict) else recent_session[1]
                 )
@@ -350,16 +346,13 @@ def get_or_create_assessment(
                     recent_session.get("conversation_ref") if isinstance(recent_session, dict) else recent_session[0]
                 )
 
-                # 3. 检查是否未完成
                 if session_data.get("status") == "in_progress":
-                    # 4. 加载已有的答案
                     session, answers, _result = _load_session_and_answers(
                         cursor,
                         observation_table=observation_table,
                         assessment_id=assessment_id,
                     )
 
-                    # 5. 有进度且未完成，恢复进度
                     if session and len(answers) < TOTAL_QUESTIONS:
                         answered_count = len(answers)
                         return {
@@ -371,16 +364,14 @@ def get_or_create_assessment(
                                 "duration": "继续测评",
                                 "reward": "上次退出时已保存进度，点击继续",
                             },
-                            "resumed": True,  # 标记为恢复的测评
+                            "resumed": True,
                             "answered_count": answered_count,
                         }
 
-        # 6. 没有未完成的测评，创建新测评
-        # 需要先释放连接，因为 start_assessment 会创建新连接
         release_persona_connection(normalized_source, conn)
         conn = None
 
-        return start_assessment(
+        return start_attachment_assessment(
             source=source,
             user_key=user_key,
             assessment_type=assessment_type,
@@ -393,12 +384,13 @@ def get_or_create_assessment(
             release_persona_connection(normalized_source, conn)
 
 
-def begin_assessment(
+def begin_attachment_assessment(
     *,
     source: str | None,
     assessment_id: str,
     observation_table: str = "user_persona_observations",
 ) -> dict[str, Any]:
+    """开始依恋风格测评（返回第一题）"""
     normalized_source, _ = _resolve_source(source)
     conn = mysql_connect(normalized_source)
     try:
@@ -419,7 +411,7 @@ def begin_assessment(
         release_persona_connection(normalized_source, conn)
 
 
-def answer_assessment(
+def answer_attachment_assessment(
     *,
     source: str | None,
     assessment_id: str,
@@ -429,6 +421,7 @@ def answer_assessment(
     persona_table: str = "user_personas",
     observation_table: str = "user_persona_observations",
 ) -> dict[str, Any]:
+    """提交依恋风格测评答案"""
     normalized_source, _ = _resolve_source(source)
     conn = mysql_connect(normalized_source)
     try:
@@ -474,7 +467,7 @@ def answer_assessment(
     finally:
         release_persona_connection(normalized_source, conn)
 
-    # Reload after commit for deterministic output.
+    # Reload after commit
     normalized_source, _ = _resolve_source(source)
     conn = mysql_connect(normalized_source)
     try:
@@ -495,8 +488,8 @@ def answer_assessment(
 
             answered_count = len(answers)
             if answered_count >= TOTAL_QUESTIONS:
-                type_code = _type_code_from_scores(scores)
-                labels = _labels_from_scores(scores)
+                type_code = get_primary_attachment_type(scores)
+                type_info = get_type_info(type_code)
                 interpretation = _interpretation_from_result(
                     {
                         "type_code": type_code,
@@ -507,9 +500,9 @@ def answer_assessment(
                     "type_code": type_code,
                     "scores": scores,
                     "dimension_rows": _dimension_rows(scores),
-                    "labels": labels,
+                    "labels": [type_info["nickname"]] + type_info["tags"][:3],
                     "interpretation_data": interpretation,
-                    "reward": "测完了解你的恋爱优势与雷区",
+                    "reward": "测完了解你的恋爱安全感来源",
                     "assessment_id": assessment_id,
                 }
                 _save_observation(
@@ -519,7 +512,7 @@ def answer_assessment(
                     field_name=ASSESSMENT_RESULT_FIELD,
                     field_value=result_data,
                     assessment_id=assessment_id,
-                    evidence_text="assessment completed",
+                    evidence_text="attachment assessment completed",
                 )
                 _save_observation(
                     cursor,
@@ -528,9 +521,9 @@ def answer_assessment(
                     field_name=ASSESSMENT_INTERPRETATION_FIELD,
                     field_value=interpretation,
                     assessment_id=assessment_id,
-                    evidence_text="assessment interpretation",
+                    evidence_text="attachment assessment interpretation",
                 )
-                # 新增：保存小雅解读消息（用于对话页面显示）
+                # 保存小雅解读消息
                 xiaoya_message = xiaoya_message_from_result(
                     {
                         "type_code": type_code,
@@ -546,13 +539,14 @@ def answer_assessment(
                     assessment_id=assessment_id,
                     evidence_text="xiaoya interpretation message",
                 )
+                # 写入 user_personas.self_personality_traits_json
                 traits_payload = {
-                    "mbti": {
+                    "attachment": {
                         "assessment_id": assessment_id,
                         "type_code": type_code,
                         "scores": scores,
                         "dimension_rows": _dimension_rows(scores),
-                        "labels": labels,
+                        "labels": [type_info["nickname"]] + type_info["tags"][:3],
                         "source": "assessment",
                         "completed_at": _now(),
                     }
@@ -566,7 +560,7 @@ def answer_assessment(
                     ),
                     persona_table=persona_table,
                     observation_table=observation_table,
-                    evidence_text=f"用户完成 MBTI 16 型人格测评（{assessment_id}）",
+                    evidence_text=f"用户完成依恋风格测评（{assessment_id}）",
                     conversation_ref=assessment_id,
                     apply_scope="persona_only",
                     sync_profile=False,
@@ -579,15 +573,17 @@ def answer_assessment(
                     "result_data": result_data,
                 }
 
-            if answered_count % 5 == 0:
+            # 每3题给反馈（答完第3、6、9、12题）
+            if answered_count in [3, 6, 9, 12]:
                 feedback_data = _feedback_payload(answered_count - 1, scores)
-                next_index = answered_count
-                return {
-                    "card_type": "assessment_feedback",
-                    "assessment_id": assessment_id,
-                    "feedback_data": feedback_data,
-                    "next_question": _question_payload(next_index, assessment_id),
-                }
+                if feedback_data:
+                    next_index = answered_count
+                    return {
+                        "card_type": "assessment_feedback",
+                        "assessment_id": assessment_id,
+                        "feedback_data": feedback_data,
+                        "next_question": _question_payload(next_index, assessment_id),
+                    }
 
             return {
                 "card_type": "assessment_question",
@@ -598,13 +594,14 @@ def answer_assessment(
         release_persona_connection(normalized_source, conn)
 
 
-def get_assessment_interpretation(
+def get_attachment_interpretation(
     *,
     source: str | None,
     assessment_id: str,
     user_key: str,
     observation_table: str = "user_persona_observations",
 ) -> dict[str, Any]:
+    """获取依恋风格测评解读"""
     normalized_source, _ = _resolve_source(source)
     conn = mysql_connect(normalized_source)
     try:
@@ -628,7 +625,7 @@ def get_assessment_interpretation(
                 field_name=ASSESSMENT_INTERPRETATION_FIELD,
                 field_value=interpretation,
                 assessment_id=assessment_id,
-                evidence_text="assessment interpretation",
+                evidence_text="attachment assessment interpretation",
             )
             conn.commit()
             return {
@@ -640,23 +637,17 @@ def get_assessment_interpretation(
         release_persona_connection(normalized_source, conn)
 
 
-def get_xiaoya_message(
+def get_attachment_xiaoya_message(
     *,
     source: str | None,
     user_key: str,
     observation_table: str = "user_persona_observations",
 ) -> dict[str, Any]:
-    """获取小雅解读消息（用于在对话页面显示）
-
-    返回：
-    - 如果有未读的小雅消息，返回消息内容
-    - 如果没有，返回空
-    """
+    """获取依恋风格小雅解读消息"""
     normalized_source, _ = _resolve_source(source)
     conn = mysql_connect(normalized_source)
     try:
         with conn.cursor() as cursor:
-            # 查找用户最近的小雅消息
             cursor.execute(
                 f"""
                 SELECT field_value, conversation_ref, created_at
@@ -664,10 +655,11 @@ def get_xiaoya_message(
                 WHERE user_key = %s
                   AND field_name = %s
                   AND source_channel = 'assessment'
+                  AND JSON_EXTRACT(field_value, '$.assessment_type') = %s
                 ORDER BY created_at DESC
                 LIMIT 1
                 """,
-                (user_key, ASSESSMENT_XIAOYA_MESSAGE_FIELD),
+                (user_key, ASSESSMENT_XIAOYA_MESSAGE_FIELD, f'"{ASSESSMENT_TYPE_ATTACHMENT}"'),
             )
             row = cursor.fetchone()
             if not row:
@@ -686,128 +678,23 @@ def get_xiaoya_message(
         release_persona_connection(normalized_source, conn)
 
 
-def add_xiaoya_message_to_discovery_session(
-    *,
-    discovery_source: str | None,
-    session_id: str,
-    user_key: str,
-    message: str,
-    result_data: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """将小雅消息添加到discovery session的对话历史
-
-    这样消息会固定在对话流中，AI也能看到。
-    """
-    from discovery_system import create_default_discovery_service
-    from discovery_system.view_models import assistant_message, assessment_result
-
-    normalized_discovery_source, _ = _resolve_source(discovery_source)
-
-    # 创建discovery service
-    discovery_service = create_default_discovery_service(discovery_dsn=normalized_discovery_source)
-
-    # 获取session
-    session = discovery_service._require_session(session_id)
-
-    # 添加测评结果和小雅消息到 timeline，保证 UI 顺序和后续会话上下文一致
-    item_id = discovery_service.storage.next_item_id("msg-a")
-    now = datetime.now()
-    timeline = list(session.view.get("timeline") or [])
-    if result_data:
-        timeline.append(
-            assessment_result(
-                discovery_service.storage.next_item_id("assessment"),
-                {
-                    "card_type": "assessment_result",
-                    "assessment_id": str(result_data.get("assessment_id") or ""),
-                    "result_data": result_data,
-                },
-                created_at=now,
-            )
-        )
-    timeline.append(
-        assistant_message(
-            item_id,
-            message,
-            created_at=now,
-        )
-    )
-    session.view["timeline"] = timeline
-
-    # 保存session
-    discovery_service.storage.save_session(session)
-
-    return {
-        "success": True,
-        "message": "小雅消息已添加到对话历史",
-        "item_id": item_id,
-    }
-
-
-def mark_xiaoya_message_read(
-    *,
-    source: str | None,
-    user_key: str,
-    assessment_id: str,
-    observation_table: str = "user_persona_observations",
-) -> dict[str, Any]:
-    """标记小雅消息为已读"""
-    normalized_source, _ = _resolve_source(source)
-    conn = mysql_connect(normalized_source)
-    try:
-        with conn.cursor() as cursor:
-            # 查找并更新消息
-            cursor.execute(
-                f"""
-                SELECT id, field_value
-                FROM {quote_mysql_ident(observation_table)}
-                WHERE user_key = %s
-                  AND conversation_ref = %s
-                  AND field_name = %s
-                LIMIT 1
-                """,
-                (user_key, assessment_id, ASSESSMENT_XIAOYA_MESSAGE_FIELD),
-            )
-            row = cursor.fetchone()
-            if not row:
-                return {"success": False, "message": "消息不存在"}
-
-            data = _parse_json(row.get("field_value") if isinstance(row, dict) else row[1])
-            data["read"] = True
-            record_id = row.get("id") if isinstance(row, dict) else row[0]
-
-            cursor.execute(
-                f"""
-                UPDATE {quote_mysql_ident(observation_table)}
-                SET field_value = %s
-                WHERE id = %s
-                """,
-                (_json(data), record_id),
-            )
-            conn.commit()
-            return {"success": True}
-    finally:
-        release_persona_connection(normalized_source, conn)
-
-
-def get_personality_traits(
+def get_attachment_traits(
     *,
     source: str | None,
     user_key: str,
     persona_table: str = "user_personas",
 ) -> dict[str, Any]:
+    """获取用户的依恋风格特质"""
     normalized_source, _ = _resolve_source(source)
     conn = mysql_connect(normalized_source)
     try:
         with conn.cursor() as cursor:
             persona = fetch_persona(cursor, persona_table, user_key=user_key)
             if not persona:
-                return {"mbti": {}, "attachment": {}, "love_language": {}}
+                return {"attachment": {}}
             traits = _parse_json(persona.get("self_personality_traits_json"))
             return {
-                "mbti": traits.get("mbti") or {},
                 "attachment": traits.get("attachment") or {},
-                "love_language": traits.get("love_language") or {},
             }
     finally:
         release_persona_connection(normalized_source, conn)

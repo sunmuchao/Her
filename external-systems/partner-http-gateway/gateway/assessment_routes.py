@@ -12,6 +12,7 @@ from assessment.service import (
     get_xiaoya_message,        # 新增：小雅消息
     mark_xiaoya_message_read,  # 新增：标记已读
     start_assessment,
+    add_xiaoya_message_to_discovery_session,  # 新增：添加小雅消息到对话历史
 )
 
 from .collected_routes import _default_profile_source
@@ -209,6 +210,47 @@ def rest_assessment_mark_xiaoya_read(gateway: AssessmentGateway, environ: dict[s
     return 200, _json_safe(mark_xiaoya_message_read(source=source, user_key=user_key, assessment_id=assessment_id))
 
 
+def rest_assessment_add_xiaoya_to_discovery(gateway: AssessmentGateway, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+    """将小雅消息添加到discovery session的对话历史
+
+    Request body:
+    {
+        "user_key": "123",
+        "session_id": "xxx",
+        "message": "亲爱的，你的测试结果出来啦！...",
+        "result_data": {...}
+    }
+
+    这样小雅消息会固定在对话流中，AI也能看到。
+    """
+    body = _parse_json_body(_read_body(environ))
+    user_key = _resolve_user_key(gateway, environ, body)
+    session_id = str(body.get("session_id") or "").strip()
+    message = str(body.get("message") or "").strip()
+    result_data = body.get("result_data")
+
+    if not session_id:
+        return 400, {"error": {"code": "invalid_request", "message": "session_id is required"}}
+    if not message:
+        return 400, {"error": {"code": "invalid_request", "message": "message is required"}}
+
+    source = _default_profile_source()
+    if not source:
+        return 503, {"error": {"code": "source_not_configured", "message": "数据源未配置"}}
+
+    try:
+        result = add_xiaoya_message_to_discovery_session(
+            discovery_source=source,
+            session_id=session_id,
+            user_key=user_key,
+            message=message,
+            result_data=result_data if isinstance(result_data, dict) else None,
+        )
+        return 200, _json_safe(result)
+    except Exception as e:
+        return 500, {"error": {"code": "internal_error", "message": str(e)}}
+
+
 def dispatch_assessment_rest(
     gateway: AssessmentGateway,
     environ: dict[str, Any],
@@ -235,6 +277,9 @@ def dispatch_assessment_rest(
         return rest_assessment_get_xiaoya_message(gateway, environ)
     if path == "/v1/assessment/xiaoya-read" and method == "POST":
         return rest_assessment_mark_xiaoya_read(gateway, environ)
+    # 新增：将小雅消息添加到discovery session
+    if path == "/v1/assessment/add-xiaoya-to-discovery" and method == "POST":
+        return rest_assessment_add_xiaoya_to_discovery(gateway, environ)
     return None
 
 

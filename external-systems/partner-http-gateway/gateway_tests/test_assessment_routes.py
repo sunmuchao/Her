@@ -212,3 +212,50 @@ def test_personality_traits_route_reads_assessment_traits() -> None:
         source="mysql://root@127.0.0.1:3307/her?table=profiles",
         user_key="108",
     )
+
+
+def test_assessment_add_xiaoya_to_discovery_route_passes_result_data() -> None:
+    gw = _gateway()
+    gw._resolve_end_user_principal = mock.Mock(return_value=types.SimpleNamespace(profile_id=42))  # type: ignore[method-assign]
+
+    with (
+        mock.patch("gateway.assessment_routes._default_profile_source", return_value="mysql://root@127.0.0.1:3307/her?table=profiles"),
+        mock.patch(
+            "gateway.assessment_routes.add_xiaoya_message_to_discovery_session",
+            return_value={
+                "success": True,
+                "message": "小雅消息已添加到对话历史",
+                "item_id": "msg-a-1",
+            },
+        ) as add_mock,
+    ):
+        status, payload, _headers = run_wsgi_json(
+            gw,
+            build_wsgi_env(
+                "POST",
+                "/v1/assessment/add-xiaoya-to-discovery",
+                {
+                    "session_id": "session-1",
+                    "message": "亲爱的，你的测试结果出来啦！",
+                    "result_data": {
+                        "assessment_id": "mbti_demo",
+                        "type_code": "INTJ",
+                        "labels": ["理性"],
+                    },
+                },
+            ),
+        )
+
+    assert "200" in status
+    assert payload["success"] is True
+    add_mock.assert_called_once_with(
+        discovery_source="mysql://root@127.0.0.1:3307/her?table=profiles",
+        session_id="session-1",
+        user_key="42",
+        message="亲爱的，你的测试结果出来啦！",
+        result_data={
+            "assessment_id": "mbti_demo",
+            "type_code": "INTJ",
+            "labels": ["理性"],
+        },
+    )

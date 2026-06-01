@@ -221,3 +221,34 @@ export async function markXiaoyaMessageRead(userKey: string, assessmentId: strin
     }),
   })
 }
+
+/**
+ * 将小雅消息添加到discovery session的对话历史
+ *
+ * 这样小雅消息会固定在对话流中，AI也能看到。
+ */
+export async function addXiaoyaMessageToDiscovery(params: {
+  userKey: string
+  sessionId: string
+  message: string
+  resultData?: unknown
+}): Promise<{
+  success: boolean
+  message: string
+  item_id: string
+}> {
+  return gatewayJson<{
+    success: boolean
+    message: string
+    item_id: string
+  }>('/v1/assessment/add-xiaoya-to-discovery', {
+    method: 'POST',
+    includeAuth: true,
+    body: JSON.stringify({
+      user_key: params.userKey,
+      session_id: params.sessionId,
+      message: params.message,
+      result_data: params.resultData,
+    }),
+  })
+}
