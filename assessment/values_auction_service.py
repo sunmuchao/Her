@@ -34,6 +34,7 @@ from persona_memory_sync.persona_memory_lib import (
     mysql_connect,
     normalize_patch,
     parse_mysql_source,
+    quote_mysql_ident,
     release_persona_connection,
 )
 
@@ -83,6 +84,45 @@ def _generate_session_id() -> str:
     return f"dual_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
 
 
+def _save_observation(
+    cursor: Any,
+    *,
+    observation_table: str,
+    user_key: str,
+    field_name: str,
+    field_value: Any,
+    conversation_ref: str,
+    source_channel: str = "values_auction",
+    source_type: str = "explicit",
+    evidence_text: str = "",
+) -> None:
+    """写入 observation 表，绕开 persona patch 的字段白名单。"""
+    cursor.execute(
+        f"DELETE FROM {quote_mysql_ident(observation_table)} WHERE user_key = %s AND conversation_ref = %s AND field_name = %s",
+        (user_key, conversation_ref, field_name),
+    )
+    cursor.execute(
+        f"""
+        INSERT INTO {quote_mysql_ident(observation_table)}
+          (user_key, persona_id, field_name, field_value, source_type, confidence_score,
+           evidence_text, conversation_ref, source_channel, action_type, applied_to_persona,
+           applied_to_profile, created_at)
+        VALUES (%s, NULL, %s, %s, %s, %s, %s, %s, %s, 'insert', 1, 0, %s)
+        """,
+        (
+            user_key,
+            field_name,
+            _json(field_value) if isinstance(field_value, (dict, list)) else str(field_value),
+            source_type,
+            100,
+            evidence_text,
+            conversation_ref,
+            source_channel,
+            _now(),
+        ),
+    )
+
+
 @dataclass(frozen=True)
 class ValuesAuctionSession:
     """拍卖会话数据类"""
@@ -111,6 +151,8 @@ def start_values_auction(
     *,
     user_key: str,
     source: str | None = None,
+    persona_table: str = "user_personas",
+    observation_table: str = "user_persona_observations",
 ) -> dict[str, Any]:
     """
     开始价值观拍卖（单人模式）
@@ -119,10 +161,7 @@ def start_values_auction(
         介绍卡片数据
     """
     assessment_id = _generate_assessment_id()
-    normalized_source, persona_table = _resolve_source(source)
-    observation_table = f"{persona_table}_observations"
-
-    # 创建会话记录
+    normalized_source, _ = _resolve_source(source)
     session_data = {
         "assessment_id": assessment_id,
         "assessment_type": ASSESSMENT_TYPE_VALUES_AUCTION,
@@ -130,21 +169,21 @@ def start_values_auction(
         "status": "pending",
         "created_at": _now(),
     }
-
-    # 写入观察表
-    apply_persona_patch(
-        source=normalized_source,
-        user_key=user_key,
-        source_type="explicit",
-        normalized_patch=normalize_patch({
-            VALUES_AUCTION_SESSION_FIELD: _json(session_data)
-        }),
-        persona_table=persona_table,
-        observation_table=observation_table,
-        apply_scope="observation_only",
-        sync_profile=False,
-        source_channel="values_auction",
-    )
+    conn = mysql_connect(normalized_source)
+    try:
+        with conn.cursor() as cursor:
+            _save_observation(
+                cursor,
+                observation_table=observation_table,
+                user_key=user_key,
+                field_name=VALUES_AUCTION_SESSION_FIELD,
+                field_value=session_data,
+                conversation_ref=assessment_id,
+                evidence_text="values auction started",
+            )
+        conn.commit()
+    finally:
+        release_persona_connection(normalized_source, conn)
 
     # 返回介绍卡片
     return {
@@ -240,6 +279,8 @@ def submit_auction_bids(
     user_key: str,
     bids: list[dict[str, Any]],
     source: str | None = None,
+    persona_table: str = "user_personas",
+    observation_table: str = "user_persona_observations",
 ) -> dict[str, Any]:
     """
     提交竞拍结果（单人模式）
@@ -288,16 +329,16 @@ def submit_auction_bids(
     }
 
     # 6. 写入偏好表
-    normalized_source, persona_table = _resolve_source(source)
-    observation_table = f"{persona_table}_observations"
+    normalized_source, _ = _resolve_source(source)
 
     # 获取现有 personality_traits_json
-    persona = fetch_persona(
-        source=normalized_source,
-        user_key=user_key,
-        persona_table=persona_table,
-    )
-    existing_traits = _parse_json(persona.get("self_personality_traits_json", {}))
+    conn = mysql_connect(normalized_source)
+    try:
+        with conn.cursor() as cursor:
+            persona = fetch_persona(cursor, persona_table, user_key=user_key) or {}
+            existing_traits = _parse_json(persona.get("self_personality_traits_json", {}))
+    finally:
+        release_persona_connection(normalized_source, conn)
 
     # 合并价值观拍卖结果
     existing_traits["values_auction"] = result_data
@@ -317,20 +358,21 @@ def submit_auction_bids(
         source_channel="values_auction",
     )
 
-    # 同时写入观察表记录
-    apply_persona_patch(
-        source=normalized_source,
-        user_key=user_key,
-        source_type="explicit",
-        normalized_patch=normalize_patch({
-            VALUES_AUCTION_RESULT_FIELD: _json(result_data)
-        }),
-        persona_table=persona_table,
-        observation_table=observation_table,
-        apply_scope="observation_only",
-        sync_profile=False,
-        source_channel="values_auction",
-    )
+    conn = mysql_connect(normalized_source)
+    try:
+        with conn.cursor() as cursor:
+            _save_observation(
+                cursor,
+                observation_table=observation_table,
+                user_key=user_key,
+                field_name=VALUES_AUCTION_RESULT_FIELD,
+                field_value=result_data,
+                conversation_ref=assessment_id,
+                evidence_text="values auction result recorded",
+            )
+        conn.commit()
+    finally:
+        release_persona_connection(normalized_source, conn)
 
     # 7. 返回结果卡片
     return {
@@ -351,6 +393,7 @@ def get_last_result(
     *,
     user_key: str,
     source: str | None = None,
+    persona_table: str = "user_personas",
 ) -> dict[str, Any] | None:
     """
     获取用户上次拍卖结果（复用机制）
@@ -358,13 +401,14 @@ def get_last_result(
     Returns:
         上次拍卖结果，或 None
     """
-    normalized_source, persona_table = _resolve_source(source)
+    normalized_source, _ = _resolve_source(source)
 
-    persona = fetch_persona(
-        source=normalized_source,
-        user_key=user_key,
-        persona_table=persona_table,
-    )
+    conn = mysql_connect(normalized_source)
+    try:
+        with conn.cursor() as cursor:
+            persona = fetch_persona(cursor, persona_table, user_key=user_key) or {}
+    finally:
+        release_persona_connection(normalized_source, conn)
 
     traits = _parse_json(persona.get("self_personality_traits_json", {}))
     values_auction = traits.get("values_auction", {})
@@ -380,6 +424,8 @@ def generate_ai_interpretation(
     assessment_id: str,
     user_key: str,
     source: str | None = None,
+    persona_table: str = "user_personas",
+    observation_table: str = "user_persona_observations",
 ) -> dict[str, Any]:
     """
     生成AI解读（单人模式）
@@ -388,14 +434,14 @@ def generate_ai_interpretation(
         AI解读卡片数据
     """
     # 1. 获取拍卖结果
-    normalized_source, persona_table = _resolve_source(source)
-    observation_table = f"{persona_table}_observations"
+    normalized_source, _ = _resolve_source(source)
 
-    persona = fetch_persona(
-        source=normalized_source,
-        user_key=user_key,
-        persona_table=persona_table,
-    )
+    conn = mysql_connect(normalized_source)
+    try:
+        with conn.cursor() as cursor:
+            persona = fetch_persona(cursor, persona_table, user_key=user_key) or {}
+    finally:
+        release_persona_connection(normalized_source, conn)
 
     traits = _parse_json(persona.get("self_personality_traits_json", {}))
     values_auction = traits.get("values_auction", {})
@@ -442,7 +488,6 @@ def generate_ai_interpretation(
         source_type="explicit",
         normalized_patch=normalize_patch({
             "self_personality_traits_json": _json(existing_traits),
-            VALUES_AUCTION_INTERPRETATION_FIELD: _json(interpretation_data),
         }),
         persona_table=persona_table,
         observation_table=observation_table,
@@ -450,6 +495,21 @@ def generate_ai_interpretation(
         sync_profile=False,
         source_channel="values_auction",
     )
+    conn = mysql_connect(normalized_source)
+    try:
+        with conn.cursor() as cursor:
+            _save_observation(
+                cursor,
+                observation_table=observation_table,
+                user_key=user_key,
+                field_name=VALUES_AUCTION_INTERPRETATION_FIELD,
+                field_value=interpretation_data,
+                conversation_ref=assessment_id,
+                evidence_text="values auction interpretation generated",
+            )
+        conn.commit()
+    finally:
+        release_persona_connection(normalized_source, conn)
 
     # 5. 返回解读卡片
     return {
@@ -468,6 +528,8 @@ def start_values_auction_together(
     user_key: str,
     partner_key: str,
     source: str | None = None,
+    persona_table: str = "user_personas",
+    observation_table: str = "user_persona_observations",
 ) -> dict[str, Any]:
     """
     开始双人价值观拍卖（两人同时进入）
@@ -476,7 +538,7 @@ def start_values_auction_together(
         特质列表卡片 + 复用选项（如果用户做过）
     """
     session_id = _generate_session_id()
-    normalized_source, persona_table = _resolve_source(source)
+    normalized_source, _ = _resolve_source(source)
 
     # 创建双人session
     session_data = {
@@ -492,37 +554,30 @@ def start_values_auction_together(
     }
 
     # 写入双方观察表
-    observation_table = f"{persona_table}_observations"
-
-    # 写入用户A的session
-    apply_persona_patch(
-        source=normalized_source,
-        user_key=user_key,
-        source_type="explicit",
-        normalized_patch=normalize_patch({
-            VALUES_AUCTION_DUAL_SESSION_FIELD: _json(session_data)
-        }),
-        persona_table=persona_table,
-        observation_table=observation_table,
-        apply_scope="observation_only",
-        sync_profile=False,
-        source_channel="values_auction",
-    )
-
-    # 写入用户B的session
-    apply_persona_patch(
-        source=normalized_source,
-        user_key=partner_key,
-        source_type="explicit",
-        normalized_patch=normalize_patch({
-            VALUES_AUCTION_DUAL_SESSION_FIELD: _json(session_data)
-        }),
-        persona_table=persona_table,
-        observation_table=observation_table,
-        apply_scope="observation_only",
-        sync_profile=False,
-        source_channel="values_auction",
-    )
+    conn = mysql_connect(normalized_source)
+    try:
+        with conn.cursor() as cursor:
+            _save_observation(
+                cursor,
+                observation_table=observation_table,
+                user_key=user_key,
+                field_name=VALUES_AUCTION_DUAL_SESSION_FIELD,
+                field_value=session_data,
+                conversation_ref=session_id,
+                evidence_text="dual values auction started",
+            )
+            _save_observation(
+                cursor,
+                observation_table=observation_table,
+                user_key=partner_key,
+                field_name=VALUES_AUCTION_DUAL_SESSION_FIELD,
+                field_value=session_data,
+                conversation_ref=session_id,
+                evidence_text="dual values auction started",
+            )
+        conn.commit()
+    finally:
+        release_persona_connection(normalized_source, conn)
 
     # 查用户是否做过
     last_result = get_last_result(user_key=user_key, source=source)
@@ -556,30 +611,30 @@ def get_dual_session(
     session_id: str,
     user_key: str,
     source: str | None = None,
+    observation_table: str = "user_persona_observations",
 ) -> dict[str, Any] | None:
     """
     获取双人session数据
     """
-    normalized_source, persona_table = _resolve_source(source)
-    observation_table = f"{persona_table}_observations"
-
-    conn = mysql_connect(source=normalized_source)
+    normalized_source, _ = _resolve_source(source)
+    conn = mysql_connect(normalized_source)
     try:
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor()
         cursor.execute(
             f"""
-            SELECT field_value FROM {observation_table}
+            SELECT field_value FROM {quote_mysql_ident(observation_table)}
             WHERE user_key = %s AND field_name = %s
-            ORDER BY timestamp DESC LIMIT 1
+              AND conversation_ref = %s
+            ORDER BY created_at DESC, id DESC LIMIT 1
             """,
-            (user_key, VALUES_AUCTION_DUAL_SESSION_FIELD),
+            (user_key, VALUES_AUCTION_DUAL_SESSION_FIELD, session_id),
         )
         row = cursor.fetchone()
         if row:
-            return _parse_json(row.get("field_value", ""))
+            return _parse_json(row[0] if not isinstance(row, dict) else row.get("field_value", ""))
         return None
     finally:
-        release_persona_connection(conn)
+        release_persona_connection(normalized_source, conn)
 
 
 def submit_auction_bids_together(
@@ -588,6 +643,7 @@ def submit_auction_bids_together(
     user_key: str,
     bids: list[dict[str, Any]],
     source: str | None = None,
+    observation_table: str = "user_persona_observations",
 ) -> dict[str, Any]:
     """
     提交双人拍卖结果（锁定）
@@ -622,8 +678,7 @@ def submit_auction_bids_together(
         }
 
     # 3. 更新session状态
-    normalized_source, persona_table = _resolve_source(source)
-    observation_table = f"{persona_table}_observations"
+    normalized_source, _ = _resolve_source(source)
 
     # 确定用户是A还是B
     if session.get("user_a_key") == user_key:
@@ -645,19 +700,21 @@ def submit_auction_bids_together(
     )
 
     # 5. 写入更新后的session
-    apply_persona_patch(
-        source=normalized_source,
-        user_key=user_key,
-        source_type="explicit",
-        normalized_patch=normalize_patch({
-            VALUES_AUCTION_DUAL_SESSION_FIELD: _json(session)
-        }),
-        persona_table=persona_table,
-        observation_table=observation_table,
-        apply_scope="observation_only",
-        sync_profile=False,
-        source_channel="values_auction",
-    )
+    conn = mysql_connect(normalized_source)
+    try:
+        with conn.cursor() as cursor:
+            _save_observation(
+                cursor,
+                observation_table=observation_table,
+                user_key=user_key,
+                field_name=VALUES_AUCTION_DUAL_SESSION_FIELD,
+                field_value=session,
+                conversation_ref=session_id,
+                evidence_text="dual values auction updated",
+            )
+        conn.commit()
+    finally:
+        release_persona_connection(normalized_source, conn)
 
     # 同时写入用户个人结果到偏好表
     submit_auction_bids(
@@ -745,6 +802,7 @@ def reuse_last_result_together(
     session_id: str,
     user_key: str,
     source: str | None = None,
+    observation_table: str = "user_persona_observations",
 ) -> dict[str, Any]:
     """
     复用上次结果（双人模式）
@@ -783,8 +841,7 @@ def reuse_last_result_together(
     }
 
     # 4. 更新session
-    normalized_source, persona_table = _resolve_source(source)
-    observation_table = f"{persona_table}_observations"
+    normalized_source, _ = _resolve_source(source)
 
     if session.get("user_a_key") == user_key:
         session["user_a_status"] = "done"
@@ -800,19 +857,21 @@ def reuse_last_result_together(
     )
 
     # 6. 写入session
-    apply_persona_patch(
-        source=normalized_source,
-        user_key=user_key,
-        source_type="explicit",
-        normalized_patch=normalize_patch({
-            VALUES_AUCTION_DUAL_SESSION_FIELD: _json(session)
-        }),
-        persona_table=persona_table,
-        observation_table=observation_table,
-        apply_scope="observation_only",
-        sync_profile=False,
-        source_channel="values_auction",
-    )
+    conn = mysql_connect(normalized_source)
+    try:
+        with conn.cursor() as cursor:
+            _save_observation(
+                cursor,
+                observation_table=observation_table,
+                user_key=user_key,
+                field_name=VALUES_AUCTION_DUAL_SESSION_FIELD,
+                field_value=session,
+                conversation_ref=session_id,
+                evidence_text="dual values auction reused",
+            )
+        conn.commit()
+    finally:
+        release_persona_connection(normalized_source, conn)
 
     # 7. 返回结果
     if partner_done:
