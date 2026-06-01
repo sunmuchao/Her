@@ -216,6 +216,21 @@ def _compact_timeline(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     ],
                 }
             )
+            continue
+        if item_type == "assessment_result":
+            card = dict(item.get("card") or {})
+            result_data = dict(card.get("result_data") or {})
+            compacted.append(
+                {
+                    "item_type": "assessment_result",
+                    "type_code": result_data.get("type_code"),
+                    "summary": (
+                        (result_data.get("interpretation_data") or {}).get("summary")
+                        if isinstance(result_data.get("interpretation_data"), dict)
+                        else None
+                    ),
+                }
+            )
     return compacted
 
 

@@ -21,6 +21,7 @@ export type DiscoveryView = {
     title?: string
     created_at?: string
     prompt?: DiscoveryProfileUpdatePrompt
+    card?: unknown
     cards?: Array<{
       card_id?: string
       profile_id?: string | number

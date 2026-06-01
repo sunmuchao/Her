@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { ArrowLeft, BadgeCheck, Bookmark, ChevronRight, Mail, Mic, Plus, Search, Send, Sparkles, X } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { ArrowLeft, BadgeCheck, Bookmark, ChevronRight, Mail, Mic, Plus, Search, Send, X, Brain } from 'lucide-react'
 import { AssessmentCardRenderer } from '@/components/assessment/AssessmentCardRenderer'
 import { XiaoyaAvatar } from '@/components/her/ui/xiaoya-avatar'
 import Image from 'next/image'
@@ -33,6 +33,9 @@ import {
   answerAssessment,
   beginAssessment,
   startAssessment,
+  getXiaoyaMessage,
+  addAssessmentLabels,
+  addXiaoyaMessageToDiscovery,
   type AssessmentCard,
   type AssessmentQuestionCard,
 } from '@/lib/api/endpoints/assessment'
@@ -49,11 +52,13 @@ function DiscoveryTimelineEntry({
   sessionId,
   onViewCandidate,
   onProfileUpdateResolved,
+  onAddLabels,
 }: {
   item: DiscoveryTimelineItem
   sessionId: string | null
   onViewCandidate: (candidateId: string, candidate?: CandidatePreview) => void
   onProfileUpdateResolved?: () => void
+  onAddLabels?: (selectedLabels: string[]) => Promise<void>
 }) {
   if (item.kind === 'profile_update_prompt') {
     if (!sessionId) return null
@@ -62,6 +67,19 @@ function DiscoveryTimelineEntry({
         sessionId={sessionId}
         item={item}
         onResolved={() => onProfileUpdateResolved?.()}
+      />
+    )
+  }
+
+  if (item.kind === 'assessment_result') {
+    return (
+      <AssessmentCardRenderer
+        card={item.card}
+        onStart={() => {}}
+        onAnswer={() => {}}
+        onContinue={() => {}}
+        onContinueChat={() => {}}
+        onAddLabels={onAddLabels}
       />
     )
   }
@@ -185,6 +203,10 @@ export default function DiscoverPage({
       setAssessmentId(intro.assessment_id)
       setAssessmentCard(intro)
       setAssessmentQuestionHistory([])
+      // 打开测评卡片后，滚动到底部
+      setTimeout(() => {
+        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+      }, 150)
     } catch (error) {
       notifyError(error, '打开 MBTI 测评失败')
     } finally {
@@ -196,10 +218,34 @@ export default function DiscoverPage({
     setAssessmentCard(null)
     setAssessmentId(null)
     setAssessmentQuestionHistory([])
+    // 滚动到底部显示小雅消息
+    setTimeout(() => {
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }, 150)
+  }
+
+  const handleAddLabels = async (selectedLabels: string[]) => {
+    if (!userKey) return
+    try {
+      await addAssessmentLabels(userKey, selectedLabels)
+      toast.success(`已添加 ${selectedLabels.length} 个标签到个人主页`)
+    } catch (error) {
+      notifyError(error, '添加标签失败')
+    }
   }
 
   const pageShellClass =
     'flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background pb-14'
+
+  // 当测评卡片出现时，自动滚动到底部
+  useEffect(() => {
+    if (assessmentCard) {
+      // 使用 setTimeout 确保 DOM 更新后再滚动
+      setTimeout(() => {
+        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+      }, 100)
+    }
+  }, [assessmentCard])
 
   if (isLoadingSession) {
     return (
@@ -286,6 +332,7 @@ export default function DiscoverPage({
               onProfileUpdateResolved={() => {
                 void reloadSession()
               }}
+              onAddLabels={handleAddLabels}
             />
           ))}
 
@@ -308,6 +355,35 @@ export default function DiscoverPage({
                       userKey,
                     })
                     setAssessmentCard(next)
+
+                    // 如果测评完成（显示结果卡片），预先获取小雅消息
+                    // 等用户查看完结果并点击"继续和小雅聊天"后再添加到对话流
+                    if (next.card_type === 'assessment_result' && userKey) {
+                      try {
+                        const xiaoyaResult = await getXiaoyaMessage(userKey)
+                        if (xiaoyaResult.has_message && xiaoyaResult.message) {
+                          if (sessionId) {
+                            try {
+                              await addXiaoyaMessageToDiscovery({
+                                userKey,
+                                sessionId,
+                                message: xiaoyaResult.message,
+                                resultData: next.result_data,
+                              })
+                              await reloadSession()
+                              clearAssessmentCard()
+                            } catch (discoveryError) {
+                              console.warn('[onAnswer] 添加到discovery失败，可能是session不存在:', discoveryError)
+                              // 失败不影响当前结果展示，只是消息不会融入对话流
+                            }
+                          } else {
+                            console.warn('[onAnswer] sessionId为空，跳过添加到discovery session')
+                          }
+                        }
+                      } catch (error) {
+                        console.error('[onAnswer] 获取小雅消息失败:', error)
+                      }
+                    }
                   }}
                   onContinue={async () => {
                     if (assessmentCard.card_type !== 'assessment_feedback') return
@@ -317,7 +393,16 @@ export default function DiscoverPage({
                       question_data: assessmentCard.next_question,
                     })
                   }}
-                  onContinueChat={clearAssessmentCard}
+                  onContinueChat={() => {
+                    // 用户点击"继续和小雅聊天"，清除测评卡片state
+                    // 小雅消息已经在测评完成时添加到对话流，不需要再次添加
+                    clearAssessmentCard()
+
+                    // 滚动到底部
+                    setTimeout(() => {
+                      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+                    }, 150)
+                  }}
                   onPrevious={
                     assessmentQuestionHistory.length > 0
                       ? () => {
@@ -331,6 +416,7 @@ export default function DiscoverPage({
                         }
                       : undefined
                   }
+                  onAddLabels={handleAddLabels}
                 />
               </div>
             </div>
@@ -379,7 +465,7 @@ export default function DiscoverPage({
                 aria-label="MBTI测评"
               >
                 <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Sparkles className="w-6 h-6 text-primary" />
+                  <Brain className="w-6 h-6 text-primary" />
                 </div>
                 <span className="text-xs text-foreground">MBTI测评</span>
               </button>

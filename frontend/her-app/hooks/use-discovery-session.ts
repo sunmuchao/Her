@@ -324,6 +324,11 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
     }
   }, [applyDiscoveryResponse, sessionId])
 
+  // 新增：添加消息到对话历史（用于测评完成后添加小雅消息）
+  const addTimelineItem = useCallback((item: DiscoveryTimelineItem) => {
+    setTimelineItems((prev) => [...prev, item])
+  }, [])
+
   return {
     timelineItems,
     inputValue,
@@ -341,5 +346,6 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
     submitTurn,
     sessionId,
     reloadSession,
+    addTimelineItem,  // 新增
   }
 }
