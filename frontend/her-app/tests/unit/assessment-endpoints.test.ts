@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  addXiaoyaMessageToDiscovery,
   answerAssessment,
   beginAssessment,
   fetchAssessmentInterpretation,
@@ -186,6 +187,48 @@ describe('assessment endpoints', () => {
     expect(JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body))).toMatchObject({
       assessment_id: 'mbti_demo',
       user_key: '42',
+    })
+  })
+
+  it('posts xiaoya discovery sync request with result data', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          success: true,
+          message: '小雅消息已添加到对话历史',
+          item_id: 'msg-a-1',
+        }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await addXiaoyaMessageToDiscovery({
+      userKey: '42',
+      sessionId: 'session-1',
+      message: '亲爱的，你的测试结果出来啦！',
+      resultData: {
+        assessment_id: 'mbti_demo',
+        type_code: 'INTJ',
+        labels: ['理性'],
+      },
+    })
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/gateway/v1/assessment/add-xiaoya-to-discovery',
+      expect.objectContaining({
+        method: 'POST',
+        credentials: 'include',
+      }),
+    )
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toMatchObject({
+      user_key: '42',
+      session_id: 'session-1',
+      message: '亲爱的，你的测试结果出来啦！',
+      result_data: {
+        assessment_id: 'mbti_demo',
+        type_code: 'INTJ',
+        labels: ['理性'],
+      },
     })
   })
 })
