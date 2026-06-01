@@ -1,5 +1,6 @@
 import { formatRelativeTime } from '@/lib/format-relative-time'
 import type { AssessmentResultCard } from '@/lib/api/endpoints/assessment'
+import { PLACEHOLDER_AVATAR, resolveProfileImageUrl } from '@/lib/image-url'
 import type { CandidatePreview } from '@/lib/types/candidate'
 import type { DiscoveryView } from '@/lib/types/discovery'
 
@@ -54,7 +55,15 @@ export type MappedDiscoveryView = {
   /** Ordered chat stream: messages and result groups interleaved as returned by the API. */
   timelineItems: DiscoveryTimelineItem[]
   chips?: string[]
-  actions: Array<{ action_id: string; label: string }>
+  actions: Array<{
+    action_id: string
+    label: string
+    semantic_payload?: {
+      kind: string
+      assessment_type?: string
+      [key: string]: unknown
+    }
+  }>
   composerPlaceholder: string
   composerDisabled: boolean
 }
@@ -68,7 +77,7 @@ function mapDiscoveryCard(
     id,
     name: card.title || '候选人',
     city: card.subtitle || undefined,
-    image: card.cover_image_url,
+    image: resolveProfileImageUrl(card.cover_image_url, PLACEHOLDER_AVATAR),
     matchScore: card.match_score,
     matchReason: card.reason_summary,
   }
@@ -139,8 +148,12 @@ export function mapDiscoveryView(view?: DiscoveryView): MappedDiscoveryView {
   const chips = view?.criteria_chips?.map((item) => item.label).filter(Boolean) as string[] | undefined
   const actions =
     view?.suggested_actions
-      ?.filter((item): item is { action_id: string; label: string } => Boolean(item.action_id && item.label))
-      .map((item) => ({ action_id: item.action_id, label: item.label })) || []
+      ?.filter((item): item is { action_id: string; label: string; semantic_payload?: unknown } => Boolean(item.action_id && item.label))
+      .map((item) => ({
+        action_id: item.action_id,
+        label: item.label,
+        semantic_payload: item.semantic_payload as { kind: string; assessment_type?: string; [key: string]: unknown } | undefined,
+      })) || []
 
   return {
     timelineItems,

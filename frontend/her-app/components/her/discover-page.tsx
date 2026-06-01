@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { ArrowLeft, BadgeCheck, Bookmark, ChevronRight, Mail, Mic, Plus, Search, Send, X, Brain } from 'lucide-react'
+import { ArrowLeft, BadgeCheck, Bookmark, ChevronRight, Mail, Mic, Plus, Search, Send, X, Brain, Heart, Sparkles } from 'lucide-react'
 import { AssessmentCardRenderer } from '@/components/assessment/AssessmentCardRenderer'
 import { XiaoyaAvatar } from '@/components/her/ui/xiaoya-avatar'
 import Image from 'next/image'
@@ -195,11 +195,11 @@ export default function DiscoverPage({
   const [assessmentBusy, setAssessmentBusy] = useState(false)
   const userKey = String(getProfileId() || getUserId() || '')
 
-  const openAssessmentCard = async () => {
+  const openAssessmentCard = async (assessmentType: 'mbti_16' | 'attachment_style' | 'love_language' = 'mbti_16') => {
     if (!userKey || assessmentBusy) return
     setAssessmentBusy(true)
     try {
-      const intro = await startAssessment(userKey)
+      const intro = await startAssessment(userKey, assessmentType)
       setAssessmentId(intro.assessment_id)
       setAssessmentCard(intro)
       setAssessmentQuestionHistory([])
@@ -208,7 +208,12 @@ export default function DiscoverPage({
         chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
       }, 150)
     } catch (error) {
-      notifyError(error, '打开 MBTI 测评失败')
+      const assessmentNames = {
+        'mbti_16': 'MBTI',
+        'attachment_style': '依恋风格',
+        'love_language': '恋爱语言'
+      }
+      notifyError(error, `打开 ${assessmentNames[assessmentType]} 测评失败`)
     } finally {
       setAssessmentBusy(false)
     }
@@ -429,7 +434,22 @@ export default function DiscoverPage({
               {suggestedActions.map((action) => (
                 <button
                   key={action.action_id}
-                  onClick={() => void submitTurn({ action_id: action.action_id })}
+                  onClick={() => {
+                    // 检测是否是测评推荐动作
+                    if (action.semantic_payload?.kind === 'start_assessment') {
+                      const assessmentType = action.semantic_payload?.assessment_type || 'mbti'
+                      // 映射测评类型到前端参数
+                      const typeMap: Record<string, 'mbti_16' | 'attachment_style' | 'love_language'> = {
+                        'mbti': 'mbti_16',
+                        'attachment': 'attachment_style',
+                        'values': 'love_language',
+                      }
+                      void openAssessmentCard(typeMap[assessmentType] || 'mbti_16')
+                    } else {
+                      // 其他动作走原有流程
+                      void submitTurn({ action_id: action.action_id })
+                    }
+                  }}
                   disabled={isSubmittingTurn}
                   className="rounded-full border border-border bg-secondary px-3 py-1.5 text-xs text-foreground disabled:opacity-60"
                 >
@@ -454,10 +474,11 @@ export default function DiscoverPage({
               }
             }}
           >
-            <div className="grid grid-cols-4 gap-4 rounded-2xl border border-border bg-card p-3">
+            <div className="grid grid-cols-5 gap-4 rounded-2xl border border-border bg-card p-3">
+              {/* MBTI测评 */}
               <button
                 onClick={() => {
-                  void openAssessmentCard()
+                  void openAssessmentCard('mbti_16')
                   setShowActionMenu(false)
                 }}
                 disabled={assessmentBusy || !userKey}
@@ -468,6 +489,38 @@ export default function DiscoverPage({
                   <Brain className="w-6 h-6 text-primary" />
                 </div>
                 <span className="text-xs text-foreground">MBTI测评</span>
+              </button>
+
+              {/* 依恋风格测评 */}
+              <button
+                onClick={() => {
+                  void openAssessmentCard('attachment_style')
+                  setShowActionMenu(false)
+                }}
+                disabled={assessmentBusy || !userKey}
+                className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-secondary hover:bg-secondary/80 transition-colors disabled:opacity-60"
+                aria-label="依恋风格测评"
+              >
+                <div className="w-12 h-12 rounded-full bg-rose/10 flex items-center justify-center">
+                  <Heart className="w-6 h-6 text-rose" />
+                </div>
+                <span className="text-xs text-foreground">依恋风格</span>
+              </button>
+
+              {/* 恋爱语言测评 */}
+              <button
+                onClick={() => {
+                  void openAssessmentCard('love_language')
+                  setShowActionMenu(false)
+                }}
+                disabled={assessmentBusy || !userKey}
+                className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-secondary hover:bg-secondary/80 transition-colors disabled:opacity-60"
+                aria-label="恋爱语言测评"
+              >
+                <div className="w-12 h-12 rounded-full bg-gold/10 flex items-center justify-center">
+                  <Sparkles className="w-6 h-6 text-gold" />
+                </div>
+                <span className="text-xs text-foreground">恋爱语言</span>
               </button>
             </div>
           </div>

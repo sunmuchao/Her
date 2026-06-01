@@ -107,6 +107,12 @@ class DiscoveryAgePreferencePayloadModel(BaseModel):
     flexible: bool | None = Field(default=None)
 
 
+class DiscoveryStartAssessmentPayloadModel(BaseModel):
+    """开始测评动作 - 用于AI推荐MBTI等测评"""
+    kind: Literal["start_assessment"]
+    assessment_type: Literal["mbti", "values", "attachment"] = Field(default="mbti")
+
+
 DiscoveryActionPayloadModel = Annotated[
     Union[
         DiscoveryStarterPromptPayloadModel,
@@ -117,6 +123,7 @@ DiscoveryActionPayloadModel = Annotated[
         DiscoveryRefinePreferencesPayloadModel,
         DiscoveryShowMoreCandidatesPayloadModel,
         DiscoveryAgePreferencePayloadModel,
+        DiscoveryStartAssessmentPayloadModel,
     ],
     Field(discriminator="kind"),
 ]
@@ -228,6 +235,7 @@ __all__ = [
     "DiscoveryRuntimeResult",
     "DiscoverySavedSearchOptInPayloadModel",
     "DiscoveryShowMoreCandidatesPayloadModel",
+    "DiscoveryStartAssessmentPayloadModel",
     "DiscoveryStarterPromptPayloadModel",
     "DiscoveryToolCall",
     "VALID_ACTION_STYLES",
