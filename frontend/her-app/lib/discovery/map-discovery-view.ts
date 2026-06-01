@@ -45,11 +45,26 @@ export type DiscoveryAssessmentResultItem = {
   timestamp?: string
 }
 
+export type DiscoverySuggestedActionsItem = {
+  kind: 'suggested_actions'
+  id: string
+  actions: Array<{
+    action_id: string
+    label: string
+    semantic_payload?: {
+      kind: string
+      assessment_type?: string
+      [key: string]: unknown
+    }
+  }>
+}
+
 export type DiscoveryTimelineItem =
   | DiscoveryMessageItem
   | DiscoveryResultGroupItem
   | DiscoveryProfileUpdatePromptItem
   | DiscoveryAssessmentResultItem
+  | DiscoverySuggestedActionsItem
 
 export type MappedDiscoveryView = {
   /** Ordered chat stream: messages and result groups interleaved as returned by the API. */
@@ -154,6 +169,14 @@ export function mapDiscoveryView(view?: DiscoveryView): MappedDiscoveryView {
         label: item.label,
         semantic_payload: item.semantic_payload as { kind: string; assessment_type?: string; [key: string]: unknown } | undefined,
       })) || []
+
+  if (actions.length) {
+    timelineItems.push({
+      kind: 'suggested_actions',
+      id: 'suggested-actions',
+      actions,
+    })
+  }
 
   return {
     timelineItems,

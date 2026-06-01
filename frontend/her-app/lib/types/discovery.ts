@@ -33,7 +33,15 @@ export type DiscoveryView = {
     }>
   }>
   criteria_chips?: Array<{ label?: string }>
-  suggested_actions?: Array<{ action_id?: string; label?: string }>
+  suggested_actions?: Array<{
+    action_id?: string
+    label?: string
+    semantic_payload?: {
+      kind?: string
+      assessment_type?: string
+      [key: string]: unknown
+    }
+  }>
   composer?: { placeholder?: string; disabled?: boolean }
 }
 

@@ -88,15 +88,6 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
   const [inputValue, setInputValue] = useState('')
   const [currentPrefs, setCurrentPrefs] = useState<string[]>([])
   const [sessionId, setSessionId] = useState<string | null>(null)
-  const [suggestedActions, setSuggestedActions] = useState<Array<{
-    action_id: string
-    label: string
-    semantic_payload?: {
-      kind: string
-      assessment_type?: string
-      [key: string]: unknown
-    }
-  }>>([])
   const [composerPlaceholder, setComposerPlaceholder] = useState('输入你的想法...')
   const [composerDisabled, setComposerDisabled] = useState(false)
   const [isSubmittingTurn, setIsSubmittingTurn] = useState(false)
@@ -110,7 +101,6 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
     setTimelineItems(mapped.timelineItems)
     hasSessionCriteriaChipsRef.current = Boolean(mapped.chips?.length)
     if (mapped.chips?.length) setCurrentPrefs(mapped.chips)
-    setSuggestedActions(mapped.actions)
     setComposerPlaceholder(mapped.composerPlaceholder)
     setComposerDisabled(mapped.composerDisabled)
   }, [])
@@ -157,7 +147,7 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [timelineItems, suggestedActions, isSubmittingTurn])
+  }, [timelineItems, isSubmittingTurn])
 
   useEffect(() => {
     let cancelled = false
@@ -286,7 +276,7 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
 
     if (optimisticId && trimmedMessage) {
       setTimelineItems((prev) => [
-        ...prev,
+        ...prev.filter((item) => item.kind !== 'suggested_actions'),
         {
           kind: 'message',
           id: optimisticId,
@@ -343,7 +333,6 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
     setInputValue,
     isTyping: isSubmittingTurn,
     currentPrefs,
-    suggestedActions,
     composerPlaceholder,
     composerDisabled,
     isSubmittingTurn,
