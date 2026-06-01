@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from gateway.identity import ROLE_END_USER, ActorPrincipal
+from gateway.identity import GatewayPermissionError
 from gateway.resolved_principal import ENV_RESOLVED_PRINCIPAL, resolve_end_user_principal
 from match_domain.support_contracts import Principal
 
@@ -35,6 +36,13 @@ class _PrincipalGatewayStub:
 
 
 class ResolvedPrincipalTests(unittest.TestCase):
+    def test_require_profile_without_actor_raises_permission_error(self) -> None:
+        gateway = _PrincipalGatewayStub(profile_id=99)
+        environ: dict[str, Any] = {}
+        with self.assertRaises(GatewayPermissionError) as ctx:
+            resolve_end_user_principal(gateway, environ, require_profile=True)
+        self.assertEqual(str(ctx.exception), "请先登录后再使用发现与推荐")
+
     def test_resolve_end_user_principal_caches_on_environ(self) -> None:
         gateway = _PrincipalGatewayStub(profile_id=99)
         environ: dict[str, Any] = {

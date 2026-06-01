@@ -44,6 +44,8 @@ def resolve_end_user_principal(
 
     actor = gateway._current_actor(environ)
     if actor is None:
+        if require_profile:
+            raise GatewayPermissionError("请先登录后再使用发现与推荐")
         return None
     if not gateway._is_auth_session_end_user(actor):
         principal = principal_from_actor(actor, profile_id=None)

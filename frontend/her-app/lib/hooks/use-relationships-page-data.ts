@@ -5,7 +5,7 @@ import { useMemo } from 'react'
 import { fetchMyProxyIntroCases } from '@/lib/api/endpoints/proxy-intro'
 import { fetchTrustHub } from '@/lib/api/endpoints/trust-hub'
 import { fetchRelationshipsUnreadSummary } from '@/lib/api/endpoints/chat'
-import { getUserId, getProfileId } from '@/lib/auth/session'
+import { getAccessToken, getUserId, getProfileId } from '@/lib/auth/session'
 import { getErrorMessage } from '@/lib/api/errors'
 
 /**
@@ -17,6 +17,7 @@ import { getErrorMessage } from '@/lib/api/errors'
  * 对应 ProfilePage 的 useProfilePageData 模式
  */
 export function useRelationshipsPageData() {
+  const accessToken = getAccessToken()
   const userId = getUserId()
   const profileId = getProfileId()
 
@@ -25,7 +26,7 @@ export function useRelationshipsPageData() {
     queryKey: ['relationships', 'cases', userId],
     queryFn: () => fetchMyProxyIntroCases(),
     staleTime: 30000, // 30 秒内不重新请求
-    enabled: !!userId,
+    enabled: !!accessToken && !!userId,
   })
 
   // TrustHub 查询（用于获取待处理认证项）
@@ -33,7 +34,7 @@ export function useRelationshipsPageData() {
     queryKey: ['trust-hub', userId, profileId],
     queryFn: () => fetchTrustHub({ userId: userId!, profileId }),
     staleTime: 60000, // 60 秒内不重新请求
-    enabled: !!userId,
+    enabled: !!accessToken && !!userId && !!profileId,
   })
 
   // 未读统计查询
@@ -41,7 +42,7 @@ export function useRelationshipsPageData() {
     queryKey: ['relationships', 'unread-summary', userId],
     queryFn: () => fetchRelationshipsUnreadSummary(),
     staleTime: 20000, // 20 秒内不重新请求
-    enabled: !!userId,
+    enabled: !!accessToken,
   })
 
   // 计算整体加载状态

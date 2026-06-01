@@ -2,7 +2,7 @@ import { fetchCaseConversationTimeline } from '@/lib/api/endpoints/relations'
 import { fetchMyProxyIntroCases } from '@/lib/api/endpoints/proxy-intro'
 import { gatewayJson, queryString } from '@/lib/api/client'
 import type { CaseConversationTimelineResponse } from '@/lib/types/relations'
-import { getChatParticipantId, getUserId } from '@/lib/auth/session'
+import { getAccessToken, getChatParticipantId, getUserId } from '@/lib/auth/session'
 
 const RELATIONSHIP_READ_MARKERS_KEY = 'her_relationship_read_markers'
 export const RELATIONSHIP_READ_EVENT = 'her:relationships-read-state-changed'
@@ -76,6 +76,15 @@ export async function fetchRelationshipsUnreadSummary(): Promise<{
   pendingCount: number
   byCaseId: Record<string, number>
 }> {
+  if (!getAccessToken()) {
+    return {
+      total: 0,
+      chatUnread: 0,
+      pendingCount: 0,
+      byCaseId: {},
+    }
+  }
+
   const participantId = getChatParticipantId()
   const timelineActorId = getUserId()
 
