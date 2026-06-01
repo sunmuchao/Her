@@ -149,8 +149,8 @@ export function AssessmentIntroCard({
       <Button
         className={cn(
           'mt-5 w-full h-12 rounded-xl text-base font-medium group',
-          assessmentType === 'attachment_style' ? 'bg-coral hover:bg-coral/90' :
-          assessmentType === 'love_language' ? 'bg-lavender hover:bg-lavender/90' : ''
+          assessmentType === 'attachment_style' ? 'bg-coral hover:bg-coral/90 text-white' :
+          assessmentType === 'love_language' ? 'bg-lavender hover:bg-lavender/90 text-white' : ''
         )}
         onClick={onStart}
       >

@@ -133,9 +133,9 @@ export function AssessmentCardRenderer({
   if (isInterpretationCard(card)) {
     // Get themed button color
     const buttonClass = resolvedAssessmentType === 'attachment_style' 
-      ? 'bg-coral hover:bg-coral/90' 
+      ? 'bg-coral hover:bg-coral/90 text-white' 
       : resolvedAssessmentType === 'love_language' 
-        ? 'bg-lavender hover:bg-lavender/90' 
+        ? 'bg-lavender hover:bg-lavender/90 text-white' 
         : 'bg-primary hover:bg-primary/90'
     
     return (
