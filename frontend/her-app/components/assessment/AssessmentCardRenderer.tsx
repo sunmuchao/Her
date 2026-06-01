@@ -9,8 +9,10 @@ import type {
   AssessmentResultCard as AssessmentResultCardType,
   AssessmentInterpretationCard as AssessmentInterpretationCardType,
 } from '@/lib/api/endpoints/assessment'
+import type { ValuesAuctionCard } from '@/lib/api/endpoints/valuesAuction'
 import { cn } from '@/lib/utils'
 import { type AssessmentType } from './assessment-themes'
+import { ValuesAuctionCardRenderer } from '@/components/values-auction'
 
 import { AssessmentFeedbackCard } from './AssessmentFeedbackCard'
 import { AssessmentIntroCard } from './AssessmentIntroCard'
@@ -43,9 +45,28 @@ function isInterpretationCard(card: AssessmentCard): card is AssessmentInterpret
   return card.card_type === 'assessment_interpretation'
 }
 
+// Values Auction card type guard
+function isValuesAuctionCard(card: any): card is ValuesAuctionCard {
+  const valuesAuctionTypes = [
+    'values_auction_intro',
+    'values_auction_traits',
+    'values_auction_result',
+    'values_auction_interpretation',
+    'values_auction_waiting',
+    'values_match_analysis',
+    'values_auction_history',
+    'error',
+  ]
+  return valuesAuctionTypes.includes(card?.card_type)
+}
+
 // Extract assessment type from the card
 function getAssessmentTypeFromCard(card: AssessmentCard): AssessmentType | undefined {
   if (isIntroCard(card)) {
+    return card.assessment_type
+  }
+  // Support result card having assessment_type (backend may include it)
+  if (isResultCard(card)) {
     return card.assessment_type
   }
   return undefined
@@ -82,7 +103,18 @@ export function AssessmentCardRenderer({
 }: AssessmentCardRendererProps) {
   // Try to get assessment type from card if not provided
   const resolvedAssessmentType = assessmentType || getAssessmentTypeFromCard(card)
-  
+
+  // Values Auction cards use their own renderer
+  if (isValuesAuctionCard(card)) {
+    return (
+      <ValuesAuctionCardRenderer
+        card={card}
+        onStart={onStart}
+        onContinue={onContinueChat}
+      />
+    )
+  }
+
   if (isIntroCard(card)) {
     return (
       <AssessmentIntroCard
