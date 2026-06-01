@@ -2,7 +2,7 @@ import { gatewayJson, queryString } from '@/lib/api/client'
 
 export type AssessmentIntroCard = {
   card_type: 'assessment_intro'
-  assessment_type?: 'mbti_16'
+  assessment_type?: 'mbti_16' | 'attachment_style' | 'love_language'
   assessment_id: string
   intro_data: {
     title: string
@@ -80,13 +80,16 @@ export type AssessmentCard =
   | AssessmentResultCard
   | AssessmentInterpretationCard
 
-export async function startAssessment(userKey: string): Promise<AssessmentIntroCard> {
+export async function startAssessment(
+  userKey: string,
+  assessmentType: 'mbti_16' | 'attachment_style' | 'love_language' = 'mbti_16'
+): Promise<AssessmentIntroCard> {
   return gatewayJson<AssessmentIntroCard>('/v1/assessment/start', {
     method: 'POST',
     includeAuth: true,
     body: JSON.stringify({
       user_key: userKey,
-      assessment_type: 'mbti_16',
+      assessment_type: assessmentType,
     }),
   })
 }
@@ -100,13 +103,16 @@ export async function startAssessment(userKey: string): Promise<AssessmentIntroC
  * 如果返回的 intro_data.title 是"继续上次的测评"，说明有未完成的测评
  * resumed=true 表示是恢复的测评
  */
-export async function getOrCreateAssessment(userKey: string): Promise<AssessmentIntroCard> {
+export async function getOrCreateAssessment(
+  userKey: string,
+  assessmentType: 'mbti_16' | 'attachment_style' | 'love_language' = 'mbti_16'
+): Promise<AssessmentIntroCard> {
   return gatewayJson<AssessmentIntroCard>('/v1/assessment/get-or-create', {
     method: 'POST',
     includeAuth: true,
     body: JSON.stringify({
       user_key: userKey,
-      assessment_type: 'mbti_16',
+      assessment_type: assessmentType,
     }),
   })
 }

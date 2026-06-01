@@ -14,6 +14,26 @@ from assessment.service import (
     start_assessment,
     add_xiaoya_message_to_discovery_session,  # 新增：添加小雅消息到对话历史
 )
+# 新增：依恋风格测评服务
+from assessment.attachment_service import (
+    start_attachment_assessment,
+    get_or_create_attachment_assessment,
+    begin_attachment_assessment,
+    answer_attachment_assessment,
+    get_attachment_interpretation,
+    get_attachment_xiaoya_message,
+    get_attachment_traits,
+)
+# 新增：恋爱语言测评服务
+from assessment.love_language_service import (
+    start_love_language_assessment,
+    get_or_create_love_language_assessment,
+    begin_love_language_assessment,
+    answer_love_language_assessment,
+    get_love_language_interpretation,
+    get_love_language_xiaoya_message,
+    get_love_language_traits,
+)
 
 from .collected_routes import _default_profile_source
 from .http_helpers import _json_safe, _parse_json_body, _query_dict, _read_body
@@ -43,7 +63,14 @@ def rest_assessment_start(gateway: AssessmentGateway, environ: dict[str, Any]) -
     source = _default_profile_source()
     if not source:
         return 503, {"error": {"code": "source_not_configured", "message": "数据源未配置"}}
-    return 200, _json_safe(start_assessment(source=source, user_key=user_key, assessment_type=assessment_type))
+
+    # 根据测评类型调用不同的服务
+    if assessment_type == "attachment_style":
+        return 200, _json_safe(start_attachment_assessment(source=source, user_key=user_key))
+    elif assessment_type == "love_language":
+        return 200, _json_safe(start_love_language_assessment(source=source, user_key=user_key))
+    else:  # mbti_16 或默认
+        return 200, _json_safe(start_assessment(source=source, user_key=user_key, assessment_type=assessment_type))
 
 
 def rest_assessment_get_or_create(gateway: AssessmentGateway, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
@@ -58,7 +85,14 @@ def rest_assessment_get_or_create(gateway: AssessmentGateway, environ: dict[str,
     source = _default_profile_source()
     if not source:
         return 503, {"error": {"code": "source_not_configured", "message": "数据源未配置"}}
-    return 200, _json_safe(get_or_create_assessment(source=source, user_key=user_key, assessment_type=assessment_type))
+
+    # 根据测评类型调用不同的服务
+    if assessment_type == "attachment_style":
+        return 200, _json_safe(get_or_create_attachment_assessment(source=source, user_key=user_key))
+    elif assessment_type == "love_language":
+        return 200, _json_safe(get_or_create_love_language_assessment(source=source, user_key=user_key))
+    else:  # mbti_16 或默认
+        return 200, _json_safe(get_or_create_assessment(source=source, user_key=user_key, assessment_type=assessment_type))
 
 
 def rest_assessment_begin(gateway: AssessmentGateway, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
@@ -69,7 +103,14 @@ def rest_assessment_begin(gateway: AssessmentGateway, environ: dict[str, Any]) -
     source = _default_profile_source()
     if not source:
         return 503, {"error": {"code": "source_not_configured", "message": "数据源未配置"}}
-    return 200, _json_safe(begin_assessment(source=source, assessment_id=assessment_id))
+
+    # 根据assessment_id前缀判断测评类型
+    if assessment_id.startswith("attachment_"):
+        return 200, _json_safe(begin_attachment_assessment(source=source, assessment_id=assessment_id))
+    elif assessment_id.startswith("love_language_"):
+        return 200, _json_safe(begin_love_language_assessment(source=source, assessment_id=assessment_id))
+    else:  # mbti_ 或默认
+        return 200, _json_safe(begin_assessment(source=source, assessment_id=assessment_id))
 
 
 def rest_assessment_answer(gateway: AssessmentGateway, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
@@ -86,15 +127,38 @@ def rest_assessment_answer(gateway: AssessmentGateway, environ: dict[str, Any]) 
     source = _default_profile_source()
     if not source:
         return 503, {"error": {"code": "source_not_configured", "message": "数据源未配置"}}
-    return 200, _json_safe(
-        answer_assessment(
-            source=source,
-            assessment_id=assessment_id,
-            question_index=question_index,
-            answer=answer,
-            user_key=user_key,
+
+    # 根据assessment_id前缀判断测评类型
+    if assessment_id.startswith("attachment_"):
+        return 200, _json_safe(
+            answer_attachment_assessment(
+                source=source,
+                assessment_id=assessment_id,
+                question_index=question_index,
+                answer=answer,
+                user_key=user_key,
+            )
         )
-    )
+    elif assessment_id.startswith("love_language_"):
+        return 200, _json_safe(
+            answer_love_language_assessment(
+                source=source,
+                assessment_id=assessment_id,
+                question_index=question_index,
+                answer=answer,
+                user_key=user_key,
+            )
+        )
+    else:  # mbti_ 或默认
+        return 200, _json_safe(
+            answer_assessment(
+                source=source,
+                assessment_id=assessment_id,
+                question_index=question_index,
+                answer=answer,
+                user_key=user_key,
+            )
+        )
 
 
 def rest_assessment_interpretation(gateway: AssessmentGateway, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
@@ -106,13 +170,32 @@ def rest_assessment_interpretation(gateway: AssessmentGateway, environ: dict[str
     source = _default_profile_source()
     if not source:
         return 503, {"error": {"code": "source_not_configured", "message": "数据源未配置"}}
-    return 200, _json_safe(
-        get_assessment_interpretation(
-            source=source,
-            assessment_id=assessment_id,
-            user_key=user_key,
+
+    # 根据assessment_id前缀判断测评类型
+    if assessment_id.startswith("attachment_"):
+        return 200, _json_safe(
+            get_attachment_interpretation(
+                source=source,
+                assessment_id=assessment_id,
+                user_key=user_key,
+            )
         )
-    )
+    elif assessment_id.startswith("love_language_"):
+        return 200, _json_safe(
+            get_love_language_interpretation(
+                source=source,
+                assessment_id=assessment_id,
+                user_key=user_key,
+            )
+        )
+    else:  # mbti_ 或默认
+        return 200, _json_safe(
+            get_assessment_interpretation(
+                source=source,
+                assessment_id=assessment_id,
+                user_key=user_key,
+            )
+        )
 
 
 def rest_assessment_add_labels(gateway: AssessmentGateway, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
