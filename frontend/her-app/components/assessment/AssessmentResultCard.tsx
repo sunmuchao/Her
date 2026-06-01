@@ -65,7 +65,7 @@ interface InterpretationData {
 }
 
 interface ResultData {
-  type_code: string
+  type_code?: string
   scores: Record<string, number>
   dimension_rows?: DimensionRow[]
   labels: string[]
@@ -239,7 +239,11 @@ function RadarChart({
   )
 }
 
-function getTypeNickname(typeCode: string, assessmentType?: AssessmentType): string {
+function getTypeNickname(typeCode?: string, assessmentType?: AssessmentType): string {
+  if (!typeCode) {
+    return ''
+  }
+
   if (assessmentType === 'attachment_style') {
     return ATTACHMENT_NICKNAMES[typeCode.toLowerCase()] || ''
   }
@@ -267,6 +271,7 @@ export function AssessmentResultCard({
     label: string
   }>({ open: false, label: '' })
 
+  const safeTypeCode = data.type_code || '--'
   const typeNickname = getTypeNickname(data.type_code, assessmentType)
   
   // Theme-based colors
@@ -331,7 +336,7 @@ export function AssessmentResultCard({
               assessmentType === 'attachment_style' ? 'text-coral' : 
               assessmentType === 'love_language' ? 'text-lavender' : ''
             )}>
-              {data.type_code}
+              {safeTypeCode}
             </span>
             {typeNickname && (
               <span className="text-sm text-muted-foreground">{"- "}{typeNickname}</span>
