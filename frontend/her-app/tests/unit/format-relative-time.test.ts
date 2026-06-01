@@ -92,4 +92,33 @@ describe('mapDiscoveryView', () => {
     expect(prompt.changes[0]?.to).toBe('杭州')
     expect(prompt.status).toBe('pending')
   })
+
+  it('maps assessment_result timeline items', () => {
+    const mapped = mapDiscoveryView({
+      timeline: [
+        {
+          item_type: 'assessment_result',
+          item_id: 'assessment-1',
+          created_at: '2026-05-26T11:45:00+08:00',
+          card: {
+            card_type: 'assessment_result',
+            assessment_id: 'mbti_demo',
+            result_data: {
+              assessment_id: 'mbti_demo',
+              type_code: 'INTJ',
+              scores: { ei: 20, sn: 80, tf: 70, jp: 65 },
+              dimension_rows: [],
+              labels: ['理性'],
+              reward: '测完了解你的恋爱优势与雷区',
+            },
+          },
+        },
+      ],
+    })
+    expect(mapped.timelineItems).toHaveLength(1)
+    const result = mapped.timelineItems[0]
+    expect(result.kind).toBe('assessment_result')
+    if (result.kind !== 'assessment_result') return
+    expect(result.card.result_data.type_code).toBe('INTJ')
+  })
 })

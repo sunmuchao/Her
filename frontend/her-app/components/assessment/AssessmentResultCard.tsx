@@ -2,9 +2,9 @@
 
 import { useState, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Share2, Sparkles, Check, Star } from 'lucide-react'
+import { Share2, Check, Star } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
 // MBTI type nicknames
 const TYPE_NICKNAMES: Record<string, string> = {
@@ -56,12 +56,20 @@ interface ResultData {
   assessment_id: string
 }
 
+// Dimension label mapping with explanations (matching backend keys)
+const DIMENSION_LABELS: Record<string, { high: string; low: string }> = {
+  'ei': { high: '外向', low: '内向' },
+  'sn': { high: '直觉', low: '感觉' },
+  'tf': { high: '思考', low: '情感' },
+  'jp': { high: '判断', low: '感知' },
+}
+
 // Radar Chart Component
-function RadarChart({ dimensions, size = 200 }: { dimensions: DimensionRow[]; size?: number }) {
+function RadarChart({ dimensions, size = 280 }: { dimensions: DimensionRow[]; size?: number }) {
   const center = size / 2
-  const maxRadius = (size / 2) - 30
+  const maxRadius = (size / 2) - 50
   const levels = 4
-  
+
   // Calculate points for each dimension
   const points = useMemo(() => {
     return dimensions.map((dim, i) => {
@@ -70,120 +78,122 @@ function RadarChart({ dimensions, size = 200 }: { dimensions: DimensionRow[]; si
       return {
         x: center + Math.cos(angle) * radius,
         y: center + Math.sin(angle) * radius,
-        labelX: center + Math.cos(angle) * (maxRadius + 20),
-        labelY: center + Math.sin(angle) * (maxRadius + 20),
+        angle,
         dim,
       }
     })
   }, [dimensions, center, maxRadius])
-  
+
   // Create polygon path
   const polygonPath = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ') + ' Z'
-  
+
+  // Calculate label positions based on actual SVG coordinates
+  const labelPositions = dimensions.map((dim, i) => {
+    const angle = (Math.PI * 2 * i) / dimensions.length - Math.PI / 2
+    const labelRadius = maxRadius + 35
+    const x = center + Math.cos(angle) * labelRadius
+    const y = center + Math.sin(angle) * labelRadius
+    return { x, y, angle }
+  })
+
   return (
-    <svg width={size} height={size} className="mx-auto">
-      {/* Background grid circles */}
-      {Array.from({ length: levels }).map((_, i) => {
-        const r = ((i + 1) / levels) * maxRadius
-        return (
-          <circle
-            key={i}
-            cx={center}
-            cy={center}
-            r={r}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1"
-            className="text-border"
-            strokeDasharray={i < levels - 1 ? '2 4' : 'none'}
-          />
-        )
-      })}
-      
-      {/* Axis lines */}
-      {points.map((p, i) => {
-        const angle = (Math.PI * 2 * i) / dimensions.length - Math.PI / 2
-        const endX = center + Math.cos(angle) * maxRadius
-        const endY = center + Math.sin(angle) * maxRadius
-        return (
-          <line
-            key={i}
-            x1={center}
-            y1={center}
-            x2={endX}
-            y2={endY}
-            stroke="currentColor"
-            strokeWidth="1"
-            className="text-border"
-          />
-        )
-      })}
-      
-      {/* Data polygon */}
-      <path
-        d={polygonPath}
-        fill="currentColor"
-        fillOpacity="0.15"
-        stroke="currentColor"
-        strokeWidth="2"
-        className="text-primary"
-      />
-      
-      {/* Data points */}
-      {points.map((p, i) => (
-        <circle
-          key={i}
-          cx={p.x}
-          cy={p.y}
-          r="4"
+    <div className="relative" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="absolute top-0 left-0">
+        {/* Background grid circles */}
+        {Array.from({ length: levels }).map((_, i) => {
+          const r = ((i + 1) / levels) * maxRadius
+          return (
+            <circle
+              key={i}
+              cx={center}
+              cy={center}
+              r={r}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1"
+              className="text-border"
+              strokeDasharray={i < levels - 1 ? '2 4' : 'none'}
+            />
+          )
+        })}
+
+        {/* Axis lines */}
+        {points.map((p, i) => {
+          const angle = (Math.PI * 2 * i) / dimensions.length - Math.PI / 2
+          const endX = center + Math.cos(angle) * maxRadius
+          const endY = center + Math.sin(angle) * maxRadius
+          return (
+            <line
+              key={i}
+              x1={center}
+              y1={center}
+              x2={endX}
+              y2={endY}
+              stroke="currentColor"
+              strokeWidth="1"
+              className="text-border"
+            />
+          )
+        })}
+
+        {/* Data polygon */}
+        <path
+          d={polygonPath}
           fill="currentColor"
+          fillOpacity="0.15"
+          stroke="currentColor"
+          strokeWidth="2"
           className="text-primary"
         />
-      ))}
-      
-      {/* Labels */}
-      {points.map((p, i) => (
-        <text
-          key={i}
-          x={p.labelX}
-          y={p.labelY}
-          textAnchor="middle"
-          dominantBaseline="middle"
-          className="text-xs fill-muted-foreground"
-        >
-          {p.dim.key}
-        </text>
-      ))}
-    </svg>
-  )
-}
 
-// Dimension bar component
-function DimensionBar({ row }: { row: DimensionRow }) {
-  const levelColors = {
-    high: 'bg-rose',
-    medium: 'bg-gold',
-    low: 'bg-taupe',
-  }
-  
-  return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between text-sm">
-        <span className="flex items-center gap-2">
-          <span className="font-medium">{row.name}</span>
-          <span className="text-xs text-muted-foreground">({row.trait})</span>
-        </span>
-        <span className="tabular-nums">{row.score.toFixed(1)}</span>
-      </div>
-      <div className="h-2 rounded-full bg-secondary overflow-hidden">
-        <div
-          className={cn(
-            'h-full rounded-full transition-all duration-700 ease-out',
-            levelColors[row.level]
-          )}
-          style={{ width: `${row.score}%` }}
+        {/* Data points */}
+        {points.map((p, i) => (
+          <circle
+            key={i}
+            cx={p.x}
+            cy={p.y}
+            r="4"
+            fill="currentColor"
+            className="text-primary"
+          />
+        ))}
+
+        {/* Center point */}
+        <circle
+          cx={center}
+          cy={center}
+          r="3"
+          fill="currentColor"
+          className="text-muted-foreground"
         />
-      </div>
+      </svg>
+
+      {/* External dimension labels with explanations */}
+      {dimensions.map((dim, i) => {
+        const pos = labelPositions[i]
+        const dimLabel = DIMENSION_LABELS[dim.key] || { high: dim.key, low: dim.key }
+        const isHigh = dim.score >= 50
+
+        return (
+          <div
+            key={i}
+            className="absolute flex flex-col items-center justify-center"
+            style={{
+              left: pos.x,
+              top: pos.y,
+              transform: 'translate(-50%, -50%)',
+              width: '70px',
+            }}
+          >
+            <div className="text-xs font-medium text-foreground mb-0.5">
+              {dim.name}
+            </div>
+            <div className="text-[10px] text-muted-foreground">
+              {isHigh ? dimLabel.high : dimLabel.low}
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -197,31 +207,37 @@ export function AssessmentResultCard({
   onAddLabels?: (selectedLabels: string[]) => Promise<void>
   onShare?: () => void
 }) {
-  const [selectedLabels, setSelectedLabels] = useState<Set<string>>(() => new Set([data.labels[0]]))
   const [isAdding, setIsAdding] = useState(false)
-  const [added, setAdded] = useState(false)
+  const [addedLabels, setAddedLabels] = useState<Set<string>>(new Set())
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean
+    label: string
+  }>({ open: false, label: '' })
 
   const typeNickname = TYPE_NICKNAMES[data.type_code] || ''
 
-  const toggleLabel = (label: string) => {
-    const newSelected = new Set(selectedLabels)
-    if (newSelected.has(label)) {
-      newSelected.delete(label)
-    } else {
-      newSelected.add(label)
-    }
-    setSelectedLabels(newSelected)
+  const handleLabelClick = (label: string) => {
+    if (!onAddLabels || addedLabels.has(label) || isAdding) return
+    // 打开确认对话框
+    setConfirmDialog({ open: true, label })
   }
 
-  const handleAddLabels = async () => {
-    if (!onAddLabels || selectedLabels.size === 0) return
+  const handleConfirmAddLabel = async () => {
+    const label = confirmDialog.label
+    if (!onAddLabels || addedLabels.has(label)) return
+
     setIsAdding(true)
+    setConfirmDialog({ open: false, label: '' })
     try {
-      await onAddLabels(Array.from(selectedLabels))
-      setAdded(true)
+      await onAddLabels([label])
+      setAddedLabels((prev) => new Set(prev).add(label))
     } finally {
       setIsAdding(false)
     }
+  }
+
+  const handleCancelAddLabel = () => {
+    setConfirmDialog({ open: false, label: '' })
   }
 
   return (
@@ -265,95 +281,53 @@ export function AssessmentResultCard({
       )}
 
       {/* Radar Chart */}
-      <div className="my-6">
-        <RadarChart dimensions={data.dimension_rows} size={180} />
+      <div className="my-6 relative">
+        <RadarChart dimensions={data.dimension_rows} size={280} />
       </div>
 
       {/* Labels Selection */}
       <div className="mb-5">
         <div className="text-xs text-muted-foreground mb-2.5">
-          {"你的恋爱标签（点击选择想要展示的）："}
+          {"你的恋爱标签（点击添加到我的主页）："}
         </div>
         <div className="flex flex-wrap gap-2">
           {data.labels.map((label) => (
-            <label
+            <button
               key={label}
+              onClick={() => handleLabelClick(label)}
+              disabled={addedLabels.has(label) || isAdding}
               className={cn(
-                'flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs cursor-pointer transition-all',
-                selectedLabels.has(label)
+                'rounded-full px-3 py-1.5 text-xs cursor-pointer transition-all',
+                addedLabels.has(label)
                   ? 'bg-primary/15 border border-primary/40 text-foreground'
-                  : 'bg-secondary border border-transparent text-muted-foreground hover:bg-secondary/80'
+                  : 'bg-secondary border border-transparent text-muted-foreground hover:bg-secondary/80 hover:border-primary/20',
+                isAdding && 'opacity-60 cursor-wait'
               )}
-              onClick={() => toggleLabel(label)}
             >
-              <Checkbox
-                checked={selectedLabels.has(label)}
-                onCheckedChange={() => toggleLabel(label)}
-                className="h-3.5 w-3.5"
-              />
-              <span>{label}</span>
-            </label>
+              {addedLabels.has(label) ? (
+                <span className="flex items-center gap-1">
+                  <Check className="w-3 h-3" />
+                  {label}
+                </span>
+              ) : (
+                label
+              )}
+            </button>
           ))}
         </div>
 
-        {/* Add labels button */}
-        {onAddLabels && !added && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="mt-3 w-full"
-            disabled={selectedLabels.size === 0 || isAdding}
-            onClick={handleAddLabels}
-          >
-            {isAdding ? '添加中...' : `添加 ${selectedLabels.size} 个标签到我的主页`}
-          </Button>
-        )}
-        {added && (
-          <div className="mt-3 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
-            <Check className="w-3.5 h-3.5 text-primary" />
-            <span>{"已添加到个人标签"}</span>
-          </div>
-        )}
-      </div>
-
-      {/* Dimension Scores */}
-      <div className="space-y-3 mb-5">
-        <div className="text-xs text-muted-foreground">{"维度得分"}</div>
-        {data.dimension_rows.map((row) => (
-          <DimensionBar key={row.key} row={row} />
-        ))}
-      </div>
-
-      {/* Reward */}
-      <div className="flex items-center gap-2 rounded-2xl bg-gold-soft/50 border border-gold/20 px-4 py-3 mb-5">
-        <Sparkles className="w-4 h-4 text-gold shrink-0" />
-        <span className="text-sm">{data.reward}</span>
-      </div>
-
-      {/* AI Interpretation */}
-      {data.interpretation_data && (
-        <div className="rounded-2xl bg-secondary/40 p-4 space-y-3">
-          <div className="text-xs uppercase tracking-widest text-muted-foreground">
-            {"AI 解读"}
-          </div>
-          <p className="text-sm leading-relaxed">{data.interpretation_data.summary}</p>
-          <p className="text-sm text-muted-foreground">{data.interpretation_data.love_style}</p>
-          
-          {data.interpretation_data.match_suggestions.length > 0 && (
-            <div className="space-y-2 pt-2">
-              <div className="text-xs text-muted-foreground">{"匹配建议"}</div>
-              {data.interpretation_data.match_suggestions.map((item, idx) => (
-                <div
-                  key={idx}
-                  className="rounded-xl bg-background px-3 py-2 text-sm"
-                >
-                  {item}
-                </div>
-              ))}
-            </div>
-          )}
         </div>
-      )}
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        open={confirmDialog.open}
+        title="添加恋爱标签"
+        message={`是否将「${confirmDialog.label}」添加为我的标签？`}
+        confirmText="添加"
+        cancelText="暂不添加"
+        onConfirm={handleConfirmAddLabel}
+        onCancel={handleCancelAddLabel}
+      />
     </div>
   )
 }

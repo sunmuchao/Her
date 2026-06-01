@@ -78,24 +78,6 @@ export function AssessmentIntroCard({
         </div>
       </div>
 
-      {/* MBTI Dimensions Preview */}
-      <div className="mt-5 grid grid-cols-4 gap-2">
-        {[
-          { label: 'E/I', name: '社交' },
-          { label: 'S/N', name: '感知' },
-          { label: 'T/F', name: '决策' },
-          { label: 'J/P', name: '生活' },
-        ].map((dim) => (
-          <div
-            key={dim.label}
-            className="flex flex-col items-center justify-center py-2 px-1 rounded-xl bg-muted/50 text-center"
-          >
-            <span className="text-xs font-medium text-foreground">{dim.label}</span>
-            <span className="text-[10px] text-muted-foreground">{dim.name}</span>
-          </div>
-        ))}
-      </div>
-
       {/* Start Button */}
       <Button
         className="mt-5 w-full h-12 rounded-xl text-base font-medium group"
@@ -104,11 +86,6 @@ export function AssessmentIntroCard({
         <span>{isResumed ? '继续测评' : '开始测试'}</span>
         <ArrowRight className="w-4 h-4 ml-1 transition-transform group-hover:translate-x-1" />
       </Button>
-
-      {/* Footer hint */}
-      <p className="mt-3 text-center text-xs text-muted-foreground">
-        {"答案无对错之分，请选择最符合你的选项"}
-      </p>
     </div>
   )
 }
