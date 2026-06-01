@@ -607,26 +607,96 @@ def get_type_info(type_code: str) -> dict[str, Any]:
 
 
 def _interpretation_from_result(result: dict[str, Any]) -> dict[str, Any]:
-    """生成恋爱说明书式解读"""
+    """生成安全感来源式解读（不强调类型标签）
+
+    核心转变：
+    - 从"你是XX类型"转向"你的安全感来源"
+    - 从"优势/坑点"转向"安全感来源/关系模式/关系雷区"
+    - 从"最佳匹配"转向"适合对象"
+    """
     scores = dict(result.get("scores") or {})
     type_code = str(result.get("type_code") or get_primary_attachment_type(scores))
     type_info = get_type_info(type_code)
-    love_manual = type_info["love_manual"]
 
+    # 获取四个维度的得分
+    secure_score = scores.get("secure", 50)
+    anxious_score = scores.get("anxious", 50)
+    avoidant_score = scores.get("avoidant", 50)
+    fearful_score = scores.get("fearful", 50)
+
+    # 极端标签（轻量融入，不再高亮）
     extreme_tags = get_extreme_tags(scores)
 
-    summary = f"你是「{type_info['nickname']}」({ATTACHMENT_TYPE_NAMES[type_code]})。\n"
-    summary += f"{type_info['tags'][0]}，{type_info['tags'][1]}。"
+    # 构建安全感来源描述（根据得分判断）
+    summary = "你在恋爱里"
 
-    love_style = "\n\n**恋爱里的你:**\n"
-    love_style += f"✅ 优势: {love_manual['strengths'][0]}\n"
-    love_style += f"⚠️ 坑点: {love_manual['weaknesses'][0]}"
+    # 判断稳定度
+    if secure_score >= 70:
+        summary += "很稳，对象说啥你都能接住，不黏也不冷。"
+    elif secure_score >= 40:
+        summary += "基本稳定，但有时也会有点黏或有点冷，看情况。"
+    else:
+        summary += "不太稳定，容易要么黏太紧要么冷太久。"
 
-    match_suggestions = [
-        f"💡 最佳匹配: {love_manual['best_match'][0]}",
-        f"⚠️ 需磨合: {love_manual['caution_match'][0]}",
-        "🎯 建议: 了解自己的依恋风格，找个能理解你的人",
-    ]
+    # 构建安全感来源（根据主要类型）
+    security_source = "\n\n**🎯 你的安全感来源：**\n"
+    if type_code == "secure":
+        security_source += "TA的稳定陪伴让你很安心，TA不冷暴力不突然消失，你就觉得很安全。"
+    elif type_code == "anxious":
+        security_source += "TA的快速回应让你很安心，TA秒回消息、TA主动找你、TA给你很多确认。"
+    elif type_code == "avoidant":
+        security_source += "TA给你足够的空间让你很安心，TA不黏你、TA理解你的独立需求。"
+    elif type_code == "fearful":
+        security_source += "同时需要安全感+空间，既需要TA的陪伴又需要TA的理解。"
+
+    # 构建关系模式（根据得分）
+    relationship_mode = "\n\n**🌊 你的关系模式：**\n"
+    if secure_score >= 70:
+        relationship_mode += "不黏也不冷，看情况调整。对象黏你你也能接住，对象冷淡你也能给空间。"
+        # 轻量融入极端标签
+        if secure_score >= 85:
+            relationship_mode += "\n情绪稳定萨摩耶认证 ✨"
+    elif anxious_score >= 70:
+        relationship_mode += "很黏，对象回消息慢你会慌，对象冷淡你会脑补。黏人精认证 ✨"
+    elif avoidant_score >= 70:
+        relationship_mode += "很冷，对象黏太紧你会觉得窒息，对象情绪化你会冷暴力。冷暴力大师认证 ✨"
+    elif fearful_score >= 70:
+        relationship_mode += "很矛盾，既想黏又怕被伤害，既想靠近又想逃跑。矛盾纠结体认证 ✨"
+    else:
+        relationship_mode += "看情况，有时黏有时冷，有时矛盾有时稳。"
+
+    # 构建关系雷区（根据类型）
+    relationship_red_flags = "\n\n**⚡ 你的关系雷区：**\n"
+    if type_code == "secure":
+        relationship_red_flags += "TA冷暴力会让你很慌，TA突然消失你会脑补「是不是不爱我了」。"
+    elif type_code == "anxious":
+        relationship_red_flags += "TA回消息慢你会脑补「是不是不爱我了」，TA冷淡一秒你会慌到窒息。"
+    elif type_code == "avoidant":
+        relationship_red_flags += "TA黏太紧你会觉得窒息要逃跑，TA情绪化你会立刻冷暴力断联。"
+    elif type_code == "fearful":
+        relationship_red_flags += "TA对你好你既开心又害怕，TA冷淡你既想靠近又想逃跑，完全不知道咋办。"
+
+    # 构建适合对象（根据类型）
+    suitable_partner = "\n\n**💡 你适合的对象：**\n"
+    if type_code == "secure":
+        suitable_partner += "能给你稳定陪伴的人，不太冷暴力不太突然消失的人。不管TA是什么依恋类型，你都能适应。"
+    elif type_code == "anxious":
+        suitable_partner += "能快速回应你的人，秒回消息、主动找你、给你很多确认的人。最好是情绪稳定型（安全型）。"
+    elif type_code == "avoidant":
+        suitable_partner += "能给你足够空间的人，不黏你、理解你的独立需求的人。最好是情绪稳定型（安全型）。"
+    elif type_code == "fearful":
+        suitable_partner += "能理解你矛盾的人，既给你安全感又给你空间的人。最好是情绪稳定型（安全型）。"
+
+    # 相处建议
+    relationship_advice = "\n\n**💝 相处建议：**\n"
+    if type_code == "secure":
+        relationship_advice += "直接告诉TA你需要稳定陪伴，不要脑补直接问TA咋了，学会表达你的需求。"
+    elif type_code == "anxious":
+        relationship_advice += "学会给TA空间别黏太紧，别脑补直接问TA咋了，学会独立不要过度依赖。"
+    elif type_code == "avoidant":
+        relationship_advice += "别冷太久给TA回应，学会偶尔黏一下，学会表达你的需求。"
+    elif type_code == "fearful":
+        relationship_advice += "学会表达你的矛盾，让TA理解你既需要安全感又需要空间，别矛盾太久。"
 
     # 脱单免责声明
     disclaimer = "\n\n**【使用本说明书的脱单安全须知】**\n"
@@ -636,30 +706,100 @@ def _interpretation_from_result(result: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "summary": summary,
-        "love_style": love_style,
-        "match_suggestions": match_suggestions,
-        "extreme_tags": extreme_tags,
+        "security_source": security_source,
+        "relationship_mode": relationship_mode,
+        "relationship_red_flags": relationship_red_flags,
+        "suitable_partner": suitable_partner,
+        "relationship_advice": relationship_advice,
+        "extreme_tags": extreme_tags,  # 保留但不再高亮
         "disclaimer": disclaimer,
     }
 
 
 def xiaoya_message_from_result(result: dict[str, Any]) -> str:
-    """生成小雅风格的解读消息（用于在对话页面显示）"""
+    """生成小雅风格的解读消息（温柔理解风）
+
+    核心转变：
+    - 开场白改为"我看到了你在恋爱里的安全感来源 💌"
+    - 不强调"你是XX类型"
+    - 关注安全感来源、关系模式、关系雷区
+    """
     scores = dict(result.get("scores") or {})
     type_code = str(result.get("type_code") or get_primary_attachment_type(scores))
 
+    # 获取四个维度的得分
+    secure_score = scores.get("secure", 50)
+    anxious_score = scores.get("anxious", 50)
+    avoidant_score = scores.get("avoidant", 50)
+    fearful_score = scores.get("fearful", 50)
+
+    # 构建新的开场白（温柔理解风）
+    message = "亲爱的，我看到了你在恋爱里的安全感来源 💌\n\n"
+
+    # 判断稳定度并描述
+    if secure_score >= 70:
+        message += "你在恋爱里很稳，对象说啥你都能接住，不黏也不冷。\n\n"
+    elif secure_score >= 40:
+        message += "你在恋爱里基本稳定，但有时也会有点黏或有点冷，看情况。\n\n"
+    else:
+        message += "你在恋爱里不太稳定，容易要么黏太紧要么冷太久。\n\n"
+
+    # 安全感来源（根据类型）
+    message += "**你的安全感来源：**\n"
+    if type_code == "secure":
+        message += "TA的稳定陪伴让你很安心，TA不冷暴力不突然消失，你就觉得很安全。\n\n"
+    elif type_code == "anxious":
+        message += "TA的快速回应让你很安心，TA秒回消息、TA主动找你、TA给你很多确认。\n\n"
+    elif type_code == "avoidant":
+        message += "TA给你足够的空间让你很安心，TA不黏你、TA理解你的独立需求。\n\n"
+    elif type_code == "fearful":
+        message += "同时需要安全感+空间，既需要TA的陪伴又需要TA的理解。\n\n"
+
+    # 关系模式（根据得分）
+    message += "**你的关系模式：**\n"
+    if secure_score >= 70:
+        message += "不黏也不冷，看情况调整。对象黏你你也能接住，对象冷淡你也能给空间。"
+        if secure_score >= 85:
+            message += " 情绪稳定萨摩耶认证 ✨"
+        message += "\n\n"
+    elif anxious_score >= 70:
+        message += "很黏，对象回消息慢你会慌，对象冷淡你会脑补。黏人精认证 ✨\n\n"
+    elif avoidant_score >= 70:
+        message += "很冷，对象黏太紧你会觉得窒息，对象情绪化你会冷暴力。冷暴力大师认证 ✨\n\n"
+    elif fearful_score >= 70:
+        message += "很矛盾，既想黏又怕被伤害，既想靠近又想逃跑。矛盾纠结体认证 ✨\n\n"
+    else:
+        message += "看情况，有时黏有时冷，有时矛盾有时稳。\n\n"
+
+    # 关系雷区（根据类型）
+    message += "**你的关系雷区：**\n"
+    if type_code == "secure":
+        message += "TA冷暴力会让你很慌，TA突然消失你会脑补「是不是不爱我了」。\n\n"
+    elif type_code == "anxious":
+        message += "TA回消息慢你会脑补「是不是不爱我了」，TA冷淡一秒你会慌到窒息。\n\n"
+    elif type_code == "avoidant":
+        message += "TA黏太紧你会觉得窒息要逃跑，TA情绪化你会立刻冷暴力断联。\n\n"
+    elif type_code == "fearful":
+        message += "TA对你好你既开心又害怕，TA冷淡你既想靠近又想逃跑，完全不知道咋办。\n\n"
+
+    # 暗恋时的你（从原有模板中提取）
     xiaoya_content = XIAOYA_MESSAGES.get(type_code)
+    if xiaoya_content:
+        message += f"**暗恋时的你：**\n{xiaoya_content['crush']}\n\n"
+        message += f"**分手后的你：**\n{xiaoya_content['breakup']}\n\n"
 
-    if not xiaoya_content:
-        return f"亲爱的，你的依恋风格测试结果出来啦！🎉\n\n你是{ATTACHMENT_TYPE_NAMES[type_code]}类型，有独特的依恋特质。\n\n想了解更多？继续问我呀～"
+    # 小雅悄悄话（根据类型）
+    message += "💡 小雅悄悄话：\n"
+    if type_code == "secure":
+        message += "你很稳，能适应任何对象，但要学会表达你的需求，别太稳定显得没心没肺，偶尔也要黏一下或情绪化一下，让TA觉得你有心有肺～\n\n"
+    elif type_code == "anxious":
+        message += "下次遇到心动的人，别黏太紧给TA空间，学会独立，不然你们会陷入追逐-逃跑恶性循环～\n\n"
+    elif type_code == "avoidant":
+        message += "下次遇到心动的人，别冷太久给TA回应，学会黏一下，不然你们会陷入追逐-逃跑恶性循环～\n\n"
+    elif type_code == "fearful":
+        message += "下次遇到心动的人，学会表达你的矛盾，让TA理解你既需要安全感又需要空间，别矛盾太久～\n\n"
 
-    message = f"{xiaoya_content['greeting']}\n\n"
-    message += f"{xiaoya_content['identity']}\n\n"
-    message += f"{xiaoya_content['quirk']}\n\n"
-    message += f"**暗恋时的你:**\n{xiaoya_content['crush']}\n\n"
-    message += f"**分手后的你:**\n{xiaoya_content['breakup']}\n\n"
-    message += f"{xiaoya_content['suggestion']}\n\n"
-    message += "还想了解更多？比如你的恋爱雷点、甜点、或者具体的匹配建议？继续问我呀～"
+    message += "还想了解更多？比如你的恋爱雷点、甜点、或者具体的相处建议？继续问我呀～"
 
     return message
 

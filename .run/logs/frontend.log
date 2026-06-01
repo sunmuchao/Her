@@ -6,69 +6,60 @@
 - Local:         http://127.0.0.1:3000
 - Network:       http://127.0.0.1:3000
 - Environments: .env.local
-✓ Ready in 864ms
+✓ Ready in 596ms
 ⚠ turbopack.root should be absolute, using: /Users/sunmuchao/Downloads/Her/frontend/her-app
 
- GET /discover 200 in 1271ms (next.js: 884ms, application-code: 387ms)
- GET /api/gateway/v1/auth/me 200 in 1107ms (next.js: 1038ms, application-code: 69ms)
- GET /api/gateway/v1/discovery/sessions/discovery-session-0cfc66c566ae 200 in 1123ms (next.js: 1037ms, application-code: 86ms)
- GET /api/gateway/v1/persona/collected?profile_id=7682 200 in 1128ms (next.js: 1035ms, application-code: 93ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=7682&unread_only=true 200 in 1134ms (next.js: 1033ms, application-code: 101ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 1147ms (next.js: 1032ms, application-code: 116ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 1154ms (next.js: 1030ms, application-code: 124ms)
- GET /api/gateway/v1/auth/me 200 in 65ms (next.js: 7ms, application-code: 58ms)
- GET /api/gateway/v1/auth/me 200 in 33ms (next.js: 6ms, application-code: 27ms)
- POST /api/gateway/v1/assessment/start 200 in 26ms (next.js: 7ms, application-code: 19ms)
- POST /api/gateway/v1/assessment/begin 200 in 18ms (next.js: 5ms, application-code: 13ms)
- POST /api/gateway/v1/assessment/answer 200 in 22ms (next.js: 5ms, application-code: 16ms)
- POST /api/gateway/v1/assessment/answer 200 in 26ms (next.js: 5ms, application-code: 21ms)
- POST /api/gateway/v1/assessment/answer 200 in 18ms (next.js: 1868µs, application-code: 16ms)
- POST /api/gateway/v1/assessment/answer 200 in 23ms (next.js: 5ms, application-code: 18ms)
- POST /api/gateway/v1/assessment/answer 200 in 18ms (next.js: 3ms, application-code: 15ms)
- POST /api/gateway/v1/assessment/answer 200 in 23ms (next.js: 6ms, application-code: 17ms)
- POST /api/gateway/v1/assessment/answer 200 in 29ms (next.js: 7ms, application-code: 22ms)
- POST /api/gateway/v1/assessment/answer 200 in 64ms (next.js: 5ms, application-code: 59ms)
- POST /api/gateway/v1/assessment/answer 200 in 18ms (next.js: 2ms, application-code: 16ms)
+ GET /discover 200 in 1102ms (next.js: 733ms, application-code: 369ms)
+ GET /api/gateway/v1/auth/me 200 in 856ms (next.js: 803ms, application-code: 53ms)
+ GET /api/gateway/v1/discovery/sessions/discovery-session-0cfc66c566ae 200 in 869ms (next.js: 803ms, application-code: 66ms)
+ GET /api/gateway/v1/persona/collected?profile_id=7682 200 in 866ms (next.js: 797ms, application-code: 70ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=7682&unread_only=true 200 in 798ms (next.js: 722ms, application-code: 75ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 800ms (next.js: 719ms, application-code: 81ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 808ms (next.js: 718ms, application-code: 90ms)
+ GET /api/gateway/v1/auth/me 200 in 40ms (next.js: 5ms, application-code: 35ms)
+ GET /api/gateway/v1/auth/me 200 in 15ms (next.js: 3ms, application-code: 11ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=7682&unread_only=true 200 in 63ms (next.js: 19ms, application-code: 44ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 65ms (next.js: 29ms, application-code: 36ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 68ms (next.js: 39ms, application-code: 30ms)
+ POST /api/gateway/v1/assessment/start 200 in 21ms (next.js: 6ms, application-code: 15ms)
+ POST /api/gateway/v1/assessment/begin 200 in 22ms (next.js: 6ms, application-code: 16ms)
+ POST /api/gateway/v1/assessment/answer 200 in 21ms (next.js: 5ms, application-code: 15ms)
+ POST /api/gateway/v1/assessment/answer 200 in 20ms (next.js: 5ms, application-code: 15ms)
+ POST /api/gateway/v1/assessment/answer 200 in 24ms (next.js: 5ms, application-code: 19ms)
+ POST /api/gateway/v1/assessment/answer 200 in 21ms (next.js: 6ms, application-code: 16ms)
  POST /api/gateway/v1/assessment/answer 200 in 21ms (next.js: 5ms, application-code: 16ms)
- POST /api/gateway/v1/assessment/answer 200 in 16ms (next.js: 1587µs, application-code: 15ms)
- POST /api/gateway/v1/assessment/answer 200 in 30ms (next.js: 5ms, application-code: 25ms)
- POST /api/gateway/v1/assessment/xiaoya-message 200 in 13ms (next.js: 2ms, application-code: 11ms)
- POST /api/gateway/v1/assessment/add-xiaoya-to-discovery 200 in 31ms (next.js: 1886µs, application-code: 29ms)
- GET /api/gateway/v1/discovery/sessions/discovery-session-0cfc66c566ae 200 in 20ms (next.js: 1976µs, application-code: 18ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=7682&unread_only=true 200 in 25ms (next.js: 7ms, application-code: 18ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 27ms (next.js: 12ms, application-code: 15ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 17ms (next.js: 1864µs, application-code: 15ms)
- POST /api/gateway/v1/assessment/start 200 in 26ms (next.js: 7ms, application-code: 19ms)
- POST /api/gateway/v1/assessment/begin 200 in 15ms (next.js: 5ms, application-code: 11ms)
- POST /api/gateway/v1/assessment/answer 200 in 22ms (next.js: 5ms, application-code: 17ms)
- POST /api/gateway/v1/assessment/answer 200 in 18ms (next.js: 2ms, application-code: 16ms)
+ POST /api/gateway/v1/assessment/answer 200 in 26ms (next.js: 5ms, application-code: 21ms)
+ POST /api/gateway/v1/assessment/answer 200 in 24ms (next.js: 6ms, application-code: 19ms)
+ POST /api/gateway/v1/assessment/answer 200 in 30ms (next.js: 8ms, application-code: 22ms)
+ POST /api/gateway/v1/assessment/answer 200 in 27ms (next.js: 8ms, application-code: 19ms)
+ POST /api/gateway/v1/assessment/answer 200 in 63ms (next.js: 5ms, application-code: 57ms)
+ POST /api/gateway/v1/assessment/xiaoya-message 200 in 16ms (next.js: 2ms, application-code: 13ms)
+ POST /api/gateway/v1/assessment/add-xiaoya-to-discovery 200 in 38ms (next.js: 1739µs, application-code: 36ms)
 [browser] Uncaught TypeError: Cannot read properties of undefined (reading 'toLowerCase')
-    at getDimensionConfig (components/assessment/AssessmentFeedbackCard.tsx:45:53)
-    at AssessmentFeedbackCard (components/assessment/AssessmentFeedbackCard.tsx:130:18)
-    at AssessmentCardRenderer (components/assessment/AssessmentCardRenderer.tsx:112:7)
+    at getTypeNickname (components/assessment/AssessmentResultCard.tsx:247:45)
+    at AssessmentResultCard (components/assessment/AssessmentResultCard.tsx:270:24)
+    at AssessmentCardRenderer (components/assessment/AssessmentCardRenderer.tsx:123:9)
     at DiscoverPage (components/her/discover-page.tsx:394:17)
     at AppShell (components/app/app-shell.tsx:89:13)
     at renderPage (components/app/her-app.tsx:138:13)
     at HerApp (components/app/her-app.tsx:172:8)
     at HerSlugPage (app/[[...slug]]/page.tsx:9:7)
-  43 |   }
-  44 |   if (assessmentType === 'love_language') {
-> 45 |     return LOVE_LANGUAGE_DIMENSION_CONFIG[dimension.toLowerCase()]
-     |                                                     ^
-  46 |   }
-  47 |   return MBTI_DIMENSION_CONFIG[dimension]
-  48 | }
+  245 |   }
+  246 |   if (assessmentType === 'love_language') {
+> 247 |     return LOVE_LANGUAGE_NICKNAMES[typeCode.toLowerCase()] || ''
+      |                                             ^
+  248 |   }
+  249 |   return TYPE_NICKNAMES[typeCode] || ''
+  250 | }
+ GET /api/gateway/v1/discovery/sessions/discovery-session-0cfc66c566ae 200 in 29ms (next.js: 2ms, application-code: 27ms)
 ⚠ Fast Refresh had to perform a full reload due to a runtime error.
-✓ Compiled in 687ms
- GET /discover 200 in 131ms (next.js: 24ms, application-code: 107ms)
- GET /api/gateway/v1/auth/me 200 in 62ms (next.js: 11ms, application-code: 51ms)
- GET /api/gateway/v1/discovery/sessions/discovery-session-0cfc66c566ae 200 in 69ms (next.js: 16ms, application-code: 53ms)
- GET /api/gateway/v1/persona/collected?profile_id=7682 200 in 83ms (next.js: 28ms, application-code: 56ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=7682&unread_only=true 200 in 65ms (next.js: 10ms, application-code: 55ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 57ms (next.js: 4ms, application-code: 53ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 60ms (next.js: 8ms, application-code: 52ms)
- GET /api/gateway/v1/auth/me 200 in 45ms (next.js: 3ms, application-code: 42ms)
- GET /api/gateway/v1/auth/me 200 in 24ms (next.js: 1795µs, application-code: 22ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=7682&unread_only=true 200 in 31ms (next.js: 9ms, application-code: 23ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 34ms (next.js: 13ms, application-code: 21ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 37ms (next.js: 17ms, application-code: 20ms)
+✓ Compiled in 708ms
+ GET /discover 200 in 85ms (next.js: 14ms, application-code: 71ms)
+ GET /api/gateway/v1/auth/me 200 in 93ms (next.js: 23ms, application-code: 70ms)
+ GET /api/gateway/v1/discovery/sessions/discovery-session-0cfc66c566ae 200 in 115ms (next.js: 30ms, application-code: 85ms)
+ GET /api/gateway/v1/persona/collected?profile_id=7682 200 in 137ms (next.js: 34ms, application-code: 102ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=7682&unread_only=true 200 in 106ms (next.js: 7ms, application-code: 99ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 101ms (next.js: 5ms, application-code: 96ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 147ms (next.js: 11ms, application-code: 137ms)
+ GET /api/gateway/v1/auth/me 200 in 133ms (next.js: 3ms, application-code: 131ms)
+ GET /api/gateway/v1/auth/me 200 in 21ms (next.js: 3ms, application-code: 18ms)
