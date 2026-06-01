@@ -14,6 +14,7 @@ import {
   type ChatMessageDisplay,
   type CaseTimelineResponse,
 } from '@/lib/api/endpoints/chat-timeline'
+import { getXiaoyaMessage, markXiaoyaMessageRead } from '@/lib/api/endpoints/assessment'  // 新增
 import { getErrorMessage } from '@/lib/api/errors'
 import { getChatParticipantId, getAvatarUrl } from '@/lib/auth/session'
 import { canUseMockFallback } from '@/lib/mock'
@@ -146,6 +147,25 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
         const msgs = await fetchPrivateMessages(convId, currentRequesterId)
         if (!cancelled) {
           setXiaoyaMessages(msgs)
+        }
+
+        // 新增：检查是否有测评解读消息
+        const xiaoyaResult = await getXiaoyaMessage(currentRequesterId)
+        if (!cancelled && xiaoyaResult.has_message && xiaoyaResult.message) {
+          // 添加小雅解读消息到消息列表
+          const assessmentMsg: PrivateMessage = {
+            id: `xiaoya-assessment-${Date.now()}`,
+            authorId: 'xiaoya',  // 小雅的ID
+            body: xiaoyaResult.message,
+            createdAt: new Date().toISOString(),
+            isFromMe: false,
+          }
+          setXiaoyaMessages((prev) => [...prev, assessmentMsg])
+
+          // 标记为已读
+          if (xiaoyaResult.assessment_id) {
+            await markXiaoyaMessageRead(currentRequesterId, xiaoyaResult.assessment_id)
+          }
         }
       } catch (error) {
         console.error('[XiaoyaChat] 加载失败:', error)

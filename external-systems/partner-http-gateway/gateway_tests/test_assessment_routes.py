@@ -53,6 +53,85 @@ def test_assessment_start_route_returns_intro_card() -> None:
     )
 
 
+def test_assessment_get_or_create_route_returns_resumed_intro() -> None:
+    """测试断点续传：有未完成的测评时，恢复进度"""
+    gw = _gateway()
+    gw._resolve_end_user_principal = mock.Mock(return_value=types.SimpleNamespace(profile_id=42))  # type: ignore[method-assign]
+
+    with (
+        mock.patch("gateway.assessment_routes._default_profile_source", return_value="mysql://root@127.0.0.1:3307/her?table=profiles"),
+        mock.patch(
+            "gateway.assessment_routes.get_or_create_assessment",
+            return_value={
+                "card_type": "assessment_intro",
+                "assessment_id": "mbti_existing",
+                "intro_data": {
+                    "title": "继续上次的测评",
+                    "description": "已答 5 题，还有 15 题",
+                    "duration": "继续测评",
+                    "reward": "上次退出时已保存进度，点击继续",
+                },
+                "resumed": True,
+                "answered_count": 5,
+            },
+        ) as get_or_create_mock,
+    ):
+        status, payload, _headers = run_wsgi_json(
+            gw,
+            build_wsgi_env("POST", "/v1/assessment/get-or-create", {"assessment_type": "mbti_16"}),
+        )
+
+    assert "200" in status
+    assert payload["card_type"] == "assessment_intro"
+    assert payload["resumed"] == True
+    assert payload["answered_count"] == 5
+    assert payload["intro_data"]["title"] == "继续上次的测评"
+    get_or_create_mock.assert_called_once_with(
+        source="mysql://root@127.0.0.1:3307/her?table=profiles",
+        user_key="42",
+        assessment_type="mbti_16",
+    )
+
+
+def test_assessment_get_or_create_route_returns_new_intro() -> None:
+    """测试断点续传：没有未完成的测评时，创建新测评"""
+    gw = _gateway()
+    gw._resolve_end_user_principal = mock.Mock(return_value=types.SimpleNamespace(profile_id=108))  # type: ignore[method-assign]
+
+    with (
+        mock.patch("gateway.assessment_routes._default_profile_source", return_value="mysql://root@127.0.0.1:3307/her?table=profiles"),
+        mock.patch(
+            "gateway.assessment_routes.get_or_create_assessment",
+            return_value={
+                "card_type": "assessment_intro",
+                "assessment_type": "mbti_16",
+                "assessment_id": "mbti_new_123",
+                "intro_data": {
+                    "title": "MBTI 恋爱说明书",
+                    "description": "测测你在恋爱里是什么派",
+                    "duration": "约5分钟 · 20题",
+                    "reward": "测完知道自己恋爱里的优势和坑",
+                },
+            },
+        ) as get_or_create_mock,
+    ):
+        status, payload, _headers = run_wsgi_json(
+            gw,
+            build_wsgi_env("POST", "/v1/assessment/get-or-create", {"assessment_type": "mbti_16"}),
+        )
+
+    assert "200" in status
+    assert payload["card_type"] == "assessment_intro"
+    assert payload["intro_data"]["title"] == "MBTI 恋爱说明书"
+    # 没有 resumed 字段，说明是新测评
+    assert "resumed" not in payload or payload.get("resumed") is None
+    get_or_create_mock.assert_called_once_with(
+        source="mysql://root@127.0.0.1:3307/her?table=profiles",
+        user_key="108",
+        assessment_type="mbti_16",
+    )
+
+
 def test_assessment_answer_route_returns_feedback_card() -> None:
     gw = _gateway()
     gw._resolve_end_user_principal = mock.Mock(return_value=types.SimpleNamespace(profile_id=42))  # type: ignore[method-assign]
