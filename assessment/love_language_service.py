@@ -86,6 +86,27 @@ def _parse_json(value: Any) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+def _dimension_rows(scores: dict[str, float]) -> list[dict[str, Any]]:
+    """生成恋爱语言的维度行数据（用于雷达图显示）"""
+    rows = []
+    for lang_key, lang_name in LOVE_LANGUAGE_NAMES.items():
+        score = float(scores.get(lang_key, 0.0))
+        # 恋爱语言的level判定：high>=70, medium>=40, low<40
+        level = "high" if score >= 70 else "medium" if score >= 40 else "low"
+        # 使用恋爱语言标签定义中的trait
+        trait = LOVE_LANGUAGE_LABELS[lang_key]["nickname"]
+        rows.append(
+            {
+                "key": lang_key,
+                "name": lang_name,
+                "score": score,
+                "level": level,
+                "trait": trait,
+            }
+        )
+    return rows
+
+
 def _session_payload(
     assessment_id: str,
     assessment_type: str,
@@ -468,9 +489,24 @@ def answer_love_language_assessment(
                         "scores": scores,
                     }
                 )
+                # 先计算 extreme_labels，用于生成 labels
+                extreme_labels = [
+                    {
+                        "language": lang,
+                        "language_name": LOVE_LANGUAGE_NAMES[lang],
+                        "score": score,
+                        "tag": LOVE_LANGUAGE_LABELS[lang]["nickname"] + "认证 ✨",
+                    }
+                    for lang, score in scores.items()
+                    if score >= 85  # 只有得分≥85才显示认证标签
+                ]
+
                 result_data = {
-                    "primary_language": primary_language,
+                    "type_code": primary_language,  # 添加 type_code 字段（与 MBTI/Attachment 一致）
                     "scores": scores,
+                    "dimension_rows": _dimension_rows(scores),  # 添加 dimension_rows（用于雷达图）
+                    "labels": [item["tag"] for item in extreme_labels if item.get("tag")] or [language_info["nickname"]],  # 添加 labels 字段
+                    "primary_language": primary_language,
                     "ranking": ranking,
                     # 新标签：基于得分排序，只显示高分语言的标签
                     "sensitive_labels": [
@@ -495,16 +531,7 @@ def answer_love_language_assessment(
                         if score <= 30  # 只显示得分≤30的语言
                     ],
                     # 极端标签（轻量融入，只有得分≥85才显示）
-                    "extreme_labels": [
-                        {
-                            "language": lang,
-                            "language_name": LOVE_LANGUAGE_NAMES[lang],
-                            "score": score,
-                            "tag": LOVE_LANGUAGE_LABELS[lang]["nickname"] + "认证 ✨",
-                        }
-                        for lang, score in scores.items()
-                        if score >= 85  # 只有得分≥85才显示认证标签
-                    ],
+                    "extreme_labels": extreme_labels,
                     "interpretation_data": interpretation,
                     "reward": "测完了解你的恋爱表达偏好",
                     "assessment_id": assessment_id,

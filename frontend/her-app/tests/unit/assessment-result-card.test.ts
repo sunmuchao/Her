@@ -37,4 +37,22 @@ describe('AssessmentResultCard', () => {
     expect(html).toContain('暂无雷达图数据')
     expect(html).toContain('--')
   })
+
+  it('renders chinese love language result from english type code', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(AssessmentResultCard, {
+        data: {
+          type_code: ' words_of_affirmation ',
+          scores: {},
+          labels: [],
+          reward: 'ok',
+          assessment_id: 'love_demo',
+        },
+        assessmentType: 'love_language',
+      }),
+    )
+
+    expect(html).toContain('肯定言词')
+    expect(html).not.toContain('words_of_affirmation')
+  })
 })

@@ -12,6 +12,19 @@ interface FeedbackData {
   feedback_text?: string
 }
 
+const LOVE_LANGUAGE_LABELS: Record<string, string> = {
+  words_of_affirmation: '肯定言词',
+  quality_time: '精心时刻',
+  receiving_gifts: '接受礼物',
+  acts_of_service: '服务行动',
+  physical_touch: '身体接触',
+  words: '肯定言词',
+  time: '精心时刻',
+  gifts: '接受礼物',
+  service: '服务行动',
+  touch: '身体接触',
+}
+
 // MBTI Dimension configs (fallback)
 const MBTI_DIMENSION_CONFIG: Record<string, { icon: string; color: string; bgColor: string; label: string }> = {
   EI: { icon: 'EI', color: 'text-rose', bgColor: 'bg-rose-soft', label: '社交能量' },
@@ -30,6 +43,11 @@ const ATTACHMENT_DIMENSION_CONFIG: Record<string, { icon: string; color: string;
 
 // Love Language dimension configs
 const LOVE_LANGUAGE_DIMENSION_CONFIG: Record<string, { icon: string; color: string; bgColor: string; label: string }> = {
+  words_of_affirmation: { icon: 'WD', color: 'text-lavender', bgColor: 'bg-lavender-soft', label: '肯定言词' },
+  quality_time: { icon: 'TM', color: 'text-sage', bgColor: 'bg-sage-soft', label: '精心时刻' },
+  receiving_gifts: { icon: 'GF', color: 'text-gold', bgColor: 'bg-gold-soft', label: '接受礼物' },
+  acts_of_service: { icon: 'SV', color: 'text-coral', bgColor: 'bg-coral-soft', label: '服务行动' },
+  physical_touch: { icon: 'TC', color: 'text-rose', bgColor: 'bg-rose-soft', label: '身体接触' },
   words: { icon: 'WD', color: 'text-lavender', bgColor: 'bg-lavender-soft', label: '肯定言词' },
   time: { icon: 'TM', color: 'text-sage', bgColor: 'bg-sage-soft', label: '精心时刻' },
   gifts: { icon: 'GF', color: 'text-gold', bgColor: 'bg-gold-soft', label: '接受礼物' },
@@ -37,18 +55,41 @@ const LOVE_LANGUAGE_DIMENSION_CONFIG: Record<string, { icon: string; color: stri
   touch: { icon: 'TC', color: 'text-rose', bgColor: 'bg-rose-soft', label: '身体接触' },
 }
 
+function normalizeDimensionKey(dimension?: string) {
+  return dimension?.trim().toLowerCase()
+}
+
+function getDimensionLabel(data: FeedbackData, assessmentType?: AssessmentType) {
+  if (data.dimension_name?.trim()) {
+    return data.dimension_name.trim()
+  }
+
+  const normalizedDimension = normalizeDimensionKey(data.dimension)
+  if (!normalizedDimension) {
+    return '阶段反馈'
+  }
+
+  if (assessmentType === 'love_language') {
+    return LOVE_LANGUAGE_LABELS[normalizedDimension] || data.dimension || '阶段反馈'
+  }
+
+  const config = getDimensionConfig(normalizedDimension, assessmentType)
+  return config?.label || data.dimension || '阶段反馈'
+}
+
 function getDimensionConfig(dimension?: string, assessmentType?: AssessmentType) {
-  if (!dimension) {
+  const normalizedDimension = normalizeDimensionKey(dimension)
+  if (!normalizedDimension) {
     return undefined
   }
 
   if (assessmentType === 'attachment_style') {
-    return ATTACHMENT_DIMENSION_CONFIG[dimension.toLowerCase()]
+    return ATTACHMENT_DIMENSION_CONFIG[normalizedDimension]
   }
   if (assessmentType === 'love_language') {
-    return LOVE_LANGUAGE_DIMENSION_CONFIG[dimension.toLowerCase()]
+    return LOVE_LANGUAGE_DIMENSION_CONFIG[normalizedDimension]
   }
-  return MBTI_DIMENSION_CONFIG[dimension]
+  return MBTI_DIMENSION_CONFIG[dimension?.trim() || '']
 }
 
 function CircularProgress({ 
@@ -132,8 +173,8 @@ export function AssessmentFeedbackCard({
   assessmentType?: AssessmentType
 }) {
   const safeScore = typeof data.score === 'number' ? data.score : 0
-  const fallbackLabel = data.dimension_name || data.dimension || '阶段反馈'
-  const fallbackIcon = (data.dimension || data.dimension_name || '--').slice(0, 2).toUpperCase()
+  const fallbackLabel = getDimensionLabel(data, assessmentType)
+  const fallbackIcon = (fallbackLabel || '--').slice(0, 2).toUpperCase()
 
   const config = getDimensionConfig(data.dimension, assessmentType) || {
     icon: fallbackIcon,

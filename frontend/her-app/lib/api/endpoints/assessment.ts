@@ -45,18 +45,22 @@ export type AssessmentResultCard = {
   result_data: {
     type_code: string
     scores: Record<string, number>
-    dimension_rows: Array<{
+    dimension_rows?: Array<{
       key: string
       name: string
       score: number
       level: 'high' | 'medium' | 'low'
       trait: string
     }>
-    labels: string[]
+    labels?: string[]
     interpretation_data?: {
       summary: string
       love_style: string
       match_suggestions: string[]
+      extreme_tags?: Array<{
+        tag: string
+        description: string
+      }>
     }
     reward: string
     assessment_id: string
