@@ -223,27 +223,27 @@ EXTREME_LANGUAGE_TAGS = {
     "words_of_affirmation_high": {
         "threshold": 85,
         "tag": "彩虹屁大师认证",
-        "description": "对象夸你今天真好看你会感动到哭，需要很多赞美和鼓励，夸你是让TA开心最快的方式",
+        "description": "夸你你会感动到哭，对方赞美是你感受到被爱的最强信号 ✨",
     },
     "quality_time_high": {
         "threshold": 85,
         "tag": "深度对话控认证",
-        "description": "对象陪你深度聊三观你会感动到哭，需要很多专注的陪伴，深度陪你是让TA开心最快的方式",
+        "description": "陪你深度聊你会感动到哭，专注陪伴是你感受到被爱的最强信号 ✨",
     },
     "receiving_gifts_high": {
         "threshold": 85,
         "tag": "小心意收藏家认证",
-        "description": "对象送你小心意你会感动到哭，需要很多物质象征，送小心意是让TA开心最快的方式",
+        "description": "送你小心意你会感动到哭，物质象征是你感受到被爱的最强信号 ✨",
     },
     "acts_of_service_high": {
         "threshold": 85,
         "tag": "行动派爱人认证",
-        "description": "对象帮你搞定麻烦事你会感动到哭，需要很多实际帮助，帮TA做事是让TA开心最快的方式",
+        "description": "帮你搞定麻烦事你会感动到哭，实际帮助是你感受到被爱的最强信号 ✨",
     },
     "physical_touch_high": {
         "threshold": 85,
         "tag": "黏贴型恋人认证",
-        "description": "对象突然抱你你会感动到哭，需要很多肢体接触，抱抱贴贴是让TA开心最快的方式",
+        "description": "突然抱你你会感动到哭，肢体接触是你感受到被爱的最强信号 ✨",
     },
 }
 
