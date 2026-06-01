@@ -7689,3 +7689,8 @@ https://nextjs.org/docs/messages/module-not-found
  GET /api/gateway/v1/proxy-intro/cases/mine 200 in 481ms (next.js: 19ms, application-code: 462ms)
  GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 519ms (next.js: 3ms, application-code: 516ms)
  GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 814ms (next.js: 7ms, application-code: 807ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 30ms (next.js: 7ms, application-code: 23ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 223ms (next.js: 13ms, application-code: 210ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 362ms (next.js: 6ms, application-code: 356ms)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 347ms (next.js: 2ms, application-code: 345ms)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 601ms (next.js: 7ms, application-code: 594ms)
