@@ -3,6 +3,7 @@
 import Image from 'next/image'
 import { BadgeCheck, ChevronRight, MapPin } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { PLACEHOLDER_AVATAR, resolveProfileImageUrl } from '@/lib/image-url'
 import type { CandidatePreview } from '@/lib/types/candidate'
 
 type DiscoveryCandidateCardProps = {
@@ -18,6 +19,8 @@ export function DiscoveryCandidateCard({
   className,
   style,
 }: DiscoveryCandidateCardProps) {
+  const imageSrc = resolveProfileImageUrl(candidate.image, PLACEHOLDER_AVATAR)
+
   return (
     <button
       type="button"
@@ -33,16 +36,15 @@ export function DiscoveryCandidateCard({
     >
       <div className="flex gap-3">
         <div className="relative w-16 h-20 rounded-lg overflow-hidden shrink-0 bg-secondary">
-          {candidate.image ? (
-            <Image
-              src={candidate.image}
-              alt={candidate.name}
-              fill
-              className="object-cover"
-              sizes="64px"
-              loading="lazy"
-            />
-          ) : null}
+          <Image
+            src={imageSrc}
+            alt={candidate.name}
+            fill
+            className="object-cover"
+            sizes="64px"
+            loading="lazy"
+            unoptimized={imageSrc.startsWith('data:image/')}
+          />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
