@@ -9,6 +9,8 @@ import type {
   AssessmentResultCard as AssessmentResultCardType,
   AssessmentInterpretationCard as AssessmentInterpretationCardType,
 } from '@/lib/api/endpoints/assessment'
+import { cn } from '@/lib/utils'
+import { type AssessmentType } from './assessment-themes'
 
 import { AssessmentFeedbackCard } from './AssessmentFeedbackCard'
 import { AssessmentIntroCard } from './AssessmentIntroCard'
@@ -41,6 +43,14 @@ function isInterpretationCard(card: AssessmentCard): card is AssessmentInterpret
   return card.card_type === 'assessment_interpretation'
 }
 
+// Extract assessment type from the card
+function getAssessmentTypeFromCard(card: AssessmentCard): AssessmentType | undefined {
+  if (isIntroCard(card)) {
+    return card.assessment_type
+  }
+  return undefined
+}
+
 export interface AssessmentCardRendererProps {
   card: AssessmentCard
   onStart: () => void
@@ -53,6 +63,7 @@ export interface AssessmentCardRendererProps {
   isResumed?: boolean
   answeredCount?: number
   isSubmitting?: boolean
+  assessmentType?: AssessmentType
 }
 
 export function AssessmentCardRenderer({
@@ -67,7 +78,11 @@ export function AssessmentCardRenderer({
   isResumed = false,
   answeredCount = 0,
   isSubmitting = false,
+  assessmentType,
 }: AssessmentCardRendererProps) {
+  // Try to get assessment type from card if not provided
+  const resolvedAssessmentType = assessmentType || getAssessmentTypeFromCard(card)
+  
   if (isIntroCard(card)) {
     return (
       <AssessmentIntroCard
@@ -75,6 +90,7 @@ export function AssessmentCardRenderer({
         onStart={onStart}
         isResumed={isResumed || card.resumed}
         answeredCount={answeredCount || card.answered_count || 0}
+        assessmentType={resolvedAssessmentType}
       />
     )
   }
@@ -86,6 +102,7 @@ export function AssessmentCardRenderer({
         onAnswer={onAnswer}
         onPrevious={onPrevious}
         isSubmitting={isSubmitting}
+        assessmentType={resolvedAssessmentType}
       />
     )
   }
@@ -95,6 +112,7 @@ export function AssessmentCardRenderer({
       <AssessmentFeedbackCard
         data={card.feedback_data}
         onContinue={onContinue}
+        assessmentType={resolvedAssessmentType}
       />
     )
   }
@@ -106,12 +124,20 @@ export function AssessmentCardRenderer({
           data={card.result_data}
           onAddLabels={onAddLabels}
           onShare={onShare}
+          assessmentType={resolvedAssessmentType}
         />
       </Suspense>
     )
   }
 
   if (isInterpretationCard(card)) {
+    // Get themed button color
+    const buttonClass = resolvedAssessmentType === 'attachment_style' 
+      ? 'bg-coral hover:bg-coral/90' 
+      : resolvedAssessmentType === 'love_language' 
+        ? 'bg-lavender hover:bg-lavender/90' 
+        : 'bg-primary hover:bg-primary/90'
+    
     return (
       <div className="rounded-3xl border border-border bg-card p-5 shadow-sm animate-scale-in">
         <div className="text-xs uppercase tracking-widest text-muted-foreground">
@@ -131,7 +157,10 @@ export function AssessmentCardRenderer({
           ))}
         </div>
         <button
-          className="mt-4 w-full rounded-xl bg-primary px-4 py-3 text-sm text-primary-foreground font-medium transition-colors hover:bg-primary/90"
+          className={cn(
+            "mt-4 w-full rounded-xl px-4 py-3 text-sm text-white font-medium transition-colors",
+            buttonClass
+          )}
           onClick={onContinueChat}
         >
           {"回到聊天"}
