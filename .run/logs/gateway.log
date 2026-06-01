@@ -1,16 +1,1 @@
-Traceback (most recent call last):
-  File "<frozen runpy>", line 198, in _run_module_as_main
-  File "<frozen runpy>", line 88, in _run_code
-  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/app.py", line 32, in <module>
-    from .async_jobs import AsyncJobGatewayMixin
-  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway/gateway/async_jobs.py", line 17, in <module>
-    from chat_system.async_tasks import (  # type: ignore[import-untyped]
-  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/async_tasks.py", line 10, in <module>
-    from .maintenance import run_chat_maintenance
-  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/maintenance.py", line 9, in <module>
-    from .assistant_orchestrator import process_pending_agent_tasks
-  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/assistant_orchestrator.py", line 18, in <module>
-    from .assistant_runtime import MatchmakerDecision, MatchmakerRunInput, run_matchmaker_agent
-  File "/Users/sunmuchao/Downloads/Her/external-systems/partner-chat-system/chat_system/assistant_runtime.py", line 14, in <module>
-    from pydantic import BaseModel, Field, model_validator
-ModuleNotFoundError: No module named 'pydantic'
+2026-06-01 14:35:46,264 INFO __main__ Partner HTTP gateway at http://127.0.0.1:8765 (REST /v1/..., JSON-RPC POST /jsonrpc)
