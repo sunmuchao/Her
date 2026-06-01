@@ -29,6 +29,7 @@ from assessment.love_language_questions import (
     xiaoya_message_from_result,
     calculate_love_language_match,
     LOVE_LANGUAGE_NAMES,
+    LOVE_LANGUAGE_LABELS,  # 新增：恋爱语言标签定义
 )
 from persona_memory_sync.persona_memory_lib import (
     apply_persona_patch,
@@ -471,7 +472,39 @@ def answer_love_language_assessment(
                     "primary_language": primary_language,
                     "scores": scores,
                     "ranking": ranking,
-                    "labels": [language_info["nickname"]] + language_info["tags"][:3],
+                    # 新标签：基于得分排序，只显示高分语言的标签
+                    "sensitive_labels": [
+                        {
+                            "language": lang,
+                            "language_name": LOVE_LANGUAGE_NAMES[lang],
+                            "score": score,
+                            "label": f"{LOVE_LANGUAGE_NAMES[lang]}敏感({score}分)" if score >= 70 else None,
+                        }
+                        for lang, score in sorted(scores.items(), key=lambda x: x[1], reverse=True)[:3]
+                        if score >= 50  # 只显示得分≥50的语言
+                    ],
+                    # 不敏感的标签
+                    "insensitive_labels": [
+                        {
+                            "language": lang,
+                            "language_name": LOVE_LANGUAGE_NAMES[lang],
+                            "score": score,
+                            "label": f"{LOVE_LANGUAGE_NAMES[lang]}不敏感({score}分)" if score <= 30 else None,
+                        }
+                        for lang, score in sorted(scores.items(), key=lambda x: x[1], reverse=True)[-2:]
+                        if score <= 30  # 只显示得分≤30的语言
+                    ],
+                    # 极端标签（轻量融入，只有得分≥85才显示）
+                    "extreme_labels": [
+                        {
+                            "language": lang,
+                            "language_name": LOVE_LANGUAGE_NAMES[lang],
+                            "score": score,
+                            "tag": LOVE_LANGUAGE_LABELS[lang]["nickname"] + "认证 ✨",
+                        }
+                        for lang, score in scores.items()
+                        if score >= 85  # 只有得分≥85才显示认证标签
+                    ],
                     "interpretation_data": interpretation,
                     "reward": "测完了解你的恋爱表达偏好",
                     "assessment_id": assessment_id,
