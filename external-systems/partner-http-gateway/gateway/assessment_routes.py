@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
+from discovery_system import DiscoveryServiceError  # type: ignore[import-untyped]
 from assessment.service import (
     answer_assessment,
     begin_assessment,
@@ -40,6 +41,8 @@ from .http_helpers import _json_safe, _parse_json_body, _query_dict, _read_body
 
 
 class AssessmentGateway(Protocol):
+    _discovery: Any
+
     def _resolve_end_user_principal(self, environ: dict[str, Any], *, require_profile: bool = False) -> Any: ...
 
 
@@ -317,19 +320,25 @@ def rest_assessment_add_xiaoya_to_discovery(gateway: AssessmentGateway, environ:
     if not message:
         return 400, {"error": {"code": "invalid_request", "message": "message is required"}}
 
-    source = _default_profile_source()
-    if not source:
-        return 503, {"error": {"code": "source_not_configured", "message": "数据源未配置"}}
-
     try:
+        owner_id = gateway._discovery.get_session_owner_id(session_id)
+        if str(owner_id) != user_key:
+            return 403, {"error": {"code": "forbidden", "message": "无权访问该 discovery session"}}
         result = add_xiaoya_message_to_discovery_session(
-            discovery_source=source,
+            discovery_service=gateway._discovery,
             session_id=session_id,
             user_key=user_key,
             message=message,
             result_data=result_data if isinstance(result_data, dict) else None,
         )
         return 200, _json_safe(result)
+    except DiscoveryServiceError as e:
+        return e.status_code, {
+            "error": {"code": e.code, "message": e.message},
+            "error_code": e.code,
+            "error_message": e.message,
+            "retryable": e.retryable,
+        }
     except Exception as e:
         return 500, {"error": {"code": "internal_error", "message": str(e)}}
 
