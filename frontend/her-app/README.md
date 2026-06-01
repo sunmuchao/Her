@@ -31,6 +31,14 @@ pnpm install
 pnpm dev
 ```
 
+如果页面里出现 `请求失败（404）`，但接口路径是 `/api/gateway/v1/...`，先检查 `PARTNER_GATEWAY_BASE_URL` 指向的是不是真正的 `partner-http-gateway`，而不是别的本地服务。最直接的自检方式：
+
+```bash
+curl -sS http://127.0.0.1:8765/health
+```
+
+正确的 gateway 会返回包含 `services`、`surface`、`jsonrpc_enabled` 等字段的 JSON；如果返回的是别的服务格式，或者 `/v1/...` 返回 `{"detail":"Not Found"}`，说明当前端口连错了上游。
+
 ## 质量检查
 
 ```bash

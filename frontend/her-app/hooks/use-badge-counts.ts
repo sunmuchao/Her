@@ -4,16 +4,22 @@ import { useCallback, useEffect, useState } from 'react'
 import { fetchRelationshipsUnreadSummary, RELATIONSHIP_READ_EVENT } from '@/lib/api/endpoints/chat'
 import { fetchInboxUnreadCount } from '@/lib/api/endpoints/recommendation'
 import { fetchMyProxyIntroCases } from '@/lib/api/endpoints/proxy-intro'
-import { getProfileId } from '@/lib/auth/session'
+import { getAccessToken, getProfileId } from '@/lib/auth/session'
 
 export function useBadgeCounts() {
   const [inboxUnreadCount, setInboxUnreadCount] = useState(0)
   const [relationshipsBadge, setRelationshipsBadge] = useState(0)
 
   const refresh = useCallback(async () => {
+    if (!getAccessToken()) {
+      setInboxUnreadCount(0)
+      setRelationshipsBadge(0)
+      return
+    }
     const profileId = getProfileId()
     if (!profileId) {
       setInboxUnreadCount(0)
+      setRelationshipsBadge(0)
       return
     }
     try {
