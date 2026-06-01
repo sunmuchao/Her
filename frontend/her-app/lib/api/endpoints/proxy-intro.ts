@@ -1,3 +1,4 @@
+import { GatewayClientError } from '@/lib/api/errors'
 import { gatewayJson } from '@/lib/api/client'
 
 export type ProxyIntroCase = {
@@ -50,7 +51,14 @@ export async function createProxyIntroRequest(params: {
 }
 
 export async function fetchMyProxyIntroCases() {
-  return gatewayJson<{ cases?: ProxyIntroCase[]; count?: number }>('/v1/proxy-intro/cases/mine')
+  try {
+    return await gatewayJson<{ cases?: ProxyIntroCase[]; count?: number }>('/v1/proxy-intro/cases/mine')
+  } catch (error) {
+    if (error instanceof GatewayClientError && error.status === 404) {
+      return { cases: [], count: 0 }
+    }
+    throw error
+  }
 }
 
 export async function replyProxyIntroCase(params: {

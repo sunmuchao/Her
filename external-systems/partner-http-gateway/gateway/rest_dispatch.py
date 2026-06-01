@@ -13,6 +13,7 @@ from .chat_safety_routes import dispatch_chat_safety_rest
 from .collected_routes import dispatch_collected_rest
 from .discovery_routes import dispatch_discovery_rest
 from .assessment_routes import dispatch_assessment_rest
+from .values_auction_routes import dispatch_values_auction_rest
 from .http_helpers import _parse_json_body, _read_body
 from .ledger_routes import dispatch_ledger_rest
 from .matchmaking_routes import dispatch_matchmaking_rest
@@ -56,6 +57,7 @@ def dispatch_gateway_rest(
     for dispatcher in (
         dispatch_ops_rest,
         dispatch_assessment_rest,
+        dispatch_values_auction_rest,
         dispatch_persona_rest,
         dispatch_candidate_bff,
         dispatch_ledger_rest,

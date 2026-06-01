@@ -239,8 +239,8 @@ def _feedback_payload(question_index: int, scores: dict[str, float]) -> dict[str
 
     score = scores.get(language, 0.0)
     return {
-        "language": language,
-        "language_name": LOVE_LANGUAGE_NAMES[language],
+        "dimension": language,  # 统一使用 dimension 字段（与 MBTI/依恋风格一致）
+        "dimension_name": LOVE_LANGUAGE_NAMES[language],  # 统一使用 dimension_name 字段
         "score": score,
         "feedback_text": get_language_feedback(language, score),
     }
@@ -600,6 +600,7 @@ def answer_love_language_assessment(
                 conn.commit()
                 return {
                     "card_type": "assessment_result",
+                    "assessment_type": ASSESSMENT_TYPE_LOVE_LANGUAGE,  # 添加 assessment_type 字段，供前端识别测评类型
                     "assessment_id": assessment_id,
                     "result_data": result_data,
                 }

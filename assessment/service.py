@@ -575,6 +575,7 @@ def answer_assessment(
                 conn.commit()
                 return {
                     "card_type": "assessment_result",
+                    "assessment_type": ASSESSMENT_TYPE_MBTI,  # 添加 assessment_type 字段，供前端识别测评类型
                     "assessment_id": assessment_id,
                     "result_data": result_data,
                 }
@@ -719,6 +720,7 @@ def add_xiaoya_message_to_discovery_session(
                 discovery_service.storage.next_item_id("assessment"),
                 {
                     "card_type": "assessment_result",
+                    "assessment_type": ASSESSMENT_TYPE_MBTI,  # 添加 assessment_type 字段
                     "assessment_id": str(result_data.get("assessment_id") or ""),
                     "result_data": result_data,
                 },
