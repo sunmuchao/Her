@@ -182,6 +182,7 @@ export default function DiscoverPage({
     submitTurn,
     sessionId,
     reloadSession,
+    removeSuggestedActions,
   } = useDiscoverySession(onSessionIdChange)
 
   // Voice input functionality
@@ -235,6 +236,7 @@ export default function DiscoverPage({
     if (!userKey || assessmentBusy) return
     setAssessmentBusy(true)
     setCurrentAssessmentType(assessmentType)
+    removeSuggestedActions()
     try {
       const intro = await startAssessment(userKey, assessmentType)
       setAssessmentId(intro.assessment_id)

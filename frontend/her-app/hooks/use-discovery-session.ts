@@ -327,6 +327,10 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
     setTimelineItems((prev) => [...prev, item])
   }, [])
 
+  const removeSuggestedActions = useCallback(() => {
+    setTimelineItems((prev) => prev.filter((item) => item.kind !== 'suggested_actions'))
+  }, [])
+
   return {
     timelineItems,
     inputValue,
@@ -344,5 +348,6 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
     sessionId,
     reloadSession,
     addTimelineItem,  // 新增
+    removeSuggestedActions,
   }
 }
