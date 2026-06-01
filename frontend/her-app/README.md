@@ -28,9 +28,10 @@ cp .env.example .env.local
 
 ```bash
 pnpm install
-pnpm gateway:start
-pnpm dev
+pnpm dev:full
 ```
+
+`pnpm dev:full` 会先确认 gateway 可用，不可用时尝试启动真实 `partner-http-gateway`，然后以前台方式启动 Next.js 开发服务器。
 
 如果页面里出现 `请求失败（404）`，但接口路径是 `/api/gateway/v1/...`，先检查 `PARTNER_GATEWAY_BASE_URL` 指向的是不是真正的 `partner-http-gateway`，而不是别的本地服务。最直接的自检方式：
 
@@ -79,7 +80,7 @@ CI：仓库根目录 `.github/workflows/frontend-her-app.yml`（push/PR 触及 `
 先启动前端：
 
 ```bash
-pnpm dev --hostname 127.0.0.1 --port 3000
+pnpm dev:full
 ```
 
 如果你要直接跑一套可重复的 stub 联调回归：

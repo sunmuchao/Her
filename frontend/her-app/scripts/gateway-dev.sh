@@ -16,10 +16,12 @@ usage() {
 Usage:
   bash ./scripts/gateway-dev.sh health
   bash ./scripts/gateway-dev.sh start
+  bash ./scripts/gateway-dev.sh dev
 
 Commands:
   health  Check whether PARTNER_GATEWAY_BASE_URL points to the real partner gateway
   start   Start the repo's partner gateway on the configured host/port and wait for /health
+  dev     Ensure the gateway is ready, then start Next.js dev server on 127.0.0.1:3000
 EOF
 }
 
@@ -106,6 +108,16 @@ start_gateway() {
   exit 1
 }
 
+start_frontend_dev() {
+  echo "Starting frontend dev server at http://127.0.0.1:3000"
+  exec pnpm dev --hostname 127.0.0.1 --port 3000
+}
+
+start_full_dev() {
+  start_gateway
+  start_frontend_dev
+}
+
 main() {
   cd "${APP_DIR}"
 
@@ -115,6 +127,9 @@ main() {
       ;;
     start)
       start_gateway
+      ;;
+    dev)
+      start_full_dev
       ;;
     -h|--help|help)
       usage
