@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { ArrowLeft, BadgeCheck, Bookmark, ChevronRight, Mail, Mic, Plus, Search, Send, X, Brain, Heart, Sparkles } from 'lucide-react'
+import { ArrowLeft, BadgeCheck, Bookmark, ChevronRight, ChevronDown, Mail, Mic, Plus, Search, Send, X, Brain, Heart, Sparkles, ClipboardList } from 'lucide-react'
 import { AssessmentCardRenderer } from '@/components/assessment/AssessmentCardRenderer'
 import { XiaoyaAvatar } from '@/components/her/ui/xiaoya-avatar'
 import Image from 'next/image'
@@ -189,8 +189,10 @@ export default function DiscoverPage({
       ? ['同城优先', '本科以上']
       : []
   const [showActionMenu, setShowActionMenu] = useState(false)
+  const [showAssessmentSubmenu, setShowAssessmentSubmenu] = useState(false)
   const [assessmentCard, setAssessmentCard] = useState<AssessmentCard | null>(null)
   const [assessmentId, setAssessmentId] = useState<string | null>(null)
+  const [currentAssessmentType, setCurrentAssessmentType] = useState<'mbti_16' | 'attachment_style' | 'love_language'>('mbti_16')
   const [assessmentQuestionHistory, setAssessmentQuestionHistory] = useState<AssessmentQuestionCard['question_data'][]>([])
   const [assessmentBusy, setAssessmentBusy] = useState(false)
   const userKey = String(getProfileId() || getUserId() || '')
@@ -198,6 +200,7 @@ export default function DiscoverPage({
   const openAssessmentCard = async (assessmentType: 'mbti_16' | 'attachment_style' | 'love_language' = 'mbti_16') => {
     if (!userKey || assessmentBusy) return
     setAssessmentBusy(true)
+    setCurrentAssessmentType(assessmentType)
     try {
       const intro = await startAssessment(userKey, assessmentType)
       setAssessmentId(intro.assessment_id)
@@ -223,6 +226,7 @@ export default function DiscoverPage({
     setAssessmentCard(null)
     setAssessmentId(null)
     setAssessmentQuestionHistory([])
+    setCurrentAssessmentType('mbti_16')
     // 滚动到底部显示小雅消息
     setTimeout(() => {
       chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -422,6 +426,7 @@ export default function DiscoverPage({
                       : undefined
                   }
                   onAddLabels={handleAddLabels}
+                  assessmentType={currentAssessmentType}
                 />
               </div>
             </div>
@@ -471,57 +476,87 @@ export default function DiscoverPage({
             onClick={(e) => {
               if (e.target === e.currentTarget) {
                 setShowActionMenu(false)
+                setShowAssessmentSubmenu(false)
               }
             }}
           >
-            <div className="grid grid-cols-5 gap-4 rounded-2xl border border-border bg-card p-3">
-              {/* MBTI测评 */}
+            <div className="rounded-2xl border border-border bg-card p-3">
+              {/* 心理测评折叠按钮 */}
               <button
-                onClick={() => {
-                  void openAssessmentCard('mbti_16')
-                  setShowActionMenu(false)
-                }}
-                disabled={assessmentBusy || !userKey}
-                className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-secondary hover:bg-secondary/80 transition-colors disabled:opacity-60"
-                aria-label="MBTI测评"
+                onClick={() => setShowAssessmentSubmenu(!showAssessmentSubmenu)}
+                className="flex items-center justify-between w-full p-3 rounded-xl bg-secondary hover:bg-secondary/80 transition-colors"
+                aria-expanded={showAssessmentSubmenu}
+                aria-label="心理测评"
               >
-                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Brain className="w-6 h-6 text-primary" />
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                    <ClipboardList className="w-5 h-5 text-primary" />
+                  </div>
+                  <span className="text-sm font-medium text-foreground">心理测评</span>
                 </div>
-                <span className="text-xs text-foreground">MBTI测评</span>
+                <ChevronDown 
+                  className={cn(
+                    "w-5 h-5 text-muted-foreground transition-transform duration-200",
+                    showAssessmentSubmenu && "rotate-180"
+                  )} 
+                />
               </button>
 
-              {/* 依恋风格测评 */}
-              <button
-                onClick={() => {
-                  void openAssessmentCard('attachment_style')
-                  setShowActionMenu(false)
-                }}
-                disabled={assessmentBusy || !userKey}
-                className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-secondary hover:bg-secondary/80 transition-colors disabled:opacity-60"
-                aria-label="依恋风格测评"
-              >
-                <div className="w-12 h-12 rounded-full bg-rose/10 flex items-center justify-center">
-                  <Heart className="w-6 h-6 text-rose" />
-                </div>
-                <span className="text-xs text-foreground">依恋风格</span>
-              </button>
+              {/* 测评子菜单 */}
+              {showAssessmentSubmenu && (
+                <div className="mt-2 grid grid-cols-3 gap-3 animate-fade-in-up">
+                  {/* MBTI测评 */}
+                  <button
+                    onClick={() => {
+                      void openAssessmentCard('mbti_16')
+                      setShowActionMenu(false)
+                      setShowAssessmentSubmenu(false)
+                    }}
+                    disabled={assessmentBusy || !userKey}
+                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-secondary/50 hover:bg-secondary transition-colors disabled:opacity-60"
+                    aria-label="MBTI测评"
+                  >
+                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                      <Brain className="w-5 h-5 text-primary" />
+                    </div>
+                    <span className="text-xs text-foreground">MBTI</span>
+                  </button>
 
-              {/* 恋爱语言测评 */}
-              <button
-                onClick={() => {
-                  void openAssessmentCard('love_language')
-                  setShowActionMenu(false)
-                }}
-                disabled={assessmentBusy || !userKey}
-                className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-secondary hover:bg-secondary/80 transition-colors disabled:opacity-60"
-                aria-label="恋爱语言测评"
-              >
-                <div className="w-12 h-12 rounded-full bg-gold/10 flex items-center justify-center">
-                  <Sparkles className="w-6 h-6 text-gold" />
+                  {/* 依恋风格测评 */}
+                  <button
+                    onClick={() => {
+                      void openAssessmentCard('attachment_style')
+                      setShowActionMenu(false)
+                      setShowAssessmentSubmenu(false)
+                    }}
+                    disabled={assessmentBusy || !userKey}
+                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-secondary/50 hover:bg-secondary transition-colors disabled:opacity-60"
+                    aria-label="依恋风格测评"
+                  >
+                    <div className="w-10 h-10 rounded-full bg-rose/10 flex items-center justify-center">
+                      <Heart className="w-5 h-5 text-rose" />
+                    </div>
+                    <span className="text-xs text-foreground">依恋风格</span>
+                  </button>
+
+                  {/* 恋爱语言测评 */}
+                  <button
+                    onClick={() => {
+                      void openAssessmentCard('love_language')
+                      setShowActionMenu(false)
+                      setShowAssessmentSubmenu(false)
+                    }}
+                    disabled={assessmentBusy || !userKey}
+                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-secondary/50 hover:bg-secondary transition-colors disabled:opacity-60"
+                    aria-label="恋爱语言测评"
+                  >
+                    <div className="w-10 h-10 rounded-full bg-gold/10 flex items-center justify-center">
+                      <Sparkles className="w-5 h-5 text-gold" />
+                    </div>
+                    <span className="text-xs text-foreground">恋爱语言</span>
+                  </button>
                 </div>
-                <span className="text-xs text-foreground">恋爱语言</span>
-              </button>
+              )}
             </div>
           </div>
         )}
