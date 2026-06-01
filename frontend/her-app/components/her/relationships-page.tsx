@@ -478,7 +478,7 @@ export default function RelationshipsPage({
                 )}
               </div>
             </div>
-            {!isPendingSectionCollapsed && (
+            {(!isPendingSectionCollapsed || activeRelationships.length === 0) && (
               <div className="space-y-3">
                 {pendingIntroItems.map((item, index) => (
                   <FadeIn key={`pending-${item.case_id}`} delay={index * 50}>
