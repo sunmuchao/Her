@@ -67,7 +67,7 @@ interface InterpretationData {
 interface ResultData {
   type_code: string
   scores: Record<string, number>
-  dimension_rows: DimensionRow[]
+  dimension_rows?: DimensionRow[]
   labels: string[]
   interpretation_data?: InterpretationData
   reward: string
@@ -83,12 +83,12 @@ const DIMENSION_LABELS: Record<string, { high: string; low: string }> = {
 }
 
 // Radar Chart Component
-function RadarChart({ 
-  dimensions, 
+function RadarChart({
+  dimensions = [],
   size = 280,
-  assessmentType 
-}: { 
-  dimensions: DimensionRow[]
+  assessmentType,
+}: {
+  dimensions?: DimensionRow[]
   size?: number
   assessmentType?: AssessmentType
 }) {
@@ -102,6 +102,14 @@ function RadarChart({
     : assessmentType === 'love_language' 
       ? 'text-lavender' 
       : 'text-primary'
+
+  if (!dimensions.length) {
+    return (
+      <div className="flex h-[280px] items-center justify-center rounded-3xl border border-dashed border-border text-sm text-muted-foreground">
+        {"暂无雷达图数据"}
+      </div>
+    )
+  }
 
   // Calculate points for each dimension
   const points = useMemo(() => {
