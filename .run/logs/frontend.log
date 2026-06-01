@@ -97,3 +97,6 @@
  POST /api/gateway/v1/values-auction/traits 200 in 15ms (next.js: 1903µs, application-code: 13ms)
  POST /api/gateway/v1/values-auction/submit 200 in 55ms (next.js: 8ms, application-code: 47ms)
  POST /api/gateway/v1/values-auction/interpretation 200 in 29ms (next.js: 4ms, application-code: 24ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 385ms (next.js: 5ms, application-code: 380ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 816ms (next.js: 8ms, application-code: 808ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=9452&unread_only=true 200 in 836ms (next.js: 14ms, application-code: 822ms)
