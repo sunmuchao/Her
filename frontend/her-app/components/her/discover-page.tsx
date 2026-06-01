@@ -53,12 +53,18 @@ function DiscoveryTimelineEntry({
   onViewCandidate,
   onProfileUpdateResolved,
   onAddLabels,
+  onSubmitAction,
+  onOpenAssessment,
+  isSubmittingTurn,
 }: {
   item: DiscoveryTimelineItem
   sessionId: string | null
   onViewCandidate: (candidateId: string, candidate?: CandidatePreview) => void
   onProfileUpdateResolved?: () => void
   onAddLabels?: (selectedLabels: string[]) => Promise<void>
+  onSubmitAction?: (actionId: string) => void
+  onOpenAssessment?: (assessmentType: 'mbti_16' | 'attachment_style' | 'love_language') => void
+  isSubmittingTurn?: boolean
 }) {
   if (item.kind === 'profile_update_prompt') {
     if (!sessionId) return null
@@ -81,6 +87,35 @@ function DiscoveryTimelineEntry({
         onContinueChat={() => {}}
         onAddLabels={onAddLabels}
       />
+    )
+  }
+
+  if (item.kind === 'suggested_actions') {
+    return (
+      <div className="flex flex-wrap gap-2">
+        {item.actions.map((action) => (
+          <button
+            key={action.action_id}
+            onClick={() => {
+              if (action.semantic_payload?.kind === 'start_assessment') {
+                const assessmentType = action.semantic_payload?.assessment_type || 'mbti'
+                const typeMap: Record<string, 'mbti_16' | 'attachment_style' | 'love_language'> = {
+                  mbti: 'mbti_16',
+                  attachment: 'attachment_style',
+                  values: 'love_language',
+                }
+                onOpenAssessment?.(typeMap[assessmentType] || 'mbti_16')
+                return
+              }
+              onSubmitAction?.(action.action_id)
+            }}
+            disabled={isSubmittingTurn}
+            className="rounded-full border border-border bg-secondary px-3 py-1.5 text-xs text-foreground disabled:opacity-60"
+          >
+            {action.label}
+          </button>
+        ))}
+      </div>
     )
   }
 
@@ -137,7 +172,6 @@ export default function DiscoverPage({
     setInputValue,
     isTyping,
     currentPrefs,
-    suggestedActions,
     composerPlaceholder,
     composerDisabled,
     isSubmittingTurn,
@@ -342,6 +376,13 @@ export default function DiscoverPage({
                 void reloadSession()
               }}
               onAddLabels={handleAddLabels}
+              onSubmitAction={(actionId) => {
+                void submitTurn({ action_id: actionId })
+              }}
+              onOpenAssessment={(assessmentType) => {
+                void openAssessmentCard(assessmentType)
+              }}
+              isSubmittingTurn={isSubmittingTurn}
             />
           ))}
 
@@ -433,36 +474,6 @@ export default function DiscoverPage({
           ) : null}
 
           {isTyping ? <TypingIndicator name="小雅" /> : null}
-
-          {suggestedActions.length ? (
-            <div className="flex flex-wrap gap-2">
-              {suggestedActions.map((action) => (
-                <button
-                  key={action.action_id}
-                  onClick={() => {
-                    // 检测是否是测评推荐动作
-                    if (action.semantic_payload?.kind === 'start_assessment') {
-                      const assessmentType = action.semantic_payload?.assessment_type || 'mbti'
-                      // 映射测评类型到前端参数
-                      const typeMap: Record<string, 'mbti_16' | 'attachment_style' | 'love_language'> = {
-                        'mbti': 'mbti_16',
-                        'attachment': 'attachment_style',
-                        'values': 'love_language',
-                      }
-                      void openAssessmentCard(typeMap[assessmentType] || 'mbti_16')
-                    } else {
-                      // 其他动作走原有流程
-                      void submitTurn({ action_id: action.action_id })
-                    }
-                  }}
-                  disabled={isSubmittingTurn}
-                  className="rounded-full border border-border bg-secondary px-3 py-1.5 text-xs text-foreground disabled:opacity-60"
-                >
-                  {action.label}
-                </button>
-              ))}
-            </div>
-          ) : null}
 
           <div ref={chatEndRef} />
         </div>
