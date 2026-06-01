@@ -56,3 +56,7 @@
  GET /api/gateway/v1/proxy-intro/cases/mine 200 in 42ms (next.js: 9ms, application-code: 32ms)
  GET /api/gateway/v1/proxy-intro/cases/mine 200 in 47ms (next.js: 13ms, application-code: 34ms)
  GET /api/gateway/v1/auth/me 401 in 7ms (next.js: 1541µs, application-code: 6ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=7682&unread_only=true 200 in 27ms (next.js: 7ms, application-code: 20ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 32ms (next.js: 12ms, application-code: 20ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 37ms (next.js: 14ms, application-code: 23ms)
+ GET /api/gateway/v1/auth/me 401 in 13ms (next.js: 5ms, application-code: 8ms)
