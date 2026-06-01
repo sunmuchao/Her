@@ -39,6 +39,14 @@ import {
   type AssessmentCard,
   type AssessmentQuestionCard,
 } from '@/lib/api/endpoints/assessment'
+import {
+  getValuesAuctionInterpretation,
+  getValuesAuctionTraits,
+  startValuesAuction,
+  submitValuesAuctionBids,
+  type ValuesAuctionCard,
+} from '@/lib/api/endpoints/valuesAuction'
+import { ValuesAuctionCardRenderer } from '@/components/values-auction'
 
 interface DiscoverPageProps {
   onViewCandidate: (candidateId: string, candidate?: CandidatePreview) => void
@@ -242,12 +250,15 @@ export default function DiscoverPage({
   const [currentAssessmentType, setCurrentAssessmentType] = useState<'mbti_16' | 'attachment_style' | 'love_language'>('mbti_16')
   const [assessmentQuestionHistory, setAssessmentQuestionHistory] = useState<AssessmentQuestionCard['question_data'][]>([])
   const [assessmentBusy, setAssessmentBusy] = useState(false)
+  const [valuesAuctionCard, setValuesAuctionCard] = useState<ValuesAuctionCard | null>(null)
+  const [valuesAuctionBusy, setValuesAuctionBusy] = useState(false)
   const userKey = String(getProfileId() || getUserId() || '')
 
   const openAssessmentCard = async (assessmentType: 'mbti_16' | 'attachment_style' | 'love_language' = 'mbti_16') => {
     if (!userKey || assessmentBusy) return
     setAssessmentBusy(true)
     setCurrentAssessmentType(assessmentType)
+    setValuesAuctionCard(null)
     removeSuggestedActions()
     try {
       const intro = await startAssessment(userKey, assessmentType)
@@ -281,6 +292,31 @@ export default function DiscoverPage({
     }, 150)
   }
 
+  const openValuesAuctionCard = async () => {
+    if (!userKey || valuesAuctionBusy) return
+    setValuesAuctionBusy(true)
+    setAssessmentCard(null)
+    removeSuggestedActions()
+    try {
+      const intro = await startValuesAuction(userKey)
+      setValuesAuctionCard(intro)
+      setTimeout(() => {
+        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+      }, 150)
+    } catch (error) {
+      notifyError(error, '打开价值观拍卖会失败')
+    } finally {
+      setValuesAuctionBusy(false)
+    }
+  }
+
+  const clearValuesAuctionCard = () => {
+    setValuesAuctionCard(null)
+    setTimeout(() => {
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }, 150)
+  }
+
   const handleAddLabels = async (selectedLabels: string[]) => {
     if (!userKey) return
     try {
@@ -296,13 +332,13 @@ export default function DiscoverPage({
 
   // 当测评卡片出现时，自动滚动到底部
   useEffect(() => {
-    if (assessmentCard) {
+    if (assessmentCard || valuesAuctionCard) {
       // 使用 setTimeout 确保 DOM 更新后再滚动
       setTimeout(() => {
         chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
       }, 100)
     }
-  }, [assessmentCard])
+  }, [assessmentCard, valuesAuctionCard])
 
   if (isLoadingSession) {
     return (
@@ -405,7 +441,6 @@ export default function DiscoverPage({
               <div className="w-full max-w-[92%]">
                 <AssessmentCardRenderer
                   card={assessmentCard}
-                  assessmentType={currentAssessmentType}  // 传递测评类型参数，确保结果卡片能正确显示中文昵称
                   onStart={async () => {
                     const next = await beginAssessment(assessmentId)
                     setAssessmentCard(next)
@@ -488,6 +523,40 @@ export default function DiscoverPage({
             </div>
           ) : null}
 
+          {valuesAuctionCard ? (
+            <div className="flex justify-start">
+              <div className="w-full max-w-[92%]">
+                <ValuesAuctionCardRenderer
+                  card={valuesAuctionCard}
+                  userKey={userKey}
+                  onStart={async () => {
+                    if (!('assessment_id' in valuesAuctionCard)) return
+                    const next = await getValuesAuctionTraits(valuesAuctionCard.assessment_id)
+                    setValuesAuctionCard(next)
+                  }}
+                  onSubmitBids={async (bids) => {
+                    if (!('assessment_id' in valuesAuctionCard)) return
+                    const next = await submitValuesAuctionBids({
+                      assessmentId: valuesAuctionCard.assessment_id,
+                      userKey,
+                      bids,
+                    })
+                    setValuesAuctionCard(next)
+                  }}
+                  onViewInterpretation={async () => {
+                    if (!('assessment_id' in valuesAuctionCard)) return
+                    const next = await getValuesAuctionInterpretation({
+                      assessmentId: valuesAuctionCard.assessment_id,
+                      userKey,
+                    })
+                    setValuesAuctionCard(next)
+                  }}
+                  onContinue={clearValuesAuctionCard}
+                />
+              </div>
+            </div>
+          ) : null}
+
           {isTyping ? <TypingIndicator name="小雅" /> : null}
 
           <div ref={chatEndRef} />
@@ -530,7 +599,7 @@ export default function DiscoverPage({
 
               {/* 测评子菜单 */}
               {showAssessmentSubmenu && (
-                <div className="mt-2 grid grid-cols-3 gap-3 animate-fade-in-up">
+                <div className="mt-2 grid grid-cols-2 gap-3 animate-fade-in-up">
                   {/* MBTI测评 */}
                   <button
                     onClick={() => {
@@ -538,7 +607,7 @@ export default function DiscoverPage({
                       setShowActionMenu(false)
                       setShowAssessmentSubmenu(false)
                     }}
-                    disabled={assessmentBusy || !userKey}
+                    disabled={assessmentBusy || valuesAuctionBusy || !userKey}
                     className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-secondary/50 hover:bg-secondary transition-colors disabled:opacity-60"
                     aria-label="MBTI测评"
                   >
@@ -555,7 +624,7 @@ export default function DiscoverPage({
                       setShowActionMenu(false)
                       setShowAssessmentSubmenu(false)
                     }}
-                    disabled={assessmentBusy || !userKey}
+                    disabled={assessmentBusy || valuesAuctionBusy || !userKey}
                     className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-secondary/50 hover:bg-secondary transition-colors disabled:opacity-60"
                     aria-label="依恋风格测评"
                   >
@@ -572,7 +641,7 @@ export default function DiscoverPage({
                       setShowActionMenu(false)
                       setShowAssessmentSubmenu(false)
                     }}
-                    disabled={assessmentBusy || !userKey}
+                    disabled={assessmentBusy || valuesAuctionBusy || !userKey}
                     className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-secondary/50 hover:bg-secondary transition-colors disabled:opacity-60"
                     aria-label="恋爱语言测评"
                   >
@@ -580,6 +649,22 @@ export default function DiscoverPage({
                       <Sparkles className="w-5 h-5 text-gold" />
                     </div>
                     <span className="text-xs text-foreground">恋爱语言</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      void openValuesAuctionCard()
+                      setShowActionMenu(false)
+                      setShowAssessmentSubmenu(false)
+                    }}
+                    disabled={assessmentBusy || valuesAuctionBusy || !userKey}
+                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-secondary/50 hover:bg-secondary transition-colors disabled:opacity-60"
+                    aria-label="价值观拍卖会"
+                  >
+                    <div className="w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center">
+                      <Sparkles className="w-5 h-5 text-amber-600" />
+                    </div>
+                    <span className="text-xs text-foreground">价值观拍卖</span>
                   </button>
                 </div>
               )}
