@@ -2,7 +2,7 @@ import { gatewayJson, queryString } from '@/lib/api/client'
 
 export type AssessmentIntroCard = {
   card_type: 'assessment_intro'
-  assessment_type: 'mbti_16'
+  assessment_type?: 'mbti_16'
   assessment_id: string
   intro_data: {
     title: string
@@ -10,6 +10,8 @@ export type AssessmentIntroCard = {
     duration: string
     reward: string
   }
+  resumed?: boolean        // 是否为恢复的测评（断点续传）
+  answered_count?: number  // 已答题数量（恢复时使用）
 }
 
 export type AssessmentQuestionCard = {
@@ -89,6 +91,26 @@ export async function startAssessment(userKey: string): Promise<AssessmentIntroC
   })
 }
 
+/**
+ * 获取未完成的测评（断点续传），或创建新测评
+ *
+ * 防呆机制：用户退出App后，下次进来能接着上次的进度继续做，
+ * 不会从第1题重新开始。
+ *
+ * 如果返回的 intro_data.title 是"继续上次的测评"，说明有未完成的测评
+ * resumed=true 表示是恢复的测评
+ */
+export async function getOrCreateAssessment(userKey: string): Promise<AssessmentIntroCard> {
+  return gatewayJson<AssessmentIntroCard>('/v1/assessment/get-or-create', {
+    method: 'POST',
+    includeAuth: true,
+    body: JSON.stringify({
+      user_key: userKey,
+      assessment_type: 'mbti_16',
+    }),
+  })
+}
+
 export async function beginAssessment(assessmentId: string): Promise<AssessmentQuestionCard> {
   return gatewayJson<AssessmentQuestionCard>('/v1/assessment/begin', {
     method: 'POST',
@@ -134,4 +156,68 @@ export async function fetchPersonalityTraits(userKey: string) {
     `/v1/persona/personality-traits${queryString({ user_key: userKey })}`,
     { includeAuth: true },
   )
+}
+
+/**
+ * 添加测评标签到个人标签（用户选择后添加）
+ *
+ * 用户勾选想要的标签后，调用此API将标签添加到 preferred_traits
+ */
+export async function addAssessmentLabels(userKey: string, labels: string[]): Promise<{
+  user_key: string
+  added_labels: string[]
+  message: string
+}> {
+  return gatewayJson<{
+    user_key: string
+    added_labels: string[]
+    message: string
+  }>('/v1/assessment/add-labels', {
+    method: 'POST',
+    includeAuth: true,
+    body: JSON.stringify({
+      user_key: userKey,
+      labels,
+    }),
+  })
+}
+
+/**
+ * 获取小雅解读消息（用于在对话页面显示）
+ *
+ * 测评完成后，小雅会主动发送解读消息。
+ * 前端在打开小雅对话时调用此API检查是否有新消息。
+ */
+export async function getXiaoyaMessage(userKey: string): Promise<{
+  has_message: boolean
+  message?: string
+  assessment_id?: string
+}> {
+  return gatewayJson<{
+    has_message: boolean
+    message?: string
+    assessment_id?: string
+  }>('/v1/assessment/xiaoya-message', {
+    method: 'POST',
+    includeAuth: true,
+    body: JSON.stringify({ user_key: userKey }),
+  })
+}
+
+/**
+ * 标记小雅消息为已读
+ *
+ * 用户看完小雅解读消息后，调用此API标记为已读
+ */
+export async function markXiaoyaMessageRead(userKey: string, assessmentId: string): Promise<{
+  success: boolean
+}> {
+  return gatewayJson<{ success: boolean }>('/v1/assessment/xiaoya-read', {
+    method: 'POST',
+    includeAuth: true,
+    body: JSON.stringify({
+      user_key: userKey,
+      assessment_id: assessmentId,
+    }),
+  })
 }

@@ -12,6 +12,13 @@ from assessment.mbti_questions import (
     calculate_all_scores,
     get_dimension_feedback,
     get_question,
+    get_type_info,
+    get_extreme_tags,
+    calculate_love_match,
+    _type_code_from_scores as mbti_type_code,
+    _labels_from_scores as mbti_labels,
+    _interpretation_from_result as mbti_interpretation,
+    xiaoya_message_from_result,  # 新增：小雅消息生成
 )
 from persona_memory_sync.persona_memory_lib import (
     apply_persona_patch,
@@ -29,20 +36,21 @@ ASSESSMENT_TYPE_MBTI = "mbti_16"
 ASSESSMENT_SESSION_FIELD = "assessment.session"
 ASSESSMENT_RESULT_FIELD = "assessment.result"
 ASSESSMENT_INTERPRETATION_FIELD = "assessment.interpretation"
+ASSESSMENT_XIAOYA_MESSAGE_FIELD = "assessment.xiaoya_message"  # 新增：小雅解读消息
 
 
 DIMENSION_LABELS = {
-    "ei": "外向 E / 内向 I",
-    "sn": "实感 S / 直觉 N",
-    "tf": "思考 T / 情感 F",
-    "jp": "判断 J / 知觉 P",
+    "ei": "社交能量",
+    "sn": "关注焦点",
+    "tf": "决策方式",
+    "jp": "生活节奏",
 }
 
 DIMENSION_TRAITS = {
-    "ei": {"high": "外向表达", "medium": "社交灵活", "low": "安静内敛"},
-    "sn": {"high": "关注细节", "medium": "事实与想法并重", "low": "偏好可能性"},
-    "tf": {"high": "逻辑判断", "medium": "理性与感受平衡", "low": "重视共情"},
-    "jp": {"high": "计划清晰", "medium": "计划弹性兼顾", "low": "灵活开放"},
+    "ei": {"high": "社交达人", "medium": "灵活切换", "low": "独处爱好者"},
+    "sn": {"high": "务实派", "medium": "事实与氛围并重", "low": "氛围感派"},
+    "tf": {"high": "逻辑派", "medium": "道理与感受平衡", "low": "感受派"},
+    "jp": {"high": "计划派", "medium": "计划弹性兼顾", "low": "随性派"},
 }
 
 
@@ -222,54 +230,18 @@ def _dimension_rows(scores: dict[str, float]) -> list[dict[str, Any]]:
 
 
 def _type_code_from_scores(scores: dict[str, float]) -> str:
-    return "".join(
-        [
-            "E" if scores.get("ei", 50) >= 50 else "I",
-            "S" if scores.get("sn", 50) >= 50 else "N",
-            "T" if scores.get("tf", 50) >= 50 else "F",
-            "J" if scores.get("jp", 50) >= 50 else "P",
-        ]
-    )
+    """使用题库模块的类型码计算"""
+    return mbti_type_code(scores)
 
 
 def _labels_from_scores(scores: dict[str, float]) -> list[str]:
-    type_code = _type_code_from_scores(scores)
-    labels = [f"MBTI：{type_code}"]
-    for dimension in DIMENSIONS:
-        score = scores.get(dimension, 0.0)
-        if score >= 70 or score <= 30:
-            labels.append(DIMENSION_TRAITS[dimension]["high" if score >= 70 else "low"])
-    return labels[:3]
+    """使用题库模块的标签生成"""
+    return mbti_labels(scores)
 
 
 def _interpretation_from_result(result: dict[str, Any]) -> dict[str, Any]:
-    scores = dict(result.get("scores") or {})
-    type_code = str(result.get("type_code") or _type_code_from_scores(scores))
-    summary_parts = [f"你的结果更接近 {type_code}。"]
-    if scores.get("ei", 50) >= 60:
-        summary_parts.append("你在关系里通常更主动。")
-    elif scores.get("ei", 50) <= 40:
-        summary_parts.append("你更适合先熟起来再慢慢打开。")
-    if scores.get("sn", 50) >= 60:
-        summary_parts.append("你会更关注现实条件和相处细节。")
-    elif scores.get("sn", 50) <= 40:
-        summary_parts.append("你更容易被想法、气质和未来感吸引。")
-    if scores.get("tf", 50) >= 60:
-        summary_parts.append("你处理分歧时更偏讲逻辑。")
-    elif scores.get("tf", 50) <= 40:
-        summary_parts.append("你处理关系时更在意感受和氛围。")
-    if scores.get("jp", 50) >= 60:
-        summary_parts.append("你喜欢节奏明确、边界清楚的相处。")
-    elif scores.get("jp", 50) <= 40:
-        summary_parts.append("你更适合轻松、不被管得太死的关系。")
-    return {
-        "summary": "".join(summary_parts),
-        "love_style": f"{type_code} 在亲密关系里更适合和沟通直接、节奏对得上的人相处。",
-        "match_suggestions": [
-            "先看聊天节奏和做事方式合不合拍",
-            "尽早把你在意的沟通方式、见面频率和边界说清楚",
-        ],
-    }
+    """生成恋爱说明书式解读"""
+    return mbti_interpretation(result)
 
 
 def _result_with_interpretation(result: dict[str, Any]) -> dict[str, Any]:
@@ -314,12 +286,104 @@ def start_assessment(
         "assessment_type": assessment_type,
         "assessment_id": assessment_id,
         "intro_data": {
-            "title": "MBTI 16型人格测评",
-            "description": "快速看清你的相处风格和关系偏好",
+            "title": "MBTI 恋爱说明书",
+            "description": "测测你在恋爱里是什么派",
             "duration": "约5分钟 · 20题",
-            "reward": "匹配质量提升10%",
+            "reward": "测完知道自己恋爱里的优势和坑",
         },
     }
+
+
+def get_or_create_assessment(
+    *,
+    source: str | None,
+    user_key: str,
+    assessment_type: str = ASSESSMENT_TYPE_MBTI,
+    persona_table: str = "user_personas",
+    observation_table: str = "user_persona_observations",
+) -> dict[str, Any]:
+    """获取未完成的测评（断点续传），或者创建新测评
+
+    防呆机制：用户退出App后，下次进来能接着上次的进度继续做，
+    不会从第1题重新开始。
+
+    Returns:
+        - 如果有未完成的测评：返回 assessment_question，标记 resumed=True
+        - 如果没有：返回 assessment_intro（新测评）
+    """
+    if assessment_type != ASSESSMENT_TYPE_MBTI:
+        raise ValueError("unsupported assessment_type")
+
+    normalized_source, _ = _resolve_source(source)
+    conn = mysql_connect(normalized_source)
+
+    try:
+        with conn.cursor() as cursor:
+            # 1. 查找用户最近的未完成测评
+            cursor.execute(
+                f"""
+                SELECT conversation_ref, field_value, created_at
+                FROM {quote_mysql_ident(observation_table)}
+                WHERE user_key = %s
+                  AND field_name = %s
+                  AND source_channel = 'assessment'
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (user_key, ASSESSMENT_SESSION_FIELD),
+            )
+            recent_session = cursor.fetchone()
+
+            if recent_session:
+                # 2. 解析session数据
+                session_data = _parse_json(
+                    recent_session.get("field_value") if isinstance(recent_session, dict) else recent_session[1]
+                )
+                assessment_id = str(
+                    recent_session.get("conversation_ref") if isinstance(recent_session, dict) else recent_session[0]
+                )
+
+                # 3. 检查是否未完成
+                if session_data.get("status") == "in_progress":
+                    # 4. 加载已有的答案
+                    session, answers, _result = _load_session_and_answers(
+                        cursor,
+                        observation_table=observation_table,
+                        assessment_id=assessment_id,
+                    )
+
+                    # 5. 有进度且未完成，恢复进度
+                    if session and len(answers) < TOTAL_QUESTIONS:
+                        answered_count = len(answers)
+                        return {
+                            "card_type": "assessment_intro",
+                            "assessment_id": assessment_id,
+                            "intro_data": {
+                                "title": "继续上次的测评",
+                                "description": f"已答 {answered_count} 题，还有 {TOTAL_QUESTIONS - answered_count} 题",
+                                "duration": "继续测评",
+                                "reward": "上次退出时已保存进度，点击继续",
+                            },
+                            "resumed": True,  # 标记为恢复的测评
+                            "answered_count": answered_count,
+                        }
+
+        # 6. 没有未完成的测评，创建新测评
+        # 需要先释放连接，因为 start_assessment 会创建新连接
+        release_persona_connection(normalized_source, conn)
+        conn = None
+
+        return start_assessment(
+            source=source,
+            user_key=user_key,
+            assessment_type=assessment_type,
+            persona_table=persona_table,
+            observation_table=observation_table,
+        )
+
+    finally:
+        if conn:
+            release_persona_connection(normalized_source, conn)
 
 
 def begin_assessment(
@@ -438,7 +502,7 @@ def answer_assessment(
                     "dimension_rows": _dimension_rows(scores),
                     "labels": labels,
                     "interpretation_data": interpretation,
-                    "reward": "匹配质量提升10%",
+                    "reward": "测完知道自己恋爱里的优势和坑",
                     "assessment_id": assessment_id,
                 }
                 _save_observation(
@@ -458,6 +522,22 @@ def answer_assessment(
                     field_value=interpretation,
                     assessment_id=assessment_id,
                     evidence_text="assessment interpretation",
+                )
+                # 新增：保存小雅解读消息（用于对话页面显示）
+                xiaoya_message = xiaoya_message_from_result(
+                    {
+                        "type_code": type_code,
+                        "scores": scores,
+                    }
+                )
+                _save_observation(
+                    cursor,
+                    observation_table=observation_table,
+                    user_key=user_key,
+                    field_name=ASSESSMENT_XIAOYA_MESSAGE_FIELD,
+                    field_value={"message": xiaoya_message, "read": False},
+                    assessment_id=assessment_id,
+                    evidence_text="xiaoya interpretation message",
                 )
                 traits_payload = {
                     "mbti": {
@@ -549,6 +629,98 @@ def get_assessment_interpretation(
                 "assessment_id": assessment_id,
                 "interpretation_data": interpretation,
             }
+    finally:
+        release_persona_connection(normalized_source, conn)
+
+
+def get_xiaoya_message(
+    *,
+    source: str | None,
+    user_key: str,
+    observation_table: str = "user_persona_observations",
+) -> dict[str, Any]:
+    """获取小雅解读消息（用于在对话页面显示）
+
+    返回：
+    - 如果有未读的小雅消息，返回消息内容
+    - 如果没有，返回空
+    """
+    normalized_source, _ = _resolve_source(source)
+    conn = mysql_connect(normalized_source)
+    try:
+        with conn.cursor() as cursor:
+            # 查找用户最近的小雅消息
+            cursor.execute(
+                f"""
+                SELECT field_value, conversation_ref, created_at
+                FROM {quote_mysql_ident(observation_table)}
+                WHERE user_key = %s
+                  AND field_name = %s
+                  AND source_channel = 'assessment'
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (user_key, ASSESSMENT_XIAOYA_MESSAGE_FIELD),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return {"has_message": False}
+
+            data = _parse_json(row.get("field_value") if isinstance(row, dict) else row[0])
+            if not data or data.get("read"):
+                return {"has_message": False}
+
+            return {
+                "has_message": True,
+                "message": data.get("message") or "",
+                "assessment_id": str(row.get("conversation_ref") if isinstance(row, dict) else row[1]),
+            }
+    finally:
+        release_persona_connection(normalized_source, conn)
+
+
+def mark_xiaoya_message_read(
+    *,
+    source: str | None,
+    user_key: str,
+    assessment_id: str,
+    observation_table: str = "user_persona_observations",
+) -> dict[str, Any]:
+    """标记小雅消息为已读"""
+    normalized_source, _ = _resolve_source(source)
+    conn = mysql_connect(normalized_source)
+    try:
+        with conn.cursor() as cursor:
+            # 查找并更新消息
+            cursor.execute(
+                f"""
+                SELECT id, field_value
+                FROM {quote_mysql_ident(observation_table)}
+                WHERE user_key = %s
+                  AND conversation_ref = %s
+                  AND field_name = %s
+                LIMIT 1
+                """,
+                (user_key, assessment_id, ASSESSMENT_XIAOYA_MESSAGE_FIELD),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return {"success": False, "message": "消息不存在"}
+
+            data = _parse_json(row.get("field_value") if isinstance(row, dict) else row[1])
+            data["read"] = True
+            record_id = row.get("id") if isinstance(row, dict) else row[0]
+
+            cursor.execute(
+                f"""
+                UPDATE {quote_mysql_ident(observation_table)}
+                SET field_value = %s
+                WHERE id = %s
+                """,
+                (_json(data), record_id),
+            )
+            conn.commit()
+            return {"success": True}
     finally:
         release_persona_connection(normalized_source, conn)
 

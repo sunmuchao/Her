@@ -9,7 +9,8 @@ import {
   beginAssessment,
   type AssessmentCard,
   type AssessmentQuestionCard,
-  startAssessment,
+  getOrCreateAssessment,  // 改用新的断点续传API
+  addAssessmentLabels,     // 新增：添加标签API
 } from '@/lib/api/endpoints/assessment'
 
 import { AssessmentCardRenderer } from './AssessmentCardRenderer'
@@ -30,12 +31,21 @@ export function AssessmentFlowPanel({
   useEffect(() => {
     if (!open) return
     let cancelled = false
-    void startAssessment(userKey).then((intro) => {
+
+    // 改用 getOrCreateAssessment（自动恢复或新建）
+    // 防呆机制：用户退出App后，下次进来能接着上次的进度继续做
+    void getOrCreateAssessment(userKey).then((intro) => {
       if (cancelled) return
       setAssessmentId(intro.assessment_id)
       setCard(intro)
       setQuestionHistory([])
+
+      // 如果是恢复的测评，可以显示提示（可选）
+      if (intro.resumed) {
+        console.log(`恢复测评：已答 ${intro.answered_count} 题`)
+      }
     })
+
     return () => {
       cancelled = true
     }
@@ -49,6 +59,11 @@ export function AssessmentFlowPanel({
     setCard(null)
     setAssessmentId(null)
     onClose()
+  }
+
+  // 添加标签到个人标签
+  const handleAddLabels = async (selectedLabels: string[]) => {
+    await addAssessmentLabels(userKey, selectedLabels)
   }
 
   return (
@@ -96,6 +111,7 @@ export function AssessmentFlowPanel({
                   }
                 : undefined
             }
+            onAddLabels={handleAddLabels}
           />
         )}
       </div>

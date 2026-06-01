@@ -31,9 +31,9 @@ export function AssessmentQuestionCard({
       <h3 className="text-lg font-semibold leading-snug">{data.question_text}</h3>
       <div className="mt-4 grid gap-2">
         {data.options.map((option) => (
-          <Button key={option.label} variant="outline" className="justify-start h-auto py-3 px-4" onClick={() => onAnswer(option.label)}>
-            <span className="w-6 text-left font-medium">{option.label}</span>
-            <span>{option.text}</span>
+          <Button key={option.label} variant="outline" className="justify-start h-auto py-3 px-4 text-left whitespace-normal break-words" onClick={() => onAnswer(option.label)}>
+            <span className="w-8 shrink-0 font-medium">{option.label}.</span>
+            <span className="flex-1 leading-relaxed">{option.text}</span>
           </Button>
         ))}
       </div>

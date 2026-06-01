@@ -20,6 +20,7 @@ from assessment.service import (
     answer_assessment,
     begin_assessment,
     get_assessment_interpretation,
+    get_or_create_assessment,  # 新增：断点续传
     get_personality_traits,
     start_assessment,
 )
@@ -40,5 +41,6 @@ __all__ = [
     "begin_assessment",
     "answer_assessment",
     "get_assessment_interpretation",
+    "get_or_create_assessment",  # 新增
     "get_personality_traits",
 ]
