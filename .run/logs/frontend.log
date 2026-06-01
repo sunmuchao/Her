@@ -6,336 +6,220 @@
 - Local:         http://127.0.0.1:3000
 - Network:       http://127.0.0.1:3000
 - Environments: .env.local
-✓ Ready in 725ms
+✓ Ready in 577ms
 ⚠ turbopack.root should be absolute, using: /Users/sunmuchao/Downloads/Her/frontend/her-app
 
- GET /discover 200 in 1391ms (next.js: 880ms, application-code: 510ms)
- GET /api/gateway/v1/auth/me 200 in 965ms (next.js: 885ms, application-code: 80ms)
- GET /api/gateway/v1/discovery/sessions/discovery-session-7638098cd3b3 200 in 972ms (next.js: 885ms, application-code: 86ms)
- GET /api/gateway/v1/persona/collected?profile_id=2478 200 in 1034ms (next.js: 884ms, application-code: 150ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 1065ms (next.js: 883ms, application-code: 182ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 1424ms (next.js: 809ms, application-code: 615ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 1654ms (next.js: 808ms, application-code: 846ms)
- GET /api/gateway/v1/auth/me 200 in 766ms (next.js: 13ms, application-code: 754ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 590ms (next.js: 7ms, application-code: 583ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 813ms (next.js: 17ms, application-code: 796ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 1022ms (next.js: 3ms, application-code: 1019ms)
- GET /api/gateway/v1/auth/me 200 in 731ms (next.js: 2ms, application-code: 729ms)
- GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 494ms (next.js: 5ms, application-code: 489ms)
- GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 346ms (next.js: 2ms, application-code: 343ms)
- GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 518ms (next.js: 5ms, application-code: 513ms)
- GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 340ms (next.js: 2ms, application-code: 337ms)
- POST /api/gateway/v1/assessment/start 200 in 21ms (next.js: 6ms, application-code: 16ms)
- POST /api/gateway/v1/assessment/begin 200 in 16ms (next.js: 5ms, application-code: 11ms)
- POST /api/gateway/v1/assessment/answer 200 in 19ms (next.js: 5ms, application-code: 14ms)
- POST /api/gateway/v1/assessment/answer 200 in 20ms (next.js: 6ms, application-code: 15ms)
- POST /api/gateway/v1/assessment/answer 200 in 20ms (next.js: 6ms, application-code: 15ms)
- POST /api/gateway/v1/assessment/answer 200 in 20ms (next.js: 5ms, application-code: 15ms)
- POST /api/gateway/v1/assessment/answer 200 in 27ms (next.js: 5ms, application-code: 22ms)
-⨯ upstream image response timed out for https://cdn.her.local/profiles/02288/avatar.jpg
-⨯ upstream image response timed out for https://cdn.her.local/profiles/09452/avatar.jpg
- POST /api/gateway/v1/assessment/answer 200 in 29ms (next.js: 7ms, application-code: 21ms)
- POST /api/gateway/v1/assessment/answer 200 in 23ms (next.js: 6ms, application-code: 17ms)
- POST /api/gateway/v1/assessment/answer 200 in 25ms (next.js: 6ms, application-code: 19ms)
- POST /api/gateway/v1/assessment/answer 200 in 23ms (next.js: 5ms, application-code: 18ms)
+ GET /discover 200 in 1086ms (next.js: 746ms, application-code: 340ms)
+ GET /api/gateway/v1/auth/me 200 in 1049ms (next.js: 996ms, application-code: 53ms)
+ GET /api/gateway/v1/discovery/sessions/discovery-session-7638098cd3b3 200 in 1051ms (next.js: 994ms, application-code: 57ms)
+ GET /api/gateway/v1/persona/collected?profile_id=2478 200 in 1050ms (next.js: 961ms, application-code: 89ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 984ms (next.js: 879ms, application-code: 105ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 1233ms (next.js: 877ms, application-code: 357ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 1398ms (next.js: 874ms, application-code: 524ms)
+ GET /api/gateway/v1/auth/me 200 in 470ms (next.js: 6ms, application-code: 463ms)
+ GET /api/gateway/v1/auth/me 200 in 355ms (next.js: 3ms, application-code: 352ms)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 437ms (next.js: 3ms, application-code: 435ms)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 736ms (next.js: 7ms, application-code: 728ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 34ms (next.js: 8ms, application-code: 26ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 186ms (next.js: 15ms, application-code: 170ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 378ms (next.js: 7ms, application-code: 371ms)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 432ms (next.js: 1913µs, application-code: 430ms)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 634ms (next.js: 6ms, application-code: 628ms)
 ⨯ upstream image response timed out for https://cdn.her.local/profiles/01318/avatar.jpg
 ⨯ upstream image response timed out for https://cdn.her.local/profiles/07724/avatar.jpg
- POST /api/gateway/v1/assessment/answer 200 in 27ms (next.js: 7ms, application-code: 21ms)
- POST /api/gateway/v1/assessment/answer 200 in 22ms (next.js: 6ms, application-code: 16ms)
- POST /api/gateway/v1/assessment/answer 200 in 29ms (next.js: 6ms, application-code: 23ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 92ms (next.js: 9ms, application-code: 83ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 375ms (next.js: 16ms, application-code: 359ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 526ms (next.js: 5ms, application-code: 522ms)
+ POST /api/gateway/v1/assessment/start 200 in 251ms (next.js: 3ms, application-code: 248ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 32ms (next.js: 3ms, application-code: 29ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 336ms (next.js: 3ms, application-code: 333ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 544ms (next.js: 1948µs, application-code: 542ms)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 794ms (next.js: 4ms, application-code: 790ms)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 911ms (next.js: 6ms, application-code: 904ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 339ms (next.js: 2ms, application-code: 337ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 324ms (next.js: 9ms, application-code: 315ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 564ms (next.js: 4ms, application-code: 560ms)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 808ms (next.js: 2ms, application-code: 806ms)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 875ms (next.js: 2ms, application-code: 873ms)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 952ms (next.js: 6ms, application-code: 946ms)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 1026ms (next.js: 1853µs, application-code: 1024ms)
+⨯ upstream image response timed out for https://cdn.her.local/profiles/09452/avatar.jpg
+⨯ upstream image response timed out for https://cdn.her.local/profiles/02288/avatar.jpg
 ⨯ upstream image response timed out for https://cdn.her.local/profiles/07885/avatar.jpg
- POST /api/gateway/v1/assessment/answer 200 in 25ms (next.js: 5ms, application-code: 20ms)
- POST /api/gateway/v1/assessment/answer 200 in 32ms (next.js: 11ms, application-code: 21ms)
- POST /api/gateway/v1/assessment/answer 200 in 25ms (next.js: 7ms, application-code: 18ms)
- POST /api/gateway/v1/assessment/answer 200 in 26ms (next.js: 7ms, application-code: 19ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 29ms (next.js: 5ms, application-code: 24ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 247ms (next.js: 8ms, application-code: 239ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 486ms (next.js: 6ms, application-code: 480ms)
- GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 563ms (next.js: 6ms, application-code: 557ms)
- POST /api/gateway/v1/assessment/answer 200 in 1104ms (next.js: 2ms, application-code: 1101ms)
- GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 1146ms (next.js: 10ms, application-code: 1135ms)
- POST /api/gateway/v1/assessment/answer 200 in 23ms (next.js: 6ms, application-code: 18ms)
+⨯ upstream image response timed out for https://cdn.her.local/profiles/03465/avatar.jpg
+ GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 67ms (next.js: 10ms, application-code: 57ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 311ms (next.js: 19ms, application-code: 292ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 538ms (next.js: 31ms, application-code: 507ms)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 527ms (next.js: 2ms, application-code: 525ms)
+ POST /api/gateway/v1/assessment/begin 200 in 593ms (next.js: 2ms, application-code: 591ms)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 847ms (next.js: 5ms, application-code: 841ms)
+ POST /api/gateway/v1/assessment/answer 200 in 24ms (next.js: 7ms, application-code: 17ms)
  POST /api/gateway/v1/assessment/answer 200 in 20ms (next.js: 5ms, application-code: 15ms)
+ POST /api/gateway/v1/assessment/answer 200 in 21ms (next.js: 6ms, application-code: 15ms)
+ POST /api/gateway/v1/assessment/answer 200 in 20ms (next.js: 5ms, application-code: 15ms)
+ POST /api/gateway/v1/assessment/answer 200 in 21ms (next.js: 5ms, application-code: 17ms)
+ POST /api/gateway/v1/assessment/answer 200 in 19ms (next.js: 5ms, application-code: 14ms)
+ POST /api/gateway/v1/assessment/answer 200 in 17ms (next.js: 1890µs, application-code: 15ms)
+ POST /api/gateway/v1/assessment/answer 200 in 19ms (next.js: 5ms, application-code: 15ms)
+ POST /api/gateway/v1/assessment/answer 200 in 18ms (next.js: 1924µs, application-code: 16ms)
+ POST /api/gateway/v1/assessment/answer 200 in 24ms (next.js: 6ms, application-code: 18ms)
  POST /api/gateway/v1/assessment/answer 200 in 30ms (next.js: 5ms, application-code: 25ms)
- POST /api/gateway/v1/assessment/xiaoya-message 200 in 12ms (next.js: 1940µs, application-code: 10ms)
- POST /api/gateway/v1/assessment/add-xiaoya-to-discovery 500 in 746ms (next.js: 3ms, application-code: 744ms)
-[browser] [onAnswer] 获取小雅消息失败: GatewayClientError: discovery session not found
+ POST /api/gateway/v1/assessment/answer 200 in 17ms (next.js: 1818µs, application-code: 15ms)
+ POST /api/gateway/v1/assessment/answer 200 in 24ms (next.js: 6ms, application-code: 18ms)
+ POST /api/gateway/v1/assessment/answer 200 in 21ms (next.js: 5ms, application-code: 16ms)
+ POST /api/gateway/v1/assessment/answer 200 in 20ms (next.js: 5ms, application-code: 15ms)
+TypeError: fetch failed
+    at ignore-listed frames {
+  [cause]: Error: getaddrinfo ENOTFOUND cdn.her.local
+      at ignore-listed frames {
+    errno: -3008,
+    code: 'ENOTFOUND',
+    syscall: 'getaddrinfo',
+    hostname: 'cdn.her.local'
+  }
+}
+ GET /_next/image?url=https%3A%2F%2Fcdn.her.local%2Fprofiles%2F05701%2Favatar.jpg&w=128&q=75 500 in 24.0s (next.js: 23.9s, application-code: 50ms)
+ GET /_next/image?url=https%3A%2F%2Fcdn.her.local%2Fprofiles%2F05701%2Favatar.jpg&w=128&q=75 500 in 24.0s (next.js: 23.9s, application-code: 50ms)
+ POST /api/gateway/v1/assessment/answer 200 in 27ms (next.js: 7ms, application-code: 20ms)
+ POST /api/gateway/v1/assessment/answer 200 in 21ms (next.js: 1825µs, application-code: 19ms)
+ POST /api/gateway/v1/assessment/answer 200 in 23ms (next.js: 5ms, application-code: 17ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 33ms (next.js: 4ms, application-code: 29ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 356ms (next.js: 9ms, application-code: 346ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 560ms (next.js: 2ms, application-code: 558ms)
+ POST /api/gateway/v1/assessment/answer 200 in 43ms (next.js: 4ms, application-code: 40ms)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 555ms (next.js: 2ms, application-code: 553ms)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 867ms (next.js: 7ms, application-code: 860ms)
+ POST /api/gateway/v1/assessment/answer 200 in 36ms (next.js: 7ms, application-code: 29ms)
+ POST /api/gateway/v1/assessment/xiaoya-message 200 in 20ms (next.js: 1905µs, application-code: 18ms)
+ POST /api/gateway/v1/assessment/add-xiaoya-to-discovery 500 in 44ms (next.js: 1964µs, application-code: 42ms)
+[browser] [onAnswer] 添加到discovery失败，可能是session不存在: GatewayClientError: discovery session not found
     at gatewayJson (lib/api/client.ts:71:11)
-    at async onAnswer (components/her/discover-page.tsx:358:27)
+    at async onAnswer (components/her/discover-page.tsx:367:31)
   69 |       record?.error_message ||
   70 |       `请求失败（${response.status}）`
 > 71 |     throw new GatewayClientError(message, response.status, payload)
      |           ^
   72 |   }
   73 |
-  74 |   return payload as T (components/her/discover-page.tsx:369:33)
-TypeError: fetch failed
-    at ignore-listed frames {
-  [cause]: Error: getaddrinfo ENOTFOUND cdn.her.local
-      at ignore-listed frames {
-    errno: -3008,
-    code: 'ENOTFOUND',
-    syscall: 'getaddrinfo',
-    hostname: 'cdn.her.local'
-  }
-}
-TypeError: fetch failed
-    at ignore-listed frames {
-  [cause]: Error: getaddrinfo ENOTFOUND cdn.her.local
-      at ignore-listed frames {
-    errno: -3008,
-    code: 'ENOTFOUND',
-    syscall: 'getaddrinfo',
-    hostname: 'cdn.her.local'
-  }
-}
- GET /_next/image?url=https%3A%2F%2Fcdn.her.local%2Fprofiles%2F03465%2Favatar.jpg&w=128&q=75 500 in 19.9s (next.js: 19.8s, application-code: 49ms)
- GET /_next/image?url=https%3A%2F%2Fcdn.her.local%2Fprofiles%2F03465%2Favatar.jpg&w=128&q=75 500 in 19.9s (next.js: 19.8s, application-code: 49ms)
- GET /_next/image?url=https%3A%2F%2Fcdn.her.local%2Fprofiles%2F05701%2Favatar.jpg&w=128&q=75 500 in 19.9s (next.js: 19.9s, application-code: 13ms)
- GET /_next/image?url=https%3A%2F%2Fcdn.her.local%2Fprofiles%2F05701%2Favatar.jpg&w=128&q=75 500 in 19.9s (next.js: 19.9s, application-code: 13ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 32ms (next.js: 8ms, application-code: 24ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 219ms (next.js: 14ms, application-code: 205ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 448ms (next.js: 1872µs, application-code: 446ms)
- GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 473ms (next.js: 1956µs, application-code: 471ms)
- GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 810ms (next.js: 5ms, application-code: 805ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 129ms (next.js: 46ms, application-code: 82ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 698ms (next.js: 14ms, application-code: 684ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 1923ms (next.js: 6ms, application-code: 1917ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 1051ms (next.js: 11ms, application-code: 1040ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 1061ms (next.js: 22ms, application-code: 1039ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 1304ms (next.js: 34ms, application-code: 1270ms)
- GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 1437ms (next.js: 16ms, application-code: 1420ms)
- GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 1678ms (next.js: 46ms, application-code: 1632ms)
- GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 1280ms (next.js: 6ms, application-code: 1274ms)
- GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 1560ms (next.js: 9ms, application-code: 1551ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 40ms (next.js: 11ms, application-code: 29ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 238ms (next.js: 18ms, application-code: 220ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 471ms (next.js: 7ms, application-code: 463ms)
- GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 496ms (next.js: 2ms, application-code: 494ms)
- GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 826ms (next.js: 6ms, application-code: 820ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 37ms (next.js: 13ms, application-code: 24ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 200ms (next.js: 3ms, application-code: 198ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 361ms (next.js: 7ms, application-code: 354ms)
-✓ Compiled in 757ms
- GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 321ms (next.js: 2ms, application-code: 319ms)
- GET /api/gateway/v1/auth/me 200 in 610ms (next.js: 3ms, application-code: 607ms)
- GET /api/gateway/v1/discovery/sessions/discovery-session-7638098cd3b3 200 in 612ms (next.js: 7ms, application-code: 605ms)
- GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 801ms (next.js: 11ms, application-code: 790ms)
- GET /api/gateway/v1/persona/collected?profile_id=2478 200 in 627ms (next.js: 7ms, application-code: 619ms)
-✓ Compiled in 86ms
- GET /api/gateway/v1/auth/me 200 in 33ms (next.js: 9ms, application-code: 24ms)
- GET /api/gateway/v1/discovery/sessions/discovery-session-7638098cd3b3 200 in 49ms (next.js: 14ms, application-code: 35ms)
- GET /api/gateway/v1/persona/collected?profile_id=2478 200 in 79ms (next.js: 18ms, application-code: 61ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 25ms (next.js: 5ms, application-code: 20ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 233ms (next.js: 9ms, application-code: 224ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 383ms (next.js: 11ms, application-code: 372ms)
- GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 427ms (next.js: 1775µs, application-code: 425ms)
- GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 685ms (next.js: 5ms, application-code: 680ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 56ms (next.js: 9ms, application-code: 47ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 310ms (next.js: 17ms, application-code: 293ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 738ms (next.js: 21ms, application-code: 718ms)
-⨯ upstream image response timed out for https://cdn.her.local/profiles/02288/avatar.jpg
-⨯ upstream image response timed out for https://cdn.her.local/profiles/07724/avatar.jpg
- GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 28ms (next.js: 6ms, application-code: 22ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 225ms (next.js: 3ms, application-code: 223ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 462ms (next.js: 2ms, application-code: 460ms)
- GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 793ms (next.js: 1775µs, application-code: 791ms)
- GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 855ms (next.js: 1671µs, application-code: 853ms)
- GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 835ms (next.js: 6ms, application-code: 830ms)
- GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 754ms (next.js: 3ms, application-code: 751ms)
-⨯ upstream image response timed out for https://cdn.her.local/profiles/01318/avatar.jpg
-⨯ upstream image response timed out for https://cdn.her.local/profiles/07885/avatar.jpg
-⨯ upstream image response timed out for https://cdn.her.local/profiles/09452/avatar.jpg
-⨯ upstream image response timed out for https://cdn.her.local/profiles/03465/avatar.jpg
- POST /api/gateway/v1/discovery/sessions/discovery-session-7638098cd3b3/turns 200 in 11.6s (next.js: 7ms, application-code: 11.6s)
- GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 5.2s (next.js: 7ms, application-code: 5.2s)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 5.5s (next.js: 13ms, application-code: 5.5s)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 5.8s (next.js: 7ms, application-code: 5.8s)
- GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 465ms (next.js: 4ms, application-code: 461ms)
- GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 760ms (next.js: 8ms, application-code: 752ms)
-TypeError: fetch failed
-    at ignore-listed frames {
-  [cause]: Error: getaddrinfo ENOTFOUND cdn.her.local
-      at ignore-listed frames {
-    errno: -3008,
-    code: 'ENOTFOUND',
-    syscall: 'getaddrinfo',
-    hostname: 'cdn.her.local'
-  }
-}
- GET /_next/image?url=https%3A%2F%2Fcdn.her.local%2Fprofiles%2F05701%2Favatar.jpg&w=128&q=75 500 in 20.1s (next.js: 20.1s, application-code: 31ms)
- GET /_next/image?url=https%3A%2F%2Fcdn.her.local%2Fprofiles%2F05701%2Favatar.jpg&w=128&q=75 500 in 20.1s (next.js: 20.1s, application-code: 32ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 38ms (next.js: 9ms, application-code: 28ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 271ms (next.js: 4ms, application-code: 267ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 448ms (next.js: 3ms, application-code: 445ms)
- GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 540ms (next.js: 2ms, application-code: 538ms)
- GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 879ms (next.js: 5ms, application-code: 874ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 36ms (next.js: 7ms, application-code: 29ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 195ms (next.js: 12ms, application-code: 183ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 463ms (next.js: 16ms, application-code: 448ms)
- GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 490ms (next.js: 2ms, application-code: 488ms)
- GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 757ms (next.js: 6ms, application-code: 751ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 41ms (next.js: 12ms, application-code: 29ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 331ms (next.js: 6ms, application-code: 325ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 518ms (next.js: 2ms, application-code: 515ms)
- GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 434ms (next.js: 2ms, application-code: 432ms)
- GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 779ms (next.js: 7ms, application-code: 772ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 28ms (next.js: 6ms, application-code: 23ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 184ms (next.js: 10ms, application-code: 174ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 338ms (next.js: 12ms, application-code: 325ms)
- GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 408ms (next.js: 1657µs, application-code: 406ms)
- GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 681ms (next.js: 5ms, application-code: 676ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 35ms (next.js: 7ms, application-code: 28ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 271ms (next.js: 14ms, application-code: 258ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 503ms (next.js: 16ms, application-code: 487ms)
- GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 287ms (next.js: 3ms, application-code: 284ms)
- GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 840ms (next.js: 6ms, application-code: 834ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 44ms (next.js: 9ms, application-code: 35ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 329ms (next.js: 19ms, application-code: 310ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 551ms (next.js: 7ms, application-code: 544ms)
- GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 611ms (next.js: 1903µs, application-code: 609ms)
- GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 1037ms (next.js: 6ms, application-code: 1031ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 33ms (next.js: 7ms, application-code: 26ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 247ms (next.js: 11ms, application-code: 235ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 529ms (next.js: 14ms, application-code: 516ms)
- GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 546ms (next.js: 3ms, application-code: 542ms)
- GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 831ms (next.js: 6ms, application-code: 825ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 36ms (next.js: 10ms, application-code: 27ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 273ms (next.js: 16ms, application-code: 258ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 439ms (next.js: 19ms, application-code: 420ms)
- GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 447ms (next.js: 2ms, application-code: 445ms)
- GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 732ms (next.js: 5ms, application-code: 726ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 34ms (next.js: 8ms, application-code: 26ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 216ms (next.js: 13ms, application-code: 203ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 494ms (next.js: 16ms, application-code: 479ms)
- GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 510ms (next.js: 2ms, application-code: 508ms)
- GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 763ms (next.js: 7ms, application-code: 756ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 43ms (next.js: 11ms, application-code: 32ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 352ms (next.js: 20ms, application-code: 331ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 861ms (next.js: 9ms, application-code: 852ms)
- GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 782ms (next.js: 3ms, application-code: 779ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 826ms (next.js: 3ms, application-code: 824ms)
- GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 1054ms (next.js: 10ms, application-code: 1044ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 1249ms (next.js: 3ms, application-code: 1246ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 1486ms (next.js: 3ms, application-code: 1482ms)
- GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 568ms (next.js: 9ms, application-code: 559ms)
- GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 1071ms (next.js: 16ms, application-code: 1054ms)
-✓ Compiled in 253ms
- GET /api/gateway/v1/auth/me 200 in 45ms (next.js: 12ms, application-code: 32ms)
- GET /api/gateway/v1/discovery/sessions/discovery-session-7638098cd3b3 200 in 62ms (next.js: 21ms, application-code: 40ms)
- GET /api/gateway/v1/persona/collected?profile_id=2478 200 in 86ms (next.js: 2ms, application-code: 83ms)
+  74 |   return payload as T (components/her/discover-page.tsx:376:39)
+ GET /.well-known/appspecific/com.chrome.devtools.json 200 in 145ms (next.js: 21ms, application-code: 124ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 42ms (next.js: 7ms, application-code: 35ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 302ms (next.js: 13ms, application-code: 289ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 545ms (next.js: 19ms, application-code: 526ms)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 564ms (next.js: 2ms, application-code: 562ms)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 895ms (next.js: 6ms, application-code: 888ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 37ms (next.js: 7ms, application-code: 30ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 212ms (next.js: 12ms, application-code: 200ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 460ms (next.js: 16ms, application-code: 444ms)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 588ms (next.js: 3ms, application-code: 585ms)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 875ms (next.js: 6ms, application-code: 869ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 32ms (next.js: 7ms, application-code: 25ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 226ms (next.js: 12ms, application-code: 214ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 422ms (next.js: 15ms, application-code: 407ms)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 535ms (next.js: 3ms, application-code: 532ms)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 768ms (next.js: 5ms, application-code: 763ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 52ms (next.js: 9ms, application-code: 44ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 236ms (next.js: 21ms, application-code: 215ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 471ms (next.js: 2ms, application-code: 469ms)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 610ms (next.js: 1923µs, application-code: 608ms)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 915ms (next.js: 7ms, application-code: 908ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 41ms (next.js: 7ms, application-code: 33ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 379ms (next.js: 13ms, application-code: 366ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 625ms (next.js: 17ms, application-code: 607ms)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 664ms (next.js: 1952µs, application-code: 662ms)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 934ms (next.js: 6ms, application-code: 929ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 47ms (next.js: 10ms, application-code: 37ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 307ms (next.js: 17ms, application-code: 290ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 488ms (next.js: 4ms, application-code: 485ms)
+ GET /relationships 200 in 65ms (next.js: 7ms, application-code: 58ms)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 882ms (next.js: 2ms, application-code: 880ms)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 1247ms (next.js: 9ms, application-code: 1238ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 1194ms (next.js: 13ms, application-code: 1181ms)
+ GET /api/gateway/v1/user-center/trust-hub?user_id=usr-virt-00002478&profile_id=2478 200 in 1210ms (next.js: 16ms, application-code: 1195ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 1549ms (next.js: 25ms, application-code: 1524ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 1811ms (next.js: 32ms, application-code: 1779ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 1246ms (next.js: 6ms, application-code: 1240ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 1190ms (next.js: 2ms, application-code: 1188ms)
+ GET /api/gateway/v1/auth/me 200 in 952ms (next.js: 1711µs, application-code: 950ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 952ms (next.js: 3ms, application-code: 949ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 859ms (next.js: 7ms, application-code: 853ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 888ms (next.js: 2ms, application-code: 886ms)
+ GET /api/gateway/v1/auth/me 200 in 887ms (next.js: 1940µs, application-code: 885ms)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 1137ms (next.js: 3ms, application-code: 1135ms)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 1372ms (next.js: 1870µs, application-code: 1370ms)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 1944ms (next.js: 1958µs, application-code: 1942ms)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 2.0s (next.js: 1887µs, application-code: 2.0s)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 2.3s (next.js: 5ms, application-code: 2.2s)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 2.6s (next.js: 1685µs, application-code: 2.6s)
+ GET /chat/cvt-f1c6d3478b5b4da1?caseId=match-case-0417f18d5691&chatTitle=%E8%83%A1%E5%98%89%E8%A1%A1&counterpartId=1318 200 in 51ms (next.js: 12ms, application-code: 40ms)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 2.8s (next.js: 3ms, application-code: 2.8s)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 2.9s (next.js: 8ms, application-code: 2.9s)
+ GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 1436ms (next.js: 11ms, application-code: 1424ms)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 1475ms (next.js: 23ms, application-code: 1452ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 1621ms (next.js: 9ms, application-code: 1612ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 1855ms (next.js: 25ms, application-code: 1830ms)
+ GET /api/gateway/v1/auth/me 200 in 1297ms (next.js: 3ms, application-code: 1295ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 894ms (next.js: 5ms, application-code: 889ms)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 1391ms (next.js: 6ms, application-code: 1385ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 1137ms (next.js: 1991µs, application-code: 1135ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 1248ms (next.js: 1772µs, application-code: 1246ms)
+ GET /api/gateway/v1/auth/me 200 in 1024ms (next.js: 5ms, application-code: 1019ms)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 1477ms (next.js: 1773µs, application-code: 1475ms)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 1271ms (next.js: 3ms, application-code: 1269ms)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 1303ms (next.js: 7ms, application-code: 1295ms)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 1623ms (next.js: 11ms, application-code: 1612ms)
+ GET /relationships 200 in 47ms (next.js: 7ms, application-code: 40ms)
+⨯ upstream image response failed for https://example.com/avatar.jpg 404
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 735ms (next.js: 14ms, application-code: 721ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 1062ms (next.js: 25ms, application-code: 1037ms)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 1067ms (next.js: 19ms, application-code: 1048ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 1282ms (next.js: 28ms, application-code: 1254ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 1526ms (next.js: 30ms, application-code: 1496ms)
+ GET /api/gateway/v1/auth/me 200 in 1348ms (next.js: 4ms, application-code: 1344ms)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 1273ms (next.js: 3ms, application-code: 1270ms)
+ GET /discover 200 in 70ms (next.js: 9ms, application-code: 61ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 1605ms (next.js: 19ms, application-code: 1586ms)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 1616ms (next.js: 8ms, application-code: 1608ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 1741ms (next.js: 1483µs, application-code: 1740ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 1897ms (next.js: 3ms, application-code: 1894ms)
+ GET /api/gateway/v1/auth/me 200 in 1898ms (next.js: 1865µs, application-code: 1896ms)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 1969ms (next.js: 6ms, application-code: 1963ms)
+ GET /api/gateway/v1/auth/me 200 in 1686ms (next.js: 14ms, application-code: 1672ms)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 1691ms (next.js: 4ms, application-code: 1687ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 1415ms (next.js: 3ms, application-code: 1412ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 1389ms (next.js: 15ms, application-code: 1374ms)
+ GET /api/gateway/v1/persona/collected?profile_id=2478 200 in 1418ms (next.js: 2ms, application-code: 1416ms)
+ GET /api/gateway/v1/auth/me 200 in 787ms (next.js: 3ms, application-code: 784ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 783ms (next.js: 11ms, application-code: 772ms)
+ GET /api/gateway/v1/discovery/sessions/discovery-session-7638098cd3b3 200 in 773ms (next.js: 3ms, application-code: 770ms)
+ GET /api/gateway/v1/discovery/sessions/discovery-session-7638098cd3b3 200 in 790ms (next.js: 8ms, application-code: 783ms)
+ GET /api/gateway/v1/auth/me 200 in 441ms (next.js: 2ms, application-code: 439ms)
+ GET /api/gateway/v1/persona/collected?profile_id=2478 200 in 468ms (next.js: 4ms, application-code: 464ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 454ms (next.js: 3ms, application-code: 451ms)
+ GET /discover 200 in 49ms (next.js: 12ms, application-code: 37ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 723ms (next.js: 4ms, application-code: 719ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 1050ms (next.js: 7ms, application-code: 1043ms)
+ GET /api/gateway/v1/auth/me 200 in 1050ms (next.js: 2ms, application-code: 1048ms)
+ GET /discover 200 in 47ms (next.js: 4ms, application-code: 43ms)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 1966ms (next.js: 7ms, application-code: 1959ms)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 2.6s (next.js: 16ms, application-code: 2.5s)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 3.1s (next.js: 23ms, application-code: 3.1s)
+ GET /api/gateway/v1/auth/me 200 in 2.5s (next.js: 3ms, application-code: 2.5s)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 2.9s (next.js: 13ms, application-code: 2.9s)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 3.0s (next.js: 3ms, application-code: 3.0s)
+ GET /api/gateway/v1/auth/me 200 in 1786ms (next.js: 1939µs, application-code: 1784ms)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 2.4s (next.js: 21ms, application-code: 2.4s)
 ⨯ upstream image response timed out for https://cdn.her.local/profiles/01318/avatar.jpg
 ⨯ upstream image response timed out for https://cdn.her.local/profiles/07724/avatar.jpg
- GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 28ms (next.js: 6ms, application-code: 21ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 216ms (next.js: 11ms, application-code: 206ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 385ms (next.js: 1488µs, application-code: 384ms)
- GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 465ms (next.js: 1575µs, application-code: 463ms)
- GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 369ms (next.js: 5ms, application-code: 363ms)
-⨯ upstream image response timed out for https://cdn.her.local/profiles/09452/avatar.jpg
-⨯ upstream image response timed out for https://cdn.her.local/profiles/02288/avatar.jpg
- GET /api/gateway/v1/auth/me 200 in 22ms (next.js: 7ms, application-code: 15ms)
- GET /api/gateway/v1/discovery/sessions/discovery-session-7638098cd3b3 200 in 33ms (next.js: 11ms, application-code: 22ms)
-✓ Compiled in 214ms
- GET /api/gateway/v1/persona/collected?profile_id=2478 200 in 52ms (next.js: 5ms, application-code: 47ms)
-⨯ upstream image response timed out for https://cdn.her.local/profiles/07885/avatar.jpg
-⨯ upstream image response timed out for https://cdn.her.local/profiles/03465/avatar.jpg
-✓ Compiled in 54ms
- GET /api/gateway/v1/auth/me 200 in 24ms (next.js: 8ms, application-code: 16ms)
- GET /api/gateway/v1/discovery/sessions/discovery-session-7638098cd3b3 200 in 26ms (next.js: 2ms, application-code: 24ms)
- GET /api/gateway/v1/persona/collected?profile_id=2478 200 in 59ms (next.js: 6ms, application-code: 53ms)
-TypeError: fetch failed
-    at ignore-listed frames {
-  [cause]: Error: getaddrinfo ENOTFOUND cdn.her.local
-      at ignore-listed frames {
-    errno: -3008,
-    code: 'ENOTFOUND',
-    syscall: 'getaddrinfo',
-    hostname: 'cdn.her.local'
-  }
-}
- GET /_next/image?url=https%3A%2F%2Fcdn.her.local%2Fprofiles%2F05701%2Favatar.jpg&w=128&q=75 500 in 22.8s (next.js: 22.8s, application-code: 26ms)
- GET /_next/image?url=https%3A%2F%2Fcdn.her.local%2Fprofiles%2F05701%2Favatar.jpg&w=128&q=75 500 in 22.8s (next.js: 22.8s, application-code: 26ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 30ms (next.js: 5ms, application-code: 25ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 211ms (next.js: 8ms, application-code: 202ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 475ms (next.js: 11ms, application-code: 464ms)
- GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 560ms (next.js: 2ms, application-code: 558ms)
- GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 825ms (next.js: 5ms, application-code: 820ms)
-⨯ upstream image response timed out for https://cdn.her.local/profiles/01318/avatar.jpg
-⨯ upstream image response timed out for https://cdn.her.local/profiles/07724/avatar.jpg
- GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 39ms (next.js: 10ms, application-code: 29ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 262ms (next.js: 17ms, application-code: 245ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 549ms (next.js: 4ms, application-code: 545ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 343ms (next.js: 1734µs, application-code: 341ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 238ms (next.js: 3ms, application-code: 235ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 523ms (next.js: 1710µs, application-code: 522ms)
- GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 1002ms (next.js: 4ms, application-code: 998ms)
- GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 1040ms (next.js: 6ms, application-code: 1033ms)
- GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 777ms (next.js: 2ms, application-code: 775ms)
- GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 846ms (next.js: 7ms, application-code: 839ms)
-⨯ upstream image response timed out for https://cdn.her.local/profiles/09452/avatar.jpg
-⨯ upstream image response timed out for https://cdn.her.local/profiles/02288/avatar.jpg
-⨯ upstream image response timed out for https://cdn.her.local/profiles/07885/avatar.jpg
-⨯ upstream image response timed out for https://cdn.her.local/profiles/05701/avatar.jpg
- GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 35ms (next.js: 6ms, application-code: 30ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 208ms (next.js: 9ms, application-code: 199ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 432ms (next.js: 14ms, application-code: 418ms)
- GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 425ms (next.js: 1831µs, application-code: 423ms)
- GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 672ms (next.js: 5ms, application-code: 667ms)
-TypeError: fetch failed
-    at ignore-listed frames {
-  [cause]: Error: getaddrinfo ENOTFOUND cdn.her.local
-      at ignore-listed frames {
-    errno: -3008,
-    code: 'ENOTFOUND',
-    syscall: 'getaddrinfo',
-    hostname: 'cdn.her.local'
-  }
-}
- GET /_next/image?url=https%3A%2F%2Fcdn.her.local%2Fprofiles%2F03465%2Favatar.jpg&w=128&q=75 500 in 20.4s (next.js: 20.3s, application-code: 25ms)
- GET /_next/image?url=https%3A%2F%2Fcdn.her.local%2Fprofiles%2F03465%2Favatar.jpg&w=128&q=75 500 in 20.4s (next.js: 20.3s, application-code: 26ms)
-✓ Compiled in 45ms
- GET /api/gateway/v1/auth/me 200 in 29ms (next.js: 9ms, application-code: 20ms)
- GET /api/gateway/v1/discovery/sessions/discovery-session-7638098cd3b3 200 in 42ms (next.js: 12ms, application-code: 30ms)
- GET /api/gateway/v1/persona/collected?profile_id=2478 200 in 71ms (next.js: 16ms, application-code: 55ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 28ms (next.js: 5ms, application-code: 23ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 282ms (next.js: 10ms, application-code: 272ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 462ms (next.js: 13ms, application-code: 449ms)
- GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 482ms (next.js: 1903µs, application-code: 480ms)
- GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 778ms (next.js: 5ms, application-code: 773ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 30ms (next.js: 7ms, application-code: 23ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 223ms (next.js: 13ms, application-code: 210ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 402ms (next.js: 6ms, application-code: 396ms)
- GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 477ms (next.js: 1847µs, application-code: 475ms)
- GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 656ms (next.js: 5ms, application-code: 651ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 31ms (next.js: 7ms, application-code: 24ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 218ms (next.js: 13ms, application-code: 205ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 441ms (next.js: 1457µs, application-code: 439ms)
- GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 492ms (next.js: 2ms, application-code: 490ms)
- GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 700ms (next.js: 5ms, application-code: 694ms)
-⨯ upstream image response timed out for https://cdn.her.local/profiles/01318/avatar.jpg
-⨯ upstream image response timed out for https://cdn.her.local/profiles/07724/avatar.jpg
- GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 32ms (next.js: 8ms, application-code: 24ms)
-✓ Compiled in 57ms
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 336ms (next.js: 13ms, application-code: 323ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 507ms (next.js: 11ms, application-code: 496ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 221ms (next.js: 2ms, application-code: 219ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 303ms (next.js: 1644µs, application-code: 301ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 508ms (next.js: 3ms, application-code: 505ms)
- GET /api/gateway/v1/auth/me 200 in 225ms (next.js: 5ms, application-code: 220ms)
- GET /api/gateway/v1/discovery/sessions/discovery-session-7638098cd3b3 200 in 31ms (next.js: 7ms, application-code: 24ms)
- GET /api/gateway/v1/persona/collected?profile_id=2478 200 in 63ms (next.js: 1838µs, application-code: 62ms)
- GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 611ms (next.js: 3ms, application-code: 608ms)
- GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 885ms (next.js: 3ms, application-code: 883ms)
- GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 895ms (next.js: 8ms, application-code: 887ms)
- GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 828ms (next.js: 4ms, application-code: 824ms)
 ⨯ upstream image response timed out for https://cdn.her.local/profiles/09452/avatar.jpg
 ⨯ upstream image response timed out for https://cdn.her.local/profiles/02288/avatar.jpg
 ⨯ upstream image response timed out for https://cdn.her.local/profiles/07885/avatar.jpg
 ⨯ upstream image response timed out for https://cdn.her.local/profiles/03465/avatar.jpg
-✓ Compiled in 56ms
- GET /api/gateway/v1/auth/me 200 in 53ms (next.js: 12ms, application-code: 40ms)
- GET /api/gateway/v1/discovery/sessions/discovery-session-7638098cd3b3 200 in 68ms (next.js: 20ms, application-code: 47ms)
- GET /api/gateway/v1/persona/collected?profile_id=2478 200 in 93ms (next.js: 15ms, application-code: 78ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 35ms (next.js: 9ms, application-code: 26ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 293ms (next.js: 14ms, application-code: 278ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 726ms (next.js: 1779µs, application-code: 725ms)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 476ms (next.js: 4ms, application-code: 472ms)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 702ms (next.js: 7ms, application-code: 695ms)
 TypeError: fetch failed
     at ignore-listed frames {
   [cause]: Error: getaddrinfo ENOTFOUND cdn.her.local
@@ -346,38 +230,10 @@ TypeError: fetch failed
     hostname: 'cdn.her.local'
   }
 }
- GET /_next/image?url=https%3A%2F%2Fcdn.her.local%2Fprofiles%2F05701%2Favatar.jpg&w=128&q=75 500 in 20.1s (next.js: 20.1s, application-code: 39ms)
- GET /_next/image?url=https%3A%2F%2Fcdn.her.local%2Fprofiles%2F05701%2Favatar.jpg&w=128&q=75 500 in 20.1s (next.js: 20.1s, application-code: 39ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 30ms (next.js: 5ms, application-code: 25ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 232ms (next.js: 10ms, application-code: 222ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 509ms (next.js: 13ms, application-code: 496ms)
- GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 511ms (next.js: 2ms, application-code: 509ms)
- GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 803ms (next.js: 7ms, application-code: 796ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 31ms (next.js: 7ms, application-code: 24ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 279ms (next.js: 11ms, application-code: 268ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 468ms (next.js: 14ms, application-code: 454ms)
- GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 490ms (next.js: 2ms, application-code: 488ms)
- GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 828ms (next.js: 7ms, application-code: 820ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 34ms (next.js: 8ms, application-code: 26ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 220ms (next.js: 15ms, application-code: 204ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 393ms (next.js: 7ms, application-code: 386ms)
- GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 463ms (next.js: 1935µs, application-code: 461ms)
- GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 716ms (next.js: 6ms, application-code: 710ms)
-✓ Compiled in 48ms
- GET /api/gateway/v1/auth/me 200 in 32ms (next.js: 7ms, application-code: 24ms)
- GET /api/gateway/v1/discovery/sessions/discovery-session-7638098cd3b3 200 in 37ms (next.js: 3ms, application-code: 34ms)
- GET /api/gateway/v1/persona/collected?profile_id=2478 200 in 71ms (next.js: 8ms, application-code: 63ms)
-✓ Compiled in 61ms
- GET /api/gateway/v1/auth/me 200 in 28ms (next.js: 7ms, application-code: 21ms)
- GET /api/gateway/v1/discovery/sessions/discovery-session-7638098cd3b3 200 in 46ms (next.js: 11ms, application-code: 35ms)
- GET /api/gateway/v1/persona/collected?profile_id=2478 200 in 75ms (next.js: 15ms, application-code: 60ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 27ms (next.js: 6ms, application-code: 20ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 291ms (next.js: 10ms, application-code: 281ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 467ms (next.js: 5ms, application-code: 463ms)
- GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 498ms (next.js: 1893µs, application-code: 496ms)
- GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 805ms (next.js: 5ms, application-code: 800ms)
- GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 39ms (next.js: 9ms, application-code: 30ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 220ms (next.js: 16ms, application-code: 204ms)
- GET /api/gateway/v1/proxy-intro/cases/mine 200 in 406ms (next.js: 19ms, application-code: 387ms)
- GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 444ms (next.js: 3ms, application-code: 441ms)
- GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 716ms (next.js: 5ms, application-code: 711ms)
+ GET /_next/image?url=https%3A%2F%2Fcdn.her.local%2Fprofiles%2F05701%2Favatar.jpg&w=128&q=75 500 in 23.1s (next.js: 23.1s, application-code: 27ms)
+ GET /_next/image?url=https%3A%2F%2Fcdn.her.local%2Fprofiles%2F05701%2Favatar.jpg&w=128&q=75 500 in 23.1s (next.js: 23.1s, application-code: 27ms)
+ GET /api/gateway/v1/recommendation/cards?profile_id=2478&unread_only=true 200 in 52ms (next.js: 9ms, application-code: 43ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 304ms (next.js: 22ms, application-code: 282ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 476ms (next.js: 28ms, application-code: 447ms)
+ GET /api/gateway/v2/chat/cases/match-case-0417f18d5691/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 542ms (next.js: 2ms, application-code: 540ms)
+ GET /api/gateway/v2/chat/cases/match-case-041f691cfd0d/timeline?requester_id=usr-virt-00002478&message_limit=50 200 in 868ms (next.js: 6ms, application-code: 862ms)
