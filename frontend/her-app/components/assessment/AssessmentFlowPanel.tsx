@@ -71,8 +71,8 @@ export function AssessmentFlowPanel({
       <div className="w-full max-w-lg rounded-[28px] bg-background p-3 shadow-2xl">
         <div className="mb-3 flex items-center justify-between px-2">
           <div>
-            <div className="text-xs uppercase tracking-[0.24em] text-muted-foreground">人格测评</div>
-            <div className="text-sm text-muted-foreground">MBTI 16 型</div>
+            <div className="text-sm font-medium">MBTI 恋爱测试</div>
+            <div className="text-xs text-muted-foreground">5分钟 · 20题</div>
           </div>
           <Button variant="ghost" size="icon-sm" onClick={close}>
             <X className="h-4 w-4" />

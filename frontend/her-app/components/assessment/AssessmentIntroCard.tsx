@@ -17,7 +17,6 @@ export function AssessmentIntroCard({
   return (
     <div className="rounded-3xl border border-border bg-card p-5 shadow-sm">
       <div className="space-y-2">
-        <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">人格测评</p>
         <h3 className="text-xl font-semibold">{data.title}</h3>
         <p className="text-sm text-muted-foreground">{data.description}</p>
       </div>
@@ -25,7 +24,7 @@ export function AssessmentIntroCard({
         <div className="flex justify-between"><span>时长</span><span>{data.duration}</span></div>
         <div className="flex justify-between"><span>奖励</span><span>{data.reward}</span></div>
       </div>
-      <Button className="mt-4 w-full" onClick={onStart}>开始 MBTI 测评</Button>
+      <Button className="mt-4 w-full" onClick={onStart}>开始测试</Button>
     </div>
   )
 }

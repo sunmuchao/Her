@@ -107,10 +107,10 @@ def test_assessment_get_or_create_route_returns_new_intro() -> None:
                 "assessment_type": "mbti_16",
                 "assessment_id": "mbti_new_123",
                 "intro_data": {
-                    "title": "MBTI 恋爱说明书",
-                    "description": "测测你在恋爱里是什么派",
-                    "duration": "约5分钟 · 20题",
-                    "reward": "测完知道自己恋爱里的优势和坑",
+                    "title": "MBTI 恋爱测试",
+                    "description": "测测你在恋爱中是哪一型",
+                    "duration": "5分钟 · 20题",
+                    "reward": "测完了解你的恋爱优势与雷区",
                 },
             },
         ) as get_or_create_mock,
@@ -122,7 +122,7 @@ def test_assessment_get_or_create_route_returns_new_intro() -> None:
 
     assert "200" in status
     assert payload["card_type"] == "assessment_intro"
-    assert payload["intro_data"]["title"] == "MBTI 恋爱说明书"
+    assert payload["intro_data"]["title"] == "MBTI 恋爱测试"
     # 没有 resumed 字段，说明是新测评
     assert "resumed" not in payload or payload.get("resumed") is None
     get_or_create_mock.assert_called_once_with(
