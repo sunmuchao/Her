@@ -122,3 +122,8 @@
  GET /api/gateway/v1/proxy-intro/cases/mine 200 in 935ms (next.js: 21ms, application-code: 914ms)
  GET /api/gateway/v2/chat/cases/match-case-bf3e88636b8a/timeline?requester_id=usr-virt-00009452&message_limit=50 200 in 2.3s (next.js: 7ms, application-code: 2.3s)
  GET /api/gateway/v2/chat/cases/match-case-17f282ab8483/timeline?requester_id=usr-virt-00009452&message_limit=50 200 in 3.2s (next.js: 11ms, application-code: 3.2s)
+ GET /api/gateway/v1/recommendation/cards?profile_id=9452&unread_only=true 200 in 37ms (next.js: 6ms, application-code: 31ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 401ms (next.js: 11ms, application-code: 390ms)
+ GET /api/gateway/v1/proxy-intro/cases/mine 200 in 798ms (next.js: 14ms, application-code: 784ms)
+ GET /api/gateway/v2/chat/cases/match-case-17f282ab8483/timeline?requester_id=usr-virt-00009452&message_limit=50 200 in 983ms (next.js: 5ms, application-code: 978ms)
+ GET /api/gateway/v2/chat/cases/match-case-bf3e88636b8a/timeline?requester_id=usr-virt-00009452&message_limit=50 200 in 3.3s (next.js: 1625µs, application-code: 3.3s)
