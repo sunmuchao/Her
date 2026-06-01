@@ -140,9 +140,9 @@ export function AssessmentFeedbackCard({
   
   // Button color based on theme
   const buttonClass = assessmentType === 'attachment_style' 
-    ? 'bg-coral hover:bg-coral/90' 
+    ? 'bg-coral hover:bg-coral/90 text-white' 
     : assessmentType === 'love_language' 
-      ? 'bg-lavender hover:bg-lavender/90' 
+      ? 'bg-lavender hover:bg-lavender/90 text-white' 
       : ''
 
   return (
