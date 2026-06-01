@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:full": "bash ./scripts/gateway-dev.sh dev",
     "gateway:start": "bash ./scripts/gateway-dev.sh start",
     "gateway:health": "bash ./scripts/gateway-dev.sh health",
     "build": "next build",
