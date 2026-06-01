@@ -1018,7 +1018,7 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
                           )}
                           <div
                             className={cn(
-                              'max-w-[75%] px-3 py-2 rounded-2xl text-sm',
+                              'max-w-[75%] px-3 py-2 rounded-2xl text-sm whitespace-pre-line',
                               msg.isFromMe
                                 ? 'bg-gold text-white rounded-br-md'
                                 : 'bg-secondary text-foreground rounded-bl-md',

@@ -91,7 +91,7 @@ function DiscoveryTimelineEntry({
         <div className={cn('max-w-[80%]', isUser ? 'order-1' : '')}>
           <div
             className={cn(
-              'px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed',
+              'px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed whitespace-pre-line',
               isUser
                 ? 'bg-primary text-primary-foreground rounded-br-md'
                 : 'bg-card border border-border rounded-bl-md',
