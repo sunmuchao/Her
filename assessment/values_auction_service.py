@@ -123,6 +123,32 @@ def _save_observation(
     )
 
 
+def _persist_dual_session(
+    cursor: Any,
+    *,
+    observation_table: str,
+    session: dict[str, Any],
+    conversation_ref: str,
+    evidence_text: str,
+) -> None:
+    """将同一份双人 session 同步写入双方 observation，避免双方读取到不同状态。"""
+    for participant_key in (
+        str(session.get("user_a_key") or "").strip(),
+        str(session.get("user_b_key") or "").strip(),
+    ):
+        if not participant_key:
+            continue
+        _save_observation(
+            cursor,
+            observation_table=observation_table,
+            user_key=participant_key,
+            field_name=VALUES_AUCTION_DUAL_SESSION_FIELD,
+            field_value=session,
+            conversation_ref=conversation_ref,
+            evidence_text=evidence_text,
+        )
+
+
 @dataclass(frozen=True)
 class ValuesAuctionSession:
     """拍卖会话数据类"""
@@ -557,21 +583,10 @@ def start_values_auction_together(
     conn = mysql_connect(normalized_source)
     try:
         with conn.cursor() as cursor:
-            _save_observation(
+            _persist_dual_session(
                 cursor,
                 observation_table=observation_table,
-                user_key=user_key,
-                field_name=VALUES_AUCTION_DUAL_SESSION_FIELD,
-                field_value=session_data,
-                conversation_ref=session_id,
-                evidence_text="dual values auction started",
-            )
-            _save_observation(
-                cursor,
-                observation_table=observation_table,
-                user_key=partner_key,
-                field_name=VALUES_AUCTION_DUAL_SESSION_FIELD,
-                field_value=session_data,
+                session=session_data,
                 conversation_ref=session_id,
                 evidence_text="dual values auction started",
             )
@@ -703,12 +718,10 @@ def submit_auction_bids_together(
     conn = mysql_connect(normalized_source)
     try:
         with conn.cursor() as cursor:
-            _save_observation(
+            _persist_dual_session(
                 cursor,
                 observation_table=observation_table,
-                user_key=user_key,
-                field_name=VALUES_AUCTION_DUAL_SESSION_FIELD,
-                field_value=session,
+                session=session,
                 conversation_ref=session_id,
                 evidence_text="dual values auction updated",
             )
@@ -860,12 +873,10 @@ def reuse_last_result_together(
     conn = mysql_connect(normalized_source)
     try:
         with conn.cursor() as cursor:
-            _save_observation(
+            _persist_dual_session(
                 cursor,
                 observation_table=observation_table,
-                user_key=user_key,
-                field_name=VALUES_AUCTION_DUAL_SESSION_FIELD,
-                field_value=session,
+                session=session,
                 conversation_ref=session_id,
                 evidence_text="dual values auction reused",
             )
