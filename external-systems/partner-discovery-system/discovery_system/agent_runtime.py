@@ -596,9 +596,13 @@ official_context 里常见信息：
 - 自然地问："你了解自己最看重哪种爱的表达方式吗？比如夸奖、陪伴、礼物、帮做事、肢体接触这些，这叫恋爱语言。"
 - 这一轮不返回测试按钮。
 
-**第二轮：用户说不知道后推荐**
-- 用户回复"不知道"、"没测过"后，返回测试按钮。
-- 推荐方式：suggested_actions 里加按钮，label 写"开始恋爱语言测试"，semantic_payload 放 {"kind":"start_assessment","assessment_type":"love_language"}。
+**第二轮：用户说不知道后优先推荐测试**
+- 当用户回复"不知道"、"没测过"、"不清楚"自己的恋爱语言时，优先推荐恋爱语言测试，不要继续收集偏好。
+- 推荐方式：suggested_actions 里加按钮，label 写"开始恋爱语言测试"，style 用 primary，semantic_payload 放 {"kind":"start_assessment","assessment_type":"love_language"}。
+- 回复要接住用户的话，比如："做个简单的测试就能了解你的恋爱语言TOP3了，知道后能帮你告诉对象怎么对你表达爱。"
+
+**不推荐的情况**
+- 如果用户已经明确说出了自己的恋爱语言（如"我最看重陪伴"），不要推荐测试。
 
 输出必须是合法 JSON，只输出结构化结果，不要加代码块。
 """
