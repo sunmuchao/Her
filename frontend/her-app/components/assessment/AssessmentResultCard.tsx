@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Share2, Check, Star } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { type AssessmentType } from './assessment-themes'
 
 // MBTI type nicknames
 const TYPE_NICKNAMES: Record<string, string> = {
@@ -24,6 +25,23 @@ const TYPE_NICKNAMES: Record<string, string> = {
   ISFP: '探险家',
   ESTP: '企业家',
   ESFP: '表演者',
+}
+
+// Attachment style type nicknames
+const ATTACHMENT_NICKNAMES: Record<string, string> = {
+  secure: '安全型',
+  anxious: '焦虑型',
+  avoidant: '回避型',
+  fearful: '恐惧型',
+}
+
+// Love language type nicknames
+const LOVE_LANGUAGE_NICKNAMES: Record<string, string> = {
+  words: '肯定言词型',
+  time: '精心时刻型',
+  gifts: '礼物型',
+  service: '服务行动型',
+  touch: '身体接触型',
 }
 
 interface DimensionRow {
@@ -65,10 +83,25 @@ const DIMENSION_LABELS: Record<string, { high: string; low: string }> = {
 }
 
 // Radar Chart Component
-function RadarChart({ dimensions, size = 280 }: { dimensions: DimensionRow[]; size?: number }) {
+function RadarChart({ 
+  dimensions, 
+  size = 280,
+  assessmentType 
+}: { 
+  dimensions: DimensionRow[]
+  size?: number
+  assessmentType?: AssessmentType
+}) {
   const center = size / 2
   const maxRadius = (size / 2) - 50
   const levels = 4
+
+  // Get theme color for the chart
+  const chartColorClass = assessmentType === 'attachment_style' 
+    ? 'text-coral' 
+    : assessmentType === 'love_language' 
+      ? 'text-lavender' 
+      : 'text-primary'
 
   // Calculate points for each dimension
   const points = useMemo(() => {
@@ -143,7 +176,7 @@ function RadarChart({ dimensions, size = 280 }: { dimensions: DimensionRow[]; si
           fillOpacity="0.15"
           stroke="currentColor"
           strokeWidth="2"
-          className="text-primary"
+          className={chartColorClass}
         />
 
         {/* Data points */}
@@ -154,7 +187,7 @@ function RadarChart({ dimensions, size = 280 }: { dimensions: DimensionRow[]; si
             cy={p.y}
             r="4"
             fill="currentColor"
-            className="text-primary"
+            className={chartColorClass}
           />
         ))}
 
@@ -198,14 +231,26 @@ function RadarChart({ dimensions, size = 280 }: { dimensions: DimensionRow[]; si
   )
 }
 
+function getTypeNickname(typeCode: string, assessmentType?: AssessmentType): string {
+  if (assessmentType === 'attachment_style') {
+    return ATTACHMENT_NICKNAMES[typeCode.toLowerCase()] || ''
+  }
+  if (assessmentType === 'love_language') {
+    return LOVE_LANGUAGE_NICKNAMES[typeCode.toLowerCase()] || ''
+  }
+  return TYPE_NICKNAMES[typeCode] || ''
+}
+
 export function AssessmentResultCard({
   data,
   onAddLabels,
   onShare,
+  assessmentType,
 }: {
   data: ResultData
   onAddLabels?: (selectedLabels: string[]) => Promise<void>
   onShare?: () => void
+  assessmentType?: AssessmentType
 }) {
   const [isAdding, setIsAdding] = useState(false)
   const [addedLabels, setAddedLabels] = useState<Set<string>>(new Set())
@@ -214,7 +259,20 @@ export function AssessmentResultCard({
     label: string
   }>({ open: false, label: '' })
 
-  const typeNickname = TYPE_NICKNAMES[data.type_code] || ''
+  const typeNickname = getTypeNickname(data.type_code, assessmentType)
+  
+  // Theme-based colors
+  const extremeTagBg = assessmentType === 'attachment_style' 
+    ? 'bg-coral-soft/60 border-coral/20' 
+    : assessmentType === 'love_language' 
+      ? 'bg-lavender-soft/60 border-lavender/20' 
+      : 'bg-rose-soft/60 border-rose/20'
+  
+  const extremeTagIcon = assessmentType === 'attachment_style' 
+    ? 'text-coral' 
+    : assessmentType === 'love_language' 
+      ? 'text-lavender' 
+      : 'text-rose'
 
   const handleLabelClick = (label: string) => {
     if (!onAddLabels || addedLabels.has(label) || isAdding) return
@@ -240,16 +298,33 @@ export function AssessmentResultCard({
     setConfirmDialog({ open: false, label: '' })
   }
 
+  // Selected label colors
+  const selectedLabelClass = assessmentType === 'attachment_style' 
+    ? 'bg-coral/15 border-coral/40' 
+    : assessmentType === 'love_language' 
+      ? 'bg-lavender/15 border-lavender/40' 
+      : 'bg-primary/15 border-primary/40'
+
   return (
     <div className="rounded-3xl border border-border bg-card p-6 shadow-sm animate-scale-in overflow-y-auto max-h-[70vh]">
       {/* Header with share button */}
       <div className="flex items-start justify-between mb-4">
         <div>
-          <div className="text-xs uppercase tracking-widest text-muted-foreground mb-1">
+          <div className={cn(
+            'text-xs uppercase tracking-widest mb-1',
+            assessmentType === 'attachment_style' ? 'text-coral' : 
+            assessmentType === 'love_language' ? 'text-lavender' : 'text-muted-foreground'
+          )}>
             {"测评结果"}
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-bold tracking-tight">{data.type_code}</span>
+            <span className={cn(
+              'text-3xl font-bold tracking-tight',
+              assessmentType === 'attachment_style' ? 'text-coral' : 
+              assessmentType === 'love_language' ? 'text-lavender' : ''
+            )}>
+              {data.type_code}
+            </span>
             {typeNickname && (
               <span className="text-sm text-muted-foreground">{"- "}{typeNickname}</span>
             )}
@@ -268,11 +343,14 @@ export function AssessmentResultCard({
           {data.interpretation_data.extreme_tags.map((extreme, idx) => (
             <div
               key={idx}
-              className="flex items-center gap-2 rounded-2xl bg-rose-soft/60 border border-rose/20 px-4 py-2.5"
+              className={cn(
+                'flex items-center gap-2 rounded-2xl border px-4 py-2.5',
+                extremeTagBg
+              )}
             >
-              <Star className="w-4 h-4 text-rose shrink-0" fill="currentColor" />
+              <Star className={cn('w-4 h-4 shrink-0', extremeTagIcon)} fill="currentColor" />
               <div>
-                <span className="font-medium text-sm text-rose">{extreme.tag}</span>
+                <span className={cn('font-medium text-sm', extremeTagIcon)}>{extreme.tag}</span>
                 <span className="ml-2 text-xs text-muted-foreground">{extreme.description}</span>
               </div>
             </div>
@@ -282,7 +360,11 @@ export function AssessmentResultCard({
 
       {/* Radar Chart */}
       <div className="my-6 relative">
-        <RadarChart dimensions={data.dimension_rows} size={280} />
+        <RadarChart 
+          dimensions={data.dimension_rows} 
+          size={280} 
+          assessmentType={assessmentType}
+        />
       </div>
 
       {/* Labels Selection */}
@@ -299,8 +381,8 @@ export function AssessmentResultCard({
               className={cn(
                 'rounded-full px-3 py-1.5 text-xs cursor-pointer transition-all',
                 addedLabels.has(label)
-                  ? 'bg-primary/15 border border-primary/40 text-foreground'
-                  : 'bg-secondary border border-transparent text-muted-foreground hover:bg-secondary/80 hover:border-primary/20',
+                  ? cn(selectedLabelClass, 'border text-foreground')
+                  : 'bg-secondary border border-transparent text-muted-foreground hover:bg-secondary/80 hover:border-border',
                 isAdding && 'opacity-60 cursor-wait'
               )}
             >
@@ -315,8 +397,7 @@ export function AssessmentResultCard({
             </button>
           ))}
         </div>
-
-        </div>
+      </div>
 
       {/* Confirm Dialog */}
       <ConfirmDialog

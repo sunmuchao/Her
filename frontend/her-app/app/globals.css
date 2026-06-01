@@ -40,6 +40,14 @@
   --gold-soft: oklch(0.93 0.035 88);
   --taupe: oklch(0.55 0.02 60);
   
+  /* Assessment theme colors */
+  --coral: oklch(0.65 0.14 35);
+  --coral-soft: oklch(0.93 0.04 35);
+  --lavender: oklch(0.65 0.12 300);
+  --lavender-soft: oklch(0.93 0.04 300);
+  --sage: oklch(0.6 0.1 150);
+  --sage-soft: oklch(0.93 0.03 150);
+  
   --chart-1: oklch(0.6 0.15 15);
   --chart-2: oklch(0.75 0.08 85);
   --chart-3: oklch(0.5 0.12 15);
@@ -83,6 +91,14 @@
   --gold: oklch(0.7 0.08 85);
   --gold-soft: oklch(0.32 0.03 88);
   --taupe: oklch(0.55 0.02 60);
+  
+  /* Assessment theme colors - dark mode */
+  --coral: oklch(0.7 0.14 35);
+  --coral-soft: oklch(0.3 0.04 35);
+  --lavender: oklch(0.7 0.12 300);
+  --lavender-soft: oklch(0.3 0.04 300);
+  --sage: oklch(0.65 0.1 150);
+  --sage-soft: oklch(0.3 0.03 150);
   --sidebar: oklch(0.18 0.01 30);
   --sidebar-foreground: oklch(0.95 0.005 80);
   --sidebar-primary: oklch(0.7 0.12 15);
@@ -121,6 +137,12 @@
   --color-gold: var(--gold);
   --color-gold-soft: var(--gold-soft);
   --color-taupe: var(--taupe);
+  --color-coral: var(--coral);
+  --color-coral-soft: var(--coral-soft);
+  --color-lavender: var(--lavender);
+  --color-lavender-soft: var(--lavender-soft);
+  --color-sage: var(--sage);
+  --color-sage-soft: var(--sage-soft);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
