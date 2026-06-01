@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "gateway:start": "bash ./scripts/gateway-dev.sh start",
+    "gateway:health": "bash ./scripts/gateway-dev.sh health",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
