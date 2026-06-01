@@ -192,6 +192,7 @@ export default function DiscoverPage({
   const [showAssessmentSubmenu, setShowAssessmentSubmenu] = useState(false)
   const [assessmentCard, setAssessmentCard] = useState<AssessmentCard | null>(null)
   const [assessmentId, setAssessmentId] = useState<string | null>(null)
+  const [currentAssessmentType, setCurrentAssessmentType] = useState<'mbti_16' | 'attachment_style' | 'love_language'>('mbti_16')
   const [assessmentQuestionHistory, setAssessmentQuestionHistory] = useState<AssessmentQuestionCard['question_data'][]>([])
   const [assessmentBusy, setAssessmentBusy] = useState(false)
   const userKey = String(getProfileId() || getUserId() || '')
@@ -199,6 +200,7 @@ export default function DiscoverPage({
   const openAssessmentCard = async (assessmentType: 'mbti_16' | 'attachment_style' | 'love_language' = 'mbti_16') => {
     if (!userKey || assessmentBusy) return
     setAssessmentBusy(true)
+    setCurrentAssessmentType(assessmentType)
     try {
       const intro = await startAssessment(userKey, assessmentType)
       setAssessmentId(intro.assessment_id)
@@ -224,6 +226,7 @@ export default function DiscoverPage({
     setAssessmentCard(null)
     setAssessmentId(null)
     setAssessmentQuestionHistory([])
+    setCurrentAssessmentType('mbti_16')
     // 滚动到底部显示小雅消息
     setTimeout(() => {
       chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -423,6 +426,7 @@ export default function DiscoverPage({
                       : undefined
                   }
                   onAddLabels={handleAddLabels}
+                  assessmentType={currentAssessmentType}
                 />
               </div>
             </div>

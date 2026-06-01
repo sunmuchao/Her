@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect } from 'react'
 import { ChevronLeft, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useReducedMotion } from '@/hooks/use-reduced-motion'
+import { type AssessmentType, getAssessmentTheme } from './assessment-themes'
 
 interface QuestionData {
   current_question: number
@@ -13,33 +14,31 @@ interface QuestionData {
   progress: number
 }
 
-// MBTI dimension info for segmented progress
-const DIMENSIONS = [
-  { key: 'EI', name: '社交能量', color: 'bg-rose' },
-  { key: 'SN', name: '信息感知', color: 'bg-gold' },
-  { key: 'TF', name: '决策方式', color: 'bg-primary' },
-  { key: 'JP', name: '生活态度', color: 'bg-taupe' },
-]
-
 export function AssessmentQuestionCard({
   data,
   onAnswer,
   onPrevious,
   isSubmitting = false,
+  assessmentType,
 }: {
   data: QuestionData
   onAnswer: (answer: string) => void
   onPrevious?: () => void
   isSubmitting?: boolean
+  assessmentType?: AssessmentType
 }) {
   const [selectedOption, setSelectedOption] = useState<string | null>(null)
   const [isAnimatingOut, setIsAnimatingOut] = useState(false)
   const prefersReducedMotion = useReducedMotion()
+  
+  const theme = getAssessmentTheme(assessmentType)
+  const dimensions = theme.progressColors
+  const questionsPerDimension = Math.ceil(data.total_questions / dimensions.length)
 
-  // Calculate current dimension (5 questions per dimension)
-  const currentDimensionIndex = Math.floor((data.current_question - 1) / 5)
-  const questionInDimension = ((data.current_question - 1) % 5) + 1
-  const currentDimension = DIMENSIONS[currentDimensionIndex]
+  // Calculate current dimension
+  const currentDimensionIndex = Math.floor((data.current_question - 1) / questionsPerDimension)
+  const questionInDimension = ((data.current_question - 1) % questionsPerDimension) + 1
+  const currentDimension = dimensions[currentDimensionIndex]
 
   // Reset selection when question changes
   useEffect(() => {
@@ -88,6 +87,39 @@ export function AssessmentQuestionCard({
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [data.options, selectedOption, isSubmitting, handleOptionClick])
 
+  // Get theme-specific colors
+  const getSelectedBorderColor = () => {
+    switch (assessmentType) {
+      case 'attachment_style': return 'border-coral'
+      case 'love_language': return 'border-lavender'
+      default: return 'border-primary'
+    }
+  }
+
+  const getSelectedBgColor = () => {
+    switch (assessmentType) {
+      case 'attachment_style': return 'bg-coral/5'
+      case 'love_language': return 'bg-lavender/5'
+      default: return 'bg-primary/5'
+    }
+  }
+
+  const getSelectedLabelBg = () => {
+    switch (assessmentType) {
+      case 'attachment_style': return 'bg-coral text-white'
+      case 'love_language': return 'bg-lavender text-white'
+      default: return 'bg-primary text-primary-foreground'
+    }
+  }
+
+  const getRippleBg = () => {
+    switch (assessmentType) {
+      case 'attachment_style': return 'bg-coral/10'
+      case 'love_language': return 'bg-lavender/10'
+      default: return 'bg-primary/10'
+    }
+  }
+
   return (
     <div className={cn(
       'rounded-3xl border border-border bg-card p-5 shadow-sm',
@@ -116,17 +148,18 @@ export function AssessmentQuestionCard({
                 currentDimension?.color || 'bg-primary'
               )} />
               {currentDimension?.name || '测评'}
-              {' '}{questionInDimension}/5
+              {' '}{questionInDimension}/{questionsPerDimension}
             </span>
             <span>{data.current_question}/{data.total_questions}</span>
           </div>
           
           {/* Segmented Progress Bar */}
           <div className="flex gap-1" role="progressbar" aria-valuenow={data.progress} aria-valuemin={0} aria-valuemax={100}>
-            {DIMENSIONS.map((dim, idx) => {
-              const segmentStart = idx * 25
-              const segmentEnd = (idx + 1) * 25
-              const segmentProgress = Math.min(100, Math.max(0, (data.progress - segmentStart) / 25 * 100))
+            {dimensions.map((dim, idx) => {
+              const segmentSize = 100 / dimensions.length
+              const segmentStart = idx * segmentSize
+              const segmentEnd = (idx + 1) * segmentSize
+              const segmentProgress = Math.min(100, Math.max(0, (data.progress - segmentStart) / segmentSize * 100))
               const isActive = idx === currentDimensionIndex
               const isCompleted = data.progress >= segmentEnd
               
@@ -174,10 +207,13 @@ export function AssessmentQuestionCard({
               aria-label={`选项 ${option.label}: ${option.text}`}
               className={cn(
                 'relative flex items-start gap-3 w-full text-left rounded-2xl border p-4 transition-all duration-200',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
+                assessmentType === 'attachment_style' ? 'focus-visible:ring-coral' :
+                assessmentType === 'love_language' ? 'focus-visible:ring-lavender' : 
+                'focus-visible:ring-primary',
                 isSelected
-                  ? 'border-primary bg-primary/5 scale-[1.02]'
-                  : 'border-border bg-background hover:border-primary/30 hover:bg-secondary/30',
+                  ? cn(getSelectedBorderColor(), getSelectedBgColor(), 'scale-[1.02]')
+                  : 'border-border bg-background hover:border-border/80 hover:bg-secondary/30',
                 isDisabled && !isSelected && 'opacity-50 cursor-not-allowed',
                 !prefersReducedMotion && 'active:scale-[0.98]'
               )}
@@ -190,7 +226,7 @@ export function AssessmentQuestionCard({
                 className={cn(
                   'flex items-center justify-center w-7 h-7 rounded-full text-xs font-medium shrink-0 transition-all duration-200',
                   isSelected
-                    ? 'bg-primary text-primary-foreground'
+                    ? getSelectedLabelBg()
                     : 'bg-secondary text-secondary-foreground'
                 )}
               >
@@ -204,7 +240,7 @@ export function AssessmentQuestionCard({
 
               {/* Selection ripple effect */}
               {isSelected && !prefersReducedMotion && (
-                <span className="absolute inset-0 rounded-2xl bg-primary/10 animate-scale-in" />
+                <span className={cn('absolute inset-0 rounded-2xl animate-scale-in', getRippleBg())} />
               )}
             </button>
           )
