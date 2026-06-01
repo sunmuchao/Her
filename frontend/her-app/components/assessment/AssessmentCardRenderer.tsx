@@ -21,6 +21,7 @@ export function AssessmentCardRenderer({
   onContinue,
   onContinueChat,
   onPrevious,
+  onAddLabels,
 }: {
   card: AssessmentCard
   onStart: () => void
@@ -28,6 +29,7 @@ export function AssessmentCardRenderer({
   onContinue: () => void
   onContinueChat: () => void
   onPrevious?: () => void
+  onAddLabels?: (selectedLabels: string[]) => Promise<void>
 }) {
   switch (card.card_type) {
     case 'assessment_intro':
@@ -37,7 +39,7 @@ export function AssessmentCardRenderer({
     case 'assessment_feedback':
       return <AssessmentFeedbackCard data={(card as AssessmentFeedbackCardType).feedback_data} onContinue={onContinue} />
     case 'assessment_result':
-      return <AssessmentResultCard data={(card as AssessmentResultCardType).result_data} />
+      return <AssessmentResultCard data={(card as AssessmentResultCardType).result_data} onAddLabels={onAddLabels} />
     case 'assessment_interpretation':
       return (
         <div className="rounded-3xl border border-border bg-card p-5 shadow-sm">
