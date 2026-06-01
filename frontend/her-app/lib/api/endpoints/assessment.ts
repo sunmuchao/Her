@@ -41,6 +41,7 @@ export type AssessmentFeedbackCard = {
 
 export type AssessmentResultCard = {
   card_type: 'assessment_result'
+  assessment_type?: 'mbti_16' | 'attachment_style' | 'love_language'  // 添加 assessment_type 字段（供前端识别测评类型）
   assessment_id: string
   result_data: {
     type_code: string

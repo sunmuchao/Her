@@ -569,6 +569,7 @@ def answer_attachment_assessment(
                 conn.commit()
                 return {
                     "card_type": "assessment_result",
+                    "assessment_type": ASSESSMENT_TYPE_ATTACHMENT,  # 添加 assessment_type 字段，供前端识别测评类型
                     "assessment_id": assessment_id,
                     "result_data": result_data,
                 }

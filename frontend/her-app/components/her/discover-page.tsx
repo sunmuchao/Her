@@ -92,6 +92,7 @@ function DiscoveryTimelineEntry({
     return (
       <AssessmentCardRenderer
         card={item.card}
+        assessmentType={item.card?.assessment_type}  // 从卡片数据中提取测评类型，确保结果卡片能正确显示中文昵称
         onStart={() => {}}
         onAnswer={() => {}}
         onContinue={() => {}}
@@ -404,6 +405,7 @@ export default function DiscoverPage({
               <div className="w-full max-w-[92%]">
                 <AssessmentCardRenderer
                   card={assessmentCard}
+                  assessmentType={currentAssessmentType}  // 传递测评类型参数，确保结果卡片能正确显示中文昵称
                   onStart={async () => {
                     const next = await beginAssessment(assessmentId)
                     setAssessmentCard(next)
