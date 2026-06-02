@@ -483,10 +483,10 @@ def xiaoya_message_from_result(result: dict[str, Any]) -> str:
     has_support = "一个无条件支持你的人" in top3_titles
 
     message = "亲爱的，价值观拍卖会这题，真的很能看出一个人到底在筛什么。\n\n"
-    message += f"你这次整体更偏 =={value_type}==。\n"
-    message += f"**{type_info.get('description', '')}。**\n\n"
+    message += f"你这次整体更偏 **{value_type}**。\n"
+    message += f"{type_info.get('description', '')}。\n\n"
     if top3_titles:
-        message += f"你最愿意下重注的，是：__{'、'.join(top3_titles[:3])}__。\n"
+        message += f"你最愿意下重注的，是：{'、'.join(top3_titles[:3])}。\n"
     if top_hidden_labels:
         message += f"翻译成人话，就是你真正特别在意的是：{'、'.join(top_hidden_labels)}。\n\n"
     else:
@@ -545,23 +545,24 @@ def xiaoya_message_from_result(result: dict[str, Any]) -> str:
     else:
         if top_hidden_labels:
             insight = f"你真正筛人的标准，其实不是表面条件，而是这些更底层的东西：{'、'.join(top_hidden_labels)}。"
-            match = f"最适合你的人，通常会和你在 {type_info.get('love_style', '关系节奏')} 上比较同频。"
+            match = f"最适合你的人，通常在关系节奏和价值排序上会和你比较同频。"
             risk = type_info.get("caution", "如果价值排序差太多，再喜欢也容易越走越累。")
         else:
             insight = "你这次给出的信号比较综合，说明你挑人时不是只看一个点，而是会整体评估。"
             match = "最适合你的人，通常不是单项特别强，而是整体价值观跟你差得不远。"
             risk = "你最容易卡住的，是标准分散，最后连自己都说不清到底为什么不合适。"
 
-    message += "**核心驱动力：**\n"
-    message += f"{insight}\n\n"
-    message += "**匹配建议：**\n"
-    message += f"- {match}\n"
-    message += f"- 关系风格上，你大概率会更偏向：{type_info.get('love_style', '')}。\n"
-    message += f"- 现实建议：{type_info.get('match_suggestion', '').rstrip('。')}。\n\n"
-    message += "**相处建议：**\n"
-    message += "1. 你以后看人时，别只看对方说自己想要什么，要看TA愿不愿意为这些价值付出真实选择。\n"
-    message += "2. 真正长期合适的人，不一定和你拍同样的东西，但至少不能踩你最核心的底层价值。\n"
-    message += "3. 你现在最该确认的，不是“我喜欢什么人”，而是“我不能接受什么关系结构”。\n\n"
-    message += f"**风险提醒：**\n==高频风险点==：{risk.rstrip('。')}。\n\n"
+    if insight.startswith("你真正筛人的标准，其实不是表面条件，而是这些更底层的东西："):
+        message += f"{insight}\n\n"
+    else:
+        message += f"说白了，你真正在筛的不是表面条件，而是这个人能不能和你的底层价值观对上。\n{insight}\n\n"
+    message += f"说匹配的话，{match}\n"
+    message += f"你在关系里多半会更在意这件事：{type_info.get('love_style', '')}。\n"
+    message += f"现实一点说，{type_info.get('match_suggestion', '').rstrip('。')}。\n\n"
+    message += "我给你三条最有用的提醒：\n"
+    message += "1. 看人别只听TA嘴上怎么说，要看TA会不会真的为这些价值做选择。\n"
+    message += "2. 长期合适的人，不一定和你一模一样，但至少不能踩你最核心的底线。\n"
+    message += "3. 你现在最该想清楚的，不是“我喜欢什么人”，而是“我绝对不要什么关系”。\n\n"
+    message += f"你最容易踩的坑是：{risk.rstrip('。')}。\n\n"
     message += "你要是愿意，我下一条可以继续帮你拆：你最适合找什么样的伴侣价值观，以及你最该避开的关系模式。"
     return message

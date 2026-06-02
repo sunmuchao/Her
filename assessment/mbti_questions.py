@@ -1523,29 +1523,29 @@ def xiaoya_message_from_result(result: dict[str, Any]) -> str:
     relationship_advice = _build_professional_relationship_advice(scores)
     nickname = str(type_info.get("nickname") or type_code)
 
-    message = "亲爱的，结果出来了，我先直接跟你说重点。\n\n"
-    message += f"你这次测出来是 =={type_code}（{nickname}）==。\n"
-    message += f"你在关系里的强项很明显：**{love_manual['strengths'][0]}**。\n"
-    message += f"但你也有一个很容易反复出现的点：__{love_manual['weaknesses'][0]}__。\n\n"
+    message = "亲爱的，结果出来了，我先直接说重点。\n\n"
+    message += f"你这次测出来是 **{type_code}（{nickname}）**。\n"
+    message += f"你的优势很明显：{love_manual['strengths'][0]}。\n"
+    message += f"但你也有个很容易反复出现的点：{love_manual['weaknesses'][0]}。\n\n"
 
-    message += "**关系画像：**\n"
-    for item in dimension_summary:
+    message += "简单说，你在关系里大概是这样的人：\n"
+    for item in dimension_summary[:3]:
         message += f"- {item}\n"
     message += "\n"
 
-    message += "**匹配建议：**\n"
-    message += f"- 高匹配人格：{'、'.join(compatibility['best']) or '能理解你节奏的人'}\n"
+    message += f"说匹配的话，最适合优先了解的是 {'、'.join(compatibility['best']) or '能理解你节奏的人'}"
     if compatibility["good"]:
-        message += f"- 次高匹配人格：{'、'.join(compatibility['good'])}\n"
+        message += f"，其次是 {'、'.join(compatibility['good'])}"
+    message += "。\n"
     if compatibility["caution"]:
-        message += f"- 需要重点磨合的人格：{'、'.join(compatibility['caution'])}\n"
+        message += f"要更会沟通的类型是 {'、'.join(compatibility['caution'])}。\n"
     if best_match_hint:
-        message += f"- 为什么适合：{best_match_hint}\n"
+        message += f"为什么适合？因为 {best_match_hint}。\n"
     if caution_match_hint:
-        message += f"- 为什么容易卡住：{caution_match_hint}\n"
+        message += f"为什么容易卡住？因为 {caution_match_hint}。\n"
     message += "\n"
 
-    message += "**相处建议：**\n"
+    message += "我给你三条最有用的提醒：\n"
     for index, item in enumerate(relationship_advice, start=1):
         message += f"{index}. {_to_xiaoya_advice(item).rstrip('。')}。\n"
     if best_match_note:
@@ -1555,9 +1555,9 @@ def xiaoya_message_from_result(result: dict[str, Any]) -> str:
     message += "\n"
 
     if caution_match_note:
-        message += f"**风险提醒：**\n==高频风险点==：遇到不太同频的人时，{caution_match_note.rstrip('。')}。\n\n"
+        message += f"你最容易踩的坑是：遇到不太同频的人时，{caution_match_note.rstrip('。')}。\n\n"
     elif red_flags:
-        message += f"**风险提醒：**\n==高频风险点==：{red_flags[0].rstrip('。')}。\n\n"
+        message += f"你最容易踩的坑是：{red_flags[0].rstrip('。')}。\n\n"
 
     message += "你要是愿意，我下一条可以继续帮你拆得更细：比如你最适合谈哪两种人格、为什么适合你、还有你在关系里最容易反复踩的坑。"
 
