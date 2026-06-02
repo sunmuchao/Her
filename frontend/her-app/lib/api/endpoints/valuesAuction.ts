@@ -2,20 +2,50 @@
  * 价值观拍卖会 API 类型定义
  *
  * 包含卡片类型定义和 API 调用函数
+ *
+ * v3.0 游戏化改进版：
+ * - 从 20 个精简到 9 个拍品（少即是多）
+ * - 添加主题色、图标、解读、冲突提示（游戏卡牌感）
+ * - 支持逐个展示模式（真实拍卖会体验）
  */
 
 import { gatewayJson } from '@/lib/api/client'
 
 // ============================================================
-// 特质定义
+// 维度定义
 // ============================================================
 
-export type ValuesTrait = {
-  trait_id: string
-  trait_name: string
-  trait_name_en: string
-  description: string
-  detail?: string
+export type AuctionDimension = 'material_achievement' | 'emotion_connection' | 'self_growth' | 'altruism_devotion'
+
+export const DIMENSION_LABELS: Record<AuctionDimension, string> = {
+  material_achievement: '物质与成就',
+  emotion_connection: '情感与连接',
+  self_growth: '自我与成长',
+  altruism_devotion: '利他与奉献',
+}
+
+// ============================================================
+// 拍品定义（v3.0 游戏化改进版）
+// ============================================================
+
+export type ValuesLot = {
+  lot_id: string
+  title: string                  // 精简文案：一句话，不超过10字
+  dimension: AuctionDimension
+  hidden_values?: Array<{
+    key: string
+    weight: number
+  }>
+  // v3.0 新增字段（游戏卡牌感）
+  theme_color?: string           // 主题色（如 "#F59E0B" 金色）
+  icon?: string                  // 图标（如 "💰"）
+  interpretation?: string        // 一句解读（帮助用户理解）
+  conflict_hint?: string         // 冲突提示（帮助理解取舍）
+}
+
+export type HiddenValue = {
+  key: string
+  weight: number
 }
 
 // ============================================================
@@ -30,19 +60,22 @@ export type ValuesAuctionIntroCard = {
     title: string
     description: string
     total_chips: number
-    trait_count: number
+    lot_count: number
+    dimensions?: Record<string, string>
     duration: string
     reward: string
   }
 }
 
-/** 特质列表卡片 */
-export type ValuesAuctionTraitsCard = {
-  card_type: 'values_auction_traits'
+/** 拍品列表卡片 */
+export type ValuesAuctionLotsCard = {
+  card_type: 'values_auction_lots'
   assessment_id: string
   session_id?: string  // 双人模式时有
-  traits_data: {
-    traits: ValuesTrait[]
+  lots_data: {
+    lots: ValuesLot[]
+    lots_by_dimension?: Record<string, ValuesLot[]>
+    dimensions?: Record<string, string>
     total_chips: number
     min_bid: number
     max_bid: number
@@ -51,7 +84,7 @@ export type ValuesAuctionTraitsCard = {
     user_has_done: boolean
     last_result: {
       value_type: string
-      top3: Array<{ trait_id: string; trait_name: string; chips: number }>
+      top3: Array<{ lot_id: string; title: string; chips: number }>
     } | null
     partner_key: string
   }
@@ -64,17 +97,19 @@ export type ValuesAuctionResultCard = {
   assessment_id: string
   result_data: {
     bids: Array<{
-      trait_id: string
-      trait_name: string
+      lot_id: string
+      title: string
       chips: number
       rank: number
       percentage: number
     }>
+    hidden_values?: Record<string, number>
+    top_hidden_values?: HiddenValue[]
     value_type: string
     value_labels: string[]
     top3: Array<{
-      trait_id: string
-      trait_name: string
+      lot_id: string
+      title: string
       chips: number
       interpretation: string
     }>
@@ -89,14 +124,15 @@ export type ValuesAuctionInterpretationCard = {
   assessment_id: string
   interpretation_data: {
     summary: string
-    love_style: string
-    match_suggestions: string[]
-    caution_traits?: string[]
     top3_analysis?: Array<{
-      trait_name: string
+      title: string
       chips: number
       interpretation: string
     }>
+    hidden_values_analysis?: HiddenValue[]
+    love_style: string
+    match_suggestions: string[]
+    caution_traits?: string[]
   }
 }
 
@@ -108,7 +144,7 @@ export type ValuesAuctionWaitingCard = {
     message: string
     your_result: {
       value_type: string
-      top3: Array<{ trait_name: string; chips: number }>
+      top3: Array<{ title: string; chips: number }>
     }
     partner_status: string
   }
@@ -123,21 +159,33 @@ export type ValuesMatchAnalysisCard = {
     user1: {
       user_key: string
       value_type: string
-      top3: Array<{ trait_id: string; trait_name: string; chips: number }>
+      hidden_values?: Record<string, number>
+      top3: Array<{ lot_id: string; title: string; chips: number }>
     }
     user2: {
       user_key: string
       value_type: string
-      top3: Array<{ trait_id: string; trait_name: string; chips: number }>
+      hidden_values?: Record<string, number>
+      top3: Array<{ lot_id: string; title: string; chips: number }>
     }
     match_type: string
-    top3_common: string[]
+    common_lots?: string[]
+    common_hidden_values?: Array<{
+      key: string
+      a_weight: number
+      b_weight: number
+    }>
+    misalignments?: Array<{
+      type: string
+      lot_id: string
+      description: string
+    }>
     conflicts: Array<{
       type: string
+      lot_id?: string
       description: string
       suggestion: string
     }>
-    ai_interpretation: string
   }
 }
 
@@ -146,7 +194,7 @@ export type ValuesAuctionHistoryCard = {
   card_type: 'values_auction_history'
   result_data: {
     value_type: string
-    top3: Array<{ trait_id: string; trait_name: string; chips: number; interpretation?: string }>
+    top3: Array<{ lot_id: string; title: string; chips: number; interpretation?: string }>
     assessed_at: string
   } | null
 }
@@ -162,7 +210,7 @@ export type ValuesAuctionErrorCard = {
 /** 所有价值观拍卖卡片类型 */
 export type ValuesAuctionCard =
   | ValuesAuctionIntroCard
-  | ValuesAuctionTraitsCard
+  | ValuesAuctionLotsCard
   | ValuesAuctionResultCard
   | ValuesAuctionInterpretationCard
   | ValuesAuctionWaitingCard
@@ -188,12 +236,12 @@ export async function startValuesAuction(
 }
 
 /**
- * 获取特质列表
+ * 获取拍品列表
  */
-export async function getValuesAuctionTraits(
+export async function getValuesAuctionLots(
   assessmentId: string
-): Promise<ValuesAuctionTraitsCard> {
-  return gatewayJson<ValuesAuctionTraitsCard>('/v1/values-auction/traits', {
+): Promise<ValuesAuctionLotsCard> {
+  return gatewayJson<ValuesAuctionLotsCard>('/v1/values-auction/lots', {
     method: 'POST',
     includeAuth: true,
     body: JSON.stringify({ assessment_id: assessmentId }),
@@ -206,7 +254,7 @@ export async function getValuesAuctionTraits(
 export async function submitValuesAuctionBids(params: {
   assessmentId: string
   userKey: string
-  bids: Array<{ trait_id: string; chips: number }>
+  bids: Array<{ lot_id: string; chips: number }>
 }): Promise<ValuesAuctionResultCard> {
   return gatewayJson<ValuesAuctionResultCard>('/v1/values-auction/submit', {
     method: 'POST',
@@ -258,8 +306,8 @@ export async function getValuesAuctionHistory(
 export async function startValuesAuctionTogether(params: {
   userKey: string
   partnerKey: string
-}): Promise<ValuesAuctionTraitsCard> {
-  return gatewayJson<ValuesAuctionTraitsCard>('/v1/values-auction/start-together', {
+}): Promise<ValuesAuctionLotsCard> {
+  return gatewayJson<ValuesAuctionLotsCard>('/v1/values-auction/start-together', {
     method: 'POST',
     includeAuth: true,
     body: JSON.stringify({
@@ -275,7 +323,7 @@ export async function startValuesAuctionTogether(params: {
 export async function submitValuesAuctionBidsTogether(params: {
   sessionId: string
   userKey: string
-  bids: Array<{ trait_id: string; chips: number }>
+  bids: Array<{ lot_id: string; chips: number }>
 }): Promise<ValuesAuctionWaitingCard | ValuesMatchAnalysisCard> {
   return gatewayJson<ValuesAuctionWaitingCard | ValuesMatchAnalysisCard>('/v1/values-auction/submit-together', {
     method: 'POST',
@@ -344,8 +392,33 @@ export function isValidBidDistribution(bids: Record<string, number>, maxTotal: n
 /**
  * 将 bids 对象转换为数组格式
  */
-export function bidsToArray(bids: Record<string, number>): Array<{ trait_id: string; chips: number }> {
+export function bidsToArray(bids: Record<string, number>): Array<{ lot_id: string; chips: number }> {
   return Object.entries(bids)
-    .map(([trait_id, chips]) => ({ trait_id, chips }))
+    .map(([lot_id, chips]) => ({ lot_id, chips }))
     .filter(b => b.chips > 0)  // 只保留有筹码的
+}
+
+// ============================================================
+// 隐藏价值名称映射
+// ============================================================
+
+export const HIDDEN_VALUE_LABELS: Record<string, string> = {
+  wealth: '财富',
+  status: '地位',
+  power: '权力',
+  freedom: '自由',
+  security: '安全感',
+  love: '爱情',
+  loyalty: '忠诚',
+  family: '家庭',
+  friendship: '友情',
+  companionship: '陪伴',
+  recognition: '认可',
+  self_actualization: '自我实现',
+  wisdom: '智慧',
+  inner_peace: '内心平静',
+  independence: '独立',
+  altruism: '利他',
+  social_responsibility: '社会责任',
+  meaning: '意义',
 }

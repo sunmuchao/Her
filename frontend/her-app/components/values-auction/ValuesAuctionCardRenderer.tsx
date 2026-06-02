@@ -2,6 +2,10 @@
  * 价值观拍卖会卡片渲染器
  *
  * 根据 card_type 分发到对应的卡片组件。
+ *
+ * v2.0 更新：
+ * - 使用 lot_id 而非 trait_id
+ * - 支持 values_auction_lots 卡片类型
  */
 
 import React from 'react'
@@ -18,7 +22,7 @@ type Props = {
   card: ValuesAuctionCard
   userKey?: string
   onStart?: () => void
-  onSubmitBids?: (bids: Array<{ trait_id: string; chips: number }>) => void
+  onSubmitBids?: (bids: Array<{ lot_id: string; chips: number }>) => void
   onViewInterpretation?: () => void
   onShare?: () => void
   onContinue?: () => void
@@ -40,13 +44,23 @@ export function ValuesAuctionCardRenderer({
     return <ValuesAuctionIntroCardComponent card={card} onStart={onStart || (() => {})} />
   }
 
-  if (isTraitsCard(card)) {
+  if (isLotsCard(card)) {
     // 双人模式
     if (card.is_dual_mode && userKey) {
       return <DualValuesAuctionCard card={card} userKey={userKey} onComplete={onContinue} />
     }
     // 单人模式
     return <ValuesAuctionBiddingCard card={card} onSubmit={onSubmitBids || (() => {})} />
+  }
+
+  // 兼容旧的 traits 卡片类型
+  if (isTraitsCard(card)) {
+    // 双人模式
+    if (card.is_dual_mode && userKey) {
+      return <DualValuesAuctionCard card={card} userKey={userKey} onComplete={onContinue} />
+    }
+    // 单人模式
+    return <ValuesAuctionBiddingCard card={card as any} onSubmit={onSubmitBids || (() => {})} />
   }
 
   if (isResultCard(card)) {
@@ -112,6 +126,11 @@ function isIntroCard(card: ValuesAuctionCard): card is ValuesAuctionCard & { car
   return card.card_type === 'values_auction_intro'
 }
 
+function isLotsCard(card: ValuesAuctionCard): card is ValuesAuctionCard & { card_type: 'values_auction_lots' } {
+  return card.card_type === 'values_auction_lots'
+}
+
+// 兼容旧的 traits 卡片类型
 function isTraitsCard(card: ValuesAuctionCard): card is ValuesAuctionCard & { card_type: 'values_auction_traits' } {
   return card.card_type === 'values_auction_traits'
 }
@@ -149,4 +168,4 @@ export {
   ValuesMatchAnalysisCardComponent,
   ValuesAuctionChoiceCard,
   DualValuesAuctionCard,
-}
+} from './index'
