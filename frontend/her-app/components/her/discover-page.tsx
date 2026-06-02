@@ -627,57 +627,72 @@ export default function DiscoverPage({
             )
           })()}
 
-          {valuesAuctionCard ? (
-            <div className="flex justify-start">
-              <div className="w-full max-w-[92%]">
-                <ValuesAuctionCardRenderer
-                  card={valuesAuctionCard}
-                  userKey={userKey}
-                  onStart={async () => {
-                    if (!('assessment_id' in valuesAuctionCard)) return
-                    const next = await getValuesAuctionLots(valuesAuctionCard.assessment_id)
-                    setValuesAuctionCard(next)
-                  }}
-                  onSubmitBids={async (bids) => {
-                    if (!('assessment_id' in valuesAuctionCard)) return
-                    const next = await submitValuesAuctionBids({
-                      assessmentId: valuesAuctionCard.assessment_id,
-                      userKey,
-                      bids,
-                    })
-                    setValuesAuctionCard(next)
+          {(() => {
+            if (!valuesAuctionCard) return null
 
-                    // 如果结果卡片包含小雅消息，自动添加到对话流
-                    // 这样小雅的回复会显示在结果卡片下方
-                    if (next.xiaoya_message && sessionId) {
-                      try {
-                        await addXiaoyaMessageToDiscovery({
-                          userKey,
-                          sessionId,
-                          message: next.xiaoya_message,
-                          resultData: next,  // 传递整个结果卡片，包含 card_type
-                          assessmentType: 'values_auction',  // 新增：指定测评类型
-                        })
-                        await reloadSession()
-                      } catch (discoveryError) {
-                        console.warn('[onSubmitBids] 添加到discovery失败:', discoveryError)
-                        // 失败不影响结果展示
+            const shouldHideStateResult =
+              valuesAuctionCard.card_type === 'values_auction_result' &&
+              timelineItems.some(
+                (item) =>
+                  item.kind === 'assessment_result' &&
+                  item.card?.card_type === 'values_auction_result' &&
+                  item.card?.assessment_id === valuesAuctionCard.assessment_id,
+              )
+
+            if (shouldHideStateResult) return null
+
+            return (
+              <div className="flex justify-start">
+                <div className="w-full max-w-[92%]">
+                  <ValuesAuctionCardRenderer
+                    card={valuesAuctionCard}
+                    userKey={userKey}
+                    onStart={async () => {
+                      if (!('assessment_id' in valuesAuctionCard)) return
+                      const next = await getValuesAuctionLots(valuesAuctionCard.assessment_id)
+                      setValuesAuctionCard(next)
+                    }}
+                    onSubmitBids={async (bids) => {
+                      if (!('assessment_id' in valuesAuctionCard)) return
+                      const next = await submitValuesAuctionBids({
+                        assessmentId: valuesAuctionCard.assessment_id,
+                        userKey,
+                        bids,
+                      })
+                      setValuesAuctionCard(next)
+
+                      // 如果结果卡片包含小雅消息，自动添加到对话流
+                      // 这样小雅的回复会显示在结果卡片下方
+                      if (next.xiaoya_message && sessionId) {
+                        try {
+                          await addXiaoyaMessageToDiscovery({
+                            userKey,
+                            sessionId,
+                            message: next.xiaoya_message,
+                            resultData: next,  // 传递整个结果卡片，包含 card_type
+                            assessmentType: 'values_auction',  // 新增：指定测评类型
+                          })
+                          await reloadSession()
+                        } catch (discoveryError) {
+                          console.warn('[onSubmitBids] 添加到discovery失败:', discoveryError)
+                          // 失败不影响结果展示
+                        }
                       }
-                    }
-                  }}
-                  onViewInterpretation={async () => {
-                    if (!('assessment_id' in valuesAuctionCard)) return
-                    const next = await getValuesAuctionInterpretation({
-                      assessmentId: valuesAuctionCard.assessment_id,
-                      userKey,
-                    })
-                    setValuesAuctionCard(next)
-                  }}
-                  onContinue={clearValuesAuctionCard}
-                />
+                    }}
+                    onViewInterpretation={async () => {
+                      if (!('assessment_id' in valuesAuctionCard)) return
+                      const next = await getValuesAuctionInterpretation({
+                        assessmentId: valuesAuctionCard.assessment_id,
+                        userKey,
+                      })
+                      setValuesAuctionCard(next)
+                    }}
+                    onContinue={clearValuesAuctionCard}
+                  />
+                </div>
               </div>
-            </div>
-          ) : null}
+            )
+          })()}
 
           {isTyping ? <TypingIndicator name="小雅" /> : null}
 
