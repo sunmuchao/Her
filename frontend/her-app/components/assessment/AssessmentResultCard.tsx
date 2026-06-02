@@ -303,6 +303,33 @@ function getTypeNickname(typeCode?: string, assessmentType?: AssessmentType): st
   return TYPE_NICKNAMES[typeCode.trim()] || ''
 }
 
+function resolveDisplayType(typeCode?: string, assessmentType?: AssessmentType): string {
+  const rawTypeCode = typeCode?.trim()
+  const normalizedTypeCode = normalizeTypeCode(typeCode)
+
+  if (assessmentType === 'attachment_style') {
+    return ATTACHMENT_NICKNAMES[normalizedTypeCode || ''] || rawTypeCode || '--'
+  }
+
+  if (assessmentType === 'love_language') {
+    return LOVE_LANGUAGE_NICKNAMES[normalizedTypeCode || ''] || rawTypeCode || '--'
+  }
+
+  if (rawTypeCode && TYPE_NICKNAMES[rawTypeCode]) {
+    return rawTypeCode
+  }
+
+  if (normalizedTypeCode && ATTACHMENT_NICKNAMES[normalizedTypeCode]) {
+    return ATTACHMENT_NICKNAMES[normalizedTypeCode]
+  }
+
+  if (normalizedTypeCode && LOVE_LANGUAGE_NICKNAMES[normalizedTypeCode]) {
+    return LOVE_LANGUAGE_NICKNAMES[normalizedTypeCode]
+  }
+
+  return rawTypeCode || '--'
+}
+
 export function AssessmentResultCard({
   data,
   onAddLabels,
@@ -333,12 +360,8 @@ export function AssessmentResultCard({
     }
   }, [])
 
-  // 对于恋爱语言测评，优先显示中文昵称而不是英文 type_code
   const typeNickname = getTypeNickname(data.type_code, assessmentType)
-  const rawTypeCode = data.type_code?.trim()
-  const safeTypeCode = assessmentType === 'love_language'
-    ? (typeNickname || rawTypeCode || '--')
-    : (rawTypeCode || '--')
+  const safeTypeCode = resolveDisplayType(data.type_code, assessmentType)
 
   // Theme-based colors
   const extremeTagBg = assessmentType === 'attachment_style' 
