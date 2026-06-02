@@ -1,9 +1,11 @@
 'use client'
 
+import { useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { Heart, Clock, Sparkles, ArrowRight, Brain, Link2, MessageCircleHeart } from 'lucide-react'
+import { Heart, Clock, Sparkles, ArrowRight, Brain, Link2, MessageCircleHeart, Play } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { type AssessmentType, getAssessmentTheme } from './assessment-themes'
+import { RingBurst, useHapticFeedback } from './immersive-effects'
 
 interface IntroData {
   title: string
@@ -49,16 +51,40 @@ export function AssessmentIntroCard({
   answeredCount?: number
   assessmentType?: AssessmentType
 }) {
+  const [isStarting, setIsStarting] = useState(false)
+  const [showBurst, setShowBurst] = useState(false)
+  const haptic = useHapticFeedback()
+  
   const theme = getAssessmentTheme(assessmentType)
   const totalQuestions = data.totalQuestions || theme.questionCount
   const progressPercent = totalQuestions > 0 ? (answeredCount / totalQuestions) * 100 : 0
   
+  const handleStart = () => {
+    setIsStarting(true)
+    setShowBurst(true)
+    haptic('success')
+    
+    // Delay to show the burst animation
+    setTimeout(() => {
+      onStart()
+    }, 400)
+  }
+  
+  const themeColor = assessmentType === 'attachment_style' ? 'var(--coral)' :
+                     assessmentType === 'love_language' ? 'var(--lavender)' : 'var(--primary)'
+  
   return (
-    <div className="rounded-3xl border border-border bg-card p-6 shadow-sm animate-scale-in">
+    <div className={cn(
+      'rounded-3xl border border-border bg-card p-6 shadow-sm',
+      isStarting ? 'animate-card-flip-out' : 'animate-scale-in'
+    )}>
       {/* Animated Icon with Radar Effect - Theme Specific */}
       <div className="relative flex justify-center mb-5">
         <div className="relative will-change-transform">
-          {/* Single optimized pulse ring */}
+          {/* Ring burst on start */}
+          <RingBurst trigger={showBurst} color={themeColor} rings={3} />
+          
+          {/* Pulse rings */}
           <div 
             className={cn(
               'absolute inset-0 rounded-full animate-ping-slow will-change-transform',
@@ -69,9 +95,10 @@ export function AssessmentIntroCard({
           
           {/* Main icon container - theme gradient */}
           <div className={cn(
-            'relative flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-br',
+            'relative flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-br transition-transform duration-300',
             theme.gradientFrom,
-            theme.gradientTo
+            theme.gradientTo,
+            isStarting && 'scale-110'
           )}>
             <ThemeIcon 
               iconType={theme.iconType} 
@@ -155,18 +182,36 @@ export function AssessmentIntroCard({
         </div>
       </div>
 
-      {/* Start Button - Theme Colored */}
+      {/* Start Button - Theme Colored with enhanced interaction */}
       <Button
         className={cn(
-          'mt-5 w-full h-12 rounded-xl text-base font-medium group touch-target',
-          'transition-all duration-200 active:scale-[0.98]',
+          'mt-5 w-full h-14 rounded-xl text-base font-semibold group touch-target relative overflow-hidden',
+          'transition-all duration-300 active:scale-[0.97]',
           assessmentType === 'attachment_style' ? 'bg-coral hover:bg-coral/90 text-white' :
-          assessmentType === 'love_language' ? 'bg-lavender hover:bg-lavender/90 text-white' : ''
+          assessmentType === 'love_language' ? 'bg-lavender hover:bg-lavender/90 text-white' : '',
+          isStarting && 'scale-105'
         )}
-        onClick={onStart}
+        onClick={handleStart}
+        disabled={isStarting}
       >
-        <span>{isResumed ? '继续测评' : '开始测试'}</span>
-        <ArrowRight className="w-4 h-4 ml-1 transition-transform group-hover:translate-x-1" />
+        {/* Shimmer effect */}
+        <span className="absolute inset-0 overflow-hidden">
+          <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/20 to-transparent group-hover:animate-shimmer-sweep" />
+        </span>
+        
+        <span className="relative flex items-center justify-center gap-2">
+          {isStarting ? (
+            <>
+              <Play className="w-5 h-5 animate-pulse" fill="currentColor" />
+              <span>{"准备中..."}</span>
+            </>
+          ) : (
+            <>
+              <span>{isResumed ? '继续测评' : '开始探索'}</span>
+              <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
+            </>
+          )}
+        </span>
       </Button>
     </div>
   )
