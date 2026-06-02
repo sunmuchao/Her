@@ -794,23 +794,23 @@ def xiaoya_message_from_result(result: dict[str, Any]) -> str:
         risk = "你最容易误会的点，是对方没那么黏，你就会下意识觉得关系降温了。"
 
     message = "亲爱的，恋爱语言这题我也给你翻译一下。\n\n"
-    message += f"你最主要的恋爱语言是 **{LOVE_LANGUAGE_NAMES[primary_language]}（{primary_info.get('nickname', '')}）**。\n"
-    message += f"{pattern}\n\n"
-    message += "**如果放进关系里看，你最容易被这些信号打动：**\n"
+    message += f"你最主要的恋爱语言是 =={LOVE_LANGUAGE_NAMES[primary_language]}（{primary_info.get('nickname', '')}）==。\n"
+    message += f"**{pattern}**\n\n"
+    message += "**高敏感信号：**\n"
     for item in top3:
         message += f"- {item['language_name']}：{item['score']:.0f} 分，这基本就是你最容易感受到爱的通道\n"
     message += "\n"
-    message += "**相对没那么打动你的信号：**\n"
+    message += "**低敏感信号：**\n"
     for item in bottom2:
         message += f"- {item['language_name']}：{item['score']:.0f} 分，如果对方只会这一套，你可能会觉得“也还好”\n"
     message += "\n"
-    message += "**说匹配，我会这样建议你：**\n"
+    message += "**匹配建议：**\n"
     message += f"- {match}\n"
     suggestion = str(love_manual.get("match_suggestion") or "")
     if suggestion:
         message += f"- 现实一点说：{suggestion.rstrip('。')}。\n"
     message += "\n"
-    message += "**我给你的实战建议：**\n"
+    message += "**相处建议：**\n"
     if primary_language == "words_of_affirmation":
         advice = [
             "别只等对方来夸你，你也可以直接告诉对方，什么样的回应会让你感觉被爱。",
@@ -844,7 +844,7 @@ def xiaoya_message_from_result(result: dict[str, Any]) -> str:
     for index, item in enumerate(advice, start=1):
         message += f"{index}. {item}\n"
     message += "\n"
-    message += f"**我再提醒你一个高频风险点：**\n{risk}\n\n"
+    message += f"**风险提醒：**\n==高频风险点==：{risk}\n\n"
     message += "你要是愿意，我下一条可以继续帮你拆：你最适合和哪种恋爱语言的人谈，最容易鸡同鸭讲的又是哪种。"
     return message
 
