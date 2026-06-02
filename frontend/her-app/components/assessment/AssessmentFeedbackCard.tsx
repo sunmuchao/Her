@@ -1,7 +1,8 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
-import { ArrowRight, Lightbulb } from 'lucide-react'
+import { ArrowRight, Lightbulb, ChevronDown, ChevronUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { type AssessmentType } from './assessment-themes'
 
@@ -96,19 +97,47 @@ function CircularProgress({
   score, 
   size = 100, 
   strokeWidth = 8,
-  colorClass = 'text-primary'
+  colorClass = 'text-primary',
+  animate = true
 }: { 
   score: number
   size?: number
   strokeWidth?: number
   colorClass?: string
+  animate?: boolean
 }) {
+  const [displayedScore, setDisplayedScore] = useState(animate ? 0 : score)
   const radius = (size - strokeWidth) / 2
   const circumference = radius * 2 * Math.PI
-  const offset = circumference - (score / 100) * circumference
+  const offset = circumference - (displayedScore / 100) * circumference
+  
+  // Animate the score counting up
+  useEffect(() => {
+    if (!animate) {
+      setDisplayedScore(score)
+      return
+    }
+    
+    const duration = 1000 // 1 second
+    const steps = 60
+    const increment = score / steps
+    let current = 0
+    
+    const timer = setInterval(() => {
+      current += increment
+      if (current >= score) {
+        setDisplayedScore(score)
+        clearInterval(timer)
+      } else {
+        setDisplayedScore(current)
+      }
+    }, duration / steps)
+    
+    return () => clearInterval(timer)
+  }, [score, animate])
   
   return (
-    <div className="relative" style={{ width: size, height: size }}>
+    <div className="relative will-change-transform" style={{ width: size, height: size }}>
       {/* Background circle */}
       <svg className="transform -rotate-90" width={size} height={size}>
         <circle
@@ -122,7 +151,7 @@ function CircularProgress({
         />
         {/* Progress circle */}
         <circle
-          className={cn('transition-all duration-1000 ease-out', colorClass)}
+          className={cn('transition-all duration-300 ease-out', colorClass)}
           strokeWidth={strokeWidth}
           strokeDasharray={circumference}
           strokeDashoffset={offset}
@@ -132,14 +161,11 @@ function CircularProgress({
           r={radius}
           cx={size / 2}
           cy={size / 2}
-          style={{
-            '--progress-offset': offset,
-          } as React.CSSProperties}
         />
       </svg>
       {/* Center content */}
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-2xl font-semibold">{score.toFixed(0)}</span>
+        <span className="text-2xl font-semibold tabular-nums">{displayedScore.toFixed(0)}</span>
         <span className="text-xs text-muted-foreground">{"分"}</span>
       </div>
     </div>
@@ -172,6 +198,7 @@ export function AssessmentFeedbackCard({
   onContinue: () => void
   assessmentType?: AssessmentType
 }) {
+  const [isTextExpanded, setIsTextExpanded] = useState(false)
   const safeScore = typeof data.score === 'number' ? data.score : 0
   const fallbackLabel = getDimensionLabel(data, assessmentType)
   const fallbackIcon = (fallbackLabel || '--').slice(0, 2).toUpperCase()
@@ -193,6 +220,11 @@ export function AssessmentFeedbackCard({
     : assessmentType === 'love_language' 
       ? 'bg-lavender hover:bg-lavender/90 text-white' 
       : ''
+  
+  // Check if feedback text is long (more than ~100 chars)
+  const feedbackText = data.feedback_text || '结果已生成，继续查看下一维度。'
+  const isLongText = feedbackText.length > 100
+  const shouldTruncate = isLongText && !isTextExpanded
 
   return (
     <div className="rounded-3xl border border-border bg-card p-6 shadow-sm animate-scale-in">
@@ -233,20 +265,46 @@ export function AssessmentFeedbackCard({
         />
       </div>
 
-      {/* Feedback Text */}
+      {/* Feedback Text with expandable support */}
       <div className={cn(
         'rounded-2xl p-4',
         assessmentType === 'attachment_style' ? 'bg-coral-soft/40' : 
         assessmentType === 'love_language' ? 'bg-lavender-soft/40' : 'bg-secondary/40'
       )}>
-        <p className="text-sm leading-relaxed text-muted-foreground">
-          {data.feedback_text || '结果已生成，继续查看下一维度。'}
+        <p className={cn(
+          'text-sm leading-relaxed text-muted-foreground transition-all duration-300',
+          shouldTruncate && 'line-clamp-3'
+        )}>
+          {feedbackText}
         </p>
+        {isLongText && (
+          <button
+            onClick={() => setIsTextExpanded(!isTextExpanded)}
+            className={cn(
+              'mt-2 flex items-center gap-1 text-xs font-medium transition-colors touch-target',
+              assessmentType === 'attachment_style' ? 'text-coral hover:text-coral/80' : 
+              assessmentType === 'love_language' ? 'text-lavender hover:text-lavender/80' : 
+              'text-primary hover:text-primary/80'
+            )}
+          >
+            {isTextExpanded ? (
+              <>
+                <ChevronUp className="w-3.5 h-3.5" />
+                {"收起"}
+              </>
+            ) : (
+              <>
+                <ChevronDown className="w-3.5 h-3.5" />
+                {"展开全部"}
+              </>
+            )}
+          </button>
+        )}
       </div>
 
       {/* Continue Button */}
       <Button
-        className={cn('mt-5 w-full h-12 rounded-xl text-base font-medium group', buttonClass)}
+        className={cn('mt-5 w-full h-12 rounded-xl text-base font-medium group touch-target active:scale-[0.98] transition-all', buttonClass)}
         onClick={onContinue}
       >
         <span>{"继续探索下一维度"}</span>
