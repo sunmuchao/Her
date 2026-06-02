@@ -763,32 +763,45 @@ def xiaoya_message_from_result(result: dict[str, Any]) -> str:
     if not advice:
         advice.append("你这类模式最需要练的，不是猜，而是把需求、边界和不安直接说清楚。")
 
-    message = "亲爱的，依恋风格这题我帮你翻译成人话了。\n\n"
+    message = "亲爱的，依恋风格这题我给你讲得直白一点。\n\n"
     message += f"你这次更偏 **{type_info.get('nickname', type_code)}**。\n"
     message += f"{pattern}\n\n"
-    message += f"简单看分数，你的安全底盘是 {secure_score:.0f} 分，焦虑感 {anxious_score:.0f} 分，回避感 {avoidant_score:.0f} 分，拉扯感 {fearful_score:.0f} 分。\n"
-    message += "翻译一下就是："
-    if anxious_score >= 60:
-        message += "你会比较怕失去回应"
+    message += "如果把你放进一段关系里，大概就是这种感觉："
+    if secure_score >= 75:
+        message += "你整体挺稳的，不太会因为一点风吹草动就失控。"
+    elif anxious_score >= 60:
+        message += "你其实很容易因为对方的回应速度而不安。"
     elif avoidant_score >= 60:
-        message += "你有压力时会先往后退"
+        message += "你一感觉到压力，就会先想往后退一点。"
     elif fearful_score >= 60:
-        message += "你很容易一边想靠近一边想逃"
+        message += "你会一边想靠近，一边又怕自己受伤。"
     else:
-        message += "你对关系整体不算失控，但也不是完全不受影响"
-    message += "。\n\n"
-    message += f"说匹配的话，{fit}\n"
+        message += "你不是特别极端的类型，但关系一旦重要起来，你还是会被牵动。"
+    message += "\n\n"
+    fit_line = fit
+    if fit_line.startswith("最适合你的人，"):
+        fit_line = fit_line.replace("最适合你的人，", "", 1).strip()
+    if fit_line.startswith("通常是"):
+        fit_line = fit_line.replace("通常是", "", 1).strip()
+    if fit_line.startswith("通常也是"):
+        fit_line = fit_line.replace("通常也是", "", 1).strip()
+    if fit_line.startswith("也是"):
+        fit_line = fit_line.replace("也是", "", 1).strip()
+    message += f"真要说适合你的人，通常是这种：{fit_line}\n"
     if best_match:
-        message += f"高匹配方向一般是 {best_match[0]}。\n"
+        best_match_label = "稳定类型的人"
+        if best_match[0] != "任何类型都能配":
+            best_match_label = best_match[0]
+        message += f"像 {best_match_label} 这种，通常会比较适合你。\n"
     if best_reason:
-        message += f"为什么适合？因为 {best_reason}。\n"
+        message += f"为什么呢？因为 {best_reason}。\n"
     if caution_match:
-        message += f"要更小心的组合是 {caution_match[0]}。\n"
+        message += f"但如果遇到 {caution_match[0]}，你就要更会沟通一点。\n"
     if caution_reason:
-        message += f"为什么容易卡住？因为 {caution_reason}。\n\n"
+        message += f"因为你们很容易卡在这里：{caution_reason}。\n\n"
     else:
         message += "\n"
-    message += "我给你三条最有用的提醒：\n"
+    message += "我最想提醒你的，其实就这几句：\n"
     for index, item in enumerate(advice[:3], start=1):
         message += f"{index}. {item}\n"
     if caution_advice:
@@ -797,7 +810,10 @@ def xiaoya_message_from_result(result: dict[str, Any]) -> str:
     cleaned_risk = risk
     if cleaned_risk.startswith("你最容易踩的坑，是"):
         cleaned_risk = cleaned_risk.replace("你最容易踩的坑，是", "", 1).strip()
-    message += f"你最容易踩的坑是：{cleaned_risk}\n\n"
+    if cleaned_risk.startswith("你最大的误区不是"):
+        message += f"还有一个点你要记住：{cleaned_risk}\n\n"
+    else:
+        message += f"还有一个点你要记住：你最容易在这件事上吃亏，{cleaned_risk}\n\n"
     message += "你要是愿意，我下一条可以继续帮你拆：你最容易吸引哪类人、又最容易被哪类关系消耗。"
     return message
 
