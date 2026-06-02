@@ -556,7 +556,10 @@ def xiaoya_message_from_result(result: dict[str, Any]) -> str:
         message += f"{insight}\n\n"
     else:
         message += f"说白了，你真正在筛的不是表面条件，而是这个人能不能和你的底层价值观对上。\n{insight}\n\n"
-    message += f"说匹配的话，{match}\n"
+    match_line = match
+    if match_line.startswith("最适合你的人，"):
+        match_line = match_line.replace("最适合你的人，", "", 1).strip()
+    message += f"真要说适合你的人，通常是这种：{match_line}\n"
     message += f"你在关系里多半会更在意这件事：{type_info.get('love_style', '')}。\n"
     message += f"现实一点说，{type_info.get('match_suggestion', '').rstrip('。')}。\n\n"
     message += "我给你三条最有用的提醒：\n"

@@ -809,7 +809,12 @@ def xiaoya_message_from_result(result: dict[str, Any]) -> str:
         message += f"对你来说，最容易有感觉的表达方式是：{top_names}。\n"
         message += f"相对没那么戳你的，是：{low_names}。\n\n"
 
-    message += f"说匹配的话，{match}\n"
+    match_line = match
+    if match_line.startswith("最适合你的人，"):
+        match_line = match_line.replace("最适合你的人，", "", 1).strip()
+    if match_line.startswith("通常"):
+        match_line = match_line.replace("通常", "", 1).strip()
+    message += f"真要说适合你的人，通常是这种：{match_line}\n"
     suggestion = str(love_manual.get("match_suggestion") or "")
     if suggestion:
         message += f"现实一点说，{suggestion.rstrip('。')}。\n"
@@ -849,7 +854,18 @@ def xiaoya_message_from_result(result: dict[str, Any]) -> str:
     message += "我给你三条最有用的提醒：\n"
     for index, item in enumerate(advice, start=1):
         message += f"{index}. {item}\n"
-    message += f"\n你最容易踩的坑是：{risk}\n\n"
+    cleaned_risk = risk
+    if cleaned_risk.startswith("你最容易误判的，是"):
+        cleaned_risk = cleaned_risk.replace("你最容易误判的，是", "", 1).strip()
+        if cleaned_risk.startswith("把"):
+            message += f"\n你最容易踩的坑是：{cleaned_risk}\n\n"
+        else:
+            message += f"\n你最容易踩的坑是：总把 {cleaned_risk}\n\n"
+    elif cleaned_risk.startswith("你最容易"):
+        cleaned_risk = cleaned_risk.replace("你最容易", "", 1).strip()
+        message += f"\n你最容易踩的坑是：{cleaned_risk}\n\n"
+    else:
+        message += f"\n你最容易踩的坑是：{cleaned_risk}\n\n"
     message += "你要是愿意，我下一条可以继续帮你拆：你最适合和哪种恋爱语言的人谈，最容易鸡同鸭讲的又是哪种。"
     return message
 
