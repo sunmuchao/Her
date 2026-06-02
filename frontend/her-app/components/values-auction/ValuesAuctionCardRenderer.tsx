@@ -67,9 +67,7 @@ export function ValuesAuctionCardRenderer({
     return (
       <ValuesAuctionResultCardComponent
         card={card}
-        onViewInterpretation={onViewInterpretation}
         onShare={onShare}
-        onContinue={onContinue}
       />
     )
   }

@@ -717,67 +717,56 @@ def _interpretation_from_result(result: dict[str, Any]) -> dict[str, Any]:
 
 
 def xiaoya_message_from_result(result: dict[str, Any]) -> str:
-    """生成小雅风格的解读消息（SBTI 毒舌判官风格）
+    """生成小雅风格的解读消息
 
-    核心转变：
-    - 开场白改为"测出来了，你是「XX」"
-    - 直接使用 SBTI 标签
-    - 毒舌判官风格，戳破幻想
+    设计原则（Agent Native）：
+    - 卡片已展示：类型昵称、认证标签（情绪灭火器、独立冷淡、黏贴型暖宝宝）
+    - 小雅说一段完整的、有温度的话，把建议整合起来
+    - 不是列表式的碎片，而是自然的对话
     """
     scores = dict(result.get("scores") or {})
     type_code = str(result.get("type_code") or get_primary_attachment_type(scores))
-
-    # 获取四个维度的得分
-    secure_score = scores.get("secure", 50)
-    anxious_score = scores.get("anxious", 50)
-    avoidant_score = scores.get("avoidant", 50)
-    fearful_score = scores.get("fearful", 50)
 
     # 直接使用 XIAOYA_MESSAGES 中的毒舌判官风格内容
     xiaoya_content = XIAOYA_MESSAGES.get(type_code)
     if not xiaoya_content:
         return "测完了，但好像出了点问题，请联系管理员～"
 
-    # 构建毒舌判官风格的开场白
-    message = f"{xiaoya_content['greeting']}\n\n"
-    message += f"**{xiaoya_content['identity']}**\n\n"
-    message += f"{xiaoya_content['quirk']}\n\n"
+    quirk = xiaoya_content.get('quirk', '')
+    crush = xiaoya_content.get('crush', '').replace('暗恋时的你：', '')
+    breakup = xiaoya_content.get('breakup', '').replace('分手后的你：', '')
+    suggestion = xiaoya_content.get('suggestion', '').replace('💡 ', '')
 
-    # 关系模式（毒舌风格）
-    message += "**你的关系模式：**\n"
-    if secure_score >= 70:
-        message += "不黏也不冷，看情况调整。对象发疯你睡觉，主打一个无动于衷。"
-        if secure_score >= 85:
-            message += " 情绪灭火器认证 ✨"
-        message += "\n\n"
-    elif anxious_score >= 70:
-        message += "很黏，回消息慢5分钟你已脑补出轨路线图。连体婴认证 ✨\n\n"
-    elif avoidant_score >= 70:
-        message += "很冷，对象黏太紧你立刻人间蒸发。洞穴伪人认证 ✨\n\n"
-    elif fearful_score >= 70:
-        message += "很矛盾，前一秒想结婚后一秒'男人没一个好东西'。反复横跳认证 ✨\n\n"
-    else:
-        message += "看情况，有时黏有时冷，有时矛盾有时稳。\n\n"
-
-    # 关系雷区（毒舌风格）
-    message += "**你的关系雷区：**\n"
+    # 关系雷区
     if type_code == "secure":
-        message += "TA冷暴力你会觉得困惑'为啥不直接说'，TA突然消失你会脑补'是不是不爱我了'——醒醒，人家可能只是需要空间。\n\n"
+        blind_spot = "TA冷暴力你会觉得困惑'为啥不直接说'，TA突然消失你会脑补'是不是不爱我了'——醒醒，人家可能只是需要空间"
     elif type_code == "anxious":
-        message += "TA回消息慢你会脑补出轨路线图，TA冷淡一秒你会慌到窒息——醒醒，人家可能只是在忙或者在洗澡。\n\n"
+        blind_spot = "TA回消息慢你会脑补出轨路线图，TA冷淡一秒你会慌到窒息——醒醒，人家可能只是在忙或者在洗澡"
     elif type_code == "avoidant":
-        message += "TA黏太紧你会觉得窒息要逃跑，TA情绪化你会立刻冷暴力断联——醒醒，人家只是想黏你。\n\n"
+        blind_spot = "TA黏太紧你会觉得窒息要逃跑，TA情绪化你会立刻冷暴力断联——醒醒，人家只是想黏你"
     elif type_code == "fearful":
-        message += "TA对你好你既开心又害怕，TA冷淡你既想靠近又想逃跑——醒醒，你的矛盾会把TA也折磨疯。\n\n"
+        blind_spot = "TA对你好你既开心又害怕，TA冷淡你既想靠近又想逃跑——醒醒，你的矛盾会把TA也折磨疯"
+    else:
+        blind_spot = "对方的行为可能会让你困惑"
 
-    # 暗恋时的你（毒舌风格）
-    message += f"**暗恋时的你：**\n{xiaoya_content['crush']}\n\n"
-    message += f"**分手后的你：**\n{xiaoya_content['breakup']}\n\n"
+    # 整合成一段完整的话
+    message = "亲爱的，依恋风格测完了～看看你的认证标签就知道了。\n\n"
 
-    # 判官判词
-    message += f"{xiaoya_content['suggestion']}\n\n"
+    if quirk:
+        message += f"{quirk}\n\n"
 
-    message += "还想了解更多？比如你的恋爱雷点、甜点、或者具体的相处建议？继续问我呀～"
+    message += f"但也要注意，{blind_spot}。\n\n"
+
+    if crush:
+        message += f"暗恋时呢？{crush}\n\n"
+
+    if breakup:
+        message += f"分手后呢？{breakup}\n\n"
+
+    if suggestion:
+        message += f"💡 {suggestion}\n\n"
+
+    message += "还有什么想了解的？继续问我呀～"
 
     return message
 

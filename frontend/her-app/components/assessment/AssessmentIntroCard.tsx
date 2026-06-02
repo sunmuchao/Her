@@ -156,18 +156,18 @@ export function AssessmentIntroCard({
       )}
 
       {/* Info Cards */}
-      <div className="mt-5 grid grid-cols-2 gap-3">
-        <div className="flex items-center gap-3 rounded-2xl bg-secondary/60 p-4">
+      <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="flex items-start gap-3 rounded-2xl bg-secondary/60 p-4">
           <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-background">
             <Clock className="w-5 h-5 text-muted-foreground" />
           </div>
           <div className="min-w-0">
             <div className="text-xs text-muted-foreground">{"预计时长"}</div>
-            <div className="text-sm font-medium truncate">{data.duration}</div>
+            <div className="text-sm font-medium leading-snug break-words">{data.duration}</div>
           </div>
         </div>
         
-        <div className="flex items-center gap-3 rounded-2xl bg-secondary/60 p-4">
+        <div className="flex items-start gap-3 rounded-2xl bg-secondary/60 p-4">
           <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-background">
             <Sparkles className={cn(
               'w-5 h-5',
@@ -177,7 +177,7 @@ export function AssessmentIntroCard({
           </div>
           <div className="min-w-0">
             <div className="text-xs text-muted-foreground">{"完成奖励"}</div>
-            <div className="text-sm font-medium truncate">{data.reward}</div>
+            <div className="text-sm font-medium leading-snug break-words">{data.reward}</div>
           </div>
         </div>
       </div>

@@ -767,55 +767,43 @@ def xiaoya_message_from_result(result: dict[str, Any]) -> str:
 
     设计原则（Agent Native）：
     - 卡片已展示：雷达图（五种语言分数）、类型昵称
-    - 小雅只补充：具体建议、注意事项、悄悄话
-    - 不重复分数数据，避免用户觉得啰嗦
+    - 小雅说一段完整的、有温度的话，把建议整合起来
+    - 不是列表式的碎片，而是自然的对话
     """
     scores = dict(result.get("scores") or {})
     primary_language = str(result.get("primary_language") or get_primary_love_language(scores))
 
-    # 开场白：引导用户看卡片，不复述分数
-    message = "亲爱的，恋爱语言测完了，看看雷达图～ 💡\n\n"
-
-    # 让对方感受到你的爱（根据主语言）
-    message += "**让对方感受到你的爱：**\n"
+    # 根据主语言生成建议内容
     if primary_language == "words_of_affirmation":
-        message += "多夸TA、多鼓励TA，TA遇到困难说「我相信你能搞定」，TA分享日常要认真回应不要只回「嗯」。\n\n"
+        love_tip = "多夸TA、多鼓励TA，TA遇到困难说「我相信你能搞定」"
+        blind_spot = "TA不夸你你会觉得不被爱，TA光做事不夸你会觉得没被看见"
+        secret = "别光听甜言蜜语也要看TA为你做了啥"
     elif primary_language == "quality_time":
-        message += "放下手机专心陪TA，陪TA深度聊三观、聊未来、聊梦想，约会时不看手机不接工作电话。\n\n"
+        love_tip = "放下手机专心陪TA，陪TA深度聊三观、聊未来、聊梦想"
+        blind_spot = "TA玩手机不陪你会让你觉得不被重视，TA各玩各的不深度聊会让你觉得没灵魂"
+        secret = "别光要陪伴也要看TA为你做了啥"
     elif primary_language == "receiving_gifts":
-        message += "送TA小心意（TA喜欢的零食、小饰品），纪念日精心准备有意义的礼物（不一定要贵）。\n\n"
+        love_tip = "送TA小心意（TA喜欢的零食、小饰品），纪念日精心准备有意义的礼物"
+        blind_spot = "TA不送你会让你觉得不被重视，纪念日没礼物会让你很失望"
+        secret = "别光要物质也要看TA为你做了啥"
     elif primary_language == "acts_of_service":
-        message += "帮TA搞定麻烦事，TA累的时候主动说「我来做你去休息」，用行动证明爱。\n\n"
+        love_tip = "帮TA搞定麻烦事，TA累的时候主动说「我来做你去休息」"
+        blind_spot = "TA不帮你会让你觉得不被心疼，TA光说爱不做事会让你觉得没诚意"
+        secret = "别光要行动也要看TA为你说了啥"
     elif primary_language == "physical_touch":
-        message += "突然抱TA说「我就是想抱你」，约会时牵手亲亲黏着TA，用肢体表达爱。\n\n"
+        love_tip = "突然抱TA说「我就是想抱你」，约会时牵手亲亲黏着TA"
+        blind_spot = "TA不黏你会让你觉得不被爱，TA不抱你你会觉得冷淡"
+        secret = "别光要肢体接触也要看TA为你做了啥"
+    else:
+        love_tip = "用你最舒服的方式表达爱"
+        blind_spot = "对方不懂你的表达方式会让你觉得不被爱"
+        secret = "学会欣赏对方的各种表达方式"
 
-    # 对方不懂你的信号（根据主语言）
-    message += "**对方不懂你的信号：**\n"
-    if primary_language == "words_of_affirmation":
-        message += "TA不夸你你会觉得不被爱，TA光做事不夸你会觉得没被看见，TA沉默不说话你会更难受。\n\n"
-    elif primary_language == "quality_time":
-        message += "TA玩手机不陪你会让你觉得不被重视，TA各玩各的不深度聊会让你觉得没灵魂。\n\n"
-    elif primary_language == "receiving_gifts":
-        message += "TA不送你会让你觉得不被重视，纪念日没礼物会让你很失望。\n\n"
-    elif primary_language == "acts_of_service":
-        message += "TA不帮你会让你觉得不被心疼，TA光说爱不做事会让你觉得没诚意。\n\n"
-    elif primary_language == "physical_touch":
-        message += "TA不黏你会让你觉得不被爱，TA不抱你你会觉得冷淡。\n\n"
-
-    # 小雅悄悄话（根据主语言）
-    message += "💡 小雅悄悄话：\n"
-    if primary_language == "words_of_affirmation":
-        message += "下次遇到心动的人，别只等TA夸你，学会欣赏TA的其他表达方式，别光听甜言蜜语也要看TA为你做了啥～\n\n"
-    elif primary_language == "quality_time":
-        message += "下次遇到心动的人，别只等TA放下手机，学会欣赏TA的其他表达方式，别光要陪伴也要看TA为你做了啥～\n\n"
-    elif primary_language == "receiving_gifts":
-        message += "下次遇到心动的人，别只等TA送礼物，学会欣赏TA的其他表达方式，别光要物质也要看TA为你做了啥～\n\n"
-    elif primary_language == "acts_of_service":
-        message += "下次遇到心动的人，别只等TA帮你做事，学会欣赏TA的其他表达方式，别光要行动也要看TA为你说了啥～\n\n"
-    elif primary_language == "physical_touch":
-        message += "下次遇到心动的人，别只等TA黏你，学会欣赏TA的其他表达方式，别光要肢体接触也要看TA为你做了啥～\n\n"
-
-    message += "还想了解更多？比如你的恋爱雷点、甜点、或者具体的相处建议？继续问我呀～"
+    # 整合成一段完整的话
+    message = f"亲爱的，恋爱语言测完了～看雷达图就知道你最敏感的表达方式了。\n\n"
+    message += f"想让对方感受到你的爱？{love_tip}。但也要注意，{blind_spot}。\n\n"
+    message += f"💡 小雅悄悄话：下次遇到心动的人，{secret}～\n\n"
+    message += "还有什么想了解的？继续问我呀～"
 
     return message
 
