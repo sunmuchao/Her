@@ -1441,10 +1441,10 @@ def _dimension_preference(score: float, high_label: str, low_label: str) -> str:
 
 def _build_professional_dimension_summary(scores: dict[str, float]) -> list[str]:
     return [
-        f"能量模式偏 {_dimension_preference(scores.get('ei', 50), '外向表达', '内向沉淀')}",
-        f"信息处理偏 {_dimension_preference(scores.get('sn', 50), '现实细节', '趋势直觉')}",
-        f"决策方式偏 {_dimension_preference(scores.get('tf', 50), '逻辑判断', '关系感受')}",
-        f"关系节奏偏 {_dimension_preference(scores.get('jp', 50), '计划确定', '灵活开放')}",
+        f"在能量模式上，你更偏 {_dimension_preference(scores.get('ei', 50), '外向表达', '内向沉淀')}",
+        f"在信息处理上，你更偏 {_dimension_preference(scores.get('sn', 50), '现实细节', '趋势直觉')}",
+        f"在做决定时，你更偏 {_dimension_preference(scores.get('tf', 50), '逻辑判断', '关系感受')}",
+        f"在关系节奏上，你更偏 {_dimension_preference(scores.get('jp', 50), '计划确定', '灵活开放')}",
     ]
 
 
@@ -1472,6 +1472,23 @@ def _build_professional_relationship_advice(scores: dict[str, float]) -> list[st
         advice.append("你容易被感觉和可能性吸引，建立关系时要尽早核对现实投入和长期规划。")
 
     return advice[:3]
+
+
+def _to_xiaoya_advice(text: str) -> str:
+    replacements = [
+        ("发生分歧时，先确认对方情绪，再进入问题分析和解决方案讨论。", "你一着急就容易先讲道理，记得先接住对方情绪，再聊怎么解决。"),
+        ("表达需求时不要只讲感受，也要把边界、期待和可执行方案说清楚。", "你别只说自己难受，最好顺手把你的期待也讲清楚，对方才知道怎么靠近你。"),
+        ("你会天然追求秩序和确定性，关系里要主动给对方保留弹性空间，避免让标准感变成压迫感。", "你对关系有标准没问题，但别把标准感开太满，给对方一点喘息空间，反而更容易靠近你。"),
+        ("重要承诺和关系节奏最好提前对齐，减少临时变动带来的不安全感。", "你很怕临时变卦带来的失控感，所以关系节奏最好早点对齐，你会安心很多。"),
+        ("沟通效率高是优势，但也要注意给对方留回应时间，不要把高频表达变成推进压力。", "你表达很快很直接是优点，但也别逼着对方立刻回应，留一点空间会更舒服。"),
+        ("不要把沉默当成稳定，关键情绪和核心诉求需要明确说出口。", "你别把沉默当成懂事，真正重要的情绪和需求，还是要说出口。"),
+        ("你很看重落地和靠谱，筛选对象时除了执行力，也要评估对方的情绪理解力。", "你看人很容易先看靠不靠谱，但别忘了也看看对方能不能理解你的情绪。"),
+        ("你容易被感觉和可能性吸引，建立关系时要尽早核对现实投入和长期规划。", "你很容易先被感觉打动，但别只看氛围，早点确认对方有没有实际投入会更稳。"),
+    ]
+    for source, target in replacements:
+        if text == source:
+            return target
+    return text.rstrip("。")
 
 
 def xiaoya_message_from_result(result: dict[str, Any]) -> str:
@@ -1506,42 +1523,42 @@ def xiaoya_message_from_result(result: dict[str, Any]) -> str:
     relationship_advice = _build_professional_relationship_advice(scores)
     nickname = str(type_info.get("nickname") or type_code)
 
-    message = "你的测评结果已生成。\n\n"
-    message += f"**类型判断：{type_code}（{nickname}）**\n"
-    message += f"核心优势：{love_manual['strengths'][0]}\n"
-    message += f"主要挑战：{love_manual['weaknesses'][0]}\n\n"
+    message = "亲爱的，结果出来了，我先直接跟你说重点。\n\n"
+    message += f"你这次测出来是 **{type_code}（{nickname}）**。\n"
+    message += f"你在关系里的强项很明显：{love_manual['strengths'][0]}。\n"
+    message += f"但你也有一个很容易反复出现的点：{love_manual['weaknesses'][0]}。\n\n"
 
-    message += "**关系画像：**\n"
+    message += "**如果把你放进亲密关系里，我会这样理解你：**\n"
     for item in dimension_summary:
         message += f"- {item}\n"
     message += "\n"
 
-    message += "**匹配建议：**\n"
-    message += f"- 高匹配人格：{'、'.join(compatibility['best']) or '能理解你节奏的人'}\n"
+    message += "**说匹配：你更容易被这些类型接住。**\n"
+    message += f"- 最适合优先了解：{'、'.join(compatibility['best']) or '能理解你节奏的人'}\n"
     if compatibility["good"]:
-        message += f"- 次高匹配人格：{'、'.join(compatibility['good'])}\n"
+        message += f"- 也比较容易发展稳定关系：{'、'.join(compatibility['good'])}\n"
     if compatibility["caution"]:
-        message += f"- 需要重点磨合的人格：{'、'.join(compatibility['caution'])}\n"
+        message += f"- 遇到这些类型要更会沟通：{'、'.join(compatibility['caution'])}\n"
     if best_match_hint:
-        message += f"- 高匹配原因：{best_match_hint}\n"
+        message += f"- 为什么适合：{best_match_hint}\n"
     if caution_match_hint:
-        message += f"- 主要冲突机制：{caution_match_hint}\n"
+        message += f"- 为什么容易卡住：{caution_match_hint}\n"
     message += "\n"
 
-    message += "**相处建议：**\n"
+    message += "**我给你的相处建议，会更偏实战一点：**\n"
     for index, item in enumerate(relationship_advice, start=1):
-        message += f"{index}. {item}\n"
+        message += f"{index}. {_to_xiaoya_advice(item).rstrip('。')}。\n"
     if best_match_note:
-        message += f"{len(relationship_advice) + 1}. {best_match_note}\n"
+        message += f"{len(relationship_advice) + 1}. {best_match_note.rstrip('。')}。\n"
     elif sweet_points:
-        message += f"{len(relationship_advice) + 1}. 识别正向关系信号时，可以重点看：{sweet_points[0]}\n"
+        message += f"{len(relationship_advice) + 1}. 你判断一段关系值不值得继续时，可以重点看这一点：{sweet_points[0].rstrip('。')}。\n"
     message += "\n"
 
     if caution_match_note:
-        message += f"**风险提醒：**\n遇到高冲突组合时，{caution_match_note}\n\n"
+        message += f"**我再提醒你一个高频风险点：**\n遇到不太同频的人时，{caution_match_note.rstrip('。')}。\n\n"
     elif red_flags:
-        message += f"**风险提醒：**\n{red_flags[0]}\n\n"
+        message += f"**我再提醒你一个高频风险点：**\n{red_flags[0].rstrip('。')}。\n\n"
 
-    message += "如果你愿意，我下一条可以继续展开两部分：1. 你的最佳伴侣人格组合；2. 你在亲密关系里最容易反复出现的冲突模式。"
+    message += "你要是愿意，我下一条可以继续帮你拆得更细：比如你最适合谈哪两种人格、为什么适合你、还有你在关系里最容易反复踩的坑。"
 
     return message
