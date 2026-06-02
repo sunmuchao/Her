@@ -792,11 +792,11 @@ def xiaoya_message_from_result(result: dict[str, Any]) -> str:
         if best_match[0] not in {"任何类型都能配", "大多数类型都能适配"}:
             message += f"像 {best_match[0]} 这种，通常会比较适合你。\n"
     if best_reason:
-        message += f"为什么呢？因为 {best_reason}。\n"
+        message += f"之所以合适，是因为 {best_reason}。\n"
     if caution_match:
         message += f"但如果遇到 {caution_match[0]}，你就要更会沟通一点。\n"
     if caution_reason:
-        message += f"因为你们很容易卡在这里：{caution_reason}。\n\n"
+        message += f"你们最容易卡在这里：{caution_reason}。\n\n"
     else:
         message += "\n"
     message += "我最想提醒你的，其实就这几句：\n"
