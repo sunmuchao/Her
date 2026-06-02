@@ -717,57 +717,80 @@ def _interpretation_from_result(result: dict[str, Any]) -> dict[str, Any]:
 
 
 def xiaoya_message_from_result(result: dict[str, Any]) -> str:
-    """生成小雅风格的解读消息
-
-    设计原则（Agent Native）：
-    - 卡片已展示：类型昵称、认证标签（情绪灭火器、独立冷淡、黏贴型暖宝宝）
-    - 小雅说一段完整的、有温度的话，把建议整合起来
-    - 不是列表式的碎片，而是自然的对话
-    """
+    """生成小雅风格的依恋风格解读消息。"""
     scores = dict(result.get("scores") or {})
     type_code = str(result.get("type_code") or get_primary_attachment_type(scores))
+    type_info = get_type_info(type_code)
+    love_manual = type_info.get("love_manual", {})
+    best_match = love_manual.get("best_match", [])
+    caution_match = love_manual.get("caution_match", [])
 
-    # 直接使用 XIAOYA_MESSAGES 中的毒舌判官风格内容
-    xiaoya_content = XIAOYA_MESSAGES.get(type_code)
-    if not xiaoya_content:
-        return "测完了，但好像出了点问题，请联系管理员～"
+    secure_score = scores.get("secure", 50)
+    anxious_score = scores.get("anxious", 50)
+    avoidant_score = scores.get("avoidant", 50)
+    fearful_score = scores.get("fearful", 50)
 
-    quirk = xiaoya_content.get('quirk', '')
-    crush = xiaoya_content.get('crush', '').replace('暗恋时的你：', '')
-    breakup = xiaoya_content.get('breakup', '').replace('分手后的你：', '')
-    suggestion = xiaoya_content.get('suggestion', '').replace('💡 ', '')
-
-    # 关系雷区
     if type_code == "secure":
-        blind_spot = "TA冷暴力你会觉得困惑'为啥不直接说'，TA突然消失你会脑补'是不是不爱我了'——醒醒，人家可能只是需要空间"
+        pattern = "你在关系里整体是稳的，安全感更多来自持续、稳定、可预测的陪伴。"
+        fit = "最适合你的人，通常也是情绪稳定、沟通直接、不靠消失和冷暴力处理冲突的人。"
+        risk = "你最大的误区不是太黏，而是有时候太能扛，容易让别人误以为你什么都能自己消化。"
     elif type_code == "anxious":
-        blind_spot = "TA回消息慢你会脑补出轨路线图，TA冷淡一秒你会慌到窒息——醒醒，人家可能只是在忙或者在洗澡"
+        pattern = "你在关系里对回应速度和情绪确认特别敏感，安全感来自被及时看见、被持续回应。"
+        fit = "最适合你的人，通常是稳定、愿意给反馈、不会忽冷忽热的人，尤其是安全型会更接得住你。"
+        risk = "你最容易踩的坑，是把短暂失联自动理解成不在乎，然后自己先把自己吓到。"
     elif type_code == "avoidant":
-        blind_spot = "TA黏太紧你会觉得窒息要逃跑，TA情绪化你会立刻冷暴力断联——醒醒，人家只是想黏你"
-    elif type_code == "fearful":
-        blind_spot = "TA对你好你既开心又害怕，TA冷淡你既想靠近又想逃跑——醒醒，你的矛盾会把TA也折磨疯"
+        pattern = "你在关系里最在意边界和空间，安全感并不来自高频黏连，而是来自被尊重、被允许慢一点靠近。"
+        fit = "最适合你的人，通常是情绪稳定、不追着你要答案、能给你空间但也有耐心的人。"
+        risk = "你最容易踩的坑，是一有压力就撤退，结果对方还没伤害你，你已经先把关系冻住了。"
     else:
-        blind_spot = "对方的行为可能会让你困惑"
+        pattern = "你在关系里既想靠近又怕受伤，安全感不是单纯靠陪伴就能解决，而是要同时被理解、被安抚、也被允许保留空间。"
+        fit = "最适合你的人，通常是稳定、耐心、能理解复杂情绪的人，不会因为你一时后退就立刻放弃。"
+        risk = "你最容易踩的坑，是明明很在乎，却因为害怕受伤把信号放得太乱，让关系一直卡在拉扯里。"
 
-    # 整合成一段完整的话
-    message = "亲爱的，依恋风格测完了～看看你的认证标签就知道了。\n\n"
+    best_reason = next((line.replace("为啥配：", "").strip() for line in best_match if line.startswith("为啥配：")), "")
+    caution_reason = next((line.replace("为啥磨合：", "").strip() for line in caution_match if line.startswith("为啥磨合：")), "")
+    caution_advice = next((line.replace("怎么磨合：", "").strip() for line in caution_match if line.startswith("怎么磨合：")), "")
 
-    if quirk:
-        message += f"{quirk}\n\n"
+    advice: list[str] = []
+    if anxious_score >= 65:
+        advice.append("你一慌就容易脑补，所以最重要的不是憋着，而是尽快把不安翻译成一句明确的话说出来。")
+    if avoidant_score >= 65:
+        advice.append("你一有压力就想退，但再想消失之前，最好先给一句回应，让对方知道你不是不要这段关系。")
+    if fearful_score >= 65:
+        advice.append("你会一边想靠近一边想逃，这时候比起硬撑，更有用的是把矛盾本身告诉对方。")
+    if secure_score >= 65:
+        advice.append("你的稳定感是优势，但别只顾着接住别人，也记得把自己的需求说出来。")
+    if not advice:
+        advice.append("你这类模式最需要练的，不是猜，而是把需求、边界和不安直接说清楚。")
 
-    message += f"但也要注意，{blind_spot}。\n\n"
-
-    if crush:
-        message += f"暗恋时呢？{crush}\n\n"
-
-    if breakup:
-        message += f"分手后呢？{breakup}\n\n"
-
-    if suggestion:
-        message += f"💡 {suggestion}\n\n"
-
-    message += "还有什么想了解的？继续问我呀～"
-
+    message = "亲爱的，依恋风格这题我帮你翻译成人话了。\n\n"
+    message += f"你这次更偏 **{type_info.get('nickname', type_code)}**。\n"
+    message += f"{pattern}\n\n"
+    message += "**如果放进亲密关系里看，你大概会这样谈恋爱：**\n"
+    message += f"- 安全感指数里，安全型 {secure_score:.0f} 分，说明你{'有比较稳定的底盘' if secure_score >= 60 else '底盘还不够稳，容易被关系牵动'}\n"
+    message += f"- 焦虑感 {anxious_score:.0f} 分，说明你{'很怕失去回应' if anxious_score >= 60 else '对回应速度还算能扛'}\n"
+    message += f"- 回避感 {avoidant_score:.0f} 分，说明你{'压力一大就容易后撤' if avoidant_score >= 60 else '不会本能地把人推远'}\n"
+    message += f"- 矛盾拉扯感 {fearful_score:.0f} 分，说明你{'很容易在靠近和逃跑之间反复横跳' if fearful_score >= 60 else '内在拉扯相对没那么重'}\n\n"
+    message += "**说匹配，我会这样建议你：**\n"
+    message += f"- {fit}\n"
+    if best_match:
+        message += f"- 高匹配方向：{best_match[0]}\n"
+    if best_reason:
+        message += f"- 为什么适合：{best_reason}\n"
+    if caution_match:
+        message += f"- 需要重点磨合：{caution_match[0]}\n"
+    if caution_reason:
+        message += f"- 为什么容易卡住：{caution_reason}\n\n"
+    else:
+        message += "\n"
+    message += "**我给你的实战建议：**\n"
+    for index, item in enumerate(advice[:3], start=1):
+        message += f"{index}. {item}\n"
+    if caution_advice:
+        message += f"{min(len(advice[:3]) + 1, 4)}. {caution_advice.rstrip('。')}。\n"
+    message += "\n"
+    message += f"**我再提醒你一个高频风险点：**\n{risk}\n\n"
+    message += "你要是愿意，我下一条可以继续帮你拆：你最容易吸引哪类人、又最容易被哪类关系消耗。"
     return message
 
 
