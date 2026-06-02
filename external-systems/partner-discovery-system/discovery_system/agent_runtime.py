@@ -220,17 +220,52 @@ def _compact_timeline(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if item_type == "assessment_result":
             card = dict(item.get("card") or {})
             result_data = dict(card.get("result_data") or {})
-            compacted.append(
-                {
-                    "item_type": "assessment_result",
-                    "type_code": result_data.get("type_code"),
-                    "summary": (
-                        (result_data.get("interpretation_data") or {}).get("summary")
-                        if isinstance(result_data.get("interpretation_data"), dict)
-                        else None
-                    ),
-                }
-            )
+            # 获取测评类型，支持不同的测评结果结构
+            assessment_type = card.get("assessment_type") or result_data.get("assessment_type")
+
+            # MBTI 测评结果
+            if assessment_type == "mbti_16" or result_data.get("type_code"):
+                compacted.append(
+                    {
+                        "item_type": "assessment_result",
+                        "assessment_type": assessment_type or "mbti_16",
+                        "type_code": result_data.get("type_code"),
+                        "summary": (
+                            (result_data.get("interpretation_data") or {}).get("summary")
+                            if isinstance(result_data.get("interpretation_data"), dict)
+                            else None
+                        ),
+                    }
+                )
+            # 价值观拍卖会结果
+            elif assessment_type == "values_auction" or card.get("card_type") == "values_auction_result":
+                compacted.append(
+                    {
+                        "item_type": "assessment_result",
+                        "assessment_type": "values_auction",
+                        "value_type": result_data.get("value_type"),
+                        "top3_titles": [
+                            t.get("title") for t in list(result_data.get("top3") or [])[:3]
+                            if t.get("chips", 0) > 0
+                        ],
+                        "top_hidden_values": [
+                            hv.get("key") for hv in list(result_data.get("top_hidden_values") or [])[:3]
+                        ],
+                    }
+                )
+            # 其他测评结果（兼容处理）
+            else:
+                compacted.append(
+                    {
+                        "item_type": "assessment_result",
+                        "assessment_type": assessment_type,
+                        "summary": (
+                            (result_data.get("interpretation_data") or {}).get("summary")
+                            if isinstance(result_data.get("interpretation_data"), dict)
+                            else None
+                        ),
+                    }
+                )
     return compacted
 
 

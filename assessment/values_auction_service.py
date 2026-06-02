@@ -29,6 +29,7 @@ from assessment.values_auction_lots import (
     get_top_hidden_values,
     classify_value_type_from_hidden,
     get_value_type_info,
+    xiaoya_message_from_result,  # 新增：小雅消息生成
 )
 from persona_memory_sync.persona_memory_lib import (
     apply_persona_patch,
@@ -423,7 +424,10 @@ def submit_auction_bids(
     finally:
         release_persona_connection(normalized_source, conn)
 
-    # 8. 返回结果卡片
+    # 8. 生成小雅的解读消息
+    xiaoya_message = xiaoya_message_from_result(result_data)
+
+    # 9. 返回结果卡片 + 小雅消息
     return {
         "card_type": "values_auction_result",
         "assessment_id": assessment_id,
@@ -436,6 +440,7 @@ def submit_auction_bids(
             "abandoned": abandoned,
             "reward": "解锁三观匹配分析",
         },
+        "xiaoya_message": xiaoya_message,  # 新增：小雅的自然语言回复
     }
 
 

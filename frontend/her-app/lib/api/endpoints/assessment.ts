@@ -243,6 +243,7 @@ export async function addXiaoyaMessageToDiscovery(params: {
   sessionId: string
   message: string
   resultData?: unknown
+  assessmentType?: string  // 新增：支持传递测评类型
 }): Promise<{
   success: boolean
   message: string
@@ -260,6 +261,7 @@ export async function addXiaoyaMessageToDiscovery(params: {
       session_id: params.sessionId,
       message: params.message,
       result_data: params.resultData,
+      assessment_type: params.assessmentType,  // 新增：传递测评类型
     }),
   })
 }

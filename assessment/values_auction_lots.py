@@ -458,20 +458,97 @@ def xiaoya_message_from_result(result: dict[str, Any]) -> str:
 
     设计原则（Agent Native）：
     - 卡片已展示：Top3拍品、隐藏价值分析、价值倾向类型
-    - 小雅只补充：恋爱中的表现、建议、注意事项
-    - 不重复卡片内容，避免用户觉得啰嗦
+    - 小雅不说"你拍了什么"，而是说"这背后的矛盾、张力、深层动机"
+    - 有洞察、有温度、有点毒舌有点贴心
     """
-    value_type = result.get("value_type", "综合型")
-    type_info = get_value_type_info(value_type)
+    top3 = result.get("top3", [])
+    top3_titles = [t.get("title", "") for t in top3 if t.get("chips", 0) > 0]
 
-    # 开场白：引导用户看卡片，不复述数据
-    message = "亲爱的，拍卖结果出来了，看看你拍下了什么人生～ 💡\n\n"
+    # 判断拍品的类型组合
+    has_financial = "这辈子都不用再为钱妥协" in top3_titles
+    has_status = "走到哪里都让人高看一眼" in top3_titles
+    has_love = "一个永远不会离开你的人" in top3_titles
+    has_understanding = "一个真正懂你的人" in top3_titles
+    has_freedom = "想做什么就做什么，没人管" in top3_titles
+    has_health = "全家人健康平安到百岁" in top3_titles
+    has_peace = "内心平静，不再焦虑" in top3_titles
+    has_meaning = "做一件改变世界的事" in top3_titles
+    has_support = "一个无条件支持你的人" in top3_titles
 
-    # 只输出卡片没有的内容
-    message += f"**在恋爱中：**\n{type_info.get('love_style', '')}\n\n"
-    message += f"**小雅的建议：**\n{type_info.get('match_suggestion', '')}\n"
+    # 开场白
+    message = "亲爱的，拍卖结果出来了～\n\n"
 
-    if type_info.get('caution'):
-        message += f"\n💡 **需要注意：**\n{type_info.get('caution', '')}\n"
+    # 根据拍品组合给出有洞察的解读
+    if has_financial and has_status and has_love:
+        message += "有意思！你拍下了财富自由、社会地位，又拍了「一个不会离开你的人」。"
+        message += "\n\n这说明你想要掌控感（钱、地位），但又怕失控（怕对方离开）。有点矛盾哦～越想掌控的人，往往越害怕失去。"
+        message += "\n\n找个能给你安全感的人吧，不然你会一边赚钱一边焦虑「TA会不会走」。"
 
-    return message.strip()
+    elif has_financial and has_love:
+        message += "你拍下了财富自由和爱情。"
+        message += "\n\n这说明你想要物质安全感，但又怕孤独。钱能给你安全感，但只有人能给你温暖。"
+        message += "\n\n找个不缺钱但愿意陪你的人吧，不然你会一边有钱一边觉得空。"
+
+    elif has_status and has_love:
+        message += "你拍下了社会地位和爱情。"
+        message += "\n\n这说明你想要被尊重，但又想要被爱。有点意思——地位是别人给的尊重，爱情是TA给你的尊重。你其实想要双重确认。"
+        message += "\n\n找个既认可你成就又愿意陪你的人吧，不然你会一边被夸一边觉得没人懂你。"
+
+    elif has_financial and has_freedom:
+        message += "你拍下了财富自由和个人自由。"
+        message += "\n\n这说明你想要彻底的掌控——有钱、有时间、没人管。爽！但也要注意，太自由可能让对方觉得你不需要TA。"
+        message += "\n\n找个同样独立的人吧，不然你的自由会让TA焦虑「TA是不是不在乎我」。"
+
+    elif has_love and has_freedom:
+        message += "你拍下了爱情和自由。"
+        message += "\n\n这是个经典矛盾——你想要亲密，但又不想被束缚。有点贪心哦～但人性就是这样。"
+        message += "\n\n找个能给你空间又愿意陪你的人吧，不然你会要么黏死要么逃走。"
+
+    elif has_love and has_understanding:
+        message += "你拍下了爱情和「一个懂你的人」。"
+        message += "\n\n这说明你想要的不是陪伴，而是共鸣。你怕的不是孤独，而是不被理解。"
+        message += "\n\n找个能深度聊的人吧，不然你会一边有人陪一边觉得没灵魂。"
+
+    elif has_health and has_peace:
+        message += "你拍下了健康和平静。"
+        message += "\n\n这说明你想要的不是刺激，而是安稳。你可能经历过太多折腾，现在只想歇歇。"
+        message += "\n\n找个同样追求平静的人吧，不然你会被爱折腾的人搞得焦虑。"
+
+    elif has_financial and has_health:
+        message += "你拍下了财富和健康。"
+        message += "\n\n这说明你是个务实派——钱和命，最实在的东西。爱情、地位那些虚的，你不太在意。"
+        message += "\n\n找个同样务实的人吧，不然你会觉得浪漫派太不靠谱。"
+
+    elif has_meaning:
+        message += "你拍下了「改变世界」。"
+        message += "\n\n这说明你想要意义感，不只是活着，而是留下点什么。有点理想主义哦～"
+        message += "\n\n找个同样有追求的人吧，不然你会觉得只关心吃喝住行的人太无聊。"
+
+    elif has_support:
+        message += "你拍下了「一个无条件支持你的人」。"
+        message += "\n\n这说明你想要的不是平等的伴侣，而是被托住的感觉。你可能经常独自承担，需要一个后盾。"
+        message += "\n\n找个愿意当你后盾的人吧，但也要注意别太依赖，关系是双向的。"
+
+    else:
+        # 兜底：用隐藏价值分析
+        top_hidden_values = result.get("top_hidden_values", [])
+        if top_hidden_values and len(top_hidden_values) > 0:
+            hidden_labels = {
+                "freedom": "自由", "security": "安全感", "love": "爱情",
+                "status": "地位", "wealth": "财富", "power": "权力",
+                "loyalty": "忠诚", "family": "家庭", "companionship": "陪伴",
+                "recognition": "认可", "self_actualization": "自我实现",
+                "wisdom": "智慧", "inner_peace": "内心平静",
+                "independence": "独立", "altruism": "利他", "meaning": "意义",
+            }
+            top_keys = [hidden_labels.get(hv.get("key", ""), hv.get("key", "")) for hv in top_hidden_values[:3]]
+            message += f"你最看重的三个价值：{', '.join(top_keys)}。"
+            message += "\n\n这说明你在找符合这些价值的人，而不是随便找个人。"
+            message += "\n\n继续问我呀，我帮你分析怎么找到匹配的人～"
+        else:
+            message += "你拍下的东西挺有意思，但我需要更多信息才能给你深度解读。"
+            message += "\n\n继续问我呀～"
+
+    message += "\n\n还有什么想聊的？继续问我呀～"
+
+    return message

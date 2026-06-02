@@ -78,7 +78,7 @@ function getAssessmentTypeFromCard(card: AssessmentCard): AssessmentType | undef
 }
 
 export interface AssessmentCardRendererProps {
-  card: AssessmentCard
+  card: AssessmentCard | ValuesAuctionCard  // 支持价值观拍卖会卡片
   onStart: () => void
   onAnswer: (answer: string) => void
   onContinue: () => void

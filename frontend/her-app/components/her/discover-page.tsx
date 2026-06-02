@@ -86,10 +86,14 @@ function DiscoveryTimelineEntry({
   }
 
   if (item.kind === 'assessment_result') {
+    // 从卡片中提取 assessment_type
+    const cardAssessmentType = item.card?.assessment_type ||
+      (item.card?.card_type === 'values_auction_result' ? 'values_auction' : undefined)
+
     return (
       <AssessmentCardRenderer
         card={item.card}
-        assessmentType={item.card?.assessment_type}
+        assessmentType={cardAssessmentType}
         onStart={() => {}}
         onAnswer={() => {}}
         onContinue={() => {}}
@@ -425,92 +429,202 @@ export default function DiscoverPage({
             />
           ))}
 
-          {assessmentCard && assessmentId ? (
-            <div className="flex justify-start">
-              <div className="w-full max-w-[92%]">
-                <AssessmentCardRenderer
-                  card={assessmentCard}
-                  onStart={async () => {
-                    const next = await beginAssessment(assessmentId)
-                    setAssessmentCard(next)
-                  }}
-                  onAnswer={async (answer) => {
-                    if (assessmentCard.card_type !== 'assessment_question') return
-                    setAssessmentQuestionHistory((prev) => [...prev, assessmentCard.question_data])
-                    const next = await answerAssessment({
-                      assessmentId,
-                      questionIndex: assessmentCard.question_data.current_question - 1,
-                      answer,
-                      userKey,
-                    })
-                    setAssessmentCard(next)
+          {(() => {
+            // 判断是否应该显示 assessmentCard state中的卡片
+            // 如果timeline中已经有相同assessment_id的结果卡片，就不要重复显示
+            if (!assessmentCard || !assessmentId) return null
 
-                    // 如果测评完成（显示结果卡片），预先获取小雅消息
-                    // 等用户查看完结果并点击"继续和小雅聊天"后再添加到对话流
-                    if (next.card_type === 'assessment_result' && userKey) {
-                      try {
-                        const xiaoyaResult = await getXiaoyaMessage(userKey)
-                        if (xiaoyaResult.has_message && xiaoyaResult.message) {
-                          if (sessionId) {
-                            try {
-                              await addXiaoyaMessageToDiscovery({
-                                userKey,
-                                sessionId,
-                                message: xiaoyaResult.message,
-                                resultData: next.result_data,
-                              })
-                              await reloadSession()
-                              clearAssessmentCard()
-                            } catch (discoveryError) {
-                              console.warn('[onAnswer] 添加到discovery失败，可能是session不存在:', discoveryError)
-                              // 失败不影响当前结果展示，只是消息不会融入对话流
+            // 如果不是结果卡片，总是显示（intro, question, feedback等）
+            if (assessmentCard.card_type !== 'assessment_result') {
+              return (
+                <div className="flex justify-start">
+                  <div className="w-full max-w-[92%]">
+                    <AssessmentCardRenderer
+                      card={assessmentCard}
+                      onStart={async () => {
+                        const next = await beginAssessment(assessmentId)
+                        setAssessmentCard(next)
+                      }}
+                      onAnswer={async (answer) => {
+                        if (assessmentCard.card_type !== 'assessment_question') return
+                        setAssessmentQuestionHistory((prev) => [...prev, assessmentCard.question_data])
+                        const next = await answerAssessment({
+                          assessmentId,
+                          questionIndex: assessmentCard.question_data.current_question - 1,
+                          answer,
+                          userKey,
+                        })
+                        setAssessmentCard(next)
+
+                        // 如果测评完成（显示结果卡片），将结果和小雅消息添加到对话流
+                        // 但不清空state，让用户能看到结果卡片
+                        // 用户点击"继续和小雅聊天"按钮时才清空state
+                        if (next.card_type === 'assessment_result' && userKey) {
+                          try {
+                            const xiaoyaResult = await getXiaoyaMessage(userKey)
+                            if (xiaoyaResult.has_message && xiaoyaResult.message) {
+                              if (sessionId) {
+                                try {
+                                  await addXiaoyaMessageToDiscovery({
+                                    userKey,
+                                    sessionId,
+                                    message: xiaoyaResult.message,
+                                    resultData: next.result_data,
+                                  })
+                                  await reloadSession()
+                                  // ✅ 不立即清空state，让用户能看到结果卡片
+                                  // clearAssessmentCard() 移到 onContinueChat 回调中
+                                } catch (discoveryError) {
+                                  console.warn('[onAnswer] 添加到discovery失败，可能是session不存在:', discoveryError)
+                                  // 失败不影响当前结果展示，只是消息不会融入对话流
+                                }
+                              } else {
+                                console.warn('[onAnswer] sessionId为空，跳过添加到discovery session')
+                              }
                             }
-                          } else {
-                            console.warn('[onAnswer] sessionId为空，跳过添加到discovery session')
+                          } catch (error) {
+                            console.error('[onAnswer] 获取小雅消息失败:', error)
                           }
                         }
-                      } catch (error) {
-                        console.error('[onAnswer] 获取小雅消息失败:', error)
-                      }
-                    }
-                  }}
-                  onContinue={async () => {
-                    if (assessmentCard.card_type !== 'assessment_feedback') return
-                    setAssessmentCard({
-                      card_type: 'assessment_question',
-                      assessment_id: assessmentId,
-                      question_data: assessmentCard.next_question,
-                    })
-                  }}
-                  onContinueChat={() => {
-                    // 用户点击"继续和小雅聊天"，清除测评卡片state
-                    // 小雅消息已经在测评完成时添加到对话流，不需要再次添加
-                    clearAssessmentCard()
+                      }}
+                      onContinue={async () => {
+                        if (assessmentCard.card_type !== 'assessment_feedback') return
+                        setAssessmentCard({
+                          card_type: 'assessment_question',
+                          assessment_id: assessmentId,
+                          question_data: assessmentCard.next_question,
+                        })
+                      }}
+                      onContinueChat={() => {
+                        // 用户点击"继续和小雅聊天"，清除测评卡片state
+                        // 小雅消息已经在测评完成时添加到对话流，不需要再次添加
+                        clearAssessmentCard()
 
-                    // 滚动到底部
-                    setTimeout(() => {
-                      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-                    }, 150)
-                  }}
-                  onPrevious={
-                    assessmentQuestionHistory.length > 0
-                      ? () => {
-                          const previous = assessmentQuestionHistory[assessmentQuestionHistory.length - 1]
-                          setAssessmentQuestionHistory((prev) => prev.slice(0, -1))
-                          setAssessmentCard({
-                            card_type: 'assessment_question',
-                            assessment_id: assessmentId,
-                            question_data: previous,
-                          })
+                        // 滚动到底部
+                        setTimeout(() => {
+                          chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+                        }, 150)
+                      }}
+                      onPrevious={
+                        assessmentQuestionHistory.length > 0
+                          ? () => {
+                              const previous = assessmentQuestionHistory[assessmentQuestionHistory.length - 1]
+                              setAssessmentQuestionHistory((prev) => prev.slice(0, -1))
+                              setAssessmentCard({
+                                card_type: 'assessment_question',
+                                assessment_id: assessmentId,
+                                question_data: previous,
+                              })
+                            }
+                          : undefined
+                      }
+                      onAddLabels={handleAddLabels}
+                      assessmentType={currentAssessmentType}
+                    />
+                  </div>
+                </div>
+              )
+            }
+
+            // 如果是结果卡片，检查timeline中是否已经有相同的结果
+            const existingResultInTimeline = timelineItems.some(item =>
+              item.kind === 'assessment_result' &&
+              item.card?.assessment_id === assessmentId
+            )
+
+            // 如果timeline中已经有，就不重复显示state中的
+            if (existingResultInTimeline) return null
+
+            // 否则显示结果卡片
+            return (
+              <div className="flex justify-start">
+                <div className="w-full max-w-[92%]">
+                  <AssessmentCardRenderer
+                    card={assessmentCard}
+                    onStart={async () => {
+                      const next = await beginAssessment(assessmentId)
+                      setAssessmentCard(next)
+                    }}
+                    onAnswer={async (answer) => {
+                      if (assessmentCard.card_type !== 'assessment_question') return
+                      setAssessmentQuestionHistory((prev) => [...prev, assessmentCard.question_data])
+                      const next = await answerAssessment({
+                        assessmentId,
+                        questionIndex: assessmentCard.question_data.current_question - 1,
+                        answer,
+                        userKey,
+                      })
+                      setAssessmentCard(next)
+
+                      // 如果测评完成（显示结果卡片），将结果和小雅消息添加到对话流
+                      // 但不清空state，让用户能看到结果卡片
+                      // 用户点击"继续和小雅聊天"按钮时才清空state
+                      if (next.card_type === 'assessment_result' && userKey) {
+                        try {
+                          const xiaoyaResult = await getXiaoyaMessage(userKey)
+                          if (xiaoyaResult.has_message && xiaoyaResult.message) {
+                            if (sessionId) {
+                              try {
+                                await addXiaoyaMessageToDiscovery({
+                                  userKey,
+                                  sessionId,
+                                  message: xiaoyaResult.message,
+                                  resultData: next.result_data,
+                                })
+                                await reloadSession()
+                                // ✅ 不立即清空state，让用户能看到结果卡片
+                                // clearAssessmentCard() 移到 onContinueChat 回调中
+                              } catch (discoveryError) {
+                                console.warn('[onAnswer] 添加到discovery失败，可能是session不存在:', discoveryError)
+                                // 失败不影响当前结果展示，只是消息不会融入对话流
+                              }
+                            } else {
+                              console.warn('[onAnswer] sessionId为空，跳过添加到discovery session')
+                            }
+                          }
+                        } catch (error) {
+                          console.error('[onAnswer] 获取小雅消息失败:', error)
                         }
-                      : undefined
-                  }
-                  onAddLabels={handleAddLabels}
-                  assessmentType={currentAssessmentType}
-                />
+                      }
+                    }}
+                    onContinue={async () => {
+                      if (assessmentCard.card_type !== 'assessment_feedback') return
+                      setAssessmentCard({
+                        card_type: 'assessment_question',
+                        assessment_id: assessmentId,
+                        question_data: assessmentCard.next_question,
+                      })
+                    }}
+                    onContinueChat={() => {
+                      // 用户点击"继续和小雅聊天"，清除测评卡片state
+                      // 小雅消息已经在测评完成时添加到对话流，不需要再次添加
+                      clearAssessmentCard()
+
+                      // 滚动到底部
+                      setTimeout(() => {
+                        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+                      }, 150)
+                    }}
+                    onPrevious={
+                      assessmentQuestionHistory.length > 0
+                        ? () => {
+                            const previous = assessmentQuestionHistory[assessmentQuestionHistory.length - 1]
+                            setAssessmentQuestionHistory((prev) => prev.slice(0, -1))
+                            setAssessmentCard({
+                              card_type: 'assessment_question',
+                              assessment_id: assessmentId,
+                              question_data: previous,
+                            })
+                          }
+                        : undefined
+                    }
+                    onAddLabels={handleAddLabels}
+                    assessmentType={currentAssessmentType}
+                  />
+                </div>
               </div>
-            </div>
-          ) : null}
+            )
+          })()}
 
           {valuesAuctionCard ? (
             <div className="flex justify-start">
@@ -531,6 +645,24 @@ export default function DiscoverPage({
                       bids,
                     })
                     setValuesAuctionCard(next)
+
+                    // 如果结果卡片包含小雅消息，自动添加到对话流
+                    // 这样小雅的回复会显示在结果卡片下方
+                    if (next.xiaoya_message && sessionId) {
+                      try {
+                        await addXiaoyaMessageToDiscovery({
+                          userKey,
+                          sessionId,
+                          message: next.xiaoya_message,
+                          resultData: next,  // 传递整个结果卡片，包含 card_type
+                          assessmentType: 'values_auction',  // 新增：指定测评类型
+                        })
+                        await reloadSession()
+                      } catch (discoveryError) {
+                        console.warn('[onSubmitBids] 添加到discovery失败:', discoveryError)
+                        // 失败不影响结果展示
+                      }
+                    }
                   }}
                   onViewInterpretation={async () => {
                     if (!('assessment_id' in valuesAuctionCard)) return
