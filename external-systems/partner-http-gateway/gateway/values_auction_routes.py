@@ -10,7 +10,7 @@ from typing import Any, Protocol
 
 from assessment.values_auction_service import (
     start_values_auction,
-    get_traits_list,
+    get_lots_list,
     submit_auction_bids,
     generate_ai_interpretation,
     get_last_result,
@@ -67,22 +67,22 @@ def rest_values_auction_start(gateway: ValuesAuctionGateway, environ: dict[str, 
     return 200, _json_safe(start_values_auction(source=source, user_key=user_key))
 
 
-def rest_values_auction_traits(gateway: ValuesAuctionGateway, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+def rest_values_auction_lots(gateway: ValuesAuctionGateway, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
     """
-    获取特质列表
+    获取拍品列表
 
-    POST /v1/values-auction/traits
+    POST /v1/values-auction/lots
     Body: {"assessment_id": "xxx"}
 
     Returns:
-        特质列表卡片
+        拍品列表卡片
     """
     body = _parse_json_body(_read_body(environ))
     assessment_id = str(body.get("assessment_id") or "").strip()
     if not assessment_id:
         raise ValueError("assessment_id is required")
 
-    return 200, _json_safe(get_traits_list(assessment_id=assessment_id))
+    return 200, _json_safe(get_lots_list(assessment_id=assessment_id))
 
 
 def rest_values_auction_submit(gateway: ValuesAuctionGateway, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
@@ -328,7 +328,7 @@ def rest_values_auction_reuse_together(gateway: ValuesAuctionGateway, environ: d
 VALUES_AUCTION_ROUTES = {
     # 单人拍卖
     "/v1/values-auction/start": ("POST", rest_values_auction_start),
-    "/v1/values-auction/traits": ("POST", rest_values_auction_traits),
+    "/v1/values-auction/lots": ("POST", rest_values_auction_lots),
     "/v1/values-auction/submit": ("POST", rest_values_auction_submit),
     "/v1/values-auction/interpretation": ("POST", rest_values_auction_interpretation),
     "/v1/values-auction/history": ("GET", rest_values_auction_history),
@@ -350,8 +350,8 @@ def dispatch_values_auction_rest(
     # 单人拍卖
     if path == "/v1/values-auction/start" and method == "POST":
         return rest_values_auction_start(gateway, environ)
-    if path == "/v1/values-auction/traits" and method == "POST":
-        return rest_values_auction_traits(gateway, environ)
+    if path == "/v1/values-auction/lots" and method == "POST":
+        return rest_values_auction_lots(gateway, environ)
     if path == "/v1/values-auction/submit" and method == "POST":
         return rest_values_auction_submit(gateway, environ)
     if path == "/v1/values-auction/interpretation" and method == "POST":
