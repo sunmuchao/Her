@@ -30,10 +30,10 @@ const TYPE_NICKNAMES: Record<string, string> = {
 
 // Attachment style type nicknames (SBTI style)
 const ATTACHMENT_NICKNAMES: Record<string, string> = {
-  secure: '稳如老狗（STBL）',
-  anxious: '赛博怨妇（ANX-S）',
-  avoidant: '装死大师（FAKE-D）',
-  fearful: '反复横跳狂魔（WOC-F）',
+  secure: '稳定支持型',
+  anxious: '情感确认型',
+  avoidant: '边界自持型',
+  fearful: '敏感矛盾型',
 }
 
 // Love language type nicknames (SBTI style)
