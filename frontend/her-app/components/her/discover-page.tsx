@@ -41,7 +41,7 @@ import {
 } from '@/lib/api/endpoints/assessment'
 import {
   getValuesAuctionInterpretation,
-  getValuesAuctionTraits,
+  getValuesAuctionLots,
   startValuesAuction,
   submitValuesAuctionBids,
   type ValuesAuctionCard,
@@ -520,7 +520,7 @@ export default function DiscoverPage({
                   userKey={userKey}
                   onStart={async () => {
                     if (!('assessment_id' in valuesAuctionCard)) return
-                    const next = await getValuesAuctionTraits(valuesAuctionCard.assessment_id)
+                    const next = await getValuesAuctionLots(valuesAuctionCard.assessment_id)
                     setValuesAuctionCard(next)
                   }}
                   onSubmitBids={async (bids) => {
