@@ -454,15 +454,22 @@ def get_value_type_info(value_type: str) -> dict[str, Any]:
 
 
 def xiaoya_message_from_result(result: dict[str, Any]) -> str:
-    """生成小雅风格的价值观拍卖会解读消息
-
-    设计原则（Agent Native）：
-    - 卡片已展示：Top3拍品、隐藏价值分析、价值倾向类型
-    - 小雅不说"你拍了什么"，而是说"这背后的矛盾、张力、深层动机"
-    - 有洞察、有温度、有点毒舌有点贴心
-    """
+    """生成小雅风格的价值观拍卖会解读消息。"""
     top3 = result.get("top3", [])
     top3_titles = [t.get("title", "") for t in top3 if t.get("chips", 0) > 0]
+    top_hidden_values = result.get("top_hidden_values", [])
+    value_type = str(result.get("value_type") or classify_value_type_from_hidden(result.get("hidden_values", {})))
+    type_info = get_value_type_info(value_type)
+    hidden_labels = {
+        "freedom": "自由", "security": "安全感", "love": "爱情",
+        "status": "地位", "wealth": "财富", "power": "权力",
+        "loyalty": "忠诚", "family": "家庭", "companionship": "陪伴",
+        "recognition": "认可", "self_actualization": "自我实现",
+        "wisdom": "智慧", "inner_peace": "内心平静",
+        "independence": "独立", "altruism": "利他", "meaning": "意义",
+        "social_responsibility": "社会责任",
+    }
+    top_hidden_labels = [hidden_labels.get(hv.get("key", ""), hv.get("key", "")) for hv in top_hidden_values[:3]]
 
     # 判断拍品的类型组合
     has_financial = "这辈子都不用再为钱妥协" in top3_titles
@@ -475,80 +482,86 @@ def xiaoya_message_from_result(result: dict[str, Any]) -> str:
     has_meaning = "做一件改变世界的事" in top3_titles
     has_support = "一个无条件支持你的人" in top3_titles
 
-    # 开场白
-    message = "亲爱的，拍卖结果出来了～\n\n"
+    message = "亲爱的，价值观拍卖会这题，真的很能看出一个人到底在筛什么。\n\n"
+    message += f"你这次整体更偏 **{value_type}**。\n"
+    message += f"{type_info.get('description', '')}。\n\n"
+    if top3_titles:
+        message += f"你最愿意下重注的，是：{'、'.join(top3_titles[:3])}。\n"
+    if top_hidden_labels:
+        message += f"翻译成人话，就是你真正特别在意的是：{'、'.join(top_hidden_labels)}。\n\n"
+    else:
+        message += "\n"
 
-    # 根据拍品组合给出有洞察的解读
     if has_financial and has_status and has_love:
-        message += "有意思！你拍下了财富自由、社会地位，又拍了「一个不会离开你的人」。"
-        message += "\n\n这说明你想要掌控感（钱、地位），但又怕失控（怕对方离开）。有点矛盾哦～越想掌控的人，往往越害怕失去。"
-        message += "\n\n找个能给你安全感的人吧，不然你会一边赚钱一边焦虑「TA会不会走」。"
+        insight = "你一边要掌控感，一边又很怕失去关系。这种组合说明你不只想过得好，你还想在重要关系里不被抛下。"
+        match = "最适合你的人，通常既有稳定度，也能理解你的成就心，不会一边享受你的优秀，一边又嫌你太强。"
+        risk = "你最容易卡住的，是把关系也做成“风险管理”，结果人是留下了，亲密感却没进来。 "
 
     elif has_financial and has_love:
-        message += "你拍下了财富自由和爱情。"
-        message += "\n\n这说明你想要物质安全感，但又怕孤独。钱能给你安全感，但只有人能给你温暖。"
-        message += "\n\n找个不缺钱但愿意陪你的人吧，不然你会一边有钱一边觉得空。"
+        insight = "你既要现实层面的安全，也要关系里的温度。你不是贪心，你只是很清楚：钱解决焦虑，人解决孤独。"
+        match = "最适合你的人，通常既不回避现实问题，也不回避情感投入。"
+        risk = "你最容易委屈的，是遇到只会给资源、不给情感的人，或者只谈感觉、不谈落地的人。"
 
     elif has_status and has_love:
-        message += "你拍下了社会地位和爱情。"
-        message += "\n\n这说明你想要被尊重，但又想要被爱。有点意思——地位是别人给的尊重，爱情是TA给你的尊重。你其实想要双重确认。"
-        message += "\n\n找个既认可你成就又愿意陪你的人吧，不然你会一边被夸一边觉得没人懂你。"
+        insight = "你很在乎被尊重，也很在乎被珍惜。你真正要的不是光鲜，而是‘我厉害的时候有人欣赏，我脆弱的时候也有人接住’。"
+        match = "最适合你的人，通常既认可你的能力，也不只把你当成一个优秀的人设。"
+        risk = "你最容易失望的，是别人只爱你的高光，不爱你的真实需求。"
 
     elif has_financial and has_freedom:
-        message += "你拍下了财富自由和个人自由。"
-        message += "\n\n这说明你想要彻底的掌控——有钱、有时间、没人管。爽！但也要注意，太自由可能让对方觉得你不需要TA。"
-        message += "\n\n找个同样独立的人吧，不然你的自由会让TA焦虑「TA是不是不在乎我」。"
+        insight = "你非常看重自主权。你想要的不是被安排得很好，而是我有能力选择自己的生活方式。"
+        match = "最适合你的人，通常是边界感清楚、足够独立、不需要靠控制关系来确认安全感的人。"
+        risk = "你最容易被误解的，是你明明在乎，但表达出来像“我谁都不需要”。"
 
     elif has_love and has_freedom:
-        message += "你拍下了爱情和自由。"
-        message += "\n\n这是个经典矛盾——你想要亲密，但又不想被束缚。有点贪心哦～但人性就是这样。"
-        message += "\n\n找个能给你空间又愿意陪你的人吧，不然你会要么黏死要么逃走。"
+        insight = "你对关系的要求其实很高：既要亲密，又不能窒息；既要被爱，又不能失去自己。"
+        match = "最适合你的人，通常懂分寸、会靠近，也会给空间，不会把爱变成占有。"
+        risk = "你最容易反复的，是一靠近就怕失去自由，一拉开又怕关系变淡。"
 
     elif has_love and has_understanding:
-        message += "你拍下了爱情和「一个懂你的人」。"
-        message += "\n\n这说明你想要的不是陪伴，而是共鸣。你怕的不是孤独，而是不被理解。"
-        message += "\n\n找个能深度聊的人吧，不然你会一边有人陪一边觉得没灵魂。"
+        insight = "你要的从来不只是陪伴，而是那种‘我不用解释太多，你也能懂我在意什么’的共鸣。"
+        match = "最适合你的人，通常有理解力、情绪感受力，也愿意认真进入你的内心世界。"
+        risk = "你最容易失落的，是关系表面没问题，但精神上始终对不上频。"
 
     elif has_health and has_peace:
-        message += "你拍下了健康和平静。"
-        message += "\n\n这说明你想要的不是刺激，而是安稳。你可能经历过太多折腾，现在只想歇歇。"
-        message += "\n\n找个同样追求平静的人吧，不然你会被爱折腾的人搞得焦虑。"
+        insight = "你现在真正想守住的，是生活的稳定感和内心的平静。对你来说，不折腾本身就是很高的价值。"
+        match = "最适合你的人，通常情绪稳定、生活习惯稳、不会把关系谈成连续剧。"
+        risk = "你最容易耗损的，是遇到那种把情绪起伏当热恋证明的人。"
 
     elif has_financial and has_health:
-        message += "你拍下了财富和健康。"
-        message += "\n\n这说明你是个务实派——钱和命，最实在的东西。爱情、地位那些虚的，你不太在意。"
-        message += "\n\n找个同样务实的人吧，不然你会觉得浪漫派太不靠谱。"
+        insight = "你很务实，最先考虑的是生活底盘够不够稳。你对关系的要求不是花哨，而是可靠。"
+        match = "最适合你的人，通常说话不浮、生活能力强、愿意一起把日子过扎实。"
+        risk = "你最容易不耐烦的，是那种只有情绪价值、没有现实承担的人。"
 
     elif has_meaning:
-        message += "你拍下了「改变世界」。"
-        message += "\n\n这说明你想要意义感，不只是活着，而是留下点什么。有点理想主义哦～"
-        message += "\n\n找个同样有追求的人吧，不然你会觉得只关心吃喝住行的人太无聊。"
+        insight = "你很在意人生到底有没有更大的意义。你不太能长期待在只有吃喝住行、没有精神目标的关系里。"
+        match = "最适合你的人，通常也有追求、有信念，至少愿意和你一起讨论更深层的问题。"
+        risk = "你最容易失去兴趣的，是对方只关心眼前舒服，完全不在意长期价值。"
 
     elif has_support:
-        message += "你拍下了「一个无条件支持你的人」。"
-        message += "\n\n这说明你想要的不是平等的伴侣，而是被托住的感觉。你可能经常独自承担，需要一个后盾。"
-        message += "\n\n找个愿意当你后盾的人吧，但也要注意别太依赖，关系是双向的。"
+        insight = "你很需要关系里那种被托住的感觉。你未必弱，但你真的很在意‘当我扛不住时，有没有人站我这边’。"
+        match = "最适合你的人，通常情绪稳定、支持欲强，也愿意在关键时刻给你后盾。"
+        risk = "你最容易踩的坑，是太渴望被托住，结果忽略了关系也需要双向流动。"
 
     else:
-        # 兜底：用隐藏价值分析
-        top_hidden_values = result.get("top_hidden_values", [])
-        if top_hidden_values and len(top_hidden_values) > 0:
-            hidden_labels = {
-                "freedom": "自由", "security": "安全感", "love": "爱情",
-                "status": "地位", "wealth": "财富", "power": "权力",
-                "loyalty": "忠诚", "family": "家庭", "companionship": "陪伴",
-                "recognition": "认可", "self_actualization": "自我实现",
-                "wisdom": "智慧", "inner_peace": "内心平静",
-                "independence": "独立", "altruism": "利他", "meaning": "意义",
-            }
-            top_keys = [hidden_labels.get(hv.get("key", ""), hv.get("key", "")) for hv in top_hidden_values[:3]]
-            message += f"你最看重的三个价值：{', '.join(top_keys)}。"
-            message += "\n\n这说明你在找符合这些价值的人，而不是随便找个人。"
-            message += "\n\n继续问我呀，我帮你分析怎么找到匹配的人～"
+        if top_hidden_labels:
+            insight = f"你真正筛人的标准，其实不是表面条件，而是这些更底层的东西：{'、'.join(top_hidden_labels)}。"
+            match = f"最适合你的人，通常会和你在 {type_info.get('love_style', '关系节奏')} 上比较同频。"
+            risk = type_info.get("caution", "如果价值排序差太多，再喜欢也容易越走越累。")
         else:
-            message += "你拍下的东西挺有意思，但我需要更多信息才能给你深度解读。"
-            message += "\n\n继续问我呀～"
+            insight = "你这次给出的信号比较综合，说明你挑人时不是只看一个点，而是会整体评估。"
+            match = "最适合你的人，通常不是单项特别强，而是整体价值观跟你差得不远。"
+            risk = "你最容易卡住的，是标准分散，最后连自己都说不清到底为什么不合适。"
 
-    message += "\n\n还有什么想聊的？继续问我呀～"
-
+    message += "**我看到的核心驱动力是：**\n"
+    message += f"{insight}\n\n"
+    message += "**说匹配，我会这样建议你：**\n"
+    message += f"- {match}\n"
+    message += f"- 关系风格上，你大概率会更偏向：{type_info.get('love_style', '')}。\n"
+    message += f"- 现实建议：{type_info.get('match_suggestion', '').rstrip('。')}。\n\n"
+    message += "**我给你的实战提醒：**\n"
+    message += "1. 你以后看人时，别只看对方说自己想要什么，要看TA愿不愿意为这些价值付出真实选择。\n"
+    message += "2. 真正长期合适的人，不一定和你拍同样的东西，但至少不能踩你最核心的底层价值。\n"
+    message += "3. 你现在最该确认的，不是“我喜欢什么人”，而是“我不能接受什么关系结构”。\n\n"
+    message += f"**我再提醒你一个高频风险点：**\n{risk.rstrip('。')}。\n\n"
+    message += "你要是愿意，我下一条可以继续帮你拆：你最适合找什么样的伴侣价值观，以及你最该避开的关系模式。"
     return message
