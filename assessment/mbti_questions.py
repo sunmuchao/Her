@@ -1524,28 +1524,28 @@ def xiaoya_message_from_result(result: dict[str, Any]) -> str:
     nickname = str(type_info.get("nickname") or type_code)
 
     message = "亲爱的，结果出来了，我先直接跟你说重点。\n\n"
-    message += f"你这次测出来是 **{type_code}（{nickname}）**。\n"
-    message += f"你在关系里的强项很明显：{love_manual['strengths'][0]}。\n"
-    message += f"但你也有一个很容易反复出现的点：{love_manual['weaknesses'][0]}。\n\n"
+    message += f"你这次测出来是 =={type_code}（{nickname}）==。\n"
+    message += f"你在关系里的强项很明显：**{love_manual['strengths'][0]}**。\n"
+    message += f"但你也有一个很容易反复出现的点：__{love_manual['weaknesses'][0]}__。\n\n"
 
-    message += "**如果把你放进亲密关系里，我会这样理解你：**\n"
+    message += "**关系画像：**\n"
     for item in dimension_summary:
         message += f"- {item}\n"
     message += "\n"
 
-    message += "**说匹配：你更容易被这些类型接住。**\n"
-    message += f"- 最适合优先了解：{'、'.join(compatibility['best']) or '能理解你节奏的人'}\n"
+    message += "**匹配建议：**\n"
+    message += f"- 高匹配人格：{'、'.join(compatibility['best']) or '能理解你节奏的人'}\n"
     if compatibility["good"]:
-        message += f"- 也比较容易发展稳定关系：{'、'.join(compatibility['good'])}\n"
+        message += f"- 次高匹配人格：{'、'.join(compatibility['good'])}\n"
     if compatibility["caution"]:
-        message += f"- 遇到这些类型要更会沟通：{'、'.join(compatibility['caution'])}\n"
+        message += f"- 需要重点磨合的人格：{'、'.join(compatibility['caution'])}\n"
     if best_match_hint:
         message += f"- 为什么适合：{best_match_hint}\n"
     if caution_match_hint:
         message += f"- 为什么容易卡住：{caution_match_hint}\n"
     message += "\n"
 
-    message += "**我给你的相处建议，会更偏实战一点：**\n"
+    message += "**相处建议：**\n"
     for index, item in enumerate(relationship_advice, start=1):
         message += f"{index}. {_to_xiaoya_advice(item).rstrip('。')}。\n"
     if best_match_note:
@@ -1555,9 +1555,9 @@ def xiaoya_message_from_result(result: dict[str, Any]) -> str:
     message += "\n"
 
     if caution_match_note:
-        message += f"**我再提醒你一个高频风险点：**\n遇到不太同频的人时，{caution_match_note.rstrip('。')}。\n\n"
+        message += f"**风险提醒：**\n==高频风险点==：遇到不太同频的人时，{caution_match_note.rstrip('。')}。\n\n"
     elif red_flags:
-        message += f"**我再提醒你一个高频风险点：**\n{red_flags[0].rstrip('。')}。\n\n"
+        message += f"**风险提醒：**\n==高频风险点==：{red_flags[0].rstrip('。')}。\n\n"
 
     message += "你要是愿意，我下一条可以继续帮你拆得更细：比如你最适合谈哪两种人格、为什么适合你、还有你在关系里最容易反复踩的坑。"
 

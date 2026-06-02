@@ -483,10 +483,10 @@ def xiaoya_message_from_result(result: dict[str, Any]) -> str:
     has_support = "一个无条件支持你的人" in top3_titles
 
     message = "亲爱的，价值观拍卖会这题，真的很能看出一个人到底在筛什么。\n\n"
-    message += f"你这次整体更偏 **{value_type}**。\n"
-    message += f"{type_info.get('description', '')}。\n\n"
+    message += f"你这次整体更偏 =={value_type}==。\n"
+    message += f"**{type_info.get('description', '')}。**\n\n"
     if top3_titles:
-        message += f"你最愿意下重注的，是：{'、'.join(top3_titles[:3])}。\n"
+        message += f"你最愿意下重注的，是：__{'、'.join(top3_titles[:3])}__。\n"
     if top_hidden_labels:
         message += f"翻译成人话，就是你真正特别在意的是：{'、'.join(top_hidden_labels)}。\n\n"
     else:
@@ -552,16 +552,16 @@ def xiaoya_message_from_result(result: dict[str, Any]) -> str:
             match = "最适合你的人，通常不是单项特别强，而是整体价值观跟你差得不远。"
             risk = "你最容易卡住的，是标准分散，最后连自己都说不清到底为什么不合适。"
 
-    message += "**我看到的核心驱动力是：**\n"
+    message += "**核心驱动力：**\n"
     message += f"{insight}\n\n"
-    message += "**说匹配，我会这样建议你：**\n"
+    message += "**匹配建议：**\n"
     message += f"- {match}\n"
     message += f"- 关系风格上，你大概率会更偏向：{type_info.get('love_style', '')}。\n"
     message += f"- 现实建议：{type_info.get('match_suggestion', '').rstrip('。')}。\n\n"
-    message += "**我给你的实战提醒：**\n"
+    message += "**相处建议：**\n"
     message += "1. 你以后看人时，别只看对方说自己想要什么，要看TA愿不愿意为这些价值付出真实选择。\n"
     message += "2. 真正长期合适的人，不一定和你拍同样的东西，但至少不能踩你最核心的底层价值。\n"
     message += "3. 你现在最该确认的，不是“我喜欢什么人”，而是“我不能接受什么关系结构”。\n\n"
-    message += f"**我再提醒你一个高频风险点：**\n{risk.rstrip('。')}。\n\n"
+    message += f"**风险提醒：**\n==高频风险点==：{risk.rstrip('。')}。\n\n"
     message += "你要是愿意，我下一条可以继续帮你拆：你最适合找什么样的伴侣价值观，以及你最该避开的关系模式。"
     return message
