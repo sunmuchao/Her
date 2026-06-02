@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button'
-import { ArrowRight, Lightbulb, ChevronDown, ChevronUp } from 'lucide-react'
+import { ArrowRight, Lightbulb, ChevronDown, ChevronUp, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { type AssessmentType } from './assessment-themes'
+import { useHapticFeedback, RingBurst } from './immersive-effects'
 
 interface FeedbackData {
   dimension?: string
@@ -93,53 +94,96 @@ function getDimensionConfig(dimension?: string, assessmentType?: AssessmentType)
   return MBTI_DIMENSION_CONFIG[dimension?.trim() || '']
 }
 
-function CircularProgress({ 
+// Animated circular progress with reveal effect
+function CircularProgressReveal({ 
   score, 
-  size = 100, 
-  strokeWidth = 8,
+  size = 140, 
+  strokeWidth = 10,
   colorClass = 'text-primary',
-  animate = true
+  glowClass = 'glow-primary',
 }: { 
   score: number
   size?: number
   strokeWidth?: number
   colorClass?: string
-  animate?: boolean
+  glowClass?: string
 }) {
-  const [displayedScore, setDisplayedScore] = useState(animate ? 0 : score)
+  const [phase, setPhase] = useState<'hidden' | 'revealing' | 'counting' | 'complete'>('hidden')
+  const [displayedScore, setDisplayedScore] = useState(0)
+  const [progressPercent, setProgressPercent] = useState(0)
+  const haptic = useHapticFeedback()
+  
   const radius = (size - strokeWidth) / 2
   const circumference = radius * 2 * Math.PI
-  const offset = circumference - (displayedScore / 100) * circumference
+  const offset = circumference - (progressPercent / 100) * circumference
   
-  // Animate the score counting up
+  // Animation sequence
   useEffect(() => {
-    if (!animate) {
-      setDisplayedScore(score)
-      return
-    }
+    // Phase 1: Reveal
+    const revealTimer = setTimeout(() => {
+      setPhase('revealing')
+      haptic('light')
+    }, 200)
     
-    const duration = 1000 // 1 second
-    const steps = 60
-    const increment = score / steps
-    let current = 0
+    // Phase 2: Start counting
+    const countTimer = setTimeout(() => {
+      setPhase('counting')
+    }, 600)
     
-    const timer = setInterval(() => {
-      current += increment
-      if (current >= score) {
-        setDisplayedScore(score)
-        clearInterval(timer)
-      } else {
-        setDisplayedScore(current)
+    // Phase 3: Animate score and progress together
+    const animateTimer = setTimeout(() => {
+      const duration = 1200
+      const startTime = Date.now()
+      
+      const animate = () => {
+        const elapsed = Date.now() - startTime
+        const progress = Math.min(elapsed / duration, 1)
+        
+        // Easing function (ease-out cubic)
+        const eased = 1 - Math.pow(1 - progress, 3)
+        
+        setDisplayedScore(Math.round(score * eased))
+        setProgressPercent(score * eased)
+        
+        if (progress < 1) {
+          requestAnimationFrame(animate)
+        } else {
+          setPhase('complete')
+          haptic('success')
+        }
       }
-    }, duration / steps)
+      
+      requestAnimationFrame(animate)
+    }, 700)
     
-    return () => clearInterval(timer)
-  }, [score, animate])
+    return () => {
+      clearTimeout(revealTimer)
+      clearTimeout(countTimer)
+      clearTimeout(animateTimer)
+    }
+  }, [score, haptic])
   
   return (
-    <div className="relative will-change-transform" style={{ width: size, height: size }}>
-      {/* Background circle */}
-      <svg className="transform -rotate-90" width={size} height={size}>
+    <div 
+      className={cn(
+        'relative transition-all duration-500',
+        phase === 'hidden' && 'opacity-0 scale-75 blur-md',
+        phase === 'revealing' && 'opacity-100 scale-100 blur-0 animate-score-reveal',
+        phase === 'complete' && glowClass
+      )} 
+      style={{ width: size, height: size }}
+    >
+      {/* Background glow */}
+      {phase === 'complete' && (
+        <div className={cn(
+          'absolute inset-0 rounded-full opacity-30 blur-xl animate-ambient-pulse',
+          colorClass
+        )} />
+      )}
+      
+      {/* SVG Progress */}
+      <svg className="transform -rotate-90 relative z-10" width={size} height={size}>
+        {/* Background circle */}
         <circle
           className="text-secondary"
           strokeWidth={strokeWidth}
@@ -151,7 +195,7 @@ function CircularProgress({
         />
         {/* Progress circle */}
         <circle
-          className={cn('transition-all duration-300 ease-out', colorClass)}
+          className={cn('transition-all duration-100 ease-out', colorClass)}
           strokeWidth={strokeWidth}
           strokeDasharray={circumference}
           strokeDashoffset={offset}
@@ -163,11 +207,24 @@ function CircularProgress({
           cy={size / 2}
         />
       </svg>
+      
       {/* Center content */}
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-2xl font-semibold tabular-nums">{displayedScore.toFixed(0)}</span>
-        <span className="text-xs text-muted-foreground">{"分"}</span>
+      <div className="absolute inset-0 flex flex-col items-center justify-center z-20">
+        <span className={cn(
+          'text-4xl font-bold tabular-nums transition-all duration-300',
+          phase === 'complete' && 'animate-elastic-pop'
+        )}>
+          {displayedScore}
+        </span>
+        <span className="text-sm text-muted-foreground mt-1">{"分"}</span>
       </div>
+      
+      {/* Ring burst on complete */}
+      <RingBurst 
+        trigger={phase === 'complete'} 
+        color={`var(${colorClass.includes('coral') ? '--coral' : colorClass.includes('lavender') ? '--lavender' : '--primary'})`}
+        rings={2}
+      />
     </div>
   )
 }
@@ -199,6 +256,7 @@ export function AssessmentFeedbackCard({
   assessmentType?: AssessmentType
 }) {
   const [isTextExpanded, setIsTextExpanded] = useState(false)
+  const [showContent, setShowContent] = useState(false)
   const safeScore = typeof data.score === 'number' ? data.score : 0
   const fallbackLabel = getDimensionLabel(data, assessmentType)
   const fallbackIcon = (fallbackLabel || '--').slice(0, 2).toUpperCase()
@@ -211,6 +269,9 @@ export function AssessmentFeedbackCard({
              assessmentType === 'love_language' ? 'bg-lavender-soft' : 'bg-secondary',
     label: fallbackLabel,
   }
+  
+  const glowClass = assessmentType === 'attachment_style' ? 'glow-coral' : 
+                    assessmentType === 'love_language' ? 'glow-lavender' : 'glow-primary'
   
   const scoreLevel = getScoreLevel(safeScore, assessmentType)
   
@@ -226,53 +287,65 @@ export function AssessmentFeedbackCard({
   const isLongText = feedbackText.length > 100
   const shouldTruncate = isLongText && !isTextExpanded
 
+  // Show content after score reveal
+  useEffect(() => {
+    const timer = setTimeout(() => setShowContent(true), 1800)
+    return () => clearTimeout(timer)
+  }, [])
+
   return (
-    <div className="rounded-3xl border border-border bg-card p-6 shadow-sm animate-scale-in">
+    <div className="rounded-3xl border border-border bg-card p-6 shadow-sm animate-card-flip-in perspective-1000">
       {/* Header */}
-      <div className="flex items-center gap-2 text-xs text-muted-foreground mb-4">
-        <Lightbulb className={cn(
-          'w-4 h-4',
+      <div className="flex items-center gap-2 text-xs text-muted-foreground mb-4 animate-fade-in">
+        <Sparkles className={cn(
+          'w-4 h-4 animate-pulse-soft',
           assessmentType === 'attachment_style' ? 'text-coral' : 
-          assessmentType === 'love_language' ? 'text-lavender' : ''
+          assessmentType === 'love_language' ? 'text-lavender' : 'text-primary'
         )} />
-        <span className="uppercase tracking-widest">{"小发现"}</span>
+        <span className="uppercase tracking-widest">{"维度分析"}</span>
       </div>
 
       {/* Dimension Title */}
-      <div className="flex items-center gap-3 mb-5">
+      <div className={cn(
+        'flex items-center gap-3 mb-6 transition-all duration-500',
+        showContent ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+      )}>
         <div className={cn(
-          'flex items-center justify-center w-12 h-12 rounded-2xl font-semibold text-sm',
+          'flex items-center justify-center w-14 h-14 rounded-2xl font-bold text-base transition-transform duration-300',
           config.bgColor,
-          config.color
+          config.color,
+          showContent && 'animate-elastic-pop'
         )}>
           {config.icon}
         </div>
         <div>
-          <h3 className="text-xl font-semibold">{fallbackLabel}</h3>
-          <span className={cn('text-sm', scoreLevel.color)}>
+          <h3 className="text-xl font-bold">{fallbackLabel}</h3>
+          <span className={cn('text-sm font-medium', scoreLevel.color)}>
             {scoreLevel.label}{"倾向"}
           </span>
         </div>
       </div>
 
-      {/* Circular Progress */}
-      <div className="flex justify-center my-6">
-        <CircularProgress 
+      {/* Circular Progress with Reveal Effect */}
+      <div className="flex justify-center my-8">
+        <CircularProgressReveal 
           score={safeScore} 
-          size={120} 
-          strokeWidth={10}
+          size={150} 
+          strokeWidth={12}
           colorClass={config.color}
+          glowClass={glowClass}
         />
       </div>
 
       {/* Feedback Text with expandable support */}
       <div className={cn(
-        'rounded-2xl p-4',
+        'rounded-2xl p-4 transition-all duration-500',
         assessmentType === 'attachment_style' ? 'bg-coral-soft/40' : 
-        assessmentType === 'love_language' ? 'bg-lavender-soft/40' : 'bg-secondary/40'
+        assessmentType === 'love_language' ? 'bg-lavender-soft/40' : 'bg-secondary/40',
+        showContent ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
       )}>
         <p className={cn(
-          'text-sm leading-relaxed text-muted-foreground transition-all duration-300',
+          'text-sm leading-relaxed text-foreground/80 transition-all duration-300',
           shouldTruncate && 'line-clamp-3'
         )}>
           {feedbackText}
@@ -304,8 +377,14 @@ export function AssessmentFeedbackCard({
 
       {/* Continue Button */}
       <Button
-        className={cn('mt-5 w-full h-12 rounded-xl text-base font-medium group touch-target active:scale-[0.98] transition-all', buttonClass)}
+        className={cn(
+          'mt-5 w-full h-12 rounded-xl text-base font-medium group touch-target transition-all',
+          'active:scale-[0.98]',
+          buttonClass,
+          showContent ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+        )}
         onClick={onContinue}
+        style={{ transitionDelay: showContent ? '0ms' : '2000ms' }}
       >
         <span>{"继续探索下一维度"}</span>
         <ArrowRight className="w-4 h-4 ml-1 transition-transform group-hover:translate-x-1" />
