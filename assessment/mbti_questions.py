@@ -1411,8 +1411,8 @@ MBTI_COMPATIBILITY = {
     "ISFP": {"best": ["ESFJ", "ENFJ"], "good": ["ISFJ", "ESFP", "INFP"], "caution": ["ENTJ", "ESTJ"]},
     "ESTJ": {"best": ["ISTP", "INTP"], "good": ["ESTP", "ESFJ", "ISTJ"], "caution": ["INFP", "ENFP"]},
     "ISTJ": {"best": ["ESTP", "ESFP"], "good": ["ISTP", "ESTJ", "ISFJ"], "caution": ["ENFP", "ENTP"]},
-    "ESTP": {"best": ["ISTJ", "INFJ"], "good": ["ESTJ", "ESFP", "ISTP"], "caution": ["INFJ", "INTJ"]},
-    "ISTP": {"best": ["ESTJ", "ENFJ"], "good": ["ISTJ", "ESTP", "INTP"], "caution": ["ENFJ", "INFJ"]},
+    "ESTP": {"best": ["ISTJ", "INFJ"], "good": ["ESTJ", "ESFP", "ISTP"], "caution": ["INFP", "INTJ"]},
+    "ISTP": {"best": ["ESTJ", "ENFJ"], "good": ["ISTJ", "ESTP", "INTP"], "caution": ["ESFJ", "INFJ"]},
 }
 
 
@@ -1441,10 +1441,10 @@ def _dimension_preference(score: float, high_label: str, low_label: str) -> str:
 
 def _build_professional_dimension_summary(scores: dict[str, float]) -> list[str]:
     return [
-        f"在能量模式上，你更偏 {_dimension_preference(scores.get('ei', 50), '外向表达', '内向沉淀')}",
-        f"在信息处理上，你更偏 {_dimension_preference(scores.get('sn', 50), '现实细节', '趋势直觉')}",
-        f"在做决定时，你更偏 {_dimension_preference(scores.get('tf', 50), '逻辑判断', '关系感受')}",
-        f"在关系节奏上，你更偏 {_dimension_preference(scores.get('jp', 50), '计划确定', '灵活开放')}",
+        f"相处时，你更习惯 {_dimension_preference(scores.get('ei', 50), '直接表达', '先自己消化')}",
+        f"看人和看关系时，你更看重 {_dimension_preference(scores.get('sn', 50), '现实细节', '感觉和可能性')}",
+        f"遇到分歧时，你更容易站在 {_dimension_preference(scores.get('tf', 50), '逻辑和标准', '感受和关系')} 这边",
+        f"推进关系时，你更偏 {_dimension_preference(scores.get('jp', 50), '先对齐节奏', '顺着感觉发展')}",
     ]
 
 
@@ -1533,16 +1533,18 @@ def xiaoya_message_from_result(result: dict[str, Any]) -> str:
         message += f"- {item}\n"
     message += "\n"
 
-    message += f"真要说适合你的人，最适合优先了解的是 {'、'.join(compatibility['best']) or '能理解你节奏的人'}"
+    best_types = '、'.join(compatibility['best']) or '能理解你节奏的人'
+    caution_types = '、'.join(compatibility['caution'])
+    message += f"真要说适合你的人，最适合优先了解的是 {best_types}"
     if compatibility["good"]:
         message += f"，其次是 {'、'.join(compatibility['good'])}"
     message += "。\n"
     if compatibility["caution"]:
-        message += f"要更会沟通的类型是 {'、'.join(compatibility['caution'])}。\n"
+        message += f"相对更需要磨合的是 {caution_types}。\n"
     if best_match_hint:
-        message += f"之所以合适，是因为 {best_match_hint}。\n"
+        message += f"像 {best_types} 这类人之所以适合你，是因为 {best_match_hint}。\n"
     if caution_match_hint:
-        message += f"容易卡住的点在于 {caution_match_hint}。\n"
+        message += f"而你和 {caution_types} 这类人容易卡住，主要是因为 {caution_match_hint}。\n"
     message += "\n"
 
     message += "我给你三条最有用的提醒：\n"
