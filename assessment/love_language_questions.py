@@ -763,48 +763,89 @@ def _interpretation_from_result(result: dict[str, Any]) -> dict[str, Any]:
 
 
 def xiaoya_message_from_result(result: dict[str, Any]) -> str:
-    """生成小雅风格的恋爱语言解读消息
-
-    设计原则（Agent Native）：
-    - 卡片已展示：雷达图（五种语言分数）、类型昵称
-    - 小雅说一段完整的、有温度的话，把建议整合起来
-    - 不是列表式的碎片，而是自然的对话
-    """
+    """生成小雅风格的恋爱语言解读消息。"""
     scores = dict(result.get("scores") or {})
     primary_language = str(result.get("primary_language") or get_primary_love_language(scores))
+    primary_info = get_language_info(primary_language)
+    ranking = get_language_ranking(scores)
+    top3 = ranking[:3]
+    bottom2 = ranking[-2:]
+    love_manual = primary_info.get("love_manual", {})
 
-    # 根据主语言生成建议内容
     if primary_language == "words_of_affirmation":
-        love_tip = "多夸TA、多鼓励TA，TA遇到困难说「我相信你能搞定」"
-        blind_spot = "TA不夸你你会觉得不被爱，TA光做事不夸你会觉得没被看见"
-        secret = "别光听甜言蜜语也要看TA为你做了啥"
+        pattern = "你对“被看见、被肯定、被认真回应”特别敏感，话说对了，你会很快软下来。"
+        match = "最适合你的人，通常不是只会做事的人，而是愿意表达、愿意确认、也愿意把喜欢说出来的人。"
+        risk = "你最容易误判的，是把“不擅长表达”直接等同于“不够爱你”。"
     elif primary_language == "quality_time":
-        love_tip = "放下手机专心陪TA，陪TA深度聊三观、聊未来、聊梦想"
-        blind_spot = "TA玩手机不陪你会让你觉得不被重视，TA各玩各的不深度聊会让你觉得没灵魂"
-        secret = "别光要陪伴也要看TA为你做了啥"
+        pattern = "你真正要的不是陪着而已，而是对方把注意力、时间和情绪都给到你。"
+        match = "最适合你的人，通常愿意腾出完整时间陪你，也愿意认真聊关系、聊感受、聊未来。"
+        risk = "你最容易受伤的点，是对方人在你旁边，但心根本没在场。"
     elif primary_language == "receiving_gifts":
-        love_tip = "送TA小心意（TA喜欢的零食、小饰品），纪念日精心准备有意义的礼物"
-        blind_spot = "TA不送你会让你觉得不被重视，纪念日没礼物会让你很失望"
-        secret = "别光要物质也要看TA为你做了啥"
+        pattern = "你在意的从来不只是礼物本身，而是那种“我被惦记、被郑重对待”的感觉。"
+        match = "最适合你的人，通常会记得细节，愿意花心思准备小惊喜，也懂仪式感对你的意义。"
+        risk = "你最容易委屈的点，是对方觉得这些都不重要，但你会把它理解成不够上心。"
     elif primary_language == "acts_of_service":
-        love_tip = "帮TA搞定麻烦事，TA累的时候主动说「我来做你去休息」"
-        blind_spot = "TA不帮你会让你觉得不被心疼，TA光说爱不做事会让你觉得没诚意"
-        secret = "别光要行动也要看TA为你说了啥"
-    elif primary_language == "physical_touch":
-        love_tip = "突然抱TA说「我就是想抱你」，约会时牵手亲亲黏着TA"
-        blind_spot = "TA不黏你会让你觉得不被爱，TA不抱你你会觉得冷淡"
-        secret = "别光要肢体接触也要看TA为你做了啥"
+        pattern = "你判断爱意时很看行动，谁愿意替你分担、替你落地，你就会觉得这个人靠谱。"
+        match = "最适合你的人，通常执行力强，愿意照顾细节，也会在你累的时候主动顶上。"
+        risk = "你最容易失望的点，是对方嘴上很会说，但关键时刻总是没动作。"
     else:
-        love_tip = "用你最舒服的方式表达爱"
-        blind_spot = "对方不懂你的表达方式会让你觉得不被爱"
-        secret = "学会欣赏对方的各种表达方式"
+        pattern = "你对身体靠近和真实触感特别敏感，抱抱、牵手、靠近，对你来说都不是小事。"
+        match = "最适合你的人，通常不抗拒亲密接触，也愿意用身体语言表达喜欢和安抚。"
+        risk = "你最容易误会的点，是对方没那么黏，你就会下意识觉得关系降温了。"
 
-    # 整合成一段完整的话
-    message = f"亲爱的，恋爱语言测完了～看雷达图就知道你最敏感的表达方式了。\n\n"
-    message += f"想让对方感受到你的爱？{love_tip}。但也要注意，{blind_spot}。\n\n"
-    message += f"💡 小雅悄悄话：下次遇到心动的人，{secret}～\n\n"
-    message += "还有什么想了解的？继续问我呀～"
-
+    message = "亲爱的，恋爱语言这题我也给你翻译一下。\n\n"
+    message += f"你最主要的恋爱语言是 **{LOVE_LANGUAGE_NAMES[primary_language]}（{primary_info.get('nickname', '')}）**。\n"
+    message += f"{pattern}\n\n"
+    message += "**如果放进关系里看，你最容易被这些信号打动：**\n"
+    for item in top3:
+        message += f"- {item['language_name']}：{item['score']:.0f} 分，这基本就是你最容易感受到爱的通道\n"
+    message += "\n"
+    message += "**相对没那么打动你的信号：**\n"
+    for item in bottom2:
+        message += f"- {item['language_name']}：{item['score']:.0f} 分，如果对方只会这一套，你可能会觉得“也还好”\n"
+    message += "\n"
+    message += "**说匹配，我会这样建议你：**\n"
+    message += f"- {match}\n"
+    suggestion = str(love_manual.get("match_suggestion") or "")
+    if suggestion:
+        message += f"- 现实一点说：{suggestion.rstrip('。')}。\n"
+    message += "\n"
+    message += "**我给你的实战建议：**\n"
+    if primary_language == "words_of_affirmation":
+        advice = [
+            "别只等对方来夸你，你也可以直接告诉对方，什么样的回应会让你感觉被爱。",
+            "遇到嘴笨但行动稳定的人，先别急着判死刑，看看TA是不是在用别的方式对你好。",
+            "你自己表达爱时，也别吝啬语言确认，这会让关系升温得很快。",
+        ]
+    elif primary_language == "quality_time":
+        advice = [
+            "你可以直接说你要的不是“在一起待着”，而是“认真陪我一会儿”。",
+            "约会里如果你很在意专注度，提前讲清楚，比一个人默默失望更有用。",
+            "也别只盯着陪伴时长，能不能深度连接，对你更重要。",
+        ]
+    elif primary_language == "receiving_gifts":
+        advice = [
+            "你可以直接告诉对方，你在意的是心意和被惦记，不一定非得贵。",
+            "别把礼物这件事憋成委屈，仪式感对你重要，就坦白说。",
+            "同时也记得看一眼，对方有没有用陪伴、行动或时间在认真对你。",
+        ]
+    elif primary_language == "acts_of_service":
+        advice = [
+            "你最吃行动，那就要学会把“我需要你帮我什么”说具体，对方才接得住。",
+            "别默默记账，觉得TA不帮就是不爱，很多人不是不愿意，只是不知道你在等什么。",
+            "你也很适合找那种说到做到的人，这会让你长期更有安全感。",
+        ]
+    else:
+        advice = [
+            "你可以直接告诉对方，你对肢体接触的需求是什么，不然对方很可能根本猜不到。",
+            "别把对方偶尔不黏自动理解成冷淡，先看TA整体有没有在靠近你。",
+            "你自己表达爱的时候，身体语言对你是优势，用好了很容易让关系变甜。",
+        ]
+    for index, item in enumerate(advice, start=1):
+        message += f"{index}. {item}\n"
+    message += "\n"
+    message += f"**我再提醒你一个高频风险点：**\n{risk}\n\n"
+    message += "你要是愿意，我下一条可以继续帮你拆：你最适合和哪种恋爱语言的人谈，最容易鸡同鸭讲的又是哪种。"
     return message
 
 
