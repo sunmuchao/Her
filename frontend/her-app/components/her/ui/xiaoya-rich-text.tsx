@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
+import { Sparkles, AlertTriangle, CheckCircle2, Heart, Users, Lightbulb } from 'lucide-react'
 
 function renderInline(content: string): ReactNode[] {
   const nodes: ReactNode[] = []
@@ -23,7 +24,10 @@ function renderInline(content: string): ReactNode[] {
       )
     } else if (token.startsWith('__') && token.endsWith('__')) {
       nodes.push(
-        <span key={`${match.index}-underline`} className="font-medium underline decoration-2 underline-offset-2">
+        <span 
+          key={`${match.index}-underline`} 
+          className="font-medium text-coral underline decoration-coral/40 decoration-2 underline-offset-2"
+        >
           {token.slice(2, -2)}
         </span>,
       )
@@ -31,8 +35,9 @@ function renderInline(content: string): ReactNode[] {
       nodes.push(
         <span
           key={`${match.index}-highlight`}
-          className="rounded-md bg-primary/15 px-1.5 py-0.5 font-semibold text-primary"
+          className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-primary/15 to-coral/10 px-2 py-0.5 font-semibold text-primary ring-1 ring-primary/20"
         >
+          <Sparkles className="h-3 w-3 text-primary/70" />
           {token.slice(2, -2)}
         </span>,
       )
@@ -48,6 +53,31 @@ function renderInline(content: string): ReactNode[] {
   return nodes
 }
 
+// 获取段落类型对应的图标
+function getSectionIcon(sectionType: string) {
+  switch (sectionType) {
+    case 'relationship':
+      return <Heart className="h-3.5 w-3.5" />
+    case 'match':
+      return <Users className="h-3.5 w-3.5" />
+    case 'advice':
+      return <Lightbulb className="h-3.5 w-3.5" />
+    case 'risk':
+      return <AlertTriangle className="h-3.5 w-3.5" />
+    default:
+      return <CheckCircle2 className="h-3.5 w-3.5" />
+  }
+}
+
+// 检测段落类型
+function detectSectionType(line: string): string | null {
+  if (/关系画像|关系模式/.test(line)) return 'relationship'
+  if (/匹配建议|配对建议/.test(line)) return 'match'
+  if (/相处建议|沟通建议/.test(line)) return 'advice'
+  if (/风险提醒|注意事项/.test(line)) return 'risk'
+  return null
+}
+
 export function XiaoyaRichText({
   content,
   className,
@@ -58,75 +88,113 @@ export function XiaoyaRichText({
   const lines = content.split('\n').filter((line, index, all) => line.trim() !== '' || (index > 0 && all[index - 1].trim() !== ''))
 
   return (
-    <div className={cn('space-y-2.5 text-sm leading-6 text-muted-foreground', className)}>
+    <div className={cn('space-y-3 text-sm leading-relaxed text-muted-foreground', className)}>
       {lines.map((rawLine, index) => {
         const line = rawLine.trim()
 
         if (!line) {
-          return <div key={`spacer-${index}`} className="h-1.5" />
+          return <div key={`spacer-${index}`} className="h-2" />
         }
 
-        if (/^\*\*.+\*\*$/.test(line)) {
+        // 检测是否是章节标题（**xxx**格式且独占一行）
+        if (/^\*\*.+\*\*[：:]?$/.test(line)) {
+          const sectionType = detectSectionType(line)
+          const icon = sectionType ? getSectionIcon(sectionType) : null
+          const colorClass = sectionType === 'risk' 
+            ? 'bg-rose/10 text-rose border-rose/20' 
+            : 'bg-secondary text-foreground border-border'
+          
           return (
             <div
               key={`heading-${index}`}
-              className="inline-flex rounded-full bg-secondary px-2.5 py-1 text-[11px] font-semibold tracking-wide text-foreground"
+              className={cn(
+                "mt-4 mb-2 inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold tracking-wide shadow-sm",
+                colorClass
+              )}
             >
-              {renderInline(line)}
+              {icon}
+              <span>{line.replace(/^\*\*|\*\*[：:]?$/g, '')}</span>
             </div>
           )
         }
 
+        // 数字列表项
         const numberedMatch = line.match(/^(\d+)\.\s+(.+)$/)
         if (numberedMatch) {
           return (
-            <div key={`num-${index}`} className="flex items-start gap-2.5">
-              <span className="mt-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary/12 px-1.5 text-[11px] font-semibold text-primary">
+            <div key={`num-${index}`} className="flex items-start gap-3 pl-1">
+              <span className="mt-0.5 inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/20 to-primary/10 text-[11px] font-bold text-primary shadow-sm ring-1 ring-primary/15">
                 {numberedMatch[1]}
               </span>
-              <p className="flex-1">{renderInline(numberedMatch[2])}</p>
+              <p className="flex-1 leading-relaxed">{renderInline(numberedMatch[2])}</p>
             </div>
           )
         }
 
+        // 破折号列表项
         const bulletMatch = line.match(/^-+\s+(.+)$/)
         if (bulletMatch) {
-          const isRiskLine = /高频风险点|容易卡住|重点磨合/.test(bulletMatch[1])
+          const isRiskLine = /高频风险点|容易卡住|重点磨合|风险/.test(bulletMatch[1])
+          const isMatchLine = /高匹配|次高匹配|最佳/.test(bulletMatch[1])
+          const isAdviceLine = /为什么适合|为什么容易/.test(bulletMatch[1])
+          
+          let dotColor = 'bg-primary/60'
+          let textClass = ''
+          
+          if (isRiskLine) {
+            dotColor = 'bg-rose'
+            textClass = 'text-rose-700'
+          } else if (isMatchLine) {
+            dotColor = 'bg-sage'
+          } else if (isAdviceLine) {
+            dotColor = 'bg-coral'
+          }
+          
           return (
-            <div key={`bullet-${index}`} className="flex items-start gap-2.5">
-              <span className={cn('mt-2 h-1.5 w-1.5 rounded-full bg-primary/70', isRiskLine && 'bg-rose')} />
-              <p className={cn('flex-1', isRiskLine && 'text-rose-700')}>{renderInline(bulletMatch[1])}</p>
+            <div key={`bullet-${index}`} className="flex items-start gap-3 pl-1">
+              <span className={cn('mt-2 h-1.5 w-1.5 shrink-0 rounded-full', dotColor)} />
+              <p className={cn('flex-1 leading-relaxed', textClass)}>{renderInline(bulletMatch[1])}</p>
             </div>
           )
         }
 
+        // 主要结果行（你这次测出来是...）
         const isPrimaryResult = /你这次测出来是|你这次更偏|你最主要的恋爱语言是|你这次整体更偏/.test(line)
-        const isRiskTitle = /高频风险点|风险提醒/.test(line)
-
         if (isPrimaryResult) {
           return (
             <div
               key={`result-${index}`}
-              className="rounded-2xl border border-primary/15 bg-primary/10 px-3.5 py-3 text-foreground shadow-sm"
+              className="relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent px-4 py-3.5 text-foreground shadow-sm"
             >
-              {renderInline(line)}
+              <div className="absolute -right-4 -top-4 h-16 w-16 rounded-full bg-primary/10 blur-2xl" />
+              <div className="relative flex items-start gap-2">
+                <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                <span className="leading-relaxed">{renderInline(line)}</span>
+              </div>
             </div>
           )
         }
 
+        // 风险标题行
+        const isRiskTitle = /高频风险点|风险提醒/.test(line)
         if (isRiskTitle) {
           return (
             <div
               key={`risk-${index}`}
-              className="rounded-2xl border border-rose/20 bg-rose/10 px-3.5 py-3 text-rose-700"
+              className="relative overflow-hidden rounded-2xl border border-rose/25 bg-gradient-to-br from-rose/10 via-rose/5 to-transparent px-4 py-3.5 shadow-sm"
             >
-              {renderInline(line)}
+              <div className="absolute -right-4 -top-4 h-16 w-16 rounded-full bg-rose/10 blur-2xl" />
+              <div className="relative flex items-start gap-2 text-rose-700">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span className="leading-relaxed">{renderInline(line)}</span>
+              </div>
             </div>
           )
         }
 
+        // 普通段落
         return (
-          <p key={`paragraph-${index}`} className="whitespace-pre-wrap">
+          <p key={`paragraph-${index}`} className="whitespace-pre-wrap leading-relaxed">
             {renderInline(line)}
           </p>
         )
