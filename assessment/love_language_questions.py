@@ -763,85 +763,18 @@ def _interpretation_from_result(result: dict[str, Any]) -> dict[str, Any]:
 
 
 def xiaoya_message_from_result(result: dict[str, Any]) -> str:
-    """生成小雅风格的恋爱语言解读消息（贴心建议风）
+    """生成小雅风格的恋爱语言解读消息
 
-    核心转变：
-    - 开场白改为"我发现了一个让你更开心的秘密 💡"
-    - 不强调"你是XX类型"
-    - 关注"你最敏感的爱的信号"、"让对方感受到爱"
+    设计原则（Agent Native）：
+    - 卡片已展示：雷达图（五种语言分数）、类型昵称
+    - 小雅只补充：具体建议、注意事项、悄悄话
+    - 不重复分数数据，避免用户觉得啰嗦
     """
     scores = dict(result.get("scores") or {})
     primary_language = str(result.get("primary_language") or get_primary_love_language(scores))
 
-    # 获取五种语言的得分
-    words_score = scores.get("words_of_affirmation", 50)
-    time_score = scores.get("quality_time", 50)
-    gifts_score = scores.get("receiving_gifts", 50)
-    acts_score = scores.get("acts_of_service", 50)
-    touch_score = scores.get("physical_touch", 50)
-
-    # 找出最敏感和不敏感的信号
-    sorted_languages = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-    most_sensitive = sorted_languages[0]
-    least_sensitive = sorted_languages[-1]
-
-    # 构建新的开场白（贴心建议风）
-    message = "亲爱的，我发现了一个让你更开心的秘密 💡\n\n"
-
-    # 根据最敏感的语言生成描述
-    if most_sensitive[1] >= 85:
-        message += f"{LOVE_LANGUAGE_NAMES[most_sensitive[0]]}让你最心动，对方用这种方式表达爱你会感动到哭。\n\n"
-    elif most_sensitive[1] >= 70:
-        message += f"{LOVE_LANGUAGE_NAMES[most_sensitive[0]]}让你很开心，对方用这种方式表达爱你会觉得很被爱。\n\n"
-    else:
-        message += "你对各种表达方式都比较平衡，没有特别敏感或不敏感的。\n\n"
-
-    # 最敏感的爱的信号（简化版）
-    message += "**你最敏感的爱的信号：**\n"
-    lang_name = LOVE_LANGUAGE_NAMES[most_sensitive[0]]
-    score = most_sensitive[1]
-
-    if most_sensitive[0] == "words_of_affirmation":
-        if score >= 85:
-            message += f"对方的赞美和鼓励（{score}分敏感），夸你你会感动到哭。这是让你最感受到被爱的信号。\n\n"
-        else:
-            message += f"对方的赞美和鼓励（{score}分敏感），夸你你会很开心。\n\n"
-    elif most_sensitive[0] == "quality_time":
-        if score >= 85:
-            message += f"对方的深度陪伴（{score}分敏感），陪你深度聊你会感动到哭。这是让你最感受到被爱的信号。\n\n"
-        else:
-            message += f"对方的深度陪伴（{score}分敏感），陪你深度聊你会很开心。\n\n"
-    elif most_sensitive[0] == "receiving_gifts":
-        if score >= 85:
-            message += f"对方的小心意（{score}分敏感），送你小心意你会感动到哭。这是让你最感受到被爱的信号。\n\n"
-        else:
-            message += f"对方的小心意（{score}分敏感），送你小心意你会很开心。\n\n"
-    elif most_sensitive[0] == "acts_of_service":
-        if score >= 85:
-            message += f"对方的实际帮助（{score}分敏感），帮你搞定麻烦事你会感动到哭。这是让你最感受到被爱的信号。\n\n"
-        else:
-            message += f"对方的实际帮助（{score}分敏感），帮你做事你会很开心。\n\n"
-    elif most_sensitive[0] == "physical_touch":
-        if score >= 85:
-            message += f"对方的肢体接触（{score}分敏感），突然抱你你会感动到哭。这是让你最感受到被爱的信号。\n\n"
-        else:
-            message += f"对方的肢体接触（{score}分敏感），抱你你会很开心。\n\n"
-
-    # 不敏感的信号（简化版）
-    message += "**你不敏感的信号：**\n"
-    lang_name = LOVE_LANGUAGE_NAMES[least_sensitive[0]]
-    score = least_sensitive[1]
-
-    if least_sensitive[0] == "words_of_affirmation":
-        message += f"对方的赞美和鼓励（{score}分），夸你你觉得没啥，不如帮你解决麻烦事实在。\n\n"
-    elif least_sensitive[0] == "quality_time":
-        message += f"对方的深度陪伴（{score}分），陪你深度聊你觉得没啥，不如独立做事实在。\n\n"
-    elif least_sensitive[0] == "receiving_gifts":
-        message += f"对方的小心意（{score}分），送你小心意你觉得没啥，不如实际陪伴实在。\n\n"
-    elif least_sensitive[0] == "acts_of_service":
-        message += f"对方的实际帮助（{score}分），帮你做事你觉得没啥，不如夸你两句实在。\n\n"
-    elif least_sensitive[0] == "physical_touch":
-        message += f"对方的肢体接触（{score}分），抱你你觉得没啥，不如深度聊聊三观实在。\n\n"
+    # 开场白：引导用户看卡片，不复述分数
+    message = "亲爱的，恋爱语言测完了，看看雷达图～ 💡\n\n"
 
     # 让对方感受到你的爱（根据主语言）
     message += "**让对方感受到你的爱：**\n"
