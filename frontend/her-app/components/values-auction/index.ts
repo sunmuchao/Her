@@ -19,3 +19,4 @@ export { ValuesMatchAnalysisCardComponent } from './ValuesMatchAnalysisCard'
 export { ValuesAuctionChoiceCard } from './ValuesAuctionChoiceCard'
 export { DualValuesAuctionCard } from './DualValuesAuctionCard'
 export { ChoiceTrajectoryCard } from './ChoiceTrajectoryCard'  // 新增：取舍轨迹回顾
+export { ValuesAuctionSkeleton, ValuesAuctionBiddingSkeleton, ValuesAuctionResultSkeleton } from './ValuesAuctionSkeleton'
