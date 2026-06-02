@@ -133,7 +133,7 @@ function RadarChart({
     )
   }
 
-  // Calculate points for each dimension
+  // Calculate points for each dimension (memoized)
   const points = useMemo(() => {
     return dimensions.map((dim, i) => {
       const angle = (Math.PI * 2 * i) / dimensions.length - Math.PI / 2
@@ -148,19 +148,45 @@ function RadarChart({
   }, [dimensions, center, maxRadius])
 
   // Create polygon path
-  const polygonPath = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ') + ' Z'
+  const polygonPath = useMemo(() => {
+    return points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ') + ' Z'
+  }, [points])
 
-  // Calculate label positions based on actual SVG coordinates
-  const labelPositions = dimensions.map((dim, i) => {
-    const angle = (Math.PI * 2 * i) / dimensions.length - Math.PI / 2
-    const labelRadius = maxRadius + 35
-    const x = center + Math.cos(angle) * labelRadius
-    const y = center + Math.sin(angle) * labelRadius
-    return { x, y, angle }
-  })
+  // Calculate label positions based on actual SVG coordinates (memoized with collision detection)
+  const labelPositions = useMemo(() => {
+    const positions = dimensions.map((dim, i) => {
+      const angle = (Math.PI * 2 * i) / dimensions.length - Math.PI / 2
+      const labelRadius = maxRadius + 35
+      const x = center + Math.cos(angle) * labelRadius
+      const y = center + Math.sin(angle) * labelRadius
+      return { x, y, angle, key: dim.key }
+    })
+    
+    // Simple collision detection and adjustment
+    const minDistance = 40
+    for (let i = 0; i < positions.length; i++) {
+      for (let j = i + 1; j < positions.length; j++) {
+        const dx = positions[j].x - positions[i].x
+        const dy = positions[j].y - positions[i].y
+        const distance = Math.sqrt(dx * dx + dy * dy)
+        
+        if (distance < minDistance) {
+          // Push labels apart slightly
+          const adjustment = (minDistance - distance) / 2
+          const angle = Math.atan2(dy, dx)
+          positions[i].x -= Math.cos(angle) * adjustment
+          positions[i].y -= Math.sin(angle) * adjustment
+          positions[j].x += Math.cos(angle) * adjustment
+          positions[j].y += Math.sin(angle) * adjustment
+        }
+      }
+    }
+    
+    return positions
+  }, [dimensions, center, maxRadius])
 
   return (
-    <div className="relative" style={{ width: size, height: size }}>
+    <div className="relative will-change-transform" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="absolute top-0 left-0">
         {/* Background grid circles */}
         {Array.from({ length: levels }).map((_, i) => {
@@ -248,10 +274,10 @@ function RadarChart({
               width: '70px',
             }}
           >
-            <div className="text-xs font-medium text-foreground mb-0.5">
+            <div className="text-xs font-medium text-foreground mb-0.5 text-center leading-tight">
               {dim.name}
             </div>
-            <div className="text-[10px] text-muted-foreground">
+            <div className="text-[10px] text-muted-foreground text-center leading-tight">
               {isHigh ? dimLabel.high : dimLabel.low}
             </div>
           </div>
@@ -294,33 +320,12 @@ export function AssessmentResultCard({
     label: string
   }>({ open: false, label: '' })
 
-  // DEBUG: 检查接收到的数据
-  console.log('[AssessmentResultCard] 接收到的 data:', {
-    type_code: data.type_code,
-    has_dimension_rows: !!data.dimension_rows,
-    dimension_rows_count: data.dimension_rows?.length || 0,
-    has_labels: !!data.labels,
-    labels_count: data.labels?.length || 0,
-    labels: data.labels,
-    dimension_rows: data.dimension_rows,
-  })
-
   // 对于恋爱语言测评，优先显示中文昵称而不是英文 type_code
   const typeNickname = getTypeNickname(data.type_code, assessmentType)
   const rawTypeCode = data.type_code?.trim()
   const safeTypeCode = assessmentType === 'love_language'
     ? (typeNickname || rawTypeCode || '--')
     : (rawTypeCode || '--')
-
-  // DEBUG: 检查显示逻辑
-  console.log('[AssessmentResultCard] 显示逻辑:', {
-    assessmentType,
-    original_type_code: data.type_code,
-    typeNickname,
-    safeTypeCode,
-    LOVE_LANGUAGE_NICKNAMES_keys: Object.keys(LOVE_LANGUAGE_NICKNAMES),
-    lookup_result: data.type_code ? LOVE_LANGUAGE_NICKNAMES[data.type_code.toLowerCase()] : null,
-  })
 
   // Theme-based colors
   const extremeTagBg = assessmentType === 'attachment_style' 
@@ -367,7 +372,7 @@ export function AssessmentResultCard({
       : 'bg-primary/15 border-primary/40'
 
   return (
-    <div className="rounded-3xl border border-border bg-card p-6 shadow-sm animate-scale-in overflow-y-auto max-h-[70vh]">
+    <div className="rounded-3xl border border-border bg-card p-6 shadow-sm animate-scale-in overflow-y-auto max-h-[70vh] scroll-fade-bottom">
       {/* Header with share button */}
       <div className="flex items-start justify-between mb-4">
         <div>
@@ -440,7 +445,7 @@ export function AssessmentResultCard({
               onClick={() => handleLabelClick(label)}
               disabled={addedLabels.has(label) || isAdding}
               className={cn(
-                'rounded-full px-3 py-1.5 text-xs cursor-pointer transition-all',
+                'rounded-full px-3 py-1.5 text-xs cursor-pointer transition-all touch-target active:scale-95',
                 addedLabels.has(label)
                   ? cn(selectedLabelClass, 'border text-foreground')
                   : 'bg-secondary border border-transparent text-muted-foreground hover:bg-secondary/80 hover:border-border',

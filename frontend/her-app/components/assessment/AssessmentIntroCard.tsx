@@ -10,6 +10,7 @@ interface IntroData {
   description: string
   duration: string
   reward: string
+  totalQuestions?: number
 }
 
 // Icon component based on theme
@@ -49,28 +50,21 @@ export function AssessmentIntroCard({
   assessmentType?: AssessmentType
 }) {
   const theme = getAssessmentTheme(assessmentType)
+  const totalQuestions = data.totalQuestions || theme.questionCount
+  const progressPercent = totalQuestions > 0 ? (answeredCount / totalQuestions) * 100 : 0
   
   return (
     <div className="rounded-3xl border border-border bg-card p-6 shadow-sm animate-scale-in">
       {/* Animated Icon with Radar Effect - Theme Specific */}
       <div className="relative flex justify-center mb-5">
-        <div className="relative">
-          {/* Pulse rings - using theme colors */}
+        <div className="relative will-change-transform">
+          {/* Single optimized pulse ring */}
           <div 
             className={cn(
-              'absolute inset-0 rounded-full animate-ping-slow',
-              assessmentType === 'attachment_style' ? 'bg-coral/20' :
-              assessmentType === 'love_language' ? 'bg-lavender/20' : 'bg-rose/20'
+              'absolute inset-0 rounded-full animate-ping-slow will-change-transform',
+              assessmentType === 'attachment_style' ? 'bg-coral/15' :
+              assessmentType === 'love_language' ? 'bg-lavender/15' : 'bg-rose/15'
             )} 
-            style={{ animationDelay: '0ms' }} 
-          />
-          <div 
-            className={cn(
-              'absolute inset-0 rounded-full animate-ping-slow',
-              assessmentType === 'attachment_style' ? 'bg-coral/10' :
-              assessmentType === 'love_language' ? 'bg-lavender/10' : 'bg-rose/10'
-            )} 
-            style={{ animationDelay: '500ms' }} 
           />
           
           {/* Main icon container - theme gradient */}
@@ -82,7 +76,7 @@ export function AssessmentIntroCard({
             <ThemeIcon 
               iconType={theme.iconType} 
               className={cn(
-                'w-9 h-9 animate-heartbeat',
+                'w-9 h-9 animate-heartbeat will-change-transform',
                 assessmentType === 'attachment_style' ? 'text-coral' :
                 assessmentType === 'love_language' ? 'text-lavender' : 'text-rose'
               )} 
@@ -99,22 +93,38 @@ export function AssessmentIntroCard({
         </p>
       </div>
 
-      {/* Resume Indicator - Theme Colored */}
+      {/* Resume Indicator with Progress Bar - Theme Colored */}
       {isResumed && answeredCount > 0 && (
         <div className={cn(
-          'mt-4 flex items-center justify-center gap-2 px-4 py-2 rounded-full border',
+          'mt-4 px-4 py-3 rounded-2xl border',
           assessmentType === 'attachment_style' ? 'bg-coral-soft/50 border-coral/20' :
           assessmentType === 'love_language' ? 'bg-lavender-soft/50 border-lavender/20' : 
           'bg-gold-soft/50 border-gold/20'
         )}>
-          <Sparkles className={cn(
-            'w-4 h-4',
-            assessmentType === 'attachment_style' ? 'text-coral' :
-            assessmentType === 'love_language' ? 'text-lavender' : 'text-gold'
-          )} />
-          <span className="text-sm text-taupe">
-            {"继续上次进度 - 已答 "}{answeredCount}{" 题"}
-          </span>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <Sparkles className={cn(
+                'w-4 h-4',
+                assessmentType === 'attachment_style' ? 'text-coral' :
+                assessmentType === 'love_language' ? 'text-lavender' : 'text-gold'
+              )} />
+              <span className="text-sm text-foreground font-medium">{"继续上次进度"}</span>
+            </div>
+            <span className="text-xs text-muted-foreground">
+              {answeredCount}/{totalQuestions} {"题"}
+            </span>
+          </div>
+          {/* Progress bar visualization */}
+          <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
+            <div 
+              className={cn(
+                'h-full rounded-full transition-all duration-500',
+                assessmentType === 'attachment_style' ? 'bg-coral' :
+                assessmentType === 'love_language' ? 'bg-lavender' : 'bg-gold'
+              )}
+              style={{ width: `${progressPercent}%` }}
+            />
+          </div>
         </div>
       )}
 
@@ -124,9 +134,9 @@ export function AssessmentIntroCard({
           <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-background">
             <Clock className="w-5 h-5 text-muted-foreground" />
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="text-xs text-muted-foreground">{"预计时长"}</div>
-            <div className="text-sm font-medium">{data.duration}</div>
+            <div className="text-sm font-medium truncate">{data.duration}</div>
           </div>
         </div>
         
@@ -138,9 +148,9 @@ export function AssessmentIntroCard({
               assessmentType === 'love_language' ? 'text-lavender' : 'text-gold'
             )} />
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="text-xs text-muted-foreground">{"完成奖励"}</div>
-            <div className="text-sm font-medium">{data.reward}</div>
+            <div className="text-sm font-medium truncate">{data.reward}</div>
           </div>
         </div>
       </div>
@@ -148,7 +158,8 @@ export function AssessmentIntroCard({
       {/* Start Button - Theme Colored */}
       <Button
         className={cn(
-          'mt-5 w-full h-12 rounded-xl text-base font-medium group',
+          'mt-5 w-full h-12 rounded-xl text-base font-medium group touch-target',
+          'transition-all duration-200 active:scale-[0.98]',
           assessmentType === 'attachment_style' ? 'bg-coral hover:bg-coral/90 text-white' :
           assessmentType === 'love_language' ? 'bg-lavender hover:bg-lavender/90 text-white' : ''
         )}
