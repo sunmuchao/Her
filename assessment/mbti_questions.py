@@ -1533,16 +1533,16 @@ def xiaoya_message_from_result(result: dict[str, Any]) -> str:
         message += f"- {item}\n"
     message += "\n"
 
-    message += f"说匹配的话，最适合优先了解的是 {'、'.join(compatibility['best']) or '能理解你节奏的人'}"
+    message += f"真要说适合你的人，最适合优先了解的是 {'、'.join(compatibility['best']) or '能理解你节奏的人'}"
     if compatibility["good"]:
         message += f"，其次是 {'、'.join(compatibility['good'])}"
     message += "。\n"
     if compatibility["caution"]:
         message += f"要更会沟通的类型是 {'、'.join(compatibility['caution'])}。\n"
     if best_match_hint:
-        message += f"为什么适合？因为 {best_match_hint}。\n"
+        message += f"之所以合适，是因为 {best_match_hint}。\n"
     if caution_match_hint:
-        message += f"为什么容易卡住？因为 {caution_match_hint}。\n"
+        message += f"容易卡住的点在于 {caution_match_hint}。\n"
     message += "\n"
 
     message += "我给你三条最有用的提醒：\n"
