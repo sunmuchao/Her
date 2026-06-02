@@ -27,27 +27,27 @@ const TYPE_NICKNAMES: Record<string, string> = {
   ESFP: '表演者',
 }
 
-// Attachment style type nicknames
+// Attachment style type nicknames (SBTI style)
 const ATTACHMENT_NICKNAMES: Record<string, string> = {
-  secure: '安全型',
-  anxious: '焦虑型',
-  avoidant: '回避型',
-  fearful: '恐惧型',
+  secure: '稳如老狗（STBL）',
+  anxious: '赛博怨妇（ANX-S）',
+  avoidant: '装死大师（FAKE-D）',
+  fearful: '反复横跳狂魔（WOC-F）',
 }
 
-// Love language type nicknames
+// Love language type nicknames (SBTI style)
 const LOVE_LANGUAGE_NICKNAMES: Record<string, string> = {
-  words_of_affirmation: '肯定言词',
-  quality_time: '精心时刻',
-  receiving_gifts: '接受礼物',
-  acts_of_service: '服务行动',
-  physical_touch: '身体接触',
+  words_of_affirmation: '无成本白嫖大师',
+  quality_time: '网瘾戒断所教官',
+  receiving_gifts: '人形吞金兽',
+  acts_of_service: '巨婴饲养员',
+  physical_touch: '人形章鱼',
   // 兼容可能的简写形式
-  words: '肯定言词',
-  time: '精心时刻',
-  gifts: '接受礼物',
-  service: '服务行动',
-  touch: '身体接触',
+  words: '无成本白嫖大师',
+  time: '网瘾戒断所教官',
+  gifts: '人形吞金兽',
+  service: '巨婴饲养员',
+  touch: '人形章鱼',
 }
 
 function normalizeTypeCode(typeCode?: string) {
