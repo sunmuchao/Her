@@ -266,8 +266,8 @@ export default function DiscoverPage({
     } catch (error) {
       const assessmentNames = {
         'mbti_16': 'MBTI',
-        'attachment_style': '依恋风格',
-        'love_language': '恋爱语言'
+        'attachment_style': '相处模式',
+        'love_language': '爱的表达'
       }
       notifyError(error, `打开 ${assessmentNames[assessmentType]} 测评失败`)
     } finally {
@@ -754,7 +754,7 @@ export default function DiscoverPage({
                     <span className="text-xs text-foreground">MBTI</span>
                   </button>
 
-                  {/* 依恋风格测评 */}
+                  {/* 相处模式测评 */}
                   <button
                     onClick={() => {
                       void openAssessmentCard('attachment_style')
@@ -763,15 +763,15 @@ export default function DiscoverPage({
                     }}
                     disabled={assessmentBusy || valuesAuctionBusy || !userKey}
                     className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-secondary/50 hover:bg-secondary transition-all touch-target active:scale-95 disabled:opacity-60"
-                    aria-label="依恋风格测评"
+                    aria-label="相处模式测评"
                   >
                     <div className="w-10 h-10 rounded-full bg-coral/10 flex items-center justify-center">
                       <Heart className="w-5 h-5 text-coral" />
                     </div>
-                    <span className="text-xs text-foreground">依恋风格</span>
+                    <span className="text-xs text-foreground">相处模式</span>
                   </button>
 
-                  {/* 恋爱语言测评 */}
+                  {/* 爱的表达测评 */}
                   <button
                     onClick={() => {
                       void openAssessmentCard('love_language')
@@ -780,12 +780,12 @@ export default function DiscoverPage({
                     }}
                     disabled={assessmentBusy || valuesAuctionBusy || !userKey}
                     className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-secondary/50 hover:bg-secondary transition-all touch-target active:scale-95 disabled:opacity-60"
-                    aria-label="恋爱语言测评"
+                    aria-label="爱的表达测评"
                   >
                     <div className="w-10 h-10 rounded-full bg-lavender/10 flex items-center justify-center">
                       <Sparkles className="w-5 h-5 text-lavender" />
                     </div>
-                    <span className="text-xs text-foreground">恋爱语言</span>
+                    <span className="text-xs text-foreground">爱的表达</span>
                   </button>
 
                   {/* 价值观拍卖会 */}
