@@ -250,7 +250,7 @@ EXTREME_LANGUAGE_TAGS = {
 # 五种恋爱语言的标签和说明书（SBTI 毒舌风格）
 LOVE_LANGUAGE_LABELS = {
     "words_of_affirmation": {
-        "nickname": "无成本白嫖大师",
+        "nickname": "言语肯定型",
         "nickname_fun": "夸夸群群主",
         "tags": [
             "一句'宝你真好看'就能让你免费干三天家务",
@@ -286,7 +286,7 @@ LOVE_LANGUAGE_LABELS = {
         },
     },
     "quality_time": {
-        "nickname": "网瘾戒断所教官",
+        "nickname": "专注陪伴型",
         "nickname_fun": "专注陪伴派",
         "tags": [
             "约会时敢看一眼手机，你今天就别想活着走出这家餐厅",
@@ -322,7 +322,7 @@ LOVE_LANGUAGE_LABELS = {
         },
     },
     "receiving_gifts": {
-        "nickname": "人形吞金兽",
+        "nickname": "仪式感知型",
         "nickname_fun": "礼品回收站",
         "tags": [
             "不要问TA爱不爱你，看你送的包是不是限定款",
@@ -358,7 +358,7 @@ LOVE_LANGUAGE_LABELS = {
         },
     },
     "acts_of_service": {
-        "nickname": "巨婴饲养员",
+        "nickname": "行动照顾型",
         "nickname_fun": "实际帮助派",
         "tags": [
             "核心需求是找个能帮TA通马桶交电费的爹系妈系工具人",
@@ -394,7 +394,7 @@ LOVE_LANGUAGE_LABELS = {
         },
     },
     "physical_touch": {
-        "nickname": "人形章鱼",
+        "nickname": "亲密接触型",
         "nickname_fun": "皮肤饥渴症",
         "tags": [
             "夏天体温39度也必须像胶水一样粘在对方身上",
