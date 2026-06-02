@@ -29,6 +29,7 @@ from assessment.love_language_questions import (
     xiaoya_message_from_result as love_xiaoya_message,
     calculate_love_language_match,
 )
+from assessment.mbti_questions import xiaoya_message_from_result as mbti_xiaoya_message
 
 
 def test_attachment_questions():
@@ -173,6 +174,23 @@ def test_love_language_questions():
     assert language_info['nickname'] in xiaoya_msg, "小雅消息应该包含语言昵称"
 
     print("\n✅ 恋爱语言题库测试通过！")
+
+
+def test_mbti_xiaoya_message_prioritizes_match_guidance():
+    """测试 MBTI 小雅消息优先给出匹配建议和相处指导"""
+    result = {
+        "type_code": "ESTJ",
+        "scores": {"ei": 80, "sn": 78, "tf": 82, "jp": 76},
+    }
+
+    message = mbti_xiaoya_message(result)
+
+    assert "高匹配人格：ISTP、INTP" in message
+    assert "次高匹配人格：ESTP、ESFJ、ISTJ" in message
+    assert "需要重点磨合的人格：INFP、ENFP" in message
+    assert "**相处建议：**" in message
+    assert "**关系画像：**" in message
+    assert "**风险提醒：**" in message
 
 
 if __name__ == "__main__":
