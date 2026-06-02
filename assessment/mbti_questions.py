@@ -1491,6 +1491,21 @@ def _to_xiaoya_advice(text: str) -> str:
     return text.rstrip("。")
 
 
+def _normalize_advice_for_compare(text: str) -> str:
+    normalized = text.strip().rstrip("。")
+    for prefix in ("别", "学会", "偶尔也要", "你", "先"):
+        normalized = normalized.replace(prefix, "")
+    return normalized
+
+
+def _advice_keywords(text: str) -> set[str]:
+    keywords = {
+        "直接", "表达", "情感", "回应", "空间", "需求", "情绪",
+        "节奏", "未来", "哄", "逻辑", "标准", "自由", "关系",
+    }
+    return {keyword for keyword in keywords if keyword in text}
+
+
 def xiaoya_message_from_result(result: dict[str, Any]) -> str:
     """生成小雅风格的解读消息（用于在对话页面显示）
 
@@ -1548,12 +1563,30 @@ def xiaoya_message_from_result(result: dict[str, Any]) -> str:
     message += "\n"
 
     message += "我给你三条最有用的提醒：\n"
+    rendered_advice: list[str] = []
     for index, item in enumerate(relationship_advice, start=1):
-        message += f"{index}. {_to_xiaoya_advice(item).rstrip('。')}。\n"
+        advice_line = _to_xiaoya_advice(item).rstrip("。")
+        rendered_advice.append(advice_line)
+        message += f"{index}. {advice_line}。\n"
     if best_match_note:
-        message += f"{len(relationship_advice) + 1}. {best_match_note.rstrip('。')}。\n"
+        normalized_note = _normalize_advice_for_compare(best_match_note)
+        has_similar_advice = any(
+            normalized_note and (
+                normalized_note in _normalize_advice_for_compare(existing)
+                or _normalize_advice_for_compare(existing) in normalized_note
+            )
+            for existing in rendered_advice
+        )
+        if not has_similar_advice:
+            note_keywords = _advice_keywords(best_match_note)
+            has_similar_advice = any(
+                len(note_keywords & _advice_keywords(existing)) >= 2
+                for existing in rendered_advice
+            )
+        if not has_similar_advice:
+            message += f"{len(rendered_advice) + 1}. {best_match_note.rstrip('。')}。\n"
     elif sweet_points:
-        message += f"{len(relationship_advice) + 1}. 你判断一段关系值不值得继续时，可以重点看这一点：{sweet_points[0].rstrip('。')}。\n"
+        message += f"{len(rendered_advice) + 1}. 你判断一段关系值不值得继续时，可以重点看这一点：{sweet_points[0].rstrip('。')}。\n"
     message += "\n"
 
     if caution_match_note:
