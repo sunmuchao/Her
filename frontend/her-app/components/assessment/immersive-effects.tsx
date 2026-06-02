@@ -252,11 +252,12 @@ export function ConfettiCelebration({
   pieceCount?: number
 }) {
   const [pieces, setPieces] = useState<ConfettiPiece[]>([])
-  const defaultColors = ['var(--primary)', 'var(--gold)', 'var(--rose)', 'var(--coral)', 'var(--lavender)']
-  const usedColors = colors || defaultColors
-  
+
   useEffect(() => {
     if (trigger) {
+      const defaultColors = ['var(--primary)', 'var(--gold)', 'var(--rose)', 'var(--coral)', 'var(--lavender)']
+      const usedColors = colors || defaultColors
+
       const newPieces: ConfettiPiece[] = []
       for (let i = 0; i < pieceCount; i++) {
         newPieces.push({
@@ -269,9 +270,11 @@ export function ConfettiCelebration({
         })
       }
       setPieces(newPieces)
-      
+
       const timer = setTimeout(() => setPieces([]), 3500)
       return () => clearTimeout(timer)
+    }
+  }, [trigger, pieceCount, colors])  // 只依赖 props，colors 是稳定的
     }
   }, [trigger, pieceCount, usedColors])
   
