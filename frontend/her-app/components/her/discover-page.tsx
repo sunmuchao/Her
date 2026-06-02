@@ -41,7 +41,6 @@ import {
 } from '@/lib/api/endpoints/assessment'
 import {
   getValuesAuctionInterpretation,
-  getValuesAuctionTraits,
   startValuesAuction,
   submitValuesAuctionBids,
   type ValuesAuctionCard,
