@@ -695,10 +695,15 @@ def add_xiaoya_message_to_discovery_session(
     user_key: str,
     message: str,
     result_data: dict[str, Any] | None = None,
+    assessment_type: str | None = None,  # 新增：支持多种测评类型
 ) -> dict[str, Any]:
     """将小雅消息添加到discovery session的对话历史
 
     这样消息会固定在对话流中，AI也能看到。
+
+    Args:
+        assessment_type: 测评类型，如 "mbti_16", "values_auction" 等
+                        如果不提供，默认使用 MBTI 类型
     """
     from discovery_system.view_models import assistant_message, assessment_result
     if discovery_service is None:
@@ -710,20 +715,25 @@ def add_xiaoya_message_to_discovery_session(
     # 获取session
     session = discovery_service._require_session(session_id)
 
+    # 确定测评类型
+    actual_assessment_type = assessment_type or ASSESSMENT_TYPE_MBTI
+
     # 添加测评结果和小雅消息到 timeline，保证 UI 顺序和后续会话上下文一致
     item_id = discovery_service.storage.next_item_id("msg-a")
     now = datetime.now()
     timeline = list(session.view.get("timeline") or [])
     if result_data:
+        # 构建结果卡片，保留原始的 card_type
+        result_card = {
+            "card_type": result_data.get("card_type", "assessment_result"),  # 使用原始卡片类型
+            "assessment_type": actual_assessment_type,  # 添加 assessment_type 字段供前端识别
+            "assessment_id": str(result_data.get("assessment_id") or ""),
+            "result_data": result_data.get("result_data", result_data),  # 支持嵌套的 result_data
+        }
         timeline.append(
             assessment_result(
                 discovery_service.storage.next_item_id("assessment"),
-                {
-                    "card_type": "assessment_result",
-                    "assessment_type": ASSESSMENT_TYPE_MBTI,  # 添加 assessment_type 字段
-                    "assessment_id": str(result_data.get("assessment_id") or ""),
-                    "result_data": result_data,
-                },
+                result_card,
                 created_at=now,
             )
         )

@@ -116,6 +116,7 @@ export type ValuesAuctionResultCard = {
     abandoned: string[]
     reward?: string
   }
+  xiaoya_message?: string  // 新增：小雅的自然语言回复
 }
 
 /** AI解读卡片 */

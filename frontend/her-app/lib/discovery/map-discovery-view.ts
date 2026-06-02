@@ -1,5 +1,6 @@
 import { formatRelativeTime } from '@/lib/format-relative-time'
 import type { AssessmentResultCard } from '@/lib/api/endpoints/assessment'
+import type { ValuesAuctionResultCard } from '@/lib/api/endpoints/valuesAuction'  // 新增：支持价值观拍卖会
 import { PLACEHOLDER_AVATAR, resolveProfileImageUrl } from '@/lib/image-url'
 import type { CandidatePreview } from '@/lib/types/candidate'
 import type { DiscoveryView } from '@/lib/types/discovery'
@@ -41,7 +42,7 @@ export type DiscoveryProfileUpdatePromptItem = {
 export type DiscoveryAssessmentResultItem = {
   kind: 'assessment_result'
   id: string
-  card: AssessmentResultCard
+  card: AssessmentResultCard | ValuesAuctionResultCard  // 新增：支持价值观拍卖会结果卡片
   timestamp?: string
 }
 

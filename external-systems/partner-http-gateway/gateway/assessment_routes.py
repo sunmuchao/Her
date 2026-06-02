@@ -304,7 +304,8 @@ def rest_assessment_add_xiaoya_to_discovery(gateway: AssessmentGateway, environ:
         "user_key": "123",
         "session_id": "xxx",
         "message": "亲爱的，你的测试结果出来啦！...",
-        "result_data": {...}
+        "result_data": {...},
+        "assessment_type": "mbti_16"  # 可选，默认为 mbti_16
     }
 
     这样小雅消息会固定在对话流中，AI也能看到。
@@ -314,6 +315,7 @@ def rest_assessment_add_xiaoya_to_discovery(gateway: AssessmentGateway, environ:
     session_id = str(body.get("session_id") or "").strip()
     message = str(body.get("message") or "").strip()
     result_data = body.get("result_data")
+    assessment_type = str(body.get("assessment_type") or "").strip() or None  # 新增：支持传递测评类型
 
     if not session_id:
         return 400, {"error": {"code": "invalid_request", "message": "session_id is required"}}
@@ -330,6 +332,7 @@ def rest_assessment_add_xiaoya_to_discovery(gateway: AssessmentGateway, environ:
             user_key=user_key,
             message=message,
             result_data=result_data if isinstance(result_data, dict) else None,
+            assessment_type=assessment_type,  # 新增：传递测评类型
         )
         return 200, _json_safe(result)
     except DiscoveryServiceError as e:
