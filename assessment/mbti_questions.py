@@ -1396,6 +1396,83 @@ XIAOYA_MESSAGES = {
     },
 }
 
+MBTI_COMPATIBILITY = {
+    "ENFP": {"best": ["INFJ", "INTJ"], "good": ["ENFJ", "INFP", "ENTP"], "caution": ["ISTJ", "ESTJ"]},
+    "INFJ": {"best": ["ENFP", "ENTP"], "good": ["INFP", "INTJ", "ENFJ"], "caution": ["ESTP", "ESFP"]},
+    "INTJ": {"best": ["ENFP", "ENTP"], "good": ["INFJ", "INTP", "ENTJ"], "caution": ["ESFP", "ESTP"]},
+    "ENTJ": {"best": ["INFP", "INTJ"], "good": ["ENTP", "ENTJ", "INFJ"], "caution": ["ISFP", "ESFP"]},
+    "ENFJ": {"best": ["INFP", "INTJ"], "good": ["ENFP", "INFJ", "ENTP"], "caution": ["ISTP", "ESTP"]},
+    "INFP": {"best": ["ENFJ", "ENTJ"], "good": ["INFJ", "ENFP", "INTJ"], "caution": ["ESTJ", "ESTP"]},
+    "INTP": {"best": ["ENTJ", "ENFJ"], "good": ["INTJ", "INFP", "ENTP"], "caution": ["ESFJ", "ESTJ"]},
+    "ENTP": {"best": ["INFJ", "INTJ"], "good": ["ENFP", "INTP", "ENTJ"], "caution": ["ISFJ", "ESFJ"]},
+    "ESFJ": {"best": ["ISFP", "INFP"], "good": ["ESFP", "ESTJ", "ISFJ"], "caution": ["INTP", "ENTJ"]},
+    "ISFJ": {"best": ["ESFP", "ENFP"], "good": ["ISFP", "ESFJ", "INFJ"], "caution": ["ENTP", "INTP"]},
+    "ESFP": {"best": ["ISFJ", "INFJ"], "good": ["ESFJ", "ISFP", "ENFP"], "caution": ["INTJ", "ENTJ"]},
+    "ISFP": {"best": ["ESFJ", "ENFJ"], "good": ["ISFJ", "ESFP", "INFP"], "caution": ["ENTJ", "ESTJ"]},
+    "ESTJ": {"best": ["ISTP", "INTP"], "good": ["ESTP", "ESFJ", "ISTJ"], "caution": ["INFP", "ENFP"]},
+    "ISTJ": {"best": ["ESTP", "ESFP"], "good": ["ISTP", "ESTJ", "ISFJ"], "caution": ["ENFP", "ENTP"]},
+    "ESTP": {"best": ["ISTJ", "INFJ"], "good": ["ESTJ", "ESFP", "ISTP"], "caution": ["INFJ", "INTJ"]},
+    "ISTP": {"best": ["ESTJ", "ENFJ"], "good": ["ISTJ", "ESTP", "INTP"], "caution": ["ENFJ", "INFJ"]},
+}
+
+
+def _find_prefixed_line(lines: list[str], prefixes: tuple[str, ...]) -> str:
+    for line in lines:
+        for prefix in prefixes:
+            if line.startswith(prefix):
+                return line[len(prefix):].strip()
+    return ""
+
+
+def _clean_secret_suggestion(text: str) -> str:
+    for prefix in ("💡 小雅悄悄话：", "💡", "小雅悄悄话："):
+        if text.startswith(prefix):
+            text = text[len(prefix):].strip()
+    return text.rstrip("～")
+
+
+def _dimension_preference(score: float, high_label: str, low_label: str) -> str:
+    if score >= 60:
+        return high_label
+    if score <= 40:
+        return low_label
+    return f"{high_label}与{low_label}之间相对平衡"
+
+
+def _build_professional_dimension_summary(scores: dict[str, float]) -> list[str]:
+    return [
+        f"能量模式偏 {_dimension_preference(scores.get('ei', 50), '外向表达', '内向沉淀')}",
+        f"信息处理偏 {_dimension_preference(scores.get('sn', 50), '现实细节', '趋势直觉')}",
+        f"决策方式偏 {_dimension_preference(scores.get('tf', 50), '逻辑判断', '关系感受')}",
+        f"关系节奏偏 {_dimension_preference(scores.get('jp', 50), '计划确定', '灵活开放')}",
+    ]
+
+
+def _build_professional_relationship_advice(scores: dict[str, float]) -> list[str]:
+    advice: list[str] = []
+
+    if scores.get("tf", 50) >= 60:
+        advice.append("发生分歧时，先确认对方情绪，再进入问题分析和解决方案讨论。")
+    elif scores.get("tf", 50) <= 40:
+        advice.append("表达需求时不要只讲感受，也要把边界、期待和可执行方案说清楚。")
+
+    if scores.get("jp", 50) >= 60:
+        advice.append("你会天然追求秩序和确定性，关系里要主动给对方保留弹性空间，避免让标准感变成压迫感。")
+    elif scores.get("jp", 50) <= 40:
+        advice.append("重要承诺和关系节奏最好提前对齐，减少临时变动带来的不安全感。")
+
+    if scores.get("ei", 50) >= 60:
+        advice.append("沟通效率高是优势，但也要注意给对方留回应时间，不要把高频表达变成推进压力。")
+    elif scores.get("ei", 50) <= 40:
+        advice.append("不要把沉默当成稳定，关键情绪和核心诉求需要明确说出口。")
+
+    if scores.get("sn", 50) >= 60:
+        advice.append("你很看重落地和靠谱，筛选对象时除了执行力，也要评估对方的情绪理解力。")
+    elif scores.get("sn", 50) <= 40:
+        advice.append("你容易被感觉和可能性吸引，建立关系时要尽早核对现实投入和长期规划。")
+
+    return advice[:3]
+
 
 def xiaoya_message_from_result(result: dict[str, Any]) -> str:
     """生成小雅风格的解读消息（用于在对话页面显示）
@@ -1411,21 +1488,60 @@ def xiaoya_message_from_result(result: dict[str, Any]) -> str:
     type_code = str(result.get("type_code") or _type_code_from_scores(scores))
 
     # 获取专属回复内容
-    xiaoya_content = XIAOYA_MESSAGES.get(type_code)
+    type_info = get_type_info(type_code)
+    love_manual = type_info.get("love_manual", {})
+    compatibility = MBTI_COMPATIBILITY.get(type_code, {"best": [], "good": [], "caution": []})
 
-    if not xiaoya_content:
+    if not type_info:
         # 默认回复（如果没有专属内容）
         return f"亲爱的，你的测试结果出来啦！🎉\n\n你是{type_code}类型，有独特的性格特质。\n\n想了解更多？继续问我呀～"
 
-    # 构建小雅风格的完整回复
-    message = f"{xiaoya_content['greeting']}\n\n"
-    message += f"{xiaoya_content['identity']}\n\n"
-    message += f"{xiaoya_content['quirk']}\n\n"
-    message += f"**暗恋时的你:**\n{xiaoya_content['crush']}\n\n"
-    message += f"**分手后的你:**\n{xiaoya_content['breakup']}\n\n"
-    message += f"{xiaoya_content['suggestion']}\n\n"
+    best_match_hint = _find_prefixed_line(love_manual.get("best_match", []), ("为啥配：",))
+    caution_match_hint = _find_prefixed_line(love_manual.get("caution_match", []), ("为啥磨合：",))
+    best_match_note = _find_prefixed_line(love_manual.get("best_match", []), ("注意：", "怎么磨合："))
+    caution_match_note = _find_prefixed_line(love_manual.get("caution_match", []), ("怎么磨合：", "注意："))
+    sweet_points = love_manual.get("love_sweet_points", [])
+    red_flags = love_manual.get("love_red_flags", [])
+    dimension_summary = _build_professional_dimension_summary(scores)
+    relationship_advice = _build_professional_relationship_advice(scores)
+    nickname = str(type_info.get("nickname") or type_code)
 
-    # 引导用户继续问问题
-    message += "还想了解更多？比如你的恋爱雷点、甜点、或者具体的匹配建议？继续问我呀～"
+    message = "你的测评结果已生成。\n\n"
+    message += f"**类型判断：{type_code}（{nickname}）**\n"
+    message += f"核心优势：{love_manual['strengths'][0]}\n"
+    message += f"主要挑战：{love_manual['weaknesses'][0]}\n\n"
+
+    message += "**关系画像：**\n"
+    for item in dimension_summary:
+        message += f"- {item}\n"
+    message += "\n"
+
+    message += "**匹配建议：**\n"
+    message += f"- 高匹配人格：{'、'.join(compatibility['best']) or '能理解你节奏的人'}\n"
+    if compatibility["good"]:
+        message += f"- 次高匹配人格：{'、'.join(compatibility['good'])}\n"
+    if compatibility["caution"]:
+        message += f"- 需要重点磨合的人格：{'、'.join(compatibility['caution'])}\n"
+    if best_match_hint:
+        message += f"- 高匹配原因：{best_match_hint}\n"
+    if caution_match_hint:
+        message += f"- 主要冲突机制：{caution_match_hint}\n"
+    message += "\n"
+
+    message += "**相处建议：**\n"
+    for index, item in enumerate(relationship_advice, start=1):
+        message += f"{index}. {item}\n"
+    if best_match_note:
+        message += f"{len(relationship_advice) + 1}. {best_match_note}\n"
+    elif sweet_points:
+        message += f"{len(relationship_advice) + 1}. 识别正向关系信号时，可以重点看：{sweet_points[0]}\n"
+    message += "\n"
+
+    if caution_match_note:
+        message += f"**风险提醒：**\n遇到高冲突组合时，{caution_match_note}\n\n"
+    elif red_flags:
+        message += f"**风险提醒：**\n{red_flags[0]}\n\n"
+
+    message += "如果你愿意，我下一条可以继续展开两部分：1. 你的最佳伴侣人格组合；2. 你在亲密关系里最容易反复出现的冲突模式。"
 
     return message
