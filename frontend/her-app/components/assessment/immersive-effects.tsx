@@ -275,9 +275,7 @@ export function ConfettiCelebration({
       return () => clearTimeout(timer)
     }
   }, [trigger, pieceCount, colors])  // 只依赖 props，colors 是稳定的
-    }
-  }, [trigger, pieceCount, usedColors])
-  
+
   if (pieces.length === 0) return null
   
   return (
