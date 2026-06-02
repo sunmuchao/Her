@@ -22,10 +22,10 @@ from typing import Any
 ATTACHMENT_TYPES = ["secure", "anxious", "avoidant", "fearful"]
 
 ATTACHMENT_TYPE_NAMES = {
-    "secure": "稳如老狗（STBL）",
-    "anxious": "赛博怨妇（ANX-S）",
-    "avoidant": "装死大师（FAKE-D）",
-    "fearful": "反复横跳狂魔（WOC-F）",
+    "secure": "稳定支持型",
+    "anxious": "情感确认型",
+    "avoidant": "边界自持型",
+    "fearful": "敏感矛盾型",
 }
 
 # 每个类型的题目范围（每类型3题）
@@ -281,7 +281,7 @@ EXTREME_TAGS = {
 # 四种依恋类型的恋爱说明书（SBTI 毒舌风格）
 ATTACHMENT_TYPE_LABELS = {
     "secure": {
-        "nickname": "稳如老狗（STBL）",
+        "nickname": "稳定支持型",
         "nickname_fun": "情绪灭火器",
         "tags": [
             "对象发疯你睡觉",
@@ -294,7 +294,7 @@ ATTACHMENT_TYPE_LABELS = {
             "strengths": ["情绪稳定，对象发疯你睡觉，主打一个无动于衷。谁遇到你都很幸运。"],
             "weaknesses": ["有时候太稳定，对象可能会觉得你不够热情或不够在乎——别太稳定显得没心没肺。"],
             "best_match": [
-                "任何类型都能配",
+                "大多数类型都能适配",
                 "为啥配：你太稳定了，能适应任何类型，对方黏你能接住，对方冷你能给空间",
                 "日常场景：对象黏你你也能黏，对象冷你你也能冷，看情况调整",
                 "吵架场景：对象情绪化你能稳住，对象冷暴力你能给空间",
@@ -302,7 +302,7 @@ ATTACHMENT_TYPE_LABELS = {
                 "【判官判词】：你是恋爱里的万能适配器，谁遇到你都很幸运，但别太稳定显得没心没肺——偶尔也要演一下'我很在乎'。",
             ],
             "caution_match": [
-                "反复横跳狂魔（WOC-F）",
+                "敏感矛盾型",
                 "为啥磨合：TA太矛盾，你太稳定，TA可能会觉得你不懂TA的矛盾",
                 "日常冲突：TA既想黏又怕被伤害，你太稳定TA可能觉得你不够在乎",
                 "吵架场景：TA矛盾纠结，你稳如老狗，TA可能觉得你不懂TA",
@@ -322,8 +322,8 @@ ATTACHMENT_TYPE_LABELS = {
         },
     },
     "anxious": {
-        "nickname": "赛博怨妇（ANX-S）",
-        "nickname_fun": "连体婴",
+        "nickname": "情感确认型",
+        "nickname_fun": "高敏感雷达",
         "tags": [
             "回消息慢5分钟已脑补出轨路线图",
             "连分手后财产分配都想好了",
@@ -335,7 +335,7 @@ ATTACHMENT_TYPE_LABELS = {
             "strengths": ["很在乎对方，能给对方很多关心和爱意——但也别黏太紧让对方窒息。"],
             "weaknesses": ["太黏太需要安全感，回消息慢5分钟你已脑补完出轨路线图连财产分配都想好了。醒醒，人家可能只是在忙。"],
             "best_match": [
-                "稳如老狗（STBL）",
+                "稳定支持型",
                 "为啥配：TA太稳定了，能接住你的所有黏和慌，给你很多安全感",
                 "日常场景：你黏TA TA能接住，你慌TA能稳住你，给你很多确认",
                 "吵架场景：你慌TA稳住你，你脑补TA澄清，给你很多安全感",
@@ -343,7 +343,7 @@ ATTACHMENT_TYPE_LABELS = {
                 "【判官判词】：如果你刷到了这种稳如老狗的情绪灭火器，TA会用稳定接住你的所有慌张，别黏太紧给TA空间——不然你们会陷入追逐-逃跑恶性循环。",
             ],
             "caution_match": [
-                "装死大师（FAKE-D）",
+                "边界自持型",
                 "为啥磨合：追逐-逃跑恶性循环，你黏TA冷，你更慌TA更冷",
                 "日常冲突：你黏TA觉得窒息冷暴力，你更慌TA更冷",
                 "吵架场景：你慌TA冷暴力，你更慌TA更冷，恶性循环",
@@ -363,8 +363,8 @@ ATTACHMENT_TYPE_LABELS = {
         },
     },
     "avoidant": {
-        "nickname": "装死大师（FAKE-D）",
-        "nickname_fun": "洞穴伪人",
+        "nickname": "边界自持型",
+        "nickname_fun": "空间感很强",
         "tags": [
             "冷暴力界的奥林匹克冠军",
             "对象黏太紧立刻人间蒸发",
@@ -376,7 +376,7 @@ ATTACHMENT_TYPE_LABELS = {
             "strengths": ["能给对方很多空间和自由，不黏不控制——但也别冷太久让对方觉得你不在乎。"],
             "weaknesses": ["太冷太需要空间，对象黏太紧你觉得窒息要逃跑。醒醒，人家只是想黏你——别太冷太久。"],
             "best_match": [
-                "稳如老狗（STBL）",
+                "稳定支持型",
                 "为啥配：TA太稳定了，能给你很多空间，不黏你不控制你",
                 "日常场景：你需要空间TA给你空间，你冷TA能理解不慌",
                 "吵架场景：你冷暴力TA给空间，你逃跑TA不追，等你回来",
@@ -384,7 +384,7 @@ ATTACHMENT_TYPE_LABELS = {
                 "【判官判词】：如果你刷到了这种稳如老狗的情绪灭火器，TA会用稳定接住你的所有冷暴力，别冷太久给TA回应——不然你们会陷入追逐-逃跑恶性循环。",
             ],
             "caution_match": [
-                "赛博怨妇（ANX-S）",
+                "情感确认型",
                 "为啥磨合：追逐-逃跑恶性循环，TA黏你冷，TA更慌你更冷",
                 "日常冲突：TA黏你觉得窒息冷暴力，TA更慌你更冷",
                 "吵架场景：TA慌你冷暴力，TA更慌你更冷，恶性循环",
@@ -404,8 +404,8 @@ ATTACHMENT_TYPE_LABELS = {
         },
     },
     "fearful": {
-        "nickname": "反复横跳狂魔（WOC-F）",
-        "nickname_fun": "既想黏又怕被伤害",
+        "nickname": "敏感矛盾型",
+        "nickname_fun": "既想靠近又怕受伤",
         "tags": [
             "前一秒想结婚后一秒'男人没一个好东西'",
             "把自己和对方同时折磨疯",
@@ -417,7 +417,7 @@ ATTACHMENT_TYPE_LABELS = {
             "strengths": ["很在乎对方，能感受到对方的情绪和需求——但也别矛盾太久让对方困惑。"],
             "weaknesses": ["太矛盾太纠结，前一秒想结婚后一秒'男人没一个好东西'，把自己和对方同时折磨疯。醒醒，你的矛盾让对方也矛盾。"],
             "best_match": [
-                "稳如老狗（STBL）",
+                "稳定支持型",
                 "为啥配：TA太稳定了，能理解你的矛盾，给你安全感+空间",
                 "日常场景：你矛盾TA能理解，你既想黏又怕TA能接住你",
                 "吵架场景：你矛盾纠结TA稳住你，给你安全感+空间",
@@ -425,7 +425,7 @@ ATTACHMENT_TYPE_LABELS = {
                 "【判官判词】：如果你刷到了这种稳如老狗的情绪灭火器，TA会用稳定接住你的所有矛盾，别矛盾太久表达需求——不然TA会把你也折磨疯。",
             ],
             "caution_match": [
-                "赛博怨妇（ANX-S）或装死大师（FAKE-D）",
+                "情感确认型或边界自持型",
                 "为啥磨合：你本来就矛盾，TA黏或冷会让你更矛盾更纠结",
                 "日常冲突：你既想黏又怕，TA黏你你更怕TA冷你更慌",
                 "吵架场景：你矛盾TA黏或冷，你更矛盾更纠结",
@@ -789,10 +789,8 @@ def xiaoya_message_from_result(result: dict[str, Any]) -> str:
         fit_line = fit_line.replace("也是", "", 1).strip()
     message += f"真要说适合你的人，通常是这种：{fit_line}\n"
     if best_match:
-        best_match_label = "稳定类型的人"
-        if best_match[0] != "任何类型都能配":
-            best_match_label = best_match[0]
-        message += f"像 {best_match_label} 这种，通常会比较适合你。\n"
+        if best_match[0] not in {"任何类型都能配", "大多数类型都能适配"}:
+            message += f"像 {best_match[0]} 这种，通常会比较适合你。\n"
     if best_reason:
         message += f"为什么呢？因为 {best_reason}。\n"
     if caution_match:
