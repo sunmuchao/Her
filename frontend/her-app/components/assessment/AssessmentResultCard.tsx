@@ -38,17 +38,17 @@ const ATTACHMENT_NICKNAMES: Record<string, string> = {
 
 // Love language type nicknames (SBTI style)
 const LOVE_LANGUAGE_NICKNAMES: Record<string, string> = {
-  words_of_affirmation: '无成本白嫖大师',
-  quality_time: '网瘾戒断所教官',
-  receiving_gifts: '人形吞金兽',
-  acts_of_service: '巨婴饲养员',
-  physical_touch: '人形章鱼',
+  words_of_affirmation: '言语肯定型',
+  quality_time: '专注陪伴型',
+  receiving_gifts: '仪式感知型',
+  acts_of_service: '行动照顾型',
+  physical_touch: '亲密接触型',
   // 兼容可能的简写形式
-  words: '无成本白嫖大师',
-  time: '网瘾戒断所教官',
-  gifts: '人形吞金兽',
-  service: '巨婴饲养员',
-  touch: '人形章鱼',
+  words: '言语肯定型',
+  time: '专注陪伴型',
+  gifts: '仪式感知型',
+  service: '行动照顾型',
+  touch: '亲密接触型',
 }
 
 function normalizeTypeCode(typeCode?: string) {
