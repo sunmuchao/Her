@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { ArrowLeft, BadgeCheck, Bookmark, ChevronRight, ChevronDown, Mail, Mic, Plus, Search, Send, X, Brain, Heart, Sparkles, ClipboardList } from 'lucide-react'
+import { ArrowLeft, BadgeCheck, Bookmark, ChevronRight, ChevronDown, Mail, Mic, Plus, Search, Send, X, Brain, Heart, Sparkles, ClipboardList, Coins } from 'lucide-react'
 import { AssessmentCardRenderer } from '@/components/assessment/AssessmentCardRenderer'
 import { XiaoyaAvatar } from '@/components/her/ui/xiaoya-avatar'
 import Image from 'next/image'
@@ -86,21 +86,10 @@ function DiscoveryTimelineEntry({
   }
 
   if (item.kind === 'assessment_result') {
-    // DEBUG: 检查传递给 AssessmentCardRenderer 的数据
-    console.log('[DiscoverPage] assessment_result item:', {
-      itemId: item.id,
-      cardType: item.card?.card_type,
-      assessmentId: item.card?.assessment_id,
-      hasResultData: !!item.card?.result_data,
-      resultDataKeys: item.card?.result_data ? Object.keys(item.card.result_data) : [],
-      dimensionRows: item.card?.result_data?.dimension_rows,
-      labels: item.card?.result_data?.labels,
-    })
-
     return (
       <AssessmentCardRenderer
         card={item.card}
-        assessmentType={item.card?.assessment_type}  // 从卡片数据中提取测评类型，确保结果卡片能正确显示中文昵称
+        assessmentType={item.card?.assessment_type}
         onStart={() => {}}
         onAnswer={() => {}}
         onContinue={() => {}}
@@ -608,7 +597,7 @@ export default function DiscoverPage({
                       setShowAssessmentSubmenu(false)
                     }}
                     disabled={assessmentBusy || valuesAuctionBusy || !userKey}
-                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-secondary/50 hover:bg-secondary transition-colors disabled:opacity-60"
+                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-secondary/50 hover:bg-secondary transition-all touch-target active:scale-95 disabled:opacity-60"
                     aria-label="MBTI测评"
                   >
                     <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
@@ -625,11 +614,11 @@ export default function DiscoverPage({
                       setShowAssessmentSubmenu(false)
                     }}
                     disabled={assessmentBusy || valuesAuctionBusy || !userKey}
-                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-secondary/50 hover:bg-secondary transition-colors disabled:opacity-60"
+                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-secondary/50 hover:bg-secondary transition-all touch-target active:scale-95 disabled:opacity-60"
                     aria-label="依恋风格测评"
                   >
-                    <div className="w-10 h-10 rounded-full bg-rose/10 flex items-center justify-center">
-                      <Heart className="w-5 h-5 text-rose" />
+                    <div className="w-10 h-10 rounded-full bg-coral/10 flex items-center justify-center">
+                      <Heart className="w-5 h-5 text-coral" />
                     </div>
                     <span className="text-xs text-foreground">依恋风格</span>
                   </button>
@@ -642,15 +631,16 @@ export default function DiscoverPage({
                       setShowAssessmentSubmenu(false)
                     }}
                     disabled={assessmentBusy || valuesAuctionBusy || !userKey}
-                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-secondary/50 hover:bg-secondary transition-colors disabled:opacity-60"
+                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-secondary/50 hover:bg-secondary transition-all touch-target active:scale-95 disabled:opacity-60"
                     aria-label="恋爱语言测评"
                   >
-                    <div className="w-10 h-10 rounded-full bg-gold/10 flex items-center justify-center">
-                      <Sparkles className="w-5 h-5 text-gold" />
+                    <div className="w-10 h-10 rounded-full bg-lavender/10 flex items-center justify-center">
+                      <Sparkles className="w-5 h-5 text-lavender" />
                     </div>
                     <span className="text-xs text-foreground">恋爱语言</span>
                   </button>
 
+                  {/* 价值观拍卖会 */}
                   <button
                     onClick={() => {
                       void openValuesAuctionCard()
@@ -658,11 +648,11 @@ export default function DiscoverPage({
                       setShowAssessmentSubmenu(false)
                     }}
                     disabled={assessmentBusy || valuesAuctionBusy || !userKey}
-                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-secondary/50 hover:bg-secondary transition-colors disabled:opacity-60"
+                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-secondary/50 hover:bg-secondary transition-all touch-target active:scale-95 disabled:opacity-60"
                     aria-label="价值观拍卖会"
                   >
-                    <div className="w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center">
-                      <Sparkles className="w-5 h-5 text-amber-600" />
+                    <div className="w-10 h-10 rounded-full bg-amber/10 flex items-center justify-center">
+                      <Coins className="w-5 h-5 text-amber" />
                     </div>
                     <span className="text-xs text-foreground">价值观拍卖</span>
                   </button>
