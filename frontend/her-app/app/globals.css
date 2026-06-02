@@ -603,6 +603,384 @@
   -webkit-mask-image: linear-gradient(to left, black 85%, transparent 100%);
 }
 
+/* ============================================
+   IMMERSIVE ASSESSMENT ANIMATIONS
+   ============================================ */
+
+/* Particle burst effect for selections - uses CSS variables for direction */
+@keyframes particle-burst {
+  0% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(
+      calc(-50% + var(--particle-x, 50px)), 
+      calc(-50% + var(--particle-y, -50px))
+    ) scale(0.5);
+    opacity: 0;
+  }
+}
+
+/* Ring pulse explosion */
+@keyframes ring-burst {
+  0% {
+    transform: scale(0.8);
+    opacity: 0.8;
+    box-shadow: 0 0 0 0 currentColor;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 0.4;
+  }
+  100% {
+    transform: scale(1.8);
+    opacity: 0;
+    box-shadow: 0 0 20px 10px transparent;
+  }
+}
+
+/* Check mark draw animation */
+@keyframes check-draw {
+  0% {
+    stroke-dashoffset: 24;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* Elastic bounce for selections */
+@keyframes elastic-pop {
+  0% {
+    transform: scale(1);
+  }
+  25% {
+    transform: scale(1.15);
+  }
+  50% {
+    transform: scale(0.95);
+  }
+  75% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Card flip animation */
+@keyframes card-flip-in {
+  0% {
+    transform: perspective(1000px) rotateY(-90deg);
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    transform: perspective(1000px) rotateY(0deg);
+    opacity: 1;
+  }
+}
+
+@keyframes card-flip-out {
+  0% {
+    transform: perspective(1000px) rotateY(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: perspective(1000px) rotateY(90deg);
+    opacity: 0;
+  }
+}
+
+/* Slide and scale for card transitions */
+@keyframes slide-scale-in {
+  0% {
+    transform: translateX(30px) scale(0.95);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(0) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes slide-scale-out {
+  0% {
+    transform: translateX(0) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(-30px) scale(0.95);
+    opacity: 0;
+  }
+}
+
+/* Number counting/rolling animation */
+@keyframes number-roll {
+  0% {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Score reveal with glow */
+@keyframes score-reveal {
+  0% {
+    transform: scale(0.5);
+    opacity: 0;
+    filter: blur(10px);
+  }
+  50% {
+    transform: scale(1.1);
+    filter: blur(0);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+/* Progress bar glow pulse */
+@keyframes progress-glow {
+  0%, 100% {
+    box-shadow: 0 0 5px currentColor, 0 0 10px currentColor;
+  }
+  50% {
+    box-shadow: 0 0 10px currentColor, 0 0 20px currentColor, 0 0 30px currentColor;
+  }
+}
+
+/* Milestone celebration burst */
+@keyframes milestone-burst {
+  0% {
+    transform: scale(0);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.5);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+/* Confetti fall */
+@keyframes confetti-fall {
+  0% {
+    transform: translateY(-100%) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(100vh) rotate(720deg);
+    opacity: 0;
+  }
+}
+
+/* Background ambient pulse */
+@keyframes ambient-pulse {
+  0%, 100% {
+    opacity: 0.3;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.05);
+  }
+}
+
+/* Spotlight/vignette effect */
+@keyframes spotlight-focus {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+/* Flash on selection */
+@keyframes selection-flash {
+  0% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 0.3;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Options stagger entrance */
+@keyframes option-entrance {
+  0% {
+    transform: translateY(20px) scale(0.9);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+/* Shimmer sweep effect */
+@keyframes shimmer-sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Dimension complete celebration */
+@keyframes dimension-complete {
+  0% {
+    transform: scale(0.8) rotate(-5deg);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.05) rotate(2deg);
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}
+
+/* Animation classes */
+.animate-particle-burst {
+  animation: particle-burst 0.6s ease-out forwards;
+}
+
+.animate-ring-burst {
+  animation: ring-burst 0.5s ease-out forwards;
+}
+
+.animate-check-draw {
+  animation: check-draw 0.3s ease-out forwards;
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+}
+
+.animate-elastic-pop {
+  animation: elastic-pop 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) forwards;
+}
+
+.animate-card-flip-in {
+  animation: card-flip-in 0.5s ease-out forwards;
+  transform-style: preserve-3d;
+}
+
+.animate-card-flip-out {
+  animation: card-flip-out 0.3s ease-in forwards;
+  transform-style: preserve-3d;
+}
+
+.animate-slide-scale-in {
+  animation: slide-scale-in 0.4s ease-out forwards;
+}
+
+.animate-slide-scale-out {
+  animation: slide-scale-out 0.3s ease-in forwards;
+}
+
+.animate-number-roll {
+  animation: number-roll 0.4s ease-out forwards;
+}
+
+.animate-score-reveal {
+  animation: score-reveal 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.animate-progress-glow {
+  animation: progress-glow 1.5s ease-in-out infinite;
+}
+
+.animate-milestone-burst {
+  animation: milestone-burst 0.6s ease-out forwards;
+}
+
+.animate-confetti-fall {
+  animation: confetti-fall 3s linear forwards;
+}
+
+.animate-ambient-pulse {
+  animation: ambient-pulse 4s ease-in-out infinite;
+}
+
+.animate-spotlight-focus {
+  animation: spotlight-focus 0.5s ease-out forwards;
+}
+
+.animate-selection-flash {
+  animation: selection-flash 0.4s ease-out forwards;
+}
+
+.animate-option-entrance {
+  animation: option-entrance 0.4s ease-out forwards;
+}
+
+.animate-shimmer-sweep {
+  animation: shimmer-sweep 1.5s ease-in-out;
+}
+
+.animate-dimension-complete {
+  animation: dimension-complete 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+/* Utility classes for immersive effects */
+.perspective-1000 {
+  perspective: 1000px;
+}
+
+.transform-style-3d {
+  transform-style: preserve-3d;
+}
+
+.backface-hidden {
+  backface-visibility: hidden;
+}
+
+/* Gradient overlays for atmosphere */
+.ambient-gradient {
+  background: radial-gradient(ellipse at center, transparent 0%, var(--background) 70%);
+}
+
+.spotlight-overlay {
+  background: radial-gradient(circle at 50% 30%, transparent 0%, rgba(0,0,0,0.4) 100%);
+}
+
+/* Glow effects */
+.glow-primary {
+  box-shadow: 0 0 20px var(--primary), 0 0 40px var(--primary);
+}
+
+.glow-coral {
+  box-shadow: 0 0 20px var(--coral), 0 0 40px var(--coral);
+}
+
+.glow-lavender {
+  box-shadow: 0 0 20px var(--lavender), 0 0 40px var(--lavender);
+}
+
+.glow-amber {
+  box-shadow: 0 0 20px var(--amber), 0 0 40px var(--amber);
+}
+
 /* Reduced motion support for accessibility */
 @media (prefers-reduced-motion: reduce) {
   *,

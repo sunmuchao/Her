@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
-import { Share2, Check, Star } from 'lucide-react'
+import { Share2, Check, Star, Trophy } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { type AssessmentType } from './assessment-themes'
+import { ConfettiCelebration, AnimatedNumber } from './immersive-effects'
 
 // MBTI type nicknames
 const TYPE_NICKNAMES: Record<string, string> = {
@@ -319,6 +320,18 @@ export function AssessmentResultCard({
     open: boolean
     label: string
   }>({ open: false, label: '' })
+  const [showConfetti, setShowConfetti] = useState(false)
+  const [isRevealed, setIsRevealed] = useState(false)
+  
+  // Trigger confetti and reveal animation on mount
+  useEffect(() => {
+    const confettiTimer = setTimeout(() => setShowConfetti(true), 300)
+    const revealTimer = setTimeout(() => setIsRevealed(true), 100)
+    return () => {
+      clearTimeout(confettiTimer)
+      clearTimeout(revealTimer)
+    }
+  }, [])
 
   // 对于恋爱语言测评，优先显示中文昵称而不是英文 type_code
   const typeNickname = getTypeNickname(data.type_code, assessmentType)
@@ -372,36 +385,81 @@ export function AssessmentResultCard({
       : 'bg-primary/15 border-primary/40'
 
   return (
-    <div className="rounded-3xl border border-border bg-card p-6 shadow-sm animate-scale-in overflow-y-auto max-h-[70vh] scroll-fade-bottom">
-      {/* Header with share button */}
-      <div className="flex items-start justify-between mb-4">
-        <div>
+    <>
+      {/* Confetti celebration */}
+      <ConfettiCelebration 
+        trigger={showConfetti} 
+        colors={
+          assessmentType === 'attachment_style' 
+            ? ['var(--coral)', 'var(--rose)', 'var(--gold)']
+            : assessmentType === 'love_language'
+              ? ['var(--lavender)', 'var(--purple)', 'var(--rose)']
+              : undefined
+        }
+        pieceCount={40}
+      />
+      
+      <div className={cn(
+        'rounded-3xl border border-border bg-card p-6 shadow-sm overflow-y-auto max-h-[70vh] scroll-fade-bottom',
+        isRevealed ? 'animate-score-reveal' : 'opacity-0 scale-90'
+      )}>
+        {/* Trophy icon */}
+        <div className="flex justify-center mb-4">
           <div className={cn(
-            'text-xs uppercase tracking-widest mb-1',
-            assessmentType === 'attachment_style' ? 'text-coral' : 
-            assessmentType === 'love_language' ? 'text-lavender' : 'text-muted-foreground'
+            'w-16 h-16 rounded-full flex items-center justify-center',
+            assessmentType === 'attachment_style' ? 'bg-coral/15' : 
+            assessmentType === 'love_language' ? 'bg-lavender/15' : 'bg-primary/15'
           )}>
-            {"测评结果"}
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className={cn(
-              'text-3xl font-bold tracking-tight',
+            <Trophy className={cn(
+              'w-8 h-8',
               assessmentType === 'attachment_style' ? 'text-coral' : 
-              assessmentType === 'love_language' ? 'text-lavender' : ''
+              assessmentType === 'love_language' ? 'text-lavender' : 'text-primary'
+            )} />
+          </div>
+        </div>
+        
+        {/* Header with share button */}
+        <div className="flex items-start justify-between mb-4">
+          <div className="flex-1 text-center">
+            <div className={cn(
+              'text-xs uppercase tracking-widest mb-2',
+              assessmentType === 'attachment_style' ? 'text-coral' : 
+              assessmentType === 'love_language' ? 'text-lavender' : 'text-muted-foreground'
             )}>
-              {safeTypeCode}
-            </span>
+              {"测评结果"}
+            </div>
+            <div className="flex items-baseline justify-center gap-2">
+              <span className={cn(
+                'text-4xl font-bold tracking-tight animate-number-roll',
+                assessmentType === 'attachment_style' ? 'text-coral' : 
+                assessmentType === 'love_language' ? 'text-lavender' : ''
+              )}>
+                {safeTypeCode}
+              </span>
+            </div>
             {typeNickname && typeNickname !== safeTypeCode && (
-              <span className="text-sm text-muted-foreground">{"- "}{typeNickname}</span>
+              <div className="text-sm text-muted-foreground mt-1">{typeNickname}</div>
             )}
           </div>
         </div>
+        
+        {/* Share button */}
         {onShare && (
-          <Button variant="ghost" size="icon-sm" onClick={onShare} aria-label="分享结果">
-            <Share2 className="w-4 h-4" />
-          </Button>
+          <div className="flex justify-center mb-4">
+            <button
+              onClick={onShare}
+              className={cn(
+                'flex items-center gap-2 px-4 py-2 rounded-full text-sm transition-all touch-target active:scale-95',
+                assessmentType === 'attachment_style' ? 'bg-coral/10 text-coral hover:bg-coral/20' : 
+                assessmentType === 'love_language' ? 'bg-lavender/10 text-lavender hover:bg-lavender/20' : 
+                'bg-secondary text-muted-foreground hover:bg-secondary/80'
+              )}
+            >
+              <Share2 className="w-4 h-4" />
+              {"分享结果"}
+            </button>
+          </div>
         )}
-      </div>
 
       {/* Extreme Tags */}
       {data.interpretation_data?.extreme_tags && data.interpretation_data.extreme_tags.length > 0 && (
@@ -480,6 +538,7 @@ export function AssessmentResultCard({
         onConfirm={handleConfirmAddLabel}
         onCancel={handleCancelAddLabel}
       />
-    </div>
+      </div>
+    </>
   )
 }
