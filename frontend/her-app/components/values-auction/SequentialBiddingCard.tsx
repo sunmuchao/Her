@@ -9,7 +9,9 @@
  * - 冲突提示（帮助理解取舍）
  */
 
-import React, { useState, useMemo, useEffect } from 'react'
+import React, { useState, useMemo } from 'react'
+import { Check, X, AlertTriangle, Lightbulb, ChevronDown, ChevronUp } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import type { ValuesAuctionLotsCard, ValuesLot } from '@/lib/api/endpoints/valuesAuction'
 
 type Props = {
@@ -34,6 +36,9 @@ export function SequentialBiddingCard({ card, onSubmit, isDualMode }: Props) {
 
   // 选择记录：已保留的拍品、已放弃的拍品
   const [choices, setChoices] = useState<ChoiceRecord[]>([])
+  
+  // 已选区折叠状态
+  const [isChoicesExpanded, setIsChoicesExpanded] = useState(false)
 
   // 名额限制：最终只能保留3个
   const MAX_KEEP = 3
@@ -65,18 +70,18 @@ export function SequentialBiddingCard({ card, onSubmit, isDualMode }: Props) {
     return 'critical'                       // 决断期
   }, [currentIndex])
 
-  // 紧张感提示文案
+  // 紧张感提示文案 - 简化版
   const tensionHint = useMemo(() => {
     if (isSlotsFull) {
-      return `⚠️ 名额已满！后面的拍品只能放弃，或者替换之前的选择`
+      return { text: '名额已满，需要替换才能保留', type: 'warning' as const }
     }
     if (phase === 'relaxed') {
-      return `你已保留 ${keptLots.length} 件，还能保留 ${remainingSlots} 件`
+      return { text: `已保留 ${keptLots.length}/${MAX_KEEP}，还能保留 ${remainingSlots} 件`, type: 'info' as const }
     }
     if (phase === 'tense') {
-      return `⚠️ 名额紧张！你已保留 ${keptLots.length} 件，还能保留 ${remainingSlots} 件，还剩 ${remainingLots} 件拍品要看，后面的拍品可能更好，要慎重选择`
+      return { text: `名额紧张！还能保留 ${remainingSlots} 件，剩余 ${remainingLots} 件待选`, type: 'tense' as const }
     }
-    return `⚠️ 最后名额！你已保留 ${keptLots.length} 件，还能保留 ${remainingSlots} 件，还剩 ${remainingLots} 件拍品要看`
+    return { text: `最后阶段！还能保留 ${remainingSlots} 件`, type: 'critical' as const }
   }, [keptLots.length, remainingSlots, remainingLots, phase, isSlotsFull])
 
   // 冲突提示文案（基于拍品的 conflict_hint 字段）
@@ -88,7 +93,6 @@ export function SequentialBiddingCard({ card, onSubmit, isDualMode }: Props) {
 
     // 如果名额已满，需要替换
     if (isSlotsFull) {
-      // 弹出替换选择界面（简化版：直接放弃当前拍品）
       handleDiscard()
       return
     }
@@ -156,139 +160,174 @@ export function SequentialBiddingCard({ card, onSubmit, isDualMode }: Props) {
     moveToNext()
   }
 
-  // 进度可视化
-  const progressVisual = useMemo(() => {
-    return lots.map((lot, i) => {
-      const choice = choices.find(c => c.lot_id === lot.lot_id)
-      if (i < currentIndex) {
-        return choice?.choice === 'keep' ? '✓' : '⚫'
-      }
-      if (i === currentIndex) return '?'
-      return '·'
-    })
-  }, [lots, currentIndex, choices])
-
   // 如果所有拍品都已展示，显示结果预告
   if (currentIndex >= lots.length) {
     return (
-      <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl p-6 shadow-lg border border-amber-200">
-        <h3 className="text-xl font-bold text-amber-900 text-center mb-4">取舍完成</h3>
+      <div className="rounded-3xl border border-border bg-card p-6 shadow-sm animate-scale-in">
+        <h3 className="text-xl font-semibold text-center mb-4">{"取舍完成"}</h3>
 
-        <div className="bg-white rounded-xl p-4 mb-4">
-          <div className="text-sm text-amber-800 mb-2">你保留了：</div>
+        <div className="rounded-2xl bg-secondary/60 p-4 mb-4">
+          <div className="text-sm text-muted-foreground mb-2">{"你保留了："}</div>
           {keptLots.map(lotId => {
             const lot = lots.find(l => l.lot_id === lotId)
             return (
-              <div key={lotId} className="text-amber-900 font-medium">
-                ✓ {lot?.title}
+              <div key={lotId} className="flex items-center gap-2 text-foreground font-medium py-1">
+                <Check className="w-4 h-4 text-amber" />
+                <span>{lot?.title}</span>
               </div>
             )
           })}
+          {keptLots.length === 0 && (
+            <div className="text-muted-foreground text-sm">{"没有保留任何拍品"}</div>
+          )}
         </div>
 
         <button
           onClick={handleSubmit}
-          className="w-full py-3 bg-gradient-to-r from-amber-500 to-orange-500 text-white font-medium rounded-xl shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all"
+          className={cn(
+            'w-full h-12 rounded-xl text-base font-medium',
+            'bg-amber hover:bg-amber/90 text-white',
+            'transition-all duration-200 active:scale-[0.98] touch-target'
+          )}
         >
-          封盘揭晓
+          {"封盘揭晓"}
         </button>
       </div>
     )
   }
 
   return (
-    <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl p-6 shadow-lg border border-amber-200 animate-fade-in">
-      {/* 进度条 */}
+    <div className="rounded-3xl border border-border bg-card p-6 shadow-sm animate-fade-in-up will-change-transform">
+      {/* 进度指示器 - 水平条形 */}
       <div className="mb-4">
-        <div className="flex justify-center gap-1 mb-2">
-          {progressVisual.map((symbol, i) => (
-            <div
-              key={i}
-              className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                symbol === '✓' ? 'bg-amber-400 text-white' :
-                symbol === '⚫' ? 'bg-gray-300 text-gray-600' :
-                symbol === '?' ? 'bg-orange-400 text-white animate-pulse' :
-                'bg-gray-100 text-gray-400'
-              }`}
-            >
-              {i + 1}
-            </div>
-          ))}
+        <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
+          <span>{"第 "}{currentIndex + 1}{" 件"}</span>
+          <span>{"共 "}{lots.length}{" 件"}</span>
         </div>
-        <div className="text-center text-sm text-amber-700">
-          第 {currentIndex + 1} 件拍品（共 {lots.length} 件）
+        <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
+          <div 
+            className="h-full bg-amber rounded-full transition-all duration-300"
+            style={{ width: `${((currentIndex + 1) / lots.length) * 100}%` }}
+          />
+        </div>
+        {/* 小圆点指示已选择状态 */}
+        <div className="flex justify-center gap-1.5 mt-2">
+          {lots.map((lot, i) => {
+            const choice = choices.find(c => c.lot_id === lot.lot_id)
+            const isCurrent = i === currentIndex
+            const isKept = choice?.choice === 'keep'
+            const isDiscarded = choice?.choice === 'discard'
+            
+            return (
+              <div
+                key={lot.lot_id}
+                className={cn(
+                  'w-2 h-2 rounded-full transition-all duration-200',
+                  isCurrent && 'w-4 bg-amber animate-pulse',
+                  !isCurrent && isKept && 'bg-amber',
+                  !isCurrent && isDiscarded && 'bg-secondary',
+                  !isCurrent && !choice && 'bg-border'
+                )}
+              />
+            )
+          })}
         </div>
       </div>
 
       {/* 双人模式提示 */}
       {isDualMode && (
-        <div className="bg-orange-100 rounded-lg p-2 mb-4">
-          <p className="text-xs text-orange-700 text-center">
-            ⚠️ 秘密取舍，封盘前没人知道你选了什么
+        <div className={cn(
+          'rounded-xl px-3 py-2 mb-4 border',
+          'bg-amber-soft/50 border-amber/20'
+        )}>
+          <p className="text-xs text-muted-foreground text-center">
+            {"秘密取舍，封盘前没人知道你选了什么"}
           </p>
         </div>
       )}
 
       {/* 紧张感提示 */}
-      <div className={`rounded-lg p-3 mb-4 ${
-        phase === 'critical' ? 'bg-red-50 border border-red-200' :
-        phase === 'tense' ? 'bg-orange-50 border border-orange-200' :
-        'bg-amber-50 border border-amber-100'
-      }`}>
-        <p className={`text-sm text-center ${
-          phase === 'critical' ? 'text-red-700' :
-          phase === 'tense' ? 'text-orange-700' :
-          'text-amber-700'
-        }`}>
-          {tensionHint}
+      <div className={cn(
+        'rounded-xl px-4 py-2.5 mb-4 border',
+        tensionHint.type === 'critical' && 'bg-destructive/10 border-destructive/20',
+        tensionHint.type === 'tense' && 'bg-amber-soft/60 border-amber/30',
+        tensionHint.type === 'warning' && 'bg-amber-soft/60 border-amber/30',
+        tensionHint.type === 'info' && 'bg-secondary/60 border-border'
+      )}>
+        <p className={cn(
+          'text-sm text-center font-medium',
+          tensionHint.type === 'critical' && 'text-destructive',
+          tensionHint.type === 'tense' && 'text-amber',
+          tensionHint.type === 'warning' && 'text-amber',
+          tensionHint.type === 'info' && 'text-muted-foreground'
+        )}>
+          {tensionHint.type !== 'info' && <AlertTriangle className="w-4 h-4 inline mr-1.5 -mt-0.5" />}
+          {tensionHint.text}
         </p>
       </div>
 
       {/* 当前拍品大卡 */}
       <div
-        className="bg-white rounded-2xl p-6 shadow-lg border-2 mb-4 transition-all duration-300 hover:shadow-xl"
-        style={{ borderColor: currentLot?.theme_color || '#F59E0B' }}
+        className={cn(
+          'rounded-2xl p-5 border-2 mb-4 transition-all duration-300',
+          'bg-gradient-to-br from-amber-soft/30 to-gold-soft/30'
+        )}
+        style={{ borderColor: currentLot?.theme_color || 'var(--amber)' }}
       >
         {/* 拍品图标 */}
-        <div className="text-center mb-4">
-          <div className="text-5xl mb-2">{currentLot?.icon || '💰'}</div>
+        <div className="text-center mb-3">
+          <div className="text-4xl mb-1" role="img" aria-label={currentLot?.title}>
+            {currentLot?.icon || '?'}
+          </div>
         </div>
 
         {/* 拍品标题 */}
-        <div className="text-center mb-4">
-          <h4 className="text-xl font-bold text-amber-900 mb-2">
+        <div className="text-center mb-3">
+          <h4 className="text-lg font-semibold text-foreground mb-1.5 text-balance">
             {currentLot?.title}
           </h4>
-          <p className="text-sm text-amber-600 italic">
-            "{currentLot?.interpretation}"
+          <p className="text-sm text-muted-foreground italic leading-relaxed text-pretty">
+            {`"${currentLot?.interpretation}"`}
           </p>
         </div>
 
         {/* 冲突提示 */}
         {conflictHint && phase !== 'relaxed' && (
-          <div className="bg-orange-50 rounded-lg p-3 mb-4 border border-orange-100">
-            <p className="text-xs text-orange-700 text-center">
-              💡 {conflictHint}
+          <div className={cn(
+            'rounded-xl px-3 py-2 border',
+            'bg-gold-soft/50 border-gold/20'
+          )}>
+            <p className="text-xs text-muted-foreground text-center flex items-center justify-center gap-1.5">
+              <Lightbulb className="w-3.5 h-3.5 text-gold" />
+              {conflictHint}
             </p>
           </div>
         )}
 
-        {/* 名额已满时的替换提示 */}
+        {/* 名额已满时的替换提示 - 改为底部抽屉样式 */}
         {isSlotsFull && (
-          <div className="bg-red-50 rounded-lg p-3 mb-4 border border-red-200">
-            <p className="text-xs text-red-700 text-center mb-2">
-              名额已满！如果保留这件，需要替换之前的选择：
+          <div className={cn(
+            'mt-3 rounded-xl p-3 border',
+            'bg-destructive/5 border-destructive/20'
+          )}>
+            <p className="text-xs text-muted-foreground text-center mb-2.5">
+              {"名额已满，保留此项需要替换："}
             </p>
-            <div className="flex flex-wrap gap-2 justify-center">
+            <div className="flex flex-col gap-2">
               {keptLots.map(lotId => {
                 const lot = lots.find(l => l.lot_id === lotId)
                 return (
                   <button
                     key={lotId}
                     onClick={() => handleReplace(lotId)}
-                    className="px-3 py-1 bg-white border border-red-200 rounded-lg text-xs text-red-700 hover:bg-red-100 transition-all"
+                    className={cn(
+                      'px-3 py-2 rounded-xl text-sm',
+                      'bg-background border border-border',
+                      'hover:bg-secondary hover:border-amber/30',
+                      'transition-all touch-target active:scale-[0.98]'
+                    )}
                   >
-                    替换：{lot?.title?.substring(0, 10)}...
+                    {"替换："}{lot?.title}
                   </button>
                 )
               })}
@@ -298,59 +337,100 @@ export function SequentialBiddingCard({ card, onSubmit, isDualMode }: Props) {
       </div>
 
       {/* 取舍按钮 */}
-      <div className="flex gap-4">
+      <div className="flex gap-3">
         <button
           onClick={handleDiscard}
-          className="flex-1 py-3 bg-gray-100 text-gray-700 font-medium rounded-xl shadow-md hover:bg-gray-200 hover:shadow-lg active:scale-[0.98] transition-all"
+          className={cn(
+            'flex-1 h-12 rounded-xl text-base font-medium',
+            'bg-secondary text-muted-foreground',
+            'flex items-center justify-center gap-2',
+            'hover:bg-secondary/80 active:scale-[0.98]',
+            'transition-all touch-target'
+          )}
         >
-          放弃
+          <X className="w-4 h-4" />
+          {"放弃"}
         </button>
         <button
           onClick={handleKeep}
           disabled={isSlotsFull}
-          className={`flex-1 py-3 font-medium rounded-xl shadow-md transition-all ${
+          className={cn(
+            'flex-1 h-12 rounded-xl text-base font-medium',
+            'flex items-center justify-center gap-2',
+            'transition-all touch-target',
             isSlotsFull
-              ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-              : 'bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:shadow-lg hover:scale-[1.02] active:scale-[0.98]'
-          }`}
+              ? 'bg-secondary text-muted-foreground cursor-not-allowed opacity-60'
+              : 'bg-amber hover:bg-amber/90 text-white active:scale-[0.98]'
+          )}
         >
+          <Check className="w-4 h-4" />
           {isSlotsFull ? '名额已满' : '保留'}
         </button>
       </div>
 
-      {/* 已选择区（可选显示） */}
+      {/* 已选择区（可折叠） */}
       {choices.length > 0 && (
-        <div className="mt-4 pt-4 border-t border-amber-100">
-          <div className="flex gap-4">
-            {/* 已保留 */}
-            <div className="flex-1">
-              <div className="text-xs text-amber-700 mb-1">已保留（{keptLots.length}/{MAX_KEEP}）：</div>
-              <div className="flex flex-wrap gap-1">
-                {keptLots.map(lotId => {
-                  const lot = lots.find(l => l.lot_id === lotId)
-                  return (
-                    <div key={lotId} className="px-2 py-1 bg-amber-100 rounded text-xs text-amber-700">
-                      {lot?.icon} {lot?.title?.substring(0, 8)}...
-                    </div>
-                  )
-                })}
+        <div className="mt-4 pt-4 border-t border-border">
+          <button
+            onClick={() => setIsChoicesExpanded(!isChoicesExpanded)}
+            className="w-full flex items-center justify-between text-xs text-muted-foreground mb-2 touch-target"
+          >
+            <span>{"已选择 "}{choices.length}{" 件"}</span>
+            {isChoicesExpanded ? (
+              <ChevronUp className="w-4 h-4" />
+            ) : (
+              <ChevronDown className="w-4 h-4" />
+            )}
+          </button>
+          
+          {isChoicesExpanded && (
+            <div className="flex gap-4 animate-fade-in">
+              {/* 已保留 */}
+              <div className="flex-1">
+                <div className="text-xs text-amber mb-1.5">
+                  {"保留（"}{keptLots.length}{"/"}{MAX_KEEP}{"）"}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {keptLots.map(lotId => {
+                    const lot = lots.find(l => l.lot_id === lotId)
+                    return (
+                      <div 
+                        key={lotId} 
+                        className="px-2 py-1 bg-amber-soft rounded-lg text-xs text-foreground"
+                      >
+                        {lot?.icon} {lot?.title?.substring(0, 6)}...
+                      </div>
+                    )
+                  })}
+                  {keptLots.length === 0 && (
+                    <span className="text-xs text-muted-foreground">{"暂无"}</span>
+                  )}
+                </div>
+              </div>
+              {/* 已放弃 */}
+              <div className="flex-1">
+                <div className="text-xs text-muted-foreground mb-1.5">
+                  {"放弃（"}{discardedLots.length}{"）"}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {discardedLots.slice(-3).map(lotId => {
+                    const lot = lots.find(l => l.lot_id === lotId)
+                    return (
+                      <div 
+                        key={lotId} 
+                        className="px-2 py-1 bg-secondary rounded-lg text-xs text-muted-foreground"
+                      >
+                        {lot?.title?.substring(0, 6)}...
+                      </div>
+                    )
+                  })}
+                  {discardedLots.length > 3 && (
+                    <span className="text-xs text-muted-foreground">+{discardedLots.length - 3}</span>
+                  )}
+                </div>
               </div>
             </div>
-            {/* 已放弃 */}
-            <div className="flex-1">
-              <div className="text-xs text-gray-500 mb-1">已放弃（{discardedLots.length}）：</div>
-              <div className="flex flex-wrap gap-1">
-                {discardedLots.slice(-3).map(lotId => {
-                  const lot = lots.find(l => l.lot_id === lotId)
-                  return (
-                    <div key={lotId} className="px-2 py-1 bg-gray-100 rounded text-xs text-gray-500">
-                      {lot?.title?.substring(0, 8)}...
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          </div>
+          )}
         </div>
       )}
     </div>
