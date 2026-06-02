@@ -451,3 +451,27 @@ def get_value_type_info(value_type: str) -> dict[str, Any]:
     获取价值观类型的详细信息
     """
     return VALUE_TYPE_DEFINITIONS.get(value_type, VALUE_TYPE_DEFINITIONS["综合型"])
+
+
+def xiaoya_message_from_result(result: dict[str, Any]) -> str:
+    """生成小雅风格的价值观拍卖会解读消息
+
+    设计原则（Agent Native）：
+    - 卡片已展示：Top3拍品、隐藏价值分析、价值倾向类型
+    - 小雅只补充：恋爱中的表现、建议、注意事项
+    - 不重复卡片内容，避免用户觉得啰嗦
+    """
+    value_type = result.get("value_type", "综合型")
+    type_info = get_value_type_info(value_type)
+
+    # 开场白：引导用户看卡片，不复述数据
+    message = "亲爱的，拍卖结果出来了，看看你拍下了什么人生～ 💡\n\n"
+
+    # 只输出卡片没有的内容
+    message += f"**在恋爱中：**\n{type_info.get('love_style', '')}\n\n"
+    message += f"**小雅的建议：**\n{type_info.get('match_suggestion', '')}\n"
+
+    if type_info.get('caution'):
+        message += f"\n💡 **需要注意：**\n{type_info.get('caution', '')}\n"
+
+    return message.strip()
