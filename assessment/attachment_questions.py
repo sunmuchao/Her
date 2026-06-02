@@ -764,17 +764,17 @@ def xiaoya_message_from_result(result: dict[str, Any]) -> str:
         advice.append("你这类模式最需要练的，不是猜，而是把需求、边界和不安直接说清楚。")
 
     message = "亲爱的，依恋风格这题我帮你翻译成人话了。\n\n"
-    message += f"你这次更偏 **{type_info.get('nickname', type_code)}**。\n"
-    message += f"{pattern}\n\n"
-    message += "**如果放进亲密关系里看，你大概会这样谈恋爱：**\n"
+    message += f"你这次更偏 =={type_info.get('nickname', type_code)}==。\n"
+    message += f"**{pattern}**\n\n"
+    message += "**关系画像：**\n"
     message += f"- 安全感指数里，安全型 {secure_score:.0f} 分，说明你{'有比较稳定的底盘' if secure_score >= 60 else '底盘还不够稳，容易被关系牵动'}\n"
     message += f"- 焦虑感 {anxious_score:.0f} 分，说明你{'很怕失去回应' if anxious_score >= 60 else '对回应速度还算能扛'}\n"
     message += f"- 回避感 {avoidant_score:.0f} 分，说明你{'压力一大就容易后撤' if avoidant_score >= 60 else '不会本能地把人推远'}\n"
     message += f"- 矛盾拉扯感 {fearful_score:.0f} 分，说明你{'很容易在靠近和逃跑之间反复横跳' if fearful_score >= 60 else '内在拉扯相对没那么重'}\n\n"
-    message += "**说匹配，我会这样建议你：**\n"
+    message += "**匹配建议：**\n"
     message += f"- {fit}\n"
     if best_match:
-        message += f"- 高匹配方向：{best_match[0]}\n"
+        message += f"- 高匹配方向：__{best_match[0]}__\n"
     if best_reason:
         message += f"- 为什么适合：{best_reason}\n"
     if caution_match:
@@ -783,13 +783,13 @@ def xiaoya_message_from_result(result: dict[str, Any]) -> str:
         message += f"- 为什么容易卡住：{caution_reason}\n\n"
     else:
         message += "\n"
-    message += "**我给你的实战建议：**\n"
+    message += "**相处建议：**\n"
     for index, item in enumerate(advice[:3], start=1):
         message += f"{index}. {item}\n"
     if caution_advice:
         message += f"{min(len(advice[:3]) + 1, 4)}. {caution_advice.rstrip('。')}。\n"
     message += "\n"
-    message += f"**我再提醒你一个高频风险点：**\n{risk}\n\n"
+    message += f"**风险提醒：**\n==高频风险点==：{risk}\n\n"
     message += "你要是愿意，我下一条可以继续帮你拆：你最容易吸引哪类人、又最容易被哪类关系消耗。"
     return message
 

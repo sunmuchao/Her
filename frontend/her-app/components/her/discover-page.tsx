@@ -29,6 +29,7 @@ import { useDiscoverySession } from '@/hooks/use-discovery-session'
 import { useVoiceInput } from '@/hooks/use-voice-input'
 import { DemoDataBanner } from './ui/demo-data-banner'
 import { ErrorState } from './ui/error-state'
+import { XiaoyaRichText } from './ui/xiaoya-rich-text'
 import {
   answerAssessment,
   beginAssessment,
@@ -145,7 +146,7 @@ function DiscoveryTimelineEntry({
                 : 'bg-card border border-border rounded-bl-md',
             )}
           >
-            {item.content}
+            {isUser ? item.content : <XiaoyaRichText content={item.content} />}
           </div>
           <p className={cn('text-[10px] text-muted-foreground mt-1', isUser ? 'text-right' : '')}>
             {item.timestamp}

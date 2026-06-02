@@ -25,6 +25,7 @@ import { DEMO_DEFAULT_CHAT_ID } from '@/lib/navigation/defaults'
 import type { CandidatePreview } from '@/lib/types/candidate'
 import { DemoDataBanner } from './ui/demo-data-banner'
 import { ErrorState } from './ui/error-state'
+import { XiaoyaRichText } from './ui/xiaoya-rich-text'
 import { VideoCallModal, type CallType } from './video-call-modal'
 import {
   startValuesAuctionTogether,
@@ -811,7 +812,7 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
                                       小雅提示
                                     </span>
                                   </div>
-                                  <p className="text-sm text-muted-foreground leading-relaxed">{msg.content}</p>
+                                  <XiaoyaRichText content={msg.content} />
                                 </div>
                               )}
 
