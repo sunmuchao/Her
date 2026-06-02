@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, lazy } from 'react'
+import { Suspense, lazy, useState, useCallback } from 'react'
 import type {
   AssessmentCard,
   AssessmentFeedbackCard as AssessmentFeedbackCardType,
@@ -11,8 +11,13 @@ import type {
 } from '@/lib/api/endpoints/assessment'
 import type { ValuesAuctionCard } from '@/lib/api/endpoints/valuesAuction'
 import { cn } from '@/lib/utils'
-import { type AssessmentType } from './assessment-themes'
+import { type AssessmentType, getAssessmentTheme } from './assessment-themes'
 import { ValuesAuctionCardRenderer } from '@/components/values-auction'
+import { 
+  MilestoneCelebration, 
+  ConfettiCelebration,
+  AmbientBackground 
+} from './immersive-effects'
 
 import { AssessmentFeedbackCard } from './AssessmentFeedbackCard'
 import { AssessmentIntroCard } from './AssessmentIntroCard'
@@ -46,7 +51,7 @@ function isInterpretationCard(card: AssessmentCard): card is AssessmentInterpret
 }
 
 // Values Auction card type guard
-function isValuesAuctionCard(card: any): card is ValuesAuctionCard {
+function isValuesAuctionCard(card: unknown): card is ValuesAuctionCard {
   const valuesAuctionTypes = [
     'values_auction_intro',
     'values_auction_traits',
@@ -57,7 +62,7 @@ function isValuesAuctionCard(card: any): card is ValuesAuctionCard {
     'values_auction_history',
     'error',
   ]
-  return valuesAuctionTypes.includes(card?.card_type)
+  return valuesAuctionTypes.includes((card as ValuesAuctionCard)?.card_type)
 }
 
 // Extract assessment type from the card
@@ -101,8 +106,37 @@ export function AssessmentCardRenderer({
   isSubmitting = false,
   assessmentType,
 }: AssessmentCardRendererProps) {
+  // Milestone celebration state
+  const [showMilestone, setShowMilestone] = useState(false)
+  const [milestoneText, setMilestoneText] = useState({ title: '', subtitle: '' })
+  const [showConfetti, setShowConfetti] = useState(false)
+  
   // Try to get assessment type from card if not provided
   const resolvedAssessmentType = assessmentType || getAssessmentTypeFromCard(card)
+  const theme = getAssessmentTheme(resolvedAssessmentType)
+  
+  // Get current progress for ambient background
+  const currentProgress = isQuestionCard(card) ? card.question_data.progress : 
+                          isFeedbackCard(card) ? 100 : 
+                          isResultCard(card) ? 100 : 0
+
+  // Handle dimension completion celebration
+  const handleDimensionComplete = useCallback((dimensionIndex: number) => {
+    const dimensionName = theme.progressColors[dimensionIndex]?.name || '维度'
+    
+    setMilestoneText({
+      title: `${dimensionName} 完成!`,
+      subtitle: '继续探索下一个维度',
+    })
+    setShowMilestone(true)
+    setShowConfetti(true)
+    
+    // Auto dismiss
+    setTimeout(() => {
+      setShowMilestone(false)
+      setShowConfetti(false)
+    }, 2000)
+  }, [theme.progressColors])
 
   // Values Auction cards use their own renderer
   if (isValuesAuctionCard(card)) {
@@ -115,104 +149,121 @@ export function AssessmentCardRenderer({
     )
   }
 
-  if (isIntroCard(card)) {
-    return (
-      <AssessmentIntroCard
-        data={card.intro_data}
-        onStart={onStart}
-        isResumed={isResumed || card.resumed}
-        answeredCount={answeredCount || card.answered_count || 0}
-        assessmentType={resolvedAssessmentType}
-      />
-    )
-  }
-
-  if (isQuestionCard(card)) {
-    return (
-      <AssessmentQuestionCard
-        data={card.question_data}
-        onAnswer={onAnswer}
-        onPrevious={onPrevious}
-        isSubmitting={isSubmitting}
-        assessmentType={resolvedAssessmentType}
-      />
-    )
-  }
-
-  if (isFeedbackCard(card)) {
-    return (
-      <AssessmentFeedbackCard
-        data={card.feedback_data}
-        onContinue={onContinue}
-        assessmentType={resolvedAssessmentType}
-      />
-    )
-  }
-
-  if (isResultCard(card)) {
-    // DEBUG: 检查传递给 AssessmentResultCard 的数据
-    console.log('[AssessmentCardRenderer] result card:', {
-      cardType: card.card_type,
-      assessmentId: card.assessment_id,
-      hasResultData: !!card.result_data,
-      resultDataKeys: card.result_data ? Object.keys(card.result_data) : [],
-      dimensionRowsCount: card.result_data?.dimension_rows?.length || 0,
-      labelsCount: card.result_data?.labels?.length || 0,
-      dimensionRows: card.result_data?.dimension_rows,
-      labels: card.result_data?.labels,
-    })
-
-    return (
-      <Suspense fallback={<AssessmentResultSkeleton />}>
-        <AssessmentResultCard
-          data={card.result_data}
-          onAddLabels={onAddLabels}
-          onShare={onShare}
+  // Render with immersive wrapper
+  const renderContent = () => {
+    if (isIntroCard(card)) {
+      return (
+        <AssessmentIntroCard
+          data={card.intro_data}
+          onStart={onStart}
+          isResumed={isResumed || card.resumed}
+          answeredCount={answeredCount || card.answered_count || 0}
           assessmentType={resolvedAssessmentType}
         />
-      </Suspense>
-    )
+      )
+    }
+
+    if (isQuestionCard(card)) {
+      return (
+        <AssessmentQuestionCard
+          data={card.question_data}
+          onAnswer={onAnswer}
+          onPrevious={onPrevious}
+          isSubmitting={isSubmitting}
+          assessmentType={resolvedAssessmentType}
+          onDimensionComplete={handleDimensionComplete}
+        />
+      )
+    }
+
+    if (isFeedbackCard(card)) {
+      return (
+        <AssessmentFeedbackCard
+          data={card.feedback_data}
+          onContinue={onContinue}
+          assessmentType={resolvedAssessmentType}
+        />
+      )
+    }
+
+    if (isResultCard(card)) {
+      return (
+        <Suspense fallback={<AssessmentResultSkeleton />}>
+          <AssessmentResultCard
+            data={card.result_data}
+            onAddLabels={onAddLabels}
+            onShare={onShare}
+            assessmentType={resolvedAssessmentType}
+          />
+        </Suspense>
+      )
+    }
+
+    if (isInterpretationCard(card)) {
+      // Get themed button color
+      const buttonClass = resolvedAssessmentType === 'attachment_style' 
+        ? 'bg-coral hover:bg-coral/90 text-white' 
+        : resolvedAssessmentType === 'love_language' 
+          ? 'bg-lavender hover:bg-lavender/90 text-white' 
+          : 'bg-primary hover:bg-primary/90'
+      
+      return (
+        <div className="rounded-3xl border border-border bg-card p-5 shadow-sm animate-scale-in">
+          <div className="text-xs uppercase tracking-widest text-muted-foreground">
+            {"AI 解读"}
+          </div>
+          <p className="mt-3 text-sm leading-relaxed">
+            {card.interpretation_data.summary}
+          </p>
+          <p className="mt-3 text-sm text-muted-foreground">
+            {card.interpretation_data.love_style}
+          </p>
+          <div className="mt-4 space-y-2">
+            {card.interpretation_data.match_suggestions.map((item) => (
+              <div key={item} className="rounded-2xl bg-secondary/40 px-3 py-2 text-sm">
+                {item}
+              </div>
+            ))}
+          </div>
+          <button
+            className={cn(
+              "mt-4 w-full rounded-xl px-4 py-3 text-sm text-white font-medium transition-colors touch-target active:scale-[0.98]",
+              buttonClass
+            )}
+            onClick={onContinueChat}
+          >
+            {"回到聊天"}
+          </button>
+        </div>
+      )
+    }
+
+    return null
   }
 
-  if (isInterpretationCard(card)) {
-    // Get themed button color
-    const buttonClass = resolvedAssessmentType === 'attachment_style' 
-      ? 'bg-coral hover:bg-coral/90 text-white' 
-      : resolvedAssessmentType === 'love_language' 
-        ? 'bg-lavender hover:bg-lavender/90 text-white' 
-        : 'bg-primary hover:bg-primary/90'
-    
-    return (
-      <div className="rounded-3xl border border-border bg-card p-5 shadow-sm animate-scale-in">
-        <div className="text-xs uppercase tracking-widest text-muted-foreground">
-          {"AI 解读"}
-        </div>
-        <p className="mt-3 text-sm leading-relaxed">
-          {card.interpretation_data.summary}
-        </p>
-        <p className="mt-3 text-sm text-muted-foreground">
-          {card.interpretation_data.love_style}
-        </p>
-        <div className="mt-4 space-y-2">
-          {card.interpretation_data.match_suggestions.map((item) => (
-            <div key={item} className="rounded-2xl bg-secondary/40 px-3 py-2 text-sm">
-              {item}
-            </div>
-          ))}
-        </div>
-        <button
-          className={cn(
-            "mt-4 w-full rounded-xl px-4 py-3 text-sm text-white font-medium transition-colors",
-            buttonClass
-          )}
-          onClick={onContinueChat}
-        >
-          {"回到聊天"}
-        </button>
+  return (
+    <>
+      {/* Ambient background effect */}
+      <AmbientBackground 
+        assessmentType={resolvedAssessmentType} 
+        progress={currentProgress}
+      />
+      
+      {/* Milestone celebration overlay */}
+      <MilestoneCelebration
+        show={showMilestone}
+        title={milestoneText.title}
+        subtitle={milestoneText.subtitle}
+        assessmentType={resolvedAssessmentType}
+      />
+      
+      {/* Confetti celebration */}
+      <ConfettiCelebration trigger={showConfetti} />
+      
+      {/* Main content */}
+      <div className="relative z-10">
+        {renderContent()}
       </div>
-    )
-  }
-
-  // Fallback for unknown card types
-  return null
+    </>
+  )
 }
