@@ -30,6 +30,7 @@ export type DiscoveryView = {
       cover_image_url?: string
       match_score?: number
       reason_summary?: string
+      match_highlights?: string[]
       personality_reasons?: string[]
       personality_reasoning?: {
         used?: boolean

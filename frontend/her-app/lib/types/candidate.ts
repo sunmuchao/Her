@@ -9,6 +9,7 @@ export type CandidatePreview = {
   matchScore?: number
   image?: string
   matchReason?: string
+  matchHighlights?: string[]
   message?: string
   recommendationId?: number
   subscriptionId?: string

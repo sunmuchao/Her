@@ -772,6 +772,7 @@ class DiscoveryServiceTests(unittest.TestCase):
         self.assertEqual(cards[0]["title"], "林知夏 29")
         self.assertEqual(cards[0]["subtitle"], "无锡 · 中学老师 · 硕士")
         self.assertEqual(cards[0]["reason_summary"], "城市一致、关系目标一致、工作节奏稳定。")
+        self.assertEqual(cards[0]["match_highlights"], ["城市一致", "关系目标一致", "工作稳定"])
         self.assertEqual(cards[0]["trust_badges"], ["真人照认证", "学历已核验"])
 
     def test_service_appends_proactive_personality_blurb_to_results_message(self) -> None:
@@ -882,6 +883,10 @@ class DiscoveryServiceTests(unittest.TestCase):
         )
 
         self.assertEqual(cards[0]["reason_summary"], "都看重“稳定经营、家庭责任”这类长期稳定的东西，她的依恋也偏安全型")
+        self.assertEqual(
+            cards[0]["match_highlights"],
+            ["都看重“稳定经营、家庭责任”这类长期稳定的东西", "她的依恋也偏安全型"],
+        )
         self.assertEqual(cards[0]["personality_reasons"], ["都看重“稳定经营、家庭责任”这类长期稳定的东西", "她的依恋也偏安全型"])
 
     def test_search_partner_candidates_with_adds_personality_bonus_and_trace(self) -> None:
