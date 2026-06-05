@@ -325,8 +325,7 @@ export function MilestoneCelebration({
   
   if (!show) return null
   
-  const bgColor = assessmentType === 'attachment_style' ? 'bg-coral' :
-                  assessmentType === 'love_language' ? 'bg-lavender' : 'bg-primary'
+  const bgColor = assessmentType === 'attachment_style' ? 'bg-coral' : 'bg-primary'
   
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
@@ -340,7 +339,7 @@ export function MilestoneCelebration({
             key={i}
             className={cn('absolute w-32 h-32 rounded-full border-4 animate-milestone-burst', 
               assessmentType === 'attachment_style' ? 'border-coral' :
-              assessmentType === 'love_language' ? 'border-lavender' : 'border-primary'
+              'border-primary'
             )}
             style={{ animationDelay: `${i * 150}ms` }}
           />
@@ -352,7 +351,7 @@ export function MilestoneCelebration({
         <div className={cn(
           'text-4xl font-bold mb-2',
           assessmentType === 'attachment_style' ? 'text-coral' :
-          assessmentType === 'love_language' ? 'text-lavender' : 'text-primary'
+          'text-primary'
         )}>
           {title}
         </div>
@@ -415,9 +414,6 @@ export function AmbientBackground({
       case 'attachment_style':
         return `radial-gradient(ellipse at 30% 20%, rgba(var(--coral), ${intensity}) 0%, transparent 50%),
                 radial-gradient(ellipse at 70% 80%, rgba(var(--coral), ${intensity * 0.5}) 0%, transparent 40%)`
-      case 'love_language':
-        return `radial-gradient(ellipse at 30% 20%, rgba(var(--lavender), ${intensity}) 0%, transparent 50%),
-                radial-gradient(ellipse at 70% 80%, rgba(var(--lavender), ${intensity * 0.5}) 0%, transparent 40%)`
       default:
         return `radial-gradient(ellipse at 30% 20%, rgba(var(--primary), ${intensity}) 0%, transparent 50%),
                 radial-gradient(ellipse at 70% 80%, rgba(var(--rose), ${intensity * 0.5}) 0%, transparent 40%)`
@@ -458,8 +454,7 @@ export function ProgressMilestone({
     }
   }, [progress, milestones, onMilestoneReached])
   
-  const color = assessmentType === 'attachment_style' ? 'bg-coral' :
-                assessmentType === 'love_language' ? 'bg-lavender' : 'bg-primary'
+  const color = assessmentType === 'attachment_style' ? 'bg-coral' : 'bg-primary'
   
   return (
     <div className="relative h-2 bg-secondary rounded-full overflow-hidden">
@@ -565,8 +560,7 @@ export function ScoreReveal({
     }
   }, [score, onRevealComplete])
   
-  const color = assessmentType === 'attachment_style' ? 'text-coral' :
-                assessmentType === 'love_language' ? 'text-lavender' : 'text-primary'
+  const color = assessmentType === 'attachment_style' ? 'text-coral' : 'text-primary'
   
   return (
     <div className={cn(

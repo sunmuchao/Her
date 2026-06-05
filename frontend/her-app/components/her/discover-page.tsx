@@ -49,6 +49,14 @@ import {
 } from '@/lib/api/endpoints/valuesAuction'
 import { ValuesAuctionCardRenderer } from '@/components/values-auction'
 
+const PSYCHOLOGY_XIAOYA_RESULT_DELAY_MS = 2000
+
+function waitForPsychologyXiaoyaResult() {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, PSYCHOLOGY_XIAOYA_RESULT_DELAY_MS)
+  })
+}
+
 interface DiscoverPageProps {
   onViewCandidate: (candidateId: string, candidate?: CandidatePreview) => void
   onOpenInbox: () => void
@@ -72,7 +80,7 @@ function DiscoveryTimelineEntry({
   onProfileUpdateResolved?: () => void
   onAddLabels?: (selectedLabels: string[]) => Promise<void>
   onSubmitAction?: (actionId: string) => void
-  onOpenAssessment?: (assessmentType: 'mbti_16' | 'attachment_style' | 'love_language') => void
+  onOpenAssessment?: (assessmentType: 'mbti_16' | 'attachment_style' | 'big_five' | 'sternberg_triangular_love') => void
   isSubmittingTurn?: boolean
 }) {
   if (item.kind === 'profile_update_prompt') {
@@ -88,8 +96,9 @@ function DiscoveryTimelineEntry({
 
   if (item.kind === 'assessment_result') {
     // 从卡片中提取 assessment_type
-    const cardAssessmentType = item.card?.assessment_type ||
-      (item.card?.card_type === 'values_auction_result' ? 'values_auction' : undefined)
+    const cardAssessmentType = (
+      item.card && 'assessment_type' in item.card ? item.card.assessment_type : undefined
+    ) || (item.card?.card_type === 'values_auction_result' ? 'values_auction' : undefined)
 
     return (
       <AssessmentCardRenderer
@@ -113,10 +122,11 @@ function DiscoveryTimelineEntry({
             onClick={() => {
               if (action.semantic_payload?.kind === 'start_assessment') {
                 const assessmentType = action.semantic_payload?.assessment_type || 'mbti'
-                const typeMap: Record<string, 'mbti_16' | 'attachment_style' | 'love_language'> = {
+                const typeMap: Record<string, 'mbti_16' | 'attachment_style' | 'big_five' | 'sternberg_triangular_love'> = {
                   mbti: 'mbti_16',
                   attachment: 'attachment_style',
-                  values: 'love_language',
+                  big_five: 'big_five',
+                  sternberg: 'sternberg_triangular_love',
                 }
                 onOpenAssessment?.(typeMap[assessmentType] || 'mbti_16')
                 return
@@ -140,13 +150,13 @@ function DiscoveryTimelineEntry({
         <div className={cn('max-w-[80%]', isUser ? 'order-1' : '')}>
           <div
             className={cn(
-              'px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed whitespace-pre-line',
+              'rounded-2xl text-sm leading-relaxed whitespace-pre-line',
               isUser
-                ? 'bg-primary text-primary-foreground rounded-br-md'
-                : 'bg-card border border-border rounded-bl-md',
+                ? 'bg-primary text-primary-foreground rounded-br-md px-3.5 py-2.5'
+                : 'bg-card border border-border rounded-bl-md px-4 py-3',
             )}
           >
-            {isUser ? item.content : <XiaoyaRichText content={item.content} />}
+            {isUser ? item.content : <XiaoyaRichText content={item.content} className="space-y-3.5" />}
           </div>
           <p className={cn('text-[10px] text-muted-foreground mt-1', isUser ? 'text-right' : '')}>
             {item.timestamp}
@@ -241,14 +251,16 @@ export default function DiscoverPage({
   const [showAssessmentSubmenu, setShowAssessmentSubmenu] = useState(false)
   const [assessmentCard, setAssessmentCard] = useState<AssessmentCard | null>(null)
   const [assessmentId, setAssessmentId] = useState<string | null>(null)
-  const [currentAssessmentType, setCurrentAssessmentType] = useState<'mbti_16' | 'attachment_style' | 'love_language'>('mbti_16')
+  const [currentAssessmentType, setCurrentAssessmentType] = useState<'mbti_16' | 'attachment_style' | 'big_five' | 'sternberg_triangular_love'>('mbti_16')
   const [assessmentQuestionHistory, setAssessmentQuestionHistory] = useState<AssessmentQuestionCard['question_data'][]>([])
   const [assessmentBusy, setAssessmentBusy] = useState(false)
   const [valuesAuctionCard, setValuesAuctionCard] = useState<ValuesAuctionCard | null>(null)
   const [valuesAuctionBusy, setValuesAuctionBusy] = useState(false)
   const userKey = String(getProfileId() || getUserId() || '')
 
-  const openAssessmentCard = async (assessmentType: 'mbti_16' | 'attachment_style' | 'love_language' = 'mbti_16') => {
+  const openAssessmentCard = async (
+    assessmentType: 'mbti_16' | 'attachment_style' | 'big_five' | 'sternberg_triangular_love' = 'mbti_16'
+  ) => {
     if (!userKey || assessmentBusy) return
     setAssessmentBusy(true)
     setCurrentAssessmentType(assessmentType)
@@ -267,7 +279,8 @@ export default function DiscoverPage({
       const assessmentNames = {
         'mbti_16': 'MBTI',
         'attachment_style': '相处模式',
-        'love_language': '爱的表达'
+        'big_five': '大五人格',
+        'sternberg_triangular_love': '爱情三元论',
       }
       notifyError(error, `打开 ${assessmentNames[assessmentType]} 测评失败`)
     } finally {
@@ -462,15 +475,17 @@ export default function DiscoverPage({
                         // 用户点击"继续和小雅聊天"按钮时才清空state
                         if (next.card_type === 'assessment_result' && userKey) {
                           try {
-                            const xiaoyaResult = await getXiaoyaMessage(userKey)
+                            const xiaoyaResult = await getXiaoyaMessage(userKey, currentAssessmentType)
                             if (xiaoyaResult.has_message && xiaoyaResult.message) {
                               if (sessionId) {
                                 try {
+                                  await waitForPsychologyXiaoyaResult()
                                   await addXiaoyaMessageToDiscovery({
                                     userKey,
                                     sessionId,
                                     message: xiaoyaResult.message,
                                     resultData: next.result_data,
+                                    assessmentType: currentAssessmentType,
                                   })
                                   await reloadSession()
                                   // ✅ 不立即清空state，让用户能看到结果卡片
@@ -546,56 +561,8 @@ export default function DiscoverPage({
                       const next = await beginAssessment(assessmentId)
                       setAssessmentCard(next)
                     }}
-                    onAnswer={async (answer) => {
-                      if (assessmentCard.card_type !== 'assessment_question') return
-                      setAssessmentQuestionHistory((prev) => [...prev, assessmentCard.question_data])
-                      const next = await answerAssessment({
-                        assessmentId,
-                        questionIndex: assessmentCard.question_data.current_question - 1,
-                        answer,
-                        userKey,
-                      })
-                      setAssessmentCard(next)
-
-                      // 如果测评完成（显示结果卡片），将结果和小雅消息添加到对话流
-                      // 但不清空state，让用户能看到结果卡片
-                      // 用户点击"继续和小雅聊天"按钮时才清空state
-                      if (next.card_type === 'assessment_result' && userKey) {
-                        try {
-                          const xiaoyaResult = await getXiaoyaMessage(userKey)
-                          if (xiaoyaResult.has_message && xiaoyaResult.message) {
-                            if (sessionId) {
-                              try {
-                                await addXiaoyaMessageToDiscovery({
-                                  userKey,
-                                  sessionId,
-                                  message: xiaoyaResult.message,
-                                  resultData: next.result_data,
-                                })
-                                await reloadSession()
-                                // ✅ 不立即清空state，让用户能看到结果卡片
-                                // clearAssessmentCard() 移到 onContinueChat 回调中
-                              } catch (discoveryError) {
-                                console.warn('[onAnswer] 添加到discovery失败，可能是session不存在:', discoveryError)
-                                // 失败不影响当前结果展示，只是消息不会融入对话流
-                              }
-                            } else {
-                              console.warn('[onAnswer] sessionId为空，跳过添加到discovery session')
-                            }
-                          }
-                        } catch (error) {
-                          console.error('[onAnswer] 获取小雅消息失败:', error)
-                        }
-                      }
-                    }}
-                    onContinue={async () => {
-                      if (assessmentCard.card_type !== 'assessment_feedback') return
-                      setAssessmentCard({
-                        card_type: 'assessment_question',
-                        assessment_id: assessmentId,
-                        question_data: assessmentCard.next_question,
-                      })
-                    }}
+                    onAnswer={() => {}}
+                    onContinue={() => {}}
                     onContinueChat={() => {
                       // 用户点击"继续和小雅聊天"，清除测评卡片state
                       // 小雅消息已经在测评完成时添加到对话流，不需要再次添加
@@ -665,6 +632,7 @@ export default function DiscoverPage({
                       // 这样小雅的回复会显示在结果卡片下方
                       if (next.xiaoya_message && sessionId) {
                         try {
+                          await waitForPsychologyXiaoyaResult()
                           await addXiaoyaMessageToDiscovery({
                             userKey,
                             sessionId,
@@ -771,21 +739,36 @@ export default function DiscoverPage({
                     <span className="text-xs text-foreground">相处模式</span>
                   </button>
 
-                  {/* 爱的表达测评 */}
                   <button
                     onClick={() => {
-                      void openAssessmentCard('love_language')
+                      void openAssessmentCard('big_five')
                       setShowActionMenu(false)
                       setShowAssessmentSubmenu(false)
                     }}
                     disabled={assessmentBusy || valuesAuctionBusy || !userKey}
                     className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-secondary/50 hover:bg-secondary transition-all touch-target active:scale-95 disabled:opacity-60"
-                    aria-label="爱的表达测评"
+                    aria-label="大五人格测评"
                   >
-                    <div className="w-10 h-10 rounded-full bg-lavender/10 flex items-center justify-center">
-                      <Sparkles className="w-5 h-5 text-lavender" />
+                    <div className="w-10 h-10 rounded-full bg-sage/10 flex items-center justify-center">
+                      <Sparkles className="w-5 h-5 text-sage" />
                     </div>
-                    <span className="text-xs text-foreground">爱的表达</span>
+                    <span className="text-xs text-foreground">大五人格</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      void openAssessmentCard('sternberg_triangular_love')
+                      setShowActionMenu(false)
+                      setShowAssessmentSubmenu(false)
+                    }}
+                    disabled={assessmentBusy || valuesAuctionBusy || !userKey}
+                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-secondary/50 hover:bg-secondary transition-all touch-target active:scale-95 disabled:opacity-60"
+                    aria-label="爱情三元论测评"
+                  >
+                    <div className="w-10 h-10 rounded-full bg-amber/10 flex items-center justify-center">
+                      <Heart className="w-5 h-5 text-amber" />
+                    </div>
+                    <span className="text-xs text-foreground">爱情三元论</span>
                   </button>
 
                   {/* 价值观拍卖会 */}

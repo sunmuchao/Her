@@ -6,6 +6,7 @@ ROOT_DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
 APP_DIR="$ROOT_DIR/frontend/her-app"
 GATEWAY_DIR="$ROOT_DIR/external-systems/partner-http-gateway"
 LOG_DIR="${HER_E2E_LOG_DIR:-/tmp/her-e2e-ci}"
+SPEC_PATH="${1:-tests/e2e/her-flow.spec.ts}"
 mkdir -p "$LOG_DIR"
 
 _resolve_playwright_browsers_path() {
@@ -132,6 +133,6 @@ fi
 
 echo "[e2e-ci] running Playwright (MOCK_FALLBACK=false)..."
 HER_E2E_BIND_PHONE="$bind_phone" \
-  pnpm exec playwright test tests/e2e/her-flow.spec.ts --reporter=line
+  pnpm exec playwright test "$SPEC_PATH" --reporter=line
 
 echo "[e2e-ci] ok"

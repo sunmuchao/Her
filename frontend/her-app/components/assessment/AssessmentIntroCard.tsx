@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { Heart, Clock, Sparkles, ArrowRight, Brain, Link2, MessageCircleHeart, Play } from 'lucide-react'
+import { Heart, Clock, Sparkles, ArrowRight, Brain, Link2, Play, Coins } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { type AssessmentType, getAssessmentTheme } from './assessment-themes'
 import { RingBurst, useHapticFeedback } from './immersive-effects'
@@ -20,7 +20,7 @@ function ThemeIcon({
   iconType, 
   className 
 }: { 
-  iconType: 'brain' | 'heart' | 'sparkles' | 'link' | 'message-heart'
+  iconType: 'brain' | 'heart' | 'sparkles' | 'link' | 'coins'
   className?: string 
 }) {
   switch (iconType) {
@@ -28,10 +28,10 @@ function ThemeIcon({
       return <Brain className={className} />
     case 'link':
       return <Link2 className={className} />
-    case 'message-heart':
-      return <MessageCircleHeart className={className} />
     case 'sparkles':
       return <Sparkles className={className} />
+    case 'coins':
+      return <Coins className={className} />
     case 'heart':
     default:
       return <Heart className={className} fill="currentColor" />
@@ -70,8 +70,14 @@ export function AssessmentIntroCard({
     }, 400)
   }
   
-  const themeColor = assessmentType === 'attachment_style' ? 'var(--coral)' :
-                     assessmentType === 'love_language' ? 'var(--lavender)' : 'var(--primary)'
+  const themeColor =
+    assessmentType === 'attachment_style'
+      ? 'var(--coral)'
+      : assessmentType === 'big_five'
+        ? 'var(--sage)'
+        : assessmentType === 'sternberg_triangular_love'
+          ? 'var(--amber)'
+          : 'var(--primary)'
   
   return (
     <div className={cn(
@@ -88,8 +94,13 @@ export function AssessmentIntroCard({
           <div 
             className={cn(
               'absolute inset-0 rounded-full animate-ping-slow will-change-transform',
-              assessmentType === 'attachment_style' ? 'bg-coral/15' :
-              assessmentType === 'love_language' ? 'bg-lavender/15' : 'bg-rose/15'
+              assessmentType === 'attachment_style'
+                ? 'bg-coral/15'
+                : assessmentType === 'big_five'
+                  ? 'bg-sage/15'
+                  : assessmentType === 'sternberg_triangular_love'
+                    ? 'bg-amber/15'
+                    : 'bg-rose/15'
             )} 
           />
           
@@ -104,8 +115,13 @@ export function AssessmentIntroCard({
               iconType={theme.iconType} 
               className={cn(
                 'w-9 h-9 animate-heartbeat will-change-transform',
-                assessmentType === 'attachment_style' ? 'text-coral' :
-                assessmentType === 'love_language' ? 'text-lavender' : 'text-rose'
+                assessmentType === 'attachment_style'
+                  ? 'text-coral'
+                  : assessmentType === 'big_five'
+                    ? 'text-sage'
+                    : assessmentType === 'sternberg_triangular_love'
+                      ? 'text-amber'
+                      : 'text-rose'
               )} 
             />
           </div>
@@ -124,16 +140,25 @@ export function AssessmentIntroCard({
       {isResumed && answeredCount > 0 && (
         <div className={cn(
           'mt-4 px-4 py-3 rounded-2xl border',
-          assessmentType === 'attachment_style' ? 'bg-coral-soft/50 border-coral/20' :
-          assessmentType === 'love_language' ? 'bg-lavender-soft/50 border-lavender/20' : 
-          'bg-gold-soft/50 border-gold/20'
+          assessmentType === 'attachment_style'
+            ? 'bg-coral-soft/50 border-coral/20'
+            : assessmentType === 'big_five'
+              ? 'bg-sage-soft/50 border-sage/20'
+              : assessmentType === 'sternberg_triangular_love'
+                ? 'bg-amber-soft/50 border-amber/20'
+                : 'bg-gold-soft/50 border-gold/20'
         )}>
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <Sparkles className={cn(
                 'w-4 h-4',
-                assessmentType === 'attachment_style' ? 'text-coral' :
-                assessmentType === 'love_language' ? 'text-lavender' : 'text-gold'
+                assessmentType === 'attachment_style'
+                  ? 'text-coral'
+                  : assessmentType === 'big_five'
+                    ? 'text-sage'
+                    : assessmentType === 'sternberg_triangular_love'
+                      ? 'text-amber'
+                      : 'text-gold'
               )} />
               <span className="text-sm text-foreground font-medium">{"继续上次进度"}</span>
             </div>
@@ -146,8 +171,13 @@ export function AssessmentIntroCard({
             <div 
               className={cn(
                 'h-full rounded-full transition-all duration-500',
-                assessmentType === 'attachment_style' ? 'bg-coral' :
-                assessmentType === 'love_language' ? 'bg-lavender' : 'bg-gold'
+                assessmentType === 'attachment_style'
+                  ? 'bg-coral'
+                  : assessmentType === 'big_five'
+                    ? 'bg-sage'
+                    : assessmentType === 'sternberg_triangular_love'
+                      ? 'bg-amber'
+                      : 'bg-gold'
               )}
               style={{ width: `${progressPercent}%` }}
             />
@@ -171,12 +201,17 @@ export function AssessmentIntroCard({
           <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-background">
             <Sparkles className={cn(
               'w-5 h-5',
-              assessmentType === 'attachment_style' ? 'text-coral' :
-              assessmentType === 'love_language' ? 'text-lavender' : 'text-gold'
+              assessmentType === 'attachment_style'
+                ? 'text-coral'
+                : assessmentType === 'big_five'
+                  ? 'text-sage'
+                  : assessmentType === 'sternberg_triangular_love'
+                    ? 'text-amber'
+                    : 'text-gold'
             )} />
           </div>
           <div className="min-w-0">
-            <div className="text-xs text-muted-foreground">{"完成奖励"}</div>
+            <div className="text-xs text-muted-foreground">{"解锁功能"}</div>
             <div className="text-sm font-medium leading-snug break-words">{data.reward}</div>
           </div>
         </div>
@@ -187,8 +222,13 @@ export function AssessmentIntroCard({
         className={cn(
           'mt-5 w-full h-14 rounded-xl text-base font-semibold group touch-target relative overflow-hidden',
           'transition-all duration-300 active:scale-[0.97]',
-          assessmentType === 'attachment_style' ? 'bg-coral hover:bg-coral/90 text-white' :
-          assessmentType === 'love_language' ? 'bg-lavender hover:bg-lavender/90 text-white' : '',
+          assessmentType === 'attachment_style'
+            ? 'bg-coral hover:bg-coral/90 text-white'
+            : assessmentType === 'big_five'
+              ? 'bg-sage hover:bg-sage/90 text-white'
+              : assessmentType === 'sternberg_triangular_love'
+                ? 'bg-amber hover:bg-amber/90 text-white'
+                : '',
           isStarting && 'scale-105'
         )}
         onClick={handleStart}

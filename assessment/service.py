@@ -6,37 +6,44 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from assessment.mbti_questions import (
-    MBTI_QUESTIONS,
+# 改用 OEJTS 适配器（集成权威开源项目）
+from assessment.oejts_adapter_service import (
+    build_intro_card,
+    build_question_card,
+    build_feedback_card,
+    build_result_card,
+    build_dimension_rows,
+)
+from assessment.oejts_engine import (
+    TOTAL_QUESTIONS,
     DIMENSIONS,
     calculate_all_scores,
     get_dimension_feedback,
-    get_question,
+)
+from assessment.love_style_generator import (
     get_type_info,
     get_extreme_tags,
     calculate_love_match,
     _type_code_from_scores as mbti_type_code,
-    _labels_from_scores as mbti_labels,
-    _interpretation_from_result as mbti_interpretation,
-    xiaoya_message_from_result,  # 新增：小雅消息生成
+    get_labels as mbti_labels,
+    get_interpretation as mbti_interpretation,
+    get_xiaoya_message as mbti_xiaoya_message,  # 重命名避免与下面函数冲突
 )
+from assessment.result_store import merge_personality_summary, store_assessment_result
 from persona_memory_sync.persona_memory_lib import (
-    apply_persona_patch,
     fetch_persona,
     mysql_connect,
-    normalize_patch,
     parse_mysql_source,
     quote_mysql_ident,
     release_persona_connection,
 )
 
 
-TOTAL_QUESTIONS = len(MBTI_QUESTIONS)
 ASSESSMENT_TYPE_MBTI = "mbti_16"
 ASSESSMENT_SESSION_FIELD = "assessment.session"
 ASSESSMENT_RESULT_FIELD = "assessment.result"
 ASSESSMENT_INTERPRETATION_FIELD = "assessment.interpretation"
-ASSESSMENT_XIAOYA_MESSAGE_FIELD = "assessment.xiaoya_message"  # 新增：小雅解读消息
+ASSESSMENT_XIAOYA_MESSAGE_FIELD = "assessment.xiaoya_message"
 
 
 DIMENSION_LABELS = {
@@ -189,21 +196,15 @@ def _load_session_and_answers(
 
 
 def _question_payload(question_index: int, assessment_id: str) -> dict[str, Any]:
-    question = get_question(question_index)
-    if question is None:
-        raise ValueError("question not found")
-    return {
-        "current_question": question_index + 1,
-        "total_questions": TOTAL_QUESTIONS,
-        "question_text": question["text"],
-        "options": question["options"],
-        "progress": int(round(((question_index + 1) / TOTAL_QUESTIONS) * 100)),
-        "assessment_id": assessment_id,
-    }
+    """使用 OEJTS 适配器构建题目数据"""
+    return build_question_card(question_index, assessment_id)["question_data"]
 
 
 def _feedback_payload(question_index: int, scores: dict[str, float]) -> dict[str, Any]:
-    dimension = MBTI_QUESTIONS[question_index]["dimension"]
+    """使用 OEJTS 适配器构建反馈数据"""
+    # 确定刚完成的维度（每12题一个维度）
+    dimension_index = question_index // 12
+    dimension = DIMENSIONS[dimension_index] if dimension_index < len(DIMENSIONS) else DIMENSIONS[-1]
     score = scores.get(dimension, 0.0)
     return {
         "dimension": dimension,
@@ -295,8 +296,8 @@ def start_assessment(
         "intro_data": {
             "title": "MBTI 恋爱测试",
             "description": "测测你在恋爱中是哪一型",
-            "duration": "5分钟 · 20题",
-            "reward": "测完了解你的恋爱优势与雷区",
+            "duration": "10-15分钟 · 48题",
+            "reward": "性格匹配",
         },
     }
 
@@ -447,6 +448,8 @@ def answer_assessment(
             if question_index not in answers and question_index != len(answers):
                 raise ValueError("question sequence mismatch")
 
+            # 使用 OEJTS 题库
+            from assessment.oejts_engine import get_question
             question = get_question(question_index)
             if question is None:
                 raise ValueError("question not found")
@@ -531,12 +534,12 @@ def answer_assessment(
                     evidence_text="assessment interpretation",
                 )
                 # 新增：保存小雅解读消息（用于对话页面显示）
-                xiaoya_message = xiaoya_message_from_result(
-                    {
-                        "type_code": type_code,
-                        "scores": scores,
-                    }
-                )
+                # 使用恋爱风格生成器获取小雅消息
+                xiaoya_msg_data = mbti_xiaoya_message(type_code, scores)
+                xiaoya_message = xiaoya_msg_data.get("greeting", "") + "\n" + \
+                                xiaoya_msg_data.get("identity", "") + "\n" + \
+                                xiaoya_msg_data.get("quirk", "") + "\n" + \
+                                xiaoya_msg_data.get("suggestion", "")
                 _save_observation(
                     cursor,
                     observation_table=observation_table,
@@ -546,30 +549,33 @@ def answer_assessment(
                     assessment_id=assessment_id,
                     evidence_text="xiaoya interpretation message",
                 )
+                completed_at = _now()
                 traits_payload = {
-                    "mbti": {
-                        "assessment_id": assessment_id,
-                        "type_code": type_code,
-                        "scores": scores,
-                        "dimension_rows": _dimension_rows(scores),
-                        "labels": labels,
-                        "source": "assessment",
-                        "completed_at": _now(),
-                    }
+                    "assessment_id": assessment_id,
+                    "type_code": type_code,
+                    "scores": scores,
+                    "completed_at": completed_at,
                 }
-                apply_persona_patch(
+                store_assessment_result(
                     source=normalized_source,
                     user_key=user_key,
-                    source_type="explicit",
-                    normalized_patch=normalize_patch(
-                        {"self_personality_traits_json": _json(traits_payload)}
-                    ),
+                    assessment_id=assessment_id,
+                    assessment_type=ASSESSMENT_TYPE_MBTI,
+                    raw_result=result_data,
+                    summary=traits_payload,
+                    interpretation=interpretation,
+                    completed_at=completed_at,
+                    source_channel="assessment",
+                )
+                merge_personality_summary(
+                    source=normalized_source,
+                    user_key=user_key,
+                    summary_key="mbti",
+                    summary_payload=traits_payload,
                     persona_table=persona_table,
                     observation_table=observation_table,
                     evidence_text=f"用户完成 MBTI 16 型人格测评（{assessment_id}）",
                     conversation_ref=assessment_id,
-                    apply_scope="persona_only",
-                    sync_profile=False,
                     source_channel="assessment",
                 )
                 conn.commit()
@@ -580,7 +586,11 @@ def answer_assessment(
                     "result_data": result_data,
                 }
 
-            if answered_count % 5 == 0:
+            # 在维度结束时显示反馈（每12题一个维度）
+            # EI: 1-12题, SN: 13-24题, TF: 25-36题, JP: 37-48题
+            if answered_count in [12, 24, 36]:
+                dimension_index = (answered_count // 12) - 1  # 刚完成的维度索引（0=EI, 1=SN, 2=TF）
+                dimension = DIMENSIONS[dimension_index]
                 feedback_data = _feedback_payload(answered_count - 1, scores)
                 next_index = answered_count
                 return {
@@ -814,12 +824,13 @@ def get_personality_traits(
         with conn.cursor() as cursor:
             persona = fetch_persona(cursor, persona_table, user_key=user_key)
             if not persona:
-                return {"mbti": {}, "attachment": {}, "love_language": {}}
+                return {"mbti": {}, "attachment": {}, "big_five": {}, "sternberg": {}}
             traits = _parse_json(persona.get("self_personality_traits_json"))
             return {
                 "mbti": traits.get("mbti") or {},
                 "attachment": traits.get("attachment") or {},
-                "love_language": traits.get("love_language") or {},
+                "big_five": traits.get("big_five") or {},
+                "sternberg": traits.get("sternberg") or {},
             }
     finally:
         release_persona_connection(normalized_source, conn)

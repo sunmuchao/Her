@@ -27,8 +27,12 @@ export function ValuesMatchAnalysisCardComponent({ card, onContinue, currentUser
     user1,
     user2,
     match_type,
+    alignment_score,
     common_lots,
     common_hidden_values,
+    shared_directions,
+    negotiable_differences,
+    structural_tensions,
     misalignments,
     conflicts,
   } = match_data
@@ -89,6 +93,14 @@ export function ValuesMatchAnalysisCardComponent({ card, onContinue, currentUser
       }
     })
   }, [misalignments, lots])
+
+  const visibleConflicts = useMemo(() => {
+    const structuralDescriptions = new Set((structural_tensions || []).map((item) => item.description))
+    return (conflicts || []).filter((conflict) => {
+      if (conflict.type !== 'structural_tension') return true
+      return !structuralDescriptions.has(conflict.description)
+    })
+  }, [conflicts, structural_tensions])
 
   // 匹配类型颜色
   const matchColor = getMatchColor(match_type)
@@ -253,8 +265,63 @@ export function ValuesMatchAnalysisCardComponent({ card, onContinue, currentUser
         </div>
       )}
 
+      {revealPhase >= 3 && shared_directions && shared_directions.length > 0 && (
+        <div className="mb-6 animate-fade-in">
+          <div className="bg-gradient-to-r from-sage-50 to-emerald-50 rounded-xl p-4 border-2 border-sage-300 shadow-md">
+            <div className="text-center mb-3">
+              <div className="text-sm font-bold text-sage-800 mb-2">价值方向同频</div>
+            </div>
+            <div className="space-y-2">
+              {shared_directions.slice(0, 2).map(direction => (
+                <div key={direction.key} className="bg-white rounded-lg p-3 border border-sage-200">
+                  <div className="text-sm font-medium text-sage-900">{direction.label}</div>
+                  <div className="text-xs text-sage-700 mt-1">
+                    你们都在这个方向上投入比较高，通常更容易在生活节奏和关系底盘上形成默契。
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {revealPhase >= 4 && negotiable_differences && negotiable_differences.length > 0 && (
+        <div className="mb-6 animate-fade-in">
+          <div className="bg-gradient-to-r from-sky-50 to-cyan-50 rounded-xl p-4 border-2 border-sky-300 shadow-md">
+            <div className="text-center mb-3">
+              <div className="text-sm font-bold text-sky-800 mb-2">差异但可协商</div>
+            </div>
+            <div className="space-y-2">
+              {negotiable_differences.map((item, i) => (
+                <div key={i} className="bg-white rounded-lg p-3 border border-sky-200">
+                  <div className="text-xs text-sky-700">{item.description}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {revealPhase >= 4 && structural_tensions && structural_tensions.length > 0 && (
+        <div className="mb-6 animate-fade-in">
+          <div className="bg-gradient-to-r from-violet-50 to-fuchsia-50 rounded-xl p-4 border-2 border-violet-300 shadow-md">
+            <div className="text-center mb-3">
+              <div className="text-sm font-bold text-violet-800 mb-2">结构性张力</div>
+              <div className="text-xs text-violet-600">不是简单喜好不同，而是 Schwartz 对立方向上的天然拉扯</div>
+            </div>
+            <div className="space-y-2">
+              {structural_tensions.map((item, i) => (
+                <div key={i} className="bg-white rounded-lg p-3 border border-violet-200">
+                  <div className="text-xs text-violet-800">{item.description}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Phase 4: 冲突风险揭晓 */}
-      {revealPhase >= 4 && conflicts.length > 0 && (
+      {revealPhase >= 4 && visibleConflicts.length > 0 && (
         <div className="mb-6 animate-fade-in">
           <div className="bg-gradient-to-r from-red-50 to-pink-50 rounded-xl p-4 border-2 border-red-300 shadow-md">
             <div className="text-center mb-3">
@@ -263,13 +330,13 @@ export function ValuesMatchAnalysisCardComponent({ card, onContinue, currentUser
               <div className="text-xs text-red-600">需要注意的价值观冲突</div>
             </div>
             <div className="space-y-3">
-              {conflicts.map((conflict, i) => (
+              {visibleConflicts.map((conflict, i) => (
                 <div
                   key={i}
                   className="bg-white rounded-lg p-3 border border-red-200"
                 >
                   <div className="text-sm font-medium text-red-900 mb-1">
-                    {conflict.type}
+                    {getConflictLabel(conflict.type)}
                   </div>
                   <div className="text-xs text-red-700 mb-2">
                     {conflict.description}
@@ -287,6 +354,9 @@ export function ValuesMatchAnalysisCardComponent({ card, onContinue, currentUser
       {/* 整体契合度 */}
       <div className={`text-center mb-6 p-4 rounded-xl ${matchColor.bg} animate-fade-in`}>
         <div className={`text-lg font-bold ${matchColor.text}`}>{match_type}</div>
+        {typeof alignment_score === 'number' && (
+          <div className="text-xs text-muted-foreground mt-1">价值对齐度 {alignment_score}/100</div>
+        )}
       </div>
 
       {/* 继续按钮 */}
@@ -316,4 +386,10 @@ function getMatchColor(matchType: string) {
   } else {
     return { bg: 'bg-amber-50', text: 'text-amber-700' }
   }
+}
+
+function getConflictLabel(type: string) {
+  if (type === 'value_gap') return '核心排序错位'
+  if (type === 'structural_tension') return '结构性张力'
+  return '价值冲突提醒'
 }

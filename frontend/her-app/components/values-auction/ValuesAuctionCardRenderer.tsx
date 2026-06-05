@@ -53,20 +53,11 @@ export function ValuesAuctionCardRenderer({
     return <ValuesAuctionBiddingCard card={card} onSubmit={onSubmitBids || (() => {})} />
   }
 
-  // 兼容旧的 traits 卡片类型
-  if (isTraitsCard(card)) {
-    // 双人模式
-    if (card.is_dual_mode && userKey) {
-      return <DualValuesAuctionCard card={card} userKey={userKey} onComplete={onContinue} />
-    }
-    // 单人模式
-    return <ValuesAuctionBiddingCard card={card as any} onSubmit={onSubmitBids || (() => {})} />
-  }
-
   if (isResultCard(card)) {
     return (
       <ValuesAuctionResultCardComponent
         card={card}
+        onViewInterpretation={onViewInterpretation}
         onShare={onShare}
       />
     )
@@ -126,11 +117,6 @@ function isIntroCard(card: ValuesAuctionCard): card is ValuesAuctionCard & { car
 
 function isLotsCard(card: ValuesAuctionCard): card is ValuesAuctionCard & { card_type: 'values_auction_lots' } {
   return card.card_type === 'values_auction_lots'
-}
-
-// 兼容旧的 traits 卡片类型
-function isTraitsCard(card: ValuesAuctionCard): card is ValuesAuctionCard & { card_type: 'values_auction_traits' } {
-  return card.card_type === 'values_auction_traits'
 }
 
 function isResultCard(card: ValuesAuctionCard): card is ValuesAuctionCard & { card_type: 'values_auction_result' } {

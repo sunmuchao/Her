@@ -35,7 +35,7 @@ def _apply(conn: Any, context: MigrationContext) -> None:
                 f"""
                 ALTER TABLE `{table}`
                 ADD COLUMN self_personality_traits_json TEXT DEFAULT NULL
-                COMMENT '性格特质测评结果（JSON格式，包含大五人格、依恋风格、恋爱语言等）'
+                COMMENT '性格特质测评结果（JSON格式，包含大五人格、依恋风格等）'
                 AFTER self_relationship_goal
                 """
             )

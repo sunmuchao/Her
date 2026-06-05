@@ -25,15 +25,21 @@ from assessment.attachment_service import (
     get_attachment_xiaoya_message,
     get_attachment_traits,
 )
-# 新增：恋爱语言测评服务
-from assessment.love_language_service import (
-    start_love_language_assessment,
-    get_or_create_love_language_assessment,
-    begin_love_language_assessment,
-    answer_love_language_assessment,
-    get_love_language_interpretation,
-    get_love_language_xiaoya_message,
-    get_love_language_traits,
+from assessment.big_five_service import (
+    answer_big_five_assessment,
+    begin_big_five_assessment,
+    get_big_five_interpretation,
+    get_big_five_xiaoya_message,
+    get_or_create_big_five_assessment,
+    start_big_five_assessment,
+)
+from assessment.sternberg_service import (
+    answer_sternberg_assessment,
+    begin_sternberg_assessment,
+    get_or_create_sternberg_assessment,
+    get_sternberg_interpretation,
+    get_sternberg_xiaoya_message,
+    start_sternberg_assessment,
 )
 
 from .collected_routes import _default_profile_source
@@ -70,8 +76,10 @@ def rest_assessment_start(gateway: AssessmentGateway, environ: dict[str, Any]) -
     # 根据测评类型调用不同的服务
     if assessment_type == "attachment_style":
         return 200, _json_safe(start_attachment_assessment(source=source, user_key=user_key))
-    elif assessment_type == "love_language":
-        return 200, _json_safe(start_love_language_assessment(source=source, user_key=user_key))
+    if assessment_type == "big_five":
+        return 200, _json_safe(start_big_five_assessment(source=source, user_key=user_key))
+    if assessment_type == "sternberg_triangular_love":
+        return 200, _json_safe(start_sternberg_assessment(source=source, user_key=user_key))
     else:  # mbti_16 或默认
         return 200, _json_safe(start_assessment(source=source, user_key=user_key, assessment_type=assessment_type))
 
@@ -92,8 +100,10 @@ def rest_assessment_get_or_create(gateway: AssessmentGateway, environ: dict[str,
     # 根据测评类型调用不同的服务
     if assessment_type == "attachment_style":
         return 200, _json_safe(get_or_create_attachment_assessment(source=source, user_key=user_key))
-    elif assessment_type == "love_language":
-        return 200, _json_safe(get_or_create_love_language_assessment(source=source, user_key=user_key))
+    if assessment_type == "big_five":
+        return 200, _json_safe(get_or_create_big_five_assessment(source=source, user_key=user_key))
+    if assessment_type == "sternberg_triangular_love":
+        return 200, _json_safe(get_or_create_sternberg_assessment(source=source, user_key=user_key))
     else:  # mbti_16 或默认
         return 200, _json_safe(get_or_create_assessment(source=source, user_key=user_key, assessment_type=assessment_type))
 
@@ -110,8 +120,10 @@ def rest_assessment_begin(gateway: AssessmentGateway, environ: dict[str, Any]) -
     # 根据assessment_id前缀判断测评类型
     if assessment_id.startswith("attachment_"):
         return 200, _json_safe(begin_attachment_assessment(source=source, assessment_id=assessment_id))
-    elif assessment_id.startswith("love_language_"):
-        return 200, _json_safe(begin_love_language_assessment(source=source, assessment_id=assessment_id))
+    if assessment_id.startswith("big_five_"):
+        return 200, _json_safe(begin_big_five_assessment(source=source, assessment_id=assessment_id))
+    if assessment_id.startswith("sternberg_"):
+        return 200, _json_safe(begin_sternberg_assessment(source=source, assessment_id=assessment_id))
     else:  # mbti_ 或默认
         return 200, _json_safe(begin_assessment(source=source, assessment_id=assessment_id))
 
@@ -142,9 +154,19 @@ def rest_assessment_answer(gateway: AssessmentGateway, environ: dict[str, Any]) 
                 user_key=user_key,
             )
         )
-    elif assessment_id.startswith("love_language_"):
+    if assessment_id.startswith("big_five_"):
         return 200, _json_safe(
-            answer_love_language_assessment(
+            answer_big_five_assessment(
+                source=source,
+                assessment_id=assessment_id,
+                question_index=question_index,
+                answer=answer,
+                user_key=user_key,
+            )
+        )
+    if assessment_id.startswith("sternberg_"):
+        return 200, _json_safe(
+            answer_sternberg_assessment(
                 source=source,
                 assessment_id=assessment_id,
                 question_index=question_index,
@@ -183,9 +205,17 @@ def rest_assessment_interpretation(gateway: AssessmentGateway, environ: dict[str
                 user_key=user_key,
             )
         )
-    elif assessment_id.startswith("love_language_"):
+    if assessment_id.startswith("big_five_"):
         return 200, _json_safe(
-            get_love_language_interpretation(
+            get_big_five_interpretation(
+                source=source,
+                assessment_id=assessment_id,
+                user_key=user_key,
+            )
+        )
+    if assessment_id.startswith("sternberg_"):
+        return 200, _json_safe(
+            get_sternberg_interpretation(
                 source=source,
                 assessment_id=assessment_id,
                 user_key=user_key,
@@ -271,6 +301,13 @@ def rest_assessment_get_xiaoya_message(gateway: AssessmentGateway, environ: dict
     if not source:
         return 503, {"error": {"code": "source_not_configured", "message": "数据源未配置"}}
 
+    assessment_type = str(body.get("assessment_type") or "").strip()
+    if assessment_type == "attachment_style":
+        return 200, _json_safe(get_attachment_xiaoya_message(source=source, user_key=user_key))
+    if assessment_type == "big_five":
+        return 200, _json_safe(get_big_five_xiaoya_message(source=source, user_key=user_key))
+    if assessment_type == "sternberg_triangular_love":
+        return 200, _json_safe(get_sternberg_xiaoya_message(source=source, user_key=user_key))
     return 200, _json_safe(get_xiaoya_message(source=source, user_key=user_key))
 
 

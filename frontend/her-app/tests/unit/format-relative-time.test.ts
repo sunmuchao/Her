@@ -125,6 +125,7 @@ describe('mapDiscoveryView', () => {
     const result = mapped.timelineItems[0]
     expect(result.kind).toBe('assessment_result')
     if (result.kind !== 'assessment_result') return
+    if (result.card.card_type !== 'assessment_result') return
     expect(result.card.result_data.type_code).toBe('INTJ')
   })
 })

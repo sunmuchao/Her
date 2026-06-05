@@ -17,7 +17,6 @@ from typing import Any
 
 from assessment.attachment_questions import (
     ATTACHMENT_QUESTIONS,
-    ATTACHMENT_TYPES,
     calculate_all_scores,
     get_dimension_feedback,
     get_question,
@@ -28,11 +27,10 @@ from assessment.attachment_questions import (
     xiaoya_message_from_result,
     calculate_love_match,
 )
+from assessment.result_store import merge_personality_summary, store_assessment_result
 from persona_memory_sync.persona_memory_lib import (
-    apply_persona_patch,
     fetch_persona,
     mysql_connect,
-    normalize_patch,
     parse_mysql_source,
     quote_mysql_ident,
     release_persona_connection,
@@ -48,18 +46,14 @@ ASSESSMENT_XIAOYA_MESSAGE_FIELD = "assessment.xiaoya_message"
 
 
 ATTACHMENT_DIMENSION_LABELS = {
-    "secure": "安全感稳定性",
-    "anxious": "焦虑黏人度",
-    "avoidant": "回避冷暴力",
-    "fearful": "恐惧矛盾度",
+    "anxiety": "关系不安度",
+    "avoidance": "亲密后撤度",
 }
 
 
 ATTACHMENT_DIMENSION_TRAITS = {
-    "secure": {"high": "情绪稳定萨摩耶", "medium": "基本稳定", "low": "情绪波动大"},
-    "anxious": {"high": "黏人精认证", "medium": "适度黏人", "low": "独立冷淡"},
-    "avoidant": {"high": "冷暴力大师", "medium": "适度回避", "low": "黏贴暖宝宝"},
-    "fearful": {"high": "矛盾纠结体", "medium": "适度矛盾", "low": "清晰稳定"},
+    "anxiety": {"high": "回应敏感", "medium": "容易牵动", "low": "稳定感较强"},
+    "avoidance": {"high": "边界警觉", "medium": "慢热靠近", "low": "靠近自如"},
 }
 
 
@@ -212,17 +206,12 @@ def _question_payload(question_index: int, assessment_id: str) -> dict[str, Any]
 
 
 def _feedback_payload(question_index: int, scores: dict[str, float]) -> dict[str, Any]:
-    """反馈卡片：每答完3题给该类型的反馈"""
-    # 判断当前答完了哪个类型的3题
+    """反馈卡片：答完 6 题给一次阶段反馈"""
     dimension = None
-    if question_index == 2:  # 答完第3题（安全型）
-        dimension = "secure"
-    elif question_index == 5:  # 答完第6题（焦虑型）
-        dimension = "anxious"
-    elif question_index == 8:  # 答完第9题（回避型）
-        dimension = "avoidant"
-    elif question_index == 11:  # 答完第12题（恐惧型）
-        dimension = "fearful"
+    if question_index == 5:
+        dimension = "anxiety"
+    elif question_index == 11:
+        dimension = "avoidance"
 
     if dimension is None:
         return {}
@@ -239,7 +228,7 @@ def _feedback_payload(question_index: int, scores: dict[str, float]) -> dict[str
 def _dimension_rows(scores: dict[str, float]) -> list[dict[str, Any]]:
     """生成维度得分列表"""
     rows = []
-    for dimension in ATTACHMENT_TYPES:
+    for dimension in ("anxiety", "avoidance"):
         score = float(scores.get(dimension, 0.0))
         rows.append(
             {
@@ -262,6 +251,25 @@ def _result_with_interpretation(result: dict[str, Any]) -> dict[str, Any]:
     merged = dict(result)
     merged["interpretation_data"] = _interpretation_from_result(merged)
     return merged
+
+
+def _quadrant_payload(scores: dict[str, float], type_code: str) -> dict[str, Any]:
+    return {
+        "x_key": "avoidance",
+        "x_name": ATTACHMENT_DIMENSION_LABELS["avoidance"],
+        "x_score": float(scores.get("avoidance", 0.0)),
+        "y_key": "anxiety",
+        "y_name": ATTACHMENT_DIMENSION_LABELS["anxiety"],
+        "y_score": float(scores.get("anxiety", 0.0)),
+        "type_code": type_code,
+        "type_name": get_type_info(type_code).get("nickname", type_code),
+        "quadrants": {
+            "top_left": {"type_code": "anxious", "label": get_type_info("anxious").get("nickname", "高敏确认型")},
+            "top_right": {"type_code": "fearful", "label": get_type_info("fearful").get("nickname", "拉扯矛盾型")},
+            "bottom_left": {"type_code": "secure", "label": get_type_info("secure").get("nickname", "稳定靠近型")},
+            "bottom_right": {"type_code": "avoidant", "label": get_type_info("avoidant").get("nickname", "边界后撤型")},
+        },
+    }
 
 
 def start_attachment_assessment(
@@ -297,10 +305,10 @@ def start_attachment_assessment(
         "assessment_type": assessment_type,
         "assessment_id": assessment_id,
         "intro_data": {
-            "title": "依恋风格测验",
-            "description": "测测你在恋爱里有没有安全感",
+            "title": "相处模式测验",
+            "description": "测测你在关系里更容易慌，还是更容易退",
             "duration": "3分钟 · 12题",
-            "reward": "测完了解你的恋爱安全感来源",
+            "reward": "适合的相处模式",
         },
     }
 
@@ -500,9 +508,10 @@ def answer_attachment_assessment(
                     "type_code": type_code,
                     "scores": scores,
                     "dimension_rows": _dimension_rows(scores),
+                    "quadrant": _quadrant_payload(scores, type_code),
                     "labels": [type_info["nickname"]] + type_info["tags"][:3],
                     "interpretation_data": interpretation,
-                    "reward": "测完了解你的恋爱安全感来源",
+                    "reward": "适合的相处模式",
                     "assessment_id": assessment_id,
                 }
                 _save_observation(
@@ -539,31 +548,34 @@ def answer_attachment_assessment(
                     assessment_id=assessment_id,
                     evidence_text="xiaoya interpretation message",
                 )
-                # 写入 user_personas.self_personality_traits_json
+                completed_at = _now()
                 traits_payload = {
-                    "attachment": {
-                        "assessment_id": assessment_id,
-                        "type_code": type_code,
-                        "scores": scores,
-                        "dimension_rows": _dimension_rows(scores),
-                        "labels": [type_info["nickname"]] + type_info["tags"][:3],
-                        "source": "assessment",
-                        "completed_at": _now(),
-                    }
+                    "assessment_id": assessment_id,
+                    "type_code": type_code,
+                    "anxiety": float(scores.get("anxiety", 0.0)),
+                    "avoidance": float(scores.get("avoidance", 0.0)),
+                    "completed_at": completed_at,
                 }
-                apply_persona_patch(
+                store_assessment_result(
                     source=normalized_source,
                     user_key=user_key,
-                    source_type="explicit",
-                    normalized_patch=normalize_patch(
-                        {"self_personality_traits_json": _json(traits_payload)}
-                    ),
+                    assessment_id=assessment_id,
+                    assessment_type=ASSESSMENT_TYPE_ATTACHMENT,
+                    raw_result=result_data,
+                    summary=traits_payload,
+                    interpretation=interpretation,
+                    completed_at=completed_at,
+                    source_channel="assessment",
+                )
+                merge_personality_summary(
+                    source=normalized_source,
+                    user_key=user_key,
+                    summary_key="attachment",
+                    summary_payload=traits_payload,
                     persona_table=persona_table,
                     observation_table=observation_table,
                     evidence_text=f"用户完成依恋风格测评（{assessment_id}）",
                     conversation_ref=assessment_id,
-                    apply_scope="persona_only",
-                    sync_profile=False,
                     source_channel="assessment",
                 )
                 conn.commit()
@@ -574,8 +586,8 @@ def answer_attachment_assessment(
                     "result_data": result_data,
                 }
 
-            # 每3题给反馈（答完第3、6、9、12题）
-            if answered_count in [3, 6, 9, 12]:
+            # 每 6 题给一次阶段反馈
+            if answered_count in [6, 12]:
                 feedback_data = _feedback_payload(answered_count - 1, scores)
                 if feedback_data:
                     next_index = answered_count
@@ -656,11 +668,11 @@ def get_attachment_xiaoya_message(
                 WHERE user_key = %s
                   AND field_name = %s
                   AND source_channel = 'assessment'
-                  AND JSON_EXTRACT(field_value, '$.assessment_type') = %s
+                  AND conversation_ref LIKE 'attachment_%%'
                 ORDER BY created_at DESC
                 LIMIT 1
                 """,
-                (user_key, ASSESSMENT_XIAOYA_MESSAGE_FIELD, f'"{ASSESSMENT_TYPE_ATTACHMENT}"'),
+                (user_key, ASSESSMENT_XIAOYA_MESSAGE_FIELD),
             )
             row = cursor.fetchone()
             if not row:

@@ -63,8 +63,10 @@ def _install_fakes(monkeypatch, *, last_result: dict | None = None):
 
     monkeypatch.setattr(service, "mysql_connect", lambda source: conn)
     monkeypatch.setattr(service, "release_persona_connection", lambda source, conn: None)
-    monkeypatch.setattr(service, "apply_persona_patch", lambda **kwargs: None)
-    monkeypatch.setattr(service, "fetch_persona", lambda cursor, persona_table, user_key=None: {})
+    monkeypatch.setattr(service, "store_assessment_result", lambda **kwargs: None)
+    monkeypatch.setattr(service, "merge_personality_summary", lambda **kwargs: None)
+    monkeypatch.setattr(service, "update_assessment_interpretation", lambda **kwargs: None)
+    monkeypatch.setattr(service, "get_assessment_result", lambda **kwargs: None)
     monkeypatch.setattr(service, "get_last_result", lambda **kwargs: last_result)
     return rows
 
@@ -81,16 +83,16 @@ def test_submit_together_updates_both_participants(monkeypatch):
     session_id = started["session_id"]
 
     bids_a = [
-        {"trait_id": "loyalty", "chips": 4},
-        {"trait_id": "values_match", "chips": 3},
-        {"trait_id": "companionship", "chips": 2},
-        {"trait_id": "humor", "chips": 1},
+        {"lot_id": "soulmate", "chips": 3},
+        {"lot_id": "family_health", "chips": 3},
+        {"lot_id": "help_many", "chips": 2},
+        {"lot_id": "inner_peace", "chips": 2},
     ]
     bids_b = [
-        {"trait_id": "loyalty", "chips": 3},
-        {"trait_id": "values_match", "chips": 3},
-        {"trait_id": "companionship", "chips": 3},
-        {"trait_id": "gentle", "chips": 1},
+        {"lot_id": "soulmate", "chips": 3},
+        {"lot_id": "family_health", "chips": 3},
+        {"lot_id": "deep_understanding", "chips": 3},
+        {"lot_id": "help_many", "chips": 1},
     ]
 
     waiting = service.submit_auction_bids_together(
@@ -100,6 +102,7 @@ def test_submit_together_updates_both_participants(monkeypatch):
         source=source,
     )
     assert waiting["card_type"] == "values_auction_waiting"
+    assert waiting["waiting_data"]["your_result"]["value_type"]
 
     match = service.submit_auction_bids_together(
         session_id=session_id,
@@ -108,6 +111,10 @@ def test_submit_together_updates_both_participants(monkeypatch):
         source=source,
     )
     assert match["card_type"] == "values_match_analysis"
+    assert match["match_data"]["schema_version"] == "v2"
+    assert isinstance(match["match_data"]["alignment_score"], int)
+    assert match["match_data"]["user1"]["higher_order_values"]
+    assert match["match_data"]["user2"]["higher_order_values"]
 
     status_for_u1 = service.check_dual_auction_status(
         session_id=session_id,
@@ -132,16 +139,30 @@ def test_submit_together_updates_both_participants(monkeypatch):
 
 def test_reuse_together_updates_both_participants(monkeypatch):
     last_result = {
-        "value_type": "忠诚至上型",
+        "schema_version": "v2",
+        "value_type": "稳定关怀型",
+        "hidden_values": {
+            "security": 0.36,
+            "benevolence": 0.35,
+            "tradition": 0.12,
+            "universalism": 0.1,
+            "achievement": 0.04,
+        },
+        "higher_order_values": {
+            "conservation": 0.48,
+            "self_transcendence": 0.45,
+            "self_enhancement": 0.04,
+        },
+        "internal_tensions": [],
         "bids": [
-            {"trait_id": "loyalty", "trait_name": "专一忠诚", "chips": 4},
-            {"trait_id": "values_match", "trait_name": "三观一致", "chips": 3},
-            {"trait_id": "companionship", "trait_name": "陪伴时间", "chips": 3},
+            {"lot_id": "soulmate", "title": "一个永远不会离开你的人", "chips": 4},
+            {"lot_id": "family_health", "title": "全家人健康平安到百岁", "chips": 3},
+            {"lot_id": "help_many", "title": "默默帮助很多人", "chips": 3},
         ],
         "top3": [
-            {"trait_id": "loyalty", "trait_name": "专一忠诚", "chips": 4},
-            {"trait_id": "values_match", "trait_name": "三观一致", "chips": 3},
-            {"trait_id": "companionship", "trait_name": "陪伴时间", "chips": 3},
+            {"lot_id": "soulmate", "title": "一个永远不会离开你的人", "chips": 4},
+            {"lot_id": "family_health", "title": "全家人健康平安到百岁", "chips": 3},
+            {"lot_id": "help_many", "title": "默默帮助很多人", "chips": 3},
         ],
     }
     rows = _install_fakes(monkeypatch, last_result=last_result)
@@ -160,6 +181,7 @@ def test_reuse_together_updates_both_participants(monkeypatch):
         source=source,
     )
     assert waiting["card_type"] == "values_auction_waiting"
+    assert waiting["waiting_data"]["your_result"]["value_type"] == "稳定关怀型"
 
     match = service.reuse_last_result_together(
         session_id=session_id,
@@ -167,6 +189,9 @@ def test_reuse_together_updates_both_participants(monkeypatch):
         source=source,
     )
     assert match["card_type"] == "values_match_analysis"
+    assert match["match_data"]["schema_version"] == "v2"
+    assert match["match_data"]["user1"]["higher_order_values"]
+    assert match["match_data"]["user2"]["higher_order_values"]
 
     status_for_u1 = service.check_dual_auction_status(
         session_id=session_id,
@@ -180,3 +205,89 @@ def test_reuse_together_updates_both_participants(monkeypatch):
     )
     assert status_for_u1["status"] == "both_done"
     assert status_for_u2["status"] == "both_done"
+
+
+def test_submit_single_returns_v2_profile_fields(monkeypatch):
+    rows = _install_fakes(monkeypatch)
+    source = "mysql://fake/her?table=user_personas"
+
+    result = service.submit_auction_bids(
+        assessment_id="assessment-1",
+        user_key="u1",
+        bids=[
+            {"lot_id": "soulmate", "chips": 3},
+            {"lot_id": "family_health", "chips": 3},
+            {"lot_id": "help_many", "chips": 2},
+            {"lot_id": "change_world", "chips": 2},
+        ],
+        source=source,
+    )
+
+    assert result["card_type"] == "values_auction_result"
+    result_data = result["result_data"]
+    assert result_data["schema_version"] == "v2"
+    assert result_data["schwartz_values"]["security"] == 0.315
+    assert result_data["higher_order_values"]["conservation"] == 0.435
+    assert result_data["higher_order_values"]["self_transcendence"] == 0.495
+    assert result_data["value_type"] == "稳定关怀型"
+    assert result_data["top_hidden_values"][0]["key"] == "security"
+    assert "底层价值排序" not in result.get("xiaoya_message", "")
+
+    stored = json.loads(rows[("u1", "assessment-1", service.VALUES_AUCTION_RESULT_FIELD)])
+    assert stored["schema_version"] == "v2"
+    assert stored["higher_order_values"]["self_transcendence"] == 0.495
+
+
+def test_generate_interpretation_includes_higher_order_analysis(monkeypatch):
+    values_auction_result = {
+        "assessment_id": "assessment-2",
+        "schema_version": "v2",
+        "value_type": "稳定关怀型",
+        "hidden_values": {
+            "security": 0.36,
+            "benevolence": 0.35,
+            "tradition": 0.12,
+            "universalism": 0.1,
+            "achievement": 0.04,
+        },
+        "top_hidden_values": [
+            {"key": "security", "weight": 0.36},
+            {"key": "benevolence", "weight": 0.35},
+            {"key": "tradition", "weight": 0.12},
+        ],
+        "higher_order_values": {
+            "self_transcendence": 0.485,
+            "conservation": 0.48,
+            "self_enhancement": 0.04,
+        },
+        "internal_tensions": [],
+        "top3": [
+            {"lot_id": "soulmate", "title": "一个永远不会离开你的人", "chips": 4, "interpretation": "你想要的是稳定投入、彼此照顾、关系里不反复试探。"},
+            {"lot_id": "family_health", "title": "全家人健康平安到百岁", "chips": 3, "interpretation": "你很重视生活底盘稳不稳，也很看重家庭责任感。"},
+        ],
+    }
+    rows = _install_fakes(monkeypatch)
+    source = "mysql://fake/her?table=user_personas"
+    monkeypatch.setattr(
+        service,
+        "get_assessment_result",
+        lambda **kwargs: {
+            "assessment_id": "assessment-2",
+            "assessment_type": service.ASSESSMENT_TYPE_VALUES_AUCTION,
+            "user_key": "u1",
+            "raw_result_json": values_auction_result,
+        },
+    )
+
+    card = service.generate_ai_interpretation(
+        assessment_id="assessment-2",
+        user_key="u1",
+        source=source,
+    )
+
+    assert card["card_type"] == "values_auction_interpretation"
+    interpretation = card["interpretation_data"]
+    assert interpretation["higher_order_analysis"][0]["key"] == "self_transcendence"
+    assert interpretation["top3_analysis"][0]["trait_name"] == "一个永远不会离开你的人"
+    stored = json.loads(rows[("u1", "assessment-2", service.VALUES_AUCTION_INTERPRETATION_FIELD)])
+    assert stored["higher_order_analysis"][0]["label"]

@@ -6,7 +6,7 @@ import { Sparkles, AlertTriangle, CheckCircle2, Heart, Users, Lightbulb } from '
 
 function renderInline(content: string): ReactNode[] {
   const nodes: ReactNode[] = []
-  const pattern = /(\*\*[^*]+\*\*|__[^_]+__|==[^=]+==)/g
+  const pattern = /(\*\*[^*]+\*\*|__[^_]+__|==[^=]+==|~~[^~]+~~)/g
   let lastIndex = 0
   let match: RegExpExecArray | null
 
@@ -38,6 +38,15 @@ function renderInline(content: string): ReactNode[] {
           className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-primary/15 to-coral/10 px-2 py-0.5 font-semibold text-primary ring-1 ring-primary/20"
         >
           <Sparkles className="h-3 w-3 text-primary/70" />
+          {token.slice(2, -2)}
+        </span>,
+      )
+    } else if (token.startsWith('~~') && token.endsWith('~~')) {
+      nodes.push(
+        <span
+          key={`${match.index}-wave`}
+          className="font-medium text-foreground underline decoration-wavy decoration-sage/70 decoration-2 underline-offset-3"
+        >
           {token.slice(2, -2)}
         </span>,
       )
@@ -78,6 +87,18 @@ function detectSectionType(line: string): string | null {
   return null
 }
 
+function isOpeningLine(line: string): boolean {
+  return /^亲爱的[，,]/.test(line)
+}
+
+function isTransitionLine(line: string): boolean {
+  return /^(再往下说一点|放到关系里|如果再往前多说一步)/.test(line)
+}
+
+function isClosingLine(line: string): boolean {
+  return /^如果你愿意/.test(line)
+}
+
 export function XiaoyaRichText({
   content,
   className,
@@ -88,12 +109,23 @@ export function XiaoyaRichText({
   const lines = content.split('\n').filter((line, index, all) => line.trim() !== '' || (index > 0 && all[index - 1].trim() !== ''))
 
   return (
-    <div className={cn('space-y-3 text-sm leading-relaxed text-muted-foreground', className)}>
+    <div className={cn('space-y-3.5 text-[14px] leading-7 text-muted-foreground', className)}>
       {lines.map((rawLine, index) => {
         const line = rawLine.trim()
 
         if (!line) {
           return <div key={`spacer-${index}`} className="h-2" />
+        }
+
+        if (isOpeningLine(line)) {
+          return (
+            <div
+              key={`opening-${index}`}
+              className="inline-flex items-center rounded-full bg-secondary/70 px-3 py-1 text-[11px] font-medium tracking-[0.08em] text-foreground/80"
+            >
+              {renderInline(line)}
+            </div>
+          )
         }
 
         // 检测是否是章节标题（**xxx**格式且独占一行）
@@ -159,7 +191,7 @@ export function XiaoyaRichText({
         }
 
         // 主要结果行（你这次测出来是...）
-        const isPrimaryResult = /你这次测出来是|你这次更偏|你最主要的恋爱语言是|你这次整体更偏/.test(line)
+        const isPrimaryResult = /你这次测出来是|你这次更偏|你这次整体更偏/.test(line)
         if (isPrimaryResult) {
           return (
             <div
@@ -171,6 +203,17 @@ export function XiaoyaRichText({
                 <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                 <span className="leading-relaxed">{renderInline(line)}</span>
               </div>
+            </div>
+          )
+        }
+
+        if (isTransitionLine(line)) {
+          return (
+            <div
+              key={`transition-${index}`}
+              className="mt-1 rounded-2xl border border-border/70 bg-background/70 px-3.5 py-2.5 text-[13px] font-medium leading-6 text-foreground shadow-sm"
+            >
+              {renderInline(line)}
             </div>
           )
         }
@@ -192,9 +235,20 @@ export function XiaoyaRichText({
           )
         }
 
+        if (isClosingLine(line)) {
+          return (
+            <div
+              key={`closing-${index}`}
+              className="rounded-2xl bg-secondary/45 px-4 py-3.5 text-[13px] leading-6 text-foreground/85"
+            >
+              {renderInline(line)}
+            </div>
+          )
+        }
+
         // 普通段落
         return (
-          <p key={`paragraph-${index}`} className="whitespace-pre-wrap leading-relaxed">
+          <p key={`paragraph-${index}`} className="whitespace-pre-wrap leading-7 text-[14px]">
             {renderInline(line)}
           </p>
         )

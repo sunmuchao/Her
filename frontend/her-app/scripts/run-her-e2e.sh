@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
 APP_DIR="$ROOT_DIR/frontend/her-app"
 GATEWAY_DIR="$ROOT_DIR/external-systems/partner-http-gateway"
+SPEC_PATH="${1:-tests/e2e/her-flow.spec.ts}"
 
 if ! curl -fsS http://127.0.0.1:3000 >/dev/null 2>&1; then
   echo "frontend dev server is not running on http://127.0.0.1:3000"
@@ -59,4 +60,4 @@ if [ "$ready" -ne 1 ]; then
 fi
 
 cd "$APP_DIR"
-HER_E2E_BIND_PHONE="$bind_phone" pnpm exec playwright test tests/e2e/her-flow.spec.ts --reporter=line
+HER_E2E_BIND_PHONE="$bind_phone" pnpm exec playwright test "$SPEC_PATH" --reporter=line

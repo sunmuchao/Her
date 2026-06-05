@@ -12,7 +12,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { Share2, Trophy } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { ValuesAuctionResultCard } from '@/lib/api/endpoints/valuesAuction'
-import { HIDDEN_VALUE_LABELS } from '@/lib/api/endpoints/valuesAuction'
+import { HIDDEN_VALUE_LABELS, HIGHER_ORDER_LABELS } from '@/lib/api/endpoints/valuesAuction'
 
 // Haptic feedback helper
 function useHapticFeedback() {
@@ -38,7 +38,7 @@ type Props = {
 
 export function ValuesAuctionResultCardComponent({ card, onViewInterpretation, onShare, onContinue }: Props) {
   const { result_data } = card
-  const { top_hidden_values, top3 } = result_data
+  const { top_hidden_values, top3, higher_order_summary, internal_tensions } = result_data
   const haptic = useHapticFeedback()
 
   // 翻牌动效状态
@@ -203,7 +203,40 @@ export function ValuesAuctionResultCardComponent({ card, onViewInterpretation, o
           </div>
         )}
 
-      {/* 分享按钮 */}
+        {higher_order_summary && higher_order_summary.length > 0 && (
+          <div className="mb-3 rounded-2xl bg-sage-soft/25 p-3 border border-sage/20">
+            <div className="text-xs text-muted-foreground mb-2">价值方向</div>
+            <div className="flex flex-wrap gap-2">
+              {higher_order_summary.slice(0, 2).map(item => (
+                <span key={item.key} className="px-2 py-1 rounded-md bg-white text-xs text-sage font-medium border border-sage/20">
+                  {(item.label || HIGHER_ORDER_LABELS[item.key] || item.key)} {Math.round(item.weight * 100)}%
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {internal_tensions && internal_tensions.length > 0 && (
+          <div className="mb-4 rounded-2xl bg-rose-soft/20 p-3 border border-rose/20">
+            <div className="text-xs text-muted-foreground mb-1">你内部的拉扯</div>
+            <div className="text-sm text-foreground leading-relaxed">
+              {internal_tensions[0].description || `${internal_tensions[0].left_label || internal_tensions[0].left} 和 ${internal_tensions[0].right_label || internal_tensions[0].right} 同时都不低`}
+            </div>
+          </div>
+        )}
+
+      <div className="flex justify-center gap-3">
+        {onViewInterpretation && (
+          <button
+            onClick={onViewInterpretation}
+            className={cn(
+              'px-4 py-2 rounded-full text-sm transition-all touch-target active:scale-95',
+              'bg-lavender/10 text-lavender hover:bg-lavender/20'
+            )}
+          >
+            {"查看AI解读"}
+          </button>
+        )}
         {onShare && (
           <div className="flex justify-center">
             <button
@@ -218,6 +251,7 @@ export function ValuesAuctionResultCardComponent({ card, onViewInterpretation, o
             </button>
           </div>
         )}
+      </div>
       </div>
     </>
   )

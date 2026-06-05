@@ -3,6 +3,8 @@
 > **版本**: v3.0 MBTI 3.0 恋爱场景化版本
 > **更新日期**: 2026-06-01
 > **设计理念**: 说人话，不说学术话；恋爱场景代入感；有趣但不恶搞；极端标签机制；SBTI趣味化
+>
+> **状态说明（2026-06-03）**: 本文档已转为历史设计稿，其中关于“最佳匹配 / 需磨合 / 绝配 / 虐心”等表述不再代表当前线上口径。当前线上 MBTI 结果已改为“官方偏好框架优先 + 小雅关系沟通翻译”的方案，请以 [docs/mbti-complete-result-manual.md](/Users/sunmuchao/Downloads/Her/docs/mbti-complete-result-manual.md) 为准。
 
 ---
 
