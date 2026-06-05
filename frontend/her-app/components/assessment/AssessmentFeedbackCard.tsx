@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button'
-import { ArrowRight, Lightbulb, ChevronDown, ChevronUp, Sparkles } from 'lucide-react'
+import { ArrowRight, ChevronDown, ChevronUp, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { type AssessmentType } from './assessment-themes'
 import { useHapticFeedback, RingBurst } from './immersive-effects'
@@ -12,19 +12,6 @@ interface FeedbackData {
   dimension_name?: string
   score?: number
   feedback_text?: string
-}
-
-const LOVE_LANGUAGE_LABELS: Record<string, string> = {
-  words_of_affirmation: '肯定言词',
-  quality_time: '精心时刻',
-  receiving_gifts: '接受礼物',
-  acts_of_service: '服务行动',
-  physical_touch: '身体接触',
-  words: '肯定言词',
-  time: '精心时刻',
-  gifts: '接受礼物',
-  service: '服务行动',
-  touch: '身体接触',
 }
 
 // MBTI Dimension configs (fallback)
@@ -43,18 +30,18 @@ const ATTACHMENT_DIMENSION_CONFIG: Record<string, { icon: string; color: string;
   trust: { icon: 'TR', color: 'text-gold', bgColor: 'bg-gold-soft', label: '信任维度' },
 }
 
-// Love Language dimension configs
-const LOVE_LANGUAGE_DIMENSION_CONFIG: Record<string, { icon: string; color: string; bgColor: string; label: string }> = {
-  words_of_affirmation: { icon: 'WD', color: 'text-lavender', bgColor: 'bg-lavender-soft', label: '肯定言词' },
-  quality_time: { icon: 'TM', color: 'text-sage', bgColor: 'bg-sage-soft', label: '精心时刻' },
-  receiving_gifts: { icon: 'GF', color: 'text-gold', bgColor: 'bg-gold-soft', label: '接受礼物' },
-  acts_of_service: { icon: 'SV', color: 'text-coral', bgColor: 'bg-coral-soft', label: '服务行动' },
-  physical_touch: { icon: 'TC', color: 'text-rose', bgColor: 'bg-rose-soft', label: '身体接触' },
-  words: { icon: 'WD', color: 'text-lavender', bgColor: 'bg-lavender-soft', label: '肯定言词' },
-  time: { icon: 'TM', color: 'text-sage', bgColor: 'bg-sage-soft', label: '精心时刻' },
-  gifts: { icon: 'GF', color: 'text-gold', bgColor: 'bg-gold-soft', label: '接受礼物' },
-  service: { icon: 'SV', color: 'text-coral', bgColor: 'bg-coral-soft', label: '服务行动' },
-  touch: { icon: 'TC', color: 'text-rose', bgColor: 'bg-rose-soft', label: '身体接触' },
+const BIG_FIVE_DIMENSION_CONFIG: Record<string, { icon: string; color: string; bgColor: string; label: string }> = {
+  openness: { icon: 'OP', color: 'text-lavender', bgColor: 'bg-lavender-soft', label: '开放性' },
+  conscientiousness: { icon: 'CN', color: 'text-sage', bgColor: 'bg-sage-soft', label: '尽责性' },
+  extraversion: { icon: 'EX', color: 'text-rose', bgColor: 'bg-rose-soft', label: '外向性' },
+  agreeableness: { icon: 'AG', color: 'text-gold', bgColor: 'bg-gold-soft', label: '宜人性' },
+  neuroticism: { icon: 'NS', color: 'text-coral', bgColor: 'bg-coral-soft', label: '情绪敏感度' },
+}
+
+const STERNBERG_DIMENSION_CONFIG: Record<string, { icon: string; color: string; bgColor: string; label: string }> = {
+  intimacy: { icon: 'IN', color: 'text-rose', bgColor: 'bg-rose-soft', label: '亲密' },
+  passion: { icon: 'PA', color: 'text-coral', bgColor: 'bg-coral-soft', label: '激情' },
+  commitment: { icon: 'CM', color: 'text-amber', bgColor: 'bg-amber-soft', label: '承诺' },
 }
 
 function normalizeDimensionKey(dimension?: string) {
@@ -71,10 +58,6 @@ function getDimensionLabel(data: FeedbackData, assessmentType?: AssessmentType) 
     return '阶段反馈'
   }
 
-  if (assessmentType === 'love_language') {
-    return LOVE_LANGUAGE_LABELS[normalizedDimension] || data.dimension || '阶段反馈'
-  }
-
   const config = getDimensionConfig(normalizedDimension, assessmentType)
   return config?.label || data.dimension || '阶段反馈'
 }
@@ -88,8 +71,11 @@ function getDimensionConfig(dimension?: string, assessmentType?: AssessmentType)
   if (assessmentType === 'attachment_style') {
     return ATTACHMENT_DIMENSION_CONFIG[normalizedDimension]
   }
-  if (assessmentType === 'love_language') {
-    return LOVE_LANGUAGE_DIMENSION_CONFIG[normalizedDimension]
+  if (assessmentType === 'big_five') {
+    return BIG_FIVE_DIMENSION_CONFIG[normalizedDimension]
+  }
+  if (assessmentType === 'sternberg_triangular_love') {
+    return STERNBERG_DIMENSION_CONFIG[normalizedDimension]
   }
   return MBTI_DIMENSION_CONFIG[dimension?.trim() || '']
 }
@@ -235,10 +221,15 @@ function getScoreLevel(score: number, assessmentType?: AssessmentType): { label:
     if (score >= 40) return { label: '中', color: 'text-sage' }
     return { label: '低', color: 'text-taupe' }
   }
-  if (assessmentType === 'love_language') {
-    if (score >= 70) return { label: '强', color: 'text-lavender' }
-    if (score >= 40) return { label: '中', color: 'text-sage' }
-    return { label: '弱', color: 'text-taupe' }
+  if (assessmentType === 'big_five') {
+    if (score >= 70) return { label: '高', color: 'text-sage' }
+    if (score >= 40) return { label: '中', color: 'text-gold' }
+    return { label: '低', color: 'text-taupe' }
+  }
+  if (assessmentType === 'sternberg_triangular_love') {
+    if (score >= 70) return { label: '高', color: 'text-amber' }
+    if (score >= 40) return { label: '中', color: 'text-rose' }
+    return { label: '低', color: 'text-taupe' }
   }
   // MBTI default
   if (score >= 70) return { label: '高', color: 'text-rose' }
@@ -263,24 +254,19 @@ export function AssessmentFeedbackCard({
 
   const config = getDimensionConfig(data.dimension, assessmentType) || {
     icon: fallbackIcon,
-    color: assessmentType === 'attachment_style' ? 'text-coral' : 
-           assessmentType === 'love_language' ? 'text-lavender' : 'text-primary',
-    bgColor: assessmentType === 'attachment_style' ? 'bg-coral-soft' : 
-             assessmentType === 'love_language' ? 'bg-lavender-soft' : 'bg-secondary',
+    color: assessmentType === 'attachment_style' ? 'text-coral' : 'text-primary',
+    bgColor: assessmentType === 'attachment_style' ? 'bg-coral-soft' : 'bg-secondary',
     label: fallbackLabel,
   }
   
-  const glowClass = assessmentType === 'attachment_style' ? 'glow-coral' : 
-                    assessmentType === 'love_language' ? 'glow-lavender' : 'glow-primary'
+  const glowClass = assessmentType === 'attachment_style' ? 'glow-coral' : 'glow-primary'
   
   const scoreLevel = getScoreLevel(safeScore, assessmentType)
   
   // Button color based on theme
-  const buttonClass = assessmentType === 'attachment_style' 
-    ? 'bg-coral hover:bg-coral/90 text-white' 
-    : assessmentType === 'love_language' 
-      ? 'bg-lavender hover:bg-lavender/90 text-white' 
-      : ''
+  const buttonClass = assessmentType === 'attachment_style'
+    ? 'bg-coral hover:bg-coral/90 text-white'
+    : ''
   
   // Check if feedback text is long (more than ~100 chars)
   const feedbackText = data.feedback_text || '结果已生成，继续查看下一维度。'
@@ -299,8 +285,7 @@ export function AssessmentFeedbackCard({
       <div className="flex items-center gap-2 text-xs text-muted-foreground mb-4 animate-fade-in">
         <Sparkles className={cn(
           'w-4 h-4 animate-pulse-soft',
-          assessmentType === 'attachment_style' ? 'text-coral' : 
-          assessmentType === 'love_language' ? 'text-lavender' : 'text-primary'
+          assessmentType === 'attachment_style' ? 'text-coral' : 'text-primary'
         )} />
         <span className="uppercase tracking-widest">{"维度分析"}</span>
       </div>
@@ -340,8 +325,7 @@ export function AssessmentFeedbackCard({
       {/* Feedback Text with expandable support */}
       <div className={cn(
         'rounded-2xl p-4 transition-all duration-500',
-        assessmentType === 'attachment_style' ? 'bg-coral-soft/40' : 
-        assessmentType === 'love_language' ? 'bg-lavender-soft/40' : 'bg-secondary/40',
+        assessmentType === 'attachment_style' ? 'bg-coral-soft/40' : 'bg-secondary/40',
         showContent ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
       )}>
         <p className={cn(
@@ -355,9 +339,7 @@ export function AssessmentFeedbackCard({
             onClick={() => setIsTextExpanded(!isTextExpanded)}
             className={cn(
               'mt-2 flex items-center gap-1 text-xs font-medium transition-colors touch-target',
-              assessmentType === 'attachment_style' ? 'text-coral hover:text-coral/80' : 
-              assessmentType === 'love_language' ? 'text-lavender hover:text-lavender/80' : 
-              'text-primary hover:text-primary/80'
+              assessmentType === 'attachment_style' ? 'text-coral hover:text-coral/80' : 'text-primary hover:text-primary/80'
             )}
           >
             {isTextExpanded ? (

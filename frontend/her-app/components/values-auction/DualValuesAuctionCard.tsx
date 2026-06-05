@@ -9,7 +9,7 @@
  */
 
 import React, { useState } from 'react'
-import type { ValuesAuctionTraitsCard } from '@/lib/api/endpoints/valuesAuction'
+import type { ValuesAuctionLotsCard } from '@/lib/api/endpoints/valuesAuction'
 import {
   submitValuesAuctionBidsTogether,
   reuseValuesAuctionTogether,
@@ -21,7 +21,7 @@ import { ValuesAuctionWaitingCard } from './ValuesAuctionWaitingCard'
 import { ValuesMatchAnalysisCardComponent } from './ValuesMatchAnalysisCard'
 
 type Props = {
-  card: ValuesAuctionTraitsCard
+  card: ValuesAuctionLotsCard
   userKey: string
   onComplete?: () => void
 }
@@ -29,7 +29,7 @@ type Props = {
 type AppPhase = 'choice' | 'bidding' | 'waiting' | 'match'
 
 export function DualValuesAuctionCard({ card, userKey, onComplete }: Props) {
-  const { session_id, traits_data, internal_state, assessment_id } = card
+  const { session_id, internal_state } = card
 
   // 状态
   const [phase, setPhase] = useState<AppPhase>(() => {
@@ -71,7 +71,7 @@ export function DualValuesAuctionCard({ card, userKey, onComplete }: Props) {
   }
 
   // 提交竞拍结果
-  const handleSubmitBids = async (bids: Array<{ trait_id: string; chips: number }>) => {
+  const handleSubmitBids = async (bids: Array<{ lot_id: string; chips: number }>) => {
     if (!session_id) return
 
     try {
@@ -94,11 +94,12 @@ export function DualValuesAuctionCard({ card, userKey, onComplete }: Props) {
   }
 
   // 匹配分析准备好
-  const handleMatchReady = (matchData: any) => {
+  const handleMatchReady = (matchPayload: any) => {
+    const resolvedMatchData = matchPayload?.match_data ?? matchPayload
     setMatchCard({
       card_type: 'values_match_analysis',
       session_id: session_id,
-      match_data: matchData,
+      match_data: resolvedMatchData,
     })
     setPhase('match')
   }
@@ -131,6 +132,7 @@ export function DualValuesAuctionCard({ card, userKey, onComplete }: Props) {
         userKey={userKey}
         onMatchReady={handleMatchReady}
         onContinueChat={onComplete}
+        lots={card.lots_data?.lots || []}
       />
     )
   }
@@ -140,6 +142,7 @@ export function DualValuesAuctionCard({ card, userKey, onComplete }: Props) {
       <ValuesMatchAnalysisCardComponent
         card={matchCard}
         currentUserKey={userKey}
+        lots={card.lots_data?.lots || []}
         onContinue={onComplete}
       />
     )

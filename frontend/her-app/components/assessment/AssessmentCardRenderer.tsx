@@ -30,23 +30,23 @@ const AssessmentResultCard = lazy(() =>
 )
 
 // Type guards for better type safety
-function isIntroCard(card: AssessmentCard): card is AssessmentIntroCardType {
+function isIntroCard(card: AssessmentCard | ValuesAuctionCard): card is AssessmentIntroCardType {
   return card.card_type === 'assessment_intro'
 }
 
-function isQuestionCard(card: AssessmentCard): card is AssessmentQuestionCardType {
+function isQuestionCard(card: AssessmentCard | ValuesAuctionCard): card is AssessmentQuestionCardType {
   return card.card_type === 'assessment_question'
 }
 
-function isFeedbackCard(card: AssessmentCard): card is AssessmentFeedbackCardType {
+function isFeedbackCard(card: AssessmentCard | ValuesAuctionCard): card is AssessmentFeedbackCardType {
   return card.card_type === 'assessment_feedback'
 }
 
-function isResultCard(card: AssessmentCard): card is AssessmentResultCardType {
+function isResultCard(card: AssessmentCard | ValuesAuctionCard): card is AssessmentResultCardType {
   return card.card_type === 'assessment_result'
 }
 
-function isInterpretationCard(card: AssessmentCard): card is AssessmentInterpretationCardType {
+function isInterpretationCard(card: AssessmentCard | ValuesAuctionCard): card is AssessmentInterpretationCardType {
   return card.card_type === 'assessment_interpretation'
 }
 
@@ -66,7 +66,10 @@ function isValuesAuctionCard(card: unknown): card is ValuesAuctionCard {
 }
 
 // Extract assessment type from the card
-function getAssessmentTypeFromCard(card: AssessmentCard): AssessmentType | undefined {
+function getAssessmentTypeFromCard(card: AssessmentCard | ValuesAuctionCard): AssessmentType | undefined {
+  if (isValuesAuctionCard(card)) {
+    return 'values_auction'
+  }
   if (isIntroCard(card)) {
     return card.assessment_type
   }
@@ -201,30 +204,45 @@ export function AssessmentCardRenderer({
 
     if (isInterpretationCard(card)) {
       // Get themed button color
-      const buttonClass = resolvedAssessmentType === 'attachment_style' 
-        ? 'bg-coral hover:bg-coral/90 text-white' 
-        : resolvedAssessmentType === 'love_language' 
-          ? 'bg-lavender hover:bg-lavender/90 text-white' 
-          : 'bg-primary hover:bg-primary/90'
+      const buttonClass = resolvedAssessmentType === 'attachment_style'
+        ? 'bg-coral hover:bg-coral/90 text-white'
+        : 'bg-primary hover:bg-primary/90'
       
       return (
         <div className="rounded-3xl border border-border bg-card p-5 shadow-sm animate-scale-in">
           <div className="text-xs uppercase tracking-widest text-muted-foreground">
             {"AI 解读"}
           </div>
-          <p className="mt-3 text-sm leading-relaxed">
-            {card.interpretation_data.summary}
-          </p>
-          <p className="mt-3 text-sm text-muted-foreground">
-            {card.interpretation_data.love_style}
-          </p>
-          <div className="mt-4 space-y-2">
-            {card.interpretation_data.match_suggestions.map((item) => (
-              <div key={item} className="rounded-2xl bg-secondary/40 px-3 py-2 text-sm">
-                {item}
-              </div>
-            ))}
-          </div>
+          {resolvedAssessmentType === 'mbti_16' ? (
+            <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+              {"MBTI 的详细解释已经交给小雅用更好读的方式发你了，这里先不堆长文字。"}
+            </p>
+          ) : (
+            <>
+              <p className="mt-3 text-sm leading-relaxed">
+                {card.interpretation_data.summary}
+              </p>
+              {(card.interpretation_data.relationship_drive || card.interpretation_data.love_style) && (
+                <p className="mt-3 text-sm text-muted-foreground">
+                  {card.interpretation_data.relationship_drive || card.interpretation_data.love_style}
+                </p>
+              )}
+              {!!card.interpretation_data.match_suggestions?.length && (
+                <div className="mt-4 space-y-2">
+                  {card.interpretation_data.match_suggestions.map((item) => (
+                  <div key={item} className="rounded-2xl bg-secondary/40 px-3 py-2 text-sm">
+                    {item}
+                  </div>
+                  ))}
+                </div>
+              )}
+              {card.interpretation_data.disclaimer && (
+                <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+                  {card.interpretation_data.disclaimer}
+                </p>
+              )}
+            </>
+          )}
           <button
             className={cn(
               "mt-4 w-full rounded-xl px-4 py-3 text-sm text-white font-medium transition-colors touch-target active:scale-[0.98]",

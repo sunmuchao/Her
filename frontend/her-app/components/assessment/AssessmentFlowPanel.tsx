@@ -15,6 +15,7 @@ import {
 
 import { AssessmentCardRenderer } from './AssessmentCardRenderer'
 import { AssessmentSkeleton, AssessmentIntroSkeleton } from './AssessmentSkeleton'
+import { getAssessmentTheme, type AssessmentType } from './assessment-themes'
 
 export function AssessmentFlowPanel({
   open,
@@ -32,6 +33,10 @@ export function AssessmentFlowPanel({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isResumed, setIsResumed] = useState(false)
   const [answeredCount, setAnsweredCount] = useState(0)
+
+  const currentAssessmentType: AssessmentType | undefined =
+    card?.assessment_type || (card?.card_type === 'assessment_result' ? card.assessment_type : undefined)
+  const currentTheme = getAssessmentTheme(currentAssessmentType)
 
   const initializeAssessment = async () => {
     setError(null)
@@ -163,10 +168,10 @@ export function AssessmentFlowPanel({
         <div className="mb-3 flex items-center justify-between px-2">
           <div>
             <div id="assessment-title" className="text-sm font-medium">
-              {"MBTI 恋爱测试"}
+              {currentTheme.name}
             </div>
             <div className="text-xs text-muted-foreground">
-              {"5分钟 · 20题"}
+              {`${currentTheme.duration} · ${currentTheme.questionCount}题`}
             </div>
           </div>
           <Button 

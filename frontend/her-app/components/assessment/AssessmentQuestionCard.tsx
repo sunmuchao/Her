@@ -20,12 +20,14 @@ export function AssessmentQuestionCard({
   onPrevious,
   isSubmitting = false,
   assessmentType,
+  onDimensionComplete: _onDimensionComplete,
 }: {
   data: QuestionData
   onAnswer: (answer: string) => void
   onPrevious?: () => void
   isSubmitting?: boolean
   assessmentType?: AssessmentType
+  onDimensionComplete?: (dimensionIndex: number) => void
 }) {
   const [selectedOption, setSelectedOption] = useState<string | null>(null)
   const [isAnimatingOut, setIsAnimatingOut] = useState(false)
@@ -73,10 +75,13 @@ export function AssessmentQuestionCard({
       if (selectedOption || isSubmitting) return
       
       // Number/letter key mapping
-      const keyMap: Record<string, string> = {
-        '1': 'A', '2': 'B', '3': 'C', '4': 'D', '5': 'E',
-        'a': 'A', 'b': 'B', 'c': 'C', 'd': 'D', 'e': 'E',
-      }
+      const keyMap: Record<string, string> = {}
+      data.options.forEach((option, index) => {
+        const numberKey = String(index + 1)
+        const letterKey = String.fromCharCode(97 + index)
+        keyMap[numberKey] = option.label
+        keyMap[letterKey] = option.label
+      })
       
       const optionLabel = keyMap[e.key.toLowerCase()]
       if (optionLabel && data.options.find(o => o.label === optionLabel)) {
@@ -110,16 +115,46 @@ export function AssessmentQuestionCard({
 
   // Memoized theme-specific colors
   const themeColors = useMemo(() => ({
-    selectedBorder: assessmentType === 'attachment_style' ? 'border-coral' :
-                    assessmentType === 'love_language' ? 'border-lavender' : 'border-primary',
-    selectedBg: assessmentType === 'attachment_style' ? 'bg-coral/5' :
-                assessmentType === 'love_language' ? 'bg-lavender/5' : 'bg-primary/5',
-    selectedLabel: assessmentType === 'attachment_style' ? 'bg-coral text-white' :
-                   assessmentType === 'love_language' ? 'bg-lavender text-white' : 'bg-primary text-primary-foreground',
-    ripple: assessmentType === 'attachment_style' ? 'bg-coral/10' :
-            assessmentType === 'love_language' ? 'bg-lavender/10' : 'bg-primary/10',
-    focusRing: assessmentType === 'attachment_style' ? 'focus-visible:ring-coral' :
-               assessmentType === 'love_language' ? 'focus-visible:ring-lavender' : 'focus-visible:ring-primary',
+    selectedBorder:
+      assessmentType === 'attachment_style'
+        ? 'border-coral'
+        : assessmentType === 'big_five'
+          ? 'border-sage'
+          : assessmentType === 'sternberg_triangular_love'
+            ? 'border-amber'
+            : 'border-primary',
+    selectedBg:
+      assessmentType === 'attachment_style'
+        ? 'bg-coral/5'
+        : assessmentType === 'big_five'
+          ? 'bg-sage/5'
+          : assessmentType === 'sternberg_triangular_love'
+            ? 'bg-amber/5'
+            : 'bg-primary/5',
+    selectedLabel:
+      assessmentType === 'attachment_style'
+        ? 'bg-coral text-white'
+        : assessmentType === 'big_five'
+          ? 'bg-sage text-white'
+          : assessmentType === 'sternberg_triangular_love'
+            ? 'bg-amber text-white'
+            : 'bg-primary text-primary-foreground',
+    ripple:
+      assessmentType === 'attachment_style'
+        ? 'bg-coral/10'
+        : assessmentType === 'big_five'
+          ? 'bg-sage/10'
+          : assessmentType === 'sternberg_triangular_love'
+            ? 'bg-amber/10'
+            : 'bg-primary/10',
+    focusRing:
+      assessmentType === 'attachment_style'
+        ? 'focus-visible:ring-coral'
+        : assessmentType === 'big_five'
+          ? 'focus-visible:ring-sage'
+          : assessmentType === 'sternberg_triangular_love'
+            ? 'focus-visible:ring-amber'
+            : 'focus-visible:ring-primary',
   }), [assessmentType])
 
   // Memoized progress bar segments
@@ -257,7 +292,7 @@ export function AssessmentQuestionCard({
       {/* Keyboard hint - hidden on mobile */}
       <p className="mt-4 text-center text-xs text-muted-foreground hidden sm:block">
         <span className="sr-only">{"键盘快捷键: "}</span>
-        <span aria-hidden="true">{"按 1-5 数字键快速选择，方向键导航，Enter 确认"}</span>
+        <span aria-hidden="true">{`按 1-${data.options.length} 数字键快速选择，方向键导航，Enter 确认`}</span>
       </p>
     </div>
   )

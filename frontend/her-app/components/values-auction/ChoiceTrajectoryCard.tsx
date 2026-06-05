@@ -9,6 +9,7 @@
  */
 
 import React, { useMemo } from 'react'
+import { HIDDEN_VALUE_LABELS, HIGHER_ORDER_LABELS } from '@/lib/api/endpoints/valuesAuction'
 import type { ValuesAuctionResultCard, ValuesLot } from '@/lib/api/endpoints/valuesAuction'
 
 type Props = {
@@ -19,7 +20,7 @@ type Props = {
 
 export function ChoiceTrajectoryCard({ card, lots, onContinue }: Props) {
   const { result_data } = card
-  const { bids, value_type, top3, abandoned } = result_data
+  const { bids, value_type, top3, hidden_values, higher_order_summary, internal_tensions } = result_data
 
   // 构建取舍轨迹（按出价排序）
   const choiceTrajectory = useMemo(() => {
@@ -160,11 +161,11 @@ export function ChoiceTrajectoryCard({ card, lots, onContinue }: Props) {
           </div>
 
           {/* 底层价值 */}
-          {result_data.hidden_values && (
+          {hidden_values && (
             <div className="mt-3 pt-3 border-t border-amber-200">
               <div className="text-xs text-amber-700 mb-2">你底层真正想要的是：</div>
               <div className="flex flex-wrap gap-2 justify-center">
-                {Object.entries(result_data.hidden_values)
+                {Object.entries(hidden_values)
                   .sort(([, a], [, b]) => (b as number) - (a as number))
                   .slice(0, 3)
                   .map(([key, weight]) => (
@@ -172,9 +173,34 @@ export function ChoiceTrajectoryCard({ card, lots, onContinue }: Props) {
                       key={key}
                       className="px-3 py-1 bg-white rounded-lg text-xs text-amber-700 border border-amber-200"
                     >
-                      {key}: {Math.round((weight as number) * 100)}%
+                      {HIDDEN_VALUE_LABELS[key] || key}: {Math.round((weight as number) * 100)}%
                     </div>
                   ))}
+              </div>
+            </div>
+          )}
+
+          {higher_order_summary && higher_order_summary.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-amber-200">
+              <div className="text-xs text-amber-700 mb-2">更高一层的价值方向：</div>
+              <div className="flex flex-wrap gap-2 justify-center">
+                {higher_order_summary.slice(0, 2).map(item => (
+                  <div
+                    key={item.key}
+                    className="px-3 py-1 bg-white rounded-lg text-xs text-amber-700 border border-amber-200"
+                  >
+                    {item.label || HIGHER_ORDER_LABELS[item.key] || item.key}: {Math.round(item.weight * 100)}%
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {internal_tensions && internal_tensions.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-amber-200">
+              <div className="text-xs text-amber-700 mb-1">你内部最明显的拉扯：</div>
+              <div className="text-xs text-amber-700 text-center">
+                {internal_tensions[0].description}
               </div>
             </div>
           )}

@@ -164,10 +164,10 @@ export function mapDiscoveryView(view?: DiscoveryView): MappedDiscoveryView {
   const chips = view?.criteria_chips?.map((item) => item.label).filter(Boolean) as string[] | undefined
   const actions =
     view?.suggested_actions
-      ?.filter((item): item is { action_id: string; label: string; semantic_payload?: unknown } => Boolean(item.action_id && item.label))
+      ?.filter((item) => Boolean(item.action_id && item.label))
       .map((item) => ({
-        action_id: item.action_id,
-        label: item.label,
+        action_id: item.action_id as string,
+        label: item.label as string,
         semantic_payload: item.semantic_payload as { kind: string; assessment_type?: string; [key: string]: unknown } | undefined,
       })) || []
 

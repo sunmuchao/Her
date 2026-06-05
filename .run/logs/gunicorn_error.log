@@ -10048,3 +10048,15 @@ SystemExit: 1
 [2026-05-30 13:15:54 +0800] [25536] [INFO] Worker (pid:25551) was sent SIGTERM!
 [2026-05-30 13:15:54 +0800] [25536] [INFO] Worker (pid:25544) was sent SIGTERM!
 [2026-05-30 13:15:56 +0800] [25536] [INFO] Shutting down: Master
+[2026-06-03 17:10:37 +0800] [84168] [INFO] Starting gunicorn 23.0.0
+[2026-06-03 17:10:37 +0800] [84168] [ERROR] Connection in use: ('127.0.0.1', 8765)
+[2026-06-03 17:10:37 +0800] [84168] [ERROR] connection to ('127.0.0.1', 8765) failed: [Errno 48] Address already in use
+[2026-06-03 17:10:38 +0800] [84168] [ERROR] Connection in use: ('127.0.0.1', 8765)
+[2026-06-03 17:10:38 +0800] [84168] [ERROR] connection to ('127.0.0.1', 8765) failed: [Errno 48] Address already in use
+[2026-06-03 17:10:39 +0800] [84168] [ERROR] Connection in use: ('127.0.0.1', 8765)
+[2026-06-03 17:10:39 +0800] [84168] [ERROR] connection to ('127.0.0.1', 8765) failed: [Errno 48] Address already in use
+[2026-06-03 17:10:40 +0800] [84168] [ERROR] Connection in use: ('127.0.0.1', 8765)
+[2026-06-03 17:10:40 +0800] [84168] [ERROR] connection to ('127.0.0.1', 8765) failed: [Errno 48] Address already in use
+[2026-06-03 17:10:41 +0800] [84168] [ERROR] Connection in use: ('127.0.0.1', 8765)
+[2026-06-03 17:10:41 +0800] [84168] [ERROR] connection to ('127.0.0.1', 8765) failed: [Errno 48] Address already in use
+[2026-06-03 17:10:42 +0800] [84168] [ERROR] Can't connect to ('127.0.0.1', 8765)

@@ -1,497 +1,259 @@
-"""依恋风格测验题库（12题精简版）
+"""依恋风格测验题库（ECR 两维产品化版本）
 
-依恋理论：Bowlby (1969), Hazan & Shaver (1987)
-四种依恋类型：
-- 安全型 (secure)：情绪稳定，能平衡亲密和独立
-- 焦虑型 (anxious)：黏人，需要很多安全感，怕被抛弃
-- 回避型 (avoidant)：冷暴力大师，需要很多空间，怕被黏
-- 恐惧型 (fearful)：矛盾纠结体，既想黏又怕被伤害
+底层逻辑：
+- 只测两条核心维度：依恋焦虑（anxiety）/ 依恋回避（avoidance）
+- 结果先输出两维连续分数，再解释为四象限倾向
 
-设计理念：
-- 恋爱场景化题目（不说学术话）
-- 口语化网感表达（接地气）
-- 极端标签机制（趣味化）
-- 小雅专属回复（区别于卡片内容）
+外层表达：
+- 保留 Her 的恋爱语境和口语化表达
+- 不直接照搬学术原题
+- 不用旧版强羞辱感标签
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-# 四种依恋类型（SBTI 风格标签）
+ATTACHMENT_DIMENSIONS = ["anxiety", "avoidance"]
+
+# 兼容旧服务层循环用法；现在这里表示最终四象限结果，不再是独立计分维度
 ATTACHMENT_TYPES = ["secure", "anxious", "avoidant", "fearful"]
 
 ATTACHMENT_TYPE_NAMES = {
-    "secure": "稳定支持型",
-    "anxious": "情感确认型",
-    "avoidant": "边界自持型",
-    "fearful": "敏感矛盾型",
+    "secure": "稳定靠近型",
+    "anxious": "高敏确认型",
+    "avoidant": "边界后撤型",
+    "fearful": "拉扯矛盾型",
 }
 
-# 每个类型的题目范围（每类型3题）
 ATTACHMENT_QUESTION_RANGES = {
-    "secure": (0, 3),      # 第1-3题测安全型倾向
-    "anxious": (3, 6),     # 第4-6题测焦虑型倾向
-    "avoidant": (6, 9),    # 第7-9题测回避型倾向
-    "fearful": (9, 12),    # 第10-12题测恐惧型倾向
+    "anxiety": (0, 6),
+    "avoidance": (6, 12),
 }
 
-# 维度反馈文案（SBTI 毒舌风格版本）
 ATTACHMENT_FEEDBACKS = {
-    "secure": {
-        "high": "稳如老狗认证。对象发疯你睡觉，主打一个无动于衷。情绪灭火器，谁遇到你都很幸运——但也别太稳定显得没心没肺。",
-        "medium": "基本稳定，但偶尔也会有点黏或有点冷，看情况。别太稳定显得没心没肺，偶尔也要黏一下或情绪化一下。",
-        "low": "不太稳定，容易要么黏太紧要么冷太久。学会接住对方的情绪，别太慌也别太烦，稳如老狗才是王道。",
+    "anxiety": {
+        "high": "你对关系里的回应变化很敏感。对方一旦忽冷忽热、话少一点、状态不明，你会比很多人更快开始慌，也更想确认这段关系到底还稳不稳。",
+        "medium": "你会被关系牵动，但不至于一点风吹草动就失控。只是在你真正在意的人面前，你还是会比表面看起来更需要确定感。",
+        "low": "你的关系稳定感比较强。回应快慢、情绪波动这些事不会立刻把你带跑，通常你会先给对方和关系一点缓冲空间。",
     },
-    "anxious": {
-        "high": "赛博怨妇认证。回消息慢5分钟，你已脑补完出轨路线图连财产分配都想好了。醒醒，人家可能只是在忙或者在洗澡或者在打游戏——别把自己折磨疯。",
-        "medium": "有点黏，有时候能独立，看对方给的安全感够不够。学会给TA空间，别黏太紧，不然你们会陷入追逐-逃跑恶性循环。",
-        "low": "不咋黏，比较独立。对象回消息慢你也不在意，稳如老狗。你是个独立派，谁遇到你都很省心。",
-    },
-    "avoidant": {
-        "high": "装死大师认证。对象黏太紧你立刻人间蒸发，冷暴力界的奥林匹克冠军。醒醒，人家只是想黏你——别太冷太久让对方觉得你不在乎。",
-        "medium": "有点冷，有时候能黏，看对象是否给你足够的自由。学会给TA回应，别冷太久，不然你们会陷入追逐-逃跑恶性循环。",
-        "low": "不咋冷，比较温暖。对象黏你你也能接受，黏贴型暖宝宝。你是个温暖派，谁遇到你都很幸运。",
-    },
-    "fearful": {
-        "high": "反复横跳狂魔认证。前一秒想结婚后一秒'男人没一个好东西'，把自己和对方同时折磨疯。醒醒，你的矛盾让对方也矛盾——学会表达你的需求别矛盾太久。",
-        "medium": "有点矛盾，有时候能稳定，看对象是否给你足够的安全感+自由。学会表达你的矛盾，让TA理解你既需要安全感又需要空间。",
-        "low": "不咋矛盾，比较清晰，知道自己要啥。你是个清晰派，谁遇到你都很省心。",
+    "avoidance": {
+        "high": "你不是没感觉，你只是很怕关系一下子贴太近。压力一上来、情绪一变重、对方想马上推进时，你会本能想往后退一点。",
+        "medium": "你能靠近，也需要空间。关系顺的时候你没那么抗拒亲密，但一旦密度太高、节奏太快，你会开始需要自己的缓冲带。",
+        "low": "你对亲密关系的靠近感并不排斥。被理解、被接近、被看见这件事，对你来说更多是自然发生，而不是需要立刻防御的压力。",
     },
 }
 
-# 12道恋爱场景化题目（口语化、网感表达）
 ATTACHMENT_QUESTIONS: list[dict[str, Any]] = [
-    # ===== 第1-3题：安全型倾向（测稳定感）=====
     {
         "index": 0,
-        "text": "对象说'今天工作好累，被老板骂了'，你的第一反应是？",
+        "text": "你们最近明显比之前更熟了。某天晚上，对方突然没有像前几天那样自然接住你的话，你心里最先冒出来的会更像哪一种？",
         "options": [
-            {"label": "A", "text": "先听TA说完，然后安慰TA，再问需不需要我帮忙", "score": 5},
-            {"label": "B", "text": "安慰TA几句，然后说'没事，下次注意点就行'", "score": 4},
-            {"label": "C", "text": "说'别想了，想点开心的，今晚吃啥？'", "score": 3},
-            {"label": "D", "text": "说'我也好累啊，今天我也被骂了'", "score": 2},
-            {"label": "E", "text": "不知道咋说，怕说错让TA更难受，干脆不回", "score": 1},
+            {"label": "A", "text": "先当作只是节奏不一样，不会立刻往关系上想", "score": 1},
+            {"label": "B", "text": "会注意到，但还能把心放回自己的事上", "score": 2},
+            {"label": "C", "text": "会有点在意，开始留心是不是哪里不太一样了", "score": 3},
+            {"label": "D", "text": "很容易一下子敏感起来，想知道是不是自己会错意了", "score": 4},
+            {"label": "E", "text": "脑子已经开始回放前面所有细节，想确认是不是关系在变", "score": 5},
         ],
-        "dimension": "secure",
+        "dimension": "anxiety",
         "reverse": False,
     },
     {
         "index": 1,
-        "text": "对象突然说'我觉得你最近不太关心我了'，你的反应是？",
+        "text": "你白天发了一条自己挺在意的消息，对方到晚上都没回。下面哪种更像你当时的内心戏？",
         "options": [
-            {"label": "A", "text": "问TA具体哪感觉我不关心了，然后一起聊聊怎么改进", "score": 5},
-            {"label": "B", "text": "解释我最近确实忙，但我会多关心TA的", "score": 4},
-            {"label": "C", "text": "说'我没有不关心你啊，你别多想'", "score": 3},
-            {"label": "D", "text": "有点委屈，觉得我也很关心TA啊TA咋这么说", "score": 2},
-            {"label": "E", "text": "不知道咋回，怕说错让TA更生气，干脆沉默", "score": 1},
+            {"label": "A", "text": "大概率是在忙，先放着，晚点再看", "score": 1},
+            {"label": "B", "text": "会顺手多看几次，但不至于影响心情", "score": 2},
+            {"label": "C", "text": "会慢慢开始想，是不是我这条消息哪里不太对", "score": 3},
+            {"label": "D", "text": "会很容易往“是不是没那么想回我”上联想", "score": 4},
+            {"label": "E", "text": "还没等对方回，我已经把最坏版本在脑子里演完了", "score": 5},
         ],
-        "dimension": "secure",
+        "dimension": "anxiety",
         "reverse": False,
     },
     {
         "index": 2,
-        "text": "对象和异性朋友出去玩了一整天，回来告诉你'今天好开心'，你的反应是？",
+        "text": "前阵子一直是对方主动找你，这几天却明显安静下来。你通常会先怎么理解这个变化？",
         "options": [
-            {"label": "A", "text": "问TA今天玩了啥，开心就好，顺便说下次我也想去", "score": 5},
-            {"label": "B", "text": "说'开心就好啊，下次叫上我呗'", "score": 4},
-            {"label": "C", "text": "说'挺好的，我有自己的安排也挺开心'", "score": 3},
-            {"label": "D", "text": "有点不舒服，但不说，自己默默消化", "score": 2},
-            {"label": "E", "text": "很不安，担心TA是不是更喜欢那个朋友，但又不敢问", "score": 1},
+            {"label": "A", "text": "先看现实情况，不急着往关系变冷上解释", "score": 1},
+            {"label": "B", "text": "会有点在意，但更想先观察几天再说", "score": 2},
+            {"label": "C", "text": "会开始琢磨，是不是你们之间的感觉有点变了", "score": 3},
+            {"label": "D", "text": "很容易想到，是不是自己在对方那里的位置变轻了", "score": 4},
+            {"label": "E", "text": "会被这个变化卡住，反复想是不是关系已经在往下掉", "score": 5},
         ],
-        "dimension": "secure",
+        "dimension": "anxiety",
         "reverse": False,
     },
-
-    # ===== 第4-6题：焦虑型倾向（测黏人度）=====
     {
         "index": 3,
-        "text": "对象回消息慢了2小时，你啥状态？",
+        "text": "你们刚有过一点不愉快，对方之后一直没来接话、也没来缓和。你当下更接近哪种状态？",
         "options": [
-            {"label": "A", "text": "稳如老狗，TA可能在忙，我也有自己的事", "score": 5},
-            {"label": "B", "text": "有点好奇TA在干嘛，发个表情包戳一下", "score": 4},
-            {"label": "C", "text": "发了好几条消息问TA在干嘛，有点急", "score": 3},
-            {"label": "D", "text": "已脑补TA是不是遇到更好的人了，是不是不爱我了", "score": 2},
-            {"label": "E", "text": "连分手后的财产分配都想好了，TA完了", "score": 1},
+            {"label": "A", "text": "先等等，觉得彼此都消化一下也正常", "score": 1},
+            {"label": "B", "text": "会在意，但还能告诉自己先别放大", "score": 2},
+            {"label": "C", "text": "会有点悬着，不确定这件事会不会越拖越糟", "score": 3},
+            {"label": "D", "text": "会很容易慌起来，开始想是不是关系要出问题了", "score": 4},
+            {"label": "E", "text": "这种没下文的状态会让我整个人都很难放松", "score": 5},
         ],
-        "dimension": "anxious",
-        "reverse": True,  # 反向计分：选A(稳定)得5分(低焦虑)，选E(极度焦虑)得1分(高焦虑)
+        "dimension": "anxiety",
+        "reverse": False,
     },
     {
         "index": 4,
-        "text": "对象说'周末我想和朋友去打球，不约你了'，你的反应是？",
+        "text": "关系升温到一个你开始认真看待的位置时，你会不会希望对方给出更明确的信号，让你知道“我们是在同一页上的”？",
         "options": [
-            {"label": "A", "text": "挺好的，那我也找朋友出去玩，或者在家休息", "score": 5},
-            {"label": "B", "text": "有点失落，但也能接受，说'那下次约'", "score": 4},
-            {"label": "C", "text": "问TA能不能带上我，或者能不能早点结束再来找我", "score": 3},
-            {"label": "D", "text": "很失落，觉得TA不爱我了，宁愿和朋友也不陪我", "score": 2},
-            {"label": "E", "text": "很受伤，连TA是不是在骗我都在脑子里演完了", "score": 1},
+            {"label": "A", "text": "不太需要，我更相信相处会自然把答案带出来", "score": 1},
+            {"label": "B", "text": "偶尔会想确认，但不太会因此不安", "score": 2},
+            {"label": "C", "text": "会有点想知道，只是未必会马上问出来", "score": 3},
+            {"label": "D", "text": "会，我会更希望关系是清楚、能被确认的", "score": 4},
+            {"label": "E", "text": "会，没有比较明确的回应，我很难真的松下来", "score": 5},
         ],
-        "dimension": "anxious",
-        "reverse": True,  # 反向计分
+        "dimension": "anxiety",
+        "reverse": False,
     },
     {
         "index": 5,
-        "text": "对象突然冷淡了一天，回消息很短，你啥感觉？",
+        "text": "如果你已经明显喜欢上一个人了，你觉得自己在这段关系里的状态通常会怎么变？",
         "options": [
-            {"label": "A", "text": "可能TA今天心情不好或累了，问问TA咋了", "score": 5},
-            {"label": "B", "text": "有点担心，但给TA空间，等TA自己调整", "score": 4},
-            {"label": "C", "text": "有点慌，发了好几条消息问TA是不是不开心了", "score": 3},
-            {"label": "D", "text": "很慌，已脑补TA是不是遇到更好的人了是不是不爱我了", "score": 2},
-            {"label": "E", "text": "极度慌张，连分手后的财产分配都想好了，TA完了", "score": 1},
+            {"label": "A", "text": "喜欢会让我投入，但不太会直接影响安全感", "score": 1},
+            {"label": "B", "text": "偶尔会更敏感一点，但整体还算稳", "score": 2},
+            {"label": "C", "text": "会有一些变化，越在意越容易被牵动", "score": 3},
+            {"label": "D", "text": "会，我在重要关系里通常比平时更容易慌", "score": 4},
+            {"label": "E", "text": "会，而且这种起伏不是靠转移注意力就能轻松过去的", "score": 5},
         ],
-        "dimension": "anxious",
-        "reverse": True,  # 反向计分
+        "dimension": "anxiety",
+        "reverse": False,
     },
-
-    # ===== 第7-9题：回避型倾向（测冷暴力倾向）=====
     {
         "index": 6,
-        "text": "对象想每天黏着你，每天都要见面聊天，你啥感觉？",
+        "text": "对方进入状态很快，想每天都聊、频繁见面，也会主动把关系往更近的方向推。你当下更接近哪种感觉？",
         "options": [
-            {"label": "A", "text": "挺好的，我也喜欢黏着TA，每天见面很开心", "score": 5},
-            {"label": "B", "text": "还行，能黏也能独立，看情况调整", "score": 4},
-            {"label": "C", "text": "有点压力，觉得需要一点自己的空间", "score": 3},
-            {"label": "D", "text": "觉得窒息，想逃跑，需要很多独立空间", "score": 2},
-            {"label": "E", "text": "极度窒息，立刻冷暴力断联，TA太黏了", "score": 1},
+            {"label": "A", "text": "挺自然的，关系变近对我来说通常是舒服的", "score": 1},
+            {"label": "B", "text": "可以接受，只是我偶尔也想保留自己的节奏", "score": 2},
+            {"label": "C", "text": "会开始有点压力，想慢一点看看", "score": 3},
+            {"label": "D", "text": "会本能想把距离拉开一点，不想被推太快", "score": 4},
+            {"label": "E", "text": "只要密度一高起来，我就会先想退一退再说", "score": 5},
         ],
-        "dimension": "avoidant",
-        "reverse": True,  # 反向计分：选A(不回避)得5分(低回避)，选E(极度回避)得1分(高回避)
+        "dimension": "avoidance",
+        "reverse": False,
     },
     {
         "index": 7,
-        "text": "对象哭着说'你不心疼我，你不在乎我'，你的反应是？",
+        "text": "某次聊天，对方认真问到了你那些平时不太会拿出来讲的脆弱和难处。你更容易先出现哪种反应？",
         "options": [
-            {"label": "A", "text": "心疼TA，抱住TA，问TA具体哪觉得我不心疼了", "score": 5},
-            {"label": "B", "text": "有点不知所措，但还是试着安慰TA", "score": 4},
-            {"label": "C", "text": "有点烦，觉得TA太情绪化了，不知咋回", "score": 3},
-            {"label": "D", "text": "很烦，觉得TA矫情，干脆冷暴力不回", "score": 2},
-            {"label": "E", "text": "极度烦，立刻断联逃跑，TA太情绪化了", "score": 1},
+            {"label": "A", "text": "如果关系值得，我愿意慢慢把真实的一面打开", "score": 1},
+            {"label": "B", "text": "能聊，只是会需要一点适应和铺垫", "score": 2},
+            {"label": "C", "text": "会犹豫，不知道讲到哪里才算刚刚好", "score": 3},
+            {"label": "D", "text": "会明显起防备，太快被看透会让我不舒服", "score": 4},
+            {"label": "E", "text": "会本能把门关回去，不太想让人一下子靠这么近", "score": 5},
         ],
-        "dimension": "avoidant",
-        "reverse": True,  # 反向计分
+        "dimension": "avoidance",
+        "reverse": False,
     },
     {
         "index": 8,
-        "text": "对象想深度聊你们的关系、未来、三观，你啥感觉？",
+        "text": "吵起来的时候，对方一直追着问“你现在到底怎么想”。如果当下情绪很满，你通常会先怎么做？",
         "options": [
-            {"label": "A", "text": "挺好的，我也喜欢深度聊，这样能更理解彼此", "score": 5},
-            {"label": "B", "text": "还行，能聊但也不会天天聊，看情况", "score": 4},
-            {"label": "C", "text": "有点压力，觉得聊这些太累太深了", "score": 3},
-            {"label": "D", "text": "很烦，觉得聊这些没用，干脆回避不聊", "score": 2},
-            {"label": "E", "text": "极度烦，立刻冷暴力断联，TA太深了", "score": 1},
+            {"label": "A", "text": "只要方式别太冲，我通常还愿意留在现场把话说完", "score": 1},
+            {"label": "B", "text": "会觉得有点累，但大多还能继续聊下去", "score": 2},
+            {"label": "C", "text": "会开始想先暂停，不太想在当下被逼着说很多", "score": 3},
+            {"label": "D", "text": "会明显想后退，越被追问越不想开口", "score": 4},
+            {"label": "E", "text": "我会直接把自己关掉，只想先离开那个情境", "score": 5},
         ],
-        "dimension": "avoidant",
-        "reverse": True,  # 反向计分
+        "dimension": "avoidance",
+        "reverse": False,
     },
-
-    # ===== 第10-12题：恐惧型倾向（测矛盾纠结度）=====
     {
         "index": 9,
-        "text": "对象对你很好，很关心你很爱你，你啥感觉？",
+        "text": "关系进入一个很黏、联系很高频、很多事情都想一起分享和同步的阶段时，你通常会更接近哪种状态？",
         "options": [
-            {"label": "A", "text": "很开心很感动，觉得被爱很幸福", "score": 5},
-            {"label": "B", "text": "挺开心的，但偶尔也会有点不真实的感觉", "score": 4},
-            {"label": "C", "text": "既开心又害怕，怕TA以后会对我不好", "score": 3},
-            {"label": "D", "text": "很矛盾，既想黏TA又怕被伤害，不知道咋办", "score": 2},
-            {"label": "E", "text": "极度矛盾，既想靠近又想逃跑，完全不知道咋办", "score": 1},
+            {"label": "A", "text": "能适应，亲密关系有这种阶段对我来说不算负担", "score": 1},
+            {"label": "B", "text": "大体没问题，只是偶尔也想给自己留一点喘口气的空间", "score": 2},
+            {"label": "C", "text": "会开始担心自己是不是要一直维持这么高的投入", "score": 3},
+            {"label": "D", "text": "会有点像被关系包得太满，想拉开一点距离", "score": 4},
+            {"label": "E", "text": "我会本能往后退，不然整个人都会变得很紧绷", "score": 5},
         ],
-        "dimension": "fearful",
-        "reverse": True,  # 反向计分：选A(不恐惧)得5分(低恐惧)，选E(极度恐惧)得1分(高恐惧)
+        "dimension": "avoidance",
+        "reverse": False,
     },
     {
         "index": 10,
-        "text": "对象想和你建立深度亲密关系，想了解你的内心，你啥感觉？",
+        "text": "有一天对方突然很认真地想和你聊未来、依赖、边界、彼此需要什么。你听到这类话题时更接近哪种感受？",
         "options": [
-            {"label": "A", "text": "挺好的，我也想让TA了解我的内心", "score": 5},
-            {"label": "B", "text": "还行，能聊但也不会全部敞开，看情况", "score": 4},
-            {"label": "C", "text": "有点害怕，怕TA了解我后就不爱我了", "score": 3},
-            {"label": "D", "text": "很矛盾，既想让TA了解又怕被伤害", "score": 2},
-        {"label": "E", "text": "极度矛盾，既想敞开又想封闭，完全不知道咋办", "score": 1},
+            {"label": "A", "text": "可以聊，这类话题通常会让我觉得关系更清楚", "score": 1},
+            {"label": "B", "text": "能聊，但我会希望有一点准备和缓冲", "score": 2},
+            {"label": "C", "text": "会有些压力，怕一认真起来气氛就变得很重", "score": 3},
+            {"label": "D", "text": "会想先躲一下，这种深入会让我不太自在", "score": 4},
+            {"label": "E", "text": "会很想把话题带开，不想被推进到那么里面", "score": 5},
         ],
-        "dimension": "fearful",
-        "reverse": True,  # 反向计分
+        "dimension": "avoidance",
+        "reverse": False,
     },
     {
         "index": 11,
-        "text": "对象突然对你冷淡了一天，你啥感觉？",
+        "text": "就算这段关系已经很重要了，你在很多事上会不会还是习惯给自己留一手，不太愿意把重心完全交给对方？",
         "options": [
-            {"label": "A", "text": "可能TA今天心情不好或累了，问问TA咋了", "score": 5},
-            {"label": "B", "text": "有点担心，但给TA空间，等TA自己调整", "score": 4},
-            {"label": "C", "text": "既担心TA又害怕靠近TA，不知道该问还是该等", "score": 3},
-            {"label": "D", "text": "很矛盾，既想黏TA问TA咋了又怕TA更冷淡", "score": 2},
-        {"label": "E", "text": "极度矛盾，既想靠近又想逃跑，完全不知道咋办", "score": 1},
+            {"label": "A", "text": "不会特别防着，重要的人本来就可以互相依靠", "score": 1},
+            {"label": "B", "text": "会留一点自己的空间，但不太影响投入", "score": 2},
+            {"label": "C", "text": "多少会，我习惯先给自己留一点余地", "score": 3},
+            {"label": "D", "text": "会，我不太习惯把很多重心真的交到关系里", "score": 4},
+            {"label": "E", "text": "会，而且这种先保留自己的习惯很难一下子放掉", "score": 5},
         ],
-        "dimension": "fearful",
-        "reverse": True,  # 反向计分
+        "dimension": "avoidance",
+        "reverse": False,
     },
 ]
 
-# 极端标签机制（SBTI 毒舌风格）
-EXTREME_TAGS = {
-    # 赛博怨妇极端：连体婴认证
-    "anxious_high": {
-        "threshold": 85,
-        "tag": "连体婴认证",
-        "description": "回消息慢5分钟，你已脑补完出轨路线图连分手后财产分配都想好了。醒醒，人家可能只是在忙。",
-    },
-    "anxious_low": {
-        "threshold": 15,
-        "tag": "独立冷淡认证",
-        "description": "对象回消息慢你也不在意，对象冷淡你也不慌，稳如老狗。你是个独立派。",
-    },
-
-    # 装死大师极端：洞穴伪人认证
-    "avoidant_high": {
-        "threshold": 85,
-        "tag": "洞穴伪人认证",
-        "description": "冷暴力界的奥林匹克冠军，对象黏太紧立刻人间蒸发，一有冲突直接断联。",
-    },
-    "avoidant_low": {
-        "threshold": 15,
-        "tag": "黏贴型暖宝宝认证",
-        "description": "对象黏你你也能接受，对象情绪化你会安慰，对象想深度聊你也能聊。你是个温暖派。",
-    },
-
-    # 反复横跳狂魔极端：矛盾纠结认证
-    "fearful_high": {
-        "threshold": 85,
-        "tag": "反复横跳认证",
-        "description": "前一秒想结婚后一秒'男人没一个好东西'，把自己和对方同时折磨疯。醒醒，你的矛盾让对方也矛盾。",
-    },
-    "fearful_low": {
-        "threshold": 15,
-        "tag": "清晰稳定认证",
-        "description": "知道自己要啥，对象对你好你很开心，对象冷淡你会问TA咋了，不矛盾不纠结。你是个清晰派。",
-    },
-
-    # 稳如老狗极端：情绪灭火器认证
-    "secure_high": {
-        "threshold": 85,
-        "tag": "情绪灭火器认证",
-        "description": "对象发疯你睡觉，主打一个无动于衷，恋爱里的情绪稳定大师。但也别太稳定显得没心没肺。",
-    },
-    "secure_low": {
-        "threshold": 15,
-        "tag": "情绪过山车认证",
-        "description": "要么黏太紧要么冷太久，对象说啥你容易慌或烦，情绪波动大。学会稳如老狗才是王道。",
-    },
-}
-
-# 四种依恋类型的恋爱说明书（SBTI 毒舌风格）
 ATTACHMENT_TYPE_LABELS = {
     "secure": {
-        "nickname": "稳定支持型",
-        "nickname_fun": "情绪灭火器",
+        "nickname": "稳定靠近型",
+        "nickname_fun": "稳稳接住派",
         "tags": [
-            "对象发疯你睡觉",
-            "主打一个无动于衷",
-            "恋爱里的情绪稳定大师",
-            "谁遇到你都很幸运",
-            "但也别太稳定显得没心没肺",
+            "关系里不容易乱猜",
+            "能靠近也能给空间",
+            "被在乎时能接得住",
+            "冲突里不容易先失控",
         ],
-        "love_manual": {
-            "strengths": ["情绪稳定，对象发疯你睡觉，主打一个无动于衷。谁遇到你都很幸运。"],
-            "weaknesses": ["有时候太稳定，对象可能会觉得你不够热情或不够在乎——别太稳定显得没心没肺。"],
-            "best_match": [
-                "大多数类型都能适配",
-                "为啥配：你太稳定了，能适应任何类型，对方黏你能接住，对方冷你能给空间",
-                "日常场景：对象黏你你也能黏，对象冷你你也能冷，看情况调整",
-                "吵架场景：对象情绪化你能稳住，对象冷暴力你能给空间",
-                "注意：别太稳定显得没热情，偶尔也要黏一下或情绪化一下",
-                "【判官判词】：你是恋爱里的万能适配器，谁遇到你都很幸运，但别太稳定显得没心没肺——偶尔也要演一下'我很在乎'。",
-            ],
-            "caution_match": [
-                "敏感矛盾型",
-                "为啥磨合：TA太矛盾，你太稳定，TA可能会觉得你不懂TA的矛盾",
-                "日常冲突：TA既想黏又怕被伤害，你太稳定TA可能觉得你不够在乎",
-                "吵架场景：TA矛盾纠结，你稳如老狗，TA可能觉得你不懂TA",
-                "怎么磨合：学会理解TA的矛盾，别太稳定显得没心没肺，偶尔也要表现出矛盾",
-                "【判官避坑】：如果你遇到了反复横跳狂魔，别太稳定显得没心没肺，学会理解TA的矛盾，偶尔也要表现出你的在乎——不然TA会把你也折磨疯。",
-            ],
-            "love_red_flags": [
-                "对象觉得你太稳定不够热情会让你困惑",
-                "吵架时对象情绪化你稳如老狗会让TA觉得你不懂TA",
-                "对象觉得你不够在乎会让你委屈",
-            ],
-            "love_sweet_points": [
-                "对象感激你的稳定会让你觉得被认可",
-                "吵架时对象能理解你的稳定会让你觉得被理解",
-                "对象说'有你我很安心'会让你觉得有意义",
-            ],
-        },
     },
     "anxious": {
-        "nickname": "情感确认型",
-        "nickname_fun": "高敏感雷达",
+        "nickname": "高敏确认型",
+        "nickname_fun": "回应雷达开很满",
         "tags": [
-            "回消息慢5分钟已脑补出轨路线图",
-            "连分手后财产分配都想好了",
-            "对方只回'嗯'你会瞬间熄火",
-            "需要很多安全感很多确认",
-            "极度黏人极度需要回应",
+            "很在意关系有没有持续回应",
+            "忽冷忽热会很消耗你",
+            "越喜欢越容易被牵动",
+            "清楚和稳定会让你安心",
         ],
-        "love_manual": {
-            "strengths": ["很在乎对方，能给对方很多关心和爱意——但也别黏太紧让对方窒息。"],
-            "weaknesses": ["太黏太需要安全感，回消息慢5分钟你已脑补完出轨路线图连财产分配都想好了。醒醒，人家可能只是在忙。"],
-            "best_match": [
-                "稳定支持型",
-                "为啥配：TA太稳定了，能接住你的所有黏和慌，给你很多安全感",
-                "日常场景：你黏TA TA能接住，你慌TA能稳住你，给你很多确认",
-                "吵架场景：你慌TA稳住你，你脑补TA澄清，给你很多安全感",
-                "注意：别黏太紧让TA窒息，学会给TA一些空间",
-                "【判官判词】：如果你刷到了这种稳如老狗的情绪灭火器，TA会用稳定接住你的所有慌张，别黏太紧给TA空间——不然你们会陷入追逐-逃跑恶性循环。",
-            ],
-            "caution_match": [
-                "边界自持型",
-                "为啥磨合：追逐-逃跑恶性循环，你黏TA冷，你更慌TA更冷",
-                "日常冲突：你黏TA觉得窒息冷暴力，你更慌TA更冷",
-                "吵架场景：你慌TA冷暴力，你更慌TA更冷，恶性循环",
-                "怎么磨合：学会给TA空间，别黏太紧，学会独立",
-                "【判官避坑】：如果你遇到了装死大师，别黏太紧给TA空间学会独立，不然你们会陷入追逐-逃跑恶性循环——你更慌TA更冷TA更冷你更慌，死循环。",
-            ],
-            "love_red_flags": [
-                "对象回消息慢会让你脑补出轨路线图",
-                "对象冷淡一秒会让你慌到窒息",
-                "对象不给你安全感会让你崩溃",
-            ],
-            "love_sweet_points": [
-                "对象给你很多安全感会让你感动到哭",
-                "对象回消息快会让你觉得被在乎",
-                "对象说'我在呢别慌'会让你瞬间软化",
-            ],
-        },
     },
     "avoidant": {
-        "nickname": "边界自持型",
-        "nickname_fun": "空间感很强",
+        "nickname": "边界后撤型",
+        "nickname_fun": "先缓一下派",
         "tags": [
-            "冷暴力界的奥林匹克冠军",
-            "对象黏太紧立刻人间蒸发",
-            "一有冲突直接断联",
-            "需要很多很多空间",
-            "极度回避极度需要独立",
+            "压力一来会先往后退",
+            "需要空间才能重新靠近",
+            "不喜欢被情绪追着跑",
+            "越被逼越容易沉默",
         ],
-        "love_manual": {
-            "strengths": ["能给对方很多空间和自由，不黏不控制——但也别冷太久让对方觉得你不在乎。"],
-            "weaknesses": ["太冷太需要空间，对象黏太紧你觉得窒息要逃跑。醒醒，人家只是想黏你——别太冷太久。"],
-            "best_match": [
-                "稳定支持型",
-                "为啥配：TA太稳定了，能给你很多空间，不黏你不控制你",
-                "日常场景：你需要空间TA给你空间，你冷TA能理解不慌",
-                "吵架场景：你冷暴力TA给空间，你逃跑TA不追，等你回来",
-                "注意：别冷太久让TA觉得你不在乎，学会偶尔黏一下",
-                "【判官判词】：如果你刷到了这种稳如老狗的情绪灭火器，TA会用稳定接住你的所有冷暴力，别冷太久给TA回应——不然你们会陷入追逐-逃跑恶性循环。",
-            ],
-            "caution_match": [
-                "情感确认型",
-                "为啥磨合：追逐-逃跑恶性循环，TA黏你冷，TA更慌你更冷",
-                "日常冲突：TA黏你觉得窒息冷暴力，TA更慌你更冷",
-                "吵架场景：TA慌你冷暴力，TA更慌你更冷，恶性循环",
-                "怎么磨合：学会给TA回应，别冷太久，学会黏一下",
-                "【判官避坑】：如果你遇到了赛博怨妇，别冷太久给TA回应学会黏一下，不然你们会陷入追逐-逃跑恶性循环——TA更慌你更冷你更冷TA更慌，死循环。",
-            ],
-            "love_red_flags": [
-                "对象黏太紧会让你觉得窒息要逃跑",
-                "对象情绪化会让你立刻冷暴力断联",
-                "对象不给你空间会让你崩溃",
-            ],
-            "love_sweet_points": [
-                "对象给你很多空间会让你觉得被理解",
-                "对象不黏你会让你觉得舒服",
-                "对象说'我给你空间'会让你瞬间软化",
-            ],
-        },
     },
     "fearful": {
-        "nickname": "敏感矛盾型",
-        "nickname_fun": "既想靠近又怕受伤",
+        "nickname": "拉扯矛盾型",
+        "nickname_fun": "想靠近也想自保",
         "tags": [
-            "前一秒想结婚后一秒'男人没一个好东西'",
-            "把自己和对方同时折磨疯",
-            "既想靠近又想逃跑",
-            "对象对你好你既开心又害怕",
-            "完全不知道咋办",
+            "既怕失去也怕太近",
+            "很在乎但不容易安稳",
+            "关系里容易反复拉扯",
+            "需要被理解也需要被放松",
         ],
-        "love_manual": {
-            "strengths": ["很在乎对方，能感受到对方的情绪和需求——但也别矛盾太久让对方困惑。"],
-            "weaknesses": ["太矛盾太纠结，前一秒想结婚后一秒'男人没一个好东西'，把自己和对方同时折磨疯。醒醒，你的矛盾让对方也矛盾。"],
-            "best_match": [
-                "稳定支持型",
-                "为啥配：TA太稳定了，能理解你的矛盾，给你安全感+空间",
-                "日常场景：你矛盾TA能理解，你既想黏又怕TA能接住你",
-                "吵架场景：你矛盾纠结TA稳住你，给你安全感+空间",
-                "注意：别矛盾太久让TA困惑，学会表达你的需求",
-                "【判官判词】：如果你刷到了这种稳如老狗的情绪灭火器，TA会用稳定接住你的所有矛盾，别矛盾太久表达需求——不然TA会把你也折磨疯。",
-            ],
-            "caution_match": [
-                "情感确认型或边界自持型",
-                "为啥磨合：你本来就矛盾，TA黏或冷会让你更矛盾更纠结",
-                "日常冲突：你既想黏又怕，TA黏你你更怕TA冷你更慌",
-                "吵架场景：你矛盾TA黏或冷，你更矛盾更纠结",
-                "怎么磨合：学会表达你的矛盾，让TA理解你既需要安全感又需要空间",
-                "【判官避坑】：如果你遇到了赛博怨妇或装死大师，学会表达你的矛盾，让TA理解你既需要安全感又需要空间——不然你会把TA也折磨疯。",
-            ],
-            "love_red_flags": [
-                "对象对你好会让你既开心又害怕",
-                "对象冷淡会让你既想靠近又想逃跑",
-                "你完全不知道咋办会让你崩溃",
-            ],
-            "love_sweet_points": [
-                "对象理解你的矛盾会让你感动到哭",
-                "对象给你安全感+空间会让你觉得被理解",
-                "对象说'我理解你的矛盾'会让你瞬间软化",
-            ],
-        },
-    },
-}
-
-# 小雅专属回复内容（SBTI 毒舌判官风格——互联网嘴替/闺蜜判官）
-XIAOYA_MESSAGES = {
-    "secure": {
-        "greeting": "测出来了，你是「稳如老狗（STBL）」。🎉",
-        "identity": "情绪灭火器，对象发疯你睡觉，主打一个无动于衷。",
-        "quirk": "恋爱中的你就像个情绪灭火器，对象说'今天好累'你接住，对象说'你不关心我'你聊聊，对象说'我今天和朋友出去玩'你说开心就好。稳如老狗，不黏也不冷——但别太稳定显得没心没肺。",
-        "crush": "暗恋时的你：稳如老狗，对象冷淡你不慌，对象黏你你不窒息，对象情绪化你能接住。但实际操作：偶尔也会有点黏或有点冷，看情况——别太稳定让对方觉得你不在乎。",
-        "breakup": "分手后的你：稳如老狗，前1天有点难过，第2天开始反思，第3天已经调整好，第4天开始筛选下一个目标。你的深情配额只有72小时，过期概不退换。",
-        "suggestion": "💡 判官判词：下次遇到心动的人，别太稳定显得没心没肺，偶尔也要演一下'我很在乎'——不然对方会觉得你是个莫得感情的AI。",
-    },
-    "anxious": {
-        "greeting": "别看了，测出来又是「赛博怨妇（ANX-S）」。🎉",
-        "identity": "回消息慢5分钟，你已脑补完出轨路线图。",
-        "quirk": "恋爱中的你就像个连体婴，对象回消息慢5分钟你已脑补完是不是不爱我了是不是遇到更好的人了连分手后的财产分配都想好了。醒醒，人家可能只是在忙或者在洗澡或者在打游戏——别把自己折磨疯。",
-        "crush": "暗恋时的你：对方只是顺手点赞了你的朋友圈，你连你们以后死后合葬在哪个公墓、买几等座的骨灰盒都想好了。醒醒，人家只是手滑！",
-        "breakup": "分手后的你：前3天哭到窒息，第4天看到帅哥瞬间复活。你的深情配额只有72小时，过期概不退换。",
-        "suggestion": "💡 判官判词：下次遇到心动的人，别黏太紧给TA空间学会独立，不然你们会陷入追逐-逃跑恶性循环——你更慌TA更冷TA更冷你更慌，死循环。",
-    },
-    "avoidant": {
-        "greeting": "测出来了，你是「装死大师（FAKE-D）」。🎉",
-        "identity": "冷暴力界的奥林匹克冠军，对象黏太紧立刻人间蒸发。",
-        "quirk": "恋爱中的你就像个洞穴伪人，对象黏太紧你觉得窒息要逃跑，对象情绪化你立刻冷暴力断联，对象想深度聊你直接回避。醒醒，人家只是想黏你——别太冷太久让对方觉得你不在乎。",
-        "crush": "暗恋时的你：对象黏你你觉得窒息，对象情绪化你冷暴力，对象想深度聊你回避。但实际操作：继续装死，等TA先发现你的心意——但别装太久让对方以为你死了。",
-        "breakup": "分手后的你：表面冷静冷暴力，内心其实有点难过，但立刻开始独处蓄电，准备下一个目标。你的深情配额只有24小时，过期概不退换。",
-        "suggestion": "💡 判官判词：下次遇到心动的人，别冷太久给TA回应学会黏一下，不然你们会陷入追逐-逃跑恶性循环——TA更慌你更冷你更冷TA更慌，死循环。",
-    },
-    "fearful": {
-        "greeting": "测出来了，你是「反复横跳狂魔（WOC-F）」。🎉",
-        "identity": "前一秒想结婚，后一秒'男人没一个好东西'，把自己和对方同时折磨疯。",
-        "quirk": "恋爱中的你就像个反复横跳狂魔，对象对你好你既开心又害怕，对象冷淡你既想靠近又想逃跑，既想黏又怕被伤害。醒醒，你的矛盾让对方也矛盾——别矛盾太久把TA也折磨疯。",
-        "crush": "暗恋时的你：对象对你好你既开心又害怕，对象冷淡你既想靠近又想逃跑。但实际操作：继续矛盾纠结，完全不知道咋办——醒醒，人家只是想跟你谈恋爱不是跟你玩推拉游戏。",
-        "breakup": "分手后的你：前1周矛盾纠结到窒息，第2周既想联系又怕被伤害，第3周开始脑补是不是我不够好，第4周突然想通'我值得更好的'，然后用1年时间慢慢放下。你的深情配额只有168小时，过期概不退换。",
-        "suggestion": "💡 判官判词：下次遇到心动的人，学会表达你的矛盾让TA理解你既需要安全感又需要空间，别矛盾太久——不然你会把TA也折磨疯。",
     },
 }
 
 
 def get_question(index: int) -> dict[str, Any] | None:
-    """获取指定索引的题目"""
     if 0 <= index < len(ATTACHMENT_QUESTIONS):
         return ATTACHMENT_QUESTIONS[index]
     return None
 
 
 def get_dimension_for_question(index: int) -> str | None:
-    """获取题目所属的维度（依恋类型）"""
     question = get_question(index)
     if question:
         return str(question.get("dimension") or "")
@@ -499,46 +261,27 @@ def get_dimension_for_question(index: int) -> str | None:
 
 
 def calculate_dimension_score(answers: list[int], dimension: str) -> float:
-    """计算某个维度的得分（0-100分）
-
-    注意：焦虑、回避、恐惧维度是反向计分
-    - 选A(稳定/不焦虑/不回避/不恐惧)得5分 → 转换后得低分(20分)
-    - 选E(极度焦虑/极度回避/极度恐惧)得1分 → 转换后得高分(80分)
-
-    安全型维度是正向计分
-    - 选A(稳定)得5分 → 转换后得高分(80分)
-    - 选E(不稳定)得1分 → 转换后得低分(20分)
-    """
     start, end = ATTACHMENT_QUESTION_RANGES.get(dimension, (0, 0))
     if start == end:
         return 0.0
     dimension_answers = answers[start:end]
     if not dimension_answers:
         return 0.0
-
     total = sum(dimension_answers)
-
-    # 安全型是正向计分（高分=安全）
-    if dimension == "secure":
-        score = (total - 3) / 12 * 100  # 3分(最低)→0分, 15分(最高)→100分
-    else:
-        # 焦虑、回避、恐惧是反向计分（高分=焦虑/回避/恐惧）
-        # 原始分：5分(不焦虑)→转换后得低分, 1分(极度焦虑)→转换后得高分
-        score = 100 - (total - 3) / 12 * 100  # 反向转换
-
+    min_total = len(dimension_answers)
+    max_total = len(dimension_answers) * 5
+    score = ((total - min_total) / (max_total - min_total)) * 100
     return round(max(0, min(100, score)), 1)
 
 
 def calculate_all_scores(answers: list[int]) -> dict[str, float]:
-    """计算所有维度的得分"""
     return {
         dimension: calculate_dimension_score(answers, dimension)
-        for dimension in ATTACHMENT_TYPES
+        for dimension in ATTACHMENT_DIMENSIONS
     }
 
 
 def get_dimension_feedback(dimension: str, score: float) -> str:
-    """获取维度反馈文案"""
     feedbacks = ATTACHMENT_FEEDBACKS.get(dimension, {})
     if score >= 70:
         return str(feedbacks.get("high", ""))
@@ -548,331 +291,346 @@ def get_dimension_feedback(dimension: str, score: float) -> str:
 
 
 def get_extreme_tags(scores: dict[str, float]) -> list[dict[str, str]]:
-    """计算极端标签"""
-    extreme_tags = []
+    tags: list[dict[str, str]] = []
+    anxiety = float(scores.get("anxiety", 50))
+    avoidance = float(scores.get("avoidance", 50))
 
-    for attachment_type in ATTACHMENT_TYPES:
-        score = scores.get(attachment_type, 50)
+    if anxiety >= 80:
+        tags.append({"tag": "回应敏感", "description": "关系一旦重要起来，你会很快从回应变化里感觉到风向不对。"})
+    elif anxiety <= 20:
+        tags.append({"tag": "稳定感在线", "description": "你不太会被一点点回应波动牵着跑，关系里的基础稳定感比较强。"})
 
-        # 高分极端
-        high_key = f"{attachment_type}_high"
-        if high_key in EXTREME_TAGS and score >= EXTREME_TAGS[high_key]["threshold"]:
-            extreme_tags.append({
-                "tag": EXTREME_TAGS[high_key]["tag"],
-                "description": EXTREME_TAGS[high_key]["description"],
-            })
+    if avoidance >= 80:
+        tags.append({"tag": "边界警觉", "description": "一旦关系密度太高、压力太满，你会本能想先把自己往后撤一点。"})
+    elif avoidance <= 20:
+        tags.append({"tag": "靠近自如", "description": "被理解、被接近、被看见这件事，对你来说整体是可承接的。"})
 
-        # 低分极端
-        low_key = f"{attachment_type}_low"
-        if low_key in EXTREME_TAGS and score <= EXTREME_TAGS[low_key]["threshold"]:
-            extreme_tags.append({
-                "tag": EXTREME_TAGS[low_key]["tag"],
-                "description": EXTREME_TAGS[low_key]["description"],
-            })
+    if anxiety >= 70 and avoidance >= 70:
+        tags.append({"tag": "拉扯感明显", "description": "你既容易被关系牵动，也容易在压力大时先自我保护。"})
 
-    return extreme_tags
+    return tags
 
 
 def get_primary_attachment_type(scores: dict[str, float]) -> str:
-    """判断主要依恋类型（得分最高的类型）"""
-    # 安全型优先（如果安全型得分≥60，直接判定为安全型）
-    if scores.get("secure", 0) >= 60:
-        return "secure"
+    anxiety = float(scores.get("anxiety", 50))
+    avoidance = float(scores.get("avoidance", 50))
+    anxiety_high = anxiety >= 60
+    avoidance_high = avoidance >= 60
 
-    # 否则取得分最高的非安全型类型
-    non_secure_scores = {
-        k: v for k, v in scores.items() if k != "secure"
-    }
-    if non_secure_scores:
-        return max(non_secure_scores, key=non_secure_scores.get)
-
-    return "secure"  # 默认安全型
+    if anxiety_high and avoidance_high:
+        return "fearful"
+    if anxiety_high:
+        return "anxious"
+    if avoidance_high:
+        return "avoidant"
+    return "secure"
 
 
 def get_type_info(type_code: str) -> dict[str, Any]:
-    """获取类型标签和恋爱说明书"""
     return ATTACHMENT_TYPE_LABELS.get(
         type_code,
         {
             "nickname": type_code,
             "tags": [f"依恋风格:{type_code}"],
-            "love_manual": {
-                "strengths": ["你有独特的依恋特质"],
-                "weaknesses": ["恋爱中需要磨合的地方"],
-                "best_match": ["能理解你的人"],
-                "caution_match": ["需要多沟通的类型"],
-            },
         },
     )
 
 
-def _interpretation_from_result(result: dict[str, Any]) -> dict[str, Any]:
-    """生成安全感来源式解读（不强调类型标签）
+def _relationship_drive(type_code: str) -> str:
+    mapping = {
+        "secure": "你通常能同时接受亲近和独立。对你来说，关系更像是可以互相依靠，而不是必须反复确认或反复设防。",
+        "anxious": "你会更在意关系里的可得性和回应感。越在意一个人，你越希望关系是清楚、稳定、能被确认的。",
+        "avoidant": "你会更在意关系里有没有足够的空间和自主感。比起被快速拉近，你更容易在能保留节奏时放松下来。",
+        "fearful": "你一方面很在意关系能不能给你确定感，另一方面又会对太快、太满的亲近保持警觉，所以容易同时出现想靠近和想后退。",
+    }
+    return mapping.get(type_code, "")
 
-    核心转变：
-    - 从"你是XX类型"转向"你的安全感来源"
-    - 从"优势/坑点"转向"安全感来源/关系模式/关系雷区"
-    - 从"最佳匹配"转向"适合对象"
-    """
+
+def _triggers(type_code: str) -> str:
+    mapping = {
+        "secure": "真正会让你不舒服的，往往是长期失去回应、持续不可靠，或者关系里一直讲不清楚、修复不起来。",
+        "anxious": "你更容易被回应变少、关系变模糊、冲突后迟迟没有修复，或者对方忽近忽远的信号触发。",
+        "avoidant": "你更容易被推进得太快、被要求立刻袒露很多情绪，或被持续追问和高密度黏连触发。",
+        "fearful": "你两边都可能被触发: 关系一模糊你会不安，关系一贴太近你又会警觉，所以很容易进入拉扯状态。",
+    }
+    return mapping.get(type_code, "")
+
+
+def _stabilizers(type_code: str) -> str:
+    mapping = {
+        "secure": "稳定、可靠、愿意互相支持的关系会让你更自在。你通常不需要很多额外确认，持续在场就够了。",
+        "anxious": "持续回应、明确表达和冲突后的修复，会明显帮你把注意力从“会不会失去”拉回到关系本身。",
+        "avoidant": "当对方尊重你的节奏、不把亲近变成压迫，同时又保持稳定可靠时，你会更愿意慢慢靠近。",
+        "fearful": "既有稳定回应，又给你缓冲空间，不过度逼近的关系，最容易让你一点点放下防御。",
+    }
+    return mapping.get(type_code, "")
+
+
+def _common_misread(type_code: str) -> str:
+    mapping = {
+        "secure": "你有时会把很多事情先自己消化掉，结果别人未必看得出来，你其实也需要回应和支持。",
+        "anxious": "当线索不够清楚时，你会更倾向先把它理解成关系在降温，而不是普通的忙碌或节奏变化。",
+        "avoidant": "当压力上来时，你可能会过早把需要和情绪收起来。对方看到的常常是距离，不一定看得到你的真实负担。",
+        "fearful": "你可能会一边想确认关系，一边又很快把自己收回去。外面看到的是信号反复，里面其实是又想靠近又怕受伤。",
+    }
+    return mapping.get(type_code, "")
+
+
+def _fit_people(type_code: str) -> list[str]:
+    mapping = {
+        "secure": [
+            "能稳定回应，也愿意保留彼此独立空间的人。",
+            "冲突里愿意直接沟通、修复，而不是长期失联或冷处理的人。",
+            "关系投入比较一致，不需要靠拉扯制造存在感的人。",
+        ],
+        "anxious": [
+            "回应相对稳定、不会忽冷忽热的人。",
+            "愿意把关系状态说清楚，冲突后愿意修复的人。",
+            "能理解你对确定感的需要，不会把确认需求一概打成“太黏”或“太多”的人。",
+        ],
+        "avoidant": [
+            "尊重节奏和边界，不会一上来高密度推进的人。",
+            "既稳定在场，又不过度追问和逼近的人。",
+            "能把亲近做成可协商的过程，而不是压迫式证明关系的人。",
+        ],
+        "fearful": [
+            "既能给稳定回应，又能给缓冲空间的人。",
+            "情绪稳定、边界清楚，不会一会儿逼近一会儿抽离的人。",
+            "愿意慢慢建立信任，能同时接住你的靠近和后撤信号的人。",
+        ],
+    }
+    return mapping.get(type_code, [])
+
+
+def _friction_people(type_code: str) -> list[str]:
+    mapping = {
+        "secure": [
+            "长期模糊、承诺和行动经常对不上的人。",
+            "习惯用冷暴力、失联或反复试探来推进关系的人。",
+        ],
+        "anxious": [
+            "长期忽冷忽热、经常失联、把回应交给你猜的人。",
+            "一遇到冲突就消失，或把你的不安当成负担的人。",
+        ],
+        "avoidant": [
+            "刚开始就高密度黏连、持续追问、要求立刻深聊的人。",
+            "把边界理解成拒绝，越感到不安越加速逼近的人。",
+        ],
+        "fearful": [
+            "本身也很不稳定，时近时远、时冷时热的人。",
+            "要么长期失联，要么一上来就高压推进，没有缓冲区的人。",
+        ],
+    }
+    return mapping.get(type_code, [])
+
+
+def _ecr_basis(type_code: str) -> list[str]:
+    shared = [
+        "ECR / ECR-R 把成人亲密关系里的差异主要放在两条连续维度上看：关系不安度（anxiety）和亲密后撤度（avoidance）。",
+        "这类结果更适合解释“你在什么情境下容易被触发、什么互动更容易让你稳定”，不是给人下永久结论。",
+    ]
+    if type_code == "secure":
+        shared.append("低不安、低后撤的人，通常更能在亲近和独立之间保持弹性，也更容易把冲突导向修复。")
+    elif type_code == "anxious":
+        shared.append("高不安更常见的机制是：对拒绝、冷淡和不可得线索更警觉，更容易放大关系里的不确定感。")
+    elif type_code == "avoidant":
+        shared.append("高后撤更常见的机制是：在亲密压力升高时更倾向拉开距离、压低暴露和依赖感。")
+    else:
+        shared.append("高不安和高后撤同时偏高时，常见表现就是既想靠近确认，又会在压力上来时本能自保。")
+    return shared
+
+
+def _communication_advice(type_code: str, anxiety: float, avoidance: float) -> str:
+    advice: list[str] = []
+    if anxiety >= 60:
+        advice.append("把你需要的回应说具体，比如你想知道关系状态、还是想要更稳定的反馈。")
+    if avoidance >= 60:
+        advice.append("想退的时候别直接消失，先留一句边界说明，比如“我想缓一下，晚点继续聊”。")
+    if 40 <= anxiety < 60 and 40 <= avoidance < 60:
+        advice.append("你更适合把节奏、边界和需求提前讲清楚，而不是等误会堆起来再解释。")
+    if not advice:
+        advice.append("继续保持这种相对稳定的靠近能力，同时别省略自己的需要。")
+    return " ".join(advice[:2])
+
+
+def _card_tip(type_code: str, anxiety: float, avoidance: float) -> str:
+    if anxiety >= 60 and avoidance >= 60:
+        return "先求稳，再谈靠近。"
+    if anxiety >= 60:
+        return "少一点猜测，多一点确认。"
+    if avoidance >= 60:
+        return "先讲边界，再谈亲近。"
+    return "稳稳靠近，也别省略需要。"
+
+
+def _interpretation_from_result(result: dict[str, Any]) -> dict[str, Any]:
     scores = dict(result.get("scores") or {})
+    anxiety = float(scores.get("anxiety", 50))
+    avoidance = float(scores.get("avoidance", 50))
     type_code = str(result.get("type_code") or get_primary_attachment_type(scores))
     type_info = get_type_info(type_code)
-
-    # 获取四个维度的得分
-    secure_score = scores.get("secure", 50)
-    anxious_score = scores.get("anxious", 50)
-    avoidant_score = scores.get("avoidant", 50)
-    fearful_score = scores.get("fearful", 50)
-
-    # 极端标签（轻量融入，不再高亮）
     extreme_tags = get_extreme_tags(scores)
 
-    # 构建安全感来源描述（根据得分判断）
-    summary = "你在恋爱里"
+    summary_map = {
+        "secure": "你整体更接近低不安、低后撤的状态: 既能靠近，也不太需要靠反复确认或反复设防来稳住关系。",
+        "anxious": "你更接近高不安、低后撤的状态: 会明显在意关系有没有持续回应，但通常不会因为亲近本身就先躲开。",
+        "avoidant": "你更接近低不安、高后撤的状态: 不一定特别担心被抛下，但在关系太近、太满时会更想先拉开一点。",
+        "fearful": "你更接近高不安、高后撤的状态: 一方面很在意关系，另一方面又容易在压力上来时先自我保护。",
+    }
 
-    # 判断稳定度
-    if secure_score >= 70:
-        summary += "很稳，对象说啥你都能接住，不黏也不冷。"
-    elif secure_score >= 40:
-        summary += "基本稳定，但有时也会有点黏或有点冷，看情况。"
-    else:
-        summary += "不太稳定，容易要么黏太紧要么冷太久。"
-
-    # 构建安全感来源（根据主要类型）
-    security_source = "\n\n**🎯 你的安全感来源：**\n"
-    if type_code == "secure":
-        security_source += "TA的稳定陪伴让你很安心，TA不冷暴力不突然消失，你就觉得很安全。"
-    elif type_code == "anxious":
-        security_source += "TA的快速回应让你很安心，TA秒回消息、TA主动找你、TA给你很多确认。"
-    elif type_code == "avoidant":
-        security_source += "TA给你足够的空间让你很安心，TA不黏你、TA理解你的独立需求。"
-    elif type_code == "fearful":
-        security_source += "同时需要安全感+空间，既需要TA的陪伴又需要TA的理解。"
-
-    # 构建关系模式（根据得分）
-    relationship_mode = "\n\n**🌊 你的关系模式：**\n"
-    if secure_score >= 70:
-        relationship_mode += "不黏也不冷，看情况调整。对象黏你你也能接住，对象冷淡你也能给空间。"
-        # 轻量融入极端标签
-        if secure_score >= 85:
-            relationship_mode += "\n情绪稳定萨摩耶认证 ✨"
-    elif anxious_score >= 70:
-        relationship_mode += "很黏，对象回消息慢你会慌，对象冷淡你会脑补。黏人精认证 ✨"
-    elif avoidant_score >= 70:
-        relationship_mode += "很冷，对象黏太紧你会觉得窒息，对象情绪化你会冷暴力。冷暴力大师认证 ✨"
-    elif fearful_score >= 70:
-        relationship_mode += "很矛盾，既想黏又怕被伤害，既想靠近又想逃跑。矛盾纠结体认证 ✨"
-    else:
-        relationship_mode += "看情况，有时黏有时冷，有时矛盾有时稳。"
-
-    # 构建关系雷区（根据类型）
-    relationship_red_flags = "\n\n**⚡ 你的关系雷区：**\n"
-    if type_code == "secure":
-        relationship_red_flags += "TA冷暴力会让你很慌，TA突然消失你会脑补「是不是不爱我了」。"
-    elif type_code == "anxious":
-        relationship_red_flags += "TA回消息慢你会脑补「是不是不爱我了」，TA冷淡一秒你会慌到窒息。"
-    elif type_code == "avoidant":
-        relationship_red_flags += "TA黏太紧你会觉得窒息要逃跑，TA情绪化你会立刻冷暴力断联。"
-    elif type_code == "fearful":
-        relationship_red_flags += "TA对你好你既开心又害怕，TA冷淡你既想靠近又想逃跑，完全不知道咋办。"
-
-    # 构建适合对象（根据类型）
-    suitable_partner = "\n\n**💡 你适合的对象：**\n"
-    if type_code == "secure":
-        suitable_partner += "能给你稳定陪伴的人，不太冷暴力不太突然消失的人。不管TA是什么依恋类型，你都能适应。"
-    elif type_code == "anxious":
-        suitable_partner += "能快速回应你的人，秒回消息、主动找你、给你很多确认的人。最好是情绪稳定型（安全型）。"
-    elif type_code == "avoidant":
-        suitable_partner += "能给你足够空间的人，不黏你、理解你的独立需求的人。最好是情绪稳定型（安全型）。"
-    elif type_code == "fearful":
-        suitable_partner += "能理解你矛盾的人，既给你安全感又给你空间的人。最好是情绪稳定型（安全型）。"
-
-    # 相处建议
-    relationship_advice = "\n\n**💝 相处建议：**\n"
-    if type_code == "secure":
-        relationship_advice += "直接告诉TA你需要稳定陪伴，不要脑补直接问TA咋了，学会表达你的需求。"
-    elif type_code == "anxious":
-        relationship_advice += "学会给TA空间别黏太紧，别脑补直接问TA咋了，学会独立不要过度依赖。"
-    elif type_code == "avoidant":
-        relationship_advice += "别冷太久给TA回应，学会偶尔黏一下，学会表达你的需求。"
-    elif type_code == "fearful":
-        relationship_advice += "学会表达你的矛盾，让TA理解你既需要安全感又需要空间，别矛盾太久。"
-
-    # 脱单免责声明
-    disclaimer = "\n\n**【使用本说明书的脱单安全须知】**\n"
-    disclaimer += "【储藏条件】 建议放置在能给足安全感+空间的理解环境中。\n"
-    disclaimer += "【不良反应】 强行配对可能会导致追逐-逃跑恶性循环或矛盾纠结到窒息。\n"
-    disclaimer += "【红娘提示】 说明书仅供脱单参考，吵架时请勿将本报告作为呈堂证供。"
+    relationship_drive = _relationship_drive(type_code)
+    triggers = _triggers(type_code)
+    stabilizers = _stabilizers(type_code)
+    common_misread = _common_misread(type_code)
+    communication_advice = _communication_advice(type_code, anxiety, avoidance)
+    card_tip = _card_tip(type_code, anxiety, avoidance)
+    fit_people = _fit_people(type_code)
+    friction_people = _friction_people(type_code)
+    ecr_basis = _ecr_basis(type_code)
 
     return {
-        "summary": summary,
-        "security_source": security_source,
-        "relationship_mode": relationship_mode,
-        "relationship_red_flags": relationship_red_flags,
-        "suitable_partner": suitable_partner,
-        "relationship_advice": relationship_advice,
-        "extreme_tags": extreme_tags,  # 保留但不再高亮
-        "disclaimer": disclaimer,
+        "summary": summary_map.get(type_code, ""),
+        "relationship_drive": relationship_drive,
+        "triggers": triggers,
+        "stabilizers": stabilizers,
+        "common_misread": common_misread,
+        "communication_advice": communication_advice,
+        "card_tip": card_tip,
+        "fit_people": fit_people,
+        "friction_people": friction_people,
+        "ecr_basis": ecr_basis,
+        # compatibility fields used by some generic UI/tests
+        "love_style": relationship_drive,
+        "match_suggestions": [
+            f"最容易被触发：{triggers}",
+            f"更容易稳定下来：{stabilizers}",
+            f"相处建议：{communication_advice}",
+            f"更适合的人：{fit_people[0] if fit_people else ''}",
+        ],
+        "extreme_tags": extreme_tags,
+        "disclaimer": "这份结果更适合拿来理解你的关系节奏，不适合在吵架时当证据甩对方脸上。",
+        "quadrant_label": type_info.get("nickname", type_code),
     }
 
 
 def xiaoya_message_from_result(result: dict[str, Any]) -> str:
-    """生成小雅风格的依恋风格解读消息。"""
     scores = dict(result.get("scores") or {})
+    anxiety = float(scores.get("anxiety", 50))
+    avoidance = float(scores.get("avoidance", 50))
     type_code = str(result.get("type_code") or get_primary_attachment_type(scores))
     type_info = get_type_info(type_code)
-    love_manual = type_info.get("love_manual", {})
-    best_match = love_manual.get("best_match", [])
-    caution_match = love_manual.get("caution_match", [])
-
-    secure_score = scores.get("secure", 50)
-    anxious_score = scores.get("anxious", 50)
-    avoidant_score = scores.get("avoidant", 50)
-    fearful_score = scores.get("fearful", 50)
+    interpretation = _interpretation_from_result({"scores": scores, "type_code": type_code})
+    fit_people = _fit_people(type_code)
+    friction_people = _friction_people(type_code)
+    ecr_basis = _ecr_basis(type_code)
 
     if type_code == "secure":
-        pattern = "你在关系里整体是稳的，安全感更多来自持续、稳定、可预测的陪伴。"
-        fit = "最适合你的人，通常也是情绪稳定、沟通直接、不靠消失和冷暴力处理冲突的人。"
-        risk = "你最大的误区不是太黏，而是有时候太能扛，容易让别人误以为你什么都能自己消化。"
+        image = "你更像那种能接受亲近、也能保留独立的人，通常不需要靠反复确认来稳住关系。"
     elif type_code == "anxious":
-        pattern = "你在关系里对回应速度和情绪确认特别敏感，安全感来自被及时看见、被持续回应。"
-        fit = "最适合你的人，通常是稳定、愿意给反馈、不会忽冷忽热的人，尤其是安全型会更接得住你。"
-        risk = "你最容易踩的坑，是把短暂失联自动理解成不在乎，然后自己先把自己吓到。"
+        image = "你不是不能独立，你只是会更留意关系里的回应是不是稳定、是不是还在。"
     elif type_code == "avoidant":
-        pattern = "你在关系里最在意边界和空间，安全感并不来自高频黏连，而是来自被尊重、被允许慢一点靠近。"
-        fit = "最适合你的人，通常是情绪稳定、不追着你要答案、能给你空间但也有耐心的人。"
-        risk = "你最容易踩的坑，是一有压力就撤退，结果对方还没伤害你，你已经先把关系冻住了。"
+        image = "你不是没感觉，你只是会对太快、太满、太没有缓冲的亲近更敏感。"
     else:
-        pattern = "你在关系里既想靠近又怕受伤，安全感不是单纯靠陪伴就能解决，而是要同时被理解、被安抚、也被允许保留空间。"
-        fit = "最适合你的人，通常是稳定、耐心、能理解复杂情绪的人，不会因为你一时后退就立刻放弃。"
-        risk = "你最容易踩的坑，是明明很在乎，却因为害怕受伤把信号放得太乱，让关系一直卡在拉扯里。"
+        image = "你会一边想确认关系，一边又会对太近或太不稳同时警觉，所以容易出现靠近和后撤并存。"
 
-    best_reason = next((line.replace("为啥配：", "").strip() for line in best_match if line.startswith("为啥配：")), "")
-    caution_reason = next((line.replace("为啥磨合：", "").strip() for line in caution_match if line.startswith("为啥磨合：")), "")
-    caution_advice = next((line.replace("怎么磨合：", "").strip() for line in caution_match if line.startswith("怎么磨合：")), "")
-
-    advice: list[str] = []
-    if anxious_score >= 65:
-        advice.append("你一慌就容易脑补，所以最重要的不是憋着，而是尽快把不安翻译成一句明确的话说出来。")
-    if avoidant_score >= 65:
-        advice.append("你一有压力就想退，但再想消失之前，最好先给一句回应，让对方知道你不是不要这段关系。")
-    if fearful_score >= 65:
-        advice.append("你会一边想靠近一边想逃，这时候比起硬撑，更有用的是把矛盾本身告诉对方。")
-    if secure_score >= 65:
-        advice.append("你的稳定感是优势，但别只顾着接住别人，也记得把自己的需求说出来。")
-    if not advice:
-        advice.append("你这类模式最需要练的，不是猜，而是把需求、边界和不安直接说清楚。")
-
-    message = "亲爱的，依恋风格这题我给你讲得直白一点。\n\n"
+    message = "亲爱的，这次我按依恋研究里更常用的 ECR 两条轴，帮你翻译成好懂的话。\n\n"
     message += f"你这次更偏 **{type_info.get('nickname', type_code)}**。\n"
-    message += f"{pattern}\n\n"
-    message += "如果把你放进一段关系里，大概就是这种感觉："
-    if secure_score >= 75:
-        message += "你整体挺稳的，不太会因为一点风吹草动就失控。"
-    elif anxious_score >= 60:
-        message += "你其实很容易因为对方的回应速度而不安。"
-    elif avoidant_score >= 60:
-        message += "你一感觉到压力，就会先想往后退一点。"
-    elif fearful_score >= 60:
-        message += "你会一边想靠近，一边又怕自己受伤。"
-    else:
-        message += "你不是特别极端的类型，但关系一旦重要起来，你还是会被牵动。"
-    message += "\n\n"
-    fit_line = fit
-    if fit_line.startswith("最适合你的人，"):
-        fit_line = fit_line.replace("最适合你的人，", "", 1).strip()
-    if fit_line.startswith("通常是"):
-        fit_line = fit_line.replace("通常是", "", 1).strip()
-    if fit_line.startswith("通常也是"):
-        fit_line = fit_line.replace("通常也是", "", 1).strip()
-    if fit_line.startswith("也是"):
-        fit_line = fit_line.replace("也是", "", 1).strip()
-    message += f"真要说适合你的人，通常是这种：{fit_line}\n"
-    if best_match:
-        if best_match[0] not in {"任何类型都能配", "大多数类型都能适配"}:
-            message += f"像 {best_match[0]} 这种，通常会比较适合你。\n"
-    if best_reason:
-        message += f"之所以合适，是因为 {best_reason}。\n"
-    if caution_match:
-        message += f"但如果遇到 {caution_match[0]}，你就要更会沟通一点。\n"
-    if caution_reason:
-        message += f"你们最容易卡在这里：{caution_reason}。\n\n"
+    message += f"{image}\n"
+    if interpretation.get("summary"):
+        message += f"{interpretation['summary']}\n"
+    if interpretation.get("card_tip"):
+        message += f"先记住一句：{interpretation['card_tip']}\n\n"
     else:
         message += "\n"
-    message += "我最想提醒你的，其实就这几句：\n"
-    for index, item in enumerate(advice[:3], start=1):
-        message += f"{index}. {item}\n"
-    if caution_advice:
-        message += f"{min(len(advice[:3]) + 1, 4)}. {caution_advice.rstrip('。')}。\n"
+    message += "**关系模式**\n"
+    message += f"- 你的关系驱动力更像是：{interpretation['relationship_drive']}\n"
+    message += f"- 你更容易被这些情境牵动：{interpretation['triggers']}\n"
+    message += f"- 更能帮你稳定下来的，通常是：{interpretation['stabilizers']}\n"
+    message += f"- 你在关系里常见的卡点是：{interpretation['common_misread']}\n\n"
+    message += "**匹配建议**\n"
+    message += "更适合你长期相处的人，通常会更接近下面这几种：\n"
+    for item in fit_people:
+        message += f"- {item}\n"
     message += "\n"
-    cleaned_risk = risk
-    if cleaned_risk.startswith("你最容易踩的坑，是"):
-        cleaned_risk = cleaned_risk.replace("你最容易踩的坑，是", "", 1).strip()
-    if cleaned_risk.startswith("你最大的误区不是"):
-        message += f"还有一个点你要记住：{cleaned_risk}\n\n"
-    else:
-        message += f"还有一个点你要记住：你最容易在这件事上吃亏，{cleaned_risk}\n\n"
-    message += "你要是愿意，我下一条可以继续帮你拆：你最容易吸引哪类人、又最容易被哪类关系消耗。"
+    message += "需要重点磨合，或者很容易消耗你的，通常是这几类互动：\n"
+    for item in friction_people:
+        message += f"- {item}\n"
+    message += "\n"
+    message += "**相处建议**\n"
+    message += f"- 如果只记一句更有用的话，那就是：{interpretation['communication_advice']}\n"
+    message += "- 这不是让你压住天性，而是尽量把“猜”换成“说清楚”，把“触发后自动反应”换成“提前讲节奏和边界”。\n\n"
+    message += "**为什么我这么说**\n"
+    for item in ecr_basis:
+        message += f"- {item}\n"
+    message += "\n"
+    message += "你要是愿意，我下一条可以继续帮你拆：你最适合什么样的回应方式，和哪种相处节奏最容易消耗你。"
     return message
 
 
 def calculate_love_match(
     user_a_scores: dict[str, float], user_b_scores: dict[str, float]
 ) -> dict[str, Any]:
-    """计算两位用户的依恋风格匹配度
+    """轻量 ECR 匹配说明。
 
-    匹配规则：
-    - 安全型+任何 = 高分（安全型能适应任何类型）
-    - 焦虑型+回避型 = 低分（追逐-逃跑恶性循环）
-    - 恐惧型+任何 = 中低分（需要专业辅导）
+    这里不再做旧版“安全型配任何都高分”的硬规则，
+    改为根据双方焦虑/回避距离给出一个参考分。
     """
-    match_score = 75.0  # 起始分
-    dimension_analysis = {}
 
-    a_type = get_primary_attachment_type(user_a_scores)
-    b_type = get_primary_attachment_type(user_b_scores)
+    a_anxiety = float(user_a_scores.get("anxiety", 50))
+    a_avoidance = float(user_a_scores.get("avoidance", 50))
+    b_anxiety = float(user_b_scores.get("anxiety", 50))
+    b_avoidance = float(user_b_scores.get("avoidance", 50))
 
-    # 安全型+任何 = 高分
-    if a_type == "secure" or b_type == "secure":
-        match_score += 15
-        dimension_analysis["primary"] = "安全型配任何类型都很稳，能适应对方的依恋风格"
+    anxiety_gap = abs(a_anxiety - b_anxiety)
+    avoidance_gap = abs(a_avoidance - b_avoidance)
 
-    # 焦虑型+回避型 = 低分（追逐-逃跑恶性循环）
-    if (a_type == "anxious" and b_type == "avoidant") or \
-       (a_type == "avoidant" and b_type == "anxious"):
-        match_score -= 25
-        dimension_analysis["primary"] = "追逐-逃跑恶性循环：焦虑型黏回避型冷，焦虑型更慌回避型更冷"
+    score = 100 - (anxiety_gap * 0.35 + avoidance_gap * 0.35)
+    score = max(0, min(100, round(score, 1)))
 
-    # 恐惧型+任何 = 中低分（需要理解）
-    if a_type == "fearful" or b_type == "fearful":
-        match_score -= 10
-        dimension_analysis["fearful"] = "恐惧型需要对方理解TA的矛盾，既需要安全感又需要空间"
+    dimension_analysis = {
+        "anxiety": f"你们在关系不安度上的差值约为 {round(anxiety_gap, 1)} 分。",
+        "avoidance": f"你们在亲密后撤度上的差值约为 {round(avoidance_gap, 1)} 分。",
+    }
 
-    # 焦虑型+焦虑型 = 中分（可能过度依赖）
-    if a_type == "anxious" and b_type == "anxious":
-        match_score -= 5
-        dimension_analysis["anxious"] = "双焦虑型可能会过度依赖，需要学会独立"
+    if anxiety_gap >= 30:
+        dimension_analysis["trigger"] = "一方更需要明确回应，另一方可能会低估这种不安。"
+    if avoidance_gap >= 30:
+        dimension_analysis["space"] = "一方更需要空间和缓冲，另一方可能会把这种后退误解成冷淡。"
 
-    # 回避型+回避型 = 低分（可能互相疏离）
-    if a_type == "avoidant" and b_type == "avoidant":
-        match_score -= 15
-        dimension_analysis["avoidant"] = "双回避型可能会互相疏离，需要学会黏一下"
-
-    final_score = max(0, min(100, match_score))
-
-    if final_score >= 85:
-        analysis = "🌟 依恋风格匹配度极高，你们很合适!"
-    elif final_score >= 70:
-        analysis = "💕 依恋风格匹配度良好，你们可以尝试"
-    elif final_score >= 50:
-        analysis = "⚖️ 依恋风格匹配度中等，需要多磨合多沟通"
+    if score >= 85:
+        analysis = "你们的关系节奏比较接近，天然摩擦会少一些。"
+    elif score >= 70:
+        analysis = "整体能磨合，但需要更清楚地讲回应需求和空间需求。"
+    elif score >= 50:
+        analysis = "触发点差异比较明显，适合慢一点、讲清楚一点。"
     else:
-        analysis = "⚠️ 依恋风格匹配度较低，你们需要努力才能走到一起"
+        analysis = "你们的关系触发机制差得比较远，靠猜很容易累，必须靠沟通。"
 
     return {
-        "score": round(final_score, 1),
+        "score": score,
         "analysis": analysis,
         "dimension_analysis": dimension_analysis,
-        "a_type": a_type,
-        "b_type": b_type,
+        "a_type": get_primary_attachment_type(user_a_scores),
+        "b_type": get_primary_attachment_type(user_b_scores),
     }
+
+
+__all__ = [
+    "ATTACHMENT_DIMENSIONS",
+    "ATTACHMENT_FEEDBACKS",
+    "ATTACHMENT_QUESTIONS",
+    "ATTACHMENT_TYPE_LABELS",
+    "ATTACHMENT_TYPE_NAMES",
+    "ATTACHMENT_TYPES",
+    "calculate_all_scores",
+    "calculate_dimension_score",
+    "calculate_love_match",
+    "get_dimension_feedback",
+    "get_dimension_for_question",
+    "get_extreme_tags",
+    "get_primary_attachment_type",
+    "get_question",
+    "get_type_info",
+    "xiaoya_message_from_result",
+    "_interpretation_from_result",
+]
