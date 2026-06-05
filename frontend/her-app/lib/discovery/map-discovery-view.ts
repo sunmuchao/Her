@@ -96,6 +96,7 @@ function mapDiscoveryCard(
     image: resolveProfileImageUrl(card.cover_image_url, PLACEHOLDER_AVATAR),
     matchScore: card.match_score,
     matchReason: card.personality_reasoning?.summary || card.reason_summary,
+    matchHighlights: card.match_highlights,
     personality_reasons: card.personality_reasons || card.personality_reasoning?.reasons,
     personality_reasoning: card.personality_reasoning,
     personality_bonus: card.personality_bonus,

@@ -139,6 +139,7 @@ def build_candidate_card(candidate: dict[str, Any], *, reason_summary: str = "")
         "match_score": candidate.get("score") or candidate.get("fit_score"),
         "trust_badges": _build_trust_badges(candidate),
         "reason_summary": reason_summary or _default_reason_summary(candidate),
+        "match_highlights": _build_match_highlights(candidate, reason_summary=reason_summary),
         "personality_reasoning": deepcopy(candidate.get("personality_reasoning") or {}),
         "personality_bonus": candidate.get("personality_bonus"),
         "base_score": candidate.get("base_score"),
@@ -190,6 +191,30 @@ def _default_reason_summary(candidate: dict[str, Any]) -> str:
     if trust_headline:
         return trust_headline
     return "红娘建议你先看这位的整体资料。"
+
+
+def _build_match_highlights(candidate: dict[str, Any], *, reason_summary: str = "") -> list[str]:
+    highlights: list[str] = []
+
+    for item in list(candidate.get("matched_on") or []):
+        value = str(item or "").strip()
+        if value and value not in highlights:
+            highlights.append(value)
+        if len(highlights) >= 3:
+            break
+
+    for item in list((candidate.get("personality_reasoning") or {}).get("reasons") or []):
+        value = str(item or "").strip()
+        if value and value not in highlights:
+            highlights.append(value)
+        if len(highlights) >= 4:
+            break
+
+    summary = str(reason_summary or "").strip() or str((candidate.get("personality_reasoning") or {}).get("summary") or "").strip()
+    if not highlights and summary:
+        highlights.append(summary)
+
+    return highlights[:4]
 
 
 def build_profile_detail_view_from_payload(
