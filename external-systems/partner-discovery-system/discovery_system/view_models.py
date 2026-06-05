@@ -120,7 +120,9 @@ def build_candidate_card(candidate: dict[str, Any], *, reason_summary: str = "")
         title_parts.append(str(age))
     subtitle_parts = [str(part).strip() for part in (city, job, education) if str(part or "").strip()]
     photo_preview = list(candidate.get("photo_preview") or [])
-    return {
+
+    # === Phase 1: 增加 personality 字段 ===
+    card: dict[str, Any] = {
         "card_id": f"candidate-{profile_id}",
         "profile_id": profile_id,
         "title": " ".join(title_parts).strip(),
@@ -134,6 +136,17 @@ def build_candidate_card(candidate: dict[str, Any], *, reason_summary: str = "")
             "profile_id": profile_id,
         },
     }
+
+    # 注入 personality_traits（如果存在）
+    personality_traits = candidate.get("personality_traits")
+    if personality_traits:
+        card["personality_match_context"] = personality_traits
+        # 提取 availability 供前端判断是否展示
+        availability = candidate.get("personality_availability") or personality_traits.get("availability")
+        if availability:
+            card["personality_availability"] = availability
+
+    return card
 
 
 def _build_trust_badges(candidate: dict[str, Any]) -> list[str]:

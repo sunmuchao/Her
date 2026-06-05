@@ -16,6 +16,11 @@ from match_domain.profile_write_guard import is_search_criteria_key, merge_worki
 from match_domain.search_visibility import search_profiles_with_visibility_gate
 from observability import metric_gauge
 from partner_search import load_self_profile, search_profiles
+from partner_search.personality_traits_reader import (
+    load_traits_for_discovery,
+    load_traits_for_profiles,
+    PersonalityTraitsContext,
+)
 
 from .agent_runtime import DiscoveryDecision
 from .profile_updates import propose_profile_update as _propose_profile_update_impl
@@ -212,6 +217,49 @@ def search_partner_candidates_with(
             moderation_dsn=os.environ.get("PARTNER_CHAT_DB"),
         )
         response["request_meta"] = request_meta
+
+        # === Phase 1: 注入测评数据 ===
+        # 1. 加载用户的测评数据
+        user_traits = None
+        if persona_source and session.profile_id:
+            user_traits = load_traits_for_discovery(
+                source=persona_source,
+                profile_id=session.profile_id,
+                requester_id=session.requester_id,
+            )
+
+        # 2. 批量加载候选人的测评数据
+        results = response.get("results") or []
+        if results and persona_source:
+            candidate_ids = []
+            for candidate in results:
+                candidate_id = candidate.get("id")
+                if candidate_id:
+                    try:
+                        candidate_ids.append(int(candidate_id))
+                    except (TypeError, ValueError):
+                        pass
+
+            if candidate_ids:
+                candidate_traits_map = load_traits_for_profiles(
+                    source=persona_source,
+                    profile_ids=candidate_ids,
+                )
+
+                # 3. 把测评数据注入到候选人结果中
+                for candidate in results:
+                    candidate_id = candidate.get("id")
+                    if candidate_id:
+                        traits_ctx = candidate_traits_map.get(int(candidate_id))
+                        if traits_ctx and traits_ctx.availability.get("overall_completeness", 0) > 0:
+                            # 注入原始测评数据（不含判断结论）
+                            candidate["personality_traits"] = traits_ctx.to_dict()
+                            candidate["personality_availability"] = traits_ctx.availability
+
+        # 4. 把用户测评数据也注入到 response
+        if user_traits and user_traits.availability.get("overall_completeness", 0) > 0:
+            response["user_personality_traits"] = user_traits.to_dict()
+
         return response
     except Exception as exc:  # noqa: BLE001
         return {
