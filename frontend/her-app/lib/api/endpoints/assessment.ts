@@ -2,7 +2,7 @@ import { gatewayJson, queryString } from '@/lib/api/client'
 
 export type AssessmentIntroCard = {
   card_type: 'assessment_intro'
-  assessment_type?: 'mbti_16' | 'attachment_style' | 'love_language'
+  assessment_type?: 'mbti_16' | 'attachment_style' | 'big_five' | 'sternberg_triangular_love'
   assessment_id: string
   intro_data: {
     title: string
@@ -41,7 +41,7 @@ export type AssessmentFeedbackCard = {
 
 export type AssessmentResultCard = {
   card_type: 'assessment_result'
-  assessment_type?: 'mbti_16' | 'attachment_style' | 'love_language'  // 添加 assessment_type 字段（供前端识别测评类型）
+  assessment_type?: 'mbti_16' | 'attachment_style' | 'big_five' | 'sternberg_triangular_love'
   assessment_id: string
   result_data: {
     type_code: string
@@ -53,11 +53,36 @@ export type AssessmentResultCard = {
       level: 'high' | 'medium' | 'low'
       trait: string
     }>
+    quadrant?: {
+      x_key: string
+      x_name: string
+      x_score: number
+      y_key: string
+      y_name: string
+      y_score: number
+      type_code: string
+      type_name: string
+      quadrants: Record<string, {
+        type_code: string
+        label: string
+      }>
+    }
     labels?: string[]
     interpretation_data?: {
       summary: string
-      love_style: string
-      match_suggestions: string[]
+      love_style?: string
+      match_suggestions?: string[]
+      relationship_drive?: string
+      triggers?: string
+      stabilizers?: string
+      common_misread?: string
+      communication_advice?: string
+      card_tip?: string
+      fit_people?: string[]
+      friction_people?: string[]
+      ecr_basis?: string[]
+      quadrant_label?: string
+      disclaimer?: string
       extreme_tags?: Array<{
         tag: string
         description: string
@@ -73,8 +98,18 @@ export type AssessmentInterpretationCard = {
   assessment_id: string
   interpretation_data: {
     summary: string
-    love_style: string
-    match_suggestions: string[]
+    love_style?: string
+    match_suggestions?: string[]
+    relationship_drive?: string
+    triggers?: string
+    stabilizers?: string
+    common_misread?: string
+    communication_advice?: string
+    card_tip?: string
+    fit_people?: string[]
+    friction_people?: string[]
+    ecr_basis?: string[]
+    disclaimer?: string
   }
 }
 
@@ -87,7 +122,7 @@ export type AssessmentCard =
 
 export async function startAssessment(
   userKey: string,
-  assessmentType: 'mbti_16' | 'attachment_style' | 'love_language' = 'mbti_16'
+  assessmentType: 'mbti_16' | 'attachment_style' | 'big_five' | 'sternberg_triangular_love' = 'mbti_16'
 ): Promise<AssessmentIntroCard> {
   return gatewayJson<AssessmentIntroCard>('/v1/assessment/start', {
     method: 'POST',
@@ -110,7 +145,7 @@ export async function startAssessment(
  */
 export async function getOrCreateAssessment(
   userKey: string,
-  assessmentType: 'mbti_16' | 'attachment_style' | 'love_language' = 'mbti_16'
+  assessmentType: 'mbti_16' | 'attachment_style' | 'big_five' | 'sternberg_triangular_love' = 'mbti_16'
 ): Promise<AssessmentIntroCard> {
   return gatewayJson<AssessmentIntroCard>('/v1/assessment/get-or-create', {
     method: 'POST',
@@ -163,7 +198,7 @@ export async function fetchAssessmentInterpretation(params: {
 }
 
 export async function fetchPersonalityTraits(userKey: string) {
-  return gatewayJson<{ user_key: string; mbti: unknown; attachment: unknown; love_language: unknown }>(
+  return gatewayJson<{ user_key: string; mbti: unknown; attachment: unknown; big_five: unknown; sternberg: unknown }>(
     `/v1/persona/personality-traits${queryString({ user_key: userKey })}`,
     { includeAuth: true },
   )
@@ -199,7 +234,10 @@ export async function addAssessmentLabels(userKey: string, labels: string[]): Pr
  * 测评完成后，小雅会主动发送解读消息。
  * 前端在打开小雅对话时调用此API检查是否有新消息。
  */
-export async function getXiaoyaMessage(userKey: string): Promise<{
+export async function getXiaoyaMessage(
+  userKey: string,
+  assessmentType?: 'mbti_16' | 'attachment_style' | 'big_five' | 'sternberg_triangular_love'
+): Promise<{
   has_message: boolean
   message?: string
   assessment_id?: string
@@ -211,7 +249,7 @@ export async function getXiaoyaMessage(userKey: string): Promise<{
   }>('/v1/assessment/xiaoya-message', {
     method: 'POST',
     includeAuth: true,
-    body: JSON.stringify({ user_key: userKey }),
+    body: JSON.stringify({ user_key: userKey, assessment_type: assessmentType }),
   })
 }
 

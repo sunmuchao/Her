@@ -6,6 +6,8 @@ import random
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from persona_memory_sync.synthetic_personality_traits import build_synthetic_personality_traits
+
 
 OUTPUT_PATH = Path(__file__).resolve().parent / "virtual_profiles_10000.csv"
 PHOTOS_OUTPUT_PATH = Path(__file__).resolve().parent / "virtual_profile_photos_10000.csv"
@@ -150,6 +152,7 @@ PERSONA_DB_COLUMNS = [
     "target_want_children",
     "target_marriage_timeline",
     "preferred_traits",
+    "self_personality_traits_json",
     "created_at",
     "updated_at",
 ]
@@ -880,6 +883,7 @@ def to_profile_row(record: dict) -> dict:
 
 
 def to_persona_row(record: dict) -> dict:
+    synthetic_traits = build_synthetic_personality_traits(record, identity=str(record["id"]))
     return {
         "user_key": str(record["id"]),
         "display_name": record["name"],
@@ -914,6 +918,7 @@ def to_persona_row(record: dict) -> dict:
         "target_want_children": record.get("want_children"),
         "target_marriage_timeline": record.get("marriage_timeline"),
         "preferred_traits": record.get("personality"),
+        "self_personality_traits_json": json.dumps(synthetic_traits, ensure_ascii=False, sort_keys=True),
         "created_at": record.get("created_at"),
         "updated_at": record.get("updated_at"),
     }

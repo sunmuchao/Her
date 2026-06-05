@@ -8,7 +8,7 @@ import React, { useState } from 'react'
 
 type LastResult = {
   value_type: string
-  top3: Array<{ trait_id: string; trait_name: string; chips: number }>
+  top3: Array<{ lot_id: string; title: string; chips: number }>
 }
 
 type Props = {
@@ -76,7 +76,7 @@ export function ValuesAuctionChoiceCard({ lastResult, onReuse, onRedo }: Props) 
                 <div className="flex gap-2 text-xs">
                   {lastResult.top3.map((trait, i) => (
                     <span key={i} className="px-2 py-1 bg-amber-100 rounded-full text-amber-600">
-                      {trait.trait_name} {trait.chips}票
+                      {trait.title} {trait.chips}票
                     </span>
                   ))}
                 </div>

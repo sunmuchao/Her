@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
 import types
 import sys
 from unittest import mock
 
+from assessment import attachment_service, big_five_service, sternberg_service
+from assessment.love_style_generator import get_xiaoya_message
 from assessment.service import add_xiaoya_message_to_discovery_session
 
 
@@ -80,3 +83,102 @@ def test_add_xiaoya_message_to_discovery_session_appends_result_before_message()
     assert timeline[0]["card"]["result_data"]["type_code"] == "INTJ"
     assert timeline[1]["body"] == "亲爱的，你的测试结果出来啦！"
     assert fake_service.storage.saved_session is fake_service.session
+
+
+def test_mbti_xiaoya_message_uses_official_preference_structure() -> None:
+    message = get_xiaoya_message(
+        "INTJ",
+        {"ei": 20, "sn": 35, "tf": 80, "jp": 75},
+    )
+
+    assert "**INTJ**" in message["identity"]
+    assert "==重点是==" in message["identity"]
+    assert "再往下说一点" in message["quirk"]
+    assert "如果再往前多说一步" in message["suggestion"]
+    assert "我下一条还能继续陪你拆" in message["suggestion"]
+
+
+class _SqlFormattingCursor:
+    def __init__(self, row: tuple[str, str] | tuple[str, str, str] | None) -> None:
+        self._row = row
+        self.last_query: str | None = None
+        self.last_params: tuple[object, ...] | None = None
+
+    def __enter__(self) -> _SqlFormattingCursor:
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        return None
+
+    def execute(self, query: str, params: tuple[object, ...]) -> None:
+        # Simulate PyMySQL-style interpolation enough to catch bare % regressions.
+        query % params
+        self.last_query = query
+        self.last_params = params
+
+    def fetchone(self):
+        return self._row
+
+
+class _SqlFormattingConn:
+    def __init__(self, row: tuple[str, str] | tuple[str, str, str] | None) -> None:
+        self.cursor_instance = _SqlFormattingCursor(row)
+
+    def cursor(self) -> _SqlFormattingCursor:
+        return self.cursor_instance
+
+
+def test_get_big_five_xiaoya_message_escapes_like_percent(monkeypatch) -> None:
+    payload = json.dumps({"message": "big five", "read": False}, ensure_ascii=False)
+    conn = _SqlFormattingConn((payload, "big_five_20260604"))
+
+    monkeypatch.setattr(big_five_service, "_resolve_source", lambda source: ("mysql://fake/db", "user_persona_observations"))
+    monkeypatch.setattr(big_five_service, "mysql_connect", lambda source: conn)
+    monkeypatch.setattr(big_five_service, "release_persona_connection", lambda source, conn: None)
+
+    result = big_five_service.get_big_five_xiaoya_message(source="mysql://fake", user_key="u1")
+
+    assert result == {
+        "has_message": True,
+        "message": "big five",
+        "assessment_id": "big_five_20260604",
+    }
+    assert "conversation_ref LIKE %s" in (conn.cursor_instance.last_query or "")
+    assert conn.cursor_instance.last_params == ("u1", "assessment.xiaoya_message", "big_five_%")
+
+
+def test_get_attachment_xiaoya_message_escapes_like_percent(monkeypatch) -> None:
+    payload = json.dumps({"message": "attachment", "read": False}, ensure_ascii=False)
+    conn = _SqlFormattingConn((payload, "attachment_20260604", "2026-06-04 12:00:00"))
+
+    monkeypatch.setattr(attachment_service, "_resolve_source", lambda source: ("mysql://fake/db", "user_persona_observations"))
+    monkeypatch.setattr(attachment_service, "mysql_connect", lambda source: conn)
+    monkeypatch.setattr(attachment_service, "release_persona_connection", lambda source, conn: None)
+
+    result = attachment_service.get_attachment_xiaoya_message(source="mysql://fake", user_key="u1")
+
+    assert result == {
+        "has_message": True,
+        "message": "attachment",
+        "assessment_id": "attachment_20260604",
+    }
+    assert "LIKE 'attachment_%%'" in (conn.cursor_instance.last_query or "")
+
+
+def test_get_sternberg_xiaoya_message_escapes_like_percent(monkeypatch) -> None:
+    payload = json.dumps({"message": "sternberg", "read": False}, ensure_ascii=False)
+    conn = _SqlFormattingConn((payload, "sternberg_20260604"))
+
+    monkeypatch.setattr(sternberg_service, "_resolve_source", lambda source: ("mysql://fake/db", "user_persona_observations"))
+    monkeypatch.setattr(sternberg_service, "mysql_connect", lambda source: conn)
+    monkeypatch.setattr(sternberg_service, "release_persona_connection", lambda source, conn: None)
+
+    result = sternberg_service.get_sternberg_xiaoya_message(source="mysql://fake", user_key="u1")
+
+    assert result == {
+        "has_message": True,
+        "message": "sternberg",
+        "assessment_id": "sternberg_20260604",
+    }
+    assert "conversation_ref LIKE %s" in (conn.cursor_instance.last_query or "")
+    assert conn.cursor_instance.last_params == ("u1", "assessment.xiaoya_message", "sternberg_%")

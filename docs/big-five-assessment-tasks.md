@@ -30,7 +30,7 @@
 ```sql
 ALTER TABLE user_personas 
 ADD COLUMN self_personality_traits_json TEXT DEFAULT NULL 
-COMMENT '性格特质测评结果（JSON格式，包含大五人格、依恋风格、恋爱语言等）';
+COMMENT '性格特质测评结果（JSON格式，包含大五人格、依恋风格等）';
 ```
 
 **验收标准**：
@@ -279,7 +279,6 @@ Response:
 {
     "big_five": {...},
     "attachment": {...},
-    "love_language": {...}
 }
 ```
 
@@ -404,7 +403,7 @@ Response:
   parameters: {
     assessment_type: {
       type: "string",
-      enum: ["big_five", "attachment", "love_language"],
+      enum: ["big_five", "attachment"],
       description: "测评类型"
     }
   }

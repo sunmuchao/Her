@@ -100,6 +100,7 @@ export default function RelationshipsPage({
   useEffect(() => {
     const userId = getUserId()
     if (!userId) return
+    const resolvedUserId = userId
 
     const activeCaseIds = cases
       .filter((item) => item.main_conversation_id && item.case_id)
@@ -112,7 +113,7 @@ export default function RelationshipsPage({
       const timelines = await Promise.allSettled(
         activeCaseIds.map(async (caseId) => ({
           caseId,
-          data: await fetchCaseConversationTimeline(caseId, userId).catch(() => null),
+          data: await fetchCaseConversationTimeline(caseId, resolvedUserId).catch(() => null),
         })),
       )
 

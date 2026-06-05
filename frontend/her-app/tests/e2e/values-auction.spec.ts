@@ -134,36 +134,52 @@ test('values auction single-player flow hits real backend and renders all cards'
   await expect(page.getByRole('heading', { name: /价值观拍卖/ })).toBeVisible({ timeout: 15000 })
   await expect(page.getByRole('button', { name: '开始拍卖' })).toBeVisible()
 
-  const traitsRequest = page.waitForRequest(
-    (request) => request.url().includes('/api/gateway/v1/values-auction/traits') && request.method() === 'POST',
+  const lotsRequest = page.waitForRequest(
+    (request) => request.url().includes('/api/gateway/v1/values-auction/lots') && request.method() === 'POST',
     { timeout: 15000 },
   )
   await page.getByRole('button', { name: '开始拍卖' }).click()
-  await traitsRequest
-  await expect(page.getByText('分配你的筹码')).toBeVisible({ timeout: 15000 })
-  await expect(page.getByText(/剩余 10 筹码/)).toBeVisible()
+  await lotsRequest
+  await expect(page.getByText(/第 1 件/)).toBeVisible({ timeout: 15000 })
+  await expect(page.getByText(/还剩 10 筹码|可先试探性出价/)).toBeVisible()
 
-  const plusButtons = page.locator('button').filter({ hasText: '+' })
-  await plusButtons.nth(0).click()
-  await plusButtons.nth(0).click()
-  await plusButtons.nth(1).click()
-  await plusButtons.nth(1).click()
-  await plusButtons.nth(2).click()
-  await plusButtons.nth(2).click()
-  await plusButtons.nth(3).click()
-  await plusButtons.nth(3).click()
-  await plusButtons.nth(4).click()
-  await plusButtons.nth(4).click()
-  await expect(page.getByText('确认分配')).toBeVisible({ timeout: 10000 })
+  const assignCurrentLot = async (label: string) => {
+    if (label === '0 筹码') {
+      await page.getByRole('button', { name: '这件不投' }).click()
+      return
+    }
+    await page.getByRole('button', { name: label }).click()
+    await page.getByRole('button', { name: /锁定这件|进入封盘前调整/ }).click()
+  }
+
+  await assignCurrentLot('2 筹码')
+  await assignCurrentLot('2 筹码')
+  await assignCurrentLot('1 筹码')
+  await assignCurrentLot('2 筹码')
+  await assignCurrentLot('1 筹码')
+  await assignCurrentLot('0 筹码')
+  await assignCurrentLot('1 筹码')
+  await assignCurrentLot('0 筹码')
+  await assignCurrentLot('1 筹码')
+
+  await expect(page.getByRole('heading', { name: '封盘前最后调仓' })).toBeVisible({ timeout: 15000 })
+  await expect(page.getByText(/当前分配/)).toBeVisible()
 
   const submitRequest = page.waitForRequest(
     (request) => request.url().includes('/api/gateway/v1/values-auction/submit') && request.method() === 'POST',
     { timeout: 15000 },
   )
-  await page.getByRole('button', { name: '确认分配' }).click()
+  await page.getByRole('button', { name: '封盘揭晓' }).click()
   await submitRequest
   await expect(page.getByRole('heading', { name: '拍卖完成！' })).toBeVisible({ timeout: 15000 })
   await expect(page.getByRole('button', { name: '查看AI解读' })).toBeVisible()
+  await expect(page.getByText('核心价值：')).toBeVisible()
+  await expect(page.getByText(/安全/)).toBeVisible()
+  await expect(page.getByText(/仁爱/)).toBeVisible()
+  await expect(page.getByText(/价值方向/)).toBeVisible()
+  await expect(page.getByText(/保守维持 40%/)).toBeVisible()
+  await expect(page.getByText(/自我提升 22%/)).toBeVisible()
+  await expect(page.getByText(/你既想证明自己，也会顾虑身边人的感受和关系成本。/)).toBeVisible()
 
   const interpretationRequest = page.waitForRequest(
     (request) =>
@@ -174,6 +190,12 @@ test('values auction single-player flow hits real backend and renders all cards'
   await page.getByRole('button', { name: '查看AI解读' }).click()
   await interpretationRequest
   await expect(page.getByRole('heading', { name: 'AI 价值观解读' })).toBeVisible({ timeout: 15000 })
+  await expect(page.getByText(/你拍下了：这辈子都不用再为钱妥协, 走到哪里都让人高看一眼, 全家人健康平安到百岁。/)).toBeVisible()
+  await expect(page.getByText(/你整体更偏 保守维持、自我提升。/)).toBeVisible()
+  await expect(page.getByText(/你既看重稳定，也有明确上进心，想把生活和成就都经营好。/)).toBeVisible()
+  await page.getByRole('button', { name: '需要注意' }).click()
+  await expect(page.getByText(/建议找务实、成熟、能一起处理现实问题的人。/)).toBeVisible()
+  await expect(page.getByText(/你内部的主要拉扯是：你既想证明自己，也会顾虑身边人的感受和关系成本。/)).toBeVisible()
   await expect(page.getByRole('button', { name: '继续聊天' })).toBeVisible()
 
   expect(Array.from(hits)).toEqual(
@@ -182,7 +204,7 @@ test('values auction single-player flow hits real backend and renders all cards'
       'POST /v1/auth/sms/verify-code',
       'GET /v1/auth/me',
       'POST /v1/values-auction/start',
-      'POST /v1/values-auction/traits',
+      'POST /v1/values-auction/lots',
       'POST /v1/values-auction/submit',
       'POST /v1/values-auction/interpretation',
     ]),

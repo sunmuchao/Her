@@ -1069,13 +1069,13 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
                           )}
                           <div
                             className={cn(
-                              'max-w-[75%] px-3 py-2 rounded-2xl text-sm whitespace-pre-line',
+                              'max-w-[78%] rounded-2xl text-sm whitespace-pre-line',
                               msg.isFromMe
-                                ? 'bg-gold text-white rounded-br-md'
-                                : 'bg-secondary text-foreground rounded-bl-md',
+                                ? 'bg-gold text-white rounded-br-md px-3 py-2'
+                                : 'bg-secondary text-foreground rounded-bl-md px-4 py-3',
                             )}
                           >
-                            {msg.body}
+                            {msg.isFromMe ? msg.body : <XiaoyaRichText content={msg.body} className="space-y-3.5" />}
                           </div>
                         </div>
                       </div>

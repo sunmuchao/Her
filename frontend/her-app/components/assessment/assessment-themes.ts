@@ -5,7 +5,12 @@
  * and create a unique experience for each test.
  */
 
-export type AssessmentType = 'mbti_16' | 'attachment_style' | 'love_language' | 'values_auction'
+export type AssessmentType =
+  | 'mbti_16'
+  | 'attachment_style'
+  | 'big_five'
+  | 'sternberg_triangular_love'
+  | 'values_auction'
 
 export interface AssessmentTheme {
   name: string
@@ -29,7 +34,7 @@ export interface AssessmentTheme {
   }>
 
   // Icon configuration
-  iconType: 'brain' | 'heart' | 'sparkles' | 'link' | 'message-heart' | 'coins'
+  iconType: 'brain' | 'heart' | 'sparkles' | 'link' | 'coins'
 }
 
 export const ASSESSMENT_THEMES: Record<AssessmentType, AssessmentTheme> = {
@@ -37,8 +42,8 @@ export const ASSESSMENT_THEMES: Record<AssessmentType, AssessmentTheme> = {
     name: 'MBTI 恋爱测试',
     shortName: 'MBTI',
     description: '探索你在恋爱中的性格特质',
-    duration: '5分钟',
-    questionCount: 20,
+    duration: '10-15分钟',
+    questionCount: 48,
 
     primaryColor: 'text-primary',
     primaryBg: 'bg-primary/10',
@@ -79,28 +84,50 @@ export const ASSESSMENT_THEMES: Record<AssessmentType, AssessmentTheme> = {
     iconType: 'link',
   },
 
-  love_language: {
-    name: '恋爱语言测试',
-    shortName: '恋爱语言',
-    description: '发现你表达和接收爱的方式',
-    duration: '3分钟',
-    questionCount: 15,
+  big_five: {
+    name: '大五人格特质',
+    shortName: '大五人格',
+    description: '查看你的连续人格画像',
+    duration: '8-10分钟',
+    questionCount: 50,
 
-    primaryColor: 'text-lavender',
-    primaryBg: 'bg-lavender/10',
-    softBg: 'bg-lavender-soft',
-    gradientFrom: 'from-lavender-soft',
-    gradientTo: 'to-sage-soft',
+    primaryColor: 'text-sage',
+    primaryBg: 'bg-sage/10',
+    softBg: 'bg-sage-soft',
+    gradientFrom: 'from-sage-soft',
+    gradientTo: 'to-gold-soft',
 
     progressColors: [
-      { key: 'words', name: '肯定言词', color: 'bg-lavender' },
-      { key: 'time', name: '精心时刻', color: 'bg-sage' },
-      { key: 'gifts', name: '接受礼物', color: 'bg-gold' },
-      { key: 'service', name: '服务行动', color: 'bg-coral' },
-      { key: 'touch', name: '身体接触', color: 'bg-rose' },
+      { key: 'openness', name: '开放性', color: 'bg-lavender' },
+      { key: 'conscientiousness', name: '尽责性', color: 'bg-sage' },
+      { key: 'extraversion', name: '外向性', color: 'bg-rose' },
+      { key: 'agreeableness', name: '宜人性', color: 'bg-gold' },
+      { key: 'neuroticism', name: '情绪敏感度', color: 'bg-coral' },
     ],
 
-    iconType: 'message-heart',
+    iconType: 'sparkles',
+  },
+
+  sternberg_triangular_love: {
+    name: '爱情三元论',
+    shortName: '爱情三元论',
+    description: '查看亲密、激情与承诺的组合',
+    duration: '3-4分钟',
+    questionCount: 15,
+
+    primaryColor: 'text-amber',
+    primaryBg: 'bg-amber/10',
+    softBg: 'bg-amber-soft',
+    gradientFrom: 'from-amber-soft',
+    gradientTo: 'to-rose-soft',
+
+    progressColors: [
+      { key: 'intimacy', name: '亲密', color: 'bg-rose' },
+      { key: 'passion', name: '激情', color: 'bg-coral' },
+      { key: 'commitment', name: '承诺', color: 'bg-amber' },
+    ],
+
+    iconType: 'heart',
   },
 
   values_auction: {

@@ -58,8 +58,8 @@ export function ValuesAuctionIntroCardComponent({ card, onStart }: Props) {
             <Target className="w-5 h-5 text-amber" />
           </div>
           <div className="min-w-0">
-            <div className="text-xs text-muted-foreground">{"特质数量"}</div>
-            <div className="text-sm font-medium truncate">{intro_data.trait_count}{"个特质"}</div>
+            <div className="text-xs text-muted-foreground">{"拍品数量"}</div>
+            <div className="text-sm font-medium truncate">{intro_data.lot_count}{"个拍品"}</div>
           </div>
         </div>
 

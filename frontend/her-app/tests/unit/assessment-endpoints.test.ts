@@ -25,7 +25,7 @@ describe('assessment endpoints', () => {
           intro_data: {
             title: 'MBTI 16型人格测评',
             description: '快速看清你的相处风格和关系偏好',
-            duration: '约5分钟 · 20题',
+            duration: '约10-15分钟 · 48题',
             reward: '匹配质量提升10%',
           },
         }),
@@ -100,7 +100,7 @@ describe('assessment endpoints', () => {
             intro_data: {
               title: 'MBTI 恋爱测试',
               description: '测测你在恋爱中是哪一型',
-              duration: '5分钟 · 20题',
+              duration: '10-15分钟 · 48题',
               reward: '测完了解你的恋爱优势与雷区',
             },
           }),
@@ -138,10 +138,10 @@ describe('assessment endpoints', () => {
             assessment_id: 'mbti_demo',
             question_data: {
               current_question: 1,
-              total_questions: 20,
+              total_questions: 48,
               question_text: '题目',
               options: [],
-              progress: 5,
+              progress: 2,
               assessment_id: 'mbti_demo',
             },
           }),

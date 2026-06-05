@@ -199,7 +199,6 @@ def test_personality_traits_route_reads_assessment_traits() -> None:
             return_value={
                 "mbti": {"type_code": "ENTJ"},
                 "attachment": {},
-                "love_language": {},
             },
         ) as traits_mock,
     ):

@@ -48,6 +48,21 @@ export type HiddenValue = {
   weight: number
 }
 
+export type HigherOrderValue = {
+  key: string
+  label?: string
+  weight: number
+}
+
+export type InternalTension = {
+  left: string
+  right: string
+  left_label?: string
+  right_label?: string
+  intensity: number
+  description?: string
+}
+
 // ============================================================
 // 卡片类型定义
 // ============================================================
@@ -96,6 +111,7 @@ export type ValuesAuctionResultCard = {
   card_type: 'values_auction_result'
   assessment_id: string
   result_data: {
+    schema_version?: string
     bids: Array<{
       lot_id: string
       title: string
@@ -104,7 +120,11 @@ export type ValuesAuctionResultCard = {
       percentage: number
     }>
     hidden_values?: Record<string, number>
+    schwartz_values?: Record<string, number>
     top_hidden_values?: HiddenValue[]
+    higher_order_values?: Record<string, number>
+    higher_order_summary?: HigherOrderValue[]
+    internal_tensions?: InternalTension[]
     value_type: string
     value_labels: string[]
     top3: Array<{
@@ -131,6 +151,7 @@ export type ValuesAuctionInterpretationCard = {
       interpretation: string
     }>
     hidden_values_analysis?: HiddenValue[]
+    higher_order_analysis?: HigherOrderValue[]
     love_style: string
     match_suggestions: string[]
     caution_traits?: string[]
@@ -161,20 +182,42 @@ export type ValuesMatchAnalysisCard = {
       user_key: string
       value_type: string
       hidden_values?: Record<string, number>
+      higher_order_values?: Record<string, number>
       top3: Array<{ lot_id: string; title: string; chips: number }>
     }
     user2: {
       user_key: string
       value_type: string
       hidden_values?: Record<string, number>
+      higher_order_values?: Record<string, number>
       top3: Array<{ lot_id: string; title: string; chips: number }>
     }
+    schema_version?: string
+    alignment_score?: number
     match_type: string
     common_lots?: string[]
     common_hidden_values?: Array<{
       key: string
+      label?: string
       a_weight: number
       b_weight: number
+    }>
+    shared_directions?: Array<{
+      key: string
+      label: string
+      a_weight: number
+      b_weight: number
+    }>
+    negotiable_differences?: Array<{
+      type: string
+      left: string
+      right: string
+      description: string
+    }>
+    structural_tensions?: Array<{
+      left: string
+      right: string
+      description: string
     }>
     misalignments?: Array<{
       type: string
@@ -404,22 +447,21 @@ export function bidsToArray(bids: Record<string, number>): Array<{ lot_id: strin
 // ============================================================
 
 export const HIDDEN_VALUE_LABELS: Record<string, string> = {
-  wealth: '财富',
-  status: '地位',
+  self_direction: '自我导向',
+  stimulation: '刺激',
+  hedonism: '享乐',
+  achievement: '成就',
   power: '权力',
-  freedom: '自由',
-  security: '安全感',
-  love: '爱情',
-  loyalty: '忠诚',
-  family: '家庭',
-  friendship: '友情',
-  companionship: '陪伴',
-  recognition: '认可',
-  self_actualization: '自我实现',
-  wisdom: '智慧',
-  inner_peace: '内心平静',
-  independence: '独立',
-  altruism: '利他',
-  social_responsibility: '社会责任',
-  meaning: '意义',
+  security: '安全',
+  conformity: '顺从',
+  tradition: '传统',
+  benevolence: '仁爱',
+  universalism: '普遍主义',
+}
+
+export const HIGHER_ORDER_LABELS: Record<string, string> = {
+  openness_to_change: '开放变化',
+  conservation: '保守维持',
+  self_enhancement: '自我提升',
+  self_transcendence: '超越自我',
 }

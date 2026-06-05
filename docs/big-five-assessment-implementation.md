@@ -102,7 +102,7 @@ AI：调用 `start_assessment` skill → 返回测评卡片
   parameters: {
     assessment_type: {
       type: "string",
-      enum: ["big_five", "attachment", "love_language"],
+      enum: ["big_five", "attachment"],
       description: "测评类型"
     }
   },
@@ -596,7 +596,7 @@ interface AssessmentCard {
 -- 数据库迁移脚本
 ALTER TABLE user_personas 
 ADD COLUMN self_personality_traits_json TEXT DEFAULT NULL 
-COMMENT '性格特质测评结果（JSON格式，包含大五人格、依恋风格、恋爱语言等）';
+COMMENT '性格特质测评结果（JSON格式，包含大五人格、依恋风格等）';
 ```
 
 ### 4.2 存储内容结构
@@ -688,7 +688,7 @@ def get_user_personality_traits(user_key: str) -> dict:
     从 user_personas 表读取性格特质
     
     Returns:
-        dict: 性格特质数据，包含 big_five, attachment, love_language 等
+        dict: 性格特质数据，包含 big_five、attachment 等
     """
     persona = get_user_persona(user_key)
     traits_json = persona.get("self_personality_traits_json")
@@ -731,7 +731,7 @@ def get_big_five_scores(user_key: str) -> dict:
     ↓
 AI 读取双方画像数据
     ├─ user_personas.self_personality_traits_json
-    ├─ 包括大五人格、依恋风格、恋爱语言等
+    ├─ 包括大五人格、依恋风格等
     └─ AI 获取完整画像
     ↓
 AI 自主判断匹配度
@@ -1310,7 +1310,6 @@ async def generate_ai_interpretation(user_key: str, scores: dict) -> dict:
 {
   "big_five": {...},           // 大五人格
   "attachment": {...},         // 依恋风格
-  "love_language": {...},      // 恋爱语言
   "enneagram": {...}           // 九型人格（可选）
 }
 ```

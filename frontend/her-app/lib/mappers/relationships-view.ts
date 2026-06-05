@@ -1,6 +1,6 @@
 import type { ProxyIntroCase } from '@/lib/api/endpoints/proxy-intro'
 import { PLACEHOLDER_AVATAR, resolveProfileImageUrl } from '@/lib/image-url'
-import { mapTrustHubPendingActions } from '@/lib/trust/map-trust-hub'
+import { mapTrustHubPendingActions, type TrustHubVerificationItem } from '@/lib/trust/map-trust-hub'
 
 /**
  * 活跃关系视图数据
@@ -161,7 +161,7 @@ export function getWaitingDays(item: ProxyIntroCase): number | null {
  * @returns 待处理认证项数组
  */
 export function buildPendingVerificationActions(trustHub: unknown) {
-  const data = trustHub as { trust_hub?: { verification_center?: { items?: unknown[] } } } | null
+  const data = trustHub as { trust_hub?: { verification_center?: { items?: TrustHubVerificationItem[] } } } | null
   return mapTrustHubPendingActions(data?.trust_hub?.verification_center?.items).map((item) => ({
     id: item.id,
     type: 'verification' as const,
