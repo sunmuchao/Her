@@ -34,8 +34,10 @@ from discovery_system.agent_runtime import (  # noqa: E402
     _configure_agents_sdk_provider,
 )
 from discovery_system.agent_session_store import InMemoryDiscoveryAgentSessionStore  # noqa: E402
+from discovery_system.service_integrations import search_partner_candidates_with  # noqa: E402
 from discovery_system.service import DiscoveryService  # noqa: E402
-from discovery_system.storage import InMemoryDiscoveryStorage  # noqa: E402
+from discovery_system.storage import InMemoryDiscoveryStorage, StoredSession  # noqa: E402
+from partner_search.personality_traits_reader import PersonalityTraitsContext  # noqa: E402
 
 
 class _FakeRuntime:
@@ -840,6 +842,133 @@ class DiscoveryServiceTests(unittest.TestCase):
         self.assertIn("从测评角度看", last_assistant["body"])
         self.assertIn("张安萌这位", last_assistant["body"])
         self.assertIn("唐语妍这位", last_assistant["body"])
+
+    def test_build_result_cards_prefers_personality_summary_over_generic_reason(self) -> None:
+        service = DiscoveryService(
+            storage=InMemoryDiscoveryStorage(),
+            runtime=_FakeRuntime(),
+        )
+        cards = service._build_result_cards(
+            {
+                "results": [
+                    {
+                        "id": 2001,
+                        "name": "张安萌",
+                        "score": 96,
+                        "profile": {"age": 27, "city": "无锡", "job": "采购", "education": "本科"},
+                        "personality_reasoning": {
+                            "used": True,
+                            "summary": "都看重“稳定经营、家庭责任”，她的依恋也偏安全型",
+                            "reasons": ["都看重“稳定经营、家庭责任”", "她的依恋也偏安全型"],
+                        },
+                        "personality_traits": {
+                            "mbti": {"type_code": "ESFJ"},
+                            "attachment": {"type_code": "secure"},
+                            "availability": {"has_mbti": True, "has_attachment": True, "overall_completeness": 0.4},
+                        },
+                    }
+                ]
+            },
+            decision=DiscoveryDecision(
+                phase="results_shown",
+                assistant_message="先给你看这位。",
+                selected_candidates=[
+                    DiscoveryCandidateSelection(
+                        profile_id=2001,
+                        reason_summary="城市一致、关系目标一致。",
+                    )
+                ],
+            ),
+        )
+
+        self.assertEqual(cards[0]["reason_summary"], "都看重“稳定经营、家庭责任”，她的依恋也偏安全型")
+        self.assertEqual(cards[0]["personality_reasons"], ["都看重“稳定经营、家庭责任”", "她的依恋也偏安全型"])
+
+    def test_search_partner_candidates_with_adds_personality_bonus_and_trace(self) -> None:
+        session = StoredSession(
+            session_id="discovery-session-personality",
+            requester_id=70001,
+            profile_id=10001,
+            status="active",
+            phase="collecting_preferences",
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            view={"timeline": [], "criteria_chips": [], "suggested_actions": [], "composer": {}},
+            state={},
+        )
+
+        with mock.patch(
+            "discovery_system.service_integrations.build_discovery_search_request",
+            return_value={
+                "compiled": {},
+                "criteria": {"cities": ["无锡"]},
+                "self_profile": {"city": "无锡"},
+            },
+        ), mock.patch(
+            "discovery_system.service_integrations.save_compiled_snapshot",
+        ), mock.patch(
+            "discovery_system.service_integrations.search_profiles_with_visibility_gate",
+            return_value={
+                "has_match": True,
+                "result_count": 2,
+                "results": [
+                    {
+                        "id": 3001,
+                        "name": "唐语妍",
+                        "score": 91,
+                        "profile": {"age": 26, "city": "无锡", "relationship_goal": "认真恋爱"},
+                    },
+                    {
+                        "id": 3002,
+                        "name": "张安萌",
+                        "score": 90,
+                        "profile": {"age": 27, "city": "无锡", "relationship_goal": "认真恋爱"},
+                    },
+                ],
+            },
+        ), mock.patch(
+            "discovery_system.service_integrations.load_persona_for_discovery",
+            return_value={},
+        ), mock.patch(
+            "discovery_system.service_integrations.load_traits_for_discovery",
+            return_value=PersonalityTraitsContext(
+                mbti={"type_code": "ISTP"},
+                attachment={"type_code": "secure", "anxiety": 20, "avoidance": 25},
+                values={"top_values": ["稳定经营", "家庭责任", "独立空间"]},
+                availability={"has_mbti": True, "has_attachment": True, "has_values": True, "overall_completeness": 0.6},
+            ),
+        ), mock.patch(
+            "discovery_system.service_integrations.load_traits_for_profiles",
+            return_value={
+                3001: PersonalityTraitsContext(
+                    mbti={"type_code": "ENFP"},
+                    attachment={"type_code": "anxious", "anxiety": 78, "avoidance": 22},
+                    values={"top_values": ["冒险和挑战", "新鲜感"]},
+                    availability={"has_mbti": True, "has_attachment": True, "has_values": True, "overall_completeness": 0.6},
+                ),
+                3002: PersonalityTraitsContext(
+                    mbti={"type_code": "ISTJ"},
+                    attachment={"type_code": "secure", "anxiety": 24, "avoidance": 28},
+                    values={"top_values": ["稳定经营", "家庭责任", "成长探索"]},
+                    availability={"has_mbti": True, "has_attachment": True, "has_values": True, "overall_completeness": 0.6},
+                ),
+            },
+        ):
+            response = search_partner_candidates_with(
+                session,
+                criteria={"cities": ["无锡"]},
+                limit=5,
+                source="mysql://demo",
+                load_profile=lambda **_kwargs: {"id": 10001, "city": "无锡"},
+                search=lambda **_kwargs: {"has_match": False, "result_count": 0, "results": []},
+            )
+
+        self.assertEqual([item["id"] for item in response["results"][:2]], [3002, 3001])
+        self.assertGreater(response["results"][0]["personality_bonus"], response["results"][1]["personality_bonus"])
+        self.assertTrue(response["results"][0]["personality_reasoning"]["used"])
+        self.assertIn("values", response["results"][0]["personality_scoring_trace"]["used_dimensions"])
+        self.assertTrue(response["personality_trace"]["self_traits_available"])
+        self.assertEqual(response["personality_trace"]["candidate_traits_count"], 2)
 
     def test_service_renders_profile_detail_from_canonical_payload(self) -> None:
         service = DiscoveryService(
