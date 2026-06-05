@@ -20,24 +20,33 @@ export type CandidatePreview = {
   personality_reasons?: string[]  // 测评推荐理由（如["依恋风格互补：你的安全型能稳住TA的焦虑倾向"])
   personality_match_context?: {
     availability?: {
-      has_values_test: boolean
-      has_attachment_test: boolean
-      has_personality_type: boolean
-      has_big_five: boolean
+      has_values?: boolean
+      has_attachment?: boolean
+      has_mbti?: boolean
+      has_big_five?: boolean
+      has_sternberg?: boolean
       overall_completeness: number
     }
-    attachment_test_result?: {
-      primary_style: string  // "secure" | "anxious" | "avoidant" | "fearful"
-      anxiety_score: number
-      avoidance_score: number
+    attachment?: {
+      type_code?: string
+      anxiety?: number
+      avoidance?: number
     }
-    personality_type_result?: {
-      mbti_type: string  // "INFP" 等
+    mbti?: {
+      type_code?: string
+      scores?: Record<string, number>
     }
-    values_test_result?: {
-      values_dimensions?: {
-        stability_vs_growth?: string
-      }
+    big_five?: {
+      scores?: Record<string, number>
+    }
+    values?: {
+      value_type?: string
+      top_values?: string[]
+      tensions?: string[]
+    }
+    sternberg?: {
+      type_code?: string
+      scores?: Record<string, number>
     }
   }
 }

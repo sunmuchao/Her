@@ -96,6 +96,7 @@ function mapDiscoveryCard(
     image: resolveProfileImageUrl(card.cover_image_url, PLACEHOLDER_AVATAR),
     matchScore: card.match_score,
     matchReason: card.reason_summary,
+    personality_match_context: card.personality_match_context,
   }
 }
 
