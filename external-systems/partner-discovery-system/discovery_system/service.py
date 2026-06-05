@@ -170,6 +170,11 @@ def _shared_values(self_traits: dict[str, Any], candidate_traits: dict[str, Any]
     return [item for item in self_top if item in candidate_top]
 
 
+def _candidate_first_name(card: dict[str, Any]) -> str:
+    title = str(card.get("title") or "这位").strip() or "这位"
+    return re.split(r"\s+", title, maxsplit=1)[0]
+
+
 @dataclass
 class DiscoveryService:
     storage: Any
@@ -751,10 +756,33 @@ class DiscoveryService:
             runtime_result.decision,
             runtime_result.search_response,
         )
+        assistant_body = decision.assistant_message
+        if decision.criteria_labels:
+            session.view["criteria_chips"] = [
+                criteria_chip(f"chip-{index + 1}", label)
+                for index, label in enumerate(decision.criteria_labels)
+            ]
+        search_run_id: int | None = None
+        rendered_cards: list[dict[str, Any]] = []
+        if runtime_result.search_response is not None:
+            search_run_id = self._persist_search_run(
+                session,
+                search_response=runtime_result.search_response,
+                now=now,
+            )
+            rendered_cards = self._build_result_cards(
+                runtime_result.search_response,
+                decision=decision,
+            )
+            proactive_blurb = None
+            if decision.phase == "results_shown" and rendered_cards:
+                proactive_blurb = self._build_proactive_personality_blurb(session, rendered_cards)
+            if proactive_blurb and proactive_blurb not in assistant_body:
+                assistant_body = f"{assistant_body} {proactive_blurb}".strip()
         session.view["timeline"] = list(session.view.get("timeline") or []) + [
             assistant_message(
                 self.storage.next_item_id("msg-a"),
-                decision.assistant_message,
+                assistant_body,
                 created_at=now,
             )
         ]
@@ -768,30 +796,14 @@ class DiscoveryService:
                     created_at=now,
                 )
             )
-        if decision.criteria_labels:
-            session.view["criteria_chips"] = [
-                criteria_chip(f"chip-{index + 1}", label)
-                for index, label in enumerate(decision.criteria_labels)
-            ]
-        search_run_id: int | None = None
-        if runtime_result.search_response is not None:
-            search_run_id = self._persist_search_run(
-                session,
-                search_response=runtime_result.search_response,
-                now=now,
-            )
-            rendered_cards = self._build_result_cards(
-                runtime_result.search_response,
-                decision=decision,
-            )
-            if rendered_cards:
-                session.view["timeline"].append(
-                    result_group(
-                        self.storage.next_item_id("group"),
-                        decision.result_group_title or "这一轮先给你看这些候选人",
-                        rendered_cards,
-                    )
+        if rendered_cards:
+            session.view["timeline"].append(
+                result_group(
+                    self.storage.next_item_id("group"),
+                    decision.result_group_title or "这一轮先给你看这些候选人",
+                    rendered_cards,
                 )
+            )
         session.view["composer"] = composer("继续告诉红娘你的要求", disabled=False)
         session.phase = decision.phase
         session.updated_at = now
@@ -849,8 +861,7 @@ class DiscoveryService:
         if not candidate_traits:
             return None
 
-        candidate_title = str(candidate.get("title") or "这位").strip() or "这位"
-        candidate_name = re.split(r"\s+", candidate_title, maxsplit=1)[0]
+        candidate_name = _candidate_first_name(candidate)
         clauses: list[str] = []
 
         self_mbti = str((self_traits.get("mbti") or {}).get("type_code") or "").strip()
@@ -906,6 +917,43 @@ class DiscoveryService:
             ],
             suggested_actions=[],
         )
+
+    def _build_proactive_personality_blurb(
+        self,
+        session: StoredSession,
+        cards: list[dict[str, Any]],
+    ) -> str | None:
+        requester_profile = self._load_requester_profile(session) or {}
+        self_traits = dict(requester_profile.get("personality_traits") or {})
+        if not self_traits:
+            return None
+
+        blurbs: list[str] = []
+        for card in cards[:2]:
+            candidate_traits = dict(card.get("personality_match_context") or {})
+            if not candidate_traits:
+                continue
+            candidate_name = _candidate_first_name(card)
+            candidate_mbti = str((candidate_traits.get("mbti") or {}).get("type_code") or "").strip()
+            candidate_attachment = str((candidate_traits.get("attachment") or {}).get("type_code") or "").strip()
+            overlap = _shared_values(self_traits, candidate_traits)
+
+            snippets: list[str] = []
+            if candidate_mbti:
+                self_mbti = str((self_traits.get("mbti") or {}).get("type_code") or "").strip()
+                if self_mbti and self_mbti[:3] == candidate_mbti[:3]:
+                    snippets.append(f"MBTI 和你更接近（{self_mbti}/{candidate_mbti}）")
+                else:
+                    snippets.append(f"MBTI 偏{candidate_mbti}，节奏比较稳")
+            if candidate_attachment == "secure":
+                snippets.append("依恋偏安全型")
+            if overlap:
+                snippets.append(f"价值观也和你同频，尤其都看重“{'、'.join(overlap[:2])}”")
+            if snippets:
+                blurbs.append(f"{candidate_name}这位，" + "，".join(snippets[:3]) + "。")
+        if not blurbs:
+            return None
+        return "从测评角度看，" + "".join(blurbs)
 
     def _profile_first_session_open(
         self,
