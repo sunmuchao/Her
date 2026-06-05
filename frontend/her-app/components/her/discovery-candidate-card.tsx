@@ -74,23 +74,6 @@ export function DiscoveryCandidateCard({
             </p>
           ) : null}
 
-          {/* ===== Phase 1: 测评推荐理由展示 ===== */}
-          {candidate.personality_reasons && candidate.personality_reasons.length > 0 ? (
-            <div className="mt-2">
-              <p className="text-xs text-muted-foreground mb-1">从测评角度看：</p>
-              <div className="flex flex-wrap gap-1">
-                {candidate.personality_reasons.slice(0, 2).map((reason, idx) => (
-                  <span
-                    key={idx}
-                    className="inline-block px-2 py-0.5 text-xs bg-primary/10 text-primary rounded border border-primary/20"
-                  >
-                    {reason}
-                  </span>
-                ))}
-              </div>
-            </div>
-          ) : null}
-
           {/* ===== Phase 1: 测评结果展示（原始显示） ===== */}
           {candidate.personality_match_context?.availability ? (
             <div className="mt-2 flex flex-wrap gap-1">
