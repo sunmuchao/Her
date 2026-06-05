@@ -181,6 +181,9 @@ def _compact_requester_profile(profile: dict[str, Any] | None) -> dict[str, Any]
         "must_have_tags",
         "must_not_have_tags",
         "disliked_traits",
+        # === Phase 1: 保留 personality 字段 ===
+        "personality_traits",
+        "personality_availability",
     ]
     return {
         key: profile.get(key)
@@ -292,6 +295,16 @@ def _build_runtime_prompt(
     official_context["recent_timeline_summary"] = _compact_timeline(
         list(official_context.get("recent_timeline_summary") or run_input.recent_timeline)
     )
+
+    # === Phase 1: 注入 personality_context ===
+    # 从 requester_profile_snapshot 提取测评数据（如果已注入）
+    requester_profile = official_context.get("requester_profile_snapshot") or {}
+    if requester_profile.get("personality_traits"):
+        official_context["personality_context"] = {
+            "self_traits": requester_profile.get("personality_traits"),
+            "availability": requester_profile.get("personality_availability") or {},
+        }
+
     payload = {
         "event": event,
         "session": {
@@ -313,6 +326,9 @@ def _build_runtime_prompt(
             "Use official_context as the current source of truth for product state. "
             "Agent memory only helps you remember prior chat. "
             "Do not invent candidate raw fields; only select profile_id values from the latest search tool response."
+            "\n\nIf personality_context is present, you can use the raw assessment data (MBTI type_code, "
+            "attachment anxiety/avoidance scores, values top_values) to judge compatibility yourself. "
+            "Do not use hardcoded formulas; make your own judgment based on the context."
         ),
     }
     return json.dumps(payload, ensure_ascii=False, sort_keys=True)

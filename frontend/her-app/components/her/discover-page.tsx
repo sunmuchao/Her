@@ -83,6 +83,15 @@ function DiscoveryTimelineEntry({
   onOpenAssessment?: (assessmentType: 'mbti_16' | 'attachment_style' | 'big_five' | 'sternberg_triangular_love') => void
   isSubmittingTurn?: boolean
 }) {
+  // DEBUG: 验证渲染时的 item 数据
+  console.log('[DEBUG DiscoveryTimelineEntry] 渲染 item:', item.kind, 'id=', item.id)
+  if (item.kind === 'result_group') {
+    console.log('[DEBUG DiscoveryTimelineEntry] result_group candidates:', item.candidates.length)
+    item.candidates.forEach((c, idx) => {
+      console.log(`  candidate[${idx}]: id=${c.id}, name=${c.name}`)
+    })
+  }
+
   if (item.kind === 'profile_update_prompt') {
     if (!sessionId) return null
     return (

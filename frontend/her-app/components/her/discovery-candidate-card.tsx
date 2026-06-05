@@ -71,6 +71,43 @@ export function DiscoveryCandidateCard({
               {candidate.matchReason}
             </p>
           ) : null}
+
+          {/* ===== Phase 1: 测评推荐理由展示 ===== */}
+          {candidate.personality_reasons && candidate.personality_reasons.length > 0 ? (
+            <div className="mt-2">
+              <p className="text-xs text-muted-foreground mb-1">从测评角度看：</p>
+              <div className="flex flex-wrap gap-1">
+                {candidate.personality_reasons.slice(0, 2).map((reason, idx) => (
+                  <span
+                    key={idx}
+                    className="inline-block px-2 py-0.5 text-xs bg-primary/10 text-primary rounded border border-primary/20"
+                  >
+                    {reason}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {/* ===== Phase 1: 测评结果展示（原始显示） ===== */}
+          {candidate.personality_match_context?.availability ? (
+            <div className="mt-2 flex flex-wrap gap-1">
+              {candidate.personality_match_context.availability.has_personality_type &&
+                candidate.personality_match_context.personality_type_result?.mbti_type ? (
+                <span className="inline-block px-2 py-0.5 text-xs bg-green-50 text-green-600 rounded border border-green-200">
+                  MBTI: {candidate.personality_match_context.personality_type_result.mbti_type}
+                </span>
+              ) : null}
+              {candidate.personality_match_context.availability.has_attachment_test &&
+                candidate.personality_match_context.attachment_test_result?.primary_style ? (
+                <span className="inline-block px-2 py-0.5 text-xs bg-blue-50 text-blue-600 rounded border border-blue-200">
+                  依恋: {candidate.personality_match_context.attachment_test_result.primary_style === 'secure' ? '安全型' :
+                         candidate.personality_match_context.attachment_test_result.primary_style === 'anxious' ? '焦虑型' :
+                         candidate.personality_match_context.attachment_test_result.primary_style === 'avoidant' ? '回避型' : '恐惧型'}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
         </div>
         <div className="flex flex-col items-end justify-center">
           <ChevronRight className="w-4 h-4 text-muted-foreground" aria-hidden="true" />

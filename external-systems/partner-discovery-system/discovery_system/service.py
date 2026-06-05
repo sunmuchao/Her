@@ -50,6 +50,7 @@ from .service_integrations import (
     search_partner_candidates as _search_partner_candidates_impl,
     sync_requester_persona_memory as _sync_requester_persona_memory_impl,
 )
+from partner_search.personality_traits_reader import load_traits_for_discovery
 from .storage import InMemoryDiscoveryStorage, MySQLDiscoveryStorage, StoredSession
 from .service_context import (
     DiscoveryServiceContextRuntime,
@@ -976,11 +977,24 @@ class DiscoveryService:
         return next_value
 
     def _load_requester_profile(self, session: StoredSession) -> dict[str, Any] | None:
-        return _load_requester_profile_impl(
+        profile = _load_requester_profile_impl(
             session,
             source=self._profile_source(),
             load_profile=load_self_profile,
         )
+        # === Phase 1: 注入 personality_traits ===
+        if profile and session.profile_id:
+            persona_source = self._persona_memory_source()
+            if persona_source:
+                traits_ctx = load_traits_for_discovery(
+                    source=persona_source,
+                    profile_id=session.profile_id,
+                    requester_id=session.requester_id,
+                )
+                if traits_ctx and traits_ctx.availability.get("overall_completeness", 0) > 0:
+                    profile["personality_traits"] = traits_ctx.to_dict()
+                    profile["personality_availability"] = traits_ctx.availability
+        return profile
 
     def _search_partner_candidates(
         self,
