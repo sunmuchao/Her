@@ -16,7 +16,7 @@ import {
 } from '@/lib/api/endpoints/chat-timeline'
 import { getXiaoyaMessage, markXiaoyaMessageRead } from '@/lib/api/endpoints/assessment'  // 新增
 import { getErrorMessage } from '@/lib/api/errors'
-import { getChatParticipantId, getAvatarUrl, getProfileId, getUserId } from '@/lib/auth/session'
+import { getChatParticipantId, getAvatarUrl } from '@/lib/auth/session'
 import { canUseMockFallback } from '@/lib/mock'
 import { notifyError } from '@/lib/notify'
 import { DEMO_CHAT_MESSAGES } from '@/lib/fixtures/demo-profiles'
@@ -27,12 +27,6 @@ import { DemoDataBanner } from './ui/demo-data-banner'
 import { ErrorState } from './ui/error-state'
 import { XiaoyaRichText } from './ui/xiaoya-rich-text'
 import { VideoCallModal, type CallType } from './video-call-modal'
-import {
-  startValuesAuctionTogether,
-  type ValuesAuctionCard,
-} from '@/lib/api/endpoints/valuesAuction'
-import { ValuesAuctionCardRenderer } from '@/components/values-auction'
-
 interface ChatPageProps {
   chatId: string | null
   caseId?: string | null
@@ -116,9 +110,6 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
 
   // Header 更多菜单状态
   const [showHeaderMenu, setShowHeaderMenu] = useState(false)
-  const [valuesAuctionCard, setValuesAuctionCard] = useState<ValuesAuctionCard | null>(null)
-  const [valuesAuctionBusy, setValuesAuctionBusy] = useState(false)
-
   // 新消息提示状态
   const [hasNewMessage, setHasNewMessage] = useState(false)
   const [newMessagePreview, setNewMessagePreview] = useState<{ content: string; avatar: string } | null>(null)
@@ -224,9 +215,6 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-  const valuesAuctionUserKey = String(getProfileId() || getUserId() || '')
-  const valuesAuctionPartnerKey = String(counterpartId || '')
-
   // 使用 ref 保存最新的 urlChatTitle，避免闭包问题
   const chatTitleRef = useRef(urlChatTitle)
   useEffect(() => {
@@ -393,35 +381,7 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, valuesAuctionCard])
-
-  const clearValuesAuctionCard = () => {
-    setValuesAuctionCard(null)
-    setTimeout(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-    }, 100)
-  }
-
-  const openDualValuesAuction = async () => {
-    if (!valuesAuctionUserKey || !valuesAuctionPartnerKey || valuesAuctionBusy) return
-
-    setValuesAuctionBusy(true)
-    try {
-      const next = await startValuesAuctionTogether({
-        userKey: valuesAuctionUserKey,
-        partnerKey: valuesAuctionPartnerKey,
-      })
-      setValuesAuctionCard(next)
-      setShowActionMenu(false)
-      setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-      }, 100)
-    } catch (error) {
-      notifyError(error, '打开双人价值观拍卖失败')
-    } finally {
-      setValuesAuctionBusy(false)
-    }
-  }
+  }, [messages])
 
   const handleSend = async () => {
     const body = inputValue.trim()
@@ -926,18 +886,6 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
           )
         })}
 
-        {valuesAuctionCard ? (
-          <div className="flex justify-center">
-            <div className="w-full max-w-[92%]">
-              <ValuesAuctionCardRenderer
-                card={valuesAuctionCard}
-                userKey={valuesAuctionUserKey}
-                onContinue={clearValuesAuctionCard}
-              />
-            </div>
-          </div>
-        ) : null}
-
         <div ref={messagesEndRef} />
       </div>
 
@@ -1263,20 +1211,6 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
                   />
                 </div>
                 <span className="text-xs text-gold">小雅</span>
-              </button>
-              {/* 双人价值观拍卖 */}
-              <button
-                onClick={() => {
-                  void openDualValuesAuction()
-                }}
-                disabled={!valuesAuctionUserKey || !valuesAuctionPartnerKey || valuesAuctionBusy}
-                className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-secondary hover:bg-secondary/80 transition-colors disabled:opacity-60"
-                aria-label="双人价值观拍卖"
-              >
-                <div className="w-12 h-12 rounded-full bg-amber-500/10 flex items-center justify-center">
-                  <Sparkles className="w-6 h-6 text-amber-600" />
-                </div>
-                <span className="text-xs text-foreground">价值观拍卖</span>
               </button>
               {/* 位置分享 */}
               <button
