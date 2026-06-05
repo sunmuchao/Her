@@ -81,6 +81,17 @@ def _values_bonus(self_traits: dict[str, Any], candidate_traits: dict[str, Any])
     return (round(overlap_ratio * 5.0, 2), shared[:3])
 
 
+def _compose_reasoning_summary(reasons: list[str]) -> str:
+    clean = [str(item).strip("，。 ") for item in reasons if str(item or "").strip()]
+    if not clean:
+        return ""
+    if len(clean) == 1:
+        return clean[0]
+    if len(clean) == 2:
+        return f"{clean[0]}，{clean[1]}"
+    return f"{clean[0]}，{clean[1]}，整体会更顺"
+
+
 def _attachment_bonus(self_traits: dict[str, Any], candidate_traits: dict[str, Any]) -> tuple[float, str | None]:
     self_attachment = dict(self_traits.get("attachment") or {})
     candidate_attachment = dict(candidate_traits.get("attachment") or {})
@@ -92,7 +103,7 @@ def _attachment_bonus(self_traits: dict[str, Any], candidate_traits: dict[str, A
     candidate_avoidance = _normalized_trait_score(candidate_attachment.get("avoidance"))
 
     if self_type == "secure" and candidate_type == "secure":
-        return (4.0, "双方依恋都偏安全型")
+        return (4.0, "依恋都偏安全型，相处会更稳")
 
     if (
         self_anxiety is not None
@@ -105,14 +116,14 @@ def _attachment_bonus(self_traits: dict[str, Any], candidate_traits: dict[str, A
         and candidate_anxiety >= 0.65
         and self_avoidance >= 0.65
     ):
-        return (-2.0, "依恋推进节奏有追逃风险")
+        return (-2.0, "依恋节奏容易一追一逃")
 
     if self_type == "secure" and candidate_type:
-        return (2.0, "你的安全型更能稳住关系节奏")
+        return (2.0, "你的节奏更稳，比较能兜住关系")
     if candidate_type == "secure":
-        return (2.0, "她的依恋偏安全型，关系推进更稳")
+        return (2.0, "她的关系节奏偏稳，不容易忽冷忽热")
     if self_type and candidate_type:
-        return (1.0, "依恋节奏不算高冲突")
+        return (1.0, "依恋节奏不算拧巴")
     return (0.0, None)
 
 
@@ -131,7 +142,7 @@ def _temperament_bonus(self_traits: dict[str, Any], candidate_traits: dict[str, 
             closeness_total += max(0.0, 1.0 - abs(left - right))
         if compared > 0:
             avg = closeness_total / compared
-            return (round(avg * 3.0, 2), "大五人格整体节奏接近")
+            return (round(avg * 3.0, 2), "性格节奏比较接近")
 
     self_mbti = str((self_traits.get("mbti") or {}).get("type_code") or "").strip().upper()
     candidate_mbti = str((candidate_traits.get("mbti") or {}).get("type_code") or "").strip().upper()
@@ -143,10 +154,10 @@ def _temperament_bonus(self_traits: dict[str, Any], candidate_traits: dict[str, 
             else:
                 break
         if same_prefix >= 3:
-            return (3.0, f"MBTI 节奏接近（{self_mbti}/{candidate_mbti}）")
+            return (3.0, f"MBTI 节奏很接近（{self_mbti}/{candidate_mbti}）")
         if same_prefix >= 2:
-            return (2.0, f"MBTI 有一定接近度（{self_mbti}/{candidate_mbti}）")
-        return (1.0, f"MBTI 虽不同型，但相处节奏不算冲突（{self_mbti}/{candidate_mbti}）")
+            return (2.0, f"MBTI 有一定同频感（{self_mbti}/{candidate_mbti}）")
+        return (1.0, f"MBTI 虽不同型，但相处节奏不冲突（{self_mbti}/{candidate_mbti}）")
     return (0.0, None)
 
 
@@ -161,16 +172,16 @@ def _build_personality_reasoning(
         profile = dict((candidate or {}).get("profile") or {})
         hints: list[str] = []
         if str(profile.get("relationship_goal") or "").strip():
-            hints.append("从资料看更偏长期关系")
+            hints.append("从资料看更像认真奔着长期去的")
         if str(profile.get("life_routine") or "").strip():
-            hints.append("生活节奏相对稳定")
+            hints.append("生活节奏比较稳")
         if str(profile.get("communication_style") or "").strip():
-            hints.append("沟通方式看起来更稳")
+            hints.append("沟通方式看起来比较舒服")
         return {
             "used": bool(hints),
             "source": "profile_inference",
             "signals": ["profile"] if hints else [],
-            "summary": "，".join(hints[:2]) if hints else "",
+            "summary": _compose_reasoning_summary(hints[:2]) if hints else "",
             "reasons": hints[:3],
             "confidence": "low" if hints else "none",
         }
@@ -184,7 +195,7 @@ def _build_personality_reasoning(
     values_value, shared_values = _values_bonus(self_traits, candidate_traits)
     if shared_values:
         signals.append("values")
-        reasons.append(f"都看重“{'、'.join(shared_values[:2])}”")
+        reasons.append(f"都看重“{'、'.join(shared_values[:2])}”这类长期稳定的东西")
 
     attachment_value, attachment_reason = _attachment_bonus(self_traits, candidate_traits)
     if attachment_reason:
@@ -199,13 +210,13 @@ def _build_personality_reasoning(
     candidate_value_type = str((candidate_traits.get("values") or {}).get("value_type") or "").strip()
     if not reasons and candidate_value_type:
         signals.append("values")
-        reasons.append(f"价值观偏{candidate_value_type}，更像认真经营关系的人")
+        reasons.append(f"价值观偏{candidate_value_type}，看起来更像会认真经营关系的人")
 
     return {
         "used": bool(reasons),
         "source": source,
         "signals": signals[:3],
-        "summary": "，".join(reasons[:2]) if reasons else "",
+        "summary": _compose_reasoning_summary(reasons[:2]) if reasons else "",
         "reasons": reasons[:3],
         "confidence": "medium" if reasons else "none",
         "score_components": {
