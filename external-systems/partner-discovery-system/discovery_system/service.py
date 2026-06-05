@@ -6,6 +6,7 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import datetime
 import os
+import re
 from typing import Any
 
 from her_json_utils import json_safe
@@ -133,6 +134,40 @@ class DiscoveryProfileUpdateNotFoundError(DiscoveryServiceError):
 class DiscoveryProfileUpdateConflictError(DiscoveryServiceError):
     code = "DISCOVERY_PROFILE_UPDATE_CONFLICT"
     status_code = 409
+
+
+def _is_personality_explanation_request(text: str | None) -> bool:
+    value = str(text or "").strip()
+    if not value:
+        return False
+    keywords = ("为什么", "测评", "MBTI", "依恋", "价值观", "合拍", "性格")
+    return "不要重新搜索" in value or any(keyword in value for keyword in keywords)
+
+
+def _pick_existing_candidate(cards: list[dict[str, Any]], user_message_text: str | None) -> dict[str, Any] | None:
+    if not cards:
+        return None
+    text = str(user_message_text or "")
+    markers = (("第一位", 0), ("第一个", 0), ("1", 0), ("第二位", 1), ("第二个", 1), ("2", 1), ("第三位", 2), ("第三个", 2), ("3", 2))
+    for marker, index in markers:
+        if marker in text and index < len(cards):
+            return dict(cards[index] or {})
+    for card in cards:
+        title = str(card.get("title") or "").strip()
+        name = re.split(r"\s+", title, maxsplit=1)[0] if title else ""
+        if name and name in text:
+            return dict(card)
+    return dict(cards[0] or {})
+
+
+def _shared_values(self_traits: dict[str, Any], candidate_traits: dict[str, Any]) -> list[str]:
+    self_top = {str(item).strip() for item in list((self_traits.get("values") or {}).get("top_values") or []) if str(item).strip()}
+    candidate_top = {
+        str(item).strip()
+        for item in list((candidate_traits.get("values") or {}).get("top_values") or [])
+        if str(item).strip()
+    }
+    return [item for item in self_top if item in candidate_top]
 
 
 @dataclass
@@ -264,6 +299,16 @@ class DiscoveryService:
                 run_input,
                 user_message=text,
             )
+            fallback_decision = self._build_personality_explanation_decision(
+                session,
+                user_message_text=text,
+            )
+            if (
+                fallback_decision is not None
+                and runtime_result.search_response is None
+                and runtime_result.decision.phase == "collecting_preferences"
+            ):
+                runtime_result = DiscoveryRuntimeResult(decision=fallback_decision)
         else:
             action = self.storage.get_action(session_id, str(action_id or "").strip())
             if action is None:
@@ -778,6 +823,89 @@ class DiscoveryService:
                 )
             )
         return cards
+
+    def _existing_result_cards(self, session: StoredSession) -> list[dict[str, Any]]:
+        for item in reversed(list(session.view.get("timeline") or [])):
+            if item.get("item_type") == "result_group":
+                return list(item.get("cards") or [])
+        return []
+
+    def _build_personality_explanation_decision(
+        self,
+        session: StoredSession,
+        *,
+        user_message_text: str | None,
+    ) -> DiscoveryDecision | None:
+        if not _is_personality_explanation_request(user_message_text):
+            return None
+        cards = self._existing_result_cards(session)
+        candidate = _pick_existing_candidate(cards, user_message_text)
+        if not candidate:
+            return None
+
+        requester_profile = self._load_requester_profile(session) or {}
+        self_traits = dict(requester_profile.get("personality_traits") or {})
+        candidate_traits = dict(candidate.get("personality_match_context") or {})
+        if not candidate_traits:
+            return None
+
+        candidate_title = str(candidate.get("title") or "这位").strip() or "这位"
+        candidate_name = re.split(r"\s+", candidate_title, maxsplit=1)[0]
+        clauses: list[str] = []
+
+        self_mbti = str((self_traits.get("mbti") or {}).get("type_code") or "").strip()
+        candidate_mbti = str((candidate_traits.get("mbti") or {}).get("type_code") or "").strip()
+        if self_mbti and candidate_mbti:
+            if self_mbti[:3] and self_mbti[:3] == candidate_mbti[:3]:
+                clauses.append(
+                    f"MBTI 上你是 {self_mbti}，她是 {candidate_mbti}，前 3 个维度很接近，通常都偏务实、慢热、先看长期稳定。"
+                )
+            else:
+                clauses.append(
+                    f"MBTI 上你是 {self_mbti}，她是 {candidate_mbti}，虽然不是同一型，但都不是很跳脱的相处节奏，更偏稳定推进。"
+                )
+        elif candidate_mbti:
+            clauses.append(f"她的 MBTI 是 {candidate_mbti}，这类类型通常更偏稳定、务实，不是只靠感觉往前冲。")
+
+        self_attachment = dict(self_traits.get("attachment") or {})
+        candidate_attachment = dict(candidate_traits.get("attachment") or {})
+        self_attachment_type = str(self_attachment.get("type_code") or "").strip()
+        candidate_attachment_type = str(candidate_attachment.get("type_code") or "").strip()
+        if self_attachment_type and candidate_attachment_type:
+            if self_attachment_type == "secure" and candidate_attachment_type == "secure":
+                clauses.append("依恋上你们都偏安全型，焦虑和回避都不高，相处时更容易稳定沟通，不太会一方追一方躲。")
+            else:
+                clauses.append("依恋上你们都不是特别高冲突的组合，靠近和拉开距离的方式比较容易协商。")
+        elif candidate_attachment_type == "secure":
+            clauses.append("她在依恋上偏安全型，通常不容易忽冷忽热，关系推进会更稳。")
+
+        overlap = _shared_values(self_traits, candidate_traits)
+        if overlap:
+            shared = "、".join(overlap[:2])
+            clauses.append(f"价值观上你们都把“{shared}”放得比较前，这类人通常更容易在长期投入和生活方向上同频。")
+        else:
+            self_value_type = str((self_traits.get("values") or {}).get("value_type") or "").strip()
+            candidate_value_type = str((candidate_traits.get("values") or {}).get("value_type") or "").strip()
+            if self_value_type and candidate_value_type:
+                clauses.append(
+                    f"价值观上你偏{self_value_type}，她偏{candidate_value_type}，虽然不完全一样，但都不是只看短期新鲜感的类型。"
+                )
+            elif candidate_value_type:
+                clauses.append(f"价值观上她偏{candidate_value_type}，而且把长期稳定相关内容放得比较靠前，所以我会先把她往前推。")
+
+        if not clauses:
+            return None
+
+        return DiscoveryDecision(
+            phase="results_shown",
+            assistant_message=f"先说{candidate_name}。{''.join(clauses[:3])}",
+            criteria_labels=[
+                str(item.get("label") or "").strip()
+                for item in list(session.view.get("criteria_chips") or [])
+                if str(item.get("label") or "").strip()
+            ],
+            suggested_actions=[],
+        )
 
     def _profile_first_session_open(
         self,

@@ -124,7 +124,11 @@ def build_page_summary(
             {
                 "profile_id": card.get("profile_id"),
                 "title": card.get("title"),
+                "subtitle": card.get("subtitle"),
+                "match_score": card.get("match_score"),
                 "reason_summary": card.get("reason_summary"),
+                "personality_match_context": deepcopy(card.get("personality_match_context") or {}),
+                "personality_availability": deepcopy(card.get("personality_availability") or {}),
             }
             for card in list(item.get("cards") or [])[:3]
         ]
