@@ -175,6 +175,26 @@ def _candidate_first_name(card: dict[str, Any]) -> str:
     return re.split(r"\s+", title, maxsplit=1)[0]
 
 
+def _looks_like_basic_reason_summary(text: str | None) -> bool:
+    value = str(text or "").strip()
+    if not value:
+        return True
+    personality_keywords = ("MBTI", "依恋", "价值观", "同频", "安全型", "测评", "节奏")
+    if any(keyword in value for keyword in personality_keywords):
+        return False
+    generic_keywords = ("城市", "年龄", "关系目标", "工作", "状态", "学历", "认证")
+    return any(keyword in value for keyword in generic_keywords)
+
+
+def _effective_reason_summary(candidate: dict[str, Any], selection_reason: str | None) -> str:
+    reasoning = dict(candidate.get("personality_reasoning") or {})
+    personality_summary = str(reasoning.get("summary") or "").strip()
+    selected_summary = str(selection_reason or "").strip()
+    if personality_summary and _looks_like_basic_reason_summary(selected_summary):
+        return personality_summary
+    return selected_summary
+
+
 @dataclass
 class DiscoveryService:
     storage: Any
@@ -831,7 +851,7 @@ class DiscoveryService:
             cards.append(
                 build_candidate_card(
                     candidate,
-                    reason_summary=selection.reason_summary,
+                    reason_summary=_effective_reason_summary(candidate, selection.reason_summary),
                 )
             )
         return cards
@@ -862,6 +882,23 @@ class DiscoveryService:
             return None
 
         candidate_name = _candidate_first_name(candidate)
+        reasoning = dict(candidate.get("personality_reasoning") or {})
+        reasoning_reasons = [
+            str(item).strip()
+            for item in list(reasoning.get("reasons") or [])
+            if str(item or "").strip()
+        ]
+        if reasoning_reasons:
+            return DiscoveryDecision(
+                phase="results_shown",
+                assistant_message=f"先说{candidate_name}。从测评角度看，" + "，".join(reasoning_reasons[:3]) + "。",
+                criteria_labels=[
+                    str(item.get("label") or "").strip()
+                    for item in list(session.view.get("criteria_chips") or [])
+                    if str(item.get("label") or "").strip()
+                ],
+                suggested_actions=[],
+            )
         clauses: list[str] = []
 
         self_mbti = str((self_traits.get("mbti") or {}).get("type_code") or "").strip()
@@ -930,7 +967,14 @@ class DiscoveryService:
 
         blurbs: list[str] = []
         for card in cards[:2]:
+            reasoning = dict(card.get("personality_reasoning") or {})
             candidate_traits = dict(card.get("personality_match_context") or {})
+            if reasoning.get("used"):
+                candidate_name = _candidate_first_name(card)
+                summary = str(reasoning.get("summary") or "").strip()
+                if summary:
+                    blurbs.append(f"{candidate_name}这位，{summary}。")
+                    continue
             if not candidate_traits:
                 continue
             candidate_name = _candidate_first_name(card)

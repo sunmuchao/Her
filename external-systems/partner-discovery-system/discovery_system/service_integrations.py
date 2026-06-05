@@ -28,6 +28,225 @@ from .service_context import search_error_summary
 from .storage import StoredSession
 
 
+def _env_flag(name: str, *, default: bool = False) -> bool:
+    raw = str(os.environ.get(name) or "").strip().lower()
+    if not raw:
+        return default
+    return raw not in {"0", "false", "off", "no"}
+
+
+def discovery_personality_explanation_enabled() -> bool:
+    return _env_flag("HER_DISCOVERY_PERSONALITY_EXPLANATION_ENABLED", default=True)
+
+
+def discovery_personality_ranking_enabled() -> bool:
+    return _env_flag("HER_DISCOVERY_PERSONALITY_RANKING_ENABLED", default=True)
+
+
+def discovery_personality_card_badges_enabled() -> bool:
+    return _env_flag("HER_DISCOVERY_PERSONALITY_CARD_BADGES_ENABLED", default=True)
+
+
+def _normalized_trait_score(value: Any) -> float | None:
+    if value in (None, ""):
+        return None
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
+    if numeric > 1.0:
+        numeric = numeric / 100.0
+    return max(0.0, min(1.0, numeric))
+
+
+def _safe_top_values(traits: dict[str, Any]) -> list[str]:
+    values = (traits.get("values") or {}).get("top_values") or []
+    return [str(item).strip() for item in list(values) if str(item or "").strip()]
+
+
+def _shared_top_values(self_traits: dict[str, Any], candidate_traits: dict[str, Any]) -> list[str]:
+    self_values = _safe_top_values(self_traits)
+    candidate_set = set(_safe_top_values(candidate_traits))
+    return [item for item in self_values if item in candidate_set]
+
+
+def _values_bonus(self_traits: dict[str, Any], candidate_traits: dict[str, Any]) -> tuple[float, list[str]]:
+    shared = _shared_top_values(self_traits, candidate_traits)
+    if not shared:
+        return (0.0, [])
+    self_values = _safe_top_values(self_traits)
+    candidate_values = _safe_top_values(candidate_traits)
+    max_len = max(1, min(len(self_values), len(candidate_values), 3))
+    overlap_ratio = min(len(shared), max_len) / max_len
+    return (round(overlap_ratio * 5.0, 2), shared[:3])
+
+
+def _attachment_bonus(self_traits: dict[str, Any], candidate_traits: dict[str, Any]) -> tuple[float, str | None]:
+    self_attachment = dict(self_traits.get("attachment") or {})
+    candidate_attachment = dict(candidate_traits.get("attachment") or {})
+    self_type = str(self_attachment.get("type_code") or "").strip().lower()
+    candidate_type = str(candidate_attachment.get("type_code") or "").strip().lower()
+    self_anxiety = _normalized_trait_score(self_attachment.get("anxiety"))
+    self_avoidance = _normalized_trait_score(self_attachment.get("avoidance"))
+    candidate_anxiety = _normalized_trait_score(candidate_attachment.get("anxiety"))
+    candidate_avoidance = _normalized_trait_score(candidate_attachment.get("avoidance"))
+
+    if self_type == "secure" and candidate_type == "secure":
+        return (4.0, "双方依恋都偏安全型")
+
+    if (
+        self_anxiety is not None
+        and candidate_avoidance is not None
+        and self_anxiety >= 0.65
+        and candidate_avoidance >= 0.65
+    ) or (
+        candidate_anxiety is not None
+        and self_avoidance is not None
+        and candidate_anxiety >= 0.65
+        and self_avoidance >= 0.65
+    ):
+        return (-2.0, "依恋推进节奏有追逃风险")
+
+    if self_type == "secure" and candidate_type:
+        return (2.0, "你的安全型更能稳住关系节奏")
+    if candidate_type == "secure":
+        return (2.0, "她的依恋偏安全型，关系推进更稳")
+    if self_type and candidate_type:
+        return (1.0, "依恋节奏不算高冲突")
+    return (0.0, None)
+
+
+def _temperament_bonus(self_traits: dict[str, Any], candidate_traits: dict[str, Any]) -> tuple[float, str | None]:
+    self_big_five = dict((self_traits.get("big_five") or {}).get("scores") or {})
+    candidate_big_five = dict((candidate_traits.get("big_five") or {}).get("scores") or {})
+    if self_big_five and candidate_big_five:
+        compared = 0
+        closeness_total = 0.0
+        for key in ("openness", "conscientiousness", "agreeableness", "neuroticism", "extraversion"):
+            left = _normalized_trait_score(self_big_five.get(key))
+            right = _normalized_trait_score(candidate_big_five.get(key))
+            if left is None or right is None:
+                continue
+            compared += 1
+            closeness_total += max(0.0, 1.0 - abs(left - right))
+        if compared > 0:
+            avg = closeness_total / compared
+            return (round(avg * 3.0, 2), "大五人格整体节奏接近")
+
+    self_mbti = str((self_traits.get("mbti") or {}).get("type_code") or "").strip().upper()
+    candidate_mbti = str((candidate_traits.get("mbti") or {}).get("type_code") or "").strip().upper()
+    if self_mbti and candidate_mbti:
+        same_prefix = 0
+        for left, right in zip(self_mbti, candidate_mbti):
+            if left == right:
+                same_prefix += 1
+            else:
+                break
+        if same_prefix >= 3:
+            return (3.0, f"MBTI 节奏接近（{self_mbti}/{candidate_mbti}）")
+        if same_prefix >= 2:
+            return (2.0, f"MBTI 有一定接近度（{self_mbti}/{candidate_mbti}）")
+        return (1.0, f"MBTI 虽不同型，但相处节奏不算冲突（{self_mbti}/{candidate_mbti}）")
+    return (0.0, None)
+
+
+def _build_personality_reasoning(
+    self_traits: dict[str, Any],
+    candidate_traits: dict[str, Any],
+    *,
+    candidate: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    candidate_traits = dict(candidate_traits or {})
+    if not candidate_traits:
+        profile = dict((candidate or {}).get("profile") or {})
+        hints: list[str] = []
+        if str(profile.get("relationship_goal") or "").strip():
+            hints.append("从资料看更偏长期关系")
+        if str(profile.get("life_routine") or "").strip():
+            hints.append("生活节奏相对稳定")
+        if str(profile.get("communication_style") or "").strip():
+            hints.append("沟通方式看起来更稳")
+        return {
+            "used": bool(hints),
+            "source": "profile_inference",
+            "signals": ["profile"] if hints else [],
+            "summary": "，".join(hints[:2]) if hints else "",
+            "reasons": hints[:3],
+            "confidence": "low" if hints else "none",
+        }
+
+    signals: list[str] = []
+    reasons: list[str] = []
+    source = "candidate_only_traits"
+    if self_traits:
+        source = "traits_pair"
+
+    values_value, shared_values = _values_bonus(self_traits, candidate_traits)
+    if shared_values:
+        signals.append("values")
+        reasons.append(f"都看重“{'、'.join(shared_values[:2])}”")
+
+    attachment_value, attachment_reason = _attachment_bonus(self_traits, candidate_traits)
+    if attachment_reason:
+        signals.append("attachment")
+        reasons.append(attachment_reason)
+
+    temperament_value, temperament_reason = _temperament_bonus(self_traits, candidate_traits)
+    if temperament_reason:
+        signals.append("big_five" if "大五" in temperament_reason else "mbti")
+        reasons.append(temperament_reason)
+
+    candidate_value_type = str((candidate_traits.get("values") or {}).get("value_type") or "").strip()
+    if not reasons and candidate_value_type:
+        signals.append("values")
+        reasons.append(f"价值观偏{candidate_value_type}，更像认真经营关系的人")
+
+    return {
+        "used": bool(reasons),
+        "source": source,
+        "signals": signals[:3],
+        "summary": "，".join(reasons[:2]) if reasons else "",
+        "reasons": reasons[:3],
+        "confidence": "medium" if reasons else "none",
+        "score_components": {
+            "values_bonus": values_value,
+            "attachment_bonus": attachment_value,
+            "temperament_bonus": temperament_value,
+        },
+    }
+
+
+def _compute_personality_bonus(
+    self_traits: dict[str, Any],
+    candidate_traits: dict[str, Any],
+) -> tuple[float, dict[str, Any]]:
+    values_value, shared_values = _values_bonus(self_traits, candidate_traits)
+    attachment_value, attachment_reason = _attachment_bonus(self_traits, candidate_traits)
+    temperament_value, temperament_reason = _temperament_bonus(self_traits, candidate_traits)
+    bonus = max(-3.0, min(12.0, values_value + attachment_value + temperament_value))
+    trace = {
+        "values_bonus": values_value,
+        "attachment_bonus": attachment_value,
+        "temperament_bonus": temperament_value,
+        "used_dimensions": [
+            name
+            for name, value in (
+                ("values", values_value),
+                ("attachment", attachment_value),
+                ("temperament", temperament_value),
+            )
+            if value != 0
+        ],
+    }
+    if shared_values:
+        trace["shared_values"] = shared_values[:3]
+    if attachment_reason:
+        trace["attachment_reason"] = attachment_reason
+    if temperament_reason:
+        trace["temperament_reason"] = temperament_reason
+    return (round(bonus, 2), trace)
+
+
 def profile_source() -> str:
     for name in (
         "HER_DISCOVERY_PROFILE_SOURCE",
@@ -218,8 +437,10 @@ def search_partner_candidates_with(
         )
         response["request_meta"] = request_meta
 
-        # === Phase 1: 注入测评数据 ===
-        # 1. 加载用户的测评数据
+        explanation_enabled = discovery_personality_explanation_enabled()
+        ranking_enabled = discovery_personality_ranking_enabled()
+
+        # === Discovery personality enrichment ===
         user_traits = None
         if persona_source and session.profile_id:
             user_traits = load_traits_for_discovery(
@@ -227,9 +448,22 @@ def search_partner_candidates_with(
                 profile_id=session.profile_id,
                 requester_id=session.requester_id,
             )
+        user_traits_dict = (
+            user_traits.to_dict()
+            if user_traits and user_traits.availability.get("overall_completeness", 0) > 0
+            else {}
+        )
 
-        # 2. 批量加载候选人的测评数据
         results = response.get("results") or []
+        personality_trace = {
+            "self_traits_available": bool(user_traits_dict),
+            "candidate_traits_count": 0,
+            "ranking_enabled": ranking_enabled,
+            "explanation_enabled": explanation_enabled,
+            "card_badges_enabled": discovery_personality_card_badges_enabled(),
+            "top_candidates_used_personality": [],
+            "fallback_explanation_used": False,
+        }
         if results and persona_source:
             candidate_ids = []
             for candidate in results:
@@ -246,18 +480,79 @@ def search_partner_candidates_with(
                     profile_ids=candidate_ids,
                 )
 
-                # 3. 把测评数据注入到候选人结果中
                 for candidate in results:
                     candidate_id = candidate.get("id")
                     if candidate_id:
                         traits_ctx = candidate_traits_map.get(int(candidate_id))
                         if traits_ctx and traits_ctx.availability.get("overall_completeness", 0) > 0:
-                            # 注入原始测评数据（不含判断结论）
                             candidate["personality_traits"] = traits_ctx.to_dict()
                             candidate["personality_availability"] = traits_ctx.availability
+                            personality_trace["candidate_traits_count"] = int(personality_trace["candidate_traits_count"]) + 1
 
-        # 4. 把用户测评数据也注入到 response
-        if user_traits and user_traits.availability.get("overall_completeness", 0) > 0:
+        for index, candidate in enumerate(results):
+            candidate_traits = dict(candidate.get("personality_traits") or {})
+            reasoning = (
+                _build_personality_reasoning(
+                    user_traits_dict,
+                    candidate_traits,
+                    candidate=candidate,
+                )
+                if explanation_enabled
+                else {"used": False, "source": "disabled", "signals": [], "summary": "", "reasons": [], "confidence": "none"}
+            )
+            candidate["personality_reasoning"] = reasoning
+            if reasoning.get("used"):
+                personality_trace["top_candidates_used_personality"].append(int(candidate.get("id") or 0))
+
+            base_score = candidate.get("base_score")
+            if base_score in (None, ""):
+                base_score = candidate.get("score") if candidate.get("score") not in (None, "") else candidate.get("fit_score")
+            try:
+                candidate["base_score"] = float(base_score or 0.0)
+            except (TypeError, ValueError):
+                candidate["base_score"] = 0.0
+
+            candidate["personality_bonus"] = 0.0
+            candidate["personality_scoring_trace"] = {
+                "used_dimensions": [],
+                "ranking_enabled": ranking_enabled,
+                "explanation_enabled": explanation_enabled,
+            }
+            if ranking_enabled and user_traits_dict and candidate_traits:
+                bonus, scoring_trace = _compute_personality_bonus(user_traits_dict, candidate_traits)
+                candidate["personality_bonus"] = bonus
+                candidate["personality_scoring_trace"] = {
+                    **scoring_trace,
+                    "ranking_enabled": True,
+                    "base_score": candidate["base_score"],
+                }
+                candidate["score"] = round(candidate["base_score"] + bonus, 2)
+            elif candidate.get("score") in (None, ""):
+                candidate["score"] = candidate["base_score"]
+
+            candidate["_discovery_original_index"] = index
+
+        if ranking_enabled and results:
+            results.sort(
+                key=lambda item: (
+                    float(item.get("score") or 0.0),
+                    float(item.get("base_score") or 0.0),
+                    -int(item.get("_discovery_original_index") or 0),
+                ),
+                reverse=True,
+            )
+
+        for item in results:
+            item.pop("_discovery_original_index", None)
+
+        personality_trace["top_candidates_used_personality"] = [
+            int(item.get("id") or 0)
+            for item in results[:3]
+            if dict(item.get("personality_reasoning") or {}).get("used")
+        ]
+        response["personality_trace"] = personality_trace
+
+        if user_traits_dict:
             response["user_personality_traits"] = user_traits.to_dict()
 
         return response

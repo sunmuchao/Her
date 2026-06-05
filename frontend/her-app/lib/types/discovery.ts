@@ -30,6 +30,34 @@ export type DiscoveryView = {
       cover_image_url?: string
       match_score?: number
       reason_summary?: string
+      personality_reasons?: string[]
+      personality_reasoning?: {
+        used?: boolean
+        source?: string
+        signals?: string[]
+        summary?: string
+        reasons?: string[]
+        confidence?: string
+        score_components?: {
+          values_bonus?: number
+          attachment_bonus?: number
+          temperament_bonus?: number
+        }
+      }
+      personality_bonus?: number
+      base_score?: number
+      personality_scoring_trace?: {
+        values_bonus?: number
+        attachment_bonus?: number
+        temperament_bonus?: number
+        used_dimensions?: string[]
+        attachment_reason?: string
+        temperament_reason?: string
+        shared_values?: string[]
+        ranking_enabled?: boolean
+        explanation_enabled?: boolean
+        base_score?: number
+      }
       personality_match_context?: {
         availability?: {
           has_values?: boolean
@@ -72,6 +100,15 @@ export type DiscoveryView = {
     }>
   }>
   criteria_chips?: Array<{ label?: string }>
+  personality_trace?: {
+    self_traits_available?: boolean
+    candidate_traits_count?: number
+    ranking_enabled?: boolean
+    explanation_enabled?: boolean
+    card_badges_enabled?: boolean
+    top_candidates_used_personality?: number[]
+    fallback_explanation_used?: boolean
+  }
   suggested_actions?: Array<{
     action_id?: string
     label?: string
