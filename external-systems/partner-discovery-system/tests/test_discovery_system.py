@@ -858,8 +858,8 @@ class DiscoveryServiceTests(unittest.TestCase):
                         "profile": {"age": 27, "city": "无锡", "job": "采购", "education": "本科"},
                         "personality_reasoning": {
                             "used": True,
-                            "summary": "都看重“稳定经营、家庭责任”，她的依恋也偏安全型",
-                            "reasons": ["都看重“稳定经营、家庭责任”", "她的依恋也偏安全型"],
+                            "summary": "都看重“稳定经营、家庭责任”这类长期稳定的东西，她的依恋也偏安全型",
+                            "reasons": ["都看重“稳定经营、家庭责任”这类长期稳定的东西", "她的依恋也偏安全型"],
                         },
                         "personality_traits": {
                             "mbti": {"type_code": "ESFJ"},
@@ -881,8 +881,8 @@ class DiscoveryServiceTests(unittest.TestCase):
             ),
         )
 
-        self.assertEqual(cards[0]["reason_summary"], "都看重“稳定经营、家庭责任”，她的依恋也偏安全型")
-        self.assertEqual(cards[0]["personality_reasons"], ["都看重“稳定经营、家庭责任”", "她的依恋也偏安全型"])
+        self.assertEqual(cards[0]["reason_summary"], "都看重“稳定经营、家庭责任”这类长期稳定的东西，她的依恋也偏安全型")
+        self.assertEqual(cards[0]["personality_reasons"], ["都看重“稳定经营、家庭责任”这类长期稳定的东西", "她的依恋也偏安全型"])
 
     def test_search_partner_candidates_with_adds_personality_bonus_and_trace(self) -> None:
         session = StoredSession(
