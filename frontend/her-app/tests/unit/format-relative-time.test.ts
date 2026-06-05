@@ -57,6 +57,15 @@ describe('mapDiscoveryView', () => {
               title: '林知夏 29',
               cover_image_url: 'https://cdn.her.local/1001.jpg',
               reason_summary: '城市一致',
+              personality_match_context: {
+                mbti: { type_code: 'INTJ' },
+                attachment: { type_code: 'secure', anxiety: 22, avoidance: 18 },
+                availability: {
+                  has_mbti: true,
+                  has_attachment: true,
+                  overall_completeness: 0.4,
+                },
+              },
             },
           ],
         },
@@ -71,6 +80,8 @@ describe('mapDiscoveryView', () => {
     const group = mapped.timelineItems[1]
     expect(group.kind === 'result_group' && group.candidates[0]?.id).toBe('1001')
     expect(group.kind === 'result_group' && group.candidates[0]?.image).toBe(PLACEHOLDER_AVATAR)
+    expect(group.kind === 'result_group' && group.candidates[0]?.personality_match_context?.mbti?.type_code).toBe('INTJ')
+    expect(group.kind === 'result_group' && group.candidates[0]?.personality_match_context?.attachment?.type_code).toBe('secure')
     process.env.NODE_ENV = originalNodeEnv
   })
 

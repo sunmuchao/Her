@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 
@@ -192,6 +193,174 @@ def _compact_requester_profile(profile: dict[str, Any] | None) -> dict[str, Any]
     }
 
 
+def _compact_candidate_personality_context(value: dict[str, Any] | None) -> dict[str, Any]:
+    context = dict(value or {})
+    keep_keys = [
+        "mbti",
+        "attachment",
+        "big_five",
+        "values",
+        "sternberg",
+        "availability",
+        "meta",
+    ]
+    return {
+        key: context.get(key)
+        for key in keep_keys
+        if context.get(key) not in (None, "", [], {})
+    }
+
+
+def _compact_page_summary(page_summary: dict[str, Any] | None) -> dict[str, Any]:
+    summary = dict(page_summary or {})
+    compacted_cards: list[dict[str, Any]] = []
+    for card in list(summary.get("result_cards") or [])[:3]:
+        compacted_cards.append(
+            {
+                "profile_id": card.get("profile_id"),
+                "title": card.get("title"),
+                "subtitle": card.get("subtitle"),
+                "match_score": card.get("match_score"),
+                "reason_summary": card.get("reason_summary"),
+                "personality_match_context": _compact_candidate_personality_context(
+                    card.get("personality_match_context")
+                ),
+                "personality_availability": dict(card.get("personality_availability") or {}),
+            }
+        )
+    summary["result_cards"] = compacted_cards
+    return summary
+
+
+def _looks_like_personality_explanation_request(user_message: str | None) -> bool:
+    text = str(user_message or "").strip()
+    if not text:
+        return False
+    if "不要重新搜索" in text:
+        return True
+    keywords = ("为什么", "测评", "MBTI", "依恋", "价值观", "合拍", "性格")
+    return any(keyword in text for keyword in keywords)
+
+
+def _select_explained_candidate(
+    page_summary: dict[str, Any],
+    user_message: str | None,
+) -> dict[str, Any] | None:
+    cards = list(page_summary.get("result_cards") or [])
+    if not cards:
+        return None
+    text = str(user_message or "")
+    indexed_words = (
+        ("第一位", 0),
+        ("第一个", 0),
+        ("1", 0),
+        ("第二位", 1),
+        ("第二个", 1),
+        ("2", 1),
+        ("第三位", 2),
+        ("第三个", 2),
+        ("3", 2),
+    )
+    for word, index in indexed_words:
+        if word in text and index < len(cards):
+            return dict(cards[index] or {})
+    for card in cards:
+        title = str(card.get("title") or "").strip()
+        if title and title.split(" ")[0] in text:
+            return dict(card)
+    return dict(cards[0] or {})
+
+
+def _safe_overlap(values: dict[str, Any] | None, candidate_values: dict[str, Any] | None) -> list[str]:
+    self_top = {str(item).strip() for item in list((values or {}).get("top_values") or []) if str(item).strip()}
+    candidate_top = {
+        str(item).strip()
+        for item in list((candidate_values or {}).get("top_values") or [])
+        if str(item).strip()
+    }
+    return [item for item in self_top if item in candidate_top]
+
+
+def _mbti_clause(self_mbti: dict[str, Any] | None, candidate_mbti: dict[str, Any] | None) -> str | None:
+    self_type = str((self_mbti or {}).get("type_code") or "").strip()
+    candidate_type = str((candidate_mbti or {}).get("type_code") or "").strip()
+    if not self_type or not candidate_type:
+        return None
+    if self_type[:3] and self_type[:3] == candidate_type[:3]:
+        return f"MBTI 上你是 {self_type}，她是 {candidate_type}，前 3 个维度很接近，通常都偏务实、慢热、先看长期稳定。"
+    if self_type[0] == candidate_type[0]:
+        return f"MBTI 上你是 {self_type}，她是 {candidate_type}，相处节奏不会特别冲，比较容易在日常推进上对得上。"
+    return f"MBTI 上你是 {self_type}，她是 {candidate_type}，不算完全同型，但能看出都更偏稳定经营，不是很跳脱的组合。"
+
+
+def _attachment_clause(self_attachment: dict[str, Any] | None, candidate_attachment: dict[str, Any] | None) -> str | None:
+    self_type = str((self_attachment or {}).get("type_code") or "").strip()
+    candidate_type = str((candidate_attachment or {}).get("type_code") or "").strip()
+    if not self_type or not candidate_type:
+        return None
+    self_anxiety = (self_attachment or {}).get("anxiety")
+    candidate_anxiety = (candidate_attachment or {}).get("anxiety")
+    if self_type == "secure" and candidate_type == "secure":
+        return "依恋上你们都偏安全型，焦虑和回避都不高，关系节奏更稳，没那么容易一方追一方躲。"
+    if self_type == candidate_type:
+        return f"依恋上你和她都偏 {self_type}，相处预期比较接近，不太容易因为靠近或拉开距离的方式不同而拧巴。"
+    if self_anxiety is not None and candidate_anxiety is not None:
+        return f"依恋上你们都不是特别高焦虑的组合，沟通时更容易先讲清楚，而不是靠猜。"
+    return None
+
+
+def _values_clause(self_values: dict[str, Any] | None, candidate_values: dict[str, Any] | None) -> str | None:
+    overlap = _safe_overlap(self_values, candidate_values)
+    if overlap:
+        shared = "、".join(overlap[:2])
+        return f"价值观上你们都把“{shared}”放得比较前，这类人通常更容易在长期投入和生活方向上同频。"
+    self_type = str((self_values or {}).get("value_type") or "").strip()
+    candidate_type = str((candidate_values or {}).get("value_type") or "").strip()
+    if self_type and candidate_type:
+        return f"价值观上你偏{self_type}，她偏{candidate_type}，虽然不完全一样，但都不是只看短期新鲜感的类型。"
+    return None
+
+
+def _build_personality_explanation_fallback(
+    run_input: DiscoveryRunInput,
+    user_message: str | None,
+) -> DiscoveryRuntimeResult | None:
+    if not _looks_like_personality_explanation_request(user_message):
+        return None
+    page_summary = _compact_page_summary((run_input.runtime_context or {}).get("page_summary"))
+    candidate = _select_explained_candidate(page_summary, user_message)
+    if not candidate:
+        return None
+
+    requester_profile = _compact_requester_profile(
+        (run_input.runtime_context or {}).get("requester_profile_snapshot")
+    )
+    self_traits = dict(requester_profile.get("personality_traits") or {})
+    candidate_traits = _compact_candidate_personality_context(
+        candidate.get("personality_match_context")
+    )
+    candidate_title = str(candidate.get("title") or "这位").strip() or "这位"
+    candidate_name = re.split(r"\s+", candidate_title, maxsplit=1)[0]
+
+    clauses = [
+        _mbti_clause(self_traits.get("mbti"), candidate_traits.get("mbti")),
+        _attachment_clause(self_traits.get("attachment"), candidate_traits.get("attachment")),
+        _values_clause(self_traits.get("values"), candidate_traits.get("values")),
+    ]
+    message_parts = [part for part in clauses if part]
+    if not message_parts:
+        return None
+    body = f"先说{candidate_name}。{''.join(message_parts[:3])}"
+    return DiscoveryRuntimeResult(
+        decision=DiscoveryDecision(
+            phase="results_shown",
+            assistant_message=body,
+            criteria_labels=list(run_input.criteria_labels),
+            suggested_actions=[],
+        )
+    )
+
+
 def _compact_timeline(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     compacted: list[dict[str, Any]] = []
     for item in items[-6:]:
@@ -294,6 +463,9 @@ def _build_runtime_prompt(
     )
     official_context["recent_timeline_summary"] = _compact_timeline(
         list(official_context.get("recent_timeline_summary") or run_input.recent_timeline)
+    )
+    official_context["page_summary"] = _compact_page_summary(
+        official_context.get("page_summary")
     )
 
     # === Phase 1: 注入 personality_context ===
@@ -443,6 +615,9 @@ class AgentsSdkDiscoveryAgentRuntime:
             _logger.warning(
                 "discovery agent using stub runtime: agents_sdk disabled or API key missing"
             )
+            explained = _build_personality_explanation_fallback(run_input, user_message)
+            if explained is not None:
+                return explained
             return self._fallback_result(
                 run_input,
                 user_message=user_message,
@@ -464,6 +639,9 @@ class AgentsSdkDiscoveryAgentRuntime:
                 type(exc).__name__,
                 exc,
             )
+            explained = _build_personality_explanation_fallback(run_input, user_message)
+            if explained is not None:
+                return explained
             return self._fallback_result(
                 run_input,
                 user_message=user_message,
@@ -558,6 +736,7 @@ class AgentsSdkDiscoveryAgentRuntime:
 7. 如果条件已经够用，就调用搜索工具。
 8. 如果搜索到结果，你负责决定展示哪几位、重点强调什么。
 9. 但你不能编造候选人的原始卡片字段。你只能输出 profile_id 和 reason_summary，后端会去填卡片标题、照片、认证等稳定字段。
+10. 如果页面上已经有 result_cards，且用户是在追问“为什么推荐她/他”“从测评怎么看”“MBTI/依恋/价值观为什么合拍”，优先基于 page_summary.result_cards 里的现有候选人解释，不要重新搜索，也不要退回到泛泛的“继续补充条件”。
 
 official_context 里常见信息：
 - requester_profile_snapshot：用户当前画像快照
@@ -565,6 +744,7 @@ official_context 里常见信息：
 - visible_actions：当前页面还能点哪些 action
 - last_search_summary：最近一轮搜索摘要
 - page_summary：当前页面上的 criteria chips、结果卡片摘要等
+  - page_summary.result_cards 里如果有 personality_match_context，就是当前已经展示给用户的候选人原始测评数据；用户追问“为什么推荐”时，直接用它解释。
 
 工具说明：
 - `sync_requester_persona_memory`：写择偶偏好到 persona（不会直接改 profiles 正式资料）。
@@ -607,6 +787,12 @@ official_context 里常见信息：
 - 如果没有合适结果，phase 用 no_result，message 里自然说明，并给 1 到 2 个放宽方向。
 - 如果搜索 0 结果且你判断适合引导持续留意，可以给一个 action，semantic_payload 里放 `{"kind":"saved_search_opt_in"}`。
 - 如果本轮是 action_click，且 clicked_action.hint.kind 是 `saved_search_opt_in`，说明用户刚刚同意了持续留意；这时你应该优先调用 `create_saved_search_subscription_from_last_search`，再告诉用户你已经记下。
+- 如果 page_summary.result_cards 已有候选人，且用户是在追问当前候选人的测评适配性：
+  - 不要要求用户继续补年龄、城市。
+  - 不要重复搜索。
+  - assistant_message 直接给解释。
+  - 如果你引用了当前候选人的测评，请把该候选人继续放进 selected_candidates，这样前端能保留同一组卡片。
+- reason_summary 应尽量写成用户能看懂的匹配理由，优先引用双方的 MBTI、依恋风格、价值观；如果候选人没测评，再用“从资料看”“可能”等谨慎表达。
 
 【测评推荐优先级说明】
 当你主动询问了用户的测评类型（MBTI、依恋风格），而用户回复"不知道"、"没测过"、"不清楚"时，优先返回测评测试按钮。这一优先级高于"收集偏好"任务。不要转去问年龄、城市等偏好问题。
@@ -691,6 +877,13 @@ official_context 里常见信息：
                 result_group_title=decision.result_group_title,
                 selected_candidates=decision.selected_candidates,
             )
+        explained = _build_personality_explanation_fallback(run_input, user_message)
+        if (
+            explained is not None
+            and decision.phase == "collecting_preferences"
+            and "继续补充" in decision.assistant_message
+        ):
+            return explained
         return DiscoveryRuntimeResult(
             decision=decision,
             search_response=search_response,
