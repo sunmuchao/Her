@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import datetime
+import os
 from typing import Any
 
 
@@ -107,6 +108,13 @@ def clone_view(view: dict[str, Any]) -> dict[str, Any]:
     return deepcopy(view)
 
 
+def _personality_card_badges_enabled() -> bool:
+    raw = str(os.environ.get("HER_DISCOVERY_PERSONALITY_CARD_BADGES_ENABLED") or "").strip().lower()
+    if not raw:
+        return True
+    return raw not in {"0", "false", "off", "no"}
+
+
 def build_candidate_card(candidate: dict[str, Any], *, reason_summary: str = "") -> dict[str, Any]:
     profile = dict(candidate.get("profile") or {})
     profile_id = int(candidate.get("id") or 0)
@@ -131,6 +139,10 @@ def build_candidate_card(candidate: dict[str, Any], *, reason_summary: str = "")
         "match_score": candidate.get("score") or candidate.get("fit_score"),
         "trust_badges": _build_trust_badges(candidate),
         "reason_summary": reason_summary or _default_reason_summary(candidate),
+        "personality_reasoning": deepcopy(candidate.get("personality_reasoning") or {}),
+        "personality_bonus": candidate.get("personality_bonus"),
+        "base_score": candidate.get("base_score"),
+        "personality_scoring_trace": deepcopy(candidate.get("personality_scoring_trace") or {}),
         "open_profile_action": {
             "type": "open_profile",
             "profile_id": profile_id,
@@ -139,12 +151,14 @@ def build_candidate_card(candidate: dict[str, Any], *, reason_summary: str = "")
 
     # 注入 personality_traits（如果存在）
     personality_traits = candidate.get("personality_traits")
-    if personality_traits:
+    if personality_traits and _personality_card_badges_enabled():
         card["personality_match_context"] = personality_traits
-        # 提取 availability 供前端判断是否展示
         availability = candidate.get("personality_availability") or personality_traits.get("availability")
         if availability:
             card["personality_availability"] = availability
+    personality_reasons = list((candidate.get("personality_reasoning") or {}).get("reasons") or [])
+    if personality_reasons:
+        card["personality_reasons"] = personality_reasons[:3]
 
     return card
 
@@ -166,6 +180,9 @@ def _build_trust_badges(candidate: dict[str, Any]) -> list[str]:
 
 
 def _default_reason_summary(candidate: dict[str, Any]) -> str:
+    personality_summary = str((candidate.get("personality_reasoning") or {}).get("summary") or "").strip()
+    if personality_summary:
+        return personality_summary
     matched_on = [str(item).strip() for item in list(candidate.get("matched_on") or []) if str(item or "").strip()]
     if matched_on:
         return "、".join(matched_on[:3])

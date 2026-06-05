@@ -95,7 +95,12 @@ function mapDiscoveryCard(
     city: card.subtitle || undefined,
     image: resolveProfileImageUrl(card.cover_image_url, PLACEHOLDER_AVATAR),
     matchScore: card.match_score,
-    matchReason: card.reason_summary,
+    matchReason: card.personality_reasoning?.summary || card.reason_summary,
+    personality_reasons: card.personality_reasons || card.personality_reasoning?.reasons,
+    personality_reasoning: card.personality_reasoning,
+    personality_bonus: card.personality_bonus,
+    base_score: card.base_score,
+    personality_scoring_trace: card.personality_scoring_trace,
     personality_match_context: card.personality_match_context,
   }
 }

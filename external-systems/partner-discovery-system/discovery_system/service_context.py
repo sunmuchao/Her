@@ -94,6 +94,9 @@ def build_last_search_summary(
         "criteria": deepcopy(search_run.criteria),
         "source": search_run.source,
     }
+    personality_trace = deepcopy(dict((search_run.response or {}).get("personality_trace") or {}))
+    if personality_trace:
+        summary["personality_trace"] = personality_trace
     error_summary = search_error_summary(dict(search_run.response or {}))
     if error_summary:
         summary.update(error_summary)
@@ -127,6 +130,7 @@ def build_page_summary(
                 "subtitle": card.get("subtitle"),
                 "match_score": card.get("match_score"),
                 "reason_summary": card.get("reason_summary"),
+                "personality_reasoning": deepcopy(card.get("personality_reasoning") or {}),
                 "personality_match_context": deepcopy(card.get("personality_match_context") or {}),
                 "personality_availability": deepcopy(card.get("personality_availability") or {}),
             }
@@ -166,6 +170,9 @@ def build_profile_detail_notes(
             if int(card.get("profile_id") or 0) != profile_id:
                 continue
             reason_summary = str(card.get("reason_summary") or "").strip()
+            personality_summary = str((card.get("personality_reasoning") or {}).get("summary") or "").strip()
+            if personality_summary:
+                return [f"红娘当时把这位放到你面前，主要因为：{personality_summary}"]
             if reason_summary:
                 return [f"红娘当时把这位放到你面前，主要因为：{reason_summary}"]
             return []
