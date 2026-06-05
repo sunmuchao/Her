@@ -439,7 +439,202 @@ personality_bonus =
 
 ---
 
-## 7. 需要改的文件清单
+## 7. 项目执行清单
+
+这一节不是讲原则，而是给排期和分工用的。
+
+### 7.1 P0 / P1 / P2 总览
+
+| 优先级 | 目标 | 负责人类型 | 预估人天 | 是否上线前必须 |
+|---|---|---|---:|---|
+| P0 | 统一解释链路 + 测评进入排序 + 基础 trace | 后端 | 3-5 | 是 |
+| P1 | 灰度开关 + 埋点观测 + 前端理由展示 | 后端 + 前端 | 2-4 | 建议是 |
+| P2 | 结果文案优化 + 详情页测评角度 + 精细化排序 | 后端 + 前端 + 产品 | 2-3 | 否 |
+
+### 7.2 P0 执行项
+
+#### P0-1 统一推荐理由生成
+
+- 目标：所有推荐入口都稳定输出测评理由
+- 负责人类型：后端
+- 文件落点：
+  - `external-systems/partner-discovery-system/discovery_system/service.py`
+  - `external-systems/partner-discovery-system/discovery_system/view_models.py`
+- 要做的事：
+  - 抽统一的 `build_personality_reason_summary(...)`
+  - 首轮推荐、继续放宽、看更多匹配、追问解释都走同一套逻辑
+  - `reason_summary` 优先测评理由，基础资料改为兜底
+- 验收标准：
+  - 首轮推荐有测评理由
+  - “继续放宽”不退回基础条件话术
+  - “看更多匹配”新卡片仍然有测评理由
+
+#### P0-2 接入 personality bonus
+
+- 目标：测评真实参与排序，但只做小幅加权
+- 负责人类型：后端
+- 文件落点：
+  - `external-systems/partner-discovery-system/discovery_system/service_integrations.py`
+  - `partner_search/personality_traits_reader.py`
+  - `partner_search` 现有排序逻辑所在文件
+- 要做的事：
+  - 增加 `final_score = base_score + personality_bonus`
+  - bonus 先拆成 `values_bonus + attachment_bonus + temperament_bonus`
+  - 控制 bonus 上限，避免压过基础条件
+- 验收标准：
+  - 排序会有小幅变化
+  - 没测评的候选人不被异常降权
+  - 日志里能看到 `base_score` 和 `personality_bonus`
+
+#### P0-3 补基础 trace
+
+- 目标：每轮推荐都能查到有没有用测评
+- 负责人类型：后端
+- 文件落点：
+  - `external-systems/partner-discovery-system/discovery_system/service_integrations.py`
+  - Discovery 搜索结果持久化或日志输出位置
+- 要做的事：
+  - 输出 `self_traits_available`
+  - 输出 `used_dimensions`
+  - 输出 `fallback_explanation_used`
+  - 输出 `top_candidates_used_personality`
+- 验收标准：
+  - 任意一轮推荐都能回放是否用了测评
+  - 排序和解释是否命中测评可查
+
+#### P0-4 补测试
+
+- 目标：避免后面路径一改就把解释打回去
+- 负责人类型：后端
+- 文件落点：
+  - `external-systems/partner-discovery-system/tests/test_discovery_system.py`
+- 要做的事：
+  - 补“继续放宽”解释测试
+  - 补“看更多匹配”解释测试
+  - 补“无测评候选人”保守措辞测试
+  - 补 `personality_bonus` trace 测试
+- 验收标准：
+  - P0 新增测试全部通过
+  - 关键路径回归不破
+
+### 7.3 P1 执行项
+
+#### P1-1 加 feature flag
+
+- 目标：支持灰度和快速回退
+- 负责人类型：后端
+- 文件落点：
+  - Discovery 配置和 feature flag 读取位置
+- 要做的事：
+  - 增加 `discovery_personality_explanation_enabled`
+  - 增加 `discovery_personality_ranking_enabled`
+  - 增加 `discovery_personality_card_badges_enabled`
+- 验收标准：
+  - 每个能力都能单独开关
+  - 关闭后系统回退到旧逻辑不报错
+
+#### P1-2 前端展示测评短理由
+
+- 目标：用户不追问也能看懂推荐原因
+- 负责人类型：前端
+- 文件落点：
+  - `frontend/her-app/components/her/discovery-candidate-card.tsx`
+  - `frontend/her-app/lib/types/discovery.ts`
+  - `frontend/her-app/lib/discovery/map-discovery-view.ts`
+- 要做的事：
+  - 卡片优先显示 `personality_reasoning.summary`
+  - 无测评时正常回退基础理由
+  - 保留 MBTI / 依恋标签显示
+- 验收标准：
+  - 卡片理由与 assistant message 基本一致
+  - 无测评卡片不出现空块或脏字段
+
+#### P1-3 补埋点与观测
+
+- 目标：上线后能看效果
+- 负责人类型：后端 + 数据
+- 文件落点：
+  - 推荐结果日志
+  - 埋点事件定义
+- 要做的事：
+  - 记录测评解释覆盖率
+  - 记录候选卡 CTR
+  - 记录“为什么推荐”追问率
+  - 记录 ranking 开关前后点击变化
+- 验收标准：
+  - 看板上能看到核心指标
+  - 能按开关状态切分数据
+
+### 7.4 P2 执行项
+
+#### P2-1 结果组文案优化
+
+- 目标：推荐文案更自然，不像系统拼接
+- 负责人类型：产品 + 后端
+- 文件落点：
+  - `external-systems/partner-discovery-system/discovery_system/service.py`
+  - `external-systems/partner-discovery-system/discovery_system/agent_runtime.py`
+- 要做的事：
+  - 统一“为什么放宽 + 从测评角度看谁更值得先看 + 下一步动作”结构
+- 验收标准：
+  - 首轮和放宽后的话术都更自然
+
+#### P2-2 详情页补测评角度模块
+
+- 目标：点开候选人后能看更完整的解释
+- 负责人类型：前端 + 后端
+- 文件落点：
+  - discovery 详情 view model
+  - discovery 详情相关组件
+- 要做的事：
+  - 增加测评摘要模块
+  - 展示 MBTI / 依恋 / 价值观短解释
+- 验收标准：
+  - 详情页能承接卡片里的短理由
+
+#### P2-3 精细化排序
+
+- 目标：在轻量 bonus 稳定后，再提高区分度
+- 负责人类型：后端
+- 文件落点：
+  - 排序逻辑所在文件
+- 要做的事：
+  - 优化价值观顺序权重
+  - 优化依恋风险分级
+  - 优先用大五，MBTI 作为补充
+- 验收标准：
+  - 调整后排序波动可解释
+  - 没有出现异常大跳变
+
+### 7.5 推荐排期
+
+如果按最小可上线版本推进，建议这样排：
+
+1. 第 1 周：完成 P0
+2. 第 2 周：完成 P1
+3. 第 3 周：按资源决定是否做 P2
+
+### 7.6 负责人建议
+
+最省事的配置是：
+
+1. 1 名后端主负责 P0 和 P1 后端项
+2. 1 名前端负责卡片展示和详情承接
+3. 1 名产品或运营负责验收文案与灰度观察
+
+### 7.7 上线口径
+
+只有下面条件同时成立，才算可以说“测评接入发现页落地完成”：
+
+1. 推荐结果正文稳定出现测评理由
+2. 卡片理由和正文理由一致
+3. 测评对排序有真实但有限的影响
+4. 任意一轮都能查到是否用了测评
+5. 开关关闭后能稳定回退
+
+---
+
+## 8. 需要改的文件清单
 
 ### 必改
 
@@ -467,7 +662,7 @@ personality_bonus =
 
 ---
 
-## 8. 完整验收清单
+## 9. 完整验收清单
 
 只有下面这些都成立，才算真正落完：
 
@@ -482,9 +677,9 @@ personality_bonus =
 
 ---
 
-## 9. 风险与边界
+## 10. 风险与边界
 
-### 9.1 最大风险
+### 10.1 最大风险
 
 不是“AI 看不懂测评”，而是：
 
@@ -492,7 +687,7 @@ personality_bonus =
 2. 前端展示了测评，但排序并没真正使用
 3. 开启排序后 bonus 过大，压过基础条件
 
-### 9.2 控制方式
+### 10.2 控制方式
 
 1. 先统一解释，再上排序
 2. 排序 bonus 限幅
@@ -501,7 +696,7 @@ personality_bonus =
 
 ---
 
-## 10. 最终结论
+## 11. 最终结论
 
 这件事的正确落法不是“继续补 MBTI 文案”，而是分成两步：
 
