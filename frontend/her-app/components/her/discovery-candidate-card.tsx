@@ -22,6 +22,7 @@ export function DiscoveryCandidateCard({
   const imageSrc = resolveProfileImageUrl(candidate.image, PLACEHOLDER_AVATAR)
   const mbtiType = candidate.personality_match_context?.mbti?.type_code
   const attachmentType = candidate.personality_match_context?.attachment?.type_code
+  const matchHighlights = (candidate.matchHighlights || []).filter(Boolean).slice(0, 4)
 
   return (
     <button
@@ -67,7 +68,21 @@ export function DiscoveryCandidateCard({
             ) : null}
             {candidate.occupation ? <span>{candidate.occupation}</span> : null}
           </div>
-          {candidate.matchReason ? (
+          {matchHighlights.length > 0 ? (
+            <div className="mt-2">
+              <p className="text-xs text-muted-foreground mb-1">匹配点：</p>
+              <div className="flex flex-wrap gap-1">
+                {matchHighlights.map((item, idx) => (
+                  <span
+                    key={`${candidate.id}-highlight-${idx}`}
+                    className="inline-block px-2 py-0.5 text-xs bg-primary/10 text-primary rounded border border-primary/20"
+                  >
+                    {item}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : candidate.matchReason ? (
             <p className="text-xs text-primary mt-2 line-clamp-2">
               <span className="text-muted-foreground">匹配点：</span>
               {candidate.matchReason}

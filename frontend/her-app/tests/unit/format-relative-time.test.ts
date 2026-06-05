@@ -57,6 +57,7 @@ describe('mapDiscoveryView', () => {
               title: '林知夏 29',
               cover_image_url: 'https://cdn.her.local/1001.jpg',
               reason_summary: '城市一致',
+              match_highlights: ['同城', '年龄合适', '都看重长期稳定这类东西', '依恋也偏安全型'],
               personality_reasoning: {
                 used: true,
                 summary: '都看重长期稳定这类东西，依恋也偏安全型',
@@ -88,6 +89,12 @@ describe('mapDiscoveryView', () => {
     expect(group.kind === 'result_group' && group.candidates[0]?.personality_match_context?.mbti?.type_code).toBe('INTJ')
     expect(group.kind === 'result_group' && group.candidates[0]?.personality_match_context?.attachment?.type_code).toBe('secure')
     expect(group.kind === 'result_group' && group.candidates[0]?.matchReason).toBe('都看重长期稳定这类东西，依恋也偏安全型')
+    expect(group.kind === 'result_group' && group.candidates[0]?.matchHighlights).toEqual([
+      '同城',
+      '年龄合适',
+      '都看重长期稳定这类东西',
+      '依恋也偏安全型',
+    ])
     expect(group.kind === 'result_group' && group.candidates[0]?.personality_reasons).toEqual(['都看重长期稳定这类东西', '依恋也偏安全型'])
     process.env.NODE_ENV = originalNodeEnv
   })
