@@ -98,6 +98,22 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
   const hasSessionCriteriaChipsRef = useRef(false)
 
   const applyMappedView = useCallback((mapped: MappedDiscoveryView) => {
+    // DEBUG: 验证数据是否正确
+    console.log('[DEBUG useDiscoverySession] timelineItems 数量:', mapped.timelineItems.length)
+    console.log('[DEBUG useDiscoverySession] timelineItems:', mapped.timelineItems)
+    const resultGroups = mapped.timelineItems.filter(i => i.kind === 'result_group')
+    console.log('[DEBUG useDiscoverySession] result_group 数量:', resultGroups.length)
+    if (resultGroups.length > 0) {
+      console.log('[DEBUG useDiscoverySession] result_groups 详情:')
+      resultGroups.forEach((rg, idx) => {
+        console.log(`  [${idx}] id=${rg.id}, title=${rg.title}, candidates=${rg.candidates.length}`)
+        rg.candidates.forEach((c, cIdx) => {
+          console.log(`    candidate[${cIdx}]: id=${c.id}, name=${c.name}, city=${c.city}`)
+        })
+      })
+    } else {
+      console.warn('[DEBUG useDiscoverySession] ⚠️ 没有找到 result_group！候选人卡片不会显示')
+    }
     setTimelineItems(mapped.timelineItems)
     hasSessionCriteriaChipsRef.current = Boolean(mapped.chips?.length)
     if (mapped.chips?.length) setCurrentPrefs(mapped.chips)
@@ -116,6 +132,25 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
   const applyDiscoveryResponse = useCallback(
     (data: DiscoverySessionResponse, profileId: number, apiPath: string) => {
       const sid = data.session?.session_id || null
+      // DEBUG: 验证 API 返回的原始数据
+      console.log('[DEBUG useDiscoverySession] API 返回数据:')
+      console.log('  session_id:', sid)
+      console.log('  view.timeline 数量:', data.view?.timeline?.length || 0)
+      if (data.view?.timeline) {
+        const resultGroups = data.view.timeline.filter(i => i.item_type === 'result_group')
+        console.log('  view.timeline 中 result_group 数量:', resultGroups.length)
+        if (resultGroups.length > 0) {
+          console.log('  view.timeline result_groups:')
+          resultGroups.forEach((rg, idx) => {
+            console.log(`    [${idx}] item_id=${rg.item_id}, cards=${rg.cards?.length || 0}`)
+            if (rg.cards?.length) {
+              rg.cards.forEach((card, cIdx) => {
+                console.log(`      card[${cIdx}]: profile_id=${card.profile_id}, title=${card.title}`)
+              })
+            }
+          })
+        }
+      }
       setSessionId(sid)
       if (sid) {
         persistSessionId(profileId, sid)
