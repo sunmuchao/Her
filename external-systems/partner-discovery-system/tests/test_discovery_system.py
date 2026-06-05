@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime
 import json
 import os
 import pathlib
@@ -770,6 +771,75 @@ class DiscoveryServiceTests(unittest.TestCase):
         self.assertEqual(cards[0]["subtitle"], "无锡 · 中学老师 · 硕士")
         self.assertEqual(cards[0]["reason_summary"], "城市一致、关系目标一致、工作节奏稳定。")
         self.assertEqual(cards[0]["trust_badges"], ["真人照认证", "学历已核验"])
+
+    def test_service_appends_proactive_personality_blurb_to_results_message(self) -> None:
+        service = DiscoveryService(
+            storage=InMemoryDiscoveryStorage(),
+            runtime=_FakeRuntime(),
+        )
+
+        with mock.patch.object(
+            service,
+            "_load_requester_profile",
+            return_value={
+                "personality_traits": {
+                    "mbti": {"type_code": "ISTP"},
+                    "attachment": {"type_code": "secure"},
+                    "values": {"top_values": ["稳定经营", "家庭责任", "独立空间"]},
+                }
+            },
+        ):
+            created = service.create_session(requester_id=70001, profile_id=10001)
+            session_id = created["session"]["session_id"]
+            session = service.storage.get_session(session_id)
+            runtime_result = DiscoveryRuntimeResult(
+                decision=DiscoveryDecision(
+                    phase="results_shown",
+                    assistant_message="这一轮先给你看两位。",
+                    criteria_labels=["无锡"],
+                    selected_candidates=[
+                        DiscoveryCandidateSelection(profile_id=2001, reason_summary=""),
+                        DiscoveryCandidateSelection(profile_id=2002, reason_summary=""),
+                    ],
+                ),
+                search_response={
+                    "has_match": True,
+                    "result_count": 2,
+                    "results": [
+                        {
+                            "id": 2001,
+                            "name": "张安萌",
+                            "score": 91,
+                            "profile": {"age": 27, "city": "无锡", "job": "采购", "education": "本科"},
+                            "personality_traits": {
+                                "mbti": {"type_code": "ESFJ"},
+                                "attachment": {"type_code": "secure"},
+                                "values": {"top_values": ["稳定经营", "家庭责任"]},
+                                "availability": {"has_mbti": True, "has_attachment": True, "has_values": True},
+                            },
+                        },
+                        {
+                            "id": 2002,
+                            "name": "唐语妍",
+                            "score": 90,
+                            "profile": {"age": 26, "city": "无锡", "job": "审计", "education": "硕士"},
+                            "personality_traits": {
+                                "mbti": {"type_code": "ISTJ"},
+                                "attachment": {"type_code": "secure"},
+                                "values": {"top_values": ["稳定经营", "成长探索"]},
+                                "availability": {"has_mbti": True, "has_attachment": True, "has_values": True},
+                            },
+                        },
+                    ],
+                },
+            )
+            service._apply_runtime_result(session, runtime_result, now=datetime.now())
+
+        timeline = session.view["timeline"]
+        last_assistant = next(item for item in reversed(timeline) if item.get("item_type") == "assistant_message")
+        self.assertIn("从测评角度看", last_assistant["body"])
+        self.assertIn("张安萌这位", last_assistant["body"])
+        self.assertIn("唐语妍这位", last_assistant["body"])
 
     def test_service_renders_profile_detail_from_canonical_payload(self) -> None:
         service = DiscoveryService(
