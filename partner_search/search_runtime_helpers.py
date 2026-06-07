@@ -482,8 +482,12 @@ class SearchRuntimeHelpers:
                 include_blocked=include_blocked,
             )
             if self_id is not None:
-                visible_ids = {self.runtime.as_int(record.get("id")) for record in moderated_records}
-                if self_id not in visible_ids:
+                self_visible = False
+                for record in moderated_records:
+                    if self.runtime.as_int(record.get("id")) == self_id:
+                        self_visible = True
+                        break
+                if not self_visible:
                     for record in source_records:
                         if self.runtime.as_int(record.get("id")) == self_id:
                             moderated_records.append(record)
