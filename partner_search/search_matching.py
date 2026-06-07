@@ -907,6 +907,19 @@ def evaluate_candidate(
     diagnostics: bool = False,
     reciprocal_mode: str = "strict",
 ) -> dict[str, Any] | None:
+    def _lowered_criteria_values(field: str) -> set[str]:
+        cache_key = f"__lowered_{field}_set"
+        cached = criteria.get(cache_key)
+        if isinstance(cached, set):
+            return cached
+        lowered = {
+            runtime.as_lower(item)
+            for item in criteria.get(field, [])
+            if runtime.as_lower(item)
+        }
+        criteria[cache_key] = lowered
+        return lowered
+
     def fail(reason: str, detail: Any = None) -> dict[str, Any] | None:
         if not diagnostics:
             return None
@@ -1028,7 +1041,7 @@ def evaluate_candidate(
         city = runtime.as_lower(record.get("city"))
         if not city:
             missing_fields.append("city")
-        elif city not in [runtime.as_lower(item) for item in criteria["cities"]]:
+        elif city not in _lowered_criteria_values("cities"):
             return fail("city_mismatch")
         else:
             reasons.append(f"城市 {record.get('city')}")
@@ -1051,7 +1064,7 @@ def evaluate_candidate(
         district = runtime.as_lower(record.get("district"))
         if not district:
             missing_fields.append("district")
-        elif district not in [runtime.as_lower(item) for item in criteria["districts"]]:
+        elif district not in _lowered_criteria_values("districts"):
             return fail("district_mismatch")
         else:
             reasons.append(f"区域 {record.get('district')}")
@@ -1061,7 +1074,7 @@ def evaluate_candidate(
         settlement_city = runtime.as_lower(record.get("settlement_city"))
         if not settlement_city:
             missing_fields.append("settlement_city")
-        elif settlement_city not in [runtime.as_lower(item) for item in criteria["settlement_cities"]]:
+        elif settlement_city not in _lowered_criteria_values("settlement_cities"):
             return fail("settlement_city_mismatch")
         else:
             reasons.append(f"定居 {record.get('settlement_city')}")
@@ -1076,7 +1089,7 @@ def evaluate_candidate(
         goal = runtime.as_lower(record.get("relationship_goal"))
         if not goal:
             missing_fields.append("relationship_goal")
-        elif goal not in [runtime.as_lower(item) for item in criteria["relationship_goals"]]:
+        elif goal not in _lowered_criteria_values("relationship_goals"):
             return fail("relationship_goal_mismatch")
         else:
             reasons.append(f"目标 {record.get('relationship_goal')}")

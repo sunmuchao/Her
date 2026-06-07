@@ -102,14 +102,23 @@ def inflate_pair(pair: dict[str, Any] | None) -> dict[str, Any] | None:
     return inflated
 
 
-def inflate_case(case: dict[str, Any] | None, *, conn=None) -> dict[str, Any] | None:
+def inflate_case(
+    case: dict[str, Any] | None,
+    *,
+    conn=None,
+    event_rows: list[dict[str, Any]] | None = None,
+    member_low: Mapping[str, Any] | None = None,
+    member_high: Mapping[str, Any] | None = None,
+) -> dict[str, Any] | None:
     if not case:
         return case
     inflated = dict(case)
     inflated["case_type"] = inflated.get("case_type") or CaseType.MATCHMAKING.value
     cid = inflated.get("case_id")
     ledger_events = []
-    if conn is not None and cid:
+    if event_rows is not None:
+        ledger_events = match_events_from_case_event_rows(event_rows)
+    elif conn is not None and cid:
         from .pairs import list_match_case_events
 
         event_rows = list_match_case_events(conn, str(cid))
@@ -117,7 +126,12 @@ def inflate_case(case: dict[str, Any] | None, *, conn=None) -> dict[str, Any] | 
     inflated["case_ledger_event_count"] = len(ledger_events)
     reduced = reduce_case_ledger(ledger_events)
     inflated["canonical_case_status"] = reduced.status.value
-    if conn is not None:
+    if member_low is not None and member_high is not None:
+        inflated["relation_key"] = matchmaking_relation_key(member_low, member_high)
+        inflated["canonical_pair_key"] = canonical_pair_key_for_members(member_low, member_high)
+        inflated["owner_profile_ref"] = profile_ref_to_dict(pool_member_profile_ref(member_low))
+        inflated["target_profile_ref"] = profile_ref_to_dict(pool_member_profile_ref(member_high))
+    elif conn is not None:
         first_id = inflated.get("first_contact_member_id")
         second_id = inflated.get("second_contact_member_id")
         if first_id and second_id:
@@ -218,4 +232,3 @@ def _append_pair_event_to_ledger(
         owner_profile_ref=pool_member_profile_ref(member_low),
         target_profile_ref=pool_member_profile_ref(member_high),
     )
-

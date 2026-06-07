@@ -183,6 +183,75 @@ def get_match_case(conn, case_id: str) -> dict[str, Any]:
     return case
 
 
+def _list_match_case_events_for_cases(conn, case_ids: Iterable[str]) -> dict[str, list[dict[str, Any]]]:
+    normalized = [str(case_id).strip() for case_id in case_ids if str(case_id or "").strip()]
+    if not normalized:
+        return {}
+    placeholders = ", ".join(["?"] * len(normalized))
+    rows = conn.execute(
+        f"""
+        SELECT *
+        FROM match_case_events
+        WHERE case_id IN ({placeholders})
+        ORDER BY occurred_at ASC, event_id ASC
+        """,
+        tuple(normalized),
+    ).fetchall()
+    grouped: dict[str, list[dict[str, Any]]] = {case_id: [] for case_id in normalized}
+    for row in rows:
+        row_dict = row_to_dict(row)
+        case_id = str(row_dict.get("case_id") or "").strip()
+        if case_id:
+            grouped.setdefault(case_id, []).append(row_dict)
+    return grouped
+
+
+def _list_match_cases_by_ids(
+    conn,
+    case_ids: Iterable[str],
+    *,
+    members_by_id: Mapping[str, dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    normalized = [str(case_id).strip() for case_id in case_ids if str(case_id or "").strip()]
+    if not normalized:
+        return []
+    placeholders = ", ".join(["?"] * len(normalized))
+    rows = conn.execute(
+        f"""
+        SELECT *
+        FROM match_cases
+        WHERE case_id IN ({placeholders})
+        """,
+        tuple(normalized),
+    ).fetchall()
+    row_map = {
+        str(case_row["case_id"]): row_to_dict(case_row)
+        for case_row in rows
+        if row_to_dict(case_row).get("case_id") is not None
+    }
+    events_by_case_id = _list_match_case_events_for_cases(conn, normalized)
+    out: list[dict[str, Any]] = []
+    for case_id in normalized:
+        case_row = row_map.get(case_id)
+        if not case_row:
+            continue
+        first_member = None
+        second_member = None
+        if members_by_id is not None:
+            first_member = members_by_id.get(str(case_row.get("first_contact_member_id") or "").strip())
+            second_member = members_by_id.get(str(case_row.get("second_contact_member_id") or "").strip())
+        inflated = inflate_case(
+            case_row,
+            conn=None if first_member is not None and second_member is not None else conn,
+            event_rows=events_by_case_id.get(case_id, []),
+            member_low=first_member,
+            member_high=second_member,
+        )
+        if inflated:
+            out.append(inflated)
+    return out
+
+
 def _record_case_event(
     conn,
     *,
@@ -195,14 +264,16 @@ def _record_case_event(
     payload: Mapping[str, Any] | None = None,
     now: datetime | None = None,
     ledger_mirror: list[LedgerMirrorEntry] | None = None,
+    first_contact_member: Mapping[str, Any] | None = None,
+    second_contact_member: Mapping[str, Any] | None = None,
 ) -> None:
     event_now = current_time(now)
     relation_key = None
     owner_profile_ref = None
     target_profile_ref = None
     if first_contact_member_id and second_contact_member_id:
-        member_low = get_pool_member(conn, str(first_contact_member_id))
-        member_high = get_pool_member(conn, str(second_contact_member_id))
+        member_low = first_contact_member or get_pool_member(conn, str(first_contact_member_id))
+        member_high = second_contact_member or get_pool_member(conn, str(second_contact_member_id))
         relation_key = _matchmaking_relation_key_for_members(member_low, member_high)
         owner_profile_ref = pool_member_profile_ref(member_low)
         target_profile_ref = pool_member_profile_ref(member_high)
@@ -418,6 +489,8 @@ def open_match_cases(
             payload={"initiator_type": "system"},
             now=now,
             ledger_mirror=ledger_mirror,
+            first_contact_member=member_low,
+            second_contact_member=member_high,
         )
         _append_pair_event_to_ledger(
             pair_event_type="pair_case_opened",
@@ -449,7 +522,7 @@ def open_match_cases(
     conn.commit()
     _flush_ledger_mirror(ledger_mirror)
     metric_gauge("matchmaking.cases.opened_batch", len(created_case_ids))
-    return [get_match_case(conn, case_id) for case_id in created_case_ids]
+    return _list_match_cases_by_ids(conn, created_case_ids, members_by_id=members_by_id)
 
 
 def dispatch_case_contact(
