@@ -255,11 +255,10 @@ class MatchmakingSystemTests(unittest.TestCase):
         )
 
         with patch("matchmaking_system.matchmaking_cases.get_match_case", side_effect=AssertionError("unexpected per-case reload")):
-            with patch("matchmaking_system.matchmaking_cases._create_assistant_dm_conversations", return_value=None):
-                cases = open_match_cases(
-                    self.conn,
-                    now=datetime(2026, 5, 2, 9, 10, 0),
-                )
+            cases = open_match_cases(
+                self.conn,
+                now=datetime(2026, 5, 2, 9, 10, 0),
+            )
 
         self.assertEqual(len(cases), 2)
         self.assertEqual(
