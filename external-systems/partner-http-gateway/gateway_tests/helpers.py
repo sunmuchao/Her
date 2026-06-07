@@ -5,6 +5,7 @@ import json
 from typing import Any
 
 import outer_system_mysql_schema as mysql_schema
+from partner_search.search_cache import clear_search_cache
 
 
 _PROFILE_TABLE_SQL = """
@@ -143,6 +144,7 @@ def open_search_conn(search_config: Any):
 
 
 def ensure_search_schema(search_config: Any) -> None:
+    clear_search_cache()
     conn = open_search_conn(search_config)
     try:
         with conn.cursor() as cursor:
@@ -156,6 +158,7 @@ def ensure_search_schema(search_config: Any) -> None:
 
 
 def reset_search_rows(search_config: Any) -> None:
+    clear_search_cache()
     conn = open_search_conn(search_config)
     try:
         with conn.cursor() as cursor:
@@ -167,6 +170,7 @@ def reset_search_rows(search_config: Any) -> None:
 
 
 def insert_search_profile(search_config: Any, row: tuple[Any, ...]) -> None:
+    clear_search_cache()
     conn = open_search_conn(search_config)
     try:
         with conn.cursor() as cursor:
@@ -177,6 +181,7 @@ def insert_search_profile(search_config: Any, row: tuple[Any, ...]) -> None:
 
 
 def insert_search_profiles(search_config: Any, rows: list[tuple[Any, ...]]) -> None:
+    clear_search_cache()
     conn = open_search_conn(search_config)
     try:
         with conn.cursor() as cursor:

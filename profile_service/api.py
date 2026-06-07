@@ -43,6 +43,14 @@ _profile_metadata_cache: dict[tuple[str, str, str], tuple[float, Any]] = {}
 _profile_metadata_lock = threading.Lock()
 
 
+def _clear_partner_search_cache() -> None:
+    try:
+        from partner_search.search_cache import clear_search_cache
+    except Exception:  # noqa: BLE001
+        return
+    clear_search_cache()
+
+
 def _profile_metadata_ttl_seconds() -> float:
     raw = str(os.environ.get("PROFILE_METADATA_CACHE_TTL_SECONDS", "60") or "60").strip()
     try:
@@ -348,6 +356,7 @@ def list_profiles(
     source_table_name: str,
     where_clause: str = "",
     params: Sequence[Any] | None = None,
+    selected_columns: Sequence[str] | None = None,
 ) -> list[dict[str, Any]]:
     return [
         row
@@ -356,6 +365,7 @@ def list_profiles(
             source_table_name=source_table_name,
             where_clause=where_clause,
             params=params,
+            selected_columns=selected_columns,
             batch_size=0,
         )
         for row in batch
@@ -368,6 +378,7 @@ def iter_profile_batches(
     source_table_name: str,
     where_clause: str = "",
     params: Sequence[Any] | None = None,
+    selected_columns: Sequence[str] | None = None,
     batch_size: int = 500,
 ):
     """Yield profile rows in batches. batch_size=0 yields a single batch (full fetch)."""
@@ -377,7 +388,19 @@ def iter_profile_batches(
         if not _table_exists(profile_conn, source_table_name):
             raise ValueError(f"profile table {source_table_name} was not found")
         normalized_where = str(where_clause or "").strip()
-        base_sql = f"SELECT * FROM {schema.quote_mysql_ident(source_table_name)}"
+        available_columns = _list_table_columns(profile_conn, source_table_name)
+        column_set = set(available_columns)
+        normalized_selected_columns: list[str] = []
+        for column_name in selected_columns or ():
+            normalized = str(column_name or "").strip()
+            if not normalized or normalized not in column_set or normalized in normalized_selected_columns:
+                continue
+            normalized_selected_columns.append(normalized)
+        if normalized_selected_columns:
+            select_sql = ", ".join(schema.quote_mysql_ident(column_name) for column_name in normalized_selected_columns)
+        else:
+            select_sql = "*"
+        base_sql = f"SELECT {select_sql} FROM {schema.quote_mysql_ident(source_table_name)}"
         if normalized_where:
             base_sql = f"{base_sql} {normalized_where}"
         query_params = tuple(params or ())
@@ -388,7 +411,7 @@ def iter_profile_batches(
                 yield [dict(row) for row in rows]
             return
 
-        has_id_column = _column_exists(profile_conn, source_table_name, "id")
+        has_id_column = "id" in column_set
         page_size = max(1, int(batch_size))
         if not has_id_column:
             offset = 0
@@ -794,6 +817,7 @@ def create_profile_row(
             profile_id = int(getattr(result, "lastrowid", 0) or 0)
             if profile_id > 0:
                 profile_conn.commit()
+                _clear_partner_search_cache()
                 return profile_id
         except Exception:
             pass
@@ -813,6 +837,7 @@ def create_profile_row(
             (next_id,) + tuple(values),
         )
         profile_conn.commit()
+        _clear_partner_search_cache()
         return next_id
     finally:
         release_profile_connection(source_dsn, profile_conn)
@@ -890,6 +915,7 @@ def apply_profile_updates(
             if not exists:
                 raise ValueError(f"profile {profile_id} was not found in table {source_table_name}")
         profile_conn.commit()
+        _clear_partner_search_cache()
         return {
             "status": "synced",
             "profile_id": int(profile_id),

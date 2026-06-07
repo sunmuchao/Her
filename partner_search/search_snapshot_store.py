@@ -146,7 +146,22 @@ def delete_persisted_search_run(criteria_hash: str) -> None:
         conn.close()
 
 
+def clear_persisted_search_runs() -> None:
+    conn = _connect()
+    if conn is None:
+        return
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(f"DELETE FROM `{_TABLE}`")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+    finally:
+        conn.close()
+
+
 __all__ = [
+    "clear_persisted_search_runs",
     "delete_persisted_search_run",
     "ensure_search_snapshot_table",
     "get_persisted_search_run",
