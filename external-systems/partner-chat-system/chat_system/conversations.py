@@ -167,6 +167,17 @@ def get_conversation_member(
     return _inflate_member(row_to_dict(cur.fetchone()))
 
 
+def _members_by_participant_id(
+    members: Iterable[dict[str, Any]] | None,
+) -> dict[str, dict[str, Any]]:
+    out: dict[str, dict[str, Any]] = {}
+    for member in members or ():
+        participant_id = str((member or {}).get("participant_id") or "").strip()
+        if participant_id:
+            out[participant_id] = member
+    return out
+
+
 def _conversation_bundle(conn, conversation_id: str) -> dict[str, Any]:
     conversation = get_conversation(conn, conversation_id)
     if not conversation:
@@ -185,8 +196,9 @@ def _upsert_conversation_member(
     can_send: int,
     metadata: dict[str, Any] | None,
     joined_at: datetime,
+    existing_member: Mapping[str, Any] | None = None,
 ) -> None:
-    existing = get_conversation_member(conn, conversation_id, participant_id)
+    existing = dict(existing_member or {})
     payload = json_dumps(dict(metadata or {}))
     if not existing:
         conn.execute(
@@ -226,6 +238,33 @@ def _upsert_conversation_member(
             participant_id,
         ),
     )
+
+
+def _upsert_conversation_members(
+    conn,
+    conversation_id: str,
+    *,
+    members: list[dict[str, Any]],
+    joined_at: datetime,
+    existing_members_by_participant_id: Mapping[str, Mapping[str, Any]] | None = None,
+) -> None:
+    existing_by_participant = {
+        str(participant_id): dict(member)
+        for participant_id, member in (existing_members_by_participant_id or {}).items()
+    }
+    for member in members:
+        participant_id = str(member["participant_id"])
+        _upsert_conversation_member(
+            conn,
+            conversation_id,
+            participant_id=participant_id,
+            member_role=str(member["member_role"]),
+            can_read=int(member["can_read"]),
+            can_send=int(member["can_send"]),
+            metadata=dict(member["metadata"]),
+            joined_at=joined_at,
+            existing_member=existing_by_participant.get(participant_id),
+        )
 
 
 def get_or_create_conversation(
