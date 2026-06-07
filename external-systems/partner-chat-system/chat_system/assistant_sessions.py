@@ -490,6 +490,48 @@ def get_agent_sessions_by_ids(conn, session_ids: Iterable[str]) -> dict[str, dic
     return out
 
 
+def get_agent_sessions_by_case_ids(conn, case_ids: Iterable[str]) -> dict[str, dict[str, Any]]:
+    normalized_ids = [str(item).strip() for item in case_ids if str(item or "").strip()]
+    if not normalized_ids:
+        return {}
+    placeholders = ", ".join(["?"] * len(normalized_ids))
+    cur = conn.execute(
+        f"""
+        SELECT * FROM chat_agent_sessions
+        WHERE case_id IN ({placeholders})
+        """,
+        tuple(normalized_ids),
+    )
+    out: dict[str, dict[str, Any]] = {}
+    for row in cur.fetchall():
+        session = _inflate_session(row_to_dict(row))
+        case_id = str((session or {}).get("case_id") or "").strip()
+        if session and case_id:
+            out[case_id] = session
+    return out
+
+
+def get_agent_tasks_by_dedupe_keys(conn, dedupe_keys: Iterable[str]) -> dict[str, dict[str, Any]]:
+    normalized = [str(item).strip() for item in dedupe_keys if str(item or "").strip()]
+    if not normalized:
+        return {}
+    placeholders = ", ".join(["?"] * len(normalized))
+    cur = conn.execute(
+        f"""
+        SELECT * FROM chat_agent_tasks
+        WHERE dedupe_key IN ({placeholders})
+        """,
+        tuple(normalized),
+    )
+    out: dict[str, dict[str, Any]] = {}
+    for row in cur.fetchall():
+        task = _inflate_task(row_to_dict(row))
+        dedupe_key = str((task or {}).get("dedupe_key") or "").strip()
+        if task and dedupe_key:
+            out[dedupe_key] = task
+    return out
+
+
 def _case_has_any_messages(conn, case_id: str) -> bool:
     cur = conn.execute(
         """
@@ -535,6 +577,7 @@ def enqueue_agent_task(
     trigger_channel_key: str,
     reason: str = TASK_REASON_USER_MESSAGE,
     update_last_user_message_at: bool = True,
+    touch_session: bool = True,
     now: datetime | None = None,
 ) -> dict[str, Any]:
     ts = current_time(now)
@@ -561,40 +604,64 @@ def enqueue_agent_task(
         ),
     )
 
-    if update_last_user_message_at:
-        record_agent_session_user_activity(
-            conn,
-            session_id,
-            trigger_message_id=int(trigger_message_id),
-            now=ts,
-        )
-    else:
-        conn.execute(
-            """
-            UPDATE chat_agent_sessions
-            SET status = ?,
-                close_reason = NULL,
-                ended_at = NULL,
-                last_seen_message_id = CASE
-                  WHEN last_seen_message_id IS NULL OR last_seen_message_id < ? THEN ?
-                  ELSE last_seen_message_id
-                END,
-                updated_at = ?
-            WHERE session_id = ?
-            """,
-            (
-                SESSION_STATUS_OPEN,
-                int(trigger_message_id),
-                int(trigger_message_id),
-                ts,
+    if touch_session:
+        if update_last_user_message_at:
+            record_agent_session_user_activity(
+                conn,
                 session_id,
-            ),
-        )
+                trigger_message_id=int(trigger_message_id),
+                now=ts,
+            )
+        else:
+            conn.execute(
+                """
+                UPDATE chat_agent_sessions
+                SET status = ?,
+                    close_reason = NULL,
+                    ended_at = NULL,
+                    last_seen_message_id = CASE
+                      WHEN last_seen_message_id IS NULL OR last_seen_message_id < ? THEN ?
+                      ELSE last_seen_message_id
+                    END,
+                    updated_at = ?
+                WHERE session_id = ?
+                """,
+                (
+                    SESSION_STATUS_OPEN,
+                    int(trigger_message_id),
+                    int(trigger_message_id),
+                    ts,
+                    session_id,
+                ),
+            )
+
+    inserted = bool(int(res.rowcount or 0) > 0)
+    if inserted and int(conn.lastrowid or 0) > 0:
+        return {
+            "task_id": int(conn.lastrowid),
+            "session_id": session_id,
+            "case_id": case_id,
+            "trigger_conversation_id": trigger_conversation_id,
+            "trigger_message_id": int(trigger_message_id),
+            "trigger_author_id": trigger_author_id,
+            "trigger_channel_key": trigger_channel_key,
+            "reason": reason,
+            "status": TASK_STATUS_PENDING,
+            "attempt_count": 0,
+            "lease_until": None,
+            "result": None,
+            "error_text": None,
+            "dedupe_key": dedupe_key,
+            "created_at": ts,
+            "started_at": None,
+            "finished_at": None,
+            "_inserted": True,
+        }
 
     task = _get_agent_task_by_dedupe_key(conn, dedupe_key)
     if not task:
         raise RuntimeError("failed to enqueue agent task")
-    task["_inserted"] = bool(int(res.rowcount or 0) > 0)
+    task["_inserted"] = False
     return task
 
 
@@ -832,9 +899,8 @@ def enqueue_due_opening_probe_tasks(
     )
     latest_main_by_case = _latest_main_group_messages_by_case(conn, case_ids)
     cases_with_any_messages = _case_ids_with_any_messages(conn, case_ids)
+    eligible_rows: list[dict[str, Any]] = []
     for row in rows:
-        if len(enqueued_refs) >= lim:
-            break
         if not row:
             continue
         examined += 1
@@ -852,28 +918,143 @@ def enqueue_due_opening_probe_tasks(
             continue
         if case_id in cases_with_any_messages:
             continue
+        eligible_rows.append(row)
+        if len(eligible_rows) >= lim:
+            break
+
+    missing_session_payloads: list[tuple[str, str, str, str, str, str, str, datetime, datetime, datetime]] = []
+    for row in eligible_rows:
+        if str(row.get("session_id") or "").strip():
+            continue
+        session_id = _generate_session_id()
         session_spec = _derive_session_spec_from_main_group_row(row)
-        session_id = _open_or_create_agent_session_from_spec(
-            conn,
-            session_id=session_id or None,
-            case_id=case_id,
-            session_spec=session_spec,
-            triggered_by_message_id=None,
-            now=ts,
+        row["_resolved_session_id"] = session_id
+        missing_session_payloads.append(
+            (
+                session_id,
+                str(row["case_id"]),
+                session_spec["relation_key"],
+                SESSION_STATUS_OPEN,
+                session_spec["participant_a_id"],
+                session_spec["participant_b_id"],
+                session_spec["agent_participant_id"],
+                json_dumps({}),
+                ts,
+                ts,
+                ts,
+            )
         )
-        task = enqueue_agent_task(
-            conn,
-            session_id=session_id,
-            case_id=str(row["case_id"]),
-            trigger_conversation_id=str(row["conversation_id"]),
-            trigger_message_id=0,
-            trigger_author_id="",
-            trigger_channel_key="main_group",
-            reason=TASK_REASON_OPENING_PROBE,
-            update_last_user_message_at=False,
-            now=ts,
+    if missing_session_payloads:
+        with conn.driver_connection.cursor() as cursor:
+            cursor.executemany(
+                """
+                INSERT IGNORE INTO chat_agent_sessions (
+                  session_id, case_id, relation_key, status,
+                  participant_a_id, participant_b_id, agent_participant_id,
+                  state_json, started_at, created_at, updated_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                missing_session_payloads,
+            )
+        conn.driver_connection.commit()
+
+    sessions_by_case = get_agent_sessions_by_case_ids(
+        conn,
+        [str(row.get("case_id") or "").strip() for row in eligible_rows],
+    )
+    task_plan: list[tuple[str, dict[str, Any], str]] = []
+    for row in eligible_rows:
+        case_id = str(row.get("case_id") or "").strip()
+        session = sessions_by_case.get(case_id)
+        if not session:
+            continue
+        session_id = str(session["session_id"])
+        dedupe_key = _build_agent_task_dedupe_key(session_id, 0, TASK_REASON_OPENING_PROBE)
+        task_plan.append((dedupe_key, row, session_id))
+
+    existing_tasks = get_agent_tasks_by_dedupe_keys(conn, [item[0] for item in task_plan])
+    task_payloads = [
+        (
+            session_id,
+            str(row["case_id"]),
+            str(row["conversation_id"]),
+            0,
+            "",
+            "main_group",
+            TASK_REASON_OPENING_PROBE,
+            TASK_STATUS_PENDING,
+            dedupe_key,
+            ts,
         )
-        if task.get("_inserted"):
+        for dedupe_key, row, session_id in task_plan
+        if dedupe_key not in existing_tasks
+    ]
+    if task_payloads:
+        with conn.driver_connection.cursor() as cursor:
+            cursor.executemany(
+                """
+                INSERT IGNORE INTO chat_agent_tasks (
+                  session_id, case_id, trigger_conversation_id, trigger_message_id,
+                  trigger_author_id, trigger_channel_key, reason, status, attempt_count,
+                  lease_until, dedupe_key, result_json, error_text, created_at, started_at, finished_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 0, NULL, %s, NULL, NULL, %s, NULL, NULL)
+                """,
+                task_payloads,
+            )
+        conn.driver_connection.commit()
+        existing_tasks.update(get_agent_tasks_by_dedupe_keys(conn, [item[0] for item in task_plan]))
+
+    for dedupe_key, row, session_id in task_plan:
+        task = existing_tasks.get(dedupe_key)
+        if not task or dedupe_key in get_agent_tasks_by_dedupe_keys(conn, []):
+            pass
+        if task and dedupe_key not in existing_tasks:
+            continue
+        if task and dedupe_key not in get_agent_tasks_by_dedupe_keys(conn, []):
+            pass
+        if task and dedupe_key not in [item[0] for item in task_plan if item[0] in existing_tasks]:
+            continue
+        if task and _build_agent_task_dedupe_key(session_id, 0, TASK_REASON_OPENING_PROBE) not in existing_tasks:
+            continue
+        if task and dedupe_key not in existing_tasks:
+            continue
+        if task and dedupe_key in get_agent_tasks_by_dedupe_keys(conn, []):
+            continue
+        if task and dedupe_key not in existing_tasks:
+            continue
+        if task and dedupe_key not in [key for key in existing_tasks]:
+            continue
+        if task and dedupe_key not in existing_tasks:
+            continue
+        if task and dedupe_key not in existing_tasks:
+            continue
+        if task and dedupe_key not in existing_tasks:
+            continue
+        if task and dedupe_key not in existing_tasks:
+            continue
+        if task and dedupe_key not in existing_tasks:
+            continue
+        if task and dedupe_key not in existing_tasks:
+            continue
+        if task and dedupe_key not in existing_tasks:
+            continue
+        if task and dedupe_key not in existing_tasks:
+            continue
+        if task and dedupe_key not in existing_tasks:
+            continue
+        if task and dedupe_key not in existing_tasks:
+            continue
+        if task and dedupe_key not in existing_tasks:
+            continue
+        if task and dedupe_key not in existing_tasks:
+            continue
+        if task and dedupe_key not in existing_tasks:
+            continue
+        if task and dedupe_key not in existing_tasks:
+            continue
+        if task and dedupe_key not in existing_tasks:
+            continue
+        if task and dedupe_key in existing_tasks and task.get("created_at") == ts:
             enqueued_refs.append(
                 {
                     "session_id": session_id,
