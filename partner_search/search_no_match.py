@@ -150,6 +150,29 @@ def build_no_match_diagnostics_payload(
     }
 
 
+def _strict_diagnostic_cache(criteria: dict[str, Any]) -> dict[int, dict[str, Any] | None]:
+    cache = criteria.get("__strict_diagnostic_cache")
+    if isinstance(cache, dict):
+        return cache
+    created: dict[int, dict[str, Any] | None] = {}
+    criteria["__strict_diagnostic_cache"] = created
+    return created
+
+
+def _evaluate_strict_candidate(
+    runtime: SearchNoMatchRuntime,
+    record: dict[str, Any],
+    criteria: dict[str, Any],
+) -> dict[str, Any] | None:
+    cache = _strict_diagnostic_cache(criteria)
+    record_key = id(record)
+    if record_key in cache:
+        return cache[record_key]
+    diagnostic = runtime.evaluate_candidate(record, criteria, diagnostics=True)
+    cache[record_key] = diagnostic
+    return diagnostic
+
+
 def build_no_match_diagnostics(
     runtime: SearchNoMatchRuntime,
     records: list[dict[str, Any]],
@@ -170,7 +193,7 @@ def build_no_match_diagnostics(
     passed_count = 0
     excluded_count = 0
     for record in records:
-        diagnostic = runtime.evaluate_candidate(record, criteria, diagnostics=True)
+        diagnostic = _evaluate_strict_candidate(runtime, record, criteria)
         if diagnostic and diagnostic.get("matched"):
             passed_count += 1
             continue
@@ -226,7 +249,7 @@ def build_fallback_candidates(
 ) -> list[dict[str, Any]]:
     candidates: list[dict[str, Any]] = []
     for record in records:
-        strict_diagnostic = runtime.evaluate_candidate(record, criteria, diagnostics=True)
+        strict_diagnostic = _evaluate_strict_candidate(runtime, record, criteria)
         if strict_diagnostic and strict_diagnostic.get("matched"):
             continue
 
