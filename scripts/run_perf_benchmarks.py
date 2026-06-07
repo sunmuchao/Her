@@ -33,6 +33,7 @@ from profile_service import iter_profile_batches  # noqa: E402
 from gateway_tests.helpers import (  # noqa: E402
     ensure_search_schema,
     insert_search_profiles,
+    open_search_conn,
     reset_search_rows,
     search_test_config,
 )
@@ -71,6 +72,8 @@ DEFAULT_SEARCH_DSN = os.environ.get(
     "PARTNER_SEARCH_BENCHMARK_DB",
     "mysql://root@127.0.0.1:3307/her_partner_search_benchmark?table=profiles&photos_table=profile_photos",
 )
+SEARCH_FILLER_COLUMN_COUNT = 32
+SEARCH_FILLER_DEFAULT = "perf-benchmark-filler-value" * 4
 
 
 @dataclass
@@ -213,6 +216,20 @@ def _build_search_rows(total_profiles: int) -> list[tuple[Any, ...]]:
 def _prepare_search_db(total_profiles: int) -> str:
     search_config = search_test_config(DEFAULT_SEARCH_DSN)
     ensure_search_schema(search_config)
+    conn = open_search_conn(search_config)
+    try:
+        with conn.cursor() as cursor:
+            for index in range(SEARCH_FILLER_COLUMN_COUNT):
+                column_name = f"perf_filler_{index:02d}"
+                cursor.execute(
+                    f"ALTER TABLE `profiles` ADD COLUMN `{column_name}` VARCHAR(255) NOT NULL DEFAULT %s",
+                    (SEARCH_FILLER_DEFAULT,),
+                )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+    finally:
+        conn.close()
     reset_search_rows(search_config)
     rows = _build_search_rows(total_profiles)
     chunk_size = 1000
