@@ -44,6 +44,7 @@ from partner_search.search_sources import (
     attach_photo_previews as _attach_photo_previews,
     build_mysql_prefilter as _build_mysql_prefilter,
     detect_mysql_profile_table as _detect_mysql_profile_table,
+    iter_load_source_batches as _iter_load_source_batches,
     load_mysql as _load_mysql,
     load_mysql_photo_previews as _load_mysql_photo_previews,
     load_source as _load_source,
@@ -1133,6 +1134,18 @@ def load_source(source, table_name=None, criteria=None, include_ids=None, includ
     )
 
 
+def iter_load_source_batches(source, table_name=None, criteria=None, include_ids=None, include_ids_mode="or"):
+    return _iter_load_source_batches(
+        _build_search_source_runtime(),
+        source,
+        is_mysql_source=is_mysql_source,
+        table_name=table_name,
+        criteria=criteria,
+        include_ids=include_ids,
+        include_ids_mode=include_ids_mode,
+    )
+
+
 def build_criteria_from_args(args):
     return _build_criteria_from_args(_build_search_profile_context_runtime(), args)
 
@@ -1443,6 +1456,7 @@ _search_runtime_helpers = SearchRuntimeHelpers(
         build_criteria_from_args=build_criteria_from_args,
         build_self_profile_input_from_args=build_self_profile_input_from_args,
         load_source=lambda *args, **kwargs: load_source(*args, **kwargs),
+        iter_source_batches=lambda *args, **kwargs: iter_load_source_batches(*args, **kwargs),
         overlay_records_with_moderation=overlay_records_with_moderation,
         evaluate_candidate=evaluate_candidate,
         result_sort_key=result_sort_key,
