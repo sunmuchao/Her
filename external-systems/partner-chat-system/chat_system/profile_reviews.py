@@ -411,6 +411,47 @@ def get_profile_field_verification_submission(conn, submission_id: str) -> dict[
     return _inflate_field_submission(conn, row_to_dict(row))
 
 
+def _list_profile_field_verification_submissions_by_ids(
+    conn,
+    submission_ids: Iterable[str],
+) -> list[dict[str, Any]]:
+    normalized = [str(item).strip() for item in submission_ids if str(item or "").strip()]
+    if not normalized:
+        return []
+    placeholders = ", ".join(["?"] * len(normalized))
+    rows = conn.execute(
+        f"""
+        SELECT *
+        FROM profile_field_verification_submissions
+        WHERE submission_id IN ({placeholders})
+        """,
+        tuple(normalized),
+    ).fetchall()
+    row_dicts = [row_to_dict(row) for row in rows if row]
+    reviews_by_submission_id = list_profile_field_verification_reviews_for_submissions(
+        conn,
+        normalized,
+    )
+    rows_by_submission_id = {
+        str(row_dict.get("submission_id") or "").strip(): row_dict
+        for row_dict in row_dicts
+        if str(row_dict.get("submission_id") or "").strip()
+    }
+    out: list[dict[str, Any]] = []
+    for submission_id in normalized:
+        row_dict = rows_by_submission_id.get(submission_id)
+        if not row_dict:
+            continue
+        item = _inflate_field_submission(
+            conn,
+            row_dict,
+            preloaded_reviews=reviews_by_submission_id.get(submission_id, []),
+        )
+        if item:
+            out.append(item)
+    return out
+
+
 def list_profile_field_verification_submissions(
     conn,
     *,
@@ -942,50 +983,49 @@ def expire_due_profile_field_verifications(
     lim = max(1, min(int(limit), 200))
     rows = conn.execute(
         """
-        SELECT submission_id
-        FROM profile_field_verification_submissions
-        WHERE status = ?
-          AND verification_expires_at IS NOT NULL
-          AND verification_expires_at <= ?
+        SELECT *
+        FROM profile_field_verification_submissions AS current
+        WHERE current.status = ?
+          AND current.verification_expires_at IS NOT NULL
+          AND current.verification_expires_at <= ?
+          AND NOT EXISTS (
+            SELECT 1
+            FROM profile_field_verification_submissions AS newer
+            WHERE newer.submission_id <> current.submission_id
+              AND newer.field_key = current.field_key
+              AND newer.profile_id = current.profile_id
+              AND newer.source_dsn = current.source_dsn
+              AND newer.source_table_name = current.source_table_name
+              AND newer.status = ?
+              AND COALESCE(newer.approved_at, newer.updated_at) > COALESCE(current.approved_at, current.updated_at)
+          )
         ORDER BY verification_expires_at ASC, updated_at ASC
         LIMIT ?
         """,
         (
             FIELD_SUBMISSION_STATUS_APPROVED,
             ts,
+            FIELD_SUBMISSION_STATUS_APPROVED,
             lim,
         ),
     ).fetchall()
+    due_rows = [row_to_dict(row) for row in rows if row]
+    reviews_by_submission_id = list_profile_field_verification_reviews_for_submissions(
+        conn,
+        [
+            str(row_dict.get("submission_id") or "").strip()
+            for row_dict in due_rows
+            if str(row_dict.get("submission_id") or "").strip()
+        ],
+    )
     expired: list[dict[str, Any]] = []
-    for row in rows:
-        submission = get_profile_field_verification_submission(conn, row["submission_id"])
+    for row_dict in due_rows:
+        submission = _inflate_field_submission(
+            conn,
+            row_dict,
+            preloaded_reviews=reviews_by_submission_id.get(str(row_dict.get("submission_id") or "").strip(), []),
+        )
         if not submission:
-            continue
-        newer = conn.execute(
-            """
-            SELECT 1
-            FROM profile_field_verification_submissions
-            WHERE submission_id <> ?
-              AND field_key = ?
-              AND profile_id = ?
-              AND source_dsn = ?
-              AND source_table_name = ?
-              AND status = ?
-              AND COALESCE(approved_at, updated_at) > COALESCE(?, ?)
-            LIMIT 1
-            """,
-            (
-                submission["submission_id"],
-                submission["field_key"],
-                int(submission["profile_id"]),
-                submission["source_dsn"],
-                submission["source_table_name"],
-                FIELD_SUBMISSION_STATUS_APPROVED,
-                submission.get("approved_at"),
-                submission.get("updated_at"),
-            ),
-        ).fetchone()
-        if newer:
             continue
         sync_result = _sync_profile_row(
             source_dsn=submission["source_dsn"],
@@ -1032,12 +1072,19 @@ def expire_due_profile_field_verifications(
         )
         expired.append({"submission_id": submission["submission_id"], "profile_sync": sync_result})
     conn.commit()
-    items = [get_profile_field_verification_submission(conn, item["submission_id"]) for item in expired]
+    items = _list_profile_field_verification_submissions_by_ids(
+        conn,
+        [item["submission_id"] for item in expired],
+    )
+    profile_sync_by_submission_id = {
+        str(item["submission_id"]): item["profile_sync"]
+        for item in expired
+    }
     return {
         "expired_count": len(expired),
         "submissions": [
-            {**item, "profile_sync": expired[idx]["profile_sync"]}
-            for idx, item in enumerate(items)
+            {**item, "profile_sync": profile_sync_by_submission_id.get(str(item.get("submission_id") or ""))}
+            for item in items
             if item
         ],
     }
