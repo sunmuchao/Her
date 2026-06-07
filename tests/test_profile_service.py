@@ -50,6 +50,18 @@ class _FakeConnection:
 
 
 class ProfileServiceTests(unittest.TestCase):
+    def setUp(self) -> None:
+        profile_service_api._profile_metadata_cache.clear()
+        self._release_patcher = mock.patch.object(
+            profile_service_api,
+            "release_profile_connection",
+            side_effect=lambda _source_dsn, conn: conn.close(),
+        )
+        self._release_patcher.start()
+
+    def tearDown(self) -> None:
+        self._release_patcher.stop()
+
     def test_persona_profile_sync_blocks_profile_fact_fields(self):
         payload = persona_memory_lib.build_profile_payload(
             {
@@ -155,7 +167,7 @@ class ProfileServiceTests(unittest.TestCase):
 
         with (
             mock.patch.object(profile_service_api, "_connect_profile_db", return_value=fake_conn),
-            mock.patch.object(profile_service_api.schema, "column_exists", return_value=True),
+            mock.patch.object(profile_service_api, "_list_table_columns", return_value=["id", "avatar_url"]),
             mock.patch.object(profile_service_api.schema, "quote_mysql_ident", side_effect=lambda value: f"`{value}`"),
         ):
             result = profile_service_api.get_profile(
@@ -178,7 +190,7 @@ class ProfileServiceTests(unittest.TestCase):
 
         with (
             mock.patch.object(profile_service_api, "_connect_profile_db", return_value=fake_conn),
-            mock.patch.object(profile_service_api.schema, "table_exists", return_value=True),
+            mock.patch.object(profile_service_api, "_list_schema_tables", return_value=["public_profile_view"]),
             mock.patch.object(profile_service_api.schema, "quote_mysql_ident", side_effect=lambda value: f"`{value}`"),
         ):
             result = profile_service_api.get_public_profile(
@@ -232,7 +244,7 @@ class ProfileServiceTests(unittest.TestCase):
 
         with (
             mock.patch.object(profile_service_api, "_connect_profile_db", return_value=fake_conn),
-            mock.patch.object(profile_service_api.schema, "table_exists", return_value=True),
+            mock.patch.object(profile_service_api, "_list_schema_tables", return_value=["profiles"]),
         ):
             result = profile_service_api.list_profile_columns(
                 source_dsn="mysql://profiles",
@@ -250,7 +262,8 @@ class ProfileServiceTests(unittest.TestCase):
 
         with (
             mock.patch.object(profile_service_api, "_connect_profile_db", return_value=fake_conn),
-            mock.patch.object(profile_service_api.schema, "table_exists", return_value=True),
+            mock.patch.object(profile_service_api, "_list_schema_tables", return_value=["profiles"]),
+            mock.patch.object(profile_service_api, "_list_table_columns", return_value=["id", "name", "gender"]),
             mock.patch.object(profile_service_api.schema, "quote_mysql_ident", side_effect=lambda value: f"`{value}`"),
         ):
             result = profile_service_api.list_profiles(
@@ -278,19 +291,20 @@ class ProfileServiceTests(unittest.TestCase):
             ]
         )
 
-        def fake_table_exists(_raw_conn, table_name: str) -> bool:
-            return table_name in {"profiles", "profile_photos"}
+        def fake_list_schema_tables(_conn) -> list[str]:
+            return ["profiles", "profile_photos"]
 
-        def fake_column_exists(_raw_conn, table_name: str, column: str) -> bool:
-            return (
-                (table_name == "profiles" and column == "id")
-                or (table_name == "profile_photos" and column in {"profile_id", "photo_url", "is_primary", "photo_type", "sort_order", "id"})
-            )
+        def fake_list_table_columns(_conn, table_name: str) -> list[str]:
+            if table_name == "profiles":
+                return ["id", "avatar_url"]
+            if table_name == "profile_photos":
+                return ["profile_id", "photo_url", "is_primary", "photo_type", "sort_order", "id"]
+            return []
 
         with (
             mock.patch.object(profile_service_api, "_connect_profile_db", return_value=fake_conn),
-            mock.patch.object(profile_service_api.schema, "table_exists", side_effect=fake_table_exists),
-            mock.patch.object(profile_service_api.schema, "column_exists", side_effect=fake_column_exists),
+            mock.patch.object(profile_service_api, "_list_schema_tables", side_effect=fake_list_schema_tables),
+            mock.patch.object(profile_service_api, "_list_table_columns", side_effect=fake_list_table_columns),
             mock.patch.object(profile_service_api.schema, "quote_mysql_ident", side_effect=lambda value: f"`{value}`"),
         ):
             result = profile_service_api.list_profile_photos(
@@ -327,16 +341,18 @@ class ProfileServiceTests(unittest.TestCase):
             responses=[_FakeResult(fetchone_result={"id": 18, "avatar_url": "https://img.her.local/avatar-only.jpg"})]
         )
 
-        def fake_table_exists(_raw_conn, table_name: str) -> bool:
-            return table_name == "profiles"
+        def fake_list_schema_tables(_conn) -> list[str]:
+            return ["profiles"]
 
-        def fake_column_exists(_raw_conn, table_name: str, column: str) -> bool:
-            return table_name == "profiles" and column == "id"
+        def fake_list_table_columns(_conn, table_name: str) -> list[str]:
+            if table_name == "profiles":
+                return ["id", "avatar_url"]
+            return []
 
         with (
             mock.patch.object(profile_service_api, "_connect_profile_db", return_value=fake_conn),
-            mock.patch.object(profile_service_api.schema, "table_exists", side_effect=fake_table_exists),
-            mock.patch.object(profile_service_api.schema, "column_exists", side_effect=fake_column_exists),
+            mock.patch.object(profile_service_api, "_list_schema_tables", side_effect=fake_list_schema_tables),
+            mock.patch.object(profile_service_api, "_list_table_columns", side_effect=fake_list_table_columns),
             mock.patch.object(profile_service_api.schema, "quote_mysql_ident", side_effect=lambda value: f"`{value}`"),
         ):
             result = profile_service_api.list_profile_photos(
@@ -372,16 +388,18 @@ class ProfileServiceTests(unittest.TestCase):
             ]
         )
 
-        def fake_table_exists(_raw_conn, table_name: str) -> bool:
-            return table_name == "profile_photos"
+        def fake_list_schema_tables(_conn) -> list[str]:
+            return ["profile_photos"]
 
-        def fake_column_exists(_raw_conn, table_name: str, column: str) -> bool:
-            return table_name == "profile_photos" and column in {"profile_id", "photo_url", "is_primary", "sort_order", "id"}
+        def fake_list_table_columns(_conn, table_name: str) -> list[str]:
+            if table_name == "profile_photos":
+                return ["profile_id", "photo_url", "is_primary", "sort_order", "id"]
+            return []
 
         with (
             mock.patch.object(profile_service_api, "_connect_profile_db", return_value=fake_conn),
-            mock.patch.object(profile_service_api.schema, "table_exists", side_effect=fake_table_exists),
-            mock.patch.object(profile_service_api.schema, "column_exists", side_effect=fake_column_exists),
+            mock.patch.object(profile_service_api, "_list_schema_tables", side_effect=fake_list_schema_tables),
+            mock.patch.object(profile_service_api, "_list_table_columns", side_effect=fake_list_table_columns),
             mock.patch.object(profile_service_api.schema, "quote_mysql_ident", side_effect=lambda value: f"`{value}`"),
         ):
             result = profile_service_api.list_profile_photo_previews(
@@ -441,18 +459,20 @@ class ProfileServiceTests(unittest.TestCase):
             ]
         )
 
-        def fake_table_exists(_raw_conn, table_name: str) -> bool:
-            return table_name in {"profiles", "profile_photos"}
+        def fake_list_schema_tables(_conn) -> list[str]:
+            return ["profiles", "profile_photos"]
 
-        def fake_column_exists(_raw_conn, table_name: str, column: str) -> bool:
+        def fake_list_table_columns(_conn, table_name: str) -> list[str]:
             if table_name == "profile_photos":
-                return column in {"profile_id", "photo_url"}
-            return table_name == "profiles" and column == "avatar_url"
+                return ["profile_id", "photo_url"]
+            if table_name == "profiles":
+                return ["avatar_url", "id"]
+            return []
 
         with (
             mock.patch.object(profile_service_api, "_connect_profile_db", return_value=fake_conn),
-            mock.patch.object(profile_service_api.schema, "table_exists", side_effect=fake_table_exists),
-            mock.patch.object(profile_service_api.schema, "column_exists", side_effect=fake_column_exists),
+            mock.patch.object(profile_service_api, "_list_schema_tables", side_effect=fake_list_schema_tables),
+            mock.patch.object(profile_service_api, "_list_table_columns", side_effect=fake_list_table_columns),
             mock.patch.object(profile_service_api.schema, "quote_mysql_ident", side_effect=lambda value: f"`{value}`"),
         ):
             result = profile_service_api.list_comparison_profile_photos(
@@ -478,6 +498,52 @@ class ProfileServiceTests(unittest.TestCase):
             ],
         )
         self.assertTrue(fake_conn.closed)
+
+    def test_detect_profile_table_reuses_metadata_cache(self):
+        fake_conn = _FakeConnection(
+            responses=[
+                _FakeResult(fetchall_result=[{"table_name": "profiles"}]),
+                _FakeResult(fetchall_result=[{"column_name": "id"}, {"column_name": "name"}, {"column_name": "age"}]),
+            ]
+        )
+
+        with mock.patch.object(profile_service_api, "_connect_profile_db", return_value=fake_conn):
+            first = profile_service_api.detect_profile_table(source_dsn="mysql://profiles")
+            second = profile_service_api.detect_profile_table(source_dsn="mysql://profiles")
+
+        self.assertEqual(first, "profiles")
+        self.assertEqual(second, "profiles")
+        self.assertEqual(len(fake_conn.calls), 2)
+
+    def test_iter_profile_batches_uses_keyset_pagination_when_id_column_exists(self):
+        fake_conn = _FakeConnection(
+            responses=[
+                _FakeResult(fetchall_result=[{"id": 1, "name": "A"}, {"id": 2, "name": "B"}]),
+                _FakeResult(fetchall_result=[{"id": 3, "name": "C"}]),
+            ]
+        )
+
+        with (
+            mock.patch.object(profile_service_api, "_connect_profile_db", return_value=fake_conn),
+            mock.patch.object(profile_service_api, "_list_schema_tables", return_value=["profiles"]),
+            mock.patch.object(profile_service_api, "_list_table_columns", return_value=["id", "name"]),
+            mock.patch.object(profile_service_api.schema, "quote_mysql_ident", side_effect=lambda value: f"`{value}`"),
+        ):
+            batches = list(
+                profile_service_api.iter_profile_batches(
+                    source_dsn="mysql://profiles",
+                    source_table_name="profiles",
+                    where_clause="WHERE `gender` = ?",
+                    params=("女",),
+                    batch_size=2,
+                )
+            )
+
+        self.assertEqual(len(batches), 2)
+        self.assertIn("ORDER BY `id` ASC LIMIT 2", fake_conn.calls[0][0])
+        self.assertNotIn("OFFSET", fake_conn.calls[0][0])
+        self.assertIn("AND `id` > ?", fake_conn.calls[1][0])
+        self.assertEqual(fake_conn.calls[1][1], ("女", 2))
 
     def test_list_comparison_profile_photo_sources_projects_photo_urls(self):
         with mock.patch.object(
