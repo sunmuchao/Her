@@ -480,6 +480,7 @@ def recommendation_tables() -> tuple[TableDef, ...]:
                 IndexDef(("subscription_id", "delivery_status", "score"), "idx_recommendations_subscription_status"),
                 IndexDef(("requester_id", "delivery_status", "notified_at"), "idx_recommendations_requester_status"),
                 IndexDef(("subscription_id", "final_review_status", "score"), "idx_recommendations_review_status"),
+                IndexDef(("subscription_id", "score", "last_seen_at", "recommendation_id"), "idx_recommendations_subscription_score_time"),
             ),
             foreign_keys=(
                 ForeignKeyDef(("subscription_id",), "saved_search_subscriptions", ("subscription_id",)),
@@ -822,6 +823,7 @@ def chat_tables() -> tuple[TableDef, ...]:
             indexes=(
                 IndexDef(("case_id", "created_at"), "idx_chat_conversations_case_time"),
                 IndexDef(("conversation_kind", "status"), "idx_chat_conversations_kind_status"),
+                IndexDef(("channel_key", "status", "created_at", "case_id"), "idx_chat_conversations_channel_status_time"),
             ),
         ),
         TableDef(
@@ -863,6 +865,8 @@ def chat_tables() -> tuple[TableDef, ...]:
             ),
             indexes=(
                 IndexDef(("conversation_id", "created_at"), "idx_chat_conversation_messages_time"),
+                IndexDef(("conversation_id", "message_id"), "idx_chat_conversation_messages_conversation_message"),
+                IndexDef(("conversation_id", "author_id", "source", "created_at"), "idx_chat_conversation_messages_author_source_time"),
             ),
             foreign_keys=(
                 ForeignKeyDef(("conversation_id",), "chat_conversations", ("conversation_id",)),
@@ -898,6 +902,7 @@ def chat_tables() -> tuple[TableDef, ...]:
             indexes=(
                 IndexDef(("status", "updated_at"), "idx_chat_agent_sessions_status_updated"),
                 IndexDef(("agent_participant_id", "status"), "idx_chat_agent_sessions_agent_status"),
+                IndexDef(("status", "last_user_message_at", "session_id"), "idx_chat_agent_sessions_status_last_user"),
             ),
         ),
         TableDef(
@@ -929,6 +934,8 @@ def chat_tables() -> tuple[TableDef, ...]:
                 IndexDef(("status", "created_at"), "idx_chat_agent_tasks_status_created"),
                 IndexDef(("session_id", "created_at"), "idx_chat_agent_tasks_session_created"),
                 IndexDef(("case_id", "trigger_message_id"), "idx_chat_agent_tasks_case_message"),
+                IndexDef(("session_id", "status", "created_at"), "idx_chat_agent_tasks_session_status_created"),
+                IndexDef(("status", "lease_until", "created_at"), "idx_chat_agent_tasks_status_lease_created"),
             ),
             foreign_keys=(
                 ForeignKeyDef(("session_id",), "chat_agent_sessions", ("session_id",)),
