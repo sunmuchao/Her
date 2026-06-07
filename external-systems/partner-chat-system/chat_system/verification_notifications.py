@@ -67,6 +67,52 @@ def list_verification_notifications(
     return [_inflate_notification(row_to_dict(row)) for row in rows if row]
 
 
+def list_verification_notifications_for_submissions(
+    conn,
+    submission_ids: list[str],
+    *,
+    limit_per_submission: int = 100,
+) -> dict[str, list[dict[str, Any]]]:
+    normalized = [str(item).strip() for item in submission_ids if str(item or "").strip()]
+    if not normalized:
+        return {}
+    placeholders = ", ".join(["?"] * len(normalized))
+    grouped: dict[str, list[dict[str, Any]]] = {submission_id: [] for submission_id in normalized}
+    try:
+        rows = conn.execute(
+            f"""
+            SELECT *
+            FROM (
+              SELECT
+                n.*,
+                ROW_NUMBER() OVER (
+                  PARTITION BY n.submission_id
+                  ORDER BY n.created_at DESC, n.notification_id DESC
+                ) AS row_num
+              FROM verification_notifications n
+              WHERE n.submission_id IN ({placeholders})
+            ) ranked_notifications
+            WHERE row_num <= ?
+            ORDER BY submission_id ASC, created_at DESC, notification_id DESC
+            """,
+            tuple(normalized + [max(1, min(int(limit_per_submission), 200))]),
+        ).fetchall()
+        for row in rows:
+            notification = _inflate_notification(row_to_dict(row))
+            submission_id = str((notification or {}).get("submission_id") or "")
+            if notification and submission_id:
+                grouped.setdefault(submission_id, []).append(notification)
+        return grouped
+    except Exception:
+        for submission_id in normalized:
+            grouped[submission_id] = list_verification_notifications(
+                conn,
+                submission_id=submission_id,
+                limit=limit_per_submission,
+            )
+        return grouped
+
+
 def create_verification_notification(
     conn,
     *,

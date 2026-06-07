@@ -335,7 +335,38 @@ def _inflate_field_review(row: dict[str, Any] | None) -> dict[str, Any] | None:
     )
 
 
-def _inflate_field_submission(conn, row: dict[str, Any] | None) -> dict[str, Any] | None:
+def list_profile_field_verification_reviews_for_submissions(
+    conn,
+    submission_ids: Iterable[str],
+) -> dict[str, list[dict[str, Any]]]:
+    normalized = [str(item).strip() for item in submission_ids if str(item or "").strip()]
+    if not normalized:
+        return {}
+    placeholders = ", ".join(["?"] * len(normalized))
+    rows = conn.execute(
+        f"""
+        SELECT *
+        FROM profile_field_verification_reviews
+        WHERE submission_id IN ({placeholders})
+        ORDER BY submission_id ASC, review_id ASC
+        """,
+        tuple(normalized),
+    ).fetchall()
+    grouped: dict[str, list[dict[str, Any]]] = {submission_id: [] for submission_id in normalized}
+    for row in rows:
+        review = _inflate_field_review(row_to_dict(row))
+        submission_id = str((review or {}).get("submission_id") or "")
+        if review and submission_id:
+            grouped.setdefault(submission_id, []).append(review)
+    return grouped
+
+
+def _inflate_field_submission(
+    conn,
+    row: dict[str, Any] | None,
+    *,
+    preloaded_reviews: list[dict[str, Any]] | None = None,
+) -> dict[str, Any] | None:
     out = inflate_json_columns(
         row,
         required_documents=("required_documents_json", []),
@@ -345,7 +376,11 @@ def _inflate_field_submission(conn, row: dict[str, Any] | None) -> dict[str, Any
     if not out:
         return None
     out["dispute_status"] = _as_text(out.get("dispute_status")) or FIELD_DISPUTE_STATUS_NONE
-    out["reviews"] = list_profile_field_verification_reviews(conn, out["submission_id"])
+    out["reviews"] = (
+        list(preloaded_reviews)
+        if preloaded_reviews is not None
+        else list_profile_field_verification_reviews(conn, out["submission_id"])
+    )
     out["review_count"] = len(out["reviews"])
     return out
 
@@ -418,7 +453,23 @@ def list_profile_field_verification_submissions(
         """,
         tuple(params + [max(1, min(int(limit), 200))]),
     ).fetchall()
-    return [_inflate_field_submission(conn, row_to_dict(row)) for row in rows if row]
+    row_dicts = [row_to_dict(row) for row in rows if row]
+    reviews_by_submission_id = list_profile_field_verification_reviews_for_submissions(
+        conn,
+        [
+            str(row_dict.get("submission_id") or "").strip()
+            for row_dict in row_dicts
+            if str(row_dict.get("submission_id") or "").strip()
+        ],
+    )
+    return [
+        _inflate_field_submission(
+            conn,
+            row_dict,
+            preloaded_reviews=reviews_by_submission_id.get(str(row_dict.get("submission_id") or "").strip(), []),
+        )
+        for row_dict in row_dicts
+    ]
 
 
 def _resolve_profile_source(source_dsn: str | None, source_table_name: str | None) -> tuple[str, str]:
