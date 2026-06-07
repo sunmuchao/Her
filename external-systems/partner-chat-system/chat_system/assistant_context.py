@@ -208,6 +208,10 @@ def get_message_window(
 
 def list_case_conversation_catalog(conn, case_id: str) -> list[dict[str, Any]]:
     conversations = list_case_conversations(conn, case_id)
+    return _conversation_catalog_from_conversations(conversations)
+
+
+def _conversation_catalog_from_conversations(conversations: list[dict[str, Any]]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for conversation in conversations:
         out.append(
@@ -231,9 +235,14 @@ def list_case_conversation_catalog(conn, case_id: str) -> list[dict[str, Any]]:
         )
     return out
 
-def get_profile_snapshot(conn, case_id: str, participant_id: str) -> dict[str, Any]:
-    participant_id = str(participant_id or "").strip()
-    main_group = get_conversation_by_case_and_key(conn, case_id, "main_group")
+
+def _build_profile_snapshot(
+    *,
+    case_id: str,
+    participant_id: str,
+    main_group: dict[str, Any] | None,
+    conversations: list[dict[str, Any]],
+) -> dict[str, Any]:
     metadata = dict((main_group or {}).get("metadata") or {})
     role = "unknown"
     profile_id = None
@@ -260,7 +269,6 @@ def get_profile_snapshot(conn, case_id: str, participant_id: str) -> dict[str, A
         if public_profile:
             profile_id = public_profile.get("id") or profile_id
 
-    conversations = list_case_conversations(conn, case_id)
     conversation_roles: list[dict[str, Any]] = []
     for conversation in conversations:
         for member in conversation.get("members") or []:
@@ -286,16 +294,46 @@ def get_profile_snapshot(conn, case_id: str, participant_id: str) -> dict[str, A
     }
 
 
+def get_profile_snapshot(
+    conn,
+    case_id: str,
+    participant_id: str,
+    *,
+    main_group: dict[str, Any] | None = None,
+    conversations: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    participant_id = str(participant_id or "").strip()
+    if conversations is None:
+        conversations = list_case_conversations(conn, case_id)
+    if main_group is None:
+        main_group = next(
+            (
+                conversation
+                for conversation in conversations
+                if str(conversation.get("channel_key") or "") == "main_group"
+            ),
+            None,
+        )
+    return _build_profile_snapshot(
+        case_id=case_id,
+        participant_id=participant_id,
+        main_group=main_group,
+        conversations=conversations,
+    )
+
+
 def build_case_agent_bootstrap(
     conn,
     case_id: str,
     *,
     recent_limit: int = 30,
+    conversations: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    conversations = list_case_conversation_catalog(conn, case_id)
+    if conversations is None:
+        conversations = list_case_conversations(conn, case_id)
     return {
         "case_id": case_id,
-        "conversations": conversations,
+        "conversations": _conversation_catalog_from_conversations(conversations),
         "recent_messages": list_recent_case_messages(conn, case_id, limit=recent_limit),
     }
 

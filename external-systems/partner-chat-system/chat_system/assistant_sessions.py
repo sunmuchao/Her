@@ -164,6 +164,26 @@ def get_agent_task(conn, task_id: int) -> dict[str, Any] | None:
     return _inflate_task(row_to_dict(cur.fetchone()))
 
 
+def get_agent_tasks_by_ids(conn, task_ids: Iterable[int]) -> dict[int, dict[str, Any]]:
+    normalized = [int(task_id) for task_id in task_ids]
+    if not normalized:
+        return {}
+    placeholders = ", ".join(["?"] * len(normalized))
+    cur = conn.execute(
+        f"""
+        SELECT * FROM chat_agent_tasks
+        WHERE task_id IN ({placeholders})
+        """,
+        tuple(normalized),
+    )
+    out: dict[int, dict[str, Any]] = {}
+    for row in cur.fetchall():
+        task = _inflate_task(row_to_dict(row))
+        if task and task.get("task_id") is not None:
+            out[int(task["task_id"])] = task
+    return out
+
+
 def _get_agent_task_by_dedupe_key(conn, dedupe_key: str) -> dict[str, Any] | None:
     cur = conn.execute(
         "SELECT * FROM chat_agent_tasks WHERE dedupe_key = ? LIMIT 1",
@@ -350,6 +370,26 @@ def _session_ids_with_pending_tasks(conn, session_ids: Iterable[str]) -> set[str
         [*normalized_ids, TASK_STATUS_PENDING, TASK_STATUS_RUNNING],
     )
     return {str(row["session_id"]) for row in cur.fetchall() if str(row.get("session_id") or "").strip()}
+
+
+def get_agent_sessions_by_ids(conn, session_ids: Iterable[str]) -> dict[str, dict[str, Any]]:
+    normalized_ids = [str(item).strip() for item in session_ids if str(item or "").strip()]
+    if not normalized_ids:
+        return {}
+    placeholders = ", ".join(["?"] * len(normalized_ids))
+    cur = conn.execute(
+        f"""
+        SELECT * FROM chat_agent_sessions
+        WHERE session_id IN ({placeholders})
+        """,
+        tuple(normalized_ids),
+    )
+    out: dict[str, dict[str, Any]] = {}
+    for row in cur.fetchall():
+        session = _inflate_session(row_to_dict(row))
+        if session and str(session.get("session_id") or "").strip():
+            out[str(session["session_id"])] = session
+    return out
 
 
 def _case_has_any_messages(conn, case_id: str) -> bool:
@@ -971,7 +1011,7 @@ def claim_pending_agent_tasks(
             lim,
         ),
     )
-    claimed: list[dict[str, Any]] = []
+    claimed_task_ids: list[int] = []
     for raw in cur.fetchall():
         task_id = int(raw["task_id"])
         res = conn.execute(
@@ -1000,10 +1040,11 @@ def claim_pending_agent_tasks(
         )
         if int(res.rowcount or 0) <= 0:
             continue
-        task = get_agent_task(conn, task_id)
-        if task:
-            claimed.append(task)
-    return claimed
+        claimed_task_ids.append(task_id)
+    if not claimed_task_ids:
+        return []
+    tasks_by_id = get_agent_tasks_by_ids(conn, claimed_task_ids)
+    return [tasks_by_id[task_id] for task_id in claimed_task_ids if task_id in tasks_by_id]
 
 
 def complete_agent_task(

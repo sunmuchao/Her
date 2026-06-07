@@ -23,9 +23,10 @@ from .assistant_sessions import (
     complete_agent_task,
     fail_agent_task,
     get_agent_session,
+    get_agent_sessions_by_ids,
     is_public_followup_active,
 )
-from .conversations import get_conversation_by_case_and_key, post_conversation_message
+from .conversations import get_conversation_by_case_and_key, list_case_conversations, post_conversation_message
 from .persona_jobs import enqueue_persona_sync_job
 
 def _normalize_now(now: datetime | None = None) -> datetime:
@@ -46,10 +47,40 @@ def _build_run_input(
     recent_limit: int,
 ) -> MatchmakerRunInput:
     case_id = str(task["case_id"])
-    bootstrap = build_case_agent_bootstrap(conn, case_id, recent_limit=recent_limit)
+    conversations = list_case_conversations(conn, case_id)
+    main_group = next(
+        (
+            conversation
+            for conversation in conversations
+            if str(conversation.get("channel_key") or "").strip() == "main_group"
+        ),
+        None,
+    )
+    bootstrap = build_case_agent_bootstrap(
+        conn,
+        case_id,
+        recent_limit=recent_limit,
+        conversations=conversations,
+    )
+    profile_snapshot_cache: dict[str, dict[str, Any]] = {}
+
+    def _cached_profile_snapshot(participant_id: str) -> dict[str, Any]:
+        participant_id = str(participant_id or "").strip()
+        snapshot = profile_snapshot_cache.get(participant_id)
+        if snapshot is None:
+            snapshot = get_profile_snapshot(
+                conn,
+                case_id,
+                participant_id,
+                main_group=main_group,
+                conversations=conversations,
+            )
+            profile_snapshot_cache[participant_id] = snapshot
+        return snapshot
+
     profile_snapshots = {
-        "participant_a": get_profile_snapshot(conn, case_id, str(session["participant_a_id"])),
-        "participant_b": get_profile_snapshot(conn, case_id, str(session["participant_b_id"])),
+        "participant_a": _cached_profile_snapshot(str(session["participant_a_id"])),
+        "participant_b": _cached_profile_snapshot(str(session["participant_b_id"])),
     }
     return MatchmakerRunInput(
         case_id=case_id,
@@ -61,7 +92,7 @@ def _build_run_input(
         search_case_history=lambda **kwargs: search_case_history(conn, case_id, **kwargs),
         get_message_window=lambda **kwargs: get_message_window(conn, case_id, **kwargs),
         get_case_conversations=lambda: list_case_conversation_catalog(conn, case_id),
-        get_profile_snapshot=lambda participant_id: get_profile_snapshot(conn, case_id, participant_id),
+        get_profile_snapshot=lambda participant_id: _cached_profile_snapshot(participant_id),
         get_agent_session_state=lambda: dict((get_agent_session(conn, str(session["session_id"])) or {}).get("state") or {}),
     )
 
@@ -355,11 +386,13 @@ def process_pending_agent_tasks(
         out["completed"] += len(skipped_task_ids)
         out["skipped_task_ids"] = skipped_task_ids
 
+    sessions_by_id = get_agent_sessions_by_ids(conn, [str(task["session_id"]) for task in claimed])
+
     for task in claimed:
         task_id = int(task["task_id"])
         out["task_ids"].append(task_id)
         try:
-            session = get_agent_session(conn, str(task["session_id"]))
+            session = sessions_by_id.get(str(task["session_id"]))
             if not session:
                 raise ValueError("agent session not found")
             if _is_public_trigger_in_cooldown(session, task, now=ts):
