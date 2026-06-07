@@ -684,21 +684,22 @@ def _latest_main_group_messages_by_case(
             if str(row.get("conversation_id") or "").strip()
         }
     except Exception:
+        cur = conn.execute(
+            f"""
+            SELECT message_id, author_id, source, created_at, conversation_id
+            FROM chat_conversation_messages
+            WHERE conversation_id IN ({placeholders})
+            ORDER BY conversation_id ASC, message_id DESC
+            """,
+            tuple(conversation_ids),
+        )
         latest_by_conversation_id = {}
-        for conversation_id in conversation_ids:
-            cur = conn.execute(
-                """
-                SELECT message_id, author_id, source, created_at, conversation_id
-                FROM chat_conversation_messages
-                WHERE conversation_id = ?
-                ORDER BY message_id DESC
-                LIMIT 1
-                """,
-                (conversation_id,),
-            )
-            row = row_to_dict(cur.fetchone())
-            if row and str(row.get("conversation_id") or "").strip():
-                latest_by_conversation_id[str(row["conversation_id"])] = row
+        for row in cur.fetchall():
+            row_dict = row_to_dict(row)
+            conversation_id = str(row_dict.get("conversation_id") or "").strip()
+            if not conversation_id or conversation_id in latest_by_conversation_id:
+                continue
+            latest_by_conversation_id[conversation_id] = row_dict
     out: dict[str, tuple[dict[str, Any], dict[str, Any]]] = {}
     for case_id, conversation in conversations_by_case.items():
         message = latest_by_conversation_id.get(str(conversation["conversation_id"]))
