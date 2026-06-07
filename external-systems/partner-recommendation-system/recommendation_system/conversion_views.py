@@ -66,6 +66,7 @@ SearchRunner = Callable[..., dict[str, Any]]
 PersonaResolver = Callable[[dict[str, Any]], Optional[dict[str, Any]]]
 
 from .recommendation_rows import (
+    PROFILE_RECOMMENDATION_SELECT_SQL,
     inflate_recommendation,
     _merge_recommendation_subscription_fields,
     list_recommendation_actions_for_recommendation,
@@ -267,7 +268,9 @@ def list_recommendation_conversion_views_for_subscription(
 ) -> list[dict[str, Any]]:
     recommendation_rows = conn.execute(
         """
-        SELECT *
+        SELECT """
+        + PROFILE_RECOMMENDATION_SELECT_SQL
+        + """
         FROM profile_recommendations
         WHERE subscription_id = ?
         ORDER BY score DESC, last_seen_at DESC, recommendation_id DESC
