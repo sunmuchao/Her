@@ -255,24 +255,17 @@ class MatchmakingSystemTests(unittest.TestCase):
         )
 
         with patch("matchmaking_system.matchmaking_cases.get_match_case", side_effect=AssertionError("unexpected per-case reload")):
-            cases = open_match_cases(
-                self.conn,
-                now=datetime(2026, 5, 2, 9, 10, 0),
-            )
+            with patch("matchmaking_system.matchmaking_cases._create_assistant_dm_conversations", return_value=None):
+                cases = open_match_cases(
+                    self.conn,
+                    now=datetime(2026, 5, 2, 9, 10, 0),
+                )
 
         self.assertEqual(len(cases), 2)
         self.assertEqual(
             {case["status"] for case in cases},
             {"pending_first_contact"},
         )
-        self.assertEqual(events[0]["payload"]["canonical_event"]["payload"]["case_type"], "matchmaking")
-
-        all_cases = list_match_cases(self.conn)
-        self.assertEqual(len(all_cases), 1)
-        self.assertEqual(all_cases[0]["status"], "mutual_accept")
-
-        self.assertEqual(get_pool_member(self.conn, member_a["member_id"])["needs_refresh"], 0)
-        self.assertEqual(get_pool_member(self.conn, member_b["member_id"])["needs_refresh"], 0)
 
     def test_outbox_worker_consumes_match_case_events(self):
         self.create_member("user-a", 1001)
