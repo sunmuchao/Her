@@ -196,6 +196,34 @@ def get_active_moderation_state(
     return None
 
 
+def list_active_moderation_states_by_subject_keys(
+    conn,
+    subject_keys: Iterable[str],
+) -> dict[str, dict[str, Any]]:
+    normalized = _unique_ordered(subject_keys)
+    if not normalized:
+        return {}
+    placeholders = ", ".join(["?"] * len(normalized))
+    rows = conn.execute(
+        f"""
+        SELECT *
+        FROM account_moderation_states
+        WHERE moderation_status = ?
+          AND subject_key IN ({placeholders})
+        ORDER BY updated_at DESC, state_id DESC
+        """,
+        (MODERATION_STATUS_ACTIVE, *normalized),
+    ).fetchall()
+    grouped: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        item = _inflate_moderation_state(row_to_dict(row))
+        subject_key = _as_text((item or {}).get("subject_key"))
+        if not item or not subject_key:
+            continue
+        grouped.setdefault(subject_key, item)
+    return grouped
+
+
 def list_moderation_states(
     conn,
     *,
@@ -514,6 +542,7 @@ __all__ = [
     "clear_moderation_state",
     "current_time",
     "get_active_moderation_state",
+    "list_active_moderation_states_by_subject_keys",
     "get_moderation_state_by_subject_key",
     "infer_required_verifications",
     "list_moderation_states",

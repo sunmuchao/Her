@@ -11,7 +11,12 @@ from typing import Any
 
 from her_time_utils import as_text as _as_text, current_time as _current_time
 
-from partner_moderation import ACTION_FREEZE, get_active_moderation_state
+from partner_moderation import (
+    ACTION_FREEZE,
+    build_subject_key,
+    get_active_moderation_state,
+    list_active_moderation_states_by_subject_keys,
+)
 from profile_service import apply_profile_updates, list_profile_photo_sources, resolve_profile_source
 
 from .storage import inflate_json_columns, json_dumps, json_loads, row_to_dict
@@ -53,6 +58,7 @@ from .verification_speech import (
 from .verification_notifications import (
     create_verification_notification as _create_verification_notification,
     list_verification_notifications,
+    list_verification_notifications_for_submissions,
     notification_already_recorded as _notification_already_recorded,
     parse_statuses as _parse_statuses,
 )
@@ -510,7 +516,82 @@ def _matching_profile_ref(
     return True
 
 
-def _inflate_submission(conn, row: dict[str, Any] | None, *, include_children: bool = True) -> dict[str, Any] | None:
+def _submission_subject_key(row: dict[str, Any] | None) -> str | None:
+    if not row:
+        return None
+    try:
+        return build_subject_key(
+            subject_user_id=row.get("user_id"),
+            source_dsn=row.get("source_dsn"),
+            source_table_name=row.get("source_table_name"),
+            profile_id=int(row["profile_id"]) if row.get("profile_id") is not None else None,
+        )
+    except Exception:
+        return None
+
+
+def list_verification_assets_for_submissions(
+    conn,
+    submission_ids: list[str],
+) -> dict[str, list[dict[str, Any]]]:
+    normalized = [str(item).strip() for item in submission_ids if str(item or "").strip()]
+    if not normalized:
+        return {}
+    placeholders = ", ".join(["?"] * len(normalized))
+    rows = conn.execute(
+        f"""
+        SELECT *
+        FROM verification_assets
+        WHERE submission_id IN ({placeholders})
+        ORDER BY submission_id ASC, asset_id ASC
+        """,
+        tuple(normalized),
+    ).fetchall()
+    grouped: dict[str, list[dict[str, Any]]] = {submission_id: [] for submission_id in normalized}
+    for row in rows:
+        asset = _inflate_asset(row_to_dict(row))
+        submission_id = str((asset or {}).get("submission_id") or "")
+        if asset and submission_id:
+            grouped.setdefault(submission_id, []).append(asset)
+    return grouped
+
+
+def list_verification_reviews_for_submissions(
+    conn,
+    submission_ids: list[str],
+) -> dict[str, list[dict[str, Any]]]:
+    normalized = [str(item).strip() for item in submission_ids if str(item or "").strip()]
+    if not normalized:
+        return {}
+    placeholders = ", ".join(["?"] * len(normalized))
+    rows = conn.execute(
+        f"""
+        SELECT *
+        FROM verification_reviews
+        WHERE submission_id IN ({placeholders})
+        ORDER BY submission_id ASC, review_id ASC
+        """,
+        tuple(normalized),
+    ).fetchall()
+    grouped: dict[str, list[dict[str, Any]]] = {submission_id: [] for submission_id in normalized}
+    for row in rows:
+        review = _inflate_review(row_to_dict(row))
+        submission_id = str((review or {}).get("submission_id") or "")
+        if review and submission_id:
+            grouped.setdefault(submission_id, []).append(review)
+    return grouped
+
+
+def _inflate_submission(
+    conn,
+    row: dict[str, Any] | None,
+    *,
+    include_children: bool = True,
+    preloaded_moderation_state: dict[str, Any] | None = None,
+    preloaded_assets: list[dict[str, Any]] | None = None,
+    preloaded_notifications: list[dict[str, Any]] | None = None,
+    preloaded_reviews: list[dict[str, Any]] | None = None,
+) -> dict[str, Any] | None:
     if not row:
         return None
     out = dict(row)
@@ -526,21 +607,35 @@ def _inflate_submission(conn, row: dict[str, Any] | None, *, include_children: b
     out["verification_provider"] = runtime.get("verification_provider")
     out["auto_review_applied"] = bool(runtime.get("auto_review_applied"))
     out["profile_sync"] = runtime.get("profile_sync")
-    moderation_state = get_active_moderation_state(
-        conn,
-        subject_user_id=out.get("user_id"),
-        source_dsn=out.get("source_dsn"),
-        source_table_name=out.get("source_table_name"),
-        profile_id=int(out["profile_id"]) if out.get("profile_id") is not None else None,
-    )
+    moderation_state = preloaded_moderation_state
+    if moderation_state is None:
+        moderation_state = get_active_moderation_state(
+            conn,
+            subject_user_id=out.get("user_id"),
+            source_dsn=out.get("source_dsn"),
+            source_table_name=out.get("source_table_name"),
+            profile_id=int(out["profile_id"]) if out.get("profile_id") is not None else None,
+        )
     out["moderation_state"] = moderation_state
     blocking_action = _as_text((moderation_state or {}).get("applied_action")) or None
     out["blocking_action"] = blocking_action
     out["derived_status"] = SUBMISSION_STATUS_FROZEN if blocking_action == ACTION_FREEZE and out["status"] in OPEN_SUBMISSION_STATUSES else out["status"]
     if include_children:
-        out["assets"] = list_verification_assets(conn, out["submission_id"])
-        out["notifications"] = list_verification_notifications(conn, submission_id=out["submission_id"], limit=100)
-        out["reviews"] = list_verification_reviews(conn, out["submission_id"])
+        out["assets"] = (
+            list(preloaded_assets)
+            if preloaded_assets is not None
+            else list_verification_assets(conn, out["submission_id"])
+        )
+        out["notifications"] = (
+            list(preloaded_notifications)
+            if preloaded_notifications is not None
+            else list_verification_notifications(conn, submission_id=out["submission_id"], limit=100)
+        )
+        out["reviews"] = (
+            list(preloaded_reviews)
+            if preloaded_reviews is not None
+            else list_verification_reviews(conn, out["submission_id"])
+        )
         out["latest_asset"] = out["assets"][-1] if out["assets"] else None
     return out
 
@@ -612,7 +707,32 @@ def list_verification_submissions(
         """,
         tuple(params),
     ).fetchall()
-    return [_inflate_submission(conn, row_to_dict(row)) for row in rows if row]
+    row_dicts = [row_to_dict(row) for row in rows if row]
+    if not row_dicts:
+        return []
+    submission_ids = [
+        str(row_dict.get("submission_id") or "").strip()
+        for row_dict in row_dicts
+        if str(row_dict.get("submission_id") or "").strip()
+    ]
+    moderation_states_by_subject_key = list_active_moderation_states_by_subject_keys(
+        conn,
+        [key for key in (_submission_subject_key(row_dict) for row_dict in row_dicts) if key],
+    )
+    assets_by_submission_id = list_verification_assets_for_submissions(conn, submission_ids)
+    notifications_by_submission_id = list_verification_notifications_for_submissions(conn, submission_ids)
+    reviews_by_submission_id = list_verification_reviews_for_submissions(conn, submission_ids)
+    return [
+        _inflate_submission(
+            conn,
+            row_dict,
+            preloaded_moderation_state=moderation_states_by_subject_key.get(_submission_subject_key(row_dict) or ""),
+            preloaded_assets=assets_by_submission_id.get(str(row_dict.get("submission_id") or "").strip(), []),
+            preloaded_notifications=notifications_by_submission_id.get(str(row_dict.get("submission_id") or "").strip(), []),
+            preloaded_reviews=reviews_by_submission_id.get(str(row_dict.get("submission_id") or "").strip(), []),
+        )
+        for row_dict in row_dicts
+    ]
 
 
 def list_photo_review_requests(
