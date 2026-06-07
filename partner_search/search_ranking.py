@@ -38,7 +38,8 @@ def build_match_result(
     matched: bool = True,
     reject_reason: str | None = None,
 ) -> dict[str, Any]:
-    return {
+    profile = runtime.strip_internal_fields(record) if (diagnostics := (matched is False or reject_reason is not None)) else None
+    result = {
         "matched": matched,
         "id": record.get("id"),
         "name": record.get("name") or "未命名",
@@ -53,13 +54,16 @@ def build_match_result(
         "risk_flags": risk_flags,
         "match_evidence": match_evidence,
         "follow_up_questions": follow_up_questions,
-        "profile": runtime.strip_internal_fields(record),
+        "profile": profile,
         "source_file": record.get("source_file"),
         "verified_rank": verified_rank,
         "activity_sort_ts": activity_sort_ts,
         "profile_status_rank": profile_status_rank,
         "reject_reason": reject_reason,
     }
+    if not diagnostics:
+        result["_profile_record"] = record
+    return result
 
 
 def record_ref(runtime: SearchRankingRuntime, record: dict[str, Any] | None) -> tuple[int | None, str]:
@@ -88,14 +92,36 @@ def diversity_job_cluster(runtime: SearchRankingRuntime, job: Any) -> str:
 
 
 def diversity_signature(runtime: SearchRankingRuntime, result: dict[str, Any]) -> tuple[str, str, str, str, str]:
-    profile = result.get("profile") or {}
-    return (
+    cached = result.get("_diversity_signature")
+    if isinstance(cached, tuple) and len(cached) == 5:
+        return cached
+    profile = result.get("profile")
+    if not isinstance(profile, dict):
+        profile = result.get("_profile_record") or {}
+    signature = (
         diversity_job_cluster(runtime, profile.get("job")),
         runtime.as_text(profile.get("career_intensity")),
         runtime.as_text(profile.get("communication_style")),
         runtime.as_text(profile.get("life_routine")),
         runtime.as_text(profile.get("commitment_clarity")),
     )
+    result["_diversity_signature"] = signature
+    return signature
+
+
+def materialize_result_profile(runtime: SearchRankingRuntime, result: dict[str, Any]) -> dict[str, Any]:
+    profile = result.get("profile")
+    if isinstance(profile, dict):
+        result.pop("_profile_record", None)
+        result.pop("_diversity_signature", None)
+        return result
+    raw_record = result.pop("_profile_record", None)
+    if isinstance(raw_record, dict):
+        result["profile"] = runtime.strip_internal_fields(raw_record)
+    else:
+        result["profile"] = {}
+    result.pop("_diversity_signature", None)
+    return result
 
 
 def diversity_penalty(
@@ -149,7 +175,10 @@ def select_diverse_results(
 ) -> list[dict[str, Any]]:
     results = trim_low_quality_tail(runtime, results)
     if len(results) <= limit:
-        return results[:limit]
+        return [materialize_result_profile(runtime, item) for item in results[:limit]]
+
+    for item in results:
+        item["_diversity_signature"] = diversity_signature(runtime, item)
 
     remaining = list(results)
     selected: list[dict[str, Any]] = []
@@ -170,6 +199,8 @@ def select_diverse_results(
                 best_key = key
         selected.append(best)
         remaining.remove(best)
+    for item in selected:
+        materialize_result_profile(runtime, item)
     return selected
 
 
