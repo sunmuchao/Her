@@ -108,6 +108,10 @@ def evaluate_reciprocal_compatibility(
     missing_fields: list[str] = []
     risk_flags: list[str] = []
     score_bonus = 0
+    self_city = self_profile.get("city")
+    lowered_self_city = runtime.as_lower(self_city) if self_city else ""
+    candidate_city = record.get("city")
+    lowered_candidate_city = runtime.as_lower(candidate_city) if candidate_city else ""
 
     self_age = runtime.as_int(self_profile.get("age"))
     pref_age_min = runtime.as_int(record.get("preferred_age_min"))
@@ -133,7 +137,6 @@ def evaluate_reciprocal_compatibility(
             score_bonus += 10
 
     pref_cities = runtime.split_keywords(record.get("preferred_cities"))
-    self_city = self_profile.get("city")
     if pref_cities:
         if not self_city:
             missing_fields.append("self_city")
@@ -258,6 +261,7 @@ def evaluate_reciprocal_compatibility(
     self_has_children = runtime.normalize_bool(self_profile.get("has_children"))
     accept_partner_children = runtime.normalize_acceptance_state(record.get("accept_partner_children"))
     accept_partner_children_semantics = runtime.as_text(record.get("accept_partner_children_semantics"))
+    children_acceptance_strength = runtime.normalize_acceptance_strength(record.get("accept_partner_children_strength"))
     if self_has_children is None:
         if accept_partner_children != "missing":
             missing_fields.append("self_has_children")
@@ -267,15 +271,12 @@ def evaluate_reciprocal_compatibility(
         if accept_partner_children == "accepted":
             reasons.append("对方接受你有孩子")
             score_bonus += 8
-            children_strength = runtime.normalize_acceptance_strength(
-                record.get("accept_partner_children_strength")
-            )
-            if children_strength == "strong":
+            if children_acceptance_strength == "strong":
                 score_bonus += 2
             else:
                 children_risk = runtime.children_acceptance_risk_flag(
                     "accepted",
-                    children_strength,
+                    children_acceptance_strength,
                     accept_partner_children_semantics,
                 )
                 if children_risk:
@@ -284,9 +285,7 @@ def evaluate_reciprocal_compatibility(
             risk_flags.append(
                 runtime.children_acceptance_risk_flag(
                     accept_partner_children,
-                    runtime.normalize_acceptance_strength(
-                        record.get("accept_partner_children_strength")
-                    ),
+                    children_acceptance_strength,
                     accept_partner_children_semantics,
                 )
             )
@@ -334,9 +333,8 @@ def evaluate_reciprocal_compatibility(
         else:
             missing_fields.append("accept_drinking")
 
-    candidate_city = record.get("city")
     accept_long_distance = runtime.normalize_acceptance_state(record.get("accept_long_distance"))
-    if self_city and candidate_city and runtime.as_lower(self_city) != runtime.as_lower(candidate_city):
+    if lowered_self_city and lowered_candidate_city and lowered_self_city != lowered_candidate_city:
         if accept_long_distance == "rejected":
             return fail("reciprocal_long_distance_acceptance")
         if accept_long_distance == "accepted":
@@ -355,7 +353,8 @@ def evaluate_reciprocal_compatibility(
     soft_preference_tags = matcher_preference_tags(runtime, record)
     if soft_preference_tags:
         self_text = runtime.as_lower(self_profile.get("combined_text"))
-        matched_soft_tags = [tag for tag in soft_preference_tags if runtime.as_lower(tag) in self_text]
+        lowered_soft_tags = [(tag, runtime.as_lower(tag)) for tag in soft_preference_tags]
+        matched_soft_tags = [tag for tag, lowered_tag in lowered_soft_tags if lowered_tag in self_text]
         if matched_soft_tags:
             reasons.append("对方软性偏好有重合")
             score_bonus += min(4, len(matched_soft_tags) * 2)

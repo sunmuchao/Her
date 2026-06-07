@@ -146,8 +146,21 @@ def keyword_requested(
     criteria: dict[str, Any],
     keywords: set[str],
 ) -> bool:
-    joined = " ".join(criteria.get("must_have", []) + criteria.get("prefer", []))
-    return runtime.contains_any_text(joined, keywords)
+    joined = criteria.get("__requested_keyword_joined_text")
+    if not isinstance(joined, str):
+        joined = " ".join(criteria.get("must_have", []) + criteria.get("prefer", []))
+        criteria["__requested_keyword_joined_text"] = joined
+    cache = criteria.get("__requested_keyword_cache")
+    if not isinstance(cache, dict):
+        cache = {}
+        criteria["__requested_keyword_cache"] = cache
+    cache_key = tuple(sorted(str(keyword) for keyword in keywords))
+    cached = cache.get(cache_key)
+    if isinstance(cached, bool):
+        return cached
+    matched = runtime.contains_any_text(joined, keywords)
+    cache[cache_key] = matched
+    return matched
 
 
 def creative_job_match(runtime: SearchMatchingRuntime, value: Any) -> bool:
@@ -315,12 +328,18 @@ def evaluate_contextual_fit(
     communication_style = record.get("communication_style")
     dating_pace = record.get("dating_pace")
     expression_style = record.get("expression_style")
+    life_routine = record.get("life_routine")
+    education = record.get("education")
+    job = record.get("job")
+    income_range = record.get("income_range")
     notes_and_values = " ".join(
         str(record.get(field) or "") for field in ("notes", "values", "family_background")
     )
+    requires_explicit_marital_acceptance = runtime.requires_explicit_marital_acceptance(self_profile)
+    requires_explicit_children_acceptance = runtime.requires_explicit_children_acceptance(self_profile)
     steady_life_profile = (
-        runtime.requires_explicit_marital_acceptance(self_profile)
-        or runtime.requires_explicit_children_acceptance(self_profile)
+        requires_explicit_marital_acceptance
+        or requires_explicit_children_acceptance
         or keyword_requested(
             runtime,
             criteria,
@@ -371,10 +390,10 @@ def evaluate_contextual_fit(
             match_evidence.append(f"边界清楚不拧巴 <- 相处状态: {interaction_comfort}")
 
     if keyword_requested(runtime, criteria, {"生活规律", "爱运动", "健身", "乐观"}):
-        if cares_about_regular_life and record.get("life_routine") in {"生活规律", "生活稳定"}:
+        if cares_about_regular_life and life_routine in {"生活规律", "生活稳定"}:
             reasons.append("生活节奏更稳")
             score_bonus += 3
-            match_evidence.append(f"生活节奏更稳 <- 作息类型: {record.get('life_routine')}")
+            match_evidence.append(f"生活节奏更稳 <- 作息类型: {life_routine}")
         if exercise_habit == "规律运动":
             reasons.append("运动习惯更匹配")
             score_bonus += 5
@@ -439,14 +458,14 @@ def evaluate_contextual_fit(
             if candidate_education_rank >= max(runtime.education_order["硕士"], self_education_rank - 1):
                 reasons.append("学历层次更接近")
                 score_bonus += 5
-                match_evidence.append(f"学历层次更接近 <- 学历: {record.get('education')}")
+                match_evidence.append(f"学历层次更接近 <- 学历: {education}")
                 if (
                     self_education_rank >= runtime.education_order["博士"]
                     and candidate_education_rank >= runtime.education_order["博士"]
                 ):
                     reasons.append("认知层次更对位")
                     score_bonus += 4
-                    match_evidence.append(f"认知层次更对位 <- 学历: {record.get('education')}")
+                    match_evidence.append(f"认知层次更对位 <- 学历: {education}")
             elif (
                 self_education_rank >= runtime.education_order["博士"]
                 and candidate_education_rank <= runtime.education_order["本科"]
@@ -457,7 +476,7 @@ def evaluate_contextual_fit(
         if candidate_income_max >= max(32, int(self_income_max * 0.45)):
             reasons.append("生活阶段更接近")
             score_bonus += 6
-            match_evidence.append(f"生活阶段更接近 <- 收入范围: {record.get('income_range')}")
+            match_evidence.append(f"生活阶段更接近 <- 收入范围: {income_range}")
         elif candidate_income_max < max(26, int(self_income_max * 0.4)):
             risk_flags.append("生活阶段可能有落差")
 
@@ -603,17 +622,16 @@ def evaluate_contextual_fit(
         elif communication_style == "慢热少话":
             risk_flags.append("忙的时候可能更难推进")
 
-    if wants_expressive_resonance and creative_job_match(runtime, self_job) and creative_job_match(
-        runtime,
-        record.get("job"),
-    ):
+    if wants_expressive_resonance and creative_job_match(runtime, self_job) and creative_job_match(runtime, job):
         reasons.append("审美和内容语境更接近")
         score_bonus += 6
-        match_evidence.append(f"审美和内容语境更接近 <- 职业: {record.get('job')}")
+        match_evidence.append(f"审美和内容语境更接近 <- 职业: {job}")
 
-    needs_explicit_family_reality = runtime.requires_explicit_children_acceptance(
-        self_profile
-    ) or keyword_requested(runtime, criteria, {"接受孩子现实", "孩子现实", "现实承接", "再婚现实"})
+    needs_explicit_family_reality = requires_explicit_children_acceptance or keyword_requested(
+        runtime,
+        criteria,
+        {"接受孩子现实", "孩子现实", "现实承接", "再婚现实"},
+    )
     if needs_explicit_family_reality:
         if blended_family_readiness == "已想过现实安排":
             reasons.append("现实安排想得更具体")
@@ -625,7 +643,7 @@ def evaluate_contextual_fit(
             match_evidence.append(f"现实问题愿意一起商量 <- 现实承接度: {blended_family_readiness}")
         elif blended_family_readiness in {"仅口头接受", "未知", None, ""}:
             risk_flags.append("重组家庭现实承接仍需确认")
-        if runtime.requires_explicit_children_acceptance(self_profile) and runtime.contains_any_text(
+        if requires_explicit_children_acceptance and runtime.contains_any_text(
             notes_and_values,
             {"婚史", "再婚", "现实安排", "家里相处", "边界", "为什么结束"},
         ):
