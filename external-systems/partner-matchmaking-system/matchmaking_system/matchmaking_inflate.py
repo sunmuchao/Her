@@ -159,13 +159,24 @@ def inflate_feedback(feedback: dict[str, Any] | None) -> dict[str, Any] | None:
     return inflated
 
 
-def _attach_pair_profile_refs(conn, pair: dict[str, Any] | None) -> dict[str, Any] | None:
+def _attach_pair_profile_refs(
+    conn,
+    pair: dict[str, Any] | None,
+    *,
+    members_by_id: Mapping[str, Mapping[str, Any]] | None = None,
+) -> dict[str, Any] | None:
     if not pair:
         return pair
     from .pool_members import get_pool_member
 
-    member_low = get_pool_member(conn, pair["member_low_id"])
-    member_high = get_pool_member(conn, pair["member_high_id"])
+    member_low_id = str(pair.get("member_low_id") or "").strip()
+    member_high_id = str(pair.get("member_high_id") or "").strip()
+    member_low = (members_by_id or {}).get(member_low_id) if member_low_id else None
+    member_high = (members_by_id or {}).get(member_high_id) if member_high_id else None
+    if member_low is None:
+        member_low = get_pool_member(conn, pair["member_low_id"])
+    if member_high is None:
+        member_high = get_pool_member(conn, pair["member_high_id"])
     pair["member_low_profile_ref"] = member_low["profile_ref"]
     pair["member_high_profile_ref"] = member_high["profile_ref"]
     pair["canonical_pair_key"] = canonical_pair_key_for_members(member_low, member_high)
