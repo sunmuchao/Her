@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Iterable
 
 from her_time_utils import current_time
 
@@ -123,16 +123,32 @@ def get_conversation_by_case_and_key(conn, case_id: str, channel_key: str) -> di
 
 
 def list_conversation_members(conn, conversation_id: str) -> list[dict[str, Any]]:
+    return list_conversation_members_for_conversations(conn, [conversation_id]).get(str(conversation_id), [])
+
+
+def list_conversation_members_for_conversations(
+    conn,
+    conversation_ids: Iterable[str],
+) -> dict[str, list[dict[str, Any]]]:
+    normalized_ids = [str(item).strip() for item in conversation_ids if str(item or "").strip()]
+    if not normalized_ids:
+        return {}
+    placeholders = ", ".join(["?"] * len(normalized_ids))
     cur = conn.execute(
-        """
+        f"""
         SELECT * FROM chat_conversation_members
-        WHERE conversation_id = ?
-        ORDER BY joined_at ASC, participant_id ASC
+        WHERE conversation_id IN ({placeholders})
+        ORDER BY conversation_id ASC, joined_at ASC, participant_id ASC
         """,
-        (conversation_id,),
+        tuple(normalized_ids),
     )
-    rows = [_inflate_member(row_to_dict(row)) for row in cur.fetchall()]
-    return [row for row in rows if row]
+    grouped: dict[str, list[dict[str, Any]]] = {conversation_id: [] for conversation_id in normalized_ids}
+    for row in cur.fetchall():
+        member = _inflate_member(row_to_dict(row))
+        if not member:
+            continue
+        grouped.setdefault(str(member["conversation_id"]), []).append(member)
+    return grouped
 
 
 def get_conversation_member(
@@ -155,7 +171,7 @@ def _conversation_bundle(conn, conversation_id: str) -> dict[str, Any]:
     conversation = get_conversation(conn, conversation_id)
     if not conversation:
         raise ValueError("conversation not found")
-    members = list_conversation_members(conn, conversation_id)
+    members = list_conversation_members_for_conversations(conn, [conversation_id]).get(str(conversation_id), [])
     return {**conversation, "members": members}
 
 
@@ -432,12 +448,18 @@ def list_case_conversations(
         (case_id,),
     )
     conversations = [_inflate_conversation(row_to_dict(row)) for row in cur.fetchall()]
+    conversation_ids = [
+        str(conversation["conversation_id"])
+        for conversation in conversations
+        if conversation and str(conversation.get("conversation_id") or "").strip()
+    ]
+    members_by_conversation_id = list_conversation_members_for_conversations(conn, conversation_ids)
     out: list[dict[str, Any]] = []
     requester = str(requester_id or "").strip()
     for conversation in conversations:
         if not conversation:
             continue
-        members = list_conversation_members(conn, str(conversation["conversation_id"]))
+        members = members_by_conversation_id.get(str(conversation["conversation_id"]), [])
         if requester:
             member_map = {str(member["participant_id"]): member for member in members}
             requester_member = member_map.get(requester)
@@ -520,27 +542,54 @@ def list_conversation_messages_for_conversations(
         return out
 
     allowed_placeholders = ", ".join(["?"] * len(allowed_ids))
-    cur = conn.execute(
-        f"""
-        SELECT * FROM chat_conversation_messages
-        WHERE conversation_id IN ({allowed_placeholders})
-        ORDER BY conversation_id ASC, message_id DESC
-        """,
-        allowed_ids,
-    )
     grouped: dict[str, list[dict[str, Any]]] = {cid: [] for cid in allowed_ids}
-    for row in cur.fetchall():
+    try:
+        cur = conn.execute(
+            f"""
+            SELECT *
+            FROM (
+              SELECT
+                m.*,
+                ROW_NUMBER() OVER (
+                  PARTITION BY m.conversation_id
+                  ORDER BY m.message_id DESC
+                ) AS row_num
+              FROM chat_conversation_messages m
+              WHERE m.conversation_id IN ({allowed_placeholders})
+            ) ranked_messages
+            WHERE row_num <= ?
+            ORDER BY conversation_id ASC, message_id DESC
+            """,
+            [*allowed_ids, lim],
+        )
+        rows = cur.fetchall()
+    except Exception:
+        rows = []
+        for conversation_id in allowed_ids:
+            cur = conn.execute(
+                """
+                SELECT *
+                FROM chat_conversation_messages
+                WHERE conversation_id = ?
+                ORDER BY message_id DESC
+                LIMIT ?
+                """,
+                (conversation_id, lim),
+            )
+            rows.extend(cur.fetchall())
+
+    for row in rows:
         row_dict = row_to_dict(row)
         message = _inflate_message(row_dict)
         if not message:
             continue
         cid = str(row_dict.get("conversation_id") or "")
         bucket = grouped.get(cid)
-        if bucket is None or len(bucket) >= lim:
+        if bucket is None:
             continue
         bucket.append(message)
     for cid, messages in grouped.items():
-        out[cid] = list(reversed(messages))
+        out[cid] = list(reversed(messages[:lim]))
     return out
 
 

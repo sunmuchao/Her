@@ -13,6 +13,112 @@ from outer_system_mysql_schema import quote_mysql_ident as mysql_quote_ident
 from match_domain.onboarding_search import expand_search_gender_values
 
 
+SEARCH_PROFILE_PROJECTION_FIELDS = frozenset(
+    {
+        "id",
+        "name",
+        "avatar_url",
+        "photo_count",
+        "gender",
+        "age",
+        "city",
+        "district",
+        "hometown",
+        "settlement_city",
+        "housing_status",
+        "car_status",
+        "height",
+        "education",
+        "job",
+        "income_range",
+        "income_min_wan",
+        "income_max_wan",
+        "relationship_goal",
+        "preferred_age_min",
+        "preferred_age_max",
+        "preferred_cities",
+        "preferred_height_min",
+        "preferred_height_max",
+        "preferred_age_strictness",
+        "preferred_height_strictness",
+        "preferred_education_min",
+        "preferred_education_strictness",
+        "preferred_income_min_wan",
+        "preferred_income_max_wan",
+        "preferred_income_strictness",
+        "personality",
+        "values",
+        "lifestyle",
+        "hobbies",
+        "life_routine",
+        "communication_style",
+        "dating_pace",
+        "expression_style",
+        "relationship_capacity",
+        "interaction_comfort",
+        "patience_level",
+        "life_texture",
+        "career_intensity",
+        "exercise_habit",
+        "growth_signal",
+        "warmth_style",
+        "aesthetic_expression",
+        "conversation_resonance",
+        "personal_presence",
+        "lightness_humor",
+        "consumption_attitude",
+        "chat_texture",
+        "commitment_clarity",
+        "relationship_execution",
+        "blended_family_readiness",
+        "smoking",
+        "drinking",
+        "long_distance",
+        "accept_long_distance",
+        "location_preference_semantics",
+        "accept_smoking",
+        "accept_drinking",
+        "accept_marital_status",
+        "accept_marital_status_strength",
+        "accept_marital_status_semantics",
+        "marital_status",
+        "has_children",
+        "children_count",
+        "children_living_with_self",
+        "want_children",
+        "accept_partner_children",
+        "accept_partner_children_strength",
+        "accept_partner_children_semantics",
+        "requires_partner_accept_my_children",
+        "marriage_timeline",
+        "family_background",
+        "profile_status",
+        "last_active_at",
+        "verified_level",
+        "photo_verification_level",
+        "live_video_verified",
+        "education_verification_status",
+        "job_verification_status",
+        "income_verification_status",
+        "city_verification_status",
+        "marital_status_verification_status",
+        "children_verification_status",
+        "relationship_goal_verification_status",
+        "profile_review_status",
+        "job_change_count_30d",
+        "city_change_count_30d",
+        "income_change_count_30d",
+        "source_channel",
+        "created_at",
+        "updated_at",
+        "notes",
+        "matcher_traits_json",
+        "matcher_preferences_json",
+        "matcher_risks_json",
+    }
+)
+
+
 @dataclass(frozen=True)
 class SearchSourceRuntime:
     alias_lookup: Mapping[str, str]
@@ -271,6 +377,13 @@ def load_mysql(
     for actual in runtime.list_profile_columns(source_dsn=effective_source, source_table_name=table):
         canonical = runtime.alias_lookup.get(runtime.normalize_key(actual), runtime.normalize_key(actual))
         canonical_to_actual.setdefault(canonical, actual)
+    selected_columns = [
+        actual
+        for canonical, actual in canonical_to_actual.items()
+        if canonical in SEARCH_PROFILE_PROJECTION_FIELDS
+    ]
+    if "id" in canonical_to_actual and canonical_to_actual["id"] not in selected_columns:
+        selected_columns.append(canonical_to_actual["id"])
 
     prefilter = build_mysql_prefilter(
         runtime,
@@ -305,6 +418,7 @@ def load_mysql(
         source_table_name=table,
         where_clause=normalized_where,
         params=params,
+        selected_columns=selected_columns,
         batch_size=batch_size,
     ):
         profile_ids = [int(row["id"]) for row in batch if row.get("id") is not None]

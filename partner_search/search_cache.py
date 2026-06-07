@@ -11,6 +11,7 @@ from typing import Any, Mapping
 from her_env import env_int
 
 from .search_snapshot_store import (
+    clear_persisted_search_runs,
     get_persisted_search_run,
     store_persisted_search_run,
 )
@@ -132,6 +133,7 @@ def store_cached_search_run(
 
 def clear_search_cache() -> None:
     _CACHE._entries.clear()
+    clear_persisted_search_runs()
 
 
 __all__ = [
