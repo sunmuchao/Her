@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Iterable
 
 from her_time_utils import coerce_dt as _coerce_dt, current_time
 
@@ -336,6 +336,22 @@ def _session_has_pending_tasks(conn, session_id: str) -> bool:
     return bool(pending and int(pending["c"]) > 0)
 
 
+def _session_ids_with_pending_tasks(conn, session_ids: Iterable[str]) -> set[str]:
+    normalized_ids = [str(item).strip() for item in session_ids if str(item or "").strip()]
+    if not normalized_ids:
+        return set()
+    placeholders = ", ".join(["?"] * len(normalized_ids))
+    cur = conn.execute(
+        f"""
+        SELECT DISTINCT session_id
+        FROM chat_agent_tasks
+        WHERE session_id IN ({placeholders}) AND status IN (?, ?)
+        """,
+        [*normalized_ids, TASK_STATUS_PENDING, TASK_STATUS_RUNNING],
+    )
+    return {str(row["session_id"]) for row in cur.fetchall() if str(row.get("session_id") or "").strip()}
+
+
 def _case_has_any_messages(conn, case_id: str) -> bool:
     cur = conn.execute(
         """
@@ -350,6 +366,24 @@ def _case_has_any_messages(conn, case_id: str) -> bool:
         (case_id,),
     )
     return row_to_dict(cur.fetchone()) is not None
+
+
+def _case_ids_with_any_messages(conn, case_ids: Iterable[str]) -> set[str]:
+    normalized_ids = [str(item).strip() for item in case_ids if str(item or "").strip()]
+    if not normalized_ids:
+        return set()
+    placeholders = ", ".join(["?"] * len(normalized_ids))
+    cur = conn.execute(
+        f"""
+        SELECT DISTINCT c.case_id
+        FROM chat_conversation_messages m
+        JOIN chat_conversations c
+          ON c.conversation_id = m.conversation_id
+        WHERE c.case_id IN ({placeholders})
+        """,
+        tuple(normalized_ids),
+    )
+    return {str(row["case_id"]) for row in cur.fetchall() if str(row.get("case_id") or "").strip()}
 
 
 def enqueue_agent_task(
@@ -430,6 +464,31 @@ def _latest_main_group_message(conn, case_id: str) -> tuple[dict[str, Any], dict
     return _latest_channel_message(conn, case_id, "main_group")
 
 
+def _main_group_conversations_by_case(conn, case_ids: Iterable[str]) -> dict[str, dict[str, Any]]:
+    normalized_ids = [str(item).strip() for item in case_ids if str(item or "").strip()]
+    if not normalized_ids:
+        return {}
+    placeholders = ", ".join(["?"] * len(normalized_ids))
+    cur = conn.execute(
+        f"""
+        SELECT *
+        FROM chat_conversations
+        WHERE channel_key = ? AND case_id IN ({placeholders})
+        ORDER BY created_at ASC, conversation_id ASC
+        """,
+        ("main_group", *normalized_ids),
+    )
+    out: dict[str, dict[str, Any]] = {}
+    for raw in cur.fetchall():
+        conversation = inflate_json_columns(row_to_dict(raw), metadata=("metadata_json", {}))
+        if not conversation:
+            continue
+        case_id = str(conversation.get("case_id") or "").strip()
+        if case_id and case_id not in out:
+            out[case_id] = conversation
+    return out
+
+
 def _latest_channel_message(conn, case_id: str, channel_key: str) -> tuple[dict[str, Any], dict[str, Any]] | None:
     conversation = get_conversation_by_case_and_key(conn, case_id, channel_key)
     if not conversation:
@@ -448,6 +507,66 @@ def _latest_channel_message(conn, case_id: str, channel_key: str) -> tuple[dict[
     if not message:
         return None
     return conversation, message
+
+
+def _latest_main_group_messages_by_case(
+    conn,
+    case_ids: Iterable[str],
+) -> dict[str, tuple[dict[str, Any], dict[str, Any]]]:
+    conversations_by_case = _main_group_conversations_by_case(conn, case_ids)
+    if not conversations_by_case:
+        return {}
+    conversation_ids = [str(item["conversation_id"]) for item in conversations_by_case.values()]
+    placeholders = ", ".join(["?"] * len(conversation_ids))
+    try:
+        cur = conn.execute(
+            f"""
+            SELECT message_id, author_id, source, created_at, conversation_id
+            FROM (
+              SELECT
+                m.message_id,
+                m.author_id,
+                m.source,
+                m.created_at,
+                m.conversation_id,
+                ROW_NUMBER() OVER (
+                  PARTITION BY m.conversation_id
+                  ORDER BY m.message_id DESC
+                ) AS row_num
+              FROM chat_conversation_messages m
+              WHERE m.conversation_id IN ({placeholders})
+            ) ranked_messages
+            WHERE row_num = 1
+            """,
+            tuple(conversation_ids),
+        )
+        latest_by_conversation_id = {
+            str(row["conversation_id"]): row_to_dict(row)
+            for row in cur.fetchall()
+            if str(row.get("conversation_id") or "").strip()
+        }
+    except Exception:
+        latest_by_conversation_id = {}
+        for conversation_id in conversation_ids:
+            cur = conn.execute(
+                """
+                SELECT message_id, author_id, source, created_at, conversation_id
+                FROM chat_conversation_messages
+                WHERE conversation_id = ?
+                ORDER BY message_id DESC
+                LIMIT 1
+                """,
+                (conversation_id,),
+            )
+            row = row_to_dict(cur.fetchone())
+            if row and str(row.get("conversation_id") or "").strip():
+                latest_by_conversation_id[str(row["conversation_id"])] = row
+    out: dict[str, tuple[dict[str, Any], dict[str, Any]]] = {}
+    for case_id, conversation in conversations_by_case.items():
+        message = latest_by_conversation_id.get(str(conversation["conversation_id"]))
+        if message:
+            out[case_id] = (conversation, message)
+    return out
 
 
 def _has_user_channel_message_since(
@@ -564,10 +683,17 @@ def enqueue_due_opening_probe_tasks(
     )
     examined = 0
     enqueued_refs: list[dict[str, Any]] = []
-    for raw in cur.fetchall():
+    rows = [row_to_dict(raw) for raw in cur.fetchall()]
+    case_ids = [str(row.get("case_id") or "").strip() for row in rows]
+    session_pending = _session_ids_with_pending_tasks(
+        conn,
+        [str(row.get("session_id") or "").strip() for row in rows],
+    )
+    latest_main_by_case = _latest_main_group_messages_by_case(conn, case_ids)
+    cases_with_any_messages = _case_ids_with_any_messages(conn, case_ids)
+    for row in rows:
         if len(enqueued_refs) >= lim:
             break
-        row = row_to_dict(raw)
         if not row:
             continue
         examined += 1
@@ -576,16 +702,18 @@ def enqueue_due_opening_probe_tasks(
             continue
         if _coerce_dt(row.get("last_user_message_at")) is not None:
             continue
-        if row.get("session_id") and _session_has_pending_tasks(conn, str(row["session_id"])):
+        session_id = str(row.get("session_id") or "").strip()
+        if session_id and session_id in session_pending:
             continue
-        latest_bundle = _latest_main_group_message(conn, str(row["case_id"]))
+        case_id = str(row.get("case_id") or "").strip()
+        latest_bundle = latest_main_by_case.get(case_id)
         if latest_bundle is not None:
             continue
-        if _case_has_any_messages(conn, str(row["case_id"])):
+        if case_id in cases_with_any_messages:
             continue
         session = get_or_create_agent_session(
             conn,
-            case_id=str(row["case_id"]),
+            case_id=case_id,
             triggered_by_message_id=None,
             now=ts,
         )
@@ -646,21 +774,29 @@ def enqueue_due_silence_probe_tasks(
     )
     examined = 0
     enqueued_refs: list[dict[str, Any]] = []
-    for raw in cur.fetchall():
+    raw_rows = [row_to_dict(raw) for raw in cur.fetchall()]
+    sessions = [_inflate_session(row) for row in raw_rows]
+    hydrated_sessions = [session for session in sessions if session]
+    session_pending = _session_ids_with_pending_tasks(
+        conn,
+        [str(session["session_id"]) for session in hydrated_sessions],
+    )
+    latest_main_by_case = _latest_main_group_messages_by_case(
+        conn,
+        [str(session["case_id"]) for session in hydrated_sessions],
+    )
+    for session in hydrated_sessions:
         if len(enqueued_refs) >= lim:
             break
-        session = _inflate_session(row_to_dict(raw))
-        if not session:
-            continue
         state = dict(session.get("state") or {})
         if str(state.get("phase") or "") in POST_CHAT_PHASES:
             continue
         if is_public_followup_active(session):
             continue
         examined += 1
-        if _session_has_pending_tasks(conn, str(session["session_id"])):
+        if str(session["session_id"]) in session_pending:
             continue
-        latest_bundle = _latest_main_group_message(conn, str(session["case_id"]))
+        latest_bundle = latest_main_by_case.get(str(session["case_id"]))
         if not latest_bundle:
             continue
         conversation, message = latest_bundle
@@ -722,15 +858,27 @@ def enqueue_due_post_chat_followup_tasks(
 
     examined = 0
     enqueued_refs: list[dict[str, Any]] = []
-    for raw in cur.fetchall():
-        session = _inflate_session(row_to_dict(raw))
-        if not session:
-            continue
+    raw_rows = [row_to_dict(raw) for raw in cur.fetchall()]
+    sessions = [_inflate_session(row) for row in raw_rows]
+    hydrated_sessions = [session for session in sessions if session]
+    session_pending = _session_ids_with_pending_tasks(
+        conn,
+        [str(session["session_id"]) for session in hydrated_sessions],
+    )
+    latest_main_by_case = _latest_main_group_messages_by_case(
+        conn,
+        [str(session["case_id"]) for session in hydrated_sessions],
+    )
+    main_group_conversations = _main_group_conversations_by_case(
+        conn,
+        [str(session["case_id"]) for session in hydrated_sessions],
+    )
+    for session in hydrated_sessions:
         state = dict(session.get("state") or {})
         if str(state.get("phase") or "") not in {"post_chat_ready", "post_chat_followup"}:
             continue
         examined += 1
-        if _session_has_pending_tasks(conn, str(session["session_id"])):
+        if str(session["session_id"]) in session_pending:
             continue
 
         chat_end_at = _coerce_dt(state.get("chat_end_at"))
@@ -738,7 +886,7 @@ def enqueue_due_post_chat_followup_tasks(
         if not chat_end_at or chat_end_at > cutoff or chat_end_message_id <= 0:
             continue
 
-        latest_bundle = _latest_main_group_message(conn, str(session["case_id"]))
+        latest_bundle = latest_main_by_case.get(str(session["case_id"]))
         if latest_bundle:
             _, latest_main_message = latest_bundle
             latest_main_created_at = _coerce_dt(latest_main_message.get("created_at"))
@@ -760,7 +908,7 @@ def enqueue_due_post_chat_followup_tasks(
             _write_session_state(conn, str(session["session_id"]), state, now=ts)
             continue
 
-        conversation = get_conversation_by_case_and_key(conn, str(session["case_id"]), "main_group")
+        conversation = main_group_conversations.get(str(session["case_id"]))
         if not conversation:
             continue
         task = enqueue_agent_task(
