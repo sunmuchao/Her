@@ -1,0 +1,477 @@
+{
+  "generated_at": "2026-06-07T23:23:37",
+  "repeat": 3,
+  "search_profiles": 2000,
+  "messages_per_conversation": 150,
+  "opening_cases": 30,
+  "matchmaking_pairs": 24,
+  "layout_updates": 30,
+  "recommendation_count": 120,
+  "trust_hub_items": 20,
+  "benchmarks": [
+    {
+      "scenario": "partner_search_full_scan",
+      "current": {
+        "label": "current",
+        "result_count": 20,
+        "avg_ms": 866.841,
+        "min_ms": 839.117,
+        "max_ms": 918.313,
+        "avg_execute_count": 4.667,
+        "avg_fetched_cells": 40019.667,
+        "runs": [
+          {
+            "elapsed_ms": 918.313,
+            "execute_count": 6,
+            "fetched_cells": 40059
+          },
+          {
+            "elapsed_ms": 843.094,
+            "execute_count": 4,
+            "fetched_cells": 40000
+          },
+          {
+            "elapsed_ms": 839.117,
+            "execute_count": 4,
+            "fetched_cells": 40000
+          }
+        ]
+      },
+      "legacy_emulation": {
+        "label": "legacy_emulation",
+        "result_count": 20,
+        "avg_ms": 1085.584,
+        "min_ms": 1079.112,
+        "max_ms": 1097.849,
+        "avg_execute_count": 4.0,
+        "avg_fetched_cells": 91200.0,
+        "runs": [
+          {
+            "elapsed_ms": 1097.849,
+            "execute_count": 4,
+            "fetched_cells": 91200
+          },
+          {
+            "elapsed_ms": 1079.789,
+            "execute_count": 4,
+            "fetched_cells": 91200
+          },
+          {
+            "elapsed_ms": 1079.112,
+            "execute_count": 4,
+            "fetched_cells": 91200
+          }
+        ]
+      },
+      "time_speedup_vs_legacy": 1.252,
+      "query_reduction_vs_legacy": 0.857,
+      "cell_reduction_vs_legacy": 2.279
+    },
+    {
+      "scenario": "chat_case_timeline",
+      "current": {
+        "label": "current",
+        "result_count": 2,
+        "avg_ms": 7.077,
+        "min_ms": 6.909,
+        "max_ms": 7.301,
+        "avg_execute_count": 4.0,
+        "avg_fetched_cells": 485.0,
+        "runs": [
+          {
+            "elapsed_ms": 7.301,
+            "execute_count": 4,
+            "fetched_cells": 485
+          },
+          {
+            "elapsed_ms": 7.021,
+            "execute_count": 4,
+            "fetched_cells": 485
+          },
+          {
+            "elapsed_ms": 6.909,
+            "execute_count": 4,
+            "fetched_cells": 485
+          }
+        ]
+      },
+      "legacy_emulation": {
+        "label": "legacy_emulation",
+        "result_count": 2,
+        "avg_ms": 13.602,
+        "min_ms": 12.922,
+        "max_ms": 14.126,
+        "avg_execute_count": 6.0,
+        "avg_fetched_cells": 2785.0,
+        "runs": [
+          {
+            "elapsed_ms": 12.922,
+            "execute_count": 6,
+            "fetched_cells": 2785
+          },
+          {
+            "elapsed_ms": 13.759,
+            "execute_count": 6,
+            "fetched_cells": 2785
+          },
+          {
+            "elapsed_ms": 14.126,
+            "execute_count": 6,
+            "fetched_cells": 2785
+          }
+        ]
+      },
+      "time_speedup_vs_legacy": 1.922,
+      "query_reduction_vs_legacy": 1.5,
+      "cell_reduction_vs_legacy": 5.742
+    },
+    {
+      "scenario": "assistant_opening_probe_scan",
+      "current": {
+        "label": "current",
+        "result_count": 30,
+        "avg_ms": 279.222,
+        "min_ms": 278.135,
+        "max_ms": 280.783,
+        "avg_execute_count": 667.0,
+        "avg_fetched_cells": 4080.0,
+        "runs": [
+          {
+            "elapsed_ms": 280.783,
+            "execute_count": 667,
+            "fetched_cells": 4080
+          },
+          {
+            "elapsed_ms": 278.749,
+            "execute_count": 667,
+            "fetched_cells": 4080
+          },
+          {
+            "elapsed_ms": 278.135,
+            "execute_count": 667,
+            "fetched_cells": 4080
+          }
+        ]
+      },
+      "legacy_emulation": {
+        "label": "legacy_emulation",
+        "result_count": 0,
+        "avg_ms": 380.132,
+        "min_ms": 377.091,
+        "max_ms": 382.311,
+        "avg_execute_count": 1021.0,
+        "avg_fetched_cells": 6540.0,
+        "runs": [
+          {
+            "elapsed_ms": 377.091,
+            "execute_count": 1021,
+            "fetched_cells": 6540
+          },
+          {
+            "elapsed_ms": 380.995,
+            "execute_count": 1021,
+            "fetched_cells": 6540
+          },
+          {
+            "elapsed_ms": 382.311,
+            "execute_count": 1021,
+            "fetched_cells": 6540
+          }
+        ]
+      },
+      "time_speedup_vs_legacy": 1.361,
+      "query_reduction_vs_legacy": 1.531,
+      "cell_reduction_vs_legacy": 1.603
+    },
+    {
+      "scenario": "matchmaking_mutual_pair_build",
+      "current": {
+        "label": "current",
+        "result_count": 24,
+        "avg_ms": 599.539,
+        "min_ms": 597.61,
+        "max_ms": 602.95,
+        "avg_execute_count": 801.0,
+        "avg_fetched_cells": 8474.0,
+        "runs": [
+          {
+            "elapsed_ms": 598.059,
+            "execute_count": 801,
+            "fetched_cells": 8474
+          },
+          {
+            "elapsed_ms": 597.61,
+            "execute_count": 801,
+            "fetched_cells": 8474
+          },
+          {
+            "elapsed_ms": 602.95,
+            "execute_count": 801,
+            "fetched_cells": 8474
+          }
+        ]
+      },
+      "legacy_emulation": {
+        "label": "legacy_emulation",
+        "result_count": 24,
+        "avg_ms": 690.839,
+        "min_ms": 685.019,
+        "max_ms": 701.862,
+        "avg_execute_count": 988.0,
+        "avg_fetched_cells": 11640.0,
+        "runs": [
+          {
+            "elapsed_ms": 701.862,
+            "execute_count": 988,
+            "fetched_cells": 11640
+          },
+          {
+            "elapsed_ms": 685.635,
+            "execute_count": 988,
+            "fetched_cells": 11640
+          },
+          {
+            "elapsed_ms": 685.019,
+            "execute_count": 988,
+            "fetched_cells": 11640
+          }
+        ]
+      },
+      "time_speedup_vs_legacy": 1.152,
+      "query_reduction_vs_legacy": 1.233,
+      "cell_reduction_vs_legacy": 1.374
+    },
+    {
+      "scenario": "chat_layout_member_reupsert",
+      "current": {
+        "label": "current",
+        "result_count": 30,
+        "avg_ms": 423.284,
+        "min_ms": 420.852,
+        "max_ms": 425.168,
+        "avg_execute_count": 1230.0,
+        "avg_fetched_cells": 7470.0,
+        "runs": [
+          {
+            "elapsed_ms": 423.833,
+            "execute_count": 1230,
+            "fetched_cells": 7470
+          },
+          {
+            "elapsed_ms": 420.852,
+            "execute_count": 1230,
+            "fetched_cells": 7470
+          },
+          {
+            "elapsed_ms": 425.168,
+            "execute_count": 1230,
+            "fetched_cells": 7470
+          }
+        ]
+      },
+      "legacy_emulation": {
+        "label": "legacy_emulation",
+        "result_count": 30,
+        "avg_ms": 476.911,
+        "min_ms": 475.994,
+        "max_ms": 477.644,
+        "avg_execute_count": 1350.0,
+        "avg_fetched_cells": 12450.0,
+        "runs": [
+          {
+            "elapsed_ms": 477.644,
+            "execute_count": 1350,
+            "fetched_cells": 12450
+          },
+          {
+            "elapsed_ms": 475.994,
+            "execute_count": 1350,
+            "fetched_cells": 12450
+          },
+          {
+            "elapsed_ms": 477.095,
+            "execute_count": 1350,
+            "fetched_cells": 12450
+          }
+        ]
+      },
+      "time_speedup_vs_legacy": 1.127,
+      "query_reduction_vs_legacy": 1.098,
+      "cell_reduction_vs_legacy": 1.667
+    },
+    {
+      "scenario": "discovery_request_bootstrap_synthetic",
+      "current": {
+        "label": "current",
+        "result_count": 1,
+        "avg_ms": 13.748,
+        "min_ms": 11.648,
+        "max_ms": 15.322,
+        "avg_execute_count": 0.0,
+        "avg_fetched_cells": 0.0,
+        "runs": [
+          {
+            "elapsed_ms": 15.322,
+            "execute_count": 0,
+            "fetched_cells": 0
+          },
+          {
+            "elapsed_ms": 14.273,
+            "execute_count": 0,
+            "fetched_cells": 0
+          },
+          {
+            "elapsed_ms": 11.648,
+            "execute_count": 0,
+            "fetched_cells": 0
+          }
+        ]
+      },
+      "legacy_emulation": {
+        "label": "legacy_emulation",
+        "result_count": 1,
+        "avg_ms": 51.14,
+        "min_ms": 45.285,
+        "max_ms": 55.629,
+        "avg_execute_count": 0.0,
+        "avg_fetched_cells": 0.0,
+        "runs": [
+          {
+            "elapsed_ms": 55.629,
+            "execute_count": 0,
+            "fetched_cells": 0
+          },
+          {
+            "elapsed_ms": 52.507,
+            "execute_count": 0,
+            "fetched_cells": 0
+          },
+          {
+            "elapsed_ms": 45.285,
+            "execute_count": 0,
+            "fetched_cells": 0
+          }
+        ]
+      },
+      "time_speedup_vs_legacy": 3.72,
+      "query_reduction_vs_legacy": 0.0,
+      "cell_reduction_vs_legacy": 0.0
+    },
+    {
+      "scenario": "recommendation_subscription_listing",
+      "current": {
+        "label": "current",
+        "result_count": 120,
+        "avg_ms": 34.514,
+        "min_ms": 33.97,
+        "max_ms": 35.063,
+        "avg_execute_count": 3.0,
+        "avg_fetched_cells": 7831.0,
+        "runs": [
+          {
+            "elapsed_ms": 33.97,
+            "execute_count": 3,
+            "fetched_cells": 7831
+          },
+          {
+            "elapsed_ms": 35.063,
+            "execute_count": 3,
+            "fetched_cells": 7831
+          },
+          {
+            "elapsed_ms": 34.507,
+            "execute_count": 3,
+            "fetched_cells": 7831
+          }
+        ]
+      },
+      "legacy_emulation": {
+        "label": "legacy_emulation",
+        "result_count": 120,
+        "avg_ms": 72.502,
+        "min_ms": 71.698,
+        "max_ms": 73.574,
+        "avg_execute_count": 122.0,
+        "avg_fetched_cells": 7831.0,
+        "runs": [
+          {
+            "elapsed_ms": 73.574,
+            "execute_count": 122,
+            "fetched_cells": 7831
+          },
+          {
+            "elapsed_ms": 72.234,
+            "execute_count": 122,
+            "fetched_cells": 7831
+          },
+          {
+            "elapsed_ms": 71.698,
+            "execute_count": 122,
+            "fetched_cells": 7831
+          }
+        ]
+      },
+      "time_speedup_vs_legacy": 2.101,
+      "query_reduction_vs_legacy": 40.667,
+      "cell_reduction_vs_legacy": 1.0
+    },
+    {
+      "scenario": "user_trust_hub_payload",
+      "current": {
+        "label": "current",
+        "result_count": 40,
+        "avg_ms": 20.099,
+        "min_ms": 18.739,
+        "max_ms": 21.317,
+        "avg_execute_count": 12.0,
+        "avg_fetched_cells": 3398.0,
+        "runs": [
+          {
+            "elapsed_ms": 18.739,
+            "execute_count": 12,
+            "fetched_cells": 3398
+          },
+          {
+            "elapsed_ms": 20.243,
+            "execute_count": 12,
+            "fetched_cells": 3398
+          },
+          {
+            "elapsed_ms": 21.317,
+            "execute_count": 12,
+            "fetched_cells": 3398
+          }
+        ]
+      },
+      "legacy_emulation": {
+        "label": "legacy_emulation",
+        "result_count": 40,
+        "avg_ms": 52.149,
+        "min_ms": 51.473,
+        "max_ms": 52.672,
+        "avg_execute_count": 107.0,
+        "avg_fetched_cells": 3720.0,
+        "runs": [
+          {
+            "elapsed_ms": 52.672,
+            "execute_count": 107,
+            "fetched_cells": 3720
+          },
+          {
+            "elapsed_ms": 52.302,
+            "execute_count": 107,
+            "fetched_cells": 3720
+          },
+          {
+            "elapsed_ms": 51.473,
+            "execute_count": 107,
+            "fetched_cells": 3720
+          }
+        ]
+      },
+      "time_speedup_vs_legacy": 2.595,
+      "query_reduction_vs_legacy": 8.917,
+      "cell_reduction_vs_legacy": 1.095
+    }
+  ]
+}
