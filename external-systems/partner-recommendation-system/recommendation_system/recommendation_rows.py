@@ -84,6 +84,52 @@ _SUBSCRIPTION_RECOMMENDATION_FIELDS = (
     "title",
 )
 
+_PROFILE_RECOMMENDATION_COLUMNS = (
+    "recommendation_id",
+    "subscription_id",
+    "requester_id",
+    "candidate_id",
+    "candidate_name",
+    "score",
+    "fit_score",
+    "confidence_score",
+    "risk_score",
+    "delivery_status",
+    "delivery_reason",
+    "first_seen_at",
+    "last_seen_at",
+    "notified_at",
+    "cooling_until",
+    "last_action_type",
+    "matched_on_json",
+    "risk_flags_json",
+    "latest_payload_json",
+    "final_review_status",
+    "final_review_reason",
+    "final_review_score",
+    "final_review_payload_json",
+    "reviewed_at",
+    "candidate_snapshot_hash",
+    "user_review_status",
+    "user_review_reason",
+    "user_review_payload_json",
+    "user_reviewed_at",
+    "relation_key",
+    "owner_profile_ref_json",
+    "target_profile_ref_json",
+    "active_match_case_id",
+    "active_case_status",
+    "gate_outcome",
+    "gate_reason_codes_json",
+    "gate_owner_service",
+    "gate_details_ref",
+    "gate_evaluated_at",
+    "latest_card_id",
+    "rule_provenance_json",
+)
+
+PROFILE_RECOMMENDATION_SELECT_SQL = ", ".join(_PROFILE_RECOMMENDATION_COLUMNS)
+
 
 def _merge_recommendation_subscription_fields(
     recommendation: dict[str, Any],
@@ -107,7 +153,9 @@ def list_recommendations_for_subscription(
 ) -> list[dict[str, Any]]:
     rows = conn.execute(
         """
-        SELECT *
+        SELECT """
+        + PROFILE_RECOMMENDATION_SELECT_SQL
+        + """
         FROM profile_recommendations
         WHERE subscription_id = ?
         ORDER BY score DESC, last_seen_at DESC, recommendation_id DESC
@@ -499,7 +547,9 @@ def inflate_recommendation(
 def get_recommendation(conn, subscription_id: str, candidate_id: int) -> dict[str, Any] | None:
     row = conn.execute(
         """
-        SELECT *
+        SELECT """
+        + PROFILE_RECOMMENDATION_SELECT_SQL
+        + """
         FROM profile_recommendations
         WHERE subscription_id = ? AND candidate_id = ?
         """,
@@ -518,7 +568,9 @@ def get_recommendation(conn, subscription_id: str, candidate_id: int) -> dict[st
 def get_recommendation_by_id(conn, recommendation_id: int) -> dict[str, Any] | None:
     row = conn.execute(
         """
-        SELECT *
+        SELECT """
+        + PROFILE_RECOMMENDATION_SELECT_SQL
+        + """
         FROM profile_recommendations
         WHERE recommendation_id = ?
         """,
