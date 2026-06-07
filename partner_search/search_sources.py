@@ -299,6 +299,7 @@ def load_mysql(
         merge_persona_into_profile_record = None  # type: ignore[assignment,misc]
 
     records: list[dict[str, Any]] = []
+    source_file_ref = runtime.build_source_file_ref(effective_source, table)
     for batch in iter_profile_batches(
         source_dsn=effective_source,
         source_table_name=table,
@@ -327,7 +328,7 @@ def load_mysql(
                 runtime.normalize_record(
                     dict(
                         row_dict,
-                        source_file=runtime.build_source_file_ref(effective_source, table),
+                        source_file=source_file_ref,
                     )
                 )
             )
