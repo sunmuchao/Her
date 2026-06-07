@@ -920,6 +920,40 @@ def evaluate_candidate(
         criteria[cache_key] = lowered
         return lowered
 
+    def _lowered_criteria_value(field: str) -> str:
+        cache_key = f"__lowered_{field}_value"
+        cached = criteria.get(cache_key)
+        if isinstance(cached, str):
+            return cached
+        lowered = runtime.as_lower(criteria.get(field))
+        criteria[cache_key] = lowered
+        return lowered
+
+    def _active_cutoff() -> datetime | None:
+        cache_key = "__active_within_cutoff"
+        cached = criteria.get(cache_key)
+        if isinstance(cached, datetime):
+            return cached
+        active_within_days = criteria.get("active_within_days")
+        if active_within_days is None:
+            return None
+        cutoff = datetime.now() - timedelta(days=active_within_days)
+        criteria[cache_key] = cutoff
+        return cutoff
+
+    def _required_known_candidate_fields() -> set[str]:
+        cache_key = "__required_known_candidate_fields"
+        cached = criteria.get(cache_key)
+        if isinstance(cached, set):
+            return cached
+        fields = {
+            field
+            for field in criteria.get("required_known_fields", [])
+            if not str(field).startswith("self_")
+        }
+        criteria[cache_key] = fields
+        return fields
+
     def fail(reason: str, detail: Any = None) -> dict[str, Any] | None:
         if not diagnostics:
             return None
@@ -951,6 +985,12 @@ def evaluate_candidate(
     match_evidence: list[str] = []
     fit_score = 0
     confidence_score = 0
+    self_profile = criteria.get("self_profile") or {}
+    self_city = self_profile.get("city")
+    lowered_self_city = runtime.as_lower(self_city) if self_city else ""
+    candidate_city = record.get("city")
+    lowered_candidate_city = runtime.as_lower(candidate_city) if candidate_city else ""
+    candidate_photo_level: str | None = None
 
     if runtime.record_ref(record) in criteria.get("exclude_record_refs", set()):
         return fail("exclude_record_ref")
@@ -975,7 +1015,7 @@ def evaluate_candidate(
         if active_at is None:
             missing_fields.append("last_active_at")
             return fail("active_time_missing")
-        if active_at < datetime.now() - timedelta(days=criteria["active_within_days"]):
+        if active_at < _active_cutoff():
             return fail("active_too_old")
 
     if criteria.get("verified_level_min"):
@@ -985,9 +1025,8 @@ def evaluate_candidate(
             return fail("verified_below_min")
 
     if criteria.get("photo_verification_level_min"):
-        if runtime.photo_verification_rank(runtime.photo_verification_level(record)) < runtime.photo_verification_rank(
-            criteria["photo_verification_level_min"]
-        ):
+        candidate_photo_level = runtime.photo_verification_level(record)
+        if runtime.photo_verification_rank(candidate_photo_level) < runtime.photo_verification_rank(criteria["photo_verification_level_min"]):
             return fail("photo_verification_below_min")
 
     age = record.get("age")
@@ -1047,17 +1086,14 @@ def evaluate_candidate(
             reasons.append(f"城市 {record.get('city')}")
             fit_score += 20
 
-    self_profile = criteria.get("self_profile") or {}
-    self_city = self_profile.get("city")
-    candidate_city = record.get("city")
     near_distance_priority = self_prefers_near_distance(runtime, self_profile)
-    if self_city and candidate_city and runtime.as_lower(self_city) == runtime.as_lower(candidate_city):
+    if lowered_self_city and lowered_candidate_city and lowered_self_city == lowered_candidate_city:
         reasons.append("同城")
         fit_score += 8
         if near_distance_priority:
             reasons.append("近距离更省心")
             fit_score += 4
-    elif self_city and candidate_city and near_distance_priority:
+    elif lowered_self_city and lowered_candidate_city and near_distance_priority:
         risk_flags.append("非同城，见面推进成本更高")
 
     if criteria.get("districts"):
@@ -1079,9 +1115,7 @@ def evaluate_candidate(
         else:
             reasons.append(f"定居 {record.get('settlement_city')}")
             fit_score += 8
-    elif self_city and record.get("settlement_city") and runtime.as_lower(record.get("settlement_city")) == runtime.as_lower(
-        self_city
-    ):
+    elif lowered_self_city and record.get("settlement_city") and runtime.as_lower(record.get("settlement_city")) == lowered_self_city:
         reasons.append("定居与你同城")
         fit_score += 4
 
@@ -1141,7 +1175,7 @@ def evaluate_candidate(
 
     if criteria.get("smoking"):
         smoking = runtime.as_lower(record.get("smoking"))
-        desired = runtime.as_lower(criteria["smoking"])
+        desired = _lowered_criteria_value("smoking")
         if not smoking:
             missing_fields.append("smoking")
         elif smoking != desired:
@@ -1155,7 +1189,7 @@ def evaluate_candidate(
 
     if criteria.get("drinking"):
         drinking = runtime.as_lower(record.get("drinking"))
-        desired = runtime.as_lower(criteria["drinking"])
+        desired = _lowered_criteria_value("drinking")
         if not drinking:
             missing_fields.append("drinking")
         elif drinking != desired:
@@ -1169,7 +1203,7 @@ def evaluate_candidate(
 
     if criteria.get("long_distance"):
         long_distance = runtime.as_lower(record.get("long_distance"))
-        desired = runtime.as_lower(criteria["long_distance"])
+        desired = _lowered_criteria_value("long_distance")
         if not long_distance:
             missing_fields.append("long_distance")
         elif long_distance != desired:
@@ -1281,7 +1315,8 @@ def evaluate_candidate(
         confidence_score += 4
 
     if criteria.get("photo_verification_levels"):
-        candidate_photo_level = runtime.photo_verification_level(record)
+        if candidate_photo_level is None:
+            candidate_photo_level = runtime.photo_verification_level(record)
         if not runtime.match_any_exact(candidate_photo_level, criteria["photo_verification_levels"]):
             return fail("photo_verification_level_mismatch")
         reasons.append(f"照片核验 {runtime.photo_verification_level_label(candidate_photo_level)}")
@@ -1358,11 +1393,7 @@ def evaluate_candidate(
 
     risk_flags.extend(runtime.build_profile_consistency_flags(record))
 
-    required_known_fields = {
-        field
-        for field in criteria.get("required_known_fields", [])
-        if not str(field).startswith("self_")
-    }
+    required_known_fields = _required_known_candidate_fields()
     for field in required_known_fields:
         if not has_explicit_field_value(runtime, record, field) and field not in missing_fields:
             missing_fields.append(field)
