@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 
 from her_time_utils import current_time
 
@@ -295,17 +295,17 @@ def get_or_create_conversation(
     existing = get_conversation_by_case_and_key(conn, case_id, channel_key)
     ts = current_time(now)
     if existing:
-        for member in members:
-            _upsert_conversation_member(
-                conn,
-                existing["conversation_id"],
-                participant_id=str(member["participant_id"]),
-                member_role=str(member["member_role"]),
-                can_read=int(member["can_read"]),
-                can_send=int(member["can_send"]),
-                metadata=dict(member["metadata"]),
-                joined_at=ts,
-            )
+        existing_members = list_conversation_members_for_conversations(
+            conn,
+            [str(existing["conversation_id"])],
+        ).get(str(existing["conversation_id"]), [])
+        _upsert_conversation_members(
+            conn,
+            str(existing["conversation_id"]),
+            members=members,
+            joined_at=ts,
+            existing_members_by_participant_id=_members_by_participant_id(existing_members),
+        )
         conn.commit()
         return _conversation_bundle(conn, str(existing["conversation_id"]))
 
@@ -333,17 +333,13 @@ def get_or_create_conversation(
                 ts,
             ),
         )
-        for member in members:
-            _upsert_conversation_member(
-                conn,
-                conversation_id,
-                participant_id=str(member["participant_id"]),
-                member_role=str(member["member_role"]),
-                can_read=int(member["can_read"]),
-                can_send=int(member["can_send"]),
-                metadata=dict(member["metadata"]),
-                joined_at=ts,
-            )
+        _upsert_conversation_members(
+            conn,
+            conversation_id,
+            members=members,
+            joined_at=ts,
+            existing_members_by_participant_id={},
+        )
         append_outbox_pending(
             conn,
             event=chat_conversation_opened_event(
