@@ -19,8 +19,10 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 GATEWAY_ROOT = REPO_ROOT / "external-systems" / "partner-http-gateway"
 CHAT_ROOT = REPO_ROOT / "external-systems" / "partner-chat-system"
 RECOMMENDATION_ROOT = REPO_ROOT / "external-systems" / "partner-recommendation-system"
+DISCOVERY_ROOT = REPO_ROOT / "external-systems" / "partner-discovery-system"
+MATCHMAKING_ROOT = REPO_ROOT / "external-systems" / "partner-matchmaking-system"
 
-for root in (REPO_ROOT, GATEWAY_ROOT, CHAT_ROOT, RECOMMENDATION_ROOT):
+for root in (REPO_ROOT, GATEWAY_ROOT, CHAT_ROOT, RECOMMENDATION_ROOT, DISCOVERY_ROOT, MATCHMAKING_ROOT):
     if str(root) not in sys.path:
         sys.path.insert(0, str(root))
 
@@ -61,6 +63,12 @@ from chat_system.assistant_sessions import (  # noqa: E402
     get_or_create_agent_session,
 )
 from chat_system.conversations import (  # noqa: E402
+    CONV_KIND_DM,
+    CONV_KIND_GROUP,
+    ROLE_AGENT,
+    ROLE_HUMAN,
+    get_conversation_by_case_and_key,
+    get_conversation_member,
     _inflate_conversation,
     _inflate_message,
     list_case_conversations,
@@ -87,6 +95,26 @@ from recommendation_system.storage import (  # noqa: E402
     connect_db as connect_recommendation_db,
     initialize_database as initialize_recommendation_db,
     reset_all_tables as reset_recommendation_tables,
+)
+from discovery_system.storage import StoredSession  # noqa: E402
+import discovery_system.service_integrations as discovery_integrations  # noqa: E402
+from matchmaking_system import (  # noqa: E402
+    build_mutual_pairs,
+    create_pool_member,
+    refresh_active_pool,
+)
+import matchmaking_system.pairs as matchmaking_pairs_module  # noqa: E402
+from matchmaking_system.storage import (  # noqa: E402
+    DEFAULT_MATCHMAKING_TEST_MYSQL_DSN,
+    connect_db as connect_matchmaking_db,
+    initialize_database as initialize_matchmaking_db,
+    reset_all_tables as reset_matchmaking_tables,
+)
+from relationship_ledger.storage import (  # noqa: E402
+    DEFAULT_RELATION_LEDGER_TEST_MYSQL_DSN,
+    connect_db as connect_ledger_db,
+    initialize_database as initialize_ledger_db,
+    reset_all_tables as reset_ledger_tables,
 )
 
 DEFAULT_SEARCH_DSN = os.environ.get(
@@ -720,6 +748,646 @@ def benchmark_assistant_opening(case_count: int, repeat: int) -> dict[str, Any]:
     }
 
 
+def _seed_matchmaking_pairs_db(pair_count: int) -> None:
+    os.environ["HER_RELATION_LEDGER_DB"] = DEFAULT_RELATION_LEDGER_TEST_MYSQL_DSN
+    ledger_conn = connect_ledger_db(DEFAULT_RELATION_LEDGER_TEST_MYSQL_DSN)
+    initialize_ledger_db(ledger_conn)
+    reset_ledger_tables(ledger_conn)
+    ledger_conn.close()
+    conn = connect_matchmaking_db(DEFAULT_MATCHMAKING_TEST_MYSQL_DSN)
+    initialize_matchmaking_db(conn)
+    reset_matchmaking_tables(conn)
+    source = "mysql://user:pass@127.0.0.1:3306/her?table=profiles"
+    base_now = datetime(2026, 6, 1, 9, 0, 0)
+    pair_map: dict[int, int] = {}
+    for index in range(pair_count):
+        left_id = 100000 + index * 2
+        right_id = left_id + 1
+        pair_map[left_id] = right_id
+        pair_map[right_id] = left_id
+        create_pool_member(
+            conn,
+            user_key=f"user-{left_id}",
+            source=source,
+            self_id=left_id,
+            search_criteria={"gender": "女", "cities": ["无锡"], "relationship_goals": ["认真恋爱"]},
+            self_profile={"age": 28, "city": "无锡", "height": 175},
+            min_pair_score=80,
+            limit_count=5,
+            refresh_interval_hours=24,
+            now=base_now,
+        )
+        create_pool_member(
+            conn,
+            user_key=f"user-{right_id}",
+            source=source,
+            self_id=right_id,
+            search_criteria={"gender": "男", "cities": ["无锡"], "relationship_goals": ["认真恋爱"]},
+            self_profile={"age": 27, "city": "无锡", "height": 165},
+            min_pair_score=80,
+            limit_count=5,
+            refresh_interval_hours=24,
+            now=base_now,
+        )
+
+    def fake_search_runner(**kwargs):
+        self_id = int(kwargs.get("self_id") or 0)
+        candidate_id = pair_map.get(self_id)
+        if candidate_id is None:
+            return {"results": []}
+        return {
+            "results": [
+                {
+                    "id": candidate_id,
+                    "name": f"候选人{candidate_id}",
+                    "score": 92 if self_id % 2 == 0 else 91,
+                    "fit_score": 86,
+                    "confidence_score": 10,
+                    "risk_score": 0,
+                    "matched_on": ["同城", "目标一致"],
+                    "reciprocal_on": ["偏好匹配"],
+                    "missing_fields": [],
+                    "self_profile_gaps": [],
+                    "risk_flags": [],
+                    "match_evidence": [],
+                    "follow_up_questions": [],
+                    "photo_preview": [],
+                    "source": source,
+                    "profile": {"age": 27, "city": "无锡", "job": "产品经理", "relationship_goal": "认真恋爱"},
+                }
+            ]
+        }
+
+    refresh_active_pool(
+        conn,
+        now=base_now,
+        search_runner=fake_search_runner,
+    )
+    conn.close()
+
+
+def _legacy_build_mutual_pairs(conn, *, now: datetime | None = None) -> list[dict[str, Any]]:
+    now = matchmaking_pairs_module.current_time(now)
+    ledger_mirror: list[dict[str, Any]] = []
+    edges = matchmaking_pairs_module.list_active_edges(conn)
+    edge_by_direction = {
+        (edge["owner_member_id"], edge["candidate_member_id"]): edge
+        for edge in edges
+    }
+    processed: set[str] = set()
+    updated_pair_keys: list[str] = []
+
+    for (owner_member_id, candidate_member_id), edge_ab in edge_by_direction.items():
+        reciprocal_key = (candidate_member_id, owner_member_id)
+        if reciprocal_key not in edge_by_direction:
+            continue
+        pair_key = matchmaking_pairs_module.pair_key_for(owner_member_id, candidate_member_id)
+        if pair_key in processed:
+            continue
+        processed.add(pair_key)
+        edge_ba = edge_by_direction[reciprocal_key]
+        member_low_id, member_high_id = sorted([owner_member_id, candidate_member_id])
+        if member_low_id == owner_member_id:
+            low_to_high = edge_ab
+            high_to_low = edge_ba
+        else:
+            low_to_high = edge_ba
+            high_to_low = edge_ab
+
+        member_low = matchmaking_pairs_module.get_pool_member(conn, member_low_id)
+        member_high = matchmaking_pairs_module.get_pool_member(conn, member_high_id)
+        pair_score = min(
+            int(low_to_high.get("score") or 0),
+            int(high_to_low.get("score") or 0),
+        )
+        min_required_score = max(
+            int(member_low.get("min_pair_score") or 0),
+            int(member_high.get("min_pair_score") or 0),
+        )
+        existing = matchmaking_pairs_module.get_pair(conn, pair_key)
+        pair_status, block_reason = matchmaking_pairs_module._evaluate_pair_state(
+            conn,
+            pair=existing,
+            pair_score=pair_score,
+            min_required_score=min_required_score,
+            member_low=member_low,
+            member_high=member_high,
+            low_to_high=low_to_high,
+            high_to_low=high_to_low,
+            now=now,
+        )
+        cooling_until = existing.get("cooling_until") if existing else None
+        latest_payload = {
+            "member_low": {"member_id": member_low_id, "user_key": member_low["user_key"]},
+            "member_high": {"member_id": member_high_id, "user_key": member_high["user_key"]},
+            "low_to_high": low_to_high.get("payload") or {},
+            "high_to_low": high_to_low.get("payload") or {},
+            "min_required_score": min_required_score,
+        }
+        if existing:
+            conn.execute(
+                """
+                UPDATE matchmaking_pairs
+                SET score_low_to_high = ?,
+                    score_high_to_low = ?,
+                    pair_score = ?,
+                    pair_status = ?,
+                    block_reason = ?,
+                    latest_payload_json = ?,
+                    updated_at = ?
+                WHERE pair_key = ?
+                """,
+                (
+                    int(low_to_high.get("score") or 0),
+                    int(high_to_low.get("score") or 0),
+                    pair_score,
+                    pair_status,
+                    block_reason,
+                    matchmaking_pairs_module.json_dumps(latest_payload),
+                    matchmaking_pairs_module.format_dt(now),
+                    pair_key,
+                ),
+            )
+        else:
+            conn.execute(
+                """
+                INSERT INTO matchmaking_pairs (
+                  pair_key,
+                  member_low_id,
+                  member_high_id,
+                  score_low_to_high,
+                  score_high_to_low,
+                  pair_score,
+                  pair_status,
+                  block_reason,
+                  cooling_until,
+                  latest_payload_json,
+                  created_at,
+                  updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    pair_key,
+                    member_low_id,
+                    member_high_id,
+                    int(low_to_high.get("score") or 0),
+                    int(high_to_low.get("score") or 0),
+                    pair_score,
+                    pair_status,
+                    block_reason,
+                    cooling_until,
+                    matchmaking_pairs_module.json_dumps(latest_payload),
+                    matchmaking_pairs_module.format_dt(now),
+                    matchmaking_pairs_module.format_dt(now),
+                ),
+            )
+        updated_pair_keys.append(pair_key)
+        pair_row = matchmaking_pairs_module.get_pair(conn, pair_key)
+        if pair_row:
+            member_low_live = matchmaking_pairs_module.get_pool_member(conn, pair_row["member_low_id"])
+            member_high_live = matchmaking_pairs_module.get_pool_member(conn, pair_row["member_high_id"])
+            matchmaking_pairs_module._append_pair_event_to_ledger(
+                pair_event_type=f"pair_{pair_status}",
+                member_low=member_low_live,
+                member_high=member_high_live,
+                pair_key=pair_key,
+                now=now,
+                actor_type="system",
+                actor_id="system",
+                payload={"pair_score": pair_score, "block_reason": block_reason},
+                ledger_mirror=ledger_mirror,
+            )
+
+    for pair in matchmaking_pairs_module.list_pairs(conn):
+        if pair["pair_key"] in processed:
+            continue
+        if pair["pair_status"] == "mutual_accept":
+            continue
+        if pair["pair_status"] == "case_opened" and matchmaking_pairs_module._pair_has_open_case(conn, pair["pair_key"]):
+            continue
+
+        cooling_until_dt = matchmaking_pairs_module.parse_dt(pair.get("cooling_until"))
+        if pair["pair_status"] == "cooling" and cooling_until_dt and now < cooling_until_dt:
+            continue
+
+        member_low = matchmaking_pairs_module.get_pool_member(conn, pair["member_low_id"])
+        member_high = matchmaking_pairs_module.get_pool_member(conn, pair["member_high_id"])
+        if (
+            pair["pair_status"] == "needs_revalidation"
+            and (member_low.get("needs_refresh") or member_high.get("needs_refresh"))
+        ):
+            continue
+
+        block_reason = "reciprocal_edge_missing"
+        if member_low["status"] != matchmaking_pairs_module.ACTIVE_MEMBER_STATUS or member_high["status"] != matchmaking_pairs_module.ACTIVE_MEMBER_STATUS:
+            block_reason = "member_not_active"
+        elif not member_low["is_still_searching"] or not member_high["is_still_searching"]:
+            block_reason = "member_not_searching"
+
+        matchmaking_pairs_module._update_pair_status(
+            conn,
+            pair["pair_key"],
+            pair_status="stale",
+            block_reason=block_reason,
+            now=now,
+            ledger_mirror=ledger_mirror,
+        )
+        updated_pair_keys.append(pair["pair_key"])
+
+    conn.commit()
+    matchmaking_pairs_module._flush_ledger_mirror(ledger_mirror)
+    return [matchmaking_pairs_module.get_pair(conn, pair_key) for pair_key in updated_pair_keys]
+
+
+def benchmark_matchmaking_pairs(pair_count: int, repeat: int) -> dict[str, Any]:
+    def current_call() -> dict[str, Any]:
+        _seed_matchmaking_pairs_db(pair_count)
+        conn = connect_matchmaking_db(DEFAULT_MATCHMAKING_TEST_MYSQL_DSN)
+        try:
+            return {"results": build_mutual_pairs(conn, now=datetime(2026, 6, 1, 9, 5, 0))}
+        finally:
+            conn.close()
+
+    def legacy_call() -> dict[str, Any]:
+        _seed_matchmaking_pairs_db(pair_count)
+        conn = connect_matchmaking_db(DEFAULT_MATCHMAKING_TEST_MYSQL_DSN)
+        try:
+            return {"results": _legacy_build_mutual_pairs(conn, now=datetime(2026, 6, 1, 9, 5, 0))}
+        finally:
+            conn.close()
+
+    return {
+        "scenario": "matchmaking_mutual_pair_build",
+        "current": _run_benchmark("current", current_call, repeat=repeat),
+        "legacy_emulation": _run_benchmark("legacy_emulation", legacy_call, repeat=repeat),
+    }
+
+
+def _legacy_upsert_conversation_member(
+    conn,
+    conversation_id: str,
+    *,
+    participant_id: str,
+    member_role: str,
+    can_read: int,
+    can_send: int,
+    metadata: dict[str, Any] | None,
+    joined_at: datetime,
+) -> None:
+    existing = get_conversation_member(conn, conversation_id, participant_id)
+    payload = json.dumps(dict(metadata or {}), ensure_ascii=False, separators=(",", ":"))
+    if not existing:
+        conn.execute(
+            """
+            INSERT INTO chat_conversation_members (
+              conversation_id, participant_id, member_role, can_read, can_send,
+              metadata_json, joined_at, left_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
+            """,
+            (
+                conversation_id,
+                participant_id,
+                member_role,
+                int(can_read),
+                int(can_send),
+                payload,
+                joined_at,
+            ),
+        )
+        return
+    conn.execute(
+        """
+        UPDATE chat_conversation_members
+        SET member_role = ?,
+            can_read = ?,
+            can_send = ?,
+            metadata_json = ?,
+            left_at = NULL
+        WHERE conversation_id = ? AND participant_id = ?
+        """,
+        (
+            member_role,
+            int(can_read),
+            int(can_send),
+            payload,
+            conversation_id,
+            participant_id,
+        ),
+    )
+
+
+def _legacy_get_or_create_conversation_existing(
+    conn,
+    *,
+    case_id: str,
+    relation_key: str,
+    channel_key: str,
+    conversation_kind: str,
+    member_specs: list[dict[str, Any]],
+    now: datetime,
+) -> dict[str, Any]:
+    del relation_key, conversation_kind
+    existing = get_conversation_by_case_and_key(conn, case_id, channel_key)
+    if not existing:
+        raise ValueError("legacy benchmark expects pre-created conversation")
+    for member in member_specs:
+        _legacy_upsert_conversation_member(
+            conn,
+            str(existing["conversation_id"]),
+            participant_id=str(member["participant_id"]),
+            member_role=str(member["member_role"]),
+            can_read=1 if bool(member.get("can_read", True)) else 0,
+            can_send=1 if bool(member.get("can_send", True)) else 0,
+            metadata=dict(member.get("metadata") or {}),
+            joined_at=now,
+        )
+    conn.commit()
+    conversations = list_case_conversations(conn, case_id)
+    for conversation in conversations:
+        if str(conversation.get("conversation_id") or "") == str(existing["conversation_id"]):
+            return conversation
+    raise ValueError("conversation not found after legacy update")
+
+
+def _legacy_create_assistant_case_layout_existing(
+    conn,
+    *,
+    case_id: str,
+    relation_key: str,
+    participant_a_id: str,
+    participant_b_id: str,
+    agent_id: str,
+    now: datetime,
+) -> dict[str, Any]:
+    main = _legacy_get_or_create_conversation_existing(
+        conn,
+        case_id=case_id,
+        relation_key=relation_key,
+        channel_key="main_group",
+        conversation_kind=CONV_KIND_GROUP,
+        member_specs=[
+            {"participant_id": participant_a_id, "member_role": ROLE_HUMAN},
+            {"participant_id": participant_b_id, "member_role": ROLE_HUMAN},
+            {"participant_id": agent_id, "member_role": ROLE_AGENT},
+        ],
+        now=now,
+    )
+    dm_a = _legacy_get_or_create_conversation_existing(
+        conn,
+        case_id=case_id,
+        relation_key=relation_key,
+        channel_key="assistant_dm_a",
+        conversation_kind=CONV_KIND_DM,
+        member_specs=[
+            {"participant_id": participant_a_id, "member_role": ROLE_HUMAN},
+            {"participant_id": agent_id, "member_role": ROLE_AGENT},
+        ],
+        now=now,
+    )
+    dm_b = _legacy_get_or_create_conversation_existing(
+        conn,
+        case_id=case_id,
+        relation_key=relation_key,
+        channel_key="assistant_dm_b",
+        conversation_kind=CONV_KIND_DM,
+        member_specs=[
+            {"participant_id": participant_b_id, "member_role": ROLE_HUMAN},
+            {"participant_id": agent_id, "member_role": ROLE_AGENT},
+        ],
+        now=now,
+    )
+    return {
+        "case_id": case_id,
+        "relation_key": relation_key,
+        "participant_a_id": participant_a_id,
+        "participant_b_id": participant_b_id,
+        "agent_id": agent_id,
+        "conversation_count": 3,
+        "conversations": [main, dm_a, dm_b],
+    }
+
+
+def _seed_chat_layout_db(layout_count: int) -> None:
+    conn = connect_chat_db(DEFAULT_CHAT_TEST_MYSQL_DSN)
+    initialize_chat_db(conn)
+    reset_chat_tables(conn)
+    ts = datetime(2026, 6, 1, 9, 0, 0)
+    for index in range(layout_count):
+        create_assistant_case_layout(
+            conn,
+            case_id=f"layout-case-{index}",
+            relation_key=f"layout-rel-{index}",
+            participant_a_id=f"user-a-{index}",
+            participant_b_id=f"user-b-{index}",
+            agent_id=f"agent-{index}",
+            now=ts,
+        )
+    conn.close()
+
+
+def benchmark_chat_layout_reupsert(layout_count: int, repeat: int) -> dict[str, Any]:
+    def current_call() -> dict[str, Any]:
+        _seed_chat_layout_db(layout_count)
+        conn = connect_chat_db(DEFAULT_CHAT_TEST_MYSQL_DSN)
+        try:
+            results = []
+            ts = datetime(2026, 6, 1, 9, 1, 0)
+            for index in range(layout_count):
+                results.append(
+                    create_assistant_case_layout(
+                        conn,
+                        case_id=f"layout-case-{index}",
+                        relation_key=f"layout-rel-{index}",
+                        participant_a_id=f"user-a-{index}",
+                        participant_b_id=f"user-b-{index}",
+                        agent_id=f"agent-{index}",
+                        now=ts,
+                    )
+                )
+            return {"results": results}
+        finally:
+            conn.close()
+
+    def legacy_call() -> dict[str, Any]:
+        _seed_chat_layout_db(layout_count)
+        conn = connect_chat_db(DEFAULT_CHAT_TEST_MYSQL_DSN)
+        try:
+            results = []
+            ts = datetime(2026, 6, 1, 9, 1, 0)
+            for index in range(layout_count):
+                results.append(
+                    _legacy_create_assistant_case_layout_existing(
+                        conn,
+                        case_id=f"layout-case-{index}",
+                        relation_key=f"layout-rel-{index}",
+                        participant_a_id=f"user-a-{index}",
+                        participant_b_id=f"user-b-{index}",
+                        agent_id=f"agent-{index}",
+                        now=ts,
+                    )
+                )
+            return {"results": results}
+        finally:
+            conn.close()
+
+    return {
+        "scenario": "chat_layout_member_reupsert",
+        "current": _run_benchmark("current", current_call, repeat=repeat),
+        "legacy_emulation": _run_benchmark("legacy_emulation", legacy_call, repeat=repeat),
+    }
+
+
+def _legacy_discovery_request_bootstrap(session: StoredSession, *, source: str, limit: int) -> dict[str, Any]:
+    self_profile = discovery_integrations.load_requester_profile_with(
+        session,
+        source=source,
+        load_profile=discovery_integrations.load_self_profile,
+    )
+    if isinstance(self_profile, dict) and not self_profile:
+        self_profile = None
+    effective_self_id = session.profile_id if isinstance(self_profile, dict) and self_profile else None
+    persona_row = None
+    persona_source = discovery_integrations.persona_memory_source() or source
+    if persona_source:
+        try:
+            persona_row = discovery_integrations.load_persona_for_discovery(
+                source=persona_source,
+                profile_id=session.profile_id,
+                requester_id=session.requester_id,
+            )
+        except Exception:
+            persona_row = None
+    compiled_request = discovery_integrations.build_discovery_search_request(
+        source=source,
+        profile_row=self_profile,
+        persona_row=persona_row,
+        criteria_overrides={},
+        self_id=effective_self_id,
+        limit=limit,
+    )
+    user_traits = None
+    if persona_source and session.profile_id:
+        user_traits = discovery_integrations.load_traits_for_discovery(
+            source=persona_source,
+            profile_id=session.profile_id,
+            requester_id=session.requester_id,
+        )
+    return {
+        "compiled": compiled_request,
+        "user_traits": user_traits.to_dict() if user_traits else {},
+        "result_count": 1,
+    }
+
+
+def benchmark_discovery_request_bootstrap(repeat: int) -> dict[str, Any]:
+    session = StoredSession(
+        session_id="bench-discovery-session",
+        requester_id=70001,
+        profile_id=10001,
+        status="active",
+        phase="collecting_preferences",
+        created_at=datetime(2026, 6, 1, 9, 0, 0),
+        updated_at=datetime(2026, 6, 1, 9, 0, 0),
+        view={"timeline": [], "criteria_chips": [], "suggested_actions": [], "composer": {}},
+        state={},
+    )
+    original_profile_source = discovery_integrations.load_requester_profile_with
+    original_persona_loader = discovery_integrations.load_persona_for_discovery
+    original_traits_loader = discovery_integrations.load_traits_for_discovery
+    original_traits_for_profiles = discovery_integrations.load_traits_for_profiles
+    original_build_request = discovery_integrations.build_discovery_search_request
+    original_save_snapshot = discovery_integrations.save_compiled_snapshot
+    original_search_with_gate = discovery_integrations.search_profiles_with_visibility_gate
+
+    def fake_load_profile(*_args, **_kwargs):
+        time.sleep(0.01)
+        return {"id": 10001, "city": "无锡"}
+
+    def fake_load_persona(*_args, **_kwargs):
+        time.sleep(0.01)
+        return {
+            "profile_id": 10001,
+            "self_personality_traits_json": json.dumps(
+                {"mbti": {"type_code": "ISTJ"}, "values": {"top_values": ["稳定经营"]}},
+                ensure_ascii=False,
+            ),
+        }
+
+    def fake_load_traits(*_args, **_kwargs):
+        time.sleep(0.01)
+        return discovery_integrations.build_traits_context_from_persona_row(
+            fake_load_persona(),
+            profile_id=10001,
+        )
+
+    def fake_build_request(**kwargs):
+        return {"compiled": {}, "criteria": kwargs.get("criteria_overrides") or {}, "self_profile": kwargs.get("profile_row")}
+
+    def fake_save_snapshot(*_args, **_kwargs):
+        return None
+
+    def fake_search_with_gate(search_fn, **kwargs):
+        return search_fn(**kwargs)
+
+    def fake_load_traits_for_profiles(*_args, **_kwargs):
+        return {}
+
+    def current_call() -> dict[str, Any]:
+        discovery_integrations.load_requester_profile_with = fake_load_profile
+        discovery_integrations.load_persona_for_discovery = fake_load_persona
+        discovery_integrations.load_traits_for_discovery = fake_load_traits
+        discovery_integrations.load_traits_for_profiles = fake_load_traits_for_profiles
+        discovery_integrations.build_discovery_search_request = fake_build_request
+        discovery_integrations.save_compiled_snapshot = fake_save_snapshot
+        discovery_integrations.search_profiles_with_visibility_gate = fake_search_with_gate
+        try:
+            return discovery_integrations.search_partner_candidates_with(
+                session,
+                criteria={},
+                limit=5,
+                source="mysql://bench",
+                load_profile=lambda **_kwargs: {"id": 10001},
+                search=lambda **_kwargs: {
+                    "has_match": True,
+                    "result_count": 1,
+                    "results": [{"id": 3001, "name": "候选人A", "score": 90, "profile": {"city": "无锡"}}],
+                },
+            )
+        finally:
+            discovery_integrations.load_requester_profile_with = original_profile_source
+            discovery_integrations.load_persona_for_discovery = original_persona_loader
+            discovery_integrations.load_traits_for_discovery = original_traits_loader
+            discovery_integrations.load_traits_for_profiles = original_traits_for_profiles
+            discovery_integrations.build_discovery_search_request = original_build_request
+            discovery_integrations.save_compiled_snapshot = original_save_snapshot
+            discovery_integrations.search_profiles_with_visibility_gate = original_search_with_gate
+
+    def legacy_call() -> dict[str, Any]:
+        discovery_integrations.load_requester_profile_with = fake_load_profile
+        discovery_integrations.load_persona_for_discovery = fake_load_persona
+        discovery_integrations.load_traits_for_discovery = fake_load_traits
+        discovery_integrations.load_traits_for_profiles = fake_load_traits_for_profiles
+        discovery_integrations.build_discovery_search_request = fake_build_request
+        discovery_integrations.save_compiled_snapshot = fake_save_snapshot
+        discovery_integrations.search_profiles_with_visibility_gate = fake_search_with_gate
+        try:
+            return _legacy_discovery_request_bootstrap(session, source="mysql://bench", limit=5)
+        finally:
+            discovery_integrations.load_requester_profile_with = original_profile_source
+            discovery_integrations.load_persona_for_discovery = original_persona_loader
+            discovery_integrations.load_traits_for_discovery = original_traits_loader
+            discovery_integrations.load_traits_for_profiles = original_traits_for_profiles
+            discovery_integrations.build_discovery_search_request = original_build_request
+            discovery_integrations.save_compiled_snapshot = original_save_snapshot
+            discovery_integrations.search_profiles_with_visibility_gate = original_search_with_gate
+
+    return {
+        "scenario": "discovery_request_bootstrap_synthetic",
+        "current": _run_benchmark("current", current_call, repeat=repeat),
+        "legacy_emulation": _run_benchmark("legacy_emulation", legacy_call, repeat=repeat),
+    }
+
+
 def _seed_recommendation_listing_db(recommendation_count: int) -> str:
     conn = connect_recommendation_db(DEFAULT_RECOMMENDATION_TEST_MYSQL_DSN)
     initialize_recommendation_db(conn)
@@ -1281,6 +1949,9 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         benchmark_partner_search(args.search_profiles, args.repeat),
         benchmark_chat_timeline(args.messages_per_conversation, args.repeat),
         benchmark_assistant_opening(args.opening_cases, args.repeat),
+        benchmark_matchmaking_pairs(args.matchmaking_pairs, args.repeat),
+        benchmark_chat_layout_reupsert(args.layout_updates, args.repeat),
+        benchmark_discovery_request_bootstrap(args.repeat),
         benchmark_recommendation_listing(args.recommendation_count, args.repeat),
         benchmark_trust_hub_payload(args.trust_hub_items, args.repeat),
     ):
@@ -1299,6 +1970,8 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         "search_profiles": args.search_profiles,
         "messages_per_conversation": args.messages_per_conversation,
         "opening_cases": args.opening_cases,
+        "matchmaking_pairs": args.matchmaking_pairs,
+        "layout_updates": args.layout_updates,
         "recommendation_count": args.recommendation_count,
         "trust_hub_items": args.trust_hub_items,
         "benchmarks": benchmarks,
@@ -1316,6 +1989,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Messages to seed per conversation for timeline benchmarks.",
     )
     parser.add_argument("--opening-cases", type=int, default=60, help="Cases to seed for opening probe benchmarks.")
+    parser.add_argument("--matchmaking-pairs", type=int, default=40, help="Reciprocal member pairs to seed for mutual-pair benchmarks.")
+    parser.add_argument("--layout-updates", type=int, default=60, help="Existing assistant layouts to re-upsert for conversation benchmarks.")
     parser.add_argument("--recommendation-count", type=int, default=200, help="Recommendations to seed for recommendation listing benchmarks.")
     parser.add_argument("--trust-hub-items", type=int, default=50, help="Per-type items to seed for trust hub benchmarks.")
     parser.add_argument("--output-json", help="Optional path to write the full JSON report.")
