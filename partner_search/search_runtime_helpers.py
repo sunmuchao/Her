@@ -550,11 +550,30 @@ class SearchRuntimeHelpers:
             sort_sets=True,
         )
 
-    def build_structured_result_payload(self, result, include_source=False):
+    def prepare_result_display_cache(self, result):
+        cache = result.get("_display_cache")
+        if isinstance(cache, dict):
+            return cache
         profile = result.get("profile") or {}
         verification_items = self.runtime.build_verification_items(profile)
         trust_summary = self.runtime.build_trust_summary(profile, verification_items=verification_items)
-        activity_dt = self.runtime.effective_activity_datetime(profile)
+        cache = {
+            "profile": profile,
+            "verification_items": verification_items,
+            "trust_summary": trust_summary,
+            "activity_dt": self.runtime.effective_activity_datetime(profile),
+            "activity_info": self.runtime.activity_score_info(profile),
+            "json_safe_profile": self.json_safe(profile),
+        }
+        result["_display_cache"] = cache
+        return cache
+
+    def build_structured_result_payload(self, result, include_source=False):
+        display_cache = self.prepare_result_display_cache(result)
+        profile = display_cache["profile"]
+        verification_items = display_cache["verification_items"]
+        trust_summary = display_cache["trust_summary"]
+        activity_dt = display_cache["activity_dt"]
         payload = {
             "id": result.get("id"),
             "name": result.get("name") or "未命名",
@@ -568,7 +587,7 @@ class SearchRuntimeHelpers:
             "photo_verification_label": trust_summary.get("photo_verification_label"),
             "photo_count": self.runtime.as_int(profile.get("photo_count")),
             "last_active_at": self.json_safe(activity_dt),
-            "activity_label": self.runtime.activity_score_info(profile)[1],
+            "activity_label": display_cache["activity_info"][1],
             "verification_items": verification_items,
             "trust_summary": trust_summary,
             "caution_items": list(trust_summary.get("caution_items") or []),
@@ -582,7 +601,7 @@ class SearchRuntimeHelpers:
             "follow_up_questions": list(result.get("follow_up_questions") or []),
             "photo_preview": list(result.get("photo_preview") or []),
             "fallback_reason": result.get("fallback_reason"),
-            "profile": self.json_safe(profile),
+            "profile": display_cache["json_safe_profile"],
         }
         if include_source and result.get("source_file"):
             payload["source"] = self.runtime.redact_source_ref(result["source_file"])
