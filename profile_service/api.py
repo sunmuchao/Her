@@ -601,36 +601,35 @@ def list_profile_photos(
             and _table_exists(profile_conn, photo_table)
         ):
             photo_columns = _table_column_set(profile_conn, photo_table)
-            if "profile_id" not in photo_columns or "photo_url" not in photo_columns:
-                return out
-            order_clauses = _photo_table_order_clauses(
-                profile_conn,
-                photo_table,
-                prioritize_avatar_type=True,
-            )
-            order_sql = ", ".join(order_clauses) if order_clauses else f"{schema.quote_mysql_ident('photo_url')} ASC"
-            limit_sql = " LIMIT ?" if limit is not None else ""
-            photo_params: list[Any] = [int(profile_id)]
-            if limit is not None:
-                photo_params.append(max(1, int(limit)))
-            rows = profile_conn.execute(
-                (
-                    f"SELECT {schema.quote_mysql_ident('photo_url')} AS photo_url "
-                    f"FROM {schema.quote_mysql_ident(photo_table)} "
-                    f"WHERE {schema.quote_mysql_ident('profile_id')} = ? "
-                    f"ORDER BY {order_sql}{limit_sql}"
-                ),
-                tuple(photo_params),
-            ).fetchall()
-            _append_unique_photo_entries(
-                out,
-                seen,
-                [dict(row) for row in rows],
-                source_key="photo_url",
-                asset_origin="photo_table",
-                owner_key="profile_id",
-                owner_id_fallback=int(profile_id),
-            )
+            if "profile_id" in photo_columns and "photo_url" in photo_columns:
+                order_clauses = _photo_table_order_clauses(
+                    profile_conn,
+                    photo_table,
+                    prioritize_avatar_type=True,
+                )
+                order_sql = ", ".join(order_clauses) if order_clauses else f"{schema.quote_mysql_ident('photo_url')} ASC"
+                limit_sql = " LIMIT ?" if limit is not None else ""
+                photo_params: list[Any] = [int(profile_id)]
+                if limit is not None:
+                    photo_params.append(max(1, int(limit)))
+                rows = profile_conn.execute(
+                    (
+                        f"SELECT {schema.quote_mysql_ident('photo_url')} AS photo_url "
+                        f"FROM {schema.quote_mysql_ident(photo_table)} "
+                        f"WHERE {schema.quote_mysql_ident('profile_id')} = ? "
+                        f"ORDER BY {order_sql}{limit_sql}"
+                    ),
+                    tuple(photo_params),
+                ).fetchall()
+                _append_unique_photo_entries(
+                    out,
+                    seen,
+                    [dict(row) for row in rows],
+                    source_key="photo_url",
+                    asset_origin="photo_table",
+                    owner_key="profile_id",
+                    owner_id_fallback=int(profile_id),
+                )
         avatar_url = str(profile.get("avatar_url") or "").strip()
         if avatar_url and avatar_url not in seen and not out:
             out.append(
