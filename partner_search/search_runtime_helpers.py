@@ -411,10 +411,12 @@ class SearchRuntimeHelpers:
 
     def evaluate_records(self, records, criteria, limit):
         results = []
+        append_result = results.append
+        evaluate_candidate = self.runtime.evaluate_candidate
         for record in records:
-            evaluated = self.runtime.evaluate_candidate(record, criteria)
+            evaluated = evaluate_candidate(record, criteria)
             if evaluated:
-                results.append(evaluated)
+                append_result(evaluated)
         results.sort(key=self.runtime.result_sort_key, reverse=True)
         return self.runtime.select_diverse_results(results, limit)
 
@@ -470,6 +472,7 @@ class SearchRuntimeHelpers:
         include_ids = [self_id] if self_id is not None else []
         moderation_dsn = request.get("moderation_dsn")
         include_blocked = bool(request.get("include_moderation_blocked"))
+        self_record_ref = None
         for source in sources:
             source_records = self.runtime.load_source(
                 source,
@@ -487,16 +490,20 @@ class SearchRuntimeHelpers:
                 for record in moderated_records:
                     if self.runtime.as_int(record.get("id")) == self_id:
                         self_visible = True
+                        self_record_ref = record
                         break
                 if not self_visible:
                     for record in source_records:
                         if self.runtime.as_int(record.get("id")) == self_id:
+                            self_record_ref = record
                             moderated_records.append(record)
                             break
             records.extend(moderated_records)
             source_records.clear()
             moderated_records.clear()
         self.apply_request_self_profile_context(request, criteria, records)
+        if self_id is not None and self_record_ref is not None and "exclude_record_refs" not in criteria:
+            criteria["exclude_record_refs"] = {self.runtime.record_ref(self_record_ref)}
         return criteria, records
 
     def prepare_search_context(self, args):
