@@ -543,7 +543,39 @@ class ProfileServiceTests(unittest.TestCase):
         self.assertIn("ORDER BY `id` ASC LIMIT 2", fake_conn.calls[0][0])
         self.assertNotIn("OFFSET", fake_conn.calls[0][0])
         self.assertIn("AND `id` > ?", fake_conn.calls[1][0])
+        self.assertIn("SELECT *", fake_conn.calls[0][0])
+        self.assertIn("SELECT *", fake_conn.calls[1][0])
         self.assertEqual(fake_conn.calls[1][1], ("女", 2))
+
+    def test_iter_profile_batches_preserves_selected_projection_across_keyset_pages(self):
+        fake_conn = _FakeConnection(
+            responses=[
+                _FakeResult(fetchall_result=[{"id": 1, "name": "A"}, {"id": 2, "name": "B"}]),
+                _FakeResult(fetchall_result=[{"id": 3, "name": "C"}]),
+            ]
+        )
+
+        with (
+            mock.patch.object(profile_service_api, "_connect_profile_db", return_value=fake_conn),
+            mock.patch.object(profile_service_api, "_list_schema_tables", return_value=["profiles"]),
+            mock.patch.object(profile_service_api, "_list_table_columns", return_value=["id", "name", "bio"]),
+            mock.patch.object(profile_service_api.schema, "quote_mysql_ident", side_effect=lambda value: f"`{value}`"),
+        ):
+            batches = list(
+                profile_service_api.iter_profile_batches(
+                    source_dsn="mysql://profiles",
+                    source_table_name="profiles",
+                    where_clause="WHERE `gender` = ?",
+                    params=("女",),
+                    selected_columns=("id", "name"),
+                    batch_size=2,
+                )
+            )
+
+        self.assertEqual(len(batches), 2)
+        self.assertIn("SELECT `id`, `name` FROM `profiles`", fake_conn.calls[0][0])
+        self.assertIn("SELECT `id`, `name` FROM `profiles`", fake_conn.calls[1][0])
+        self.assertNotIn("SELECT *", fake_conn.calls[1][0])
 
     def test_list_comparison_profile_photo_sources_projects_photo_urls(self):
         with mock.patch.object(

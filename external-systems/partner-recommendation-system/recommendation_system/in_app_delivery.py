@@ -215,7 +215,7 @@ def deliver_in_app_recommendations(conn, *, now: datetime | None = None) -> dict
         list_recommendation_actions_for_recommendations,
     )
     from .recommendation_transactions import commit_recommendation_transaction
-    from .subscriptions import generate_card_id, get_subscription
+    from .subscriptions import generate_card_id
 
     now = current_time(now)
     rows = conn.execute(
@@ -223,6 +223,8 @@ def deliver_in_app_recommendations(conn, *, now: datetime | None = None) -> dict
         SELECT
           r.*,
           s.title AS subscription_title,
+          s.source,
+          s.self_id,
           s.daily_notification_cap,
           s.quiet_hours_start,
           s.quiet_hours_end,
@@ -261,7 +263,6 @@ def deliver_in_app_recommendations(conn, *, now: datetime | None = None) -> dict
     delivered_count = 0
     held_quiet_hours = 0
     held_daily_cap = 0
-    subscription_cache: dict[str, dict[str, Any]] = {}
 
     for row_dict in row_dicts:
         recommendation = inflate_recommendation(
@@ -331,19 +332,22 @@ def deliver_in_app_recommendations(conn, *, now: datetime | None = None) -> dict
             """,
             (format_dt(now), card_id, recommendation["recommendation_id"]),
         )
-        sid = recommendation["subscription_id"]
-        if sid not in subscription_cache:
-            subscription_cache[sid] = get_subscription(conn, sid)
-        row = conn.execute(
-            "SELECT * FROM profile_recommendations WHERE recommendation_id = ?",
-            (recommendation["recommendation_id"],),
-        ).fetchone()
-        rec_row = row_to_dict(row)
-        if rec_row:
+        subscription_view = {
+            "subscription_id": row_dict["subscription_id"],
+            "requester_id": row_dict["requester_id"],
+            "source": row_dict["source"],
+            "self_id": row_dict.get("self_id"),
+        }
+        relation_state_row = dict(row_dict)
+        relation_state_row["delivery_status"] = "delivered"
+        relation_state_row["delivery_reason"] = "in_app_card_created"
+        relation_state_row["notified_at"] = format_dt(now)
+        relation_state_row["latest_card_id"] = card_id
+        if relation_state_row:
             append_relation_state_revision_event(
                 conn,
-                subscription=subscription_cache[sid],
-                recommendation_row=rec_row,
+                subscription=subscription_view,
+                recommendation_row=relation_state_row,
                 now=now,
             )
         delivered_today_cache[requester_id] = delivered_today + 1
