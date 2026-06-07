@@ -83,7 +83,8 @@ class DiscoverySavedSearchOptInPayloadModel(BaseModel):
 
 class DiscoveryRefineCandidatesPayloadModel(BaseModel):
     kind: Literal["refine_candidates"]
-    candidates: list[int] = Field(min_length=1)
+    candidates: list[int] | None = Field(default=None, min_length=1)
+    hint: str | None = Field(default=None)
 
 
 class DiscoveryAddCriteriaPayloadModel(BaseModel):

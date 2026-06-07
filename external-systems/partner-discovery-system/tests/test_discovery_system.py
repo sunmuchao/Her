@@ -567,6 +567,23 @@ class DiscoveryServiceTests(unittest.TestCase):
         self.assertEqual(payload.kind, "refine_candidates")
         self.assertEqual(payload.candidates, [30017, 30003, 30029])
 
+    def test_discovery_action_suggestion_model_allows_refine_candidates_hint_without_ids(self) -> None:
+        model = DiscoveryActionSuggestionModel.model_validate(
+            {
+                "label": "扩大城市范围",
+                "style": "primary",
+                "semantic_payload": {
+                    "kind": "refine_candidates",
+                    "hint": "expand_cities",
+                },
+            }
+        )
+        payload = model.semantic_payload
+        assert payload is not None
+        self.assertEqual(payload.kind, "refine_candidates")
+        self.assertIsNone(payload.candidates)
+        self.assertEqual(payload.hint, "expand_cities")
+
     def test_discovery_decision_model_accepts_message_alias_and_age_preference_payload(self) -> None:
         model = DiscoveryDecisionModel.model_validate(
             {

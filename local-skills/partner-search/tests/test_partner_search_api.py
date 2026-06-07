@@ -20,9 +20,52 @@ from partner_search import (  # noqa: E402
 )
 import partner_search.api as partner_search_api  # noqa: E402
 import partner_search.search_candidates as engine  # noqa: E402
+import partner_search.search_snapshot_store as search_snapshot_store  # noqa: E402
 
 
 class PartnerSearchApiTests(unittest.TestCase):
+    def test_store_persisted_search_run_stringifies_non_string_mapping_keys(self):
+        executed: dict[str, object] = {}
+
+        class _Cursor:
+            def execute(self, _sql, params):
+                executed["params"] = params
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        class _Conn:
+            def cursor(self):
+                return _Cursor()
+
+            def commit(self):
+                executed["committed"] = True
+
+            def rollback(self):
+                executed["rolled_back"] = True
+
+            def close(self):
+                executed["closed"] = True
+
+        search_run = {
+            "results": [{"id": 1, "name": "TupleKey"}],
+            "diagnostics": {
+                ("age_min", "age_max"): ["range_relaxed"],
+            },
+        }
+
+        with mock.patch.object(search_snapshot_store, "snapshot_persist_enabled", return_value=True), mock.patch.object(
+            search_snapshot_store, "_ttl_seconds", return_value=120
+        ), mock.patch.object(search_snapshot_store, "_connect", return_value=_Conn()):
+            search_snapshot_store.store_persisted_search_run("hash-1", search_run)
+
+        payload = json.loads(executed["params"][1])
+        self.assertIn("('age_min', 'age_max')", payload["diagnostics"])
+        self.assertTrue(executed.get("committed"))
+
     def test_search_profiles_returns_structured_results(self):
         fake_records = [
             {
