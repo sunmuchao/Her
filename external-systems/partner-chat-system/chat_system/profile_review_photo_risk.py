@@ -103,6 +103,30 @@ def _load_photo_risk_review_queue_by_score_run(conn, score_run_id: int) -> dict[
     return _inflate_photo_risk_review_queue_item(row_to_dict(row))
 
 
+def _load_photo_risk_assets_by_ids(conn, asset_ids: Iterable[Any]) -> dict[int, dict[str, Any]]:
+    normalized_ids = sorted({int(item) for item in asset_ids if item is not None})
+    if not normalized_ids:
+        return {}
+    placeholders = ", ".join(["?"] * len(normalized_ids))
+    rows = conn.execute(
+        f"""
+        SELECT *
+        FROM photo_risk_assets
+        WHERE asset_id IN ({placeholders})
+        """,
+        tuple(normalized_ids),
+    ).fetchall()
+    out: dict[int, dict[str, Any]] = {}
+    for row in rows:
+        asset = _inflate_photo_risk_asset(row_to_dict(row))
+        if not asset:
+            continue
+        asset_id = int(asset.get("asset_id") or 0)
+        if asset_id > 0:
+            out[asset_id] = asset
+    return out
+
+
 def _photo_risk_priority_from_severity(severity: Any) -> str:
     normalized = _as_text(severity)
     if normalized == SEVERITY_HIGH:
@@ -497,25 +521,21 @@ def get_photo_risk_score_run(
             """,
             (int(score_run_id),),
         ).fetchall()
+        assets_by_id = _load_photo_risk_assets_by_ids(
+            conn,
+            [row["asset_id"] for row in feature_rows if row and row.get("asset_id") is not None],
+        )
         assets: list[dict[str, Any]] = []
         for feature_row in feature_rows:
             feature_snapshot = _inflate_photo_risk_feature_snapshot(row_to_dict(feature_row))
             if not feature_snapshot:
                 continue
-            asset_row = conn.execute(
-                """
-                SELECT *
-                FROM photo_risk_assets
-                WHERE asset_id = ?
-                LIMIT 1
-                """,
-                (int(feature_snapshot["asset_id"]),),
-            ).fetchone()
-            asset = _inflate_photo_risk_asset(row_to_dict(asset_row))
+            asset = assets_by_id.get(int(feature_snapshot["asset_id"]))
             if not asset:
                 continue
-            asset["feature_snapshot"] = feature_snapshot
-            assets.append(asset)
+            asset_with_feature = dict(asset)
+            asset_with_feature["feature_snapshot"] = feature_snapshot
+            assets.append(asset_with_feature)
         result["assets"] = assets
     return result
 
