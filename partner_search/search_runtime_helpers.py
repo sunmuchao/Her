@@ -464,25 +464,33 @@ class SearchRuntimeHelpers:
     def prepare_search_request_context(self, request):
         criteria = self.runtime.normalize_request_criteria(request.get("criteria"))
         sources = self.resolve_request_sources(request)
-        raw_records = self.collect_source_records_for_request(
-            sources,
-            table_name=request.get("table_name"),
-            criteria=criteria,
-            self_id=request.get("self_id"),
-        )
-        records = self.runtime.overlay_records_with_moderation(
-            raw_records,
-            moderation_dsn=request.get("moderation_dsn"),
-            include_blocked=bool(request.get("include_moderation_blocked")),
-        )
-        if request.get("self_id") is not None:
-            self_id = self.runtime.as_int(request.get("self_id"))
-            visible_ids = {self.runtime.as_int(record.get("id")) for record in records}
-            for record in raw_records:
-                if self.runtime.as_int(record.get("id")) == self_id and self_id not in visible_ids:
-                    records.append(record)
-                    break
-        raw_records.clear()
+        records = []
+        self_id = self.runtime.as_int(request.get("self_id"))
+        include_ids = [self_id] if self_id is not None else []
+        moderation_dsn = request.get("moderation_dsn")
+        include_blocked = bool(request.get("include_moderation_blocked"))
+        for source in sources:
+            source_records = self.runtime.load_source(
+                source,
+                table_name=request.get("table_name"),
+                criteria=criteria,
+                include_ids=include_ids,
+            )
+            moderated_records = self.runtime.overlay_records_with_moderation(
+                source_records,
+                moderation_dsn=moderation_dsn,
+                include_blocked=include_blocked,
+            )
+            if self_id is not None:
+                visible_ids = {self.runtime.as_int(record.get("id")) for record in moderated_records}
+                if self_id not in visible_ids:
+                    for record in source_records:
+                        if self.runtime.as_int(record.get("id")) == self_id:
+                            moderated_records.append(record)
+                            break
+            records.extend(moderated_records)
+            source_records.clear()
+            moderated_records.clear()
         self.apply_request_self_profile_context(request, criteria, records)
         return criteria, records
 
