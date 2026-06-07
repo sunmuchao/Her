@@ -103,6 +103,54 @@ def _load_photo_risk_review_queue_by_score_run(conn, score_run_id: int) -> dict[
     return _inflate_photo_risk_review_queue_item(row_to_dict(row))
 
 
+def _load_photo_risk_decisions_by_score_runs(conn, score_run_ids: Iterable[Any]) -> dict[int, dict[str, Any]]:
+    normalized_ids = sorted({int(item) for item in score_run_ids if item is not None})
+    if not normalized_ids:
+        return {}
+    placeholders = ", ".join(["?"] * len(normalized_ids))
+    rows = conn.execute(
+        f"""
+        SELECT *
+        FROM photo_risk_decisions
+        WHERE score_run_id IN ({placeholders})
+        """,
+        tuple(normalized_ids),
+    ).fetchall()
+    out: dict[int, dict[str, Any]] = {}
+    for row in rows:
+        decision = _inflate_photo_risk_decision(row_to_dict(row))
+        if not decision:
+            continue
+        score_run_id = int(decision.get("score_run_id") or 0)
+        if score_run_id > 0 and score_run_id not in out:
+            out[score_run_id] = decision
+    return out
+
+
+def _load_photo_risk_review_queue_by_score_runs(conn, score_run_ids: Iterable[Any]) -> dict[int, dict[str, Any]]:
+    normalized_ids = sorted({int(item) for item in score_run_ids if item is not None})
+    if not normalized_ids:
+        return {}
+    placeholders = ", ".join(["?"] * len(normalized_ids))
+    rows = conn.execute(
+        f"""
+        SELECT *
+        FROM photo_risk_review_queue
+        WHERE score_run_id IN ({placeholders})
+        """,
+        tuple(normalized_ids),
+    ).fetchall()
+    out: dict[int, dict[str, Any]] = {}
+    for row in rows:
+        item = _inflate_photo_risk_review_queue_item(row_to_dict(row))
+        if not item:
+            continue
+        score_run_id = int(item.get("score_run_id") or 0)
+        if score_run_id > 0 and score_run_id not in out:
+            out[score_run_id] = item
+    return out
+
+
 def _load_photo_risk_assets_by_ids(conn, asset_ids: Iterable[Any]) -> dict[int, dict[str, Any]]:
     normalized_ids = sorted({int(item) for item in asset_ids if item is not None})
     if not normalized_ids:
@@ -570,13 +618,17 @@ def list_photo_risk_score_runs(
         """,
         tuple(params + [max(1, min(int(limit), 200))]),
     ).fetchall()
+    score_run_ids = [row["score_run_id"] for row in rows if row and row.get("score_run_id") is not None]
+    decisions_by_score_run = _load_photo_risk_decisions_by_score_runs(conn, score_run_ids)
+    queue_items_by_score_run = _load_photo_risk_review_queue_by_score_runs(conn, score_run_ids)
     out: list[dict[str, Any]] = []
     for row in rows:
         item = _inflate_photo_risk_score_run(row_to_dict(row))
         if not item:
             continue
-        item["decision"] = _load_photo_risk_decision_by_score_run(conn, int(item["score_run_id"]))
-        item["review_queue_item"] = _load_photo_risk_review_queue_by_score_run(conn, int(item["score_run_id"]))
+        score_run_id = int(item["score_run_id"])
+        item["decision"] = decisions_by_score_run.get(score_run_id)
+        item["review_queue_item"] = queue_items_by_score_run.get(score_run_id)
         out.append(item)
     return out
 
