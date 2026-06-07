@@ -161,6 +161,7 @@ class SearchRuntime:
     build_criteria_from_args: Callable[[Any], dict[str, Any]]
     build_self_profile_input_from_args: Callable[[Any], dict[str, Any]]
     load_source: Callable[..., list[dict[str, Any]]]
+    iter_source_batches: Callable[..., Any] | None
     overlay_records_with_moderation: Callable[..., list[dict[str, Any]]]
     evaluate_candidate: Callable[[dict[str, Any], dict[str, Any]], dict[str, Any] | None]
     result_sort_key: Callable[[dict[str, Any]], Any]
@@ -401,6 +402,25 @@ class SearchRuntimeHelpers:
             )
         return records
 
+    def iter_source_record_batches(self, source, *, table_name=None, criteria=None, include_ids=None, include_ids_mode="or"):
+        iter_source_batches = self.runtime.iter_source_batches
+        if iter_source_batches is None:
+            yield self.runtime.load_source(
+                source,
+                table_name=table_name,
+                criteria=criteria,
+                include_ids=include_ids,
+                include_ids_mode=include_ids_mode,
+            )
+            return
+        yield from iter_source_batches(
+            source,
+            table_name=table_name,
+            criteria=criteria,
+            include_ids=include_ids,
+            include_ids_mode=include_ids_mode,
+        )
+
     def collect_source_records(self, args, criteria, sources):
         return self.collect_source_records_for_request(
             sources,
@@ -509,6 +529,62 @@ class SearchRuntimeHelpers:
     def prepare_search_context(self, args):
         return self.prepare_search_request_context(self.build_search_request_from_args(args))
 
+    def resolve_request_self_profile(self, request, criteria, sources):
+        self_id = self.runtime.as_int(request.get("self_id"))
+        profile_input = request.get("self_profile")
+        if self_id is None and not profile_input:
+            return None
+        normalized_input = self.runtime.normalize_self_profile_input(profile_input)
+        if normalized_input:
+            normalized_input_id = self.runtime.as_int(normalized_input.get("id"))
+            source_file = str(normalized_input.get("source_file") or "").strip()
+            if self_id is None or normalized_input_id == self_id or source_file:
+                self_profile = self.runtime.build_self_profile(
+                    [],
+                    self_id=self_id,
+                    profile_input=normalized_input,
+                )
+                if self_profile:
+                    criteria["self_profile"] = self_profile
+                    if self_id is not None:
+                        criteria.setdefault("exclude_record_refs", set()).add(self.runtime.record_ref(self_profile))
+                    return self_profile
+
+        self_records = []
+        include_ids = [self_id] if self_id is not None else []
+        moderation_dsn = request.get("moderation_dsn")
+        include_blocked = bool(request.get("include_moderation_blocked"))
+        for source in sources:
+            source_records = self.runtime.load_source(
+                source,
+                table_name=request.get("table_name"),
+                criteria={},
+                include_ids=include_ids,
+                include_ids_mode="only",
+            )
+            moderated_records = self.runtime.overlay_records_with_moderation(
+                source_records,
+                moderation_dsn=moderation_dsn,
+                include_blocked=include_blocked,
+            )
+            if self_id is not None and not any(self.runtime.as_int(record.get("id")) == self_id for record in moderated_records):
+                for record in source_records:
+                    if self.runtime.as_int(record.get("id")) == self_id:
+                        moderated_records.append(record)
+                        break
+            self_records.extend(moderated_records)
+
+        self_profile = self.runtime.build_self_profile(
+            self_records,
+            self_id=self_id,
+            profile_input=normalized_input,
+        )
+        if self_profile:
+            criteria["self_profile"] = self_profile
+            if self_id is not None:
+                criteria.setdefault("exclude_record_refs", set()).add(self.runtime.record_ref(self_profile))
+        return self_profile
+
     def execute_search_request(self, request):
         rule_resolution = request.get("rule_resolution") if isinstance(request, dict) else None
         normalized_request = self.build_search_request(
@@ -524,11 +600,46 @@ class SearchRuntimeHelpers:
             moderation_dsn=request.get("moderation_dsn") if isinstance(request, dict) else None,
             include_moderation_blocked=request.get("include_moderation_blocked", False) if isinstance(request, dict) else False,
         )
-        criteria, records = self.prepare_search_request_context(normalized_request)
+        criteria = self.runtime.normalize_request_criteria(normalized_request.get("criteria"))
+        sources = self.resolve_request_sources(normalized_request)
+        self.resolve_request_self_profile(normalized_request, criteria, sources)
+        records = []
+        results = []
+        scanned_count = 0
+        retain_records = True
+        append_result = results.append
+        evaluate_candidate = self.runtime.evaluate_candidate
+        moderation_dsn = normalized_request.get("moderation_dsn")
+        include_blocked = bool(normalized_request.get("include_moderation_blocked"))
         from match_domain.search_rule_context import search_rule_context
 
         with search_rule_context(rule_resolution=rule_resolution):
-            results = self.evaluate_records(records, criteria, normalized_request["limit"])
+            for source in sources:
+                for source_batch in self.iter_source_record_batches(
+                    source,
+                    table_name=normalized_request.get("table_name"),
+                    criteria=criteria,
+                ):
+                    moderated_batch = self.runtime.overlay_records_with_moderation(
+                        source_batch,
+                        moderation_dsn=moderation_dsn,
+                        include_blocked=include_blocked,
+                    )
+                    scanned_count += len(moderated_batch)
+                    matched_in_batch = False
+                    for record in moderated_batch:
+                        evaluated = evaluate_candidate(record, criteria)
+                        if evaluated:
+                            append_result(evaluated)
+                            matched_in_batch = True
+                    if retain_records:
+                        if matched_in_batch:
+                            records.clear()
+                            retain_records = False
+                        else:
+                            records.extend(moderated_batch)
+        results.sort(key=self.runtime.result_sort_key, reverse=True)
+        results = self.runtime.select_diverse_results(results, normalized_request["limit"])
         self.runtime.attach_photo_previews(
             results,
             normalized_request["photo_preview_count"],
@@ -536,12 +647,12 @@ class SearchRuntimeHelpers:
         )
         if results:
             # Match results do not use the full scanned record pool after ranking.
-            records_count = len(records)
-            records.clear()
             search_run = self.build_search_run(criteria, records, results)
-            search_run["records_count"] = records_count
+            search_run["records_count"] = scanned_count
+            search_run["records"] = []
         else:
             search_run = self.build_search_run(criteria, records, results)
+            search_run["records_count"] = scanned_count
         return self.populate_no_match_details(
             search_run,
             argparse.Namespace(limit=normalized_request["limit"]),
