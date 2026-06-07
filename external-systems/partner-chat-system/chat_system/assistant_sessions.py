@@ -55,6 +55,10 @@ def _inflate_task(row: dict[str, Any] | None) -> dict[str, Any] | None:
     return inflate_json_columns(row, result=("result_json", None))
 
 
+def _inflate_main_group_conversation_row(row: dict[str, Any] | None) -> dict[str, Any] | None:
+    return inflate_json_columns(row, metadata=("metadata_json", {}))
+
+
 def _derive_case_session_spec(conn, case_id: str) -> dict[str, str]:
     conversations = list_case_conversations(conn, case_id)
     if not conversations:
@@ -97,6 +101,100 @@ def _derive_case_session_spec(conn, case_id: str) -> dict[str, str]:
         "participant_b_id": participant_b_id,
         "agent_participant_id": agent_id,
     }
+
+
+def _derive_session_spec_from_main_group_row(row: dict[str, Any]) -> dict[str, str]:
+    metadata = dict(row.get("metadata") or {})
+    participant_a_id = str(metadata.get("participant_a_id") or "").strip()
+    participant_b_id = str(metadata.get("participant_b_id") or "").strip()
+    agent_id = str(metadata.get("agent_id") or "").strip()
+    relation_key = str(row.get("relation_key") or "").strip()
+    case_id = str(row.get("case_id") or "").strip()
+    if not participant_a_id or not participant_b_id or not agent_id or not relation_key or not case_id:
+        raise ValueError("assistant case layout metadata is incomplete")
+    return {
+        "case_id": case_id,
+        "relation_key": relation_key,
+        "participant_a_id": participant_a_id,
+        "participant_b_id": participant_b_id,
+        "agent_participant_id": agent_id,
+    }
+
+
+def _open_or_create_agent_session_from_spec(
+    conn,
+    *,
+    session_id: str | None,
+    case_id: str,
+    session_spec: dict[str, str],
+    triggered_by_message_id: int | None,
+    now: datetime,
+) -> str:
+    trigger_message_id = int(triggered_by_message_id) if triggered_by_message_id is not None else None
+    existing_session_id = str(session_id or "").strip()
+    if existing_session_id:
+        conn.execute(
+            """
+            UPDATE chat_agent_sessions
+            SET relation_key = ?,
+                status = ?,
+                participant_a_id = ?,
+                participant_b_id = ?,
+                agent_participant_id = ?,
+                triggered_by_message_id = COALESCE(triggered_by_message_id, ?),
+                close_reason = NULL,
+                ended_at = NULL,
+                updated_at = ?
+            WHERE session_id = ?
+            """,
+            (
+                session_spec["relation_key"],
+                SESSION_STATUS_OPEN,
+                session_spec["participant_a_id"],
+                session_spec["participant_b_id"],
+                session_spec["agent_participant_id"],
+                trigger_message_id,
+                now,
+                existing_session_id,
+            ),
+        )
+        return existing_session_id
+
+    created_session_id = _generate_session_id()
+    try:
+        conn.execute(
+            """
+            INSERT INTO chat_agent_sessions (
+              session_id, case_id, relation_key, status,
+              participant_a_id, participant_b_id, agent_participant_id,
+              triggered_by_message_id, last_seen_message_id, last_user_message_at,
+              last_agent_message_at, last_replied_at, cooldown_until, close_reason,
+              state_json, started_at, ended_at, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, ?, NULL, ?, ?)
+            """,
+            (
+                created_session_id,
+                case_id,
+                session_spec["relation_key"],
+                SESSION_STATUS_OPEN,
+                session_spec["participant_a_id"],
+                session_spec["participant_b_id"],
+                session_spec["agent_participant_id"],
+                trigger_message_id,
+                trigger_message_id,
+                now if trigger_message_id is not None else None,
+                json_dumps({}),
+                now,
+                now,
+                now,
+            ),
+        )
+    except IntegrityError:
+        existing = get_agent_session_by_case(conn, case_id)
+        if existing and str(existing.get("session_id") or "").strip():
+            return str(existing["session_id"])
+        raise
+    return created_session_id
 
 
 def is_public_followup_active(session: dict[str, Any] | None) -> bool:
@@ -701,6 +799,8 @@ def enqueue_due_opening_probe_tasks(
         SELECT
           c.case_id,
           c.conversation_id,
+          c.relation_key,
+          c.metadata_json,
           c.created_at,
           s.session_id,
           s.status AS session_status,
@@ -723,7 +823,7 @@ def enqueue_due_opening_probe_tasks(
     )
     examined = 0
     enqueued_refs: list[dict[str, Any]] = []
-    rows = [row_to_dict(raw) for raw in cur.fetchall()]
+    rows = [_inflate_main_group_conversation_row(row_to_dict(raw)) for raw in cur.fetchall()]
     case_ids = [str(row.get("case_id") or "").strip() for row in rows]
     session_pending = _session_ids_with_pending_tasks(
         conn,
@@ -751,17 +851,18 @@ def enqueue_due_opening_probe_tasks(
             continue
         if case_id in cases_with_any_messages:
             continue
-        session = get_or_create_agent_session(
+        session_spec = _derive_session_spec_from_main_group_row(row)
+        session_id = _open_or_create_agent_session_from_spec(
             conn,
+            session_id=session_id or None,
             case_id=case_id,
+            session_spec=session_spec,
             triggered_by_message_id=None,
             now=ts,
         )
-        if _session_has_pending_tasks(conn, str(session["session_id"])):
-            continue
         task = enqueue_agent_task(
             conn,
-            session_id=str(session["session_id"]),
+            session_id=session_id,
             case_id=str(row["case_id"]),
             trigger_conversation_id=str(row["conversation_id"]),
             trigger_message_id=0,
@@ -774,7 +875,7 @@ def enqueue_due_opening_probe_tasks(
         if task.get("_inserted"):
             enqueued_refs.append(
                 {
-                    "session_id": str(session["session_id"]),
+                    "session_id": session_id,
                     "task_id": int(task["task_id"]),
                     "trigger_message_id": int(task["trigger_message_id"]),
                 }
