@@ -428,6 +428,7 @@ def iter_profile_batches(
 
         id_column = schema.quote_mysql_ident("id")
         ordered_base_sql = f"{base_sql} ORDER BY {id_column} ASC"
+        projected_base_sql = f"SELECT {select_sql} FROM {schema.quote_mysql_ident(source_table_name)}"
         last_seen_id: int | None = None
         while True:
             if last_seen_id is None:
@@ -435,14 +436,14 @@ def iter_profile_batches(
                 paged_params = query_params
             elif normalized_where:
                 paged_sql = (
-                    f"SELECT * FROM {schema.quote_mysql_ident(source_table_name)} "
+                    f"{projected_base_sql} "
                     f"{normalized_where} AND {id_column} > ? "
                     f"ORDER BY {id_column} ASC LIMIT {page_size}"
                 )
                 paged_params = query_params + (last_seen_id,)
             else:
                 paged_sql = (
-                    f"SELECT * FROM {schema.quote_mysql_ident(source_table_name)} "
+                    f"{projected_base_sql} "
                     f"WHERE {id_column} > ? ORDER BY {id_column} ASC LIMIT {page_size}"
                 )
                 paged_params = (last_seen_id,)
