@@ -18,8 +18,9 @@ from typing import Any, Callable, Iterable, Sequence
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 GATEWAY_ROOT = REPO_ROOT / "external-systems" / "partner-http-gateway"
 CHAT_ROOT = REPO_ROOT / "external-systems" / "partner-chat-system"
+RECOMMENDATION_ROOT = REPO_ROOT / "external-systems" / "partner-recommendation-system"
 
-for root in (REPO_ROOT, GATEWAY_ROOT, CHAT_ROOT):
+for root in (REPO_ROOT, GATEWAY_ROOT, CHAT_ROOT, RECOMMENDATION_ROOT):
     if str(root) not in sys.path:
         sys.path.insert(0, str(root))
 
@@ -39,8 +40,13 @@ from gateway_tests.helpers import (  # noqa: E402
 )
 from chat_system import (  # noqa: E402
     build_case_conversation_timeline,
+    build_user_trust_hub,
     create_assistant_case_layout,
+    get_or_create_thread,
 )
+import chat_system.self_service as self_service_module  # noqa: E402
+import chat_system.verification as verification_module  # noqa: E402
+import chat_system.profile_reviews as profile_reviews_module  # noqa: E402
 from chat_system.assistant_sessions import (  # noqa: E402
     SESSION_STATUS_OPEN,
     TASK_REASON_OPENING_PROBE,
@@ -66,6 +72,21 @@ from chat_system.storage import (  # noqa: E402
     initialize_database as initialize_chat_db,
     reset_all_tables as reset_chat_tables,
     row_to_dict,
+)
+from recommendation_system import (  # noqa: E402
+    create_subscription,
+    list_recommendations_for_subscription,
+)
+from recommendation_system.recommendation_rows import (  # noqa: E402
+    _merge_recommendation_subscription_fields,
+    inflate_recommendation as inflate_recommendation_row,
+    list_recommendation_actions_for_recommendation,
+)
+from recommendation_system.storage import (  # noqa: E402
+    DEFAULT_RECOMMENDATION_TEST_MYSQL_DSN,
+    connect_db as connect_recommendation_db,
+    initialize_database as initialize_recommendation_db,
+    reset_all_tables as reset_recommendation_tables,
 )
 
 DEFAULT_SEARCH_DSN = os.environ.get(
@@ -699,6 +720,498 @@ def benchmark_assistant_opening(case_count: int, repeat: int) -> dict[str, Any]:
     }
 
 
+def _seed_recommendation_listing_db(recommendation_count: int) -> str:
+    conn = connect_recommendation_db(DEFAULT_RECOMMENDATION_TEST_MYSQL_DSN)
+    initialize_recommendation_db(conn)
+    reset_recommendation_tables(conn)
+    now = datetime(2026, 6, 1, 9, 0, 0)
+    subscription = create_subscription(
+        conn,
+        requester_id=70001,
+        source="mysql://user:pass@127.0.0.1:3306/her?table=profiles",
+        criteria={"gender": "女", "cities": ["无锡"], "relationship_goals": ["认真恋爱"]},
+        self_profile={"age": 28, "city": "无锡", "height": 178},
+        limit_count=20,
+        top_k=10,
+        min_notify_score=40,
+        daily_notification_cap=3,
+        quiet_hours_start=23,
+        quiet_hours_end=23,
+        recommendation_mode="direct_greet_only",
+        max_review_candidates_per_refresh=5,
+        min_direct_greet_score=60,
+        now=now,
+    )
+    recommendation_rows: list[tuple[Any, ...]] = []
+    action_rows: list[tuple[Any, ...]] = []
+    for index in range(recommendation_count):
+        recommendation_rows.append(
+            (
+                subscription["subscription_id"],
+                70001,
+                80000 + index,
+                f"推荐对象{index}",
+                80 - (index % 20),
+                70 - (index % 10),
+                10,
+                index % 3,
+                "pending_delivery",
+                "seeded_for_benchmark",
+                now,
+                now,
+                None,
+                None,
+                None,
+                json.dumps(["城市 无锡", "目标 认真恋爱"], ensure_ascii=False),
+                json.dumps([] if index % 5 else ["需要确认见面频率"], ensure_ascii=False),
+                json.dumps({"profile": {"age": 27 + (index % 5), "city": "无锡", "job": "产品经理", "verified_level": "photo", "photo_count": 4}}, ensure_ascii=False),
+                "direct_greet_ready",
+                None,
+                90,
+                json.dumps({}, ensure_ascii=False),
+                now,
+                f"snapshot-{index}",
+                "pending_review",
+                None,
+                json.dumps({}, ensure_ascii=False),
+                None,
+                f"relation-{index}",
+                json.dumps({"source_dsn": "mysql://user:pass@127.0.0.1:3306/her", "source_table_name": "profiles", "profile_id": 70001}, ensure_ascii=False),
+                json.dumps({"source_dsn": "mysql://user:pass@127.0.0.1:3306/her", "source_table_name": "profiles", "profile_id": 80000 + index}, ensure_ascii=False),
+                None,
+                None,
+                "pass",
+                json.dumps([], ensure_ascii=False),
+                "recommendation-system",
+                None,
+                now,
+                None,
+                json.dumps({"rule": "bench"}, ensure_ascii=False),
+            )
+        )
+        for action_index in range(3):
+            action_rows.append(
+                (
+                    subscription["subscription_id"],
+                    index + 1,
+                    70001,
+                    80000 + index,
+                    "refresh_seen" if action_index < 2 else "queued_for_delivery",
+                    json.dumps({"sequence": action_index}, ensure_ascii=False),
+                    now + timedelta(seconds=action_index),
+                )
+            )
+    with conn.driver_connection.cursor() as cursor:
+        cursor.executemany(
+            """
+            INSERT INTO profile_recommendations (
+              subscription_id, requester_id, candidate_id, candidate_name,
+              score, fit_score, confidence_score, risk_score,
+              delivery_status, delivery_reason, first_seen_at, last_seen_at,
+              notified_at, cooling_until, last_action_type,
+              matched_on_json, risk_flags_json, latest_payload_json,
+              final_review_status, final_review_reason, final_review_score, final_review_payload_json,
+              reviewed_at, candidate_snapshot_hash,
+              user_review_status, user_review_reason, user_review_payload_json, user_reviewed_at,
+              relation_key, owner_profile_ref_json, target_profile_ref_json,
+              active_match_case_id, active_case_status,
+              gate_outcome, gate_reason_codes_json, gate_owner_service, gate_details_ref, gate_evaluated_at,
+              latest_card_id, rule_provenance_json
+            ) VALUES (
+              %s, %s, %s, %s,
+              %s, %s, %s, %s,
+              %s, %s, %s, %s,
+              %s, %s, %s,
+              %s, %s, %s,
+              %s, %s, %s, %s,
+              %s, %s,
+              %s, %s, %s, %s,
+              %s, %s, %s,
+              %s, %s,
+              %s, %s, %s, %s, %s,
+              %s, %s
+            )
+            """,
+            recommendation_rows,
+        )
+        cursor.execute("SELECT recommendation_id, candidate_id FROM profile_recommendations ORDER BY recommendation_id ASC")
+        recommendation_ids = {
+            int(row["candidate_id"]): int(row["recommendation_id"])
+            for row in cursor.fetchall()
+        }
+        patched_action_rows = [
+            (
+                subscription_id,
+                recommendation_ids[candidate_id],
+                requester_id,
+                candidate_id,
+                action_type,
+                payload_json,
+                occurred_at,
+            )
+            for subscription_id, _old_recommendation_id, requester_id, candidate_id, action_type, payload_json, occurred_at in action_rows
+        ]
+        cursor.executemany(
+            """
+            INSERT INTO recommendation_actions (
+              subscription_id, recommendation_id, requester_id, candidate_id,
+              action_type, action_payload_json, occurred_at
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """,
+            patched_action_rows,
+        )
+    conn.driver_connection.commit()
+    conn.close()
+    return str(subscription["subscription_id"])
+
+
+def _legacy_list_recommendations_for_subscription(conn: MySQLCompatConnection, subscription_id: str) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT *
+        FROM profile_recommendations
+        WHERE subscription_id = ?
+        ORDER BY score DESC, last_seen_at DESC, recommendation_id DESC
+        """,
+        (subscription_id,),
+    ).fetchall()
+    subscription_row = conn.execute(
+        "SELECT * FROM saved_search_subscriptions WHERE subscription_id = ?",
+        (subscription_id,),
+    ).fetchone()
+    subscription = row_to_dict(subscription_row)
+    inflated: list[dict[str, Any]] = []
+    for row in rows:
+        row_dict = _merge_recommendation_subscription_fields(row_to_dict(row), subscription)
+        inflated.append(
+            inflate_recommendation_row(
+                row_dict,
+                conn=conn,
+                preloaded_action_rows=list_recommendation_actions_for_recommendation(
+                    conn,
+                    int(row_dict["recommendation_id"]),
+                ),
+            )
+        )
+    return inflated
+
+
+def benchmark_recommendation_listing(recommendation_count: int, repeat: int) -> dict[str, Any]:
+    subscription_id = _seed_recommendation_listing_db(recommendation_count)
+
+    def current_call() -> dict[str, Any]:
+        conn = connect_recommendation_db(DEFAULT_RECOMMENDATION_TEST_MYSQL_DSN)
+        try:
+            return {"results": list_recommendations_for_subscription(conn, subscription_id)}
+        finally:
+            conn.close()
+
+    def legacy_call() -> dict[str, Any]:
+        conn = connect_recommendation_db(DEFAULT_RECOMMENDATION_TEST_MYSQL_DSN)
+        try:
+            return {"results": _legacy_list_recommendations_for_subscription(conn, subscription_id)}
+        finally:
+            conn.close()
+
+    return {
+        "scenario": "recommendation_subscription_listing",
+        "current": _run_benchmark("current", current_call, repeat=repeat),
+        "legacy_emulation": _run_benchmark("legacy_emulation", legacy_call, repeat=repeat),
+    }
+
+
+def _seed_trust_hub_db(item_count: int) -> tuple[str, int]:
+    conn = connect_chat_db(DEFAULT_CHAT_TEST_MYSQL_DSN)
+    initialize_chat_db(conn)
+    reset_chat_tables(conn)
+    user_id = "trust-user-1"
+    profile_id = 90001
+    source_dsn = f"{DEFAULT_CHAT_TEST_MYSQL_DSN}?table=profiles"
+    source_table_name = "profiles"
+    ts = datetime(2026, 6, 1, 10, 0, 0)
+    with conn.driver_connection.cursor() as cursor:
+        for index in range(item_count):
+            thread = get_or_create_thread(
+                conn,
+                case_id=f"trust-case-{index}",
+                relation_key=f"trust-rel-{index}",
+                participant_a_id=user_id,
+                participant_b_id=f"counterpart-{index}",
+                now=ts,
+            )
+            thread_id = str(thread["thread_id"])
+            submission_id = f"sub-{index}"
+            cursor.execute(
+                """
+                INSERT INTO verification_submissions (
+                  submission_id, verification_type, user_id, profile_id, source_dsn, source_table_name,
+                  status, resubmission_count, challenge_phrase, review_decision, review_note, reviewer_id,
+                  latest_asset_id, latest_sync_status, latest_sync_error, submitted_at, reviewed_at,
+                  approved_at, rejected_at, metadata_json, created_at, updated_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    submission_id, "live_video", user_id, profile_id, source_dsn, source_table_name,
+                    "submitted", 0, None, None, None, None,
+                    None, None, None, ts, None, None, None,
+                    json.dumps({"photo_review_task": {"task_kind": "photo_review", "reason_labels": ["照片真实性"], "capture_tips": ["自然光"]}}, ensure_ascii=False),
+                    ts, ts,
+                ),
+            )
+            cursor.execute(
+                """
+                INSERT INTO verification_assets (
+                  submission_id, asset_kind, storage_key, original_file_name, content_type,
+                  file_size_bytes, sha256_hex, upload_attempt, metadata_json, created_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (submission_id, "video", f"video/{submission_id}.mp4", f"{submission_id}.mp4", "video/mp4", 1024, f"sha{submission_id}", 1, "{}", ts),
+            )
+            cursor.execute(
+                """
+                INSERT INTO verification_reviews (
+                  submission_id, reviewer_id, decision, review_note, liveness_result, face_match_result,
+                  profile_consistency_result, metadata_json, created_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (submission_id, "reviewer", "pending", "待审核", None, None, None, "{}", ts),
+            )
+            cursor.execute(
+                """
+                INSERT INTO verification_notifications (
+                  submission_id, user_id, notification_type, delivery_channel, delivery_status,
+                  title, body, metadata_json, created_at, sent_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (submission_id, user_id, "photo_review_requested", "in_app", "recorded", "请补录视频", "系统需要补录", "{}", ts, ts),
+            )
+            field_submission_id = f"field-{index}"
+            cursor.execute(
+                """
+                INSERT INTO profile_field_verification_submissions (
+                  submission_id, field_key, subject_user_id, profile_id, source_dsn, source_table_name,
+                  status, declared_value, approved_value, resubmission_count, required_documents_json,
+                  evidence_json, evidence_type, evidence_channel, reverify_strategy, verification_expires_at,
+                  next_review_due_at, dispute_status, dispute_reason, dispute_evidence_json, disputed_at,
+                  dispute_resolved_at, review_decision, review_note, reviewer_id, latest_sync_status, latest_sync_error,
+                  submitted_at, reviewed_at, approved_at, rejected_at, created_at, updated_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    field_submission_id, "income", user_id, profile_id, source_dsn, source_table_name,
+                    "submitted", "30万", None, 0, json.dumps(["收入证明"], ensure_ascii=False),
+                    json.dumps({}, ensure_ascii=False), None, None, None, None, None,
+                    "none", None, None, None, None, None, None, None, None, None,
+                    ts, None, None, None, ts, ts,
+                ),
+            )
+            cursor.execute(
+                """
+                INSERT INTO profile_field_verification_reviews (
+                  submission_id, reviewer_id, decision, review_note, approved_value,
+                  requested_documents_json, metadata_json, created_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (field_submission_id, "reviewer", "request_resubmission", "补充收入证明", None, json.dumps(["收入证明"], ensure_ascii=False), "{}", ts),
+            )
+            profile_case_id = f"profile-case-{index}"
+            cursor.execute(
+                """
+                INSERT INTO profile_review_cases (
+                  profile_review_case_id, subject_user_id, profile_id, source_dsn, source_table_name,
+                  status, severity, rule_codes_json, evidence_summary_json, recommended_action, applied_action,
+                  resolver_id, resolution_note, last_evaluated_at, created_at, updated_at, resolved_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    profile_case_id, user_id, profile_id, source_dsn, source_table_name,
+                    "under_review", "medium", json.dumps(["income_mismatch"], ensure_ascii=False),
+                    json.dumps({"required_verifications": ["income"], "rule_hits": [{"rule_code": "income_mismatch", "evidence": {"summary": "收入待核验"}}]}, ensure_ascii=False),
+                    "limited_exposure", "limited_exposure", None, None, ts, ts, ts, None,
+                ),
+            )
+            cursor.execute(
+                """
+                INSERT INTO profile_review_case_appeals (
+                  profile_review_case_id, subject_key, subject_user_id, appellant_id, appeal_status,
+                  reason_text, evidence_json, resolution_note, resolver_id, created_at, updated_at, resolved_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (profile_case_id, f"user:{user_id}", user_id, user_id, "submitted", "补充说明", "{}", None, None, ts, ts, None),
+            )
+            risk_case_id = f"risk-case-{index}"
+            cursor.execute(
+                """
+                INSERT INTO chat_risk_cases (
+                  risk_case_id, thread_id, case_id, subject_user_id, status, severity,
+                  source_types_json, signal_codes_json, evidence_summary_json, report_count,
+                  recommended_action, applied_action, resolver_id, resolution_note,
+                  last_reported_at, created_at, updated_at, resolved_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    risk_case_id, thread_id, f"trust-case-{index}", user_id, "action_applied", "medium",
+                    json.dumps(["report"], ensure_ascii=False), json.dumps(["off_platform"], ensure_ascii=False),
+                    json.dumps({"source_dsn": source_dsn, "source_table_name": source_table_name, "profile_id": profile_id}, ensure_ascii=False),
+                    1, "limit_chat", "limit_chat", None, None, ts, ts, ts, None,
+                ),
+            )
+            cursor.execute(
+                """
+                INSERT INTO chat_risk_appeals (
+                  risk_case_id, subject_key, subject_user_id, appellant_id, appeal_status,
+                  reason_text, evidence_json, resolution_note, resolver_id, created_at, updated_at, resolved_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (risk_case_id, f"user:{user_id}", user_id, user_id, "submitted", "我已补充说明", "{}", None, None, ts, ts, None),
+            )
+            cursor.execute(
+                """
+                INSERT INTO account_moderation_states (
+                  subject_key, subject_user_id, source_dsn, source_table_name, profile_id,
+                  moderation_status, applied_action, reason_code, reason_summary,
+                  required_verifications_json, evidence_json, linked_risk_case_id, linked_profile_review_case_id,
+                  resolver_id, created_at, updated_at, cleared_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE updated_at = VALUES(updated_at)
+                """,
+                (
+                    f"user:{user_id}", user_id, source_dsn, source_table_name, profile_id,
+                    "active", "freeze", "risk", "存在风控限制", json.dumps(["live_video", "income"], ensure_ascii=False),
+                    "{}", risk_case_id, profile_case_id, None, ts, ts, None,
+                ),
+            )
+    conn.driver_connection.commit()
+    conn.close()
+    return user_id, profile_id
+
+
+def _legacy_list_verification_submissions(conn: MySQLCompatConnection, *, user_id: str, profile_id: int, limit: int) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT * FROM verification_submissions
+        WHERE verification_type = ? AND user_id = ? AND profile_id = ?
+        ORDER BY updated_at DESC, created_at DESC
+        LIMIT ?
+        """,
+        ("live_video", user_id, profile_id, limit),
+    ).fetchall()
+    return [verification_module._inflate_submission(conn, row_to_dict(row)) for row in rows if row]
+
+
+def _legacy_list_photo_review_requests(conn: MySQLCompatConnection, *, user_id: str, profile_id: int, limit: int) -> list[dict[str, Any]]:
+    rows = _legacy_list_verification_submissions(conn, user_id=user_id, profile_id=profile_id, limit=limit)
+    return [row for row in rows if verification_module._submission_has_photo_review_task(row)]
+
+
+def _legacy_list_profile_field_verification_submissions(conn: MySQLCompatConnection, *, user_id: str, profile_id: int, limit: int) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT * FROM profile_field_verification_submissions
+        WHERE subject_user_id = ? AND profile_id = ?
+        ORDER BY updated_at DESC, created_at DESC
+        LIMIT ?
+        """,
+        (user_id, profile_id, limit),
+    ).fetchall()
+    return [profile_reviews_module._inflate_field_submission(conn, row_to_dict(row)) for row in rows if row]
+
+
+def _legacy_build_user_trust_hub(conn: MySQLCompatConnection, *, user_id: str, profile_id: int, limit: int) -> dict[str, Any]:
+    normalized_user_id = str(user_id)
+    photo_requests = _legacy_list_photo_review_requests(conn, user_id=normalized_user_id, profile_id=profile_id, limit=limit)
+    field_submissions = _legacy_list_profile_field_verification_submissions(conn, user_id=normalized_user_id, profile_id=profile_id, limit=limit)
+    profile_cases = profile_reviews_module.list_profile_review_cases(
+        conn,
+        subject_user_id=normalized_user_id,
+        profile_id=profile_id,
+        statuses=[
+            profile_reviews_module.PROFILE_REVIEW_STATUS_OPEN,
+            profile_reviews_module.PROFILE_REVIEW_STATUS_UNDER_REVIEW,
+            profile_reviews_module.PROFILE_REVIEW_STATUS_ACTION_APPLIED,
+            profile_reviews_module.PROFILE_REVIEW_STATUS_DISMISSED,
+            profile_reviews_module.PROFILE_REVIEW_STATUS_RESOLVED,
+        ],
+        limit=limit,
+    )
+    active_profile_cases = [
+        item
+        for item in profile_cases
+        if str(item.get("status") or "") in {
+            profile_reviews_module.PROFILE_REVIEW_STATUS_OPEN,
+            profile_reviews_module.PROFILE_REVIEW_STATUS_UNDER_REVIEW,
+            profile_reviews_module.PROFILE_REVIEW_STATUS_ACTION_APPLIED,
+        }
+    ]
+    chat_cases = self_service_module.list_risk_cases(conn, subject_user_id=normalized_user_id, limit=limit)
+    chat_appeals = self_service_module.list_risk_appeals(conn, subject_user_id=normalized_user_id, limit=limit * 3)
+    profile_appeals = profile_reviews_module.list_profile_review_case_appeals(conn, subject_user_id=normalized_user_id, limit=limit * 3)
+    user_notifications = verification_module.list_verification_notifications(conn, user_id=normalized_user_id, limit=limit * 5)
+    verification_items = self_service_module._build_verification_items(
+        user_id=normalized_user_id,
+        profile_id=profile_id,
+        photo_requests=photo_requests,
+        field_submissions=field_submissions,
+        profile_cases=active_profile_cases,
+    )
+    appeal_items = self_service_module._build_appeal_items(
+        chat_cases=chat_cases,
+        chat_appeals=chat_appeals,
+        profile_cases=profile_cases,
+        profile_appeals=profile_appeals,
+        field_submissions=field_submissions,
+    )
+    risk_records = self_service_module._build_risk_records(
+        chat_cases=chat_cases,
+        profile_cases=profile_cases,
+        chat_appeals=chat_appeals,
+        profile_appeals=profile_appeals,
+    )
+    notifications = self_service_module._build_notifications(
+        user_notifications=user_notifications,
+        verification_items=verification_items,
+        appeal_items=appeal_items,
+    )
+    return {
+        "user_id": normalized_user_id,
+        "profile_id": profile_id,
+        "summary": {
+            "pending_verification_count": len([item for item in verification_items if str(item.get("work_state") or "") in {"action_required", "in_progress"}]),
+            "pending_appeal_count": len([item for item in appeal_items if str(item.get("work_state") or "") in {"action_required", "in_progress"}]),
+            "active_risk_count": len([item for item in risk_records if str(item.get("status") or "") not in {"dismissed", "resolved"}]),
+            "notification_count": len(notifications),
+        },
+        "verification_center": {"items": verification_items},
+        "appeal_center": {"items": appeal_items},
+        "risk_records": {"items": risk_records},
+        "notifications": notifications,
+    }
+
+
+def benchmark_trust_hub_payload(item_count: int, repeat: int) -> dict[str, Any]:
+    user_id, profile_id = _seed_trust_hub_db(item_count)
+
+    def current_call() -> dict[str, Any]:
+        conn = connect_chat_db(DEFAULT_CHAT_TEST_MYSQL_DSN)
+        try:
+            return build_user_trust_hub(conn, user_id=user_id, profile_id=profile_id, limit=item_count)
+        finally:
+            conn.close()
+
+    def legacy_call() -> dict[str, Any]:
+        conn = connect_chat_db(DEFAULT_CHAT_TEST_MYSQL_DSN)
+        try:
+            return _legacy_build_user_trust_hub(conn, user_id=user_id, profile_id=profile_id, limit=item_count)
+        finally:
+            conn.close()
+
+    return {
+        "scenario": "user_trust_hub_payload",
+        "current": _run_benchmark("current", current_call, repeat=repeat),
+        "legacy_emulation": _run_benchmark("legacy_emulation", legacy_call, repeat=repeat),
+    }
+
+
 def _run_benchmark(label: str, fn: Callable[[], dict[str, Any]], *, repeat: int) -> BenchmarkSummary:
     runs: list[RunResult] = []
     result_count = 0
@@ -723,6 +1236,8 @@ def _extract_result_count(payload: dict[str, Any]) -> int:
         return int(payload.get("result_count") or 0)
     if "results" in payload:
         return len(payload.get("results") or [])
+    if "verification_center" in payload:
+        return len(((payload.get("verification_center") or {}).get("items") or []))
     if "conversations" in payload:
         return len(payload.get("conversations") or [])
     if "task_refs" in payload:
@@ -766,6 +1281,8 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         benchmark_partner_search(args.search_profiles, args.repeat),
         benchmark_chat_timeline(args.messages_per_conversation, args.repeat),
         benchmark_assistant_opening(args.opening_cases, args.repeat),
+        benchmark_recommendation_listing(args.recommendation_count, args.repeat),
+        benchmark_trust_hub_payload(args.trust_hub_items, args.repeat),
     ):
         current = scenario["current"]
         legacy = scenario["legacy_emulation"]
@@ -782,6 +1299,8 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         "search_profiles": args.search_profiles,
         "messages_per_conversation": args.messages_per_conversation,
         "opening_cases": args.opening_cases,
+        "recommendation_count": args.recommendation_count,
+        "trust_hub_items": args.trust_hub_items,
         "benchmarks": benchmarks,
     }
 
@@ -797,6 +1316,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Messages to seed per conversation for timeline benchmarks.",
     )
     parser.add_argument("--opening-cases", type=int, default=60, help="Cases to seed for opening probe benchmarks.")
+    parser.add_argument("--recommendation-count", type=int, default=200, help="Recommendations to seed for recommendation listing benchmarks.")
+    parser.add_argument("--trust-hub-items", type=int, default=50, help="Per-type items to seed for trust hub benchmarks.")
     parser.add_argument("--output-json", help="Optional path to write the full JSON report.")
     return parser.parse_args(argv)
 
