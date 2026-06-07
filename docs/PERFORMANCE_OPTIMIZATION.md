@@ -172,3 +172,34 @@ pytest partner_search/tests/ -q 2>/dev/null || true
 - 不改变开案条件、推送 cap、安静时段、多样性选人等业务判定。
 - 保留既有异常类型与错误处理路径。
 - 仅通过批量查询、预取、并行与内存布局优化降低延迟与 DB 负载。
+
+---
+
+## 11. 基准脚本
+
+可复现基准脚本：
+
+```bash
+python scripts/run_perf_benchmarks.py \
+  --repeat 3 \
+  --search-profiles 4000 \
+  --messages-per-conversation 400 \
+  --opening-cases 60 \
+  --output-json artifacts/perf-benchmark-report.json
+```
+
+输出内容：
+
+- `partner_search_full_scan`
+  - 当前实现 vs `legacy_emulation`
+  - 指标：平均耗时、SQL 次数、数据库返回字段单元格数
+- `chat_case_timeline`
+  - 当前批量 members / 限量消息读取 vs 旧版 N+1 / 全量消息回拉
+- `assistant_opening_probe_scan`
+  - 当前批量预取扫描 vs 旧版循环内多次查询
+
+说明：
+
+- 脚本默认使用本地 `127.0.0.1:3307` MySQL。
+- 搜索基准会自动构造宽表 filler 列，用来放大 `SELECT *` 与列投影差异。
+- `Avg Cells` 是数据库返回的字段单元格数代理指标，比单纯行数更能体现宽表 I/O 体积。
