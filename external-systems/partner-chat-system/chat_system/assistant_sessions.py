@@ -973,6 +973,7 @@ def enqueue_due_opening_probe_tasks(
         task_plan.append((dedupe_key, row, session_id))
 
     existing_tasks = get_agent_tasks_by_dedupe_keys(conn, [item[0] for item in task_plan])
+    existing_dedupe_keys = set(existing_tasks)
     task_payloads = [
         (
             session_id,
@@ -987,8 +988,9 @@ def enqueue_due_opening_probe_tasks(
             ts,
         )
         for dedupe_key, row, session_id in task_plan
-        if dedupe_key not in existing_tasks
+        if dedupe_key not in existing_dedupe_keys
     ]
+    inserted_tasks: dict[str, dict[str, Any]] = {}
     if task_payloads:
         with conn.driver_connection.cursor() as cursor:
             cursor.executemany(
@@ -1002,66 +1004,22 @@ def enqueue_due_opening_probe_tasks(
                 task_payloads,
             )
         conn.driver_connection.commit()
-        existing_tasks.update(get_agent_tasks_by_dedupe_keys(conn, [item[0] for item in task_plan]))
+        inserted_tasks = get_agent_tasks_by_dedupe_keys(
+            conn,
+            [item[0] for item in task_plan if item[0] not in existing_dedupe_keys],
+        )
 
-    for dedupe_key, row, session_id in task_plan:
-        task = existing_tasks.get(dedupe_key)
-        if not task or dedupe_key in get_agent_tasks_by_dedupe_keys(conn, []):
-            pass
-        if task and dedupe_key not in existing_tasks:
+    for dedupe_key, _row, session_id in task_plan:
+        task = inserted_tasks.get(dedupe_key)
+        if not task:
             continue
-        if task and dedupe_key not in get_agent_tasks_by_dedupe_keys(conn, []):
-            pass
-        if task and dedupe_key not in [item[0] for item in task_plan if item[0] in existing_tasks]:
-            continue
-        if task and _build_agent_task_dedupe_key(session_id, 0, TASK_REASON_OPENING_PROBE) not in existing_tasks:
-            continue
-        if task and dedupe_key not in existing_tasks:
-            continue
-        if task and dedupe_key in get_agent_tasks_by_dedupe_keys(conn, []):
-            continue
-        if task and dedupe_key not in existing_tasks:
-            continue
-        if task and dedupe_key not in [key for key in existing_tasks]:
-            continue
-        if task and dedupe_key not in existing_tasks:
-            continue
-        if task and dedupe_key not in existing_tasks:
-            continue
-        if task and dedupe_key not in existing_tasks:
-            continue
-        if task and dedupe_key not in existing_tasks:
-            continue
-        if task and dedupe_key not in existing_tasks:
-            continue
-        if task and dedupe_key not in existing_tasks:
-            continue
-        if task and dedupe_key not in existing_tasks:
-            continue
-        if task and dedupe_key not in existing_tasks:
-            continue
-        if task and dedupe_key not in existing_tasks:
-            continue
-        if task and dedupe_key not in existing_tasks:
-            continue
-        if task and dedupe_key not in existing_tasks:
-            continue
-        if task and dedupe_key not in existing_tasks:
-            continue
-        if task and dedupe_key not in existing_tasks:
-            continue
-        if task and dedupe_key not in existing_tasks:
-            continue
-        if task and dedupe_key not in existing_tasks:
-            continue
-        if task and dedupe_key in existing_tasks and task.get("created_at") == ts:
-            enqueued_refs.append(
-                {
-                    "session_id": session_id,
-                    "task_id": int(task["task_id"]),
-                    "trigger_message_id": int(task["trigger_message_id"]),
-                }
-            )
+        enqueued_refs.append(
+            {
+                "session_id": session_id,
+                "task_id": int(task["task_id"]),
+                "trigger_message_id": int(task["trigger_message_id"]),
+            }
+        )
     return {
         "examined_sessions": examined,
         "enqueued": len(enqueued_refs),
