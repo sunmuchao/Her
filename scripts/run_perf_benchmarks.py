@@ -30,10 +30,9 @@ import partner_search.api as partner_search_api  # noqa: E402
 import partner_search.search_candidates as search_engine  # noqa: E402
 from partner_search.search_sources import build_mysql_prefilter  # noqa: E402
 from profile_service import iter_profile_batches  # noqa: E402
-from external-systems.partner-http-gateway.gateway_tests.helpers import (  # type: ignore[import-not-found] # noqa: E402
+from gateway_tests.helpers import (  # noqa: E402
     ensure_search_schema,
     insert_search_profiles,
-    open_search_conn,
     reset_search_rows,
     search_test_config,
 )
@@ -77,14 +76,14 @@ DEFAULT_SEARCH_DSN = os.environ.get(
 @dataclass
 class QueryStats:
     execute_count: int = 0
-    fetched_rows: int = 0
+    fetched_cells: int = 0
 
 
 @dataclass
 class RunResult:
     elapsed_ms: float
     execute_count: int
-    fetched_rows: int
+    fetched_cells: int
 
 
 @dataclass
@@ -110,8 +109,8 @@ class BenchmarkSummary:
         return statistics.fmean(item.execute_count for item in self.runs)
 
     @property
-    def avg_rows(self) -> float:
-        return statistics.fmean(item.fetched_rows for item in self.runs)
+    def avg_cells(self) -> float:
+        return statistics.fmean(item.fetched_cells for item in self.runs)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -121,12 +120,12 @@ class BenchmarkSummary:
             "min_ms": round(self.min_ms, 3),
             "max_ms": round(self.max_ms, 3),
             "avg_execute_count": round(self.avg_executes, 3),
-            "avg_fetched_rows": round(self.avg_rows, 3),
+            "avg_fetched_cells": round(self.avg_cells, 3),
             "runs": [
                 {
                     "elapsed_ms": round(item.elapsed_ms, 3),
                     "execute_count": item.execute_count,
-                    "fetched_rows": item.fetched_rows,
+                    "fetched_cells": item.fetched_cells,
                 }
                 for item in self.runs
             ],
@@ -146,13 +145,13 @@ def query_counter() -> Iterable[QueryStats]:
 
     def counted_fetchall(self: _CursorResult):
         rows = original_fetchall(self)
-        stats.fetched_rows += len(rows or [])
+        stats.fetched_cells += sum(len(row) if isinstance(row, dict) else 1 for row in (rows or []))
         return rows
 
     def counted_fetchone(self: _CursorResult):
         row = original_fetchone(self)
         if row is not None:
-            stats.fetched_rows += 1
+            stats.fetched_cells += len(row) if isinstance(row, dict) else 1
         return row
 
     MySQLCompatConnection.execute = counted_execute  # type: ignore[assignment]
@@ -696,7 +695,7 @@ def _run_benchmark(label: str, fn: Callable[[], dict[str, Any]], *, repeat: int)
             RunResult(
                 elapsed_ms=elapsed_ms,
                 execute_count=stats.execute_count,
-                fetched_rows=stats.fetched_rows,
+                fetched_cells=stats.fetched_cells,
             )
         )
     return BenchmarkSummary(label=label, runs=runs, result_count=result_count)
@@ -727,18 +726,18 @@ def _print_markdown_report(report: dict[str, Any]) -> None:
     print()
     print(f"Generated at: `{report['generated_at']}`")
     print()
-    print("| Scenario | Variant | Avg ms | Avg SQL | Avg Rows | Result Count |")
-    print("|----------|---------|--------|---------|----------|--------------|")
+    print("| Scenario | Variant | Avg ms | Avg SQL | Avg Cells | Result Count |")
+    print("|----------|---------|--------|---------|-----------|--------------|")
     for scenario in report["benchmarks"]:
         for key in ("current", "legacy_emulation"):
             item = scenario[key]
             print(
                 f"| {scenario['scenario']} | {item['label']} | {item['avg_ms']:.3f} | "
-                f"{item['avg_execute_count']:.3f} | {item['avg_fetched_rows']:.3f} | {item['result_count']} |"
+                f"{item['avg_execute_count']:.3f} | {item['avg_fetched_cells']:.3f} | {item['result_count']} |"
             )
         print(
             f"| {scenario['scenario']} | speedup | {scenario['time_speedup_vs_legacy']:.3f}x | "
-            f"{scenario['query_reduction_vs_legacy']:.3f}x | {scenario['row_reduction_vs_legacy']:.3f}x | - |"
+                f"{scenario['query_reduction_vs_legacy']:.3f}x | {scenario['cell_reduction_vs_legacy']:.3f}x | - |"
         )
 
 
@@ -757,7 +756,7 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         scenario["legacy_emulation"] = legacy.to_dict()
         scenario["time_speedup_vs_legacy"] = round(_speedup_ratio(current, legacy, "avg_ms") or 0.0, 3)
         scenario["query_reduction_vs_legacy"] = round(_speedup_ratio(current, legacy, "avg_executes") or 0.0, 3)
-        scenario["row_reduction_vs_legacy"] = round(_speedup_ratio(current, legacy, "avg_rows") or 0.0, 3)
+        scenario["cell_reduction_vs_legacy"] = round(_speedup_ratio(current, legacy, "avg_cells") or 0.0, 3)
         benchmarks.append(scenario)
 
     return {
