@@ -317,6 +317,41 @@ def _write_session_state(
     )
 
 
+def _touch_sessions_after_agent_tasks(
+    conn,
+    updates: Iterable[tuple[int, datetime, str]],
+) -> None:
+    payloads = [
+        (
+            SESSION_STATUS_OPEN,
+            int(trigger_message_id),
+            int(trigger_message_id),
+            ts,
+            session_id,
+        )
+        for trigger_message_id, ts, session_id in updates
+    ]
+    if not payloads:
+        return
+    with conn.driver_connection.cursor() as cursor:
+        cursor.executemany(
+            """
+            UPDATE chat_agent_sessions
+            SET status = %s,
+                close_reason = NULL,
+                ended_at = NULL,
+                last_seen_message_id = CASE
+                  WHEN last_seen_message_id IS NULL OR last_seen_message_id < %s THEN %s
+                  ELSE last_seen_message_id
+                END,
+                updated_at = %s
+            WHERE session_id = %s
+            """,
+            payloads,
+        )
+    conn.driver_connection.commit()
+
+
 def get_or_create_agent_session(
     conn,
     *,
@@ -1055,6 +1090,7 @@ def enqueue_due_silence_probe_tasks(
     )
     examined = 0
     enqueued_refs: list[dict[str, Any]] = []
+    session_touch_updates: list[tuple[int, datetime, str]] = []
     raw_rows = [row_to_dict(raw) for raw in cur.fetchall()]
     sessions = [_inflate_session(row) for row in raw_rows]
     hydrated_sessions = [session for session in sessions if session]
@@ -1086,6 +1122,7 @@ def enqueue_due_silence_probe_tasks(
             continue
         if str(message.get("source") or "") != "user":
             continue
+        session_touch_updates.append((int(message["message_id"]), ts, str(session["session_id"])))
         task = enqueue_agent_task(
             conn,
             session_id=str(session["session_id"]),
@@ -1096,6 +1133,7 @@ def enqueue_due_silence_probe_tasks(
             trigger_channel_key="main_group",
             reason=TASK_REASON_SILENCE_PROBE,
             update_last_user_message_at=False,
+            touch_session=False,
             now=ts,
         )
         if task.get("_inserted"):
@@ -1106,6 +1144,7 @@ def enqueue_due_silence_probe_tasks(
                     "trigger_message_id": int(message["message_id"]),
                 }
             )
+    _touch_sessions_after_agent_tasks(conn, session_touch_updates)
     return {
         "examined_sessions": examined,
         "enqueued": len(enqueued_refs),
@@ -1139,6 +1178,7 @@ def enqueue_due_post_chat_followup_tasks(
 
     examined = 0
     enqueued_refs: list[dict[str, Any]] = []
+    session_touch_updates: list[tuple[int, datetime, str]] = []
     raw_rows = [row_to_dict(raw) for raw in cur.fetchall()]
     sessions = [_inflate_session(row) for row in raw_rows]
     hydrated_sessions = [session for session in sessions if session]
@@ -1192,6 +1232,7 @@ def enqueue_due_post_chat_followup_tasks(
         conversation = main_group_conversations.get(str(session["case_id"]))
         if not conversation:
             continue
+        session_touch_updates.append((chat_end_message_id, ts, str(session["session_id"])))
         task = enqueue_agent_task(
             conn,
             session_id=str(session["session_id"]),
@@ -1202,6 +1243,7 @@ def enqueue_due_post_chat_followup_tasks(
             trigger_channel_key="main_group",
             reason=TASK_REASON_POST_CHAT_REVIEW,
             update_last_user_message_at=False,
+            touch_session=False,
             now=ts,
         )
         if task.get("_inserted"):
@@ -1219,6 +1261,7 @@ def enqueue_due_post_chat_followup_tasks(
             if len(enqueued_refs) >= lim:
                 break
 
+    _touch_sessions_after_agent_tasks(conn, session_touch_updates)
     return {
         "examined_sessions": examined,
         "enqueued": len(enqueued_refs),
