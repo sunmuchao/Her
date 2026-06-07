@@ -88,11 +88,21 @@ from .pairs import (
 )
 from .pool_members import get_pool_member, get_pool_members_by_ids, list_active_pool_members
 
+def _chat_tables_unavailable(exc: Exception) -> bool:
+    message = str(exc or "").lower()
+    return "chat_conversations" in message and ("doesn't exist" in message or "does not exist" in message)
+
+
 def get_agent_participant_id(conn, case_id: str) -> str | None:
     """获取案例中的agent participant ID，如果没有则返回固定的虚拟agent ID"""
     # 尝试从现有的会话中获取agent ID
     from chat_system.conversations import list_case_conversations
-    conversations = list_case_conversations(conn, case_id)
+    try:
+        conversations = list_case_conversations(conn, case_id)
+    except Exception as exc:
+        if not _chat_tables_unavailable(exc):
+            raise
+        conversations = []
     for conv in conversations or []:
         for member in conv.get("members") or []:
             if member.get("member_role") == ROLE_AGENT:
@@ -149,6 +159,8 @@ def _create_assistant_dm_conversations(
             now=ts,
         )
     except Exception as e:
+        if _chat_tables_unavailable(e):
+            return
         # 创建失败时记录错误，但不中断流程
         print(f"创建 assistant_dm_a 会话失败: {e}")
 
@@ -168,6 +180,8 @@ def _create_assistant_dm_conversations(
             now=ts,
         )
     except Exception as e:
+        if _chat_tables_unavailable(e):
+            return
         # 创建失败时记录错误，但不中断流程
         print(f"创建 assistant_dm_b 会话失败: {e}")
 
