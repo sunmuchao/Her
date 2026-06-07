@@ -366,6 +366,28 @@ def load_mysql(
     include_ids: list[Any] | None = None,
     include_ids_mode: str = "or",
 ) -> list[dict[str, Any]]:
+    return [
+        row
+        for batch in iter_load_mysql_batches(
+            runtime,
+            source,
+            table_name=table_name,
+            criteria=criteria,
+            include_ids=include_ids,
+            include_ids_mode=include_ids_mode,
+        )
+        for row in batch
+    ]
+
+
+def iter_load_mysql_batches(
+    runtime: SearchSourceRuntime,
+    source: str,
+    table_name: str | None = None,
+    criteria: Mapping[str, Any] | None = None,
+    include_ids: list[Any] | None = None,
+    include_ids_mode: str = "or",
+):
     config = parse_mysql_source(runtime, source, table_name=table_name)
     normalized_source, normalized_table = runtime.resolve_profile_source(source, config.get("table"))
     effective_source = normalized_source or str(source)
@@ -412,16 +434,14 @@ def load_mysql(
     except Exception:  # noqa: BLE001
         merge_persona_into_profile_record = None  # type: ignore[assignment,misc]
 
-    records: list[dict[str, Any]] = []
     pending_rows: list[dict[str, Any]] = []
     pending_profile_ids: list[int] = []
-    append_record = records.append
     normalize_record = runtime.normalize_record
     source_file_ref = runtime.build_source_file_ref(effective_source, table)
 
-    def flush_pending_rows() -> None:
+    def flush_pending_rows() -> list[dict[str, Any]]:
         if not pending_rows:
-            return
+            return []
         personas_by_profile: dict[int, dict[str, Any]] = {}
         if pending_profile_ids and load_personas_by_profile_ids is not None:
             try:
@@ -433,6 +453,8 @@ def load_mysql(
             except Exception:  # noqa: BLE001
                 personas_by_profile = {}
 
+        batch_records: list[dict[str, Any]] = []
+        append_record = batch_records.append
         for row in pending_rows:
             profile_id = int(row["id"]) if row.get("id") is not None else None
             persona_row = personas_by_profile.get(profile_id) if profile_id is not None else None
@@ -448,6 +470,7 @@ def load_mysql(
 
         pending_rows.clear()
         pending_profile_ids.clear()
+        return batch_records
 
     for batch in iter_profile_batches(
         source_dsn=effective_source,
@@ -460,11 +483,13 @@ def load_mysql(
         pending_rows.extend(batch)
         pending_profile_ids.extend(int(row["id"]) for row in batch if row.get("id") is not None)
         if len(pending_profile_ids) >= persona_batch_size:
-            flush_pending_rows()
+            normalized_batch = flush_pending_rows()
+            if normalized_batch:
+                yield normalized_batch
 
-    flush_pending_rows()
-
-    return records
+    normalized_batch = flush_pending_rows()
+    if normalized_batch:
+        yield normalized_batch
 
 
 def load_mysql_photo_previews(
@@ -572,6 +597,30 @@ def load_source(
     )
 
 
+def iter_load_source_batches(
+    runtime: SearchSourceRuntime,
+    source: str,
+    *,
+    is_mysql_source: Callable[[str], bool],
+    table_name: str | None = None,
+    criteria: Mapping[str, Any] | None = None,
+    include_ids: list[Any] | None = None,
+    include_ids_mode: str = "or",
+):
+    if not is_mysql_source(source):
+        raise ValueError(
+            "Unsupported source type. Use a MySQL DSN such as mysql://user:pass@host:3306/db?table=profiles"
+        )
+    yield from iter_load_mysql_batches(
+        runtime,
+        source,
+        table_name=table_name,
+        criteria=criteria,
+        include_ids=include_ids,
+        include_ids_mode=include_ids_mode,
+    )
+
+
 def attach_photo_previews(
     runtime: SearchSourceRuntime,
     results: list[dict[str, Any]],
@@ -634,6 +683,8 @@ __all__ = [
     "attach_photo_previews",
     "build_mysql_prefilter",
     "detect_mysql_profile_table",
+    "iter_load_mysql_batches",
+    "iter_load_source_batches",
     "load_mysql",
     "load_mysql_photo_previews",
     "load_source",
