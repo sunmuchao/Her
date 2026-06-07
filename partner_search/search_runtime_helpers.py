@@ -482,6 +482,7 @@ class SearchRuntimeHelpers:
                 if self.runtime.as_int(record.get("id")) == self_id and self_id not in visible_ids:
                     records.append(record)
                     break
+        raw_records.clear()
         self.apply_request_self_profile_context(request, criteria, records)
         return criteria, records
 
@@ -513,10 +514,14 @@ class SearchRuntimeHelpers:
             normalized_request["photo_preview_count"],
             photos_table_name=normalized_request["photos_table_name"],
         )
-        search_run = self.build_search_run(criteria, records, results)
         if results:
             # Match results do not use the full scanned record pool after ranking.
-            search_run["records"] = []
+            records_count = len(records)
+            records.clear()
+            search_run = self.build_search_run(criteria, records, results)
+            search_run["records_count"] = records_count
+        else:
+            search_run = self.build_search_run(criteria, records, results)
         return self.populate_no_match_details(
             search_run,
             argparse.Namespace(limit=normalized_request["limit"]),

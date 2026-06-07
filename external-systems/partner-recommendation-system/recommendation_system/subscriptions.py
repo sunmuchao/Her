@@ -315,6 +315,28 @@ def get_subscription(conn, subscription_id: str) -> dict[str, Any]:
     return subscription
 
 
+def list_subscriptions_by_ids(conn, subscription_ids: Iterable[str]) -> dict[str, dict[str, Any]]:
+    normalized = [str(item).strip() for item in subscription_ids if str(item or "").strip()]
+    if not normalized:
+        return {}
+    placeholders = ", ".join(["?"] * len(normalized))
+    rows = conn.execute(
+        f"""
+        SELECT *
+        FROM saved_search_subscriptions
+        WHERE subscription_id IN ({placeholders})
+        """,
+        tuple(normalized),
+    ).fetchall()
+    grouped: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        subscription = row_to_dict(row)
+        subscription_id = str(subscription.get("subscription_id") or "").strip()
+        if subscription_id:
+            grouped[subscription_id] = subscription
+    return grouped
+
+
 def create_subscription(
     conn,
     *,

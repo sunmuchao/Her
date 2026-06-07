@@ -67,10 +67,12 @@ PersonaResolver = Callable[[dict[str, Any]], Optional[dict[str, Any]]]
 
 from .recommendation_rows import (
     inflate_recommendation,
+    _merge_recommendation_subscription_fields,
     list_recommendation_actions_for_recommendation,
     list_recommendation_actions_for_recommendations,
     list_recommendations_for_subscription,
 )
+from .subscriptions import list_subscriptions_by_ids
 
 def _inflate_recommendation_action_row(action: dict[str, Any]) -> dict[str, Any]:
     inflated = dict(action)
@@ -277,12 +279,19 @@ def list_recommendation_conversion_views_for_subscription(
 
     recommendation_ids = []
     row_dicts = [row_to_dict(row) for row in recommendation_rows]
+    subscriptions_by_id = list_subscriptions_by_ids(
+        conn,
+        [str(row_dict.get("subscription_id") or "").strip() for row_dict in row_dicts],
+    )
     for row_dict in row_dicts:
         recommendation_ids.append(int(row_dict["recommendation_id"]))
     actions_by_recommendation_id = list_recommendation_actions_for_recommendations(conn, recommendation_ids)
     recommendations = [
         inflate_recommendation(
-            row_dict,
+            _merge_recommendation_subscription_fields(
+                row_dict,
+                subscriptions_by_id.get(str(row_dict.get("subscription_id") or "").strip()),
+            ),
             conn=conn,
             preloaded_action_rows=actions_by_recommendation_id.get(int(row_dict["recommendation_id"])),
         )
@@ -330,4 +339,3 @@ def list_recommendation_conversion_views_for_subscription(
     finally:
         if owns_case_conn:
             case_conn.close()
-

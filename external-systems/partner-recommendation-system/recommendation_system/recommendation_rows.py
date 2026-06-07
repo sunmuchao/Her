@@ -66,7 +66,38 @@ SearchRunner = Callable[..., dict[str, Any]]
 PersonaResolver = Callable[[dict[str, Any]], Optional[dict[str, Any]]]
 
 from .recommendation_transactions import commit_recommendation_transaction
-from .subscriptions import get_subscription
+from .subscriptions import get_subscription, list_subscriptions_by_ids
+
+
+_SUBSCRIPTION_RECOMMENDATION_FIELDS = (
+    "source",
+    "self_id",
+    "subscription_overrides_json",
+    "recommendation_mode",
+    "max_review_candidates_per_refresh",
+    "min_direct_greet_score",
+    "auto_reject_on_follow_up_questions",
+    "auto_reject_on_risk_flags",
+    "daily_notification_cap",
+    "quiet_hours_start",
+    "quiet_hours_end",
+    "title",
+)
+
+
+def _merge_recommendation_subscription_fields(
+    recommendation: dict[str, Any],
+    subscription: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if not subscription:
+        return recommendation
+    merged = dict(recommendation)
+    for field in _SUBSCRIPTION_RECOMMENDATION_FIELDS:
+        if field in subscription and field not in merged:
+            merged[field] = subscription[field]
+    if "subscription_title" not in merged and subscription.get("title") is not None:
+        merged["subscription_title"] = subscription.get("title")
+    return merged
 
 def list_recommendations_for_subscription(
     conn,
@@ -83,9 +114,22 @@ def list_recommendations_for_subscription(
         """,
         (subscription_id,),
     ).fetchall()
+    row_dicts = [row_to_dict(row) for row in rows]
+    if not row_dicts:
+        return []
+    if preloaded_actions_by_recommendation_id is None:
+        preloaded_actions_by_recommendation_id = list_recommendation_actions_for_recommendations(
+            conn,
+            [
+                int(row_dict["recommendation_id"])
+                for row_dict in row_dicts
+                if row_dict.get("recommendation_id") is not None
+            ],
+        )
+    subscription = list_subscriptions_by_ids(conn, [subscription_id]).get(subscription_id)
     inflated: list[dict[str, Any]] = []
-    for row in rows:
-        row_dict = row_to_dict(row)
+    for row_dict in row_dicts:
+        row_dict = _merge_recommendation_subscription_fields(row_dict, subscription)
         rid = row_dict.get("recommendation_id")
         preloaded = None
         if preloaded_actions_by_recommendation_id is not None and rid is not None:
@@ -464,7 +508,11 @@ def get_recommendation(conn, subscription_id: str, candidate_id: int) -> dict[st
     row_dict = row_to_dict(row)
     if not row_dict:
         return None
-    return inflate_recommendation(row_dict, conn=conn)
+    subscription = list_subscriptions_by_ids(conn, [subscription_id]).get(subscription_id)
+    return inflate_recommendation(
+        _merge_recommendation_subscription_fields(row_dict, subscription),
+        conn=conn,
+    )
 
 
 def get_recommendation_by_id(conn, recommendation_id: int) -> dict[str, Any] | None:
@@ -479,7 +527,12 @@ def get_recommendation_by_id(conn, recommendation_id: int) -> dict[str, Any] | N
     row_dict = row_to_dict(row)
     if not row_dict:
         return None
-    return inflate_recommendation(row_dict, conn=conn)
+    subscription_id = str(row_dict.get("subscription_id") or "").strip()
+    subscription = list_subscriptions_by_ids(conn, [subscription_id]).get(subscription_id)
+    return inflate_recommendation(
+        _merge_recommendation_subscription_fields(row_dict, subscription),
+        conn=conn,
+    )
 
 
 def upsert_recommendation(
