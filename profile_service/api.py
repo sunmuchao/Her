@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 import threading
+import time
 from collections.abc import Callable
 from typing import Any, Mapping, Sequence
 from urllib.parse import parse_qs, unquote, urlparse
@@ -38,6 +39,41 @@ PROFILE_TABLE_DETECTION_WEIGHTS = {
 # 全局 profile 连接池缓存
 _profile_pool_cache: dict[str, ProfileConnectionPool] = {}
 _profile_pool_lock = threading.Lock()
+_profile_metadata_cache: dict[tuple[str, str, str], tuple[float, Any]] = {}
+_profile_metadata_lock = threading.Lock()
+
+
+def _profile_metadata_ttl_seconds() -> float:
+    raw = str(os.environ.get("PROFILE_METADATA_CACHE_TTL_SECONDS", "60") or "60").strip()
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        return 60.0
+
+
+def _profile_metadata_cache_get(cache_key: tuple[str, str, str]) -> Any | None:
+    ttl = _profile_metadata_ttl_seconds()
+    if ttl <= 0:
+        return None
+    now = time.monotonic()
+    with _profile_metadata_lock:
+        cached = _profile_metadata_cache.get(cache_key)
+        if cached is None:
+            return None
+        expires_at, value = cached
+        if expires_at < now:
+            _profile_metadata_cache.pop(cache_key, None)
+            return None
+        return value
+
+
+def _profile_metadata_cache_set(cache_key: tuple[str, str, str], value: Any) -> Any:
+    ttl = _profile_metadata_ttl_seconds()
+    if ttl <= 0:
+        return value
+    with _profile_metadata_lock:
+        _profile_metadata_cache[cache_key] = (time.monotonic() + ttl, value)
+    return value
 
 
 class ProfileConnectionPool:
@@ -138,6 +174,10 @@ def _normalize_column_key(value: Any) -> str:
 
 
 def _list_schema_tables(profile_conn: MySQLCompatConnection) -> list[str]:
+    cache_key = ("schema_tables", str(profile_conn.config["database"]), "")
+    cached = _profile_metadata_cache_get(cache_key)
+    if isinstance(cached, list):
+        return list(cached)
     rows = profile_conn.execute(
         """
         SELECT table_name AS table_name
@@ -147,10 +187,15 @@ def _list_schema_tables(profile_conn: MySQLCompatConnection) -> list[str]:
         """,
         (profile_conn.config["database"],),
     ).fetchall()
-    return [str(row.get("table_name") or "").strip() for row in rows if str(row.get("table_name") or "").strip()]
+    tables = [str(row.get("table_name") or "").strip() for row in rows if str(row.get("table_name") or "").strip()]
+    return list(_profile_metadata_cache_set(cache_key, tables))
 
 
 def _list_table_columns(profile_conn: MySQLCompatConnection, source_table_name: str) -> list[str]:
+    cache_key = ("table_columns", str(profile_conn.config["database"]), str(source_table_name))
+    cached = _profile_metadata_cache_get(cache_key)
+    if isinstance(cached, list):
+        return list(cached)
     rows = profile_conn.execute(
         """
         SELECT column_name AS column_name
@@ -160,7 +205,20 @@ def _list_table_columns(profile_conn: MySQLCompatConnection, source_table_name: 
         """,
         (profile_conn.config["database"], source_table_name),
     ).fetchall()
-    return [str(row.get("column_name") or "").strip() for row in rows if str(row.get("column_name") or "").strip()]
+    columns = [str(row.get("column_name") or "").strip() for row in rows if str(row.get("column_name") or "").strip()]
+    return list(_profile_metadata_cache_set(cache_key, columns))
+
+
+def _table_exists(profile_conn: MySQLCompatConnection, table_name: str) -> bool:
+    return str(table_name or "").strip() in set(_list_schema_tables(profile_conn))
+
+
+def _table_column_set(profile_conn: MySQLCompatConnection, table_name: str) -> set[str]:
+    return set(_list_table_columns(profile_conn, table_name))
+
+
+def _column_exists(profile_conn: MySQLCompatConnection, table_name: str, column_name: str) -> bool:
+    return str(column_name or "").strip() in _table_column_set(profile_conn, table_name)
 
 
 def _score_profile_table(columns: Sequence[str]) -> int:
@@ -188,24 +246,25 @@ def _resolve_profile_photos_table(
 
 
 def _photo_table_order_clauses(
-    raw_conn: Any,
+    profile_conn: MySQLCompatConnection,
     photo_table: str,
     *,
     include_profile_id: bool = False,
     prioritize_avatar_type: bool = False,
 ) -> list[str]:
+    columns = _table_column_set(profile_conn, photo_table)
     clauses: list[str] = []
     if include_profile_id:
         clauses.append(f"{schema.quote_mysql_ident('profile_id')} ASC")
-    if schema.column_exists(raw_conn, photo_table, "is_primary"):
+    if "is_primary" in columns:
         clauses.append(f"{schema.quote_mysql_ident('is_primary')} DESC")
-    if prioritize_avatar_type and schema.column_exists(raw_conn, photo_table, "photo_type"):
+    if prioritize_avatar_type and "photo_type" in columns:
         clauses.append(
             f"CASE WHEN {schema.quote_mysql_ident('photo_type')} = 'avatar' THEN 0 ELSE 1 END ASC"
         )
-    if schema.column_exists(raw_conn, photo_table, "sort_order"):
+    if "sort_order" in columns:
         clauses.append(f"{schema.quote_mysql_ident('sort_order')} ASC")
-    if schema.column_exists(raw_conn, photo_table, "id"):
+    if "id" in columns:
         clauses.append(f"{schema.quote_mysql_ident('id')} ASC")
     return clauses
 
@@ -241,6 +300,10 @@ def _photo_sources(items: Sequence[Mapping[str, Any]]) -> list[str]:
 
 
 def detect_profile_table(*, source_dsn: str) -> str | None:
+    cache_key = ("detected_profile_table", str(source_dsn), "")
+    cached = _profile_metadata_cache_get(cache_key)
+    if cached is not None:
+        return str(cached) or None
     profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
     try:
         scored_tables: list[tuple[str, int]] = []
@@ -259,7 +322,7 @@ def detect_profile_table(*, source_dsn: str) -> str | None:
                 + ", ".join(best_tables)
                 + ". Specify ?table=... in the DSN or pass --table."
             )
-        return best_tables[0]
+        return str(_profile_metadata_cache_set(cache_key, best_tables[0]))
     finally:
         release_profile_connection(source_dsn, profile_conn)
 
@@ -272,8 +335,7 @@ def list_profile_columns(
     _require_profile_source(source_dsn=source_dsn, source_table_name=source_table_name)
     profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
     try:
-        raw_conn = profile_conn.driver_connection
-        if not schema.table_exists(raw_conn, source_table_name):
+        if not _table_exists(profile_conn, source_table_name):
             raise ValueError(f"profile table {source_table_name} was not found")
         return _list_table_columns(profile_conn, source_table_name)
     finally:
@@ -312,8 +374,7 @@ def iter_profile_batches(
     _require_profile_source(source_dsn=source_dsn, source_table_name=source_table_name)
     profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
     try:
-        raw_conn = profile_conn.driver_connection
-        if not schema.table_exists(raw_conn, source_table_name):
+        if not _table_exists(profile_conn, source_table_name):
             raise ValueError(f"profile table {source_table_name} was not found")
         normalized_where = str(where_clause or "").strip()
         base_sql = f"SELECT * FROM {schema.quote_mysql_ident(source_table_name)}"
@@ -327,17 +388,52 @@ def iter_profile_batches(
                 yield [dict(row) for row in rows]
             return
 
-        offset = 0
+        has_id_column = _column_exists(profile_conn, source_table_name, "id")
         page_size = max(1, int(batch_size))
+        if not has_id_column:
+            offset = 0
+            while True:
+                paged_sql = f"{base_sql} LIMIT {page_size} OFFSET {offset}"
+                rows = profile_conn.execute(paged_sql, query_params).fetchall()
+                if not rows:
+                    break
+                yield [dict(row) for row in rows]
+                if len(rows) < page_size:
+                    break
+                offset += page_size
+            return
+
+        id_column = schema.quote_mysql_ident("id")
+        ordered_base_sql = f"{base_sql} ORDER BY {id_column} ASC"
+        last_seen_id: int | None = None
         while True:
-            paged_sql = f"{base_sql} LIMIT {page_size} OFFSET {offset}"
-            rows = profile_conn.execute(paged_sql, query_params).fetchall()
+            if last_seen_id is None:
+                paged_sql = f"{ordered_base_sql} LIMIT {page_size}"
+                paged_params = query_params
+            elif normalized_where:
+                paged_sql = (
+                    f"SELECT * FROM {schema.quote_mysql_ident(source_table_name)} "
+                    f"{normalized_where} AND {id_column} > ? "
+                    f"ORDER BY {id_column} ASC LIMIT {page_size}"
+                )
+                paged_params = query_params + (last_seen_id,)
+            else:
+                paged_sql = (
+                    f"SELECT * FROM {schema.quote_mysql_ident(source_table_name)} "
+                    f"WHERE {id_column} > ? ORDER BY {id_column} ASC LIMIT {page_size}"
+                )
+                paged_params = (last_seen_id,)
+            rows = profile_conn.execute(paged_sql, paged_params).fetchall()
             if not rows:
                 break
-            yield [dict(row) for row in rows]
-            if len(rows) < page_size:
+            batch = [dict(row) for row in rows]
+            yield batch
+            if len(batch) < page_size:
                 break
-            offset += page_size
+            last_ids = [int(row["id"]) for row in batch if row.get("id") is not None]
+            if not last_ids:
+                break
+            last_seen_id = last_ids[-1]
     finally:
         release_profile_connection(source_dsn, profile_conn)
 
@@ -367,8 +463,7 @@ def get_profile(
     _require_profile_source(source_dsn=source_dsn, source_table_name=source_table_name)
     profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
     try:
-        raw_conn = profile_conn.driver_connection
-        if not schema.column_exists(raw_conn, source_table_name, "id"):
+        if not _column_exists(profile_conn, source_table_name, "id"):
             raise ValueError(f"profile table {source_table_name} is missing id column")
         row = profile_conn.execute(
             f"SELECT * FROM {schema.quote_mysql_ident(source_table_name)} "
@@ -395,8 +490,7 @@ def get_public_profile(
         raise ValueError("source_dsn is required")
     profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
     try:
-        raw_conn = profile_conn.driver_connection
-        if not schema.table_exists(raw_conn, public_view_name):
+        if not _table_exists(profile_conn, public_view_name):
             raise ValueError(f"public profile view {public_view_name} was not found")
         row = profile_conn.execute(
             f"SELECT * FROM {schema.quote_mysql_ident(public_view_name)} "
@@ -424,28 +518,27 @@ def list_profile_photo_previews(
         return {}
     profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
     try:
-        raw_conn = profile_conn.driver_connection
         photo_table = _resolve_profile_photos_table(source_dsn, photos_table_name=photos_table_name)
         if not photo_table:
             return {}
-        if not schema.table_exists(raw_conn, photo_table):
+        if not _table_exists(profile_conn, photo_table):
             raise ValueError(f"profile photos table {photo_table} was not found")
-        if not schema.column_exists(raw_conn, photo_table, "profile_id") or not schema.column_exists(raw_conn, photo_table, "photo_url"):
+        photo_columns = _table_column_set(profile_conn, photo_table)
+        if "profile_id" not in photo_columns or "photo_url" not in photo_columns:
             raise ValueError(f"profile photos table {photo_table} must contain profile_id and photo_url columns")
         placeholders = ", ".join(["?"] * len(normalized_profile_ids))
         order_clauses = [f"{schema.quote_mysql_ident('profile_id')} ASC"]
-        has_is_primary = schema.column_exists(raw_conn, photo_table, "is_primary")
-        if schema.column_exists(raw_conn, photo_table, "is_primary"):
+        has_is_primary = "is_primary" in photo_columns
+        if has_is_primary:
             order_clauses.append(f"CASE WHEN {schema.quote_mysql_ident('is_primary')} = 1 THEN 0 ELSE 1 END")
-        else:
-            if schema.column_exists(raw_conn, photo_table, "photo_type"):
-                order_clauses.append(
-                    f"CASE WHEN {schema.quote_mysql_ident('photo_type')} = 'avatar' THEN 0 ELSE 1 END"
-                )
+        elif "photo_type" in photo_columns:
+            order_clauses.append(
+                f"CASE WHEN {schema.quote_mysql_ident('photo_type')} = 'avatar' THEN 0 ELSE 1 END"
+            )
         order_clauses.extend(
             clause
             for clause in _photo_table_order_clauses(
-                raw_conn,
+                profile_conn,
                 photo_table,
             )
             if clause not in order_clauses
@@ -491,8 +584,7 @@ def list_profile_photos(
         return []
     profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
     try:
-        raw_conn = profile_conn.driver_connection
-        if not schema.table_exists(raw_conn, source_table_name) or not schema.column_exists(raw_conn, source_table_name, "id"):
+        if not _table_exists(profile_conn, source_table_name) or not _column_exists(profile_conn, source_table_name, "id"):
             return []
         profile = profile_conn.execute(
             f"SELECT * FROM {schema.quote_mysql_ident(source_table_name)} "
@@ -506,12 +598,13 @@ def list_profile_photos(
         photo_table = _resolve_profile_photos_table(source_dsn, photos_table_name=photos_table_name)
         if (
             photo_table
-            and schema.table_exists(raw_conn, photo_table)
-            and schema.column_exists(raw_conn, photo_table, "profile_id")
-            and schema.column_exists(raw_conn, photo_table, "photo_url")
+            and _table_exists(profile_conn, photo_table)
         ):
+            photo_columns = _table_column_set(profile_conn, photo_table)
+            if "profile_id" not in photo_columns or "photo_url" not in photo_columns:
+                return out
             order_clauses = _photo_table_order_clauses(
-                raw_conn,
+                profile_conn,
                 photo_table,
                 prioritize_avatar_type=True,
             )
@@ -583,38 +676,37 @@ def list_comparison_profile_photos(
     normalized_limit = max(1, int(limit))
     profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
     try:
-        raw_conn = profile_conn.driver_connection
         photo_table = _resolve_profile_photos_table(source_dsn, photos_table_name=photos_table_name)
         out: list[dict[str, Any]] = []
         seen: set[str] = set()
         if (
             photo_table
-            and schema.table_exists(raw_conn, photo_table)
-            and schema.column_exists(raw_conn, photo_table, "profile_id")
-            and schema.column_exists(raw_conn, photo_table, "photo_url")
+            and _table_exists(profile_conn, photo_table)
         ):
-            order_sql = ", ".join(_photo_table_order_clauses(raw_conn, photo_table, include_profile_id=True))
-            rows = profile_conn.execute(
-                (
-                    f"SELECT {schema.quote_mysql_ident('profile_id')} AS profile_id, "
-                    f"{schema.quote_mysql_ident('photo_url')} AS photo_url "
-                    f"FROM {schema.quote_mysql_ident(photo_table)} "
-                    f"WHERE {schema.quote_mysql_ident('profile_id')} <> ? "
-                    f"ORDER BY {order_sql} LIMIT ?"
-                ),
-                (int(profile_id), normalized_limit),
-            ).fetchall()
-            _append_unique_photo_entries(
-                out,
-                seen,
-                [dict(row) for row in rows],
-                source_key="photo_url",
-                asset_origin="photo_table",
-                owner_key="profile_id",
-            )
+            photo_columns = _table_column_set(profile_conn, photo_table)
+            if "profile_id" in photo_columns and "photo_url" in photo_columns:
+                order_sql = ", ".join(_photo_table_order_clauses(profile_conn, photo_table, include_profile_id=True))
+                rows = profile_conn.execute(
+                    (
+                        f"SELECT {schema.quote_mysql_ident('profile_id')} AS profile_id, "
+                        f"{schema.quote_mysql_ident('photo_url')} AS photo_url "
+                        f"FROM {schema.quote_mysql_ident(photo_table)} "
+                        f"WHERE {schema.quote_mysql_ident('profile_id')} <> ? "
+                        f"ORDER BY {order_sql} LIMIT ?"
+                    ),
+                    (int(profile_id), normalized_limit),
+                ).fetchall()
+                _append_unique_photo_entries(
+                    out,
+                    seen,
+                    [dict(row) for row in rows],
+                    source_key="photo_url",
+                    asset_origin="photo_table",
+                    owner_key="profile_id",
+                )
         if out:
             return out
-        if schema.table_exists(raw_conn, source_table_name) and schema.column_exists(raw_conn, source_table_name, "avatar_url"):
+        if _table_exists(profile_conn, source_table_name) and _column_exists(profile_conn, source_table_name, "avatar_url"):
             rows = profile_conn.execute(
                 (
                     f"SELECT {schema.quote_mysql_ident('id')} AS id, "

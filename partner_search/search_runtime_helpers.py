@@ -440,6 +440,7 @@ class SearchRuntimeHelpers:
         return {
             "criteria": criteria,
             "records": records,
+            "records_count": len(records),
             "results": results,
             "fallback_results": None,
             "diagnostics": None,
@@ -513,6 +514,9 @@ class SearchRuntimeHelpers:
             photos_table_name=normalized_request["photos_table_name"],
         )
         search_run = self.build_search_run(criteria, records, results)
+        if results:
+            # Match results do not use the full scanned record pool after ranking.
+            search_run["records"] = []
         return self.populate_no_match_details(
             search_run,
             argparse.Namespace(limit=normalized_request["limit"]),
@@ -569,10 +573,13 @@ class SearchRuntimeHelpers:
 
     def build_pool_summary(self, search_run):
         diagnostics = search_run.get("diagnostics") or {}
+        scanned_count = search_run.get("records_count")
+        if scanned_count is None:
+            scanned_count = len(search_run.get("records") or [])
         return {
-            "scanned_count": len(search_run.get("records") or []),
+            "scanned_count": scanned_count,
             "passed_count": len(search_run.get("results") or []),
-            "usable_count": diagnostics.get("usable_count", len(search_run.get("records") or [])),
+            "usable_count": diagnostics.get("usable_count", scanned_count),
         }
 
     def build_structured_search_response(self, search_run, include_source=False, include_text=False):
