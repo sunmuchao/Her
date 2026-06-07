@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from typing import Any, Mapping
 
 from her_env import env_int
+from her_json_utils import json_safe
 from her_time_utils import format_dt, parse_dt
 
 _TABLE = "partner_search_snapshots"
@@ -107,7 +108,15 @@ def store_persisted_search_run(criteria_hash: str, search_run: Mapping[str, Any]
         return
     now = datetime.utcnow()
     expires_at = now + timedelta(seconds=ttl)
-    payload = json.dumps(dict(search_run), ensure_ascii=False, default=str)
+    payload = json.dumps(
+        json_safe(
+            dict(search_run),
+            stringify_mapping_keys=True,
+            sort_sets=True,
+        ),
+        ensure_ascii=False,
+        default=str,
+    )
     try:
         with conn.cursor() as cursor:
             cursor.execute(
