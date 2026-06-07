@@ -401,6 +401,7 @@ def load_mysql(
     from profile_service import iter_profile_batches
 
     batch_size = env_int("PARTNER_SEARCH_PROFILE_BATCH_SIZE", 500)
+    persona_batch_size = env_int("PARTNER_SEARCH_PERSONA_BATCH_SIZE", max(batch_size * 4, batch_size))
     try:
         from match_domain.persona_loader import load_personas_by_profile_ids
     except Exception:  # noqa: BLE001
@@ -412,9 +413,38 @@ def load_mysql(
         merge_persona_into_profile_record = None  # type: ignore[assignment,misc]
 
     records: list[dict[str, Any]] = []
+    pending_rows: list[dict[str, Any]] = []
+    pending_profile_ids: list[int] = []
     append_record = records.append
     normalize_record = runtime.normalize_record
     source_file_ref = runtime.build_source_file_ref(effective_source, table)
+
+    def flush_pending_rows() -> None:
+        if not pending_rows:
+            return
+        personas_by_profile: dict[int, dict[str, Any]] = {}
+        if pending_profile_ids and load_personas_by_profile_ids is not None:
+            try:
+                personas_by_profile = load_personas_by_profile_ids(
+                    source=effective_source,
+                    profile_ids=pending_profile_ids,
+                )
+            except Exception:  # noqa: BLE001
+                personas_by_profile = {}
+
+        for row in pending_rows:
+            profile_id = int(row["id"]) if row.get("id") is not None else None
+            persona_row = personas_by_profile.get(profile_id) if profile_id is not None else None
+            row_dict = row
+            if persona_row is not None and merge_persona_into_profile_record is not None:
+                row_dict = merge_persona_into_profile_record(row_dict, persona_row)
+            row_dict = dict(row_dict)
+            row_dict["source_file"] = source_file_ref
+            append_record(normalize_record(row_dict))
+
+        pending_rows.clear()
+        pending_profile_ids.clear()
+
     for batch in iter_profile_batches(
         source_dsn=effective_source,
         source_table_name=table,
@@ -423,25 +453,12 @@ def load_mysql(
         selected_columns=selected_columns,
         batch_size=batch_size,
     ):
-        profile_ids = [int(row["id"]) for row in batch if row.get("id") is not None]
-        personas_by_profile: dict[int, dict[str, Any]] = {}
-        if profile_ids and load_personas_by_profile_ids is not None:
-            try:
-                personas_by_profile = load_personas_by_profile_ids(
-                    source=effective_source,
-                    profile_ids=profile_ids,
-                )
-            except Exception:  # noqa: BLE001
-                personas_by_profile = {}
+        pending_rows.extend(batch)
+        pending_profile_ids.extend(int(row["id"]) for row in batch if row.get("id") is not None)
+        if len(pending_profile_ids) >= persona_batch_size:
+            flush_pending_rows()
 
-        for row in batch:
-            profile_id = int(row["id"]) if row.get("id") is not None else None
-            persona_row = personas_by_profile.get(profile_id) if profile_id is not None else None
-            row_dict = row
-            if persona_row is not None and merge_persona_into_profile_record is not None:
-                row_dict = merge_persona_into_profile_record(row_dict, persona_row)
-            row_dict["source_file"] = source_file_ref
-            append_record(normalize_record(row_dict))
+    flush_pending_rows()
 
     return records
 

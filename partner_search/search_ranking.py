@@ -147,6 +147,21 @@ def diversity_penalty(
     return max_penalty
 
 
+def _diversity_penalty_from_overlap(runtime: SearchRankingRuntime, max_overlap: int) -> int:
+    tiers = tuple(runtime.diversity_penalty_tiers) or (6, 4, 2)
+    if max_overlap >= 4:
+        return int(tiers[0])
+    if max_overlap >= 3:
+        return int(tiers[1] if len(tiers) > 1 else tiers[0])
+    if max_overlap >= 2:
+        return int(tiers[2] if len(tiers) > 2 else tiers[-1])
+    return 0
+
+
+def _signature_overlap(left: tuple[str, str, str, str, str], right: tuple[str, str, str, str, str]) -> int:
+    return sum(1 for left_item, right_item in zip(left, right) if left_item and right_item and left_item == right_item)
+
+
 def trim_low_quality_tail(
     runtime: SearchRankingRuntime,
     results: list[dict[str, Any]],
@@ -179,6 +194,7 @@ def select_diverse_results(
 
     for item in results:
         item["_diversity_signature"] = diversity_signature(runtime, item)
+        item["_diversity_max_overlap"] = 0
 
     remaining = list(results)
     selected: list[dict[str, Any]] = []
@@ -186,7 +202,7 @@ def select_diverse_results(
         best = None
         best_key = None
         for item in remaining:
-            penalty = diversity_penalty(runtime, item, selected)
+            penalty = _diversity_penalty_from_overlap(runtime, int(item.get("_diversity_max_overlap") or 0))
             key = (
                 item["score"] - penalty,
                 item["score"],
@@ -199,8 +215,14 @@ def select_diverse_results(
                 best_key = key
         selected.append(best)
         remaining.remove(best)
+        best_signature = best["_diversity_signature"]
+        for item in remaining:
+            overlap = _signature_overlap(item["_diversity_signature"], best_signature)
+            if overlap > int(item.get("_diversity_max_overlap") or 0):
+                item["_diversity_max_overlap"] = overlap
     for item in selected:
         materialize_result_profile(runtime, item)
+        item.pop("_diversity_max_overlap", None)
     return selected
 
 
