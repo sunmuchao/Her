@@ -412,6 +412,8 @@ def load_mysql(
         merge_persona_into_profile_record = None  # type: ignore[assignment,misc]
 
     records: list[dict[str, Any]] = []
+    append_record = records.append
+    normalize_record = runtime.normalize_record
     source_file_ref = runtime.build_source_file_ref(effective_source, table)
     for batch in iter_profile_batches(
         source_dsn=effective_source,
@@ -433,19 +435,13 @@ def load_mysql(
                 personas_by_profile = {}
 
         for row in batch:
-            row_dict = dict(row)
-            profile_id = int(row_dict["id"]) if row_dict.get("id") is not None else None
+            profile_id = int(row["id"]) if row.get("id") is not None else None
             persona_row = personas_by_profile.get(profile_id) if profile_id is not None else None
+            row_dict = row
             if persona_row is not None and merge_persona_into_profile_record is not None:
                 row_dict = merge_persona_into_profile_record(row_dict, persona_row)
-            records.append(
-                runtime.normalize_record(
-                    dict(
-                        row_dict,
-                        source_file=source_file_ref,
-                    )
-                )
-            )
+            row_dict["source_file"] = source_file_ref
+            append_record(normalize_record(row_dict))
 
     return records
 

@@ -632,6 +632,45 @@ class RecommendationSystemTests(unittest.TestCase):
         self.assertEqual(recommendations[0]["final_review_status"], "match_ready")
         self.assertEqual(recommendations[0]["delivery_status"], "delivered")
 
+    def test_deliver_in_app_recommendations_reuses_preloaded_rows_for_relation_revision(self):
+        subscription = self.create_active_subscription()
+        refresh_subscription(
+            self.conn,
+            subscription["subscription_id"],
+            now=datetime(2026, 4, 30, 9, 0, 0),
+            search_runner=lambda **_: {"results": [build_result(214, "复用行对象", 69)]},
+        )
+        record_user_review(
+            self.conn,
+            subscription_id=subscription["subscription_id"],
+            candidate_id=214,
+            review_type="direct_greet",
+            now=datetime(2026, 4, 30, 9, 30, 0),
+        )
+
+        executed_sql = []
+        original_execute = type(self.conn).execute
+
+        def counted_execute(conn, sql, parameters=None):
+            executed_sql.append(str(sql))
+            return original_execute(conn, sql, parameters)
+
+        with patch.object(
+            type(self.conn),
+            "execute",
+            autospec=True,
+            side_effect=counted_execute,
+        ):
+            summary = deliver_in_app_recommendations(
+                self.conn,
+                now=datetime(2026, 4, 30, 10, 0, 0),
+            )
+
+        self.assertEqual(summary["delivered_count"], 1)
+        self.assertFalse(
+            any("SELECT * FROM profile_recommendations WHERE recommendation_id = ?" in sql for sql in executed_sql)
+        )
+
     def test_skip_action_applies_cooldown_and_blocks_redelivery_until_expiry(self):
         subscription = self.create_active_subscription(daily_notification_cap=5)
         refresh_subscription(
