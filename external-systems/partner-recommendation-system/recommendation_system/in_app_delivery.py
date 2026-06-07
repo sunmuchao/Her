@@ -208,6 +208,14 @@ def build_in_app_card(recommendation: dict[str, Any], subscription_title: str) -
     }
 
 
+def _row_within_quiet_hours(row_dict: dict[str, Any], now: datetime) -> bool:
+    return within_quiet_hours(
+        now,
+        int(row_dict["quiet_hours_start"]),
+        int(row_dict["quiet_hours_end"]),
+    )
+
+
 def deliver_in_app_recommendations(conn, *, now: datetime | None = None) -> dict[str, Any]:
     from .recommendation_rows import (
         append_relation_state_revision_event,
@@ -265,6 +273,17 @@ def deliver_in_app_recommendations(conn, *, now: datetime | None = None) -> dict
     held_daily_cap = 0
 
     for row_dict in row_dicts:
+        requester_id = int(row_dict["requester_id"])
+        if _row_within_quiet_hours(row_dict, now):
+            held_quiet_hours += 1
+            continue
+
+        delivered_today = delivered_today_cache.get(requester_id, 0)
+        if delivered_today >= int(row_dict["daily_notification_cap"]):
+            held_daily_cap += 1
+            delivered_today_cache[requester_id] = delivered_today
+            continue
+
         recommendation = inflate_recommendation(
             row_dict,
             conn=conn,
@@ -272,21 +291,6 @@ def deliver_in_app_recommendations(conn, *, now: datetime | None = None) -> dict
                 int(row_dict["recommendation_id"]),
             ),
         )
-        requester_id = int(recommendation["requester_id"])
-        if within_quiet_hours(
-            now,
-            int(recommendation["quiet_hours_start"]),
-            int(recommendation["quiet_hours_end"]),
-        ):
-            held_quiet_hours += 1
-            continue
-
-        delivered_today = delivered_today_cache.get(requester_id, 0)
-        if delivered_today >= int(recommendation["daily_notification_cap"]):
-            held_daily_cap += 1
-            delivered_today_cache[requester_id] = delivered_today
-            continue
-
         card = build_in_app_card(recommendation, recommendation["subscription_title"])
         card_id = generate_card_id()
         conn.execute(

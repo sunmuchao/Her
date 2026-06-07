@@ -564,19 +564,16 @@ def list_conversation_messages_for_conversations(
         )
         rows = cur.fetchall()
     except Exception:
-        rows = []
-        for conversation_id in allowed_ids:
-            cur = conn.execute(
-                """
-                SELECT *
-                FROM chat_conversation_messages
-                WHERE conversation_id = ?
-                ORDER BY message_id DESC
-                LIMIT ?
-                """,
-                (conversation_id, lim),
-            )
-            rows.extend(cur.fetchall())
+        cur = conn.execute(
+            f"""
+            SELECT *
+            FROM chat_conversation_messages
+            WHERE conversation_id IN ({allowed_placeholders})
+            ORDER BY conversation_id ASC, message_id DESC
+            """,
+            allowed_ids,
+        )
+        rows = cur.fetchall()
 
     for row in rows:
         row_dict = row_to_dict(row)
@@ -586,6 +583,8 @@ def list_conversation_messages_for_conversations(
         cid = str(row_dict.get("conversation_id") or "")
         bucket = grouped.get(cid)
         if bucket is None:
+            continue
+        if len(bucket) >= lim:
             continue
         bucket.append(message)
     for cid, messages in grouped.items():

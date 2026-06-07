@@ -425,9 +425,10 @@ def load_mysql(
         personas_by_profile: dict[int, dict[str, Any]] = {}
         if pending_profile_ids and load_personas_by_profile_ids is not None:
             try:
+                unique_profile_ids = list(dict.fromkeys(pending_profile_ids))
                 personas_by_profile = load_personas_by_profile_ids(
                     source=effective_source,
-                    profile_ids=pending_profile_ids,
+                    profile_ids=unique_profile_ids,
                 )
             except Exception:  # noqa: BLE001
                 personas_by_profile = {}
@@ -438,8 +439,11 @@ def load_mysql(
             row_dict = row
             if persona_row is not None and merge_persona_into_profile_record is not None:
                 row_dict = merge_persona_into_profile_record(row_dict, persona_row)
-            row_dict = dict(row_dict)
-            row_dict["source_file"] = source_file_ref
+            if row_dict is row:
+                row_dict["source_file"] = source_file_ref
+            else:
+                row_dict = dict(row_dict)
+                row_dict["source_file"] = source_file_ref
             append_record(normalize_record(row_dict))
 
         pending_rows.clear()
