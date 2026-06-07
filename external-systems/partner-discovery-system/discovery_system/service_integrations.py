@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from datetime import datetime
 import os
@@ -17,6 +18,7 @@ from match_domain.search_visibility import search_profiles_with_visibility_gate
 from observability import metric_gauge
 from partner_search import load_self_profile, search_profiles
 from partner_search.personality_traits_reader import (
+    build_traits_context_from_persona_row,
     load_traits_for_discovery,
     load_traits_for_profiles,
     PersonalityTraitsContext,
@@ -380,11 +382,34 @@ def search_partner_candidates_with(
                 "error": "search_source_not_configured",
             },
         }
-    self_profile = load_requester_profile_with(
-        session,
-        source=source,
-        load_profile=load_profile,
-    )
+    persona_row = None
+    persona_source = persona_memory_source() or source
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        self_profile_future = executor.submit(
+            load_requester_profile_with,
+            session,
+            source=source,
+            load_profile=load_profile,
+        )
+        persona_future = (
+            executor.submit(
+                load_persona_for_discovery,
+                source=persona_source,
+                profile_id=session.profile_id,
+                requester_id=session.requester_id,
+            )
+            if persona_source
+            else None
+        )
+        try:
+            self_profile = self_profile_future.result()
+        except Exception:  # noqa: BLE001
+            self_profile = None
+        if persona_future is not None:
+            try:
+                persona_row = persona_future.result()
+            except Exception:  # noqa: BLE001
+                persona_row = None
     if isinstance(self_profile, dict) and not self_profile:
         self_profile = None
     effective_self_id = session.profile_id if isinstance(self_profile, dict) and self_profile else None
@@ -395,17 +420,6 @@ def search_partner_candidates_with(
         for key in merged_criteria
         if is_search_criteria_key(key)
     }
-    persona_row = None
-    persona_source = persona_memory_source() or source
-    if persona_source:
-        try:
-            persona_row = load_persona_for_discovery(
-                source=persona_source,
-                profile_id=session.profile_id,
-                requester_id=session.requester_id,
-            )
-        except Exception:  # noqa: BLE001
-            persona_row = None
     compiled_request = build_discovery_search_request(
         source=source,
         profile_row=self_profile,
@@ -453,7 +467,12 @@ def search_partner_candidates_with(
 
         # === Discovery personality enrichment ===
         user_traits = None
-        if persona_source and session.profile_id:
+        if persona_source and session.profile_id and persona_row:
+            user_traits = build_traits_context_from_persona_row(
+                persona_row,
+                profile_id=session.profile_id,
+            )
+        elif persona_source and session.profile_id:
             user_traits = load_traits_for_discovery(
                 source=persona_source,
                 profile_id=session.profile_id,

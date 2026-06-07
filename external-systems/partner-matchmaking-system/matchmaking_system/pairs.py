@@ -74,6 +74,74 @@ from .matchmaking_inflate import (
 )
 from .pool_members import get_pool_member, get_pool_members_by_ids, list_active_pool_members
 
+
+def get_pairs_by_keys(
+    conn,
+    pair_keys: Iterable[str],
+    *,
+    attach_profile_refs: bool = True,
+) -> dict[str, dict[str, Any]]:
+    normalized = [str(item).strip() for item in pair_keys if str(item or "").strip()]
+    if not normalized:
+        return {}
+    placeholders = ", ".join(["?"] * len(normalized))
+    rows = conn.execute(
+        f"""
+        SELECT *
+        FROM matchmaking_pairs
+        WHERE pair_key IN ({placeholders})
+        """,
+        normalized,
+    ).fetchall()
+    pairs = [inflate_pair(row_to_dict(row)) for row in rows]
+    if not attach_profile_refs:
+        return {
+            str(pair["pair_key"]): pair
+            for pair in pairs
+            if pair and str(pair.get("pair_key") or "").strip()
+        }
+    member_ids: set[str] = set()
+    for pair in pairs:
+        if not pair:
+            continue
+        member_ids.add(str(pair.get("member_low_id") or "").strip())
+        member_ids.add(str(pair.get("member_high_id") or "").strip())
+    members_by_id = get_pool_members_by_ids(conn, member_ids)
+    out: dict[str, dict[str, Any]] = {}
+    for pair in pairs:
+        if not pair:
+            continue
+        enriched = _attach_pair_profile_refs(conn, pair, members_by_id=members_by_id)
+        if enriched and str(enriched.get("pair_key") or "").strip():
+            out[str(enriched["pair_key"])] = enriched
+    return out
+
+
+def pairs_with_open_cases(
+    conn,
+    pair_keys: Iterable[str],
+) -> set[str]:
+    normalized = [str(item).strip() for item in pair_keys if str(item or "").strip()]
+    if not normalized:
+        return set()
+    placeholders = ", ".join(["?"] * len(normalized))
+    status_placeholders = ", ".join(["?"] * len(OPEN_CASE_STATUSES))
+    rows = conn.execute(
+        f"""
+        SELECT DISTINCT pair_key
+        FROM match_cases
+        WHERE pair_key IN ({placeholders})
+          AND status IN ({status_placeholders})
+        """,
+        [*normalized, *OPEN_CASE_STATUSES],
+    ).fetchall()
+    return {
+        str(row["pair_key"]).strip()
+        for row in rows
+        if str(row.get("pair_key") or "").strip()
+    }
+
+
 def get_edge(conn, owner_member_id: str, candidate_member_id: str) -> dict[str, Any] | None:
     row = conn.execute(
         """
@@ -178,7 +246,14 @@ def list_pairs(
     inflated_pairs = [inflate_pair(row_to_dict(row)) for row in rows]
     if not attach_profile_refs:
         return inflated_pairs
-    return [_attach_pair_profile_refs(conn, pair) for pair in inflated_pairs]
+    member_ids: set[str] = set()
+    for pair in inflated_pairs:
+        if not pair:
+            continue
+        member_ids.add(str(pair.get("member_low_id") or "").strip())
+        member_ids.add(str(pair.get("member_high_id") or "").strip())
+    members_by_id = get_pool_members_by_ids(conn, member_ids)
+    return [_attach_pair_profile_refs(conn, pair, members_by_id=members_by_id) for pair in inflated_pairs]
 
 
 def get_pair(conn, pair_key: str) -> dict[str, Any] | None:
@@ -210,7 +285,46 @@ def list_match_cases(conn, *, statuses: Iterable[str] | None = None) -> list[dic
         """,
         params,
     ).fetchall()
-    return [inflate_case(row_to_dict(row), conn=conn) for row in rows]
+    case_rows = [row_to_dict(row) for row in rows]
+    member_ids = {
+        str(member_id).strip()
+        for case_row in case_rows
+        for member_id in (case_row.get("first_contact_member_id"), case_row.get("second_contact_member_id"))
+        if str(member_id or "").strip()
+    }
+    members_by_id = get_pool_members_by_ids(conn, member_ids)
+    case_ids = [str(case_row.get("case_id") or "").strip() for case_row in case_rows if str(case_row.get("case_id") or "").strip()]
+    events_by_case_id: dict[str, list[dict[str, Any]]] = {}
+    if case_ids:
+        placeholders = ", ".join(["?"] * len(case_ids))
+        event_rows = conn.execute(
+            f"""
+            SELECT *
+            FROM match_case_events
+            WHERE case_id IN ({placeholders})
+            ORDER BY occurred_at ASC, event_id ASC
+            """,
+            case_ids,
+        ).fetchall()
+        for event_row in event_rows:
+            event = row_to_dict(event_row)
+            cid = str(event.get("case_id") or "").strip()
+            if cid:
+                events_by_case_id.setdefault(cid, []).append(event)
+    out: list[dict[str, Any]] = []
+    for case_row in case_rows:
+        first_member = members_by_id.get(str(case_row.get("first_contact_member_id") or "").strip())
+        second_member = members_by_id.get(str(case_row.get("second_contact_member_id") or "").strip())
+        case = inflate_case(
+            case_row,
+            conn=None if first_member is not None and second_member is not None else conn,
+            event_rows=events_by_case_id.get(str(case_row.get("case_id") or "").strip(), []),
+            member_low=first_member,
+            member_high=second_member,
+        )
+        if case:
+            out.append(case)
+    return out
 
 def list_match_case_events(conn, case_id: str) -> list[dict[str, Any]]:
     rows = conn.execute(
@@ -287,6 +401,9 @@ def _update_pair_status(
     block_reason: str | None,
     now: datetime,
     ledger_mirror: list[LedgerMirrorEntry] | None = None,
+    pair: Mapping[str, Any] | None = None,
+    member_low: Mapping[str, Any] | None = None,
+    member_high: Mapping[str, Any] | None = None,
 ) -> None:
     conn.execute(
         """
@@ -298,10 +415,10 @@ def _update_pair_status(
         """,
         (pair_status, block_reason, format_dt(now), pair_key),
     )
-    pair = get_pair(conn, pair_key)
+    pair = dict(pair or {}) or get_pair(conn, pair_key)
     if pair:
-        member_low = get_pool_member(conn, pair["member_low_id"])
-        member_high = get_pool_member(conn, pair["member_high_id"])
+        member_low = dict(member_low or {}) or get_pool_member(conn, pair["member_low_id"])
+        member_high = dict(member_high or {}) or get_pool_member(conn, pair["member_high_id"])
         _append_pair_event_to_ledger(
             pair_event_type=f"pair_{pair_status}",
             member_low=member_low,
@@ -326,12 +443,15 @@ def _evaluate_pair_state(
     low_to_high: Mapping[str, Any],
     high_to_low: Mapping[str, Any],
     now: datetime,
+    pair_has_open_case: bool | None = None,
 ) -> tuple[str, str | None]:
     existing_status = pair.get("pair_status") if pair else None
     if existing_status == "mutual_accept":
         return "mutual_accept", None
-    if existing_status == "case_opened" and pair and _pair_has_open_case(conn, pair["pair_key"]):
-        return "case_opened", "open_case_exists"
+    if existing_status == "case_opened" and pair:
+        has_open_case = pair_has_open_case if pair_has_open_case is not None else _pair_has_open_case(conn, pair["pair_key"])
+        if has_open_case:
+            return "case_opened", "open_case_exists"
 
     cooling_until_dt = parse_dt(pair.get("cooling_until")) if pair else None
     if cooling_until_dt and now < cooling_until_dt:
@@ -357,6 +477,20 @@ def build_mutual_pairs(
         (edge["owner_member_id"], edge["candidate_member_id"]): edge
         for edge in edges
     }
+    active_member_ids = {
+        str(member_id).strip()
+        for edge in edges
+        for member_id in (edge.get("owner_member_id"), edge.get("candidate_member_id"))
+        if str(member_id or "").strip()
+    }
+    members_by_id = get_pool_members_by_ids(conn, active_member_ids)
+    candidate_pair_keys = {
+        pair_key_for(owner_member_id, candidate_member_id)
+        for owner_member_id, candidate_member_id in edge_by_direction
+        if (candidate_member_id, owner_member_id) in edge_by_direction
+    }
+    existing_pairs_by_key = get_pairs_by_keys(conn, candidate_pair_keys, attach_profile_refs=False)
+    open_case_pair_keys = pairs_with_open_cases(conn, candidate_pair_keys)
     processed: set[str] = set()
     updated_pair_keys: list[str] = []
 
@@ -377,8 +511,10 @@ def build_mutual_pairs(
             low_to_high = edge_ba
             high_to_low = edge_ab
 
-        member_low = get_pool_member(conn, member_low_id)
-        member_high = get_pool_member(conn, member_high_id)
+        member_low = members_by_id.get(member_low_id)
+        member_high = members_by_id.get(member_high_id)
+        if not member_low or not member_high:
+            continue
         pair_score = min(
             int(low_to_high.get("score") or 0),
             int(high_to_low.get("score") or 0),
@@ -389,7 +525,7 @@ def build_mutual_pairs(
         )
         pair_status = "eligible"
         block_reason = None
-        existing = get_pair(conn, pair_key)
+        existing = existing_pairs_by_key.get(pair_key)
         pair_status, block_reason = _evaluate_pair_state(
             conn,
             pair=existing,
@@ -400,6 +536,7 @@ def build_mutual_pairs(
             low_to_high=low_to_high,
             high_to_low=high_to_low,
             now=now,
+            pair_has_open_case=pair_key in open_case_pair_keys,
         )
         cooling_until = existing.get("cooling_until") if existing else None
 
@@ -468,36 +605,49 @@ def build_mutual_pairs(
                 ),
             )
         updated_pair_keys.append(pair_key)
-        pair_row = get_pair(conn, pair_key)
-        if pair_row:
-            member_low_live = get_pool_member(conn, pair_row["member_low_id"])
-            member_high_live = get_pool_member(conn, pair_row["member_high_id"])
-            _append_pair_event_to_ledger(
-                pair_event_type=f"pair_{pair_status}",
-                member_low=member_low_live,
-                member_high=member_high_live,
-                pair_key=pair_key,
-                now=now,
-                actor_type="system",
-                actor_id="system",
-                payload={"pair_score": pair_score, "block_reason": block_reason},
-                ledger_mirror=ledger_mirror,
-            )
+        _append_pair_event_to_ledger(
+            pair_event_type=f"pair_{pair_status}",
+            member_low=member_low,
+            member_high=member_high,
+            pair_key=pair_key,
+            now=now,
+            actor_type="system",
+            actor_id="system",
+            payload={"pair_score": pair_score, "block_reason": block_reason},
+            ledger_mirror=ledger_mirror,
+        )
 
-    for pair in list_pairs(conn):
+    all_pairs = list_pairs(conn, attach_profile_refs=False)
+    remaining_member_ids = {
+        str(member_id).strip()
+        for pair in all_pairs
+        if pair
+        for member_id in (pair.get("member_low_id"), pair.get("member_high_id"))
+        if str(member_id or "").strip()
+    }
+    members_by_id.update(get_pool_members_by_ids(conn, remaining_member_ids.difference(members_by_id)))
+    all_pair_keys = {
+        str(pair.get("pair_key") or "").strip()
+        for pair in all_pairs
+        if pair and str(pair.get("pair_key") or "").strip()
+    }
+    open_case_pair_keys.update(pairs_with_open_cases(conn, all_pair_keys.difference(open_case_pair_keys)))
+    for pair in all_pairs:
         if pair["pair_key"] in processed:
             continue
         if pair["pair_status"] == "mutual_accept":
             continue
-        if pair["pair_status"] == "case_opened" and _pair_has_open_case(conn, pair["pair_key"]):
+        if pair["pair_status"] == "case_opened" and pair["pair_key"] in open_case_pair_keys:
             continue
 
         cooling_until_dt = parse_dt(pair.get("cooling_until"))
         if pair["pair_status"] == "cooling" and cooling_until_dt and now < cooling_until_dt:
             continue
 
-        member_low = get_pool_member(conn, pair["member_low_id"])
-        member_high = get_pool_member(conn, pair["member_high_id"])
+        member_low = members_by_id.get(str(pair["member_low_id"]))
+        member_high = members_by_id.get(str(pair["member_high_id"]))
+        if not member_low or not member_high:
+            continue
         if (
             pair["pair_status"] == "needs_revalidation"
             and (member_low.get("needs_refresh") or member_high.get("needs_refresh"))
@@ -517,6 +667,9 @@ def build_mutual_pairs(
             block_reason=block_reason,
             now=now,
             ledger_mirror=ledger_mirror,
+            pair=pair,
+            member_low=member_low,
+            member_high=member_high,
         )
         updated_pair_keys.append(pair["pair_key"])
 
@@ -618,4 +771,3 @@ def members_with_open_cases(conn, member_ids: Iterable[str]) -> set[str]:
         [*OPEN_CASE_STATUSES, *normalized, *OPEN_CASE_STATUSES, *normalized],
     ).fetchall()
     return {str(row["member_id"]).strip() for row in rows if row and row["member_id"]}
-
