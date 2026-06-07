@@ -640,6 +640,44 @@ def _inflate_submission(
     return out
 
 
+def _inflate_submission_rows(
+    conn,
+    row_dicts: list[dict[str, Any]],
+    *,
+    include_children: bool = True,
+) -> list[dict[str, Any]]:
+    if not row_dicts:
+        return []
+    submission_ids = [
+        str(row_dict.get("submission_id") or "").strip()
+        for row_dict in row_dicts
+        if str(row_dict.get("submission_id") or "").strip()
+    ]
+    moderation_states_by_subject_key = list_active_moderation_states_by_subject_keys(
+        conn,
+        [key for key in (_submission_subject_key(row_dict) for row_dict in row_dicts) if key],
+    )
+    assets_by_submission_id: dict[str, list[dict[str, Any]]] = {}
+    notifications_by_submission_id: dict[str, list[dict[str, Any]]] = {}
+    reviews_by_submission_id: dict[str, list[dict[str, Any]]] = {}
+    if include_children:
+        assets_by_submission_id = list_verification_assets_for_submissions(conn, submission_ids)
+        notifications_by_submission_id = list_verification_notifications_for_submissions(conn, submission_ids)
+        reviews_by_submission_id = list_verification_reviews_for_submissions(conn, submission_ids)
+    return [
+        _inflate_submission(
+            conn,
+            row_dict,
+            include_children=include_children,
+            preloaded_moderation_state=moderation_states_by_subject_key.get(_submission_subject_key(row_dict) or ""),
+            preloaded_assets=assets_by_submission_id.get(str(row_dict.get("submission_id") or "").strip(), []),
+            preloaded_notifications=notifications_by_submission_id.get(str(row_dict.get("submission_id") or "").strip(), []),
+            preloaded_reviews=reviews_by_submission_id.get(str(row_dict.get("submission_id") or "").strip(), []),
+        )
+        for row_dict in row_dicts
+    ]
+
+
 def _get_submission_row(conn, submission_id: str) -> dict[str, Any] | None:
     row = conn.execute(
         "SELECT * FROM verification_submissions WHERE submission_id = ? LIMIT 1",
@@ -683,6 +721,7 @@ def list_verification_submissions(
     statuses: list[str] | tuple[str, ...] | str | None = None,
     profile_id: int | None = None,
     limit: int = 100,
+    include_children: bool = True,
 ) -> list[dict[str, Any]]:
     clauses = ["verification_type = ?"]
     params: list[Any] = [VERIFICATION_TYPE_LIVE_VIDEO]
@@ -708,31 +747,7 @@ def list_verification_submissions(
         tuple(params),
     ).fetchall()
     row_dicts = [row_to_dict(row) for row in rows if row]
-    if not row_dicts:
-        return []
-    submission_ids = [
-        str(row_dict.get("submission_id") or "").strip()
-        for row_dict in row_dicts
-        if str(row_dict.get("submission_id") or "").strip()
-    ]
-    moderation_states_by_subject_key = list_active_moderation_states_by_subject_keys(
-        conn,
-        [key for key in (_submission_subject_key(row_dict) for row_dict in row_dicts) if key],
-    )
-    assets_by_submission_id = list_verification_assets_for_submissions(conn, submission_ids)
-    notifications_by_submission_id = list_verification_notifications_for_submissions(conn, submission_ids)
-    reviews_by_submission_id = list_verification_reviews_for_submissions(conn, submission_ids)
-    return [
-        _inflate_submission(
-            conn,
-            row_dict,
-            preloaded_moderation_state=moderation_states_by_subject_key.get(_submission_subject_key(row_dict) or ""),
-            preloaded_assets=assets_by_submission_id.get(str(row_dict.get("submission_id") or "").strip(), []),
-            preloaded_notifications=notifications_by_submission_id.get(str(row_dict.get("submission_id") or "").strip(), []),
-            preloaded_reviews=reviews_by_submission_id.get(str(row_dict.get("submission_id") or "").strip(), []),
-        )
-        for row_dict in row_dicts
-    ]
+    return _inflate_submission_rows(conn, row_dicts, include_children=include_children)
 
 
 def list_photo_review_requests(
@@ -749,8 +764,24 @@ def list_photo_review_requests(
         statuses=statuses,
         profile_id=profile_id,
         limit=max(1, min(int(limit), 200)),
+        include_children=False,
     )
-    return [row for row in rows if _submission_has_photo_review_task(row)]
+    filtered_rows = [dict(row) for row in rows if _submission_has_photo_review_task(row)]
+    submission_ids = [
+        str(row.get("submission_id") or "").strip()
+        for row in filtered_rows
+        if str(row.get("submission_id") or "").strip()
+    ]
+    assets_by_submission_id = list_verification_assets_for_submissions(conn, submission_ids)
+    notifications_by_submission_id = list_verification_notifications_for_submissions(conn, submission_ids)
+    reviews_by_submission_id = list_verification_reviews_for_submissions(conn, submission_ids)
+    for row in filtered_rows:
+        submission_id = str(row.get("submission_id") or "").strip()
+        row["assets"] = list(assets_by_submission_id.get(submission_id, []))
+        row["notifications"] = list(notifications_by_submission_id.get(submission_id, []))
+        row["reviews"] = list(reviews_by_submission_id.get(submission_id, []))
+        row["latest_asset"] = row["assets"][-1] if row["assets"] else None
+    return filtered_rows
 
 
 def _find_pending_photo_review_request(
