@@ -23,6 +23,7 @@ from chat_system import (  # noqa: E402
     run_chat_maintenance,
 )
 from chat_system.outbox_consumer import consume_chat_outbox_batch  # noqa: E402
+import chat_system.assistant_sessions as assistant_sessions_module  # noqa: E402
 from chat_system.storage import DEFAULT_CHAT_TEST_MYSQL_DSN, connect_db, initialize_database, reset_all_tables  # noqa: E402
 
 
@@ -710,6 +711,52 @@ class ChatConversationTests(unittest.TestCase):
         self.assertEqual(len(main_group_messages), 1)
         self.assertEqual(main_group_messages[0]["author_id"], "agent-c")
         self.assertIn("我先帮两位起个头", main_group_messages[0]["body"])
+
+    def test_claim_pending_agent_tasks_no_longer_relies_on_per_task_reload(self):
+        layout = self._create_layout()
+        by_role = {
+            item["metadata"]["layout_role"]: item
+            for item in layout["conversations"]
+        }
+        session = assistant_sessions_module.get_or_create_agent_session(
+            self.conn,
+            case_id="case-conv-1",
+            triggered_by_message_id=101,
+            now=datetime(2026, 5, 8, 21, 1, 0),
+        )
+        assistant_sessions_module.enqueue_agent_task(
+            self.conn,
+            session_id=str(session["session_id"]),
+            case_id="case-conv-1",
+            trigger_conversation_id=by_role["main_group"]["conversation_id"],
+            trigger_message_id=101,
+            trigger_author_id="user-a",
+            trigger_channel_key="main_group",
+            now=datetime(2026, 5, 8, 21, 1, 0),
+        )
+        assistant_sessions_module.enqueue_agent_task(
+            self.conn,
+            session_id=str(session["session_id"]),
+            case_id="case-conv-1",
+            trigger_conversation_id=by_role["main_group"]["conversation_id"],
+            trigger_message_id=102,
+            trigger_author_id="user-b",
+            trigger_channel_key="main_group",
+            now=datetime(2026, 5, 8, 21, 2, 0),
+        )
+
+        with patch.object(assistant_sessions_module, "get_agent_task", side_effect=AssertionError("unexpected single-task reload")):
+            claimed = assistant_sessions_module.claim_pending_agent_tasks(
+                self.conn,
+                limit=10,
+                now=datetime(2026, 5, 8, 21, 2, 5),
+            )
+
+        self.assertEqual(len(claimed), 2)
+        self.assertEqual(
+            [task["status"] for task in claimed],
+            ["running", "running"],
+        )
 
     def test_opening_probe_followup_runs_on_new_public_message_until_agent_closes_it(self):
         layout = self._create_layout()
