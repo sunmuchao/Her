@@ -239,9 +239,10 @@ class SearchRuntimeHelpers:
             lines.append(f"   {label}: {separator.join(values)}")
 
     def append_result_detail_lines(self, lines, result, profile, include_source=False):
+        display_cache = self.prepare_result_display_cache(result)
         signal_parts = self.summarize_signal_parts(profile)
         self.append_joined_line(lines, "signals", signal_parts, separator=" | ")
-        self.append_labeled_line(lines, "trust", self.runtime.build_trust_summary(profile).get("headline"))
+        self.append_labeled_line(lines, "trust", display_cache["trust_summary"].get("headline"))
         self.append_joined_line(lines, "photo_preview", result.get("photo_preview"))
         self.append_joined_line(lines, "matched_on", result["matched_on"])
         self.append_joined_line(lines, "reciprocal_on", result["reciprocal_on"])
