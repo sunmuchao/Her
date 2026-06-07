@@ -3,6 +3,7 @@ import sys
 import unittest
 import os
 from datetime import datetime
+from unittest.mock import patch
 
 
 SYSTEM_ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -223,6 +224,46 @@ class MatchmakingSystemTests(unittest.TestCase):
                 "second_contact_sent",
                 "second_reply_accepted",
             ],
+        )
+
+    def test_open_match_cases_does_not_requery_each_created_case_individually(self):
+        self.create_member("user-a", 1001)
+        self.create_member("user-b", 1002)
+        self.create_member("user-c", 1003, search_criteria={"gender": "女", "cities": ["无锡"], "relationship_goals": ["认真恋爱"]})
+        self.create_member("user-d", 1004, search_criteria={"gender": "男", "cities": ["无锡"], "relationship_goals": ["认真恋爱"]})
+
+        def fake_search_runner(**kwargs):
+            self_id = kwargs.get("self_id")
+            if self_id == 1001:
+                return {"results": [build_result(1002, "小张", 92)]}
+            if self_id == 1002:
+                return {"results": [build_result(1001, "小李", 91)]}
+            if self_id == 1003:
+                return {"results": [build_result(1004, "小王", 90)]}
+            if self_id == 1004:
+                return {"results": [build_result(1003, "小陈", 89)]}
+            return {"results": []}
+
+        refresh_active_pool(
+            self.conn,
+            now=datetime(2026, 5, 2, 9, 0, 0),
+            search_runner=fake_search_runner,
+        )
+        build_mutual_pairs(
+            self.conn,
+            now=datetime(2026, 5, 2, 9, 5, 0),
+        )
+
+        with patch("matchmaking_system.matchmaking_cases.get_match_case", side_effect=AssertionError("unexpected per-case reload")):
+            cases = open_match_cases(
+                self.conn,
+                now=datetime(2026, 5, 2, 9, 10, 0),
+            )
+
+        self.assertEqual(len(cases), 2)
+        self.assertEqual(
+            {case["status"] for case in cases},
+            {"pending_first_contact"},
         )
         self.assertEqual(events[0]["payload"]["canonical_event"]["payload"]["case_type"], "matchmaking")
 
