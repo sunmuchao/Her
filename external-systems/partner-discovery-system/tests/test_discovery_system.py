@@ -1612,6 +1612,9 @@ class DiscoveryServiceTests(unittest.TestCase):
         stored_session = service.storage.get_session(session_id)
         assert stored_session is not None
         self.assertFalse(stored_session.state.get("awaiting_rejection_feedback"))
+        working_criteria = dict(stored_session.state.get("working_criteria") or {})
+        self.assertIn("prefer", working_criteria)
+        self.assertIn("工作稳定", list(working_criteria.get("prefer") or []))
 
     def test_service_observability_snapshot_tracks_counters(self) -> None:
         service = DiscoveryService(
