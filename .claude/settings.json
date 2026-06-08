@@ -6,7 +6,24 @@
       "Bash(env)",
       "Bash(mysql -h 127.0.0.1 -P 3307 -u root her_discovery -e \"SELECT session_id, requester_id, status, phase, updated_at FROM discovery_agent_sessions ORDER BY updated_at DESC LIMIT 3;\")",
       "Bash(mysql -h 127.0.0.1 -P 3307 -u root her_discovery -e \"SELECT turn_id, request_kind, user_message_text, agent_decision_json, search_run_id, created_at FROM discovery_agent_turns WHERE session_id='discovery-session-24e366fe25d1' ORDER BY created_at DESC LIMIT 5;\")",
-      "Bash(mysql -h 127.0.0.1 -P 3307 -u root her_discovery -e \"SELECT agent_decision_json FROM discovery_agent_turns WHERE turn_id=353 LIMIT 1;\")"
+      "Bash(mysql -h 127.0.0.1 -P 3307 -u root her_discovery -e \"SELECT agent_decision_json FROM discovery_agent_turns WHERE turn_id=353 LIMIT 1;\")",
+      "Bash(python3 -c ' *)",
+      "Bash(mysql -h127.0.0.1 -P3307 -usa -e \"SELECT turn_id, request_kind, user_message_text, agent_decision FROM partner_discovery.discovery_turns ORDER BY created_at DESC LIMIT 5;\")",
+      "Bash(mysql -h127.0.0.1 -P3307 -uroot her -e \"SHOW TABLES;\")",
+      "Bash(mysql -h127.0.0.1 -P3307 -uroot her -e \"SELECT table_name FROM information_schema.tables WHERE table_schema='partner_discovery' OR table_schema='her' LIMIT 20;\")",
+      "Bash(mysql -h127.0.0.1 -P3307 -uroot her -e \"SELECT turn_id, request_kind, user_message_text, JSON_EXTRACT\\(agent_decision, '$.phase'\\) as phase, JSON_EXTRACT\\(agent_decision, '$.assistant_message'\\) as message FROM discovery_agent_turns ORDER BY created_at DESC LIMIT 3;\")",
+      "Bash(mysql -h127.0.0.1 -P3307 -uroot her -e \"SELECT tool_name, JSON_EXTRACT\\(tool_args, '$'\\) as args FROM discovery_agent_tool_calls ORDER BY created_at DESC LIMIT 5;\")",
+      "Bash(mysql -h127.0.0.1 -P3307 -uroot her -e \"SELECT turn_id, user_message_text, JSON_EXTRACT\\(agent_decision, '$.phase'\\) as phase, JSON_EXTRACT\\(agent_decision, '$.assistant_message'\\) as message FROM discovery_agent_turns ORDER BY created_at DESC LIMIT 1;\")",
+      "Bash(pkill -f \"run_gateway.py\")",
+      "Bash(python external-systems/partner-http-gateway/run_gateway.py)",
+      "Bash(curl -s -X POST http://127.0.0.1:8765/v1/discovery/sessions -H 'Content-Type: application/json' -d '{\"requester_id\": 10001, \"profile_id\": 10001}')",
+      "Bash(python3 -m py_compile agent_runtime.py)",
+      "Bash(python3 -m py_compile external-systems/partner-discovery-system/discovery_system/agent_runtime.py)",
+      "Bash(awk '/^        instructions = \"\"\"/{start=NR} start && /^        \"\"\"/{print NR; exit}' external-systems/partner-discovery-system/discovery_system/agent_runtime.py)",
+      "Bash(sed -i.bak3 '912,1131d' external-systems/partner-discovery-system/discovery_system/agent_runtime.py)",
+      "Bash(sed -i '911r /tmp/new_instructions.txt' external-systems/partner-discovery-system/discovery_system/agent_runtime.py)",
+      "Bash(curl -s http://127.0.0.1:8765/v1/discovery/sessions)",
+      "Bash(python3 -m py_compile discovery_system/agent_runtime.py)"
     ]
   }
 }
