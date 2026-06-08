@@ -124,6 +124,31 @@ DEFAULT_SEARCH_DSN = os.environ.get(
 SEARCH_FILLER_COLUMN_COUNT = 32
 SEARCH_FILLER_DEFAULT = "perf-benchmark-filler-value" * 4
 
+DEFAULT_BENCHMARK_CONFIG = {
+    "repeat": 3,
+    "search_profiles": 4000,
+    "messages_per_conversation": 400,
+    "opening_cases": 60,
+    "matchmaking_pairs": 40,
+    "layout_updates": 60,
+    "recommendation_count": 200,
+    "trust_hub_items": 50,
+}
+
+BENCHMARK_PRESETS: dict[str, dict[str, int]] = {
+    "default": dict(DEFAULT_BENCHMARK_CONFIG),
+    "prod_like": {
+        "repeat": 5,
+        "search_profiles": 12000,
+        "messages_per_conversation": 1000,
+        "opening_cases": 180,
+        "matchmaking_pairs": 160,
+        "layout_updates": 240,
+        "recommendation_count": 800,
+        "trust_hub_items": 150,
+    },
+}
+
 
 @dataclass
 class QueryStats:
@@ -1966,6 +1991,7 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
 
     return {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "preset": args.preset,
         "repeat": args.repeat,
         "search_profiles": args.search_profiles,
         "messages_per_conversation": args.messages_per_conversation,
@@ -1978,23 +2004,41 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+def _apply_benchmark_preset(args: argparse.Namespace) -> argparse.Namespace:
+    preset_name = str(getattr(args, "preset", "default") or "default").strip() or "default"
+    preset = BENCHMARK_PRESETS.get(preset_name)
+    if preset is None:
+        raise ValueError(f"Unknown benchmark preset: {preset_name}")
+    for field_name, fallback_value in DEFAULT_BENCHMARK_CONFIG.items():
+        raw_value = getattr(args, field_name, None)
+        resolved = preset.get(field_name, fallback_value) if raw_value is None else raw_value
+        setattr(args, field_name, resolved)
+    args.preset = preset_name
+    return args
+
+
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run reproducible backend performance benchmarks.")
-    parser.add_argument("--repeat", type=int, default=3, help="How many measured runs per variant.")
-    parser.add_argument("--search-profiles", type=int, default=4000, help="Profiles to seed for partner_search.")
+    parser.add_argument(
+        "--preset",
+        choices=sorted(BENCHMARK_PRESETS.keys()),
+        default="default",
+        help="Named parameter preset. Explicit CLI flags override the preset.",
+    )
+    parser.add_argument("--repeat", type=int, help="How many measured runs per variant.")
+    parser.add_argument("--search-profiles", type=int, help="Profiles to seed for partner_search.")
     parser.add_argument(
         "--messages-per-conversation",
         type=int,
-        default=400,
         help="Messages to seed per conversation for timeline benchmarks.",
     )
-    parser.add_argument("--opening-cases", type=int, default=60, help="Cases to seed for opening probe benchmarks.")
-    parser.add_argument("--matchmaking-pairs", type=int, default=40, help="Reciprocal member pairs to seed for mutual-pair benchmarks.")
-    parser.add_argument("--layout-updates", type=int, default=60, help="Existing assistant layouts to re-upsert for conversation benchmarks.")
-    parser.add_argument("--recommendation-count", type=int, default=200, help="Recommendations to seed for recommendation listing benchmarks.")
-    parser.add_argument("--trust-hub-items", type=int, default=50, help="Per-type items to seed for trust hub benchmarks.")
+    parser.add_argument("--opening-cases", type=int, help="Cases to seed for opening probe benchmarks.")
+    parser.add_argument("--matchmaking-pairs", type=int, help="Reciprocal member pairs to seed for mutual-pair benchmarks.")
+    parser.add_argument("--layout-updates", type=int, help="Existing assistant layouts to re-upsert for conversation benchmarks.")
+    parser.add_argument("--recommendation-count", type=int, help="Recommendations to seed for recommendation listing benchmarks.")
+    parser.add_argument("--trust-hub-items", type=int, help="Per-type items to seed for trust hub benchmarks.")
     parser.add_argument("--output-json", help="Optional path to write the full JSON report.")
-    return parser.parse_args(argv)
+    return _apply_benchmark_preset(parser.parse_args(argv))
 
 
 def main(argv: Sequence[str] | None = None) -> int:
