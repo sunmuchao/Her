@@ -114,6 +114,12 @@ class DiscoveryStartAssessmentPayloadModel(BaseModel):
     assessment_type: Literal["mbti", "values", "attachment"] = Field(default="mbti")
 
 
+class DiscoveryRejectionFeedbackPayloadModel(BaseModel):
+    """拒绝反馈动作 - 用于收集用户对候选人的不满意原因"""
+    kind: Literal["rejection_feedback"]
+    feedback_type: str = Field(default="", description="反馈类型，如occupation_mismatch、lifestyle_mismatch等")
+
+
 DiscoveryActionPayloadModel = Annotated[
     Union[
         DiscoveryStarterPromptPayloadModel,
@@ -125,6 +131,7 @@ DiscoveryActionPayloadModel = Annotated[
         DiscoveryShowMoreCandidatesPayloadModel,
         DiscoveryAgePreferencePayloadModel,
         DiscoveryStartAssessmentPayloadModel,
+        DiscoveryRejectionFeedbackPayloadModel,
     ],
     Field(discriminator="kind"),
 ]

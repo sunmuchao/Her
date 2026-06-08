@@ -192,6 +192,32 @@ def dispatch_discovery_rest(
             match.group(2),
         )
 
+    # 新增：反馈收集路由
+    match = re.fullmatch(r"/v1/discovery/sessions/([^/]+)/feedback", path)
+    if match and method == "POST":
+        return rest_discovery_submit_feedback(
+            gateway,
+            environ,
+            match.group(1),
+            _parse_json_body(_read_body(environ)),
+        )
+
+    match = re.fullmatch(r"/v1/discovery/sessions/([^/]+)/feedback/skip", path)
+    if match and method == "POST":
+        return rest_discovery_skip_feedback(
+            gateway,
+            environ,
+            match.group(1),
+        )
+
+    match = re.fullmatch(r"/v1/discovery/sessions/([^/]+)/feedback/options", path)
+    if match and method == "GET":
+        return rest_discovery_get_feedback_options(
+            gateway,
+            environ,
+            match.group(1),
+        )
+
     return None
 
 
@@ -228,6 +254,83 @@ def rest_discovery_reject_profile_update(
             field_name="profile_id",
         )
         out = gateway._discovery.reject_profile_update(session_id, request_id)
+    except DiscoveryServiceError as exc:
+        return _discovery_error(exc)
+    return 200, {**_json_safe(out), "trace_id": get_trace_id()}
+
+
+# ========== 新增：反馈收集API handler ==========
+
+def rest_discovery_submit_feedback(
+    gateway: DiscoveryGateway,
+    environ: dict[str, Any],
+    session_id: str,
+    body: dict[str, Any],
+) -> tuple[int, dict[str, Any]]:
+    """提交拒绝反馈。"""
+    try:
+        owner_id = gateway._discovery.get_session_owner_id(session_id)
+        gateway._assert_actor_can_access_owner(
+            environ,
+            owner_id,
+            field_name="profile_id",
+        )
+        out = gateway._discovery.submit_rejection_feedback(
+            session_id=session_id,
+            feedback_text=body.get("feedback_text", ""),
+            feedback_type=body.get("feedback_type"),
+            feedback_detail=body.get("feedback_detail"),
+            rejected_candidate_ids=body.get("rejected_candidate_ids"),
+            is_secondary=body.get("is_secondary", False),
+            primary_feedback_id=body.get("primary_feedback_id"),
+        )
+    except DiscoveryServiceError as exc:
+        return _discovery_error(exc)
+    return 200, {**_json_safe(out), "trace_id": get_trace_id()}
+
+
+def rest_discovery_skip_feedback(
+    gateway: DiscoveryGateway,
+    environ: dict[str, Any],
+    session_id: str,
+) -> tuple[int, dict[str, Any]]:
+    """跳过反馈。"""
+    try:
+        owner_id = gateway._discovery.get_session_owner_id(session_id)
+        gateway._assert_actor_can_access_owner(
+            environ,
+            owner_id,
+            field_name="profile_id",
+        )
+        out = gateway._discovery.skip_rejection_feedback(session_id=session_id)
+    except DiscoveryServiceError as exc:
+        return _discovery_error(exc)
+    return 200, {**_json_safe(out), "trace_id": get_trace_id()}
+
+
+def rest_discovery_get_feedback_options(
+    gateway: DiscoveryGateway,
+    environ: dict[str, Any],
+    session_id: str,
+) -> tuple[int, dict[str, Any]]:
+    """获取反馈选项列表。"""
+    try:
+        owner_id = gateway._discovery.get_session_owner_id(session_id)
+        gateway._assert_actor_can_access_owner(
+            environ,
+            owner_id,
+            field_name="profile_id",
+        )
+        # 从query参数获取secondary相关参数
+        query = _query_dict(environ)
+        include_secondary = query.get("include_secondary", "false").lower() == "true"
+        primary_option = query.get("primary_option")
+
+        out = gateway._discovery.get_feedback_options(
+            session_id=session_id,
+            include_secondary=include_secondary,
+            primary_option=primary_option,
+        )
     except DiscoveryServiceError as exc:
         return _discovery_error(exc)
     return 200, {**_json_safe(out), "trace_id": get_trace_id()}

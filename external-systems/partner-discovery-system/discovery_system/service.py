@@ -18,6 +18,7 @@ from profile_detail_reader import load_profile_detail
 from .agent_runtime import (
     DiscoveryActionSuggestion,
     DiscoveryAgentRuntime,
+    DiscoveryCandidateSelection,
     DiscoveryDecision,
     DiscoveryRunInput,
     DiscoveryRuntimeResult,
@@ -339,9 +340,15 @@ class DiscoveryService:
             if action is None:
                 raise DiscoveryActionNotFoundError("action_id not found for this discovery session")
             if action.consumed_at is not None:
-                raise DiscoveryActionExpiredError("action_id has already been consumed")
+                # action已被消费，提示用户刷新session
+                raise DiscoveryActionExpiredError(
+                    "这个操作已经执行过了。请刷新页面获取新的操作建议。"
+                )
             if action.expires_at is not None and action.expires_at <= current:
-                raise DiscoveryActionExpiredError("action_id has expired")
+                # action已过期，提示用户刷新session
+                raise DiscoveryActionExpiredError(
+                    "这个操作建议已经过期了。请刷新页面获取新的操作建议。"
+                )
             self.storage.mark_action_consumed(action.action_id, current)
             request_kind = "action_click"
             consumed_action_id = action.action_id
@@ -730,6 +737,9 @@ class DiscoveryService:
             sync_requester_persona_memory=_sync_requester_persona_memory,
             propose_requester_profile_update=_propose_requester_profile_update,
             create_saved_search_subscription_from_last_search=_create_saved_search_subscription_from_last_search,
+            # 新增：反馈收集工具
+            submit_rejection_feedback=self._bind_submit_rejection_feedback(session),
+            get_feedback_options=self._bind_get_feedback_options(session),
             tool_call_buffer=tool_call_buffer,
             agent_session=self._agent_session_for(session.session_id),
         )
@@ -837,13 +847,28 @@ class DiscoveryService:
         *,
         decision: DiscoveryDecision,
     ) -> list[dict[str, Any]]:
+        results = list(search_response.get("results") or [])
         selected_by_id = {
             int(selection.profile_id): selection
             for selection in decision.selected_candidates
             if int(selection.profile_id) > 0
         }
+        if not selected_by_id and decision.phase == "results_shown":
+            fallback_results = results[:5]
+            selected_by_id = {
+                int(candidate.get("id") or 0): DiscoveryCandidateSelection(
+                    profile_id=int(candidate.get("id") or 0),
+                    reason_summary=str(
+                        candidate.get("match_reason")
+                        or candidate.get("reason_summary")
+                        or ""
+                    ).strip(),
+                )
+                for candidate in fallback_results
+                if int(candidate.get("id") or 0) > 0
+            }
         cards: list[dict[str, Any]] = []
-        for candidate in list(search_response.get("results") or []):
+        for candidate in results:
             profile_id = int(candidate.get("id") or 0)
             selection = selected_by_id.get(profile_id)
             if selection is None:
@@ -1522,6 +1547,268 @@ class DiscoveryService:
         if session is None:
             raise DiscoverySessionNotFoundError("discovery session not found")
         return session
+
+    # ========== 新增：反馈收集相关方法 ==========
+
+    def submit_rejection_feedback(
+        self,
+        *,
+        session_id: str,
+        feedback_text: str,
+        feedback_type: str | None = None,
+        feedback_detail: str | None = None,
+        rejected_candidate_ids: list[str] | None = None,
+        is_secondary: bool = False,
+        primary_feedback_id: int | None = None,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        """
+        提交拒绝反馈并触发调整。
+
+        Args:
+            session_id: Discovery session ID
+            feedback_text: 用户选择的反馈文案
+            feedback_type: 反馈类型（可推断）
+            feedback_detail: 二级追问细节
+            rejected_candidate_ids: 被拒绝的候选人ID列表
+            is_secondary: 是否为二级追问结果
+            primary_feedback_id: 一级反馈ID（二级追问时）
+            now: 当前时间
+
+        Returns:
+            包含feedback_id和调整状态的字典
+        """
+        from .feedback_service import infer_feedback_type, FEEDBACK_TO_CRITERIA_ADJUSTMENT
+
+        current = now or datetime.now()
+        session = self._require_session(session_id)
+
+        # 1. 推断反馈类型（如果没有显式提供）
+        if feedback_type is None:
+            feedback_type = infer_feedback_type(feedback_text)
+
+        # 2. 获取上一批候选人ID（如果没有提供）
+        if rejected_candidate_ids is None:
+            last_search_run = self._get_last_search_run(session_id)
+            if last_search_run is not None:
+                rejected_candidate_ids = [
+                    str(item.get("id"))
+                    for item in (last_search_run.response.get("results") or [])
+                    if item.get("id")
+                ]
+
+        # 3. 记录反馈
+        turn_id = self.storage.get_current_turn_id(session_id) or 0
+        feedback_id = self.storage.insert_rejection_feedback(
+            session_id=session_id,
+            turn_id=turn_id,
+            requester_id=session.requester_id,
+            feedback_type=feedback_type,
+            feedback_text=feedback_text,
+            feedback_detail=feedback_detail,
+            rejected_batch_id=str(self._get_last_search_run_id(session_id) or ""),
+            rejected_candidate_ids=rejected_candidate_ids,
+            source_type="explicit",
+            追问_triggered=True,
+            追问_skipped=False,
+            is_secondary_feedback=is_secondary,
+            primary_feedback_id=primary_feedback_id,
+            created_at=current,
+        )
+
+        # 4. 应用criteria调整
+        adjustment = self._apply_feedback_adjustment(
+            session_id=session_id,
+            feedback_type=feedback_type,
+            feedback_id=feedback_id,
+            turn_id=turn_id,
+            now=current,
+        )
+
+        # 5. 同步到persona（如果策略有persona_write）
+        strategy = FEEDBACK_TO_CRITERIA_ADJUSTMENT.get(feedback_type)
+        persona_updated = False
+        if strategy and strategy.get("persona_write"):
+            persona_updated = self._sync_persona_from_feedback(
+                requester_id=session.requester_id,
+                feedback_type=feedback_type,
+                feedback_text=feedback_text,
+                now=current,
+            )
+
+        return {
+            "success": True,
+            "feedback_id": feedback_id,
+            "feedback_type": feedback_type,
+            "adjustment_id": adjustment.get("adjustment_id"),
+            "persona_updated": persona_updated,
+            "criteria_adjusted": adjustment.get("applied", False),
+        }
+
+    def skip_rejection_feedback(
+        self,
+        *,
+        session_id: str,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        """
+        记录用户跳过反馈。
+        """
+        current = now or datetime.now()
+        session = self._require_session(session_id)
+
+        turn_id = self.storage.get_current_turn_id(session_id) or 0
+        feedback_id = self.storage.insert_rejection_feedback(
+            session_id=session_id,
+            turn_id=turn_id,
+            requester_id=session.requester_id,
+            feedback_type="skipped",
+            feedback_text="跳过，直接换",
+            source_type="explicit",
+            追问_triggered=True,
+            追问_skipped=True,
+            is_secondary_feedback=False,
+            created_at=current,
+        )
+
+        return {
+            "success": True,
+            "feedback_id": feedback_id,
+        }
+
+    def get_feedback_options(
+        self,
+        *,
+        session_id: str,
+        include_secondary: bool = False,
+        primary_option: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        获取反馈选项列表。
+        """
+        from .feedback_service import generate_feedback_options
+
+        session = self._require_session(session_id)
+
+        # 获取上一批候选人
+        last_search_run = self._get_last_search_run(session_id)
+        last_batch_candidates = []
+        if last_search_run is not None:
+            last_batch_candidates = last_search_run.response.get("results") or []
+
+        # 获取用户profile
+        user_profile = session.state.get("self_profile") or {}
+
+        # 生成选项
+        result = generate_feedback_options(
+            last_batch_candidates,
+            user_profile,
+            include_secondary=include_secondary,
+            primary_option=primary_option,
+        )
+
+        return {
+            "success": True,
+            "options": result.get("options", []),
+            "prompt_message": result.get("追问文案", ""),
+        }
+
+    def _apply_feedback_adjustment(
+        self,
+        *,
+        session_id: str,
+        feedback_type: str,
+        feedback_id: int,
+        turn_id: int,
+        now: datetime,
+    ) -> dict[str, Any]:
+        """应用反馈对应的criteria调整。"""
+        from .feedback_service import FEEDBACK_TO_CRITERIA_ADJUSTMENT
+
+        strategy = FEEDBACK_TO_CRITERIA_ADJUSTMENT.get(feedback_type)
+        if not strategy:
+            return {"applied": False, "reason": "no strategy found"}
+
+        # TODO: 实现具体的调整逻辑
+        # 这里需要根据策略更新session.state["working_criteria"]
+
+        adjustment_id = self.storage.insert_criteria_adjustment(
+            session_id=session_id,
+            turn_id=turn_id,
+            adjustment_type=strategy.get("adjustment_type", "shift"),
+            affected_field=strategy.get("affected_field", "unknown"),
+            before_value=None,  # TODO: 从session.state获取旧值
+            after_value=None,  # TODO: 计算新值
+            triggered_by_feedback_id=feedback_id,
+            adjustment_reason=f"根据用户反馈'{feedback_type}'调整",
+            created_at=now,
+        )
+
+        return {
+            "applied": True,
+            "adjustment_id": adjustment_id,
+            "affected_field": strategy.get("affected_field"),
+        }
+
+    def _sync_persona_from_feedback(
+        self,
+        *,
+        requester_id: int,
+        feedback_type: str,
+        feedback_text: str,
+        now: datetime,
+    ) -> bool:
+        """同步反馈到persona。"""
+        from .feedback_service import FEEDBACK_TO_CRITERIA_ADJUSTMENT
+
+        strategy = FEEDBACK_TO_CRITERIA_ADJUSTMENT.get(feedback_type)
+        if not strategy or not strategy.get("persona_write"):
+            return False
+
+        # TODO: 调用sync_requester_persona_memory工具
+        # 这里需要调用persona memory API
+
+        return True
+
+    def _get_last_search_run(self, session_id: str) -> StoredSearchRun | None:
+        """获取session的最后一次搜索结果。"""
+        # TODO: 实现获取逻辑
+        return None
+
+    def _get_last_search_run_id(self, session_id: str) -> int | None:
+        """获取session的最后一次搜索run ID。"""
+        # TODO: 实现获取逻辑
+        return None
+
+    def _bind_submit_rejection_feedback(self, session: StoredSession) -> Callable[..., dict[str, Any]]:
+        """绑定提交反馈方法。"""
+        def submit_feedback_wrapper(
+            feedback_text: str,
+            feedback_type: str | None = None,
+            feedback_detail: str | None = None,
+            is_secondary: bool = False,
+        ) -> dict[str, Any]:
+            return self.submit_rejection_feedback(
+                session_id=session.session_id,
+                feedback_text=feedback_text,
+                feedback_type=feedback_type,
+                feedback_detail=feedback_detail,
+                is_secondary=is_secondary,
+            )
+        return submit_feedback_wrapper
+
+    def _bind_get_feedback_options(self, session: StoredSession) -> Callable[..., dict[str, Any]]:
+        """绑定获取反馈选项方法。"""
+        def get_options_wrapper(
+            include_secondary: bool = False,
+            primary_option: str | None = None,
+        ) -> dict[str, Any]:
+            return self.get_feedback_options(
+                session_id=session.session_id,
+                include_secondary=include_secondary,
+                primary_option=primary_option,
+            )
+        return get_options_wrapper
 
     def _agent_session_for(self, session_id: str) -> Any | None:
         if self.agent_session_store is None:

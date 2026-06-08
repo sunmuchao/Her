@@ -46,6 +46,7 @@ class SearchTextSignalsRuntime:
     normalize_whitespace: Callable[[Any], str]
     split_evidence_segments: Callable[[Any], list[str]]
     requires_explicit_children_acceptance: Callable[[dict[str, Any]], bool]
+    get_combined_text_lazy: Callable[[dict[str, Any]], str]  # 性能优化：惰性 combined_text 构建
     keyword_evidence_fields: Sequence[tuple[str, str]]
     structured_keyword_signal_rules: dict[str, Sequence[tuple[str, str, Sequence[str]]]]
     textual_keyword_signal_rules: dict[str, Sequence[tuple[str, str, Sequence[str]]]]
@@ -182,10 +183,19 @@ def keyword_matches_record(
     record: dict[str, Any],
     keyword: str,
 ) -> bool:
+    """检查关键词是否匹配记录。
+
+    性能优化版本：
+    - 使用惰性 combined_text 构建，避免不必要的全字段遍历
+    - 缓存 combined_text 结果，避免重复计算
+    """
     lowered_keyword = runtime.as_lower(keyword)
     if not lowered_keyword:
         return False
-    if lowered_keyword in runtime.as_lower(record.get("combined_text", "")):
+
+    # 使用惰性 combined_text 获取（仅在需要时构建）
+    combined_text = runtime.get_combined_text_lazy(record)
+    if lowered_keyword in combined_text:
         return True
     return bool(collect_keyword_signal_evidence(runtime, record, keyword))
 
