@@ -12,6 +12,7 @@ from typing import Any, Callable, Protocol
 _logger = logging.getLogger(__name__)
 
 from her_env import env_first, env_float
+from pydantic import BaseModel, Field
 
 from .decision_models import (
     DiscoveryActionSuggestion,
@@ -73,6 +74,13 @@ _BAILIAN_RESPONSES_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1
 _BAILIAN_RESPONSES_DEFAULT_MODEL = "qwen3.6-plus"
 
 
+class RejectionFeedbackParseModel(BaseModel):
+    is_rejection_feedback: bool = True
+    feedback_type: str = ""
+    summary: str = ""
+    search_criteria_patch: dict[str, Any] = Field(default_factory=dict)
+
+
 def _resolve_discovery_wire_api() -> str:
     raw_wire_api = env_first(
         "HER_DISCOVERY_AGENT_WIRE_API",
@@ -126,6 +134,89 @@ def _resolve_discovery_model(*, wire_api: str) -> str:
         "HER_CHAT_ASSISTANT_MODEL",
         default="gpt-4.1-mini",
     )
+
+
+def _fallback_rejection_feedback_parse(user_message: str) -> dict[str, Any]:
+    from .feedback_service import infer_feedback_type
+
+    text = str(user_message or "").strip()
+    feedback_type = str(infer_feedback_type(text) or "").strip()
+    patch: dict[str, Any] = {}
+    if feedback_type == "work_life_balance":
+        patch = {
+            "prefer": ["工作稳定", "生活规律"],
+            "must_not_have": ["高强度工作"],
+        }
+    elif feedback_type == "location_distance":
+        patch = {"prefer": ["同城优先"]}
+    elif feedback_type in {"age_gap", "criteria_age"}:
+        patch = {"prefer": ["年龄接近"]}
+    elif feedback_type == "occupation_mismatch":
+        patch = {"prefer": ["职业匹配"]}
+    return {
+        "is_rejection_feedback": bool(feedback_type),
+        "feedback_type": feedback_type,
+        "summary": text,
+        "search_criteria_patch": patch,
+    }
+
+
+def parse_rejection_feedback_text(
+    user_message: str,
+    *,
+    runtime_context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    text = str(user_message or "").strip()
+    if not text:
+        return {
+            "is_rejection_feedback": False,
+            "feedback_type": "",
+            "summary": "",
+            "search_criteria_patch": {},
+        }
+    if not _resolve_discovery_api_key().strip():
+        return _fallback_rejection_feedback_parse(text)
+
+    try:
+        from agents import Agent, AgentOutputSchema, Runner
+    except ImportError:
+        return _fallback_rejection_feedback_parse(text)
+
+    try:
+        _configure_agents_sdk_provider()
+        agent = Agent(
+            name="discovery_feedback_parser",
+            instructions=(
+                "你负责把用户对上一批候选人的自由文本反馈，解析成结构化搜索意图。"
+                "当前前提是：系统已经明确问过用户“上一批哪里不合适”。"
+                "你的任务不是陪聊，而是判断这句话是不是在回答这个问题。"
+                "如果是，输出 is_rejection_feedback=true，并尽量给出 feedback_type 和 search_criteria_patch。"
+                "feedback_type 优先使用这些类型：location_distance, age_gap, criteria_age, "
+                "occupation_mismatch, work_life_balance, interest_mismatch, personality_mismatch, criteria_generic。"
+                "search_criteria_patch 只放 discovery search 可用字段，例如 prefer, must_not_have, must_have, cities, age_min, age_max。"
+                "不要输出解释性长文，summary 保留一句简短中文概括。"
+            ),
+            model=_resolve_discovery_model(wire_api=_resolve_discovery_wire_api()),
+            output_type=AgentOutputSchema(RejectionFeedbackParseModel, strict_json_schema=True),
+            tools=[],
+        )
+        payload = json.dumps(
+            {
+                "user_message": text,
+                "page_summary": dict((runtime_context or {}).get("page_summary") or {}),
+                "last_search_summary": dict((runtime_context or {}).get("last_search_summary") or {}),
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+        result = Runner.run_sync(agent, input=payload)
+        final_output = getattr(result, "final_output", result)
+        if isinstance(final_output, RejectionFeedbackParseModel):
+            return final_output.model_dump(mode="json")
+        parsed = RejectionFeedbackParseModel.model_validate(final_output)
+        return parsed.model_dump(mode="json")
+    except Exception:
+        return _fallback_rejection_feedback_parse(text)
 
 
 def _configure_agents_sdk_provider() -> None:
