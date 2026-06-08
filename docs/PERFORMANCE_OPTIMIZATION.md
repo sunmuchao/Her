@@ -181,12 +181,29 @@ pytest partner_search/tests/ -q 2>/dev/null || true
 
 ```bash
 python scripts/run_perf_benchmarks.py \
-  --repeat 3 \
-  --search-profiles 4000 \
-  --messages-per-conversation 400 \
-  --opening-cases 60 \
   --output-json artifacts/perf-benchmark-report.json
 ```
+
+更贴近生产数据量的压测参数集：
+
+```bash
+python scripts/run_perf_benchmarks.py \
+  --preset prod_like \
+  --output-json artifacts/perf-benchmark-report-prod-like.json
+```
+
+当前预设含义：
+
+| preset | repeat | search_profiles | messages_per_conversation | opening_cases | matchmaking_pairs | layout_updates | recommendation_count | trust_hub_items |
+|--------|--------|-----------------|---------------------------|---------------|-------------------|----------------|----------------------|-----------------|
+| `default` | `3` | `4000` | `400` | `60` | `40` | `60` | `200` | `50` |
+| `prod_like` | `5` | `12000` | `1000` | `180` | `160` | `240` | `800` | `150` |
+
+说明：
+
+- `prod_like` 是本地单机 MySQL 上的**生产近似压测集**，目标是放大对象数量、会话消息量和推荐基数，观察优化后的扩展趋势，而不是精确复刻线上绝对时延。
+- 若本机资源有限，可用 `--preset prod_like --repeat 3` 先降重复次数。
+- 任意显式 CLI 参数都会覆盖 preset，例如只想放大搜索规模：`--preset prod_like --search-profiles 20000`。
 
 输出内容：
 
