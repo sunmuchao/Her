@@ -1484,6 +1484,17 @@ class DiscoveryService:
                 criteria_labels=list(decision.criteria_labels),
                 suggested_actions=list(decision.suggested_actions),
             )
+        if (
+            decision.phase == "results_shown"
+            and search_response is None
+            and bool(decision.selected_candidates)
+        ):
+            return DiscoveryDecision(
+                phase="collecting_preferences",
+                assistant_message="我这轮还没真正跑出候选人卡片，你再发一次，我马上重新给你筛。",
+                criteria_labels=list(decision.criteria_labels),
+                suggested_actions=[],
+            )
         error_summary = self._search_error_summary(search_response)
         if error_summary is None:
             return decision
