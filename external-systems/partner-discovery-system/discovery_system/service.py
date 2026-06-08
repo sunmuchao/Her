@@ -30,6 +30,7 @@ from .service_session_open import (
     build_profile_first_open_result,
     criteria_labels_from_search_criteria,
     discovery_create_session_mode,
+    selected_candidates_from_search,
 )
 from .agent_session_store import create_default_discovery_agent_session_store
 from .profile_updates import (
@@ -53,7 +54,7 @@ from .service_integrations import (
     sync_requester_persona_memory as _sync_requester_persona_memory_impl,
 )
 from partner_search.personality_traits_reader import load_traits_for_discovery
-from .storage import InMemoryDiscoveryStorage, MySQLDiscoveryStorage, StoredSession
+from .storage import InMemoryDiscoveryStorage, MySQLDiscoveryStorage, StoredSearchRun, StoredSession
 from .service_context import (
     DiscoveryServiceContextRuntime,
     build_last_search_summary as _build_last_search_summary,
@@ -352,13 +353,22 @@ class DiscoveryService:
             self.storage.mark_action_consumed(action.action_id, current)
             request_kind = "action_click"
             consumed_action_id = action.action_id
-            runtime_result = self.runtime.run_turn(
-                run_input,
-                action_context={
-                    "label": action.label,
-                    "semantic_payload": deepcopy(action.semantic_payload),
-                }
-            )
+            action_context = {
+                "label": action.label,
+                "semantic_payload": deepcopy(action.semantic_payload),
+            }
+            if str(action_context["semantic_payload"].get("kind") or "").strip() == "rejection_feedback":
+                runtime_result = self._force_rejection_feedback_turn(
+                    session,
+                    run_input=run_input,
+                    action_context=action_context,
+                    now=current,
+                )
+            else:
+                runtime_result = self.runtime.run_turn(
+                    run_input,
+                    action_context=action_context,
+                )
 
         session.view["timeline"] = list(session.view.get("timeline") or []) + new_items
         search_run_id = self._apply_runtime_result(session, runtime_result, now=current)
@@ -840,6 +850,153 @@ class DiscoveryService:
         self._replace_suggested_actions(session, decision.suggested_actions, now=now)
         session.state["phase"] = session.phase
         return search_run_id
+
+    def _force_rejection_feedback_turn(
+        self,
+        session: StoredSession,
+        *,
+        run_input: DiscoveryRunInput,
+        action_context: dict[str, Any],
+        now: datetime,
+    ) -> DiscoveryRuntimeResult:
+        payload = dict(action_context.get("semantic_payload") or {})
+        feedback_type = str(payload.get("feedback_type") or "").strip()
+        feedback_text = str(payload.get("feedback_text") or action_context.get("label") or "这批先换一下").strip()
+
+        if feedback_type == "skip_feedback":
+            feedback_result = self.skip_rejection_feedback(session_id=session.session_id, now=now)
+            self._append_tool_call(
+                run_input.tool_call_buffer,
+                "submit_rejection_feedback",
+                {
+                    "feedback_text": feedback_text,
+                    "feedback_type": feedback_type,
+                    "is_secondary": False,
+                },
+                feedback_result,
+                status="succeeded" if feedback_result.get("success") else "failed",
+            )
+        else:
+            feedback_result = run_input.submit_rejection_feedback(
+                feedback_text=feedback_text,
+                feedback_type=feedback_type or None,
+                feedback_detail=None,
+                is_secondary=False,
+            )
+            self._append_tool_call(
+                run_input.tool_call_buffer,
+                "submit_rejection_feedback",
+                {
+                    "feedback_text": feedback_text,
+                    "feedback_type": feedback_type or None,
+                    "is_secondary": False,
+                },
+                feedback_result,
+                status="succeeded" if feedback_result.get("success") else "failed",
+            )
+
+        criteria_override = self._feedback_search_override(session, feedback_type=feedback_type)
+        limit = self._feedback_search_limit(session)
+        search_response = run_input.search_partner_candidates(criteria_override, limit)
+        prepared_response = self._dedupe_feedback_search_results(session, search_response)
+        request_meta = dict(prepared_response.get("request_meta") or {})
+        criteria_labels = criteria_labels_from_search_criteria(dict(request_meta.get("criteria") or {}))
+        has_results = bool(prepared_response.get("has_match")) and bool(prepared_response.get("results"))
+
+        return DiscoveryRuntimeResult(
+            decision=DiscoveryDecision(
+                phase="results_shown" if has_results else "no_result",
+                assistant_message=self._feedback_followup_message(
+                    feedback_type=feedback_type,
+                    feedback_text=feedback_text,
+                    has_results=has_results,
+                ),
+                criteria_labels=criteria_labels,
+                suggested_actions=[],
+                result_group_title="按你刚才的反馈，重新给你换一批",
+                selected_candidates=selected_candidates_from_search(prepared_response) if has_results else [],
+            ),
+            search_response=prepared_response,
+        )
+
+    def _feedback_search_limit(self, session: StoredSession) -> int:
+        search_run_id = int(session.state.get("last_search_run_id") or 0)
+        if search_run_id > 0:
+            search_run = self.storage.get_search_run(search_run_id)
+            if search_run is not None and int(search_run.limit_count or 0) > 0:
+                return max(1, min(int(search_run.limit_count or 5), 10))
+        return PROFILE_FIRST_SEARCH_LIMIT
+
+    def _feedback_search_override(
+        self,
+        session: StoredSession,
+        *,
+        feedback_type: str,
+    ) -> dict[str, Any]:
+        override: dict[str, Any] = {}
+        requester_profile = self._load_requester_profile(session) or {}
+        self_city = str(requester_profile.get("city") or requester_profile.get("self_city") or "").strip()
+        self_age_raw = requester_profile.get("age") or requester_profile.get("self_age")
+        try:
+            self_age = int(self_age_raw) if self_age_raw not in (None, "") else None
+        except (TypeError, ValueError):
+            self_age = None
+
+        if feedback_type == "location_distance" and self_city:
+            override["cities"] = [self_city]
+        elif feedback_type in {"age_gap", "criteria_age"} and self_age is not None:
+            override["age_min"] = max(18, self_age - 3)
+            override["age_max"] = self_age + 3
+        return override
+
+    def _dedupe_feedback_search_results(
+        self,
+        session: StoredSession,
+        search_response: dict[str, Any],
+    ) -> dict[str, Any]:
+        response = deepcopy(search_response)
+        previous_ids = {
+            int(card.get("profile_id") or 0)
+            for card in self._existing_result_cards(session)
+            if int(card.get("profile_id") or 0) > 0
+        }
+        if not previous_ids:
+            return response
+        original_results = list(response.get("results") or [])
+        filtered_results = [
+            item for item in original_results
+            if int(item.get("id") or 0) not in previous_ids
+        ]
+        if not filtered_results:
+            return response
+        response["results"] = filtered_results
+        response["result_count"] = len(filtered_results)
+        response["has_match"] = bool(filtered_results)
+        return response
+
+    def _feedback_followup_message(
+        self,
+        *,
+        feedback_type: str,
+        feedback_text: str,
+        has_results: bool,
+    ) -> str:
+        if has_results:
+            if feedback_type == "occupation_mismatch":
+                return "明白了，你更在意职业方向。我按这个意思重新筛了一批，先看这组。"
+            if feedback_type == "location_distance":
+                return "明白了，你更希望距离近一点。我按同城优先重新筛了一批。"
+            if feedback_type in {"age_gap", "criteria_age"}:
+                return "明白了，你更想看年龄更接近的。我按这个方向重新筛了一批。"
+            if feedback_type == "work_life_balance":
+                return "明白了，你更在意生活节奏。我按更稳定的作息方向重新筛了一批。"
+            if feedback_type == "interest_mismatch":
+                return "明白了，你更在意能不能玩到一起。我按这个方向重新筛了一批。"
+            return "收到，我按你刚才的意思重新筛了一批，你先看这组。"
+
+        if feedback_type == "occupation_mismatch":
+            return "明白了，你更在意职业方向。我按这个意思重筛了一轮，但这次还没出到更合适的，你可以再补一句更想看什么类型。"
+        return f"收到，你刚才提到“{feedback_text}”。我已经按这个方向重筛了一轮，这次还没出到更合适的。"
 
     def _build_result_cards(
         self,
@@ -1598,7 +1755,7 @@ class DiscoveryService:
                 ]
 
         # 3. 记录反馈
-        turn_id = self.storage.get_current_turn_id(session_id) or 0
+        turn_id = self._current_turn_id_for_feedback(session_id)
         feedback_id = self.storage.insert_rejection_feedback(
             session_id=session_id,
             turn_id=turn_id,
@@ -1657,7 +1814,7 @@ class DiscoveryService:
         current = now or datetime.now()
         session = self._require_session(session_id)
 
-        turn_id = self.storage.get_current_turn_id(session_id) or 0
+        turn_id = self._current_turn_id_for_feedback(session_id)
         feedback_id = self.storage.insert_rejection_feedback(
             session_id=session_id,
             turn_id=turn_id,
@@ -1772,13 +1929,30 @@ class DiscoveryService:
 
     def _get_last_search_run(self, session_id: str) -> StoredSearchRun | None:
         """获取session的最后一次搜索结果。"""
-        # TODO: 实现获取逻辑
-        return None
+        session = self.storage.get_session(session_id)
+        if session is None:
+            return None
+        search_run_id = int(session.state.get("last_search_run_id") or 0)
+        if search_run_id <= 0:
+            return None
+        return self.storage.get_search_run(search_run_id)
 
     def _get_last_search_run_id(self, session_id: str) -> int | None:
         """获取session的最后一次搜索run ID。"""
-        # TODO: 实现获取逻辑
-        return None
+        session = self.storage.get_session(session_id)
+        if session is None:
+            return None
+        search_run_id = int(session.state.get("last_search_run_id") or 0)
+        return search_run_id if search_run_id > 0 else None
+
+    def _current_turn_id_for_feedback(self, session_id: str) -> int:
+        getter = getattr(self.storage, "get_current_turn_id", None)
+        if callable(getter):
+            try:
+                return int(getter(session_id) or 0)
+            except Exception:  # noqa: BLE001
+                return 0
+        return 0
 
     def _bind_submit_rejection_feedback(self, session: StoredSession) -> Callable[..., dict[str, Any]]:
         """绑定提交反馈方法。"""
