@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>发现页对话完整内部逻辑</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <style>
+    :root {
+      --bg: #f4f7fb;
+      --paper: #ffffff;
+      --ink: #172033;
+      --muted: #5b6475;
+      --line: #d8dfeb;
+      --blue: #2563eb;
+      --teal: #0f766e;
+      --amber: #d97706;
+      --red: #dc2626;
+      --green: #16a34a;
+      --slate: #334155;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+        "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top right, rgba(37, 99, 235, 0.08), transparent 28%),
+        linear-gradient(180deg, #f8fbff 0%, var(--bg) 100%);
+      line-height: 1.6;
+    }
+
+    .page {
+      max-width: 1320px;
+      margin: 0 auto;
+      padding: 28px 18px 64px;
+    }
+
+    .hero {
+      background: linear-gradient(135deg, #163b8c 0%, #0f766e 100%);
+      color: #fff;
+      border-radius: 20px;
+      padding: 30px 32px;
+      box-shadow: 0 24px 64px rgba(15, 23, 42, 0.18);
+      margin-bottom: 18px;
+    }
+
+    .hero h1 {
+      margin: 0 0 10px;
+      font-size: 32px;
+      line-height: 1.15;
+    }
+
+    .hero p {
+      margin: 0;
+      max-width: 980px;
+      color: rgba(255, 255, 255, 0.92);
+      font-size: 15px;
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .chip {
+      padding: 7px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      background: rgba(255, 255, 255, 0.14);
+      font-size: 13px;
+    }
+
+    .toc {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+
+    .toc a {
+      text-decoration: none;
+      color: var(--blue);
+      background: rgba(37, 99, 235, 0.06);
+      border: 1px solid rgba(37, 99, 235, 0.14);
+      border-radius: 14px;
+      padding: 12px 14px;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 18px;
+    }
+
+    .card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 22px 22px 18px;
+      box-shadow: 0 10px 34px rgba(15, 23, 42, 0.05);
+      scroll-margin-top: 18px;
+    }
+
+    .card h2 {
+      margin: 0 0 8px;
+      font-size: 22px;
+      line-height: 1.2;
+    }
+
+    .lead {
+      margin: 0 0 14px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px 18px;
+      margin-bottom: 14px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .swatch {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      display: inline-block;
+    }
+
+    .flow-wrap {
+      overflow-x: auto;
+      padding-bottom: 6px;
+    }
+
+    .mermaid {
+      min-width: 1100px;
+      display: flex;
+      justify-content: center;
+      padding: 4px 0;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .three-col {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .note {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 14px 15px;
+      background: #fbfdff;
+    }
+
+    .note h3 {
+      margin: 0 0 8px;
+      font-size: 15px;
+      color: var(--blue);
+    }
+
+    .note ul {
+      margin: 0;
+      padding-left: 18px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      overflow: hidden;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+    }
+
+    .table th,
+    .table td {
+      padding: 12px 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .table th {
+      background: #f8fbff;
+      color: var(--slate);
+      font-weight: 700;
+    }
+
+    .table tr:last-child td {
+      border-bottom: none;
+    }
+
+    code {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      color: var(--blue);
+      font-size: 12px;
+    }
+
+    .footer {
+      margin-top: 14px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    @media (max-width: 960px) {
+      .two-col,
+      .three-col,
+      .toc {
+        grid-template-columns: 1fr;
+      }
+
+      .hero {
+        padding: 24px 20px;
+      }
+
+      .hero h1 {
+        font-size: 26px;
+      }
+
+      .card {
+        padding: 18px 16px 14px;
+      }
+
+      .mermaid {
+        min-width: 980px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <section class="hero">
+      <h1>发现页对话完整内部逻辑</h1>
+      <p>
+        这份 HTML 不是产品愿景图，而是按当前仓库代码把发现页对话的真实执行链路串起来：前端如何恢复会话、用户输入如何进入
+        gateway、DiscoveryService 如何做状态分流、什么时候走反馈重筛、什么时候弹资料更新、以及“愿意认识”如何流向推荐与牵线系统。
+      </p>
+      <div class="chips">
+        <span class="chip">前端入口：DiscoverPage + useDiscoverySession</span>
+        <span class="chip">网关入口：/v1/discovery/sessions*</span>
+        <span class="chip">核心状态：collecting_preferences / results_shown / no_result</span>
+        <span class="chip">额外分支：rejection feedback / profile update / express interest</span>
+      </div>
+    </section>
+
+    <div class="toc">
+      <a href="#overview">1. 总览主链路</a>
+      <a href="#frontend">2. 前端会话层</a>
+      <a href="#backend">3. 后端状态机</a>
+      <a href="#feedback">4. 换一批反馈逻辑</a>
+      <a href="#view">5. View 渲染结构</a>
+      <a href="#handoff">6. 愿意认识出口</a>
+      <a href="#persistence">7. 持久化与审计</a>
+      <a href="#sources">8. 代码锚点</a>
+    </div>
+
+    <div class="grid">
+      <section class="card" id="overview">
+        <h2>1. 总览主链路</h2>
+        <p class="lead">当前发现页本质上是一个“服务端驱动 view 的会话机”，前端不自己推导阶段，只负责恢复 session、提交 turn、映射 timeline。</p>
+        <div class="legend">
+          <span><i class="swatch" style="background:#2563eb"></i>主调用链</span>
+          <span><i class="swatch" style="background:#0f766e"></i>服务内决策</span>
+          <span><i class="swatch" style="background:#d97706"></i>条件分支</span>
+          <span><i class="swatch" style="background:#16a34a"></i>结果输出</span>
+          <span><i class="swatch" style="background:#dc2626"></i>异常/拒绝</span>
+        </div>
+        <div class="flow-wrap">
+          <div class="mermaid">
+flowchart TD
+    A[DiscoverPage 挂载] --> B[useDiscoverySession.loadSession]
+    B --> C{URL 或 localStorage 里有 sessionId 吗}
+    C -->|有| D[GET /v1/discovery/sessions/{id}]
+    C -->|无| E[POST /v1/discovery/sessions]
+    D --> F[Gateway.discovery_routes]
+    E --> F
+    F --> G[DiscoveryService.create_session / get_session_view]
+    G --> H[返回 session.view]
+    H --> I[mapDiscoveryView]
+    I --> J[前端渲染 timelineItems + chips + suggested_actions]
+
+    J --> K[用户输入文字 或 点击 action]
+    K --> L[POST /v1/discovery/sessions/{id}/turns]
+    L --> M[DiscoveryService.process_turn]
+    M --> N{文本 / action 分流}
+    N -->|文本| O[run_turn 或特殊分支]
+    N -->|action| P[消费 action 后 run_turn 或特殊分支]
+    O --> Q[_apply_runtime_result]
+    P --> Q
+    Q --> R[更新 session.view timeline]
+    R --> S[返回最新 view]
+    S --> T[前端全量重映射 UI]
+          </div>
+        </div>
+      </section>
+
+      <section class="card" id="frontend">
+        <h2>2. 前端会话层</h2>
+        <p class="lead">前端关键点是“恢复已有 session 优先，映射服务端 timeline 优先，用户消息只做乐观插入”。</p>
+        <div class="two-col">
+          <div class="note">
+            <h3>初始化</h3>
+            <ul>
+              <li>先看 URL 参数 `session`，再看 `readStoredDiscoverySessionId(profileId)`。</li>
+              <li>有 session 就 `getDiscoverySession`，404 会清掉本地缓存再重新建会话。</li>
+              <li>没有 session 就 `createDiscoverySession({ profileId })`。</li>
+              <li>同时并行加载 `fetchCollectedStatements(profileId)`，仅在 session 还没给出 chips 时补齐偏好标签。</li>
+            </ul>
+          </div>
+          <div class="note">
+            <h3>提交 turn</h3>
+            <ul>
+              <li>输入文字时，先在 timeline 本地插入一条 `kind=message type=user` 的乐观消息。</li>
+              <li>点击快捷动作时，提交 `action_id`，不再要求用户输入文字。</li>
+              <li>服务端返回后，不做局部 patch，而是重新 `mapDiscoveryView(data.view)` 覆盖整个时间线。</li>
+              <li>失败时回滚乐观消息，并把原文字放回输入框。</li>
+            </ul>
+          </div>
+        </div>
+        <table class="table" style="margin-top:14px">
+          <thead>
+            <tr>
+              <th>前端状态</th>
+              <th>来源</th>
+              <th>作用</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>timelineItems</code></td>
+              <td><code>mapDiscoveryView(view.timeline)</code></td>
+              <td>统一渲染消息、候选人组、资料更新提示、测评结果、快捷动作</td>
+            </tr>
+            <tr>
+              <td><code>currentPrefs</code></td>
+              <td><code>criteria_chips</code> 或 collected statements</td>
+              <td>顶部“当前条件”标签</td>
+            </tr>
+            <tr>
+              <td><code>composerPlaceholder</code></td>
+              <td><code>view.composer.placeholder</code></td>
+              <td>输入框提示语</td>
+            </tr>
+            <tr>
+              <td><code>composerDisabled</code></td>
+              <td><code>view.composer.disabled</code></td>
+              <td>输入区禁用态</td>
+            </tr>
+            <tr>
+              <td><code>isSubmittingTurn</code></td>
+              <td>本地状态</td>
+              <td>打字中动效、提交按钮 loading</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="card" id="backend">
+        <h2>3. 后端状态机</h2>
+        <p class="lead">`DiscoveryService` 是整个发现页对话的唯一编排核心。建会话和处理 turn 都会先更新 session，再写 turn、snapshot、tool call 审计。</p>
+        <div class="flow-wrap">
+          <div class="mermaid">
+flowchart TD
+    A[process_turn] --> B{必须且只能传 user_message 或 action_id 一个}
+    B -->|不满足| B1[DiscoveryInvalidTurnInputError]
+    B --> C[加载 session]
+    C --> D{session.status == active}
+    D -->|否| D1[DiscoverySessionClosedError]
+    D --> E[_build_runtime_input]
+
+    E --> F{用户发文字?}
+    F -->|是| G[先把 user_message 写入 new_items]
+    G --> H[parse_rejection_feedback_from_text]
+    H --> I{命中“换一批”追问逻辑?}
+    I -->|是| J[_build_batch_refresh_prompt_result]
+    I -->|否| K{正在等待 rejection feedback 且本句可解析}
+    K -->|是| L[_force_rejection_feedback_turn]
+    K -->|否| M[runtime.run_turn]
+
+    F -->|否，是 action| N[读取 action]
+    N --> O{不存在 / 已消费 / 已过期}
+    O -->|是| O1[action not found 或 expired]
+    O -->|否| P[mark_action_consumed]
+    P --> Q{action_kind}
+    Q -->|show_more_candidates| J
+    Q -->|rejection_feedback| L
+    Q -->|其他| M
+
+    J --> R[_apply_runtime_result]
+    L --> R
+    M --> R
+    R --> S[_update_rejection_feedback_waiting_state]
+    S --> T[save_session]
+    T --> U[create_turn]
+    U --> V[persist_view_snapshot]
+    V --> W[record_tool_calls]
+    W --> X[return session_payload]
+          </div>
+        </div>
+        <div class="three-col" style="margin-top:14px">
+          <div class="note">
+            <h3>建会话</h3>
+            <ul>
+              <li>初始 phase 固定为 <code>collecting_preferences</code>。</li>
+              <li>默认 create mode 为 <code>profile_first</code>。</li>
+              <li>会立即跑一轮首屏搜索，不等用户第一句输入。</li>
+            </ul>
+          </div>
+          <div class="note">
+            <h3>首屏 profile-first</h3>
+            <ul>
+              <li>直接搜 5 个候选人。</li>
+              <li>有结果就进入 <code>results_shown</code>，输出首屏候选组。</li>
+              <li>没结果就保持 <code>collecting_preferences</code>，给用户引导动作。</li>
+            </ul>
+          </div>
+          <div class="note">
+            <h3>状态来源</h3>
+            <ul>
+              <li>最终 phase 来自 runtime decision，而不是前端推断。</li>
+              <li>当前实现的核心 phase：<code>collecting_preferences</code>、<code>results_shown</code>、<code>no_result</code>。</li>
+              <li><code>searching</code> 若没有真实 search_response，会被强制回收成收集中状态。</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" id="feedback">
+        <h2>4. “换一批”反馈逻辑</h2>
+        <p class="lead">这部分是发现页当前最特殊的隐藏状态机。它不是简单地再搜一次，而是先争取用户给出拒绝原因，再把原因转成 search override。</p>
+        <div class="flow-wrap">
+          <div class="mermaid">
+flowchart TD
+    A[用户说 换一批 / 再看看 / 不太合适] --> B{session.awaiting_rejection_feedback ?}
+    B -->|否| C[_build_batch_refresh_prompt_result]
+    C --> D[助手追问 上一批哪里不太合适]
+    D --> E[下发 rejection_feedback actions]
+    E --> F[session.state.awaiting_rejection_feedback = true]
+
+    B -->|是| G[parse_rejection_feedback_text]
+    G --> H{识别为 rejection feedback ?}
+    H -->|否| I[继续走普通 run_turn]
+    H -->|是| J[_force_rejection_feedback_turn]
+    J --> K[submit_rejection_feedback / skip_rejection_feedback]
+    K --> L[_feedback_search_override]
+    L --> M[重新 search_partner_candidates]
+    M --> N[_dedupe_feedback_search_results]
+    N --> O{有结果?}
+    O -->|是| P[phase = results_shown]
+    O -->|否| Q[phase = no_result]
+    P --> R[输出 按你刚才的反馈重新给你换一批]
+    Q --> R
+          </div>
+        </div>
+        <table class="table" style="margin-top:14px">
+          <thead>
+            <tr>
+              <th>反馈类型</th>
+              <th>系统动作</th>
+              <th>默认 override</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>location_distance</code></td>
+              <td>偏向同城重筛</td>
+              <td>把 <code>cities</code> 收紧到用户自己城市</td>
+            </tr>
+            <tr>
+              <td><code>age_gap</code> / <code>criteria_age</code></td>
+              <td>年龄更接近</td>
+              <td>默认收成用户年龄上下约 3 岁</td>
+            </tr>
+            <tr>
+              <td><code>occupation_mismatch</code></td>
+              <td>职业方向调整</td>
+              <td>文案上更强调职业匹配，criteria patch 可来自解析结果</td>
+            </tr>
+            <tr>
+              <td><code>work_life_balance</code></td>
+              <td>作息稳定方向重筛</td>
+              <td>可写入 prefer / must_not_have 补丁</td>
+            </tr>
+            <tr>
+              <td><code>skip_feedback</code></td>
+              <td>直接记录“跳过反馈”</td>
+              <td>不问细节，直接按当前条件再搜</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="card" id="view">
+        <h2>5. View 渲染结构</h2>
+        <p class="lead">服务端实际返回的是 view model，前端只做映射。时间线是单数组，消息和候选组按顺序交错存在。</p>
+        <div class="two-col">
+          <div class="note">
+            <h3>timeline item 类型</h3>
+            <ul>
+              <li><code>assistant_message</code> → 前端 <code>kind=message type=matchmaker</code></li>
+              <li><code>user_message</code> → 前端 <code>kind=message type=user</code></li>
+              <li><code>result_group</code> → 候选人卡片组</li>
+              <li><code>profile_update_prompt</code> → 资料更新确认卡</li>
+              <li><code>assessment_result</code> → 测评结果卡</li>
+              <li><code>feedback_options</code> → 预留的反馈选项块</li>
+            </ul>
+          </div>
+          <div class="note">
+            <h3>_apply_runtime_result 会做什么</h3>
+            <ul>
+              <li>先用 decision 更新 <code>criteria_chips</code>。</li>
+              <li>有 search_response 时，先持久化 search run，再构造候选卡片。</li>
+              <li>总是先追加 assistant message，再追加 profile update prompt，再追加 result group。</li>
+              <li>最后刷新 <code>view.suggested_actions</code> 和 <code>view.composer</code>。</li>
+            </ul>
+          </div>
+        </div>
+        <table class="table" style="margin-top:14px">
+          <thead>
+            <tr>
+              <th>服务端字段</th>
+              <th>前端展示</th>
+              <th>备注</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>view.criteria_chips[]</code></td>
+              <td>顶部“当前条件”标签</td>
+              <td>若 session 自己没有，前端才会用 collected statements 补</td>
+            </tr>
+            <tr>
+              <td><code>view.suggested_actions[]</code></td>
+              <td>对话底部快捷动作</td>
+              <td>每次 turn 会替换，不是追加</td>
+            </tr>
+            <tr>
+              <td><code>result_group.cards[]</code></td>
+              <td>候选人卡片</td>
+              <td>含头像、城市、匹配理由、人格说明等字段</td>
+            </tr>
+            <tr>
+              <td><code>prompt.status</code></td>
+              <td>资料更新卡状态</td>
+              <td>可变为 <code>pending / confirmed / rejected</code></td>
+            </tr>
+            <tr>
+              <td><code>view.composer</code></td>
+              <td>输入框 placeholder / disabled</td>
+              <td>当前实现通常回写成“继续告诉红娘你的要求”</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="card" id="handoff">
+        <h2>6. “愿意认识”出口</h2>
+        <p class="lead">发现页里的候选人不是终点。点击“愿意认识”会从 discovery 跨到 recommendation 和 matchmaking，形成正式牵线单。</p>
+        <div class="flow-wrap">
+          <div class="mermaid">
+flowchart TD
+    A[前端调用 express-interest] --> B[Gateway 校验 session owner]
+    B --> C[DiscoveryService.express_interest]
+    C --> D{session active 且 last_search_run_id 存在?}
+    D -->|否| D1[返回不可发起认识]
+    D --> E[读取最新 search_run]
+    E --> F{candidate 在最新 search_run 里吗}
+    F -->|否| F1[candidate not found]
+    F --> G[提取 criteria / self_profile / self_id]
+    G --> H[recommendation.create_subscription]
+    H --> I[recommendation.upsert_recommendation]
+    I --> J[matchmaking.create_match_case]
+    J --> K[matchmaking.dispatch_match_case_outreach]
+    K --> L[返回 subscription_id + case]
+          </div>
+        </div>
+        <div class="two-col" style="margin-top:14px">
+          <div class="note">
+            <h3>前置约束</h3>
+            <ul>
+              <li>必须基于最近一次 discovery search run。</li>
+              <li>只能对最近搜索结果里的候选人发起意愿。</li>
+              <li>如果 search run 丢失或过期，会提示重新让红娘搜一轮。</li>
+            </ul>
+          </div>
+          <div class="note">
+            <h3>输出结果</h3>
+            <ul>
+              <li>会记录 <code>last_created_subscription_id</code>、<code>last_interest_candidate_id</code>。</li>
+              <li>返回值包含 <code>subscription_id</code> 和 <code>case</code>。</li>
+              <li>后续链路继续进入 recommendation inbox / proxy intro / chat 体系。</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" id="persistence">
+        <h2>7. 持久化与审计</h2>
+        <p class="lead">发现页不是无状态聊天。每轮都会存 session、turn、search run、view snapshot、tool call，并打 metrics、funnel、audit 事件。</p>
+        <div class="three-col">
+          <div class="note">
+            <h3>会话层</h3>
+            <ul>
+              <li><code>save_session</code> 持久化 view、phase、state。</li>
+              <li><code>get_session_view</code> 支持用最新 snapshot 恢复 view。</li>
+              <li>前端可跨刷新继续回到同一 session。</li>
+            </ul>
+          </div>
+          <div class="note">
+            <h3>回合层</h3>
+            <ul>
+              <li><code>create_turn</code> 记录 request_kind、user_message、consumed_action、agent_decision。</li>
+              <li><code>request_kind</code> 主要有 <code>session_opened</code>、<code>user_message</code>、<code>action_click</code>。</li>
+              <li>每轮都写 <code>view_snapshot</code>。</li>
+            </ul>
+          </div>
+          <div class="note">
+            <h3>工具与搜索</h3>
+            <ul>
+              <li><code>search_partner_candidates</code>、<code>sync_requester_persona_memory</code>、<code>propose_requester_profile_update</code> 等都有 tool-call 审计。</li>
+              <li>真实搜索结果会落成 <code>search_run</code>，供 express-interest 和订阅复用。</li>
+              <li>反馈重筛也会重新生成搜索结果链路。</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" id="sources">
+        <h2>8. 代码锚点</h2>
+        <p class="lead">下面这些文件是这份逻辑图的主要依据，方便继续追代码。</p>
+        <table class="table">
+          <thead>
+            <tr>
+              <th>层</th>
+              <th>文件</th>
+              <th>作用</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>前端页面</td>
+              <td><code>frontend/her-app/components/her/discover-page.tsx</code></td>
+              <td>发现页 UI、timeline 渲染、测评插入点</td>
+            </tr>
+            <tr>
+              <td>前端状态</td>
+              <td><code>frontend/her-app/hooks/use-discovery-session.ts</code></td>
+              <td>session 恢复、乐观消息、提交 turn、重映射 view</td>
+            </tr>
+            <tr>
+              <td>前端映射</td>
+              <td><code>frontend/her-app/lib/discovery/map-discovery-view.ts</code></td>
+              <td>把后端 view.timeline 转成前端 timelineItems</td>
+            </tr>
+            <tr>
+              <td>网关</td>
+              <td><code>external-systems/partner-http-gateway/gateway/discovery_routes.py</code></td>
+              <td>REST 路由、owner 校验、错误码透传</td>
+            </tr>
+            <tr>
+              <td>建会话模式</td>
+              <td><code>external-systems/partner-discovery-system/discovery_system/service_session_open.py</code></td>
+              <td>profile-first 首屏候选逻辑</td>
+            </tr>
+            <tr>
+              <td>服务核心</td>
+              <td><code>external-systems/partner-discovery-system/discovery_system/service.py</code></td>
+              <td>create_session、process_turn、反馈重筛、资料更新、express_interest</td>
+            </tr>
+            <tr>
+              <td>runtime 协议</td>
+              <td><code>external-systems/partner-discovery-system/discovery_system/decision_models.py</code></td>
+              <td>decision phase、suggested action、candidate selection 数据模型</td>
+            </tr>
+            <tr>
+              <td>测试</td>
+              <td><code>external-systems/partner-discovery-system/tests/test_discovery_system.py</code></td>
+              <td>覆盖 action、search、订阅、tool 调用等行为</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="footer">
+          文件基于当前仓库实现整理，适合直接在浏览器打开审阅。若后续要继续深化，我建议下一步补一版“用户可见文案 vs 内部状态字段”的对照图。
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: "base",
+      themeVariables: {
+        primaryColor: "#e8f0ff",
+        primaryTextColor: "#172033",
+        primaryBorderColor: "#2563eb",
+        lineColor: "#64748b",
+        secondaryColor: "#ecfdf5",
+        tertiaryColor: "#fff7ed",
+        background: "#ffffff",
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif'
+      },
+      flowchart: {
+        curve: "basis",
+        htmlLabels: true
+      }
+    });
+  </script>
+</body>
+</html>
