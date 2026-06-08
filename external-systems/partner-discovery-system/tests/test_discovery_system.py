@@ -226,6 +226,50 @@ class _SearchToolRuntime:
         )
 
 
+class _DoubleSearchRuntime:
+    def initial_decision(self, _run_input):
+        return DiscoveryRuntimeResult(
+            decision=DiscoveryDecision(
+                phase="collecting_preferences",
+                assistant_message="先告诉我你想找什么样的人。",
+            )
+        )
+
+    def run_turn(self, run_input, *, user_message=None, action_context=None):
+        del user_message, action_context
+        run_input.search_partner_candidates(
+            {
+                "gender": "女",
+                "cities": ["无锡"],
+                "relationship_goals": ["认真恋爱"],
+            },
+            3,
+        )
+        second_response = run_input.search_partner_candidates(
+            {
+                "gender": "女",
+                "cities": ["苏州"],
+                "relationship_goals": ["认真恋爱"],
+            },
+            3,
+        )
+        return DiscoveryRuntimeResult(
+            decision=DiscoveryDecision(
+                phase="results_shown",
+                assistant_message="我先缩一轮，如果本地不够合适就扩大到周边城市再看。",
+                criteria_labels=["苏州", "认真恋爱"],
+                result_group_title="放宽后给你看 1 位",
+                selected_candidates=[
+                    DiscoveryCandidateSelection(
+                        profile_id=3002,
+                        reason_summary="放宽到周边城市后命中。",
+                    )
+                ],
+            ),
+            search_response=second_response,
+        )
+
+
 class _PhantomSearchingRuntime:
     def initial_decision(self, _run_input):
         return DiscoveryRuntimeResult(
@@ -493,6 +537,122 @@ class DiscoveryServiceTests(unittest.TestCase):
         self.assertEqual(summary[0]["item_type"], "assessment_result")
         self.assertEqual(summary[0]["type_code"], "INTJ")
         self.assertEqual(summary[0]["summary"], "偏理性，慢热但稳定。")
+
+    def test_agents_runtime_can_issue_multiple_search_tool_calls_in_one_run(self) -> None:
+        runtime = AgentsSdkDiscoveryAgentRuntime()
+        session = InMemoryDiscoveryAgentSessionStore().get_session("discovery-session-multi-search")
+        captured: dict[str, object] = {}
+        search_calls: list[dict[str, object]] = []
+
+        def _fake_agent(**kwargs):
+            captured["tools"] = kwargs.get("tools")
+            return object()
+
+        def _fake_run_sync(_agent, input, **kwargs):
+            del input, kwargs
+            tools = list(captured["tools"] or [])
+            search_tool = next(tool for tool in tools if getattr(tool, "name", "") == "search_partner_candidates")
+            first = asyncio.run(
+                search_tool.on_invoke_tool(
+                    None,
+                    json.dumps(
+                        {
+                            "criteria_json": json.dumps({"cities": ["无锡"], "relationship_goals": ["认真恋爱"]}),
+                            "limit": 3,
+                        },
+                        ensure_ascii=False,
+                    ),
+                )
+            )
+            second = asyncio.run(
+                search_tool.on_invoke_tool(
+                    None,
+                    json.dumps(
+                        {
+                            "criteria_json": json.dumps({"cities": ["苏州"], "relationship_goals": ["认真恋爱"]}),
+                            "limit": 3,
+                        },
+                        ensure_ascii=False,
+                    ),
+                )
+            )
+            search_calls.extend([first["request_meta"], second["request_meta"]])
+            return {
+                "phase": "results_shown",
+                "assistant_message": "我先看了无锡，又放宽到苏州再搜了一轮。",
+                "criteria_labels": ["苏州", "认真恋爱"],
+                "suggested_actions": [],
+                "selected_candidates": [
+                    {
+                        "profile_id": 2002,
+                        "reason_summary": "第二轮放宽城市后才找到合适候选人。",
+                    }
+                ],
+            }
+
+        def _search_partner_candidates(criteria, limit):
+            city = list(criteria.get("cities") or [])
+            if city == ["无锡"]:
+                return {
+                    "has_match": False,
+                    "result_count": 0,
+                    "results": [],
+                    "request_meta": {"criteria": dict(criteria), "limit_count": limit},
+                }
+            return {
+                "has_match": True,
+                "result_count": 1,
+                "results": [
+                    {
+                        "id": 2002,
+                        "name": "周晴",
+                        "score": 88,
+                        "match_reason": "第二轮放宽城市后命中",
+                        "profile": {"age": 29, "city": "苏州", "job": "教师", "education": "本科"},
+                    }
+                ],
+                "request_meta": {"criteria": dict(criteria), "limit_count": limit},
+            }
+
+        run_input = DiscoveryRunInput(
+            session_id="discovery-session-multi-search",
+            requester_id=70001,
+            profile_id=10001,
+            phase="collecting_preferences",
+            criteria_labels=[],
+            recent_timeline=[],
+            runtime_context={
+                "requester_profile_snapshot": {"self_city": "无锡"},
+                "recent_timeline_summary": [],
+                "visible_actions": [],
+                "last_search_summary": None,
+                "page_summary": {"criteria_labels": [], "result_cards": []},
+            },
+            search_partner_candidates=_search_partner_candidates,
+            sync_requester_persona_memory=lambda _patch: {"synced": True},
+            propose_requester_profile_update=lambda _patch_json, _evidence="": {"proposed": False},
+            create_saved_search_subscription_from_last_search=lambda: {"created_subscription": False},
+            agent_session=session,
+        )
+
+        with mock.patch("discovery_system.agent_runtime._configure_agents_sdk_provider"), mock.patch(
+            "agents.Agent",
+            side_effect=_fake_agent,
+        ), mock.patch("agents.Runner.run_sync", side_effect=_fake_run_sync):
+            result = runtime._run_with_agents_sdk(
+                run_input,
+                event="user_message",
+                user_message="你自己多搜几轮，直到找到更合适的。",
+                action_context=None,
+            )
+
+        self.assertEqual(len(search_calls), 2)
+        self.assertEqual(search_calls[0]["criteria"]["cities"], ["无锡"])
+        self.assertEqual(search_calls[1]["criteria"]["cities"], ["苏州"])
+        self.assertIsNotNone(result.search_response)
+        assert result.search_response is not None
+        self.assertEqual(result.search_response["request_meta"]["criteria"]["cities"], ["苏州"])
+        self.assertEqual(result.decision.selected_candidates[0].profile_id, 2002)
 
     def test_agents_runtime_uses_personality_explanation_fallback_for_shown_candidates(self) -> None:
         runtime = AgentsSdkDiscoveryAgentRuntime()
@@ -1435,6 +1595,57 @@ class DiscoveryServiceTests(unittest.TestCase):
         self.assertTrue(search_tool_call.result["request_meta"]["self_profile_lookup_failed"])
         self.assertEqual(result["session"]["phase"], "results_shown")
         self.assertEqual(result["view"]["timeline"][-1]["item_type"], "result_group")
+
+    def test_service_records_multiple_search_tool_calls_within_one_turn(self) -> None:
+        service = DiscoveryService(
+            storage=InMemoryDiscoveryStorage(),
+            runtime=_DoubleSearchRuntime(),
+        )
+        created = service.create_session(requester_id=70001, profile_id=10001)
+        session_id = created["session"]["session_id"]
+
+        first_response = {
+            "has_match": False,
+            "result_count": 0,
+            "results": [],
+            "request_meta": {
+                "source": _DISCOVERY_TEST_PROFILE_SOURCE,
+                "criteria": {"gender": "女", "cities": ["无锡"], "relationship_goals": ["认真恋爱"]},
+                "limit_count": 3,
+            },
+        }
+        second_response = {
+            "has_match": True,
+            "result_count": 1,
+            "results": [
+                {
+                    "id": 3002,
+                    "name": "顾清和",
+                    "score": 90,
+                    "match_reason": "放宽到苏州后命中",
+                    "profile": {"age": 28, "city": "苏州", "job": "品牌策划", "education": "本科"},
+                }
+            ],
+            "request_meta": {
+                "source": _DISCOVERY_TEST_PROFILE_SOURCE,
+                "criteria": {"gender": "女", "cities": ["苏州"], "relationship_goals": ["认真恋爱"]},
+                "limit_count": 3,
+            },
+        }
+
+        with mock.patch.object(service, "_search_partner_candidates", side_effect=[first_response, second_response]):
+            result = service.process_turn(
+                session_id=session_id,
+                user_message_text="如果无锡不合适，你就自己扩大到苏州继续搜。",
+            )
+
+        tool_calls = service.storage.list_tool_calls(session_id)
+        search_tool_calls = [item for item in tool_calls if item.tool_name == "search_partner_candidates"]
+        self.assertEqual(len(search_tool_calls), 2)
+        self.assertEqual(search_tool_calls[0].arguments["criteria"]["cities"], ["无锡"])
+        self.assertEqual(search_tool_calls[1].arguments["criteria"]["cities"], ["苏州"])
+        self.assertEqual(result["view"]["timeline"][-1]["item_type"], "result_group")
+        self.assertEqual(result["view"]["timeline"][-1]["cards"][0]["profile_id"], 3002)
 
     def test_service_coerces_failed_search_into_non_no_result_message(self) -> None:
         service = DiscoveryService(
