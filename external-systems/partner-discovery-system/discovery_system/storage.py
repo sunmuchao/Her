@@ -224,6 +224,10 @@ class InMemoryDiscoveryStorage:
         self._turn_seq += 1
         return self._turn_seq
 
+    def get_latest_turn_id(self, session_id: str) -> int | None:
+        del session_id
+        return self._turn_seq if self._turn_seq > 0 else None
+
     def create_search_run(
         self,
         *,
@@ -734,6 +738,27 @@ class MySQLDiscoveryStorage:
             return turn_id
         finally:
             conn.close()
+
+    def get_latest_turn_id(self, session_id: str) -> int | None:
+        conn = self._open()
+        try:
+            row = conn.execute(
+                """
+                SELECT turn_id
+                FROM discovery_agent_turns
+                WHERE session_id = ?
+                ORDER BY turn_id DESC
+                LIMIT 1
+                """,
+                (session_id,),
+            ).fetchone()
+        finally:
+            conn.close()
+        if row is None:
+            return None
+        row_dict = row_to_dict(row)
+        raw_turn_id = row_dict.get("turn_id") if isinstance(row_dict, dict) else row[0]
+        return int(raw_turn_id) if raw_turn_id not in (None, "") else None
 
     def create_search_run(
         self,
