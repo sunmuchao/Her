@@ -1827,6 +1827,67 @@ class DiscoveryServiceTests(unittest.TestCase):
         self.assertIn("prefer", working_criteria)
         self.assertIn("工作稳定", list(working_criteria.get("prefer") or []))
 
+    def test_rejection_feedback_free_text_no_result_still_renders_fallback_cards(self) -> None:
+        service = DiscoveryService(
+            storage=InMemoryDiscoveryStorage(),
+            runtime=_PassiveActionRuntime(),
+        )
+        created = service.create_session(requester_id=70001, profile_id=10001)
+        session_id = created["session"]["session_id"]
+        session = service.storage.get_session(session_id)
+        assert session is not None
+        session.state["awaiting_rejection_feedback"] = True
+        session.view["timeline"] = [
+            {
+                "item_type": "assistant_message",
+                "item_id": "msg-a-ask",
+                "body": "好的，帮你换一批新的。换之前能简单告诉我上一批哪里不太合适吗？这样我下轮会更准",
+            },
+            {
+                "item_type": "result_group",
+                "item_id": "group-old",
+                "title": "上一批",
+                "cards": [{"profile_id": 1001, "title": "旧候选人"}],
+            },
+        ]
+        service.storage.save_session(session)
+        search_response = {
+            "has_match": False,
+            "result_count": 0,
+            "results": [],
+            "fallback_results": [
+                {
+                    "id": 2004,
+                    "name": "顾清和",
+                    "score": 61,
+                    "fallback_reason": "这位职业更稳，但还需要确认聊天感觉。",
+                    "profile": {"age": 29, "city": "杭州", "job": "行政", "education": "本科"},
+                }
+            ],
+            "request_meta": {
+                "source": _DISCOVERY_TEST_PROFILE_SOURCE,
+                "criteria": {
+                    "cities": ["杭州"],
+                    "relationship_goals": ["认真恋爱"],
+                    "prefer": ["工作稳定", "生活规律"],
+                    "must_not_have": ["高强度工作"],
+                },
+                "limit_count": 5,
+            },
+        }
+
+        with mock.patch.object(service, "_search_partner_candidates", return_value=search_response) as search_mock:
+            result = service.process_turn(
+                session_id=session_id,
+                user_message_text="互联网工作的人都太忙了",
+            )
+
+        search_mock.assert_called_once()
+        self.assertEqual(result["session"]["phase"], "no_result")
+        self.assertEqual(result["view"]["timeline"][-1]["item_type"], "result_group")
+        self.assertEqual(result["view"]["timeline"][-1]["cards"][0]["profile_id"], 2004)
+        self.assertIn("这次还没出到更合适的", result["view"]["timeline"][-2]["body"])
+
     def test_service_observability_snapshot_tracks_counters(self) -> None:
         service = DiscoveryService(
             storage=InMemoryDiscoveryStorage(),

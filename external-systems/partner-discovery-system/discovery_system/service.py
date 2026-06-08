@@ -1117,13 +1117,14 @@ class DiscoveryService:
         decision: DiscoveryDecision,
     ) -> list[dict[str, Any]]:
         results = list(search_response.get("results") or [])
+        fallback_results = list(search_response.get("fallback_results") or [])
+        card_candidates = results
         selected_by_id = {
             int(selection.profile_id): selection
             for selection in decision.selected_candidates
             if int(selection.profile_id) > 0
         }
         if not selected_by_id and decision.phase == "results_shown":
-            fallback_results = results[:5]
             selected_by_id = {
                 int(candidate.get("id") or 0): DiscoveryCandidateSelection(
                     profile_id=int(candidate.get("id") or 0),
@@ -1133,11 +1134,26 @@ class DiscoveryService:
                         or ""
                     ).strip(),
                 )
-                for candidate in fallback_results
+                for candidate in results[:5]
+                if int(candidate.get("id") or 0) > 0
+            }
+        elif not selected_by_id and decision.phase == "no_result" and fallback_results:
+            card_candidates = fallback_results
+            selected_by_id = {
+                int(candidate.get("id") or 0): DiscoveryCandidateSelection(
+                    profile_id=int(candidate.get("id") or 0),
+                    reason_summary=str(
+                        candidate.get("fallback_reason")
+                        or candidate.get("match_reason")
+                        or candidate.get("reason_summary")
+                        or ""
+                    ).strip(),
+                )
+                for candidate in fallback_results[:3]
                 if int(candidate.get("id") or 0) > 0
             }
         cards: list[dict[str, Any]] = []
-        for candidate in results:
+        for candidate in card_candidates:
             profile_id = int(candidate.get("id") or 0)
             selection = selected_by_id.get(profile_id)
             if selection is None:
