@@ -303,7 +303,10 @@ def normalize_self_profile_input(
             normalized["income_max_wan"] = income_max
 
     normalized["has_children"] = runtime.normalize_bool(normalized.get("has_children"))
-    normalized["combined_text"] = runtime.build_combined_text(normalized)
+    # 性能优化：combined_text 改为惰性构建（仅在需要关键词匹配时才构建）
+    # 避免在 normalize_candidate_profile 时遍历所有 text_fields
+    normalized["combined_text"] = None
+    normalized["_combined_text_needs_build"] = True
     return normalized
 
 
@@ -344,7 +347,10 @@ def build_self_profile(
     if self_id is not None:
         profile["id"] = self_id
     profile["has_children"] = runtime.normalize_bool(profile.get("has_children"))
-    profile["combined_text"] = runtime.build_combined_text(profile)
+    # 性能优化：combined_text 改为惰性构建（仅在需要关键词匹配时才构建）
+    # 对于 self_profile，关键词匹配较少使用，惰性构建更合适
+    profile["combined_text"] = None
+    profile["_combined_text_needs_build"] = True
     return profile
 
 

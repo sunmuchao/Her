@@ -189,7 +189,7 @@ class InMemoryDiscoveryStorage:
         style: str,
         semantic_payload: dict[str, Any] | None,
         now: datetime,
-        ttl: timedelta = timedelta(hours=24),
+        ttl: timedelta = timedelta(days=7),  # 延长到7天，避免用户点击时action已过期
     ) -> StoredAction:
         action = StoredAction(
             action_id=self.next_action_id(),
@@ -600,7 +600,7 @@ class MySQLDiscoveryStorage:
         style: str,
         semantic_payload: dict[str, Any] | None,
         now: datetime,
-        ttl: timedelta = timedelta(hours=24),
+        ttl: timedelta = timedelta(days=7),  # 延长到7天，避免用户点击时action已过期
     ) -> StoredAction:
         action = StoredAction(
             action_id=self.next_action_id(),
@@ -1012,6 +1012,139 @@ class MySQLDiscoveryStorage:
                 (status, confirmed_at, rejected_at, now, request_id),
             )
             conn.commit()
+        finally:
+            conn.close()
+
+    # ========== 新增：反馈收集相关接口 ==========
+
+    def insert_rejection_feedback(
+        self,
+        *,
+        session_id: str,
+        turn_id: int,
+        requester_id: int,
+        feedback_type: str,
+        feedback_text: str,
+        feedback_detail: str | None = None,
+        rejected_batch_id: str | None = None,
+        rejected_candidate_ids: list[str] | None = None,
+        source_type: str = "explicit",
+        追问_triggered: bool = True,
+        追问_skipped: bool = False,
+        is_secondary_feedback: bool = False,
+        primary_feedback_id: int | None = None,
+        created_at: datetime,
+    ) -> int:
+        """插入拒绝反馈记录。"""
+        conn = self._open()
+        try:
+            conn.execute(
+                """
+                INSERT INTO discovery_rejection_feedbacks (
+                    session_id, turn_id, requester_id, feedback_type, feedback_text,
+                    feedback_detail, rejected_batch_id, rejected_candidate_ids,
+                    source_type, 追问_triggered, 追问_skipped,
+                    is_secondary_feedback, primary_feedback_id, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    session_id,
+                    int(turn_id),
+                    int(requester_id),
+                    feedback_type,
+                    feedback_text,
+                    feedback_detail,
+                    rejected_batch_id,
+                    json_dumps(rejected_candidate_ids or []),
+                    source_type,
+                    int(追问_triggered),
+                    int(追问_skipped),
+                    int(is_secondary_feedback),
+                    primary_feedback_id,
+                    created_at,
+                ),
+            )
+            feedback_id = int(conn.lastrowid)
+            conn.commit()
+            return feedback_id
+        finally:
+            conn.close()
+
+    def insert_criteria_adjustment(
+        self,
+        *,
+        session_id: str,
+        turn_id: int,
+        adjustment_type: str,
+        affected_field: str,
+        before_value: dict[str, Any] | None,
+        after_value: dict[str, Any] | None,
+        triggered_by_feedback_id: int | None = None,
+        adjustment_reason: str | None = None,
+        created_at: datetime,
+    ) -> int:
+        """插入criteria调整记录。"""
+        conn = self._open()
+        try:
+            conn.execute(
+                """
+                INSERT INTO discovery_working_criteria_adjustments (
+                    session_id, turn_id, adjustment_type, affected_field,
+                    before_value, after_value, triggered_by_feedback_id,
+                    adjustment_reason, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    session_id,
+                    int(turn_id),
+                    adjustment_type,
+                    affected_field,
+                    json_dumps(before_value or {}),
+                    json_dumps(after_value or {}),
+                    triggered_by_feedback_id,
+                    adjustment_reason,
+                    created_at,
+                ),
+            )
+            adjustment_id = int(conn.lastrowid)
+            conn.commit()
+            return adjustment_id
+        finally:
+            conn.close()
+
+    def load_working_criteria_adjustments(
+        self,
+        session_id: str,
+    ) -> list[dict[str, Any]]:
+        """加载session的所有criteria调整记录。"""
+        conn = self._open()
+        try:
+            rows = conn.execute(
+                """
+                SELECT adjustment_id, session_id, turn_id, adjustment_type,
+                       affected_field, before_value, after_value,
+                       triggered_by_feedback_id, adjustment_reason, created_at
+                FROM discovery_working_criteria_adjustments
+                WHERE session_id = ?
+                ORDER BY adjustment_id ASC
+                """,
+                (session_id,),
+            ).fetchall()
+            return [
+                {
+                    "adjustment_id": int(row[0]),
+                    "session_id": str(row[1]),
+                    "turn_id": int(row[2]),
+                    "adjustment_type": str(row[3]),
+                    "affected_field": str(row[4]),
+                    "before_value": json_loads(str(row[5] or "{}"), {}),
+                    "after_value": json_loads(str(row[6] or "{}"), {}),
+                    "triggered_by_feedback_id": row[7],
+                    "adjustment_reason": row[8],
+                    "created_at": _parse_datetime(row[9]),
+                }
+                for row in rows
+            ]
         finally:
             conn.close()
 

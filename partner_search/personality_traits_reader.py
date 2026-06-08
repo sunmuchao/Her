@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from datetime import datetime
+from functools import lru_cache
 from typing import Any
 
 
@@ -209,6 +210,27 @@ def load_traits_for_profiles(
     return result
 
 
+# === 性能优化：Traits 缓存 ===
+# 缓存最近的100个用户的traits，减少重复数据库查询
+_TRAITS_CACHE_MAX_SIZE = 100
+
+
+@lru_cache(maxsize=_TRAITS_CACHE_MAX_SIZE)
+def _cached_load_persona_for_discovery(
+    source: str,
+    profile_id: int | None,
+    requester_id: int | None,
+) -> dict[str, Any] | None:
+    """缓存层：避免重复查询同一用户的 persona 数据"""
+    from match_domain.persona_loader import load_persona_for_discovery
+
+    return load_persona_for_discovery(
+        source=source,
+        profile_id=profile_id,
+        requester_id=requester_id,
+    )
+
+
 def load_traits_for_discovery(
     source: str,
     profile_id: int | None = None,
@@ -224,9 +246,8 @@ def load_traits_for_discovery(
     Returns:
         PersonalityTraitsContext（原始数据）
     """
-    from match_domain.persona_loader import load_persona_for_discovery
-
-    persona_row = load_persona_for_discovery(
+    # 性能优化：使用缓存层避免重复查询
+    persona_row = _cached_load_persona_for_discovery(
         source=source,
         profile_id=profile_id,
         requester_id=requester_id,
@@ -237,10 +258,16 @@ def load_traits_for_discovery(
     )
 
 
+def clear_traits_cache() -> None:
+    """清除 traits 缓存（用于测试或强制刷新）"""
+    _cached_load_persona_for_discovery.cache_clear()
+
+
 __all__ = [
     "PersonalityTraitsContext",
     "build_traits_context_from_persona_row",
     "load_traits_for_discovery",
     "load_traits_for_profile",
     "load_traits_for_profiles",
+    "clear_traits_cache",  # 性能优化：缓存清理接口
 ]

@@ -27,6 +27,16 @@ from .decision_models import (
 )
 
 
+def _noop_submit_rejection_feedback(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    del args, kwargs
+    return {"success": False, "skipped": True}
+
+
+def _noop_get_feedback_options(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    del args, kwargs
+    return {"options": []}
+
+
 @dataclass(frozen=True)
 class DiscoveryRunInput:
     session_id: str
@@ -40,6 +50,9 @@ class DiscoveryRunInput:
     sync_requester_persona_memory: Callable[[dict[str, Any]], dict[str, Any]]
     propose_requester_profile_update: Callable[[str, str], dict[str, Any]]
     create_saved_search_subscription_from_last_search: Callable[[], dict[str, Any]]
+    # 新增：反馈收集工具
+    submit_rejection_feedback: Callable[..., dict[str, Any]] = _noop_submit_rejection_feedback
+    get_feedback_options: Callable[..., dict[str, Any]] = _noop_get_feedback_options
     tool_call_buffer: list["DiscoveryToolCall"] = field(default_factory=list)
     agent_session: Any | None = None
 
@@ -553,6 +566,68 @@ class StubDiscoveryAgentRuntime:
                     suggested_actions=[],
                 )
             )
+
+        # 【新增】处理rejection_feedback（反馈收集）
+        if action_hint.get("kind") == "rejection_feedback":
+            feedback_type = action_hint.get("feedback_type") or "unknown"
+            feedback_text = str(action_context.get("label") or "职业不太匹配")
+
+            # 1. 调用submit_rejection_feedback记录反馈
+            feedback_result = run_input.submit_rejection_feedback(
+                feedback_text=feedback_text,
+                feedback_type=feedback_type,
+                feedback_detail="",
+                is_secondary=False,
+            )
+
+            # 2. 调用search_partner_candidates搜索新候选人
+            # TODO: 这里应该根据feedback_type调整criteria
+            search_result = run_input.search_partner_candidates(
+                criteria_json={},  # 使用当前criteria，后续可调整
+                limit=5,
+            )
+
+            # 3. 构建返回结果
+            candidates = []
+            if search_result.get("results"):
+                for item in search_result.get("results")[:5]:
+                    candidates.append({
+                        "profile_id": item.get("id"),
+                        "reason_summary": item.get("match_reason") or "匹配度较高",
+                    })
+
+            # 根据反馈类型生成文案
+            if feedback_type == "occupation_mismatch":
+                body = "明白了，你倾向于其他职业方向。我再帮你调整，这次试试医药、教育、行政类的女生。"
+            elif feedback_type == "location_distance":
+                body = "明白了，你希望同城优先。我帮你调整一下，找杭州附近的女生。"
+            elif feedback_type == "work_life_balance":
+                body = "明白了，你希望找生活规律的女生。我帮你调整一下，找作息稳定、不加班的。"
+            else:
+                body = f'收到，你点了"{feedback_text}"。我帮你调整一下搜索条件。'
+
+            return DiscoveryRuntimeResult(
+                decision=DiscoveryDecision(
+                    phase="results_shown",
+                    assistant_message=body,
+                    criteria_labels=list(run_input.criteria_labels),
+                    selected_candidates=candidates,
+                    suggested_actions=[
+                        DiscoveryActionSuggestion(
+                            label="看看更多",
+                            semantic_payload={},
+                            style="ghost",
+                        ),
+                        DiscoveryActionSuggestion(
+                            label="调整条件",
+                            semantic_payload={},
+                            style="secondary",
+                        ),
+                    ],
+                ),
+                search_response=search_result,
+            )
+
         if action_context is not None:
             label = str(action_context.get("label") or "这个选项")
             body = f"收到，你点了“{label}”。我再帮你把条件收一收，然后继续找。"
@@ -717,6 +792,32 @@ class AgentsSdkDiscoveryAgentRuntime:
         def create_saved_search_subscription_from_last_search() -> dict[str, Any]:
             return run_input.create_saved_search_subscription_from_last_search()
 
+        @function_tool
+        def submit_rejection_feedback(
+            feedback_text: str,
+            feedback_type: str = "",
+            feedback_detail: str = "",
+            is_secondary: bool = False,
+        ) -> dict[str, Any]:
+            """提交拒绝反馈，用于记录用户对上一批候选人的不满原因。"""
+            return run_input.submit_rejection_feedback(
+                feedback_text=feedback_text,
+                feedback_type=feedback_type if feedback_type else None,
+                feedback_detail=feedback_detail if feedback_detail else None,
+                is_secondary=is_secondary,
+            )
+
+        @function_tool
+        def get_feedback_options(
+            include_secondary: bool = False,
+            primary_option: str = "",
+        ) -> dict[str, Any]:
+            """获取反馈选项列表，用于展示给用户选择。"""
+            return run_input.get_feedback_options(
+                include_secondary=include_secondary,
+                primary_option=primary_option if primary_option else None,
+            )
+
         instructions = """
 你是发现页里的 AI 红娘。
 
@@ -778,7 +879,8 @@ official_context 里常见信息：
 - criteria_labels 用于给前端展示条件 chips，最多 6 个。
 - suggested_actions 最多 3 个，标签要短。
 - suggested_actions.style 只能是：primary、secondary、ghost。
-- semantic_payload.kind 只用这些值：starter_prompt、followup_prompt、saved_search_opt_in、refine_candidates、add_criteria、refine_preferences、show_more_candidates、age_preference、start_assessment。
+- semantic_payload.kind 只用这些值：starter_prompt、followup_prompt、saved_search_opt_in、refine_candidates、add_criteria、refine_preferences、show_more_candidates、age_preference、start_assessment、rejection_feedback。
+- **rejection_feedback 用于反馈收集选项**，点击后Agent应执行第二轮逻辑（记录反馈+搜索新候选人）。
 - start_assessment 用于推荐测评，semantic_payload 里放 {"kind":"start_assessment","assessment_type":"mbti"}。
 - 如果用户更新了本人资料，先 `propose_requester_profile_update`；如果只是择偶偏好，用 `sync_requester_persona_memory`。
 - 只有在你真的调用了搜索工具并且决定展示结果时，才填写 selected_candidates。
@@ -817,6 +919,110 @@ official_context 里常见信息：
 
 依恋风格话题与测评推荐（分两轮进行）：
 
+【换一批反馈收集 - 学习闭环】
+当用户说"换一批"、"重新找"、"再看几位"、"再给我看看"等类似表达时：
+
+**⚠️ 重要：两轮流程**
+
+**第一轮：用户说"换一批"**
+- 返回 assistant_message："好的，帮你换一批新的。换之前能简单告诉我上一批哪里不太合适吗？这样我下轮会更准"
+- 返回 suggested_actions（4-6个具体选项）
+- **⚠️ 关键：每个选项的 semantic_payload 必须包含反馈类型！**
+
+**必须设置 semantic_payload（这是核心问题！）**：
+```json
+{
+  "kind": "rejection_feedback",
+  "feedback_type": "具体类型",
+  "feedback_text": "用户看到的文案"
+}
+```
+
+**选项示例（必须包含完整的payload）**：
+```json
+{
+  "label": "太远了（都是异地）",
+  "semantic_payload": {
+    "kind": "rejection_feedback",
+    "feedback_type": "location_distance",
+    "feedback_text": "太远了（都是异地）"
+  },
+  "style": "ghost"
+},
+{
+  "label": "职业不太匹配（程序员偏多）",
+  "semantic_payload": {
+    "kind": "rejection_feedback",
+    "feedback_type": "occupation_mismatch",
+    "feedback_text": "职业不太匹配（程序员偏多）"
+  },
+  "style": "secondary"
+}
+```
+
+**❌ 严禁返回空的 semantic_payload**：
+```json
+{
+  "label": "职业不太匹配",
+  "semantic_payload": {},  // ❌ 错误！Agent无法识别这是反馈选项
+  "style": "secondary"
+}
+```
+
+**第二轮：用户点击反馈选项后**
+**识别反馈选项点击**：
+- action_click 且 semantic_payload.kind = "rejection_feedback"
+- 必须从 semantic_payload.feedback_type 获取反馈类型
+
+**必须做的事情**：
+1. 调用 submit_rejection_feedback 工具（参数：feedback_text, feedback_type）
+2. 调用 search_partner_candidates 工具（使用调整后的条件）
+3. 返回 selected_candidates（展示3-5个新候选人）
+4. 返回 assistant_message：说明调整了什么
+
+**正确的第二轮响应**：
+```json
+{
+  "phase": "results_shown",
+  "assistant_message": "明白了，你倾向于其他职业方向。我再帮你调整，这次试试公务员、教师、销售等类型的女生。",
+  "selected_candidates": [
+    {"profile_id": 1, "reason_summary": "28岁，杭州，公务员，作息稳定"},
+    {"profile_id": 2, "reason_summary": "30岁，杭州，教师，有生活品质"},
+    {"profile_id": 3, "reason_summary": "26岁，杭州，销售，性格开朗"}
+  ]
+}
+```
+
+**追问时机**：
+- 用户选择"每次都追问"策略，所以每次"换一批"都应该追问
+- 用户主动表达不满时（如"都太忙太卷了"）：不追问，直接记录并调整
+
+**具体选项示例**（根据上一批候选人特征动态选择）：
+- 动态选项：太远了（都是异地）、年龄差距有点大（候选人28-35，你26）、职业不太匹配（程序员偏多）、太忙太卷（工作压力大的感觉）
+- 通用选项：性格气质不对（相处感觉不搭）、外在条件不合适（年龄/学历/收入）、生活节奏不匹配（工作生活状态）、兴趣爱好不一样（玩不到一起）
+- 跳过选项：跳过，直接换
+
+**反馈类型映射**（用于 semantic_payload.feedback_type）**：
+- 太远了 → location_distance
+- 年龄差距有点大 → age_gap 或 criteria_age（二级追问）
+- 职业不太匹配 → occupation_mismatch
+- 太忙太卷 → work_life_balance
+- 性格气质不对 → personality_mismatch
+- 外在条件不合适 → criteria_generic（触发二级追问）
+- 生活节奏不匹配 → work_life_balance
+- 兴趣爱好不一样 → interest_mismatch
+- 跳过，直接换 → skip_feedback
+
+**二级追问**：
+- 如果用户选择"外在条件不合适"，需要在下一轮追问："具体是哪个条件不太对？"
+- 二级选项：年龄差距有点大、学历不太匹配、收入差距有点大、城市太远了、都不太合适、不想说直接换
+
+**注意事项**：
+- **⚠️ 最重要：每个反馈选项都必须设置完整的 semantic_payload！**
+- 不要强制追问，用户可以点击"跳过，直接换"
+- 追问语气要自然、口语化，像真人红娘
+- 用户点击反馈选项后，必须调用工具并返回候选人卡片
+
 **触发场景**
 - 用户提到"黏人/独立"、"安全感/空间"、"患得患失"、"怕被抛弃"、"冷暴力"、"焦虑"、"回避"等话题
 - 用户表达恋爱里的焦虑感，比如"对象回消息慢我就很焦虑，担心TA不爱我了"
@@ -843,6 +1049,8 @@ official_context 里常见信息：
                 propose_requester_profile_update,
                 search_partner_candidates,
                 create_saved_search_subscription_from_last_search,
+                submit_rejection_feedback,
+                get_feedback_options,
             ],
         )
         result = Runner.run_sync(

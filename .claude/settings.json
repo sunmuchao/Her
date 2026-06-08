@@ -1,7 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "Read(//Users/sunmuchao/.claude/plans/**)"
+      "Read(//Users/sunmuchao/.claude/plans/**)",
+      "Bash(grep -E \"\\\\.\\(py|ts|tsx\\)$\")",
+      "Bash(env)",
+      "Bash(mysql -h 127.0.0.1 -P 3307 -u root her_discovery -e \"SELECT session_id, requester_id, status, phase, updated_at FROM discovery_agent_sessions ORDER BY updated_at DESC LIMIT 3;\")",
+      "Bash(mysql -h 127.0.0.1 -P 3307 -u root her_discovery -e \"SELECT turn_id, request_kind, user_message_text, agent_decision_json, search_run_id, created_at FROM discovery_agent_turns WHERE session_id='discovery-session-24e366fe25d1' ORDER BY created_at DESC LIMIT 5;\")",
+      "Bash(mysql -h 127.0.0.1 -P 3307 -u root her_discovery -e \"SELECT agent_decision_json FROM discovery_agent_turns WHERE turn_id=353 LIMIT 1;\")"
     ]
   }
 }

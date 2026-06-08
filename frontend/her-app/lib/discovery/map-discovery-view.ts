@@ -60,12 +60,23 @@ export type DiscoverySuggestedActionsItem = {
   }>
 }
 
+// 新增：反馈选项类型
+export type DiscoveryFeedbackOptionsItem = {
+  kind: 'feedback_options'
+  id: string
+  options: string[]
+  promptMessage: string
+  isSecondary: boolean
+  primaryOption?: string
+}
+
 export type DiscoveryTimelineItem =
   | DiscoveryMessageItem
   | DiscoveryResultGroupItem
   | DiscoveryProfileUpdatePromptItem
   | DiscoveryAssessmentResultItem
   | DiscoverySuggestedActionsItem
+  | DiscoveryFeedbackOptionsItem
 
 export type MappedDiscoveryView = {
   /** Ordered chat stream: messages and result groups interleaved as returned by the API. */
@@ -164,6 +175,18 @@ export function mapDiscoveryView(view?: DiscoveryView): MappedDiscoveryView {
         id: item.item_id || `assessment-result-${index}`,
         card: item.card as AssessmentResultCard,
         timestamp: item.created_at ? formatRelativeTime(item.created_at) : undefined,
+      })
+    }
+    // 新增：处理反馈选项
+    if (itemType === 'feedback_options') {
+      const feedbackOptions = item.feedback_options || {}
+      timelineItems.push({
+        kind: 'feedback_options',
+        id: item.item_id || `feedback-options-${index}`,
+        options: feedbackOptions.options || [],
+        promptMessage: feedbackOptions.prompt_message || '好的，我帮你换一批新的。顺便问一句，上一批主要哪里不太对？',
+        isSecondary: feedbackOptions.is_secondary || false,
+        primaryOption: feedbackOptions.primary_option,
       })
     }
   }
