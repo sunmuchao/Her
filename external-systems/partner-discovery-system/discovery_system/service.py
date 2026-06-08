@@ -1946,6 +1946,12 @@ class DiscoveryService:
         return search_run_id if search_run_id > 0 else None
 
     def _current_turn_id_for_feedback(self, session_id: str) -> int:
+        getter = getattr(self.storage, "get_latest_turn_id", None)
+        if callable(getter):
+            try:
+                return int(getter(session_id) or 0)
+            except Exception:  # noqa: BLE001
+                return 0
         getter = getattr(self.storage, "get_current_turn_id", None)
         if callable(getter):
             try:
