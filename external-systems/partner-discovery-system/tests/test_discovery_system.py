@@ -321,6 +321,28 @@ class _PhantomResultsRuntime:
         )
 
 
+class _ExistingCardsExplanationRuntime:
+    def initial_decision(self, _run_input):
+        return DiscoveryRuntimeResult(
+            decision=DiscoveryDecision(
+                phase="collecting_preferences",
+                assistant_message="先告诉我你想找什么样的人。",
+            )
+        )
+
+    def run_turn(self, _run_input, *, user_message=None, action_context=None):
+        del user_message, action_context
+        return DiscoveryRuntimeResult(
+            decision=DiscoveryDecision(
+                phase="results_shown",
+                assistant_message="先说第一位，她和你在性格节奏上更接近。",
+                criteria_labels=["工作稳定", "生活规律"],
+                suggested_actions=[],
+            ),
+            search_response=None,
+        )
+
+
 class _PassiveActionRuntime:
     def initial_decision(self, _run_input):
         return DiscoveryRuntimeResult(
@@ -1718,6 +1740,41 @@ class DiscoveryServiceTests(unittest.TestCase):
         timeline = result["view"]["timeline"]
         self.assertEqual(timeline[-1]["item_type"], "assistant_message")
         self.assertIn("还没真正跑出候选人卡片", timeline[-1]["body"])
+
+    def test_service_allows_results_shown_without_search_when_reusing_existing_cards(self) -> None:
+        service = DiscoveryService(
+            storage=InMemoryDiscoveryStorage(),
+            runtime=_ExistingCardsExplanationRuntime(),
+        )
+        created = service.create_session(requester_id=70001, profile_id=10001)
+        session_id = created["session"]["session_id"]
+        session = service.storage.get_session(session_id)
+        assert session is not None
+        session.view["timeline"] = [
+            {
+                "item_type": "assistant_message",
+                "item_id": "msg-old",
+                "body": "上一轮先给你看这位。",
+            },
+            {
+                "item_type": "result_group",
+                "item_id": "group-old",
+                "title": "上一批",
+                "cards": [{"profile_id": 1001, "title": "林知夏"}],
+            },
+        ]
+        service.storage.save_session(session)
+
+        result = service.process_turn(
+            session_id=session_id,
+            user_message_text="为什么推荐第一位",
+        )
+
+        self.assertEqual(result["session"]["phase"], "results_shown")
+        timeline = result["view"]["timeline"]
+        self.assertEqual(timeline[-1]["item_type"], "result_group")
+        self.assertEqual(timeline[-1]["cards"][0]["profile_id"], 1001)
+        self.assertIn("性格节奏", timeline[-2]["body"])
 
     def test_service_coerces_searching_without_tool_call_back_to_collecting(self) -> None:
         service = DiscoveryService(
