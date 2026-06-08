@@ -76,6 +76,14 @@ from .view_models import (
     user_message,
 )
 
+_BATCH_REFRESH_PATTERNS = (
+    "换一批",
+    "重新找",
+    "再看几位",
+    "再给我看看",
+    "换一组",
+)
+
 
 class DiscoveryServiceError(Exception):
     code = "DISCOVERY_ERROR"
@@ -322,10 +330,25 @@ class DiscoveryService:
                     created_at=current,
                 )
             )
-            runtime_result = self.runtime.run_turn(
-                run_input,
-                user_message=text,
-            )
+            if self._should_force_rejection_feedback_from_text(session, text):
+                runtime_result = self._force_rejection_feedback_turn(
+                    session,
+                    run_input=run_input,
+                    action_context={
+                        "label": text,
+                        "semantic_payload": {
+                            "kind": "rejection_feedback",
+                            "feedback_type": self._infer_feedback_type_from_text(text),
+                            "feedback_text": text,
+                        },
+                    },
+                    now=current,
+                )
+            else:
+                runtime_result = self.runtime.run_turn(
+                    run_input,
+                    user_message=text,
+                )
             fallback_decision = self._build_personality_explanation_decision(
                 session,
                 user_message_text=text,
@@ -372,6 +395,11 @@ class DiscoveryService:
 
         session.view["timeline"] = list(session.view.get("timeline") or []) + new_items
         search_run_id = self._apply_runtime_result(session, runtime_result, now=current)
+        self._update_rejection_feedback_waiting_state(
+            session,
+            user_message_text=normalized_user_message,
+            runtime_result=runtime_result,
+        )
         self.storage.save_session(session)
         turn_id = self.storage.create_turn(
             session_id=session.session_id,
@@ -997,6 +1025,47 @@ class DiscoveryService:
         if feedback_type == "occupation_mismatch":
             return "明白了，你更在意职业方向。我按这个意思重筛了一轮，但这次还没出到更合适的，你可以再补一句更想看什么类型。"
         return f"收到，你刚才提到“{feedback_text}”。我已经按这个方向重筛了一轮，这次还没出到更合适的。"
+
+    def _should_force_rejection_feedback_from_text(
+        self,
+        session: StoredSession,
+        user_message_text: str,
+    ) -> bool:
+        if not bool(session.state.get("awaiting_rejection_feedback")):
+            return False
+        feedback_type = self._infer_feedback_type_from_text(user_message_text)
+        return feedback_type not in {"", "criteria_generic"}
+
+    def _infer_feedback_type_from_text(self, text: str) -> str:
+        from .feedback_service import infer_feedback_type
+
+        return str(infer_feedback_type(text) or "").strip()
+
+    def _update_rejection_feedback_waiting_state(
+        self,
+        session: StoredSession,
+        *,
+        user_message_text: str | None,
+        runtime_result: DiscoveryRuntimeResult,
+    ) -> None:
+        semantic_kinds = {
+            str((action.semantic_payload or {}).get("kind") or "").strip()
+            for action in list(runtime_result.decision.suggested_actions or [])
+        }
+        if "rejection_feedback" in semantic_kinds:
+            session.state["awaiting_rejection_feedback"] = True
+            session.state["awaiting_rejection_feedback_since"] = datetime.now().isoformat()
+            return
+
+        text = str(user_message_text or "").strip()
+        if text and any(pattern in text for pattern in _BATCH_REFRESH_PATTERNS):
+            session.state["awaiting_rejection_feedback"] = True
+            session.state["awaiting_rejection_feedback_since"] = datetime.now().isoformat()
+            return
+
+        if runtime_result.search_response is not None or str(runtime_result.decision.phase or "").strip() in {"results_shown", "no_result"}:
+            session.state.pop("awaiting_rejection_feedback", None)
+            session.state.pop("awaiting_rejection_feedback_since", None)
 
     def _build_result_cards(
         self,
