@@ -217,10 +217,21 @@ def infer_feedback_type(feedback_text: str) -> str:
         return "age_gap"
         return "age_gap"  # 一级选项
 
+    if "互联网" in feedback_text and any(keyword in feedback_text for keyword in ("忙", "卷", "加班", "没时间", "作息")):
+        return "work_life_balance"
+
     if "职业不太匹配" in feedback_text or "职业" in feedback_text:
         return "occupation_mismatch"
 
-    if "太忙太卷" in feedback_text or "工作压力" in feedback_text or "生活节奏不匹配" in feedback_text:
+    if (
+        "太忙太卷" in feedback_text
+        or "工作压力" in feedback_text
+        or "生活节奏不匹配" in feedback_text
+        or "太忙" in feedback_text
+        or "太卷" in feedback_text
+        or "加班" in feedback_text
+        or "作息不规律" in feedback_text
+    ):
         return "work_life_balance"
 
     if "兴趣不太一样" in feedback_text or "兴趣爱好不一样" in feedback_text:

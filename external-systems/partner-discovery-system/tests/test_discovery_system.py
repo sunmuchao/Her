@@ -1556,6 +1556,63 @@ class DiscoveryServiceTests(unittest.TestCase):
         self.assertEqual(tool_calls[-2].tool_name, "submit_rejection_feedback")
         self.assertEqual(tool_calls[-1].tool_name, "search_partner_candidates")
 
+    def test_rejection_feedback_free_text_forces_search_and_returns_cards(self) -> None:
+        service = DiscoveryService(
+            storage=InMemoryDiscoveryStorage(),
+            runtime=_PassiveActionRuntime(),
+        )
+        created = service.create_session(requester_id=70001, profile_id=10001)
+        session_id = created["session"]["session_id"]
+        session = service.storage.get_session(session_id)
+        assert session is not None
+        session.state["awaiting_rejection_feedback"] = True
+        session.view["timeline"] = [
+            {
+                "item_type": "assistant_message",
+                "item_id": "msg-a-ask",
+                "body": "好的，帮你换一批新的。换之前能简单告诉我上一批哪里不太合适吗？这样我下轮会更准",
+            },
+            {
+                "item_type": "result_group",
+                "item_id": "group-old",
+                "title": "上一批",
+                "cards": [{"profile_id": 1001, "title": "旧候选人"}],
+            },
+        ]
+        service.storage.save_session(session)
+        search_response = {
+            "has_match": True,
+            "result_count": 1,
+            "results": [
+                {
+                    "id": 2003,
+                    "name": "林语安",
+                    "score": 89,
+                    "match_reason": "工作时间更稳定，生活节奏更规律",
+                    "profile": {"age": 27, "city": "杭州", "job": "教师", "education": "硕士"},
+                }
+            ],
+            "request_meta": {
+                "source": _DISCOVERY_TEST_PROFILE_SOURCE,
+                "criteria": {"cities": ["杭州"], "relationship_goals": ["认真恋爱"], "prefer": ["工作稳定"]},
+                "limit_count": 5,
+            },
+        }
+
+        with mock.patch.object(service, "_search_partner_candidates", return_value=search_response) as search_mock:
+            result = service.process_turn(
+                session_id=session_id,
+                user_message_text="互联网工作的人都太忙了",
+            )
+
+        search_mock.assert_called_once()
+        self.assertEqual(result["view"]["timeline"][-1]["item_type"], "result_group")
+        self.assertEqual(result["view"]["timeline"][-1]["cards"][0]["profile_id"], 2003)
+        self.assertIn("生活节奏", result["view"]["timeline"][-2]["body"])
+        stored_session = service.storage.get_session(session_id)
+        assert stored_session is not None
+        self.assertFalse(stored_session.state.get("awaiting_rejection_feedback"))
+
     def test_service_observability_snapshot_tracks_counters(self) -> None:
         service = DiscoveryService(
             storage=InMemoryDiscoveryStorage(),
