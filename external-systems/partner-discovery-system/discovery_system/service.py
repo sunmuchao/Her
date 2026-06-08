@@ -54,6 +54,7 @@ from .service_integrations import (
     search_partner_candidates as _search_partner_candidates_impl,
     sync_requester_persona_memory as _sync_requester_persona_memory_impl,
 )
+from match_domain.profile_write_guard import is_search_criteria_key, merge_working_criteria
 from partner_search.personality_traits_reader import load_traits_for_discovery
 from .storage import InMemoryDiscoveryStorage, MySQLDiscoveryStorage, StoredSearchRun, StoredSession
 from .service_context import (
@@ -893,6 +894,7 @@ class DiscoveryService:
         payload = dict(action_context.get("semantic_payload") or {})
         feedback_type = str(payload.get("feedback_type") or "").strip()
         feedback_text = str(payload.get("feedback_text") or action_context.get("label") or "这批先换一下").strip()
+        criteria_patch = dict(payload.get("search_criteria_patch") or {})
 
         if feedback_type == "skip_feedback":
             feedback_result = self.skip_rejection_feedback(session_id=session.session_id, now=now)
@@ -911,6 +913,7 @@ class DiscoveryService:
             feedback_result = run_input.submit_rejection_feedback(
                 feedback_text=feedback_text,
                 feedback_type=feedback_type or None,
+                criteria_patch=criteria_patch,
                 feedback_detail=None,
                 is_secondary=False,
             )
@@ -920,11 +923,16 @@ class DiscoveryService:
                 {
                     "feedback_text": feedback_text,
                     "feedback_type": feedback_type or None,
+                    "criteria_patch": deepcopy(criteria_patch),
                     "is_secondary": False,
                 },
                 feedback_result,
                 status="succeeded" if feedback_result.get("success") else "failed",
             )
+
+        refreshed_session = self.storage.get_session(session.session_id)
+        if refreshed_session is not None:
+            session.state.update(deepcopy(refreshed_session.state))
 
         criteria_override = self._feedback_search_override(
             session,
@@ -1817,6 +1825,7 @@ class DiscoveryService:
         session_id: str,
         feedback_text: str,
         feedback_type: str | None = None,
+        criteria_patch: dict[str, Any] | None = None,
         feedback_detail: str | None = None,
         rejected_candidate_ids: list[str] | None = None,
         is_secondary: bool = False,
@@ -1883,6 +1892,7 @@ class DiscoveryService:
             feedback_type=feedback_type,
             feedback_id=feedback_id,
             turn_id=turn_id,
+            criteria_patch=criteria_patch,
             now=current,
         )
 
@@ -1981,25 +1991,42 @@ class DiscoveryService:
         feedback_type: str,
         feedback_id: int,
         turn_id: int,
+        criteria_patch: dict[str, Any] | None,
         now: datetime,
     ) -> dict[str, Any]:
         """应用反馈对应的criteria调整。"""
         from .feedback_service import FEEDBACK_TO_CRITERIA_ADJUSTMENT
 
+        session = self._require_session(session_id)
         strategy = FEEDBACK_TO_CRITERIA_ADJUSTMENT.get(feedback_type)
-        if not strategy:
+        inferred_patch = self._default_feedback_criteria_patch(session, feedback_type=feedback_type)
+        normalized_patch = {
+            str(key).strip(): value
+            for key, value in dict(criteria_patch or {}).items()
+            if str(key or "").strip() and value not in (None, "", [], {})
+        }
+        patch_to_apply = {**inferred_patch, **normalized_patch}
+
+        if not strategy and not patch_to_apply:
             return {"applied": False, "reason": "no strategy found"}
 
-        # TODO: 实现具体的调整逻辑
-        # 这里需要根据策略更新session.state["working_criteria"]
+        before_value = deepcopy(dict(session.state.get("working_criteria") or {}))
+        merged = merge_working_criteria(session.state, patch_to_apply)
+        session.state["working_criteria"] = {
+            key: merged[key]
+            for key in merged
+            if is_search_criteria_key(key)
+        }
+        after_value = deepcopy(dict(session.state.get("working_criteria") or {}))
+        self.storage.save_session(session)
 
         adjustment_id = self.storage.insert_criteria_adjustment(
             session_id=session_id,
             turn_id=turn_id,
-            adjustment_type=strategy.get("adjustment_type", "shift"),
-            affected_field=strategy.get("affected_field", "unknown"),
-            before_value=None,  # TODO: 从session.state获取旧值
-            after_value=None,  # TODO: 计算新值
+            adjustment_type=(strategy or {}).get("adjustment_type", "shift"),
+            affected_field=(strategy or {}).get("affected_field", "multiple"),
+            before_value=before_value,
+            after_value=after_value,
             triggered_by_feedback_id=feedback_id,
             adjustment_reason=f"根据用户反馈'{feedback_type}'调整",
             created_at=now,
@@ -2008,8 +2035,39 @@ class DiscoveryService:
         return {
             "applied": True,
             "adjustment_id": adjustment_id,
-            "affected_field": strategy.get("affected_field"),
+            "affected_field": (strategy or {}).get("affected_field", "multiple"),
         }
+
+    def _default_feedback_criteria_patch(
+        self,
+        session: StoredSession,
+        *,
+        feedback_type: str,
+    ) -> dict[str, Any]:
+        patch: dict[str, Any] = {}
+        requester_profile = self._load_requester_profile(session) or {}
+        self_city = str(requester_profile.get("city") or requester_profile.get("self_city") or "").strip()
+        self_age_raw = requester_profile.get("age") or requester_profile.get("self_age")
+        try:
+            self_age = int(self_age_raw) if self_age_raw not in (None, "") else None
+        except (TypeError, ValueError):
+            self_age = None
+
+        if feedback_type == "location_distance" and self_city:
+            patch["cities"] = [self_city]
+            patch["prefer"] = ["同城优先"]
+        elif feedback_type in {"age_gap", "criteria_age"} and self_age is not None:
+            patch["age_min"] = max(18, self_age - 3)
+            patch["age_max"] = self_age + 3
+            patch["prefer"] = ["年龄接近"]
+        elif feedback_type == "work_life_balance":
+            patch["prefer"] = ["工作稳定", "生活规律"]
+            patch["must_not_have"] = ["高强度工作"]
+        elif feedback_type == "occupation_mismatch":
+            patch["prefer"] = ["职业匹配"]
+        elif feedback_type == "interest_mismatch":
+            patch["prefer"] = ["兴趣相投"]
+        return patch
 
     def _sync_persona_from_feedback(
         self,
@@ -2069,6 +2127,7 @@ class DiscoveryService:
         def submit_feedback_wrapper(
             feedback_text: str,
             feedback_type: str | None = None,
+            criteria_patch: dict[str, Any] | None = None,
             feedback_detail: str | None = None,
             is_secondary: bool = False,
         ) -> dict[str, Any]:
@@ -2076,6 +2135,7 @@ class DiscoveryService:
                 session_id=session.session_id,
                 feedback_text=feedback_text,
                 feedback_type=feedback_type,
+                criteria_patch=criteria_patch,
                 feedback_detail=feedback_detail,
                 is_secondary=is_secondary,
             )
