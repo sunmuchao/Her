@@ -122,12 +122,16 @@ class InMemoryDiscoveryStorage:
         self._search_run_seq = 0
         self._tool_call_seq = 0
         self._view_snapshot_seq = 0
+        self._feedback_seq = 0
+        self._criteria_adjustment_seq = 0
         self._sessions: dict[str, StoredSession] = {}
         self._actions: dict[str, StoredAction] = {}
         self._search_runs: dict[int, StoredSearchRun] = {}
         self._tool_calls: list[StoredToolCall] = []
         self._view_snapshots: list[StoredViewSnapshot] = []
         self._profile_update_requests: dict[str, dict[str, Any]] = {}
+        self._rejection_feedbacks: list[dict[str, Any]] = []
+        self._criteria_adjustments: list[dict[str, Any]] = []
 
     def next_session_id(self) -> str:
         self._session_seq += 1
@@ -316,6 +320,83 @@ class InMemoryDiscoveryStorage:
             )
         )
         return self._view_snapshot_seq
+
+    def insert_rejection_feedback(
+        self,
+        *,
+        session_id: str,
+        turn_id: int,
+        requester_id: int,
+        feedback_type: str,
+        feedback_text: str,
+        feedback_detail: str | None = None,
+        rejected_batch_id: str | None = None,
+        rejected_candidate_ids: list[str] | None = None,
+        source_type: str = "explicit",
+        追问_triggered: bool = True,
+        追问_skipped: bool = False,
+        is_secondary_feedback: bool = False,
+        primary_feedback_id: int | None = None,
+        created_at: datetime,
+    ) -> int:
+        self._feedback_seq += 1
+        self._rejection_feedbacks.append(
+            {
+                "feedback_id": self._feedback_seq,
+                "session_id": session_id,
+                "turn_id": int(turn_id),
+                "requester_id": int(requester_id),
+                "feedback_type": feedback_type,
+                "feedback_text": feedback_text,
+                "feedback_detail": feedback_detail,
+                "rejected_batch_id": rejected_batch_id,
+                "rejected_candidate_ids": deepcopy(rejected_candidate_ids or []),
+                "source_type": source_type,
+                "追问_triggered": bool(追问_triggered),
+                "追问_skipped": bool(追问_skipped),
+                "is_secondary_feedback": bool(is_secondary_feedback),
+                "primary_feedback_id": primary_feedback_id,
+                "created_at": created_at,
+            }
+        )
+        return self._feedback_seq
+
+    def insert_criteria_adjustment(
+        self,
+        *,
+        session_id: str,
+        turn_id: int,
+        adjustment_type: str,
+        affected_field: str,
+        before_value: dict[str, Any] | None,
+        after_value: dict[str, Any] | None,
+        triggered_by_feedback_id: int | None = None,
+        adjustment_reason: str | None = None,
+        created_at: datetime,
+    ) -> int:
+        self._criteria_adjustment_seq += 1
+        self._criteria_adjustments.append(
+            {
+                "adjustment_id": self._criteria_adjustment_seq,
+                "session_id": session_id,
+                "turn_id": int(turn_id),
+                "adjustment_type": adjustment_type,
+                "affected_field": affected_field,
+                "before_value": deepcopy(before_value or {}),
+                "after_value": deepcopy(after_value or {}),
+                "triggered_by_feedback_id": triggered_by_feedback_id,
+                "adjustment_reason": adjustment_reason,
+                "created_at": created_at,
+            }
+        )
+        return self._criteria_adjustment_seq
+
+    def load_working_criteria_adjustments(self, session_id: str) -> list[dict[str, Any]]:
+        return [
+            deepcopy(item)
+            for item in self._criteria_adjustments
+            if item["session_id"] == session_id
+        ]
 
     def get_latest_view_snapshot(self, session_id: str) -> StoredViewSnapshot | None:
         for snapshot in reversed(self._view_snapshots):
