@@ -24,6 +24,7 @@ from .agent_runtime import (
     DiscoveryRuntimeResult,
     DiscoveryToolCall,
     create_default_discovery_agent_runtime,
+    parse_rejection_feedback_text,
 )
 from .service_session_open import (
     PROFILE_FIRST_SEARCH_LIMIT,
@@ -323,6 +324,7 @@ class DiscoveryService:
         if user_message_text is not None and user_message_text.strip():
             text = user_message_text.strip()
             normalized_user_message = text
+            parsed_feedback = self._parse_rejection_feedback_from_text(session, text)
             new_items.append(
                 user_message(
                     self.storage.next_item_id("msg-u"),
@@ -330,7 +332,7 @@ class DiscoveryService:
                     created_at=current,
                 )
             )
-            if self._should_force_rejection_feedback_from_text(session, text):
+            if self._should_force_rejection_feedback_from_text(session, parsed_feedback):
                 runtime_result = self._force_rejection_feedback_turn(
                     session,
                     run_input=run_input,
@@ -338,8 +340,9 @@ class DiscoveryService:
                         "label": text,
                         "semantic_payload": {
                             "kind": "rejection_feedback",
-                            "feedback_type": self._infer_feedback_type_from_text(text),
+                            "feedback_type": str(parsed_feedback.get("feedback_type") or "").strip(),
                             "feedback_text": text,
+                            "search_criteria_patch": dict(parsed_feedback.get("search_criteria_patch") or {}),
                         },
                     },
                     now=current,
@@ -923,7 +926,11 @@ class DiscoveryService:
                 status="succeeded" if feedback_result.get("success") else "failed",
             )
 
-        criteria_override = self._feedback_search_override(session, feedback_type=feedback_type)
+        criteria_override = self._feedback_search_override(
+            session,
+            feedback_type=feedback_type,
+            action_context=action_context,
+        )
         limit = self._feedback_search_limit(session)
         search_response = run_input.search_partner_candidates(criteria_override, limit)
         prepared_response = self._dedupe_feedback_search_results(session, search_response)
@@ -960,8 +967,14 @@ class DiscoveryService:
         session: StoredSession,
         *,
         feedback_type: str,
+        action_context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         override: dict[str, Any] = {}
+        payload = dict((action_context or {}).get("semantic_payload") or {})
+        parsed_patch = dict(payload.get("search_criteria_patch") or {})
+        for key, value in parsed_patch.items():
+            if value not in (None, "", [], {}):
+                override[key] = value
         requester_profile = self._load_requester_profile(session) or {}
         self_city = str(requester_profile.get("city") or requester_profile.get("self_city") or "").strip()
         self_age_raw = requester_profile.get("age") or requester_profile.get("self_age")
@@ -1029,17 +1042,39 @@ class DiscoveryService:
     def _should_force_rejection_feedback_from_text(
         self,
         session: StoredSession,
-        user_message_text: str,
+        parsed_feedback: dict[str, Any],
     ) -> bool:
         if not bool(session.state.get("awaiting_rejection_feedback")):
             return False
-        feedback_type = self._infer_feedback_type_from_text(user_message_text)
-        return feedback_type not in {"", "criteria_generic"}
+        return bool(parsed_feedback.get("is_rejection_feedback"))
 
-    def _infer_feedback_type_from_text(self, text: str) -> str:
-        from .feedback_service import infer_feedback_type
-
-        return str(infer_feedback_type(text) or "").strip()
+    def _parse_rejection_feedback_from_text(
+        self,
+        session: StoredSession,
+        text: str,
+    ) -> dict[str, Any]:
+        if not bool(session.state.get("awaiting_rejection_feedback")):
+            return {
+                "is_rejection_feedback": False,
+                "feedback_type": "",
+                "summary": "",
+                "search_criteria_patch": {},
+            }
+        parsed = parse_rejection_feedback_text(
+            text,
+            runtime_context=self._build_runtime_context(
+                session,
+                recent_timeline=clone_view({"timeline": session.view.get("timeline") or []}).get("timeline") or [],
+            ),
+        )
+        if not isinstance(parsed, dict):
+            return {
+                "is_rejection_feedback": False,
+                "feedback_type": "",
+                "summary": "",
+                "search_criteria_patch": {},
+            }
+        return parsed
 
     def _update_rejection_feedback_waiting_state(
         self,
