@@ -101,6 +101,7 @@ from partner_search.search_profile_utils import (
     effective_activity_info as _effective_activity_info,
     effective_has_children as _effective_has_children,
     format_datetime as _format_datetime,
+    get_combined_text_lazy as _get_combined_text_lazy,
     has_explicit_field_value as _has_explicit_field_value,
     is_mysql_source as _is_mysql_source,
     marital_status_match_options as _marital_status_match_options,
@@ -917,6 +918,8 @@ def _build_search_profile_context_runtime() -> SearchProfileContextRuntime:
 
 
 def _build_search_text_signals_runtime() -> SearchTextSignalsRuntime:
+    # 性能优化：使用惰性 combined_text 构建
+    profile_utils_runtime = _build_search_profile_utils_runtime()
     return SearchTextSignalsRuntime(
         as_lower=as_lower,
         as_text=as_text,
@@ -924,6 +927,7 @@ def _build_search_text_signals_runtime() -> SearchTextSignalsRuntime:
         normalize_whitespace=normalize_whitespace,
         split_evidence_segments=split_evidence_segments,
         requires_explicit_children_acceptance=requires_explicit_children_acceptance,
+        get_combined_text_lazy=lambda record: _get_combined_text_lazy(profile_utils_runtime, record),
         keyword_evidence_fields=KEYWORD_EVIDENCE_FIELDS,
         structured_keyword_signal_rules=STRUCTURED_KEYWORD_SIGNAL_RULES,
         textual_keyword_signal_rules=TEXTUAL_KEYWORD_SIGNAL_RULES,

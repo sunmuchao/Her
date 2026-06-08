@@ -143,6 +143,10 @@ class SearchSourceRuntime:
     load_mysql_photo_previews_fn: Callable[..., dict[int, list[str]]] | None = None
 
 
+# 性能优化：全局列名映射缓存，避免每批重复查询 information_schema
+_COLUMNS_MAPPING_CACHE: dict[str, dict[str, str]] = {}
+
+
 def parse_mysql_source(
     runtime: SearchSourceRuntime,
     source: str,
@@ -395,10 +399,16 @@ def iter_load_mysql_batches(
     if not table:
         raise ValueError(f"Could not detect a candidate table in MySQL database {config['database']}")
 
-    canonical_to_actual: dict[str, str] = {}
-    for actual in runtime.list_profile_columns(source_dsn=effective_source, source_table_name=table):
-        canonical = runtime.alias_lookup.get(runtime.normalize_key(actual), runtime.normalize_key(actual))
-        canonical_to_actual.setdefault(canonical, actual)
+    # 性能优化：使用缓存避免每批重复查询列名映射
+    cache_key = f"{effective_source}#{table}"
+    canonical_to_actual = _COLUMNS_MAPPING_CACHE.get(cache_key)
+    if canonical_to_actual is None:
+        canonical_to_actual: dict[str, str] = {}
+        for actual in runtime.list_profile_columns(source_dsn=effective_source, source_table_name=table):
+            canonical = runtime.alias_lookup.get(runtime.normalize_key(actual), runtime.normalize_key(actual))
+            canonical_to_actual.setdefault(canonical, actual)
+        _COLUMNS_MAPPING_CACHE[cache_key] = canonical_to_actual
+
     selected_columns = [
         actual
         for canonical, actual in canonical_to_actual.items()
@@ -422,8 +432,10 @@ def iter_load_mysql_batches(
     from her_env import env_int
     from profile_service import iter_profile_batches
 
-    batch_size = env_int("PARTNER_SEARCH_PROFILE_BATCH_SIZE", 500)
-    persona_batch_size = env_int("PARTNER_SEARCH_PERSONA_BATCH_SIZE", max(batch_size * 4, batch_size))
+    # 性能优化：提高 batch_size 默认值和 persona_batch_size，减少数据库查询次数
+    batch_size = env_int("PARTNER_SEARCH_PROFILE_BATCH_SIZE", 1000)  # 从 500 提升到 1000
+    # 性能优化：persona_batch_size 从 batch_size*4 改为 batch_size*10，减少查询次数
+    persona_batch_size = env_int("PARTNER_SEARCH_PERSONA_BATCH_SIZE", max(batch_size * 10, batch_size))  # 从 *4 改为 *10
     try:
         from match_domain.persona_loader import load_personas_by_profile_ids
     except Exception:  # noqa: BLE001
@@ -627,6 +639,15 @@ def attach_photo_previews(
     preview_count: int,
     photos_table_name: str | None = None,
 ) -> None:
+    """并行加载照片预览，消除 I/O 瓶颈。
+
+    性能优化版本：
+    - 使用 ThreadPoolExecutor 并行加载不同分组的照片
+    - I/O 密集型任务适合较多线程（最多 8 个）
+    - 保持原有错误处理机制
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     if preview_count <= 0 or not results:
         return
 
@@ -642,32 +663,48 @@ def attach_photo_previews(
         if profile_id not in grouped_profile_ids[group_key]:
             grouped_profile_ids[group_key].append(profile_id)
 
+    # 并行加载照片预览（I/O 密集型，适合多线程）
     preview_lookup: dict[tuple[str, str | None], dict[int, list[str]]] = {}
-    for group_key, profile_ids in grouped_profile_ids.items():
-        source, table_name = group_key
-        try:
-            load_photo_previews = runtime.load_mysql_photo_previews_fn or (
-                lambda source_arg, ids_arg, **kwargs: load_mysql_photo_previews(
-                    runtime,
-                    source_arg,
-                    ids_arg,
-                    **kwargs,
+    if grouped_profile_ids:
+        # 根据分组数量决定线程数（I/O 密集型可以更多线程）
+        max_workers = min(8, len(grouped_profile_ids))
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # 提交所有分组查询任务
+            future_to_group = {}
+            for group_key, profile_ids in grouped_profile_ids.items():
+                source, table_name = group_key
+                load_photo_previews = runtime.load_mysql_photo_previews_fn or (
+                    lambda source_arg, ids_arg, **kwargs: load_mysql_photo_previews(
+                        runtime,
+                        source_arg,
+                        ids_arg,
+                        **kwargs,
+                    )
                 )
-            )
-            preview_lookup[group_key] = load_photo_previews(
-                source,
-                profile_ids,
-                table_name=table_name,
-                photos_table_name=photos_table_name,
-                preview_count=preview_count,
-            )
-        except Exception as exc:  # noqa: BLE001 - keep CLI warning behavior
-            preview_lookup[group_key] = {}
-            runtime_warning = (
-                f"WARN: skipping photo previews for "
-                f"{runtime.redact_mysql_source(source)}#{table_name or ''}: {exc}"
-            )
-            print(runtime_warning, file=sys.stderr)
+                future = executor.submit(
+                    load_photo_previews,
+                    source,
+                    profile_ids,
+                    table_name=table_name,
+                    photos_table_name=photos_table_name,
+                    preview_count=preview_count,
+                )
+                future_to_group[future] = group_key
+
+            # 收集结果（并行执行，总耗时 ≈ 最慢的单次查询）
+            for future in as_completed(future_to_group):
+                group_key = future_to_group[future]
+                try:
+                    preview_lookup[group_key] = future.result()
+                except Exception as exc:  # noqa: BLE001 - 保持原有错误处理
+                    preview_lookup[group_key] = {}
+                    source, table_name = group_key
+                    runtime_warning = (
+                        f"WARN: skipping photo previews for "
+                        f"{runtime.redact_mysql_source(source)}#{table_name or ''}: {exc}"
+                    )
+                    print(runtime_warning, file=sys.stderr)
 
     for result in results:
         profile_id = runtime.as_int(result.get("id"))

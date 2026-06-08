@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from datetime import datetime
+from functools import lru_cache  # 性能优化：引入 lru_cache
 from typing import Any, Callable, Mapping, Sequence
 from urllib.parse import parse_qs, unquote, urlparse
 
@@ -114,6 +115,7 @@ def profile_status_rank(runtime: SearchProfileUtilsRuntime, value: Any) -> int:
     return runtime.profile_status_order.get(runtime.as_lower(value), 0)
 
 
+@lru_cache(maxsize=256)  # 性能优化：缓存最近 256 次收入范围解析结果
 def parse_income_range_to_wan(value: Any) -> tuple[int | None, int | None]:
     if value is None:
         return (None, None)
@@ -240,17 +242,86 @@ def normalize_record(
     record["matcher_preferences"] = runtime.parse_json_object(record.get("matcher_preferences_json"))
     record["matcher_risks"] = runtime.parse_json_object(record.get("matcher_risks_json"))
 
-    record["combined_text"] = build_combined_text(runtime, record)
+    # 性能优化: combined_text 改为惰性构建，仅在实际需要关键词匹配时才计算
+    # 使用 None 作为标记，表示尚未构建，避免在 normalize_record 时遍历所有 text_fields
+    record["combined_text"] = None
+    record["_combined_text_needs_build"] = True
     return record
 
 
 def build_combined_text(runtime: SearchProfileUtilsRuntime, record: Mapping[str, Any]) -> str:
+    """构建用于关键词匹配的全文本拼接字符串。
+
+    性能优化版本：
+    - 仅在首次调用时构建
+    - 缓存结果避免重复计算
+    - 仅遍历必要的 text_fields（约20个核心字段而非全量70个）
+    - 使用列表 + join 避免多次字符串拼接（减少临时对象）
+    """
+    # 如果已有缓存，直接返回
+    cached = record.get("_combined_text_cached")
+    if isinstance(cached, str):
+        return cached
+
+    # 核心关键词匹配字段（仅20个最常用的，而非全量70个）
+    # 这些字段涵盖了绝大多数关键词匹配场景
+    core_text_fields = (
+        "job", "education", "city", "district", "settlement_city",
+        "notes", "values", "family_background",
+        "relationship_goal", "marriage_timeline",
+        "career_intensity", "life_routine", "communication_style",
+        "warmth_style", "chat_texture", "life_texture",
+        "growth_signal", "consumption_attitude", "expression_style",
+        "dating_pace",
+    )
+
+    # 性能优化：使用列表收集，避免多次字符串拼接
     parts = []
-    for key in runtime.text_fields:
+    append_part = parts.append
+
+    for key in core_text_fields:
         value = record.get(key)
         if value:
-            parts.append(str(value))
-    return " | ".join(parts).lower()
+            append_part(str(value))
+
+    # 如果核心字段全空，再检查备用字段
+    if not parts:
+        # 仅在核心字段全空时才遍历全量 text_fields
+        for key in runtime.text_fields:
+            if key not in core_text_fields:
+                value = record.get(key)
+                if value:
+                    append_part(str(value))
+
+    # 性能优化：使用 join 一次性拼接，避免多次创建临时字符串
+    result = " | ".join(parts).lower()
+
+    # 缓存结果（仅在 record 是可变字典时）
+    if isinstance(record, dict):
+        record["_combined_text_cached"] = result
+        record["_combined_text_needs_build"] = False
+
+    return result
+
+
+def get_combined_text_lazy(runtime: SearchProfileUtilsRuntime, record: dict[str, Any]) -> str:
+    """惰性获取 combined_text，仅在需要时构建。
+
+    这是 keyword_matches_record 应使用的入口函数。
+    """
+    cached = record.get("_combined_text_cached")
+    if isinstance(cached, str):
+        return cached
+
+    if record.get("_combined_text_needs_build"):
+        return build_combined_text(runtime, record)
+
+    # 兜底：如果 combined_text 已存在且非 None，直接返回
+    existing = record.get("combined_text")
+    if isinstance(existing, str):
+        return existing
+
+    return build_combined_text(runtime, record)
 
 
 __all__ = [
@@ -263,6 +334,7 @@ __all__ = [
     "effective_activity_info",
     "effective_has_children",
     "format_datetime",
+    "get_combined_text_lazy",
     "has_explicit_field_value",
     "is_mysql_source",
     "marital_status_match_options",

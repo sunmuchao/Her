@@ -385,6 +385,8 @@ class DiscoveryServiceTests(unittest.TestCase):
                 "propose_requester_profile_update",
                 "search_partner_candidates",
                 "create_saved_search_subscription_from_last_search",
+                "submit_rejection_feedback",
+                "get_feedback_options",
             ],
         )
         output_type = captured["output_type"]
@@ -905,6 +907,41 @@ class DiscoveryServiceTests(unittest.TestCase):
             ["都看重“稳定经营、家庭责任”这类长期稳定的东西", "她的依恋也偏安全型"],
         )
         self.assertEqual(cards[0]["personality_reasons"], ["都看重“稳定经营、家庭责任”这类长期稳定的东西", "她的依恋也偏安全型"])
+
+    def test_build_result_cards_falls_back_to_latest_search_results_when_selected_candidates_missing(self) -> None:
+        service = DiscoveryService(
+            storage=InMemoryDiscoveryStorage(),
+            runtime=_FakeRuntime(),
+        )
+        cards = service._build_result_cards(
+            {
+                "results": [
+                    {
+                        "id": 3001,
+                        "name": "周可欣",
+                        "score": 88,
+                        "match_reason": "职业方向更贴近，生活节奏也更稳",
+                        "profile": {"age": 28, "city": "杭州", "job": "品牌设计师", "education": "本科"},
+                    },
+                    {
+                        "id": 3002,
+                        "name": "沈知意",
+                        "score": 86,
+                        "profile": {"age": 29, "city": "杭州", "job": "运营经理", "education": "硕士"},
+                    },
+                ]
+            },
+            decision=DiscoveryDecision(
+                phase="results_shown",
+                assistant_message="我再给你换一批。",
+                selected_candidates=[],
+            ),
+        )
+
+        self.assertEqual(len(cards), 2)
+        self.assertEqual(cards[0]["profile_id"], 3001)
+        self.assertEqual(cards[0]["reason_summary"], "职业方向更贴近，生活节奏也更稳")
+        self.assertEqual(cards[1]["profile_id"], 3002)
 
     def test_search_partner_candidates_with_adds_personality_bonus_and_trace(self) -> None:
         session = StoredSession(

@@ -2076,6 +2076,72 @@ def discovery_tables() -> tuple[TableDef, ...]:
                 ForeignKeyDef(("session_id",), "discovery_agent_sessions", ("session_id",)),
             ),
         ),
+        # 新增：拒绝反馈表
+        TableDef(
+            name="discovery_rejection_feedbacks",
+            columns=(
+                ColumnDef("feedback_id", "BIGINT", nullable=False, auto_increment=True),
+                ColumnDef("session_id", "VARCHAR(64)", nullable=False),
+                ColumnDef("turn_id", "BIGINT", nullable=False),
+                ColumnDef("requester_id", "BIGINT", nullable=False),
+                # 反馈内容
+                ColumnDef("feedback_type", "VARCHAR(32)", nullable=False),
+                ColumnDef("feedback_text", "VARCHAR(255)", nullable=False),
+                ColumnDef("feedback_detail", "TEXT"),
+                # 拒绝对象
+                ColumnDef("rejected_batch_id", "VARCHAR(64)"),
+                ColumnDef("rejected_candidate_ids", "JSON"),
+                # 反馈来源
+                ColumnDef("source_type", "VARCHAR(16)", nullable=False),
+                ColumnDef("追问_triggered", "TINYINT(1)", nullable=False),
+                ColumnDef("追问_skipped", "TINYINT(1)", nullable=False),
+                # 二级追问
+                ColumnDef("is_secondary_feedback", "TINYINT(1)", nullable=False),
+                ColumnDef("primary_feedback_id", "BIGINT"),
+                # 时间戳
+                ColumnDef("created_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("feedback_id",),
+            indexes=(
+                IndexDef(("session_id", "turn_id"), "idx_rejection_feedbacks_session_turn"),
+                IndexDef(("requester_id", "created_at"), "idx_rejection_feedbacks_requester_time"),
+                IndexDef(("feedback_type",), "idx_rejection_feedbacks_type"),
+                IndexDef(("primary_feedback_id",), "idx_rejection_feedbacks_primary"),
+            ),
+            foreign_keys=(
+                ForeignKeyDef(("session_id",), "discovery_agent_sessions", ("session_id",)),
+                ForeignKeyDef(("turn_id",), "discovery_agent_turns", ("turn_id",)),
+            ),
+        ),
+        # 新增：working_criteria调整记录表
+        TableDef(
+            name="discovery_working_criteria_adjustments",
+            columns=(
+                ColumnDef("adjustment_id", "BIGINT", nullable=False, auto_increment=True),
+                ColumnDef("session_id", "VARCHAR(64)", nullable=False),
+                ColumnDef("turn_id", "BIGINT", nullable=False),
+                # 调整内容
+                ColumnDef("adjustment_type", "VARCHAR(32)", nullable=False),
+                ColumnDef("affected_field", "VARCHAR(64)", nullable=False),
+                ColumnDef("before_value", "JSON"),
+                ColumnDef("after_value", "JSON"),
+                # 调整依据
+                ColumnDef("triggered_by_feedback_id", "BIGINT"),
+                ColumnDef("adjustment_reason", "TEXT"),
+                # 时间戳
+                ColumnDef("created_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("adjustment_id",),
+            indexes=(
+                IndexDef(("session_id",), "idx_working_criteria_adjustments_session"),
+                IndexDef(("triggered_by_feedback_id",), "idx_working_criteria_adjustments_feedback"),
+            ),
+            foreign_keys=(
+                ForeignKeyDef(("session_id",), "discovery_agent_sessions", ("session_id",)),
+                ForeignKeyDef(("turn_id",), "discovery_agent_turns", ("turn_id",)),
+                ForeignKeyDef(("triggered_by_feedback_id",), "discovery_rejection_feedbacks", ("feedback_id",)),
+            ),
+        ),
     )
 
 

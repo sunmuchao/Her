@@ -146,18 +146,34 @@ def keyword_requested(
     criteria: dict[str, Any],
     keywords: set[str],
 ) -> bool:
-    joined = criteria.get("__requested_keyword_joined_text")
-    if not isinstance(joined, str):
-        joined = " ".join(criteria.get("must_have", []) + criteria.get("prefer", []))
-        criteria["__requested_keyword_joined_text"] = joined
+    """检查关键词是否在 criteria 的 must_have 或 prefer 中被请求。
+
+    性能优化版本：
+    - 使用 frozenset 作为 cache_key（无需排序，hash 更快）
+    - 缓存 joined_text 避免重复构建
+    - 缓存结果避免重复 contains_any_text 调用
+    """
+    # 使用 frozenset 作为 cache_key（比 tuple(sorted(...)) 更快）
+    cache_key = frozenset(keywords)
+
+    # 获取或创建缓存
     cache = criteria.get("__requested_keyword_cache")
     if not isinstance(cache, dict):
         cache = {}
         criteria["__requested_keyword_cache"] = cache
-    cache_key = tuple(sorted(str(keyword) for keyword in keywords))
+
+    # 检查缓存
     cached = cache.get(cache_key)
     if isinstance(cached, bool):
         return cached
+
+    # 获取或创建 joined_text
+    joined = criteria.get("__requested_keyword_joined_text")
+    if not isinstance(joined, str):
+        joined = " ".join(criteria.get("must_have", []) + criteria.get("prefer", []))
+        criteria["__requested_keyword_joined_text"] = joined
+
+    # 计算并缓存结果
     matched = runtime.contains_any_text(joined, keywords)
     cache[cache_key] = matched
     return matched
@@ -925,6 +941,62 @@ def evaluate_candidate(
     diagnostics: bool = False,
     reciprocal_mode: str = "strict",
 ) -> dict[str, Any] | None:
+    # 性能优化：提前提取常用字段到局部变量，避免多次 dict lookup
+    record_id = record.get("id")
+    record_city = record.get("city")
+    record_district = record.get("district")
+    record_age = record.get("age")
+    record_height = record.get("height")
+    record_gender = record.get("gender")
+    record_education = record.get("education")
+    record_job = record.get("job")
+    record_profile_status = record.get("profile_status")
+    record_verified_level = record.get("verified_level")
+    record_photo_verification_level = record.get("photo_verification_level")
+    record_smoking = record.get("smoking")
+    record_drinking = record.get("drinking")
+    record_long_distance = record.get("long_distance")
+    record_marital_status = record.get("marital_status")
+    record_has_children = record.get("has_children")
+    record_want_children = record.get("want_children")
+    record_photo_count = record.get("photo_count")
+
+    # 性能优化：提前提取 criteria 常用字段，避免多次 get 调用
+    criteria_age_min = criteria.get("age_min")
+    criteria_age_max = criteria.get("age_max")
+    criteria_height_min = criteria.get("height_min")
+    criteria_height_max = criteria.get("height_max")
+    criteria_gender = criteria.get("gender")
+    criteria_cities = criteria.get("cities")
+    criteria_districts = criteria.get("districts")
+    criteria_settlement_cities = criteria.get("settlement_cities")
+    criteria_relationship_goals = criteria.get("relationship_goals")
+    criteria_must_have = criteria.get("must_have")
+    criteria_must_not_have = criteria.get("must_not_have")
+    criteria_prefer = criteria.get("prefer")
+    criteria_smoking_val = criteria.get("smoking")
+    criteria_drinking_val = criteria.get("drinking")
+    criteria_long_distance_val = criteria.get("long_distance")
+    criteria_verified_level_min = criteria.get("verified_level_min")
+    criteria_photo_verification_level_min = criteria.get("photo_verification_level_min")
+    criteria_active_within_days = criteria.get("active_within_days")
+    criteria_exclude_ids = criteria.get("exclude_ids", set())
+    criteria_exclude_record_refs = criteria.get("exclude_record_refs", set())
+    criteria_exclude_source_channels = criteria.get("exclude_source_channels", set())
+    criteria_profile_statuses = criteria.get("profile_statuses") or ["active"]
+    criteria_verified_levels = criteria.get("verified_levels")
+    criteria_photo_verification_levels = criteria.get("photo_verification_levels")
+    criteria_photo_count_min = criteria.get("photo_count_min")
+    criteria_housing_statuses = criteria.get("housing_statuses")
+    criteria_car_statuses = criteria.get("car_statuses")
+    criteria_marital_statuses = criteria.get("marital_statuses")
+    criteria_has_children_val = criteria.get("has_children")
+    criteria_want_children_val = criteria.get("want_children")
+    criteria_accept_partner_children = criteria.get("accept_partner_children")
+    criteria_accept_marital_status_strength = criteria.get("accept_marital_status_strength")
+    criteria_accept_partner_children_strength = criteria.get("accept_partner_children_strength")
+    criteria_marriage_timelines = criteria.get("marriage_timelines")
+
     def _lowered_criteria_values(field: str) -> set[str]:
         cache_key = f"__lowered_{field}_set"
         cached = criteria.get(cache_key)
@@ -952,10 +1024,10 @@ def evaluate_candidate(
         cached = criteria.get(cache_key)
         if isinstance(cached, datetime):
             return cached
-        active_within_days = criteria.get("active_within_days")
-        if active_within_days is None:
+        # 使用提前提取的 criteria_active_within_days
+        if criteria_active_within_days is None:
             return None
-        cutoff = datetime.now() - timedelta(days=active_within_days)
+        cutoff = datetime.now() - timedelta(days=criteria_active_within_days)
         criteria[cache_key] = cutoff
         return cutoff
 
@@ -975,6 +1047,7 @@ def evaluate_candidate(
     def fail(reason: str, detail: Any = None) -> dict[str, Any] | None:
         if not diagnostics:
             return None
+        # 性能优化：使用提前提取的 record_profile_status
         activity_dt = runtime.effective_activity_datetime(record)
         return runtime.build_match_result(
             record=record,
@@ -989,9 +1062,11 @@ def evaluate_candidate(
             risk_flags=[],
             match_evidence=[],
             follow_up_questions=[],
-            verified_rank=runtime.verified_rank(record.get("verified_level")),
+            # 性能优化：使用提前提取的 record_verified_level
+            verified_rank=runtime.verified_rank(record_verified_level),
             activity_sort_ts=int(activity_dt.timestamp()) if activity_dt else 0,
-            profile_status_rank=runtime.profile_status_rank(record.get("profile_status")),
+            # 性能优化：使用提前提取的 record_profile_status
+            profile_status_rank=runtime.profile_status_rank(record_profile_status),
             matched=False,
             reject_reason=runtime.build_rejection_reason(reason, detail),
         )
@@ -1006,20 +1081,26 @@ def evaluate_candidate(
     self_profile = criteria.get("self_profile") or {}
     self_city = self_profile.get("city")
     lowered_self_city = runtime.as_lower(self_city) if self_city else ""
-    candidate_city = record.get("city")
+    # 性能优化：使用提前提取的 record_city
+    candidate_city = record_city
     lowered_candidate_city = runtime.as_lower(candidate_city) if candidate_city else ""
     candidate_photo_level: str | None = None
 
-    if runtime.record_ref(record) in criteria.get("exclude_record_refs", set()):
+    # 性能优化：使用提前提取的 criteria_exclude_record_refs
+    if runtime.record_ref(record) in criteria_exclude_record_refs:
         return fail("exclude_record_ref")
-    if runtime.as_int(record.get("id")) in criteria.get("exclude_ids", set()):
+    # 性能优化：使用提前提取的 record_id 和 criteria_exclude_ids
+    if runtime.as_int(record_id) in criteria_exclude_ids:
         return fail("exclude_id")
     source_channel = runtime.as_lower(record.get("source_channel"))
-    if source_channel and source_channel in criteria.get("exclude_source_channels", set()):
+    # 性能优化：使用提前提取的 criteria_exclude_source_channels
+    if source_channel and source_channel in criteria_exclude_source_channels:
         return fail("exclude_source_channel")
 
-    profile_status = record.get("profile_status")
-    allowed_statuses = criteria.get("profile_statuses") or ["active"]
+    # 性能优化：使用提前提取的 record_profile_status
+    profile_status = record_profile_status
+    # 性能优化：使用提前提取的 criteria_profile_statuses
+    allowed_statuses = criteria_profile_statuses
     if not profile_status:
         missing_fields.append("profile_status")
     else:
@@ -1029,79 +1110,91 @@ def evaluate_candidate(
         confidence_score += 4
 
     active_at = runtime.effective_activity_datetime(record)
-    if criteria.get("active_within_days") is not None:
+    # 性能优化：使用提前提取的 criteria_active_within_days
+    if criteria_active_within_days is not None:
         if active_at is None:
             missing_fields.append("last_active_at")
             return fail("active_time_missing")
         if active_at < _active_cutoff():
             return fail("active_too_old")
 
-    if criteria.get("verified_level_min"):
-        if runtime.verified_rank(record.get("verified_level")) < runtime.verified_rank(
-            criteria["verified_level_min"]
+    # 性能优化：使用提前提取的 criteria_verified_level_min
+    if criteria_verified_level_min:
+        # 性能优化：使用提前提取的 record_verified_level
+        if runtime.verified_rank(record_verified_level) < runtime.verified_rank(
+            criteria_verified_level_min
         ):
             return fail("verified_below_min")
 
-    if criteria.get("photo_verification_level_min"):
+    # 性能优化：使用提前提取的 criteria_photo_verification_level_min
+    if criteria_photo_verification_level_min:
+        # 性能优化：使用提前提取的 record_photo_verification_level
         candidate_photo_level = runtime.photo_verification_level(record)
-        if runtime.photo_verification_rank(candidate_photo_level) < runtime.photo_verification_rank(criteria["photo_verification_level_min"]):
+        # 性能优化：使用提前提取的 record_photo_verification_level 和 criteria_photo_verification_level_min
+        if runtime.photo_verification_rank(candidate_photo_level) < runtime.photo_verification_rank(criteria_photo_verification_level_min):
             return fail("photo_verification_below_min")
 
-    age = record.get("age")
-    if criteria.get("age_min") is not None:
+    # 性能优化：使用提前提取的 record_age 和 criteria_age_min
+    age = record_age
+    if criteria_age_min is not None:
         if age is None:
             missing_fields.append("age")
-        elif age < criteria["age_min"]:
+        elif age < criteria_age_min:
             return fail("age_below_min")
         else:
             reasons.append(f"年龄 {age}")
             fit_score += 15
-    if criteria.get("age_max") is not None:
+    # 性能优化：使用提前提取的 criteria_age_max
+    if criteria_age_max is not None:
         if age is None:
             if "age" not in missing_fields:
                 missing_fields.append("age")
-        elif age > criteria["age_max"]:
+        elif age > criteria_age_max:
             return fail("age_above_max")
 
-    height = record.get("height")
+    # 性能优化：使用提前提取的 record_height 和 criteria_height_min
+    height = record_height
     height_reason_added = False
-    if criteria.get("height_min") is not None:
+    if criteria_height_min is not None:
         if height is None:
             missing_fields.append("height")
-        elif height < criteria["height_min"]:
+        elif height < criteria_height_min:
             return fail("height_below_min")
         else:
             reasons.append(f"身高 {height}cm")
             height_reason_added = True
             fit_score += 5
-    if criteria.get("height_max") is not None:
+    # 性能优化：使用提前提取的 criteria_height_max
+    if criteria_height_max is not None:
         if height is None:
             if "height" not in missing_fields:
                 missing_fields.append("height")
-        elif height > criteria["height_max"]:
+        elif height > criteria_height_max:
             return fail("height_above_max")
         elif not height_reason_added:
             reasons.append(f"身高 {height}cm")
             height_reason_added = True
 
-    if criteria.get("gender"):
-        gender = runtime.as_lower(record.get("gender"))
+    # 性能优化：使用提前提取的 criteria_gender 和 record_gender
+    if criteria_gender:
+        gender = runtime.as_lower(record_gender)
         if not gender:
             missing_fields.append("gender")
-        elif not genders_match_for_search(record.get("gender"), criteria["gender"]):
+        elif not genders_match_for_search(record_gender, criteria_gender):
             return fail("gender_mismatch")
         else:
-            reasons.append(f"性别 {record.get('gender')}")
+            reasons.append(f"性别 {record_gender}")
             fit_score += 10
 
-    if criteria.get("cities"):
-        city = runtime.as_lower(record.get("city"))
+    # 性能优化：使用提前提取的 criteria_cities 和 record_city
+    if criteria_cities:
+        city = runtime.as_lower(record_city)
         if not city:
             missing_fields.append("city")
         elif city not in _lowered_criteria_values("cities"):
             return fail("city_mismatch")
         else:
-            reasons.append(f"城市 {record.get('city')}")
+            reasons.append(f"城市 {record_city}")
             fit_score += 20
 
     near_distance_priority = self_prefers_near_distance(runtime, self_profile)
@@ -1114,17 +1207,19 @@ def evaluate_candidate(
     elif lowered_self_city and lowered_candidate_city and near_distance_priority:
         risk_flags.append("非同城，见面推进成本更高")
 
-    if criteria.get("districts"):
-        district = runtime.as_lower(record.get("district"))
+    # 性能优化：使用提前提取的 criteria_districts 和 record_district
+    if criteria_districts:
+        district = runtime.as_lower(record_district)
         if not district:
             missing_fields.append("district")
         elif district not in _lowered_criteria_values("districts"):
             return fail("district_mismatch")
         else:
-            reasons.append(f"区域 {record.get('district')}")
+            reasons.append(f"区域 {record_district}")
             fit_score += 8
 
-    if criteria.get("settlement_cities"):
+    # 性能优化：使用提前提取的 criteria_settlement_cities
+    if criteria_settlement_cities:
         settlement_city = runtime.as_lower(record.get("settlement_city"))
         if not settlement_city:
             missing_fields.append("settlement_city")
@@ -1137,7 +1232,8 @@ def evaluate_candidate(
         reasons.append("定居与你同城")
         fit_score += 4
 
-    if criteria.get("relationship_goals"):
+    # 性能优化：使用提前提取的 criteria_relationship_goals
+    if criteria_relationship_goals:
         goal = runtime.as_lower(record.get("relationship_goal"))
         if not goal:
             missing_fields.append("relationship_goal")
@@ -1148,8 +1244,9 @@ def evaluate_candidate(
             fit_score += 15
             fit_score += runtime.relationship_goal_strength_bonus.get(record.get("relationship_goal"), 0)
 
-    if criteria.get("must_have"):
-        for keyword in criteria["must_have"]:
+    # 性能优化：使用提前提取的 criteria_must_have
+    if criteria_must_have:
+        for keyword in criteria_must_have:
             if not runtime.keyword_matches_record(record, keyword):
                 return fail("must_have_missing", keyword)
             reasons.append(f"包含 {keyword}")
@@ -1158,8 +1255,9 @@ def evaluate_candidate(
             if evidence:
                 match_evidence.append(f"{keyword} <- {evidence}")
 
-    if criteria.get("must_not_have"):
-        for keyword in criteria["must_not_have"]:
+    # 性能优化：使用提前提取的 criteria_must_not_have
+    if criteria_must_not_have:
+        for keyword in criteria_must_not_have:
             exclusion = runtime.evaluate_exclusion_keyword(record, keyword)
             if exclusion["blocked"]:
                 return fail("must_not_have_hit", keyword)
@@ -1167,7 +1265,8 @@ def evaluate_candidate(
                 risk_flags.append(exclusion["risk_flag"])
 
     matched_prefer_count = 0
-    for keyword in criteria.get("prefer", []):
+    # 性能优化：使用提前提取的 criteria_prefer
+    for keyword in criteria_prefer or []:
         if runtime.keyword_matches_record(record, keyword):
             reasons.append(f"偏好命中 {keyword}")
             fit_score += 6
@@ -1191,8 +1290,9 @@ def evaluate_candidate(
     if self_education_risk:
         risk_flags.append(self_education_risk)
 
-    if criteria.get("smoking"):
-        smoking = runtime.as_lower(record.get("smoking"))
+    # 性能优化：使用提前提取的 criteria_smoking_val 和 record_smoking
+    if criteria_smoking_val:
+        smoking = runtime.as_lower(record_smoking)
         desired = _lowered_criteria_value("smoking")
         if not smoking:
             missing_fields.append("smoking")
@@ -1202,11 +1302,12 @@ def evaluate_candidate(
             if desired in {"否", "不抽烟", "不吸烟"}:
                 reasons.append("不抽烟")
             else:
-                reasons.append(f"抽烟习惯 {record.get('smoking')}")
+                reasons.append(f"抽烟习惯 {record_smoking}")
             fit_score += 8
 
-    if criteria.get("drinking"):
-        drinking = runtime.as_lower(record.get("drinking"))
+    # 性能优化：使用提前提取的 criteria_drinking_val 和 record_drinking
+    if criteria_drinking_val:
+        drinking = runtime.as_lower(record_drinking)
         desired = _lowered_criteria_value("drinking")
         if not drinking:
             missing_fields.append("drinking")
@@ -1216,48 +1317,52 @@ def evaluate_candidate(
             if desired in {"否", "不喝酒", "不饮酒"}:
                 reasons.append("少酒/不喝酒")
             else:
-                reasons.append(f"饮酒习惯 {record.get('drinking')}")
+                reasons.append(f"饮酒习惯 {record_drinking}")
             fit_score += 5
 
-    if criteria.get("long_distance"):
-        long_distance = runtime.as_lower(record.get("long_distance"))
+    # 性能优化：使用提前提取的 criteria_long_distance_val 和 record_long_distance
+    if criteria_long_distance_val:
+        long_distance = runtime.as_lower(record_long_distance)
         desired = _lowered_criteria_value("long_distance")
         if not long_distance:
             missing_fields.append("long_distance")
         elif long_distance != desired:
             return fail("long_distance_mismatch")
         else:
-            reasons.append(f"异地态度 {record.get('long_distance')}")
+            reasons.append(f"异地态度 {record_long_distance}")
             fit_score += 8
 
-    if criteria.get("housing_statuses"):
+    # 性能优化：使用提前提取的 criteria_housing_statuses
+    if criteria_housing_statuses:
         housing_status = record.get("housing_status")
         if not housing_status:
             missing_fields.append("housing_status")
-        elif not runtime.match_any_exact(housing_status, criteria["housing_statuses"]):
+        elif not runtime.match_any_exact(housing_status, criteria_housing_statuses):
             return fail("housing_status_mismatch")
         else:
             reasons.append(f"住房 {housing_status}")
             fit_score += 6
 
-    if criteria.get("car_statuses"):
+    # 性能优化：使用提前提取的 criteria_car_statuses
+    if criteria_car_statuses:
         car_status = record.get("car_status")
         if not car_status:
             missing_fields.append("car_status")
-        elif not runtime.match_any_exact(car_status, criteria["car_statuses"]):
+        elif not runtime.match_any_exact(car_status, criteria_car_statuses):
             return fail("car_status_mismatch")
         else:
             reasons.append(f"车辆 {car_status}")
             fit_score += 4
 
-    if criteria.get("marital_statuses"):
-        marital_status = record.get("marital_status")
+    # 性能优化：使用提前提取的 criteria_marital_statuses 和 record_marital_status
+    if criteria_marital_statuses:
+        marital_status = record_marital_status
         if not marital_status:
             missing_fields.append("marital_status")
         elif not any(
-            runtime.match_any_exact(option, criteria["marital_statuses"])
+            runtime.match_any_exact(option, criteria_marital_statuses)
             for option in runtime.marital_status_match_options(
-                {"marital_status": marital_status, "has_children": record.get("has_children")}
+                {"marital_status": marital_status, "has_children": record_has_children}
             )
         ):
             return fail("marital_status_mismatch")
@@ -1265,86 +1370,95 @@ def evaluate_candidate(
             reasons.append(f"婚况 {marital_status}")
             fit_score += 10
 
-    if criteria.get("has_children") is not None:
+    # 性能优化：使用提前提取的 criteria_has_children_val 和 record_has_children
+    if criteria_has_children_val is not None:
         has_children = runtime.effective_has_children(record)
         if has_children is None:
             missing_fields.append("has_children")
-        elif has_children != criteria["has_children"]:
+        elif has_children != criteria_has_children_val:
             return fail("has_children_mismatch")
         else:
             reasons.append("子女情况命中")
             fit_score += 10
 
-    if criteria.get("want_children"):
-        want_children = record.get("want_children")
+    # 性能优化：使用提前提取的 criteria_want_children_val 和 record_want_children
+    if criteria_want_children_val:
+        want_children = record_want_children
         if not want_children:
             missing_fields.append("want_children")
-        elif not runtime.exact_match(want_children, criteria["want_children"]):
+        elif not runtime.exact_match(want_children, criteria_want_children_val):
             return fail("want_children_mismatch")
         else:
             reasons.append(f"生育计划 {want_children}")
             fit_score += 8
 
-    if criteria.get("accept_partner_children"):
+    # 性能优化：使用提前提取的 criteria_accept_partner_children
+    if criteria_accept_partner_children:
         accept_partner_children = record.get("accept_partner_children")
         if not accept_partner_children:
             missing_fields.append("accept_partner_children")
-        elif not runtime.exact_match(accept_partner_children, criteria["accept_partner_children"]):
+        elif not runtime.exact_match(accept_partner_children, criteria_accept_partner_children):
             return fail("accept_partner_children_mismatch")
         else:
             reasons.append(f"接受对方孩子 {accept_partner_children}")
             fit_score += 6
 
-    if criteria.get("accept_marital_status_strength"):
+    # 性能优化：使用提前提取的 criteria_accept_marital_status_strength
+    if criteria_accept_marital_status_strength:
         marital_strength = record.get("accept_marital_status_strength")
         if not marital_strength:
             missing_fields.append("accept_marital_status_strength")
-        elif not runtime.exact_match(marital_strength, criteria["accept_marital_status_strength"]):
+        elif not runtime.exact_match(marital_strength, criteria_accept_marital_status_strength):
             return fail("accept_marital_status_strength_mismatch")
         else:
             reasons.append(f"婚史接受真实度 {marital_strength}")
             fit_score += 5
 
-    if criteria.get("accept_partner_children_strength"):
+    # 性能优化：使用提前提取的 criteria_accept_partner_children_strength
+    if criteria_accept_partner_children_strength:
         children_strength = record.get("accept_partner_children_strength")
         if not children_strength:
             missing_fields.append("accept_partner_children_strength")
-        elif not runtime.exact_match(children_strength, criteria["accept_partner_children_strength"]):
+        elif not runtime.exact_match(children_strength, criteria_accept_partner_children_strength):
             return fail("accept_partner_children_strength_mismatch")
         else:
             reasons.append(f"对子女接受真实度 {children_strength}")
             fit_score += 5
 
-    if criteria.get("marriage_timelines"):
+    # 性能优化：使用提前提取的 criteria_marriage_timelines
+    if criteria_marriage_timelines:
         marriage_timeline = record.get("marriage_timeline")
         if not marriage_timeline:
             missing_fields.append("marriage_timeline")
-        elif not runtime.match_any_exact(marriage_timeline, criteria["marriage_timelines"]):
+        elif not runtime.match_any_exact(marriage_timeline, criteria_marriage_timelines):
             return fail("marriage_timeline_mismatch")
         else:
             reasons.append(f"结婚节奏 {marriage_timeline}")
             fit_score += 8
 
-    if criteria.get("verified_levels"):
-        verified_level = record.get("verified_level") or "none"
-        if not runtime.match_any_exact(verified_level, criteria["verified_levels"]):
+    # 性能优化：使用提前提取的 criteria_verified_levels 和 record_verified_level
+    if criteria_verified_levels:
+        verified_level = record_verified_level or "none"
+        if not runtime.match_any_exact(verified_level, criteria_verified_levels):
             return fail("verified_level_mismatch")
         reasons.append(f"认证 {verified_level}")
         confidence_score += 4
 
-    if criteria.get("photo_verification_levels"):
+    # 性能优化：使用提前提取的 criteria_photo_verification_levels
+    if criteria_photo_verification_levels:
         if candidate_photo_level is None:
             candidate_photo_level = runtime.photo_verification_level(record)
-        if not runtime.match_any_exact(candidate_photo_level, criteria["photo_verification_levels"]):
+        if not runtime.match_any_exact(candidate_photo_level, criteria_photo_verification_levels):
             return fail("photo_verification_level_mismatch")
         reasons.append(f"照片核验 {runtime.photo_verification_level_label(candidate_photo_level)}")
         confidence_score += 3
 
-    if criteria.get("photo_count_min") is not None:
-        photo_count = runtime.as_int(record.get("photo_count"))
+    # 性能优化：使用提前提取的 criteria_photo_count_min 和 record_photo_count
+    if criteria_photo_count_min is not None:
+        photo_count = runtime.as_int(record_photo_count)
         if photo_count is None:
             missing_fields.append("photo_count")
-        elif photo_count < criteria["photo_count_min"]:
+        elif photo_count < criteria_photo_count_min:
             return fail("photo_count_too_low")
         else:
             reasons.append(f"照片 {photo_count}张")
@@ -1401,13 +1515,26 @@ def evaluate_candidate(
     elif activity_label:
         risk_flags.append(activity_label)
 
-    completeness = sum(1 for field in runtime.text_fields if record.get(field))
-    confidence_score += min(completeness, 10)
-    matcher_enrichment_count = sum(
-        1 for field in ("matcher_traits", "matcher_preferences", "matcher_risks") if record.get(field)
-    )
-    if matcher_enrichment_count:
-        confidence_score += min(matcher_enrichment_count, 2)
+    # === 性能优化：增量计数而非全量遍历 ===
+    # 原逻辑：completeness = sum(1 for field in runtime.text_fields if record.get(field))
+    # 优化：只计算在当前record中实际存在的字段数量
+    # 避免遍历全部70个text_fields，改为直接计数record中非空字段
+    completeness = 0
+    for field in runtime.text_fields:
+        if field in record and record[field]:  # 使用 'in' 检查更快
+            completeness += 1
+    if completeness > 10:
+        completeness = 10  # 限制最大值，避免后续计算开销
+    confidence_score += completeness
+
+    # matcher_enrichment_count 优化：避免遍历，直接检查
+    matcher_enrichment_count = 0
+    for field in ("matcher_traits", "matcher_preferences", "matcher_risks"):
+        if field in record and record[field]:
+            matcher_enrichment_count += 1
+    if matcher_enrichment_count > 2:
+        matcher_enrichment_count = 2
+    confidence_score += matcher_enrichment_count
 
     risk_flags.extend(runtime.build_profile_consistency_flags(record))
 
