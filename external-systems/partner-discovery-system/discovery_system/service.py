@@ -858,6 +858,16 @@ class DiscoveryService:
                 proactive_blurb = self._build_proactive_personality_blurb(session, rendered_cards)
             if proactive_blurb and proactive_blurb not in assistant_body:
                 assistant_body = f"{assistant_body} {proactive_blurb}".strip()
+        elif decision.phase == "results_shown":
+            rendered_cards = self._reuse_existing_result_cards(session, decision=decision)
+            if not rendered_cards:
+                decision = DiscoveryDecision(
+                    phase="collecting_preferences",
+                    assistant_message="我这轮还没真正跑出候选人卡片，你再发一次，我马上重新给你筛。",
+                    criteria_labels=list(decision.criteria_labels),
+                    suggested_actions=[],
+                )
+                assistant_body = decision.assistant_message
         session.view["timeline"] = list(session.view.get("timeline") or []) + [
             assistant_message(
                 self.storage.next_item_id("msg-a"),
@@ -1250,6 +1260,28 @@ class DiscoveryService:
             if item.get("item_type") == "result_group":
                 return list(item.get("cards") or [])
         return []
+
+    def _reuse_existing_result_cards(
+        self,
+        session: StoredSession,
+        *,
+        decision: DiscoveryDecision,
+    ) -> list[dict[str, Any]]:
+        existing_cards = self._existing_result_cards(session)
+        if not existing_cards:
+            return []
+        selected_ids = {
+            int(selection.profile_id)
+            for selection in list(decision.selected_candidates or [])
+            if int(selection.profile_id) > 0
+        }
+        if not selected_ids:
+            return list(existing_cards)
+        return [
+            dict(card)
+            for card in existing_cards
+            if int(card.get("profile_id") or 0) in selected_ids
+        ]
 
     def _build_personality_explanation_decision(
         self,

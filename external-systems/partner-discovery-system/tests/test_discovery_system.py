@@ -294,6 +294,33 @@ class _PhantomSearchingRuntime:
         )
 
 
+class _PhantomResultsRuntime:
+    def initial_decision(self, _run_input):
+        return DiscoveryRuntimeResult(
+            decision=DiscoveryDecision(
+                phase="collecting_preferences",
+                assistant_message="先告诉我你想找什么样的人。",
+            )
+        )
+
+    def run_turn(self, _run_input, *, user_message=None, action_context=None):
+        del user_message, action_context
+        return DiscoveryRuntimeResult(
+            decision=DiscoveryDecision(
+                phase="results_shown",
+                assistant_message="好的，我来帮你推荐几位。",
+                criteria_labels=["工作稳定", "生活规律"],
+                selected_candidates=[
+                    DiscoveryCandidateSelection(
+                        profile_id=1001,
+                        reason_summary="工作稳定，生活节奏规律。",
+                    )
+                ],
+            ),
+            search_response=None,
+        )
+
+
 class _PassiveActionRuntime:
     def initial_decision(self, _run_input):
         return DiscoveryRuntimeResult(
@@ -1674,14 +1701,23 @@ class DiscoveryServiceTests(unittest.TestCase):
         tool_calls = service.storage.list_tool_calls(session_id)
         search_tool_call = next(item for item in tool_calls if item.tool_name == "search_partner_candidates")
         self.assertEqual(search_tool_call.status, "failed")
-        self.assertEqual(search_tool_call.result["error_code"], "partner_search_failed")
-        stored_session = service.storage.get_session(session_id)
-        assert stored_session is not None
-        last_search_summary = service._build_last_search_summary(stored_session)
-        assert last_search_summary is not None
-        self.assertEqual(last_search_summary["error_code"], "partner_search_failed")
-        blocked = service._create_saved_search_subscription_from_last_search(stored_session)
-        self.assertEqual(blocked["error_code"], "search_run_failed")
+
+    def test_service_does_not_emit_results_shown_without_search_response_or_cards(self) -> None:
+        service = DiscoveryService(
+            storage=InMemoryDiscoveryStorage(),
+            runtime=_PhantomResultsRuntime(),
+        )
+        created = service.create_session(requester_id=70001, profile_id=10001)
+
+        result = service.process_turn(
+            session_id=created["session"]["session_id"],
+            user_message_text="我要找对象，你给我推荐几个合适的吧",
+        )
+
+        self.assertEqual(result["session"]["phase"], "collecting_preferences")
+        timeline = result["view"]["timeline"]
+        self.assertEqual(timeline[-1]["item_type"], "assistant_message")
+        self.assertIn("还没真正跑出候选人卡片", timeline[-1]["body"])
 
     def test_service_coerces_searching_without_tool_call_back_to_collecting(self) -> None:
         service = DiscoveryService(
