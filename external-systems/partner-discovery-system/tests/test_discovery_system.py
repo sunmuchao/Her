@@ -1827,6 +1827,37 @@ class DiscoveryServiceTests(unittest.TestCase):
         self.assertIn("prefer", working_criteria)
         self.assertIn("工作稳定", list(working_criteria.get("prefer") or []))
 
+    def test_show_more_action_prompts_for_rejection_feedback(self) -> None:
+        service = DiscoveryService(
+            storage=InMemoryDiscoveryStorage(),
+            runtime=_PassiveActionRuntime(),
+        )
+        created = service.create_session(requester_id=70001, profile_id=10001)
+        session_id = created["session"]["session_id"]
+        action = service.storage.create_action(
+            session_id=session_id,
+            label="看看更多",
+            style="ghost",
+            semantic_payload={"kind": "show_more_candidates"},
+            now=datetime.now(),
+        )
+
+        result = service.process_turn(session_id=session_id, action_id=action.action_id)
+
+        timeline = result["view"]["timeline"]
+        self.assertEqual(timeline[-1]["item_type"], "assistant_message")
+        self.assertIn("上一批哪里不太合适", timeline[-1]["body"])
+        suggested_actions = result["view"]["suggested_actions"]
+        self.assertGreaterEqual(len(suggested_actions), 4)
+        semantic_kinds = {
+            str((item.get("semantic_payload") or {}).get("kind") or "").strip()
+            for item in suggested_actions
+        }
+        self.assertEqual(semantic_kinds, {"rejection_feedback"})
+        stored_session = service.storage.get_session(session_id)
+        assert stored_session is not None
+        self.assertTrue(stored_session.state.get("awaiting_rejection_feedback"))
+
     def test_rejection_feedback_free_text_no_result_still_renders_fallback_cards(self) -> None:
         service = DiscoveryService(
             storage=InMemoryDiscoveryStorage(),

@@ -83,6 +83,8 @@ _BATCH_REFRESH_PATTERNS = (
     "重新找",
     "再看几位",
     "再给我看看",
+    "看看更多",
+    "看更多",
     "换一组",
 )
 
@@ -333,7 +335,9 @@ class DiscoveryService:
                     created_at=current,
                 )
             )
-            if self._should_force_rejection_feedback_from_text(session, parsed_feedback):
+            if self._should_prompt_for_batch_refresh_feedback(session, user_message_text=text):
+                runtime_result = self._build_batch_refresh_prompt_result(run_input)
+            elif self._should_force_rejection_feedback_from_text(session, parsed_feedback):
                 runtime_result = self._force_rejection_feedback_turn(
                     session,
                     run_input=run_input,
@@ -384,7 +388,10 @@ class DiscoveryService:
                 "label": action.label,
                 "semantic_payload": deepcopy(action.semantic_payload),
             }
-            if str(action_context["semantic_payload"].get("kind") or "").strip() == "rejection_feedback":
+            action_kind = str(action_context["semantic_payload"].get("kind") or "").strip()
+            if action_kind == "show_more_candidates":
+                runtime_result = self._build_batch_refresh_prompt_result(run_input)
+            elif action_kind == "rejection_feedback":
                 runtime_result = self._force_rejection_feedback_turn(
                     session,
                     run_input=run_input,
@@ -1055,6 +1062,78 @@ class DiscoveryService:
         if not bool(session.state.get("awaiting_rejection_feedback")):
             return False
         return bool(parsed_feedback.get("is_rejection_feedback"))
+
+    def _should_prompt_for_batch_refresh_feedback(
+        self,
+        session: StoredSession,
+        *,
+        user_message_text: str | None,
+    ) -> bool:
+        if bool(session.state.get("awaiting_rejection_feedback")):
+            return False
+        text = str(user_message_text or "").strip()
+        if not text:
+            return False
+        return any(pattern in text for pattern in _BATCH_REFRESH_PATTERNS)
+
+    def _build_batch_refresh_prompt_result(
+        self,
+        run_input: DiscoveryRunInput,
+    ) -> DiscoveryRuntimeResult:
+        return DiscoveryRuntimeResult(
+            decision=DiscoveryDecision(
+                phase="collecting_preferences",
+                assistant_message="好的，帮你换一批新的。换之前能简单告诉我上一批哪里不太合适吗？这样我下轮会更准。",
+                criteria_labels=list(run_input.criteria_labels),
+                suggested_actions=[
+                    DiscoveryActionSuggestion(
+                        label="太远了（都是异地）",
+                        semantic_payload={
+                            "kind": "rejection_feedback",
+                            "feedback_type": "location_distance",
+                            "feedback_text": "太远了（都是异地）",
+                        },
+                        style="ghost",
+                    ),
+                    DiscoveryActionSuggestion(
+                        label="职业不太匹配（程序员偏多）",
+                        semantic_payload={
+                            "kind": "rejection_feedback",
+                            "feedback_type": "occupation_mismatch",
+                            "feedback_text": "职业不太匹配（程序员偏多）",
+                        },
+                        style="secondary",
+                    ),
+                    DiscoveryActionSuggestion(
+                        label="太忙太卷（工作压力大）",
+                        semantic_payload={
+                            "kind": "rejection_feedback",
+                            "feedback_type": "work_life_balance",
+                            "feedback_text": "太忙太卷（工作压力大）",
+                        },
+                        style="ghost",
+                    ),
+                    DiscoveryActionSuggestion(
+                        label="兴趣爱好不一样",
+                        semantic_payload={
+                            "kind": "rejection_feedback",
+                            "feedback_type": "interest_mismatch",
+                            "feedback_text": "兴趣爱好不一样",
+                        },
+                        style="ghost",
+                    ),
+                    DiscoveryActionSuggestion(
+                        label="跳过，直接换",
+                        semantic_payload={
+                            "kind": "rejection_feedback",
+                            "feedback_type": "skip_feedback",
+                            "feedback_text": "跳过，直接换",
+                        },
+                        style="ghost",
+                    ),
+                ],
+            )
+        )
 
     def _parse_rejection_feedback_from_text(
         self,
