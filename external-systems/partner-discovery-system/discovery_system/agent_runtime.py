@@ -706,12 +706,12 @@ class StubDiscoveryAgentRuntime:
                     suggested_actions=[
                         DiscoveryActionSuggestion(
                             label="看看更多",
-                            semantic_payload={},
+                            semantic_payload={"kind": "show_more_candidates"},
                             style="ghost",
                         ),
                         DiscoveryActionSuggestion(
                             label="调整条件",
-                            semantic_payload={},
+                            semantic_payload={"kind": "add_criteria"},
                             style="secondary",
                         ),
                     ],
