@@ -250,6 +250,27 @@ class _PhantomSearchingRuntime:
         )
 
 
+class _PassiveActionRuntime:
+    def initial_decision(self, _run_input):
+        return DiscoveryRuntimeResult(
+            decision=DiscoveryDecision(
+                phase="collecting_preferences",
+                assistant_message="先告诉我你想找什么样的人。",
+            )
+        )
+
+    def run_turn(self, _run_input, *, user_message=None, action_context=None):
+        del user_message, action_context
+        return DiscoveryRuntimeResult(
+            decision=DiscoveryDecision(
+                phase="collecting_preferences",
+                assistant_message="我先记一下你的反馈。",
+                suggested_actions=[],
+            ),
+            search_response=None,
+        )
+
+
 class DiscoveryServiceTests(unittest.TestCase):
     def setUp(self) -> None:
         self._old_profile_source = os.environ.get("HER_DISCOVERY_PROFILE_SOURCE")
@@ -1467,8 +1488,73 @@ class DiscoveryServiceTests(unittest.TestCase):
         self.assertEqual(result["session"]["phase"], "collecting_preferences")
         self.assertIn("还没真正发起筛选", result["view"]["timeline"][-1]["body"])
         self.assertEqual(result["view"]["suggested_actions"][0]["label"], "先看看有没有人")
+
+    def test_rejection_feedback_action_forces_search_and_returns_cards(self) -> None:
+        service = DiscoveryService(
+            storage=InMemoryDiscoveryStorage(),
+            runtime=_PassiveActionRuntime(),
+        )
+        created = service.create_session(requester_id=70001, profile_id=10001)
+        session_id = created["session"]["session_id"]
+        session = service.storage.get_session(session_id)
+        assert session is not None
+        session.view["timeline"] = [
+            {
+                "item_type": "result_group",
+                "item_id": "group-old",
+                "title": "上一批",
+                "cards": [{"profile_id": 1001, "title": "旧候选人"}],
+            }
+        ]
+        service.storage.save_session(session)
+        action = service.storage.create_action(
+            session_id=session_id,
+            label="职业不太匹配",
+            style="secondary",
+            semantic_payload={
+                "kind": "rejection_feedback",
+                "feedback_type": "occupation_mismatch",
+                "feedback_text": "职业不太匹配",
+            },
+            now=datetime.now(),
+        )
+        search_response = {
+            "has_match": True,
+            "result_count": 2,
+            "results": [
+                {
+                    "id": 2001,
+                    "name": "周可欣",
+                    "score": 88,
+                    "match_reason": "职业方向更贴近，生活节奏更稳",
+                    "profile": {"age": 28, "city": "杭州", "job": "品牌设计师", "education": "本科"},
+                },
+                {
+                    "id": 2002,
+                    "name": "沈知意",
+                    "score": 86,
+                    "match_reason": "工作状态更稳定",
+                    "profile": {"age": 29, "city": "杭州", "job": "客户服务", "education": "硕士"},
+                },
+            ],
+            "request_meta": {
+                "source": _DISCOVERY_TEST_PROFILE_SOURCE,
+                "criteria": {"cities": ["杭州"], "relationship_goals": ["认真恋爱"]},
+                "limit_count": 5,
+            },
+        }
+
+        with mock.patch.object(service, "_search_partner_candidates", return_value=search_response) as search_mock:
+            result = service.process_turn(session_id=session_id, action_id=action.action_id)
+
+        search_mock.assert_called_once()
+        self.assertEqual(result["view"]["timeline"][-1]["item_type"], "result_group")
+        self.assertEqual(len(result["view"]["timeline"][-1]["cards"]), 2)
+        self.assertIn("职业方向", result["view"]["timeline"][-2]["body"])
+
         tool_calls = service.storage.list_tool_calls(session_id)
-        self.assertEqual(tool_calls, [])
+        self.assertEqual(tool_calls[-2].tool_name, "submit_rejection_feedback")
+        self.assertEqual(tool_calls[-1].tool_name, "search_partner_candidates")
 
     def test_service_observability_snapshot_tracks_counters(self) -> None:
         service = DiscoveryService(
