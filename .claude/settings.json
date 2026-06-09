@@ -23,7 +23,22 @@
       "Bash(sed -i.bak3 '912,1131d' external-systems/partner-discovery-system/discovery_system/agent_runtime.py)",
       "Bash(sed -i '911r /tmp/new_instructions.txt' external-systems/partner-discovery-system/discovery_system/agent_runtime.py)",
       "Bash(curl -s http://127.0.0.1:8765/v1/discovery/sessions)",
-      "Bash(python3 -m py_compile discovery_system/agent_runtime.py)"
+      "Bash(python3 -m py_compile discovery_system/agent_runtime.py)",
+      "Bash(python -m pytest tests/test_discovery_system.py -v)",
+      "Bash(./scripts/stop_local_stack.sh gateway *)",
+      "Bash(./scripts/stop_local_stack.sh)",
+      "Bash(./scripts/start_local_stack.sh)",
+      "Bash(curl -s http://127.0.0.1:8765/v1/discovery/sessions/discovery-session-24e366fe25d1)",
+      "Bash(python scripts/test_glm5_tool_calling.py)",
+      "Bash(python scripts/test_dashscope_tool_calling.py)",
+      "Bash(HER_DISCOVERY_AGENT_MODEL=glm-5 python scripts/test_dashscope_tool_calling.py)",
+      "Bash(python -c ' *)",
+      "Bash(curl -s -X POST https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation -H 'Authorization: Bearer sk-sp-5b3a4ac5243440b0b39372f84d543d4a' -H 'Content-Type: application/json' -d '{ *)",
+      "Bash(python -m pytest external-systems/partner-discovery-system/tests/test_discovery_system.py::DiscoveryServiceTests::test_batch_refresh_action_with_show_more_candidates_triggers_feedback_prompt -xvs)",
+      "Bash(python -m pytest external-systems/partner-discovery-system/tests/test_discovery_system.py::DiscoveryServiceTests -k \"rejection_feedback or show_more\" -xvs)",
+      "Bash(python -m pytest external-systems/partner-discovery-system/tests/test_discovery_system.py::DiscoveryServiceTests::test_batch_refresh_feedback_options_are_dynamically_generated -xvs)",
+      "Bash(python -m pytest external-systems/partner-discovery-system/tests/test_discovery_system.py::DiscoveryServiceTests -k \"rejection_feedback or show_more or batch_refresh\" -v)",
+      "Bash(python -m pytest external-systems/partner-discovery-system/tests/test_discovery_system.py::DiscoveryServiceTests -k \"rejection_feedback or show_more or batch_refresh\" -xvs)"
     ]
   }
 }

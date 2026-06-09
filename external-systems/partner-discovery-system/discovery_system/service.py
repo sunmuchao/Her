@@ -336,7 +336,7 @@ class DiscoveryService:
                 )
             )
             if self._should_prompt_for_batch_refresh_feedback(session, user_message_text=text):
-                runtime_result = self._build_batch_refresh_prompt_result(run_input)
+                runtime_result = self._build_batch_refresh_prompt_result(run_input, session=session)
             elif self._should_force_rejection_feedback_from_text(session, parsed_feedback):
                 runtime_result = self._force_rejection_feedback_turn(
                     session,
@@ -390,7 +390,7 @@ class DiscoveryService:
             }
             action_kind = str(action_context["semantic_payload"].get("kind") or "").strip()
             if action_kind == "show_more_candidates":
-                runtime_result = self._build_batch_refresh_prompt_result(run_input)
+                runtime_result = self._build_batch_refresh_prompt_result(run_input, session=session)
             elif action_kind == "rejection_feedback":
                 runtime_result = self._force_rejection_feedback_turn(
                     session,
@@ -1089,59 +1089,59 @@ class DiscoveryService:
     def _build_batch_refresh_prompt_result(
         self,
         run_input: DiscoveryRunInput,
+        *,
+        session: StoredSession,
     ) -> DiscoveryRuntimeResult:
+        """
+        构建换一批追问反馈的结果。
+
+        调用 get_feedback_options 工具动态生成反馈选项，
+        基于上一批候选人的真实特征，而非硬编码。
+        """
+        # 调用工具动态生成反馈选项（基于上一批候选人特征）
+        feedback_result = run_input.get_feedback_options(
+            include_secondary=False,
+            primary_option=None,
+        )
+
+        # 从工具返回中提取选项列表
+        options = list(feedback_result.get("options") or [])
+        追问文案 = str(feedback_result.get("追问文案") or "好的，帮你换一批新的。换之前能简单告诉我上一批哪里不太合适吗？这样我下轮会更准。").strip()
+
+        # 如果工具返回为空，使用默认选项（向后兼容）
+        if not options:
+            options = [
+                "太远了（都是异地）",
+                "职业不太匹配",
+                "太忙太卷（工作压力大）",
+                "兴趣爱好不一样",
+                "跳过，直接换",
+            ]
+
+        # 动态构建反馈按钮
+        suggested_actions = []
+        from .feedback_service import infer_feedback_type
+
+        for index, option_text in enumerate(options):
+            feedback_type = infer_feedback_type(option_text)
+            suggested_actions.append(
+                DiscoveryActionSuggestion(
+                    label=option_text,
+                    semantic_payload={
+                        "kind": "rejection_feedback",
+                        "feedback_type": feedback_type,
+                        "feedback_text": option_text,
+                    },
+                    style="secondary" if index == 1 else "ghost",
+                )
+            )
+
         return DiscoveryRuntimeResult(
             decision=DiscoveryDecision(
                 phase="collecting_preferences",
-                assistant_message="好的，帮你换一批新的。换之前能简单告诉我上一批哪里不太合适吗？这样我下轮会更准。",
+                assistant_message=追问文案,
                 criteria_labels=list(run_input.criteria_labels),
-                suggested_actions=[
-                    DiscoveryActionSuggestion(
-                        label="太远了（都是异地）",
-                        semantic_payload={
-                            "kind": "rejection_feedback",
-                            "feedback_type": "location_distance",
-                            "feedback_text": "太远了（都是异地）",
-                        },
-                        style="ghost",
-                    ),
-                    DiscoveryActionSuggestion(
-                        label="职业不太匹配（程序员偏多）",
-                        semantic_payload={
-                            "kind": "rejection_feedback",
-                            "feedback_type": "occupation_mismatch",
-                            "feedback_text": "职业不太匹配（程序员偏多）",
-                        },
-                        style="secondary",
-                    ),
-                    DiscoveryActionSuggestion(
-                        label="太忙太卷（工作压力大）",
-                        semantic_payload={
-                            "kind": "rejection_feedback",
-                            "feedback_type": "work_life_balance",
-                            "feedback_text": "太忙太卷（工作压力大）",
-                        },
-                        style="ghost",
-                    ),
-                    DiscoveryActionSuggestion(
-                        label="兴趣爱好不一样",
-                        semantic_payload={
-                            "kind": "rejection_feedback",
-                            "feedback_type": "interest_mismatch",
-                            "feedback_text": "兴趣爱好不一样",
-                        },
-                        style="ghost",
-                    ),
-                    DiscoveryActionSuggestion(
-                        label="跳过，直接换",
-                        semantic_payload={
-                            "kind": "rejection_feedback",
-                            "feedback_type": "skip_feedback",
-                            "feedback_text": "跳过，直接换",
-                        },
-                        style="ghost",
-                    ),
-                ],
+                suggested_actions=suggested_actions,
             )
         )
 
@@ -1184,20 +1184,43 @@ class DiscoveryService:
             str((action.semantic_payload or {}).get("kind") or "").strip()
             for action in list(runtime_result.decision.suggested_actions or [])
         }
+        # 场景1：返回了追问反馈选项 → 设置状态
         if "rejection_feedback" in semantic_kinds:
             session.state["awaiting_rejection_feedback"] = True
             session.state["awaiting_rejection_feedback_since"] = datetime.now().isoformat()
             return
 
+        # 场景2：用户主动说"换一批" → 设置状态
         text = str(user_message_text or "").strip()
         if text and any(pattern in text for pattern in _BATCH_REFRESH_PATTERNS):
             session.state["awaiting_rejection_feedback"] = True
             session.state["awaiting_rejection_feedback_since"] = datetime.now().isoformat()
             return
 
-        if runtime_result.search_response is not None or str(runtime_result.decision.phase or "").strip() in {"results_shown", "no_result"}:
-            session.state.pop("awaiting_rejection_feedback", None)
-            session.state.pop("awaiting_rejection_feedback_since", None)
+        # 场景3：返回新候选人
+        # ✅ 修复：不再立即清除状态，保持状态让用户可以继续反馈
+        # 只有在以下情况下才清除状态：
+        # 1. 用户明确表达满意（如"心动"、"喜欢"）
+        # 2. 用户主动结束对话（如"不用了"、"够了"）
+        # 3. 用户跳过反馈（选择"跳过，直接换"）
+
+        if runtime_result.search_response is not None:
+            # 检查是否是用户跳过反馈的场景
+            # 如果是"跳过，直接换"，说明用户不想提供反馈，可以清除状态
+            # 但如果是用户选择了具体反馈（如"职业不匹配"），应该保持状态
+            # 注意：这里无法区分，所以保守策略：保持状态
+
+            # 新策略：标记为"已返回候选人，等待反馈"
+            session.state["awaiting_rejection_feedback"] = True
+            session.state["awaiting_rejection_feedback_since"] = datetime.now().isoformat()
+            session.state["last_feedback_result_shown"] = datetime.now().isoformat()
+            return
+
+        # 场景4：phase是results_shown但没有search_response（复用旧卡片）
+        if str(runtime_result.decision.phase or "").strip() in {"results_shown", "no_result"}:
+            # 保持状态，等待用户反馈
+            session.state["awaiting_rejection_feedback"] = True
+            return
 
     def _build_result_cards(
         self,

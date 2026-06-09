@@ -22,11 +22,13 @@ from .decision_models import (
     DiscoveryCandidateSelection,
     DiscoveryDecision,
     DiscoveryDecisionModel,
+    DecisionPayloadModel,  # 方案C新增
     DiscoveryRuntimeResult,
     DiscoveryToolCall,
     recover_decision_from_exception as _recover_decision_from_exception,
     to_decision as _to_decision,
     validate_decision_output as _validate_decision_output,
+    decision_payload_to_decision as _decision_payload_to_decision,  # 方案C新增
 )
 
 
@@ -203,7 +205,7 @@ def _log_discovery_context_size(
     messages_count = _model_input_item_count(runtime_input)
     instructions_chars = len(instructions)
     input_chars = len(runtime_input)
-    schema_chars = _safe_json_length(output_schema.json_schema())
+    schema_chars = _safe_json_length(output_schema.json_schema()) if output_schema else 0  # 方案C：处理 None
     tools_chars = _safe_json_length(_tool_schema_debug_payload(tools))
     total_chars = instructions_chars + input_chars + schema_chars + tools_chars
     level = logging.DEBUG
@@ -847,8 +849,14 @@ def _prompt_needs_assessment_mode(user_message: str | None, action_context: dict
 
 def _prompt_needs_rejection_feedback_mode(user_message: str | None, action_context: dict[str, Any] | None) -> bool:
     hint = dict((action_context or {}).get("semantic_payload") or {})
-    if str(hint.get("kind") or "").strip() == "rejection_feedback":
+    action_kind = str(hint.get("kind") or "").strip()
+    # 场景1: 用户点击反馈选项（处理反馈）
+    if action_kind == "rejection_feedback":
         return True
+    # 场景2: 用户点击"换一批"按钮（触发追问）
+    if action_kind == "show_more_candidates":
+        return True
+    # 场景3: 用户主动说"换一批"
     text = str(user_message or "").strip()
     return any(marker in text for marker in _DISCOVERY_BATCH_REFRESH_PATTERNS)
 
@@ -891,20 +899,41 @@ memory_summary 常见信息：
 工具调用要求：
 - 需要用工具时，必须走系统提供的真实 tool calling 机制。
 - 不要把 `tool_calls`、`function_call`、工具参数对象手写进最终 JSON。
-- 不要输出形如 `{"tool_calls":[...]}` 的文本。
-- 最终 JSON 只能包含 DiscoveryDecisionModel 定义的字段。
+- 不要输出形如 `{“tool_calls”:[...]}` 的文本。
+
+工具调用要求：
+- 当用户说”找对象”、”推荐几个”、”给我看看”时，调用 search_partner_candidates 工具搜索。
+- 每次回复用户后，必须调用 make_decision 工具输出你的决策。
+- make_decision 工具参数说明：
+  - phase: 当前阶段（collecting_preferences/searching/results_shown/no_result）
+  - assistant_message: 回复用户的消息（必填，保持短）
+  - criteria_labels_json: 筛选条件标签 JSON 数组字符串，如 [“苏州”, “26-30岁”]
+  - suggested_actions_json: 建议操作按钮 JSON 数组字符串，格式：[{“label”:”换一批”,”style”:”secondary”,”semantic_payload”:{“kind”:”show_more_candidates”}}]
+  - selected_candidates_json: 候选人 JSON 数组字符串，格式：[{“profile_id”:100,”reason_summary”:”价值观匹配”}]
+- 所有 JSON 参数必须是有效的 JSON 字符串格式，不要直接写数组对象。
 
 输出原则：
 - assistant_message 保持短，像真人红娘，不要写成系统说明。
 - phase 只能是：collecting_preferences、searching、results_shown、no_result。
 - 如果你正在展示候选卡片，phase 必须是 `results_shown`。
-- suggested_actions 最多 3 个，style 只能是：primary、secondary、ghost。
-- semantic_payload.kind 只用这些值：starter_prompt、followup_prompt、saved_search_opt_in、refine_candidates、add_criteria、refine_preferences、show_more_candidates、age_preference、start_assessment、rejection_feedback。
+- suggested_actions 最多 3 个，style 只能是 primary/secondary/ghost。
+- semantic_payload.kind 只用这些值：
+  - starter_prompt：首次对话引导
+  - followup_prompt：追问补充信息
+  - saved_search_opt_in：持续留意（无结果时推荐）
+  - show_more_candidates：换一批（会触发追问反馈）
+  - add_criteria：添加筛选条件
+  - refine_preferences：调整偏好
+  - age_preference：年龄偏好设置
+  - start_assessment：推荐测评
+  - rejection_feedback：拒绝反馈选项
+- **"换一批"按钮必须使用 show_more_candidates**，这会触发系统追问上一批哪里不合适。
+- **注意**：refine_candidates 已废弃，不要使用。如有旧数据中使用，可忽略但不应创建新的。
 - 只有在你真的调用了搜索工具并且决定展示结果时，才填写 selected_candidates。
 - selected_candidates 里的 profile_id 必须来自最新一次搜索工具返回的 results。
-- 如果搜索工具返回 `error_code` 或 `diagnostics.error`，不要说“本地没有符合条件的人”。要自然说明这轮搜索失败了，不代表没人，并引导用户重试或继续补充条件。
+- 如果搜索工具返回 `error_code` 或 `diagnostics.error`，不要说”本地没有符合条件的人”。要自然说明这轮搜索失败了，不代表没人，并引导用户重试或继续补充条件。
 - 如果 state.current_results 已有候选人，且你在解释当前候选人的测评适配性，assistant_message 直接解释；如果引用了当前候选人，请把该候选人继续放进 selected_candidates，这样前端能保留同一组卡片。
-- reason_summary 应尽量写成用户能看懂的匹配理由，优先引用双方的 MBTI、依恋风格、价值观；如果候选人没测评，再用“从资料看”“可能”等谨慎表达。
+- reason_summary 应尽量写成用户能看懂的匹配理由，优先引用双方的 MBTI、依恋风格、价值观；如果候选人没测评，再用”从资料看””可能”等谨慎表达。
 """
     ]
     if _prompt_needs_assessment_mode(user_message, action_context):
@@ -922,7 +951,8 @@ memory_summary 常见信息：
         sections.append(
             """
 换一批反馈闭环：
-- 当用户说"换一批"、"重新找"、"再看几位"、"再给我看看"时，先追问上一批哪里不合适。
+- 当用户说"换一批"、"重新找"、"再看几位"、"再给我看看"时，系统会自动追问上一批哪里不合适。
+- **展示候选人后，"换一批"按钮必须使用 semantic_payload.kind = "show_more_candidates"**。
 - 反馈选项必须使用 semantic_payload.kind = "rejection_feedback"，并带 feedback_type。
 - 用户点击 rejection_feedback 后，必须：
   1. 调用 submit_rejection_feedback
@@ -931,6 +961,7 @@ memory_summary 常见信息：
   4. assistant_message 说明你调整了什么
 - 常见 feedback_type：location_distance、age_gap、criteria_age、occupation_mismatch、work_life_balance、interest_mismatch、personality_mismatch、criteria_generic、skip_feedback。
 - 如果用户选择 saved_search_opt_in，则优先调用 create_saved_search_subscription_from_last_search。
+- **重要**：不要使用已废弃的 refine_candidates，统一使用 show_more_candidates 以符合业务规则"每次换一批都追问"。
 """
         )
     return "\n\n".join(section.strip() for section in sections if section.strip())
@@ -1222,6 +1253,7 @@ class AgentsSdkDiscoveryAgentRuntime:
 
         @function_tool
         def sync_requester_persona_memory(patch_json: str) -> dict[str, Any]:
+            """同步用户的择偶偏好到长期记忆。当用户说出明确的择偶偏好时调用此工具。"""
             patch = json.loads(str(patch_json or "{}"))
             if not isinstance(patch, dict):
                 raise ValueError("patch_json must decode into a JSON object")
@@ -1229,10 +1261,12 @@ class AgentsSdkDiscoveryAgentRuntime:
 
         @function_tool
         def propose_requester_profile_update(patch_json: str, evidence_text: str = "") -> dict[str, Any]:
+            """提议更新用户本人的正式资料（年龄、城市、婚姻状态等）。当用户说出个人资料变更时调用此工具。"""
             return run_input.propose_requester_profile_update(patch_json, evidence_text)
 
         @function_tool
         def search_partner_candidates(criteria_json: str, limit: int = 5) -> dict[str, Any]:
+            """搜索候选人。当用户说"找对象"、"推荐几个"、"给我看看"时调用此工具。返回匹配的候选人列表。"""
             criteria = json.loads(str(criteria_json or "{}"))
             if not isinstance(criteria, dict):
                 raise ValueError("criteria_json must decode into a JSON object")
@@ -1243,6 +1277,7 @@ class AgentsSdkDiscoveryAgentRuntime:
 
         @function_tool
         def create_saved_search_subscription_from_last_search() -> dict[str, Any]:
+            """创建订阅，按当前搜索条件持续留意新候选人。当用户想"持续留意"或"订阅"时调用此工具。"""
             return run_input.create_saved_search_subscription_from_last_search()
 
         @function_tool
@@ -1271,13 +1306,57 @@ class AgentsSdkDiscoveryAgentRuntime:
                 primary_option=primary_option if primary_option else None,
             )
 
+        # ====================================================================
+        # 方案C：make_decision 工具 - 把 Decision Schema 融进工具参数
+        # ====================================================================
+        tool_state["decision_payload"] = None  # 存储 make_decision 工具参数
+
+        @function_tool
+        def make_decision(
+            phase: str,
+            assistant_message: str,
+            criteria_labels_json: str = "[]",
+            suggested_actions_json: str = "[]",
+            result_group_title: str = "",
+            selected_candidates_json: str = "[]",
+        ) -> dict[str, Any]:
+            """
+            输出决策结果。每次回复用户后，必须调用此工具来输出你的决策。
+
+            参数说明：
+            - phase: 当前阶段（collecting_preferences/searching/results_shown/no_result）
+            - assistant_message: 回复用户的消息（必填）
+            - criteria_labels_json: 筛选条件标签 JSON 数组，如 ["苏州", "26-30岁"]
+            - suggested_actions_json: 建议操作按钮 JSON 数组，每个包含 label/style/semantic_payload
+            - result_group_title: 候选人分组标题（可选）
+            - selected_candidates_json: 候选人 JSON 数组，每个包含 profile_id 和 reason_summary
+
+            JSON 格式示例：
+            suggested_actions_json: [{"label":"换一批","style":"secondary","semantic_payload":{"kind":"show_more_candidates"}}]
+            selected_candidates_json: [{"profile_id":100,"reason_summary":"价值观匹配"}]
+
+            重要：
+            - 只有在搜索成功后才填写 selected_candidates
+            - suggested_actions 最多3个，style 只能是 primary/secondary/ghost
+            """
+            payload = {
+                "phase": phase,
+                "assistant_message": assistant_message,
+                "criteria_labels": json.loads(criteria_labels_json) if criteria_labels_json else [],
+                "suggested_actions": json.loads(suggested_actions_json) if suggested_actions_json else [],
+                "result_group_title": result_group_title if result_group_title else None,
+                "selected_candidates": json.loads(selected_candidates_json) if selected_candidates_json else [],
+            }
+            tool_state["decision_payload"] = payload  # 存储供后续提取
+            return {"success": True, "phase": phase}
+
         instructions = _build_discovery_agent_instructions(
             event=event,
             user_message=user_message,
             action_context=action_context,
         )
 
-        output_schema = AgentOutputSchema(DiscoveryDecisionModel, strict_json_schema=True)
+        # 方案C：移除 output_schema，只用 tools
         tools = [
             sync_requester_persona_memory,
             propose_requester_profile_update,
@@ -1285,6 +1364,7 @@ class AgentsSdkDiscoveryAgentRuntime:
             create_saved_search_subscription_from_last_search,
             submit_rejection_feedback,
             get_feedback_options,
+            make_decision,  # 方案C新增
         ]
         runtime_input = _build_runtime_prompt(
             run_input=run_input,
@@ -1296,7 +1376,7 @@ class AgentsSdkDiscoveryAgentRuntime:
             event=event,
             instructions=instructions.strip(),
             runtime_input=runtime_input,
-            output_schema=output_schema,
+            output_schema=None,  # 方案C：无 output_schema
             tools=tools,
         )
         if run_input.agent_session is not None:
@@ -1309,7 +1389,7 @@ class AgentsSdkDiscoveryAgentRuntime:
             name="discovery_matchmaker",
             instructions=instructions.strip(),
             model=_resolve_discovery_model(wire_api=_resolve_discovery_wire_api()),
-            output_type=output_schema,
+            output_type=None,  # 方案C：移除 output_schema
             tools=tools,
         )
         started = time.perf_counter()
@@ -1334,12 +1414,36 @@ class AgentsSdkDiscoveryAgentRuntime:
             usage_payload["requests"],
             first_token_latency_ms,
         )
-        final_output = getattr(result, "final_output", result)
-        decision = (
-            _to_decision(final_output)
-            if isinstance(final_output, DiscoveryDecisionModel)
-            else _validate_decision_output(final_output)
-        )
+
+        # ====================================================================
+        # 方案C：从 make_decision 工具参数中提取 decision
+        # ====================================================================
+        decision_payload = tool_state.get("decision_payload")
+        if decision_payload is not None:
+            _logger.debug(
+                "discovery agent extracted decision from make_decision tool payload=%s",
+                str(decision_payload)[:200]
+            )
+            decision = _decision_payload_to_decision(DecisionPayloadModel.model_validate(decision_payload))
+        else:
+            # Fallback：尝试从 final_output 恢复
+            final_output = getattr(result, "final_output", result)
+            _logger.warning(
+                "discovery agent make_decision tool not called, falling back to final_output type=%s",
+                type(final_output).__name__,
+            )
+            recovered = _recover_decision_from_exception(final_output) if isinstance(final_output, Exception) else None
+            if recovered is not None:
+                decision = recovered
+            else:
+                # 最终 fallback：使用 stub
+                _logger.warning("discovery agent fell back to stub after no decision payload")
+                return self._fallback_result(
+                    run_input,
+                    user_message=user_message,
+                    action_context=action_context,
+                )
+
         search_response = tool_state.get("last_search_response")
         if search_response is not None and decision.phase == "searching":
             decision = DiscoveryDecision(
