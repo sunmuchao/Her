@@ -392,16 +392,9 @@ def _configure_agents_sdk_provider() -> None:
 def _compact_requester_profile(profile: dict[str, Any] | None) -> dict[str, Any]:
     profile = dict(profile or {})
     keep_keys = [
-        "id",
-        "name",
         "gender",
         "age",
         "city",
-        "district",
-        "height",
-        "education",
-        "job",
-        "income_range",
         "marital_status",
         "has_children",
         "relationship_goal",
@@ -413,18 +406,33 @@ def _compact_requester_profile(profile: dict[str, Any] | None) -> dict[str, Any]
         "target_age_max",
         "target_cities",
         "preferred_traits",
-        "must_have_tags",
-        "must_not_have_tags",
-        "disliked_traits",
-        # === Phase 1: 保留 personality 字段 ===
-        "personality_traits",
-        "personality_availability",
     ]
-    return {
+    compact = {
         key: profile.get(key)
         for key in keep_keys
         if profile.get(key) not in (None, "", [], {})
     }
+    personality_traits = dict(profile.get("personality_traits") or {})
+    compact_traits: dict[str, Any] = {}
+    mbti_type = str(dict(personality_traits.get("mbti") or {}).get("type_code") or "").strip()
+    if mbti_type:
+        compact_traits["mbti"] = {"type_code": mbti_type}
+    attachment_type = str(dict(personality_traits.get("attachment") or {}).get("type_code") or "").strip()
+    if attachment_type:
+        compact_traits["attachment"] = {"type_code": attachment_type}
+    values = dict(personality_traits.get("values") or {})
+    value_type = str(values.get("value_type") or "").strip()
+    top_values = [str(item).strip() for item in list(values.get("top_values") or []) if str(item).strip()][:2]
+    compact_values: dict[str, Any] = {}
+    if value_type:
+        compact_values["value_type"] = value_type
+    if top_values:
+        compact_values["top_values"] = top_values
+    if compact_values:
+        compact_traits["values"] = compact_values
+    if compact_traits:
+        compact["personality_traits"] = compact_traits
+    return compact
 
 
 def _compact_candidate_personality_context(value: dict[str, Any] | None) -> dict[str, Any]:
@@ -476,11 +484,19 @@ def _compact_visible_actions(actions: list[dict[str, Any]] | None) -> list[dict[
     compacted: list[dict[str, Any]] = []
     for action in list(actions or [])[:3]:
         hint = dict(action.get("hint") or {})
+        compact_hint: dict[str, Any] = {}
+        kind = str(action.get("kind") or hint.get("kind") or "").strip() or None
+        if kind:
+            compact_hint["kind"] = kind
+        for key in ("slot", "feedback_type", "assessment_type"):
+            value = hint.get(key)
+            if value not in (None, "", [], {}):
+                compact_hint[key] = value
         compacted.append(
             {
                 "label": str(action.get("label") or "").strip(),
-                "kind": str(action.get("kind") or hint.get("kind") or "").strip() or None,
-                "hint": hint,
+                "kind": kind,
+                "hint": compact_hint,
             }
         )
     return compacted
