@@ -1067,8 +1067,10 @@ system prompt 同时承载：
 
 - 已完成：新增 [discovery_context_size_report.py](/Users/sunmuchao/Downloads/Her/scripts/discovery_context_size_report.py)
 - 已完成：可量化 4 类代表场景的 `instructions/input/schema/tools/total` 体积
+- 已完成：discovery runtime 日志已记录 `elapsed_ms` 与 Agents SDK usage（`input_tokens/output_tokens/total_tokens/requests`）
 - 未完成：尚未自动输出优化前后对比
-- 未完成：尚未记录 completion tokens、首 token 延迟、总响应时长
+- 未完成：尚未自动固化“优化前后”对比报告
+- 未完成：尚未记录真实 `first_token_latency_ms`
 
 ## 18. 推荐实施顺序
 
