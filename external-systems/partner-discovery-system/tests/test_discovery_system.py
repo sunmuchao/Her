@@ -404,7 +404,7 @@ class DiscoveryServiceTests(unittest.TestCase):
         asyncio.run(reloaded.clear_session())
         self.assertEqual(asyncio.run(reloaded.get_items()), [])
 
-    def test_agents_runtime_passes_session_memory_to_runner(self) -> None:
+    def test_agents_runtime_bypasses_session_memory_for_runner(self) -> None:
         runtime = AgentsSdkDiscoveryAgentRuntime()
         session_store = InMemoryDiscoveryAgentSessionStore()
         session = session_store.get_session("discovery-session-002")
@@ -480,7 +480,7 @@ class DiscoveryServiceTests(unittest.TestCase):
                 action_context=None,
             )
 
-        self.assertIs(captured["session"], session)
+        self.assertIsNone(captured["session"])
         payload = json.loads(str(captured["input"]))
         self.assertEqual(payload["official_context"]["requester_profile_snapshot"]["self_city"], "上海")
         self.assertEqual(len(payload["official_context"]["recent_timeline_summary"]), 1)
@@ -626,6 +626,9 @@ class DiscoveryServiceTests(unittest.TestCase):
                 )
             )
             search_calls.extend([first["request_meta"], second["request_meta"]])
+            self.assertEqual(first["results"], [])
+            self.assertEqual(second["results"][0]["profile_id"], 2002)
+            self.assertIn("苏州", second["results"][0]["summary"])
             return {
                 "phase": "results_shown",
                 "assistant_message": "我先看了无锡，又放宽到苏州再搜了一轮。",
