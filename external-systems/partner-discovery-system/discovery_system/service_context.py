@@ -15,6 +15,98 @@ class DiscoveryServiceContextRuntime:
     clone_view: Callable[[dict[str, Any]], dict[str, Any]]
 
 
+def _compact_personality_signals(value: dict[str, Any] | None) -> dict[str, Any]:
+    context = dict(value or {})
+    compact: dict[str, Any] = {}
+    mbti = dict(context.get("mbti") or {})
+    mbti_type = str(mbti.get("type_code") or "").strip()
+    if mbti_type:
+        compact["mbti"] = {"type_code": mbti_type}
+
+    attachment = dict(context.get("attachment") or {})
+    attachment_type = str(attachment.get("type_code") or "").strip()
+    if attachment_type:
+        compact["attachment"] = {"type_code": attachment_type}
+
+    values = dict(context.get("values") or {})
+    top_values = [str(item).strip() for item in list(values.get("top_values") or []) if str(item).strip()][:2]
+    value_type = str(values.get("value_type") or "").strip()
+    compact_values: dict[str, Any] = {}
+    if value_type:
+        compact_values["value_type"] = value_type
+    if top_values:
+        compact_values["top_values"] = top_values
+    if compact_values:
+        compact["values"] = compact_values
+    return compact
+
+
+def _compatibility_summary(card: dict[str, Any]) -> str:
+    reasoning = dict(card.get("personality_reasoning") or {})
+    summary = str(reasoning.get("summary") or "").strip()
+    if summary:
+        return summary
+    context = _compact_personality_signals(card.get("personality_match_context"))
+    hints: list[str] = []
+    mbti_type = str(((context.get("mbti") or {}).get("type_code")) or "").strip()
+    attachment_type = str(((context.get("attachment") or {}).get("type_code")) or "").strip()
+    top_values = list((context.get("values") or {}).get("top_values") or [])
+    if mbti_type:
+        hints.append(f"MBTI {mbti_type}")
+    if attachment_type:
+        hints.append(f"依恋偏{attachment_type}")
+    if top_values:
+        hints.append(f"价值观重{('、'.join(top_values[:2]))}")
+    return "；".join(hints[:2])
+
+
+def _compact_recent_timeline_summary(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    compacted: list[dict[str, Any]] = []
+    for item in items[-4:]:
+        item_type = str(item.get("item_type") or "").strip()
+        if item_type in {"assistant_message", "user_message"}:
+            compacted.append(
+                {
+                    "item_type": item_type,
+                    "body": str(item.get("body") or "").strip(),
+                }
+            )
+            continue
+        if item_type == "result_group":
+            compacted.append(
+                {
+                    "item_type": "result_group",
+                    "title": str(item.get("title") or "").strip(),
+                    "cards": [
+                        {
+                            "profile_id": card.get("profile_id"),
+                            "title": card.get("title"),
+                            "reason_summary": card.get("reason_summary"),
+                        }
+                        for card in list(item.get("cards") or [])[:2]
+                    ],
+                }
+            )
+            continue
+        if item_type == "assessment_result":
+            card = dict(item.get("card") or {})
+            result_data = dict(card.get("result_data") or {})
+            assessment_type = card.get("assessment_type") or result_data.get("assessment_type")
+            compacted.append(
+                {
+                    "item_type": "assessment_result",
+                    "assessment_type": assessment_type,
+                    "type_code": result_data.get("type_code"),
+                    "summary": (
+                        (result_data.get("interpretation_data") or {}).get("summary")
+                        if isinstance(result_data.get("interpretation_data"), dict)
+                        else None
+                    ),
+                }
+            )
+    return compacted
+
+
 def search_error_summary(search_response: dict[str, Any] | None) -> dict[str, Any] | None:
     if not isinstance(search_response, dict):
         return None
@@ -127,12 +219,9 @@ def build_page_summary(
             {
                 "profile_id": card.get("profile_id"),
                 "title": card.get("title"),
-                "subtitle": card.get("subtitle"),
-                "match_score": card.get("match_score"),
                 "reason_summary": card.get("reason_summary"),
-                "personality_reasoning": deepcopy(card.get("personality_reasoning") or {}),
-                "personality_match_context": deepcopy(card.get("personality_match_context") or {}),
-                "personality_availability": deepcopy(card.get("personality_availability") or {}),
+                "compatibility_summary": _compatibility_summary(card),
+                "personality_match_context": _compact_personality_signals(card.get("personality_match_context")),
             }
             for card in list(item.get("cards") or [])[:3]
         ]
@@ -150,7 +239,7 @@ def build_runtime_context(
     return {
         "session_status": session.status,
         "requester_profile_snapshot": requester_profile_snapshot,
-        "recent_timeline_summary": list(recent_timeline),
+        "recent_timeline_summary": _compact_recent_timeline_summary(list(recent_timeline)),
         "visible_actions": build_visible_action_summaries(runtime, session),
         "last_search_summary": build_last_search_summary(runtime, session),
         "page_summary": build_page_summary(runtime, session),
