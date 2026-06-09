@@ -136,9 +136,8 @@ def build_visible_action_summaries(
             continue
         items.append(
             {
-                "action_id": action.action_id,
                 "label": action.label,
-                "style": action.style,
+                "kind": str(dict(action.semantic_payload or {}).get("kind") or "").strip() or None,
                 "hint": deepcopy(action.semantic_payload),
             }
         )
@@ -156,9 +155,8 @@ def build_last_search_summary(
         if not error_code and not error_message:
             return None
         summary = {
-            "search_run_id": None,
+            "status": "error",
             "result_count": int(session.state.get("last_search_result_count") or 0),
-            "has_match": bool(session.state.get("last_search_has_match")),
         }
         if error_code:
             summary["error_code"] = error_code
@@ -168,9 +166,8 @@ def build_last_search_summary(
     search_run = runtime.storage.get_search_run(search_run_id)
     if search_run is None:
         summary = {
-            "search_run_id": search_run_id,
+            "status": "success" if bool(session.state.get("last_search_has_match")) else "empty",
             "result_count": int(session.state.get("last_search_result_count") or 0),
-            "has_match": bool(session.state.get("last_search_has_match")),
         }
         error_code = str(session.state.get("last_search_error_code") or "").strip()
         error_message = str(session.state.get("last_search_error_message") or "").strip()
@@ -179,16 +176,26 @@ def build_last_search_summary(
         if error_message:
             summary["error"] = error_message
         return summary
+    criteria = deepcopy(search_run.criteria)
+    criteria_bits: list[str] = []
+    cities = list(criteria.get("cities") or [])
+    if cities:
+        criteria_bits.append("/".join(str(item).strip() for item in cities[:2] if str(item).strip()))
+    gender = str(criteria.get("gender") or "").strip()
+    if gender:
+        criteria_bits.append(gender)
+    age_min = criteria.get("age_min")
+    age_max = criteria.get("age_max")
+    if age_min or age_max:
+        criteria_bits.append(f"{age_min or '?'}-{age_max or '?'}岁")
+    relationship_goals = list(criteria.get("relationship_goals") or [])
+    if relationship_goals:
+        criteria_bits.append(str(relationship_goals[0]))
     summary = {
-        "search_run_id": search_run.search_run_id,
+        "status": "success" if bool(search_run.has_match) else "empty",
         "result_count": int(search_run.result_count or 0),
-        "has_match": bool(search_run.has_match),
-        "criteria": deepcopy(search_run.criteria),
-        "source": search_run.source,
+        "criteria_summary": "，".join(bit for bit in criteria_bits if bit) or None,
     }
-    personality_trace = deepcopy(dict((search_run.response or {}).get("personality_trace") or {}))
-    if personality_trace:
-        summary["personality_trace"] = personality_trace
     error_summary = search_error_summary(dict(search_run.response or {}))
     if error_summary:
         summary.update(error_summary)

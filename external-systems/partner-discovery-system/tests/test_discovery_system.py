@@ -484,10 +484,21 @@ class DiscoveryServiceTests(unittest.TestCase):
         payload = json.loads(str(captured["input"]))
         self.assertEqual(payload["official_context"]["requester_profile_snapshot"]["self_city"], "上海")
         self.assertEqual(len(payload["official_context"]["recent_timeline_summary"]), 1)
+        self.assertNotIn("note", payload)
+        self.assertNotIn("requester_id", payload["session"])
+        self.assertNotIn("profile_id", payload["session"])
         result_cards = payload["official_context"]["page_summary"]["result_cards"]
         self.assertEqual(result_cards[0]["profile_id"], 1002)
         self.assertEqual(result_cards[0]["personality_match_context"]["mbti"]["type_code"], "ISFJ")
         self.assertEqual(result_cards[0]["personality_match_context"]["attachment"]["type_code"], "secure")
+        self.assertEqual(
+            result_cards[0]["personality_match_context"]["values"]["top_values"],
+            ["稳定经营", "家庭责任"],
+        )
+        self.assertNotIn("availability", result_cards[0]["personality_match_context"])
+        self.assertEqual(payload["official_context"]["visible_actions"][0]["kind"], "followup")
+        self.assertNotIn("action_id", payload["official_context"]["visible_actions"][0])
+        self.assertEqual(payload["official_context"]["last_search_summary"]["result_count"], 0)
         tool_names = [
             getattr(tool, "name", None) or getattr(tool, "__name__", "")
             for tool in list(captured["tools"] or [])
@@ -586,6 +597,7 @@ class DiscoveryServiceTests(unittest.TestCase):
         self.assertEqual(summary[0]["item_type"], "assessment_result")
         self.assertEqual(summary[0]["type_code"], "INTJ")
         self.assertEqual(summary[0]["summary"], "偏理性，慢热但稳定。")
+        self.assertEqual(len(summary), 1)
 
     def test_agents_runtime_can_issue_multiple_search_tool_calls_in_one_run(self) -> None:
         runtime = AgentsSdkDiscoveryAgentRuntime()
