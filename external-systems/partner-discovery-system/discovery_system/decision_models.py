@@ -82,6 +82,18 @@ class DiscoverySavedSearchOptInPayloadModel(BaseModel):
 
 
 class DiscoveryRefineCandidatesPayloadModel(BaseModel):
+    """
+    【已废弃】原设计用于调整特定候选人，但无实际使用场景。
+
+    废弃原因：
+    1. 业务规则要求"每次换一批都追问"，不存在"不追问的换一批"场景
+    2. 与 show_more_candidates 语义重叠，职责边界模糊
+    3. Agent指导已统一为 show_more_candidates
+
+    替代方案：统一使用 show_more_candidates
+
+    保留定义是为了向后兼容（可能有旧数据中使用），但新代码不应使用。
+    """
     kind: Literal["refine_candidates"]
     candidates: list[int] | None = Field(default=None, min_length=1)
     hint: str | None = Field(default=None)
@@ -169,6 +181,47 @@ class DiscoveryDecisionModel(BaseModel):
         return self
 
 
+# ============================================================================
+# 方案C：工具参数中的 Decision Schema
+# ============================================================================
+
+class DecisionPayloadModel(BaseModel):
+    """
+    用于工具参数的 Decision 结构。
+
+    方案C核心：把 DiscoveryDecisionModel 的 schema 融进工具参数，
+    让模型在调用 make_decision 工具时填写完整的决策 JSON。
+    """
+    phase: DiscoveryPhase = Field(
+        description="当前阶段: collecting_preferences(收集条件)/searching(搜索中)/results_shown(展示结果)/no_result(无结果)"
+    )
+    assistant_message: str = Field(
+        description="回复用户的消息，保持短，像真人红娘"
+    )
+    criteria_labels: list[str] = Field(
+        default_factory=list,
+        description="筛选条件标签，如 ['苏州', '26-30岁', '女生']"
+    )
+    suggested_actions: list[DiscoveryActionSuggestionModel] = Field(
+        default_factory=list,
+        description="建议操作按钮，最多3个"
+    )
+    result_group_title: str | None = Field(
+        default=None,
+        description="候选人分组标题，如 '这三位很适合你'"
+    )
+    selected_candidates: list[DiscoveryCandidateSelectionModel] = Field(
+        default_factory=list,
+        description="候选人列表，每个包含 profile_id 和 reason_summary"
+    )
+
+    @model_validator(mode="after")
+    def _validate_decision(self) -> "DecisionPayloadModel":
+        if not str(self.assistant_message or "").strip():
+            raise ValueError("assistant_message is required")
+        return self
+
+
 def _coerce_json_output(raw_output: Any) -> dict[str, Any]:
     return coerce_json_object(raw_output)
 
@@ -201,6 +254,18 @@ def to_decision(model: DiscoveryDecisionModel) -> DiscoveryDecision:
             for selection in model.selected_candidates
         ],
     )
+
+
+def decision_payload_to_decision(payload: DecisionPayloadModel) -> DiscoveryDecision:
+    """从工具参数中的 DecisionPayloadModel 转换为 DiscoveryDecision"""
+    return to_decision(DiscoveryDecisionModel(
+        phase=payload.phase,
+        assistant_message=payload.assistant_message,
+        criteria_labels=payload.criteria_labels,
+        suggested_actions=payload.suggested_actions,
+        result_group_title=payload.result_group_title,
+        selected_candidates=payload.selected_candidates,
+    ))
 
 
 def validate_decision_output(raw_output: Any) -> DiscoveryDecision:
@@ -237,6 +302,7 @@ __all__ = [
     "DiscoveryCandidateSelectionModel",
     "DiscoveryDecision",
     "DiscoveryDecisionModel",
+    "DecisionPayloadModel",  # 方案C新增
     "DiscoveryFollowupPromptPayloadModel",
     "DiscoveryPhase",
     "DiscoveryRefineCandidatesPayloadModel",
@@ -251,6 +317,7 @@ __all__ = [
     "VALID_PHASES",
     "VALID_STARTER_PROMPT_SLOTS",
     "dump_action_payload",
+    "decision_payload_to_decision",  # 方案C新增
     "recover_decision_from_exception",
     "to_decision",
     "validate_decision_output",
