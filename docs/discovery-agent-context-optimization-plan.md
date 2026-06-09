@@ -624,3 +624,362 @@ system prompt 同时承载：
 一句话总结：
 
 发现页 agent 以后应该每轮只看到“当前要做决策所必需的事实”，而不是继续背着一整本运行日志去说下一句话。
+
+## 17. 代码落地任务清单
+
+下面的任务清单按“先止血，再重构”的顺序组织，直接对应到当前代码文件。
+
+### T1. 给 discovery 请求增加上下文体积观测
+
+目标：
+
+- 在不改逻辑的前提下，先能量化每轮请求大小
+- 为后续裁剪提供基线
+
+文件：
+
+- `external-systems/partner-discovery-system/discovery_system/agent_runtime.py`
+
+任务：
+
+1. 在真正调用 `Runner.run_sync(...)` 前，记录：
+   - `messages` 条数
+   - prompt 总字符数
+   - `response_format` 字符数
+   - `tools` 字符数
+2. 增加 discovery 专用 debug/audit 日志字段，便于后续对比裁剪前后变化。
+3. 对单轮上下文体积设置告警阈值，例如：
+   - `> 4000 tokens` 记 warning
+   - `> 8000 tokens` 记 error
+
+验收标准：
+
+- 每轮 discovery agent 调用都能在日志中看到上下文体积统计
+- 能快速判断是 `messages`、`tools` 还是 `schema` 过重
+
+### T2. 阻止长历史 `messages` 持续累积
+
+目标：
+
+- 不再把大量历史消息原样发回 `/chat/completions`
+
+文件：
+
+- `external-systems/partner-discovery-system/discovery_system/agent_runtime.py`
+- `external-systems/partner-discovery-system/discovery_system/service.py`
+
+任务：
+
+1. 梳理当前 `run_input.agent_session` 的来源和生命周期。
+2. 确认是否由 Agents SDK 自动携带了长历史 transcript。
+3. 将输入模式从“历史 message 累计”改成：
+   - 当前 system prompt
+   - 当前轮 event payload
+   - 必要的短摘要
+4. 如果必须保留 session，则引入“摘要替换”策略，而不是保留全部原始 turn。
+
+验收标准：
+
+- 请求中的 `messages` 数量不再随会话无限增长
+- 正常多轮会话下，`messages` 数量应稳定在一个小范围内
+
+### T3. 删除重复 `note`，并将其合并进短版 prompt
+
+目标：
+
+- 移除每轮 payload 中重复发送的固定说明文字
+
+文件：
+
+- `external-systems/partner-discovery-system/discovery_system/agent_runtime.py`
+
+任务：
+
+1. 从 `_build_runtime_prompt()` 中删除 payload 里的 `note` 字段。
+2. 把确实必要的约束收敛进精简版 system prompt。
+3. 检查是否有其他重复性固定说明同时存在于：
+   - system prompt
+   - `note`
+   - tool schema
+
+验收标准：
+
+- 单轮 payload 固定长度下降
+- 同一条规则不再在多处重复出现
+
+### T4. 精简 `build_runtime_context()` 输出结构
+
+目标：
+
+- 把当前 `official_context` 改造成真正的最小决策状态
+
+文件：
+
+- `external-systems/partner-discovery-system/discovery_system/service_context.py`
+- `external-systems/partner-discovery-system/discovery_system/service.py`
+
+任务：
+
+1. 将 `build_runtime_context()` 产物拆成更清晰的子结构：
+   - `session`
+   - `user_profile`
+   - `current_results`
+   - `visible_actions`
+   - `last_search`
+   - `memory_summary`
+2. 删除不是当前轮决策必需的字段。
+3. 为每个子结构设定体积上限和允许字段白名单。
+
+验收标准：
+
+- `runtime_context` 字段结构可读、可控
+- 不再出现“顺手把整个页面模型塞进去”的情况
+
+### T5. 重写 `build_page_summary()`，去掉重型候选卡上下文
+
+目标：
+
+- 切掉当前最大头之一：`result_cards[*].personality_match_context`
+
+文件：
+
+- `external-systems/partner-discovery-system/discovery_system/service_context.py`
+
+任务：
+
+1. 将 `build_page_summary()` 改造成极简 `current_results` 视图。
+2. 每张卡只保留：
+   - `profile_id`
+   - `title`
+   - `reason_summary`
+   - 可选一条 `compatibility_summary`
+3. 删除：
+   - `personality_match_context`
+   - `personality_reasoning` 原始对象
+   - `personality_availability`
+   - 非必要展示字段
+
+验收标准：
+
+- 单张卡片上下文体积下降到当前的很小一部分
+- 模型仍能回答“为什么推荐她”
+
+### T6. 增加候选人“兼容性摘要”生成层
+
+目标：
+
+- 不再把原始测评对象交给模型
+- 改为后端先生产一句简短兼容性摘要
+
+文件：
+
+- `external-systems/partner-discovery-system/discovery_system/service_context.py`
+- 如有需要，补充到 `service_integrations.py` 或新 helper 文件
+
+任务：
+
+1. 设计 `compatibility_summary` 生成规则。
+2. 只保留一条短摘要，例如：
+   - “生活节奏接近，价值观偏长期投入”
+   - “MBTI 节奏接近，依恋更稳定”
+3. 确保这层是结构化压缩，而不是把原始对象重新包装成长文本。
+
+验收标准：
+
+- 用户追问“为什么推荐”时，模型可直接使用摘要回答
+- 不再需要完整 personality nested object 进入 prompt
+
+### T7. 精简 `build_last_search_summary()`
+
+目标：
+
+- 让最近一次搜索只保留“当前决策需要知道的结果”
+
+文件：
+
+- `external-systems/partner-discovery-system/discovery_system/service_context.py`
+
+任务：
+
+1. 将 `last_search_summary` 限制为：
+   - `status`
+   - `result_count`
+   - `criteria_summary`
+   - `error_code` / `short_error`
+2. 删除：
+   - 完整 `criteria`
+   - `personality_trace`
+   - `source`
+   - 其他调试型字段
+
+验收标准：
+
+- `last_search_summary` 只描述“结果状态”，不再承载大对象
+
+### T8. 精简 `build_visible_action_summaries()`
+
+目标：
+
+- 页面 action 对模型只暴露语义，不暴露 UI/存储细节
+
+文件：
+
+- `external-systems/partner-discovery-system/discovery_system/service_context.py`
+
+任务：
+
+1. `visible_actions` 只保留：
+   - `label`
+   - `kind`
+   - 必要参数
+2. 删除：
+   - `action_id`
+   - 非必要风格和内部 hint
+3. 对 action payload 做字段白名单约束。
+
+验收标准：
+
+- action 语义足够模型理解
+- action 结构明显缩短
+
+### T9. 用后端摘要替换 `recent_timeline_summary`
+
+目标：
+
+- 不再把最近几条原始 timeline item 每轮传给模型
+
+文件：
+
+- `external-systems/partner-discovery-system/discovery_system/service_context.py`
+- `external-systems/partner-discovery-system/discovery_system/service.py`
+
+任务：
+
+1. 引入：
+   - `stable_preferences_summary`
+   - `recent_feedback_summary`
+   - `recent_conversation_summary`
+2. `recent_timeline_summary` 从 list 改为几个短摘要字段。
+3. 先用规则摘要实现，必要时再考虑小模型摘要。
+
+验收标准：
+
+- 多轮会话仍有连续感
+- 不再发送逐条历史 timeline
+
+### T10. search tool 返回增加“模型摘要层”
+
+目标：
+
+- 切断完整 search 结果进入模型上下文的路径
+
+文件：
+
+- `external-systems/partner-discovery-system/discovery_system/service.py`
+- `external-systems/partner-discovery-system/discovery_system/service_integrations.py`
+- search tool 相关返回拼装位置
+
+任务：
+
+1. 保留后端完整 search 结果用于渲染和持久化。
+2. 新增“模型可见结果摘要层”，只返回：
+   - `has_match`
+   - `result_count`
+   - `results: [{profile_id, summary}]`
+3. 检查 Agents SDK tool result 是否会自动把完整结果写回 transcript；若会，需改成只把摘要结果返回给模型。
+
+验收标准：
+
+- tool result 不再出现单条 10k+ tokens 的情况
+- 模型依然能正确选择候选人和生成简短说明
+
+### T11. system prompt 拆分为 `core + mode`
+
+目标：
+
+- 降低固定 prompt 成本
+
+文件：
+
+- `external-systems/partner-discovery-system/discovery_system/agent_runtime.py`
+- 如有需要，可把 prompt 文本拆到单独文件
+
+任务：
+
+1. 提炼一个稳定短版 `core prompt`。
+2. 将“换一批反馈闭环”“测评推荐”等重规则做成按场景拼接的 `mode prompt`。
+3. 避免把已经由 schema 强约束的内容继续重复写进 prompt。
+
+验收标准：
+
+- 固定 prompt 明显缩短
+- 不同场景下仅注入必要规则
+
+### T12. 为上下文结构写回归测试
+
+目标：
+
+- 避免未来又把大对象重新塞回 prompt
+
+文件：
+
+- `external-systems/partner-discovery-system/tests/`
+
+任务：
+
+1. 为 `_build_runtime_prompt()` 或其上层输入结构增加测试。
+2. 断言以下内容不会再出现在模型输入中：
+   - 完整 `personality_match_context`
+   - 完整 search result 大对象
+   - 长 history transcript
+3. 增加体积阈值测试，例如：
+   - 单轮 payload 不超过设定字符数
+
+验收标准：
+
+- 以后改 discovery 上下文时，测试能第一时间发现回退
+
+### T13. 增加性能对比验证
+
+目标：
+
+- 用数据证明优化生效
+
+文件：
+
+- 可新增到 `scripts/` 或现有 perf 脚本
+
+任务：
+
+1. 固定 3-5 个 discovery 场景：
+   - 首次推荐
+   - 换一批
+   - 点击 rejection feedback
+   - 追问“为什么推荐她”
+2. 对比优化前后：
+   - prompt tokens
+   - completion tokens
+   - 首 token 延迟
+   - 总响应时长
+
+验收标准：
+
+- 能量化展示上下文缩减和性能收益
+
+## 18. 推荐实施顺序
+
+建议按以下顺序推进：
+
+1. `T1` 先加观测，拿到可对比基线
+2. `T2 + T10` 先切历史和大 tool result，立刻止血
+3. `T5 + T7 + T8 + T9` 重构 `service_context.py`
+4. `T3 + T11` 缩 prompt
+5. `T12 + T13` 补回归和性能验证
+
+如果资源有限，收益最高的最小集合是：
+
+- `T2`
+- `T5`
+- `T9`
+- `T10`
+- `T11`
