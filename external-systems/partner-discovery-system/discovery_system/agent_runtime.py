@@ -72,6 +72,8 @@ class DiscoveryAgentRuntime(Protocol):
 
 _BAILIAN_RESPONSES_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 _BAILIAN_RESPONSES_DEFAULT_MODEL = "qwen3.6-plus"
+_DISCOVERY_CONTEXT_WARN_CHARS = 16000
+_DISCOVERY_CONTEXT_ERROR_CHARS = 32000
 
 
 class RejectionFeedbackParseModel(BaseModel):
@@ -79,6 +81,125 @@ class RejectionFeedbackParseModel(BaseModel):
     feedback_type: str = ""
     summary: str = ""
     search_criteria_patch: dict[str, Any] = Field(default_factory=dict)
+
+
+def _safe_json_length(value: Any) -> int:
+    return len(json.dumps(value, ensure_ascii=False, sort_keys=True, default=str))
+
+
+def _candidate_summary_for_model(candidate: dict[str, Any]) -> str:
+    profile = dict(candidate.get("profile") or {})
+    parts: list[str] = []
+    age = candidate.get("age") or profile.get("age")
+    city = candidate.get("city") or profile.get("city")
+    job = candidate.get("job") or profile.get("job")
+    education = candidate.get("education") or profile.get("education")
+    relationship_goal = candidate.get("relationship_goal") or profile.get("relationship_goal")
+    match_reason = candidate.get("match_reason") or candidate.get("reason_summary")
+    if age:
+        parts.append(f"{age}岁")
+    if city:
+        parts.append(str(city))
+    if job:
+        parts.append(str(job))
+    if education:
+        parts.append(str(education))
+    if relationship_goal:
+        parts.append(str(relationship_goal))
+    if match_reason:
+        parts.append(str(match_reason))
+    return "，".join(part for part in parts if part)
+
+
+def _summarize_search_response_for_model(search_response: dict[str, Any]) -> dict[str, Any]:
+    response = dict(search_response or {})
+    summary: dict[str, Any] = {
+        "has_match": bool(response.get("has_match")),
+        "result_count": int(response.get("result_count") or 0),
+        "results": [],
+    }
+    error_code = str(response.get("error_code") or "").strip()
+    diagnostics = dict(response.get("diagnostics") or {})
+    error_message = str(diagnostics.get("error") or "").strip()
+    if error_code:
+        summary["error_code"] = error_code
+    if error_message:
+        summary["diagnostics"] = {"error": error_message}
+    request_meta = dict(response.get("request_meta") or {})
+    if request_meta:
+        compact_meta: dict[str, Any] = {}
+        criteria = request_meta.get("criteria")
+        if isinstance(criteria, dict) and criteria:
+            compact_meta["criteria"] = criteria
+        for key in ("limit", "limit_count"):
+            if request_meta.get(key) is not None:
+                compact_meta[key] = request_meta.get(key)
+        if compact_meta:
+            summary["request_meta"] = compact_meta
+
+    results_summary: list[dict[str, Any]] = []
+    for candidate in list(response.get("results") or [])[:5]:
+        if not isinstance(candidate, dict):
+            continue
+        profile_id = int(candidate.get("id") or candidate.get("profile_id") or 0)
+        if profile_id <= 0:
+            continue
+        title = str(candidate.get("name") or candidate.get("title") or "").strip()
+        item = {
+            "profile_id": profile_id,
+            "title": title or None,
+            "summary": _candidate_summary_for_model(candidate),
+        }
+        score = candidate.get("score") or candidate.get("fit_score")
+        if score is not None:
+            item["score"] = score
+        results_summary.append(item)
+    summary["results"] = results_summary
+    return summary
+
+
+def _tool_schema_debug_payload(tools: list[Any]) -> list[dict[str, Any]]:
+    payload: list[dict[str, Any]] = []
+    for tool in tools:
+        entry = {"name": getattr(tool, "name", None) or getattr(tool, "__name__", "")}
+        for attr in ("params_json_schema", "input_json_schema"):
+            schema = getattr(tool, attr, None)
+            if schema:
+                entry["schema"] = schema
+                break
+        payload.append(entry)
+    return payload
+
+
+def _log_discovery_context_size(
+    *,
+    event: str,
+    instructions: str,
+    runtime_input: str,
+    output_schema: Any,
+    tools: list[Any],
+) -> None:
+    instructions_chars = len(instructions)
+    input_chars = len(runtime_input)
+    schema_chars = _safe_json_length(output_schema.json_schema())
+    tools_chars = _safe_json_length(_tool_schema_debug_payload(tools))
+    total_chars = instructions_chars + input_chars + schema_chars + tools_chars
+    level = logging.DEBUG
+    if total_chars >= _DISCOVERY_CONTEXT_ERROR_CHARS:
+        level = logging.ERROR
+    elif total_chars >= _DISCOVERY_CONTEXT_WARN_CHARS:
+        level = logging.WARNING
+    _logger.log(
+        level,
+        "discovery agent context size event=%s instructions_chars=%s input_chars=%s schema_chars=%s tools_chars=%s total_chars=%s rough_tokens=%s",
+        event,
+        instructions_chars,
+        input_chars,
+        schema_chars,
+        tools_chars,
+        total_chars,
+        round(total_chars / 4),
+    )
 
 
 def _resolve_discovery_wire_api() -> str:
@@ -877,7 +998,7 @@ class AgentsSdkDiscoveryAgentRuntime:
             normalized_limit = max(1, min(int(limit or 5), 10))
             response = run_input.search_partner_candidates(criteria, normalized_limit)
             tool_state["last_search_response"] = response
-            return response
+            return _summarize_search_response_for_model(response)
 
         @function_tool
         def create_saved_search_subscription_from_last_search() -> dict[str, Any]:
@@ -1136,29 +1257,44 @@ official_context 里常见信息：
 输出必须是合法 JSON，只输出结构化结果，不要加代码块。
 """
 
+        output_schema = AgentOutputSchema(DiscoveryDecisionModel, strict_json_schema=True)
+        tools = [
+            sync_requester_persona_memory,
+            propose_requester_profile_update,
+            search_partner_candidates,
+            create_saved_search_subscription_from_last_search,
+            submit_rejection_feedback,
+            get_feedback_options,
+        ]
+        runtime_input = _build_runtime_prompt(
+            run_input=run_input,
+            event=event,
+            user_message=user_message,
+            action_context=action_context,
+        )
+        _log_discovery_context_size(
+            event=event,
+            instructions=instructions.strip(),
+            runtime_input=runtime_input,
+            output_schema=output_schema,
+            tools=tools,
+        )
+        if run_input.agent_session is not None:
+            _logger.debug(
+                "discovery agent session memory bypassed for prompt-size control session_id=%s",
+                run_input.session_id,
+            )
+
         agent = Agent(
             name="discovery_matchmaker",
             instructions=instructions.strip(),
             model=_resolve_discovery_model(wire_api=_resolve_discovery_wire_api()),
-            output_type=AgentOutputSchema(DiscoveryDecisionModel, strict_json_schema=True),
-            tools=[
-                sync_requester_persona_memory,
-                propose_requester_profile_update,
-                search_partner_candidates,
-                create_saved_search_subscription_from_last_search,
-                submit_rejection_feedback,
-                get_feedback_options,
-            ],
+            output_type=output_schema,
+            tools=tools,
         )
         result = Runner.run_sync(
             agent,
-            input=_build_runtime_prompt(
-                run_input=run_input,
-                event=event,
-                user_message=user_message,
-                action_context=action_context,
-            ),
-            session=run_input.agent_session,
+            input=runtime_input,
         )
         final_output = getattr(result, "final_output", result)
         decision = (
