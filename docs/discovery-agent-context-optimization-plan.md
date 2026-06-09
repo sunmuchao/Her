@@ -631,6 +631,8 @@ system prompt 同时承载：
 
 ### T1. 给 discovery 请求增加上下文体积观测
 
+状态：`部分完成`
+
 目标：
 
 - 在不改逻辑的前提下，先能量化每轮请求大小
@@ -657,7 +659,16 @@ system prompt 同时承载：
 - 每轮 discovery agent 调用都能在日志中看到上下文体积统计
 - 能快速判断是 `messages`、`tools` 还是 `schema` 过重
 
+当前进展：
+
+- 已完成：在 `agent_runtime.py` 中记录 `instructions/input/schema/tools/total` 体积，并按阈值输出 `DEBUG/WARNING/ERROR`
+- 已完成：新增 [discovery_context_size_report.py](/Users/sunmuchao/Downloads/Her/scripts/discovery_context_size_report.py) 脚本，可输出代表性场景的体积统计
+- 未完成：尚未单独记录 `messages` 条数
+- 未完成：尚未打通 completion tokens / latency 的统一观测链路
+
 ### T2. 阻止长历史 `messages` 持续累积
+
+状态：`已完成`
 
 目标：
 
@@ -683,7 +694,14 @@ system prompt 同时承载：
 - 请求中的 `messages` 数量不再随会话无限增长
 - 正常多轮会话下，`messages` 数量应稳定在一个小范围内
 
+当前进展：
+
+- 已完成：`Runner.run_sync(...)` 不再传 `session=run_input.agent_session`
+- 已完成：Agents SDK 长历史 transcript 不再自动回灌到 discovery prompt
+
 ### T3. 删除重复 `note`，并将其合并进短版 prompt
+
+状态：`已完成`
 
 目标：
 
@@ -707,7 +725,14 @@ system prompt 同时承载：
 - 单轮 payload 固定长度下降
 - 同一条规则不再在多处重复出现
 
+当前进展：
+
+- 已完成：`_build_runtime_prompt()` 中已删除 payload 的 `note`
+- 已完成：相关约束已收敛进 prompt
+
 ### T4. 精简 `build_runtime_context()` 输出结构
+
+状态：`部分完成`
 
 目标：
 
@@ -735,7 +760,20 @@ system prompt 同时承载：
 - `runtime_context` 字段结构可读、可控
 - 不再出现“顺手把整个页面模型塞进去”的情况
 
+当前进展：
+
+- 已完成：`runtime_context` 已大幅压缩，候选卡、timeline、action、last_search 都已瘦身
+- 未完成：尚未完全重构成文档定义的标准子结构：
+  - `session`
+  - `user_profile`
+  - `current_results`
+  - `visible_actions`
+  - `last_search`
+  - `memory_summary`
+
 ### T5. 重写 `build_page_summary()`，去掉重型候选卡上下文
+
+状态：`已完成`
 
 目标：
 
@@ -764,7 +802,14 @@ system prompt 同时承载：
 - 单张卡片上下文体积下降到当前的很小一部分
 - 模型仍能回答“为什么推荐她”
 
+当前进展：
+
+- 已完成：`build_page_summary()` 已仅保留 `profile_id/title/reason_summary/compatibility_summary`
+- 已完成：候选卡中的原始大测评对象不再直接进入 prompt
+
 ### T6. 增加候选人“兼容性摘要”生成层
+
+状态：`已完成`
 
 目标：
 
@@ -789,7 +834,14 @@ system prompt 同时承载：
 - 用户追问“为什么推荐”时，模型可直接使用摘要回答
 - 不再需要完整 personality nested object 进入 prompt
 
+当前进展：
+
+- 已完成：新增 `compatibility_summary`
+- 已完成：模型可基于兼容性摘要和压缩信号解释推荐理由
+
 ### T7. 精简 `build_last_search_summary()`
+
+状态：`已完成`
 
 目标：
 
@@ -816,7 +868,13 @@ system prompt 同时承载：
 
 - `last_search_summary` 只描述“结果状态”，不再承载大对象
 
+当前进展：
+
+- 已完成：`last_search_summary` 已压缩为 `status/result_count/criteria_summary/error`
+
 ### T8. 精简 `build_visible_action_summaries()`
+
+状态：`已完成`
 
 目标：
 
@@ -842,7 +900,14 @@ system prompt 同时承载：
 - action 语义足够模型理解
 - action 结构明显缩短
 
+当前进展：
+
+- 已完成：`visible_actions` 已去掉 `action_id`
+- 已完成：当前只保留 `label/kind/hint`，且 `hint` 已做字段白名单收缩
+
 ### T9. 用后端摘要替换 `recent_timeline_summary`
+
+状态：`部分完成`
 
 目标：
 
@@ -867,7 +932,17 @@ system prompt 同时承载：
 - 多轮会话仍有连续感
 - 不再发送逐条历史 timeline
 
+当前进展：
+
+- 已完成：`recent_timeline_summary` 已从原始大结构压成轻量列表摘要
+- 未完成：尚未真正落成文档中定义的三类摘要字段：
+  - `stable_preferences_summary`
+  - `recent_feedback_summary`
+  - `recent_conversation_summary`
+
 ### T10. search tool 返回增加“模型摘要层”
+
+状态：`已完成`
 
 目标：
 
@@ -893,7 +968,14 @@ system prompt 同时承载：
 - tool result 不再出现单条 10k+ tokens 的情况
 - 模型依然能正确选择候选人和生成简短说明
 
+当前进展：
+
+- 已完成：search tool 现在只向模型返回摘要结果
+- 已完成：完整 search response 仍保留在后端供渲染与业务使用
+
 ### T11. system prompt 拆分为 `core + mode`
+
+状态：`已完成`
 
 目标：
 
@@ -915,7 +997,14 @@ system prompt 同时承载：
 - 固定 prompt 明显缩短
 - 不同场景下仅注入必要规则
 
+当前进展：
+
+- 已完成：system prompt 已改成 `core + mode`
+- 已完成：测评推荐与换一批反馈闭环只在相关场景注入
+
 ### T12. 为上下文结构写回归测试
+
+状态：`部分完成`
 
 目标：
 
@@ -939,7 +1028,15 @@ system prompt 同时承载：
 
 - 以后改 discovery 上下文时，测试能第一时间发现回退
 
+当前进展：
+
+- 已完成：补充了 discovery runtime 相关回归测试
+- 已完成：覆盖了不传 session history、不传完整 search 大对象、上下文字段压缩后的关键断言
+- 未完成：尚未补充明确的上下文体积阈值测试
+
 ### T13. 增加性能对比验证
+
+状态：`部分完成`
 
 目标：
 
@@ -965,6 +1062,13 @@ system prompt 同时承载：
 验收标准：
 
 - 能量化展示上下文缩减和性能收益
+
+当前进展：
+
+- 已完成：新增 [discovery_context_size_report.py](/Users/sunmuchao/Downloads/Her/scripts/discovery_context_size_report.py)
+- 已完成：可量化 4 类代表场景的 `instructions/input/schema/tools/total` 体积
+- 未完成：尚未自动输出优化前后对比
+- 未完成：尚未记录 completion tokens、首 token 延迟、总响应时长
 
 ## 18. 推荐实施顺序
 
