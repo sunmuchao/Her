@@ -60,23 +60,21 @@ def _compatibility_summary(card: dict[str, Any]) -> str:
     return "；".join(hints[:2])
 
 
-def _compact_recent_timeline_summary(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _compact_recent_timeline_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     compacted: list[dict[str, Any]] = []
     for item in items[-4:]:
         item_type = str(item.get("item_type") or "").strip()
         if item_type in {"assistant_message", "user_message"}:
-            compacted.append(
-                {
-                    "item_type": item_type,
-                    "body": str(item.get("body") or "").strip(),
-                }
-            )
+            body = str(item.get("body") or "").strip()
+            if body:
+                compacted.append({"item_type": item_type, "body": body})
             continue
         if item_type == "result_group":
+            title = str(item.get("title") or "").strip()
             compacted.append(
                 {
                     "item_type": "result_group",
-                    "title": str(item.get("title") or "").strip(),
+                    "title": title,
                     "cards": [
                         {
                             "profile_id": card.get("profile_id"),
@@ -105,6 +103,113 @@ def _compact_recent_timeline_summary(items: list[dict[str, Any]]) -> list[dict[s
                 }
             )
     return compacted
+
+
+def _stable_preferences_summary(requester_profile_snapshot: dict[str, Any] | None) -> str:
+    profile = dict(requester_profile_snapshot or {})
+    bits: list[str] = []
+    target_cities = [str(item).strip() for item in list(profile.get("target_cities") or []) if str(item).strip()]
+    if target_cities:
+        bits.append(f"目标城市偏向{ '、'.join(target_cities[:2]) }")
+    age_min = profile.get("target_age_min")
+    age_max = profile.get("target_age_max")
+    if age_min or age_max:
+        bits.append(f"期望年龄{age_min or '?'}-{age_max or '?'}岁")
+    relationship_goal = str(profile.get("relationship_goal") or profile.get("self_relationship_goal") or "").strip()
+    if relationship_goal:
+        bits.append(f"关系目标是{relationship_goal}")
+    preferred_traits = [str(item).strip() for item in list(profile.get("preferred_traits") or []) if str(item).strip()]
+    if preferred_traits:
+        bits.append(f"更看重{'、'.join(preferred_traits[:3])}")
+    compact_traits = _compact_personality_signals(profile.get("personality_traits"))
+    mbti_type = str(((compact_traits.get("mbti") or {}).get("type_code")) or "").strip()
+    if mbti_type:
+        bits.append(f"本人MBTI是{mbti_type}")
+    return "；".join(bits[:4])
+
+
+def _recent_feedback_summary(items: list[dict[str, Any]], visible_actions: list[dict[str, Any]]) -> str:
+    feedback_types = [
+        str(dict(action.get("hint") or {}).get("feedback_type") or "").strip()
+        for action in list(visible_actions or [])
+        if str(action.get("kind") or "").strip() == "rejection_feedback"
+    ]
+    feedback_types = [item for item in feedback_types if item and item != "skip_feedback"]
+    if feedback_types:
+        mapping = {
+            "location_distance": "更偏同城或近距离",
+            "age_gap": "更偏年龄接近",
+            "criteria_age": "更偏年龄合适",
+            "occupation_mismatch": "更偏职业匹配",
+            "work_life_balance": "更偏工作稳定、生活规律",
+            "interest_mismatch": "更偏兴趣相投",
+            "personality_mismatch": "更偏性格合拍",
+            "criteria_generic": "想继续细化筛选条件",
+        }
+        labels = [mapping.get(item, item) for item in feedback_types[:3]]
+        return f"当前在追问上一批不合适的原因，重点方向是{'、'.join(labels)}。"
+
+    recent_user_feedback: list[str] = []
+    for item in reversed(list(items)[-6:]):
+        if str(item.get("item_type") or "").strip() != "user_message":
+            continue
+        body = str(item.get("body") or "").strip()
+        if any(marker in body for marker in ("不合适", "不匹配", "换一批", "重新找", "再看")):
+            recent_user_feedback.append(body)
+        if len(recent_user_feedback) >= 2:
+            break
+    if recent_user_feedback:
+        return "；".join(reversed(recent_user_feedback))
+    return ""
+
+
+def _recent_conversation_summary(items: list[dict[str, Any]]) -> str:
+    compacted = _compact_recent_timeline_items(items)
+    if not compacted:
+        return ""
+
+    latest_result_group = next(
+        (item for item in reversed(compacted) if str(item.get("item_type") or "") == "result_group"),
+        None,
+    )
+    latest_assessment = next(
+        (item for item in reversed(compacted) if str(item.get("item_type") or "") == "assessment_result"),
+        None,
+    )
+    latest_user = next(
+        (item for item in reversed(compacted) if str(item.get("item_type") or "") == "user_message"),
+        None,
+    )
+
+    if latest_result_group is not None:
+        cards = list(latest_result_group.get("cards") or [])
+        title = str(latest_result_group.get("title") or "").strip() or "最近一轮候选人"
+        if cards:
+            first_title = str(cards[0].get("title") or "").strip()
+            return f"{title}刚展示过，第一位是{first_title}。"
+        return f"{title}刚展示过。"
+    if latest_assessment is not None:
+        assessment_type = str(latest_assessment.get("assessment_type") or "").strip()
+        type_code = str(latest_assessment.get("type_code") or "").strip()
+        summary = str(latest_assessment.get("summary") or "").strip()
+        bits = [bit for bit in (assessment_type, type_code, summary) if bit]
+        return f"最近刚看过测评结果：{'，'.join(bits[:3])}。"
+    if latest_user is not None:
+        body = str(latest_user.get("body") or "").strip()
+        return f"用户最近一句是：{body}"
+    return ""
+
+
+def _build_memory_summary(
+    requester_profile_snapshot: dict[str, Any] | None,
+    recent_timeline: list[dict[str, Any]],
+    visible_actions: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "stable_preferences_summary": _stable_preferences_summary(requester_profile_snapshot),
+        "recent_feedback_summary": _recent_feedback_summary(recent_timeline, visible_actions),
+        "recent_conversation_summary": _recent_conversation_summary(recent_timeline),
+    }
 
 
 def search_error_summary(search_response: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -236,6 +341,23 @@ def build_page_summary(
     return summary
 
 
+def build_current_results(
+    runtime: DiscoveryServiceContextRuntime,
+    session: StoredSession,
+) -> list[dict[str, Any]]:
+    page_summary = build_page_summary(runtime, session)
+    return [
+        {
+            "profile_id": card.get("profile_id"),
+            "title": card.get("title"),
+            "reason_summary": card.get("reason_summary"),
+            "compatibility_summary": card.get("compatibility_summary"),
+            "personality_signals": deepcopy(card.get("personality_match_context") or {}),
+        }
+        for card in list(page_summary.get("result_cards") or [])[:3]
+    ]
+
+
 def build_runtime_context(
     runtime: DiscoveryServiceContextRuntime,
     session: StoredSession,
@@ -243,13 +365,23 @@ def build_runtime_context(
     recent_timeline: list[dict[str, Any]],
     requester_profile_snapshot: dict[str, Any] | None,
 ) -> dict[str, Any]:
+    visible_actions = build_visible_action_summaries(runtime, session)
     return {
-        "session_status": session.status,
-        "requester_profile_snapshot": requester_profile_snapshot,
-        "recent_timeline_summary": _compact_recent_timeline_summary(list(recent_timeline)),
-        "visible_actions": build_visible_action_summaries(runtime, session),
-        "last_search_summary": build_last_search_summary(runtime, session),
-        "page_summary": build_page_summary(runtime, session),
+        "session": {
+            "session_id": session.session_id,
+            "phase": session.phase,
+            "status": session.status,
+            "criteria_labels": [
+                str(item.get("label") or "").strip()
+                for item in list(session.view.get("criteria_chips") or [])
+                if str(item.get("label") or "").strip()
+            ],
+        },
+        "user_profile": requester_profile_snapshot,
+        "current_results": build_current_results(runtime, session),
+        "visible_actions": visible_actions,
+        "last_search": build_last_search_summary(runtime, session),
+        "memory_summary": _build_memory_summary(requester_profile_snapshot, list(recent_timeline), visible_actions),
     }
 
 
@@ -277,6 +409,7 @@ def build_profile_detail_notes(
 
 __all__ = [
     "DiscoveryServiceContextRuntime",
+    "build_current_results",
     "build_last_search_summary",
     "build_page_summary",
     "build_profile_detail_notes",
