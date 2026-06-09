@@ -420,20 +420,26 @@ def _compact_requester_profile(profile: dict[str, Any] | None) -> dict[str, Any]
 
 def _compact_candidate_personality_context(value: dict[str, Any] | None) -> dict[str, Any]:
     context = dict(value or {})
-    keep_keys = [
-        "mbti",
-        "attachment",
-        "big_five",
-        "values",
-        "sternberg",
-        "availability",
-        "meta",
-    ]
-    return {
-        key: context.get(key)
-        for key in keep_keys
-        if context.get(key) not in (None, "", [], {})
-    }
+    compact: dict[str, Any] = {}
+    mbti = dict(context.get("mbti") or {})
+    mbti_type = str(mbti.get("type_code") or "").strip()
+    if mbti_type:
+        compact["mbti"] = {"type_code": mbti_type}
+    attachment = dict(context.get("attachment") or {})
+    attachment_type = str(attachment.get("type_code") or "").strip()
+    if attachment_type:
+        compact["attachment"] = {"type_code": attachment_type}
+    values = dict(context.get("values") or {})
+    value_type = str(values.get("value_type") or "").strip()
+    top_values = [str(item).strip() for item in list(values.get("top_values") or []) if str(item).strip()][:2]
+    compact_values: dict[str, Any] = {}
+    if value_type:
+        compact_values["value_type"] = value_type
+    if top_values:
+        compact_values["top_values"] = top_values
+    if compact_values:
+        compact["values"] = compact_values
+    return compact
 
 
 def _compact_page_summary(page_summary: dict[str, Any] | None) -> dict[str, Any]:
@@ -455,6 +461,20 @@ def _compact_page_summary(page_summary: dict[str, Any] | None) -> dict[str, Any]
         )
     summary["result_cards"] = compacted_cards
     return summary
+
+
+def _compact_visible_actions(actions: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    compacted: list[dict[str, Any]] = []
+    for action in list(actions or [])[:3]:
+        hint = dict(action.get("hint") or {})
+        compacted.append(
+            {
+                "label": str(action.get("label") or "").strip(),
+                "kind": str(action.get("kind") or hint.get("kind") or "").strip() or None,
+                "hint": hint,
+            }
+        )
+    return compacted
 
 
 def _looks_like_personality_explanation_request(user_message: str | None) -> bool:
@@ -689,6 +709,9 @@ def _build_runtime_prompt(
     official_context["recent_timeline_summary"] = _compact_timeline(
         list(official_context.get("recent_timeline_summary") or run_input.recent_timeline)
     )
+    official_context["visible_actions"] = _compact_visible_actions(
+        list(official_context.get("visible_actions") or [])
+    )
     official_context["page_summary"] = _compact_page_summary(
         official_context.get("page_summary")
     )
@@ -706,8 +729,6 @@ def _build_runtime_prompt(
         "event": event,
         "session": {
             "session_id": run_input.session_id,
-            "requester_id": run_input.requester_id,
-            "profile_id": run_input.profile_id,
             "phase": run_input.phase,
             "criteria_labels": list(run_input.criteria_labels),
         },
@@ -719,14 +740,6 @@ def _build_runtime_prompt(
         if action_context
         else None,
         "official_context": official_context,
-        "note": (
-            "Use official_context as the current source of truth for product state. "
-            "Agent memory only helps you remember prior chat. "
-            "Do not invent candidate raw fields; only select profile_id values from the latest search tool response."
-            "\n\nIf personality_context is present, you can use the raw assessment data (MBTI type_code, "
-            "attachment anxiety/avoidance scores, values top_values) to judge compatibility yourself. "
-            "Do not use hardcoded formulas; make your own judgment based on the context."
-        ),
     }
     return json.dumps(payload, ensure_ascii=False, sort_keys=True)
 
@@ -1041,7 +1054,7 @@ class AgentsSdkDiscoveryAgentRuntime:
 
 你的职责：
 1. 和用户自然对话，帮她/他整理择偶偏好。
-2. 后端已经把当前正式状态放进 official_context。你要以它为准。
+2. 后端已经把当前正式状态放进 official_context。你要以它为准；不要靠记忆猜页面状态。
 3. 你自己决定什么时候继续追问，什么时候先写画像，什么时候调用搜索工具。
 4. 只有用户说出了明确、稳定、适合落库的新信息时，才调用画像写回工具。
 5. 涉及用户本人正式资料（城市、年龄、婚况、恋爱目标等）时，用 `propose_requester_profile_update`，不要直接写 profiles；用户确认后才会落库。
@@ -1062,8 +1075,8 @@ official_context 里常见信息：
 - recent_timeline_summary：最近几轮页面时间线摘要
 - visible_actions：当前页面还能点哪些 action
 - last_search_summary：最近一轮搜索摘要
-- page_summary：当前页面上的 criteria chips、结果卡片摘要等
-  - page_summary.result_cards 里如果有 personality_match_context，就是当前已经展示给用户的候选人原始测评数据；用户追问“为什么推荐”时，直接用它解释。
+- page_summary：当前页面上的条件 chips 与结果卡片摘要
+  - page_summary.result_cards 里的 personality_match_context 是已经压缩过的测评信号；用户追问“为什么推荐”时，直接用它解释。
 
 工具说明：
 - `sync_requester_persona_memory`：写择偶偏好到 persona（不会直接改 profiles 正式资料）。
@@ -1086,8 +1099,7 @@ official_context 里常见信息：
 - 需要用工具时，必须走系统提供的真实 tool calling 机制。
 - 不要把 `tool_calls`、`function_call`、工具参数对象手写进最终 JSON。
 - 不要输出形如 `{"tool_calls":[...]}` 的文本。
-- 工具调用完成后，再输出最终 JSON。
-- 最终 JSON 只能包含 DiscoveryDecisionModel 定义的字段，不能包含 `tool_calls` 之类额外字段。
+- 最终 JSON 只能包含 DiscoveryDecisionModel 定义的字段。
 
 输出原则：
 - assistant_message 保持短，像真人红娘，不要写成系统说明。
@@ -1135,7 +1147,7 @@ official_context 里常见信息：
 - 如果 official_context.recent_timeline_summary 里已有 assessment_result 且 type_code 是 mbti，说明用户已经完成过测试，不要重复推荐。
 - 不要在用户还没回答你的询问时就直接返回测试按钮。
 
-依恋风格话题与测评推荐（分两轮进行）：
+依恋风格话题与测评推荐（分两轮进行）。
 
 【换一批反馈收集 - 学习闭环】
 当用户说"换一批"、"重新找"、"再看几位"、"再给我看看"等类似表达时：
@@ -1215,9 +1227,9 @@ official_context 里常见信息：
 - 用户选择"每次都追问"策略，所以每次"换一批"都应该追问
 - 用户主动表达不满时（如"都太忙太卷了"）：不追问，直接记录并调整
 
-**具体选项示例**（根据上一批候选人特征动态选择）：
-- 动态选项：太远了（都是异地）、年龄差距有点大（候选人28-35，你26）、职业不太匹配（程序员偏多）、太忙太卷（工作压力大的感觉）
-- 通用选项：性格气质不对（相处感觉不搭）、外在条件不合适（年龄/学历/收入）、生活节奏不匹配（工作生活状态）、兴趣爱好不一样（玩不到一起）
+**具体选项示例**：
+- 动态选项：太远了、年龄差距有点大、职业不太匹配、太忙太卷
+- 通用选项：性格气质不对、外在条件不合适、生活节奏不匹配、兴趣爱好不一样
 - 跳过选项：跳过，直接换
 
 **反馈类型映射**（用于 semantic_payload.feedback_type）**：
