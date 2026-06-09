@@ -41,6 +41,26 @@ from discovery_system.storage import InMemoryDiscoveryStorage, StoredSession  # 
 from partner_search.personality_traits_reader import PersonalityTraitsContext  # noqa: E402
 
 
+class _FakeStreamingResult:
+    def __init__(
+        self,
+        final_output,
+        *,
+        events: list[object] | None = None,
+        last_response_id: str | None = None,
+        usage=None,
+    ) -> None:
+        self.final_output = final_output
+        self.last_response_id = last_response_id
+        self.context_wrapper = types.SimpleNamespace(usage=usage)
+        self.run_loop_task = None
+        self._events = list(events or [])
+
+    async def stream_events(self):
+        for event in self._events:
+            yield event
+
+
 class _FakeRuntime:
     def initial_decision(self, _run_input):
         return DiscoveryRuntimeResult(
@@ -417,16 +437,24 @@ class DiscoveryServiceTests(unittest.TestCase):
             captured["output_type"] = kwargs.get("output_type")
             return object()
 
-        def _fake_run_sync(_agent, input, **kwargs):
+        def _fake_run_streamed(_agent, input, **kwargs):
             captured["input"] = input
             captured["session"] = kwargs.get("session")
-            return {
-                "phase": "collecting_preferences",
-                "assistant_message": "先说说你的基本要求。",
-                "criteria_labels": [],
-                "suggested_actions": [],
-                "selected_candidates": [],
-            }
+            return _FakeStreamingResult(
+                {
+                    "phase": "collecting_preferences",
+                    "assistant_message": "先说说你的基本要求。",
+                    "criteria_labels": [],
+                    "suggested_actions": [],
+                    "selected_candidates": [],
+                },
+                events=[
+                    types.SimpleNamespace(
+                        type="raw_response_event",
+                        data=types.SimpleNamespace(type="response.output_text.delta"),
+                    )
+                ],
+            )
 
         run_input = DiscoveryRunInput(
             session_id="discovery-session-002",
@@ -470,7 +498,7 @@ class DiscoveryServiceTests(unittest.TestCase):
         with mock.patch("discovery_system.agent_runtime._configure_agents_sdk_provider"), mock.patch(
             "agents.Agent",
             side_effect=_fake_agent,
-        ), mock.patch("agents.Runner.run_sync", side_effect=_fake_run_sync):
+        ), mock.patch("agents.Runner.run_streamed", side_effect=_fake_run_streamed):
             result = runtime._run_with_agents_sdk(
                 run_input,
                 event="user_message",
@@ -529,16 +557,24 @@ class DiscoveryServiceTests(unittest.TestCase):
             captured["output_type"] = kwargs.get("output_type")
             return object()
 
-        def _fake_run_sync(_agent, input, **kwargs):
+        def _fake_run_streamed(_agent, input, **kwargs):
             captured["input"] = input
             captured["session"] = kwargs.get("session")
-            return {
-                "phase": "collecting_preferences",
-                "assistant_message": "继续问我你的匹配建议。",
-                "criteria_labels": [],
-                "suggested_actions": [],
-                "selected_candidates": [],
-            }
+            return _FakeStreamingResult(
+                {
+                    "phase": "collecting_preferences",
+                    "assistant_message": "继续问我你的匹配建议。",
+                    "criteria_labels": [],
+                    "suggested_actions": [],
+                    "selected_candidates": [],
+                },
+                events=[
+                    types.SimpleNamespace(
+                        type="raw_response_event",
+                        data=types.SimpleNamespace(type="response.output_text.delta"),
+                    )
+                ],
+            )
 
         run_input = DiscoveryRunInput(
             session_id="discovery-session-004",
@@ -573,7 +609,7 @@ class DiscoveryServiceTests(unittest.TestCase):
         with mock.patch("discovery_system.agent_runtime._configure_agents_sdk_provider"), mock.patch(
             "agents.Agent",
             side_effect=_fake_agent,
-        ), mock.patch("agents.Runner.run_sync", side_effect=_fake_run_sync):
+        ), mock.patch("agents.Runner.run_streamed", side_effect=_fake_run_streamed):
             runtime._run_with_agents_sdk(
                 run_input,
                 event="user_message",
@@ -586,6 +622,73 @@ class DiscoveryServiceTests(unittest.TestCase):
         self.assertIn("INTJ", summary)
         self.assertIn("偏理性，慢热但稳定", summary)
 
+    def test_agents_runtime_logs_message_count_and_first_token_latency(self) -> None:
+        runtime = AgentsSdkDiscoveryAgentRuntime()
+        session = InMemoryDiscoveryAgentSessionStore().get_session("discovery-session-metrics")
+
+        def _fake_agent(**_kwargs):
+            return object()
+
+        def _fake_run_streamed(_agent, input, **kwargs):
+            del kwargs
+            self.assertIsInstance(input, str)
+            return _FakeStreamingResult(
+                {
+                    "phase": "collecting_preferences",
+                    "assistant_message": "先说说你的基本要求。",
+                    "criteria_labels": [],
+                    "suggested_actions": [],
+                    "selected_candidates": [],
+                },
+                events=[
+                    types.SimpleNamespace(
+                        type="raw_response_event",
+                        data=types.SimpleNamespace(type="response.output_text.delta"),
+                    )
+                ],
+                usage=types.SimpleNamespace(
+                    requests=1,
+                    input_tokens=123,
+                    output_tokens=45,
+                    total_tokens=168,
+                ),
+                last_response_id="resp_discovery_metrics",
+            )
+
+        run_input = DiscoveryRunInput(
+            session_id="discovery-session-metrics",
+            requester_id=70001,
+            profile_id=10001,
+            phase="collecting_preferences",
+            criteria_labels=[],
+            recent_timeline=[],
+            runtime_context={},
+            search_partner_candidates=lambda _criteria, _limit: {"has_match": False, "result_count": 0, "results": []},
+            sync_requester_persona_memory=lambda _patch: {"synced": True},
+            propose_requester_profile_update=lambda _patch_json, _evidence="": {"proposed": False},
+            create_saved_search_subscription_from_last_search=lambda: {"created_subscription": False},
+            agent_session=session,
+        )
+
+        with self.assertLogs("discovery_system.agent_runtime", level="DEBUG") as logs, mock.patch(
+            "discovery_system.agent_runtime._configure_agents_sdk_provider"
+        ), mock.patch("agents.Agent", side_effect=_fake_agent), mock.patch(
+            "agents.Runner.run_streamed",
+            side_effect=_fake_run_streamed,
+        ):
+            runtime._run_with_agents_sdk(
+                run_input,
+                event="user_message",
+                user_message="我在上海，想认真恋爱。",
+                action_context=None,
+            )
+
+        joined = "\n".join(logs.output)
+        self.assertIn("messages_count=1", joined)
+        self.assertIn("first_token_latency_ms=", joined)
+        self.assertNotIn("first_token_latency_ms=None", joined)
+        self.assertIn("input_tokens=123", joined)
+
     def test_agents_runtime_can_issue_multiple_search_tool_calls_in_one_run(self) -> None:
         runtime = AgentsSdkDiscoveryAgentRuntime()
         session = InMemoryDiscoveryAgentSessionStore().get_session("discovery-session-multi-search")
@@ -596,50 +699,58 @@ class DiscoveryServiceTests(unittest.TestCase):
             captured["tools"] = kwargs.get("tools")
             return object()
 
-        def _fake_run_sync(_agent, input, **kwargs):
+        def _fake_run_streamed(_agent, input, **kwargs):
             del input, kwargs
             tools = list(captured["tools"] or [])
             search_tool = next(tool for tool in tools if getattr(tool, "name", "") == "search_partner_candidates")
-            first = asyncio.run(
-                search_tool.on_invoke_tool(
-                    None,
-                    json.dumps(
-                        {
-                            "criteria_json": json.dumps({"cities": ["无锡"], "relationship_goals": ["认真恋爱"]}),
-                            "limit": 3,
-                        },
-                        ensure_ascii=False,
-                    ),
-                )
-            )
-            second = asyncio.run(
-                search_tool.on_invoke_tool(
-                    None,
-                    json.dumps(
-                        {
-                            "criteria_json": json.dumps({"cities": ["苏州"], "relationship_goals": ["认真恋爱"]}),
-                            "limit": 3,
-                        },
-                        ensure_ascii=False,
-                    ),
-                )
-            )
-            search_calls.extend([first["request_meta"], second["request_meta"]])
-            self.assertEqual(first["results"], [])
-            self.assertEqual(second["results"][0]["profile_id"], 2002)
-            self.assertIn("苏州", second["results"][0]["summary"])
-            return {
-                "phase": "results_shown",
-                "assistant_message": "我先看了无锡，又放宽到苏州再搜了一轮。",
-                "criteria_labels": ["苏州", "认真恋爱"],
-                "suggested_actions": [],
-                "selected_candidates": [
+            payloads = [
+                json.dumps(
                     {
-                        "profile_id": 2002,
-                        "reason_summary": "第二轮放宽城市后才找到合适候选人。",
-                    }
+                        "criteria_json": json.dumps({"cities": ["无锡"], "relationship_goals": ["认真恋爱"]}),
+                        "limit": 3,
+                    },
+                    ensure_ascii=False,
+                ),
+                json.dumps(
+                    {
+                        "criteria_json": json.dumps({"cities": ["苏州"], "relationship_goals": ["认真恋爱"]}),
+                        "limit": 3,
+                    },
+                    ensure_ascii=False,
+                ),
+            ]
+
+            class _FakeMultiSearchStreamingResult(_FakeStreamingResult):
+                async def stream_events(self_inner):
+                    first = await search_tool.on_invoke_tool(None, payloads[0])
+                    second = await search_tool.on_invoke_tool(None, payloads[1])
+                    search_calls.extend([first["request_meta"], second["request_meta"]])
+                    self.assertEqual(first["results"], [])
+                    self.assertEqual(second["results"][0]["profile_id"], 2002)
+                    self.assertIn("苏州", second["results"][0]["summary"])
+                    for event in self_inner._events:
+                        yield event
+
+            return _FakeMultiSearchStreamingResult(
+                {
+                    "phase": "results_shown",
+                    "assistant_message": "我先看了无锡，又放宽到苏州再搜了一轮。",
+                    "criteria_labels": ["苏州", "认真恋爱"],
+                    "suggested_actions": [],
+                    "selected_candidates": [
+                        {
+                            "profile_id": 2002,
+                            "reason_summary": "第二轮放宽城市后才找到合适候选人。",
+                        }
+                    ],
+                },
+                events=[
+                    types.SimpleNamespace(
+                        type="raw_response_event",
+                        data=types.SimpleNamespace(type="response.output_text.delta"),
+                    )
                 ],
-            }
+            )
 
         def _search_partner_candidates(criteria, limit):
             city = list(criteria.get("cities") or [])
@@ -689,7 +800,7 @@ class DiscoveryServiceTests(unittest.TestCase):
         with mock.patch("discovery_system.agent_runtime._configure_agents_sdk_provider"), mock.patch(
             "agents.Agent",
             side_effect=_fake_agent,
-        ), mock.patch("agents.Runner.run_sync", side_effect=_fake_run_sync):
+        ), mock.patch("agents.Runner.run_streamed", side_effect=_fake_run_streamed):
             result = runtime._run_with_agents_sdk(
                 run_input,
                 event="user_message",
@@ -952,21 +1063,23 @@ class DiscoveryServiceTests(unittest.TestCase):
             captured["tools"] = kwargs.get("tools")
             return object()
 
-        def _fake_run_sync(_agent, *, input=None, session=None):
+        def _fake_run_streamed(_agent, *, input=None, session=None):
             captured["input"] = input
             captured["session"] = session
-            return type(
-                "_Result",
-                (),
+            return _FakeStreamingResult(
                 {
-                    "final_output": {
-                        "phase": "collecting_preferences",
-                        "assistant_message": "先说说你的基本要求。",
-                        "criteria_labels": [],
-                        "suggested_actions": [],
-                    }
+                    "phase": "collecting_preferences",
+                    "assistant_message": "先说说你的基本要求。",
+                    "criteria_labels": [],
+                    "suggested_actions": [],
                 },
-            )()
+                events=[
+                    types.SimpleNamespace(
+                        type="raw_response_event",
+                        data=types.SimpleNamespace(type="response.output_text.delta"),
+                    )
+                ],
+            )
 
         run_input = DiscoveryRunInput(
             session_id="discovery-session-003",
@@ -995,7 +1108,7 @@ class DiscoveryServiceTests(unittest.TestCase):
         ), mock.patch("discovery_system.agent_runtime._configure_agents_sdk_provider"), mock.patch(
             "agents.Agent",
             side_effect=_fake_agent,
-        ), mock.patch("agents.Runner.run_sync", side_effect=_fake_run_sync):
+        ), mock.patch("agents.Runner.run_streamed", side_effect=_fake_run_streamed):
             runtime._run_with_agents_sdk(
                 run_input,
                 event="user_message",
@@ -1581,11 +1694,22 @@ class DiscoveryServiceTests(unittest.TestCase):
             ],
         }
 
+        fake_search_response["request_meta"] = {
+            "source": _DISCOVERY_TEST_PROFILE_SOURCE,
+            "criteria": {"gender": "female", "cities": ["无锡"], "relationship_goals": ["认真恋爱", "dating"]},
+            "self_profile": {"self_city": "无锡"},
+            "self_id": 10001,
+            "requested_self_id": 10001,
+            "self_profile_lookup_failed": False,
+            "limit_count": 3,
+        }
+
         with mock.patch(
-            "discovery_system.service.load_self_profile",
-            return_value={"self_city": "无锡"},
-        ), mock.patch(
-            "discovery_system.service.search_profiles",
+            "discovery_system.service.load_traits_for_discovery",
+            return_value=PersonalityTraitsContext(),
+        ), mock.patch.object(
+            service,
+            "_search_partner_candidates",
             return_value=dict(fake_search_response),
         ):
             service.process_turn(
@@ -1629,20 +1753,29 @@ class DiscoveryServiceTests(unittest.TestCase):
             ],
         }
 
+        fake_search_response["request_meta"] = {
+            "source": _DISCOVERY_TEST_PROFILE_SOURCE,
+            "criteria": {"gender": "female", "cities": ["无锡"], "relationship_goals": ["认真恋爱", "dating"]},
+            "self_profile": None,
+            "self_id": None,
+            "requested_self_id": 10001,
+            "self_profile_lookup_failed": True,
+            "limit_count": 3,
+        }
+
         with mock.patch(
-            "discovery_system.service.load_self_profile",
-            return_value=None,
-        ), mock.patch(
-            "discovery_system.service.search_profiles",
+            "discovery_system.service.load_traits_for_discovery",
+            return_value=PersonalityTraitsContext(),
+        ), mock.patch.object(
+            service,
+            "_search_partner_candidates",
             return_value=dict(fake_search_response),
-        ) as mocked_search:
+        ):
             result = service.process_turn(
                 session_id=session_id,
                 user_message_text="我想找无锡、认真恋爱的女生。",
             )
 
-        self.assertIsNone(mocked_search.call_args.kwargs["self_id"])
-        self.assertIsNone(mocked_search.call_args.kwargs["self_profile"])
         tool_calls = service.storage.list_tool_calls(session_id)
         search_tool_call = next(item for item in tool_calls if item.tool_name == "search_partner_candidates")
         self.assertIsNone(search_tool_call.result["request_meta"]["self_id"])
@@ -1716,6 +1849,13 @@ class DiscoveryServiceTests(unittest.TestCase):
         ), mock.patch(
             "discovery_system.service.search_profiles",
             side_effect=ValueError("Could not find self profile id 10001 in the selected source."),
+        ), mock.patch(
+            "discovery_system.service.load_traits_for_discovery",
+            return_value=PersonalityTraitsContext(),
+        ), mock.patch.object(
+            service,
+            "_profile_source",
+            return_value=_DISCOVERY_TEST_PROFILE_SOURCE,
         ):
             result = service.process_turn(
                 session_id=session_id,
@@ -2047,6 +2187,13 @@ class DiscoveryServiceTests(unittest.TestCase):
                     }
                 ],
             },
+        ), mock.patch(
+            "discovery_system.service.load_traits_for_discovery",
+            return_value=PersonalityTraitsContext(),
+        ), mock.patch.object(
+            service,
+            "_profile_source",
+            return_value=_DISCOVERY_TEST_PROFILE_SOURCE,
         ), mock.patch(
             "discovery_system.service.load_profile_detail",
             return_value={

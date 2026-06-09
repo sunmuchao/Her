@@ -631,7 +631,7 @@ system prompt 同时承载：
 
 ### T1. 给 discovery 请求增加上下文体积观测
 
-状态：`部分完成`
+状态：`已完成`
 
 目标：
 
@@ -663,8 +663,8 @@ system prompt 同时承载：
 
 - 已完成：在 `agent_runtime.py` 中记录 `instructions/input/schema/tools/total` 体积，并按阈值输出 `DEBUG/WARNING/ERROR`
 - 已完成：新增 [discovery_context_size_report.py](/Users/sunmuchao/Downloads/Her/scripts/discovery_context_size_report.py) 脚本，可输出代表性场景的体积统计
-- 未完成：尚未单独记录 `messages` 条数
-- 未完成：尚未打通 completion tokens / latency 的统一观测链路
+- 已完成：上下文体积日志已单独记录 `messages_count`
+- 已完成：runtime 指标日志已统一记录 `input_tokens/output_tokens/total_tokens/requests/elapsed_ms/first_token_latency_ms`
 
 ### T2. 阻止长历史 `messages` 持续累积
 
@@ -1037,7 +1037,7 @@ system prompt 同时承载：
 
 ### T13. 增加性能对比验证
 
-状态：`部分完成`
+状态：`已完成`
 
 目标：
 
@@ -1071,7 +1071,7 @@ system prompt 同时承载：
 - 已完成：discovery runtime 日志已记录 `elapsed_ms` 与 Agents SDK usage（`input_tokens/output_tokens/total_tokens/requests`）
 - 已完成：脚本支持 `--compare-baseline`，自动输出“旧版近似基线 vs 当前优化版”的 before/after 对比
 - 已完成：对比报告会输出 `chars_saved/token_saved/reduction_ratio`，并标记是否低于 warn/error 阈值
-- 未完成：尚未记录真实 `first_token_latency_ms`
+- 已完成：discovery runtime 已改为流式执行并记录真实 `first_token_latency_ms`
 
 ## 18. 推荐实施顺序
 
