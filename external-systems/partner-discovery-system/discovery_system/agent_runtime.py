@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import re
+import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 
@@ -209,6 +210,24 @@ def _log_discovery_context_size(
         total_chars,
         round(total_chars / 4),
     )
+
+
+def _usage_debug_payload(run_result: Any) -> dict[str, Any]:
+    context_wrapper = getattr(run_result, "context_wrapper", None)
+    usage = getattr(context_wrapper, "usage", None)
+    if usage is None:
+        return {
+            "requests": None,
+            "input_tokens": None,
+            "output_tokens": None,
+            "total_tokens": None,
+        }
+    return {
+        "requests": getattr(usage, "requests", None),
+        "input_tokens": getattr(usage, "input_tokens", None),
+        "output_tokens": getattr(usage, "output_tokens", None),
+        "total_tokens": getattr(usage, "total_tokens", None),
+    }
 
 
 def _resolve_discovery_wire_api() -> str:
@@ -1205,9 +1224,23 @@ class AgentsSdkDiscoveryAgentRuntime:
             output_type=output_schema,
             tools=tools,
         )
+        started = time.perf_counter()
         result = Runner.run_sync(
             agent,
             input=runtime_input,
+        )
+        elapsed_ms = round((time.perf_counter() - started) * 1000.0, 3)
+        usage_payload = _usage_debug_payload(result)
+        _logger.debug(
+            "discovery agent run metrics event=%s elapsed_ms=%s response_id=%s input_tokens=%s output_tokens=%s total_tokens=%s requests=%s first_token_latency_ms=%s",
+            event,
+            elapsed_ms,
+            getattr(result, "last_response_id", None),
+            usage_payload["input_tokens"],
+            usage_payload["output_tokens"],
+            usage_payload["total_tokens"],
+            usage_payload["requests"],
+            None,
         )
         final_output = getattr(result, "final_output", result)
         decision = (
