@@ -352,8 +352,8 @@ def parse_rejection_feedback_text(
         payload = json.dumps(
             {
                 "user_message": text,
-                "page_summary": dict((runtime_context or {}).get("page_summary") or {}),
-                "last_search_summary": dict((runtime_context or {}).get("last_search_summary") or {}),
+                "current_results": _normalize_current_results(runtime_context),
+                "last_search": _normalize_last_search(runtime_context) or {},
             },
             ensure_ascii=False,
             sort_keys=True,
@@ -454,6 +454,26 @@ def _compact_requester_profile(profile: dict[str, Any] | None) -> dict[str, Any]
     return compact
 
 
+def _normalize_session_state(
+    run_input: DiscoveryRunInput,
+    runtime_context: dict[str, Any] | None,
+) -> dict[str, Any]:
+    session_context = dict((runtime_context or {}).get("session") or {})
+    return {
+        "session_id": str(session_context.get("session_id") or run_input.session_id),
+        "phase": str(session_context.get("phase") or run_input.phase),
+        "criteria_labels": list(session_context.get("criteria_labels") or run_input.criteria_labels or []),
+        "status": session_context.get("status"),
+    }
+
+
+def _normalize_user_profile(runtime_context: dict[str, Any] | None) -> dict[str, Any]:
+    profile = (runtime_context or {}).get("user_profile")
+    if profile is None:
+        profile = (runtime_context or {}).get("requester_profile_snapshot")
+    return _compact_requester_profile(profile)
+
+
 def _compact_candidate_personality_context(value: dict[str, Any] | None) -> dict[str, Any]:
     context = dict(value or {})
     compact: dict[str, Any] = {}
@@ -478,25 +498,31 @@ def _compact_candidate_personality_context(value: dict[str, Any] | None) -> dict
     return compact
 
 
-def _compact_page_summary(page_summary: dict[str, Any] | None) -> dict[str, Any]:
-    summary = dict(page_summary or {})
+def _compact_current_results(
+    results: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]]:
     compacted_cards: list[dict[str, Any]] = []
-    for card in list(summary.get("result_cards") or [])[:3]:
+    for card in list(results or [])[:3]:
         compacted_cards.append(
             {
                 "profile_id": card.get("profile_id"),
                 "title": card.get("title"),
-                "subtitle": card.get("subtitle"),
-                "match_score": card.get("match_score"),
                 "reason_summary": card.get("reason_summary"),
-                "personality_match_context": _compact_candidate_personality_context(
-                    card.get("personality_match_context")
+                "compatibility_summary": card.get("compatibility_summary"),
+                "personality_signals": _compact_candidate_personality_context(
+                    card.get("personality_signals") or card.get("personality_match_context")
                 ),
-                "personality_availability": dict(card.get("personality_availability") or {}),
             }
         )
-    summary["result_cards"] = compacted_cards
-    return summary
+    return compacted_cards
+
+
+def _normalize_current_results(runtime_context: dict[str, Any] | None) -> list[dict[str, Any]]:
+    current_results = (runtime_context or {}).get("current_results")
+    if current_results is not None:
+        return _compact_current_results(list(current_results or []))
+    page_summary = dict((runtime_context or {}).get("page_summary") or {})
+    return _compact_current_results(list(page_summary.get("result_cards") or []))
 
 
 def _compact_visible_actions(actions: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
@@ -519,6 +545,41 @@ def _compact_visible_actions(actions: list[dict[str, Any]] | None) -> list[dict[
             }
         )
     return compacted
+
+
+def _normalize_last_search(runtime_context: dict[str, Any] | None) -> dict[str, Any] | None:
+    if (runtime_context or {}).get("last_search") is not None:
+        return dict((runtime_context or {}).get("last_search") or {})
+    if (runtime_context or {}).get("last_search_summary") is not None:
+        return dict((runtime_context or {}).get("last_search_summary") or {})
+    return None
+
+
+def _normalize_memory_summary(
+    runtime_context: dict[str, Any] | None,
+    recent_timeline: list[dict[str, Any]],
+) -> dict[str, Any]:
+    memory_summary = dict((runtime_context or {}).get("memory_summary") or {})
+    if memory_summary:
+        return {
+            "stable_preferences_summary": str(memory_summary.get("stable_preferences_summary") or "").strip() or None,
+            "recent_feedback_summary": str(memory_summary.get("recent_feedback_summary") or "").strip() or None,
+            "recent_conversation_summary": str(memory_summary.get("recent_conversation_summary") or "").strip() or None,
+        }
+
+    compacted_timeline = _compact_timeline(list((runtime_context or {}).get("recent_timeline_summary") or recent_timeline))
+    recent_conversation_summary = ""
+    latest_user = next(
+        (item for item in reversed(compacted_timeline) if str(item.get("item_type") or "") == "user_message"),
+        None,
+    )
+    if latest_user is not None:
+        recent_conversation_summary = str(latest_user.get("body") or "").strip()
+    return {
+        "stable_preferences_summary": None,
+        "recent_feedback_summary": None,
+        "recent_conversation_summary": recent_conversation_summary or None,
+    }
 
 
 def _looks_like_personality_explanation_request(user_message: str | None) -> bool:
@@ -616,17 +677,17 @@ def _build_personality_explanation_fallback(
 ) -> DiscoveryRuntimeResult | None:
     if not _looks_like_personality_explanation_request(user_message):
         return None
-    page_summary = _compact_page_summary((run_input.runtime_context or {}).get("page_summary"))
-    candidate = _select_explained_candidate(page_summary, user_message)
+    candidate = _select_explained_candidate(
+        {"result_cards": _normalize_current_results(run_input.runtime_context)},
+        user_message,
+    )
     if not candidate:
         return None
 
-    requester_profile = _compact_requester_profile(
-        (run_input.runtime_context or {}).get("requester_profile_snapshot")
-    )
+    requester_profile = _normalize_user_profile(run_input.runtime_context)
     self_traits = dict(requester_profile.get("personality_traits") or {})
     candidate_traits = _compact_candidate_personality_context(
-        candidate.get("personality_match_context")
+        candidate.get("personality_signals") or candidate.get("personality_match_context")
     )
     candidate_title = str(candidate.get("title") or "这位").strip() or "这位"
     candidate_name = re.split(r"\s+", candidate_title, maxsplit=1)[0]
@@ -771,21 +832,28 @@ def _build_discovery_agent_instructions(
 你是发现页里的 AI 红娘。
 
 核心原则：
-- 以 official_context 为当前产品状态真相，不要靠记忆猜页面状态。
+- 以 state 为当前产品状态真相，不要靠记忆猜页面状态。
 - 当用户说"给我推荐"、"找对象"、"看看合适的"时，优先直接调用 search_partner_candidates，不要回复"我先把你的偏好整理一下"。
 - 如果条件还不够，只问 1 个最关键的问题；如果条件已经够用，就直接搜索。
 - 只有用户说出了明确、稳定、适合落库的新信息时，才调用画像写回工具。
 - 改用户本人正式资料时，用 `propose_requester_profile_update`；择偶偏好用 `sync_requester_persona_memory`。
 - 不能编造候选人的原始卡片字段。你只能输出 profile_id 和 reason_summary。
-- 如果 page_summary.result_cards 已有候选人，且用户是在追问“为什么推荐她/他”“从测评怎么看”“MBTI/依恋/价值观为什么合拍”，优先基于 page_summary.result_cards 解释，不要重复搜索。
+- 如果 state.current_results 已有候选人，且用户是在追问“为什么推荐她/他”“从测评怎么看”“MBTI/依恋/价值观为什么合拍”，优先基于 state.current_results 解释，不要重复搜索。
 
-official_context 常见信息：
-- requester_profile_snapshot：用户当前画像快照
-- recent_timeline_summary：最近几轮页面时间线摘要
+state 常见信息：
+- session：当前会话 phase、criteria_labels 等权威状态
+- user_profile：用户当前画像快照
+- current_results：当前页面上的候选人摘要
 - visible_actions：当前页面还能点哪些 action
-- last_search_summary：最近一轮搜索摘要
-- page_summary：当前页面上的条件 chips 与结果卡片摘要
-  - page_summary.result_cards 里的 personality_match_context 是已经压缩过的测评信号；用户追问“为什么推荐”时，直接用它解释。
+- last_search：最近一轮搜索摘要
+
+memory_summary 常见信息：
+- stable_preferences_summary：长期稳定偏好摘要
+- recent_feedback_summary：最近几轮“换一批/不合适”的摘要
+- recent_conversation_summary：最近对话进展摘要
+
+说明：
+- state.current_results 里的 personality_signals 是已经压缩过的测评信号；用户追问“为什么推荐”时，直接用它解释。
 
 工具调用要求：
 - 需要用工具时，必须走系统提供的真实 tool calling 机制。
@@ -802,7 +870,7 @@ official_context 常见信息：
 - 只有在你真的调用了搜索工具并且决定展示结果时，才填写 selected_candidates。
 - selected_candidates 里的 profile_id 必须来自最新一次搜索工具返回的 results。
 - 如果搜索工具返回 `error_code` 或 `diagnostics.error`，不要说“本地没有符合条件的人”。要自然说明这轮搜索失败了，不代表没人，并引导用户重试或继续补充条件。
-- 如果 page_summary.result_cards 已有候选人，且你在解释当前候选人的测评适配性，assistant_message 直接解释；如果引用了当前候选人，请把该候选人继续放进 selected_candidates，这样前端能保留同一组卡片。
+- 如果 state.current_results 已有候选人，且你在解释当前候选人的测评适配性，assistant_message 直接解释；如果引用了当前候选人，请把该候选人继续放进 selected_candidates，这样前端能保留同一组卡片。
 - reason_summary 应尽量写成用户能看懂的匹配理由，优先引用双方的 MBTI、依恋风格、价值观；如果候选人没测评，再用“从资料看”“可能”等谨慎表达。
 """
     ]
@@ -814,7 +882,7 @@ official_context 常见信息：
 - 询问要自然，像聊天一样，不要像问卷。
 - 推荐 MBTI 时，按钮用 {"kind":"start_assessment","assessment_type":"mbti"}。
 - 推荐依恋风格时，按钮用 {"kind":"start_assessment","assessment_type":"attachment"}。
-- 如果 official_context.recent_timeline_summary 里已有 assessment_result 且 type_code 是 mbti，不要重复推荐。
+- 如果 memory_summary.recent_conversation_summary 已明确提到 MBTI 结果，或者 state.current_results 已经足够解释当前问题，不要重复推荐测评。
 """
         )
     if _prompt_needs_rejection_feedback_mode(user_message, action_context):
@@ -842,44 +910,31 @@ def _build_runtime_prompt(
     user_message: str | None = None,
     action_context: dict[str, Any] | None = None,
 ) -> str:
-    official_context = dict(run_input.runtime_context or {})
-    official_context["requester_profile_snapshot"] = _compact_requester_profile(
-        official_context.get("requester_profile_snapshot")
-    )
-    official_context["recent_timeline_summary"] = _compact_timeline(
-        list(official_context.get("recent_timeline_summary") or run_input.recent_timeline)
-    )
-    official_context["visible_actions"] = _compact_visible_actions(
-        list(official_context.get("visible_actions") or [])
-    )
-    official_context["page_summary"] = _compact_page_summary(
-        official_context.get("page_summary")
-    )
-
-    # === Phase 1: 注入 personality_context ===
-    # 从 requester_profile_snapshot 提取测评数据（如果已注入）
-    requester_profile = official_context.get("requester_profile_snapshot") or {}
-    if requester_profile.get("personality_traits"):
-        official_context["personality_context"] = {
-            "self_traits": requester_profile.get("personality_traits"),
-            "availability": requester_profile.get("personality_availability") or {},
-        }
+    runtime_context = dict(run_input.runtime_context or {})
+    user_profile = _normalize_user_profile(runtime_context)
+    state = {
+        "session": _normalize_session_state(run_input, runtime_context),
+        "user_profile": user_profile,
+        "current_results": _normalize_current_results(runtime_context),
+        "visible_actions": _compact_visible_actions(list(runtime_context.get("visible_actions") or [])),
+        "last_search": _normalize_last_search(runtime_context),
+    }
+    memory_summary = _normalize_memory_summary(runtime_context, run_input.recent_timeline)
 
     payload = {
-        "event": event,
-        "session": {
-            "session_id": run_input.session_id,
-            "phase": run_input.phase,
-            "criteria_labels": list(run_input.criteria_labels),
+        "event": {
+            "type": event,
+            "user_message": str(user_message or "").strip() or None,
+            "clicked_action": {
+                "label": str((action_context or {}).get("label") or "").strip() or None,
+                "kind": str(dict((action_context or {}).get("semantic_payload") or {}).get("kind") or "").strip() or None,
+                "hint": dict((action_context or {}).get("semantic_payload") or {}),
+            }
+            if action_context
+            else None,
         },
-        "latest_user_message": str(user_message or "").strip() or None,
-        "clicked_action": {
-            "label": str((action_context or {}).get("label") or "").strip() or None,
-            "hint": dict((action_context or {}).get("semantic_payload") or {}),
-        }
-        if action_context
-        else None,
-        "official_context": official_context,
+        "state": state,
+        "memory_summary": memory_summary,
     }
     return json.dumps(payload, ensure_ascii=False, sort_keys=True)
 
