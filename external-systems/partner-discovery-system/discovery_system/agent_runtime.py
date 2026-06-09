@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -181,6 +182,16 @@ def _tool_schema_debug_payload(tools: list[Any]) -> list[dict[str, Any]]:
     return payload
 
 
+def _model_input_item_count(runtime_input: Any) -> int:
+    if runtime_input is None:
+        return 0
+    if isinstance(runtime_input, str):
+        return 1 if runtime_input.strip() else 0
+    if isinstance(runtime_input, list):
+        return len(runtime_input)
+    return 1
+
+
 def _log_discovery_context_size(
     *,
     event: str,
@@ -189,6 +200,7 @@ def _log_discovery_context_size(
     output_schema: Any,
     tools: list[Any],
 ) -> None:
+    messages_count = _model_input_item_count(runtime_input)
     instructions_chars = len(instructions)
     input_chars = len(runtime_input)
     schema_chars = _safe_json_length(output_schema.json_schema())
@@ -201,8 +213,9 @@ def _log_discovery_context_size(
         level = logging.WARNING
     _logger.log(
         level,
-        "discovery agent context size event=%s instructions_chars=%s input_chars=%s schema_chars=%s tools_chars=%s total_chars=%s rough_tokens=%s",
+        "discovery agent context size event=%s messages_count=%s instructions_chars=%s input_chars=%s schema_chars=%s tools_chars=%s total_chars=%s rough_tokens=%s",
         event,
+        messages_count,
         instructions_chars,
         input_chars,
         schema_chars,
@@ -210,6 +223,26 @@ def _log_discovery_context_size(
         total_chars,
         round(total_chars / 4),
     )
+
+
+def _stream_event_type(event: Any) -> str:
+    return str(getattr(event, "type", "") or "").strip()
+
+
+def _raw_stream_data_type(event: Any) -> str:
+    data = getattr(event, "data", None)
+    if isinstance(data, dict):
+        return str(data.get("type") or "").strip()
+    return str(getattr(data, "type", "") or "").strip()
+
+
+def _is_first_token_stream_event(event: Any) -> bool:
+    if _stream_event_type(event) != "raw_response_event":
+        return False
+    data_type = _raw_stream_data_type(event)
+    if not data_type:
+        return False
+    return any(marker in data_type for marker in ("delta", "text"))
 
 
 def _usage_debug_payload(run_result: Any) -> dict[str, Any]:
@@ -1280,9 +1313,13 @@ class AgentsSdkDiscoveryAgentRuntime:
             tools=tools,
         )
         started = time.perf_counter()
-        result = Runner.run_sync(
-            agent,
-            input=runtime_input,
+        result, first_token_latency_ms = asyncio.run(
+            self._run_streamed_agent(
+                Runner=Runner,
+                agent=agent,
+                runtime_input=runtime_input,
+                started=started,
+            )
         )
         elapsed_ms = round((time.perf_counter() - started) * 1000.0, 3)
         usage_payload = _usage_debug_payload(result)
@@ -1295,7 +1332,7 @@ class AgentsSdkDiscoveryAgentRuntime:
             usage_payload["output_tokens"],
             usage_payload["total_tokens"],
             usage_payload["requests"],
-            None,
+            first_token_latency_ms,
         )
         final_output = getattr(result, "final_output", result)
         decision = (
@@ -1330,6 +1367,27 @@ class AgentsSdkDiscoveryAgentRuntime:
             decision=decision,
             search_response=search_response,
         )
+
+    async def _run_streamed_agent(
+        self,
+        *,
+        Runner: Any,
+        agent: Any,
+        runtime_input: str,
+        started: float,
+    ) -> tuple[Any, float | None]:
+        streamed_result = Runner.run_streamed(
+            agent,
+            input=runtime_input,
+        )
+        first_token_latency_ms: float | None = None
+        async for stream_event in streamed_result.stream_events():
+            if first_token_latency_ms is None and _is_first_token_stream_event(stream_event):
+                first_token_latency_ms = round((time.perf_counter() - started) * 1000.0, 3)
+        run_loop_task = getattr(streamed_result, "run_loop_task", None)
+        if run_loop_task is not None:
+            await run_loop_task
+        return streamed_result, first_token_latency_ms
 
 
 def create_default_discovery_agent_runtime() -> DiscoveryAgentRuntime:
