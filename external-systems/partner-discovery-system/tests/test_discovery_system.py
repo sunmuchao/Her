@@ -33,6 +33,7 @@ from discovery_system.agent_runtime import (  # noqa: E402
     DiscoveryRuntimeResult,
     _configure_agents_sdk_provider,
 )
+from scripts.discovery_context_size_report import _all_scenarios  # noqa: E402
 from discovery_system.agent_session_store import InMemoryDiscoveryAgentSessionStore  # noqa: E402
 from discovery_system.service_integrations import search_partner_candidates_with  # noqa: E402
 from discovery_system.service import DiscoveryService  # noqa: E402
@@ -437,30 +438,27 @@ class DiscoveryServiceTests(unittest.TestCase):
                 {"item_type": "assistant_message", "body": "前面聊过城市和关系目标。"},
             ],
             runtime_context={
-                "requester_profile_snapshot": {"self_city": "上海"},
-                "recent_timeline_summary": [
-                    {"item_type": "assistant_message", "body": "前面聊过城市和关系目标。"},
-                ],
-                "visible_actions": [{"label": "继续补充城市", "style": "secondary", "hint": {"kind": "followup"}}],
-                "last_search_summary": {"result_count": 0, "has_match": False},
-                "page_summary": {
-                    "criteria_labels": ["上海"],
-                    "result_cards": [
-                        {
-                            "profile_id": 1002,
-                            "title": "郑星涵 27",
-                            "subtitle": "无锡 · 药师 · 本科",
-                            "match_score": 92,
-                            "reason_summary": "先前主要因为情绪稳定。",
-                            "personality_match_context": {
-                                "mbti": {"type_code": "ISFJ"},
-                                "attachment": {"type_code": "secure", "anxiety": 30, "avoidance": 20},
-                                "values": {"top_values": ["稳定经营", "家庭责任"]},
-                                "availability": {"has_mbti": True, "has_attachment": True, "has_values": True},
-                            },
-                        }
-                    ],
+                "session": {"session_id": "discovery-session-002", "phase": "collecting_preferences"},
+                "user_profile": {"self_city": "上海"},
+                "memory_summary": {
+                    "recent_conversation_summary": "前面聊过城市和关系目标。",
                 },
+                "visible_actions": [{"label": "继续补充城市", "style": "secondary", "hint": {"kind": "followup"}}],
+                "last_search": {"result_count": 0, "has_match": False},
+                "current_results": [
+                    {
+                        "profile_id": 1002,
+                        "title": "郑星涵 27",
+                        "reason_summary": "先前主要因为情绪稳定。",
+                        "compatibility_summary": "MBTI ISFJ；依恋偏secure",
+                        "personality_signals": {
+                            "mbti": {"type_code": "ISFJ"},
+                            "attachment": {"type_code": "secure", "anxiety": 30, "avoidance": 20},
+                            "values": {"top_values": ["稳定经营", "家庭责任"]},
+                            "availability": {"has_mbti": True, "has_attachment": True, "has_values": True},
+                        },
+                    }
+                ],
             },
             search_partner_candidates=lambda _criteria, _limit: {"has_match": False, "result_count": 0, "results": []},
             sync_requester_persona_memory=lambda _patch: {"synced": True},
@@ -482,23 +480,22 @@ class DiscoveryServiceTests(unittest.TestCase):
 
         self.assertIsNone(captured["session"])
         payload = json.loads(str(captured["input"]))
-        self.assertEqual(payload["official_context"]["requester_profile_snapshot"]["self_city"], "上海")
-        self.assertEqual(len(payload["official_context"]["recent_timeline_summary"]), 1)
-        self.assertNotIn("note", payload)
-        self.assertNotIn("requester_id", payload["session"])
-        self.assertNotIn("profile_id", payload["session"])
-        result_cards = payload["official_context"]["page_summary"]["result_cards"]
+        self.assertEqual(payload["state"]["user_profile"]["self_city"], "上海")
+        self.assertEqual(payload["memory_summary"]["recent_conversation_summary"], "前面聊过城市和关系目标。")
+        result_cards = payload["state"]["current_results"]
         self.assertEqual(result_cards[0]["profile_id"], 1002)
-        self.assertEqual(result_cards[0]["personality_match_context"]["mbti"]["type_code"], "ISFJ")
-        self.assertEqual(result_cards[0]["personality_match_context"]["attachment"]["type_code"], "secure")
+        self.assertEqual(result_cards[0]["personality_signals"]["mbti"]["type_code"], "ISFJ")
+        self.assertEqual(result_cards[0]["personality_signals"]["attachment"]["type_code"], "secure")
         self.assertEqual(
-            result_cards[0]["personality_match_context"]["values"]["top_values"],
+            result_cards[0]["personality_signals"]["values"]["top_values"],
             ["稳定经营", "家庭责任"],
         )
-        self.assertNotIn("availability", result_cards[0]["personality_match_context"])
-        self.assertEqual(payload["official_context"]["visible_actions"][0]["kind"], "followup")
-        self.assertNotIn("action_id", payload["official_context"]["visible_actions"][0])
-        self.assertEqual(payload["official_context"]["last_search_summary"]["result_count"], 0)
+        self.assertNotIn("availability", result_cards[0]["personality_signals"])
+        self.assertEqual(payload["state"]["visible_actions"][0]["kind"], "followup")
+        self.assertNotIn("action_id", payload["state"]["visible_actions"][0])
+        self.assertEqual(payload["state"]["last_search"]["result_count"], 0)
+        self.assertNotIn("requester_id", payload["state"]["session"])
+        self.assertNotIn("profile_id", payload["state"]["session"])
         tool_names = [
             getattr(tool, "name", None) or getattr(tool, "__name__", "")
             for tool in list(captured["tools"] or [])
@@ -521,9 +518,9 @@ class DiscoveryServiceTests(unittest.TestCase):
         instructions = str(captured.get("instructions") or "")
         self.assertIn("不要输出形如 `{\"tool_calls\":[...]}` 的文本", instructions)
         self.assertIn("不要说“本地没有符合条件的人”", instructions)
-        self.assertIn("优先基于 page_summary.result_cards", instructions)
+        self.assertIn("优先基于 state.current_results", instructions)
 
-    def test_agents_runtime_passes_assessment_result_in_recent_timeline_summary(self) -> None:
+    def test_agents_runtime_passes_memory_summary(self) -> None:
         runtime = AgentsSdkDiscoveryAgentRuntime()
         session = InMemoryDiscoveryAgentSessionStore().get_session("discovery-session-004")
         captured: dict[str, object] = {}
@@ -562,17 +559,9 @@ class DiscoveryServiceTests(unittest.TestCase):
                 {"item_type": "assistant_message", "body": "亲爱的，你的测试结果出来啦！"},
             ],
             runtime_context={
-                "recent_timeline_summary": [
-                    {
-                        "item_type": "assessment_result",
-                        "card": {
-                            "result_data": {
-                                "type_code": "INTJ",
-                                "interpretation_data": {"summary": "偏理性，慢热但稳定。"},
-                            }
-                        },
-                    }
-                ]
+                "memory_summary": {
+                    "recent_conversation_summary": "最近刚看过测评结果：mbti_16，INTJ，偏理性，慢热但稳定。",
+                }
             },
             search_partner_candidates=lambda _criteria, _limit: {"has_match": False, "result_count": 0, "results": []},
             sync_requester_persona_memory=lambda _patch: {"synced": True},
@@ -593,11 +582,9 @@ class DiscoveryServiceTests(unittest.TestCase):
             )
 
         payload = json.loads(str(captured["input"]))
-        summary = payload["official_context"]["recent_timeline_summary"]
-        self.assertEqual(summary[0]["item_type"], "assessment_result")
-        self.assertEqual(summary[0]["type_code"], "INTJ")
-        self.assertEqual(summary[0]["summary"], "偏理性，慢热但稳定。")
-        self.assertEqual(len(summary), 1)
+        summary = payload["memory_summary"]["recent_conversation_summary"]
+        self.assertIn("INTJ", summary)
+        self.assertIn("偏理性，慢热但稳定", summary)
 
     def test_agents_runtime_can_issue_multiple_search_tool_calls_in_one_run(self) -> None:
         runtime = AgentsSdkDiscoveryAgentRuntime()
@@ -686,11 +673,11 @@ class DiscoveryServiceTests(unittest.TestCase):
             criteria_labels=[],
             recent_timeline=[],
             runtime_context={
-                "requester_profile_snapshot": {"self_city": "无锡"},
-                "recent_timeline_summary": [],
+                "user_profile": {"self_city": "无锡"},
+                "memory_summary": {},
                 "visible_actions": [],
-                "last_search_summary": None,
-                "page_summary": {"criteria_labels": [], "result_cards": []},
+                "last_search": None,
+                "current_results": [],
             },
             search_partner_candidates=_search_partner_candidates,
             sync_requester_persona_memory=lambda _patch: {"synced": True},
@@ -730,7 +717,7 @@ class DiscoveryServiceTests(unittest.TestCase):
             criteria_labels=["无锡", "结婚导向"],
             recent_timeline=[],
             runtime_context={
-                "requester_profile_snapshot": {
+                "user_profile": {
                     "personality_traits": {
                         "mbti": {"type_code": "ISTP"},
                         "attachment": {"type_code": "secure", "anxiety": 27, "avoidance": 48},
@@ -740,24 +727,22 @@ class DiscoveryServiceTests(unittest.TestCase):
                         },
                     }
                 },
-                "page_summary": {
-                    "result_cards": [
-                        {
-                            "profile_id": 9202,
-                            "title": "宋若嘉 26",
-                            "subtitle": "无锡 · 教师 · 硕士",
-                            "personality_match_context": {
-                                "mbti": {"type_code": "ISTJ"},
-                                "attachment": {"type_code": "secure", "anxiety": 30, "avoidance": 41},
-                                "values": {
-                                    "value_type": "稳定经营型",
-                                    "top_values": ["稳定经营", "家庭责任", "成长探索"],
-                                },
-                                "availability": {"has_mbti": True, "has_attachment": True, "has_values": True},
+                "current_results": [
+                    {
+                        "profile_id": 9202,
+                        "title": "宋若嘉 26",
+                        "compatibility_summary": "MBTI ISTJ；价值观重稳定经营",
+                        "personality_signals": {
+                            "mbti": {"type_code": "ISTJ"},
+                            "attachment": {"type_code": "secure", "anxiety": 30, "avoidance": 41},
+                            "values": {
+                                "value_type": "稳定经营型",
+                                "top_values": ["稳定经营", "家庭责任", "成长探索"],
                             },
-                        }
-                    ]
-                },
+                            "availability": {"has_mbti": True, "has_attachment": True, "has_values": True},
+                        },
+                    }
+                ],
             },
             search_partner_candidates=lambda _criteria, _limit: {"has_match": False, "result_count": 0, "results": []},
             sync_requester_persona_memory=lambda _patch: {"synced": True},
@@ -779,6 +764,12 @@ class DiscoveryServiceTests(unittest.TestCase):
         self.assertIn("MBTI", result.decision.assistant_message)
         self.assertIn("依恋", result.decision.assistant_message)
         self.assertIn("价值观", result.decision.assistant_message)
+
+    def test_discovery_context_report_stays_under_warn_threshold(self) -> None:
+        results = _all_scenarios()
+        self.assertEqual(len(results), 4)
+        for item in results:
+            self.assertLess(item["total_chars"], 16000, item["scenario"])
 
     def test_discovery_decision_schema_is_strict_compatible_and_enumerated(self) -> None:
         schema = AgentOutputSchema(DiscoveryDecisionModel, strict_json_schema=True).json_schema()

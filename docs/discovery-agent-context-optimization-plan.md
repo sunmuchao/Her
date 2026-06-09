@@ -732,7 +732,7 @@ system prompt 同时承载：
 
 ### T4. 精简 `build_runtime_context()` 输出结构
 
-状态：`部分完成`
+状态：`已完成`
 
 目标：
 
@@ -762,14 +762,14 @@ system prompt 同时承载：
 
 当前进展：
 
-- 已完成：`runtime_context` 已大幅压缩，候选卡、timeline、action、last_search 都已瘦身
-- 未完成：尚未完全重构成文档定义的标准子结构：
+- 已完成：`runtime_context` 已重构为标准子结构：
   - `session`
   - `user_profile`
   - `current_results`
   - `visible_actions`
   - `last_search`
   - `memory_summary`
+- 已完成：prompt 组包不再依赖 `official_context/page_summary/recent_timeline_summary` 旧结构
 
 ### T5. 重写 `build_page_summary()`，去掉重型候选卡上下文
 
@@ -907,7 +907,7 @@ system prompt 同时承载：
 
 ### T9. 用后端摘要替换 `recent_timeline_summary`
 
-状态：`部分完成`
+状态：`已完成`
 
 目标：
 
@@ -934,11 +934,12 @@ system prompt 同时承载：
 
 当前进展：
 
-- 已完成：`recent_timeline_summary` 已从原始大结构压成轻量列表摘要
-- 未完成：尚未真正落成文档中定义的三类摘要字段：
+- 已完成：长 timeline 不再直接进入 prompt
+- 已完成：后端现已输出三类摘要字段：
   - `stable_preferences_summary`
   - `recent_feedback_summary`
   - `recent_conversation_summary`
+- 已完成：最近测评/最近展示/最近反馈都收敛为一句级摘要，而非列表重放
 
 ### T10. search tool 返回增加“模型摘要层”
 
@@ -1004,7 +1005,7 @@ system prompt 同时承载：
 
 ### T12. 为上下文结构写回归测试
 
-状态：`部分完成`
+状态：`已完成`
 
 目标：
 
@@ -1032,7 +1033,7 @@ system prompt 同时承载：
 
 - 已完成：补充了 discovery runtime 相关回归测试
 - 已完成：覆盖了不传 session history、不传完整 search 大对象、上下文字段压缩后的关键断言
-- 未完成：尚未补充明确的上下文体积阈值测试
+- 已完成：新增代表场景上下文体积阈值测试，要求 representative prompt 总量低于 `16000 chars` warn 阈值
 
 ### T13. 增加性能对比验证
 
@@ -1068,8 +1069,8 @@ system prompt 同时承载：
 - 已完成：新增 [discovery_context_size_report.py](/Users/sunmuchao/Downloads/Her/scripts/discovery_context_size_report.py)
 - 已完成：可量化 4 类代表场景的 `instructions/input/schema/tools/total` 体积
 - 已完成：discovery runtime 日志已记录 `elapsed_ms` 与 Agents SDK usage（`input_tokens/output_tokens/total_tokens/requests`）
-- 未完成：尚未自动输出优化前后对比
-- 未完成：尚未自动固化“优化前后”对比报告
+- 已完成：脚本支持 `--compare-baseline`，自动输出“旧版近似基线 vs 当前优化版”的 before/after 对比
+- 已完成：对比报告会输出 `chars_saved/token_saved/reduction_ratio`，并标记是否低于 warn/error 阈值
 - 未完成：尚未记录真实 `first_token_latency_ms`
 
 ## 18. 推荐实施顺序
