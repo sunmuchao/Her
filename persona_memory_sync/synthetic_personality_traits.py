@@ -27,7 +27,13 @@ def _clamp(value: float, low: int = 5, high: int = 95) -> float:
 
 
 def _jitter(identity: str, dimension: str, spread: int = 6) -> int:
-    digest = hashlib.md5(f"{identity}:{dimension}".encode("utf-8")).digest()
+    """
+    使用 SHA-256 生成确定性抖动值（替代不安全的 MD5）。
+
+    安全修复：MD5 存在碰撞风险，升级为 SHA-256 用于确定性生成。
+    虽然 MD5 在此场景不涉及安全认证，但为符合最佳实践，升级为更安全的算法。
+    """
+    digest = hashlib.sha256(f"{identity}:{dimension}".encode("utf-8")).digest()
     return int(digest[0] % (spread * 2 + 1)) - spread
 
 

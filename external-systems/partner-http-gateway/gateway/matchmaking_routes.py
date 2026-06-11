@@ -1,4 +1,11 @@
-"""Matchmaking-specific HTTP handlers for the gateway."""
+"""Matchmaking-specific HTTP handlers for the gateway.
+
+SECURITY FIX: Added path parameter validation using input_validator.
+
+Changes:
+1. All path parameters {member_id}, {case_id}, {pair_key} now validated
+2. Validation happens before processing, preventing injection attacks
+"""
 
 from __future__ import annotations
 
@@ -29,6 +36,8 @@ from matchmaking_system.async_tasks import (  # type: ignore[import-untyped]
     summarize_matchmaking_async_jobs,
 )
 
+from match_domain import get_trace_id
+
 from .http_helpers import (
     _json_safe,
     _normalize_optional_now_text,
@@ -39,6 +48,7 @@ from .http_helpers import (
     _statuses_from_query,
 )
 from .identity import GatewayPermissionError
+from .input_validator import validate_id, ValidationError
 from .role_sets import INTERNAL_WRITE_ROLES, STAFF_OVERRIDE_ROLES
 
 
@@ -421,46 +431,103 @@ def dispatch_matchmaking_rest(
     method: str,
     path: str,
 ) -> tuple[int, dict[str, Any]] | None:
+    """Matchmaking REST 路由分发 - 带路径参数验证
+
+    SECURITY: 所有路径参数 {id} 先验证格式，防止注入攻击
+    """
+    def _validate_path_id(raw_id: str, field_name: str) -> tuple[str | None, dict[str, Any] | None]:
+        """验证路径参数 ID，返回 (safe_id, error_response)"""
+        try:
+            return validate_id(raw_id, field_name), None
+        except ValidationError as e:
+            return None, {
+                "error": {"code": f"invalid_{field_name}", "message": str(e)},
+                "trace_id": get_trace_id(),
+            }
+
     if path == "/v1/matchmaking/members" and method == "POST":
         return rest_mm_create_member(gateway, environ, _parse_json_body(_read_body(environ)))
+
     match = re.fullmatch(r"/v1/matchmaking/members/([^/]+)/status", path)
     if match and method == "PATCH":
-        return rest_mm_set_status(gateway, environ, match.group(1), _parse_json_body(_read_body(environ)))
+        safe_id, error = _validate_path_id(match.group(1), "member_id")
+        if error:
+            return 400, error
+        return rest_mm_set_status(gateway, environ, safe_id, _parse_json_body(_read_body(environ)))
+
     match = re.fullmatch(r"/v1/matchmaking/members/([^/]+)/refresh", path)
     if match and method == "POST":
-        return rest_mm_refresh_member(gateway, environ, match.group(1), _parse_json_body(_read_body(environ)))
+        safe_id, error = _validate_path_id(match.group(1), "member_id")
+        if error:
+            return 400, error
+        return rest_mm_refresh_member(gateway, environ, safe_id, _parse_json_body(_read_body(environ)))
+
     match = re.fullmatch(r"/v1/matchmaking/members/([^/]+)", path)
     if match and method == "GET":
-        return rest_mm_get_member(gateway, environ, match.group(1))
+        safe_id, error = _validate_path_id(match.group(1), "member_id")
+        if error:
+            return 400, error
+        return rest_mm_get_member(gateway, environ, safe_id)
+
     if path == "/v1/matchmaking/pool/refresh" and method == "POST":
         return rest_mm_refresh_pool(gateway, environ, _parse_json_body(_read_body(environ)))
+
     if path == "/v1/matchmaking/jobs" and method == "GET":
         return rest_list_matchmaking_jobs(gateway, environ)
+
     match = re.fullmatch(r"/v1/matchmaking/jobs/([^/]+)", path)
     if match and method == "GET":
-        return rest_get_matchmaking_job(gateway, environ, match.group(1))
+        safe_id, error = _validate_path_id(match.group(1), "job_id")
+        if error:
+            return 400, error
+        return rest_get_matchmaking_job(gateway, environ, safe_id)
+
     if path == "/v1/matchmaking/pairs/build" and method == "POST":
         return rest_mm_build_pairs(gateway, environ, _parse_json_body(_read_body(environ)))
+
     if path == "/v1/matchmaking/pairs" and method == "GET":
         return rest_mm_list_pairs(gateway, environ)
+
     match = re.fullmatch(r"/v1/matchmaking/pairs/(.+)", path)
     if match and method == "GET":
-        return rest_mm_get_pair(gateway, environ, match.group(1))
+        # pair_key 可能包含特殊字符，使用 URL decode 后再验证
+        raw_pair_key = unquote(match.group(1))
+        safe_pair_key, error = _validate_path_id(raw_pair_key, "pair_key")
+        if error:
+            return 400, error
+        return rest_mm_get_pair(gateway, environ, safe_pair_key)
+
     if path == "/v1/matchmaking/cases/open" and method == "POST":
         return rest_mm_open_cases(gateway, environ, _parse_json_body(_read_body(environ)))
+
     if path == "/v1/matchmaking/cases/close-stale" and method == "POST":
         return rest_mm_close_stale(gateway, environ, _parse_json_body(_read_body(environ)))
+
     if path == "/v1/matchmaking/cases" and method == "GET":
         return rest_mm_list_cases(gateway, environ)
+
     match = re.fullmatch(r"/v1/matchmaking/cases/([^/]+)/dispatch", path)
     if match and method == "POST":
-        return rest_mm_dispatch(gateway, environ, match.group(1), _parse_json_body(_read_body(environ)))
+        safe_id, error = _validate_path_id(match.group(1), "case_id")
+        if error:
+            return 400, error
+        return rest_mm_dispatch(gateway, environ, safe_id, _parse_json_body(_read_body(environ)))
+
     match = re.fullmatch(r"/v1/matchmaking/cases/([^/]+)/reply", path)
     if match and method == "POST":
-        return rest_mm_reply(gateway, environ, match.group(1), _parse_json_body(_read_body(environ)))
+        safe_id, error = _validate_path_id(match.group(1), "case_id")
+        if error:
+            return 400, error
+        return rest_mm_reply(gateway, environ, safe_id, _parse_json_body(_read_body(environ)))
+
     match = re.fullmatch(r"/v1/matchmaking/cases/([^/]+)", path)
     if match and method == "GET":
-        return rest_mm_get_case(gateway, environ, match.group(1))
+        safe_id, error = _validate_path_id(match.group(1), "case_id")
+        if error:
+            return 400, error
+        return rest_mm_get_case(gateway, environ, safe_id)
+
     if path == "/v1/matchmaking/feedback" and method == "POST":
         return rest_mm_feedback(gateway, environ, _parse_json_body(_read_body(environ)))
+
     return None

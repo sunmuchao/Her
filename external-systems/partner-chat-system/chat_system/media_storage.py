@@ -22,11 +22,14 @@ except ImportError:
 
 LOGGER = logging.getLogger(__name__)
 
-DEFAULT_MINIO_ENDPOINT = "127.0.0.1:9000"
-DEFAULT_MINIO_ACCESS_KEY = "her_minio_admin"
-DEFAULT_MINIO_SECRET_KEY = "her_minio_password"
+# 安全修复：移除硬编码的默认凭证
+# MinIO 凭证必须通过环境变量配置，禁止使用硬编码默认值
+DEFAULT_MINIO_ENDPOINT = "127.0.0.1:9000"  # 仅开发环境默认值
 DEFAULT_MINIO_BUCKET = "her-media"
 DEFAULT_MINIO_SECURE = False
+
+# 安全警告：以下环境变量必须配置
+_REQUIRED_MINIO_ENV_VARS = ["MINIO_ACCESS_KEY", "MINIO_SECRET_KEY"]
 
 ALLOWED_IMAGE_TYPES = {
     "image/jpeg": [".jpg", ".jpeg"],
@@ -39,10 +42,68 @@ MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
 
 
 def _get_minio_config() -> dict[str, Any]:
+    """
+    获取 MinIO 配置，要求必须配置凭证环境变量。
+
+    安全修复：移除硬编码默认凭证，强制要求环境变量配置。
+    增强：生产环境强制凭证长度检查。
+    """
+    # 检查必需的环境变量
+    missing_vars = []
+    for var in _REQUIRED_MINIO_ENV_VARS:
+        if not os.environ.get(var):
+            missing_vars.append(var)
+
+    if missing_vars:
+        raise ValueError(
+            f"MinIO credentials not configured: missing environment variables {missing_vars}. "
+            f"Please set MINIO_ACCESS_KEY and MINIO_SECRET_KEY before starting the service. "
+            f"DO NOT use hardcoded default credentials."
+        )
+
+    # 验证凭证强度（生产环境）
+    access_key = os.environ.get("MINIO_ACCESS_KEY", "")
+    secret_key = os.environ.get("MINIO_SECRET_KEY", "")
+
+    # ✅ 增强：生产环境强制凭证长度检查
+    if os.environ.get("HER_PRODUCTION_MODE"):
+        # 生产环境：强制强密码
+        if len(access_key) < 20:
+            raise ValueError(
+                "Production mode requires strong MinIO credentials: "
+                "MINIO_ACCESS_KEY >= 20 chars. Current length: {len(access_key)}. "
+                "Use strong, unique access key for production."
+            )
+        if len(secret_key) < 40:
+            raise ValueError(
+                "Production mode requires strong MinIO credentials: "
+                "MINIO_SECRET_KEY >= 40 chars. Current length: {len(secret_key)}. "
+                "Use strong, unique secret key for production."
+            )
+
+    # 检查是否使用开发环境常见的弱凭证
+    weak_credentials = {
+        "her_minio_admin": "her_minio_password",
+        "minioadmin": "minioadmin",
+        "admin": "admin",
+        "root": "root",
+    }
+    if access_key in weak_credentials and secret_key == weak_credentials.get(access_key):
+        LOGGER.warning(
+            f"SECURITY WARNING: Using weak MinIO credentials (access_key='{access_key}'). "
+            f"Please use strong credentials in production."
+        )
+        # 在生产模式下禁止使用弱凭证
+        if os.environ.get("HER_PRODUCTION_MODE"):
+            raise ValueError(
+                f"Production mode rejects weak MinIO credentials. "
+                f"Please configure strong MINIO_ACCESS_KEY and MINIO_SECRET_KEY."
+            )
+
     return {
         "endpoint": os.environ.get("MINIO_ENDPOINT", DEFAULT_MINIO_ENDPOINT),
-        "access_key": os.environ.get("MINIO_ACCESS_KEY", DEFAULT_MINIO_ACCESS_KEY),
-        "secret_key": os.environ.get("MINIO_SECRET_KEY", DEFAULT_MINIO_SECRET_KEY),
+        "access_key": access_key,
+        "secret_key": secret_key,
         "bucket": os.environ.get("MINIO_BUCKET", DEFAULT_MINIO_BUCKET),
         "secure": os.environ.get("MINIO_SECURE", "false").lower() in ("true", "1", "yes"),
     }

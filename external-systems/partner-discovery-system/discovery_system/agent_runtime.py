@@ -29,17 +29,8 @@ from .decision_models import (
     to_decision as _to_decision,
     validate_decision_output as _validate_decision_output,
     decision_payload_to_decision as _decision_payload_to_decision,  # 方案C新增
+    decision_payload_to_decision_with_repair as _decision_payload_to_decision_with_repair,  # 带修复逻辑
 )
-
-
-def _noop_submit_rejection_feedback(*args: Any, **kwargs: Any) -> dict[str, Any]:
-    del args, kwargs
-    return {"success": False, "skipped": True}
-
-
-def _noop_get_feedback_options(*args: Any, **kwargs: Any) -> dict[str, Any]:
-    del args, kwargs
-    return {"options": []}
 
 
 @dataclass(frozen=True)
@@ -55,9 +46,6 @@ class DiscoveryRunInput:
     sync_requester_persona_memory: Callable[[dict[str, Any]], dict[str, Any]]
     propose_requester_profile_update: Callable[[str, str], dict[str, Any]]
     create_saved_search_subscription_from_last_search: Callable[[], dict[str, Any]]
-    # 新增：反馈收集工具
-    submit_rejection_feedback: Callable[..., dict[str, Any]] = _noop_submit_rejection_feedback
-    get_feedback_options: Callable[..., dict[str, Any]] = _noop_get_feedback_options
     tool_call_buffer: list["DiscoveryToolCall"] = field(default_factory=list)
     agent_session: Any | None = None
 
@@ -78,22 +66,6 @@ _BAILIAN_RESPONSES_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1
 _BAILIAN_RESPONSES_DEFAULT_MODEL = "qwen3.6-plus"
 _DISCOVERY_CONTEXT_WARN_CHARS = 16000
 _DISCOVERY_CONTEXT_ERROR_CHARS = 32000
-_DISCOVERY_BATCH_REFRESH_PATTERNS = (
-    "换一批",
-    "重新找",
-    "再看几位",
-    "再给我看看",
-    "看看更多",
-    "看更多",
-    "换一组",
-)
-
-
-class RejectionFeedbackParseModel(BaseModel):
-    is_rejection_feedback: bool = True
-    feedback_type: str = ""
-    summary: str = ""
-    search_criteria_patch: dict[str, Any] = Field(default_factory=dict)
 
 
 def _safe_json_length(value: Any) -> int:
@@ -320,89 +292,6 @@ def _resolve_discovery_model(*, wire_api: str) -> str:
     )
 
 
-def _fallback_rejection_feedback_parse(user_message: str) -> dict[str, Any]:
-    from .feedback_service import infer_feedback_type
-
-    text = str(user_message or "").strip()
-    feedback_type = str(infer_feedback_type(text) or "").strip()
-    patch: dict[str, Any] = {}
-    if feedback_type == "work_life_balance":
-        patch = {
-            "prefer": ["工作稳定", "生活规律"],
-            "must_not_have": ["高强度工作"],
-        }
-    elif feedback_type == "location_distance":
-        patch = {"prefer": ["同城优先"]}
-    elif feedback_type in {"age_gap", "criteria_age"}:
-        patch = {"prefer": ["年龄接近"]}
-    elif feedback_type == "occupation_mismatch":
-        patch = {"prefer": ["职业匹配"]}
-    return {
-        "is_rejection_feedback": bool(feedback_type),
-        "feedback_type": feedback_type,
-        "summary": text,
-        "search_criteria_patch": patch,
-    }
-
-
-def parse_rejection_feedback_text(
-    user_message: str,
-    *,
-    runtime_context: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    text = str(user_message or "").strip()
-    if not text:
-        return {
-            "is_rejection_feedback": False,
-            "feedback_type": "",
-            "summary": "",
-            "search_criteria_patch": {},
-        }
-    if not _resolve_discovery_api_key().strip():
-        return _fallback_rejection_feedback_parse(text)
-
-    try:
-        from agents import Agent, AgentOutputSchema, Runner
-    except ImportError:
-        return _fallback_rejection_feedback_parse(text)
-
-    try:
-        _configure_agents_sdk_provider()
-        agent = Agent(
-            name="discovery_feedback_parser",
-            instructions=(
-                "你负责把用户对上一批候选人的自由文本反馈，解析成结构化搜索意图。"
-                "当前前提是：系统已经明确问过用户“上一批哪里不合适”。"
-                "你的任务不是陪聊，而是判断这句话是不是在回答这个问题。"
-                "如果是，输出 is_rejection_feedback=true，并尽量给出 feedback_type 和 search_criteria_patch。"
-                "feedback_type 优先使用这些类型：location_distance, age_gap, criteria_age, "
-                "occupation_mismatch, work_life_balance, interest_mismatch, personality_mismatch, criteria_generic。"
-                "search_criteria_patch 只放 discovery search 可用字段，例如 prefer, must_not_have, must_have, cities, age_min, age_max。"
-                "不要输出解释性长文，summary 保留一句简短中文概括。"
-            ),
-            model=_resolve_discovery_model(wire_api=_resolve_discovery_wire_api()),
-            output_type=AgentOutputSchema(RejectionFeedbackParseModel, strict_json_schema=True),
-            tools=[],
-        )
-        payload = json.dumps(
-            {
-                "user_message": text,
-                "current_results": _normalize_current_results(runtime_context),
-                "last_search": _normalize_last_search(runtime_context) or {},
-            },
-            ensure_ascii=False,
-            sort_keys=True,
-        )
-        result = Runner.run_sync(agent, input=payload)
-        final_output = getattr(result, "final_output", result)
-        if isinstance(final_output, RejectionFeedbackParseModel):
-            return final_output.model_dump(mode="json")
-        parsed = RejectionFeedbackParseModel.model_validate(final_output)
-        return parsed.model_dump(mode="json")
-    except Exception:
-        return _fallback_rejection_feedback_parse(text)
-
-
 def _configure_agents_sdk_provider() -> None:
     from agents import set_default_openai_api, set_default_openai_client, set_tracing_disabled
     from her_production import assert_production_discovery_agent_isolation
@@ -536,12 +425,20 @@ def _compact_candidate_personality_context(value: dict[str, Any] | None) -> dict
 def _compact_current_results(
     results: list[dict[str, Any]] | None,
 ) -> list[dict[str, Any]]:
+    """
+    压缩当前候选人列表，传递给 Agent。
+
+    ✅ Agent Native：传递所有候选人给 Agent，不要截断。
+    否则 Agent 无法识别用户询问的候选人（如"介绍一下李欣琪"），
+    会说"没有这个候选人"导致用户体验差。
+    """
     compacted_cards: list[dict[str, Any]] = []
-    for card in list(results or [])[:3]:
+    for card in list(results or []):  # 不再截断 [:3]，传递所有候选人
         compacted_cards.append(
             {
                 "profile_id": card.get("profile_id"),
                 "title": card.get("title"),
+                "subtitle": card.get("subtitle"),  # 包含城市·职业·学历，供 Agent 介绍候选人时使用
                 "reason_summary": card.get("reason_summary"),
                 "compatibility_summary": card.get("compatibility_summary"),
                 "personality_signals": _compact_candidate_personality_context(
@@ -594,66 +491,48 @@ def _normalize_memory_summary(
     runtime_context: dict[str, Any] | None,
     recent_timeline: list[dict[str, Any]],
 ) -> dict[str, Any]:
+    """
+    构建长期记忆摘要。
+
+    Agent session 会自动记住当前会话的对话历史，
+    所以这里只提取长期记忆（偏好、反馈），不提取对话内容。
+    """
     memory_summary = dict((runtime_context or {}).get("memory_summary") or {})
     if memory_summary:
         return {
             "stable_preferences_summary": str(memory_summary.get("stable_preferences_summary") or "").strip() or None,
             "recent_feedback_summary": str(memory_summary.get("recent_feedback_summary") or "").strip() or None,
-            "recent_conversation_summary": str(memory_summary.get("recent_conversation_summary") or "").strip() or None,
+            # 移除 recent_conversation_summary - Agent session 会自动记住对话历史
         }
 
-    compacted_timeline = _compact_timeline(list((runtime_context or {}).get("recent_timeline_summary") or recent_timeline))
-    recent_conversation_summary = ""
-    latest_user = next(
-        (item for item in reversed(compacted_timeline) if str(item.get("item_type") or "") == "user_message"),
-        None,
-    )
-    if latest_user is not None:
-        recent_conversation_summary = str(latest_user.get("body") or "").strip()
+    # 无 memory_summary 时，返回空值
     return {
         "stable_preferences_summary": None,
         "recent_feedback_summary": None,
-        "recent_conversation_summary": recent_conversation_summary or None,
+        # 移除 recent_conversation_summary - Agent session 会自动记住对话历史
     }
 
 
-def _looks_like_personality_explanation_request(user_message: str | None) -> bool:
-    text = str(user_message or "").strip()
-    if not text:
-        return False
-    if "不要重新搜索" in text:
-        return True
-    keywords = ("为什么", "测评", "MBTI", "依恋", "价值观", "合拍", "性格")
-    return any(keyword in text for keyword in keywords)
+# ✅ Agent Native：完全移除硬编码关键词判断
+# _looks_like_personality_explanation_request 方法已删除
+# Agent 自主判断是否需要性格解释
+#
+# _select_explained_candidate 方法已删除
+# Agent 自主识别用户想了解哪个候选人
+#
+# 参考：Agent Native 开发实践规范 - 反模式：触发词映射表
 
 
-def _select_explained_candidate(
-    page_summary: dict[str, Any],
+def _build_personality_explanation_fallback(
+    run_input: DiscoveryRunInput,
     user_message: str | None,
-) -> dict[str, Any] | None:
-    cards = list(page_summary.get("result_cards") or [])
-    if not cards:
-        return None
-    text = str(user_message or "")
-    indexed_words = (
-        ("第一位", 0),
-        ("第一个", 0),
-        ("1", 0),
-        ("第二位", 1),
-        ("第二个", 1),
-        ("2", 1),
-        ("第三位", 2),
-        ("第三个", 2),
-        ("3", 2),
-    )
-    for word, index in indexed_words:
-        if word in text and index < len(cards):
-            return dict(cards[index] or {})
-    for card in cards:
-        title = str(card.get("title") or "").strip()
-        if title and title.split(" ")[0] in text:
-            return dict(card)
-    return dict(cards[0] or {})
+) -> DiscoveryRuntimeResult | None:
+    """
+    ✅ Agent Native：不再通过关键词判断是否需要性格解释
+    直接返回 None，让 Agent 自主处理性格解释请求
+    Agent 会根据 user_message 自主判断是否需要解释，并调用相应工具
+    """
+    return None
 
 
 def _safe_overlap(values: dict[str, Any] | None, candidate_values: dict[str, Any] | None) -> list[str]:
@@ -698,52 +577,16 @@ def _values_clause(self_values: dict[str, Any] | None, candidate_values: dict[st
     overlap = _safe_overlap(self_values, candidate_values)
     if overlap:
         shared = "、".join(overlap[:2])
-        return f"价值观上你们都把“{shared}”放得比较前，这类人通常更容易在长期投入和生活方向上同频。"
+        return f"价值观上你们都把'{shared}'放得比较前，这类人通常更容易在长期投入和生活方向上同频。"
     self_type = str((self_values or {}).get("value_type") or "").strip()
     candidate_type = str((candidate_values or {}).get("value_type") or "").strip()
     if self_type and candidate_type:
         return f"价值观上你偏{self_type}，她偏{candidate_type}，虽然不完全一样，但都不是只看短期新鲜感的类型。"
     return None
 
-
-def _build_personality_explanation_fallback(
-    run_input: DiscoveryRunInput,
-    user_message: str | None,
-) -> DiscoveryRuntimeResult | None:
-    if not _looks_like_personality_explanation_request(user_message):
-        return None
-    candidate = _select_explained_candidate(
-        {"result_cards": _normalize_current_results(run_input.runtime_context)},
-        user_message,
-    )
-    if not candidate:
-        return None
-
-    requester_profile = _normalize_user_profile(run_input.runtime_context)
-    self_traits = dict(requester_profile.get("personality_traits") or {})
-    candidate_traits = _compact_candidate_personality_context(
-        candidate.get("personality_signals") or candidate.get("personality_match_context")
-    )
-    candidate_title = str(candidate.get("title") or "这位").strip() or "这位"
-    candidate_name = re.split(r"\s+", candidate_title, maxsplit=1)[0]
-
-    clauses = [
-        _mbti_clause(self_traits.get("mbti"), candidate_traits.get("mbti")),
-        _attachment_clause(self_traits.get("attachment"), candidate_traits.get("attachment")),
-        _values_clause(self_traits.get("values"), candidate_traits.get("values")),
-    ]
-    message_parts = [part for part in clauses if part]
-    if not message_parts:
-        return None
-    body = f"先说{candidate_name}。{''.join(message_parts[:3])}"
-    return DiscoveryRuntimeResult(
-        decision=DiscoveryDecision(
-            phase="results_shown",
-            assistant_message=body,
-            criteria_labels=list(run_input.criteria_labels),
-            suggested_actions=[],
-        )
-    )
+# ✅ Agent Native：原始版本的 _build_personality_explanation_fallback 已删除
+# 该版本调用已删除的 _looks_like_personality_explanation_request 和 _select_explained_candidate
+# 统一使用第606-615行的简化版本（直接返回 None）
 
 
 def _compact_timeline(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -769,7 +612,7 @@ def _compact_timeline(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
                             "title": card.get("title"),
                             "reason_summary": card.get("reason_summary"),
                         }
-                        for card in list(item.get("cards") or [])[:3]
+                        for card in list(item.get("cards") or [])  # 不再截断 [:3]
                     ],
                 }
             )
@@ -835,136 +678,41 @@ def _search_response_has_error(search_response: dict[str, Any] | None) -> bool:
     return bool(str(diagnostics.get("error") or "").strip())
 
 
-def _prompt_needs_assessment_mode(user_message: str | None, action_context: dict[str, Any] | None) -> bool:
-    if action_context is not None:
-        hint = dict((action_context or {}).get("semantic_payload") or {})
-        if str(hint.get("kind") or "").strip() == "start_assessment":
-            return True
-    text = str(user_message or "").strip()
-    if not text:
-        return False
-    keywords = ("MBTI", "依恋", "价值观", "性格", "合拍", "测评", "不知道", "没测过", "不清楚")
-    return any(keyword in text for keyword in keywords)
-
-
-def _prompt_needs_rejection_feedback_mode(user_message: str | None, action_context: dict[str, Any] | None) -> bool:
-    hint = dict((action_context or {}).get("semantic_payload") or {})
-    action_kind = str(hint.get("kind") or "").strip()
-    # 场景1: 用户点击反馈选项（处理反馈）
-    if action_kind == "rejection_feedback":
-        return True
-    # 场景2: 用户点击"换一批"按钮（触发追问）
-    if action_kind == "show_more_candidates":
-        return True
-    # 场景3: 用户主动说"换一批"
-    text = str(user_message or "").strip()
-    return any(marker in text for marker in _DISCOVERY_BATCH_REFRESH_PATTERNS)
-
-
 def _build_discovery_agent_instructions(
     *,
     event: str,
     user_message: str | None,
     action_context: dict[str, Any] | None,
 ) -> str:
-    del event
-    sections = [
-        """
-你是发现页里的 AI 红娘。
+    """构建 Agent 指令。
 
-核心原则：
-- 以 state 为当前产品状态真相，不要靠记忆猜页面状态。
-- 当用户说"给我推荐"、"找对象"、"看看合适的"时，优先直接调用 search_partner_candidates，不要回复"我先把你的偏好整理一下"。
-- 如果条件还不够，只问 1 个最关键的问题；如果条件已经够用，就直接搜索。
-- 只有用户说出了明确、稳定、适合落库的新信息时，才调用画像写回工具。
-- 改用户本人正式资料时，用 `propose_requester_profile_update`；择偶偏好用 `sync_requester_persona_memory`。
-- 不能编造候选人的原始卡片字段。你只能输出 profile_id 和 reason_summary。
-- 如果 state.current_results 已有候选人，且用户是在追问“为什么推荐她/他”“从测评怎么看”“MBTI/依恋/价值观为什么合拍”，优先基于 state.current_results 解释，不要重复搜索。
+    ✅ Agent Native：单一真相来源原则
+    - SOUL.md：角色定义 + 核心原则（唯一来源）
+    - 工具 description：能力描述 + 使用场景（唯一来源）
+    - 运行时上下文：通过工具参数传递，不在 Prompt 中重复
+    """
 
-state 常见信息：
-- session：当前会话 phase、criteria_labels 等权威状态
-- user_profile：用户当前画像快照
-- current_results：当前页面上的候选人摘要
-- visible_actions：当前页面还能点哪些 action
-- last_search：最近一轮搜索摘要
+    # 加载 SOUL.md 内容
+    soul_md_path = os.path.join(os.path.dirname(__file__), "DISCOVERY_AGENT_SOUL.md")
+    soul_content = ""
+    try:
+        with open(soul_md_path, "r", encoding="utf-8") as f:
+            soul_content = f.read().strip()
+    except Exception as e:
+        _logger.warning(f"Failed to load SOUL.md: {e}")
 
-memory_summary 常见信息：
-- stable_preferences_summary：长期稳定偏好摘要
-- recent_feedback_summary：最近几轮“换一批/不合适”的摘要
-- recent_conversation_summary：最近对话进展摘要
+    # 简短事件说明（其余上下文通过工具参数传递）
+    event_context = f"当前事件：{event}"
+    if user_message:
+        event_context += f"，用户说：{user_message}"
+    if action_context:
+        event_context += f"，点击按钮：{action_context.get('label')}"
 
-说明：
-- state.current_results 里的 personality_signals 是已经压缩过的测评信号；用户追问“为什么推荐”时，直接用它解释。
-
-工具调用要求：
-- 需要用工具时，必须走系统提供的真实 tool calling 机制。
-- 不要把 `tool_calls`、`function_call`、工具参数对象手写进最终 JSON。
-- 不要输出形如 `{“tool_calls”:[...]}` 的文本。
-
-工具调用要求：
-- 当用户说”找对象”、”推荐几个”、”给我看看”时，调用 search_partner_candidates 工具搜索。
-- 每次回复用户后，必须调用 make_decision 工具输出你的决策。
-- make_decision 工具参数说明：
-  - phase: 当前阶段（collecting_preferences/searching/results_shown/no_result）
-  - assistant_message: 回复用户的消息（必填，保持短）
-  - criteria_labels_json: 筛选条件标签 JSON 数组字符串，如 [“苏州”, “26-30岁”]
-  - suggested_actions_json: 建议操作按钮 JSON 数组字符串，格式：[{“label”:”换一批”,”style”:”secondary”,”semantic_payload”:{“kind”:”show_more_candidates”}}]
-  - selected_candidates_json: 候选人 JSON 数组字符串，格式：[{“profile_id”:100,”reason_summary”:”价值观匹配”}]
-- 所有 JSON 参数必须是有效的 JSON 字符串格式，不要直接写数组对象。
-
-输出原则：
-- assistant_message 保持短，像真人红娘，不要写成系统说明。
-- phase 只能是：collecting_preferences、searching、results_shown、no_result。
-- 如果你正在展示候选卡片，phase 必须是 `results_shown`。
-- suggested_actions 最多 3 个，style 只能是 primary/secondary/ghost。
-- semantic_payload.kind 只用这些值：
-  - starter_prompt：首次对话引导
-  - followup_prompt：追问补充信息
-  - saved_search_opt_in：持续留意（无结果时推荐）
-  - show_more_candidates：换一批（会触发追问反馈）
-  - add_criteria：添加筛选条件
-  - refine_preferences：调整偏好
-  - age_preference：年龄偏好设置
-  - start_assessment：推荐测评
-  - rejection_feedback：拒绝反馈选项
-- **"换一批"按钮必须使用 show_more_candidates**，这会触发系统追问上一批哪里不合适。
-- **注意**：refine_candidates 已废弃，不要使用。如有旧数据中使用，可忽略但不应创建新的。
-- 只有在你真的调用了搜索工具并且决定展示结果时，才填写 selected_candidates。
-- selected_candidates 里的 profile_id 必须来自最新一次搜索工具返回的 results。
-- 如果搜索工具返回 `error_code` 或 `diagnostics.error`，不要说”本地没有符合条件的人”。要自然说明这轮搜索失败了，不代表没人，并引导用户重试或继续补充条件。
-- 如果 state.current_results 已有候选人，且你在解释当前候选人的测评适配性，assistant_message 直接解释；如果引用了当前候选人，请把该候选人继续放进 selected_candidates，这样前端能保留同一组卡片。
-- reason_summary 应尽量写成用户能看懂的匹配理由，优先引用双方的 MBTI、依恋风格、价值观；如果候选人没测评，再用”从资料看””可能”等谨慎表达。
-"""
-    ]
-    if _prompt_needs_assessment_mode(user_message, action_context):
-        sections.append(
-            """
-测评推荐规则：
-- 当你主动询问了用户的测评类型（MBTI、依恋风格），而用户回复"不知道"、"没测过"、"不清楚"时，优先返回测评测试按钮，不要转去问年龄、城市等偏好问题。
-- 询问要自然，像聊天一样，不要像问卷。
-- 推荐 MBTI 时，按钮用 {"kind":"start_assessment","assessment_type":"mbti"}。
-- 推荐依恋风格时，按钮用 {"kind":"start_assessment","assessment_type":"attachment"}。
-- 如果 memory_summary.recent_conversation_summary 已明确提到 MBTI 结果，或者 state.current_results 已经足够解释当前问题，不要重复推荐测评。
-"""
-        )
-    if _prompt_needs_rejection_feedback_mode(user_message, action_context):
-        sections.append(
-            """
-换一批反馈闭环：
-- 当用户说"换一批"、"重新找"、"再看几位"、"再给我看看"时，系统会自动追问上一批哪里不合适。
-- **展示候选人后，"换一批"按钮必须使用 semantic_payload.kind = "show_more_candidates"**。
-- 反馈选项必须使用 semantic_payload.kind = "rejection_feedback"，并带 feedback_type。
-- 用户点击 rejection_feedback 后，必须：
-  1. 调用 submit_rejection_feedback
-  2. 调用 search_partner_candidates
-  3. 返回 selected_candidates
-  4. assistant_message 说明你调整了什么
-- 常见 feedback_type：location_distance、age_gap、criteria_age、occupation_mismatch、work_life_balance、interest_mismatch、personality_mismatch、criteria_generic、skip_feedback。
-- 如果用户选择 saved_search_opt_in，则优先调用 create_saved_search_subscription_from_last_search。
-- **重要**：不要使用已废弃的 refine_candidates，统一使用 show_more_candidates 以符合业务规则"每次换一批都追问"。
-"""
-        )
-    return "\n\n".join(section.strip() for section in sections if section.strip())
+    # 合并：SOUL.md（角色定义） + 简短事件说明
+    if soul_content:
+        return f"{soul_content}\n\n{event_context}"
+    return event_context
+    return runtime_context_instructions
 
 
 def _build_runtime_prompt(
@@ -1037,7 +785,7 @@ class StubDiscoveryAgentRuntime:
             tool_result = run_input.create_saved_search_subscription_from_last_search()
             if tool_result.get("created_subscription"):
                 title = str(tool_result.get("title") or "这次持续留意").strip()
-                body = f"好，我已经替你记下了，后面有合适的人会按“{title}”继续帮你留意。"
+                body = f"好，我已经替你记下了，后面有合适的人会按'{title}'继续帮你留意。"
             elif tool_result.get("already_exists"):
                 body = "这轮条件我已经替你记下了，后面有新的合适人选我会继续留意。"
             else:
@@ -1051,27 +799,27 @@ class StubDiscoveryAgentRuntime:
                 )
             )
 
-        # 【新增】处理rejection_feedback（反馈收集）
+        # ✅ Agent Native：移除硬编码回复模板
+        # rejection_feedback 统一走 Agent Runtime，由 Agent 自主决定回复
+        # Stub runtime 只提供简单的 fallback 逻辑
         if action_hint.get("kind") == "rejection_feedback":
-            feedback_type = action_hint.get("feedback_type") or "unknown"
-            feedback_text = str(action_context.get("label") or "职业不太匹配")
+            feedback_text = str(action_context.get("label") or "这批先换一下")
 
-            # 1. 调用submit_rejection_feedback记录反馈
-            feedback_result = run_input.submit_rejection_feedback(
+            # 记录反馈
+            run_input.submit_rejection_feedback(
                 feedback_text=feedback_text,
-                feedback_type=feedback_type,
+                feedback_type=action_hint.get("feedback_type") or None,
                 feedback_detail="",
                 is_secondary=False,
             )
 
-            # 2. 调用search_partner_candidates搜索新候选人
-            # TODO: 这里应该根据feedback_type调整criteria
+            # 搜索新候选人
             search_result = run_input.search_partner_candidates(
-                criteria_json={},  # 使用当前criteria，后续可调整
+                criteria_json={},  # Agent 自主决定调整策略
                 limit=5,
             )
 
-            # 3. 构建返回结果
+            # 构建返回结果（不硬编码回复模板）
             candidates = []
             if search_result.get("results"):
                 for item in search_result.get("results")[:5]:
@@ -1080,19 +828,13 @@ class StubDiscoveryAgentRuntime:
                         "reason_summary": item.get("match_reason") or "匹配度较高",
                     })
 
-            # 根据反馈类型生成文案
-            if feedback_type == "occupation_mismatch":
-                body = "明白了，你倾向于其他职业方向。我再帮你调整，这次试试医药、教育、行政类的女生。"
-            elif feedback_type == "location_distance":
-                body = "明白了，你希望同城优先。我帮你调整一下，找杭州附近的女生。"
-            elif feedback_type == "work_life_balance":
-                body = "明白了，你希望找生活规律的女生。我帮你调整一下，找作息稳定、不加班的。"
-            else:
-                body = f'收到，你点了"{feedback_text}"。我帮你调整一下搜索条件。'
+            # ✅ Agent Native：回复让 Agent 自主生成（通过调用真实 runtime）
+            # Stub 只提供简单的 fallback 回复
+            body = f"收到，你选了'{feedback_text}'。我帮你重新找了一批。"
 
             return DiscoveryRuntimeResult(
                 decision=DiscoveryDecision(
-                    phase="results_shown",
+                    phase="results_shown" if candidates else "no_result",
                     assistant_message=body,
                     criteria_labels=list(run_input.criteria_labels),
                     selected_candidates=candidates,
@@ -1114,7 +856,7 @@ class StubDiscoveryAgentRuntime:
 
         if action_context is not None:
             label = str(action_context.get("label") or "这个选项")
-            body = f"收到，你点了“{label}”。我再帮你把条件收一收，然后继续找。"
+            body = f"收到，你点了'{label}'。我再帮你把条件收一收，然后继续找。"
         elif user_message:
             body = "收到。我先把你的偏好整理一下，你也可以继续补充年龄、城市或关系期待。"
         else:
@@ -1253,7 +995,7 @@ class AgentsSdkDiscoveryAgentRuntime:
 
         @function_tool
         def sync_requester_persona_memory(patch_json: str) -> dict[str, Any]:
-            """同步用户的择偶偏好到长期记忆。当用户说出明确的择偶偏好时调用此工具。"""
+            """同步用户的择偶偏好到长期记忆。当用户说出明确、稳定、适合落库的择偶偏好时调用。沉淀长期偏好，后续推荐更精准。"""
             patch = json.loads(str(patch_json or "{}"))
             if not isinstance(patch, dict):
                 raise ValueError("patch_json must decode into a JSON object")
@@ -1261,12 +1003,12 @@ class AgentsSdkDiscoveryAgentRuntime:
 
         @function_tool
         def propose_requester_profile_update(patch_json: str, evidence_text: str = "") -> dict[str, Any]:
-            """提议更新用户本人的正式资料（年龄、城市、婚姻状态等）。当用户说出个人资料变更时调用此工具。"""
+            """提议更新用户本人的正式资料（年龄、城市、婚姻状态等）。当用户说出个人资料变更时调用。需要用户确认后生效。"""
             return run_input.propose_requester_profile_update(patch_json, evidence_text)
 
         @function_tool
         def search_partner_candidates(criteria_json: str, limit: int = 5) -> dict[str, Any]:
-            """搜索候选人。当用户说"找对象"、"推荐几个"、"给我看看"时调用此工具。返回匹配的候选人列表。"""
+            """搜索候选人。当用户想看推荐、调整搜索条件、表达不满后重新搜索时调用。传入调整后的参数（如 cities、age_min/age_max）。返回匹配的候选人列表。"""
             criteria = json.loads(str(criteria_json or "{}"))
             if not isinstance(criteria, dict):
                 raise ValueError("criteria_json must decode into a JSON object")
@@ -1277,78 +1019,78 @@ class AgentsSdkDiscoveryAgentRuntime:
 
         @function_tool
         def create_saved_search_subscription_from_last_search() -> dict[str, Any]:
-            """创建订阅，按当前搜索条件持续留意新候选人。当用户想"持续留意"或"订阅"时调用此工具。"""
+            """创建订阅，按当前搜索条件持续留意新候选人。当用户想长期关注符合条件的候选人、或者当前搜索无结果时推荐使用。"""
             return run_input.create_saved_search_subscription_from_last_search()
 
-        @function_tool
-        def submit_rejection_feedback(
-            feedback_text: str,
-            feedback_type: str = "",
-            feedback_detail: str = "",
-            is_secondary: bool = False,
-        ) -> dict[str, Any]:
-            """提交拒绝反馈，用于记录用户对上一批候选人的不满原因。"""
-            return run_input.submit_rejection_feedback(
-                feedback_text=feedback_text,
-                feedback_type=feedback_type if feedback_type else None,
-                feedback_detail=feedback_detail if feedback_detail else None,
-                is_secondary=is_secondary,
-            )
-
-        @function_tool
-        def get_feedback_options(
-            include_secondary: bool = False,
-            primary_option: str = "",
-        ) -> dict[str, Any]:
-            """获取反馈选项列表，用于展示给用户选择。"""
-            return run_input.get_feedback_options(
-                include_secondary=include_secondary,
-                primary_option=primary_option if primary_option else None,
-            )
-
         # ====================================================================
-        # 方案C：make_decision 工具 - 把 Decision Schema 融进工具参数
+        # 方案A：拆分为两个专用工具（reply_to_user + show_candidates）
         # ====================================================================
-        tool_state["decision_payload"] = None  # 存储 make_decision 工具参数
+        tool_state["reply_payload"] = None  # 存储 reply_to_user 工具参数
+        tool_state["show_payload"] = None   # 存储 show_candidates 工具参数
 
         @function_tool
-        def make_decision(
-            phase: str,
-            assistant_message: str,
-            criteria_labels_json: str = "[]",
-            suggested_actions_json: str = "[]",
-            result_group_title: str = "",
-            selected_candidates_json: str = "[]",
+        def reply_to_user(
+            message: str,
+            phase: str = "collecting_preferences",
+            button_texts: list[str] = [],
         ) -> dict[str, Any]:
+            """回复用户对话消息，不展示候选人卡片。
+
+            适用场景：
+            - 回答用户问题
+            - 解释推荐理由
+            - 收集用户反馈
             """
-            输出决策结果。每次回复用户后，必须调用此工具来输出你的决策。
+            # 【证据优先】记录工具调用参数
+            _logger.info("【工具调用】reply_to_user")
+            _logger.info("  - message：%s", message)
+            _logger.info("  - phase：%s", phase)
+            _logger.info("  - button_texts：%s", button_texts)
 
-            参数说明：
-            - phase: 当前阶段（collecting_preferences/searching/results_shown/no_result）
-            - assistant_message: 回复用户的消息（必填）
-            - criteria_labels_json: 筛选条件标签 JSON 数组，如 ["苏州", "26-30岁"]
-            - suggested_actions_json: 建议操作按钮 JSON 数组，每个包含 label/style/semantic_payload
-            - result_group_title: 候选人分组标题（可选）
-            - selected_candidates_json: 候选人 JSON 数组，每个包含 profile_id 和 reason_summary
-
-            JSON 格式示例：
-            suggested_actions_json: [{"label":"换一批","style":"secondary","semantic_payload":{"kind":"show_more_candidates"}}]
-            selected_candidates_json: [{"profile_id":100,"reason_summary":"价值观匹配"}]
-
-            重要：
-            - 只有在搜索成功后才填写 selected_candidates
-            - suggested_actions 最多3个，style 只能是 primary/secondary/ghost
-            """
             payload = {
+                "kind": "reply",
                 "phase": phase,
-                "assistant_message": assistant_message,
-                "criteria_labels": json.loads(criteria_labels_json) if criteria_labels_json else [],
-                "suggested_actions": json.loads(suggested_actions_json) if suggested_actions_json else [],
-                "result_group_title": result_group_title if result_group_title else None,
-                "selected_candidates": json.loads(selected_candidates_json) if selected_candidates_json else [],
+                "assistant_message": message,
+                "suggested_actions": [
+                    {"label": btn, "style": "secondary", "semantic_payload": {"kind": "suggested"}}
+                    for btn in button_texts[:3]
+                ],
             }
-            tool_state["decision_payload"] = payload  # 存储供后续提取
-            return {"success": True, "phase": phase}
+            tool_state["reply_payload"] = payload
+            return {"success": True, "kind": "reply", "phase": phase}
+
+        @function_tool
+        def show_candidates(
+            message: str,
+            candidate_ids: list[int],
+            title: str = "",
+            criteria: list[str] = [],
+        ) -> dict[str, Any]:
+            """展示候选人列表。
+
+            适用场景：
+            - 搜索后有新的候选人结果
+            """
+            # 【证据优先】记录工具调用参数
+            _logger.info("【工具调用】show_candidates")
+            _logger.info("  - message：%s", message)
+            _logger.info("  - candidate_ids：%s", candidate_ids)
+            _logger.info("  - title：%s", title)
+            _logger.info("  - criteria：%s", criteria)
+
+            payload = {
+                "kind": "show",
+                "phase": "results_shown" if candidate_ids else "no_result",
+                "assistant_message": message,
+                "result_group_title": title if title else None,
+                "criteria_labels": criteria,
+                "selected_candidates": [
+                    {"profile_id": cid, "reason_summary": ""}
+                    for cid in candidate_ids
+                ],
+            }
+            tool_state["show_payload"] = payload
+            return {"success": True, "kind": "show", "candidate_count": len(candidate_ids)}
 
         instructions = _build_discovery_agent_instructions(
             event=event,
@@ -1356,15 +1098,14 @@ class AgentsSdkDiscoveryAgentRuntime:
             action_context=action_context,
         )
 
-        # 方案C：移除 output_schema，只用 tools
+        # 方案A：拆分为两个专用工具（reply_to_user + show_candidates）
         tools = [
             sync_requester_persona_memory,
             propose_requester_profile_update,
             search_partner_candidates,
             create_saved_search_subscription_from_last_search,
-            submit_rejection_feedback,
-            get_feedback_options,
-            make_decision,  # 方案C新增
+            reply_to_user,   # 方案A：回复专用工具
+            show_candidates, # 方案A：展示候选人专用工具
         ]
         runtime_input = _build_runtime_prompt(
             run_input=run_input,
@@ -1379,9 +1120,10 @@ class AgentsSdkDiscoveryAgentRuntime:
             output_schema=None,  # 方案C：无 output_schema
             tools=tools,
         )
+        # 启用会话记忆：agent_session 将在 _run_streamed_agent 中传入 Runner
         if run_input.agent_session is not None:
             _logger.debug(
-                "discovery agent session memory bypassed for prompt-size control session_id=%s",
+                "discovery agent session memory enabled session_id=%s",
                 run_input.session_id,
             )
 
@@ -1399,6 +1141,7 @@ class AgentsSdkDiscoveryAgentRuntime:
                 agent=agent,
                 runtime_input=runtime_input,
                 started=started,
+                agent_session=run_input.agent_session,  # 启用会话记忆
             )
         )
         elapsed_ms = round((time.perf_counter() - started) * 1000.0, 3)
@@ -1416,23 +1159,38 @@ class AgentsSdkDiscoveryAgentRuntime:
         )
 
         # ====================================================================
-        # 方案C：从 make_decision 工具参数中提取 decision
+        # 方案A：从 reply_to_user 或 show_candidates 工具参数中提取 decision
         # ====================================================================
-        decision_payload = tool_state.get("decision_payload")
+        reply_payload = tool_state.get("reply_payload")
+        show_payload = tool_state.get("show_payload")
+
+        # 优先使用 show_candidates（展示候选人优先级高于纯回复）
+        decision_payload = show_payload or reply_payload
+
         if decision_payload is not None:
             _logger.debug(
-                "discovery agent extracted decision from make_decision tool payload=%s",
+                "discovery agent extracted decision from %s tool payload=%s",
+                "show_candidates" if show_payload else "reply_to_user",
                 str(decision_payload)[:200]
             )
-            decision = _decision_payload_to_decision(DecisionPayloadModel.model_validate(decision_payload))
+            decision = _decision_payload_to_decision_with_repair(decision_payload)
         else:
             # Fallback：尝试从 final_output 恢复
             final_output = getattr(result, "final_output", result)
             _logger.warning(
-                "discovery agent make_decision tool not called, falling back to final_output type=%s",
+                "discovery agent no reply/show tool called, falling back to final_output type=%s",
                 type(final_output).__name__,
             )
-            recovered = _recover_decision_from_exception(final_output) if isinstance(final_output, Exception) else None
+            # 尝试多种恢复方式
+            recovered = None
+            if isinstance(final_output, Exception):
+                recovered = _recover_decision_from_exception(final_output)
+            elif isinstance(final_output, dict):
+                # dict 类型的 final_output 可能包含决策结构
+                try:
+                    recovered = _decision_payload_to_decision_with_repair(final_output)
+                except Exception:
+                    recovered = None
             if recovered is not None:
                 decision = recovered
             else:
@@ -1467,6 +1225,19 @@ class AgentsSdkDiscoveryAgentRuntime:
             and "继续补充" in decision.assistant_message
         ):
             return explained
+        # ====================================================================
+        # 【证据优先】关键日志埋点：记录 Agent 实际行为
+        # 用于测试实验边界验证，收集证据后再决定改进方案
+        # ====================================================================
+        _logger.info("=" * 80)
+        _logger.info("【Agent 实际行为记录】")
+        _logger.info("用户输入：%s", user_message or action_context or "initial")
+        _logger.info("Agent 输出：%s", decision.assistant_message)
+        _logger.info("决策阶段：%s", decision.phase)
+        _logger.info("建议按钮：%s", [action.label for action in (decision.suggested_actions or [])])
+        _logger.info("工具调用：%s", list(tool_state.keys()))
+        _logger.info("=" * 80)
+
         return DiscoveryRuntimeResult(
             decision=decision,
             search_response=search_response,
@@ -1479,10 +1250,13 @@ class AgentsSdkDiscoveryAgentRuntime:
         agent: Any,
         runtime_input: str,
         started: float,
+        agent_session: Any | None = None,  # 新增：会话记忆
     ) -> tuple[Any, float | None]:
+        # 启用会话记忆：传入 session 参数
         streamed_result = Runner.run_streamed(
             agent,
             input=runtime_input,
+            session=agent_session,  # 启用会话记忆
         )
         first_token_latency_ms: float | None = None
         async for stream_event in streamed_result.stream_events():

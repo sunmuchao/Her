@@ -6,10 +6,13 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import os
 import uuid
 from datetime import datetime
 from typing import Any, Callable
+
+LOGGER = logging.getLogger(__name__)
 
 CHALLENGE_CAPTURE_MODE_REALTIME = "realtime_challenge"
 DEFAULT_CHALLENGE_TTL_SECONDS = 15 * 60
@@ -36,9 +39,29 @@ def _base64url_decode(raw: str) -> bytes:
 
 
 def _challenge_secret() -> bytes:
+    """
+    获取活体验证挑战 HMAC 密钥。
+
+    安全修复：生产环境禁止使用硬编码默认密钥，必须配置环境变量。
+    """
     raw = str(os.environ.get("HER_VERIFICATION_CHALLENGE_SECRET") or "").strip()
     if raw:
         return raw.encode("utf-8")
+
+    # 生产环境检查：禁止硬编码密钥
+    if os.environ.get("HER_PRODUCTION_MODE"):
+        raise RuntimeError(
+            "SECURITY VIOLATION: HER_VERIFICATION_CHALLENGE_SECRET is not set in production mode. "
+            "Hardcoded HMAC secrets are only allowed in development/test environments. "
+            "Configure HER_VERIFICATION_CHALLENGE_SECRET with a strong secret for production."
+        )
+
+    # 开发环境警告：使用硬编码密钥
+    LOGGER.warning(
+        "SECURITY WARNING: Using hardcoded HMAC secret for live video challenge. "
+        "This is only acceptable in development/test environments. "
+        "Set HER_VERIFICATION_CHALLENGE_SECRET for production."
+    )
     return b"her-live-video-challenge-dev-secret"
 
 

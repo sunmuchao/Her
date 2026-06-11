@@ -112,8 +112,6 @@ def _build_run_input(runtime_context: dict[str, Any]) -> DiscoveryRunInput:
         sync_requester_persona_memory=lambda _patch: {"synced": True},
         propose_requester_profile_update=lambda _patch_json, _evidence="": {"proposed": False},
         create_saved_search_subscription_from_last_search=lambda: {"created_subscription": False},
-        submit_rejection_feedback=lambda **_kwargs: {"success": True},
-        get_feedback_options=lambda **_kwargs: {"options": []},
         tool_call_buffer=[],
         agent_session=None,
     )
@@ -136,29 +134,11 @@ def _build_tool_debug_payload() -> list[dict[str, Any]]:
     def create_saved_search_subscription_from_last_search() -> dict[str, Any]:
         return _stub_result()
 
-    @function_tool
-    def submit_rejection_feedback(
-        feedback_text: str,
-        feedback_type: str = "",
-        feedback_detail: str = "",
-        is_secondary: bool = False,
-    ) -> dict[str, Any]:
-        return _stub_result(feedback_text, feedback_type, feedback_detail, is_secondary)
-
-    @function_tool
-    def get_feedback_options(
-        include_secondary: bool = False,
-        primary_option: str = "",
-    ) -> dict[str, Any]:
-        return _stub_result(include_secondary, primary_option)
-
     tools = [
         sync_requester_persona_memory,
         propose_requester_profile_update,
         search_partner_candidates,
         create_saved_search_subscription_from_last_search,
-        submit_rejection_feedback,
-        get_feedback_options,
     ]
     return _tool_schema_debug_payload(tools)
 
