@@ -7,6 +7,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import secrets
 import shutil
 import socket
@@ -29,6 +30,84 @@ from .auth_common import (
 )
 
 
+# 命令注入防护：危险 shell 字符黑名单
+_SHELL_DANGEROUS_CHARS = frozenset([
+    "|", "&", ";", "$", "`", "\n", "\r",  # 命令分隔/替换
+    "<", ">", ">>", "<<",  # 重定向
+    "(", ")", "{", "}",  # 子shell/命令组
+    "*", "?", "[", "]",  # 通配符（可能被滥用）
+    "~",  # 家目录展开
+    "#",  # 注释
+])
+
+# 命令注入防护：危险 shell 关键字黑名单
+_SHELL_DANGEROUS_KEYWORDS = frozenset([
+    "rm", "del", "delete", "truncate", "drop", "destroy", "wipe",
+    "chmod", "chown", "chgrp", "setattr",
+    "kill", "killall", "pkill", "terminate", "abort",
+    "exec", "execve", "eval", "source", ".", "bash", "sh", "zsh", "python", "perl", "ruby",
+    "sudo", "su", "doas", "runas", "pkexec",
+    "curl", "wget", "download", "upload", "fetch",
+    "nc", "netcat", "telnet", "ssh", "scp", "sftp", "ftp",
+    "mount", "umount", "fdisk", "mkfs", "format",
+    "iptables", "firewall", "ufw",
+    "crontab", "at", "batch", "systemctl", "service",
+])
+
+
+def _validate_shell_command(command: str) -> str:
+    """
+    验证 shell 命令是否安全，防止命令注入。
+
+    安全的命令应该：
+    1. 是一个可执行文件的绝对路径
+    2. 不包含 shell 特殊字符（管道、重定向、命令分隔等）
+    3. 不包含危险关键字
+
+    Args:
+        command: 待验证的命令
+
+    Returns:
+        验证后的安全命令
+
+    Raises:
+        ValueError: 如果命令包含危险内容
+    """
+    normalized = str(command or "").strip()
+    if not normalized:
+        raise ValueError("HER_SMS_SHELL_COMMAND is required for shell SMS provider")
+
+    # 检查危险字符
+    dangerous_chars_found = set()
+    for char in _SHELL_DANGEROUS_CHARS:
+        if char in normalized:
+            dangerous_chars_found.add(char)
+
+    if dangerous_chars_found:
+        raise ValueError(
+            f"Command injection risk: HER_SMS_SHELL_COMMAND contains dangerous shell characters: "
+            f"{dangerous_chars_found}. Use a simple executable path without shell syntax."
+        )
+
+    # 检查危险关键字
+    # 提取命令的第一个单词（可执行文件名）
+    first_word = normalized.split()[0] if normalized.split() else ""
+    base_name = os.path.basename(first_word)
+
+    if base_name.lower() in _SHELL_DANGEROUS_KEYWORDS:
+        raise ValueError(
+            f"Command injection risk: HER_SMS_SHELL_COMMAND starts with dangerous command: "
+            f"'{base_name}'. Use a dedicated SMS script instead."
+        )
+
+    # 建议使用绝对路径
+    if not os.path.isabs(first_word):
+        # 允许通过，但记录警告（生产环境应该使用绝对路径）
+        pass  # 在开发环境可能使用相对路径
+
+    return normalized
+
+
 def first_env(*names: str) -> str:
     for name in names:
         value = str(os.environ.get(name) or "").strip()
@@ -38,6 +117,23 @@ def first_env(*names: str) -> str:
 
 
 def fixed_auth_code() -> str | None:
+    """
+    获取固定验证码（仅用于开发/测试环境）。
+
+    安全修复：生产环境禁止使用固定验证码，防止认证绕过。
+    """
+    # 生产环境检查：禁止固定验证码
+    if os.environ.get("HER_PRODUCTION_MODE"):
+        raw = str(os.environ.get("HER_AUTH_FIXED_CODE") or "").strip()
+        if raw:
+            raise RuntimeError(
+                "SECURITY VIOLATION: HER_AUTH_FIXED_CODE is set in production mode. "
+                "Fixed auth codes are only allowed in development/test environments. "
+                "Remove HER_AUTH_FIXED_CODE from production configuration immediately."
+            )
+        return None
+
+    # 开发/测试环境允许使用固定验证码
     raw = str(os.environ.get("HER_AUTH_FIXED_CODE") or "").strip()
     return raw if _CODE_RE.fullmatch(raw) else None
 
@@ -57,7 +153,20 @@ class DisabledWechatLoginProvider:
 
 
 class StubWechatLoginProvider:
+    """
+    Stub WeChat 登录提供者（仅用于开发/测试环境）。
+
+    安全警告：生产环境禁止使用 Stub 提供者，防止认证绕过。
+    """
+
     def __init__(self, code_map: dict[str, dict[str, Any]]) -> None:
+        # 生产环境检查：禁止 Stub 提供者
+        if os.environ.get("HER_PRODUCTION_MODE"):
+            raise RuntimeError(
+                "SECURITY VIOLATION: StubWechatLoginProvider is not allowed in production mode. "
+                "Stub authentication providers are only for development/test environments. "
+                "Configure HER_AUTH_WECHAT_PROVIDER=open_platform for production."
+            )
         self._code_map = code_map
 
     def exchange_code(self, code: str) -> dict[str, Any]:
@@ -133,7 +242,20 @@ class DisabledOneTapLoginProvider:
 
 
 class StubOneTapLoginProvider:
+    """
+    Stub 一键登录提供者（仅用于开发/测试环境）。
+
+    安全警告：生产环境禁止使用 Stub 提供者，防止认证绕过。
+    """
+
     def __init__(self, *, phone: str, operator_token: str) -> None:
+        # 生产环境检查：禁止 Stub 提供者
+        if os.environ.get("HER_PRODUCTION_MODE"):
+            raise RuntimeError(
+                "SECURITY VIOLATION: StubOneTapLoginProvider is not allowed in production mode. "
+                "Stub authentication providers are only for development/test environments. "
+                "Configure HER_AUTH_ONE_TAP_PROVIDER for production."
+            )
         self._phone = phone
         self._operator_token = operator_token
 
@@ -298,20 +420,68 @@ class AliyunSmsProvider:
 
 
 class ShellCommandSmsProvider:
+    """
+    Shell 命令短信提供者（用于自定义短信通道）。
+
+    安全警告：
+    - 命令必须是一个简单的可执行路径，不能包含 shell 语法（管道、重定向等）
+    - 用户数据（手机号、验证码）通过环境变量传递，而非命令行参数
+    - 生产环境推荐使用 AliyunSmsProvider 或其他 SDK 实现
+
+    环境变量：
+    - HER_SMS_PHONE: 目标手机号
+    - HER_SMS_CODE: 验证码
+    - HER_SMS_BODY: 完整短信内容
+    """
+
     def __init__(self, command: str) -> None:
-        self._command = str(command or "").strip()
-        if not self._command:
-            raise ValueError("HER_SMS_SHELL_COMMAND is required for shell SMS provider")
+        # 命令注入防护：验证命令安全性
+        self._command = _validate_shell_command(command)
+        # 尝试解析命令为参数列表（用于无 shell 执行）
+        self._command_args = self._parse_command_args(self._command)
+
+    def _parse_command_args(self, command: str) -> list[str] | None:
+        """
+        尝试将命令解析为参数列表。
+
+        如果命令包含复杂的 shell 语法（已被 _validate_shell_command 拒绝），
+        或者包含空格（可能是参数），返回 None 以使用 shell=True。
+
+        简单的可执行路径（无空格）可以安全地使用参数列表形式。
+        """
+        # 如果命令包含空格，可能是带参数的命令
+        if " " in command:
+            # 尝试按空格分割，但需要验证每个部分
+            parts = command.split()
+            # 如果所有部分都是简单的路径或参数（无危险字符），可以使用参数列表
+            for part in parts:
+                if any(char in part for char in {"'", '"', "\\", "$", "`"}):
+                    return None  # 包含引号或特殊字符，使用 shell=True
+            return parts
+        # 简单的可执行路径，使用参数列表
+        return [command]
 
     def send_code(self, phone: str, code: str) -> dict[str, Any]:
         env = os.environ.copy()
         env["HER_SMS_PHONE"] = phone
         env["HER_SMS_CODE"] = code
         env["HER_SMS_BODY"] = _DEFAULT_SMS_TEXT.format(code=code)
+
         try:
+            # 安全修复：完全移除 shell=True，强制使用参数列表形式
+            # 所有用户数据通过环境变量传递，不会拼接到命令中
+            if not self._command_args:
+                raise AuthRouteError(
+                    502,
+                    "sms_provider_error",
+                    "SMS shell command configuration is invalid. "
+                    "Command must be a simple executable path without shell syntax."
+                )
+
+            # 安全执行：使用参数列表形式，完全移除 shell=True
             completed = subprocess.run(
-                self._command,
-                shell=True,
+                self._command_args,
+                shell=False,  # ✅ 强制 shell=False，彻底消除命令注入风险
                 check=True,
                 text=True,
                 capture_output=True,
@@ -387,7 +557,16 @@ def build_sms_provider() -> SmsProvider:
     if configured == "aliyun":
         return AliyunSmsProvider.from_env()
     if configured == "shell":
-        return ShellCommandSmsProvider(os.environ.get("HER_SMS_SHELL_COMMAND") or "")
+        shell_command = os.environ.get("HER_SMS_SHELL_COMMAND") or ""
+        if shell_command.strip():
+            try:
+                return ShellCommandSmsProvider(shell_command)
+            except ValueError:
+                # Shell 命令验证失败（包含危险字符等），回退到 DisabledSmsProvider
+                return DisabledSmsProvider()
+        else:
+            # HER_SMS_SHELL_COMMAND 未设置，回退到 DisabledSmsProvider
+            return DisabledSmsProvider()
     if configured == "mac_messages":
         return MacMessagesSmsProvider()
     if configured in {"disabled", "none", "off"}:

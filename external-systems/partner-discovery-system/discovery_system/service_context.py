@@ -136,17 +136,10 @@ def _recent_feedback_summary(items: list[dict[str, Any]], visible_actions: list[
     ]
     feedback_types = [item for item in feedback_types if item and item != "skip_feedback"]
     if feedback_types:
-        mapping = {
-            "location_distance": "更偏同城或近距离",
-            "age_gap": "更偏年龄接近",
-            "criteria_age": "更偏年龄合适",
-            "occupation_mismatch": "更偏职业匹配",
-            "work_life_balance": "更偏工作稳定、生活规律",
-            "interest_mismatch": "更偏兴趣相投",
-            "personality_mismatch": "更偏性格合拍",
-            "criteria_generic": "想继续细化筛选条件",
-        }
-        labels = [mapping.get(item, item) for item in feedback_types[:3]]
+        # ✅ Agent Native：移除硬编码 feedback_type 映射表
+        # Agent 自主根据 feedback_type 生成追问文案
+        # 只传递原始 feedback_type 列表
+        labels = feedback_types[:3]  # 直接使用原始值
         return f"当前在追问上一批不合适的原因，重点方向是{'、'.join(labels)}。"
 
     recent_user_feedback: list[str] = []
@@ -331,11 +324,12 @@ def build_page_summary(
             {
                 "profile_id": card.get("profile_id"),
                 "title": card.get("title"),
+                "subtitle": card.get("subtitle"),  # 包含城市·职业·学历，供 Agent 介绍候选人时使用
                 "reason_summary": card.get("reason_summary"),
                 "compatibility_summary": _compatibility_summary(card),
                 "personality_match_context": _compact_personality_signals(card.get("personality_match_context")),
             }
-            for card in list(item.get("cards") or [])[:3]
+            for card in list(item.get("cards") or [])  # 不再截断 [:3]
         ]
         break
     return summary
@@ -350,11 +344,12 @@ def build_current_results(
         {
             "profile_id": card.get("profile_id"),
             "title": card.get("title"),
+            "subtitle": card.get("subtitle"),  # 包含城市·职业·学历，供 Agent 介绍候选人时使用
             "reason_summary": card.get("reason_summary"),
             "compatibility_summary": card.get("compatibility_summary"),
             "personality_signals": deepcopy(card.get("personality_match_context") or {}),
         }
-        for card in list(page_summary.get("result_cards") or [])[:3]
+        for card in list(page_summary.get("result_cards") or [])  # 不再截断 [:3]
     ]
 
 

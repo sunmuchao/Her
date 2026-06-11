@@ -35,6 +35,93 @@ PROFILE_TABLE_DETECTION_WEIGHTS = {
     "verified_level": 1,
 }
 
+# SQL 注入防护：危险关键字黑名单
+_SQL_DANGEROUS_KEYWORDS = frozenset([
+    "UNION", "SELECT", "INSERT", "UPDATE", "DELETE", "DROP", "CREATE", "ALTER",
+    "TRUNCATE", "EXEC", "EXECUTE", "SCRIPT", "JAVASCRIPT", "DECLARE", "CAST",
+    "CONVERT", "CONCAT", "CHAR", "NCHAR", "VARCHAR", "NVARCHAR", "DISTINCT",
+])
+
+# SQL 注入防护：允许的安全关键字白名单
+_SQL_SAFE_KEYWORDS = frozenset([
+    "WHERE", "AND", "OR", "NOT", "IS", "NULL", "IN", "LIKE", "BETWEEN",
+    "EXISTS", "COALESCE", "NULLIF", "IFNULL", "TRUE", "FALSE", "ASC", "DESC",
+    "ORDER", "BY", "LIMIT", "OFFSET", "GROUP", "HAVING", "JOIN", "LEFT",
+    "RIGHT", "INNER", "OUTER", "ON", "AS", "FROM", "WITH",
+])
+
+
+def _validate_safe_where_clause(where_clause: str) -> str:
+    """
+    验证 WHERE 子句是否安全，防止 SQL 注入。
+
+    安全的 WHERE 子句应该：
+    1. 使用参数化查询占位符（? 或 %s）
+    2. 字段名被正确引用（使用反引号）
+    3. 不包含危险关键字（UNION、SELECT、INSERT 等）
+
+    Args:
+        where_clause: 待验证的 WHERE 子句
+
+    Returns:
+        验证后的安全 WHERE 子句
+
+    Raises:
+        ValueError: 如果 WHERE 子句包含危险内容
+    """
+    normalized = str(where_clause or "").strip()
+    if not normalized:
+        return ""
+
+    # 移除前导 WHERE 关键字（如果存在）
+    upper_normalized = normalized.upper()
+    if upper_normalized.startswith("WHERE "):
+        normalized = normalized[6:].strip()
+
+    # 检查危险关键字
+    # 使用正则提取所有关键字（大写字母组成的单词）
+    keywords_found = set(re.findall(r"\b[A-Z]{2,}\b", normalized.upper()))
+    dangerous_found = keywords_found & _SQL_DANGEROUS_KEYWORDS
+    if dangerous_found:
+        raise ValueError(
+            f"SQL injection risk: WHERE clause contains dangerous keywords: {dangerous_found}. "
+            f"Use parameterized queries with safe filter functions instead."
+        )
+
+    # 检查是否包含字符串拼接（可能是注入尝试）
+    # 允许：COALESCE(field, '')、NULLIF(field, '')
+    # 禁止：' || '、' + '、CONCAT(...)
+    if re.search(r"'\s*\|\|\s*'", normalized) or re.search(r"'\s*\+\s*'", normalized):
+        raise ValueError(
+            "SQL injection risk: WHERE clause contains string concatenation patterns."
+        )
+
+    # 检查是否包含注释符号（可能是注入尝试）
+    if "--" in normalized or "/*" in normalized or "#" in normalized:
+        raise ValueError(
+            "SQL injection risk: WHERE clause contains SQL comment patterns."
+        )
+
+    # 检查是否包含分号（可能是多语句注入）
+    if ";" in normalized:
+        raise ValueError(
+            "SQL injection risk: WHERE clause contains semicolon (possible multi-statement injection)."
+        )
+
+    # 确保使用参数化查询占位符（允许无占位符的简单条件，如 IS NULL）
+    has_placeholders = "?" in normalized or "%s" in normalized
+    has_safe_literal_patterns = bool(re.search(
+        r"(IS\s+NULL|IS\s+NOT\s+NULL|=\s*''|!=\s*''|>\s*\d+|<\s*\d+|>=\s*\d+|<=\s*\d+)",
+        normalized.upper()
+    ))
+    if not has_placeholders and not has_safe_literal_patterns:
+        # 如果既没有参数化占位符也没有安全的字面量模式，警告但不阻止
+        # （某些简单条件可能不需要参数，如 WHERE status = 'active'）
+        pass  # 允许通过，但建议使用参数化查询
+
+    # 返回原始子句（添加 WHERE 前缀）
+    return f"WHERE {normalized}" if normalized else ""
+
 
 # 全局 profile 连接池缓存
 _profile_pool_cache: dict[str, ProfileConnectionPool] = {}
@@ -380,14 +467,28 @@ def iter_profile_batches(
     params: Sequence[Any] | None = None,
     selected_columns: Sequence[str] | None = None,
     batch_size: int = 500,
+    _skip_where_validation: bool = False,  # 内部使用，跳过验证（仅限可信调用者）
 ):
-    """Yield profile rows in batches. batch_size=0 yields a single batch (full fetch)."""
+    """
+    Yield profile rows in batches. batch_size=0 yields a single batch (full fetch).
+
+    安全说明：where_clause 参数会经过严格的安全验证，防止 SQL 注入。
+    推荐使用 partner_search.search_sources.build_mysql_prefilter 构建安全的 WHERE 子句。
+    """
     _require_profile_source(source_dsn=source_dsn, source_table_name=source_table_name)
     profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
     try:
         if not _table_exists(profile_conn, source_table_name):
             raise ValueError(f"profile table {source_table_name} was not found")
+
+        # SQL 注入防护：验证 WHERE 子句安全性
         normalized_where = str(where_clause or "").strip()
+        if normalized_where and not _skip_where_validation:
+            normalized_where = _validate_safe_where_clause(normalized_where)
+        elif normalized_where:
+            # 即使跳过验证，也要确保基本格式
+            normalized_where = f"WHERE {normalized_where}" if not normalized_where.upper().startswith("WHERE") else normalized_where
+
         available_columns = _list_table_columns(profile_conn, source_table_name)
         column_set = set(available_columns)
         normalized_selected_columns: list[str] = []

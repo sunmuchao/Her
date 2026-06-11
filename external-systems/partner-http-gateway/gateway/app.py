@@ -80,6 +80,17 @@ LOGGER = logging.getLogger(__name__)
 
 
 class PartnerGateway(AsyncJobGatewayMixin, GatewayAccessMixin):
+    # 公共认证路由路径白名单（需要在执行前进行限流检查）
+    PUBLIC_AUTH_ROUTES = frozenset([
+        "/v1/auth/sms/send-code",
+        "/v1/auth/sms/verify",
+        "/v1/auth/wechat/login",
+        "/v1/auth/one-tap/create",
+        "/v1/auth/one-tap/verify",
+        "/v1/auth/refresh",
+        "/v1/auth/logout",
+    ])
+
     def __init__(
         self,
         *,
@@ -115,6 +126,13 @@ class PartnerGateway(AsyncJobGatewayMixin, GatewayAccessMixin):
         self._one_tap_login_provider = _build_one_tap_login_provider()
         self._identity_resolver = IdentityResolver(session_resolver=self._resolve_auth_session_principal)
         self._rate_limiter = rate_limiter_from_environ()
+
+    def _is_public_auth_route(self, method: str, path: str) -> bool:
+        """检查是否是公共认证路由（需要在执行前进行限流检查）。"""
+        # 只有 POST 请求的认证路由需要前置限流
+        if method != "POST":
+            return False
+        return path in self.PUBLIC_AUTH_ROUTES
 
     def _with_db(
         self,
@@ -271,8 +289,9 @@ class PartnerGateway(AsyncJobGatewayMixin, GatewayAccessMixin):
                 _access_log(200)
                 return [body]
 
-            public_auth_response = dispatch_public_auth_rest(self, environ, method, path.rstrip("/") or "/")
-            if public_auth_response is not None:
+            # 安全修复：限流检查移到 dispatch_public_auth_rest 之前
+            # 防止在限流拒绝之前执行昂贵的操作（如 SMS 发送）
+            if self._is_public_auth_route(method, path.rstrip("/") or "/"):
                 if not self._rate_limiter.allow(client_ip(environ)):
                     status_code = 429
                     body = json.dumps(
@@ -282,6 +301,9 @@ class PartnerGateway(AsyncJobGatewayMixin, GatewayAccessMixin):
                     sr("429 Too Many Requests", JSON_HEADERS + [("Content-Length", str(len(body)))])
                     _access_log(status_code)
                     return [body]
+
+            public_auth_response = dispatch_public_auth_rest(self, environ, method, path.rstrip("/") or "/")
+            if public_auth_response is not None:
                 status_code, payload = public_auth_response
                 body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
                 reason = "OK" if status_code < 400 else "Error"

@@ -1,4 +1,11 @@
-"""Chat-centric HTTP handlers for the gateway."""
+"""Chat-centric HTTP handlers for the gateway.
+
+SECURITY FIX: Added path parameter validation using input_validator.
+
+Changes:
+1. All path parameters {thread_id}, {conversation_id}, {case_id}, {job_id} now validated
+2. Validation prevents injection attacks on chat resources
+"""
 
 from __future__ import annotations
 
@@ -60,6 +67,7 @@ from .http_helpers import (
     _query_dict,
     _read_body,
 )
+from .input_validator import validate_id, ValidationError
 from .role_sets import INTERNAL_WRITE_ROLES, STAFF_OVERRIDE_ROLES
 
 
@@ -697,58 +705,118 @@ def dispatch_chat_rest(
     method: str,
     path: str,
 ) -> tuple[int, dict[str, Any]] | None:
+    """Chat REST 路由分发 - 带路径参数验证
+
+    SECURITY: 所有路径参数先验证格式，防止注入攻击
+    """
+    def _validate_path_id(raw_id: str, field_name: str) -> tuple[str | None, dict[str, Any] | None]:
+        """验证路径参数 ID，返回 (safe_id, error_response)"""
+        try:
+            return validate_id(raw_id, field_name), None
+        except ValidationError as e:
+            return None, {
+                "error": {"code": f"invalid_{field_name}", "message": str(e)},
+                "trace_id": get_trace_id(),
+            }
+
     if path == "/v1/timeline" and method == "GET":
         return rest_timeline(gateway, environ)
+
     match = re.fullmatch(r"/v2/chat/cases/([^/]+)/assistant-layout", path)
     if match and method == "POST":
+        safe_id, error = _validate_path_id(match.group(1), "case_id")
+        if error:
+            return 400, error
         return rest_chat_create_assistant_layout(
             gateway,
             environ,
-            match.group(1),
+            safe_id,
             _parse_json_body(_read_body(environ)),
         )
+
     match = re.fullmatch(r"/v2/chat/cases/([^/]+)/conversations", path)
     if match and method == "GET":
-        return rest_chat_list_case_conversations(gateway, environ, match.group(1))
+        safe_id, error = _validate_path_id(match.group(1), "case_id")
+        if error:
+            return 400, error
+        return rest_chat_list_case_conversations(gateway, environ, safe_id)
+
     match = re.fullmatch(r"/v2/chat/cases/([^/]+)/timeline", path)
     if match and method == "GET":
-        return rest_chat_case_conversation_timeline(gateway, environ, match.group(1))
+        safe_id, error = _validate_path_id(match.group(1), "case_id")
+        if error:
+            return 400, error
+        return rest_chat_case_conversation_timeline(gateway, environ, safe_id)
+
     match = re.fullmatch(r"/v2/chat/conversations/([^/]+)/messages", path)
     if match and method == "POST":
+        safe_id, error = _validate_path_id(match.group(1), "conversation_id")
+        if error:
+            return 400, error
         return rest_chat_post_conversation_message(
             gateway,
             environ,
-            match.group(1),
+            safe_id,
             _parse_json_body(_read_body(environ)),
         )
     if match and method == "GET":
-        return rest_chat_list_conversation_messages(gateway, environ, match.group(1))
+        safe_id, error = _validate_path_id(match.group(1), "conversation_id")
+        if error:
+            return 400, error
+        return rest_chat_list_conversation_messages(gateway, environ, safe_id)
+
     match = re.fullmatch(r"/v2/chat/conversations/([^/]+)", path)
     if match and method == "GET":
-        return rest_chat_get_conversation(gateway, environ, match.group(1))
+        safe_id, error = _validate_path_id(match.group(1), "conversation_id")
+        if error:
+            return 400, error
+        return rest_chat_get_conversation(gateway, environ, safe_id)
+
     if path == "/v1/chat/maintenance/run" and method == "POST":
         return rest_chat_maintenance_run(gateway, environ, _parse_json_body(_read_body(environ)))
+
     if path == "/v1/chat/jobs" and method == "GET":
         return rest_list_chat_jobs(gateway, environ)
+
     match = re.fullmatch(r"/v1/chat/jobs/([^/]+)", path)
     if match and method == "GET":
-        return rest_get_chat_job(gateway, environ, match.group(1))
+        safe_id, error = _validate_path_id(match.group(1), "job_id")
+        if error:
+            return 400, error
+        return rest_get_chat_job(gateway, environ, safe_id)
+
     if path == "/v1/chat/threads" and method == "POST":
         return rest_chat_create_thread(gateway, environ, _parse_json_body(_read_body(environ)))
+
     match = re.fullmatch(r"/v1/chat/threads/([^/]+)/summary", path)
     if match and method == "GET":
-        return rest_chat_get_summary(gateway, environ, match.group(1))
+        safe_id, error = _validate_path_id(match.group(1), "thread_id")
+        if error:
+            return 400, error
+        return rest_chat_get_summary(gateway, environ, safe_id)
+
     match = re.fullmatch(r"/v1/chat/threads/([^/]+)/messages", path)
     if match and method == "POST":
+        safe_id, error = _validate_path_id(match.group(1), "thread_id")
+        if error:
+            return 400, error
         return rest_chat_post_message(
             gateway,
             environ,
-            match.group(1),
+            safe_id,
             _parse_json_body(_read_body(environ)),
         )
     if match and method == "GET":
-        return rest_chat_list_messages(gateway, environ, match.group(1))
+        safe_id, error = _validate_path_id(match.group(1), "thread_id")
+        if error:
+            return 400, error
+        return rest_chat_list_messages(gateway, environ, safe_id)
+
     match = re.fullmatch(r"/v1/chat/threads/([^/]+)", path)
     if match and method == "GET":
-        return rest_chat_get_thread(gateway, environ, match.group(1))
+        safe_id, error = _validate_path_id(match.group(1), "thread_id")
+        if error:
+            return 400, error
+        return rest_chat_get_thread(gateway, environ, safe_id)
+
     return None
