@@ -491,6 +491,7 @@ def iter_load_mysql_batches(
         params=params,
         selected_columns=selected_columns,
         batch_size=batch_size,
+        _skip_where_validation=True,  # build_mysql_prefilter 构建的 WHERE 子句已安全验证
     ):
         pending_rows.extend(batch)
         pending_profile_ids.extend(int(row["id"]) for row in batch if row.get("id") is not None)

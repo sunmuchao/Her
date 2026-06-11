@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>agent_runtime.py 超简单讲解</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+            line-height: 1.8;
+            color: #333;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            font-size: 28px;
+            margin-bottom: 30px;
+            padding: 15px;
+            background: white;
+            border-radius: 10px;
+        }
+
+        .section {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .section-title {
+            font-size: 20px;
+            color: #2c3e50;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #3498db;
+        }
+
+        /* 简单的类比图 */
+        .analogy-box {
+            background: #e8f4f8;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+
+        .analogy-title {
+            font-weight: bold;
+            color: #2980b9;
+            margin-bottom: 10px;
+        }
+
+        /* 流程图 */
+        .flow-box {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding: 15px;
+        }
+
+        .flow-step {
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            border-left: 3px solid #3498db;
+        }
+
+        .flow-step .step-title {
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 5px;
+        }
+
+        .flow-step .step-desc {
+            color: #7f8c8d;
+            font-size: 14px;
+        }
+
+        /* 箭头 */
+        .arrow {
+            text-align: center;
+            color: #3498db;
+            font-size: 20px;
+            padding: 5px;
+        }
+
+        /* 例子 */
+        .example-box {
+            background: #fff9e6;
+            padding: 15px;
+            border-radius: 8px;
+            border: 2px solid #f39c12;
+            margin: 15px 0;
+        }
+
+        .example-title {
+            font-weight: bold;
+            color: #f39c12;
+            margin-bottom: 10px;
+        }
+
+        .example-content {
+            color: #333;
+        }
+
+        .example-user {
+            background: #3498db;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 20px;
+            margin-bottom: 8px;
+            display: inline-block;
+        }
+
+        .example-agent {
+            background: #95a5a6;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 20px;
+            margin-bottom: 8px;
+            display: inline-block;
+        }
+
+        /* 对比 */
+        .compare-box {
+            display: flex;
+            gap: 15px;
+            margin: 15px 0;
+        }
+
+        .compare-item {
+            flex: 1;
+            padding: 15px;
+            border-radius: 8px;
+        }
+
+        .compare-item.old {
+            background: #ffeaa7;
+        }
+
+        .compare-item.new {
+            background: #dfe6e9;
+        }
+
+        .compare-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .compare-list {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .compare-list li {
+            padding: 8px;
+            margin-bottom: 5px;
+            background: rgba(255,255,255,0.5);
+            border-radius: 4px;
+        }
+
+        /* 关键点 */
+        .key-point {
+            background: #e74c3c;
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+
+        .key-point-title {
+            font-weight: bold;
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+
+        /* 总结 */
+        .summary-box {
+            background: #27ae60;
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+
+        .summary-title {
+            font-weight: bold;
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+
+        .summary-list {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .summary-list li {
+            padding: 8px;
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧠 agent_runtime.py 超简单讲解</h1>
+
+        <!-- 一句话解释 -->
+        <div class="section">
+            <h2 class="section-title">一句话解释：这个文件是什么？</h2>
+            <div class="analogy-box">
+                <div class="analogy-title">🎯 简单理解：</div>
+                <div class="analogy-content">
+                    <p style="font-size: 16px; font-weight: bold;">
+                        agent_runtime.py 就是一个"智能红娘助手"的工作系统。<br>
+                        它负责：接收用户请求 → 调用 AI 思考 → 执行工具（搜索候选人） → 返回决策。
+                    </p>
+                    <p style="margin-top: 15px;">
+                        就像你跟红娘说："我想找个同城的男生"，红娘会：<br>
+                        1. 理解你的意思<br>
+                        2. 去数据库搜索符合条件的候选人<br>
+                        3. 把候选人资料给你看<br>
+                        4. 顺便问你："要不要调整条件？"
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 类比 -->
+        <div class="section">
+            <h2 class="section-title">用类比理解：把它比作餐厅服务员</h2>
+            <div class="analogy-box">
+                <div class="analogy-title">🍽️ 类比：餐厅服务员的工作流程</div>
+                <div class="analogy-content">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <tr style="background: #3498db; color: white;">
+                            <th style="padding: 10px; border: 1px solid #ddd;">餐厅服务员</th>
+                            <th style="padding: 10px; border: 1px solid #ddd;">agent_runtime.py</th>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px; border: 1px solid #ddd;">顾客说："我要一份牛肉面"</td>
+                            <td style="padding: 10px; border: 1px solid #ddd;">用户说："我想找个同城的男生"</td>
+                        </tr>
+                        <tr style="background: #f8f9fa;">
+                            <td style="padding: 10px; border: 1px solid #ddd;">服务员理解顾客的意思</td>
+                            <td style="padding: 10px; border: 1px solid #ddd;">Agent（AI）理解用户的意图</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px; border: 1px solid #ddd;">服务员去厨房下单</td>
+                            <td style="padding: 10px; border: 1px solid #ddd;">Agent 调用 search 工具搜索候选人</td>
+                        </tr>
+                        <tr style="background: #f8f9fa;">
+                            <td style="padding: 10px; border: 1px solid #ddd;">厨房做好牛肉面，交给服务员</td>
+                            <td style="padding: 10px; border: 1px solid #ddd;">搜索工具返回候选人数据</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px; border: 1px solid #ddd;">服务员把牛肉面端给顾客</td>
+                            <td style="padding: 10px; border: 1px solid #ddd;">Agent 调用 show_candidates 工具展示候选人</td>
+                        </tr>
+                        <tr style="background: #f8f9fa;">
+                            <td style="padding: 10px; border: 1px solid #ddd;">服务员问："要不要加辣？"</td>
+                            <td style="padding: 10px; border: 1px solid #ddd;">Agent 提供按钮："换一批"、"调整条件"</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 核心流程 -->
+        <div class="section">
+            <h2 class="section-title">核心流程：就像红娘帮你找对象</h2>
+            <div class="flow-box">
+                <div class="flow-step">
+                    <div class="step-title">第1步：接收请求（输入）</div>
+                    <div class="step-desc">
+                        用户说一句话："我想找个同城的男生"<br>
+                        或者用户点击按钮："换一批"<br>
+                        <br>
+                        agent_runtime.py 收到这个请求，准备交给 AI 处理。
+                    </div>
+                </div>
+
+                <div class="arrow">↓</div>
+
+                <div class="flow-step">
+                    <div class="step-title">第2步：AI 思考（理解意图）</div>
+                    <div class="step-desc">
+                        AI（智能红娘）会思考：<br>
+                        - 用户想要什么？<br>
+                        - 应该调用哪个工具？<br>
+                        - 搜索条件是什么？<br>
+                        - 如何回复用户？<br>
+                        <br>
+                        <strong style="color: #e74c3c;">关键点：AI 自己判断，没有硬编码规则</strong>
+                    </div>
+                </div>
+
+                <div class="arrow">↓</div>
+
+                <div class="flow-step">
+                    <div class="step-title">第3步：执行工具（搜索候选人）</div>
+                    <div class="step-desc">
+                        AI 决定调用 search_partner_candidates 工具：<br>
+                        - 参数：同城、男生、年龄范围等<br>
+                        - 工具去数据库搜索<br>
+                        - 返回候选人数据（姓名、年龄、职业、匹配度）<br>
+                        <br>
+                        <strong style="color: #3498db;">工具只做一件事：搜索并返回原始数据</strong>
+                    </div>
+                </div>
+
+                <div class="arrow">↓</div>
+
+                <div class="flow-step">
+                    <div class="step-title">第4步：AI 决策（决定如何回复）</div>
+                    <div class="step-desc">
+                        AI 根据搜索结果，决定：<br>
+                        - 调用 show_candidates 工具（展示候选人）<br>
+                        - 回复内容："这几位我觉得挺合适的"<br>
+                        - 提供按钮："换一批"、"调整条件"<br>
+                        <br>
+                        <strong style="color: #27ae60;">方案A：AI 通过调用工具来表达意图</strong>
+                    </div>
+                </div>
+
+                <div class="arrow">↓</div>
+
+                <div class="flow-step">
+                    <div class="step-title">第5步：返回决策（输出）</div>
+                    <div class="step-desc">
+                        agent_runtime.py 提取 AI 的决策：<br>
+                        - assistant_message："这几位我觉得挺合适的"<br>
+                        - selected_candidates：候选人列表<br>
+                        - suggested_actions：按钮<br>
+                        <br>
+                        返回给 Service 层，更新 session.view，前端渲染。
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 实际例子 -->
+        <div class="section">
+            <h2 class="section-title">实际例子：用户说一句话，系统如何处理？</h2>
+            <div class="example-box">
+                <div class="example-title">💬 用户输入："我想找个同城、本科学历以上的男生"</div>
+                <div class="example-content">
+                    <div class="flow-box" style="padding: 0;">
+                        <div class="flow-step" style="border-left-color: #3498db;">
+                            <div class="step-title">1. agent_runtime.py 收到请求</div>
+                            <div class="step-desc">
+                                Service 层调用：runtime.run_turn(user_message="我想找个同城、本科学历以上的男生")
+                            </div>
+                        </div>
+
+                        <div class="arrow">↓</div>
+
+                        <div class="flow-step" style="border-left-color: #9b59b6;">
+                            <div class="step-title">2. AI（智能红娘）思考</div>
+                            <div class="step-desc">
+                                AI 看到：<br>
+                                - 用户消息："我想找个同城、本科学历以上的男生"<br>
+                                - 用户资料：女、28岁、北京<br>
+                                - 工具列表：search、sync、reply、show<br>
+                                <br>
+                                AI 决定：<br>
+                                - 调用 search_partner_candidates 工具<br>
+                                - 参数：{"city": "北京", "education": "本科以上", "gender": "male"}
+                            </div>
+                        </div>
+
+                        <div class="arrow">↓</div>
+
+                        <div class="flow-step" style="border-left-color: #e67e22;">
+                            <div class="step-title">3. 工具执行</div>
+                            <div class="step-desc">
+                                search_partner_candidates 工具：<br>
+                                - 去数据库搜索符合条件的候选人<br>
+                                - 找到3位候选人：张先生、李先生、王先生<br>
+                                - 返回数据：姓名、年龄、职业、匹配度
+                            </div>
+                        </div>
+
+                        <div class="arrow">↓</div>
+
+                        <div class="flow-step" style="border-left-color: #27ae60;">
+                            <div class="step-title">4. AI 再次思考</div>
+                            <div class="step-desc">
+                                AI 看到搜索结果，决定：<br>
+                                - 调用 show_candidates 工具<br>
+                                - 回复："好的，我帮你找找！这几位我觉得挺合适的"<br>
+                                - 展示候选人：张先生、李先生、王先生<br>
+                                - 提供按钮："换一批"、"调整条件"
+                            </div>
+                        </div>
+
+                        <div class="arrow">↓</div>
+
+                        <div class="flow-step" style="border-left-color: #e74c3c;">
+                            <div class="step-title">5. agent_runtime.py 提取决策</div>
+                            <div class="step-desc">
+                                从 show_candidates 工具参数提取：<br>
+                                - assistant_message："好的，我帮你找找！..."<br>
+                                - selected_candidates：[张先生, 李先生, 王先生]<br>
+                                - suggested_actions：["换一批", "调整条件"]<br>
+                                <br>
+                                返回 DiscoveryRuntimeResult 给 Service 层
+                            </div>
+                        </div>
+
+                        <div class="arrow">↓</div>
+
+                        <div class="flow-step" style="border-left-color: #3498db;">
+                            <div class="step-title">6. 前端渲染</div>
+                            <div class="step-desc">
+                                Service 层更新 session.view：<br>
+                                - 添加 assistant_message<br>
+                                - 添加 result_group（候选人卡片）<br>
+                                - 添加 suggested_actions（按钮）<br>
+                                <br>
+                                前端 React 渲染：<br>
+                                <div style="margin-top: 10px;">
+                                    <div class="example-agent">好的，我帮你找找！这几位我觉得挺合适的：</div>
+                                    <div style="margin-top: 10px; background: white; padding: 10px; border-radius: 5px;">
+                                        张先生 · 28岁 · 软件工程师 · 匹配度 89%<br>
+                                        李先生 · 30岁 · 产品经理 · 匹配度 85%<br>
+                                        王先生 · 32岁 · 金融分析师 · 匹配度 91%
+                                    </div>
+                                    <div style="margin-top: 10px;">
+                                        <button style="padding: 5px 10px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 5px; margin-right: 5px;">换一批</button>
+                                        <button style="padding: 5px 10px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 5px;">调整条件</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 方案A -->
+        <div class="section">
+            <h2 class="section-title">方案A：双工具输出（最关键的设计）</h2>
+            <div class="key-point">
+                <div class="key-point-title">🎯 核心设计：AI 通过调用不同工具来表达意图</div>
+                <div class="key-point-content">
+                    <p style="font-size: 16px;">
+                        不是用规则判断，而是让 AI 自己决定调用哪个工具。
+                    </p>
+                    <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
+                        <tr style="background: rgba(255,255,255,0.2);">
+                            <th style="padding: 10px; border: 1px solid rgba(255,255,255,0.3);">工具名</th>
+                            <th style="padding: 10px; border: 1px solid rgba(255,255,255,0.3);">作用</th>
+                            <th style="padding: 10px; border: 1px solid rgba(255,255,255,0.3);">场景</th>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px; border: 1px solid rgba(255,255,255,0.3);"><strong>reply_to_user</strong></td>
+                            <td style="padding: 10px; border: 1px solid rgba(255,255,255,0.3);">纯对话回复</td>
+                            <td style="padding: 10px; border: 1px solid rgba(255,255,255,0.3);">用户问问题、收集偏好、解释理由</td>
+                        </tr>
+                        <tr style="background: rgba(255,255,255,0.1);">
+                            <td style="padding: 10px; border: 1px solid rgba(255,255,255,0.3);"><strong>show_candidates</strong></td>
+                            <td style="padding: 10px; border: 1px solid rgba(255,255,255,0.3);">展示候选人</td>
+                            <td style="padding: 10px; border: 1px solid rgba(255,255,255,0.3);">搜索后有候选人结果</td>
+                        </tr>
+                    </table>
+                    <p style="margin-top: 15px;">
+                        <strong style="font-size: 16px;">优先级：show > reply</strong><br>
+                        如果 AI 同时调用了两个工具，优先使用 show_candidates（展示候选人更重要）。
+                    </p>
+                </div>
+            </div>
+
+            <div class="compare-box">
+                <div class="compare-item old">
+                    <div class="compare-title" style="color: #e17055;">❌ 旧设计（错误）</div>
+                    <ul class="compare-list">
+                        <li>用关键词判断："介绍一下" → 解释性格</li>
+                        <li>硬编码规则：当 X 时输出 Y</li>
+                        <li>工具返回 instruction（模板）</li>
+                        <li>回复千篇一律</li>
+                    </ul>
+                    <div style="margin-top: 15px; padding: 10px; background: rgba(255,255,255,0.5); border-radius: 5px;">
+                        <strong>例子：</strong><br>
+                        if user_message.includes("介绍一下")：<br>
+                        &nbsp;&nbsp;return "我来介绍一下..."
+                    </div>
+                </div>
+
+                <div class="compare-item new">
+                    <div class="compare-title" style="color: #27ae60;">✅ 新设计（正确）</div>
+                    <ul class="compare-list">
+                        <li>AI 自己判断意图</li>
+                        <li>AI 决定调用哪个工具</li>
+                        <li>工具只返回原始数据</li>
+                        <li>AI 自己决定如何回复</li>
+                    </ul>
+                    <div style="margin-top: 15px; padding: 10px; background: rgba(255,255,255,0.5); border-radius: 5px;">
+                        <strong>例子：</strong><br>
+                        AI 看到用户消息，自己决定：<br>
+                        - 调用 search 工具？<br>
+                        - 调用 reply 工具？<br>
+                        - 调用 show 工具？
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 6个工具 -->
+        <div class="section">
+            <h2 class="section-title">6个工具：就像红娘的6种能力</h2>
+            <div class="analogy-box">
+                <div class="analogy-title">🔧 工具类比</div>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr style="background: #3498db; color: white;">
+                        <th style="padding: 10px; border: 1px solid #ddd;">工具名</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">红娘的能力</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">作用</th>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>search_partner_candidates</strong></td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">去档案库找候选人</td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">搜索符合条件的候选人</td>
+                    </tr>
+                    <tr style="background: #f8f9fa;">
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>sync_requester_persona_memory</strong></td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">记下你的择偶偏好</td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">同步长期偏好到记忆库</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>propose_requester_profile_update</strong></td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">帮你更新资料</td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">提议更新用户资料（需确认）</td>
+                    </tr>
+                    <tr style="background: #f8f9fa;">
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>create_saved_search_subscription</strong></td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">帮你持续留意</td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">订阅，有新候选人时通知</td>
+                    </tr>
+                    <tr style="background: #27ae60; color: white;">
+                        <td style="padding: 10px; border: 1px solid rgba(255,255,255,0.3);"><strong>reply_to_user</strong></td>
+                        <td style="padding: 10px; border: 1px solid rgba(255,255,255,0.3);">跟你聊天</td>
+                        <td style="padding: 10px; border: 1px solid rgba(255,255,255,0.3);">纯对话回复，不展示候选人</td>
+                    </tr>
+                    <tr style="background: #27ae60; color: white;">
+                        <td style="padding: 10px; border: 1px solid rgba(255,255,255,0.3);"><strong>show_candidates</strong></td>
+                        <td style="padding: 10px; border: 1px solid rgba(255,255,255,0.3);">给你看候选人资料</td>
+                        <td style="padding: 10px; border: 1px solid rgba(255,255,255,0.3);">展示候选人卡片</td>
+                    </tr>
+                </table>
+                <p style="margin-top: 15px; color: #e74c3c; font-weight: bold;">
+                    重要：工具只做一件事，返回原始数据，不做业务判断。
+                </p>
+            </div>
+        </div>
+
+        <!-- 决策提取 -->
+        <div class="section">
+            <h2 class="section-title">决策提取：从工具参数提取AI的意图</h2>
+            <div class="analogy-box">
+                <div class="analogy-title">🎯 简单理解</div>
+                <div class="analogy-content">
+                    <p style="font-size: 16px;">
+                        AI 调用工具时，会传参数。agent_runtime.py 从参数中提取AI的意图。
+                    </p>
+                    <div style="margin-top: 15px; padding: 15px; background: white; border-radius: 5px;">
+                        <strong>例子：</strong><br>
+                        AI 调用 show_candidates 工具：<br>
+                        <code style="background: #f8f9fa; padding: 5px 10px; border-radius: 3px; display: block; margin: 10px 0;">
+                            show_candidates(<br>
+                            &nbsp;&nbsp;message="好的，我帮你找找！",<br>
+                            &nbsp;&nbsp;candidate_ids=[123, 456, 789],<br>
+                            &nbsp;&nbsp;title="符合条件的候选人"<br>
+                            )
+                        </code>
+                        agent_runtime.py 提取这些参数，转换成：<br>
+                        <code style="background: #f8f9fa; padding: 5px 10px; border-radius: 3px; display: block; margin: 10px 0;">
+                            DiscoveryDecision(<br>
+                            &nbsp;&nbsp;assistant_message="好的，我帮你找找！",<br>
+                            &nbsp;&nbsp;selected_candidates=[候选人123, 候选人456, 候选人789],<br>
+                            &nbsp;&nbsp;result_group_title="符合条件的候选人"<br>
+                            )
+                        </code>
+                    </div>
+                    <p style="margin-top: 15px;">
+                        <strong style="color: #e74c3c;">这就是方案A的核心：从工具参数提取决策</strong>
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 总结 -->
+        <div class="section">
+            <h2 class="section-title">一句话总结：agent_runtime.py 的核心逻辑</h2>
+            <div class="summary-box">
+                <div class="summary-title">🎯 核心逻辑（5句话）</div>
+                <ul class="summary-list">
+                    <li><strong style="font-size: 16px;">1. 接收请求</strong>：Service 层调用 runtime.run_turn()，传入用户消息</li>
+                    <li><strong style="font-size: 16px;">2. AI 思考</strong>：AI（智能红娘）理解用户意图，决定调用哪些工具</li>
+                    <li><strong style="font-size: 16px;">3. 执行工具</strong>：工具执行操作（搜索、同步记忆），返回原始数据</li>
+                    <li><strong style="font-size: 16px;">4. AI 决策</strong>：AI 调用 reply_to_user 或 show_candidates 工具来表达意图</li>
+                    <li><strong style="font-size: 16px;">5. 提取决策</strong>：从工具参数提取决策，返回给 Service 层</li>
+                </ul>
+            </div>
+
+            <div class="key-point" style="background: #27ae60;">
+                <div class="key-point-title">✅ 设计理念（Agent Native）</div>
+                <div class="key-point-content">
+                    <p style="font-size: 16px;">
+                        <strong>核心：AI 是决策大脑，工具是执行器</strong><br>
+                        - AI 自己判断用户意图（不用硬编码规则）<br>
+                        - 工具只做一件事（返回原始数据）<br>
+                        - AI 通过调用工具来表达意图（方案A）<br>
+                        - agent_runtime.py 从工具参数提取决策
+                    </p>
+                </div>
+            </div>
+
+            <div class="analogy-box" style="background: #fff9e6;">
+                <div class="analogy-title">💡 最后的类比</div>
+                <div class="analogy-content">
+                    <p style="font-size: 16px;">
+                        <strong>把 agent_runtime.py 比作"智能红娘的工作系统"</strong><br>
+                        <br>
+                        用户说一句话 → 红娘理解意图 → 红娘去档案库找候选人 → 红娘把候选人资料给用户看 → 红娘问用户"要不要调整条件？"<br>
+                        <br>
+                        <strong style="color: #e74c3c;">关键：红娘（AI）自己判断，不用硬编码规则。</strong>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

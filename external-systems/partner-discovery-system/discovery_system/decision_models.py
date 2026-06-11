@@ -132,6 +132,59 @@ class DiscoveryRejectionFeedbackPayloadModel(BaseModel):
     feedback_type: str = Field(default="", description="反馈类型，如occupation_mismatch、lifestyle_mismatch等")
 
 
+# ============================================================================
+# 方案A：新增两个专用工具的 Payload Models
+# ============================================================================
+
+
+class ReplyPayloadModel(BaseModel):
+    """
+    reply_to_user 工具的参数模型。
+
+    方案A：简化参数结构，无需 JSON 字符串。
+    """
+    kind: Literal["reply"]
+    phase: DiscoveryPhase = Field(
+        default="collecting_preferences",
+        description="当前阶段: collecting_preferences/searching/no_result"
+    )
+    assistant_message: str = Field(
+        description="回复内容，口语化、简短"
+    )
+    suggested_actions: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="建议按钮列表，每个包含 label/style/kind"
+    )
+
+
+class ShowCandidatesPayloadModel(BaseModel):
+    """
+    show_candidates 工具的参数模型。
+
+    方案A：简化参数结构，candidate_ids 为简单列表而非 JSON 对象。
+    """
+    kind: Literal["show"]
+    phase: DiscoveryPhase = Field(
+        default="results_shown",
+        description="当前阶段: results_shown/no_result"
+    )
+    assistant_message: str = Field(
+        description="介绍候选人的消息，口语化"
+    )
+    result_group_title: str | None = Field(
+        default=None,
+        description="候选人分组标题"
+    )
+    criteria_labels: list[str] = Field(
+        default_factory=list,
+        description="筛选条件标签"
+    )
+    selected_candidates: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="候选人列表，每个包含 profile_id 和 reason_summary"
+    )
+
+
 DiscoveryActionPayloadModel = Annotated[
     Union[
         DiscoveryStarterPromptPayloadModel,
@@ -147,6 +200,10 @@ DiscoveryActionPayloadModel = Annotated[
     ],
     Field(discriminator="kind"),
 ]
+
+
+# 方案A：工具 Payload 联合类型（用于 decision 提取）
+ToolPayloadModel = Union[ReplyPayloadModel, ShowCandidatesPayloadModel]
 
 
 class DiscoveryActionSuggestionModel(BaseModel):
@@ -256,6 +313,81 @@ def to_decision(model: DiscoveryDecisionModel) -> DiscoveryDecision:
     )
 
 
+def _repair_action_payload(raw_payload: dict[str, Any]) -> dict[str, Any]:
+    """
+    修复模型返回的不完整 semantic_payload。
+
+    常见问题：
+    - followup_prompt 缺少 slot
+    - starter_prompt 缺少 slot
+    - 包含无效字段（如 target_profile_id）
+
+    修复策略：补默认值 + 移除无效字段
+    """
+    kind = str(raw_payload.get("kind") or "").strip()
+    if not kind:
+        return {"kind": "show_more_candidates"}  # fallback
+
+    # followup_prompt 缺 slot → 补默认值
+    if kind == "followup_prompt":
+        slot = raw_payload.get("slot")
+        if slot not in ("age_range", "city_intent"):
+            # 尝试从上下文推断：如果提到年龄用 age_range，否则用 city_intent
+            # 无法推断时默认 age_range
+            return {"kind": "followup_prompt", "slot": "age_range"}
+        return {"kind": "followup_prompt", "slot": slot}
+
+    # starter_prompt 缺 slot → 补默认值
+    if kind == "starter_prompt":
+        slot = raw_payload.get("slot")
+        if slot not in ("city_and_age", "top_preferences"):
+            return {"kind": "starter_prompt", "slot": "city_and_age"}
+        return {"kind": "starter_prompt", "slot": slot}
+
+    # rejection_feedback 可选 feedback_type
+    if kind == "rejection_feedback":
+        feedback_type = str(raw_payload.get("feedback_type") or "").strip()
+        return {"kind": "rejection_feedback", "feedback_type": feedback_type}
+
+    # start_assessment 可选 assessment_type
+    if kind == "start_assessment":
+        assessment_type = raw_payload.get("assessment_type")
+        if assessment_type not in ("mbti", "values", "attachment"):
+            assessment_type = "mbti"
+        return {"kind": "start_assessment", "assessment_type": assessment_type}
+
+    # suggested: Agent 自主判断意图，保持原样返回
+    if kind == "suggested":
+        return {"kind": "suggested"}
+
+    # 其他 kind 直接返回（只保留 kind 字段）
+    return {"kind": kind}
+
+
+def repair_suggested_actions(raw_actions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """
+    修复模型返回的 suggested_actions 列表。
+
+    对每个 action 的 semantic_payload 应用修复逻辑。
+    """
+    repaired: list[dict[str, Any]] = []
+    for action in raw_actions[:3]:  # 最多3个
+        label = str(action.get("label") or "").strip()
+        if not label:
+            continue
+        style = str(action.get("style") or "secondary").strip()
+        if style not in ("primary", "secondary", "ghost"):
+            style = "secondary"
+        raw_payload = dict(action.get("semantic_payload") or {})
+        repaired_payload = _repair_action_payload(raw_payload)
+        repaired.append({
+            "label": label,
+            "style": style,
+            "semantic_payload": repaired_payload,
+        })
+    return repaired
+
+
 def decision_payload_to_decision(payload: DecisionPayloadModel) -> DiscoveryDecision:
     """从工具参数中的 DecisionPayloadModel 转换为 DiscoveryDecision"""
     return to_decision(DiscoveryDecisionModel(
@@ -266,6 +398,107 @@ def decision_payload_to_decision(payload: DecisionPayloadModel) -> DiscoveryDeci
         result_group_title=payload.result_group_title,
         selected_candidates=payload.selected_candidates,
     ))
+
+
+def decision_payload_to_decision_with_repair(raw_payload: dict[str, Any]) -> DiscoveryDecision:
+    """
+    从原始 payload dict 转换为 DiscoveryDecision，带修复逻辑。
+
+    方案A：支持 reply 和 show 两种 payload 类型。
+    当模型返回的数据不符合 schema 时，尝试修复而非直接失败。
+    """
+    # 方案A：根据 kind 字段判断 payload 类型
+    kind = str(raw_payload.get("kind") or "").strip()
+
+    # 方案A新增：reply payload（纯回复，无候选人）
+    if kind == "reply":
+        raw_actions = list(raw_payload.get("suggested_actions") or [])
+        repaired_actions = repair_suggested_actions(raw_actions)
+        return DiscoveryDecision(
+            phase=str(raw_payload.get("phase") or "collecting_preferences"),
+            assistant_message=str(raw_payload.get("assistant_message") or ""),
+            criteria_labels=[str(l).strip() for l in list(raw_payload.get("criteria_labels") or []) if str(l or "").strip()],
+            suggested_actions=[
+                DiscoveryActionSuggestion(
+                    label=action["label"],
+                    style=action["style"],
+                    semantic_payload=action["semantic_payload"],
+                )
+                for action in repaired_actions
+            ],
+            result_group_title=None,
+            selected_candidates=[],
+        )
+
+    # 方案A新增：show payload（展示候选人）
+    if kind == "show":
+        phase = str(raw_payload.get("phase") or "results_shown")
+        # 如果有候选人，强制 phase 为 results_shown
+        selected_candidates = list(raw_payload.get("selected_candidates") or [])
+        if selected_candidates:
+            phase = "results_shown"
+        elif phase == "results_shown":
+            phase = "no_result"
+
+        return DiscoveryDecision(
+            phase=phase,
+            assistant_message=str(raw_payload.get("assistant_message") or ""),
+            criteria_labels=[str(l).strip() for l in list(raw_payload.get("criteria_labels") or []) if str(l or "").strip()],
+            suggested_actions=[],  # show_candidates 不需要 suggested_actions
+            result_group_title=str(raw_payload.get("result_group_title") or "").strip() or None,
+            selected_candidates=[
+                DiscoveryCandidateSelection(
+                    profile_id=int(c.get("profile_id") or 0),
+                    reason_summary=str(c.get("reason_summary") or "").strip(),
+                )
+                for c in selected_candidates
+                if int(c.get("profile_id") or 0) > 0
+            ],
+        )
+
+    # 方案C兼容：无 kind 字段时，使用原有逻辑
+    raw_actions = list(raw_payload.get("suggested_actions") or [])
+    repaired_actions = repair_suggested_actions(raw_actions)
+
+    # 构建 DecisionPayloadModel（允许验证失败时继续）
+    try:
+        payload = DecisionPayloadModel.model_validate({
+            "phase": raw_payload.get("phase", "collecting_preferences"),
+            "assistant_message": raw_payload.get("assistant_message", ""),
+            "criteria_labels": raw_payload.get("criteria_labels", []),
+            "suggested_actions": repaired_actions,
+            "result_group_title": raw_payload.get("result_group_title"),
+            "selected_candidates": raw_payload.get("selected_candidates", []),
+        })
+        return decision_payload_to_decision(payload)
+    except Exception:
+        # 验证仍然失败 → 手动构建 DiscoveryDecision
+        return DiscoveryDecision(
+            phase=str(raw_payload.get("phase") or "collecting_preferences"),
+            assistant_message=str(raw_payload.get("assistant_message") or ""),
+            criteria_labels=[str(l).strip() for l in list(raw_payload.get("criteria_labels") or []) if str(l or "").strip()],
+            suggested_actions=[
+                DiscoveryActionSuggestion(
+                    label=action["label"],
+                    style=action["style"],
+                    semantic_payload=action["semantic_payload"],
+                )
+                for action in repaired_actions
+            ],
+            result_group_title=str(raw_payload.get("result_group_title") or "").strip() or None,
+            selected_candidates=[
+                DiscoveryCandidateSelection(
+                    profile_id=int(c.get("profile_id") or 0),
+                    reason_summary=str(c.get("reason_summary") or "").strip(),
+                )
+                for c in list(raw_payload.get("selected_candidates") or [])
+                if int(c.get("profile_id") or 0) > 0
+            ],
+        )
+
+
+# 保留原函数名作为别名（向后兼容）
+_decision_payload_to_decision_with_repair = decision_payload_to_decision_with_repair
 
 
 def validate_decision_output(raw_output: Any) -> DiscoveryDecision:
@@ -311,6 +544,7 @@ __all__ = [
     "DiscoveryShowMoreCandidatesPayloadModel",
     "DiscoveryStartAssessmentPayloadModel",
     "DiscoveryStarterPromptPayloadModel",
+    "DiscoveryRejectionFeedbackPayloadModel",
     "DiscoveryToolCall",
     "VALID_ACTION_STYLES",
     "VALID_FOLLOWUP_PROMPT_SLOTS",
@@ -318,6 +552,8 @@ __all__ = [
     "VALID_STARTER_PROMPT_SLOTS",
     "dump_action_payload",
     "decision_payload_to_decision",  # 方案C新增
+    "decision_payload_to_decision_with_repair",  # 带修复逻辑
+    "repair_suggested_actions",  # 新增
     "recover_decision_from_exception",
     "to_decision",
     "validate_decision_output",

@@ -1,5 +1,5 @@
 import { gatewayJson } from '@/lib/api/client'
-import type { DiscoverySessionResponse } from '@/lib/types/discovery'
+import type { DiscoverySessionResponse, DiscoverySessionListResponse } from '@/lib/types/discovery'
 
 export async function createDiscoverySession(params: { profileId: number }) {
   return gatewayJson<DiscoverySessionResponse>('/v1/discovery/sessions', {
@@ -59,5 +59,15 @@ export async function expressDiscoveryCandidateInterest(params: {
   }>(
     `/v1/discovery/sessions/${encodeURIComponent(params.sessionId)}/candidates/${encodeURIComponent(String(params.candidateId))}/express-interest`,
     { method: 'POST', body: JSON.stringify({}) },
+  )
+}
+
+export async function fetchDiscoverySessionList(params: {
+  profileId: number
+  limit?: number
+}) {
+  const limitParam = params.limit ?? 20
+  return gatewayJson<DiscoverySessionListResponse>(
+    `/v1/discovery/sessions?profile_id=${encodeURIComponent(params.profileId)}&limit=${encodeURIComponent(limitParam)}`,
   )
 }

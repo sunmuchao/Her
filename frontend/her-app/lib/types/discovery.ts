@@ -126,3 +126,18 @@ export type DiscoverySessionResponse = {
   session?: { session_id?: string }
   view?: DiscoveryView
 }
+
+export type DiscoverySessionSummary = {
+  session_id?: string
+  phase?: string
+  status?: string
+  created_at?: string
+  updated_at?: string
+  last_message_preview?: string
+  candidate_count?: number
+}
+
+export type DiscoverySessionListResponse = {
+  sessions?: DiscoverySessionSummary[]
+  total?: number
+}

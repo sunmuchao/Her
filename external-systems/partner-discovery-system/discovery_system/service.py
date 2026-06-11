@@ -24,7 +24,6 @@ from .agent_runtime import (
     DiscoveryRuntimeResult,
     DiscoveryToolCall,
     create_default_discovery_agent_runtime,
-    parse_rejection_feedback_text,
 )
 from .service_session_open import (
     PROFILE_FIRST_SEARCH_LIMIT,
@@ -56,7 +55,7 @@ from .service_integrations import (
 )
 from match_domain.profile_write_guard import is_search_criteria_key, merge_working_criteria
 from partner_search.personality_traits_reader import load_traits_for_discovery
-from .storage import InMemoryDiscoveryStorage, MySQLDiscoveryStorage, StoredSearchRun, StoredSession
+from .storage import InMemoryDiscoveryStorage, MySQLDiscoveryStorage, StoredSearchRun, StoredSession, StoredViewSnapshot
 from .service_context import (
     DiscoveryServiceContextRuntime,
     build_last_search_summary as _build_last_search_summary,
@@ -78,15 +77,10 @@ from .view_models import (
     user_message,
 )
 
-_BATCH_REFRESH_PATTERNS = (
-    "换一批",
-    "重新找",
-    "再看几位",
-    "再给我看看",
-    "看看更多",
-    "看更多",
-    "换一组",
-)
+# ✅ Agent Native：移除硬编码关键词列表
+# Agent 根据 Prompt 自主判断用户意图（如"换一批"、"看看更多"等）
+# 不再通过硬编码关键词列表匹配意图
+# 参考：Agent Native 开发实践规范 - 反模式：触发词映射表
 
 
 class DiscoveryServiceError(Exception):
@@ -150,28 +144,14 @@ class DiscoveryProfileUpdateConflictError(DiscoveryServiceError):
     status_code = 409
 
 
-def _is_personality_explanation_request(text: str | None) -> bool:
-    value = str(text or "").strip()
-    if not value:
-        return False
-    keywords = ("为什么", "测评", "MBTI", "依恋", "价值观", "合拍", "性格")
-    return "不要重新搜索" in value or any(keyword in value for keyword in keywords)
-
-
-def _pick_existing_candidate(cards: list[dict[str, Any]], user_message_text: str | None) -> dict[str, Any] | None:
-    if not cards:
-        return None
-    text = str(user_message_text or "")
-    markers = (("第一位", 0), ("第一个", 0), ("1", 0), ("第二位", 1), ("第二个", 1), ("2", 1), ("第三位", 2), ("第三个", 2), ("3", 2))
-    for marker, index in markers:
-        if marker in text and index < len(cards):
-            return dict(cards[index] or {})
-    for card in cards:
-        title = str(card.get("title") or "").strip()
-        name = re.split(r"\s+", title, maxsplit=1)[0] if title else ""
-        if name and name in text:
-            return dict(card)
-    return dict(cards[0] or {})
+# ✅ Agent Native：移除硬编码关键词判断
+# Agent 根据 Prompt 自主理解用户意图（如"为什么推荐第一位"、"测评角度解释一下"）
+# ✅ Agent Native：完全移除硬编码关键词判断
+# _pick_existing_candidate 方法已删除
+# Agent 根据 user_message 自主识别"第一位"、"第二位"等位置表达
+# 不再提供 fallback，全靠 AI 理解
+#
+# 参考：Agent Native 开发实践规范 - 反模式：触发词映射表
 
 
 def _shared_values(self_traits: dict[str, Any], candidate_traits: dict[str, Any]) -> list[str]:
@@ -189,24 +169,26 @@ def _candidate_first_name(card: dict[str, Any]) -> str:
     return re.split(r"\s+", title, maxsplit=1)[0]
 
 
-def _looks_like_basic_reason_summary(text: str | None) -> bool:
-    value = str(text or "").strip()
-    if not value:
-        return True
-    personality_keywords = ("MBTI", "依恋", "价值观", "同频", "安全型", "测评", "节奏")
-    if any(keyword in value for keyword in personality_keywords):
-        return False
-    generic_keywords = ("城市", "年龄", "关系目标", "工作", "状态", "学历", "认证")
-    return any(keyword in value for keyword in generic_keywords)
+# ✅ Agent Native：完全移除硬编码关键词判断
+# _looks_like_basic_reason_summary 方法已删除
+# Agent 自主判断 reason_summary 是否足够详细
+#
+# 参考：Agent Native 开发实践规范 - 反模式：触发词映射表
 
 
 def _effective_reason_summary(candidate: dict[str, Any], selection_reason: str | None) -> str:
+    """
+    获取有效的推荐理由摘要。
+
+    ✅ Agent Native：不再通过关键词判断是否需要 personality_summary
+    直接返回 selection_reason（如果有的话），否则返回 personality_summary
+    Agent 自主决定是否需要更详细的解释
+    """
     reasoning = dict(candidate.get("personality_reasoning") or {})
     personality_summary = str(reasoning.get("summary") or "").strip()
     selected_summary = str(selection_reason or "").strip()
-    if personality_summary and _looks_like_basic_reason_summary(selected_summary):
-        return personality_summary
-    return selected_summary
+    # 优先返回 selection_reason（Agent 自主判断是否足够）
+    return selected_summary if selected_summary else personality_summary
 
 
 @dataclass
@@ -327,7 +309,6 @@ class DiscoveryService:
         if user_message_text is not None and user_message_text.strip():
             text = user_message_text.strip()
             normalized_user_message = text
-            parsed_feedback = self._parse_rejection_feedback_from_text(session, text)
             new_items.append(
                 user_message(
                     self.storage.next_item_id("msg-u"),
@@ -335,38 +316,15 @@ class DiscoveryService:
                     created_at=current,
                 )
             )
-            if self._should_prompt_for_batch_refresh_feedback(session, user_message_text=text):
-                runtime_result = self._build_batch_refresh_prompt_result(run_input, session=session)
-            elif self._should_force_rejection_feedback_from_text(session, parsed_feedback):
-                runtime_result = self._force_rejection_feedback_turn(
-                    session,
-                    run_input=run_input,
-                    action_context={
-                        "label": text,
-                        "semantic_payload": {
-                            "kind": "rejection_feedback",
-                            "feedback_type": str(parsed_feedback.get("feedback_type") or "").strip(),
-                            "feedback_text": text,
-                            "search_criteria_patch": dict(parsed_feedback.get("search_criteria_patch") or {}),
-                        },
-                    },
-                    now=current,
-                )
-            else:
-                runtime_result = self.runtime.run_turn(
-                    run_input,
-                    user_message=text,
-                )
-            fallback_decision = self._build_personality_explanation_decision(
-                session,
-                user_message_text=text,
+
+            # ✅ Agent Native：完全移除 awaiting_rejection_feedback 状态硬编码分支
+            # Agent 根据 state.awaiting_rejection_feedback 自主判断是否需要处理反馈
+            # 不再通过代码强制调用 _force_rejection_feedback_turn
+            # 统一走 Agent Runtime，让 Agent 自己理解用户意图
+            runtime_result = self.runtime.run_turn(
+                run_input,
+                user_message=text,
             )
-            if (
-                fallback_decision is not None
-                and runtime_result.search_response is None
-                and runtime_result.decision.phase == "collecting_preferences"
-            ):
-                runtime_result = DiscoveryRuntimeResult(decision=fallback_decision)
         else:
             action = self.storage.get_action(session_id, str(action_id or "").strip())
             if action is None:
@@ -384,33 +342,33 @@ class DiscoveryService:
             self.storage.mark_action_consumed(action.action_id, current)
             request_kind = "action_click"
             consumed_action_id = action.action_id
+
+            # ✅ 新增：把用户点击的按钮作为一条消息添加到timeline
+            # 这样用户可以看到自己点击了什么按钮
+            new_items.append(
+                user_message(
+                    self.storage.next_item_id("msg-u"),
+                    f"[{action.label}]",  # 显示为按钮文本，如 "[换一批]"
+                    created_at=current,
+                )
+            )
+
             action_context = {
                 "label": action.label,
                 "semantic_payload": deepcopy(action.semantic_payload),
             }
-            action_kind = str(action_context["semantic_payload"].get("kind") or "").strip()
-            if action_kind == "show_more_candidates":
-                runtime_result = self._build_batch_refresh_prompt_result(run_input, session=session)
-            elif action_kind == "rejection_feedback":
-                runtime_result = self._force_rejection_feedback_turn(
-                    session,
-                    run_input=run_input,
-                    action_context=action_context,
-                    now=current,
-                )
-            else:
-                runtime_result = self.runtime.run_turn(
-                    run_input,
-                    action_context=action_context,
-                )
+
+            # ✅ Agent Native：完全移除 action_kind 硬编码分支
+            # 所有按钮点击统一走 Agent Runtime
+            # Agent 根据 action_context 自主理解按钮意图并编排工作流
+            runtime_result = self.runtime.run_turn(
+                run_input,
+                action_context=action_context,
+            )
+
 
         session.view["timeline"] = list(session.view.get("timeline") or []) + new_items
         search_run_id = self._apply_runtime_result(session, runtime_result, now=current)
-        self._update_rejection_feedback_waiting_state(
-            session,
-            user_message_text=normalized_user_message,
-            runtime_result=runtime_result,
-        )
         self.storage.save_session(session)
         turn_id = self.storage.create_turn(
             session_id=session.session_id,
@@ -484,6 +442,53 @@ class DiscoveryService:
             profile_id=session.profile_id,
         )
         return self._session_payload(session)
+
+    def list_sessions(
+        self,
+        profile_id: int,
+        limit: int = 20,
+    ) -> dict[str, Any]:
+        """返回用户的 Discovery 会话列表。"""
+        sessions = self.storage.list_sessions_by_profile_id(
+            profile_id=profile_id,
+            limit=limit,
+            status=None,  # 返回所有状态的会话
+        )
+        summaries: list[dict[str, Any]] = []
+        for session in sessions:
+            # 从 timeline 中提取最后一条消息摘要
+            timeline = list(session.view.get("timeline") or [])
+            last_message_preview = None
+            for item in reversed(timeline):
+                if item.get("item_type") == "assistant_message":
+                    last_message_preview = str(item.get("body") or "")[:100]
+                    break
+                elif item.get("item_type") == "result_group":
+                    card_count = len(list(item.get("cards") or []))
+                    last_message_preview = f"推荐了 {card_count} 位候选人"
+                    break
+
+            # 统计候选人数量
+            candidate_count = 0
+            for item in timeline:
+                if item.get("item_type") == "result_group":
+                    candidate_count += len(list(item.get("cards") or []))
+
+            summaries.append({
+                "session_id": session.session_id,
+                "phase": session.phase,
+                "status": session.status,
+                "created_at": session.created_at.isoformat(),
+                "updated_at": session.updated_at.isoformat(),
+                "last_message_preview": last_message_preview,
+                "candidate_count": candidate_count,
+            })
+
+        self._increment_metric("session_list_queries")
+        return {
+            "sessions": summaries,
+            "total": len(summaries),
+        }
 
     def get_observability_snapshot(self) -> dict[str, Any]:
         return {
@@ -786,9 +791,6 @@ class DiscoveryService:
             sync_requester_persona_memory=_sync_requester_persona_memory,
             propose_requester_profile_update=_propose_requester_profile_update,
             create_saved_search_subscription_from_last_search=_create_saved_search_subscription_from_last_search,
-            # 新增：反馈收集工具
-            submit_rejection_feedback=self._bind_submit_rejection_feedback(session),
-            get_feedback_options=self._bind_get_feedback_options(session),
             tool_call_buffer=tool_call_buffer,
             agent_session=self._agent_session_for(session.session_id),
         )
@@ -834,6 +836,7 @@ class DiscoveryService:
         decision = self._coerce_search_failure_decision(
             runtime_result.decision,
             runtime_result.search_response,
+            session=session,  # 新增：传入session用于检测追问场景
         )
         assistant_body = decision.assistant_message
         if decision.criteria_labels:
@@ -859,15 +862,32 @@ class DiscoveryService:
             if proactive_blurb and proactive_blurb not in assistant_body:
                 assistant_body = f"{assistant_body} {proactive_blurb}".strip()
         elif decision.phase == "results_shown":
-            rendered_cards = self._reuse_existing_result_cards(session, decision=decision)
-            if not rendered_cards:
-                decision = DiscoveryDecision(
-                    phase="collecting_preferences",
-                    assistant_message="我这轮还没真正跑出候选人卡片，你再发一次，我马上重新给你筛。",
-                    criteria_labels=list(decision.criteria_labels),
-                    suggested_actions=[],
-                )
-                assistant_body = decision.assistant_message
+            # ✅ Agent Native：区分 reply_to_user 和 show_candidates
+            # - reply_to_user（对话）：result_group_title 为 None
+            #   - 如果 selected_candidates 有值：带上指定的候选人卡片（用户询问特定候选人）
+            #   - 如果 selected_candidates 为空：不带卡片（纯对话）
+            # - show_candidates（展示）：result_group_title 有值，应该带上候选人卡片
+            if decision.result_group_title is None:
+                # AI 只是想对话，根据 selected_candidates 决定是否带卡片
+                if decision.selected_candidates:
+                    # 用户询问特定候选人，带上指定的卡片
+                    rendered_cards = self._reuse_existing_result_cards(session, decision=decision)
+                else:
+                    # 纯对话，不带卡片，使用 AI 的回复内容
+                    rendered_cards = []
+                    # 不触发 fallback，直接使用 decision.assistant_message
+            else:
+                # AI 想展示候选人，复用已有卡片
+                rendered_cards = self._reuse_existing_result_cards(session, decision=decision)
+                # 只有在"想展示但没卡片"时才触发 fallback
+                if not rendered_cards:
+                    decision = DiscoveryDecision(
+                        phase="collecting_preferences",
+                        assistant_message="我这轮还没真正跑出候选人卡片，你再发一次，我马上重新给你筛。",
+                        criteria_labels=list(decision.criteria_labels),
+                        suggested_actions=[],
+                    )
+                    assistant_body = decision.assistant_message
         session.view["timeline"] = list(session.view.get("timeline") or []) + [
             assistant_message(
                 self.storage.next_item_id("msg-a"),
@@ -900,327 +920,25 @@ class DiscoveryService:
         session.state["phase"] = session.phase
         return search_run_id
 
-    def _force_rejection_feedback_turn(
-        self,
-        session: StoredSession,
-        *,
-        run_input: DiscoveryRunInput,
-        action_context: dict[str, Any],
-        now: datetime,
-    ) -> DiscoveryRuntimeResult:
-        payload = dict(action_context.get("semantic_payload") or {})
-        feedback_type = str(payload.get("feedback_type") or "").strip()
-        feedback_text = str(payload.get("feedback_text") or action_context.get("label") or "这批先换一下").strip()
-        criteria_patch = dict(payload.get("search_criteria_patch") or {})
+    # ============================================================================
+    # 遗留方法已删除（Agent Native 重构）
+    # ============================================================================
+    # _force_rejection_feedback_turn: 不再需要，Agent 自主处理反馈
+    # _build_simple_feedback_reply: 硬编码回复模板，Agent 通过 reply_to_user 自主生成
+    # _should_force_rejection_feedback_from_text: 不再需要，Agent 自主判断意图
+    # _feedback_search_limit: 不再需要，Agent 自主决定搜索数量
+    # _feedback_search_override: 不再需要，Agent 自主调整搜索条件
+    # _dedupe_feedback_search_results: 不再需要，Agent 自主处理去重
+    # ============================================================================
 
-        if feedback_type == "skip_feedback":
-            feedback_result = self.skip_rejection_feedback(session_id=session.session_id, now=now)
-            self._append_tool_call(
-                run_input.tool_call_buffer,
-                "submit_rejection_feedback",
-                {
-                    "feedback_text": feedback_text,
-                    "feedback_type": feedback_type,
-                    "is_secondary": False,
-                },
-                feedback_result,
-                status="succeeded" if feedback_result.get("success") else "failed",
-            )
-        else:
-            feedback_result = run_input.submit_rejection_feedback(
-                feedback_text=feedback_text,
-                feedback_type=feedback_type or None,
-                criteria_patch=criteria_patch,
-                feedback_detail=None,
-                is_secondary=False,
-            )
-            self._append_tool_call(
-                run_input.tool_call_buffer,
-                "submit_rejection_feedback",
-                {
-                    "feedback_text": feedback_text,
-                    "feedback_type": feedback_type or None,
-                    "criteria_patch": deepcopy(criteria_patch),
-                    "is_secondary": False,
-                },
-                feedback_result,
-                status="succeeded" if feedback_result.get("success") else "failed",
-            )
+    # ✅ Agent Native：移除硬编码追问判断逻辑
+    # Agent 根据 Prompt 中的追问原则自主判断追问时机
+    # 参考：DISCOVERY_AGENT_SOUL.md "追问时机判断"部分
+    # Agent 会根据对话上下文、用户性格、历史偏好自主决定是否追问
+    # 不再通过硬编码关键词判断意图
 
-        refreshed_session = self.storage.get_session(session.session_id)
-        if refreshed_session is not None:
-            session.state.update(deepcopy(refreshed_session.state))
-
-        criteria_override = self._feedback_search_override(
-            session,
-            feedback_type=feedback_type,
-            action_context=action_context,
-        )
-        limit = self._feedback_search_limit(session)
-        search_response = run_input.search_partner_candidates(criteria_override, limit)
-        prepared_response = self._dedupe_feedback_search_results(session, search_response)
-        request_meta = dict(prepared_response.get("request_meta") or {})
-        criteria_labels = criteria_labels_from_search_criteria(dict(request_meta.get("criteria") or {}))
-        has_results = bool(prepared_response.get("has_match")) and bool(prepared_response.get("results"))
-
-        return DiscoveryRuntimeResult(
-            decision=DiscoveryDecision(
-                phase="results_shown" if has_results else "no_result",
-                assistant_message=self._feedback_followup_message(
-                    feedback_type=feedback_type,
-                    feedback_text=feedback_text,
-                    has_results=has_results,
-                ),
-                criteria_labels=criteria_labels,
-                suggested_actions=[],
-                result_group_title="按你刚才的反馈，重新给你换一批",
-                selected_candidates=selected_candidates_from_search(prepared_response) if has_results else [],
-            ),
-            search_response=prepared_response,
-        )
-
-    def _feedback_search_limit(self, session: StoredSession) -> int:
-        search_run_id = int(session.state.get("last_search_run_id") or 0)
-        if search_run_id > 0:
-            search_run = self.storage.get_search_run(search_run_id)
-            if search_run is not None and int(search_run.limit_count or 0) > 0:
-                return max(1, min(int(search_run.limit_count or 5), 10))
-        return PROFILE_FIRST_SEARCH_LIMIT
-
-    def _feedback_search_override(
-        self,
-        session: StoredSession,
-        *,
-        feedback_type: str,
-        action_context: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        override: dict[str, Any] = {}
-        payload = dict((action_context or {}).get("semantic_payload") or {})
-        parsed_patch = dict(payload.get("search_criteria_patch") or {})
-        for key, value in parsed_patch.items():
-            if value not in (None, "", [], {}):
-                override[key] = value
-        requester_profile = self._load_requester_profile(session) or {}
-        self_city = str(requester_profile.get("city") or requester_profile.get("self_city") or "").strip()
-        self_age_raw = requester_profile.get("age") or requester_profile.get("self_age")
-        try:
-            self_age = int(self_age_raw) if self_age_raw not in (None, "") else None
-        except (TypeError, ValueError):
-            self_age = None
-
-        if feedback_type == "location_distance" and self_city:
-            override["cities"] = [self_city]
-        elif feedback_type in {"age_gap", "criteria_age"} and self_age is not None:
-            override["age_min"] = max(18, self_age - 3)
-            override["age_max"] = self_age + 3
-        return override
-
-    def _dedupe_feedback_search_results(
-        self,
-        session: StoredSession,
-        search_response: dict[str, Any],
-    ) -> dict[str, Any]:
-        response = deepcopy(search_response)
-        previous_ids = {
-            int(card.get("profile_id") or 0)
-            for card in self._existing_result_cards(session)
-            if int(card.get("profile_id") or 0) > 0
-        }
-        if not previous_ids:
-            return response
-        original_results = list(response.get("results") or [])
-        filtered_results = [
-            item for item in original_results
-            if int(item.get("id") or 0) not in previous_ids
-        ]
-        if not filtered_results:
-            return response
-        response["results"] = filtered_results
-        response["result_count"] = len(filtered_results)
-        response["has_match"] = bool(filtered_results)
-        return response
-
-    def _feedback_followup_message(
-        self,
-        *,
-        feedback_type: str,
-        feedback_text: str,
-        has_results: bool,
-    ) -> str:
-        if has_results:
-            if feedback_type == "occupation_mismatch":
-                return "明白了，你更在意职业方向。我按这个意思重新筛了一批，先看这组。"
-            if feedback_type == "location_distance":
-                return "明白了，你更希望距离近一点。我按同城优先重新筛了一批。"
-            if feedback_type in {"age_gap", "criteria_age"}:
-                return "明白了，你更想看年龄更接近的。我按这个方向重新筛了一批。"
-            if feedback_type == "work_life_balance":
-                return "明白了，你更在意生活节奏。我按更稳定的作息方向重新筛了一批。"
-            if feedback_type == "interest_mismatch":
-                return "明白了，你更在意能不能玩到一起。我按这个方向重新筛了一批。"
-            return "收到，我按你刚才的意思重新筛了一批，你先看这组。"
-
-        if feedback_type == "occupation_mismatch":
-            return "明白了，你更在意职业方向。我按这个意思重筛了一轮，但这次还没出到更合适的，你可以再补一句更想看什么类型。"
-        return f"收到，你刚才提到“{feedback_text}”。我已经按这个方向重筛了一轮，这次还没出到更合适的。"
-
-    def _should_force_rejection_feedback_from_text(
-        self,
-        session: StoredSession,
-        parsed_feedback: dict[str, Any],
-    ) -> bool:
-        if not bool(session.state.get("awaiting_rejection_feedback")):
-            return False
-        return bool(parsed_feedback.get("is_rejection_feedback"))
-
-    def _should_prompt_for_batch_refresh_feedback(
-        self,
-        session: StoredSession,
-        *,
-        user_message_text: str | None,
-    ) -> bool:
-        if bool(session.state.get("awaiting_rejection_feedback")):
-            return False
-        text = str(user_message_text or "").strip()
-        if not text:
-            return False
-        return any(pattern in text for pattern in _BATCH_REFRESH_PATTERNS)
-
-    def _build_batch_refresh_prompt_result(
-        self,
-        run_input: DiscoveryRunInput,
-        *,
-        session: StoredSession,
-    ) -> DiscoveryRuntimeResult:
-        """
-        构建换一批追问反馈的结果。
-
-        调用 get_feedback_options 工具动态生成反馈选项，
-        基于上一批候选人的真实特征，而非硬编码。
-        """
-        # 调用工具动态生成反馈选项（基于上一批候选人特征）
-        feedback_result = run_input.get_feedback_options(
-            include_secondary=False,
-            primary_option=None,
-        )
-
-        # 从工具返回中提取选项列表
-        options = list(feedback_result.get("options") or [])
-        追问文案 = str(feedback_result.get("追问文案") or "好的，帮你换一批新的。换之前能简单告诉我上一批哪里不太合适吗？这样我下轮会更准。").strip()
-
-        # 如果工具返回为空，使用默认选项（向后兼容）
-        if not options:
-            options = [
-                "太远了（都是异地）",
-                "职业不太匹配",
-                "太忙太卷（工作压力大）",
-                "兴趣爱好不一样",
-                "跳过，直接换",
-            ]
-
-        # 动态构建反馈按钮
-        suggested_actions = []
-        from .feedback_service import infer_feedback_type
-
-        for index, option_text in enumerate(options):
-            feedback_type = infer_feedback_type(option_text)
-            suggested_actions.append(
-                DiscoveryActionSuggestion(
-                    label=option_text,
-                    semantic_payload={
-                        "kind": "rejection_feedback",
-                        "feedback_type": feedback_type,
-                        "feedback_text": option_text,
-                    },
-                    style="secondary" if index == 1 else "ghost",
-                )
-            )
-
-        return DiscoveryRuntimeResult(
-            decision=DiscoveryDecision(
-                phase="collecting_preferences",
-                assistant_message=追问文案,
-                criteria_labels=list(run_input.criteria_labels),
-                suggested_actions=suggested_actions,
-            )
-        )
-
-    def _parse_rejection_feedback_from_text(
-        self,
-        session: StoredSession,
-        text: str,
-    ) -> dict[str, Any]:
-        if not bool(session.state.get("awaiting_rejection_feedback")):
-            return {
-                "is_rejection_feedback": False,
-                "feedback_type": "",
-                "summary": "",
-                "search_criteria_patch": {},
-            }
-        parsed = parse_rejection_feedback_text(
-            text,
-            runtime_context=self._build_runtime_context(
-                session,
-                recent_timeline=clone_view({"timeline": session.view.get("timeline") or []}).get("timeline") or [],
-            ),
-        )
-        if not isinstance(parsed, dict):
-            return {
-                "is_rejection_feedback": False,
-                "feedback_type": "",
-                "summary": "",
-                "search_criteria_patch": {},
-            }
-        return parsed
-
-    def _update_rejection_feedback_waiting_state(
-        self,
-        session: StoredSession,
-        *,
-        user_message_text: str | None,
-        runtime_result: DiscoveryRuntimeResult,
-    ) -> None:
-        semantic_kinds = {
-            str((action.semantic_payload or {}).get("kind") or "").strip()
-            for action in list(runtime_result.decision.suggested_actions or [])
-        }
-        # 场景1：返回了追问反馈选项 → 设置状态
-        if "rejection_feedback" in semantic_kinds:
-            session.state["awaiting_rejection_feedback"] = True
-            session.state["awaiting_rejection_feedback_since"] = datetime.now().isoformat()
-            return
-
-        # 场景2：用户主动说"换一批" → 设置状态
-        text = str(user_message_text or "").strip()
-        if text and any(pattern in text for pattern in _BATCH_REFRESH_PATTERNS):
-            session.state["awaiting_rejection_feedback"] = True
-            session.state["awaiting_rejection_feedback_since"] = datetime.now().isoformat()
-            return
-
-        # 场景3：返回新候选人
-        # ✅ 修复：不再立即清除状态，保持状态让用户可以继续反馈
-        # 只有在以下情况下才清除状态：
-        # 1. 用户明确表达满意（如"心动"、"喜欢"）
-        # 2. 用户主动结束对话（如"不用了"、"够了"）
-        # 3. 用户跳过反馈（选择"跳过，直接换"）
-
-        if runtime_result.search_response is not None:
-            # 检查是否是用户跳过反馈的场景
-            # 如果是"跳过，直接换"，说明用户不想提供反馈，可以清除状态
-            # 但如果是用户选择了具体反馈（如"职业不匹配"），应该保持状态
-            # 注意：这里无法区分，所以保守策略：保持状态
-
-            # 新策略：标记为"已返回候选人，等待反馈"
-            session.state["awaiting_rejection_feedback"] = True
-            session.state["awaiting_rejection_feedback_since"] = datetime.now().isoformat()
-            session.state["last_feedback_result_shown"] = datetime.now().isoformat()
-            return
-
-        # 场景4：phase是results_shown但没有search_response（复用旧卡片）
-        if str(runtime_result.decision.phase or "").strip() in {"results_shown", "no_result"}:
-            # 保持状态，等待用户反馈
-            session.state["awaiting_rejection_feedback"] = True
-            return
+    # 已废弃：_build_batch_refresh_prompt_result（硬编码追问逻辑）
+    # Agent 自主决定追问方式，不再需要 fallback 函数
 
     def _build_result_cards(
         self,
@@ -1306,98 +1024,11 @@ class DiscoveryService:
             if int(card.get("profile_id") or 0) in selected_ids
         ]
 
-    def _build_personality_explanation_decision(
-        self,
-        session: StoredSession,
-        *,
-        user_message_text: str | None,
-    ) -> DiscoveryDecision | None:
-        if not _is_personality_explanation_request(user_message_text):
-            return None
-        cards = self._existing_result_cards(session)
-        candidate = _pick_existing_candidate(cards, user_message_text)
-        if not candidate:
-            return None
-
-        requester_profile = self._load_requester_profile(session) or {}
-        self_traits = dict(requester_profile.get("personality_traits") or {})
-        candidate_traits = dict(candidate.get("personality_match_context") or {})
-        if not candidate_traits:
-            return None
-
-        candidate_name = _candidate_first_name(candidate)
-        reasoning = dict(candidate.get("personality_reasoning") or {})
-        reasoning_reasons = [
-            str(item).strip()
-            for item in list(reasoning.get("reasons") or [])
-            if str(item or "").strip()
-        ]
-        if reasoning_reasons:
-            return DiscoveryDecision(
-                phase="results_shown",
-                assistant_message=f"先说{candidate_name}。从测评角度看，" + "，".join(reasoning_reasons[:3]) + "。",
-                criteria_labels=[
-                    str(item.get("label") or "").strip()
-                    for item in list(session.view.get("criteria_chips") or [])
-                    if str(item.get("label") or "").strip()
-                ],
-                suggested_actions=[],
-            )
-        clauses: list[str] = []
-
-        self_mbti = str((self_traits.get("mbti") or {}).get("type_code") or "").strip()
-        candidate_mbti = str((candidate_traits.get("mbti") or {}).get("type_code") or "").strip()
-        if self_mbti and candidate_mbti:
-            if self_mbti[:3] and self_mbti[:3] == candidate_mbti[:3]:
-                clauses.append(
-                    f"MBTI 上你是 {self_mbti}，她是 {candidate_mbti}，前 3 个维度很接近，通常都偏务实、慢热、先看长期稳定。"
-                )
-            else:
-                clauses.append(
-                    f"MBTI 上你是 {self_mbti}，她是 {candidate_mbti}，虽然不是同一型，但都不是很跳脱的相处节奏，更偏稳定推进。"
-                )
-        elif candidate_mbti:
-            clauses.append(f"她的 MBTI 是 {candidate_mbti}，这类类型通常更偏稳定、务实，不是只靠感觉往前冲。")
-
-        self_attachment = dict(self_traits.get("attachment") or {})
-        candidate_attachment = dict(candidate_traits.get("attachment") or {})
-        self_attachment_type = str(self_attachment.get("type_code") or "").strip()
-        candidate_attachment_type = str(candidate_attachment.get("type_code") or "").strip()
-        if self_attachment_type and candidate_attachment_type:
-            if self_attachment_type == "secure" and candidate_attachment_type == "secure":
-                clauses.append("依恋上你们都偏安全型，焦虑和回避都不高，相处时更容易稳定沟通，不太会一方追一方躲。")
-            else:
-                clauses.append("依恋上你们都不是特别高冲突的组合，靠近和拉开距离的方式比较容易协商。")
-        elif candidate_attachment_type == "secure":
-            clauses.append("她在依恋上偏安全型，通常不容易忽冷忽热，关系推进会更稳。")
-
-        overlap = _shared_values(self_traits, candidate_traits)
-        if overlap:
-            shared = "、".join(overlap[:2])
-            clauses.append(f"价值观上你们都把“{shared}”放得比较前，这类人通常更容易在长期投入和生活方向上同频。")
-        else:
-            self_value_type = str((self_traits.get("values") or {}).get("value_type") or "").strip()
-            candidate_value_type = str((candidate_traits.get("values") or {}).get("value_type") or "").strip()
-            if self_value_type and candidate_value_type:
-                clauses.append(
-                    f"价值观上你偏{self_value_type}，她偏{candidate_value_type}，虽然不完全一样，但都不是只看短期新鲜感的类型。"
-                )
-            elif candidate_value_type:
-                clauses.append(f"价值观上她偏{candidate_value_type}，而且把长期稳定相关内容放得比较靠前，所以我会先把她往前推。")
-
-        if not clauses:
-            return None
-
-        return DiscoveryDecision(
-            phase="results_shown",
-            assistant_message=f"先说{candidate_name}。{''.join(clauses[:3])}",
-            criteria_labels=[
-                str(item.get("label") or "").strip()
-                for item in list(session.view.get("criteria_chips") or [])
-                if str(item.get("label") or "").strip()
-            ],
-            suggested_actions=[],
-        )
+    # ✅ Agent Native：移除硬编码性格解释fallback机制
+    # Agent 根据 Prompt 自主理解用户意图并生成性格解释回复
+    # 当用户问”为什么推荐第一位”、”测评角度解释一下”等时，
+    # Agent 会自主从 state.current_results 获取候选人信息并解释
+    # 不再需要硬编码的 fallback 机制
 
     def _build_proactive_personality_blurb(
         self,
@@ -1495,10 +1126,49 @@ class DiscoveryService:
     def _search_error_summary(self, search_response: dict[str, Any] | None) -> dict[str, str] | None:
         return _search_error_summary_impl(search_response)
 
+    def _candidates_match_existing_cards(
+        self,
+        session: StoredSession,
+        selected_candidates: list[DiscoveryCandidateSelection],
+    ) -> bool:
+        """
+        检测Agent返回的候选人是否来自对话记录中的现有卡片。
+
+        用于区分两种场景：
+        1. 追问场景：Agent从state.current_results获取候选人ID并返回 → 不是幻觉
+        2. 幻觉场景：Agent没有搜索却凭空编造候选人ID → 是幻觉
+
+        Returns:
+            True: 候选人ID匹配现有卡片 → 不是幻觉，是追问场景
+            False: 候选人ID不匹配 → 可能是幻觉
+        """
+        if not selected_candidates:
+            return False
+
+        existing_cards = self._existing_result_cards(session)
+        if not existing_cards:
+            return False
+
+        existing_ids = {
+            int(card.get("profile_id") or 0)
+            for card in existing_cards
+            if int(card.get("profile_id") or 0) > 0
+        }
+
+        selected_ids = {
+            int(selection.profile_id)
+            for selection in selected_candidates
+            if int(selection.profile_id) > 0
+        }
+
+        # 如果所有Agent返回的候选人ID都在现有卡片中，说明是追问场景
+        return selected_ids.issubset(existing_ids)
+
     def _coerce_search_failure_decision(
         self,
         decision: DiscoveryDecision,
         search_response: dict[str, Any] | None,
+        session: StoredSession | None = None,
     ) -> DiscoveryDecision:
         if decision.phase == "searching" and search_response is None:
             return DiscoveryDecision(
@@ -1507,11 +1177,23 @@ class DiscoveryService:
                 criteria_labels=list(decision.criteria_labels),
                 suggested_actions=list(decision.suggested_actions),
             )
+        # 检查：phase="results_shown" + 没搜索 + 返回了候选人
+        # 这有两种情况：
+        # 1. 追问场景：Agent从state.current_results获取候选人 → 不是幻觉，应该保留
+        # 2. 幻觉场景：Agent凭空编造候选人 → 是幻觉，应该返回错误
         if (
             decision.phase == "results_shown"
             and search_response is None
             and bool(decision.selected_candidates)
         ):
+            # 新增：检测候选人是否来自对话记录（追问场景）
+            if session is not None and self._candidates_match_existing_cards(
+                session, decision.selected_candidates
+            ):
+                # 追问场景：Agent从现有卡片中选择了候选人，不是幻觉
+                # 应该保留Agent的decision，让回答正常展示
+                return decision
+            # 幻觉场景：Agent凭空编造了候选人，返回错误消息
             return DiscoveryDecision(
                 phase="collecting_preferences",
                 assistant_message="我这轮还没真正跑出候选人卡片，你再发一次，我马上重新给你筛。",
@@ -1978,273 +1660,14 @@ class DiscoveryService:
             raise DiscoverySessionNotFoundError("discovery session not found")
         return session
 
-    # ========== 新增：反馈收集相关方法 ==========
-
-    def submit_rejection_feedback(
-        self,
-        *,
-        session_id: str,
-        feedback_text: str,
-        feedback_type: str | None = None,
-        criteria_patch: dict[str, Any] | None = None,
-        feedback_detail: str | None = None,
-        rejected_candidate_ids: list[str] | None = None,
-        is_secondary: bool = False,
-        primary_feedback_id: int | None = None,
-        now: datetime | None = None,
-    ) -> dict[str, Any]:
-        """
-        提交拒绝反馈并触发调整。
-
-        Args:
-            session_id: Discovery session ID
-            feedback_text: 用户选择的反馈文案
-            feedback_type: 反馈类型（可推断）
-            feedback_detail: 二级追问细节
-            rejected_candidate_ids: 被拒绝的候选人ID列表
-            is_secondary: 是否为二级追问结果
-            primary_feedback_id: 一级反馈ID（二级追问时）
-            now: 当前时间
-
-        Returns:
-            包含feedback_id和调整状态的字典
-        """
-        from .feedback_service import infer_feedback_type, FEEDBACK_TO_CRITERIA_ADJUSTMENT
-
-        current = now or datetime.now()
-        session = self._require_session(session_id)
-
-        # 1. 推断反馈类型（如果没有显式提供）
-        if feedback_type is None:
-            feedback_type = infer_feedback_type(feedback_text)
-
-        # 2. 获取上一批候选人ID（如果没有提供）
-        if rejected_candidate_ids is None:
-            last_search_run = self._get_last_search_run(session_id)
-            if last_search_run is not None:
-                rejected_candidate_ids = [
-                    str(item.get("id"))
-                    for item in (last_search_run.response.get("results") or [])
-                    if item.get("id")
-                ]
-
-        # 3. 记录反馈
-        turn_id = self._current_turn_id_for_feedback(session_id)
-        feedback_id = self.storage.insert_rejection_feedback(
-            session_id=session_id,
-            turn_id=turn_id,
-            requester_id=session.requester_id,
-            feedback_type=feedback_type,
-            feedback_text=feedback_text,
-            feedback_detail=feedback_detail,
-            rejected_batch_id=str(self._get_last_search_run_id(session_id) or ""),
-            rejected_candidate_ids=rejected_candidate_ids,
-            source_type="explicit",
-            追问_triggered=True,
-            追问_skipped=False,
-            is_secondary_feedback=is_secondary,
-            primary_feedback_id=primary_feedback_id,
-            created_at=current,
-        )
-
-        # 4. 应用criteria调整
-        adjustment = self._apply_feedback_adjustment(
-            session_id=session_id,
-            feedback_type=feedback_type,
-            feedback_id=feedback_id,
-            turn_id=turn_id,
-            criteria_patch=criteria_patch,
-            now=current,
-        )
-
-        # 5. 同步到persona（如果策略有persona_write）
-        strategy = FEEDBACK_TO_CRITERIA_ADJUSTMENT.get(feedback_type)
-        persona_updated = False
-        if strategy and strategy.get("persona_write"):
-            persona_updated = self._sync_persona_from_feedback(
-                requester_id=session.requester_id,
-                feedback_type=feedback_type,
-                feedback_text=feedback_text,
-                now=current,
-            )
-
-        return {
-            "success": True,
-            "feedback_id": feedback_id,
-            "feedback_type": feedback_type,
-            "adjustment_id": adjustment.get("adjustment_id"),
-            "persona_updated": persona_updated,
-            "criteria_adjusted": adjustment.get("applied", False),
-        }
-
-    def skip_rejection_feedback(
-        self,
-        *,
-        session_id: str,
-        now: datetime | None = None,
-    ) -> dict[str, Any]:
-        """
-        记录用户跳过反馈。
-        """
-        current = now or datetime.now()
-        session = self._require_session(session_id)
-
-        turn_id = self._current_turn_id_for_feedback(session_id)
-        feedback_id = self.storage.insert_rejection_feedback(
-            session_id=session_id,
-            turn_id=turn_id,
-            requester_id=session.requester_id,
-            feedback_type="skipped",
-            feedback_text="跳过，直接换",
-            source_type="explicit",
-            追问_triggered=True,
-            追问_skipped=True,
-            is_secondary_feedback=False,
-            created_at=current,
-        )
-
-        return {
-            "success": True,
-            "feedback_id": feedback_id,
-        }
-
-    def get_feedback_options(
-        self,
-        *,
-        session_id: str,
-        include_secondary: bool = False,
-        primary_option: str | None = None,
-    ) -> dict[str, Any]:
-        """
-        获取反馈选项列表。
-        """
-        from .feedback_service import generate_feedback_options
-
-        session = self._require_session(session_id)
-
-        # 获取上一批候选人
-        last_search_run = self._get_last_search_run(session_id)
-        last_batch_candidates = []
-        if last_search_run is not None:
-            last_batch_candidates = last_search_run.response.get("results") or []
-
-        # 获取用户profile
-        user_profile = session.state.get("self_profile") or {}
-
-        # 生成选项
-        result = generate_feedback_options(
-            last_batch_candidates,
-            user_profile,
-            include_secondary=include_secondary,
-            primary_option=primary_option,
-        )
-
-        return {
-            "success": True,
-            "options": result.get("options", []),
-            "prompt_message": result.get("追问文案", ""),
-        }
-
-    def _apply_feedback_adjustment(
-        self,
-        *,
-        session_id: str,
-        feedback_type: str,
-        feedback_id: int,
-        turn_id: int,
-        criteria_patch: dict[str, Any] | None,
-        now: datetime,
-    ) -> dict[str, Any]:
-        """应用反馈对应的criteria调整。"""
-        from .feedback_service import FEEDBACK_TO_CRITERIA_ADJUSTMENT
-
-        session = self._require_session(session_id)
-        strategy = FEEDBACK_TO_CRITERIA_ADJUSTMENT.get(feedback_type)
-        inferred_patch = self._default_feedback_criteria_patch(session, feedback_type=feedback_type)
-        normalized_patch = {
-            str(key).strip(): value
-            for key, value in dict(criteria_patch or {}).items()
-            if str(key or "").strip() and value not in (None, "", [], {})
-        }
-        patch_to_apply = {**inferred_patch, **normalized_patch}
-
-        if not strategy and not patch_to_apply:
-            return {"applied": False, "reason": "no strategy found"}
-
-        before_value = deepcopy(dict(session.state.get("working_criteria") or {}))
-        merged = merge_working_criteria(session.state, patch_to_apply)
-        session.state["working_criteria"] = {
-            key: merged[key]
-            for key in merged
-            if is_search_criteria_key(key)
-        }
-        after_value = deepcopy(dict(session.state.get("working_criteria") or {}))
-        self.storage.save_session(session)
-
-        adjustment_id = self.storage.insert_criteria_adjustment(
-            session_id=session_id,
-            turn_id=turn_id,
-            adjustment_type=(strategy or {}).get("adjustment_type", "shift"),
-            affected_field=(strategy or {}).get("affected_field", "multiple"),
-            before_value=before_value,
-            after_value=after_value,
-            triggered_by_feedback_id=feedback_id,
-            adjustment_reason=f"根据用户反馈'{feedback_type}'调整",
-            created_at=now,
-        )
-
-        return {
-            "applied": True,
-            "adjustment_id": adjustment_id,
-            "affected_field": (strategy or {}).get("affected_field", "multiple"),
-        }
-
-    def _default_feedback_criteria_patch(
-        self,
-        session: StoredSession,
-        *,
-        feedback_type: str,
-    ) -> dict[str, Any]:
-        patch: dict[str, Any] = {}
-        requester_profile = self._load_requester_profile(session) or {}
-        self_city = str(requester_profile.get("city") or requester_profile.get("self_city") or "").strip()
-        self_age_raw = requester_profile.get("age") or requester_profile.get("self_age")
-        try:
-            self_age = int(self_age_raw) if self_age_raw not in (None, "") else None
-        except (TypeError, ValueError):
-            self_age = None
-
-        if feedback_type == "location_distance" and self_city:
-            patch["cities"] = [self_city]
-            patch["prefer"] = ["同城优先"]
-        elif feedback_type in {"age_gap", "criteria_age"} and self_age is not None:
-            patch["age_min"] = max(18, self_age - 3)
-            patch["age_max"] = self_age + 3
-            patch["prefer"] = ["年龄接近"]
-        elif feedback_type == "work_life_balance":
-            patch["prefer"] = ["工作稳定", "生活规律"]
-            patch["must_not_have"] = ["高强度工作"]
-        elif feedback_type == "occupation_mismatch":
-            patch["prefer"] = ["职业匹配"]
-        elif feedback_type == "interest_mismatch":
-            patch["prefer"] = ["兴趣相投"]
-        return patch
-
-    def _sync_persona_from_feedback(
-        self,
-        *,
-        requester_id: int,
-        feedback_type: str,
-        feedback_text: str,
-        now: datetime,
-    ) -> bool:
+    def _agent_session_for(self, session_id: str) -> Any | None:
         """同步反馈到persona。"""
-        from .feedback_service import FEEDBACK_TO_CRITERIA_ADJUSTMENT
-
-        strategy = FEEDBACK_TO_CRITERIA_ADJUSTMENT.get(feedback_type)
-        if not strategy or not strategy.get("persona_write"):
-            return False
-
+        # FEEDBACK_TO_CRITERIA_ADJUSTMENT 已删除
+        # persona_write 不再硬编码，AI 自主决定是否同步 persona
+        # strategy = FEEDBACK_TO_CRITERIA_ADJUSTMENT.get(feedback_type)  # 已删除
+        # strategy = FEEDBACK_TO_CRITERIA_ADJUSTMENT.get(feedback_type)  # 已删除
+        # TODO: AI 根据 Prompt 自主决定是否调用 sync_requester_persona_memory
+        return False  # 暂时返回 False，由 AI 自主决定
         # TODO: 调用sync_requester_persona_memory工具
         # 这里需要调用persona memory API
 
@@ -2259,61 +1682,6 @@ class DiscoveryService:
         if search_run_id <= 0:
             return None
         return self.storage.get_search_run(search_run_id)
-
-    def _get_last_search_run_id(self, session_id: str) -> int | None:
-        """获取session的最后一次搜索run ID。"""
-        session = self.storage.get_session(session_id)
-        if session is None:
-            return None
-        search_run_id = int(session.state.get("last_search_run_id") or 0)
-        return search_run_id if search_run_id > 0 else None
-
-    def _current_turn_id_for_feedback(self, session_id: str) -> int:
-        getter = getattr(self.storage, "get_latest_turn_id", None)
-        if callable(getter):
-            try:
-                return int(getter(session_id) or 0)
-            except Exception:  # noqa: BLE001
-                return 0
-        getter = getattr(self.storage, "get_current_turn_id", None)
-        if callable(getter):
-            try:
-                return int(getter(session_id) or 0)
-            except Exception:  # noqa: BLE001
-                return 0
-        return 0
-
-    def _bind_submit_rejection_feedback(self, session: StoredSession) -> Callable[..., dict[str, Any]]:
-        """绑定提交反馈方法。"""
-        def submit_feedback_wrapper(
-            feedback_text: str,
-            feedback_type: str | None = None,
-            criteria_patch: dict[str, Any] | None = None,
-            feedback_detail: str | None = None,
-            is_secondary: bool = False,
-        ) -> dict[str, Any]:
-            return self.submit_rejection_feedback(
-                session_id=session.session_id,
-                feedback_text=feedback_text,
-                feedback_type=feedback_type,
-                criteria_patch=criteria_patch,
-                feedback_detail=feedback_detail,
-                is_secondary=is_secondary,
-            )
-        return submit_feedback_wrapper
-
-    def _bind_get_feedback_options(self, session: StoredSession) -> Callable[..., dict[str, Any]]:
-        """绑定获取反馈选项方法。"""
-        def get_options_wrapper(
-            include_secondary: bool = False,
-            primary_option: str | None = None,
-        ) -> dict[str, Any]:
-            return self.get_feedback_options(
-                session_id=session.session_id,
-                include_secondary=include_secondary,
-                primary_option=primary_option,
-            )
-        return get_options_wrapper
 
     def _agent_session_for(self, session_id: str) -> Any | None:
         if self.agent_session_store is None:

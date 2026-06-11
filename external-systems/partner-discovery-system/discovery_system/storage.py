@@ -154,6 +154,23 @@ class InMemoryDiscoveryStorage:
             return None
         return deepcopy(session)
 
+    def list_sessions_by_profile_id(
+        self,
+        profile_id: int,
+        limit: int = 20,
+        status: str | None = None,
+    ) -> list[StoredSession]:
+        """按 profile_id 查询会话列表，按 updated_at 降序排列。"""
+        sessions = [
+            deepcopy(session)
+            for session in self._sessions.values()
+            if session.profile_id == int(profile_id)
+            and (status is None or session.status == status)
+        ]
+        # 按 updated_at 降序排列
+        sessions.sort(key=lambda s: s.updated_at, reverse=True)
+        return sessions[:int(limit)]
+
     def save_action(self, action: StoredAction) -> None:
         self._actions[action.action_id] = deepcopy(action)
 
@@ -565,6 +582,68 @@ class MySQLDiscoveryStorage:
             visible_action_ids=visible_action_ids,
             state=state,
         )
+
+    def list_sessions_by_profile_id(
+        self,
+        profile_id: int,
+        limit: int = 20,
+        status: str | None = None,
+    ) -> list[StoredSession]:
+        """按 profile_id 查询会话列表，按 updated_at 降序排列。"""
+        conn = self._open()
+        try:
+            if status is None:
+                rows = conn.execute(
+                    """
+                    SELECT session_id, requester_id, profile_id, status, phase,
+                           state_json, latest_view_json, created_at, updated_at
+                    FROM discovery_agent_sessions
+                    WHERE profile_id = ?
+                    ORDER BY updated_at DESC
+                    LIMIT ?
+                    """,
+                    (int(profile_id), int(limit)),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT session_id, requester_id, profile_id, status, phase,
+                           state_json, latest_view_json, created_at, updated_at
+                    FROM discovery_agent_sessions
+                    WHERE profile_id = ? AND status = ?
+                    ORDER BY updated_at DESC
+                    LIMIT ?
+                    """,
+                    (int(profile_id), status, int(limit)),
+                ).fetchall()
+        finally:
+            conn.close()
+        sessions: list[StoredSession] = []
+        for raw_row in rows:
+            row = row_to_dict(raw_row)
+            if row is None:
+                continue
+            state = dict(json_loads(str(row.get("state_json") or "{}"), {}) or {})
+            visible_action_ids = [
+                str(item).strip()
+                for item in list(state.get("visible_action_ids") or [])
+                if str(item or "").strip()
+            ]
+            sessions.append(
+                StoredSession(
+                    session_id=str(row["session_id"]),
+                    requester_id=int(row["requester_id"]),
+                    profile_id=int(row["profile_id"]),
+                    status=str(row["status"]),
+                    phase=str(row["phase"]),
+                    created_at=_parse_datetime(row.get("created_at")),
+                    updated_at=_parse_datetime(row.get("updated_at")),
+                    view=dict(json_loads(str(row.get("latest_view_json") or "{}"), {}) or {}),
+                    visible_action_ids=visible_action_ids,
+                    state=state,
+                )
+            )
+        return sessions
 
     def save_action(self, action: StoredAction) -> None:
         conn = self._open()

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { ArrowLeft, BadgeCheck, Bookmark, ChevronRight, ChevronDown, Mail, Mic, Plus, Search, Send, X, Brain, Heart, Sparkles, ClipboardList, Coins } from 'lucide-react'
+import { ArrowLeft, BadgeCheck, Bookmark, ChevronRight, ChevronDown, Mail, Mic, Plus, Search, Send, X, Brain, Heart, Sparkles, ClipboardList, Coins, History } from 'lucide-react'
 import { AssessmentCardRenderer } from '@/components/assessment/AssessmentCardRenderer'
 import { XiaoyaAvatar } from '@/components/her/ui/xiaoya-avatar'
 import Image from 'next/image'
@@ -11,6 +11,7 @@ import { TypingIndicator } from './ui/typing-indicator'
 import { OnlineIndicator } from './ui/animations'
 import { DiscoveryCandidateCard } from './discovery-candidate-card'
 import { DiscoveryProfileUpdatePrompt } from './discovery-profile-update-prompt'
+import { DiscoverySessionList } from './discovery-session-list'
 import type { DiscoveryTimelineItem } from '@/lib/discovery/map-discovery-view'
 import { cn } from '@/lib/utils'
 import { getProfileId, getUserId } from '@/lib/auth/session'
@@ -215,8 +216,13 @@ export default function DiscoverPage({
     submitTurn,
     sessionId,
     reloadSession,
+    createNewSession,
+    switchSession,
     removeSuggestedActions,
   } = useDiscoverySession(onSessionIdChange)
+
+  // 新增：会话列表显示状态
+  const [showSessionList, setShowSessionList] = useState(false)
 
   // Voice input functionality
   const {
@@ -391,19 +397,40 @@ export default function DiscoverPage({
                 <p className="text-xs text-muted-foreground">你的专属红娘</p>
               </div>
             </div>
-            <button 
-              onClick={onOpenInbox} 
-              className="relative flex items-center gap-2 px-3 py-2 bg-secondary rounded-lg hover:bg-secondary/80 transition-colors focus-ring"
-              aria-label={`查看推荐来信，${inboxUnreadCount}条未读`}
-            >
-              <Mail className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
-              <span className="text-sm">来信</span>
-              {inboxUnreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-rose text-[10px] font-medium text-white rounded-full flex items-center justify-center animate-scale-in">
-                  {inboxUnreadCount}
-                </span>
-              )}
-            </button>
+            <div className="flex items-center gap-2">
+              {/* 新增：历史记录按钮 */}
+              <button
+                onClick={() => setShowSessionList(true)}
+                className="flex items-center gap-1 px-2 py-1.5 bg-secondary rounded-lg hover:bg-secondary/80 transition-colors focus-ring"
+                aria-label="查看会话历史"
+              >
+                <History className="w-4 h-4 text-muted-foreground" />
+              </button>
+              {/* 新增：新建会话按钮 */}
+              <button
+                onClick={() => void createNewSession()}
+                disabled={isLoadingSession}
+                className="flex items-center gap-1 px-2 py-1.5 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors focus-ring disabled:opacity-50"
+                aria-label="新建会话"
+              >
+                <Plus className="w-4 h-4" />
+                <span className="text-xs font-medium">新对话</span>
+              </button>
+              {/* 原有：查看推荐来信按钮 */}
+              <button
+                onClick={onOpenInbox}
+                className="relative flex items-center gap-2 px-3 py-2 bg-secondary rounded-lg hover:bg-secondary/80 transition-colors focus-ring"
+                aria-label={`查看推荐来信，${inboxUnreadCount}条未读`}
+              >
+                <Mail className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+                <span className="text-sm">来信</span>
+                {inboxUnreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-rose text-[10px] font-medium text-white rounded-full flex items-center justify-center animate-scale-in">
+                    {inboxUnreadCount}
+                  </span>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -888,6 +915,19 @@ export default function DiscoverPage({
         </div>
       </div>
 
+      {/* 新增：会话历史列表弹窗 */}
+      {showSessionList && (
+        <DiscoverySessionList
+          currentSessionId={sessionId}
+          onSelectSession={(targetSessionId) => {
+            void switchSession(targetSessionId)
+          }}
+          onCreateNewSession={() => {
+            void createNewSession()
+          }}
+          onClose={() => setShowSessionList(false)}
+        />
+      )}
     </div>
   )
 }

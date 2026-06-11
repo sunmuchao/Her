@@ -357,6 +357,42 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
     }
   }, [applyDiscoveryResponse, sessionId])
 
+  // 新增：创建新会话
+  const createNewSession = useCallback(async () => {
+    const profileId = getProfileId()
+    if (!profileId) return null
+    setIsLoadingSession(true)
+    try {
+      const created = await createDiscoverySession({ profileId })
+      const sid = created.session?.session_id || null
+      if (sid) {
+        applyDiscoveryResponse(created, profileId, '/v1/discovery/sessions')
+        notifySuccess('已创建新会话')
+      }
+      return sid
+    } catch (error) {
+      notifyError(error, '创建新会话失败')
+      return null
+    } finally {
+      setIsLoadingSession(false)
+    }
+  }, [applyDiscoveryResponse])
+
+  // 新增：切换到指定会话
+  const switchSession = useCallback(async (targetSessionId: string) => {
+    const profileId = getProfileId()
+    if (!profileId) return
+    setIsLoadingSession(true)
+    try {
+      const restored = await getDiscoverySession(targetSessionId)
+      applyDiscoveryResponse(restored, profileId, `/v1/discovery/sessions/${targetSessionId}`)
+    } catch (error) {
+      notifyError(error, '切换会话失败')
+    } finally {
+      setIsLoadingSession(false)
+    }
+  }, [applyDiscoveryResponse])
+
   // 新增：添加消息到对话历史（用于测评完成后添加小雅消息）
   const addTimelineItem = useCallback((item: DiscoveryTimelineItem) => {
     setTimelineItems((prev) => [...prev, item])
@@ -382,6 +418,8 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
     submitTurn,
     sessionId,
     reloadSession,
+    createNewSession,  // 新增：创建新会话
+    switchSession,  // 新增：切换会话
     addTimelineItem,  // 新增
     removeSuggestedActions,
   }

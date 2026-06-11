@@ -38,7 +38,29 @@
       "Bash(python -m pytest external-systems/partner-discovery-system/tests/test_discovery_system.py::DiscoveryServiceTests -k \"rejection_feedback or show_more\" -xvs)",
       "Bash(python -m pytest external-systems/partner-discovery-system/tests/test_discovery_system.py::DiscoveryServiceTests::test_batch_refresh_feedback_options_are_dynamically_generated -xvs)",
       "Bash(python -m pytest external-systems/partner-discovery-system/tests/test_discovery_system.py::DiscoveryServiceTests -k \"rejection_feedback or show_more or batch_refresh\" -v)",
-      "Bash(python -m pytest external-systems/partner-discovery-system/tests/test_discovery_system.py::DiscoveryServiceTests -k \"rejection_feedback or show_more or batch_refresh\" -xvs)"
+      "Bash(python -m pytest external-systems/partner-discovery-system/tests/test_discovery_system.py::DiscoveryServiceTests -k \"rejection_feedback or show_more or batch_refresh\" -xvs)",
+      "Bash(tail -500 /Users/sunmuchao/Downloads/Her/.run/logs/gateway.log > /tmp/gateway_tail.log && grep \"苏州\" /tmp/gateway_tail.log)",
+      "Bash(tail -1000 /Users/sunmuchao/Downloads/Her/.run/logs/gateway.log > /tmp/gateway_tail.log && grep -B 5 -A 10 \"苏州\" /tmp/gateway_tail.log | head -50)",
+      "Bash(tail -1000 /Users/sunmuchao/Downloads/Her/.run/logs/gateway.log > /tmp/gateway_tail.log && grep -B 10 \"consider苏州\" /tmp/gateway_tail.log 2>/dev/null || grep -B 10 \"苏州\" /tmp/gateway_tail.log | head -50)",
+      "Bash(ls -la /Users/sunmuchao/Downloads/Her/docs/ 2>/dev/null || mkdir -p /Users/sunmuchao/Downloads/Her/docs/)",
+      "Bash(xargs -I '{}' sh -c 'ext=\"${1##*.}\"; echo \"$ext\"' _ '{}')",
+      "Bash(grep -v \":0$\")",
+      "Bash(python -m pytest external-systems/partner-discovery-system/tests/test_discovery_system.py -k \"rejection_feedback\" -v --tb=short)",
+      "Bash(python -m pytest tests/test_sensitive_crypto.py -v)",
+      "Bash(python -c \"import sys; sys.path.insert\\(0, '/Users/sunmuchao/Downloads/Her'\\); from external_systems.partner_chat_system.chat_system.sensitive_crypto import SensitiveDataCrypto; print\\('OK'\\)\")",
+      "Bash(python -m pytest tests/test_boundary_scenarios.py::TestBoundaryLogger::test_logger_setup -v)",
+      "Bash(python -m pytest tests/test_boundary_scenarios.py::TestBoundaryLogger::test_logger_setup -v -s)",
+      "Bash(python -m pytest /Users/sunmuchao/Downloads/Her/external-systems/partner-discovery-system/tests/test_boundary_scenarios.py::TestBoundaryLogger::test_logger_setup -v -s)",
+      "Bash(python -m pytest /Users/sunmuchao/Downloads/Her/external-systems/partner-discovery-system/tests/test_boundary_scenarios.py::TestBoundaryScenarios -v --tb=short)",
+      "Bash(python -m pytest /Users/sunmuchao/Downloads/Her/external-systems/partner-discovery-system/tests/test_boundary_scenarios.py::TestBoundaryScenarios::test_scenario_1_1_first_time_user -v --tb=short)",
+      "Bash(python -m pytest /Users/sunmuchao/Downloads/Her/external-systems/partner-discovery-system/tests/test_boundary_simple.py -v -s)",
+      "Bash(python -m pytest /Users/sunmuchao/Downloads/Her/external-systems/partner-discovery-system/tests/test_real_agent_no_mock.py::TestRealAgentNoMock::test_real_agent_batch_refresh -v -s)",
+      "Bash(python -m pytest tests/test_tool_boundary_principle.py -v)"
+    ],
+    "additionalDirectories": [
+      "/tmp",
+      "/private/tmp",
+      "/Users/sunmuchao/Downloads/Her/docs"
     ]
   }
 }

@@ -36,7 +36,8 @@ MODEL = os.environ.get("HER_DISCOVERY_AGENT_MODEL", "qwen-max")
 
 print(f"=== 测试配置 ===")
 print(f"API URL: {BASE_URL}")
-print(f"API Key: {API_KEY[:10]}...{API_KEY[-10:]}")
+# 安全修复：移除 API Key 打印，避免泄露敏感信息
+print(f"API Key: [REDACTED - set via environment variable]")
 print(f"Model: {MODEL}")
 print()
 

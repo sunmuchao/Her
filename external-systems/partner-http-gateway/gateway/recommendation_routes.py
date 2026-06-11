@@ -1,4 +1,11 @@
-"""Recommendation-specific HTTP handlers for the gateway."""
+"""Recommendation-specific HTTP handlers for the gateway.
+
+SECURITY FIX: Added path parameter validation using input_validator.
+
+Changes:
+1. All path parameters {subscription_id}, {job_id} now validated
+2. Validation prevents injection attacks on recommendation resources
+"""
 
 from __future__ import annotations
 
@@ -39,6 +46,7 @@ from .http_helpers import (
     _read_body,
     _subscription_ids_from_query,
 )
+from .input_validator import validate_id, validate_int_id, ValidationError
 from .recommendation_access import recommendation_mutation_payload, resolve_optional_profile_id
 from .role_sets import INTERNAL_WRITE_ROLES
 
@@ -380,75 +388,125 @@ def dispatch_recommendation_rest(
     method: str,
     path: str,
 ) -> tuple[int, dict[str, Any]] | None:
+    """Recommendation REST 路由分发 - 带路径参数验证
+
+    SECURITY: 所有路径参数先验证格式，防止注入攻击
+    """
+    def _validate_path_id(raw_id: str, field_name: str) -> tuple[str | None, dict[str, Any] | None]:
+        """验证路径参数 ID，返回 (safe_id, error_response)"""
+        try:
+            return validate_id(raw_id, field_name), None
+        except ValidationError as e:
+            return None, {
+                "error": {"code": f"invalid_{field_name}", "message": str(e)},
+                "trace_id": get_trace_id(),
+            }
+
     match = re.fullmatch(r"/v1/recommendation/subscriptions/([^/]+)", path)
     if match and method == "GET":
-        return rest_get_subscription(gateway, environ, match.group(1))
+        safe_id, error = _validate_path_id(match.group(1), "subscription_id")
+        if error:
+            return 400, error
+        return rest_get_subscription(gateway, environ, safe_id)
+
     if path == "/v1/recommendation/subscriptions" and method == "POST":
         return rest_create_subscription(
             gateway,
             environ,
             _parse_json_body(_read_body(environ)),
         )
+
     match = re.fullmatch(r"/v1/recommendation/subscriptions/([^/]+)/overrides", path)
     if match and method == "PATCH":
+        safe_id, error = _validate_path_id(match.group(1), "subscription_id")
+        if error:
+            return 400, error
         return rest_patch_overrides(
             gateway,
             environ,
-            match.group(1),
+            safe_id,
             _parse_json_body(_read_body(environ)),
         )
+
     match = re.fullmatch(r"/v1/recommendation/subscriptions/([^/]+)/refresh", path)
     if match and method == "POST":
+        safe_id, error = _validate_path_id(match.group(1), "subscription_id")
+        if error:
+            return 400, error
         return rest_refresh_subscription(
             gateway,
             environ,
-            match.group(1),
+            safe_id,
             _parse_json_body(_read_body(environ)),
         )
+
     if path == "/v1/recommendation/subscriptions/refresh-due" and method == "POST":
         return rest_refresh_due(
             gateway,
             environ,
             _parse_json_body(_read_body(environ)),
         )
+
     if path == "/v1/recommendation/jobs" and method == "GET":
         return rest_list_recommendation_jobs(gateway, environ)
+
     match = re.fullmatch(r"/v1/recommendation/jobs/([^/]+)", path)
     if match and method == "GET":
-        return rest_get_recommendation_job(gateway, environ, match.group(1))
+        safe_id, error = _validate_path_id(match.group(1), "job_id")
+        if error:
+            return 400, error
+        return rest_get_recommendation_job(gateway, environ, safe_id)
+
     match = re.fullmatch(r"/v1/recommendation/subscriptions/([^/]+)/recommendations", path)
     if match and method == "GET":
-        return rest_list_recommendations(gateway, environ, match.group(1))
+        safe_id, error = _validate_path_id(match.group(1), "subscription_id")
+        if error:
+            return 400, error
+        return rest_list_recommendations(gateway, environ, safe_id)
+
     match = re.fullmatch(r"/v1/recommendation/subscriptions/([^/]+)/conversion-views", path)
     if match and method == "GET":
-        return rest_list_conversion_views(gateway, environ, match.group(1))
+        safe_id, error = _validate_path_id(match.group(1), "subscription_id")
+        if error:
+            return 400, error
+        return rest_list_conversion_views(gateway, environ, safe_id)
+
     match = re.fullmatch(r"/v1/recommendation/subscriptions/([^/]+)/runs", path)
     if match and method == "GET":
-        return rest_list_runs(gateway, environ, match.group(1))
+        safe_id, error = _validate_path_id(match.group(1), "subscription_id")
+        if error:
+            return 400, error
+        return rest_list_runs(gateway, environ, safe_id)
+
     if path == "/v1/recommendation/cards/read" and method == "POST":
         return rest_mark_cards_read(
             gateway,
             environ,
             _parse_json_body(_read_body(environ)),
         )
+
     if path == "/v1/recommendation/cards" and method == "GET":
         return rest_list_cards(gateway, environ)
+
     if path == "/v1/recommendation/deliver" and method == "POST":
         return rest_deliver(
             gateway,
             environ,
             _parse_json_body(_read_body(environ)),
         )
+
     if path == "/v1/recommendation/actions" and method == "POST":
         return rest_record_action(
             gateway,
             environ,
             _parse_json_body(_read_body(environ)),
         )
+
     if path == "/v1/recommendation/reviews" and method == "POST":
         return rest_record_review(
             gateway,
             environ,
             _parse_json_body(_read_body(environ)),
         )
+
     return None

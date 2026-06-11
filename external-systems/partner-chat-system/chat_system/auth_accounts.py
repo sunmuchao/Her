@@ -19,6 +19,7 @@ from match_domain.onboarding_search import (
     build_onboarding_profile_fields,
 )
 
+from .sensitive_crypto import SensitiveDataCrypto
 from .storage import inflate_json_columns, json_dumps, row_to_dict
 
 logger = logging.getLogger(__name__)
@@ -53,7 +54,7 @@ OTP_TTL = timedelta(minutes=5)
 OTP_RESEND_COOLDOWN = timedelta(seconds=60)
 OTP_MAX_VERIFY_ATTEMPTS = 5
 ACCESS_TOKEN_TTL = timedelta(hours=2)
-REFRESH_TOKEN_TTL = timedelta(days=30)
+REFRESH_TOKEN_TTL = timedelta(days=7)  # Security: shortened from 30 days to 7 days
 
 
 class AuthDomainError(ValueError):
@@ -111,6 +112,8 @@ def _row(conn, sql: str, params: tuple[Any, ...]) -> dict[str, Any] | None:
 
 
 def _active_user_by_phone(conn, phone: str) -> dict[str, Any] | None:
+    # Security: encrypt phone before query
+    encrypted_phone = SensitiveDataCrypto.encrypt_phone(phone)
     row = _row(
         conn,
         """
@@ -123,8 +126,11 @@ def _active_user_by_phone(conn, phone: str) -> dict[str, Any] | None:
           AND uai.status = 'active'
         LIMIT 1
         """,
-        (phone,),
+        (encrypted_phone,),
     )
+    # Security: decrypt phone in returned data
+    if row and row.get("primary_phone"):
+        row["primary_phone"] = SensitiveDataCrypto.decrypt_phone(row["primary_phone"])
     return row
 
 
@@ -134,7 +140,10 @@ def _active_user_by_wechat(
     openid: str | None,
     unionid: str | None,
 ) -> dict[str, Any] | None:
-    if unionid:
+    # Security: encrypt wechat IDs before query
+    encrypted_openid = SensitiveDataCrypto.encrypt_wechat_id(openid) if openid else None
+    encrypted_unionid = SensitiveDataCrypto.encrypt_wechat_id(unionid) if unionid else None
+    if encrypted_unionid:
         row = _row(
             conn,
             """
@@ -147,12 +156,15 @@ def _active_user_by_wechat(
               AND uai.status = 'active'
             LIMIT 1
             """,
-            (IDENTITY_TYPE_WECHAT_UNIONID, unionid),
+            (IDENTITY_TYPE_WECHAT_UNIONID, encrypted_unionid),
         )
         if row:
+            # Security: decrypt phone in returned data
+            if row.get("primary_phone"):
+                row["primary_phone"] = SensitiveDataCrypto.decrypt_phone(row["primary_phone"])
             return row
-    if openid:
-        return _row(
+    if encrypted_openid:
+        row = _row(
             conn,
             """
             SELECT ua.*
@@ -164,13 +176,17 @@ def _active_user_by_wechat(
               AND uai.status = 'active'
             LIMIT 1
             """,
-            (IDENTITY_TYPE_WECHAT_OPENID, openid),
+            (IDENTITY_TYPE_WECHAT_OPENID, encrypted_openid),
         )
+        # Security: decrypt phone in returned data
+        if row and row.get("primary_phone"):
+            row["primary_phone"] = SensitiveDataCrypto.decrypt_phone(row["primary_phone"])
+        return row
     return None
 
 
 def _user_by_id(conn, user_id: str) -> dict[str, Any] | None:
-    return row_to_dict(
+    row = row_to_dict(
         conn.execute(
             """
             SELECT *
@@ -181,6 +197,10 @@ def _user_by_id(conn, user_id: str) -> dict[str, Any] | None:
             (user_id,),
         ).fetchone()
     )
+    # Security: decrypt phone in returned data
+    if row and row.get("primary_phone"):
+        row["primary_phone"] = SensitiveDataCrypto.decrypt_phone(row["primary_phone"])
+    return row
 
 
 def _onboarding_state(conn, user_id: str) -> dict[str, Any] | None:
@@ -216,6 +236,9 @@ def _log_event(
     now: datetime | None = None,
 ) -> None:
     ts = _utcnow(now)
+    # Security: encrypt phone before storing in event log
+    # Note: For audit purposes, encrypted phone can be decrypted with the key
+    encrypted_phone = SensitiveDataCrypto.encrypt_phone(phone) if phone else None
     conn.execute(
         """
         INSERT INTO auth_login_events (
@@ -226,7 +249,7 @@ def _log_event(
         (
           _generate_event_id(),
           user_id,
-          phone,
+          encrypted_phone,
           event_type,
           result,
           reason_code,
@@ -254,6 +277,8 @@ def issue_sms_code(
     now: datetime | None = None,
 ) -> dict[str, Any]:
     ts = _utcnow(now)
+    # Security: encrypt phone before query/storage
+    encrypted_phone = SensitiveDataCrypto.encrypt_phone(phone)
     active = _row(
         conn,
         """
@@ -263,7 +288,7 @@ def issue_sms_code(
         ORDER BY created_at DESC
         LIMIT 1
         """,
-        (phone, scene, OTP_STATUS_ISSUED),
+        (encrypted_phone, scene, OTP_STATUS_ISSUED),
     )
     if active:
         resend_at = active.get("resend_available_at")
@@ -292,7 +317,7 @@ def issue_sms_code(
         """,
         (
           challenge_id,
-          phone,
+          encrypted_phone,
           scene,
           scenario,
           _hash_code(phone=phone, code=code, salt=salt),
@@ -311,7 +336,7 @@ def issue_sms_code(
     _log_event(
         conn,
         user_id=None,
-        phone=phone,
+        phone=phone,  # _log_event handles encryption internally
         event_type="sms_send",
         result="success",
         client_ip=client_ip,
@@ -338,6 +363,8 @@ def issue_sms_code(
 
 def _create_user_from_phone(conn, *, phone: str, now: datetime) -> dict[str, Any]:
     user_id = _generate_user_id()
+    # Security: encrypt phone before storing
+    encrypted_phone = SensitiveDataCrypto.encrypt_phone(phone)
     conn.execute(
         """
         INSERT INTO user_accounts (
@@ -348,7 +375,7 @@ def _create_user_from_phone(conn, *, phone: str, now: datetime) -> dict[str, Any
         (
           user_id,
           ACCOUNT_STATUS_ACTIVE,
-          phone,
+          encrypted_phone,
           now,
           LOGIN_METHOD_SMS,
           ONBOARDING_STATUS_NOT_STARTED,
@@ -368,7 +395,7 @@ def _create_user_from_phone(conn, *, phone: str, now: datetime) -> dict[str, Any
         (
           _generate_identity_id(),
           user_id,
-          phone,
+          encrypted_phone,
           1,
           now,
           now,
@@ -396,7 +423,7 @@ def _create_user_from_phone(conn, *, phone: str, now: datetime) -> dict[str, Any
     return {
         "user_id": user_id,
         "account_status": ACCOUNT_STATUS_ACTIVE,
-        "primary_phone": phone,
+        "primary_phone": phone,  # Return decrypted phone to caller
         "onboarding_status": ONBOARDING_STATUS_NOT_STARTED,
     }
 
@@ -456,6 +483,8 @@ def _ensure_identity(
     verified_at: datetime | None = None,
     now: datetime,
 ) -> None:
+    # Security: encrypt identity value before storing
+    encrypted_value = SensitiveDataCrypto.encrypt_identity_value(identity_type, identity_value)
     existing = _row(
         conn,
         """
@@ -464,7 +493,7 @@ def _ensure_identity(
         WHERE identity_type = ? AND identity_value = ?
         LIMIT 1
         """,
-        (identity_type, identity_value),
+        (identity_type, encrypted_value),
     )
     if existing:
         if str(existing.get("user_id") or "") != str(user_id):
@@ -489,7 +518,7 @@ def _ensure_identity(
             _generate_identity_id(),
             user_id,
             identity_type,
-            identity_value,
+            encrypted_value,
             1 if is_primary else 0,
             verified_at,
             now,
@@ -506,6 +535,8 @@ def _challenge_for_phone(
     challenge_id: str | None,
     scene: str,
 ) -> dict[str, Any] | None:
+    # Security: encrypt phone before query
+    encrypted_phone = SensitiveDataCrypto.encrypt_phone(phone)
     if challenge_id:
         return _row(
             conn,
@@ -515,7 +546,7 @@ def _challenge_for_phone(
             WHERE challenge_id = ? AND phone = ?
             LIMIT 1
             """,
-            (challenge_id, phone),
+            (challenge_id, encrypted_phone),
         )
     return _row(
         conn,
@@ -526,7 +557,7 @@ def _challenge_for_phone(
         ORDER BY created_at DESC
         LIMIT 1
         """,
-        (phone, scene),
+        (encrypted_phone, scene),
     )
 
 
@@ -675,13 +706,15 @@ def verify_sms_code(
     if user is None:
         user = _create_user_from_phone(conn, phone=phone, now=ts)
     else:
+        # Security: encrypt phone before storing
+        encrypted_phone = SensitiveDataCrypto.encrypt_phone(phone)
         conn.execute(
             """
             UPDATE user_accounts
             SET last_login_at = ?, primary_phone = COALESCE(primary_phone, ?), phone_verified_at = COALESCE(phone_verified_at, ?), updated_at = ?
             WHERE user_id = ?
             """,
-            (ts, phone, ts, ts, user["user_id"]),
+            (ts, encrypted_phone, ts, ts, user["user_id"]),
         )
         onboarding = _onboarding_state(conn, user["user_id"])
         user["onboarding_status"] = (
@@ -763,13 +796,15 @@ def bind_phone_with_sms(
         verified_at=ts,
         now=ts,
     )
+    # Security: encrypt phone before storing
+    encrypted_phone = SensitiveDataCrypto.encrypt_phone(phone)
     conn.execute(
         """
         UPDATE user_accounts
         SET primary_phone = ?, phone_verified_at = ?, updated_at = ?
         WHERE user_id = ?
         """,
-        (phone, ts, ts, user_id),
+        (encrypted_phone, ts, ts, user_id),
     )
     _log_event(
         conn,
@@ -787,7 +822,7 @@ def bind_phone_with_sms(
         "ok": True,
         "user": {
             "user_id": user_id,
-            "phone": updated.get("primary_phone"),
+            "phone": updated.get("primary_phone"),  # Already decrypted by _user_by_id
             "phone_bound": bool(updated.get("primary_phone")),
             "account_status": updated.get("account_status") or ACCOUNT_STATUS_ACTIVE,
             "onboarding_status": updated.get("onboarding_status") or ONBOARDING_STATUS_NOT_STARTED,
@@ -806,6 +841,9 @@ def _create_wechat_binding(
     raw_profile: dict[str, Any],
     now: datetime,
 ) -> None:
+    # Security: encrypt wechat IDs before storing
+    encrypted_openid = SensitiveDataCrypto.encrypt_wechat_id(openid)
+    encrypted_unionid = SensitiveDataCrypto.encrypt_wechat_id(unionid) if unionid else None
     _ensure_identity(
         conn,
         user_id=user_id,
@@ -831,7 +869,7 @@ def _create_wechat_binding(
         WHERE openid = ?
         LIMIT 1
         """,
-        (openid,),
+        (encrypted_openid,),
     )
     if existing:
         conn.execute(
@@ -843,7 +881,7 @@ def _create_wechat_binding(
             """,
             (
                 user_id,
-                unionid,
+                encrypted_unionid,
                 nickname,
                 avatar_url,
                 json_dumps(raw_profile),
@@ -864,8 +902,8 @@ def _create_wechat_binding(
         (
             f"wx-{uuid.uuid4().hex[:16]}",
             user_id,
-            openid,
-            unionid,
+            encrypted_openid,
+            encrypted_unionid,
             nickname,
             avatar_url,
             json_dumps(raw_profile),
@@ -924,7 +962,8 @@ def login_with_wechat_profile(
         result="success",
         client_ip=client_ip,
         device_id=device_id,
-        metadata={"openid": openid, "unionid": unionid, "session_id": session["session_id"]},
+        # Security: do not log plain openid/unionid in metadata
+        metadata={"openid_hash": _hash_value(openid), "unionid_hash": _hash_value(unionid) if unionid else None, "session_id": session["session_id"]},
         now=ts,
     )
     conn.commit()
@@ -966,6 +1005,7 @@ def create_one_tap_attempt(
     ts = _utcnow(now)
     attempt_id = f"otl-{uuid.uuid4().hex[:16]}"
     expires_at = ts + ONE_TAP_TTL
+    # Note: masked_phone is already masked (138****5678), no need to encrypt
     conn.execute(
         """
         INSERT INTO auth_one_tap_attempts (
@@ -976,7 +1016,7 @@ def create_one_tap_attempt(
         (
             attempt_id,
             provider,
-            masked_phone,
+            masked_phone,  # masked_phone is not sensitive (already masked)
             operator_request_id,
             ONE_TAP_STATUS_CREATED,
             json_dumps(provider_payload or {}),
@@ -1061,7 +1101,8 @@ def verify_one_tap_login(
         SET status = ?, verified_phone = ?, updated_at = ?
         WHERE attempt_id = ?
         """,
-        (ONE_TAP_STATUS_VERIFIED, phone, ts, attempt_id),
+        # Security: encrypt verified_phone before storing
+        (ONE_TAP_STATUS_VERIFIED, SensitiveDataCrypto.encrypt_phone(phone), ts, attempt_id),
     )
     _log_event(
         conn,
@@ -1119,6 +1160,7 @@ def get_session_by_access_token(conn, access_token: str, *, now: datetime | None
     user = _user_by_id(conn, str(session["user_id"]))
     if not user or user.get("account_status") != ACCOUNT_STATUS_ACTIVE:
         return None
+    # Security: phone is already decrypted by _user_by_id
     onboarding = _onboarding_state(conn, str(user["user_id"]))
     user["onboarding_status"] = (
         onboarding.get("onboarding_status")
@@ -1463,7 +1505,7 @@ def refresh_session(
     _log_event(
         conn,
         user_id=str(user["user_id"]),
-        phone=user.get("primary_phone"),
+        phone=user.get("primary_phone"),  # phone already decrypted by _user_by_id
         event_type="token_refresh",
         result="success",
         metadata={"session_id": session["session_id"]},

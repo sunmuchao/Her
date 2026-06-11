@@ -85,7 +85,59 @@ ASYNC_JOB_TABLE = TableDef(
 )
 
 def quote_mysql_ident(identifier: str) -> str:
-    return f"`{identifier.replace('`', '``')}`"
+    """
+    安全地引用 MySQL 标识符（表名、列名），防止 SQL 注入。
+
+    安全措施：
+    1. 替换反引号为双反引号（MySQL 标准）
+    2. 移除 NULL 字符（可能导致绕过）
+    3. 限制长度（MySQL 标识符最长 64 字符）
+    4. 验证标识符格式（只允许合法字符）
+
+    Args:
+        identifier: 待引用的标识符
+
+    Returns:
+        安全引用后的标识符，如 `table_name`
+
+    Raises:
+        ValueError: 如果标识符包含非法字符或过长
+    """
+    # 移除 NULL 字符和不可见字符
+    normalized = str(identifier or "").strip()
+    normalized = normalized.replace("\x00", "").replace("�", "")
+
+    # 检查标识符长度
+    if len(normalized) > 64:
+        raise ValueError(
+            f"MySQL identifier too long: {len(normalized)} characters (max 64). "
+            f"Identifier: {normalized[:20]}..."
+        )
+
+    # 检查标识符是否为空
+    if not normalized:
+        raise ValueError("MySQL identifier cannot be empty")
+
+    # 检查标识符是否包含非法字符（除了字母、数字、下划线、美元符号）
+    # MySQL 标识符规则：第一个字符必须是字母或下划线，后续可以是字母、数字、下划线、美元符号
+    # 但我们放宽限制，允许更多字符（如中文字符），只是用反引号引用
+    illegal_chars = set()
+    for char in normalized:
+        # 禁止反引号（会被转义）、分号（注入风险）、斜杠（路径风险）
+        if char in {";", "/", "\\"}:
+            illegal_chars.add(char)
+
+    if illegal_chars:
+        raise ValueError(
+            f"MySQL identifier contains illegal characters: {illegal_chars}. "
+            f"Identifier: {normalized[:20]}..."
+        )
+
+    # 替换反引号为双反引号（MySQL 标准转义）
+    escaped = normalized.replace("`", "``")
+
+    # 返回引用后的标识符
+    return f"`{escaped}`"
 
 
 def normalize_prefix(prefix: str | None) -> str:

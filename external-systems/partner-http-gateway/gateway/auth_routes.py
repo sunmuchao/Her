@@ -1,4 +1,12 @@
-"""Public auth/SMS HTTP handlers for the gateway."""
+"""Public auth/SMS HTTP handlers for the gateway.
+
+SECURITY FIX: Added multi-dimensional rate limiting for SMS and verification endpoints.
+
+Changes:
+1. SmsRateLimiter - Phone + IP dual-dimension limiting (prevent SMS bombing)
+2. VerifyCodeRateLimiter - Prevent brute-force verification attempts
+3. Rate limit check moved BEFORE execution (prevent expensive ops on blocked requests)
+"""
 
 from __future__ import annotations
 
@@ -47,8 +55,12 @@ from .auth_providers import (
     fixed_auth_code,
 )
 from .http_helpers import _json_safe, _parse_json_body, _read_body
-from .request_policy import client_ip
+from .request_policy import client_ip, sms_rate_limiter_from_environ, verify_rate_limiter_from_environ
 from .resolved_principal import principal_payload_for_actor
+
+# 全局限流器实例（在 gateway 初始化时创建）
+_sms_rate_limiter = sms_rate_limiter_from_environ()
+_verify_rate_limiter = verify_rate_limiter_from_environ()
 
 # Backward-compatible re-exports for gateway tests and app wiring.
 AliyunSmsProvider = _auth_providers.AliyunSmsProvider
@@ -231,11 +243,48 @@ def rest_auth_send_sms_code(
     environ: dict[str, Any],
     body: dict[str, Any],
 ) -> tuple[int, dict[str, Any]]:
+    """发送短信验证码 - 带多维限流检查
+
+    SECURITY FIX:
+    1. 手机号维度：同一号码每分钟最多 1 次（防轰炸）
+    2. IP 维度：同一 IP 每分钟最多 5 次不同号码（防分布式）
+    3. 限流检查在执行前，避免被限流时还执行昂贵的 SMS 发送
+    """
+    # Step 1: 提取手机号和 IP
+    phone_raw = body.get("phone") or body.get("mobile")
+    try:
+        phone = require_cn_phone(phone_raw)
+    except AuthRouteError as exc:
+        return _error_payload(exc)
+
+    ip = client_ip(environ)
+
+    # Step 2: 多维限流检查（在执行前）
+    allowed, reason = _sms_rate_limiter.allow_sms(phone, ip)
+    if not allowed:
+        # 记录限流事件
+        from observability import audit_event
+        audit_event(
+            action="gateway.sms_rate_limited",
+            resource_type="sms",
+            resource_id=phone,
+            outcome="denied",
+            reason=reason,
+            client_ip=ip,
+            http_method=environ.get("REQUEST_METHOD"),
+            path=environ.get("PATH_INFO"),
+        )
+        return 429, {
+            "error": {"code": "sms_rate_limited", "message": reason},
+            "trace_id": get_trace_id(),
+        }
+
+    # Step 3: 执行发送（限流通过后）
     try:
         out = gateway._auth_otp.send_code(
-            require_cn_phone(body.get("phone") or body.get("mobile")),
+            phone,
             scene=str(body.get("scene") or "login"),
-            client_ip_text=client_ip(environ),
+            client_ip_text=ip,
             device_id=str(body.get("device_id") or "").strip() or None,
         )
     except AuthRouteError as exc:
@@ -248,9 +297,41 @@ def rest_auth_verify_sms_code(
     environ: dict[str, Any],
     body: dict[str, Any],
 ) -> tuple[int, dict[str, Any]]:
+    """验证短信验证码 - 带暴力破解防护
+
+    SECURITY FIX:
+    1. 手机号维度：每分钟最多 10 次验证尝试
+    2. 配合单次验证码最多 5 次错误尝试
+    """
+    # Step 1: 提取手机号
+    phone_raw = body.get("phone") or body.get("mobile")
+    try:
+        phone = require_cn_phone(phone_raw)
+    except AuthRouteError as exc:
+        return _error_payload(exc)
+
+    # Step 2: 暴力破解限流检查
+    if not _verify_rate_limiter.allow_verify(phone):
+        from observability import audit_event
+        audit_event(
+            action="gateway.verify_rate_limited",
+            resource_type="verification",
+            resource_id=phone,
+            outcome="denied",
+            reason="brute_force_prevention",
+            client_ip=client_ip(environ),
+            http_method=environ.get("REQUEST_METHOD"),
+            path=environ.get("PATH_INFO"),
+        )
+        return 429, {
+            "error": {"code": "verify_rate_limited", "message": "验证尝试过于频繁，请稍后再试"},
+            "trace_id": get_trace_id(),
+        }
+
+    # Step 3: 执行验证（限流通过后）
     try:
         out = gateway._auth_otp.verify_code(
-            require_cn_phone(body.get("phone") or body.get("mobile")),
+            phone,
             require_code(body.get("code") or body.get("otp")),
             challenge_id=str(body.get("challenge_id") or "").strip() or None,
             client_ip_text=client_ip(environ),
