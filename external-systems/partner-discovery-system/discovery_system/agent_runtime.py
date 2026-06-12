@@ -46,6 +46,7 @@ class DiscoveryRunInput:
     sync_requester_persona_memory: Callable[[dict[str, Any]], dict[str, Any]]
     propose_requester_profile_update: Callable[[str, str], dict[str, Any]]
     create_saved_search_subscription_from_last_search: Callable[[], dict[str, Any]]
+    suggest_assessment: Callable[[str], dict[str, Any]]  # Agent必须传入测评类型
     tool_call_buffer: list["DiscoveryToolCall"] = field(default_factory=list)
     agent_session: Any | None = None
 
@@ -523,18 +524,6 @@ def _normalize_memory_summary(
 # 参考：Agent Native 开发实践规范 - 反模式：触发词映射表
 
 
-def _build_personality_explanation_fallback(
-    run_input: DiscoveryRunInput,
-    user_message: str | None,
-) -> DiscoveryRuntimeResult | None:
-    """
-    ✅ Agent Native：不再通过关键词判断是否需要性格解释
-    直接返回 None，让 Agent 自主处理性格解释请求
-    Agent 会根据 user_message 自主判断是否需要解释，并调用相应工具
-    """
-    return None
-
-
 def _safe_overlap(values: dict[str, Any] | None, candidate_values: dict[str, Any] | None) -> list[str]:
     self_top = {str(item).strip() for item in list((values or {}).get("top_values") or []) if str(item).strip()}
     candidate_top = {
@@ -583,10 +572,6 @@ def _values_clause(self_values: dict[str, Any] | None, candidate_values: dict[st
     if self_type and candidate_type:
         return f"价值观上你偏{self_type}，她偏{candidate_type}，虽然不完全一样，但都不是只看短期新鲜感的类型。"
     return None
-
-# ✅ Agent Native：原始版本的 _build_personality_explanation_fallback 已删除
-# 该版本调用已删除的 _looks_like_personality_explanation_request 和 _select_explained_candidate
-# 统一使用第606-615行的简化版本（直接返回 None）
 
 
 def _compact_timeline(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -751,141 +736,13 @@ def _build_runtime_prompt(
     return json.dumps(payload, ensure_ascii=False, sort_keys=True)
 
 
-class StubDiscoveryAgentRuntime:
-    """Fallback runtime for local tests or missing model configuration."""
-
-    def initial_decision(self, _run_input: DiscoveryRunInput) -> DiscoveryRuntimeResult:
-        return DiscoveryRuntimeResult(
-            decision=DiscoveryDecision(
-                phase="collecting_preferences",
-                assistant_message="先跟我说说你想找什么样的人，不用一次讲完整。",
-                suggested_actions=[
-                    DiscoveryActionSuggestion(
-                        label="先从城市和年龄说起",
-                        style="primary",
-                        semantic_payload={"kind": "starter_prompt", "slot": "city_and_age"},
-                    ),
-                    DiscoveryActionSuggestion(
-                        label="先说你最在意的 3 个条件",
-                        semantic_payload={"kind": "starter_prompt", "slot": "top_preferences"},
-                    ),
-                ],
-            )
-        )
-
-    def run_turn(
-        self,
-        run_input: DiscoveryRunInput,
-        *,
-        user_message: str | None = None,
-        action_context: dict[str, Any] | None = None,
-    ) -> DiscoveryRuntimeResult:
-        action_hint = dict((action_context or {}).get("semantic_payload") or {})
-        if action_hint.get("kind") == "saved_search_opt_in":
-            tool_result = run_input.create_saved_search_subscription_from_last_search()
-            if tool_result.get("created_subscription"):
-                title = str(tool_result.get("title") or "这次持续留意").strip()
-                body = f"好，我已经替你记下了，后面有合适的人会按'{title}'继续帮你留意。"
-            elif tool_result.get("already_exists"):
-                body = "这轮条件我已经替你记下了，后面有新的合适人选我会继续留意。"
-            else:
-                body = "我这边先没成功帮你记下持续留意，你可以稍后再点一次，我也可以先陪你调整条件。"
-            return DiscoveryRuntimeResult(
-                decision=DiscoveryDecision(
-                    phase="no_result",
-                    assistant_message=body,
-                    criteria_labels=list(run_input.criteria_labels),
-                    suggested_actions=[],
-                )
-            )
-
-        # ✅ Agent Native：移除硬编码回复模板
-        # rejection_feedback 统一走 Agent Runtime，由 Agent 自主决定回复
-        # Stub runtime 只提供简单的 fallback 逻辑
-        if action_hint.get("kind") == "rejection_feedback":
-            feedback_text = str(action_context.get("label") or "这批先换一下")
-
-            # 记录反馈
-            run_input.submit_rejection_feedback(
-                feedback_text=feedback_text,
-                feedback_type=action_hint.get("feedback_type") or None,
-                feedback_detail="",
-                is_secondary=False,
-            )
-
-            # 搜索新候选人
-            search_result = run_input.search_partner_candidates(
-                criteria_json={},  # Agent 自主决定调整策略
-                limit=5,
-            )
-
-            # 构建返回结果（不硬编码回复模板）
-            candidates = []
-            if search_result.get("results"):
-                for item in search_result.get("results")[:5]:
-                    candidates.append({
-                        "profile_id": item.get("id"),
-                        "reason_summary": item.get("match_reason") or "匹配度较高",
-                    })
-
-            # ✅ Agent Native：回复让 Agent 自主生成（通过调用真实 runtime）
-            # Stub 只提供简单的 fallback 回复
-            body = f"收到，你选了'{feedback_text}'。我帮你重新找了一批。"
-
-            return DiscoveryRuntimeResult(
-                decision=DiscoveryDecision(
-                    phase="results_shown" if candidates else "no_result",
-                    assistant_message=body,
-                    criteria_labels=list(run_input.criteria_labels),
-                    selected_candidates=candidates,
-                    suggested_actions=[
-                        DiscoveryActionSuggestion(
-                            label="看看更多",
-                            semantic_payload={"kind": "show_more_candidates"},
-                            style="ghost",
-                        ),
-                        DiscoveryActionSuggestion(
-                            label="调整条件",
-                            semantic_payload={"kind": "add_criteria"},
-                            style="secondary",
-                        ),
-                    ],
-                ),
-                search_response=search_result,
-            )
-
-        if action_context is not None:
-            label = str(action_context.get("label") or "这个选项")
-            body = f"收到，你点了'{label}'。我再帮你把条件收一收，然后继续找。"
-        elif user_message:
-            body = "收到。我先把你的偏好整理一下，你也可以继续补充年龄、城市或关系期待。"
-        else:
-            body = "收到。我先继续帮你整理条件。"
-        return DiscoveryRuntimeResult(
-            decision=DiscoveryDecision(
-                phase="collecting_preferences",
-                assistant_message=body,
-                criteria_labels=list(run_input.criteria_labels),
-                suggested_actions=[
-                    DiscoveryActionSuggestion(
-                        label="继续补充年龄范围",
-                        semantic_payload={"kind": "followup_prompt", "slot": "age_range"},
-                    ),
-                    DiscoveryActionSuggestion(
-                        label="继续补充城市和定居意向",
-                        semantic_payload={"kind": "followup_prompt", "slot": "city_intent"},
-                    ),
-                ],
-            )
-        )
-
-
 class AgentsSdkDiscoveryAgentRuntime:
-    def __init__(self, *, fallback: DiscoveryAgentRuntime | None = None) -> None:
-        self._fallback = fallback or StubDiscoveryAgentRuntime()
+    def __init__(self) -> None:
+        # ✅ 删除兜底方案：不再使用fallback，让真实问题暴露出来
+        pass
 
     def initial_decision(self, run_input: DiscoveryRunInput) -> DiscoveryRuntimeResult:
-        return self._run_or_fallback(
+        return self._run_with_agents_sdk(
             run_input,
             event="session_opened",
         )
@@ -897,69 +754,10 @@ class AgentsSdkDiscoveryAgentRuntime:
         user_message: str | None = None,
         action_context: dict[str, Any] | None = None,
     ) -> DiscoveryRuntimeResult:
-        return self._run_or_fallback(
+        # ✅ 删除兜底方案：直接调用_run_with_agents_sdk
+        return self._run_with_agents_sdk(
             run_input,
             event="action_click" if action_context is not None else "user_message",
-            user_message=user_message,
-            action_context=action_context,
-        )
-
-    def _run_or_fallback(
-        self,
-        run_input: DiscoveryRunInput,
-        *,
-        event: str,
-        user_message: str | None = None,
-        action_context: dict[str, Any] | None = None,
-    ) -> DiscoveryRuntimeResult:
-        if not self._should_use_agents_sdk():
-            _logger.warning(
-                "discovery agent using stub runtime: agents_sdk disabled or API key missing"
-            )
-            explained = _build_personality_explanation_fallback(run_input, user_message)
-            if explained is not None:
-                return explained
-            return self._fallback_result(
-                run_input,
-                user_message=user_message,
-                action_context=action_context,
-            )
-        try:
-            return self._run_with_agents_sdk(
-                run_input,
-                event=event,
-                user_message=user_message,
-                action_context=action_context,
-            )
-        except Exception as exc:  # noqa: BLE001
-            recovered = _recover_decision_from_exception(exc)
-            if recovered is not None:
-                return DiscoveryRuntimeResult(decision=recovered)
-            _logger.warning(
-                "discovery agent fell back to stub after model error: %s: %s",
-                type(exc).__name__,
-                exc,
-            )
-            explained = _build_personality_explanation_fallback(run_input, user_message)
-            if explained is not None:
-                return explained
-            return self._fallback_result(
-                run_input,
-                user_message=user_message,
-                action_context=action_context,
-            )
-
-    def _fallback_result(
-        self,
-        run_input: DiscoveryRunInput,
-        *,
-        user_message: str | None = None,
-        action_context: dict[str, Any] | None = None,
-    ) -> DiscoveryRuntimeResult:
-        if user_message is None and action_context is None:
-            return self._fallback.initial_decision(run_input)
-        return self._fallback.run_turn(
-            run_input,
             user_message=user_message,
             action_context=action_context,
         )
@@ -1021,6 +819,35 @@ class AgentsSdkDiscoveryAgentRuntime:
         def create_saved_search_subscription_from_last_search() -> dict[str, Any]:
             """创建订阅，按当前搜索条件持续留意新候选人。当用户想长期关注符合条件的候选人、或者当前搜索无结果时推荐使用。"""
             return run_input.create_saved_search_subscription_from_last_search()
+
+        @function_tool
+        def suggest_assessment(assessment_type: str) -> dict[str, Any]:
+            """检查用户测评状态，如未完成则返回引导卡片。
+
+            适用场景：
+            - 用户关心性格匹配、提到性格相关话题时
+            - Agent判断需要了解用户性格类型时
+
+            参数：
+            - assessment_type: 测评类型（必须传入）
+              - "mbti_16": MBTI性格测试（了解性格类型，快速简单）
+              - "attachment_style": 依恋风格测试（了解亲密关系模式、相处节奏）
+              - "big_five": 大五人格测试（了解性格结构，科学全面）
+
+            Agent自主选择测评类型的建议：
+            - 用户提到"性格类型"、"内向/外向"、"MBTI" → 可优先推荐MBTI（快速了解性格类型）
+            - 用户提到"相处节奏"、"忽冷忽热"、"关系模式"、"依恋" → 可考虑依恋风格测试
+            - 用户想深入了解性格结构、需要科学分析 → 可推荐大五人格测试
+
+            返回：
+            - 已完成：返回用户性格类型信息（原始数据）
+            - 未完成：返回测评引导卡片（前端渲染）
+            """
+            _logger.info("【工具调用】suggest_assessment")
+            _logger.info("  - assessment_type：%s", assessment_type)
+            result = run_input.suggest_assessment(assessment_type)
+            tool_state["assessment_payload"] = result
+            return result
 
         # ====================================================================
         # 方案A：拆分为两个专用工具（reply_to_user + show_candidates）
@@ -1106,6 +933,7 @@ class AgentsSdkDiscoveryAgentRuntime:
             create_saved_search_subscription_from_last_search,
             reply_to_user,   # 方案A：回复专用工具
             show_candidates, # 方案A：展示候选人专用工具
+            suggest_assessment,  # 心理测评引导工具
         ]
         runtime_input = _build_runtime_prompt(
             run_input=run_input,
@@ -1194,12 +1022,10 @@ class AgentsSdkDiscoveryAgentRuntime:
             if recovered is not None:
                 decision = recovered
             else:
-                # 最终 fallback：使用 stub
-                _logger.warning("discovery agent fell back to stub after no decision payload")
-                return self._fallback_result(
-                    run_input,
-                    user_message=user_message,
-                    action_context=action_context,
+                # ✅ 删除兜底方案：Agent没有调用工具时，抛出异常暴露真实问题
+                raise RuntimeError(
+                    f"Agent没有调用reply_to_user或show_candidates工具。"
+                    f"用户输入：{user_message or action_context or 'initial'}"
                 )
 
         search_response = tool_state.get("last_search_response")
@@ -1218,13 +1044,7 @@ class AgentsSdkDiscoveryAgentRuntime:
                 result_group_title=decision.result_group_title,
                 selected_candidates=decision.selected_candidates,
             )
-        explained = _build_personality_explanation_fallback(run_input, user_message)
-        if (
-            explained is not None
-            and decision.phase == "collecting_preferences"
-            and "继续补充" in decision.assistant_message
-        ):
-            return explained
+
         # ====================================================================
         # 【证据优先】关键日志埋点：记录 Agent 实际行为
         # 用于测试实验边界验证，收集证据后再决定改进方案
@@ -1238,9 +1058,13 @@ class AgentsSdkDiscoveryAgentRuntime:
         _logger.info("工具调用：%s", list(tool_state.keys()))
         _logger.info("=" * 80)
 
+        # 提取测评卡片数据
+        assessment_payload = tool_state.get("assessment_payload")
+
         return DiscoveryRuntimeResult(
             decision=decision,
             search_response=search_response,
+            assessment_payload=assessment_payload,  # 传递测评卡片数据给前端
         )
 
     async def _run_streamed_agent(
@@ -1269,7 +1093,8 @@ class AgentsSdkDiscoveryAgentRuntime:
 
 
 def create_default_discovery_agent_runtime() -> DiscoveryAgentRuntime:
-    return AgentsSdkDiscoveryAgentRuntime(fallback=StubDiscoveryAgentRuntime())
+    # ✅ 删除兜底方案：不再使用fallback，直接返回AgentsSdkDiscoveryAgentRuntime
+    return AgentsSdkDiscoveryAgentRuntime()
 
 
 __all__ = [
@@ -1283,6 +1108,5 @@ __all__ = [
     "DiscoveryRunInput",
     "DiscoveryRuntimeResult",
     "DiscoveryToolCall",
-    "StubDiscoveryAgentRuntime",
     "create_default_discovery_agent_runtime",
 ]

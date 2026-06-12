@@ -5,9 +5,14 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from datetime import datetime
+import json
+import logging
 import os
 from pathlib import Path
+import time
 from typing import Any, Callable
+
+_logger = logging.getLogger(__name__)
 
 from her_repo_path_bootstrap import ensure_partner_system_roots_on_sys_path
 from match_domain.criteria_compiler import build_discovery_search_request
@@ -371,6 +376,14 @@ def search_partner_candidates_with(
     load_profile: Callable[..., Any],
     search: Callable[..., dict[str, Any]],
 ) -> dict[str, Any]:
+    # ✅ 可观测性增强：入口日志
+    _logger.info(
+        "【搜索开始】session_id=%s criteria=%s limit=%s",
+        session.session_id,
+        json.dumps(criteria, ensure_ascii=False)[:200],
+        limit,
+    )
+
     if not source:
         return {
             "error_code": "search_source_not_configured",
@@ -410,10 +423,34 @@ def search_partner_candidates_with(
                 persona_row = persona_future.result()
             except Exception:  # noqa: BLE001
                 persona_row = None
+
+    # ✅ 可观测性增强：并行加载结果日志
+    _logger.info(
+        "【用户数据加载】session_id=%s profile_id=%s has_self_profile=%s has_persona=%s",
+        session.session_id,
+        session.profile_id,
+        bool(self_profile),
+        bool(persona_row),
+    )
+
     if isinstance(self_profile, dict) and not self_profile:
         self_profile = None
     effective_self_id = session.profile_id if isinstance(self_profile, dict) and self_profile else None
-    normalized_limit = max(1, min(int(limit or 5), 10))
+
+    # ✅ 可观测性增强：用户资料详情日志
+    if self_profile:
+        _logger.info(
+            "【用户资料详情】session_id=%s age=%s city=%s gender=%s",
+            session.session_id,
+            self_profile.get("age"),
+            self_profile.get("city"),
+            self_profile.get("gender"),
+        )
+
+    # ✅ Agent Native 改进：移除重复校验
+    # limit 应该在 Tool 层（最外层）校验，Service Integrations 层不再重复校验
+    # 添加 assert 确保传入的 limit 已经被校验过了
+    assert 1 <= int(limit or 5) <= 10, f"limit should be validated in Tool layer, got {limit}"
     merged_criteria = merge_working_criteria(session.state, criteria)
     session.state["working_criteria"] = {
         key: merged_criteria[key]
@@ -426,7 +463,7 @@ def search_partner_candidates_with(
         persona_row=persona_row,
         criteria_overrides=merged_criteria,
         self_id=effective_self_id,
-        limit=normalized_limit,
+        limit=int(limit or 5),  # ✅ 直接使用 limit（已在 Tool 层校验）
     )
     compiled = dict(compiled_request.get("compiled") or {})
     request_meta = _search_request_meta(
@@ -435,7 +472,7 @@ def search_partner_candidates_with(
         criteria=compiled_request.get("criteria") or {},
         self_profile=compiled_request.get("self_profile"),
         effective_self_id=effective_self_id,
-        normalized_limit=normalized_limit,
+        normalized_limit=int(limit or 5),  # ✅ 保留字段名不变（兼容性考虑）
         compiled=compiled,
     )
     try:
@@ -450,20 +487,42 @@ def search_partner_candidates_with(
         compiled_self_profile = compiled_request.get("self_profile")
         if isinstance(compiled_self_profile, dict) and not compiled_self_profile:
             compiled_self_profile = None
+
+        # ✅ 可观测性增强：外部调用日志（搜索开始）
+        search_start_time = time.time()
+        _logger.info(
+            "【搜索执行开始】session_id=%s criteria_keys=%s limit=%s",
+            session.session_id,
+            list(compiled_request.get("criteria") or {}.keys()),
+            limit,
+        )
+
         response = search_profiles_with_visibility_gate(
             search,
             source=source,
             criteria=dict(compiled_request.get("criteria") or {}),
             self_profile=compiled_self_profile,
             self_id=effective_self_id,
-            limit=normalized_limit,
+            limit=int(limit or 5),  # ✅ 直接使用 limit（已在 Tool 层校验）
             photo_preview_count=3,
             moderation_dsn=os.environ.get("PARTNER_CHAT_DB"),
         )
+
+        # ✅ 可观测性增强：外部调用日志（搜索完成）
+        search_elapsed_ms = round((time.time() - search_start_time) * 1000, 2)
+        _logger.info(
+            "【搜索执行完成】session_id=%s result_count=%s has_match=%s elapsed_ms=%s",
+            session.session_id,
+            response.get("result_count"),
+            response.get("has_match"),
+            search_elapsed_ms,
+        )
+
         response["request_meta"] = request_meta
 
-        explanation_enabled = discovery_personality_explanation_enabled()
-        ranking_enabled = discovery_personality_ranking_enabled()
+        # ✅ Agent Native 改进：移除性格特质增强逻辑的环境变量检查
+        # 这些环境变量控制的是 Tool 层的性格增强逻辑（已移除）
+        # Agent 层会自主决定是否使用性格特质数据，不需要环境变量控制
 
         # === Discovery personality enrichment ===
         user_traits = None
@@ -485,14 +544,13 @@ def search_partner_candidates_with(
         )
 
         results = response.get("results") or []
+        # ✅ Agent Native 改进：简化 personality_trace
+        # 只保留原始数据统计，移除性格增强相关的统计
         personality_trace = {
             "self_traits_available": bool(user_traits_dict),
             "candidate_traits_count": 0,
-            "ranking_enabled": ranking_enabled,
-            "explanation_enabled": explanation_enabled,
-            "card_badges_enabled": discovery_personality_card_badges_enabled(),
-            "top_candidates_used_personality": [],
-            "fallback_explanation_used": False,
+            "agent_native_mode": True,
+            "note": "性格特质数据已返回，Agent 自主决定如何使用",
         }
         if results and persona_source:
             candidate_ids = []
@@ -519,74 +577,37 @@ def search_partner_candidates_with(
                             candidate["personality_availability"] = traits_ctx.availability
                             personality_trace["candidate_traits_count"] = int(personality_trace["candidate_traits_count"]) + 1
 
-        for index, candidate in enumerate(results):
-            candidate_traits = dict(candidate.get("personality_traits") or {})
-            reasoning = (
-                _build_personality_reasoning(
-                    user_traits_dict,
-                    candidate_traits,
-                    candidate=candidate,
-                )
-                if explanation_enabled
-                else {"used": False, "source": "disabled", "signals": [], "summary": "", "reasons": [], "confidence": "none"}
-            )
-            candidate["personality_reasoning"] = reasoning
-            if reasoning.get("used"):
-                personality_trace["top_candidates_used_personality"].append(int(candidate.get("id") or 0))
+        # ✅ Agent Native 改进：移除性格特质增强逻辑
+        # Tool 层只返回原始性格特质数据，Agent 自主决定如何使用
+        # - 是否生成性格推荐理由？
+        # - 是否根据性格匹配度排序？
+        # - 这些决策在 Agent 层（Prompt）表达，不在 Tool 层硬编码
 
-            base_score = candidate.get("base_score")
-            if base_score in (None, ""):
-                base_score = candidate.get("score") if candidate.get("score") not in (None, "") else candidate.get("fit_score")
-            try:
-                candidate["base_score"] = float(base_score or 0.0)
-            except (TypeError, ValueError):
-                candidate["base_score"] = 0.0
-
-            candidate["personality_bonus"] = 0.0
-            candidate["personality_scoring_trace"] = {
-                "used_dimensions": [],
-                "ranking_enabled": ranking_enabled,
-                "explanation_enabled": explanation_enabled,
-            }
-            if ranking_enabled and user_traits_dict and candidate_traits:
-                bonus, scoring_trace = _compute_personality_bonus(user_traits_dict, candidate_traits)
-                candidate["personality_bonus"] = bonus
-                candidate["personality_scoring_trace"] = {
-                    **scoring_trace,
-                    "ranking_enabled": True,
-                    "base_score": candidate["base_score"],
-                }
-                candidate["score"] = round(candidate["base_score"] + bonus, 2)
-            elif candidate.get("score") in (None, ""):
-                candidate["score"] = candidate["base_score"]
-
-            candidate["_discovery_original_index"] = index
-
-        if ranking_enabled and results:
-            results.sort(
-                key=lambda item: (
-                    float(item.get("score") or 0.0),
-                    float(item.get("base_score") or 0.0),
-                    -int(item.get("_discovery_original_index") or 0),
-                ),
-                reverse=True,
-            )
-
-        for item in results:
-            item.pop("_discovery_original_index", None)
-
-        personality_trace["top_candidates_used_personality"] = [
-            int(item.get("id") or 0)
-            for item in results[:3]
-            if dict(item.get("personality_reasoning") or {}).get("used")
-        ]
+        # 保留 personality_trace 用于可观测性，但简化内容
+        personality_trace["agent_native_mode"] = True
+        personality_trace["note"] = "性格特质数据已返回，Agent 自主决定如何使用"
         response["personality_trace"] = personality_trace
 
         if user_traits_dict:
             response["user_personality_traits"] = user_traits.to_dict()
 
+        # ✅ 可观测性增强：返回日志
+        _logger.info(
+            "【搜索返回】session_id=%s results_count=%s personality_traits_count=%s user_traits_available=%s",
+            session.session_id,
+            len(response.get("results") or []),
+            personality_trace.get("candidate_traits_count"),
+            bool(user_traits_dict),
+        )
+
         return response
     except Exception as exc:  # noqa: BLE001
+        # ✅ 可观测性增强：错误日志
+        _logger.error(
+            "【搜索失败】session_id=%s error=%s",
+            session.session_id,
+            str(exc)[:200],
+        )
         return {
             "error_code": "partner_search_failed",
             "has_match": False,
@@ -881,6 +902,162 @@ def decision_payload(decision: DiscoveryDecision) -> dict[str, Any]:
     }
 
 
+def suggest_assessment_with(
+    profile_id: int,
+    assessment_type: str,
+    *,
+    source: str | None = None,
+) -> dict[str, Any]:
+    """检查用户测评状态，返回引导卡片或性格信息。
+
+    参数：
+    - profile_id: 用户profile ID
+    - assessment_type: 测评类型（mbti_16, attachment_style, big_five）
+    - source: 数据源 DSN（可选，默认使用 persona_memory_source()）
+
+    返回：
+    - 已完成：返回用户性格类型信息
+    - 未完成：返回测评引导卡片
+    """
+    # 1. 查询用户的性格特质
+    resolved_source = source if source is not None else persona_memory_source()
+    traits = load_traits_for_discovery(
+        source=resolved_source,
+        profile_id=profile_id,
+    )
+
+    # 2. 将 PersonalityTraitsContext 对象转换为字典
+    #    （load_traits_for_discovery 返回的是对象，需要调用 .to_dict() 转换为字典）
+    traits_dict = traits.to_dict() if traits else {}
+
+    # 3. 检查是否已完成指定类型的测评
+    if assessment_type == "mbti_16":
+        mbti_type = str((traits_dict.get("mbti") or {}).get("type_code") or "").strip().upper()
+        if mbti_type:
+            # 已完成：返回性格信息
+            return {
+                "completed": True,
+                "assessment_type": "mbti_16",
+                "type_code": mbti_type,
+                "summary": f"你是{mbti_type}型",
+                "dimension_scores": dict((traits_dict.get("mbti") or {}).get("scores") or {}),
+            }
+        else:
+            # 未完成：返回引导卡片
+            return {
+                "completed": False,
+                "suggest": True,
+                "assessment_type": "mbti_16",
+                "card": {
+                    "card_type": "assessment_suggest",
+                    "assessment_type": "mbti_16",
+                    "title": "MBTI性格测试",
+                    "description": "了解你的性格类型，让匹配更精准",
+                    "duration": "约5分钟",
+                    "reward": "匹配准确度提升",
+                    "action_label": "开始测评",
+                    "action_id": "start_mbti_assessment",
+                },
+            }
+
+    elif assessment_type == "attachment_style":
+        attachment_type = str((traits_dict.get("attachment") or {}).get("type_code") or "").strip().lower()
+        if attachment_type:
+            return {
+                "completed": True,
+                "assessment_type": "attachment_style",
+                "type_code": attachment_type,
+                "summary": f"你的依恋风格是{attachment_type}型",
+            }
+        else:
+            return {
+                "completed": False,
+                "suggest": True,
+                "assessment_type": "attachment_style",
+                "card": {
+                    "card_type": "assessment_suggest",
+                    "assessment_type": "attachment_style",
+                    "title": "依恋风格测试",
+                    "description": "了解你在亲密关系中的依恋模式",
+                    "duration": "约3分钟",
+                    "reward": "关系匹配更精准",
+                    "action_label": "开始测评",
+                    "action_id": "start_attachment_assessment",
+                },
+            }
+
+    elif assessment_type == "big_five":
+        big_five_data = dict(traits_dict.get("big_five") or {})
+        scores = dict(big_five_data.get("scores") or {})
+
+        # 检查是否有大五人格数据（至少3个维度有分数）
+        valid_dimensions = 0
+        for key in ("openness", "conscientiousness", "agreeableness", "neuroticism", "extraversion"):
+            if _normalized_trait_score(scores.get(key)) is not None:
+                valid_dimensions += 1
+
+        if valid_dimensions >= 3:
+            # 已完成：返回大五人格信息
+            # 构建性格描述
+            descriptions = []
+            openness = _normalized_trait_score(scores.get("openness"))
+            conscientiousness = _normalized_trait_score(scores.get("conscientiousness"))
+            agreeableness = _normalized_trait_score(scores.get("agreeableness"))
+            neuroticism = _normalized_trait_score(scores.get("neuroticism"))
+            extraversion = _normalized_trait_score(scores.get("extraversion"))
+
+            if openness is not None and openness >= 0.6:
+                descriptions.append("开放性较高")
+            if conscientiousness is not None and conscientiousness >= 0.6:
+                descriptions.append("尽责性较高")
+            if agreeableness is not None and agreeableness >= 0.6:
+                descriptions.append("宜人性较高")
+            if neuroticism is not None and neuroticism >= 0.6:
+                descriptions.append("情绪敏感度较高")
+            if extraversion is not None and extraversion >= 0.6:
+                descriptions.append("外向性较高")
+
+            summary = "你的性格特点：" + "、".join(descriptions[:3]) if descriptions else "你已完成大五人格测评"
+
+            return {
+                "completed": True,
+                "assessment_type": "big_five",
+                "summary": summary,
+                "dimension_scores": scores,
+                "dominant_traits": descriptions[:3],
+            }
+        else:
+            # 未完成：返回引导卡片
+            return {
+                "completed": False,
+                "suggest": True,
+                "assessment_type": "big_five",
+                "card": {
+                    "card_type": "assessment_suggest",
+                    "assessment_type": "big_five",
+                    "title": "大五人格测试",
+                    "description": "了解你的性格结构，让匹配更科学",
+                    "duration": "约8分钟",
+                    "reward": "性格匹配准确度提升",
+                    "action_label": "开始测评",
+                    "action_id": "start_big_five_assessment",
+                },
+            }
+
+    # 硬约束：测评类型有效性校验
+    supported_types = {"mbti_16", "attachment_style", "big_five"}
+    if assessment_type not in supported_types:
+        return {
+            "completed": False,
+            "suggest": False,
+            "error": f"不支持的测评类型：{assessment_type}",
+            "supported_types": list(supported_types),
+        }
+
+    # 默认返回：不支持的测评类型（兜底）
+    return {"completed": False, "suggest": False}
+
+
 __all__ = [
     "decision_payload",
     "load_persona_memory_bindings",
@@ -894,4 +1071,5 @@ __all__ = [
     "run_discovery_collect_then_search",
     "search_partner_candidates",
     "sync_requester_persona_memory",
+    "suggest_assessment",
 ]

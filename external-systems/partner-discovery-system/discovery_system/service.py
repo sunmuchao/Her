@@ -772,6 +772,21 @@ class DiscoveryService:
             )
             return result
 
+        def _suggest_assessment(assessment_type: str) -> dict[str, Any]:
+            """检查用户测评状态，返回引导卡片或性格信息。"""
+            result = self._suggest_assessment(
+                session,
+                assessment_type=assessment_type,
+            )
+            self._append_tool_call(
+                tool_call_buffer,
+                "suggest_assessment",
+                {"assessment_type": assessment_type},
+                result,
+                status="succeeded",
+            )
+            return result
+
         return DiscoveryRunInput(
             session_id=session.session_id,
             requester_id=session.requester_id,
@@ -791,6 +806,7 @@ class DiscoveryService:
             sync_requester_persona_memory=_sync_requester_persona_memory,
             propose_requester_profile_update=_propose_requester_profile_update,
             create_saved_search_subscription_from_last_search=_create_saved_search_subscription_from_last_search,
+            suggest_assessment=_suggest_assessment,
             tool_call_buffer=tool_call_buffer,
             agent_session=self._agent_session_for(session.session_id),
         )
@@ -895,6 +911,17 @@ class DiscoveryService:
                 created_at=now,
             )
         ]
+        # 处理测评引导卡片
+        assessment_payload = runtime_result.assessment_payload
+        if assessment_payload and assessment_payload.get("suggest") and assessment_payload.get("card"):
+            from .view_models import assessment_suggest
+            session.view["timeline"].append(
+                assessment_suggest(
+                    item_id=self.storage.next_item_id("assessment"),
+                    card=assessment_payload.get("card"),
+                    created_at=now,
+                )
+            )
         for proposal in list(session.state.pop("profile_prompts_for_timeline", []) or []):
             if not proposal.get("proposed"):
                 continue
@@ -1682,6 +1709,20 @@ class DiscoveryService:
         if search_run_id <= 0:
             return None
         return self.storage.get_search_run(search_run_id)
+
+    def _suggest_assessment(
+        self,
+        session: StoredSession,
+        *,
+        assessment_type: str = "mbti_16",
+    ) -> dict[str, Any]:
+        """检查用户测评状态，返回引导卡片或性格信息。"""
+        from .service_integrations import persona_memory_source, suggest_assessment_with
+        return suggest_assessment_with(
+            profile_id=session.profile_id,
+            assessment_type=assessment_type,
+            source=persona_memory_source(),
+        )
 
     def _agent_session_for(self, session_id: str) -> Any | None:
         if self.agent_session_store is None:

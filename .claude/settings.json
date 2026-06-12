@@ -55,7 +55,14 @@
       "Bash(python -m pytest /Users/sunmuchao/Downloads/Her/external-systems/partner-discovery-system/tests/test_boundary_scenarios.py::TestBoundaryScenarios::test_scenario_1_1_first_time_user -v --tb=short)",
       "Bash(python -m pytest /Users/sunmuchao/Downloads/Her/external-systems/partner-discovery-system/tests/test_boundary_simple.py -v -s)",
       "Bash(python -m pytest /Users/sunmuchao/Downloads/Her/external-systems/partner-discovery-system/tests/test_real_agent_no_mock.py::TestRealAgentNoMock::test_real_agent_batch_refresh -v -s)",
-      "Bash(python -m pytest tests/test_tool_boundary_principle.py -v)"
+      "Bash(python -m pytest tests/test_tool_boundary_principle.py -v)",
+      "Skill(commit)",
+      "Skill(commit:*)",
+      "Bash(python -m pytest tests/test_batch_refresh_followup.py -v -s)",
+      "Bash(python -m pytest tests/test_button_behavior_comparison.py -v -s)",
+      "Bash(python -m pytest tests/test_button_behavior_comparison.py::TestButtonBehaviorComparison::test_soul_md_contains_followup_rules -v)",
+      "Bash(python -m pytest tests/test_button_behavior_comparison.py -v)",
+      "Bash(python -m pytest tests/test_suggest_assessment_e2e.py::TestSOULMdHasAssessmentSuggestion -v)"
     ],
     "additionalDirectories": [
       "/tmp",

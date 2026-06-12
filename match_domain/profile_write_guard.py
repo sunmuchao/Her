@@ -39,34 +39,58 @@ _WRITABLE_PROFILE_COLUMNS = frozenset(
     }
 )
 
-_SEARCH_CRITERIA_KEYS = frozenset(
+# Agent Native: 从"白名单准入"改为"黑名单排除"
+# 明确排除的字段（内部状态、元数据、系统字段）
+_EXCLUDED_SEARCH_KEYS = frozenset(
     {
-        "gender",
-        "age_min",
-        "age_max",
+        # 内部标识符（不参与搜索）
+        "session_id",
+        "requester_id",
+        "profile_id",
+        "user_key",
+        "self_id",
+        # 时间戳（不参与搜索）
+        "created_at",
+        "updated_at",
+        "last_search_at",
+        "last_sync_at",
+        # 内部状态（不参与搜索）
+        "internal_state",
+        "working_criteria",
+        "last_search_result_count",
+        "last_search_has_match",
+        "last_search_error_code",
+        "last_search_error_message",
+        "last_persona_sync_at",
+        "last_persona_sync_fields",
+        "profile_prompts_for_timeline",
+        # 工具返回元数据（不参与搜索）
+        "request_meta",
+        "personality_trace",
+        "user_personality_traits",
+        # 分页/限制参数（单独处理，不属于筛选条件）
+        "limit",
+        "offset",
+        "page",
+    }
+)
+
+# 保留原有白名单用于类型推断（判断哪些字段是列表类型）
+# 但不再作为"准入"判断，仅用于参数类型处理
+_LIST_VALUE_CRITERIA_KEYS = frozenset(
+    {
         "cities",
-        "city",
         "districts",
         "settlement_cities",
         "relationship_goals",
-        "relationship_goal",
         "must_have",
         "must_not_have",
         "prefer",
-        "height_min",
-        "height_max",
-        "smoking",
-        "drinking",
-        "long_distance",
         "housing_statuses",
         "car_statuses",
         "marital_statuses",
-        "want_children",
-        "accept_partner_children",
         "marriage_timelines",
-        "photo_count_min",
-        "active_within_days",
-        "verified_level_min",
+        "personality_traits",  # 新增：性格偏好是列表类型
     }
 )
 
@@ -96,7 +120,24 @@ def profile_field_label(field_name: str) -> str:
 
 
 def is_search_criteria_key(key: str) -> bool:
-    return str(key or "").strip() in _SEARCH_CRITERIA_KEYS
+    """Agent Native: 除明确排除的字段外，其他参数都允许透传到搜索
+
+    原理：
+    - 从"只认白名单"改为"只拒绝黑名单"
+    - Agent 传入的任意参数（包括 personality_traits）都能透传到查询构建器
+    - 软约束筛选逻辑在 Prompt 中表达，不在代码中硬编码
+    """
+    cleaned_key = str(key or "").strip()
+    if not cleaned_key:
+        return False
+    # 拒绝黑名单中的字段
+    if cleaned_key in _EXCLUDED_SEARCH_KEYS:
+        return False
+    # 拒绝内部字段（以 _ 开头）
+    if cleaned_key.startswith("_"):
+        return False
+    # 其他字段都允许透传
+    return True
 
 
 def split_persona_patch(patch: Mapping[str, Any] | None) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:

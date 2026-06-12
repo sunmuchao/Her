@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { History, Plus, MessageCircle, X, ChevronRight, Sparkles, Users } from 'lucide-react'
+import { History, MessageCircle, X, ChevronRight, Sparkles, Users } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getProfileId } from '@/lib/auth/session'
 import { fetchDiscoverySessionList } from '@/lib/api/endpoints/discovery'
@@ -97,8 +97,8 @@ export function DiscoverySessionList({
       <div
         onClick={(e) => e.stopPropagation()}
         className={cn(
-          'relative w-full max-w-md flex flex-col max-h-[82vh] overflow-hidden',
-          'rounded-t-3xl border-x border-t border-border/60 bg-card shadow-2xl',
+          'relative w-full max-w-md flex flex-col max-h-[calc(85vh-3.5rem-env(safe-area-inset-bottom))] overflow-hidden',
+          'rounded-t-3xl border-x border-t border-border/60 bg-card shadow-2xl mb-[calc(3.5rem+env(safe-area-inset-bottom))]',
           isClosing
             ? 'animate-out slide-out-to-bottom duration-200'
             : 'animate-in slide-in-from-bottom duration-300',
@@ -231,20 +231,7 @@ export function DiscoverySessionList({
           )}
         </div>
 
-        {/* Footer */}
-        <div className="border-t border-border/60 bg-card px-5 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-4">
-          <button
-            onClick={() => {
-              onCreateNewSession()
-              handleClose()
-            }}
-            className="flex w-full items-center justify-center gap-2 rounded-full bg-primary py-3.5 text-sm font-medium text-primary-foreground shadow-sm transition-all hover:bg-primary/90 active:scale-[0.98]"
-          >
-            <Plus className="h-5 w-5" />
-            <span>新建会话</span>
-          </button>
-        </div>
-      </div>
+              </div>
     </div>
   )
 }

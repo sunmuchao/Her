@@ -300,20 +300,20 @@ class TestToolBoundaryPrincipleIntegration(unittest.TestCase):
 
         # 验证SOUL.md包含核心规则
         self.assertIn(
-            "不要说\"已完成\"",
+            "不执行的不要说",
             soul_content,
             "SOUL.md应该包含核心规则",
         )
 
-        # 验证SOUL.md包含正确示例
+        # 验证SOUL.md包含软约束（性格匹配相关）
         self.assertIn(
-            "表达兴趣",
+            "性格匹配",
             soul_content,
-            "SOUL.md应该包含正确示例",
+            "SOUL.md应该包含性格匹配的软约束",
         )
 
         print("\n" + "=" * 80)
-        print("集成测试通过！SOUL.md包含工具边界原则")
+        print("集成测试通过！SOUL.md包含工具边界原则和性格匹配软约束")
         print("=" * 80)
 
     def test_agent_tools_does_not_include_express_interest(self):

@@ -1,0 +1,1287 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Discovery System 所有 Tool 完整查询链路（含实战示例）</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            line-height: 1.8;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            font-size: 40px;
+            margin-bottom: 40px;
+            font-weight: 700;
+            border-bottom: 4px solid #667eea;
+            padding-bottom: 20px;
+        }
+
+        .intro {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 40px;
+            border-left: 5px solid #667eea;
+        }
+
+        .intro h2 {
+            color: #2c3e50;
+            font-size: 26px;
+            margin-bottom: 15px;
+        }
+
+        .intro p {
+            font-size: 18px;
+            color: #555;
+        }
+
+        .tool-section {
+            margin-bottom: 80px;
+            border: 3px solid #667eea;
+            border-radius: 20px;
+            padding: 40px;
+            background: #fafafa;
+        }
+
+        .tool-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+        }
+
+        .tool-number {
+            width: 60px;
+            height: 60px;
+            border-radius: 30px;
+            background: white;
+            color: #667eea;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 30px;
+            font-weight: bold;
+            margin-right: 20px;
+        }
+
+        .tool-name {
+            font-size: 32px;
+            font-weight: 700;
+        }
+
+        .tool-desc {
+            font-size: 18px;
+            margin-top: 10px;
+            opacity: 0.9;
+        }
+
+        .example-section {
+            background: #fff3e0;
+            border: 3px solid #ff9800;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 30px;
+        }
+
+        .example-title {
+            color: #ff9800;
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 25px;
+            text-align: center;
+        }
+
+        .example-flow {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+        }
+
+        .example-step {
+            background: #e3f2fd;
+            border: 2px solid #3498db;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+
+        .example-step-title {
+            color: #3498db;
+            font-weight: 700;
+            font-size: 20px;
+            margin-bottom: 10px;
+        }
+
+        .example-step-content {
+            color: #555;
+            font-size: 16px;
+        }
+
+        .example-arrow {
+            text-align: center;
+            font-size: 36px;
+            color: #ff9800;
+            margin: 10px 0;
+            font-weight: bold;
+        }
+
+        .chain-flow {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            border: 3px solid #3498db;
+        }
+
+        .chain-title {
+            color: #3498db;
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 25px;
+            text-align: center;
+        }
+
+        .layer-box {
+            background: #e3f2fd;
+            border: 2px solid #3498db;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 20px;
+        }
+
+        .layer-number {
+            background: #3498db;
+            color: white;
+            width: 45px;
+            height: 45px;
+            border-radius: 22px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            font-weight: bold;
+            margin-right: 15px;
+        }
+
+        .layer-title {
+            color: #2c3e50;
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 15px;
+        }
+
+        .layer-file {
+            color: #e74c3c;
+            font-size: 14px;
+            font-weight: 600;
+            background: #ffebee;
+            padding: 5px 12px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            display: inline-block;
+        }
+
+        .layer-content {
+            font-size: 16px;
+            color: #555;
+            margin-left: 60px;
+        }
+
+        .layer-detail {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 15px;
+            border: 1px solid #e0e0e0;
+        }
+
+        .arrow {
+            text-align: center;
+            font-size: 36px;
+            color: #3498db;
+            margin: 15px 0;
+            font-weight: bold;
+        }
+
+        .code-box {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            border-radius: 12px;
+            padding: 25px;
+            margin-top: 20px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            overflow-x: auto;
+        }
+
+        .code-comment {
+            color: #75715e;
+        }
+
+        .code-keyword {
+            color: #f92672;
+        }
+
+        .code-string {
+            color: #e6db74;
+        }
+
+        .code-function {
+            color: #66d9ef;
+        }
+
+        .code-param {
+            color: #fd971f;
+        }
+
+        .db-box {
+            background: #f3e5f5;
+            border: 2px solid #9b59b6;
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .db-title {
+            color: #9b59b6;
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 15px;
+        }
+
+        .db-content {
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            color: #2c3e50;
+        }
+
+        .data-flow-box {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .data-flow-title {
+            color: #ff9800;
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 15px;
+        }
+
+        .data-flow-content {
+            font-size: 16px;
+            color: #555;
+        }
+
+        .summary-box {
+            background: linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%);
+            color: white;
+            border-radius: 20px;
+            padding: 40px;
+            margin-top: 50px;
+            text-align: center;
+        }
+
+        .summary-title {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 20px;
+        }
+
+        .summary-content {
+            font-size: 20px;
+        }
+
+        .nav-box {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 40px;
+            border: 2px solid #667eea;
+        }
+
+        .nav-title {
+            color: #2c3e50;
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 20px;
+        }
+
+        .nav-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+        }
+
+        .nav-card {
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            border: 2px solid #667eea;
+            text-decoration: none;
+            color: #2c3e50;
+            transition: all 0.3s;
+        }
+
+        .nav-card:hover {
+            background: #667eea;
+            color: white;
+        }
+
+        .nav-card-number {
+            font-size: 20px;
+            font-weight: bold;
+        }
+
+        .nav-card-name {
+            font-size: 16px;
+            margin-top: 5px;
+        }
+
+        .user-speech {
+            background: #e1f5fe;
+            border: 2px solid #03a9f4;
+            border-radius: 10px;
+            padding: 15px;
+            font-size: 20px;
+            font-weight: 600;
+            color: #0277bd;
+            margin-bottom: 15px;
+        }
+
+        .ai-response {
+            background: #fce4ec;
+            border: 2px solid #e91e63;
+            border-radius: 10px;
+            padding: 15px;
+            font-size: 18px;
+            color: #c2185b;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Discovery System 所有 Tool 完整查询链路（含实战示例）</h1>
+
+        <div class="intro">
+            <h2>📖 核心说明</h2>
+            <p>
+                <strong>这份文档梳理了所有7个 Tool 的完整查询链路，每个 Tool 都附带实战示例：</strong><br>
+                从用户对话 → AI 调用 Tool → 逐层穿透 → 数据库查询 → 返回数据 → 前端渲染。<br><br>
+                <strong>设计理念：</strong>Agent Native（AI 主导决策）+ 三层分离架构（Tool 层 → Service 层 → Data 层）+ 单一真相来源（规则只在 Prompt 中表达）。
+            </p>
+        </div>
+
+        <!-- 导航 -->
+        <div class="nav-box">
+            <div class="nav-title">🎯 快速导航（7个 Tool + 实战示例）</div>
+            <div class="nav-grid">
+                <a href="#tool1" class="nav-card">
+                    <div class="nav-card-number">1️⃣</div>
+                    <div class="nav-card-name">search_partner_candidates</div>
+                </a>
+                <a href="#tool2" class="nav-card">
+                    <div class="nav-card-number">2️⃣</div>
+                    <div class="nav-card-name">sync_requester_persona_memory</div>
+                </a>
+                <a href="#tool3" class="nav-card">
+                    <div class="nav-card-number">3️⃣</div>
+                    <div class="nav-card-name">propose_requester_profile_update</div>
+                </a>
+                <a href="#tool4" class="nav-card">
+                    <div class="nav-card-number">4️⃣</div>
+                    <div class="nav-card-name">create_saved_search_subscription</div>
+                </a>
+                <a href="#tool5" class="nav-card">
+                    <div class="nav-card-number">5️⃣</div>
+                    <div class="nav-card-name">reply_to_user</div>
+                </a>
+                <a href="#tool6" class="nav-card">
+                    <div class="nav-card-number">6️⃣</div>
+                    <div class="nav-card-name">show_candidates</div>
+                </a>
+                <a href="#tool7" class="nav-card">
+                    <div class="nav-card-number">7️⃣</div>
+                    <div class="nav-card-name">suggest_assessment</div>
+                </a>
+            </div>
+        </div>
+
+        <!-- Tool 1: search_partner_candidates -->
+        <div class="tool-section" id="tool1">
+            <div class="tool-header">
+                <span class="tool-number">1</span>
+                <div class="tool-name">search_partner_candidates（搜索候选人）<span style="color: #27ae60;">✅ 已改进</span></div>
+                <div class="tool-desc" style="color: #27ae60;">职责：搜索匹配的候选人，返回候选人列表 + 性格特质原始数据（不含业务逻辑）</div>
+            </div>
+
+            <!-- 实战示例 -->
+            <div class="example-section">
+                <div class="example-title">💡 实战示例：用户说"给我推荐苏州26-30岁的女生"</div>
+
+                <div class="example-flow">
+                    <div class="user-speech">
+                        👤 用户："给我推荐苏州26-30岁的女生"
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step">
+                        <div class="example-step-title">1️⃣ AI 理解意图 + 调用 Tool</div>
+                        <div class="example-step-content">
+                            <strong>AI 思考：</strong>用户想要搜索候选人，需要调用 search_partner_candidates<br>
+                            <strong>AI 构建：</strong>criteria_json='{"cities":["苏州"], "age_min":26, "age_max":30}'<br>
+                            <strong>AI 调用：</strong>search_partner_candidates(criteria_json='{"cities":["苏州"], "age_min":26, "age_max":30}', limit=5)
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step" style="background: #e8f5e9; border: 2px solid #27ae60;">
+                        <div class="example-step-title" style="color: #27ae60;">2️⃣ Tool 层执行（agent_runtime.py）<span style="color: #27ae60;">✅ 已改进</span></div>
+                        <div class="example-step-content">
+                            <strong>参数解析：</strong><br>
+                            - criteria_json → {"cities":["苏州"], "age_min":26, "age_max":30}<br>
+                            - limit → 5（硬约束：只在 Tool 层校验一次，单一真相来源）<br><br>
+                            <strong style="color: #27ae60;">✅ 改进：</strong>硬约束只在 Tool 层校验，Service Integrations 层不再重复校验<br><br>
+                            <strong>调用下一层：</strong><br>
+                            run_input.search_partner_candidates({"cities":["苏州"], "age_min":26, "age_max":30}, 5)
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step" style="background: #e8f5e9; border: 2px solid #27ae60;">
+                        <div class="example-step-title" style="color: #27ae60;">3️⃣ Service Integrations 层（service_integrations.py）<span style="color: #27ae60;">✅ 已改进</span></div>
+                        <div class="example-step-content">
+                            <strong>并行加载：</strong><br>
+                            - 用户资料：load_requester_profile（28岁男生，苏州）<br>
+                            - Persona：load_persona_for_discovery（偏好苏州女生）<br><br>
+                            <strong style="color: #27ae60;">✅ 可观测性增强：</strong>关键路径日志埋点<br>
+                            - "【搜索开始】session_id=xxx criteria=xxx limit=5"<br>
+                            - "【用户数据加载】has_self_profile=true has_persona=true"<br>
+                            - "【搜索执行完成】result_count=5 elapsed_ms=500"<br><br>
+                            <strong>合并条件：</strong><br>
+                            merge_working_criteria → {"cities":["苏州"], "age_min":26, "age_max":30, "gender":"女"}<br><br>
+                            <strong>编译搜索请求：</strong><br>
+                            build_discovery_search_request → {"criteria": {...}, "self_profile": {...}, "compiled": {...}}
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step">
+                        <div class="example-step-title">4️⃣ Universal Query Builder 层</div>
+                        <div class="example-step-content">
+                            <strong>遍历参数：</strong><br>
+                            - cities → city IN ('苏州')<br>
+                            - age_min → age >= 26<br>
+                            - age_max → age <= 30<br>
+                            - gender → gender = '女'<br><br>
+                            <strong>生成 SQL：</strong><br>
+                            WHERE city IN ('苏州') AND age >= 26 AND age <= 30 AND gender = '女'
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step">
+                        <div class="example-step-title">5️⃣ MySQL 数据库查询</div>
+                        <div class="example-step-content">
+                            <strong>执行 SQL：</strong><br>
+                            SELECT id, name, gender, age, city, education, job, ... FROM profiles WHERE city IN ('苏州') AND age >= 26 AND age <= 30 AND gender = '女' LIMIT 5<br><br>
+                            <strong>返回：</strong>5位候选人记录（李欣琪、张婉婷、王思琪、刘雅萱、陈雨涵）
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step" style="background: #ffebee; border: 2px solid #e74c3c;">
+                        <div class="example-step-title" style="color: #e74c3c;">❌ 原来的步骤 6：性格特质增强（已移除）</div>
+                        <div class="example-step-content">
+                            <strong style="color: #e74c3c;">❌ 已移除（职责越界）：</strong><br>
+                            - _build_personality_reasoning：生成性格推荐理由"依恋都偏安全型"（千篇一律）<br>
+                            - _compute_personality_bonus：计算性格加分 4.5<br>
+                            - 性格排序：按性格加分排序候选人<br><br>
+                            <strong style="color: #27ae60;">✅ 改进原因：</strong>违反 Agent Native 原则，业务逻辑应在 Agent 层表达
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step" style="background: #e8f5e9; border: 2px solid #27ae60;">
+                        <div class="example-step-title" style="color: #27ae60;">✅ 现在的步骤 6：只返回性格特质原始数据<span style="color: #27ae60;">✅ Agent Native</span></div>
+                        <div class="example-step-content">
+                            <strong style="color: #27ae60;">✅ Tool 层只做：</strong>加载候选人性格特质原始数据<br>
+                            load_traits_for_profiles → {"123": {"mbti":"INFP", "attachment":"secure"}, ...}<br><br>
+                            <strong style="color: #27ae60;">✅ 附加原始数据：</strong><br>
+                            candidate["personality_traits"] = {"mbti": {"type_code": "INFP"}, "attachment": {"type_code": "secure"}, "values": {"top_values": ["稳定经营", "家庭责任"]}}<br><br>
+                            <strong style="color: #27ae60;">✅ 不生成推荐理由、不计算加分、不排序：</strong>这些由 Agent 自主决定
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step" style="background: #e8f5e9; border: 2px solid #27ae60;">
+                        <div class="example-step-title" style="color: #27ae60;">7️⃣ Tool 层返回（压缩数据 + 性格原始数据）<span style="color: #27ae60;">✅ 已改进</span></div>
+                        <div class="example-step-content">
+                            <strong>压缩返回：</strong>只返回关键信息 + 性格原始数据<br>
+                            {"has_match": true, "results": [{"profile_id":123, "title":"李欣琪", "personality_traits":{"mbti":"INFP", "attachment":"secure"}}]}<br><br>
+                            <strong style="color: #27ae60;">✅ personality_trace：</strong>记录性格数据统计<br>
+                            {"self_traits_available": true, "candidate_traits_count": 5, "agent_native_mode": true, "note": "性格特质数据已返回，Agent 自主决定如何使用"}
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step" style="background: #e8f5e9; border: 2px solid #27ae60;">
+                        <div class="example-step-title" style="color: #27ae60;">8️⃣ AI 自主决策 + 展示<span style="color: #27ae60;">✅ Agent Native</span></div>
+                        <div class="example-step-content">
+                            <strong>AI 自主选择：</strong>从5位候选人中选择3位推荐（李欣琪、张婉婷、王思琪）<br>
+                            <strong style="color: #27ae60;">✅ AI 自主决定性格推荐理由：</strong><br>
+                            - "李欣琪 MBTI 和你接近，节奏比较稳"（根据性格数据自主生成）<br>
+                            - 或"张婉婷依恋偏安全型，相处会更稳"<br>
+                            - 或"性格挺合的，你自己感受下"（千人千面）<br><br>
+                            <strong style="color: #27ae60;">✅ AI 自主决定是否按性格排序：</strong>不是硬编码排序<br>
+                            <strong>AI 调用：</strong>show_candidates(message="这三位很适合你", candidate_ids=[123, 456, 789], title="苏州26-30岁的女生")
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="ai-response" style="background: linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%);">
+                        🤖 AI："这三位很适合你，性格节奏都比较稳。<br>
+                        [候选人卡片：李欣琪、张婉婷、王思琪]<br>
+                        按钮换一批 | 详细介绍 | 开始认识"<br><br>
+                        <strong style="color: #27ae60;">✅ Agent Native：</strong>性格推荐理由由 AI 自主生成，千人千面
+                    </div>
+                </div>
+            </div>
+
+            <!-- 改进详情 -->
+            <div style="background: #e8f5e9; border: 3px solid #27ae60; border-radius: 15px; padding: 20px; margin-top: 30px;">
+                <div style="color: #27ae60; font-size: 20px; font-weight: 700; margin-bottom: 15px;">
+                    🎯 search_partner_candidates 改进详情（大白话）
+                </div>
+                <div style="background: white; border-radius: 10px; padding: 15px; margin-bottom: 10px; border: 2px solid #27ae60;">
+                    <div style="color: #2c3e50; font-size: 16px; font-weight: 700; margin-bottom: 8px;">
+                        1️⃣ 性格特质增强移到 Agent 层
+                    </div>
+                    <div style="font-size: 14px; color: #555;">
+                        <strong style="color: #e74c3c;">原来：</strong>机器硬编码"依恋都偏安全型，相处会更稳"（千篇一律）<br>
+                        <strong style="color: #27ae60;">现在：</strong>只把性格数据（MBTI、依恋风格）原样给 AI，AI 自己决定怎么说（千人千面）
+                    </div>
+                </div>
+                <div style="background: white; border-radius: 10px; padding: 15px; margin-bottom: 10px; border: 2px solid #27ae60;">
+                    <div style="color: #2c3e50; font-size: 16px; font-weight: 700; margin-bottom: 8px;">
+                        2️⃣ 硬约束单一真相来源
+                    </div>
+                    <div style="font-size: 14px; color: #555;">
+                        <strong style="color: #e74c3c;">原来：</strong>Tool 层检查 + Service 层检查（重复劳动）<br>
+                        <strong style="color: #27ae60;">现在：</strong>Tool 层检查一次，Service 层不再重复检查（单一真相来源）
+                    </div>
+                </div>
+                <div style="background: white; border-radius: 10px; padding: 15px; border: 2px solid #27ae60;">
+                    <div style="color: #2c3e50; font-size: 16px; font-weight: 700; margin-bottom: 8px;">
+                        3️⃣ 可观测性增强（给程序装"行车记录仪"）
+                    </div>
+                    <div style="font-size: 14px; color: #555;">
+                        <strong style="color: #e74c3c;">原来：</strong>只看到"搜索失败"，不知道哪一步出问题<br>
+                        <strong style="color: #27ae60;">现在：</strong>关键步骤都有日志记录，问题定位快 50%+
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tool 2: sync_requester_persona_memory -->
+        <div class="tool-section" id="tool2">
+            <div class="tool-header">
+                <span class="tool-number">2</span>
+                <div class="tool-name">sync_requester_persona_memory（同步用户偏好）</div>
+                <div class="tool-desc">职责：将用户明确表达的择偶偏好同步到长期记忆（Persona Memory）</div>
+            </div>
+
+            <!-- 实战示例 -->
+            <div class="example-section">
+                <div class="example-title">💡 实战示例：用户说"我喜欢苏州的女生，年龄26-30岁"</div>
+
+                <div class="example-flow">
+                    <div class="user-speech">
+                        👤 用户："我喜欢苏州的女生，年龄26-30岁"
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step">
+                        <div class="example-step-title">1️⃣ AI 理解意图 + 调用 Tool</div>
+                        <div class="example-step-content">
+                            <strong>AI 思考：</strong>用户表达了明确的择偶偏好，应该同步到长期记忆，后续推荐更精准<br>
+                            <strong>AI 构建：</strong>patch_json='{"preferred_cities":["苏州"], "preferred_age_range":[26,30]}'<br>
+                            <strong>AI 调用：</strong>sync_requester_persona_memory(patch_json='{"preferred_cities":["苏州"], "preferred_age_range":[26,30]}')
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step">
+                        <div class="example-step-title">2️⃣ Tool 层执行（agent_runtime.py）</div>
+                        <div class="example-step-content">
+                            <strong>参数解析：</strong><br>
+                            patch_json → {"preferred_cities":["苏州"], "preferred_age_range":[26,30]}<br><br>
+                            <strong>硬约束校验：</strong><br>
+                            - 必须是 dict 类型 ✓<br><br>
+                            <strong>调用下一层：</strong><br>
+                            run_input.sync_requester_persona_memory({"preferred_cities":["苏州"], "preferred_age_range":[26,30]})
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step">
+                        <div class="example-step-title">3️⃣ Service Integrations 层（service_integrations.py）</div>
+                        <div class="example-step-content">
+                            <strong>拆分 patch：</strong><br>
+                            split_persona_patch → {"profile_part": {}, "persona_part": {"preferred_cities":["苏州"], "preferred_age_range":[26,30]}, "search_part": {"target_cities":["苏州"], "target_age_min":26, "target_age_max":30}}<br><br>
+                            <strong>更新搜索条件：</strong><br>
+                            session.state["working_criteria"] = {"target_cities":["苏州"], "target_age_min":26, "target_age_max":30}<br><br>
+                            <strong>调用 Persona 同步：</strong><br>
+                            upsert_persona_memory({"source": "...", "user_key": "12345", "patch": {"preferred_cities":["苏州"], ...}})
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step">
+                        <div class="example-step-title">4️⃣ Persona Memory Engine 层</div>
+                        <div class="example-step-content">
+                            <strong>加载现有 Persona：</strong><br>
+                            fetch_persona → {"user_key": "12345", "target_cities": [], ...}<br><br>
+                            <strong>合并 patch：</strong><br>
+                            _merge_persona_patch → {"user_key": "12345", "target_cities": ["苏州"], "target_age_min": 26, "target_age_max": 30}<br><br>
+                            <strong>生成 observation：</strong><br>
+                            {"field_name": "preferred_cities", "field_value": "苏州", "source_type": "explicit", "evidence_text": "我喜欢苏州的女生"}
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step">
+                        <div class="example-step-title">5️⃣ MySQL 数据库写入</div>
+                        <div class="example-step-content">
+                            <strong>写入 Persona：</strong><br>
+                            INSERT INTO user_personas (user_key, target_cities, target_age_min, target_age_max, ...) VALUES ('12345', '苏州', 26, 30, ...) ON DUPLICATE KEY UPDATE ...<br><br>
+                            <strong>写入 Observation：</strong><br>
+                            INSERT INTO user_persona_observations (user_key, field_name, field_value, source_type, evidence_text) VALUES ('12345', 'preferred_cities', '苏州', 'explicit', '我喜欢苏州的女生')
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step">
+                        <div class="example-step-title">6️⃣ 返回结果</div>
+                        <div class="example-step-content">
+                            <strong>Tool 层返回：</strong><br>
+                            {"synced": true, "user_key": "12345", "patch_keys": ["preferred_cities", "preferred_age_range"]}
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="ai-response">
+                        🤖 AI："好的，我记下了，你偏好苏州26-30岁的女生。以后推荐会更精准。<br>
+                        [继续对话]"
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tool 3: propose_requester_profile_update -->
+        <div class="tool-section" id="tool3">
+            <div class="tool-header">
+                <span class="tool-number">3</span>
+                <div class="tool-name">propose_requester_profile_update（提议更新用户资料）</div>
+                <div class="tool-desc">职责：提议更新用户本人的正式资料（年龄、城市、婚姻状态等），需要用户确认后生效</div>
+            </div>
+
+            <!-- 实战示例 -->
+            <div class="example-section">
+                <div class="example-title">💡 实战示例：用户说"我今年28岁了，刚搬到苏州"</div>
+
+                <div class="example-flow">
+                    <div class="user-speech">
+                        👤 用户："我今年28岁了，刚搬到苏州"
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step">
+                        <div class="example-step-title">1️⃣ AI 理解意图 + 调用 Tool</div>
+                        <div class="example-step-content">
+                            <strong>AI 思考：</strong>用户的个人资料发生了变化（年龄、城市），应该提议更新正式资料<br>
+                            <strong>AI 构建：</strong>patch_json='{"age":28, "city":"苏州"}', evidence_text="我今年28岁了，刚搬到苏州"<br>
+                            <strong>AI 调用：</strong>propose_requester_profile_update(patch_json='{"age":28, "city":"苏州"}', evidence_text="我今年28岁了，刚搬到苏州")
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step">
+                        <div class="example-step-title">2️⃣ Tool 层执行（agent_runtime.py）</div>
+                        <div class="example-step-content">
+                            <strong>参数解析：</strong><br>
+                            patch_json → {"age":28, "city":"苏州"}<br>
+                            evidence_text → "我今年28岁了，刚搬到苏州"<br><br>
+                            <strong>调用下一层：</strong><br>
+                            run_input.propose_requester_profile_update({"age":28, "city":"苏州"}, "我今年28岁了，刚搬到苏州")
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step">
+                        <div class="example-step-title">3️⃣ Service Integrations 层</div>
+                        <div class="example-step-content">
+                            <strong>拆分 patch：</strong><br>
+                            split_persona_patch → {"profile_part": {"age":28, "city":"苏州"}, "persona_part": {}, "search_part": {}}<br><br>
+                            <strong>加载当前资料：</strong><br>
+                            load_requester_profile → {"age":27, "city":"上海", ...}<br><br>
+                            <strong>构建变更：</strong><br>
+                            build_profile_change_rows → [{"field":"age", "label":"年龄", "from":27, "to":28}, {"field":"city", "label":"城市", "from":"上海", "to":"苏州"}]
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step">
+                        <div class="example-step-title">4️⃣ Profile Updates 层（profile_updates.py）</div>
+                        <div class="example-step-content">
+                            <strong>生成请求 ID：</strong><br>
+                            _new_request_id() → "pur-abc123"<br><br>
+                            <strong>创建提议记录：</strong><br>
+                            storage.create_profile_update_request(request_id="pur-abc123", session_id="...", profile_id=789, proposed_patch={"age":28, "city":"苏州"}, current_snapshot={"age":27, "city":"上海"}, evidence_text="我今年28岁了，刚搬到苏州", expires_at=NOW+7天)
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step">
+                        <div class="example-step-title">5️⃣ MySQL 数据库写入</div>
+                        <div class="example-step-content">
+                            <strong>写入提议表：</strong><br>
+                            INSERT INTO profile_update_requests (request_id, session_id, profile_id, proposed_patch, current_snapshot, evidence_text, status, expires_at) VALUES ('pur-abc123', 'session-456', 789, '{"age":28, "city":"苏州"}', '{"age":27, "city":"上海"}', '我今年28岁了，刚搬到苏州', 'pending', NOW() + INTERVAL 7 DAY)
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step">
+                        <div class="example-step-title">6️⃣ 返回提议卡片</div>
+                        <div class="example-step-content">
+                            <strong>Tool 层返回：</strong><br>
+                            {"proposed": true, "request_id": "pur-abc123", "changes": [{"field":"age", "label":"年龄", "from":27, "to":28}, {"field":"city", "label":"城市", "from":"上海", "to":"苏州"}]}
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="ai-response">
+                        🤖 AI："红娘注意到你今年28岁了，刚搬到苏州，是否更新资料？<br>
+                        [提议卡片：年龄 27 → 28，城市 上海 → 苏州]<br>
+                        按钮：确认更新 | 暂不更新"
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tool 4: create_saved_search_subscription_from_last_search -->
+        <div class="tool-section" id="tool4">
+            <div class="tool-header">
+                <span class="tool-number">4</span>
+                <div class="tool-name">create_saved_search_subscription_from_last_search（创建订阅）</div>
+                <div class="tool-desc">职责：按当前搜索条件创建订阅，持续留意新候选人</div>
+            </div>
+
+            <!-- 实战示例 -->
+            <div class="example-section">
+                <div class="example-title">💡 实战示例：用户搜索苏州26-30岁女生，无结果，点击"持续留意"</div>
+
+                <div class="example-flow">
+                    <div class="user-speech">
+                        👤 用户：（点击按钮）"持续留意"
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step">
+                        <div class="example-step-title">1️⃣ AI 理解意图 + 调用 Tool</div>
+                        <div class="example-step-content">
+                            <strong>AI 思考：</strong>用户点击"持续留意"按钮，应该创建订阅，持续留意新候选人<br>
+                            <strong>AI 调用：</strong>create_saved_search_subscription_from_last_search()<br>
+                            <strong>背景：</strong>上次搜索"苏州26-30岁女生"，无结果（商业限制：只能为空结果创建订阅）
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step">
+                        <div class="example-step-title">2️⃣ Tool 层执行（agent_runtime.py）</div>
+                        <div class="example-step-content">
+                            <strong>无参数：</strong>从 session.state 获取 last_search_run_id<br>
+                            <strong>调用下一层：</strong><br>
+                            run_input.create_saved_search_subscription_from_last_search()
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step">
+                        <div class="example-step-title">3️⃣ Service 层（service.py）</div>
+                        <div class="example-step-content">
+                            <strong>获取上次搜索 ID：</strong><br>
+                            session.state.get("last_search_run_id") → "search-run-abc123"<br><br>
+                            <strong>硬约束校验：</strong><br>
+                            - ✓ 必须有上次搜索<br>
+                            - ✓ 上次搜索必须成功（has_match=false, 无错误）<br>
+                            - ✓ 上次搜索必须为空结果（商业限制）<br><br>
+                            <strong>加载上次搜索：</strong><br>
+                            storage.get_search_run("search-run-abc123") → {"criteria": {"cities":["苏州"], "age_min":26, "age_max":30, "gender":"女"}, ...}
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step">
+                        <div class="example-step-title">4️⃣ Recommendation System 层</div>
+                        <div class="example-step-content">
+                            <strong>构建订阅：</strong><br>
+                            build_subscription_request → {"source": "...", "criteria": {"cities":["苏州"], "age_min":26, "age_max":30, "gender":"女"}, "title": "持续留意：苏州26-30岁女生"}<br><br>
+                            <strong>创建订阅：</strong><br>
+                            create_subscription → {"subscription_id": "sub-xyz789", "status": "active"}
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step">
+                        <div class="example-step-title">5️⃣ MySQL 数据库写入</div>
+                        <div class="example-step-content">
+                            <strong>写入订阅表：</strong><br>
+                            INSERT INTO subscriptions (subscription_id, requester_id, source, criteria, title, status, created_at) VALUES ('sub-xyz789', 12345, 'mysql://...', '{"cities":["苏州"], "age_min":26, "age_max":30, "gender":"女"}', '持续留意：苏州26-30岁女生', 'active', NOW())
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step">
+                        <div class="example-step-title">6️⃣ 返回结果</div>
+                        <div class="example-step-content">
+                            <strong>Tool 层返回：</strong><br>
+                            {"created_subscription": true, "subscription_id": "sub-xyz789"}
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="ai-response">
+                        🤖 AI："好的，我会持续留意苏州26-30岁的女生，有新的我会第一时间告诉你。<br>
+                        [订阅卡片：持续留意苏州26-30岁女生]<br>
+                        按钮：继续对话"
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tool 5: reply_to_user -->
+        <div class="tool-section" id="tool5">
+            <div class="tool-header">
+                <span class="tool-number">5</span>
+                <div class="tool-name">reply_to_user（回复用户）</div>
+                <div class="tool-desc">职责：回复用户对话消息，不展示候选人卡片（纯对话场景）</div>
+            </div>
+
+            <!-- 实战示例 -->
+            <div class="example-section">
+                <div class="example-title">💡 实战示例：用户问"为什么推荐第一位？"</div>
+
+                <div class="example-flow">
+                    <div class="user-speech">
+                        👤 用户："为什么推荐第一位？"
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step">
+                        <div class="example-step-title">1️⃣ AI 理解意图 + 调用 Tool</div>
+                        <div class="example-step-content">
+                            <strong>AI 思考：</strong>用户询问推荐理由，这是对话场景，不需要搜索候选人，应该用 reply_to_user<br>
+                            <strong>AI 生成回复：</strong>message="第一位是李欣琪，26岁苏州，产品经理。性格测评显示她的MBTI和你很接近，依恋偏安全型，相处节奏会比较稳。"<br>
+                            <strong>AI 生成按钮：</strong>button_texts=["换一批", "详细介绍", "开始认识"]<br>
+                            <strong>AI 调用：</strong>reply_to_user(message="第一位是李欣琪...", phase="results_shown", button_texts=["换一批", "详细介绍", "开始认识"])
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step">
+                        <div class="example-step-title">2️⃣ Tool 层执行（agent_runtime.py）</div>
+                        <div class="example-step-content">
+                            <strong>参数解析：</strong><br>
+                            message → "第一位是李欣琪..."<br>
+                            phase → "results_shown"<br>
+                            button_texts → ["换一批", "详细介绍", "开始认识"]<br><br>
+                            <strong>构建 payload：</strong><br>
+                            {"kind": "reply", "phase": "results_shown", "assistant_message": "第一位是李欣琪...", "suggested_actions": [{"label": "换一批", "style": "secondary", "semantic_payload": {"kind": "suggested"}}, ...]}<br><br>
+                            <strong>保存到 tool_state：</strong><br>
+                            tool_state["reply_payload"] = payload
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step">
+                        <div class="example-step-title">3️⃣ Decision Models 层（decision_models.py）</div>
+                        <div class="example-step-content">
+                            <strong>提取 payload：</strong><br>
+                            tool_state.get("reply_payload") → {"kind": "reply", ...}<br><br>
+                            <strong>转换为 Decision：</strong><br>
+                            decision_payload_to_decision_with_repair → DiscoveryDecision(phase="results_shown", assistant_message="第一位是李欣琪...", suggested_actions=[...])
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step">
+                        <div class="example-step-title">4️⃣ Service 层（service.py）</div>
+                        <div class="example-step-content">
+                            <strong>提取 decision：</strong><br>
+                            runtime_result.decision → DiscoveryDecision(...)<br><br>
+                            <strong>添加到 timeline：</strong><br>
+                            session.view["timeline"].append({"item_type": "assistant_message", "item_id": "msg-a123", "body": "第一位是李欣琪..."})<br><br>
+                            <strong>渲染按钮：</strong><br>
+                            session.view["suggested_actions"] = [{"action_id": "action-456", "label": "换一批", "style": "secondary", "semantic_payload": {"kind": "suggested"}}, ...]
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step">
+                        <div class="example-step-title">5️⃣ 前端渲染</div>
+                        <div class="example-step-content">
+                            <strong>前端接收：</strong><br>
+                            {"timeline": [{"item_type": "assistant_message", "body": "第一位是李欣琪..."}], "suggested_actions": [...]}<br><br>
+                            <strong>前端渲染：</strong><br>
+                            - 显示 assistant_message 消息气泡<br>
+                            - 渲染 suggested_actions 按钮
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="ai-response">
+                        🤖 AI："第一位是李欣琪，26岁苏州，产品经理。性格测评显示她的MBTI和你很接近，依恋偏安全型，相处节奏会比较稳。<br>
+                        按钮：换一批 | 详细介绍 | 开始认识"
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tool 6: show_candidates -->
+        <div class="tool-section" id="tool6">
+            <div class="tool-header">
+                <span class="tool-number">6</span>
+                <div class="tool-name">show_candidates（展示候选人）</div>
+                <div class="tool-desc">职责：展示候选人列表（搜索后的结果展示）</div>
+            </div>
+
+            <!-- 实战示例 -->
+            <div class="example-section">
+                <div class="example-title">💡 实战示例：AI 搜索后展示候选人</div>
+
+                <div class="example-flow">
+                    <div class="user-speech">
+                        👤 用户："给我推荐苏州26-30岁的女生"（触发 search_partner_candidates）
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step">
+                        <div class="example-step-title">1️⃣ AI 搜索完成 + 选择候选人</div>
+                        <div class="example-step-content">
+                            <strong>背景：</strong>search_partner_candidates 返回5位候选人（123, 456, 789, 101, 102）<br>
+                            <strong>AI 自主决策：</strong>选择前3位推荐（李欣琪、张婉婷、王思琪）<br>
+                            <strong>AI 生成标题：</strong>title="这三位很适合你"<br>
+                            <strong>AI 生成筛选标签：</strong>criteria=["苏州", "26-30岁", "女生"]<br>
+                            <strong>AI 调用：</strong>show_candidates(message="这三位很适合你", candidate_ids=[123, 456, 789], title="这三位很适合你", criteria=["苏州", "26-30岁", "女生"])
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step">
+                        <div class="example-step-title">2️⃣ Tool 层执行（agent_runtime.py）</div>
+                        <div class="example-step-content">
+                            <strong>参数解析：</strong><br>
+                            message → "这三位很适合你"<br>
+                            candidate_ids → [123, 456, 789]<br>
+                            title → "这三位很适合你"<br>
+                            criteria → ["苏州", "26-30岁", "女生"]<br><br>
+                            <strong>确定 phase：</strong><br>
+                            candidate_ids 有值 → phase="results_shown"<br><br>
+                            <strong>构建 payload：</strong><br>
+                            {"kind": "show", "phase": "results_shown", "assistant_message": "这三位很适合你", "result_group_title": "这三位很适合你", "criteria_labels": ["苏州", "26-30岁", "女生"], "selected_candidates": [{"profile_id": 123}, {"profile_id": 456}, {"profile_id": 789}]}<br><br>
+                            <strong>保存到 tool_state：</strong><br>
+                            tool_state["show_payload"] = payload
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step">
+                        <div class="example-step-title">3️⃣ Service 层（service.py）</div>
+                        <div class="example-step-content">
+                            <strong>提取 decision：</strong><br>
+                            runtime_result.decision → DiscoveryDecision(phase="results_shown", ...)<br><br>
+                            <strong>⚠️ 关键校验：</strong>候选人来源<br>
+                            - candidate_ids=[123, 456, 789] 必须在 last_search_response 中存在 ✓<br>
+                            - 如果不存在：拒绝展示（防止 AI 幻觉）<br><br>
+                            <strong>复用已有卡片：</strong><br>
+                            _reuse_existing_result_cards → 从 last_search_response 获取完整候选人信息<br><br>
+                            <strong>构建 result_group：</strong><br>
+                            session.view["timeline"].append({"item_type": "result_group", "title": "这三位很适合你", "cards": [...]})
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step">
+                        <div class="example-step-title">4️⃣ View Models 层（view_models.py）</div>
+                        <div class="example-step-content">
+                            <strong>构建候选人卡片：</strong><br>
+                            build_candidate_card → {"profile_id": 123, "title": "李欣琪", "subtitle": "26岁·苏州·产品经理·本科", "reason_summary": "MBTI和你很接近", "personality_reasoning": {...}}<br><br>
+                            <strong>附加性格信息：</strong><br>
+                            personality_match_context → {"mbti": {"type_code": "INFP"}, "attachment": {"type_code": "secure"}}
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step">
+                        <div class="example-step-title">5️⃣ 前端渲染</div>
+                        <div class="example-step-content">
+                            <strong>前端接收：</strong><br>
+                            {"timeline": [{"item_type": "assistant_message", "body": "这三位很适合你"}, {"item_type": "result_group", "title": "这三位很适合你", "cards": [{"profile_id": 123, "title": "李欣琪", ...}, ...]}]}<br><br>
+                            <strong>前端渲染：</strong><br>
+                            - 显示 assistant_message 消息气泡<br>
+                            - 显示 result_group 候选人卡片组<br>
+                            - 每张卡片显示：头像、姓名、年龄、城市、职业、推荐理由
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="ai-response">
+                        🤖 AI："这三位很适合你<br>
+                        [候选人卡片：李欣琪、张婉婷、王思琪]<br>
+                        按钮：换一批 | 详细介绍 | 开始认识"
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tool 7: suggest_assessment -->
+        <div class="tool-section" id="tool7">
+            <div class="tool-header">
+                <span class="tool-number">7</span>
+                <div class="tool-name">suggest_assessment（测评引导）</div>
+                <div class="tool-desc">职责：检查用户测评状态，未完成返回引导卡片，已完成返回性格信息</div>
+            </div>
+
+            <!-- 实战示例 -->
+            <div class="example-section">
+                <div class="example-title">💡 实战示例：用户问"我适合什么性格的人？"</div>
+
+                <div class="example-flow">
+                    <div class="user-speech">
+                        👤 用户："我适合什么性格的人？"
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step">
+                        <div class="example-step-title">1️⃣ AI 理解意图 + 调用 Tool</div>
+                        <div class="example-step-content">
+                            <strong>AI 思考：</strong>用户询问性格匹配，需要先了解用户的性格类型，应该检查测评状态<br>
+                            <strong>AI 选择测评类型：</strong>MBTI（快速了解性格类型）<br>
+                            <strong>AI 调用：</strong>suggest_assessment(assessment_type="mbti_16")
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step">
+                        <div class="example-step-title">2️⃣ Tool 层执行（agent_runtime.py）</div>
+                        <div class="example-step-content">
+                            <strong>参数解析：</strong><br>
+                            assessment_type → "mbti_16"<br><br>
+                            <strong>调用下一层：</strong><br>
+                            run_input.suggest_assessment("mbti_16")
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step">
+                        <div class="example-step-title">3️⃣ Service Integrations 层</div>
+                        <div class="example-step-content">
+                            <strong>加载性格特质：</strong><br>
+                            load_traits_for_discovery(source, profile_id) → PersonalityTraitsContext(mbti=None, attachment=None, ...)<br><br>
+                            <strong>转换为字典：</strong><br>
+                            traits.to_dict() → {"mbti": {}, "attachment": {}, ...}<br><br>
+                            <strong>检查测评状态：</strong><br>
+                            mbti.type_code → None（用户未完成 MBTI 测评）
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step">
+                        <div class="example-step-title">4️⃣ MySQL 数据库查询</div>
+                        <div class="example-step-content">
+                            <strong>查询 Persona：</strong><br>
+                            SELECT * FROM user_personas WHERE profile_id = 789 LIMIT 1<br><br>
+                            <strong>返回：</strong><br>
+                            {"profile_id": 789, "self_personality_traits_json": {"mbti": {}, "attachment": {}, ...}}<br>
+                            （mbti 字段为空 → 用户未完成测评）
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step">
+                        <div class="example-step-title">5️⃣ 返回测评引导卡片</div>
+                        <div class="example-step-content">
+                            <strong>Tool 层返回：</strong><br>
+                            {"completed": false, "suggest": true, "assessment_type": "mbti_16", "card": {"card_type": "assessment_suggest", "title": "MBTI性格测试", "description": "了解你的性格类型，让匹配更精准", "duration": "约5分钟", "reward": "匹配准确度提升", "action_label": "开始测评"}}<br><br>
+                            <strong>保存到 tool_state：</strong><br>
+                            tool_state["assessment_payload"] = result
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step">
+                        <div class="example-step-title">6️⃣ Service 层渲染卡片</div>
+                        <div class="example-step-content">
+                            <strong>添加到 timeline：</strong><br>
+                            session.view["timeline"].append({"item_type": "assessment_suggest", "card": {"title": "MBTI性格测试", ...}})
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="ai-response">
+                        🤖 AI："你还没做 MBTI 性格测试，做一下我就能给你更精准的性格匹配建议。<br>
+                        [测评引导卡片：MBTI性格测试，约5分钟，匹配准确度提升]<br>
+                        按钮：开始测评"
+                    </div>
+                </div>
+            </div>
+
+            <!-- 实战示例 2：用户已完成测评 -->
+            <div class="example-section">
+                <div class="example-title">💡 实战示例2：用户已完成测评，问"我适合什么性格的人？"</div>
+
+                <div class="example-flow">
+                    <div class="user-speech">
+                        👤 用户："我适合什么性格的人？"
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step">
+                        <div class="example-step-title">1️⃣ AI 查询测评状态</div>
+                        <div class="example-step-content">
+                            <strong>AI 调用：</strong>suggest_assessment(assessment_type="mbti_16")<br>
+                            <strong>背景：</strong>用户已完成 MBTI 测评（type_code="INFP")
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step">
+                        <div class="example-step-title">2️⃣ 数据库返回性格信息</div>
+                        <div class="example-step-content">
+                            <strong>查询 Persona：</strong><br>
+                            SELECT * FROM user_personas WHERE profile_id = 789 LIMIT 1<br><br>
+                            <strong>返回：</strong><br>
+                            {"profile_id": 789, "self_personality_traits_json": {"mbti": {"type_code": "INFP", "scores": {...}}, "attachment": {"type_code": "secure"}, ...}}
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="example-step">
+                        <div class="example-step-title">3️⃣ 返回性格信息（已完成）</div>
+                        <div class="example-step-content">
+                            <strong>Tool 层返回：</strong><br>
+                            {"completed": true, "assessment_type": "mbti_16", "type_code": "INFP", "summary": "你是INFP型", "dimension_scores": {"E": 30, "I": 70, "S": 40, "N": 60, "T": 35, "F": 65, "J": 45, "P": 55}}
+                        </div>
+                    </div>
+
+                    <div class="example-arrow">⬇️</div>
+
+                    <div class="ai-response">
+                        🤖 AI："你是INFP型，内向、偏感性、比较开放。适合性格节奏稳、愿意沟通的人，比如IN型、或者依恋偏安全型的。<br>
+                        [展示性格匹配建议]"
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 总结 -->
+        <div class="summary-box">
+            <div class="summary-title">🎯 核心总结</div>
+            <div class="summary-content">
+                <strong>这份文档梳理了所有7个 Tool 的完整查询链路 + 实战示例：</strong><br><br>
+                1️⃣ <strong>search_partner_candidates：</strong>用户说"推荐苏州26-30岁女生" → Tool → Service → MySQL → 返回候选人 → AI 展示<br>
+                2️⃣ <strong>sync_requester_persona_memory：</strong>用户说"我喜欢苏州的女生" → Tool → Persona Engine → MySQL user_personas → 返回 synced<br>
+                3️⃣ <strong>propose_requester_profile_update：</strong>用户说"我28岁了" → Tool → Profile Updates → MySQL profile_update_requests → 返回提议卡片<br>
+                4️⃣ <strong>create_saved_search_subscription：</strong>用户点击"持续留意" → Tool → Recommendation System → MySQL subscriptions → 返回订阅<br>
+                5️⃣ <strong>reply_to_user：</strong>用户问"为什么推荐第一位" → Tool → Decision Models → Service → 前端渲染消息<br>
+                6️⃣ <strong>show_candidates：</strong>AI 搜索后 → Tool → Service → View Models → 前端渲染候选人卡片<br>
+                7️⃣ <strong>suggest_assessment：</strong>用户问"我适合什么性格的人" → Tool → Personality Reader → MySQL user_personas → 返回测评引导/性格信息<br><br>
+                <strong>设计理念：</strong>Agent Native（AI 主导决策）+ 三层分离（Tool 层 → Service 层 → Data 层）+ 单一真相来源（规则只在 Prompt）
+            </div>
+        </div>
+    </div>
+</body>
+</html>

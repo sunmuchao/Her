@@ -198,26 +198,23 @@ def _criteria_hash(payload: Mapping[str, Any]) -> str:
 
 
 def _split_criteria(criteria: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
-    hard_keys = {
-        "gender",
-        "age_min",
-        "age_max",
-        "cities",
-        "height_min",
-        "height_max",
-        "marital_statuses",
-        "accept_partner_children",
-        "long_distance",
-        "must_not_have",
-        "must_have",
-    }
+    """改进：不再硬编码 hard_keys，所有参数都应该被查询
+
+    旧逻辑：只有 hard_keys 中的字段进入 hard_filters，其他进入 soft_preferences
+    新逻辑：所有非空参数都进入 hard_filters，soft_preferences 保留为空（兼容性）
+
+    这样 search_sources.py 可以通过通用查询构建器处理所有参数
+    """
     hard_filters: dict[str, Any] = {}
-    soft_preferences: dict[str, Any] = {}
+    soft_preferences: dict[str, Any] = {}  # 保留为空，用于兼容性
+
     for key, value in criteria.items():
-        if key in hard_keys:
-            hard_filters[key] = value
-        else:
-            soft_preferences[key] = value
+        # 过滤空值
+        if value is None or value == "" or value == []:
+            continue
+        # 所有有效参数都进入 hard_filters
+        hard_filters[key] = value
+
     return hard_filters, soft_preferences
 
 

@@ -123,6 +123,46 @@ function DiscoveryTimelineEntry({
     )
   }
 
+  if (item.kind === 'assessment_suggest') {
+    // 测评引导卡片
+    const card = item.card
+    return (
+      <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 animate-fade-in-up">
+        <div className="flex items-start gap-3">
+          <Brain className="h-5 w-5 text-primary mt-0.5" />
+          <div className="flex-1">
+            <h3 className="font-medium text-sm">{card?.title || '性格测试'}</h3>
+            <p className="text-xs text-muted-foreground mt-1">{card?.description || '了解你的性格类型'}</p>
+            <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <span>⏱</span>
+                <span>{card?.duration || '约5分钟'}</span>
+              </span>
+              <span className="flex items-center gap-1">
+                <span>🎁</span>
+                <span>{card?.reward || '匹配更精准'}</span>
+              </span>
+            </div>
+            <button
+              onClick={() => {
+                const assessmentType = card?.assessment_type || 'mbti_16'
+                const typeMap: Record<string, 'mbti_16' | 'attachment_style' | 'big_five' | 'sternberg_triangular_love'> = {
+                  mbti_16: 'mbti_16',
+                  attachment_style: 'attachment_style',
+                  big_five: 'big_five',
+                }
+                onOpenAssessment?.(typeMap[assessmentType] || 'mbti_16')
+              }}
+              className="mt-3 rounded-full bg-primary px-4 py-1.5 text-xs text-primary-foreground"
+            >
+              {card?.action_label || '开始测评'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   if (item.kind === 'suggested_actions') {
     return (
       <div className="flex flex-wrap gap-2">
