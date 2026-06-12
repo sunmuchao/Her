@@ -298,6 +298,14 @@ def build_mysql_prefilter(
     add_in("photo_verification_level", criteria.get("photo_verification_levels"), default_value="none")
     add_numeric_bound("photo_count", ">=", criteria.get("photo_count_min"), allow_missing=True)
 
+    # === MBTI 类型筛选（新增）===
+    # 支持 mbti_types（筛选特定 MBTI 类型）
+    add_in("mbti_type", criteria.get("mbti_types"), allow_missing=True)
+    # 支持 exclude_mbti（排除特定 MBTI 类型）
+    add_not_in("mbti_type", criteria.get("exclude_mbti"))
+    # 支持 exclude_mbti_types（排除特定 MBTI 类型，兼容性）
+    add_not_in("mbti_type", criteria.get("exclude_mbti_types"))
+
     if criteria.get("has_children") is not None:
         add_numeric_bound("has_children", "=", int(criteria["has_children"]), allow_missing=True)
 

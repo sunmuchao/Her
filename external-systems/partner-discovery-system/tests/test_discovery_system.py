@@ -1315,6 +1315,8 @@ class DiscoveryServiceTests(unittest.TestCase):
         self.assertEqual(cards[1]["profile_id"], 3002)
 
     def test_search_partner_candidates_with_adds_personality_bonus_and_trace(self) -> None:
+        # ✅ Agent Native 改进：测试现在验证性格特质数据是否正确返回
+        # 而不是验证性格排序和性格加分（这些由 Agent 自主决定）
         session = StoredSession(
             session_id="discovery-session-personality",
             requester_id=70001,
@@ -1393,12 +1395,30 @@ class DiscoveryServiceTests(unittest.TestCase):
                 search=lambda **_kwargs: {"has_match": False, "result_count": 0, "results": []},
             )
 
-        self.assertEqual([item["id"] for item in response["results"][:2]], [3002, 3001])
-        self.assertGreater(response["results"][0]["personality_bonus"], response["results"][1]["personality_bonus"])
-        self.assertTrue(response["results"][0]["personality_reasoning"]["used"])
-        self.assertIn("values", response["results"][0]["personality_scoring_trace"]["used_dimensions"])
+        # ✅ Agent Native 改进：不再验证性格排序和性格加分
+        # 这些逻辑已移除，由 Agent 自主决定如何使用性格特质数据
+        # 测试现在验证：
+        # 1. 原始候选人顺序是否保持不变（不再排序）
+        # 2. 性格特质数据是否正确返回（供 Agent 参考）
+        # 3. personality_trace 是否正确记录数据统计
+
+        # ✅ 验证原始顺序（不再排序）
+        self.assertEqual([item["id"] for item in response["results"][:2]], [3001, 3002])
+
+        # ✅ 验证性格特质数据是否正确返回（供 Agent 参考）
+        self.assertIn("personality_traits", response["results"][0])
+        self.assertIn("personality_traits", response["results"][1])
+        self.assertEqual(response["results"][0]["personality_traits"]["mbti"]["type_code"], "ENFP")
+        self.assertEqual(response["results"][1]["personality_traits"]["mbti"]["type_code"], "ISTJ")
+
+        # ❌ 移除：验证性格加分和性格推荐理由（已移除）
+        # self.assertGreater(response["results"][0]["personality_bonus"], ...)
+        # self.assertTrue(response["results"][0]["personality_reasoning"]["used"])
+
+        # ✅ 验证 personality_trace 是否正确记录数据统计
         self.assertTrue(response["personality_trace"]["self_traits_available"])
         self.assertEqual(response["personality_trace"]["candidate_traits_count"], 2)
+        self.assertTrue(response["personality_trace"]["agent_native_mode"])
 
     def test_service_renders_profile_detail_from_canonical_payload(self) -> None:
         service = DiscoveryService(

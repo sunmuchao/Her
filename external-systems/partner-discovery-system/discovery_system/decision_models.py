@@ -65,6 +65,7 @@ class DiscoveryDecision:
 class DiscoveryRuntimeResult:
     decision: DiscoveryDecision
     search_response: dict[str, Any] | None = None
+    assessment_payload: dict[str, Any] | None = None  # 测评引导卡片数据
 
 
 class DiscoveryStarterPromptPayloadModel(BaseModel):
