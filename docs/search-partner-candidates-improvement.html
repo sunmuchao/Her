@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>search_partner_candidates 改进建议（大白话对比）</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            line-height: 1.8;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            font-size: 36px;
+            margin-bottom: 30px;
+            font-weight: 700;
+            border-bottom: 4px solid #e74c3c;
+            padding-bottom: 20px;
+        }
+
+        .intro {
+            background: #ffebee;
+            border: 3px solid #e74c3c;
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 40px;
+        }
+
+        .intro-title {
+            color: #e74c3c;
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 15px;
+        }
+
+        .intro-content {
+            font-size: 20px;
+            color: #333;
+            font-weight: 600;
+        }
+
+        .analogy-box {
+            background: #e3f2fd;
+            border: 3px solid #3498db;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 40px;
+        }
+
+        .analogy-title {
+            color: #3498db;
+            font-size: 26px;
+            font-weight: 700;
+            margin-bottom: 20px;
+        }
+
+        .analogy-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .analogy-card {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            border: 2px solid #e0e0e0;
+        }
+
+        .analogy-card-title {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .analogy-card-title.problem {
+            color: #e74c3c;
+            border-bottom: 2px solid #e74c3c;
+        }
+
+        .analogy-card-title.correct {
+            color: #27ae60;
+            border-bottom: 2px solid #27ae60;
+        }
+
+        .analogy-list {
+            font-size: 18px;
+            color: #555;
+        }
+
+        .analogy-list li {
+            margin-bottom: 10px;
+        }
+
+        .analogy-list .problem-item {
+            color: #e74c3c;
+        }
+
+        .analogy-list .correct-item {
+            color: #27ae60;
+        }
+
+        .compare-section {
+            margin-bottom: 50px;
+        }
+
+        .compare-title {
+            color: #2c3e50;
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 25px;
+            text-align: center;
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+        }
+
+        .compare-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+        }
+
+        .compare-box {
+            border-radius: 15px;
+            padding: 25px;
+        }
+
+        .compare-box.before {
+            background: #ffebee;
+            border: 3px solid #e74c3c;
+        }
+
+        .compare-box.after {
+            background: #e8f5e9;
+            border: 3px solid #27ae60;
+        }
+
+        .compare-label {
+            text-align: center;
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            padding: 10px;
+            border-radius: 10px;
+        }
+
+        .compare-label.before {
+            background: #e74c3c;
+            color: white;
+        }
+
+        .compare-label.after {
+            background: #27ae60;
+            color: white;
+        }
+
+        .compare-desc {
+            font-size: 18px;
+            color: #555;
+            margin-bottom: 20px;
+        }
+
+        .compare-desc-title {
+            font-weight: 700;
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+
+        .code-box {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            border-radius: 10px;
+            padding: 20px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            overflow-x: auto;
+        }
+
+        .code-comment {
+            color: #75715e;
+        }
+
+        .code-problem {
+            color: #f92672;
+            font-weight: bold;
+        }
+
+        .code-correct {
+            color: #a6e22e;
+            font-weight: bold;
+        }
+
+        .arrow-section {
+            text-align: center;
+            margin: 30px 0;
+        }
+
+        .arrow-text {
+            font-size: 32px;
+            color: #667eea;
+            font-weight: bold;
+        }
+
+        .why-box {
+            background: #fff3cd;
+            border: 3px solid #ffc107;
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 30px;
+        }
+
+        .why-title {
+            color: #ff9800;
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 15px;
+        }
+
+        .why-content {
+            font-size: 18px;
+            color: #555;
+        }
+
+        .why-list {
+            margin-top: 15px;
+        }
+
+        .why-list li {
+            margin-bottom: 10px;
+            font-size: 18px;
+        }
+
+        .why-number {
+            background: #ff9800;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 15px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+
+        .benefit-box {
+            background: linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%);
+            color: white;
+            border-radius: 15px;
+            padding: 30px;
+            margin-top: 40px;
+        }
+
+        .benefit-title {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .benefit-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        .benefit-card {
+            background: white;
+            color: #2c3e50;
+            border-radius: 10px;
+            padding: 20px;
+        }
+
+        .benefit-card-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: #27ae60;
+            margin-bottom: 10px;
+        }
+
+        .benefit-card-content {
+            font-size: 16px;
+            color: #555;
+        }
+
+        .summary-box {
+            background: #f8f9fa;
+            border: 3px solid #667eea;
+            border-radius: 15px;
+            padding: 30px;
+            margin-top: 40px;
+        }
+
+        .summary-title {
+            color: #667eea;
+            font-size: 26px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .summary-list {
+            font-size: 20px;
+            color: #555;
+        }
+
+        .summary-list li {
+            margin-bottom: 15px;
+            display: flex;
+            align-items: flex-start;
+        }
+
+        .summary-icon {
+            font-size: 24px;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🛠️ search_partner_candidates 改进建议（大白话对比）</h1>
+
+        <div class="intro">
+            <div class="intro-title">🎯 核心问题（一句话）</div>
+            <div class="intro-content">
+                Tool 层做了不该做的事（业务逻辑），违反了 Agent Native 设计原则。
+            </div>
+        </div>
+
+        <div class="analogy-box">
+            <div class="analogy-title">🍕 用大白话比喻：餐厅的故事</div>
+
+            <div class="analogy-grid">
+                <div class="analogy-card">
+                    <div class="analogy-card-title problem">❌ 现在的问题设计</div>
+                    <div class="analogy-list">
+                        <li><strong>厨师</strong>：负责炒菜（搜索数据）</li>
+                        <li><strong>服务员（Tool）</strong>：负责端菜（返回数据）</li>
+                        <li class="problem-item"><strong>❌ 但是！服务员还在做这些事：</strong></li>
+                        <li class="problem-item">❌ 决定菜怎么摆盘（性格推荐理由）</li>
+                        <li class="problem-item">❌ 决定给哪桌客人推荐什么菜（性格匹配度排序）</li>
+                        <li class="problem-item">❌ 决定要不要给客人推荐红酒（性格加分）</li>
+                        <li class="problem-item"><strong>问题：服务员做了店长（Agent）该做的事！</strong></li>
+                    </div>
+                </div>
+
+                <div class="analogy-card">
+                    <div class="analogy-card-title correct">✅ 正确的设计</div>
+                    <div class="analogy-list">
+                        <li><strong>厨师</strong>：负责炒菜（搜索数据）</li>
+                        <li class="correct-item"><strong>服务员（Tool）</strong>：只负责端菜（返回原始数据）</li>
+                        <li class="correct-item"><strong>店长（Agent）</strong>：负责决策：</li>
+                        <li class="correct-item">✅ 决定菜怎么摆盘（AI 自主生成推荐理由）</li>
+                        <li class="correct-item">✅ 决定给哪桌客人推荐什么菜（AI 自主排序）</li>
+                        <li class="correct-item">✅ 决定要不要推荐红酒（AI 自主判断）</li>
+                        <li class="correct-item"><strong>正确：店长决策，服务员只端菜！</strong></li>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 对比 1：性格特质增强 -->
+        <div class="compare-section">
+            <div class="compare-title">对比 1：性格特质增强（最核心问题）</div>
+
+            <div class="why-box">
+                <div class="why-title">🤔 为什么这是问题？</div>
+                <div class="why-content">
+                    性格推荐理由、性格加分是<strong>业务逻辑（软约束）</strong>，应该由 Agent（AI）自主决定，而不是在代码中硬编码模板。
+                </div>
+            </div>
+
+            <div class="compare-grid">
+                <div class="compare-box before">
+                    <div class="compare-label before">❌ 改进前（问题设计）</div>
+                    <div class="compare-desc">
+                        <div class="compare-desc-title">Tool 层包含业务逻辑：</div>
+                        <ul>
+                            <li>❌ 硬编码性格推荐理由模板："依恋都偏安全型，相处会更稳"</li>
+                            <li>❌ 硬编码性格加分算法：价值观加分 + 依恋加分 + MBTI加分</li>
+                            <li>❌ 硬编码性格排序逻辑：base_score + personality_bonus</li>
+                        </ul>
+                    </div>
+                    <div class="code-box">
+                        <span class="code-problem"># ❌ Tool 层在生成性格推荐理由（业务逻辑）</span><br>
+                        reasoning = _build_personality_reasoning(user_traits, candidate_traits)<br>
+                        <span class="code-comment"># 硬编码模板："依恋都偏安全型，相处会更稳"</span><br>
+                        candidate["personality_reasoning"] = reasoning<br><br>
+
+                        <span class="code-problem"># ❌ Tool 层在计算性格加分（业务逻辑）</span><br>
+                        bonus = _compute_personality_bonus(user_traits, candidate_traits)<br>
+                        <span class="code-comment"># 硬编码算法：价值观 +5分，依恋 +4分</span><br>
+                        candidate["personality_bonus"] = bonus<br><br>
+
+                        <span class="code-problem"># ❌ Tool 层在排序候选人（业务逻辑）</span><br>
+                        candidate["score"] = base_score + bonus<br>
+                        results.sort(key=lambda c: c["score"])
+                    </div>
+                </div>
+
+                <div class="compare-box after">
+                    <div class="compare-label after">✅ 改进后（正确设计）</div>
+                    <div class="compare-desc">
+                        <div class="compare-desc-title">Tool 层只返回数据：</div>
+                        <ul>
+                            <li>✅ 只返回性格特质原始数据（MBTI、依恋风格、价值观）</li>
+                            <li>✅ 不生成推荐理由（由 Agent 自主生成）</li>
+                            <li>✅ 不计算加分（由 Agent 自主判断）</li>
+                            <li>✅ 不排序候选人（由 Agent 自主决定）</li>
+                        </ul>
+                    </div>
+                    <div class="code-box">
+                        <span class="code-correct"># ✅ Tool 层只返回原始数据</span><br>
+                        candidate_traits = load_traits_for_profiles(source, candidate_ids)<br><br>
+
+                        <span class="code-correct"># ✅ 只附加原始数据，不生成推荐理由</span><br>
+                        for candidate in results:<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;traits = candidate_traits.get(candidate["id"])<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;<span class="code-correct">candidate["personality_traits"] = traits.to_dict()</span><br><br>
+
+                        <span class="code-correct"># ✅ 返回原始数据，供 Agent 参考</span><br>
+                        return {"candidates": results, "personality_traits": candidate_traits}<br><br>
+
+                        <span class="code-comment"># Agent（AI）自主决定：是否生成推荐理由？怎么写？是否排序？</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="arrow-section">
+                <div class="arrow-text">⬇️ 改进后的效果</div>
+            </div>
+
+            <div class="benefit-box">
+                <div class="benefit-title">🎉 改进后的好处</div>
+                <div class="benefit-grid">
+                    <div class="benefit-card">
+                        <div class="benefit-card-title">1️⃣ AI 更聪明</div>
+                        <div class="benefit-card-content">
+                            AI 可以根据对话上下文自主生成推荐理由，不再千篇一律。<br>
+                            例如：用户问"为什么推荐她"，AI 会根据性格特质 + 对话历史生成个性化回复。
+                        </div>
+                    </div>
+
+                    <div class="benefit-card">
+                        <div class="benefit-card-title">2️⃣ 职责清晰</div>
+                        <div class="benefit-card-content">
+                            Tool 只做数据查询，Agent 只做决策。<br>
+                            代码更简单，维护更轻松。
+                        </div>
+                    </div>
+
+                    <div class="benefit-card">
+                        <div class="benefit-card-title">3️⃣ 更灵活</div>
+                        <div class="benefit-card-content">
+                            改推荐理由不需要改代码，只需改 Prompt。<br>
+                            产品经理可以直接调整推荐策略，不需要程序员介入。
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 对比 2：硬约束校验 -->
+        <div class="compare-section">
+            <div class="compare-title">对比 2：硬约束校验（limit 限制）</div>
+
+            <div class="why-box">
+                <div class="why-title">🤔 为什么这是问题？</div>
+                <div class="why-list">
+                    <li><span class="why-number">1</span> Tool 层：limit = max(1, min(limit, 10))</li>
+                    <li><span class="why-number">2</span> Service Integrations 层：limit = max(1, min(limit, 10))</li>
+                    <li><span class="why-number">3</span> 两层都校验，导致重复逻辑</li>
+                    <li><span class="why-number">4</span> 违反单一真相来源原则：硬约束应该只在一层执行</li>
+                </div>
+            </div>
+
+            <div class="compare-grid">
+                <div class="compare-box before">
+                    <div class="compare-label before">❌ 改进前（重复校验）</div>
+                    <div class="code-box">
+                        <span class="code-comment"># Tool 层（agent_runtime.py）</span><br>
+                        <span class="code-problem">normalized_limit = max(1, min(limit, 10))</span><br><br>
+
+                        <span class="code-comment"># Service Integrations 层（service_integrations.py）</span><br>
+                        <span class="code-problem">normalized_limit = max(1, min(int(limit or 5), 10))</span><br><br>
+
+                        <span class="code-comment"># ❌ 两层都校验，重复逻辑！</span>
+                    </div>
+                </div>
+
+                <div class="compare-box after">
+                    <div class="compare-label after">✅ 改进后（只校验一次）</div>
+                    <div class="code-box">
+                        <span class="code-comment"># Tool 层（最外层）</span><br>
+                        <span class="code-correct">normalized_limit = max(1, min(limit, 10))</span><br><br>
+
+                        <span class="code-comment"># Service Integrations 层</span><br>
+                        <span class="code-correct"># ✅ 不再校验，直接使用传入的 limit</span><br>
+                        assert 1 <= limit <= 10  <span class="code-comment"># 只做断言检查</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 对比 3：并行加载 -->
+        <div class="compare-section">
+            <div class="compare-title">对比 3：并行加载（性能优化）</div>
+
+            <div class="why-box">
+                <div class="why-title">🤔 为什么这是问题？</div>
+                <div class="why-list">
+                    <li><span class="why-number">1</span> ThreadPoolExecutor 在同步函数中使用</li>
+                    <li><span class="why-number">2</span> executor.submit + .result() 会阻塞</li>
+                    <li><span class="why-number">3</span> 实际上不是真正并行，只是线程池包装</li>
+                    <li><span class="why-number">4</span> 在高并发场景下性能瓶颈明显</li>
+                </div>
+            </div>
+
+            <div class="compare-grid">
+                <div class="compare-box before">
+                    <div class="compare-label before">❌ 改进前（伪并行）</div>
+                    <div class="code-box">
+                        <span class="code-problem"># ❌ 同步函数中使用 ThreadPoolExecutor</span><br>
+                        with ThreadPoolExecutor(max_workers=2) as executor:<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;future1 = executor.submit(load_requester_profile, ...)<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;future2 = executor.submit(load_persona_for_discovery, ...)<br><br>
+
+                        <span class="code-problem"># ❌ .result() 会阻塞，不是真正并行</span><br>
+                        self_profile = future1.result()<br>
+                        persona_row = future2.result()
+                    </div>
+                </div>
+
+                <div class="compare-box after">
+                    <div class="compare-label after">✅ 改进后（真正并行）</div>
+                    <div class="code-box">
+                        <span class="code-correct"># ✅ 异步并发（asyncio.gather）</span><br>
+                        async def search_partner_candidates_with(...):<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;self_profile, persona_row = await asyncio.gather(<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;load_requester_profile_async(...),<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;load_persona_for_discovery_async(...),<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;)<br><br>
+
+                        <span class="code-correct"># ✅ 真正并行执行，不阻塞！</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 总结 -->
+        <div class="summary-box">
+            <div class="summary-title">🎯 总结：一句话记住</div>
+            <div class="summary-list">
+                <li>
+                    <span class="summary-icon">📌</span>
+                    <strong>Tool 层只做一件事：返回原始数据</strong>
+                </li>
+                <li>
+                    <span class="summary-icon">🤖</span>
+                    <strong>Agent（AI）负责所有决策：推荐理由、排序、加分</strong>
+                </li>
+                <li>
+                    <span class="summary-icon">⚡</span>
+                    <strong>硬约束只校验一次：在 Tool 层（最外层）</strong>
+                </li>
+                <li>
+                    <span class="summary-icon">🚀</span>
+                    <strong>真正并行：用 asyncio.gather，不用 ThreadPoolExecutor</strong>
+                </li>
+                <li>
+                    <span class="summary-icon">🎨</span>
+                    <strong>业务逻辑在 Prompt：不在代码中硬编码模板</strong>
+                </li>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

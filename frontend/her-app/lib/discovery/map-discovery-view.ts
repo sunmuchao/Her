@@ -46,6 +46,22 @@ export type DiscoveryAssessmentResultItem = {
   timestamp?: string
 }
 
+export type DiscoveryAssessmentSuggestItem = {
+  kind: 'assessment_suggest'
+  id: string
+  card: {
+    card_type: string
+    assessment_type: string
+    title: string
+    description: string
+    duration?: string
+    reward?: string
+    action_label?: string
+    action_id?: string
+  }
+  timestamp?: string
+}
+
 export type DiscoverySuggestedActionsItem = {
   kind: 'suggested_actions'
   id: string
@@ -65,6 +81,7 @@ export type DiscoveryTimelineItem =
   | DiscoveryResultGroupItem
   | DiscoveryProfileUpdatePromptItem
   | DiscoveryAssessmentResultItem
+  | DiscoveryAssessmentSuggestItem
   | DiscoverySuggestedActionsItem
 
 export type MappedDiscoveryView = {
@@ -165,6 +182,16 @@ export function mapDiscoveryView(view?: DiscoveryView): MappedDiscoveryView {
         card: item.card as AssessmentResultCard,
         timestamp: item.created_at ? formatRelativeTime(item.created_at) : undefined,
       })
+      continue
+    }
+    if (itemType === 'assessment_suggest' && item.card) {
+      timelineItems.push({
+        kind: 'assessment_suggest',
+        id: item.item_id || `assessment-suggest-${index}`,
+        card: item.card as DiscoveryAssessmentSuggestItem['card'],
+        timestamp: item.created_at ? formatRelativeTime(item.created_at) : undefined,
+      })
+      continue
     }
   }
 

@@ -48,6 +48,24 @@ def assessment_result(
     return item
 
 
+def assessment_suggest(
+    item_id: str,
+    card: dict[str, Any],
+    *,
+    created_at: datetime | None = None,
+) -> dict[str, Any]:
+    """构建测评引导卡片。"""
+    item: dict[str, Any] = {
+        "item_type": "assessment_suggest",
+        "item_id": item_id,
+        "card": card,
+    }
+    formatted = _format_created_at(created_at)
+    if formatted is not None:
+        item["created_at"] = formatted
+    return item
+
+
 def user_message(
     item_id: str,
     body: str,

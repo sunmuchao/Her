@@ -15,7 +15,6 @@ from .agent_runtime import (  # noqa: E402
     DiscoveryRunInput,
     DiscoveryRuntimeResult,
     DiscoveryToolCall,
-    StubDiscoveryAgentRuntime,
     create_default_discovery_agent_runtime,
 )
 from .agent_session_store import (  # noqa: E402
@@ -76,7 +75,6 @@ __all__ = [
     "StoredToolCall",
     "StoredViewSnapshot",
     "AgentsSdkDiscoveryAgentRuntime",
-    "StubDiscoveryAgentRuntime",
     "connect_db",
     "create_default_discovery_agent_runtime",
     "create_default_discovery_agent_session_store",
