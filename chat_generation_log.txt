@@ -1,0 +1,4 @@
+  File "/Users/sunmuchao/Downloads/Her/generate_chat_records_ultimate.py", line 24
+    password='',
+           ^
+SyntaxError: ':' expected after dictionary key
