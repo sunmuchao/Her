@@ -220,227 +220,215 @@ Agent 不需要我们预设分析工具，Agent 会自己找到分析方法：
 
 ## 5. 工具设计
 
-### 5.1 search_partner_candidates（硬约束筛选）
+### 5.1 设计原则
+
+| 原则 | 描述 |
+|------|------|
+| **工具只返回原始数据** | 不做预处理、不做摘要、不给 Agent 二手信息 |
+| **工具不管理状态** | 不需要 submit/get 工具，用 decision 结构表达结果 |
+| **工具调用最少化** | 一次调用返回所有信息，避免多次调用打断 Agent 思考 |
+
+### 5.2 search_partner_candidates（硬约束筛选 + 直接返回完整信息）
 
 ```python
 @function_tool
 def search_partner_candidates(
     criteria_json: str,
-    limit: int = 5,
+    limit: int = 10,
+    include_chat: bool = True,
+    chat_days: int = 30,
 ) -> dict[str, Any]:
     """
-    搜索候选人（硬约束筛选）。
+    搜索候选人（硬约束筛选 + 直接返回完整信息）。
     
-    只负责：
-    - 根据 criteria 进行硬约束筛选（年龄、城市、身高等）
-    - 返回候选人的 ID + 基础信息
-    
-    不负责：
-    - 性格关键词筛选（Agent 自主判断）
-    - 软约束筛选（Agent 自主判断）
+    核心设计：
+    - 硬约束筛选：根据 criteria 进行数据库查询
+    - 直接返回完整信息：persona + 原始聊天记录（不做摘要预处理）
+    - Agent 自己分析：Agent 自己决定如何分析聊天记录
     
     参数：
     - criteria_json: 硬约束条件（JSON）
       支持的字段：age_min, age_max, cities, height_min, height_max,
                   education, marital_status, income, job, relationship_goal 等
     
+    - limit: 返回候选人数量（默认 10，最多 20）
+    
+    - include_chat: 是否包含聊天记录（默认 True）
+    
+    - chat_days: 聊天记录时间范围（最近 N 天，默认 30 天）
+    
     返回：
-    - candidate_ids: 候选人 ID 列表
-    - basic_info: 每个候选人的基础信息（年龄、城市、职业等）
+    - candidates: 候选人完整信息列表
+      - id: 候选人 ID
+      - basic_info: 基础信息（年龄、城市、职业等）
+      - persona: 用户画像（MBTI、依恋、价值观、大五人格）
+      - chat_records: 原始聊天记录（不做摘要预处理）
+    
     - total: 总候选人数量
+    - has_more: 是否有更多候选人
     
     注意：
-    - 这只是硬约束筛选结果，Agent 需要进一步判断
-    - Agent 应该根据 basic_info 决定要不要深入分析
+    - 直接返回原始聊天记录，不做离线摘要预处理
+    - Agent 自己决定如何分析聊天记录（grep 关键词、频率统计、语气分析等）
+    - 判断结果通过 decision.selected_candidates 返回，不需要 submit 工具
     """
     criteria = json.loads(criteria_json)
-    normalized_limit = max(1, min(int(limit or 5), 50))  # 硬约束：最多返回 50 人
+    normalized_limit = max(1, min(int(limit or 10), 20))  # 硬约束：最多返回 20 人
     
     # 执行硬约束筛选
     candidates = _search_by_hard_constraints(criteria, normalized_limit)
     
-    # 返回 ID + 基础信息（不返回完整信息）
-    return {
-        "candidate_ids": [c["id"] for c in candidates],
-        "basic_info": [
-            {
-                "id": c["id"],
+    # 为每个候选人加载完整信息（不做摘要预处理）
+    enriched = []
+    for c in candidates:
+        candidate_data = {
+            "id": c["id"],
+            "basic_info": {
                 "age": c["age"],
                 "city": c["city"],
                 "job": c.get("job"),
                 "education": c.get("education"),
                 "relationship_goal": c.get("relationship_goal"),
-            }
-            for c in candidates
-        ],
-        "total": len(candidates),
+                "marital_status": c.get("marital_status"),
+                "height": c.get("height"),
+            },
+            "persona": load_persona_from_db(c["id"]),
+        }
+        
+        # 直接返回原始聊天记录，不做摘要预处理
+        if include_chat:
+            chat_records = load_chat_records(c["id"], days=chat_days)
+            candidate_data["chat_records"] = chat_records
+        
+        enriched.append(candidate_data)
+    
+    return {
+        "candidates": enriched,
+        "total": len(enriched),
         "has_more": len(candidates) >= normalized_limit,
     }
 ```
 
-### 5.2 load_candidate_full_info（加载候选人完整信息）
+### 5.3 可选辅助工具：search_chat_keywords（帮助 Agent 快速定位）
+
+**注意：这是可选辅助工具，Agent 可以选择用或不用。**
 
 ```python
 @function_tool
-def load_candidate_full_info(
+def search_chat_keywords(
     candidate_id: int,
-    info_types: list[str] = ["persona", "chat_summary"],
-    detail_level: str = "medium",
+    keywords: list[str],
+    chat_days: int = 30,
 ) -> dict[str, Any]:
     """
-    加载单个候选人的完整信息。
+    搜索候选人聊天记录中的关键词。
     
-    Agent 决定：
-    - 要看哪些类型的信息
-    - 信息详细程度（summary/detail/full）
-    - 用于深入判断候选人是否符合用户意图
+    这是可选辅助工具，帮助 Agent 快速定位关键对话。
+    Agent 也可以选择直接读完整聊天记录自己分析。
     
     参数：
     - candidate_id: 候选人 ID
-    - info_types: 信息类型列表（Agent 选择性加载）
-      - "persona": 用户画像（MBTI、依恋、价值观等）
-      - "chat_summary": 聊天记录摘要（最近 30 天的对话摘要）
-      - "chat_detail": 聊天记录详细片段（关键对话片段）
-      - "behavior": 操作行为记录（点赞、反馈、兴趣表达等）
-      - "assessment": 测评回答内容（MBTI、依恋测评的回答）
-      - "introduction": 自我介绍文本
-    
-    - detail_level: 信息详细程度
-      - "summary": 概要（500 字以内）
-      - "medium": 中等详细（1000 字以内）
-      - "detail": 详细（完整内容，可能较长）
+    - keywords: 要搜索的关键词列表（如 ["你真棒", "你好厉害", "你最好了"]）
+    - chat_days: 时间范围（最近 N 天）
     
     返回：
     - candidate_id: 候选人 ID
-    - info: 候选人信息（按 Agent 请求的类型和详细程度返回）
+    - keyword_counts: 每个关键词的出现次数
+    - matches: 匹配的对话片段列表（包含上下文）
+    - total_matches: 总匹配次数
     
-    注意：
-    - Agent 应该根据 basic_info 先判断是否有潜力
-    - 只对有潜力的候选人调用此工具
-    - 避免对所有候选人都加载完整信息（性能问题）
+    用法示例：
+    - Agent 判断"绿茶"时，可以先用此工具快速 grep "你真棒" 出现次数
+    - 发现高频使用后，再决定要不要深入读完整聊天记录分析语气
     """
-    info = {}
+    chat_records = load_chat_records(candidate_id, days=chat_days)
     
-    # persona: 用户画像
-    if "persona" in info_types:
-        persona = load_persona_from_db(candidate_id)
-        info["persona"] = {
-            "mbti": persona.get("mbti"),
-            "attachment": persona.get("attachment"),
-            "big_five": persona.get("big_five"),
-            "values": persona.get("values"),
-        }
+    keyword_counts = {}
+    matches = []
     
-    # chat_summary: 聊天摘要
-    if "chat_summary" in info_types:
-        chat_records = load_chat_records(candidate_id, limit=50)
-        summary = summarize_chat_content(chat_records, detail_level)
-        info["chat_summary"] = summary
-    
-    # behavior: 行为记录
-    if "behavior" in info_types:
-        behaviors = load_behavior_records(candidate_id)
-        info["behavior"] = behaviors
-    
-    # assessment: 测评回答
-    if "assessment" in info_types:
-        assessments = load_assessment_answers(candidate_id)
-        info["assessment"] = assessments
+    for keyword in keywords:
+        keyword_counts[keyword] = 0
+        for record in chat_records:
+            content = str(record.get("content") or "")
+            if keyword in content:
+                keyword_counts[keyword] += 1
+                # 提取关键词周围的上下文
+                context = extract_context(content, keyword, context_chars=50)
+                matches.append({
+                    "time": record.get("time"),
+                    "keyword": keyword,
+                    "context": context,
+                    "full_content": content,
+                })
     
     return {
         "candidate_id": candidate_id,
-        "info": info,
-        "loaded_types": info_types,
+        "keyword_counts": keyword_counts,
+        "matches": matches,
+        "total_matches": sum(keyword_counts.values()),
     }
 ```
 
-### 5.3 submit_candidate_judgment（提交判断结果）
+### 5.4 判断结果表达：利用现有 decision 结构
+
+**不需要新增 submit/get 工具，直接利用现有架构。**
 
 ```python
-@function_tool
-def submit_candidate_judgment(
-    candidate_id: int,
-    pass_judgment: bool,
-    reason: str = "",
-    confidence: float = 0.8,
-) -> dict[str, Any]:
-    """
-    提交 Agent 对单个候选人的判断结果。
-    
-    Agent 用法：
-    1. 先调用 search_partner_candidates 获取候选人 ID
-    2. 对需要深入分析的候选人调用 load_candidate_full_info
-    3. Agent 自己分析判断（纯思考，不调用工具）
-    4. 调用此工具提交判断结果
-    
-    参数：
-    - candidate_id: 候选人 ID
-    - pass_judgment: 是否通过筛选（True = 推荐，False = 排除）
-    - reason: Agent 判断的理由（用于解释给用户）
-    - confidence: Agent 判断的置信度（0.0-1.0）
-    
-    返回：
-    - success: 提交成功
-    - judgment: 判断结果记录
-    
-    注意：
-    - Agent 判断是纯思考过程，此工具只是提交结果
-    - Agent 应该记录判断理由，用于向用户解释推荐原因
-    """
-    return {
-        "success": True,
-        "judgment": {
-            "candidate_id": candidate_id,
-            "pass": pass_judgment,
-            "reason": reason,
-            "confidence": confidence,
-        }
-    }
+# 现有架构已经支持：DiscoveryDecision
+
+@dataclass
+class DiscoveryDecision:
+    phase: str  # "results_shown" / "no_result" / "collecting_preferences"
+    assistant_message: str  # Agent 给用户的回复
+    criteria_labels: list[str]  # 提取的条件标签
+    selected_candidates: list[DiscoveryCandidateSelection]  # 判断结果
+    suggested_actions: list[DiscoveryActionSuggestion]  # 建议操作
+
+@dataclass
+class DiscoveryCandidateSelection:
+    profile_id: int  # 候选人 ID
+    reason_summary: str  # Agent 判断的理由
+
+# Agent 用法：
+# Agent 在思考中完成判断，直接在 decision 中返回结果
+# 不需要调用 submit 工具
+
+decision = DiscoveryDecision(
+    phase="results_shown",
+    assistant_message="给你推荐这5位，性格都比较真诚直接...",
+    selected_candidates=[
+        DiscoveryCandidateSelection(
+            profile_id=101,
+            reason_summary="说话有自己的观点，不迎合讨好",
+        ),
+        DiscoveryCandidateSelection(
+            profile_id=103,
+            reason_summary="'你真棒'只出现1次，频率正常，性格真诚",
+        ),
+        # Agent 判断排除的候选人不会出现在这里
+    ],
+)
 ```
 
-### 5.4 get_filtered_candidates（获取筛选后的候选人）
+### 5.5 工具调用对比
 
-```python
-@function_tool
-def get_filtered_candidates(
-    limit: int = 5,
-) -> dict[str, Any]:
-    """
-    获取 Agent 筛选后的最终候选人列表。
-    
-    Agent 用法：
-    1. 完成对所有候选人的判断后调用
-    2. 返回 pass_judgment=True 的候选人
-    
-    参数：
-    - limit: 返回数量限制（最多 10 人）
-    
-    返回：
-    - filtered_candidates: 筛选后的候选人列表（包含完整展示信息）
-    - excluded_count: 排除的候选人数量
-    - total_count: 总判断数量
-    
-    注意：
-    - 如果筛选后没有人，Agent 应该向用户说明并建议放宽条件
-    """
-    # 从 session 中获取 Agent 提交的判断结果
-    judgments = get_session_judgments()
-    
-    # 筛选 pass 的候选人
-    passed = [j for j in judgments if j["pass"]]
-    
-    # 加载完整展示信息
-    filtered = []
-    for judgment in passed[:limit]:
-        candidate = load_candidate_display_info(judgment["candidate_id"])
-        candidate["agent_reason"] = judgment["reason"]
-        filtered.append(candidate)
-    
-    return {
-        "filtered_candidates": filtered,
-        "excluded_count": len([j for j in judgments if not j["pass"]]),
-        "total_count": len(judgments),
-    }
+| 方案 | 工具调用次数 | 问题 |
+|------|-------------|------|
+| **旧方案（离线摘要 + submit）** | 40-60 次/20人 | 工具调用过多，Agent 思考被打断 |
+| **新方案（直接返回原始数据）** | 1-2 次/20人 | Agent 一次获取信息，一次思考完成判断 |
+
+```
+旧方案：
+- search_partner_candidates: 1 次（只返回 ID）
+- load_candidate_full_info: 20 次（每人 1 次）
+- submit_candidate_judgment: 20 次（每人 1 次）
+- get_filtered_candidates: 1 次
+总计：42 次
+
+新方案：
+- search_partner_candidates: 1 次（返回完整信息）
+- search_chat_keywords: 可选，Agent 决定要不要用
+总计：1-2 次
 ```
 
 ---
@@ -453,78 +441,159 @@ def get_filtered_candidates(
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│ Step 1: 硬约束筛选                                              │
+│ Step 1: 获取候选人完整信息（一次调用）                           │
 ├─────────────────────────────────────────────────────────────────┤
 │ Agent 调用：search_partner_candidates                           │
 │ 参数：criteria_json = {"age_min": 25, "age_max": 30,            │
 │                       "cities": ["上海"]}                       │
-│ 返回：candidate_ids = [101, 102, 103, ..., 120]（20人）         │
-│       basic_info = [{id:101, age:28, city:"上海", job:"财务"},..]│
+│       include_chat = True                                       │
+│       chat_days = 30                                            │
+│                                                                 │
+│ 返回：candidates = [                                            │
+│   {                                                             │
+│     "id": 101,                                                  │
+│     "basic_info": {"age": 28, "city": "上海", "job": "财务"},   │
+│     "persona": {                                                │
+│       "attachment": {"type_code": "secure"},                    │
+│       "mbti": {"type_code": "ISFJ"},                            │
+│     },                                                          │
+│     "chat_records": [                                           │
+│       {"time": "第1天", "content": "你真棒！辛苦了～"},          │
+│       {"time": "第5天", "content": "你觉得这个怎么样？"},        │
+│       {"time": "第10天", "content": "我最近在看..."},           │
+│       ...                                                       │
+│     ],                                                          │
+│   },                                                            │
+│   {                                                             │
+│     "id": 102,                                                  │
+│     "basic_info": {"age": 29, "city": "上海", "job": "销售"},   │
+│     "persona": {                                                │
+│       "attachment": {"type_code": "anxious"},                   │
+│     },                                                          │
+│     "chat_records": [                                           │
+│       {"time": "第1天", "content": "你真棒！你是最棒的！"},      │
+│       {"time": "第3天", "content": "你好厉害！你太厉害了！"},    │
+│       {"time": "第5天", "content": "你最好了～我会想你的～"},    │
+│       {"time": "第7天", "content": "你真棒！"},                  │
+│       {"time": "第10天", "content": "你好厉害！你是最棒的！"},   │
+│       ...                                                       │
+│     ],                                                          │
+│   },                                                            │
+│   ... (共20人，每人都有 persona + 原始聊天记录)                  │
+│ ]                                                               │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│ Step 2: Agent 选择性加载信息                                    │
+│ Step 2: Agent 自主分析判断（纯思考，不调用工具）                 │
 ├─────────────────────────────────────────────────────────────────┤
-│ Agent 思考：                                                    │
-│ "用户说不要绿茶，我需要看聊天记录判断                            │
-│  先看 basic_info，101号看起来正常，深入看                        │
-│  102号职业是销售，可能不太稳定，先排除                           │
-│  103号年龄正好28，继续深入看"                                    │
 │                                                                 │
-│ Agent 调用：load_candidate_full_info                            │
-│ 参数：candidate_id=101, info_types=["persona", "chat_summary"]  │
-│ 返回：persona + chat_summary                                    │
+│ Agent 读候选人 101：                                            │
+│ - persona: 安全型依恋（稳定）                                   │
+│ - chat_records: 读完整聊天记录                                  │
+│   Agent 自己分析：                                              │
+│   - "你真棒"只出现1次，频率正常                                 │
+│   - 有主动分享生活，有自己的观点                                │
+│   - 语气是真诚鼓励，不是过度迎合                                │
+│ - 判断：✅ 这个人真诚，不像绿茶                                 │
 │                                                                 │
-│ Agent 调用：load_candidate_full_info                            │
-│ 参数：candidate_id=103, info_types=["persona", "chat_summary"]  │
-│ 返回：persona + chat_summary                                    │
+│ Agent 读候选人 102：                                            │
+│ - persona: 焦虑型依恋（可能不够稳定）                           │
+│ - chat_records: 读完整聊天记录                                  │
+│   Agent 自己分析：                                              │
+│   - grep "你真棒"、"你好厉害"、"你最好了"                       │
+│   - 发现：'你真棒'出现5次，'你好厉害'出现3次，'你最好了'出现2次 │
+│   - 10天内出现10次高度赞扬，频率明显过高                        │
+│   - 都是回应日常分享，没有自己的观点                            │
+│   - 语气是过度迎合讨好，不是真诚鼓励                            │
+│ - 判断：❌ 这个人过于迎合，有绿茶特征                           │
+│                                                                 │
+│ Agent 继续读剩下 18 个人...                                     │
+│                                                                 │
+│ Agent 最终判断：                                                │
+│ - 通过：[101, 103, 105, 108, 112, 116]                          │
+│ - 排除：[102, 106, 109, ...]（过于迎合或性格不符）              │
+│                                                                 │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│ Step 3: Agent 自主分析判断                                      │
+│ Step 3: Agent 直接在 decision 中返回结果                        │
 ├─────────────────────────────────────────────────────────────────┤
-│ Agent 思考（纯思考，不调用工具）：                               │
 │                                                                 │
-│ 候选人 101：                                                    │
-│ - persona: attachment_type = "secure"（安全型依恋）             │
-│ - chat_summary: "对话中比较直接，不说讨好型的话"                 │
-│ - 判断：这个人比较真诚，不像绿茶型 → pass                        │
+│ Agent 返回（不需要调用 submit 工具）：                          │
 │                                                                 │
-│ 候选人 103：                                                    │
-│ - persona: attachment_type = "anxious"（焦虑型依恋）            │
-│ - chat_summary: "经常说'你真棒'、'你好厉害'、'你最好了'"         │
-│ - 判断：这个人过于迎合，有绿茶特征 → exclude                     │
+│ DiscoveryDecision(                                              │
+│     phase="results_shown",                                      │
+│     assistant_message="给你推荐这5位，性格都比较真诚直接...",   │
+│     selected_candidates=[                                       │
+│         DiscoveryCandidateSelection(                            │
+│             profile_id=101,                                     │
+│             reason_summary="说话有自己的观点，不迎合讨好",      │
+│         ),                                                      │
+│         DiscoveryCandidateSelection(                            │
+│             profile_id=103,                                     │
+│             reason_summary="'你真棒'只出现1次，频率正常",       │
+│         ),                                                      │
+│         DiscoveryCandidateSelection(                            │
+│             profile_id=105,                                     │
+│             reason_summary="性格安全型依恋，稳定真诚",          │
+│         ),                                                      │
+│         ...                                                     │
+│     ],                                                          │
+│ )                                                               │
 │                                                                 │
-│ Agent 调用：submit_candidate_judgment                           │
-│ 参数：candidate_id=101, pass=True, reason="性格真诚直接"        │
-│                                                                 │
-│ Agent 调用：submit_candidate_judgment                           │
-│ 参数：candidate_id=103, pass=False, reason="过于迎合讨好"       │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│ Step 4: 获取筛选结果                                            │
-├─────────────────────────────────────────────────────────────────┤
-│ Agent 调用：get_filtered_candidates                             │
-│ 参数：limit=5                                                   │
-│ 返回：filtered_candidates = [101, 105, 108, 112, 116]           │
-│       （都是 Agent 判断通过的候选人）                            │
-│                                                                 │
-│ Agent 返回用户：                                                │
-│ show_candidates 候选人列表                                      │
-│ 推荐理由：Agent 根据判断结果向用户解释                           │
+│ 完成！不需要 submit/get 工具                                    │
+│ 总工具调用次数：1 次                                            │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### 6.2 Agent 决策要点
+### 6.2 Agent 可选使用辅助工具
+
+**Agent 可以选择用或不用 search_chat_keywords 工具。**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ 可选 Step: Agent 使用辅助工具快速定位                           │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│ Agent 思考："20个人的聊天记录太长，我先快速扫描一下"            │
+│                                                                 │
+│ Agent 调用：search_chat_keywords                                │
+│ 参数：candidate_id=102                                          │
+│       keywords=["你真棒", "你好厉害", "你最好了"]               │
+│                                                                 │
+│ 返回：keyword_counts = {                                        │
+│         "你真棒": 5,                                            │
+│         "你好厉害": 3,                                          │
+│         "你最好了": 2                                           │
+│       }                                                         │
+│       total_matches = 10                                        │
+│                                                                 │
+│ Agent 判断："10天内出现10次高度赞扬，频率明显过高"              │
+│ Agent 决定："深入读完整聊天记录分析语气"                        │
+│ Agent 最终判断："过度迎合，有绿茶特征"                          │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 6.3 Agent 决策要点
 
 | 决策点 | Agent 责任 | 示例 |
 |--------|-----------|------|
-| **要不要深入看？** | Agent 根据 basic_info 判断 | 年龄职业正常→深入看，明显不符合→直接排除 |
-| **看哪些信息？** | Agent 选择 info_types | 判断绿茶→看 persona + chat_summary |
-| **怎么判断？** | Agent 语义理解 | 读聊天摘要→判断是否过于迎合 |
-| **置信度多少？** | Agent 自我评估 | 信息充足→0.9，信息不足→0.6 |
-| **如何解释？** | Agent 提供理由 | "这个人聊天过于迎合，有绿茶特征" |
+| **分析方法** | Agent 自己决定如何分析 | grep 关键词频率、语气分析、对比分析 |
+| **分析深度** | Agent 自己决定深入程度 | 先快速扫描，发现有问题的再深入看 |
+| **判断标准** | Agent 根据用户需求调整 | 用户说"不要绿茶"→判断"过度迎合" |
+| **判断结果** | Agent 直接在 decision 中返回 | 不需要 submit 工具 |
+| **推荐理由** | Agent 自己提供解释 | "这个人说话有自己的观点，不迎合讨好" |
+
+### 6.4 与旧方案对比
+
+| 维度 | 旧方案（离线摘要 + submit） | 新方案（原始数据 + decision） |
+|------|---------------------------|------------------------------|
+| 工具调用次数 | **42 次** | **1 次** |
+| Agent 思考被打断 | **40 次** | **0 次** |
+| 数据形态 | 二手信息（摘要） | 一手信息（原始数据） |
+| 判断准确性 | 可能失真（摘要丢失细节） | 准确（Agent 自己分析） |
+| Agent 自主权 | 低（依赖摘要） | 高（自己分析原始数据） |
 
 ---
 
@@ -535,88 +604,169 @@ def get_filtered_candidates(
 | 信息类型 | 数据来源 | 内容描述 | 用途 |
 |---------|----------|----------|------|
 | **persona** | persona 表 | MBTI、依恋、价值观、大五人格 | 性格特质判断 |
-| **chat_summary** | chat_history 表 | 聊天记录摘要（AI 生成） | 行为模式判断 |
+| **chat_records** | chat_history 表 | 原始聊天记录（不做摘要预处理） | Agent 自己分析行为模式 |
 | **behavior** | behavior_log 表 | 操作记录（点赞、反馈、兴趣表达） | 活跃度、诚意判断 |
 | **assessment** | assessment 表 | 测评回答内容 | 深度性格分析 |
 | **introduction** | profile 表 | 自我介绍文本 | 第一印象判断 |
 
-### 7.2 chat_summary 生成逻辑
+### 7.2 聊天记录加载逻辑
 
 ```python
-def summarize_chat_content(chat_records: list[dict], detail_level: str) -> str:
+def load_chat_records(profile_id: int, days: int = 30) -> list[dict]:
     """
-    聊天记录摘要生成。
+    加载候选人的原始聊天记录。
     
-    输入：候选人最近 50 条聊天记录
-    输出：500-1000 字摘要
+    核心原则：
+    - 直接返回原始聊天记录，不做摘要预处理
+    - Agent 自己决定如何分析（grep 关键词、频率统计、语气分析等）
+    - 不预设判断标准，Agent 根据用户需求调整
     
-    摘要内容：
-    - 对话风格（直接/含蓄/讨好）
-    - 常用表达方式
-    - 典型对话片段（体现性格）
-    - 对他人态度（真诚/敷衍）
+    参数：
+    - profile_id: 候选人 ID
+    - days: 时间范围（最近 N 天，默认 30 天）
     
-    detail_level:
-    - "summary": 概要（500字）
-    - "medium": 中等（1000字，含关键对话片段）
-    - "detail": 详细（完整对话，含时间线）
+    返回：
+    - chat_records: 原始聊天记录列表
+      - time: 对话时间
+      - content: 对话内容
+      - direction: 方向（发送/接收）
+    
+    注意：
+    - 不做离线摘要预处理，避免信息失真
+    - Agent 直接读原始数据自己分析
     """
-    # 使用 AI 生成摘要
-    summary = ai_summarize(chat_records, detail_level)
-    return summary
+    # 直接查询原始聊天记录
+    records = query_chat_history(profile_id, days=days)
+    
+    # 返回原始数据，不做任何预处理
+    return [
+        {
+            "time": r["created_at"],
+            "content": r["content"],
+            "direction": r["direction"],
+        }
+        for r in records
+    ]
 ```
 
-### 7.3 隐私处理
+### 7.3 为什么不用离线摘要？
+
+**离线摘要的问题：**
+
+| 问题 | 描述 | 影响 |
+|------|------|------|
+| **信息失真** | 摘要把"你真棒"总结成"表达关心"，丢失频率和语气 | Agent 判断不准确 |
+| **预设标准** | 摘要生成时用的是预设判断标准，无法根据用户需求调整 | 无法满足"不要绿茶"等个性化需求 |
+| **二手信息** | Agent 只能基于别人（摘要 AI）的解读做判断 | Agent 自主权降低 |
+| **丢失细节** | 关键词频率、上下文、时间分布等细节被丢失 | 无法做精细分析 |
+
+**正确做法：直接给 Agent 原始数据**
+
+| 优势 | 描述 |
+|------|------|
+| **一手信息** | Agent 基于原始数据自己分析，不失真 |
+| **灵活分析** | Agent 自己决定分析方法（grep、频率统计、语气分析） |
+| **个性化标准** | Agent 根据用户具体需求调整判断标准 |
+| **保留细节** | 关键词频率、上下文、时间分布等完整保留 |
+
+### 7.4 隐私处理
 
 | 信息类型 | 隐私处理 | 原因 |
 |---------|---------|------|
 | persona | 无需处理 | 用户知道会用于匹配 |
-| chat_summary | 只摘要，不返回原文 | 保护隐私，减少信息量 |
-| behavior | 只返回摘要 | 减少信息量 |
-| assessment | 只返回摘要 | 保护测评隐私 |
+| chat_records | 只返回摘要级信息（时间+内容，不含敏感个人信息） | 保护隐私 |
+| behavior | 只返回操作摘要 | 减少信息量 |
+| assessment | 只返回回答摘要 | 保护测评隐私 |
+
+**注意：这里说的"摘要"是指隐私脱敏，不是离线生成的性格判断摘要。**
 
 ---
 
 ## 8. 性能优化
 
-### 8.1 信息量控制
+### 8.1 信息量重新评估
+
+**文档旧方案的担忧：**
 
 ```
 假设硬约束返回 20 人：
-
 方案 A（不合理）：全部加载完整信息
 → 20人 × 50条聊天 × 500字 = 500,000 字
 → Token 爆炸，性能不可接受
-
-方案 B（推荐）：Agent 选择性加载
-→ Agent 根据 basic_info 先排除 10 人
-→ 只对 10 人调用 load_candidate_full_info
-→ 每人只请求 persona + chat_summary（1000字）
-→ 总信息量 = 10 × 1000 = 10,000 字
-→ 可接受
 ```
 
-### 8.2 分批处理策略
+**这个担忧可能不成立：**
+
+| 因素 | 分析 |
+|------|------|
+| **现代 LLM 能力** | Claude Opus/Sonnet 可以处理 200K+ tokens |
+| **Agent 会自己筛选** | Agent 先快速扫描，发现有问题的再深入看 |
+| **一次调用更省 Token** | 旧方案 42 次工具调用，每次都要重新加载 prompt |
+
+**实际 Token 消耗对比：**
+
+| 方案 | 工具调用次数 | Token 消耗（估算） |
+|------|-------------|-------------------|
+| **旧方案（离线摘要 + submit）** | 42 次 | 每次调用重新加载 prompt → ~60,000 tokens |
+| **新方案（原始数据 + decision）** | 1 次 | 一次加载 prompt + 数据 → ~40,000 tokens |
+
+**结论：新方案反而更省 Token，因为避免了多次工具调用的 prompt 重复加载。**
+
+### 8.2 Agent 自主优化策略
+
+Agent 不需要我们预设优化策略，Agent 会自己找到高效的分析方法：
+
+```
+Agent 思考："20个人的聊天记录太长，我先快速扫描：
+
+快速扫描策略：
+1. 每个人只看最近 10 条消息
+2. grep 关键词：'你真棒'、'你好厉害'、'你最好了'
+3. 发现候选人 102、106、109 有高频使用
+4. 只深入看这 3 个人的完整聊天记录
+5. 其他 17 个人快速判断为'无明显问题'
+
+这样信息量从 500,000 字降到 ~50,000 字"
+```
+
+### 8.3 limit 参数控制
+
+```python
+def search_partner_candidates(
+    criteria_json: str,
+    limit: int = 10,  # 默认返回 10 人，最多 20 人
+    ...
+):
+    """
+    limit 参数控制：
+    - 默认返回 10 人（足够用户选择，信息量可控）
+    - 最多返回 20 人（避免信息量过大）
+    - Agent 可以先搜 10 人，如果筛选后不够再搜下一批
+    """
+```
+
+### 8.4 分批搜索策略
 
 ```python
 # Agent Prompt 中引导：
 
-"你应该分批处理候选人：
-1. 先看 basic_info，排除明显不符合的
-2. 只对有潜力的候选人深入分析
-3. 每批处理 5-10 人，避免信息量过大
-4. 如果筛选后不够 5 人，可以再加载更多候选人"
+"你应该分批搜索候选人：
+1. 先搜索 10 人，判断筛选
+2. 如果筛选后不够 5 人，再搜索下一批 10 人
+3. 最多搜索 20 人（避免信息量过大）
+4. 每批搜索时可以利用上批的判断经验提高效率"
 ```
 
-### 8.3 缓存策略
+### 8.5 缓存策略
 
 ```python
-# chat_summary 缓存：
-# - 离线定期生成摘要，存入数据库
-# - Agent 调用时直接读取，不实时生成
-
 # persona 缓存：
 # - persona 数据定期更新，Agent 调用时直接读取
+
+# 聊天记录缓存：
+# - 原始聊天记录不做预处理缓存
+# - 直接查询数据库返回原始数据
+# - 避免缓存"摘要"导致信息失真
 ```
 
 ---
@@ -628,10 +778,12 @@ def summarize_chat_content(chat_records: list[dict], detail_level: str) -> str:
 | 维度 | 现有方案 | 改进方案 |
 |------|----------|----------|
 | 决策位置 | 翻译层硬编码 | Agent 自主决策 |
-| 信息来源 | 只看 persona 表字段 | 看候选人所有信息 |
-| "绿茶"处理 | 映射到数据库字段（片面） | Agent 读聊天判断（全面） |
-| 灵活性 | 固定规则 | Agent 根据语义理解 |
-| 性格关键词 | 无法查询 | Agent 自主判断 |
+| 信息来源 | 只看 persona 表字段 | 看候选人所有信息（persona + 原始聊天记录） |
+| "绿茶"处理 | 映射到数据库字段（片面） | Agent 读原始聊天记录自己分析（全面） |
+| 数据形态 | 离线摘要（二手信息） | 原始数据（一手信息） |
+| 灵活性 | 固定规则 | Agent 根据语义理解，自己找分析方法 |
+| 判断结果表达 | 无标准机制 | 利用现有 decision.selected_candidates |
+| 工具调用次数 | N/A（无搜索） | 1 次（极简） |
 
 ### 9.2 Agent Native 程度提升
 
@@ -639,8 +791,28 @@ def summarize_chat_content(chat_records: list[dict], detail_level: str) -> str:
 |------|----------|----------|
 | Agent 自主性 | 低（依赖翻译层） | 高（自主判断） |
 | 决策权位置 | 查询层 | Agent 层 |
-| 信息完整性 | 片面（只看字段） | 全面（看所有信息） |
-| 智能程度 | 规则匹配 | 语义理解 |
+| 信息完整性 | 片面（只看字段） | 全面（看所有原始数据） |
+| 智能程度 | 规则匹配 | Agent 自己分析原始数据 |
+| 信息真实性 | 二手信息（可能失真） | 一手信息（不失真） |
+
+### 9.3 与现有代码架构兼容
+
+**利用现有 decision 结构：**
+
+```python
+# 现有代码（service.py）已经支持：
+def _apply_runtime_result(session, runtime_result, now):
+    decision = runtime_result.decision
+    
+    # Agent 直接在 decision 中返回判断结果
+    selected_candidates = decision.selected_candidates
+    
+    # 渲染候选人卡片
+    for selection in selected_candidates:
+        cards.append(build_candidate_card(candidate, selection.reason_summary))
+```
+
+**不需要新增 submit/get 工具，直接利用现有架构。**
 
 ---
 
@@ -650,35 +822,37 @@ def summarize_chat_content(chat_records: list[dict], detail_level: str) -> str:
 
 | 改动 | 内容 | 工作量 |
 |------|------|--------|
-| search_partner_candidates | 只返回 ID + basic_info | 小 |
-| load_candidate_full_info | 新增工具 | 中 |
-| submit_candidate_judgment | 新增工具 | 小 |
-| get_filtered_candidates | 新增工具 | 小 |
+| search_partner_candidates | 改造为直接返回完整信息（persona + 原始聊天记录） | 中 |
+| search_chat_keywords（可选） | 新增辅助工具帮助 Agent 快速 grep | 小 |
+
+**注意：不需要新增 submit/get 工具，利用现有 decision 结构。**
 
 ### 10.2 Phase 2：数据源扩展
 
 | 改动 | 内容 | 工作量 |
 |------|------|--------|
-| chat_summary 表 | 存储聊天摘要 | 中 |
-| 离线摘要生成 | 定期生成摘要 | 中 |
-| behavior 汇总 | 行为记录汇总 | 小 |
+| 聊天记录查询接口 | 直接查询原始聊天记录，不做摘要预处理 | 小 |
+| persona 加载优化 | persona 数据定期更新，Agent 调用时直接读取 | 小 |
+
+**注意：不需要离线生成 chat_summary 表。**
 
 ### 10.3 Phase 3：Agent Prompt 优化
 
 | 改动 | 内容 | 工作量 |
 |------|------|--------|
-| SOUL.md 更新 | 添加工具使用指南 | 小 |
-| 分批处理策略 | Prompt 中引导 Agent | 小 |
-| 判断逻辑描述 | 描述常见关键词分析思路 | 小 |
+| SOUL.md 更新 | 添加工具使用指南、分析方法示例 | 小 |
+| 分批搜索策略 | Prompt 中引导 Agent 分批搜索 | 小 |
+| 分析策略示例 | 描述常见分析方法（grep 关键词、频率统计、语气分析） | 小 |
 
 ### 10.4 Phase 4：测试验证
 
 | 测试 | 内容 | 工作量 |
 |------|------|--------|
-| 单场景测试 | 测试每个场景类型 | 中 |
+| 单场景测试 | 测试每个场景类型（"不要绿茶"、"性格温柔"等） | 中 |
 | 组合场景测试 | 测试多条件组合 | 中 |
 | 边界测试 | 测试性能、隐私边界 | 中 |
-| Agent 行为验证 | 验证 Agent 判断合理性 | 中 |
+| Agent 行为验证 | 验证 Agent 分析策略合理性（是否真的 grep 关键词频率） | 中 |
+| 准确性对比 | 对比"离线摘要判断"vs"原始数据判断"的准确性 | 中 |
 
 ---
 
@@ -688,24 +862,34 @@ def summarize_chat_content(chat_records: list[dict], detail_level: str) -> str:
 
 | 风险 | 描述 | 缓解措施 |
 |------|------|----------|
-| Token 量过大 | Agent 处理信息量超限 | 分批处理 + 选择性加载 |
-| LLM 调用过多 | 多候选人多次调用 | Agent 先筛选再深入 |
-| 摘要生成耗时 | 实时生成摘要慢 | 离线预生成 |
+| 信息量过大 | 原始聊天记录可能较长 | Agent 自己筛选（先快速扫描，发现问题的再深入看） |
+| Token 消耗 | 原始数据比摘要消耗更多 Token | limit 参数控制（默认 10 人，最多 20 人） |
+
+**注意：新方案工具调用次数更少（1 次 vs 42 次），总 Token 消耗可能反而更低。**
 
 ### 11.2 隐私风险
 
 | 风险 | 描述 | 缓解措施 |
 |------|------|----------|
-| 聊天记录隐私 | 候选人不知道会被搜索 | 只返回摘要，不返回原文 |
+| 聊天记录隐私 | 候选人不知道会被搜索 | 只返回摘要级信息（时间+内容，不含敏感个人信息） |
 | 判断结果公开 | Agent 判断理由可能不当 | Agent 生成解释时要审慎 |
 
 ### 11.3 Agent 判断风险
 
 | 风险 | 描述 | 缓解措施 |
 |------|------|----------|
-| 判断不一致 | 不同 Agent 判断可能不同 | Prompt 中提供判断指南 |
+| 判断不一致 | 不同 Agent 判断可能不同 | Prompt 中提供判断指南，但让 Agent 自己决定分析方法 |
 | 判断偏差 | Agent 可能有偏见 | 人类审核 + 反馈修正 |
-| 信息不足误判 | 摘要可能丢失关键信息 | 允许 Agent 请求详细内容 |
+| 分析策略不够好 | Agent 可能用不够好的分析方法 | Prompt 中提供分析方法示例（grep 关键词、频率统计等） |
+
+### 11.4 与旧方案对比（风险角度）
+
+| 风险 | 旧方案（离线摘要） | 新方案（原始数据） |
+|------|------------------|-------------------|
+| 信息失真 | **高风险**（摘要丢失细节） | **低风险**（原始数据完整） |
+| Token 消耗 | 中（多次工具调用） | 中（一次加载大量数据） |
+| Agent 自主权 | 低（依赖摘要） | 高（自己分析） |
+| 判断准确性 | 低（二手信息） | 高（一手信息） |
 
 ---
 
@@ -713,35 +897,36 @@ def summarize_chat_content(chat_records: list[dict], detail_level: str) -> str:
 
 ### 12.1 核心改进
 
-**从"数据库字段查询"转向"Agent 语义判断"**
+**从"数据库字段查询 + 离线摘要"转向"Agent 直接分析原始数据"**
 
 ```
 用户说："不要绿茶的女生"
 
-现有方案：
-→ 翻译层映射：绿茶 → persona.绿茶字段（不存在）
-→ 查询失败
+旧方案（离线摘要）：
+→ 翻译层映射：绿茶 → persona.绿茶字段（不存在）→ 失败
+→ 或：离线摘要生成："对话氛围良好" → Agent 读摘要判断为"正常"→ 错误
 
-改进方案：
-→ 硬约束筛选：返回候选人大池子
-→ Agent 读聊天摘要：判断是否过于迎合
-→ Agent 自主判断：这个人有绿茶特征 → exclude
-→ 筛选成功
+新方案（原始数据）：
+→ 硬约束筛选：返回候选人大池子（含 persona + 原始聊天记录）
+→ Agent 自己分析：grep "你真棒"出现5次 → 频率过高 → 判断"有绿茶特征"
+→ Agent 自己判断：这个人过度迎合 → exclude
+→ 判断正确（基于一手信息）
 ```
 
 ### 12.2 关键价值
 
 | 价值点 | 描述 |
 |--------|------|
-| **全面判断** | 不只看数据库字段，看候选人所有信息 |
-| **Agent Native** | Agent 是真正的决策大脑 |
-| **灵活智能** | 不硬编码规则，Agent 根据语义理解 |
-| **可扩展** | 新增信息类型不影响核心逻辑 |
+| **给 Agent 原始数据** | 不做离线摘要预处理，避免信息失真 |
+| **Agent 自己分析** | Agent 自己决定分析方法（grep、频率统计、语气分析），比预设规则更准确 |
+| **Agent Native 程度更高** | Agent 是真正的决策大脑，基于一手信息自主判断 |
+| **工具调用极简** | 1 次调用返回所有信息，不需要 submit/get 工具 |
+| **与现有架构兼容** | 利用 decision.selected_candidates 表达判断结果，不新增状态管理工具 |
 
 ### 12.3 下一步
 
 1. **确认方案**：与团队确认改进方案可行性
-2. **工具设计**：详细设计新增工具参数和返回值
-3. **数据源设计**：设计 chat_summary 存储和生成逻辑
-4. **Agent Prompt**：更新 SOUL.md 添加工具使用指南
-5. **测试验证**：设计测试场景验证 Agent 行为
+2. **工具改造**：改造 search_partner_candidates 直接返回完整信息
+3. **数据源设计**：设计原始聊天记录查询接口（不做摘要预处理）
+4. **Agent Prompt**：更新 SOUL.md 添加分析方法示例（grep 关键词、频率统计、语气分析等）
+5. **测试验证**：对比"离线摘要判断"vs"原始数据判断"的准确性
