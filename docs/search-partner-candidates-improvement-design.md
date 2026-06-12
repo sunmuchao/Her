@@ -141,69 +141,159 @@ persona = {
 
 ## 4. 改进方案设计
 
-### 4.1 核心思路
+### 4.1 核心思路：三层筛选架构
 
 ```
 用户说："不要绿茶的女生，25-30岁，上海"
 
-Step 1: 硬约束筛选 + 直接返回完整信息
-        → criteria = {"age_min": 25, "age_max": 30, "cities": ["上海"]}
-        → SQL WHERE 子句查询
-        → 返回候选人大池子（20-50 人）
-        → 直接返回完整信息（persona + 原始聊天记录）
-        → 不做离线摘要预处理
-
-Step 2: Agent 自主分析判断（纯思考，不调用工具）
-        → Agent 读每个候选人的 persona + 聊天记录
-        → Agent 自己决定分析方法（如 grep 关键词频率、语气分析）
-        → Agent 自己判断："这个人'你好棒'出现 5 次，过于迎合" → exclude
-        → Agent 自己判断："这个人说话直接，有自己的观点" → pass
-
-Step 3: Agent 直接在 decision 中返回结果
-        → 不需要 submit 工具
-        → 直接通过 decision.selected_candidates 返回判断结果
-        → 利用现有架构，不新增状态管理工具
+┌─────────────────────────────────────────────────────────────────┐
+│ Layer 1：硬约束筛选（数据库字段）                                │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│ criteria = {"age_min": 25, "age_max": 30, "cities": ["上海"]}   │
+│ → SQL WHERE 子句查询                                            │
+│ → 返回候选人大池子（50 人）                                      │
+│                                                                 │
+│ 特点：                                                          │
+│ - 明确的数字/选项条件                                            │
+│ - 数据库有对应字段，能直接查询                                   │
+│ - 效率最高，不需要 Agent 参与                                    │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│ Layer 2：偏好表筛选（离线提取的特征）                            │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│ preference_query = {"性格标签": {"exclude": ["绿茶"]}}          │
+│ → 查偏好表：性格标签 != "绿茶"                                   │
+│ → 剩下候选人（30 人）                                            │
+│                                                                 │
+│ 特点：                                                          │
+│ - 偏好表字段是从聊天记录离线提取的                               │
+│ - 已经预处理好了，查询效率高                                     │
+│ - 能用偏好表的先筛，省 Agent 工作量                             │
+│                                                                 │
+│ 如果偏好表有用户要求的字段：                                     │
+│ → 直接筛选，跳过 Layer 3                                        │
+│                                                                 │
+│ 如果偏好表没有用户要求的字段：                                   │
+│ → 跳过这层筛选，进入 Layer 3                                    │
+│ （比如用户说"不要矫情的"，偏好表没有"矫情"标签）                 │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│ Layer 3：Agent 自己分析原始数据                                  │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│ 只处理偏好表没有命中的特征                                       │
+│ Agent 获取候选人完整信息：persona + 脱敏后的聊天记录            │
+│                                                                 │
+│ Agent 自己分析判断（纯思考，不调用工具）：                       │
+│ → Agent 读聊天记录                                              │
+│ → Agent 自己决定分析方法（grep 关键词频率、语气分析）            │
+│ → Agent 自己判断："这个人'你好棒'出现 5 次，过于迎合" → exclude │
+│ → Agent 自己判断："这个人说话直接，有自己的观点" → pass         │
+│                                                                 │
+│ 特点：                                                          │
+│ - 只处理偏好表筛不掉的特征                                       │
+│ - Agent 基于一手信息判断，不失真                                 │
+│ - Agent 自主权高，自己决定分析方法                               │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│ 最终结果                                                         │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│ Agent 直接在 decision 中返回结果：                               │
+│ → 不需要 submit 工具                                            │
+│ → 直接通过 decision.selected_candidates 返回判断结果            │
+│ → 推荐候选人 5 人                                                │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ### 4.2 核心原则
 
 | 原则 | 描述 | 原因 |
 |------|------|------|
-| **给 Agent 原始数据** | 直接返回 persona + 聊天记录，不做预处理 | 离线摘要会失真，Agent 应基于一手信息判断 |
-| **Agent 自己分析** | Agent 自己决定分析方法（grep、频率统计、语气分析） | Agent 比预设规则更智能，能找到更准确的分析策略 |
-| **判断不调用工具** | Agent 判断是纯思考，直接在 decision 中返回结果 | 避免 submit 工具打断思考，减少工具调用次数 |
-| **利用现有架构** | 用 decision.selected_candidates 表达判断结果 | 不新增状态管理工具，与现有代码兼容 |
+| **三层筛选，逐层收窄** | 硬约束 → 偏好表 → Agent 分析 | 能用预处理数据的先筛，效率更高 |
+| **偏好表优先** | 偏好表字段是离线提取的，优先使用 | 省 Agent 工作量，查询效率高 |
+| **Agent 只处理无法预处理的部分** | 只分析偏好表没有的特征 | 减少不必要的 Agent 分析 |
+| **给 Agent 原始数据** | 需要 Agent 分析时，返回脱敏后的原始数据 | 不失真，Agent 基于一手信息判断 |
+| **Agent 自己分析** | Agent 自己决定分析方法 | Agent 比预设规则更智能 |
+| **判断不调用工具** | Agent 判断是纯思考，直接在 decision 中返回 | 减少 tool call 次数 |
 
-### 4.3 为什么不用离线摘要？
+### 4.3 为什么需要三层筛选？
 
-**离线摘要的问题：**
+**偏好表的优势与局限：**
 
 ```
-假设候选人 A 的聊天记录：
+偏好表字段是从聊天记录离线提取的，比如：
 
-[第1天] 女：你真棒！辛苦了～
-[第5天] 女：你好厉害！你是最棒的！
-[第10天] 女：你真好！和你在一起真开心～
-[第15天] 女：你最好了～我会想你的～
+偏好表结构：
+{
+  "性格标签": ["温柔", "内向", "稳重"],
+  "沟通风格": ["直接", "含蓄"],
+  "价值观": ["家庭导向", "事业导向"],
+  ...
+}
 
-离线生成的摘要可能写成：
-"对话氛围良好，女方表达关心和鼓励，互动积极。"
+优势：
+1. 已经预处理好了，查询效率高
+2. 能覆盖常见性格特征（温柔、内向、稳重等）
+3. 省 Agent 工作量，不需要每次都读聊天记录
 
-问题：
-1. 摘要把"你真棒"、"你好厉害"总结成"表达关心"
-2. 丢失了关键信息：这些话出现的频率和上下文
-3. Agent 读摘要只能看到"氛围良好"，判断不出"绿茶"
-4. 摘要的判断标准是预设的，无法根据用户具体需求调整
+局限：
+1. 偏好表字段有限，无法覆盖所有用户表达
+   - 用户说"不要矫情的" → 偏好表没有"矫情"标签
+   - 用户说"找个靠谱的" → 偏好表没有"靠谱"标签
+   - 用户说"不要绿茶的" → 偏好表可能有"绿茶"标签，但也可能没有
 
-正确做法：给 Agent 原始聊天记录
+2. 偏好表是离线提取的，可能滞后
+   - 用户最近聊天风格变了 → 偏好表还没更新
+
+3. 偏好表是预设字段，无法个性化
+   - 用户说"不要那种动不动就'你好棒'的女生" → 这是具体行为，偏好表没法记录
+
+结论：
+- 能用偏好表的先用（Layer 2）
+- 偏好表覆盖不了的，才让 Agent 自己分析（Layer 3）
+```
+
+### 4.4 Layer 3 的必要性：为什么还要给 Agent 原始数据？
+
+**当偏好表没有命中时，Agent 需要自己分析：**
+
+```
+假设用户说："不要矫情的女生，25-30岁，上海"
+
+Layer 1：硬约束筛选 → 50人
+Layer 2：偏好表没有"矫情"标签 → 跳过，还是 50人
+Layer 3：Agent 自己分析 → 需要读聊天记录判断"矫情"
+
+候选人 A 的聊天记录（脱敏后）：
+
+[第1天] 女：你今天怎么不回我消息～
+[第3天] 女：你是不是不爱我了～
+[第5天] 女：你昨天没跟我说早安，我哭了很久～
+[第10天] 女：你今天回消息慢了5分钟，是不是不想理我了～
+
 Agent 自己分析：
-"统计'你真棒'出现 5 次，'你好厉害'出现 3 次
- 这些话密集出现，都是高度赞扬
- 且都是在回应日常分享时使用，没有自己的观点
- 结合 persona（焦虑型依恋）判断：有绿茶特征"
+"统计'你是不是不爱我了'、'是不是不想理我了' 出现次数
+ 发现：每2-3天就有一次'你是不是不XXX我了'
+ 都是情绪化的指责，没有具体原因
+ 结合 persona（焦虑型依恋）判断：有矫情特征"
+
+结论：
+- Agent 读原始数据，能看到具体行为模式
+- 偏好表没有的标签，Agent 能自己定义并判断
+- Agent 的分析比预设标签更灵活、更个性化
 ```
 
-### 4.4 Agent 可能的分析策略
+### 4.5 Agent 可能的分析策略（Layer 3）
 
 Agent 不需要我们预设分析工具，Agent 会自己找到分析方法：
 
@@ -211,9 +301,9 @@ Agent 不需要我们预设分析工具，Agent 会自己找到分析方法：
 |---------|-----------------|---------|
 | **关键词频率统计** | grep "你好棒"、"你好厉害" 出现次数 | 判断"绿茶"、"讨好型" |
 | **语气分析** | 分析对话语气是真诚鼓励还是过度迎合 | 判断性格特质 |
+| **情绪波动检测** | 检测是否有频繁的情绪化表达 | 判断"矫情"、"情绪化" |
 | **对比分析** | 对比不同话题的回应方式 | 判断是否有自己的观点 |
 | **时间分布分析** | 看关键词是否密集出现在特定时间段 | 判断行为模式 |
-| **自我观点检测** | 检查是否表达自己的观点还是只讨好 | 判断"真诚"、"独立" |
 | **结合 persona 综合** | 结合 MBTI、依恋类型判断性格倾向 | 综合判断 |
 
 ---
@@ -224,63 +314,78 @@ Agent 不需要我们预设分析工具，Agent 会自己找到分析方法：
 
 | 原则 | 描述 |
 |------|------|
-| **工具只返回原始数据** | 不做预处理、不做摘要、不给 Agent 二手信息 |
+| **三层筛选工具分离** | 硬约束、偏好表、Agent 分析用不同工具，职责清晰 |
+| **工具只返回原始数据** | 不做预处理、不给 Agent 二手信息（脱敏除外） |
 | **工具不管理状态** | 不需要 submit/get 工具，用 decision 结构表达结果 |
 | **工具调用最少化** | 一次调用返回所有信息，避免多次调用打断 Agent 思考 |
 
-### 5.2 search_partner_candidates（硬约束筛选 + 直接返回完整信息）
+### 5.2 search_partner_candidates（Layer 1 + Layer 2 筛选）
 
 ```python
 @function_tool
 def search_partner_candidates(
     criteria_json: str,
-    limit: int = 10,
-    include_chat: bool = True,
-    chat_days: int = 30,
+    preference_json: str = "{}",
+    limit: int = 20,
 ) -> dict[str, Any]:
     """
-    搜索候选人（硬约束筛选 + 直接返回完整信息）。
+    搜索候选人（硬约束 + 偏好表筛选）。
     
     核心设计：
-    - 硬约束筛选：根据 criteria 进行数据库查询
-    - 直接返回完整信息：persona + 原始聊天记录（不做摘要预处理）
-    - Agent 自己分析：Agent 自己决定如何分析聊天记录
+    - Layer 1：硬约束筛选（数据库字段查询）
+    - Layer 2：偏好表筛选（离线提取的特征查询）
+    - 返回筛选后的候选人 ID 列表 + 基础信息
+    - 不返回聊天记录，Agent 需要时单独调用
     
     参数：
     - criteria_json: 硬约束条件（JSON）
       支持的字段：age_min, age_max, cities, height_min, height_max,
                   education, marital_status, income, job, relationship_goal 等
     
-    - limit: 返回候选人数量（默认 10，最多 20）
+    - preference_json: 偏好表筛选条件（JSON）
+      支持的字段：性格标签、沟通风格、价值观等
+      示例：{"性格标签": {"exclude": ["绿茶"]}}
     
-    - include_chat: 是否包含聊天记录（默认 True）
-    
-    - chat_days: 聊天记录时间范围（最近 N 天，默认 30 天）
+    - limit: 返回候选人数量（默认 20，最多 50）
     
     返回：
-    - candidates: 候选人完整信息列表
+    - candidates: 候选人基础信息列表
       - id: 候选人 ID
       - basic_info: 基础信息（年龄、城市、职业等）
       - persona: 用户画像（MBTI、依恋、价值观、大五人格）
-      - chat_records: 原始聊天记录（不做摘要预处理）
+      - preference_tags: 偏好表标签（性格标签、沟通风格等）
     
     - total: 总候选人数量
     - has_more: 是否有更多候选人
+    - preference_coverage: 偏好表覆盖情况
+      - covered_features: 偏好表已覆盖的特征列表
+      - uncovered_features: 偏好表未覆盖的特征列表（需要 Agent 分析）
     
     注意：
-    - 直接返回原始聊天记录，不做离线摘要预处理
-    - Agent 自己决定如何分析聊天记录（grep 关键词、频率统计、语气分析等）
-    - 判断结果通过 decision.selected_candidates 返回，不需要 submit 工具
+    - 只返回基础信息，不返回聊天记录
+    - Agent 需要聊天记录时，调用 load_candidate_chat_records
+    - preference_coverage 告诉 Agent 还有哪些特征需要自己分析
     """
     criteria = json.loads(criteria_json)
-    normalized_limit = max(1, min(int(limit or 10), 20))  # 硬约束：最多返回 20 人
+    preferences = json.loads(preference_json)
+    normalized_limit = max(1, min(int(limit or 20), 50))
     
-    # 执行硬约束筛选
-    candidates = _search_by_hard_constraints(criteria, normalized_limit)
+    # Layer 1：硬约束筛选
+    candidates = _search_by_hard_constraints(criteria, normalized_limit * 2)
     
-    # 为每个候选人加载完整信息（不做摘要预处理）
+    # Layer 2：偏好表筛选
+    if preferences:
+        candidates = _filter_by_preference_table(candidates, preferences)
+    
+    # 检查偏好表覆盖情况
+    preference_coverage = _check_preference_coverage(preferences)
+    
+    # 截取最终结果
+    final_candidates = candidates[:normalized_limit]
+    
+    # 加载基础信息
     enriched = []
-    for c in candidates:
+    for c in final_candidates:
         candidate_data = {
             "id": c["id"],
             "basic_info": {
@@ -293,79 +398,87 @@ def search_partner_candidates(
                 "height": c.get("height"),
             },
             "persona": load_persona_from_db(c["id"]),
+            "preference_tags": load_preference_tags(c["id"]),
         }
-        
-        # 直接返回原始聊天记录，不做摘要预处理
-        if include_chat:
-            chat_records = load_chat_records(c["id"], days=chat_days)
-            candidate_data["chat_records"] = chat_records
-        
         enriched.append(candidate_data)
     
     return {
         "candidates": enriched,
         "total": len(enriched),
         "has_more": len(candidates) >= normalized_limit,
+        "preference_coverage": preference_coverage,
+    }
+
+
+def _check_preference_coverage(preferences: dict) -> dict:
+    """
+    检查偏好表是否覆盖用户要求的特征。
+    
+    返回：
+    - covered_features: 偏好表已覆盖的特征
+    - uncovered_features: 偏好表未覆盖的特征（需要 Agent 分析）
+    """
+    covered = []
+    uncovered = []
+    
+    # 偏好表支持的字段
+    supported_preference_fields = [
+        "性格标签", "沟通风格", "价值观", 
+        "情绪倾向", "关系期望", "生活方式"
+    ]
+    
+    for feature, condition in preferences.items():
+        if feature in supported_preference_fields:
+            covered.append(feature)
+        else:
+            uncovered.append(feature)
+    
+    return {
+        "covered_features": covered,
+        "uncovered_features": uncovered,
     }
 ```
 
-### 5.3 可选辅助工具：search_chat_keywords（帮助 Agent 快速定位）
-
-**注意：这是可选辅助工具，Agent 可以选择用或不用。**
+### 5.3 load_candidate_chat_records（Layer 3：Agent 深度分析）
 
 ```python
 @function_tool
-def search_chat_keywords(
-    candidate_id: int,
-    keywords: list[str],
+def load_candidate_chat_records(
+    candidate_ids: list[int],
     chat_days: int = 30,
 ) -> dict[str, Any]:
     """
-    搜索候选人聊天记录中的关键词。
+    加载候选人聊天记录（用于 Agent 深度分析）。
     
-    这是可选辅助工具，帮助 Agent 快速定位关键对话。
-    Agent 也可以选择直接读完整聊天记录自己分析。
+    核心设计：
+    - 只加载需要的候选人的聊天记录
+    - 聊天记录已脱敏处理
+    - Agent 自己决定如何分析
     
     参数：
-    - candidate_id: 候选人 ID
-    - keywords: 要搜索的关键词列表（如 ["你真棒", "你好厉害", "你最好了"]）
-    - chat_days: 时间范围（最近 N 天）
+    - candidate_ids: 候选人 ID 列表
+    - chat_days: 聊天记录时间范围（最近 N 天，默认 30 天）
     
     返回：
-    - candidate_id: 候选人 ID
-    - keyword_counts: 每个关键词的出现次数
-    - matches: 匹配的对话片段列表（包含上下文）
-    - total_matches: 总匹配次数
+    - candidates_chat: 候选人聊天记录列表
+      - id: 候选人 ID
+      - chat_records: 脱敏后的聊天记录
     
-    用法示例：
-    - Agent 判断"绿茶"时，可以先用此工具快速 grep "你真棒" 出现次数
-    - 发现高频使用后，再决定要不要深入读完整聊天记录分析语气
+    注意：
+    - 聊天记录已脱敏（手机号、地址等敏感信息已替换）
+    - Agent 只能用于内部分析，不能返回给用户
     """
-    chat_records = load_chat_records(candidate_id, days=chat_days)
-    
-    keyword_counts = {}
-    matches = []
-    
-    for keyword in keywords:
-        keyword_counts[keyword] = 0
-        for record in chat_records:
-            content = str(record.get("content") or "")
-            if keyword in content:
-                keyword_counts[keyword] += 1
-                # 提取关键词周围的上下文
-                context = extract_context(content, keyword, context_chars=50)
-                matches.append({
-                    "time": record.get("time"),
-                    "keyword": keyword,
-                    "context": context,
-                    "full_content": content,
-                })
+    enriched = []
+    for candidate_id in candidate_ids:
+        # 加载聊天记录并脱敏
+        chat_records = load_and_sanitize_chat_records(candidate_id, days=chat_days)
+        enriched.append({
+            "id": candidate_id,
+            "chat_records": chat_records,
+        })
     
     return {
-        "candidate_id": candidate_id,
-        "keyword_counts": keyword_counts,
-        "matches": matches,
-        "total_matches": sum(keyword_counts.values()),
+        "candidates_chat": enriched,
     }
 ```
 
@@ -435,165 +548,146 @@ decision = DiscoveryDecision(
 
 ## 6. Agent 执行流程
 
-### 6.1 典型场景流程
+### 6.1 典型场景流程：三层筛选
 
-用户说："不要绿茶的女生，25-30岁，上海"
+用户说："不要绿茶的女生，不要矫情的，25-30岁，上海"
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│ Step 1: 获取候选人完整信息（一次调用）                           │
+│ Step 1: Layer 1 + Layer 2 筛选（一次调用）                       │
 ├─────────────────────────────────────────────────────────────────┤
 │ Agent 调用：search_partner_candidates                           │
 │ 参数：criteria_json = {"age_min": 25, "age_max": 30,            │
 │                       "cities": ["上海"]}                       │
-│       include_chat = True                                       │
-│       chat_days = 30                                            │
+│       preference_json = {"性格标签": {"exclude": ["绿茶"]}}      │
 │                                                                 │
-│ 返回：candidates = [                                            │
-│   {                                                             │
-│     "id": 101,                                                  │
-│     "basic_info": {"age": 28, "city": "上海", "job": "财务"},   │
-│     "persona": {                                                │
-│       "attachment": {"type_code": "secure"},                    │
-│       "mbti": {"type_code": "ISFJ"},                            │
+│ 返回：                                                          │
+│ - candidates = [                                                │
+│     {                                                           │
+│       "id": 101,                                                │
+│       "basic_info": {"age": 28, "city": "上海", "job": "财务"}, │
+│       "persona": {...},                                         │
+│       "preference_tags": {"性格标签": ["温柔", "稳重"]},         │
 │     },                                                          │
-│     "chat_records": [                                           │
-│       {"time": "第1天", "content": "你真棒！辛苦了～"},          │
-│       {"time": "第5天", "content": "你觉得这个怎么样？"},        │
-│       {"time": "第10天", "content": "我最近在看..."},           │
-│       ...                                                       │
-│     ],                                                          │
-│   },                                                            │
-│   {                                                             │
-│     "id": 102,                                                  │
-│     "basic_info": {"age": 29, "city": "上海", "job": "销售"},   │
-│     "persona": {                                                │
-│       "attachment": {"type_code": "anxious"},                   │
+│     {                                                           │
+│       "id": 103,                                                │
+│       "basic_info": {"age": 29, "city": "上海", "job": "销售"}, │
+│       "persona": {...},                                         │
+│       "preference_tags": {"性格标签": ["开朗", "直接"]},         │
 │     },                                                          │
-│     "chat_records": [                                           │
-│       {"time": "第1天", "content": "你真棒！你是最棒的！"},      │
-│       {"time": "第3天", "content": "你好厉害！你太厉害了！"},    │
-│       {"time": "第5天", "content": "你最好了～我会想你的～"},    │
-│       {"time": "第7天", "content": "你真棒！"},                  │
-│       {"time": "第10天", "content": "你好厉害！你是最棒的！"},   │
-│       ...                                                       │
-│     ],                                                          │
-│   },                                                            │
-│   ... (共20人，每人都有 persona + 原始聊天记录)                  │
-│ ]                                                               │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│ Step 2: Agent 自主分析判断（纯思考，不调用工具）                 │
-├─────────────────────────────────────────────────────────────────┤
+│     ... (共30人，已通过硬约束+偏好表筛选)                        │
+│   ]                                                             │
 │                                                                 │
-│ Agent 读候选人 101：                                            │
-│ - persona: 安全型依恋（稳定）                                   │
-│ - chat_records: 读完整聊天记录                                  │
-│   Agent 自己分析：                                              │
-│   - "你真棒"只出现1次，频率正常                                 │
-│   - 有主动分享生活，有自己的观点                                │
-│   - 语气是真诚鼓励，不是过度迎合                                │
-│ - 判断：✅ 这个人真诚，不像绿茶                                 │
+│ - preference_coverage = {                                       │
+│     "covered_features": ["性格标签"],  # "绿茶"已被偏好表筛掉   │
+│     "uncovered_features": ["矫情"],   # "矫情"偏好表没有，      │
+│   }                                      # 需要 Agent 自己分析  │
 │                                                                 │
-│ Agent 读候选人 102：                                            │
-│ - persona: 焦虑型依恋（可能不够稳定）                           │
-│ - chat_records: 读完整聊天记录                                  │
-│   Agent 自己分析：                                              │
-│   - grep "你真棒"、"你好厉害"、"你最好了"                       │
-│   - 发现：'你真棒'出现5次，'你好厉害'出现3次，'你最好了'出现2次 │
-│   - 10天内出现10次高度赞扬，频率明显过高                        │
-│   - 都是回应日常分享，没有自己的观点                            │
-│   - 语气是过度迎合讨好，不是真诚鼓励                            │
-│ - 判断：❌ 这个人过于迎合，有绿茶特征                           │
-│                                                                 │
-│ Agent 继续读剩下 18 个人...                                     │
-│                                                                 │
-│ Agent 最终判断：                                                │
-│ - 通过：[101, 103, 105, 108, 112, 116]                          │
-│ - 排除：[102, 106, 109, ...]（过于迎合或性格不符）              │
+│ Agent 发现：                                                    │
+│ - "不要绿茶"已被偏好表筛掉了（covered_features）                │
+│ - "不要矫情的"偏好表没有（uncovered_features）                  │
+│ - 需要自己分析"矫情"                                            │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
-┌─────────────────────────────────────────────────────────────────┐
-│ Step 3: Agent 直接在 decision 中返回结果                        │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│ Agent 返回（不需要调用 submit 工具）：                          │
-│                                                                 │
-│ DiscoveryDecision(                                              │
-│     phase="results_shown",                                      │
-│     assistant_message="给你推荐这5位，性格都比较真诚直接...",   │
-│     selected_candidates=[                                       │
-│         DiscoveryCandidateSelection(                            │
-│             profile_id=101,                                     │
-│             reason_summary="说话有自己的观点，不迎合讨好",      │
-│         ),                                                      │
-│         DiscoveryCandidateSelection(                            │
-│             profile_id=103,                                     │
-│             reason_summary="'你真棒'只出现1次，频率正常",       │
-│         ),                                                      │
-│         DiscoveryCandidateSelection(                            │
-│             profile_id=105,                                     │
-│             reason_summary="性格安全型依恋，稳定真诚",          │
-│         ),                                                      │
-│         ...                                                     │
-│     ],                                                          │
-│ )                                                               │
-│                                                                 │
-│ 完成！不需要 submit/get 工具                                    │
-│ 总工具调用次数：1 次                                            │
-└─────────────────────────────────────────────────────────────────┘
+         ┌────────────────────┴────────────────────┐
+         │                                         │
+         ▼                                         ▼
+┌──────────────────────────┐    ┌──────────────────────────────┐
+│ 分支 A：偏好表全覆盖      │    │ 分支 B：有未覆盖特征         │
+├──────────────────────────┤    ├──────────────────────────────┤
+│                          │    │                              │
+│ preference_coverage      │    │ preference_coverage          │
+│ .uncovered_features      │    │ .uncovered_features          │
+│ = []                     │    │ = ["矫情"]                   │
+│                          │    │                              │
+│ 不需要 Agent 深度分析    │    │ Agent 需要自己分析"矫情"    │
+│ 直接推荐候选人           │    │                              │
+│                          │    │ Agent 调用：                 │
+│ Agent 直接返回：         │    │ load_candidate_chat_records  │
+│ DiscoveryDecision(...)   │    │ 参数：candidate_ids=[...]    │
+│                          │    │                              │
+│ 总工具调用：1 次         │    │ 返回：候选人聊天记录（脱敏） │
+│                          │    │                              │
+└──────────────────────────┘    └──────────────────────────────┘
+                                              ↓
+                            ┌─────────────────────────────────────┐
+                            │ Step 2: Agent 自主分析（Layer 3）   │
+                            ├─────────────────────────────────────┤
+                            │                                     │
+                            │ Agent 读候选人 101 的聊天记录：    │
+                            │ - 发现："你是不是不爱我了"出现2次 │
+                            │ - 语气正常，没有情绪化指责         │
+                            │ - 判断：✅ 不矫情                  │
+                            │                                     │
+                            │ Agent 读候选人 103 的聊天记录：    │
+                            │ - 发现："你是不是不爱我了"出现5次 │
+                            │ - 每次都是情绪化指责               │
+                            │ - 判断：❌ 有矫情特征              │
+                            │                                     │
+                            │ Agent 继续分析其他候选人...        │
+                            │                                     │
+                            │ Agent 最终判断：                   │
+                            │ - 通过：[101, 105, 108, 112]       │
+                            │ - 排除：[103, 106, ...]（矫情）    │
+                            │                                     │
+                            └─────────────────────────────────────┘
+                                              ↓
+                            ┌─────────────────────────────────────┐
+                            │ Step 3: Agent 返回判断结果         │
+                            ├─────────────────────────────────────┤
+                            │                                     │
+                            │ DiscoveryDecision(                  │
+                            │   phase="results_shown",            │
+                            │   assistant_message=                │
+                            │     "给你推荐这4位，性格都比较...", │
+                            │   selected_candidates=[             │
+                            │     DiscoveryCandidateSelection(    │
+                            │       profile_id=101,               │
+                            │       reason_summary="              │
+                            │         情绪稳定，不矫情",          │
+                            │     ),                              │
+                            │     ...                             │
+                            │   ],                                │
+                            │ )                                   │
+                            │                                     │
+                            │ 总工具调用次数：                    │
+                            │ - 分支 A（偏好表全覆盖）：1 次      │
+                            │ - 分支 B（有未覆盖）：2 次          │
+                            │                                     │
+                            └─────────────────────────────────────┘
 ```
 
-### 6.2 Agent 可选使用辅助工具
+### 6.2 不同场景的工具调用次数
 
-**Agent 可以选择用或不用 search_chat_keywords 工具。**
+| 场景 | preference_coverage | 工具调用次数 | Agent 工作量 |
+|------|---------------------|-------------|-------------|
+| **场景 1**：硬约束 + 偏好表全覆盖 | uncovered_features = [] | 1 次 | 最小（只读基础信息） |
+| **场景 2**：硬约束 + 偏好表部分覆盖 | uncovered_features = ["矫情"] | 2 次 | 中等（只分析未覆盖特征） |
+| **场景 3**：硬约束 + 偏好表全未覆盖 | uncovered_features = ["矫情", "靠谱"] | 2 次 | 较大（需分析多个特征） |
+| **场景 4**：硬约束 + 无偏好表筛选 | preference_json = "{}" | 2 次 | 最大（所有特征都自己分析） |
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ 可选 Step: Agent 使用辅助工具快速定位                           │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│ Agent 思考："20个人的聊天记录太长，我先快速扫描一下"            │
-│                                                                 │
-│ Agent 调用：search_chat_keywords                                │
-│ 参数：candidate_id=102                                          │
-│       keywords=["你真棒", "你好厉害", "你最好了"]               │
-│                                                                 │
-│ 返回：keyword_counts = {                                        │
-│         "你真棒": 5,                                            │
-│         "你好厉害": 3,                                          │
-│         "你最好了": 2                                           │
-│       }                                                         │
-│       total_matches = 10                                        │
-│                                                                 │
-│ Agent 判断："10天内出现10次高度赞扬，频率明显过高"              │
-│ Agent 决定："深入读完整聊天记录分析语气"                        │
-│ Agent 最终判断："过度迎合，有绿茶特征"                          │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
+**结论：偏好表能覆盖的特征越多，Agent 工作量越小，工具调用越少。**
 
 ### 6.3 Agent 决策要点
 
 | 决策点 | Agent 责任 | 示例 |
 |--------|-----------|------|
-| **分析方法** | Agent 自己决定如何分析 | grep 关键词频率、语气分析、对比分析 |
-| **分析深度** | Agent 自己决定深入程度 | 先快速扫描，发现有问题的再深入看 |
-| **判断标准** | Agent 根据用户需求调整 | 用户说"不要绿茶"→判断"过度迎合" |
+| **是否需要深度分析** | 根据 preference_coverage.uncovered_features 判断 | 有未覆盖特征才需要 |
+| **分析哪些候选人** | 只分析需要深度分析的候选人 | 不是所有候选人都要读聊天记录 |
+| **分析方法** | Agent 自己决定如何分析 | grep 关键词频率、语气分析 |
+| **判断标准** | Agent 根据用户需求调整 | 用户说"不要矫情"→判断情绪化表达 |
 | **判断结果** | Agent 直接在 decision 中返回 | 不需要 submit 工具 |
-| **推荐理由** | Agent 自己提供解释 | "这个人说话有自己的观点，不迎合讨好" |
 
 ### 6.4 与旧方案对比
 
-| 维度 | 旧方案（离线摘要 + submit） | 新方案（原始数据 + decision） |
-|------|---------------------------|------------------------------|
-| 工具调用次数 | **42 次** | **1 次** |
-| Agent 思考被打断 | **40 次** | **0 次** |
-| 数据形态 | 二手信息（摘要） | 一手信息（原始数据） |
-| 判断准确性 | 可能失真（摘要丢失细节） | 准确（Agent 自己分析） |
-| Agent 自主权 | 低（依赖摘要） | 高（自己分析原始数据） |
+| 维度 | 旧方案（直接给原始数据） | 新方案（三层筛选） |
+|------|------------------------|-------------------|
+| 工具调用次数 | 1 次（但返回大量数据） | 1-2 次（按需获取） |
+| Agent 工作量 | 最大（所有特征都自己分析） | 最小到中等（偏好表先筛） |
+| 数据量 | 大（所有人都有聊天记录） | 小（只有需要的人才有） |
+| 效率 | 低（Agent 要读所有人） | 高（能用偏好表的先筛） |
+| 灵活性 | 高（Agent 能分析任何特征） | 高（偏好表没的仍能分析） |
 
 ---
 
@@ -603,11 +697,61 @@ decision = DiscoveryDecision(
 
 | 信息类型 | 数据来源 | 内容描述 | 用途 |
 |---------|----------|----------|------|
-| **persona** | persona 表 | MBTI、依恋、价值观、大五人格 | 性格特质判断 |
-| **chat_records** | chat_history 表 | 原始聊天记录（不做摘要预处理） | Agent 自己分析行为模式 |
+| **basic_info** | profile 表 | 年龄、城市、职业、学历等 | Layer 1 硬约束筛选 |
+| **persona** | persona 表 | MBTI、依恋、价值观、大五人格 | 性格特质参考 |
+| **preference_tags** | preference 表 | 性格标签、沟通风格、价值观等 | **Layer 2 偏好表筛选** |
+| **chat_records** | chat_history 表 | 脱敏后的原始聊天记录 | Layer 3 Agent 深度分析 |
 | **behavior** | behavior_log 表 | 操作记录（点赞、反馈、兴趣表达） | 活跃度、诚意判断 |
 | **assessment** | assessment 表 | 测评回答内容 | 深度性格分析 |
 | **introduction** | profile 表 | 自我介绍文本 | 第一印象判断 |
+
+### 7.2 偏好表设计（新增）
+
+**偏好表是从聊天记录离线提取的特征表，用于 Layer 2 筛选。**
+
+```python
+# 偏好表结构示例
+preference_table = {
+    "profile_id": 101,
+    "性格标签": ["温柔", "稳重", "内向"],      # 从聊天记录提取的性格特征
+    "沟通风格": ["直接", "含蓄"],              # 沟通方式
+    "价值观": ["家庭导向", "真诚"],            # 价值观倾向
+    "情绪倾向": ["稳定", "焦虑"],              # 情绪状态
+    "关系期望": ["结婚导向", "认真恋爱"],       # 关系目标
+    "生活方式": ["宅家", "规律作息"],          # 生活习惯
+    "更新时间": "2026-06-01",                  # 离线提取时间
+}
+```
+
+**偏好表字段来源：**
+
+| 字段 | 提取方式 | 更新频率 |
+|------|---------|---------|
+| 性格标签 | AI 分析聊天记录语气、关键词 | 每周更新 |
+| 沟通风格 | 分析对话主动性、回应方式 | 每周更新 |
+| 价值观 | 分析话题偏好、表达的观点 | 每两周更新 |
+| 情绪倾向 | 分析情绪波动、情绪化表达频率 | 每周更新 |
+| 关系期望 | 分析聊天中提到的期望 | 每两周更新 |
+| 生活方式 | 分析作息、兴趣爱好相关话题 | 每周更新 |
+
+**偏好表的优势：**
+
+| 优势 | 描述 |
+|------|------|
+| **查询效率高** | 已经预处理好了，直接查询 |
+| **省 Agent 工作量** | 能用偏好表的先筛，不需要 Agent 读聊天记录 |
+| **覆盖常见特征** | 温柔、内向、稳重等常见性格特征都有 |
+| **可扩展** | 可以根据用户反馈补充新字段 |
+
+**偏好表的局限：**
+
+| 局限 | 描述 |
+|------|------|
+| **字段有限** | 无法覆盖所有用户表达（如"矫情"、"靠谱"等口语化表达） |
+| **可能滞后** | 离线提取，可能跟不上用户最新状态 |
+| **预设标准** | 提取时用的是预设判断标准，无法个性化 |
+
+**解决方案：偏好表覆盖不了的，让 Agent 自己分析（Layer 3）。**
 
 ### 7.2 聊天记录加载逻辑
 
@@ -649,25 +793,67 @@ def load_chat_records(profile_id: int, days: int = 30) -> list[dict]:
     ]
 ```
 
-### 7.3 为什么不用离线摘要？
+### 7.3 聊天记录加载逻辑（Layer 3）
 
-**离线摘要的问题：**
+```python
+def load_and_sanitize_chat_records(profile_id: int, days: int = 30) -> list[dict]:
+    """
+    加载候选人的聊天记录并脱敏（Layer 3 使用）。
+    
+    核心原则：
+    - 只在偏好表无法覆盖特征时才加载
+    - 先脱敏再交给 Agent
+    - Agent 自己决定如何分析
+    
+    参数：
+    - profile_id: 候选人 ID
+    - days: 时间范围（最近 N 天，默认 30 天）
+    
+    返回：
+    - chat_records: 脱敏后的聊天记录列表
+      - time: 对话时间
+      - content: 脱敏后的对话内容
+      - direction: 方向（发送/接收）
+    
+    注意：
+    - 不做离线摘要预处理，避免信息失真
+    - 脱敏后再交给 Agent，保护隐私
+    - Agent 只用于内部分析，不返回给用户
+    """
+    # 查询原始聊天记录
+    records = query_chat_history(profile_id, days=days)
+    
+    # 脱敏处理
+    sanitized_records = []
+    for r in records:
+        sanitized_content = sanitize_chat_record(r["content"])
+        sanitized_records.append({
+            "time": r["created_at"],
+            "content": sanitized_content,
+            "direction": r["direction"],
+        })
+    
+    return sanitized_records
+```
 
-| 问题 | 描述 | 影响 |
+### 7.4 为什么偏好表 + Agent 分析的组合最优？
+
+**对比三种方案：**
+
+| 方案 | 描述 | 问题 |
 |------|------|------|
-| **信息失真** | 摘要把"你真棒"总结成"表达关心"，丢失频率和语气 | Agent 判断不准确 |
-| **预设标准** | 摘要生成时用的是预设判断标准，无法根据用户需求调整 | 无法满足"不要绿茶"等个性化需求 |
-| **二手信息** | Agent 只能基于别人（摘要 AI）的解读做判断 | Agent 自主权降低 |
-| **丢失细节** | 关键词频率、上下文、时间分布等细节被丢失 | 无法做精细分析 |
+| **方案 A：只用偏好表** | 所有特征都从偏好表筛选 | 偏好表字段有限，无法覆盖"矫情"、"靠谱"等口语化表达 |
+| **方案 B：只用 Agent 分析** | 所有特征都让 Agent 读聊天记录判断 | Agent 工作量大，效率低，Token 消耗高 |
+| **方案 C：偏好表 + Agent 分析** | 偏好表先筛，覆盖不了的再让 Agent 分析 | **最优：效率高 + 灵活性高** |
 
-**正确做法：直接给 Agent 原始数据**
+**方案 C 的优势：**
 
 | 优势 | 描述 |
 |------|------|
-| **一手信息** | Agent 基于原始数据自己分析，不失真 |
-| **灵活分析** | Agent 自己决定分析方法（grep、频率统计、语气分析） |
-| **个性化标准** | Agent 根据用户具体需求调整判断标准 |
-| **保留细节** | 关键词频率、上下文、时间分布等完整保留 |
+| **效率最高** | 能用偏好表的先筛，省 Agent 工作量 |
+| **灵活性最高** | 偏好表覆盖不了的，Agent 能自己分析 |
+| **Token 消耗最小** | 只有需要深度分析的人才加载聊天记录 |
+| **不失真** | Agent 分析时基于原始数据，不是二手摘要 |
 
 ### 7.4 隐私处理
 
