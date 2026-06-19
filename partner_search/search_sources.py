@@ -298,13 +298,29 @@ def build_mysql_prefilter(
     add_in("photo_verification_level", criteria.get("photo_verification_levels"), default_value="none")
     add_numeric_bound("photo_count", ">=", criteria.get("photo_count_min"), allow_missing=True)
 
-    # === MBTI 类型筛选（新增）===
-    # 支持 mbti_types（筛选特定 MBTI 类型）
-    add_in("mbti_type", criteria.get("mbti_types"), allow_missing=True)
-    # 支持 exclude_mbti（排除特定 MBTI 类型）
-    add_not_in("mbti_type", criteria.get("exclude_mbti"))
-    # 支持 exclude_mbti_types（排除特定 MBTI 类型，兼容性）
-    add_not_in("mbti_type", criteria.get("exclude_mbti_types"))
+    # ====================================================================
+    # Agent Native架构：移除性格筛选逻辑
+    # ====================================================================
+    # 性格特质筛选是软约束，不应该在数据库层硬编码执行。
+    #
+    # Agent Native原则：
+    # - 硬约束（性别、年龄、城市）：在数据库层筛选（SQL WHERE条件）
+    # - 软约束（性格特质）：在Agent层自主判断（根据返回的personality_signals）
+    #
+    # 旧逻辑（已移除）：
+    # - add_in("mbti_type", criteria.get("mbti_types"))  ← 移除
+    # - add_not_in("mbti_type", criteria.get("exclude_mbti")) ← 移除
+    #
+    # 新逻辑：
+    # - 数据库只做基础筛选，返回性格原始数据
+    # - Agent收到结果后，根据personality_signals自主判断性格匹配度
+    # - Agent可以灵活判断："虽然MBTI偏内向，但可能有活泼的一面"
+    #
+    # 好处：
+    # 1. 避免参数名不匹配问题（personality_traits vs mbti_types）
+    # 2. Agent有更多灵活性（可以根据对话上下文调整判断）
+    # 3. 符合Agent Native原则（软约束在Agent层）
+    # ====================================================================
 
     if criteria.get("has_children") is not None:
         add_numeric_bound("has_children", "=", int(criteria["has_children"]), allow_missing=True)

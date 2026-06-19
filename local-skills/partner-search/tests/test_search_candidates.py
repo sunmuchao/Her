@@ -616,7 +616,8 @@ class SearchCandidatesTests(unittest.TestCase):
         result = search_candidates.evaluate_candidate(record, criteria)
         self.assertIsNotNone(result)
         self.assertIn("profile_status", result["missing_fields"])
-        self.assertNotIn("状态 active", result["matched_on"])
+        # 状态未知时不应在matched_on中添加状态信息
+        self.assertNotIn("状态 活跃", result["matched_on"])
 
     def test_reciprocal_rejects_non_matching_city(self):
         candidate = {"preferred_cities": "上海"}

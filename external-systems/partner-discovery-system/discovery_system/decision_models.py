@@ -59,6 +59,8 @@ class DiscoveryDecision:
     suggested_actions: list[DiscoveryActionSuggestion] = field(default_factory=list)
     result_group_title: str | None = None
     selected_candidates: list[DiscoveryCandidateSelection] = field(default_factory=list)
+    # 方案C：支持多条消息（reply_to_user + show_candidates）
+    _all_payloads: list[dict[str, Any]] | None = field(default=None, compare=False)
 
 
 @dataclass(frozen=True)

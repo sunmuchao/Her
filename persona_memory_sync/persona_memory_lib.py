@@ -46,6 +46,7 @@ DEFAULT_SOURCE_ENV = "PERSONA_MEMORY_MYSQL_SOURCE"
 DEFAULT_PROFILE_TABLE = "profiles"
 DEFAULT_PERSONA_TABLE = "user_personas"
 DEFAULT_OBSERVATION_TABLE = "user_persona_observations"
+DEFAULT_CONVERSATION_SUMMARIES_TABLE = "conversation_summaries"
 DEFAULT_PUBLIC_VIEW = "public_profile_view"
 VALID_APPLY_SCOPES = {"observation_only", "persona_only", "persona_and_profile"}
 
@@ -260,20 +261,12 @@ SOFT_SELF_DESCRIPTION_FIELDS = {
 }
 
 PERSONA_TO_PROFILE_FIELD_MAP = {
-    "self_gender": "gender",
-    "self_age": "age",
-    "self_city": "city",
-    "self_district": "district",
-    "self_height": "height",
-    "self_education": "education",
-    "self_job": "job",
-    "self_marital_status": "marital_status",
-    "self_has_children": "has_children",
-    "self_children_count": "children_count",
-    "self_children_living_with_self": "children_living_with_self",
-    "self_smoking": "smoking",
-    "self_drinking": "drinking",
-    "self_relationship_goal": "relationship_goal",
+    # 硬条件字段映射已删除，这些字段应该只在 profiles 表中
+    # self_gender, self_age, self_city, self_district, self_height, self_education, self_job,
+    # self_marital_status, self_has_children, self_children_count, self_children_living_with_self,
+    # self_smoking, self_drinking, self_relationship_goal 已删除
+
+    # 保留 target_* 字段映射（搜索偏好）
     "target_age_min": "preferred_age_min",
     "target_age_max": "preferred_age_max",
     "target_cities": "preferred_cities",
@@ -288,35 +281,35 @@ PERSONA_TO_PROFILE_FIELD_MAP = {
     "target_requires_partner_accept_my_children": "requires_partner_accept_my_children",
 }
 
-PROFILE_FACT_PERSONA_FIELDS = {
-    "display_name",
-    "self_gender",
-    "self_age",
-    "self_city",
-    "self_district",
-    "self_height",
-    "self_education",
-    "self_income_wan",
-    "self_job",
-    "self_marital_status",
-    "self_has_children",
-    "self_children_count",
-    "self_children_living_with_self",
-}
+# 硬条件字段已删除，这些字段应该只在 profiles 表中
+# PROFILE_FACT_PERSONA_FIELDS 已清空（改为空集合）
+PROFILE_FACT_PERSONA_FIELDS = set()  # 空集合，而不是空字典
 
 AUTO_PROFILE_SYNC_BLOCKED_PERSONA_FIELDS = PROFILE_FACT_PERSONA_FIELDS | set(PERSONA_TO_PROFILE_FIELD_MAP)
 
 AUTO_PROFILE_SYNC_PERSONA_TO_PROFILE_FIELD_MAP: dict[str, str] = {}
 
 PROFILE_EXTENSION_COLUMNS = {
-    "matcher_traits_json": "JSON NULL",
-    "matcher_preferences_json": "JSON NULL",
-    "matcher_risks_json": "JSON NULL",
-    "matcher_summary_internal": "TEXT NULL",
-    "accept_marital_status_semantics": "VARCHAR(128) NULL",
-    "accept_partner_children_semantics": "VARCHAR(128) NULL",
-    "location_preference_semantics": "VARCHAR(128) NULL",
-    "requires_partner_accept_my_children": "TINYINT(1) NULL",
+    # 新增硬条件字段（用户补充）
+    "hometown_city": "VARCHAR(64) NULL COMMENT '籍贯/家乡城市（硬条件）'",
+    "hometown_city_adcode": "INT NULL COMMENT '籍贯城市行政区划代码'",  # 新增：避免重名，精准匹配
+    "weight": "INT NULL COMMENT '体重（kg，硬条件）'",
+    "has_house": "VARCHAR(32) NULL COMMENT '房产情况（硬条件）'",
+    "has_car": "VARCHAR(32) NULL COMMENT '车产情况（硬条件）'",
+    "religion": "VARCHAR(32) NULL COMMENT '宗教信仰（硬条件）'",
+    "is_only_child": "TINYINT(1) NULL COMMENT '是否独生子女（硬条件）'",
+    "house_verification_status": "VARCHAR(32) NULL COMMENT '房产认证状态'",
+
+    # 地理位置编码字段（性能优化）
+    "city_adcode": "INT NULL COMMENT '当前城市行政区划代码'",  # 新增：精准匹配
+    "district_adcode": "INT NULL COMMENT '当前区县行政区划代码'",  # 新增：商圈匹配
+
+    # 原有字段
+    "target_gender": "VARCHAR(8) NULL COMMENT '期望对象性别（硬条件）'",
+    # 已删除的字段（迁移 m0003 清理）：
+    # matcher_traits_json, matcher_preferences_json, matcher_risks_json, matcher_summary_internal
+    # accept_marital_status_semantics, accept_partner_children_semantics
+    # location_preference_semantics, requires_partner_accept_my_children
     "public_display_name": "VARCHAR(64) NULL",
     "public_education": "VARCHAR(32) NULL",
     "public_job": "VARCHAR(64) NULL",
@@ -1985,8 +1978,8 @@ SELECT
   gender,
   age,
   city,
-  district,
-  height,
+  city_adcode,
+  district_adcode,
   NULLIF(TRIM(public_education), '') AS education,
   COALESCE(
     public_job,

@@ -6,6 +6,7 @@ import importlib
 import os
 import pkgutil
 import re
+from datetime import datetime
 from typing import Any, Mapping
 
 import outer_system_mysql_schema as _schema
@@ -266,8 +267,20 @@ def get_migration_status(
             }
         )
 
+    # Only check unexpected migrations within the same target scope
+    # Filter row_by_key to only include migrations with scopes matching current target
+    target_scopes = set()
+    for migration in migrations:
+        scope = migration.scope_for(context)
+        # Extract the target from scope (e.g., "persona:user_personas:..." -> "persona")
+        target_scope = scope.split(":")[0] if ":" in scope else scope
+        target_scopes.add(target_scope)
+
     for scope, migration_id in sorted(set(row_by_key) - expected_keys):
-        issues["unexpected_migrations"].append(f"{scope}:{migration_id}")
+        # Only report as unexpected if it's within the same target scope
+        row_scope = scope.split(":")[0] if ":" in scope else scope
+        if row_scope in target_scopes or row_scope == target:
+            issues["unexpected_migrations"].append(f"{scope}:{migration_id}")
 
     return {
         "target": target,
@@ -311,7 +324,12 @@ def _list_migration_rows(mysql_conn: Any) -> list[dict[str, Any]]:
             f"FROM {_schema.quote_mysql_ident(MIGRATION_TABLE_NAME)} "
             "ORDER BY scope, migration_id"
         )
-        return list(cursor.fetchall() or [])
+        rows = list(cursor.fetchall() or [])
+        # Convert datetime to string for JSON serialization
+        for row in rows:
+            if isinstance(row.get("applied_at"), datetime):
+                row["applied_at"] = row["applied_at"].isoformat()
+        return rows
 
 
 def _get_migration_row(mysql_conn: Any, *, scope: str, migration_id: str) -> dict[str, Any] | None:

@@ -15,17 +15,24 @@ PROFILE_FACT_PROFILE_COLUMNS = frozenset(
         "age",
         "city",
         "district",
+        "hometown_city",  # 新增：籍贯/家乡城市
         "height",
+        "weight",  # 新增：体重（kg）
         "education",
         "job",
         "income_range",
+        "has_house",  # 新增：房产情况
+        "has_car",  # 新增：车产情况
         "marital_status",
         "has_children",
         "children_count",
         "children_living_with_self",
+        "religion",  # 新增：宗教信仰
+        "is_only_child",  # 新增：是否独生子女
         "smoking",
         "drinking",
         "relationship_goal",
+        "target_gender",  # 新增：期望对象性别
         "avatar_url",
         "public_display_name",
         "public_education",
@@ -37,47 +44,52 @@ PROFILE_FACT_PROFILE_COLUMNS = frozenset(
 )
 
 # Persona fields that may be persisted when source_type is explicit / profile_form.
+# 注意：只保留可量化字段（数值范围、枚举类型、布尔值、地理位置编码、学历编码）
 COLLECTED_PERSONA_FIELDS = frozenset(
     {
         "display_name",
-        "self_smoking",
-        "self_drinking",
-        "self_relationship_goal",
-        "self_life_rhythm",
-        "self_work_pattern",
-        "self_expression_style",
-        "target_gender",
+        # 不可量化字段已删除：self_life_rhythm, self_work_pattern, self_expression_style
+        # target_gender 已移动到 profiles 表（硬条件）
         "target_age_min",
         "target_age_max",
         "target_cities",
+        "target_cities_adcodes",  # 新增：目标城市编码列表（快速范围搜索）
+        "target_districts_adcodes",  # 新增：目标区县编码列表（精准商圈匹配）
         "target_height_min",
         "target_height_max",
-        "target_education_min",
+        "target_weight_min",  # 新增：目标体重下限
+        "target_weight_max",  # 新增：目标体重上限
+        "target_education_min",  # 保留：学历字符串（兼容）
+        "target_education_min_code",  # 新增：学历编码（1-专科，2-本科，3-硕士，4-博士）
         "target_income_min_wan",
         "target_income_max_wan",
+        "target_hometown_cities",  # 新增：期望对方家乡列表
+        "target_hometown_cities_adcodes",  # 新增：期望对方家乡编码列表（精准匹配）
+        "target_house_requirement",  # 新增：对方房产要求
+        "target_car_requirement",  # 新增：对方车产要求
         "target_marital_statuses",
         "target_marital_status_strength",
         "target_accept_partner_children",
         "target_accept_partner_children_strength",
         "target_accept_long_distance",
         "target_location_semantics",
+        "target_smoke_acceptance",  # 新增：对方抽烟接受度
+        "target_drink_acceptance",  # 新增：对方喝酒接受度
         "target_requires_partner_accept_my_children",
         "target_want_children",
         "target_marriage_timeline",
-        "must_have_tags",
-        "must_not_have_tags",
-        "preferred_traits",
-        "disliked_traits",
+        # must_have_tags 和 must_not_have_tags 已删除
+        # 不可量化字段已删除：preferred_traits, disliked_traits（性格特质偏好）
     }
 )
 
 # Must never be persisted as long-term persona/profile facts (runtime inference only).
+# 注意：persona_summary_internal 等不可量化字段已完全删除，不再需要这个列表
 INFERENCE_ONLY_PERSONA_FIELDS = frozenset(
     {
-        "persona_summary_internal",
-        "preference_summary_internal",
-        "public_profile_summary_draft",
-        "public_preference_summary_draft",
+        # 不可量化字段已删除：persona_summary_internal, preference_summary_internal
+        # 不可量化字段已删除：public_profile_summary_draft, public_preference_summary_draft
+        # 这些字段应该存储在向量库或对话摘要表中，不在 persona 表
     }
 )
 
@@ -138,10 +150,6 @@ def merge_collected_for_compile(
         for key, value in _flatten_matcher_nested(enriched).items():
             if key in COLLECTED_PERSONA_FIELDS and _has_value(value):
                 profile_collected[key] = value
-        if _has_value(enriched.get("relationship_goal")) and not profile_collected.get(
-            "self_relationship_goal"
-        ):
-            profile_collected["self_relationship_goal"] = enriched["relationship_goal"]
 
     merged = dict(persona_collected)
     merged.update(profile_collected)

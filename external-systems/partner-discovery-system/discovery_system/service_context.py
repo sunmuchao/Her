@@ -115,7 +115,8 @@ def _stable_preferences_summary(requester_profile_snapshot: dict[str, Any] | Non
     age_max = profile.get("target_age_max")
     if age_min or age_max:
         bits.append(f"期望年龄{age_min or '?'}-{age_max or '?'}岁")
-    relationship_goal = str(profile.get("relationship_goal") or profile.get("self_relationship_goal") or "").strip()
+    relationship_goal = str(profile.get("relationship_goal") or "").strip()
+    # self_relationship_goal 已删除，relationship_goal 现在只在 profiles 表中（硬条件）
     if relationship_goal:
         bits.append(f"关系目标是{relationship_goal}")
     preferred_traits = [str(item).strip() for item in list(profile.get("preferred_traits") or []) if str(item).strip()]
