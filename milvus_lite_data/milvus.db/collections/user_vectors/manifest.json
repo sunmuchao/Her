@@ -1,0 +1,27 @@
+{
+  "active_wal_number": 5,
+  "current_seq": 4,
+  "index_specs": {
+    "embedding": {
+      "build_params": {},
+      "field_name": "embedding",
+      "index_type": "AUTOINDEX",
+      "metric_type": "COSINE",
+      "search_params": {}
+    }
+  },
+  "manifest_format_version": 2,
+  "partitions": {
+    "_default": {
+      "data_files": [
+        "data/data_000001_000001.parquet",
+        "data/data_000002_000002.parquet",
+        "data/data_000003_000003.parquet",
+        "data/data_000004_000004.parquet"
+      ],
+      "delta_files": []
+    }
+  },
+  "schema_version": 1,
+  "version": 5
+}

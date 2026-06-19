@@ -7,22 +7,11 @@ from typing import Any, Mapping
 from .collected_profile import COLLECTED_PERSONA_FIELDS, PROFILE_FACT_PROFILE_COLUMNS
 
 # Persona keys that mirror formal profile facts (require user confirmation before profiles UPDATE).
+# 注意：已删除硬条件字段映射，这些字段应该只在 profiles 表中
 _PERSONA_SELF_TO_PROFILE: dict[str, str] = {
-    "self_gender": "gender",
-    "self_age": "age",
-    "self_city": "city",
-    "self_district": "district",
-    "self_height": "height",
-    "self_education": "education",
-    "self_job": "job",
-    "self_marital_status": "marital_status",
-    "self_has_children": "has_children",
-    "self_children_count": "children_count",
-    "self_children_living_with_self": "children_living_with_self",
-    "self_smoking": "smoking",
-    "self_drinking": "drinking",
-    "self_relationship_goal": "relationship_goal",
-    "display_name": "name",
+    # 软偏好字段映射（如果需要）
+    # 硬条件字段（gender, age, city, height, education, job, marital_status, has_children, smoking, drinking, relationship_goal）
+    # 已删除，应该直接从 profiles 表读取
 }
 
 _WRITABLE_PROFILE_COLUMNS = frozenset(
@@ -115,6 +104,71 @@ _PROFILE_FIELD_LABELS: dict[str, str] = {
 }
 
 
+# 可量化字段白名单：只有这些字段才能写入 persona_part（结构化数据）
+#
+# 判断标准：
+# 1. 数值范围：明确的数字范围（如年龄26-30、身高170-180）
+# 2. 枚举类型：明确的有限选项（如MBTI 16种、婚姻状态3种）
+# 3. 布尔值：明确的是/否（如是否接受异地）
+# 4. 地理位置：明确的城市/区县（如北京、朝阳区）
+# 5. 学历等级：明确的学历层次（如硕士、本科）
+# 6. 标签：明确的标签体系（如必须有的标签、必须没有的标签）
+#
+# 注意：主观描述（性格温柔、重视家庭）不属于可量化字段
+# 这些字段不在实时对话 patch 中，需要 LLM 会话结束后提炼
+#
+# 修正：区分可量化的"搜索条件"和"用户特质"
+# 注意：smoking, drinking, relationship_goal, has_children 等硬条件在 profiles 表中
+QUANTIFIABLE_FIELDS = frozenset({
+    # 数值范围（明确的数字范围）
+    "age", "age_min", "age_max",
+    "height", "height_min", "height_max",
+    "income", "income_min", "income_max",
+
+    # 枚举类型（明确的有限选项 - 软偏好）
+    "mbti_type", "personality_type",
+
+    # 布尔值（明确的是/否 - 软偏好）
+    "accept_partner_children", "accept_long_distance",
+
+    # 地理位置（明确的城市/区县）
+    "cities", "districts", "city", "district",
+
+    # 学历等级（明确的学历层次）
+    "education", "education_min",
+
+    # 标签（明确的标签体系）
+    "must_have_tags", "must_not_have_tags",
+})
+
+# 可量化的"搜索条件"字段（应该分流到 search_part）
+# 这些字段用于搜索筛选，不是用户特质
+QUANTIFIABLE_SEARCH_FIELDS = frozenset({
+    # 数值范围（搜索条件）
+    "age_min", "age_max",
+    "height_min", "height_max",
+    "income_min", "income_max",
+    "education_min",
+
+    # 地理位置（搜索条件）
+    "cities", "districts", "city", "district",
+})
+
+# 可量化的"用户特质"字段（应该分流到 persona_part）
+# 这些字段描述用户自身特征，不是搜索条件
+# 注意：smoking, drinking, relationship_goal 是硬条件，应该在 profiles 表中
+QUANTIFIABLE_USER_TRAIT_FIELDS = frozenset({
+    # 枚举类型（用户特质 - 软偏好）
+    "mbti_type", "personality_type",
+
+    # 布尔值（用户特质 - 软偏好）
+    "accept_partner_children", "accept_long_distance",
+
+    # 标签（用户特质）
+    "must_have_tags", "must_not_have_tags",
+})
+
+
 def profile_field_label(field_name: str) -> str:
     return _PROFILE_FIELD_LABELS.get(str(field_name or "").strip(), str(field_name or "").strip())
 
@@ -141,7 +195,23 @@ def is_search_criteria_key(key: str) -> bool:
 
 
 def split_persona_patch(patch: Mapping[str, Any] | None) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
-    """Return (profile_patch, persona_patch, search_criteria_patch)."""
+    """Return (profile_patch, persona_patch, search_criteria_patch).
+
+    分流优先级（修正后）：
+    1. 特殊标识符（profile_id, user_key） → persona_part
+    2. profile 字段（_WRITABLE_PROFILE_COLUMNS） → profile_part
+    3. self_ 字段映射（_PERSONA_SELF_TO_PROFILE） → profile_part
+    4. 可量化的搜索条件（QUANTIFIABLE_SEARCH_FIELDS） → search_part ← 修正
+    5. 可量化的用户特质（QUANTIFIABLE_USER_TRAIT_FIELDS） → persona_part ← 修正
+    6. 其他搜索条件字段（黑名单排除） → search_part
+    7. persona 字段（COLLECTED_PERSONA_FIELDS） → persona_part
+    8. 兜底 → persona_part
+
+    关键修正：
+    - 区分"可量化的搜索条件"（cities, age_min）和"可量化的用户特质"（mbti_type, smoking）
+    - 搜索条件 → search_part（用于筛选候选人）
+    - 用户特质 → persona_part（描述用户自身特征）
+    """
 
     profile_part: dict[str, Any] = {}
     persona_part: dict[str, Any] = {}
@@ -151,21 +221,43 @@ def split_persona_patch(patch: Mapping[str, Any] | None) -> tuple[dict[str, Any]
         key = str(raw_key or "").strip()
         if not key or value in (None, "", [], {}):
             continue
+
+        # 第1层：特殊标识符
         if key in {"profile_id", "user_key"}:
             persona_part[key] = value
             continue
+
+        # 第2层：profile 字段（硬约束）
         if key in _WRITABLE_PROFILE_COLUMNS:
             profile_part[key] = value
             continue
+
+        # 第3层：self_ 字段映射（硬约束）
         if key in _PERSONA_SELF_TO_PROFILE:
             profile_part[_PERSONA_SELF_TO_PROFILE[key]] = value
             continue
+
+        # 第4层：可量化的搜索条件（优先分流到 search_part）← 修正
+        if key in QUANTIFIABLE_SEARCH_FIELDS:
+            search_part[key] = value  # 搜索条件 → search_part
+            continue
+
+        # 第5层：可量化的用户特质（优先分流到 persona_part）← 修正
+        if key in QUANTIFIABLE_USER_TRAIT_FIELDS:
+            persona_part[key] = value  # 用户特质 → persona_part
+            continue
+
+        # 第6层：其他搜索条件字段（黑名单排除）
         if is_search_criteria_key(key):
             search_part[key] = value
             continue
+
+        # 第7层：persona 字段
         if key in COLLECTED_PERSONA_FIELDS or key.startswith("target_") or key.startswith("self_"):
             persona_part[key] = value
             continue
+
+        # 第8层：兜底
         persona_part[key] = value
 
     return profile_part, persona_part, search_part
@@ -199,18 +291,30 @@ def merge_working_criteria(
 ) -> dict[str, Any]:
     working = dict((session_state or {}).get("working_criteria") or {})
     incoming = dict(criteria or {})
+
+    # ✅ 修复：如果用户传了 cities，就清理旧的 city 字段
+    if "cities" in incoming:
+        working.pop("city", None)
+
     for key, value in incoming.items():
         if is_search_criteria_key(key) and value not in (None, "", [], {}):
             if key == "city" and "cities" not in incoming:
                 working["cities"] = [value] if not isinstance(value, list) else value
             else:
                 working[key] = value
+
     merged = dict(working)
     merged.update(incoming)
+
+    # ✅ 修复：确保最终结果中 city 字段被清理
+    if "cities" in merged:
+        merged.pop("city", None)
+
     if "city" in merged and "cities" not in merged:
         city = merged.pop("city", None)
         if city not in (None, "", [], {}):
             merged["cities"] = [city] if not isinstance(city, list) else city
+
     return merged
 
 
@@ -220,4 +324,5 @@ __all__ = [
     "merge_working_criteria",
     "profile_field_label",
     "split_persona_patch",
+    "QUANTIFIABLE_FIELDS",  # 新增导出：可量化字段白名单
 ]

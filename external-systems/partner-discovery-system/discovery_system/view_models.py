@@ -134,6 +134,20 @@ def _personality_card_badges_enabled() -> bool:
 
 
 def build_candidate_card(candidate: dict[str, Any], *, reason_summary: str = "") -> dict[str, Any]:
+    """构建候选人卡片
+
+    改进：添加字段验证，确保字段符合规范
+
+    Args:
+        candidate: 候选人数据字典
+        reason_summary: 推荐理由（可选）
+
+    Returns:
+        候选人卡片字典
+
+    字段规范参考：
+    docs/field_spec.md
+    """
     profile = dict(candidate.get("profile") or {})
     profile_id = int(candidate.get("id") or 0)
     name = str(candidate.get("name") or "未命名")
@@ -147,14 +161,22 @@ def build_candidate_card(candidate: dict[str, Any], *, reason_summary: str = "")
     subtitle_parts = [str(part).strip() for part in (city, job, education) if str(part or "").strip()]
     photo_preview = list(candidate.get("photo_preview") or [])
 
-    # === Phase 1: 增加 personality 字段 ===
+    # === Phase 1: 构建候选人卡片 ===
+    # ✅ 修复：将整数score转换为0-1范围的match_score
+    # 搜索算法返回整数score（如118），前端期望浮点数match_score（0-1范围）
+    # 假设最大分数是200（基于搜索算法的累加项：每项2-20分，最多10-15个维度）
+    raw_score = candidate.get("score") or candidate.get("fit_score") or 0
+    max_score = 200  # 搜索算法的最大可能分数
+    # 转换为0-1范围，并clamp到合理范围
+    match_score = min(1.0, max(0.0, raw_score / max_score))
+
     card: dict[str, Any] = {
         "card_id": f"candidate-{profile_id}",
         "profile_id": profile_id,
         "title": " ".join(title_parts).strip(),
         "subtitle": " · ".join(subtitle_parts),
         "cover_image_url": photo_preview[0] if photo_preview else None,
-        "match_score": candidate.get("score") or candidate.get("fit_score"),
+        "match_score": match_score,  # ✅ 使用转换后的match_score
         "trust_badges": _build_trust_badges(candidate),
         "reason_summary": reason_summary or _default_reason_summary(candidate),
         "match_highlights": _build_match_highlights(candidate, reason_summary=reason_summary),
@@ -168,7 +190,7 @@ def build_candidate_card(candidate: dict[str, Any], *, reason_summary: str = "")
         },
     }
 
-    # 注入 personality_traits（如果存在）
+    # === Phase 2: 注入 personality_traits（如果存在）===
     personality_traits = candidate.get("personality_traits")
     if personality_traits and _personality_card_badges_enabled():
         card["personality_match_context"] = personality_traits
@@ -178,6 +200,16 @@ def build_candidate_card(candidate: dict[str, Any], *, reason_summary: str = "")
     personality_reasons = list((candidate.get("personality_reasoning") or {}).get("reasons") or [])
     if personality_reasons:
         card["personality_reasons"] = personality_reasons[:3]
+
+    # === Phase 3: 字段验证（新增）===
+    from .field_validator import validate_candidate_card, log_validation_errors
+
+    errors = validate_candidate_card(card)
+    if errors:
+        log_validation_errors(
+            errors,
+            context=f"构建候选人卡片: profile_id={profile_id}, name={name}"
+        )
 
     return card
 

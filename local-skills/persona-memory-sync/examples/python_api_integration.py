@@ -39,8 +39,10 @@ def build_demo_memory_update() -> dict:
         "user_key": "demo-user",
         "source_type": "explicit",
         "patch": {
-            "self_city": "上海",
-            "self_relationship_goal": "认真恋爱",
+            # 硬条件字段示例（应该写入 profiles 表）
+            "city": "上海",
+            "relationship_goal": "认真恋爱",
+            # 软偏好字段示例（应该写入 persona 表）
             "preferred_traits": "沟通顺畅,情绪稳定",
         },
         "sync_profile": True,

@@ -352,11 +352,57 @@ def search_partner_candidates(
     session: StoredSession,
     *,
     criteria: dict[str, Any],
+    personality_match: dict[str, Any] = {},  # ← 新增参数：性格匹配条件
     limit: int,
     source: str | None = None,
     load_profile: Callable[..., Any] | None = None,
     search: Callable[..., dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
+    """搜索候选人（支持性格向量筛选）
+
+    Args:
+        session: 会话对象
+        criteria: 结构化查询条件（硬约束：性别、年龄、城市）
+        personality_match: 性格匹配条件（软约束：向量筛选）
+            示例：
+            {
+                "match_traits": ["外向", "温柔"],
+                "similarity_threshold": 0.75
+            }
+            - match_traits: 想要匹配的性格特质列表
+            - similarity_threshold: 相似度阈值（0.0-1.0，默认0.75）
+        limit: 结果数量限制
+        source: 数据源
+        load_profile: 加载用户profile的函数
+        search: 搜索执行函数
+
+    Returns:
+        搜索结果，包含候选人列表 + 摘要信息 + 筛选统计
+    """
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 转换 personality_match 为 vector_filter_json
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    vector_filter_json = None
+    if personality_match:
+        match_traits = personality_match.get("match_traits") or []
+        similarity_threshold = float(personality_match.get("similarity_threshold") or 0.75)
+
+        if match_traits:
+            # 构建 vector_filter_json 格式
+            vector_filter_json = {
+                "include": {
+                    "personality_traits": {
+                        "text": "、".join(match_traits),  # 用逗号连接多个特质
+                        "similarity_threshold": similarity_threshold
+                    }
+                }
+            }
+            _logger.info(
+                "【性格匹配转换】personality_match=%s → vector_filter_json=%s",
+                personality_match,
+                vector_filter_json
+            )
+
     return search_partner_candidates_with(
         session,
         criteria=criteria,
@@ -364,6 +410,7 @@ def search_partner_candidates(
         source=source if source is not None else profile_source(),
         load_profile=load_profile or load_self_profile,
         search=search or search_profiles,
+        vector_filter_json=vector_filter_json,  # ← 传递转换后的参数
     )
 
 
@@ -375,6 +422,10 @@ def search_partner_candidates_with(
     source: str,
     load_profile: Callable[..., Any],
     search: Callable[..., dict[str, Any]],
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 新增参数：向量筛选条件（支持排除和包含）
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    vector_filter_json: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     # ✅ 可观测性增强：入口日志
     _logger.info(
@@ -520,6 +571,77 @@ def search_partner_candidates_with(
 
         response["request_meta"] = request_meta
 
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # 新增：向量筛选（支持排除和包含）
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        if vector_filter_json:
+            results_before_filter = response.get("results") or []
+            candidate_ids_before_filter = []
+            for candidate in results_before_filter:
+                candidate_id = candidate.get("id")
+                if candidate_id:
+                    try:
+                        candidate_ids_before_filter.append(int(candidate_id))
+                    except (TypeError, ValueError):
+                        pass
+
+            if candidate_ids_before_filter:
+                import asyncio
+                from match_domain.vector_filter import vector_filter_candidates
+
+                _logger.info(
+                    "【向量筛选开始】session_id=%s candidate_count=%s filter_config=%s",
+                    session.session_id,
+                    len(candidate_ids_before_filter),
+                    vector_filter_json,
+                )
+
+                # 在同步函数中调用异步代码
+                try:
+                    excluded_ids, included_ids, filter_trace = asyncio.run(
+                        vector_filter_candidates(
+                            vector_filter_json=vector_filter_json,
+                            candidate_ids=candidate_ids_before_filter,
+                            user_id=session.requester_id,
+                        )
+                    )
+
+                    # 过滤结果
+                    filtered_results = []
+                    for candidate in results_before_filter:
+                        candidate_id = candidate.get("id")
+                        if candidate_id:
+                            try:
+                                if int(candidate_id) in included_ids and int(candidate_id) not in excluded_ids:
+                                    filtered_results.append(candidate)
+                            except (TypeError, ValueError):
+                                pass
+
+                    response["results"] = filtered_results
+                    response["result_count"] = len(filtered_results)
+                    response["has_match"] = bool(filtered_results)
+                    response["vector_filter_trace"] = filter_trace
+
+                    _logger.info(
+                        "【向量筛选完成】session_id=%s before_count=%s after_count=%s excluded=%s",
+                        session.session_id,
+                        len(results_before_filter),
+                        len(filtered_results),
+                        len(excluded_ids),
+                    )
+
+                except Exception as exc:
+                    _logger.error(
+                        "【向量筛选失败】session_id=%s error=%s",
+                        session.session_id,
+                        str(exc)[:200],
+                    )
+                    # 失败时保留原始结果
+                    response["vector_filter_trace"] = {
+                        "error": str(exc)[:200],
+                        "mode": "failed",
+                    }
+
         # ✅ Agent Native 改进：移除性格特质增强逻辑的环境变量检查
         # 这些环境变量控制的是 Tool 层的性格增强逻辑（已移除）
         # Agent 层会自主决定是否使用性格特质数据，不需要环境变量控制
@@ -577,6 +699,49 @@ def search_partner_candidates_with(
                             candidate["personality_availability"] = traits_ctx.availability
                             personality_trace["candidate_traits_count"] = int(personality_trace["candidate_traits_count"]) + 1
 
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # 新增：加载完整摘要信息（供 Agent 判断）
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        results = response.get("results") or []
+        if results:
+            import asyncio
+            from match_domain.summary_loader import load_complete_summary, build_summary_meta
+
+            _logger.info(
+                "【摘要加载开始】session_id=%s candidate_count=%s",
+                session.session_id,
+                len(results),
+            )
+
+            summary_loaded_count = 0
+            for candidate in results:
+                candidate_id = candidate.get("id")
+                if candidate_id:
+                    try:
+                        # 在同步函数中调用异步代码
+                        summary_dict = asyncio.run(
+                            load_complete_summary(user_id=int(candidate_id))
+                        )
+
+                        if summary_dict:
+                            candidate["summary"] = summary_dict
+                            candidate["summary_meta"] = build_summary_meta(summary_dict)
+                            summary_loaded_count += 1
+                    except Exception as exc:
+                        _logger.warning(
+                            "【摘要加载失败】candidate_id=%s error=%s",
+                            candidate_id,
+                            str(exc)[:100],
+                        )
+
+            personality_trace["summary_loaded_count"] = summary_loaded_count
+
+            _logger.info(
+                "【摘要加载完成】session_id=%s loaded_count=%s",
+                session.session_id,
+                summary_loaded_count,
+            )
+
         # ✅ Agent Native 改进：移除性格特质增强逻辑
         # Tool 层只返回原始性格特质数据，Agent 自主决定如何使用
         # - 是否生成性格推荐理由？
@@ -621,37 +786,37 @@ def search_partner_candidates_with(
         }
 
 
-def propose_requester_profile_update(
-    storage: Any,
-    session: StoredSession,
-    *,
-    patch: dict[str, Any],
-    evidence_text: str | None = None,
-    load_profile: Callable[..., Any] | None = None,
-    source: str | None = None,
-    now: datetime | None = None,
-) -> dict[str, Any]:
-    profile_part, _, _ = split_persona_patch(patch)
-    if not profile_part:
-        return {
-            "proposed": False,
-            "error_code": "empty_profile_patch",
-            "message": "没有需要确认的资料字段。",
-        }
-    resolved_source = source if source is not None else profile_source()
-    current_profile = load_requester_profile_with(
-        session,
-        source=resolved_source,
-        load_profile=load_profile or load_self_profile,
-    )
-    return _propose_profile_update_impl(
-        storage,
-        session,
-        patch=profile_part,
-        evidence_text=evidence_text,
-        current_profile=current_profile,
-        now=now,
-    )
+# def propose_requester_profile_update(
+#     storage: Any,
+#     session: StoredSession,
+#     *,
+#     patch: dict[str, Any],
+#     evidence_text: str | None = None,
+#     load_profile: Callable[..., Any] | None = None,
+#     source: str | None = None,
+#     now: datetime | None = None,
+# ) -> dict[str, Any]:
+#     profile_part, _, _ = split_persona_patch(patch)
+#     if not profile_part:
+#         return {
+#             "proposed": False,
+#             "error_code": "empty_profile_patch",
+#             "message": "没有需要确认的资料字段。",
+#         }
+#     resolved_source = source if source is not None else profile_source()
+#     current_profile = load_requester_profile_with(
+#         session,
+#         source=resolved_source,
+#         load_profile=load_profile or load_self_profile,
+#     )
+#     return _propose_profile_update_impl(
+#         storage,
+#         session,
+#         patch=profile_part,
+#         evidence_text=evidence_text,
+#         current_profile=current_profile,
+#         now=now,
+#     )
 
 
 def sync_requester_persona_memory(
@@ -664,15 +829,35 @@ def sync_requester_persona_memory(
     load_profile: Callable[..., Any] | None = None,
     source: str | None = None,
 ) -> dict[str, Any]:
-    normalized_patch = dict(patch or {})
-    if not normalized_patch:
-        return {
-            "synced": False,
-            "error_code": "empty_persona_patch",
-            "message": "没有可写入画像的字段。",
-        }
+    """硬禁用：不执行任何写入逻辑
 
-    profile_part, persona_part, search_part = split_persona_patch(normalized_patch)
+    禁用原因：验证方案文档的"不插手"理想设计是否可行
+
+    禁用效果：
+    - ✅ 不写入 working_criteria（search_part）
+    - ✅ 不写入 user_personas（persona_part）
+    - ✅ 不写入 profile_proposals（profile_part）
+    - ✅ 完全不插手实时对话阶段
+
+    验证目标：
+    - Agent 自己是否能记住搜索条件？
+    - 搜索结果是否仍然正确？
+    - 会话结束后的画像沉淀是否正常？
+
+    测试方式：真实前端测试，观察 Agent 行为和搜索结果
+    """
+    _logger.info("【硬禁用】sync_requester_persona_memory 已禁用，不执行任何写入逻辑")
+
+    # 硬禁用：直接返回，不执行任何逻辑
+    return {
+        "synced": False,
+        "error_code": "disabled_for_testing",
+        "message": "硬禁用：验证方案文档的'不插手'理想设计",
+        "test_mode": True,
+        "user_key": str(session.requester_id),
+        "session_id": session.session_id,
+        "patch_received": dict(patch or {}),
+    }
     profile_proposals: list[dict[str, Any]] = []
 
     if search_part:
@@ -1067,7 +1252,7 @@ __all__ = [
     "persona_memory_source",
     "persist_search_run",
     "profile_source",
-    "propose_requester_profile_update",
+    # "propose_requester_profile_update",  # 已注释：暂时禁用此工具
     "run_discovery_collect_then_search",
     "search_partner_candidates",
     "sync_requester_persona_memory",

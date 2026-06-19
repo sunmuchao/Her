@@ -438,11 +438,11 @@ PHOTO_VERIFICATION_LEVEL_ORDER = {
     "offline_verified": 4,
 }
 
+# 档案状态优先级排序（简化版：只有3个状态）
 PROFILE_STATUS_ORDER = {
-    "archived": 0,
+    "inactive": 0,  # 最低优先级
     "matched": 1,
-    "paused": 2,
-    "active": 3,
+    "active": 2,    # 最高优先级
 }
 
 EDUCATION_ORDER = {
@@ -1017,6 +1017,7 @@ def _build_search_ranking_runtime() -> SearchRankingRuntime:
         as_text=as_text,
         strip_internal_fields=strip_internal_fields,
         diversity_job_patterns=DIVERSITY_JOB_PATTERNS,
+        result_sort_key=result_sort_key,
         diversity_penalty_tiers=ranking_params["diversity_penalty_tiers"],
         score_gap_severe_concession=ranking_params["score_gap_severe_concession"],
         score_gap_high_risk_tail=ranking_params["score_gap_high_risk_tail"],

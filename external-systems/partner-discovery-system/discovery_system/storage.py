@@ -64,6 +64,7 @@ class StoredSession:
     view: dict[str, Any]
     visible_action_ids: list[str] = field(default_factory=list)
     state: dict[str, Any] = field(default_factory=dict)
+    processed_at: datetime | None = None  # ✅ 新增：上次处理摘要的时间（记录会话的 updated_at）
 
 
 @dataclass
@@ -105,6 +106,25 @@ class StoredViewSnapshot:
     view: dict[str, Any]
     trace_id: str | None
     created_at: datetime
+
+
+@dataclass
+class StoredConversationSummary:
+    """对话摘要存储类
+
+    用于存储 LLM 生成的用户特质、情感状态、择偶期望等主观描述。
+    可来自多种对话类型：discovery session、chat thread 等。
+    """
+    summary_id: int
+    conversation_id: str       # 对话ID（可以是 discovery session、chat thread 等）
+    conversation_type: str     # 对话类型（discovery/chat/assessment 等）
+    requester_id: int          # 用户ID
+    profile_id: int            # 画像ID
+    summary: str               # 摘要内容（100-200字）
+    created_at: datetime
+    updated_at: datetime
+
+
 connect_db, initialize_database, reset_all_tables = build_external_storage_helpers(
     subsystem_name="Discovery",
     target="discovery",
@@ -169,6 +189,30 @@ class InMemoryDiscoveryStorage:
         ]
         # 按 updated_at 降序排列
         sessions.sort(key=lambda s: s.updated_at, reverse=True)
+        return sessions[:int(limit)]
+
+    def list_all_active_sessions(
+        self,
+        limit: int = 100,
+        updated_before: datetime | None = None,
+    ) -> list[StoredSession]:
+        """查询所有 active 状态的会话（用于定时任务）
+
+        Args:
+            limit: 最大返回数量
+            updated_before: 只返回 updated_at 早于该时间的会话
+
+        Returns:
+            active 状态的会话列表，按 updated_at 升序排列
+        """
+        sessions = [
+            deepcopy(session)
+            for session in self._sessions.values()
+            if session.status == "active"
+            and (updated_before is None or session.updated_at < updated_before)
+        ]
+        # 按 updated_at 升序排列（最旧的优先）
+        sessions.sort(key=lambda s: s.updated_at, reverse=False)
         return sessions[:int(limit)]
 
     def save_action(self, action: StoredAction) -> None:
@@ -618,6 +662,76 @@ class MySQLDiscoveryStorage:
                 ).fetchall()
         finally:
             conn.close()
+        sessions: list[StoredSession] = []
+        for raw_row in rows:
+            row = row_to_dict(raw_row)
+            if row is None:
+                continue
+            state = dict(json_loads(str(row.get("state_json") or "{}"), {}) or {})
+            visible_action_ids = [
+                str(item).strip()
+                for item in list(state.get("visible_action_ids") or [])
+                if str(item or "").strip()
+            ]
+            sessions.append(
+                StoredSession(
+                    session_id=str(row["session_id"]),
+                    requester_id=int(row["requester_id"]),
+                    profile_id=int(row["profile_id"]),
+                    status=str(row["status"]),
+                    phase=str(row["phase"]),
+                    created_at=_parse_datetime(row.get("created_at")),
+                    updated_at=_parse_datetime(row.get("updated_at")),
+                    view=dict(json_loads(str(row.get("latest_view_json") or "{}"), {}) or {}),
+                    visible_action_ids=visible_action_ids,
+                    state=state,
+                )
+            )
+        return sessions
+
+    def list_all_active_sessions(
+        self,
+        limit: int = 100,
+        updated_before: datetime | None = None,
+    ) -> list[StoredSession]:
+        """查询所有 active 状态的会话（用于定时任务）
+
+        Args:
+            limit: 最大返回数量
+            updated_before: 只返回 updated_at 早于该时间的会话（用于找出无活动的会话）
+
+        Returns:
+            active 状态的会话列表，按 updated_at 升序排列（最旧的优先）
+        """
+        conn = self._open()
+        try:
+            if updated_before is None:
+                rows = conn.execute(
+                    """
+                    SELECT session_id, requester_id, profile_id, status, phase,
+                           state_json, latest_view_json, created_at, updated_at
+                    FROM discovery_agent_sessions
+                    WHERE status = 'active'
+                    ORDER BY updated_at ASC
+                    LIMIT ?
+                    """,
+                    (int(limit),),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT session_id, requester_id, profile_id, status, phase,
+                           state_json, latest_view_json, created_at, updated_at
+                    FROM discovery_agent_sessions
+                    WHERE status = 'active' AND updated_at < ?
+                    ORDER BY updated_at ASC
+                    LIMIT ?
+                    """,
+                    (updated_before, int(limit)),
+                ).fetchall()
+        finally:
+            conn.close()
+
         sessions: list[StoredSession] = []
         for raw_row in rows:
             row = row_to_dict(raw_row)

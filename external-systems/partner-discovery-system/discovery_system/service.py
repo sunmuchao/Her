@@ -49,7 +49,7 @@ from .service_integrations import (
     persona_memory_source as _persona_memory_source_impl,
     persist_search_run as _persist_search_run_impl,
     profile_source as _profile_source_impl,
-    propose_requester_profile_update as _propose_requester_profile_update_impl,
+    # propose_requester_profile_update as _propose_requester_profile_update_impl,  # 已注释：暂时禁用此工具
     search_partner_candidates as _search_partner_candidates_impl,
     sync_requester_persona_memory as _sync_requester_persona_memory_impl,
 )
@@ -282,7 +282,110 @@ class DiscoveryService:
             requester_id=session.requester_id,
             profile_id=session.profile_id,
         )
+
+        # 新增：异步处理用户上一个会话（触发摘要提炼）
+        # 不阻塞主流程，后台偷偷处理
+        # ✅ 修复：传入刚创建的会话 ID，避免把新会话误当作上一个会话处理
+        self._trigger_previous_session_processing(
+            requester_id=requester_id,
+            profile_id=profile_id,
+            conversation_type="discovery",
+            current_session_id=session.session_id,  # ✅ 新增：传入刚创建的会话 ID
+        )
+
         return self._session_payload(session)
+
+    def switch_session(
+        self,
+        *,
+        from_session_id: str,  # ✅ 当前会话（切换前）
+        to_session_id: str,    # ✅ 目标会话（切换后）
+        requester_id: int,
+        profile_id: int,
+    ) -> dict[str, Any]:
+        """切换会话：检查切换前的会话是否有新增内容
+
+        使用场景：
+        - 用户从历史会话A切换到历史会话B
+        - 前端传入 from_session_id（当前会话）和 to_session_id（目标会话）
+        - 后端检查 from_session_id 是否有新增内容，如果有则处理
+
+        Args:
+            from_session_id: 当前会话ID（切换前的会话）
+            to_session_id: 目标会话ID（切换后的会话）
+            requester_id: 用户ID
+            profile_id: 画像ID
+
+        Returns:
+            目标会话的数据
+        """
+        # Step 1：检查切换前的会话是否有新增内容
+        self._trigger_session_processing_by_id(
+            session_id=from_session_id,
+            requester_id=requester_id,
+            profile_id=profile_id,
+            conversation_type="discovery",
+        )
+
+        # Step 2：返回目标会话的数据
+        target_session = self.storage.get_session(to_session_id)
+        if not target_session:
+            raise ValueError(f"目标会话 {to_session_id} 不存在")
+
+        # Step 3：恢复目标会话（设置 session_restore funnel）
+        from .view_models import audit_event
+        audit_event(
+            action="discovery.session.restore",
+            resource_type="discovery_session",
+            outcome="read",
+            resource_id=to_session_id,
+            requester_id=requester_id,
+            profile_id=profile_id,
+        )
+
+        return self._session_payload(target_session)
+
+    def _trigger_session_processing_by_id(
+        self,
+        session_id: str,
+        requester_id: int,
+        profile_id: int,
+        conversation_type: str = "discovery",
+    ) -> None:
+        """检查并处理指定会话的新增内容
+
+        Args:
+            session_id: 要检查的会话ID
+            requester_id: 用户ID
+            profile_id: 画像ID
+            conversation_type: 对话类型
+        """
+        import logging
+        from match_domain.session_end_trigger import process_session_if_has_new_content
+
+        _logger = logging.getLogger(__name__)
+
+        try:
+            task = process_session_if_has_new_content(
+                session_id=session_id,
+                requester_id=requester_id,
+                profile_id=profile_id,
+                storage=self.storage,
+                conversation_type=conversation_type,
+            )
+
+            if task:
+                _logger.info(
+                    f"切换会话触发处理: session_id={session_id}, "
+                    f"requester_id={requester_id}, task_name={task.name}"
+                )
+
+        except Exception as exc:
+            _logger.error(
+                f"切换会话触发处理失败: session_id={session_id}, "
+                f"requester_id={requester_id}, error={exc}"
+            )
+            # 不抛出异常，避免阻塞切换会话
 
     def process_turn(
         self,
@@ -700,10 +803,15 @@ class DiscoveryService:
         recent_timeline = clone_view({"timeline": session.view.get("timeline") or []}).get("timeline") or []
         tool_call_buffer: list[DiscoveryToolCall] = []
 
-        def _search_partner_candidates(criteria: dict[str, Any], limit: int) -> dict[str, Any]:
+        def _search_partner_candidates(
+            criteria: dict[str, Any],
+            personality_match: dict[str, Any],
+            limit: int
+        ) -> dict[str, Any]:
             response = self._search_partner_candidates(
                 session,
                 criteria=criteria,
+                personality_match=personality_match,
                 limit=limit,
             )
             self._append_tool_call(
@@ -711,6 +819,7 @@ class DiscoveryService:
                 "search_partner_candidates",
                 {
                     "criteria": deepcopy(criteria),
+                    "personality_match": deepcopy(personality_match),
                     "limit": int(limit or 0),
                 },
                 response,
@@ -733,30 +842,30 @@ class DiscoveryService:
             )
             return result
 
-        def _propose_requester_profile_update(patch_json: str, evidence_text: str = "") -> dict[str, Any]:
-            import json
-
-            patch = json.loads(str(patch_json or "{}"))
-            if not isinstance(patch, dict):
-                raise ValueError("patch_json must decode into a JSON object")
-            result = self._propose_requester_profile_update(
-                session,
-                patch=patch,
-                evidence_text=str(evidence_text or "").strip() or None,
-                now=now,
-            )
-            if result.get("proposed"):
-                pending_timeline = list(session.state.get("profile_prompts_for_timeline") or [])
-                pending_timeline.append(result)
-                session.state["profile_prompts_for_timeline"] = pending_timeline
-            self._append_tool_call(
-                tool_call_buffer,
-                "propose_requester_profile_update",
-                {"patch": deepcopy(patch), "evidence_text": evidence_text},
-                result,
-                status="succeeded" if result.get("proposed") else "skipped",
-            )
-            return result
+        # def _propose_requester_profile_update(patch_json: str, evidence_text: str = "") -> dict[str, Any]:
+        #     import json
+        #
+        #     patch = json.loads(str(patch_json or "{}"))
+        #     if not isinstance(patch, dict):
+        #         raise ValueError("patch_json must decode into a JSON object")
+        #     result = self._propose_requester_profile_update(
+        #         session,
+        #         patch=patch,
+        #         evidence_text=str(evidence_text or "").strip() or None,
+        #         now=now,
+        #     )
+        #     if result.get("proposed"):
+        #         pending_timeline = list(session.state.get("profile_prompts_for_timeline") or [])
+        #         pending_timeline.append(result)
+        #         session.state["profile_prompts_for_timeline"] = pending_timeline
+        #     self._append_tool_call(
+        #         tool_call_buffer,
+        #         "propose_requester_profile_update",
+        #         {"patch": deepcopy(patch), "evidence_text": evidence_text},
+        #         result,
+        #         status="succeeded" if result.get("proposed") else "skipped",
+        #     )
+        #     return result
 
         def _create_saved_search_subscription_from_last_search() -> dict[str, Any]:
             result = self._create_saved_search_subscription_from_last_search(
@@ -804,7 +913,7 @@ class DiscoveryService:
             ),
             search_partner_candidates=_search_partner_candidates,
             sync_requester_persona_memory=_sync_requester_persona_memory,
-            propose_requester_profile_update=_propose_requester_profile_update,
+            # propose_requester_profile_update=_propose_requester_profile_update,  # 已注释：暂时禁用此工具
             create_saved_search_subscription_from_last_search=_create_saved_search_subscription_from_last_search,
             suggest_assessment=_suggest_assessment,
             tool_call_buffer=tool_call_buffer,
@@ -904,13 +1013,49 @@ class DiscoveryService:
                         suggested_actions=[],
                     )
                     assistant_body = decision.assistant_message
-        session.view["timeline"] = list(session.view.get("timeline") or []) + [
-            assistant_message(
-                self.storage.next_item_id("msg-a"),
-                assistant_body,
-                created_at=now,
-            )
-        ]
+        # ====================================================================
+        # 方案C：支持多条消息（reply_to_user + show_candidates）
+        # ====================================================================
+        # 检查是否有多个 payload
+        all_payloads = getattr(decision, "_all_payloads", None)
+
+        if all_payloads and len(all_payloads) > 1:
+            # 方案C：处理多条消息
+            # 按顺序添加每条消息到 timeline
+            for payload in all_payloads:
+                kind = str(payload.get("kind") or "").strip()
+                message = str(payload.get("assistant_message") or "").strip()
+
+                if kind == "reply":
+                    # reply_to_user 的消息：纯对话
+                    session.view["timeline"].append(
+                        assistant_message(
+                            self.storage.next_item_id("msg-a"),
+                            message,
+                            created_at=now,
+                        )
+                    )
+                elif kind == "show":
+                    # show_candidates 的消息：展示候选人
+                    # 这条消息后面会跟着候选人卡片
+                    assistant_body = message
+                    # 添加 show_candidates 的消息
+                    session.view["timeline"].append(
+                        assistant_message(
+                            self.storage.next_item_id("msg-a"),
+                            assistant_body,
+                            created_at=now,
+                        )
+                    )
+        else:
+            # 原有逻辑：只添加一条消息
+            session.view["timeline"] = list(session.view.get("timeline") or []) + [
+                assistant_message(
+                    self.storage.next_item_id("msg-a"),
+                    assistant_body,
+                    created_at=now,
+                )
+            ]
         # 处理测评引导卡片
         assessment_payload = runtime_result.assessment_payload
         if assessment_payload and assessment_payload.get("suggest") and assessment_payload.get("card"):
@@ -1385,11 +1530,13 @@ class DiscoveryService:
         session: StoredSession,
         *,
         criteria: dict[str, Any],
+        personality_match: dict[str, Any] = {},  # ← 新增参数
         limit: int,
     ) -> dict[str, Any]:
         return _search_partner_candidates_impl(
             session,
             criteria=criteria,
+            personality_match=personality_match,  # ← 传递参数
             limit=limit,
             source=self._profile_source(),
             load_profile=load_self_profile,
@@ -1419,23 +1566,23 @@ class DiscoveryService:
             source=self._profile_source(),
         )
 
-    def _propose_requester_profile_update(
-        self,
-        session: StoredSession,
-        *,
-        patch: dict[str, Any],
-        evidence_text: str | None = None,
-        now: datetime | None = None,
-    ) -> dict[str, Any]:
-        return _propose_requester_profile_update_impl(
-            self.storage,
-            session,
-            patch=patch,
-            evidence_text=evidence_text,
-            load_profile=load_self_profile,
-            source=self._profile_source(),
-            now=now,
-        )
+    # def _propose_requester_profile_update(
+    #     self,
+    #     session: StoredSession,
+    #     *,
+    #     patch: dict[str, Any],
+    #     evidence_text: str | None = None,
+    #     now: datetime | None = None,
+    # ) -> dict[str, Any]:
+    #     return _propose_requester_profile_update_impl(
+    #         self.storage,
+    #         session,
+    #         patch=patch,
+    #         evidence_text=evidence_text,
+    #         load_profile=load_self_profile,
+    #         source=self._profile_source(),
+    #         now=now,
+    #     )
 
     def confirm_profile_update(
         self,
@@ -1729,6 +1876,45 @@ class DiscoveryService:
             return None
         return self.agent_session_store.get_session(session_id)
 
+    def _trigger_previous_session_processing(
+        self,
+        requester_id: int,
+        profile_id: int,
+        conversation_type: str = "discovery",
+        current_session_id: str | None = None,  # ✅ 新增：传入刚创建的会话 ID
+    ) -> None:
+        """新建会话时，异步处理用户的上一个会话
+
+        关键设计：
+        - 不阻塞主流程（异步后台处理）
+        - 只在新建会话时触发（不影响当前对话）
+        - 从数据库加载聊天记录（避免时序漏洞）
+        - 传入 current_session_id 避免把新会话误当作上一个会话处理
+        """
+        import logging
+        from match_domain.session_end_trigger import process_previous_session_on_new_session
+
+        _logger = logging.getLogger(__name__)
+
+        try:
+            task = process_previous_session_on_new_session(
+                requester_id=requester_id,
+                profile_id=profile_id,
+                current_session_id=current_session_id,  # ✅ 新增：传入刚创建的会话 ID
+                storage=self.storage,
+                conversation_type=conversation_type,
+            )
+
+            if task:
+                _logger.info(
+                    f"触发上一个会话处理: requester_id={requester_id}, "
+                    f"profile_id={profile_id}, task_name={task.name}"
+                )
+
+        except Exception as exc:
+            _logger.error(f"触发上一个会话处理失败: requester_id={requester_id}, error={exc}")
+            # 不抛出异常，避免阻塞新建会话
+
     def _session_payload(self, session: StoredSession) -> dict[str, Any]:
         return {
             "session": {
@@ -1749,8 +1935,106 @@ class DiscoveryService:
 def create_default_discovery_service(*, discovery_dsn: str | None = None) -> DiscoveryService:
     resolved_dsn = str(discovery_dsn or os.environ.get("PARTNER_DISCOVERY_DB") or "").strip()
     storage = MySQLDiscoveryStorage(resolved_dsn) if resolved_dsn else InMemoryDiscoveryStorage()
+
+    # 新增：启动定时任务调度器
+    _start_background_scheduler(storage, discovery_dsn=resolved_dsn)
+
     return DiscoveryService(
         storage=storage,
         runtime=create_default_discovery_agent_runtime(),
         agent_session_store=create_default_discovery_agent_session_store(discovery_dsn=resolved_dsn),
     )
+
+
+def _start_background_scheduler(storage: Any, *, discovery_dsn: str | None = None) -> None:
+    """启动后台定时任务调度器
+
+    定时任务功能：
+    1. 每5分钟检查无活动会话（超过30分钟无活动）
+    2. 每10分钟检查失败的向量写入并重试（最多3次）
+    3. 每24小时清理旧版本向量（节省存储空间）
+    4. 自动触发摘要处理和向量写入
+
+    配置项：
+    - interval_minutes: 5分钟检查一次（会话）
+    - retry_interval_minutes: 10分钟检查一次（向量重试）
+    - cleanup_interval_hours: 24小时清理一次（版本清理）
+    - inactive_threshold_minutes: 30分钟无活动阈值
+    - max_retry_count: 最大重试次数3次
+    """
+    import asyncio
+    import logging
+    from match_domain.session_end_scheduler import (
+        start_inactive_session_checker,
+        start_vector_retry_checker,
+        start_version_cleanup_checker,
+    )
+
+    _logger = logging.getLogger(__name__)
+
+    try:
+        # 检查是否启用定时任务（默认启用）
+        enable_scheduler = os.environ.get("ENABLE_SESSION_END_SCHEDULER", "1")
+        if enable_scheduler != "1":
+            _logger.info("定时任务调度器已禁用: ENABLE_SESSION_END_SCHEDULER != 1")
+            return
+
+        # 获取 LLM 配置
+        llm_base_url = os.environ.get("HER_DISCOVERY_AGENT_BASE_URL")
+        llm_api_key = os.environ.get("HER_DISCOVERY_AGENT_API_KEY")
+        llm_model = os.environ.get("HER_DISCOVERY_AGENT_MODEL")
+        persona_dsn = os.environ.get("PERSONA_MEMORY_MYSQL_SOURCE")
+
+        # 创建异步任务
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # 如果事件循环已运行，创建三个任务
+            # 任务1：无活动会话检查
+            task1 = loop.create_task(
+                start_inactive_session_checker(
+                    storage=storage,
+                    interval_minutes=5,
+                    inactive_threshold_minutes=30,
+                    dsn=persona_dsn,
+                    llm_base_url=llm_base_url,
+                    llm_api_key=llm_api_key,
+                    llm_model=llm_model,
+                )
+            )
+            _logger.info(
+                f"无活动会话检查定时任务已启动: task_name={task1.get_name()}, "
+                f"interval=5分钟, threshold=30分钟"
+            )
+
+            # 任务2：向量重试检查
+            task2 = loop.create_task(
+                start_vector_retry_checker(
+                    storage=storage,
+                    interval_minutes=10,
+                    max_retry_count=3,
+                    dsn=persona_dsn,
+                )
+            )
+            _logger.info(
+                f"向量重试检查定时任务已启动: task_name={task2.get_name()}, "
+                f"interval=10分钟, max_retry=3次"
+            )
+
+            # 任务3：版本清理
+            task3 = loop.create_task(
+                start_version_cleanup_checker(
+                    storage=storage,
+                    interval_hours=24,
+                    dsn=persona_dsn,
+                )
+            )
+            _logger.info(
+                f"版本清理定时任务已启动: task_name={task3.get_name()}, "
+                f"interval=24小时"
+            )
+        else:
+            _logger.warning("事件循环未运行，无法启动定时任务调度器")
+
+    except Exception as exc:
+        _logger.error(f"启动定时任务调度器失败: {exc}")
+        # 不抛出异常，避免影响服务启动
