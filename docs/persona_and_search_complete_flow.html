@@ -1,0 +1,1489 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>画像写入与搜索完整流程 - 系统架构可视化</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+            padding: 30px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+        }
+
+        .header h1 {
+            font-size: 3em;
+            margin-bottom: 15px;
+            font-weight: 700;
+        }
+
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        .section {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+
+        .section-title {
+            font-size: 2em;
+            color: #667eea;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 3px solid #667eea;
+            display: flex;
+            align-items: center;
+        }
+
+        .section-title .icon {
+            font-size: 2.5em;
+            margin-right: 15px;
+        }
+
+        .flow-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .flow-step {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            border: 2px solid #e9ecef;
+            position: relative;
+            transition: all 0.3s ease;
+        }
+
+        .flow-step:hover {
+            border-color: #667eea;
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .flow-step-number {
+            position: absolute;
+            top: -10px;
+            left: 20px;
+            background: #667eea;
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.2em;
+        }
+
+        .flow-step-title {
+            font-size: 1.4em;
+            color: #495057;
+            margin-bottom: 15px;
+            padding-left: 50px;
+        }
+
+        .flow-step-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            padding-left: 50px;
+        }
+
+        .flow-box {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            border: 2px solid #dee2e6;
+        }
+
+        .flow-box-title {
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }
+
+        .code-snippet {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.9em;
+            overflow-x: auto;
+            margin-top: 10px;
+        }
+
+        .code-snippet .keyword {
+            color: #f92672;
+        }
+
+        .code-snippet .string {
+            color: #e6db74;
+        }
+
+        .code-snippet .comment {
+            color: #75715e;
+        }
+
+        .code-snippet .function {
+            color: #66d9ef;
+        }
+
+        .highlight-box {
+            background: #e3f2fd;
+            border-left: 5px solid #2196f3;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+        }
+
+        .warning-box {
+            background: #fff3e0;
+            border-left: 5px solid #ff9800;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+        }
+
+        .success-box {
+            background: #e8f5e9;
+            border-left: 5px solid #4caf50;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+
+        .data-table th {
+            background: #667eea;
+            color: white;
+            padding: 12px;
+            text-align: left;
+            font-weight: bold;
+        }
+
+        .data-table td {
+            padding: 12px;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .data-table tr:hover {
+            background: #f1f3f5;
+        }
+
+        .timeline {
+            position: relative;
+            padding-left: 50px;
+        }
+
+        .timeline-item {
+            position: relative;
+            padding-bottom: 30px;
+        }
+
+        .timeline-marker {
+            position: absolute;
+            left: -50px;
+            top: 0;
+            width: 30px;
+            height: 30px;
+            background: #667eea;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+
+        .timeline-line {
+            position: absolute;
+            left: -36px;
+            top: 30px;
+            width: 2px;
+            height: calc(100% + 10px);
+            background: #667eea;
+        }
+
+        .timeline-content {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            border: 2px solid #dee2e6;
+        }
+
+        .timeline-title {
+            font-size: 1.3em;
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .architecture-diagram {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 30px;
+            margin: 30px 0;
+        }
+
+        .architecture-layer {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 3px solid #667eea;
+            text-align: center;
+        }
+
+        .architecture-layer-title {
+            font-size: 1.5em;
+            color: #667eea;
+            margin-bottom: 15px;
+            font-weight: bold;
+        }
+
+        .architecture-components {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+        }
+
+        .architecture-component {
+            background: #e3f2fd;
+            border-radius: 8px;
+            padding: 15px;
+            border: 2px solid #2196f3;
+        }
+
+        .architecture-arrow {
+            text-align: center;
+            font-size: 2em;
+            color: #667eea;
+            margin: 10px 0;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: bold;
+            margin: 5px;
+        }
+
+        .badge-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .badge-success {
+            background: #4caf50;
+            color: white;
+        }
+
+        .badge-warning {
+            background: #ff9800;
+            color: white;
+        }
+
+        .badge-info {
+            background: #2196f3;
+            color: white;
+        }
+
+        .comparison-table {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin: 20px 0;
+        }
+
+        .comparison-column {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+        }
+
+        .comparison-column-title {
+            font-size: 1.3em;
+            color: #667eea;
+            margin-bottom: 15px;
+            text-align: center;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #667eea;
+        }
+
+        .comparison-item {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-left: 4px solid #667eea;
+        }
+
+        .comparison-item-title {
+            font-weight: bold;
+            color: #495057;
+            margin-bottom: 5px;
+        }
+
+        .comparison-item-content {
+            color: #6c757d;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            margin: 20px 0;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 15px;
+            padding: 20px;
+            text-align: center;
+            color: white;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .stat-value {
+            font-size: 2.5em;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .stat-label {
+            font-size: 1em;
+            opacity: 0.9;
+        }
+
+        .footer {
+            text-align: center;
+            color: white;
+            padding: 30px;
+            margin-top: 30px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+        }
+
+        @media (max-width: 768px) {
+            .flow-step-content {
+                grid-template-columns: 1fr;
+            }
+
+            .architecture-components {
+                grid-template-columns: 1fr;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            .comparison-table {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>画像写入与搜索完整流程</h1>
+            <p>基于 Agent Native 架构的智能匹配系统 | 包含向量库与摘要生成的完整链路</p>
+        </div>
+
+        <!-- Stats Overview -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value">5</div>
+                <div class="stat-label">画像维度</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">1024</div>
+                <div class="stat-label">向量维度</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">3</div>
+                <div class="stat-label">触发时机</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">50+</div>
+                <div class="stat-label">匹配维度</div>
+            </div>
+        </div>
+
+        <!-- Section 1: 画像写入完整流程 -->
+        <div class="section">
+            <div class="section-title">
+                <span class="icon">📝</span>
+                画像写入完整流程（包含向量库与摘要）
+            </div>
+
+            <!-- Architecture Diagram -->
+            <div class="architecture-diagram">
+                <div class="architecture-layer">
+                    <div class="architecture-layer-title">触发层</div>
+                    <div class="architecture-components">
+                        <div class="architecture-component">
+                            <strong>新建会话</strong><br>
+                            处理上一个会话
+                        </div>
+                        <div class="architecture-component">
+                            <strong>30分钟无活动</strong><br>
+                            定时检查触发
+                        </div>
+                        <div class="architecture-component">
+                            <strong>会话销毁</strong><br>
+                            显式调用触发
+                        </div>
+                    </div>
+                </div>
+
+                <div class="architecture-arrow">↓</div>
+
+                <div class="architecture-layer">
+                    <div class="architecture-layer-title">数据加载层</div>
+                    <div class="architecture-components">
+                        <div class="architecture-component">
+                            <strong>聊天记录加载</strong><br>
+                            discovery_agent_session_memory_items 表
+                        </div>
+                        <div class="architecture-component">
+                            <strong>格式化处理</strong><br>
+                            用户/AI助手对话格式化
+                        </div>
+                        <div class="architecture-component">
+                            <strong>历史摘要查询</strong><br>
+                            conversation_summaries 表
+                        </div>
+                    </div>
+                </div>
+
+                <div class="architecture-arrow">↓</div>
+
+                <div class="architecture-layer">
+                    <div class="architecture-layer-title">LLM提炼层</div>
+                    <div class="architecture-components">
+                        <div class="architecture-component">
+                            <strong>模型配置</strong><br>
+                            qwen3-235b<br>
+                            temperature=0.3
+                        </div>
+                        <div class="architecture-component">
+                            <strong>Prompt设计</strong><br>
+                            5维度提炼<br>
+                            不猜测规则
+                        </div>
+                        <div class="architecture-component">
+                            <strong>增量合并</strong><br>
+                            新数据+历史数据<br>
+                            避免丢失特征
+                        </div>
+                    </div>
+                </div>
+
+                <div class="architecture-arrow">↓</div>
+
+                <div class="architecture-layer">
+                    <div class="architecture-layer-title">存储层</div>
+                    <div class="architecture-components">
+                        <div class="architecture-component">
+                            <strong>摘要文本存储</strong><br>
+                            conversation_summaries 表<br>
+                            vector_status='pending'
+                        </div>
+                        <div class="architecture-component">
+                            <strong>向量化处理</strong><br>
+                            text-embedding-v3<br>
+                            1024维向量
+                        </div>
+                        <div class="architecture-component">
+                            <strong>Milvus存储</strong><br>
+                            user_vectors Collection<br>
+                            版本管理+时间衰减
+                        </div>
+                    </div>
+                </div>
+
+                <div class="architecture-arrow">↓</div>
+
+                <div class="architecture-layer">
+                    <div class="architecture-layer-title">清理层</div>
+                    <div class="architecture-components">
+                        <div class="architecture-component">
+                            <strong>清空working_criteria</strong><br>
+                            session_state.working_criteria={}
+                        </div>
+                        <div class="architecture-component">
+                            <strong>异步线程</strong><br>
+                            daemon=True<br>
+                            不阻塞主流程
+                        </div>
+                        <div class="architecture-component">
+                            <strong>临时事件循环</strong><br>
+                            asyncio.run()<br>
+                            在新线程中运行
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Timeline Flow -->
+            <div class="timeline">
+                <!-- Step 1 -->
+                <div class="timeline-item">
+                    <div class="timeline-marker">1</div>
+                    <div class="timeline-line"></div>
+                    <div class="timeline-content">
+                        <div class="timeline-title">从数据库加载聊天记录</div>
+                        <div class="highlight-box">
+                            <strong>关键设计：</strong>只传 session_id，不传内存对象，解决内存对象销毁问题
+                        </div>
+                        <div class="code-snippet">
+<span class="comment"># discovery_agent_session_memory_items 表查询</span>
+<span class="keyword">SELECT</span> item_json
+<span class="keyword">FROM</span> discovery_agent_session_memory_items
+<span class="keyword">WHERE</span> session_id = ?
+<span class="keyword">ORDER BY</span> item_id <span class="keyword">ASC</span>
+                        </div>
+                        <div class="success-box">
+                            <strong>输出格式：</strong><br>
+                            用户: 我想要找个温柔的女生<br>
+                            AI助手: 好的，我帮你找找...
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 2 -->
+                <div class="timeline-item">
+                    <div class="timeline-marker">2</div>
+                    <div class="timeline-line"></div>
+                    <div class="timeline-content">
+                        <div class="timeline-title">LLM提炼结构化摘要（5维度）</div>
+                        <div class="highlight-box">
+                            <strong>模型配置：</strong>qwen3-235b（较强模型）<br>
+                            <strong>温度设置：</strong>temperature=0.3（低温度，提高稳定性）<br>
+                            <strong>最大Token：</strong>max_tokens=500
+                        </div>
+                        <div class="code-snippet">
+<span class="comment"># Prompt 设计（session_end_processor.py:303-339）</span>
+请根据以下对话内容，提炼用户的结构化特征。
+
+<span class="comment"># 5维度提炼要求：</span>
+<span class="keyword">1. personality_traits</span>: 性格特质（如"性格温柔、内向"）
+<span class="keyword">2. values</span>: 价值观（如"重视家庭、重视事业"）
+<span class="keyword">3. partner_expectation</span>: 择偶期望（如"希望找个能理解工作忙碌的人"）
+<span class="keyword">4. life_attitude</span>: 生活态度（如"追求稳定、重视生活质量"）
+<span class="keyword">5. emotional_needs</span>: 情感需求（如"需要理解和支持"）
+
+<span class="comment"># ⚠️ 重要规则：</span>
+- 如果该维度用户没有提及，输出空字符串 ""（不要猜测）
+- 每个字段长度不超过 50 字
+- 不要添加对话中没有的信息
+                        </div>
+                        <div class="success-box">
+                            <strong>输出示例：</strong><br>
+                            {<br>
+                            &nbsp;&nbsp;"personality_traits": "性格温柔、内向",<br>
+                            &nbsp;&nbsp;"values": "重视家庭、重视事业",<br>
+                            &nbsp;&nbsp;"partner_expectation": "希望找个能理解工作忙碌的人",<br>
+                            &nbsp;&nbsp;"life_attitude": "追求稳定、重视生活质量",<br>
+                            &nbsp;&nbsp;"emotional_needs": "需要理解和支持"<br>
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 3 -->
+                <div class="timeline-item">
+                    <div class="timeline-marker">3</div>
+                    <div class="timeline-line"></div>
+                    <div class="timeline-content">
+                        <div class="timeline-title">增量合并：新摘要 + 历史数据</div>
+                        <div class="warning-box">
+                            <strong>设计原理：</strong>避免丢失历史特征，如果本次对话没有提及某维度，保留历史数据
+                        </div>
+                        <div class="code-snippet">
+<span class="comment"># 增量合并逻辑（session_end_processor.py:654-688）</span>
+<span class="keyword">async def</span> <span class="function">merge_with_existing_profile</span>(new_summary, requester_id):
+    merged = {}
+
+    <span class="keyword">for</span> key <span class="keyword">in</span> [<span class="string">"personality_traits"</span>, <span class="string">"values"</span>, ...]:
+        new_value = new_summary.get(key)
+
+        <span class="keyword">if</span> new_value:
+            <span class="comment"># 新数据非空 → 用新数据</span>
+            merged[key] = new_value
+        <span class="keyword">else</span>:
+            <span class="comment"># 新数据为空 → 用历史数据</span>
+            historical = await load_latest_summary_for_user(requester_id, key)
+            <span class="keyword">if</span> historical:
+                merged[key] = historical
+
+    <span class="keyword">return</span> merged
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 4 -->
+                <div class="timeline-item">
+                    <div class="timeline-marker">4</div>
+                    <div class="timeline-line"></div>
+                    <div class="timeline-content">
+                        <div class="timeline-title">存储摘要文本到数据库</div>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>字段名</th>
+                                    <th>类型</th>
+                                    <th>说明</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>summary_id</td>
+                                    <td>INT</td>
+                                    <td>主键（自增）</td>
+                                </tr>
+                                <tr>
+                                    <td>conversation_id</td>
+                                    <td>VARCHAR</td>
+                                    <td>对话ID（session_id）</td>
+                                </tr>
+                                <tr>
+                                    <td>conversation_type</td>
+                                    <td>VARCHAR</td>
+                                    <td>对话类型（discovery/chat）</td>
+                                </tr>
+                                <tr>
+                                    <td>requester_id</td>
+                                    <td>INT</td>
+                                    <td>用户ID</td>
+                                </tr>
+                                <tr>
+                                    <td>profile_id</td>
+                                    <td>INT</td>
+                                    <td>画像ID</td>
+                                </tr>
+                                <tr>
+                                    <td>summary_key</td>
+                                    <td>VARCHAR</td>
+                                    <td>字段名（personality_traits等）</td>
+                                </tr>
+                                <tr>
+                                    <td>summary_text</td>
+                                    <td>TEXT</td>
+                                    <td>摘要文本</td>
+                                </tr>
+                                <tr>
+                                    <td>vector_status</td>
+                                    <td>VARCHAR</td>
+                                    <td>向量化状态（pending/done）</td>
+                                </tr>
+                                <tr>
+                                    <td>created_at</td>
+                                    <td>DATETIME</td>
+                                    <td>创建时间</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Step 5 -->
+                <div class="timeline-item">
+                    <div class="timeline-marker">5</div>
+                    <div class="timeline-line"></div>
+                    <div class="timeline-content">
+                        <div class="timeline-title">向量化处理（EmbeddingService）</div>
+                        <div class="highlight-box">
+                            <strong>模型配置：</strong>text-embedding-v3（阿里云DashScope）<br>
+                            <strong>向量维度：</strong>1024维<br>
+                            <strong>API地址：</strong>https://dashscope.aliyuncs.com/compatible-mode/v1
+                        </div>
+                        <div class="code-snippet">
+<span class="comment"># 向量化处理（session_end_processor.py:696-778）</span>
+<span class="keyword">async def</span> <span class="function">save_vectors_for_summary</span>(session_id, requester_id, summary_data):
+    <span class="comment"># 初始化服务</span>
+    embedding_service = EmbeddingService(model_name=<span class="string">"text-embedding-v3"</span>)
+    vector_store = VectorStoreLite()  <span class="comment"># Milvus Lite</span>
+
+    <span class="comment"># 逐个字段向量化</span>
+    <span class="keyword">for</span> summary_key, summary_text <span class="keyword">in</span> summary_data.items():
+        <span class="keyword">if</span> summary_key <span class="keyword">not in</span> [<span class="string">"personality_traits"</span>, <span class="string">"values"</span>, ...]:
+            <span class="keyword">continue</span>
+
+        <span class="comment"># 生成向量</span>
+        embedding = await embedding_service.generate_embedding(summary_text)
+        <span class="comment"># 输入："性格温柔、内向"</span>
+        <span class="comment"># 输出：[0.123, 0.456, ...]（1024维向量）</span>
+
+        <span class="comment"># 存储向量（带版本管理）</span>
+        vector_store.save_vector_with_version(
+            user_id=requester_id,
+            vector_type=summary_key,
+            embedding=embedding,
+            raw_text=summary_text,
+            conversation_id=session_id,
+        )
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 6 -->
+                <div class="timeline-item">
+                    <div class="timeline-marker">6</div>
+                    <div class="timeline-line"></div>
+                    <div class="timeline-content">
+                        <div class="timeline-title">Milvus向量存储（版本管理）</div>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>向量类型</th>
+                                    <th>更新策略</th>
+                                    <th>时间衰减</th>
+                                    <th>设计原因</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><span class="badge badge-primary">personality_traits</span></td>
+                                    <td>replace</td>
+                                    <td>30天</td>
+                                    <td>性格特质相对稳定</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="badge badge-success">values</span></td>
+                                    <td>replace</td>
+                                    <td>60天</td>
+                                    <td>价值观长期稳定</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="badge badge-info">partner_expectation</span></td>
+                                    <td>average</td>
+                                    <td>30天</td>
+                                    <td>择偶期望可能变化</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="badge badge-warning">emotional_needs</span></td>
+                                    <td>average</td>
+                                    <td>15天</td>
+                                    <td>情感需求波动较大</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <div class="code-snippet">
+<span class="comment"># Milvus Collection 字段定义（vector_store.py:158-200）</span>
+COLLECTION_NAME = <span class="string">"user_vectors"</span>
+EMBEDDING_DIM = <span class="string">1024</span>
+
+fields = [
+    FieldSchema(name=<span class="string">"vector_id"</span>, dtype=DataType.INT64, is_primary=<span class="keyword">True</span>, auto_id=<span class="keyword">True</span>),
+    FieldSchema(name=<span class="string">"user_id"</span>, dtype=DataType.INT64),
+    FieldSchema(name=<span class="string">"conversation_id"</span>, dtype=DataType.VARCHAR, max_length=50),
+    FieldSchema(name=<span class="string">"vector_type"</span>, dtype=DataType.VARCHAR, max_length=50),
+    FieldSchema(name=<span class="string">"vector_version"</span>, dtype=DataType.INT64),
+    FieldSchema(name=<span class="string">"embedding"</span>, dtype=DataType.FLOAT_VECTOR, dim=1024),
+    FieldSchema(name=<span class="string">"raw_text"</span>, dtype=DataType.VARCHAR, max_length=500),
+    FieldSchema(name=<span class="string">"create_time"</span>, dtype=DataType.INT64),
+    FieldSchema(name=<span class="string">"is_active"</span>, dtype=DataType.BOOL),
+]
+
+<span class="comment"># 索引配置（HNSW，高性能）</span>
+index_params = {
+    <span class="string">"metric_type"</span>: <span class="string">"COSINE"</span>,  <span class="comment"># 余弦相似度</span>
+    <span class="string">"index_type"</span>: <span class="string">"HNSW"</span>,     <span class="comment"># 高性能索引</span>
+    <span class="string">"params"</span>: {<span class="string">"M"</span>: 16, <span class="string">"efConstruction"</span>: 200},
+}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 7 -->
+                <div class="timeline-item">
+                    <div class="timeline-marker">7</div>
+                    <div class="timeline-content">
+                        <div class="timeline-title">版本管理与时间衰减</div>
+                        <div class="comparison-table">
+                            <div class="comparison-column">
+                                <div class="comparison-column-title">replace策略</div>
+                                <div class="comparison-item">
+                                    <div class="comparison-item-title">软删除旧版本</div>
+                                    <div class="comparison-item-content">UPDATE user_vectors SET is_active = false WHERE user_id = ? AND vector_type = ?</div>
+                                </div>
+                                <div class="comparison-item">
+                                    <div class="comparison-item-title">插入新版本</div>
+                                    <div class="comparison-item-content">INSERT 新向量，is_active = true</div>
+                                </div>
+                                <div class="comparison-item">
+                                    <div class="comparison-item-title">适用场景</div>
+                                    <div class="comparison-item-content">性格特质、价值观等长期稳定特征</div>
+                                </div>
+                            </div>
+                            <div class="comparison-column">
+                                <div class="comparison-column-title">average策略</div>
+                                <div class="comparison-item">
+                                    <div class="comparison-item-title">保留多版本</div>
+                                    <div class="comparison-item-content">所有版本的 is_active = true</div>
+                                </div>
+                                <div class="comparison-item">
+                                    <div class="comparison-item-title">向量平均</div>
+                                    <div class="comparison-item-content">搜索时计算多版本的平均向量</div>
+                                </div>
+                                <div class="comparison-item">
+                                    <div class="comparison-item-title">适用场景</div>
+                                    <div class="comparison-item-content">择偶期望、情感需求等波动特征</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="code-snippet">
+<span class="comment"># 时间衰减计算（vector_store.py:327-435）</span>
+<span class="keyword">def</span> <span class="function">search_similar_users</span>(user_vector, vector_type, top_k=50):
+    <span class="comment"># 计算时间衰减</span>
+    age_days = (current_time - create_time) / 86400
+    decay_factor = max(0.5, 1 - age_days / time_decay_days)
+
+    <span class="comment"># 应用衰减后的相似度</span>
+    adjusted_similarity = similarity * decay_factor
+
+    <span class="comment"># 示例：</span>
+    <span class="comment"># age_days = 10, decay_days = 30</span>
+    <span class="comment"># decay_factor = max(0.5, 1 - 10/30) = 0.67</span>
+    <span class="comment"># adjusted_similarity = 0.85 * 0.67 = 0.57</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 8 -->
+                <div class="timeline-item">
+                    <div class="timeline-marker">8</div>
+                    <div class="timeline-content">
+                        <div class="timeline-title">清空 working_criteria（会话结束清理）</div>
+                        <div class="warning-box">
+                            <strong>设计原理：</strong>working_criteria 的生命周期是本轮对话内有效，会话结束后应清空，防止下次对话使用旧搜索条件
+                        </div>
+                        <div class="code-snippet">
+<span class="comment"># 清空逻辑（session_end_processor.py:786-872）</span>
+<span class="keyword">async def</span> <span class="function">clear_working_criteria</span>(session_id):
+    <span class="comment"># 查询当前 session 状态</span>
+    current_state = json_loads(session_state)
+
+    <span class="comment"># 清空 working_criteria</span>
+    current_state[<span class="string">"working_criteria"</span>] = {}
+
+    <span class="comment"># 更新数据库</span>
+    conn.execute(
+        <span class="string">"UPDATE discovery_agent_sessions SET session_state = ? WHERE session_id = ?"</span>,
+        (json_dumps(current_state), session_id),
+    )
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section 2: 搜索完整流程 -->
+        <div class="section">
+            <div class="section-title">
+                <span class="icon">🔍</span>
+                搜索完整流程（发现页推荐）
+            </div>
+
+            <!-- Architecture Diagram -->
+            <div class="architecture-diagram">
+                <div class="architecture-layer">
+                    <div class="architecture-layer-title">用户输入层</div>
+                    <div class="architecture-components">
+                        <div class="architecture-component">
+                            <strong>自然语言输入</strong><br>
+                            "帮我找个温柔、在北京的女生"
+                        </div>
+                        <div class="architecture-component">
+                            <strong>Agent理解意图</strong><br>
+                            不使用硬编码关键词<br>
+                            根据Prompt自主判断
+                        </div>
+                        <div class="architecture-component">
+                            <strong>决策调用Tool</strong><br>
+                            选择合适的Tool执行<br>
+                            只返回原始数据
+                        </div>
+                    </div>
+                </div>
+
+                <div class="architecture-arrow">↓</div>
+
+                <div class="architecture-layer">
+                    <div class="architecture-layer-title">画像加载层</div>
+                    <div class="architecture-components">
+                        <div class="architecture-component">
+                            <strong>加载请求者画像</strong><br>
+                            profiles表<br>
+                            user_personas表
+                        </div>
+                        <div class="architecture-component">
+                            <strong>加载性格特质</strong><br>
+                            matcher_traits_json<br>
+                            matcher_preferences_json
+                        </div>
+                        <div class="architecture-component">
+                            <strong>加载历史摘要</strong><br>
+                            conversation_summaries表<br>
+                            向量库查询
+                        </div>
+                    </div>
+                </div>
+
+                <div class="architecture-arrow">↓</div>
+
+                <div class="architecture-layer">
+                    <div class="architecture-layer-title">搜索条件编译层</div>
+                    <div class="architecture-components">
+                        <div class="architecture-component">
+                            <strong>数据来源优先级</strong><br>
+                            explicit_statement<br>
+                            explicit_override<br>
+                            profile_form
+                        </div>
+                        <div class="architecture-component">
+                            <strong>字段映射转换</strong><br>
+                            target_gender → gender<br>
+                            target_age_min → age_min
+                        </div>
+                        <div class="architecture-component">
+                            <strong>source_map追踪</strong><br>
+                            记录每个字段的来源<br>
+                            criteria_hash缓存
+                        </div>
+                    </div>
+                </div>
+
+                <div class="architecture-arrow">↓</div>
+
+                <div class="architecture-layer">
+                    <div class="architecture-layer-title">匹配评分层</div>
+                    <div class="architecture-components">
+                        <div class="architecture-component">
+                            <strong>硬约束筛选</strong><br>
+                            gender、age、city<br>
+                            不可放宽的条件
+                        </div>
+                        <div class="architecture-component">
+                            <strong>软约束评分</strong><br>
+                            价值观匹配（+5）<br>
+                            依恋匹配（+4/-2）
+                        </div>
+                        <div class="architecture-component">
+                            <strong>性格匹配</strong><br>
+                            大五人格相似度<br>
+                            MBTI匹配度
+                        </div>
+                    </div>
+                </div>
+
+                <div class="architecture-arrow">↓</div>
+
+                <div class="architecture-layer">
+                    <div class="architecture-layer-title">排序优化层</div>
+                    <div class="architecture-components">
+                        <div class="architecture-component">
+                            <strong>剪枝低质量尾部</strong><br>
+                            排除多项放宽<br>
+                            排除高风险评分
+                        </div>
+                        <div class="architecture-component">
+                            <strong>多样性签名</strong><br>
+                            job_cluster<br>
+                            communication_style
+                        </div>
+                        <div class="architecture-component">
+                            <strong>贪心选择</strong><br>
+                            最大化多样性<br>
+                            避免同质化
+                        </div>
+                    </div>
+                </div>
+
+                <div class="architecture-arrow">↓</div>
+
+                <div class="architecture-layer">
+                    <div class="architecture-layer-title">结果渲染层</div>
+                    <div class="architecture-components">
+                        <div class="architecture-component">
+                            <strong>候选人卡片</strong><br>
+                            profile数据<br>
+                            personality_reasoning
+                        </div>
+                        <div class="architecture-component">
+                            <strong>推荐理由</strong><br>
+                            价值观匹配<br>
+                            依恋节奏
+                        </div>
+                        <div class="architecture-component">
+                            <strong>可见性守卫</strong><br>
+                            moderation overlay<br>
+                            黑名单过滤
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Search Flow Timeline -->
+            <div class="timeline">
+                <!-- Search Step 1 -->
+                <div class="timeline-item">
+                    <div class="timeline-marker">1</div>
+                    <div class="timeline-line"></div>
+                    <div class="timeline-content">
+                        <div class="timeline-title">Agent Native 架构：自主理解用户意图</div>
+                        <div class="highlight-box">
+                            <strong>核心原则：</strong><br>
+                            ❌ 不使用硬编码关键词列表<br>
+                            ✅ Agent 根据 Prompt 自主判断用户意图<br>
+                            ✅ Tool 只返回原始数据，不做业务决策
+                        </div>
+                        <div class="code-snippet">
+<span class="comment"># Agent Native 架构（service.py:80-83）</span>
+<span class="comment"># ✅ 移除硬编码关键词判断</span>
+<span class="comment"># Agent 根据 user_message 自主识别意图</span>
+
+<span class="comment"># 反模式：触发词映射表</span>
+<span class="comment"># ❌ 禁止：关键词 → 工具的硬编码表</span>
+<span class="comment"># ❌ 禁止：Agent 变成关键词匹配器</span>
+
+<span class="comment"># 正确模式：自然语言描述</span>
+<span class="comment"># ✅ 工具 description 描述能力而非触发词</span>
+<span class="comment"># ✅ Agent 根据意图自主选择工具</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Search Step 2 -->
+                <div class="timeline-item">
+                    <div class="timeline-marker">2</div>
+                    <div class="timeline-line"></div>
+                    <div class="timeline-content">
+                        <div class="timeline-title">加载请求者画像与性格特质</div>
+                        <div class="code-snippet">
+<span class="comment"># 画像加载逻辑（persona_loader.py:143-175）</span>
+<span class="keyword">def</span> <span class="function">load_persona_for_discovery</span>(source, profile_id, requester_id):
+    <span class="comment"># 加载 persona 数据</span>
+    persona = load_persona_row(user_key=profile_id)
+
+    <span class="comment"># 加载性格特质</span>
+    traits = load_traits_for_discovery(profile_id)
+    <span class="comment"># 输出：</span>
+    <span class="comment"># {
+    #     "values": {"top_values": ["家庭观念", "责任感"]},
+    #     "attachment": {"type_code": "secure"},
+    #     "mbti": {"type_code": "INFJ"}
+    # }</span>
+
+    <span class="keyword">return</span> {<span class="string">"persona"</span>: persona, <span class="string">"traits"</span>: traits}
+                        </div>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>性格维度</th>
+                                    <th>数据来源</th>
+                                    <th>匹配方式</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>价值观</td>
+                                    <td>matcher_preferences_json</td>
+                                    <td>top_values重叠度</td>
+                                </tr>
+                                <tr>
+                                    <td>依恋类型</td>
+                                    <td>matcher_traits_json</td>
+                                    <td>type_code匹配+焦虑/回避度</td>
+                                </tr>
+                                <tr>
+                                    <td>气质类型</td>
+                                    <td>matcher_traits_json</td>
+                                    <td>大五人格相似度+MBTI匹配</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Search Step 3 -->
+                <div class="timeline-item">
+                    <div class="timeline-marker">3</div>
+                    <div class="timeline-line"></div>
+                    <div class="timeline-content">
+                        <div class="timeline-title">搜索条件编译</div>
+                        <div class="code-snippet">
+<span class="comment"># 搜索条件编译（criteria_compiler.py）</span>
+<span class="keyword">def</span> <span class="function">build_discovery_search_request</span>(profile_facts, collected, criteria, overrides):
+    <span class="comment"># Step 1：从 persona 提取 collected 字段</span>
+    patch = _build_collected_criteria_patch(collected)
+    <span class="comment"># 字段映射：
+    # target_gender → gender
+    # target_age_min → age_min
+    # target_cities → cities</span>
+
+    <span class="comment"># Step 2：合并 profile_facts 默认值</span>
+    base = build_profile_search_defaults(profile_facts)
+
+    <span class="comment"># Step 3：应用 collected patch</span>
+    criteria = _apply_patch(base, patch)
+
+    <span class="comment"># Step 4：应用 overrides（Agent 决策覆盖）</span>
+    criteria = _apply_patch(criteria, overrides)
+
+    <span class="comment"># Step 5：构建 source_map（追踪字段来源）</span>
+    source_map = _build_source_map(profile_facts, collected, criteria, overrides)
+    <span class="comment"># 输出：
+    # {
+    #     "gender": {"source": "explicit_statement", "field": "target_gender"},
+    #     "age_min": {"source": "profile_form", "field": "preferred_age_min"}
+    # }</span>
+
+    <span class="keyword">return</span> {<span class="string">"criteria"</span>: criteria, <span class="string">"source_map"</span>: source_map}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Search Step 4 -->
+                <div class="timeline-item">
+                    <div class="timeline-marker">4</div>
+                    <div class="timeline-line"></div>
+                    <div class="timeline-content">
+                        <div class="timeline-title">性格匹配评分系统</div>
+                        <div class="code-snippet">
+<span class="comment"># 性格匹配推理（service_integrations.py:102-266）</span>
+<span class="keyword">def</span> <span class="function">_build_personality_reasoning</span>(self_traits, candidate_traits):
+    <span class="comment"># 1. 价值观匹配（最高 +5.0）</span>
+    values_value, shared_values = _values_bonus(self_traits, candidate_traits)
+    <span class="comment"># 计算：重叠比例 * 5.0
+    # 示例：都看重"家庭观念"、"责任感"</span>
+
+    <span class="comment"># 2. 依恋匹配（最高 +4.0，最低 -2.0）</span>
+    attachment_value, attachment_reason = _attachment_bonus(self_traits, candidate_traits)
+    <span class="comment"># 规则：
+    # - 安全型 × 安全型：+4.0（相处会更稳）
+    # - 高焦虑 × 高回避：-2.0（容易一追一逃）
+    # - 单方安全型：+2.0</span>
+
+    <span class="comment"># 3. 气质匹配（最高 +3.0）</span>
+    temperament_value, temperament_reason = _temperament_bonus(self_traits, candidate_traits)
+    <span class="comment"># 规则：
+    # - 大五人格相似度评分
+    # - MBTI匹配度评分
+    # - 例：MBTI节奏很接近（INFJ/INFJ）</span>
+
+    <span class="comment"># 总分计算</span>
+    bonus = max(-3.0, min(12.0, values + attachment + temperament))
+
+    <span class="keyword">return</span> {
+        <span class="string">"used"</span>: <span class="keyword">True</span>,
+        <span class="string">"summary"</span>: <span class="string">"都看重家庭观念，依恋都偏安全型"</span>,
+        <span class="string">"score_components"</span>: {<span class="string">"values_bonus"</span>: 5.0, <span class="string">"attachment_bonus"</span>: 4.0},
+    }
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Search Step 5 -->
+                <div class="timeline-item">
+                    <div class="timeline-marker">5</div>
+                    <div class="timeline-line"></div>
+                    <div class="timeline-content">
+                        <div class="timeline-title">多样性排序优化</div>
+                        <div class="code-snippet">
+<span class="comment"># 多样性排序算法（search_ranking.py:186-226）</span>
+<span class="keyword">def</span> <span class="function">select_diverse_results</span>(results, limit):
+    <span class="comment"># Step 1：剪枝低质量尾部</span>
+    results = trim_low_quality_tail(results)
+    <span class="comment"># 规则：
+    # - 排除：多项条件需要放宽且分数差距 >= 20
+    # - 排除：高风险评分 >= 35且分数差距 >= 25</span>
+
+    <span class="comment"># Step 2：计算多样性签名</span>
+    <span class="keyword">for</span> item <span class="keyword">in</span> results:
+        item[<span class="string">"_diversity_signature"</span>] = diversity_signature(item)
+    <span class="comment"># signature = (job_cluster, career_intensity, communication_style,
+    #             life_routine, commitment_clarity)</span>
+
+    <span class="comment"># Step 3：贪心选择（最大化多样性）</span>
+    selected = []
+    <span class="keyword">while</span> remaining <span class="keyword">and</span> len(selected) < limit:
+        <span class="comment"># 计算多样性惩罚</span>
+        penalty = diversity_penalty(candidate, selected)
+        adjusted_score = candidate[<span class="string">"score"</span>] - penalty
+
+        <span class="comment"># 选择调整后得分最高的</span>
+        best = max(remaining, key=adjusted_score)
+        selected.append(best)
+
+    <span class="keyword">return</span> selected
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Search Step 6 -->
+                <div class="timeline-item">
+                    <div class="timeline-marker">6</div>
+                    <div class="timeline-content">
+                        <div class="timeline-title">可见性守卫与安全过滤</div>
+                        <div class="code-snippet">
+<span class="comment"># 可见性守卫（search_visibility.py）</span>
+<span class="keyword">def</span> <span class="function">search_profiles_with_visibility_gate</span>(search_profiles_fn, **kwargs):
+    <span class="comment"># Step 1：运行搜索（不带 moderation_dsn）</span>
+    kwargs[<span class="string">"moderation_dsn"</span>] = None
+    raw = search_profiles_fn(**kwargs)
+
+    <span class="comment"># Step 2：应用 moderation overlay</span>
+    moderation_dsn = kwargs.pop(<span class="string">"moderation_dsn"</span>, None)
+    <span class="keyword">return</span> apply_search_visibility_gate(raw, moderation_dsn)
+
+    <span class="comment"># Step 3：黑名单过滤</span>
+    overlay_records_with_moderation(
+        results,
+        moderation_dsn=moderation_dsn,
+        include_blocked=False,  <span class="comment"># 排除黑名单用户</span>
+    )
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section 3: 核心设计对比 -->
+        <div class="section">
+            <div class="section-title">
+                <span class="icon">🎯</span>
+                核心设计对比：画像写入 vs 搜索推荐
+            </div>
+
+            <div class="comparison-table">
+                <div class="comparison-column">
+                    <div class="comparison-column-title">画像写入流程</div>
+                    <div class="comparison-item">
+                        <div class="comparison-item-title">触发时机</div>
+                        <div class="comparison-item-content">
+                            <span class="badge badge-primary">新建会话</span>
+                            <span class="badge badge-info">30分钟无活动</span>
+                            <span class="badge badge-warning">会话销毁</span>
+                        </div>
+                    </div>
+                    <div class="comparison-item">
+                        <div class="comparison-item-title">处理方式</div>
+                        <div class="comparison-item-content">异步后台处理，不阻塞主流程</div>
+                    </div>
+                    <div class="comparison-item">
+                        <div class="comparison-item-title">数据流向</div>
+                        <div class="comparison-item-content">聊天记录 → LLM提炼 → 摘要存储 → 向量化</div>
+                    </div>
+                    <div class="comparison-item">
+                        <div class="comparison-item-title">版本管理</div>
+                        <div class="comparison-item-content">replace策略（覆盖旧版本）+ average策略（多版本平均）</div>
+                    </div>
+                    <div class="comparison-item">
+                        <div class="comparison-item-title">时间衰减</div>
+                        <div class="comparison-item-content">decay_days配置（15-60天），旧数据权重降低</div>
+                    </div>
+                    <div class="comparison-item">
+                        <div class="comparison-item-title">存储介质</div>
+                        <div class="comparison-item-content">
+                            conversation_summaries表 + user_vectors Collection（Milvus Lite）
+                        </div>
+                    </div>
+                </div>
+
+                <div class="comparison-column">
+                    <div class="comparison-column-title">搜索推荐流程</div>
+                    <div class="comparison-item">
+                        <div class="comparison-item-title">触发时机</div>
+                        <div class="comparison-item-content">
+                            <span class="badge badge-success">用户对话请求</span>
+                            实时响应，Agent自主决策
+                        </div>
+                    </div>
+                    <div class="comparison-item">
+                        <div class="comparison-item-title">处理方式</div>
+                        <div class="comparison-item-content">同步处理，Agent Native架构，自主理解意图</div>
+                    </div>
+                    <div class="comparison-item">
+                        <div class="comparison-item-title">数据流向</div>
+                        <div class="comparison-item-content">画像加载 → 条件编译 → 匹配评分 → 多样性排序</div>
+                    </div>
+                    <div class="comparison-item">
+                        <div class="comparison-item-title">评分维度</div>
+                        <div class="comparison-item-content">价值观匹配（+5）+ 依恋匹配（+4/-2）+ 气质匹配（+3）</div>
+                    </div>
+                    <div class="comparison-item">
+                        <div class="comparison-item-title">多样性优化</div>
+                        <div class="comparison-item-content">剪枝低质量尾部 + 多样性签名 + 贪心选择</div>
+                    </div>
+                    <div class="comparison-item">
+                        <div class="comparison-item-title">安全过滤</div>
+                        <div class="comparison-item-content">
+                            moderation overlay + 黑名单过滤 + 可见性守卫
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section 4: 关键技术细节 -->
+        <div class="section">
+            <div class="section-title">
+                <span class="icon">⚙️</span>
+                关键技术细节
+            </div>
+
+            <div class="flow-container">
+                <div class="flow-step">
+                    <div class="flow-step-number">1</div>
+                    <div class="flow-step-title">异步线程设计（画像写入）</div>
+                    <div class="flow-step-content">
+                        <div class="flow-box">
+                            <div class="flow-box-title">守护线程</div>
+                            <div class="code-snippet">
+thread = threading.Thread(
+    target=run_async_in_thread,
+    daemon=True,  <span class="comment"># 主进程退出时自动结束</span>
+)
+thread.start()
+                            </div>
+                        </div>
+                        <div class="flow-box">
+                            <div class="flow-box-title">临时事件循环</div>
+                            <div class="code-snippet">
+<span class="keyword">def</span> run_async_in_thread():
+    asyncio.run(process_session_end(...))
+    <span class="comment"># 在新线程中创建临时事件循环</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flow-step">
+                    <div class="flow-step-number">2</div>
+                    <div class="flow-step-title">画像分流守卫（三层分流）</div>
+                    <div class="flow-step-content">
+                        <div class="flow-box">
+                            <div class="flow-box-title">分流优先级</div>
+                            <div class="highlight-box">
+                                1. 特殊标识符 → persona_part<br>
+                                2. profile字段 → profile_part<br>
+                                3. self_字段映射 → profile_part<br>
+                                4. 可量化搜索条件 → search_part<br>
+                                5. 可量化用户特质 → persona_part<br>
+                                6. 其他搜索条件 → search_part
+                            </div>
+                        </div>
+                        <div class="flow-box">
+                            <div class="flow-box-title">硬约束 vs 软约束</div>
+                            <div class="success-box">
+                                <strong>硬约束：</strong>安全边界、数据校验（Tool层执行）<br>
+                                <strong>软约束：</strong>业务规则（Prompt表达，Agent决策）
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flow-step">
+                    <div class="flow-step-number">3</div>
+                    <div class="flow-step-title">Agent Native架构原则</div>
+                    <div class="flow-step-content">
+                        <div class="flow-box">
+                            <div class="flow-box-title">移除硬编码关键词</div>
+                            <div class="warning-box">
+                                ❌ 不使用触发词映射表<br>
+                                ❌ 不在代码中硬编码"当X时输出Y"<br>
+                                ❌ Tool不返回instruction/output_hint
+                            </div>
+                        </div>
+                        <div class="flow-box">
+                            <div class="flow-box-title">正确设计</div>
+                            <div class="success-box">
+                                ✅ Tool只返回原始data<br>
+                                ✅ Agent自主筛选推荐<br>
+                                ✅ 软约束在Prompt中表达
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flow-step">
+                    <div class="flow-step-number">4</div>
+                    <div class="flow-step-title">向量时间衰减机制</div>
+                    <div class="flow-step-content">
+                        <div class="flow-box">
+                            <div class="flow-box-title">衰减公式</div>
+                            <div class="code-snippet">
+age_days = (current_time - create_time) / 86400
+decay_factor = max(0.5, 1 - age_days / decay_days)
+adjusted_similarity = similarity * decay_factor
+                            </div>
+                        </div>
+                        <div class="flow-box">
+                            <div class="flow-box-title">示例计算</div>
+                            <div class="highlight-box">
+                                age_days = 10, decay_days = 30<br>
+                                decay_factor = max(0.5, 1 - 10/30) = 0.67<br>
+                                adjusted_similarity = 0.85 * 0.67 = 0.57
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <h3>系统架构完整梳理</h3>
+            <p>基于 Agent Native 架构的智能匹配系统</p>
+            <p>画像写入（向量库+摘要）与搜索推荐的完整链路</p>
+            <p style="margin-top: 15px; opacity: 0.8;">
+                <span class="badge badge-primary">异步处理</span>
+                <span class="badge badge-success">版本管理</span>
+                <span class="badge badge-info">时间衰减</span>
+                <span class="badge badge-warning">多样性优化</span>
+            </p>
+        </div>
+    </div>
+</body>
+</html>

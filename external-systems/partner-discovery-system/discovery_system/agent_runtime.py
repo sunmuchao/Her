@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import atexit
 import json
 import logging
 import os
@@ -42,9 +43,9 @@ class DiscoveryRunInput:
     criteria_labels: list[str]
     recent_timeline: list[dict[str, Any]]
     runtime_context: dict[str, Any]
-    search_partner_candidates: Callable[[dict[str, Any], int], dict[str, Any]]
+    search_partner_candidates: Callable[[dict[str, Any], dict[str, Any], int], dict[str, Any]]  # ← 新增 personality_match 参数
     sync_requester_persona_memory: Callable[[dict[str, Any]], dict[str, Any]]
-    propose_requester_profile_update: Callable[[str, str], dict[str, Any]]
+    # propose_requester_profile_update: Callable[[str, str], dict[str, Any]]  # 已注释：暂时禁用此工具
     create_saved_search_subscription_from_last_search: Callable[[], dict[str, Any]]
     suggest_assessment: Callable[[str], dict[str, Any]]  # Agent必须传入测评类型
     tool_call_buffer: list["DiscoveryToolCall"] = field(default_factory=list)
@@ -293,7 +294,36 @@ def _resolve_discovery_model(*, wire_api: str) -> str:
     )
 
 
+# 全局单例：Agents SDK 的 AsyncOpenAI 客户端
+_AGENTS_SDK_ASYNC_CLIENT: Any | None = None
+
+
+def _sync_cleanup_agents_sdk_client() -> None:
+    """同步清理方法（供 atexit 调用）
+
+    ⚠️ 注意：atexit 不支持异步函数，所以需要创建新事件循环来清理
+    """
+    global _AGENTS_SDK_ASYNC_CLIENT
+
+    if _AGENTS_SDK_ASYNC_CLIENT is not None:
+        try:
+            # 创建新事件循环来运行异步清理
+            loop = asyncio.new_event_loop()
+            loop.run_until_complete(_AGENTS_SDK_ASYNC_CLIENT.close())
+            loop.close()
+            _AGENTS_SDK_ASYNC_CLIENT = None
+            _logger.info("Agents SDK AsyncOpenAI 客户端已通过 atexit 自动关闭")
+        except Exception as exc:
+            _logger.warning(f"atexit 清理失败（可能事件循环已关闭）：{exc}")
+
+
 def _configure_agents_sdk_provider() -> None:
+    """配置 Agents SDK 的 OpenAI 提供商（单例模式）
+
+    ⚠️ 重要：使用全局单例，避免每次运行 Agent 时创建新客户端
+    """
+    global _AGENTS_SDK_ASYNC_CLIENT
+
     from agents import set_default_openai_api, set_default_openai_client, set_tracing_disabled
     from her_production import assert_production_discovery_agent_isolation
     from openai import AsyncOpenAI
@@ -301,6 +331,12 @@ def _configure_agents_sdk_provider() -> None:
     assert_production_discovery_agent_isolation()
     wire_api = _resolve_discovery_wire_api()
     base_url = _resolve_discovery_base_url(wire_api=wire_api)
+
+    # 如果已经有全局客户端，跳过创建（单例模式）
+    if _AGENTS_SDK_ASYNC_CLIENT is not None:
+        _logger.debug("Agents SDK AsyncOpenAI 客户端已存在，跳过创建")
+        set_default_openai_api(wire_api)
+        return
 
     if base_url:
         api_key = _resolve_discovery_api_key()
@@ -314,6 +350,12 @@ def _configure_agents_sdk_provider() -> None:
                 default=120.0,
             ),
         )
+        _AGENTS_SDK_ASYNC_CLIENT = client
+        _logger.info("Agents SDK AsyncOpenAI 客户端已创建（全局单例）")
+
+        # 自动注册 atexit 清理函数（程序退出时自动清理）
+        atexit.register(_sync_cleanup_agents_sdk_client)
+
         set_default_openai_client(client, use_for_tracing=False)
         # This only selects the Agents SDK wire API (`/responses` vs `/chat/completions`);
         # it is not a remote provider request parameter.
@@ -333,23 +375,49 @@ def _configure_agents_sdk_provider() -> None:
     set_default_openai_api(wire_api)
 
 
+async def cleanup_agents_sdk_client() -> None:
+    """清理 Agents SDK 的全局客户端
+
+    ⚠️ 重要：程序退出时应调用此方法，避免 "Event loop is closed" 错误
+
+    使用方式：
+    ```python
+    try:
+        # 运行 Agent
+        result = runtime.run_turn(...)
+    finally:
+        await cleanup_agents_sdk_client()
+    ```
+    """
+    global _AGENTS_SDK_ASYNC_CLIENT
+
+    if _AGENTS_SDK_ASYNC_CLIENT is not None:
+        # 取消 atexit 注册（避免重复清理）
+        atexit.unregister(_sync_cleanup_agents_sdk_client)
+
+        await _AGENTS_SDK_ASYNC_CLIENT.close()
+        _AGENTS_SDK_ASYNC_CLIENT = None
+        _logger.info("Agents SDK AsyncOpenAI 客户端已关闭，资源已释放")
+
+
 def _compact_requester_profile(profile: dict[str, Any] | None) -> dict[str, Any]:
     profile = dict(profile or {})
     keep_keys = [
+        # profiles 表中的硬条件字段
         "gender",
         "age",
         "city",
         "marital_status",
         "has_children",
         "relationship_goal",
-        "self_job",
-        "self_city",
-        "self_relationship_goal",
+        "job",  # 使用 profiles.job，不是 self_job
+        # persona 表中的软偏好字段
         "target_gender",
         "target_age_min",
         "target_age_max",
         "target_cities",
         "preferred_traits",
+        # 硬条件字段已删除：self_job, self_city, self_relationship_goal
     ]
     compact = {
         key: profile.get(key)
@@ -799,19 +867,70 @@ class AgentsSdkDiscoveryAgentRuntime:
                 raise ValueError("patch_json must decode into a JSON object")
             return run_input.sync_requester_persona_memory(patch)
 
-        @function_tool
-        def propose_requester_profile_update(patch_json: str, evidence_text: str = "") -> dict[str, Any]:
-            """提议更新用户本人的正式资料（年龄、城市、婚姻状态等）。当用户说出个人资料变更时调用。需要用户确认后生效。"""
-            return run_input.propose_requester_profile_update(patch_json, evidence_text)
+        # @function_tool
+        # def propose_requester_profile_update(patch_json: str, evidence_text: str = "") -> dict[str, Any]:
+        #     """提议更新用户本人的正式资料（年龄、城市、婚姻状态等）。当用户说出个人资料变更时调用。需要用户确认后生效。"""
+        #     return run_input.propose_requester_profile_update(patch_json, evidence_text)
 
         @function_tool
-        def search_partner_candidates(criteria_json: str, limit: int = 5) -> dict[str, Any]:
-            """搜索候选人。当用户想看推荐、调整搜索条件、表达不满后重新搜索时调用。传入调整后的参数（如 cities、age_min/age_max）。返回匹配的候选人列表。"""
+        def search_partner_candidates(
+            criteria_json: str,
+            personality_match_json: str = "",
+            limit: int = 5
+        ) -> dict[str, Any]:
+            """搜索候选人。当用户想看推荐、调整搜索条件、表达不满后重新搜索时调用。
+
+            支持的筛选条件（硬约束）：
+            - gender: 性别（male/female）
+            - age_min/age_max: 年龄范围
+            - cities: 城市列表
+            - relationship_goals: 关系目标
+
+            性格匹配（向量筛选，可选）：
+            - personality_match_json: 性格特质匹配条件
+              示例：{"match_traits": ["外向", "温柔"], "similarity_threshold": 0.75}
+              - match_traits: 想要匹配的性格特质列表
+              - similarity_threshold: 相似度阈值（0.0-1.0，默认0.75）
+              - Agent可根据对话上下文自主调整阈值（高要求用0.8，宽松用0.6）
+
+            不支持的筛选条件（已在数据库层移除）：
+            - mbti_types: MBTI类型筛选（已被移除，Agent根据personality_signals自主判断）
+
+            返回数据：
+            - 基础信息：姓名、年龄、城市、职业等
+            - 性格数据：personality_signals包含MBTI、依恋风格、价值观等原始数据
+            - Agent自主判断性格匹配度，生成推荐理由
+
+            参数：
+            - criteria_json: 筛选条件的JSON字符串（硬约束）
+            - personality_match_json: 性格匹配条件的JSON字符串（可选）
+            - limit: 返回数量（默认5，最大10）
+
+            返回：
+            - 匹配的候选人列表（包含性格原始数据）
+            """
             criteria = json.loads(str(criteria_json or "{}"))
             if not isinstance(criteria, dict):
                 raise ValueError("criteria_json must decode into a JSON object")
+
+            # 解析性格匹配参数
+            personality_match = {}
+            if personality_match_json and personality_match_json.strip():
+                try:
+                    personality_match = json.loads(personality_match_json)
+                    if not isinstance(personality_match, dict):
+                        _logger.warning("personality_match_json must decode into a JSON object, got %s", type(personality_match))
+                        personality_match = {}
+                except json.JSONDecodeError as exc:
+                    _logger.warning("personality_match_json decode failed: %s", str(exc)[:100])
+                    personality_match = {}
+
             normalized_limit = max(1, min(int(limit or 5), 10))
-            response = run_input.search_partner_candidates(criteria, normalized_limit)
+            response = run_input.search_partner_candidates(
+                criteria,
+                personality_match,
+                normalized_limit
+            )
             tool_state["last_search_response"] = response
             return _summarize_search_response_for_model(response)
 
@@ -928,7 +1047,7 @@ class AgentsSdkDiscoveryAgentRuntime:
         # 方案A：拆分为两个专用工具（reply_to_user + show_candidates）
         tools = [
             sync_requester_persona_memory,
-            propose_requester_profile_update,
+            # propose_requester_profile_update,  # 已注释：暂时禁用此工具
             search_partner_candidates,
             create_saved_search_subscription_from_last_search,
             reply_to_user,   # 方案A：回复专用工具
@@ -987,21 +1106,52 @@ class AgentsSdkDiscoveryAgentRuntime:
         )
 
         # ====================================================================
-        # 方案A：从 reply_to_user 或 show_candidates 工具参数中提取 decision
+        # 方案C：支持 reply_to_user + show_candidates 同时调用
         # ====================================================================
         reply_payload = tool_state.get("reply_payload")
         show_payload = tool_state.get("show_payload")
 
+        # 方案C：提取所有 payload，供 Service 层处理
+        payloads = []
+        if reply_payload:
+            payloads.append(reply_payload)
+        if show_payload:
+            payloads.append(show_payload)
+
+        # 提取主要 decision（用于 phase 等核心字段）
         # 优先使用 show_candidates（展示候选人优先级高于纯回复）
         decision_payload = show_payload or reply_payload
 
         if decision_payload is not None:
             _logger.debug(
-                "discovery agent extracted decision from %s tool payload=%s",
+                "discovery agent extracted decision from %s tool payload=%s, total_payloads=%s",
                 "show_candidates" if show_payload else "reply_to_user",
-                str(decision_payload)[:200]
+                str(decision_payload)[:200],
+                len(payloads)
             )
-            decision = _decision_payload_to_decision_with_repair(decision_payload)
+            # 方案C：构建 decision，传入 _all_payloads
+            decision = DiscoveryDecision(
+                phase=decision_payload.get("phase") or "collecting_preferences",
+                assistant_message=decision_payload.get("assistant_message") or "",
+                criteria_labels=decision_payload.get("criteria_labels") or [],
+                suggested_actions=[
+                    DiscoveryActionSuggestion(
+                        label=action.get("label"),
+                        style=action.get("style"),
+                        semantic_payload=action.get("semantic_payload"),
+                    )
+                    for action in (decision_payload.get("suggested_actions") or [])
+                ],
+                result_group_title=decision_payload.get("result_group_title"),
+                selected_candidates=[
+                    DiscoveryCandidateSelection(
+                        profile_id=c.get("profile_id"),
+                        reason_summary=c.get("reason_summary") or "",
+                    )
+                    for c in (decision_payload.get("selected_candidates") or [])
+                ],
+                _all_payloads=payloads,  # 方案C：传入所有 payloads
+            )
         else:
             # Fallback：尝试从 final_output 恢复
             final_output = getattr(result, "final_output", result)

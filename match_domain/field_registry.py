@@ -98,7 +98,9 @@ P0_P1_TRANSITION = _entries_for_fields(
 
 P1_COLLECTED = _entries_for_fields(
     COLLECTED_PERSONA_FIELDS
-    - frozenset({"display_name", "self_smoking", "self_drinking", "self_relationship_goal"}),
+    - frozenset({"display_name"}),
+    # self_smoking, self_drinking, self_relationship_goal 已在 COLLECTED_PERSONA_FIELDS 中删除
+    # 这些硬条件字段应该在 profiles 表中
     layer="P1",
     current_source="user_personas",
     write_sources=("profile_form", "explicit_statement", "explicit_confirmation"),

@@ -12,6 +12,7 @@ from .persona_memory_lib import (
     DEFAULT_PERSONA_TABLE,
     DEFAULT_PROFILE_TABLE,
     DEFAULT_PUBLIC_VIEW,
+    DEFAULT_CONVERSATION_SUMMARIES_TABLE,
     PROFILE_EXTENSION_COLUMNS,
     build_public_profile_view_sql,
     parse_mysql_source,
@@ -24,55 +25,46 @@ CREATE TABLE IF NOT EXISTS {persona_table} (
   user_key VARCHAR(64) NOT NULL UNIQUE,
   display_name VARCHAR(64) DEFAULT NULL,
   profile_id BIGINT DEFAULT NULL,
-  self_gender VARCHAR(8) DEFAULT NULL,
-  self_age INT DEFAULT NULL,
-  self_city VARCHAR(64) DEFAULT NULL,
-  self_district VARCHAR(64) DEFAULT NULL,
-  self_height INT DEFAULT NULL,
-  self_education VARCHAR(32) DEFAULT NULL,
-  self_income_wan INT DEFAULT NULL,
-  self_job VARCHAR(64) DEFAULT NULL,
-  self_life_rhythm VARCHAR(64) DEFAULT NULL,
-  self_work_pattern VARCHAR(64) DEFAULT NULL,
-  self_expression_style VARCHAR(64) DEFAULT NULL,
-  self_marital_status VARCHAR(32) DEFAULT NULL,
-  self_has_children TINYINT(1) DEFAULT NULL,
-  self_children_count INT DEFAULT NULL,
-  self_children_living_with_self TINYINT(1) DEFAULT NULL,
-  self_smoking VARCHAR(16) DEFAULT NULL,
-  self_drinking VARCHAR(16) DEFAULT NULL,
-  self_relationship_goal VARCHAR(32) DEFAULT NULL,
-  target_gender VARCHAR(8) DEFAULT NULL,
+  -- 不可量化字段已删除：self_life_rhythm, self_work_pattern, self_expression_style（主观描述）
+  -- target_gender 已移动到 profiles 表（硬条件）
   target_age_min INT DEFAULT NULL,
   target_age_max INT DEFAULT NULL,
   target_cities TEXT,
+  target_cities_adcodes TEXT,  -- 新增：目标城市编码列表（快速范围搜索）
+  target_districts_adcodes TEXT,  -- 新增：目标区县编码列表（精准商圈匹配）
   target_height_min INT DEFAULT NULL,
   target_height_max INT DEFAULT NULL,
-  target_education_min VARCHAR(32) DEFAULT NULL,
+  target_weight_min INT DEFAULT NULL,  -- 新增：目标体重下限（kg）
+  target_weight_max INT DEFAULT NULL,  -- 新增：目标体重上限（kg）
+  target_education_min VARCHAR(32) DEFAULT NULL,  -- 保留：学历字符串（兼容）
+  target_education_min_code INT DEFAULT NULL,  -- 新增：学历编码（1-专科，2-本科，3-硕士，4-博士）
   target_income_min_wan INT DEFAULT NULL,
   target_income_max_wan INT DEFAULT NULL,
+  target_hometown_cities TEXT,  -- 新增：期望对方家乡列表
+  target_hometown_cities_adcodes TEXT,  -- 新增：期望对方家乡编码列表（精准匹配）
+  target_house_requirement VARCHAR(32) DEFAULT NULL,  -- 新增：对方房产要求
+  target_car_requirement VARCHAR(32) DEFAULT NULL,  -- 新增：对方车产要求
   target_marital_statuses TEXT,
   target_marital_status_strength VARCHAR(32) DEFAULT NULL,
   target_accept_partner_children VARCHAR(16) DEFAULT NULL,
   target_accept_partner_children_strength VARCHAR(32) DEFAULT NULL,
   target_accept_long_distance VARCHAR(16) DEFAULT NULL,
   target_location_semantics VARCHAR(128) DEFAULT NULL,
+  target_smoke_acceptance VARCHAR(32) DEFAULT NULL,  -- 新增：对方抽烟接受度
+  target_drink_acceptance VARCHAR(32) DEFAULT NULL,  -- 新增：对方喝酒接受度
   target_requires_partner_accept_my_children TINYINT(1) DEFAULT NULL,
   target_want_children VARCHAR(16) DEFAULT NULL,
   target_marriage_timeline VARCHAR(32) DEFAULT NULL,
-  must_have_tags TEXT,
-  must_not_have_tags TEXT,
-  preferred_traits TEXT,
-  disliked_traits TEXT,
-  persona_summary_internal TEXT,
-  preference_summary_internal TEXT,
-  public_profile_summary_draft TEXT,
-  public_preference_summary_draft TEXT,
+  -- must_have_tags 和 must_not_have_tags 已删除
+  -- 不可量化字段已删除：preferred_traits, disliked_traits（性格特质偏好）
+  -- 不可量化字段已删除：persona_summary_internal, preference_summary_internal, public_*（文本摘要）
   last_confirmed_at DATETIME DEFAULT NULL,
   last_inferred_at DATETIME DEFAULT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  KEY idx_user_personas_profile_id (profile_id)
+  KEY idx_user_personas_profile_id (profile_id),
+  KEY idx_target_education_min_code (target_education_min_code),  -- 新增：学历编码索引
+  KEY idx_target_cities_adcodes (target_cities_adcodes(100))  -- 新增：城市编码索引（前100字符）
 ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
 """
 
@@ -98,12 +90,45 @@ CREATE TABLE IF NOT EXISTS {observation_table} (
 ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
 """
 
+# 新增：对话摘要表（按字段存储LLM提炼的结构化数据）
+# 修正版：每个字段单独存储，对应一个向量类型
+CONVERSATION_SUMMARIES_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS {conversation_summaries_table} (
+  summary_id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  conversation_id VARCHAR(191) NOT NULL COMMENT '对话ID（可以是discovery session、chat thread等）',
+  conversation_type VARCHAR(32) NOT NULL COMMENT '对话类型（discovery/chat/assessment等）',
+  requester_id BIGINT NOT NULL COMMENT '用户ID',
+  profile_id BIGINT NOT NULL COMMENT '画像ID',
+  summary_key VARCHAR(50) NOT NULL COMMENT '字段名（如 personality_traits、values、partner_expectation）',
+  summary_text VARCHAR(500) NOT NULL COMMENT '字段值（如 "性格温柔、内向"、"重视家庭"）',
+  vector_status VARCHAR(20) DEFAULT 'pending' COMMENT '向量化状态: pending(待处理), done(已完成), failed(失败), retrying(重试中)',
+  retry_count INT DEFAULT 0 COMMENT '重试次数（最多3次）',
+  error_message VARCHAR(255) DEFAULT NULL COMMENT '错误信息（向量库写入失败时记录）',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  KEY idx_conversation_summaries_conversation_id (conversation_id),
+  KEY idx_conversation_summaries_requester_id (requester_id),
+  KEY idx_conversation_summaries_profile_id (profile_id),
+  KEY idx_conversation_summaries_key (summary_key),
+  KEY idx_conversation_summaries_type (conversation_type),
+  KEY idx_conversation_summaries_vector_status (vector_status),
+  UNIQUE KEY unique_conversation_key (conversation_id, summary_key)
+) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci COMMENT '对话摘要表（按字段存储），每个字段对应一个向量类型'
+"""
+
 PERSONA_EXTENSION_COLUMNS = {
-    "self_life_rhythm": "VARCHAR(64) DEFAULT NULL",
-    "self_work_pattern": "VARCHAR(64) DEFAULT NULL",
-    "self_expression_style": "VARCHAR(64) DEFAULT NULL",
-    "self_children_count": "INT DEFAULT NULL",
-    "self_children_living_with_self": "TINYINT(1) DEFAULT NULL",
+    # 不可量化字段已删除：self_life_rhythm, self_work_pattern, self_expression_style
+    "target_weight_min": "INT DEFAULT NULL COMMENT '目标体重下限（kg）'",  # 新增
+    "target_weight_max": "INT DEFAULT NULL COMMENT '目标体重上限（kg）'",  # 新增
+    "target_hometown_cities": "TEXT COMMENT '期望对方家乡列表'",  # 新增
+    "target_hometown_cities_adcodes": "TEXT COMMENT '期望对方家乡编码列表'",  # 新增：精准匹配
+    "target_house_requirement": "VARCHAR(32) DEFAULT NULL COMMENT '对方房产要求'",  # 新增
+    "target_car_requirement": "VARCHAR(32) DEFAULT NULL COMMENT '对方车产要求'",  # 新增
+    "target_smoke_acceptance": "VARCHAR(32) DEFAULT NULL COMMENT '对方抽烟接受度'",  # 新增
+    "target_drink_acceptance": "VARCHAR(32) DEFAULT NULL COMMENT '对方喝酒接受度'",  # 新增
+    "target_cities_adcodes": "TEXT COMMENT '目标城市编码列表'",  # 新增：快速范围搜索
+    "target_districts_adcodes": "TEXT COMMENT '目标区县编码列表'",  # 新增：精准商圈匹配
+    "target_education_min_code": "INT DEFAULT NULL COMMENT '目标学历下限编码（1-专科，2-本科，3-硕士，4-博士）'",  # 新增：量化学历
     "target_marital_status_strength": "VARCHAR(32) DEFAULT NULL",
     "target_accept_partner_children_strength": "VARCHAR(32) DEFAULT NULL",
     "target_location_semantics": "VARCHAR(128) DEFAULT NULL",
@@ -132,50 +157,39 @@ PERSONA_REQUIRED_COLUMNS = (
     "user_key",
     "display_name",
     "profile_id",
-    "self_gender",
-    "self_age",
-    "self_city",
-    "self_district",
-    "self_height",
-    "self_education",
-    "self_income_wan",
-    "self_job",
-    "self_life_rhythm",
-    "self_work_pattern",
-    "self_expression_style",
-    "self_marital_status",
-    "self_has_children",
-    "self_children_count",
-    "self_children_living_with_self",
-    "self_smoking",
-    "self_drinking",
-    "self_relationship_goal",
-    "target_gender",
+    # 不可量化字段已删除：self_life_rhythm, self_work_pattern, self_expression_style
+    # target_gender 已移动到 profiles 表
     "target_age_min",
     "target_age_max",
     "target_cities",
+    "target_cities_adcodes",  # 新增：目标城市编码列表
+    "target_districts_adcodes",  # 新增：目标区县编码列表
     "target_height_min",
     "target_height_max",
-    "target_education_min",
+    "target_weight_min",  # 新增：目标体重下限
+    "target_weight_max",  # 新增：目标体重上限
+    "target_education_min",  # 保留：学历字符串（兼容）
+    "target_education_min_code",  # 新增：学历编码
     "target_income_min_wan",
     "target_income_max_wan",
+    "target_hometown_cities",  # 新增：期望对方家乡列表
+    "target_hometown_cities_adcodes",  # 新增：期望对方家乡编码列表
+    "target_house_requirement",  # 新增：对方房产要求
+    "target_car_requirement",  # 新增：对方车产要求
     "target_marital_statuses",
     "target_marital_status_strength",
     "target_accept_partner_children",
     "target_accept_partner_children_strength",
     "target_accept_long_distance",
     "target_location_semantics",
+    "target_smoke_acceptance",  # 新增：对方抽烟接受度
+    "target_drink_acceptance",  # 新增：对方喝酒接受度
     "target_requires_partner_accept_my_children",
     "target_want_children",
     "target_marriage_timeline",
-    "must_have_tags",
-    "must_not_have_tags",
-    "preferred_traits",
-    "disliked_traits",
-    "persona_summary_internal",
-    "preference_summary_internal",
-    "public_profile_summary_draft",
-    "public_preference_summary_draft",
+    # must_have_tags 和 must_not_have_tags 已删除
+    # 不可量化字段已删除：preferred_traits, disliked_traits
+    # 不可量化字段已删除：persona_summary_internal, preference_summary_internal, public_*_draft
     "last_confirmed_at",
     "last_inferred_at",
     "created_at",
@@ -203,6 +217,20 @@ OBSERVATION_REQUIRED_COLUMNS = (
     "created_at",
 )
 
+# 新增：conversation_summaries 表的必需列（修正版）
+CONVERSATION_SUMMARIES_REQUIRED_COLUMNS = (
+    "summary_id",
+    "conversation_id",
+    "conversation_type",
+    "requester_id",
+    "profile_id",
+    "summary_key",  # 新增：字段名
+    "summary_text",  # 新增：字段值（替代原来的 summary）
+    "vector_status",  # 新增：向量化状态
+    "created_at",
+    "updated_at",
+)
+
 
 @dataclass(frozen=True)
 class ResolvedPersonaSchemaTarget:
@@ -211,6 +239,7 @@ class ResolvedPersonaSchemaTarget:
     observation_table: str
     profile_table: str
     public_view: str
+    conversation_summaries_table: str
 
 
 def resolve_persona_schema_target(
@@ -220,6 +249,7 @@ def resolve_persona_schema_target(
     observation_table: str | None = None,
     profile_table: str | None = None,
     public_view: str | None = None,
+    conversation_summaries_table: str | None = None,
 ) -> ResolvedPersonaSchemaTarget:
     source_config = parse_mysql_source(source)
     resolved_profile_table = profile_table or source_config["table"] or DEFAULT_PROFILE_TABLE
@@ -229,6 +259,7 @@ def resolve_persona_schema_target(
         observation_table=observation_table or DEFAULT_OBSERVATION_TABLE,
         profile_table=resolved_profile_table,
         public_view=public_view or DEFAULT_PUBLIC_VIEW,
+        conversation_summaries_table=conversation_summaries_table or DEFAULT_CONVERSATION_SUMMARIES_TABLE,
     )
 
 
@@ -239,6 +270,7 @@ def build_persona_scope(
     observation_table: str | None = None,
     profile_table: str | None = None,
     public_view: str | None = None,
+    conversation_summaries_table: str | None = None,
 ) -> str:
     resolved = resolve_persona_schema_target(
         source=source,
@@ -246,13 +278,15 @@ def build_persona_scope(
         observation_table=observation_table,
         profile_table=profile_table,
         public_view=public_view,
+        conversation_summaries_table=conversation_summaries_table,
     )
     return (
         "persona:"
         f"{resolved.persona_table}:"
         f"{resolved.observation_table}:"
         f"{resolved.profile_table}:"
-        f"{resolved.public_view}"
+        f"{resolved.public_view}:"
+        f"{resolved.conversation_summaries_table}"
     )
 
 
@@ -264,6 +298,7 @@ def ensure_persona_schema(
     observation_table: str | None = None,
     profile_table: str | None = None,
     public_view: str | None = None,
+    conversation_summaries_table: str | None = None,
     commit: bool = True,
 ) -> dict[str, Any]:
     resolved = resolve_persona_schema_target(
@@ -272,6 +307,7 @@ def ensure_persona_schema(
         observation_table=observation_table,
         profile_table=profile_table,
         public_view=public_view,
+        conversation_summaries_table=conversation_summaries_table,
     )
     if not table_exists(mysql_conn, resolved.profile_table):
         raise ValueError(f"Profile table does not exist: {resolved.profile_table}")
@@ -281,6 +317,12 @@ def ensure_persona_schema(
         cursor.execute(PERSONA_TABLE_SQL.format(persona_table=quote_mysql_ident(resolved.persona_table)))
         cursor.execute(
             OBSERVATION_TABLE_SQL.format(observation_table=quote_mysql_ident(resolved.observation_table))
+        )
+        # 新增：创建 conversation_summaries 表
+        cursor.execute(
+            CONVERSATION_SUMMARIES_TABLE_SQL.format(
+                conversation_summaries_table=quote_mysql_ident(resolved.conversation_summaries_table)
+            )
         )
 
         cursor.execute(f"SHOW COLUMNS FROM {quote_mysql_ident(resolved.persona_table)}")
@@ -358,6 +400,7 @@ def ensure_persona_schema(
         "observation_table": resolved.observation_table,
         "profile_table": resolved.profile_table,
         "public_view": resolved.public_view,
+        "conversation_summaries_table": resolved.conversation_summaries_table,
         "created_profile_columns": created_columns,
     }
 
@@ -370,6 +413,7 @@ def validate_persona_schema(
     observation_table: str | None = None,
     profile_table: str | None = None,
     public_view: str | None = None,
+    conversation_summaries_table: str | None = None,
 ) -> dict[str, list[str]]:
     resolved = resolve_persona_schema_target(
         source=source,
@@ -377,6 +421,7 @@ def validate_persona_schema(
         observation_table=observation_table,
         profile_table=profile_table,
         public_view=public_view,
+        conversation_summaries_table=conversation_summaries_table,
     )
     issues = {
         "missing_tables": [],
@@ -400,6 +445,15 @@ def validate_persona_schema(
         for column_name in OBSERVATION_REQUIRED_COLUMNS:
             if column_name not in existing:
                 issues["missing_columns"].append(f"{resolved.observation_table}.{column_name}")
+
+    # 新增：验证 conversation_summaries 表
+    if not table_exists(mysql_conn, resolved.conversation_summaries_table):
+        issues["missing_tables"].append(resolved.conversation_summaries_table)
+    else:
+        existing = _fetch_columns(mysql_conn, resolved.conversation_summaries_table)
+        for column_name in CONVERSATION_SUMMARIES_REQUIRED_COLUMNS:
+            if column_name not in existing:
+                issues["missing_columns"].append(f"{resolved.conversation_summaries_table}.{column_name}")
 
     if not table_exists(mysql_conn, resolved.profile_table):
         issues["missing_tables"].append(resolved.profile_table)

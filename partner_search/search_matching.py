@@ -62,6 +62,14 @@ class SearchMatchingRuntime:
     soft_concession_risk_flags: set[str]
 
 
+# 档案状态中文映射（简化版：只有3个状态）
+PROFILE_STATUS_LABELS = {
+    "active": "活跃",
+    "matched": "已匹配",
+    "inactive": "不活跃",
+}
+
+
 def missing_field_penalty(runtime: SearchMatchingRuntime, field: str) -> int:
     return runtime.critical_missing_field_penalties.get(field, 0)
 
@@ -1106,7 +1114,9 @@ def evaluate_candidate(
     else:
         if not runtime.match_any_exact(profile_status, allowed_statuses):
             return fail("profile_status_mismatch")
-        reasons.append(f"状态 {profile_status}")
+        # 将英文状态翻译成中文
+        status_label = PROFILE_STATUS_LABELS.get(profile_status, profile_status)
+        reasons.append(f"状态 {status_label}")
         confidence_score += 4
 
     active_at = runtime.effective_activity_datetime(record)

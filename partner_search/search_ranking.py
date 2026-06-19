@@ -12,6 +12,7 @@ class SearchRankingRuntime:
     as_text: Callable[[Any], str]
     strip_internal_fields: Callable[[dict[str, Any]], dict[str, Any]]
     diversity_job_patterns: Sequence[tuple[Any, str]]
+    result_sort_key: Callable[[dict[str, Any]], Any]
     diversity_penalty_tiers: Sequence[int] = (6, 4, 2)
     score_gap_severe_concession: int = 20
     score_gap_high_risk_tail: int = 25
@@ -188,42 +189,16 @@ def select_diverse_results(
     results: list[dict[str, Any]],
     limit: int,
 ) -> list[dict[str, Any]]:
+    """选择推荐结果（删除多样性筛选，只保留质量保护）。
+
+    改为直接按分数排序，取前limit个结果。
+    """
+    # 裁剪低质量尾部（质量保护）
     results = trim_low_quality_tail(runtime, results)
-    if len(results) <= limit:
-        return [materialize_result_profile(runtime, item) for item in results[:limit]]
-
-    for item in results:
-        item["_diversity_signature"] = diversity_signature(runtime, item)
-        item["_diversity_max_overlap"] = 0
-
-    remaining = list(results)
-    selected: list[dict[str, Any]] = []
-    while remaining and len(selected) < limit:
-        best = None
-        best_key = None
-        for item in remaining:
-            penalty = _diversity_penalty_from_overlap(runtime, int(item.get("_diversity_max_overlap") or 0))
-            key = (
-                item["score"] - penalty,
-                item["score"],
-                item["verified_rank"],
-                item["activity_sort_ts"],
-                item["profile_status_rank"],
-            )
-            if best is None or key > best_key:
-                best = item
-                best_key = key
-        selected.append(best)
-        remaining.remove(best)
-        best_signature = best["_diversity_signature"]
-        for item in remaining:
-            overlap = _signature_overlap(item["_diversity_signature"], best_signature)
-            if overlap > int(item.get("_diversity_max_overlap") or 0):
-                item["_diversity_max_overlap"] = overlap
-    for item in selected:
-        materialize_result_profile(runtime, item)
-        item.pop("_diversity_max_overlap", None)
-    return selected
+    # 直接按分数排序，取前limit个（删除多样性筛选）
+    results.sort(key=result_sort_key, reverse=True)
+    # Materialize profile 并返回
+    return [materialize_result_profile(runtime, item) for item in results[:limit]]
 
 
 __all__ = [

@@ -22,7 +22,118 @@ Agent 传 criteria： {"绿茶": False}
 结果：          性格筛选失效
 ```
 
-### 1.2 根因分析
+### 1.2 代码现状分析（基于实际代码审查）
+
+#### 数据源使用情况
+
+| 数据源 | 写入时机 | 搜索使用情况 | 问题 |
+|--------|---------|-------------|------|
+| **user_personas 表** | 会话结束后（可量化字段） | ✅ 已使用 | `criteria_compiler` 从此表加载 persona_row |
+| **conversation_summaries 表** | 会话结束后（不可量化字段） | ❌ **完全未使用** | `load_traits_for_discovery()` 只加载原始测评数据，不加载摘要文本 |
+| **Milvus 向量库** | 会话结束后（向量化） | ❌ **完全未集成** | `VectorStore.search_similar_users()` 已实现但未调用 |
+
+#### 关键代码路径分析
+
+**1. load_traits_for_discovery() 只加载原始测评数据**
+
+```python
+# 文件: partner_search/personality_traits_reader.py
+# 加载的数据结构：
+PersonalityTraitsContext:
+  - mbti: {type_code, scores: {ei, sn, tf, jp}}
+  - attachment: {type_code, anxiety, avoidance}
+  - big_five: {scores: {openness, conscientiousness, ...}}
+  - values: {value_type, top_values: [...]}
+  - sternberg: {scores: {intimacy, passion, commitment}}
+
+# ❌ 问题：不加载 conversation_summaries 的摘要文本
+# conversation_summaries 表存储的内容：
+#   - summary_key: "personality_traits"
+#   - summary_text: "性格温柔、内向、稳重"
+# 这些数据完全未加载，Agent 看不到
+```
+
+**2. 向量库已实现但未集成**
+
+```python
+# 文件: match_domain/vector_store.py
+class VectorStore:
+    def search_similar_users(
+        self,
+        user_vector: list[float],
+        vector_type: str,  # personality_traits, values, partner_expectation...
+        top_k: int = 50,
+        similarity_threshold: float = 0.85,
+    ) -> list[dict[str, Any]]:
+        """搜索相似用户（带时间衰减）"""
+        # ✅ 功能已实现：时间衰减配置、向量搜索
+        # ❌ 问题：search_partner_candidates 完全未调用
+
+# 向量类型配置（已实现）：
+VECTOR_TYPES_CONFIG = {
+    "personality_traits": {"decay_days": 365, "min_factor": 0.7},
+    "values": {"decay_days": 365, "min_factor": 0.7},
+    "partner_expectation": {"decay_days": 90, "min_factor": 0.5},
+}
+```
+
+**3. 性格特质排序已移除（Agent Native 模式）**
+
+```python
+# 文件: service_integrations.py:523-592
+# ✅ Agent Native 改进：移除性格特质增强逻辑
+# Tool 层只返回原始性格特质数据，Agent 自主决定如何使用
+# - 是否生成性格推荐理由？
+# - 是否根据性格匹配度排序？
+# - 这些决策在 Agent 层表达，不在 Tool 层硬编码
+
+# 返回的 personality_trace 用于可观测性：
+personality_trace = {
+    "self_traits_available": bool(user_traits_dict),
+    "candidate_traits_count": 0,
+    "agent_native_mode": True,
+    "note": "性格特质数据已返回，Agent 自主决定如何使用",
+}
+```
+
+#### 根本原因：数据流未打通
+
+```
+会话结束后：
+┌─────────────────────────────────────────────────────────────────┐
+│ LLM提炼结构化摘要                                                │
+│ {"personality_traits": "温柔、内向", "values": "重视家庭"}        │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │
+           ┌───────────────┴───────────────┐
+           │                               │
+           ▼                               ▼
+┌─────────────────────┐        ┌─────────────────────────────────┐
+│ 可量化字段           │        │ 不可量化字段                      │
+│ (mbti_type, city)   │        │ (personality_traits, values)     │
+└──────────┬──────────┘        └────────────────┬────────────────┘
+           │                                    │
+           ▼                                    ▼
+┌─────────────────────┐        ┌─────────────────────────────────┐
+│ user_personas 表     │        │ conversation_summaries 表        │
+│ ✅ 搜索已使用        │        │ ❌ 搜索完全未使用                 │
+│                     │        │                                  │
+│ criteria_compiler   │        │ load_traits_for_discovery()      │
+│ 从此表加载          │        │ 只加载原始测评数据                │
+│                     │        │ 不加载摘要文本                    │
+└─────────────────────┘        └─────────────────────────────────┘
+                                           │
+                                           ▼
+                               ┌─────────────────────────────────┐
+                               │ Milvus 向量库                    │
+                               │ ❌ 搜索完全未集成                 │
+                               │                                 │
+                               │ VectorStore.search_similar_users()│
+                               │ 已实现但未调用                   │
+                               └─────────────────────────────────┘
+```
+
+### 1.3 根因分析
 
 | 问题 | 用户场景 | 当前实现缺陷 | 根因 |
 |------|----------|-------------|------|
@@ -36,6 +147,8 @@ Agent 传 criteria： {"绿茶": False}
 | **问题 8** | 放宽策略（没有人放宽年龄） | 需要多次搜索 | 缺少搜索策略设计 |
 | **问题 9** | 翻译层缺失 | 关键词→数据字段无映射 | 架构设计缺失 |
 | **问题 10** | 数据片面 | 数据库没记录"真诚"→ 认为不真诚 | 数据源局限 + 分析片面 |
+| **问题 11** | **摘要文本未加载** | conversation_summaries 表数据未使用 | **数据流未打通** |
+| **问题 12** | **向量库未集成** | Milvus 向量搜索未使用 | **数据流未打通** |
 
 ---
 
@@ -139,78 +252,124 @@ persona = {
 
 ---
 
-## 4. 改进方案设计
+## 4. 改进方案设计（Agent Native 架构）
 
-### 4.1 核心思路：三层筛选架构
+### 4.1 核心思路：Agent先判断，串行筛选
+
+**核心原则**：Agent是决策大脑，自己判断用户需求能否映射到结构化字段，不需要Prompt指导。
 
 ```
-用户说："不要绿茶的女生，25-30岁，上海"
+用户说："我想找温柔的，北京的，25-30岁，不要绿茶的"
 
 ┌─────────────────────────────────────────────────────────────────┐
-│ Layer 1：硬约束筛选（数据库字段）                                │
+│ Step 1: Agent 先判断能否映射到结构化字段                          │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│ criteria = {"age_min": 25, "age_max": 30, "cities": ["上海"]}   │
-│ → SQL WHERE 子句查询                                            │
-│ → 返回候选人大池子（50 人）                                      │
+│ Agent 思考（不需要Prompt指导，Agent自己有足够的知识）：           │
 │                                                                 │
-│ 特点：                                                          │
-│ - 明确的数字/选项条件                                            │
-│ - 数据库有对应字段，能直接查询                                   │
-│ - 效率最高，不需要 Agent 参与                                    │
+│ "北京的" → profile.city → ✅ 能映射                             │
+│ "25-30岁" → profile.age → ✅ 能映射                             │
+│ "温柔的" → persona.mbti？→ Agent知道：温柔的人通常内向、友善      │
+│   → 可能是ISFJ、INFJ → ✅ 能映射                                 │
+│                                                                 │
+│ "不要绿茶的" → 结构化字段？→ Agent知道：绿茶=表里不一+心机重+双标 │
+│   → 数据库没有这些字段 → ❌ 不能映射                             │
+│   → 需要向量库查询                                               │
+│                                                                 │
+│ 判断结果：                                                       │
+│ - 能映射的部分：城市、年龄、MBTI → 结构化查询                    │
+│ - 不能映射的部分：绿茶 → 需要向量库查询                          │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│ Layer 2：偏好表筛选（离线提取的特征）                            │
+│ Step 2: 结构化查询（profile + persona 表）                       │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│ preference_query = {"性格标签": {"exclude": ["绿茶"]}}          │
-│ → 查偏好表：性格标签 != "绿茶"                                   │
-│ → 剩下候选人（30 人）                                            │
+│ Agent 构造查询条件（只包含能映射的部分）：                        │
+│ criteria = {                                                    │
+│   "cities": ["北京"],                                           │
+│   "age_min": 25,                                                │
+│   "age_max": 30,                                                │
+│   "mbti_type": ["ISFJ", "INFJ"],  ← Agent自己知道映射关系        │
+│ }                                                               │
 │                                                                 │
-│ 特点：                                                          │
-│ - 偏好表字段是从聊天记录离线提取的                               │
-│ - 已经预处理好了，查询效率高                                     │
-│ - 能用偏好表的先筛，省 Agent 工作量                             │
+│ 查询 profile + persona 表 → 返回候选人列表（50人）               │
 │                                                                 │
-│ 如果偏好表有用户要求的字段：                                     │
-│ → 直接筛选，跳过 Layer 3                                        │
-│                                                                 │
-│ 如果偏好表没有用户要求的字段：                                   │
-│ → 跳过这层筛选，进入 Layer 3                                    │
-│ （比如用户说"不要矫情的"，偏好表没有"矫情"标签）                 │
+│ **关键**：                                                       │
+│ - 这50人是结构化查询的结果                                       │
+│ - 但用户还有"不要绿茶"的需求，这50人里可能包含绿茶特征的人        │
+│ - 需要继续向量库查询，进一步筛选                                 │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│ Layer 3：Agent 自己分析原始数据                                  │
+│ Step 3: 向量库查询（在结构化查询结果之上进一步筛选）              │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│ 只处理偏好表没有命中的特征                                       │
-│ Agent 获取候选人完整信息：persona + 脱敏后的聊天记录            │
+│ **关键设计**：                                                   │
+│ - 向量库自动理解语义，不需要手动拆解关键词                        │
+│ - 用户说"不要绿茶" → 向量库自动理解：绿茶 ≈ 表里不一、心机重、双标│
 │                                                                 │
-│ Agent 自己分析判断（纯思考，不调用工具）：                       │
-│ → Agent 读聊天记录                                              │
-│ → Agent 自己决定分析方法（grep 关键词频率、语气分析）            │
-│ → Agent 自己判断："这个人'你好棒'出现 5 次，过于迎合" → exclude │
-│ → Agent 自己判断："这个人说话直接，有自己的观点" → pass         │
+│ 向量库查询步骤：                                                 │
 │                                                                 │
-│ 特点：                                                          │
-│ - 只处理偏好表筛不掉的特征                                       │
-│ - Agent 基于一手信息判断，不失真                                 │
-│ - Agent 自主权高，自己决定分析方法                               │
+│ 1. 直接搜索"绿茶"语义相似的候选人                                 │
+│    - 输入：用户的"绿茶"需求（语义向量）                           │
+│    - 向量库自动理解语义                                          │
+│    - 不需要手动拆解"绿茶 = 表里不一 + 心机重 + 双标"              │
+│                                                                 │
+│ 2. 在这50人中搜索                                                │
+│    - similarity_threshold = 0.85                                │
+│    - 找出与"绿茶"语义相似度 > 0.85 的候选人                       │
+│    - 这些候选人向量库判断有绿茶特征                               │
+│                                                                 │
+│ 3. 排除这些候选人                                                │
+│    - 候选人A：相似度 0.92 → 排除                                 │
+│    - 候选人B：相似度 0.78 → 保留                                 │
+│    - 候选人C：相似度 0.85 → 排除                                 │
+│                                                                 │
+│ 返回：筛选后的候选人列表（30人）                                  │
+│                                                                 │
+│ **核心价值**：                                                   │
+│ - 向量库本身就能理解语义，不需要手动拆解关键词                    │
+│ - 向量库是在结构化查询的50人基础上进一步筛选                      │
+│ - 不是"结构化查询没结果才用向量库"                               │
+│ - 是"结构化查询 + 向量库查询 = 最终结果"                         │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│ 最终结果                                                         │
+│ Step 4: Agent 自己判断（读取完整摘要信息）                        │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│ Agent 直接在 decision 中返回结果：                               │
-│ → 不需要 submit 工具                                            │
-│ → 直接通过 decision.selected_candidates 返回判断结果            │
-│ → 推荐候选人 5 人                                                │
+│ **关键设计**：                                                   │
+│ - ❌ 不需要先拆解"绿茶 = 表里不一+心机重+双标"再去搜索            │
+│ - ❌ 不需要去摘要表搜索关键词                                     │
+│ - ✅ Agent读取每个候选人的完整摘要信息，自己判断                  │
+│ - ❌ 不需要读聊天记录                                             │
+│                                                                 │
+│ Agent 获取：                                                     │
+│ - 这30人的完整摘要信息（从 conversation_summaries 加载）         │
+│                                                                 │
+│ Agent 判断：                                                     │
+│                                                                 │
+│ 候选人D的完整摘要：                                              │
+│   - 性格标签：表里不一、善于伪装                                  │
+│   - 沟通风格：双标、含蓄                                          │
+│   - 价值观：不真诚                                                │
+│   → Agent看完整个摘要，自己判断：有绿茶特征 → ❌ 排除             │
+│                                                                 │
+│ 候选人E的完整摘要：                                              │
+│   - 性格标签：真诚、直接、有原则                                  │
+│   - 沟通风格：直接                                                │
+│   - 价值观：重视真诚                                              │
+│   → Agent看完整个摘要，自己判断：没有绿茶特征 → ✅ 推荐           │
+│                                                                 │
+│ 返回最终推荐结果（比如5人）                                       │
+│                                                                 │
+│ **核心价值**：                                                   │
+│ - Agent不需要读聊天记录，只用摘要表就够了                         │
+│ - Agent读取完整摘要信息，自己判断是否满足用户需求                 │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -219,150 +378,309 @@ persona = {
 
 | 原则 | 描述 | 原因 |
 |------|------|------|
-| **三层筛选，逐层收窄** | 硬约束 → 偏好表 → Agent 分析 | 能用预处理数据的先筛，效率更高 |
-| **偏好表优先** | 偏好表字段是离线提取的，优先使用 | 省 Agent 工作量，查询效率高 |
-| **Agent 只处理无法预处理的部分** | 只分析偏好表没有的特征 | 减少不必要的 Agent 分析 |
-| **给 Agent 原始数据** | 需要 Agent 分析时，返回脱敏后的原始数据 | 不失真，Agent 基于一手信息判断 |
-| **Agent 自己分析** | Agent 自己决定分析方法 | Agent 比预设规则更智能 |
-| **判断不调用工具** | Agent 判断是纯思考，直接在 decision 中返回 | 减少 tool call 次数 |
+| **Agent先判断** | Agent自己判断用户需求能否映射到结构化字段 | Agent是决策大脑，不需要Prompt指导 |
+| **结构化查询优先** | 能映射的部分先用结构化查询 | 效率最高，数据库有对应字段 |
+| **向量库兜底** | 不能映射的部分用向量库语义搜索 | 向量库自动理解语义，不需要手动拆解关键词 |
+| **串行筛选** | 结构化查询 → 向量库查询 → Agent判断 | 逐层收窄，不是并行查询 |
+| **Agent读取完整摘要** | Agent读取完整摘要信息，自己判断 | 不需要读聊天记录，只用摘要表就够了 |
+| **摘要表允许负面特征** | LLM提炼时，允许提炼负面特征（方案A） | Agent才能基于完整摘要判断绿茶特征 |
 
-### 4.3 为什么需要三层筛选？
+### 4.3 关键设计点
 
-**偏好表的优势与局限：**
+#### 4.3.1 Agent判断映射策略（不需要Prompt指导）
 
-```
-偏好表字段是从聊天记录离线提取的，比如：
+**Agent自己知道**：
+- "北京的" → profile.city
+- "温柔的" → persona.mbti（可能是ISFJ、INFJ）
+- "绿茶" = 表里不一 + 暗地心机重 + 双标 → 没有对应结构化字段
 
-偏好表结构：
-{
-  "性格标签": ["温柔", "内向", "稳重"],
-  "沟通风格": ["直接", "含蓄"],
-  "价值观": ["家庭导向", "事业导向"],
-  ...
-}
+**不需要Prompt告诉Agent**：
+- ❌ Prompt不需要写："温柔映射到ISFJ"
+- ❌ Prompt不需要写："绿茶映射到表里不一、心机重"
+- ✅ Agent自己理解语义（因为Agent本身就有足够的知识）
 
-优势：
-1. 已经预处理好了，查询效率高
-2. 能覆盖常见性格特征（温柔、内向、稳重等）
-3. 省 Agent 工作量，不需要每次都读聊天记录
+#### 4.3.2 向量库语义搜索（不需要手动拆解关键词）
 
-局限：
-1. 偏好表字段有限，无法覆盖所有用户表达
-   - 用户说"不要矫情的" → 偏好表没有"矫情"标签
-   - 用户说"找个靠谱的" → 偏好表没有"靠谱"标签
-   - 用户说"不要绿茶的" → 偏好表可能有"绿茶"标签，但也可能没有
+**向量库自动理解语义**：
+- 用户说"不要绿茶" → 向量库自动理解：绿茶 ≈ 表里不一、心机重、双标
+- 不需要手动拆解"绿茶 = 表里不一 + 心机重 + 双标"
+- 不需要从摘要表搜索这些关键词
 
-2. 偏好表是离线提取的，可能滞后
-   - 用户最近聊天风格变了 → 偏好表还没更新
+**就像**：你问智能助手"找绿茶风格的人"，助手自己知道绿茶是什么意思，不需要你告诉它。
 
-3. 偏好表是预设字段，无法个性化
-   - 用户说"不要那种动不动就'你好棒'的女生" → 这是具体行为，偏好表没法记录
+#### 4.3.3 Agent读取完整摘要（不需要读聊天记录）
 
-结论：
-- 能用偏好表的先用（Layer 2）
-- 偏好表覆盖不了的，才让 Agent 自己分析（Layer 3）
-```
+**Agent判断逻辑**：
+- Agent读取每个候选人的完整摘要信息（性格标签、沟通风格、价值观）
+- Agent自己判断这个人的摘要是否符合用户需求（比如"绿茶"特征）
+- 不需要读聊天记录
 
-### 4.4 Layer 3 的必要性：为什么还要给 Agent 原始数据？
+**为什么不需要读聊天记录**：
+- 摘要表已经包含完整的性格信息（正面 + 负面特征）
+- Agent只需要看摘要，就能判断是否满足用户需求
 
-**当偏好表没有命中时，Agent 需要自己分析：**
+#### 4.3.4 摘要表字段设计：方案A（允许提炼负面特征）
 
-```
-假设用户说："不要矫情的女生，25-30岁，上海"
+**现状**：LLM提炼时，倾向提炼正面特征（温柔、内向），避免负面评价。
 
-Layer 1：硬约束筛选 → 50人
-Layer 2：偏好表没有"矫情"标签 → 跳过，还是 50人
-Layer 3：Agent 自己分析 → 需要读聊天记录判断"矫情"
+**问题**：用户需求可能包含负面特征（绿茶、矫情），摘要表没有这些标签。
 
-候选人 A 的聊天记录（脱敏后）：
+**方案A**：LLM提炼时，允许提炼负面特征
 
-[第1天] 女：你今天怎么不回我消息～
-[第3天] 女：你是不是不爱我了～
-[第5天] 女：你昨天没跟我说早安，我哭了很久～
-[第10天] 女：你今天回消息慢了5分钟，是不是不想理我了～
+**改动**：
+- 会话结束后的LLM提炼Prompt，允许提炼负面特征
+- 不只是正面特征（温柔、内向），也提炼负面特征（表里不一、心机重、双标）
 
-Agent 自己分析：
-"统计'你是不是不爱我了'、'是不是不想理我了' 出现次数
- 发现：每2-3天就有一次'你是不是不XXX我了'
- 都是情绪化的指责，没有具体原因
- 结合 persona（焦虑型依恋）判断：有矫情特征"
-
-结论：
-- Agent 读原始数据，能看到具体行为模式
-- 偏好表没有的标签，Agent 能自己定义并判断
-- Agent 的分析比预设标签更灵活、更个性化
-```
-
-### 4.5 Agent 可能的分析策略（Layer 3）
-
-Agent 不需要我们预设分析工具，Agent 会自己找到分析方法：
-
-| 分析策略 | Agent 可能的做法 | 适用场景 |
-|---------|-----------------|---------|
-| **关键词频率统计** | grep "你好棒"、"你好厉害" 出现次数 | 判断"绿茶"、"讨好型" |
-| **语气分析** | 分析对话语气是真诚鼓励还是过度迎合 | 判断性格特质 |
-| **情绪波动检测** | 检测是否有频繁的情绪化表达 | 判断"矫情"、"情绪化" |
-| **对比分析** | 对比不同话题的回应方式 | 判断是否有自己的观点 |
-| **时间分布分析** | 看关键词是否密集出现在特定时间段 | 判断行为模式 |
-| **结合 persona 综合** | 结合 MBTI、依恋类型判断性格倾向 | 综合判断 |
+**收益**：
+- 摘要表包含完整性格信息（正面 + 负面）
+- Agent能基于完整摘要判断绿茶特征
+- 不需要读聊天记录
 
 ---
 
-## 5. 工具设计
+## 5. 工具设计（Agent Native 架构）
 
 ### 5.1 设计原则
 
-| 原则 | 描述 |
-|------|------|
-| **三层筛选工具分离** | 硬约束、偏好表、Agent 分析用不同工具，职责清晰 |
-| **工具只返回原始数据** | 不做预处理、不给 Agent 二手信息（脱敏除外） |
-| **工具不管理状态** | 不需要 submit/get 工具，用 decision 结构表达结果 |
-| **工具调用最少化** | 一次调用返回所有信息，避免多次调用打断 Agent 思考 |
+| 原则 | 描述 | 现状对比 |
+|------|------|---------|
+| **Agent先判断** | Agent自己判断用户需求能否映射到结构化字段 | ✅ 现有架构已支持：Agent Native 模式 |
+| **结构化查询优先** | 能映射的部分先用结构化查询（profile + persona表） | ✅ 现有架构已支持：Layer 1 已实现 |
+| **向量库兜底** | 不能映射的部分用向量库语义搜索 | ❌ 需要集成：VectorStore未调用 |
+| **串行筛选** | 结构化查询 → 向量库查询 → Agent判断 | ❌ 需要实现：当前只有结构化查询 |
+| **Agent读取完整摘要** | Agent读取完整摘要信息，自己判断 | ❌ 需要实现：conversation_summaries未加载 |
+| **工具调用最少化** | 一次调用返回所有信息，避免多次调用打断 Agent 思考 | ✅ 现有架构已符合：ThreadPoolExecutor 并行加载 |
 
-### 5.2 search_partner_candidates（Layer 1 + Layer 2 筛选）
+### 5.2 search_partner_candidates（改进设计）
+
+#### 核心改进
+
+**Agent Native 模式**：Agent先判断用户需求能否映射到结构化字段，然后决定查询策略。
 
 ```python
 @function_tool
 def search_partner_candidates(
     criteria_json: str,
-    preference_json: str = "{}",
+    exclude_traits_json: str = "{}",
     limit: int = 20,
 ) -> dict[str, Any]:
     """
-    搜索候选人（硬约束 + 偏好表筛选）。
-    
-    核心设计：
-    - Layer 1：硬约束筛选（数据库字段查询）
-    - Layer 2：偏好表筛选（离线提取的特征查询）
-    - 返回筛选后的候选人 ID 列表 + 基础信息
-    - 不返回聊天记录，Agent 需要时单独调用
-    
+    搜索候选人（结构化查询 + 向量库查询）。
+
+    核心设计（Agent Native）：
+    - Agent先判断用户需求能否映射到结构化字段
+    - 能映射的部分：结构化查询（profile + persona表）
+    - 不能映射的部分：向量库语义搜索
+    - 返回筛选后的候选人 + 完整摘要信息
+
     参数：
-    - criteria_json: 硬约束条件（JSON）
+    - criteria_json: 结构化查询条件（Agent判断能映射的部分）
       支持的字段：age_min, age_max, cities, height_min, height_max,
-                  education, marital_status, income, job, relationship_goal 等
-    
-    - preference_json: 偏好表筛选条件（JSON）
-      支持的字段：性格标签、沟通风格、价值观等
-      示例：{"性格标签": {"exclude": ["绿茶"]}}
-    
+                  education, marital_status, income, job, mbti_type 等
+
+    - exclude_traits_json: 需要排除的特征（Agent判断不能映射的部分）
+      示例：{"traits": ["绿茶"]}
+      这些特征用向量库语义搜索排除
+
     - limit: 返回候选人数量（默认 20，最多 50）
-    
+
     返回：
-    - candidates: 候选人基础信息列表
+    - candidates: 候选人完整信息列表
       - id: 候选人 ID
       - basic_info: 基础信息（年龄、城市、职业等）
-      - persona: 用户画像（MBTI、依恋、价值观、大五人格）
-      - preference_tags: 偏好表标签（性格标签、沟通风格等）
+      - persona: 用户画像（MBTI、依恋、价值观）
+      - summary: 完整摘要信息 ← 新增（从 conversation_summaries 加载）
+
+    - total: 总候选人数量
+    - has_more: 是否有更多候选人
+    - vector_search_used: 是否使用了向量库查询
+
+    注意：
+    - Agent先判断能否映射到结构化字段（不需要Prompt指导）
+    - 向量库自动理解语义，不需要手动拆解关键词
+    - Agent读取完整摘要信息，自己判断
+    """
+    criteria = json.loads(criteria_json)
+    exclude_traits = json.loads(exclude_traits_json)
+    normalized_limit = max(1, min(int(limit or 20), 50))
+
+    # Step 1: 结构化查询（profile + persona表）
+    candidates = _search_by_structured_criteria(criteria, normalized_limit * 2)
+
+    # Step 2: 向量库查询（如果需要）
+    if exclude_traits.get("traits"):
+        candidates = _vector_search_exclude(candidates, exclude_traits["traits"])
+
+    # Step 3: 加载完整摘要信息
+    enriched = []
+    for c in candidates[:normalized_limit]:
+        candidate_data = {
+            "id": c["id"],
+            "basic_info": {...},
+            "persona": load_persona_from_db(c["id"]),  # ← 现有逻辑
+            "summary": load_complete_summary(c["id"]),  # ← 新增：完整摘要信息
+        }
+        enriched.append(candidate_data)
+
+    return {
+        "candidates": enriched,
+        "total": len(enriched),
+        "has_more": len(candidates) >= normalized_limit,
+        "vector_search_used": bool(exclude_traits.get("traits")),
+    }
+```
+
+#### 新增函数：_vector_search_exclude()
+
+```python
+def _vector_search_exclude(
+    candidates: list[dict],
+    exclude_traits: list[str],
+    similarity_threshold: float = 0.85,
+) -> list[dict]:
+    """
+    向量库语义搜索排除（Agent Native 模式）。
+
+    核心设计：
+    - 向量库自动理解语义，不需要手动拆解关键词
+    - 用户说"不要绿茶" → 向量库自动理解：绿茶 ≈ 表里不一、心机重、双标
+    - 在候选人列表中搜索相似度高的 → 排除
+
+    参数：
+    - candidates: 结构化查询返回的候选人列表
+    - exclude_traits: 需要排除的特征列表（如 ["绿茶"]）
+    - similarity_threshold: 相似度阈值（默认 0.85）
+
+    返回：
+    - filtered_candidates: 篮选后的候选人列表
+    """
+    from match_domain.vector_store import VectorStore
+
+    vector_store = VectorStore()
+
+    # 获取候选人的性格特质向量
+    candidate_vectors = []
+    for candidate in candidates:
+        vector = vector_store.get_vector(
+            user_id=candidate["id"],
+            vector_type="personality_traits"
+        )
+        if vector:
+            candidate_vectors.append({
+                "id": candidate["id"],
+                "vector": vector
+            })
+
+    # 搜索与exclude_traits相似度高的候选人
+    # 向量库自动理解语义，不需要手动拆解关键词
+    similar_users = vector_store.batch_search_similar(
+        exclude_traits=exclude_traits,
+        candidate_vectors=candidate_vectors,
+        similarity_threshold=similarity_threshold,
+    )
+
+    # 排除相似度高的候选人
+    exclude_ids = set([user["id"] for user in similar_users])
+    filtered = [c for c in candidates if c["id"] not in exclude_ids]
+
+    return filtered
+```
+
+#### 新增函数：load_complete_summary()
+
+```python
+def load_complete_summary(profile_id: int) -> dict[str, Any]:
+    """
+    加载完整摘要信息（Agent Native 模式）。
+
+    核心设计：
+    - 返回完整的摘要信息（性格标签、沟通风格、价值观等）
+    - Agent读取完整摘要，自己判断是否满足用户需求
+    - 不需要读聊天记录
+
+    参数：
+    - profile_id: 用户 ID
+
+    返回：
+    - summary: 完整摘要信息字典
+      {
+        "personality_traits": "性格温柔、内向、稳重",
+        "communication_style": "沟通风格：直接、含蓄",
+        "values": "价值观：重视家庭、真诚",
+        "emotional_needs": "情感需求：需要理解和支持",
+        "partner_expectation": "择偶期望：希望找个能理解工作忙碌的人",
+        "life_attitude": "生活态度：追求稳定、重视生活质量",
+      }
+
+    注意：
+    - 摘要信息包含正面 + 负面特征（方案A）
+    - Agent读取完整摘要，自己判断是否有绿茶特征
+    - 不需要去摘要表搜索关键词
+    """
+    from match_domain.conversation_summary_loader import query_conversation_summaries
+
+    # 查询 conversation_summaries 表
+    summaries = query_conversation_summaries(profile_id)
+
+    # 组装完整摘要信息
+    summary = {}
+    for s in summaries:
+        summary[s["summary_key"]] = s["summary_text"]
+
+    return summary
+```
+
+### 5.3 Agent判断流程（不需要Prompt指导）
+
+**Agent自己判断用户需求能否映射到结构化字段**：
+
+```python
+# Agent 思考过程（不需要Prompt指导）
+
+用户说："我想找温柔的，北京的，25-30岁，不要绿茶的"
+
+Agent 思考：
+1. "北京的" → profile.city → ✅ 能映射
+2. "25-30岁" → profile.age → ✅ 能映射
+3. "温柔的" → persona.mbti？
+   → Agent知道：温柔的人通常内向、友善
+   → 可能是ISFJ、INFJ → ✅ 能映射
+4. "不要绿茶的" → 结构化字段？
+   → Agent知道：绿茶 = 表里不一 + 暗地心机重 + 双标
+   → 数据库没有这些字段 → ❌ 不能映射
+
+Agent 构造查询参数：
+criteria_json = {
+    "cities": ["北京"],
+    "age_min": 25,
+    "age_max": 30,
+    "mbti_type": ["ISFJ", "INFJ"],
+}
+exclude_traits_json = {
+    "traits": ["绿茶"],
+}
+
+Agent 调用工具：
+search_partner_candidates(
+    criteria_json=json.dumps(criteria_json),
+    exclude_traits_json=json.dumps(exclude_traits_json),
+    limit=20,
+)
+```
+
+**关键**：
+- Agent不需要Prompt指导映射策略
+- Agent自己理解语义（温柔→ISFJ，绿茶→表里不一+心机重）
+- Agent自己构造查询参数
     
     - total: 总候选人数量
     - has_more: 是否有更多候选人
-    - preference_coverage: 偏好表覆盖情况
-      - covered_features: 偏好表已覆盖的特征列表
-      - uncovered_features: 偏好表未覆盖的特征列表（需要 Agent 分析）
+    - preference_coverage: 摘要文本覆盖情况 ← 新增
+      - covered_features: 摘要文本已覆盖的特征列表
+      - uncovered_features: 摘要文本未覆盖的特征列表（需要 Agent 分析）
     
     注意：
-    - 只返回基础信息，不返回聊天记录
+    - 只返回基础信息 + 摘要文本标签，不返回聊天记录
     - Agent 需要聊天记录时，调用 load_candidate_chat_records
     - preference_coverage 告诉 Agent 还有哪些特征需要自己分析
     """
@@ -370,35 +688,27 @@ def search_partner_candidates(
     preferences = json.loads(preference_json)
     normalized_limit = max(1, min(int(limit or 20), 50))
     
-    # Layer 1：硬约束筛选
+    # Layer 1：硬约束筛选（现有逻辑）
     candidates = _search_by_hard_constraints(criteria, normalized_limit * 2)
     
-    # Layer 2：偏好表筛选
+    # Layer 2：摘要文本筛选（新增逻辑）
     if preferences:
-        candidates = _filter_by_preference_table(candidates, preferences)
+        candidates = _filter_by_summary_tags(candidates, preferences)
     
-    # 检查偏好表覆盖情况
-    preference_coverage = _check_preference_coverage(preferences)
+    # 检查摘要文本覆盖情况
+    preference_coverage = _check_summary_coverage(preferences)
     
     # 截取最终结果
     final_candidates = candidates[:normalized_limit]
     
-    # 加载基础信息
+    # 加载基础信息 + 摘要文本标签
     enriched = []
     for c in final_candidates:
         candidate_data = {
             "id": c["id"],
-            "basic_info": {
-                "age": c["age"],
-                "city": c["city"],
-                "job": c.get("job"),
-                "education": c.get("education"),
-                "relationship_goal": c.get("relationship_goal"),
-                "marital_status": c.get("marital_status"),
-                "height": c.get("height"),
-            },
-            "persona": load_persona_from_db(c["id"]),
-            "preference_tags": load_preference_tags(c["id"]),
+            "basic_info": {...},
+            "persona": load_persona_from_db(c["id"]),  # ← 现有逻辑
+            "summary_tags": load_summary_tags(c["id"]),  # ← 新增：从 conversation_summaries 加载
         }
         enriched.append(candidate_data)
     
@@ -408,225 +718,314 @@ def search_partner_candidates(
         "has_more": len(candidates) >= normalized_limit,
         "preference_coverage": preference_coverage,
     }
-
-
-def _check_preference_coverage(preferences: dict) -> dict:
-    """
-    检查偏好表是否覆盖用户要求的特征。
-    
-    返回：
-    - covered_features: 偏好表已覆盖的特征
-    - uncovered_features: 偏好表未覆盖的特征（需要 Agent 分析）
-    """
-    covered = []
-    uncovered = []
-    
-    # 偏好表支持的字段
-    supported_preference_fields = [
-        "性格标签", "沟通风格", "价值观", 
-        "情绪倾向", "关系期望", "生活方式"
-    ]
-    
-    for feature, condition in preferences.items():
-        if feature in supported_preference_fields:
-            covered.append(feature)
-        else:
-            uncovered.append(feature)
-    
-    return {
-        "covered_features": covered,
-        "uncovered_features": uncovered,
-    }
 ```
 
-### 5.3 load_candidate_chat_records（Layer 3：Agent 深度分析）
+#### 新增函数：load_summary_tags()
 
 ```python
-@function_tool
-def load_candidate_chat_records(
-    candidate_ids: list[int],
-    chat_days: int = 30,
-) -> dict[str, Any]:
+# 文件: match_domain/summary_tags_loader.py（新增）
+def load_summary_tags(profile_id: int) -> dict[str, Any]:
     """
-    加载候选人聊天记录（用于 Agent 深度分析）。
+    从 conversation_summaries 表加载摘要文本标签。
     
-    核心设计：
-    - 只加载需要的候选人的聊天记录
-    - 聊天记录已脱敏处理
-    - Agent 自己决定如何分析
+    核心改进：
+    - 打通数据流：conversation_summaries → 搜索流程
+    - 返回结构化标签，便于筛选
     
     参数：
-    - candidate_ids: 候选人 ID 列表
-    - chat_days: 聊天记录时间范围（最近 N 天，默认 30 天）
+    - profile_id: 用户 ID
     
     返回：
-    - candidates_chat: 候选人聊天记录列表
-      - id: 候选人 ID
-      - chat_records: 脱敏后的聊天记录
+    - summary_tags: 摘要文本标签字典
+      {
+        "性格标签": ["温柔", "内向", "稳重"],
+        "沟通风格": ["直接", "含蓄"],
+        "价值观": ["家庭导向", "真诚"],
+        "情绪倾向": ["稳定"],
+        "关系期望": ["结婚导向"],
+        "生活方式": ["宅家", "规律作息"],
+      }
     
     注意：
-    - 聊天记录已脱敏（手机号、地址等敏感信息已替换）
-    - Agent 只能用于内部分析，不能返回给用户
+    - conversation_summaries 表结构：
+      - summary_key: 字段名（如 "personality_traits"）
+      - summary_text: 字段内容（如 "性格温柔、内向、稳重"）
+    - 需要解析 summary_text，提取标签列表
     """
-    enriched = []
-    for candidate_id in candidate_ids:
-        # 加载聊天记录并脱敏
-        chat_records = load_and_sanitize_chat_records(candidate_id, days=chat_days)
-        enriched.append({
-            "id": candidate_id,
-            "chat_records": chat_records,
-        })
+    # 查询 conversation_summaries 表
+    summaries = query_conversation_summaries(profile_id)
     
-    return {
-        "candidates_chat": enriched,
-    }
+    # 解析摘要文本，提取标签
+    summary_tags = {}
+    for summary in summaries:
+        key = summary["summary_key"]
+        text = summary["summary_text"]
+        
+        # 解析文本，提取标签列表
+        # 例如："性格温柔、内向、稳重" → ["温柔", "内向", "稳重"]
+        tags = _parse_summary_text(key, text)
+        summary_tags[key] = tags
+    
+    return summary_tags
+
+
+def _parse_summary_text(key: str, text: str) -> list[str]:
+    """
+    解析摘要文本，提取标签列表。
+    
+    核心思路：
+    - 使用简单的分词逻辑（逗号、空格分隔）
+    - 或调用 LLM 提取结构化标签
+    
+    示例：
+    - "性格温柔、内向、稳重" → ["温柔", "内向", "稳重"]
+    - "重视家庭、重视事业" → ["家庭导向", "事业导向"]
+    """
+    # 方案 A：简单分词（逗号、空格分隔）
+    tags = text.replace("性格", "").replace("重视", "").split(",")
+    tags = [tag.strip() for tag in tags if tag.strip()]
+    
+    # 方案 B：LLM 提取（可选）
+    # prompt = f"请从以下文本中提取标签列表：{text}"
+    # tags = call_llm_for_tags(prompt)
+    
+    return tags
 ```
 
-### 5.4 判断结果表达：利用现有 decision 结构
-
-**不需要新增 submit/get 工具，直接利用现有架构。**
+#### 新增函数：_filter_by_summary_tags()
 
 ```python
-# 现有架构已经支持：DiscoveryDecision
+def _filter_by_summary_tags(
+    candidates: list[dict],
+    preferences: dict,
+) -> list[dict]:
+    """
+    摘要文本筛选（Layer 2）。
+    
+    核心思路：
+    - 从 conversation_summaries 加载候选人的摘要标签
+    - 匹配用户要求的 exclude/include 条件
+    
+    参数：
+    - candidates: Layer 1 篮选后的候选人列表
+    - preferences: 摘要文本筛选条件
+      示例：{"性格标签": {"exclude": ["绿茶"]}}
+    
+    返回：
+    - filtered_candidates: 篮选后的候选人列表
+    """
+    filtered = []
+    for candidate in candidates:
+        # 加载候选人的摘要标签
+        summary_tags = load_summary_tags(candidate["id"])
+        
+        # 检查是否满足筛选条件
+        pass_filter = True
+        for feature, condition in preferences.items():
+            if "exclude" in condition:
+                # 排除条件：候选人的标签不能包含 exclude 列表中的标签
+                candidate_tags = summary_tags.get(feature, [])
+                exclude_tags = condition["exclude"]
+                
+                # 检查是否有排除标签
+                for exclude_tag in exclude_tags:
+                    if exclude_tag in candidate_tags:
+                        pass_filter = False
+                        break
+        
+        if pass_filter:
+            filtered.append(candidate)
+    
+    return filtered
+```
 
-@dataclass
-class DiscoveryDecision:
-    phase: str  # "results_shown" / "no_result" / "collecting_preferences"
-    assistant_message: str  # Agent 给用户的回复
-    criteria_labels: list[str]  # 提取的条件标签
-    selected_candidates: list[DiscoveryCandidateSelection]  # 判断结果
-    suggested_actions: list[DiscoveryActionSuggestion]  # 建议操作
+### 5.4 Agent最终判断流程
 
-@dataclass
-class DiscoveryCandidateSelection:
-    profile_id: int  # 候选人 ID
-    reason_summary: str  # Agent 判断的理由
+**Agent读取完整摘要信息，自己判断**：
 
-# Agent 用法：
-# Agent 在思考中完成判断，直接在 decision 中返回结果
-# 不需要调用 submit 工具
+```python
+# Agent 思考过程（读取完整摘要，自己判断）
 
-decision = DiscoveryDecision(
+工具返回：
+candidates = [
+    {
+        "id": 101,
+        "basic_info": {...},
+        "persona": {...},
+        "summary": {
+            "personality_traits": "性格温柔、内向、稳重",
+            "communication_style": "沟通风格：直接、含蓄",
+            "values": "价值观：重视家庭、真诚",
+            ...
+        },
+    },
+    {
+        "id": 103,
+        "basic_info": {...},
+        "persona": {...},
+        "summary": {
+            "personality_traits": "性格表里不一、善于伪装",
+            "communication_style": "沟通风格：双标、含蓄",
+            "values": "价值观：不真诚",
+            ...
+        },
+    },
+    ...
+]
+
+Agent 判断：
+
+候选人 101 的完整摘要：
+- 性格：温柔、内向、稳重
+- 沟通风格：直接、含蓄
+- 价值观：重视家庭、真诚
+→ Agent看完整个摘要，自己判断：没有绿茶特征 → ✅ 推荐
+
+候选人 103 的完整摘要：
+- 性格：表里不一、善于伪装
+- 沟通风格：双标、含蓄
+- 价值观：不真诚
+→ Agent看完整个摘要，自己判断：有绿茶特征 → ❌ 排除
+
+Agent 返回最终结果：
+DiscoveryDecision(
     phase="results_shown",
-    assistant_message="给你推荐这5位，性格都比较真诚直接...",
+    assistant_message="给你推荐这5位，性格都比较真诚...",
     selected_candidates=[
         DiscoveryCandidateSelection(
             profile_id=101,
-            reason_summary="说话有自己的观点，不迎合讨好",
+            reason_summary="性格温柔、真诚，没有绿茶特征",
         ),
-        DiscoveryCandidateSelection(
-            profile_id=103,
-            reason_summary="'你真棒'只出现1次，频率正常，性格真诚",
-        ),
-        # Agent 判断排除的候选人不会出现在这里
+        ...
     ],
 )
 ```
 
+**关键**：
+- Agent读取完整摘要信息，自己判断
+- 不需要去摘要表搜索关键词
+- 不需要读聊天记录
+
 ### 5.5 工具调用对比
 
-| 方案 | 工具调用次数 | 问题 |
-|------|-------------|------|
-| **旧方案（离线摘要 + submit）** | 40-60 次/20人 | 工具调用过多，Agent 思考被打断 |
-| **新方案（直接返回原始数据）** | 1-2 次/20人 | Agent 一次获取信息，一次思考完成判断 |
+| 方案 | 工具调用次数 | Agent 工作量 |
+|------|-------------|-------------|
+| **旧方案（需要读聊天记录）** | 3-4 次 | 大（需要读聊天记录分析） |
+| **新方案（只读摘要表）** | 1-2 次 | 小（只读完整摘要判断） |
 
 ```
 旧方案：
-- search_partner_candidates: 1 次（只返回 ID）
-- load_candidate_full_info: 20 次（每人 1 次）
-- submit_candidate_judgment: 20 次（每人 1 次）
-- get_filtered_candidates: 1 次
-总计：42 次
+- search_partner_candidates: 1 次（结构化查询）
+- load_candidate_chat_records: 1 次（加载聊天记录）
+- Agent 分析聊天记录: 纯思考
+总计：2 次工具调用 + 大量思考
 
 新方案：
-- search_partner_candidates: 1 次（返回完整信息）
-- search_chat_keywords: 可选，Agent 决定要不要用
-总计：1-2 次
+- search_partner_candidates: 1 次（结构化查询 + 向量库查询 + 加载完整摘要）
+- Agent 判断: 纯思考（只读摘要）
+总计：1 次工具调用 + 少量思考
 ```
 
 ---
 
 ## 6. Agent 执行流程
 
-### 6.1 典型场景流程：三层筛选
+### 6.1 完整流程示例
 
-用户说："不要绿茶的女生，不要矫情的，25-30岁，上海"
+用户说："我想找温柔的，北京的，25-30岁，不要绿茶的"
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│ Step 1: Layer 1 + Layer 2 筛选（一次调用）                       │
+│ Step 1: Agent 先判断能否映射到结构化字段                          │
 ├─────────────────────────────────────────────────────────────────┤
-│ Agent 调用：search_partner_candidates                           │
-│ 参数：criteria_json = {"age_min": 25, "age_max": 30,            │
-│                       "cities": ["上海"]}                       │
-│       preference_json = {"性格标签": {"exclude": ["绿茶"]}}      │
 │                                                                 │
-│ 返回：                                                          │
-│ - candidates = [                                                │
-│     {                                                           │
-│       "id": 101,                                                │
-│       "basic_info": {"age": 28, "city": "上海", "job": "财务"}, │
-│       "persona": {...},                                         │
-│       "preference_tags": {"性格标签": ["温柔", "稳重"]},         │
-│     },                                                          │
-│     {                                                           │
-│       "id": 103,                                                │
-│       "basic_info": {"age": 29, "city": "上海", "job": "销售"}, │
-│       "persona": {...},                                         │
-│       "preference_tags": {"性格标签": ["开朗", "直接"]},         │
-│     },                                                          │
-│     ... (共30人，已通过硬约束+偏好表筛选)                        │
-│   ]                                                             │
+│ Agent 思考（不需要Prompt指导）：                                  │
 │                                                                 │
-│ - preference_coverage = {                                       │
-│     "covered_features": ["性格标签"],  # "绿茶"已被偏好表筛掉   │
-│     "uncovered_features": ["矫情"],   # "矫情"偏好表没有，      │
-│   }                                      # 需要 Agent 自己分析  │
+│ "北京的" → profile.city → ✅ 能映射                             │
+│ "25-30岁" → profile.age → ✅ 能映射                             │
+│ "温柔的" → persona.mbti？→ 可能是ISFJ、INFJ → ✅ 能映射          │
+│ "不要绿茶的" → 结构化字段？→ ❌ 不能映射                         │
 │                                                                 │
-│ Agent 发现：                                                    │
-│ - "不要绿茶"已被偏好表筛掉了（covered_features）                │
-│ - "不要矫情的"偏好表没有（uncovered_features）                  │
-│ - 需要自己分析"矫情"                                            │
+│ Agent 构造查询参数：                                             │
+│ criteria_json = {                                               │
+│     "cities": ["北京"],                                         │
+│     "age_min": 25,                                              │
+│     "age_max": 30,                                              │
+│     "mbti_type": ["ISFJ", "INFJ"],                              │
+│ }                                                               │
+│ exclude_traits_json = {                                         │
+│     "traits": ["绿茶"],                                         │
+│ }                                                               │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
-         ┌────────────────────┴────────────────────┐
-         │                                         │
-         ▼                                         ▼
-┌──────────────────────────┐    ┌──────────────────────────────┐
-│ 分支 A：偏好表全覆盖      │    │ 分支 B：有未覆盖特征         │
-├──────────────────────────┤    ├──────────────────────────────┤
-│                          │    │                              │
-│ preference_coverage      │    │ preference_coverage          │
-│ .uncovered_features      │    │ .uncovered_features          │
-│ = []                     │    │ = ["矫情"]                   │
-│                          │    │                              │
-│ 不需要 Agent 深度分析    │    │ Agent 需要自己分析"矫情"    │
-│ 直接推荐候选人           │    │                              │
-│                          │    │ Agent 调用：                 │
-│ Agent 直接返回：         │    │ load_candidate_chat_records  │
-│ DiscoveryDecision(...)   │    │ 参数：candidate_ids=[...]    │
-│                          │    │                              │
-│ 总工具调用：1 次         │    │ 返回：候选人聊天记录（脱敏） │
-│                          │    │                              │
-└──────────────────────────┘    └──────────────────────────────┘
-                                              ↓
-                            ┌─────────────────────────────────────┐
-                            │ Step 2: Agent 自主分析（Layer 3）   │
-                            ├─────────────────────────────────────┤
-                            │                                     │
-                            │ Agent 读候选人 101 的聊天记录：    │
-                            │ - 发现："你是不是不爱我了"出现2次 │
-                            │ - 语气正常，没有情绪化指责         │
-                            │ - 判断：✅ 不矫情                  │
-                            │                                     │
-                            │ Agent 读候选人 103 的聊天记录：    │
-                            │ - 发现："你是不是不爱我了"出现5次 │
-                            │ - 每次都是情绪化指责               │
-                            │ - 判断：❌ 有矫情特征              │
-                            │                                     │
-                            │ Agent 继续分析其他候选人...        │
-                            │                                     │
+┌─────────────────────────────────────────────────────────────────┐
+│ Step 2: 调用 search_partner_candidates 工具                      │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│ 工具内部执行：                                                   │
+│                                                                 │
+│ 1. 结构化查询（profile + persona表）                             │
+│    → 查询条件：北京、25-30岁、ISFJ/INFJ                          │
+│    → 返回候选人列表（50人）                                      │
+│                                                                 │
+│ 2. 向量库查询（语义搜索排除）                                     │
+│    → 搜索"绿茶"语义相似的候选人                                  │
+│    → 向量库自动理解：绿茶 ≈ 表里不一、心机重、双标                │
+│    → 找出相似度 > 0.85 的候选人 → 排除                           │
+│    → 剩下候选人（30人）                                          │
+│                                                                 │
+│ 3. 加载完整摘要信息                                              │
+│    → 从 conversation_summaries 加载每个候选人的完整摘要          │
+│    → 返回30人的完整信息                                          │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│ Step 3: Agent 读取完整摘要，自己判断                              │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│ Agent 判断：                                                     │
+│                                                                 │
+│ 候选人A的完整摘要：                                              │
+│   - 性格：表里不一、善于伪装 → ❌ 排除                           │
+│                                                                 │
+│ 候选人B的完整摘要：                                              │
+│   - 性格：温柔、内向、稳重 → ✅ 推荐                             │
+│                                                                 │
+│ 候选人C的完整摘要：                                              │
+│   - 性格：真诚、直接、有原则 → ✅ 推荐                           │
+│                                                                 │
+│ ...                                                              │
+│                                                                 │
+│ Agent 返回最终推荐结果（5人）                                     │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 6.2 Agent 决策要点
+
+| 决策点 | Agent 责任 | 示例 |
+|--------|-----------|------|
+| **判断能否映射** | Agent自己判断用户需求能否映射到结构化字段（不需要Prompt指导） | "温柔"→ISFJ，"绿茶"→不能映射 |
+| **构造查询参数** | Agent自己构造结构化查询参数和排除特征 | criteria_json + exclude_traits_json |
+| **向量库理解语义** | 向量库自动理解语义，不需要手动拆解关键词 | "绿茶"→向量库自动理解为表里不一+心机重 |
+| **读取完整摘要** | Agent读取完整摘要信息，自己判断 | 查看性格标签、价值观、沟通风格等 |
+| **判断结果** | Agent直接在 decision 中返回 | 推荐/排除 + 理由摘要 |
+
+### 6.3 与旧方案对比
+
+| 维度 | 旧方案（需要读聊天记录） | 新方案（只读摘要表） |
+|------|------------------------|-------------------|
+| 工具调用次数 | 2 次（搜索 + 加载聊天记录） | 1 次（搜索 + 向量库 + 加载摘要） |
+| Agent 工作量 | 大（需要读聊天记录分析） | 小（只读完整摘要判断） |
+| 数据量 | 大（聊天记录） | 小（摘要文本） |
+| 灵活性 | 高（Agent 能分析任何特征） | 高（摘要表包含负面特征） |
+| 效率 | 低（需要读聊天记录） | 高（只用摘要表） |
+
+---
+
+## 7. 数据源设计
                             │ Agent 最终判断：                   │
                             │ - 通过：[101, 105, 108, 112]       │
                             │ - 排除：[103, 106, ...]（矫情）    │
@@ -1133,35 +1532,304 @@ def _apply_runtime_result(session, runtime_result, now):
 
 ---
 
-## 10. 实施路径
+## 10. 实施路径（Agent Native 架构）
 
-### 10.1 Phase 1：工具层改造
+### 10.1 优先级排序（基于新方案）
 
-| 改动 | 内容 | 工作量 |
+| 优先级 | 改动内容 | 工作量 | 收益 | 原因 |
+|-------|---------|--------|------|------|
+| **P0** | 向量库集成（语义搜索排除） | 中 | 高 | 核心改进：向量库自动理解语义，不需要手动拆解关键词 |
+| **P1** | 加载完整摘要信息（conversation_summaries） | 小 | 高 | Agent读取完整摘要，自己判断 |
+| **P2** | 摘要表允许负面特征（方案A） | 小 | 高 | 摘要表包含负面特征，Agent才能判断绿茶特征 |
+| **P3** | Agent判断流程优化（不需要Prompt指导） | 小 | 中 | Agent自己判断能否映射到结构化字段 |
+
+### 10.2 Phase 0：向量库集成（核心改进）
+
+| 改动 | 内容 | 文件 | 工作量 |
+|------|------|------|--------|
+| 新增函数 | `_vector_search_exclude()` | `match_domain/vector_filter.py` | 中 |
+| 修改函数 | `search_partner_candidates_with()` 集成向量库 | `service_integrations.py` | 中 |
+| 新增方法 | `VectorStore.batch_search_similar()` | `match_domain/vector_store.py` | 小 |
+
+**核心改动**：
+
+```python
+# 文件: match_domain/vector_filter.py
+# 新增：向量库语义搜索排除
+def _vector_search_exclude(
+    candidates: list[dict],
+    exclude_traits: list[str],
+    similarity_threshold: float = 0.85,
+) -> list[dict]:
+    """
+    向量库语义搜索排除（Agent Native 模式）。
+
+    核心设计：
+    - 向量库自动理解语义，不需要手动拆解关键词
+    - 用户说"不要绿茶" → 向量库自动理解：绿茶 ≈ 表里不一、心机重、双标
+    - 在候选人列表中搜索相似度高的 → 排除
+
+    注意：
+    - 不需要先从摘要表搜索关键词
+    - 不需要手动拆解"绿茶 = 表里不一 + 心机重 + 双标"
+    - 向量库本身就能理解语义
+    """
+    from match_domain.vector_store import VectorStore
+
+    vector_store = VectorStore()
+
+    # 获取候选人的性格特质向量
+    candidate_vectors = []
+    for candidate in candidates:
+        vector = vector_store.get_vector(
+            user_id=candidate["id"],
+            vector_type="personality_traits"
+        )
+        if vector:
+            candidate_vectors.append({
+                "id": candidate["id"],
+                "vector": vector
+            })
+
+    # 搜索与exclude_traits相似度高的候选人
+    # 向量库自动理解语义
+    similar_users = vector_store.batch_search_similar(
+        exclude_traits=exclude_traits,
+        candidate_vectors=candidate_vectors,
+        similarity_threshold=similarity_threshold,
+    )
+
+    # 排除相似度高的候选人
+    exclude_ids = set([user["id"] for user in similar_users])
+    filtered = [c for c in candidates if c["id"] not in exclude_ids]
+
+    return filtered
+```
+
+**收益**：
+- 向量库自动理解语义，不需要手动拆解关键词
+- 用户说"不要绿茶" → 向量库自动理解绿茶的含义 → 排除
+- 真正的 Agent Native：不需要硬编码规则表
+
+### 10.3 Phase 1：加载完整摘要信息
+
+| 改动 | 内容 | 文件 | 工作量 |
+|------|------|------|--------|
+| 新增函数 | `load_complete_summary()` | `match_domain/conversation_summary_loader.py` | 小 |
+| 修改函数 | `search_partner_candidates_with()` 加载完整摘要 | `service_integrations.py` | 小 |
+
+**核心改动**：
+
+```python
+# 文件: match_domain/conversation_summary_loader.py
+# 新增：加载完整摘要信息
+def load_complete_summary(profile_id: int) -> dict[str, Any]:
+    """
+    加载完整摘要信息（Agent Native 模式）。
+
+    核心设计：
+    - 返回完整的摘要信息（性格标签、沟通风格、价值观等）
+    - Agent读取完整摘要，自己判断是否满足用户需求
+    - 不需要读聊天记录
+
+    注意：
+    - Agent不是去摘要表搜索关键词
+    - Agent读取完整摘要，自己判断
+    - 摘要信息包含正面 + 负面特征（方案A）
+    """
+    from match_domain.conversation_summary_loader import query_conversation_summaries
+
+    # 查询 conversation_summaries 表
+    summaries = query_conversation_summaries(profile_id)
+
+    # 组装完整摘要信息
+    summary = {}
+    for s in summaries:
+        summary[s["summary_key"]] = s["summary_text"]
+
+    return summary
+```
+
+**收益**：
+- Agent读取完整摘要，自己判断是否满足用户需求
+- 不需要去摘要表搜索关键词
+- 不需要读聊天记录
+
+### 10.4 Phase 2：摘要表允许负面特征（方案A）
+
+| 改动 | 内容 | 文件 | 工作量 |
+|------|------|------|--------|
+| 修改Prompt | 会话结束后的LLM提炼Prompt | `match_domain/session_end_processor.py` | 小 |
+| 允许负面特征 | 不只是正面特征，也提炼负面特征 | `match_domain/session_end_processor.py` | 小 |
+
+**核心改动**：
+
+```python
+# 文件: match_domain/session_end_processor.py
+# 修改：generate_structured_summary() 的 Prompt
+
+# 旧Prompt（只提炼正面特征）：
+# "请从聊天记录中提炼性格特质：温柔、内向、稳重等"
+
+# 新Prompt（允许提炼负面特征）：
+# "请从聊天记录中提炼完整的性格特质：
+#  - 正面特征：温柔、内向、稳重、真诚等
+#  - 负面特征：表里不一、心机重、双标、过于迎合等
+#  不要回避负面评价，客观提炼所有特征"
+```
+
+**收益**：
+- 摘要表包含完整性格信息（正面 + 负面）
+- Agent能基于完整摘要判断绿茶特征
+- 不需要读聊天记录
+
+### 10.5 Phase 3：工具设计优化
+
+| 改动 | 内容 | 文件 | 工作量 |
+|------|------|------|--------|
+| 修改工具 | `search_partner_candidates()` 改为新设计 | `service_integrations.py` | 中 |
+| 新增参数 | `exclude_traits_json` | `service_integrations.py` | 小 |
+
+**核心改动**：
+
+```python
+# 文件: service_integrations.py
+# 修改：search_partner_candidates_with()
+def search_partner_candidates_with(
+    criteria_json: str,
+    exclude_traits_json: str = "{}",  # ← 新增参数
+    limit: int = 20,
+) -> dict[str, Any]:
+    """
+    搜索候选人（Agent Native 模式）。
+
+    核心设计：
+    - Agent先判断用户需求能否映射到结构化字段（不需要Prompt指导）
+    - 能映射的部分：结构化查询（profile + persona表）
+    - 不能映射的部分：向量库语义搜索
+    - 返回完整摘要信息，Agent自己判断
+    """
+    criteria = json.loads(criteria_json)
+    exclude_traits = json.loads(exclude_traits_json)
+
+    # Step 1: 结构化查询（profile + persona表）
+    candidates = _search_by_structured_criteria(criteria, limit * 2)
+
+    # Step 2: 向量库查询（如果需要）
+    if exclude_traits.get("traits"):
+        candidates = _vector_search_exclude(candidates, exclude_traits["traits"])
+
+    # Step 3: 加载完整摘要信息
+    enriched = []
+    for c in candidates[:limit]:
+        candidate_data = {
+            "id": c["id"],
+            "basic_info": {...},
+            "persona": load_persona_from_db(c["id"]),
+            "summary": load_complete_summary(c["id"]),  # ← 新增：完整摘要
+        }
+        enriched.append(candidate_data)
+
+    return {
+        "candidates": enriched,
+        "total": len(enriched),
+        "has_more": len(candidates) >= limit,
+        "vector_search_used": bool(exclude_traits.get("traits")),
+    }
+```
+
+**收益**：
+- 工具返回完整摘要信息，Agent自己判断
+- 不需要多次工具调用
+- Agent Native 模式：Agent是决策大脑
+
+### 10.6 Phase 4：测试验证
+
+| 测试 | 内容 | 工作量 |
 |------|------|--------|
-| search_partner_candidates | 改造为 Layer 1 + Layer 2 筛选，返回 preference_coverage | 中 |
-| load_candidate_chat_records | 新增 Layer 3 工具，只加载需要深度分析的候选人聊天记录 | 小 |
-| 脱敏处理模块 | 新增聊天记录脱敏处理模块 | 小 |
+| 向量库语义搜索测试 | 验证向量库能否正确理解"绿茶"语义 | 中 |
+| Agent判断流程测试 | 验证Agent能否正确判断用户需求能否映射 | 中 |
+| 完整摘要加载测试 | 验证conversation_summaries数据加载是否正确 | 小 |
+| Agent最终判断测试 | 验证Agent能否正确读取完整摘要并判断 | 中 |
+| 性能测试 | 测试性能、向量库搜索效率 | 中 |
+| 准确性对比 | 对比"只结构化查询"、"结构化+向量库"、"完整方案"的准确性 | 中 |
+    """
+    vector_store = VectorStore()
 
-**注意：不需要新增 submit/get 工具，利用现有 decision 结构。**
+    filtered = []
+    for candidate in candidates:
+        # 获取候选人的性格特质向量
+        candidate_vector = vector_store.get_vector(
+            user_id=candidate["id"],
+            vector_type="personality_traits"
+        )
 
-### 10.2 Phase 2：偏好表设计与实现
+        # 计算相似度
+        similarity = cosine_similarity(exclude_vector, candidate_vector)
 
-| 改动 | 内容 | 工作量 |
-|------|------|--------|
-| 偏好表结构设计 | 设计偏好表字段（性格标签、沟通风格、价值观等） | 中 |
-| 偏好表离线提取 | 实现从聊天记录提取特征到偏好表的逻辑 | 大 |
-| 偏好表查询接口 | 实现偏好表查询接口（Layer 2 筛选） | 中 |
-| 偏好表更新机制 | 实现偏好表定期更新机制（每周） | 小 |
+        # 排除相似度高的用户
+        if similarity < similarity_threshold:
+            filtered.append(candidate)
 
-### 10.3 Phase 3：数据源扩展
+    return filtered
+```
 
-| 改动 | 内容 | 工作量 |
-|------|------|--------|
-| 聊天记录查询接口 | 实现原始聊天记录查询接口（脱敏处理） | 小 |
-| persona 加载优化 | persona 数据定期更新，Agent 调用时直接读取 | 小 |
+**收益**：
+- 向量搜索能处理更复杂的语义匹配
+- 例如"找个跟我很像的人"、"找个性格互补的人"
 
-### 10.4 Phase 4：Agent Prompt 优化
+**问题**：
+- 需要"绿茶"的向量表示（如何获取？）
+- 向量搜索是"找相似"，反向过滤逻辑需要设计
+
+### 10.5 Phase 3：Agent 深度分析（Layer 3）
+
+| 改动 | 内容 | 文件 | 工作量 |
+|------|------|------|--------|
+| 新增工具 | `load_candidate_chat_records()` | `match_domain/chat_records_loader.py` | 小 |
+| 脱敏处理 | `sanitize_chat_record()` | `match_domain/chat_sanitizer.py` | 小 |
+| Agent Prompt | 添加三层筛选使用指南 | `SOUL.md` | 小 |
+
+**核心改动**：
+
+```python
+# 文件: match_domain/chat_records_loader.py
+# 新增：加载候选人聊天记录
+@function_tool
+def load_candidate_chat_records(
+    candidate_ids: list[int],
+    chat_days: int = 30,
+) -> dict[str, Any]:
+    """
+    加载候选人聊天记录（用于 Agent 淡度分析）。
+
+    核心设计：
+    - 只加载需要深度分析的候选人的聊天记录
+    - 聊天记录已脱敏处理
+    - Agent 自己决定如何分析
+
+    注意：
+    - 只在 preference_coverage.uncovered_features 不为空时调用
+    - Agent 自己决定分析方法（grep关键词、语气分析）
+    """
+    enriched = []
+    for candidate_id in candidate_ids:
+        # 加载聊天记录并脱敏
+        chat_records = load_and_sanitize_chat_records(candidate_id, days=chat_days)
+        enriched.append({
+            "id": candidate_id,
+            "chat_records": chat_records,
+        })
+
+    return {"candidates_chat": enriched}
+```
+
+**收益**：
+- 处理口语化表达（"矫情"、"靠谱"、"能过日子"）
+- Agent 基于一手信息判断，不失真
+- 灵活性最高
+
+### 10.6 Phase 4：Agent Prompt 优化
 
 | 改动 | 内容 | 工作量 |
 |------|------|--------|
@@ -1169,15 +1837,51 @@ def _apply_runtime_result(session, runtime_result, now):
 | 分层搜索策略 | Prompt 中引导 Agent 根据 preference_coverage 决定是否深度分析 | 小 |
 | 分析策略示例 | 描述常见分析方法（grep 关键词、频率统计、语气分析） | 小 |
 
-### 10.5 Phase 5：测试验证
+**Prompt 改动示例**：
+
+```markdown
+# SOUL.md 新增内容
+
+## 三层筛选策略
+
+当用户搜索候选人时，使用以下策略：
+
+### Layer 1 + Layer 2 篮选结果判断
+
+search_partner_candidates 返回 preference_coverage：
+- covered_features: 摘要文本已覆盖的特征（如 ["性格标签"]）
+- uncovered_features: 摘要文本未覆盖的特征（如 ["矫情"]）
+
+**决策规则**：
+- 如果 uncovered_features 为空 → 不需要深度分析，直接推荐
+- 如果 uncovered_features 不为空 → 需要深度分析
+
+### Layer 3 深度分析策略
+
+当 preference_coverage.uncovered_features 不为空时：
+
+1. 调用 load_candidate_chat_records(candidate_ids) 加载聊天记录
+2. 自己决定分析方法：
+   - grep 关键词频率：统计"你好棒"、"你是不是不爱我了" 出现次数
+   - 语气分析：判断是真诚鼓励还是过度迎合
+   - 情绪波动检测：检测是否有频繁的情绪化表达
+3. 返回判断结果（推荐/排除 + 理由摘要）
+
+**注意**：
+- 不需要分析所有人的聊天记录
+- 优先分析 persona 可疑的人（如焦虑型依恋可能更情绪化）
+- 只分析 uncovered_features 涉及的特征
+```
+
+### 10.7 Phase 5：测试验证
 
 | 测试 | 内容 | 工作量 |
 |------|------|--------|
-| 单场景测试 | 测试每个场景类型（"不要绿茶"、"性格温柔"、"矫情"等） | 中 |
-| 组合场景测试 | 测试多条件组合（偏好表覆盖 + 未覆盖） | 中 |
-| 边界测试 | 测试性能、隐私边界、脱敏效果 | 中 |
-| Agent 行为验证 | 验证 Agent 是否正确使用三层筛选策略 | 中 |
-| 准确性对比 | 对比"只用偏好表"、"只用 Agent"、"三层筛选"的准确性 | 中 |
+| 数据流验证 | 验证 conversation_summaries 数据加载是否正确 | 小 |
+| Layer 2 篮选验证 | 验证摘要文本筛选逻辑是否正确 | 中 |
+| Agent 决策验证 | 验证 Agent 是否正确使用三层筛选策略 | 中 |
+| 性能测试 | 测试性能、隐私边界、脱敏效果 | 中 |
+| 准确性对比 | 对比"只用硬约束"、"Layer 2筛选"、"三层筛选"的准确性 | 中 |
 
 ---
 
@@ -1187,18 +1891,27 @@ def _apply_runtime_result(session, runtime_result, now):
 
 | 风险 | 描述 | 缓解措施 |
 |------|------|----------|
-| 偏好表覆盖率低 | 偏好表字段有限，无法覆盖大部分特征 | 扩充偏好表字段 + Agent 深度分析兜底 |
+| 摘要文本解析慢 | 解析 summary_text 提取标签可能慢 | 使用简单分词逻辑（逗号分隔）或 LLM 异步提取 |
+| Layer 2 篮选慢 | 需要加载所有候选人的摘要标签 | LRU 缓存优化（与 load_traits_for_discovery 相同） |
 | Agent 分析过多 | preference_coverage.uncovered_features 很多 | Agent 自己优化策略（只分析可疑候选人） |
 | Token 消耗 | Layer 3 加载聊天记录可能较长 | 分层加载，只加载需要的人 |
 
-### 11.2 隐私风险
+### 11.2 数据风险
+
+| 风险 | 描述 | 缓解措施 |
+|------|------|----------|
+| 摘要文本滞后 | conversation_summaries 是离线提取，可能滞后 | 定期更新（每周）+ Agent 深度分析兜底 |
+| 摘要文本不准确 | LLM 提炼的摘要可能不准确 | Agent 深度分析验证 + 用户反馈修正 |
+| 摘要文本字段不够 | 无法覆盖新出现的特征 | 持续扩充字段 + Agent 深度分析兜底 |
+
+### 11.3 隐私风险
 
 | 风险 | 描述 | 缓解措施 |
 |------|------|----------|
 | 聊天记录隐私 | 候选人不知道会被分析 | 候选人不知情 + 脱敏处理 + 只返回判断结果 |
 | 判断结果公开 | Agent 判断理由可能不当 | Agent 生成解释时要审慎 + 用户协议表述模糊化 |
 
-### 11.3 Agent 判断风险
+### 11.4 Agent 判断风险
 
 | 风险 | 描述 | 缓解措施 |
 |------|------|----------|
@@ -1206,13 +1919,13 @@ def _apply_runtime_result(session, runtime_result, now):
 | 判断偏差 | Agent 可能有偏见 | 伦理审查 + 判断依据标注 |
 | 分析策略不够好 | Agent 可能用不够好的分析方法 | Prompt 提供分析方法示例（参考，不强制） |
 
-### 11.4 偏好表风险
+### 11.5 向量搜索风险（可选）
 
 | 风险 | 描述 | 缓解措施 |
 |------|------|----------|
-| 偏好表滞后 | 离线提取，可能跟不上用户最新状态 | 定期更新（每周）+ Agent 深度分析兜底 |
-| 偏好表不准确 | 离线提取的特征可能不准 | Agent 深度分析验证 + 用户反馈修正 |
-| 偏好表字段不够 | 无法覆盖新出现的特征 | 持续扩充字段 + Agent 深度分析兜底 |
+| 向量表示缺失 | "绿茶"等口语化表达没有标准向量表示 | 使用摘要文本筛选兜底 + Agent 深度分析兜底 |
+| 向量搜索反向逻辑复杂 | 向量搜索是"找相似"，反向过滤逻辑需要设计 | 设计相似度阈值 + 排除逻辑 |
+| 向量维度不匹配 | 不同向量类型的维度可能不一致 | 统一使用 1024 维向量（text-embedding-v3） |
 
 ---
 

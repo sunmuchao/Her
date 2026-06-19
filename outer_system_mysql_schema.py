@@ -2575,6 +2575,27 @@ def relationship_ledger_tables() -> tuple[TableDef, ...]:
                 ForeignKeyDef(("relation_id",), "match_relations", ("relation_id",)),
             ),
         ),
+        # 档案状态转换审计日志表（新增）
+        TableDef(
+            name="profile_status_audit",
+            columns=(
+                ColumnDef("id", "BIGINT", nullable=False, auto_increment=True),
+                ColumnDef("profile_id", "BIGINT", nullable=False),
+                ColumnDef("from_status", "VARCHAR(20)", nullable=False),
+                ColumnDef("to_status", "VARCHAR(20)", nullable=False),
+                ColumnDef("reason", "VARCHAR(50)", nullable=False),
+                ColumnDef("details", "JSON"),
+                ColumnDef("actor_type", "VARCHAR(20)"),
+                ColumnDef("actor_id", "BIGINT"),
+                ColumnDef("occurred_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("id",),
+            indexes=(
+                IndexDef(("profile_id", "occurred_at"), "idx_profile_status_audit_profile_time"),
+                IndexDef(("reason", "occurred_at"), "idx_profile_status_audit_reason_time"),
+                IndexDef(("from_status", "to_status"), "idx_profile_status_audit_from_to"),
+            ),
+        ),
     )
 
 

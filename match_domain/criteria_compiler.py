@@ -96,10 +96,14 @@ def _json_loads(value: Any, default: Any) -> Any:
         return default
 
 
-def _build_relationship_goals(collected: Mapping[str, Any] | None, fallback: Any) -> list[Any]:
-    if not collected:
+def _build_relationship_goals(profile_facts: Mapping[str, Any] | None, fallback: Any) -> list[Any]:
+    """Build relationship goals from profile facts.
+
+    注意：relationship_goal 现在在 profiles 表中（硬条件），不在 persona 表的 self_relationship_goal
+    """
+    if not profile_facts:
         return _unique_ordered(_as_list(fallback))
-    self_goal = _clean_text(collected.get("self_relationship_goal"))
+    self_goal = _clean_text(profile_facts.get("relationship_goal"))
     if self_goal == "结婚导向":
         return ["结婚导向"]
     if self_goal in {"认真恋爱", "认真相处"}:
@@ -109,7 +113,10 @@ def _build_relationship_goals(collected: Mapping[str, Any] | None, fallback: Any
     return _unique_ordered(_as_list(fallback))
 
 
-def _build_collected_criteria_patch(collected: Mapping[str, Any] | None) -> dict[str, Any]:
+def _build_collected_criteria_patch(
+    collected: Mapping[str, Any] | None,
+    profile_facts: Mapping[str, Any] | None = None,  # ← 新增参数：profile_facts
+) -> dict[str, Any]:
     if not collected:
         return {}
 
@@ -130,7 +137,7 @@ def _build_collected_criteria_patch(collected: Mapping[str, Any] | None) -> dict
         "marriage_timelines": "target_marriage_timeline",
         "must_have": "must_have_tags",
         "must_not_have": "must_not_have_tags",
-        "prefer": "preferred_traits",
+        # prefer 映射已删除：preferred_traits（不可量化：性格特质偏好）
     }
 
     for target_key, source_key in field_map.items():
@@ -142,7 +149,7 @@ def _build_collected_criteria_patch(collected: Mapping[str, Any] | None) -> dict
         else:
             patch[target_key] = _coerce_criteria_value(value)
 
-    relationship_goals = _build_relationship_goals(collected, patch.get("relationship_goals"))
+    relationship_goals = _build_relationship_goals(profile_facts, patch.get("relationship_goals"))
     if relationship_goals:
         patch["relationship_goals"] = relationship_goals
     return patch
@@ -168,8 +175,8 @@ def _build_source_map(
         "long_distance": "target_accept_long_distance",
         "must_have": "must_have_tags",
         "must_not_have": "must_not_have_tags",
-        "prefer": "preferred_traits",
-        "relationship_goals": "self_relationship_goal",
+        # prefer 映射已删除：preferred_traits（不可量化：性格特质偏好）
+        # relationship_goals 映射已删除，relationship_goal 现在在 profiles 表中（硬条件）
     }
     for criteria_key in criteria:
         persona_key = reverse_map.get(criteria_key)
@@ -178,11 +185,7 @@ def _build_source_map(
                 "source": "explicit_statement",
                 "field": persona_key,
             }
-        elif criteria_key == "relationship_goals" and collected.get("self_relationship_goal"):
-            source_map[criteria_key] = {
-                "source": "explicit_statement",
-                "field": "self_relationship_goal",
-            }
+        # relationship_goals 特殊处理已删除，relationship_goal 现在在 profiles 表中（硬条件）
         elif overrides and criteria_key in overrides:
             source_map[criteria_key] = {"source": "explicit_override", "field": criteria_key}
         elif criteria_key == "gender" and profile_facts.get("sexual_orientation"):
@@ -198,13 +201,31 @@ def _criteria_hash(payload: Mapping[str, Any]) -> str:
 
 
 def _split_criteria(criteria: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
-    """改进：不再硬编码 hard_keys，所有参数都应该被查询
+    """改进：明确区分硬约束和软约束参数
 
-    旧逻辑：只有 hard_keys 中的字段进入 hard_filters，其他进入 soft_preferences
-    新逻辑：所有非空参数都进入 hard_filters，soft_preferences 保留为空（兼容性）
+    Agent Native架构原则：
+    - 硬约束参数：在数据库层执行筛选（性别、年龄、城市等）
+    - 软约束参数：在Agent层自主判断（性格特质、价值观等）
 
-    这样 search_sources.py 可以通过通用查询构建器处理所有参数
+    新逻辑：
+    1. 硬约束参数进入 hard_filters（传递到搜索层）
+    2. 软约束参数被忽略（不传递到搜索层，Agent根据返回的原始数据自主判断）
+    3. soft_preferences 保留为空（兼容性）
+
+    这样 search_sources.py 只处理硬约束，性格筛选等软约束由Agent自主决策
     """
+    import logging
+    _logger = logging.getLogger(__name__)
+
+    # 软约束参数列表（不在数据库层筛选，由Agent自主判断）
+    SOFT_CONSTRAINT_KEYS = {
+        "personality_traits",      # 性格特质（如内向/外向）
+        "personality_match",       # 性格匹配条件
+        "values_match",            # 价值观匹配
+        "attachment_match",        # 依恋风格匹配
+        "compatibility_threshold", # 兼容度阈值
+    }
+
     hard_filters: dict[str, Any] = {}
     soft_preferences: dict[str, Any] = {}  # 保留为空，用于兼容性
 
@@ -212,7 +233,17 @@ def _split_criteria(criteria: dict[str, Any]) -> tuple[dict[str, Any], dict[str,
         # 过滤空值
         if value is None or value == "" or value == []:
             continue
-        # 所有有效参数都进入 hard_filters
+
+        # 检查是否是软约束参数
+        if key in SOFT_CONSTRAINT_KEYS:
+            _logger.debug(
+                "【软约束参数忽略】key=%s value=%s reason='不在数据库层筛选，Agent根据返回数据自主判断'",
+                key,
+                str(value)[:100]
+            )
+            continue  # ← 软约束参数不传递到搜索层
+
+        # 硬约束参数进入 hard_filters
         hard_filters[key] = value
 
     return hard_filters, soft_preferences
@@ -300,7 +331,7 @@ def compile_effective_criteria(
         subscription_overrides = {}
 
     criteria = _apply_patch(criteria_base, build_profile_search_defaults(profile_row or {}))
-    criteria = _apply_patch(criteria, _build_collected_criteria_patch(collected))
+    criteria = _apply_patch(criteria, _build_collected_criteria_patch(collected, profile_facts=profile_facts))
     explicit_overrides = dict(overrides or {})
     explicit_overrides.update(subscription_overrides)
     criteria = _apply_patch(criteria, explicit_overrides)
