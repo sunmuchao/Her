@@ -185,6 +185,25 @@ def self_education_floor_risk_flag(
     return "学历没有完全卡进你的底线"
 
 
+def education_closeness_label(
+    runtime: SearchMatchingRuntime,
+    required_value: Any,
+    actual_value: Any,
+) -> str | None:
+    required_rank = runtime.education_rank(required_value)
+    actual_rank = runtime.education_rank(actual_value)
+    if required_rank is None or actual_rank is None:
+        return None
+    if actual_rank >= required_rank:
+        return None
+    gap = required_rank - actual_rank
+    if gap == 1:
+        return "学历略低于理想值，但仍然接近"
+    if gap == 2:
+        return "学历有一定差距，需要看实际沟通和认知"
+    return "学历差距较大"
+
+
 def keyword_requested(
     runtime: SearchMatchingRuntime,
     criteria: dict[str, Any],
@@ -1368,6 +1387,15 @@ def evaluate_candidate(
         return fail("education_below_self_preference")
     if self_education_risk:
         risk_flags.append(self_education_risk)
+
+    requested_education_min = (criteria.get("self_profile") or {}).get("preferred_education_min")
+    education_gap_label = education_closeness_label(
+        runtime,
+        requested_education_min,
+        record_education,
+    )
+    if education_gap_label and education_gap_label not in risk_flags:
+        risk_flags.append(education_gap_label)
 
     # 性能优化：使用提前提取的 criteria_smoking_val 和 record_smoking
     if criteria_smoking_val:
