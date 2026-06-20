@@ -55,6 +55,31 @@ def income_range_overlaps(
     return True
 
 
+def income_range_relation(
+    min_value: int | None,
+    max_value: int | None,
+    required_min: int | None,
+    required_max: int | None,
+) -> str:
+    if min_value is None and max_value is None:
+        return "unknown"
+    candidate_min = min_value if min_value is not None else max_value
+    candidate_max = max_value if max_value is not None else min_value
+    if (
+        required_min is not None
+        and candidate_max is not None
+        and candidate_max < required_min
+    ):
+        return "below_min"
+    if (
+        required_max is not None
+        and candidate_min is not None
+        and candidate_min > required_max
+    ):
+        return "above_max"
+    return "within_band"
+
+
 def matcher_preference_tags(
     runtime: SearchReciprocalRuntime,
     record: dict[str, Any],
@@ -204,24 +229,29 @@ def evaluate_reciprocal_compatibility(
 
     pref_income_min = runtime.as_int(record.get("preferred_income_min_wan"))
     pref_income_max = runtime.as_int(record.get("preferred_income_max_wan"))
-    income_strictness = runtime.normalize_strictness_state(record.get("preferred_income_strictness"))
+    raw_income_strictness = record.get("preferred_income_strictness")
+    income_strictness = runtime.normalize_strictness_state(raw_income_strictness)
+    if raw_income_strictness in (None, ""):
+        income_strictness = "soft"
     if pref_income_min is not None or pref_income_max is not None:
         self_income_min = runtime.as_int(self_profile.get("income_min_wan"))
         self_income_max = runtime.as_int(self_profile.get("income_max_wan"))
-        overlap = income_range_overlaps(
+        income_relation = income_range_relation(
             self_income_min,
             self_income_max,
             pref_income_min,
             pref_income_max,
         )
-        if overlap is None:
+        if income_relation == "unknown":
             missing_fields.append("self_income_wan")
-        elif overlap is False:
+        elif income_relation == "below_min":
             if income_strictness == "hard":
                 return fail("reciprocal_income_preference")
             risk_flag = runtime.soft_preference_risk_flag("income", income_strictness)
             if risk_flag:
                 risk_flags.append(risk_flag)
+        elif income_relation == "above_max":
+            risk_flags.append("对方收入预期上限未命中，但不构成硬性淘汰")
         else:
             reasons.append("对方收入偏好命中")
             score_bonus += 6
@@ -373,6 +403,7 @@ __all__ = [
     "SearchReciprocalRuntime",
     "evaluate_reciprocal_compatibility",
     "exact_match",
+    "income_range_relation",
     "income_range_overlaps",
     "match_any_exact",
     "matcher_preference_tags",
