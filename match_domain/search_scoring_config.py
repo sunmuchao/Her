@@ -103,8 +103,49 @@ def build_ranking_rule_params(
     }
 
 
+def build_matching_rule_params(
+    *,
+    conn=None,
+    experiment_bucket: str | None = None,
+    profile_id: int | None = None,
+) -> dict[str, Any]:
+    ctx = get_search_rule_context()
+    if ctx is not None:
+        conn = conn or ctx.conn
+        experiment_bucket = experiment_bucket or ctx.experiment_bucket
+        profile_id = profile_id or ctx.profile_id
+
+    bundle = resolve_effective_rules(
+        SLICE_PARTNER_SEARCH_SCORING,
+        RuleResolutionContext(experiment_bucket=experiment_bucket, profile_id=profile_id),
+        conn=conn,
+    )
+    params = bundle.params
+    return {
+        "income_curve": {
+            "within_score": int(params.get("income_curve.within_score", 12)),
+            "below_near_distance": int(params.get("income_curve.below_near_distance", 10)),
+            "below_edge_distance": int(params.get("income_curve.below_edge_distance", 20)),
+            "below_near_score": int(params.get("income_curve.below_near_score", 8)),
+            "below_edge_score": int(params.get("income_curve.below_edge_score", 4)),
+            "above_near_distance": int(params.get("income_curve.above_near_distance", 20)),
+            "above_near_score": int(params.get("income_curve.above_near_score", 10)),
+            "above_far_score": int(params.get("income_curve.above_far_score", 8)),
+        },
+        "city_curve": {
+            "same_city_score": int(params.get("city_curve.same_city_score", 8)),
+            "same_city_bonus_when_near_priority": int(
+                params.get("city_curve.same_city_bonus_when_near_priority", 4)
+            ),
+            "settlement_same_city_score": int(params.get("city_curve.settlement_same_city_score", 5)),
+            "criteria_settlement_hit_score": int(params.get("city_curve.criteria_settlement_hit_score", 8)),
+        },
+    }
+
+
 __all__ = [
     "NEGOTIABLE_RISK_FLAGS",
     "build_effective_risk_flag_penalties",
+    "build_matching_rule_params",
     "build_ranking_rule_params",
 ]

@@ -61,6 +61,7 @@ class SearchMatchingRuntime:
     near_distance_priority_markers: Sequence[str]
     soft_concession_risk_flags: set[str]
     compatibility_risk_flags: set[str]
+    matching_rule_params: dict[str, Any]
 
 
 # 档案状态中文映射（简化版：只有3个状态）
@@ -295,12 +296,14 @@ def education_gap_score_adjustment(
 
 
 def income_range_proximity_decision(
+    runtime: SearchMatchingRuntime,
     candidate_min: int | None,
     candidate_max: int | None,
     *,
     preferred_min: int | None,
     preferred_max: int | None,
 ) -> dict[str, Any]:
+    income_curve = runtime.matching_rule_params["income_curve"]
     if candidate_min is None and candidate_max is None:
         return {"status": "unknown", "score": 0, "distance": None}
 
@@ -315,10 +318,10 @@ def income_range_proximity_decision(
         and effective_max < preferred_min
     ):
         distance = preferred_min - effective_max
-        if distance <= 10:
-            return {"status": "near", "score": 8, "distance": distance}
-        if distance <= 20:
-            return {"status": "edge", "score": 4, "distance": distance}
+        if distance <= income_curve["below_near_distance"]:
+            return {"status": "near", "score": income_curve["below_near_score"], "distance": distance}
+        if distance <= income_curve["below_edge_distance"]:
+            return {"status": "edge", "score": income_curve["below_edge_score"], "distance": distance}
         return {"status": "far", "score": 0, "distance": distance}
 
     if (
@@ -327,11 +330,11 @@ def income_range_proximity_decision(
         and effective_min > preferred_max
     ):
         distance = effective_min - preferred_max
-        if distance <= 20:
-            return {"status": "above", "score": 10, "distance": distance}
-        return {"status": "above", "score": 8, "distance": distance}
+        if distance <= income_curve["above_near_distance"]:
+            return {"status": "above", "score": income_curve["above_near_score"], "distance": distance}
+        return {"status": "above", "score": income_curve["above_far_score"], "distance": distance}
 
-    return {"status": "within", "score": 12, "distance": 0}
+    return {"status": "within", "score": income_curve["within_score"], "distance": 0}
 
 
 def city_alignment_score(
@@ -341,15 +344,16 @@ def city_alignment_score(
     record_settlement_city: Any,
     self_city: Any,
 ) -> dict[str, Any]:
+    city_curve = runtime.matching_rule_params["city_curve"]
     lowered_record_city = runtime.as_lower(record_city)
     lowered_settlement_city = runtime.as_lower(record_settlement_city)
     lowered_self_city = runtime.as_lower(self_city)
     if not lowered_self_city or not lowered_record_city:
         return {"score": 0, "reason": None, "risk_flag": None}
     if lowered_record_city == lowered_self_city:
-        return {"score": 8, "reason": "同城", "risk_flag": None}
+        return {"score": city_curve["same_city_score"], "reason": "同城", "risk_flag": None}
     if lowered_settlement_city and lowered_settlement_city == lowered_self_city:
-        return {"score": 5, "reason": "定居与你同城", "risk_flag": None}
+        return {"score": city_curve["settlement_same_city_score"], "reason": "定居与你同城", "risk_flag": None}
     return {"score": 0, "reason": None, "risk_flag": "非同城，见面推进成本更高"}
 
 
@@ -1447,7 +1451,7 @@ def evaluate_candidate(
         elif city not in _lowered_criteria_values("cities"):
             if settlement_city and settlement_city in _lowered_criteria_values("cities"):
                 reasons.append(f"当前城市 {record_city}（定居目标仍命中）")
-                fit_score += 8
+                fit_score += runtime.matching_rule_params["city_curve"]["criteria_settlement_hit_score"]
                 risk_flags.append("当前城市未命中，但定居城市命中")
             else:
                 return fail("city_mismatch")
@@ -1467,7 +1471,7 @@ def evaluate_candidate(
         fit_score += city_alignment["score"]
         if city_alignment["reason"] == "同城" and near_distance_priority:
             reasons.append("近距离更省心")
-            fit_score += 4
+            fit_score += runtime.matching_rule_params["city_curve"]["same_city_bonus_when_near_priority"]
     elif near_distance_priority and city_alignment["risk_flag"]:
         risk_flags.append(city_alignment["risk_flag"])
 
@@ -1570,6 +1574,7 @@ def evaluate_candidate(
     preferred_income_max = runtime.as_int(self_profile.get("preferred_income_max_wan"))
     candidate_income_min, candidate_income_max = candidate_income_bounds(runtime, record)
     income_decision = income_range_proximity_decision(
+        runtime,
         candidate_income_min,
         candidate_income_max,
         preferred_min=preferred_income_min,
