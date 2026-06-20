@@ -643,6 +643,7 @@ class SearchCandidatesTests(unittest.TestCase):
         result = search_candidates.evaluate_candidate(record, criteria)
 
         self.assertIsNotNone(result)
+        self.assertEqual(result["match_tier"], "compatible")
         self.assertIn("年龄 27（接近你的要求）", result["matched_on"])
         self.assertIn("年龄略偏离理想区间，但仍然接近", result["risk_flags"])
 
