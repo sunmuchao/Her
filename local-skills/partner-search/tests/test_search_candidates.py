@@ -1124,6 +1124,24 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertTrue(result["matched"])
         self.assertIn("对方学历要求接近命中，可作为兼容匹配", result["risk_flags"])
 
+    def test_reciprocal_education_bonus_prefers_closer_match(self):
+        candidate = {
+            "preferred_education_min": "博士",
+            "preferred_education_strictness": "硬性",
+        }
+        near_result = search_candidates.evaluate_reciprocal_compatibility(
+            candidate,
+            {"education": "硕士"},
+        )
+        edge_result = search_candidates.evaluate_reciprocal_compatibility(
+            candidate,
+            {"education": "本科"},
+        )
+
+        self.assertIsNotNone(near_result)
+        self.assertIsNotNone(edge_result)
+        self.assertGreater(near_result["score_bonus"], edge_result["score_bonus"])
+
     def test_reciprocal_marks_larger_education_gap_as_tryable(self):
         candidate = {
             "preferred_education_min": "博士",
@@ -1339,6 +1357,40 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertTrue(result["matched"])
         self.assertIn("对方收入要求可能可放宽", result["risk_flags"])
+
+    def test_reciprocal_income_bonus_prefers_closer_low_income(self):
+        candidate = {
+            "preferred_income_min_wan": 30,
+            "preferred_income_max_wan": 50,
+            "preferred_income_strictness": "可放宽",
+        }
+        near_result = search_candidates.evaluate_reciprocal_compatibility(
+            candidate,
+            {"income_min_wan": 22, "income_max_wan": 25},
+        )
+        far_result = search_candidates.evaluate_reciprocal_compatibility(
+            candidate,
+            {"income_min_wan": 5, "income_max_wan": 8},
+        )
+
+        self.assertIsNotNone(near_result)
+        self.assertIsNotNone(far_result)
+        self.assertGreater(near_result["score_bonus"], far_result["score_bonus"])
+
+    def test_reciprocal_income_above_max_keeps_positive_bonus(self):
+        candidate = {
+            "preferred_income_min_wan": 30,
+            "preferred_income_max_wan": 50,
+            "preferred_income_strictness": "硬性",
+        }
+        result = search_candidates.evaluate_reciprocal_compatibility(
+            candidate,
+            {"income_min_wan": 60, "income_max_wan": 70},
+        )
+
+        self.assertIsNotNone(result)
+        self.assertGreater(result["score_bonus"], 0)
+        self.assertIn("对方收入预期上限未命中，但不构成硬性淘汰", result["risk_flags"])
 
     def test_reciprocal_children_acceptance_cautious_signal_becomes_risk(self):
         candidate = {
