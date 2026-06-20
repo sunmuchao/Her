@@ -173,6 +173,8 @@ def self_education_floor_risk_flag(
         return None
     if candidate_rank >= required_rank:
         return None
+    if candidate_rank == required_rank - 1:
+        return "学历略低于你的理想值，但仍然接近"
 
     strictness = self_preference_strictness(
         runtime,
@@ -1260,10 +1262,16 @@ def evaluate_candidate(
     # 性能优化：使用提前提取的 criteria_cities 和 record_city
     if criteria_cities:
         city = runtime.as_lower(record_city)
+        settlement_city = runtime.as_lower(record.get("settlement_city"))
         if not city:
             missing_fields.append("city")
         elif city not in _lowered_criteria_values("cities"):
-            return fail("city_mismatch")
+            if settlement_city and settlement_city in _lowered_criteria_values("cities"):
+                reasons.append(f"当前城市 {record_city}（定居目标仍命中）")
+                fit_score += 10
+                risk_flags.append("当前城市未命中，但定居城市命中")
+            else:
+                return fail("city_mismatch")
         else:
             reasons.append(f"城市 {record_city}")
             fit_score += 20
