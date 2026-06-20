@@ -1026,6 +1026,14 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertGreaterEqual(above_result["score"], within_result["score"] - 4)
         self.assertIn("收入高于预期上限，但通常不构成负向问题", above_result["risk_flags"])
 
+    def test_matching_runtime_exposes_configurable_curves(self):
+        runtime = search_candidates._build_search_matching_runtime()
+
+        self.assertIn("income_curve", runtime.matching_rule_params)
+        self.assertIn("city_curve", runtime.matching_rule_params)
+        self.assertGreater(runtime.matching_rule_params["income_curve"]["within_score"], 0)
+        self.assertGreater(runtime.matching_rule_params["city_curve"]["same_city_score"], 0)
+
     def test_reciprocal_rejects_non_matching_city(self):
         candidate = {"preferred_cities": "上海"}
         self_profile = {"city": "无锡"}

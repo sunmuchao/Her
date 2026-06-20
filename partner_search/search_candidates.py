@@ -1081,9 +1081,13 @@ def _build_search_ranking_runtime() -> SearchRankingRuntime:
 
 
 def _build_search_matching_runtime() -> SearchMatchingRuntime:
-    from match_domain.search_scoring_config import build_effective_risk_flag_penalties
+    from match_domain.search_scoring_config import (
+        build_effective_risk_flag_penalties,
+        build_matching_rule_params,
+    )
 
     effective_penalties = build_effective_risk_flag_penalties(RISK_FLAG_PENALTIES)
+    matching_rule_params = build_matching_rule_params()
     return SearchMatchingRuntime(
         as_int=as_int,
         as_lower=as_lower,
@@ -1133,6 +1137,7 @@ def _build_search_matching_runtime() -> SearchMatchingRuntime:
         near_distance_priority_markers=NEAR_DISTANCE_PRIORITY_MARKERS,
         soft_concession_risk_flags=SOFT_CONCESSION_RISK_FLAGS,
         compatibility_risk_flags=COMPATIBILITY_RISK_FLAGS,
+        matching_rule_params=matching_rule_params,
     )
 
 
