@@ -334,6 +334,25 @@ def income_range_proximity_decision(
     return {"status": "within", "score": 12, "distance": 0}
 
 
+def city_alignment_score(
+    runtime: SearchMatchingRuntime,
+    *,
+    record_city: Any,
+    record_settlement_city: Any,
+    self_city: Any,
+) -> dict[str, Any]:
+    lowered_record_city = runtime.as_lower(record_city)
+    lowered_settlement_city = runtime.as_lower(record_settlement_city)
+    lowered_self_city = runtime.as_lower(self_city)
+    if not lowered_self_city or not lowered_record_city:
+        return {"score": 0, "reason": None, "risk_flag": None}
+    if lowered_record_city == lowered_self_city:
+        return {"score": 8, "reason": "同城", "risk_flag": None}
+    if lowered_settlement_city and lowered_settlement_city == lowered_self_city:
+        return {"score": 5, "reason": "定居与你同城", "risk_flag": None}
+    return {"score": 0, "reason": None, "risk_flag": "非同城，见面推进成本更高"}
+
+
 def compatibility_flags_from_risks(
     runtime: SearchMatchingRuntime,
     risk_flags: list[str],
@@ -1437,14 +1456,20 @@ def evaluate_candidate(
             fit_score += 20
 
     near_distance_priority = self_prefers_near_distance(runtime, self_profile)
-    if lowered_self_city and lowered_candidate_city and lowered_self_city == lowered_candidate_city:
-        reasons.append("同城")
-        fit_score += 8
-        if near_distance_priority:
+    city_alignment = city_alignment_score(
+        runtime,
+        record_city=record_city,
+        record_settlement_city=record.get("settlement_city"),
+        self_city=(self_profile or {}).get("city"),
+    )
+    if city_alignment["reason"]:
+        reasons.append(city_alignment["reason"])
+        fit_score += city_alignment["score"]
+        if city_alignment["reason"] == "同城" and near_distance_priority:
             reasons.append("近距离更省心")
             fit_score += 4
-    elif lowered_self_city and lowered_candidate_city and near_distance_priority:
-        risk_flags.append("非同城，见面推进成本更高")
+    elif near_distance_priority and city_alignment["risk_flag"]:
+        risk_flags.append(city_alignment["risk_flag"])
 
     # 性能优化：使用提前提取的 criteria_districts 和 record_district
     if criteria_districts:
@@ -1467,9 +1492,6 @@ def evaluate_candidate(
         else:
             reasons.append(f"定居 {record.get('settlement_city')}")
             fit_score += 8
-    elif lowered_self_city and record.get("settlement_city") and runtime.as_lower(record.get("settlement_city")) == lowered_self_city:
-        reasons.append("定居与你同城")
-        fit_score += 4
 
     # 性能优化：使用提前提取的 criteria_relationship_goals
     if criteria_relationship_goals:
