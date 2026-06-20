@@ -27,6 +27,7 @@ class SearchReciprocalRuntime:
     marital_acceptance_risk_flag: Callable[[str, str], str | None]
     children_acceptance_risk_flag: Callable[[str, str, str], str]
     habit_requires_acceptance: Callable[[Any], bool]
+    matching_rule_params: dict[str, Any]
 
 
 def exact_match(runtime: SearchReciprocalRuntime, value: Any, expected: Any) -> bool:
@@ -153,6 +154,7 @@ def education_gap_score_bonus(gap: int) -> int:
 
 
 def income_range_score_bonus(
+    runtime: SearchReciprocalRuntime,
     relation: str,
     *,
     candidate_min: int | None,
@@ -160,22 +162,27 @@ def income_range_score_bonus(
     required_min: int | None,
     required_max: int | None,
 ) -> int:
+    income_curve = runtime.matching_rule_params["income_curve"]
     if relation == "within_band":
-        return 6
+        return min(6, income_curve["within_score"])
     if relation == "above_max":
         effective_min = candidate_min if candidate_min is not None else candidate_max
         if effective_min is None or required_max is None:
-            return 4
+            return min(4, income_curve["above_far_score"])
         distance = effective_min - required_max
-        return 5 if distance <= 20 else 4
+        return (
+            min(5, income_curve["above_near_score"])
+            if distance <= income_curve["above_near_distance"]
+            else min(4, income_curve["above_far_score"])
+        )
     if relation == "below_min":
         effective_max = candidate_max if candidate_max is not None else candidate_min
         if effective_max is None or required_min is None:
             return 0
         distance = required_min - effective_max
-        if distance <= 10:
+        if distance <= income_curve["below_near_distance"]:
             return 2
-        if distance <= 20:
+        if distance <= income_curve["below_edge_distance"]:
             return 1
     return 0
 
@@ -411,6 +418,7 @@ def evaluate_reciprocal_compatibility(
             if risk_flag:
                 risk_flags.append(risk_flag)
             score_bonus += income_range_score_bonus(
+                runtime,
                 income_relation,
                 candidate_min=self_income_min,
                 candidate_max=self_income_max,
@@ -420,6 +428,7 @@ def evaluate_reciprocal_compatibility(
         elif income_relation == "above_max":
             risk_flags.append("对方收入预期上限未命中，但不构成硬性淘汰")
             score_bonus += income_range_score_bonus(
+                runtime,
                 income_relation,
                 candidate_min=self_income_min,
                 candidate_max=self_income_max,
@@ -429,6 +438,7 @@ def evaluate_reciprocal_compatibility(
         else:
             reasons.append("对方收入偏好命中")
             score_bonus += income_range_score_bonus(
+                runtime,
                 income_relation,
                 candidate_min=self_income_min,
                 candidate_max=self_income_max,
