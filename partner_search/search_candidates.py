@@ -1041,6 +1041,8 @@ def _build_search_no_match_runtime() -> SearchNoMatchRuntime:
 
 
 def _build_search_reciprocal_runtime() -> SearchReciprocalRuntime:
+    from match_domain.search_scoring_config import build_matching_rule_params
+
     return SearchReciprocalRuntime(
         as_int=as_int,
         as_lower=as_lower,
@@ -1061,6 +1063,7 @@ def _build_search_reciprocal_runtime() -> SearchReciprocalRuntime:
         marital_acceptance_risk_flag=marital_acceptance_risk_flag,
         children_acceptance_risk_flag=children_acceptance_risk_flag,
         habit_requires_acceptance=habit_requires_acceptance,
+        matching_rule_params=build_matching_rule_params(),
     )
 
 
