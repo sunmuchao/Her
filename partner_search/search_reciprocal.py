@@ -107,6 +107,41 @@ def scalar_range_relation(
     return "within_band"
 
 
+def scalar_range_score_bonus(
+    relation: str,
+    *,
+    distance: int | None,
+    within_score: int,
+    near_score: int,
+    edge_score: int,
+) -> int:
+    if relation == "within_band":
+        return within_score
+    if relation == "near":
+        if distance is None or distance <= 1:
+            return near_score
+        return max(edge_score + 1, near_score - (distance - 1))
+    if relation == "edge":
+        if distance is None:
+            return edge_score
+        return max(1, edge_score - max(0, distance - 2))
+    return 0
+
+
+def scalar_range_distance(
+    value: int | None,
+    min_value: int | None,
+    max_value: int | None,
+) -> int | None:
+    if value is None:
+        return None
+    if min_value is not None and value < min_value:
+        return min_value - value
+    if max_value is not None and value > max_value:
+        return value - max_value
+    return 0
+
+
 def matcher_preference_tags(
     runtime: SearchReciprocalRuntime,
     record: dict[str, Any],
@@ -177,6 +212,7 @@ def evaluate_reciprocal_compatibility(
             near_tolerance=1,
             edge_tolerance=3,
         )
+        age_distance = scalar_range_distance(self_age, pref_age_min, pref_age_max)
         if age_relation == "unknown":
             missing_fields.append("self_age")
         elif age_relation == "far":
@@ -187,13 +223,31 @@ def evaluate_reciprocal_compatibility(
                 risk_flags.append(risk_flag)
         elif age_relation == "near":
             risk_flags.append("对方年龄要求接近命中，可作为兼容匹配")
-            score_bonus += 4
+            score_bonus += scalar_range_score_bonus(
+                age_relation,
+                distance=age_distance,
+                within_score=10,
+                near_score=4,
+                edge_score=1,
+            )
         elif age_relation == "edge":
             risk_flags.append("对方年龄要求有一定偏差，但仍可尝试")
-            score_bonus += 1
+            score_bonus += scalar_range_score_bonus(
+                age_relation,
+                distance=age_distance,
+                within_score=10,
+                near_score=4,
+                edge_score=2,
+            )
         else:
             reasons.append("对方年龄偏好命中")
-            score_bonus += 10
+            score_bonus += scalar_range_score_bonus(
+                age_relation,
+                distance=age_distance,
+                within_score=10,
+                near_score=4,
+                edge_score=1,
+            )
 
     pref_cities = runtime.split_keywords(record.get("preferred_cities"))
     if pref_cities:
@@ -225,6 +279,7 @@ def evaluate_reciprocal_compatibility(
             near_tolerance=2,
             edge_tolerance=5,
         )
+        height_distance = scalar_range_distance(self_height, pref_height_min, pref_height_max)
         if height_relation == "unknown":
             missing_fields.append("self_height")
         elif height_relation == "far":
@@ -235,13 +290,31 @@ def evaluate_reciprocal_compatibility(
                 risk_flags.append(risk_flag)
         elif height_relation == "near":
             risk_flags.append("对方身高要求接近命中，可作为兼容匹配")
-            score_bonus += 3
+            score_bonus += scalar_range_score_bonus(
+                height_relation,
+                distance=height_distance,
+                within_score=6,
+                near_score=3,
+                edge_score=1,
+            )
         elif height_relation == "edge":
             risk_flags.append("对方身高要求有一定偏差，但仍可尝试")
-            score_bonus += 1
+            score_bonus += scalar_range_score_bonus(
+                height_relation,
+                distance=height_distance,
+                within_score=6,
+                near_score=3,
+                edge_score=2,
+            )
         else:
             reasons.append("对方身高偏好命中")
-            score_bonus += 6
+            score_bonus += scalar_range_score_bonus(
+                height_relation,
+                distance=height_distance,
+                within_score=6,
+                near_score=3,
+                edge_score=1,
+            )
 
     pref_education_min = record.get("preferred_education_min")
     education_strictness = runtime.normalize_strictness_state(record.get("preferred_education_strictness"))

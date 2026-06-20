@@ -1047,6 +1047,19 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertTrue(result["matched"])
         self.assertIn("对方年龄要求接近命中，可作为兼容匹配", result["risk_flags"])
 
+    def test_reciprocal_age_bonus_prefers_closer_match(self):
+        candidate = {
+            "preferred_age_min": 28,
+            "preferred_age_max": 32,
+            "preferred_age_strictness": "硬性",
+        }
+        near_result = search_candidates.evaluate_reciprocal_compatibility(candidate, {"age": 27})
+        edge_result = search_candidates.evaluate_reciprocal_compatibility(candidate, {"age": 25})
+
+        self.assertIsNotNone(near_result)
+        self.assertIsNotNone(edge_result)
+        self.assertGreater(near_result["score_bonus"], edge_result["score_bonus"])
+
     def test_reciprocal_rejects_far_age_preference_when_hard(self):
         candidate = {
             "preferred_age_min": 28,
@@ -1072,6 +1085,19 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertTrue(result["matched"])
         self.assertIn("对方身高要求接近命中，可作为兼容匹配", result["risk_flags"])
+
+    def test_reciprocal_height_bonus_prefers_closer_match(self):
+        candidate = {
+            "preferred_height_min": 175,
+            "preferred_height_max": 180,
+            "preferred_height_strictness": "硬性",
+        }
+        near_result = search_candidates.evaluate_reciprocal_compatibility(candidate, {"height": 173})
+        edge_result = search_candidates.evaluate_reciprocal_compatibility(candidate, {"height": 170})
+
+        self.assertIsNotNone(near_result)
+        self.assertIsNotNone(edge_result)
+        self.assertGreater(near_result["score_bonus"], edge_result["score_bonus"])
 
     def test_reciprocal_rejects_far_height_preference_when_hard(self):
         candidate = {
