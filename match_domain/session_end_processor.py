@@ -42,6 +42,8 @@ async def process_session_end(
     llm_model: str | None = None,
     processed_at: datetime | None = None,  # ✅ 新增：上次处理时间，用于增量处理
     storage: Any | None = None,  # ✅ 新增：storage对象（用于后续更新processed_at）
+    vectorize_summaries: bool = True,
+    clear_working_criteria_after_processing: bool = True,
 ) -> dict[str, Any]:
     """会话结束时的处理流程（异步后台提炼，支持增量处理）
 
@@ -63,6 +65,8 @@ async def process_session_end(
         llm_model: LLM模型名称（可选，默认从环境变量读取）
         processed_at: 上次处理时间（可选，用于增量处理）
         storage: storage对象（可选，用于后续更新processed_at）
+        vectorize_summaries: 是否为不可量化摘要生成向量
+        clear_working_criteria_after_processing: 是否在处理后清空 working_criteria
 
     Returns:
         处理结果，包含：
@@ -150,21 +154,27 @@ async def process_session_end(
             _logger.info(f"不可量化字段摘要存储成功: saved_keys={saved_keys}")
 
             # 向量化存储
-            vectorized_keys = await save_vectors_for_summary(
-                session_id=session_id,
-                requester_id=requester_id,
-                summary_data=non_quantifiable_data,  # 只向量化不可量化字段
-            )
-            _logger.info(f"不可量化字段向量化存储成功: vectorized_keys={vectorized_keys}")
+            if vectorize_summaries:
+                vectorized_keys = await save_vectors_for_summary(
+                    session_id=session_id,
+                    requester_id=requester_id,
+                    summary_data=non_quantifiable_data,  # 只向量化不可量化字段
+                )
+                _logger.info(f"不可量化字段向量化存储成功: vectorized_keys={vectorized_keys}")
+            else:
+                vectorized_keys = []
+                _logger.info("已跳过不可量化字段向量化存储")
         else:
             saved_keys = []
             vectorized_keys = []
             _logger.info("没有不可量化字段需要写入摘要表和向量库")
 
         # Step 6：清空 working_criteria（会话结束后清理临时搜索条件）
-        await clear_working_criteria(session_id, dsn=dsn)
-
-        _logger.info(f"working_criteria 已清空: session_id={session_id}")
+        if clear_working_criteria_after_processing:
+            await clear_working_criteria(session_id, dsn=dsn)
+            _logger.info(f"working_criteria 已清空: session_id={session_id}")
+        else:
+            _logger.info(f"跳过清空 working_criteria: session_id={session_id}")
 
         return {
             "success": True,
