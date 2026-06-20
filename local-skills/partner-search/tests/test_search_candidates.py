@@ -2171,6 +2171,84 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertEqual(result["match_tier"], "compatible")
         self.assertIn("年龄略偏离理想区间，但仍然接近", result["compatibility_flags"])
 
+    def test_age_proximity_uses_graduated_scores(self):
+        criteria = {
+            "gender": "女",
+            "age_min": 27,
+            "age_max": 30,
+            "self_profile": {},
+        }
+        near_result = search_candidates.evaluate_candidate(
+            {
+                "id": 302,
+                "name": "AgeNear",
+                "gender": "女",
+                "age": 31,
+                "city": "无锡",
+                "profile_status": "active",
+                "verified_level": "photo",
+                "last_active_at": "2099-01-01 00:00:00",
+            },
+            criteria,
+        )
+        edge_result = search_candidates.evaluate_candidate(
+            {
+                "id": 303,
+                "name": "AgeEdge",
+                "gender": "女",
+                "age": 33,
+                "city": "无锡",
+                "profile_status": "active",
+                "verified_level": "photo",
+                "last_active_at": "2099-01-01 00:00:00",
+            },
+            criteria,
+        )
+
+        self.assertIsNotNone(near_result)
+        self.assertIsNotNone(edge_result)
+        self.assertGreater(near_result["fit_score"], edge_result["fit_score"])
+        self.assertGreater(near_result["score"], edge_result["score"])
+
+    def test_height_proximity_uses_graduated_scores(self):
+        criteria = {
+            "gender": "女",
+            "height_min": 165,
+            "height_max": 170,
+            "self_profile": {},
+        }
+        near_result = search_candidates.evaluate_candidate(
+            {
+                "id": 304,
+                "name": "HeightNear",
+                "gender": "女",
+                "height": 172,
+                "city": "无锡",
+                "profile_status": "active",
+                "verified_level": "photo",
+                "last_active_at": "2099-01-01 00:00:00",
+            },
+            criteria,
+        )
+        edge_result = search_candidates.evaluate_candidate(
+            {
+                "id": 305,
+                "name": "HeightEdge",
+                "gender": "女",
+                "height": 175,
+                "city": "无锡",
+                "profile_status": "active",
+                "verified_level": "photo",
+                "last_active_at": "2099-01-01 00:00:00",
+            },
+            criteria,
+        )
+
+        self.assertIsNotNone(near_result)
+        self.assertIsNotNone(edge_result)
+        self.assertGreater(near_result["fit_score"], edge_result["fit_score"])
+        self.assertGreater(near_result["score"], edge_result["score"])
+
     def test_main_outputs_ranked_results(self):
         fake_records = [
             {

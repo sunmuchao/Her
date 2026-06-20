@@ -159,6 +159,47 @@ def range_proximity_decision(
     return {"status": "within", "score": score_on_match, "distance": 0}
 
 
+def graduated_range_proximity_decision(
+    value: int | None,
+    *,
+    min_value: int | None,
+    max_value: int | None,
+    near_steps: tuple[int, int],
+    score_on_match: int,
+    near_scores: tuple[int, int],
+) -> dict[str, Any]:
+    decision = range_proximity_decision(
+        value,
+        min_value=min_value,
+        max_value=max_value,
+        near_steps=near_steps,
+        score_on_match=score_on_match,
+        near_scores=near_scores,
+    )
+    status = decision["status"]
+    distance = decision["distance"]
+    if status not in {"near", "edge"} or distance is None:
+        return decision
+
+    near_limit, edge_limit = near_steps
+    near_score, edge_score = near_scores
+    if status == "near":
+        if near_limit <= 1:
+            decision["score"] = near_score
+            return decision
+        step_span = max(1, near_limit - 1)
+        score_drop = max(0, score_on_match - near_score)
+        extra_drop = round((distance - 1) * score_drop / step_span)
+        decision["score"] = max(near_score, score_on_match - extra_drop)
+        return decision
+
+    edge_span = max(1, edge_limit - near_limit)
+    score_drop = max(0, near_score - edge_score)
+    extra_drop = round((distance - near_limit) * score_drop / edge_span)
+    decision["score"] = max(edge_score, near_score - extra_drop)
+    return decision
+
+
 def apply_range_proximity(
     *,
     decision: dict[str, Any],
@@ -1243,7 +1284,7 @@ def evaluate_candidate(
     age = record_age
     age_reason_added = False
     if criteria_age_min is not None or criteria_age_max is not None:
-        age_decision = range_proximity_decision(
+        age_decision = graduated_range_proximity_decision(
             age,
             min_value=criteria_age_min,
             max_value=criteria_age_max,
@@ -1277,7 +1318,7 @@ def evaluate_candidate(
     height = record_height
     height_reason_added = False
     if criteria_height_min is not None or criteria_height_max is not None:
-        height_decision = range_proximity_decision(
+        height_decision = graduated_range_proximity_decision(
             height,
             min_value=criteria_height_min,
             max_value=criteria_height_max,
