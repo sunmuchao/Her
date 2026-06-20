@@ -76,7 +76,10 @@ class SearchVisibilityTests(unittest.TestCase):
 
         overlay_mock.return_value = [{"id": 1, "account_moderation_action": "warn"}]
         out = apply_search_visibility_gate(
-            {"results": [{"id": 1}], "fallback_results": []},
+            {
+                "results": [{"id": 1, "match_tier": "strict", "compatibility_flags": []}],
+                "fallback_results": [],
+            },
             moderation_dsn="mysql://test",
         )
         self.assertTrue(out["search_gate"]["moderation_applied_externally"])

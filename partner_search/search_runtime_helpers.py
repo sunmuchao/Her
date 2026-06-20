@@ -243,6 +243,8 @@ class SearchRuntimeHelpers:
     def append_result_detail_lines(self, lines, result, profile, include_source=False):
         display_cache = self.prepare_result_display_cache(result)
         signal_parts = self.summarize_signal_parts(profile)
+        self.append_labeled_line(lines, "match_tier", result.get("match_tier"))
+        self.append_joined_line(lines, "compatibility_flags", result.get("compatibility_flags"))
         self.append_joined_line(lines, "signals", signal_parts, separator=" | ")
         self.append_labeled_line(lines, "trust", display_cache["trust_summary"].get("headline"))
         self.append_joined_line(lines, "photo_preview", result.get("photo_preview"))
@@ -819,6 +821,8 @@ class SearchRuntimeHelpers:
             "fit_score": result.get("fit_score"),
             "confidence_score": result.get("confidence_score"),
             "risk_score": result.get("risk_score"),
+            "match_tier": result.get("match_tier", "strict"),
+            "compatibility_flags": list(result.get("compatibility_flags") or []),
             "verified_level": profile.get("verified_level") or "none",
             "verified_label": trust_summary.get("verified_label"),
             "photo_verification_level": trust_summary.get("photo_verification_level"),
