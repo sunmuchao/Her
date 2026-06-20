@@ -80,6 +80,33 @@ def income_range_relation(
     return "within_band"
 
 
+def scalar_range_relation(
+    value: int | None,
+    min_value: int | None,
+    max_value: int | None,
+    *,
+    near_tolerance: int,
+    edge_tolerance: int,
+) -> str:
+    if value is None:
+        return "unknown"
+    if min_value is not None and value < min_value:
+        distance = min_value - value
+        if distance <= near_tolerance:
+            return "near"
+        if distance <= edge_tolerance:
+            return "edge"
+        return "far"
+    if max_value is not None and value > max_value:
+        distance = value - max_value
+        if distance <= near_tolerance:
+            return "near"
+        if distance <= edge_tolerance:
+            return "edge"
+        return "far"
+    return "within_band"
+
+
 def matcher_preference_tags(
     runtime: SearchReciprocalRuntime,
     record: dict[str, Any],
@@ -143,20 +170,27 @@ def evaluate_reciprocal_compatibility(
     pref_age_max = runtime.as_int(record.get("preferred_age_max"))
     age_strictness = runtime.normalize_strictness_state(record.get("preferred_age_strictness"))
     if pref_age_min is not None or pref_age_max is not None:
-        if self_age is None:
+        age_relation = scalar_range_relation(
+            self_age,
+            pref_age_min,
+            pref_age_max,
+            near_tolerance=1,
+            edge_tolerance=3,
+        )
+        if age_relation == "unknown":
             missing_fields.append("self_age")
-        elif pref_age_min is not None and self_age < pref_age_min:
+        elif age_relation == "far":
             if age_strictness == "hard":
                 return fail("reciprocal_age_preference")
             risk_flag = runtime.soft_preference_risk_flag("age", age_strictness)
             if risk_flag:
                 risk_flags.append(risk_flag)
-        elif pref_age_max is not None and self_age > pref_age_max:
-            if age_strictness == "hard":
-                return fail("reciprocal_age_preference")
-            risk_flag = runtime.soft_preference_risk_flag("age", age_strictness)
-            if risk_flag:
-                risk_flags.append(risk_flag)
+        elif age_relation == "near":
+            risk_flags.append("对方年龄要求接近命中，可作为兼容匹配")
+            score_bonus += 4
+        elif age_relation == "edge":
+            risk_flags.append("对方年龄要求有一定偏差，但仍可尝试")
+            score_bonus += 1
         else:
             reasons.append("对方年龄偏好命中")
             score_bonus += 10
@@ -184,20 +218,27 @@ def evaluate_reciprocal_compatibility(
     pref_height_max = runtime.as_int(record.get("preferred_height_max"))
     height_strictness = runtime.normalize_strictness_state(record.get("preferred_height_strictness"))
     if pref_height_min is not None or pref_height_max is not None:
-        if self_height is None:
+        height_relation = scalar_range_relation(
+            self_height,
+            pref_height_min,
+            pref_height_max,
+            near_tolerance=2,
+            edge_tolerance=5,
+        )
+        if height_relation == "unknown":
             missing_fields.append("self_height")
-        elif pref_height_min is not None and self_height < pref_height_min:
+        elif height_relation == "far":
             if height_strictness == "hard":
                 return fail("reciprocal_height_preference")
             risk_flag = runtime.soft_preference_risk_flag("height", height_strictness)
             if risk_flag:
                 risk_flags.append(risk_flag)
-        elif pref_height_max is not None and self_height > pref_height_max:
-            if height_strictness == "hard":
-                return fail("reciprocal_height_preference")
-            risk_flag = runtime.soft_preference_risk_flag("height", height_strictness)
-            if risk_flag:
-                risk_flags.append(risk_flag)
+        elif height_relation == "near":
+            risk_flags.append("对方身高要求接近命中，可作为兼容匹配")
+            score_bonus += 3
+        elif height_relation == "edge":
+            risk_flags.append("对方身高要求有一定偏差，但仍可尝试")
+            score_bonus += 1
         else:
             reasons.append("对方身高偏好命中")
             score_bonus += 6
@@ -405,6 +446,7 @@ __all__ = [
     "exact_match",
     "income_range_relation",
     "income_range_overlaps",
+    "scalar_range_relation",
     "match_any_exact",
     "matcher_preference_tags",
 ]
