@@ -38,6 +38,8 @@ def build_match_result(
     profile_status_rank: int,
     matched: bool = True,
     reject_reason: str | None = None,
+    match_tier: str = "strict",
+    compatibility_flags: list[str] | None = None,
 ) -> dict[str, Any]:
     profile = runtime.strip_internal_fields(record) if (diagnostics := (matched is False or reject_reason is not None)) else None
     result = {
@@ -61,6 +63,8 @@ def build_match_result(
         "activity_sort_ts": activity_sort_ts,
         "profile_status_rank": profile_status_rank,
         "reject_reason": reject_reason,
+        "match_tier": match_tier,
+        "compatibility_flags": list(compatibility_flags or []),
     }
     if not diagnostics:
         result["_profile_record"] = record

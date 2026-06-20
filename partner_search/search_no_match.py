@@ -277,7 +277,11 @@ def format_no_match_text(
     diagnostics: dict[str, Any] | None,
     fallback_results: list[dict[str, Any]] | None = None,
 ) -> str:
-    lines = ["No matches found."]
+    lines = [
+        "No strict matches found."
+        if fallback_results
+        else "No matches found."
+    ]
     if not diagnostics:
         return "\n".join(lines)
 
@@ -298,7 +302,7 @@ def format_no_match_text(
     if suggestions:
         lines.append("relax_suggestions: " + " | ".join(suggestions))
     if fallback_results:
-        lines.append("fallback_matches: strict 条件下没人过，但下面这些属于放宽后可聊对象。")
+        lines.append("fallback_matches: 当前没有严格匹配，但下面这些属于有偏差、仍可聊的兼容对象。")
         lines.append(runtime.format_text(fallback_results))
     return "\n".join(lines)
 
