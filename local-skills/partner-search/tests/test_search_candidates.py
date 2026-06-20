@@ -753,6 +753,36 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertIn("当前城市 上海（定居目标仍命中）", result["matched_on"])
         self.assertIn("当前城市未命中，但定居城市命中", result["risk_flags"])
 
+    def test_same_city_scores_higher_than_settlement_only_match(self):
+        base = {
+            "gender": "女",
+            "age": 28,
+            "profile_status": "active",
+            "verified_level": "photo",
+            "combined_text": "",
+            "last_active_at": "2099-01-01 00:00:00",
+            "source_file": "mysql://root@127.0.0.1:3307/her?table=profiles#profiles",
+        }
+        criteria = {
+            "gender": "女",
+            "cities": ["无锡"],
+            "profile_statuses": ["active"],
+            "exclude_ids": set(),
+        }
+
+        same_city = search_candidates.evaluate_candidate(
+            dict(base, id=118, name="SameCity", city="无锡", settlement_city="苏州"),
+            criteria,
+        )
+        settlement_only = search_candidates.evaluate_candidate(
+            dict(base, id=119, name="SettlementOnly", city="上海", settlement_city="无锡"),
+            criteria,
+        )
+
+        self.assertIsNotNone(same_city)
+        self.assertIsNotNone(settlement_only)
+        self.assertGreater(same_city["score"], settlement_only["score"])
+
     def test_evaluate_candidate_marks_below_self_education_floor_as_near_risk_when_one_level_lower(self):
         result = search_candidates.evaluate_candidate(
             {
@@ -812,6 +842,53 @@ class SearchCandidatesTests(unittest.TestCase):
 
         self.assertIsNotNone(result)
         self.assertIn("学历差距较大", result["risk_flags"])
+
+    def test_education_closeness_affects_score_gradient(self):
+        criteria = {
+            "gender": "女",
+            "profile_statuses": ["active"],
+            "exclude_ids": set(),
+            "self_profile": {
+                "preferred_education_min": "硕士",
+                "preferred_education_strictness": "可放宽",
+            },
+        }
+        near_result = search_candidates.evaluate_candidate(
+            {
+                "id": 120,
+                "name": "EduNear",
+                "gender": "女",
+                "age": 29,
+                "city": "无锡",
+                "education": "本科",
+                "profile_status": "active",
+                "verified_level": "photo",
+                "combined_text": "",
+                "last_active_at": "2099-01-01 00:00:00",
+                "source_file": "mysql://root@127.0.0.1:3307/her?table=profiles#profiles",
+            },
+            criteria,
+        )
+        far_result = search_candidates.evaluate_candidate(
+            {
+                "id": 121,
+                "name": "EduFar",
+                "gender": "女",
+                "age": 29,
+                "city": "无锡",
+                "education": "大专",
+                "profile_status": "active",
+                "verified_level": "photo",
+                "combined_text": "",
+                "last_active_at": "2099-01-01 00:00:00",
+                "source_file": "mysql://root@127.0.0.1:3307/her?table=profiles#profiles",
+            },
+            criteria,
+        )
+
+        self.assertIsNotNone(near_result)
+        self.assertIsNotNone(far_result)
+        self.assertGreater(near_result["score"], far_result["score"])
 
     def test_reciprocal_rejects_non_matching_city(self):
         candidate = {"preferred_cities": "上海"}

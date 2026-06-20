@@ -274,6 +274,26 @@ def education_closeness_label(
     return "学历差距较大"
 
 
+def education_gap_score_adjustment(
+    runtime: SearchMatchingRuntime,
+    required_value: Any,
+    actual_value: Any,
+) -> int:
+    required_rank = runtime.education_rank(required_value)
+    actual_rank = runtime.education_rank(actual_value)
+    if required_rank is None or actual_rank is None:
+        return 0
+    if actual_rank >= required_rank:
+        gap = actual_rank - required_rank
+        return min(3, gap)
+    gap = required_rank - actual_rank
+    if gap == 1:
+        return -1
+    if gap == 2:
+        return -3
+    return -5
+
+
 def compatibility_flags_from_risks(
     runtime: SearchMatchingRuntime,
     risk_flags: list[str],
@@ -1368,7 +1388,7 @@ def evaluate_candidate(
         elif city not in _lowered_criteria_values("cities"):
             if settlement_city and settlement_city in _lowered_criteria_values("cities"):
                 reasons.append(f"当前城市 {record_city}（定居目标仍命中）")
-                fit_score += 10
+                fit_score += 8
                 risk_flags.append("当前城市未命中，但定居城市命中")
             else:
                 return fail("city_mismatch")
@@ -1470,6 +1490,11 @@ def evaluate_candidate(
         risk_flags.append(self_education_risk)
 
     requested_education_min = (criteria.get("self_profile") or {}).get("preferred_education_min")
+    fit_score += education_gap_score_adjustment(
+        runtime,
+        requested_education_min,
+        record_education,
+    )
     education_gap_label = education_closeness_label(
         runtime,
         requested_education_min,
