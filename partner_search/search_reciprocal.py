@@ -259,9 +259,13 @@ def evaluate_reciprocal_compatibility(
                 if risk_flag:
                     risk_flags.append(risk_flag)
         elif self_rank < required_rank:
-            if self_rank == required_rank - 1:
+            gap = required_rank - self_rank
+            if gap == 1:
                 risk_flags.append("对方学历要求接近命中，可作为兼容匹配")
                 score_bonus += 2
+            elif gap == 2:
+                risk_flags.append("对方学历要求有一定差距，但仍可尝试")
+                score_bonus += 1
             elif education_strictness == "hard":
                 return fail("reciprocal_education_preference")
             else:
