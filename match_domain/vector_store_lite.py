@@ -30,7 +30,7 @@ _logger = logging.getLogger(__name__)
 
 COLLECTION_NAME = "user_vectors"
 EMBEDDING_DIM = 1024  # DashScope text-embedding-v3 的向量维度
-MILVUS_LITE_DB = "./milvus_lite_data/milvus.db"
+MILVUS_LITE_DB = os.environ.get("MILVUS_LITE_DB", "./milvus_lite_data/user_vectors.db")
 
 
 VECTOR_TYPES_CONFIG = {
