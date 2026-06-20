@@ -360,6 +360,7 @@ async def _search_similar_users(
     改造核心：
     - 缓存筛选文本的向量（避免重复计算）
     - 节省embedding API调用（节省40-60%成本）
+    - 确保资源清理（embedding_service 和 vector_store）
 
     Args:
         text: 待搜索的文本（如"绿茶、虚伪"）
@@ -377,20 +378,24 @@ async def _search_similar_users(
     from match_domain.embedding_service import EmbeddingService
     from match_domain.vector_store_lite import VectorStoreLite
 
-    # Step 1: 生成文本向量（带缓存优化）
-    embedding_service = EmbeddingService()
+    # 资源声明（延迟初始化）
+    embedding_service = None
+    vector_store = None
 
-    # 先查缓存
-    cached_vector = _vector_filter_cache.get_cached_vector(text, vector_type)
-    if cached_vector:
-        vector = cached_vector
-        _logger.info(
-            f"向量缓存命中: text={text}, vector_type={vector_type}"
-        )
-    else:
-        # 缓存未命中，调用embedding API
-        try:
+    try:
+        # Step 1: 生成文本向量（带缓存优化）
+        # 先查缓存
+        cached_vector = _vector_filter_cache.get_cached_vector(text, vector_type)
+        if cached_vector:
+            vector = cached_vector
+            _logger.info(
+                f"向量缓存命中: text={text}, vector_type={vector_type}"
+            )
+        else:
+            # 缓存未命中，调用embedding API
+            embedding_service = EmbeddingService()  # 只在需要时创建
             vector = await embedding_service.generate_embedding(text)
+
             if not vector:
                 _logger.warning(f"向量生成失败: text={text}")
                 return [], 0.0
@@ -401,13 +406,8 @@ async def _search_similar_users(
                 f"向量缓存保存: text={text}, vector_type={vector_type}"
             )
 
-        except Exception as exc:
-            _logger.error(f"向量生成异常: text={text} error={exc}")
-            return [], 0.0
-
-    # Step 2: 向量库搜索
-    vector_store = VectorStoreLite()
-    try:
+        # Step 2: 向量库搜索
+        vector_store = VectorStoreLite()
         similar_users = vector_store.search_similar_users(
             user_vector=vector,
             vector_type=vector_type,
@@ -415,26 +415,34 @@ async def _search_similar_users(
             similarity_threshold=similarity_threshold,
             exclude_user_ids=[user_id],
         )
+
+        # Step 3: 筛选候选人范围内的相似用户
+        candidate_set = set(candidate_ids)
+        similar_ids = [
+            u["user_id"]
+            for u in similar_users
+            if u["user_id"] in candidate_set
+        ]
+
+        # Step 4: 计算平均相似度
+        if similar_users:
+            similarities = [u["similarity"] for u in similar_users if u["user_id"] in candidate_set]
+            avg_similarity = sum(similarities) / len(similarities) if similarities else 0.0
+        else:
+            avg_similarity = 0.0
+
+        return similar_ids, avg_similarity
+
     except Exception as exc:
-        _logger.error(f"向量搜索异常: vector_type={vector_type} error={exc}")
+        _logger.error(f"向量搜索异常: text={text} vector_type={vector_type} error={exc}")
         return [], 0.0
 
-    # Step 3: 筛选候选人范围内的相似用户
-    candidate_set = set(candidate_ids)
-    similar_ids = [
-        u["user_id"]
-        for u in similar_users
-        if u["user_id"] in candidate_set
-    ]
-
-    # Step 4: 计算平均相似度
-    if similar_users:
-        similarities = [u["similarity"] for u in similar_users if u["user_id"] in candidate_set]
-        avg_similarity = sum(similarities) / len(similarities) if similarities else 0.0
-    else:
-        avg_similarity = 0.0
-
-    return similar_ids, avg_similarity
+    finally:
+        # 资源清理
+        if embedding_service:
+            await embedding_service.aclose()
+        if vector_store:
+            vector_store.close()
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

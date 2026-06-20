@@ -294,30 +294,34 @@ async def start_version_cleanup_checker(
 
                 vector_store = VectorStoreLite()
 
-                # 清理每种向量类型
-                total_deleted = 0
-                for vector_type in VECTOR_TYPES_CONFIG.keys():
-                    try:
-                        result = vector_store.cleanup_all_users_old_versions(vector_type)
-                        deleted = result.get("total_deleted", 0)
-                        total_deleted += deleted
+                try:
+                    # 清理每种向量类型
+                    total_deleted = 0
+                    for vector_type in VECTOR_TYPES_CONFIG.keys():
+                        try:
+                            result = vector_store.cleanup_all_users_old_versions(vector_type)
+                            deleted = result.get("total_deleted", 0)
+                            total_deleted += deleted
 
-                        _logger.info(
-                            f"清理完成: vector_type={vector_type}, "
-                            f"users={result.get('total_users')}, "
-                            f"deleted={deleted}"
-                        )
-                    except Exception as exc:
-                        _logger.error(
-                            f"清理失败: vector_type={vector_type}, "
-                            f"error={exc}"
-                        )
+                            _logger.info(
+                                f"清理完成: vector_type={vector_type}, "
+                                f"users={result.get('total_users')}, "
+                                f"deleted={deleted}"
+                            )
+                        except Exception as exc:
+                            _logger.error(
+                                f"清理失败: vector_type={vector_type}, "
+                                f"error={exc}"
+                            )
 
-                _logger.info(
-                    f"本轮清理完成: "
-                    f"total_types={len(VECTOR_TYPES_CONFIG)}, "
-                    f"total_deleted={total_deleted}"
-                )
+                    _logger.info(
+                        f"本轮清理完成: "
+                        f"total_types={len(VECTOR_TYPES_CONFIG)}, "
+                        f"total_deleted={total_deleted}"
+                    )
+                finally:
+                    # ⚠️ 重要：每次循环结束主动关闭连接
+                    vector_store.close()
 
             except asyncio.CancelledError:
                 _logger.info("版本清理定时任务被取消")
