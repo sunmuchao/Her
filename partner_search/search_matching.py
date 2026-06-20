@@ -124,6 +124,40 @@ def self_preference_strictness(runtime: SearchMatchingRuntime, value: Any) -> st
     return runtime.normalize_strictness_state(value)
 
 
+def range_proximity_decision(
+    value: int | None,
+    *,
+    min_value: int | None,
+    max_value: int | None,
+    near_steps: tuple[int, int],
+    score_on_match: int,
+    near_scores: tuple[int, int],
+) -> dict[str, Any]:
+    if value is None:
+        return {"status": "unknown", "score": 0, "distance": None}
+
+    if min_value is None and max_value is None:
+        return {"status": "within", "score": score_on_match, "distance": 0}
+
+    if min_value is not None and value < min_value:
+        distance = min_value - value
+        if distance <= near_steps[0]:
+            return {"status": "near", "score": near_scores[0], "distance": distance}
+        if distance <= near_steps[1]:
+            return {"status": "edge", "score": near_scores[1], "distance": distance}
+        return {"status": "far", "score": 0, "distance": distance}
+
+    if max_value is not None and value > max_value:
+        distance = value - max_value
+        if distance <= near_steps[0]:
+            return {"status": "near", "score": near_scores[0], "distance": distance}
+        if distance <= near_steps[1]:
+            return {"status": "edge", "score": near_scores[1], "distance": distance}
+        return {"status": "far", "score": 0, "distance": distance}
+
+    return {"status": "within", "score": score_on_match, "distance": 0}
+
+
 def self_education_floor_risk_flag(
     runtime: SearchMatchingRuntime,
     self_profile: dict[str, Any],
@@ -1146,44 +1180,71 @@ def evaluate_candidate(
 
     # 性能优化：使用提前提取的 record_age 和 criteria_age_min
     age = record_age
-    if criteria_age_min is not None:
-        if age is None:
+    age_reason_added = False
+    if criteria_age_min is not None or criteria_age_max is not None:
+        age_decision = range_proximity_decision(
+            age,
+            min_value=criteria_age_min,
+            max_value=criteria_age_max,
+            near_steps=(1, 3),
+            score_on_match=15,
+            near_scores=(10, 5),
+        )
+        if age_decision["status"] == "unknown":
             missing_fields.append("age")
-        elif age < criteria_age_min:
-            return fail("age_below_min")
-        else:
+        elif age_decision["status"] == "within":
             reasons.append(f"年龄 {age}")
-            fit_score += 15
-    # 性能优化：使用提前提取的 criteria_age_max
-    if criteria_age_max is not None:
-        if age is None:
-            if "age" not in missing_fields:
-                missing_fields.append("age")
-        elif age > criteria_age_max:
-            return fail("age_above_max")
+            fit_score += age_decision["score"]
+            age_reason_added = True
+        elif age_decision["status"] == "near":
+            reasons.append(f"年龄 {age}（接近你的要求）")
+            fit_score += age_decision["score"]
+            risk_flags.append("年龄略偏离理想区间，但仍然接近")
+            age_reason_added = True
+        elif age_decision["status"] == "edge":
+            reasons.append(f"年龄 {age}（有一定偏离）")
+            fit_score += age_decision["score"]
+            risk_flags.append("年龄有一定偏离，需要看本人接受度")
+            age_reason_added = True
+        else:
+            if criteria_age_min is not None and age is not None and age < criteria_age_min:
+                return fail("age_below_min")
+            if criteria_age_max is not None and age is not None and age > criteria_age_max:
+                return fail("age_above_max")
 
     # 性能优化：使用提前提取的 record_height 和 criteria_height_min
     height = record_height
     height_reason_added = False
-    if criteria_height_min is not None:
-        if height is None:
+    if criteria_height_min is not None or criteria_height_max is not None:
+        height_decision = range_proximity_decision(
+            height,
+            min_value=criteria_height_min,
+            max_value=criteria_height_max,
+            near_steps=(2, 5),
+            score_on_match=5,
+            near_scores=(4, 2),
+        )
+        if height_decision["status"] == "unknown":
             missing_fields.append("height")
-        elif height < criteria_height_min:
-            return fail("height_below_min")
+        elif height_decision["status"] == "within":
+            reasons.append(f"身高 {height}cm")
+            height_reason_added = True
+            fit_score += height_decision["score"]
+        elif height_decision["status"] == "near":
+            reasons.append(f"身高 {height}cm（接近你的要求）")
+            height_reason_added = True
+            fit_score += height_decision["score"]
+            risk_flags.append("身高略偏离理想区间，但仍然接近")
+        elif height_decision["status"] == "edge":
+            reasons.append(f"身高 {height}cm（有一定偏离）")
+            height_reason_added = True
+            fit_score += height_decision["score"]
+            risk_flags.append("身高有一定偏离，需要看本人接受度")
         else:
-            reasons.append(f"身高 {height}cm")
-            height_reason_added = True
-            fit_score += 5
-    # 性能优化：使用提前提取的 criteria_height_max
-    if criteria_height_max is not None:
-        if height is None:
-            if "height" not in missing_fields:
-                missing_fields.append("height")
-        elif height > criteria_height_max:
-            return fail("height_above_max")
-        elif not height_reason_added:
-            reasons.append(f"身高 {height}cm")
-            height_reason_added = True
+            if criteria_height_min is not None and height is not None and height < criteria_height_min:
+                return fail("height_below_min")
+            if criteria_height_max is not None and height is not None and height > criteria_height_max:
+                return fail("height_above_max")
 
     # 性能优化：使用提前提取的 criteria_gender 和 record_gender
     if criteria_gender:

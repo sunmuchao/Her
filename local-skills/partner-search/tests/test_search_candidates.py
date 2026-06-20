@@ -619,6 +619,112 @@ class SearchCandidatesTests(unittest.TestCase):
         # 状态未知时不应在matched_on中添加状态信息
         self.assertNotIn("状态 活跃", result["matched_on"])
 
+    def test_evaluate_candidate_keeps_near_age_outside_range(self):
+        record = {
+            "id": 104,
+            "name": "NearAge",
+            "gender": "女",
+            "age": 27,
+            "city": "无锡",
+            "profile_status": "active",
+            "verified_level": "photo",
+            "combined_text": "",
+            "last_active_at": "2099-01-01 00:00:00",
+            "source_file": "mysql://root@127.0.0.1:3307/her?table=profiles#profiles",
+        }
+        criteria = {
+            "gender": "女",
+            "age_min": 28,
+            "age_max": 32,
+            "profile_statuses": ["active"],
+            "exclude_ids": set(),
+        }
+
+        result = search_candidates.evaluate_candidate(record, criteria)
+
+        self.assertIsNotNone(result)
+        self.assertIn("年龄 27（接近你的要求）", result["matched_on"])
+        self.assertIn("年龄略偏离理想区间，但仍然接近", result["risk_flags"])
+
+    def test_evaluate_candidate_rejects_far_age_outside_range(self):
+        record = {
+            "id": 105,
+            "name": "FarAge",
+            "gender": "女",
+            "age": 22,
+            "city": "无锡",
+            "profile_status": "active",
+            "verified_level": "photo",
+            "combined_text": "",
+            "last_active_at": "2099-01-01 00:00:00",
+            "source_file": "mysql://root@127.0.0.1:3307/her?table=profiles#profiles",
+        }
+        criteria = {
+            "gender": "女",
+            "age_min": 28,
+            "age_max": 32,
+            "profile_statuses": ["active"],
+            "exclude_ids": set(),
+        }
+
+        result = search_candidates.evaluate_candidate(record, criteria)
+
+        self.assertIsNone(result)
+
+    def test_evaluate_candidate_keeps_near_height_outside_range(self):
+        record = {
+            "id": 106,
+            "name": "NearHeight",
+            "gender": "女",
+            "age": 28,
+            "height": 173,
+            "city": "无锡",
+            "profile_status": "active",
+            "verified_level": "photo",
+            "combined_text": "",
+            "last_active_at": "2099-01-01 00:00:00",
+            "source_file": "mysql://root@127.0.0.1:3307/her?table=profiles#profiles",
+        }
+        criteria = {
+            "gender": "女",
+            "height_min": 175,
+            "height_max": 180,
+            "profile_statuses": ["active"],
+            "exclude_ids": set(),
+        }
+
+        result = search_candidates.evaluate_candidate(record, criteria)
+
+        self.assertIsNotNone(result)
+        self.assertIn("身高 173cm（接近你的要求）", result["matched_on"])
+        self.assertIn("身高略偏离理想区间，但仍然接近", result["risk_flags"])
+
+    def test_evaluate_candidate_rejects_far_height_outside_range(self):
+        record = {
+            "id": 107,
+            "name": "FarHeight",
+            "gender": "女",
+            "age": 28,
+            "height": 165,
+            "city": "无锡",
+            "profile_status": "active",
+            "verified_level": "photo",
+            "combined_text": "",
+            "last_active_at": "2099-01-01 00:00:00",
+            "source_file": "mysql://root@127.0.0.1:3307/her?table=profiles#profiles",
+        }
+        criteria = {
+            "gender": "女",
+            "height_min": 175,
+            "height_max": 180,
+            "profile_statuses": ["active"],
+            "exclude_ids": set(),
+        }
+
+        result = search_candidates.evaluate_candidate(record, criteria)
+
+        self.assertIsNone(result)
+
     def test_reciprocal_rejects_non_matching_city(self):
         candidate = {"preferred_cities": "上海"}
         self_profile = {"city": "无锡"}

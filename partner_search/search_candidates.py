@@ -1384,6 +1384,8 @@ def build_match_result(
     profile_status_rank,
     matched=True,
     reject_reason=None,
+    match_tier="strict",
+    compatibility_flags=None,
 ):
     return _build_match_result(
         _build_search_ranking_runtime(),
@@ -1404,6 +1406,8 @@ def build_match_result(
         profile_status_rank=profile_status_rank,
         matched=matched,
         reject_reason=reject_reason,
+        match_tier=match_tier,
+        compatibility_flags=compatibility_flags,
     )
 
 
