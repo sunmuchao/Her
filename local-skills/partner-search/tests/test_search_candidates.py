@@ -782,6 +782,51 @@ class SearchCandidatesTests(unittest.TestCase):
             candidate, self_profile
         )
         self.assertIsNotNone(result)
+        self.assertIn(
+            "对方收入预期上限未命中，但不构成硬性淘汰",
+            result["risk_flags"],
+        )
+
+    def test_reciprocal_income_above_max_is_not_hard_rejected(self):
+        candidate = {
+            "preferred_income_min_wan": 30,
+            "preferred_income_max_wan": 50,
+            "preferred_income_strictness": "硬性",
+        }
+        self_profile = {"income_min_wan": 100, "income_max_wan": 100}
+
+        result = search_candidates.evaluate_reciprocal_compatibility(candidate, self_profile)
+
+        self.assertIsNotNone(result)
+        self.assertTrue(result["matched"])
+        self.assertIn(
+            "对方收入预期上限未命中，但不构成硬性淘汰",
+            result["risk_flags"],
+        )
+
+    def test_reciprocal_income_below_min_still_rejects_when_hard(self):
+        candidate = {
+            "preferred_income_min_wan": 30,
+            "preferred_income_max_wan": 50,
+            "preferred_income_strictness": "硬性",
+        }
+        self_profile = {"income_min_wan": 20, "income_max_wan": 20}
+
+        result = search_candidates.evaluate_reciprocal_compatibility(candidate, self_profile)
+
+        self.assertIsNone(result)
+
+    def test_reciprocal_income_empty_strictness_defaults_to_soft(self):
+        candidate = {
+            "preferred_income_min_wan": 30,
+            "preferred_income_max_wan": 50,
+        }
+        self_profile = {"income_min_wan": 20, "income_max_wan": 20}
+
+        result = search_candidates.evaluate_reciprocal_compatibility(candidate, self_profile)
+
+        self.assertIsNotNone(result)
+        self.assertTrue(result["matched"])
         self.assertIn("对方收入要求可能可放宽", result["risk_flags"])
 
     def test_reciprocal_children_acceptance_cautious_signal_becomes_risk(self):
