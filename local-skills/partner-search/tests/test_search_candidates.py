@@ -782,6 +782,36 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertIn("学历略低于你的理想值，但仍然接近", result["risk_flags"])
 
+    def test_evaluate_candidate_marks_larger_education_gap_as_stronger_risk(self):
+        result = search_candidates.evaluate_candidate(
+            {
+                "id": 110,
+                "name": "LargerEducationGap",
+                "gender": "女",
+                "age": 29,
+                "city": "无锡",
+                "education": "大专",
+                "profile_status": "active",
+                "verified_level": "photo",
+                "combined_text": "",
+                "last_active_at": "2099-01-01 00:00:00",
+                "source_file": "mysql://root@127.0.0.1:3307/her?table=profiles#profiles",
+            },
+            {
+                "gender": "女",
+                "profile_statuses": ["active"],
+                "exclude_ids": set(),
+                "self_profile": {
+                    "education": "硕士",
+                    "preferred_education_min": "硕士",
+                    "preferred_education_strictness": "可放宽",
+                },
+            },
+        )
+
+        self.assertIsNotNone(result)
+        self.assertIn("学历差距较大", result["risk_flags"])
+
     def test_reciprocal_rejects_non_matching_city(self):
         candidate = {"preferred_cities": "上海"}
         self_profile = {"city": "无锡"}
@@ -853,6 +883,19 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertTrue(result["matched"])
         self.assertIn("对方学历要求接近命中，可作为兼容匹配", result["risk_flags"])
+
+    def test_reciprocal_marks_larger_education_gap_as_tryable(self):
+        candidate = {
+            "preferred_education_min": "博士",
+            "preferred_education_strictness": "硬性",
+        }
+        self_profile = {"education": "本科"}
+
+        result = search_candidates.evaluate_reciprocal_compatibility(candidate, self_profile)
+
+        self.assertIsNotNone(result)
+        self.assertTrue(result["matched"])
+        self.assertIn("对方学历要求有一定差距，但仍可尝试", result["risk_flags"])
 
     def test_reciprocal_city_preference_softens_when_accepts_long_distance(self):
         candidate = {
