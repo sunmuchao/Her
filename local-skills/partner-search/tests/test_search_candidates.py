@@ -783,6 +783,41 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertIsNotNone(settlement_only)
         self.assertGreater(same_city["score"], settlement_only["score"])
 
+    def test_candidate_current_same_city_scores_higher_than_settlement_same_city(self):
+        base = {
+            "gender": "女",
+            "age": 28,
+            "profile_status": "active",
+            "verified_level": "photo",
+            "combined_text": "",
+            "last_active_at": "2099-01-01 00:00:00",
+            "source_file": "mysql://root@127.0.0.1:3307/her?table=profiles#profiles",
+        }
+        criteria = {
+            "gender": "女",
+            "profile_statuses": ["active"],
+            "exclude_ids": set(),
+            "self_profile": {
+                "city": "无锡",
+                "accept_long_distance": "不接受",
+            },
+        }
+
+        same_city = search_candidates.evaluate_candidate(
+            dict(base, id=126, name="SameCity", city="无锡", settlement_city="苏州"),
+            criteria,
+        )
+        settlement_same_city = search_candidates.evaluate_candidate(
+            dict(base, id=127, name="SettlementSameCity", city="上海", settlement_city="无锡"),
+            criteria,
+        )
+
+        self.assertIsNotNone(same_city)
+        self.assertIsNotNone(settlement_same_city)
+        self.assertIn("同城", same_city["matched_on"])
+        self.assertIn("定居与你同城", settlement_same_city["matched_on"])
+        self.assertGreater(same_city["score"], settlement_same_city["score"])
+
     def test_evaluate_candidate_marks_below_self_education_floor_as_near_risk_when_one_level_lower(self):
         result = search_candidates.evaluate_candidate(
             {
