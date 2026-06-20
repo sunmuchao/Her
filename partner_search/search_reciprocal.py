@@ -142,6 +142,44 @@ def scalar_range_distance(
     return 0
 
 
+def education_gap_score_bonus(gap: int) -> int:
+    if gap <= 0:
+        return 6
+    if gap == 1:
+        return 2
+    if gap == 2:
+        return 1
+    return 0
+
+
+def income_range_score_bonus(
+    relation: str,
+    *,
+    candidate_min: int | None,
+    candidate_max: int | None,
+    required_min: int | None,
+    required_max: int | None,
+) -> int:
+    if relation == "within_band":
+        return 6
+    if relation == "above_max":
+        effective_min = candidate_min if candidate_min is not None else candidate_max
+        if effective_min is None or required_max is None:
+            return 4
+        distance = effective_min - required_max
+        return 5 if distance <= 20 else 4
+    if relation == "below_min":
+        effective_max = candidate_max if candidate_max is not None else candidate_min
+        if effective_max is None or required_min is None:
+            return 0
+        distance = required_min - effective_max
+        if distance <= 10:
+            return 2
+        if distance <= 20:
+            return 1
+    return 0
+
+
 def matcher_preference_tags(
     runtime: SearchReciprocalRuntime,
     record: dict[str, Any],
@@ -335,10 +373,10 @@ def evaluate_reciprocal_compatibility(
             gap = required_rank - self_rank
             if gap == 1:
                 risk_flags.append("对方学历要求接近命中，可作为兼容匹配")
-                score_bonus += 2
+                score_bonus += education_gap_score_bonus(gap)
             elif gap == 2:
                 risk_flags.append("对方学历要求有一定差距，但仍可尝试")
-                score_bonus += 1
+                score_bonus += education_gap_score_bonus(gap)
             elif education_strictness == "hard":
                 return fail("reciprocal_education_preference")
             else:
@@ -347,7 +385,7 @@ def evaluate_reciprocal_compatibility(
                     risk_flags.append(risk_flag)
         else:
             reasons.append("对方学历偏好命中")
-            score_bonus += 6
+            score_bonus += education_gap_score_bonus(required_rank - self_rank)
 
     pref_income_min = runtime.as_int(record.get("preferred_income_min_wan"))
     pref_income_max = runtime.as_int(record.get("preferred_income_max_wan"))
@@ -372,11 +410,31 @@ def evaluate_reciprocal_compatibility(
             risk_flag = runtime.soft_preference_risk_flag("income", income_strictness)
             if risk_flag:
                 risk_flags.append(risk_flag)
+            score_bonus += income_range_score_bonus(
+                income_relation,
+                candidate_min=self_income_min,
+                candidate_max=self_income_max,
+                required_min=pref_income_min,
+                required_max=pref_income_max,
+            )
         elif income_relation == "above_max":
             risk_flags.append("对方收入预期上限未命中，但不构成硬性淘汰")
+            score_bonus += income_range_score_bonus(
+                income_relation,
+                candidate_min=self_income_min,
+                candidate_max=self_income_max,
+                required_min=pref_income_min,
+                required_max=pref_income_max,
+            )
         else:
             reasons.append("对方收入偏好命中")
-            score_bonus += 6
+            score_bonus += income_range_score_bonus(
+                income_relation,
+                candidate_min=self_income_min,
+                candidate_max=self_income_max,
+                required_min=pref_income_min,
+                required_max=pref_income_max,
+            )
 
     accepted_statuses = runtime.split_keywords(record.get("accept_marital_status"))
     accept_marital_status_semantics = runtime.as_text(record.get("accept_marital_status_semantics"))
