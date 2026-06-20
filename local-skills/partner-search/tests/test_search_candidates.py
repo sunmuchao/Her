@@ -890,6 +890,107 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertIsNotNone(far_result)
         self.assertGreater(near_result["score"], far_result["score"])
 
+    def test_income_closeness_affects_score_gradient(self):
+        criteria = {
+            "gender": "女",
+            "profile_statuses": ["active"],
+            "exclude_ids": set(),
+            "self_profile": {
+                "preferred_income_min_wan": 30,
+                "preferred_income_max_wan": 50,
+            },
+        }
+        near_result = search_candidates.evaluate_candidate(
+            {
+                "id": 122,
+                "name": "IncomeNear",
+                "gender": "女",
+                "age": 29,
+                "city": "无锡",
+                "income_min_wan": 25,
+                "income_max_wan": 28,
+                "profile_status": "active",
+                "verified_level": "photo",
+                "combined_text": "",
+                "last_active_at": "2099-01-01 00:00:00",
+                "source_file": "mysql://root@127.0.0.1:3307/her?table=profiles#profiles",
+            },
+            criteria,
+        )
+        far_result = search_candidates.evaluate_candidate(
+            {
+                "id": 123,
+                "name": "IncomeFar",
+                "gender": "女",
+                "age": 29,
+                "city": "无锡",
+                "income_min_wan": 5,
+                "income_max_wan": 8,
+                "profile_status": "active",
+                "verified_level": "photo",
+                "combined_text": "",
+                "last_active_at": "2099-01-01 00:00:00",
+                "source_file": "mysql://root@127.0.0.1:3307/her?table=profiles#profiles",
+            },
+            criteria,
+        )
+
+        self.assertIsNotNone(near_result)
+        self.assertIsNotNone(far_result)
+        self.assertGreater(near_result["score"], far_result["score"])
+        self.assertIn("收入略低于理想区间，但仍然接近", near_result["risk_flags"])
+        self.assertIn("收入明显低于理想区间", far_result["risk_flags"])
+
+    def test_income_above_expected_max_still_scores_well(self):
+        criteria = {
+            "gender": "女",
+            "profile_statuses": ["active"],
+            "exclude_ids": set(),
+            "self_profile": {
+                "preferred_income_min_wan": 30,
+                "preferred_income_max_wan": 50,
+            },
+        }
+        within_result = search_candidates.evaluate_candidate(
+            {
+                "id": 124,
+                "name": "IncomeWithin",
+                "gender": "女",
+                "age": 29,
+                "city": "无锡",
+                "income_min_wan": 35,
+                "income_max_wan": 45,
+                "profile_status": "active",
+                "verified_level": "photo",
+                "combined_text": "",
+                "last_active_at": "2099-01-01 00:00:00",
+                "source_file": "mysql://root@127.0.0.1:3307/her?table=profiles#profiles",
+            },
+            criteria,
+        )
+        above_result = search_candidates.evaluate_candidate(
+            {
+                "id": 125,
+                "name": "IncomeAbove",
+                "gender": "女",
+                "age": 29,
+                "city": "无锡",
+                "income_min_wan": 60,
+                "income_max_wan": 70,
+                "profile_status": "active",
+                "verified_level": "photo",
+                "combined_text": "",
+                "last_active_at": "2099-01-01 00:00:00",
+                "source_file": "mysql://root@127.0.0.1:3307/her?table=profiles#profiles",
+            },
+            criteria,
+        )
+
+        self.assertIsNotNone(within_result)
+        self.assertIsNotNone(above_result)
+        self.assertGreaterEqual(above_result["score"], within_result["score"] - 4)
+        self.assertIn("收入高于预期上限，但通常不构成负向问题", above_result["risk_flags"])
+
     def test_reciprocal_rejects_non_matching_city(self):
         candidate = {"preferred_cities": "上海"}
         self_profile = {"city": "无锡"}
