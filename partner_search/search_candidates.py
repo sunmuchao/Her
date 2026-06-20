@@ -636,6 +636,31 @@ SOFT_CONCESSION_RISK_FLAGS = {
     "推进方式偏慢观察",
 }
 
+COMPATIBILITY_RISK_FLAGS = {
+    "对方收入预期上限未命中，但不构成硬性淘汰",
+    "对方收入要求可能可放宽",
+    "对方年龄要求可能可放宽",
+    "对方身高要求可能可放宽",
+    "对方学历要求可能可放宽",
+    "年龄略偏离理想区间，但仍然接近",
+    "年龄有一定偏离，需要看本人接受度",
+    "身高略偏离理想区间，但仍然接近",
+    "身高有一定偏离，需要看本人接受度",
+    "当前城市未命中，但定居城市命中",
+    "学历略低于你的理想值，但仍然接近",
+    "学历有一定差距，需要看实际沟通和认知",
+    "学历差距较大",
+    "对方年龄要求接近命中，可作为兼容匹配",
+    "对方年龄要求有一定偏差，但仍可尝试",
+    "对方身高要求接近命中，可作为兼容匹配",
+    "对方身高要求有一定偏差，但仍可尝试",
+    "对方学历要求接近命中，可作为兼容匹配",
+    "对方学历要求有一定差距，但仍可尝试",
+    "对方城市偏好未命中，但资料写了接受异地",
+    "对方城市偏好未命中，异地仅可协商",
+    "对方城市偏好未命中，异地接受度未知",
+}
+
 
 def build_alias_lookup():
     lookup = {}
@@ -1107,6 +1132,7 @@ def _build_search_matching_runtime() -> SearchMatchingRuntime:
         creative_job_patterns=CREATIVE_JOB_PATTERNS,
         near_distance_priority_markers=NEAR_DISTANCE_PRIORITY_MARKERS,
         soft_concession_risk_flags=SOFT_CONCESSION_RISK_FLAGS,
+        compatibility_risk_flags=COMPATIBILITY_RISK_FLAGS,
     )
 
 

@@ -2146,6 +2146,31 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertIn("No strict matches found.", output)
         self.assertIn("兼容对象", output)
 
+    def test_compatibility_risk_flags_are_centrally_classified(self):
+        result = search_candidates.evaluate_candidate(
+            {
+                "id": 301,
+                "name": "NearAgeCandidate",
+                "gender": "女",
+                "age": 31,
+                "height": 168,
+                "city": "无锡",
+                "profile_status": "active",
+                "verified_level": "photo",
+                "last_active_at": "2099-01-01 00:00:00",
+            },
+            {
+                "gender": "女",
+                "age_min": 27,
+                "age_max": 30,
+                "self_profile": {},
+            },
+        )
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result["match_tier"], "compatible")
+        self.assertIn("年龄略偏离理想区间，但仍然接近", result["compatibility_flags"])
+
     def test_main_outputs_ranked_results(self):
         fake_records = [
             {
