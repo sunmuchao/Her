@@ -128,6 +128,7 @@ from partner_search.search_reciprocal import (
     SearchReciprocalRuntime,
     evaluate_reciprocal_compatibility as _evaluate_reciprocal_compatibility,
     exact_match as _exact_match,
+    income_range_relation as _income_range_relation,
     income_range_overlaps as _income_range_overlaps,
     match_any_exact as _match_any_exact,
     matcher_preference_tags as _matcher_preference_tags,
@@ -503,6 +504,7 @@ RISK_FLAG_PENALTIES = {
     "对方身高要求可能可放宽": 5,
     "对方学历要求可能可放宽": 5,
     "对方收入要求可能可放宽": 6,
+    "对方收入预期上限未命中，但不构成硬性淘汰": 3,
     "对方婚史接受度偏保守": 9,
     "对方婚史接受需要先聊再判断": 9,
     "对方婚史接受度未知": 10,
@@ -590,6 +592,7 @@ SOFT_CONCESSION_RISK_FLAGS = {
     "对方身高要求可能可放宽",
     "对方学历要求可能可放宽",
     "对方收入要求可能可放宽",
+    "对方收入预期上限未命中，但不构成硬性淘汰",
     "对方城市偏好未命中，异地仅可协商",
     "对方城市偏好未命中，异地接受度未知",
     "对方异地仅可协商",
@@ -1194,6 +1197,10 @@ def match_any_exact(value, candidates):
 
 def income_range_overlaps(min_value, max_value, required_min, required_max):
     return _income_range_overlaps(min_value, max_value, required_min, required_max)
+
+
+def income_range_relation(min_value, max_value, required_min, required_max):
+    return _income_range_relation(min_value, max_value, required_min, required_max)
 
 
 def activity_score_info(record):
