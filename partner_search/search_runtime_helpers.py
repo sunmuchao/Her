@@ -559,11 +559,17 @@ class SearchRuntimeHelpers:
         )
 
     def build_search_run(self, criteria, records, results):
+        strict_results = [result for result in results if result.get("match_tier", "strict") == "strict"]
+        compatible_results = [
+            result for result in results if result.get("match_tier", "strict") == "compatible"
+        ]
         return {
             "criteria": criteria,
             "records": records,
             "records_count": len(records),
             "results": results,
+            "strict_results": strict_results,
+            "compatible_results": compatible_results,
             "fallback_results": None,
             "diagnostics": None,
         }
@@ -854,13 +860,37 @@ class SearchRuntimeHelpers:
         scanned_count = search_run.get("records_count")
         if scanned_count is None:
             scanned_count = len(search_run.get("records") or [])
+        strict_results = search_run.get("strict_results")
+        compatible_results = search_run.get("compatible_results")
+        if strict_results is None or compatible_results is None:
+            strict_results = [
+                result for result in (search_run.get("results") or [])
+                if result.get("match_tier", "strict") == "strict"
+            ]
+            compatible_results = [
+                result for result in (search_run.get("results") or [])
+                if result.get("match_tier", "strict") == "compatible"
+            ]
         return {
             "scanned_count": scanned_count,
             "passed_count": len(search_run.get("results") or []),
+            "strict_count": len(strict_results or []),
+            "compatible_count": len(compatible_results or []),
             "usable_count": diagnostics.get("usable_count", scanned_count),
         }
 
     def build_structured_search_response(self, search_run, include_source=False, include_text=False):
+        strict_results = search_run.get("strict_results")
+        compatible_results = search_run.get("compatible_results")
+        if strict_results is None or compatible_results is None:
+            strict_results = [
+                result for result in (search_run.get("results") or [])
+                if result.get("match_tier", "strict") == "strict"
+            ]
+            compatible_results = [
+                result for result in (search_run.get("results") or [])
+                if result.get("match_tier", "strict") == "compatible"
+            ]
         response = {
             "has_match": bool(search_run.get("results")),
             "result_count": len(search_run.get("results") or []),
@@ -868,6 +898,14 @@ class SearchRuntimeHelpers:
             "results": [
                 self.build_structured_result_payload(result, include_source=include_source)
                 for result in search_run.get("results") or []
+            ],
+            "strict_results": [
+                self.build_structured_result_payload(result, include_source=include_source)
+                for result in strict_results or []
+            ],
+            "compatible_results": [
+                self.build_structured_result_payload(result, include_source=include_source)
+                for result in compatible_results or []
             ],
             "fallback_results": [
                 self.build_structured_result_payload(result, include_source=include_source)
@@ -893,7 +931,36 @@ class SearchRuntimeHelpers:
 
     def render_search_output(self, search_run, include_source=False):
         if search_run["results"]:
-            return self.format_text(search_run["results"], include_source=include_source)
+            strict_results = search_run.get("strict_results")
+            compatible_results = search_run.get("compatible_results")
+            if strict_results is None or compatible_results is None:
+                strict_results = [
+                    result for result in (search_run.get("results") or [])
+                    if result.get("match_tier", "strict") == "strict"
+                ]
+                compatible_results = [
+                    result for result in (search_run.get("results") or [])
+                    if result.get("match_tier", "strict") == "compatible"
+                ]
+
+            if strict_results and compatible_results:
+                return "\n".join(
+                    [
+                        "Strict matches:",
+                        self.format_text(strict_results, include_source=include_source),
+                        "",
+                        "Compatible matches:",
+                        self.format_text(compatible_results, include_source=include_source),
+                    ]
+                )
+            if compatible_results and not strict_results:
+                return "\n".join(
+                    [
+                        "Compatible matches:",
+                        self.format_text(compatible_results, include_source=include_source),
+                    ]
+                )
+            return self.format_text(strict_results or search_run["results"], include_source=include_source)
         return self.runtime.format_no_match_text(
             search_run["diagnostics"],
             fallback_results=search_run["fallback_results"],

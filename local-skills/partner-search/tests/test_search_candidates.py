@@ -1623,6 +1623,8 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertEqual(search_run["results"][0]["name"], "C1")
         self.assertIsNone(search_run["diagnostics"])
         self.assertIsNone(search_run["fallback_results"])
+        self.assertEqual(len(search_run["strict_results"]), 1)
+        self.assertEqual(len(search_run["compatible_results"]), 0)
         self.assertEqual(search_run["criteria"]["gender"], "女")
         self.assertEqual(search_run["criteria"]["cities"], ["无锡"])
         self.assertEqual(search_run["results"][0]["match_tier"], "strict")
@@ -1683,14 +1685,150 @@ class SearchCandidatesTests(unittest.TestCase):
                     },
                 }
             ],
+            "strict_results": [],
+            "compatible_results": [
+                {
+                    "id": 1,
+                    "name": "CompatibleA",
+                    "score": 50,
+                    "fit_score": 40,
+                    "confidence_score": 15,
+                    "risk_score": 5,
+                    "match_tier": "compatible",
+                    "compatibility_flags": ["对方收入预期上限未命中，但不构成硬性淘汰"],
+                    "matched_on": [],
+                    "reciprocal_on": [],
+                    "missing_fields": [],
+                    "self_profile_gaps": [],
+                    "risk_flags": ["对方收入预期上限未命中，但不构成硬性淘汰"],
+                    "match_evidence": [],
+                    "follow_up_questions": [],
+                    "profile": {
+                        "age": 29,
+                        "city": "上海",
+                        "job": "产品经理",
+                        "profile_status": "active",
+                        "verified_level": "photo",
+                    },
+                }
+            ],
             "fallback_results": None,
             "diagnostics": None,
         }
 
         output = search_candidates.render_search_output(search_run)
 
+        self.assertIn("Compatible matches:", output)
         self.assertIn("match_tier: compatible", output)
         self.assertIn("compatibility_flags: 对方收入预期上限未命中，但不构成硬性淘汰", output)
+
+    def test_build_structured_search_response_splits_strict_and_compatible_results(self):
+        search_run = {
+            "results": [
+                {
+                    "id": 1,
+                    "name": "StrictA",
+                    "score": 60,
+                    "fit_score": 50,
+                    "confidence_score": 15,
+                    "risk_score": 5,
+                    "match_tier": "strict",
+                    "compatibility_flags": [],
+                    "matched_on": [],
+                    "reciprocal_on": [],
+                    "missing_fields": [],
+                    "self_profile_gaps": [],
+                    "risk_flags": [],
+                    "match_evidence": [],
+                    "follow_up_questions": [],
+                    "profile": {
+                        "verified_level": "photo",
+                        "profile_status": "active",
+                        "photo_count": 3,
+                    },
+                },
+                {
+                    "id": 2,
+                    "name": "CompatibleB",
+                    "score": 55,
+                    "fit_score": 45,
+                    "confidence_score": 15,
+                    "risk_score": 5,
+                    "match_tier": "compatible",
+                    "compatibility_flags": ["对方收入预期上限未命中，但不构成硬性淘汰"],
+                    "matched_on": [],
+                    "reciprocal_on": [],
+                    "missing_fields": [],
+                    "self_profile_gaps": [],
+                    "risk_flags": ["对方收入预期上限未命中，但不构成硬性淘汰"],
+                    "match_evidence": [],
+                    "follow_up_questions": [],
+                    "profile": {
+                        "verified_level": "photo",
+                        "profile_status": "active",
+                        "photo_count": 3,
+                    },
+                },
+            ],
+            "strict_results": [
+                {
+                    "id": 1,
+                    "name": "StrictA",
+                    "score": 60,
+                    "fit_score": 50,
+                    "confidence_score": 15,
+                    "risk_score": 5,
+                    "match_tier": "strict",
+                    "compatibility_flags": [],
+                    "matched_on": [],
+                    "reciprocal_on": [],
+                    "missing_fields": [],
+                    "self_profile_gaps": [],
+                    "risk_flags": [],
+                    "match_evidence": [],
+                    "follow_up_questions": [],
+                    "profile": {
+                        "verified_level": "photo",
+                        "profile_status": "active",
+                        "photo_count": 3,
+                    },
+                }
+            ],
+            "compatible_results": [
+                {
+                    "id": 2,
+                    "name": "CompatibleB",
+                    "score": 55,
+                    "fit_score": 45,
+                    "confidence_score": 15,
+                    "risk_score": 5,
+                    "match_tier": "compatible",
+                    "compatibility_flags": ["对方收入预期上限未命中，但不构成硬性淘汰"],
+                    "matched_on": [],
+                    "reciprocal_on": [],
+                    "missing_fields": [],
+                    "self_profile_gaps": [],
+                    "risk_flags": ["对方收入预期上限未命中，但不构成硬性淘汰"],
+                    "match_evidence": [],
+                    "follow_up_questions": [],
+                    "profile": {
+                        "verified_level": "photo",
+                        "profile_status": "active",
+                        "photo_count": 3,
+                    },
+                }
+            ],
+            "fallback_results": [],
+            "diagnostics": None,
+            "records_count": 2,
+        }
+
+        response = search_candidates.build_structured_search_response(search_run)
+
+        self.assertEqual(response["pool_summary"]["strict_count"], 1)
+        self.assertEqual(response["pool_summary"]["compatible_count"], 1)
+        self.assertEqual(len(response["strict_results"]), 1)
+        self.assertEqual(len(response["compatible_results"]), 1)
 
     def test_render_search_output_uses_no_strict_matches_when_fallback_exists(self):
         search_run = {
