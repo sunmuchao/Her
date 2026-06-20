@@ -104,42 +104,18 @@ _PROFILE_FIELD_LABELS: dict[str, str] = {
 }
 
 
-# 可量化字段白名单：只有这些字段才能写入 persona_part（结构化数据）
+# 可量化字段白名单：自动从 profiles 表和 persona 表字段生成
 #
-# 判断标准：
-# 1. 数值范围：明确的数字范围（如年龄26-30、身高170-180）
-# 2. 枚举类型：明确的有限选项（如MBTI 16种、婚姻状态3种）
-# 3. 布尔值：明确的是/否（如是否接受异地）
-# 4. 地理位置：明确的城市/区县（如北京、朝阳区）
-# 5. 学历等级：明确的学历层次（如硕士、本科）
-# 6. 标签：明确的标签体系（如必须有的标签、必须没有的标签）
+# 设计原则：
+# 1. profiles 表字段（PROFILE_FACT_PROFILE_COLUMNS）都是可量化字段
+# 2. persona 表字段（COLLECTED_PERSONA_FIELDS）都是可量化字段
+# 3. 白名单自动同步，改表字段 = 改白名单，无需手动维护
 #
 # 注意：主观描述（性格温柔、重视家庭）不属于可量化字段
-# 这些字段不在实时对话 patch 中，需要 LLM 会话结束后提炼
-#
-# 修正：区分可量化的"搜索条件"和"用户特质"
-# 注意：smoking, drinking, relationship_goal, has_children 等硬条件在 profiles 表中
-QUANTIFIABLE_FIELDS = frozenset({
-    # 数值范围（明确的数字范围）
-    "age", "age_min", "age_max",
-    "height", "height_min", "height_max",
-    "income", "income_min", "income_max",
-
-    # 枚举类型（明确的有限选项 - 软偏好）
-    "mbti_type", "personality_type",
-
-    # 布尔值（明确的是/否 - 软偏好）
-    "accept_partner_children", "accept_long_distance",
-
-    # 地理位置（明确的城市/区县）
-    "cities", "districts", "city", "district",
-
-    # 学历等级（明确的学历层次）
-    "education", "education_min",
-
-    # 标签（明确的标签体系）
-    "must_have_tags", "must_not_have_tags",
-})
+# 这些字段存储在 conversation_summaries 表和向量库中
+QUANTIFIABLE_FIELDS = frozenset(
+    PROFILE_FACT_PROFILE_COLUMNS | COLLECTED_PERSONA_FIELDS
+)
 
 # 可量化的"搜索条件"字段（应该分流到 search_part）
 # 这些字段用于搜索筛选，不是用户特质

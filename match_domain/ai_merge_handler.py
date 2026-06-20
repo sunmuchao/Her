@@ -416,20 +416,33 @@ async def _call_llm_for_json(prompt: str) -> dict[str, Any]:
     调用LLM并返回JSON格式结果
 
     配置：
-    - base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
-    - model: qwen3-235b（较强模型）
+    - 使用环境变量 HER_DISCOVERY_AGENT_MODEL / HER_CHAT_AGENT_MODEL（和 session_end_processor 保持一致）
+    - fallback 使用 qwen-plus（存在的模型）
     - temperature: 0.3（低温度，提高稳定性）
     """
 
     try:
+        from her_env import env_first
         from openai import AsyncOpenAI
 
-        base_url = os.environ.get(
-            "LLM_BASE_URL",
-            "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        base_url = env_first(
+            "HER_DISCOVERY_AGENT_BASE_URL",
+            "HER_CHAT_AGENT_BASE_URL",
+            "DASHSCOPE_BASE_URL",
+            default="https://dashscope.aliyuncs.com/compatible-mode/v1",
         )
-        api_key = os.environ.get("DASHSCOPE_API_KEY", os.environ.get("OPENAI_API_KEY", ""))
-        model = os.environ.get("LLM_MODEL", "qwen3-235b")
+        api_key = env_first(
+            "HER_DISCOVERY_AGENT_API_KEY",
+            "HER_CHAT_AGENT_API_KEY",
+            "DASHSCOPE_API_KEY",
+            "OPENAI_API_KEY",
+            default="",
+        )
+        model = env_first(
+            "HER_DISCOVERY_AGENT_MODEL",
+            "HER_CHAT_AGENT_MODEL",
+            default="qwen-plus",  # ✅ fallback使用存在的模型
+        )
 
         client = AsyncOpenAI(
             base_url=base_url,

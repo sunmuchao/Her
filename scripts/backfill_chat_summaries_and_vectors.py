@@ -180,21 +180,44 @@ async def process_candidate(
     candidate: SessionCandidate,
     *,
     discovery_dsn: str,
+    persona_dsn: str,
     vectorize: bool,
 ) -> dict[str, Any]:
     """执行单个会话回填。"""
+    previous_discovery_dsn = os.environ.get("PARTNER_DISCOVERY_DB")
+    previous_persona_dsn = os.environ.get("PERSONA_MEMORY_MYSQL_SOURCE")
+    previous_her_persona_dsn = os.environ.get("HER_PERSONA_DB")
+    os.environ["PARTNER_DISCOVERY_DB"] = discovery_dsn
+    os.environ["PERSONA_MEMORY_MYSQL_SOURCE"] = persona_dsn
+    os.environ["HER_PERSONA_DB"] = persona_dsn
 
-    result = await process_session_end(
-        session_id=candidate.session_id,
-        requester_id=candidate.requester_id,
-        profile_id=candidate.profile_id,
-        conversation_type="discovery",
-        dsn=discovery_dsn,
-        processed_at=None,
-        storage=None,
-        vectorize_summaries=vectorize,
-        clear_working_criteria_after_processing=False,
-    )
+    try:
+        result = await process_session_end(
+            session_id=candidate.session_id,
+            requester_id=candidate.requester_id,
+            profile_id=candidate.profile_id,
+            conversation_type="discovery",
+            dsn=None,
+            processed_at=None,
+            storage=None,
+            vectorize_summaries=vectorize,
+            clear_working_criteria_after_processing=False,
+        )
+    finally:
+        if previous_discovery_dsn is None:
+            os.environ.pop("PARTNER_DISCOVERY_DB", None)
+        else:
+            os.environ["PARTNER_DISCOVERY_DB"] = previous_discovery_dsn
+
+        if previous_persona_dsn is None:
+            os.environ.pop("PERSONA_MEMORY_MYSQL_SOURCE", None)
+        else:
+            os.environ["PERSONA_MEMORY_MYSQL_SOURCE"] = previous_persona_dsn
+
+        if previous_her_persona_dsn is None:
+            os.environ.pop("HER_PERSONA_DB", None)
+        else:
+            os.environ["HER_PERSONA_DB"] = previous_her_persona_dsn
 
     return {
         "session_id": candidate.session_id,
@@ -256,6 +279,7 @@ async def backfill_sessions(args: argparse.Namespace) -> int:
             result = await process_candidate(
                 candidate,
                 discovery_dsn=discovery_dsn,
+                persona_dsn=persona_dsn,
                 vectorize=not args.skip_vector,
             )
         except Exception as exc:
