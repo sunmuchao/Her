@@ -60,6 +60,7 @@ class SearchMatchingRuntime:
     creative_job_patterns: Sequence[re.Pattern[str]]
     near_distance_priority_markers: Sequence[str]
     soft_concession_risk_flags: set[str]
+    compatibility_risk_flags: set[str]
 
 
 # 档案状态中文映射（简化版：只有3个状态）
@@ -158,6 +159,34 @@ def range_proximity_decision(
     return {"status": "within", "score": score_on_match, "distance": 0}
 
 
+def apply_range_proximity(
+    *,
+    decision: dict[str, Any],
+    value_text: str,
+    within_reason: str,
+    near_reason: str,
+    edge_reason: str,
+    near_risk_flag: str,
+    edge_risk_flag: str,
+    reasons: list[str],
+    risk_flags: list[str],
+) -> int:
+    status = decision["status"]
+    if status == "within":
+        reasons.append(within_reason)
+        return int(decision["score"])
+    if status == "near":
+        reasons.append(near_reason)
+        risk_flags.append(near_risk_flag)
+        return int(decision["score"])
+    if status == "edge":
+        reasons.append(edge_reason)
+        risk_flags.append(edge_risk_flag)
+        return int(decision["score"])
+    del value_text
+    return 0
+
+
 def self_education_floor_risk_flag(
     runtime: SearchMatchingRuntime,
     self_profile: dict[str, Any],
@@ -202,6 +231,17 @@ def education_closeness_label(
     if gap == 2:
         return "学历有一定差距，需要看实际沟通和认知"
     return "学历差距较大"
+
+
+def compatibility_flags_from_risks(
+    runtime: SearchMatchingRuntime,
+    risk_flags: list[str],
+) -> list[str]:
+    return [
+        flag
+        for flag in runtime.unique_ordered(risk_flags)
+        if flag in runtime.compatibility_risk_flags
+    ]
 
 
 def keyword_requested(
@@ -1213,25 +1253,25 @@ def evaluate_candidate(
         )
         if age_decision["status"] == "unknown":
             missing_fields.append("age")
-        elif age_decision["status"] == "within":
-            reasons.append(f"年龄 {age}")
-            fit_score += age_decision["score"]
-            age_reason_added = True
-        elif age_decision["status"] == "near":
-            reasons.append(f"年龄 {age}（接近你的要求）")
-            fit_score += age_decision["score"]
-            risk_flags.append("年龄略偏离理想区间，但仍然接近")
-            age_reason_added = True
-        elif age_decision["status"] == "edge":
-            reasons.append(f"年龄 {age}（有一定偏离）")
-            fit_score += age_decision["score"]
-            risk_flags.append("年龄有一定偏离，需要看本人接受度")
-            age_reason_added = True
         else:
-            if criteria_age_min is not None and age is not None and age < criteria_age_min:
-                return fail("age_below_min")
-            if criteria_age_max is not None and age is not None and age > criteria_age_max:
-                return fail("age_above_max")
+            if age_decision["status"] == "far":
+                if criteria_age_min is not None and age is not None and age < criteria_age_min:
+                    return fail("age_below_min")
+                if criteria_age_max is not None and age is not None and age > criteria_age_max:
+                    return fail("age_above_max")
+            else:
+                fit_score += apply_range_proximity(
+                    decision=age_decision,
+                    value_text=str(age),
+                    within_reason=f"年龄 {age}",
+                    near_reason=f"年龄 {age}（接近你的要求）",
+                    edge_reason=f"年龄 {age}（有一定偏离）",
+                    near_risk_flag="年龄略偏离理想区间，但仍然接近",
+                    edge_risk_flag="年龄有一定偏离，需要看本人接受度",
+                    reasons=reasons,
+                    risk_flags=risk_flags,
+                )
+                age_reason_added = True
 
     # 性能优化：使用提前提取的 record_height 和 criteria_height_min
     height = record_height
@@ -1247,25 +1287,25 @@ def evaluate_candidate(
         )
         if height_decision["status"] == "unknown":
             missing_fields.append("height")
-        elif height_decision["status"] == "within":
-            reasons.append(f"身高 {height}cm")
-            height_reason_added = True
-            fit_score += height_decision["score"]
-        elif height_decision["status"] == "near":
-            reasons.append(f"身高 {height}cm（接近你的要求）")
-            height_reason_added = True
-            fit_score += height_decision["score"]
-            risk_flags.append("身高略偏离理想区间，但仍然接近")
-        elif height_decision["status"] == "edge":
-            reasons.append(f"身高 {height}cm（有一定偏离）")
-            height_reason_added = True
-            fit_score += height_decision["score"]
-            risk_flags.append("身高有一定偏离，需要看本人接受度")
         else:
-            if criteria_height_min is not None and height is not None and height < criteria_height_min:
-                return fail("height_below_min")
-            if criteria_height_max is not None and height is not None and height > criteria_height_max:
-                return fail("height_above_max")
+            if height_decision["status"] == "far":
+                if criteria_height_min is not None and height is not None and height < criteria_height_min:
+                    return fail("height_below_min")
+                if criteria_height_max is not None and height is not None and height > criteria_height_max:
+                    return fail("height_above_max")
+            else:
+                fit_score += apply_range_proximity(
+                    decision=height_decision,
+                    value_text=str(height),
+                    within_reason=f"身高 {height}cm",
+                    near_reason=f"身高 {height}cm（接近你的要求）",
+                    edge_reason=f"身高 {height}cm（有一定偏离）",
+                    near_risk_flag="身高略偏离理想区间，但仍然接近",
+                    edge_risk_flag="身高有一定偏离，需要看本人接受度",
+                    reasons=reasons,
+                    risk_flags=risk_flags,
+                )
+                height_reason_added = True
 
     # 性能优化：使用提前提取的 criteria_gender 和 record_gender
     if criteria_gender:
@@ -1679,34 +1719,7 @@ def evaluate_candidate(
         self_profile=criteria.get("self_profile"),
     )
     unique_risk_flags = runtime.unique_ordered(risk_flags)
-    compatibility_risk_flags = [
-        flag
-        for flag in unique_risk_flags
-        if flag in {
-            "对方收入预期上限未命中，但不构成硬性淘汰",
-            "对方收入要求可能可放宽",
-            "对方年龄要求可能可放宽",
-            "对方身高要求可能可放宽",
-            "对方学历要求可能可放宽",
-            "年龄略偏离理想区间，但仍然接近",
-            "年龄有一定偏离，需要看本人接受度",
-            "身高略偏离理想区间，但仍然接近",
-            "身高有一定偏离，需要看本人接受度",
-            "当前城市未命中，但定居城市命中",
-            "学历略低于你的理想值，但仍然接近",
-            "学历有一定差距，需要看实际沟通和认知",
-            "学历差距较大",
-            "对方年龄要求接近命中，可作为兼容匹配",
-            "对方年龄要求有一定偏差，但仍可尝试",
-            "对方身高要求接近命中，可作为兼容匹配",
-            "对方身高要求有一定偏差，但仍可尝试",
-            "对方学历要求接近命中，可作为兼容匹配",
-            "对方学历要求有一定差距，但仍可尝试",
-            "对方城市偏好未命中，但资料写了接受异地",
-            "对方城市偏好未命中，异地仅可协商",
-            "对方城市偏好未命中，异地接受度未知",
-        }
-    ]
+    compatibility_risk_flags = compatibility_flags_from_risks(runtime, unique_risk_flags)
 
     result = runtime.build_match_result(
         record=record,
