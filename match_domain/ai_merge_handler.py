@@ -90,22 +90,27 @@ async def ai_merge_and_vectorize(
         embedding_service = EmbeddingService(model_name="text-embedding-v3")
         vector_store = VectorStoreLite()
 
-        final_vector = await embedding_service.generate_embedding(new_text)
+        try:
+            final_vector = await embedding_service.generate_embedding(new_text)
 
-        result = vector_store.save_vector_with_version(
-            user_id=user_id,
-            vector_type=vector_type,
-            embedding=final_vector,
-            raw_text=new_text,
-            conversation_id=conversation_id,
-        )
+            result = vector_store.save_vector_with_version(
+                user_id=user_id,
+                vector_type=vector_type,
+                embedding=final_vector,
+                raw_text=new_text,
+                conversation_id=conversation_id,
+            )
 
-        return {
-            "final_text": new_text,
-            "ai_decision": None,  # 无需AI判断
-            "text_saved": True,
-            "vector_saved": result.get("success", False),
-        }
+            return {
+                "final_text": new_text,
+                "ai_decision": None,  # 无需AI判断
+                "text_saved": True,
+                "vector_saved": result.get("success", False),
+            }
+        finally:
+            # ⚠️ 重要：主动关闭连接，避免 "Task exception was never retrieved" 错误
+            await embedding_service.aclose()
+            vector_store.close()
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # Step 2：AI判断语义关系（只判断一次）
@@ -150,9 +155,11 @@ async def ai_merge_and_vectorize(
 
     _logger.info(f"摘要文本已保存: {final_text}")
 
-    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # Step 5：生成向量并存储（阶段2：向量存储）
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    embedding_service = None
+    vector_store = None
 
     try:
         from match_domain.embedding_service import EmbeddingService
@@ -233,6 +240,13 @@ async def ai_merge_and_vectorize(
             "vector_status": 'failed',
             "error": str(exc)[:200],
         }
+
+    finally:
+        # ⚠️ 重要：主动关闭连接，避免 "Task exception was never retrieved" 错误
+        if embedding_service:
+            await embedding_service.aclose()
+        if vector_store:
+            vector_store.close()
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -753,43 +767,49 @@ async def retry_vector_write(record: dict[str, Any]) -> bool:
         embedding_service = EmbeddingService(model_name="text-embedding-v3")
         vector_store = VectorStoreLite()
 
-        final_vector = await embedding_service.generate_embedding(summary_text)
+        try:
+            final_vector = await embedding_service.generate_embedding(summary_text)
 
-        result = vector_store.save_vector_with_version(
-            user_id=user_id,
-            vector_type=vector_type,
-            embedding=final_vector,
-            raw_text=summary_text,
-            conversation_id=conversation_id,
-        )
-
-        if result.get("success"):
-            # 成功：更新状态为 'done'
-            await update_vector_status(
+            result = vector_store.save_vector_with_version(
                 user_id=user_id,
                 vector_type=vector_type,
-                status='done',
-                error_message=None,
+                embedding=final_vector,
+                raw_text=summary_text,
+                conversation_id=conversation_id,
             )
-            _logger.info(
-                f"重试成功: user_id={user_id}, key={vector_type}, "
-                f"version={result.get('version')}"
-            )
-            return True
-        else:
-            # 失败：更新状态为 'failed'
-            await update_vector_status(
-                user_id=user_id,
-                vector_type=vector_type,
-                status='failed',
-                error_message=result.get('error'),
-                retry_count=retry_count + 1,
-            )
-            _logger.error(
-                f"重试失败: user_id={user_id}, key={vector_type}, "
-                f"error={result.get('error')}"
-            )
-            return False
+
+            if result.get("success"):
+                # 成功：更新状态为 'done'
+                await update_vector_status(
+                    user_id=user_id,
+                    vector_type=vector_type,
+                    status='done',
+                    error_message=None,
+                )
+                _logger.info(
+                    f"重试成功: user_id={user_id}, key={vector_type}, "
+                    f"version={result.get('version')}"
+                )
+                return True
+            else:
+                # 失败：更新状态为 'failed'
+                await update_vector_status(
+                    user_id=user_id,
+                    vector_type=vector_type,
+                    status='failed',
+                    error_message=result.get('error'),
+                    retry_count=retry_count + 1,
+                )
+                _logger.error(
+                    f"重试失败: user_id={user_id}, key={vector_type}, "
+                    f"error={result.get('error')}"
+                )
+                return False
+
+        finally:
+            # ⚠️ 重要：主动关闭连接，避免 "Task exception was never retrieved" 错误
+            await embedding_service.aclose()
+            vector_store.close()
 
     except Exception as exc:
         _logger.error(f"重试异常: {exc}")
@@ -983,20 +1003,26 @@ async def ai_batch_merge_and_vectorize(
         embedding_service = EmbeddingService(model_name="text-embedding-v3")
         vector_store = VectorStoreLite()
 
-        # 批量生成向量（一次API调用）
-        first_time_texts = [filtered_data[key] for key in first_time_keys]
-        first_time_vectors = await embedding_service.generate_embeddings(first_time_texts)
+        try:
+            # 批量生成向量（一次API调用）
+            first_time_texts = [filtered_data[key] for key in first_time_keys]
+            first_time_vectors = await embedding_service.generate_embeddings(first_time_texts)
 
-        # 批量存储向量
-        for key, text, vector in zip(first_time_keys, first_time_texts, first_time_vectors):
-            result = vector_store.save_vector_with_version(
-                user_id=user_id,
-                vector_type=key,
-                embedding=vector,
-                raw_text=text,
-                conversation_id=conversation_id,
-            )
-            results[key]["vector_saved"] = result.get("success", False)
+            # 批量存储向量
+            for key, text, vector in zip(first_time_keys, first_time_texts, first_time_vectors):
+                result = vector_store.save_vector_with_version(
+                    user_id=user_id,
+                    vector_type=key,
+                    embedding=vector,
+                    raw_text=text,
+                    conversation_id=conversation_id,
+                )
+                results[key]["vector_saved"] = result.get("success", False)
+
+        finally:
+            # ⚠️ 重要：主动关闭连接，避免 "Task exception was never retrieved" 错误
+            await embedding_service.aclose()
+            vector_store.close()
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # Step 5：批量AI判断（一次性处理所有需要判断的字段）
@@ -1093,35 +1119,41 @@ async def ai_batch_merge_and_vectorize(
         embedding_service = EmbeddingService(model_name="text-embedding-v3")
         vector_store = VectorStoreLite()
 
-        need_judge_texts = [final_texts[key] for key in need_judge_keys]
-        need_judge_vectors = await embedding_service.generate_embeddings(need_judge_texts)
+        try:
+            need_judge_texts = [final_texts[key] for key in need_judge_keys]
+            need_judge_vectors = await embedding_service.generate_embeddings(need_judge_texts)
 
-        # 批量存储向量
-        for key, text, vector in zip(need_judge_keys, need_judge_texts, need_judge_vectors):
-            result = vector_store.save_vector_with_version(
-                user_id=user_id,
-                vector_type=key,
-                embedding=vector,
-                raw_text=text,
-                conversation_id=conversation_id,
-            )
-            results[key]["vector_saved"] = result.get("success", False)
-
-            # 更新向量状态
-            if result.get("success"):
-                await update_vector_status(
+            # 批量存储向量
+            for key, text, vector in zip(need_judge_keys, need_judge_texts, need_judge_vectors):
+                result = vector_store.save_vector_with_version(
                     user_id=user_id,
                     vector_type=key,
-                    status='done',
-                    error_message=None,
+                    embedding=vector,
+                    raw_text=text,
+                    conversation_id=conversation_id,
                 )
-            else:
-                await update_vector_status(
-                    user_id=user_id,
-                    vector_type=key,
-                    status='failed',
-                    error_message=result.get('error'),
-                )
+                results[key]["vector_saved"] = result.get("success", False)
+
+                # 更新向量状态
+                if result.get("success"):
+                    await update_vector_status(
+                        user_id=user_id,
+                        vector_type=key,
+                        status='done',
+                        error_message=None,
+                    )
+                else:
+                    await update_vector_status(
+                        user_id=user_id,
+                        vector_type=key,
+                        status='failed',
+                        error_message=result.get('error'),
+                    )
+
+        finally:
+            # ⚠️ 重要：主动关闭连接，避免 "Task exception was never retrieved" 错误
+            await embedding_service.aclose()
+            vector_store.close()
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # Step 9：返回批量处理结果
