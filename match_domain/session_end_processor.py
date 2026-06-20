@@ -485,7 +485,7 @@ async def _call_llm_for_json(
     resolved_model = llm_model or env_first(
         "HER_DISCOVERY_AGENT_MODEL",
         "HER_CHAT_AGENT_MODEL",
-        default="qwen3-235b",  # 使用较强的模型
+        default="qwen-plus",  # ✅ fallback使用存在的模型
     )
 
     if not resolved_api_key:
