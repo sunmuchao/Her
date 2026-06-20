@@ -294,6 +294,46 @@ def education_gap_score_adjustment(
     return -5
 
 
+def income_range_proximity_decision(
+    candidate_min: int | None,
+    candidate_max: int | None,
+    *,
+    preferred_min: int | None,
+    preferred_max: int | None,
+) -> dict[str, Any]:
+    if candidate_min is None and candidate_max is None:
+        return {"status": "unknown", "score": 0, "distance": None}
+
+    effective_min = candidate_min if candidate_min is not None else candidate_max
+    effective_max = candidate_max if candidate_max is not None else candidate_min
+    if preferred_min is None and preferred_max is None:
+        return {"status": "within", "score": 0, "distance": 0}
+
+    if (
+        preferred_min is not None
+        and effective_max is not None
+        and effective_max < preferred_min
+    ):
+        distance = preferred_min - effective_max
+        if distance <= 10:
+            return {"status": "near", "score": 8, "distance": distance}
+        if distance <= 20:
+            return {"status": "edge", "score": 4, "distance": distance}
+        return {"status": "far", "score": 0, "distance": distance}
+
+    if (
+        preferred_max is not None
+        and effective_min is not None
+        and effective_min > preferred_max
+    ):
+        distance = effective_min - preferred_max
+        if distance <= 20:
+            return {"status": "above", "score": 10, "distance": distance}
+        return {"status": "above", "score": 8, "distance": distance}
+
+    return {"status": "within", "score": 12, "distance": 0}
+
+
 def compatibility_flags_from_risks(
     runtime: SearchMatchingRuntime,
     risk_flags: list[str],
@@ -1502,6 +1542,35 @@ def evaluate_candidate(
     )
     if education_gap_label and education_gap_label not in risk_flags:
         risk_flags.append(education_gap_label)
+
+    self_profile = criteria.get("self_profile") or {}
+    preferred_income_min = runtime.as_int(self_profile.get("preferred_income_min_wan"))
+    preferred_income_max = runtime.as_int(self_profile.get("preferred_income_max_wan"))
+    candidate_income_min, candidate_income_max = candidate_income_bounds(runtime, record)
+    income_decision = income_range_proximity_decision(
+        candidate_income_min,
+        candidate_income_max,
+        preferred_min=preferred_income_min,
+        preferred_max=preferred_income_max,
+    )
+    if income_decision["status"] == "within":
+        if preferred_income_min is not None or preferred_income_max is not None:
+            reasons.append("收入区间接近你的预期")
+            fit_score += income_decision["score"]
+    elif income_decision["status"] == "near":
+        reasons.append("收入略低于预期，但仍然接近")
+        fit_score += income_decision["score"]
+        risk_flags.append("收入略低于理想区间，但仍然接近")
+    elif income_decision["status"] == "edge":
+        reasons.append("收入有一定差距")
+        fit_score += income_decision["score"]
+        risk_flags.append("收入有一定差距，需要结合生活方式判断")
+    elif income_decision["status"] == "far":
+        risk_flags.append("收入明显低于理想区间")
+    elif income_decision["status"] == "above":
+        reasons.append("收入高于你的预期上限")
+        fit_score += income_decision["score"]
+        risk_flags.append("收入高于预期上限，但通常不构成负向问题")
 
     # 性能优化：使用提前提取的 criteria_smoking_val 和 record_smoking
     if criteria_smoking_val:
