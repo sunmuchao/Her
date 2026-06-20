@@ -1625,6 +1625,8 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertIsNone(search_run["fallback_results"])
         self.assertEqual(search_run["criteria"]["gender"], "女")
         self.assertEqual(search_run["criteria"]["cities"], ["无锡"])
+        self.assertEqual(search_run["results"][0]["match_tier"], "strict")
+        self.assertEqual(search_run["results"][0]["compatibility_flags"], [])
         self.assertIn("1. C1", search_candidates.render_search_output(search_run))
         mocked_attach.assert_called_once()
 
@@ -1652,6 +1654,87 @@ class SearchCandidatesTests(unittest.TestCase):
         self.assertEqual(search_run["diagnostics"]["scanned_count"], 0)
         self.assertIn("No matches found.", search_candidates.render_search_output(search_run))
         mocked_attach.assert_called_once()
+
+    def test_render_search_output_labels_compatible_match_tier(self):
+        search_run = {
+            "results": [
+                {
+                    "id": 1,
+                    "name": "CompatibleA",
+                    "score": 50,
+                    "fit_score": 40,
+                    "confidence_score": 15,
+                    "risk_score": 5,
+                    "match_tier": "compatible",
+                    "compatibility_flags": ["对方收入预期上限未命中，但不构成硬性淘汰"],
+                    "matched_on": [],
+                    "reciprocal_on": [],
+                    "missing_fields": [],
+                    "self_profile_gaps": [],
+                    "risk_flags": ["对方收入预期上限未命中，但不构成硬性淘汰"],
+                    "match_evidence": [],
+                    "follow_up_questions": [],
+                    "profile": {
+                        "age": 29,
+                        "city": "上海",
+                        "job": "产品经理",
+                        "profile_status": "active",
+                        "verified_level": "photo",
+                    },
+                }
+            ],
+            "fallback_results": None,
+            "diagnostics": None,
+        }
+
+        output = search_candidates.render_search_output(search_run)
+
+        self.assertIn("match_tier: compatible", output)
+        self.assertIn("compatibility_flags: 对方收入预期上限未命中，但不构成硬性淘汰", output)
+
+    def test_render_search_output_uses_no_strict_matches_when_fallback_exists(self):
+        search_run = {
+            "results": [],
+            "fallback_results": [
+                {
+                    "id": 2,
+                    "name": "FallbackB",
+                    "score": 45,
+                    "fit_score": 35,
+                    "confidence_score": 12,
+                    "risk_score": 7,
+                    "match_tier": "compatible",
+                    "compatibility_flags": ["对方收入预期上限未命中，但不构成硬性淘汰"],
+                    "matched_on": [],
+                    "reciprocal_on": [],
+                    "missing_fields": [],
+                    "self_profile_gaps": [],
+                    "risk_flags": ["对方收入预期上限未命中，但不构成硬性淘汰"],
+                    "match_evidence": [],
+                    "follow_up_questions": [],
+                    "profile": {
+                        "age": 30,
+                        "city": "上海",
+                        "job": "设计师",
+                        "profile_status": "active",
+                        "verified_level": "photo",
+                    },
+                    "fallback_reason": "不符合对方城市偏好",
+                }
+            ],
+            "diagnostics": {
+                "scanned_count": 5,
+                "passed_count": 0,
+                "usable_count": 5,
+                "top_reasons": [],
+                "relax_suggestions": [],
+            },
+        }
+
+        output = search_candidates.render_search_output(search_run)
+
+        self.assertIn("No strict matches found.", output)
+        self.assertIn("兼容对象", output)
 
     def test_main_outputs_ranked_results(self):
         fake_records = [

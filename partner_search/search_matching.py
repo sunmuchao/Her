@@ -1581,6 +1581,21 @@ def evaluate_candidate(
         risk_flags,
         self_profile=criteria.get("self_profile"),
     )
+    unique_risk_flags = runtime.unique_ordered(risk_flags)
+    compatibility_risk_flags = [
+        flag
+        for flag in unique_risk_flags
+        if flag in {
+            "对方收入预期上限未命中，但不构成硬性淘汰",
+            "对方收入要求可能可放宽",
+            "对方年龄要求可能可放宽",
+            "对方身高要求可能可放宽",
+            "对方学历要求可能可放宽",
+            "对方城市偏好未命中，但资料写了接受异地",
+            "对方城市偏好未命中，异地仅可协商",
+            "对方城市偏好未命中，异地接受度未知",
+        }
+    ]
 
     result = runtime.build_match_result(
         record=record,
@@ -1592,7 +1607,7 @@ def evaluate_candidate(
         reciprocal_on=runtime.unique_ordered(reciprocal_reasons),
         missing_fields=candidate_missing_fields,
         self_profile_gaps=self_profile_gaps,
-        risk_flags=runtime.unique_ordered(risk_flags),
+        risk_flags=unique_risk_flags,
         match_evidence=runtime.unique_ordered(match_evidence),
         follow_up_questions=follow_up_questions,
         verified_rank=verified_sort_rank,
@@ -1600,6 +1615,8 @@ def evaluate_candidate(
         profile_status_rank=runtime.profile_status_rank(profile_status),
         matched=True,
         reject_reason=None,
+        match_tier="compatible" if compatibility_risk_flags else "strict",
+        compatibility_flags=compatibility_risk_flags,
     )
     result["display_notes"] = runtime.summarize_notes_for_result(
         record,
