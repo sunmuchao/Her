@@ -732,6 +732,58 @@ class SearchCandidatesTests(unittest.TestCase):
             search_candidates.evaluate_reciprocal_compatibility(candidate, self_profile)
         )
 
+    def test_reciprocal_keeps_near_age_preference_as_compatible(self):
+        candidate = {
+            "preferred_age_min": 28,
+            "preferred_age_max": 32,
+            "preferred_age_strictness": "硬性",
+        }
+        self_profile = {"age": 27}
+
+        result = search_candidates.evaluate_reciprocal_compatibility(candidate, self_profile)
+
+        self.assertIsNotNone(result)
+        self.assertTrue(result["matched"])
+        self.assertIn("对方年龄要求接近命中，可作为兼容匹配", result["risk_flags"])
+
+    def test_reciprocal_rejects_far_age_preference_when_hard(self):
+        candidate = {
+            "preferred_age_min": 28,
+            "preferred_age_max": 32,
+            "preferred_age_strictness": "硬性",
+        }
+        self_profile = {"age": 22}
+
+        result = search_candidates.evaluate_reciprocal_compatibility(candidate, self_profile)
+
+        self.assertIsNone(result)
+
+    def test_reciprocal_keeps_near_height_preference_as_compatible(self):
+        candidate = {
+            "preferred_height_min": 175,
+            "preferred_height_max": 180,
+            "preferred_height_strictness": "硬性",
+        }
+        self_profile = {"height": 173}
+
+        result = search_candidates.evaluate_reciprocal_compatibility(candidate, self_profile)
+
+        self.assertIsNotNone(result)
+        self.assertTrue(result["matched"])
+        self.assertIn("对方身高要求接近命中，可作为兼容匹配", result["risk_flags"])
+
+    def test_reciprocal_rejects_far_height_preference_when_hard(self):
+        candidate = {
+            "preferred_height_min": 175,
+            "preferred_height_max": 180,
+            "preferred_height_strictness": "硬性",
+        }
+        self_profile = {"height": 165}
+
+        result = search_candidates.evaluate_reciprocal_compatibility(candidate, self_profile)
+
+        self.assertIsNone(result)
+
     def test_reciprocal_city_preference_softens_when_accepts_long_distance(self):
         candidate = {
             "preferred_cities": "上海",
