@@ -10,6 +10,7 @@ from match_domain.session_end_processor import (
     SUMMARY_FIELD_KEYS,
     filter_valid_summary_data,
     normalize_quantifiable_patch,
+    split_partner_expectation_facets,
     split_by_quantifiability,
     validate_summary_text,
 )
@@ -113,4 +114,18 @@ def test_filter_valid_summary_data_normalizes_summary_text_before_saving() -> No
     assert rejected == {}
     assert valid == {
         "partner_expectation": "希望对方温和，目标感强，关系推进明确，细腻，有耐心，成长驱动强，做事积极，有责任感，不暧昧，持续投入关系，节奏明确",
+        "partner_personality_preference": "希望对方温和，目标感强，细腻，有耐心，成长驱动强，做事积极，有责任感，tag:温和型，tag:目标感，tag:责任感",
+        "partner_relationship_pacing": "关系推进明确，不暧昧，持续投入关系，节奏明确，tag:关系推进明确",
     }
+
+
+def test_split_partner_expectation_facets() -> None:
+    result = split_partner_expectation_facets(
+        {
+            "partner_expectation": "温和，细腻，有耐心，慢热，关系推进明确，作息规律，工作稳定",
+        }
+    )
+
+    assert result["partner_personality_preference"] == "温和，细腻，有耐心"
+    assert result["partner_relationship_pacing"] == "慢热，关系推进明确"
+    assert result["partner_lifestyle_preference"] == "作息规律，工作稳定"

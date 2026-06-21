@@ -940,6 +940,9 @@ async def ai_batch_merge_and_vectorize(
         "personality_traits",
         "values",
         "partner_expectation",
+        "partner_personality_preference",
+        "partner_relationship_pacing",
+        "partner_lifestyle_preference",
         "life_attitude",
         "emotional_needs",
     ]

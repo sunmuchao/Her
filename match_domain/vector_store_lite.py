@@ -85,6 +85,30 @@ VECTOR_TYPES_CONFIG = {
         "cleanup_days": 30,  # ← 新增：超过30天的旧版本清理
         "description": "择偶期望：中等稳定，保留最近10个版本，清理超过30天的旧版本（如希望找个温柔的人）",
     },
+    "partner_personality_preference": {
+        "decay_days": 90,
+        "decay_curve": "exponential",
+        "min_factor": 0.5,
+        "max_version_count": 10,
+        "cleanup_days": 30,
+        "description": "择偶中的性格偏好：如温和、细腻、有耐心、善沟通。",
+    },
+    "partner_relationship_pacing": {
+        "decay_days": 90,
+        "decay_curve": "exponential",
+        "min_factor": 0.5,
+        "max_version_count": 10,
+        "cleanup_days": 30,
+        "description": "择偶中的关系推进节奏：如慢热、不暧昧、节奏明确。",
+    },
+    "partner_lifestyle_preference": {
+        "decay_days": 90,
+        "decay_curve": "exponential",
+        "min_factor": 0.5,
+        "max_version_count": 10,
+        "cleanup_days": 30,
+        "description": "择偶中的生活方式偏好：如作息规律、工作稳定、排斥高压内卷。",
+    },
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 波动较大特征：情感需求（短期波动）
