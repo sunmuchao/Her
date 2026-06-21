@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>用户简明报告 #10015</title>
+  <style>
+    :root {
+      --bg: #f6f1e8;
+      --paper: #fffdf9;
+      --ink: #1f2937;
+      --muted: #6b7280;
+      --line: #e8dcc8;
+      --accent: #b45309;
+      --accent-soft: #fff1df;
+      --ok: #166534;
+      --warn: #92400e;
+      --bad: #991b1b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "PingFang SC", "Noto Sans SC", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top right, rgba(180, 83, 9, 0.10), transparent 22rem),
+        linear-gradient(180deg, #fbf7f0 0%, var(--bg) 100%);
+    }
+    .wrap {
+      width: min(1100px, calc(100vw - 24px));
+      margin: 24px auto 48px;
+      display: grid;
+      gap: 18px;
+    }
+    .panel {
+      background: rgba(255, 253, 249, 0.95);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 24px;
+      box-shadow: 0 18px 50px rgba(70, 45, 20, 0.08);
+    }
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: 34px; line-height: 1.1; }
+    h2 { font-size: 22px; margin-bottom: 12px; }
+    h3 { font-size: 16px; margin-bottom: 10px; }
+    p.sub {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 15px;
+    }
+    .grid {
+      display: grid;
+      gap: 14px;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      margin-top: 18px;
+    }
+    .stat, .card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 16px;
+    }
+    .stat .k {
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 8px;
+    }
+    .stat .v {
+      font-size: 28px;
+      font-weight: 700;
+    }
+    .two {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: 1fr 1fr;
+    }
+    .facts, .bullets, .timeline {
+      display: grid;
+      gap: 10px;
+    }
+    .fact, .bullet {
+      padding-bottom: 10px;
+      border-bottom: 1px dashed var(--line);
+    }
+    .fact:last-child, .bullet:last-child {
+      border-bottom: 0;
+      padding-bottom: 0;
+    }
+    .label {
+      display: inline-block;
+      min-width: 96px;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .chiprow {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .chip {
+      background: #f7efe3;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 12px;
+    }
+    .status-ok { color: var(--ok); }
+    .status-warn { color: var(--warn); }
+    .status-bad { color: var(--bad); }
+    .note {
+      background: var(--accent-soft);
+      border: 1px solid #f1cfab;
+      border-radius: 16px;
+      padding: 14px;
+      font-size: 14px;
+      color: #7c2d12;
+    }
+    .event {
+      border-left: 4px solid var(--accent);
+      background: linear-gradient(180deg, rgba(255, 241, 223, 0.55), rgba(255, 255, 255, 0.7));
+      border-radius: 14px;
+      padding: 14px 14px 14px 18px;
+    }
+    .time {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .title {
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+    .desc {
+      color: #334155;
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+    @media (max-width: 860px) {
+      .two { grid-template-columns: 1fr; }
+      .panel { padding: 18px; border-radius: 18px; }
+      h1 { font-size: 28px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="panel">
+      <h1>用户简明报告</h1>
+      <p class="sub">把原始审计报告翻译成人话，方便快速判断这个用户现在是什么情况、系统最近对他做了什么、哪里值得重点看。</p>
+      <div class="grid">
+        <div class="stat"><div class="k">用户 ID</div><div class="v">10015</div></div>
+        <div class="stat"><div class="k">最近状态</div><div class="v">持续筛人中</div></div>
+        <div class="stat"><div class="k">Discovery 会话</div><div class="v">20</div></div>
+        <div class="stat"><div class="k">聊天线程</div><div class="v">0</div></div>
+        <div class="stat"><div class="k">匹配案例</div><div class="v">0</div></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>先说结论</h2>
+      <div class="two">
+        <div class="card">
+          <h3>这个用户现在是什么状态</h3>
+          <div class="bullets">
+            <div class="bullet">这是一个资料比较完整、但认证很弱的男性用户，名字是孙木超，28 岁，人在无锡，职业写的是创始人，学历写的是博士。</div>
+            <div class="bullet">系统最近一直在给他找候选人，最近一次会话停在“结果已展示”阶段，说明系统已经给过他候选名单。</div>
+            <div class="bullet">目前还没有看到他进入真实聊天、撮合案例或关系链路，所以还处在“找人/看人”的前段。</div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>最值得注意的事</h3>
+          <div class="bullets">
+            <div class="bullet">他有很多个仍然是 <span class="status-warn">active</span> 的 discovery 会话，看起来像是多次重复试筛、会话没有收口，或者系统/测试环境留下的活跃痕迹。</div>
+            <div class="bullet">系统里没有读到账号登录信息、聊天关系、撮合案例，所以这个人更像“画像用户/业务测试用户”，而不是完整走完真实用户链路的人。</div>
+            <div class="bullet">关系总账那部分读取失败，说明跨系统链路还没有完全串起来，这份结论更多来自各个业务库拼接。</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>这个人是谁</h2>
+      <div class="two">
+        <div class="card">
+          <h3>基础资料</h3>
+          <div class="facts">
+            <div class="fact"><span class="label">姓名</span>孙木超</div>
+            <div class="fact"><span class="label">年龄</span>28 岁</div>
+            <div class="fact"><span class="label">城市</span>无锡</div>
+            <div class="fact"><span class="label">职业</span>创始人</div>
+            <div class="fact"><span class="label">学历</span>博士</div>
+            <div class="fact"><span class="label">收入填写</span>100-250 万</div>
+            <div class="fact"><span class="label">婚况</span>未婚</div>
+            <div class="fact"><span class="label">孩子情况</span>无孩子</div>
+            <div class="fact"><span class="label">恋爱目标</span>先谈恋爱</div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>他想找什么样的人</h3>
+          <div class="bullets">
+            <div class="bullet">偏好关键词是：<strong>外向、活泼</strong>。</div>
+            <div class="bullet">关系目标更偏“先谈恋爱”，不是一上来就强婚配。</div>
+            <div class="bullet">价值观上偏朴素务实，更看重人格魅力，而不是单纯看物质条件。</div>
+            <div class="bullet">情感需求是希望被陪伴，希望另一半能一起吃苦、一起扛事。</div>
+            <div class="bullet">明显不喜欢：性格内向、慢热、回避型依恋的人。</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>这个用户靠不靠谱</h2>
+      <div class="two">
+        <div class="card">
+          <h3>优点</h3>
+          <div class="bullets">
+            <div class="bullet status-ok">最近 30 天内活跃，说明不是完全沉默用户。</div>
+            <div class="bullet status-ok">基础资料填写相对完整，年龄、城市、学历、职业、收入、婚况都有。</div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>风险和保留意见</h3>
+          <div class="bullets">
+            <div class="bullet status-bad">没有照片认证，也没有身份认证。</div>
+            <div class="bullet status-warn">学历、职业、收入、婚况这些关键信息目前基本都是自填，没有单独核验。</div>
+            <div class="bullet status-warn">其中“收入 100-250 万”尤其要谨慎看待，原报告明确建议只作为参考。</div>
+          </div>
+          <div class="note" style="margin-top:12px">
+            原系统建议的动作是：先视频核验真人状态，再确认职业、学历、收入区间真假，在转站外或涉及金钱之前先完成平台内核验。
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>最近系统对他做了什么</h2>
+      <div class="timeline">
+        <div class="event">
+          <div class="time">2026-06-20 21:13:02</div>
+          <div class="title">系统又给他筛了一轮候选人，而且这次有结果</div>
+          <div class="desc">当次返回 5 个候选对象，说明在当前条件下系统还能筛到人。</div>
+        </div>
+        <div class="event">
+          <div class="time">2026-06-20 17:35:48</div>
+          <div class="title">有一次筛人结果为 0</div>
+          <div class="desc">说明当时条件更严格，或者候选池里刚好没人符合。之后系统又继续筛，并重新找到了结果。</div>
+        </div>
+        <div class="event">
+          <div class="time">2026-06-19 到 2026-06-20</div>
+          <div class="title">连续多次 active 会话、连续多次搜索</div>
+          <div class="desc">这说明他最近频繁在看人/试条件，或者系统侧做过较多重复触发。整体看更像“持续调条件反复筛”。</div>
+        </div>
+        <div class="event">
+          <div class="time">2026-06-18 12:54:30</div>
+          <div class="title">系统有过一次搜索失败</div>
+          <div class="desc">失败原因不是没候选人，而是代码报错：排序运行时对象缺少属性，属于系统实现问题，不是用户本身问题。</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>系统为什么一直在给他推人</h2>
+      <div class="two">
+        <div class="card">
+          <h3>业务上的理解</h3>
+          <div class="bullets">
+            <div class="bullet">他的人设和偏好相对明确，系统比较容易为他形成一套筛选条件。</div>
+            <div class="bullet">他最近明显在反复使用 discovery，所以系统会不断重新跑搜索。</div>
+            <div class="bullet">因为他还没有进入聊天或撮合阶段，系统当前主要职责就是继续给他找人，而不是推进关系。</div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>技术上的理解</h3>
+          <div class="bullets">
+            <div class="bullet">工具调用里最常见的是 `search_partner_candidates`，说明系统主流程几乎一直在做候选人检索。</div>
+            <div class="bullet">有几次 `sync_requester_persona_memory` 失败，但失败原因不是提取错误，而是测试环境里把这条能力硬禁用了。</div>
+            <div class="bullet">也就是说，系统其实尝试过把他的偏好写回 persona，只是当前环境不让真的落库更新。</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>这次最新给他推的人，大概是什么路子</h2>
+      <div class="two">
+        <div class="card">
+          <h3>候选人整体画像</h3>
+          <div class="bullets">
+            <div class="bullet">大多是无锡本地或周边的女性，年龄集中在 25-28 岁。</div>
+            <div class="bullet">职业和学历整体偏强，出现了产品经理、医生、翻译、银行职员等，学历多为硕士/博士。</div>
+            <div class="bullet">候选人几乎都带“活跃”“照片”“身份”这类更强的信任标识，比这个用户本人更像已完成基础认证的人。</div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>风格上是否贴近他的偏好</h3>
+          <div class="bullets">
+            <div class="bullet">有一部分候选人偏外向、表达更主动，和他“想找外向活泼型”的目标是对齐的。</div>
+            <div class="bullet">但也混入了一些偏稳重、偏内敛的人，说明系统当前还是“先保证有结果，再谈更细匹配”。</div>
+            <div class="bullet">从结果看，系统能找到人，但还没强到“筛出来就直接进关系”的程度。</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>运营/产品视角下，可以怎么理解这个用户</h2>
+      <div class="bullets">
+        <div class="bullet">这是一个<strong>资料强、认证弱、持续在试筛选条件</strong>的用户。</div>
+        <div class="bullet">他当前最大的瓶颈不是“完全没人可推”，而是<strong>还没从反复筛人走到真实互动</strong>。</div>
+        <div class="bullet">如果这是一个真实重点用户，下一步更应该做的是：推动认证、收敛会话、提升候选结果质量，而不是单纯继续增加搜索次数。</div>
+        <div class="bullet">如果这是一个测试/样板用户，那它主要暴露的是两个问题：<strong>会话收口不干净</strong>，以及<strong>搜索/画像同步链路在某些环境下仍有失败点</strong>。</div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>建议下一步看什么</h2>
+      <div class="chiprow">
+        <span class="chip">先确认他是不是测试用户</span>
+        <span class="chip">看为什么会有这么多 active discovery 会话</span>
+        <span class="chip">看是否要补账号层数据</span>
+        <span class="chip">推动照片/身份认证</span>
+        <span class="chip">检查 2026-06-18 那次搜索报错</span>
+        <span class="chip">确认 persona 同步禁用是不是预期</span>
+      </div>
+    </section>
+  </div>
+</body>
+</html>
