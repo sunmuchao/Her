@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from match_domain.retrieval_text_normalizer import (
     normalize_query_text,
     normalize_summary_text,
