@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>陈佳悦用户全景解读</title>
+  <style>
+    :root {
+      --bg: #f7f3ec;
+      --panel: rgba(255, 252, 247, 0.92);
+      --card: #fffdf9;
+      --ink: #24313f;
+      --muted: #6f7a86;
+      --line: #e8dfd1;
+      --accent: #b4532a;
+      --accent-soft: #f7dfd3;
+      --good: #1f7a5a;
+      --warn: #9a5b17;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(180, 83, 42, 0.14), transparent 24rem),
+        linear-gradient(180deg, #fbf8f2 0%, var(--bg) 100%);
+    }
+
+    .wrap {
+      width: min(1180px, calc(100vw - 28px));
+      margin: 24px auto 48px;
+      display: grid;
+      gap: 18px;
+    }
+
+    .hero, .section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 24px;
+      box-shadow: 0 22px 60px rgba(76, 54, 38, 0.08);
+      backdrop-filter: blur(10px);
+    }
+
+    .hero h1, .section h2 {
+      margin: 0;
+    }
+
+    .hero h1 {
+      font-size: 34px;
+      line-height: 1.1;
+      margin-bottom: 10px;
+    }
+
+    .hero p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .chips, .stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .chip, .stat {
+      border: 1px solid var(--line);
+      background: var(--card);
+      border-radius: 999px;
+      padding: 8px 12px;
+      font-size: 13px;
+    }
+
+    .stat strong {
+      color: var(--accent);
+      margin-right: 6px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 18px;
+      height: 100%;
+    }
+
+    .card h3 {
+      margin: 0 0 12px;
+      font-size: 17px;
+    }
+
+    .summary {
+      font-size: 18px;
+      line-height: 1.7;
+    }
+
+    .summary strong {
+      color: var(--accent);
+    }
+
+    .list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .item {
+      padding-bottom: 10px;
+      border-bottom: 1px dashed var(--line);
+      line-height: 1.65;
+    }
+
+    .item:last-child {
+      border-bottom: 0;
+      padding-bottom: 0;
+    }
+
+    .label {
+      color: var(--muted);
+      display: inline-block;
+      min-width: 88px;
+    }
+
+    .timeline {
+      display: grid;
+      gap: 12px;
+    }
+
+    .event {
+      border-left: 4px solid var(--accent);
+      background: linear-gradient(180deg, rgba(247, 223, 211, 0.55), rgba(255, 255, 255, 0.76));
+      border-radius: 14px;
+      padding: 14px 14px 14px 18px;
+    }
+
+    .time {
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 6px;
+    }
+
+    .title {
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .desc {
+      line-height: 1.6;
+    }
+
+    .good {
+      color: var(--good);
+      font-weight: 600;
+    }
+
+    .warn {
+      color: var(--warn);
+      font-weight: 600;
+    }
+
+    .note {
+      margin-top: 14px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: #fff4ee;
+      border: 1px solid #efc9b8;
+      color: #8d4f2a;
+      line-height: 1.6;
+    }
+
+    .small {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    @media (max-width: 900px) {
+      .grid-2, .grid-3 {
+        grid-template-columns: 1fr;
+      }
+
+      .hero, .section {
+        padding: 18px;
+        border-radius: 18px;
+      }
+
+      .hero h1 {
+        font-size: 28px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="hero">
+      <h1>陈佳悦用户全景解读</h1>
+      <p>这是一份把原始审计 Markdown 重新整理成“人能快速看懂”的版本。重点不是展示所有技术字段，而是回答四个问题：这个人是谁、现在处于什么状态、最近发生了什么、哪些地方值得重点关注。</p>
+      <div class="stats">
+        <div class="stat"><strong>用户ID</strong>6609</div>
+        <div class="stat"><strong>最近发现会话</strong>1 次</div>
+        <div class="stat"><strong>聊天线程</strong>4 条</div>
+        <div class="stat"><strong>匹配案例</strong>0 条</div>
+        <div class="stat"><strong>代理牵线</strong>0 条</div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>一句话总结</h2>
+      <div class="card summary">
+        这是一个 <strong>32 岁、无锡定居导向、职业是药师</strong> 的女性用户，资料完整度较高，且做过 <strong>线下核验</strong>。她当前仍处于平台撮合和聊天推进阶段，最近已经和一位对象进入活跃聊天，表达出的择偶倾向比较明确：<strong>希望对方性格温和、有责任感、工作稳定，并且有长期定居意向</strong>。
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>现在是什么状态</h2>
+      <div class="grid-3">
+        <div class="card">
+          <h3>用户身份</h3>
+          <div class="list">
+            <div class="item"><span class="label">姓名</span>陈佳悦</div>
+            <div class="item"><span class="label">年龄</span>32 岁</div>
+            <div class="item"><span class="label">城市</span>无锡</div>
+            <div class="item"><span class="label">职业</span>药师</div>
+            <div class="item"><span class="label">学历</span>本科</div>
+            <div class="item"><span class="label">婚恋目标</span>认真恋爱</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>当前业务状态</h3>
+          <div class="list">
+            <div class="item"><span class="label">Discovery</span>1 个会话，当前是 <strong>active</strong>，阶段为 <strong>results_shown</strong></div>
+            <div class="item"><span class="label">聊天状态</span>最近和用户 6737 的聊天线程仍然 <strong>active</strong></div>
+            <div class="item"><span class="label">匹配执行</span>暂未看到 matchmaking 正式案例</div>
+            <div class="item"><span class="label">推荐执行</span>暂未看到 recommendation 订阅或动作记录</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>资料可信度</h3>
+          <div class="list">
+            <div class="item"><span class="good">已线下核验</span> 身份、年龄、照片都做过核验</div>
+            <div class="item">照片数量 8 张，资料活跃度显示为 <strong>30 天内活跃</strong></div>
+            <div class="item"><span class="warn">仍需谨慎</span> 收入、学历、职业等信息仍主要来自用户自填</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>这个用户大概是什么样的人</h2>
+      <div class="grid-2">
+        <div class="card">
+          <h3>生活与性格画像</h3>
+          <div class="list">
+            <div class="item">生活习惯偏稳定，资料里写的是 <strong>爱逛菜场、喜欢做饭、不熬夜</strong>。</div>
+            <div class="item">沟通风格偏 <strong>情绪稳定</strong>，公开人格标签也偏向 <strong>温和、有责任感</strong>。</div>
+            <div class="item">价值观描述偏务实，强调 <strong>三观正、愿意共同经营生活</strong>。</div>
+            <div class="item">备注信息显示，她 <strong>有长期在无锡定居的打算</strong>，并且倾向认真相处。</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>择偶偏好</h3>
+          <div class="list">
+            <div class="item">最明确的择偶要求是：<strong>性格温和、有责任感、工作稳定、有定居意向</strong>。</div>
+            <div class="item">从 persona 摘要看，她并不是追求刺激型关系，而是明显偏向 <strong>稳定、长期、可落地的相处模式</strong>。</div>
+            <div class="item">她的生活态度关键词是：<strong>长期定居、追求稳定</strong>。</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>最近发生了什么</h2>
+      <div class="grid-2">
+        <div class="card">
+          <h3>Discovery 侧</h3>
+          <div class="timeline">
+            <div class="event">
+              <div class="time">2026-06-11 15:20:00</div>
+              <div class="title">进入结果展示阶段</div>
+              <div class="desc">系统给她展示了一批候选人，说明她已经完成了至少一轮基本偏好表达，进入“看人、筛人”的阶段。</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>聊天侧</h3>
+          <div class="timeline">
+            <div class="event">
+              <div class="time">2026-06-08 08:32:21 - 2026-06-08 23:58:21</div>
+              <div class="title">与用户 6737 的聊天持续活跃</div>
+              <div class="desc">两人聊天内容围绕婚姻观、生活方式、稳定感、婆媳关系、是否见面等话题，说明对话已经从寒暄进入相对认真了解阶段。</div>
+            </div>
+            <div class="event">
+              <div class="time">聊天中的关键信号</div>
+              <div class="title">她在主动推进关系</div>
+              <div class="desc">她主动说过“我们见面聊聊吧”，也会主动问对方理想生活、婚姻观和稳定感，这说明她不是纯被动型聊天，而是在认真判断是否适合继续发展。</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>聊天内容怎么理解</h2>
+      <div class="card">
+        <div class="list">
+          <div class="item">这段聊天不是简单打招呼，而是已经进入“价值观确认”阶段。双方讨论了婚姻、生活方式、稳定性、工作、见面等内容。</div>
+          <div class="item">陈佳悦主动提出“我们见面聊聊吧”，说明她并不排斥线下推进，至少对当前对象存在一定继续了解意愿。</div>
+          <div class="item">她的问题集中在“稳定不稳定”“理想生活是什么样”“怎么看待婚姻”，这和她在 persona 里表现出的长期定居、稳定导向是一致的。</div>
+          <div class="item">整体看，这个人的聊天目标比较明确，不像随便闲聊，更像在认真判断一个人是否适合长期关系。</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>平台为什么会这样处理她</h2>
+      <div class="grid-2">
+        <div class="card">
+          <h3>系统当前做法</h3>
+          <div class="list">
+            <div class="item">系统已经把她放进 discovery 结果展示流程，说明平台认为她当前适合继续接收候选人。</div>
+            <div class="item">同时，她已经和至少一位对象进入活跃聊天，说明平台不只是给她看资料，也已经帮她推进到了实际互动阶段。</div>
+            <div class="item">没有看到 matchmaking 正式案例，意味着这条关系链目前更像“展示+自然聊天”，而不是更重运营的撮合执行流。</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>为什么没看到更多系统链路</h3>
+          <div class="list">
+            <div class="item">当前报告里没有查到 relationship ledger 关系链，不代表这个用户没有行为，而是说明跨系统总账没有顺利串起来。</div>
+            <div class="item">因此，这份解读主要是根据 profile、discovery、chat 和 persona 这些库拼出来的，而不是从一条完整主链路自动还原出来的。</div>
+          </div>
+        </div>
+      </div>
+      <div class="note">
+        技术提醒：原始文档里明确提到 `ledger` 读取字段不兼容，所以“系统如何跨库串联事件”这一部分暂时不完整。
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>哪些地方值得关注</h2>
+      <div class="grid-2">
+        <div class="card">
+          <h3>正向信号</h3>
+          <div class="list">
+            <div class="item"><span class="good">可信度较高</span>：做过线下核验，照片和身份可信度比普通自填用户高。</div>
+            <div class="item"><span class="good">目标清晰</span>：对长期关系、定居和稳定生活有明确偏好，不是模糊状态。</div>
+            <div class="item"><span class="good">聊天推进意愿存在</span>：不是只回复“嗯嗯好的”，而是会主动问价值观，也愿意提见面。</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>需要留意的点</h3>
+          <div class="list">
+            <div class="item"><span class="warn">账号层数据缺失</span>：没有读到完整账号、登录、手机号绑定信息，所以更像“画像用户”而不是完整 C 端账号视角。</div>
+            <div class="item"><span class="warn">收入仍是自填</span>：虽然整体可信度高，但收入、职业、学历仍建议进一步确认。</div>
+            <div class="item"><span class="warn">链路不完整</span>：relationship ledger 没串起来，后续如果要做运营判断，最好补上跨系统事件链。</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>给运营/分析同学的直接结论</h2>
+      <div class="card">
+        <div class="list">
+          <div class="item">这是一个 <strong>相对优质且偏稳定型</strong> 的女性用户，资料可信度高于普通自填用户。</div>
+          <div class="item">她的关系目标很明确，不是随便聊聊型，更适合匹配同样以长期关系为导向、愿意稳定发展的对象。</div>
+          <div class="item">她最近和 6737 的聊天已经进入认真了解阶段，如果要做运营介入，这条线程最值得优先关注。</div>
+          <div class="item">如果后续要进一步判断她的撮合质量，建议补看：这条聊天后是否见面、是否继续活跃、以及对方是否也表现出相似的长期关系导向。</div>
+        </div>
+        <div class="note">
+          这份页面是基于 [`user-audit-report-6609.md`](/Users/sunmuchao/Downloads/Her/artifacts/user-audit-report-6609.md) 重新整理的可读版，不等于数据库全量原始视图。
+        </div>
+      </div>
+    </section>
+  </div>
+</body>
+</html>
