@@ -74,6 +74,7 @@ def plan_changes(rows: list[dict]) -> tuple[list[dict], list[dict]]:
 
         normalized = normalize_summary_text(key, text)
         normalized_text = normalized.normalized_text
+        retrieval_text = normalized.retrieval_text
         quality = validate_summary_text(key, normalized_text)
 
         if quality != "valid":
@@ -87,11 +88,12 @@ def plan_changes(rows: list[dict]) -> tuple[list[dict], list[dict]]:
             )
             continue
 
-        if normalized_text != text:
+        if retrieval_text != text:
             rewrites.append(
                 {
                     **row,
                     "normalized_text": normalized_text,
+                    "retrieval_text": retrieval_text,
                     "applied_rules": normalized.applied_rules,
                 }
             )
@@ -113,7 +115,7 @@ def apply_changes(dsn: str, rewrites: list[dict]) -> int:
                     SET summary_text = %s, vector_status = 'pending', updated_at = NOW()
                     WHERE summary_id = %s
                     """,
-                    (row["normalized_text"], row["summary_id"]),
+                    (row["retrieval_text"], row["summary_id"]),
                 )
         conn.commit()
         return len(rewrites)
@@ -146,7 +148,7 @@ def main() -> int:
         print(
             f"rewrite summary_id={row['summary_id']} requester_id={row['requester_id']} "
             f"key={row['summary_key']} old={row['summary_text'][:80]} "
-            f"new={row['normalized_text'][:80]} rules={row['applied_rules']}"
+            f"new={row['retrieval_text'][:80]} rules={row['applied_rules']}"
         )
 
     for row in invalid_after_normalization[:10]:
