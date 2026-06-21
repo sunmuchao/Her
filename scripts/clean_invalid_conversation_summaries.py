@@ -28,6 +28,7 @@ except ImportError:
 
 from match_domain.session_end_processor import (
     STRUCTURED_QUANTIFIABLE_FIELDS,
+    split_structured_conditions_from_summaries,
     validate_summary_text,
 )
 from persona_memory_sync.persona_memory_lib import (
@@ -72,7 +73,15 @@ def classify_row(row: dict) -> str | None:
     if key in STRUCTURED_QUANTIFIABLE_FIELDS:
         return "structured_field_in_summary"
 
-    quality = validate_summary_text(key, text)
+    supported_patch, unsupported_patch, cleaned_summary = split_structured_conditions_from_summaries({
+        key: text,
+    })
+    cleaned_text = str(cleaned_summary.get(key) or "").strip()
+    if supported_patch or unsupported_patch:
+        if cleaned_text != text:
+            return "structured_conditions_embedded_in_summary"
+
+    quality = validate_summary_text(key, cleaned_text or text)
     if quality != "valid":
         return f"summary_quality_{quality}"
 

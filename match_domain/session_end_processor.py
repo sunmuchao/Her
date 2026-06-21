@@ -212,6 +212,27 @@ GENDER_MARKERS = {
     "女生": "female",
     "女方": "female",
 }
+GENDER_MARKER_ORDER = tuple(sorted(GENDER_MARKERS.keys(), key=len, reverse=True))
+
+KNOWN_TARGET_CITIES = frozenset({
+    "北京",
+    "上海",
+    "广州",
+    "深圳",
+    "杭州",
+    "苏州",
+    "无锡",
+    "南京",
+    "宁波",
+    "南通",
+    "常州",
+    "湖州",
+    "扬州",
+    "镇江",
+    "嘉兴",
+    "绍兴",
+    "合肥",
+})
 
 
 @dataclass
@@ -1378,23 +1399,21 @@ def _extract_income_range(text: str) -> tuple[int | None, int | None]:
 
 def _extract_cities(text: str) -> list[str]:
     cities: list[str] = []
+    for matched in re.findall(r"在(北京|上海|广州|深圳|杭州|苏州|无锡|南京|宁波|南通|常州|湖州|扬州|镇江|嘉兴|绍兴|合肥)", text):
+        cities.append(matched)
     for segment in re.split(r"[/、，,]", text):
         matched = str(segment or "").strip()
         if not matched:
             continue
+        matched = re.sub(r"^(在|找|寻)", "", matched).strip()
         if matched.endswith("岁") or matched in {"身高", "希望对方", "希望", "不接受", "未婚"}:
             continue
         if len(matched) > 4:
             continue
         if any(token in matched for token in ("真诚", "责任", "温和", "有孩", "结婚", "情绪", "沟通", "稳定")):
             continue
-        if matched.endswith(("市", "州", "京", "海", "锡", "波", "通")) or matched in {
-            "上海", "苏州", "无锡", "南京", "杭州", "宁波", "南通", "湖州", "常州", "北京"
-        }:
+        if matched in KNOWN_TARGET_CITIES or matched.endswith("市"):
             cities.append(matched)
-    if "在" in text:
-        trailing = re.findall(r"在([一-龥]{2,6})", text)
-        cities.extend(trailing)
     return cities
 
 
@@ -1411,11 +1430,13 @@ def extract_structured_conditions_from_summary(field_name: str, text: str) -> St
     if not normalized_text:
         return result
 
-    for marker, gender_code in GENDER_MARKERS.items():
-        if marker in normalized_text:
-            result.unsupported_patch["target_gender"] = gender_code
-            normalized_text = normalized_text.replace(marker, "")
-            break
+    if field_name == "partner_expectation":
+        for marker in GENDER_MARKER_ORDER:
+            if marker in normalized_text:
+                gender_code = GENDER_MARKERS[marker]
+                result.unsupported_patch["target_gender"] = gender_code
+                normalized_text = re.sub(re.escape(marker), "", normalized_text, count=1)
+                break
 
     age_min, age_max = _extract_age_range(normalized_text)
     if age_min is not None and age_max is not None:
@@ -1441,6 +1462,7 @@ def extract_structured_conditions_from_summary(field_name: str, text: str) -> St
         result.supported_patch["target_cities"] = _normalize_city_csv(cities)
         for city in cities:
             normalized_text = normalized_text.replace(city, "")
+        normalized_text = normalized_text.replace("在", "")
 
     education = _extract_education(normalized_text)
     if education:
@@ -1465,6 +1487,8 @@ def extract_structured_conditions_from_summary(field_name: str, text: str) -> St
         normalized_text = normalized_text.replace(timeline_match.group(1), "")
 
     cleaned = re.sub(r"[，,、/；;]+", "，", normalized_text)
+    cleaned = re.sub(r"^希望找", "", cleaned)
+    cleaned = re.sub(r"^希望对方", "希望对方", cleaned)
     cleaned = re.sub(r"\s+", "", cleaned).strip("，。 ")
     result.cleaned_text = cleaned
     return result
