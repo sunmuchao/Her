@@ -31,6 +31,13 @@ repo_root = Path(__file__).resolve().parents[1]
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(repo_root / ".env")
+except ImportError:
+    pass
+
 # 设置日志格式
 logging.basicConfig(
     level=logging.INFO,
