@@ -19,10 +19,134 @@ import json
 import logging
 import os
 import threading
+import re
 from datetime import datetime
 from typing import Any
 
 _logger = logging.getLogger(__name__)
+
+
+SUMMARY_FIELD_KEYS = frozenset({
+    "personality_traits",
+    "values",
+    "partner_expectation",
+    "life_attitude",
+    "emotional_needs",
+    "negative_preferences",
+})
+
+STRUCTURED_QUANTIFIABLE_FIELDS = frozenset({
+    "age",
+    "age_min",
+    "age_max",
+    "height",
+    "height_min",
+    "height_max",
+    "mbti_type",
+    "personality_type",
+    "marital_status",
+    "has_children",
+    "children_count",
+    "children_living_with_self",
+    "smoking",
+    "drinking",
+    "city",
+    "cities",
+    "education",
+    "income",
+    "income_min",
+    "income_max",
+    "gender",
+    "relationship_goal",
+})
+
+ABSTRACT_SUMMARY_TERMS = (
+    "合拍",
+    "真诚",
+    "稳定",
+    "靠谱",
+    "成熟",
+    "三观一致",
+    "共同话题",
+    "被理解",
+    "情绪价值",
+    "舒服",
+    "合适",
+    "有感觉",
+    "好相处",
+    "安全感",
+)
+
+GENERIC_SUMMARY_PATTERNS = (
+    re.compile(r"^希望.*合拍$"),
+    re.compile(r"^希望.*真诚.*沟通$"),
+    re.compile(r"^需要.*稳定.*关系$"),
+    re.compile(r"^需要.*安全感$"),
+    re.compile(r"^希望.*共同话题$"),
+    re.compile(r"^希望.*被理解$"),
+    re.compile(r"^需要.*情绪价值$"),
+)
+
+COMMON_CONCRETE_SIGNALS = (
+    "情绪稳定",
+    "温和",
+    "不强势",
+    "慢热",
+    "主动表达",
+    "边界感",
+    "愿意沟通",
+    "有事直说",
+    "不冷处理",
+    "会回应",
+    "不敷衍",
+    "认真推进",
+    "不暧昧",
+    "长期投入",
+    "关系明确",
+    "工作别太忙",
+    "别太卷",
+    "生活规律",
+    "作息规律",
+    "下班后有时间",
+    "同城",
+    "异地",
+    "婚史",
+    "孩子",
+    "消费观",
+    "行业",
+    "职业稳定",
+    "互联网行业",
+)
+
+FIELD_SPECIFIC_SIGNALS: dict[str, tuple[str, ...]] = {
+    "partner_expectation": COMMON_CONCRETE_SIGNALS + (
+        "年龄",
+        "未婚",
+        "半年内结婚",
+        "结婚导向",
+        "沟通",
+        "陪伴",
+    ),
+    "emotional_needs": (
+        "回应",
+        "陪伴",
+        "沟通",
+        "不冷处理",
+        "有时间",
+        "正面沟通",
+        "关系明确",
+    ),
+    "life_attitude": (
+        "作息规律",
+        "生活规律",
+        "稳定",
+        "别太卷",
+        "低消耗",
+        "安静",
+        "做饭",
+        "秩序",
+    ),
+}
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -142,28 +266,40 @@ async def process_session_end(
 
         # Step 5：处理不可量化字段：写入摘要表+向量库
         if non_quantifiable_data:
-            # 存储摘要文本到数据库
-            saved_keys = await save_session_summary_text(
-                session_id=session_id,
-                requester_id=requester_id,
-                profile_id=profile_id,
-                conversation_type=conversation_type,
-                summary_data=non_quantifiable_data,  # 只写不可量化字段
-                dsn=dsn,
-            )
-            _logger.info(f"不可量化字段摘要存储成功: saved_keys={saved_keys}")
+            valid_summary_data, rejected_summary_quality = filter_valid_summary_data(non_quantifiable_data)
+            if rejected_summary_quality:
+                _logger.info(
+                    f"摘要质检拒绝字段: "
+                    f"{', '.join(f'{k}={v}' for k, v in rejected_summary_quality.items())}"
+                )
 
-            # 向量化存储
-            if vectorize_summaries:
-                vectorized_keys = await save_vectors_for_summary(
+            if not valid_summary_data:
+                saved_keys = []
+                vectorized_keys = []
+                _logger.info("不可量化字段全部被摘要质检拦截，跳过摘要表和向量库写入")
+            else:
+                # 存储摘要文本到数据库
+                saved_keys = await save_session_summary_text(
                     session_id=session_id,
                     requester_id=requester_id,
-                    summary_data=non_quantifiable_data,  # 只向量化不可量化字段
+                    profile_id=profile_id,
+                    conversation_type=conversation_type,
+                    summary_data=valid_summary_data,
+                    dsn=dsn,
                 )
-                _logger.info(f"不可量化字段向量化存储成功: vectorized_keys={vectorized_keys}")
-            else:
-                vectorized_keys = []
-                _logger.info("已跳过不可量化字段向量化存储")
+                _logger.info(f"不可量化字段摘要存储成功: saved_keys={saved_keys}")
+
+                # 向量化存储
+                if vectorize_summaries:
+                    vectorized_keys = await save_vectors_for_summary(
+                        session_id=session_id,
+                        requester_id=requester_id,
+                        summary_data=valid_summary_data,
+                    )
+                    _logger.info(f"不可量化字段向量化存储成功: vectorized_keys={vectorized_keys}")
+                else:
+                    vectorized_keys = []
+                    _logger.info("已跳过不可量化字段向量化存储")
         else:
             saved_keys = []
             vectorized_keys = []
@@ -422,12 +558,18 @@ def _build_summary_prompt(formatted_messages: str) -> str:
 
 ⚠️ 重要规则：
 - 如果该维度用户没有提及，输出空字符串 ""（不要猜测）
-- 如果用户明确表达了，使用简洁、客观的语言
+- 如果用户明确表达了，使用简洁、客观、具体的语言
 - 每个字段长度不超过 50 字
 - 不要添加对话中没有的信息
 - 可量化字段必须是用户明确表达的（不要猜测）
 - 正面特征：提炼用户表达"喜欢"、"希望"、"想要"的特质
 - 负面特征：提炼用户表达"不喜欢"、"不要"、"不希望"的特质（客观提炼，不要回避）
+- 摘要会进入向量库用于匹配召回，必须保留具体偏好，不要写泛泛结论
+- 不要输出“性格合拍”“真诚沟通”“稳定关系”“有共同话题”“被理解”“情绪价值”这种空话，除非后面紧跟具体展开
+- 如果只能总结出空泛词，没有具体条件、行为、节奏或限制，请输出空字符串 ""
+- partner_expectation 必须优先保留具体对象特征、现实条件、关系推进节奏、工作生活节奏、城市/距离限制
+- emotional_needs 必须写具体需要，比如“有回应”“不冷处理”“下班后有时间陪伴”，不要只写“需要安全感”
+- life_attitude 必须写具体生活方式，比如“生活规律”“不喜欢太卷”“作息稳定”，不要只写“热爱生活”
 
 输出格式（JSON）：
 {{
@@ -569,6 +711,24 @@ async def save_session_summary_text(
         _logger.warning("没有配置数据库连接，无法存储摘要")
         return []
 
+    filtered_summary_data: dict[str, str] = {}
+    skipped_invalid_keys: list[str] = []
+    for summary_key, summary_text in summary_data.items():
+        quality = validate_summary_text(summary_key, summary_text)
+        if quality != "valid":
+            skipped_invalid_keys.append(summary_key)
+            _logger.info(
+                f"摘要质检未通过，跳过写入: key={summary_key}, quality={quality}, text={summary_text}"
+            )
+            continue
+        filtered_summary_data[summary_key] = summary_text
+
+    if skipped_invalid_keys:
+        _logger.info(f"摘要质检跳过字段: {skipped_invalid_keys}")
+
+    if not filtered_summary_data:
+        return []
+
     def _save_sync() -> list[str]:
         from external_systems.partner_discovery_system.discovery_system.storage import connect_db
 
@@ -576,7 +736,7 @@ async def save_session_summary_text(
         try:
             saved_keys: list[str] = []
 
-            for summary_key, summary_text in summary_data.items():
+            for summary_key, summary_text in filtered_summary_data.items():
                 if not str(summary_text or "").strip():
                     continue
 
@@ -1034,23 +1194,6 @@ def split_by_quantifiability(summary_data: dict[str, str]) -> tuple[dict[str, st
             personality_traits: "性格温柔"
         }
     """
-    # 导入可量化字段白名单
-    try:
-        from match_domain.profile_write_guard import QUANTIFIABLE_FIELDS
-    except ImportError:
-        # 如果导入失败，定义一个基本的白名单
-        QUANTIFIABLE_FIELDS = frozenset({
-            "age", "age_min", "age_max",
-            "height", "height_min", "height_max",
-            "mbti_type", "personality_type",
-            "marital_status", "has_children",
-            "smoking", "drinking",
-            "city", "cities",
-            "education",
-            "income", "income_min", "income_max",
-            "gender",
-        })
-
     quantifiable_data: dict[str, str] = {}
     non_quantifiable_data: dict[str, str] = {}
 
@@ -1058,11 +1201,15 @@ def split_by_quantifiability(summary_data: dict[str, str]) -> tuple[dict[str, st
         if not str(value or "").strip():
             continue
 
-        # 判断是否可量化
-        if key in QUANTIFIABLE_FIELDS:
+        if key in SUMMARY_FIELD_KEYS:
+            non_quantifiable_data[key] = value
+            continue
+
+        if key in STRUCTURED_QUANTIFIABLE_FIELDS:
             quantifiable_data[key] = value
         else:
-            non_quantifiable_data[key] = value
+            # 兜底策略：未知字段默认不进入摘要表，避免脏数据污染 conversation_summaries
+            quantifiable_data[key] = value
 
     _logger.info(
         f"分流完成: quantifiable_fields={list(quantifiable_data.keys())}, "
@@ -1070,6 +1217,122 @@ def split_by_quantifiability(summary_data: dict[str, str]) -> tuple[dict[str, st
     )
 
     return quantifiable_data, non_quantifiable_data
+
+
+def _contains_any_marker(text: str, markers: tuple[str, ...]) -> bool:
+    return any(marker in text for marker in markers)
+
+
+def validate_summary_text(field_name: str, text: str) -> str:
+    """校验摘要文本质量。
+
+    返回：
+    - valid: 可以写入 conversation_summaries / 向量库
+    - weak: 信息量不足，默认不写入
+    - invalid: 明确禁止写入
+    """
+    normalized_field = str(field_name or "").strip()
+    normalized_text = str(text or "").strip()
+    if not normalized_text:
+        return "invalid"
+
+    if normalized_field in STRUCTURED_QUANTIFIABLE_FIELDS:
+        return "invalid"
+
+    if normalized_field not in SUMMARY_FIELD_KEYS:
+        return "invalid"
+
+    if any(pattern.match(normalized_text) for pattern in GENERIC_SUMMARY_PATTERNS):
+        return "invalid"
+
+    has_abstract = _contains_any_marker(normalized_text, ABSTRACT_SUMMARY_TERMS)
+    common_concrete = _contains_any_marker(normalized_text, COMMON_CONCRETE_SIGNALS)
+    field_specific_concrete = _contains_any_marker(
+        normalized_text,
+        FIELD_SPECIFIC_SIGNALS.get(normalized_field, ()),
+    )
+    has_concrete = common_concrete or field_specific_concrete
+
+    if has_abstract and not has_concrete:
+        return "invalid"
+
+    if not has_concrete:
+        return "weak"
+
+    return "valid"
+
+
+def filter_valid_summary_data(summary_data: dict[str, str]) -> tuple[dict[str, str], dict[str, str]]:
+    """过滤并返回可落库摘要，以及被跳过字段的质量结果。"""
+    filtered: dict[str, str] = {}
+    rejected: dict[str, str] = {}
+    for summary_key, summary_text in summary_data.items():
+        quality = validate_summary_text(summary_key, summary_text)
+        if quality == "valid":
+            filtered[summary_key] = summary_text
+        else:
+            rejected[summary_key] = quality
+    return filtered, rejected
+
+
+def normalize_quantifiable_patch(quantifiable_data: dict[str, str]) -> dict[str, Any]:
+    """把会话提炼出的结构化字段映射到 persona/profile 可接受字段。"""
+    normalized: dict[str, Any] = {}
+
+    mbti_type = str(quantifiable_data.get("mbti_type") or "").strip().upper()
+    if mbti_type:
+        normalized["self_personality_traits_json"] = json.dumps(
+            {"mbti": {"type_code": mbti_type}},
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+
+    city = str(quantifiable_data.get("city") or "").strip()
+    if city:
+        normalized["self_city"] = city
+
+    education = str(quantifiable_data.get("education") or "").strip()
+    if education:
+        normalized["self_education"] = education
+
+    marital_status = str(quantifiable_data.get("marital_status") or "").strip()
+    if marital_status:
+        normalized["self_marital_status"] = marital_status
+
+    has_children = str(quantifiable_data.get("has_children") or "").strip()
+    if has_children:
+        if any(marker in has_children for marker in ("没有", "未育", "无")):
+            normalized["self_has_children"] = 0
+        elif any(marker in has_children for marker in ("有", "已育", "孩子")):
+            normalized["self_has_children"] = 1
+
+    smoking = str(quantifiable_data.get("smoking") or "").strip()
+    if smoking:
+        normalized["self_smoking"] = smoking
+
+    drinking = str(quantifiable_data.get("drinking") or "").strip()
+    if drinking:
+        normalized["self_drinking"] = drinking
+
+    relationship_goal = str(quantifiable_data.get("relationship_goal") or "").strip()
+    if relationship_goal:
+        normalized["self_relationship_goal"] = relationship_goal
+
+    age_value = str(quantifiable_data.get("age") or "").strip()
+    if age_value.isdigit():
+        normalized["self_age"] = int(age_value)
+
+    height_value = str(quantifiable_data.get("height") or "").strip()
+    if height_value.isdigit():
+        normalized["self_height"] = int(height_value)
+
+    income_value = str(quantifiable_data.get("income") or "").strip()
+    if income_value:
+        match = re.search(r"(\d+)", income_value)
+        if match:
+            normalized["self_income_wan"] = int(match.group(1))
+
+    return normalized
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1116,6 +1379,18 @@ async def save_quantifiable_to_persona_tables(
         _logger.warning("没有配置数据库连接，无法写入画像")
         return {"success": False, "error": "dsn_not_configured"}
 
+    normalized_patch = normalize_quantifiable_patch(quantifiable_data)
+    if not normalized_patch:
+        _logger.info("没有可映射的结构化字段可写入 persona/profile")
+        return {
+            "success": True,
+            "user_key": user_key,
+            "applied_fields": [],
+            "skipped_fields": [],
+            "synced_profile": False,
+            "message": "no_mappable_quantifiable_fields",
+        }
+
     def _save_sync() -> dict[str, Any]:
         """同步写入画像表"""
         try:
@@ -1126,14 +1401,14 @@ async def save_quantifiable_to_persona_tables(
             result = apply_persona_patch(
                 source=resolved_dsn,
                 user_key=user_key,
-                source_type="strong_inference",  # 会结束后的推断
+                source_type="explicit_confirmation",
                 source_channel="discovery_session_end",  # 来源标识
-                normalized_patch=quantifiable_data,  # 只写可量化字段
+                normalized_patch=normalized_patch,
                 confidence_score=85,  # 会结束后LLM提炼的置信度
                 evidence_text=evidence_text,
                 conversation_ref=session_id,  # 溯源ID
-                apply_scope="persona_only",  # ❌ 只写画像表，不写profiles
-                sync_profile=False,  # ❌ 不同步到 profiles 表
+                apply_scope="persona_and_profile",
+                sync_profile=True,
             )
 
             _logger.info(
@@ -1146,7 +1421,7 @@ async def save_quantifiable_to_persona_tables(
                 "user_key": user_key,
                 "applied_fields": result.get("applied_fields", []),
                 "skipped_fields": result.get("skipped_fields", []),
-                "synced_profile": False,  # ❌ 不同步到 profiles
+                "synced_profile": True,
             }
 
         except Exception as exc:
