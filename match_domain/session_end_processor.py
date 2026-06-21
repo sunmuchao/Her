@@ -162,6 +162,25 @@ FIELD_SPECIFIC_SIGNALS: dict[str, tuple[str, ...]] = {
     ),
 }
 
+VALID_MBTI_TYPES = frozenset({
+    "INTJ",
+    "INTP",
+    "ENTJ",
+    "ENTP",
+    "INFJ",
+    "INFP",
+    "ENFJ",
+    "ENFP",
+    "ISTJ",
+    "ISFJ",
+    "ESTJ",
+    "ESFJ",
+    "ISTP",
+    "ISFP",
+    "ESTP",
+    "ESFP",
+})
+
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 核心函数：会话结束处理流程
@@ -1300,7 +1319,7 @@ def normalize_quantifiable_patch(quantifiable_data: dict[str, str]) -> dict[str,
     normalized: dict[str, Any] = {}
 
     mbti_type = str(quantifiable_data.get("mbti_type") or "").strip().upper()
-    if mbti_type:
+    if mbti_type in VALID_MBTI_TYPES:
         normalized["self_personality_traits_json"] = json.dumps(
             {"mbti": {"type_code": mbti_type}},
             ensure_ascii=False,
