@@ -71,6 +71,7 @@ class NormalizedText:
     original_text: str
     normalized_text: str
     applied_rules: list[str]
+    retrieval_text: str
 
 
 @dataclass(frozen=True)
@@ -79,6 +80,17 @@ class NormalizedQuery:
     normalized_text: str
     applied_rules: list[str]
     route_vector_types: list[str]
+    retrieval_text: str
+
+
+RETRIEVAL_EXPANSION_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("目标感强", ("目标感强", "成长驱动强", "做事积极", "有责任感")),
+    ("关系推进明确", ("关系推进明确", "不暧昧", "持续投入关系", "节奏明确")),
+    ("温和", ("温和", "细腻", "有耐心")),
+    ("善沟通", ("善沟通", "愿意沟通", "不冷处理")),
+    ("作息规律", ("作息规律", "生活稳定", "有计划有条理")),
+    ("排斥高压内卷", ("排斥高压内卷", "工作生活平衡", "不喜欢太卷")),
+)
 
 
 def _dedupe_segments(text: str) -> str:
@@ -105,10 +117,12 @@ def normalize_summary_text(field_name: str, text: str) -> NormalizedText:
             applied_rules.append(f"{source}->{target}")
 
     normalized = _dedupe_segments(normalized)
+    retrieval_text = build_retrieval_text(normalized)
     return NormalizedText(
         original_text=str(text or "").strip(),
         normalized_text=normalized,
         applied_rules=applied_rules,
+        retrieval_text=retrieval_text,
     )
 
 
@@ -152,17 +166,39 @@ def normalize_query_text(text: str) -> NormalizedQuery:
             applied_rules.append(f"{source}->{target}")
 
     normalized = _dedupe_segments(normalized)
+    retrieval_text = build_retrieval_text(normalized)
     return NormalizedQuery(
         original_text=str(text or "").strip(),
         normalized_text=normalized,
         applied_rules=applied_rules,
         route_vector_types=route_query_vector_types(normalized),
+        retrieval_text=retrieval_text,
     )
+
+
+def build_retrieval_text(text: str) -> str:
+    base_segments = [segment.strip() for segment in re.split(r"[，,、；;]+", str(text or "").strip()) if segment.strip()]
+    expanded_segments: list[str] = list(base_segments)
+
+    for marker, expansions in RETRIEVAL_EXPANSION_RULES:
+        if marker in text:
+            expanded_segments.extend(expansions)
+
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for segment in expanded_segments:
+        cleaned = str(segment or "").strip()
+        if not cleaned or cleaned in seen:
+            continue
+        seen.add(cleaned)
+        ordered.append(cleaned)
+    return "，".join(ordered)
 
 
 __all__ = [
     "NormalizedQuery",
     "NormalizedText",
+    "build_retrieval_text",
     "normalize_query_text",
     "normalize_summary_text",
     "route_query_vector_types",
