@@ -129,3 +129,15 @@ def test_split_partner_expectation_facets() -> None:
     assert result["partner_personality_preference"] == "温和，细腻，有耐心"
     assert result["partner_relationship_pacing"] == "慢热，关系推进明确"
     assert result["partner_lifestyle_preference"] == "作息规律，工作稳定"
+
+
+def test_split_partner_expectation_facets_captures_old_lifestyle_and_pacing_phrases() -> None:
+    result = split_partner_expectation_facets(
+        {
+            "partner_expectation": "真诚，慢热，希望关系稳定推进，工作别太忙，下班后有时间陪伴，向往规律稳定的生活节奏",
+        }
+    )
+
+    assert result["partner_personality_preference"] == "真诚"
+    assert result["partner_relationship_pacing"] == "慢热，希望关系稳定推进"
+    assert result["partner_lifestyle_preference"] == "工作别太忙，下班后有时间陪伴，向往规律稳定的生活节奏"

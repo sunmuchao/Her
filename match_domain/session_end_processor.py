@@ -1683,13 +1683,73 @@ def split_partner_expectation_facets(summary_data: dict[str, str]) -> dict[str, 
     lifestyle_segments: list[str] = []
 
     for segment in segments:
-        if any(token in segment for token in ("慢热", "关系推进明确", "不暧昧", "持续投入关系", "节奏明确", "认真推进", "稳定出现", "承诺清楚")):
+        if any(
+            token in segment
+            for token in (
+                "慢热",
+                "关系推进明确",
+                "不暧昧",
+                "持续投入关系",
+                "节奏明确",
+                "认真推进",
+                "稳定出现",
+                "承诺清楚",
+                "奔着恋爱去",
+                "奔着结婚去",
+                "不喜欢暧昧",
+                "不接受暧昧",
+                "稳定推进",
+                "推进明确",
+                "愿意投入关系",
+            )
+        ):
             pacing_segments.append(segment)
             continue
-        if any(token in segment for token in ("作息规律", "生活稳定", "工作稳定", "排斥高压内卷", "工作生活平衡", "有计划有条理", "定居意向", "顾家")):
+        if any(
+            token in segment
+            for token in (
+                "作息规律",
+                "生活稳定",
+                "工作稳定",
+                "排斥高压内卷",
+                "工作生活平衡",
+                "有计划有条理",
+                "定居意向",
+                "顾家",
+                "生活规律",
+                "别太卷",
+                "不要太卷",
+                "太忙太卷",
+                "工作别太忙",
+                "下班后有时间",
+                "有时间陪伴",
+                "稳定的生活节奏",
+                "向往规律",
+                "规律",
+            )
+        ):
             lifestyle_segments.append(segment)
             continue
-        if any(token in segment for token in ("温和", "细腻", "有耐心", "善沟通", "情绪稳定", "独立", "边界感", "有主见", "目标感强", "成长驱动强", "有责任感")):
+        if any(
+            token in segment
+            for token in (
+                "温和",
+                "细腻",
+                "有耐心",
+                "善沟通",
+                "情绪稳定",
+                "独立",
+                "边界感",
+                "有主见",
+                "目标感强",
+                "成长驱动强",
+                "有责任感",
+                "真诚",
+                "务实",
+                "乐观",
+                "开朗",
+            )
+        ):
             personality_segments.append(segment)
             continue
 
