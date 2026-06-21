@@ -27,6 +27,7 @@ from typing import Any
 _logger = logging.getLogger(__name__)
 
 from match_domain.collected_profile import COLLECTED_PERSONA_FIELDS
+from match_domain.retrieval_text_normalizer import normalize_summary_text
 
 
 SUMMARY_FIELD_KEYS = frozenset({
@@ -1632,15 +1633,17 @@ def filter_valid_summary_data(summary_data: dict[str, str]) -> tuple[dict[str, s
     filtered: dict[str, str] = {}
     rejected: dict[str, str] = {}
     for summary_key, summary_text in summary_data.items():
-        if _has_structured_residue(summary_text):
+        normalized = normalize_summary_text(summary_key, summary_text)
+        normalized_text = normalized.normalized_text
+        if _has_structured_residue(normalized_text):
             rejected[summary_key] = "invalid"
             continue
-        if _has_self_plan_residue(summary_text):
+        if _has_self_plan_residue(normalized_text):
             rejected[summary_key] = "invalid"
             continue
-        quality = validate_summary_text(summary_key, summary_text)
+        quality = validate_summary_text(summary_key, normalized_text)
         if quality == "valid":
-            filtered[summary_key] = summary_text
+            filtered[summary_key] = normalized_text
         else:
             rejected[summary_key] = quality
     return filtered, rejected
