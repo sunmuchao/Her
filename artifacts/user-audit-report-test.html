@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>用户全景审计报告 #1</title>
+  <style>
+    :root {
+      --bg: #f4efe7;
+      --paper: #fffdf8;
+      --ink: #1f2933;
+      --muted: #6b7280;
+      --line: #e7dccb;
+      --accent: #a64b2a;
+      --accent-soft: #f4d6c8;
+      --chip: #f6efe4;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(166,75,42,.10), transparent 24rem),
+        linear-gradient(180deg, #f9f5ee 0%, var(--bg) 100%);
+      color: var(--ink);
+    }
+    .wrap {
+      width: min(1280px, calc(100vw - 32px));
+      margin: 24px auto 64px;
+    }
+    .hero, .section {
+      background: rgba(255,253,248,.92);
+      backdrop-filter: blur(10px);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 24px;
+      box-shadow: 0 20px 60px rgba(80,55,35,.08);
+    }
+    .hero {
+      margin-bottom: 20px;
+    }
+    .hero h1 {
+      margin: 0 0 8px;
+      font-size: 34px;
+      line-height: 1.1;
+    }
+    .hero p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 15px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 14px;
+      margin-top: 20px;
+    }
+    .card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 16px;
+    }
+    .card .label {
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 8px;
+    }
+    .card .value {
+      font-size: 26px;
+      font-weight: 700;
+    }
+    .stack {
+      display: grid;
+      gap: 18px;
+    }
+    .section h2 {
+      margin: 0 0 12px;
+      font-size: 22px;
+    }
+    .section h3 {
+      margin: 20px 0 10px;
+      font-size: 16px;
+    }
+    .two {
+      display: grid;
+      gap: 18px;
+      grid-template-columns: 1.15fr .85fr;
+    }
+    .facts {
+      display: grid;
+      gap: 10px;
+    }
+    .fact {
+      border-bottom: 1px dashed var(--line);
+      padding-bottom: 10px;
+    }
+    .fact:last-child {
+      border-bottom: 0;
+      padding-bottom: 0;
+    }
+    .fact strong {
+      display: inline-block;
+      min-width: 108px;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .timeline {
+      display: grid;
+      gap: 12px;
+    }
+    .event {
+      position: relative;
+      padding: 14px 14px 14px 18px;
+      border-left: 4px solid var(--accent);
+      background: linear-gradient(180deg, rgba(244,214,200,.35), rgba(255,255,255,.6));
+      border-radius: 14px;
+    }
+    .event .time {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .event .title {
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+    .event .desc {
+      color: #334155;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .chip {
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: var(--chip);
+      border: 1px solid var(--line);
+      font-size: 12px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+      padding: 10px 8px;
+    }
+    th {
+      color: var(--muted);
+      font-weight: 600;
+    }
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 12px;
+      line-height: 1.45;
+      background: #fbf7f1;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px;
+    }
+    .muted { color: var(--muted); }
+    .warning {
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: #fff0eb;
+      border: 1px solid #efc3b4;
+      color: #7c2d12;
+      font-size: 13px;
+    }
+    @media (max-width: 900px) {
+      .two { grid-template-columns: 1fr; }
+      .wrap { width: min(100vw - 20px, 1280px); }
+      .hero, .section { padding: 18px; border-radius: 18px; }
+      .hero h1 { font-size: 28px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap stack">
+    <section class="hero">
+      <h1>用户全景审计报告</h1>
+      <p>把这个用户在系统里“是谁、做过什么、系统怎么响应、数据库留下了什么痕迹”整理成一页。</p>
+      <div class="grid">
+        <div class="card"><div class="label">用户ID</div><div class="value">1</div></div><div class="card"><div class="label">发现会话</div><div class="value">12</div></div><div class="card"><div class="label">聊天线程</div><div class="value">2</div></div><div class="card"><div class="label">匹配案例</div><div class="value">0</div></div><div class="card"><div class="label">关系链路</div><div class="value">0</div></div>
+      </div>
+    </section>
+
+    <section class="section"><h2>读取提醒</h2><div class="warning">ledger: OperationalError: (1054, &quot;Unknown column &#x27;owner_profile_ref&#x27; in &#x27;where clause&#x27;&quot;)</div></section>
+
+    <section class="section">
+      <h2>用户是谁</h2>
+      <div class="two">
+        <div class="card">
+          <h3>账号与基础信息</h3>
+          <div class="facts"><div class="fact"><strong>账号状态</strong><span>暂无</span></div><div class="fact"><strong>手机号</strong><span>暂无</span></div><div class="fact"><strong>注册来源</strong><span>暂无</span></div><div class="fact"><strong>首次登录</strong><span>暂无</span></div><div class="fact"><strong>最近登录</strong><span>暂无</span></div><div class="fact"><strong>Onboarding</strong><span>暂无</span></div><div class="fact"><strong>昵称/姓名</strong><span>胡辰衡</span></div><div class="fact"><strong>城市</strong><span>无锡</span></div><div class="fact"><strong>年龄</strong><span>28</span></div><div class="fact"><strong>职业</strong><span>公务员</span></div><div class="fact"><strong>教育</strong><span>本科</span></div></div><h3>账号绑定</h3><div class="chips"><span class="muted">没有读到账号绑定标识</span></div>
+        </div>
+        <div class="card">
+          <h3>人格/偏好摘要</h3>
+          <div class="chips"><span class="chip">已加载字段 5</span><span class="chip">完整度 1.0</span></div><div class="facts" style="margin-top:12px"><div class="fact"><strong>partner_expectation</strong><span>无锡或苏州，情绪稳定独立理性，结婚导向</span></div><div class="fact"><strong>life_attitude</strong><span>工作稳定（公务员），计划</span></div><div class="fact"><strong>negative_preferences</strong><span>不接受对方带有孩子</span></div><div class="fact"><strong>emotional_needs</strong><span>需要对方情绪稳定</span></div><div class="fact"><strong>values</strong><span>想要孩子</span></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>用户做过什么</h2>
+      <div class="two">
+        <div class="card">
+          <h3>Discovery 过程</h3>
+          <div class="timeline"><div class="event"><div class="time">2026-06-05 18:39:50</div><div class="title">Discovery 会话 discovery-session-4cfac3a6f12e</div><div class="desc">状态 active，阶段 results_shown</div></div><div class="event"><div class="time">2026-06-05 18:39:50</div><div class="title">搜索执行 #218</div><div class="desc">结果 5，是否命中 1</div></div><div class="event"><div class="time">2026-06-05 18:39:08</div><div class="title">Discovery 会话 discovery-session-175c702a494c</div><div class="desc">状态 active，阶段 results_shown</div></div><div class="event"><div class="time">2026-06-05 18:39:08</div><div class="title">搜索执行 #217</div><div class="desc">结果 5，是否命中 1</div></div><div class="event"><div class="time">2026-06-05 18:38:27</div><div class="title">Discovery 会话 discovery-session-36c5ff694328</div><div class="desc">状态 active，阶段 results_shown</div></div><div class="event"><div class="time">2026-06-05 18:38:27</div><div class="title">搜索执行 #216</div><div class="desc">结果 5，是否命中 1</div></div><div class="event"><div class="time">2026-06-05 18:19:50</div><div class="title">Discovery 会话 discovery-session-20c1a2cadf9e</div><div class="desc">状态 active，阶段 results_shown</div></div><div class="event"><div class="time">2026-06-05 18:19:49</div><div class="title">搜索执行 #214</div><div class="desc">结果 5，是否命中 1</div></div><div class="event"><div class="time">2026-06-05 18:17:15</div><div class="title">Discovery 会话 discovery-session-14512eb66db1</div><div class="desc">状态 active，阶段 collecting_preferences</div></div><div class="event"><div class="time">2026-06-05 18:17:15</div><div class="title">搜索执行 #213</div><div class="desc">结果 5，是否命中 1</div></div><div class="event"><div class="time">2026-06-05 18:16:07</div><div class="title">Discovery 会话 discovery-session-dc56992b0d55</div><div class="desc">状态 active，阶段 collecting_preferences</div></div><div class="event"><div class="time">2026-06-05 18:16:06</div><div class="title">搜索执行 #212</div><div class="desc">结果 5，是否命中 1</div></div><div class="event"><div class="time">2026-06-05 18:13:17</div><div class="title">Discovery 会话 discovery-session-6b1bc2c175c7</div><div class="desc">状态 active，阶段 collecting_preferences</div></div><div class="event"><div class="time">2026-06-05 18:13:11</div><div class="title">搜索执行 #211</div><div class="desc">结果 5，是否命中 1</div></div><div class="event"><div class="time">2026-06-05 18:11:05</div><div class="title">Discovery 会话 discovery-session-e67c4863e600</div><div class="desc">状态 active，阶段 collecting_preferences</div></div><div class="event"><div class="time">2026-06-05 18:10:51</div><div class="title">搜索执行 #210</div><div class="desc">结果 5，是否命中 1</div></div><div class="event"><div class="time">2026-06-05 18:10:45</div><div class="title">Discovery 会话 discovery-session-10d24d2146e3</div><div class="desc">状态 active，阶段 results_shown</div></div><div class="event"><div class="time">2026-06-05 18:10:45</div><div class="title">搜索执行 #209</div><div class="desc">结果 5，是否命中 1</div></div><div class="event"><div class="time">2026-06-05 17:46:53</div><div class="title">Discovery 会话 discovery-session-c4136dc2cbe6</div><div class="desc">状态 active，阶段 collecting_preferences</div></div><div class="event"><div class="time">2026-06-05 17:46:46</div><div class="title">搜索执行 #207</div><div class="desc">结果 5，是否命中 1</div></div><div class="event"><div class="time">2026-06-01 15:55:27</div><div class="title">搜索执行 #52</div><div class="desc">结果 5，是否命中 1</div></div><div class="event"><div class="time">2026-06-01 14:37:07</div><div class="title">搜索执行 #37</div><div class="desc">结果 5，是否命中 1</div></div></div>
+        </div>
+        <div class="card">
+          <h3>聊天与互动</h3>
+          <div class="timeline"><div class="event"><div class="time">2026-06-06 01:12:23</div><div class="title">聊天线程 thread-a0e96523a20546b5</div><div class="desc">状态 matched，对方 7408</div></div><div class="event"><div class="time">2026-06-06 00:00:23</div><div class="title">对方/系统发言</div><div class="desc">感觉我们有很多共同点</div></div><div class="event"><div class="time">2026-06-05 23:44:23</div><div class="title">对方/系统发言</div><div class="desc">你给人的感觉很好👌</div></div><div class="event"><div class="time">2026-06-05 23:27:23</div><div class="title">用户发言</div><div class="desc">和你聊天很开心</div></div><div class="event"><div class="time">2026-06-05 23:17:23</div><div class="title">对方/系统发言</div><div class="desc">想去日本玩</div></div><div class="event"><div class="time">2026-06-05 23:01:23</div><div class="title">用户发言</div><div class="desc">有空我们可以见个面</div></div><div class="event"><div class="time">2026-06-05 22:07:23</div><div class="title">对方/系统发言</div><div class="desc">好的呢</div></div><div class="event"><div class="time">2026-06-05 21:10:23</div><div class="title">用户发言</div><div class="desc">有什么推荐的呢</div></div><div class="event"><div class="time">2026-06-05 20:17:23</div><div class="title">对方/系统发言</div><div class="desc">你觉得两个人相处最重要的是什么</div></div><div class="event"><div class="time">2026-06-05 19:43:23</div><div class="title">对方/系统发言</div><div class="desc">嗯</div></div><div class="event"><div class="time">2026-06-05 19:09:23</div><div class="title">用户发言</div><div class="desc">好的哦</div></div><div class="event"><div class="time">2026-06-05 18:35:23</div><div class="title">对方/系统发言</div><div class="desc">好的呢</div></div><div class="event"><div class="time">2026-06-05 17:40:23</div><div class="title">对方/系统发言</div><div class="desc">确实</div></div><div class="event"><div class="time">2026-06-05 17:16:23</div><div class="title">用户发言</div><div class="desc">理解</div></div><div class="event"><div class="time">2026-06-05 16:56:23</div><div class="title">用户发言</div><div class="desc">最近有什么旅行计划哦</div></div><div class="event"><div class="time">2026-06-05 16:46:23</div><div class="title">对方/系统发言</div><div class="desc">想去上海玩</div></div><div class="event"><div class="time">2026-06-05 15:50:23</div><div class="title">用户发言</div><div class="desc">我也觉得不错</div></div><div class="event"><div class="time">2026-06-05 15:05:23</div><div class="title">对方/系统发言</div><div class="desc">喜欢自驾还是跟团👍</div></div><div class="event"><div class="time">2026-06-05 14:20:23</div><div class="title">用户发言</div><div class="desc">理解</div></div><div class="event"><div class="time">2026-06-05 14:06:23</div><div class="title">对方/系统发言</div><div class="desc">可以啊👍</div></div><div class="event"><div class="time">2026-06-05 13:57:23</div><div class="title">对方/系统发言</div><div class="desc">我也想去三亚</div></div><div class="event"><div class="time">2026-06-05 12:59:23</div><div class="title">用户发言</div><div class="desc">我是公务员，平时接触业务比较多</div></div><div class="event"><div class="time">2026-06-05 12:28:23</div><div class="title">对方/系统发言</div><div class="desc">有什么推荐的👌</div></div><div class="event"><div class="time">2026-06-05 12:08:23</div><div class="title">用户发言</div><div class="desc">那不错</div></div><div class="event"><div class="time">2026-06-05 12:03:23</div><div class="title">对方/系统发言</div><div class="desc">你好，我是{name}呢</div></div><div class="event"><div class="time">2026-05-15 23:00:12</div><div class="title">聊天线程 thread-dab7cf00e5dd4d5f</div><div class="desc">状态 paused，对方 3280</div></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>系统怎么执行的</h2>
+      <div class="two">
+        <div class="card">
+          <h3>工具调用与系统决策</h3>
+          <table><thead><tr><th>时间</th><th>工具</th><th>状态</th><th>参数</th><th>结果摘要</th></tr></thead><tbody><tr><td>2026-06-05 18:39:50</td><td>search_partner_candidates</td><td>succeeded</td><td>{&quot;criteria&quot;: {}, &quot;limit&quot;: 5}</td><td>{&quot;diagnostics&quot;: null, &quot;fallback_results&quot;: [], &quot;has_match&quot;: true, &quot;pool_summary&quot;: {&quot;passed…</td></tr><tr><td>2026-06-05 18:39:08</td><td>search_partner_candidates</td><td>succeeded</td><td>{&quot;criteria&quot;: {}, &quot;limit&quot;: 5}</td><td>{&quot;diagnostics&quot;: null, &quot;fallback_results&quot;: [], &quot;has_match&quot;: true, &quot;pool_summary&quot;: {&quot;passed…</td></tr><tr><td>2026-06-05 18:38:27</td><td>search_partner_candidates</td><td>succeeded</td><td>{&quot;criteria&quot;: {}, &quot;limit&quot;: 5}</td><td>{&quot;diagnostics&quot;: null, &quot;fallback_results&quot;: [], &quot;has_match&quot;: true, &quot;pool_summary&quot;: {&quot;passed…</td></tr><tr><td>2026-06-05 18:19:49</td><td>search_partner_candidates</td><td>succeeded</td><td>{&quot;criteria&quot;: {}, &quot;limit&quot;: 5}</td><td>{&quot;diagnostics&quot;: null, &quot;fallback_results&quot;: [], &quot;has_match&quot;: true, &quot;pool_summary&quot;: {&quot;passed…</td></tr><tr><td>2026-06-05 18:17:15</td><td>search_partner_candidates</td><td>succeeded</td><td>{&quot;criteria&quot;: {}, &quot;limit&quot;: 5}</td><td>{&quot;diagnostics&quot;: null, &quot;fallback_results&quot;: [], &quot;has_match&quot;: true, &quot;pool_summary&quot;: {&quot;passed…</td></tr><tr><td>2026-06-05 18:16:06</td><td>search_partner_candidates</td><td>succeeded</td><td>{&quot;criteria&quot;: {}, &quot;limit&quot;: 5}</td><td>{&quot;diagnostics&quot;: null, &quot;fallback_results&quot;: [], &quot;has_match&quot;: true, &quot;pool_summary&quot;: {&quot;passed…</td></tr><tr><td>2026-06-05 18:13:11</td><td>search_partner_candidates</td><td>succeeded</td><td>{&quot;criteria&quot;: {}, &quot;limit&quot;: 5}</td><td>{&quot;diagnostics&quot;: null, &quot;fallback_results&quot;: [], &quot;has_match&quot;: true, &quot;pool_summary&quot;: {&quot;passed…</td></tr><tr><td>2026-06-05 18:10:51</td><td>search_partner_candidates</td><td>succeeded</td><td>{&quot;criteria&quot;: {}, &quot;limit&quot;: 5}</td><td>{&quot;diagnostics&quot;: null, &quot;fallback_results&quot;: [], &quot;has_match&quot;: true, &quot;pool_summary&quot;: {&quot;passed…</td></tr><tr><td>2026-06-05 18:11:05</td><td>sync_requester_persona_memory</td><td>failed</td><td>{&quot;patch&quot;: {}}</td><td>{&quot;error_code&quot;: &quot;empty_persona_patch&quot;, &quot;message&quot;: &quot;没有可写入画像的字段。&quot;, &quot;synced&quot;: false}</td></tr><tr><td>2026-06-05 18:10:45</td><td>search_partner_candidates</td><td>succeeded</td><td>{&quot;criteria&quot;: {}, &quot;limit&quot;: 5}</td><td>{&quot;diagnostics&quot;: null, &quot;fallback_results&quot;: [], &quot;has_match&quot;: true, &quot;pool_summary&quot;: {&quot;passed…</td></tr><tr><td>2026-06-05 17:46:46</td><td>search_partner_candidates</td><td>succeeded</td><td>{&quot;criteria&quot;: {}, &quot;limit&quot;: 5}</td><td>{&quot;diagnostics&quot;: null, &quot;fallback_results&quot;: [], &quot;has_match&quot;: true, &quot;pool_summary&quot;: {&quot;passed…</td></tr><tr><td>2026-06-05 17:46:53</td><td>search_partner_candidates</td><td>succeeded</td><td>{&quot;criteria&quot;: {&quot;age_max&quot;: 28, &quot;age_min&quot;: 22, &quot;cities&quot;: [&quot;无锡&quot;, &quot;苏州&quot;], &quot;gender&quot;: &quot;female&quot;, &quot;…</td><td>{&quot;diagnostics&quot;: {&quot;passed_count&quot;: 0, &quot;relax_suggestions&quot;: [&quot;把“独立”从硬条件改成加分项，先保留可聊对象。&quot;, &quot;把“理…</td></tr><tr><td>2026-06-05 17:46:53</td><td>search_partner_candidates</td><td>succeeded</td><td>{&quot;criteria&quot;: {&quot;age_max&quot;: 28, &quot;age_min&quot;: 22, &quot;cities&quot;: [&quot;无锡&quot;, &quot;苏州&quot;], &quot;gender&quot;: &quot;female&quot;, &quot;…</td><td>{&quot;diagnostics&quot;: {&quot;passed_count&quot;: 0, &quot;relax_suggestions&quot;: [&quot;把“独立”从硬条件改成加分项，先保留可聊对象。&quot;, &quot;把“理…</td></tr><tr><td>2026-06-05 17:46:53</td><td>sync_requester_persona_memory</td><td>succeeded</td><td>{&quot;patch&quot;: {&quot;must_have_tags&quot;: [], &quot;preferred_traits&quot;: [&quot;情绪稳定&quot;, &quot;独立&quot;, &quot;理性&quot;]}}</td><td>{&quot;patch_keys&quot;: [&quot;preferred_traits&quot;], &quot;persona_synced&quot;: true, &quot;profile_proposals&quot;: [], &quot;sy…</td></tr><tr><td>2026-06-05 17:46:53</td><td>search_partner_candidates</td><td>succeeded</td><td>{&quot;criteria&quot;: {&quot;age_max&quot;: 28, &quot;age_min&quot;: 22, &quot;cities&quot;: [&quot;无锡&quot;, &quot;苏州&quot;], &quot;gender&quot;: &quot;female&quot;, &quot;…</td><td>{&quot;diagnostics&quot;: {&quot;passed_count&quot;: 0, &quot;relax_suggestions&quot;: [&quot;把“独立”从硬条件改成加分项，先保留可聊对象。&quot;, &quot;把“理…</td></tr><tr><td>2026-06-05 17:46:53</td><td>search_partner_candidates</td><td>succeeded</td><td>{&quot;criteria&quot;: {&quot;age_max&quot;: 28, &quot;age_min&quot;: 22, &quot;cities&quot;: [&quot;无锡&quot;, &quot;苏州&quot;], &quot;gender&quot;: &quot;female&quot;, &quot;…</td><td>{&quot;diagnostics&quot;: null, &quot;fallback_results&quot;: [], &quot;has_match&quot;: true, &quot;pool_summary&quot;: {&quot;passed…</td></tr><tr><td>2026-06-01 15:55:27</td><td>search_partner_candidates</td><td>succeeded</td><td>{&quot;criteria&quot;: {}, &quot;limit&quot;: 5}</td><td>{&quot;diagnostics&quot;: null, &quot;fallback_results&quot;: [], &quot;has_match&quot;: true, &quot;pool_summary&quot;: {&quot;passed…</td></tr><tr><td>2026-06-01 14:37:07</td><td>search_partner_candidates</td><td>succeeded</td><td>{&quot;criteria&quot;: {}, &quot;limit&quot;: 5}</td><td>{&quot;diagnostics&quot;: null, &quot;fallback_results&quot;: [], &quot;has_match&quot;: true, &quot;pool_summary&quot;: {&quot;passed…</td></tr></tbody></table>
+        </div>
+        <div class="card">
+          <h3>关系链路与统一时间线</h3>
+          <p class="muted">没有查到 relationship ledger 关系。</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>数据库里存了什么</h2>
+      <div class="two">
+        <div class="card">
+          <h3>Matchmaking / Recommendation</h3>
+          <div class="facts"><div class="fact"><strong>匹配池成员</strong><span>0</span></div><div class="fact"><strong>匹配边</strong><span>0</span></div><div class="fact"><strong>匹配案例</strong><span>0</span></div><div class="fact"><strong>代理牵线</strong><span>0</span></div><div class="fact"><strong>推荐订阅</strong><span>0</span></div><div class="fact"><strong>推荐结果</strong><span>0</span></div><div class="fact"><strong>推荐动作</strong><span>0</span></div></div><h3>关键案例</h3><div class="chips"><span class="muted">暂无案例</span></div>
+        </div>
+        <div class="card">
+          <h3>原始数据样本</h3>
+          <pre>{
+  &quot;profile&quot;: {
+    &quot;id&quot;: 1,
+    &quot;name&quot;: &quot;胡辰衡&quot;,
+    &quot;score&quot;: null,
+    &quot;fit_score&quot;: null,
+    &quot;confidence_score&quot;: null,
+    &quot;risk_score&quot;: null,
+    &quot;match_tier&quot;: &quot;strict&quot;,
+    &quot;compatibility_flags&quot;: [],
+    &quot;verified_level&quot;: &quot;none&quot;,
+    &quot;verified_label&quot;: &quot;未认证&quot;,
+    &quot;photo_verification_level&quot;: &quot;uploaded&quot;,
+    &quot;photo_verification_label&quot;: &quot;普通上传照片&quot;,
+    &quot;photo_count&quot;: 2,
+    &quot;last_active_at&quot;: &quot;2026-05-21 10:26:35&quot;,
+    &quot;activity_label&quot;: &quot;90天内活跃&quot;,
+    &quot;verification_items&quot;: [
+      {
+        &quot;key&quot;: &quot;photo&quot;,
+        &quot;label&quot;: &quot;照片&quot;,
+        &quot;status&quot;: &quot;self_reported&quot;,
+        &quot;source&quot;: &quot;profile_self_reported&quot;,
+        &quot;summary&quot;: &quot;已上传2张照片（未真人认证）&quot;
+      },
+      {
+        &quot;key&quot;: &quot;identity&quot;,
+        &quot;label&quot;: &quot;身份&quot;,
+        &quot;status&quot;: &quot;missing&quot;,
+        &quot;source&quot;: &quot;not_provided&quot;,
+        &quot;summary&quot;: &quot;未实名&quot;
+      },
+      {
+        &quot;key&quot;: &quot;age&quot;,
+        &quot;label&quot;: &quot;年龄&quot;,
+        &quot;status&quot;: &quot;self_reported&quot;,
+        &quot;source&quot;: &quot;profile_self_reported&quot;,
+        &quot;summary&quot;: &quot;28岁（资料填写）&quot;
+      },
+      {
+        &quot;key&quot;: &quot;city&quot;,
+        &quot;label&quot;: &quot;城市&quot;,
+        &quot;status&quot;: &quot;self_reported&quot;,
+        &quot;raw_status&quot;: &quot;self_reported&quot;,
+        &quot;source&quot;: &quot;profile_self_reported&quot;,
+        &quot;summary&quot;: &quot;无锡（资料填写）&quot;
+      },
+      {
+        &quot;key&quot;: &quot;education&quot;,
+        &quot;label&quot;: &quot;学历&quot;,
+        &quot;status&quot;: &quot;self_reported&quot;,
+        &quot;raw_status&quot;: &quot;self_reported&quot;,
+        &quot;source&quot;: &quot;profile_self_reported&quot;,
+        &quot;summary&quot;: &quot;本科（未单独认证）&quot;
+      },
+      {
+        &quot;key&quot;: &quot;job&quot;,
+        &quot;label&quot;: &quot;职业&quot;,
+        &quot;status&quot;: &quot;self_reported&quot;,
+        &quot;raw_status&quot;: &quot;self_reported&quot;,
+        &quot;source&quot;: &quot;profile_self_reported&quot;,
+        &quot;summary&quot;: &quot;公务员（未单独认证）&quot;
+      },
+      {
+        &quot;key&quot;: &quot;income&quot;,
+        &quot;label&quot;: &quot;收入&quot;,
+        &quot;status&quot;: &quot;self_reported&quot;,
+        &quot;raw_status&quot;: &quot;self_reported&quot;,
+        &quot;source&quot;: &quot;profile_self_reported&quot;,
+        &quot;summary&quot;: &quot;13-20万/年（未单独认证）&quot;
+      },
+      {
+        &quot;key&quot;: &quot;marital_status&quot;,
+        &quot;label&quot;: &quot;婚况&quot;,
+        &quot;status&quot;: &quot;self_reported&quot;,
+        &quot;raw_status&quot;: &quot;self_reported&quot;,
+        &quot;source&quot;: &quot;profile_self_reported&quot;,
+        &quot;summary&quot;: &quot;未婚（资料填写）&quot;
+      },
+      {
+        &quot;key&quot;: &quot;children&quot;,
+        &quot;label&quot;: &quot;子女情况&quot;,
+        &quot;status&quot;: &quot;self_reported&quot;,
+        &quot;source&quot;: &quot;profile_self_reported&quot;,
+        &quot;summary&quot;: &quot;无孩子（资料填写）&quot;
+      },
+      {
+        &quot;key&quot;: &quot;relationship_goal&quot;,
+        &quot;label&quot;: &quot;结婚意向&quot;,
+        &quot;status&quot;: &quot;self_reported&quot;,
+        &quot;raw_status&quot;: &quot;self_reported&quot;,
+        &quot;source&quot;: &quot;profile_self_reported&quot;,
+        &quot;summary&quot;: &quot;结婚导向（资料填写）&quot;
+      }
+    ],
+    &quot;trust_summary&quot;: {
+      &quot;headline&quot;: &quot;90天内活跃；其余关键信息以资料填写为主：学历、职业、收入、婚况&quot;,
+      &quot;verified_level&quot;: &quot;none&quot;,
+      &quot;verified_label&quot;: &quot;未认证&quot;,
+      &quot;photo_verification_level&quot;: &quot;uploaded&quot;,
+      &quot;photo_verification_label&quot;: &quot;普通上传照片&quot;,
+      &quot;badges&quot;: [
+        &quot;90天内活跃&quot;
+      ],
+      &quot;verified_items&quot;: [],
+      &quot;self_reported_items&quot;: [
+        &quot;学历&quot;,
+        &quot;职业&quot;,
+        &quot;收入&quot;,
+        &quot;婚况&quot;,
+        &quot;子女情况&quot;,
+        &quot;结婚意向&quot;
+      ],
+      &quot;missing_items&quot;: [],
+      &quot;caution_items&quot;: [
+        &quot;照片仅为普通上传，建议先视频核验再深入沟通&quot;,
+        &quot;收入仍为自填信息，建议仅将其视为参考&quot;
+      ],
+      &quot;trust_actions&quot;: [
+        &quot;建议先视频核验真人状态&quot;,
+        &quot;建议先确认职业、学历和收入区间是否真实&quot;,
+        &quot;在转到站外或涉及金钱前，先完成平台内核验&quot;
+      ]
+    },
+    &quot;caution_items&quot;: [
+      &quot;照片仅为普通上传，建议先视频核验再深入沟通&quot;,
+      &quot;收入仍为自填信息，建议仅将其视为参考&quot;
+    ],
+    &quot;trust_actions&quot;: [
+      &quot;建议先视频核验真人状态&quot;,
+      &quot;建议先确认职业、学历和收入区间是否真实&quot;,
+      &quot;在转到站外或涉及金钱前，先完成平台内核验&quot;
+    ],
+    &quot;matched_on&quot;: [],
+    &quot;reciprocal_on&quot;: [],
+    &quot;missing_fields&quot;: [],
+    &quot;self_profile_gaps&quot;: [],
+    &quot;risk_flags&quot;: [],
+    &quot;match_evidence&quot;: [],
+    &quot;follow_up_questions&quot;: [],
+    &quot;photo_preview&quot;: [
+      &quot;https://cdn.her.local/profiles/00001/avatar.jpg&quot;,
+      &quot;https://cdn.her.local/profiles/00001/photo_1.jpg&quot;,
+      &quot;https://cdn.her.local/profiles/00001/photo_2.jpg&quot;
+    ],
+    &quot;fallback_reason&quot;: null,
+    &quot;profile&quot;: {
+      &quot;id&quot;: 1,
+      &quot;name&quot;: &quot;胡辰衡&quot;,
+      &quot;gender&quot;: &quot;男&quot;,
+      &quot;sexual_orientation&quot;: &quot;异性恋&quot;,
+      &quot;age&quot;: 28,
+      &quot;city&quot;: &quot;无锡&quot;,
+      &quot;education&quot;: &quot;本科&quot;,
+      &quot;job&quot;: &quot;公务员&quot;,
+      &quot;income_range&quot;: &quot;13-20万/年&quot;,
+      &quot;marital_status&quot;: &quot;未婚&quot;,
+      &quot;has_children&quot;: 0,
+      &quot;relationship_goal&quot;: &quot;结婚导向&quot;,
+      &quot;profile_status&quot;: &quot;active&quot;,
+      &quot;verified_level&quot;: &quot;none&quot;,
+      &quot;photo_verification_level&quot;: null,
+      &quot;education_verification_status&quot;: null,
+      &quot;job_verification_status&quot;: null,
+      &quot;income_verification_status&quot;: null,
+      &quot;profile_review_status&quot;: null,
+      &quot;job_change_count_30d&quot;: null,
+      &quot;photo_count&quot;: 2,
+      &quot;avatar_url&quot;: null,
+      &quot;life_routine&quot;: &quot;周末会出门走走, 偶尔短途旅行, 爱逛菜场&quot;,
+      &quot;communication_style&quot;: &quot;情绪稳定&quot;,
+      &quot;values&quot;: &quot;三观正, 消费观正常, 务实&quot;,
+      &quot;notes&quot;: &quot;平时作息规律，比较看重相处舒服和沟通顺畅&quot;,
+      &quot;last_active_at&quot;: &quot;2026-05-21 10:26:35&quot;,
+      &quot;public_display_name&quot;: &quot;胡辰衡&quot;,
+      &quot;public_education&quot;: &quot;本科&quot;,
+      &quot;public_job&quot;: &quot;公务员&quot;,
+      &quot;public_personality&quot;: &quot;情绪稳定, 独立, 理性&quot;,
+      &quot;public_values&quot;: &quot;三观正, 消费观正常, 务实&quot;,
+      &quot;public_notes&quot;: &quot;平时作息规律，比较看重相处舒服和沟通顺畅&quot;,
+      &quot;hometown_city&quot;: &quot;太原&quot;,
+      &quot;hometown_city_adcode&quot;: 140100,
+      &quot;weight&quot;: 74,
+      &quot;has_house&quot;: &quot;有房（有贷）&quot;,
+      &quot;has_car&quot;: &quot;有车&quot;,
+      &quot;religion&quot;: &quot;无&quot;,
+      &quot;is_only_child&quot;: 0,
+      &quot;house_verification_status&quot;: null,
+      &quot;city_adcode&quot;: 320200,
+      &quot;district_adcode&quot;: 320213,
+      &quot;target_gender&quot;: &quot;女&quot;,
+      &quot;income_min_wan&quot;: 13,
+      &quot;income_max_wan&quot;: 20,
+      &quot;matcher_traits&quot;: {},
+      &quot;matcher_preferences&quot;: {},
+      &quot;matcher_risks&quot;: {},
+      &quot;_combined_text_needs_build&quot;: true
+    },
+    &quot;source&quot;: &quot;mysql://root@127.0.0.1:3307/her?table=profiles#profiles&quot;,
+    &quot;notes_summary&quot;: &quot;平时作息规律，比较看重相处舒服和沟通顺畅&quot;
+  },
+  &quot;latest_discovery_session&quot;: {
+    &quot;session_id&quot;: &quot;discovery-session-4cfac3a6f12e&quot;,
+    &quot;requester_id&quot;: 1,
+    &quot;profile_id&quot;: 1,
+    &quot;status&quot;: &quot;active&quot;,
+    &quot;phase&quot;: &quot;results_shown&quot;,
+    &quot;state_json&quot;: &quot;{\&quot;create_session_mode\&quot;: \&quot;profile_first\&quot;, \&quot;last_search_has_match\&quot;: true, \&quot;last_search_result_count\&quot;: 5, \&quot;last_search_run_id\&quot;: 218, \&quot;last_view_snapshot_id\&quot;: 304, \&quot;phase\&quot;: \&quot;results_shown\&quot;, \&quot;visible_action_ids\&quot;: [], \&quot;working_criteria\&quot;: {}}&quot;,
+    &quot;latest_view_json&quot;: &quot;{\&quot;composer\&quot;: {\&quot;disabled\&quot;: false, \&quot;placeholder\&quot;: \&quot;继续告诉红娘你的要求\&quot;}, \&quot;criteria_chips\&quot;: [{\&quot;chip_id\&quot;: \&quot;chip-1\&quot;, \&quot;label\&quot;: \&quot;无锡\&quot;}, {\&quot;chip_id\&quot;: \&quot;chip-2\&quot;, \&quot;label\&quot;: \&quot;苏州\&quot;}, {\&quot;chip_id\&quot;: \&quot;chip-3\&quot;, \&quot;label\&quot;: \&quot;女\&quot;}, {\&quot;chip_id\&quot;: \&quot;chip-4\&quot;, \&quot;label\&quot;: \&quot;22-28岁\&quot;}, {\&quot;chip_id\&quot;: \&quot;chip-5\&quot;, \&quot;label\&quot;: \&quot;结婚导向\&quot;}], \&quot;suggested_actions\&quot;: [], \&quot;timeline\&quot;: [{\&quot;body\&quot;: \&quot;我根据你刚填的资料筛了几位，你先看看有没有眼缘。觉得不合适，随时跟我说。 从测评角度看，宋若嘉这位，MBTI 和你更接近（ISTP/ISTJ），依恋偏安全型，价值观也和你同频，尤其都看重“稳定经营、家庭责任”。宋梦菲这位，MBTI 和你更接近（ISTP/ISTP），依恋偏安全型，价值观也和你同频，尤其都看重“稳定经营、家庭责任”。\&quot;, \&quot;created_at\&quot;: \&quot;2026-06-05T18:39:49.576981\&quot;, \&quot;item_id\&quot;: \&quot;msg-a-388800f44d56\&quot;, \&quot;item_type\&quot;: \&quot;assistant_message\&quot;}, {\&quot;cards\&quot;: [{\&quot;card_id\&quot;: \&quot;candidate-9202\&quot;, \&quot;cover_image_url\&quot;: \&quot;https://cdn.her.local/profiles/09202/avatar.jpg\&quot;, \&quot;match_score\&quot;: 153, \&quot;open_profile_action\&quot;: {\&quot;profile_id\&quot;: 9202, \&quot;type\&quot;: \&quot;open_profile\&quot;}, \&quot;personality_availability\&quot;: {\&quot;has_attachment\&quot;: true, \&quot;has_big_five\&quot;: true, \&quot;has_mbti\&quot;: true, \&quot;has_sternberg\&quot;: true, \&quot;has_values\&quot;: true, \&quot;overall_completeness\&quot;: 1.0}, \&quot;personality_match_context\&quot;: {\&quot;attachment\&quot;: {\&quot;anxiety\&quot;: 30.0, \&quot;assessment_id\&quot;: \&quot;synthetic_attachment_9202\&quot;, \&quot;avoidance\&quot;: 41.0, \&quot;completed_at\&quot;: \&quot;2026-06-05 00:00:00\&quot;, \&quot;type_code\&quot;: \&quot;secure\&quot;}, \&quot;availability\&quot;: {\&quot;has_attachment\&quot;: true, \&quot;has_big_five\&quot;: true, \&quot;has_mbti\&quot;: true, \&quot;has_sternberg\&quot;: true, \&quot;has_values\&quot;: true, \&quot;overall_completeness\&quot;: 1.0}, \&quot;big_five\&quot;: {\&quot;assessment_id\&quot;: \&quot;synthetic_big_five_9202\&quot;, \&quot;completed_at\&quot;: \&quot;2026-06-05 00:00:00\&quot;, \&quot;scores\&quot;: {\&quot;agreeableness\&quot;: 69.0, \&quot;conscientiousness\&quot;: 81.0, \&quot;extraversion\&quot;: 41.0, \&quot;neuroticism\&quot;: 20.0, \&quot;openness\&quot;: 39.0}}, \&quot;mbti\&quot;: {\&quot;assessment_id\&quot;: \&quot;synthetic_mbti_9202\&quot;, \&quot;completed_at\&quot;: \&quot;2026-06-05 00:00:00\&quot;, \&quot;scores\&quot;: {\&quot;ei\&quot;: 17.0, \&quot;jp\&quot;: 56.0, \&quot;sn\&quot;: 79.0, \&quot;tf\&quot;: 66.0}, \&quot;type_code\&quot;: \&quot;ISTJ\&quot;}, \&quot;meta\&quot;: {\&quot;generated_at\&quot;: \&quot;2026-06-05T18:39:49.641474\&quot;, \&quot;profile_id\&quot;: 9202, \&quot;source\&quot;: \&quot;user_personas.self_personality_traits_json\&quot;}, \&quot;sternberg\&quot;: {\&quot;assessment_id\&quot;: \&quot;synthetic_sternberg_9202\&quot;, \&quot;completed_at\&quot;: \&quot;2026-06-05 00:00:00\&quot;, \&quot;scores\&quot;: {\&quot;commitment\&quot;: 84.0, \&quot;intimacy\&quot;: 49.0, \&quot;passion\&quot;: 64.0}, \&quot;type_code\&quot;: \&quot;fatuous\&quot;}, \&quot;values\&quot;: {\&quot;assessment_id\&quot;: \&quot;synthetic_values_9202\&quot;, \&quot;completed_at\&quot;: \&quot;2026-06-05 00:00:00\&quot;, \&quot;tensions\&quot;: [\&quot;稳定 vs 新鲜感\&quot;], \&quot;top_values\&quot;: [\&quot;稳定经营\&quot;, \&quot;家庭责任\&quot;, \&quot;成长探索\&quot;], \&quot;value_type\&quot;: \&quot;稳定经营型\&quot;}}, \&quot;profile_id\&quot;: 9202, \&quot;reason_summary\&quot;: \&quot;状态 active、年龄 26、性别 女\&quot;, \&quot;subtitle\&quot;: \&quot;无锡 · 教师 · 硕士\&quot;, \&quot;title\&quot;: \&quot;宋若嘉 26\&quot;, \&quot;trust_badges\&quot;: [\&quot;照片\&quot;, \&quot;身份\&quot;]}, {\&quot;card_id\&quot;: \&quot;candidate-4078\&quot;, \&quot;cover_image_url\&quot;: \&quot;https://cdn.her.local/profiles/04078/avatar.jpg\&quot;, \&quot;match_score\&quot;: 149, \&quot;open_profile_action\&quot;: {\&quot;profile_id\&quot;: 4078, \&quot;type\&quot;: \&quot;open_profile\&quot;}, \&quot;personality_availability\&quot;: {\&quot;has_attachment\&quot;: true, \&quot;has_big_five\&quot;: true, \&quot;has_mbti\&quot;: true, \&quot;has_sternberg\&quot;: true, \&quot;has_values\&quot;: true, \&quot;overall_completeness\&quot;: 1.0}, \&quot;personality_match_context\&quot;: {\&quot;attachment\&quot;: {\&quot;anxiety\&quot;: 36.0, \&quot;assessment_id\&quot;: \&quot;synthetic_attachment_4078\&quot;, \&quot;avoidance\&quot;: 42.0, \&quot;completed_at\&quot;: \&quot;2026-06-05 00:00:00\&quot;, \&quot;type_code\&quot;: \&quot;secure\&quot;}, \&quot;availability\&quot;: {\&quot;has_attachment\&quot;: true, \&quot;has_big_five\&quot;: true, \&quot;has_mbti\&quot;: true, \&quot;has_sternberg\&quot;: true, \&quot;has_values\&quot;: true, \&quot;overall_completeness\&quot;: 1.0}, \&quot;big_five\&quot;: {\&quot;assessment_id\&quot;: \&quot;synthetic_big_five_4078\&quot;, \&quot;completed_at\&quot;: \&quot;2026-06-05 00:00:00\&quot;, \&quot;scores\&quot;: {\&quot;agreeableness\&quot;: 63.0, \&quot;conscientiousness\&quot;: 67.0, \&quot;extraversion\&quot;: 40.0, \&quot;neuroticism\&quot;: 20.0, \&quot;openness\&quot;: 46.0}}, \&quot;mbti\&quot;: {\&quot;assessment_id\&quot;: \&quot;synthetic_mbti_4078\&quot;, \&quot;completed_at\&quot;: \&quot;2026-06-05 00:00:00\&quot;, \&quot;scores\&quot;: {\&quot;ei\&quot;: 35.0, \&quot;jp\&quot;: 47.0, \&quot;sn\&quot;: 84.0, \&quot;tf\&quot;: 70.0}, \&quot;type_code\&quot;: \&quot;ISTP\&quot;}, \&quot;meta\&quot;: {\&quot;generated_at\&quot;: \&quot;2026-06-05T18:39:49.641512\&quot;, \&quot;profile_id\&quot;: 4078, \&quot;source\&quot;: \&quot;user_personas.self_personality_traits_json\&quot;}, \&quot;sternberg\&quot;: {\&quot;assessment_id\&quot;: \&quot;synthetic_sternberg_4078\&quot;, \&quot;completed_at\&quot;: \&quot;2026-06-05 00:00:00\&quot;, \&quot;scores\&quot;: {\&quot;commitment\&quot;: 74.0, \&quot;intimacy\&quot;: 51.0, \&quot;passion\&quot;: 58.0}, \&quot;type_code\&quot;: \&quot;empty\&quot;}, \&quot;values\&quot;: {\&quot;assessment_id\&quot;: \&quot;synthetic_values_4078\&quot;, \&quot;completed_at\&quot;: \&quot;2026-06-05 00:00:00\&quot;, \&quot;tensions\&quot;: [], \&quot;top_values\&quot;: [\&quot;生活质感\&quot;, \&quot;稳定经营\&quot;, \&quot;家庭责任\&quot;], \&quot;value_type\&quot;: \&quot;生活质感型\&quot;}}, \&quot;profile_id\&quot;: 4078, \&quot;reason_summary\&quot;: \&quot;状态 active、年龄 27、性别 女\&quot;, \&quot;subtitle\&quot;: \&quot;无锡 · 人事 · 本科\&quot;, \&quot;title\&quot;: \&quot;宋梦菲 27\&quot;, \&quot;trust_badges\&quot;: [\&quot;照片\&quot;, \&quot;身份\&quot;]}, {\&quot;card_id\&quot;: \&quot;candidate-9143\&quot;, \&quot;cover_image_url\&quot;: \&quot;https://cdn.her.local/profiles/09143/avatar.jpg\&quot;, \&quot;match_score\&quot;: 147, \&quot;open_profile_action\&quot;: {\&quot;profile_id\&quot;: 9143, \&quot;type\&quot;: \&quot;open_profile\&quot;}, \&quot;personality_availability\&quot;: {\&quot;has_attachment\&quot;: true, \&quot;has_big_five\&quot;: true, \&quot;has_mbti\&quot;: true, \&quot;has_sternberg\&quot;: true, \&quot;has_values\&quot;: true, \&quot;overall_completeness\&quot;: 1.0}, \&quot;personality_match_context\&quot;: {\&quot;attachment\&quot;: {\&quot;anxiety\&quot;: 15.0, \&quot;assessment_id\&quot;: \&quot;synthetic_attachment_9143\&quot;, \&quot;avoidance\&quot;: 36.0, \&quot;completed_at\&quot;: \&quot;2026-06-05 00:00:00\&quot;, \&quot;type_code\&quot;: \&quot;secure\&quot;}, \&quot;availability\&quot;: {\&quot;has_attachment\&quot;: true, \&quot;has_big_five\&quot;: true, \&quot;has_mbti\&quot;: true, \&quot;has_sternberg\&quot;: true, \&quot;has_values\&quot;: true, \&quot;overall_completeness\&quot;: 1.0}, \&quot;big_five\&quot;: {\&quot;assessment_id\&quot;: \&quot;synthetic_big_five_9143\&quot;, \&quot;completed_at\&quot;: \&quot;2026-06-05 00:00:00\&quot;, \&quot;scores\&quot;: {\&quot;agreeableness\&quot;: 61.0, \&quot;conscientiousness\&quot;: 66.0, \&quot;extraversion\&quot;: 63.0, \&quot;neuroticism\&quot;: 8.0, \&quot;openness\&quot;: 49.0}}, \&quot;mbti\&quot;: {\&quot;assessment_id\&quot;: \&quot;synthetic_mbti_9143\&quot;, \&quot;completed_at\&quot;: \&quot;2026-06-05 00:00:00\&quot;, \&quot;scores\&quot;: {\&quot;ei\&quot;: 64.0, \&quot;jp\&quot;: 52.0, \&quot;sn\&quot;: 65.0, \&quot;tf\&quot;: 52.0}, \&quot;type_code\&quot;: \&quot;ESTJ\&quot;}, \&quot;meta\&quot;: {\&quot;generated_at\&quot;: \&quot;2026-06-05T18:39:49.641541\&quot;, \&quot;profile_id\&quot;: 9143, \&quot;source\&quot;: \&quot;user_personas.self_personality_traits_json\&quot;}, \&quot;sternberg\&quot;: {\&quot;assessment_id\&quot;: \&quot;synthetic_sternberg_9143\&quot;, \&quot;completed_at\&quot;: \&quot;2026-06-05 00:00:00\&quot;, \&quot;scores\&quot;: {\&quot;commitment\&quot;: 79.0, \&quot;intimacy\&quot;: 50.0, \&quot;passion\&quot;: 62.0}, \&quot;type_code\&quot;: \&quot;fatuous\&quot;}, \&quot;values\&quot;: {\&quot;assessment_id\&quot;: \&quot;synthetic_values_9143\&quot;, \&quot;completed_at\&quot;: \&quot;2026-06-05 00:00:00\&quot;, \&quot;tensions\&quot;: [\&quot;家庭投入 vs 自主边界\&quot;], \&quot;top_values\&quot;: [\&quot;稳定经营\&quot;, \&quot;家庭责任\&quot;, \&quot;独立空间\&quot;], \&quot;value_type\&quot;: \&quot;稳定经营型\&quot;}}, \&quot;profile_id\&quot;: 9143, \&quot;reason_summary\&quot;: \&quot;状态 active、年龄 28、性别 女\&quot;, \&quot;subtitle\&quot;: \&quot;无锡 · 行政 · 专升本\&quot;, \&quot;title\&quot;: \&quot;吴雨涵 28\&quot;, \&quot;trust_badges\&quot;: [\&quot;照片\&quot;, \&quot;身份\&quot;]}, {\&quot;card_id\&quot;: \&quot;candidate-9351\&quot;, \&quot;cover_image_url\&quot;: \&quot;https://cdn.her.local/profiles/09351/avatar.jpg\&quot;, \&quot;match_score\&quot;: 145, \&quot;open_profile_action\&quot;: {\&quot;profile_id\&quot;: 9351, \&quot;type\&quot;: \&quot;open_profile\&quot;}, \&quot;personality_availability\&quot;: {\&quot;has_attachment\&quot;: true, \&quot;has_big_five\&quot;: true, \&quot;has_mbti\&quot;: true, \&quot;has_sternberg\&quot;: true, \&quot;has_values\&quot;: true, \&quot;overall_completeness\&quot;: 1.0}, \&quot;personality_match_context\&quot;: {\&quot;attachment\&quot;: {\&quot;anxiety\&quot;: 32.0, \&quot;assessment_id\&quot;: \&quot;synthetic_attachment_9351\&quot;, \&quot;avoidance\&quot;: 34.0, \&quot;completed_at\&quot;: \&quot;2026-06-05 00:00:00\&quot;, \&quot;type_code\&quot;: \&quot;secure\&quot;}, \&quot;availability\&quot;: {\&quot;has_attachment\&quot;: true, \&quot;has_big_five\&quot;: true, \&quot;has_mbti\&quot;: true, \&quot;has_sternberg\&quot;: true, \&quot;has_values\&quot;: true, \&quot;overall_completeness\&quot;: 1.0}, \&quot;big_five\&quot;: {\&quot;assessment_id\&quot;: \&quot;synthetic_big_five_9351\&quot;, \&quot;completed_at\&quot;: \&quot;2026-06-05 00:00:00\&quot;, \&quot;scores\&quot;: {\&quot;agreeableness\&quot;: 59.0, \&quot;conscientiousness\&quot;: 82.0, \&quot;extraversion\&quot;: 49.0, \&quot;neuroticism\&quot;: 18.0, \&quot;openness\&quot;: 46.0}}, \&quot;mbti\&quot;: {\&quot;assessment_id\&quot;: \&quot;synthetic_mbti_9351\&quot;, \&quot;completed_at\&quot;: \&quot;2026-06-05 00:00:00\&quot;, \&quot;scores\&quot;: {\&quot;ei\&quot;: 45.0, \&quot;jp\&quot;: 87.0, \&quot;sn\&quot;: 88.0, \&quot;tf\&quot;: 68.0}, \&quot;type_code\&quot;: \&quot;ISTJ\&quot;}, \&quot;meta\&quot;: {\&quot;generated_at\&quot;: \&quot;2026-06-05T18:39:49.641566\&quot;, \&quot;profile_id\&quot;: 9351, \&quot;source\&quot;: \&quot;user_personas.self_personality_traits_json\&quot;}, \&quot;sternberg\&quot;: {\&quot;assessment_id\&quot;: \&quot;synthetic_sternberg_9351\&quot;, \&quot;completed_at\&quot;: \&quot;2026-06-05 00:00:00\&quot;, \&quot;scores\&quot;: {\&quot;commitment\&quot;: 84.0, \&quot;intimacy\&quot;: 46.0, \&quot;passion\&quot;: 50.0}, \&quot;type_code\&quot;: \&quot;empty\&quot;}, \&quot;values\&quot;: {\&quot;assessment_id\&quot;: \&quot;synthetic_values_9351\&quot;, \&quot;completed_at\&quot;: \&quot;2026-06-05 00:00:00\&quot;, \&quot;tensions\&quot;: [\&quot;家庭投入 vs 自主边界\&quot;], \&quot;top_values\&quot;: [\&quot;稳定经营\&quot;, \&quot;家庭责任\&quot;, \&quot;独立空间\&quot;], \&quot;value_type\&quot;: \&quot;稳定经营型\&quot;}}, \&quot;profile_id\&quot;: 9351, \&quot;reason_summary\&quot;: \&quot;状态 active、年龄 28、性别 女\&quot;, \&quot;subtitle\&quot;: \&quot;无锡 · 人事 · 本科\&quot;, \&quot;title\&quot;: \&quot;李语妍 28\&quot;, \&quot;trust_badges\&quot;: [\&quot;身份\&quot;]}, {\&quot;card_id\&quot;: \&quot;candidate-4776\&quot;, \&quot;cover_image_url\&quot;: \&quot;https://cdn.her.local/profiles/04776/avatar.jpg\&quot;, \&quot;match_score\&quot;: 143, \&quot;open_profile_action\&quot;: {\&quot;profile_id\&quot;: 4776, \&quot;type\&quot;: \&quot;open_profile\&quot;}, \&quot;personality_availability\&quot;: {\&quot;has_attachment\&quot;: true, \&quot;has_big_five\&quot;: true, \&quot;has_mbti\&quot;: true, \&quot;has_sternberg\&quot;: true, \&quot;has_values\&quot;: true, \&quot;overall_completeness\&quot;: 1.0}, \&quot;personality_match_context\&quot;: {\&quot;attachment\&quot;: {\&quot;anxiety\&quot;: 33.0, \&quot;assessment_id\&quot;: \&quot;synthetic_attachment_4776\&quot;, \&quot;avoidance\&quot;: 30.0, \&quot;completed_at\&quot;: \&quot;2026-06-05 00:00:00\&quot;, \&quot;type_code\&quot;: \&quot;secure\&quot;}, \&quot;availability\&quot;: {\&quot;has_attachment\&quot;: true, \&quot;has_big_five\&quot;: true, \&quot;has_mbti\&quot;: true, \&quot;has_sternberg\&quot;: true, \&quot;has_values\&quot;: true, \&quot;overall_completeness\&quot;: 1.0}, \&quot;big_five\&quot;: {\&quot;assessment_id\&quot;: \&quot;synthetic_big_five_4776\&quot;, \&quot;completed_at\&quot;: \&quot;2026-06-05 00:00:00\&quot;, \&quot;scores\&quot;: {\&quot;agreeableness\&quot;: 65.0, \&quot;conscientiousness\&quot;: 77.0, \&quot;extraversion\&quot;: 40.0, \&quot;neuroticism\&quot;: 28.0, \&quot;openness\&quot;: 44.0}}, \&quot;mbti\&quot;: {\&quot;assessment_id\&quot;: \&quot;synthetic_mbti_4776\&quot;, \&quot;completed_at\&quot;: \&quot;2026-06-05 00:00:00\&quot;, \&quot;scores\&quot;: {\&quot;ei\&quot;: 50.0, \&quot;jp\&quot;: 94.0, \&quot;sn\&quot;: 95.0, \&quot;tf\&quot;: 37.0}, \&quot;type_code\&quot;: \&quot;ESFJ\&quot;}, \&quot;meta\&quot;: {\&quot;generated_at\&quot;: \&quot;2026-06-05T18:39:49.641595\&quot;, \&quot;profile_id\&quot;: 4776, \&quot;source\&quot;: \&quot;user_personas.self_personality_traits_json\&quot;}, \&quot;sternberg\&quot;: {\&quot;assessment_id\&quot;: \&quot;synthetic_sternberg_4776\&quot;, \&quot;completed_at\&quot;: \&quot;2026-06-05 00:00:00\&quot;, \&quot;scores\&quot;: {\&quot;commitment\&quot;: 81.0, \&quot;intimacy\&quot;: 56.0, \&quot;passion\&quot;: 53.0}, \&quot;type_code\&quot;: \&quot;empty\&quot;}, \&quot;values\&quot;: {\&quot;assessment_id\&quot;: \&quot;synthetic_values_4776\&quot;, \&quot;completed_at\&quot;: \&quot;2026-06-05 00:00:00\&quot;, \&quot;tensions\&quot;: [], \&quot;top_values\&quot;: [\&quot;稳定经营\&quot;, \&quot;生活质感\&quot;, \&quot;真诚沟通\&quot;], \&quot;value_type\&quot;: \&quot;稳定经营型\&quot;}}, \&quot;profile_id\&quot;: 4776, \&quot;reason_summary\&quot;: \&quot;状态 active、年龄 24、性别 女\&quot;, \&quot;subtitle\&quot;: \&quot;无锡 · 翻译 · 本科\&quot;, \&quot;title\&quot;: \&quot;王若怡 24\&quot;, \&quot;trust_badges\&quot;: [\&quot;照片\&quot;, \&quot;身份\&quot;]}], \&quot;item_id\&quot;: \&quot;group-733962f93738\&quot;, \&quot;item_type\&quot;: \&quot;result_group\&quot;, \&quot;title\&quot;: \&quot;根据你的资料，先给你看这些\&quot;}]}&quot;,
+    &quot;created_at&quot;: &quot;2026-06-05 18:39:50&quot;,
+    &quot;updated_at&quot;: &quot;2026-06-05 18:39:50&quot;
+  },
+  &quot;latest_chat_thread&quot;: {
+    &quot;thread_id&quot;: &quot;thread-a0e96523a20546b5&quot;,
+    &quot;case_id&quot;: &quot;case-13eaec0891fa40e6&quot;,
+    &quot;relation_key&quot;: &quot;relation-7408-1&quot;,
+    &quot;status&quot;: &quot;matched&quot;,
+    &quot;participant_a_id&quot;: &quot;7408&quot;,
+    &quot;participant_b_id&quot;: &quot;1&quot;,
+    &quot;metadata_json&quot;: &quot;{\&quot;source\&quot;: \&quot;match\&quot;, \&quot;created_by\&quot;: \&quot;system_personalized_v3\&quot;, \&quot;female_persona\&quot;: \&quot;\\u804c\\u573a\\u7cbe\\u82f1\&quot;, \&quot;compatibility_score\&quot;: 83, \&quot;conversation_quality\&quot;: \&quot;\\u4e00\\u822c\&quot;}&quot;,
+    &quot;created_at&quot;: &quot;2026-06-05 12:03:23&quot;,
+    &quot;updated_at&quot;: &quot;2026-06-06 01:12:23&quot;
+  },
+  &quot;latest_match_case&quot;: null
+}</pre>
+        </div>
+      </div>
+    </section>
+  </div>
+</body>
+</html>
