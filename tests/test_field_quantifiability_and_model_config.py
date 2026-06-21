@@ -287,5 +287,44 @@ def test_normalize_quantifiable_patch_keeps_supported_target_fields():
     assert "target_gender" not in normalized
 
 
+def test_extract_structured_conditions_normalizes_prefixed_city():
+    """测试：'在无锡' 这类表达只提取城市本体"""
+    from match_domain.session_end_processor import split_structured_conditions_from_summaries
+
+    supported, unsupported, cleaned = split_structured_conditions_from_summaries({
+        "partner_expectation": "希望找30-32岁、在无锡、奔着结婚的男生",
+    })
+
+    assert supported["target_cities"] == "无锡"
+    assert unsupported == {"partner_expectation": {"target_gender": "male"}}
+    assert cleaned["partner_expectation"] == "奔着结婚的"
+
+
+def test_extract_structured_conditions_does_not_swallow_residency_phrase_into_city():
+    """测试：'在无锡工作定居' 不应把整段写入 target_cities"""
+    from match_domain.session_end_processor import split_structured_conditions_from_summaries
+
+    supported, unsupported, cleaned = split_structured_conditions_from_summaries({
+        "partner_expectation": "希望对方性格温和善沟通，在无锡工作定居",
+    })
+
+    assert supported["target_cities"] == "无锡"
+    assert unsupported == {}
+    assert cleaned["partner_expectation"] == "希望对方性格温和善沟通,工作定居".replace(",", "，")
+
+
+def test_negative_preferences_should_not_extract_target_gender():
+    """测试：negative_preferences 中出现'女生'不应误抽 target_gender"""
+    from match_domain.session_end_processor import split_structured_conditions_from_summaries
+
+    supported, unsupported, cleaned = split_structured_conditions_from_summaries({
+        "negative_preferences": "不喜欢性格内向、慢热、回避型依恋的女生",
+    })
+
+    assert supported == {}
+    assert unsupported == {}
+    assert cleaned["negative_preferences"] == "不喜欢性格内向，慢热，回避型依恋的女生"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short"])
