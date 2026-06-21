@@ -20,6 +20,7 @@ import logging
 import os
 import threading
 import re
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
@@ -181,6 +182,44 @@ VALID_MBTI_TYPES = frozenset({
     "ESFP",
 })
 
+SUPPORTED_TARGET_PERSONA_FIELDS = frozenset({
+    "target_age_min",
+    "target_age_max",
+    "target_cities",
+    "target_height_min",
+    "target_height_max",
+    "target_education_min",
+    "target_income_min_wan",
+    "target_income_max_wan",
+    "target_marital_statuses",
+    "target_accept_partner_children",
+    "target_accept_long_distance",
+    "target_marriage_timeline",
+})
+
+UNSUPPORTED_SESSION_END_STRUCTURED_FIELDS = frozenset({
+    "target_gender",
+})
+
+EDUCATION_ORDER = ("大专", "本科", "硕士", "博士")
+GENDER_MARKERS = {
+    "男": "male",
+    "男性": "male",
+    "男生": "male",
+    "男方": "male",
+    "女": "female",
+    "女性": "female",
+    "女生": "female",
+    "女方": "female",
+}
+
+
+@dataclass
+class StructuredSummaryExtraction:
+    supported_patch: dict[str, Any] = field(default_factory=dict)
+    unsupported_patch: dict[str, Any] = field(default_factory=dict)
+    cleaned_text: str = ""
+
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 核心函数：会话结束处理流程
@@ -277,11 +316,19 @@ async def process_session_end(
         # Step 3：分流判断（V2修正版）
         # 分流：分离可量化字段和不可量化字段
         quantifiable_data, non_quantifiable_data = split_by_quantifiability(summary_data)
+        extracted_quantifiable_data, unsupported_structured_fields, cleaned_non_quantifiable_data = (
+            split_structured_conditions_from_summaries(non_quantifiable_data)
+        )
+        if extracted_quantifiable_data:
+            quantifiable_data.update(extracted_quantifiable_data)
+        non_quantifiable_data = cleaned_non_quantifiable_data
 
         _logger.info(
             f"分流完成: quantifiable_fields={list(quantifiable_data.keys())}, "
             f"non_quantifiable_fields={list(non_quantifiable_data.keys())}"
         )
+        if unsupported_structured_fields:
+            _logger.info(f"识别到 persona 无承接字段的结构化条件: {unsupported_structured_fields}")
 
         # Step 4：处理可量化字段：写入画像表
         if quantifiable_data:
@@ -353,6 +400,7 @@ async def process_session_end(
             "persona_result": persona_result,
             "saved_keys": saved_keys,
             "vectorized_keys": vectorized_keys,
+            "unsupported_structured_fields": unsupported_structured_fields,
             "message_count": len(messages),
         }
 
@@ -1295,6 +1343,151 @@ def validate_summary_text(field_name: str, text: str) -> str:
     return "valid"
 
 
+def _normalize_city_csv(raw_values: list[str]) -> str:
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for value in raw_values:
+        city = str(value or "").strip()
+        if not city or city in seen:
+            continue
+        seen.add(city)
+        ordered.append(city)
+    return ",".join(ordered)
+
+
+def _extract_age_range(text: str) -> tuple[int | None, int | None]:
+    match = re.search(r"(\d{2})\s*[-到至~]\s*(\d{2})\s*岁", text)
+    if match:
+        return int(match.group(1)), int(match.group(2))
+    return None, None
+
+
+def _extract_height_range(text: str) -> tuple[int | None, int | None]:
+    match = re.search(r"身高\s*(\d{3})\s*[-到至~]\s*(\d{3})", text)
+    if match:
+        return int(match.group(1)), int(match.group(2))
+    return None, None
+
+
+def _extract_income_range(text: str) -> tuple[int | None, int | None]:
+    match = re.search(r"(\d{1,3})\s*[-到至~]\s*(\d{1,3})\s*万", text)
+    if match:
+        return int(match.group(1)), int(match.group(2))
+    return None, None
+
+
+def _extract_cities(text: str) -> list[str]:
+    cities: list[str] = []
+    for segment in re.split(r"[/、，,]", text):
+        matched = str(segment or "").strip()
+        if not matched:
+            continue
+        if matched.endswith("岁") or matched in {"身高", "希望对方", "希望", "不接受", "未婚"}:
+            continue
+        if len(matched) > 4:
+            continue
+        if any(token in matched for token in ("真诚", "责任", "温和", "有孩", "结婚", "情绪", "沟通", "稳定")):
+            continue
+        if matched.endswith(("市", "州", "京", "海", "锡", "波", "通")) or matched in {
+            "上海", "苏州", "无锡", "南京", "杭州", "宁波", "南通", "湖州", "常州", "北京"
+        }:
+            cities.append(matched)
+    if "在" in text:
+        trailing = re.findall(r"在([一-龥]{2,6})", text)
+        cities.extend(trailing)
+    return cities
+
+
+def _extract_education(text: str) -> str | None:
+    for label in reversed(EDUCATION_ORDER):
+        if label in text:
+            return label
+    return None
+
+
+def extract_structured_conditions_from_summary(field_name: str, text: str) -> StructuredSummaryExtraction:
+    normalized_text = str(text or "").strip()
+    result = StructuredSummaryExtraction(cleaned_text=normalized_text)
+    if not normalized_text:
+        return result
+
+    for marker, gender_code in GENDER_MARKERS.items():
+        if marker in normalized_text:
+            result.unsupported_patch["target_gender"] = gender_code
+            normalized_text = normalized_text.replace(marker, "")
+            break
+
+    age_min, age_max = _extract_age_range(normalized_text)
+    if age_min is not None and age_max is not None:
+        result.supported_patch["target_age_min"] = age_min
+        result.supported_patch["target_age_max"] = age_max
+        normalized_text = re.sub(r"\d{2}\s*[-到至~]\s*\d{2}\s*岁", "", normalized_text)
+
+    height_min, height_max = _extract_height_range(normalized_text)
+    if height_min is not None and height_max is not None:
+        result.supported_patch["target_height_min"] = height_min
+        result.supported_patch["target_height_max"] = height_max
+        normalized_text = re.sub(r"身高\s*\d{3}\s*[-到至~]\s*\d{3}", "", normalized_text)
+        normalized_text = normalized_text.replace("cm", "").replace("CM", "")
+
+    income_min, income_max = _extract_income_range(normalized_text)
+    if income_min is not None and income_max is not None:
+        result.supported_patch["target_income_min_wan"] = income_min
+        result.supported_patch["target_income_max_wan"] = income_max
+        normalized_text = re.sub(r"\d{1,3}\s*[-到至~]\s*\d{1,3}\s*万", "", normalized_text)
+
+    cities = _extract_cities(normalized_text)
+    if cities:
+        result.supported_patch["target_cities"] = _normalize_city_csv(cities)
+        for city in cities:
+            normalized_text = normalized_text.replace(city, "")
+
+    education = _extract_education(normalized_text)
+    if education:
+        result.supported_patch["target_education_min"] = education
+        normalized_text = normalized_text.replace(education, "")
+
+    if "未婚" in normalized_text:
+        result.supported_patch["target_marital_statuses"] = "未婚"
+        normalized_text = normalized_text.replace("未婚", "")
+
+    if "不接受异地" in normalized_text or "拒异地" in normalized_text:
+        result.supported_patch["target_accept_long_distance"] = "不接受"
+        normalized_text = normalized_text.replace("不接受异地", "").replace("拒异地", "")
+
+    if "不接受对方有孩子" in normalized_text or "不接受有孩" in normalized_text:
+        result.supported_patch["target_accept_partner_children"] = "不接受"
+        normalized_text = normalized_text.replace("不接受对方有孩子", "").replace("不接受有孩", "")
+
+    timeline_match = re.search(r"(\d+年内结婚|半年内结婚|合适就结婚|结婚导向)", normalized_text)
+    if timeline_match:
+        result.supported_patch["target_marriage_timeline"] = timeline_match.group(1)
+        normalized_text = normalized_text.replace(timeline_match.group(1), "")
+
+    cleaned = re.sub(r"[，,、/；;]+", "，", normalized_text)
+    cleaned = re.sub(r"\s+", "", cleaned).strip("，。 ")
+    result.cleaned_text = cleaned
+    return result
+
+
+def split_structured_conditions_from_summaries(
+    summary_data: dict[str, str],
+) -> tuple[dict[str, Any], dict[str, dict[str, Any]], dict[str, str]]:
+    supported_patch: dict[str, Any] = {}
+    unsupported_fields: dict[str, dict[str, Any]] = {}
+    cleaned_summary_data: dict[str, str] = {}
+
+    for field_name, text in summary_data.items():
+        extracted = extract_structured_conditions_from_summary(field_name, text)
+        supported_patch.update(extracted.supported_patch)
+        if extracted.unsupported_patch:
+            unsupported_fields[field_name] = extracted.unsupported_patch
+        if extracted.cleaned_text:
+            cleaned_summary_data[field_name] = extracted.cleaned_text
+
+    return supported_patch, unsupported_fields, cleaned_summary_data
+
+
 def filter_valid_summary_data(summary_data: dict[str, str]) -> tuple[dict[str, str], dict[str, str]]:
     """过滤并返回可落库摘要，以及被跳过字段的质量结果。"""
     filtered: dict[str, str] = {}
@@ -1325,6 +1518,12 @@ def normalize_quantifiable_patch(quantifiable_data: dict[str, str]) -> dict[str,
             ensure_ascii=False,
             sort_keys=True,
         )
+
+    for key in SUPPORTED_TARGET_PERSONA_FIELDS:
+        value = quantifiable_data.get(key)
+        if value is None or value == "":
+            continue
+        normalized[key] = value
 
     # 仅保留 persona 表中已有真实落点的字段；其余结构化字段直接丢弃。
     allowed = {
