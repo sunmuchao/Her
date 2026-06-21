@@ -242,6 +242,16 @@ SELF_PLAN_MARKERS = (
     "考虑换工作",
 )
 
+SHORT_STRUCTURED_MARKERS = (
+    "无孩",
+    "同城",
+    "同城无锡",
+    "同城上海",
+    "同城苏州",
+    "谈恋爱为目的",
+    "以谈恋爱为目的",
+)
+
 
 @dataclass
 class StructuredSummaryExtraction:
@@ -1438,15 +1448,20 @@ def _has_structured_residue(text: str) -> bool:
         return False
 
     residue_patterns = (
+        r"找，?$",
+        r"希望对方，?$",
         r"年龄",
         r"\d{2}\s*[-到至~]\s*\d{2}\s*岁",
         r"\d{3}\s*[-到至~]\s*\d{3}\s*(?:cm|CM)?",
         r"(无锡|上海|苏州|南京|杭州|宁波|南通|常州|湖州|扬州|镇江|嘉兴|绍兴|合肥)",
         r"(未婚|离异|丧偶)",
         r"(有孩|孩子|无孩)",
+        r"同城",
         r"(先谈恋爱|结婚导向|想要孩子)",
     )
-    return any(re.search(pattern, normalized) for pattern in residue_patterns)
+    if any(re.search(pattern, normalized) for pattern in residue_patterns):
+        return True
+    return any(marker in normalized for marker in SHORT_STRUCTURED_MARKERS)
 
 
 def _has_self_plan_residue(text: str) -> bool:
@@ -1523,6 +1538,9 @@ def extract_structured_conditions_from_summary(field_name: str, text: str) -> St
             .replace("对方有孩可协商", "")
         )
         normalized_text = normalized_text.replace("对方", "")
+    elif "无孩" in normalized_text:
+        result.supported_patch["target_accept_partner_children"] = "不接受"
+        normalized_text = normalized_text.replace("无孩", "")
 
     if "想要孩子" in normalized_text:
         result.supported_patch["target_want_children"] = "想要孩子"
@@ -1536,6 +1554,22 @@ def extract_structured_conditions_from_summary(field_name: str, text: str) -> St
     if "先谈恋爱" in normalized_text:
         result.unsupported_patch["relationship_stage"] = "先谈恋爱"
         normalized_text = normalized_text.replace("先谈恋爱", "")
+    if "以谈恋爱为目的" in normalized_text:
+        result.unsupported_patch["relationship_stage"] = "以谈恋爱为目的"
+        normalized_text = normalized_text.replace("以谈恋爱为目的", "")
+    if "谈恋爱为目的" in normalized_text:
+        result.unsupported_patch["relationship_stage"] = "谈恋爱为目的"
+        normalized_text = normalized_text.replace("谈恋爱为目的", "")
+
+    if "同城无锡" in normalized_text:
+        result.supported_patch["target_cities"] = _normalize_city_csv([
+            str(result.supported_patch.get("target_cities") or "").strip(),
+            "无锡",
+        ])
+        normalized_text = normalized_text.replace("同城无锡", "")
+    if "同城" in normalized_text:
+        result.unsupported_patch["distance_scope"] = "同城"
+        normalized_text = normalized_text.replace("同城", "")
 
     for marker in SELF_PLAN_MARKERS:
         if marker in normalized_text:
@@ -1546,6 +1580,8 @@ def extract_structured_conditions_from_summary(field_name: str, text: str) -> St
     cleaned = re.sub(r"^希望找", "", cleaned)
     cleaned = re.sub(r"^找", "", cleaned)
     cleaned = re.sub(r"^希望对方", "希望对方", cleaned)
+    cleaned = re.sub(r"^要求", "", cleaned)
+    cleaned = cleaned.replace("，要求", "，")
     cleaned = re.sub(r"\s+", "", cleaned).strip("，。 ")
     result.cleaned_text = cleaned
     return result
