@@ -53,6 +53,25 @@ def test_normalize_query_text_expands_relationship_pacing_terms() -> None:
     assert "tag:关系推进明确" in normalized.semantic_tags
 
 
+def test_normalize_summary_text_expands_partner_relationship_pacing_short_text() -> None:
+    normalized = normalize_summary_text("partner_relationship_pacing", "慢热")
+
+    assert normalized.normalized_text == "慢热"
+    assert "关系推进明确" in normalized.retrieval_text
+    assert "不暧昧" in normalized.retrieval_text
+    assert "节奏明确" in normalized.retrieval_text
+    assert "tag:慢热真诚" in normalized.retrieval_text
+
+
+def test_normalize_summary_text_expands_partner_lifestyle_preference_short_text() -> None:
+    normalized = normalize_summary_text("partner_lifestyle_preference", "生活规律，不要太卷")
+
+    assert normalized.normalized_text == "作息规律，排斥高压内卷"
+    assert "工作生活平衡" in normalized.retrieval_text
+    assert "生活稳定" in normalized.retrieval_text
+    assert "tag:生活规律" in normalized.retrieval_text
+
+
 def test_route_query_vector_types_for_emotional_needs() -> None:
     routes = route_query_vector_types("我需要对方及时回复，事事有回应，不冷处理")
 
