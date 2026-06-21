@@ -392,7 +392,7 @@ async def _search_similar_users(
             )
             return [], 0.0
 
-        search_text = normalized_query.normalized_text or text
+        search_text = normalized_query.retrieval_text or normalized_query.normalized_text or text
 
         # Step 1: 生成文本向量（带缓存优化）
         # 先查缓存
