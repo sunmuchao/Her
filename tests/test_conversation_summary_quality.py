@@ -97,3 +97,16 @@ def test_filter_valid_summary_data_rejects_weak_and_invalid_texts() -> None:
         "partner_expectation": "invalid",
         "life_attitude": "weak",
     }
+
+
+def test_filter_valid_summary_data_normalizes_summary_text_before_saving() -> None:
+    summary_data = {
+        "partner_expectation": "希望对方性格温柔，有上进心，认真推进关系",
+    }
+
+    valid, rejected = filter_valid_summary_data(summary_data)
+
+    assert rejected == {}
+    assert valid == {
+        "partner_expectation": "希望对方温和，目标感强，关系推进明确",
+    }
