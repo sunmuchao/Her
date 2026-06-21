@@ -438,5 +438,37 @@ def test_extract_structured_conditions_handles_same_city_and_dating_goal_phrase(
     assert cleaned["partner_expectation"] == "喜欢活泼开朗型的"
 
 
+def test_extract_structured_conditions_strips_compound_quantitative_partner_expectation():
+    """测试：复合结构化择偶条件不应残留在摘要里"""
+    from match_domain.session_end_processor import split_structured_conditions_from_summaries
+
+    supported, unsupported, cleaned = split_structured_conditions_from_summaries({
+        "partner_expectation": "无锡，24-29岁未婚女性，身高163-176cm，2年内结婚，希望对方情绪稳定、有主见、好相处，生育可协商",
+    })
+
+    assert supported["target_cities"] == "无锡"
+    assert supported["target_age_min"] == 24
+    assert supported["target_age_max"] == 29
+    assert supported["target_height_min"] == 163
+    assert supported["target_height_max"] == 176
+    assert supported["target_marital_statuses"] == "未婚"
+    assert supported["target_marriage_timeline"] == "2年内结婚"
+    assert supported["target_accept_partner_children"] == "可协商"
+    assert unsupported == {"partner_expectation": {"target_gender": "female"}}
+    assert cleaned["partner_expectation"] == "希望对方情绪稳定，有主见，好相处"
+
+
+def test_filter_valid_summary_data_rejects_compound_quantitative_partner_expectation():
+    """测试：如果复合结构化条件没清干净，摘要必须被拦截"""
+    from match_domain.session_end_processor import filter_valid_summary_data
+
+    valid, rejected = filter_valid_summary_data({
+        "partner_expectation": "无锡，24-29岁未婚女性，身高163-176cm，2年内结婚，希望对方情绪稳定、有主见、好相处，生育可协商",
+    })
+
+    assert valid == {}
+    assert rejected == {"partner_expectation": "invalid"}
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short"])
