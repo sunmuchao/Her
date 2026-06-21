@@ -21,6 +21,9 @@ def test_normalize_summary_text_rewrites_partner_expectation_synonyms() -> None:
     assert normalized.normalized_text == "希望对方温和，目标感强，关系推进明确，排斥高压内卷"
     assert "成长驱动强" in normalized.retrieval_text
     assert "不暧昧" in normalized.retrieval_text
+    assert "tag:温和型" in normalized.retrieval_text
+    assert "tag:目标感" in normalized.retrieval_text
+    assert "tag:关系推进明确" in normalized.retrieval_text
     assert "温柔->温和" in normalized.applied_rules
     assert "有上进心->目标感强" in normalized.applied_rules
 
@@ -32,6 +35,8 @@ def test_normalize_query_text_rewrites_abstract_terms() -> None:
     assert normalized.route_vector_types[:2] == ["partner_expectation", "personality_traits"]
     assert "成长驱动强" in normalized.retrieval_text
     assert "有责任感" in normalized.retrieval_text
+    assert "tag:温和型" in normalized.semantic_tags
+    assert "tag:目标感" in normalized.semantic_tags
 
 
 def test_normalize_query_text_expands_relationship_pacing_terms() -> None:
@@ -40,6 +45,8 @@ def test_normalize_query_text_expands_relationship_pacing_terms() -> None:
     assert "关系推进明确" in normalized.normalized_text
     assert "不暧昧" in normalized.retrieval_text
     assert "持续投入关系" in normalized.retrieval_text
+    assert "tag:慢热真诚" in normalized.semantic_tags
+    assert "tag:关系推进明确" in normalized.semantic_tags
 
 
 def test_route_query_vector_types_for_emotional_needs() -> None:
