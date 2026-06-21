@@ -1384,7 +1384,7 @@ def _extract_age_range(text: str) -> tuple[int | None, int | None]:
 
 
 def _extract_height_range(text: str) -> tuple[int | None, int | None]:
-    match = re.search(r"身高\s*(\d{3})\s*[-到至~]\s*(\d{3})", text)
+    match = re.search(r"(?:身高\s*)?(\d{3})\s*[-到至~]\s*(\d{3})\s*(?:cm|CM)?", text)
     if match:
         return int(match.group(1)), int(match.group(2))
     return None, None
@@ -1424,6 +1424,21 @@ def _extract_education(text: str) -> str | None:
     return None
 
 
+def _has_structured_residue(text: str) -> bool:
+    normalized = str(text or "").strip()
+    if not normalized:
+        return False
+
+    residue_patterns = (
+        r"\d{2}\s*[-到至~]\s*\d{2}\s*岁",
+        r"\d{3}\s*[-到至~]\s*\d{3}\s*(?:cm|CM)?",
+        r"(无锡|上海|苏州|南京|杭州|宁波|南通|常州|湖州|扬州|镇江|嘉兴|绍兴|合肥)",
+        r"(未婚|离异|丧偶)",
+        r"(有孩|孩子|无孩)",
+    )
+    return any(re.search(pattern, normalized) for pattern in residue_patterns)
+
+
 def extract_structured_conditions_from_summary(field_name: str, text: str) -> StructuredSummaryExtraction:
     normalized_text = str(text or "").strip()
     result = StructuredSummaryExtraction(cleaned_text=normalized_text)
@@ -1448,7 +1463,7 @@ def extract_structured_conditions_from_summary(field_name: str, text: str) -> St
     if height_min is not None and height_max is not None:
         result.supported_patch["target_height_min"] = height_min
         result.supported_patch["target_height_max"] = height_max
-        normalized_text = re.sub(r"身高\s*\d{3}\s*[-到至~]\s*\d{3}", "", normalized_text)
+        normalized_text = re.sub(r"(?:身高\s*)?\d{3}\s*[-到至~]\s*\d{3}\s*(?:cm|CM)?", "", normalized_text)
         normalized_text = normalized_text.replace("cm", "").replace("CM", "")
 
     income_min, income_max = _extract_income_range(normalized_text)
@@ -1480,6 +1495,15 @@ def extract_structured_conditions_from_summary(field_name: str, text: str) -> St
     if "不接受对方有孩子" in normalized_text or "不接受有孩" in normalized_text:
         result.supported_patch["target_accept_partner_children"] = "不接受"
         normalized_text = normalized_text.replace("不接受对方有孩子", "").replace("不接受有孩", "")
+    elif "有孩可协商" in normalized_text or "接受对方有孩子" in normalized_text or "对方有孩可协商" in normalized_text:
+        result.supported_patch["target_accept_partner_children"] = "可协商"
+        normalized_text = (
+            normalized_text
+            .replace("有孩可协商", "")
+            .replace("接受对方有孩子", "")
+            .replace("对方有孩可协商", "")
+        )
+        normalized_text = normalized_text.replace("对方", "")
 
     timeline_match = re.search(r"(\d+年内结婚|半年内结婚|合适就结婚|结婚导向)", normalized_text)
     if timeline_match:
@@ -1488,6 +1512,7 @@ def extract_structured_conditions_from_summary(field_name: str, text: str) -> St
 
     cleaned = re.sub(r"[，,、/；;]+", "，", normalized_text)
     cleaned = re.sub(r"^希望找", "", cleaned)
+    cleaned = re.sub(r"^找", "", cleaned)
     cleaned = re.sub(r"^希望对方", "希望对方", cleaned)
     cleaned = re.sub(r"\s+", "", cleaned).strip("，。 ")
     result.cleaned_text = cleaned
@@ -1517,6 +1542,9 @@ def filter_valid_summary_data(summary_data: dict[str, str]) -> tuple[dict[str, s
     filtered: dict[str, str] = {}
     rejected: dict[str, str] = {}
     for summary_key, summary_text in summary_data.items():
+        if _has_structured_residue(summary_text):
+            rejected[summary_key] = "invalid"
+            continue
         quality = validate_summary_text(summary_key, summary_text)
         if quality == "valid":
             filtered[summary_key] = summary_text

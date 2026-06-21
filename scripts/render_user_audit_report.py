@@ -558,6 +558,7 @@ class UserAuditReportBuilder:
             ("匹配案例", len(payload.get("matchmaking", {}).get("match_cases", []) or [])),
             ("关系链路", len(payload.get("ledger", {}).get("relations", []) or [])),
         ]
+        narrative = self._build_narrative(payload)
 
         return f"""<!DOCTYPE html>
 <html lang="zh-CN">
@@ -759,6 +760,30 @@ class UserAuditReportBuilder:
     {self._render_warnings()}
 
     <section class="section">
+      <h2>一句话看懂这个用户</h2>
+      <div class="two">
+        <div class="card">
+          <h3>当前状态</h3>
+          {self._render_bullets(narrative["status"])}
+        </div>
+        <div class="card">
+          <h3>值得关注</h3>
+          {self._render_bullets(narrative["attention"])}
+        </div>
+      </div>
+      <div class="two" style="margin-top:18px">
+        <div class="card">
+          <h3>最近在发生什么</h3>
+          {self._render_bullets(narrative["recent"])}
+        </div>
+        <div class="card">
+          <h3>系统为什么这么处理</h3>
+          {self._render_bullets(narrative["system"])}
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
       <h2>用户是谁</h2>
       <div class="two">
         <div class="card">
@@ -816,6 +841,141 @@ class UserAuditReportBuilder:
   </div>
 </body>
 </html>"""
+
+    def _build_narrative(self, payload: dict[str, Any]) -> dict[str, list[str]]:
+        account = payload.get("user_account", {}).get("account") or {}
+        profile_block = payload.get("profile") or {}
+        profile = profile_block.get("profile") or {}
+        discovery = payload.get("discovery") or {}
+        chat = payload.get("chat") or {}
+        persona = payload.get("persona") or {}
+        matchmaking = payload.get("matchmaking") or {}
+        recommendation = payload.get("recommendation") or {}
+        ledger = payload.get("ledger") or {}
+
+        sessions = discovery.get("sessions") or []
+        tool_calls = discovery.get("tool_calls") or []
+        search_runs = discovery.get("search_runs") or []
+        threads = chat.get("threads") or []
+        messages = chat.get("messages") or []
+        risk_cases = chat.get("risk_cases") or []
+        moderation = chat.get("moderation") or []
+        match_cases = matchmaking.get("match_cases") or []
+        proxy_cases = matchmaking.get("proxy_cases") or []
+        latest_summary = persona.get("latest_summary_by_key") or {}
+        relations = ledger.get("relations") or []
+
+        status: list[str] = []
+        recent: list[str] = []
+        system: list[str] = []
+        attention: list[str] = []
+
+        display_name = profile_block.get("name") or profile.get("name") or f"用户 {self.ctx.user_id}"
+        city = profile.get("city") or profile.get("self_city")
+        age = profile.get("age") or profile.get("self_age")
+        job = profile.get("job") or profile.get("self_job")
+        if city or age or job:
+            status.append(
+                f"{display_name} 当前画像里显示为"
+                f"{_truncate('、'.join(str(part) for part in [age and f'{age}岁', city and city, job and job] if part), 80)}。"
+            )
+        else:
+            status.append(f"{display_name} 在系统里已有画像，但基础资料还不算完整。")
+
+        if account:
+            status.append(
+                f"账号状态是 {account.get('account_status') or '未知'}，"
+                f"Onboarding 状态是 {account.get('onboarding_status') or '未知'}。"
+            )
+        else:
+            status.append("这个人更多像是画像/业务用户，账号层信息目前没完整读到。")
+
+        if sessions:
+            latest_session = sessions[0]
+            status.append(
+                f"最近一次 discovery 会话还在 {latest_session.get('phase') or '未知阶段'}，"
+                f"会话状态是 {latest_session.get('status') or '未知'}。"
+            )
+        if threads:
+            latest_thread = threads[0]
+            counterpart = (
+                latest_thread.get("participant_b_id")
+                if str(latest_thread.get("participant_a_id")) == str(self.ctx.user_id)
+                else latest_thread.get("participant_a_id")
+            )
+            status.append(
+                f"他最近已经和用户 {counterpart} 进入聊天线程，聊天状态是 {latest_thread.get('status') or '未知'}。"
+            )
+        elif match_cases:
+            status.append("系统里已经出现匹配案例，但还没看到稳定聊天线程。")
+        else:
+            status.append("目前还没看到明确进入稳定匹配/聊天关系的证据。")
+
+        if search_runs:
+            latest_search = search_runs[0]
+            recent.append(
+                f"最近一次系统搜索发生在 {_pretty_time(latest_search.get('created_at'))}，"
+                f"当次返回了 {latest_search.get('result_count')} 个结果，命中标记是 {latest_search.get('has_match')}。"
+            )
+        if messages:
+            own_messages = [row for row in messages if str(row.get("author_id")) == str(self.ctx.user_id)]
+            if own_messages:
+                recent.append(
+                    f"最近的聊天里，他自己发出的内容偏生活化/推进关系，"
+                    f"例如“{_truncate(own_messages[-1].get('body') or '', 30)}”。"
+                )
+        if latest_summary:
+            expectation = latest_summary.get("partner_expectation") or latest_summary.get("values")
+            if expectation:
+                recent.append(f"从 persona 摘要看，他当前最明确的择偶导向是：{_truncate(expectation, 80)}。")
+        if proxy_cases:
+            recent.append(f"系统里还能看到 {len(proxy_cases)} 条代理牵线记录，说明他不只走自然聊天链路。")
+
+        if tool_calls:
+            search_calls = [row for row in tool_calls if str(row.get("tool_name")) == "search_partner_candidates"]
+            sync_calls = [row for row in tool_calls if "persona" in str(row.get("tool_name") or "")]
+            if search_calls:
+                system.append(
+                    f"系统对他最常做的动作是“找候选人”，说明当前主流程仍然是给他持续筛人、推人。"
+                )
+            if sync_calls:
+                ok_sync = [row for row in sync_calls if str(row.get("status")) == "succeeded"]
+                failed_sync = [row for row in sync_calls if str(row.get("status")) != "succeeded"]
+                if ok_sync:
+                    system.append("系统会把对话里提炼出的偏好同步回 persona，说明画像会边聊边更新。")
+                if failed_sync:
+                    system.append("有些 persona 同步失败，常见原因是这一轮对话没有提取出足够明确的新偏好。")
+        if relations:
+            system.append("relationship ledger 已经在尝试把跨系统事件串成统一关系链，适合后续做完整因果追踪。")
+        else:
+            system.append("当前关系总账没有顺利串起来，所以这份报告主要还是基于各业务库分开拼装。")
+
+        if moderation:
+            attention.append(
+                f"这个用户存在 {len(moderation)} 条账号风控/治理记录，建议重点看是否影响推荐、聊天或资料展示。"
+            )
+        if risk_cases:
+            attention.append(
+                f"聊天风控里有 {len(risk_cases)} 条案件，说明他至少被系统作为风险主体观察过。"
+            )
+        if self.warnings:
+            attention.append("有部分子系统读取失败或字段不兼容，所以当前报告仍然不是 100% 全量。")
+        if sessions and all(str(row.get("status")) == "active" for row in sessions[: min(5, len(sessions))]):
+            attention.append("这个用户最近积累了较多 active discovery 会话，可能存在重复会话、未收口会话或调试痕迹。")
+        if not attention:
+            attention.append("目前没有看到特别明显的异常，更像是一个持续活跃、正常被系统服务的用户。")
+
+        if recommendation.get("recommendation_subscriptions"):
+            system.append("推荐系统里存在订阅记录，说明这个用户可能同时在被动接收推荐，而不只是主动搜索。")
+        if match_cases:
+            system.append("Matchmaking 库里已经有案例，说明系统对这个用户不只是展示候选人，还进入了撮合执行层。")
+
+        return {
+            "status": status or ["暂无可解释状态。"],
+            "recent": recent or ["最近行为还不够明显，更多要看原始记录。"],
+            "system": system or ["暂时还无法从现有数据推断稳定的系统执行模式。"],
+            "attention": attention or ["暂无。"],
+        }
 
     def _render_warnings(self) -> str:
         if not self.warnings:
@@ -1017,6 +1177,13 @@ class UserAuditReportBuilder:
             f'<div class="event"><div class="time">{_html(_pretty_time(time_text))}</div>'
             f'<div class="title">{_html(title)}</div><div class="desc">{_html(desc)}</div></div>'
             for time_text, title, desc in events
+        ) + "</div>"
+
+    def _render_bullets(self, items: list[str]) -> str:
+        if not items:
+            return '<p class="muted">暂无。</p>'
+        return "<div class='facts'>" + "".join(
+            f"<div class='fact'>{_html(item)}</div>" for item in items
         ) + "</div>"
 
 
