@@ -29,6 +29,9 @@ DEFAULT_VECTOR_TYPES = [
     "values",
     "life_attitude",
     "partner_expectation",
+    "partner_personality_preference",
+    "partner_relationship_pacing",
+    "partner_lifestyle_preference",
     "emotional_needs",
 ]
 

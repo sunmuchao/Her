@@ -34,6 +34,9 @@ SUMMARY_FIELD_KEYS = frozenset({
     "personality_traits",
     "values",
     "partner_expectation",
+    "partner_personality_preference",
+    "partner_relationship_pacing",
+    "partner_lifestyle_preference",
     "life_attitude",
     "emotional_needs",
     "negative_preferences",
@@ -142,6 +145,39 @@ FIELD_SPECIFIC_SIGNALS: dict[str, tuple[str, ...]] = {
         "结婚导向",
         "沟通",
         "陪伴",
+    ),
+    "partner_personality_preference": (
+        "温和",
+        "细腻",
+        "有耐心",
+        "善沟通",
+        "情绪稳定",
+        "独立",
+        "边界感",
+        "有主见",
+        "目标感强",
+        "成长驱动强",
+        "有责任感",
+    ),
+    "partner_relationship_pacing": (
+        "慢热",
+        "关系推进明确",
+        "不暧昧",
+        "持续投入关系",
+        "节奏明确",
+        "认真推进",
+        "稳定出现",
+        "承诺清楚",
+    ),
+    "partner_lifestyle_preference": (
+        "作息规律",
+        "生活稳定",
+        "工作稳定",
+        "排斥高压内卷",
+        "工作生活平衡",
+        "有计划有条理",
+        "定居意向",
+        "顾家",
     ),
     "emotional_needs": (
         "回应",
@@ -1628,8 +1664,47 @@ def split_structured_conditions_from_summaries(
     return supported_patch, unsupported_fields, cleaned_summary_data
 
 
+def split_partner_expectation_facets(summary_data: dict[str, str]) -> dict[str, str]:
+    """把 partner_expectation 的混合语义拆成更细的检索槽位。
+
+    当前保留旧的 partner_expectation，同时额外补充：
+    - partner_personality_preference
+    - partner_relationship_pacing
+    - partner_lifestyle_preference
+    """
+    result = dict(summary_data)
+    source_text = str(summary_data.get("partner_expectation") or "").strip()
+    if not source_text:
+        return result
+
+    segments = [segment.strip() for segment in re.split(r"[，,、；;]+", source_text) if segment.strip()]
+    personality_segments: list[str] = []
+    pacing_segments: list[str] = []
+    lifestyle_segments: list[str] = []
+
+    for segment in segments:
+        if any(token in segment for token in ("慢热", "关系推进明确", "不暧昧", "持续投入关系", "节奏明确", "认真推进", "稳定出现", "承诺清楚")):
+            pacing_segments.append(segment)
+            continue
+        if any(token in segment for token in ("作息规律", "生活稳定", "工作稳定", "排斥高压内卷", "工作生活平衡", "有计划有条理", "定居意向", "顾家")):
+            lifestyle_segments.append(segment)
+            continue
+        if any(token in segment for token in ("温和", "细腻", "有耐心", "善沟通", "情绪稳定", "独立", "边界感", "有主见", "目标感强", "成长驱动强", "有责任感")):
+            personality_segments.append(segment)
+            continue
+
+    if personality_segments:
+        result["partner_personality_preference"] = "，".join(personality_segments)
+    if pacing_segments:
+        result["partner_relationship_pacing"] = "，".join(pacing_segments)
+    if lifestyle_segments:
+        result["partner_lifestyle_preference"] = "，".join(lifestyle_segments)
+    return result
+
+
 def filter_valid_summary_data(summary_data: dict[str, str]) -> tuple[dict[str, str], dict[str, str]]:
     """过滤并返回可落库摘要，以及被跳过字段的质量结果。"""
+    summary_data = split_partner_expectation_facets(summary_data)
     filtered: dict[str, str] = {}
     rejected: dict[str, str] = {}
     for summary_key, summary_text in summary_data.items():
