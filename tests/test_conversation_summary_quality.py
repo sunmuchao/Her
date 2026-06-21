@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from match_domain.session_end_processor import (
     SUMMARY_FIELD_KEYS,
