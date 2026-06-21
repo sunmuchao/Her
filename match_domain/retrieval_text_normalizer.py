@@ -72,6 +72,7 @@ class NormalizedText:
     normalized_text: str
     applied_rules: list[str]
     retrieval_text: str
+    semantic_tags: list[str]
 
 
 @dataclass(frozen=True)
@@ -81,6 +82,7 @@ class NormalizedQuery:
     applied_rules: list[str]
     route_vector_types: list[str]
     retrieval_text: str
+    semantic_tags: list[str]
 
 
 RETRIEVAL_EXPANSION_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
@@ -90,6 +92,19 @@ RETRIEVAL_EXPANSION_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("善沟通", ("善沟通", "愿意沟通", "不冷处理")),
     ("作息规律", ("作息规律", "生活稳定", "有计划有条理")),
     ("排斥高压内卷", ("排斥高压内卷", "工作生活平衡", "不喜欢太卷")),
+)
+
+
+SEMANTIC_TAG_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("tag:温和型", ("温和", "细腻", "有耐心")),
+    ("tag:沟通型", ("善沟通", "愿意沟通", "不冷处理")),
+    ("tag:目标感", ("目标感强", "成长驱动强", "做事积极", "有事业心")),
+    ("tag:责任感", ("有责任感", "靠谱", "稳定投入")),
+    ("tag:关系推进明确", ("关系推进明确", "不暧昧", "持续投入关系", "节奏明确")),
+    ("tag:生活规律", ("作息规律", "生活稳定", "有计划有条理")),
+    ("tag:及时回应", ("及时回复", "有回应", "不冷处理", "高回应度")),
+    ("tag:边界感", ("边界感", "独立", "界限清楚")),
+    ("tag:慢热真诚", ("慢热", "真诚")),
 )
 
 
@@ -117,12 +132,14 @@ def normalize_summary_text(field_name: str, text: str) -> NormalizedText:
             applied_rules.append(f"{source}->{target}")
 
     normalized = _dedupe_segments(normalized)
-    retrieval_text = build_retrieval_text(normalized)
+    semantic_tags = extract_semantic_tags(normalized)
+    retrieval_text = build_retrieval_text(normalized, semantic_tags=semantic_tags)
     return NormalizedText(
         original_text=str(text or "").strip(),
         normalized_text=normalized,
         applied_rules=applied_rules,
         retrieval_text=retrieval_text,
+        semantic_tags=semantic_tags,
     )
 
 
@@ -166,23 +183,37 @@ def normalize_query_text(text: str) -> NormalizedQuery:
             applied_rules.append(f"{source}->{target}")
 
     normalized = _dedupe_segments(normalized)
-    retrieval_text = build_retrieval_text(normalized)
+    semantic_tags = extract_semantic_tags(normalized)
+    retrieval_text = build_retrieval_text(normalized, semantic_tags=semantic_tags)
     return NormalizedQuery(
         original_text=str(text or "").strip(),
         normalized_text=normalized,
         applied_rules=applied_rules,
         route_vector_types=route_query_vector_types(normalized),
         retrieval_text=retrieval_text,
+        semantic_tags=semantic_tags,
     )
 
 
-def build_retrieval_text(text: str) -> str:
+def extract_semantic_tags(text: str) -> list[str]:
+    normalized = str(text or "").strip()
+    tags: list[str] = []
+    for tag, markers in SEMANTIC_TAG_RULES:
+        if any(marker in normalized for marker in markers):
+            tags.append(tag)
+    return tags
+
+
+def build_retrieval_text(text: str, *, semantic_tags: list[str] | None = None) -> str:
     base_segments = [segment.strip() for segment in re.split(r"[，,、；;]+", str(text or "").strip()) if segment.strip()]
     expanded_segments: list[str] = list(base_segments)
 
     for marker, expansions in RETRIEVAL_EXPANSION_RULES:
         if marker in text:
             expanded_segments.extend(expansions)
+
+    for tag in list(semantic_tags or []):
+        expanded_segments.append(tag)
 
     ordered: list[str] = []
     seen: set[str] = set()
@@ -199,6 +230,7 @@ __all__ = [
     "NormalizedQuery",
     "NormalizedText",
     "build_retrieval_text",
+    "extract_semantic_tags",
     "normalize_query_text",
     "normalize_summary_text",
     "route_query_vector_types",
