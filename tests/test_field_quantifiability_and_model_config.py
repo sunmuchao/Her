@@ -203,5 +203,37 @@ def test_regression_previous_missing_fields():
     print("✅ 回归测试通过：之前遗漏的字段现在正确归类")
 
 
+def test_normalize_quantifiable_patch_only_keeps_persona_supported_fields():
+    """测试：结构化字段只保留 user_personas 支持的字段，age/city/income 直接丢弃"""
+    from match_domain.session_end_processor import normalize_quantifiable_patch
+
+    summary_data = {
+        "mbti_type": "INTJ",
+        "city": "无锡",
+        "age": "28",
+        "income": "20万/年",
+        "height": "172",
+        "education": "本科",
+    }
+
+    normalized = normalize_quantifiable_patch(summary_data)
+
+    assert "self_personality_traits_json" in normalized, "mbti_type 应映射到 persona 支持字段"
+    assert "self_city" not in normalized, "city 不应写入 persona"
+    assert "self_age" not in normalized, "age 不应写入 persona"
+    assert "self_income_wan" not in normalized, "income 不应写入 persona"
+    assert "self_height" not in normalized, "height 不应写入 persona"
+    assert "self_education" not in normalized, "education 不应写入 persona"
+
+
+def test_validate_summary_text_rejects_generic_compatibility_phrases():
+    """测试：'需要性格合拍' 这类空泛摘要会被拦截"""
+    from match_domain.session_end_processor import validate_summary_text
+
+    assert validate_summary_text("emotional_needs", "需要性格合拍") == "invalid"
+    assert validate_summary_text("partner_expectation", "希望真诚稳定") == "invalid"
+    assert validate_summary_text("partner_expectation", "希望对方情绪稳定、愿意沟通、不冷处理问题") == "valid"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short"])
