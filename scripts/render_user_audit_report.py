@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Render a readable HTML audit report for one user across subsystems."""
+"""Render a consolidated Markdown audit report for one user across subsystems."""
 
 from __future__ import annotations
 
 import argparse
-import html
 import json
 import os
 import sys
@@ -57,14 +56,6 @@ def _safe_json_loads(value: Any, default: Any) -> Any:
         return json_loads(value, default)
     except Exception:
         return default
-
-
-def _html(value: Any) -> str:
-    if value is None:
-        return ""
-    if isinstance(value, (dict, list)):
-        return html.escape(json.dumps(value, ensure_ascii=False, indent=2))
-    return html.escape(str(value))
 
 
 def _pretty_time(value: Any) -> str:
@@ -131,7 +122,7 @@ class UserAuditReportBuilder:
             "persona": self._load_persona(),
             "ledger": self._load_ledger(),
         }
-        return self._render_html(payload)
+        return self._render_markdown(payload)
 
     def _connect(self, dsn: str, subsystem_name: str) -> Any:
         return connect_mysql_repo_db(dsn, subsystem_name=subsystem_name)
@@ -550,297 +541,71 @@ class UserAuditReportBuilder:
             self.warnings.append(warning)
         return data or {}
 
-    def _render_html(self, payload: dict[str, Any]) -> str:
-        overview_cards = [
-            ("用户ID", self.ctx.user_id),
-            ("发现会话", len(payload.get("discovery", {}).get("sessions", []) or [])),
-            ("聊天线程", len(payload.get("chat", {}).get("threads", []) or [])),
-            ("匹配案例", len(payload.get("matchmaking", {}).get("match_cases", []) or [])),
-            ("关系链路", len(payload.get("ledger", {}).get("relations", []) or [])),
-        ]
+    def _render_markdown(self, payload: dict[str, Any]) -> str:
         narrative = self._build_narrative(payload)
-
-        return f"""<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>用户全景审计报告 #{self.ctx.user_id}</title>
-  <style>
-    :root {{
-      --bg: #f4efe7;
-      --paper: #fffdf8;
-      --ink: #1f2933;
-      --muted: #6b7280;
-      --line: #e7dccb;
-      --accent: #a64b2a;
-      --accent-soft: #f4d6c8;
-      --chip: #f6efe4;
-    }}
-    * {{ box-sizing: border-box; }}
-    body {{
-      margin: 0;
-      font-family: "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", sans-serif;
-      background:
-        radial-gradient(circle at top left, rgba(166,75,42,.10), transparent 24rem),
-        linear-gradient(180deg, #f9f5ee 0%, var(--bg) 100%);
-      color: var(--ink);
-    }}
-    .wrap {{
-      width: min(1280px, calc(100vw - 32px));
-      margin: 24px auto 64px;
-    }}
-    .hero, .section {{
-      background: rgba(255,253,248,.92);
-      backdrop-filter: blur(10px);
-      border: 1px solid var(--line);
-      border-radius: 24px;
-      padding: 24px;
-      box-shadow: 0 20px 60px rgba(80,55,35,.08);
-    }}
-    .hero {{
-      margin-bottom: 20px;
-    }}
-    .hero h1 {{
-      margin: 0 0 8px;
-      font-size: 34px;
-      line-height: 1.1;
-    }}
-    .hero p {{
-      margin: 0;
-      color: var(--muted);
-      font-size: 15px;
-    }}
-    .grid {{
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 14px;
-      margin-top: 20px;
-    }}
-    .card {{
-      background: var(--paper);
-      border: 1px solid var(--line);
-      border-radius: 18px;
-      padding: 16px;
-    }}
-    .card .label {{
-      color: var(--muted);
-      font-size: 12px;
-      margin-bottom: 8px;
-    }}
-    .card .value {{
-      font-size: 26px;
-      font-weight: 700;
-    }}
-    .stack {{
-      display: grid;
-      gap: 18px;
-    }}
-    .section h2 {{
-      margin: 0 0 12px;
-      font-size: 22px;
-    }}
-    .section h3 {{
-      margin: 20px 0 10px;
-      font-size: 16px;
-    }}
-    .two {{
-      display: grid;
-      gap: 18px;
-      grid-template-columns: 1.15fr .85fr;
-    }}
-    .facts {{
-      display: grid;
-      gap: 10px;
-    }}
-    .fact {{
-      border-bottom: 1px dashed var(--line);
-      padding-bottom: 10px;
-    }}
-    .fact:last-child {{
-      border-bottom: 0;
-      padding-bottom: 0;
-    }}
-    .fact strong {{
-      display: inline-block;
-      min-width: 108px;
-      color: var(--muted);
-      font-weight: 600;
-    }}
-    .timeline {{
-      display: grid;
-      gap: 12px;
-    }}
-    .event {{
-      position: relative;
-      padding: 14px 14px 14px 18px;
-      border-left: 4px solid var(--accent);
-      background: linear-gradient(180deg, rgba(244,214,200,.35), rgba(255,255,255,.6));
-      border-radius: 14px;
-    }}
-    .event .time {{
-      font-size: 12px;
-      color: var(--muted);
-      margin-bottom: 6px;
-    }}
-    .event .title {{
-      font-weight: 700;
-      margin-bottom: 6px;
-    }}
-    .event .desc {{
-      color: #334155;
-      white-space: pre-wrap;
-      word-break: break-word;
-    }}
-    .chips {{
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-    }}
-    .chip {{
-      padding: 6px 10px;
-      border-radius: 999px;
-      background: var(--chip);
-      border: 1px solid var(--line);
-      font-size: 12px;
-    }}
-    table {{
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 13px;
-    }}
-    th, td {{
-      border-bottom: 1px solid var(--line);
-      text-align: left;
-      vertical-align: top;
-      padding: 10px 8px;
-    }}
-    th {{
-      color: var(--muted);
-      font-weight: 600;
-    }}
-    pre {{
-      margin: 0;
-      white-space: pre-wrap;
-      word-break: break-word;
-      font-size: 12px;
-      line-height: 1.45;
-      background: #fbf7f1;
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      padding: 14px;
-    }}
-    .muted {{ color: var(--muted); }}
-    .warning {{
-      padding: 12px 14px;
-      border-radius: 14px;
-      background: #fff0eb;
-      border: 1px solid #efc3b4;
-      color: #7c2d12;
-      font-size: 13px;
-    }}
-    @media (max-width: 900px) {{
-      .two {{ grid-template-columns: 1fr; }}
-      .wrap {{ width: min(100vw - 20px, 1280px); }}
-      .hero, .section {{ padding: 18px; border-radius: 18px; }}
-      .hero h1 {{ font-size: 28px; }}
-    }}
-  </style>
-</head>
-<body>
-  <div class="wrap stack">
-    <section class="hero">
-      <h1>用户全景审计报告</h1>
-      <p>把这个用户在系统里“是谁、做过什么、系统怎么响应、数据库留下了什么痕迹”整理成一页。</p>
-      <div class="grid">
-        {''.join(f'<div class="card"><div class="label">{_html(label)}</div><div class="value">{_html(value)}</div></div>' for label, value in overview_cards)}
-      </div>
-    </section>
-
-    {self._render_warnings()}
-
-    <section class="section">
-      <h2>一句话看懂这个用户</h2>
-      <div class="two">
-        <div class="card">
-          <h3>当前状态</h3>
-          {self._render_bullets(narrative["status"])}
-        </div>
-        <div class="card">
-          <h3>值得关注</h3>
-          {self._render_bullets(narrative["attention"])}
-        </div>
-      </div>
-      <div class="two" style="margin-top:18px">
-        <div class="card">
-          <h3>最近在发生什么</h3>
-          {self._render_bullets(narrative["recent"])}
-        </div>
-        <div class="card">
-          <h3>系统为什么这么处理</h3>
-          {self._render_bullets(narrative["system"])}
-        </div>
-      </div>
-    </section>
-
-    <section class="section">
-      <h2>用户是谁</h2>
-      <div class="two">
-        <div class="card">
-          <h3>账号与基础信息</h3>
-          {self._render_account_facts(payload.get("user_account", {}), payload.get("profile", {}), payload.get("onboarding", {}))}
-        </div>
-        <div class="card">
-          <h3>人格/偏好摘要</h3>
-          {self._render_persona_summary(payload.get("persona", {}))}
-        </div>
-      </div>
-    </section>
-
-    <section class="section">
-      <h2>用户做过什么</h2>
-      <div class="two">
-        <div class="card">
-          <h3>Discovery 过程</h3>
-          {self._render_discovery_timeline(payload.get("discovery", {}))}
-        </div>
-        <div class="card">
-          <h3>聊天与互动</h3>
-          {self._render_chat_timeline(payload.get("chat", {}))}
-        </div>
-      </div>
-    </section>
-
-    <section class="section">
-      <h2>系统怎么执行的</h2>
-      <div class="two">
-        <div class="card">
-          <h3>工具调用与系统决策</h3>
-          {self._render_tool_calls(payload.get("discovery", {}))}
-        </div>
-        <div class="card">
-          <h3>关系链路与统一时间线</h3>
-          {self._render_ledger(payload.get("ledger", {}))}
-        </div>
-      </div>
-    </section>
-
-    <section class="section">
-      <h2>数据库里存了什么</h2>
-      <div class="two">
-        <div class="card">
-          <h3>Matchmaking / Recommendation</h3>
-          {self._render_matchmaking_and_recommendation(payload.get("matchmaking", {}), payload.get("recommendation", {}))}
-        </div>
-        <div class="card">
-          <h3>原始数据样本</h3>
-          {self._render_raw_samples(payload)}
-        </div>
-      </div>
-    </section>
-  </div>
-</body>
-</html>"""
+        lines: list[str] = []
+        lines.append("# 用户全景审计报告")
+        lines.append("")
+        lines.append(f"- 用户ID: `{self.ctx.user_id}`")
+        lines.append(f"- 生成时间: `{datetime.now().replace(microsecond=0).isoformat(sep=' ')}`")
+        lines.append("- 说明: 这份 Markdown 目的是把所有重要信息尽量完整整理出来，方便后续再交给大模型重写为更通俗的 HTML。")
+        lines.append("")
+        lines.append("## 概览")
+        lines.extend(self._md_overview(payload))
+        lines.append("")
+        if self.warnings:
+            lines.append("## 读取提醒")
+            lines.extend(self._md_bullets(self.warnings))
+            lines.append("")
+        lines.append("## 一句话看懂这个用户")
+        lines.append("### 当前状态")
+        lines.extend(self._md_bullets(narrative["status"]))
+        lines.append("")
+        lines.append("### 值得关注")
+        lines.extend(self._md_bullets(narrative["attention"]))
+        lines.append("")
+        lines.append("### 最近在发生什么")
+        lines.extend(self._md_bullets(narrative["recent"]))
+        lines.append("")
+        lines.append("### 系统为什么这么处理")
+        lines.extend(self._md_bullets(narrative["system"]))
+        lines.append("")
+        lines.append("## 用户是谁")
+        lines.append("### 账号与基础信息")
+        lines.extend(self._md_account_facts(payload.get("user_account", {}), payload.get("profile", {}), payload.get("onboarding", {})))
+        lines.append("")
+        lines.append("### Persona / 偏好摘要")
+        lines.extend(self._md_persona_summary(payload.get("persona", {})))
+        lines.append("")
+        lines.append("## 用户做过什么")
+        lines.append("### Discovery 过程时间线")
+        lines.extend(self._md_discovery_timeline(payload.get("discovery", {})))
+        lines.append("")
+        lines.append("### 聊天与互动时间线")
+        lines.extend(self._md_chat_timeline(payload.get("chat", {})))
+        lines.append("")
+        lines.append("## 系统怎么执行的")
+        lines.append("### 工具调用与系统决策")
+        lines.extend(self._md_tool_calls(payload.get("discovery", {})))
+        lines.append("")
+        lines.append("### Relationship Ledger / 统一时间线")
+        lines.extend(self._md_ledger(payload.get("ledger", {})))
+        lines.append("")
+        lines.append("## 数据库存了什么")
+        lines.append("### Matchmaking / Recommendation 汇总")
+        lines.extend(self._md_matchmaking_and_recommendation(payload.get("matchmaking", {}), payload.get("recommendation", {})))
+        lines.append("")
+        lines.append("### 关键原始数据样本")
+        lines.append("```json")
+        lines.append(json.dumps(self._raw_samples(payload), ensure_ascii=False, indent=2))
+        lines.append("```")
+        lines.append("")
+        lines.append("## 全量结构化数据")
+        lines.append("```json")
+        lines.append(json.dumps(payload, ensure_ascii=False, indent=2))
+        lines.append("```")
+        lines.append("")
+        return "\n".join(lines)
 
     def _build_narrative(self, payload: dict[str, Any]) -> dict[str, list[str]]:
         account = payload.get("user_account", {}).get("account") or {}
@@ -977,21 +742,22 @@ class UserAuditReportBuilder:
             "attention": attention or ["暂无。"],
         }
 
-    def _render_warnings(self) -> str:
-        if not self.warnings:
-            return ""
-        return (
-            '<section class="section"><h2>读取提醒</h2>'
-            + "".join(f'<div class="warning">{_html(item)}</div>' for item in self.warnings)
-            + "</section>"
-        )
+    def _md_overview(self, payload: dict[str, Any]) -> list[str]:
+        overview = [
+            ("发现会话", len(payload.get("discovery", {}).get("sessions", []) or [])),
+            ("聊天线程", len(payload.get("chat", {}).get("threads", []) or [])),
+            ("匹配案例", len(payload.get("matchmaking", {}).get("match_cases", []) or [])),
+            ("代理牵线", len(payload.get("matchmaking", {}).get("proxy_cases", []) or [])),
+            ("关系链路", len(payload.get("ledger", {}).get("relations", []) or [])),
+        ]
+        return [f"- {label}: `{value}`" for label, value in overview]
 
-    def _render_account_facts(
+    def _md_account_facts(
         self,
         account_block: dict[str, Any],
         profile_block: dict[str, Any],
         onboarding_block: dict[str, Any],
-    ) -> str:
+    ) -> list[str]:
         account = account_block.get("account") or {}
         profile = profile_block.get("profile") or {}
         facts = [
@@ -1007,33 +773,30 @@ class UserAuditReportBuilder:
             ("职业", profile.get("job") or profile.get("self_job")),
             ("教育", profile.get("education") or profile.get("self_education")),
         ]
-        rendered = "".join(
-            f'<div class="fact"><strong>{_html(label)}</strong><span>{_html(value or "暂无")}</span></div>'
-            for label, value in facts
-        )
         identities = account_block.get("identities") or []
-        chips = "".join(
-            f'<span class="chip">{_html(row.get("identity_type"))}: {_html(row.get("identity_value"))}</span>'
-            for row in identities[:10]
-        ) or '<span class="muted">没有读到账号绑定标识</span>'
-        return f'<div class="facts">{rendered}</div><h3>账号绑定</h3><div class="chips">{chips}</div>'
+        lines = [f"- {label}: `{value if value not in (None, '') else '暂无'}`" for label, value in facts]
+        if identities:
+            lines.append("- 账号绑定:")
+            for row in identities[:10]:
+                lines.append(f"  - `{row.get('identity_type')}`: `{row.get('identity_value')}`")
+        else:
+            lines.append("- 账号绑定: `没有读到账号绑定标识`")
+        return lines
 
-    def _render_persona_summary(self, persona_block: dict[str, Any]) -> str:
+    def _md_persona_summary(self, persona_block: dict[str, Any]) -> list[str]:
         latest = persona_block.get("latest_summary_by_key") or {}
         meta = persona_block.get("summary_meta") or {}
         if not latest:
-            return '<p class="muted">暂无 conversation_summaries 数据。</p>'
-        rows = "".join(
-            f'<div class="fact"><strong>{_html(key)}</strong><span>{_html(value)}</span></div>'
-            for key, value in latest.items()
-        )
-        return (
-            f'<div class="chips"><span class="chip">已加载字段 {len(latest)}</span>'
-            f'<span class="chip">完整度 {_html(meta.get("completeness"))}</span></div>'
-            f'<div class="facts" style="margin-top:12px">{rows}</div>'
-        )
+            return ["- 暂无 `conversation_summaries` 数据。"]
+        lines = [
+            f"- 已加载字段数: `{len(latest)}`",
+            f"- 完整度: `{meta.get('completeness')}`",
+        ]
+        for key, value in latest.items():
+            lines.append(f"- {key}: {value}")
+        return lines
 
-    def _render_discovery_timeline(self, discovery: dict[str, Any]) -> str:
+    def _md_discovery_timeline(self, discovery: dict[str, Any]) -> list[str]:
         events: list[tuple[str, str, str]] = []
         for row in discovery.get("sessions", [])[:10]:
             events.append((
@@ -1060,9 +823,9 @@ class UserAuditReportBuilder:
                 f"结果 {row.get('result_count')}，是否命中 {row.get('has_match')}",
             ))
         events.sort(key=lambda item: item[0], reverse=True)
-        return self._render_events(events[:24])
+        return self._md_events(events[:24])
 
-    def _render_chat_timeline(self, chat_block: dict[str, Any]) -> str:
+    def _md_chat_timeline(self, chat_block: dict[str, Any]) -> list[str]:
         events: list[tuple[str, str, str]] = []
         for row in chat_block.get("threads", [])[:10]:
             events.append((
@@ -1085,40 +848,34 @@ class UserAuditReportBuilder:
                 f"状态 {row.get('status')}，建议动作 {row.get('recommended_action')}",
             ))
         events.sort(key=lambda item: item[0], reverse=True)
-        return self._render_events(events[:28])
+        return self._md_events(events[:28])
 
-    def _render_tool_calls(self, discovery: dict[str, Any]) -> str:
+    def _md_tool_calls(self, discovery: dict[str, Any]) -> list[str]:
         rows = discovery.get("tool_calls") or []
         if not rows:
-            return '<p class="muted">暂无 tool call 审计记录。</p>'
-        table_rows = []
+            return ["- 暂无 tool call 审计记录。"]
+        lines: list[str] = []
         for row in rows[:20]:
             args_text = _truncate(json.dumps(_safe_json_loads(row.get("tool_args_json"), row.get("tool_args_json")), ensure_ascii=False), 90)
             result_text = _truncate(json.dumps(_safe_json_loads(row.get("tool_result_json"), row.get("tool_result_json")), ensure_ascii=False), 90)
-            table_rows.append(
-                "<tr>"
-                f"<td>{_html(_pretty_time(row.get('created_at')))}</td>"
-                f"<td>{_html(row.get('tool_name'))}</td>"
-                f"<td>{_html(row.get('status'))}</td>"
-                f"<td>{_html(args_text)}</td>"
-                f"<td>{_html(result_text)}</td>"
-                "</tr>"
+            lines.append(
+                f"- `{_pretty_time(row.get('created_at'))}` | `{row.get('tool_name')}` | `{row.get('status')}` | 参数: {args_text} | 结果: {result_text}"
             )
-        return (
-            "<table><thead><tr><th>时间</th><th>工具</th><th>状态</th><th>参数</th><th>结果摘要</th></tr></thead>"
-            f"<tbody>{''.join(table_rows)}</tbody></table>"
-        )
+        return lines
 
-    def _render_ledger(self, ledger_block: dict[str, Any]) -> str:
+    def _md_ledger(self, ledger_block: dict[str, Any]) -> list[str]:
         relations = ledger_block.get("relations") or []
         if not relations:
-            return '<p class="muted">没有查到 relationship ledger 关系。</p>'
+            return ["- 没有查到 relationship ledger 关系。"]
         chunks: list[str] = []
         for item in relations[:6]:
             relation = item.get("relation") or {}
             summary = item.get("summary") or {}
             timeline = item.get("timeline") or []
-            timeline_html = self._render_events(
+            chunks.append(
+                f"- relation_key: `{relation.get('relation_key')}` | current_phase: `{summary.get('current_phase') or relation.get('current_phase')}` | event_count: `{summary.get('event_count')}`"
+            )
+            timeline_lines = self._md_events(
                 [
                     (
                         str(event.get("occurred_at") or event.get("created_at") or ""),
@@ -1128,20 +885,14 @@ class UserAuditReportBuilder:
                     for event in timeline[:8]
                 ]
             )
-            chunks.append(
-                '<div class="card" style="margin-bottom:12px">'
-                f"<div class='chips'><span class='chip'>{_html(relation.get('relation_key'))}</span>"
-                f"<span class='chip'>阶段 {_html(summary.get('current_phase') or relation.get('current_phase'))}</span>"
-                f"<span class='chip'>事件数 {_html(summary.get('event_count'))}</span></div>"
-                f"<div style='margin-top:12px'>{timeline_html}</div></div>"
-            )
-        return "".join(chunks)
+            chunks.extend([f"  {line}" for line in timeline_lines])
+        return chunks
 
-    def _render_matchmaking_and_recommendation(
+    def _md_matchmaking_and_recommendation(
         self,
         matchmaking: dict[str, Any],
         recommendation: dict[str, Any],
-    ) -> str:
+    ) -> list[str]:
         facts = [
             ("匹配池成员", len(matchmaking.get("members", []) or [])),
             ("匹配边", len(matchmaking.get("edges", []) or [])),
@@ -1151,51 +902,43 @@ class UserAuditReportBuilder:
             ("推荐结果", len(recommendation.get("recommendation_results", []) or [])),
             ("推荐动作", len(recommendation.get("recommendation_actions", []) or [])),
         ]
-        rendered = "".join(
-            f'<div class="fact"><strong>{_html(label)}</strong><span>{_html(value)}</span></div>'
-            for label, value in facts
-        )
-        case_preview = "".join(
-            f'<span class="chip">{_html(row.get("case_id"))}: {_html(row.get("status") or row.get("case_status"))}</span>'
-            for row in (matchmaking.get("match_cases") or [])[:8]
-        ) or '<span class="muted">暂无案例</span>'
-        return f'<div class="facts">{rendered}</div><h3>关键案例</h3><div class="chips">{case_preview}</div>'
+        lines = [f"- {label}: `{value}`" for label, value in facts]
+        if matchmaking.get("match_cases"):
+            lines.append("- 关键案例:")
+            for row in (matchmaking.get("match_cases") or [])[:8]:
+                lines.append(f"  - `{row.get('case_id')}`: `{row.get('status') or row.get('case_status')}`")
+        else:
+            lines.append("- 关键案例: `暂无案例`")
+        return lines
 
-    def _render_raw_samples(self, payload: dict[str, Any]) -> str:
-        sample = {
+    def _raw_samples(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return {
             "profile": payload.get("profile"),
             "latest_discovery_session": (payload.get("discovery", {}).get("sessions") or [None])[0],
             "latest_chat_thread": (payload.get("chat", {}).get("threads") or [None])[0],
             "latest_match_case": (payload.get("matchmaking", {}).get("match_cases") or [None])[0],
         }
-        return f"<pre>{_html(sample)}</pre>"
 
-    def _render_events(self, events: list[tuple[str, str, str]]) -> str:
+    def _md_events(self, events: list[tuple[str, str, str]]) -> list[str]:
         if not events:
-            return '<p class="muted">暂无记录。</p>'
-        return '<div class="timeline">' + "".join(
-            f'<div class="event"><div class="time">{_html(_pretty_time(time_text))}</div>'
-            f'<div class="title">{_html(title)}</div><div class="desc">{_html(desc)}</div></div>'
-            for time_text, title, desc in events
-        ) + "</div>"
+            return ["- 暂无记录。"]
+        return [f"- `{_pretty_time(time_text)}` | {title} | {desc}" for time_text, title, desc in events]
 
-    def _render_bullets(self, items: list[str]) -> str:
+    def _md_bullets(self, items: list[str]) -> list[str]:
         if not items:
-            return '<p class="muted">暂无。</p>'
-        return "<div class='facts'>" + "".join(
-            f"<div class='fact'>{_html(item)}</div>" for item in items
-        ) + "</div>"
+            return ["- 暂无。"]
+        return [f"- {item}" for item in items]
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Render a readable HTML audit report for one user.")
-    parser.add_argument("user_id", type=int, help="Target user/profile id")
+    parser = argparse.ArgumentParser(description="Render a consolidated Markdown audit report for one user.")
+    parser.add_argument("user_id", nargs="?", type=int, help="Target user/profile id; omit to auto-detect")
     parser.add_argument("--source", default=os.environ.get("PERSONA_MEMORY_MYSQL_SOURCE"), help="Profile/persona source DSN")
     parser.add_argument("--profile-table", default=os.environ.get("PERSONA_PROFILE_TABLE", "profiles"), help="Profile table name")
     parser.add_argument(
         "--output",
         default=None,
-        help="Output html path; default: artifacts/user-audit-report-<user_id>.html",
+        help="Output markdown path; default: artifacts/user-audit-report-<user_id>.md",
     )
     parser.add_argument("--chat-dsn", default=DEFAULT_CHAT_MYSQL_DSN)
     parser.add_argument("--discovery-dsn", default=DEFAULT_DISCOVERY_MYSQL_DSN)
@@ -1206,13 +949,43 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def resolve_default_user_id(chat_dsn: str, discovery_dsn: str) -> int:
+    attempts = [
+        (
+            discovery_dsn,
+            "Discovery",
+            "SELECT requester_id, MAX(updated_at) AS latest_at, COUNT(*) AS session_count FROM discovery_agent_sessions GROUP BY requester_id ORDER BY latest_at DESC, session_count DESC LIMIT 1",
+            "requester_id",
+        ),
+        (
+            chat_dsn,
+            "Chat",
+            "SELECT author_id AS user_id, MAX(created_at) AS latest_at, COUNT(*) AS message_count FROM chat_messages GROUP BY author_id ORDER BY latest_at DESC, message_count DESC LIMIT 1",
+            "user_id",
+        ),
+    ]
+    for dsn, subsystem_name, sql, key in attempts:
+        try:
+            conn = connect_mysql_repo_db(dsn, subsystem_name=subsystem_name)
+            try:
+                row = _query_one(conn, sql)
+            finally:
+                conn.close()
+            if row and row.get(key) not in (None, ""):
+                return int(row[key])
+        except Exception:
+            continue
+    raise ValueError("unable to auto-detect a user_id; please pass one explicitly")
+
+
 def main() -> int:
     _load_dotenv()
     args = parse_args()
-    output = Path(args.output) if args.output else REPO_ROOT / "artifacts" / f"user-audit-report-{args.user_id}.html"
+    user_id = int(args.user_id) if args.user_id is not None else resolve_default_user_id(args.chat_dsn, args.discovery_dsn)
+    output = Path(args.output) if args.output else REPO_ROOT / "artifacts" / f"user-audit-report-{user_id}.md"
     output.parent.mkdir(parents=True, exist_ok=True)
     ctx = ReportContext(
-        user_id=int(args.user_id),
+        user_id=user_id,
         source=args.source,
         profile_table=args.profile_table,
         output=output,
