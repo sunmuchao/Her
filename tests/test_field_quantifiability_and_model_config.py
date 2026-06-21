@@ -247,5 +247,45 @@ def test_validate_summary_text_rejects_generic_compatibility_phrases():
     assert validate_summary_text("partner_expectation", "希望对方情绪稳定、愿意沟通、不冷处理问题") == "valid"
 
 
+def test_extract_structured_conditions_from_partner_expectation():
+    """测试：择偶条件中的结构化信息应拆入 persona 字段，非结构化部分保留摘要"""
+    from match_domain.session_end_processor import split_structured_conditions_from_summaries
+
+    supported, unsupported, cleaned = split_structured_conditions_from_summaries({
+        "partner_expectation": "男，28-35岁，身高171-184cm，南通/上海/苏州，未婚，真诚有责任感温和，不接受有孩",
+    })
+
+    assert supported["target_age_min"] == 28
+    assert supported["target_age_max"] == 35
+    assert supported["target_height_min"] == 171
+    assert supported["target_height_max"] == 184
+    assert supported["target_cities"] == "南通,上海,苏州"
+    assert supported["target_marital_statuses"] == "未婚"
+    assert supported["target_accept_partner_children"] == "不接受"
+    assert unsupported == {"partner_expectation": {"target_gender": "male"}}
+    assert cleaned["partner_expectation"] == "真诚有责任感温和"
+
+
+def test_normalize_quantifiable_patch_keeps_supported_target_fields():
+    """测试：结构化择偶条件可写入 user_personas 的 target_* 字段"""
+    from match_domain.session_end_processor import normalize_quantifiable_patch
+
+    normalized = normalize_quantifiable_patch({
+        "target_age_min": 28,
+        "target_age_max": 35,
+        "target_cities": "南通,上海,苏州",
+        "target_marital_statuses": "未婚",
+        "target_accept_partner_children": "不接受",
+        "target_gender": "male",
+    })
+
+    assert normalized["target_age_min"] == 28
+    assert normalized["target_age_max"] == 35
+    assert normalized["target_cities"] == "南通,上海,苏州"
+    assert normalized["target_marital_statuses"] == "未婚"
+    assert normalized["target_accept_partner_children"] == "不接受"
+    assert "target_gender" not in normalized
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short"])
