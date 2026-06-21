@@ -226,6 +226,18 @@ def test_normalize_quantifiable_patch_only_keeps_persona_supported_fields():
     assert "self_education" not in normalized, "education 不应写入 persona"
 
 
+def test_normalize_quantifiable_patch_discards_invalid_mbti_values():
+    """测试：无效 MBTI 值如'未测过'不应写入 persona"""
+    from match_domain.session_end_processor import normalize_quantifiable_patch
+
+    normalized = normalize_quantifiable_patch({
+        "mbti_type": "未测过",
+        "city": "南京",
+    })
+
+    assert normalized == {}, "无效 mbti_type 应被直接丢弃"
+
+
 def test_validate_summary_text_rejects_generic_compatibility_phrases():
     """测试：'需要性格合拍' 这类空泛摘要会被拦截"""
     from match_domain.session_end_processor import validate_summary_text
