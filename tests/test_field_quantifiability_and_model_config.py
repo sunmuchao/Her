@@ -399,5 +399,44 @@ def test_extract_structured_conditions_strips_city_and_child_preference():
     assert cleaned["partner_expectation"] == "性格合拍，细腻独立的"
 
 
+def test_extract_structured_conditions_handles_short_structured_residue():
+    """测试：无孩这类短语化结构化条件应拆出"""
+    from match_domain.session_end_processor import split_structured_conditions_from_summaries
+
+    supported, unsupported, cleaned = split_structured_conditions_from_summaries({
+        "partner_expectation": "找，无孩，要求独立，有责任感，情绪稳定",
+    })
+
+    assert supported["target_accept_partner_children"] == "不接受"
+    assert unsupported == {}
+    assert cleaned["partner_expectation"] == "独立，有责任感，情绪稳定"
+
+
+def test_extract_structured_conditions_handles_same_city_phrase():
+    """测试：同城短语不应留在 partner_expectation"""
+    from match_domain.session_end_processor import split_structured_conditions_from_summaries
+
+    supported, unsupported, cleaned = split_structured_conditions_from_summaries({
+        "partner_expectation": "希望对方边界感强，务实，乐观，同城",
+    })
+
+    assert supported == {}
+    assert unsupported == {"partner_expectation": {"distance_scope": "同城"}}
+    assert cleaned["partner_expectation"] == "希望对方边界感强，务实，乐观"
+
+
+def test_extract_structured_conditions_handles_same_city_and_dating_goal_phrase():
+    """测试：同城无锡和谈恋爱目的不应留在摘要"""
+    from match_domain.session_end_processor import split_structured_conditions_from_summaries
+
+    supported, unsupported, cleaned = split_structured_conditions_from_summaries({
+        "partner_expectation": "喜欢活泼开朗型的，年龄，同城无锡，以谈恋爱为目的",
+    })
+
+    assert supported["target_cities"] == "无锡"
+    assert unsupported == {"partner_expectation": {"relationship_stage": "以谈恋爱为目的"}}
+    assert cleaned["partner_expectation"] == "喜欢活泼开朗型的"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short"])
