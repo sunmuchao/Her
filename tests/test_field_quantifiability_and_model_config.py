@@ -326,5 +326,33 @@ def test_negative_preferences_should_not_extract_target_gender():
     assert cleaned["negative_preferences"] == "不喜欢性格内向，慢热，回避型依恋的女生"
 
 
+def test_extract_structured_conditions_handles_bare_height_and_children_acceptance():
+    """测试：裸写身高范围和子女条件也应拆出，摘要只留非结构化部分"""
+    from match_domain.session_end_processor import split_structured_conditions_from_summaries
+
+    supported, unsupported, cleaned = split_structured_conditions_from_summaries({
+        "partner_expectation": "找无锡，163-176cm，情绪稳定有主见，对方有孩可协商",
+    })
+
+    assert supported["target_cities"] == "无锡"
+    assert supported["target_height_min"] == 163
+    assert supported["target_height_max"] == 176
+    assert supported["target_accept_partner_children"] == "可协商"
+    assert unsupported == {}
+    assert cleaned["partner_expectation"] == "情绪稳定有主见"
+
+
+def test_filter_valid_summary_data_rejects_structured_residue():
+    """测试：摘要里只要还残留结构化条件，就禁止入库"""
+    from match_domain.session_end_processor import filter_valid_summary_data
+
+    valid, rejected = filter_valid_summary_data({
+        "partner_expectation": "找无锡，163-176cm，情绪稳定有主见，对方有孩可协商",
+    })
+
+    assert valid == {}
+    assert rejected == {"partner_expectation": "invalid"}
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short"])

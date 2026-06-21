@@ -198,6 +198,30 @@
     <section class="section"><h2>读取提醒</h2><div class="warning">ledger: OperationalError: (1054, &quot;Unknown column &#x27;owner_profile_ref&#x27; in &#x27;where clause&#x27;&quot;)</div></section>
 
     <section class="section">
+      <h2>一句话看懂这个用户</h2>
+      <div class="two">
+        <div class="card">
+          <h3>当前状态</h3>
+          <div class='facts'><div class='fact'>胡辰衡 当前画像里显示为28岁、无锡、公务员。</div><div class='fact'>这个人更多像是画像/业务用户，账号层信息目前没完整读到。</div><div class='fact'>最近一次 discovery 会话还在 results_shown，会话状态是 active。</div><div class='fact'>他最近已经和用户 7408 进入聊天线程，聊天状态是 matched。</div></div>
+        </div>
+        <div class="card">
+          <h3>值得关注</h3>
+          <div class='facts'><div class='fact'>有部分子系统读取失败或字段不兼容，所以当前报告仍然不是 100% 全量。</div><div class='fact'>这个用户最近积累了较多 active discovery 会话，可能存在重复会话、未收口会话或调试痕迹。</div></div>
+        </div>
+      </div>
+      <div class="two" style="margin-top:18px">
+        <div class="card">
+          <h3>最近在发生什么</h3>
+          <div class='facts'><div class='fact'>最近一次系统搜索发生在 2026-06-05 18:39:50，当次返回了 5 个结果，命中标记是 1。</div><div class='fact'>最近的聊天里，他自己发出的内容偏生活化/推进关系，例如“最近还好吗”。</div><div class='fact'>从 persona 摘要看，他当前最明确的择偶导向是：无锡或苏州，想要孩子，情绪稳定，独立，理性。</div></div>
+        </div>
+        <div class="card">
+          <h3>系统为什么这么处理</h3>
+          <div class='facts'><div class='fact'>系统对他最常做的动作是“找候选人”，说明当前主流程仍然是给他持续筛人、推人。</div><div class='fact'>系统会把对话里提炼出的偏好同步回 persona，说明画像会边聊边更新。</div><div class='fact'>有些 persona 同步失败，常见原因是这一轮对话没有提取出足够明确的新偏好。</div><div class='fact'>当前关系总账没有顺利串起来，所以这份报告主要还是基于各业务库分开拼装。</div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
       <h2>用户是谁</h2>
       <div class="two">
         <div class="card">
@@ -206,7 +230,7 @@
         </div>
         <div class="card">
           <h3>人格/偏好摘要</h3>
-          <div class="chips"><span class="chip">已加载字段 5</span><span class="chip">完整度 1.0</span></div><div class="facts" style="margin-top:12px"><div class="fact"><strong>partner_expectation</strong><span>无锡或苏州，情绪稳定独立理性，结婚导向</span></div><div class="fact"><strong>life_attitude</strong><span>工作稳定（公务员），计划</span></div><div class="fact"><strong>negative_preferences</strong><span>不接受对方带有孩子</span></div><div class="fact"><strong>emotional_needs</strong><span>需要对方情绪稳定</span></div><div class="fact"><strong>values</strong><span>想要孩子</span></div></div>
+          <div class="chips"><span class="chip">已加载字段 5</span><span class="chip">完整度 1.0</span></div><div class="facts" style="margin-top:12px"><div class="fact"><strong>partner_expectation</strong><span>无锡或苏州，想要孩子，情绪稳定，独立，理性</span></div><div class="fact"><strong>life_attitude</strong><span>工作稳定（公务员），计划</span></div><div class="fact"><strong>negative_preferences</strong><span>不接受对方带有孩子</span></div><div class="fact"><strong>emotional_needs</strong><span>需要对方情绪稳定</span></div><div class="fact"><strong>values</strong><span>想要孩子</span></div></div>
         </div>
       </div>
     </section>
