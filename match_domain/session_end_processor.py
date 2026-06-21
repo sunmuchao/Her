@@ -25,6 +25,8 @@ from typing import Any
 
 _logger = logging.getLogger(__name__)
 
+from match_domain.collected_profile import COLLECTED_PERSONA_FIELDS
+
 
 SUMMARY_FIELD_KEYS = frozenset({
     "personality_traits",
@@ -60,6 +62,16 @@ STRUCTURED_QUANTIFIABLE_FIELDS = frozenset({
     "relationship_goal",
 })
 
+PERSONA_ALLOWED_SUMMARY_FIELDS = frozenset({
+    "mbti_type",
+    "marital_status",
+    "has_children",
+    "smoking",
+    "drinking",
+    "relationship_goal",
+    "education",
+})
+
 ABSTRACT_SUMMARY_TERMS = (
     "合拍",
     "真诚",
@@ -79,7 +91,9 @@ ABSTRACT_SUMMARY_TERMS = (
 
 GENERIC_SUMMARY_PATTERNS = (
     re.compile(r"^希望.*合拍$"),
+    re.compile(r"^需要.*合拍$"),
     re.compile(r"^希望.*真诚.*沟通$"),
+    re.compile(r"^希望.*真诚.*稳定$"),
     re.compile(r"^需要.*稳定.*关系$"),
     re.compile(r"^需要.*安全感$"),
     re.compile(r"^希望.*共同话题$"),
@@ -1276,7 +1290,13 @@ def filter_valid_summary_data(summary_data: dict[str, str]) -> tuple[dict[str, s
 
 
 def normalize_quantifiable_patch(quantifiable_data: dict[str, str]) -> dict[str, Any]:
-    """把会话提炼出的结构化字段映射到 persona/profile 可接受字段。"""
+    """把会话提炼出的结构化字段映射到 user_personas 可接受字段。
+
+    规则：
+    - 只映射 user_personas 体系中已有合法落点的字段
+    - age/city/income/height 这类无 persona 落点的结构化字段直接丢弃
+    - 不允许写 profiles
+    """
     normalized: dict[str, Any] = {}
 
     mbti_type = str(quantifiable_data.get("mbti_type") or "").strip().upper()
@@ -1287,52 +1307,13 @@ def normalize_quantifiable_patch(quantifiable_data: dict[str, str]) -> dict[str,
             sort_keys=True,
         )
 
-    city = str(quantifiable_data.get("city") or "").strip()
-    if city:
-        normalized["self_city"] = city
-
-    education = str(quantifiable_data.get("education") or "").strip()
-    if education:
-        normalized["self_education"] = education
-
-    marital_status = str(quantifiable_data.get("marital_status") or "").strip()
-    if marital_status:
-        normalized["self_marital_status"] = marital_status
-
-    has_children = str(quantifiable_data.get("has_children") or "").strip()
-    if has_children:
-        if any(marker in has_children for marker in ("没有", "未育", "无")):
-            normalized["self_has_children"] = 0
-        elif any(marker in has_children for marker in ("有", "已育", "孩子")):
-            normalized["self_has_children"] = 1
-
-    smoking = str(quantifiable_data.get("smoking") or "").strip()
-    if smoking:
-        normalized["self_smoking"] = smoking
-
-    drinking = str(quantifiable_data.get("drinking") or "").strip()
-    if drinking:
-        normalized["self_drinking"] = drinking
-
-    relationship_goal = str(quantifiable_data.get("relationship_goal") or "").strip()
-    if relationship_goal:
-        normalized["self_relationship_goal"] = relationship_goal
-
-    age_value = str(quantifiable_data.get("age") or "").strip()
-    if age_value.isdigit():
-        normalized["self_age"] = int(age_value)
-
-    height_value = str(quantifiable_data.get("height") or "").strip()
-    if height_value.isdigit():
-        normalized["self_height"] = int(height_value)
-
-    income_value = str(quantifiable_data.get("income") or "").strip()
-    if income_value:
-        match = re.search(r"(\d+)", income_value)
-        if match:
-            normalized["self_income_wan"] = int(match.group(1))
-
-    return normalized
+    # 仅保留 persona 表中已有真实落点的字段；其余结构化字段直接丢弃。
+    allowed = {
+        key: value
+        for key, value in normalized.items()
+        if key in COLLECTED_PERSONA_FIELDS or key == "self_personality_traits_json"
+    }
+    return allowed
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1381,7 +1362,7 @@ async def save_quantifiable_to_persona_tables(
 
     normalized_patch = normalize_quantifiable_patch(quantifiable_data)
     if not normalized_patch:
-        _logger.info("没有可映射的结构化字段可写入 persona/profile")
+        _logger.info("没有可映射的结构化字段可写入 user_personas")
         return {
             "success": True,
             "user_key": user_key,
@@ -1407,8 +1388,8 @@ async def save_quantifiable_to_persona_tables(
                 confidence_score=85,  # 会结束后LLM提炼的置信度
                 evidence_text=evidence_text,
                 conversation_ref=session_id,  # 溯源ID
-                apply_scope="persona_and_profile",
-                sync_profile=True,
+                apply_scope="persona_only",
+                sync_profile=False,
             )
 
             _logger.info(
@@ -1421,7 +1402,7 @@ async def save_quantifiable_to_persona_tables(
                 "user_key": user_key,
                 "applied_fields": result.get("applied_fields", []),
                 "skipped_fields": result.get("skipped_fields", []),
-                "synced_profile": True,
+                "synced_profile": False,
             }
 
         except Exception as exc:
