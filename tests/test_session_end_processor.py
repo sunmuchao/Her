@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 def test_format_messages_for_llm():
-    """测试聊天记录格式化"""
+    """测试聊天记录格式化时只保留用户消息"""
     from match_domain.session_end_processor import _format_messages_for_llm
 
     messages = [
@@ -40,8 +40,10 @@ def test_format_messages_for_llm():
 
     # 验证格式
     assert "用户: 我性格温柔" in formatted
-    assert "AI助手: 好的，我记下了" in formatted
     assert "用户: 我重视家庭" in formatted
+    assert "AI助手" not in formatted
+    assert "好的，我记下了" not in formatted
+    assert "明白" not in formatted
 
     print("✅ 格式化测试通过")
 
@@ -52,9 +54,7 @@ def test_build_summary_prompt():
 
     formatted_messages = """
 用户: 我性格温柔
-AI助手: 好的，我记下了
 用户: 我重视家庭
-AI助手: 明白
 用户: 希望能找理解工作忙的人
 """
 

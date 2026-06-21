@@ -622,10 +622,9 @@ def _format_messages_for_llm(messages: list[dict[str, Any]]) -> str:
         role = str(msg.get("role") or "unknown").strip()
         content = str(msg.get("content") or "").strip()
 
-        # 只保留有内容的消息
-        if content:
-            role_label = "用户" if role == "user" else "AI助手"
-            formatted.append(f"{role_label}: {content}")
+        # 只保留用户原话，避免把系统/助手复述的已有资料再次提炼。
+        if role == "user" and content:
+            formatted.append(f"用户: {content}")
 
     return "\n".join(formatted)
 
