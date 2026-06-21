@@ -1643,7 +1643,7 @@ def filter_valid_summary_data(summary_data: dict[str, str]) -> tuple[dict[str, s
             continue
         quality = validate_summary_text(summary_key, normalized_text)
         if quality == "valid":
-            filtered[summary_key] = normalized_text
+            filtered[summary_key] = normalized.retrieval_text
         else:
             rejected[summary_key] = quality
     return filtered, rejected

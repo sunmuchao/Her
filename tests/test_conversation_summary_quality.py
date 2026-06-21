@@ -112,5 +112,5 @@ def test_filter_valid_summary_data_normalizes_summary_text_before_saving() -> No
 
     assert rejected == {}
     assert valid == {
-        "partner_expectation": "希望对方温和，目标感强，关系推进明确",
+        "partner_expectation": "希望对方温和，目标感强，关系推进明确，细腻，有耐心，成长驱动强，做事积极，有责任感，不暧昧，持续投入关系，节奏明确",
     }
