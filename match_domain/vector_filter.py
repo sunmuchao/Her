@@ -26,6 +26,8 @@ from typing import Any
 
 _logger = logging.getLogger(__name__)
 
+from match_domain.retrieval_text_normalizer import normalize_query_text
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 默认配置
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -383,27 +385,36 @@ async def _search_similar_users(
     vector_store = None
 
     try:
+        normalized_query = normalize_query_text(text)
+        if vector_type not in normalized_query.route_vector_types:
+            _logger.info(
+                f"查询路由跳过: text={text}, normalized={normalized_query.normalized_text}, vector_type={vector_type}"
+            )
+            return [], 0.0
+
+        search_text = normalized_query.normalized_text or text
+
         # Step 1: 生成文本向量（带缓存优化）
         # 先查缓存
-        cached_vector = _vector_filter_cache.get_cached_vector(text, vector_type)
+        cached_vector = _vector_filter_cache.get_cached_vector(search_text, vector_type)
         if cached_vector:
             vector = cached_vector
             _logger.info(
-                f"向量缓存命中: text={text}, vector_type={vector_type}"
+                f"向量缓存命中: text={search_text}, vector_type={vector_type}"
             )
         else:
             # 缓存未命中，调用embedding API
             embedding_service = EmbeddingService()  # 只在需要时创建
-            vector = await embedding_service.generate_embedding(text)
+            vector = await embedding_service.generate_embedding(search_text)
 
             if not vector:
-                _logger.warning(f"向量生成失败: text={text}")
+                _logger.warning(f"向量生成失败: text={search_text}")
                 return [], 0.0
 
             # 缓存向量（下次直接使用）
-            _vector_filter_cache.cache_vector(text, vector_type, vector)
+            _vector_filter_cache.cache_vector(search_text, vector_type, vector)
             _logger.info(
-                f"向量缓存保存: text={text}, vector_type={vector_type}"
+                f"向量缓存保存: text={search_text}, vector_type={vector_type}"
             )
 
         # Step 2: 向量库搜索
