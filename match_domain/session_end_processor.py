@@ -1435,6 +1435,14 @@ def _extract_cities(text: str) -> list[str]:
     return cities
 
 
+def _strip_leading_connector(text: str) -> str:
+    normalized = str(text or "").strip()
+    normalized = re.sub(r"^(希望找|找|寻|要找|想找)", "", normalized)
+    normalized = re.sub(r"^(一个|个)", "", normalized)
+    normalized = re.sub(r"^[的地得]", "", normalized)
+    return normalized.strip()
+
+
 def _extract_education(text: str) -> str | None:
     for label in reversed(EDUCATION_ORDER):
         if label in text:
@@ -1519,6 +1527,14 @@ def extract_structured_conditions_from_summary(field_name: str, text: str) -> St
         result.supported_patch["target_marital_statuses"] = "未婚"
         normalized_text = normalized_text.replace("未婚", "")
 
+    if "离异" in normalized_text:
+        result.supported_patch["target_marital_statuses"] = "离异"
+        normalized_text = normalized_text.replace("离异", "")
+
+    if "丧偶" in normalized_text:
+        result.supported_patch["target_marital_statuses"] = "丧偶"
+        normalized_text = normalized_text.replace("丧偶", "")
+
     if "年龄" in normalized_text:
         normalized_text = normalized_text.replace("年龄", "")
 
@@ -1529,6 +1545,9 @@ def extract_structured_conditions_from_summary(field_name: str, text: str) -> St
     if "不接受对方有孩子" in normalized_text or "不接受有孩" in normalized_text:
         result.supported_patch["target_accept_partner_children"] = "不接受"
         normalized_text = normalized_text.replace("不接受对方有孩子", "").replace("不接受有孩", "")
+    elif "生育可协商" in normalized_text:
+        result.supported_patch["target_accept_partner_children"] = "可协商"
+        normalized_text = normalized_text.replace("生育可协商", "")
     elif "有孩可协商" in normalized_text or "接受对方有孩子" in normalized_text or "对方有孩可协商" in normalized_text:
         result.supported_patch["target_accept_partner_children"] = "可协商"
         normalized_text = (
@@ -1546,7 +1565,7 @@ def extract_structured_conditions_from_summary(field_name: str, text: str) -> St
         result.supported_patch["target_want_children"] = "想要孩子"
         normalized_text = normalized_text.replace("想要孩子", "")
 
-    timeline_match = re.search(r"(\d+年内结婚|半年内结婚|合适就结婚|结婚导向)", normalized_text)
+    timeline_match = re.search(r"(\d+年内结婚|半年内结婚|合适就结婚|结婚导向|以结婚为导向)", normalized_text)
     if timeline_match:
         result.supported_patch["target_marriage_timeline"] = timeline_match.group(1)
         normalized_text = normalized_text.replace(timeline_match.group(1), "")
@@ -1577,11 +1596,15 @@ def extract_structured_conditions_from_summary(field_name: str, text: str) -> St
             normalized_text = normalized_text.replace(marker, "")
 
     cleaned = re.sub(r"[，,、/；;]+", "，", normalized_text)
-    cleaned = re.sub(r"^希望找", "", cleaned)
-    cleaned = re.sub(r"^找", "", cleaned)
-    cleaned = re.sub(r"^希望对方", "希望对方", cleaned)
+    cleaned = re.sub(r"(?:^|，)(?:未婚|离异|丧偶)(?=，|$)", "，", cleaned)
+    cleaned = re.sub(r"(?:^|，)(?:男|女|男性|女性|男生|女生|男方|女方)(?=，|$)", "，", cleaned)
+    cleaned = re.sub(r"(?:^|，)(?:生育可协商)(?=，|$)", "，", cleaned)
+    cleaned = re.sub(r"(?:^|，)(?:以结婚为导向)(?=，|$)", "，", cleaned)
     cleaned = re.sub(r"^要求", "", cleaned)
+    cleaned = _strip_leading_connector(cleaned)
     cleaned = cleaned.replace("，要求", "，")
+    cleaned = cleaned.replace("（）", "")
+    cleaned = cleaned.replace("()", "")
     cleaned = re.sub(r"\s+", "", cleaned).strip("，。 ")
     result.cleaned_text = cleaned
     return result
