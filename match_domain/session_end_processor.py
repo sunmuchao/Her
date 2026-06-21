@@ -195,6 +195,7 @@ SUPPORTED_TARGET_PERSONA_FIELDS = frozenset({
     "target_accept_partner_children",
     "target_accept_long_distance",
     "target_marriage_timeline",
+    "target_want_children",
 })
 
 UNSUPPORTED_SESSION_END_STRUCTURED_FIELDS = frozenset({
@@ -233,6 +234,13 @@ KNOWN_TARGET_CITIES = frozenset({
     "绍兴",
     "合肥",
 })
+
+SELF_PLAN_MARKERS = (
+    "想换职业方向",
+    "想换工作",
+    "准备换工作",
+    "考虑换工作",
+)
 
 
 @dataclass
@@ -1401,7 +1409,7 @@ def _extract_cities(text: str) -> list[str]:
     cities: list[str] = []
     for matched in re.findall(r"在(北京|上海|广州|深圳|杭州|苏州|无锡|南京|宁波|南通|常州|湖州|扬州|镇江|嘉兴|绍兴|合肥)", text):
         cities.append(matched)
-    for segment in re.split(r"[/、，,]", text):
+    for segment in re.split(r"[/、，,或]", text):
         matched = str(segment or "").strip()
         if not matched:
             continue
@@ -1430,13 +1438,20 @@ def _has_structured_residue(text: str) -> bool:
         return False
 
     residue_patterns = (
+        r"年龄",
         r"\d{2}\s*[-到至~]\s*\d{2}\s*岁",
         r"\d{3}\s*[-到至~]\s*\d{3}\s*(?:cm|CM)?",
         r"(无锡|上海|苏州|南京|杭州|宁波|南通|常州|湖州|扬州|镇江|嘉兴|绍兴|合肥)",
         r"(未婚|离异|丧偶)",
         r"(有孩|孩子|无孩)",
+        r"(先谈恋爱|结婚导向|想要孩子)",
     )
     return any(re.search(pattern, normalized) for pattern in residue_patterns)
+
+
+def _has_self_plan_residue(text: str) -> bool:
+    normalized = str(text or "").strip()
+    return any(marker in normalized for marker in SELF_PLAN_MARKERS)
 
 
 def extract_structured_conditions_from_summary(field_name: str, text: str) -> StructuredSummaryExtraction:
@@ -1478,6 +1493,7 @@ def extract_structured_conditions_from_summary(field_name: str, text: str) -> St
         for city in cities:
             normalized_text = normalized_text.replace(city, "")
         normalized_text = normalized_text.replace("在", "")
+        normalized_text = normalized_text.replace("或", "")
 
     education = _extract_education(normalized_text)
     if education:
@@ -1487,6 +1503,9 @@ def extract_structured_conditions_from_summary(field_name: str, text: str) -> St
     if "未婚" in normalized_text:
         result.supported_patch["target_marital_statuses"] = "未婚"
         normalized_text = normalized_text.replace("未婚", "")
+
+    if "年龄" in normalized_text:
+        normalized_text = normalized_text.replace("年龄", "")
 
     if "不接受异地" in normalized_text or "拒异地" in normalized_text:
         result.supported_patch["target_accept_long_distance"] = "不接受"
@@ -1505,10 +1524,23 @@ def extract_structured_conditions_from_summary(field_name: str, text: str) -> St
         )
         normalized_text = normalized_text.replace("对方", "")
 
+    if "想要孩子" in normalized_text:
+        result.supported_patch["target_want_children"] = "想要孩子"
+        normalized_text = normalized_text.replace("想要孩子", "")
+
     timeline_match = re.search(r"(\d+年内结婚|半年内结婚|合适就结婚|结婚导向)", normalized_text)
     if timeline_match:
         result.supported_patch["target_marriage_timeline"] = timeline_match.group(1)
         normalized_text = normalized_text.replace(timeline_match.group(1), "")
+
+    if "先谈恋爱" in normalized_text:
+        result.unsupported_patch["relationship_stage"] = "先谈恋爱"
+        normalized_text = normalized_text.replace("先谈恋爱", "")
+
+    for marker in SELF_PLAN_MARKERS:
+        if marker in normalized_text:
+            result.unsupported_patch["self_plan"] = marker
+            normalized_text = normalized_text.replace(marker, "")
 
     cleaned = re.sub(r"[，,、/；;]+", "，", normalized_text)
     cleaned = re.sub(r"^希望找", "", cleaned)
@@ -1543,6 +1575,9 @@ def filter_valid_summary_data(summary_data: dict[str, str]) -> tuple[dict[str, s
     rejected: dict[str, str] = {}
     for summary_key, summary_text in summary_data.items():
         if _has_structured_residue(summary_text):
+            rejected[summary_key] = "invalid"
+            continue
+        if _has_self_plan_residue(summary_text):
             rejected[summary_key] = "invalid"
             continue
         quality = validate_summary_text(summary_key, summary_text)

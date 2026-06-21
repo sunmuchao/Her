@@ -354,5 +354,50 @@ def test_filter_valid_summary_data_rejects_structured_residue():
     assert rejected == {"partner_expectation": "invalid"}
 
 
+def test_extract_structured_conditions_strips_field_residue_and_relationship_stage():
+    """测试：'年龄'残词和'先谈恋爱'关系阶段不应留在摘要"""
+    from match_domain.session_end_processor import split_structured_conditions_from_summaries
+
+    supported, unsupported, cleaned = split_structured_conditions_from_summaries({
+        "partner_expectation": "外向活泼的，年龄，以先谈恋爱为目标",
+    })
+
+    assert supported == {}
+    assert unsupported == {"partner_expectation": {"relationship_stage": "先谈恋爱"}}
+    assert cleaned["partner_expectation"] == "外向活泼的，以为目标"
+
+
+def test_extract_structured_conditions_marks_self_plan_from_partner_expectation():
+    """测试：self 计划信息不应留在 partner_expectation"""
+    from match_domain.session_end_processor import split_structured_conditions_from_summaries
+
+    supported, unsupported, cleaned = split_structured_conditions_from_summaries({
+        "partner_expectation": "希望对方活泼开朗（外向型），年龄，先谈恋爱，想换职业方向",
+    })
+
+    assert supported == {}
+    assert unsupported == {
+        "partner_expectation": {
+            "relationship_stage": "先谈恋爱",
+            "self_plan": "想换职业方向",
+        }
+    }
+    assert cleaned["partner_expectation"] == "希望对方活泼开朗（外向型）"
+
+
+def test_extract_structured_conditions_strips_city_and_child_preference():
+    """测试：城市和生育偏好应拆出，摘要只保留非结构化特征"""
+    from match_domain.session_end_processor import split_structured_conditions_from_summaries
+
+    supported, unsupported, cleaned = split_structured_conditions_from_summaries({
+        "partner_expectation": "找性格合拍，细腻独立的，无锡或上海，想要孩子",
+    })
+
+    assert supported["target_cities"] == "无锡,上海"
+    assert supported["target_want_children"] == "想要孩子"
+    assert unsupported == {}
+    assert cleaned["partner_expectation"] == "性格合拍，细腻独立的"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short"])
