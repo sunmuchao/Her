@@ -32,7 +32,11 @@ def test_normalize_query_text_rewrites_abstract_terms() -> None:
     normalized = normalize_query_text("我希望找一个性格温柔，有上进心的")
 
     assert normalized.normalized_text == "我希望找一个温和，目标感强的"
-    assert normalized.route_vector_types[:2] == ["partner_expectation", "personality_traits"]
+    assert normalized.route_vector_types[:3] == [
+        "partner_personality_preference",
+        "partner_expectation",
+        "personality_traits",
+    ]
     assert "成长驱动强" in normalized.retrieval_text
     assert "有责任感" in normalized.retrieval_text
     assert "tag:温和型" in normalized.semantic_tags
@@ -58,4 +62,10 @@ def test_route_query_vector_types_for_emotional_needs() -> None:
 def test_route_query_vector_types_for_life_attitude() -> None:
     routes = route_query_vector_types("我希望对方生活规律，不要太卷")
 
-    assert routes[:2] == ["life_attitude", "partner_expectation"]
+    assert routes[:2] == ["partner_lifestyle_preference", "life_attitude"]
+
+
+def test_route_query_vector_types_for_relationship_pacing_prefers_new_facet() -> None:
+    routes = route_query_vector_types("我喜欢慢热，真诚，认真推进关系的")
+
+    assert routes[:2] == ["partner_relationship_pacing", "emotional_needs"]

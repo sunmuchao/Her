@@ -151,17 +151,27 @@ def route_query_vector_types(text: str) -> list[str]:
         routes.extend(["emotional_needs", "partner_expectation"])
 
     if any(marker in normalized for marker in ("生活规律", "作息规律", "不要太卷", "排斥高压内卷", "稳定")):
-        routes.extend(["life_attitude", "partner_expectation"])
+        routes.extend(["partner_lifestyle_preference", "life_attitude"])
 
     if any(marker in normalized for marker in ("慢热", "认真推进关系", "关系推进明确", "不暧昧", "持续投入关系")):
-        routes.extend(["partner_expectation", "emotional_needs"])
+        routes.extend(["partner_relationship_pacing", "emotional_needs"])
 
     if any(marker in normalized for marker in ("温和", "细腻", "有耐心", "善沟通", "独立", "边界感", "目标感强", "成长驱动强")):
-        routes.extend(["partner_expectation", "personality_traits"])
+        routes.extend(["partner_personality_preference", "partner_expectation", "personality_traits"])
 
     # 默认兜底，避免无路由时完全不搜。
     if not routes:
-        routes.extend(["partner_expectation", "personality_traits", "life_attitude", "emotional_needs"])
+        routes.extend(
+            [
+                "partner_personality_preference",
+                "partner_relationship_pacing",
+                "partner_lifestyle_preference",
+                "partner_expectation",
+                "personality_traits",
+                "life_attitude",
+                "emotional_needs",
+            ]
+        )
 
     ordered: list[str] = []
     seen: set[str] = set()
