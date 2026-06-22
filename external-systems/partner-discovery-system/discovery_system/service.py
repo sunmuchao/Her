@@ -805,22 +805,34 @@ class DiscoveryService:
 
         def _search_partner_candidates(
             criteria: dict[str, Any],
-            personality_match: dict[str, Any],
-            limit: int
+            personality_match: dict[str, Any] | int | None = None,
+            limit: int | None = None,
         ) -> dict[str, Any]:
+            resolved_personality_match: dict[str, Any]
+            resolved_limit: int
+            if isinstance(personality_match, int) and limit is None:
+                resolved_personality_match = {}
+                resolved_limit = personality_match
+            else:
+                resolved_personality_match = (
+                    dict(personality_match or {})
+                    if isinstance(personality_match, dict)
+                    else {}
+                )
+                resolved_limit = int(limit or 5)
             response = self._search_partner_candidates(
                 session,
                 criteria=criteria,
-                personality_match=personality_match,
-                limit=limit,
+                personality_match=resolved_personality_match,
+                limit=resolved_limit,
             )
             self._append_tool_call(
                 tool_call_buffer,
                 "search_partner_candidates",
                 {
                     "criteria": deepcopy(criteria),
-                    "personality_match": deepcopy(personality_match),
-                    "limit": int(limit or 0),
+                    "personality_match": deepcopy(resolved_personality_match),
+                    "limit": resolved_limit,
                 },
                 response,
                 status=self._tool_call_status("search_partner_candidates", response),
