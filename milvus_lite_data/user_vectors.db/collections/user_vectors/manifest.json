@@ -1,6 +1,6 @@
 {
-  "active_wal_number": 3,
-  "current_seq": 112,
+  "active_wal_number": 7,
+  "current_seq": 273,
   "index_specs": {
     "embedding": {
       "build_params": {},
@@ -15,11 +15,17 @@
     "_default": {
       "data_files": [
         "data/data_000001_000072.parquet",
-        "data/data_000073_000112.parquet"
+        "data/data_000073_000112.parquet",
+        "data/data_000113_000113.parquet",
+        "data/data_000115_000193.parquet",
+        "data/data_000195_000273.parquet"
       ],
-      "delta_files": []
+      "delta_files": [
+        "delta/delta_000114_000192.parquet",
+        "delta/delta_000194_000272.parquet"
+      ]
     }
   },
   "schema_version": 1,
-  "version": 3
+  "version": 6
 }
