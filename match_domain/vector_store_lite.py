@@ -254,9 +254,29 @@ class VectorStoreLite:
         return MilvusClient(uri=self.db_file)
 
     def _ensure_collection(self) -> None:
-        """确保 Collection 存在"""
+        """确保 Collection 存在且已加载到内存
+
+        根因分析（五问法）：
+        - 问题现象：查询时报错 Collection 'user_vectors' is in state 'released'
+        - 为什么1：集合处于 'released' 状态，未加载到内存
+        - 为什么2：程序启动时只检查集合是否存在，不检查是否已加载
+        - 为什么3：_ensure_collection() 只在集合不存在时才调用 load_collection()
+        - 为什么4：设计假设"集合创建后永远保持加载状态"，忽略了 Milvus 运行时行为
+        - 为什么5（根本原因）：缺少"确保集合可查询"的健壮性设计
+
+        修复方案：
+        - 无论集合是否存在，都确保已加载到内存
+        - 容错处理：Milvus 服务重启、内存压力、长时间运行后集合可能被自动释放
+
+        参考：https://milvus.io/docs/load_collection.md
+        """
         if not self._client.has_collection(COLLECTION_NAME):
-            self._create_collection()
+            self._create_collection()  # 创建集合（内部会 load）
+        else:
+            # 【修复】集合已存在，但仍需确保已加载到内存
+            # Milvus 集合在服务重启、内存压力后可能被自动释放（released状态）
+            self._client.load_collection(collection_name=COLLECTION_NAME)
+            _logger.info(f"Collection {COLLECTION_NAME} 已存在，重新加载到内存")
 
     def _create_collection(self) -> None:
         """创建 Collection"""
