@@ -265,6 +265,54 @@ def _compute_personality_bonus(
     return (round(bonus, 2), trace)
 
 
+def _build_candidate_context(candidate: dict[str, Any]) -> dict[str, Any]:
+    traits = dict(candidate.get("personality_traits") or {})
+    summary = dict(candidate.get("summary") or {})
+    availability = dict(candidate.get("personality_availability") or {})
+
+    has_traits = bool(traits) and float(availability.get("overall_completeness") or 0) > 0
+    has_summary = bool(summary)
+    missing_dimensions: list[str] = []
+
+    if not has_traits:
+        missing_dimensions.append("traits")
+    if not has_summary:
+        missing_dimensions.append("summary")
+    if has_traits and not dict(traits.get("values") or {}):
+        missing_dimensions.append("values")
+    if has_traits and not dict(traits.get("attachment") or {}):
+        missing_dimensions.append("attachment")
+    if has_traits and not dict(traits.get("big_five") or {}):
+        missing_dimensions.append("big_five")
+    if has_summary and not str(summary.get("emotional_needs") or "").strip():
+        missing_dimensions.append("emotional_needs")
+
+    if has_traits and has_summary:
+        evidence_level = "high"
+        reason_mode = "rich_reasoning"
+    elif has_traits or has_summary:
+        evidence_level = "medium"
+        reason_mode = "limited_reasoning"
+    else:
+        evidence_level = "low"
+        reason_mode = "profile_only"
+
+    allowed_reason_sources = ["profile"]
+    if has_traits:
+        allowed_reason_sources.append("personality_traits")
+    if has_summary:
+        allowed_reason_sources.append("summary")
+
+    return {
+        "has_traits": has_traits,
+        "has_summary": has_summary,
+        "evidence_level": evidence_level,
+        "reason_mode": reason_mode,
+        "allowed_reason_sources": allowed_reason_sources,
+        "missing_dimensions": missing_dimensions,
+    }
+
+
 def profile_source() -> str:
     for name in (
         "HER_DISCOVERY_PROFILE_SOURCE",
@@ -720,12 +768,12 @@ def search_partner_candidates_with(
                             personality_trace["candidate_traits_count"] = int(personality_trace["candidate_traits_count"]) + 1
 
         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        # 新增：加载完整摘要信息（供 Agent 判断）
+        # 新增：批量加载完整摘要信息（供 Agent 判断）
         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         results = response.get("results") or []
         if results:
             import asyncio
-            from match_domain.summary_loader import load_complete_summary, build_summary_meta
+            from match_domain.summary_loader import build_summary_meta, load_complete_summaries_batch
 
             _logger.info(
                 "【摘要加载开始】session_id=%s candidate_count=%s",
@@ -733,26 +781,43 @@ def search_partner_candidates_with(
                 len(results),
             )
 
-            summary_loaded_count = 0
+            candidate_ids: list[int] = []
             for candidate in results:
                 candidate_id = candidate.get("id")
                 if candidate_id:
                     try:
-                        # 在同步函数中调用异步代码
-                        summary_dict = asyncio.run(
-                            load_complete_summary(user_id=int(candidate_id))
-                        )
+                        candidate_ids.append(int(candidate_id))
+                    except (TypeError, ValueError):
+                        pass
 
-                        if summary_dict:
-                            candidate["summary"] = summary_dict
-                            candidate["summary_meta"] = build_summary_meta(summary_dict)
-                            summary_loaded_count += 1
-                    except Exception as exc:
-                        _logger.warning(
-                            "【摘要加载失败】candidate_id=%s error=%s",
-                            candidate_id,
-                            str(exc)[:100],
-                        )
+            summaries_by_candidate: dict[int, dict[str, str]] = {}
+            if candidate_ids:
+                try:
+                    summaries_by_candidate = asyncio.run(
+                        load_complete_summaries_batch(user_ids=candidate_ids)
+                    )
+                except Exception as exc:
+                    _logger.warning(
+                        "【批量摘要加载失败】session_id=%s error=%s",
+                        session.session_id,
+                        str(exc)[:100],
+                    )
+
+            summary_loaded_count = 0
+            for candidate in results:
+                candidate_id = candidate.get("id")
+                resolved_candidate_id: int | None = None
+                if candidate_id:
+                    try:
+                        resolved_candidate_id = int(candidate_id)
+                    except (TypeError, ValueError):
+                        resolved_candidate_id = None
+                summary_dict = summaries_by_candidate.get(resolved_candidate_id or -1) or {}
+                if summary_dict:
+                    candidate["summary"] = summary_dict
+                    candidate["summary_meta"] = build_summary_meta(summary_dict)
+                    summary_loaded_count += 1
+                candidate["candidate_context"] = _build_candidate_context(candidate)
 
             personality_trace["summary_loaded_count"] = summary_loaded_count
 
@@ -761,6 +826,9 @@ def search_partner_candidates_with(
                 session.session_id,
                 summary_loaded_count,
             )
+        else:
+            for candidate in results:
+                candidate["candidate_context"] = _build_candidate_context(candidate)
 
         # ✅ Agent Native 改进：移除性格特质增强逻辑
         # Tool 层只返回原始性格特质数据，Agent 自主决定如何使用

@@ -1410,9 +1410,135 @@ class DiscoveryServiceTests(unittest.TestCase):
         self.assertIn("personality_traits", response["results"][1])
         self.assertEqual(response["results"][0]["personality_traits"]["mbti"]["type_code"], "ENFP")
         self.assertEqual(response["results"][1]["personality_traits"]["mbti"]["type_code"], "ISTJ")
+        self.assertEqual(response["personality_trace"]["summary_loaded_count"], 0)
+        self.assertEqual(response["results"][0]["candidate_context"]["evidence_level"], "medium")
+        self.assertEqual(response["results"][0]["candidate_context"]["reason_mode"], "limited_reasoning")
+        self.assertIn("summary", response["results"][0]["candidate_context"]["missing_dimensions"])
+        self.assertIn("personality_traits", response["results"][0]["candidate_context"]["allowed_reason_sources"])
 
         # ❌ 移除：验证性格加分和性格推荐理由（已移除）
         # self.assertGreater(response["results"][0]["personality_bonus"], ...)
+
+    def test_search_partner_candidates_with_builds_candidate_context_from_batch_summaries(self) -> None:
+        session = StoredSession(
+            session_id="discovery-session-summary-batch",
+            requester_id=70001,
+            profile_id=10001,
+            status="active",
+            phase="collecting_preferences",
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            view={"timeline": [], "criteria_chips": [], "suggested_actions": [], "composer": {}},
+            state={},
+        )
+
+        with mock.patch(
+            "discovery_system.service_integrations.build_discovery_search_request",
+            return_value={
+                "compiled": {},
+                "criteria": {"cities": ["无锡"]},
+                "self_profile": {"city": "无锡"},
+            },
+        ), mock.patch(
+            "discovery_system.service_integrations.save_compiled_snapshot",
+        ), mock.patch(
+            "discovery_system.service_integrations.search_profiles_with_visibility_gate",
+            return_value={
+                "has_match": True,
+                "result_count": 3,
+                "results": [
+                    {"id": 3001, "name": "唐语妍", "score": 91, "profile": {"age": 26, "city": "无锡"}},
+                    {"id": 3002, "name": "张安萌", "score": 90, "profile": {"age": 27, "city": "无锡"}},
+                    {"id": 3003, "name": "周可心", "score": 89, "profile": {"age": 28, "city": "无锡"}},
+                ],
+            },
+        ), mock.patch(
+            "discovery_system.service_integrations.load_persona_for_discovery",
+            return_value={},
+        ), mock.patch(
+            "discovery_system.service_integrations.load_traits_for_discovery",
+            return_value=PersonalityTraitsContext(
+                mbti={"type_code": "ISTP"},
+                availability={"has_mbti": True, "overall_completeness": 0.2},
+            ),
+        ), mock.patch(
+            "discovery_system.service_integrations.load_traits_for_profiles",
+            return_value={
+                3001: PersonalityTraitsContext(
+                    mbti={"type_code": "ENFP"},
+                    attachment={"type_code": "secure", "anxiety": 20, "avoidance": 25},
+                    big_five={"scores": {"agreeableness": 82}},
+                    values={"top_values": ["成长", "稳定"]},
+                    availability={
+                        "has_mbti": True,
+                        "has_attachment": True,
+                        "has_big_five": True,
+                        "has_values": True,
+                        "overall_completeness": 0.8,
+                    },
+                ),
+                3002: PersonalityTraitsContext(
+                    availability={
+                        "has_mbti": False,
+                        "has_attachment": False,
+                        "has_big_five": False,
+                        "has_values": False,
+                        "overall_completeness": 0.0,
+                    },
+                ),
+                3003: PersonalityTraitsContext(
+                    mbti={"type_code": "ISTJ"},
+                    availability={
+                        "has_mbti": True,
+                        "has_attachment": False,
+                        "has_big_five": False,
+                        "has_values": False,
+                        "overall_completeness": 0.2,
+                    },
+                ),
+            },
+        ), mock.patch(
+            "match_domain.summary_loader.load_complete_summaries_batch",
+            return_value={
+                3001: {
+                    "personality_traits": "温和细腻，慢热但稳定",
+                    "values": "重视稳定和成长",
+                    "emotional_needs": "需要理解和鼓励",
+                },
+                3002: {
+                    "personality_traits": "重视关系稳定",
+                },
+            },
+        ):
+            response = search_partner_candidates_with(
+                session,
+                criteria={"cities": ["无锡"]},
+                limit=5,
+                source="mysql://demo",
+                load_profile=lambda **_kwargs: {"id": 10001, "city": "无锡"},
+                search=lambda **_kwargs: {"has_match": False, "result_count": 0, "results": []},
+            )
+
+        self.assertEqual([item["id"] for item in response["results"]], [3001, 3002, 3003])
+        self.assertEqual(response["personality_trace"]["summary_loaded_count"], 2)
+
+        first = response["results"][0]["candidate_context"]
+        self.assertEqual(first["evidence_level"], "high")
+        self.assertEqual(first["reason_mode"], "rich_reasoning")
+        self.assertEqual(first["missing_dimensions"], [])
+
+        second = response["results"][1]["candidate_context"]
+        self.assertEqual(second["evidence_level"], "medium")
+        self.assertEqual(second["reason_mode"], "limited_reasoning")
+        self.assertIn("traits", second["missing_dimensions"])
+        self.assertNotIn("summary", second["missing_dimensions"])
+
+        third = response["results"][2]["candidate_context"]
+        self.assertEqual(third["evidence_level"], "medium")
+        self.assertEqual(third["reason_mode"], "limited_reasoning")
+        self.assertIn("summary", third["missing_dimensions"])
+        self.assertIn("attachment", third["missing_dimensions"])
+        self.assertIn("big_five", third["missing_dimensions"])
         # self.assertTrue(response["results"][0]["personality_reasoning"]["used"])
 
         # ✅ 验证 personality_trace 是否正确记录数据统计
