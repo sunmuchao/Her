@@ -500,8 +500,11 @@ def search_partner_candidates_with(
 
     # ✅ Agent Native 改进：移除重复校验
     # limit 应该在 Tool 层（最外层）校验，Service Integrations 层不再重复校验
-    # 添加 assert 确保传入的 limit 已经被校验过了
-    assert 1 <= int(limit or 5) <= 10, f"limit should be validated in Tool layer, got {limit}"
+    # 方案C：两阶段搜索策略
+    # - 第一阶段：数据库搜索，不限制数量（传入更大的搜索limit）
+    # - 第二阶段：向量筛选后，再截断为用户要求的limit
+    final_limit = int(limit or 5)  # 用户最终要求的返回数量
+    search_limit = max(final_limit, 50)  # 第一阶段搜索数量（至少50个，避免向量筛选后结果为空）
     merged_criteria = merge_working_criteria(session.state, criteria)
     session.state["working_criteria"] = {
         key: merged_criteria[key]
@@ -514,7 +517,7 @@ def search_partner_candidates_with(
         persona_row=persona_row,
         criteria_overrides=merged_criteria,
         self_id=effective_self_id,
-        limit=int(limit or 5),  # ✅ 直接使用 limit（已在 Tool 层校验）
+        limit=search_limit,  # ✅ 方案C：第一阶段搜索数量（至少50）
     )
     compiled = dict(compiled_request.get("compiled") or {})
     request_meta = _search_request_meta(
@@ -523,7 +526,7 @@ def search_partner_candidates_with(
         criteria=compiled_request.get("criteria") or {},
         self_profile=compiled_request.get("self_profile"),
         effective_self_id=effective_self_id,
-        normalized_limit=int(limit or 5),  # ✅ 保留字段名不变（兼容性考虑）
+        normalized_limit=search_limit,  # ✅ 方案C：第一阶段搜索数量
         compiled=compiled,
     )
     try:
@@ -554,7 +557,7 @@ def search_partner_candidates_with(
             criteria=dict(compiled_request.get("criteria") or {}),
             self_profile=compiled_self_profile,
             self_id=effective_self_id,
-            limit=int(limit or 5),  # ✅ 直接使用 limit（已在 Tool 层校验）
+            limit=search_limit,  # ✅ 方案C：第一阶段搜索数量（至少50）
             photo_preview_count=3,
             moderation_dsn=os.environ.get("PARTNER_CHAT_DB"),
         )
@@ -666,6 +669,23 @@ def search_partner_candidates_with(
         )
 
         results = response.get("results") or []
+
+        # ✅ 方案C：第三阶段截断
+        # 第一阶段搜索了search_limit（至少50）个候选人
+        # 第二阶段向量筛选后可能剩10-20个
+        # 第三阶段截断为用户要求的final_limit（如5个）
+        before_truncation_count = len(results)
+        if before_truncation_count > final_limit:
+            results = results[:final_limit]
+            response["results"] = results
+            response["result_count"] = len(results)
+            _logger.info(
+                "【最终截断】session_id=%s before_count=%s final_count=%s",
+                session.session_id,
+                before_truncation_count,
+                final_limit,
+            )
+
         # ✅ Agent Native 改进：简化 personality_trace
         # 只保留原始数据统计，移除性格增强相关的统计
         personality_trace = {

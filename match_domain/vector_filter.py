@@ -183,7 +183,7 @@ async def _execute_exclude(
             continue
 
         # 生成向量并搜索
-        similar_ids, avg_similarity = await _search_similar_users(
+        similar_ids, _, avg_similarity = await _search_similar_users(
             text=exclude_text,
             vector_type=vector_type,
             candidate_ids=candidate_ids,
@@ -248,7 +248,7 @@ async def _execute_include(
             continue
 
         # 生成向量并搜索
-        similar_ids, avg_similarity = await _search_similar_users(
+        similar_ids, candidate_ids_with_data, avg_similarity = await _search_similar_users(
             text=include_text,
             vector_type=vector_type,
             candidate_ids=candidate_ids,
@@ -256,15 +256,27 @@ async def _execute_include(
             similarity_threshold=similarity_threshold,
         )
 
-        # 包含逻辑：只保留相似度高的（取交集）
-        included_ids = included_ids.intersection(set(similar_ids))
+        # 【改进】包含逻辑：正确处理"无数据"的候选人
+        # 核心思路：
+        # - 有数据且匹配（similar_ids）：保留 ✅
+        # - 有数据但不匹配（candidate_ids_with_data - similar_ids）：过滤 ❌（合理）
+        # - 无数据（candidate_ids - candidate_ids_with_data）：保留 ✅（未知 ≠ 不匹配）
+        candidate_ids_without_data = set(candidate_ids) - set(candidate_ids_with_data)
+
+        # 正确的 intersection：保留"有数据且匹配" + "无数据"
+        included_ids_with_data = included_ids.intersection(set(similar_ids))
+        included_ids = included_ids_with_data.union(candidate_ids_without_data)
 
         include_trace.append({
             "vector_type": vector_type,
             "include_text": include_text,
             "similarity_threshold": similarity_threshold,
-            "included_ids": list(similar_ids),
-            "included_count": len(similar_ids),
+            "similar_ids": list(similar_ids),  # 有数据且匹配
+            "similar_count": len(similar_ids),
+            "candidate_ids_with_data": list(candidate_ids_with_data),  # 有数据
+            "with_data_count": len(candidate_ids_with_data),
+            "candidate_ids_without_data": list(candidate_ids_without_data),  # 无数据
+            "without_data_count": len(candidate_ids_without_data),
             "avg_similarity": round(avg_similarity, 3),
             "remaining_after_filter": len(included_ids),
         })
@@ -272,6 +284,8 @@ async def _execute_include(
         _logger.info(
             f"【包含详情】vector_type={vector_type} text={include_text} "
             f"threshold={similarity_threshold} similar_count={len(similar_ids)} "
+            f"with_data_count={len(candidate_ids_with_data)} "
+            f"without_data_count={len(candidate_ids_without_data)} "
             f"remaining_count={len(included_ids)} avg_similarity={avg_similarity:.3f}"
         )
 
@@ -359,13 +373,14 @@ async def _search_similar_users(
     candidate_ids: list[int],
     user_id: int,
     similarity_threshold: float,
-) -> tuple[list[int], float]:
+) -> tuple[list[int], list[int], float]:
     """搜索相似用户（带缓存优化）
 
     改造核心：
     - 缓存筛选文本的向量（避免重复计算）
     - 节省embedding API调用（节省40-60%成本）
     - 确保资源清理（embedding_service 和 vector_store）
+    - 【新增】返回候选人在向量库中的存在情况，区分"无数据"和"不匹配"
 
     Args:
         text: 待搜索的文本（如"绿茶、虚伪"）
@@ -375,8 +390,9 @@ async def _search_similar_users(
         similarity_threshold: 相似度阈值
 
     Returns:
-        (similar_ids, avg_similarity)
-        - similar_ids: 相似用户ID列表
+        (similar_ids, candidate_ids_with_data, avg_similarity)
+        - similar_ids: 相似用户ID列表（有数据且匹配）
+        - candidate_ids_with_data: 在向量库中有数据的候选人ID列表
         - avg_similarity: 平均相似度
     """
 
@@ -420,36 +436,52 @@ async def _search_similar_users(
                 f"向量缓存保存: text={search_text}, vector_type={vector_type}"
             )
 
-        # Step 2: 向量库搜索
+        # Step 2: 向量库搜索（【改进】使用极低阈值获取所有有数据的候选人）
         vector_store = VectorStoreLite()
-        similar_users = vector_store.search_similar_users(
+        all_users_in_vector_db = vector_store.search_similar_users(
             user_vector=vector,
             vector_type=vector_type,
-            top_k=len(candidate_ids),  # 搜索数量等于候选人数量
-            similarity_threshold=similarity_threshold,
+            top_k=len(candidate_ids) * 2,  # 搜索数量放大，确保覆盖所有候选人
+            similarity_threshold=0.01,  # ← 极低阈值，返回所有在向量库中有数据的候选人
             exclude_user_ids=[user_id],
         )
 
-        # Step 3: 筛选候选人范围内的相似用户
+        # Step 3: 区分三种情况：有数据且匹配、有数据但不匹配、无数据
         candidate_set = set(candidate_ids)
-        similar_ids = [
+
+        # 所有在向量库中有数据的候选人（不考虑相似度）
+        candidate_ids_with_data = [
             u["user_id"]
-            for u in similar_users
+            for u in all_users_in_vector_db
             if u["user_id"] in candidate_set
         ]
 
-        # Step 4: 计算平均相似度
-        if similar_users:
-            similarities = [u["similarity"] for u in similar_users if u["user_id"] in candidate_set]
+        # 有数据且匹配的候选人（相似度 ≥ threshold）
+        similar_ids = [
+            u["user_id"]
+            for u in all_users_in_vector_db
+            if u["user_id"] in candidate_set and u["similarity"] >= similarity_threshold
+        ]
+
+        # Step 4: 计算平均相似度（只计算匹配的候选人）
+        if similar_ids:
+            similarities = [u["similarity"] for u in all_users_in_vector_db if u["user_id"] in similar_ids]
             avg_similarity = sum(similarities) / len(similarities) if similarities else 0.0
         else:
             avg_similarity = 0.0
 
-        return similar_ids, avg_similarity
+        _logger.info(
+            f"向量搜索详情: candidate_count={len(candidate_ids)} "
+            f"with_data_count={len(candidate_ids_with_data)} "
+            f"similar_count={len(similar_ids)} "
+            f"avg_similarity={avg_similarity:.3f}"
+        )
+
+        return similar_ids, candidate_ids_with_data, avg_similarity
 
     except Exception as exc:
         _logger.error(f"向量搜索异常: text={text} vector_type={vector_type} error={exc}")
-        return [], 0.0
+        return [], [], 0.0
 
     finally:
         # 资源清理
