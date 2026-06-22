@@ -1,0 +1,998 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>发现页搜索逻辑与画像写入逻辑说明</title>
+  <style>
+    :root {
+      --bg: #f5efe6;
+      --paper: #fffdf8;
+      --ink: #1e1d1a;
+      --muted: #6a645b;
+      --line: #ddd1bf;
+      --accent: #b35c2e;
+      --accent-soft: #f3dfd2;
+      --good: #295c3b;
+      --good-soft: #deefe3;
+      --warn: #7a4b16;
+      --warn-soft: #f6e8d7;
+      --code: #f3f0ea;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, #f8e6d6 0, transparent 28%),
+        radial-gradient(circle at top right, #efe1cf 0, transparent 24%),
+        linear-gradient(180deg, #f5efe6 0%, #f3eee7 100%);
+      line-height: 1.72;
+    }
+
+    .page {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 40px 24px 80px;
+    }
+
+    .hero {
+      background: linear-gradient(135deg, #fffaf4 0%, #f6eadf 100%);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 32px;
+      box-shadow: 0 16px 50px rgba(95, 69, 45, 0.08);
+    }
+
+    .eyebrow {
+      display: inline-block;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+    }
+
+    h1, h2, h3 {
+      margin: 0 0 14px;
+      line-height: 1.3;
+    }
+
+    h1 {
+      margin-top: 16px;
+      font-size: 36px;
+    }
+
+    h2 {
+      font-size: 28px;
+      margin-top: 42px;
+    }
+
+    h3 {
+      font-size: 21px;
+      margin-top: 28px;
+    }
+
+    p {
+      margin: 10px 0;
+    }
+
+    .lead {
+      font-size: 18px;
+      color: #3e382f;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+      margin-top: 22px;
+    }
+
+    .card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 18px 18px 16px;
+    }
+
+    .card h3 {
+      margin-top: 0;
+      font-size: 18px;
+    }
+
+    .callout {
+      margin: 18px 0;
+      padding: 16px 18px;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      background: #fffaf3;
+    }
+
+    .callout.good {
+      background: var(--good-soft);
+      border-color: #bdd9c7;
+    }
+
+    .callout.warn {
+      background: var(--warn-soft);
+      border-color: #e3c9a8;
+    }
+
+    .steps {
+      display: grid;
+      gap: 14px;
+      margin: 18px 0;
+    }
+
+    .step {
+      display: grid;
+      grid-template-columns: 56px 1fr;
+      gap: 14px;
+      align-items: start;
+      padding: 16px;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+    }
+
+    .num {
+      width: 56px;
+      height: 56px;
+      border-radius: 16px;
+      background: linear-gradient(135deg, #c96f3f 0%, #a54d25 100%);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      font-weight: 800;
+    }
+
+    ul {
+      padding-left: 20px;
+    }
+
+    li {
+      margin: 8px 0;
+    }
+
+    code {
+      background: var(--code);
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.94em;
+    }
+
+    .example {
+      margin: 16px 0;
+      padding: 18px;
+      background: #fff;
+      border: 1px dashed #cdb89d;
+      border-radius: 18px;
+    }
+
+    .example-title {
+      font-weight: 800;
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+
+    .flow {
+      margin: 18px 0;
+      padding: 18px;
+      border-radius: 18px;
+      background: linear-gradient(180deg, #fffdf9 0%, #f9f1e7 100%);
+      border: 1px solid var(--line);
+      overflow-x: auto;
+      white-space: nowrap;
+      font-weight: 700;
+      color: #4b4135;
+    }
+
+    .mini {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0 20px;
+      background: var(--paper);
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+    }
+
+    th, td {
+      text-align: left;
+      padding: 12px 14px;
+      border-bottom: 1px solid #eadfce;
+      vertical-align: top;
+    }
+
+    th {
+      background: #f7efe5;
+      font-size: 14px;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    .footer {
+      margin-top: 44px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <section class="hero">
+      <span class="eyebrow">给人看的版本</span>
+      <h1>发现页搜索逻辑 + 画像写入逻辑</h1>
+      <p class="lead">
+        这份说明专门用大白话讲两件事：
+        第一，用户在发现页说一句话之后，系统到底怎么搜人。
+        第二，用户说过的话最后会写进哪张表，哪些会进画像，哪些会进摘要，哪些会进向量库。
+      </p>
+      <div class="callout warn">
+        <strong>先说最重要的一句：</strong>
+        当前系统里，发现页“边聊边写 persona”这条能力实际上是关掉的。
+        也就是说，用户在发现页实时对话时，系统会实时搜索，但不会实时把这些话写进 <code>user_personas</code>。
+        真正的沉淀写入，主要发生在“会话结束之后”的后台处理。
+      </div>
+      <div class="grid">
+        <div class="card">
+          <h3>一句话理解发现页</h3>
+          <p>发现页更像一个“带记忆的红娘会话”，不是一个死板的筛选表单。</p>
+        </div>
+        <div class="card">
+          <h3>一句话理解画像写入</h3>
+          <p>系统会把“能量化的条件”写画像，把“说不清但很重要的感觉和偏好”写摘要和向量。</p>
+        </div>
+        <div class="card">
+          <h3>一句话理解当前现实</h3>
+          <p>实时搜索和长期沉淀，是两条链路，不是同一条链路。</p>
+        </div>
+      </div>
+    </section>
+
+    <h2>一、发现页内部的完整搜索逻辑</h2>
+    <p>
+      先用一个最容易懂的例子：
+    </p>
+
+    <div class="example">
+      <div class="example-title">例子：用户在发现页说</div>
+      <p>“我想先看看无锡的，别太强势，最好工作别忙得没时间谈恋爱。”</p>
+      <p>
+        你以为系统在做的是：
+        “把这句话立刻写进用户画像，再拿画像去搜人。”
+      </p>
+      <p>
+        <strong>当前真实情况不是这样。</strong>
+      </p>
+      <p>
+        当前更接近：
+        “先把这句话当成这次会话里的即时搜索线索，红娘当场拿这些线索去搜；等会话结束后，再决定哪些内容值得沉淀。”
+      </p>
+    </div>
+
+    <div class="flow">
+      前端进入发现页 → 恢复/创建 discovery session → agent 判断要不要搜 →
+      整理本轮条件 + 历史 working criteria + self profile → partner_search 执行搜索 →
+      返回候选人卡片 → 写入当前 session 视图和搜索记录
+    </div>
+
+    <h3>1. 用户刚进入发现页时，系统先干什么</h3>
+    <div class="steps">
+      <div class="step">
+        <div class="num">1</div>
+        <div>
+          <strong>先找有没有旧会话。</strong>
+          <p>前端会先看 URL 里有没有 session id，再看本地缓存里有没有之前的 session id。</p>
+          <p>如果有，就恢复旧会话；如果没有，就新建一个 discovery session。</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">2</div>
+        <div>
+          <strong>恢复的不是“只有聊天记录”，而是整套页面状态。</strong>
+          <p>包括 timeline、推荐卡片、建议动作、criteria chips、输入框提示语等。</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">3</div>
+        <div>
+          <strong>还会补充 collected preferences。</strong>
+          <p>前端会额外拉一份 collected statements，把一些偏好 chips 展示出来。</p>
+          <p class="mini">注意：这个更多是 UI 层补充，不等于直接用它触发一次搜索。</p>
+        </div>
+      </div>
+    </div>
+
+    <h3>2. 新建会话时，后端到底怎么决定“要不要开始搜”</h3>
+    <p>
+      后端新建 session 后，不是立刻固定跑某个 SQL。
+      它会进入一个 discovery runtime，也就是“红娘代理”的运行时。
+    </p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>它会拿什么信息做判断</th>
+          <th>大白话解释</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>session.phase</code></td>
+          <td>当前是在“收集偏好”阶段，还是已经适合直接给结果。</td>
+        </tr>
+        <tr>
+          <td><code>criteria_labels</code></td>
+          <td>页面上已经展示过哪些条件标签，比如“无锡”“本科以上”。</td>
+        </tr>
+        <tr>
+          <td><code>recent_timeline</code></td>
+          <td>最近这段对话里发生过什么，已经看过哪些候选人。</td>
+        </tr>
+        <tr>
+          <td><code>runtime_context</code></td>
+          <td>更完整的上下文，比如上一次搜索摘要、可见动作摘要等。</td>
+        </tr>
+        <tr>
+          <td><code>self_profile</code></td>
+          <td>用户自己的资料，搜索时会用来做互相匹配和一些风险判断。</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout good">
+      <strong>一句话总结：</strong>
+      发现页不是“用户一句话直接变搜索参数”，而是“agent 看上下文后，决定这句话该不该触发搜索、要带哪些条件去搜索”。
+    </div>
+
+    <h3>3. 真正发起搜索时，条件是怎么来的</h3>
+    <p>搜索条件主要来自 4 个地方：</p>
+    <ul>
+      <li>用户这一次刚说的话，被 agent 提炼出的 <code>criteria</code></li>
+      <li>这个 session 里之前已经积累的 <code>working_criteria</code></li>
+      <li>用户自己的 <code>self_profile</code></li>
+      <li>一些 runtime context 里的补充信息</li>
+    </ul>
+
+    <div class="example">
+      <div class="example-title">例子：用户连续两轮说话</div>
+      <p>第一轮：“先看无锡的。”</p>
+      <p>第二轮：“学历最好本科以上，别太强势。”</p>
+      <p>
+        系统不会只看第二轮，而是会把第一轮和第二轮拼起来，
+        形成一个更完整的会话内搜索条件。
+      </p>
+      <p>
+        大白话就是：红娘不会因为你第二句话没再提“无锡”，就立刻把“无锡”忘掉。
+      </p>
+    </div>
+
+    <h3>4. <code>working_criteria</code> 是什么</h3>
+    <p>
+      你可以把它理解成：
+      <strong>这一次发现页会话里，红娘临时记住的筛人要求。</strong>
+    </p>
+    <p>它不是长期画像，更像“这场对话期间的临时便签”。</p>
+
+    <div class="example">
+      <div class="example-title">例子</div>
+      <p>用户说：“无锡优先。”</p>
+      <p>系统可能先记成：<code>cities = ["无锡"]</code></p>
+      <p>后面用户又说：“其实苏州也可以。”</p>
+      <p>那这张临时便签就会改成更新的条件组合，而不是每次都从头来。</p>
+    </div>
+
+    <p>
+      当前代码里，`working_criteria` 的合并逻辑还有一个具体修正：
+      如果用户传了 <code>cities</code>，旧的 <code>city</code> 会被清掉，避免两个字段互相打架。
+    </p>
+
+    <h3>5. partner_search 真正会做什么</h3>
+    <p>
+      发现页把条件整理好后，会调用 <code>partner_search.search_profiles()</code>。
+      这一步不是简单数据库筛选，而是一个多层处理流程。
+    </p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>模块</th>
+          <th>大白话解释</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>search_sources</code></td>
+          <td>先把候选人的 profile、照片、可能的 moderation 信息都加载出来。</td>
+        </tr>
+        <tr>
+          <td><code>search_profile_context</code></td>
+          <td>把用户自己的资料和搜索条件整理成统一格式。</td>
+        </tr>
+        <tr>
+          <td><code>search_matching</code></td>
+          <td>做硬筛选和软匹配，比如年龄、城市、学历、一些节奏偏好。</td>
+        </tr>
+        <tr>
+          <td><code>search_reciprocal</code></td>
+          <td>不只看“你喜不喜欢她”，还看“她那边能不能接受你”。</td>
+        </tr>
+        <tr>
+          <td><code>search_ranking</code></td>
+          <td>综合打分、排序、控制结果不要太像、去掉质量太差的尾部结果。</td>
+        </tr>
+        <tr>
+          <td><code>search_text_signals</code></td>
+          <td>处理关键词证据、notes 摘要、敏感文本脱敏。</td>
+        </tr>
+        <tr>
+          <td><code>search_trust</code></td>
+          <td>补认证、活跃度、可信度相关信息。</td>
+        </tr>
+        <tr>
+          <td><code>personality_traits_reader</code></td>
+          <td>给 discovery 卡片补人格测评上下文，比如 MBTI、依恋、价值观等。</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="example">
+      <div class="example-title">为什么一张候选人卡片里会有这么多东西</div>
+      <p>因为卡片不是只来自 profiles 表的一行数据。</p>
+      <p>它是把这些东西拼起来的：</p>
+      <ul>
+        <li>基础资料：年龄、城市、职业、学历</li>
+        <li>搜索命中理由：为什么把她推荐给你</li>
+        <li>trust 信息：认证、照片、活跃程度</li>
+        <li>人格信息：测评可用性、values、MBTI、依恋等</li>
+      </ul>
+    </div>
+
+    <h3>6. 搜完之后，结果怎么回到页面</h3>
+    <p>搜索结果回到 discovery service 后，不是直接扔给前端列表。</p>
+    <p>它会被包装成一整套 discovery view：</p>
+    <ul>
+      <li>assistant_message：红娘说的话</li>
+      <li>result_group：这一批推荐卡片</li>
+      <li>criteria_chips：当前已经识别出的偏好条件</li>
+      <li>suggested_actions：比如“换一批”“看看更多”之类</li>
+      <li>composer 状态：输入框该怎么提示</li>
+    </ul>
+
+    <div class="callout">
+      <strong>所以发现页的本质不是“搜人页”，而是“会话化搜索页”。</strong>
+      搜索只是里面的一步，session 才是中心。
+    </div>
+
+    <h3>7. 发现页当前一个非常关键的现实限制</h3>
+    <div class="callout warn">
+      <strong>当前 discovery 实时阶段的 persona 同步是禁用的。</strong>
+      <p>
+        也就是 agent 虽然还能调用名为 <code>sync_requester_persona_memory</code> 的工具，
+        但这个工具现在会直接返回“disabled_for_testing”，不执行实际写入。
+      </p>
+      <p>
+        大白话就是：红娘会当场帮你搜，但不会边聊边把你的话正式记进长期画像。
+      </p>
+    </div>
+
+    <h2>二、画像、摘要、向量库的完整写入逻辑</h2>
+    <p>
+      这里也先用最容易懂的例子说。
+    </p>
+
+    <div class="example">
+      <div class="example-title">例子：用户在一段会话里说了这些话</div>
+      <p>“我不接受异地。”</p>
+      <p>“最好是无锡或者苏州。”</p>
+      <p>“我挺慢热的，不喜欢暧昧拉扯，希望关系推进明确一点。”</p>
+      <p>“我很看重情绪稳定和愿意沟通。”</p>
+    </div>
+
+    <p>系统不会把这些话一股脑塞进同一张表。</p>
+    <p>它会先问自己两个问题：</p>
+    <ul>
+      <li>这句话里有没有<strong>能量化、能结构化</strong>的东西？</li>
+      <li>这句话里有没有<strong>很重要，但很难变成硬字段</strong>的东西？</li>
+    </ul>
+
+    <div class="flow">
+      会话结束触发 → 重新加载这段会话里的用户原话 → LLM 提炼结构化摘要 →
+      分成“可量化”和“不可量化”两堆 →
+      可量化写 persona / observations →
+      不可量化写 conversation_summaries →
+      再把 summary 文本做 embedding 写入 Milvus
+    </div>
+
+    <h3>1. 什么时候触发写入</h3>
+    <p>当前不是实时写，而是主要在会话结束相关场景触发：</p>
+    <ul>
+      <li>用户新开一个发现页会话时，后台处理上一个会话</li>
+      <li>用户切换会话时，后台处理被切走的那个会话</li>
+      <li>显式关闭会话时处理</li>
+    </ul>
+
+    <p>
+      而且不是每次都全量重跑，会看这个会话自从上次处理后有没有新增内容。
+      没新增，就跳过。
+    </p>
+
+    <h3>2. 它提炼的原材料是什么</h3>
+    <p>
+      很关键的一点：
+      后台提炼时，不是拿内存里现成对象，也不是拿助手说过的话，
+      而是重新从数据库里加载该 session 的消息。
+    </p>
+    <p>
+      而且只保留 <strong>用户原话</strong>。
+    </p>
+
+    <div class="example">
+      <div class="example-title">为什么只看用户原话</div>
+      <p>假设用户说：“我不想异地。”</p>
+      <p>助手回复：“明白了，你更偏好同城。”</p>
+      <p>
+        如果连助手复述也一起拿去提炼，系统就可能把同一个意思重复沉淀两次，
+        甚至把助手的转述当成新的事实。
+      </p>
+      <p>所以当前实现只看用户原话，这个做法是对的。</p>
+    </div>
+
+    <h3>3. LLM 提炼后会得到什么</h3>
+    <p>LLM 会把整段用户原话总结成结构化字段，比如：</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>字段</th>
+          <th>例子</th>
+          <th>性质</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>personality_traits</code></td>
+          <td>慢热、理性、温和</td>
+          <td>不可量化</td>
+        </tr>
+        <tr>
+          <td><code>values</code></td>
+          <td>看重情绪稳定、重视沟通</td>
+          <td>不可量化</td>
+        </tr>
+        <tr>
+          <td><code>partner_expectation</code></td>
+          <td>希望对方认真推进关系，不暧昧</td>
+          <td>不可量化，但很重要</td>
+        </tr>
+        <tr>
+          <td><code>emotional_needs</code></td>
+          <td>希望对方愿意回应、不冷处理</td>
+          <td>不可量化</td>
+        </tr>
+        <tr>
+          <td><code>city</code></td>
+          <td>无锡</td>
+          <td>可量化 / 结构化</td>
+        </tr>
+        <tr>
+          <td><code>education</code></td>
+          <td>本科</td>
+          <td>可量化 / 结构化</td>
+        </tr>
+        <tr>
+          <td><code>mbti_type</code></td>
+          <td>INTJ</td>
+          <td>可量化 / 结构化</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>4. 第一道分流：可量化 vs 不可量化</h3>
+    <p>
+      这里可以把系统想象成一个分拣员：
+    </p>
+    <ul>
+      <li>能明确变成字段、范围、枚举、布尔值的，放到“画像盒子”</li>
+      <li>更像感觉、偏好、节奏、人物特质的，放到“摘要/向量盒子”</li>
+    </ul>
+
+    <div class="example">
+      <div class="example-title">同一句话，会拆成两部分</div>
+      <p>用户说：“我希望找无锡的，最好本科以上，情绪稳定一点，别暧昧。”</p>
+      <p>可能会拆成：</p>
+      <ul>
+        <li>可量化：<code>target_cities = ["无锡"]</code>、<code>target_education_min = 本科</code></li>
+        <li>不可量化：<code>partner_personality_preference = 情绪稳定</code>、<code>partner_relationship_pacing = 不喜欢暧昧</code></li>
+      </ul>
+    </div>
+
+    <h3>5. 可量化信息怎么写入 <code>user_personas</code></h3>
+    <p>可量化数据会走 persona-memory-sync 引擎。</p>
+    <p>主顺序是：</p>
+
+    <div class="steps">
+      <div class="step">
+        <div class="num">1</div>
+        <div>
+          <strong>先标准化 patch。</strong>
+          <p>比如列表转 CSV、布尔值规范化、整数规范化、一些语义别名统一。</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">2</div>
+        <div>
+          <strong>读取已有 persona。</strong>
+          <p>看看这个用户之前已经记住了什么。</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">3</div>
+        <div>
+          <strong>合并 persona。</strong>
+          <p>新值和旧值对比，决定是 insert、update 还是 skip。</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">4</div>
+        <div>
+          <strong>upsert 到 <code>user_personas</code>。</strong>
+          <p>也就是把长期画像真源更新掉。</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">5</div>
+        <div>
+          <strong>把这次变化写进 <code>user_persona_observations</code>。</strong>
+          <p>这一步更像审计日志，记录“为什么改了、改了哪些字段”。</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout warn">
+      <strong>一个非常关键的当前现实：</strong>
+      <p>
+        现在 <code>strong_inference</code> 和 <code>weak_inference</code> 基本不会真正写进
+        <code>user_personas</code>，会被跳过。
+      </p>
+      <p>
+        当前真正能稳定持久化进 persona 的，主要是：
+        <code>explicit</code>、<code>profile_form</code>、<code>explicit_confirmation</code>。
+      </p>
+      <p>
+        大白话就是：系统现在更信“用户明确说过的”，没那么信“系统自己猜出来的”。
+      </p>
+    </div>
+
+    <h3>6. <code>user_persona_observations</code> 到底记什么</h3>
+    <p>
+      你可以把它理解成：
+      <strong>画像改动的凭据账本。</strong>
+    </p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>记录项</th>
+          <th>大白话解释</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>field_name</code></td>
+          <td>这次说的是哪个字段，比如 <code>target_accept_long_distance</code></td>
+        </tr>
+        <tr>
+          <td><code>field_value</code></td>
+          <td>这次提炼出的值是什么</td>
+        </tr>
+        <tr>
+          <td><code>source_type</code></td>
+          <td>是明确表达，还是推断</td>
+        </tr>
+        <tr>
+          <td><code>evidence_text</code></td>
+          <td>不是整段原始对话，而是压缩过的证据摘要</td>
+        </tr>
+        <tr>
+          <td><code>applied_to_persona</code></td>
+          <td>这次值最后有没有真的改到 persona</td>
+        </tr>
+        <tr>
+          <td><code>applied_to_profile</code></td>
+          <td>这次值有没有进一步同步到 profile</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p>
+      所以它不是给检索直接用的主画像，而是给溯源、审计、调试用的。
+    </p>
+
+    <h3>7. 不可量化信息怎么写入 <code>conversation_summaries</code></h3>
+    <p>
+      如果系统觉得这段信息很重要，但不适合强行塞进 persona 字段，
+      就会写进 <code>conversation_summaries</code>。
+    </p>
+
+    <div class="example">
+      <div class="example-title">典型适合进 summary 的内容</div>
+      <ul>
+        <li>“我很慢热，不喜欢关系推进太快。”</li>
+        <li>“希望对方能正面沟通，不要冷处理。”</li>
+        <li>“我特别看重情绪稳定。”</li>
+        <li>“工作别太卷，下班后最好有时间相处。”</li>
+      </ul>
+      <p>
+        这些都很重要，但很难用一个简陋的枚举值表达完整，所以更适合写摘要。
+      </p>
+    </div>
+
+    <p>写 summary 之前，还会做一次质量检查：</p>
+    <ul>
+      <li>太空泛的句子会被拒绝</li>
+      <li>像“希望真诚沟通”“三观一致”“有共同话题”这种没展开的空话，会被拦掉</li>
+      <li>只有足够具体的 summary 才会入库</li>
+    </ul>
+
+    <div class="callout good">
+      <strong>这个设计很重要。</strong>
+      如果把全是空话的摘要写进向量库，后面召回会越来越糊，谁都像谁。
+    </div>
+
+    <h3>8. 向量库怎么写</h3>
+    <p>
+      写完 <code>conversation_summaries</code> 后，系统会继续做 embedding，
+      再写入 Milvus Lite 的 <code>user_vectors</code> 集合。
+    </p>
+
+    <p>但不是“每来一句就直接 embedding 原句”，而是更谨慎：</p>
+    <ul>
+      <li>先查这个用户这个维度过去有没有历史摘要</li>
+      <li>判断这次是补充、覆盖、还是重复</li>
+      <li>合成一个更稳定的最终摘要文本</li>
+      <li>再对这个最终文本做向量化</li>
+    </ul>
+
+    <div class="example">
+      <div class="example-title">例子：同一个维度会合并，不是无限堆原句</div>
+      <p>第一次 summary：<code>partner_relationship_pacing = 慢热，希望关系推进明确</code></p>
+      <p>第二次 summary：<code>partner_relationship_pacing = 不喜欢暧昧拉扯，希望认真推进</code></p>
+      <p>
+        系统不会简单保留两句互相重复的话，
+        而是会尝试合成一个更完整、更稳定的最终文本，
+        再写入摘要表和向量库。
+      </p>
+    </div>
+
+    <h3>9. 向量库里存的到底是什么</h3>
+    <p>Milvus 里每条向量大致包含这些信息：</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>字段</th>
+          <th>大白话解释</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>user_id</code></td>
+          <td>这个向量属于谁</td>
+        </tr>
+        <tr>
+          <td><code>conversation_id</code></td>
+          <td>这次向量是从哪段会话来的</td>
+        </tr>
+        <tr>
+          <td><code>vector_type</code></td>
+          <td>这是性格向量、价值观向量，还是择偶节奏向量</td>
+        </tr>
+        <tr>
+          <td><code>vector_version</code></td>
+          <td>这是这个维度的第几个版本</td>
+        </tr>
+        <tr>
+          <td><code>raw_text</code></td>
+          <td>生成这个向量用的最终摘要文本</td>
+        </tr>
+        <tr>
+          <td><code>is_active</code></td>
+          <td>这个版本现在是否仍然生效</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p>
+      搜索相似用户时，还会考虑时间衰减。
+      比如“性格特质”和“价值观”衰减得慢，“情感需求”衰减得更快。
+    </p>
+
+    <h3>10. <code>profiles</code> 的写入，到底处在什么位置</h3>
+    <p>
+      很多人会误以为：所有画像最后都会同步到 <code>profiles</code>。
+      但当前真实实现没有这么激进。
+    </p>
+
+    <div class="callout warn">
+      <strong>当前现实：</strong>
+      <p>
+        discovery 会话结束后的主沉淀重点，是
+        <code>user_personas</code>、
+        <code>user_persona_observations</code>、
+        <code>conversation_summaries</code>、
+        向量库。
+      </p>
+      <p>
+        <code>profiles</code> 不是这条链路里每次都自动全量回写的主落点。
+      </p>
+    </div>
+
+    <p>
+      当前 persona-memory-sync 对 profile 的自动同步，只有在这些条件同时满足时才会发生：
+    </p>
+    <ul>
+      <li><code>apply_scope = persona_and_profile</code></li>
+      <li><code>sync_profile = true</code></li>
+      <li><code>source_type</code> 是 <code>profile_form</code> 或 <code>explicit_confirmation</code></li>
+    </ul>
+
+    <p>
+      就算走了 profile 同步，当前默认也是 <strong>public_only</strong> 模式，
+      重点是写公开安全字段，不是把所有内部画像原样倒回 profile。
+    </p>
+
+    <h3>11. <code>profiles</code> 当前主要会被写哪些公开字段</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>字段</th>
+          <th>作用</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>public_display_name</code></td>
+          <td>公开展示名，不直接暴露原始姓名</td>
+        </tr>
+        <tr>
+          <td><code>public_education</code></td>
+          <td>经过掩码或安全渲染后的学历信息</td>
+        </tr>
+        <tr>
+          <td><code>public_job</code></td>
+          <td>经过安全处理后的职业文案</td>
+        </tr>
+        <tr>
+          <td><code>public_personality</code></td>
+          <td>可公开展示的人格描述</td>
+        </tr>
+        <tr>
+          <td><code>public_values</code></td>
+          <td>可公开展示的价值观描述</td>
+        </tr>
+        <tr>
+          <td><code>public_notes</code></td>
+          <td>可公开展示的补充说明</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="example">
+      <div class="example-title">例子：为什么内部负面标签不能直接公开</div>
+      <p>如果内部 matcher 里有“绿茶”“冷暴力风险”这种标签，不能直接给前台展示。</p>
+      <p>当前系统会更倾向于转译成更克制的公开文案，比如：</p>
+      <ul>
+        <li>“关系边界需要进一步确认”</li>
+        <li>“沟通方式建议重点确认”</li>
+      </ul>
+    </div>
+
+    <h2>三、用一句用户输入，完整跑一遍</h2>
+    <div class="example">
+      <div class="example-title">完整示例</div>
+      <p>用户在发现页说：</p>
+      <p>
+        “我想先看无锡或者苏州的，最好本科以上，不接受异地。
+        我自己比较慢热，也不喜欢暧昧拉扯，希望对方情绪稳定、愿意沟通。”
+      </p>
+    </div>
+
+    <h3>实时搜索阶段，会发生什么</h3>
+    <ul>
+      <li>agent 先判断：这句话已经足够触发一次搜索了</li>
+      <li>提炼出即时 criteria，比如城市、学历、异地接受度</li>
+      <li>和当前 session 的 `working_criteria` 合并</li>
+      <li>读取用户自己的 self_profile</li>
+      <li>partner_search 开始筛候选人、做互相匹配、排序、补 trust / personality 上下文</li>
+      <li>页面展示一批推荐卡片</li>
+    </ul>
+
+    <h3>但这时还不会发生什么</h3>
+    <ul>
+      <li>不会立刻把这段话正式写进长期 `user_personas`</li>
+      <li>不会立刻把这段话同步写到 `profiles` 主画像</li>
+      <li>不会立刻写向量库</li>
+    </ul>
+
+    <h3>等会话结束后，后台会怎么沉淀</h3>
+    <ul>
+      <li>重新从数据库读取这段 session 的用户原话</li>
+      <li>LLM 提炼结构化摘要</li>
+      <li>可量化部分可能拆成：
+        <code>target_cities</code>、
+        <code>target_education_min</code>、
+        <code>target_accept_long_distance</code>
+      </li>
+      <li>这些会写进 persona / observation</li>
+      <li>不可量化部分可能拆成：
+        <code>personality_traits</code>、
+        <code>partner_relationship_pacing</code>、
+        <code>partner_personality_preference</code>
+      </li>
+      <li>这些会写进 <code>conversation_summaries</code></li>
+      <li>再根据 summary 生成 embedding 写进 Milvus</li>
+    </ul>
+
+    <h2>四、最容易踩坑的认知误区</h2>
+    <div class="grid">
+      <div class="card">
+        <h3>误区 1</h3>
+        <p>“发现页边聊边搜，所以也一定边聊边写 persona。”</p>
+        <p><strong>错。</strong>当前实时 persona 写入是禁用的。</p>
+      </div>
+      <div class="card">
+        <h3>误区 2</h3>
+        <p>“所有用户偏好都应该写进 user_personas。”</p>
+        <p><strong>错。</strong>很多主观偏好更适合进 summary + 向量。</p>
+      </div>
+      <div class="card">
+        <h3>误区 3</h3>
+        <p>“summary 就是聊天原句。”</p>
+        <p><strong>错。</strong>summary 是 LLM 提炼后、再经过质检和合并的文本。</p>
+      </div>
+      <div class="card">
+        <h3>误区 4</h3>
+        <p>“profiles 是所有沉淀信息的最终总表。”</p>
+        <p><strong>错。</strong>当前更像公开安全投影层 + 搜索底座，不是所有沉淀的真源。</p>
+      </div>
+    </div>
+
+    <h2>五、最后用一句最通俗的话总结</h2>
+    <div class="callout good">
+      <p>
+        <strong>发现页实时阶段：</strong>
+        像红娘一边和你聊天，一边拿你刚说的要求先去筛人。
+      </p>
+      <p>
+        <strong>会话结束后的沉淀阶段：</strong>
+        像红娘晚上复盘笔记，把“能变成明确条件的”记进画像，
+        把“很重要但更像感觉和偏好的”记成摘要，再做成向量，方便以后更懂你。
+      </p>
+    </div>
+
+    <p class="footer">
+      文档基于当前仓库代码真实实现整理，重点反映“现在系统实际怎么跑”，不是理想设计稿。
+    </p>
+  </div>
+</body>
+</html>
