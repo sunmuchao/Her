@@ -455,6 +455,213 @@
       </tbody>
     </table>
 
+    <h4>5.1 真正执行时的顺序，不是“一句话直接查向量库”</h4>
+    <p>
+      当前真实代码里，discovery agent 先判断这轮要不要搜、搜什么硬条件、
+      要不要加性格偏好，再去调用
+      <code>search_partner_candidates(criteria_json, personality_match_json, limit)</code>。
+    </p>
+    <p>所以顺序其实是：</p>
+    <ol>
+      <li>agent 先整理硬条件，比如性别、年龄、城市、关系目标</li>
+      <li>如果用户表达了“想找温柔、外向、情绪稳定”这种软偏好，再整理成性格匹配条件</li>
+      <li>先做结构化搜索，拿到一批候选人</li>
+      <li>再用向量库对这批候选人做二次语义筛选</li>
+      <li>最后给候选人补摘要和人格上下文，agent 再决定能说多具体</li>
+    </ol>
+
+    <div class="callout good">
+      <strong>一个很关键的现实区别：</strong>
+      <p>
+        这里的向量库主要不是“直接从全库召回候选人”，而是
+        “对第一阶段已经搜出来的候选集做二次语义过滤”。
+      </p>
+    </div>
+
+    <h4>5.2 第一步：先做结构化搜索</h4>
+    <p>
+      搜索入口会先并行加载两类信息：
+    </p>
+    <ul>
+      <li>用户自己的 profile</li>
+      <li>用户的人格 / persona 数据</li>
+    </ul>
+    <p>
+      然后把这些和当前这轮提炼出的条件、历史
+      <code>working_criteria</code> 合并，编译成一份最终搜索请求。
+    </p>
+    <p>
+      这里还有一个很重要的策略：用户最后只想看 5 个候选人，不代表第一阶段只搜 5 个。
+      当前实现会先至少搜一批更大的结果集，常见是至少 50 个，
+      这样后面即使经过向量筛选，也不至于一个都不剩。
+    </p>
+
+    <div class="example">
+      <div class="example-title">为什么要先多搜一点</div>
+      <p>假设用户要求：</p>
+      <ul>
+        <li>女</li>
+        <li>苏州或无锡</li>
+        <li>认真恋爱</li>
+        <li>最好温柔、情绪稳定</li>
+      </ul>
+      <p>
+        如果数据库阶段只先拿 5 个，再做性格语义过滤，可能 5 个里有 4 个都不满足软偏好，
+        最后就会显得“明明库里有人，却返回空结果”。
+      </p>
+      <p>
+        所以系统会先拿更大的结构化候选集，再慢慢缩。
+      </p>
+    </div>
+
+    <h4>5.3 第二步：向量库到底怎么查</h4>
+    <p>
+      如果 agent 带了性格偏好，比如“想找温柔、外向”，系统不会把这句话直接拿去替代数据库搜索。
+      它会先把这类偏好转成一份 <code>vector_filter_json</code>。
+    </p>
+
+    <pre><code>{
+  "include": {
+    "personality_traits": {
+      "text": "外向、温柔",
+      "similarity_threshold": 0.75
+    }
+  }
+}</code></pre>
+
+    <p>
+      然后向量筛选器会拿到三样东西：
+    </p>
+    <ul>
+      <li>这批候选人的 <code>candidate_ids</code></li>
+      <li>要匹配或排除的语义文本</li>
+      <li>当前用户 ID</li>
+    </ul>
+    <p>接下来做的事是：</p>
+    <ol>
+      <li>把查询文本做 embedding</li>
+      <li>去 Milvus 的 <code>user_vectors</code> 集合里，按指定 <code>vector_type</code> 搜相似向量</li>
+      <li>只保留相似度过阈值的用户</li>
+      <li>再和当前候选集取交集，决定谁留下、谁被排除</li>
+    </ol>
+
+    <p>
+      当前支持两种语义模式：
+    </p>
+    <ul>
+      <li><code>include</code>：只保留像“温柔、真诚”这类描述的候选人</li>
+      <li><code>exclude</code>：排除像“绿茶、虚伪”这类描述的候选人</li>
+    </ul>
+
+    <p>
+      所以它不是“向量库全局直接给你找对象”，而是“先硬筛，再语义细筛”。
+    </p>
+
+    <h4>5.4 向量库里存的不是聊天原句，而是稳定摘要的 embedding</h4>
+    <p>
+      这一点很重要。系统不会把“用户刚刚说的一句原话”直接永久向量化。
+      更真实的流程是：
+    </p>
+    <ol>
+      <li>先提炼这一轮的摘要文本</li>
+      <li>查这个用户这个维度过去有没有历史摘要</li>
+      <li>判断这次是补充、细化、冲突，还是重复</li>
+      <li>合成一个最终摘要文本</li>
+      <li>再对这个最终摘要文本生成 embedding，写入向量库</li>
+    </ol>
+
+    <p>
+      也就是说，Milvus 里存的更像“压缩后的稳定理解”，不是一条条原始聊天记录。
+    </p>
+
+    <h4>5.5 第三步：摘要表怎么查</h4>
+    <p>
+      结构化搜索和向量筛选结束后，系统还会给最终留下的候选人批量补摘要信息。
+      它会按候选人 ID 去查 <code>conversation_summaries</code>，并行加载多个摘要维度。
+    </p>
+    <p>常见会查这些盒子：</p>
+    <ul>
+      <li><code>personality_traits</code></li>
+      <li><code>values</code></li>
+      <li><code>life_attitude</code></li>
+      <li><code>partner_expectation</code></li>
+      <li><code>partner_personality_preference</code></li>
+      <li><code>partner_relationship_pacing</code></li>
+      <li><code>partner_lifestyle_preference</code></li>
+      <li><code>emotional_needs</code></li>
+    </ul>
+    <p>
+      最后每个候选人身上会多出：
+    </p>
+    <ul>
+      <li><code>summary</code>：真正加载到的摘要文本字典</li>
+      <li><code>summary_meta</code>：加载了多少字段、还缺哪些字段</li>
+    </ul>
+
+    <div class="example">
+      <div class="example-title">为什么还要补 summary</div>
+      <p>
+        因为基础 profile 能告诉你“她 29 岁、在苏州、做产品经理”，
+        但 summary 更可能告诉你：
+      </p>
+      <ul>
+        <li>她在关系里慢热还是直接</li>
+        <li>她更看重情绪稳定还是成长性</li>
+        <li>她需要的是高频陪伴，还是理解彼此节奏</li>
+      </ul>
+      <p>
+        这些信息更适合 agent 做解释，但前提是证据足够。
+      </p>
+    </div>
+
+    <h4>5.6 最后 agent 是怎么判断“能说多具体”的</h4>
+    <p>
+      当前实现里，tool 层不会直接替 agent 下最终结论，而是先为每个候选人生成一个
+      <code>candidate_context</code>。
+    </p>
+    <p>
+      这个上下文会看两件事：
+    </p>
+    <ul>
+      <li>有没有可用的人格 traits 数据</li>
+      <li>有没有可用的 summary 数据</li>
+    </ul>
+    <p>然后把证据等级分成三档：</p>
+    <table>
+      <thead>
+        <tr>
+          <th>证据等级</th>
+          <th>是什么意思</th>
+          <th>agent 该怎么说</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>high</code></td>
+          <td>traits 和 summary 都比较完整</td>
+          <td>可以做更具体的性格、价值观、关系节奏判断</td>
+        </tr>
+        <tr>
+          <td><code>medium</code></td>
+          <td>两者只具备其一</td>
+          <td>可以说，但要保守，例如“从已有信息看”“目前更偏向”</td>
+        </tr>
+        <tr>
+          <td><code>low</code></td>
+          <td>基本只有 profile，没有额外语义证据</td>
+          <td>只能根据基础资料介绍，不能硬下性格结论</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p>
+      所以“最后 agent 判断”在真实代码里的意思不是：
+      agent 再偷偷做一轮数据库打分，
+      而是：
+      tool 先把候选人证据准备好，再告诉 agent 这些证据够不够，
+      agent 按证据等级决定自己能说到什么程度。
+    </p>
+
     <div class="example">
       <div class="example-title">为什么一张候选人卡片里会有这么多东西</div>
       <p>因为卡片不是只来自 profiles 表的一行数据。</p>
