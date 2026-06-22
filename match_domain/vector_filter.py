@@ -409,7 +409,7 @@ async def _search_similar_users(
             _logger.info(
                 f"查询路由跳过: text={text}, normalized={normalized_query.normalized_text}, vector_type={vector_type}"
             )
-            return [], 0.0
+            return [], [], 0.0  # 修复：返回完整的3个值
 
         search_text = normalized_query.retrieval_text or normalized_query.normalized_text or text
 
@@ -428,7 +428,7 @@ async def _search_similar_users(
 
             if not vector:
                 _logger.warning(f"向量生成失败: text={search_text}")
-                return [], 0.0
+                return [], [], 0.0  # 修复：返回完整的3个值
 
             # 缓存向量（下次直接使用）
             _vector_filter_cache.cache_vector(search_text, vector_type, vector)

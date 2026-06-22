@@ -180,6 +180,10 @@ def route_query_vector_types(text: str) -> list[str]:
     if any(marker in normalized for marker in ("温和", "细腻", "有耐心", "善沟通", "独立", "边界感", "目标感强", "成长驱动强")):
         routes.extend(["partner_personality_preference", "partner_expectation", "personality_traits"])
 
+    # 新增：价值观关键词路由（补充缺失的"稳定经营"、"家庭责任"、"真诚沟通"等）
+    if any(marker in normalized for marker in ("稳定经营", "家庭责任", "真诚沟通", "家庭投入", "事业家庭平衡")):
+        routes.extend(["values", "personality_traits", "partner_expectation"])
+
     # 默认兜底，避免无路由时完全不搜。
     if not routes:
         routes.extend(
