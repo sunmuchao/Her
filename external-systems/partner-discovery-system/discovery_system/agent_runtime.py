@@ -904,10 +904,32 @@ class AgentsSdkDiscoveryAgentRuntime:
             参数：
             - criteria_json: 筛选条件的JSON字符串（硬约束）
             - personality_match_json: 性格匹配条件的JSON字符串（可选）
-            - limit: 返回数量（默认5，最大10）
+            - limit: 最终返回数量（默认5，最大10）
+
+            【重要】搜索策略（两阶段）：
+            第一阶段：数据库搜索（获取所有符合硬约束的候选人）
+            - 不限制数量（搜索所有符合 criteria 的候选人）
+            - 避免因数量限制过小导致向量筛选后结果为空
+
+            第二阶段：向量筛选 + 截断
+            - 对第一阶段的候选人做性格向量筛选
+            - 向量筛选后截断为 limit 数量返回
+            - 确保"无性格数据"的候选人不会被错误过滤
 
             返回：
-            - 匹配的候选人列表（包含性格原始数据）
+            - has_match: 是否找到候选人（True/False）
+            - result_count: 候选人数量
+            - results: 候选人列表（包含性格原始数据）
+
+            【重要】Agent下一步动作（必须遵循）：
+            - has_match=True, result_count>0（找到候选人）：
+              → 调用 show_candidates 展示候选人列表
+              → 或调用 reply_to_user 解释推荐理由
+              → 不能直接输出文本消息结束
+            - has_match=False, result_count=0（未找到候选人）：
+              → **必须调用 reply_to_user** 向用户解释情况并提供替代方案
+              → 替代方案：放宽条件、扩大搜索范围、创建订阅等
+              → 不能直接输出文本消息结束
             """
             criteria = json.loads(str(criteria_json or "{}"))
             if not isinstance(criteria, dict):
@@ -925,7 +947,10 @@ class AgentsSdkDiscoveryAgentRuntime:
                     _logger.warning("personality_match_json decode failed: %s", str(exc)[:100])
                     personality_match = {}
 
-            normalized_limit = max(1, min(int(limit or 5), 10))
+            # ✅ 方案C：放宽limit上限，支持两阶段搜索
+            # 第一阶段搜索至少50个，第二阶段截断为用户要求的limit
+            # 所以上限放宽到50（而不是10）
+            normalized_limit = max(1, min(int(limit or 5), 50))
             response = run_input.search_partner_candidates(
                 criteria,
                 personality_match,
@@ -944,8 +969,8 @@ class AgentsSdkDiscoveryAgentRuntime:
             """检查用户测评状态，如未完成则返回引导卡片。
 
             适用场景：
-            - 用户关心性格匹配、提到性格相关话题时
-            - Agent判断需要了解用户性格类型时
+            - 当用户关心性格匹配、提到性格相关话题时
+            - 当Agent判断需要了解用户性格类型时
 
             参数：
             - assessment_type: 测评类型（必须传入）
@@ -959,8 +984,16 @@ class AgentsSdkDiscoveryAgentRuntime:
             - 用户想深入了解性格结构、需要科学分析 → 可推荐大五人格测试
 
             返回：
-            - 已完成：返回用户性格类型信息（原始数据）
-            - 未完成：返回测评引导卡片（前端渲染）
+            - 已完成：返回性格类型原始数据，Agent可自主决定是否向用户解释
+            - 未完成：返回测评状态原始数据，Agent必须调用reply_to_user向用户展示测评引导
+
+            【重要】Agent下一步动作（必须遵循）：
+            - completed=False（用户未完成测评）：
+              → 立即调用 reply_to_user，message中用口语化方式介绍测评（如："做个MBTI测试，5分钟就能了解你的性格类型..."）
+              → button_texts提供测评入口（如：["开始测评", "暂不测试"]）
+              → 不能直接输出文本消息结束
+            - completed=True（用户已完成测评）：
+              → 可自主决定是否调用 reply_to_user 解释性格类型
             """
             _logger.info("【工具调用】suggest_assessment")
             _logger.info("  - assessment_type：%s", assessment_type)
