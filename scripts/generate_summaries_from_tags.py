@@ -289,7 +289,7 @@ async def save_summary_to_db(
     vector_type: str,
     summary_text: str,
 ) -> bool:
-    """写入摘要到数据库"""
+    """写入摘要到数据库（标记为pending）"""
 
     from match_domain.ai_merge_handler import save_summary_text
 
@@ -300,10 +300,10 @@ async def save_summary_to_db(
             vector_type=vector_type,
             summary_text=summary_text,
             conversation_id=f"synthetic_{profile_id}",
-            vector_status='done',  # 标记为已完成（因为马上要写向量）
+            vector_status='pending',  # ← 修复：先标记为pending，向量写入成功后才更新为done
         )
 
-        _logger.info(f"【写入数据库成功】profile_id={profile_id} vector_type={vector_type}")
+        _logger.info(f"【写入数据库成功】profile_id={profile_id} vector_type={vector_type} status=pending")
         return True
 
     except Exception as exc:
@@ -396,19 +396,53 @@ async def process_batch(
                     error_count += 1
                     continue
 
-                # Step 3: 写入数据库
+                # Step 3: 写入数据库（标记为pending）
                 db_success = await save_summary_to_db(profile_id, vector_type, summary_text)
+
+                if not db_success:
+                    _logger.error(f"【失败】profile_id={profile_id} vector_type={vector_type} - 数据库写入失败")
+                    error_count += 1
+                    continue
 
                 # Step 4: 写入向量库
                 vector_success = await save_vector_to_store(profile_id, vector_type, summary_text)
 
-                if db_success and vector_success:
+                # Step 5: 根据向量写入结果更新状态
+                from match_domain.ai_merge_handler import update_vector_status
+
+                if vector_success:
+                    # 成功：更新状态为done
+                    await update_vector_status(
+                        user_id=profile_id,
+                        vector_type=vector_type,
+                        status='done',
+                    )
+                    _logger.info(f"【成功】profile_id={profile_id} vector_type={vector_type} status=done")
                     success_count += 1
                 else:
+                    # 失败：更新状态为failed
+                    await update_vector_status(
+                        user_id=profile_id,
+                        vector_type=vector_type,
+                        status='failed',
+                        error_message='向量写入失败',
+                    )
+                    _logger.error(f"【失败】profile_id={profile_id} vector_type={vector_type} status=failed")
                     error_count += 1
 
             except Exception as exc:
                 _logger.error(f"【处理失败】profile_id={profile_id} vector_type={vector_type} error={exc}")
+                # 异常时也要标记为failed
+                try:
+                    from match_domain.ai_merge_handler import update_vector_status
+                    await update_vector_status(
+                        user_id=profile_id,
+                        vector_type=vector_type,
+                        status='failed',
+                        error_message=str(exc)[:200],
+                    )
+                except:
+                    pass  # 状态更新失败不影响主流程
                 error_count += 1
 
     _logger.info(f"【批次完成】成功 {success_count}，失败 {error_count}")
