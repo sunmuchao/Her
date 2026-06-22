@@ -76,6 +76,7 @@ def _safe_json_length(value: Any) -> int:
 
 def _candidate_summary_for_model(candidate: dict[str, Any]) -> str:
     profile = dict(candidate.get("profile") or {})
+    candidate_context = dict(candidate.get("candidate_context") or {})
     parts: list[str] = []
     age = candidate.get("age") or profile.get("age")
     city = candidate.get("city") or profile.get("city")
@@ -95,6 +96,9 @@ def _candidate_summary_for_model(candidate: dict[str, Any]) -> str:
         parts.append(str(relationship_goal))
     if match_reason:
         parts.append(str(match_reason))
+    evidence_level = str(candidate_context.get("evidence_level") or "").strip()
+    if evidence_level:
+        parts.append(f"证据等级:{evidence_level}")
     return "，".join(part for part in parts if part)
 
 
@@ -137,6 +141,13 @@ def _summarize_search_response_for_model(search_response: dict[str, Any]) -> dic
             "title": title or None,
             "summary": _candidate_summary_for_model(candidate),
         }
+        candidate_context = dict(candidate.get("candidate_context") or {})
+        if candidate_context:
+            item["candidate_context"] = {
+                "evidence_level": candidate_context.get("evidence_level"),
+                "reason_mode": candidate_context.get("reason_mode"),
+                "missing_dimensions": list(candidate_context.get("missing_dimensions") or []),
+            }
         score = candidate.get("score") or candidate.get("fit_score")
         if score is not None:
             item["score"] = score
@@ -503,6 +514,13 @@ def _compact_current_results(
     """
     compacted_cards: list[dict[str, Any]] = []
     for card in list(results or []):  # 不再截断 [:3]，传递所有候选人
+        candidate_context = dict(card.get("candidate_context") or {})
+        summary = dict(card.get("summary") or {})
+        compact_summary = {
+            key: str(summary.get(key) or "").strip()
+            for key in ("personality_traits", "values", "emotional_needs", "life_attitude")
+            if str(summary.get(key) or "").strip()
+        }
         compacted_cards.append(
             {
                 "profile_id": card.get("profile_id"),
@@ -513,6 +531,14 @@ def _compact_current_results(
                 "personality_signals": _compact_candidate_personality_context(
                     card.get("personality_signals") or card.get("personality_match_context")
                 ),
+                "candidate_context": {
+                    "evidence_level": candidate_context.get("evidence_level"),
+                    "reason_mode": candidate_context.get("reason_mode"),
+                    "missing_dimensions": list(candidate_context.get("missing_dimensions") or []),
+                }
+                if candidate_context
+                else None,
+                "summary": compact_summary or None,
             }
         )
     return compacted_cards
