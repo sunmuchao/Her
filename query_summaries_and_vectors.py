@@ -138,7 +138,15 @@ def query_summaries(user_id: Optional[int] = None, conversation_id: Optional[str
 def query_vectors(user_id: Optional[int] = None, conversation_id: Optional[str] = None, limit: int = 20):
     """查询 Milvus 向量库中的向量数据。"""
 
-    client = MilvusClient(uri=MILVUS_LITE_DB)
+    # 配置 gRPC keepalive 参数，避免 too_many_pings 错误
+    grpc_options = {
+        "grpc.keepalive_time_ms": 60000,  # 每 60 秒发送一次 ping
+        "grpc.keepalive_timeout_ms": 20000,  # 20 秒超时
+        "grpc.keepalive_permit_without_calls": True,
+        "grpc.http2.max_pings_without_data": 0,  # 无限制
+    }
+
+    client = MilvusClient(uri=MILVUS_LITE_DB, grpc_options=grpc_options)
 
     if not client.has_collection(COLLECTION_NAME):
         print(f"\n向量库 Collection '{COLLECTION_NAME}' 不存在")

@@ -402,6 +402,7 @@ def search_partner_candidates(
     criteria: dict[str, Any],
     personality_match: dict[str, Any] = {},  # ← 新增参数：性格匹配条件
     limit: int,
+    exclude_current_results: bool = False,  # ← 新增参数：排除当前已展示候选人
     source: str | None = None,
     load_profile: Callable[..., Any] | None = None,
     search: Callable[..., dict[str, Any]] | None = None,
@@ -420,6 +421,7 @@ def search_partner_candidates(
             - match_traits: 想要匹配的性格特质列表
             - similarity_threshold: 相似度阈值（0.0-1.0，默认0.75）
         limit: 结果数量限制
+        exclude_current_results: 是否排除当前已展示候选人（用于"换一批"）
         source: 数据源
         load_profile: 加载用户profile的函数
         search: 搜索执行函数
@@ -455,6 +457,7 @@ def search_partner_candidates(
         session,
         criteria=criteria,
         limit=limit,
+        exclude_current_results=exclude_current_results,  # ← 传递排除参数
         source=source if source is not None else profile_source(),
         load_profile=load_profile or load_self_profile,
         search=search or search_profiles,
@@ -575,7 +578,7 @@ def search_partner_candidates_with(
                     normalized_exclude_ids.add(int(existing_exclude_ids))
                 except (TypeError, ValueError):
                     pass
-            merged_criteria["exclude_ids"] = normalized_exclude_ids | refresh_exclude_ids
+            merged_criteria["exclude_ids"] = list(normalized_exclude_ids | refresh_exclude_ids)  # ✅ 修复：set → list（JSON可序列化）
             _logger.info(
                 "【换一批排除注入】session_id=%s exclude_ids=%s",
                 session.session_id,
@@ -973,93 +976,8 @@ def sync_requester_persona_memory(
         "session_id": session.session_id,
         "patch_received": dict(patch or {}),
     }
-    profile_proposals: list[dict[str, Any]] = []
 
-    if search_part:
-        merged = merge_working_criteria(session.state, search_part)
-        session.state["working_criteria"] = {
-            key: merged[key] for key in merged if is_search_criteria_key(key)
-        }
-
-    if profile_part:
-        if storage is None:
-            return {
-                "synced": False,
-                "error_code": "profile_update_requires_confirmation",
-                "message": "资料字段变更需要用户确认，当前存储未配置。",
-                "profile_fields": sorted(profile_part.keys()),
-            }
-        proposal = propose_requester_profile_update(
-            storage,
-            session,
-            patch=profile_part,
-            load_profile=load_profile,
-            source=source,
-            now=now,
-        )
-        if proposal.get("proposed"):
-            profile_proposals.append(proposal)
-            pending_timeline = list(session.state.get("profile_prompts_for_timeline") or [])
-            pending_timeline.append(proposal)
-            session.state["profile_prompts_for_timeline"] = pending_timeline
-
-    if not persona_part:
-        if profile_proposals:
-            return {
-                "synced": True,
-                "user_key": str(session.requester_id),
-                "patch_keys": [],
-                "profile_proposals": profile_proposals,
-                "persona_synced": False,
-            }
-        return {
-            "synced": False,
-            "error_code": "empty_persona_patch",
-            "message": "没有可写入偏好画像的字段。",
-        }
-
-    persona_source = persona_memory_source()
-    if not persona_source:
-        return {
-            "synced": False,
-            "error_code": "persona_memory_source_not_configured",
-            "message": "当前没有配置 persona-memory-sync 数据源。",
-            "profile_proposals": profile_proposals,
-        }
-    current = now or datetime.now()
-    try:
-        upsert_persona_memory = load_persona_memory or load_persona_memory_bindings()
-        upsert_result = upsert_persona_memory(
-            {
-                "source": persona_source,
-                "user_key": str(session.requester_id),
-                "source_type": "explicit",
-                "patch": persona_part,
-                "sync_profile": False,
-                "conversation_ref": f"discovery/{session.session_id}",
-                "basis": "discovery_agent",
-            },
-            include_normalized_patch=True,
-        )
-    except Exception as exc:  # noqa: BLE001
-        return {
-            "synced": False,
-            "error_code": "persona_memory_sync_failed",
-            "message": str(exc)[:200],
-            "profile_proposals": profile_proposals,
-        }
-    session.state["last_persona_sync_at"] = current.isoformat()
-    session.state["last_persona_sync_fields"] = sorted(
-        str(key).strip() for key in persona_part.keys() if str(key or "").strip()
-    )
-    return {
-        "synced": True,
-        "user_key": str(session.requester_id),
-        "patch_keys": list(session.state["last_persona_sync_fields"]),
-        "upsert": upsert_result,
-        "profile_proposals": profile_proposals,
-        "persona_synced": True,
-    }
+    # 死代码已删除（line 979-1065），避免 IDE 警告
 
 
 def run_discovery_collect_then_search(
