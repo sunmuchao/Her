@@ -1589,7 +1589,7 @@ class DiscoveryService:
                         normalized_exclude_ids.add(int(existing_exclude_ids))
                     except (TypeError, ValueError):
                         pass
-                criteria["exclude_ids"] = normalized_exclude_ids | refresh_exclude_ids
+                criteria["exclude_ids"] = list(normalized_exclude_ids | refresh_exclude_ids)
 
         return _search_partner_candidates_impl(
             session,
