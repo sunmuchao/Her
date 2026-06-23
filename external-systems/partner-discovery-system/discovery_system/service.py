@@ -460,9 +460,6 @@ class DiscoveryService:
                 "label": action.label,
                 "semantic_payload": deepcopy(action.semantic_payload),
             }
-            action_kind = str(dict(action.semantic_payload or {}).get("kind") or "").strip()
-            if action_kind == "show_more_candidates":
-                session.state["pending_refresh"] = True
 
             # ✅ Agent Native：完全移除 action_kind 硬编码分支
             # 所有按钮点击统一走 Agent Runtime
@@ -810,6 +807,8 @@ class DiscoveryService:
             criteria: dict[str, Any],
             personality_match: dict[str, Any] | int | None = None,
             limit: int | None = None,
+            *,
+            exclude_current_results: bool = False,
         ) -> dict[str, Any]:
             resolved_personality_match: dict[str, Any]
             resolved_limit: int
@@ -828,6 +827,7 @@ class DiscoveryService:
                 criteria=criteria,
                 personality_match=resolved_personality_match,
                 limit=resolved_limit,
+                exclude_current_results=exclude_current_results,
             )
             self._append_tool_call(
                 tool_call_buffer,
@@ -836,6 +836,7 @@ class DiscoveryService:
                     "criteria": deepcopy(criteria),
                     "personality_match": deepcopy(resolved_personality_match),
                     "limit": resolved_limit,
+                    "exclude_current_results": exclude_current_results,
                 },
                 response,
                 status=self._tool_call_status("search_partner_candidates", response),
@@ -1565,12 +1566,14 @@ class DiscoveryService:
         criteria: dict[str, Any],
         personality_match: dict[str, Any] = {},  # ← 新增参数
         limit: int,
+        exclude_current_results: bool = False,
     ) -> dict[str, Any]:
         return _search_partner_candidates_impl(
             session,
             criteria=criteria,
             personality_match=personality_match,  # ← 传递参数
             limit=limit,
+            exclude_current_results=exclude_current_results,
             source=self._profile_source(),
             load_profile=load_self_profile,
             search=search_profiles,

@@ -470,6 +470,7 @@ def search_partner_candidates_with(
     source: str,
     load_profile: Callable[..., Any],
     search: Callable[..., dict[str, Any]],
+    exclude_current_results: bool = False,
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 新增参数：向量筛选条件（支持排除和包含）
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -554,7 +555,7 @@ def search_partner_candidates_with(
     final_limit = int(limit or 5)  # 用户最终要求的返回数量
     search_limit = max(final_limit, 50)  # 第一阶段搜索数量（至少50个，避免向量筛选后结果为空）
     merged_criteria = merge_working_criteria(session.state, criteria)
-    if session.state.pop("pending_refresh", False):
+    if exclude_current_results:
         refresh_exclude_ids = {
             int(candidate_id)
             for candidate_id in list(session.state.get("last_shown_candidate_ids") or [])

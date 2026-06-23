@@ -310,6 +310,7 @@ class _RefreshSearchRuntime:
                 "relationship_goals": ["认真恋爱"],
             },
             3,
+            exclude_current_results=True,
         )
         return DiscoveryRuntimeResult(
             decision=DiscoveryDecision(
