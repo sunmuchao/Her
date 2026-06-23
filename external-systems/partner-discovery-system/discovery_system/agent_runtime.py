@@ -957,9 +957,23 @@ class AgentsSdkDiscoveryAgentRuntime:
               → 替代方案：放宽条件、扩大搜索范围、创建订阅等
               → 不能直接输出文本消息结束
             """
+            # 🔍 可观测性埋点：记录Agent传递的criteria_json原始参数
+            _logger.info(
+                "【工具调用参数】search_partner_candidates criteria_json=%s personality_match_json=%s limit=%s",
+                repr(criteria_json)[:200],  # 使用repr避免字符串转义问题
+                repr(personality_match_json)[:200],
+                limit
+            )
+
             criteria = json.loads(str(criteria_json or "{}"))
             if not isinstance(criteria, dict):
                 raise ValueError("criteria_json must decode into a JSON object")
+
+            # 🔍 可观测性埋点：记录解析后的criteria字典
+            _logger.info(
+                "【解析后的criteria】%s",
+                json.dumps(criteria, ensure_ascii=False)[:200]
+            )
 
             # 解析性格匹配参数
             personality_match = {}
