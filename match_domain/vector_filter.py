@@ -54,7 +54,7 @@ async def vector_filter_candidates(
     vector_filter_json: dict[str, Any],
     candidate_ids: list[int],
     user_id: int,
-) -> tuple[set[int], set[int], dict[str, Any]]:
+) -> tuple[list[int], list[int], dict[str, Any]]:
     """向量库语义筛选（支持排除和包含）
 
     Args:
@@ -73,16 +73,16 @@ async def vector_filter_candidates(
 
     Returns:
         (excluded_ids, included_ids, filter_trace)
-        - excluded_ids: 被排除的用户ID集合
-        - included_ids: 被包含的用户ID集合（include筛选后保留的）
+        - excluded_ids: 被排除的用户ID列表（JSON可序列化）
+        - included_ids: 被包含的用户ID列表（JSON可序列化）
         - filter_trace: 筛选统计信息
     """
 
     if not vector_filter_json:
-        return set(), set(candidate_ids), {"mode": "no_filter", "note": "无筛选条件"}
+        return [], candidate_ids, {"mode": "no_filter", "note": "无筛选条件"}
 
     if not candidate_ids:
-        return set(), set(), {"mode": "no_candidates", "note": "无候选人"}
+        return [], [], {"mode": "no_candidates", "note": "无候选人"}
 
     _logger.info(
         f"【向量筛选开始】user_id={user_id} candidate_count={len(candidate_ids)} "
@@ -143,7 +143,9 @@ async def vector_filter_candidates(
         f"excluded={len(excluded_ids)} included={len(included_ids)}"
     )
 
-    return excluded_ids, included_ids, filter_trace
+    # ✅ P0修复：返回前转换为list（JSON可序列化）
+    # 内部仍用set做高效计算，但返回值必须是list
+    return list(excluded_ids), list(included_ids), filter_trace
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
