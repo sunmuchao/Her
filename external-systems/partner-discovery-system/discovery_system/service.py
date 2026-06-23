@@ -460,6 +460,9 @@ class DiscoveryService:
                 "label": action.label,
                 "semantic_payload": deepcopy(action.semantic_payload),
             }
+            action_kind = str(dict(action.semantic_payload or {}).get("kind") or "").strip()
+            if action_kind == "show_more_candidates":
+                session.state["pending_refresh"] = True
 
             # ✅ Agent Native：完全移除 action_kind 硬编码分支
             # 所有按钮点击统一走 Agent Runtime
@@ -1097,6 +1100,24 @@ class DiscoveryService:
                     rendered_cards,
                 )
             )
+            shown_ids = [
+                int(card.get("profile_id") or 0)
+                for card in rendered_cards
+                if int(card.get("profile_id") or 0) > 0
+            ]
+            if shown_ids:
+                session.state["last_shown_candidate_ids"] = list(shown_ids)
+                shown_history = [
+                    int(candidate_id)
+                    for candidate_id in list(session.state.get("shown_candidate_ids_history") or [])
+                    if int(candidate_id) > 0
+                ]
+                seen = set(shown_history)
+                for candidate_id in shown_ids:
+                    if candidate_id not in seen:
+                        shown_history.append(candidate_id)
+                        seen.add(candidate_id)
+                session.state["shown_candidate_ids_history"] = shown_history
         session.view["composer"] = composer("继续告诉红娘你的要求", disabled=False)
         session.phase = decision.phase
         session.updated_at = now
