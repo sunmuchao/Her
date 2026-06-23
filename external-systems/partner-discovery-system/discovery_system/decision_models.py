@@ -89,9 +89,9 @@ class DiscoveryRefineCandidatesPayloadModel(BaseModel):
     【已废弃】原设计用于调整特定候选人，但无实际使用场景。
 
     废弃原因：
-    1. 业务规则要求"每次换一批都追问"，不存在"不追问的换一批"场景
-    2. 与 show_more_candidates 语义重叠，职责边界模糊
-    3. Agent指导已统一为 show_more_candidates
+    1. 与 show_more_candidates 语义重叠，职责边界模糊
+    2. 当前"换一批/看别的"统一由 search_partner_candidates + exclude_current_results 表达是否排除当前结果
+    3. refine_candidates 容易让调用方把"换人语义"错误塞进按钮 payload，而不是显式搜索参数
 
     替代方案：统一使用 show_more_candidates
 

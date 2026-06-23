@@ -989,8 +989,8 @@ class DiscoveryServiceTests(unittest.TestCase):
         payload = model.semantic_payload
         assert payload is not None
         self.assertEqual(payload.kind, "show_more_candidates")
-        # show_more_candidates 无额外字段，纯粹表示"换一批"
-        # 符合业务规则："每次换一批都追问"
+        # show_more_candidates 无额外字段，只表达"看其他候选人"这类 UI 动作
+        # 是否排除当前结果，由 search_partner_candidates 的 exclude_current_results 显式表达
 
     def test_discovery_decision_model_accepts_message_alias_and_age_preference_payload(self) -> None:
         model = DiscoveryDecisionModel.model_validate(
@@ -2239,7 +2239,7 @@ class DiscoveryServiceTests(unittest.TestCase):
         result = service.process_turn(session_id=session_id, action_id=action.action_id)
 
         # ✅ Agent Native：移除 action_kind 分支，统一走 Agent Runtime
-        # 点击"换一批"按钮现在由 Agent 自主决定是否追问反馈
+        # 点击"换一批"按钮现在由 Agent 自主决定下一步：追问、解释、或重新搜索
         timeline = result["view"]["timeline"]
         self.assertEqual(timeline[-1]["item_type"], "assistant_message")
         # 不再期望固定的追问文案和反馈选项
@@ -2265,7 +2265,7 @@ class DiscoveryServiceTests(unittest.TestCase):
         result = service.process_turn(session_id=session_id, action_id=action.action_id)
 
         # ✅ Agent Native：统一走 Agent Runtime
-        # Agent 根据 action_context.kind == 'show_more_candidates' 自主决定是否追问
+        # Agent 根据 action_context 自主决定是追问还是调用搜索工具
         timeline = result["view"]["timeline"]
         self.assertEqual(timeline[-1]["item_type"], "assistant_message")
         # 不再期望固定的追问文案，而是 Agent 自主生成回复
