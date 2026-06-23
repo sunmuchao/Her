@@ -43,7 +43,7 @@ class DiscoveryRunInput:
     criteria_labels: list[str]
     recent_timeline: list[dict[str, Any]]
     runtime_context: dict[str, Any]
-    search_partner_candidates: Callable[[dict[str, Any], dict[str, Any], int], dict[str, Any]]  # ← 新增 personality_match 参数
+    search_partner_candidates: Callable[..., dict[str, Any]]
     sync_requester_persona_memory: Callable[[dict[str, Any]], dict[str, Any]]
     # propose_requester_profile_update: Callable[[str, str], dict[str, Any]]  # 已注释：暂时禁用此工具
     create_saved_search_subscription_from_last_search: Callable[[], dict[str, Any]]
@@ -902,7 +902,8 @@ class AgentsSdkDiscoveryAgentRuntime:
         def search_partner_candidates(
             criteria_json: str,
             personality_match_json: str = "",
-            limit: int = 5
+            limit: int = 5,
+            exclude_current_results: bool = False,
         ) -> dict[str, Any]:
             """搜索候选人。当用户想看推荐、调整搜索条件、表达不满后重新搜索时调用。
 
@@ -931,6 +932,7 @@ class AgentsSdkDiscoveryAgentRuntime:
             - criteria_json: 筛选条件的JSON字符串（硬约束）
             - personality_match_json: 性格匹配条件的JSON字符串（可选）
             - limit: 最终返回数量（默认5，最大10）
+            - exclude_current_results: 是否排除当前已展示候选人（用于"换一批"）
 
             【重要】搜索策略（两阶段）：
             第一阶段：数据库搜索（获取所有符合硬约束的候选人）
@@ -948,6 +950,8 @@ class AgentsSdkDiscoveryAgentRuntime:
             - results: 候选人列表（包含性格原始数据）
 
             【重要】Agent下一步动作（必须遵循）：
+            - 用户想"换一批/看其他/再看看别人"：
+              → 调用本工具时传 `exclude_current_results=true`
             - has_match=True, result_count>0（找到候选人）：
               → 调用 show_candidates 展示候选人列表
               → 或调用 reply_to_user 解释推荐理由
@@ -959,10 +963,11 @@ class AgentsSdkDiscoveryAgentRuntime:
             """
             # 🔍 可观测性埋点：记录Agent传递的criteria_json原始参数
             _logger.info(
-                "【工具调用参数】search_partner_candidates criteria_json=%s personality_match_json=%s limit=%s",
+                "【工具调用参数】search_partner_candidates criteria_json=%s personality_match_json=%s limit=%s exclude_current_results=%s",
                 repr(criteria_json)[:200],  # 使用repr避免字符串转义问题
                 repr(personality_match_json)[:200],
-                limit
+                limit,
+                exclude_current_results,
             )
 
             criteria = json.loads(str(criteria_json or "{}"))
@@ -994,7 +999,8 @@ class AgentsSdkDiscoveryAgentRuntime:
             response = run_input.search_partner_candidates(
                 criteria,
                 personality_match,
-                normalized_limit
+                normalized_limit,
+                exclude_current_results=bool(exclude_current_results),
             )
             tool_state["last_search_response"] = response
             return _summarize_search_response_for_model(response)
