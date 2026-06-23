@@ -929,6 +929,11 @@ class AgentsSdkDiscoveryAgentRuntime:
             返回数据：
             - 基础信息：姓名、年龄、城市、职业等
             - 性格数据：personality_signals包含MBTI、依恋风格、价值观等原始数据
+            - candidate_context：数据完整度指示器，帮助Agent判断推荐理由的详细程度
+              - evidence_level：数据丰富程度（high/medium/low）
+              - reason_mode：可用的推理深度（rich_reasoning/limited_reasoning/profile_only）
+              - missing_dimensions：缺失的数据维度（如summary、personality_traits等）
+              - Agent应根据这些字段自主决定推荐理由的详细程度和措辞
             - Agent自主判断性格匹配度，生成推荐理由
 
             参数：
