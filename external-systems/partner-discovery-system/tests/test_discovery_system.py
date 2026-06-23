@@ -2370,6 +2370,121 @@ class DiscoveryServiceTests(unittest.TestCase):
         self.assertTrue(captured_criteria[0]["exclude_current_results"])
         self.assertEqual(set(captured_criteria[0]["criteria"].get("exclude_ids") or []), {1001, 1003})
 
+    def test_agents_runtime_refresh_message_tool_payload_can_include_exclude_current_results(self) -> None:
+        runtime = AgentsSdkDiscoveryAgentRuntime()
+        session = InMemoryDiscoveryAgentSessionStore().get_session("discovery-session-refresh-search")
+        captured: dict[str, object] = {}
+        search_calls: list[dict[str, object]] = []
+
+        def _fake_agent(**kwargs):
+            captured["tools"] = kwargs.get("tools")
+            return object()
+
+        def _fake_run_streamed(_agent, input, **kwargs):
+            del input, kwargs
+            tools = list(captured["tools"] or [])
+            search_tool = next(tool for tool in tools if getattr(tool, "name", "") == "search_partner_candidates")
+            show_tool = next(tool for tool in tools if getattr(tool, "name", "") == "show_candidates")
+            search_payload = json.dumps(
+                {
+                    "criteria_json": json.dumps({"cities": ["无锡"], "relationship_goals": ["认真恋爱"]}),
+                    "limit": 3,
+                    "exclude_current_results": True,
+                },
+                ensure_ascii=False,
+            )
+            show_payload = json.dumps(
+                {
+                    "message": "我给你换一批新的。",
+                    "candidate_ids": [2002],
+                    "title": "这次避开上一批",
+                    "criteria": ["无锡", "认真恋爱"],
+                },
+                ensure_ascii=False,
+            )
+
+            class _FakeRefreshSearchStreamingResult(_FakeStreamingResult):
+                async def stream_events(self_inner):
+                    search_result = await search_tool.on_invoke_tool(None, search_payload)
+                    search_calls.append(search_result["request_meta"])
+                    await show_tool.on_invoke_tool(None, show_payload)
+                    for event in self_inner._events:
+                        yield event
+
+            return _FakeRefreshSearchStreamingResult(
+                final_output={},
+                events=[
+                    types.SimpleNamespace(
+                        type="raw_response_event",
+                        data=types.SimpleNamespace(type="response.output_text.delta"),
+                    )
+                ],
+            )
+
+        def _search_partner_candidates(criteria, personality_match=None, limit=None, *, exclude_current_results=False):
+            del personality_match
+            enriched_criteria = dict(criteria)
+            if exclude_current_results:
+                enriched_criteria["exclude_ids"] = [1001, 1003]
+            return {
+                "has_match": True,
+                "result_count": 1,
+                "results": [
+                    {
+                        "id": 2002,
+                        "name": "周晴",
+                        "score": 88,
+                        "match_reason": "避开上一批后命中",
+                        "profile": {"age": 29, "city": "无锡", "job": "教师", "education": "本科"},
+                    }
+                ],
+                "request_meta": {
+                    "criteria": enriched_criteria,
+                    "limit_count": limit,
+                    "exclude_current_results": exclude_current_results,
+                },
+            }
+
+        run_input = DiscoveryRunInput(
+            session_id="discovery-session-refresh-search",
+            requester_id=70001,
+            profile_id=10001,
+            phase="results_shown",
+            criteria_labels=["无锡", "认真恋爱"],
+            recent_timeline=[],
+            runtime_context={
+                "user_profile": {"self_city": "无锡"},
+                "memory_summary": {},
+                "visible_actions": [],
+                "last_search": {"result_count": 2, "has_match": True},
+                "current_results": [
+                    {"profile_id": 1001, "title": "候选人A"},
+                    {"profile_id": 1003, "title": "候选人B"},
+                ],
+            },
+            search_partner_candidates=_search_partner_candidates,
+            sync_requester_persona_memory=lambda _patch: {"synced": True},
+            create_saved_search_subscription_from_last_search=lambda: {"created_subscription": False},
+            suggest_assessment=lambda _assessment_type: {"completed": False},
+            agent_session=session,
+        )
+
+        with mock.patch("discovery_system.agent_runtime._configure_agents_sdk_provider"), mock.patch(
+            "agents.Agent",
+            side_effect=_fake_agent,
+        ), mock.patch("agents.Runner.run_streamed", side_effect=_fake_run_streamed):
+            result = runtime._run_with_agents_sdk(
+                run_input,
+                event="user_message",
+                user_message="换一个",
+                action_context=None,
+            )
+
+        self.assertEqual(len(search_calls), 1)
+        self.assertTrue(search_calls[0]["exclude_current_results"])
+        self.assertEqual(set(search_calls[0]["criteria"].get("exclude_ids") or []), {1001, 1003})
+        self.assertEqual(result.decision.selected_candidates[0].profile_id, 2002)
+
     def test_batch_refresh_feedback_options_are_dynamically_generated(self) -> None:
         """✅ Agent Native：反馈选项由 Agent 自主决定，不再代码动态生成"""
         service = DiscoveryService(
