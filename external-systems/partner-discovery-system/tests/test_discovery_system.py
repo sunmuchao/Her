@@ -2320,6 +2320,56 @@ class DiscoveryServiceTests(unittest.TestCase):
         assert updated_session is not None
         self.assertEqual(updated_session.state.get("last_shown_candidate_ids"), [2002])
 
+    def test_direct_refresh_message_can_pass_exclude_current_results_to_search_tool(self) -> None:
+        service = DiscoveryService(
+            storage=InMemoryDiscoveryStorage(),
+            runtime=_RefreshSearchRuntime(),
+        )
+        created = service.create_session(requester_id=70001, profile_id=10001)
+        session_id = created["session"]["session_id"]
+        session = service.storage.get_session(session_id)
+        assert session is not None
+        session.phase = "results_shown"
+        session.state["last_shown_candidate_ids"] = [1001, 1003]
+        service.storage.save_session(session)
+
+        captured_criteria: list[dict[str, object]] = []
+
+        def _fake_search_partner_candidates(_session, *, criteria, personality_match, limit, exclude_current_results=False):
+            del personality_match, limit
+            captured_criteria.append(
+                {
+                    "criteria": dict(criteria),
+                    "exclude_current_results": bool(exclude_current_results),
+                }
+            )
+            return {
+                "has_match": True,
+                "result_count": 1,
+                "results": [
+                    {
+                        "id": 2002,
+                        "name": "候选人B",
+                        "score": 95,
+                        "matched_on": ["城市一致"],
+                        "profile": {"age": 28, "city": "无锡"},
+                    }
+                ],
+            }
+
+        with mock.patch.object(service, "_search_partner_candidates", side_effect=_fake_search_partner_candidates):
+            run_input = service._build_runtime_input(session, now=datetime.now())
+            response = run_input.search_partner_candidates(
+                {"gender": "女", "cities": ["无锡"]},
+                3,
+                exclude_current_results=True,
+            )
+
+        self.assertTrue(response["has_match"])
+        self.assertEqual(len(captured_criteria), 1)
+        self.assertTrue(captured_criteria[0]["exclude_current_results"])
+        self.assertEqual(set(captured_criteria[0]["criteria"].get("exclude_ids") or []), {1001, 1003})
+
     def test_batch_refresh_feedback_options_are_dynamically_generated(self) -> None:
         """✅ Agent Native：反馈选项由 Agent 自主决定，不再代码动态生成"""
         service = DiscoveryService(
