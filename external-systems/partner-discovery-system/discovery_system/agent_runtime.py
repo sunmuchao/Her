@@ -907,6 +907,9 @@ class AgentsSdkDiscoveryAgentRuntime:
         ) -> dict[str, Any]:
             """搜索候选人。当用户想看推荐、调整搜索条件、表达不满后重新搜索时调用。
 
+            这是"重新搜人"的唯一工具。是否排除当前已展示候选人，必须由你显式决定并通过参数传入，
+            不要假设系统会自动理解"换一批"。
+
             支持的筛选条件（硬约束）：
             - gender: 性别（male/female）
             - age_min/age_max: 年龄范围
@@ -934,6 +937,14 @@ class AgentsSdkDiscoveryAgentRuntime:
             - limit: 最终返回数量（默认5，最大10）
             - exclude_current_results: 是否排除当前已展示候选人（用于"换一批"）
 
+            `exclude_current_results` 使用规则：
+            - 用户想"换一批 / 看别的 / 再看看别人 / 不要刚才那批"：
+              必须传 `true`
+            - 用户只是追问当前候选人、解释推荐理由、比较现有候选人：
+              必须传 `false`
+            - 你已经决定要展示"新的候选人列表"而不是继续聊当前候选人时：
+              应优先传 `true`，避免把刚展示过的人重复返回
+
             【重要】搜索策略（两阶段）：
             第一阶段：数据库搜索（获取所有符合硬约束的候选人）
             - 不限制数量（搜索所有符合 criteria 的候选人）
@@ -952,6 +963,7 @@ class AgentsSdkDiscoveryAgentRuntime:
             【重要】Agent下一步动作（必须遵循）：
             - 用户想"换一批/看其他/再看看别人"：
               → 调用本工具时传 `exclude_current_results=true`
+              → 如果不传 true，你可能会再次拿到当前这批候选人
             - has_match=True, result_count>0（找到候选人）：
               → 调用 show_candidates 展示候选人列表
               → 或调用 reply_to_user 解释推荐理由
