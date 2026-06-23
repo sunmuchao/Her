@@ -179,18 +179,19 @@ async def process_pending_records(
         embedding_service = EmbeddingService(model_name="text-embedding-v3")
         vector_store = VectorStoreLite()
 
-        success_count = 0
-        failed_count = 0
+        try:
+            success_count = 0
+            failed_count = 0
 
-        for i, row in enumerate(rows, 1):
-            requester_id, summary_key, summary_text, conversation_id = row
+            for i, row in enumerate(rows, 1):
+                requester_id, summary_key, summary_text, conversation_id = row
 
-            _logger.info(
-                f"[{i}/{len(rows)}] 处理: user_id={requester_id}, "
-                f"key={summary_key}, text={summary_text[:30]}..."
-            )
+                _logger.info(
+                    f"[{i}/{len(rows)}] 处理: user_id={requester_id}, "
+                    f"key={summary_key}, text={summary_text[:30]}..."
+                )
 
-            try:
+                try:
                 # 生成向量
                 embedding = await embedding_service.generate_embedding(summary_text)
 
@@ -274,15 +275,20 @@ async def process_pending_records(
                 except Exception as update_exc:
                     _logger.error(f"更新状态失败: {update_exc}")
 
-        # 3. 输出处理结果
-        _logger.info(
-            f"处理完成: "
-            f"total={len(rows)}, success={success_count}, failed={failed_count}"
-        )
+            # 3. 输出处理结果
+            _logger.info(
+                f"处理完成: "
+                f"total={len(rows)}, success={success_count}, failed={failed_count}"
+            )
 
-        if total_count > len(rows):
-            remaining = total_count - len(rows)
-            _logger.info(f"还有 {remaining} 条 pending 记录未处理")
+            if total_count > len(rows):
+                remaining = total_count - len(rows)
+                _logger.info(f"还有 {remaining} 条 pending 记录未处理")
+
+        finally:
+            # ⚠️ 重要：主动关闭连接，避免 "Task exception was never retrieved" 错误
+            await embedding_service.aclose()
+            vector_store.close()
 
     except Exception as exc:
         _logger.error(f"处理失败: error={exc}", exc_info=True)
