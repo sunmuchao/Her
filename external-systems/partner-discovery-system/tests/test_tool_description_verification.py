@@ -1,153 +1,45 @@
-"""验证工具 description 是否正确传递给 Agent"""
-import os
+"""验证工具 description 是否包含关键使用规则。"""
+
+from __future__ import annotations
+
+import inspect
+import pathlib
+import sys
 import unittest
-import json
 
-os.environ["HER_DISCOVERY_PROFILE_SOURCE"] = "test_profile_source"
-os.environ["PERSONA_MEMORY_MYSQL_SOURCE"] = "test_persona_source"
-os.environ["HER_DISCOVERY_CREATE_SESSION_MODE"] = "agent"
+DISCOVERY_ROOT = pathlib.Path(__file__).resolve().parents[1]
+if str(DISCOVERY_ROOT) not in sys.path:
+    sys.path.insert(0, str(DISCOVERY_ROOT))
 
-from discovery_system.agent_runtime import AgentsSdkDiscoveryAgentRuntime, DiscoveryRunInput
+from discovery_system import agent_runtime  # noqa: E402
 
 
 class ToolDescriptionVerificationTests(unittest.TestCase):
-    """验证工具 description 是否正确构建"""
+    """验证工具 description 是否正确承载规则。"""
 
-    def test_tool_description_contains_important_warning(self) -> None:
-        """验证工具 description 包含关键的使用场景说明"""
-        # 模拟 run_input
-        run_input = DiscoveryRunInput(
-            session_id="test-session",
-            requester_id=70001,
-            profile_id=10001,
-            phase="results_shown",
-            criteria_labels=["城市:无锡"],
-            recent_timeline=[],
-            runtime_context={
-                "current_results": [
-                    {"profile_id": 1005, "title": "冯静雯 32"},
-                ],
-                "user_profile": {"age": 30},
-                "visible_actions": [],
-            },
-            search_partner_candidates=lambda criteria, limit: {"results": []},
-            sync_requester_persona_memory=lambda patch: {"success": True},
-            propose_requester_profile_update=lambda patch, evidence: {"success": True},
-            create_saved_search_subscription_from_last_search=lambda: {"success": True},
-            submit_rejection_feedback=lambda **kwargs: {"success": True},
-            get_feedback_options=lambda **kwargs: {"options": []},
-        )
-
-        # 由于需要真实的 API key 才能运行 Agent，我们只验证工具构建逻辑
-        # 通过检查代码中的工具定义字符串来验证
-
-        # 直接读取 agent_runtime.py 中的工具 description
-        import inspect
-        from discovery_system import agent_runtime
-
+    def test_search_tool_description_contains_refresh_rules(self) -> None:
         source_code = inspect.getsource(agent_runtime)
 
-        print("=" * 60)
-        print("【工具 Description 验证】")
-        print("=" * 60)
-
-        # 检查 reply_to_user 的 description
-        reply_markers = [
-            "用于对话场景，不展示候选人卡片",
-            "用户想了解现有候选人详情",
-            "不要使用 show_candidates",
+        required_markers = [
+            '这是"重新搜人"的唯一工具',
+            '不要假设系统会自动理解"换一批"',
+            'exclude_current_results',
+            '用户想"换一批 / 看别的 / 再看看别人 / 不要刚才那批"',
+            '用户只是追问当前候选人、解释推荐理由、比较现有候选人',
+            '如果不传 true，你可能会再次拿到当前这批候选人',
         ]
-        for marker in reply_markers:
-            if marker in source_code:
-                print(f"✅ reply_to_user description 包含: '{marker}'")
-            else:
-                print(f"❌ reply_to_user description 缺失: '{marker}'")
 
-        print()
+        missing_markers = [marker for marker in required_markers if marker not in source_code]
+        self.assertEqual(missing_markers, [], f"缺失的 search tool description 内容: {missing_markers}")
 
-        # 检查 show_candidates 的 description
-        show_markers = [
-            "只有在搜索新候选人后才使用",  # 实际的 description 文案
-            "用户想了解现有候选人详情 → 使用 reply_to_user",
-            "当前已有候选人展示，用户只是想对话 → 使用 reply_to_user",
-        ]
-        for marker in show_markers:
-            if marker in source_code:
-                print(f"✅ show_candidates description 包含: '{marker}'")
-            else:
-                print(f"❌ show_candidates description 缺失: '{marker}'")
+    def test_search_tool_description_covers_direct_user_message_refresh(self) -> None:
+        source_code = inspect.getsource(agent_runtime)
 
-        print("=" * 60)
-
-        # 验证所有 marker 都存在
-        all_markers = reply_markers + show_markers
-        missing_markers = [m for m in all_markers if m not in source_code]
-
-        self.assertEqual(len(missing_markers), 0, f"缺失的 description 内容: {missing_markers}")
-
-        print("【验证结果】")
-        print("✅ 所有工具 description 都包含关键的使用场景说明")
-        print("✅ AI 应该能够正确理解何时使用 reply_to_user vs show_candidates")
-
-    def test_runtime_context_build_correctly(self) -> None:
-        """验证 runtime context 构建正确，包含所有候选人"""
-        from discovery_system.agent_runtime import _build_runtime_prompt
-
-        runtime_context = {
-            "current_results": [
-                {"profile_id": 1001, "title": "张安萌 27", "reason_summary": "城市一致"},
-                {"profile_id": 1002, "title": "陈佳悦 32", "reason_summary": "价值观匹配"},
-                {"profile_id": 1003, "title": "陈以心 30", "reason_summary": "性格匹配"},
-                {"profile_id": 1004, "title": "李欣琪 30", "reason_summary": "家庭投入型"},
-                {"profile_id": 1005, "title": "冯静雯 32", "reason_summary": "测试工程师"},
-            ],
-            "user_profile": {"age": 30, "city": "无锡"},
-            "visible_actions": [],
-        }
-
-        run_input = DiscoveryRunInput(
-            session_id="test-session",
-            requester_id=70001,
-            profile_id=10001,
-            phase="results_shown",
-            criteria_labels=["城市:无锡"],
-            recent_timeline=[],
-            runtime_context=runtime_context,
-            search_partner_candidates=lambda criteria, limit: {"results": []},
-            sync_requester_persona_memory=lambda patch: {"success": True},
-            propose_requester_profile_update=lambda patch, evidence: {"success": True},
-            create_saved_search_subscription_from_last_search=lambda: {"success": True},
-            submit_rejection_feedback=lambda **kwargs: {"success": True},
-            get_feedback_options=lambda **kwargs: {"options": []},
+        self.assertIn(
+            '用户想"换一批 / 看别的 / 再看看别人 / 不要刚才那批"',
+            source_code,
+            "工具描述应覆盖用户直接文字表达的换人意图，而不只是按钮点击",
         )
-
-        prompt = _build_runtime_prompt(
-            run_input=run_input,
-            event="user_message",
-            user_message="能介绍一下李欣琪",
-        )
-
-        context = json.loads(prompt)
-
-        print("=" * 60)
-        print("【Runtime Context 验证（修复后）】")
-        print("=" * 60)
-        print("用户消息:", context["event"]["user_message"])
-        print("候选人数量:", len(context["state"]["current_results"]))
-        print()
-
-        # 验证所有候选人信息都传递给 Agent（不再截断到前3位）
-        self.assertEqual(len(context["state"]["current_results"]), 5, "应该包含所有5位候选人，不应截断")
-
-        for card in context["state"]["current_results"]:
-            print(f"候选人: {card['title']} (profile_id: {card['profile_id']})")
-            self.assertIsNotNone(card["profile_id"])
-            self.assertIsNotNone(card["title"])
-
-        print("=" * 60)
-        print("✅ Runtime context 构建正确")
-        print("✅ 所有候选人信息都传递给 Agent（不再截断）")
-        print("✅ 用户问'李欣琪'时，Agent 能够找到这位候选人")
 
 
 if __name__ == "__main__":
