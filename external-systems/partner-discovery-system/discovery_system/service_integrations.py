@@ -554,6 +554,32 @@ def search_partner_candidates_with(
     final_limit = int(limit or 5)  # 用户最终要求的返回数量
     search_limit = max(final_limit, 50)  # 第一阶段搜索数量（至少50个，避免向量筛选后结果为空）
     merged_criteria = merge_working_criteria(session.state, criteria)
+    if session.state.pop("pending_refresh", False):
+        refresh_exclude_ids = {
+            int(candidate_id)
+            for candidate_id in list(session.state.get("last_shown_candidate_ids") or [])
+            if int(candidate_id) > 0
+        }
+        if refresh_exclude_ids:
+            existing_exclude_ids = merged_criteria.get("exclude_ids")
+            normalized_exclude_ids: set[int] = set()
+            if isinstance(existing_exclude_ids, (list, tuple, set)):
+                for candidate_id in existing_exclude_ids:
+                    try:
+                        normalized_exclude_ids.add(int(candidate_id))
+                    except (TypeError, ValueError):
+                        continue
+            elif existing_exclude_ids not in (None, ""):
+                try:
+                    normalized_exclude_ids.add(int(existing_exclude_ids))
+                except (TypeError, ValueError):
+                    pass
+            merged_criteria["exclude_ids"] = normalized_exclude_ids | refresh_exclude_ids
+            _logger.info(
+                "【换一批排除注入】session_id=%s exclude_ids=%s",
+                session.session_id,
+                sorted(merged_criteria["exclude_ids"]),
+            )
     session.state["working_criteria"] = {
         key: merged_criteria[key]
         for key in merged_criteria

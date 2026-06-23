@@ -292,6 +292,42 @@ class _DoubleSearchRuntime:
         )
 
 
+class _RefreshSearchRuntime:
+    def initial_decision(self, _run_input):
+        return DiscoveryRuntimeResult(
+            decision=DiscoveryDecision(
+                phase="collecting_preferences",
+                assistant_message="先告诉我你想找什么样的人。",
+            )
+        )
+
+    def run_turn(self, run_input, *, user_message=None, action_context=None):
+        del user_message, action_context
+        response = run_input.search_partner_candidates(
+            {
+                "gender": "女",
+                "cities": ["无锡"],
+                "relationship_goals": ["认真恋爱"],
+            },
+            3,
+        )
+        return DiscoveryRuntimeResult(
+            decision=DiscoveryDecision(
+                phase="results_shown",
+                assistant_message="我再给你换一批。",
+                criteria_labels=["无锡", "认真恋爱"],
+                result_group_title="这一轮换一批给你看",
+                selected_candidates=[
+                    DiscoveryCandidateSelection(
+                        profile_id=2002,
+                        reason_summary="避开上一批后更贴近。",
+                    )
+                ],
+            ),
+            search_response=response,
+        )
+
+
 class _PhantomSearchingRuntime:
     def initial_decision(self, _run_input):
         return DiscoveryRuntimeResult(
@@ -2232,6 +2268,56 @@ class DiscoveryServiceTests(unittest.TestCase):
         timeline = result["view"]["timeline"]
         self.assertEqual(timeline[-1]["item_type"], "assistant_message")
         # 不再期望固定的追问文案，而是 Agent 自主生成回复
+
+    def test_show_more_candidates_excludes_last_shown_candidate_ids(self) -> None:
+        service = DiscoveryService(
+            storage=InMemoryDiscoveryStorage(),
+            runtime=_RefreshSearchRuntime(),
+        )
+        created = service.create_session(requester_id=70001, profile_id=10001)
+        session_id = created["session"]["session_id"]
+        session = service.storage.get_session(session_id)
+        assert session is not None
+        session.phase = "results_shown"
+        session.state["last_shown_candidate_ids"] = [1001, 1003]
+        service.storage.save_session(session)
+
+        action = service.storage.create_action(
+            session_id=session_id,
+            label="换一批",
+            style="secondary",
+            semantic_payload={"kind": "show_more_candidates"},
+            now=datetime.now(),
+        )
+
+        captured_criteria: list[dict[str, object]] = []
+
+        def _fake_search_partner_candidates(_session, *, criteria, personality_match, limit):
+            del personality_match, limit
+            captured_criteria.append(dict(criteria))
+            return {
+                "has_match": True,
+                "result_count": 1,
+                "results": [
+                    {
+                        "id": 2002,
+                        "name": "候选人B",
+                        "score": 95,
+                        "matched_on": ["城市一致"],
+                        "profile": {"age": 28, "city": "无锡"},
+                    }
+                ],
+            }
+
+        with mock.patch.object(service, "_search_partner_candidates", side_effect=_fake_search_partner_candidates):
+            service.process_turn(session_id=session_id, action_id=action.action_id, now=datetime.now())
+
+        self.assertEqual(len(captured_criteria), 1)
+        self.assertEqual(set(captured_criteria[0].get("exclude_ids") or []), {1001, 1003})
+
+        updated_session = service.storage.get_session(session_id)
+        assert updated_session is not None
+        self.assertEqual(updated_session.state.get("last_shown_candidate_ids"), [2002])
 
     def test_batch_refresh_feedback_options_are_dynamically_generated(self) -> None:
         """✅ Agent Native：反馈选项由 Agent 自主决定，不再代码动态生成"""
