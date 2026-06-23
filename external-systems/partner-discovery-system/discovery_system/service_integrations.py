@@ -42,6 +42,43 @@ def _env_flag(name: str, *, default: bool = False) -> bool:
     return raw not in {"0", "false", "off", "no"}
 
 
+def _convert_sets_to_lists_in_dict(data: dict[str, Any]) -> dict[str, Any]:
+    """递归转换字典中的所有set为list（JSON可序列化）
+
+    ✅ P0修复：解决"Object of type set is not JSON serializable"错误
+    根因：vector_filter_trace等字段可能包含set对象（来自vector_filter_candidates返回值）
+    解决：在写入response前，统一转换为list
+
+    Args:
+        data: 可能包含set对象的字典
+
+    Returns:
+        所有set已转换为list的字典
+    """
+    result: dict[str, Any] = {}
+    for key, value in data.items():
+        if isinstance(value, set):
+            # ✅ 核心修复：set → list
+            result[key] = list(value)
+        elif isinstance(value, dict):
+            # 递归处理嵌套字典
+            result[key] = _convert_sets_to_lists_in_dict(dict(value))
+        elif isinstance(value, (list, tuple)):
+            # 处理列表/元组中的嵌套字典
+            converted_list: list[Any] = []
+            for item in value:
+                if isinstance(item, dict):
+                    converted_list.append(_convert_sets_to_lists_in_dict(dict(item)))
+                elif isinstance(item, set):
+                    converted_list.append(list(item))
+                else:
+                    converted_list.append(item)
+            result[key] = converted_list
+        else:
+            result[key] = value
+    return result
+
+
 def discovery_personality_explanation_enabled() -> bool:
     return _env_flag("HER_DISCOVERY_PERSONALITY_EXPLANATION_ENABLED", default=True)
 
@@ -519,6 +556,89 @@ def search_partner_candidates_with(
         )
 
         response["request_meta"] = request_meta
+
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # 新增：向量筛选（支持排除和包含）
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        if vector_filter_json:
+            results_before_filter = response.get("results") or []
+            candidate_ids_before_filter = []
+            for candidate in results_before_filter:
+                candidate_id = candidate.get("id")
+                if candidate_id:
+                    try:
+                        candidate_ids_before_filter.append(int(candidate_id))
+                    except (TypeError, ValueError):
+                        pass
+
+            if candidate_ids_before_filter:
+                import asyncio
+                from match_domain.vector_filter import vector_filter_candidates
+
+                _logger.info(
+                    "【向量筛选开始】session_id=%s candidate_count=%s filter_config=%s",
+                    session.session_id,
+                    len(candidate_ids_before_filter),
+                    vector_filter_json,
+                )
+
+                # 在同步函数中调用异步代码
+                try:
+                    excluded_ids, included_ids, filter_trace = asyncio.run(
+                        vector_filter_candidates(
+                            vector_filter_json=vector_filter_json,
+                            candidate_ids=candidate_ids_before_filter,
+                            user_id=session.requester_id,
+                        )
+                    )
+
+                    # ✅ 防线2加固：显式转换（确保JSON可序列化）
+                    # vector_filter_candidates 已返回 list，但这里再加一层防御
+                    if isinstance(excluded_ids, set):
+                        excluded_ids = list(excluded_ids)
+                    if isinstance(included_ids, set):
+                        included_ids = list(included_ids)
+
+                    # 过滤结果
+                    filtered_results = []
+                    for candidate in results_before_filter:
+                        candidate_id = candidate.get("id")
+                        if candidate_id:
+                            try:
+                                if int(candidate_id) in included_ids and int(candidate_id) not in excluded_ids:
+                                    filtered_results.append(candidate)
+                            except (TypeError, ValueError):
+                                pass
+
+                    response["results"] = filtered_results
+                    response["result_count"] = len(filtered_results)
+                    response["has_match"] = bool(filtered_results)
+                    # ✅ P0修复：确保filter_trace中的set转换为list（JSON可序列化）
+                    if isinstance(filter_trace, dict):
+                        filter_trace = _convert_sets_to_lists_in_dict(filter_trace)
+                    response["vector_filter_trace"] = filter_trace
+
+                    _logger.info(
+                        "【向量筛选完成】session_id=%s before_count=%s after_count=%s excluded=%s",
+                        session.session_id,
+                        len(results_before_filter),
+                        len(filtered_results),
+                        len(excluded_ids),
+                    )
+
+                except Exception as exc:
+                    _logger.error(
+                        "【向量筛选失败】session_id=%s error=%s",
+                        session.session_id,
+                        str(exc)[:200],
+                    )
+                    # 失败时保留原始结果
+                    error_trace = {
+                        "error": str(exc)[:200],
+                        "mode": "failed",
+                    }
+                    # ✅ P0修复：确保error_trace中的set转换为list（JSON可序列化）
+                    response["vector_filter_trace"] = _convert_sets_to_lists_in_dict(error_trace)
 
         # ✅ Agent Native 改进：移除性格特质增强逻辑的环境变量检查
         # 这些环境变量控制的是 Tool 层的性格增强逻辑（已移除）

@@ -11,9 +11,11 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 
+import httpx  # ✅ 新增：用于配置精细的timeout
+
 _logger = logging.getLogger(__name__)
 
-from her_env import env_first, env_float
+from her_env import env_first, env_float, env_int  # ✅ 新增：导入env_int用于max_retries
 from pydantic import BaseModel, Field
 
 from .decision_models import (
@@ -69,6 +71,43 @@ _DISCOVERY_CONTEXT_WARN_CHARS = 16000
 _DISCOVERY_CONTEXT_ERROR_CHARS = 32000
 
 
+def _convert_sets_to_lists(data: dict[str, Any]) -> dict[str, Any]:
+    """递归转换字典中的所有set为list（JSON可序列化）
+
+    ✅ P0修复：解决"Object of type set is not JSON serializable"错误
+    根因：service_integrations.py中的exclude_ids等字段可能使用set对象
+    解决：在返回给Agents SDK前，统一转换为list
+
+    Args:
+        data: 可能包含set对象的字典
+
+    Returns:
+        所有set已转换为list的字典
+    """
+    result: dict[str, Any] = {}
+    for key, value in data.items():
+        if isinstance(value, set):
+            # ✅ 核心修复：set → list
+            result[key] = list(value)
+        elif isinstance(value, dict):
+            # 递归处理嵌套字典
+            result[key] = _convert_sets_to_lists(dict(value))
+        elif isinstance(value, (list, tuple)):
+            # 处理列表/元组中的嵌套字典
+            converted_list: list[Any] = []
+            for item in value:
+                if isinstance(item, dict):
+                    converted_list.append(_convert_sets_to_lists(dict(item)))
+                elif isinstance(item, set):
+                    converted_list.append(list(item))
+                else:
+                    converted_list.append(item)
+            result[key] = converted_list
+        else:
+            result[key] = value
+    return result
+
+
 def _safe_json_length(value: Any) -> int:
     return len(json.dumps(value, ensure_ascii=False, sort_keys=True, default=str))
 
@@ -98,7 +137,10 @@ def _candidate_summary_for_model(candidate: dict[str, Any]) -> str:
 
 
 def _summarize_search_response_for_model(search_response: dict[str, Any]) -> dict[str, Any]:
-    response = dict(search_response or {})
+    # ✅ 防线3：入口处统一转换（兜底）
+    # 即使前面有遗漏的set字段，这里也能兜底处理
+    response = _convert_sets_to_lists(dict(search_response or {}))
+
     summary: dict[str, Any] = {
         "has_match": bool(response.get("has_match")),
         "result_count": int(response.get("result_count") or 0),
@@ -116,6 +158,8 @@ def _summarize_search_response_for_model(search_response: dict[str, Any]) -> dic
         compact_meta: dict[str, Any] = {}
         criteria = request_meta.get("criteria")
         if isinstance(criteria, dict) and criteria:
+            # ✅ P0修复：确保criteria中所有set字段转换为list（JSON可序列化）
+            criteria = _convert_sets_to_lists(dict(criteria))
             compact_meta["criteria"] = criteria
         for key in ("limit", "limit_count"):
             if request_meta.get(key) is not None:
@@ -136,6 +180,17 @@ def _summarize_search_response_for_model(search_response: dict[str, Any]) -> dic
             "title": title or None,
             "summary": _candidate_summary_for_model(candidate),
         }
+        candidate_context = dict(candidate.get("candidate_context") or {})
+        if candidate_context:
+            # ✅ P0修复：确保missing_dimensions等set字段转换为list
+            missing_dims = candidate_context.get("missing_dimensions")
+            if isinstance(missing_dims, set):
+                missing_dims = list(missing_dims)
+            item["candidate_context"] = {
+                "evidence_level": candidate_context.get("evidence_level"),
+                "reason_mode": candidate_context.get("reason_mode"),
+                "missing_dimensions": list(missing_dims or []),  # 确保是list
+            }
         score = candidate.get("score") or candidate.get("fit_score")
         if score is not None:
             item["score"] = score
@@ -275,7 +330,13 @@ def _resolve_discovery_base_url(*, wire_api: str) -> str:
     if wire_api == "responses":
         if _looks_like_dashscope_base_url(shared_base_url):
             return _BAILIAN_RESPONSES_BASE_URL
-        if os.environ.get("DASHSCOPE_API_KEY"):
+        # ✅ P0修复：放宽条件，只要有百炼相关的API key就推断使用百炼API URL
+        # 根因：DASHSCOPE_API_KEY可能不存在，但有HER_DISCOVERY_AGENT_API_KEY或OPENAI_API_KEY
+        # 解决：检查是否存在任何百炼相关的API key
+        if os.environ.get("DASHSCOPE_API_KEY") or \
+           os.environ.get("HER_DISCOVERY_AGENT_API_KEY") or \
+           os.environ.get("OPENAI_API_KEY"):
+            _logger.info("✅ 自动推断使用百炼API URL（基于API key存在）")
             return _BAILIAN_RESPONSES_BASE_URL
     return shared_base_url
 
@@ -298,34 +359,53 @@ def _configure_agents_sdk_provider() -> None:
     from her_production import assert_production_discovery_agent_isolation
     from openai import AsyncOpenAI
 
+    # ✅ P0修复：强制禁用Tracing，避免向OpenAI发送trace请求超时
+    # 根因：Tracing硬编码发送到 https://api.openai.com/v1/traces/ingest
+    # 但我们使用百炼API（阿里云），无法连接到OpenAI，导致超时失败
+    # 解决：在任何初始化之前立即禁用Tracing
+    set_tracing_disabled(True)
+    _logger.info("✅ Tracing已强制禁用（避免OpenAI连接超时）")
+
     assert_production_discovery_agent_isolation()
     wire_api = _resolve_discovery_wire_api()
     base_url = _resolve_discovery_base_url(wire_api=wire_api)
 
     if base_url:
         api_key = _resolve_discovery_api_key()
-        client = AsyncOpenAI(
-            base_url=base_url,
-            api_key=api_key,
+
+        # ✅ P0修复：配置精细的timeout，解决百炼API连接超时问题
+        # 根因：默认connect timeout只有5秒，百炼API响应慢，5秒内无法建立连接就重试
+        # 解决：增加connect timeout到30秒，总timeout保持120秒
+        timeout_config = httpx.Timeout(
             timeout=env_float(
                 "HER_DISCOVERY_AGENT_TIMEOUT_SECONDS",
                 "HER_CHAT_AGENT_TIMEOUT_SECONDS",
                 "HER_CHAT_ASSISTANT_TIMEOUT_SECONDS",
-                default=120.0,
+                default=120.0,  # 总timeout：120秒（LLM推理可能需要较长时间）
             ),
+            connect=env_float(
+                "HER_DISCOVERY_AGENT_CONNECT_TIMEOUT_SECONDS",
+                "HER_CHAT_AGENT_CONNECT_TIMEOUT_SECONDS",
+                "HER_CHAT_ASSISTANT_CONNECT_TIMEOUT_SECONDS",
+                default=30.0,  # ✅ 连接timeout：30秒（允许更长的连接建立时间）
+            ),
+        )
+        _logger.info(f"✅ LLM API timeout配置: 读取timeout={timeout_config.read}秒, 连接timeout={timeout_config.connect}秒, 写入timeout={timeout_config.write}秒, 连接池timeout={timeout_config.pool}秒")
+
+        client = AsyncOpenAI(
+            base_url=base_url,
+            api_key=api_key,
+            timeout=timeout_config,  # ✅ 使用精细配置的timeout
+            max_retries=int(env_float(  # ✅ 修正：使用env_float然后转换为int（env_int不支持多个环境变量名称）
+                "HER_DISCOVERY_AGENT_MAX_RETRIES",
+                default=3.0,  # 默认重试3次（增加容错能力）
+            )),
         )
         set_default_openai_client(client, use_for_tracing=False)
         # This only selects the Agents SDK wire API (`/responses` vs `/chat/completions`);
         # it is not a remote provider request parameter.
         set_default_openai_api(wire_api)
-        disable_tracing = env_first(
-            "HER_DISCOVERY_AGENT_DISABLE_TRACING",
-            "HER_CHAT_AGENT_DISABLE_TRACING",
-            "HER_CHAT_ASSISTANT_DISABLE_TRACING",
-            default="1",
-        ).lower()
-        if disable_tracing in ("1", "true", "yes"):
-            set_tracing_disabled(True)
+        # ✅ Tracing已在函数开头强制禁用，无需再次调用
         return
 
     # This only selects the Agents SDK wire API (`/responses` vs `/chat/completions`);
@@ -955,6 +1035,10 @@ class AgentsSdkDiscoveryAgentRuntime:
                 run_input.session_id,
             )
 
+        # 方案A：不设置 output_type，因为使用专用工具（reply_to_user/show_candidates）
+        # Agent 通过工具参数返回决策，不需要直接输出 DiscoveryDecisionModel
+        # 遗留问题：方案 C 的 output_type=DiscoveryDecisionModel 会导致 Agents SDK
+        # 错误地把工具参数当作决策模型解析（如 search_partner_candidates 的参数）
         agent = Agent(
             name="discovery_matchmaker",
             instructions=instructions.strip(),
