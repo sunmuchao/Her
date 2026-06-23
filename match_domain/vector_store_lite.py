@@ -226,20 +226,29 @@ class VectorStoreLite:
             vector_store.close()
         ```
 
-        根因分析：
-        - Milvus Lite 内部使用 gRPC 和 httpx 异步连接池
-        - 如果不主动关闭，程序退出时 asyncio 事件循环先关闭
-        - httpx 连接池尝试在已关闭的事件循环中清理连接 → RuntimeError('Event loop is closed')
-        - asyncio 检测到未处理的异常 → "Task exception was never retrieved"
+        根因分析（五问法）：
+        - 问题现象：Task exception was never retrieved - RuntimeError('Event loop is closed')
+        - 为什么1：httpx 异步连接池在事件循环关闭后尝试清理连接
+        - 为什么2：程序退出时，事件循环先关闭，然后 httpx 清理任务才执行
+        - 为什么3：MilvusClient 没有在事件循环关闭前被正确清理
+        - 为什么4：之前的实现只设置 self._client = None，没有调用 MilvusClient.close()
+        - 为什么5（根本原因）：VectorStoreLite.close() 缺少对 MilvusClient.close() 的调用
+
+        修复方案：
+        - 正确调用 MilvusClient.close() 来清理内部 httpx 异步连接池
+        - 避免事件循环关闭后 httpx 尝试清理连接的错误
         """
         if self._client is not None:
             try:
-                # MilvusClient 没有 close() 方法，但我们可以通过删除引用来触发清理
-                # 实际的连接清理由 Milvus Lite 内部管理
+                # 【修复】正确调用 MilvusClient.close() 来清理 httpx 异步连接池
+                # MilvusClient.close() 会清理内部的 gRPC 和 httpx 异步连接
+                self._client.close()
                 self._client = None
-                _logger.info("MilvusClient 连接已关闭，资源已释放")
+                _logger.info("MilvusClient 连接已正确关闭，httpx 异步连接池已清理")
             except Exception as exc:
                 _logger.warning(f"关闭 MilvusClient 连接失败: {exc}")
+                # 即使关闭失败，也要设置为 None，避免重复关闭
+                self._client = None
 
     def _ensure_db_dir(self) -> None:
         """确保数据库目录存在"""
