@@ -1174,7 +1174,7 @@ class AgentsSdkDiscoveryAgentRuntime:
             name="discovery_matchmaker",
             instructions=instructions.strip(),
             model=_resolve_discovery_model(wire_api=_resolve_discovery_wire_api()),
-            output_type=None,  # 方案C：移除 output_schema
+            output_type=DiscoveryDecisionModel,
             tools=tools,
         )
         started = time.perf_counter()
@@ -1184,6 +1184,7 @@ class AgentsSdkDiscoveryAgentRuntime:
                 agent=agent,
                 runtime_input=runtime_input,
                 started=started,
+                tool_state=tool_state,
                 agent_session=run_input.agent_session,  # 启用会话记忆
             )
         )
@@ -1265,6 +1266,11 @@ class AgentsSdkDiscoveryAgentRuntime:
                     recovered = _decision_payload_to_decision_with_repair(final_output)
                 except Exception:
                     recovered = None
+            else:
+                try:
+                    recovered = _validate_decision_output(final_output)
+                except Exception:
+                    recovered = None
             if recovered is not None:
                 decision = recovered
             else:
@@ -1320,6 +1326,7 @@ class AgentsSdkDiscoveryAgentRuntime:
         agent: Any,
         runtime_input: str,
         started: float,
+        tool_state: dict[str, Any],
         agent_session: Any | None = None,  # 新增：会话记忆
     ) -> tuple[Any, float | None]:
         # 启用会话记忆：传入 session 参数
@@ -1332,8 +1339,19 @@ class AgentsSdkDiscoveryAgentRuntime:
         async for stream_event in streamed_result.stream_events():
             if first_token_latency_ms is None and _is_first_token_stream_event(stream_event):
                 first_token_latency_ms = round((time.perf_counter() - started) * 1000.0, 3)
+            if tool_state.get("show_payload") is not None or tool_state.get("reply_payload") is not None:
+                _logger.debug(
+                    "discovery agent stopping stream after terminal tool payload: has_show=%s has_reply=%s",
+                    tool_state.get("show_payload") is not None,
+                    tool_state.get("reply_payload") is not None,
+                )
+                break
         run_loop_task = getattr(streamed_result, "run_loop_task", None)
-        if run_loop_task is not None:
+        if (
+            run_loop_task is not None
+            and tool_state.get("show_payload") is None
+            and tool_state.get("reply_payload") is None
+        ):
             await run_loop_task
         return streamed_result, first_token_latency_ms
 
