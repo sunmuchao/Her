@@ -248,10 +248,37 @@ class VectorStoreLite:
             os.makedirs(db_dir, exist_ok=True)
 
     def _get_client(self) -> Any:
-        """获取 MilvusClient"""
+        """获取 MilvusClient（配置 gRPC keepalive 参数）
+
+        根因分析（五问法）：
+        - 问题现象：gRPC 连接报错 "too_many_pings" (GOAWAY 错误码 11)
+        - 为什么1：客户端发送 ping 帧过于频繁（默认每 10 秒一次）
+        - 为什么2：pymilvus 默认 keepalive_time_ms=10000 太激进
+        - 为什么3：缺少 grpc.http2.max_pings_without_data 参数限制
+        - 为什么4：Milvus Lite 服务器期望更长的 ping 间隔
+        - 为什么5（根本原因）：缺少 gRPC keepalive 参数的优化配置
+
+        修复方案：
+        - 调整 keepalive_time_ms 从 10s → 60s（降低 ping 频率）
+        - 添加 grpc.http2.max_pings_without_data=0（无限制）
+        - 保持 keepalive_permit_without_calls=True（允许无调用时 ping）
+
+        参考：https://github.com/grpc/grpc/blob/master/doc/keepalive.md
+        """
         from pymilvus import MilvusClient
 
-        return MilvusClient(uri=self.db_file)
+        # 配置 gRPC keepalive 参数，避免 too_many_pings 错误
+        grpc_options = {
+            "grpc.keepalive_time_ms": 60000,  # 每 60 秒发送一次 ping（默认 10 秒太频繁）
+            "grpc.keepalive_timeout_ms": 20000,  # 20 秒超时（默认 5 秒）
+            "grpc.keepalive_permit_without_calls": True,  # 允许无调用时发送 ping
+            "grpc.http2.max_pings_without_data": 0,  # 无限制（关键参数！避免服务器拒绝）
+        }
+
+        return MilvusClient(
+            uri=self.db_file,
+            grpc_options=grpc_options,
+        )
 
     def _ensure_collection(self) -> None:
         """确保 Collection 存在且已加载到内存

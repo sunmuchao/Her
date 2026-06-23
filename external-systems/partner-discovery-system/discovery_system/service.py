@@ -1568,6 +1568,29 @@ class DiscoveryService:
         limit: int,
         exclude_current_results: bool = False,
     ) -> dict[str, Any]:
+        # ✅ 参数预处理：如果需要排除当前结果，将 last_shown_candidate_ids 转换为 exclude_ids
+        if exclude_current_results:
+            refresh_exclude_ids = {
+                int(candidate_id)
+                for candidate_id in list(session.state.get("last_shown_candidate_ids") or [])
+                if int(candidate_id) > 0
+            }
+            if refresh_exclude_ids:
+                existing_exclude_ids = criteria.get("exclude_ids")
+                normalized_exclude_ids: set[int] = set()
+                if isinstance(existing_exclude_ids, (list, tuple, set)):
+                    for candidate_id in existing_exclude_ids:
+                        try:
+                            normalized_exclude_ids.add(int(candidate_id))
+                        except (TypeError, ValueError):
+                            continue
+                elif existing_exclude_ids not in (None, ""):
+                    try:
+                        normalized_exclude_ids.add(int(existing_exclude_ids))
+                    except (TypeError, ValueError):
+                        pass
+                criteria["exclude_ids"] = normalized_exclude_ids | refresh_exclude_ids
+
         return _search_partner_candidates_impl(
             session,
             criteria=criteria,
