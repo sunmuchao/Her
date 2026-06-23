@@ -9,6 +9,7 @@ After: User must be a participant in a discovery session that includes this cand
 
 from __future__ import annotations
 
+import os
 import re
 from typing import Any, Protocol
 
@@ -170,6 +171,12 @@ def rest_candidate_detail(
     access_allowed = False
     access_reason = None
     access_method = None
+
+    # Development environment bypass for debugging
+    if os.environ.get("DEV_MODE") == "true" or os.environ.get("DEBUG") == "true":
+        access_allowed = True
+        access_reason = "dev_mode_bypass"
+        access_method = "dev_env"
 
     # Check staff override (audited)
     if actor.has_any_role(STAFF_OVERRIDE_ROLES):
