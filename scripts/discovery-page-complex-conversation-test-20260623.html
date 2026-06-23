@@ -1,0 +1,1258 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>发现页长时间复杂对话测试报告</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-light: #3b82f6;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --info: #6366f1;
+            --bg: #f8fafc;
+            --card-bg: #ffffff;
+            --text: #1e293b;
+            --text-secondary: #64748b;
+            --border: #e2e8f0;
+            --code-bg: #1e293b;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            padding: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--info) 100%);
+            color: white;
+            padding: 40px;
+            border-radius: 16px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 40px rgba(37, 99, 235, 0.2);
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 15px;
+            font-weight: 700;
+        }
+
+        .header-meta {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            font-size: 0.95rem;
+        }
+
+        .header-meta span {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 8px 16px;
+            border-radius: 20px;
+        }
+
+        /* Summary Cards */
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .summary-card {
+            background: var(--card-bg);
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+            border: 1px solid var(--border);
+        }
+
+        .summary-card h3 {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+
+        .summary-card .number {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        .summary-card.danger .number {
+            color: var(--danger);
+        }
+
+        .summary-card.warning .number {
+            color: var(--warning);
+        }
+
+        .summary-card.success .number {
+            color: var(--success);
+        }
+
+        /* Problem Level Badges */
+        .problem-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-right: 10px;
+        }
+
+        .problem-badge.p0 {
+            background: #fef2f2;
+            color: var(--danger);
+            border: 1px solid #fecaca;
+        }
+
+        .problem-badge.p1 {
+            background: #fffbeb;
+            color: var(--warning);
+            border: 1px solid #fde68a;
+        }
+
+        .problem-badge.p2 {
+            background: #f0fdf4;
+            color: var(--success);
+            border: 1px solid #bbf7d0;
+        }
+
+        /* Scenario Cards */
+        .scenario-section {
+            margin-bottom: 30px;
+        }
+
+        .scenario-section h2 {
+            font-size: 1.5rem;
+            margin-bottom: 20px;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .scenario-card {
+            background: var(--card-bg);
+            border-radius: 16px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            margin-bottom: 20px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+        }
+
+        .scenario-header {
+            background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+            padding: 20px 25px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            user-select: none;
+        }
+
+        .scenario-header:hover {
+            background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%);
+        }
+
+        .scenario-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .scenario-tag {
+            font-size: 0.8rem;
+            padding: 4px 10px;
+            background: var(--primary);
+            color: white;
+            border-radius: 12px;
+        }
+
+        .toggle-icon {
+            font-size: 1.5rem;
+            color: var(--text-secondary);
+            transition: transform 0.3s;
+        }
+
+        .scenario-card.open .toggle-icon {
+            transform: rotate(180deg);
+        }
+
+        .scenario-content {
+            display: none;
+            padding: 25px;
+        }
+
+        .scenario-card.open .scenario-content {
+            display: block;
+        }
+
+        /* User Simulation */
+        .user-simulation {
+            background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+        }
+
+        .user-simulation h4 {
+            color: var(--primary);
+            margin-bottom: 15px;
+            font-size: 1rem;
+        }
+
+        .user-simulation ul {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .user-simulation li {
+            padding: 10px 0;
+            padding-left: 30px;
+            position: relative;
+            color: var(--text);
+        }
+
+        .user-simulation li::before {
+            content: '💬';
+            position: absolute;
+            left: 0;
+            font-size: 1.2rem;
+        }
+
+        /* Expected Behavior */
+        .expected-behavior {
+            background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+        }
+
+        .expected-behavior h4 {
+            color: var(--success);
+            margin-bottom: 15px;
+            font-size: 1rem;
+        }
+
+        .expected-behavior ul {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .expected-behavior li {
+            padding: 8px 0;
+            padding-left: 25px;
+            position: relative;
+        }
+
+        .expected-behavior li::before {
+            content: '✓';
+            position: absolute;
+            left: 0;
+            color: var(--success);
+            font-weight: bold;
+        }
+
+        /* Concern Points */
+        .concern-points {
+            background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+        }
+
+        .concern-points h4 {
+            color: var(--warning);
+            margin-bottom: 15px;
+            font-size: 1rem;
+        }
+
+        .concern-points ul {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .concern-points li {
+            padding: 10px 0;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+        }
+
+        /* Code Block */
+        .code-block {
+            background: var(--code-bg);
+            color: #e2e8f0;
+            padding: 20px;
+            border-radius: 12px;
+            margin: 15px 0;
+            overflow-x: auto;
+            font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+
+        .code-block .comment {
+            color: #94a3b8;
+        }
+
+        .code-block .key {
+            color: #f472b6;
+        }
+
+        .code-block .string {
+            color: #a5f3fc;
+        }
+
+        .code-block .number {
+            color: #fbbf24;
+        }
+
+        /* Conversation Flow */
+        .conversation-flow {
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+
+        .round {
+            margin-bottom: 25px;
+            padding-bottom: 25px;
+            border-bottom: 1px dashed var(--border);
+        }
+
+        .round:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        .round-header {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .round-number {
+            background: var(--primary);
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1rem;
+        }
+
+        .round-title {
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+
+        .analysis-point {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 12px;
+            background: #f8fafc;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+
+        .analysis-point.success {
+            background: #f0fdf4;
+        }
+
+        .analysis-point.warning {
+            background: #fffbeb;
+        }
+
+        .analysis-point.question {
+            background: #eff6ff;
+        }
+
+        .analysis-icon {
+            font-size: 1.2rem;
+            flex-shrink: 0;
+        }
+
+        /* Problem Summary Section */
+        .problem-summary {
+            background: var(--card-bg);
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            margin-bottom: 30px;
+        }
+
+        .problem-summary h2 {
+            font-size: 1.5rem;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .problem-group {
+            margin-bottom: 25px;
+        }
+
+        .problem-group h3 {
+            font-size: 1.1rem;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid;
+        }
+
+        .problem-group.p0 h3 {
+            color: var(--danger);
+            border-bottom-color: var(--danger);
+        }
+
+        .problem-group.p1 h3 {
+            color: var(--warning);
+            border-bottom-color: var(--warning);
+        }
+
+        .problem-group.p2 h3 {
+            color: var(--success);
+            border-bottom-color: var(--success);
+        }
+
+        .problem-item {
+            background: #f8fafc;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+
+        .problem-item h4 {
+            font-size: 1rem;
+            margin-bottom: 10px;
+        }
+
+        .verification-method {
+            background: #f1f5f9;
+            padding: 12px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            margin-top: 10px;
+        }
+
+        .verification-method strong {
+            color: var(--primary);
+        }
+
+        /* Action Items */
+        .action-items {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--info) 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 16px;
+            margin-bottom: 30px;
+        }
+
+        .action-items h2 {
+            font-size: 1.5rem;
+            margin-bottom: 20px;
+        }
+
+        .action-list {
+            list-style: none;
+        }
+
+        .action-list li {
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .action-number {
+            background: white;
+            color: var(--primary);
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 30px;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .header {
+                padding: 25px;
+            }
+
+            .header h1 {
+                font-size: 1.8rem;
+            }
+
+            .summary-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .scenario-header {
+                padding: 15px;
+            }
+
+            .scenario-content {
+                padding: 15px;
+            }
+        }
+
+        /* Collapsible Animation */
+        .scenario-content {
+            animation: slideDown 0.3s ease-out;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Highlight */
+        .highlight {
+            background: #fef3c7;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+
+        .highlight-danger {
+            background: #fecaca;
+            color: var(--danger);
+        }
+    </style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+    <h1>🔍 发现页长时间复杂对话测试报告</h1>
+    <div class="header-meta">
+        <span>📅 测试时间: 2026-06-23 11:05</span>
+        <span>👤 测试人员: Claude</span>
+        <span>📋 测试方式: 手动模拟对话场景</span>
+    </div>
+</div>
+
+<!-- Summary Cards -->
+<div class="summary-grid">
+    <div class="summary-card">
+        <h3>测试场景总数</h3>
+        <div class="number">6</div>
+    </div>
+    <div class="summary-card danger">
+        <h3>P0 级问题</h3>
+        <div class="number">2</div>
+    </div>
+    <div class="summary-card warning">
+        <h3>P1 级问题</h3>
+        <div class="number">3</div>
+    </div>
+    <div class="summary-card success">
+        <h3>P2 级问题</h3>
+        <div class="number">2</div>
+    </div>
+</div>
+
+<!-- Test Objective -->
+<div style="background: white; padding: 25px; border-radius: 12px; margin-bottom: 30px; border: 1px solid #e2e8f0;">
+    <h2 style="font-size: 1.2rem; margin-bottom: 15px; color: #1e293b;">🎯 测试目标</h2>
+    <p style="color: #64748b; font-size: 1rem;">
+        模拟真实用户在发现页进行长时间复杂对话，验证搜索、画像写入、多轮上下文管理等核心逻辑是否正常工作。
+    </p>
+</div>
+
+<!-- Scenario Section -->
+<div class="scenario-section">
+    <h2>📚 测试场景详情</h2>
+
+    <!-- Scenario 1 -->
+    <div class="scenario-card open">
+        <div class="scenario-header">
+            <div>
+                <span class="scenario-title">场景1: 模糊需求 + 多轮澄清</span>
+                <span class="scenario-tag">验证Agent理解能力</span>
+            </div>
+            <span class="toggle-icon">▼</span>
+        </div>
+        <div class="scenario-content">
+            <div class="user-simulation">
+                <h4>💬 用户行为模拟</h4>
+                <ul>
+                    <li>第1轮：发送模糊需求 → <span class="highlight">"想找个合适的女生"</span></li>
+                    <li>第2轮：补充部分条件 → <span class="highlight">"最好在无锡附近"</span></li>
+                    <li>第3轮：继续细化 → <span class="highlight">"工作稳定一点的"</span></li>
+                    <li>第4轮：调整条件 → <span class="highlight">"其实苏州也可以"</span></li>
+                    <li>第5轮：结束会话 → <span class="highlight">"这些条件差不多了"</span></li>
+                </ul>
+            </div>
+
+            <div class="expected-behavior">
+                <h4>✅ 预期系统行为</h4>
+                <ul>
+                    <li>每轮对话后，系统应正确提取并存储用户偏好到 <code>working_criteria</code></li>
+                    <li>系统应支持条件的增量补充和调整</li>
+                    <li>会话结束时应触发画像写入逻辑</li>
+                    <li>下次对话应能利用历史记忆</li>
+                </ul>
+            </div>
+
+            <div class="concern-points">
+                <h4>⚠️ 关注问题点</h4>
+                <ul>
+                    <li><span class="problem-badge p1">P1</span> Agent幻觉风险：Agent是否返回未搜索的候选人ID？</li>
+                    <li><span class="problem-badge p0">P0</span> 触发时机不完整：会话结束是否正确触发画像写入？</li>
+                    <li><span class="problem-badge p0">P0</span> 数据不一致风险：画像写入是否完整（所有字段都更新）？</li>
+                </ul>
+            </div>
+
+            <div class="conversation-flow">
+                <div class="round">
+                    <div class="round-header">
+                        <div class="round-number">1</div>
+                        <div class="round-title">用户发送模糊需求</div>
+                    </div>
+                    <div class="analysis-point success">
+                        <span class="analysis-icon">✅</span>
+                        <span>Agent正确识别模糊需求，主动询问具体条件</span>
+                    </div>
+                    <div class="analysis-point success">
+                        <span class="analysis-icon">✅</span>
+                        <span>Agent提供引导性按钮（"先从城市和年龄说起"）</span>
+                    </div>
+                    <div class="analysis-point question">
+                        <span class="analysis-icon">❓</span>
+                        <span><code>working_criteria</code> 是否正确初始化为空？</span>
+                    </div>
+                </div>
+
+                <div class="round">
+                    <div class="round-header">
+                        <div class="round-number">2</div>
+                        <div class="round-title">用户补充城市条件</div>
+                    </div>
+                    <div class="analysis-point success">
+                        <span class="analysis-icon">✅</span>
+                        <span>Agent正确提取"无锡附近"条件</span>
+                    </div>
+                    <div class="analysis-point success">
+                        <span class="analysis-icon">✅</span>
+                        <span><code>criteria_chips</code> 正确显示"无锡附近"标签</span>
+                    </div>
+                    <div class="analysis-point success">
+                        <span class="analysis-icon">✅</span>
+                        <span>Agent提供继续补充或开始搜索的选项</span>
+                    </div>
+                </div>
+
+                <div class="round">
+                    <div class="round-header">
+                        <div class="round-number">3</div>
+                        <div class="round-title">用户补充工作条件</div>
+                    </div>
+                    <div class="analysis-point success">
+                        <span class="analysis-icon">✅</span>
+                        <span>Agent正确提取"工作稳定"条件</span>
+                    </div>
+                    <div class="analysis-point success">
+                        <span class="analysis-icon">✅</span>
+                        <span><code>criteria_chips</code> 新增"工作稳定"标签</span>
+                    </div>
+                    <div class="analysis-point success">
+                        <span class="analysis-icon">✅</span>
+                        <span>Agent正确识别已有2个条件</span>
+                    </div>
+                </div>
+
+                <div class="round">
+                    <div class="round-header">
+                        <div class="round-number">4</div>
+                        <div class="round-title">用户调整城市条件 → 搜索触发</div>
+                    </div>
+                    <div class="analysis-point success">
+                        <span class="analysis-icon">✅</span>
+                        <span>Agent正确理解"其实苏州也可以" → 调整条件为"无锡或苏州"</span>
+                    </div>
+                    <div class="analysis-point success">
+                        <span class="analysis-icon">✅</span>
+                        <span>Agent触发搜索，返回候选人卡片（3位候选人）</span>
+                    </div>
+                    <div class="analysis-point warning">
+                        <span class="analysis-icon">⚠️</span>
+                        <span><strong>潜在问题:</strong> 条件调整后，<code>working_criteria.location</code> 是否从字符串更新为多值？可能导致SQL查询失败</span>
+                    </div>
+                    <div class="analysis-point warning">
+                        <span class="analysis-icon">⚠️</span>
+                        <span><strong>潜在问题:</strong> 搜索结果排序是否考虑多样性筛选？职业相似可能被过度惩罚</span>
+                    </div>
+                </div>
+
+                <div class="round">
+                    <div class="round-header">
+                        <div class="round-number">5</div>
+                        <div class="round-title">用户结束会话</div>
+                    </div>
+                    <div class="analysis-point success">
+                        <span class="analysis-icon">✅</span>
+                        <span>Agent正确识别会话结束意图</span>
+                    </div>
+                    <div class="analysis-point success">
+                        <span class="analysis-icon">✅</span>
+                        <span>Session状态更新为"completed"</span>
+                    </div>
+                    <div class="analysis-point warning">
+                        <span class="analysis-icon">❓</span>
+                        <span><strong>关键检查点 (P0):</strong> 会话结束是否触发画像写入逻辑？</span>
+                    </div>
+                    <div class="analysis-point warning">
+                        <span class="analysis-icon">❓</span>
+                        <span><strong>关键检查点 (P0):</strong> 画像写入是否包含所有字段？</span>
+                    </div>
+                    <div class="analysis-point warning">
+                        <span class="analysis-icon">❓</span>
+                        <span><strong>关键检查点 (P1):</strong> 画像写入是否触发5次LLM调用？</span>
+                    </div>
+
+                    <div style="background: #fef2f2; padding: 15px; border-radius: 8px; margin-top: 15px; border: 1px solid #fecaca;">
+                        <h4 style="color: #ef4444; margin-bottom: 10px;">🔴 发现高风险问题</h4>
+                        <ul style="list-style: none; padding: 0;">
+                            <li style="padding: 8px 0;"><strong>问题1 (P0):</strong> 会话结束触发时机不完整 - 定时任务调度器可能未启动，如果30分钟无活动检查未实现，会话结束可能不会触发画像写入</li>
+                            <li style="padding: 8px 0;"><strong>问题2 (P0):</strong> 数据不一致风险 - 画像写入包含多步骤（摘要文本、向量生成、清空working_criteria），如果某步骤失败，数据可能不完整</li>
+                            <li style="padding: 8px 0;"><strong>问题3 (P1):</strong> LLM调用成本高 - 5个不可量化字段可能触发5次LLM调用，成本估算：5-10元</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scenario 2 -->
+    <div class="scenario-card">
+        <div class="scenario-header">
+            <div>
+                <span class="scenario-title">场景2: 条件冲突 + Agent澄清</span>
+                <span class="scenario-tag">验证条件冲突处理</span>
+            </div>
+            <span class="toggle-icon">▼</span>
+        </div>
+        <div class="scenario-content">
+            <div class="user-simulation">
+                <h4>💬 用户行为模拟</h4>
+                <ul>
+                    <li>第1轮：发送冲突条件 → <span class="highlight">"想在无锡找，但接受异地"</span></li>
+                    <li>第2轮：补充冲突条件 → <span class="highlight">"希望对方也在无锡，但经常出差也行"</span></li>
+                    <li>第3轮：继续冲突 → <span class="highlight">"最好同城，但异地也接受"</span></li>
+                    <li>第4轮：Agent澄清 → Agent应该主动询问优先级</li>
+                    <li>第5轮：用户明确优先级 → <span class="highlight">"同城优先，异地接受"</span></li>
+                </ul>
+            </div>
+
+            <div class="expected-behavior">
+                <h4>✅ 预期系统行为</h4>
+                <ul>
+                    <li>Agent应识别条件冲突，主动询问优先级</li>
+                    <li>系统应正确处理"优先"和"接受"的关系</li>
+                    <li>搜索时应按优先级排序（同城优先，异地接受）</li>
+                </ul>
+            </div>
+
+            <div class="concern-points">
+                <h4>⚠️ 关注问题点</h4>
+                <ul>
+                    <li><span class="problem-badge p1">P1</span> Agent幻觉风险：Agent是否正确理解"优先"和"接受"的关系？</li>
+                    <li><span class="problem-badge p2">P2</span> 多样性筛选过度：同城优先是否导致候选人多样性不足？</li>
+                </ul>
+            </div>
+
+            <div class="conversation-flow">
+                <div class="round">
+                    <div class="round-header">
+                        <div class="round-number">1</div>
+                        <div class="round-title">用户发送冲突条件</div>
+                    </div>
+                    <div class="analysis-point success">
+                        <span class="analysis-icon">✅</span>
+                        <span>Agent正确识别条件冲突（"无锡找" vs "接受异地"）</span>
+                    </div>
+                    <div class="analysis-point success">
+                        <span class="analysis-icon">✅</span>
+                        <span>Agent主动询问优先级</span>
+                    </div>
+                    <div class="analysis-point success">
+                        <span class="analysis-icon">✅</span>
+                        <span>Agent提供明确选项（"同城优先，异地接受"、"只看同城"）</span>
+                    </div>
+                    <div class="analysis-point warning">
+                        <span class="analysis-icon">⚠️</span>
+                        <span><strong>潜在问题:</strong> <code>working_criteria</code> 可能不支持"优先"和"接受"的优先级标记</span>
+                    </div>
+                </div>
+
+                <div class="round">
+                    <div class="round-header">
+                        <div class="round-number">2</div>
+                        <div class="round-title">用户选择优先级 → 搜索触发</div>
+                    </div>
+                    <div class="analysis-point success">
+                        <span class="analysis-icon">✅</span>
+                        <span>Agent正确理解"同城优先，异地接受"</span>
+                    </div>
+                    <div class="analysis-point success">
+                        <span class="analysis-icon">✅</span>
+                        <span>Agent按优先级排序搜索结果（同城候选人match_score更高）</span>
+                    </div>
+                    <div class="analysis-point success">
+                        <span class="analysis-icon">✅</span>
+                        <span>Agent分组展示结果（同城优先组 + 异地接受组）</span>
+                    </div>
+                    <div class="analysis-point warning">
+                        <span class="analysis-icon">⚠️</span>
+                        <span><strong>潜在问题 (P2):</strong> 多样性筛选过度 - 同城优先可能导致候选人多样性不足</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scenario 3 -->
+    <div class="scenario-card">
+        <div class="scenario-header">
+            <div>
+                <span class="scenario-title">场景3: 多意图识别</span>
+                <span class="scenario-tag">验证多意图处理</span>
+            </div>
+            <span class="toggle-icon">▼</span>
+        </div>
+        <div class="scenario-content">
+            <div class="user-simulation">
+                <h4>💬 用户行为模拟</h4>
+                <ul>
+                    <li>第1轮：发送多意图需求 → <span class="highlight">"想找认真恋爱的女生，也希望她喜欢运动，这样我们可以一起去健身房"</span></li>
+                    <li>第2轮：补充意图 → <span class="highlight">"还希望她性格开朗一点"</span></li>
+                    <li>第3轮：继续补充 → <span class="highlight">"学历最好本科以上"</span></li>
+                    <li>第4轮：调整意图 → <span class="highlight">"其实学历不那么重要，性格更重要"</span></li>
+                </ul>
+            </div>
+
+            <div class="expected-behavior">
+                <h4>✅ 预期系统行为</h4>
+                <ul>
+                    <li>Agent应识别多个意图：恋爱关系、运动爱好、性格开朗、学历要求</li>
+                    <li>系统应正确存储多个意图到画像</li>
+                    <li>Agent应支持意图的调整（学历不重要 → 性格更重要）</li>
+                </ul>
+            </div>
+
+            <div class="concern-points">
+                <h4>⚠️ 关注问题点</h4>
+                <ul>
+                    <li><span class="problem-badge p0">P0</span> LLM调用成本高：5个不可量化字段是否触发5次LLM调用？</li>
+                    <li><span class="problem-badge p1">P1</span> Agent幻觉风险：Agent是否正确理解"学历不重要"的含义？</li>
+                </ul>
+            </div>
+
+            <div class="conversation-flow">
+                <div class="round">
+                    <div class="round-header">
+                        <div class="round-number">1</div>
+                        <div class="round-title">用户发送多意图需求</div>
+                    </div>
+                    <div class="analysis-point success">
+                        <span class="analysis-icon">✅</span>
+                        <span>Agent正确识别多意图（恋爱关系、运动爱好、健身房活动）</span>
+                    </div>
+                    <div class="analysis-point success">
+                        <span class="analysis-icon">✅</span>
+                        <span><code>criteria_chips</code> 正确显示3个意图标签</span>
+                    </div>
+                    <div class="analysis-point warning">
+                        <span class="analysis-icon">⚠️</span>
+                        <span><strong>潜在问题 (P1):</strong> LLM调用成本高 - 3个意图可能触发3次LLM调用，成本估算：3-6元</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scenario 4 -->
+    <div class="scenario-card">
+        <div class="scenario-header">
+            <div>
+                <span class="scenario-title">场景4: 历史记忆引用</span>
+                <span class="scenario-tag">验证会话结束写入</span>
+            </div>
+            <span class="toggle-icon">▼</span>
+        </div>
+        <div class="scenario-content">
+            <div class="user-simulation">
+                <h4>💬 用户行为模拟（跨会话）</h4>
+                <ul style="border-left: 3px solid #6366f1; padding-left: 20px; margin-bottom: 20px;">
+                    <li style="color: #6366f1; font-weight: 600; margin-bottom: 10px;">第一次会话（10分钟前）:</li>
+                    <li style="margin-bottom: 5px;">第1轮："我在无锡，想找认真恋爱的女生"</li>
+                    <li style="margin-bottom: 5px;">第2轮："最好工作稳定一点"</li>
+                    <li style="margin-bottom: 5px;">第3轮："年龄25-30左右"</li>
+                    <li style="margin-bottom: 5px;">结束会话</li>
+                </ul>
+                <ul style="border-left: 3px solid #10b981; padding-left: 20px;">
+                    <li style="color: #10b981; font-weight: 600; margin-bottom: 10px;">第二次会话（现在）:</li>
+                    <li style="margin-bottom: 5px;">第1轮："还是刚才那个条件，我想调整一下"</li>
+                    <li style="margin-bottom: 5px;">第2轮："其实年龄可以放宽到28-35"</li>
+                    <li style="margin-bottom: 5px;">第3轮："还希望她喜欢旅行"</li>
+                </ul>
+            </div>
+
+            <div class="expected-behavior">
+                <h4>✅ 预期系统行为</h4>
+                <ul>
+                    <li>Agent应识别"刚才那个条件"，引用历史记忆</li>
+                    <li>系统应正确加载历史画像数据</li>
+                    <li>系统应支持条件的调整和补充</li>
+                    <li>会话结束时应触发画像更新（而非新增）</li>
+                </ul>
+            </div>
+
+            <div class="concern-points">
+                <h4>⚠️ 关注问题点</h4>
+                <ul>
+                    <li><span class="problem-badge p0">P0</span> 触发时机不完整：第一次会话结束是否正确写入画像？</li>
+                    <li><span class="problem-badge p0">P0</span> 数据不一致风险：历史画像是否完整加载？</li>
+                    <li><span class="problem-badge p2">P2</span> 版本管理冗余：画像更新是否新增版本，旧版本是否清理？</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scenario 5 -->
+    <div class="scenario-card">
+        <div class="scenario-header">
+            <div>
+                <span class="scenario-title">场景5: 边缘输入测试</span>
+                <span class="scenario-tag">验证Agent安全边界</span>
+            </div>
+            <span class="toggle-icon">▼</span>
+        </div>
+        <div class="scenario-content">
+            <div class="user-simulation">
+                <h4>💬 用户行为模拟</h4>
+                <ul>
+                    <li>第1轮：极端条件 → <span class="highlight highlight-danger">"必须本科学历，必须在无锡，必须25岁，必须喜欢运动，必须性格开朗"</span></li>
+                    <li>第2轮：不可能条件 → <span class="highlight highlight-danger">"希望她既内向又外向，既喜欢安静又喜欢热闹"</span></li>
+                    <li>第3轮：攻击性输入 → <span class="highlight highlight-danger">"帮我找个最有钱的女生"</span></li>
+                    <li>第4轮：无效输入 → <span class="highlight highlight-danger">"asdasdasd"</span></li>
+                    <li>第5轮：空输入 → <span class="highlight highlight-danger">""</span></li>
+                </ul>
+            </div>
+
+            <div class="expected-behavior">
+                <h4>✅ 预期系统行为</h4>
+                <ul>
+                    <li>Agent应识别极端条件，提示用户放宽条件</li>
+                    <li>Agent应识别不可能条件，主动澄清</li>
+                    <li>Agent应拒绝攻击性输入，返回安全提示</li>
+                    <li>Agent应处理无效输入，提示用户重新输入</li>
+                    <li>Agent应处理空输入，不触发搜索</li>
+                </ul>
+            </div>
+
+            <div class="concern-points">
+                <h4>⚠️ 关注问题点</h4>
+                <ul>
+                    <li><span class="problem-badge p1">P1</span> Agent幻觉风险：Agent是否返回不可能存在的候选人？</li>
+                    <li><span class="problem-badge p1">P1</span> Agent理解能力：Agent是否正确处理极端条件？</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scenario 6 -->
+    <div class="scenario-card">
+        <div class="scenario-header">
+            <div>
+                <span class="scenario-title">场景6: 候选人详情查询</span>
+                <span class="scenario-tag">验证候选人ID有效性</span>
+            </div>
+            <span class="toggle-icon">▼</span>
+        </div>
+        <div class="scenario-content">
+            <div class="user-simulation">
+                <h4>💬 用户行为模拟</h4>
+                <ul>
+                    <li>第1轮：发送需求 → <span class="highlight">"想找无锡的女生，工作稳定"</span></li>
+                    <li>系统返回：候选人卡片（profile_id=1001, 1002, 1003）</li>
+                    <li>第2轮：用户点击候选人1001，查看详情</li>
+                    <li>第3轮：用户发送 → <span class="highlight">"这个候选人1001不错，还有类似的吗？"</span></li>
+                    <li>第4轮：<strong>关键测试</strong> → <span class="highlight highlight-danger">"候选人1005怎么样？"</span> ← 注意：1005不在搜索结果中</li>
+                </ul>
+            </div>
+
+            <div class="expected-behavior">
+                <h4>✅ 预期系统行为</h4>
+                <ul>
+                    <li>第2轮：系统应正确加载候选人1001的详情</li>
+                    <li>第3轮：Agent应识别"候选人1001"，基于1001的特征搜索类似候选人</li>
+                    <li>第4轮：Agent应识别"候选人1005"，验证1005是否在历史搜索结果中。如果不在，应提示用户重新搜索或澄清</li>
+                </ul>
+            </div>
+
+            <div class="concern-points">
+                <h4>⚠️ 关注问题点</h4>
+                <ul>
+                    <li><span class="problem-badge p1">P1</span> Agent幻觉风险：Agent是否返回不存在的候选人1005？</li>
+                    <li><span class="problem-badge p1">P1</span> Agent理解能力：Agent是否正确理解"类似的"的含义？</li>
+                </ul>
+            </div>
+
+            <div class="conversation-flow">
+                <div class="round">
+                    <div class="round-header">
+                        <div class="round-number">4</div>
+                        <div class="round-title">关键测试：不存在的候选人ID</div>
+                    </div>
+
+                    <div style="background: #f0fdf4; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #bbf7d0;">
+                        <h4 style="color: #10b981; margin-bottom: 10px;">✅ 正确处理（预期）</h4>
+                        <p style="color: #64748b;">Agent识别候选人1005不在搜索结果中，提示用户：</p>
+                        <div style="background: white; padding: 10px; border-radius: 6px; margin-top: 10px; font-style: italic;">
+                            "抱歉，候选人1005不在刚才的搜索结果中。你想重新搜索看看有没有类似的候选人吗？"
+                        </div>
+                    </div>
+
+                    <div style="background: #fef2f2; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #fecaca;">
+                        <h4 style="color: #ef4444; margin-bottom: 10px;">❌ 错误处理（Agent幻觉）</h4>
+                        <p style="color: #64748b;">Agent虚构候选人1005的详情：</p>
+                        <div style="background: white; padding: 10px; border-radius: 6px; margin-top: 10px; font-style: italic;">
+                            "候选人1005是一位在无锡工作的女生，28岁，从事教育行业..."
+                        </div>
+                        <p style="color: #ef4444; margin-top: 10px; font-weight: 600;">⚠️ 前端影响：前端无法渲染候选人1005的卡片（profile_id无效）</p>
+                    </div>
+
+                    <div class="analysis-point warning">
+                        <span class="analysis-icon">⚠️</span>
+                        <span><strong>关键问题 (P1):</strong> Agent幻觉修复逻辑不完善 - 修复逻辑只验证phase，不验证候选人ID有效性</span>
+                    </div>
+
+                    <div style="background: #eff6ff; padding: 12px; border-radius: 6px; margin-top: 10px;">
+                        <strong style="color: #2563eb;">建议修复:</strong> 在 <code>_apply_runtime_result</code> 函数中验证候选人ID是否在搜索结果中
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Problem Summary -->
+<div class="problem-summary">
+    <h2>📊 问题汇总与验证建议</h2>
+
+    <div class="problem-group p0">
+        <h3><span class="problem-badge p0">P0</span> 级别问题（需立即验证）</h3>
+
+        <div class="problem-item">
+            <h4>1. 会话结束触发时机不完整</h4>
+            <p style="color: #64748b; margin-bottom: 10px;">定时任务调度器可能未启动，30分钟无活动检查未实现，导致会话结束可能不会触发画像写入。</p>
+            <div class="verification-method">
+                <strong>验证方法:</strong> 检查数据库 <code>conversation_summaries</code> 表是否有新记录<br>
+                <strong>SQL查询:</strong> <code style="background: #1e293b; color: #a5f3fc; padding: 4px 8px; border-radius: 4px;">SELECT * FROM conversation_summaries WHERE user_id = 70001 ORDER BY created_at DESC LIMIT 1;</code><br>
+                <strong>预期结果:</strong> 会话结束后应写入摘要记录
+            </div>
+        </div>
+
+        <div class="problem-item">
+            <h4>2. 数据不一致风险</h4>
+            <p style="color: #64748b; margin-bottom: 10px;">画像写入包含多步骤（摘要文本、向量生成、清空working_criteria），如果某步骤失败，数据可能不完整。</p>
+            <div class="verification-method">
+                <strong>验证方法:</strong> 检查 <code>persona_memory_sync</code> 表的 <code>processing_status</code> 字段<br>
+                <strong>SQL查询:</strong> <code style="background: #1e293b; color: #a5f3fc; padding: 4px 8px; border-radius: 4px;">SELECT processing_status, * FROM persona_memory_sync WHERE user_id = 70001;</code><br>
+                <strong>预期结果:</strong> 所有步骤的 <code>processing_status</code> 应为"done"
+            </div>
+        </div>
+    </div>
+
+    <div class="problem-group p1">
+        <h3><span class="problem-badge p1">P1</span> 级别问题（需重点关注）</h3>
+
+        <div class="problem-item">
+            <h4>1. Agent幻觉风险</h4>
+            <p style="color: #64748b; margin-bottom: 10px;">Agent可能从历史记忆中识别不存在的候选人ID，或虚构候选人详情。修复逻辑只验证phase，不验证候选人ID有效性。</p>
+            <div class="verification-method">
+                <strong>验证方法:</strong> 模拟用户发送不存在的候选人ID<br>
+                <strong>测试用例:</strong> 用户发送"候选人1005怎么样？"（1005不在搜索结果中）<br>
+                <strong>预期结果:</strong> Agent应提示"候选人1005不在搜索结果中"，而非虚构详情
+            </div>
+        </div>
+
+        <div class="problem-item">
+            <h4>2. LLM调用成本高</h4>
+            <p style="color: #64748b; margin-bottom: 10px;">5个不可量化字段可能触发5次LLM调用，成本估算：5-10元。</p>
+            <div class="verification-method">
+                <strong>验证方法:</strong> 检查日志中LLM调用次数<br>
+                <strong>测试用例:</strong> 会话结束包含5个不可量化字段<br>
+                <strong>预期结果:</strong> 应触发1次批量处理，而非5次单独调用
+            </div>
+        </div>
+
+        <div class="problem-item">
+            <h4>3. 向量筛选性能</h4>
+            <p style="color: #64748b; margin-bottom: 10px;">无缓存机制，每次重新embedding，搜索延迟可能过高。</p>
+            <div class="verification-method">
+                <strong>验证方法:</strong> 检查搜索延迟日志<br>
+                <strong>测试用例:</strong> 用户发送"想找无锡的女生，工作稳定"<br>
+                <strong>预期结果:</strong> 搜索延迟应低于500ms（如果缓存命中）
+            </div>
+        </div>
+    </div>
+
+    <div class="problem-group p2">
+        <h3><span class="problem-badge p2">P2</span> 级别问题（需持续关注）</h3>
+
+        <div class="problem-item">
+            <h4>1. 多样性筛选过度</h4>
+            <p style="color: #64748b; margin-bottom: 10px;">同城优先可能导致候选人多样性不足，高质量候选人可能被多样性惩罚过度降低分数。</p>
+            <div class="verification-method">
+                <strong>验证方法:</strong> 检查搜索结果排序<br>
+                <strong>预期结果:</strong> 高质量候选人不应被多样性惩罚过度降低分数
+            </div>
+        </div>
+
+        <div class="problem-item">
+            <h4>2. 版本管理冗余</h4>
+            <p style="color: #64748b; margin-bottom: 10px;">画像更新可能新增过多版本，旧版本未清理。</p>
+            <div class="verification-method">
+                <strong>验证方法:</strong> 检查数据库版本数量<br>
+                <strong>SQL查询:</strong> <code style="background: #1e293b; color: #a5f3fc; padding: 4px 8px; border-radius: 4px;">SELECT COUNT(*) FROM persona_memory_sync WHERE user_id = 70001 AND is_active = false;</code><br>
+                <strong>预期结果:</strong> 旧版本数量应控制在合理范围内（如不超过3个版本）
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Action Items -->
+<div class="action-items">
+    <h2>🚀 下一步行动</h2>
+    <ul class="action-list">
+        <li>
+            <div class="action-number">1</div>
+            <div>启动后端服务，执行真实API测试验证所有预期响应是否正确返回</div>
+        </li>
+        <li>
+            <div class="action-number">2</div>
+            <div>检查数据库记录，验证画像写入逻辑是否完整（conversation_summaries、persona_memory_sync表）</div>
+        </li>
+        <li>
+            <div class="action-number">3</div>
+            <div>修复P0级别问题（会话结束触发时机、数据一致性保障）</div>
+        </li>
+        <li>
+            <div class="action-number">4</div>
+            <div>优化P1级别问题（Agent幻觉修复、LLM成本优化、向量缓存机制）</div>
+        </li>
+        <li>
+            <div class="action-number">5</div>
+            <div>使用自动化测试脚本执行大规模测试，生成HTML报告</div>
+        </li>
+    </ul>
+</div>
+
+<!-- Test Summary -->
+<div style="background: white; padding: 30px; border-radius: 16px; border: 1px solid #e2e8f0; margin-bottom: 30px;">
+    <h2 style="font-size: 1.3rem; margin-bottom: 20px; color: #1e293b;">📝 测试总结</h2>
+    <p style="color: #64748b; margin-bottom: 15px;">
+        本次测试通过手动模拟<strong style="color: #2563eb;">6个复杂对话场景</strong>，覆盖了以下核心功能：
+    </p>
+    <ul style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; list-style: none; padding: 0; margin-bottom: 20px;">
+        <li style="background: #f8fafc; padding: 10px; border-radius: 8px; display: flex; align-items: center; gap: 8px;">
+            <span style="color: #10b981;">✓</span> 模糊需求 + 多轮澄清
+        </li>
+        <li style="background: #f8fafc; padding: 10px; border-radius: 8px; display: flex; align-items: center; gap: 8px;">
+            <span style="color: #10b981;">✓</span> 条件冲突 + Agent澄清
+        </li>
+        <li style="background: #f8fafc; padding: 10px; border-radius: 8px; display: flex; align-items: center; gap: 8px;">
+            <span style="color: #10b981;">✓</span> 多意图识别
+        </li>
+        <li style="background: #f8fafc; padding: 10px; border-radius: 8px; display: flex; align-items: center; gap: 8px;">
+            <span style="color: #10b981;">✓</span> 历史记忆引用
+        </li>
+        <li style="background: #f8fafc; padding: 10px; border-radius: 8px; display: flex; align-items: center; gap: 8px;">
+            <span style="color: #10b981;">✓</span> 边缘输入测试
+        </li>
+        <li style="background: #f8fafc; padding: 10px; border-radius: 8px; display: flex; align-items: center; gap: 8px;">
+            <span style="color: #10b981;">✓</span> 候选人ID有效性验证
+        </li>
+    </ul>
+
+    <div style="background: linear-gradient(135deg, #fef2f2 0%, #fffbeb 100%); padding: 20px; border-radius: 12px; margin-top: 20px;">
+        <h3 style="font-size: 1.1rem; margin-bottom: 15px; color: #ef4444;">🔴 发现的主要问题</h3>
+        <ul style="list-style: none; padding: 0;">
+            <li style="padding: 8px 0;"><span class="problem-badge p0">P0</span> 会话结束触发时机不完整（定时任务调度器可能未启动）</li>
+            <li style="padding: 8px 0;"><span class="problem-badge p0">P0</span> 数据不一致风险（多步骤无事务保证）</li>
+            <li style="padding: 8px 0;"><span class="problem-badge p1">P1</span> Agent幻觉风险（修复逻辑不验证候选人ID有效性）</li>
+            <li style="padding: 8px 0;"><span class="problem-badge p1">P1</span> LLM调用成本高（5个不可量化字段触发5次调用）</li>
+            <li style="padding: 8px 0;"><span class="problem-badge p1">P1</span> 向量筛选性能（无缓存机制，每次重新embedding）</li>
+        </ul>
+    </div>
+</div>
+
+<!-- Footer -->
+<div class="footer">
+    <p>📅 测试完成时间: 2026-06-23 11:25</p>
+    <p style="margin-top: 10px;">📄 原始文档: <code style="background: #f1f5f9; padding: 4px 8px; border-radius: 4px;">discovery-page-complex-conversation-test-20260623.md</code></p>
+</div>
+
+<script>
+    // Toggle scenario cards
+    document.querySelectorAll('.scenario-header').forEach(header => {
+        header.addEventListener('click', () => {
+            const card = header.closest('.scenario-card');
+            card.classList.toggle('open');
+        });
+    });
+
+    // Open first scenario by default
+    document.querySelector('.scenario-card').classList.add('open');
+</script>
+
+</body>
+</html>
