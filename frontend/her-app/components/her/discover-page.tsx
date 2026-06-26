@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { ArrowLeft, BadgeCheck, ChevronDown, Mic, Plus, Search, Send, X, Brain, Heart, Sparkles, ClipboardList, Coins, History } from 'lucide-react'
 import { AssessmentCardRenderer } from '@/components/assessment/AssessmentCardRenderer'
 import { XiaoyaAvatar } from '@/components/her/ui/xiaoya-avatar'
@@ -233,6 +233,7 @@ export default function DiscoverPage({
   onViewCandidate,
   onSessionIdChange,
 }: DiscoverPageProps) {
+  const VOICE_CANCEL_THRESHOLD_PX = 72
   const {
     timelineItems,
     inputValue,
@@ -256,6 +257,12 @@ export default function DiscoverPage({
 
   // 新增：会话列表显示状态
   const [showSessionList, setShowSessionList] = useState(false)
+  const [isVoiceCanceling, setIsVoiceCanceling] = useState(false)
+  const isVoiceCancelingRef = useRef(false)
+  const voiceGestureRef = useRef<{
+    pointerId: number | null
+    startY: number
+  }>({ pointerId: null, startY: 0 })
 
   // Voice input functionality - 按住说话、松开自动发送
   const {
@@ -284,6 +291,18 @@ export default function DiscoverPage({
     const remainingSeconds = seconds % 60
     return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
   }
+
+  useEffect(() => {
+    isVoiceCancelingRef.current = isVoiceCanceling
+  }, [isVoiceCanceling])
+
+  useEffect(() => {
+    if (!isRecording) {
+      setIsVoiceCanceling(false)
+      isVoiceCancelingRef.current = false
+      voiceGestureRef.current = { pointerId: null, startY: 0 }
+    }
+  }, [isRecording])
 
   const prefChips = currentPrefs.length
     ? currentPrefs
@@ -718,13 +737,29 @@ export default function DiscoverPage({
           {isRecording && (
             <div className="flex justify-end animate-fade-in-up">
               <div className="max-w-[80%]">
-                <div className="rounded-2xl bg-primary/20 border border-primary/30 rounded-br-md px-4 py-3">
+                <div
+                  className={cn(
+                    'rounded-2xl border rounded-br-md px-4 py-3 transition-all',
+                    isVoiceCanceling
+                      ? 'bg-destructive/15 border-destructive/30'
+                      : 'bg-primary/20 border-primary/30',
+                  )}
+                >
                   <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-rose rounded-full animate-pulse" />
-                    <span className="text-sm text-primary font-medium">正在录音</span>
+                    <div
+                      className={cn(
+                        'w-2 h-2 rounded-full animate-pulse',
+                        isVoiceCanceling ? 'bg-destructive' : 'bg-rose',
+                      )}
+                    />
+                    <span className={cn('text-sm font-medium', isVoiceCanceling ? 'text-destructive' : 'text-primary')}>
+                      {isVoiceCanceling ? '松开取消' : '正在录音'}
+                    </span>
                     <span className="text-sm text-muted-foreground">{formatRecordingTime(recordingDuration)}</span>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">松开发送 · 上滑取消</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {isVoiceCanceling ? '松开后将取消这条语音' : '松开发送 · 上滑取消'}
+                  </p>
                 </div>
               </div>
             </div>
@@ -899,36 +934,59 @@ export default function DiscoverPage({
           <button
             aria-label="按住说话"
             onPointerDown={(e) => {
-              // 防止默认行为（如触摸设备的滚动）
               e.preventDefault()
-              e.currentTarget.releasePointerCapture(e.pointerId)
+              e.currentTarget.setPointerCapture(e.pointerId)
+              voiceGestureRef.current = {
+                pointerId: e.pointerId,
+                startY: e.clientY,
+              }
+              setIsVoiceCanceling(false)
+              isVoiceCancelingRef.current = false
               if (!isRecording && !composerDisabled && !isSubmittingTurn && !isProcessing) {
                 void startRecording()
               }
             }}
+            onPointerMove={(e) => {
+              if (voiceGestureRef.current.pointerId !== e.pointerId || !isRecording) return
+              const deltaY = voiceGestureRef.current.startY - e.clientY
+              const nextCanceling = deltaY >= VOICE_CANCEL_THRESHOLD_PX
+              isVoiceCancelingRef.current = nextCanceling
+              setIsVoiceCanceling(nextCanceling)
+            }}
             onPointerUp={(e) => {
               e.preventDefault()
-              if (isRecording) {
-                stopRecording()
+              if (voiceGestureRef.current.pointerId === e.pointerId) {
+                e.currentTarget.releasePointerCapture(e.pointerId)
               }
+              if (isRecording) {
+                if (isVoiceCancelingRef.current) {
+                  cancelRecording()
+                } else {
+                  stopRecording()
+                }
+              }
+              setIsVoiceCanceling(false)
+              isVoiceCancelingRef.current = false
+              voiceGestureRef.current = { pointerId: null, startY: 0 }
             }}
-            onPointerLeave={() => {
-              // 如果手指移出按钮区域，取消录音
+            onPointerCancel={(e) => {
+              if (voiceGestureRef.current.pointerId === e.pointerId) {
+                e.currentTarget.releasePointerCapture(e.pointerId)
+              }
               if (isRecording) {
                 cancelRecording()
               }
-            }}
-            onPointerCancel={() => {
-              // 触摸被取消时（如系统弹窗），取消录音
-              if (isRecording) {
-                cancelRecording()
-              }
+              setIsVoiceCanceling(false)
+              isVoiceCancelingRef.current = false
+              voiceGestureRef.current = { pointerId: null, startY: 0 }
             }}
             disabled={composerDisabled || isSubmittingTurn || isProcessing}
             className={cn(
               'w-8 h-8 rounded-full flex items-center justify-center transition-all touch-none select-none',
               isRecording
-                ? 'bg-rose text-white animate-pulse scale-110'
+                ? isVoiceCanceling
+                  ? 'bg-destructive text-white scale-110'
+                  : 'bg-rose text-white animate-pulse scale-110'
                 : 'text-muted-foreground hover:text-foreground hover:bg-secondary/80 active:scale-95'
             )}
           >
@@ -971,4 +1029,3 @@ export default function DiscoverPage({
     </div>
   )
 }
-
