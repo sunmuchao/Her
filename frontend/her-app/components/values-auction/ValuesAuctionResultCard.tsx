@@ -46,7 +46,33 @@ export function ValuesAuctionResultCardComponent({ card, onViewInterpretation, o
   const [isAutoRevealing, setIsAutoRevealing] = useState(true)
   const [showConfetti, setShowConfetti] = useState(false)
   const [isRevealed, setIsRevealed] = useState(false)
-  
+
+  // 彩纸动画随机值（客户端生成，避免 Hydration 错误）
+  const [confettiStyles, setConfettiStyles] = useState<Array<{
+    left: string
+    backgroundColor: string
+    borderRadius: string
+    animationDelay: string
+    animationDuration: string
+    transform: string
+  }>>([])
+
+  // 在客户端生成随机值（仅在 showConfetti 时）
+  useEffect(() => {
+    if (showConfetti && confettiStyles.length === 0) {
+      const colors = ['var(--amber)', 'var(--gold)', 'var(--rose)', 'var(--lavender)']
+      const styles = Array.from({ length: 30 }).map(() => ({
+        left: `${Math.random() * 100}%`,
+        backgroundColor: colors[Math.floor(Math.random() * 4)],
+        borderRadius: Math.random() > 0.5 ? '50%' : '2px',
+        animationDelay: `${Math.random() * 500}ms`,
+        animationDuration: `${2000 + Math.random() * 1000}ms`,
+        transform: `rotate(${Math.random() * 360}deg)`,
+      }))
+      setConfettiStyles(styles)
+    }
+  }, [showConfetti, confettiStyles.length])
+
   // 初始入场动画
   useEffect(() => {
     const timer = setTimeout(() => setIsRevealed(true), 100)
@@ -93,20 +119,20 @@ export function ValuesAuctionResultCardComponent({ card, onViewInterpretation, o
   return (
     <>
       {/* 简单的庆祝效果 */}
-      {showConfetti && (
+      {showConfetti && confettiStyles.length > 0 && (
         <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">
-          {Array.from({ length: 30 }).map((_, i) => (
+          {confettiStyles.map((style, i) => (
             <div
               key={i}
               className="absolute w-3 h-3 animate-confetti-fall"
               style={{
-                left: `${Math.random() * 100}%`,
+                left: style.left,
                 top: '-20px',
-                backgroundColor: ['var(--amber)', 'var(--gold)', 'var(--rose)', 'var(--lavender)'][Math.floor(Math.random() * 4)],
-                borderRadius: Math.random() > 0.5 ? '50%' : '2px',
-                animationDelay: `${Math.random() * 500}ms`,
-                animationDuration: `${2000 + Math.random() * 1000}ms`,
-                transform: `rotate(${Math.random() * 360}deg)`,
+                backgroundColor: style.backgroundColor,
+                borderRadius: style.borderRadius,
+                animationDelay: style.animationDelay,
+                animationDuration: style.animationDuration,
+                transform: style.transform,
               }}
             />
           ))}

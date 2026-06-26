@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   Activity,
   ArrowLeft,
@@ -28,7 +29,7 @@ import { ErrorState } from '@/components/her/ui/error-state'
 import { FadeIn } from '@/components/her/ui/animations'
 
 type OpsWorkbenchPageProps = {
-  onBack?: () => void
+  onBack?: () => void // 保留兼容性，但优先使用 router.back()
 }
 
 const RECOMMENDATION_ACTIONS = ['skip', 'save', 'direct_greet'] as const
@@ -43,6 +44,7 @@ function StatCard({ label, value }: { label: string; value: string | number }) {
 }
 
 export default function OpsWorkbenchPage({ onBack }: OpsWorkbenchPageProps) {
+  const router = useRouter()
   const [summary, setSummary] = useState<OpsWorkbenchSummary | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -132,12 +134,10 @@ export default function OpsWorkbenchPage({ onBack }: OpsWorkbenchPageProps) {
   if (loadError) {
     return (
       <div className="min-h-screen p-6">
-        {onBack && (
-          <button type="button" onClick={onBack} className="mb-4 inline-flex items-center gap-2 text-sm text-muted-foreground">
-            <ArrowLeft className="h-4 w-4" />
-            返回
-          </button>
-        )}
+        <button type="button" onClick={() => router.back()} className="mb-4 inline-flex items-center gap-2 text-sm text-muted-foreground">
+          <ArrowLeft className="h-4 w-4" />
+          返回
+        </button>
         <ErrorState
           title="无法打开运营工作台"
           message={loadError}
@@ -155,12 +155,10 @@ export default function OpsWorkbenchPage({ onBack }: OpsWorkbenchPageProps) {
       <div className="sticky top-0 z-20 border-b border-border/50 bg-background/90 backdrop-blur-md px-4 py-4">
         <div className="flex items-center justify-between gap-3">
           <div>
-            {onBack && (
-              <button type="button" onClick={onBack} className="mb-2 inline-flex items-center gap-1 text-xs text-muted-foreground">
-                <ArrowLeft className="h-3.5 w-3.5" />
-                返回
-              </button>
-            )}
+            <button type="button" onClick={() => router.back()} className="mb-2 inline-flex items-center gap-1 text-xs text-muted-foreground">
+              <ArrowLeft className="h-3.5 w-3.5" />
+              返回
+            </button>
             <h1 className="font-serif text-xl text-foreground">红娘协作台</h1>
             <p className="text-xs text-muted-foreground mt-1">§14.3 — 异步任务、关系漏斗与推荐人工介入</p>
           </div>

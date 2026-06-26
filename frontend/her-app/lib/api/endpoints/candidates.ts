@@ -21,15 +21,44 @@ export type CandidateDetailResponse = {
   }
 }
 
+export type CandidateXiaoyaAnalysisResponse = {
+  candidate_id?: number
+  xiaoya_analysis?: string | null
+  xiaoya_analysis_structured?: {
+    summary?: string
+    risk_point?: string
+    first_question?: string
+  } | null
+}
+
 export async function fetchCandidateDetail(params: {
   candidateId: string | number
   sessionId?: string | null
   recommendationId?: string | number | null
+  caseId?: string
+  cardId?: string  // 新增：支持通过card_id验证权限
 }) {
   return gatewayJson<CandidateDetailResponse>(
     `/v1/candidates/${encodeURIComponent(String(params.candidateId))}${queryString({
       session_id: params.sessionId ?? undefined,
       recommendation_id: params.recommendationId ?? undefined,
+      case_id: params.caseId ?? undefined,
+      card_id: params.cardId ?? undefined,  // 新增：传递card_id参数
     })}`,
+  )
+}
+
+export async function fetchCandidateXiaoyaAnalysis(params: {
+  candidateId: string | number
+  sessionId: string
+  refreshKey?: string | number
+  signal?: AbortSignal // Support request cancellation
+}) {
+  return gatewayJson<CandidateXiaoyaAnalysisResponse>(
+    `/v1/candidates/${encodeURIComponent(String(params.candidateId))}/xiaoya-analysis${queryString({
+      session_id: params.sessionId,
+      refresh_key: params.refreshKey ?? undefined,
+    })}`,
+    { signal: params.signal }, // Pass AbortSignal to fetch
   )
 }

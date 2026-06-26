@@ -91,10 +91,11 @@ export function mapCollectedToPreferenceGrid(statements: Record<string, unknown>
   }
 }
 
-export async function fetchProfileFacts(profileId?: number): Promise<ProfileFactsResponse> {
-  const id = profileId ?? getProfileId()
+export async function fetchProfileFacts(): Promise<ProfileFactsResponse> {
+  // /v1/profile/me 只返回当前用户的资料，不接受 profile_id 参数
+  // 这是安全设计：防止 IDOR 攻击（通过修改参数偷看别人资料）
   return gatewayJson<ProfileFactsResponse>(
-    `/v1/profile/me${queryString({ profile_id: id ?? undefined })}`,
+    '/v1/profile/me',
     { includeAuth: true },
   )
 }

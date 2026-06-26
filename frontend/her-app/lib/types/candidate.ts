@@ -13,9 +13,13 @@ export type CandidatePreview = {
   message?: string
   recommendationId?: number
   subscriptionId?: string
+  cardId?: string // 推荐卡片 ID（用于标记已读）
   // 新增：被动推荐场景需要的字段
   caseId?: string // 案件 ID（被动推荐场景）
   viewType?: 'delayed' | 'matched' | 'interest' | 'candidate' // 卡片类型
+  // 新增：来源信息，用于返回导航
+  fromSubPage?: string // 来源子页面（如 'recommendation-inbox'）
+  inboxFilter?: string // 推荐来信筛选状态
 
   // ===== Phase 1: 测评画像字段 =====
   personality_reasons?: string[]  // 测评推荐理由（如["依恋风格互补：你的安全型能稳住TA的焦虑倾向"])

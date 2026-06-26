@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import { ChevronLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -9,19 +10,30 @@ import { WechatIcon } from '@/components/her/ui/wechat-icon'
 interface PhoneLoginPageProps {
   onSubmit: (phone: string) => void | Promise<void>
   onWeChatLogin: () => void
-  onBack: () => void
+  onBack?: () => void // 保留兼容性，但优先使用 router.back()
 }
 
-export default function PhoneLoginPage({ 
-  onSubmit, 
+export default function PhoneLoginPage({
+  onSubmit,
   onWeChatLogin,
-  onBack 
+  onBack
 }: PhoneLoginPageProps) {
+  const router = useRouter()
   const [phone, setPhone] = useState('')
   const [isFocused, setIsFocused] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // 返回逻辑：优先使用 router.back()，如果无历史记录则 fallback 到欢迎页
+  const handleBack = () => {
+    if (typeof window !== 'undefined' && window.history.length > 1) {
+      router.back()
+    } else {
+      // 深度链接进入时，无历史记录，fallback 到欢迎页
+      router.push('/welcome')
+    }
+  }
 
   const formatPhone = (value: string) => {
     const digits = value.replace(/\D/g, '').slice(0, 11)
@@ -68,8 +80,8 @@ export default function PhoneLoginPage({
     <div className="min-h-screen bg-background flex flex-col max-w-md mx-auto">
       {/* Header */}
       <header className="px-4 pt-14 pb-2">
-        <button 
-          onClick={onBack}
+        <button
+          onClick={handleBack}
           className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center"
         >
           <ChevronLeft className="w-5 h-5 text-foreground" />

@@ -1,0 +1,3 @@
+"""SSE Server requirements."""
+
+aiohttp>=3.9.0
