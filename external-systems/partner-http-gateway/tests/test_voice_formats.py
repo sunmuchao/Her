@@ -193,13 +193,15 @@ def test_voice_transcribe_endpoint(base_url: str, audio_path: Path, format_name:
         print(f"   - Audio size: {len(audio_data)} bytes")
 
         # Determine content type
-        content_type_map = {
-            "wav": "audio/wav",
-            "webm": "audio/webm",
-            "mp4": "audio/mp4",
-            "converted.wav": "audio/wav",
-        }
-        content_type = content_type_map.get(format_name, f"audio/{format_name}")
+        if format_name.endswith(".converted"):
+            content_type = "audio/wav"
+        else:
+            content_type_map = {
+                "wav": "audio/wav",
+                "webm": "audio/webm",
+                "mp4": "audio/mp4",
+            }
+            content_type = content_type_map.get(format_name, f"audio/{format_name}")
 
         # Send to Whisper API
         response = requests.post(
@@ -260,12 +262,15 @@ def test_via_nextjs_gateway(nextjs_url: str, audio_path: Path, format_name: str)
             audio_data = f.read()
 
         # Determine content type
-        content_type_map = {
-            "wav": "audio/wav",
-            "webm": "audio/webm",
-            "mp4": "audio/mp4",
-        }
-        content_type = content_type_map.get(format_name, f"audio/{format_name}")
+        if format_name.endswith(".converted"):
+            content_type = "audio/wav"
+        else:
+            content_type_map = {
+                "wav": "audio/wav",
+                "webm": "audio/webm",
+                "mp4": "audio/mp4",
+            }
+            content_type = content_type_map.get(format_name, f"audio/{format_name}")
 
         # Send via Next.js gateway proxy
         response = requests.post(
@@ -314,7 +319,7 @@ def main():
 
     # Configuration
     backend_url = os.environ.get("PARTNER_GATEWAY_BASE_URL", "http://127.0.0.1:8765")
-    nextjs_url = os.environ.get("NEXTJS_URL", "http://localhost:3000")
+    nextjs_url = os.environ.get("NEXTJS_URL", "http://127.0.0.1:3000")
 
     print(f"\nConfiguration:")
     print(f"  Backend URL: {backend_url}")
