@@ -8,13 +8,15 @@ import type { CandidatePreview } from '@/lib/types/candidate'
 
 type DiscoveryCandidateCardProps = {
   candidate: CandidatePreview
-  onViewCandidate: (candidateId: string, candidate?: CandidatePreview) => void
+  sessionId?: string | null
+  onViewCandidate: (candidateId: string, candidate?: CandidatePreview, sessionId?: string | null) => void
   className?: string
   style?: React.CSSProperties
 }
 
 export function DiscoveryCandidateCard({
   candidate,
+  sessionId,
   onViewCandidate,
   className,
   style,
@@ -27,7 +29,7 @@ export function DiscoveryCandidateCard({
   return (
     <button
       type="button"
-      onClick={() => onViewCandidate(candidate.id, candidate)}
+      onClick={() => onViewCandidate(candidate.id, candidate, sessionId)}
       className={cn(
         'w-full bg-card border border-border rounded-xl p-3 text-left transition-all',
         'hover:border-primary/30 hover:shadow-sm',

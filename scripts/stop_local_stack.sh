@@ -110,9 +110,11 @@ echo "Stopping Her local stack..."
 stop_pidfile "scheduler" "${PID_DIR}/scheduler.pid"
 stop_pidfile "frontend" "${PID_DIR}/frontend.pid"
 stop_pidfile "gateway" "${PID_DIR}/gateway.pid"
+stop_pidfile "sse-server" "${PID_DIR}/sse-server.pid"
 
 stop_port "frontend" 3000
 stop_port "gateway" 8765
+stop_port "sse-server" 8081
 
 if [[ "${WITH_MYSQL}" == "1" ]]; then
   if [[ -x "${REPO_ROOT}/stop_partner_mysql.sh" ]]; then

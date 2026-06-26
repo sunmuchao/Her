@@ -20,11 +20,14 @@ export type ProxyIntroCase = {
   outreach_payload?: {
     requester_summary?: {
       requester_name?: string
-      age_bracket?: string
+      age?: string  // 新增：实际年龄（如"28岁")
+      age_bracket?: string  // 兼容性：年龄段（如"28岁"，实际年龄）
       city?: string
       occupation?: string
       education?: string
-      relationship_goal?: string
+      relationship_goal?: string  // 中文关系目标（如"先谈恋爱")
+      relationship_goal_raw?: string  // 英文原始值（如"dating")
+      matched_on?: string[]  // 匹配点列表
       summary_text?: string
       avatar_url?: string
     }
@@ -70,6 +73,27 @@ export async function replyProxyIntroCase(params: {
   )
 }
 
+export async function markInterestCaseViewed(params: { caseId: string; source?: string }) {
+  const result = await gatewayJson<{ case?: ProxyIntroCase; message?: string }>(
+    `/v1/proxy-intro/cases/${encodeURIComponent(params.caseId)}/view`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        source: params.source || 'detail_page',
+      }),
+    },
+  )
+  // 标记成功后触发事件，通知徽章计数刷新（与markRecommendationCardsRead保持一致）
+  if (typeof window !== 'undefined' && typeof CustomEvent === 'function') {
+    // 导入 RECOMMENDATION_READ_EVENT（共用同一个事件）
+    const { RECOMMENDATION_READ_EVENT } = await import('@/lib/api/endpoints/recommendation')
+    window.dispatchEvent(new CustomEvent(RECOMMENDATION_READ_EVENT, {
+      detail: { caseId: params.caseId, source: params.source },
+    }))
+  }
+  return result
+}
+
 export async function openProxyIntroChat(params: { caseId: string; source?: string }) {
   return gatewayJson<{
     case?: ProxyIntroCase
@@ -78,4 +102,21 @@ export async function openProxyIntroChat(params: { caseId: string; source?: stri
     method: 'POST',
     body: JSON.stringify({ source: params.source }),
   })
+}
+
+export async function closeProxyIntroCase(params: {
+  caseId: string
+  closeReason?: 'user_deleted' | 'requester_cancelled'
+  source?: string
+}) {
+  return gatewayJson<{ case?: ProxyIntroCase; message?: string }>(
+    `/v1/proxy-intro/cases/${encodeURIComponent(params.caseId)}/close`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        close_reason: params.closeReason || 'user_deleted',
+        source: params.source || 'relationships_page',
+      }),
+    },
+  )
 }

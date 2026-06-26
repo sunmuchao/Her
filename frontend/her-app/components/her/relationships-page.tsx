@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useMemo } from 'react'
 import { BadgeCheck, ChevronDown, Loader2, MailOpen, Pin, Trash2 } from 'lucide-react'
 import Image from 'next/image'
-import { openProxyIntroChat, replyProxyIntroCase } from '@/lib/api/endpoints/proxy-intro'
+import { openProxyIntroChat, replyProxyIntroCase, closeProxyIntroCase } from '@/lib/api/endpoints/proxy-intro'
 import { fetchCaseConversationTimeline } from '@/lib/api/endpoints/relations'
 import { getUserId } from '@/lib/auth/session'
 import { PLACEHOLDER_AVATAR, resolveProfileImageUrl } from '@/lib/image-url'
@@ -67,6 +67,7 @@ export default function RelationshipsPage({
   const [stageTipText, setStageTipText] = useState<string | null>(null)
   const [showStageTipForCase, setShowStageTipForCase] = useState<string | null>(null)
   const [actingCaseId, setActingCaseId] = useState<string | null>(null)
+  const [deletingCaseId, setDeletingCaseId] = useState<string | null>(null)
 
   // 下拉刷新状态
   const [pullDistance, setPullDistance] = useState(0)
@@ -231,13 +232,33 @@ export default function RelationshipsPage({
     setDeleteConfirmCaseId(cardId)
   }
 
-  // 确认删除
-  function confirmDelete(cardId: string) {
-    // 从列表中移除（本地状态，不需要调用 API）
-    setOpenCardId((prev) => (prev === cardId ? null : prev))
-    setDeleteConfirmCaseId(null)
-    // 刷新数据以同步
-    refetch()
+  // 确认删除（调用后端API）
+  async function confirmDelete(cardId: string) {
+    if (deletingCaseId) return // 防止重复点击
+
+    setDeletingCaseId(cardId)
+    try {
+      await closeProxyIntroCase({
+        caseId: cardId,
+        closeReason: 'user_deleted',
+        source: 'relationships_page',
+      })
+
+      // 清除本地状态
+      setOpenCardId((prev) => (prev === cardId ? null : prev))
+      setDeleteConfirmCaseId(null)
+
+      // 刷新数据
+      await refetch()
+    } catch (error) {
+      console.error('删除失败:', error)
+      // 错误提示（使用 notifyError）
+      const { notifyError } = await import('@/lib/notify')
+      notifyError(error, '删除失败，请重试')
+      // 保留确认对话框，让用户重试（不关闭）
+    } finally {
+      setDeletingCaseId(null)
+    }
   }
 
   // 获取小雅面板当前的关系信息
@@ -626,10 +647,12 @@ export default function RelationshipsPage({
         open={!!deleteConfirmCaseId}
         title="确认删除"
         description="删除后将清空与对方的聊天数据，此操作无法撤销。"
-        confirmLabel="删除并清空"
+        confirmLabel={deletingCaseId === deleteConfirmCaseId ? '删除中...' : '删除并清空'}
         tone="destructive"
         onConfirm={() => confirmDelete(deleteConfirmCaseId!)}
-        onCancel={() => setDeleteConfirmCaseId(null)}
+        onCancel={() => {
+          if (!deletingCaseId) setDeleteConfirmCaseId(null)
+        }}
       />
 
       {/* 小雅复盘面板 */}

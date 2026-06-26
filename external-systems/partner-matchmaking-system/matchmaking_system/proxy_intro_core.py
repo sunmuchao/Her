@@ -20,6 +20,7 @@ from match_domain import (  # noqa: E402
     match_events_from_case_event_rows,
     reduce_case_ledger,
 )
+from match_domain.onboarding_search import _RELATIONSHIP_GOAL_DISPLAY  # noqa: E402
 from observability import RECOMMENDATION_FUNNEL_PROXY_INTRO, funnel_stage  # noqa: E402
 
 from recommendation_system.service import (  # noqa: E402
@@ -73,7 +74,7 @@ DEFAULT_REPLY_WINDOW_HOURS = 72
 DEFAULT_DECLINE_COOLDOWN_DAYS = 180
 DEFAULT_TIMEOUT_COOLDOWN_DAYS = 90
 
-OPEN_CASE_STATUSES = {"pending_outreach", "awaiting_reply", "accepted"}
+OPEN_CASE_STATUSES = {"pending_outreach", "awaiting_reply", "viewed", "accepted"}  # viewed是新状态，仍然属于开放状态
 CLOSED_CASE_STATUSES = {"declined", "timed_out", "closed"}
 def generate_case_id() -> str:
     return f"match-case-{uuid.uuid4().hex[:12]}"
@@ -138,26 +139,48 @@ def build_requester_safe_summary(subscription: dict[str, Any]) -> dict[str, Any]
         subscription: 发起方的订阅记录，包含 self_profile_json（发起方的资料）
 
     Returns:
-        发起方的信息摘要，包含年龄、城市、职业等
+        发起方的信息摘要，包含年龄、城市、职业等（年龄使用实际年龄而非年龄段）
     """
     self_profile = json_loads(subscription.get("self_profile_json"), {})
 
+    # 年龄：使用实际年龄，不转换为年龄段
+    age_value = self_profile.get("age")
+    age_display = None
+    if age_value not in {None, ""}:
+        try:
+            age_int = int(age_value)
+            age_display = f"{age_int}岁"
+        except (TypeError, ValueError):
+            age_display = None
+
+    # 关系目标：使用中文映射
+    relationship_goal_raw = self_profile.get("relationship_goal")
+    relationship_goal_display = None
+    if relationship_goal_raw:
+        relationship_goal_display = _RELATIONSHIP_GOAL_DISPLAY.get(
+            relationship_goal_raw,
+            _RELATIONSHIP_GOAL_DISPLAY.get(relationship_goal_raw.lower(), relationship_goal_raw)
+        )
+
     safe_summary = {
         "requester_name": self_profile.get("display_name") or self_profile.get("name") or "有人",
-        "age_bracket": _age_bracket(self_profile.get("age")),
+        "age": age_display,  # 使用实际年龄（如"28岁")
+        "age_bracket": age_display,  # 兼容性：保持字段名，但值是实际年龄
         "city": self_profile.get("city") or self_profile.get("settlement_city"),
         "height_bracket": _height_bracket(self_profile.get("height")),
         "education": self_profile.get("education"),
         "occupation": self_profile.get("job") or self_profile.get("occupation"),
-        "relationship_goal": self_profile.get("relationship_goal"),
+        "relationship_goal": relationship_goal_display,  # 使用中文映射
+        "relationship_goal_raw": relationship_goal_raw,  # 保留原始值（供查询使用）
         "matched_on": [],  # TODO: 可以从 subscription 的 criteria 中提取匹配点
         "subscription_title": subscription.get("title"),
         "avatar_url": self_profile.get("avatar_url") or self_profile.get("photo_url"),
     }
 
+    # 构建 summary_text：使用实际年龄和中文映射
     safe_summary["summary_text"] = "；".join(
         part for part in [
-            safe_summary["age_bracket"],
+            safe_summary["age"],
             safe_summary["city"],
             safe_summary["education"],
             safe_summary["occupation"],
@@ -214,21 +237,34 @@ def build_outreach_payload_from_requester(
         发给被请求方的消息 payload，包含发起方的年龄、城市、职业等
     """
     requester_name = requester_summary.get("requester_name") or "有人"
-    parts = [
-        f"{requester_name}想通过平台进一步认识你。",
-        requester_summary.get("age_bracket"),
+
+    # 基本信息：年龄、城市、职业、学历、关系目标
+    info_parts = [
+        requester_summary.get("age"),  # 实际年龄（如"28岁")
         requester_summary.get("city"),
         requester_summary.get("occupation"),
-        requester_summary.get("relationship_goal"),
+        requester_summary.get("education"),
+        requester_summary.get("relationship_goal"),  # 已映射为中文
     ]
-    if requester_summary.get("matched_on"):
-        parts.append("匹配点：" + "；".join(str(item) for item in requester_summary["matched_on"]))
+    info_line = "；".join(part for part in info_parts if part)
 
-    body = "\n".join(part for part in parts if part)
+    # 匹配点：单独一行
+    matched_on = requester_summary.get("matched_on")
+    match_line = None
+    if matched_on and len(matched_on) > 0:
+        match_line = "匹配点：" + "；".join(str(item) for item in matched_on[:3])
+
+    # 组装消息：分行显示
+    lines = [
+        f"{requester_name}想通过平台进一步认识你。",
+        info_line,
+        match_line,
+    ]
+    body = "\n".join(line for line in lines if line)
 
     return {
         "channel": outreach_channel,
-        "title": "有人想通过平台进一步了解你",
+        "title": f"{requester_name}想认识你",
         "body": body,
         "requester_summary": requester_summary,  # 使用 requester_summary 而非 safe_summary
     }
@@ -253,6 +289,9 @@ def inflate_match_case(
     inflated["outreach_payload"] = json_loads(inflated.pop("outreach_payload_json"), {})
     inflated["reply_payload"] = json_loads(inflated.pop("reply_payload_json"), {})
     inflated["case_type"] = inflated.get("case_type") or CaseType.PROXY_INTRO.value
+
+    # relation_key 处理：优先从 case 读取（持久化），其次从 recommendation 查询，最后兜底生成
+    relation_key = str(inflated.get("relation_key") or "").strip()
     recommendation = None
     case_conn, rec_conn = _pair(conn, recommendation_conn) if conn is not None else (None, None)
     if rec_conn is not None:
@@ -261,8 +300,25 @@ def inflate_match_case(
         candidate_id = inflated.get("candidate_id")
         if recommendation_id is not None and subscription_id and candidate_id is not None:
             recommendation = get_recommendation(rec_conn, str(subscription_id), int(candidate_id))
+
+    if not relation_key and recommendation:
+        # case 中没有 relation_key，尝试从 recommendation 获取
+        relation_key = str(recommendation.get("relation_key") or "").strip()
+
+    if not relation_key:
+        # 兜底逻辑：根据 requester 和 candidate 信息生成 relation_key
+        requester_id = inflated.get("requester_id")
+        candidate_id = inflated.get("candidate_id")
+        if requester_id and candidate_id:
+            from match_domain import matchmaking_relation_key
+            requester_info = {"source": "her", "self_id": requester_id, "user_key": str(requester_id)}
+            candidate_info = {"source": "her", "self_id": candidate_id, "user_key": str(candidate_id)}
+            member_low, member_high = sorted([requester_info, candidate_info], key=lambda x: int(x.get("self_id") or 0))
+            relation_key = matchmaking_relation_key(member_low, member_high)
+
+    inflated["relation_key"] = relation_key
+
     if recommendation:
-        inflated["relation_key"] = recommendation.get("relation_key")
         inflated["owner_profile_ref"] = recommendation.get("owner_profile_ref")
         inflated["target_profile_ref"] = recommendation.get("target_profile_ref")
     cid = inflated.get("case_id")
@@ -653,7 +709,20 @@ def _sync_recommendation_for_case(
     ).fetchone()
     rec_row = row_to_dict(row)
     if rec_row:
-        subscription = get_subscription(recommendation_conn, rec_row["subscription_id"])
+        # FIX: 防御性处理订阅不存在的情况（孤儿 match case）
+        try:
+            subscription = get_subscription(recommendation_conn, rec_row["subscription_id"])
+        except ValueError as e:
+            if "Unknown subscription" in str(e):
+                # 订阅已删除，使用空订阅对象跳过事件记录
+                subscription = {
+                    "subscription_id": rec_row["subscription_id"],
+                    "requester_id": rec_row.get("requester_id"),
+                    "source": "orphan_subscription",
+                    "title": "已删除的订阅",
+                }
+            else:
+                raise
         append_relation_state_revision_event(
             recommendation_conn,
             subscription=subscription,
@@ -723,6 +792,16 @@ def create_match_case(
     }
     candidate_snapshot = dict(recommendation.get("latest_payload") or {})
 
+    # 获取 relation_key：优先从 recommendation 获取，否则根据 requester 和 candidate 生成
+    relation_key = str(recommendation.get("relation_key") or "").strip()
+    if not relation_key:
+        # 兜底逻辑：根据 requester 和 candidate 信息生成 relation_key
+        from match_domain import matchmaking_relation_key, pool_member_profile_ref
+        requester_info = {"source": "her", "self_id": recommendation["requester_id"], "user_key": str(recommendation["requester_id"])}
+        candidate_info = {"source": "her", "self_id": recommendation["candidate_id"], "user_key": str(recommendation["candidate_id"])}
+        member_low, member_high = sorted([requester_info, candidate_info], key=lambda x: int(x.get("self_id") or 0))
+        relation_key = matchmaking_relation_key(member_low, member_high)
+
     case_conn.execute(
         f"""
         INSERT INTO {_t().cases} (
@@ -742,9 +821,10 @@ def create_match_case(
           outreach_payload_json,
           reply_payload_json,
           reply_deadline_at,
+          relation_key,
           created_at,
           updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             case_id,
@@ -763,6 +843,7 @@ def create_match_case(
             json_dumps({**outreach_payload, "request_payload": request_payload or {}}),
             json_dumps({}),
             format_dt(reply_deadline_at),
+            relation_key,
             format_dt(now),
             format_dt(now),
         ),
@@ -1018,6 +1099,44 @@ def dispatch_pending_match_cases(
     return {"dispatched_count": len(dispatched), "cases": dispatched}
 
 
+def mark_case_as_viewed(
+    case_conn,
+    *,
+    recommendation_conn=None,
+    case_id: str,
+    now: datetime | None = None,
+    view_payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """标记被动推荐为已查看状态（从awaiting_reply变为viewed）"""
+    now = current_time(now)
+    _, rec_conn = _pair(case_conn, recommendation_conn)
+    case = get_match_case(case_conn, case_id, recommendation_conn=recommendation_conn)
+    if not case:
+        raise ValueError(f"Unknown match case: {case_id}")
+
+    # 只有awaiting_reply状态可以标记为viewed
+    if case["case_status"] != "awaiting_reply":
+        # 已经是viewed、accepted、declined等状态，不需要再次标记
+        return case
+
+    # 更新状态为viewed
+    updated_case = _update_case_status(
+        case_conn,
+        recommendation_conn=recommendation_conn,
+        case=case,
+        new_status="viewed",
+        now=now,
+        event_type="case_viewed",
+        actor_type="candidate",
+        reply_payload=view_payload,
+    )
+
+    # ✅ 关键修复：commit事务，确保数据库更新生效
+    commit_proxy_intro_transaction(case_conn, recommendation_conn)
+
+    return updated_case
+
+
 def record_match_case_reply(
     case_conn,
     *,
@@ -1032,13 +1151,34 @@ def record_match_case_reply(
     case = get_match_case(case_conn, case_id, recommendation_conn=recommendation_conn)
     if not case:
         raise ValueError(f"Unknown match case: {case_id}")
-    if case["case_status"] != "awaiting_reply":
-        raise ValueError("Replies can only be recorded after outreach is awaiting reply.")
+    # ✅ 修改：允许 viewed 状态也能回复（用户查看后仍可决定接受/拒绝）
+    if case["case_status"] not in {"awaiting_reply", "viewed"}:
+        raise ValueError("Replies can only be recorded when case is awaiting reply or viewed.")
 
     reply_type = str(reply_type).strip().lower()
     if reply_type not in {"accepted", "declined"}:
         raise ValueError(f"Unsupported reply_type: {reply_type}")
-    subscription = get_subscription(rec_conn, case["subscription_id"])
+
+    # FIX: 防御性处理订阅不存在的情况（孤儿 match case）
+    # 当订阅被删除后，match case 数据仍可能引用已删除的 subscription_id
+    # 用户点击推荐来信卡片回复时，会触发此错误
+    # 订阅不存在时，使用空订阅对象（仅用于记录推荐动作）
+    try:
+        subscription = get_subscription(rec_conn, case["subscription_id"])
+    except ValueError as e:
+        if "Unknown subscription" in str(e):
+            # 订阅已删除，使用空订阅对象（孤儿 case）
+            subscription = {
+                "subscription_id": case["subscription_id"],
+                "requester_id": case.get("requester_id"),
+                "source": "orphan_subscription",
+                "title": "已删除的订阅",
+            }
+        else:
+            raise
+
+    # FIX: 防御性处理推荐不存在的情况（孤儿 match case）
+    # 当订阅被删除后，推荐数据可能也被清理，get_recommendation 可能返回 None
     recommendation = get_recommendation(rec_conn, case["subscription_id"], int(case["candidate_id"]))
 
     if reply_type == "accepted":
@@ -1056,16 +1196,18 @@ def record_match_case_reply(
             recommendation_delivery_status="escalated_to_case",
             recommendation_delivery_reason="proxy_intro_accepted",
         )
-        insert_recommendation_action(
-            rec_conn,
-            subscription=subscription,
-            recommendation=recommendation,
-            action_type="proxy_intro_reply_accepted",
-            actor_type="candidate",
-            actor_id=str(case["candidate_id"]),
-            now=now,
-            action_payload=reply_payload or {},
-        )
+        # FIX: 仅在推荐数据存在时记录推荐动作
+        if recommendation:
+            insert_recommendation_action(
+                rec_conn,
+                subscription=subscription,
+                recommendation=recommendation,
+                action_type="proxy_intro_reply_accepted",
+                actor_type="candidate",
+                actor_id=str(case["candidate_id"]),
+                now=now,
+                action_payload=reply_payload or {},
+            )
     else:
         cooling_until = now + timedelta(days=DEFAULT_DECLINE_COOLDOWN_DAYS)
         updated_case = _update_case_status(
@@ -1082,16 +1224,18 @@ def record_match_case_reply(
             recommendation_delivery_status="cooled_down",
             recommendation_delivery_reason="proxy_intro_declined",
         )
-        insert_recommendation_action(
-            rec_conn,
-            subscription=subscription,
-            recommendation=recommendation,
-            action_type="proxy_intro_reply_declined",
-            actor_type="candidate",
-            actor_id=str(case["candidate_id"]),
-            now=now,
-            action_payload=reply_payload or {},
-        )
+        # FIX: 仅在推荐数据存在时记录推荐动作
+        if recommendation:
+            insert_recommendation_action(
+                rec_conn,
+                subscription=subscription,
+                recommendation=recommendation,
+                action_type="proxy_intro_reply_declined",
+                actor_type="candidate",
+                actor_id=str(case["candidate_id"]),
+                now=now,
+                action_payload=reply_payload or {},
+            )
     commit_proxy_intro_transaction(case_conn, recommendation_conn)
     return updated_case
 
@@ -1114,7 +1258,19 @@ def close_match_case(
     if case["case_status"] not in {"accepted", "awaiting_reply", "pending_outreach"}:
         raise ValueError("Only open match cases can be closed.")
 
-    subscription = get_subscription(rec_conn, case["subscription_id"])
+    # FIX: 防御性处理订阅不存在的情况（孤儿 match case）
+    try:
+        subscription = get_subscription(rec_conn, case["subscription_id"])
+    except ValueError as e:
+        if "Unknown subscription" in str(e):
+            subscription = {
+                "subscription_id": case["subscription_id"],
+                "requester_id": case.get("requester_id"),
+                "source": "orphan_subscription",
+                "title": "已删除的订阅",
+            }
+        else:
+            raise
     recommendation = get_recommendation(rec_conn, case["subscription_id"], int(case["candidate_id"]))
     if close_reason == "handoff_completed":
         delivery_status = "escalated_to_case"
@@ -1165,16 +1321,18 @@ def close_match_case(
             active=False,
             now=now,
         )
-        insert_recommendation_action(
-            rec_conn,
-            subscription=subscription,
-            recommendation=recommendation,
-            action_type=f"proxy_intro_closed_{close_reason}",
-            actor_type=actor_type,
-            actor_id="system" if actor_type == "system" else str(case["requester_id"]),
-            now=now,
-            action_payload=close_payload or {},
-        )
+        # FIX: 仅在推荐数据存在时记录推荐动作
+        if recommendation:
+            insert_recommendation_action(
+                rec_conn,
+                subscription=subscription,
+                recommendation=recommendation,
+                action_type=f"proxy_intro_closed_{close_reason}",
+                actor_type=actor_type,
+                actor_id="system" if actor_type == "system" else str(case["requester_id"]),
+                now=now,
+                action_payload=close_payload or {},
+            )
     _record_case_event(
         case_conn,
         recommendation_conn=recommendation_conn,
@@ -1250,7 +1408,19 @@ def close_timed_out_match_cases(
         )
         recommendation = get_recommendation(rec_conn, case["subscription_id"], int(case["candidate_id"]))
         if recommendation:
-            subscription = get_subscription(rec_conn, case["subscription_id"])
+            # FIX: 防御性处理订阅不存在的情况（孤儿 match case）
+            try:
+                subscription = get_subscription(rec_conn, case["subscription_id"])
+            except ValueError as e:
+                if "Unknown subscription" in str(e):
+                    subscription = {
+                        "subscription_id": case["subscription_id"],
+                        "requester_id": case.get("requester_id"),
+                        "source": "orphan_subscription",
+                        "title": "已删除的订阅",
+                    }
+                else:
+                    raise
             _sync_recommendation_for_case(
                 rec_conn,
                 recommendation=recommendation,
@@ -1288,3 +1458,88 @@ def close_timed_out_match_cases(
         )
     commit_proxy_intro_transaction(case_conn, recommendation_conn)
     return {"timed_out_count": len(timed_out_cases), "cases": timed_out_cases}
+
+
+def cleanup_orphan_match_cases(conn, *, recommendation_conn=None) -> dict[str, Any]:
+    """清理订阅已删除的孤儿 match case。
+
+    当订阅被删除后，match case 数据可能仍然引用已删除的 subscription_id，
+    导致用户回复/关闭时出现"Unknown subscription"错误。
+
+    此函数会删除所有引用不存在订阅的 match case。
+
+    Args:
+        conn: matchmaking database connection
+        recommendation_conn: recommendation database connection (optional)
+
+    Returns:
+        dict: {"deleted_case_count": 删除的case数量, "updated_recommendation_count": 更新的推荐数量}
+    """
+    _, rec_conn = _pair(conn, recommendation_conn)
+
+    # 找出所有孤儿 match case（subscription_id 不在 saved_search_subscriptions 表中）
+    orphan_cases = conn.execute(
+        f"""
+        SELECT case_id, subscription_id, requester_id, candidate_id, case_status
+        FROM {_t().cases}
+        WHERE subscription_id NOT IN (
+            SELECT subscription_id FROM saved_search_subscriptions WHERE status = 'active'
+        )
+          AND case_status IN ('awaiting_reply', 'viewed', 'accepted', 'pending_outreach')
+        """
+    ).fetchall()
+
+    deleted_case_count = 0
+    updated_recommendation_count = 0
+
+    for row in orphan_cases:
+        case = row_to_dict(row)
+        case_id = str(case.get("case_id") or "")
+
+        # 关闭孤儿 case（标记为 closed）
+        conn.execute(
+            f"""
+            UPDATE {_t().cases}
+            SET case_status = 'closed',
+                close_reason = 'orphan_subscription_deleted',
+                updated_at = ?
+            WHERE case_id = ?
+            """,
+            (format_dt(current_time()), case_id),
+        )
+        deleted_case_count += 1
+
+        # 同步更新推荐状态（如果有推荐数据）
+        try:
+            recommendation = get_recommendation(
+                rec_conn,
+                str(case.get("subscription_id") or ""),
+                int(case.get("candidate_id") or 0),
+            )
+            if recommendation:
+                rec_conn.execute(
+                    """
+                    UPDATE profile_recommendations
+                    SET active_match_case_id = NULL,
+                        active_case_status = NULL,
+                        delivery_status = 'cooled_down',
+                        delivery_reason = 'orphan_subscription_deleted'
+                    WHERE recommendation_id = ?
+                    """,
+                    (int(recommendation.get("recommendation_id") or 0),),
+                )
+                updated_recommendation_count += 1
+        except Exception:
+            # 推荐数据不存在时跳过
+            pass
+
+    commit_proxy_intro_transaction(conn, rec_conn)
+
+    from observability import metric_gauge
+    metric_gauge("matchmaking.cleanup.orphan_cases", deleted_case_count)
+    metric_gauge("matchmaking.cleanup.updated_recommendations", updated_recommendation_count)
+
+    return {
+        "deleted_case_count": deleted_case_count,
+        "updated_recommendation_count": updated_recommendation_count,
+    }

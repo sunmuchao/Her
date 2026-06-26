@@ -18,6 +18,7 @@ from .proxy_intro_core import (  # noqa: E402
     list_match_case_outreach_attempts,
     list_match_cases_for_participant,
     list_match_cases_for_recommendation,
+    mark_case_as_viewed as _mark_case_as_viewed,  # ✅ 新增
     record_match_case_reply as _record_match_case_reply,
 )
 
@@ -49,6 +50,13 @@ def dispatch_match_case_outreach(case_conn, *, recommendation_conn=None, **kwarg
 def record_match_case_reply(case_conn, *, recommendation_conn=None, **kwargs: Any) -> dict[str, Any]:
     return _tag_proxy_intro_case(
         _record_match_case_reply(case_conn, recommendation_conn=recommendation_conn, **kwargs)
+    )
+
+
+def mark_case_as_viewed(case_conn, *, recommendation_conn=None, **kwargs: Any) -> dict[str, Any]:
+    """标记被动推荐为已查看状态"""
+    return _tag_proxy_intro_case(
+        _mark_case_as_viewed(case_conn, recommendation_conn=recommendation_conn, **kwargs)
     )
 
 

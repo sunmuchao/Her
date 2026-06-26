@@ -21,6 +21,10 @@ export type GatewayRequestInit = RequestInit & {
    * - default: attach Bearer when a login access token exists.
    */
   includeAuth?: boolean
+  /**
+   * AbortSignal for cancelling the request
+   */
+  signal?: AbortSignal
 }
 
 function shouldAttachGatewayAuth(init?: GatewayRequestInit): boolean {
@@ -50,6 +54,7 @@ export async function gatewayJson<T>(path: string, init?: GatewayRequestInit): P
     headers: buildGatewayHeaders(init),
     credentials: 'include',
     cache: 'no-store',
+    signal: init?.signal, // Support request cancellation
   })
 
   const text = await response.text()

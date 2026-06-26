@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
+
+_logger = logging.getLogger(__name__)
 
 # 改用 OEJTS 适配器（集成权威开源项目）
 from assessment.oejts_adapter_service import (
@@ -579,6 +582,18 @@ def answer_assessment(
                     source_channel="assessment",
                 )
                 conn.commit()
+
+                # ✅ 修复：清理画像缓存，确保Agent能看到最新的MBTI结果
+                # 根因：_cached_load_persona_for_discovery使用了lru_cache缓存画像数据
+                #       测试完成后，画像写入数据库，但缓存未清理，Agent看到旧数据
+                # 解决：画像更新后清理缓存，下次查询时重新从数据库加载
+                try:
+                    from partner_search.personality_traits_reader import clear_traits_cache
+                    clear_traits_cache()
+                    _logger.info("【画像缓存清理】user_key=%s assessment_id=%s", user_key, assessment_id)
+                except Exception as cache_error:
+                    _logger.warning("【画像缓存清理失败】user_key=%s error=%s", user_key, cache_error)
+
                 return {
                     "card_type": "assessment_result",
                     "assessment_type": ASSESSMENT_TYPE_MBTI,  # 添加 assessment_type 字段，供前端识别测评类型

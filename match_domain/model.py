@@ -39,7 +39,8 @@ class CaseType(str, Enum):
 
 class CaseStatus(str, Enum):
     PENDING_CONTACT = "pending_contact"
-    AWAITING_REPLY = "awaiting_reply"
+    AWAITING_REPLY = "awaiting_reply"  # 未查看状态（新信）
+    VIEWED = "viewed"  # 已查看状态（已打开但未决定）✅ 新增
     ACCEPTED = "accepted"
     DECLINED = "declined"
     TIMED_OUT = "timed_out"

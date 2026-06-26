@@ -518,8 +518,8 @@ def list_relations_for_profile_refs(
         f"""
         SELECT relation_id
         FROM match_relations
-        WHERE owner_profile_ref IN ({placeholders})
-           OR target_profile_ref IN ({placeholders})
+        WHERE owner_profile_ref_json IN ({placeholders})
+           OR target_profile_ref_json IN ({placeholders})
         ORDER BY last_event_at DESC, relation_id DESC
         LIMIT ?
         """,

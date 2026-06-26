@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { ArrowLeft, BadgeCheck, Bookmark, ChevronRight, ChevronDown, Mail, Mic, Plus, Search, Send, X, Brain, Heart, Sparkles, ClipboardList, Coins, History } from 'lucide-react'
+import { ArrowLeft, BadgeCheck, ChevronDown, Mail, Mic, Plus, Search, Send, X, Brain, Heart, Sparkles, ClipboardList, Coins, History } from 'lucide-react'
 import { AssessmentCardRenderer } from '@/components/assessment/AssessmentCardRenderer'
 import { XiaoyaAvatar } from '@/components/her/ui/xiaoya-avatar'
 import Image from 'next/image'
@@ -9,6 +9,7 @@ import { EmptyRecommendations, EmptySearchResults } from './ui/empty-states'
 import { InboxItemSkeleton, DiscoverPageSkeleton } from './ui/skeletons'
 import { TypingIndicator } from './ui/typing-indicator'
 import { OnlineIndicator } from './ui/animations'
+import { SwipeToDelete } from './ui/swipe-to-delete'
 import { DiscoveryCandidateCard } from './discovery-candidate-card'
 import { DiscoveryProfileUpdatePrompt } from './discovery-profile-update-prompt'
 import { DiscoverySessionList } from './discovery-session-list'
@@ -17,9 +18,8 @@ import { cn } from '@/lib/utils'
 import { getProfileId, getUserId } from '@/lib/auth/session'
 import {
   markRecommendationCardsRead,
-  postRecommendationAction,
 } from '@/lib/api/endpoints/recommendation'
-import { replyProxyIntroCase } from '@/lib/api/endpoints/proxy-intro'
+import { replyProxyIntroCase, markInterestCaseViewed as markInterestCaseViewedAPI } from '@/lib/api/endpoints/proxy-intro'
 import { useRecommendationInbox, type InboxItem } from '@/hooks/use-recommendation-inbox'
 import { canUseMockFallback } from '@/lib/mock'
 import { notifyError } from '@/lib/notify'
@@ -49,6 +49,7 @@ import {
   type ValuesAuctionCard,
 } from '@/lib/api/endpoints/valuesAuction'
 import { ValuesAuctionCardRenderer } from '@/components/values-auction'
+import { useSearchParams } from 'next/navigation'
 
 const PSYCHOLOGY_XIAOYA_RESULT_DELAY_MS = 2000
 
@@ -59,7 +60,7 @@ function waitForPsychologyXiaoyaResult() {
 }
 
 interface DiscoverPageProps {
-  onViewCandidate: (candidateId: string, candidate?: CandidatePreview) => void
+  onViewCandidate: (candidateId: string, candidate?: CandidatePreview, sessionId?: string | null) => void
   onOpenInbox: () => void
   inboxUnreadCount?: number
   onSessionIdChange?: (sessionId: string | null) => void
@@ -77,7 +78,7 @@ function DiscoveryTimelineEntry({
 }: {
   item: DiscoveryTimelineItem
   sessionId: string | null
-  onViewCandidate: (candidateId: string, candidate?: CandidatePreview) => void
+  onViewCandidate: (candidateId: string, candidate?: CandidatePreview, sessionId?: string | null) => void
   onProfileUpdateResolved?: () => void
   onAddLabels?: (selectedLabels: string[]) => Promise<void>
   onSubmitAction?: (actionId: string) => void
@@ -224,6 +225,7 @@ function DiscoveryTimelineEntry({
           <DiscoveryCandidateCard
             key={`${item.id}-${candidate.id}`}
             candidate={candidate}
+            sessionId={sessionId}
             onViewCandidate={onViewCandidate}
             className="animate-fade-in-up"
             style={{ animationDelay: `${index * 80}ms` }}
@@ -977,16 +979,30 @@ export function RecommendationInbox({
   onBack,
   onBadgesRefresh,
 }: {
-  onViewCandidate: (candidateId: string, candidate?: CandidatePreview) => void
+  onViewCandidate: (candidateId: string, candidate?: CandidatePreview, sessionId?: string | null) => void
   onBack: () => void
   onBadgesRefresh?: () => void
 }) {
-  const [filter, setFilter] = useState<'all' | 'delayed' | 'matched' | 'interest'>('all')
-  const [savedIds, setSavedIds] = useState<Set<string>>(new Set())
+  const searchParams = useSearchParams()
+  const restoreFilter = searchParams.get('restoreFilter') as 'all' | 'delayed' | 'matched' | 'interest' | null
+  const [filter, setFilter] = useState<'all' | 'delayed' | 'matched' | 'interest'>(
+    restoreFilter && ['all', 'delayed', 'matched', 'interest'].includes(restoreFilter) ? restoreFilter : 'all'
+  )
+
+  // 删除状态：用于立即标记删除（保存到 sessionStorage）
+  // 注意：恢复逻辑在 useRecommendationInbox hook 中处理
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set())
+
+  // 当 dismissedIds 变化时，立即保存到 sessionStorage（持久化）
+  useEffect(() => {
+    if (dismissedIds.size > 0) {
+      sessionStorage.setItem('recommendation-dismissed-ids', JSON.stringify([...dismissedIds]))
+    }
+  }, [dismissedIds])
+
   const [searchQuery, setSearchQuery] = useState('')
   const [actingCaseId, setActingCaseId] = useState<string | null>(null)  // 正在处理的 case
-  const { isLoading, backendItems } = useRecommendationInbox()
+  const { isLoading, backendItems, markItemRead } = useRecommendationInbox()
 
   const filteredItems = backendItems.filter((item) => {
     if (dismissedIds.has(item.listKey)) return false
@@ -1010,10 +1026,18 @@ export function RecommendationInbox({
         replyType,
         source: 'recommendation_inbox',
       })
+
+      // 立即更新前端状态（红色提醒消失）
+      const item = backendItems.find((i) => i.caseId === caseId)
+      if (item) {
+        markItemRead(item)
+      }
+
       if (replyType === 'declined') {
         setDismissedIds((prev) => new Set(prev).add(`case:${caseId}`))
       }
       toast.success(replyType === 'accepted' ? '已表达意愿，可以开始聊天了' : '已暂不考虑')
+      onBadgesRefresh?.()
     } catch (error) {
       notifyError(error, replyType === 'accepted' ? '接受失败' : '暂不考虑失败')
     } finally {
@@ -1022,28 +1046,31 @@ export function RecommendationInbox({
   }
 
   const markRead = async (item: InboxItem) => {
+    // 立即更新前端状态（红色提醒消失）
+    markItemRead(item)
+
     const profileId = getProfileId()
+
+    // 对于被动推荐（interest 类型），调用API标记为已查看
+    if (item.type === 'interest' && item.caseId) {
+      try {
+        await markInterestCaseViewedAPI({ caseId: item.caseId, source: 'detail_page' })
+        // API成功后，事件机制会自动触发 badge count 刷新（不需要手动调用 onBadgesRefresh）
+      } catch (error) {
+        notifyError(error, '标记已查看失败')
+      }
+      return  // 被动推荐不需要调用 markRecommendationCardsRead API
+    }
+
+    // 对于非被动推荐，调用 API 标记卡片已读
     if (!profileId || !item.cardId) return
     try {
-    await markRecommendationCardsRead(Number(profileId), [item.cardId])
-      onBadgesRefresh?.()
+      await markRecommendationCardsRead(Number(profileId), [item.cardId])
+      // API成功后，事件机制会自动触发 badge count 刷新（不需要手动调用 onBadgesRefresh）
     } catch (error) {
       notifyError(error, '标记已读失败')
-    }
-  }
-
-  const recordAction = async (item: InboxItem, actionType: string) => {
-    if (!item.subscriptionId || !item.candidateId) return
-    const idem = `${item.subscriptionId}:${item.candidateId}:${actionType}`
-    try {
-    await postRecommendationAction({
-      subscriptionId: item.subscriptionId,
-      candidateId: item.candidateId,
-      actionType,
-      idempotencyKey: idem,
-    })
-    } catch (error) {
-      notifyError(error, '操作失败，请重试')
+      // 如果 API 失败，恢复未读状态
+      // 注意：这里可以选择不恢复，因为用户已经点击了卡片，视为已读
     }
   }
 
@@ -1105,109 +1132,125 @@ export function RecommendationInbox({
           searchQuery ? <EmptySearchResults keyword={searchQuery} /> : <EmptyRecommendations onRefresh={onBack} />
         ) : (
           filteredItems.map((item) => (
-            <div
+            <SwipeToDelete
               key={item.listKey}
-              onClick={() => {
-                // DEBUG: 调试参数传递
-                console.log('[RecommendationInbox] 点击卡片传递的参数:', {
-                  item_id: item.id,
-                  item_caseId: item.caseId,
-                  item_type: item.type,
-                  candidate_preview: {
-                    id: item.id,
-                    caseId: item.caseId,
-                    viewType: item.type,
-                  },
-                })
-                void markRead(item)
-                onViewCandidate(item.id, {
-                  id: item.id,
-                  name: item.name,
-                  age: item.age,
-                  city: item.city,
-                  occupation: item.occupation,
-                  verified: true,
-                  matchScore: item.matchScore,
-                  image: item.image,
-                  message: item.message,
-                  recommendationId: item.recommendationId,
-                  subscriptionId: item.subscriptionId,
-                  // 新增：传递案件信息，让详情页知道这是被动推荐场景
-                  caseId: item.caseId,
-                  viewType: item.type, // 'interest' 表示被动推荐
-                })
+              onDelete={() => {
+                // 立即从列表中移除
+                setDismissedIds((prev) => new Set(prev).add(item.listKey))
               }}
-              className="bg-card border border-border rounded-xl p-3 transition-colors cursor-pointer hover:border-primary/30"
+              deleteLabel="删除"
+              threshold={100}
             >
-              <div className="flex gap-3">
-                <div className="relative w-14 h-14 rounded-lg overflow-hidden shrink-0">
-                  <Image src={item.image} alt={item.name} fill className="object-cover" />
-                  {!item.isRead ? <div className="absolute top-1 right-1 w-2 h-2 bg-rose rounded-full" /> : null}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{item.name}</span>
-                      <span className="text-xs text-muted-foreground">{item.age}岁 · {item.city}</span>
+              <div
+                onClick={() => {
+                  // DEBUG: 调试参数传递
+                  console.log('[RecommendationInbox] 点击卡片传递的参数:', {
+                    item_id: item.id,
+                    item_caseId: item.caseId,
+                    item_type: item.type,
+                    candidate_preview: {
+                      id: item.id,
+                      caseId: item.caseId,
+                      viewType: item.type,
+                    },
+                  })
+                  void markRead(item)
+                  onViewCandidate(item.id, {
+                    id: item.id,
+                    name: item.name,
+                    age: item.age,
+                    city: item.city,
+                    occupation: item.occupation,
+                    verified: true,
+                    matchScore: item.matchScore,
+                    image: item.image,
+                    message: item.message,
+                    recommendationId: item.recommendationId,
+                    subscriptionId: item.subscriptionId,
+                    cardId: item.cardId, // 新增：传递卡片 ID
+                    // 新增：传递案件信息，让详情页知道这是被动推荐场景
+                    caseId: item.caseId,
+                    viewType: item.type, // 'interest' 表示被动推荐
+                    // 新增：传递来源信息，用于返回时恢复推荐来信页面和筛选状态
+                    fromSubPage: 'recommendation-inbox',
+                    inboxFilter: filter,
+                  })
+                }}
+                className="bg-card border border-border rounded-xl p-3 transition-colors cursor-pointer hover:border-primary/30"
+              >
+                <div className="flex gap-3">
+                  {/* 头像区域：统一14x14，右上角未读红点 */}
+                  <div className="relative w-14 h-14 rounded-lg overflow-hidden shrink-0">
+                    <Image src={item.image} alt={item.name} fill className="object-cover" />
+                    {!item.isRead ? <div className="absolute top-1 right-1 w-2 h-2 bg-rose rounded-full" /> : null}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    {/* 第一行：姓名 + 年龄·城市 + 时间（统一格式） */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-base">{item.name}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {item.ageDisplay || `${item.age}岁`} · {item.city}
+                        </span>
+                      </div>
+                      <span className="text-xs text-muted-foreground">{item.time}</span>
                     </div>
-                    <span className="text-xs text-muted-foreground">{item.time}</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">{item.occupation}</p>
-                  <p className="text-sm text-foreground mt-1.5 line-clamp-1">{item.message}</p>
-                </div>
-              </div>
-              <div className="flex items-center justify-between mt-3 pt-2 border-t border-border">
-                <div className="flex items-center gap-1">
-                  <span className={`px-2 py-0.5 rounded text-[10px] ${
-                    item.type === 'delayed' ? 'bg-gold/20 text-gold' :
-                    item.type === 'interest' ? 'bg-primary/20 text-primary' :
-                    'bg-rose/20 text-rose'
-                  }`}>
-                    {item.conversionStage || (
-                      item.type === 'delayed' ? '延迟推荐' :
-                      item.type === 'interest' ? '有人想认识你' :
-                      '主动撮合'
+
+                    {/* 第二行：职业·学历（统一展示，所有类型） */}
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {item.occupation && item.occupation !== '资料待补充' && (
+                        <span className="text-xs text-muted-foreground">{item.occupation}</span>
+                      )}
+                      {item.education && (
+                        <span className="text-xs text-muted-foreground">· {item.education}</span>
+                      )}
+                    </div>
+
+                    {/* 第三行：推荐消息或匹配点（统一展示） */}
+                    {/* 匹配点（如有） - interest类型特有但展示格式统一 */}
+                    {item.matchedOn && item.matchedOn.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        <span className="text-[10px] text-muted-foreground">匹配点：</span>
+                        {item.matchedOn.slice(0, 3).map((point, idx) => (
+                          <span
+                            key={`${item.id}-match-${idx}`}
+                            className="px-1.5 py-0.5 text-[10px] bg-primary/10 text-primary rounded"
+                          >
+                            {point}
+                          </span>
+                        ))}
+                      </div>
                     )}
-                  </span>
-                </div>
-                {/* 操作按钮区域 */}
-                {item.type === 'interest' ? (
-                  // 被动推荐卡片：提示用户点击查看详情
-                  <span className="text-xs text-muted-foreground">点击查看完整资料 →</span>
-                ) : (
-                  // 其他类型卡片：跳过/收藏按钮
-                  <div className="flex items-center gap-1">
-                    <button
-                      aria-label={`跳过${item.name}`}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        void recordAction(item, 'skip')
-                        setDismissedIds((prev) => new Set(prev).add(item.listKey))
-                      }}
-                      className="p-1.5 text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                    <button
-                      aria-label={`收藏${item.name}`}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        void recordAction(item, 'save')
-                        setSavedIds((prev) => {
-                          const next = new Set(prev)
-                          if (next.has(item.id)) next.delete(item.id)
-                          else next.add(item.id)
-                          return next
-                        })
-                      }}
-                      className={`p-1.5 transition-colors ${savedIds.has(item.id) ? 'text-gold' : 'text-muted-foreground hover:text-foreground'}`}
-                    >
-                      <Bookmark className={`w-4 h-4 ${savedIds.has(item.id) ? 'fill-current' : ''}`} />
-                    </button>
+
+                    {/* 推荐消息（如有） - 统一展示，所有类型 */}
+                    {item.message && !item.matchedOn?.length && (
+                      <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2">{item.message}</p>
+                    )}
                   </div>
-                )}
+                </div>
+
+                {/* 底部区域：统一格式 */}
+                <div className="flex items-center justify-between mt-3 pt-2 border-t border-border">
+                  {/* 左侧：类型标签（统一格式） */}
+                  <div className="flex items-center gap-1">
+                    <span className={`px-2 py-0.5 rounded text-[10px] ${
+                      item.type === 'delayed' ? 'bg-gold/20 text-gold' :
+                      item.type === 'interest' ? 'bg-primary/20 text-primary' :
+                      'bg-rose/20 text-rose'
+                    }`}>
+                      {item.conversionStage || (
+                        item.type === 'delayed' ? '延迟推荐' :
+                        item.type === 'interest' ? '有人想认识你' :
+                        '主动撮合'
+                      )}
+                    </span>
+                  </div>
+
+                  {/* 右侧：统一操作提示（所有类型一致） */}
+                  <span className="text-xs text-muted-foreground">点击查看详情 →</span>
+                </div>
               </div>
-            </div>
+            </SwipeToDelete>
           ))
         )}
       </div>

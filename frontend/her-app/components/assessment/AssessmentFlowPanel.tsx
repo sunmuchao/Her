@@ -35,7 +35,7 @@ export function AssessmentFlowPanel({
   const [answeredCount, setAnsweredCount] = useState(0)
 
   const currentAssessmentType: AssessmentType | undefined =
-    card?.assessment_type || (card?.card_type === 'assessment_result' ? card.assessment_type : undefined)
+    (card as any)?.assessment_type || (card?.card_type === 'assessment_result' ? (card as any).assessment_type : undefined)
   const currentTheme = getAssessmentTheme(currentAssessmentType)
 
   const initializeAssessment = async () => {

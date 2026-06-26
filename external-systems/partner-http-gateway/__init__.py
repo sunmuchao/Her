@@ -1,0 +1,1 @@
+# partner-http-gateway package marker
