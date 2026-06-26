@@ -70,6 +70,10 @@ export function useAppRouter() {
   // 从 URL 获取 fromChatId（用于返回时回到聊天页面）
   const fromChatId = searchParams.get('fromChatId') || null
 
+  // 从 URL 获取 fromSubPage 和 inboxFilter（用于推荐来信返回）
+  const fromSubPage = searchParams.get('fromSubPage') || null
+  const inboxFilter = searchParams.get('inboxFilter') || null
+
   // 从 URL 解析 caseId 和 viewType
   const urlCaseId = searchParams.get('caseId')
   const urlViewType = searchParams.get('viewType') as 'delayed' | 'matched' | 'interest' | 'candidate' | null
@@ -101,6 +105,8 @@ export function useAppRouter() {
       chatTitle?: string
       counterpartId?: string
       fromChatId?: string
+      fromSubPage?: string
+      inboxFilter?: string
     }) => {
       const href = pageToPath(page, {
         candidateId: params?.candidateId,
@@ -110,6 +116,8 @@ export function useAppRouter() {
         chatTitle: params?.chatTitle,
         counterpartId: params?.counterpartId,
         fromChatId: params?.fromChatId,
+        fromSubPage: params?.fromSubPage,
+        inboxFilter: params?.inboxFilter,
       })
       // session 已经在 pageToPath 中处理了，但这里需要额外处理 sessionId
       if (params?.sessionId && page === 'sub-candidate-detail') {
@@ -151,6 +159,8 @@ export function useAppRouter() {
           id: candidate.id,
           caseId: candidate.caseId,
           viewType: candidate.viewType,
+          fromSubPage: candidate.fromSubPage,
+          inboxFilter: candidate.inboxFilter,
         } : null,
         sessionId,
         fromChatId,
@@ -167,6 +177,8 @@ export function useAppRouter() {
         caseId: candidate?.caseId,
         viewType: candidate?.viewType,
         fromChatId,
+        fromSubPage: candidate?.fromSubPage,
+        inboxFilter: candidate?.inboxFilter,
       })
     },
     [currentTab, discoverySessionId, pushPage],
@@ -181,9 +193,13 @@ export function useAppRouter() {
     [pushPage],
   )
 
-  const handleOpenInbox = useCallback(() => {
-    pushPage('sub-recommendation-inbox')
-  }, [pushPage])
+  const handleOpenInbox = useCallback((restoreFilter?: string) => {
+    let href = pageToPath('sub-recommendation-inbox')
+    if (restoreFilter) {
+      href += `?restoreFilter=${encodeURIComponent(restoreFilter)}`
+    }
+    router.push(href)
+  }, [router])
 
   const handleBackToMain = useCallback(() => {
     pushPage(`main-${currentTab}` as AppPage)
@@ -238,6 +254,8 @@ export function useAppRouter() {
     selectedCaseId,
     selectedCounterpartId,
     fromChatId,
+    fromSubPage,
+    inboxFilter,
     discoverySessionId,
     setDiscoverySessionId,
     handleNavigate,

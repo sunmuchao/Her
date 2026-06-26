@@ -15,24 +15,40 @@ def list_in_app_cards(conn, requester_id: int | None = None, unread_only: bool =
     clauses = []
     params: list[Any] = []
     if requester_id is not None:
-        clauses.append("c.requester_id = ?")
+        clauses.append("c2.requester_id = ?")  # 子查询使用 c2 别名
         params.append(requester_id)
     if unread_only:
-        clauses.append("c.card_status = 'unread'")
-    clauses.append("(r.recommendation_id IS NULL OR (r.delivery_status != 'escalated_to_case' AND COALESCE(r.active_match_case_id, '') = ''))")
+        clauses.append("c2.card_status = 'unread'")  # 子查询使用 c2 别名
+    # FIX: 过滤掉订阅已删除的孤儿卡片（订阅状态必须为 active）
+    clauses.append("s2.status = 'active'")
+    clauses.append("(r2.recommendation_id IS NULL OR (r2.delivery_status != 'escalated_to_case' AND COALESCE(r2.active_match_case_id, '') = ''))")  # 子查询使用 r2 别名
     where_clause = ""
     if clauses:
         where_clause = "WHERE " + " AND ".join(clauses)
+
+    # FIX: 按 candidate_id 去重，避免同一个候选人出现在多个订阅中导致重复卡片
+    # MySQL语法要求：使用子查询找出每个candidate_id的最新card_id，然后JOIN获取完整信息
+    # 注意：candidate_id 为 NULL 的卡片保留（COALESCE转为-1处理）
+    # 修复：JOIN saved_search_subscriptions 过滤孤儿卡片
     rows = conn.execute(
         f"""
         SELECT c.*
         FROM in_app_recommendation_cards AS c
-        LEFT JOIN profile_recommendations AS r
-          ON r.recommendation_id = c.recommendation_id
-        {where_clause}
+        INNER JOIN (
+            SELECT COALESCE(c2.candidate_id, -1) AS dedup_candidate_id, MAX(c2.card_id) AS latest_card_id
+            FROM in_app_recommendation_cards AS c2
+            LEFT JOIN profile_recommendations AS r2
+              ON r2.recommendation_id = c2.recommendation_id
+            LEFT JOIN saved_search_subscriptions AS s2
+              ON s2.subscription_id = c2.subscription_id
+            {where_clause}
+            GROUP BY COALESCE(c2.candidate_id, -1)
+        ) AS dedup
+          ON COALESCE(c.candidate_id, -1) = dedup.dedup_candidate_id
+          AND c.card_id = dedup.latest_card_id
         ORDER BY c.delivered_at DESC, c.card_id DESC
         """,
-        params,
+        params,  # 子查询需要WHERE参数，主查询不需要
     ).fetchall()
     cards = []
     for row in rows:
@@ -388,4 +404,51 @@ __all__ = [
     "recommendation_trust_headline",
     "recommendation_verified_label",
     "within_quiet_hours",
+    "cleanup_orphan_cards",  # 新增：清理孤儿卡片
 ]
+
+
+def cleanup_orphan_cards(conn) -> dict[str, Any]:
+    """清理订阅已删除的孤儿推荐卡片。
+
+    当订阅被删除后，推荐卡片可能仍然引用已删除的 subscription_id，
+    导致前端调用 conversion-views API 时出现"Unknown subscription"错误。
+
+    此函数会删除所有引用不存在订阅的推荐卡片。
+
+    Returns:
+        dict: {"deleted_count": 删除的卡片数量}
+    """
+    from .recommendation_transactions import commit_recommendation_transaction
+
+    # 找出所有孤儿卡片（subscription_id 不在 saved_search_subscriptions 表中）
+    orphan_rows = conn.execute(
+        """
+        SELECT card_id, subscription_id, title, requester_id
+        FROM in_app_recommendation_cards
+        WHERE subscription_id NOT IN (
+            SELECT subscription_id FROM saved_search_subscriptions WHERE status = 'active'
+        )
+        """
+    ).fetchall()
+
+    orphan_count = len(orphan_rows)
+
+    if orphan_count > 0:
+        # 记录日志
+        from observability import metric_gauge
+        metric_gauge("recommendation.cleanup.orphan_cards", orphan_count)
+
+        # 删除孤儿卡片
+        conn.execute(
+            """
+            DELETE FROM in_app_recommendation_cards
+            WHERE subscription_id NOT IN (
+                SELECT subscription_id FROM saved_search_subscriptions WHERE status = 'active'
+            )
+            """
+        )
+
+        commit_recommendation_transaction(conn)
+
+    return {"deleted_count": orphan_count}

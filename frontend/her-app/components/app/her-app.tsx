@@ -80,13 +80,7 @@ export function HerApp() {
       case 'auth-verification-code':
         return (
           <VerificationCodePage
-            phone={
-              auth.authPhone ||
-              (typeof window !== 'undefined'
-                ? window.sessionStorage.getItem('her_pending_auth_phone')
-                : '') ||
-              ''
-            }
+            phone={auth.authPhone || ''}
             onVerify={auth.verifySms}
             onResend={auth.resendSmsCode}
             onBack={() => handleNavigate('auth-phone')}
@@ -159,6 +153,9 @@ export function HerApp() {
               onOpenEditProfile={nav.handleOpenEditProfile}
               onOpenSettings={nav.handleOpenSettings}
               onOpenOnboarding={() => handleNavigate('auth-onboarding')}
+              onOpenRecommendationInbox={nav.handleOpenInbox}
+              fromSubPage={nav.fromSubPage}
+              inboxFilter={nav.inboxFilter}
             />
             </div>
           )

@@ -119,7 +119,7 @@ function mapDiscoveryCard(
     personality_bonus: card.personality_bonus,
     base_score: card.base_score,
     personality_scoring_trace: card.personality_scoring_trace,
-    personality_match_context: card.personality_match_context,
+    personality_match_context: card.personality_match_context as any,
   }
 }
 

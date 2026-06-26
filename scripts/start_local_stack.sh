@@ -8,6 +8,7 @@ VENV_DIR="${REPO_ROOT}/.venv"
 VENV_PY="${VENV_DIR}/bin/python"
 FRONTEND_DIR="${REPO_ROOT}/frontend/her-app"
 GATEWAY_DIR="${REPO_ROOT}/external-systems/partner-http-gateway"
+SSE_SERVER_DIR="${REPO_ROOT}/external-systems/sse-server"
 RUN_DIR="${REPO_ROOT}/.run"
 LOG_DIR="${RUN_DIR}/logs"
 PID_DIR="${RUN_DIR}/pids"
@@ -126,6 +127,16 @@ ensure_frontend_deps
 echo "Starting local MySQL"
 (cd "${REPO_ROOT}" && ./start_partner_mysql.sh)
 
+# 设置SSE服务器URL环境变量（供gateway调用）
+export SSE_SERVER_PUSH_URL=http://127.0.0.1:8081/internal/push
+
+start_service \
+  "sse-server" \
+  "${SSE_SERVER_DIR}" \
+  "${PID_DIR}/sse-server.pid" \
+  "${LOG_DIR}/sse-server.log" \
+  "${VENV_PY}" -m sse_server --host 127.0.0.1 --port 8081
+
 start_service \
   "gateway" \
   "${GATEWAY_DIR}" \
@@ -153,11 +164,13 @@ cat <<EOF
 
 Her local stack is up.
 
-Frontend: http://127.0.0.1:3000
-Gateway:  http://127.0.0.1:8765
+Frontend:    http://127.0.0.1:3000
+Gateway:     http://127.0.0.1:8765
+SSE Server:  http://127.0.0.1:8081
 
 Logs:
   ${LOG_DIR}/frontend.log
   ${LOG_DIR}/gateway.log
+  ${LOG_DIR}/sse-server.log
 $( [[ "${WITH_SCHEDULER}" == "1" ]] && printf '  %s\n' "${LOG_DIR}/scheduler.log" )
 EOF

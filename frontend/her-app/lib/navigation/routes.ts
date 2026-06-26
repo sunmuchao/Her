@@ -9,6 +9,8 @@ export type RouteParams = {
   chatTitle?: string
   counterpartId?: string
   fromChatId?: string
+  fromSubPage?: string
+  inboxFilter?: string
 }
 
 export type ParsedRoute = RouteParams & {
@@ -83,7 +85,7 @@ export function pageToPath(page: AppPage, params: RouteParams = {}): string {
       break
   }
 
-  // 添加 query 参数：caseId, viewType, chatTitle, counterpartId, fromChatId
+  // 添加 query 参数：caseId, viewType, chatTitle, counterpartId, fromChatId, fromSubPage, inboxFilter
   const queryParams: string[] = []
   if (params.caseId) {
     queryParams.push(`caseId=${encodeURIComponent(params.caseId)}`)
@@ -99,6 +101,12 @@ export function pageToPath(page: AppPage, params: RouteParams = {}): string {
   }
   if (params.fromChatId) {
     queryParams.push(`fromChatId=${encodeURIComponent(params.fromChatId)}`)
+  }
+  if (params.fromSubPage) {
+    queryParams.push(`fromSubPage=${encodeURIComponent(params.fromSubPage)}`)
+  }
+  if (params.inboxFilter) {
+    queryParams.push(`inboxFilter=${encodeURIComponent(params.inboxFilter)}`)
   }
   if (queryParams.length > 0) {
     path += '?' + queryParams.join('&')

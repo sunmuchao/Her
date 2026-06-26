@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import logging
+import os
 import uuid
 from datetime import datetime
 from typing import Any, Iterable, Mapping
+
+import requests
 
 from her_time_utils import current_time
 
@@ -748,6 +752,17 @@ def post_conversation_message(
             created_at_str=ts.isoformat(sep=" "),
         )
         conn.commit()
+
+        # 通知SSE服务器推送新消息（失败不影响主流程）
+        _notify_sse_server_push(
+            case_id=str(conversation["case_id"]),
+            conversation_id=conversation_id,
+            message_id=inserted_id,
+            author_id=author_id,
+            channel_key=str(conversation["channel_key"]),
+            body=body_text,
+            source=str(resolved_source),
+        )
     except IntegrityError:
         conn.rollback()
         if cmid:
@@ -830,6 +845,79 @@ def build_case_conversation_timeline(
         "conversation_count": len(out),
         "conversations": out,
     }
+
+
+logger = logging.getLogger(__name__)
+
+
+def _notify_sse_server_push(
+    case_id: str,
+    conversation_id: str,
+    message_id: int,
+    author_id: str,
+    channel_key: str,
+    body: str,
+    source: str,
+) -> None:
+    """通知SSE服务器推送新消息.
+
+    Args:
+        case_id: Case ID
+        conversation_id: Conversation ID
+        message_id: Message ID
+        author_id: Author user ID
+        channel_key: Channel key
+        body: Message body
+        source: Message source (user/agent/system)
+
+    Note:
+        此函数失败不影响主流程，仅记录警告日志。
+        前端30秒轮询兜底会确保消息最终送达。
+    """
+    sse_url = os.environ.get(
+        "SSE_SERVER_PUSH_URL",
+        "http://localhost:8081/internal/push"
+    )
+
+    payload = {
+        "case_id": case_id,
+        "conversation_id": conversation_id,
+        "message_id": message_id,
+        "author_id": author_id,
+        "channel_key": channel_key,
+        "body": body,
+        "source": source,
+        "event_type": "chat_conversation_message_created",
+    }
+
+    try:
+        resp = requests.post(
+            sse_url,
+            json=payload,
+            timeout=2.0,  # 2秒超时，避免阻塞主流程
+        )
+        if resp.status_code == 200:
+            logger.info(
+                f"SSE push notified: message_id={message_id}, "
+                f"case_id={case_id}, author={author_id}"
+            )
+        else:
+            logger.warning(
+                f"SSE push failed: status={resp.status_code}, "
+                f"message_id={message_id}, case_id={case_id}"
+            )
+    except requests.exceptions.Timeout:
+        logger.warning(
+            f"SSE push timeout: message_id={message_id}, case_id={case_id}"
+        )
+    except requests.exceptions.ConnectionError:
+        logger.warning(
+            f"SSE server unreachable: message_id={message_id}, case_id={case_id}"
+        )
+    except Exception as e:
+        logger.warning(
+            f"SSE push error: {e}, message_id={message_id}, case_id={case_id}"
+        )
 
 
 __all__ = [

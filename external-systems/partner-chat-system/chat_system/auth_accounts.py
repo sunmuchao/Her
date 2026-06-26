@@ -111,27 +111,45 @@ def _row(conn, sql: str, params: tuple[Any, ...]) -> dict[str, Any] | None:
     return row_to_dict(conn.execute(sql, params).fetchone())
 
 
+def _matches_encrypted_value(
+    encrypted_value: str | None,
+    expected_plaintext: str,
+    *,
+    identity_type: str | None = None,
+) -> bool:
+    if not encrypted_value:
+        return False
+    try:
+        decrypted = (
+            SensitiveDataCrypto.decrypt_identity_value(identity_type, encrypted_value)
+            if identity_type
+            else SensitiveDataCrypto.decrypt_phone(encrypted_value)
+        )
+    except Exception:
+        return False
+    return decrypted == expected_plaintext
+
+
 def _active_user_by_phone(conn, phone: str) -> dict[str, Any] | None:
-    # Security: encrypt phone before query
-    encrypted_phone = SensitiveDataCrypto.encrypt_phone(phone)
-    row = _row(
-        conn,
+    rows = conn.execute(
         """
-        SELECT ua.*
+        SELECT ua.*, uai.identity_value AS phone_identity_value
         FROM user_accounts ua
         JOIN user_account_identities uai
           ON uai.user_id = ua.user_id
         WHERE uai.identity_type = 'phone'
-          AND uai.identity_value = ?
           AND uai.status = 'active'
-        LIMIT 1
-        """,
-        (encrypted_phone,),
-    )
-    # Security: decrypt phone in returned data
-    if row and row.get("primary_phone"):
-        row["primary_phone"] = SensitiveDataCrypto.decrypt_phone(row["primary_phone"])
-    return row
+        ORDER BY uai.updated_at DESC, uai.created_at DESC
+        """
+    ).fetchall()
+    for item in rows:
+        row = row_to_dict(item)
+        if _matches_encrypted_value(row.get("phone_identity_value"), phone, identity_type=IDENTITY_TYPE_PHONE):
+            row.pop("phone_identity_value", None)
+            if row.get("primary_phone"):
+                row["primary_phone"] = SensitiveDataCrypto.decrypt_phone(row["primary_phone"])
+            return row
+    return None
 
 
 def _active_user_by_wechat(
@@ -140,48 +158,29 @@ def _active_user_by_wechat(
     openid: str | None,
     unionid: str | None,
 ) -> dict[str, Any] | None:
-    # Security: encrypt wechat IDs before query
-    encrypted_openid = SensitiveDataCrypto.encrypt_wechat_id(openid) if openid else None
-    encrypted_unionid = SensitiveDataCrypto.encrypt_wechat_id(unionid) if unionid else None
-    if encrypted_unionid:
-        row = _row(
-            conn,
-            """
-            SELECT ua.*
-            FROM user_accounts ua
-            JOIN user_account_identities uai
-              ON uai.user_id = ua.user_id
-            WHERE uai.identity_type = ?
-              AND uai.identity_value = ?
-              AND uai.status = 'active'
-            LIMIT 1
-            """,
-            (IDENTITY_TYPE_WECHAT_UNIONID, encrypted_unionid),
-        )
-        if row:
-            # Security: decrypt phone in returned data
+    rows = conn.execute(
+        """
+        SELECT ua.*, uai.identity_type AS matched_identity_type, uai.identity_value AS matched_identity_value
+        FROM user_accounts ua
+        JOIN user_account_identities uai
+          ON uai.user_id = ua.user_id
+        WHERE uai.identity_type IN (?, ?)
+          AND uai.status = 'active'
+        ORDER BY uai.updated_at DESC, uai.created_at DESC
+        """,
+        (IDENTITY_TYPE_WECHAT_UNIONID, IDENTITY_TYPE_WECHAT_OPENID),
+    ).fetchall()
+    for item in rows:
+        row = row_to_dict(item)
+        identity_type = str(row.get("matched_identity_type") or "")
+        identity_value = row.get("matched_identity_value")
+        expected = unionid if identity_type == IDENTITY_TYPE_WECHAT_UNIONID else openid
+        if expected and _matches_encrypted_value(identity_value, expected, identity_type=identity_type):
+            row.pop("matched_identity_type", None)
+            row.pop("matched_identity_value", None)
             if row.get("primary_phone"):
                 row["primary_phone"] = SensitiveDataCrypto.decrypt_phone(row["primary_phone"])
             return row
-    if encrypted_openid:
-        row = _row(
-            conn,
-            """
-            SELECT ua.*
-            FROM user_accounts ua
-            JOIN user_account_identities uai
-              ON uai.user_id = ua.user_id
-            WHERE uai.identity_type = ?
-              AND uai.identity_value = ?
-              AND uai.status = 'active'
-            LIMIT 1
-            """,
-            (IDENTITY_TYPE_WECHAT_OPENID, encrypted_openid),
-        )
-        # Security: decrypt phone in returned data
-        if row and row.get("primary_phone"):
-            row["primary_phone"] = SensitiveDataCrypto.decrypt_phone(row["primary_phone"])
-        return row
     return None
 
 
@@ -483,18 +482,22 @@ def _ensure_identity(
     verified_at: datetime | None = None,
     now: datetime,
 ) -> None:
-    # Security: encrypt identity value before storing
     encrypted_value = SensitiveDataCrypto.encrypt_identity_value(identity_type, identity_value)
-    existing = _row(
-        conn,
+    rows = conn.execute(
         """
         SELECT *
         FROM user_account_identities
-        WHERE identity_type = ? AND identity_value = ?
-        LIMIT 1
+        WHERE identity_type = ?
+        ORDER BY updated_at DESC, created_at DESC
         """,
-        (identity_type, encrypted_value),
-    )
+        (identity_type,),
+    ).fetchall()
+    existing = None
+    for item in rows:
+        row = row_to_dict(item)
+        if _matches_encrypted_value(row.get("identity_value"), identity_value, identity_type=identity_type):
+            existing = row
+            break
     if existing:
         if str(existing.get("user_id") or "") != str(user_id):
             raise AuthDomainError(409, "identity_conflict", f"{identity_type} is already bound to another account")
@@ -535,30 +538,35 @@ def _challenge_for_phone(
     challenge_id: str | None,
     scene: str,
 ) -> dict[str, Any] | None:
-    # Security: encrypt phone before query
-    encrypted_phone = SensitiveDataCrypto.encrypt_phone(phone)
     if challenge_id:
-        return _row(
+        challenge = _row(
             conn,
             """
             SELECT *
             FROM auth_otp_challenges
-            WHERE challenge_id = ? AND phone = ?
+            WHERE challenge_id = ?
             LIMIT 1
             """,
-            (challenge_id, encrypted_phone),
+            (challenge_id,),
         )
-    return _row(
-        conn,
+        if challenge and challenge.get("scene") == scene and _matches_encrypted_value(challenge.get("phone"), phone):
+            return challenge
+        return None
+
+    rows = conn.execute(
         """
         SELECT *
         FROM auth_otp_challenges
-        WHERE phone = ? AND scene = ?
+        WHERE scene = ?
         ORDER BY created_at DESC
-        LIMIT 1
         """,
-        (encrypted_phone, scene),
-    )
+        (scene,),
+    ).fetchall()
+    for item in rows:
+        row = row_to_dict(item)
+        if _matches_encrypted_value(row.get("phone"), phone):
+            return row
+    return None
 
 
 def _consume_sms_challenge(

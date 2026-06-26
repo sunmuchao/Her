@@ -74,6 +74,8 @@ def _stage_label(case: dict[str, Any], *, has_main_conversation: bool) -> str:
         return "待联系"
     if status == "awaiting_reply":
         return "等待回复"
+    if status == "viewed":
+        return "已查看"  # ✅ 新增：显示已查看状态
     if status == "accepted":
         return "可聊天"
     if status == "declined":
@@ -131,7 +133,7 @@ def _build_case_view(
         or counterpart_profile.get("cover_url"),
         "safe_summary": case.get("safe_summary") or {},
         "stage_label": _stage_label(case, has_main_conversation=bool(main_conversation)),
-        "can_reply": int(case.get("candidate_id") or 0) == int(viewer_profile_id) and case_status == "awaiting_reply",
+        "can_reply": int(case.get("candidate_id") or 0) == int(viewer_profile_id) and case_status in {"awaiting_reply", "viewed"},  # ✅ 修改：viewed状态也能回复
         "can_open_chat": can_open_chat,
         "main_conversation_id": (
             str(main_conversation.get("conversation_id") or "").strip() if main_conversation else None
@@ -232,6 +234,45 @@ def rest_proxy_intro_reply_case(
     }
 
 
+def rest_proxy_intro_view_case(
+    gateway: ProxyIntroGateway,
+    environ: dict[str, Any],
+    case_id: str,
+    body: dict[str, Any],
+) -> tuple[int, dict[str, Any]]:
+    """标记被动推荐为已查看状态（不改变accept/decline状态）"""
+    principal = gateway._resolve_end_user_principal(environ, require_profile=True)
+    case = gateway._get_case_for_actor(environ, case_id)
+
+    # 验证用户是否有权限查看这个case（必须是candidate）
+    if int(case.get("candidate_id") or 0) != int(principal.profile_id):
+        raise ValueError("只有被推荐的一方可以标记查看状态")
+
+    # 检查当前状态，只有awaiting_reply状态可以标记为viewed
+    case_status = str(case.get("case_status") or "").strip()
+    if case_status != "awaiting_reply":
+        # 如果已经是viewed、accepted、declined等状态，不需要再次标记
+        return 200, {
+            "case": _json_safe(_build_case_view(gateway, case, viewer_profile_id=int(principal.profile_id))),
+            "message": f"当前状态为{case_status}，无需标记为viewed",
+            "trace_id": get_trace_id(),
+        }
+
+    # 调用后端函数更新状态为viewed
+    from matchmaking_system.proxy_intro_core import mark_case_as_viewed  # type: ignore[import-untyped]
+    updated = gateway._with_proxy_intro(
+        mark_case_as_viewed,
+        case_id=case_id,
+        now=_parse_optional_now(body),
+        view_payload={"source": str(body.get("source") or "detail_page")},
+    )
+
+    return 200, {
+        "case": _json_safe(_build_case_view(gateway, updated, viewer_profile_id=int(principal.profile_id))),
+        "trace_id": get_trace_id(),
+    }
+
+
 def rest_proxy_intro_open_chat(
     gateway: ProxyIntroGateway,
     environ: dict[str, Any],
@@ -264,8 +305,22 @@ def rest_proxy_intro_open_chat(
 
     if not main_conversation:
         relation_key = str(case.get("relation_key") or "").strip()
+
+        # 防御性逻辑：relation_key 缺失时动态生成
+        if not relation_key:
+            requester_id = case.get("requester_id")
+            candidate_id = case.get("candidate_id")
+            if requester_id and candidate_id and requester_user_id and candidate_user_id:
+                from match_domain import matchmaking_relation_key
+                requester_info = {"source": "her", "self_id": requester_id, "user_key": str(requester_id)}
+                candidate_info = {"source": "her", "self_id": candidate_id, "user_key": str(candidate_id)}
+                member_low, member_high = sorted([requester_info, candidate_info], key=lambda x: int(x.get("self_id") or 0))
+                relation_key = matchmaking_relation_key(member_low, member_high)
+                print(f"[INFO] Generated relation_key for case {case_id}: {relation_key}")
+
         if not relation_key:
             raise ValueError("关系键缺失，暂时无法开聊")
+
         layout = gateway._with_chat(
             create_assistant_case_layout,
             case_id=case_id,
@@ -320,6 +375,14 @@ def dispatch_proxy_intro_rest(
         )
     if path == "/v1/proxy-intro/cases/mine" and method == "GET":
         return rest_proxy_intro_list_mine(gateway, environ)
+    match = re.fullmatch(r"/v1/proxy-intro/cases/([^/]+)/view", path)
+    if match and method == "POST":
+        return rest_proxy_intro_view_case(
+            gateway,
+            environ,
+            match.group(1),
+            _parse_json_body(_read_body(environ)),
+        )
     match = re.fullmatch(r"/v1/proxy-intro/cases/([^/]+)/reply", path)
     if match and method == "POST":
         return rest_proxy_intro_reply_case(
@@ -339,4 +402,86 @@ def dispatch_proxy_intro_rest(
     match = re.fullmatch(r"/v1/proxy-intro/cases/([^/]+)", path)
     if match and method == "GET":
         return rest_proxy_intro_get_case(gateway, environ, match.group(1))
+    match = re.fullmatch(r"/v1/proxy-intro/cases/([^/]+)/close", path)
+    if match and method == "POST":
+        return rest_proxy_intro_close_case(
+            gateway,
+            environ,
+            match.group(1),
+            _parse_json_body(_read_body(environ)),
+        )
+
+    # FIX: 清理孤儿 match case（订阅已删除但 case 仍存在）
+    if path == "/v1/proxy-intro/cleanup-orphan-cases" and method == "POST":
+        gateway._require_roles(
+            environ,
+            ["ops_workbench", "admin"],
+            message="current actor cannot cleanup orphan match cases",
+        )
+        return rest_cleanup_orphan_match_cases(gateway, environ)
+
     return None
+
+
+def rest_cleanup_orphan_match_cases(
+    gateway: ProxyIntroGateway,
+    environ: dict[str, Any],
+) -> tuple[int, dict[str, Any]]:
+    """清理订阅已删除的孤儿 match case。
+
+    此API需要 ops_workbench 或 admin 权限，用于：
+    1. 手动触发清理孤儿 case
+    2. 定期维护任务调用
+    """
+    from matchmaking_system.proxy_intro_core import cleanup_orphan_match_cases  # type: ignore[import-untyped]
+    result = gateway._with_proxy_intro(cleanup_orphan_match_cases)
+    return 200, {
+        "deleted_case_count": result.get("deleted_case_count", 0),
+        "updated_recommendation_count": result.get("updated_recommendation_count", 0),
+        "trace_id": get_trace_id(),
+    }
+
+
+def rest_proxy_intro_close_case(
+    gateway: ProxyIntroGateway,
+    environ: dict[str, Any],
+    case_id: str,
+    body: dict[str, Any],
+) -> tuple[int, dict[str, Any]]:
+    """用户主动关闭/删除关系"""
+    principal = gateway._resolve_end_user_principal(environ, require_profile=True)
+    case = gateway._get_case_for_actor(environ, case_id)
+
+    # 权限验证：只有 requester 或 candidate 可以关闭
+    profile_id = int(principal.profile_id)
+    requester_id = int(case.get("requester_id") or 0)
+    candidate_id = int(case.get("candidate_id") or 0)
+
+    if requester_id != profile_id and candidate_id != profile_id:
+        raise ValueError("无权操作此关系")
+
+    # 检查 case 状态：只有 active 状态的 case 可以关闭
+    case_status = str(case.get("case_status") or "").strip()
+    if case_status not in {"accepted", "awaiting_reply", "pending_outreach"}:
+        raise ValueError(f"只能关闭进行中的关系（当前状态：{case_status})")
+
+    # 解析关闭原因和参数
+    close_reason = str(body.get("close_reason") or "user_deleted").strip()
+    actor_type = "requester" if requester_id == profile_id else "candidate"
+    close_payload = {"source": str(body.get("source") or "relationships_page")}
+
+    # 调用 close_match_case 函数
+    updated = gateway._with_proxy_intro(
+        close_match_case,
+        case_id=case_id,
+        close_reason=close_reason,
+        now=_parse_optional_now(body),
+        actor_type=actor_type,
+        close_payload=close_payload,
+    )
+
+    # 返回更新后的 case 数据
+    return 200, {
+        "case": _json_safe(_build_case_view(gateway, updated, viewer_profile_id=profile_id)),
+        "trace_id": get_trace_id(),
+    }

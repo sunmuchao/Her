@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import {
   fetchConversionViewsForSubscription,
   fetchRecommendationCards,
@@ -30,6 +30,11 @@ export type InboxItem = {
   time: string
   isRead: boolean
   conversionStage?: string
+  // 新增字段：供卡片详细显示（后端已处理好）
+  ageDisplay?: string  // 实际年龄显示（如"28岁")
+  education?: string  // 学历
+  relationshipGoal?: string  // 关系目标（中文）
+  matchedOn?: string[]  // 匹配点列表
 }
 
 function mapCardToInboxItem(card: RecommendationCard): InboxItem {
@@ -75,12 +80,14 @@ function mapProxyIntroCaseToInboxItem(caseItem: ProxyIntroCase): InboxItem {
     || String(requesterProfile.display_name || requesterProfile.name || '')
     || '有人'
 
-  // 提取年龄
+  // 提取年龄：后端已处理为实际年龄（如"28岁")
   let age = 0
-  if (requesterSummary.age_bracket) {
-    const bracketMatch = requesterSummary.age_bracket.match(/(\d+)-(\d+)/)
-    if (bracketMatch) age = parseInt(bracketMatch[1])
+  const ageDisplay = requesterSummary.age  // 后端已格式化为"28岁"
+  if (ageDisplay) {
+    const ageMatch = ageDisplay.match(/(\d+)岁/)
+    if (ageMatch) age = parseInt(ageMatch[1])
   } else {
+    // 兜底：从 profile 中提取实际年龄
     age = parseInt(String(counterpartProfile.age || requesterProfile.age || '0')) || 0
   }
 
@@ -96,6 +103,21 @@ function mapProxyIntroCaseToInboxItem(caseItem: ProxyIntroCase): InboxItem {
     || String(requesterProfile.job || requesterProfile.occupation || '')
     || '资料待补充'
 
+  // 提取学历
+  const education = requesterSummary.education
+    || String(counterpartProfile.education || '')
+    || String(requesterProfile.education || '')
+    || ''
+
+  // 提取关系目标（后端已映射为中文）
+  const relationshipGoal = requesterSummary.relationship_goal
+    || String(counterpartProfile.relationship_goal || '')
+    || String(requesterProfile.relationship_goal || '')
+    || ''
+
+  // 提取匹配点
+  const matchedOn = requesterSummary.matched_on || []
+
   // 提取头像
   const image = resolveProfileImageUrl(
     requesterSummary.avatar_url
@@ -103,6 +125,9 @@ function mapProxyIntroCaseToInboxItem(caseItem: ProxyIntroCase): InboxItem {
     || String(requesterProfile.avatar_url || requesterProfile.photo_url || ''),
     PLACEHOLDER_AVATAR
   )
+
+  // 构建 message：后端已处理好完整信息
+  const message = requesterSummary.summary_text || `${name}想通过平台进一步认识你`
 
   return {
     id: String(caseItem.counterpart_profile_id || caseItem.case_id),
@@ -119,16 +144,41 @@ function mapProxyIntroCaseToInboxItem(caseItem: ProxyIntroCase): InboxItem {
     matchScore: 0,
     image,
     type: 'interest',
-    message: requesterSummary.summary_text || `${name}想通过平台进一步认识你`,
+    message,  // 后端已处理好
     time: caseItem.created_at || '刚刚',
     isRead: caseItem.case_status !== 'awaiting_reply',
     conversionStage: undefined,
+    // 新增字段：供卡片详细显示
+    ageDisplay,  // 实际年龄显示（如"28岁")
+    education,
+    relationshipGoal,  // 中文关系目标
+    matchedOn,  // 匹配点列表
   }
 }
 
 export function useRecommendationInbox() {
   const [isLoading, setIsLoading] = useState(true)
   const [backendItems, setBackendItems] = useState<InboxItem[]>([])
+  const [readListKeys, setReadListKeys] = useState<Set<string>>(new Set())
+
+  // 新增：标记已读函数（立即更新本地状态并持久化）
+  const markItemRead = useCallback((item: InboxItem) => {
+    // 立即更新前端状态
+    setBackendItems((prevItems) =>
+      prevItems.map((prevItem) =>
+        prevItem.listKey === item.listKey
+          ? { ...prevItem, isRead: true }
+          : prevItem
+      )
+    )
+
+    // 持久化到 sessionStorage（防止组件卸载后状态丢失）
+    const readKeys = JSON.parse(sessionStorage.getItem('recommendation-read-keys') || '[]')
+    if (!readKeys.includes(item.listKey)) {
+      readKeys.push(item.listKey)
+      sessionStorage.setItem('recommendation-read-keys', JSON.stringify(readKeys))
+    }
+  }, [])
 
   useEffect(() => {
     const profileId = getProfileId()
@@ -151,9 +201,10 @@ export function useRecommendationInbox() {
           const casesResponse = await fetchMyProxyIntroCases()
           if (cancelled) return
           console.log('[推荐来信] 加载 ProxyIntroCase:', casesResponse)
-          // 过滤出当前用户作为被请求方且等待回复的 case
+          // 过滤出当前用户作为被请求方的 case（包括 awaiting_reply 和 viewed 状态）
+          // viewed 状态的 case 也应该显示，用户可以主动左滑删除
           const interestCases = (casesResponse.cases || []).filter(
-            (c) => c.role === 'candidate' && c.case_status === 'awaiting_reply'
+            (c) => c.role === 'candidate' && (c.case_status === 'awaiting_reply' || c.case_status === 'viewed')
           )
           console.log('[推荐来信] 过滤后的被动推荐 case:', interestCases)
           interestCards = interestCases.map(mapProxyIntroCaseToInboxItem)
@@ -206,7 +257,23 @@ export function useRecommendationInbox() {
               ? conversionByCandidate.get(Number(card.candidateId))
               : undefined,
         }))
-        setBackendItems(enrichedCards)
+
+        // 恢复 sessionStorage 中的已读状态（防止组件卸载后状态丢失）
+        const readKeys = JSON.parse(sessionStorage.getItem('recommendation-read-keys') || '[]')
+
+        // 恢复 sessionStorage 中的删除状态（防止组件卸载后状态丢失）
+        const dismissedKeys = JSON.parse(sessionStorage.getItem('recommendation-dismissed-ids') || '[]')
+
+        const restoredCards = enrichedCards.map((card) =>
+          readKeys.includes(card.listKey)
+            ? { ...card, isRead: true }
+            : card
+        )
+
+        // 过滤掉已删除的卡片
+        const finalCards = restoredCards.filter((card) => !dismissedKeys.includes(card.listKey))
+
+        setBackendItems(finalCards)
       } finally {
         if (!cancelled) setIsLoading(false)
       }
@@ -218,5 +285,5 @@ export function useRecommendationInbox() {
     }
   }, [])
 
-  return { isLoading, backendItems }
+  return { isLoading, backendItems, markItemRead }
 }

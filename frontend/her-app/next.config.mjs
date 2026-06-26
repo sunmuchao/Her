@@ -21,6 +21,21 @@ const nextConfig = {
       { protocol: 'https', hostname: 'img.her.local' },
     ],
   },
+
+  // 允许 unload 事件（用于 Vercel Analytics）
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          {
+            key: 'Permissions-Policy',
+            value: 'unload=(self)',
+          },
+        ],
+      },
+    ]
+  },
 }
 
 export default nextConfig

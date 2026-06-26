@@ -2,6 +2,8 @@ import { gatewayJson, queryString } from '@/lib/api/client'
 import type { ConversionView } from '@/lib/types/relations'
 import { getProfileId } from '@/lib/auth/session'
 
+export const RECOMMENDATION_READ_EVENT = 'her:recommendation-read-state-changed'
+
 export type RecommendationCard = {
   card_id: string
   subscription_id?: string
@@ -37,13 +39,20 @@ export async function fetchRecommendationCards(profileId: number) {
 }
 
 export async function markRecommendationCardsRead(profileId: number, cardIds: string[]) {
-  return gatewayJson('/v1/recommendation/cards/read', {
+  const result = await gatewayJson('/v1/recommendation/cards/read', {
     method: 'POST',
     body: JSON.stringify({
       profile_id: profileId,
       card_ids: cardIds,
     }),
   })
+  // 标记成功后触发事件，通知徽章计数刷新
+  if (typeof window !== 'undefined' && typeof CustomEvent === 'function') {
+    window.dispatchEvent(new CustomEvent(RECOMMENDATION_READ_EVENT, {
+      detail: { profileId, cardIds },
+    }))
+  }
+  return result
 }
 
 export async function postRecommendationAction(params: {

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useState, useEffect } from 'react'
 import { flushSync } from 'react-dom'
 import {
   bindPhoneWithSms,
@@ -14,15 +14,22 @@ import { navigateAfterAuthSession, navigateAfterLogin } from '@/lib/auth/post-lo
 import { clearSession, type LoginPayload } from '@/lib/auth/session'
 import type { AppPage } from '@/lib/navigation/types'
 import { getErrorMessage } from '@/lib/api/errors'
+import { GatewayClientError } from '@/lib/api/client'
 
 export type AuthMode = 'sms-login' | 'wechat-bind'
 
 const PENDING_PHONE_KEY = 'her_pending_auth_phone'
+const PENDING_CHALLENGE_ID_KEY = 'her_pending_auth_challenge_id'
 const PENDING_ONE_TAP_KEY = 'her_pending_one_tap_attempt'
 
 function readPendingPhone(): string {
   if (typeof window === 'undefined') return ''
   return window.sessionStorage.getItem(PENDING_PHONE_KEY) || ''
+}
+
+function readPendingChallengeId(): string | null {
+  if (typeof window === 'undefined') return null
+  return window.sessionStorage.getItem(PENDING_CHALLENGE_ID_KEY) || null
 }
 
 function readPendingOneTap(): {
@@ -45,18 +52,37 @@ function readPendingOneTap(): {
 }
 
 export function useAuthFlow(onNavigate: (page: AppPage) => void) {
-  const [authPhone, setAuthPhone] = useState(() => readPendingPhone())
+  // 初始值固定为空字符串，避免 Hydration 错误
+  const [authPhone, setAuthPhone] = useState<string>('')
   const [authMode, setAuthMode] = useState<AuthMode>('sms-login')
   const [smsChallengeId, setSmsChallengeId] = useState<string | null>(null)
   const [oneTapAttempt, setOneTapAttempt] = useState<{
     attemptId: string
     maskedPhone: string
     operatorToken?: string
-  } | null>(() => readPendingOneTap())
+  } | null>(null)
   const [wechatProfile, setWechatProfile] = useState<{
     nickname?: string
     avatar_url?: string
   } | null>(null)
+
+  // 客户端读取 sessionStorage（避免 Hydration 错误）
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const phone = readPendingPhone()
+      if (phone) {
+        setAuthPhone(phone)
+      }
+      const challengeId = readPendingChallengeId()
+      if (challengeId) {
+        setSmsChallengeId(challengeId)
+      }
+      const oneTap = readPendingOneTap()
+      if (oneTap) {
+        setOneTapAttempt(oneTap)
+      }
+    }
+  }, [])
 
   const completeLoginFlow = useCallback(
     async (payload: LoginPayload) => {
@@ -75,6 +101,7 @@ export function useAuthFlow(onNavigate: (page: AppPage) => void) {
     clearSession()
     if (typeof window !== 'undefined') {
       window.sessionStorage.removeItem(PENDING_PHONE_KEY)
+      window.sessionStorage.removeItem(PENDING_CHALLENGE_ID_KEY)
       window.sessionStorage.removeItem(PENDING_ONE_TAP_KEY)
     }
   }, [])
@@ -87,6 +114,11 @@ export function useAuthFlow(onNavigate: (page: AppPage) => void) {
       })
       if (typeof window !== 'undefined') {
         window.sessionStorage.setItem(PENDING_PHONE_KEY, phone)
+        if (data.challenge_id) {
+          window.sessionStorage.setItem(PENDING_CHALLENGE_ID_KEY, data.challenge_id)
+        } else {
+          window.sessionStorage.removeItem(PENDING_CHALLENGE_ID_KEY)
+        }
       }
       flushSync(() => {
         setAuthPhone(phone)
@@ -111,18 +143,46 @@ export function useAuthFlow(onNavigate: (page: AppPage) => void) {
         return
       }
       const phone = authPhone || readPendingPhone()
-      const data = await verifySmsCode({
-        phone,
-        code,
-        challengeId: smsChallengeId,
-      })
+      if (!phone) {
+        throw new Error('手机号丢失，请返回重新获取验证码')
+      }
+      const challengeId = smsChallengeId || readPendingChallengeId()
+      let data: LoginPayload
+      try {
+        data = await verifySmsCode({
+          phone,
+          code,
+          challengeId,
+        })
+      } catch (error) {
+        const errorCode =
+          error instanceof GatewayClientError
+            ? ((error.payload as { error?: { code?: string } } | null)?.error?.code ?? '')
+            : ''
+        if (challengeId && errorCode === 'code_not_requested') {
+          if (typeof window !== 'undefined') {
+            window.sessionStorage.removeItem(PENDING_CHALLENGE_ID_KEY)
+          }
+          setSmsChallengeId(null)
+          data = await verifySmsCode({
+            phone,
+            code,
+          })
+        } else {
+          throw error
+        }
+      }
       await completeLoginFlow(data)
     },
     [authMode, authPhone, smsChallengeId, completeLoginFlow, onNavigate],
   )
 
   const resendSmsCode = useCallback(async () => {
-    await requestSmsCode(authPhone)
+    const phone = authPhone || readPendingPhone()
+    if (!phone) {
+      throw new Error('手机号丢失，请返回重新获取验证码')
+    }
+    await requestSmsCode(phone)
   }, [authPhone, requestSmsCode])
 
   const startWechatLogin = useCallback(async () => {
