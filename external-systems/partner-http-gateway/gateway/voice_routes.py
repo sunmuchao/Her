@@ -208,19 +208,27 @@ def _transcribe_audio(audio_data: bytes, language: str = "zh", content_type: str
             f"duration={conversion_metadata.get('duration_ms', 'unknown')}ms"
         )
 
-        segments, info = model.transcribe(
-            tmp_path,
-            language=language,
-            beam_size=5,
-            vad_filter=True,
-            hallucination_silence_threshold=1.5,
-        )
+        def run_transcription(*, vad_filter: bool) -> tuple[list[Any], Any]:
+            segments_iter, transcription_info = model.transcribe(
+                tmp_path,
+                language=language,
+                beam_size=5,
+                vad_filter=vad_filter,
+                hallucination_silence_threshold=1.5 if vad_filter else None,
+            )
+            return list(segments_iter), transcription_info
 
-        segment_list = list(segments)
+        segment_list, info = run_transcription(vad_filter=True)
         filtered_segments = segment_list
 
         # Extract full text
         full_text = "".join(segment.text for segment in filtered_segments)
+        if not full_text.strip():
+            LOGGER.info("VAD-based transcription produced empty text; retrying without VAD")
+            segment_list, info = run_transcription(vad_filter=False)
+            filtered_segments = segment_list
+            full_text = "".join(segment.text for segment in filtered_segments)
+
         if _is_suspicious_hallucination(full_text):
             LOGGER.warning("Discarded suspicious hallucinated transcription: %r", full_text)
             full_text = ""
