@@ -183,7 +183,14 @@ export function useVoiceInput({
 
     try {
       // 使用 MediaRecorder 录制音频，发送到后端 Whisper API
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      })
       streamRef.current = stream
 
       // 选择支持的音频格式

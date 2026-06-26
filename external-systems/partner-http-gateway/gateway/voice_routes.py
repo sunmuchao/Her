@@ -34,6 +34,8 @@ SUSPICIOUS_HALLUCINATION_PATTERNS = (
     re.compile(r"字幕\s*by", re.IGNORECASE),
     re.compile(r"索兰娅"),
 )
+LOW_AUDIO_DBFS_THRESHOLD = -35.0
+MAX_GAIN_DB = 30.0
 
 
 def _get_whisper_model() -> WhisperModel:
@@ -98,6 +100,7 @@ def _convert_audio_to_wav(audio_data: bytes, input_format: str = "webm") -> tupl
             "channels": audio_segment.channels,
             "sample_rate": audio_segment.frame_rate,
             "bits_per_sample": audio_segment.sample_width * 8,
+            "dbfs": audio_segment.dBFS,
         }
 
         LOGGER.info(
@@ -116,6 +119,20 @@ def _convert_audio_to_wav(audio_data: bytes, input_format: str = "webm") -> tupl
         if audio_segment.frame_rate != 16000:
             audio_segment = audio_segment.set_frame_rate(16000)
             LOGGER.info(f"Resampled to 16kHz for Whisper compatibility")
+
+        # Boost very quiet recordings to improve transcription reliability.
+        dbfs = float(audio_segment.dBFS) if audio_segment.dBFS != float("-inf") else float("-inf")
+        if dbfs != float("-inf") and dbfs < LOW_AUDIO_DBFS_THRESHOLD:
+            gain_db = min(LOW_AUDIO_DBFS_THRESHOLD - dbfs, MAX_GAIN_DB)
+            audio_segment = audio_segment.apply_gain(gain_db)
+            metadata["applied_gain_db"] = gain_db
+            metadata["normalized_dbfs"] = audio_segment.dBFS
+            LOGGER.info(
+                "Applied gain for quiet audio: original_dbfs=%.2f, gain_db=%.2f, normalized_dbfs=%.2f",
+                dbfs,
+                gain_db,
+                audio_segment.dBFS,
+            )
 
         # Export to WAV
         audio_segment.export(tmp_out_path, format="wav")
