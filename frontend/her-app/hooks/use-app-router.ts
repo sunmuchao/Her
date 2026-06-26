@@ -14,7 +14,6 @@ function pageToTab(page: AppPage): TabType {
 }
 
 function pageToSubView(page: AppPage): SubView {
-  if (page === 'sub-recommendation-inbox') return 'recommendation-inbox'
   if (page === 'sub-candidate-detail') return 'candidate-detail'
   if (page === 'sub-chat') return 'chat'
   if (page === 'sub-verification') return 'verification'
@@ -193,14 +192,6 @@ export function useAppRouter() {
     [pushPage],
   )
 
-  const handleOpenInbox = useCallback((restoreFilter?: string) => {
-    let href = pageToPath('sub-recommendation-inbox')
-    if (restoreFilter) {
-      href += `?restoreFilter=${encodeURIComponent(restoreFilter)}`
-    }
-    router.push(href)
-  }, [router])
-
   const handleBackToMain = useCallback(() => {
     pushPage(`main-${currentTab}` as AppPage)
   }, [currentTab, pushPage])
@@ -262,7 +253,6 @@ export function useAppRouter() {
     handleTabChange,
     handleViewCandidate,
     handleOpenChat,
-    handleOpenInbox,
     handleBackToMain,
     handleStartVerification,
     handleBackFromVerification,

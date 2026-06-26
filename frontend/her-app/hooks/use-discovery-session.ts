@@ -194,22 +194,35 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
       hasSessionCriteriaChipsRef.current = false
 
       const sessionFromUrl = sessionFromUrlQuery?.trim() || null
+
+      // ✅ 修复：先等待hydrate完成，再获取profileId（防止使用环境变量的默认值导致Gateway报错）
       const authTask = getAccessToken() ? hydrateSessionFromAuthMe() : Promise.resolve(null)
-
-      const profileIdBeforeAuth = getProfileId()
-      let discoveryTask: Promise<{ data: DiscoverySessionResponse; apiPath: string }> | null =
-        profileIdBeforeAuth
-          ? resolveDiscoverySession(profileIdBeforeAuth, sessionFromUrl)
-          : null
-
-      if (profileIdBeforeAuth) {
-        loadCollectedPreferences(profileIdBeforeAuth, isCancelled)
-      }
-
-      await authTask
+      const authMeData = await authTask  // 等待hydrate完成，并获取返回数据
       if (cancelled) return
 
-      const profileId = getProfileId()
+      // ✅ 新增：检测用户是否完成onboarding
+      const onboardingStatus = authMeData?.user?.onboarding_status || authMeData?.onboarding?.onboarding_status
+      if (onboardingStatus === 'not_started') {
+        setIsLoadingSession(false)
+        setLoadError('请先完成资料填写后再使用发现与推荐')
+        if (canUseMockFallback()) {
+          applyProvenance(true, true, '/v1/discovery/sessions')
+          setTimelineItems([
+            {
+              kind: 'message',
+              id: 'demo-msg',
+              type: 'matchmaker',
+              content: '请先完成资料填写（演示数据）。',
+              timestamp: '刚刚',
+            },
+          ])
+        } else {
+          applyProvenance(false, false, '/v1/discovery/sessions')
+        }
+        return
+      }
+
+      const profileId = getProfileId()  // hydrate完成后获取正确的profileId
       if (!profileId) {
         setIsLoadingSession(false)
         setLoadError(
@@ -241,10 +254,9 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
         return
       }
 
-      if (!discoveryTask || profileId !== profileIdBeforeAuth) {
-        loadCollectedPreferences(profileId, isCancelled)
-        discoveryTask = resolveDiscoverySession(profileId, sessionFromUrl)
-      }
+      // ✅ 使用正确的profileId启动discovery任务（不会再有profile_id不匹配的问题）
+      const discoveryTask = resolveDiscoverySession(profileId, sessionFromUrl)
+      loadCollectedPreferences(profileId, isCancelled)
 
       try {
         const { data, apiPath } = await discoveryTask

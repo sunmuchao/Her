@@ -141,7 +141,11 @@ export function patchSessionContext(patch: Partial<SessionContext>) {
 
 export function getProfileId(): number | undefined {
   const ctx = readStoredContext()
-  if (isAuthenticated()) return ctx.profileId
+  // ✅ 修复：已认证时只返回session中的profileId，不返回默认值（防止Gateway认为是冒充）
+  if (isAuthenticated()) {
+    return ctx.profileId  // 已认证时返回session中的profileId（可能是undefined）
+  }
+  // ✅ 未认证时才返回默认值（开发环境/demo模式）
   return ctx.profileId ?? getDefaultProfileId()
 }
 

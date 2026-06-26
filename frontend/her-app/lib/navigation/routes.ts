@@ -56,9 +56,6 @@ export function pageToPath(page: AppPage, params: RouteParams = {}): string {
     case 'main-profile':
       path = '/profile'
       break
-    case 'sub-recommendation-inbox':
-      path = '/inbox'
-      break
     case 'sub-candidate-detail':
       path = `/candidates/${params.candidateId ?? DEMO_DEFAULT_CANDIDATE_ID}`
       break
@@ -130,7 +127,6 @@ export function pathToPage(pathname: string): ParsedRoute {
   if (path === '/discover') return { page: 'main-matchmaker' }
   if (path === '/relationships') return { page: 'main-relationships' }
   if (path === '/profile') return { page: 'main-profile' }
-  if (path === '/inbox') return { page: 'sub-recommendation-inbox' }
   if (path === '/verification') return { page: 'sub-verification' }
   if (path === '/trust') return { page: 'main-profile' }
   if (path === '/profile/collected') return { page: 'sub-collected-preferences' }

@@ -21,11 +21,63 @@ interface UseVoiceInputReturn {
   isSupported: boolean
 }
 
-function getSpeechRecognitionCtor() {
-  if (typeof window === 'undefined') {
-    return null
+/**
+ * 调用后端 Whisper API 进行语音识别
+ * 首次使用时模型需要下载，增加超时时间
+ */
+async function transcribeAudioViaWhisper(audioBlob: Blob): Promise<string> {
+  // 首次使用时 Whisper 模型可能需要下载（small 约 500MB，medium 约 1.5GB）
+  // 增加超时时间到 120 秒
+  const TIMEOUT_MS = 120000
+
+  // 创建 AbortController 用于超时控制
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS)
+
+  try {
+    const response = await fetch('/api/gateway/v1/voice/transcribe', {
+      method: 'POST',
+      body: audioBlob,
+      headers: {
+        'Content-Type': audioBlob.type || 'audio/webm',
+      },
+      signal: controller.signal,
+    })
+
+    clearTimeout(timeoutId)
+
+    if (!response.ok) {
+      let errorMessage = '语音识别失败'
+
+      try {
+        const errorData = await response.json()
+        const code = errorData.error?.code
+        const message = errorData.error?.message
+
+        if (code === 'audio_dependency_missing' || code === 'audio_conversion_failed') {
+          errorMessage = '音频格式转换失败，请检查网关的 ffmpeg、pydub 和 Whisper 依赖'
+        } else if (typeof message === 'string' && message.trim()) {
+          errorMessage = message
+        }
+      } catch {
+        errorMessage = `语音识别失败 (${response.status})`
+      }
+
+      throw new Error(errorMessage)
+    }
+
+    const result = await response.json()
+    return result.text || ''
+  } catch (error) {
+    clearTimeout(timeoutId)
+
+    // 处理超时错误
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('语音识别超时，首次使用时模型需要下载，请稍后再试')
+    }
+
+    throw error
   }
-  return window.SpeechRecognition || window.webkitSpeechRecognition || null
 }
 
 export function useVoiceInput({
@@ -35,7 +87,7 @@ export function useVoiceInput({
 }: UseVoiceInputOptions = {}): UseVoiceInputReturn {
   const [state, setState] = useState<VoiceInputState>('idle')
   const [recordingDuration, setRecordingDuration] = useState(0)
-  
+
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const streamRef = useRef<MediaStream | null>(null)
@@ -43,11 +95,24 @@ export function useVoiceInput({
   const startTimeRef = useRef<number>(0)
   const maxDurationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // 只需要 MediaRecorder API，不需要 Web Speech API
   const isSupported =
     typeof window !== 'undefined' &&
     typeof navigator !== 'undefined' &&
-    !!navigator.mediaDevices?.getUserMedia &&
-    !!getSpeechRecognitionCtor()
+    !!navigator.mediaDevices?.getUserMedia
+
+  // DEBUG: 诊断支持情况
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      console.log('[useVoiceInput] 支持情况诊断:')
+      console.log('  - window:', typeof window !== 'undefined')
+      console.log('  - navigator:', typeof navigator !== 'undefined')
+      console.log('  - mediaDevices:', !!navigator.mediaDevices)
+      console.log('  - getUserMedia:', !!navigator.mediaDevices?.getUserMedia)
+      console.log('  - isSupported:', isSupported)
+      console.log('  - 方案: 后端 Whisper API')
+    }
+  }, [isSupported])
 
   const cleanup = useCallback(() => {
     if (timerRef.current) {
@@ -71,144 +136,62 @@ export function useVoiceInput({
     return () => cleanup()
   }, [cleanup])
 
-  const processAudio = useCallback(async (audioBlob: Blob) => {
+  const processAudioViaWhisper = useCallback(async (audioBlob: Blob) => {
     setState('processing')
-    
-    // Use Web Speech API for speech-to-text
-    const SpeechRecognition = getSpeechRecognitionCtor()
-    
-    if (!SpeechRecognition) {
-      // Fallback: just notify that recording is complete
-      onError?.('语音识别不可用，请手动输入')
-      setState('idle')
-      return
-    }
 
-    const recognition = new SpeechRecognition()
-    recognition.lang = 'zh-CN'
-    recognition.interimResults = false
-    recognition.maxAlternatives = 1
-
-    // Since Web Speech API works with live audio, we'll use a different approach
-    // Create an audio element and play it while recognition listens
     try {
-      const audioUrl = URL.createObjectURL(audioBlob)
-      const audio = new Audio(audioUrl)
-      
-      recognition.onresult = (event: SpeechRecognitionEvent) => {
-        const transcript = event.results[0][0].transcript
-        onTranscript?.(transcript)
-        setState('idle')
-        URL.revokeObjectURL(audioUrl)
+      const text = await transcribeAudioViaWhisper(audioBlob)
+      if (text.trim()) {
+        onTranscript?.(text)
+      } else {
+        onError?.('未识别到语音内容，请确保麦克风正常工作')
       }
-
-      recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
-        console.error('[v0] Speech recognition error:', event.error)
-        onError?.('语音识别失败，请重试')
-        setState('idle')
-        URL.revokeObjectURL(audioUrl)
-      }
-
-      recognition.onend = () => {
-        if (state === 'processing') {
-          setState('idle')
-        }
-        URL.revokeObjectURL(audioUrl)
-      }
-
-      // For recorded audio, we need to play it and have the user's audio reach the mic
-      // This is a limitation - Web Speech API only works with live mic input
-      // So we'll use a simpler approach: start recognition during recording instead
-      onError?.('录音完成，但浏览器语音识别仅支持实时输入')
       setState('idle')
     } catch (err) {
-      console.error('[v0] Audio processing error:', err)
-      onError?.('音频处理失败')
+      console.error('[useVoiceInput] Whisper transcription error:', err)
+
+      // 根据错误类型提供更友好的提示
+      let errorMessage = '语音识别失败，请重试'
+
+      if (err instanceof Error) {
+        const msg = err.message
+
+        if (msg.includes('timeout') || msg.includes('超时')) {
+          errorMessage = '语音识别超时，首次使用需要下载模型，请稍后再试'
+        } else if (msg.includes('ffmpeg') || msg.includes('audio format')) {
+          errorMessage = '音频格式不支持，请联系管理员安装 ffmpeg'
+        } else if (msg.includes('Invalid data')) {
+          errorMessage = '音频数据无效，请检查麦克风是否正常工作'
+        } else if (msg.includes('Network') || msg.includes('fetch')) {
+          errorMessage = '网络连接失败，请检查网络后重试'
+        } else if (msg.includes('未识别')) {
+          errorMessage = msg  // 使用原始错误信息
+        } else {
+          errorMessage = `语音识别失败: ${msg}`
+        }
+      }
+
+      onError?.(errorMessage)
       setState('idle')
     }
-  }, [onTranscript, onError, state])
+  }, [onTranscript, onError])
 
   const startRecording = useCallback(async () => {
     if (state !== 'idle') return
 
-    // Use Web Speech API directly for real-time speech recognition
-    const SpeechRecognition = getSpeechRecognitionCtor()
-    
-    if (SpeechRecognition) {
-      setState('recording')
-      startTimeRef.current = Date.now()
-      
-      timerRef.current = setInterval(() => {
-        setRecordingDuration(Date.now() - startTimeRef.current)
-      }, 100)
-
-      const recognition = new SpeechRecognition()
-      recognition.lang = 'zh-CN'
-      recognition.interimResults = true
-      recognition.continuous = true
-      recognition.maxAlternatives = 1
-
-      let finalTranscript = ''
-
-      recognition.onresult = (event: SpeechRecognitionEvent) => {
-        let interimTranscript = ''
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcript = event.results[i][0].transcript
-          if (event.results[i].isFinal) {
-            finalTranscript += transcript
-          } else {
-            interimTranscript += transcript
-          }
-        }
-      }
-
-      recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
-        console.error('[v0] Speech recognition error:', event.error)
-        if (event.error !== 'aborted') {
-          onError?.('语音识别失败，请重试')
-        }
-        cleanup()
-        setState('idle')
-      }
-
-      recognition.onend = () => {
-        if (finalTranscript) {
-          onTranscript?.(finalTranscript)
-        }
-        cleanup()
-        setState('idle')
-      }
-
-      // Store recognition in ref for later stopping
-      mediaRecorderRef.current = recognition as unknown as MediaRecorder
-
-      maxDurationTimerRef.current = setTimeout(() => {
-        recognition.stop()
-      }, maxDurationMs)
-
-      try {
-        recognition.start()
-      } catch (err) {
-        console.error('[v0] Failed to start recognition:', err)
-        onError?.('无法启动语音识别')
-        cleanup()
-        setState('idle')
-      }
-      return
-    }
-
-    // Fallback to MediaRecorder if Web Speech API is not available
     try {
+      // 使用 MediaRecorder 录制音频，发送到后端 Whisper API
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       streamRef.current = stream
 
+      // 选择支持的音频格式
       const mimeType = MediaRecorder.isTypeSupported('audio/webm')
         ? 'audio/webm'
         : MediaRecorder.isTypeSupported('audio/mp4')
           ? 'audio/mp4'
           : ''
 
-      const recorder = mimeType 
+      const recorder = mimeType
         ? new MediaRecorder(stream, { mimeType })
         : new MediaRecorder(stream)
 
@@ -220,7 +203,15 @@ export function useVoiceInput({
 
       recorder.onstop = () => {
         const audioBlob = new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' })
-        void processAudio(audioBlob)
+
+        // DEBUG: 记录音频信息用于诊断
+        console.log('[useVoiceInput] Audio recorded:')
+        console.log('  - Blob size:', audioBlob.size, 'bytes')
+        console.log('  - Blob type:', audioBlob.type)
+        console.log('  - Duration:', Date.now() - startTimeRef.current, 'ms')
+        console.log('  - Chunks:', chunksRef.current.length)
+
+        void processAudioViaWhisper(audioBlob)
       }
 
       recorder.onerror = () => {
@@ -231,10 +222,10 @@ export function useVoiceInput({
 
       mediaRecorderRef.current = recorder
       chunksRef.current = []
-      
+
       setState('recording')
       startTimeRef.current = Date.now()
-      
+
       timerRef.current = setInterval(() => {
         setRecordingDuration(Date.now() - startTimeRef.current)
       }, 100)
@@ -245,27 +236,20 @@ export function useVoiceInput({
         }
       }, maxDurationMs)
 
-      recorder.start(250)
+      recorder.start(250) // 每 250ms 收集一次数据
     } catch (err) {
-      console.error('[v0] Failed to start recording:', err)
+      console.error('[useVoiceInput] Failed to start recording:', err)
       onError?.('无法访问麦克风，请检查权限设置')
       setState('idle')
     }
-  }, [state, onTranscript, onError, maxDurationMs, cleanup, processAudio])
+  }, [state, onError, maxDurationMs, cleanup, processAudioViaWhisper])
 
   const stopRecording = useCallback(() => {
     if (state !== 'recording') return
 
-    // Check if it's a SpeechRecognition instance
     const recorder = mediaRecorderRef.current
-    if (recorder) {
-      if ('stop' in recorder && typeof recorder.stop === 'function') {
-        try {
-          recorder.stop()
-        } catch (err) {
-          console.error('[v0] Error stopping recording:', err)
-        }
-      }
+    if (recorder && recorder.state === 'recording') {
+      recorder.stop()
     }
 
     if (timerRef.current) {
@@ -280,17 +264,14 @@ export function useVoiceInput({
 
   const cancelRecording = useCallback(() => {
     if (state !== 'recording') return
-    
+
     const recorder = mediaRecorderRef.current
-    if (recorder) {
-      // Check if it's a SpeechRecognition (has abort method) or MediaRecorder
-      if ('abort' in recorder) {
-        (recorder as unknown as SpeechRecognition).abort()
-      } else if ('state' in recorder && (recorder as MediaRecorder).state === 'recording') {
-        (recorder as MediaRecorder).stop()
-      }
+    if (recorder && recorder.state === 'recording') {
+      recorder.stop()
+      // 清空录音数据，不发送到后端
+      chunksRef.current = []
     }
-    
+
     cleanup()
     setState('idle')
   }, [state, cleanup])

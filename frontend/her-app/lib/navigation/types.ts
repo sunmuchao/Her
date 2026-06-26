@@ -2,7 +2,6 @@ export type TabType = 'matchmaker' | 'relationships' | 'profile'
 
 export type SubView =
   | 'main'
-  | 'recommendation-inbox'
   | 'candidate-detail'
   | 'chat'
   | 'verification'
@@ -23,7 +22,6 @@ export type AppPage =
   | 'main-matchmaker'
   | 'main-relationships'
   | 'main-profile'
-  | 'sub-recommendation-inbox'
   | 'sub-candidate-detail'
   | 'sub-chat'
   | 'sub-verification'

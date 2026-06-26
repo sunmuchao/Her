@@ -1139,6 +1139,19 @@ def open_recommendation_conn(*, load_bindings: Callable[[], tuple[Any, Any, Any]
     return conn
 
 
+def open_proxy_intro_conn(*, recommendation_conn=None):
+    """打开proxy_intro数据库连接（用于查询被动推荐案件）
+
+    Args:
+        recommendation_conn: 推荐数据库连接（可选）
+
+    Returns:
+        proxy_intro数据库连接（matchmaking数据库）
+    """
+    from match_domain.proxy_intro_storage import open_proxy_intro_case_connection
+    return open_proxy_intro_case_connection(recommendation_conn)
+
+
 def load_persona_memory_bindings():
     from persona_memory_sync import upsert_persona_memory
 
@@ -1330,6 +1343,7 @@ __all__ = [
     "load_persona_memory_bindings",
     "load_recommendation_bindings",
     "load_requester_profile",
+    "open_proxy_intro_conn",  # 新增：用于查询被动推荐案件
     "open_recommendation_conn",
     "persona_memory_source",
     "persist_search_run",

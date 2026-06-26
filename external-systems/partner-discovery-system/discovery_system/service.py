@@ -488,6 +488,10 @@ class DiscoveryService:
         self.storage.save_session(session)
         open_mode = discovery_create_session_mode()
         session.state["create_session_mode"] = open_mode
+
+        # ✅ 新增：检查并推送待推送的被动推荐案件（有人想认识你）
+        self._check_and_push_proxy_intro_cases(session, profile_id, current)
+
         if open_mode == "profile_first":
             runtime_result, open_tool_calls = self._profile_first_session_open(session)
         else:
@@ -2359,6 +2363,120 @@ class DiscoveryService:
                 if item_id == normalized_id:
                     return deepcopy(item)
         return None
+
+    def _check_and_push_proxy_intro_cases(
+        self,
+        session: StoredSession,
+        profile_id: int,
+        now: datetime,
+    ) -> None:
+        """检查并推送待推送的被动推荐案件（有人想认识你）
+
+        逻辑：
+        1. 查询candidate_id=profile_id且case_status='awaiting_reply'的案件
+        2. 筛选出未推送到发现页的案件（outreach_payload.discovery_pushed未标记）
+        3. 获取发起方基本信息（从案件数据中提取）
+        4. 构建被动推荐候选人卡片
+        5. 在timeline中插入assistant_message和result_group
+        6. 标记案件为已推送（outreach_payload.discovery_pushed=True）
+
+        Args:
+            session: Discovery会话
+            profile_id: 用户画像ID（被推荐方）
+            now: 当前时间
+        """
+        from .service_integrations import open_proxy_intro_conn
+        from matchmaking_system.proxy_intro_core import list_match_cases_for_participant
+        from .view_models import assistant_message, result_group, build_candidate_card
+
+        try:
+            # 1. 打开proxy_intro数据库连接
+            proxy_intro_conn = open_proxy_intro_conn()
+
+            # 2. 查询待推送的被动推荐案件
+            cases = list_match_cases_for_participant(proxy_intro_conn, profile_id)
+            pending_cases = [
+                case for case in cases
+                if case.get("case_status") == "awaiting_reply"
+                and int(case.get("candidate_id") or 0) == int(profile_id)
+                and not case.get("outreach_payload", {}).get("discovery_pushed")
+            ]
+
+            if not pending_cases:
+                proxy_intro_conn.close()
+                return
+
+            # 3. 推送每个案件
+            timeline = session.view.get("timeline", [])
+
+            for case in pending_cases:
+                requester_id = int(case.get("requester_id") or 0)
+                if requester_id <= 0:
+                    continue
+
+                # 4. 获取发起方基本信息（从案件数据中提取）
+                requester_snapshot = dict(case.get("requester_profile_snapshot") or {})
+                self_profile = dict(requester_snapshot.get("self_profile") or {})
+
+                name = str(
+                    self_profile.get("display_name")
+                    or self_profile.get("name")
+                    or self_profile.get("nickname")
+                    or "对方"
+                ).strip()
+                age = self_profile.get("age")
+                city = self_profile.get("city")
+                occupation = self_profile.get("occupation") or self_profile.get("job")
+
+                # 5. 构建候选人卡片（简化版本，使用基本信息）
+                candidate_data = {
+                    "id": requester_id,
+                    "name": name,
+                    "profile": {
+                        "age": age,
+                        "city": city,
+                        "job": occupation,
+                    },
+                    "photo_preview": [],
+                    "score": 0,  # 被动推荐没有匹配度分数
+                }
+                candidate_card = build_candidate_card(candidate_data, reason_summary="")
+
+                # 6. 在timeline中插入消息和候选人卡片
+                case_id = str(case.get("case_id") or "")
+                timeline.append(assistant_message(
+                    item_id=f"proxy-intro-msg-{case_id}",
+                    body=f"有人想认识你：{name}，{age}岁{city}{occupation}",
+                    created_at=now,
+                ))
+                timeline.append(result_group(
+                    item_id=f"proxy-intro-group-{case_id}",
+                    title="有人想认识你",
+                    cards=[candidate_card],
+                ))
+
+                # 7. 标记为已推送（更新数据库）
+                outreach_payload = dict(case.get("outreach_payload") or {})
+                outreach_payload["discovery_pushed"] = True
+                proxy_intro_conn.execute(
+                    "UPDATE proxy_intro_cases SET outreach_payload_json = ? WHERE case_id = ?",
+                    (json.dumps(outreach_payload, ensure_ascii=False), case_id),
+                )
+
+            # 8. 更新session view
+            session.view["timeline"] = timeline
+            proxy_intro_conn.commit()
+            proxy_intro_conn.close()
+
+            _logger.info(
+                "推送被动推荐案件到发现页: profile_id=%s, count=%d",
+                profile_id,
+                len(pending_cases),
+            )
+
+        except Exception as e:
+            _logger.error("推送被动推荐案件失败: profile_id=%s, error=%s", profile_id, e)
+            # 不阻塞主流程，静默失败
 
     def _require_session(self, session_id: str) -> StoredSession:
         session = self.storage.get_session(session_id)

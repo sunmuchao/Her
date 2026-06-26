@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { ArrowLeft, BadgeCheck, ChevronDown, Mail, Mic, Plus, Search, Send, X, Brain, Heart, Sparkles, ClipboardList, Coins, History } from 'lucide-react'
+import { ArrowLeft, BadgeCheck, ChevronDown, Mic, Plus, Search, Send, X, Brain, Heart, Sparkles, ClipboardList, Coins, History } from 'lucide-react'
 import { AssessmentCardRenderer } from '@/components/assessment/AssessmentCardRenderer'
 import { XiaoyaAvatar } from '@/components/her/ui/xiaoya-avatar'
 import Image from 'next/image'
@@ -16,11 +16,6 @@ import { DiscoverySessionList } from './discovery-session-list'
 import type { DiscoveryTimelineItem } from '@/lib/discovery/map-discovery-view'
 import { cn } from '@/lib/utils'
 import { getProfileId, getUserId } from '@/lib/auth/session'
-import {
-  markRecommendationCardsRead,
-} from '@/lib/api/endpoints/recommendation'
-import { replyProxyIntroCase, markInterestCaseViewed as markInterestCaseViewedAPI } from '@/lib/api/endpoints/proxy-intro'
-import { useRecommendationInbox, type InboxItem } from '@/hooks/use-recommendation-inbox'
 import { canUseMockFallback } from '@/lib/mock'
 import { notifyError } from '@/lib/notify'
 import { toast } from 'sonner'
@@ -61,8 +56,6 @@ function waitForPsychologyXiaoyaResult() {
 
 interface DiscoverPageProps {
   onViewCandidate: (candidateId: string, candidate?: CandidatePreview, sessionId?: string | null) => void
-  onOpenInbox: () => void
-  inboxUnreadCount?: number
   onSessionIdChange?: (sessionId: string | null) => void
 }
 
@@ -238,8 +231,6 @@ function DiscoveryTimelineEntry({
 
 export default function DiscoverPage({
   onViewCandidate,
-  onOpenInbox,
-  inboxUnreadCount = 0,
   onSessionIdChange,
 }: DiscoverPageProps) {
   const {
@@ -266,7 +257,7 @@ export default function DiscoverPage({
   // 新增：会话列表显示状态
   const [showSessionList, setShowSessionList] = useState(false)
 
-  // Voice input functionality
+  // Voice input functionality - 按住说话、松开自动发送
   const {
     isRecording,
     isProcessing,
@@ -276,21 +267,16 @@ export default function DiscoverPage({
     recordingDuration,
   } = useVoiceInput({
     onTranscript: (text) => {
-      setInputValue((prev) => prev + text)
+      // 语音识别完成后，自动发送消息（不再添加到输入框）
+      if (text.trim()) {
+        void submitTurn({ user_message: text.trim() })
+      }
     },
     onError: (error) => {
       toast.error(error)
     },
     maxDurationMs: 60000,
   })
-
-  const handleVoiceClick = () => {
-    if (isRecording) {
-      stopRecording()
-    } else {
-      void startRecording()
-    }
-  }
 
   const formatRecordingTime = (ms: number) => {
     const seconds = Math.floor(ms / 1000)
@@ -458,21 +444,7 @@ export default function DiscoverPage({
                 <Plus className="w-4 h-4" />
                 <span className="text-xs font-medium">新对话</span>
               </button>
-              {/* 原有：查看推荐来信按钮 */}
-              <button
-                onClick={onOpenInbox}
-                className="relative flex items-center gap-2 px-3 py-2 bg-secondary rounded-lg hover:bg-secondary/80 transition-colors focus-ring"
-                aria-label={`查看推荐来信，${inboxUnreadCount}条未读`}
-              >
-                <Mail className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
-                <span className="text-sm">来信</span>
-                {inboxUnreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-rose text-[10px] font-medium text-white rounded-full flex items-center justify-center animate-scale-in">
-                    {inboxUnreadCount}
-                  </span>
-                )}
-              </button>
-            </div>
+              </div>
           </div>
         </div>
       </header>
@@ -742,6 +714,22 @@ export default function DiscoverPage({
 
           {isTyping ? <TypingIndicator name="小雅" /> : null}
 
+          {/* Recording indicator - 作为一条特殊的消息显示 */}
+          {isRecording && (
+            <div className="flex justify-end animate-fade-in-up">
+              <div className="max-w-[80%]">
+                <div className="rounded-2xl bg-primary/20 border border-primary/30 rounded-br-md px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-rose rounded-full animate-pulse" />
+                    <span className="text-sm text-primary font-medium">正在录音</span>
+                    <span className="text-sm text-muted-foreground">{formatRecordingTime(recordingDuration)}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">松开发送 · 上滑取消</p>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div ref={chatEndRef} />
         </div>
       </div>
@@ -871,28 +859,13 @@ export default function DiscoverPage({
           </div>
         )}
 
-        {/* Recording indicator */}
-        {isRecording && (
-          <div className="flex items-center justify-between mb-2 px-3 py-2 bg-rose/10 rounded-lg animate-fade-in-up">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 bg-rose rounded-full animate-pulse" />
-              <span className="text-sm text-rose font-medium">正在录音</span>
-              <span className="text-sm text-muted-foreground">{formatRecordingTime(recordingDuration)}</span>
-            </div>
-            <button
-              onClick={cancelRecording}
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-              aria-label="取消录音"
-            >
-              取消
-            </button>
-          </div>
-        )}
-        
         {isProcessing && (
-          <div className="flex items-center gap-2 mb-2 px-3 py-2 bg-secondary rounded-lg animate-fade-in-up">
-            <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-            <span className="text-sm text-muted-foreground">识别中...</span>
+          <div className="flex flex-col items-start gap-2 mb-2 px-3 py-2 bg-secondary rounded-lg animate-fade-in-up">
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+              <span className="text-sm text-muted-foreground">识别中...</span>
+            </div>
+            <p className="text-xs text-muted-foreground">首次使用时模型需要下载，请耐心等待（约 30-60 秒）</p>
           </div>
         )}
 
@@ -922,16 +895,41 @@ export default function DiscoverPage({
             aria-label="输入消息"
           />
           
-          {/* Voice input button */}
+          {/* Voice input button - 按住说话、松开自动发送 */}
           <button
-            aria-label={isRecording ? '停止录音' : '语音输入'}
-            onClick={handleVoiceClick}
+            aria-label="按住说话"
+            onPointerDown={(e) => {
+              // 防止默认行为（如触摸设备的滚动）
+              e.preventDefault()
+              e.currentTarget.releasePointerCapture(e.pointerId)
+              if (!isRecording && !composerDisabled && !isSubmittingTurn && !isProcessing) {
+                void startRecording()
+              }
+            }}
+            onPointerUp={(e) => {
+              e.preventDefault()
+              if (isRecording) {
+                stopRecording()
+              }
+            }}
+            onPointerLeave={() => {
+              // 如果手指移出按钮区域，取消录音
+              if (isRecording) {
+                cancelRecording()
+              }
+            }}
+            onPointerCancel={() => {
+              // 触摸被取消时（如系统弹窗），取消录音
+              if (isRecording) {
+                cancelRecording()
+              }
+            }}
             disabled={composerDisabled || isSubmittingTurn || isProcessing}
             className={cn(
-              'w-8 h-8 rounded-full flex items-center justify-center transition-all',
+              'w-8 h-8 rounded-full flex items-center justify-center transition-all touch-none select-none',
               isRecording
-                ? 'bg-rose text-white animate-pulse'
-                : 'text-muted-foreground hover:text-foreground hover:bg-secondary/80'
+                ? 'bg-rose text-white animate-pulse scale-110'
+                : 'text-muted-foreground hover:text-foreground hover:bg-secondary/80 active:scale-95'
             )}
           >
             <Mic className="w-5 h-5" />
@@ -974,286 +972,3 @@ export default function DiscoverPage({
   )
 }
 
-export function RecommendationInbox({
-  onViewCandidate,
-  onBack,
-  onBadgesRefresh,
-}: {
-  onViewCandidate: (candidateId: string, candidate?: CandidatePreview, sessionId?: string | null) => void
-  onBack: () => void
-  onBadgesRefresh?: () => void
-}) {
-  const searchParams = useSearchParams()
-  const restoreFilter = searchParams.get('restoreFilter') as 'all' | 'delayed' | 'matched' | 'interest' | null
-  const [filter, setFilter] = useState<'all' | 'delayed' | 'matched' | 'interest'>(
-    restoreFilter && ['all', 'delayed', 'matched', 'interest'].includes(restoreFilter) ? restoreFilter : 'all'
-  )
-
-  // 删除状态：用于立即标记删除（保存到 sessionStorage）
-  // 注意：恢复逻辑在 useRecommendationInbox hook 中处理
-  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set())
-
-  // 当 dismissedIds 变化时，立即保存到 sessionStorage（持久化）
-  useEffect(() => {
-    if (dismissedIds.size > 0) {
-      sessionStorage.setItem('recommendation-dismissed-ids', JSON.stringify([...dismissedIds]))
-    }
-  }, [dismissedIds])
-
-  const [searchQuery, setSearchQuery] = useState('')
-  const [actingCaseId, setActingCaseId] = useState<string | null>(null)  // 正在处理的 case
-  const { isLoading, backendItems, markItemRead } = useRecommendationInbox()
-
-  const filteredItems = backendItems.filter((item) => {
-    if (dismissedIds.has(item.listKey)) return false
-    if (filter === 'delayed') return item.type === 'delayed'
-    if (filter === 'matched') return item.type === 'matched'
-    if (filter === 'interest') return item.type === 'interest'  // 新增：有人想认识你
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase()
-      return item.name.toLowerCase().includes(q) || item.city.toLowerCase().includes(q) || item.occupation.toLowerCase().includes(q)
-    }
-    return true
-  })
-
-  // 处理被动推荐卡片的回复
-  const handleInterestReply = async (caseId: string, replyType: 'accepted' | 'declined') => {
-    if (actingCaseId) return  // 防止重复点击
-    setActingCaseId(caseId)
-    try {
-      await replyProxyIntroCase({
-        caseId,
-        replyType,
-        source: 'recommendation_inbox',
-      })
-
-      // 立即更新前端状态（红色提醒消失）
-      const item = backendItems.find((i) => i.caseId === caseId)
-      if (item) {
-        markItemRead(item)
-      }
-
-      if (replyType === 'declined') {
-        setDismissedIds((prev) => new Set(prev).add(`case:${caseId}`))
-      }
-      toast.success(replyType === 'accepted' ? '已表达意愿，可以开始聊天了' : '已暂不考虑')
-      onBadgesRefresh?.()
-    } catch (error) {
-      notifyError(error, replyType === 'accepted' ? '接受失败' : '暂不考虑失败')
-    } finally {
-      setActingCaseId(null)
-    }
-  }
-
-  const markRead = async (item: InboxItem) => {
-    // 立即更新前端状态（红色提醒消失）
-    markItemRead(item)
-
-    const profileId = getProfileId()
-
-    // 对于被动推荐（interest 类型），调用API标记为已查看
-    if (item.type === 'interest' && item.caseId) {
-      try {
-        await markInterestCaseViewedAPI({ caseId: item.caseId, source: 'detail_page' })
-        // API成功后，事件机制会自动触发 badge count 刷新（不需要手动调用 onBadgesRefresh）
-      } catch (error) {
-        notifyError(error, '标记已查看失败')
-      }
-      return  // 被动推荐不需要调用 markRecommendationCardsRead API
-    }
-
-    // 对于非被动推荐，调用 API 标记卡片已读
-    if (!profileId || !item.cardId) return
-    try {
-      await markRecommendationCardsRead(Number(profileId), [item.cardId])
-      // API成功后，事件机制会自动触发 badge count 刷新（不需要手动调用 onBadgesRefresh）
-    } catch (error) {
-      notifyError(error, '标记已读失败')
-      // 如果 API 失败，恢复未读状态
-      // 注意：这里可以选择不恢复，因为用户已经点击了卡片，视为已读
-    }
-  }
-
-  return (
-    <div className="flex flex-col h-full bg-background">
-      <header className="sticky top-0 z-20 bg-background border-b border-border safe-area-top">
-        <div className="px-4 py-3">
-          <div className="flex items-center gap-3">
-            <button onClick={onBack} className="w-8 h-8 flex items-center justify-center">
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <h1 className="font-medium">推荐来信</h1>
-          </div>
-        </div>
-
-        <div className="px-4 pb-3 flex gap-2">
-          {[
-            { id: 'all' as const, label: '全部' },
-            { id: 'delayed' as const, label: '延迟推荐' },
-            { id: 'matched' as const, label: '主动撮合' },
-            { id: 'interest' as const, label: '有人想认识你' },  // 新增
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setFilter(tab.id)}
-              className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${filter === tab.id ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'}`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="px-4 pb-3">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <input
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="搜索姓名、城市、职业..."
-              className="w-full pl-9 pr-8 py-2 bg-secondary rounded-lg text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-            />
-            {searchQuery ? (
-              <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2">
-                <X className="w-4 h-4 text-muted-foreground" />
-              </button>
-            ) : null}
-          </div>
-        </div>
-      </header>
-
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-        {isLoading ? (
-          <>
-            <InboxItemSkeleton />
-            <InboxItemSkeleton />
-            <InboxItemSkeleton />
-          </>
-        ) : filteredItems.length === 0 ? (
-          searchQuery ? <EmptySearchResults keyword={searchQuery} /> : <EmptyRecommendations onRefresh={onBack} />
-        ) : (
-          filteredItems.map((item) => (
-            <SwipeToDelete
-              key={item.listKey}
-              onDelete={() => {
-                // 立即从列表中移除
-                setDismissedIds((prev) => new Set(prev).add(item.listKey))
-              }}
-              deleteLabel="删除"
-              threshold={100}
-            >
-              <div
-                onClick={() => {
-                  // DEBUG: 调试参数传递
-                  console.log('[RecommendationInbox] 点击卡片传递的参数:', {
-                    item_id: item.id,
-                    item_caseId: item.caseId,
-                    item_type: item.type,
-                    candidate_preview: {
-                      id: item.id,
-                      caseId: item.caseId,
-                      viewType: item.type,
-                    },
-                  })
-                  void markRead(item)
-                  onViewCandidate(item.id, {
-                    id: item.id,
-                    name: item.name,
-                    age: item.age,
-                    city: item.city,
-                    occupation: item.occupation,
-                    verified: true,
-                    matchScore: item.matchScore,
-                    image: item.image,
-                    message: item.message,
-                    recommendationId: item.recommendationId,
-                    subscriptionId: item.subscriptionId,
-                    cardId: item.cardId, // 新增：传递卡片 ID
-                    // 新增：传递案件信息，让详情页知道这是被动推荐场景
-                    caseId: item.caseId,
-                    viewType: item.type, // 'interest' 表示被动推荐
-                    // 新增：传递来源信息，用于返回时恢复推荐来信页面和筛选状态
-                    fromSubPage: 'recommendation-inbox',
-                    inboxFilter: filter,
-                  })
-                }}
-                className="bg-card border border-border rounded-xl p-3 transition-colors cursor-pointer hover:border-primary/30"
-              >
-                <div className="flex gap-3">
-                  {/* 头像区域：统一14x14，右上角未读红点 */}
-                  <div className="relative w-14 h-14 rounded-lg overflow-hidden shrink-0">
-                    <Image src={item.image} alt={item.name} fill className="object-cover" />
-                    {!item.isRead ? <div className="absolute top-1 right-1 w-2 h-2 bg-rose rounded-full" /> : null}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    {/* 第一行：姓名 + 年龄·城市 + 时间（统一格式） */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-base">{item.name}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {item.ageDisplay || `${item.age}岁`} · {item.city}
-                        </span>
-                      </div>
-                      <span className="text-xs text-muted-foreground">{item.time}</span>
-                    </div>
-
-                    {/* 第二行：职业·学历（统一展示，所有类型） */}
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {item.occupation && item.occupation !== '资料待补充' && (
-                        <span className="text-xs text-muted-foreground">{item.occupation}</span>
-                      )}
-                      {item.education && (
-                        <span className="text-xs text-muted-foreground">· {item.education}</span>
-                      )}
-                    </div>
-
-                    {/* 第三行：推荐消息或匹配点（统一展示） */}
-                    {/* 匹配点（如有） - interest类型特有但展示格式统一 */}
-                    {item.matchedOn && item.matchedOn.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-1.5">
-                        <span className="text-[10px] text-muted-foreground">匹配点：</span>
-                        {item.matchedOn.slice(0, 3).map((point, idx) => (
-                          <span
-                            key={`${item.id}-match-${idx}`}
-                            className="px-1.5 py-0.5 text-[10px] bg-primary/10 text-primary rounded"
-                          >
-                            {point}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* 推荐消息（如有） - 统一展示，所有类型 */}
-                    {item.message && !item.matchedOn?.length && (
-                      <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2">{item.message}</p>
-                    )}
-                  </div>
-                </div>
-
-                {/* 底部区域：统一格式 */}
-                <div className="flex items-center justify-between mt-3 pt-2 border-t border-border">
-                  {/* 左侧：类型标签（统一格式） */}
-                  <div className="flex items-center gap-1">
-                    <span className={`px-2 py-0.5 rounded text-[10px] ${
-                      item.type === 'delayed' ? 'bg-gold/20 text-gold' :
-                      item.type === 'interest' ? 'bg-primary/20 text-primary' :
-                      'bg-rose/20 text-rose'
-                    }`}>
-                      {item.conversionStage || (
-                        item.type === 'delayed' ? '延迟推荐' :
-                        item.type === 'interest' ? '有人想认识你' :
-                        '主动撮合'
-                      )}
-                    </span>
-                  </div>
-
-                  {/* 右侧：统一操作提示（所有类型一致） */}
-                  <span className="text-xs text-muted-foreground">点击查看详情 →</span>
-                </div>
-              </div>
-            </SwipeToDelete>
-          ))
-        )}
-      </div>
-    </div>
-  )
-}
