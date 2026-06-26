@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import tempfile
 from typing import Any
 
@@ -29,8 +30,10 @@ LOGGER = logging.getLogger(__name__)
 _WHISPER_MODEL: WhisperModel | None = None
 
 SUPPORTED_AUDIO_FORMATS = {"wav", "webm", "ogg", "mp4", "m4a", "mpeg", "mp3"}
-NO_SPEECH_PROB_THRESHOLD = 0.6
-AVG_LOGPROB_THRESHOLD = -1.0
+SUSPICIOUS_HALLUCINATION_PATTERNS = (
+    re.compile(r"字幕\s*by", re.IGNORECASE),
+    re.compile(r"索兰娅"),
+)
 
 
 def _get_whisper_model() -> WhisperModel:
@@ -155,11 +158,11 @@ def _detect_audio_format(content_type: str) -> str:
     return audio_format if audio_format in SUPPORTED_AUDIO_FORMATS else "webm"
 
 
-def _maybe_float(value: Any) -> float | None:
-    """Best-effort numeric cast for model metadata."""
-    if isinstance(value, (int, float)):
-        return float(value)
-    return None
+def _is_suspicious_hallucination(text: str) -> bool:
+    normalized = text.strip()
+    if not normalized:
+        return False
+    return any(pattern.search(normalized) for pattern in SUSPICIOUS_HALLUCINATION_PATTERNS)
 
 
 def _transcribe_audio(audio_data: bytes, language: str = "zh", content_type: str = "") -> dict[str, Any]:
@@ -210,27 +213,18 @@ def _transcribe_audio(audio_data: bytes, language: str = "zh", content_type: str
             language=language,
             beam_size=5,
             vad_filter=True,
-            no_speech_threshold=NO_SPEECH_PROB_THRESHOLD,
-            log_prob_threshold=AVG_LOGPROB_THRESHOLD,
             hallucination_silence_threshold=1.5,
         )
 
         segment_list = list(segments)
-        filtered_segments = []
-        for segment in segment_list:
-            no_speech_prob = _maybe_float(getattr(segment, "no_speech_prob", None))
-            avg_logprob = _maybe_float(getattr(segment, "avg_logprob", None))
-            if (
-                no_speech_prob is not None
-                and no_speech_prob >= NO_SPEECH_PROB_THRESHOLD
-                and avg_logprob is not None
-                and avg_logprob <= AVG_LOGPROB_THRESHOLD
-            ):
-                continue
-            filtered_segments.append(segment)
+        filtered_segments = segment_list
 
         # Extract full text
         full_text = "".join(segment.text for segment in filtered_segments)
+        if _is_suspicious_hallucination(full_text):
+            LOGGER.warning("Discarded suspicious hallucinated transcription: %r", full_text)
+            full_text = ""
+            filtered_segments = []
 
         LOGGER.info(
             f"Transcription successful: language={info.language}, "
