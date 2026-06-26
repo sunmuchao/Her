@@ -5,7 +5,6 @@ import {
   LayoutDashboard,
   Link2,
   LogIn,
-  Mail,
   MessageCircle,
   Phone,
   RotateCcw,
@@ -43,7 +42,6 @@ export const demoPageCategories: Array<{
   {
     name: '二级页面',
     pages: [
-      { id: 'sub-recommendation-inbox', name: '推荐来信', icon: Mail },
       { id: 'sub-candidate-detail', name: '候选人详情', icon: User },
       { id: 'sub-chat', name: '聊天', icon: MessageCircle },
       { id: 'ops-workbench', name: '运营协作台', icon: LayoutDashboard },

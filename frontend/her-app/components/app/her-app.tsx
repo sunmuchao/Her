@@ -144,7 +144,6 @@ export function HerApp() {
               onViewCandidate={(id, c, sessionId, fromChatId) =>
                 nav.handleViewCandidate(id, c, sessionId || nav.discoverySessionId, fromChatId)
               }
-              onOpenInbox={nav.handleOpenInbox}
               onOpenChat={nav.handleOpenChat}
               onBackToMain={nav.handleBackToMain}
               onStartVerification={nav.handleStartVerification}
@@ -153,7 +152,6 @@ export function HerApp() {
               onOpenEditProfile={nav.handleOpenEditProfile}
               onOpenSettings={nav.handleOpenSettings}
               onOpenOnboarding={() => handleNavigate('auth-onboarding')}
-              onOpenRecommendationInbox={nav.handleOpenInbox}
               fromSubPage={nav.fromSubPage}
               inboxFilter={nav.inboxFilter}
             />

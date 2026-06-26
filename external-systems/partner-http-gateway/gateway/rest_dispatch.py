@@ -26,6 +26,7 @@ from .recommendation_routes import dispatch_recommendation_rest
 from .support_routes import dispatch_support_rest
 from .surface_config import gateway_surface, is_rest_path_allowed
 from .verification_routes import dispatch_verification_rest
+from .voice_routes import dispatch_voice_rest
 
 
 class RestDispatchGateway(Protocol):
@@ -65,6 +66,7 @@ def dispatch_gateway_rest(
         dispatch_support_rest,
         dispatch_discovery_rest,
         dispatch_verification_rest,
+        dispatch_voice_rest,  # Whisper语音识别
         dispatch_private_auth_rest,
         dispatch_profile_rest,
         dispatch_proxy_intro_rest,

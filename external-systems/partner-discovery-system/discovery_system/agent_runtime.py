@@ -1181,10 +1181,11 @@ class AgentsSdkDiscoveryAgentRuntime:
             title: str = "",
             criteria: list[str] = [],
         ) -> dict[str, Any]:
-            """展示候选人列表。
+            """展示候选人列表（适用于搜索结果和推荐候选人）
 
             适用场景：
             - 搜索后有新的候选人结果
+            - 推荐候选人推送（message包含推荐介绍）
             """
             # 【证据优先】记录工具调用参数
             _logger.info("【工具调用】show_candidates")

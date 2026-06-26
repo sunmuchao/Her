@@ -340,7 +340,7 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
         setMessages(mappedMessages)
         // 标记新消息已读
         const latestMessage = mappedMessages[mappedMessages.length - 1]
-        if (latestMessage && latestMessage.authorId !== requesterId) {
+        if (latestMessage && latestMessage.authorId !== requesterId && resolvedChatId) {
           markConversationRead(resolvedChatId, Number(latestMessage.id))
         }
       }

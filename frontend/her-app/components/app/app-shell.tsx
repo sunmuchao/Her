@@ -5,7 +5,7 @@ import { useBadgeCounts } from '@/hooks/use-badge-counts'
 import BottomNav from '@/components/her/bottom-nav'
 import CandidateDetailPage from '@/components/her/candidate-detail-page'
 import ChatPage from '@/components/her/chat-page'
-import DiscoverPage, { RecommendationInbox } from '@/components/her/discover-page'
+import DiscoverPage from '@/components/her/discover-page'
 import CollectedPreferencesPage from '@/components/her/collected-preferences-page'
 import EditProfilePage from '@/components/her/edit-profile-page'
 import ProfilePage from '@/components/her/profile-page'
@@ -31,7 +31,6 @@ type AppShellProps = {
   onDiscoverySessionId: (sessionId: string | null) => void
   onTabChange: (tab: TabType) => void
   onViewCandidate: (candidateId: string, candidate?: CandidatePreview, sessionId?: string | null, fromChatId?: string) => void
-  onOpenInbox: () => void
   onOpenChat: (chatId: string, info?: ChatUserInfo) => void
   onBackToMain: () => void
   onStartVerification: (from?: 'profile', target?: string) => void
@@ -40,7 +39,6 @@ type AppShellProps = {
   onOpenEditProfile: () => void
   onOpenSettings: () => void
   onOpenOnboarding?: () => void
-  onOpenRecommendationInbox: (filter?: string) => void
   fromSubPage?: string | null
   inboxFilter?: string | null
 }
@@ -58,7 +56,6 @@ export function AppShell({
   onDiscoverySessionId,
   onTabChange,
   onViewCandidate,
-  onOpenInbox,
   onOpenChat,
   onBackToMain,
   onStartVerification,
@@ -67,7 +64,6 @@ export function AppShell({
   onOpenEditProfile,
   onOpenSettings,
   onOpenOnboarding,
-  onOpenRecommendationInbox,
   fromSubPage,
   inboxFilter,
 }: AppShellProps) {
@@ -96,20 +92,9 @@ export function AppShell({
           >
             <DiscoverPage
               onViewCandidate={(id, candidate, sessionId) => onViewCandidate(id, candidate, sessionId)}
-              onOpenInbox={onOpenInbox}
-              inboxUnreadCount={inboxUnreadCount}
               onSessionIdChange={onDiscoverySessionId}
             />
           </PageTransition>
-        )}
-        {currentTab === 'matchmaker' && subView === 'recommendation-inbox' && (
-          <SlideInTransition key="inbox" direction="right">
-            <RecommendationInbox
-              onViewCandidate={onViewCandidate}
-              onBack={onBackToMain}
-              onBadgesRefresh={refreshBadges}
-            />
-          </SlideInTransition>
         )}
 
         {currentTab === 'relationships' && subView === 'main' && (
@@ -148,9 +133,6 @@ export function AppShell({
                     caseId: selectedCaseId || undefined,
                     counterpartId: selectedCounterpartId || undefined,
                   })
-                } else if (fromSubPage === 'recommendation-inbox') {
-                  // 从推荐来信进入 → 返回推荐来信并恢复筛选状态
-                  onOpenRecommendationInbox(inboxFilter || 'all')
                 } else {
                   onBackToMain()
                 }

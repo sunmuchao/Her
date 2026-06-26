@@ -21,7 +21,7 @@ for root in (GATEWAY_ROOT, RECOMMENDATION_ROOT, MATCHMAKING_ROOT, CHAT_ROOT, REP
 
 from gateway.app import PartnerGateway  # noqa: E402
 from gateway.identity import ActorPrincipal, ROLE_END_USER  # noqa: E402
-from gateway.proxy_intro_routes import rest_proxy_intro_view_case  # noqa: E402
+from gateway.proxy_intro_routes import rest_proxy_intro_view_case, rest_proxy_intro_list_mine  # noqa: E402
 from matchmaking_system.proxy_intro import create_match_case, get_match_case, mark_case_as_viewed  # noqa: E402
 from recommendation_system import (  # noqa: E402
     connect_db as connect_recommendation_db,
@@ -290,6 +290,166 @@ class BadgeCountCalculationTests(unittest.TestCase):
 
         # 验证：只有awaiting_reply的case-1应该计入
         self.assertEqual(interest_unread, 1)
+
+
+class StageLabelVisibilityTests(unittest.TestCase):
+    """测试'已查看'状态的 stage_label 按 role 显示逻辑"""
+
+    def setUp(self) -> None:
+        self._old_storage = os.environ.get("HER_PROXY_INTRO_STORAGE")
+        os.environ["HER_PROXY_INTRO_STORAGE"] = "matchmaking"
+
+        rec = connect_recommendation_db(DEFAULT_RECOMMENDATION_TEST_MYSQL_DSN)
+        initialize_recommendation_db(rec)
+        reset_recommendation_tables(rec)
+        mm = connect_matchmaking_db(DEFAULT_MATCHMAKING_TEST_MYSQL_DSN)
+        initialize_matchmaking_db(mm)
+        reset_matchmaking_tables(mm)
+        rec.close()
+        mm.close()
+
+        self.gw = PartnerGateway(
+            recommendation_dsn=DEFAULT_RECOMMENDATION_TEST_MYSQL_DSN,
+            matchmaking_dsn=DEFAULT_MATCHMAKING_TEST_MYSQL_DSN,
+            chat_dsn=DEFAULT_CHAT_TEST_MYSQL_DSN,
+            db_pool_max=0,
+        )
+        self._requester_id = 75001
+        self._candidate_id = 92001
+
+    def tearDown(self) -> None:
+        if self._old_storage is None:
+            os.environ.pop("HER_PROXY_INTRO_STORAGE", None)
+        else:
+            os.environ["HER_PROXY_INTRO_STORAGE"] = self._old_storage
+
+    def _seed_case_awaiting_reply(self) -> str:
+        """创建一个处于awaiting_reply状态的case"""
+        rec = connect_recommendation_db(DEFAULT_RECOMMENDATION_TEST_MYSQL_DSN)
+        mm = connect_matchmaking_db(DEFAULT_MATCHMAKING_TEST_MYSQL_DSN)
+        try:
+            sub = create_subscription(
+                rec,
+                requester_id=self._requester_id,
+                title="test-stage-label",
+                source="mysql://user:pass@127.0.0.1:3306/her?table=profiles",
+                criteria={"gender": "女", "cities": ["无锡"]},
+                self_profile={"age": 30, "city": "无锡"},
+                now=datetime(2026, 6, 10, 9, 0, 0),
+            )
+            refresh_subscription(
+                rec,
+                sub["subscription_id"],
+                now=datetime(2026, 6, 10, 9, 5, 0),
+                search_runner=lambda **_: {"results": [_search_result(self._candidate_id)]},
+            )
+            record_user_review(
+                rec,
+                subscription_id=sub["subscription_id"],
+                candidate_id=self._candidate_id,
+                review_type="direct_greet",
+                now=datetime(2026, 6, 10, 9, 10, 0),
+            )
+            deliver_in_app_recommendations(rec, now=datetime(2026, 6, 10, 9, 20, 0))
+            case = create_match_case(
+                mm,
+                recommendation_conn=rec,
+                subscription_id=sub["subscription_id"],
+                candidate_id=self._candidate_id,
+                now=datetime(2026, 6, 10, 10, 0, 0),
+            )
+            return str(case["case_id"])
+        finally:
+            rec.close()
+            mm.close()
+
+    def test_requester_sees_waiting_reply_when_viewed(self) -> None:
+        """测试：发起方在viewed状态看到'等待回复'而非'已查看'"""
+        case_id = self._seed_case_awaiting_reply()
+
+        # 标记为已查看
+        mm = connect_matchmaking_db(DEFAULT_MATCHMAKING_TEST_MYSQL_DSN)
+        mark_case_as_viewed(
+            mm,
+            case_id=case_id,
+            now=datetime(2026, 6, 10, 11, 0, 0),
+            view_payload={"source": "detail_page"},
+        )
+        mm.commit()
+        mm.close()
+
+        # requester 查看case列表
+        environ = {
+            "_actor": ActorPrincipal(
+                actor_id=str(self._requester_id),
+                roles=frozenset({ROLE_END_USER}),
+                token_id="test",
+                auth_source="static_token",
+            ),
+        }
+        status_code, response = rest_proxy_intro_list_mine(self.gw, environ)
+
+        # 验证返回
+        self.assertEqual(status_code, 200)
+        cases = response.get("cases", [])
+        self.assertTrue(len(cases) > 0)
+
+        # 找到我们的case
+        target_case = None
+        for c in cases:
+            if c["case_id"] == case_id:
+                target_case = c
+                break
+
+        self.assertIsNotNone(target_case)
+        self.assertEqual(target_case["case_status"], "viewed")  # 真实状态是viewed
+        self.assertEqual(target_case["role"], "requester")  # role是requester
+        # 🔒 关键验证：requester看到"等待回复"，而非"已查看"
+        self.assertEqual(target_case["stage_label"], "等待回复")
+
+    def test_candidate_sees_viewed_when_viewed(self) -> None:
+        """测试：被推荐方在viewed状态看到真实的'已查看'"""
+        case_id = self._seed_case_awaiting_reply()
+
+        # 标记为已查看
+        mm = connect_matchmaking_db(DEFAULT_MATCHMAKING_TEST_MYSQL_DSN)
+        mark_case_as_viewed(
+            mm,
+            case_id=case_id,
+            now=datetime(2026, 6, 10, 11, 0, 0),
+            view_payload={"source": "detail_page"},
+        )
+        mm.commit()
+        mm.close()
+
+        # candidate 查看case列表
+        environ = {
+            "_actor": ActorPrincipal(
+                actor_id=str(self._candidate_id),
+                roles=frozenset({ROLE_END_USER}),
+                token_id="test",
+                auth_source="static_token",
+            ),
+        }
+        status_code, response = rest_proxy_intro_list_mine(self.gw, environ)
+
+        # 验证返回
+        self.assertEqual(status_code, 200)
+        cases = response.get("cases", [])
+        self.assertTrue(len(cases) > 0)
+
+        # 找到我们的case
+        target_case = None
+        for c in cases:
+            if c["case_id"] == case_id:
+                target_case = c
+                break
+
+        self.assertIsNotNone(target_case)
+        self.assertEqual(target_case["case_status"], "viewed")  # 真实状态是viewed
+        self.assertEqual(target_case["role"], "candidate")  # role是candidate
+        # 🔑 关键验证：candidate看到真实的"已查看"
+        self.assertEqual(target_case["stage_label"], "已查看")
 
 
 if __name__ == "__main__":

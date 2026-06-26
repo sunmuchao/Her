@@ -83,9 +83,17 @@ async function proxy(request: NextRequest, pathSegments: string[]) {
     headers.set('Authorization', `Bearer ${apiKey}`)
   }
 
-  let body: string | undefined
+  let body: ArrayBuffer | string | undefined
   if (!['GET', 'HEAD'].includes(request.method.toUpperCase())) {
-    body = await request.text()
+    // 检查 Content-Type，对音频/视频等二进制数据使用 arrayBuffer
+    const contentType = request.headers.get('content-type') || ''
+    if (contentType.startsWith('audio/') || contentType.startsWith('video/') || contentType.startsWith('application/octet-stream')) {
+      // 二进制数据：使用 arrayBuffer 保持原始格式
+      body = await request.arrayBuffer()
+    } else {
+      // 文本数据：使用 text
+      body = await request.text()
+    }
   }
 
   let upstream: Response

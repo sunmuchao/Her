@@ -66,7 +66,7 @@ def _counterpart_snapshot(case: dict[str, Any], viewer_profile_id: int) -> tuple
     )
 
 
-def _stage_label(case: dict[str, Any], *, has_main_conversation: bool) -> str:
+def _stage_label(case: dict[str, Any], *, has_main_conversation: bool, viewer_role: str = "unknown") -> str:
     if has_main_conversation:
         return "已开聊"
     status = str(case.get("case_status") or "").strip()
@@ -75,7 +75,9 @@ def _stage_label(case: dict[str, Any], *, has_main_conversation: bool) -> str:
     if status == "awaiting_reply":
         return "等待回复"
     if status == "viewed":
-        return "已查看"  # ✅ 新增：显示已查看状态
+        # 🔒 隐藏"已查看"状态：对于发起方，伪装成"等待回复"，避免"已读不回"焦虑
+        # 对于被推荐方，显示真实的"已查看"，保留信息透明度
+        return "等待回复" if viewer_role == "requester" else "已查看"
     if status == "accepted":
         return "可聊天"
     if status == "declined":
@@ -114,6 +116,8 @@ def _build_case_view(
         or (case_status == "closed" and close_reason == "handoff_completed")
         or bool(main_conversation)
     )
+    # 🔑 先计算 viewer_role，用于后续的 stage_label 显示逻辑
+    viewer_role = "requester" if int(case.get("requester_id") or 0) == int(viewer_profile_id) else "candidate"
     return {
         "case_id": case["case_id"],
         "subscription_id": case.get("subscription_id"),
@@ -124,7 +128,7 @@ def _build_case_view(
         "reply_deadline_at": case.get("reply_deadline_at"),
         "created_at": case.get("created_at"),
         "updated_at": case.get("updated_at"),
-        "role": "requester" if int(case.get("requester_id") or 0) == int(viewer_profile_id) else "candidate",
+        "role": viewer_role,
         "counterpart_name": counterpart_name,
         "counterpart_profile_id": counterpart_profile_id,
         "counterpart_profile": counterpart_profile,
@@ -132,7 +136,7 @@ def _build_case_view(
         or counterpart_profile.get("photo_url")
         or counterpart_profile.get("cover_url"),
         "safe_summary": case.get("safe_summary") or {},
-        "stage_label": _stage_label(case, has_main_conversation=bool(main_conversation)),
+        "stage_label": _stage_label(case, has_main_conversation=bool(main_conversation), viewer_role=viewer_role),
         "can_reply": int(case.get("candidate_id") or 0) == int(viewer_profile_id) and case_status in {"awaiting_reply", "viewed"},  # ✅ 修改：viewed状态也能回复
         "can_open_chat": can_open_chat,
         "main_conversation_id": (
