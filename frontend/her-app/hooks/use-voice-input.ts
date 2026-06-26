@@ -94,6 +94,7 @@ export function useVoiceInput({
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const startTimeRef = useRef<number>(0)
   const maxDurationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const shouldIgnoreNextStopRef = useRef(false)
 
   // 只需要 MediaRecorder API，不需要 Web Speech API
   const isSupported =
@@ -129,6 +130,7 @@ export function useVoiceInput({
     }
     mediaRecorderRef.current = null
     chunksRef.current = []
+    shouldIgnoreNextStopRef.current = false
     setRecordingDuration(0)
   }, [])
 
@@ -202,6 +204,12 @@ export function useVoiceInput({
       }
 
       recorder.onstop = () => {
+        if (shouldIgnoreNextStopRef.current) {
+          cleanup()
+          setState('idle')
+          return
+        }
+
         const audioBlob = new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' })
 
         // DEBUG: 记录音频信息用于诊断
@@ -211,6 +219,14 @@ export function useVoiceInput({
         console.log('  - Duration:', Date.now() - startTimeRef.current, 'ms')
         console.log('  - Chunks:', chunksRef.current.length)
 
+        if (audioBlob.size === 0) {
+          cleanup()
+          onError?.('录音时间太短或未采集到声音，请再试一次')
+          setState('idle')
+          return
+        }
+
+        cleanup()
         void processAudioViaWhisper(audioBlob)
       }
 
@@ -249,6 +265,9 @@ export function useVoiceInput({
 
     const recorder = mediaRecorderRef.current
     if (recorder && recorder.state === 'recording') {
+      if (typeof recorder.requestData === 'function') {
+        recorder.requestData()
+      }
       recorder.stop()
     }
 
@@ -267,9 +286,8 @@ export function useVoiceInput({
 
     const recorder = mediaRecorderRef.current
     if (recorder && recorder.state === 'recording') {
+      shouldIgnoreNextStopRef.current = true
       recorder.stop()
-      // 清空录音数据，不发送到后端
-      chunksRef.current = []
     }
 
     cleanup()

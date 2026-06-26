@@ -148,6 +148,7 @@ describe('useVoiceInput', () => {
       })
 
       expect(mockRecorder.stop).toHaveBeenCalled()
+      expect(mockFetch).not.toHaveBeenCalled()
       expect(result.current.state).toBe('idle')
     })
   })
@@ -436,6 +437,52 @@ describe('useVoiceInput', () => {
       expect(onTranscript).not.toHaveBeenCalled()
       // Should call onError with message
       expect(onError).toHaveBeenCalledWith('未识别到语音内容')
+    })
+
+    it('should not send empty audio blobs to Whisper', async () => {
+      const mockStream = {
+        getTracks: vi.fn().mockReturnValue([{ stop: vi.fn() }]),
+      }
+      mockGetUserMedia.mockResolvedValue(mockStream)
+
+      const mockRecorder = {
+        start: vi.fn(),
+        stop: vi.fn(),
+        requestData: vi.fn(),
+        state: 'recording',
+        mimeType: 'audio/webm',
+        ondataavailable: null,
+        onstop: null,
+        onerror: null,
+      }
+      mockMediaRecorder.mockReturnValue(mockRecorder)
+
+      const onError = vi.fn()
+
+      const { result } = renderHook(() =>
+        useVoiceInput({
+          onError,
+          maxDurationMs: 60000,
+        }),
+      )
+
+      await act(async () => {
+        await result.current.startRecording()
+      })
+
+      act(() => {
+        result.current.stopRecording()
+      })
+
+      await act(async () => {
+        if (mockRecorder.onstop) {
+          mockRecorder.onstop()
+        }
+      })
+
+      expect(mockRecorder.requestData).toHaveBeenCalled()
+      expect(mockFetch).not.toHaveBeenCalled()
+      expect(onError).toHaveBeenCalledWith('录音时间太短或未采集到声音，请再试一次')
     })
   })
 

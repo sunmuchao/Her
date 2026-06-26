@@ -47,6 +47,7 @@ from .service_integrations import (
     load_persona_memory_bindings as _load_persona_memory_bindings_impl,
     load_recommendation_bindings as _load_recommendation_bindings_impl,
     load_requester_profile as _load_requester_profile_impl,
+    open_proxy_intro_conn as _open_proxy_intro_conn_impl,  # 新增：用于查询被动推荐案件
     open_recommendation_conn as _open_recommendation_conn_impl,
     persona_memory_source as _persona_memory_source_impl,
     persist_search_run as _persist_search_run_impl,
