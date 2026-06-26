@@ -2386,13 +2386,12 @@ class DiscoveryService:
             profile_id: 用户画像ID（被推荐方）
             now: 当前时间
         """
-        from .service_integrations import open_proxy_intro_conn
         from matchmaking_system.proxy_intro_core import list_match_cases_for_participant
         from .view_models import assistant_message, result_group, build_candidate_card
 
         try:
             # 1. 打开proxy_intro数据库连接
-            proxy_intro_conn = open_proxy_intro_conn()
+            proxy_intro_conn = _open_proxy_intro_conn_impl()
 
             # 2. 查询待推送的被动推荐案件
             cases = list_match_cases_for_participant(proxy_intro_conn, profile_id)
