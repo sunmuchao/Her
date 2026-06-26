@@ -98,6 +98,10 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
 
+  // SSE连接管理
+  const eventSourceRef = useRef<EventSource | null>(null)
+  const sseConnectedRef = useRef(false)
+
   // 视频通话相关状态
   const [showVideoCall, setShowVideoCall] = useState(false)
   const [videoCallType, setVideoCallType] = useState<'audio' | 'video'>('video')
@@ -321,63 +325,121 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
     }
   }, [resolvedChatId])
 
-  // ✅ 轮询更新：每30秒获取最新消息（包括AI红娘的新提示）
-  useEffect(() => {
-    if (!resolvedCaseId || !resolvedChatId) return
+  // 提取消息获取逻辑为独立函数（供SSE触发调用）
+  const fetchAndUpdateMessages = async () => {
+    if (!resolvedCaseId) return
     const requesterId = getChatParticipantId()
     if (!requesterId) return
 
-    const interval = setInterval(async () => {
-      try {
-        const timelineData = await fetchCaseTimeline(resolvedCaseId || '', requesterId)
-        const mappedMessages = extractMainGroupMessages(timelineData, requesterId)
+    try {
+      const timelineData = await fetchCaseTimeline(resolvedCaseId || '', requesterId)
+      const mappedMessages = extractMainGroupMessages(timelineData, requesterId)
 
-        // 只在有新消息时更新
-        if (mappedMessages.length > messages.length) {
-          setMessages(mappedMessages)
-          // 标记新消息已读
-          const latestMessage = mappedMessages[mappedMessages.length - 1]
-          if (latestMessage && latestMessage.authorId !== requesterId) {
-            markConversationRead(resolvedChatId, Number(latestMessage.id))
-          }
+      // 只在有新消息时更新
+      if (mappedMessages.length > messages.length) {
+        setMessages(mappedMessages)
+        // 标记新消息已读
+        const latestMessage = mappedMessages[mappedMessages.length - 1]
+        if (latestMessage && latestMessage.authorId !== requesterId) {
+          markConversationRead(resolvedChatId, Number(latestMessage.id))
         }
-
-        // ✅ 检测 assistant_dm 新消息（小雅私信主动提示）
-        // 需要检查会话成员列表来确定属于当前用户的会话
-        const assistantDm = timelineData.conversations.find(
-          (c) =>
-            c.conversation.channel_key.startsWith('assistant_dm_') &&
-            c.conversation.members?.some(
-              (m) => m.participant_id === requesterId && m.member_role === 'human',
-            ),
-        )
-
-        if (assistantDm && assistantDm.messages && assistantDm.messages.length > 0 && !hasAutoOpenedXiaoyaRef.current) {
-          const latestDmMsg = assistantDm.messages[assistantDm.messages.length - 1]
-
-          // 判断是否是新消息（比上次检查时间更晚）
-          if (latestDmMsg.created_at > xiaoyaLastCheckTimeRef.current && latestDmMsg.source === 'agent') {
-            console.log('[ChatPage] 检测到小雅新私信:', latestDmMsg.body)
-
-            // 自动展开小雅私信面板
-            setShowXiaoyaChat(true)
-            setXiaoyaTriggerReason(latestDmMsg.source || 'assistant_dm')
-            hasAutoOpenedXiaoyaRef.current = true
-
-            // 更新上次检查时间
-            xiaoyaLastCheckTimeRef.current = latestDmMsg.created_at
-
-            // 设置会话ID
-            setXiaoyaConversationId(assistantDm.conversation.conversation_id)
-          }
-        }
-      } catch (error) {
-        console.error('[ChatPage] 轮询更新失败:', error)
       }
-    }, 30000) // 30秒轮询
+
+      // ✅ 检测 assistant_dm 新消息（小雅私信主动提示）
+      const assistantDm = timelineData.conversations.find(
+        (c) =>
+          c.conversation.channel_key.startsWith('assistant_dm_') &&
+          c.conversation.members?.some(
+            (m) => m.participant_id === requesterId && m.member_role === 'human',
+          ),
+      )
+
+      if (assistantDm && assistantDm.messages && assistantDm.messages.length > 0 && !hasAutoOpenedXiaoyaRef.current) {
+        const latestDmMsg = assistantDm.messages[assistantDm.messages.length - 1]
+
+        // 判断是否是新消息（比上次检查时间更晚）
+        if (latestDmMsg.created_at > xiaoyaLastCheckTimeRef.current && latestDmMsg.source === 'agent') {
+          console.log('[ChatPage] 检测到小雅新私信:', latestDmMsg.body)
+
+          // 自动展开小雅私信面板
+          setShowXiaoyaChat(true)
+          setXiaoyaTriggerReason(latestDmMsg.source || 'assistant_dm')
+          hasAutoOpenedXiaoyaRef.current = true
+
+          // 更新上次检查时间
+          xiaoyaLastCheckTimeRef.current = latestDmMsg.created_at
+
+          // 设置会话ID
+          setXiaoyaConversationId(assistantDm.conversation.conversation_id)
+        }
+      }
+    } catch (error) {
+      console.error('[ChatPage] 消息获取失败:', error)
+    }
+  }
+
+  // ✅ SSE实时监听：替代30秒轮询
+  useEffect(() => {
+    if (!resolvedCaseId) return
+    const userId = getChatParticipantId()
+    if (!userId) return
+
+    // 创建SSE连接
+    const sseUrl = `${process.env.NEXT_PUBLIC_SSE_SERVER_URL || 'http://localhost:8081'}/sse/chat/${resolvedCaseId}?participant_id=${userId}`
+    const eventSource = new EventSource(sseUrl)
+    eventSourceRef.current = eventSource
+
+    eventSource.addEventListener('connected', (e) => {
+      console.log('[SSE] Connected:', e.data)
+      sseConnectedRef.current = true
+    })
+
+    eventSource.addEventListener('message', (e) => {
+      try {
+        const data = JSON.parse(e.data)
+        if (data.type === 'new_message') {
+          console.log('[SSE] New message received:', data.message_id)
+          // 新消息到达，立即获取完整timeline并更新
+          void fetchAndUpdateMessages()
+        }
+      } catch (err) {
+        console.error('[SSE] Parse error:', err)
+      }
+    })
+
+    eventSource.addEventListener('heartbeat', (e) => {
+      console.log('[SSE] Heartbeat:', e.data)
+    })
+
+    eventSource.onerror = (e) => {
+      console.error('[SSE] Error:', e)
+      sseConnectedRef.current = false
+      // EventSource会自动重连
+    }
+
+    return () => {
+      eventSource.close()
+      eventSourceRef.current = null
+      sseConnectedRef.current = false
+    }
+  }, [resolvedCaseId])
+
+  // ✅ SSE兜底机制：连接失败时回退到30秒轮询
+  useEffect(() => {
+    if (!resolvedCaseId || !resolvedChatId) return
+    if (sseConnectedRef.current) return // SSE已连接，不需要轮询兜底
+
+    const requesterId = getChatParticipantId()
+    if (!requesterId) return
+
+    console.log('[ChatPage] SSE未连接，启动轮询兜底')
+
+    const interval = setInterval(async () => {
+      await fetchAndUpdateMessages()
+    }, 30000) // 30秒轮询兜底
 
     return () => clearInterval(interval)
-  }, [resolvedCaseId, resolvedChatId, messages.length])
+  }, [resolvedCaseId, resolvedChatId, sseConnectedRef.current])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -1233,6 +1295,24 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
         {/* 输入框区域 */}
         <div className="px-4 py-3">
           <div className="flex items-center gap-2 bg-secondary rounded-xl px-3 py-2 transition-all focus-within:ring-2 focus-within:ring-primary/30">
+            {/* 输入框 */}
+            <input
+              ref={inputRef}
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onFocus={() => setShowActionMenu(false)}
+              placeholder="输入消息..."
+              className="flex-1 bg-transparent text-sm placeholder:text-muted-foreground focus:outline-none"
+              aria-label="输入消息"
+            />
+            {/* 表情按钮 */}
+            <button
+              aria-label="表情"
+              className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Smile className="w-5 h-5" />
+            </button>
             {/* 加号按钮 */}
             <button
               aria-label={showActionMenu ? '收起菜单' : '展开菜单'}
@@ -1246,32 +1326,6 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
             >
               <Plus className="w-5 h-5" />
             </button>
-            {/* 表情按钮 */}
-            <button
-              aria-label="表情"
-              className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <Smile className="w-5 h-5" />
-            </button>
-            {/* 语音按钮 */}
-            <button
-              aria-label="语音输入（即将上线）"
-              className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
-              disabled
-            >
-              <Mic className="w-5 h-5" />
-            </button>
-            {/* 输入框 */}
-            <input
-              ref={inputRef}
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={handleKeyDown}
-              onFocus={() => setShowActionMenu(false)}
-              placeholder="输入消息..."
-              className="flex-1 bg-transparent text-sm placeholder:text-muted-foreground focus:outline-none"
-              aria-label="输入消息"
-            />
             {/* 发送按钮 */}
             <button
               aria-label={isSending ? '发送中' : '发送消息'}

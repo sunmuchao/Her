@@ -239,9 +239,19 @@ def rest_list_conversion_views(
     environ: dict[str, Any],
     subscription_id: str,
 ) -> tuple[int, dict[str, Any]]:
-    gateway._get_recommendation_subscription_for_actor(environ, subscription_id)
-    rows = gateway._with_rec(list_recommendation_conversion_views_for_subscription, subscription_id)
-    return 200, {"conversion_views": _json_safe(rows), "trace_id": get_trace_id()}
+    # FIX: 防御性处理订阅不存在的情况（孤儿推荐卡片）
+    # 当订阅被删除后，推荐卡片仍可能引用已删除的 subscription_id
+    # 前端会遍历所有 subscription_id 调用此 API，导致错误显示给用户
+    try:
+        gateway._get_recommendation_subscription_for_actor(environ, subscription_id)
+        rows = gateway._with_rec(list_recommendation_conversion_views_for_subscription, subscription_id)
+        return 200, {"conversion_views": _json_safe(rows), "trace_id": get_trace_id()}
+    except ValueError as e:
+        if "Unknown subscription" in str(e):
+            # 订阅已删除，返回空数据而非抛出错误（conversion views 是可选的增强数据）
+            from observability import get_trace_id
+            return 200, {"conversion_views": [], "trace_id": get_trace_id()}
+        raise
 
 
 def rest_list_runs(
@@ -271,6 +281,21 @@ def rest_list_cards(
         unread_only=str(q.get("unread_only", "")).lower() in ("1", "true", "yes"),
     )
     return 200, {"cards": _json_safe(cards)}
+
+
+def rest_cleanup_orphan_cards(
+    gateway: RecommendationGateway,
+    environ: dict[str, Any],
+) -> tuple[int, dict[str, Any]]:
+    """清理订阅已删除的孤儿推荐卡片。
+
+    此API需要内部权限（ops_workbench或admin），用于：
+    1. 手动触发清理孤儿卡片
+    2. 定期维护任务调用
+    """
+    from recommendation_system import cleanup_orphan_cards  # type: ignore[import-untyped]
+    result = gateway._with_rec(cleanup_orphan_cards)
+    return 200, {"deleted_count": result.get("deleted_count", 0), "trace_id": get_trace_id()}
 
 
 def rest_deliver(
@@ -508,5 +533,14 @@ def dispatch_recommendation_rest(
             environ,
             _parse_json_body(_read_body(environ)),
         )
+
+    # FIX: 清理孤儿推荐卡片（订阅已删除但卡片仍存在）
+    if path == "/v1/recommendation/cleanup-orphan-cards" and method == "POST":
+        gateway._require_roles(
+            environ,
+            INTERNAL_WRITE_ROLES,
+            message="current actor cannot cleanup orphan recommendation cards",
+        )
+        return rest_cleanup_orphan_cards(gateway, environ)
 
     return None

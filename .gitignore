@@ -2,6 +2,13 @@
 .env
 .env.*
 !.env.example
+!.env.*.template
+!.env.*.example
+!.env.aliyun_sms.template
+
+# 阿里云短信敏感配置（安全保护）
+.env.aliyun_sms.local
+.env.aliyun_sms
 __pycache__/
 *.pyc
 .venv/

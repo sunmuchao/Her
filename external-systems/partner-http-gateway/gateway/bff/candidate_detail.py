@@ -48,6 +48,8 @@ class CandidateDetailGateway(Protocol):
 
     def _discovery(self) -> Any: ...
 
+    def _with_rec(self, func: Any, *args: Any, **kwargs: Any) -> Any: ...
+
 
 def _explain_for_recommendation(recommendation_id: int) -> dict[str, Any] | None:
     store = get_criteria_snapshot_store()
@@ -78,6 +80,7 @@ def _check_candidate_access_via_session(
         # Verify session ownership
         owner_id = gateway._discovery.get_session_owner_id(session_id)
         if owner_id is None:
+            print(f"[DEBUG candidate_access] session_id={session_id} owner_id is None")
             return False
 
         # For auth_session end users, check profile_id binding
@@ -85,20 +88,48 @@ def _check_candidate_access_via_session(
         if actor is not None and gateway._is_auth_session_end_user(actor):
             resolved = gateway._resolve_end_user_principal(environ, require_profile=True)
             if resolved is None or resolved.profile_id is None:
+                print(f"[DEBUG candidate_access] session_id={session_id} resolved.profile_id is None")
                 return False
             if int(resolved.profile_id) != int(owner_id):
+                print(f"[DEBUG candidate_access] session_id={session_id} resolved.profile_id={resolved.profile_id} != owner_id={owner_id}")
                 return False
 
         # Check if candidate is in session's recommendations
         session_view = gateway._discovery.get_session_view(session_id)
         if session_view is None:
+            print(f"[DEBUG candidate_access] session_id={session_id} session_view is None")
             return False
 
-        candidates = session_view.get("candidates") or []
-        candidate_ids = {int(c.get("profile_id") or c.get("candidate_id") or 0) for c in candidates}
+        view_data = session_view.get("view", {})
+        candidate_ids: set[int] = set()
+
+        # Legacy shape: view.candidates[]
+        candidates = view_data.get("candidates") or []
+        for candidate in candidates:
+            resolved_candidate_id = int(candidate.get("profile_id") or candidate.get("candidate_id") or 0)
+            if resolved_candidate_id > 0:
+                candidate_ids.add(resolved_candidate_id)
+
+        # Current production shape: view.timeline[].cards[] for result groups
+        for item in list(view_data.get("timeline") or []):
+            cards = item.get("cards") or []
+            if not isinstance(cards, list):
+                continue
+            for card in cards:
+                resolved_candidate_id = int(
+                    card.get("profile_id")
+                    or ((card.get("open_profile_action") or {}).get("profile_id"))
+                    or card.get("candidate_id")
+                    or 0
+                )
+                if resolved_candidate_id > 0:
+                    candidate_ids.add(resolved_candidate_id)
+
+        print(f"[DEBUG candidate_access] session_id={session_id} candidate_id={candidate_id} candidate_ids={candidate_ids}")
         return candidate_id in candidate_ids
 
-    except Exception:
+    except Exception as e:
+        print(f"[DEBUG candidate_access] exception: {e}")
         return False
 
 
@@ -110,17 +141,141 @@ def _check_candidate_access_via_recommendation(
 ) -> bool:
     """Check if user can access candidate via a recommendation.
 
-    The user must be the requester of the recommendation subscription.
+    The user must be the requester of the recommendation subscription,
+    and the recommendation must contain this candidate.
     """
     try:
         from recommendation_system import get_recommendation_by_id  # type: ignore[import-untyped]
 
-        # This would require gateway._with_rec, but Protocol doesn't include it
-        # For now, we'll rely on session-based access
-        # Future: Add recommendation access check via resource_access_guard
+        # Get the recommendation record
+        recommendation = gateway._with_rec(get_recommendation_by_id, int(recommendation_id))
+        if recommendation is None:
+            print(f"[DEBUG candidate_access] recommendation_id={recommendation_id} recommendation is None")
+            return False
+
+        # Verify user is the requester of the recommendation subscription
+        requester_id = int(recommendation.get("requester_id") or 0)
+        if requester_id <= 0:
+            print(f"[DEBUG candidate_access] recommendation_id={recommendation_id} requester_id is invalid")
+            return False
+
+        # For auth_session end users, check profile_id binding
+        actor = gateway._current_actor(environ)
+        if actor is not None and gateway._is_auth_session_end_user(actor):
+            resolved = gateway._resolve_end_user_principal(environ, require_profile=True)
+            if resolved is None or resolved.profile_id is None:
+                print(f"[DEBUG candidate_access] recommendation_id={recommendation_id} resolved.profile_id is None")
+                return False
+            if int(resolved.profile_id) != int(requester_id):
+                print(f"[DEBUG candidate_access] recommendation_id={recommendation_id} resolved.profile_id={resolved.profile_id} != requester_id={requester_id}")
+                return False
+
+        # Verify the recommendation contains this candidate
+        recommendation_candidate_id = int(recommendation.get("candidate_id") or 0)
+        if recommendation_candidate_id <= 0:
+            print(f"[DEBUG candidate_access] recommendation_id={recommendation_id} candidate_id is invalid")
+            return False
+
+        if candidate_id != recommendation_candidate_id:
+            print(f"[DEBUG candidate_access] recommendation_id={recommendation_id} candidate_id={candidate_id} != recommendation_candidate_id={recommendation_candidate_id}")
+            return False
+
+        print(f"[DEBUG candidate_access] recommendation_id={recommendation_id} access granted")
+        return True
+
+    except Exception as e:
+        print(f"[DEBUG candidate_access] recommendation access check exception: {e}")
         return False
 
-    except Exception:
+
+def _check_candidate_access_via_case(
+    gateway: CandidateDetailGateway,
+    environ: dict[str, Any],
+    candidate_id: int,
+    case_id: str,
+) -> bool:
+    """Check if user can access candidate via a proxy intro case.
+
+    The user must be a participant in the case (requester or candidate),
+    and the case must involve this candidate.
+    """
+    try:
+        # Import gateway access control mixin methods
+        from ..access_control import GatewayAccessMixin
+
+        # Get the case and verify user is a participant
+        # This will raise GatewayPermissionError if access is denied
+        case = gateway._get_case_for_actor(environ, case_id)
+
+        # Verify the case involves this candidate
+        case_candidate_id = int(case.get("candidate_id") or case.get("counterpart_profile_id") or 0)
+        case_requester_id = int(case.get("requester_id") or case.get("requester_profile_id") or 0)
+
+        # User can access if they're viewing the counterpart (candidate) or the requester
+        if candidate_id == case_candidate_id or candidate_id == case_requester_id:
+            return True
+
+        print(f"[DEBUG candidate_access] case_id={case_id} candidate_id={candidate_id} not in case participants")
+        return False
+
+    except Exception as e:
+        print(f"[DEBUG candidate_access] case access check exception: {e}")
+        return False
+
+
+def _check_candidate_access_via_card(
+    gateway: CandidateDetailGateway,
+    environ: dict[str, Any],
+    candidate_id: int,
+    card_id: str,
+) -> bool:
+    """Check if user can access candidate via a recommendation card.
+
+    The user must be the requester of the recommendation subscription that
+    contains this card, and the card must reference this candidate.
+    """
+    try:
+        # Import recommendation system functions
+        from recommendation_system import get_card_by_id  # type: ignore[import-untyped]
+
+        # Get the card record
+        card = gateway._with_rec(get_card_by_id, card_id)
+        if card is None:
+            print(f"[DEBUG candidate_access] card_id={card_id} card is None")
+            return False
+
+        # Verify user is the requester of the recommendation subscription
+        requester_id = int(card.get("requester_id") or 0)
+        if requester_id <= 0:
+            print(f"[DEBUG candidate_access] card_id={card_id} requester_id is invalid")
+            return False
+
+        # For auth_session end users, check profile_id binding
+        actor = gateway._current_actor(environ)
+        if actor is not None and gateway._is_auth_session_end_user(actor):
+            resolved = gateway._resolve_end_user_principal(environ, require_profile=True)
+            if resolved is None or resolved.profile_id is None:
+                print(f"[DEBUG candidate_access] card_id={card_id} resolved.profile_id is None")
+                return False
+            if int(resolved.profile_id) != int(requester_id):
+                print(f"[DEBUG candidate_access] card_id={card_id} resolved.profile_id={resolved.profile_id} != requester_id={requester_id}")
+                return False
+
+        # Verify the card references this candidate
+        card_candidate_id = int(card.get("candidate_id") or 0)
+        if card_candidate_id <= 0:
+            print(f"[DEBUG candidate_access] card_id={card_id} candidate_id is invalid")
+            return False
+
+        if candidate_id != card_candidate_id:
+            print(f"[DEBUG candidate_access] card_id={card_id} candidate_id={candidate_id} != card_candidate_id={card_candidate_id}")
+            return False
+
+        print(f"[DEBUG candidate_access] card_id={card_id} access granted")
+        return True
+
+    except Exception as e:
+        print(f"[DEBUG candidate_access] card access check exception: {e}")
         return False
 
 
@@ -167,6 +322,12 @@ def rest_candidate_detail(
         except ValidationError:
             recommendation_id = None
 
+    # NEW: Support case_id parameter for relationship page access
+    case_id = (q.get("case_id") or "").strip() or None
+
+    # NEW: Support card_id parameter for recommendation inbox access
+    card_id = (q.get("card_id") or "").strip() or None
+
     access_allowed = False
     access_reason = None
     access_method = None
@@ -203,7 +364,21 @@ def rest_candidate_detail(
             access_reason = "recommendation_requester"
             access_method = "recommendation"
 
-    # For auth_session end users without session_id/recommendation_id,
+    # NEW: Check via proxy intro case (relationship page access)
+    elif case_id is not None:
+        access_allowed = _check_candidate_access_via_case(gateway, environ, profile_id, case_id)
+        if access_allowed:
+            access_reason = "case_participant"
+            access_method = "case"
+
+    # NEW: Check via recommendation card (recommendation inbox access)
+    elif card_id is not None:
+        access_allowed = _check_candidate_access_via_card(gateway, environ, profile_id, card_id)
+        if access_allowed:
+            access_reason = "card_requester"
+            access_method = "card"
+
+    # For auth_session end users without session_id/recommendation_id/case_id,
     # they cannot access arbitrary candidates
     else:
         access_reason = "no_valid_access_path"
@@ -214,7 +389,7 @@ def rest_candidate_detail(
             "error": {
                 "code": "forbidden",
                 "message": "You do not have permission to view this candidate's profile. "
-                "Access is only allowed through active discovery sessions or recommendations.",
+                "Access is only allowed through active discovery sessions, recommendations, or relationships.",
             }
         }
 
@@ -231,11 +406,14 @@ def rest_candidate_detail(
     trust = build_trust_summary(row)
     detail_view: dict[str, Any] | None = None
     detail_source = "profile"
-
     # Step 5: Get discovery detail if session provided
     if session_id is not None:
         try:
-            discovery_out = gateway._discovery.get_profile_detail(profile_id, session_id=session_id)
+            discovery_out = gateway._discovery.get_profile_detail(
+                profile_id,
+                session_id=session_id,
+                include_xiaoya_analysis=False,
+            )
             if isinstance(discovery_out, dict):
                 detail_view = discovery_out.get("detail_view") or discovery_out
                 detail_source = "discovery"
@@ -274,16 +452,93 @@ def rest_candidate_detail(
     )
 
 
+def rest_candidate_xiaoya_analysis(
+    gateway: CandidateDetailGateway,
+    environ: dict[str, Any],
+    candidate_id: str,
+) -> tuple[int, dict[str, Any]]:
+    q = _query_dict(environ)
+    try:
+        profile_id = validate_int_id(candidate_id, "candidate_id")
+    except ValidationError as e:
+        return 400, {"error": {"code": "invalid_request", "message": str(e)}}
+
+    actor = gateway._current_actor(environ)
+    if actor is None:
+        return 401, {"error": {"code": "unauthorized", "message": "Authentication required"}}
+
+    session_id = (q.get("session_id") or "").strip() or None
+    if session_id is None:
+        return 400, {"error": {"code": "invalid_request", "message": "session_id is required"}}
+
+    if not _check_candidate_access_via_session(gateway, environ, profile_id, session_id):
+        return 403, {
+            "error": {
+                "code": "forbidden",
+                "message": "You do not have permission to view this candidate analysis.",
+            }
+        }
+
+    try:
+        discovery_out = gateway._discovery.get_profile_detail(
+            profile_id,
+            session_id=session_id,
+            include_xiaoya_analysis=True,
+        )
+    except Exception as exc:
+        status_code = int(getattr(exc, "status_code", 502) or 502)
+        error_code = str(getattr(exc, "code", "xiaoya_analysis_failed") or "xiaoya_analysis_failed").lower()
+        message = str(getattr(exc, "message", "") or str(exc) or "小雅分析生成失败")
+        return status_code, {
+            "error": {
+                "code": error_code,
+                "message": message,
+            }
+        }
+
+    xiaoya_analysis = None
+    xiaoya_analysis_structured = None
+    if isinstance(discovery_out, dict):
+        xiaoya_analysis = str(discovery_out.get("xiaoya_analysis") or "").strip() or None
+        structured_payload = discovery_out.get("xiaoya_analysis_structured")
+        if isinstance(structured_payload, dict):
+            xiaoya_analysis_structured = {
+                "summary": str(structured_payload.get("summary") or "").strip() or None,
+                "risk_point": str(structured_payload.get("risk_point") or "").strip() or None,
+                "first_question": str(structured_payload.get("first_question") or "").strip() or None,
+            }
+
+    if not xiaoya_analysis:
+        return 502, {
+            "error": {
+                "code": "xiaoya_analysis_failed",
+                "message": "小雅分析生成失败",
+            }
+        }
+
+    return 200, _json_safe(
+        {
+            "candidate_id": profile_id,
+            "xiaoya_analysis": xiaoya_analysis,
+            "xiaoya_analysis_structured": xiaoya_analysis_structured,
+        }
+    )
+
+
 def dispatch_candidate_bff(
     gateway: CandidateDetailGateway,
     environ: dict[str, Any],
     method: str,
     path: str,
 ) -> tuple[int, dict[str, Any]] | None:
+    match = re.fullmatch(r"/v1/candidates/([^/]+)/xiaoya-analysis", path.rstrip("/") or "/")
+    if match and method == "GET":
+        return rest_candidate_xiaoya_analysis(gateway, environ, match.group(1))
+
     match = re.fullmatch(r"/v1/candidates/([^/]+)", path.rstrip("/") or "/")
     if match and method == "GET":
         return rest_candidate_detail(gateway, environ, match.group(1))
     return None
 
 
-__all__ = ["dispatch_candidate_bff", "rest_candidate_detail"]
+__all__ = ["dispatch_candidate_bff", "rest_candidate_detail", "rest_candidate_xiaoya_analysis"]

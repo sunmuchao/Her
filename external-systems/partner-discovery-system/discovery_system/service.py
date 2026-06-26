@@ -5,6 +5,8 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import datetime
+import json
+import logging
 import os
 import re
 from typing import Any
@@ -76,6 +78,8 @@ from .view_models import (
     suggested_action,
     user_message,
 )
+
+_logger = logging.getLogger(__name__)
 
 # ✅ Agent Native：移除硬编码关键词列表
 # Agent 根据 Prompt 自主判断用户意图（如"换一批"、"看看更多"等）
@@ -169,6 +173,258 @@ def _candidate_first_name(card: dict[str, Any]) -> str:
     return re.split(r"\s+", title, maxsplit=1)[0]
 
 
+def _compact_profile_for_llm(profile: dict[str, Any] | None) -> dict[str, Any]:
+    source = dict(profile or {})
+    return {
+        key: value
+        for key, value in {
+            "name": source.get("display_name") or source.get("name"),
+            "age": source.get("age"),
+            "city": source.get("city"),
+            "settlement_city": source.get("settlement_city"),
+            "job": source.get("job"),
+            "education": source.get("education"),
+            "height": source.get("height"),
+            "income_range": source.get("income_range"),
+            "relationship_goal": source.get("relationship_goal"),
+            "marital_status": source.get("marital_status"),
+            "has_children": source.get("has_children"),
+            "children_count": source.get("children_count"),
+            "smoking": source.get("smoking"),
+            "drinking": source.get("drinking"),
+            "hobbies": source.get("hobbies"),
+            "public_notes": source.get("public_notes"),
+            "public_personality": source.get("public_personality"),
+            "public_values": source.get("public_values"),
+            "personality_traits": source.get("personality_traits"),
+            "personality_availability": source.get("personality_availability"),
+        }.items()
+        if value not in (None, "", [], {})
+    }
+
+
+def _default_xiaoya_base_url() -> str:
+    explicit_base_url = (
+        os.environ.get("HER_DISCOVERY_AGENT_BASE_URL")
+        or os.environ.get("HER_CHAT_AGENT_BASE_URL")
+        or os.environ.get("DASHSCOPE_BASE_URL")
+        or os.environ.get("OPENAI_BASE_URL")
+        or ""
+    ).strip()
+    if explicit_base_url:
+        return explicit_base_url
+    if os.environ.get("DASHSCOPE_API_KEY"):
+        return "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    return "https://api.openai.com/v1"
+
+
+def _default_xiaoya_model() -> str:
+    explicit_model = (
+        os.environ.get("HER_DISCOVERY_AGENT_MODEL")
+        or os.environ.get("HER_CHAT_AGENT_MODEL")
+        or ""
+    ).strip()
+    if explicit_model:
+        return explicit_model
+    if os.environ.get("DASHSCOPE_API_KEY"):
+        return "qwen-plus"
+    return "gpt-4.1-mini"
+
+
+def _compact_xiaoya_reasoning(candidate_payload: dict[str, Any]) -> dict[str, Any]:
+    reasoning = dict(candidate_payload.get("personality_reasoning") or {})
+    caution_items = [
+        str(item).strip()
+        for item in list(candidate_payload.get("caution_items") or [])
+        if str(item).strip()
+    ][:2]
+    verification_items = []
+    for item in list(candidate_payload.get("verification_items") or [])[:3]:
+        if isinstance(item, dict):
+            label = str(item.get("label") or item.get("name") or "").strip()
+            status = str(item.get("status") or item.get("verification_status") or "").strip()
+            if label:
+                verification_items.append({"label": label, "status": status})
+        elif str(item).strip():
+            verification_items.append(str(item).strip())
+    summary = str(reasoning.get("summary") or "").strip()
+    values = [
+        str(item).strip()
+        for item in list((reasoning.get("values") or {}).get("top_values") or [])
+        if str(item).strip()
+    ][:3]
+    return {
+        "summary": summary,
+        "shared_values": values,
+        "caution_items": caution_items,
+        "verification_items": verification_items,
+    }
+
+
+def _normalize_xiaoya_analysis_text(content: str) -> str:
+    text = re.sub(r"\s+", " ", str(content or "")).strip()
+    text = text.replace("系统认为", "").replace("模型认为", "").replace("资料显示", "").strip()
+    return text
+
+
+def _replace_xiaoya_pov_names(
+    text: str,
+    *,
+    requester_profile: dict[str, Any] | None,
+    candidate_payload: dict[str, Any],
+) -> str:
+    normalized = _normalize_xiaoya_analysis_text(text)
+    requester_names = {
+        str((requester_profile or {}).get("display_name") or "").strip(),
+        str((requester_profile or {}).get("name") or "").strip(),
+    }
+    candidate_profile = dict(candidate_payload.get("profile") or {})
+    candidate_names = {
+        str(candidate_payload.get("name") or "").strip(),
+        str(candidate_profile.get("display_name") or "").strip(),
+        str(candidate_profile.get("name") or "").strip(),
+    }
+    for name in {item for item in requester_names if item}:
+        normalized = normalized.replace(name, "你")
+    for name in {item for item in candidate_names if item}:
+        normalized = normalized.replace(name, "对方")
+    normalized = re.sub(r"\b你的你\b", "你", normalized)
+    normalized = re.sub(r"\b对方的对方\b", "对方", normalized)
+    normalized = normalized.replace("你则", "你").replace("对方则", "对方")
+    return _normalize_xiaoya_analysis_text(normalized)
+
+
+def _parse_xiaoya_analysis_sections(content: str) -> dict[str, str]:
+    text = _normalize_xiaoya_analysis_text(content)
+    parsed = {
+        "summary": "",
+        "risk_point": "",
+        "first_question": "",
+    }
+    if not text:
+        return parsed
+    pattern = re.compile(r"(匹配点|风险点|先确认)[：:]\s*")
+    matches = list(pattern.finditer(text))
+    if not matches:
+        return parsed
+    field_map = {
+        "匹配点": "summary",
+        "风险点": "risk_point",
+        "先确认": "first_question",
+    }
+    for index, match in enumerate(matches):
+        label = match.group(1)
+        start = match.end()
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        value = text[start:end].strip(" ；;，,。")
+        parsed[field_map[label]] = value
+    return parsed
+
+
+def _fallback_xiaoya_sections_from_text(content: str) -> dict[str, str]:
+    normalized = _normalize_xiaoya_analysis_text(content)
+    clauses = [item.strip("；;。 ").strip() for item in re.split(r"[；;\n]+", normalized) if item.strip("；;。 ").strip()]
+    if not clauses:
+        clauses = [normalized] if normalized else []
+    summary = ""
+    risk_point = ""
+    first_question = ""
+    risk_keywords = ("风险", "注意", "冲突", "落差", "不一致", "不确定", "异地", "核实", "收入", "定居", "但", "不过")
+    question_keywords = ("建议", "先确认", "确认", "先问", "直接沟通", "明确", "评估", "观察")
+    for clause in clauses:
+        if not summary and not any(keyword in clause for keyword in risk_keywords + question_keywords):
+            summary = clause
+            continue
+        if not risk_point and any(keyword in clause for keyword in risk_keywords):
+            risk_point = clause
+            continue
+        if not first_question and any(keyword in clause for keyword in question_keywords):
+            first_question = clause
+            continue
+        if not summary:
+            summary = clause
+        elif not risk_point:
+            risk_point = clause
+        elif not first_question:
+            first_question = clause
+    return {
+        "summary": summary,
+        "risk_point": risk_point,
+        "first_question": first_question,
+    }
+
+
+def _compose_xiaoya_analysis_text(sections: dict[str, str]) -> str:
+    summary = str(sections.get("summary") or "").strip()
+    risk_point = str(sections.get("risk_point") or "").strip()
+    first_question = str(sections.get("first_question") or "").strip()
+    parts = [part for part in (summary, risk_point, first_question) if part]
+    return _normalize_xiaoya_analysis_text("；".join(parts))
+
+
+def _is_low_quality_xiaoya_analysis(content: str) -> bool:
+    text = _normalize_xiaoya_analysis_text(content)
+    if len(text) < 45:
+        return True
+    banned_phrases = (
+        "建议进一步了解",
+        "建议多了解",
+        "可以先聊聊",
+        "可以进一步接触",
+        "整体来看",
+        "综合来看",
+        "两人较为合适",
+        "两人比较合适",
+        "是否合适还需要",
+    )
+    if any(phrase in text for phrase in banned_phrases):
+        return True
+    signal_hits = 0
+    signal_groups = (
+        ("聊得来", "合适", "吸引", "契合", "投缘"),
+        ("风险", "留意", "磨合", "观察", "不确定"),
+        ("确认", "先问", "先聊", "先核实"),
+    )
+    for group in signal_groups:
+        if any(keyword in text for keyword in group):
+            signal_hits += 1
+    return signal_hits < 2
+
+
+def _is_low_quality_xiaoya_sections(sections: dict[str, str]) -> bool:
+    summary = str(sections.get("summary") or "").strip()
+    risk_point = str(sections.get("risk_point") or "").strip()
+    first_question = str(sections.get("first_question") or "").strip()
+    if not summary or not risk_point or not first_question:
+        return True
+    return _is_low_quality_xiaoya_analysis(_compose_xiaoya_analysis_text(sections))
+
+
+def _float_env(name: str, default: float) -> float:
+    raw = str(os.environ.get(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
+def _int_env(name: str, default: int) -> int:
+    raw = str(os.environ.get(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        return int(float(raw))
+    except ValueError:
+        return default
+
+
+class DiscoveryXiaoyaAnalysisError(DiscoveryServiceError):
+    code = "DISCOVERY_XIAOYA_ANALYSIS_FAILED"
+    status_code = 502
+
+
 # ✅ Agent Native：完全移除硬编码关键词判断
 # _looks_like_basic_reason_summary 方法已删除
 # Agent 自主判断 reason_summary 是否足够详细
@@ -197,6 +453,8 @@ class DiscoveryService:
     runtime: DiscoveryAgentRuntime
     agent_session_store: Any | None = None
     metric_counters: dict[str, int] = field(default_factory=dict)
+    xiaoya_analysis_cache: dict[tuple[str, int], str] = field(default_factory=dict)
+    xiaoya_analysis_structured_cache: dict[tuple[str, int], dict[str, str]] = field(default_factory=dict)
 
     def get_session_owner_id(self, session_id: str) -> int:
         session = self._require_session(session_id)
@@ -495,7 +753,13 @@ class DiscoveryService:
             "counters": dict(self.metric_counters),
         }
 
-    def get_profile_detail(self, profile_id: int, *, session_id: str | None = None) -> dict[str, Any]:
+    def get_profile_detail(
+        self,
+        profile_id: int,
+        *,
+        session_id: str | None = None,
+        include_xiaoya_analysis: bool = False,
+    ) -> dict[str, Any]:
         if profile_id <= 0:
             raise DiscoveryProfileNotFoundError("profile not found")
         session: StoredSession | None = None
@@ -527,13 +791,222 @@ class DiscoveryService:
             resource_id=profile_id,
             session_id=session.session_id if session is not None else None,
         )
-        return {
+        output = {
             "profile_id": profile_id,
             "detail_view": build_profile_detail_view_from_payload(
                 detail_payload,
                 matchmaker_notes=self._build_profile_detail_notes(session, profile_id),
             ),
         }
+        if include_xiaoya_analysis:
+            requester_profile = self._load_requester_profile(session) if session is not None else None
+            xiaoya_sections = self._build_profile_detail_xiaoya_analysis_sections(
+                session=session,
+                requester_profile=requester_profile,
+                candidate_payload=detail_payload,
+            )
+            output["xiaoya_analysis_structured"] = xiaoya_sections
+            output["xiaoya_analysis"] = _compose_xiaoya_analysis_text(xiaoya_sections)
+        return output
+
+    def _build_profile_detail_xiaoya_analysis_sections(
+        self,
+        *,
+        session: StoredSession | None = None,
+        requester_profile: dict[str, Any] | None,
+        candidate_payload: dict[str, Any],
+    ) -> dict[str, str]:
+        profile_id = int(candidate_payload.get("id") or 0)
+        cache_key = (session.session_id, profile_id) if session is not None and profile_id > 0 else None
+        if cache_key is not None and cache_key in self.xiaoya_analysis_structured_cache:
+            return dict(self.xiaoya_analysis_structured_cache[cache_key])
+        if not requester_profile:
+            raise DiscoveryXiaoyaAnalysisError("requester profile unavailable")
+
+        try:
+            import httpx
+            from her_env import env_first
+            from openai import OpenAI
+
+            api_key = env_first(
+                "HER_DISCOVERY_AGENT_API_KEY",
+                "HER_CHAT_AGENT_API_KEY",
+                "DASHSCOPE_API_KEY",
+                "OPENAI_API_KEY",
+            )
+            if not api_key:
+                raise DiscoveryXiaoyaAnalysisError("llm api key unavailable")
+
+            base_url = _default_xiaoya_base_url()
+            model = _default_xiaoya_model()
+            timeout_config = httpx.Timeout(
+                timeout=_float_env("HER_XIAOYA_ANALYSIS_TIMEOUT_SECONDS", 60.0),
+                connect=_float_env("HER_XIAOYA_ANALYSIS_CONNECT_TIMEOUT_SECONDS", 15.0),
+            )
+
+            client = OpenAI(
+                api_key=api_key,
+                base_url=base_url,
+                timeout=timeout_config,
+                max_retries=_int_env("HER_XIAOYA_ANALYSIS_MAX_RETRIES", 2),
+            )
+            prompt = {
+                "writing_instruction": "请站在当前用户视角表达，只能称当前用户为“你”，称候选人为“对方”，不要使用双方姓名。",
+                "requester_profile": _compact_profile_for_llm(requester_profile),
+                "candidate_profile": _compact_profile_for_llm(candidate_payload.get("profile")),
+                "candidate_reasoning": _compact_xiaoya_reasoning(candidate_payload),
+            }
+            response = client.chat.completions.create(
+                model=model,
+                temperature=0.3,
+                max_tokens=180,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "你是产品里的红娘助手“小雅”。请只根据给定摘要输出三行中文，每行一个字段。"
+                            "必须站在当前用户视角表达，当前用户统一称为“你”，候选人统一称为“对方”，禁止使用双方姓名。"
+                            "第1行以“匹配点：”开头，写两人为什么可能聊得来。"
+                            "第2行以“风险点：”开头，写最需要留意的一个相处风险。"
+                            "第3行以“先确认：”开头，写最该先确认的一件事。"
+                            "每行都要具体，像成熟红娘的人话，不要套话，不要复述字段名，不要出现系统、模型、画像、资料显示。"
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": (
+                            "请基于下面的简化信息，给出一段红娘式分析：\n"
+                            f"{json.dumps(prompt, ensure_ascii=False)}"
+                        ),
+                    },
+                ],
+            )
+            sections = _parse_xiaoya_analysis_sections(response.choices[0].message.content or "")
+            _logger.info(
+                "xiaoya_analysis.first_pass "
+                f"session_id={session.session_id if session is not None else ''} "
+                f"candidate_id={profile_id} "
+                f"parsed_summary={bool(sections.get('summary'))} "
+                f"parsed_risk={bool(sections.get('risk_point'))} "
+                f"parsed_question={bool(sections.get('first_question'))}"
+            )
+            sections = {
+                key: _replace_xiaoya_pov_names(
+                    value,
+                    requester_profile=requester_profile,
+                    candidate_payload=candidate_payload,
+                )
+                for key, value in sections.items()
+            }
+            content = _compose_xiaoya_analysis_text(sections)
+            if not content:
+                raw_content = _replace_xiaoya_pov_names(
+                    response.choices[0].message.content or "",
+                    requester_profile=requester_profile,
+                    candidate_payload=candidate_payload,
+                )
+                sections = _fallback_xiaoya_sections_from_text(raw_content)
+                content = _compose_xiaoya_analysis_text(sections)
+                _logger.warning(
+                    "xiaoya_analysis.fallback_from_raw_first_pass "
+                    f"session_id={session.session_id if session is not None else ''} "
+                    f"candidate_id={profile_id}"
+                )
+            if not content:
+                raise DiscoveryXiaoyaAnalysisError("llm returned empty analysis")
+            if _is_low_quality_xiaoya_sections(sections):
+                _logger.warning(
+                    "xiaoya_analysis.retry_due_to_low_quality "
+                    f"session_id={session.session_id if session is not None else ''} "
+                    f"candidate_id={profile_id} "
+                    f"content={content[:160]}"
+                )
+                retry_response = client.chat.completions.create(
+                    model=model,
+                    temperature=0.2,
+                    max_tokens=180,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": (
+                                "你是产品里的红娘助手“小雅”。上一版回答不合格，请严格按三行重写。"
+                                "必须站在当前用户视角表达，只能用“你”和“对方”，禁止出现双方姓名。"
+                                "第1行“匹配点：”"
+                                "第2行“风险点：”"
+                                "第3行“先确认：”"
+                                "每行都必须具体，禁止“建议进一步了解”“整体来看”这类套话。"
+                            ),
+                        },
+                        {
+                            "role": "user",
+                            "content": (
+                                "请根据下面的信息，重写成更具体的一段分析：\n"
+                                f"{json.dumps(prompt, ensure_ascii=False)}"
+                            ),
+                        },
+                    ],
+                )
+                sections = _parse_xiaoya_analysis_sections(retry_response.choices[0].message.content or "")
+                _logger.info(
+                    "xiaoya_analysis.retry_pass "
+                    f"session_id={session.session_id if session is not None else ''} "
+                    f"candidate_id={profile_id} "
+                    f"parsed_summary={bool(sections.get('summary'))} "
+                    f"parsed_risk={bool(sections.get('risk_point'))} "
+                    f"parsed_question={bool(sections.get('first_question'))}"
+                )
+                sections = {
+                    key: _replace_xiaoya_pov_names(
+                        value,
+                        requester_profile=requester_profile,
+                        candidate_payload=candidate_payload,
+                    )
+                    for key, value in sections.items()
+                }
+                content = _compose_xiaoya_analysis_text(sections)
+                if not content or _is_low_quality_xiaoya_sections(sections):
+                    retry_raw_content = _replace_xiaoya_pov_names(
+                        retry_response.choices[0].message.content or "",
+                        requester_profile=requester_profile,
+                        candidate_payload=candidate_payload,
+                    )
+                    fallback_sections = _fallback_xiaoya_sections_from_text(retry_raw_content)
+                    fallback_content = _compose_xiaoya_analysis_text(fallback_sections)
+                    if fallback_content:
+                        sections = fallback_sections
+                        content = fallback_content
+                        _logger.warning(
+                            "xiaoya_analysis.fallback_from_raw_retry_pass "
+                            f"session_id={session.session_id if session is not None else ''} "
+                            f"candidate_id={profile_id} "
+                            f"content={content[:160]}"
+                        )
+            if not content:
+                _logger.error(
+                    "xiaoya_analysis.failed_after_retries "
+                    f"session_id={session.session_id if session is not None else ''} "
+                    f"candidate_id={profile_id}"
+                )
+                raise DiscoveryXiaoyaAnalysisError("llm returned low-quality analysis")
+            if cache_key is not None:
+                self.xiaoya_analysis_cache[cache_key] = content
+                self.xiaoya_analysis_structured_cache[cache_key] = dict(sections)
+            _logger.info(
+                "xiaoya_analysis.success "
+                f"session_id={session.session_id if session is not None else ''} "
+                f"candidate_id={profile_id} "
+                f"content={content[:160]}"
+            )
+            return sections
+        except DiscoveryXiaoyaAnalysisError:
+            raise
+        except Exception as exc:
+            _logger.exception(
+                "xiaoya_analysis.exception "
+                f"session_id={session.session_id if session is not None else ''} "
+                f"candidate_id={profile_id}"
+            )
+            raise DiscoveryXiaoyaAnalysisError(str(exc) or "xiaoya analysis failed") from exc
 
     def express_interest(
         self,
@@ -1730,6 +2203,13 @@ class DiscoveryService:
         return self.agent_session_store.get_session(session_id)
 
     def _session_payload(self, session: StoredSession) -> dict[str, Any]:
+        # ✅ 修复：重新加载用户画像，确保获取最新的性格特质数据
+        # 解决问题：用户完成MBTI测试后，agent不知道测试结果
+        # 根因：reloadSession只刷新对话记录，不刷新画像数据
+        requester_profile = None
+        if session.profile_id:
+            requester_profile = self._load_requester_profile(session)
+
         return {
             "session": {
                 "session_id": session.session_id,
@@ -1738,6 +2218,8 @@ class DiscoveryService:
                 "updated_at": session.updated_at.isoformat(),
             },
             "view": clone_view(session.view),
+            # ✅ 新增：返回最新的用户画像（包含personality_traits）
+            "requester_profile": requester_profile,
         }
 
     def _build_service_context_runtime(self) -> DiscoveryServiceContextRuntime:

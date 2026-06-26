@@ -11,11 +11,20 @@ import re
 import secrets
 import shutil
 import socket
+import ssl
 import subprocess
 from typing import Any
 from urllib import error as urllib_error
 from urllib import parse as urllib_parse
 from urllib import request as urllib_request
+
+# SSL 证书支持（macOS 需要显式指定证书路径）
+try:
+    import certifi
+    _SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
+except ImportError:
+    # 如果没有 certifi，使用默认证书（可能在某些环境失败）
+    _SSL_CONTEXT = ssl.create_default_context()
 
 from .auth_common import (
     AuthRouteError,
@@ -194,7 +203,7 @@ class WechatOpenPlatformProvider:
     def _get_json(self, url: str) -> dict[str, Any]:
         request = urllib_request.Request(url, method="GET", headers={"Accept": "application/json"})
         try:
-            with urllib_request.urlopen(request, timeout=20) as response:
+            with urllib_request.urlopen(request, timeout=20, context=_SSL_CONTEXT) as response:
                 payload = json.loads(response.read().decode("utf-8"))
         except (urllib_error.URLError, TimeoutError, socket.timeout) as exc:
             raise AuthRouteError(504, "wechat_timeout", "微信登录服务响应超时，请稍后重试") from exc
@@ -346,6 +355,14 @@ class AliyunSmsProvider:
         )
 
     def _percent_encode(self, value: Any) -> str:
+        """
+        URL 编码（阿里云签名专用）。
+
+        阿里云签名算法要求：
+        - 编码所有字符（除了 A-Z, a-z, 0-9, -, _, ., ~）
+        - 使用大写字母表示十六进制编码（如 %2F，不是 %2f）
+        """
+        # Python 的 quote 默认已经使用大写，无需额外处理
         return urllib_parse.quote(str(value), safe="~-_.")
 
     def _canonical_query(self, params: dict[str, Any]) -> str:
@@ -393,7 +410,7 @@ class AliyunSmsProvider:
         request_url = f"{self._endpoint}?{self._canonical_query(signed_params)}"
         request = urllib_request.Request(request_url, method="GET", headers={"Accept": "application/json"})
         try:
-            with urllib_request.urlopen(request, timeout=20) as response:
+            with urllib_request.urlopen(request, timeout=20, context=_SSL_CONTEXT) as response:
                 payload = json.loads(response.read().decode("utf-8"))
         except urllib_error.HTTPError as exc:
             body = exc.read().decode("utf-8", errors="ignore")
@@ -414,6 +431,173 @@ class AliyunSmsProvider:
             raise self._provider_error(message)
         return {
             "provider": "aliyun",
+            "request_id": str(payload.get("RequestId") or "").strip(),
+            "biz_id": str(payload.get("BizId") or "").strip(),
+        }
+
+
+class AliyunPnvsProvider:
+    """
+    阿里云短信认证服务（PNVS - Phone Number Verification Service）。
+
+    特点：
+    - 免签名申请、免模板申请（使用系统赠送的签名和模板）
+    - 使用 SendSmsVerifyCode API（不是 SendSms）
+    - 短信内容由阿里云统一管理
+    - 适合快速接入验证码场景
+
+    环境变量：
+    - HER_SMS_ALIYUN_ACCESS_KEY_ID 或 ALIBABA_CLOUD_ACCESS_KEY_ID
+    - HER_SMS_ALIYUN_ACCESS_KEY_SECRET 或 ALIBABA_CLOUD_ACCESS_KEY_SECRET
+    - HER_SMS_ALIYUN_PNVS_SIGN_NAME：系统赠送的签名名称（需从控制台获取）
+    - HER_SMS_ALIYUN_PNVS_TEMPLATE_CODE：系统赠送的模板 CODE（需从控制台获取）
+    """
+
+    _DEFAULT_ENDPOINT = "https://dypnsapi.aliyuncs.com/"  # PNVS 使用不同的 endpoint
+    _DEFAULT_REGION_ID = "cn-hangzhou"
+
+    def __init__(
+        self,
+        *,
+        access_key_id: str,
+        access_key_secret: str,
+        sign_name: str,  # 系统赠送的签名名称
+        template_code: str,  # 系统赠送的模板 CODE
+        region_id: str = _DEFAULT_REGION_ID,
+        endpoint: str = _DEFAULT_ENDPOINT,
+    ) -> None:
+        self._access_key_id = str(access_key_id or "").strip()
+        self._access_key_secret = str(access_key_secret or "").strip()
+        self._sign_name = str(sign_name or "").strip()
+        self._template_code = str(template_code or "").strip()
+        self._region_id = str(region_id or self._DEFAULT_REGION_ID).strip()
+        self._endpoint = str(endpoint or self._DEFAULT_ENDPOINT).strip().rstrip("/") + "/"
+        if not self._access_key_id:
+            raise ValueError("Aliyun PNVS access key id is required")
+        if not self._access_key_secret:
+            raise ValueError("Aliyun PNVS access key secret is required")
+        if not self._sign_name:
+            raise ValueError("Aliyun PNVS sign name is required (get it from console)")
+        if not self._template_code:
+            raise ValueError("Aliyun PNVS template code is required (get it from console)")
+
+    @classmethod
+    def is_configured_from_env(cls) -> bool:
+        """检查环境变量是否配置了 PNVS 所需的所有参数。"""
+        return bool(
+            first_env("HER_SMS_ALIYUN_ACCESS_KEY_ID", "ALIBABA_CLOUD_ACCESS_KEY_ID", "ALICLOUD_ACCESS_KEY_ID")
+            and first_env(
+                "HER_SMS_ALIYUN_ACCESS_KEY_SECRET",
+                "ALIBABA_CLOUD_ACCESS_KEY_SECRET",
+                "ALICLOUD_ACCESS_KEY_SECRET",
+            )
+            and first_env("HER_SMS_ALIYUN_PNVS_SIGN_NAME")
+            and first_env("HER_SMS_ALIYUN_PNVS_TEMPLATE_CODE")
+        )
+
+    @classmethod
+    def from_env(cls) -> AliyunPnvsProvider:
+        """从环境变量构建 PNVS Provider。"""
+        return cls(
+            access_key_id=first_env("HER_SMS_ALIYUN_ACCESS_KEY_ID", "ALIBABA_CLOUD_ACCESS_KEY_ID", "ALICLOUD_ACCESS_KEY_ID"),
+            access_key_secret=first_env(
+                "HER_SMS_ALIYUN_ACCESS_KEY_SECRET",
+                "ALIBABA_CLOUD_ACCESS_KEY_SECRET",
+                "ALICLOUD_ACCESS_KEY_SECRET",
+            ),
+            sign_name=first_env("HER_SMS_ALIYUN_PNVS_SIGN_NAME"),
+            template_code=first_env("HER_SMS_ALIYUN_PNVS_TEMPLATE_CODE"),
+            region_id=first_env("HER_SMS_ALIYUN_REGION_ID") or cls._DEFAULT_REGION_ID,
+            endpoint=first_env("HER_SMS_ALIYUN_ENDPOINT") or cls._DEFAULT_ENDPOINT,
+        )
+
+    def _percent_encode(self, value: Any) -> str:
+        """
+        URL 编码（阿里云签名专用）。
+
+        阿里云签名算法要求：
+        - 编码所有字符（除了 A-Z, a-z, 0-9, -, _, ., ~）
+        - 使用大写字母表示十六进制编码（如 %2F，不是 %2f）
+        """
+        # Python 的 quote 默认已经使用大写，无需额外处理
+        return urllib_parse.quote(str(value), safe="~-_.")
+
+    def _canonical_query(self, params: dict[str, Any]) -> str:
+        items = sorted((str(key), str(value)) for key, value in params.items())
+        return "&".join(
+            f"{self._percent_encode(key)}={self._percent_encode(value)}"
+            for key, value in items
+        )
+
+    def _signature_for(self, params: dict[str, Any]) -> str:
+        canonical = self._canonical_query(params)
+        string_to_sign = f"GET&%2F&{self._percent_encode(canonical)}"
+        digest = hmac.new(
+            f"{self._access_key_secret}&".encode("utf-8"),
+            string_to_sign.encode("utf-8"),
+            hashlib.sha1,
+        ).digest()
+        return base64.b64encode(digest).decode("utf-8")
+
+    def _provider_error(self, message: str, *, status_code: int = 502, code: str = "sms_provider_error") -> AuthRouteError:
+        return AuthRouteError(status_code, code, f"阿里云短信认证发送失败：{message}"[:300])
+
+    def send_code(self, phone: str, code: str) -> dict[str, Any]:
+        """
+        发送验证码短信。
+
+        使用 SendSmsVerifyCode API（PNVS专用）。
+        PNVS 模板包含"验证码"和"有效期"两个变量。
+        """
+        # PNVS 模板参数：验证码和有效期（分钟数）
+        template_param = json.dumps(
+            {"code": code, "min": "5"},  # min 表示有效期分钟数
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+
+        params = {
+            "AccessKeyId": self._access_key_id,
+            "Action": "SendSmsVerifyCode",  # PNVS 使用专用的 API
+            "Format": "JSON",
+            "PhoneNumber": phone,  # 注意：PNVS API 参数名是 PhoneNumber（不是 PhoneNumbers）
+            "RegionId": self._region_id,
+            "SignName": self._sign_name,
+            "TemplateCode": self._template_code,
+            "TemplateParam": template_param,  # PNVS 也需要模板参数！
+            "SignatureMethod": "HMAC-SHA1",
+            "SignatureNonce": secrets.token_hex(16),
+            "SignatureVersion": "1.0",
+            "Timestamp": utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "Version": "2017-05-25",
+        }
+        signed_params = dict(params)
+        signed_params["Signature"] = self._signature_for(params)
+        request_url = f"{self._endpoint}?{self._canonical_query(signed_params)}"
+
+        request = urllib_request.Request(request_url, method="GET", headers={"Accept": "application/json"})
+        try:
+            with urllib_request.urlopen(request, timeout=20, context=_SSL_CONTEXT) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except urllib_error.HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="ignore")
+            try:
+                payload = json.loads(body)
+            except json.JSONDecodeError:
+                payload = {}
+            message = str(payload.get("Message") or payload.get("Code") or body or f"HTTP {exc.code}").strip()
+            raise self._provider_error(message) from exc
+        except (urllib_error.URLError, TimeoutError, socket.timeout) as exc:
+            raise AuthRouteError(504, "sms_timeout", "阿里云短信认证服务响应超时，请稍后重试") from exc
+
+        response_code = str(payload.get("Code") or "").strip()
+        if response_code != "OK":
+            message = str(payload.get("Message") or response_code or "unknown_error").strip()
+            if response_code == "isv.BUSINESS_LIMIT_CONTROL" or "frequency" in message.lower():
+                raise AuthRouteError(429, "sms_cooldown", "短信发送过于频繁，请稍后再试")
+            raise self._provider_error(message)
+        return {
+            "provider": "aliyun_pnvs",
             "request_id": str(payload.get("RequestId") or "").strip(),
             "biz_id": str(payload.get("BizId") or "").strip(),
         }
@@ -554,8 +738,12 @@ end run
 
 def build_sms_provider() -> SmsProvider:
     configured = str(os.environ.get("HER_SMS_PROVIDER") or "").strip().lower()
+    # 显式指定普通短信服务（需要签名和模板）
     if configured == "aliyun":
         return AliyunSmsProvider.from_env()
+    # 显式指定短信认证服务（PNVS，需要系统赠送的签名和模板）
+    if configured == "aliyun_pnvs":
+        return AliyunPnvsProvider.from_env()
     if configured == "shell":
         shell_command = os.environ.get("HER_SMS_SHELL_COMMAND") or ""
         if shell_command.strip():
@@ -571,8 +759,13 @@ def build_sms_provider() -> SmsProvider:
         return MacMessagesSmsProvider()
     if configured in {"disabled", "none", "off"}:
         return DisabledSmsProvider()
+    # 自动检测：检查普通短信配置（需要签名+模板）
     if not configured and AliyunSmsProvider.is_configured_from_env():
         return AliyunSmsProvider.from_env()
+    # 自动检测：检查 PNVS 配置（需要系统赠送的签名+模板）
+    if not configured and AliyunPnvsProvider.is_configured_from_env():
+        return AliyunPnvsProvider.from_env()
+    # macOS 默认使用 Messages 短信转发
     if not configured and os.uname().sysname.lower() == "darwin":
         try:
             return MacMessagesSmsProvider()
@@ -625,6 +818,7 @@ def build_one_tap_login_provider() -> OneTapLoginProvider:
 
 __all__ = [
     "urllib_request",
+    "AliyunPnvsProvider",
     "AliyunSmsProvider",
     "DisabledOneTapLoginProvider",
     "DisabledSmsProvider",

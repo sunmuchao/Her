@@ -83,7 +83,15 @@ export function buildActiveRelationships(
   pinnedIds: Record<string, boolean> = {},
 ): ActiveRelationship[] {
   return cases
-    .filter((item) => item.main_conversation_id)
+    .filter((item) => {
+      // 过滤掉已关闭的 case（closed, declined, timed_out）
+      const status = item.case_status || ''
+      if (status === 'closed' || status === 'declined' || status === 'timed_out') {
+        return false
+      }
+      // 必须有 main_conversation_id（已开聊）
+      return item.main_conversation_id
+    })
     .map((item) => {
       const caseIdStr = String(item.case_id)
       const lastMsgData = lastMessagesByCaseId[caseIdStr]
@@ -121,10 +129,16 @@ export function buildActiveRelationships(
 export function buildPendingIntroItems(cases: ProxyIntroCase[]): PendingIntroItem[] {
   return cases
     .filter((item) => {
-      // 排除掉作为被请求方且等待回复的 case
-      if (item.role === 'candidate' && item.case_status === 'awaiting_reply') {
-        return false
+      // 排除所有作为被请求方的案件（无论什么状态）
+      // 因为这些案件B还没做出决定，不应该出现在关系页
+      // 只有B已接受或已开聊才算"建立关系"，才显示在关系页
+      if (item.role === 'candidate') {
+        // 已接受或已开聊的案件可以显示（已建立关系）
+        const isAccepted = item.case_status === 'accepted'
+        const hasConversation = item.main_conversation_id
+        return isAccepted || hasConversation
       }
+      // 其他情况：排除已开聊的案件（这些显示在"正在进行中"）
       return !item.main_conversation_id
     })
     .map((item) => ({

@@ -1,5 +1,6 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import { useBadgeCounts } from '@/hooks/use-badge-counts'
 import BottomNav from '@/components/her/bottom-nav'
 import CandidateDetailPage from '@/components/her/candidate-detail-page'
@@ -39,6 +40,9 @@ type AppShellProps = {
   onOpenEditProfile: () => void
   onOpenSettings: () => void
   onOpenOnboarding?: () => void
+  onOpenRecommendationInbox: (filter?: string) => void
+  fromSubPage?: string | null
+  inboxFilter?: string | null
 }
 
 export function AppShell({
@@ -63,7 +67,11 @@ export function AppShell({
   onOpenEditProfile,
   onOpenSettings,
   onOpenOnboarding,
+  onOpenRecommendationInbox,
+  fromSubPage,
+  inboxFilter,
 }: AppShellProps) {
+  const router = useRouter()
   const { inboxUnreadCount, relationshipsBadge, refreshBadges } = useBadgeCounts()
   const isMatchmakerMain = currentTab === 'matchmaker' && subView === 'main'
   const isFullscreenSubView = subView === 'chat'
@@ -87,7 +95,7 @@ export function AppShell({
             className="flex h-full min-h-0 flex-1 flex-col overflow-hidden"
           >
             <DiscoverPage
-              onViewCandidate={(id, candidate) => onViewCandidate(id, candidate)}
+              onViewCandidate={(id, candidate, sessionId) => onViewCandidate(id, candidate, sessionId)}
               onOpenInbox={onOpenInbox}
               inboxUnreadCount={inboxUnreadCount}
               onSessionIdChange={onDiscoverySessionId}
@@ -140,6 +148,9 @@ export function AppShell({
                     caseId: selectedCaseId || undefined,
                     counterpartId: selectedCounterpartId || undefined,
                   })
+                } else if (fromSubPage === 'recommendation-inbox') {
+                  // 从推荐来信进入 → 返回推荐来信并恢复筛选状态
+                  onOpenRecommendationInbox(inboxFilter || 'all')
                 } else {
                   onBackToMain()
                 }
@@ -168,21 +179,21 @@ export function AppShell({
         )}
         {subView === 'collected-preferences' && (
           <SlideInTransition key="collected-preferences" direction="right">
-            <CollectedPreferencesPage onBack={onBackToMain} />
+            <CollectedPreferencesPage onBack={() => router.back()} />
           </SlideInTransition>
         )}
         {subView === 'edit-profile' && (
           <SlideInTransition key="edit-profile" direction="right">
             <EditProfilePage
-              onBack={onBackToMain}
-              onSaved={onBackToMain}
+              onBack={() => router.back()}
+              onSaved={() => router.back()}
             />
           </SlideInTransition>
         )}
         {subView === 'settings' && (
           <SlideInTransition key="settings" direction="right">
             <SettingsPage
-              onBack={onBackToMain}
+              onBack={() => router.back()}
               onOpenOnboarding={onOpenOnboarding}
             />
           </SlideInTransition>

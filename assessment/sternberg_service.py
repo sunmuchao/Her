@@ -438,6 +438,18 @@ def answer_sternberg_assessment(
                     source_channel="assessment",
                 )
                 conn.commit()
+
+                # ✅ 修复：清理画像缓存，确保Agent能看到最新的三元爱情结果
+                # 根因：_cached_load_persona_for_discovery使用了lru_cache缓存画像数据
+                #       测试完成后，画像写入数据库，但缓存未清理，Agent看到旧数据
+                # 解决：画像更新后清理缓存，下次查询时重新从数据库加载
+                try:
+                    from partner_search.personality_traits_reader import clear_traits_cache
+                    clear_traits_cache()
+                    _logger.info("【画像缓存清理】user_key=%s assessment_id=%s", user_key, assessment_id)
+                except Exception as cache_error:
+                    _logger.warning("【画像缓存清理失败】user_key=%s error=%s", user_key, cache_error)
+
                 return {"card_type": "assessment_result", "assessment_type": ASSESSMENT_TYPE_STERNBERG, "assessment_id": assessment_id, "result_data": result_data}
             if answered_count > 0 and answered_count % QUESTIONS_PER_DIMENSION == 0:
                 feedback_data = _feedback_payload(answered_count, scores)
