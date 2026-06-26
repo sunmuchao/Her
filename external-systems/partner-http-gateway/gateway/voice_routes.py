@@ -29,6 +29,8 @@ LOGGER = logging.getLogger(__name__)
 _WHISPER_MODEL: WhisperModel | None = None
 
 SUPPORTED_AUDIO_FORMATS = {"wav", "webm", "ogg", "mp4", "m4a", "mpeg", "mp3"}
+NO_SPEECH_PROB_THRESHOLD = 0.6
+AVG_LOGPROB_THRESHOLD = -1.0
 
 
 def _get_whisper_model() -> WhisperModel:
@@ -153,6 +155,13 @@ def _detect_audio_format(content_type: str) -> str:
     return audio_format if audio_format in SUPPORTED_AUDIO_FORMATS else "webm"
 
 
+def _maybe_float(value: Any) -> float | None:
+    """Best-effort numeric cast for model metadata."""
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
+
+
 def _transcribe_audio(audio_data: bytes, language: str = "zh", content_type: str = "") -> dict[str, Any]:
     """Transcribe audio data using Whisper.
 
@@ -196,10 +205,32 @@ def _transcribe_audio(audio_data: bytes, language: str = "zh", content_type: str
             f"duration={conversion_metadata.get('duration_ms', 'unknown')}ms"
         )
 
-        segments, info = model.transcribe(tmp_path, language=language, beam_size=5)
+        segments, info = model.transcribe(
+            tmp_path,
+            language=language,
+            beam_size=5,
+            vad_filter=True,
+            no_speech_threshold=NO_SPEECH_PROB_THRESHOLD,
+            log_prob_threshold=AVG_LOGPROB_THRESHOLD,
+            hallucination_silence_threshold=1.5,
+        )
+
+        segment_list = list(segments)
+        filtered_segments = []
+        for segment in segment_list:
+            no_speech_prob = _maybe_float(getattr(segment, "no_speech_prob", None))
+            avg_logprob = _maybe_float(getattr(segment, "avg_logprob", None))
+            if (
+                no_speech_prob is not None
+                and no_speech_prob >= NO_SPEECH_PROB_THRESHOLD
+                and avg_logprob is not None
+                and avg_logprob <= AVG_LOGPROB_THRESHOLD
+            ):
+                continue
+            filtered_segments.append(segment)
 
         # Extract full text
-        full_text = "".join(segment.text for segment in segments)
+        full_text = "".join(segment.text for segment in filtered_segments)
 
         LOGGER.info(
             f"Transcription successful: language={info.language}, "
@@ -217,7 +248,7 @@ def _transcribe_audio(audio_data: bytes, language: str = "zh", content_type: str
                     "end": segment.end,
                     "text": segment.text,
                 }
-                for segment in segments
+                for segment in filtered_segments
             ],
             "audio_info": conversion_metadata,  # Include conversion metadata for debugging
         }

@@ -103,8 +103,8 @@ class ProxyIntroPushTests(unittest.TestCase):
         mock_conn.commit.return_value = None  # commit成功
         mock_conn.close.return_value = None  # close成功
 
-        # 4. Mock open_proxy_intro_conn
-        with patch("discovery_system.service.open_proxy_intro_conn") as mock_open_conn:
+        # 4. Mock _open_proxy_intro_conn_impl
+        with patch("discovery_system.service._open_proxy_intro_conn_impl") as mock_open_conn:
             mock_open_conn.return_value = mock_conn
 
             # 5. Mock list_match_cases_for_participant
