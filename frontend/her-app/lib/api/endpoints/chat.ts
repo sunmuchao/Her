@@ -91,7 +91,11 @@ export async function fetchRelationshipsUnreadSummary(): Promise<{
   try {
     const proxyCases = await fetchMyProxyIntroCases()
     const cases = proxyCases.cases || []
-    const pendingCount = cases.filter((item) => item.can_reply || item.can_open_chat).length
+    // 只统计发起方（requester/matcher）的pending case
+    // 排除被动推荐case（role === 'candidate'），这些显示在Discover页的inbox badge
+    const pendingCount = cases.filter((item) =>
+      (item.can_reply || item.can_open_chat) && item.role !== 'candidate'
+    ).length
 
     if (!timelineActorId || !participantId) {
       return {

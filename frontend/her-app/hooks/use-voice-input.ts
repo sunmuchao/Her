@@ -21,6 +21,71 @@ interface UseVoiceInputReturn {
   isSupported: boolean
 }
 
+type RecordingMode = 'pcm' | 'media'
+
+function downsampleBuffer(input: Float32Array, inputSampleRate: number, targetSampleRate: number) {
+  if (inputSampleRate === targetSampleRate) {
+    return input
+  }
+
+  const ratio = inputSampleRate / targetSampleRate
+  const outputLength = Math.round(input.length / ratio)
+  const output = new Float32Array(outputLength)
+
+  let offsetResult = 0
+  let offsetBuffer = 0
+  while (offsetResult < output.length) {
+    const nextOffsetBuffer = Math.round((offsetResult + 1) * ratio)
+    let accum = 0
+    let count = 0
+
+    for (let i = offsetBuffer; i < nextOffsetBuffer && i < input.length; i += 1) {
+      accum += input[i]
+      count += 1
+    }
+
+    output[offsetResult] = count > 0 ? accum / count : 0
+    offsetResult += 1
+    offsetBuffer = nextOffsetBuffer
+  }
+
+  return output
+}
+
+function encodeWavFromFloat32(samples: Float32Array, sampleRate: number) {
+  const buffer = new ArrayBuffer(44 + samples.length * 2)
+  const view = new DataView(buffer)
+
+  const writeString = (offset: number, value: string) => {
+    for (let i = 0; i < value.length; i += 1) {
+      view.setUint8(offset + i, value.charCodeAt(i))
+    }
+  }
+
+  writeString(0, 'RIFF')
+  view.setUint32(4, 36 + samples.length * 2, true)
+  writeString(8, 'WAVE')
+  writeString(12, 'fmt ')
+  view.setUint32(16, 16, true)
+  view.setUint16(20, 1, true)
+  view.setUint16(22, 1, true)
+  view.setUint32(24, sampleRate, true)
+  view.setUint32(28, sampleRate * 2, true)
+  view.setUint16(32, 2, true)
+  view.setUint16(34, 16, true)
+  writeString(36, 'data')
+  view.setUint32(40, samples.length * 2, true)
+
+  let offset = 44
+  for (let i = 0; i < samples.length; i += 1) {
+    const sample = Math.max(-1, Math.min(1, samples[i]))
+    view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true)
+    offset += 2
+  }
+
+  return new Blob([buffer], { type: 'audio/wav' })
+}
+
 /**
  * 调用后端 Whisper API 进行语音识别
  * 首次使用时模型需要下载，增加超时时间
@@ -95,6 +160,12 @@ export function useVoiceInput({
   const startTimeRef = useRef<number>(0)
   const maxDurationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const shouldIgnoreNextStopRef = useRef(false)
+  const recordingModeRef = useRef<RecordingMode | null>(null)
+  const audioContextRef = useRef<AudioContext | null>(null)
+  const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null)
+  const processorNodeRef = useRef<ScriptProcessorNode | null>(null)
+  const pcmChunksRef = useRef<Float32Array[]>([])
+  const pcmSampleRateRef = useRef(16000)
 
   // 只需要 MediaRecorder API，不需要 Web Speech API
   const isSupported =
@@ -128,8 +199,23 @@ export function useVoiceInput({
       streamRef.current.getTracks().forEach(track => track.stop())
       streamRef.current = null
     }
+    if (processorNodeRef.current) {
+      processorNodeRef.current.disconnect()
+      processorNodeRef.current.onaudioprocess = null
+      processorNodeRef.current = null
+    }
+    if (sourceNodeRef.current) {
+      sourceNodeRef.current.disconnect()
+      sourceNodeRef.current = null
+    }
+    if (audioContextRef.current) {
+      void audioContextRef.current.close()
+      audioContextRef.current = null
+    }
     mediaRecorderRef.current = null
     chunksRef.current = []
+    pcmChunksRef.current = []
+    recordingModeRef.current = null
     shouldIgnoreNextStopRef.current = false
     setRecordingDuration(0)
   }, [])
@@ -192,59 +278,77 @@ export function useVoiceInput({
         },
       })
       streamRef.current = stream
+      const AudioContextCtor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
 
-      // 选择支持的音频格式
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm')
-        ? 'audio/webm'
-        : MediaRecorder.isTypeSupported('audio/mp4')
-          ? 'audio/mp4'
-          : ''
+      if (AudioContextCtor) {
+        const audioContext = new AudioContextCtor()
+        await audioContext.resume()
 
-      const recorder = mimeType
-        ? new MediaRecorder(stream, { mimeType })
-        : new MediaRecorder(stream)
+        const sourceNode = audioContext.createMediaStreamSource(stream)
+        const processorNode = audioContext.createScriptProcessor(4096, 1, 1)
 
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          chunksRef.current.push(event.data)
+        pcmChunksRef.current = []
+        pcmSampleRateRef.current = audioContext.sampleRate
+        recordingModeRef.current = 'pcm'
+        audioContextRef.current = audioContext
+        sourceNodeRef.current = sourceNode
+        processorNodeRef.current = processorNode
+
+        processorNode.onaudioprocess = (event) => {
+          const channelData = event.inputBuffer.getChannelData(0)
+          pcmChunksRef.current.push(new Float32Array(channelData))
         }
-      }
 
-      recorder.onstop = () => {
-        if (shouldIgnoreNextStopRef.current) {
+        sourceNode.connect(processorNode)
+        processorNode.connect(audioContext.destination)
+      } else {
+        const mimeType = MediaRecorder.isTypeSupported('audio/webm')
+          ? 'audio/webm'
+          : MediaRecorder.isTypeSupported('audio/mp4')
+            ? 'audio/mp4'
+            : ''
+
+        const recorder = mimeType
+          ? new MediaRecorder(stream, { mimeType })
+          : new MediaRecorder(stream)
+
+        recorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            chunksRef.current.push(event.data)
+          }
+        }
+
+        recorder.onstop = () => {
+          if (shouldIgnoreNextStopRef.current) {
+            cleanup()
+            setState('idle')
+            return
+          }
+
+          const audioBlob = new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' })
+
+          if (audioBlob.size === 0) {
+            cleanup()
+            onError?.('录音时间太短或未采集到声音，请再试一次')
+            setState('idle')
+            return
+          }
+
+          cleanup()
+          void processAudioViaWhisper(audioBlob)
+        }
+
+        recorder.onerror = () => {
+          onError?.('录音失败')
           cleanup()
           setState('idle')
-          return
         }
 
-        const audioBlob = new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' })
-
-        // DEBUG: 记录音频信息用于诊断
-        console.log('[useVoiceInput] Audio recorded:')
-        console.log('  - Blob size:', audioBlob.size, 'bytes')
-        console.log('  - Blob type:', audioBlob.type)
-        console.log('  - Duration:', Date.now() - startTimeRef.current, 'ms')
-        console.log('  - Chunks:', chunksRef.current.length)
-
-        if (audioBlob.size === 0) {
-          cleanup()
-          onError?.('录音时间太短或未采集到声音，请再试一次')
-          setState('idle')
-          return
-        }
-
-        cleanup()
-        void processAudioViaWhisper(audioBlob)
+        mediaRecorderRef.current = recorder
+        chunksRef.current = []
+        recordingModeRef.current = 'media'
+        recorder.start(250)
       }
-
-      recorder.onerror = () => {
-        onError?.('录音失败')
-        cleanup()
-        setState('idle')
-      }
-
-      mediaRecorderRef.current = recorder
-      chunksRef.current = []
 
       setState('recording')
       startTimeRef.current = Date.now()
@@ -254,12 +358,35 @@ export function useVoiceInput({
       }, 100)
 
       maxDurationTimerRef.current = setTimeout(() => {
-        if (recorder.state === 'recording') {
-          recorder.stop()
+        if (recordingModeRef.current === 'media') {
+          const recorder = mediaRecorderRef.current
+          if (recorder?.state === 'recording') {
+            recorder.stop()
+          }
+        } else if (recordingModeRef.current === 'pcm') {
+          const mergedLength = pcmChunksRef.current.reduce((sum, chunk) => sum + chunk.length, 0)
+          const merged = new Float32Array(mergedLength)
+          let offset = 0
+          for (const chunk of pcmChunksRef.current) {
+            merged.set(chunk, offset)
+            offset += chunk.length
+          }
+
+          const downsampled = downsampleBuffer(merged, pcmSampleRateRef.current, 16000)
+          const audioBlob = encodeWavFromFloat32(downsampled, 16000)
+
+          if (audioBlob.size === 0) {
+            cleanup()
+            onError?.('录音时间太短或未采集到声音，请再试一次')
+            setState('idle')
+            return
+          }
+
+          cleanup()
+          setState('processing')
+          void processAudioViaWhisper(audioBlob)
         }
       }, maxDurationMs)
-
-      recorder.start(250) // 每 250ms 收集一次数据
     } catch (err) {
       console.error('[useVoiceInput] Failed to start recording:', err)
       onError?.('无法访问麦克风，请检查权限设置')
@@ -271,11 +398,34 @@ export function useVoiceInput({
     if (state !== 'recording') return
 
     const recorder = mediaRecorderRef.current
-    if (recorder && recorder.state === 'recording') {
-      if (typeof recorder.requestData === 'function') {
-        recorder.requestData()
+    if (recordingModeRef.current === 'media') {
+      if (recorder && recorder.state === 'recording') {
+        if (typeof recorder.requestData === 'function') {
+          recorder.requestData()
+        }
+        recorder.stop()
       }
-      recorder.stop()
+    } else if (recordingModeRef.current === 'pcm') {
+      const mergedLength = pcmChunksRef.current.reduce((sum, chunk) => sum + chunk.length, 0)
+      const merged = new Float32Array(mergedLength)
+      let offset = 0
+      for (const chunk of pcmChunksRef.current) {
+        merged.set(chunk, offset)
+        offset += chunk.length
+      }
+
+      const downsampled = downsampleBuffer(merged, pcmSampleRateRef.current, 16000)
+      const audioBlob = encodeWavFromFloat32(downsampled, 16000)
+
+      if (audioBlob.size === 0) {
+        cleanup()
+        onError?.('录音时间太短或未采集到声音，请再试一次')
+        setState('idle')
+        return
+      }
+
+      cleanup()
+      void processAudioViaWhisper(audioBlob)
     }
 
     if (timerRef.current) {
@@ -292,9 +442,11 @@ export function useVoiceInput({
     if (state !== 'recording') return
 
     const recorder = mediaRecorderRef.current
-    if (recorder && recorder.state === 'recording') {
-      shouldIgnoreNextStopRef.current = true
-      recorder.stop()
+    if (recordingModeRef.current === 'media') {
+      if (recorder && recorder.state === 'recording') {
+        shouldIgnoreNextStopRef.current = true
+        recorder.stop()
+      }
     }
 
     cleanup()

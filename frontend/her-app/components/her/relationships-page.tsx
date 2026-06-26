@@ -5,6 +5,7 @@ import { BadgeCheck, ChevronDown, Loader2, MailOpen, Pin, Trash2 } from 'lucide-
 import Image from 'next/image'
 import { openProxyIntroChat, replyProxyIntroCase, closeProxyIntroCase } from '@/lib/api/endpoints/proxy-intro'
 import { fetchCaseConversationTimeline } from '@/lib/api/endpoints/relations'
+import { markConversationRead, RELATIONSHIP_READ_EVENT } from '@/lib/api/endpoints/chat'
 import { getUserId } from '@/lib/auth/session'
 import { PLACEHOLDER_AVATAR, resolveProfileImageUrl } from '@/lib/image-url'
 import type { ChatUserInfo } from '@/hooks/use-app-router'
@@ -222,9 +223,51 @@ export default function RelationshipsPage({
     setPinnedCardIds((prev) => ({ ...prev, [cardId]: !prev[cardId] }))
   }
 
-  // 标记已读
-  function markAsRead(cardId: string) {
-    setReadCardIds((prev) => ({ ...prev, [cardId]: true }))
+  // 标记已读（调用后端API + 更新localStorage）
+  async function markAsRead(caseId: string) {
+    const currentCase = cases.find((item) => String(item.case_id) === caseId)
+
+    if (!currentCase) {
+      // 没找到case，只更新本地UI状态
+      setReadCardIds((prev) => ({ ...prev, [caseId]: true }))
+      return
+    }
+
+    try {
+      // 已开聊的case：更新localStorage marker（标记聊天已读）
+      if (currentCase.main_conversation_id) {
+        const conversationId = String(currentCase.main_conversation_id)
+        // 获取最新消息ID（从lastMessagesByCaseId中获取）
+        const lastMsgData = lastMessagesByCaseId[caseId]
+        if (lastMsgData) {
+          // 需要从timeline获取真实的message_id
+          const userId = getUserId()
+          if (userId) {
+            const timeline = await fetchCaseConversationTimeline(caseId, userId)
+            const mainConv = timeline.conversations?.find(
+              (c) => c.conversation.channel_key === 'main_group',
+            )
+            if (mainConv?.messages && mainConv.messages.length > 0) {
+              const lastMsg = mainConv.messages[mainConv.messages.length - 1]
+              markConversationRead(conversationId, lastMsg.message_id || 0)
+            }
+          }
+        }
+      }
+
+      // 更新本地UI状态（立即生效，避免等待badge刷新）
+      setReadCardIds((prev) => ({ ...prev, [caseId]: true }))
+
+      // 触发badge刷新事件（导航栏会重新计算）
+      window.dispatchEvent(new CustomEvent(RELATIONSHIP_READ_EVENT))
+
+      // 刷新页面数据（确保状态一致）
+      await refetch()
+    } catch (error) {
+      console.error('标记已读失败:', error)
+      // 即使失败也更新本地状态
+      setReadCardIds((prev) => ({ ...prev, [caseId]: true }))
+    }
   }
 
   // 删除卡片（显示确认弹窗）
@@ -561,6 +604,17 @@ export default function RelationshipsPage({
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
                               <span className="font-medium">{item.counterpart_name || '对方'}</span>
+                              {/* 状态标记：区分发起方和被推荐方 */}
+                              {item.role === 'requester' && (
+                                <span className="text-xs px-1.5 py-0.5 rounded bg-amber-soft text-amber">
+                                  等待对方决定
+                                </span>
+                              )}
+                              {item.role === 'candidate' && (
+                                <span className="text-xs px-1.5 py-0.5 rounded bg-green-soft text-green">
+                                  {item.main_conversation_id ? '已开聊' : '对方已接受'}
+                                </span>
+                              )}
                               <span className="text-xs text-muted-foreground">
                                 {String(item.counterpart_profile?.age || '')}
                                 {item.counterpart_profile?.age ? '岁' : ''}
