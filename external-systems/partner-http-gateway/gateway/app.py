@@ -244,7 +244,7 @@ class PartnerGateway(AsyncJobGatewayMixin, GatewayAccessMixin):
             "ok": True,
             "surface": gateway_surface(),
             "jsonrpc_enabled": jsonrpc_enabled(),
-            "services": ["recommendation", "matchmaking", "chat"],
+            "services": ["recommendation", "matchmaking", "chat", "discovery"],
             "recommendation_db_configured": bool(self._recommendation_dsn),
             "matchmaking_db_configured": bool(self._matchmaking_dsn),
             "chat_db_configured": bool(self._chat_dsn),
