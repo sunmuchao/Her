@@ -102,7 +102,7 @@ start_background_service() {
 require_cmd docker
 
 echo "=== Starting docker compose services ==="
-(cd "${REPO_ROOT}" && docker compose up -d)
+(cd "${REPO_ROOT}" && docker compose up -d mysql minio signaling-server)
 
 echo ""
 echo "=== Starting Her business stack ==="
