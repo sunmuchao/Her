@@ -96,12 +96,36 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
   const [isLoadingSession, setIsLoadingSession] = useState(true)
   const chatEndRef = useRef<HTMLDivElement>(null)
   const hasSessionCriteriaChipsRef = useRef(false)
+  const autoPlayedAudioMessageIdsRef = useRef<Set<string>>(new Set())
 
   const applyMappedView = useCallback((mapped: MappedDiscoveryView) => {
+    const timelineItems = mapped.timelineItems.map((item) => {
+      if (
+        item.kind !== 'message' ||
+        item.type !== 'matchmaker' ||
+        item.mediaType !== 'audio' ||
+        !item.mediaUrl
+      ) {
+        return item
+      }
+
+      const shouldAutoPlay =
+        Boolean(item.isNewMessage) && !autoPlayedAudioMessageIdsRef.current.has(item.id)
+
+      if (shouldAutoPlay) {
+        autoPlayedAudioMessageIdsRef.current.add(item.id)
+      }
+
+      return {
+        ...item,
+        isNewMessage: shouldAutoPlay,
+      }
+    })
+
     // DEBUG: 验证数据是否正确
-    console.log('[DEBUG useDiscoverySession] timelineItems 数量:', mapped.timelineItems.length)
-    console.log('[DEBUG useDiscoverySession] timelineItems:', mapped.timelineItems)
-    const resultGroups = mapped.timelineItems.filter(i => i.kind === 'result_group')
+    console.log('[DEBUG useDiscoverySession] timelineItems 数量:', timelineItems.length)
+    console.log('[DEBUG useDiscoverySession] timelineItems:', timelineItems)
+    const resultGroups = timelineItems.filter(i => i.kind === 'result_group')
     console.log('[DEBUG useDiscoverySession] result_group 数量:', resultGroups.length)
     if (resultGroups.length > 0) {
       console.log('[DEBUG useDiscoverySession] result_groups 详情:')
@@ -114,7 +138,7 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
     } else {
       console.warn('[DEBUG useDiscoverySession] ⚠️ 没有找到 result_group！候选人卡片不会显示')
     }
-    setTimelineItems(mapped.timelineItems)
+    setTimelineItems(timelineItems)
     hasSessionCriteriaChipsRef.current = Boolean(mapped.chips?.length)
     if (mapped.chips?.length) setCurrentPrefs(mapped.chips)
     setComposerPlaceholder(mapped.composerPlaceholder)
