@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
-import { Volume2, VolumeX } from 'lucide-react'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { Volume2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface AudioMessageProps {
@@ -57,7 +57,7 @@ const audioManager = AudioManager.getInstance()
 export function AudioMessage({
   audioUrl,
   durationMs,
-  format,
+  format: _format,
   autoPlay = false,
   onPlayStart,
   onPlayEnd,
@@ -68,22 +68,43 @@ export function AudioMessage({
   const audioRef = useRef<HTMLAudioElement>(null)
   const audioIdRef = useRef<string>(`audio-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`)
 
+  const startPlayback = useCallback(async (resetToStart: boolean) => {
+    if (!audioRef.current) return
+
+    if (resetToStart) {
+      audioRef.current.currentTime = 0
+    }
+
+    try {
+      await audioRef.current.play()
+    } catch (error) {
+      setIsPlaying(false)
+      console.error('[AudioMessage] Audio playback start failed', error)
+    }
+  }, [])
+
   const handlePlayClick = () => {
     if (!audioRef.current) return
 
     if (isPlaying) {
-      // 点击喇叭暂停播放
       audioRef.current.pause()
-      setIsPlaying(false)
-      audioManager.stop(audioIdRef.current)
-    } else {
-      // 点击喇叭开始播放
       audioRef.current.currentTime = 0
-      audioRef.current.play()
-      setIsPlaying(true)
-      audioManager.play(audioRef.current, audioIdRef.current)
-      onPlayStart?.()
+      audioManager.stop(audioIdRef.current)
+      return
     }
+
+    void startPlayback(true)
+  }
+
+  const handlePlay = () => {
+    if (!audioRef.current) return
+    setIsPlaying(true)
+    audioManager.play(audioRef.current, audioIdRef.current)
+    onPlayStart?.()
+  }
+
+  const handlePause = () => {
+    setIsPlaying(false)
   }
 
   const handleEnded = () => {
@@ -103,17 +124,12 @@ export function AudioMessage({
     if (autoPlay && audioRef.current && !hasPlayedOnce) {
       // 延迟200ms自动播放（避免多个音频同时播放）
       const timer = setTimeout(() => {
-        if (audioRef.current) {
-          audioRef.current.play()
-          setIsPlaying(true)
-          audioManager.play(audioRef.current, audioIdRef.current)
-          onPlayStart?.()
-        }
+        void startPlayback(true)
       }, 200)
 
       return () => clearTimeout(timer)
     }
-  }, [autoPlay, hasPlayedOnce, onPlayStart])
+  }, [autoPlay, hasPlayedOnce, startPlayback])
 
   // 组件卸载时停止播放
   useEffect(() => {
@@ -163,6 +179,8 @@ export function AudioMessage({
       <audio
         ref={audioRef}
         src={audioUrl}
+        onPlay={handlePlay}
+        onPause={handlePause}
         onEnded={handleEnded}
         onError={handleError}
         preload="auto"
