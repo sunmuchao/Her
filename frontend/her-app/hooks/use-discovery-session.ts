@@ -414,6 +414,11 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
     setTimelineItems((prev) => prev.filter((item) => item.kind !== 'suggested_actions'))
   }, [])
 
+  // 新增：移除指定消息（用于移除临时消息）
+  const removeTimelineItem = useCallback((itemId: string) => {
+    setTimelineItems((prev) => prev.filter((item) => item.id !== itemId))
+  }, [])
+
   return {
     timelineItems,
     inputValue,
@@ -433,6 +438,7 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
     createNewSession,  // 新增：创建新会话
     switchSession,  // 新增：切换会话
     addTimelineItem,  // 新增
+    removeTimelineItem,  // 新增：移除指定消息
     removeSuggestedActions,
   }
 }

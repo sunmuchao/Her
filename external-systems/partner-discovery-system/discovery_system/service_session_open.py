@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from typing import Any
 
 from match_domain.onboarding_search import format_criteria_labels
+
+LOGGER = logging.getLogger(__name__)
 
 from .agent_runtime import (
     DiscoveryActionSuggestion,
@@ -99,17 +102,66 @@ def build_profile_first_open_result(
     *,
     criteria_labels: list[str],
 ) -> DiscoveryRuntimeResult:
+    """构建开场白结果（profile_first模式）
+
+    新增功能：为开场白消息生成语音（使用独立的TTS服务）
+
+    Args:
+        search_response: 搜索结果
+        criteria_labels: 条件标签列表
+
+    Returns:
+        DiscoveryRuntimeResult，包含：
+        - decision: 决策结果
+        - assistant_message: 带metadata的开场白消息
+        - search_response: 搜索结果
+    """
     selections = selected_candidates_from_search(search_response)
     has_results = bool(search_response.get("has_match")) and bool(selections)
 
+    # 确定开场白文本
+    message_text = (
+        _profile_first_open_message(search_response, selection_count=len(selections))
+        if has_results
+        else PROFILE_FIRST_EMPTY_MESSAGE
+    )
+
+    # ✅ 新增：为开场白生成语音
+    message_metadata = None
+    try:
+        # 从chat_system导入独立的TTS服务
+        # 注意：partner-chat-system/chat_system 需要在 Python path 中
+        # 根据实际部署方式，可能是：
+        # - 直接导入：from chat_system.tts_service import synthesize_tts
+        # - 包导入：from partner_chat_system.tts_service import synthesize_tts
+        # 这里尝试多种导入方式
+
+        try:
+            # 方式1：直接从chat_system导入（如果chat_system在Python path中）
+            from chat_system.tts_service import synthesize_tts
+        except ImportError:
+            # 方式2：从partner_chat_system导入（如果作为包安装）
+            from partner_chat_system.tts_service import synthesize_tts
+
+        LOGGER.info(f"[Discovery] 为开场白生成语音: text_length={len(message_text)}")
+        tts_result = synthesize_tts(message_text, voice="xiaoxiao")
+        if tts_result:
+            message_metadata = tts_result
+            LOGGER.info(f"[Discovery] 开场白语音生成成功: url={tts_result['media_url']}")
+        else:
+            LOGGER.warning("[Discovery] 开场白语音生成失败，仅返回文本")
+    except ImportError as e:
+        LOGGER.warning(f"[Discovery] TTS服务未安装，跳过语音生成: {e}")
+    except Exception as e:
+        LOGGER.error(f"[Discovery] 开场白语音生成异常: {e}")
+
+    # 构建决策结果
     if has_results:
         return DiscoveryRuntimeResult(
             decision=DiscoveryDecision(
                 phase="results_shown",
-                assistant_message=_profile_first_open_message(
-                    search_response,
-                    selection_count=len(selections),
-                ),
+                assistant_message=message_text,
+                assistant_message_metadata=message_metadata,  # 新增：传递metadata
                 criteria_labels=list(criteria_labels),
                 suggested_actions=[],
                 result_group_title=PROFILE_FIRST_RESULT_TITLE,
@@ -121,7 +173,8 @@ def build_profile_first_open_result(
     return DiscoveryRuntimeResult(
         decision=DiscoveryDecision(
             phase="collecting_preferences",
-            assistant_message=PROFILE_FIRST_EMPTY_MESSAGE,
+            assistant_message=message_text,
+            assistant_message_metadata=message_metadata,  # 新增：传递metadata
             criteria_labels=list(criteria_labels),
             suggested_actions=default_profile_first_suggested_actions(),
             result_group_title=None,

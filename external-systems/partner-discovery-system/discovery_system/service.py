@@ -1458,6 +1458,30 @@ class DiscoveryService:
             session=session,  # 新增：传入session用于检测追问场景
         )
         assistant_body = decision.assistant_message
+        assistant_metadata = decision.assistant_message_metadata  # 提取已有的 metadata（开场白场景）
+
+        # ✅ 新增：如果还没有 metadata（turn 场景），就在这里生成语音
+        # 这样每条小雅回复都会带语音（类似豆包）
+        if not assistant_metadata and assistant_body and len(assistant_body) <= 500:
+            try:
+                # 尝试多种导入方式
+                try:
+                    from chat_system.tts_service import synthesize_tts
+                except ImportError:
+                    from partner_chat_system.tts_service import synthesize_tts
+
+                _logger.info(f"[Discovery Turn] 为小雅回复生成语音: text_length={len(assistant_body)}")
+                tts_result = synthesize_tts(assistant_body, voice="xiaoxiao")
+                if tts_result:
+                    assistant_metadata = tts_result
+                    _logger.info(f"[Discovery Turn] 语音生成成功: url={tts_result['media_url']}")
+                else:
+                    _logger.warning("[Discovery Turn] 语音生成失败，仅返回文本")
+            except ImportError as e:
+                _logger.warning(f"[Discovery Turn] TTS服务未安装，跳过语音生成: {e}")
+            except Exception as e:
+                _logger.error(f"[Discovery Turn] 语音生成异常: {e}")
+
         if decision.criteria_labels:
             session.view["criteria_chips"] = [
                 criteria_chip(f"chip-{index + 1}", label)
@@ -1527,6 +1551,7 @@ class DiscoveryService:
                             self.storage.next_item_id("msg-a"),
                             message,
                             created_at=now,
+                            metadata=assistant_metadata,  # 新增：传递metadata
                         )
                     )
                 elif kind == "show":
@@ -1539,6 +1564,7 @@ class DiscoveryService:
                             self.storage.next_item_id("msg-a"),
                             assistant_body,
                             created_at=now,
+                            metadata=assistant_metadata,  # 新增：传递metadata
                         )
                     )
         else:
@@ -1548,6 +1574,7 @@ class DiscoveryService:
                     self.storage.next_item_id("msg-a"),
                     assistant_body,
                     created_at=now,
+                    metadata=assistant_metadata,  # 新增：传递metadata
                 )
             ]
         # 处理测评引导卡片

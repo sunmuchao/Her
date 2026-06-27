@@ -55,6 +55,7 @@ class DiscoveryToolCall:
 class DiscoveryDecision:
     phase: str
     assistant_message: str
+    assistant_message_metadata: dict[str, Any] | None = None  # 新增：媒体metadata（用于语音播放）
     criteria_labels: list[str] = field(default_factory=list)
     suggested_actions: list[DiscoveryActionSuggestion] = field(default_factory=list)
     result_group_title: str | None = None

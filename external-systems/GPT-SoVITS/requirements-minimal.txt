@@ -1,0 +1,28 @@
+# GPT-SoVITS 简化依赖（仅核心 TTS 功能）
+# 用于快速部署，跳过不必要的依赖
+
+# 核心依赖
+numpy<2.0
+scipy
+torch
+torchaudio
+transformers>=4.43,<=4.50
+
+# 音频处理
+librosa==0.10.2
+soundfile
+
+# FastAPI 服务
+fastapi>=0.115.2
+uvicorn[standard]
+
+# 文本处理
+pypinyin
+cn2an
+jieba
+jieba_fast
+
+# 其他必要依赖
+tqdm
+PyYAML
+requests

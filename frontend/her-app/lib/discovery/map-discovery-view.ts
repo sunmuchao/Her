@@ -10,6 +10,17 @@ export type DiscoveryChatMessage = {
   type: 'matchmaker' | 'user'
   content: string
   timestamp: string
+  // 新增：媒体消息字段（用于语音播放）
+  mediaType?: 'image' | 'video' | 'audio'
+  mediaUrl?: string
+  mediaMetadata?: {
+    duration_ms?: number
+    format?: string
+    size?: number
+    tts_engine?: string
+    voice?: string
+  }
+  isNewMessage?: boolean  // 是否为新消息（用于自动播放语音，类似豆包）
 }
 
 export type DiscoveryResultGroupItem = {
@@ -125,16 +136,28 @@ function mapDiscoveryCard(
 
 export function mapDiscoveryView(view?: DiscoveryView): MappedDiscoveryView {
   const timelineItems: DiscoveryTimelineItem[] = []
+  const now = new Date()
 
   for (const [index, item] of (view?.timeline || []).entries()) {
     const itemType = item.item_type || ''
     if (itemType === 'assistant_message' || itemType === 'user_message') {
+      // 判断是否是新消息：created_at 在最近10秒内
+      const createdAt = item.created_at ? new Date(item.created_at) : null
+      const isNewMessage = createdAt
+        ? (now.getTime() - createdAt.getTime()) < 10000  // 10秒内的消息认为是新消息
+        : false
+
       timelineItems.push({
         kind: 'message',
         id: item.item_id || `${itemType}-${index}`,
         type: itemType === 'user_message' ? 'user' : 'matchmaker',
         content: item.body || '',
         timestamp: formatRelativeTime(item.created_at),
+        // 新增：提取metadata字段（用于语音播放）
+        mediaType: item.metadata?.media_type,
+        mediaUrl: item.metadata?.media_url,
+        mediaMetadata: item.metadata?.media_metadata,
+        isNewMessage,  // 根据时间戳判断是否是新消息
       })
       continue
     }

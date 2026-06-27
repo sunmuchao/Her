@@ -1,0 +1,24 @@
+# GPT-SoVITS 超简化依赖（完全跳过 LLVM 相关）
+# 仅保留核心 TTS 功能，不依赖 librosa/numba/llvmlite
+
+# 核心依赖
+numpy<2.0
+torch
+torchaudio
+transformers>=4.43,<=4.50
+
+# FastAPI 服务
+fastapi>=0.115.2
+uvicorn[standard]
+
+# 文本处理
+pypinyin
+cn2an
+jieba
+jieba_fast
+
+# 其他必要依赖
+tqdm
+PyYAML
+requests
+soundfile  # 音频读写（不需要 librosa）

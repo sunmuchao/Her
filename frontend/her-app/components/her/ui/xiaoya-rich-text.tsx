@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 import { Sparkles, AlertTriangle, CheckCircle2, Heart, Users, Lightbulb } from 'lucide-react'
+import { AudioMessage } from '@/components/her/audio-message'
 
 function renderInline(content: string): ReactNode[] {
   const nodes: ReactNode[] = []
@@ -102,14 +103,40 @@ function isClosingLine(line: string): boolean {
 export function XiaoyaRichText({
   content,
   className,
+  mediaType,
+  mediaUrl,
+  mediaMetadata,
+  autoPlayAudio = false,  // 新增：是否自动播放语音
 }: {
   content: string
   className?: string
+  mediaType?: string
+  mediaUrl?: string
+  mediaMetadata?: {
+    duration_ms?: number
+    format?: string
+    size?: number
+    tts_engine?: string
+    voice?: string
+  }
+  autoPlayAudio?: boolean  // 是否自动播放语音（类似豆包）
 }) {
   const lines = content.split('\n').filter((line, index, all) => line.trim() !== '' || (index > 0 && all[index - 1].trim() !== ''))
 
   return (
     <div className={cn('space-y-3.5 text-[14px] leading-7 text-muted-foreground', className)}>
+      {/* 音频消息 - 小喇叭图标，支持自动播放 */}
+      {mediaType === 'audio' && mediaUrl && mediaMetadata && (
+        <AudioMessage
+          audioUrl={mediaUrl}
+          durationMs={mediaMetadata.duration_ms}
+          format={mediaMetadata.format}
+          autoPlay={autoPlayAudio}  // 自动播放（类似豆包）
+          className="mb-2"
+        />
+      )}
+
+      {/* 文本内容 */}
       {lines.map((rawLine, index) => {
         const line = rawLine.trim()
 

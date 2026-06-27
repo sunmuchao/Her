@@ -19,7 +19,27 @@ def assistant_message(
     body: str,
     *,
     created_at: datetime | None = None,
+    metadata: dict[str, Any] | None = None,  # 新增：媒体metadata（用于语音播放）
 ) -> dict[str, Any]:
+    """构建小雅助手消息项
+
+    Args:
+        item_id: 消息ID
+        body: 消息文本内容
+        created_at: 创建时间
+        metadata: 媒体metadata（包含media_type、media_url、media_metadata）
+            - media_type: "audio"（音频类型）
+            - media_url: MinIO音频URL
+            - media_metadata: {duration_ms, format, size, tts_engine, voice}
+
+    Returns:
+        消息项字典，包含：
+        - item_type: "assistant_message"
+        - item_id: 消息ID
+        - body: 文本内容
+        - created_at: 创建时间（可选）
+        - metadata: 媒体信息（可选）
+    """
     item: dict[str, Any] = {
         "item_type": "assistant_message",
         "item_id": item_id,
@@ -28,6 +48,9 @@ def assistant_message(
     formatted = _format_created_at(created_at)
     if formatted is not None:
         item["created_at"] = formatted
+    # 新增：添加metadata字段（用于语音播放）
+    if metadata:
+        item["metadata"] = metadata
     return item
 
 
