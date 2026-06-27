@@ -1445,6 +1445,37 @@ class DiscoveryService:
         session.state["visible_action_ids"] = list(visible_action_ids)
         self.storage.replace_visible_actions(session.session_id, visible_action_ids)
 
+    def _synthesize_xiaoya_tts(
+        self,
+        text: str,
+        *,
+        log_prefix: str,
+    ) -> dict[str, Any] | None:
+        message_text = str(text or "").strip()
+        if not message_text or len(message_text) > 500:
+            return None
+
+        try:
+            try:
+                from chat_system.tts_service import synthesize_tts
+            except ImportError:
+                from partner_chat_system.tts_service import synthesize_tts
+
+            _logger.info(f"{log_prefix} 为小雅回复生成语音: text_length={len(message_text)}")
+            tts_result = synthesize_tts(message_text, voice="xiaoxiao")
+            if tts_result:
+                _logger.info(f"{log_prefix} 语音生成成功: url={tts_result['media_url']}")
+                return tts_result
+
+            _logger.warning(f"{log_prefix} 语音生成失败，仅返回文本")
+            return None
+        except ImportError as e:
+            _logger.warning(f"{log_prefix} TTS服务未安装，跳过语音生成: {e}")
+            return None
+        except Exception as e:
+            _logger.error(f"{log_prefix} 语音生成异常: {e}")
+            return None
+
     def _apply_runtime_result(
         self,
         session: StoredSession,
@@ -1463,24 +1494,10 @@ class DiscoveryService:
         # ✅ 新增：如果还没有 metadata（turn 场景），就在这里生成语音
         # 这样每条小雅回复都会带语音（类似豆包）
         if not assistant_metadata and assistant_body and len(assistant_body) <= 500:
-            try:
-                # 尝试多种导入方式
-                try:
-                    from chat_system.tts_service import synthesize_tts
-                except ImportError:
-                    from partner_chat_system.tts_service import synthesize_tts
-
-                _logger.info(f"[Discovery Turn] 为小雅回复生成语音: text_length={len(assistant_body)}")
-                tts_result = synthesize_tts(assistant_body, voice="xiaoxiao")
-                if tts_result:
-                    assistant_metadata = tts_result
-                    _logger.info(f"[Discovery Turn] 语音生成成功: url={tts_result['media_url']}")
-                else:
-                    _logger.warning("[Discovery Turn] 语音生成失败，仅返回文本")
-            except ImportError as e:
-                _logger.warning(f"[Discovery Turn] TTS服务未安装，跳过语音生成: {e}")
-            except Exception as e:
-                _logger.error(f"[Discovery Turn] 语音生成异常: {e}")
+            assistant_metadata = self._synthesize_xiaoya_tts(
+                assistant_body,
+                log_prefix="[Discovery Turn]",
+            )
 
         if decision.criteria_labels:
             session.view["criteria_chips"] = [
@@ -2471,10 +2488,16 @@ class DiscoveryService:
 
                 # 6. 在timeline中插入消息和候选人卡片
                 case_id = str(case.get("case_id") or "")
+                intro_message = f"有人想认识你：{name}，{age}岁{city}{occupation}"
+                intro_metadata = self._synthesize_xiaoya_tts(
+                    intro_message,
+                    log_prefix="[Discovery Proxy Intro]",
+                )
                 timeline.append(assistant_message(
                     item_id=f"proxy-intro-msg-{case_id}",
-                    body=f"有人想认识你：{name}，{age}岁{city}{occupation}",
+                    body=intro_message,
                     created_at=now,
+                    metadata=intro_metadata,
                 ))
                 timeline.append(result_group(
                     item_id=f"proxy-intro-group-{case_id}",
