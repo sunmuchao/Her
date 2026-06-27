@@ -12,13 +12,15 @@ PID_DIR="${RUN_DIR}/pids"
 
 WITH_GPT_SOVITS=1
 WITH_SCHEDULER=1
+WITH_SIGNALING=0
 
 usage() {
   cat <<'EOF'
-Usage: scripts/start_everything.sh [--without-gpt-sovits] [--without-scheduler]
+Usage: scripts/start_everything.sh [--without-gpt-sovits] [--without-scheduler] [--with-signaling]
 
 One-click startup for the full local Her environment:
   1. docker compose services (mysql/minio/signaling-server, etc.)
+  1. docker compose services (mysql/minio by default, signaling-server optional)
   2. business stack (local MySQL, SSE server, gateway, frontend)
   3. optional scheduler
   4. optional GPT-SoVITS API service
@@ -27,6 +29,7 @@ Examples:
   scripts/start_everything.sh
   scripts/start_everything.sh --without-gpt-sovits
   scripts/start_everything.sh --without-scheduler
+  scripts/start_everything.sh --with-signaling
 EOF
 }
 
@@ -38,6 +41,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --without-scheduler)
       WITH_SCHEDULER=0
+      shift
+      ;;
+    --with-signaling)
+      WITH_SIGNALING=1
       shift
       ;;
     -h|--help)
@@ -102,7 +109,11 @@ start_background_service() {
 require_cmd docker
 
 echo "=== Starting docker compose services ==="
-(cd "${REPO_ROOT}" && docker compose up -d mysql minio signaling-server)
+DOCKER_SERVICES=(mysql minio)
+if [[ "${WITH_SIGNALING}" == "1" ]]; then
+  DOCKER_SERVICES+=(signaling-server)
+fi
+(cd "${REPO_ROOT}" && docker compose up -d "${DOCKER_SERVICES[@]}")
 
 echo ""
 echo "=== Starting Her business stack ==="
@@ -140,6 +151,7 @@ Core services:
   MinIO:      http://127.0.0.1:9000
   MinIO Web:  http://127.0.0.1:9001
 $( [[ "${WITH_GPT_SOVITS}" == "1" ]] && printf '  GPT-SoVITS: http://127.0.0.1:9880\n' )
+$( [[ "${WITH_SIGNALING}" == "1" ]] && printf '  Signaling:  ws://127.0.0.1:8765\n' )
 
 Logs:
   ${LOG_DIR}/frontend.log
