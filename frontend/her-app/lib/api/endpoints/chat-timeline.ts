@@ -95,6 +95,20 @@ export type ConversationMessage = {
   source: string
   body: string
   created_at: string
+  metadata_json?: {
+    media_type?: string
+    media_url?: string
+    media_metadata?: {
+      duration_ms?: number
+      format?: string
+      size?: number
+      tts_engine?: string
+      voice?: string
+      width?: number
+      height?: number
+      mimeType?: string
+    }
+  }
 }
 
 export type SendMessageResponse = {
@@ -129,6 +143,12 @@ export function mapConversationMessage(
   const isAgent = msg.source === 'agent'
   const isMe = msg.author_id === requesterId
 
+  // 从metadata中提取media信息
+  const metadata = msg.metadata_json || {}
+  const mediaType = metadata.media_type as 'image' | 'video' | 'audio' | undefined
+  const mediaUrl = metadata.media_url as string | undefined
+  const mediaMetadata = metadata.media_metadata as ChatMessageDisplay['mediaMetadata'] | undefined
+
   return {
     id: String(msg.message_id),
     type: isAgent ? 'assistant' : isMe ? 'sent' : 'received',
@@ -136,6 +156,9 @@ export function mapConversationMessage(
     timestamp: msg.created_at,
     authorId: msg.author_id,
     source: msg.source,
+    mediaType,
+    mediaUrl,
+    mediaMetadata,
   }
 }
 
@@ -146,16 +169,12 @@ export type ChatMessageDisplay = {
   timestamp: string
   authorId?: string
   source?: string
-  // 消息状态（用于异步上传、已读标记等场景）
   status?: 'pending' | 'sending' | 'sent' | 'failed' | 'read'
-  // 重试数据（用于失败后重新发送）
   retryData?: {
     file?: File
     content?: string
   }
-  // 本地预览 URL（上传前显示）
   localPreviewUrl?: string
-  // 媒体消息字段
   mediaType?: 'image' | 'video' | 'audio'
   mediaUrl?: string
   mediaMetadata?: {
@@ -163,7 +182,12 @@ export type ChatMessageDisplay = {
     height?: number
     size?: number
     mimeType?: string
+    duration_ms?: number
+    format?: string
+    tts_engine?: string
+    voice?: string
   }
+  isNewMessage?: boolean  // 是否为新消息（用于自动播放语音，类似豆包）
 }
 
 /**

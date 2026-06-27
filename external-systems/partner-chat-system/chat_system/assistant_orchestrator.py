@@ -27,6 +27,65 @@ from .assistant_sessions import (
     is_public_followup_active,
 )
 from .conversations import get_conversation_by_case_and_key, list_case_conversations, post_conversation_message
+from .media_storage import upload_audio
+import asyncio
+import tempfile
+import os
+
+
+from .tts_service import synthesize_tts
+
+
+def _synthesize_tts_for_text(text: str, voice: str = "xiaoxiao") -> dict[str, Any] | None:
+    """为文本生成语音（复用独立的TTS服务）
+
+    已废弃：直接使用 tts_service.synthesize_tts
+    保留此函数作为向后兼容的wrapper
+    """
+    return synthesize_tts(text, voice)
+
+
+def _should_generate_tts(
+    channel_key: str,
+    reason_codes: list[str],
+    text: str,
+) -> bool:
+    """判断是否需要为回复生成语音
+
+    触发场景：
+    1. 开场白（opening_probe）
+    2. 私信小雅（assistant_dm_a/b）
+    3. AI红娘提示（main_group + agent消息）
+
+    Args:
+        channel_key: 目标频道（main_group/assistant_dm_a/assistant_dm_b）
+        reason_codes: 决策原因码
+        text: 回复文本
+
+    Returns:
+        True if should generate TTS
+    """
+    # 场景1：开场白（主动提示）
+    if "opening_probe" in reason_codes:
+        return True
+
+    # 场景2：私信小雅（assistant_dm频道）
+    if channel_key.startswith("assistant_dm_"):
+        return True
+
+    # 场景3：AI红娘提示（main_group + 特定reason）
+    if channel_key == "main_group" and any(
+        code in reason_codes
+        for code in ["silence_probe", "post_chat_review", "post_chat_followup"]
+    ):
+        return True
+
+    # 文本长度限制（太长的文本不生成语音，避免等待时间过长）
+    if len(text) > 500:  # 超过500字符不生成语音
+        LOGGER.info(f"[TTS] 文本过长({len(text)}字符)，跳过语音生成")
+        return False
+
+    return False
 from .persona_jobs import enqueue_persona_sync_job
 
 def _normalize_now(now: datetime | None = None) -> datetime:
@@ -117,6 +176,27 @@ def _post_decision_messages(
 
     def _post_one(channel_key: str, body: str, action_suffix: str, action_reason_codes: list[str]) -> dict[str, Any]:
         target_conversation_id = _resolve_target_conversation_id(conn, case_id, channel_key)
+
+        # ✅ 判断是否需要生成语音
+        audio_metadata = None
+        if _should_generate_tts(channel_key, action_reason_codes, body):
+            LOGGER.info(f"[Agent] 为回复生成语音: channel={channel_key}, text_preview={body[:50]}")
+            audio_metadata = _synthesize_tts_for_text(body, voice="xiaoxiao")
+
+        # 构建消息metadata
+        message_metadata = {
+            "agent_session_id": session["session_id"],
+            "agent_task_id": task_id,
+            "reason_codes": list(action_reason_codes),
+        }
+
+        # ✅ 如果生成了语音，附加到metadata
+        if audio_metadata:
+            message_metadata["media_type"] = audio_metadata["media_type"]
+            message_metadata["media_url"] = audio_metadata["media_url"]
+            message_metadata["media_metadata"] = audio_metadata["media_metadata"]
+            LOGGER.info(f"[Agent] 消息包含语音: url={audio_metadata['media_url']}")
+
         return post_conversation_message(
             conn,
             target_conversation_id,
@@ -124,11 +204,7 @@ def _post_decision_messages(
             str(body),
             source="agent",
             client_msg_id=f"matchmaker-task-{task_id}{action_suffix}",
-            metadata={
-                "agent_session_id": session["session_id"],
-                "agent_task_id": task_id,
-                "reason_codes": list(action_reason_codes),
-            },
+            metadata=message_metadata,
             now=now,
         )
 

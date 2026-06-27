@@ -604,12 +604,7 @@ export default function RelationshipsPage({
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
                               <span className="font-medium">{item.counterpart_name || '对方'}</span>
-                              {/* 状态标记：区分发起方和被推荐方 */}
-                              {item.role === 'requester' && (
-                                <span className="text-xs px-1.5 py-0.5 rounded bg-amber-soft text-amber">
-                                  等待对方决定
-                                </span>
-                              )}
+                              {/* 被推荐方case显示状态标记（发起方case已有stage_label按钮，避免重复） */}
                               {item.role === 'candidate' && (
                                 <span className="text-xs px-1.5 py-0.5 rounded bg-green-soft text-green">
                                   {item.main_conversation_id ? '已开聊' : '对方已接受'}

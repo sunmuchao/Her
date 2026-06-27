@@ -27,6 +27,7 @@ import { DemoDataBanner } from './ui/demo-data-banner'
 import { ErrorState } from './ui/error-state'
 import { XiaoyaRichText } from './ui/xiaoya-rich-text'
 import { VideoCallModal, type CallType } from './video-call-modal'
+import { VoiceInputButton } from './voice-input-button'
 interface ChatPageProps {
   chatId: string | null
   caseId?: string | null
@@ -445,12 +446,12 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  const handleSend = async () => {
-    const body = inputValue.trim()
+  const handleSend = async (messageText?: string) => {
+    const body = messageText || inputValue.trim()
     if (!body || !resolvedChatId || isSending) return
     const authorId = getChatParticipantId()
     if (!authorId) return
-    
+
     setInputValue('')
     setIsSending(true)
 
@@ -834,7 +835,13 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
                                       小雅提示
                                     </span>
                                   </div>
-                                  <XiaoyaRichText content={msg.content} />
+                                  <XiaoyaRichText
+                                    content={msg.content}
+                                    mediaType={msg.mediaType}
+                                    mediaUrl={msg.mediaUrl}
+                                    mediaMetadata={msg.mediaMetadata}
+                                    autoPlayAudio={msg.isNewMessage}  // AI红娘提示新消息自动播放
+                                  />
                                 </div>
                               )}
 
@@ -1085,7 +1092,16 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
                                 : 'bg-secondary text-foreground rounded-bl-md px-4 py-3',
                             )}
                           >
-                            {msg.isFromMe ? msg.body : <XiaoyaRichText content={msg.body} className="space-y-3.5" />}
+                            {msg.isFromMe ? msg.body : (
+                            <XiaoyaRichText
+                              content={msg.body}
+                              mediaType={msg.mediaType}
+                              mediaUrl={msg.mediaUrl}
+                              mediaMetadata={msg.mediaMetadata}
+                              autoPlayAudio={msg.isNewMessage}  // 新消息自动播放（类似豆包）
+                              className="space-y-3.5"
+                            />
+                          )}
                           </div>
                         </div>
                       </div>
@@ -1313,6 +1329,17 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
             >
               <Smile className="w-5 h-5" />
             </button>
+            {/* 语音输入按钮 */}
+            <VoiceInputButton
+              onTranscript={(text) => {
+                // 语音识别成功后直接发送消息
+                void handleSend(text)
+              }}
+              onError={(error) => {
+                notifyError(new Error(error), '语音识别失败')
+              }}
+              disabled={!resolvedChatId || isSending}
+            />
             {/* 加号按钮 */}
             <button
               aria-label={showActionMenu ? '收起菜单' : '展开菜单'}

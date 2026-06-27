@@ -48,11 +48,27 @@ export function useBadgeCounts() {
         (c) => c.role === 'candidate' && c.case_status === 'awaiting_reply'  // 只统计未查看状态
       ).length
 
+      // 日志7：打印inbox badge计算详情
+      console.log('[Badge Debug] Inbox badge:', {
+        recommendation_cards_unread: inbox,
+        passive_recommendation_unread: interestUnread,
+        total_inbox_unread: inbox + interestUnread,
+      })
+
       // 合并未读数：推荐卡片 + 被动推荐
       const totalInboxUnread = inbox + interestUnread
       console.log('[Badge] 推荐卡片未读:', inbox, '被动推荐未读:', interestUnread, '总计:', totalInboxUnread)
 
       setInboxUnreadCount(totalInboxUnread)
+
+      // 日志8：打印relationships badge详情
+      console.log('[Badge Debug] Relationships badge:', {
+        pending: relationships.pendingCount,
+        chat_unread: relationships.chatUnread,
+        total: relationships.total,
+        by_case_id: relationships.byCaseId,
+      })
+
       setRelationshipsBadge(relationships.total)
       globalInboxUnreadCount = totalInboxUnread
       sessionStorage.setItem('inbox-unread-count', String(totalInboxUnread))

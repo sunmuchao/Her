@@ -45,6 +45,7 @@ import {
 } from '@/lib/api/endpoints/valuesAuction'
 import { ValuesAuctionCardRenderer } from '@/components/values-auction'
 import { useSearchParams } from 'next/navigation'
+import { fetchRecommendationCards, markRecommendationCardsRead } from '@/lib/api/endpoints/recommendation'
 
 const PSYCHOLOGY_XIAOYA_RESULT_DELAY_MS = 2000
 
@@ -189,6 +190,9 @@ function DiscoveryTimelineEntry({
 
   if (item.kind === 'message') {
     const isUser = item.type === 'user'
+    // 检测是否为"发送中"状态的临时消息
+    const isSending = item.content === '🎤 语音消息识别中...'
+
     return (
       <div className={cn('flex', isUser ? 'justify-end' : 'justify-start')}>
         <div className={cn('max-w-[80%]', isUser ? 'order-1' : '')}>
@@ -196,11 +200,29 @@ function DiscoveryTimelineEntry({
             className={cn(
               'rounded-2xl text-sm leading-relaxed whitespace-pre-line',
               isUser
-                ? 'bg-primary text-primary-foreground rounded-br-md px-3.5 py-2.5'
+                ? isSending
+                  ? 'bg-muted text-muted-foreground rounded-br-md px-3.5 py-2.5 animate-pulse'  // 发送中：灰色 + 脉冲动画
+                  : 'bg-primary text-primary-foreground rounded-br-md px-3.5 py-2.5'  // 正常：蓝色
                 : 'bg-card border border-border rounded-bl-md px-4 py-3',
             )}
           >
-            {isUser ? item.content : <XiaoyaRichText content={item.content} className="space-y-3.5" />}
+            {isUser ? (
+              <div className="flex items-center gap-2">
+                {isSending && (
+                  <div className="w-3 h-3 border-2 border-muted-foreground/30 border-t-muted-foreground rounded-full animate-spin" />
+                )}
+                <span>{item.content}</span>
+              </div>
+            ) : (
+              <XiaoyaRichText
+                content={item.content}
+                mediaType={item.mediaType}
+                mediaUrl={item.mediaUrl}
+                mediaMetadata={item.mediaMetadata}
+                autoPlayAudio={item.isNewMessage}  // 发现页新消息自动播放（类似豆包）
+                className="space-y-3.5"
+              />
+            )}
           </div>
           <p className={cn('text-[10px] text-muted-foreground mt-1', isUser ? 'text-right' : '')}>
             {item.timestamp}
@@ -253,7 +275,56 @@ export default function DiscoverPage({
     createNewSession,
     switchSession,
     removeSuggestedActions,
+    addTimelineItem,  // 新增：用于添加临时消息
+    removeTimelineItem,  // 新增：用于移除临时消息
   } = useDiscoverySession(onSessionIdChange)
+
+  // 用户打开发现页，立即标记所有未读为已读（推荐卡片 + 被动推荐）
+  useEffect(() => {
+    const profileId = getProfileId()
+    if (!profileId || typeof profileId !== 'number') return
+
+    async function markAllUnreadAsRead() {
+      try {
+        // 1. 标记所有推荐卡片为已读
+        const response = await fetchRecommendationCards(profileId as number)
+        const cards = response.cards || []
+        const cardIds = cards.filter((card) => card.card_id).map((card) => card.card_id!)
+
+        if (cardIds.length > 0) {
+          await markRecommendationCardsRead(profileId as number, cardIds)
+          console.log('[发现页已读] 标记了', cardIds.length, '张推荐卡片为已读')
+        }
+
+        // 2. 标记所有被动推荐为已查看（awaiting_reply → viewed）
+        const { fetchMyProxyIntroCases, markInterestCaseViewed } = await import('@/lib/api/endpoints/proxy-intro')
+        const proxyCasesResponse = await fetchMyProxyIntroCases()
+        const cases = proxyCasesResponse.cases || []
+
+        // 找到所有被动推荐case（role === 'candidate' && awaiting_reply）
+        const passiveCases = cases.filter(
+          (c) => c.role === 'candidate' && c.case_status === 'awaiting_reply'
+        )
+
+        if (passiveCases.length > 0) {
+          // 批量标记为已查看
+          for (const caseItem of passiveCases) {
+            if (caseItem.case_id) {
+              await markInterestCaseViewed({
+                caseId: String(caseItem.case_id),
+                source: 'discover_page_open',
+              })
+            }
+          }
+          console.log('[发现页已读] 标记了', passiveCases.length, '个被动推荐为已查看')
+        }
+      } catch (error) {
+        console.error('[发现页标记已读失败]:', error)
+      }
+    }
+
+    markAllUnreadAsRead()
+  }, []) // 组件加载时执行一次
 
   // 新增：会话列表显示状态
   const [showSessionList, setShowSessionList] = useState(false)
@@ -265,6 +336,9 @@ export default function DiscoverPage({
   }>({ pointerId: null, startY: 0 })
 
   // Voice input functionality - 按住说话、松开自动发送
+  // 临时消息ID，用于在语音识别过程中显示"发送中"状态
+  const [voiceTempMessageId, setVoiceTempMessageId] = useState<string | null>(null)
+
   const {
     isRecording,
     isProcessing,
@@ -276,10 +350,27 @@ export default function DiscoverPage({
     onTranscript: (text) => {
       // 语音识别完成后，自动发送消息（不再添加到输入框）
       if (text.trim()) {
+        // 【乐观更新】先移除"识别中"临时消息，再通过 submitTurn 显示真实消息
+        if (voiceTempMessageId) {
+          removeTimelineItem(voiceTempMessageId)
+        }
+        setVoiceTempMessageId(null)
         void submitTurn({ user_message: text.trim() })
+      } else {
+        // 识别失败，移除临时消息
+        if (voiceTempMessageId) {
+          removeTimelineItem(voiceTempMessageId)
+        }
+        setVoiceTempMessageId(null)
+        toast.error('未识别到语音内容')
       }
     },
     onError: (error) => {
+      // 识别错误，移除临时消息
+      if (voiceTempMessageId) {
+        removeTimelineItem(voiceTempMessageId)
+      }
+      setVoiceTempMessageId(null)
       toast.error(error)
     },
     maxDurationMs: 60000,
@@ -733,7 +824,7 @@ export default function DiscoverPage({
 
           {isTyping ? <TypingIndicator name="小雅" /> : null}
 
-          {/* Recording indicator - 作为一条特殊的消息显示 */}
+          {/* Recording indicator - 微信式录音提示 */}
           {isRecording && (
             <div className="flex justify-end animate-fade-in-up">
               <div className="max-w-[80%]">
@@ -753,9 +844,8 @@ export default function DiscoverPage({
                       )}
                     />
                     <span className={cn('text-sm font-medium', isVoiceCanceling ? 'text-destructive' : 'text-primary')}>
-                      {isVoiceCanceling ? '松开取消' : '正在录音'}
+                      {isVoiceCanceling ? '松开取消' : formatRecordingTime(recordingDuration)}
                     </span>
-                    <span className="text-sm text-muted-foreground">{formatRecordingTime(recordingDuration)}</span>
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
                     {isVoiceCanceling ? '松开后将取消这条语音' : '松开发送 · 上滑取消'}
@@ -894,15 +984,8 @@ export default function DiscoverPage({
           </div>
         )}
 
-        {isProcessing && (
-          <div className="flex flex-col items-start gap-2 mb-2 px-3 py-2 bg-secondary rounded-lg animate-fade-in-up">
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-              <span className="text-sm text-muted-foreground">识别中...</span>
-            </div>
-            <p className="text-xs text-muted-foreground">首次使用时模型需要下载，请耐心等待（约 30-60 秒）</p>
-          </div>
-        )}
+        {/* 微信式设计：不显示"识别中..."等待状态，让用户感觉已即时发送 */}
+        {/* isProcessing 状态下不显示任何UI提示，后台静默处理 */}
 
         <div className="flex items-center gap-2 bg-secondary rounded-xl px-3 py-2 transition-all focus-within:ring-2 focus-within:ring-primary/30">
           <button
@@ -962,6 +1045,17 @@ export default function DiscoverPage({
                 if (isVoiceCancelingRef.current) {
                   cancelRecording()
                 } else {
+                  // 【乐观更新】松开麦克风时立即显示"发送中"临时消息
+                  const tempId = `voice-temp-${Date.now()}`
+                  setVoiceTempMessageId(tempId)
+                  addTimelineItem({
+                    kind: 'message',
+                    id: tempId,
+                    type: 'user',
+                    content: '语音消息识别中...',  // 特殊标记：发送中状态
+                    timestamp: '刚刚',
+                    isNewMessage: true,
+                  })
                   stopRecording()
                 }
               }

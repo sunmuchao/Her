@@ -526,56 +526,106 @@ describe('useVoiceInput', () => {
     })
   })
 
-  describe('recording duration tracking', () => {
-    it('should track recording duration correctly', async () => {
+  describe('volume detection', () => {
+    it('should report volume changes via onVolumeChange callback', async () => {
       const mockStream = {
         getTracks: vi.fn().mockReturnValue([{ stop: vi.fn() }]),
       }
       mockGetUserMedia.mockResolvedValue(mockStream)
 
-      const mockRecorder = {
-        start: vi.fn(),
-        stop: vi.fn(),
-        state: 'recording',
-        ondataavailable: null,
-        onstop: null,
-        onerror: null,
+      const mockAudioContext = {
+        resume: vi.fn().mockResolvedValue(undefined),
+        createMediaStreamSource: vi.fn().mockReturnValue({
+          connect: vi.fn(),
+        }),
+        createAnalyser: vi.fn().mockReturnValue({
+          fftSize: 256,
+          smoothingTimeConstant: 0.8,
+          frequencyBinCount: 128,
+          getByteFrequencyData: vi.fn((dataArray) => {
+            // Simulate volume level
+            for (let i = 0; i < dataArray.length; i++) {
+              dataArray[i] = 50 // Medium volume
+            }
+          }),
+          connect: vi.fn(),
+        }),
+        createScriptProcessor: vi.fn().mockReturnValue({
+          onaudioprocess: null,
+          connect: vi.fn(),
+        }),
+        sampleRate: 48000,
+        destination: {},
+        close: vi.fn().mockResolvedValue(undefined),
       }
-      mockMediaRecorder.mockReturnValue(mockRecorder)
 
-      const { result } = renderHook(() => useVoiceInput())
+      global.AudioContext = vi.fn().mockReturnValue(mockAudioContext) as any
+      ;(global as any).webkitAudioContext = undefined
 
-      expect(result.current.recordingDuration).toBe(0)
+      const onVolumeChange = vi.fn()
+
+      const { result } = renderHook(() =>
+        useVoiceInput({
+          onVolumeChange,
+        }),
+      )
 
       await act(async () => {
         await result.current.startRecording()
       })
 
-      // Wait for timer to increment
+      // Wait for volume check timer (100ms interval)
       await act(async () => {
         await new Promise(resolve => setTimeout(resolve, 150))
       })
 
-      expect(result.current.recordingDuration).toBeGreaterThan(0)
+      // Should have called onVolumeChange with volume value
+      expect(onVolumeChange).toHaveBeenCalled()
+      expect(onVolumeChange.mock.calls[0][0]).toBeGreaterThanOrEqual(0)
+      expect(onVolumeChange.mock.calls[0][0]).toBeLessThanOrEqual(100)
     })
 
-    it('should reset recording duration when recording stops', async () => {
+    it('should report zero volume for silent audio', async () => {
       const mockStream = {
         getTracks: vi.fn().mockReturnValue([{ stop: vi.fn() }]),
       }
       mockGetUserMedia.mockResolvedValue(mockStream)
 
-      const mockRecorder = {
-        start: vi.fn(),
-        stop: vi.fn(),
-        state: 'recording',
-        ondataavailable: null,
-        onstop: null,
-        onerror: null,
+      const mockAudioContext = {
+        resume: vi.fn().mockResolvedValue(undefined),
+        createMediaStreamSource: vi.fn().mockReturnValue({
+          connect: vi.fn(),
+        }),
+        createAnalyser: vi.fn().mockReturnValue({
+          fftSize: 256,
+          smoothingTimeConstant: 0.8,
+          frequencyBinCount: 128,
+          getByteFrequencyData: vi.fn((dataArray) => {
+            // Simulate silent audio
+            for (let i = 0; i < dataArray.length; i++) {
+              dataArray[i] = 0 // Zero volume
+            }
+          }),
+          connect: vi.fn(),
+        }),
+        createScriptProcessor: vi.fn().mockReturnValue({
+          onaudioprocess: null,
+          connect: vi.fn(),
+        }),
+        sampleRate: 48000,
+        destination: {},
+        close: vi.fn().mockResolvedValue(undefined),
       }
-      mockMediaRecorder.mockReturnValue(mockRecorder)
 
-      const { result } = renderHook(() => useVoiceInput())
+      global.AudioContext = vi.fn().mockReturnValue(mockAudioContext) as any
+
+      const onVolumeChange = vi.fn()
+
+      const { result } = renderHook(() =>
+        useVoiceInput({
+          onVolumeChange,
+        }),
+      )
 
       await act(async () => {
         await result.current.startRecording()
@@ -585,18 +635,223 @@ describe('useVoiceInput', () => {
         await new Promise(resolve => setTimeout(resolve, 150))
       })
 
-      expect(result.current.recordingDuration).toBeGreaterThan(0)
+      expect(onVolumeChange).toHaveBeenCalledWith(0)
+    })
+  })
+
+  describe('hallucination detection', () => {
+    it('should filter out YouTube hallucination patterns', async () => {
+      const mockStream = {
+        getTracks: vi.fn().mockReturnValue([{ stop: vi.fn() }]),
+      }
+      mockGetUserMedia.mockResolvedValue(mockStream)
+
+      const audioChunks = [new Blob(['audio data'], { type: 'audio/webm' })]
+
+      const mockRecorder = {
+        start: vi.fn(),
+        stop: vi.fn(),
+        state: 'recording',
+        mimeType: 'audio/webm',
+        ondataavailable: null,
+        onstop: null,
+        onerror: null,
+      }
+      mockMediaRecorder.mockReturnValue(mockRecorder)
+
+      const onTranscript = vi.fn()
+      const onError = vi.fn()
+
+      const { result } = renderHook(() =>
+        useVoiceInput({
+          onTranscript,
+          onError,
+        }),
+      )
+
+      await act(async () => {
+        await result.current.startRecording()
+      })
+
+      act(() => {
+        if (mockRecorder.ondataavailable) {
+          mockRecorder.ondataavailable({ data: audioChunks[0] })
+        }
+      })
+
+      // Mock hallucination result (YouTube ending words)
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true,
+          text: '请不吝点赞订阅转发打赏支持明镜与点点栏目',
+          language: 'zh',
+          language_probability: 0.99,
+          segments: [],
+        }),
+      })
 
       act(() => {
         result.current.stopRecording()
       })
 
-      // Duration should be reset in cleanup (after onstop)
+      await act(async () => {
+        if (mockRecorder.onstop) {
+          mockRecorder.onstop()
+        }
+      })
+
       await act(async () => {
         await new Promise(resolve => setTimeout(resolve, 100))
       })
 
-      expect(result.current.recordingDuration).toBe(0)
+      // Backend should filter hallucination and return empty text
+      // Frontend should handle empty result
+      expect(onTranscript).not.toHaveBeenCalled()
+      expect(onError).toHaveBeenCalled()
+    })
+  })
+
+  describe('network timeout handling', () => {
+    it('should handle request timeout gracefully', async () => {
+      const mockStream = {
+        getTracks: vi.fn().mockReturnValue([{ stop: vi.fn() }]),
+      }
+      mockGetUserMedia.mockResolvedValue(mockStream)
+
+      const audioChunks = [new Blob(['audio data'], { type: 'audio/webm' })]
+
+      const mockRecorder = {
+        start: vi.fn(),
+        stop: vi.fn(),
+        state: 'recording',
+        mimeType: 'audio/webm',
+        ondataavailable: null,
+        onstop: null,
+        onerror: null,
+      }
+      mockMediaRecorder.mockReturnValue(mockRecorder)
+
+      const onError = vi.fn()
+
+      const { result } = renderHook(() =>
+        useVoiceInput({
+          onError,
+        }),
+      )
+
+      await act(async () => {
+        await result.current.startRecording()
+      })
+
+      act(() => {
+        if (mockRecorder.ondataavailable) {
+          mockRecorder.ondataavailable({ data: audioChunks[0] })
+        }
+      })
+
+      // Mock timeout (AbortError)
+      const abortError = new Error('The operation was aborted')
+      abortError.name = 'AbortError'
+      mockFetch.mockRejectedValue(abortError)
+
+      act(() => {
+        result.current.stopRecording()
+      })
+
+      await act(async () => {
+        if (mockRecorder.onstop) {
+          mockRecorder.onstop()
+        }
+      })
+
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 100))
+      })
+
+      expect(onError).toHaveBeenCalledWith('语音识别超时，首次使用时模型需要下载，请稍后再试')
+    })
+  })
+
+  describe('press-hold mode', () => {
+    it('should support press-hold recording mode', async () => {
+      const mockStream = {
+        getTracks: vi.fn().mockReturnValue([{ stop: vi.fn() }]),
+      }
+      mockGetUserMedia.mockResolvedValue(mockStream)
+
+      const mockRecorder = {
+        start: vi.fn(),
+        stop: vi.fn(),
+        state: 'recording',
+        ondataavailable: null,
+        onstop: null,
+        onerror: null,
+      }
+      mockMediaRecorder.mockReturnValue(mockRecorder)
+
+      const { result } = renderHook(() => useVoiceInput())
+
+      // Press button (start recording)
+      await act(async () => {
+        await result.current.startRecording()
+      })
+
+      expect(result.current.state).toBe('recording')
+
+      // Hold for some time
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 1000))
+      })
+
+      expect(result.current.recordingDuration).toBeGreaterThanOrEqual(1000)
+
+      // Release button (stop recording)
+      act(() => {
+        result.current.stopRecording()
+      })
+
+      expect(mockRecorder.stop).toHaveBeenCalled()
+    })
+
+    it('should cancel recording when swipe up detected', async () => {
+      const mockStream = {
+        getTracks: vi.fn().mockReturnValue([{ stop: vi.fn() }]),
+      }
+      mockGetUserMedia.mockResolvedValue(mockStream)
+
+      const mockRecorder = {
+        start: vi.fn(),
+        stop: vi.fn(),
+        state: 'recording',
+        ondataavailable: null,
+        onstop: null,
+        onerror: null,
+      }
+      mockMediaRecorder.mockReturnValue(mockRecorder)
+
+      const onTranscript = vi.fn()
+
+      const { result } = renderHook(() =>
+        useVoiceInput({
+          onTranscript,
+        }),
+      )
+
+      await act(async () => {
+        await result.current.startRecording()
+      })
+
+      expect(result.current.state).toBe('recording')
+
+      // Simulate swipe up cancel (call cancelRecording directly)
+      act(() => {
+        result.current.cancelRecording()
+      })
+
+      expect(mockRecorder.stop).toHaveBeenCalled()
+      expect(result.current.state).toBe('idle')
+      expect(onTranscript).not.toHaveBeenCalled()
     })
   })
 })

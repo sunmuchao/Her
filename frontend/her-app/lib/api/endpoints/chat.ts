@@ -91,11 +91,48 @@ export async function fetchRelationshipsUnreadSummary(): Promise<{
   try {
     const proxyCases = await fetchMyProxyIntroCases()
     const cases = proxyCases.cases || []
-    // 只统计发起方（requester/matcher）的pending case
-    // 排除被动推荐case（role === 'candidate'），这些显示在Discover页的inbox badge
-    const pendingCount = cases.filter((item) =>
-      (item.can_reply || item.can_open_chat) && item.role !== 'candidate'
-    ).length
+
+    // 日志1：打印所有case的详细信息
+    console.log('[Badge Debug] 所有cases:', cases.map((item) => ({
+      case_id: item.case_id,
+      role: item.role,
+      case_status: item.case_status,
+      can_reply: item.can_reply,
+      can_open_chat: item.can_open_chat,
+      main_conversation_id: item.main_conversation_id,
+      counterpart_name: item.counterpart_name,
+    })))
+
+    // 统一口径：pendingCount计算逻辑与buildPendingIntroItems完全一致
+    // 避免badge数字与页面显示不一致
+    const pendingCases = cases.filter((item) => {
+      // 排除已关闭的case（closed、declined、timed_out）
+      const status = item.case_status || ''
+      if (status === 'closed' || status === 'declined' || status === 'timed_out') {
+        return false
+      }
+
+      // 发起方（requester/matcher）：显示所有未开聊的case（包括等待对方决定的）
+      // 但排除已查看的case（viewed状态，用户已看到但未决定）
+      if (item.role !== 'candidate') {
+        return !item.main_conversation_id && status !== 'viewed'
+      }
+      // 被推荐方（candidate）：只显示已接受或已开聊的case（已建立关系）
+      // 被动推荐（awaiting_reply、viewed）不显示在关系页，显示在Discover页inbox
+      return item.case_status === 'accepted' || item.main_conversation_id
+    })
+
+    const pendingCount = pendingCases.length
+
+    // 日志2：打印pendingCount计算的详细信息
+    console.log('[Badge Debug] Pending cases:', pendingCases.map((item) => ({
+      case_id: item.case_id,
+      role: item.role,
+      case_status: item.case_status,
+      counterpart_name: item.counterpart_name,
+      reason: item.role !== 'candidate' ? '发起方未开聊' : '被推荐方已接受',
+    })))
+    console.log('[Badge Debug] pendingCount:', pendingCount)
 
     if (!timelineActorId || !participantId) {
       return {
@@ -108,7 +145,15 @@ export async function fetchRelationshipsUnreadSummary(): Promise<{
 
     const activeCaseIds = [...new Set(
       cases
-        .filter((item) => item.main_conversation_id && item.case_id)
+        .filter((item) => {
+          // 只统计未关闭的case（排除closed、declined、timed_out）
+          const status = item.case_status || ''
+          if (status === 'closed' || status === 'declined' || status === 'timed_out') {
+            return false
+          }
+          // 必须有main_conversation_id（已开聊）
+          return item.main_conversation_id && item.case_id
+        })
         .map((item) => String(item.case_id)),
     )]
 
@@ -122,9 +167,23 @@ export async function fetchRelationshipsUnreadSummary(): Promise<{
     const byCaseId = timelines.reduce<Record<string, number>>((acc, item) => {
       const unread = countUnreadMessagesFromTimeline(item.data, participantId)
       acc[item.caseId] = unread
+
+      // 日志3：打印每个case的chat unread详细信息
+      if (unread > 0) {
+        console.log('[Badge Debug] Chat unread case:', {
+          case_id: item.caseId,
+          unread_count: unread,
+          has_timeline: !!item.data,
+        })
+      }
+
       return acc
     }, {})
     const chatUnread = Object.values(byCaseId).reduce((sum, value) => sum + value, 0)
+
+    // 日志4：打印chatUnread总数
+    console.log('[Badge Debug] chatUnread:', chatUnread)
+    console.log('[Badge Debug] total badge:', chatUnread + pendingCount)
 
     return {
       total: chatUnread + pendingCount,
@@ -204,6 +263,16 @@ export type PrivateMessage = {
   body: string
   createdAt: string
   isFromMe: boolean
+  mediaType?: string  // 消息类型（text/image/audio）
+  mediaUrl?: string   // 媒体文件URL
+  mediaMetadata?: {   // 媒体元数据
+    duration_ms?: number
+    format?: string
+    size?: number
+    tts_engine?: string
+    voice?: string
+  }
+  isNewMessage?: boolean  // 是否为新消息（用于自动播放语音）
 }
 
 export async function fetchPrivateMessages(
@@ -216,15 +285,29 @@ export async function fetchPrivateMessages(
       author_id: string
       body: string
       created_at: string
+      metadata_json?: {
+        media_type?: string
+        media_url?: string
+        media_metadata?: {
+          duration_ms?: number
+          format?: string
+          size?: number
+          tts_engine?: string
+          voice?: string
+        }
+      }
     }>
   }>(`/v2/chat/conversations/${conversationId}/messages${queryString({ requester_id: requesterId })}`)
-  
+
   return (data.messages || []).map((m) => ({
     id: String(m.message_id),
     authorId: m.author_id,
     body: m.body,
     createdAt: m.created_at,
     isFromMe: m.author_id === requesterId,
+    mediaType: m.metadata_json?.media_type,
+    mediaUrl: m.metadata_json?.media_url,
+    mediaMetadata: m.metadata_json?.media_metadata,
   }))
 }
 

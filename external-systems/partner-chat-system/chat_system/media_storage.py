@@ -244,6 +244,147 @@ def upload_image(
     }
 
 
+def upload_audio(
+    data: bytes,
+    filename: str,
+    user_id: str,
+    *,
+    metadata: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Upload audio file to MinIO storage.
+
+    Args:
+        data: Audio bytes (MP3/WAV format)
+        filename: Original filename
+        user_id: User ID for storage path
+        metadata: Additional metadata (tts_engine, voice, etc.)
+
+    Returns:
+        dict with media_id, media_url, content_type, size, duration_ms, format
+
+    Raises:
+        RuntimeError: If MinIO unavailable or upload fails
+    """
+    if not MINIO_AVAILABLE:
+        raise RuntimeError("MinIO client not available; install minio package")
+
+    # Quick health check before attempting upload
+    config = _get_minio_config()
+    endpoint = config["endpoint"]
+    try:
+        import socket
+        host, port_str = endpoint.split(":")
+        port = int(port_str)
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(2)
+            if sock.connect_ex((host, port)) != 0:
+                raise RuntimeError(
+                    f"MinIO service unavailable at {endpoint}. "
+                    f"Start it with: docker compose up -d minio"
+                )
+    except (ValueError, OSError) as e:
+        LOGGER.warning("MinIO endpoint check failed: %s", e)
+
+    client = _get_minio_client()
+    if client is None:
+        raise RuntimeError(
+            f"Failed to initialize MinIO client for endpoint {endpoint}. "
+            f"Check if MinIO is running: docker compose up -d minio"
+        )
+    config = _get_minio_config()
+    bucket = config["bucket"]
+    _ensure_bucket_exists(client, bucket)
+
+    # Detect audio format from magic number or filename
+    content_type = None
+    audio_format = None
+
+    # MP3 magic number
+    if data[:3] == b"ID3" or data[:2] == b"\xFF\xFB" or data[:2] == b"\xFF\xFA":
+        content_type = "audio/mpeg"
+        audio_format = "mp3"
+    # WAV magic number
+    elif data[:4] == b"RIFF" and data[8:12] == b"WAVE":
+        content_type = "audio/wav"
+        audio_format = "wav"
+    # Default from filename extension
+    else:
+        ext = filename.lower().split(".")[-1] if "." in filename else "mp3"
+        if ext == "mp3" or ext == "mpeg":
+            content_type = "audio/mpeg"
+            audio_format = "mp3"
+        elif ext == "wav":
+            content_type = "audio/wav"
+            audio_format = "wav"
+        elif ext == "ogg":
+            content_type = "audio/ogg"
+            audio_format = "ogg"
+        elif ext == "m4a" or ext == "mp4":
+            content_type = "audio/mp4"
+            audio_format = "m4a"
+        else:
+            content_type = "audio/mpeg"  # Default to MP3
+            audio_format = "mp3"
+
+    object_key = _generate_object_key(user_id, content_type)
+    size = len(data)
+    content_hash = hashlib.sha256(data).hexdigest()
+
+    minio_metadata = {
+        "user-id": user_id,
+        "original-filename": filename,
+        "content-hash": content_hash,
+        "uploaded-at": datetime.now(timezone.utc).isoformat(),
+        "audio-format": audio_format,
+    }
+    if metadata:
+        for k, v in metadata.items():
+            if v is not None:
+                minio_metadata[k] = str(v)
+
+    client.put_object(
+        bucket,
+        object_key,
+        io.BytesIO(data),
+        size,
+        content_type=content_type,
+        metadata=minio_metadata,
+    )
+
+    endpoint = config["endpoint"]
+    secure = config["secure"]
+    protocol = "https" if secure else "http"
+    media_url = f"{protocol}://{endpoint}/{bucket}/{object_key}"
+
+    # Calculate duration (optional, requires pydub)
+    duration_ms = None
+    try:
+        from pydub import AudioSegment
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix=f".{audio_format}", delete=False) as tmp:
+            tmp.write(data)
+            tmp_path = tmp.name
+        audio_segment = AudioSegment.from_file(tmp_path, format=audio_format)
+        duration_ms = len(audio_segment)
+        os.unlink(tmp_path)
+    except ImportError:
+        LOGGER.warning("pydub not available; cannot calculate audio duration")
+    except Exception as e:
+        LOGGER.warning(f"Failed to calculate audio duration: {e}")
+
+    return {
+        "media_id": object_key,
+        "media_url": media_url,
+        "content_type": content_type,
+        "size": size,
+        "content_hash": content_hash,
+        "bucket": bucket,
+        "object_key": object_key,
+        "duration_ms": duration_ms,
+        "format": audio_format,
+    }
+
+
 def get_media_url(object_key: str) -> str | None:
     config = _get_minio_config()
     endpoint = config["endpoint"]

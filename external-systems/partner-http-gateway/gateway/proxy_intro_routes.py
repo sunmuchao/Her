@@ -148,6 +148,213 @@ def _build_case_view(
     }
 
 
+def _push_proxy_intro_to_discovery_timeline(
+    case: dict[str, Any],
+    candidate_profile_id: int,
+    now: Any,
+) -> None:
+    """立即推送被动推荐到候选人的discovery timeline（有人想认识你）
+
+    逻辑：
+    1. 打开discovery数据库连接
+    2. 查询候选人的最新discovery session（按updated_at降序）
+    3. 如果没有session，跳过（下次创建session时会推送）
+    4. 获取发起方基本信息（从案件数据中提取）
+    5. 构建候选人卡片
+    6. 在timeline中插入assistant_message和result_group
+    7. 更新session的latest_view_json
+    8. 标记案件为已推送（outreach_payload.discovery_pushed=True）
+
+    Args:
+        case: 被动推荐案件数据
+        candidate_profile_id: 候选人的profile_id（被推荐方）
+        now: 当前时间
+    """
+    import json
+    import logging
+    from datetime import datetime
+
+    from her_external_systems import connect_external_db, json_dumps, json_loads, row_to_dict
+    from outer_mysql_compat import connect_mysql_repo_db
+
+    _logger = logging.getLogger(__name__)
+    _logger.info(
+        "【推送开始】case_id=%s, candidate_profile_id=%s",
+        case.get("case_id"),
+        candidate_profile_id,
+    )
+
+    # 1. 打开discovery数据库连接
+    discovery_dsn = os.environ.get(
+        "PARTNER_DISCOVERY_DB",
+        "mysql://root@127.0.0.1:3307/her_discovery",
+    )
+    conn = connect_mysql_repo_db(discovery_dsn, subsystem_name="discovery")
+
+    try:
+        # 2. 查询候选人的最新session（按updated_at降序）
+        row = conn.execute(
+            """
+            SELECT session_id, requester_id, profile_id, status, phase,
+                   state_json, latest_view_json, created_at, updated_at
+            FROM discovery_agent_sessions
+            WHERE profile_id = ?
+            ORDER BY updated_at DESC
+            LIMIT 1
+            """,
+            (int(candidate_profile_id),),
+        ).fetchone()
+
+        if not row:
+            # 候选人没有discovery session，跳过（下次创建session时会推送）
+            _logger.warning(
+                "【推送跳过】候选人没有discovery session: candidate_profile_id=%s",
+                candidate_profile_id,
+            )
+            conn.close()
+            return
+
+        session_data = row_to_dict(row)
+        _logger.info(
+            "【推送成功】找到session: session_id=%s",
+            session_data["session_id"],
+        )
+
+        view_json = str(session_data.get("latest_view_json") or "{}")
+        view = json_loads(view_json, {}) or {}
+
+        # 3. 获取发起方基本信息（从案件数据中提取）
+        requester_snapshot = dict(case.get("requester_profile_snapshot") or {})
+        self_profile = dict(requester_snapshot.get("self_profile") or {})
+
+        name = str(
+            self_profile.get("display_name")
+            or self_profile.get("name")
+            or self_profile.get("nickname")
+            or "对方"
+        ).strip()
+        age = self_profile.get("age")
+        city = self_profile.get("city")
+        occupation = self_profile.get("occupation") or self_profile.get("job")
+
+        requester_id = int(case.get("requester_id") or 0)
+        case_id = str(case.get("case_id") or "")
+
+        # 4. 构建候选人卡片（简化版本）
+        candidate_card = {
+            "card_id": f"candidate-{requester_id}",
+            "profile_id": requester_id,
+            "title": f"{name} {age or ''}",
+            "subtitle": f"{city or ''} · {occupation or ''}",
+            "cover_image_url": None,
+            "match_score": 0,  # 被动推荐没有匹配度分数
+            "reason_summary": "",
+            "open_profile_action": {
+                "type": "open_profile",
+                "profile_id": requester_id,
+            },
+        }
+
+        # 5. 在timeline中插入assistant_message和result_group
+        timeline = list(view.get("timeline") or [])
+
+        # 检查是否已经推送过（避免重复推送）
+        already_pushed = any(
+            str(item.get("item_id") or "").startswith(f"proxy-intro-msg-{case_id}")
+            for item in timeline
+        )
+        if already_pushed:
+            _logger.warning(
+                "【推送跳过】案件已推送: case_id=%s",
+                case_id,
+            )
+            conn.close()
+            return
+
+        # 插入消息
+        timeline.append({
+            "item_type": "assistant_message",
+            "item_id": f"proxy-intro-msg-{case_id}",
+            "body": f"有人想认识你：{name}，{age}岁{city or ''}{occupation or ''}",
+            "created_at": now.isoformat() if hasattr(now, 'isoformat') else str(now),
+        })
+
+        # 插入候选人卡片
+        timeline.append({
+            "item_type": "result_group",
+            "item_id": f"proxy-intro-group-{case_id}",
+            "title": "有人想认识你",
+            "cards": [candidate_card],
+        })
+
+        # 6. 更新session的latest_view_json
+        view["timeline"] = timeline
+        updated_at = datetime.now()
+
+        conn.execute(
+            """
+            UPDATE discovery_agent_sessions
+            SET latest_view_json = ?, updated_at = ?
+            WHERE session_id = ?
+            """,
+            (
+                json_dumps(view),
+                updated_at,
+                str(session_data["session_id"]),
+            ),
+        )
+        conn.commit()
+
+        _logger.info(
+            "【推送成功】timeline已更新: session_id=%s, timeline长度=%d",
+            session_data["session_id"],
+            len(timeline),
+        )
+
+        # 7. 标记案件为已推送（更新proxy_intro数据库）
+        outreach_payload = dict(case.get("outreach_payload") or {})
+        outreach_payload["discovery_pushed"] = True
+
+        # 打开proxy_intro数据库连接
+        proxy_intro_dsn = os.environ.get(
+            "PARTNER_MATCHMAKING_DB",
+            "mysql://root@127.0.0.1:3307/her_matchmaking",
+        )
+        proxy_conn = connect_mysql_repo_db(proxy_intro_dsn, subsystem_name="matchmaking")
+        try:
+            proxy_conn.execute(
+                """
+                UPDATE proxy_intro_cases
+                SET outreach_payload_json = ?
+                WHERE case_id = ?
+                """,
+                (
+                    json.dumps(outreach_payload, ensure_ascii=False),
+                    case_id,
+                ),
+            )
+            proxy_conn.commit()
+
+            _logger.info(
+                "【推送成功】案件已标记: case_id=%s, discovery_pushed=True",
+                case_id,
+            )
+        finally:
+            proxy_conn.close()
+
+    except Exception as e:
+        _logger.error(
+            "【推送失败】内部错误: candidate_profile_id=%s, error=%s",
+            candidate_profile_id,
+            e,
+            exc_info=True,
+        )
+        raise  # 抛出异常，让外层捕获并静默失败
+    finally:
+        if conn:
+            conn.close()
+
+
 def rest_proxy_intro_create_request(
     gateway: ProxyIntroGateway,
     environ: dict[str, Any],
@@ -176,6 +383,25 @@ def rest_proxy_intro_create_request(
         now=now,
         payload={"source": str(body.get("source") or "recommendation_detail")},
     )
+
+    # ✅ 新增：立即推送被动推荐到候选人的discovery timeline（有人想认识你）
+    try:
+        _push_proxy_intro_to_discovery_timeline(
+            case=case,
+            candidate_profile_id=candidate_id,  # B的profile_id（被推荐方）
+            now=now,
+        )
+    except Exception as e:
+        # 推送失败不阻塞主流程，静默失败（日志记录）
+        import logging
+        _logger = logging.getLogger(__name__)
+        _logger.error(
+            "推送被动推荐到discovery timeline失败: case_id=%s, candidate_id=%s, error=%s",
+            case.get("case_id"),
+            candidate_id,
+            e,
+        )
+
     principal = gateway._resolve_end_user_principal(environ, require_profile=True)
     return 201, {
         "case": _json_safe(_build_case_view(gateway, case, viewer_profile_id=int(principal.profile_id))),

@@ -82,7 +82,7 @@ export function buildActiveRelationships(
   xiaoyaUnreadByCaseId: Record<string, XiaoyaUnreadData>,
   pinnedIds: Record<string, boolean> = {},
 ): ActiveRelationship[] {
-  return cases
+  const result = cases
     .filter((item) => {
       // 过滤掉已关闭的 case（closed, declined, timed_out）
       const status = item.case_status || ''
@@ -115,6 +115,17 @@ export function buildActiveRelationships(
       }
     })
     .sort((a, b) => sortByPriority(a, b, pinnedIds))
+
+  // 日志6：打印页面构建的activeRelationships详细信息
+  console.log('[Page Debug] activeRelationships:', result.map((item) => ({
+    caseId: item.caseId,
+    name: item.name,
+    unreadCount: item.unreadCount,
+    hasConversation: true,
+  })))
+  console.log('[Page Debug] activeRelationships count:', result.length)
+
+  return result
 }
 
 /**
@@ -127,8 +138,14 @@ export function buildActiveRelationships(
  * @returns 牵线中项数组
  */
 export function buildPendingIntroItems(cases: ProxyIntroCase[]): PendingIntroItem[] {
-  return cases
+  const result = cases
     .filter((item) => {
+      // 排除已关闭的case（closed、declined、timed_out）
+      const status = item.case_status || ''
+      if (status === 'closed' || status === 'declined' || status === 'timed_out') {
+        return false
+      }
+
       // 排除所有作为被请求方的案件（无论什么状态）
       // 因为这些案件B还没做出决定，不应该出现在关系页
       // 只有B已接受或已开聊才算"建立关系"，才显示在关系页
@@ -139,12 +156,25 @@ export function buildPendingIntroItems(cases: ProxyIntroCase[]): PendingIntroIte
         return isAccepted || hasConversation
       }
       // 其他情况：排除已开聊的案件（这些显示在"正在进行中"）
-      return !item.main_conversation_id
+      // 排除已查看的case（viewed状态，用户已看到但未决定）
+      return !item.main_conversation_id && status !== 'viewed'
     })
     .map((item) => ({
       ...item,
       waitingDays: getWaitingDays(item),
     }))
+
+  // 日志5：打印页面构建的pendingIntroItems详细信息
+  console.log('[Page Debug] pendingIntroItems:', result.map((item) => ({
+    case_id: item.case_id,
+    role: item.role,
+    case_status: item.case_status,
+    counterpart_name: item.counterpart_name,
+    main_conversation_id: item.main_conversation_id,
+  })))
+  console.log('[Page Debug] pendingIntroItems count:', result.length)
+
+  return result
 }
 
 /**

@@ -30,9 +30,80 @@ LOGGER = logging.getLogger(__name__)
 _WHISPER_MODEL: WhisperModel | None = None
 
 SUPPORTED_AUDIO_FORMATS = {"wav", "webm", "ogg", "mp4", "m4a", "mpeg", "mp3"}
+# Whisper幻觉检测模式（扩展YouTube常见结尾词，包含简体和繁体中文）
 SUSPICIOUS_HALLUCINATION_PATTERNS = (
+    # 字幕组标识（简体+繁体）
     re.compile(r"字幕\s*by", re.IGNORECASE),
+    re.compile(r"字幕組", re.IGNORECASE),  # 繁体
+    re.compile(r"字幕制作", re.IGNORECASE),
+    re.compile(r"字幕翻译", re.IGNORECASE),
+
+    # 特定人物/栏目名称（简体+繁体）
     re.compile(r"索兰娅"),
+    re.compile(r"明镜与点点", re.IGNORECASE),  # 简体
+    re.compile(r"明鏡與點點", re.IGNORECASE),  # 繁体
+    re.compile(r"一点点点", re.IGNORECASE),
+    re.compile(r"一點點點", re.IGNORECASE),  # 繁体
+
+    # YouTube视频结尾词（简体中文）
+    re.compile(r"请不吝[点赞订阅转发打赏关注分享]+", re.IGNORECASE),
+    re.compile(r"不吝点赞", re.IGNORECASE),
+    re.compile(r"点赞订阅", re.IGNORECASE),
+    re.compile(r"订阅转发", re.IGNORECASE),
+    re.compile(r"转发打赏", re.IGNORECASE),
+    re.compile(r"打赏支持", re.IGNORECASE),
+    re.compile(r"支持[\w]+栏目", re.IGNORECASE),
+    re.compile(r"点赞关注", re.IGNORECASE),
+    re.compile(r"关注分享", re.IGNORECASE),
+    re.compile(r"分享转发", re.IGNORECASE),
+
+    # YouTube视频结尾词（繁体中文）- 最常见的幻觉！
+    re.compile(r"請不吝[點贊訂閱轉發打賞關注分享]+", re.IGNORECASE),  # 繁体完整版
+    re.compile(r"不吝點贊", re.IGNORECASE),  # 繁体
+    re.compile(r"點贊訂閱", re.IGNORECASE),  # 繁体
+    re.compile(r"訂閱轉發", re.IGNORECASE),  # 繁体
+    re.compile(r"轉發打賞", re.IGNORECASE),  # 繁体
+    re.compile(r"打賞支持", re.IGNORECASE),  # 繁体
+    re.compile(r"支持[\w]+欄目", re.IGNORECASE),  # 繁体
+    re.compile(r"點贊關注", re.IGNORECASE),  # 繁体
+    re.compile(r"關注分享", re.IGNORECASE),  # 繁体
+    re.compile(r"分享轉發", re.IGNORECASE),  # 繁体
+
+    # YouTube常见感谢词（简体）
+    re.compile(r"谢谢观看", re.IGNORECASE),
+    re.compile(r"感谢观看", re.IGNORECASE),
+    re.compile(r"感谢大家的观看", re.IGNORECASE),
+    re.compile(r"感谢各位的观看", re.IGNORECASE),
+    re.compile(r"谢谢大家", re.IGNORECASE),
+    re.compile(r"谢谢各位", re.IGNORECASE),
+
+    # YouTube常见感谢词（繁体）
+    re.compile(r"謝謝觀看", re.IGNORECASE),  # 繁体
+    re.compile(r"感謝觀看", re.IGNORECASE),  # 繁体
+    re.compile(r"感謝大家的觀看", re.IGNORECASE),  # 繁体
+    re.compile(r"感謝各位的觀看", re.IGNORECASE),  # 繁体
+    re.compile(r"謝謝大家", re.IGNORECASE),  # 繁体
+    re.compile(r"謝謝各位", re.IGNORECASE),  # 繁体
+
+    # YouTube结尾再见词（简体）
+    re.compile(r"下期再见", re.IGNORECASE),
+    re.compile(r"我们下期再见", re.IGNORECASE),
+    re.compile(r"朋友们再见", re.IGNORECASE),
+    re.compile(r"下期视频", re.IGNORECASE),
+    re.compile(r"下个视频", re.IGNORECASE),
+
+    # YouTube结尾再见词（繁体）
+    re.compile(r"下期再見", re.IGNORECASE),  # 繁体
+    re.compile(r"我們下期再見", re.IGNORECASE),  # 繁体
+    re.compile(r"朋友們再見", re.IGNORECASE),  # 繁体
+    re.compile(r"下期視頻", re.IGNORECASE),  # 繁体
+    re.compile(r"下個視頻", re.IGNORECASE),  # 繁体
+
+    # 其他常见幻觉模式（简体+繁体）
+    re.compile(r"谢谢您的收看", re.IGNORECASE),
+    re.compile(r"感谢您的收看", re.IGNORECASE),
+    re.compile(r"謝謝您的收看", re.IGNORECASE),  # 繁体
+    re.compile(r"感謝您的收看", re.IGNORECASE),  # 繁体
 )
 LOW_AUDIO_DBFS_THRESHOLD = -35.0
 MAX_GAIN_DB = 30.0
@@ -222,8 +293,15 @@ def _transcribe_audio(audio_data: bytes, language: str = "zh", content_type: str
         LOGGER.info(
             f"Transcribing audio: format={audio_format}, "
             f"size={len(audio_data)} bytes, "
-            f"duration={conversion_metadata.get('duration_ms', 'unknown')}ms"
+            f"duration={conversion_metadata.get('duration_ms', 'unknown')}ms, "
+            f"dbfs={conversion_metadata.get('dbfs', 'unknown')}, "
+            f"applied_gain={conversion_metadata.get('applied_gain_db', 'none')}"
         )
+
+        # 检查音频音量级别（判断是否为静音）
+        dbfs = conversion_metadata.get('dbfs')
+        if dbfs is not None and dbfs < -40.0:
+            LOGGER.warning("[Whisper] 音频音量过低（dbfs=%.2f），可能是静音或噪音", dbfs)
 
         def run_transcription(*, vad_filter: bool) -> tuple[list[Any], Any]:
             segments_iter, transcription_info = model.transcribe(
@@ -238,18 +316,35 @@ def _transcribe_audio(audio_data: bytes, language: str = "zh", content_type: str
         segment_list, info = run_transcription(vad_filter=True)
         filtered_segments = segment_list
 
+        LOGGER.info("[Whisper] VAD识别结果: segments_count=%d, first_segment_text=%s",
+                    len(filtered_segments),
+                    filtered_segments[0].text if filtered_segments else "(empty)")
+
         # Extract full text
         full_text = "".join(segment.text for segment in filtered_segments)
         if not full_text.strip():
-            LOGGER.info("VAD-based transcription produced empty text; retrying without VAD")
+            LOGGER.warning("[Whisper] VAD识别结果为空，尝试不带VAD重新识别")
             segment_list, info = run_transcription(vad_filter=False)
             filtered_segments = segment_list
             full_text = "".join(segment.text for segment in filtered_segments)
 
+            LOGGER.info("[Whisper] 不带VAD识别结果: segments_count=%d, text_length=%d, text_preview=%s",
+                        len(filtered_segments),
+                        len(full_text),
+                        full_text[:50] if len(full_text) > 0 else "(empty)")
+        else:
+            LOGGER.info("[Whisper] VAD识别成功: text_length=%d, text_preview=%s",
+                        len(full_text),
+                        full_text[:50])
+
         if _is_suspicious_hallucination(full_text):
-            LOGGER.warning("Discarded suspicious hallucinated transcription: %r", full_text)
+            LOGGER.warning("[Whisper] 检测到幻觉内容，已丢弃: text=%r, matched_patterns=%s",
+                          full_text,
+                          [p.pattern for p in SUSPICIOUS_HALLUCINATION_PATTERNS if p.search(full_text.strip())])
             full_text = ""
             filtered_segments = []
+        else:
+            LOGGER.info("[Whisper] 幻觉检测通过: text_length=%d, is_hallucination=False", len(full_text))
 
         LOGGER.info(
             f"Transcription successful: language={info.language}, "
@@ -304,9 +399,14 @@ def dispatch_voice_rest(
     # POST /v1/voice/transcribe
     if path == "/v1/voice/transcribe" and method == "POST":
         try:
+            LOGGER.info("[voice_routes] 收到语音识别请求: method=%s, path=%s", method, path)
+
             # Read raw audio data from request body
             content_length = int(environ.get("CONTENT_LENGTH", 0))
+            LOGGER.info("[voice_routes] 请求体长度: content_length=%d", content_length)
+
             if content_length == 0:
+                LOGGER.error("[voice_routes] 音频数据为空: content_length=0")
                 return 400, {
                     "error": {
                         "code": "empty_audio",
@@ -316,10 +416,14 @@ def dispatch_voice_rest(
 
             # Read audio bytes
             audio_data = environ["wsgi.input"].read(content_length)
+            LOGGER.info("[voice_routes] 读取音频数据: size=%d bytes", len(audio_data))
 
             # Validate content type
             content_type = environ.get("CONTENT_TYPE", "")
+            LOGGER.info("[voice_routes] Content-Type: %s", content_type)
+
             if not content_type.startswith(("audio/", "application/octet-stream")):
+                LOGGER.error("[voice_routes] Content-Type 不支持: %s", content_type)
                 return 400, {
                     "error": {
                         "code": "invalid_content_type",
@@ -328,12 +432,9 @@ def dispatch_voice_rest(
                 }
 
             # Transcribe with content type for format detection
-            content_type = environ.get("CONTENT_TYPE", "")
-            LOGGER.info(
-                f"Transcribing audio: size={len(audio_data)} bytes, "
-                f"type={content_type}, format={content_type.split('/')[-1] if '/' in content_type else 'unknown'}"
-            )
+            LOGGER.info("[voice_routes] 开始语音识别...")
             result = _transcribe_audio(audio_data, language="zh", content_type=content_type)
+            LOGGER.info("[voice_routes] 语音识别完成: text_length=%d, language=%s", len(result["text"]), result["language"])
 
             return 200, {
                 "success": True,
@@ -344,7 +445,7 @@ def dispatch_voice_rest(
             }
 
         except Exception as e:
-            LOGGER.exception("Failed to transcribe audio")
+            LOGGER.exception("[voice_routes] 语音识别失败: %s", e)
             error_message = str(e)
             error_code = "transcription_failed"
 
@@ -352,6 +453,8 @@ def dispatch_voice_rest(
                 error_code = "audio_conversion_failed"
             elif "pydub not installed" in error_message or "ffmpeg" in error_message:
                 error_code = "audio_dependency_missing"
+
+            LOGGER.error("[voice_routes] 返回错误: code=%s, message=%s", error_code, error_message)
 
             return 500, {
                 "error": {

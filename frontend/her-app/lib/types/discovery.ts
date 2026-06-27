@@ -99,6 +99,18 @@ export type DiscoveryView = {
         overall_completeness?: number
       }
     }>
+    // 新增：媒体metadata字段（用于语音播放）
+    metadata?: {
+      media_type?: 'image' | 'video' | 'audio'
+      media_url?: string
+      media_metadata?: {
+        duration_ms?: number
+        format?: string
+        size?: number
+        tts_engine?: string
+        voice?: string
+      }
+    }
   }>
   criteria_chips?: Array<{ label?: string }>
   personality_trace?: {

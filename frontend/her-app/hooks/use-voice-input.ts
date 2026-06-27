@@ -8,6 +8,7 @@ interface UseVoiceInputOptions {
   onTranscript?: (text: string) => void
   onError?: (error: string) => void
   maxDurationMs?: number
+  onVolumeChange?: (volume: number) => void // 音量变化回调
 }
 
 interface UseVoiceInputReturn {
@@ -19,6 +20,7 @@ interface UseVoiceInputReturn {
   cancelRecording: () => void
   recordingDuration: number
   isSupported: boolean
+  currentVolume: number // 当前音量值（0-100）
 }
 
 type RecordingMode = 'pcm' | 'media'
@@ -95,12 +97,29 @@ async function transcribeAudioViaWhisper(audioBlob: Blob): Promise<string> {
   // 增加超时时间到 120 秒
   const TIMEOUT_MS = 120000
 
+  // 【关键日志】记录音频数据详情
+  console.log('[transcribeAudioViaWhisper] 开始语音识别:', {
+    blobSize: audioBlob.size,
+    blobType: audioBlob.type,
+    timestamp: new Date().toISOString(),
+  })
+
   // 创建 AbortController 用于超时控制
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS)
 
   try {
-    const response = await fetch('/api/gateway/v1/voice/transcribe', {
+    const requestUrl = '/api/gateway/v1/voice/transcribe'
+    console.log('[transcribeAudioViaWhisper] 发送请求:', {
+      url: requestUrl,
+      method: 'POST',
+      headers: {
+        'Content-Type': audioBlob.type || 'audio/webm',
+      },
+      bodySize: audioBlob.size,
+    })
+
+    const response = await fetch(requestUrl, {
       method: 'POST',
       body: audioBlob,
       headers: {
@@ -111,6 +130,15 @@ async function transcribeAudioViaWhisper(audioBlob: Blob): Promise<string> {
 
     clearTimeout(timeoutId)
 
+    console.log('[transcribeAudioViaWhisper] 收到响应:', {
+      status: response.status,
+      statusText: response.statusText,
+      ok: response.ok,
+      headers: {
+        contentType: response.headers.get('content-type'),
+      },
+    })
+
     if (!response.ok) {
       let errorMessage = '语音识别失败'
 
@@ -119,12 +147,19 @@ async function transcribeAudioViaWhisper(audioBlob: Blob): Promise<string> {
         const code = errorData.error?.code
         const message = errorData.error?.message
 
+        console.error('[transcribeAudioViaWhisper] 错误详情:', {
+          code,
+          message,
+          fullError: errorData,
+        })
+
         if (code === 'audio_dependency_missing' || code === 'audio_conversion_failed') {
           errorMessage = '音频格式转换失败，请检查网关的 ffmpeg、pydub 和 Whisper 依赖'
         } else if (typeof message === 'string' && message.trim()) {
           errorMessage = message
         }
-      } catch {
+      } catch (parseError) {
+        console.error('[transcribeAudioViaWhisper] 解析错误响应失败:', parseError)
         errorMessage = `语音识别失败 (${response.status})`
       }
 
@@ -132,14 +167,28 @@ async function transcribeAudioViaWhisper(audioBlob: Blob): Promise<string> {
     }
 
     const result = await response.json()
+    console.log('[transcribeAudioViaWhisper] 识别成功:', {
+      text: result.text,
+      language: result.language,
+      languageProbability: result.language_probability,
+      segmentsCount: result.segments?.length,
+    })
+
     return result.text || ''
   } catch (error) {
     clearTimeout(timeoutId)
 
     // 处理超时错误
     if (error instanceof Error && error.name === 'AbortError') {
+      console.error('[transcribeAudioViaWhisper] 请求超时')
       throw new Error('语音识别超时，首次使用时模型需要下载，请稍后再试')
     }
+
+    console.error('[transcribeAudioViaWhisper] 请求失败:', {
+      errorName: error instanceof Error ? error.name : 'Unknown',
+      errorMessage: error instanceof Error ? error.message : String(error),
+      errorStack: error instanceof Error ? error.stack : undefined,
+    })
 
     throw error
   }
@@ -149,9 +198,11 @@ export function useVoiceInput({
   onTranscript,
   onError,
   maxDurationMs = 60000,
+  onVolumeChange,
 }: UseVoiceInputOptions = {}): UseVoiceInputReturn {
   const [state, setState] = useState<VoiceInputState>('idle')
   const [recordingDuration, setRecordingDuration] = useState(0)
+  const [currentVolume, setCurrentVolume] = useState(0)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
@@ -166,6 +217,8 @@ export function useVoiceInput({
   const processorNodeRef = useRef<ScriptProcessorNode | null>(null)
   const pcmChunksRef = useRef<Float32Array[]>([])
   const pcmSampleRateRef = useRef(16000)
+  const analyserRef = useRef<AnalyserNode | null>(null)
+  const volumeCheckTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // 只需要 MediaRecorder API，不需要 Web Speech API
   const isSupported =
@@ -195,6 +248,10 @@ export function useVoiceInput({
       clearTimeout(maxDurationTimerRef.current)
       maxDurationTimerRef.current = null
     }
+    if (volumeCheckTimerRef.current) {
+      clearInterval(volumeCheckTimerRef.current)
+      volumeCheckTimerRef.current = null
+    }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop())
       streamRef.current = null
@@ -203,6 +260,10 @@ export function useVoiceInput({
       processorNodeRef.current.disconnect()
       processorNodeRef.current.onaudioprocess = null
       processorNodeRef.current = null
+    }
+    if (analyserRef.current) {
+      analyserRef.current.disconnect()
+      analyserRef.current = null
     }
     if (sourceNodeRef.current) {
       sourceNodeRef.current.disconnect()
@@ -218,6 +279,7 @@ export function useVoiceInput({
     recordingModeRef.current = null
     shouldIgnoreNextStopRef.current = false
     setRecordingDuration(0)
+    setCurrentVolume(0)
   }, [])
 
   useEffect(() => {
@@ -225,18 +287,32 @@ export function useVoiceInput({
   }, [cleanup])
 
   const processAudioViaWhisper = useCallback(async (audioBlob: Blob) => {
+    console.log('[processAudioViaWhisper] 开始处理音频:', {
+      state: 'processing',
+      blobSize: audioBlob.size,
+      blobType: audioBlob.type,
+      isEmpty: audioBlob.size === 0,
+    })
+
     setState('processing')
 
     try {
       const text = await transcribeAudioViaWhisper(audioBlob)
+      console.log('[processAudioViaWhisper] 识别结果:', {
+        text,
+        textLength: text.length,
+        hasContent: text.trim().length > 0,
+      })
+
       if (text.trim()) {
         onTranscript?.(text)
       } else {
+        console.warn('[processAudioViaWhisper] 未识别到内容')
         onError?.('未识别到语音内容，请确保麦克风正常工作')
       }
       setState('idle')
     } catch (err) {
-      console.error('[useVoiceInput] Whisper transcription error:', err)
+      console.error('[processAudioViaWhisper] Whisper transcription error:', err)
 
       // 根据错误类型提供更友好的提示
       let errorMessage = '语音识别失败，请重试'
@@ -285,6 +361,10 @@ export function useVoiceInput({
         await audioContext.resume()
 
         const sourceNode = audioContext.createMediaStreamSource(stream)
+        const analyser = audioContext.createAnalyser()
+        analyser.fftSize = 256
+        analyser.smoothingTimeConstant = 0.8
+
         const processorNode = audioContext.createScriptProcessor(4096, 1, 1)
 
         pcmChunksRef.current = []
@@ -293,14 +373,32 @@ export function useVoiceInput({
         audioContextRef.current = audioContext
         sourceNodeRef.current = sourceNode
         processorNodeRef.current = processorNode
+        analyserRef.current = analyser
 
         processorNode.onaudioprocess = (event) => {
           const channelData = event.inputBuffer.getChannelData(0)
           pcmChunksRef.current.push(new Float32Array(channelData))
         }
 
-        sourceNode.connect(processorNode)
+        // 音量检测：连接 analyser
+        sourceNode.connect(analyser)
+        analyser.connect(processorNode)
         processorNode.connect(audioContext.destination)
+
+        // 定时检测音量（每100ms）
+        volumeCheckTimerRef.current = setInterval(() => {
+          if (!analyserRef.current) return
+
+          const dataArray = new Uint8Array(analyser.frequencyBinCount)
+          analyser.getByteFrequencyData(dataArray)
+
+          // 计算平均音量（0-100）
+          const average = dataArray.reduce((a, b) => a + b, 0) / dataArray.length
+          const normalizedVolume = Math.min(100, Math.max(0, average))
+
+          setCurrentVolume(normalizedVolume)
+          onVolumeChange?.(normalizedVolume)
+        }, 100)
       } else {
         const mimeType = MediaRecorder.isTypeSupported('audio/webm')
           ? 'audio/webm'
@@ -320,14 +418,28 @@ export function useVoiceInput({
 
         recorder.onstop = () => {
           if (shouldIgnoreNextStopRef.current) {
+            console.log('[MediaRecorder.onstop] 忽略停止（取消录音）')
             cleanup()
             setState('idle')
             return
           }
 
+          console.log('[MediaRecorder.onstop] 录音停止，处理数据:', {
+            chunksCount: chunksRef.current.length,
+            totalSize: chunksRef.current.reduce((sum, chunk) => sum + chunk.size, 0),
+            mimeType: recorder.mimeType,
+          })
+
           const audioBlob = new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' })
 
+          console.log('[MediaRecorder.onstop] 生成音频 Blob:', {
+            blobSize: audioBlob.size,
+            blobType: audioBlob.type,
+            isEmpty: audioBlob.size === 0,
+          })
+
           if (audioBlob.size === 0) {
+            console.error('[MediaRecorder.onstop] 音频数据为空')
             cleanup()
             onError?.('录音时间太短或未采集到声音，请再试一次')
             setState('idle')
@@ -338,7 +450,10 @@ export function useVoiceInput({
           void processAudioViaWhisper(audioBlob)
         }
 
-        recorder.onerror = () => {
+        recorder.onerror = (event) => {
+          console.error('[MediaRecorder.onerror] 录音错误:', {
+            error: event,
+          })
           onError?.('录音失败')
           cleanup()
           setState('idle')
@@ -397,15 +512,32 @@ export function useVoiceInput({
   const stopRecording = useCallback(() => {
     if (state !== 'recording') return
 
+    console.log('[stopRecording] 停止录音:', {
+      state,
+      recordingMode: recordingModeRef.current,
+      recordingDuration: recordingDuration,
+      pcmChunksCount: pcmChunksRef.current.length,
+      mediaChunksCount: chunksRef.current.length,
+    })
+
     const recorder = mediaRecorderRef.current
     if (recordingModeRef.current === 'media') {
       if (recorder && recorder.state === 'recording') {
+        console.log('[stopRecording] MediaRecorder 停止:', {
+          recorderState: recorder.state,
+          mimeType: recorder.mimeType,
+        })
         if (typeof recorder.requestData === 'function') {
           recorder.requestData()
         }
         recorder.stop()
       }
     } else if (recordingModeRef.current === 'pcm') {
+      console.log('[stopRecording] PCM 模式处理:', {
+        chunksCount: pcmChunksRef.current.length,
+        totalSamples: pcmChunksRef.current.reduce((sum, chunk) => sum + chunk.length, 0),
+      })
+
       const mergedLength = pcmChunksRef.current.reduce((sum, chunk) => sum + chunk.length, 0)
       const merged = new Float32Array(mergedLength)
       let offset = 0
@@ -417,7 +549,15 @@ export function useVoiceInput({
       const downsampled = downsampleBuffer(merged, pcmSampleRateRef.current, 16000)
       const audioBlob = encodeWavFromFloat32(downsampled, 16000)
 
+      console.log('[stopRecording] WAV 编码完成:', {
+        blobSize: audioBlob.size,
+        blobType: audioBlob.type,
+        originalLength: mergedLength,
+        downsampledLength: downsampled.length,
+      })
+
       if (audioBlob.size === 0) {
+        console.error('[stopRecording] 音频数据为空')
         cleanup()
         onError?.('录音时间太短或未采集到声音，请再试一次')
         setState('idle')
@@ -436,7 +576,7 @@ export function useVoiceInput({
       clearTimeout(maxDurationTimerRef.current)
       maxDurationTimerRef.current = null
     }
-  }, [state])
+  }, [state, recordingDuration, cleanup, processAudioViaWhisper, onError])
 
   const cancelRecording = useCallback(() => {
     if (state !== 'recording') return
@@ -462,5 +602,6 @@ export function useVoiceInput({
     cancelRecording,
     recordingDuration,
     isSupported,
+    currentVolume,
   }
 }
