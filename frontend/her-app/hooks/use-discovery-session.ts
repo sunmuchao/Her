@@ -122,6 +122,22 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
       }
     })
 
+    console.log(
+      '[DEBUG useDiscoverySession] mapped message items:',
+      timelineItems
+        .filter((item): item is Extract<DiscoveryTimelineItem, { kind: 'message' }> => item.kind === 'message')
+        .map((item) => ({
+          id: item.id,
+          type: item.type,
+          content: item.content,
+          has_audio: item.mediaType === 'audio',
+          mediaType: item.mediaType,
+          mediaUrl: item.mediaUrl,
+          mediaMetadata: item.mediaMetadata,
+          isNewMessage: item.isNewMessage,
+        })),
+    )
+
     // DEBUG: 验证数据是否正确
     console.log('[DEBUG useDiscoverySession] timelineItems 数量:', timelineItems.length)
     console.log('[DEBUG useDiscoverySession] timelineItems:', timelineItems)
@@ -161,6 +177,22 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
       console.log('  session_id:', sid)
       console.log('  view.timeline 数量:', data.view?.timeline?.length || 0)
       if (data.view?.timeline) {
+        const messageItems = data.view.timeline.filter(
+          (item) => item.item_type === 'assistant_message' || item.item_type === 'user_message',
+        )
+        console.log(
+          '[DEBUG useDiscoverySession] 原始 message items:',
+          messageItems.map((item) => ({
+            item_id: item.item_id,
+            item_type: item.item_type,
+            body: item.body,
+            created_at: item.created_at,
+            has_metadata: Boolean(item.metadata),
+            media_type: item.metadata?.media_type,
+            media_url_present: Boolean(item.metadata?.media_url),
+            media_metadata: item.metadata?.media_metadata,
+          })),
+        )
         const resultGroups = data.view.timeline.filter(i => i.item_type === 'result_group')
         console.log('  view.timeline 中 result_group 数量:', resultGroups.length)
         if (resultGroups.length > 0) {

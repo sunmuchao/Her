@@ -1476,6 +1476,34 @@ class DiscoveryService:
             _logger.error(f"{log_prefix} 语音生成异常: {e}")
             return None
 
+    def _log_assistant_message_debug(
+        self,
+        *,
+        log_prefix: str,
+        item_id: str,
+        body: str,
+        metadata: dict[str, Any] | None,
+    ) -> None:
+        normalized_body = str(body or "").strip()
+        media_type = None
+        media_url = None
+        media_metadata = None
+        if isinstance(metadata, dict):
+            media_type = metadata.get("media_type")
+            media_url = metadata.get("media_url")
+            media_metadata = metadata.get("media_metadata")
+
+        _logger.warning(
+            "%s timeline assistant_message item_id=%s body=%r has_metadata=%s media_type=%r media_url_present=%s media_metadata=%r",
+            log_prefix,
+            item_id,
+            normalized_body[:120],
+            bool(metadata),
+            media_type,
+            bool(media_url),
+            media_metadata,
+        )
+
     def _apply_runtime_result(
         self,
         session: StoredSession,
@@ -1563,9 +1591,16 @@ class DiscoveryService:
 
                 if kind == "reply":
                     # reply_to_user 的消息：纯对话
+                    reply_item_id = self.storage.next_item_id("msg-a")
+                    self._log_assistant_message_debug(
+                        log_prefix="[Discovery Turn][reply]",
+                        item_id=reply_item_id,
+                        body=message,
+                        metadata=assistant_metadata,
+                    )
                     session.view["timeline"].append(
                         assistant_message(
-                            self.storage.next_item_id("msg-a"),
+                            reply_item_id,
                             message,
                             created_at=now,
                             metadata=assistant_metadata,  # 新增：传递metadata
@@ -1575,10 +1610,17 @@ class DiscoveryService:
                     # show_candidates 的消息：展示候选人
                     # 这条消息后面会跟着候选人卡片
                     assistant_body = message
+                    show_item_id = self.storage.next_item_id("msg-a")
+                    self._log_assistant_message_debug(
+                        log_prefix="[Discovery Turn][show]",
+                        item_id=show_item_id,
+                        body=assistant_body,
+                        metadata=assistant_metadata,
+                    )
                     # 添加 show_candidates 的消息
                     session.view["timeline"].append(
                         assistant_message(
-                            self.storage.next_item_id("msg-a"),
+                            show_item_id,
                             assistant_body,
                             created_at=now,
                             metadata=assistant_metadata,  # 新增：传递metadata
@@ -1586,9 +1628,16 @@ class DiscoveryService:
                     )
         else:
             # 原有逻辑：只添加一条消息
+            single_item_id = self.storage.next_item_id("msg-a")
+            self._log_assistant_message_debug(
+                log_prefix="[Discovery Turn][single]",
+                item_id=single_item_id,
+                body=assistant_body,
+                metadata=assistant_metadata,
+            )
             session.view["timeline"] = list(session.view.get("timeline") or []) + [
                 assistant_message(
-                    self.storage.next_item_id("msg-a"),
+                    single_item_id,
                     assistant_body,
                     created_at=now,
                     metadata=assistant_metadata,  # 新增：传递metadata
@@ -2493,8 +2542,15 @@ class DiscoveryService:
                     intro_message,
                     log_prefix="[Discovery Proxy Intro]",
                 )
+                proxy_item_id = f"proxy-intro-msg-{case_id}"
+                self._log_assistant_message_debug(
+                    log_prefix="[Discovery Proxy Intro]",
+                    item_id=proxy_item_id,
+                    body=intro_message,
+                    metadata=intro_metadata,
+                )
                 timeline.append(assistant_message(
-                    item_id=f"proxy-intro-msg-{case_id}",
+                    item_id=proxy_item_id,
                     body=intro_message,
                     created_at=now,
                     metadata=intro_metadata,
