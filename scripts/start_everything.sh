@@ -68,6 +68,19 @@ require_cmd() {
   fi
 }
 
+is_port_listening() {
+  local port="$1"
+  if command -v nc >/dev/null 2>&1; then
+    nc -z 127.0.0.1 "${port}" >/dev/null 2>&1
+    return $?
+  fi
+  if command -v lsof >/dev/null 2>&1; then
+    lsof -iTCP:"${port}" -sTCP:LISTEN >/dev/null 2>&1
+    return $?
+  fi
+  return 1
+}
+
 pid_is_running() {
   local pidfile="$1"
   if [[ ! -f "${pidfile}" ]]; then
@@ -109,7 +122,12 @@ start_background_service() {
 require_cmd docker
 
 echo "=== Starting docker compose services ==="
-DOCKER_SERVICES=(mysql minio)
+DOCKER_SERVICES=(minio)
+if is_port_listening 3307; then
+  echo "Port 3307 already in use, skipping docker mysql"
+else
+  DOCKER_SERVICES=(mysql "${DOCKER_SERVICES[@]}")
+fi
 if [[ "${WITH_SIGNALING}" == "1" ]]; then
   DOCKER_SERVICES+=(signaling-server)
 fi
