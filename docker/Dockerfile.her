@@ -11,6 +11,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY pyproject.toml README.md ./
 COPY her_*.py outer_system_mysql_schema.py outer_mysql_compat.py partner_moderation.py profile_*.py mysql_source_config.py ./
+=======
+COPY her_*.py outer_system_mysql_schema.py partner_moderation.py profile_*.py mysql_source_config.py outer_mysql_compat.py ./
 COPY match_domain ./match_domain
 COPY observability ./observability
 COPY async_jobs ./async_jobs

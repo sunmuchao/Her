@@ -36,18 +36,21 @@ MYSQL_HOST = os.environ.get("HER_E2E_MYSQL_HOST", "127.0.0.1")
 MYSQL_PORT = int(os.environ.get("HER_E2E_MYSQL_PORT", "3307"))
 MYSQL_USER = os.environ.get("HER_E2E_MYSQL_USER", "root")
 MYSQL_PASSWORD = mysql_schema.parse_mysql_dsn(f"mysql://{MYSQL_USER}@{MYSQL_HOST}:{MYSQL_PORT}/bootstrap")["password"]
+=======
+MYSQL_PASSWORD = os.environ.get("HER_E2E_MYSQL_PASSWORD", "")
 
 SEARCH_DSN = (
-    f"mysql://{MYSQL_USER}@{MYSQL_HOST}:{MYSQL_PORT}/her"
+    f"mysql://{MYSQL_USER}:{MYSQL_PASSWORD}@{MYSQL_HOST}:{MYSQL_PORT}/her"
     "?table=profiles&photos_table=profile_photos"
 )
 
 TARGET_DSNS = {
-    "chat": f"mysql://{MYSQL_USER}@{MYSQL_HOST}:{MYSQL_PORT}/her_chat",
-    "recommendation": f"mysql://{MYSQL_USER}@{MYSQL_HOST}:{MYSQL_PORT}/her_recommendation",
-    "matchmaking": f"mysql://{MYSQL_USER}@{MYSQL_HOST}:{MYSQL_PORT}/her_matchmaking",
-    "discovery": f"mysql://{MYSQL_USER}@{MYSQL_HOST}:{MYSQL_PORT}/her_discovery",
-    "relationship_ledger": f"mysql://{MYSQL_USER}@{MYSQL_HOST}:{MYSQL_PORT}/her_relationship_ledger",
+    "persona": f"mysql://{MYSQL_USER}:{MYSQL_PASSWORD}@{MYSQL_HOST}:{MYSQL_PORT}/her?table=profiles",
+    "chat": f"mysql://{MYSQL_USER}:{MYSQL_PASSWORD}@{MYSQL_HOST}:{MYSQL_PORT}/her_chat",
+    "recommendation": f"mysql://{MYSQL_USER}:{MYSQL_PASSWORD}@{MYSQL_HOST}:{MYSQL_PORT}/her_recommendation",
+    "matchmaking": f"mysql://{MYSQL_USER}:{MYSQL_PASSWORD}@{MYSQL_HOST}:{MYSQL_PORT}/her_matchmaking",
+    "discovery": f"mysql://{MYSQL_USER}:{MYSQL_PASSWORD}@{MYSQL_HOST}:{MYSQL_PORT}/her_discovery",
+    "relationship_ledger": f"mysql://{MYSQL_USER}:{MYSQL_PASSWORD}@{MYSQL_HOST}:{MYSQL_PORT}/her_relationship_ledger",
 }
 
 STATIC_TOKENS = {
@@ -124,6 +127,13 @@ def migrate_targets() -> None:
 
     ensure_search_snapshot_table()
     print("[e2e-bootstrap] ensured partner_search_snapshots")
+
+
+def ensure_persona_source_schema() -> None:
+    """Create the shared profile tables before persona migrations depend on them."""
+    config = search_test_config(SEARCH_DSN)
+    ensure_search_schema(config)
+    print("[e2e-bootstrap] ensured persona/search source schema")
 
 
 def seed_search_profiles() -> None:
@@ -386,6 +396,7 @@ def export_env_file(path: Path) -> None:
         "NEXT_PUBLIC_E2E_GATEWAY_AUTH=true",
         "",
     ]
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines), encoding="utf-8")
     print(f"[e2e-bootstrap] wrote {path}")
 
@@ -395,6 +406,9 @@ def main() -> None:
     seed_demo = _env_flag("HER_E2E_BOOTSTRAP_SEED_DEMO", False)
     wait_for_mysql()
     ensure_databases(reset=reset)
+=======
+    ensure_databases()
+    ensure_persona_source_schema()
     migrate_targets()
     if seed_demo:
         seed_search_profiles()

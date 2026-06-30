@@ -252,18 +252,32 @@ def relationship_goal_display_label(value: Any) -> str:
 
 
 def format_criteria_labels(criteria: Mapping[str, Any]) -> list[str]:
+    """格式化criteria对象为显示标签列表
+
+    新增功能：扩展显示详细条件（身高、学历、婚况、孩子、异地等）
+    标签数量限制：从6个增加到12个
+
+    Args:
+        criteria: 搜索条件对象，包含age_min、age_max、height_min、height_max等字段
+
+    Returns:
+        格式化后的标签列表，最多12个标签
+    """
     labels: list[str] = []
 
+    # 1. 城市（核心字段）
     cities = criteria.get("cities")
     if isinstance(cities, list):
         labels.extend(str(item).strip() for item in cities if str(item or "").strip())
     elif str(cities or "").strip():
         labels.append(str(cities).strip())
 
+    # 2. 性别（核心字段）
     gender = str(criteria.get("gender") or "").strip()
     if gender:
         labels.append(gender_display_label(gender))
 
+    # 3. 年龄范围（核心字段）
     age_min = criteria.get("age_min")
     age_max = criteria.get("age_max")
     if age_min is not None and age_max is not None:
@@ -273,6 +287,7 @@ def format_criteria_labels(criteria: Mapping[str, Any]) -> list[str]:
     elif age_max is not None:
         labels.append(f"{age_max}岁以内")
 
+    # 4. 关系目标（核心字段）
     goals = criteria.get("relationship_goals")
     goal_items: list[Any]
     if isinstance(goals, list):
@@ -286,17 +301,68 @@ def format_criteria_labels(criteria: Mapping[str, Any]) -> list[str]:
         if primary_label:
             labels.append(primary_label)
 
+    # ========== 新增详细字段提取 ==========
+
+    # 5. 身高范围（新增）
+    height_min = criteria.get("height_min")
+    height_max = criteria.get("height_max")
+    if height_min is not None and height_max is not None:
+        labels.append(f"身高{height_min}-{height_max}cm")
+    elif height_min is not None:
+        labels.append(f"身高{height_min}cm以上")
+    elif height_max is not None:
+        labels.append(f"身高{height_max}cm以下")
+
+    # 6. 学历要求（新增）
+    education_min = criteria.get("education_min")
+    if education_min:
+        # 学历格式化：本科、硕士、博士等
+        education_label = str(education_min).strip()
+        labels.append(f"学历{education_label}")
+
+    # 7. 婚况要求（新增）
+    marital_statuses = criteria.get("marital_statuses")
+    if isinstance(marital_statuses, list) and marital_statuses:
+        # 婚况格式化：未婚、离异等
+        marital_label = normalize_marital_status(marital_statuses[0]) or str(marital_statuses[0]).strip()
+        labels.append(f"婚况{marital_label}")
+    elif str(marital_statuses or "").strip():
+        marital_label = normalize_marital_status(str(marital_statuses)) or str(marital_statuses).strip()
+        labels.append(f"婚况{marital_label}")
+
+    # 8. 孩子要求（新增）
+    accept_children = criteria.get("accept_partner_children")
+    if accept_children:
+        # 孩子格式化：不接受、接受、可协商等
+        children_label = str(accept_children).strip()
+        labels.append(f"孩子{children_label}")
+
+    # 9. 异地要求（新增）
+    # 注意：criteria对象中字段名可能为long_distance或accept_long_distance
+    accept_long_distance = criteria.get("long_distance") or criteria.get("accept_long_distance")
+    if accept_long_distance:
+        # 异地格式化：可协商、不接受、接受等
+        distance_label = str(accept_long_distance).strip()
+        labels.append(f"异地{distance_label}")
+
+    # ========== 新增字段提取结束 ==========
+
+    # 10. must_have（其他条件）
     must_have = criteria.get("must_have")
     if isinstance(must_have, list):
         labels.extend(str(item).strip() for item in must_have if str(item or "").strip())
     elif str(must_have or "").strip():
         labels.append(str(must_have).strip())
 
+    # 去重逻辑
     deduped: list[str] = []
     for label in labels:
         if label not in deduped:
             deduped.append(label)
-    return deduped[:6]
+
+    # ⚠️ 调整标签数量限制：从6个增加到12个
+    # 原因：新增了身高、学历、婚况、孩子、异地等5个字段，需要更多显示空间
+    return deduped[:12]
 
 
 def normalize_compiled_criteria(criteria: dict[str, Any]) -> dict[str, Any]:
