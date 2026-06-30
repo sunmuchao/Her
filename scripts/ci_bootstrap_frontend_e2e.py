@@ -36,18 +36,20 @@ from gateway_tests.helpers import (  # noqa: E402
 MYSQL_HOST = os.environ.get("HER_E2E_MYSQL_HOST", "127.0.0.1")
 MYSQL_PORT = int(os.environ.get("HER_E2E_MYSQL_PORT", "3307"))
 MYSQL_USER = os.environ.get("HER_E2E_MYSQL_USER", "root")
+MYSQL_PASSWORD = os.environ.get("HER_E2E_MYSQL_PASSWORD", "")
 
 SEARCH_DSN = (
-    f"mysql://{MYSQL_USER}@{MYSQL_HOST}:{MYSQL_PORT}/her"
+    f"mysql://{MYSQL_USER}:{MYSQL_PASSWORD}@{MYSQL_HOST}:{MYSQL_PORT}/her"
     "?table=profiles&photos_table=profile_photos"
 )
 
 TARGET_DSNS = {
-    "chat": f"mysql://{MYSQL_USER}@{MYSQL_HOST}:{MYSQL_PORT}/her_chat",
-    "recommendation": f"mysql://{MYSQL_USER}@{MYSQL_HOST}:{MYSQL_PORT}/her_recommendation",
-    "matchmaking": f"mysql://{MYSQL_USER}@{MYSQL_HOST}:{MYSQL_PORT}/her_matchmaking",
-    "discovery": f"mysql://{MYSQL_USER}@{MYSQL_HOST}:{MYSQL_PORT}/her_discovery",
-    "relationship_ledger": f"mysql://{MYSQL_USER}@{MYSQL_HOST}:{MYSQL_PORT}/her_relationship_ledger",
+    "persona": f"mysql://{MYSQL_USER}:{MYSQL_PASSWORD}@{MYSQL_HOST}:{MYSQL_PORT}/her?table=profiles",
+    "chat": f"mysql://{MYSQL_USER}:{MYSQL_PASSWORD}@{MYSQL_HOST}:{MYSQL_PORT}/her_chat",
+    "recommendation": f"mysql://{MYSQL_USER}:{MYSQL_PASSWORD}@{MYSQL_HOST}:{MYSQL_PORT}/her_recommendation",
+    "matchmaking": f"mysql://{MYSQL_USER}:{MYSQL_PASSWORD}@{MYSQL_HOST}:{MYSQL_PORT}/her_matchmaking",
+    "discovery": f"mysql://{MYSQL_USER}:{MYSQL_PASSWORD}@{MYSQL_HOST}:{MYSQL_PORT}/her_discovery",
+    "relationship_ledger": f"mysql://{MYSQL_USER}:{MYSQL_PASSWORD}@{MYSQL_HOST}:{MYSQL_PORT}/her_relationship_ledger",
 }
 
 STATIC_TOKENS = {
@@ -66,7 +68,7 @@ def wait_for_mysql(max_attempts: int = 30) -> None:
 
     for attempt in range(max_attempts):
         try:
-            conn = pymysql.connect(host=MYSQL_HOST, port=MYSQL_PORT, user=MYSQL_USER)
+            conn = pymysql.connect(host=MYSQL_HOST, port=MYSQL_PORT, user=MYSQL_USER, password=MYSQL_PASSWORD)
             conn.close()
             print(f"[e2e-bootstrap] mysql ready on {MYSQL_HOST}:{MYSQL_PORT}")
             return
@@ -80,7 +82,7 @@ def ensure_databases(*, reset: bool = True) -> None:
     import pymysql
 
     names = {"her", "her_chat", "her_recommendation", "her_matchmaking", "her_discovery", "her_relationship_ledger"}
-    conn = pymysql.connect(host=MYSQL_HOST, port=MYSQL_PORT, user=MYSQL_USER)
+    conn = pymysql.connect(host=MYSQL_HOST, port=MYSQL_PORT, user=MYSQL_USER, password=MYSQL_PASSWORD)
     try:
         with conn.cursor() as cursor:
             for name in sorted(names):
@@ -117,6 +119,13 @@ def migrate_targets() -> None:
 
     ensure_search_snapshot_table()
     print("[e2e-bootstrap] ensured partner_search_snapshots")
+
+
+def ensure_persona_source_schema() -> None:
+    """Create the shared profile tables before persona migrations depend on them."""
+    config = search_test_config(SEARCH_DSN)
+    ensure_search_schema(config)
+    print("[e2e-bootstrap] ensured persona/search source schema")
 
 
 def seed_search_profiles() -> None:
@@ -376,6 +385,7 @@ def export_env_file(path: Path) -> None:
         "NEXT_PUBLIC_E2E_GATEWAY_AUTH=true",
         "",
     ]
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines), encoding="utf-8")
     print(f"[e2e-bootstrap] wrote {path}")
 
@@ -383,6 +393,7 @@ def export_env_file(path: Path) -> None:
 def main() -> None:
     wait_for_mysql()
     ensure_databases()
+    ensure_persona_source_schema()
     migrate_targets()
     seed_search_profiles()
     seed_matchmaking_demo_case()
