@@ -29,7 +29,7 @@ Agent生成反馈选项时没有设置semantic_payload，导致：
 ```bash
 docker-compose restart gateway
 # 或
-pkill -f gateway && python -m gateway.main
+docker compose restart gateway-public
 ```
 
 ## 验证步骤

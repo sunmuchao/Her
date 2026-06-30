@@ -85,7 +85,7 @@ python scripts/preload_whisper_model.py
 
 **预热完成后**，启动 Gateway：
 ```bash
-python -m gateway
+docker compose up -d gateway-public
 ```
 
 ---
@@ -99,7 +99,7 @@ python -m gateway
 
 **只需重启 Gateway**：
 ```bash
-python -m gateway
+docker compose up -d gateway-public
 ```
 
 ---
@@ -169,7 +169,7 @@ npm test -- --coverage
 ```bash
 # 1. 启动后端 Gateway
 cd /Users/sunmuchao/Downloads/Her
-python -m gateway
+docker compose up -d gateway-public
 
 # 2. 在另一个终端启动前端
 cd frontend/her-app
@@ -187,7 +187,7 @@ Voice Transcription End-to-End Test
 ======================================================================
 
 Configuration:
-  Backend URL: http://127.0.0.1:8765
+  Backend URL: http://127.0.0.1:8080
   Next.js URL: http://localhost:3000
 
 1. Testing health check...
@@ -390,7 +390,7 @@ open coverage/index.html
 
 ```bash
 cd /Users/sunmuchao/Downloads/Her
-python -m gateway
+docker compose up -d gateway-public
 ```
 
 或者使用 gunicorn：

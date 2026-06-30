@@ -1,5 +1,11 @@
 # 智能一键启动脚本
 
+> 说明：本文档描述的是历史 shell 启动方案。当前本地环境唯一推荐入口已经改为：
+>
+> ```bash
+> docker compose up -d
+> ```
+
 ## 功能说明
 
 **自动完成所有准备工作**：
@@ -52,7 +58,7 @@ cd /Users/sunmuchao/Downloads/Her
 ```
 步骤 1: 停止本地服务栈
   ├─ 停止 frontend (port 3000)
-  ├─ 停止 gateway (port 8765)
+  ├─ 停止 gateway
   ├─ 停止 SSE server (port 8081)
   └─ 停止 scheduler（可选）
 
@@ -68,7 +74,7 @@ cd /Users/sunmuchao/Downloads/Her
 步骤 4: 启动本地服务栈
   ├─ 启动 MySQL
   ├─ 启动 SSE server (http://127.0.0.1:8081)
-  ├─ 启动 Gateway (http://127.0.0.1:8765)
+  ├─ 启动 Gateway Public (http://127.0.0.1:8080)
   ├─ 启动 Frontend (http://127.0.0.1:3000)
   └─ 启动 Scheduler（可选）
 ```
@@ -118,7 +124,7 @@ Started frontend (pid 12347)
 服务状态：
   - MySQL:         运行中
   - SSE Server:     运行中 (http://127.0.0.1:8081)
-  - Gateway:        运行中 (http://127.0.0.1:8765)
+  - Gateway:        运行中 (http://127.0.0.1:8080)
   - Frontend:       运行中 (http://127.0.0.1:3000)
 
 Whisper 语音识别：
@@ -186,7 +192,7 @@ Whisper 模型预热（提前下载）
 
 ```bash
 # 1. 停止服务
-./scripts/stop_local_stack.sh
+docker compose down
 
 # 2. 检查模型是否存在
 ls ~/.cache/huggingface/hub/models--Systran--faster-whisper-small/
@@ -195,7 +201,7 @@ ls ~/.cache/huggingface/hub/models--Systran--faster-whisper-small/
 python scripts/preload_whisper_model.py
 
 # 4. 启动服务
-./scripts/start_local_stack.sh
+docker compose up -d
 ```
 
 **问题**：

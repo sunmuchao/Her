@@ -84,7 +84,7 @@ npm run test:voice
 
 ```bash
 # 启动 Gateway
-python -m gateway
+docker compose up -d gateway-public
 
 # 启动前端
 cd frontend/her-app
@@ -166,7 +166,7 @@ pnpm install
 **解决**：
 ```bash
 # 启动 Gateway
-python -m gateway
+docker compose up -d gateway-public
 
 # 或使用 gunicorn
 gunicorn -c external-systems/partner-http-gateway/gunicorn_config.py gateway.app:PartnerGateway

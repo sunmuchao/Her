@@ -32,7 +32,7 @@ def classify_rest_path(path: str) -> str:
         return "health"
     if normalized.startswith("/v1/ops/"):
         return "ops"
-    if normalized.startswith("/v1/"):
+    if normalized.startswith("/v1/") or normalized.startswith("/v2/"):
         return "public"
     return "other"
 

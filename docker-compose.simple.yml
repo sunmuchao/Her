@@ -1,0 +1,373 @@
+# HER 生产级部署堆栈（简化版 - 不使用密钥，方便启动）
+# Usage: docker compose -f docker-compose.simple.yml up -d
+
+services:
+  mysql:
+    image: mysql:8.0
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"  # 简化配置，不使用密钥
+    networks:
+      - data_net
+    volumes:
+      - her_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1024M
+
+  bootstrap:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.her
+    env_file:
+      - .env
+    environment:
+      HER_E2E_MYSQL_HOST: mysql
+      HER_E2E_MYSQL_PORT: "3306"
+      HER_RELATION_LEDGER_DB: mysql://root@mysql:3306/her_relationship_ledger
+      PARTNER_RECOMMENDATION_DB: mysql://root@mysql:3306/her_recommendation
+      PARTNER_MATCHMAKING_DB: mysql://root@mysql:3306/her_matchmaking
+      PARTNER_CHAT_DB: mysql://root@mysql:3306/her_chat
+      PARTNER_DISCOVERY_DB: mysql://root@mysql:3306/her_discovery
+      PERSONA_MEMORY_MYSQL_SOURCE: mysql://root@mysql:3306/her?table=profiles
+      HER_PROFILE_SOURCE_DSN: mysql://root@mysql:3306/her?table=profiles
+      HER_PROXY_INTRO_STORAGE: matchmaking
+      HER_RELATION_LEDGER_READ_MODE: ledger_primary
+    networks:
+      - data_net
+    depends_on:
+      mysql:
+        condition: service_healthy
+    command: ["python", "scripts/compose_bootstrap.py"]
+    restart: "no"
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    networks:
+      - backend_net
+      - data_net
+    volumes:
+      - her_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: her_minio_admin
+      MINIO_ROOT_PASSWORD: her_minio_password
+    networks:
+      - data_net
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - her_minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+
+  gateway-public:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.her
+    env_file:
+      - .env
+    environment:
+      PARTNER_GATEWAY_SURFACE: public
+      PARTNER_GATEWAY_ENABLE_JSONRPC: "0"
+      PARTNER_GATEWAY_DB_POOL_MAX: "16"
+      HER_E2E_MYSQL_HOST: mysql
+      HER_E2E_MYSQL_PORT: "3306"
+      HER_RELATION_LEDGER_DB: mysql://root@mysql:3306/her_relationship_ledger
+      PARTNER_RECOMMENDATION_DB: mysql://root@mysql:3306/her_recommendation
+      PARTNER_MATCHMAKING_DB: mysql://root@mysql:3306/her_matchmaking
+      PARTNER_CHAT_DB: mysql://root@mysql:3306/her_chat
+      PARTNER_DISCOVERY_DB: mysql://root@mysql:3306/her_discovery
+      PERSONA_MEMORY_MYSQL_SOURCE: mysql://root@mysql:3306/her?table=profiles
+      HER_PROFILE_SOURCE_DSN: mysql://root@mysql:3306/her?table=profiles
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: her_minio_admin
+      MINIO_SECRET_KEY: her_minio_password
+      MINIO_BUCKET: her-media
+      MINIO_SECURE: "false"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      SSE_SERVER_PUSH_URL: http://sse-server:8082/internal/push
+    networks:
+      - frontend_net
+      - backend_net
+      - data_net
+    ports:
+      - "8080:8080"
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2048M
+
+  gateway-ops:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.her
+    env_file:
+      - .env
+    environment:
+      PARTNER_GATEWAY_SURFACE: ops
+      PARTNER_GATEWAY_ENABLE_JSONRPC: "0"
+      PARTNER_GATEWAY_DB_POOL_MAX: "8"
+      HER_E2E_MYSQL_HOST: mysql
+      HER_E2E_MYSQL_PORT: "3306"
+      HER_RELATION_LEDGER_DB: mysql://root@mysql:3306/her_relationship_ledger
+      PARTNER_RECOMMENDATION_DB: mysql://root@mysql:3306/her_recommendation
+      PARTNER_MATCHMAKING_DB: mysql://root@mysql:3306/her_matchmaking
+      PARTNER_CHAT_DB: mysql://root@mysql:3306/her_chat
+      PARTNER_DISCOVERY_DB: mysql://root@mysql:3306/her_discovery
+      PERSONA_MEMORY_MYSQL_SOURCE: mysql://root@mysql:3306/her?table=profiles
+      HER_PROFILE_SOURCE_DSN: mysql://root@mysql:3306/her?table=profiles
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: her_minio_admin
+      MINIO_SECRET_KEY: her_minio_password
+      MINIO_BUCKET: her-media
+      MINIO_SECURE: "false"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      PARTNER_HTTP_PORT: "8083"
+    networks:
+      - frontend_net
+      - backend_net
+      - data_net
+    ports:
+      - "8083:8083"
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8083/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1024M
+
+  gateway-internal:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.her
+    env_file:
+      - .env
+    environment:
+      PARTNER_GATEWAY_SURFACE: internal
+      PARTNER_GATEWAY_ENABLE_JSONRPC: "1"
+      PARTNER_GATEWAY_DB_POOL_MAX: "8"
+      HER_E2E_MYSQL_HOST: mysql
+      HER_E2E_MYSQL_PORT: "3306"
+      HER_RELATION_LEDGER_DB: mysql://root@mysql:3306/her_relationship_ledger
+      PARTNER_RECOMMENDATION_DB: mysql://root@mysql:3306/her_recommendation
+      PARTNER_MATCHMAKING_DB: mysql://root@mysql:3306/her_matchmaking
+      PARTNER_CHAT_DB: mysql://root@mysql:3306/her_chat
+      PARTNER_DISCOVERY_DB: mysql://root@mysql:3306/her_discovery
+      PERSONA_MEMORY_MYSQL_SOURCE: mysql://root@mysql:3306/her?table=profiles
+      HER_PROFILE_SOURCE_DSN: mysql://root@mysql:3306/her?table=profiles
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: her_minio_admin
+      MINIO_SECRET_KEY: her_minio_password
+      MINIO_BUCKET: her-media
+      MINIO_SECURE: "false"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+    networks:
+      - backend_net
+      - data_net
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1024M
+
+  sse-server:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.her
+    env_file:
+      - .env
+    environment:
+      HER_E2E_MYSQL_HOST: mysql
+      HER_E2E_MYSQL_PORT: "3306"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+    networks:
+      - backend_net
+      - data_net
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8082/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.her
+    env_file:
+      - .env
+    environment:
+      HER_E2E_MYSQL_HOST: mysql
+      HER_E2E_MYSQL_PORT: "3306"
+      HER_RELATION_LEDGER_DB: mysql://root@mysql:3306/her_relationship_ledger
+      PARTNER_RECOMMENDATION_DB: mysql://root@mysql:3306/her_recommendation
+      PARTNER_MATCHMAKING_DB: mysql://root@mysql:3306/her_matchmaking
+      PARTNER_CHAT_DB: mysql://root@mysql:3306/her_chat
+      PARTNER_DISCOVERY_DB: mysql://root@mysql:3306/her_discovery
+      PERSONA_MEMORY_MYSQL_SOURCE: mysql://root@mysql:3306/her?table=profiles
+      HER_PROFILE_SOURCE_DSN: mysql://root@mysql:3306/her?table=profiles
+      HER_SCHED_RECOMMENDATION_DB: mysql://root@mysql:3306/her_recommendation
+      HER_SCHED_MATCHMAKING_DB: mysql://root@mysql:3306/her_matchmaking
+      HER_SCHED_CHAT_DB: mysql://root@mysql:3306/her_chat
+      GATEWAY_INTERNAL_URL: http://gateway-internal:8080/jsonrpc
+    networks:
+      - backend_net
+      - data_net
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+      gateway-internal:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://127.0.0.1:9090/health')"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+
+  frontend:
+    profiles: ["frontend"]
+    image: node:22-bookworm
+    working_dir: /app
+    volumes:
+      - ./frontend/her-app:/app
+    environment:
+      GATEWAY_URL: http://gateway-public:8080
+      NEXT_PUBLIC_ALLOW_MOCK_FALLBACK: "false"
+      NEXT_PUBLIC_USE_AUTH_STUB: "true"
+    networks:
+      - frontend_net
+    ports:
+      - "3000:3000"
+    depends_on:
+      - gateway-public
+    command: ["sh", "-c", "corepack enable && pnpm install && pnpm dev --hostname 0.0.0.0"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1024M
+
+networks:
+  frontend_net:
+    driver: bridge
+    internal: false
+
+  backend_net:
+    driver: bridge
+    internal: false
+
+  data_net:
+    driver: bridge
+    internal: true
+
+volumes:
+  her_mysql_data:
+  her_redis_data:
+  her_minio_data:

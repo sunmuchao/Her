@@ -141,6 +141,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
   return proxy(request, path)
 }
 
+export async function HEAD(request: NextRequest, context: RouteContext) {
+  const { path } = await context.params
+  return proxy(request, path)
+}
+
 export async function POST(request: NextRequest, context: RouteContext) {
   const { path } = await context.params
   return proxy(request, path)

@@ -238,7 +238,7 @@ Voice Transcription Format Compatibility Test
 ======================================================================
 
 Configuration:
-  Backend URL: http://127.0.0.1:8765
+  Backend URL: http://127.0.0.1:8080
   Next.js URL: http://localhost:3000
   pydub available: True
 
@@ -333,7 +333,7 @@ python -c "from faster_whisper import WhisperModel; print('faster-whisper: OK')"
 
 ```bash
 # 启动 Gateway
-python -m gateway
+docker compose up -d gateway-public
 
 # 查看日志（应该看到格式转换日志）
 # INFO: Converting webm to WAV for Whisper compatibility
@@ -349,7 +349,7 @@ python -m gateway
 python external-systems/partner-http-gateway/tests/test_voice_formats.py
 
 # 或测试单个格式
-curl -X POST http://127.0.0.1:8765/v1/voice/transcribe \
+curl -X POST http://127.0.0.1:8080/v1/voice/transcribe \
   --data-binary @test.webm \
   -H "Content-Type: audio/webm"
 ```

@@ -24,7 +24,6 @@ for root in (REPO_ROOT, GATEWAY_ROOT, CHAT_ROOT, REC_ROOT, MM_ROOT):
 
 import outer_system_mysql_schema as mysql_schema  # noqa: E402
 from db_migrations.runner import initialize_target_database, target_env_var  # noqa: E402
-from gateway.app import PartnerGateway  # noqa: E402
 from gateway_tests.helpers import (  # noqa: E402
     auth_headers,
     call_gateway_json,
@@ -36,6 +35,7 @@ from gateway_tests.helpers import (  # noqa: E402
 MYSQL_HOST = os.environ.get("HER_E2E_MYSQL_HOST", "127.0.0.1")
 MYSQL_PORT = int(os.environ.get("HER_E2E_MYSQL_PORT", "3307"))
 MYSQL_USER = os.environ.get("HER_E2E_MYSQL_USER", "root")
+MYSQL_PASSWORD = mysql_schema.parse_mysql_dsn(f"mysql://{MYSQL_USER}@{MYSQL_HOST}:{MYSQL_PORT}/bootstrap")["password"]
 
 SEARCH_DSN = (
     f"mysql://{MYSQL_USER}@{MYSQL_HOST}:{MYSQL_PORT}/her"
@@ -66,7 +66,7 @@ def wait_for_mysql(max_attempts: int = 30) -> None:
 
     for attempt in range(max_attempts):
         try:
-            conn = pymysql.connect(host=MYSQL_HOST, port=MYSQL_PORT, user=MYSQL_USER)
+            conn = pymysql.connect(host=MYSQL_HOST, port=MYSQL_PORT, user=MYSQL_USER, password=MYSQL_PASSWORD)
             conn.close()
             print(f"[e2e-bootstrap] mysql ready on {MYSQL_HOST}:{MYSQL_PORT}")
             return
@@ -76,11 +76,18 @@ def wait_for_mysql(max_attempts: int = 30) -> None:
             time.sleep(2)
 
 
+def _env_flag(name: str, default: bool) -> bool:
+    raw = str(os.environ.get(name) or "").strip().lower()
+    if not raw:
+        return default
+    return raw in {"1", "true", "yes", "on"}
+
+
 def ensure_databases(*, reset: bool = True) -> None:
     import pymysql
 
     names = {"her", "her_chat", "her_recommendation", "her_matchmaking", "her_discovery", "her_relationship_ledger"}
-    conn = pymysql.connect(host=MYSQL_HOST, port=MYSQL_PORT, user=MYSQL_USER)
+    conn = pymysql.connect(host=MYSQL_HOST, port=MYSQL_PORT, user=MYSQL_USER, password=MYSQL_PASSWORD)
     try:
         with conn.cursor() as cursor:
             for name in sorted(names):
@@ -291,6 +298,8 @@ def seed_matchmaking_demo_case() -> None:
 
 
 def seed_chat_demo_case() -> None:
+    from gateway.app import PartnerGateway
+
     os.environ["PARTNER_GATEWAY_STATIC_TOKENS_JSON"] = json.dumps(STATIC_TOKENS)
     os.environ["HER_RELATION_LEDGER_DB"] = TARGET_DSNS["relationship_ledger"]
     os.environ["HER_PROXY_INTRO_STORAGE"] = "matchmaking"
@@ -351,8 +360,9 @@ def seed_chat_demo_case() -> None:
 
 
 def export_env_file(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     lines = [
-        "PARTNER_GATEWAY_BASE_URL=http://127.0.0.1:8765",
+        "PARTNER_GATEWAY_BASE_URL=http://127.0.0.1:8080",
         "PARTNER_GATEWAY_API_KEY=",
         f"PARTNER_CHAT_DB={TARGET_DSNS['chat']}",
         f"PARTNER_RECOMMENDATION_DB={TARGET_DSNS['recommendation']}",
@@ -381,12 +391,15 @@ def export_env_file(path: Path) -> None:
 
 
 def main() -> None:
+    reset = _env_flag("HER_E2E_BOOTSTRAP_RESET", False)
+    seed_demo = _env_flag("HER_E2E_BOOTSTRAP_SEED_DEMO", False)
     wait_for_mysql()
-    ensure_databases()
+    ensure_databases(reset=reset)
     migrate_targets()
-    seed_search_profiles()
-    seed_matchmaking_demo_case()
-    seed_chat_demo_case()
+    if seed_demo:
+        seed_search_profiles()
+        seed_matchmaking_demo_case()
+        seed_chat_demo_case()
 
     env_local = REPO_ROOT / "frontend" / "her-app" / ".env.local"
     export_env_file(env_local)

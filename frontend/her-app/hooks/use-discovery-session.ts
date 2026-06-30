@@ -9,7 +9,8 @@ import {
 } from '@/lib/api/endpoints/discovery'
 import { fetchCollectedStatements, formatCollectedPreferenceChips } from '@/lib/api/endpoints/collected'
 import { saveDiscoveryAsSubscription } from '@/lib/api/endpoints/recommendation'
-import { GatewayClientError, getErrorMessage } from '@/lib/api/errors'
+import { GatewayClientError, getErrorMessage, isAuthRequiredGatewayError } from '@/lib/api/errors'
+import { confirmSessionOrRedirectToWelcome } from '@/lib/auth/confirm-session'
 import { hydrateSessionFromAuthMe } from '@/lib/auth/hydrate-session'
 import { getAccessToken, getProfileId } from '@/lib/auth/session'
 import { canUseMockFallback } from '@/lib/mock'
@@ -97,6 +98,7 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
   const chatEndRef = useRef<HTMLDivElement>(null)
   const hasSessionCriteriaChipsRef = useRef(false)
   const autoPlayedAudioMessageIdsRef = useRef<Set<string>>(new Set())
+  const pendingOpenPollRef = useRef<number | null>(null)
 
   const applyMappedView = useCallback((mapped: MappedDiscoveryView) => {
     const timelineItems = mapped.timelineItems.map((item) => {
@@ -241,6 +243,14 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
   }, [timelineItems, isSubmittingTurn])
 
   useEffect(() => {
+    return () => {
+      if (pendingOpenPollRef.current != null) {
+        window.clearTimeout(pendingOpenPollRef.current)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
     let cancelled = false
     const isCancelled = () => cancelled
 
@@ -251,10 +261,14 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
 
       const sessionFromUrl = sessionFromUrlQuery?.trim() || null
 
-      // ✅ 修复：先等待hydrate完成，再获取profileId（防止使用环境变量的默认值导致Gateway报错）
+      const existingProfileId = getProfileId()
+      const shouldWaitForHydrate = Boolean(getAccessToken() && !existingProfileId)
       const authTask = getAccessToken() ? hydrateSessionFromAuthMe() : Promise.resolve(null)
-      const authMeData = await authTask  // 等待hydrate完成，并获取返回数据
+      const authMeData = shouldWaitForHydrate ? await authTask : null
       if (cancelled) return
+      if (!shouldWaitForHydrate) {
+        void authTask
+      }
 
       // ✅ 新增：检测用户是否完成onboarding
       const onboardingStatus = authMeData?.user?.onboarding_status || authMeData?.onboarding?.onboarding_status
@@ -278,7 +292,7 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
         return
       }
 
-      const profileId = getProfileId()  // hydrate完成后获取正确的profileId
+      const profileId = existingProfileId ?? getProfileId()
       if (!profileId) {
         setIsLoadingSession(false)
         setLoadError(
@@ -318,8 +332,43 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
         const { data, apiPath } = await discoveryTask
         if (cancelled) return
         applyDiscoveryResponse(data, profileId, apiPath)
+        const hasCandidates = timelineHasCandidates(mapDiscoveryView(data.view).timelineItems)
+        const shouldPoll =
+          data.session?.phase === 'collecting_preferences' &&
+          !hasCandidates &&
+          apiPath === '/v1/discovery/sessions'
+        if (shouldPoll) {
+          let attempts = 0
+          const poll = () => {
+            if (cancelled || !data.session?.session_id) return
+            attempts += 1
+            void getDiscoverySession(data.session.session_id)
+              .then((refreshed) => {
+                if (cancelled) return
+                const refreshedHasCandidates = timelineHasCandidates(mapDiscoveryView(refreshed.view).timelineItems)
+                applyDiscoveryResponse(
+                  refreshed,
+                  profileId,
+                  `/v1/discovery/sessions/${data.session?.session_id}`,
+                )
+                if (!refreshedHasCandidates && attempts < 15) {
+                  pendingOpenPollRef.current = window.setTimeout(poll, 1000)
+                }
+              })
+              .catch(() => {
+                if (attempts < 15) {
+                  pendingOpenPollRef.current = window.setTimeout(poll, 1000)
+                }
+              })
+          }
+          pendingOpenPollRef.current = window.setTimeout(poll, 1000)
+        }
       } catch (error) {
         if (cancelled) return
+        if (isAuthRequiredGatewayError(error)) {
+          const sessionStillValid = await confirmSessionOrRedirectToWelcome()
+          if (!sessionStillValid) return
+        }
         const message = getErrorMessage(error, '发现页会话加载失败')
         setLoadError(message)
         if (canUseMockFallback()) {
@@ -404,6 +453,10 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
         writeStoredDiscoverySessionId(profileId, sessionId)
       }
     } catch (error) {
+      if (isAuthRequiredGatewayError(error)) {
+        const sessionStillValid = await confirmSessionOrRedirectToWelcome()
+        if (!sessionStillValid) return
+      }
       if (optimisticId) {
         setTimelineItems((prev) => prev.filter((item) => item.kind !== 'message' || item.id !== optimisticId))
         setInputValue(trimmedMessage)
@@ -421,6 +474,10 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
       const restored = await getDiscoverySession(sessionId)
       applyDiscoveryResponse(restored, profileId, `/v1/discovery/sessions/${sessionId}`)
     } catch (error) {
+      if (isAuthRequiredGatewayError(error)) {
+        const sessionStillValid = await confirmSessionOrRedirectToWelcome()
+        if (!sessionStillValid) return
+      }
       notifyError(error, '刷新会话失败')
     }
   }, [applyDiscoveryResponse, sessionId])
@@ -439,6 +496,10 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
       }
       return sid
     } catch (error) {
+      if (isAuthRequiredGatewayError(error)) {
+        const sessionStillValid = await confirmSessionOrRedirectToWelcome()
+        if (!sessionStillValid) return null
+      }
       notifyError(error, '创建新会话失败')
       return null
     } finally {
@@ -455,6 +516,10 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
       const restored = await getDiscoverySession(targetSessionId)
       applyDiscoveryResponse(restored, profileId, `/v1/discovery/sessions/${targetSessionId}`)
     } catch (error) {
+      if (isAuthRequiredGatewayError(error)) {
+        const sessionStillValid = await confirmSessionOrRedirectToWelcome()
+        if (!sessionStillValid) return
+      }
       notifyError(error, '切换会话失败')
     } finally {
       setIsLoadingSession(false)

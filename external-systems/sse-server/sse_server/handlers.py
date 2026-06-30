@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
+import time
 from datetime import datetime
 
 from aiohttp import web
@@ -25,6 +27,7 @@ class SSEHandlers:
             connection_manager: Connection manager instance
         """
         self.connection_manager = connection_manager
+        self._start_time = time.time()
 
     async def handle_sse_connection(self, request: web.Request) -> web.StreamResponse:
         """Handle SSE connection from frontend.
@@ -172,7 +175,7 @@ class SSEHandlers:
         return web.json_response(stats)
 
     async def handle_health(self, request: web.Request) -> web.Response:
-        """Handle health check request.
+        """Handle health check request - 增强版详细状态.
 
         Args:
             request: HTTP request
@@ -180,11 +183,100 @@ class SSEHandlers:
         Returns:
             JSON response with health status
         """
+        checks = {}
+
+        # 检查 Redis 连接（如果配置了）
+        redis_host = os.environ.get("REDIS_HOST")
+        if redis_host:
+            try:
+                import redis
+                start = time.time()
+                port = int(os.environ.get("REDIS_PORT", 6379))
+                password_file = os.environ.get("REDIS_PASSWORD_FILE")
+                password = os.environ.get("REDIS_PASSWORD")
+
+                if password_file:
+                    try:
+                        with open(password_file) as f:
+                            password = f.read().strip()
+                    except Exception as e:
+                        checks["redis"] = {"status": "secrets_read_error", "error": str(e)}
+                        password = None
+
+                if checks.get("redis", {}).get("status") != "secrets_read_error":
+                    client = redis.Redis(
+                        host=redis_host,
+                        port=port,
+                        password=password,
+                        socket_connect_timeout=2,
+                    )
+                    client.ping()
+                    latency = (time.time() - start) * 1000
+                    checks["redis"] = {"status": "healthy", "latency_ms": round(latency, 2)}
+            except ModuleNotFoundError as e:
+                checks["redis"] = {"status": "not_installed", "error": str(e)}
+            except Exception as e:
+                logger.warning(f"Redis health check failed: {e}")
+                checks["redis"] = {"status": "unhealthy", "error": str(e)}
+        else:
+            checks["redis"] = {"status": "not_configured"}
+
+        # 获取连接数统计
+        stats = self.connection_manager.get_stats()
+
+        # 判断整体健康状态
+        all_healthy = all(
+            check.get("status") in ("healthy", "not_configured", "not_installed")
+            for check in checks.values()
+        )
+
+        # 如果连接数超过80%容量，标记为 degraded
+        max_connections = config.MAX_CONNECTIONS
+        current_connections = stats["total_connections"]
+        if current_connections >= max_connections * 0.8:
+            all_healthy = False
+
         return web.json_response({
-            "status": "healthy",
+            "status": "healthy" if all_healthy else "degraded",
             "service": "sse-server",
             "timestamp": datetime.utcnow().isoformat(),
+            "uptime_seconds": time.time() - getattr(self, "_start_time", time.time()),
+            "checks": checks,
+            "connections": {
+                "current": current_connections,
+                "max": max_connections,
+                "usage_percent": round(current_connections / max_connections * 100, 2),
+            },
+            "config": {
+                "host": config.HOST,
+                "port": config.PORT,
+                "heartbeat_interval": config.HEARTBEAT_INTERVAL,
+            },
         })
+
+    async def handle_metrics(self, request: web.Request) -> web.Response:
+        """Expose lightweight Prometheus metrics without extra runtime wiring."""
+        stats = self.connection_manager.get_stats()
+        max_connections = config.MAX_CONNECTIONS
+        current_connections = stats["total_connections"]
+        usage_ratio = (current_connections / max_connections) if max_connections else 0.0
+
+        payload = "\n".join([
+            "# HELP sse_server_connections_current Current SSE connections.",
+            "# TYPE sse_server_connections_current gauge",
+            f"sse_server_connections_current {current_connections}",
+            "# HELP sse_server_connections_max Configured maximum SSE connections.",
+            "# TYPE sse_server_connections_max gauge",
+            f"sse_server_connections_max {max_connections}",
+            "# HELP sse_server_connection_usage_ratio Current SSE connection usage ratio.",
+            "# TYPE sse_server_connection_usage_ratio gauge",
+            f"sse_server_connection_usage_ratio {usage_ratio:.6f}",
+            "",
+        ])
+        return web.Response(
+            body=payload.encode("utf-8"),
+            headers={"Content-Type": "text/plain; version=0.0.4; charset=utf-8"},
+        )
 
 
 def setup_routes(app: web.Application, handlers: SSEHandlers) -> None:
@@ -216,4 +308,10 @@ def setup_routes(app: web.Application, handlers: SSEHandlers) -> None:
     app.router.add_get(
         "/health",
         handlers.handle_health,
+    )
+
+    # Prometheus metrics
+    app.router.add_get(
+        "/metrics",
+        handlers.handle_metrics,
     )

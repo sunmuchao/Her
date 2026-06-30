@@ -546,6 +546,7 @@ export default function CandidateDetailPage({
           source: 'candidate_detail_reply',
         })
         setShowSubmittedHint(true)
+        onOpenRelationships()
       } catch (error) {
         notifyError(error, '接受失败，请稍后重试')
       } finally {
@@ -576,6 +577,7 @@ export default function CandidateDetailPage({
         throw new Error('interest_unavailable')
       }
       setShowSubmittedHint(true)
+      onOpenRelationships()
     } catch (error) {
       notifyError(error, '发起意愿失败，请稍后重试')
     } finally {

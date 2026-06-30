@@ -1,0 +1,94 @@
+# Prometheus 配置 - 监控 HER 系统核心服务
+
+global:
+  scrape_interval: 30s  # 默认抓取间隔
+  evaluation_interval: 30s  # 规则评估间隔
+  external_labels:
+    monitor: 'her-production'
+
+# Alertmanager 配置（可选）
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          # - alertmanager:9093
+
+# 告警规则文件
+rule_files:
+  # - "alert_rules.yml"
+
+# 抓取配置
+scrape_configs:
+  # Prometheus 自身监控
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+
+  # Gateway Public 监控
+  - job_name: 'gateway-public'
+    static_configs:
+      - targets: ['gateway-public:8080']
+        labels:
+          service: 'gateway'
+          surface: 'public'
+    metrics_path: '/metrics'
+    scrape_interval: 15s  # Gateway 需要更频繁的监控
+
+  # Gateway Ops 监控（内网）
+  - job_name: 'gateway-ops'
+    static_configs:
+      - targets: ['gateway-ops:8083']
+        labels:
+          service: 'gateway'
+          surface: 'ops'
+    metrics_path: '/metrics'
+
+  # Gateway Internal 监控（内网）
+  - job_name: 'gateway-internal'
+    static_configs:
+      - targets: ['gateway-internal:8080']
+        labels:
+          service: 'gateway'
+          surface: 'internal'
+    metrics_path: '/metrics'
+
+  # SSE Server 监控
+  - job_name: 'sse-server'
+    static_configs:
+      - targets: ['sse-server:8081']
+        labels:
+          service: 'sse-server'
+    metrics_path: '/metrics'
+
+  # Scheduler 监控
+  - job_name: 'scheduler'
+    static_configs:
+      - targets: ['scheduler:9090']
+        labels:
+          service: 'scheduler'
+    metrics_path: '/metrics'
+
+  # MySQL 监控（如果使用 mysqld-exporter）
+  # - job_name: 'mysql'
+  #   static_configs:
+  #     - targets: ['mysql-exporter:9104']
+
+  # Redis 监控（如果使用 redis-exporter）
+  # - job_name: 'redis'
+  #   static_configs:
+  #     - targets: ['redis-exporter:9121']
+
+  # MinIO 监控（MinIO 自带 metrics 端点）
+  - job_name: 'minio'
+    metrics_path: /minio/v2/metrics/cluster
+    static_configs:
+      - targets: ['minio:9000']
+        labels:
+          service: 'minio'
+
+  # Frontend 监控（如果前端导出指标）
+  # - job_name: 'frontend'
+  #   static_configs:
+  #     - targets: ['frontend:3000']

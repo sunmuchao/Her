@@ -79,7 +79,7 @@ ffmpeg -version | head -5
 ```bash
 # 启动 Gateway（在新终端）
 source .venv/bin/activate
-python -m gateway
+docker compose up -d gateway-public
 
 # 或使用现有的启动脚本
 # bash scripts/start-gateway.sh
@@ -258,7 +258,7 @@ print(f'  Sample rate: {audio.frame_rate}Hz')
 **检查 Gateway 日志**：
 ```bash
 # 查看 Gateway 启动错误
-python -m gateway 2>&1 | tee gateway.log
+docker compose logs -f gateway-public
 
 # 常见错误:
 # - NumPy 2.x 冲突: 运行 scripts/fix-whisper-dependencies.sh

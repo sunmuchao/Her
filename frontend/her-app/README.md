@@ -4,15 +4,23 @@ Her 主应用前端（Next.js App Router），通过 `app/api/gateway` 代理访
 
 ## 运行
 
-1. 复制环境变量：
+1. 默认推荐直接从仓库根目录启动整套环境：
+
+```bash
+docker compose up -d
+```
+
+前端会暴露在 `http://127.0.0.1:3000`，并通过容器内代理访问 `gateway-public:8080`。
+
+2. 如果你只单独调试前端，再复制环境变量：
 
 ```bash
 cp .env.example .env.local
 ```
 
-2. 配置：
+3. 配置：
 
-- `PARTNER_GATEWAY_BASE_URL`：当前后端 gateway 地址，例如 `http://127.0.0.1:8765`
+- `PARTNER_GATEWAY_BASE_URL`：当前后端 gateway 地址，例如 `http://127.0.0.1:8080`
 - `PARTNER_GATEWAY_API_KEY`：如果 gateway 开启了 API key，则在这里配置
 - `NEXT_PUBLIC_HER_REQUESTER_ID`：推荐 / discovery 使用的用户请求者 ID（登录后 session 可覆盖）
 - `NEXT_PUBLIC_HER_PROFILE_ID`：discovery 和 trust hub 绑定的当前资料 ID
@@ -24,14 +32,14 @@ cp .env.example .env.local
 
 字段认证写回的 `HER_PROFILE_SOURCE_DSN` / `HER_PROFILE_SOURCE_TABLE` 应配置在 **Gateway 服务端**，不要放入 `NEXT_PUBLIC_*`。
 
-3. 安装并运行：
+4. 安装并运行：
 
 ```bash
 pnpm install
 pnpm dev:full
 ```
 
-`pnpm dev:full` 会先确认 gateway 可用，不可用时尝试启动真实 `partner-http-gateway`，然后以前台方式启动 Next.js 开发服务器。
+`pnpm dev:full` 属于历史本地联调方式。默认推荐还是仓库根目录的 `docker compose up -d`。
 
 如果页面里出现 `请求失败（404）`，但接口路径是 `/api/gateway/v1/...`，先检查 `PARTNER_GATEWAY_BASE_URL` 指向的是不是真正的 `partner-http-gateway`，而不是别的本地服务。最直接的自检方式：
 

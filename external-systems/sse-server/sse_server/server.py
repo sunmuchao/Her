@@ -155,7 +155,34 @@ def run() -> None:
 
     args = parser.parse_args()
 
+    # Setup logging first
+    logging.basicConfig(
+        level=config.LOG_LEVEL,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        stream=sys.stdout,
+    )
+
+    logger.info(f"Starting SSE server with args: host={args.host}, port={args.port}")
+
+    # Create and run server directly
+    server = SSEServer(host=args.host, port=args.port)
+
     try:
-        asyncio.run(main(args.host, args.port))
+        # Use uvloop for better performance if available
+        try:
+            import uvloop
+            uvloop.install()
+            logger.info("Using uvloop for better async performance")
+        except ImportError:
+            logger.info("uvloop not available, using default asyncio")
+
+        asyncio.run(server.run_forever())
     except KeyboardInterrupt:
         logger.info("KeyboardInterrupt received, shutting down...")
+    except Exception as e:
+        logger.error(f"SSE server crashed: {e}", exc_info=True)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    run()

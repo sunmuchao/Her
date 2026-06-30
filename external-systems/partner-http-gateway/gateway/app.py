@@ -41,6 +41,7 @@ from .http_helpers import (
     _incoming_trace_id,
     _wrap_trace_headers,
 )
+from .http_response import GatewayHttpResponse
 from .identity import (
     ActorPrincipal,
     GatewayAuthError,
@@ -77,6 +78,38 @@ from relationship_ledger.storage import DEFAULT_RELATION_LEDGER_MYSQL_DSN  # typ
 
 JSON_HEADERS = [("Content-Type", "application/json; charset=utf-8")]
 LOGGER = logging.getLogger(__name__)
+
+
+def _http_reason(status_code: int) -> str:
+    if status_code == 200:
+        return "OK"
+    if status_code == 201:
+        return "Created"
+    if status_code == 204:
+        return "No Content"
+    if status_code == 206:
+        return "Partial Content"
+    if status_code == 301:
+        return "Moved Permanently"
+    if status_code == 302:
+        return "Found"
+    if status_code == 304:
+        return "Not Modified"
+    if status_code == 400:
+        return "Bad Request"
+    if status_code == 401:
+        return "Unauthorized"
+    if status_code == 403:
+        return "Forbidden"
+    if status_code == 404:
+        return "Not Found"
+    if status_code == 416:
+        return "Range Not Satisfiable"
+    if status_code == 429:
+        return "Too Many Requests"
+    if status_code >= 500:
+        return "Error"
+    return "OK" if status_code < 400 else "Error"
 
 
 class PartnerGateway(AsyncJobGatewayMixin, GatewayAccessMixin):
@@ -143,8 +176,9 @@ class PartnerGateway(AsyncJobGatewayMixin, GatewayAccessMixin):
         *args: Any,
         **kwargs: Any,
     ) -> Any:
-        # 数据库连接超时保护：最长等待 10 秒
-        DB_TIMEOUT = 10.0
+        # 数据库连接超时保护：最长等待 2 秒（优化用户体验）
+        # 认证失败时快速返回401，避免用户长时间等待
+        DB_TIMEOUT = 2.0
 
         if pool is not None:
             conn = pool.acquire(timeout=DB_TIMEOUT)
@@ -220,6 +254,13 @@ class PartnerGateway(AsyncJobGatewayMixin, GatewayAccessMixin):
         return self._with_mm(_dual)
 
     def _resolve_auth_session_principal(self, token: str):
+        # 快速失败：token格式验证（避免无效token浪费数据库连接）
+        if not token or not isinstance(token, str):
+            return None
+        token = token.strip()
+        if not token or len(token) < 10:  # session token格式至少要有一定长度
+            return None
+
         try:
             resolved = self._with_chat(get_session_by_access_token, token)
         except Exception:
@@ -240,21 +281,17 @@ class PartnerGateway(AsyncJobGatewayMixin, GatewayAccessMixin):
         )
 
     def handle_health(self, _environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-        return 200, {
-            "ok": True,
-            "surface": gateway_surface(),
-            "jsonrpc_enabled": jsonrpc_enabled(),
-            "services": ["recommendation", "matchmaking", "chat", "discovery"],
-            "recommendation_db_configured": bool(self._recommendation_dsn),
-            "matchmaking_db_configured": bool(self._matchmaking_dsn),
-            "chat_db_configured": bool(self._chat_dsn),
-            "relation_ledger_db_configured": bool(self._relation_ledger_dsn),
-            "db_connection_pool": bool(self._rec_pool and self._mm_pool and self._chat_pool and self._ledger_pool),
-            "auth_required": self._identity_resolver.required,
-            "api_key_required": self._identity_resolver.legacy_api_required,
-            "static_token_count": self._identity_resolver.static_token_count,
-            "rate_limit_per_minute": int(os.environ.get("PARTNER_GATEWAY_RATE_LIMIT_PER_MINUTE", "600") or "600"),
-        }
+        """增强健康检查 - 详细状态 + 连接检查"""
+        from .health_check import HealthChecker
+
+        checker = HealthChecker(self)
+        return 200, checker.full_health_check()
+
+    def handle_metrics(self, _environ: dict[str, Any]) -> tuple[int, bytes, str]:
+        """Prometheus metrics endpoint."""
+        from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+
+        return 200, generate_latest(), CONTENT_TYPE_LATEST
 
     def dispatch_rest(self, environ: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         return dispatch_gateway_rest(self, environ)
@@ -287,6 +324,15 @@ class PartnerGateway(AsyncJobGatewayMixin, GatewayAccessMixin):
                 body = json.dumps(payload[1], ensure_ascii=False).encode("utf-8")
                 sr("200 OK", JSON_HEADERS + [("Content-Length", str(len(body)))])
                 _access_log(200)
+                return [body]
+
+            if path.rstrip("/") == "/metrics" and method == "GET":
+                status_code, body, content_type = self.handle_metrics(environ)
+                sr(
+                    f"{status_code} OK",
+                    [("Content-Type", content_type), ("Content-Length", str(len(body)))],
+                )
+                _access_log(status_code)
                 return [body]
 
             # 安全修复：限流检查移到 dispatch_public_auth_rest 之前
@@ -345,8 +391,16 @@ class PartnerGateway(AsyncJobGatewayMixin, GatewayAccessMixin):
                 return [body]
 
             status_code, payload = self.dispatch_rest(environ)
+            if isinstance(payload, GatewayHttpResponse):
+                response_headers = list(payload.headers)
+                if not any(key.lower() == "content-length" for key, _value in response_headers):
+                    response_headers.append(("Content-Length", str(len(payload.body))))
+                sr(f"{payload.status_code} {payload.reason or _http_reason(payload.status_code)}", response_headers)
+                _access_log(payload.status_code)
+                return [payload.body]
+
             body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-            reason = "OK" if status_code < 400 else ("Not Found" if status_code == 404 else "Error")
+            reason = _http_reason(status_code)
             sr(f"{status_code} {reason}", JSON_HEADERS + [("Content-Length", str(len(body)))])
             _access_log(status_code)
             return [body]

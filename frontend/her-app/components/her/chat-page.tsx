@@ -61,6 +61,12 @@ type MessagesResponse = {
   }>
 }
 
+function buildServerMessageSnapshot(messages: Message[]): string {
+  return messages
+    .map((msg) => `${msg.id}:${msg.timestamp}:${msg.content}:${msg.mediaType || ''}:${msg.mediaUrl || ''}`)
+    .join('|')
+}
+
 export default function ChatPage({ chatId, caseId, counterpartId, counterpartName, counterpartImage, onBack, onViewCandidate }: ChatPageProps) {
   const searchParams = useSearchParams()
   const urlChatTitle = searchParams.get('chatTitle')
@@ -102,6 +108,7 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
   // SSE连接管理
   const eventSourceRef = useRef<EventSource | null>(null)
   const sseConnectedRef = useRef(false)
+  const [isSseConnected, setIsSseConnected] = useState(false)
 
   // 视频通话相关状态
   const [showVideoCall, setShowVideoCall] = useState(false)
@@ -220,6 +227,7 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const latestServerMessageSnapshotRef = useRef('')
   // 使用 ref 保存最新的 urlChatTitle，避免闭包问题
   const chatTitleRef = useRef(urlChatTitle)
   useEffect(() => {
@@ -257,6 +265,7 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
         // 提取main_group会话的消息（用户对话 + AI红娘提示）
         const mappedMessages = extractMainGroupMessages(timelineData, currentRequesterId)
         setMessages(mappedMessages)
+        latestServerMessageSnapshotRef.current = buildServerMessageSnapshot(mappedMessages)
 
         // ✅ 检测 assistant_dm 会话（小雅私信，channel_key 为 assistant_dm_a 或 assistant_dm_b）
         // 需要检查会话成员列表来确定属于当前用户的会话
@@ -324,7 +333,7 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
     return () => {
       cancelled = true
     }
-  }, [resolvedChatId])
+  }, [resolvedChatId, resolvedCaseId])
 
   // 提取消息获取逻辑为独立函数（供SSE触发调用）
   const fetchAndUpdateMessages = async () => {
@@ -335,10 +344,12 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
     try {
       const timelineData = await fetchCaseTimeline(resolvedCaseId || '', requesterId)
       const mappedMessages = extractMainGroupMessages(timelineData, requesterId)
+      const nextSnapshot = buildServerMessageSnapshot(mappedMessages)
 
-      // 只在有新消息时更新
-      if (mappedMessages.length > messages.length) {
+      // timeline 默认只返回最近 50 条，超过上限后不能再用长度判断是否有新消息
+      if (nextSnapshot !== latestServerMessageSnapshotRef.current) {
         setMessages(mappedMessages)
+        latestServerMessageSnapshotRef.current = nextSnapshot
         // 标记新消息已读
         const latestMessage = mappedMessages[mappedMessages.length - 1]
         if (latestMessage && latestMessage.authorId !== requesterId && resolvedChatId) {
@@ -393,6 +404,7 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
     eventSource.addEventListener('connected', (e) => {
       console.log('[SSE] Connected:', e.data)
       sseConnectedRef.current = true
+      setIsSseConnected(true)
     })
 
     eventSource.addEventListener('message', (e) => {
@@ -413,8 +425,17 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
     })
 
     eventSource.onerror = (e) => {
-      console.error('[SSE] Error:', e)
+      const readyState = eventSource.readyState
+      if (readyState === EventSource.CONNECTING) {
+        console.warn('[SSE] Reconnecting...', { readyState })
+      } else if (readyState === EventSource.CLOSED) {
+        console.error('[SSE] Closed', { readyState, event: e })
+      } else {
+        console.warn('[SSE] Error event', { readyState, event: e })
+      }
       sseConnectedRef.current = false
+      setIsSseConnected(false)
+      void fetchAndUpdateMessages()
       // EventSource会自动重连
     }
 
@@ -422,25 +443,28 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
       eventSource.close()
       eventSourceRef.current = null
       sseConnectedRef.current = false
+      setIsSseConnected(false)
     }
   }, [resolvedCaseId])
 
   // ✅ SSE兜底机制：连接失败时回退到30秒轮询
   useEffect(() => {
     if (!resolvedCaseId || !resolvedChatId) return
-    if (sseConnectedRef.current) return // SSE已连接，不需要轮询兜底
+    if (isSseConnected) return // SSE已连接，不需要轮询兜底
 
     const requesterId = getChatParticipantId()
     if (!requesterId) return
 
     console.log('[ChatPage] SSE未连接，启动轮询兜底')
 
+    void fetchAndUpdateMessages()
+
     const interval = setInterval(async () => {
       await fetchAndUpdateMessages()
     }, 30000) // 30秒轮询兜底
 
     return () => clearInterval(interval)
-  }, [resolvedCaseId, resolvedChatId, sseConnectedRef.current])
+  }, [resolvedCaseId, resolvedChatId, isSseConnected])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })

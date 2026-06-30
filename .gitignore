@@ -30,3 +30,6 @@ tmp/
 # Runtime logs
 .run/logs/
 *.log
+
+# Secrets directory (密钥文件不提交)
+secrets/

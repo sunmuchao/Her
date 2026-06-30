@@ -41,6 +41,16 @@ ALLOWED_IMAGE_TYPES = {
 MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
 
 
+def _read_secret_file(path: str | None) -> str | None:
+    if not path:
+        return None
+    secret_path = str(path).strip()
+    if not secret_path:
+        return None
+    with open(secret_path) as f:
+        return f.read().strip()
+
+
 def _get_minio_config() -> dict[str, Any]:
     """
     获取 MinIO 配置，要求必须配置凭证环境变量。
@@ -49,21 +59,25 @@ def _get_minio_config() -> dict[str, Any]:
     增强：生产环境强制凭证长度检查。
     """
     # 检查必需的环境变量
+    access_key = os.environ.get("MINIO_ACCESS_KEY") or _read_secret_file(os.environ.get("MINIO_ACCESS_KEY_FILE"))
+    secret_key = os.environ.get("MINIO_SECRET_KEY") or _read_secret_file(os.environ.get("MINIO_SECRET_KEY_FILE"))
+
     missing_vars = []
-    for var in _REQUIRED_MINIO_ENV_VARS:
-        if not os.environ.get(var):
-            missing_vars.append(var)
+    if not access_key:
+        missing_vars.append("MINIO_ACCESS_KEY or MINIO_ACCESS_KEY_FILE")
+    if not secret_key:
+        missing_vars.append("MINIO_SECRET_KEY or MINIO_SECRET_KEY_FILE")
 
     if missing_vars:
         raise ValueError(
             f"MinIO credentials not configured: missing environment variables {missing_vars}. "
-            f"Please set MINIO_ACCESS_KEY and MINIO_SECRET_KEY before starting the service. "
+            f"Please set MINIO_ACCESS_KEY / MINIO_SECRET_KEY or their *_FILE variants before starting the service. "
             f"DO NOT use hardcoded default credentials."
         )
 
     # 验证凭证强度（生产环境）
-    access_key = os.environ.get("MINIO_ACCESS_KEY", "")
-    secret_key = os.environ.get("MINIO_SECRET_KEY", "")
+    access_key = str(access_key)
+    secret_key = str(secret_key)
 
     # ✅ 增强：生产环境强制凭证长度检查
     if os.environ.get("HER_PRODUCTION_MODE"):
@@ -166,8 +180,12 @@ def _generate_object_key(user_id: str, content_type: str) -> str:
         "image/png": ".png",
         "image/gif": ".gif",
         "image/webp": ".webp",
+        "audio/mpeg": ".mp3",
+        "audio/wav": ".wav",
+        "audio/ogg": ".ogg",
+        "audio/mp4": ".m4a",
     }
-    ext = ext_map.get(content_type, ".jpg")
+    ext = ext_map.get(content_type, ".bin")
     return f"chat/{user_id}/{ts}_{uuid_hex}{ext}"
 
 

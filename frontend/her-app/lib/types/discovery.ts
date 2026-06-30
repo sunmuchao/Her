@@ -135,7 +135,12 @@ export type DiscoveryView = {
 }
 
 export type DiscoverySessionResponse = {
-  session?: { session_id?: string }
+  session?: {
+    session_id?: string
+    status?: string
+    phase?: string
+    updated_at?: string
+  }
   view?: DiscoveryView
 }
 

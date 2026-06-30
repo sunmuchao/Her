@@ -31,6 +31,13 @@ PROFILE_FIRST_SEARCH_LIMIT = 5
 LOW_QUALITY_SCORE_THRESHOLD = 40
 
 
+def discovery_opening_tts_enabled() -> bool:
+    raw = (os.environ.get("HER_DISCOVERY_OPENING_TTS_ENABLED") or "").strip().lower()
+    if not raw:
+        return False
+    return raw not in {"0", "false", "off", "no"}
+
+
 def discovery_create_session_mode() -> str:
     raw = (os.environ.get("HER_DISCOVERY_CREATE_SESSION_MODE") or "profile_first").strip().lower()
     if raw in {"agent", "llm", "initial_decision"}:
@@ -126,34 +133,25 @@ def build_profile_first_open_result(
         else PROFILE_FIRST_EMPTY_MESSAGE
     )
 
-    # ✅ 新增：为开场白生成语音
     message_metadata = None
-    try:
-        # 从chat_system导入独立的TTS服务
-        # 注意：partner-chat-system/chat_system 需要在 Python path 中
-        # 根据实际部署方式，可能是：
-        # - 直接导入：from chat_system.tts_service import synthesize_tts
-        # - 包导入：from partner_chat_system.tts_service import synthesize_tts
-        # 这里尝试多种导入方式
-
+    if discovery_opening_tts_enabled():
         try:
-            # 方式1：直接从chat_system导入（如果chat_system在Python path中）
-            from chat_system.tts_service import synthesize_tts
-        except ImportError:
-            # 方式2：从partner_chat_system导入（如果作为包安装）
-            from partner_chat_system.tts_service import synthesize_tts
+            try:
+                from chat_system.tts_service import synthesize_tts
+            except ImportError:
+                from partner_chat_system.tts_service import synthesize_tts
 
-        LOGGER.info(f"[Discovery] 为开场白生成语音: text_length={len(message_text)}")
-        tts_result = synthesize_tts(message_text, voice="xiaoxiao")
-        if tts_result:
-            message_metadata = tts_result
-            LOGGER.info(f"[Discovery] 开场白语音生成成功: url={tts_result['media_url']}")
-        else:
-            LOGGER.warning("[Discovery] 开场白语音生成失败，仅返回文本")
-    except ImportError as e:
-        LOGGER.warning(f"[Discovery] TTS服务未安装，跳过语音生成: {e}")
-    except Exception as e:
-        LOGGER.error(f"[Discovery] 开场白语音生成异常: {e}")
+            LOGGER.info(f"[Discovery] 为开场白生成语音: text_length={len(message_text)}")
+            tts_result = synthesize_tts(message_text, voice="xiaoxiao")
+            if tts_result:
+                message_metadata = tts_result
+                LOGGER.info(f"[Discovery] 开场白语音生成成功: url={tts_result['media_url']}")
+            else:
+                LOGGER.warning("[Discovery] 开场白语音生成失败，仅返回文本")
+        except ImportError as e:
+            LOGGER.warning(f"[Discovery] TTS服务未安装，跳过语音生成: {e}")
+        except Exception as e:
+            LOGGER.error(f"[Discovery] 开场白语音生成异常: {e}")
 
     # 构建决策结果
     if has_results:

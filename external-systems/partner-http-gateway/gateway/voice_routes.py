@@ -22,7 +22,7 @@ try:
     PYDUB_AVAILABLE = True
 except ImportError:
     PYDUB_AVAILABLE = False
-    logging.warning("pydub not available, audio format conversion disabled")
+    logging.info("pydub not available, audio format conversion disabled")
 
 LOGGER = logging.getLogger(__name__)
 

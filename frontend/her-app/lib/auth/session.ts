@@ -70,6 +70,15 @@ export function clearSession() {
   void clearServerSession()
 }
 
+export function clearSessionAndRedirectToWelcome() {
+  clearSession()
+  if (typeof window === 'undefined') return
+  window.sessionStorage.removeItem('her_pending_auth_phone')
+  window.sessionStorage.removeItem('her_pending_auth_challenge_id')
+  window.sessionStorage.removeItem('her_pending_one_tap_attempt')
+  window.location.href = '/welcome'
+}
+
 export function applyLoginPayload(payload: LoginPayload): SessionContext {
   const accessToken = payload.session?.access_token
   if (typeof window !== 'undefined' && accessToken) {

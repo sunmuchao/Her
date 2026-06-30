@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import hashlib
 import re
+import os
 from dataclasses import dataclass
 from typing import Any, Sequence
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse, urlunparse
 
 MYSQL_SCHEMES = {"mysql", "mysql+pymysql"}
 DEFAULT_CHARSET = "utf8mb4"
@@ -165,7 +166,7 @@ def stable_name(*parts: str) -> str:
 
 
 def parse_mysql_dsn(dsn: str) -> dict[str, Any]:
-    parsed = urlparse(str(dsn))
+    parsed = urlparse(inject_mysql_password_into_dsn(str(dsn)))
     if parsed.scheme.lower() not in MYSQL_SCHEMES:
         raise ValueError(f"Unsupported MySQL DSN: {dsn}")
 
@@ -183,6 +184,41 @@ def parse_mysql_dsn(dsn: str) -> dict[str, Any]:
         "charset": query.get("charset", [DEFAULT_CHARSET])[0],
         "collation": query.get("collation", [DEFAULT_COLLATION])[0],
     }
+
+
+def _mysql_secret_from_env() -> str:
+    direct = str(os.environ.get("MYSQL_ROOT_PASSWORD") or "").strip()
+    if direct:
+        return direct
+    secret_file = str(os.environ.get("MYSQL_ROOT_PASSWORD_FILE") or "").strip()
+    if not secret_file:
+        return ""
+    try:
+        with open(secret_file, encoding="utf-8") as handle:
+            return handle.read().strip()
+    except OSError:
+        return ""
+
+
+def inject_mysql_password_into_dsn(dsn: str) -> str:
+    parsed = urlparse(str(dsn))
+    if parsed.scheme.lower() not in MYSQL_SCHEMES:
+        return str(dsn)
+    if parsed.password or (parsed.username or "") != "root":
+        return str(dsn)
+
+    password = _mysql_secret_from_env()
+    if not password:
+        return str(dsn)
+
+    host = parsed.hostname or "127.0.0.1"
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    userinfo = f"{quote(unquote(parsed.username or 'root'), safe='')}:{quote(password, safe='')}"
+    netloc = f"{userinfo}@{host}"
+    if parsed.port:
+        netloc += f":{parsed.port}"
+    return urlunparse(parsed._replace(netloc=netloc))
 
 
 def mysql_server_connect(config: dict[str, Any]):
@@ -338,7 +374,12 @@ def ensure_table_columns(mysql_conn, table: TableDef, *, prefix: str | None = No
             rendered += " AUTO_INCREMENT"
         alter_sql = f"ALTER TABLE {quote_mysql_ident(dest)} ADD COLUMN {rendered}"
         with mysql_conn.cursor() as cursor:
-            cursor.execute(alter_sql)
+            try:
+                cursor.execute(alter_sql)
+            except Exception as exc:  # noqa: BLE001
+                if "Duplicate column name" in str(exc):
+                    continue
+                raise
 
 
 def ensure_table(mysql_conn, table: TableDef, *, prefix: str | None = None, config: dict[str, Any] | None = None) -> None:
@@ -1165,7 +1206,7 @@ def chat_tables() -> tuple[TableDef, ...]:
             columns=(
                 ColumnDef("user_id", "VARCHAR(64)", nullable=False),
                 ColumnDef("account_status", "VARCHAR(32)", nullable=False),
-                ColumnDef("primary_phone", "VARCHAR(32)", nullable=True),
+                ColumnDef("primary_phone", "VARCHAR(255)", nullable=True),
                 ColumnDef("phone_verified_at", "DATETIME", nullable=True),
                 ColumnDef("register_source", "VARCHAR(32)", nullable=False),
                 ColumnDef("onboarding_status", "VARCHAR(32)", nullable=False),
@@ -1213,7 +1254,7 @@ def chat_tables() -> tuple[TableDef, ...]:
             name="auth_otp_challenges",
             columns=(
                 ColumnDef("challenge_id", "VARCHAR(64)", nullable=False),
-                ColumnDef("phone", "VARCHAR(32)", nullable=False),
+                ColumnDef("phone", "VARCHAR(255)", nullable=False),
                 ColumnDef("scene", "VARCHAR(32)", nullable=False),
                 ColumnDef("scenario", "VARCHAR(32)", nullable=False),
                 ColumnDef("code_hash", "VARCHAR(64)", nullable=False),
@@ -1271,7 +1312,7 @@ def chat_tables() -> tuple[TableDef, ...]:
             columns=(
                 ColumnDef("event_id", "VARCHAR(64)", nullable=False),
                 ColumnDef("user_id", "VARCHAR(64)", nullable=True),
-                ColumnDef("phone", "VARCHAR(32)", nullable=True),
+                ColumnDef("phone", "VARCHAR(255)", nullable=True),
                 ColumnDef("event_type", "VARCHAR(64)", nullable=False),
                 ColumnDef("result", "VARCHAR(32)", nullable=False),
                 ColumnDef("reason_code", "VARCHAR(64)", nullable=True),
@@ -1344,7 +1385,7 @@ def chat_tables() -> tuple[TableDef, ...]:
                 ColumnDef("client_ip", "VARCHAR(64)", nullable=True),
                 ColumnDef("device_id", "VARCHAR(128)", nullable=True),
                 ColumnDef("client_type", "VARCHAR(32)", nullable=True),
-                ColumnDef("verified_phone", "VARCHAR(32)", nullable=True),
+                ColumnDef("verified_phone", "VARCHAR(255)", nullable=True),
                 ColumnDef("expires_at", "DATETIME", nullable=False),
                 ColumnDef("created_at", "DATETIME", nullable=False),
                 ColumnDef("updated_at", "DATETIME", nullable=False),

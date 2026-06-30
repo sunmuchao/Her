@@ -1071,6 +1071,9 @@ class DiscoveryServiceTests(unittest.TestCase):
                 "OPENAI_API_KEY": "shared-key",
             },
             clear=False,
+        ), mock.patch(
+            "discovery_system.agent_runtime._AGENTS_SDK_ASYNC_CLIENT",
+            None,
         ), mock.patch("openai.AsyncOpenAI") as mocked_client, mock.patch(
             "agents.set_default_openai_client"
         ), mock.patch("agents.set_default_openai_api"), mock.patch("agents.set_tracing_disabled"):
@@ -1089,6 +1092,9 @@ class DiscoveryServiceTests(unittest.TestCase):
                 "HER_DISCOVERY_AGENT_OPENAI_API": "responses",
             },
             clear=False,
+        ), mock.patch(
+            "discovery_system.agent_runtime._AGENTS_SDK_ASYNC_CLIENT",
+            None,
         ), mock.patch("openai.AsyncOpenAI") as mocked_client, mock.patch(
             "agents.set_default_openai_client"
         ), mock.patch("agents.set_default_openai_api"), mock.patch("agents.set_tracing_disabled"):
@@ -1109,6 +1115,44 @@ class DiscoveryServiceTests(unittest.TestCase):
             clear=False,
         ):
             self.assertTrue(runtime._should_use_agents_sdk())
+
+    def test_agents_sdk_runtime_rejects_placeholder_api_key(self) -> None:
+        runtime = AgentsSdkDiscoveryAgentRuntime()
+        with mock.patch.dict(
+            os.environ,
+            {
+                "HER_DISCOVERY_AGENT_RUNTIME": "agents_sdk",
+                "HER_DISCOVERY_AGENT_API_KEY": "",
+                "DASHSCOPE_API_KEY": "",
+                "OPENAI_API_KEY": "replace-with-your-provider-key",
+            },
+            clear=False,
+        ):
+            self.assertFalse(runtime._should_use_agents_sdk())
+
+    def test_configure_agents_sdk_provider_does_not_use_placeholder_api_key(self) -> None:
+        with mock.patch.dict(
+            os.environ,
+            {
+                "HER_DISCOVERY_AGENT_WIRE_API": "responses",
+                "HER_DISCOVERY_AGENT_API_KEY": "",
+                "DASHSCOPE_API_KEY": "",
+                "OPENAI_API_KEY": "replace-with-your-provider-key",
+                "HER_DISCOVERY_AGENT_BASE_URL": "",
+                "DASHSCOPE_BASE_URL": "",
+                "OPENAI_BASE_URL": "https://coding.dashscope.aliyuncs.com/v1",
+            },
+            clear=False,
+        ), mock.patch(
+            "discovery_system.agent_runtime._AGENTS_SDK_ASYNC_CLIENT",
+            None,
+        ), mock.patch("openai.AsyncOpenAI") as mocked_client, mock.patch(
+            "agents.set_default_openai_client"
+        ), mock.patch("agents.set_default_openai_api"), mock.patch("agents.set_tracing_disabled"):
+            _configure_agents_sdk_provider()
+
+        self.assertEqual(mocked_client.call_args.kwargs["api_key"], "")
+        self.assertEqual(mocked_client.call_args.kwargs["base_url"], _BAILIAN_RESPONSES_BASE_URL)
 
     def test_run_with_agents_sdk_defaults_model_to_bailian_responses_model(self) -> None:
         runtime = AgentsSdkDiscoveryAgentRuntime()

@@ -145,7 +145,7 @@ kill 8140
 
 # 3. 重新启动Gateway
 cd /Users/sunmuchao/Downloads/Her
-python -m gateway
+docker compose up -d gateway-public
 ```
 
 ---

@@ -38,6 +38,8 @@ const COLLECTED_FIELD_LABELS: Record<string, string> = {
   disliked_traits: '不喜欢',
 }
 
+const DISPLAYABLE_COLLECTED_FIELDS = new Set(Object.keys(COLLECTED_FIELD_LABELS))
+
 function formatValue(value: unknown): string {
   if (value === null || value === undefined || value === '') return ''
   if (Array.isArray(value)) return value.map(String).join('、')
@@ -60,9 +62,10 @@ export function formatCollectedPreferenceChips(statements: Record<string, unknow
 
   for (const [key, value] of Object.entries(statements)) {
     if (key === 'target_age_min' || key === 'target_age_max') continue
+    if (!DISPLAYABLE_COLLECTED_FIELDS.has(key)) continue
     const text = formatValue(value)
     if (!text) continue
-    const label = COLLECTED_FIELD_LABELS[key] || key
+    const label = COLLECTED_FIELD_LABELS[key]
     chips.push(`${label} ${text}`)
   }
   return chips

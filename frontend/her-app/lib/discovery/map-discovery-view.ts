@@ -131,6 +131,14 @@ function mapDiscoveryCard(
     base_score: card.base_score,
     personality_scoring_trace: card.personality_scoring_trace,
     personality_match_context: card.personality_match_context as any,
+    caseId: typeof card.case_id === 'string' ? card.case_id : undefined,
+    viewType:
+      card.view_type === 'interest' ||
+      card.view_type === 'matched' ||
+      card.view_type === 'delayed' ||
+      card.view_type === 'candidate'
+        ? card.view_type
+        : undefined,
   }
 }
 

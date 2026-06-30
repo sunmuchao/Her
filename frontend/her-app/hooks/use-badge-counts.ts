@@ -5,6 +5,8 @@ import { fetchRelationshipsUnreadSummary, RELATIONSHIP_READ_EVENT } from '@/lib/
 import { fetchInboxUnreadCount, RECOMMENDATION_READ_EVENT } from '@/lib/api/endpoints/recommendation'
 import { fetchMyProxyIntroCases } from '@/lib/api/endpoints/proxy-intro'
 import { getAccessToken, getProfileId } from '@/lib/auth/session'
+import { confirmSessionOrRedirectToWelcome } from '@/lib/auth/confirm-session'
+import { isAuthRequiredGatewayError } from '@/lib/api/errors'
 
 // 全局徽章计数状态（不再支持乐观更新，完全依赖后端真实数据）
 let globalInboxUnreadCount = 0
@@ -72,7 +74,14 @@ export function useBadgeCounts() {
       setRelationshipsBadge(relationships.total)
       globalInboxUnreadCount = totalInboxUnread
       sessionStorage.setItem('inbox-unread-count', String(totalInboxUnread))
-    } catch {
+    } catch (error) {
+      if (isAuthRequiredGatewayError(error)) {
+        const sessionStillValid = await confirmSessionOrRedirectToWelcome()
+        if (sessionStillValid) {
+          console.warn('[Badge] 后台刷新鉴权失败，保留当前会话，等待下次重试', error)
+        }
+        return
+      }
       setInboxUnreadCount(0)
       setRelationshipsBadge(0)
       globalInboxUnreadCount = 0

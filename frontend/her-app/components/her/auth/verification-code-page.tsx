@@ -25,6 +25,7 @@ export default function VerificationCodePage({
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [isResending, setIsResending] = useState(false)
   const inputRefs = useRef<(HTMLInputElement | null)[]>([])
+  const lastSubmittedCodeRef = useRef<string | null>(null)
 
   // Format phone for display
   const maskedPhone = phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2')
@@ -44,6 +45,7 @@ export default function VerificationCodePage({
 
   // Auto-verify when all digits entered
   const handleVerify = useCallback(async (fullCode: string) => {
+    lastSubmittedCodeRef.current = fullCode
     setIsVerifying(true)
     setError(null)
     setErrorMessage(null)
@@ -56,6 +58,7 @@ export default function VerificationCodePage({
       else if (/频繁/.test(message)) setError('too_frequent')
       else if (/验证码|无效/.test(message)) setError('invalid')
       else setError('network')
+      lastSubmittedCodeRef.current = null
       setCode(['', '', '', '', '', ''])
       inputRefs.current[0]?.focus()
     } finally {
@@ -65,7 +68,11 @@ export default function VerificationCodePage({
 
   useEffect(() => {
     const fullCode = code.join('')
-    if (fullCode.length === 6 && !isVerifying) {
+    if (
+      fullCode.length === 6 &&
+      !isVerifying &&
+      lastSubmittedCodeRef.current !== fullCode
+    ) {
       handleVerify(fullCode)
     }
   }, [code, isVerifying, handleVerify])
@@ -79,6 +86,9 @@ export default function VerificationCodePage({
     setCode(newCode)
     setError(null)
     setErrorMessage(null)
+    if (lastSubmittedCodeRef.current && newCode.join('') !== lastSubmittedCodeRef.current) {
+      lastSubmittedCodeRef.current = null
+    }
 
     // Auto-focus next input
     if (digit && index < 5) {
@@ -100,6 +110,9 @@ export default function VerificationCodePage({
       pastedData.split('').forEach((digit, i) => {
         if (i < 6) newCode[i] = digit
       })
+      if (lastSubmittedCodeRef.current && newCode.join('') !== lastSubmittedCodeRef.current) {
+        lastSubmittedCodeRef.current = null
+      }
       setCode(newCode)
       inputRefs.current[Math.min(pastedData.length, 5)]?.focus()
     }
@@ -114,6 +127,7 @@ export default function VerificationCodePage({
     Promise.resolve(onResend())
       .then(() => {
         setCountdown(60)
+        lastSubmittedCodeRef.current = null
         setCode(['', '', '', '', '', ''])
         inputRefs.current[0]?.focus()
       })

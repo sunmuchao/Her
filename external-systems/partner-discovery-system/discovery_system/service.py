@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import re
+import threading
 from typing import Any
 
 from her_json_utils import json_safe
@@ -81,6 +82,13 @@ from .view_models import (
 )
 
 _logger = logging.getLogger(__name__)
+
+
+def _discovery_fast_open_enabled() -> bool:
+    raw = str(os.environ.get("HER_DISCOVERY_FAST_OPEN_ENABLED") or "").strip().lower()
+    if not raw:
+        return True
+    return raw not in {"0", "false", "off", "no"}
 
 # ✅ Agent Native：移除硬编码关键词列表
 # Agent 根据 Prompt 自主判断用户意图（如"换一批"、"看看更多"等）
@@ -490,6 +498,56 @@ class DiscoveryService:
         open_mode = discovery_create_session_mode()
         session.state["create_session_mode"] = open_mode
 
+        if _discovery_fast_open_enabled() and open_mode == "profile_first":
+            # 先补推送“有人想认识你”的被动推荐，避免 fast-open 直接返回时漏掉这类卡片。
+            self._check_and_push_proxy_intro_cases(session, profile_id, current)
+            session.state["fast_open_pending"] = True
+            session.view = {
+                "timeline": list(session.view.get("timeline") or []) + [
+                    assistant_message(
+                        f"{session.session_id}-opening",
+                        "我先根据你的资料筛一轮，马上把结果发你。",
+                        created_at=current,
+                    ),
+                ],
+                "criteria_chips": [],
+                "suggested_actions": [],
+                "composer": composer("小雅正在根据你的资料筛选...", disabled=True),
+            }
+            self.storage.save_session(session)
+            turn_id = self.storage.create_turn(
+                session_id=session.session_id,
+                request_kind="session_opened_pending",
+                user_message_text=None,
+                consumed_action_id=None,
+                agent_decision={
+                    "phase": "collecting_preferences",
+                    "assistant_message": "我先根据你的资料筛一轮，马上把结果发你。",
+                },
+                view_snapshot=clone_view(session.view),
+                created_at=current,
+                trace_id=trace_id,
+            )
+            self._persist_view_snapshot(
+                session,
+                turn_id=turn_id,
+                created_at=current,
+                trace_id=trace_id,
+            )
+            self._increment_metric("sessions.created")
+            self._increment_metric("turns.created")
+            self._increment_metric("sessions.create.profile_first.fast_open")
+            threading.Thread(
+                target=self._complete_profile_first_session_open,
+                kwargs={
+                    "session_id": session.session_id,
+                    "current": current,
+                    "trace_id": trace_id,
+                },
+                daemon=True,
+            ).start()
+            return self._session_payload(session)
+
         # ✅ 新增：检查并推送待推送的被动推荐案件（有人想认识你）
         self._check_and_push_proxy_intro_cases(session, profile_id, current)
 
@@ -557,6 +615,54 @@ class DiscoveryService:
         )
 
         return self._session_payload(session)
+
+    def _complete_profile_first_session_open(
+        self,
+        *,
+        session_id: str,
+        current: datetime,
+        trace_id: str | None,
+    ) -> None:
+        try:
+            session = self._require_session(session_id)
+            if not session.state.get("fast_open_pending"):
+                return
+
+            self._check_and_push_proxy_intro_cases(session, session.profile_id, current)
+            runtime_result, open_tool_calls = self._profile_first_session_open(session)
+            search_run_id = self._apply_runtime_result(session, runtime_result, now=current)
+            session.state.pop("fast_open_pending", None)
+            self.storage.save_session(session)
+
+            turn_id = self.storage.create_turn(
+                session_id=session.session_id,
+                request_kind="session_opened",
+                user_message_text=None,
+                consumed_action_id=None,
+                agent_decision=self._decision_payload(runtime_result.decision),
+                view_snapshot=clone_view(session.view),
+                created_at=current,
+                search_run_id=search_run_id,
+                trace_id=trace_id,
+            )
+            self._persist_view_snapshot(
+                session,
+                turn_id=turn_id,
+                created_at=current,
+                trace_id=trace_id,
+            )
+            self._record_tool_calls(
+                session_id=session.session_id,
+                turn_id=turn_id,
+                tool_calls=open_tool_calls,
+                search_run_id=search_run_id,
+                created_at=current,
+                trace_id=trace_id,
+            )
+            self._increment_metric("turns.created")
+            self._increment_metric("sessions.fast_open.completed")
+        except Exception:
+            _logger.exception("[Discovery Fast Open] 后台补首轮结果失败: session_id=%s", session_id)
 
     def switch_session(
         self,
@@ -791,6 +897,10 @@ class DiscoveryService:
             latest_snapshot = self.storage.get_latest_view_snapshot(session_id)
             if latest_snapshot is not None:
                 session.view = clone_view(latest_snapshot.view)
+        current = datetime.now()
+        self._check_and_push_proxy_intro_cases(session, session.profile_id, current)
+        session.updated_at = current
+        self.storage.save_session(session)
         self._increment_metric("session_restores")
         funnel_stage(
             system="discovery",
@@ -2139,13 +2249,20 @@ class DiscoveryService:
         limit: int,
         exclude_current_results: bool = False,
     ) -> dict[str, Any]:
-        # ✅ 参数预处理：如果需要排除当前结果，将 last_shown_candidate_ids 转换为 exclude_ids
+        # ✅ 参数预处理：如果需要排除当前结果，优先排除所有已展示历史，而不只是上一轮
         if exclude_current_results:
+            shown_history_ids = {
+                int(candidate_id)
+                for candidate_id in list(session.state.get("shown_candidate_ids_history") or [])
+                if int(candidate_id) > 0
+            }
             refresh_exclude_ids = {
                 int(candidate_id)
                 for candidate_id in list(session.state.get("last_shown_candidate_ids") or [])
                 if int(candidate_id) > 0
             }
+            if shown_history_ids:
+                refresh_exclude_ids |= shown_history_ids
             if refresh_exclude_ids:
                 existing_exclude_ids = criteria.get("exclude_ids")
                 normalized_exclude_ids: set[int] = set()
@@ -2482,21 +2599,27 @@ class DiscoveryService:
         from matchmaking_system.proxy_intro_core import list_match_cases_for_participant
         from .view_models import assistant_message, result_group, build_candidate_card
 
+        proxy_intro_conn = None
+        recommendation_conn = None
         try:
-            # 1. 打开proxy_intro数据库连接
+            # 1. 分别打开 proxy_intro 与 recommendation 连接，避免在 matchmaking 库查询 recommendation 表
             proxy_intro_conn = _open_proxy_intro_conn_impl()
+            recommendation_conn = self._open_recommendation_conn()
 
             # 2. 查询待推送的被动推荐案件
-            cases = list_match_cases_for_participant(proxy_intro_conn, profile_id)
+            cases = list_match_cases_for_participant(
+                proxy_intro_conn,
+                profile_id,
+                recommendation_conn=recommendation_conn,
+            )
             pending_cases = [
                 case for case in cases
-                if case.get("case_status") == "awaiting_reply"
+                if str(case.get("case_status") or "").strip().lower() in {"awaiting_reply", "viewed"}
                 and int(case.get("candidate_id") or 0) == int(profile_id)
                 and not case.get("outreach_payload", {}).get("discovery_pushed")
             ]
 
             if not pending_cases:
-                proxy_intro_conn.close()
                 return
 
             # 3. 推送每个案件
@@ -2534,6 +2657,8 @@ class DiscoveryService:
                     "score": 0,  # 被动推荐没有匹配度分数
                 }
                 candidate_card = build_candidate_card(candidate_data, reason_summary="")
+                candidate_card["case_id"] = str(case.get("case_id") or "")
+                candidate_card["view_type"] = "interest"
 
                 # 6. 在timeline中插入消息和候选人卡片
                 case_id = str(case.get("case_id") or "")
@@ -2572,7 +2697,6 @@ class DiscoveryService:
             # 8. 更新session view
             session.view["timeline"] = timeline
             proxy_intro_conn.commit()
-            proxy_intro_conn.close()
 
             _logger.info(
                 "推送被动推荐案件到发现页: profile_id=%s, count=%d",
@@ -2583,6 +2707,11 @@ class DiscoveryService:
         except Exception as e:
             _logger.error("推送被动推荐案件失败: profile_id=%s, error=%s", profile_id, e)
             # 不阻塞主流程，静默失败
+        finally:
+            if recommendation_conn is not None:
+                recommendation_conn.close()
+            if proxy_intro_conn is not None:
+                proxy_intro_conn.close()
 
     def _require_session(self, session_id: str) -> StoredSession:
         session = self.storage.get_session(session_id)
@@ -2798,7 +2927,7 @@ def _start_background_scheduler(storage: Any, *, discovery_dsn: str | None = Non
                 f"interval=24小时"
             )
         else:
-            _logger.warning("事件循环未运行，无法启动定时任务调度器")
+            _logger.info("事件循环未运行，跳过定时任务调度器启动")
 
     except Exception as exc:
         _logger.error(f"启动定时任务调度器失败: {exc}")

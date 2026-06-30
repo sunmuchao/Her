@@ -12,9 +12,14 @@ describe('collected helpers', () => {
       target_age_max: 32,
       target_cities: '上海',
       persona_summary_internal: 'ignored',
+      target_weight_min: 60,
+      display_name: '于语涵',
     })
     expect(chips).toContain('年龄 25-32')
     expect(chips.some((item) => item.includes('上海'))).toBe(true)
+    expect(chips.some((item) => item.includes('target_weight_min'))).toBe(false)
+    expect(chips.some((item) => item.includes('display_name'))).toBe(false)
+    expect(chips.some((item) => item.includes('于语涵'))).toBe(false)
   })
 
   it('maps collected statements to profile preference grid', () => {

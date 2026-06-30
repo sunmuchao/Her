@@ -72,6 +72,25 @@ _DISCOVERY_CONTEXT_WARN_CHARS = 16000
 _DISCOVERY_CONTEXT_ERROR_CHARS = 32000
 
 
+def _looks_like_placeholder_secret(value: str) -> bool:
+    normalized = str(value or "").strip().lower()
+    if not normalized:
+        return True
+    return normalized.startswith("replace-with-") or normalized in {
+        "your-api-key",
+        "test-key",
+        "dummy-key",
+    }
+
+
+def _env_first_non_placeholder(*keys: str) -> str:
+    for key in keys:
+        value = str(os.environ.get(key) or "").strip()
+        if value and not _looks_like_placeholder_secret(value):
+            return value
+    return ""
+
+
 def _convert_sets_to_lists(data: dict[str, Any]) -> dict[str, Any]:
     """递归转换字典中的所有set为list（JSON可序列化）
 
@@ -308,7 +327,7 @@ def _resolve_discovery_wire_api() -> str:
 
 
 def _resolve_discovery_api_key() -> str:
-    return env_first(
+    return _env_first_non_placeholder(
         "HER_DISCOVERY_AGENT_API_KEY",
         "DASHSCOPE_API_KEY",
         "OPENAI_API_KEY",
@@ -335,12 +354,12 @@ def _resolve_discovery_base_url(*, wire_api: str) -> str:
     if wire_api == "responses":
         if _looks_like_dashscope_base_url(shared_base_url):
             return _BAILIAN_RESPONSES_BASE_URL
-        # ✅ P0修复：放宽条件，只要有百炼相关的API key就推断使用百炼API URL
-        # 根因：DASHSCOPE_API_KEY可能不存在，但有HER_DISCOVERY_AGENT_API_KEY或OPENAI_API_KEY
-        # 解决：检查是否存在任何百炼相关的API key
-        if os.environ.get("DASHSCOPE_API_KEY") or \
-           os.environ.get("HER_DISCOVERY_AGENT_API_KEY") or \
-           os.environ.get("OPENAI_API_KEY"):
+        # 仅在存在真实可用 key 时才推断百炼端点，避免把 .env.example 占位符当成真配置。
+        if _env_first_non_placeholder(
+            "DASHSCOPE_API_KEY",
+            "HER_DISCOVERY_AGENT_API_KEY",
+            "OPENAI_API_KEY",
+        ):
             _logger.info("✅ 自动推断使用百炼API URL（基于API key存在）")
             return _BAILIAN_RESPONSES_BASE_URL
     return shared_base_url

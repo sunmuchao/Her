@@ -8,10 +8,17 @@ export async function navigateAfterLogin(
   onNavigate: (page: AppPage) => void,
 ): Promise<AppPage> {
   applyLoginPayload(payload)
-  const authMe = await hydrateSessionFromAuthMe()
-  const page = resolvePostLoginPage(payload, authMe)
-  onNavigate(page)
-  return page
+  const optimisticPage = resolvePostLoginPage(payload, null)
+  onNavigate(optimisticPage)
+
+  void hydrateSessionFromAuthMe().then((authMe) => {
+    const resolvedPage = resolvePostLoginPage(payload, authMe)
+    if (resolvedPage !== optimisticPage) {
+      onNavigate(resolvedPage)
+    }
+  })
+
+  return optimisticPage
 }
 
 /** Use after actions that mutate auth state without a full login payload (e.g. bind phone). */

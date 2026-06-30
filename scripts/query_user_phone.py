@@ -1,26 +1,107 @@
-"""查询虚拟用户王语文的手机号"""
+"""查询虚拟用户手机号与 profile 映射。"""
 
-import os
+from __future__ import annotations
+
 import json
+import os
+import sys
+from pathlib import Path
+from urllib.parse import quote, unquote, urlparse, urlunparse
+
 from sqlalchemy import create_engine, text
-from dotenv import load_dotenv
+from sqlalchemy.exc import OperationalError
 
-# 加载环境变量
-load_dotenv()
+_SCRIPTS_DIR = Path(__file__).resolve().parent
+if str(_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR))
+from _repo_bootstrap import bootstrap_repo  # noqa: E402
 
-# 数据库连接
-chat_db_url = os.environ.get("PARTNER_CHAT_DB", "mysql://root@127.0.0.1:3307/her_chat")
-persona_db_url = os.environ.get("PERSONA_MEMORY_MYSQL_SOURCE", "mysql://root@127.0.0.1:3307/her?table=profiles")
+REPO_ROOT = bootstrap_repo()
 
-# 如果没有指定驱动，使用 pymysql
-if chat_db_url.startswith("mysql://") and "+pymysql" not in chat_db_url:
-    chat_db_url = chat_db_url.replace("mysql://", "mysql+pymysql://")
-if persona_db_url.startswith("mysql://") and "+pymysql" not in persona_db_url:
-    persona_db_url = persona_db_url.split("?")[0].replace("mysql://", "mysql+pymysql://")
 
-# 创建引擎
-chat_engine = create_engine(chat_db_url)
-persona_engine = create_engine(persona_db_url)
+def _load_dotenv() -> None:
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    env_path = REPO_ROOT / ".env"
+    if env_path.is_file():
+        load_dotenv(env_path, override=True)
+
+
+def _load_mysql_root_password() -> str:
+    direct = str(os.environ.get("MYSQL_ROOT_PASSWORD") or "").strip()
+    if direct:
+        return direct
+
+    secret_file = str(os.environ.get("MYSQL_ROOT_PASSWORD_FILE") or "").strip()
+    candidate_files = []
+    if secret_file:
+        candidate_files.append(Path(secret_file))
+    candidate_files.append(REPO_ROOT / "secrets" / "mysql_root_password.txt")
+
+    for path in candidate_files:
+        try:
+            if path.is_file():
+                password = path.read_text(encoding="utf-8").strip()
+                if password:
+                    os.environ["MYSQL_ROOT_PASSWORD"] = password
+                    return password
+        except OSError:
+            continue
+    return ""
+
+
+def _resolve_sqlalchemy_dsn(raw_dsn: str, *, strip_query: bool = False) -> str:
+    dsn = str(raw_dsn or "").strip()
+    if not dsn:
+        raise ValueError("MySQL DSN is empty")
+
+    parsed = urlparse(dsn)
+    if parsed.scheme not in {"mysql", "mysql+pymysql"}:
+        return dsn
+
+    if (parsed.username or "") == "root" and not parsed.password:
+        password = _load_mysql_root_password()
+        if password:
+            host = parsed.hostname or "127.0.0.1"
+            if ":" in host and not host.startswith("["):
+                host = f"[{host}]"
+            userinfo = f"{quote(unquote(parsed.username or 'root'), safe='')}:{quote(password, safe='')}"
+            netloc = f"{userinfo}@{host}"
+            if parsed.port:
+                netloc += f":{parsed.port}"
+            parsed = parsed._replace(netloc=netloc)
+
+    if parsed.scheme == "mysql":
+        parsed = parsed._replace(scheme="mysql+pymysql")
+    if strip_query:
+        parsed = parsed._replace(query="")
+    return urlunparse(parsed)
+
+
+def _build_engine(env_name: str, default: str, *, strip_query: bool = False):
+    return create_engine(
+        _resolve_sqlalchemy_dsn(os.environ.get(env_name, default), strip_query=strip_query)
+    )
+
+
+def _print_connection_hint(exc: OperationalError, env_name: str) -> None:
+    print(f"\n数据库连接失败: {env_name}")
+    print(f"错误: {exc}")
+    print("排查建议:")
+    print("  1. 确认目标 MySQL 已启动，并监听正确的 host/port。")
+    print("  2. 检查 .env 中的 DSN 是否符合当前环境。")
+    print("  3. 如使用 root 账号，确认 MYSQL_ROOT_PASSWORD 或 secrets/mysql_root_password.txt 可用。")
+
+
+_load_dotenv()
+chat_engine = _build_engine("PARTNER_CHAT_DB", "mysql://root@127.0.0.1:3307/her_chat")
+persona_engine = _build_engine(
+    "PERSONA_MEMORY_MYSQL_SOURCE",
+    "mysql://root@127.0.0.1:3307/her?table=profiles",
+    strip_query=True,
+)
 
 def query_user_by_name(name):
     """根据名字查询用户手机号"""
@@ -198,12 +279,16 @@ def query_profile_by_name(name):
         return profiles
 
 def main():
-    name = "林舒雯"
+    name = "郭雨萌"
     print(f"查询用户: {name}")
 
     # 先从 profiles 表查询
     print("\n=== 从 profiles 表查询 ===")
-    profiles = query_profile_by_name(name)
+    try:
+        profiles = query_profile_by_name(name)
+    except OperationalError as exc:
+        _print_connection_hint(exc, "PERSONA_MEMORY_MYSQL_SOURCE")
+        return
 
     if profiles:
         print(f"\n在 profiles 表中找到 {len(profiles)} 个用户:")
@@ -240,7 +325,11 @@ def main():
 
     # 如果 profiles 表没找到，再从 chat 数据库查询
     print("\n=== 从 chat 数据库查询虚拟用户 ===")
-    virtual_users = query_virtual_users()
+    try:
+        virtual_users = query_virtual_users()
+    except OperationalError as exc:
+        _print_connection_hint(exc, "PARTNER_CHAT_DB")
+        return
 
     found_user = None
     for user in virtual_users:
@@ -284,7 +373,11 @@ def main():
 
         # 最后尝试在整个数据库中搜索
         print("\n=== 在整个 chat 数据库中搜索 ===")
-        users = query_user_by_name(name)
+        try:
+            users = query_user_by_name(name)
+        except OperationalError as exc:
+            _print_connection_hint(exc, "PARTNER_CHAT_DB")
+            return
         if users:
             print(f"\n找到 {len(users)} 个用户:")
             for user in users:

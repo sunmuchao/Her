@@ -26,7 +26,7 @@ An error happened while trying to locate the files on the Hub
 **只需重启 Gateway**：
 ```bash
 # 重启 Gateway 服务
-python -m gateway
+docker compose up -d gateway-public
 ```
 
 **镜像站点说明**：
@@ -82,7 +82,7 @@ HTTP_PROXY=http://127.0.0.1:7890
 HTTPS_PROXY=http://127.0.0.1:7890
 
 # 重启 Gateway
-python -m gateway
+docker compose up -d gateway-public
 ```
 
 ---
@@ -152,7 +152,7 @@ Whisper model loaded successfully
 rm -rf ~/.cache/huggingface/hub/models--Systran--faster-whisper-*
 
 # 重启 Gateway
-python -m gateway
+docker compose up -d gateway-public
 ```
 
 ### Q3: 识别速度慢
@@ -208,7 +208,7 @@ curl -I https://huggingface.co
 - ✅ 计算类型：`int8`
 
 **下一步操作**：
-1. 重启 Gateway：`python -m gateway`
+1. 重启 Gateway：`docker compose restart gateway-public`
 2. 等待 1-2 分钟下载模型
 3. 测试语音识别
 

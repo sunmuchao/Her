@@ -17,11 +17,16 @@ import io
 import os
 import re
 import secrets
+from datetime import timedelta
 from typing import Any, Protocol
+from urllib import error as urllib_error
+from urllib import parse as urllib_parse
+from urllib import request as urllib_request
 
 from match_domain import get_trace_id  # noqa: E402
 
 from .http_helpers import _json_safe, _read_body
+from .http_response import GatewayHttpResponse
 from .input_validator import validate_filename, ValidationError
 
 
@@ -64,6 +69,25 @@ _DANGEROUS_FILENAME_PATTERNS = [
     r"\.(exe|bat|cmd|sh|py|pl|rb|js|php|asp|aspx|jsp)$",  # Executable extensions
     r"\.(html|htm|svg|xml|xhtml)$",  # Scriptable content
 ]
+
+_MEDIA_PROXY_ALLOWED_HOSTS = frozenset({"127.0.0.1", "localhost", "0.0.0.0", "minio"})
+_MEDIA_PROXY_ALLOWED_PORTS = frozenset({"9000"})
+_MEDIA_PROXY_ALLOWED_PATH_PREFIXES = ("/her-media/",)
+_MEDIA_PROXY_REQUEST_HEADERS = (
+    "HTTP_RANGE",
+    "HTTP_IF_RANGE",
+    "HTTP_IF_NONE_MATCH",
+    "HTTP_IF_MODIFIED_SINCE",
+)
+_MEDIA_PROXY_RESPONSE_HEADERS = (
+    "Content-Type",
+    "Content-Length",
+    "Accept-Ranges",
+    "Content-Range",
+    "ETag",
+    "Last-Modified",
+    "Content-Disposition",
+)
 
 
 def _detect_file_type(data: bytes) -> str | None:
@@ -450,6 +474,145 @@ def rest_media_health(
     return 200, {**_json_safe(health), "trace_id": get_trace_id()}
 
 
+def _normalize_media_proxy_url(raw_url: str) -> str:
+    parsed = urllib_parse.urlsplit(str(raw_url or "").strip())
+    if not parsed.scheme or not parsed.netloc:
+        raise ValueError("url 参数不是合法地址")
+    if parsed.hostname not in _MEDIA_PROXY_ALLOWED_HOSTS:
+        raise ValueError("不允许代理该媒体地址")
+    if parsed.port is not None and str(parsed.port) not in _MEDIA_PROXY_ALLOWED_PORTS:
+        raise ValueError("不允许代理该媒体地址")
+    if not any(parsed.path.startswith(prefix) for prefix in _MEDIA_PROXY_ALLOWED_PATH_PREFIXES):
+        raise ValueError("不允许代理该媒体地址")
+
+    endpoint = (os.environ.get("MINIO_ENDPOINT") or "minio:9000").strip() or "minio:9000"
+    secure = (os.environ.get("MINIO_SECURE") or "false").strip().lower() in {"1", "true", "yes"}
+    scheme = "https" if secure else "http"
+    return urllib_parse.urlunsplit((scheme, endpoint, parsed.path, parsed.query, ""))
+
+
+def _media_proxy_request_headers(environ: dict[str, Any]) -> dict[str, str]:
+    headers: dict[str, str] = {}
+    for header_name in _MEDIA_PROXY_REQUEST_HEADERS:
+        raw_value = str(environ.get(header_name) or "").strip()
+        if not raw_value:
+            continue
+        normalized_name = header_name.removeprefix("HTTP_").replace("_", "-").title()
+        headers[normalized_name] = raw_value
+    return headers
+
+
+def _build_minio_presigned_proxy_url(upstream_url: str, method: str) -> str:
+    parsed = urllib_parse.urlsplit(upstream_url)
+    path_parts = [segment for segment in parsed.path.split("/") if segment]
+    if len(path_parts) < 2:
+        return upstream_url
+
+    bucket_name = path_parts[0]
+    object_name = "/".join(path_parts[1:])
+    if not bucket_name or not object_name:
+        return upstream_url
+
+    access_key = str(os.environ.get("MINIO_ACCESS_KEY") or "").strip()
+    secret_key = str(os.environ.get("MINIO_SECRET_KEY") or "").strip()
+    if not access_key or not secret_key:
+        return upstream_url
+
+    try:
+        from minio import Minio  # type: ignore[import-untyped]
+    except ImportError:
+        return upstream_url
+
+    client = Minio(
+        parsed.netloc,
+        access_key=access_key,
+        secret_key=secret_key,
+        secure=parsed.scheme == "https",
+    )
+    try:
+        return client.get_presigned_url(
+            method,
+            bucket_name,
+            object_name,
+            expires=timedelta(minutes=5),
+        )
+    except Exception:
+        return upstream_url
+
+
+def rest_media_proxy(
+    _gateway: MediaGateway,
+    environ: dict[str, Any],
+) -> tuple[int, GatewayHttpResponse] | tuple[int, dict[str, Any]]:
+    query = urllib_parse.parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True)
+    raw_url = str((query.get("url") or [""])[-1]).strip()
+    if not raw_url:
+        return 400, {
+            "error": {
+                "code": "invalid_media_url",
+                "message": "缺少 url 参数",
+            },
+            "trace_id": get_trace_id(),
+        }
+
+    try:
+        upstream_url = _normalize_media_proxy_url(raw_url)
+    except ValueError as exc:
+        status = 403 if "不允许" in str(exc) else 400
+        return status, {
+            "error": {
+                "code": "invalid_media_url",
+                "message": str(exc),
+            },
+            "trace_id": get_trace_id(),
+        }
+
+    method = str(environ.get("REQUEST_METHOD") or "GET").upper()
+    proxied_url = _build_minio_presigned_proxy_url(upstream_url, method)
+    request = urllib_request.Request(
+        proxied_url,
+        headers=_media_proxy_request_headers(environ),
+        method=method,
+    )
+
+    try:
+        upstream = urllib_request.urlopen(request, timeout=15)
+    except urllib_error.HTTPError as exc:
+        detail = f"媒体源返回异常状态 {exc.code}"
+        return 502, {
+            "error": {
+                "code": "media_upstream_error",
+                "message": detail,
+            },
+            "trace_id": get_trace_id(),
+        }
+    except urllib_error.URLError as exc:
+        detail = str(exc.reason).strip() if getattr(exc, "reason", None) else str(exc).strip()
+        return 502, {
+            "error": {
+                "code": "media_fetch_failed",
+                "message": "媒体拉取失败",
+                "detail": detail or "unknown fetch error",
+            },
+            "trace_id": get_trace_id(),
+        }
+
+    with upstream:
+        body = b"" if method == "HEAD" else upstream.read()
+        headers: list[tuple[str, str]] = [("Cache-Control", "no-store")]
+        for name in _MEDIA_PROXY_RESPONSE_HEADERS:
+            value = upstream.headers.get(name)
+            if value:
+                headers.append((name, value))
+        if not any(name.lower() == "content-type" for name, _value in headers):
+            headers.append(("Content-Type", "application/octet-stream"))
+        return upstream.status, GatewayHttpResponse(
+            status_code=upstream.status,
+            body=body,
+            headers=headers,
+        )
+
+
 def dispatch_media_rest(
     gateway: MediaGateway,
     environ: dict[str, Any],
@@ -458,6 +621,8 @@ def dispatch_media_rest(
 ) -> tuple[int, dict[str, Any]] | None:
     if path == "/v2/media/upload" and method == "POST":
         return rest_media_upload(gateway, environ)
+    if path == "/v1/media/proxy" and method in {"GET", "HEAD"}:
+        return rest_media_proxy(gateway, environ)
     if path == "/v2/media/health" and method == "GET":
         return rest_media_health(gateway, environ)
     return None
@@ -466,6 +631,7 @@ def dispatch_media_rest(
 __all__ = [
     "MediaGateway",
     "rest_media_upload",
+    "rest_media_proxy",
     "rest_media_health",
     "dispatch_media_rest",
     "_detect_file_type",

@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Her 部署架构图</title>
+  <style>
+    :root {
+      --bg: #f4f1ea;
+      --paper: #fffdf8;
+      --ink: #183042;
+      --muted: #64727d;
+      --line: #d8ddd8;
+      --blue: #3273dc;
+      --blue-soft: #eaf2ff;
+      --orange: #ef6c2f;
+      --orange-soft: #fff0e8;
+      --green: #1f8a68;
+      --green-soft: #e8f6f0;
+      --gold: #ab7a13;
+      --gold-soft: #fff6df;
+      --slate: #5a6876;
+      --slate-soft: #eef2f5;
+      --red: #be4a3a;
+      --red-soft: #fdecea;
+      --shadow: 0 18px 50px rgba(24, 48, 66, 0.08);
+      --radius: 22px;
+      --mono: "Fira Code", "JetBrains Mono", Consolas, monospace;
+      --sans: "Fira Sans", "Avenir Next", "PingFang SC", "Hiragino Sans GB", "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--sans);
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 0% 0%, rgba(50,115,220,0.10), transparent 26%),
+        radial-gradient(circle at 100% 0%, rgba(239,108,47,0.12), transparent 22%),
+        linear-gradient(180deg, #fcfbf7 0%, var(--bg) 100%);
+    }
+
+    code {
+      font-family: var(--mono);
+      font-size: 0.92em;
+      background: rgba(24, 48, 66, 0.05);
+      padding: 2px 6px;
+      border-radius: 8px;
+      word-break: break-word;
+    }
+
+    .page {
+      width: min(1500px, calc(100vw - 28px));
+      margin: 0 auto;
+      padding: 22px 0 56px;
+    }
+
+    .hero, .panel {
+      background: rgba(255, 253, 248, 0.95);
+      border: 1px solid rgba(216, 221, 216, 0.96);
+      box-shadow: var(--shadow);
+      border-radius: 30px;
+    }
+
+    .hero {
+      padding: 28px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .hero::before, .hero::after {
+      content: "";
+      position: absolute;
+      border-radius: 999px;
+      opacity: 0.16;
+    }
+
+    .hero::before {
+      width: 300px;
+      height: 300px;
+      top: -140px;
+      right: -80px;
+      background: var(--orange);
+    }
+
+    .hero::after {
+      width: 240px;
+      height: 240px;
+      left: -80px;
+      bottom: -150px;
+      background: var(--blue);
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border-radius: 999px;
+      background: var(--orange-soft);
+      color: #924117;
+      padding: 8px 12px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      position: relative;
+      z-index: 1;
+    }
+
+    h1, h2, h3, p { margin: 0; }
+
+    h1 {
+      margin-top: 16px;
+      font-size: clamp(34px, 5vw, 60px);
+      line-height: 0.96;
+      letter-spacing: -0.04em;
+      position: relative;
+      z-index: 1;
+    }
+
+    .hero p {
+      margin-top: 16px;
+      max-width: 920px;
+      font-size: 17px;
+      line-height: 1.75;
+      color: var(--muted);
+      position: relative;
+      z-index: 1;
+    }
+
+    .pill-row {
+      position: relative;
+      z-index: 1;
+      margin-top: 22px;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .pill {
+      background: rgba(255, 255, 255, 0.8);
+      border: 1px solid rgba(216, 221, 216, 0.95);
+      border-radius: 18px;
+      padding: 14px 16px;
+    }
+
+    .pill strong {
+      display: block;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .pill span {
+      font-weight: 700;
+      line-height: 1.5;
+      display: block;
+    }
+
+    .panel {
+      margin-top: 22px;
+      padding: 22px;
+    }
+
+    .panel-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: end;
+      gap: 18px;
+      margin-bottom: 18px;
+      flex-wrap: wrap;
+    }
+
+    .panel-head h2 {
+      font-size: 26px;
+      letter-spacing: -0.03em;
+    }
+
+    .panel-head p {
+      color: var(--muted);
+      max-width: 920px;
+      line-height: 1.7;
+    }
+
+    .hint {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border-radius: 999px;
+      padding: 8px 12px;
+      font-size: 12px;
+      font-weight: 700;
+      background: var(--blue-soft);
+      color: #1c4e9b;
+    }
+
+    .legend {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: #fff;
+      border: 1px solid var(--line);
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+    }
+
+    .client { background: var(--blue); }
+    .gateway { background: var(--orange); }
+    .domain { background: var(--green); }
+    .core { background: var(--gold); }
+    .data { background: var(--slate); }
+    .ops { background: var(--red); }
+
+    .chain {
+      display: grid;
+      grid-template-columns: 1.1fr 90px 1.3fr 90px 1.25fr 90px 1.2fr;
+      gap: 0;
+      align-items: center;
+    }
+
+    .stack {
+      border-radius: 24px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,251,0.96));
+      padding: 18px;
+      min-height: 290px;
+      position: relative;
+    }
+
+    .stack.blue { background: linear-gradient(180deg, #f8fbff, #eef5ff); }
+    .stack.orange { background: linear-gradient(180deg, #fff8f3, #fff1e8); }
+    .stack.green { background: linear-gradient(180deg, #f7fdf9, #edf8f2); }
+    .stack.slate { background: linear-gradient(180deg, #fafbfd, #eff3f7); }
+
+    .stack-label {
+      display: inline-flex;
+      padding: 7px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 14px;
+    }
+
+    .blue .stack-label { background: var(--blue); color: #fff; }
+    .orange .stack-label { background: var(--orange); color: #fff; }
+    .green .stack-label { background: var(--green); color: #fff; }
+    .slate .stack-label { background: var(--slate); color: #fff; }
+
+    .stack h3 {
+      font-size: 24px;
+      line-height: 1.1;
+      letter-spacing: -0.03em;
+      margin-bottom: 8px;
+    }
+
+    .stack > p {
+      color: var(--muted);
+      line-height: 1.65;
+      margin-bottom: 14px;
+    }
+
+    .mini-card {
+      background: rgba(255, 255, 255, 0.85);
+      border: 1px solid rgba(216, 221, 216, 0.95);
+      border-radius: 16px;
+      padding: 12px 14px;
+      margin-top: 10px;
+    }
+
+    .mini-card strong {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 6px;
+    }
+
+    .mini-card p {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    .arrow-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 12px;
+      text-align: center;
+    }
+
+    .arrow-line {
+      width: 100%;
+      height: 4px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, rgba(50,115,220,0.22), rgba(239,108,47,0.55));
+      position: relative;
+    }
+
+    .arrow-line::after {
+      content: "";
+      position: absolute;
+      right: -2px;
+      top: 50%;
+      transform: translateY(-50%);
+      border-left: 12px solid rgba(239,108,47,0.75);
+      border-top: 8px solid transparent;
+      border-bottom: 8px solid transparent;
+    }
+
+    .topology-board {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 18px;
+    }
+
+    .zone {
+      border-radius: 26px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(249,250,248,0.95));
+      padding: 18px;
+    }
+
+    .zone-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+
+    .zone-head h3 {
+      font-size: 22px;
+      letter-spacing: -0.03em;
+    }
+
+    .zone-head p {
+      color: var(--muted);
+      line-height: 1.6;
+      max-width: 980px;
+    }
+
+    .tiles {
+      display: grid;
+      gap: 14px;
+    }
+
+    .tiles.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .tiles.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .tiles.cols-6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+
+    .tile {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 14px;
+      min-height: 132px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .tile::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 4px;
+      background: var(--slate);
+    }
+
+    .tile.client::before { background: var(--blue); }
+    .tile.gateway::before { background: var(--orange); }
+    .tile.domain::before { background: var(--green); }
+    .tile.core::before { background: var(--gold); }
+    .tile.data::before { background: var(--slate); }
+    .tile.ops::before { background: var(--red); }
+
+    .tile h4 {
+      margin: 2px 0 8px;
+      font-size: 18px;
+      line-height: 1.2;
+      letter-spacing: -0.02em;
+    }
+
+    .tile p {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .tag {
+      display: inline-flex;
+      margin-top: 10px;
+      border-radius: 999px;
+      padding: 6px 8px;
+      background: rgba(24, 48, 66, 0.06);
+      color: #314656;
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+
+    .strip {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .strip-item {
+      border-radius: 16px;
+      border: 1px dashed #cfd6d2;
+      background: rgba(255,255,255,0.7);
+      padding: 12px;
+      font-size: 13px;
+      line-height: 1.55;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .problems {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .problem {
+      border-radius: 18px;
+      border: 1px solid rgba(190,74,58,0.18);
+      background: var(--red-soft);
+      padding: 16px;
+    }
+
+    .problem strong {
+      display: block;
+      margin-bottom: 8px;
+      color: #8d3025;
+      font-size: 15px;
+    }
+
+    .problem p {
+      color: #90584f;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .small-note {
+      margin-top: 16px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.7;
+    }
+
+    @media (max-width: 1320px) {
+      .pill-row,
+      .problems,
+      .tiles.cols-6,
+      .tiles.cols-4,
+      .tiles.cols-3 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .chain {
+        grid-template-columns: 1fr;
+        gap: 12px;
+      }
+
+      .arrow-col {
+        min-height: 60px;
+      }
+
+      .arrow-line {
+        width: 4px;
+        height: 44px;
+        background: linear-gradient(180deg, rgba(50,115,220,0.22), rgba(239,108,47,0.55));
+      }
+
+      .arrow-line::after {
+        right: 50%;
+        top: auto;
+        bottom: -12px;
+        transform: translateX(50%);
+        border-left: 8px solid transparent;
+        border-right: 8px solid transparent;
+        border-top: 12px solid rgba(239,108,47,0.75);
+        border-bottom: none;
+      }
+
+      .strip {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 820px) {
+      .pill-row,
+      .problems,
+      .tiles.cols-6,
+      .tiles.cols-4,
+      .tiles.cols-3,
+      .strip {
+        grid-template-columns: 1fr;
+      }
+
+      .page {
+        width: calc(100vw - 18px);
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <div class="eyebrow">Her Deployment Poster</div>
+      <h1>Her 系统部署架构<br />一张图看明白</h1>
+      <p>
+        这版不再走“长文档说明”路线，而是先把你现在这台机器上真正跑起来的链路画清楚，再把完整部署拓扑压成一张分层图。
+        先看第一张，再看第二张，最后看最容易混淆的坑。
+      </p>
+      <div class="pill-row">
+        <div class="pill">
+          <strong>你现在最常用</strong>
+          <span>本地前端 <code>:3000</code> → Docker Gateway <code>:8080</code></span>
+        </div>
+        <div class="pill">
+          <strong>Docker 后端核心</strong>
+          <span><code>gateway-public</code> / <code>mysql</code> / <code>redis</code> / <code>minio</code></span>
+        </div>
+        <div class="pill">
+          <strong>可选服务</strong>
+          <span><code>gateway-ops</code> / <code>gateway-internal</code> / <code>sse-server</code> / <code>scheduler</code></span>
+        </div>
+        <div class="pill">
+          <strong>最容易串线</strong>
+          <span>本地旧链路 <code>:8765</code> 和 Docker 新链路 <code>:8080</code></span>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>图 1：你当前机器上的真实联调链路</h2>
+          <p>这是你最近排查语音、短信登录、发现页、推荐卡片时真正走的链路。先把这张图记住，后面绝大部分问题都能先定位到哪一层出问题。</p>
+        </div>
+        <div class="hint">最重要的一张图</div>
+      </div>
+
+      <div class="legend">
+        <div class="legend-item"><span class="dot client"></span>客户端 / 前端</div>
+        <div class="legend-item"><span class="dot gateway"></span>Gateway 门面</div>
+        <div class="legend-item"><span class="dot domain"></span>业务子系统</div>
+        <div class="legend-item"><span class="dot data"></span>数据库 / 缓存 / 媒体</div>
+      </div>
+
+      <div class="chain">
+        <section class="stack blue">
+          <div class="stack-label">Step 1</div>
+          <h3>浏览器 + 本地 Next.js</h3>
+          <p>你通常不是把前端也放在 Docker 里，而是在 <code>frontend/her-app</code> 目录下直接跑 <code>pnpm dev</code>。</p>
+          <div class="mini-card">
+            <strong>实际入口</strong>
+            <p><code>http://localhost:3000</code></p>
+          </div>
+          <div class="mini-card">
+            <strong>前端职责</strong>
+            <p>页面渲染、登录态存储、通过 <code>/api/gateway/*</code> 代理调用后端。</p>
+          </div>
+        </section>
+
+        <div class="arrow-col">
+          <div class="arrow-line"></div>
+          <div>HTTP<br /><code>/api/gateway/*</code></div>
+        </div>
+
+        <section class="stack orange">
+          <div class="stack-label">Step 2</div>
+          <h3>Docker Gateway Public</h3>
+          <p>前端代理最终打到宿主机 <code>127.0.0.1:8080</code>，对应容器里的 <code>gateway-public</code>。</p>
+          <div class="mini-card">
+            <strong>主要职责</strong>
+            <p>统一入口：<code>/v1/auth/*</code>、<code>/v1/discovery/*</code>、<code>/v1/recommendation/*</code>、<code>/v1/chat/*</code></p>
+          </div>
+          <div class="mini-card">
+            <strong>你最近遇到的典型报错</strong>
+            <p><code>401 Invalid or missing API credentials</code> / <code>数据库连接池等待超时</code></p>
+          </div>
+        </section>
+
+        <div class="arrow-col">
+          <div class="arrow-line"></div>
+          <div>内部调用<br /><code>/v1/*</code></div>
+        </div>
+
+        <section class="stack green">
+          <div class="stack-label">Step 3</div>
+          <h3>业务子系统 + 共享领域内核</h3>
+          <p>Gateway 不是业务本体。真正处理账号、发现页、推荐卡片、撮合、聊天的，是后面的多个系统和根目录共享包。</p>
+          <div class="mini-card">
+            <strong>业务系统</strong>
+            <p><code>chat</code> / <code>recommendation</code> / <code>matchmaking</code> / <code>discovery</code></p>
+          </div>
+          <div class="mini-card">
+            <strong>共享根包</strong>
+            <p><code>match_domain</code> / <code>partner_search</code> / <code>profile_service</code> / <code>relationship_ledger</code></p>
+          </div>
+        </section>
+
+        <div class="arrow-col">
+          <div class="arrow-line"></div>
+          <div>状态读写<br />SQL / Redis / Media</div>
+        </div>
+
+        <section class="stack slate">
+          <div class="stack-label">Step 4</div>
+          <h3>Docker 数据层</h3>
+          <p>最终状态落到 Docker 里的 MySQL / Redis / MinIO，不是天然落到你宿主机本地的旧库，除非你手动同步过。</p>
+          <div class="mini-card">
+            <strong>结构化数据</strong>
+            <p><code>mysql:3306</code> → <code>her</code>、<code>her_chat</code>、<code>her_discovery</code>、<code>her_matchmaking</code>、<code>her_recommendation</code></p>
+          </div>
+          <div class="mini-card">
+            <strong>状态 / 媒体</strong>
+            <p><code>redis</code> 负责缓存/推送；<code>minio</code> 负责语音/媒体对象</p>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>图 2：完整部署拓扑</h2>
+          <p>这张图是“系统全貌”。不是每个服务每天都直接接触，但它们共同组成了 Her 的完整运行栈。</p>
+        </div>
+        <div class="hint">按层理解，不要按单体理解</div>
+      </div>
+
+      <div class="legend">
+        <div class="legend-item"><span class="dot client"></span>访问入口层</div>
+        <div class="legend-item"><span class="dot gateway"></span>网关层</div>
+        <div class="legend-item"><span class="dot domain"></span>业务层</div>
+        <div class="legend-item"><span class="dot core"></span>共享内核层</div>
+        <div class="legend-item"><span class="dot data"></span>数据层</div>
+        <div class="legend-item"><span class="dot ops"></span>调度 / 监控层</div>
+      </div>
+
+      <div class="topology-board">
+        <section class="zone">
+          <div class="zone-head">
+            <h3>访问入口层</h3>
+            <p>对人、浏览器、运营人员真正可见的入口。</p>
+          </div>
+          <div class="tiles cols-3">
+            <article class="tile client">
+              <h4>本地 Next.js 前端</h4>
+              <p>最常见开发入口。浏览器访问 <code>localhost:3000</code>，由前端 BFF 代理所有后端请求。</p>
+              <div class="tag">宿主机 :3000</div>
+            </article>
+            <article class="tile client">
+              <h4>Compose Frontend</h4>
+              <p>当前推荐直接用 <code>docker compose up -d</code> 启整套本地环境，前端默认包含在内。</p>
+              <div class="tag">默认启用</div>
+            </article>
+            <article class="tile gateway">
+              <h4>Gateway Public / Ops</h4>
+              <p>用户面和运营面 HTTP 入口。public 对 app 用户，ops 对工作台和运维读接口。</p>
+              <div class="tag">:8080 / :8083</div>
+            </article>
+          </div>
+        </section>
+
+        <section class="zone">
+          <div class="zone-head">
+            <h3>网关层</h3>
+            <p>同一套 gateway 代码，被拆成三个“逻辑面”，通过环境变量控制挂哪些接口。</p>
+          </div>
+          <div class="tiles cols-3">
+            <article class="tile gateway">
+              <h4>gateway-public</h4>
+              <p>处理 auth、发现页、推荐卡片、聊天、资料、关系等用户面 REST 接口。</p>
+              <div class="tag">SURFACE=public</div>
+            </article>
+            <article class="tile gateway">
+              <h4>gateway-ops</h4>
+              <p>处理 <code>/v1/ops/*</code>、规则配置、工作台、运维查看类接口。</p>
+              <div class="tag">SURFACE=ops</div>
+            </article>
+            <article class="tile gateway">
+              <h4>gateway-internal</h4>
+              <p>只对内网开放；给 scheduler / script / 内部调用使用，启用 <code>/jsonrpc</code>。</p>
+              <div class="tag">SURFACE=internal</div>
+            </article>
+          </div>
+          <div class="strip">
+            <div class="strip-item">前端只应直连 <code>gateway-public</code></div>
+            <div class="strip-item"><code>gateway-ops</code> 不是用户页面入口</div>
+            <div class="strip-item"><code>gateway-internal</code> 不暴露宿主机端口</div>
+            <div class="strip-item">三个面共用一套业务代码，不是三个独立系统</div>
+            <div class="strip-item">你看到的很多报错，是入口对了但下游状态没对齐</div>
+          </div>
+        </section>
+
+        <section class="zone">
+          <div class="zone-head">
+            <h3>业务层</h3>
+            <p>真正做业务决策和数据处理的地方。</p>
+          </div>
+          <div class="tiles cols-4">
+            <article class="tile domain">
+              <h4>partner-chat-system</h4>
+              <p>短信登录、用户会话、聊天消息、语音生成、账号状态。</p>
+            </article>
+            <article class="tile domain">
+              <h4>partner-recommendation-system</h4>
+              <p>推荐卡片、推荐动作、规则配置、推荐解释、实验桶。</p>
+            </article>
+            <article class="tile domain">
+              <h4>partner-matchmaking-system</h4>
+              <p>撮合案件、代理介绍、关系推进、case 维度状态。</p>
+            </article>
+            <article class="tile domain">
+              <h4>partner-discovery-system</h4>
+              <p>发现页 session、小雅回复、条件收集、搜索运行、视图快照。</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="zone">
+          <div class="zone-head">
+            <h3>共享内核层</h3>
+            <p>这些不是“边缘工具包”，而是业务层背后的通用领域支撑。</p>
+          </div>
+          <div class="tiles cols-4">
+            <article class="tile core">
+              <h4>match_domain</h4>
+              <p>跨系统领域逻辑、会话结束处理、关系状态推进。</p>
+            </article>
+            <article class="tile core">
+              <h4>partner_search</h4>
+              <p>候选人搜索、条件筛选、排序与可信度整合。</p>
+            </article>
+            <article class="tile core">
+              <h4>persona_memory_sync / profile_service</h4>
+              <p>资料归集、画像写回、资料聚合读取。</p>
+            </article>
+            <article class="tile core">
+              <h4>relationship_ledger</h4>
+              <p>关系账本、阶段、跨域时间线和审计读模型。</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="zone">
+          <div class="zone-head">
+            <h3>数据层</h3>
+            <p>所有业务最终都要落到这里；只要这里的状态和你理解的不一致，上层就会出现 401、空数据、语音缺失、推荐异常等连锁反应。</p>
+          </div>
+          <div class="tiles cols-6">
+            <article class="tile data">
+              <h4>her</h4>
+              <p>主资料库，含 profiles 等基础数据。</p>
+            </article>
+            <article class="tile data">
+              <h4>her_chat</h4>
+              <p>账号、登录、消息、会话、语音相关记录。</p>
+            </article>
+            <article class="tile data">
+              <h4>her_discovery</h4>
+              <p>发现页 session、turn、view snapshot、search run。</p>
+            </article>
+            <article class="tile data">
+              <h4>her_matchmaking</h4>
+              <p>case、撮合状态、代理介绍过程数据。</p>
+            </article>
+            <article class="tile data">
+              <h4>her_recommendation</h4>
+              <p>推荐卡片、动作、规则配置、订阅等。</p>
+            </article>
+            <article class="tile data">
+              <h4>Redis / MinIO</h4>
+              <p>一个负责状态协同，一个负责媒体对象。</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="zone">
+          <div class="zone-head">
+            <h3>后台与监控层</h3>
+            <p>系统不是“请求来了才工作”，大量稳定性来自后台任务和监控。</p>
+          </div>
+          <div class="tiles cols-4">
+            <article class="tile ops">
+              <h4>bootstrap</h4>
+              <p>一次性初始化任务，负责 schema / 启动前准备。</p>
+            </article>
+            <article class="tile ops">
+              <h4>sse-server</h4>
+              <p>内网实时推送通道，接收 Gateway push，再向前端推送 SSE。</p>
+            </article>
+            <article class="tile ops">
+              <h4>task_scheduler</h4>
+              <p>定时任务、outbox 消费、订阅刷新、后台维护任务。</p>
+            </article>
+            <article class="tile ops">
+              <h4>Prometheus / Grafana</h4>
+              <p>观测层，负责抓指标和做可视化面板。</p>
+            </article>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>最容易混淆的 4 个坑</h2>
+          <p>这四个坑最近几乎贯穿了所有排障。如果你后面还要继续联调，这一块比长文字说明更值得反复看。</p>
+        </div>
+      </div>
+      <div class="problems">
+        <article class="problem">
+          <strong>坑 1：前端并不总在 Docker 里</strong>
+          <p>你很多时候是本地跑 <code>pnpm dev</code>。所以 cookie、localStorage、BFF 代理都发生在本机，不是在容器里。</p>
+        </article>
+        <article class="problem">
+          <strong>坑 2：<code>:8765</code> 和 <code>:8080</code> 容易串线</strong>
+          <p>只要浏览器里留着旧 token，或者 env 改过又没重登，就会出现“前端像连这套，日志却落到另一套”的错觉。</p>
+        </article>
+        <article class="problem">
+          <strong>坑 3：Docker MySQL 默认不是宿主机 <code>:3307</code></strong>
+          <p>如果没有显式同步或改 DSN，Docker 后端读的是容器里的 MySQL 卷，不是你宿主机本地旧库。</p>
+        </article>
+        <article class="problem">
+          <strong>坑 4：Gateway 只是门面，不是业务本体</strong>
+          <p>401、语音缺失、发现页没按钮、推荐卡片超时，很多时候真正坏的并不是 Gateway 本身，而是下游子系统、连接池、对象存储或数据库状态。</p>
+        </article>
+      </div>
+      <p class="small-note">
+        这张图基于仓库根 <code>README.md</code>、<code>docs/GATEWAY_DEPLOYMENT.md</code>、<code>docker-compose.production.yml</code> 和你当前的联调实际情况整理。
+        如果还要更进一步，我建议下一版直接做成“可点击的交互图”：点某个服务，右侧展开它的端口、env、依赖、排障命令。
+      </p>
+    </section>
+  </main>
+</body>
+</html>

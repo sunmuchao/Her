@@ -523,7 +523,7 @@ async def load_session_messages_from_db(
         return []
 
     def _load_sync() -> list[dict[str, Any]]:
-        from external_systems.partner_discovery_system.discovery_system.storage import connect_db, json_loads
+        from discovery_system.storage import connect_db, json_loads
 
         conn = connect_db(resolved_dsn)
         try:
@@ -886,7 +886,7 @@ async def save_session_summary_text(
         return []
 
     def _save_sync() -> list[str]:
-        from external_systems.partner_discovery_system.discovery_system.storage import connect_db
+        from discovery_system.storage import connect_db
 
         conn = connect_db(resolved_dsn)
         try:
@@ -1072,7 +1072,7 @@ async def load_latest_summary_for_user(
         return None
 
     def _load_sync() -> str | None:
-        from external_systems.partner_discovery_system.discovery_system.storage import connect_db
+        from discovery_system.storage import connect_db
 
         conn = connect_db(resolved_dsn)
         try:
@@ -1251,7 +1251,7 @@ async def clear_working_criteria(
         return False
 
     def _clear_sync() -> bool:
-        from external_systems.partner_discovery_system.discovery_system.storage import connect_db, json_loads, json_dumps
+        from discovery_system.storage import connect_db, json_loads, json_dumps
 
         conn = connect_db(resolved_dsn)
         try:

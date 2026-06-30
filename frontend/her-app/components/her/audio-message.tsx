@@ -54,6 +54,36 @@ class AudioManager {
 
 const audioManager = AudioManager.getInstance()
 
+function normalizeAudioUrl(audioUrl: string): string {
+  const normalized = String(audioUrl || '').trim()
+  if (!normalized) return normalized
+
+  if (typeof window === 'undefined') {
+    return normalized
+  }
+
+  try {
+    const parsed = new URL(normalized, window.location.origin)
+    const isSameOrigin = parsed.origin === window.location.origin
+    if (isSameOrigin) {
+      return parsed.toString()
+    }
+
+    const localMinioHosts = new Set(['127.0.0.1', 'localhost', '0.0.0.0', 'minio'])
+    const isLocalMinio = localMinioHosts.has(parsed.hostname) && parsed.port === '9000'
+
+    if (isLocalMinio) {
+      const proxyUrl = new URL('/api/gateway/v1/media/proxy', window.location.origin)
+      proxyUrl.searchParams.set('url', parsed.toString())
+      return proxyUrl.toString()
+    }
+
+    return parsed.toString()
+  } catch {
+    return normalized
+  }
+}
+
 export function AudioMessage({
   audioUrl,
   durationMs,
@@ -67,6 +97,7 @@ export function AudioMessage({
   const [hasPlayedOnce, setHasPlayedOnce] = useState(false)
   const audioRef = useRef<HTMLAudioElement>(null)
   const audioIdRef = useRef<string>(`audio-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`)
+  const normalizedAudioUrl = normalizeAudioUrl(audioUrl)
 
   const startPlayback = useCallback(async (resetToStart: boolean) => {
     if (!audioRef.current) return
@@ -116,7 +147,21 @@ export function AudioMessage({
 
   const handleError = () => {
     setIsPlaying(false)
-    console.error('[AudioMessage] Audio playback error')
+    const mediaError = audioRef.current?.error
+    console.error('[AudioMessage] Audio playback error', {
+      src: audioRef.current?.currentSrc || normalizedAudioUrl,
+      code: mediaError?.code,
+      message:
+        mediaError?.code === MediaError.MEDIA_ERR_ABORTED
+          ? 'MEDIA_ERR_ABORTED'
+          : mediaError?.code === MediaError.MEDIA_ERR_NETWORK
+            ? 'MEDIA_ERR_NETWORK'
+            : mediaError?.code === MediaError.MEDIA_ERR_DECODE
+              ? 'MEDIA_ERR_DECODE'
+              : mediaError?.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED
+                ? 'MEDIA_ERR_SRC_NOT_SUPPORTED'
+                : 'UNKNOWN',
+    })
   }
 
   // 自动播放逻辑
@@ -178,7 +223,7 @@ export function AudioMessage({
       {/* 隐藏的 audio 元素 */}
       <audio
         ref={audioRef}
-        src={audioUrl}
+        src={normalizedAudioUrl}
         onPlay={handlePlay}
         onPause={handlePause}
         onEnded={handleEnded}

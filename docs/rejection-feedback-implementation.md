@@ -125,7 +125,7 @@ python -m pytest tests/test_rejection_feedback.py
 
 # 3. 启动本地服务
 docker-compose up -d mysql
-python -m gateway.main
+docker compose up -d gateway-public
 ```
 
 ### 3.2 灰度发布

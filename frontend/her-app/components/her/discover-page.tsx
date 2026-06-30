@@ -15,7 +15,8 @@ import { DiscoveryProfileUpdatePrompt } from './discovery-profile-update-prompt'
 import { DiscoverySessionList } from './discovery-session-list'
 import type { DiscoveryTimelineItem } from '@/lib/discovery/map-discovery-view'
 import { cn } from '@/lib/utils'
-import { getProfileId, getUserId } from '@/lib/auth/session'
+import { getAccessToken, getProfileId, getUserId } from '@/lib/auth/session'
+import { confirmSessionOrRedirectToWelcome } from '@/lib/auth/confirm-session'
 import { canUseMockFallback } from '@/lib/mock'
 import { notifyError } from '@/lib/notify'
 import { toast } from 'sonner'
@@ -46,6 +47,7 @@ import {
 import { ValuesAuctionCardRenderer } from '@/components/values-auction'
 import { useSearchParams } from 'next/navigation'
 import { fetchRecommendationCards, markRecommendationCardsRead } from '@/lib/api/endpoints/recommendation'
+import { isAuthRequiredGatewayError } from '@/lib/api/errors'
 
 const PSYCHOLOGY_XIAOYA_RESULT_DELAY_MS = 2000
 
@@ -256,6 +258,7 @@ export default function DiscoverPage({
   onSessionIdChange,
 }: DiscoverPageProps) {
   const VOICE_CANCEL_THRESHOLD_PX = 72
+  const [hasHydrated, setHasHydrated] = useState(false)
   const {
     timelineItems,
     inputValue,
@@ -279,8 +282,15 @@ export default function DiscoverPage({
     removeTimelineItem,  // 新增：用于移除临时消息
   } = useDiscoverySession(onSessionIdChange)
 
-  // 用户打开发现页，立即标记所有未读为已读（推荐卡片 + 被动推荐）
   useEffect(() => {
+    setHasHydrated(true)
+  }, [])
+
+  // 用户打开发现页，立即标记推荐卡片为已读。
+  // 被动推荐是否显示在发现页，应该由 discovery_pushed 决定，
+  // 不能在页面刚打开时抢先把 case 标成 viewed，否则会和补推逻辑打架。
+  useEffect(() => {
+    if (!getAccessToken()) return
     const profileId = getProfileId()
     if (!profileId || typeof profileId !== 'number') return
 
@@ -296,29 +306,14 @@ export default function DiscoverPage({
           console.log('[发现页已读] 标记了', cardIds.length, '张推荐卡片为已读')
         }
 
-        // 2. 标记所有被动推荐为已查看（awaiting_reply → viewed）
-        const { fetchMyProxyIntroCases, markInterestCaseViewed } = await import('@/lib/api/endpoints/proxy-intro')
-        const proxyCasesResponse = await fetchMyProxyIntroCases()
-        const cases = proxyCasesResponse.cases || []
-
-        // 找到所有被动推荐case（role === 'candidate' && awaiting_reply）
-        const passiveCases = cases.filter(
-          (c) => c.role === 'candidate' && c.case_status === 'awaiting_reply'
-        )
-
-        if (passiveCases.length > 0) {
-          // 批量标记为已查看
-          for (const caseItem of passiveCases) {
-            if (caseItem.case_id) {
-              await markInterestCaseViewed({
-                caseId: String(caseItem.case_id),
-                source: 'discover_page_open',
-              })
-            }
-          }
-          console.log('[发现页已读] 标记了', passiveCases.length, '个被动推荐为已查看')
-        }
       } catch (error) {
+        if (isAuthRequiredGatewayError(error)) {
+          const sessionStillValid = await confirmSessionOrRedirectToWelcome()
+          if (sessionStillValid) {
+            console.warn('[发现页已读] 后台标记已读鉴权失败，跳过本次同步', error)
+          }
+          return
+        }
         console.error('[发现页标记已读失败]:', error)
       }
     }
@@ -400,6 +395,8 @@ export default function DiscoverPage({
     : usingMockData
       ? ['同城优先', '本科以上']
       : []
+  const showSessionLoading = !hasHydrated || isLoadingSession
+  const newSessionButtonDisabled = hasHydrated ? showSessionLoading : undefined
   const [showActionMenu, setShowActionMenu] = useState(false)
   const [showAssessmentSubmenu, setShowAssessmentSubmenu] = useState(false)
   const [assessmentCard, setAssessmentCard] = useState<AssessmentCard | null>(null)
@@ -500,14 +497,6 @@ export default function DiscoverPage({
     }
   }, [assessmentCard, valuesAuctionCard])
 
-  if (isLoadingSession) {
-    return (
-      <div className={pageShellClass}>
-        <DiscoverPageSkeleton />
-      </div>
-    )
-  }
-
   if (loadError && !canUseMockFallback()) {
     return (
       <div className={pageShellClass}>
@@ -546,8 +535,11 @@ export default function DiscoverPage({
               </button>
               {/* 新增：新建会话按钮 */}
               <button
-                onClick={() => void createNewSession()}
-                disabled={isLoadingSession}
+                onClick={() => {
+                  if (!hasHydrated || isLoadingSession) return
+                  void createNewSession()
+                }}
+                disabled={newSessionButtonDisabled}
                 className="flex items-center gap-1 px-2 py-1.5 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors focus-ring disabled:opacity-50"
                 aria-label="新建会话"
               >
@@ -583,27 +575,32 @@ export default function DiscoverPage({
 
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
         <div className="px-4 py-4 space-y-4">
-          {timelineItems.map((item) => (
-            <DiscoveryTimelineEntry
-              key={item.id}
-              item={item}
-              sessionId={sessionId}
-              onViewCandidate={onViewCandidate}
-              onProfileUpdateResolved={() => {
-                void reloadSession()
-              }}
-              onAddLabels={handleAddLabels}
-              onSubmitAction={(actionId) => {
-                void submitTurn({ action_id: actionId })
-              }}
-              onOpenAssessment={(assessmentType) => {
-                void openAssessmentCard(assessmentType)
-              }}
-              isSubmittingTurn={isSubmittingTurn}
-            />
-          ))}
+          {showSessionLoading ? (
+            <DiscoverPageSkeleton />
+          ) : (
+            timelineItems.map((item) => (
+              <DiscoveryTimelineEntry
+                key={item.id}
+                item={item}
+                sessionId={sessionId}
+                onViewCandidate={onViewCandidate}
+                onProfileUpdateResolved={() => {
+                  void reloadSession()
+                }}
+                onAddLabels={handleAddLabels}
+                onSubmitAction={(actionId) => {
+                  void submitTurn({ action_id: actionId })
+                }}
+                onOpenAssessment={(assessmentType) => {
+                  void openAssessmentCard(assessmentType)
+                }}
+                isSubmittingTurn={isSubmittingTurn}
+              />
+            ))
+          )}
 
           {(() => {
+            if (showSessionLoading) return null
             // 判断是否应该显示 assessmentCard state中的卡片
             // 如果timeline中已经有相同assessment_id的结果卡片，就不要重复显示
             if (!assessmentCard || !assessmentId) return null
@@ -755,6 +752,7 @@ export default function DiscoverPage({
           })()}
 
           {(() => {
+            if (showSessionLoading) return null
             if (!valuesAuctionCard) return null
 
             const shouldHideStateResult =
@@ -822,7 +820,7 @@ export default function DiscoverPage({
             )
           })()}
 
-          {isTyping ? <TypingIndicator name="小雅" /> : null}
+          {!showSessionLoading && isTyping ? <TypingIndicator name="小雅" /> : null}
 
           {/* Recording indicator - 微信式录音提示 */}
           {isRecording && (

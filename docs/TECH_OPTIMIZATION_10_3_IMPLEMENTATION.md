@@ -29,9 +29,6 @@
 ```bash
 # 本地一键（三分面 + MySQL + 调度器 + 前端）
 docker compose up -d
-
-# 或沿用 shell（兼容）
-scripts/start_local_stack.sh --with-scheduler
 ```
 
 Compose 服务：
@@ -53,7 +50,7 @@ Compose 服务：
 - 数据迁移：`python scripts/setup_ledger_and_proxy_intro_storage.py`
 - **已移除** `HER_ALLOW_LEGACY_PROXY_INTRO_*` 与 `match_domain/proxy_intro_legacy.py`
 
-**生产 cutover 检查表**（由 `scripts/tech_optimization_cutover.py` 自动化；本地/`start_local_stack.sh` 与 e2e bootstrap 默认执行）：
+**生产 cutover 检查表**（由 `scripts/tech_optimization_cutover.py` 自动化；本地 compose 与 e2e bootstrap 默认执行）：
 
 1. [x] 代码默认 matchmaking 存储
 2. [x] 全环境 `HER_PROXY_INTRO_STORAGE=matchmaking`（`.env.example` / compose / CI / e2e 脚本已统一）
@@ -159,8 +156,7 @@ CI：`.github/workflows/persona-eval-gate.yml`（PR 跑 skill 单测 + baseline 
 ## 8. DevEx
 
 ```bash
-docker compose up -d          # MySQL + 三分面 Gateway + scheduler
-docker compose --profile frontend up -d   # 含 Next.js
+docker compose up -d          # MySQL + 三分面 Gateway + scheduler + frontend
 scripts/compose_bootstrap.sh  # 仅初始化 schema/seed
 ```
 

@@ -55,7 +55,7 @@ HER_SMS_ALIYUN_ENDPOINT=https://dypnsapi.aliyuncs.com/
 
 **测试 API**：
 ```bash
-curl -s http://127.0.0.1:8765/v1/auth/sms/send-code \
+curl -s http://127.0.0.1:8080/v1/auth/sms/send-code \
   -H "Content-Type: application/json" \
   -d '{"phone":"18846811193"}'
 ```
@@ -206,12 +206,12 @@ curl -s http://127.0.0.1:8765/v1/auth/sms/send-code \
 
 ```bash
 # 发送验证码
-curl -X POST http://127.0.0.1:8765/v1/auth/sms/send-code \
+curl -X POST http://127.0.0.1:8080/v1/auth/sms/send-code \
   -H "Content-Type: application/json" \
   -d '{"phone":"18846811193"}'
 
 # 验证验证码（假设验证码是 275619）
-curl -X POST http://127.0.0.1:8765/v1/auth/sms/verify-code \
+curl -X POST http://127.0.0.1:8080/v1/auth/sms/verify-code \
   -H "Content-Type: application/json" \
   -d '{"phone":"18846811193","code":"275619","challenge_id":"otp-xxx"}'
 ```
@@ -224,7 +224,7 @@ pkill -f "python.*gateway"
 
 # 启动应用
 cd /Users/sunmuchao/Downloads/Her/external-systems/partner-http-gateway
-python -m gateway
+docker compose up -d gateway-public
 ```
 
 ---

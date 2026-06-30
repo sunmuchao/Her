@@ -596,11 +596,18 @@ def search_partner_candidates_with(
     search_limit = max(final_limit, 50)  # 第一阶段搜索数量（至少50个，避免向量筛选后结果为空）
     merged_criteria = merge_working_criteria(session.state, criteria)
     if exclude_current_results:
+        shown_history_ids = {
+            int(candidate_id)
+            for candidate_id in list(session.state.get("shown_candidate_ids_history") or [])
+            if int(candidate_id) > 0
+        }
         refresh_exclude_ids = {
             int(candidate_id)
             for candidate_id in list(session.state.get("last_shown_candidate_ids") or [])
             if int(candidate_id) > 0
         }
+        if shown_history_ids:
+            refresh_exclude_ids |= shown_history_ids
         if refresh_exclude_ids:
             existing_exclude_ids = merged_criteria.get("exclude_ids")
             normalized_exclude_ids: set[int] = set()

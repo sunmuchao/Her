@@ -84,11 +84,20 @@ export function buildActiveRelationships(
 ): ActiveRelationship[] {
   const result = cases
     .filter((item) => {
-      // 过滤掉已关闭的 case（closed, declined, timed_out）
+      // 过滤掉已关闭的 case（declined, timed_out）
       const status = item.case_status || ''
-      if (status === 'closed' || status === 'declined' || status === 'timed_out') {
+      const closeReason = item.close_reason || ''
+
+      // declined 和 timed_out 永久过滤
+      if (status === 'declined' || status === 'timed_out') {
         return false
       }
+
+      // closed + handoff_completed 表示牵线完成，已开聊，应该显示
+      if (status === 'closed' && closeReason !== 'handoff_completed') {
+        return false
+      }
+
       // 必须有 main_conversation_id（已开聊）
       return item.main_conversation_id
     })

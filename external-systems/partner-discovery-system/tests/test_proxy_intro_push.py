@@ -103,20 +103,22 @@ class ProxyIntroPushTests(unittest.TestCase):
         mock_conn.commit.return_value = None  # commit成功
         mock_conn.close.return_value = None  # close成功
 
-        # 4. Mock _open_proxy_intro_conn_impl
+        # 4. Mock 当前实现实际调用的数据库连接
         with patch("discovery_system.service._open_proxy_intro_conn_impl") as mock_open_conn:
             mock_open_conn.return_value = mock_conn
+            with patch.object(self.service, "_open_recommendation_conn") as mock_open_recommendation_conn:
+                mock_open_recommendation_conn.return_value = MagicMock()
 
-            # 5. Mock list_match_cases_for_participant
-            with patch("discovery_system.service.list_match_cases_for_participant") as mock_list_cases:
-                mock_list_cases.return_value = mock_cases
+                # 5. Mock 运行时导入的查询函数
+                with patch("matchmaking_system.proxy_intro_core.list_match_cases_for_participant") as mock_list_cases:
+                    mock_list_cases.return_value = mock_cases
 
-                # 6. 调用推送方法
-                self.service._check_and_push_proxy_intro_cases(
-                    session=session,
-                    profile_id=self.candidate_profile_id,
-                    now=datetime.now(),
-                )
+                    # 6. 调用推送方法
+                    self.service._check_and_push_proxy_intro_cases(
+                        session=session,
+                        profile_id=self.candidate_profile_id,
+                        now=datetime.now(),
+                    )
 
         # 7. 验证timeline中有推送的消息和候选人卡片
         timeline = session.view.get("timeline", [])
@@ -170,17 +172,19 @@ class ProxyIntroPushTests(unittest.TestCase):
         mock_conn = MagicMock()
         mock_cases = []  # 没有待推送案件
 
-        with patch("discovery_system.service.open_proxy_intro_conn") as mock_open_conn:
+        with patch("discovery_system.service._open_proxy_intro_conn_impl") as mock_open_conn:
             mock_open_conn.return_value = mock_conn
-            with patch("discovery_system.service.list_match_cases_for_participant") as mock_list_cases:
-                mock_list_cases.return_value = mock_cases
+            with patch.object(self.service, "_open_recommendation_conn") as mock_open_recommendation_conn:
+                mock_open_recommendation_conn.return_value = MagicMock()
+                with patch("matchmaking_system.proxy_intro_core.list_match_cases_for_participant") as mock_list_cases:
+                    mock_list_cases.return_value = mock_cases
 
-                # 3. 调用推送方法
-                self.service._check_and_push_proxy_intro_cases(
-                    session=session,
-                    profile_id=self.candidate_profile_id,
-                    now=datetime.now(),
-                )
+                    # 3. 调用推送方法
+                    self.service._check_and_push_proxy_intro_cases(
+                        session=session,
+                        profile_id=self.candidate_profile_id,
+                        now=datetime.now(),
+                    )
 
         # 4. 验证timeline没有变化
         timeline = session.view.get("timeline", [])
@@ -234,17 +238,19 @@ class ProxyIntroPushTests(unittest.TestCase):
         # 3. Mock数据库连接和查询
         mock_conn = MagicMock()
 
-        with patch("discovery_system.service.open_proxy_intro_conn") as mock_open_conn:
+        with patch("discovery_system.service._open_proxy_intro_conn_impl") as mock_open_conn:
             mock_open_conn.return_value = mock_conn
-            with patch("discovery_system.service.list_match_cases_for_participant") as mock_list_cases:
-                mock_list_cases.return_value = mock_cases
+            with patch.object(self.service, "_open_recommendation_conn") as mock_open_recommendation_conn:
+                mock_open_recommendation_conn.return_value = MagicMock()
+                with patch("matchmaking_system.proxy_intro_core.list_match_cases_for_participant") as mock_list_cases:
+                    mock_list_cases.return_value = mock_cases
 
-                # 4. 调用推送方法
-                self.service._check_and_push_proxy_intro_cases(
-                    session=session,
-                    profile_id=self.candidate_profile_id,
-                    now=datetime.now(),
-                )
+                    # 4. 调用推送方法
+                    self.service._check_and_push_proxy_intro_cases(
+                        session=session,
+                        profile_id=self.candidate_profile_id,
+                        now=datetime.now(),
+                    )
 
         # 5. 验证timeline没有变化（已推送的案件不会再次推送）
         timeline = session.view.get("timeline", [])
@@ -296,17 +302,19 @@ class ProxyIntroPushTests(unittest.TestCase):
         # 3. Mock数据库连接和查询
         mock_conn = MagicMock()
 
-        with patch("discovery_system.service.open_proxy_intro_conn") as mock_open_conn:
+        with patch("discovery_system.service._open_proxy_intro_conn_impl") as mock_open_conn:
             mock_open_conn.return_value = mock_conn
-            with patch("discovery_system.service.list_match_cases_for_participant") as mock_list_cases:
-                mock_list_cases.return_value = mock_cases
+            with patch.object(self.service, "_open_recommendation_conn") as mock_open_recommendation_conn:
+                mock_open_recommendation_conn.return_value = MagicMock()
+                with patch("matchmaking_system.proxy_intro_core.list_match_cases_for_participant") as mock_list_cases:
+                    mock_list_cases.return_value = mock_cases
 
-                # 4. 调用推送方法
-                self.service._check_and_push_proxy_intro_cases(
-                    session=session,
-                    profile_id=self.candidate_profile_id,
-                    now=datetime.now(),
-                )
+                    # 4. 调用推送方法
+                    self.service._check_and_push_proxy_intro_cases(
+                        session=session,
+                        profile_id=self.candidate_profile_id,
+                        now=datetime.now(),
+                    )
 
         # 5. 验证timeline没有变化（candidate_id不匹配）
         timeline = session.view.get("timeline", [])
@@ -355,17 +363,19 @@ class ProxyIntroPushTests(unittest.TestCase):
         # 3. Mock数据库连接和查询
         mock_conn = MagicMock()
 
-        with patch("discovery_system.service.open_proxy_intro_conn") as mock_open_conn:
+        with patch("discovery_system.service._open_proxy_intro_conn_impl") as mock_open_conn:
             mock_open_conn.return_value = mock_conn
-            with patch("discovery_system.service.list_match_cases_for_participant") as mock_list_cases:
-                mock_list_cases.return_value = mock_cases
+            with patch.object(self.service, "_open_recommendation_conn") as mock_open_recommendation_conn:
+                mock_open_recommendation_conn.return_value = MagicMock()
+                with patch("matchmaking_system.proxy_intro_core.list_match_cases_for_participant") as mock_list_cases:
+                    mock_list_cases.return_value = mock_cases
 
-                # 4. 调用推送方法
-                self.service._check_and_push_proxy_intro_cases(
-                    session=session,
-                    profile_id=self.candidate_profile_id,
-                    now=datetime.now(),
-                )
+                    # 4. 调用推送方法
+                    self.service._check_and_push_proxy_intro_cases(
+                        session=session,
+                        profile_id=self.candidate_profile_id,
+                        now=datetime.now(),
+                    )
 
         # 5. 验证timeline没有变化（case_status不匹配）
         timeline = session.view.get("timeline", [])
@@ -432,17 +442,19 @@ class ProxyIntroPushTests(unittest.TestCase):
         mock_conn.commit.return_value = None
         mock_conn.close.return_value = None
 
-        with patch("discovery_system.service.open_proxy_intro_conn") as mock_open_conn:
+        with patch("discovery_system.service._open_proxy_intro_conn_impl") as mock_open_conn:
             mock_open_conn.return_value = mock_conn
-            with patch("discovery_system.service.list_match_cases_for_participant") as mock_list_cases:
-                mock_list_cases.return_value = mock_cases
+            with patch.object(self.service, "_open_recommendation_conn") as mock_open_recommendation_conn:
+                mock_open_recommendation_conn.return_value = MagicMock()
+                with patch("matchmaking_system.proxy_intro_core.list_match_cases_for_participant") as mock_list_cases:
+                    mock_list_cases.return_value = mock_cases
 
-                # 4. 调用推送方法
-                self.service._check_and_push_proxy_intro_cases(
-                    session=session,
-                    profile_id=self.candidate_profile_id,
-                    now=datetime.now(),
-                )
+                    # 4. 调用推送方法
+                    self.service._check_and_push_proxy_intro_cases(
+                        session=session,
+                        profile_id=self.candidate_profile_id,
+                        now=datetime.now(),
+                    )
 
         # 5. 验证timeline有4个item（2个案件 × 2个item）
         timeline = session.view.get("timeline", [])

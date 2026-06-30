@@ -51,11 +51,11 @@ flowchart TB
 
 | Process | Command | Role |
 |---------|---------|------|
-| Public API | `python -m gateway` (`PARTNER_GATEWAY_SURFACE=public`) | User-facing REST: auth, discovery, recommendation inbox, chat, profile, relations |
-| Ops API | `python -m gateway` (`PARTNER_GATEWAY_SURFACE=ops`) | Rule config read, workbench, overrides |
-| Internal API | `python -m gateway` (`PARTNER_GATEWAY_SURFACE=internal`) | JSON-RPC for workers / tooling |
-| Scheduler | `python -m task_scheduler run` | Outbox consumers, subscription refresh, pool/pair/case jobs, chat maintenance |
-| Frontend | `pnpm dev` in `frontend/her-app` | SPA; calls gateway via `/api/gateway/[...path]` |
+| Public API | `docker compose up -d` | `gateway-public :8080` user-facing REST |
+| Ops API | `docker compose up -d` | `gateway-ops :8083` ops surface |
+| Internal API | `docker compose up -d` | `gateway-internal :8082` JSON-RPC |
+| Scheduler | `docker compose up -d` | background workers and maintenance |
+| Frontend | `docker compose up -d` | Next.js app on `:3000` |
 
 ### Package layout
 
@@ -83,10 +83,8 @@ flowchart TB
 
 ```bash
 docker compose up -d
-docker compose --profile frontend up -d   # optional Next.js
-
-# Legacy shell orchestration
-scripts/start_local_stack.sh --with-scheduler
+docker compose ps
+docker compose logs -f bootstrap gateway-public frontend
 ```
 
 ## Verification

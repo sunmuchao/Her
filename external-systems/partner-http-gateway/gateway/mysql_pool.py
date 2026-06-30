@@ -3,44 +3,33 @@
 from __future__ import annotations
 
 import threading
-from collections.abc import Callable, Sequence
 from typing import Any
 
-from db_migrations import initialize_target_database
 from outer_mysql_compat import MySQLCompatConnection
 from outer_system_mysql_schema import (
-    TableDef,
-    ensure_database,
-    ensure_schema,
     mysql_database_connect,
     parse_mysql_dsn,
 )
 
 
 class GatewayConnectionPool:
-    """One pool per DSN; schema is ensured once at construction."""
+    """One pool per DSN.
+
+    Gateway startup must not perform schema migrations or DDL. Database
+    initialization is owned by bootstrap to avoid concurrent DDL conflicts.
+    """
 
     __slots__ = ("_avail", "_cfg", "_lock", "_sem")
 
     def __init__(
         self,
         dsn: str,
-        target: str | Callable[[], Sequence[TableDef]],
+        target: object,
         *,
         max_size: int = 8,
     ) -> None:
         self._cfg = parse_mysql_dsn(dsn)
-        ensure_database(self._cfg)
-        raw = mysql_database_connect(self._cfg)
-        try:
-            resolved_target = _resolve_target(target)
-            if resolved_target is not None:
-                initialize_target_database(raw, target=resolved_target, config=self._cfg)
-            else:
-                ensure_schema(raw, target(), prefix=None, config=self._cfg)
-        finally:
-            raw.close()
-
+        del target
         self._sem = threading.BoundedSemaphore(max(1, max_size))
         self._lock = threading.Lock()
         self._avail: list[Any] = []
@@ -60,7 +49,9 @@ class GatewayConnectionPool:
 
         try:
             with self._lock:
-                raw = self._avail.pop() if self._avail else mysql_database_connect(self._cfg)
+                raw = self._unwrap_driver_connection(
+                    self._avail.pop() if self._avail else mysql_database_connect(self._cfg)
+                )
         except Exception:
             self._sem.release()
             raise
@@ -76,21 +67,22 @@ class GatewayConnectionPool:
                 pass
             self._sem.release()
             return
-        raw = conn.driver_connection
+        raw = self._unwrap_driver_connection(conn.driver_connection)
         with self._lock:
             self._avail.append(raw)
         self._sem.release()
 
+    @staticmethod
+    def _unwrap_driver_connection(conn: Any) -> Any:
+        raw = conn
+        seen: set[int] = set()
+        while hasattr(raw, "driver_connection"):
+            raw_id = id(raw)
+            if raw_id in seen:
+                break
+            seen.add(raw_id)
+            raw = raw.driver_connection
+        return raw
+
 
 __all__ = ["GatewayConnectionPool"]
-
-
-def _resolve_target(target: str | Callable[[], Sequence[TableDef]]) -> str | None:
-    if isinstance(target, str):
-        return target
-    mapping = {
-        "recommendation_tables": "recommendation",
-        "matchmaking_tables": "matchmaking",
-        "chat_tables": "chat",
-    }
-    return mapping.get(getattr(target, "__name__", ""))

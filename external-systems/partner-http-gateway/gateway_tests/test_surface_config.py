@@ -23,6 +23,8 @@ class SurfaceConfigTests(unittest.TestCase):
     @patch.dict("os.environ", {"PARTNER_GATEWAY_SURFACE": "public"})
     def test_public_surface_blocks_ops_routes(self) -> None:
         self.assertTrue(is_rest_path_allowed("/v1/recommendation/cards", "GET"))
+        self.assertTrue(is_rest_path_allowed("/v2/media/upload", "POST"))
+        self.assertTrue(is_rest_path_allowed("/v2/chat/cases/demo/timeline", "GET"))
         self.assertFalse(is_rest_path_allowed("/v1/ops/overrides", "POST"))
 
     @patch.dict("os.environ", {"PARTNER_GATEWAY_SURFACE": "ops"})

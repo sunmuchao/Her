@@ -247,7 +247,7 @@ tail -f /private/tmp/claude-501/-Users-sunmuchao-Downloads-Her/0574cbb0-8276-463
 
 2. **启动 Gateway**：
    ```bash
-   python -m gateway
+   docker compose up -d gateway-public
    ```
 
 3. **浏览器端到端测试**：

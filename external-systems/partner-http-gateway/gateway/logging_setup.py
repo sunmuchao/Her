@@ -63,3 +63,14 @@ def configure_gateway_logging(
     _reset_logger_handlers(pipeline_logger)
     pipeline_logger.setLevel(_parse_level(pipeline_level_name, default=root_level_name))
     pipeline_logger.propagate = True
+
+    # Suppress DEBUG logs from third-party libraries (urllib3, redis, etc.)
+    third_party_loggers = [
+        "urllib3",
+        "urllib3.connectionpool",
+        "redis",
+        "redis.connection",
+    ]
+    for logger_name in third_party_loggers:
+        third_party_logger = logging.getLogger(logger_name)
+        third_party_logger.setLevel(logging.WARNING)

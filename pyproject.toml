@@ -8,13 +8,21 @@ version = "0.1.0"
 description = "Relationship-operations prototype: search, persona memory, recommendation, and matchmaking."
 requires-python = ">=3.10"
 dependencies = [
+  "aiohttp>=3.9.0",
   "apscheduler>=3.10,<4",
+  "edge-tts>=6.1.0",
   "openai>=1.0.0",
   "openai-agents",
+  "minio>=7.2.0",
   "pydantic>=2.0.0",
   "pymysql>=1.0.0",
+  "redis>=5.0.0",
   "python-dotenv>=1.0.0",
   "PyYAML>=6.0.0",
+  "gunicorn>=21.0.0",  # 生产级WSGI服务器
+  "gevent>=23.0.0",  # 异步worker，提升并发性能
+  "prometheus-client>=0.17.0",  # Prometheus指标导出
+  "pydub>=0.25.1",
 ]
 
 [project.optional-dependencies]
@@ -39,6 +47,7 @@ where = [
   "external-systems/partner-chat-system",
   "external-systems/partner-discovery-system",
   "external-systems/partner-http-gateway",
+  "external-systems/sse-server",
 ]
 include = [
   "db_migrations*",
@@ -54,6 +63,7 @@ include = [
   "chat_system*",
   "discovery_system*",
   "gateway*",
+  "sse_server*",
 ]
 
 [tool.setuptools]
