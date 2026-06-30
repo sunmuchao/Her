@@ -33,3 +33,7 @@ tmp/
 
 # Secrets directory (密钥文件不提交)
 secrets/
+
+# pnpm store (pnpm 缓存不应提交)
+.pnpm-store/
+pnpm-lock.yaml
