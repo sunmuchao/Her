@@ -1092,7 +1092,8 @@ def _push_case_status_update_notification(
     case_id = str(case.get("case_id") or "")
 
     try:
-        push_url = f"{sse_server_url}/internal/push/recommendation"
+        # ✅ 使用新的profile级别推送端点
+        push_url = f"{sse_server_url}/internal/push/profile"
         payload = {
             "profile_id": requester_profile_id,  # 推送给发起方
             "event_type": "case_status_update",  # 新事件类型：状态更新
@@ -1109,16 +1110,15 @@ def _push_case_status_update_notification(
             if response.status_code == 200:
                 result = response.json()
                 sent_count = result.get("pushed", 0)
-                online_sessions = result.get("online_sessions", [])
                 logger.info(
                     f"[SSE Push] 状态更新通知推送完成: requester={requester_profile_id}, "
                     f"candidate={candidate_profile_id}, case={case_id}, new_status={new_status}, "
-                    f"sent_count={sent_count}, online_sessions={online_sessions}"
+                    f"sent_count={sent_count}"
                 )
                 if sent_count == 0:
                     logger.warning(
                         f"[SSE Push] 发起方不在线，推送失败: requester={requester_profile_id}, "
-                        f"可能原因：用户未打开Discovery页面或SSE连接断开"
+                        f"可能原因：用户未打开App或SSE连接断开"
                     )
             else:
                 logger.warning(

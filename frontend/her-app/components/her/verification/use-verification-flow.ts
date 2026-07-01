@@ -15,8 +15,11 @@ import {
 } from '@/lib/api/endpoints/field-verification'
 import { recordVideoFromCamera, type RecordedVideo } from '@/lib/media/video-recorder'
 import { notifyError, notifySuccess } from '@/lib/notify'
-import { getUserId } from '@/lib/auth/session'
+import { getUserId, getProfileId } from '@/lib/auth/session'
 import { getErrorMessage } from '@/lib/api/errors'
+
+// SSE服务器URL
+const SSE_SERVER_URL = process.env.NEXT_PUBLIC_SSE_SERVER_URL || 'http://localhost:8000'
 
 export type VerificationStep = 'video-intro' | 'video-record' | 'video-review' | 'video-pending' | 'field-upload' | 'field-pending'
 
@@ -77,6 +80,8 @@ export function useVerificationFlow(onBack: () => void) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [isSubmittingField, setIsSubmittingField] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const sseEventSourceRef = useRef<EventSource | null>(null)
+  const sseReconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     const userId = getUserId()
@@ -130,6 +135,101 @@ export function useVerificationFlow(onBack: () => void) {
     void loadVerificationState()
     return () => {
       cancelled = true
+    }
+  }, [])
+
+  // ✅ 新增：SSE监听验证状态变化
+  useEffect(() => {
+    const profileId = getProfileId()
+    if (!profileId) return
+
+    const connectSSE = () => {
+      sseEventSourceRef.current = new EventSource(`${SSE_SERVER_URL}/sse/profile/${profileId}`)
+
+      sseEventSourceRef.current.addEventListener('message', (e) => {
+        try {
+          const event = JSON.parse(e.data)
+
+          // 监听验证状态变化事件
+          if (event.type === 'verification_passed' || event.type === 'verification_failed') {
+            console.log('[Verification SSE] 收到验证状态变化', event.type, event.message)
+
+            // 重新加载验证状态
+            async function reloadState() {
+              const userId = getUserId()
+              if (!userId) return
+
+              try {
+                const [submissions, notifications, fieldSubmissions] = await Promise.all([
+                  listVerificationSubmissions(),
+                  listVerificationNotifications(),
+                  listFieldVerifications(),
+                ])
+                const latest = submissions[0]
+                const videoStatus = mapSubmissionStatus(latest?.status)
+                const pendingHint =
+                  notifications.find((n) => n.type?.includes('resubmission'))?.body ||
+                  notifications[0]?.body ||
+                  '按提示完成活体视频认证'
+
+                const fieldStatusByUi = new Map<string, FieldItem['status']>()
+                for (const submission of fieldSubmissions) {
+                  const uiField = mapApiFieldToUi(submission.field_key)
+                  if (uiField) fieldStatusByUi.set(uiField, mapSubmissionStatus(submission.status))
+                }
+
+                setFieldVerificationTypes(
+                  DEFAULT_FIELDS.map((item) => {
+                    if (item.id === 'video') {
+                      return {
+                        ...item,
+                        status: videoStatus,
+                        description: videoStatus === 'pending' ? pendingHint : item.description,
+                      }
+                    }
+                    const fieldStatus = fieldStatusByUi.get(item.id)
+                    return fieldStatus ? { ...item, status: fieldStatus } : item
+                  }),
+                )
+                setLoadError(null)
+              } catch (error) {
+                setLoadError(getErrorMessage(error, '认证状态加载失败'))
+              }
+            }
+
+            void reloadState()
+
+            // 显示通知
+            if (event.type === 'verification_passed') {
+              notifySuccess('验证通过', event.message || '恭喜！您的身份验证已通过')
+            } else {
+              notifyError(new Error(event.message || '验证未通过，请重新提交材料'))
+            }
+          }
+        } catch (err) {
+          console.error('[Verification SSE] 解析事件失败', err)
+        }
+      })
+
+      sseEventSourceRef.current.onerror = () => {
+        console.error('[Verification SSE] 连接错误')
+        if (sseEventSourceRef.current) {
+          sseEventSourceRef.current.close()
+        }
+        // 3秒后重连
+        sseReconnectTimeoutRef.current = setTimeout(connectSSE, 3000)
+      }
+    }
+
+    connectSSE()
+
+    return () => {
+      if (sseEventSourceRef.current) {
+        sseEventSourceRef.current.close()
+      }
+      if (sseReconnectTimeoutRef.current) {
+        clearTimeout(sseReconnectTimeoutRef.current)
+      }
     }
   }, [])
 

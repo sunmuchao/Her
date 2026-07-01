@@ -104,7 +104,7 @@ export function useBadgeCounts() {
     void refresh()
     const onFocus = () => void refresh()
     const onReadStateChange = () => void refresh()
-    const poll = window.setInterval(() => void refresh(), 30000)
+    const poll = window.setInterval(() => void refresh(), 5000) // ✅ 改为5秒轮询（原来是30秒）
     window.addEventListener('focus', onFocus)
     window.addEventListener(RELATIONSHIP_READ_EVENT, onReadStateChange)
     window.addEventListener(RECOMMENDATION_READ_EVENT, onReadStateChange)

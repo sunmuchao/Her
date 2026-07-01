@@ -11,6 +11,7 @@ import { PLACEHOLDER_AVATAR, resolveProfileImageUrl } from '@/lib/image-url'
 import type { ChatUserInfo } from '@/hooks/use-app-router'
 import type { CandidatePreview } from '@/lib/types/candidate'
 import { useRelationshipsPageData } from '@/lib/hooks/use-relationships-page-data'
+import { useProfileRealtime } from '@/lib/hooks/use-profile-realtime'
 import {
   buildActiveRelationships,
   buildPendingIntroItems,
@@ -59,6 +60,9 @@ export default function RelationshipsPage({
     refetch,
   } = useRelationshipsPageData()
 
+  // ✅ 新增：全局Profile实时推送监听
+  const { isConnected: isSSEConnected, usePolling: isUsingPolling } = useProfileRealtime()
+
   // UI 状态（这些仍用 useState，因为是纯 UI 交互）
   const [pinnedCardIds, setPinnedCardIds] = useState<Record<string, boolean>>({})
   const [readCardIds, setReadCardIds] = useState<Record<string, boolean>>({})
@@ -85,6 +89,26 @@ export default function RelationshipsPage({
 
   // 未读统计
   const unreadByCaseId = useMemo(() => unreadSummary?.byCaseId || {}, [unreadSummary])
+
+  // ✅ 新增：监听案件状态更新事件（SSE推送）
+  useEffect(() => {
+    const handleCaseStatusUpdate = (e: CustomEvent) => {
+      const { caseId, newStatus, message } = e.detail
+      console.log('[Relationships Page] 收到状态更新:', { caseId, newStatus, message })
+
+      // 立即刷新数据
+      refetch()
+
+      // 可选：显示提示消息
+      // notifySuccess(message)
+    }
+
+    window.addEventListener('her:case-status-updated', handleCaseStatusUpdate as EventListener)
+
+    return () => {
+      window.removeEventListener('her:case-status-updated', handleCaseStatusUpdate as EventListener)
+    }
+  }, [refetch])
 
   // 活跃关系列表
   const activeRelationships = useMemo(

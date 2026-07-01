@@ -5,6 +5,7 @@ import { AppConnectivityProvider, OfflineBanner } from '@/components/her/ui/app-
 import { ThemeProvider } from '@/components/theme-provider'
 import { Toaster } from '@/components/ui/sonner'
 import { QueryProvider } from '@/lib/query-provider'
+import { SSEInitializer } from '@/components/her/sse-initializer'
 import './globals.css'
 
 const inter = Inter({
@@ -64,6 +65,7 @@ export default function RootLayout({
         </a>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <QueryProvider>
+            <SSEInitializer />
             <AppConnectivityProvider>
               <OfflineBanner />
               <main id="main-content">{children}</main>

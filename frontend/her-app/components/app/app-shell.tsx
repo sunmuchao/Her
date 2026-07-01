@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { useBadgeCounts } from '@/hooks/use-badge-counts'
+import { useGlobalSSE } from '@/hooks/use-global-sse'
 import BottomNav from '@/components/her/bottom-nav'
 import CandidateDetailPage from '@/components/her/candidate-detail-page'
 import ChatPage from '@/components/her/chat-page'
@@ -69,6 +70,7 @@ export function AppShell({
 }: AppShellProps) {
   const router = useRouter()
   const { inboxUnreadCount, relationshipsBadge, refreshBadges } = useBadgeCounts()
+  const { isConnected: sseConnected } = useGlobalSSE() // ✅ 新增：全局SSE订阅
   const isMatchmakerMain = currentTab === 'matchmaker' && subView === 'main'
   const isFullscreenSubView = subView === 'chat'
 

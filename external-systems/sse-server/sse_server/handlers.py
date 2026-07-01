@@ -354,6 +354,174 @@ class SSEHandlers:
 
         return response
 
+    async def handle_sse_connection_global_profile(self, request: web.StreamResponse) -> web.StreamResponse:
+        """Handle global SSE connection from frontend for profile-level push.
+
+        This endpoint is used for all pages (discovery, relationships, profile, etc.)
+
+        Args:
+            request: HTTP request
+
+        Returns:
+            StreamResponse for SSE
+        """
+        profile_id = request.match_info.get("profileId")
+
+        if not profile_id:
+            return web.json_response(
+                {"error": "Missing profileId"},
+                status=400,
+            )
+
+        # Check max connections
+        stats = self.connection_manager.get_stats()
+        if stats["total_connections"] >= config.MAX_CONNECTIONS:
+            return web.json_response(
+                {"error": "Maximum connections reached"},
+                status=503,
+            )
+
+        logger.info(f"[Global Profile SSE] Connection request: profile={profile_id}")
+
+        # Create SSE response with CORS headers
+        response = web.StreamResponse(
+            status=200,
+            headers={
+                "Content-Type": "text/event-stream",
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",  # Disable Nginx buffering
+                # CORS headers for cross-origin EventSource connection
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type, Authorization",
+            },
+        )
+        await response.prepare(request)
+
+        # Register connection
+        await self.connection_manager.add_global_profile_connection(profile_id, response)
+
+        # Send connection confirmation
+        await send_event(response, "connected", {
+            "profile_id": profile_id,
+            "timestamp": datetime.utcnow().isoformat(),
+        })
+
+        # Heartbeat loop
+        try:
+            while True:
+                await asyncio.sleep(config.HEARTBEAT_INTERVAL)
+                try:
+                    await send_event(response, "heartbeat", {
+                        "timestamp": datetime.utcnow().isoformat(),
+                    })
+                    logger.debug(f"[Global Profile SSE] Heartbeat sent to profile {profile_id}")
+                except Exception as e:
+                    logger.error(f"[Global Profile SSE] Heartbeat failed for profile {profile_id}: {e}")
+                    break
+        except asyncio.CancelledError:
+            # Client disconnected
+            logger.info(f"[Global Profile SSE] Client disconnected: profile={profile_id}")
+        finally:
+            await self.connection_manager.remove_global_profile_connection(profile_id)
+
+        return response
+
+    async def handle_internal_push_global_profile(self, request: web.Request) -> web.Response:
+        """Handle internal push request for global profile-level events.
+
+        支持的事件类型：
+        - new_match: 新匹配到达
+        - match_status_change: 匹配状态变化（等待回复 → 开始聊天）
+        - verification_passed: 验证通过
+        - verification_failed: 验证失败
+        - profile_update: 用户档案更新
+        - badge_update: 导航栏徽章更新
+        - typing_start: 聊天对方正在输入
+        - typing_end: 聊天对方停止输入
+
+        Args:
+            request: HTTP request with message payload
+
+        Returns:
+            JSON response with push result
+        """
+        try:
+            data = await request.json()
+        except json.JSONDecodeError:
+            return web.json_response({"error": "Invalid JSON"}, status=400)
+
+        # Validate required fields
+        required_fields = ["profile_id", "event_type"]
+        for field in required_fields:
+            if field not in data:
+                return web.json_response(
+                    {"error": f"Missing required field: {field}"},
+                    status=400,
+                )
+
+        profile_id = data.get("profile_id")
+        event_type = data.get("event_type")
+
+        logger.info(
+            f"[Global Profile Push] profile={profile_id}, event={event_type}"
+        )
+
+        # 构建推送数据（根据不同事件类型）
+        push_data = {
+            "type": event_type,
+            "profile_id": profile_id,
+            "timestamp": data.get("timestamp", datetime.utcnow().isoformat()),
+        }
+
+        # 添加事件特定字段
+        if event_type == "new_match":
+            push_data.update({
+                "match_id": data.get("match_id"),
+                "target_profile_id": data.get("target_profile_id"),
+                "status": data.get("status", "waiting_response"),
+            })
+        elif event_type == "match_status_change":
+            push_data.update({
+                "match_id": data.get("match_id"),
+                "old_status": data.get("old_status"),
+                "new_status": data.get("new_status"),
+            })
+        elif event_type in ("verification_passed", "verification_failed"):
+            push_data.update({
+                "message": data.get("message"),
+            })
+        elif event_type == "profile_update":
+            push_data.update({
+                "updated_profile_id": data.get("updated_profile_id"),
+                "updated_fields": data.get("updated_fields"),
+            })
+        elif event_type == "badge_update":
+            push_data.update({
+                "badge_type": data.get("badge_type"),
+                "count": data.get("count"),
+            })
+        elif event_type in ("typing_start", "typing_end"):
+            push_data.update({
+                "case_id": data.get("case_id"),
+                "typing_user_id": data.get("typing_user_id"),
+            })
+
+        # Broadcast to global profile connection
+        sent_count = await self.connection_manager.broadcast_to_global_profile(
+            profile_id,
+            "message",
+            push_data,
+        )
+
+        return web.json_response({
+            "success": True,
+            "pushed": sent_count,
+            "profile_id": profile_id,
+            "event_type": event_type,
+        })
+
     async def handle_stats(self, request: web.Request) -> web.Response:
         """Handle stats request.
 
@@ -490,6 +658,12 @@ def setup_routes(app: web.Application, handlers: SSEHandlers) -> None:
         handlers.handle_sse_connection_discovery,
     )
 
+    # SSE endpoint for frontend (global profile) - 新增
+    app.router.add_get(
+        "/sse/profile/{profileId}",
+        handlers.handle_sse_connection_global_profile,
+    )
+
     # Internal push endpoint (chat)
     app.router.add_post(
         "/internal/push",
@@ -506,6 +680,12 @@ def setup_routes(app: web.Application, handlers: SSEHandlers) -> None:
     app.router.add_post(
         "/internal/push/recommendation",
         handlers.handle_internal_push_recommendation,
+    )
+
+    # Internal push endpoint (global profile) - 新增
+    app.router.add_post(
+        "/internal/push/profile",
+        handlers.handle_internal_push_global_profile,
     )
 
     # Stats endpoint
