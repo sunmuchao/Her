@@ -36,6 +36,16 @@ class DiscoverySSEConnection:
     connected_at: datetime = field(default_factory=datetime.utcnow)
 
 
+@dataclass
+class ProfileSSEConnection:
+    """SSE connection for profile-level global push."""
+
+    profile_id: str
+    response: StreamResponse
+    last_heartbeat: datetime = field(default_factory=datetime.utcnow)
+    connected_at: datetime = field(default_factory=datetime.utcnow)
+
+
 class ConnectionManager:
     """Manage SSE connections for chat message push."""
 
@@ -50,6 +60,9 @@ class ConnectionManager:
         self._discovery_connections: dict[str, list[DiscoverySSEConnection]] = {}
         # profile_id -> connection (one profile can only have one discovery connection) - 新增
         self._profile_connections: dict[str, DiscoverySSEConnection] = {}
+
+        # profile_id -> connection (global profile-level connection) - 新增
+        self._global_profile_connections: dict[str, ProfileSSEConnection] = {}
 
         # Lock for thread-safe operations
         self._lock = asyncio.Lock()
@@ -388,6 +401,114 @@ class ConnectionManager:
 
         return sent_count
 
+    # ========== Global Profile SSE methods ==========
+
+    async def add_global_profile_connection(
+        self,
+        profile_id: str,
+        response: StreamResponse,
+    ) -> ProfileSSEConnection:
+        """Add a new global Profile SSE connection.
+
+        Args:
+            profile_id: Profile ID
+            response: SSE StreamResponse
+
+        Returns:
+            ProfileSSEConnection object
+        """
+        async with self._lock:
+            # Remove old connection if exists (handle reconnect)
+            if profile_id in self._global_profile_connections:
+                old_conn = self._global_profile_connections[profile_id]
+                await self._remove_global_profile_connection_internal(old_conn)
+                logger.info(f"[Global Profile] Removed old connection for profile {profile_id}")
+
+            # Create new connection
+            conn = ProfileSSEConnection(
+                profile_id=profile_id,
+                response=response,
+            )
+
+            # Add to dictionary
+            self._global_profile_connections[profile_id] = conn
+
+            logger.info(
+                f"[Global Profile] Added connection: profile={profile_id}, "
+                f"total_connections={len(self._global_profile_connections)}"
+            )
+
+            return conn
+
+    async def remove_global_profile_connection(self, profile_id: str) -> None:
+        """Remove a global Profile connection by profile_id.
+
+        Args:
+            profile_id: Profile ID
+        """
+        async with self._lock:
+            if profile_id in self._global_profile_connections:
+                conn = self._global_profile_connections[profile_id]
+                await self._remove_global_profile_connection_internal(conn)
+
+    async def _remove_global_profile_connection_internal(self, conn: ProfileSSEConnection) -> None:
+        """Internal method to remove global Profile connection without lock."""
+        self._global_profile_connections.pop(conn.profile_id, None)
+
+        logger.info(
+            f"[Global Profile] Removed connection: profile={conn.profile_id}, "
+            f"remaining={len(self._global_profile_connections)}"
+        )
+
+    async def get_global_profile_connection(self, profile_id: str) -> ProfileSSEConnection | None:
+        """Get global connection for a specific profile.
+
+        Args:
+            profile_id: Profile ID
+
+        Returns:
+            ProfileSSEConnection or None if not found
+        """
+        async with self._lock:
+            return self._global_profile_connections.get(profile_id)
+
+    async def broadcast_to_global_profile(
+        self,
+        profile_id: str,
+        event_type: str,
+        data: dict,
+    ) -> int:
+        """Broadcast an SSE event to global connection for a profile.
+
+        This is used for profile-level push (case status update, new recommendation, etc.)
+
+        Args:
+            profile_id: Profile ID
+            event_type: Event type
+            data: Event data dictionary
+
+        Returns:
+            Number of successful sends (0 or 1)
+        """
+        conn = await self.get_global_profile_connection(profile_id)
+        if not conn:
+            logger.info(
+                f"[Global Profile] No connection for profile={profile_id}, skip push"
+            )
+            return 0
+
+        try:
+            await send_event(conn.response, event_type, data)
+            conn.last_heartbeat = datetime.utcnow()
+            logger.info(
+                f"[Global Profile] Pushed to profile={profile_id}, event={event_type}"
+            )
+            return 1
+        except Exception as e:
+            logger.error(f"[Global Profile] Failed to push to {conn.profile_id}: {e}")
+            await self.remove_global_profile_connection(conn.profile_id)
+            return 0
+
     def get_stats(self) -> dict:
         """Get connection statistics.
 
@@ -401,6 +522,8 @@ class ConnectionManager:
                 case_id: len(conns)
                 for case_id, conns in self._connections.items()
             },
+            "discovery_connections": len(self._profile_connections),
+            "global_profile_connections": len(self._global_profile_connections),
         }
 
 

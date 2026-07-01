@@ -1059,6 +1059,79 @@ def dispatch_match_case_outreach(
     return get_match_case(case_conn, case_id, recommendation_conn=recommendation_conn)
 
 
+def _push_case_status_update_notification(
+    case: dict[str, Any],
+    new_status: str,
+    now: datetime,
+) -> None:
+    """推送案件状态更新通知给发起方（通过SSE）。
+
+    当被推荐方接受/拒绝请求后，通知发起方状态已更新。
+
+    Args:
+        case: 案件数据
+        new_status: 新状态（accepted/declined）
+        now: 当前时间
+    """
+    import httpx
+    from her_env import env_first
+
+    sse_server_url = env_first(
+        "SSE_SERVER_URL",
+        "http://localhost:8081",
+    )
+
+    # 获取发起方的profile_id（需要接收通知）
+    requester_profile_id = str(case.get("requester_id") or "")
+    if not requester_profile_id:
+        logger.warning("[SSE Push] 案件缺少requester_id，无法推送状态更新")
+        return
+
+    # 获取被推荐方的profile_id
+    candidate_profile_id = str(case.get("candidate_id") or "")
+    case_id = str(case.get("case_id") or "")
+
+    try:
+        push_url = f"{sse_server_url}/internal/push/recommendation"
+        payload = {
+            "profile_id": requester_profile_id,  # 推送给发起方
+            "event_type": "case_status_update",  # 新事件类型：状态更新
+            "case_id": case_id,
+            "candidate_id": candidate_profile_id,
+            "new_status": new_status,
+            "message": f"对方已{'接受' if new_status == 'accepted' else '拒绝'}你的请求",
+            "timestamp": now.isoformat(),
+        }
+
+        # 同步推送（不阻塞主流程），记录详细日志
+        with httpx.Client(timeout=2.0) as client:
+            response = client.post(push_url, json=payload)
+            if response.status_code == 200:
+                result = response.json()
+                sent_count = result.get("pushed", 0)
+                online_sessions = result.get("online_sessions", [])
+                logger.info(
+                    f"[SSE Push] 状态更新通知推送完成: requester={requester_profile_id}, "
+                    f"candidate={candidate_profile_id}, case={case_id}, new_status={new_status}, "
+                    f"sent_count={sent_count}, online_sessions={online_sessions}"
+                )
+                if sent_count == 0:
+                    logger.warning(
+                        f"[SSE Push] 发起方不在线，推送失败: requester={requester_profile_id}, "
+                        f"可能原因：用户未打开Discovery页面或SSE连接断开"
+                    )
+            else:
+                logger.warning(
+                    f"[SSE Push] 推送请求失败: status={response.status_code}, "
+                    f"requester={requester_profile_id}, response={response.text}"
+                )
+    except Exception as e:
+        # 推送失败不影响主流程，只记录日志
+        logger.warning(
+            f"[SSE Push] 状态更新推送异常: {e}, requester={requester_profile_id}"
+        )
+
+
 def _push_passive_recommendation_notification(
     case: dict[str, Any],
     now: datetime,
@@ -1312,6 +1385,14 @@ def record_match_case_reply(
                 action_payload=reply_payload or {},
             )
     commit_proxy_intro_transaction(case_conn, recommendation_conn)
+
+    # ✅ 新增：推送状态更新通知给发起方
+    _push_case_status_update_notification(
+        case=updated_case,
+        new_status=reply_type,  # accepted 或 declined
+        now=now,
+    )
+
     return updated_case
 
 
