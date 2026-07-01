@@ -7,6 +7,7 @@ from typing import Any
 
 from her_time_utils import coerce_dt as _coerce_dt, current_time
 
+from .assistant_feature_flags import is_match_chat_ai_assistant_enabled
 from .assistant_context import (
     build_case_agent_bootstrap,
     get_message_window,
@@ -444,6 +445,30 @@ def process_pending_agent_tasks(
     now: datetime | None = None,
 ) -> dict[str, Any]:
     ts = _normalize_now(now)
+    if not is_match_chat_ai_assistant_enabled():
+        claimed = claim_pending_agent_tasks(conn, limit=limit, lease_seconds=lease_seconds, now=ts)
+        conn.commit()
+        skipped_task_ids: list[int] = []
+        for task in claimed:
+            task_id = int(task["task_id"])
+            _complete_skipped_task(
+                conn,
+                task_id=task_id,
+                reason_codes=["assistant_disabled"],
+                now=ts,
+            )
+            skipped_task_ids.append(task_id)
+        conn.commit()
+        return {
+            "claimed": len(claimed),
+            "completed": len(skipped_task_ids),
+            "failed": 0,
+            "replies_posted": 0,
+            "task_ids": skipped_task_ids,
+            "skipped_task_ids": skipped_task_ids,
+            "errors": [],
+            "disabled": True,
+        }
     claimed = claim_pending_agent_tasks(conn, limit=limit, lease_seconds=lease_seconds, now=ts)
     conn.commit()
 

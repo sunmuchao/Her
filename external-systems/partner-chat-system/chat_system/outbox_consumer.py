@@ -7,6 +7,7 @@ from typing import Any
 
 from match_domain.outbox_runtime import consume_outbox_batch
 
+from .assistant_feature_flags import is_match_chat_ai_assistant_enabled
 from .assistant_sessions import (
     enqueue_agent_task,
     get_or_create_agent_session,
@@ -18,6 +19,8 @@ ASSISTANT_DM_CHANNEL_KEYS = {"assistant_dm_a", "assistant_dm_b"}
 
 
 def _maybe_enqueue_agent_task_from_event(conn, payload: dict[str, Any], *, now: datetime) -> dict[str, Any] | None:
+    if not is_match_chat_ai_assistant_enabled():
+        return None
     event_type = str(payload.get("event_type") or "").strip()
     if event_type != "chat.conversation.message.created":
         return None

@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Any
 
 from .assistant_orchestrator import process_pending_agent_tasks
+from .assistant_feature_flags import is_match_chat_ai_assistant_enabled
 from .assistant_sessions import (
     close_idle_agent_sessions,
     enqueue_due_opening_probe_tasks,
@@ -72,6 +73,7 @@ def run_chat_maintenance(
             )
     if (
         assistant_limit > 0
+        and is_match_chat_ai_assistant_enabled()
         and os.environ.get("HER_CHAT_MAINTENANCE_SKIP_ASSISTANT", "").lower() not in ("1", "true", "yes")
     ):
         trigger_out: dict[str, Any] = {
@@ -114,8 +116,8 @@ def run_chat_maintenance(
         out["assistant_triggers"] = trigger_out
         out["assistant"] = process_pending_agent_tasks(conn, limit=assistant_limit, now=now)
     else:
-        out["assistant_triggers"] = {"skipped": True}
-        out["assistant"] = {"skipped": True}
+        out["assistant_triggers"] = {"skipped": True, "disabled": not is_match_chat_ai_assistant_enabled()}
+        out["assistant"] = {"skipped": True, "disabled": not is_match_chat_ai_assistant_enabled()}
     if assistant_idle_seconds > 0:
         out["agent_sessions_closed"] = close_idle_agent_sessions(
             conn,
