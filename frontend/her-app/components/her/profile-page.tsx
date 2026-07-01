@@ -65,6 +65,8 @@ export default function ProfilePage({
   const [isEditingHeadline, setIsEditingHeadline] = useState(false)
   const [headlineDraft, setHeadlineDraft] = useState('')
   const [isSavingHeadline, setIsSavingHeadline] = useState(false)
+  const [headlineOverride, setHeadlineOverride] = useState<string | null>(null)
+  const [tagsOverride, setTagsOverride] = useState<string[] | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const editInputRef = useRef<HTMLInputElement>(null)
   const headlineTextareaRef = useRef<HTMLTextAreaElement>(null)
@@ -75,11 +77,13 @@ export default function ProfilePage({
     () => buildProfileView(auth, facts, collected, trust),
     [auth, facts, collected, trust],
   )
+  const displayedHeadline = headlineOverride ?? profile.headline
+  const displayedTags = tagsOverride ?? profile.tags
 
   // 进入编辑模式（单击触发）
   const handleEnterEdit = () => {
     if (isSavingTags) return
-    setEditedTags([...profile.tags])
+    setEditedTags([...displayedTags])
     setIsEditingTags(true)
     setIsAddingTag(false)
     setNewTagInput('')
@@ -159,6 +163,7 @@ export default function ProfilePage({
     setNewTagInput('')
     setEditingTagIndex(null)
     setEditingTagValue('')
+    setTagsOverride(currentTags)
     setIsSavingTags(true)
 
     try {
@@ -174,9 +179,9 @@ export default function ProfilePage({
   const handleEnterHeadlineEdit = useCallback(() => {
     if (isSavingHeadline) return
     setHeadlineDraft(
-      profile.headline === onboardingHeadline || profile.headline === defaultHeadline
+      displayedHeadline === onboardingHeadline || displayedHeadline === defaultHeadline
         ? ''
-        : profile.headline,
+        : displayedHeadline,
     )
     setIsEditingHeadline(true)
     setTimeout(() => {
@@ -186,20 +191,22 @@ export default function ProfilePage({
         headlineTextareaRef.current.value.length,
       )
     }, 50)
-  }, [defaultHeadline, isSavingHeadline, onboardingHeadline, profile.headline])
+  }, [defaultHeadline, displayedHeadline, isSavingHeadline, onboardingHeadline])
 
   const handleSaveHeadline = useCallback(async () => {
     const trimmed = headlineDraft.trim().slice(0, 80)
     setIsEditingHeadline(false)
+    const nextHeadline = trimmed || defaultHeadline
 
     if (
-      trimmed === profile.headline ||
-      (!trimmed && (profile.headline === onboardingHeadline || profile.headline === defaultHeadline))
+      trimmed === displayedHeadline ||
+      (!trimmed && (displayedHeadline === onboardingHeadline || displayedHeadline === defaultHeadline))
     ) {
       setHeadlineDraft(trimmed)
       return
     }
 
+    setHeadlineOverride(nextHeadline)
     setIsSavingHeadline(true)
     try {
       await submitOnboarding({
@@ -211,11 +218,11 @@ export default function ProfilePage({
       await refetch()
     } catch (error) {
       console.error('保存个人简介失败:', error)
-      setHeadlineDraft(profile.headline)
+      setHeadlineDraft(nextHeadline)
     } finally {
       setIsSavingHeadline(false)
     }
-  }, [defaultHeadline, headlineDraft, onboardingHeadline, profile.headline, refetch])
+  }, [defaultHeadline, displayedHeadline, headlineDraft, onboardingHeadline, refetch])
 
   const handleHeadlineKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
@@ -224,9 +231,9 @@ export default function ProfilePage({
     } else if (e.key === 'Escape') {
       e.preventDefault()
       setIsEditingHeadline(false)
-      setHeadlineDraft(profile.headline)
+      setHeadlineDraft(displayedHeadline)
     }
-  }, [handleSaveHeadline, profile.headline])
+  }, [displayedHeadline, handleSaveHeadline])
 
   // 点击外部区域自动保存并退出
   useEffect(() => {
@@ -404,7 +411,7 @@ export default function ProfilePage({
                 className="mb-3 block w-full rounded-lg text-left text-sm text-muted-foreground transition-colors hover:bg-secondary/40 px-2 py-2 -mx-2"
                 aria-label="编辑个人简介"
               >
-                {isSavingHeadline ? '保存中...' : profile.headline}
+                {isSavingHeadline ? '保存中...' : displayedHeadline}
               </button>
             )}
 
@@ -498,8 +505,8 @@ export default function ProfilePage({
               ) : (
                 <>
                   {/* 展示模式：只显示标签 */}
-                  {profile.tags.length > 0 ? (
-                    profile.tags.map((tag, i) => (
+                  {displayedTags.length > 0 ? (
+                    displayedTags.map((tag, i) => (
                       <span
                         key={i}
                         className="px-2 py-1 bg-secondary text-xs text-muted-foreground rounded-md"
