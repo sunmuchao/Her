@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { ChevronLeft, Shield, RefreshCw, Phone } from 'lucide-react'
 import { WechatIcon } from '@/components/her/ui/wechat-icon'
 import { sendSmsCode, verifySmsCode, wechatLogin } from '@/lib/auth/auth-api'
@@ -250,7 +251,11 @@ export default function AccountRecoveryPage({
                 className="text-center text-xs"
                 style={{ color: 'oklch(0.6 0.02 30)' }}
               >
-                如需帮助，请联系客服
+                如需帮助，可前往
+                <Link href="/help/feedback" className="mx-1 underline underline-offset-2">
+                  意见反馈
+                </Link>
+                提交说明
               </p>
             </div>
           </>

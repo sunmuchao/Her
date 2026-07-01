@@ -119,13 +119,13 @@ export default function SettingsPage({
         router.push('/recovery')
         break
       case 'feedback':
-        notifySuccess('反馈入口整理中，后续会补充在线反馈')
+        router.push('/help/feedback')
         break
       case 'agreement':
-        notifySuccess('用户协议入口整理中')
+        router.push('/legal/terms')
         break
       case 'privacy':
-        notifySuccess('隐私政策入口整理中')
+        router.push('/legal/privacy')
         break
       default:
         break

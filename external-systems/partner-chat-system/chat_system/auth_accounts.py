@@ -1330,6 +1330,24 @@ def submit_onboarding_profile(
     if not profile_fields.get("name"):
         raise AuthDomainError(400, "name_required", "请填写姓名后再提交")
 
+    # 新增验证
+    height = profile_fields.get("height")
+    if height is not None and (height < 100 or height > 250):
+        raise AuthDomainError(400, "invalid_height", "身高需在100-250cm之间")
+
+    weight = profile_fields.get("weight")
+    if weight is not None and (weight < 30 or weight > 200):
+        raise AuthDomainError(400, "invalid_weight", "体重需在30-200kg之间")
+
+    children_count = profile_fields.get("children_count")
+    if children_count is not None and (children_count < 0 or children_count > 10):
+        raise AuthDomainError(400, "invalid_children_count", "孩子数量需在0-10之间")
+
+    # 条件验证：有孩子时必须填写孩子数量
+    has_children = profile_fields.get("has_children")
+    if has_children == 1 and children_count is None:
+        raise AuthDomainError(400, "children_count_required", "有孩子时需填写孩子数量")
+
     existing_profile_id = _linked_profile_id({"basic_info": merged_basic, "preference": merged_pref})
     profile_id, write_mode = upsert_profile_for_onboarding(
         source_dsn=source_dsn,

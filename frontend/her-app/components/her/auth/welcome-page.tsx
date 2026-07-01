@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
 import { XiaoyaAvatar } from '@/components/her/ui/xiaoya-avatar'
 import { WechatIcon } from '@/components/her/ui/wechat-icon'
 import { cn } from '@/lib/utils'
@@ -180,9 +181,13 @@ export default function WelcomePage({
         >
           <p className="text-center text-xs text-muted-foreground leading-relaxed">
             登录即表示同意
-            <button className="underline underline-offset-2 mx-1">用户协议</button>
+            <Link href="/legal/terms" className="underline underline-offset-2 mx-1">
+              用户协议
+            </Link>
             和
-            <button className="underline underline-offset-2 mx-1">隐私政策</button>
+            <Link href="/legal/privacy" className="underline underline-offset-2 mx-1">
+              隐私政策
+            </Link>
           </p>
         </div>
       </div>

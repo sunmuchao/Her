@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ChevronLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -29,6 +30,8 @@ export default function PhoneLoginPage({
   const handleBack = () => {
     if (typeof window !== 'undefined' && window.history.length > 1) {
       router.back()
+    } else if (onBack) {
+      onBack()
     } else {
       // 深度链接进入时，无历史记录，fallback 到欢迎页
       router.push('/welcome')
@@ -169,9 +172,13 @@ export default function PhoneLoginPage({
         <div className="pb-8 safe-area-bottom">
           <p className="text-center text-xs text-muted-foreground leading-relaxed">
             登录即表示同意
-            <button className="underline underline-offset-2 mx-1">用户协议</button>
+            <Link href="/legal/terms" className="underline underline-offset-2 mx-1">
+              用户协议
+            </Link>
             和
-            <button className="underline underline-offset-2 mx-1">隐私政策</button>
+            <Link href="/legal/privacy" className="underline underline-offset-2 mx-1">
+              隐私政策
+            </Link>
           </p>
         </div>
       </div>

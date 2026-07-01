@@ -69,6 +69,29 @@ function firstStringArray(...values: unknown[]): string[] {
   return []
 }
 
+function firstNumber(...values: unknown[]): number | null {
+  for (const value of values) {
+    if (typeof value === 'number' && !isNaN(value)) {
+      return value
+    }
+    if (typeof value === 'string') {
+      const parsed = parseInt(value, 10)
+      if (!isNaN(parsed)) {
+        return parsed
+      }
+    }
+  }
+  return null
+}
+
+function firstBool(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (value === true || value === 1 || value === '1' || value === 'yes') return 'yes'
+    if (value === false || value === 0 || value === '0' || value === 'no') return 'no'
+  }
+  return null
+}
+
 function normalizeBooleanChoice(value: unknown): string {
   if (value === 'yes' || value === 'no') return value
   if (value === true || value === 1 || value === '1') return 'yes'
@@ -163,6 +186,7 @@ export default function EditProfilePage({ onBack, onSaved }: EditProfilePageProp
 
   // 从已有数据初始化表单状态
   const [profile, setProfile] = useState<ProfileData>({
+    // 已有字段初始值
     name: '',
     gender: '',
     sexualOrientation: '',
@@ -172,6 +196,23 @@ export default function EditProfilePage({ onBack, onSaved }: EditProfilePageProp
     relationshipGoal: '',
     marriageStatus: '',
     hasChildren: '',
+
+    // 新增字段初始值
+    height: null,
+    weight: null,
+    education: null,
+    job: null,
+    incomeRange: null,
+    hometownCity: null,
+    childrenCount: null,
+    childrenLivingWithSelf: null,
+    smoking: null,
+    drinking: null,
+    hasHouse: null,
+    hasCar: null,
+    religion: null,
+    isOnlyChild: null,
+    district: null,
   })
 
   // 数据加载完成后初始化表单
@@ -183,6 +224,7 @@ export default function EditProfilePage({ onBack, onSaved }: EditProfilePageProp
       const authProfile = auth?.profile ?? {}
 
       setProfile({
+        // 已有字段...
         name: firstString(
           rawProfile.name,
           onboardingBasicInfo.name,
@@ -233,6 +275,23 @@ export default function EditProfilePage({ onBack, onSaved }: EditProfilePageProp
           normalizeBooleanChoice(onboardingBasicInfo.has_children) ||
           normalizeBooleanChoice(authProfile.has_children) ||
           normalizeBooleanChoice(authProfile.parenting_status),
+
+        // 新增字段：从 rawProfile 和 authProfile 合并
+        height: firstNumber(rawProfile.self_height, rawProfile.height, authProfile.height),
+        weight: firstNumber(rawProfile.weight, authProfile.weight),
+        education: firstString(rawProfile.self_education, rawProfile.education, authProfile.education),
+        job: firstString(rawProfile.self_job, rawProfile.job, authProfile.job),
+        incomeRange: firstString(rawProfile.self_income_wan, rawProfile.income_range, authProfile.income_range, onboardingBasicInfo.income_range),
+        hometownCity: firstString(rawProfile.hometown_city, authProfile.hometown_city, onboardingBasicInfo.hometown_city),
+        childrenCount: firstNumber(rawProfile.self_children_count, rawProfile.children_count, authProfile.children_count, onboardingBasicInfo.children_count),
+        childrenLivingWithSelf: firstBool(rawProfile.self_children_living_with_self, rawProfile.children_living_with_self, authProfile.children_living_with_self, onboardingBasicInfo.children_living_with_self),
+        smoking: firstString(rawProfile.self_smoking, rawProfile.smoking, authProfile.smoking, onboardingBasicInfo.smoking),
+        drinking: firstString(rawProfile.self_drinking, rawProfile.drinking, authProfile.drinking, onboardingBasicInfo.drinking),
+        hasHouse: firstString(rawProfile.has_house, authProfile.has_house, onboardingBasicInfo.has_house),
+        hasCar: firstString(rawProfile.has_car, authProfile.has_car, onboardingBasicInfo.has_car),
+        religion: firstString(rawProfile.religion, authProfile.religion, onboardingBasicInfo.religion),
+        isOnlyChild: firstBool(rawProfile.is_only_child, authProfile.is_only_child, onboardingBasicInfo.is_only_child),
+        district: firstString(rawProfile.self_district, rawProfile.district, authProfile.district, onboardingBasicInfo.district),
       })
     }
   }, [isLoading, auth, facts])
@@ -284,6 +343,23 @@ export default function EditProfilePage({ onBack, onSaved }: EditProfilePageProp
       }
     }
 
+    // 新增验证
+    if (profile.height && (profile.height < 100 || profile.height > 250)) {
+      errors.push('身高需在100-250cm之间')
+    }
+    if (profile.weight && (profile.weight < 30 || profile.weight > 200)) {
+      errors.push('体重需在30-200kg之间')
+    }
+    if (profile.job && profile.job.length > 30) {
+      errors.push('职业最长30字符')
+    }
+    if (profile.childrenCount && (profile.childrenCount < 0 || profile.childrenCount > 10)) {
+      errors.push('孩子数量需在0-10之间')
+    }
+    if (profile.hasChildren === 'yes' && !profile.childrenCount) {
+      errors.push('有孩子时需填写孩子数量')
+    }
+
     if (errors.length > 0) {
       setValidationErrors(errors)
       setTimeout(() => setValidationErrors([]), 3000)
@@ -296,6 +372,7 @@ export default function EditProfilePage({ onBack, onSaved }: EditProfilePageProp
     try {
       const result = await submitOnboarding({
         basic_info: {
+          // 已有字段...
           name: profile.name,
           birthday: profile.birthday,
           gender: profile.gender,
@@ -305,6 +382,23 @@ export default function EditProfilePage({ onBack, onSaved }: EditProfilePageProp
           relationship_goal: profile.relationshipGoal,
           marriage_status: profile.marriageStatus,
           has_children: profile.hasChildren,
+
+          // 新增字段：添加到 basic_info
+          height: profile.height,
+          weight: profile.weight,
+          education: profile.education,
+          job: profile.job,
+          income_range: profile.incomeRange,
+          hometown_city: profile.hometownCity,
+          children_count: profile.childrenCount,
+          children_living_with_self: profile.childrenLivingWithSelf,
+          smoking: profile.smoking,
+          drinking: profile.drinking,
+          has_house: profile.hasHouse,
+          has_car: profile.hasCar,
+          religion: profile.religion,
+          is_only_child: profile.isOnlyChild,
+          district: profile.district,
         },
         preference: {
           relationship_goal: profile.relationshipGoal,

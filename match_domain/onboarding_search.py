@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Mapping
 
+from her_time_utils import coerce_int
+
 DEFAULT_AGE_SPAN = 5
 MIN_SEARCH_AGE = 18
 
@@ -153,16 +155,38 @@ def map_sexual_orientation_to_target_gender(orientation: Any) -> str | None:
 
 
 def normalize_marital_status(value: Any) -> str | None:
-    raw = str(value or "").strip()
+    """标准化婚况，支持中文和英文输入，返回英文标准值"""
+    raw = str(value or "").strip().lower()
     if not raw:
         return None
-    mapping = {
-        "never_married": "未婚",
-        "divorced": "离异",
-        "widowed": "丧偶",
-        "married": "已婚",
+
+    # 中文 -> 英文映射
+    cn_to_en = {
+        "未婚": "never_married",
+        "离异": "divorced",
+        "离婚": "divorced",
+        "丧偶": "widowed",
+        "已婚": "married",
     }
-    return mapping.get(raw, raw)
+
+    # 英文标准值（保持原样）
+    en_standard = {
+        "never_married": "never_married",
+        "divorced": "divorced",
+        "widowed": "widowed",
+        "married": "married",
+    }
+
+    # 先尝试中文映射
+    if raw in cn_to_en:
+        return cn_to_en[raw]
+
+    # 再尝试英文映射
+    if raw in en_standard:
+        return en_standard[raw]
+
+    # 未知值返回原样
+    return raw
 
 
 def normalize_has_children(value: Any) -> int | None:
@@ -174,6 +198,83 @@ def normalize_has_children(value: Any) -> int | None:
     return None
 
 
+def normalize_boolish(value: Any) -> int | None:
+    """标准化布尔值，支持多种输入格式"""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return 1 if value else 0
+    if isinstance(value, int):
+        return 1 if value > 0 else 0
+    if isinstance(value, str):
+        lower = value.lower().strip()
+        if lower in ("yes", "true", "1", "是", "随自己", "独生子女"):
+            return 1
+        if lower in ("no", "false", "0", "否", "不随自己", "非独生子女"):
+            return 0
+    return None
+
+
+def normalize_education(value: Any) -> str | None:
+    """标准化学历，支持中文和英文"""
+    if not value:
+        return None
+    lower = str(value).lower().strip()
+    education_map = {
+        "专科": "college",
+        "大专": "college",
+        "college": "college",
+        "本科": "bachelor",
+        "bachelor": "bachelor",
+        "硕士": "master",
+        "master": "master",
+        "博士": "doctor",
+        "doctor": "doctor",
+        "phd": "doctor",
+    }
+    return education_map.get(lower, lower)
+
+
+def normalize_smoking_drinking(value: Any) -> str | None:
+    """标准化抽烟/喝酒情况"""
+    if not value:
+        return None
+    lower = str(value).lower().strip()
+    habit_map = {
+        "不抽烟": "never",
+        "不喝酒": "never",
+        "never": "never",
+        "偶尔抽烟": "occasionally",
+        "偶尔喝酒": "occasionally",
+        "occasionally": "occasionally",
+        "经常抽烟": "regularly",
+        "经常喝酒": "regularly",
+        "regularly": "regularly",
+        "抽烟": "regularly",
+        "喝酒": "regularly",
+    }
+    return habit_map.get(lower, lower)
+
+
+def normalize_house_car(value: Any) -> str | None:
+    """标准化房产/车产情况"""
+    if not value:
+        return None
+    lower = str(value).lower().strip()
+    asset_map = {
+        "有房": "owned",
+        "有车": "owned",
+        "owned": "owned",
+        "无房": "none",
+        "无车": "none",
+        "none": "none",
+        "房贷中": "mortgage",
+        "车贷中": "mortgage",
+        "mortgage": "mortgage",
+    }
+    return asset_map.get(lower, lower)
+
+
 def build_onboarding_profile_fields(
     basic_info: Mapping[str, Any] | None,
     preference: Mapping[str, Any] | None = None,
@@ -181,22 +282,55 @@ def build_onboarding_profile_fields(
     basic = dict(basic_info or {})
     pref = dict(preference or {})
     fields: dict[str, Any] = {
+        # 已有字段...
         "name": basic.get("name"),
         "gender": basic.get("gender"),
         "city": basic.get("location") or basic.get("city"),
         "relationship_goal": pref.get("relationship_goal") or basic.get("relationship_goal"),
         "sexual_orientation": basic.get("sexual_orientation"),
+
+        # 新增字段：直接映射
+        "height": coerce_int(basic.get("height")),
+        "weight": coerce_int(basic.get("weight")),
+        "education": basic.get("education"),
+        "job": basic.get("job"),
+        "income_range": basic.get("income_range"),
+        "hometown_city": basic.get("hometown_city"),
+        "children_count": coerce_int(basic.get("children_count")),
+        "smoking": basic.get("smoking"),
+        "drinking": basic.get("drinking"),
+        "has_house": basic.get("has_house"),
+        "has_car": basic.get("has_car"),
+        "religion": basic.get("religion"),
+        "district": basic.get("district"),
     }
+
+    # 计算年龄
     age = age_from_birthday(basic.get("birthday"))
     if age is not None:
         fields["age"] = age
+
+    # 标准化婚况和孩子状态
     marital_status = normalize_marital_status(basic.get("marriage_status") or basic.get("marital_status"))
     if marital_status:
         fields["marital_status"] = marital_status
+
     has_children = normalize_has_children(basic.get("has_children"))
     if has_children is not None:
         fields["has_children"] = has_children
-    return {key: value for key, value in fields.items() if value not in (None, "")}
+
+    # 孩子是否随自己生活（布尔值）
+    children_living_with_self = normalize_boolish(basic.get("children_living_with_self"))
+    if children_living_with_self is not None:
+        fields["children_living_with_self"] = children_living_with_self
+
+    # 是否独生子女（布尔值）
+    is_only_child = normalize_boolish(basic.get("is_only_child"))
+    if is_only_child is not None:
+        fields["is_only_child"] = is_only_child
+
+    # 过滤空值
+    return {key: value for key, value in fields.items() if value not in (None, "", [])}
 
 
 def expand_relationship_goals_for_search(goals: list[Any]) -> list[str]:
