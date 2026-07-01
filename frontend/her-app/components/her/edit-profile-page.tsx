@@ -19,6 +19,7 @@ interface EditProfilePageProps {
 }
 
 interface ProfileData {
+  // 已有字段（9个）
   name: string
   gender: string
   sexualOrientation: string
@@ -28,6 +29,23 @@ interface ProfileData {
   relationshipGoal: string
   marriageStatus: string
   hasChildren: string
+
+  // 新增字段（15个）
+  height: number | null          // 身高（cm）
+  weight: number | null          // 体重（kg）
+  education: string | null       // 学历
+  job: string | null             // 职业
+  incomeRange: string | null     // 收入范围
+  hometownCity: string | null    // 籍贯城市
+  childrenCount: number | null   // 孩子数量
+  childrenLivingWithSelf: string | null // 孩子是否随自己
+  smoking: string | null         // 抽烟情况
+  drinking: string | null        // 喝酒情况
+  hasHouse: string | null        // 房产情况
+  hasCar: string | null          // 车产情况
+  religion: string | null        // 宗教信仰
+  isOnlyChild: string | null     // 是否独生子女
+  district: string | null        // 区县
 }
 
 function firstString(...values: unknown[]): string {
