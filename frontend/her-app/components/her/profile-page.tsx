@@ -287,7 +287,6 @@ export default function ProfilePage({
     [profile.verificationItems],
   )
   const verificationPriorityMap: Record<string, { order: number; target?: string; icon: React.ElementType }> = {
-    '活体视频认证': { order: 0, target: 'video', icon: Video },
     '真人认证': { order: 0, target: 'video', icon: Video },
     '身份认证': { order: 1, icon: UserCheck },
     '学历认证': { order: 2, target: 'education', icon: GraduationCap },

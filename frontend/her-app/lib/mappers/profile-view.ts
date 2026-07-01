@@ -51,7 +51,7 @@ function buildFallbackVerificationItems(rawProfile: Record<string, unknown>): Ve
 
   return [
     {
-      name: '活体视频认证',
+      name: '真人认证',
       status: videoVerified ? 'verified' : 'unverified',
       description: videoVerified ? '已完成真人核验' : '录制一段简短视频完成认证',
     },

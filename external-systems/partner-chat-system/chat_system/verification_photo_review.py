@@ -79,13 +79,13 @@ def build_photo_review_task_metadata(
     summary = _as_text(request_reason)
     if not summary:
         if labels:
-            summary = f"平台检测到你的资料存在{labels[0]}等信号，请补录真人活体视频完成复核。"
+            summary = f"平台检测到你的资料存在{labels[0]}等信号，请补录真人认证视频完成复核。"
         else:
-            summary = "平台检测到你的资料照片存在待复核信号，请补录真人活体视频。"
+            summary = "平台检测到你的资料照片存在待复核信号，请补录真人认证视频。"
     return {
         "task_kind": "photo_review",
         "request_source": _as_text(request_source) or "risk_case_review",
-        "request_title": "请补录真人活体视频",
+        "request_title": "请补录真人认证视频",
         "request_reason": summary,
         "reason_labels": labels,
         "request_reason_codes": _unique_ordered(signal_codes),
@@ -172,11 +172,11 @@ def photo_review_notification_copy(
     task = _normalize_metadata((submission or {}).get(PHOTO_REVIEW_METADATA_KEY))
     reason = _as_text(task.get("request_reason")) or "平台检测到你的资料照片存在待复核信号。"
     if notification_type == NOTIFICATION_TYPE_REQUESTED:
-        return "请补录真人活体视频", f"{reason} 请尽快补录真人活体视频，完成平台复核。"
+        return "请补录真人认证视频", f"{reason} 请尽快补录真人认证视频，完成平台复核。"
     if notification_type == NOTIFICATION_TYPE_RESUBMISSION_REQUIRED:
-        return "补录材料需要重新提交", _as_text(note) or "当前提交的活体视频暂不足以完成复核，请按提示重新补录更清晰的视频。"
+        return "补录材料需要重新提交", _as_text(note) or "当前提交的真人认证视频暂不足以完成复核，请按提示重新补录更清晰的视频。"
     if notification_type == NOTIFICATION_TYPE_APPROVED:
-        return "真人视频复核已通过", _as_text(note) or "你的真人活体视频已通过复核，相关资料状态已更新。"
+        return "真人视频复核已通过", _as_text(note) or "你的真人认证视频已通过复核，相关资料状态已更新。"
     if notification_type == NOTIFICATION_TYPE_REJECTED:
         return "真人视频复核未通过", _as_text(note) or "当前提交未通过复核，请查看原因后重新准备材料。"
     if notification_type == NOTIFICATION_TYPE_FROZEN:

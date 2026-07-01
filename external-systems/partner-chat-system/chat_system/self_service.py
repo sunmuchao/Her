@@ -171,7 +171,7 @@ def _photo_review_item(request: dict[str, Any]) -> dict[str, Any]:
     latest_review = (request.get("reviews") or [{}])[-1] if request.get("reviews") else {}
     status = _as_text(request.get("derived_status") or request.get("status"))
     trigger_reasons = _unique_ordered(task.get("reason_labels") or [request.get("request_reason")])
-    required_materials = ["5-10 秒真人活体视频"]
+    required_materials = ["5-10 秒真人认证视频"]
     example_materials = list(task.get("capture_tips") or [])
     out = {
         "item_id": request.get("submission_id"),
@@ -711,7 +711,7 @@ def build_user_trust_hub(
         },
         {
             "key": "why_live_video",
-            "question": "为什么要补录活体视频？",
+            "question": "为什么要补录真人认证视频？",
             "answer": "这是为了确认照片和真人一致，降低冒用和修图风险。",
         },
         {
