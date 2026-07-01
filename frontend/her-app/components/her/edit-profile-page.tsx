@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useId } from 'react'
-import { X, Check, ImagePlus, Heart, Users, Sparkles, Loader2 } from 'lucide-react'
+import { X, Check, ImagePlus, Heart, Users, Sparkles, Loader2, User, Briefcase, Home, Target } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { submitOnboarding } from '@/lib/auth/auth-api'
 import { applyLoginPayload } from '@/lib/auth/session'
@@ -9,6 +9,9 @@ import { notifyError, notifySuccess } from '@/lib/notify'
 import { Button } from '@/components/ui/button'
 import { CitySelector } from '@/components/her/ui/city-selector'
 import { DateWheelPicker } from '@/components/her/ui/date-wheel-picker'
+import { CollapsibleCard } from '@/components/her/ui/collapsible-card'
+import { NumberInputWithUnit } from '@/components/her/ui/number-input-with-unit'
+import { SelectDropdown } from '@/components/her/ui/select-dropdown'
 import { useProfilePageData } from '@/lib/hooks/use-profile-page-data'
 import { PageHeader } from '@/components/her/ui/page-header'
 import { SlideInTransition } from '@/components/her/ui/page-transitions'
@@ -476,7 +479,7 @@ export default function EditProfilePage({ onBack, onSaved }: EditProfilePageProp
           </div>
         )}
 
-        {/* Photo Upload Card */}
+        {/* 卡片1：照片展示 */}
         <div className="rounded-2xl border-2 border-dashed border-border p-6 bg-card/50 mb-6">
           <input
             id={photoInputId}
@@ -546,8 +549,13 @@ export default function EditProfilePage({ onBack, onSaved }: EditProfilePageProp
           </div>
         </div>
 
-        {/* Basic Info */}
-        <div className="space-y-5">
+        {/* 卡片2：基本信息 */}
+        <CollapsibleCard
+          title="基本信息"
+          icon={<User className="w-4 h-4" />}
+          defaultExpanded={true}
+          className="mb-4"
+        >
           {/* Name */}
           <div>
             <label htmlFor="name" className="block text-sm font-medium mb-2 text-foreground">
@@ -646,67 +654,22 @@ export default function EditProfilePage({ onBack, onSaved }: EditProfilePageProp
             />
           </div>
 
-          {/* Marriage Status */}
-          <fieldset>
-            <legend className="block text-sm font-medium mb-3 text-foreground">
-              目前婚况
-            </legend>
-            <div className="flex gap-3">
-              {[
-                { value: 'never_married', label: '未婚' },
-                { value: 'divorced', label: '离异' },
-                { value: 'widowed', label: '丧偶' },
-              ].map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => setProfile({ ...profile, marriageStatus: option.value })}
-                  className={cn(
-                    'flex-1 py-3 rounded-xl text-sm font-medium transition-all duration-200 border-2 focus-ring',
-                    profile.marriageStatus === option.value
-                      ? 'bg-primary text-primary-foreground border-primary scale-[1.02]'
-                      : 'bg-input border-border text-muted-foreground hover:border-primary/30 active:scale-[0.98]'
-                  )}
-                  aria-pressed={profile.marriageStatus === option.value}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          </fieldset>
-
-          {/* Has Children */}
-          <fieldset>
-            <legend className="block text-sm font-medium mb-3 text-foreground">
-              是否有孩子
-            </legend>
-            <div className="flex gap-3">
-              {[
-                { value: 'no', label: '没有' },
-                { value: 'yes', label: '有' },
-              ].map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => setProfile({ ...profile, hasChildren: option.value })}
-                  className={cn(
-                    'flex-1 py-3 rounded-xl text-sm font-medium transition-all duration-200 border-2 focus-ring',
-                    profile.hasChildren === option.value
-                      ? 'bg-primary text-primary-foreground border-primary scale-[1.02]'
-                      : 'bg-input border-border text-muted-foreground hover:border-primary/30 active:scale-[0.98]'
-                  )}
-                  aria-pressed={profile.hasChildren === option.value}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          </fieldset>
-
-          {/* Relationship Goal */}
+          {/* District */}
           <div>
-            <label className="block text-sm font-medium mb-3 text-foreground">
-              关系目标
+            <label htmlFor="district" className="block text-sm font-medium mb-2 text-foreground">
+              区县
+            </label>
+            <input
+              id="district"
+              type="text"
+              value={profile.district || ''}
+              onChange={(e) => setProfile({ ...profile, district: e.target.value })}
+              placeholder="如：朝阳区"
+              className="w-full px-4 py-3.5 rounded-xl text-base outline-none transition-all bg-input border-2 border-border text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary"
+              autoComplete="off"
+            />
+          </div>
+        </CollapsibleCard>
             </label>
             <div className="space-y-3">
               {[

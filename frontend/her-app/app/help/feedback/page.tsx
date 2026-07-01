@@ -5,17 +5,8 @@ import { useRouter } from 'next/navigation'
 import { MessageSquareHeart, Send } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/her/ui/page-header'
+import type { FeedbackCategory, FeedbackRecord } from '@/lib/feedback/types'
 import { notifySuccess } from '@/lib/notify'
-
-type FeedbackRecord = {
-  id: string
-  category: string
-  content: string
-  contact: string
-  createdAt: string
-}
-
-const STORAGE_KEY = 'her_feedback_records'
 
 const categories = [
   { value: 'bug', label: '功能异常' },
@@ -23,23 +14,6 @@ const categories = [
   { value: 'account', label: '账号相关' },
   { value: 'suggestion', label: '产品建议' },
 ]
-
-function readFeedbackRecords(): FeedbackRecord[] {
-  if (typeof window === 'undefined') return []
-  const raw = window.localStorage.getItem(STORAGE_KEY)
-  if (!raw) return []
-  try {
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
-  }
-}
-
-function saveFeedbackRecords(records: FeedbackRecord[]) {
-  if (typeof window === 'undefined') return
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(records))
-}
 
 function formatTime(value: string): string {
   const date = new Date(value)
@@ -54,48 +28,93 @@ function formatTime(value: string): string {
 
 export default function FeedbackPage() {
   const router = useRouter()
-  const [category, setCategory] = useState('bug')
+  const [category, setCategory] = useState<FeedbackCategory>('bug')
   const [content, setContent] = useState('')
   const [contact, setContact] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [records, setRecords] = useState<FeedbackRecord[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   useEffect(() => {
-    setRecords(readFeedbackRecords())
+    let cancelled = false
+
+    async function loadRecords() {
+      setIsLoading(true)
+      try {
+        const response = await fetch('/api/feedback', { cache: 'no-store' })
+        const payload = (await response.json()) as { records?: FeedbackRecord[]; error?: string }
+        if (!response.ok) {
+          throw new Error(payload.error || '反馈记录加载失败')
+        }
+        if (!cancelled) {
+          setRecords(Array.isArray(payload.records) ? payload.records : [])
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(loadError instanceof Error ? loadError.message : '反馈记录加载失败')
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false)
+        }
+      }
+    }
+
+    void loadRecords()
+
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const latestRecords = useMemo(() => records.slice(0, 5), [records])
 
   const handleSubmit = () => {
-    const trimmedContent = content.trim()
-    const trimmedContact = contact.trim()
+    void (async () => {
+      const trimmedContent = content.trim()
+      const trimmedContact = contact.trim()
 
-    if (trimmedContent.length < 10) {
-      setError('请至少写 10 个字，方便我们判断问题')
-      return
-    }
+      if (trimmedContent.length < 10) {
+        setError('请至少写 10 个字，方便我们判断问题')
+        return
+      }
 
-    if (trimmedContact && trimmedContact.length < 5) {
-      setError('联系方式太短了，请再确认一下')
-      return
-    }
+      if (trimmedContact && trimmedContact.length < 5) {
+        setError('联系方式太短了，请再确认一下')
+        return
+      }
 
-    const nextRecord: FeedbackRecord = {
-      id: `${Date.now()}`,
-      category,
-      content: trimmedContent,
-      contact: trimmedContact,
-      createdAt: new Date().toISOString(),
-    }
+      setIsSubmitting(true)
+      try {
+        const response = await fetch('/api/feedback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            category,
+            content: trimmedContent,
+            contact: trimmedContact,
+          }),
+        })
+        const payload = (await response.json()) as {
+          records?: FeedbackRecord[]
+          error?: string
+        }
+        if (!response.ok) {
+          throw new Error(payload.error || '反馈提交失败')
+        }
 
-    const nextRecords = [nextRecord, ...records]
-    setRecords(nextRecords)
-    saveFeedbackRecords(nextRecords)
-
-    setContent('')
-    setContact('')
-    setError(null)
-    notifySuccess('反馈已提交')
+        setRecords(Array.isArray(payload.records) ? payload.records : records)
+        setContent('')
+        setContact('')
+        setError(null)
+        notifySuccess('反馈已提交')
+      } catch (submitError) {
+        setError(submitError instanceof Error ? submitError.message : '反馈提交失败')
+      } finally {
+        setIsSubmitting(false)
+      }
+    })()
   }
 
   return (
@@ -126,7 +145,7 @@ export default function FeedbackPage() {
                 <button
                   key={item.value}
                   type="button"
-                  onClick={() => setCategory(item.value)}
+                  onClick={() => setCategory(item.value as FeedbackCategory)}
                   className={
                     item.value === category
                       ? 'rounded-full bg-primary px-3 py-1.5 text-xs text-primary-foreground'
@@ -179,17 +198,24 @@ export default function FeedbackPage() {
 
           {error ? <p className="mb-3 text-sm text-destructive">{error}</p> : null}
 
-          <Button type="button" onClick={handleSubmit} className="h-11 w-full rounded-xl">
+          <Button
+            type="button"
+            onClick={handleSubmit}
+            disabled={isSubmitting}
+            className="h-11 w-full rounded-xl"
+          >
             <Send className="h-4 w-4" />
-            提交反馈
+            {isSubmitting ? '提交中…' : '提交反馈'}
           </Button>
         </section>
 
         <section className="rounded-xl border border-border bg-card p-4">
           <h2 className="text-sm font-medium">最近提交</h2>
-          {latestRecords.length === 0 ? (
+          {isLoading ? (
+            <p className="mt-2 text-xs leading-5 text-muted-foreground">正在加载反馈记录…</p>
+          ) : latestRecords.length === 0 ? (
             <p className="mt-2 text-xs leading-5 text-muted-foreground">
-              你最近还没有提交过反馈。提交后会先保存在当前设备里，方便你回看自己提过什么问题。
+              你最近还没有提交过反馈。提交后会保存在当前服务端环境里，方便你回看自己提过什么问题。
             </p>
           ) : (
             <div className="mt-3 space-y-3">
