@@ -221,6 +221,9 @@ def normalize_education(value: Any) -> str | None:
         return None
     lower = str(value).lower().strip()
     education_map = {
+        "高中及以下": "high_school",
+        "高中": "high_school",
+        "high_school": "high_school",
         "专科": "college",
         "大专": "college",
         "college": "college",

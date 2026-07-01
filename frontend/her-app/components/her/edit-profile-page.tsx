@@ -764,10 +764,13 @@ export default function EditProfilePage({ onBack, onSaved }: EditProfilePageProp
             label="收入范围"
             value={profile.incomeRange}
             options={[
-              { value: '5-10万', label: '5-10万' },
-              { value: '10-20万', label: '10-20万' },
-              { value: '20-50万', label: '20-50万' },
-              { value: '50万以上', label: '50万以上' },
+              { value: 'below_5', label: '5万以下' },
+              { value: '5_to_10', label: '5-10万' },
+              { value: '10_to_20', label: '10-20万' },
+              { value: '20_to_50', label: '20-50万' },
+              { value: '50_to_100', label: '50-100万' },
+              { value: '100_to_500', label: '100-500万' },
+              { value: 'above_500', label: '500万以上' },
             ]}
             placeholder="未填写"
             onChange={(value) => setProfile({ ...profile, incomeRange: value })}
@@ -781,7 +784,6 @@ export default function EditProfilePage({ onBack, onSaved }: EditProfilePageProp
             <div className="flex gap-3">
               {[
                 { value: 'owned', label: '有房' },
-                { value: 'mortgage', label: '房贷中' },
                 { value: 'none', label: '无房' },
               ].map((option) => (
                 <button
