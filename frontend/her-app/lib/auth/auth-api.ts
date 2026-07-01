@@ -129,6 +129,8 @@ export type OnboardingPayload = {
     marriage_status?: string
     has_children?: string
     profile_id?: number
+    public_notes?: string
+    [key: string]: unknown
   }
   preference?: {
     relationship_goal?: string

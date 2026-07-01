@@ -37,6 +37,7 @@ def test_api_field_mapping():
         "religion": "无",
         "is_only_child": "yes",
         "district": "朝阳区",
+        "public_notes": "平时作息规律，比较看重相处舒服和沟通顺畅",
     }
 
     preference = {
@@ -59,6 +60,7 @@ def test_api_field_mapping():
     assert result["education"] == "本科", "education映射失败"
     assert result["has_children"] == 0, "has_children标准化失败"
     assert result["is_only_child"] == 1, "is_only_child标准化失败"
+    assert result["public_notes"] == "平时作息规律，比较看重相处舒服和沟通顺畅", "public_notes映射失败"
 
     print("\n✅ 所有字段映射验证通过")
 

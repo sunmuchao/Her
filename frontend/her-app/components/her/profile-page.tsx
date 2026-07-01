@@ -20,6 +20,7 @@ import Image from 'next/image'
 import { useProfilePageData } from '@/lib/hooks/use-profile-page-data'
 import { buildProfileView, calculateVerificationProgress } from '@/lib/mappers/profile-view'
 import { patchPersonaTags } from '@/lib/api/endpoints/persona'
+import { submitOnboarding } from '@/lib/auth/auth-api'
 import { cn } from '@/lib/utils'
 import { ProgressRing } from './ui/progress-ring'
 import { FadeIn, PageTransition } from './ui/animations'
@@ -47,6 +48,9 @@ export default function ProfilePage({
   onOpenEditProfile,
   onOpenSettings,
 }: ProfilePageProps) {
+  const defaultHeadline = '认真关系，从认真了解开始'
+  const onboardingHeadline = '登录后完善你的资料'
+
   // 使用聚合数据 hook
   const { auth, facts, collected, trust, isLoading, error, queries, refetch } = useProfilePageData()
 
@@ -58,8 +62,12 @@ export default function ProfilePage({
   const [editingTagIndex, setEditingTagIndex] = useState<number | null>(null)
   const [editingTagValue, setEditingTagValue] = useState('')
   const [isSavingTags, setIsSavingTags] = useState(false)
+  const [isEditingHeadline, setIsEditingHeadline] = useState(false)
+  const [headlineDraft, setHeadlineDraft] = useState('')
+  const [isSavingHeadline, setIsSavingHeadline] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const editInputRef = useRef<HTMLInputElement>(null)
+  const headlineTextareaRef = useRef<HTMLTextAreaElement>(null)
   const tagsAreaRef = useRef<HTMLDivElement>(null)
 
   // 构建视图数据
@@ -162,6 +170,63 @@ export default function ProfilePage({
       setIsSavingTags(false)
     }
   }, [refetch])
+
+  const handleEnterHeadlineEdit = useCallback(() => {
+    if (isSavingHeadline) return
+    setHeadlineDraft(
+      profile.headline === onboardingHeadline || profile.headline === defaultHeadline
+        ? ''
+        : profile.headline,
+    )
+    setIsEditingHeadline(true)
+    setTimeout(() => {
+      headlineTextareaRef.current?.focus()
+      headlineTextareaRef.current?.setSelectionRange(
+        headlineTextareaRef.current.value.length,
+        headlineTextareaRef.current.value.length,
+      )
+    }, 50)
+  }, [defaultHeadline, isSavingHeadline, onboardingHeadline, profile.headline])
+
+  const handleSaveHeadline = useCallback(async () => {
+    const trimmed = headlineDraft.trim().slice(0, 80)
+    setIsEditingHeadline(false)
+
+    if (
+      trimmed === profile.headline ||
+      (!trimmed && (profile.headline === onboardingHeadline || profile.headline === defaultHeadline))
+    ) {
+      setHeadlineDraft(trimmed)
+      return
+    }
+
+    setIsSavingHeadline(true)
+    try {
+      await submitOnboarding({
+        basic_info: {
+          public_notes: trimmed,
+        },
+        mark_completed: false,
+      })
+      await refetch()
+    } catch (error) {
+      console.error('保存个人简介失败:', error)
+      setHeadlineDraft(profile.headline)
+    } finally {
+      setIsSavingHeadline(false)
+    }
+  }, [defaultHeadline, headlineDraft, onboardingHeadline, profile.headline, refetch])
+
+  const handleHeadlineKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault()
+      void handleSaveHeadline()
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      setIsEditingHeadline(false)
+      setHeadlineDraft(profile.headline)
+    }
+  }, [handleSaveHeadline, profile.headline])
 
   // 点击外部区域自动保存并退出
   useEffect(() => {
@@ -320,7 +385,28 @@ export default function ProfilePage({
                 </div>
               </div>
             </div>
-            <p className="text-sm text-muted-foreground mb-3">{profile.headline}</p>
+            {isEditingHeadline ? (
+              <textarea
+                ref={headlineTextareaRef}
+                value={headlineDraft}
+                onChange={(e) => setHeadlineDraft(e.target.value)}
+                onBlur={() => void handleSaveHeadline()}
+                onKeyDown={handleHeadlineKeyDown}
+                rows={3}
+                maxLength={80}
+                placeholder="写一句介绍自己"
+                className="w-full mb-3 resize-none rounded-lg border border-primary bg-background px-3 py-2 text-sm text-foreground outline-none focus:ring-1 focus:ring-primary"
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={handleEnterHeadlineEdit}
+                className="mb-3 block w-full rounded-lg text-left text-sm text-muted-foreground transition-colors hover:bg-secondary/40 px-2 py-2 -mx-2"
+                aria-label="编辑个人简介"
+              >
+                {isSavingHeadline ? '保存中...' : profile.headline}
+              </button>
+            )}
 
             {/* 标签区域 - 点击编辑 */}
             <div

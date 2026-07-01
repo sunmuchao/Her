@@ -291,6 +291,7 @@ def build_onboarding_profile_fields(
         "city": basic.get("location") or basic.get("city"),
         "relationship_goal": pref.get("relationship_goal") or basic.get("relationship_goal"),
         "sexual_orientation": basic.get("sexual_orientation"),
+        "public_notes": basic.get("public_notes"),
 
         # 新增字段：直接映射
         "height": coerce_int(basic.get("height")),
