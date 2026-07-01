@@ -21,10 +21,23 @@ class ProfileWriteGuardTests(unittest.TestCase):
                 "target_age_min": 24,
             }
         )
-        self.assertEqual(profile["city"], "杭州")
-        self.assertEqual(persona["target_cities"], "上海,苏州")
+        self.assertEqual(search["self_city"], "杭州")
+        self.assertEqual(search["target_cities"], "上海,苏州")
         self.assertEqual(search["cities"], ["上海", "苏州"])
-        self.assertEqual(persona["target_age_min"], 24)
+        self.assertEqual(search["target_age_min"], 24)
+
+    def test_public_notes_routes_to_profile_patch(self) -> None:
+        profile, persona, search = split_persona_patch(
+            {
+                "public_notes": "平时作息规律，比较看重相处舒服和沟通顺畅",
+            }
+        )
+        self.assertEqual(
+            profile["public_notes"],
+            "平时作息规律，比较看重相处舒服和沟通顺畅",
+        )
+        self.assertEqual(persona, {})
+        self.assertEqual(search, {})
 
     def test_build_profile_change_rows(self) -> None:
         rows = build_profile_change_rows(

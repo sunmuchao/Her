@@ -24,7 +24,6 @@ _WRITABLE_PROFILE_COLUMNS = frozenset(
         "public_job",
         "public_personality",
         "public_values",
-        "public_notes",
     }
 )
 
