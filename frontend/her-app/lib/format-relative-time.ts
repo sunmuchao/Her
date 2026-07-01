@@ -2,7 +2,15 @@
 export function formatRelativeTime(timestamp: string | undefined | null): string {
   if (!timestamp || timestamp === '刚刚') return '刚刚'
 
-  const date = new Date(timestamp)
+  // ✅ 修复：处理UTC时间
+  // 如果时间戳没有时区标识（没有Z或+08:00），假定是UTC时间
+  let normalizedTimestamp = timestamp
+  if (!timestamp.endsWith('Z') && !timestamp.includes('+') && !timestamp.includes('-', 10)) {
+    // 后端返回的是UTC时间，添加Z标识
+    normalizedTimestamp = timestamp + 'Z'
+  }
+
+  const date = new Date(normalizedTimestamp)
   if (Number.isNaN(date.getTime())) return '刚刚'
 
   const now = new Date()

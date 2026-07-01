@@ -1,0 +1,76 @@
+{
+  "summary": {
+    "total": 11,
+    "passed": 9,
+    "failed": 2,
+    "success_rate": "81.82%"
+  },
+  "results": [
+    {
+      "test_name": "类型转换验证",
+      "passed": true,
+      "details": "profile_id正确转换为字符串: target=123, source=456",
+      "timestamp": "2026-07-01T13:49:06.068680"
+    },
+    {
+      "test_name": "推送顺序验证",
+      "passed": true,
+      "details": "推送顺序正确: timeline写入(index=1) 在 SSE推送(index=3) 之前",
+      "timestamp": "2026-07-01T13:49:06.069217"
+    },
+    {
+      "test_name": "SSE推送结果验证-场景1",
+      "passed": true,
+      "details": "用户在线，推送成功: sent_count=1, sessions=['session-123']",
+      "timestamp": "2026-07-01T13:49:06.069810"
+    },
+    {
+      "test_name": "SSE推送结果验证-场景2",
+      "passed": true,
+      "details": "用户不在线，推送失败（sent_count=0），但timeline已写入，用户刷新页面可见",
+      "timestamp": "2026-07-01T13:49:06.070444"
+    },
+    {
+      "test_name": "SSE推送结果验证-场景3",
+      "passed": false,
+      "details": "SSE推送请求失败: status=500",
+      "timestamp": "2026-07-01T13:49:06.070668"
+    },
+    {
+      "test_name": "timeline推送成功验证-测试1",
+      "passed": true,
+      "details": "返回值正确: success=True, reason=找到session，timeline已更新",
+      "timestamp": "2026-07-01T13:49:06.071075"
+    },
+    {
+      "test_name": "timeline推送成功验证-测试2",
+      "passed": true,
+      "details": "返回值正确: success=False, reason=用户没有discovery session",
+      "timestamp": "2026-07-01T13:49:06.071370"
+    },
+    {
+      "test_name": "timeline推送成功验证-测试3",
+      "passed": true,
+      "details": "返回值正确: success=True, reason=案件已推送（重复推送）",
+      "timestamp": "2026-07-01T13:49:06.071578"
+    },
+    {
+      "test_name": "日志记录验证",
+      "passed": false,
+      "details": "日志记录验证失败: 日志缺少关键信息: 【推送顺序优化】SSE通知已发送: case_id=case-789",
+      "timestamp": "2026-07-01T13:49:06.071819"
+    },
+    {
+      "test_name": "字典key匹配验证",
+      "passed": true,
+      "details": "类型一致性验证成功: 数字key找不到，字符串key能找到",
+      "timestamp": "2026-07-01T13:49:06.072268"
+    },
+    {
+      "test_name": "完整流程端到端验证",
+      "passed": true,
+      "details": "完整流程成功: timeline写入成功, SSE推送sent_count=1",
+      "timestamp": "2026-07-01T13:49:06.072849"
+    }
+  ]
+}

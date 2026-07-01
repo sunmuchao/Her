@@ -823,7 +823,82 @@ def upsert_recommendation(
                 candidate_id=int(candidate_id),
                 delivery_reason=delivery_reason,
             )
+
+            # ✅ 新增：SSE推送通知用户（主动推荐）
+            # 当系统生成推荐卡片后，立即通知用户
+            _push_active_recommendation_notification(
+                recommendation=out,
+                subscription=subscription,
+                now=now,
+            )
+
     return out
+
+
+def _push_active_recommendation_notification(
+    recommendation: dict[str, Any] | None,
+    subscription: dict[str, Any],
+    now: datetime,
+) -> None:
+    """推送主动推荐通知给用户（通过SSE）。
+
+    Args:
+        recommendation: 推荐数据
+        subscription: 订阅数据
+        now: 当前时间
+    """
+    import httpx
+    import logging
+    from her_env import env_first
+
+    logger = logging.getLogger(__name__)
+
+    if not recommendation:
+        return
+
+    sse_server_url = env_first(
+        "SSE_SERVER_URL",
+        "http://localhost:8081",
+    )
+
+    # 获取用户的profile_id（订阅的requester_id）
+    target_profile_id = subscription.get("requester_id")
+    if not target_profile_id:
+        return
+
+    # 获取候选人的profile_id
+    candidate_id = recommendation.get("candidate_id")
+
+    try:
+        push_url = f"{sse_server_url}/internal/push/recommendation"
+        payload = {
+            "profile_id": target_profile_id,  # 接收通知的用户
+            "event_type": "active_recommendation",  # 主动推荐
+            "recommendation_id": recommendation.get("recommendation_id"),
+            "candidate_id": candidate_id,
+            "subscription_id": subscription.get("subscription_id"),
+            "message": "系统为你推荐了一位候选人",
+            "timestamp": now.isoformat(),
+        }
+
+        # 异步推送（不阻塞主流程）
+        with httpx.Client(timeout=2.0) as client:
+            response = client.post(push_url, json=payload)
+            if response.status_code == 200:
+                logger.info(
+                    f"[SSE Push] 主动推荐通知已推送: target={target_profile_id}, candidate={candidate_id}"
+                )
+            else:
+                logger.warning(
+                    f"[SSE Push] 推送失败: status={response.status_code}, target={target_profile_id}"
+                )
+    except Exception as e:
+        # 推送失败不影响主流程，只记录日志
+        logger.warning(
+            f"[SSE Push] 推送异常: {e}, target={target_profile_id}"
+        )
+
+
 def record_recommendation_action(
     conn,
     *,

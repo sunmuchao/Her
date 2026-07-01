@@ -29,14 +29,13 @@ def _apply(conn: Any, context: MigrationContext) -> None:
         row = cursor.fetchone()
         cnt = row["cnt"] if isinstance(row, dict) else row[0]
 
-        # 如果字段不存在，则添加
+        # 如果字段不存在,则添加
         if int(cnt or 0) == 0:
             cursor.execute(
                 f"""
                 ALTER TABLE `{table}`
                 ADD COLUMN self_personality_traits_json TEXT DEFAULT NULL
                 COMMENT '性格特质测评结果（JSON格式，包含大五人格、依恋风格等）'
-                AFTER self_relationship_goal
                 """
             )
 

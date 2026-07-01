@@ -162,6 +162,198 @@ class SSEHandlers:
             "message_id": message_id,
         })
 
+    async def handle_internal_push_discovery(self, request: web.Request) -> web.Response:
+        """Handle internal push request from discovery system.
+
+        Args:
+            request: HTTP request with message payload
+
+        Returns:
+            JSON response with push result
+        """
+        try:
+            data = await request.json()
+        except json.JSONDecodeError:
+            return web.json_response({"error": "Invalid JSON"}, status=400)
+
+        # Validate required fields
+        required_fields = ["session_id", "profile_id", "event_type"]
+        for field in required_fields:
+            if field not in data:
+                return web.json_response(
+                    {"error": f"Missing required field: {field}"},
+                    status=400,
+                )
+
+        session_id = data.get("session_id")
+        profile_id = data.get("profile_id")
+        event_type = data.get("event_type")
+
+        logger.info(
+            f"[Discovery SSE Push] session={session_id}, profile={profile_id}, event={event_type}"
+        )
+
+        # Broadcast message to all connections for this profile
+        sent_count = await self.connection_manager.broadcast_to_discovery_session(
+            session_id,
+            "message",
+            {
+                "type": event_type,
+                "session_id": session_id,
+                "profile_id": profile_id,
+                "search_run_id": data.get("search_run_id"),
+                "timestamp": data.get("timestamp"),
+            },
+        )
+
+        # Get online/offline user stats
+        connections = await self.connection_manager.get_discovery_session_connections(session_id)
+        online_profiles = [c.profile_id for c in connections]
+
+        return web.json_response({
+            "success": True,
+            "pushed": sent_count,
+            "online_profiles": online_profiles,
+            "session_id": session_id,
+        })
+
+    async def handle_internal_push_recommendation(self, request: web.Request) -> web.Response:
+        """Handle internal push request for recommendation cards.
+
+        支持两种推荐类型：
+        1. passive_recommendation: 别人点击"愿意认识你"
+        2. active_recommendation: 系统主动推荐
+
+        Args:
+            request: HTTP request with message payload
+
+        Returns:
+            JSON response with push result
+        """
+        try:
+            data = await request.json()
+        except json.JSONDecodeError:
+            return web.json_response({"error": "Invalid JSON"}, status=400)
+
+        # Validate required fields
+        required_fields = ["profile_id", "event_type"]
+        for field in required_fields:
+            if field not in data:
+                return web.json_response(
+                    {"error": f"Missing required field: {field}"},
+                    status=400,
+                )
+
+        profile_id = data.get("profile_id")
+        event_type = data.get("event_type")  # passive_recommendation | active_recommendation
+
+        logger.info(
+            f"[Recommendation SSE Push] profile={profile_id}, event={event_type}"
+        )
+
+        # Broadcast to all discovery sessions for this profile
+        # (用户可能在多个discovery session中，都要推送)
+        sent_count = await self.connection_manager.broadcast_to_profile_discovery(
+            profile_id,
+            "message",
+            {
+                "type": "new_recommendation",
+                "event_type": event_type,
+                "profile_id": profile_id,
+                "case_id": data.get("case_id"),
+                "recommendation_id": data.get("recommendation_id"),
+                "candidate_id": data.get("candidate_id"),
+                "source_profile_id": data.get("source_profile_id"),  # 被动推荐：发起人
+                "message": data.get("message"),
+                "timestamp": data.get("timestamp"),
+            },
+        )
+
+        # Get online/offline stats
+        connections = await self.connection_manager.get_profile_discovery_connections(profile_id)
+        online_sessions = [c.session_id for c in connections]
+
+        return web.json_response({
+            "success": True,
+            "pushed": sent_count,
+            "online_sessions": online_sessions,
+            "profile_id": profile_id,
+        })
+
+    async def handle_sse_connection_discovery(self, request: web.StreamResponse) -> web.StreamResponse:
+        """Handle SSE connection from frontend for Discovery.
+
+        Args:
+            request: HTTP request
+
+        Returns:
+            StreamResponse for SSE
+        """
+        session_id = request.match_info.get("sessionId")
+        profile_id = request.query.get("profile_id")
+
+        if not session_id or not profile_id:
+            return web.json_response(
+                {"error": "Missing sessionId or profile_id"},
+                status=400,
+            )
+
+        # Check max connections
+        stats = self.connection_manager.get_stats()
+        if stats["total_connections"] >= config.MAX_CONNECTIONS:
+            return web.json_response(
+                {"error": "Maximum connections reached"},
+                status=503,
+            )
+
+        logger.info(f"[Discovery SSE] Connection request: profile={profile_id}, session={session_id}")
+
+        # Create SSE response with CORS headers
+        response = web.StreamResponse(
+            status=200,
+            headers={
+                "Content-Type": "text/event-stream",
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",  # Disable Nginx buffering
+                # CORS headers for cross-origin EventSource connection
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type, Authorization",
+            },
+        )
+        await response.prepare(request)
+
+        # Register connection
+        await self.connection_manager.add_discovery_connection(profile_id, session_id, response)
+
+        # Send connection confirmation
+        await send_event(response, "connected", {
+            "profile_id": profile_id,
+            "session_id": session_id,
+            "timestamp": datetime.utcnow().isoformat(),
+        })
+
+        # Heartbeat loop
+        try:
+            while True:
+                await asyncio.sleep(config.HEARTBEAT_INTERVAL)
+                try:
+                    await send_event(response, "heartbeat", {
+                        "timestamp": datetime.utcnow().isoformat(),
+                    })
+                    logger.debug(f"[Discovery SSE] Heartbeat sent to profile {profile_id}")
+                except Exception as e:
+                    logger.error(f"[Discovery SSE] Heartbeat failed for profile {profile_id}: {e}")
+                    break
+        except asyncio.CancelledError:
+            # Client disconnected
+            logger.info(f"[Discovery SSE] Client disconnected: profile={profile_id}")
+        finally:
+            await self.connection_manager.remove_discovery_connection(profile_id)
+
+        return response
+
     async def handle_stats(self, request: web.Request) -> web.Response:
         """Handle stats request.
 
@@ -286,16 +478,34 @@ def setup_routes(app: web.Application, handlers: SSEHandlers) -> None:
         app: aiohttp Application
         handlers: SSEHandlers instance
     """
-    # SSE endpoint for frontend
+    # SSE endpoint for frontend (chat)
     app.router.add_get(
         "/sse/chat/{caseId}",
         handlers.handle_sse_connection,
     )
 
-    # Internal push endpoint
+    # SSE endpoint for frontend (discovery) - 新增
+    app.router.add_get(
+        "/sse/discovery/{sessionId}",
+        handlers.handle_sse_connection_discovery,
+    )
+
+    # Internal push endpoint (chat)
     app.router.add_post(
         "/internal/push",
         handlers.handle_internal_push,
+    )
+
+    # Internal push endpoint (discovery candidates ready) - 新增
+    app.router.add_post(
+        "/internal/push/discovery",
+        handlers.handle_internal_push_discovery,
+    )
+
+    # Internal push endpoint (recommendation cards) - 新增（被动推荐 + 主动推荐）
+    app.router.add_post(
+        "/internal/push/recommendation",
+        handlers.handle_internal_push_recommendation,
     )
 
     # Stats endpoint

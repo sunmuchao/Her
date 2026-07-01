@@ -66,6 +66,7 @@ def format_rejection_reason(runtime: SearchNoMatchRuntime, reason: Any) -> str:
         "reciprocal_height_preference": "不符合对方身高偏好",
         "reciprocal_education_preference": "不符合对方学历偏好",
         "reciprocal_income_preference": "不符合对方收入偏好",
+        "reciprocal_sexual_orientation": "不符合对方性取向偏好",  # ✅ 新增：性取向反向匹配
         "reciprocal_marital_status_preference": "不符合对方婚况接受范围",
         "reciprocal_children_acceptance": "对方不能接受你的子女情况",
         "reciprocal_marital_status_acceptance_not_strong": "对方对你的婚史不是明确接受",

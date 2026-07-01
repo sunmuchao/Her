@@ -279,7 +279,7 @@ def query_profile_by_name(name):
         return profiles
 
 def main():
-    name = "郭雨萌"
+    name = "罗舒悦"
     print(f"查询用户: {name}")
 
     # 先从 profiles 表查询

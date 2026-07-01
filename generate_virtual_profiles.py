@@ -2,6 +2,7 @@
 
 import argparse
 import csv
+import json
 import random
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -31,6 +32,7 @@ FIELDNAMES = [
     "avatar_url",
     "photo_count",
     "gender",
+    "sexual_orientation",  # ✅ 新增：性取向字段
     "age",
     "city",
     "district",
@@ -143,8 +145,7 @@ PERSONA_DB_COLUMNS = [
     "target_want_children",
     "target_marriage_timeline",
     # preferred_traits 已删除（不可量化：性格特质偏好）
-    "must_have_tags",
-    "must_not_have_tags",
+    # must_have_tags 和 must_not_have_tags 已删除
     "self_personality_traits_json",
     "created_at",
     "updated_at",
@@ -373,6 +374,21 @@ def format_income_range(min_wan, max_wan):
 
 def choose_gender(rng):
     return weighted_choice(rng, [("女", 53), ("男", 47)])
+
+
+def choose_sexual_orientation(rng, gender):
+    """生成性取向字段
+
+    大部分用户是异性恋（90%），小部分是同性恋（10%）
+    - 男性：90% like_female（喜欢女性），10% like_male（喜欢男性）
+    - 女性：90% like_male（喜欢男性），10% like_female（喜欢女性）
+    """
+    if gender == "男":
+        # 男性：90%异性恋（喜欢女性），10%同性恋（喜欢男性）
+        return weighted_choice(rng, [("like_female", 90), ("like_male", 10)])
+    else:
+        # 女性：90%异性恋（喜欢男性），10%同性恋（喜欢女性）
+        return weighted_choice(rng, [("like_male", 90), ("like_female", 10)])
 
 
 def choose_name(rng, gender):
@@ -691,6 +707,7 @@ def build_notes(rng, city, hobbies, relationship_goal, settlement_city):
 
 def make_record(rng, profile_id):
     gender = choose_gender(rng)
+    sexual_orientation = choose_sexual_orientation(rng, gender)  # ✅ 新增：生成性取向
     age = choose_age(rng)
     city = choose_city(rng)
     district = choose_district(rng, city)
@@ -746,6 +763,7 @@ def make_record(rng, profile_id):
         "avatar_url": avatar_url,
         "photo_count": photo_count,
         "gender": gender,
+        "sexual_orientation": sexual_orientation,  # ✅ 新增：性取向字段
         "age": age,
         "city": city,
         "district": district,
@@ -901,9 +919,7 @@ def to_persona_row(record: dict) -> dict:
         "target_accept_long_distance": record.get("accept_long_distance"),
         "target_want_children": record.get("want_children"),
         "target_marriage_timeline": record.get("marriage_timeline"),
-        # preferred_traits 已删除（不可量化：性格特质偏好）
-        "must_have_tags": record.get("must_have_tags"),
-        "must_not_have_tags": record.get("must_not_have_tags"),
+        # preferred_traits, must_have_tags, must_not_have_tags 已删除
         "self_personality_traits_json": json.dumps(synthetic_traits, ensure_ascii=False, sort_keys=True),
         "created_at": record.get("created_at"),
         "updated_at": record.get("updated_at"),

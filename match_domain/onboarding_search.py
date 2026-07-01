@@ -107,11 +107,48 @@ def default_target_age_range(self_age: int | None, *, span: int = DEFAULT_AGE_SP
 
 
 def map_sexual_orientation_to_target_gender(orientation: Any) -> str | None:
+    """将性取向映射到目标性别
+
+    支持多种输入格式：
+    - 英文标准值：like_male, like_female
+    - 中文标准值：异性恋, 同性恋, 喜欢男性, 喜欢女性, 恋男, 恋女
+    - 性别直接值：男, 女（表示喜欢该性别）
+
+    返回值：
+    - male：目标性别为男性
+    - female：目标性别为女性
+    - None：无法推导
+    """
     raw = str(orientation or "").strip().lower()
+
+    # 英文标准值
     if raw == "like_male":
         return "male"
     if raw == "like_female":
         return "female"
+
+    # 中文标准值
+    if raw in ["异性恋", "heterosexual"]:
+        # 异性恋：需要根据用户自己的性别推导目标性别
+        # 但这里只有orientation参数，无法推导，返回None
+        return None
+    if raw in ["同性恋", "homosexual", "gay", "lesbian"]:
+        # 同性恋：喜欢和自己性别相同的人
+        # 同样需要用户自己的性别，返回None
+        return None
+
+    # 中文直接表达（喜欢某性别）
+    if raw in ["喜欢男性", "恋男", "喜欢男", "取向男"]:
+        return "male"
+    if raw in ["喜欢女性", "恋女", "喜欢女", "取向女"]:
+        return "female"
+
+    # 性别直接值（表示喜欢该性别）
+    if raw in ["男", "male", "m"]:
+        return "male"
+    if raw in ["女", "female", "f"]:
+        return "female"
+
     return None
 
 

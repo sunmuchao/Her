@@ -240,6 +240,74 @@ def evaluate_reciprocal_compatibility(
     missing_fields: list[str] = []
     risk_flags: list[str] = []
     score_bonus = 0
+
+    # ====================================================================
+    # 性取向反向匹配检查（最基础的匹配条件）
+    # ====================================================================
+    # 检查候选人的性取向是否包含用户的性别（双向匹配）
+    # 例如：候选人喜欢男性（like_male）→ 用户必须是男性
+    # ====================================================================
+    from match_domain.onboarding_search import (
+        map_sexual_orientation_to_target_gender,
+        normalize_search_gender,
+    )
+
+    candidate_orientation = runtime.as_text(record.get("sexual_orientation"))
+    self_gender = runtime.as_text(self_profile.get("gender"))
+    self_orientation = runtime.as_text(self_profile.get("sexual_orientation"))
+    candidate_gender = runtime.as_text(record.get("gender"))
+
+    # ====================================================================
+    # 双向性取向检查（完整的双向匹配）
+    # ====================================================================
+    # 检查两个方向：
+    # 1. 候选人是否喜欢用户的性别（候选人筛选用户）
+    # 2. 用户是否喜欢候选人的性别（用户筛选候选人）
+    # ====================================================================
+
+    # 方向1：候选人筛选用户（候选人是否喜欢用户的性别）
+    if candidate_orientation:
+        candidate_target_gender = map_sexual_orientation_to_target_gender(candidate_orientation)
+        self_normalized_gender = normalize_search_gender(self_gender)
+
+        if candidate_target_gender and self_normalized_gender:
+            if self_normalized_gender != candidate_target_gender:
+                # 候选人不喜欢用户的性别
+                return fail("reciprocal_sexual_orientation", candidate_orientation)
+            else:
+                # 候选人喜欢用户的性别 ✓
+                reasons.append("对方性取向偏好命中")
+                score_bonus += 15
+        elif not self_normalized_gender:
+            missing_fields.append("self_gender")
+        else:
+            # 候选人的性取向值非标准
+            risk_flags.append("对方性取向字段非标准值，需人工确认")
+
+    # 方向2：用户筛选候选人（用户是否喜欢候选人的性别）
+    # 注意：这个检查应该在SQL WHERE层完成，但为了完整性，这里也检查
+    if self_orientation:
+        self_target_gender = map_sexual_orientation_to_target_gender(self_orientation)
+        candidate_normalized_gender = normalize_search_gender(candidate_gender)
+
+        if self_target_gender and candidate_normalized_gender:
+            if candidate_normalized_gender != self_target_gender:
+                # 用户不喜欢候选人的性别（但SQL WHERE应该已经筛选过了）
+                # 这里作为额外的安全检查
+                risk_flags.append("候选人的性别不符合你的性取向偏好（SQL筛选遗漏？）")
+            else:
+                # 用户喜欢候选人的性别 ✓
+                reasons.append("候选人性别符合你的性取向偏好")
+                score_bonus += 5  # 额外加分（确认双向匹配）
+        elif not candidate_normalized_gender:
+            missing_fields.append("candidate_gender")
+        else:
+            # 用户性取向值非标准
+            risk_flags.append("你的性取向字段非标准值，需人工确认")
+
+    # ====================================================================
+    # 年龄反向匹配检查
+    # ====================================================================
     self_city = self_profile.get("city")
     lowered_self_city = runtime.as_lower(self_city) if self_city else ""
     candidate_city = record.get("city")

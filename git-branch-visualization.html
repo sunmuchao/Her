@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Git分支可视化 - Her项目</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin: 0;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        h1 {
+            text-align: center;
+            color: #667eea;
+            margin-bottom: 30px;
+            font-size: 32px;
+            font-weight: 600;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            background: #667eea;
+            color: white;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn:hover {
+            background: #764ba2;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+            color: white;
+        }
+
+        .stat-number {
+            font-size: 32px;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .branch-tree {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+            overflow-x: auto;
+        }
+
+        svg {
+            display: block;
+            margin: 0 auto;
+        }
+
+        .commit-node {
+            transition: all 0.3s;
+        }
+
+        .commit-node:hover {
+            filter: brightness(1.2);
+            cursor: pointer;
+        }
+
+        .branch-info {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+
+        .branch-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .branch-table th {
+            background: #667eea;
+            color: white;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+        }
+
+        .branch-table td {
+            padding: 12px;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .branch-table tr:hover {
+            background: #e9ecef;
+        }
+
+        .current-branch {
+            background: #667eea !important;
+            color: white;
+        }
+
+        .tooltip {
+            position: absolute;
+            background: white;
+            border: 2px solid #667eea;
+            border-radius: 8px;
+            padding: 12px;
+            max-width: 300px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            z-index: 1000;
+            display: none;
+        }
+
+        .legend {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin-bottom: 20px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            color: #667eea;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌿 Her项目 - Git分支可视化</h1>
+
+        <div class="controls">
+            <button class="btn" onclick="zoomIn()">🔍 放大</button>
+            <button class="btn" onclick="zoomOut()">🔎 缩小</button>
+            <button class="btn" onclick="resetZoom()">↻ 重置</button>
+            <button class="btn" onclick="showAllBranches()">📋 显示所有分支</button>
+        </div>
+
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-number" id="total-commits">--</div>
+                <div class="stat-label">总提交数</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="total-branches">--</div>
+                <div class="stat-label">总分支数</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="active-branches">--</div>
+                <div class="stat-label">活跃分支</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="latest-commit">--</div>
+                <div class="stat-label">最新提交</div>
+            </div>
+        </div>
+
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-color" style="background: #FF6B6B;"></div>
+                <span>当前分支 (HEAD)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #4ECDC4;"></div>
+                <span>主分支</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #95E1D3;"></div>
+                <span>功能分支</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #F38181;"></div>
+                <span>远程分支</span>
+            </div>
+        </div>
+
+        <div class="branch-tree">
+            <svg id="branch-svg" width="1200" height="800" viewBox="0 0 1200 800">
+                <!-- 分支树状图将在这里绘制 -->
+            </svg>
+        </div>
+
+        <div class="branch-info">
+            <h2>📊 分支详情</h2>
+            <table class="branch-table">
+                <thead>
+                    <tr>
+                        <th>分支名称</th>
+                        <th>类型</th>
+                        <th>最新提交</th>
+                        <th>提交数</th>
+                        <th>状态</th>
+                    </tr>
+                </thead>
+                <tbody id="branch-table-body">
+                    <!-- 分支信息将在这里填充 -->
+                </tbody>
+            </table>
+        </div>
+
+        <div class="footer">
+            <p>生成时间: <span id="generation-time"></span></p>
+            <p>🎨 使用SVG绘制 | 📊 数据来源: Git log</p>
+        </div>
+    </div>
+
+    <div class="tooltip" id="tooltip"></div>
+
+    <script>
+        // Git提交数据（从git log解析）
+        const gitData = [
+            {
+                hash: "3b396dd1",
+                parents: ["e9db6990"],
+                branches: ["HEAD", "feature/persona-memory-session-end-improvements"],
+                message: "feat: integrate GPT-SoVITS and improve architecture",
+                date: "2026-06-30 19:15:45",
+                author: "Sun.Sun-孙木超",
+                color: "#FF6B6B"
+            },
+            {
+                hash: "252fc8d7",
+                parents: ["fcf6edfa"],
+                branches: ["origin/feature/persona-memory-final", "feature/persona-memory-final"],
+                message: "fix: allow .env.*.example files in gitignore",
+                date: "2026-06-30 11:12:35",
+                author: "Sun.Sun-孙木超",
+                color: "#95E1D3"
+            },
+            {
+                hash: "fcf6edfa",
+                parents: ["d6bc405d"],
+                branches: [],
+                message: "feat: add secrets management and architecture improvements",
+                date: "2026-06-30 11:11:59",
+                author: "Sun.Sun-孙木超",
+                color: "#95E1D3"
+            },
+            {
+                hash: "d6bc405d",
+                parents: ["040db4ad"],
+                branches: [],
+                message: "feat: integrate GPT-SoVITS and improve architecture",
+                date: "2026-06-30 19:15:45",
+                author: "Sun.Sun-孙木超",
+                color: "#95E1D3"
+            },
+            {
+                hash: "040db4ad",
+                parents: ["e9db6990"],
+                branches: [],
+                message: "feat: add secrets management and architecture improvements",
+                date: "2026-06-30 11:11:59",
+                author: "Sun.Sun-孙木超",
+                color: "#95E1D3"
+            },
+            {
+                hash: "1af97036",
+                parents: ["bd709740"],
+                branches: ["feature/persona-memory-session-end-improvements-clean"],
+                message: "feat: integrate GPT-SoVITS and improve architecture",
+                date: "2026-06-30 19:15:45",
+                author: "Sun.Sun-孙木超",
+                color: "#95E1D3"
+            },
+            {
+                hash: "bd709740",
+                parents: ["e9db6990"],
+                branches: [],
+                message: "feat: add secrets management and architecture improvements",
+                date: "2026-06-30 11:11:59",
+                author: "Sun.Sun-孙木超",
+                color: "#95E1D3"
+            },
+            {
+                hash: "e9db6990",
+                parents: ["123f2109"],
+                branches: [],
+                message: "chore: remove .pnpm-store from git and update .gitignore",
+                date: "2026-06-30",
+                author: "Sun.Sun-孙木超",
+                color: "#4ECDC4"
+            },
+            {
+                hash: "123f2109",
+                parents: ["daabde70"],
+                branches: [],
+                message: "feat: add secrets management and architecture improvements",
+                date: "2026-06-30",
+                author: "Sun.Sun-孙木超",
+                color: "#4ECDC4"
+            },
+            {
+                hash: "daabde70",
+                parents: ["25527fff"],
+                branches: [],
+                message: "codex: auto-commit 2026-06-27 21:27:13",
+                date: "2026-06-27 21:27:13",
+                author: "Sun.Sun-孙木超",
+                color: "#4ECDC4"
+            },
+            {
+                hash: "25527fff",
+                parents: ["7685fde4"],
+                branches: [],
+                message: "codex: auto-commit 2026-06-27 21:25:52",
+                date: "2026-06-27 21:25:52",
+                author: "Sun.Sun-孙木超",
+                color: "#4ECDC4"
+            },
+            {
+                hash: "4169eeb9",
+                parents: ["aff300d0"],
+                branches: [],
+                message: "feat: 会话结束画像写入与推荐系统优化",
+                date: "2026-06-26",
+                author: "Sun.Sun-孙木超",
+                color: "#4ECDC4"
+            },
+            {
+                hash: "aff300d0",
+                parents: ["ed18041d"],
+                branches: [],
+                message: "codex: auto-commit 2026-06-23 18:22:32",
+                date: "2026-06-23 18:22:32",
+                author: "Sun.Sun-孙木超",
+                color: "#4ECDC4"
+            },
+            {
+                hash: "fc5ced6d",
+                parents: ["baa0ba98"],
+                branches: [],
+                message: "fix: JSON序列化错误 - set转list（三道防线）",
+                date: "2026-06-23",
+                author: "Sun.Sun-孙木超",
+                color: "#4ECDC4"
+            }
+        ];
+
+        // 分支详情数据
+        const branchDetails = [
+            {
+                name: "feature/persona-memory-session-end-improvements",
+                type: "本地分支",
+                latestCommit: "3b396dd1",
+                commitCount: 50,
+                status: "当前分支 (HEAD)",
+                isCurrent: true
+            },
+            {
+                name: "feature/persona-memory-final",
+                type: "本地分支",
+                latestCommit: "252fc8d7",
+                commitCount: 45,
+                status: "活跃"
+            },
+            {
+                name: "origin/feature/persona-memory-final",
+                type: "远程分支",
+                latestCommit: "252fc8d7",
+                commitCount: 45,
+                status: "活跃"
+            },
+            {
+                name: "feature/persona-memory-session-end-improvements-clean",
+                type: "本地分支",
+                latestCommit: "1af97036",
+                commitCount: 48,
+                status: "活跃"
+            },
+            {
+                name: "feature/secrets-architecture-clean",
+                type: "本地分支",
+                latestCommit: "b58b1b3d",
+                commitCount: 42,
+                status: "活跃"
+            },
+            {
+                name: "origin/main",
+                type: "远程分支",
+                latestCommit: "4169eeb9",
+                commitCount: 100,
+                status: "主分支"
+            }
+        ];
+
+        let currentZoom = 1;
+
+        // 绘制分支树状图
+        function drawBranchTree() {
+            const svg = document.getElementById('branch-svg');
+            svg.innerHTML = '';
+
+            const startY = 50;
+            const spacingY = 60;
+            const centerX = 600;
+            const branchSpacing = 150;
+
+            // 计算每个提交的位置
+            const commitPositions = {};
+
+            gitData.forEach((commit, index) => {
+                const hasBranches = commit.branches.length > 0;
+                const branchOffset = hasBranches ? (commit.branches.includes("HEAD") ? -150 :
+                                                    commit.branches.includes("feature/persona-memory-final") ? 150 :
+                                                    commit.branches.includes("feature/persona-memory-session-end-improvements-clean") ? 300 : 0) : 0;
+
+                commitPositions[commit.hash] = {
+                    x: centerX + branchOffset,
+                    y: startY + index * spacingY
+                };
+            });
+
+            // 绘制连接线
+            gitData.forEach(commit => {
+                const pos = commitPositions[commit.hash];
+
+                commit.parents.forEach(parentHash => {
+                    if (commitPositions[parentHash]) {
+                        const parentPos = commitPositions[parentHash];
+
+                        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                        path.setAttribute('d', `M${pos.x},${pos.y} L${parentPos.x},${parentPos.y}`);
+                        path.setAttribute('stroke', commit.color);
+                        path.setAttribute('stroke-width', '3');
+                        path.setAttribute('fill', 'none');
+                        path.setAttribute('opacity', '0.6');
+                        svg.appendChild(path);
+                    }
+                });
+            });
+
+            // 绘制提交节点
+            gitData.forEach(commit => {
+                const pos = commitPositions[commit.hash];
+
+                // 绘制圆形节点
+                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                circle.setAttribute('cx', pos.x);
+                circle.setAttribute('cy', pos.y);
+                circle.setAttribute('r', '12');
+                circle.setAttribute('fill', commit.color);
+                circle.setAttribute('class', 'commit-node');
+                circle.setAttribute('data-hash', commit.hash);
+                circle.addEventListener('mouseenter', showTooltip);
+                circle.addEventListener('mouseleave', hideTooltip);
+                svg.appendChild(circle);
+
+                // 绘制提交hash标签
+                const hashText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                hashText.setAttribute('x', pos.x - 80);
+                hashText.setAttribute('y', pos.y + 5);
+                hashText.setAttribute('font-size', '12');
+                hashText.setAttribute('font-family', 'monospace');
+                hashText.setAttribute('fill', '#333');
+                hashText.textContent = commit.hash.substring(0, 7);
+                svg.appendChild(hashText);
+
+                // 绘制提交消息（简短）
+                const messageText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                messageText.setAttribute('x', pos.x + 30);
+                messageText.setAttribute('y', pos.y + 5);
+                messageText.setAttribute('font-size', '11');
+                messageText.setAttribute('fill', '#666');
+                const shortMessage = commit.message.length > 40 ? commit.message.substring(0, 40) + '...' : commit.message;
+                messageText.textContent = shortMessage;
+                svg.appendChild(messageText);
+
+                // 绘制分支标签
+                if (commit.branches.length > 0) {
+                    commit.branches.forEach((branch, i) => {
+                        const branchLabel = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                        const labelText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+
+                        const labelX = pos.x + 30;
+                        const labelY = pos.y - 20 - i * 20;
+
+                        branchLabel.setAttribute('x', labelX);
+                        branchLabel.setAttribute('y', labelY - 10);
+                        branchLabel.setAttribute('width', branch.length * 7 + 20);
+                        branchLabel.setAttribute('height', '18');
+                        branchLabel.setAttribute('rx', '4');
+                        branchLabel.setAttribute('fill', branch.includes("HEAD") ? '#FF6B6B' :
+                                                      branch.includes("main") ? '#4ECDC4' :
+                                                      branch.includes("origin/") ? '#F38181' : '#95E1D3');
+                        branchLabel.setAttribute('opacity', '0.9');
+                        svg.appendChild(branchLabel);
+
+                        labelText.setAttribute('x', labelX + 10);
+                        labelText.setAttribute('y', labelY + 2);
+                        labelText.setAttribute('font-size', '10');
+                        labelText.setAttribute('fill', 'white');
+                        labelText.setAttribute('font-weight', 'bold');
+                        labelText.textContent = branch;
+                        svg.appendChild(labelText);
+                    });
+                }
+            });
+        }
+
+        // 显示tooltip
+        function showTooltip(event) {
+            const tooltip = document.getElementById('tooltip');
+            const hash = event.target.getAttribute('data-hash');
+            const commit = gitData.find(c => c.hash === hash);
+
+            if (commit) {
+                tooltip.innerHTML = `
+                    <strong style="color: #667eea;">提交信息</strong><br>
+                    <strong>Hash:</strong> ${commit.hash}<br>
+                    <strong>作者:</strong> ${commit.author}<br>
+                    <strong>时间:</strong> ${commit.date}<br>
+                    <strong>消息:</strong> ${commit.message}<br>
+                    <strong>分支:</strong> ${commit.branches.join(', ') || '无'}
+                `;
+                tooltip.style.display = 'block';
+                tooltip.style.left = event.pageX + 10 + 'px';
+                tooltip.style.top = event.pageY + 10 + 'px';
+            }
+        }
+
+        // 隐藏tooltip
+        function hideTooltip() {
+            document.getElementById('tooltip').style.display = 'none';
+        }
+
+        // 填充分支表格
+        function fillBranchTable() {
+            const tbody = document.getElementById('branch-table-body');
+            tbody.innerHTML = '';
+
+            branchDetails.forEach(branch => {
+                const row = document.createElement('tr');
+                if (branch.isCurrent) {
+                    row.className = 'current-branch';
+                }
+
+                row.innerHTML = `
+                    <td><strong>${branch.name}</strong></td>
+                    <td>${branch.type}</td>
+                    <td style="font-family: monospace;">${branch.latestCommit}</td>
+                    <td>${branch.commitCount}</td>
+                    <td>${branch.status}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        // 更新统计数据
+        function updateStats() {
+            document.getElementById('total-commits').textContent = gitData.length;
+            document.getElementById('total-branches').textContent = branchDetails.length;
+            document.getElementById('active-branches').textContent = branchDetails.filter(b => b.status === '活跃' || b.status === '当前分支 (HEAD)').length;
+            document.getElementById('latest-commit').textContent = gitData[0].hash.substring(0, 7);
+        }
+
+        // 缩放功能
+        function zoomIn() {
+            currentZoom *= 1.2;
+            applyZoom();
+        }
+
+        function zoomOut() {
+            currentZoom *= 0.8;
+            applyZoom();
+        }
+
+        function resetZoom() {
+            currentZoom = 1;
+            applyZoom();
+        }
+
+        function applyZoom() {
+            const svg = document.getElementById('branch-svg');
+            svg.style.transform = `scale(${currentZoom})`;
+            svg.style.transformOrigin = 'center center';
+        }
+
+        // 显示所有分支
+        function showAllBranches() {
+            alert('完整分支列表:\n\n' + branchDetails.map(b => `${b.name} (${b.type})`).join('\n'));
+        }
+
+        // 初始化
+        function init() {
+            drawBranchTree();
+            fillBranchTable();
+            updateStats();
+            document.getElementById('generation-time').textContent = new Date().toLocaleString('zh-CN');
+        }
+
+        // 页面加载完成后执行
+        window.onload = init;
+    </script>
+</body>
+</html>

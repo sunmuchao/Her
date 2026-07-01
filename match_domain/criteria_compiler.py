@@ -337,6 +337,56 @@ def compile_effective_criteria(
     criteria = _apply_patch(criteria, explicit_overrides)
     criteria = normalize_compiled_criteria(criteria)
 
+    # ====================================================================
+    # Bug修复2：性别筛选兜底逻辑
+    # ====================================================================
+    # 问题：如果 sexual_orientation 字段缺失，系统无法推导目标性别
+    # 解决：添加两层兜底机制
+    #   1. 优先从 sexual_orientation 推导（标准逻辑）
+    #   2. 如果缺失，默认异性恋逻辑（女生→目标男性，男生→目标女性）
+    # 原理：确保即使数据不完美，也能有合理的筛选条件
+    # ====================================================================
+    import logging
+    _logger = logging.getLogger(__name__)
+
+    if "gender" not in criteria or not criteria.get("gender"):
+        from match_domain.onboarding_search import (
+            map_sexual_orientation_to_target_gender,
+            normalize_search_gender,
+        )
+
+        # 第一层：尝试从 sexual_orientation 推导
+        sexual_orientation = profile_facts.get("sexual_orientation") if profile_facts else None
+        target_gender = map_sexual_orientation_to_target_gender(sexual_orientation)
+
+        if target_gender:
+            criteria["gender"] = target_gender
+            _logger.info(
+                f"【性别筛选推导】scene={scene} sexual_orientation={sexual_orientation} → target_gender={target_gender}"
+            )
+        else:
+            # 第二层：兜底默认异性恋逻辑
+            self_gender = profile_facts.get("gender") if profile_facts else None
+            if self_gender:
+                normalized_self = normalize_search_gender(self_gender)
+                if normalized_self == "female":
+                    default_target = "male"
+                elif normalized_self == "male":
+                    default_target = "female"
+                else:
+                    default_target = None
+
+                if default_target:
+                    criteria["gender"] = default_target
+                    _logger.warning(
+                        f"【性别筛选兜底】scene={scene} user_gender={self_gender} "
+                        f"default_target={default_target} reason='sexual_orientation缺失，使用默认异性恋逻辑'"
+                    )
+            else:
+                _logger.error(
+                    f"【性别筛选缺失】scene={scene} reason='既没有sexual_orientation也没有gender，无法推导目标性别'"
+                )
+
     hard_filters, soft_preferences = _split_criteria(criteria)
     source_map = _build_source_map(
         profile_facts=profile_facts,
@@ -344,6 +394,29 @@ def compile_effective_criteria(
         criteria=criteria,
         overrides=explicit_overrides,
     )
+
+    # ====================================================================
+    # 日志追踪：记录性别筛选条件的生成过程
+    # ====================================================================
+    # 目的：追踪性别筛选条件的来源和推导过程，便于诊断问题
+    # 输出：target_gender、source（explicit_statement/profile_form/explicit_override）、原始字段值
+    # ====================================================================
+    if criteria.get("gender"):
+        gender_source = source_map.get("gender", {})
+        _logger.info(
+            f"【性别筛选条件】scene={scene} "
+            f"target_gender={criteria.get('gender')} "
+            f"source={gender_source.get('source', 'unknown')} "
+            f"field={gender_source.get('field', 'unknown')} "
+            f"sexual_orientation={profile_facts.get('sexual_orientation') if profile_facts else None}"
+        )
+    else:
+        _logger.warning(
+            f"【性别筛选缺失警告】scene={scene} "
+            f"profile_facts={dict(profile_facts or {})} "
+            f"reason='最终criteria中没有gender字段'"
+        )
+
     self_profile = _build_self_profile(
         profile_facts,
         collected,

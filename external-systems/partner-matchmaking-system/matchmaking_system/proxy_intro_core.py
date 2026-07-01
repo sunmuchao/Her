@@ -761,7 +761,8 @@ def create_match_case(
         recommendation_conn=rec_conn,
     )
     if active_case:
-        raise ValueError(f"Candidate already has an active match case: {active_case['case_id']}")
+        # 案件已存在，返回已存在的案件（实现幂等性，避免重复点击报错）
+        return active_case
 
     latest_case = get_latest_match_case_for_recommendation(
         case_conn,
@@ -983,8 +984,9 @@ def dispatch_match_case_outreach(
     case = get_match_case(case_conn, case_id, recommendation_conn=recommendation_conn)
     if not case:
         raise ValueError(f"Unknown match case: {case_id}")
+    # 幂等性检查：如果案件已dispatch（状态不是pending_outreach），直接返回案件
     if case["case_status"] != "pending_outreach":
-        raise ValueError("Only pending_outreach cases can be dispatched.")
+        return case
 
     attempts = list_match_case_outreach_attempts(case_conn, case_id)
     attempt_number = len(attempts) + 1
@@ -1049,7 +1051,80 @@ def dispatch_match_case_outreach(
             now=now,
         )
     commit_proxy_intro_transaction(case_conn, recommendation_conn)
+
+    # ✅ 注意：SSE推送通知移到外部调用，确保数据库先写入
+    # 不在这里调用 _push_passive_recommendation_notification
+    # 由调用方在 _push_proxy_intro_to_discovery_timeline 之后调用
+
     return get_match_case(case_conn, case_id, recommendation_conn=recommendation_conn)
+
+
+def _push_passive_recommendation_notification(
+    case: dict[str, Any],
+    now: datetime,
+) -> None:
+    """推送被动推荐通知给被请求方（通过SSE）。
+
+    Args:
+        case: 案件数据
+        now: 当前时间
+    """
+    import httpx
+    from her_env import env_first
+
+    sse_server_url = env_first(
+        "SSE_SERVER_URL",
+        "http://localhost:8081",
+    )
+
+    # 获取被请求方的profile_id（候选人，需要接收通知）
+    # ✅ 统一转换为字符串类型，避免与SSE连接管理的key类型不匹配
+    target_profile_id = str(case.get("candidate_id") or "")
+    if not target_profile_id:
+        return
+
+    # 获取发起方的profile_id（点击"愿意认识你"的用户）
+    source_profile_id = str(case.get("requester_id") or "")
+
+    try:
+        push_url = f"{sse_server_url}/internal/push/recommendation"
+        payload = {
+            "profile_id": target_profile_id,  # ✅ 字符串类型，与SSE连接key一致
+            "event_type": "passive_recommendation",  # 被动推荐
+            "case_id": case.get("case_id"),
+            "source_profile_id": source_profile_id,  # ✅ 字符串类型
+            "candidate_id": target_profile_id,  # ✅ 字符串类型
+            "message": "有人愿意认识你",
+            "timestamp": now.isoformat(),
+        }
+
+        # ✅ 同步推送（不阻塞主流程），记录详细日志
+        with httpx.Client(timeout=2.0) as client:
+            response = client.post(push_url, json=payload)
+            if response.status_code == 200:
+                result = response.json()
+                sent_count = result.get("pushed", 0)
+                online_sessions = result.get("online_sessions", [])
+                logger.info(
+                    f"[SSE Push] 被动推荐通知推送完成: target={target_profile_id}, "
+                    f"source={source_profile_id}, case={case.get('case_id')}, "
+                    f"sent_count={sent_count}, online_sessions={online_sessions}"
+                )
+                if sent_count == 0:
+                    logger.warning(
+                        f"[SSE Push] 用户不在线，推送失败: target={target_profile_id}, "
+                        f"可能原因：用户未打开Discovery页面或SSE连接断开"
+                    )
+            else:
+                logger.warning(
+                    f"[SSE Push] 推送请求失败: status={response.status_code}, "
+                    f"target={target_profile_id}, response={response.text}"
+                )
+    except Exception as e:
+        # 推送失败不影响主流程，只记录日志
+        logger.warning(
+            f"[SSE Push] 推送异常: {e}, target={target_profile_id}"
+        )
 
 
 def dispatch_pending_match_cases(

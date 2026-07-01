@@ -294,6 +294,21 @@ def build_mysql_prefilter(
     add_in("marriage_timeline", criteria.get("marriage_timelines"), allow_missing=True)
     add_in("profile_status", criteria.get("profile_statuses") or ["active"], allow_missing=True)
     add_not_in("source_channel", criteria.get("exclude_source_channels"))
+
+    # ====================================================================
+    # Bug修复1：排除用户自己（兜底逻辑）
+    # ====================================================================
+    # 问题：原有逻辑依赖 self_record_ref 对象，在某些情况下可能缺失
+    # 解决：在 SQL 层添加兜底逻辑，直接通过 self_id 排除
+    # 原理：id NOT IN (self_id) 确保用户自己不会出现在候选人列表中
+    # ====================================================================
+    exclude_ids = set(criteria.get("exclude_ids") or [])
+    self_id = criteria.get("self_id")
+    if self_id is not None:
+        exclude_ids.add(int(self_id))
+    if exclude_ids:
+        add_not_in("id", exclude_ids)
+
     add_in("verified_level", criteria.get("verified_levels"), default_value="none")
     add_in("photo_verification_level", criteria.get("photo_verification_levels"), default_value="none")
     add_numeric_bound("photo_count", ">=", criteria.get("photo_count_min"), allow_missing=True)

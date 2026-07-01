@@ -8,7 +8,7 @@ import {
   submitDiscoveryTurn,
 } from '@/lib/api/endpoints/discovery'
 import { fetchCollectedStatements, formatCollectedPreferenceChips } from '@/lib/api/endpoints/collected'
-import { saveDiscoveryAsSubscription } from '@/lib/api/endpoints/recommendation'
+import { saveDiscoveryAsSubscription, fetchRecommendationCards } from '@/lib/api/endpoints/recommendation'  // ✅ 新增：导入fetchRecommendationCards
 import { GatewayClientError, getErrorMessage, isAuthRequiredGatewayError } from '@/lib/api/errors'
 import { confirmSessionOrRedirectToWelcome } from '@/lib/auth/confirm-session'
 import { hydrateSessionFromAuthMe } from '@/lib/auth/hydrate-session'
@@ -99,6 +99,11 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
   const hasSessionCriteriaChipsRef = useRef(false)
   const autoPlayedAudioMessageIdsRef = useRef<Set<string>>(new Set())
   const pendingOpenPollRef = useRef<number | null>(null)
+
+  // ✅ 新增：SSE连接管理
+  const eventSourceRef = useRef<EventSource | null>(null)
+  const sseConnectedRef = useRef(false)
+  const [isSseConnected, setIsSseConnected] = useState(false)
 
   const applyMappedView = useCallback((mapped: MappedDiscoveryView) => {
     const timelineItems = mapped.timelineItems.map((item) => {
@@ -246,6 +251,13 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
     return () => {
       if (pendingOpenPollRef.current != null) {
         window.clearTimeout(pendingOpenPollRef.current)
+      }
+      // ✅ 新增：清理SSE连接
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close()
+        eventSourceRef.current = null
+        sseConnectedRef.current = false
+        setIsSseConnected(false)
       }
     }
   }, [])
@@ -481,6 +493,95 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
       notifyError(error, '刷新会话失败')
     }
   }, [applyDiscoveryResponse, sessionId])
+
+  // ✅ 新增：SSE实时监听（候选人准备通知 + 推荐卡片推送）
+  useEffect(() => {
+    if (!sessionId) return
+    const profileId = getProfileId()
+    if (!profileId) return
+
+    // 创建SSE连接
+    const sseUrl = `${process.env.NEXT_PUBLIC_SSE_SERVER_URL || 'http://localhost:8081'}/sse/discovery/${sessionId}?profile_id=${profileId}`
+    const eventSource = new EventSource(sseUrl)
+    eventSourceRef.current = eventSource
+
+    eventSource.addEventListener('connected', (e) => {
+      console.log('[Discovery SSE] Connected:', e.data)
+      sseConnectedRef.current = true
+      setIsSseConnected(true)
+    })
+
+    eventSource.addEventListener('message', (e) => {
+      try {
+        const data = JSON.parse(e.data)
+        if (data.type === 'candidates_ready') {
+          console.log('[Discovery SSE] 候选人准备好了:', data)
+          // 候选人准备好了，立即获取最新数据
+          void reloadSession()
+        } else if (data.type === 'new_recommendation') {
+          console.log('[Discovery SSE] 新推荐卡片:', data)
+          // 新推荐卡片推送（被动推荐 + 主动推荐）
+          // 立即刷新推荐卡片列表
+          void fetchRecommendationCards(profileId).then((response) => {
+            // 触发事件通知徽章更新
+            if (typeof window !== 'undefined' && typeof CustomEvent === 'function') {
+              window.dispatchEvent(new CustomEvent('her:recommendation-read-state-changed', {
+                detail: { profileId, newCards: response.cards },
+              }))
+            }
+          })
+        }
+      } catch (err) {
+        console.error('[Discovery SSE] Parse error:', err)
+      }
+    })
+
+    eventSource.addEventListener('heartbeat', (e) => {
+      console.log('[Discovery SSE] Heartbeat:', e.data)
+    })
+
+    eventSource.onerror = (e) => {
+      const readyState = eventSource.readyState
+      if (readyState === EventSource.CONNECTING) {
+        console.warn('[Discovery SSE] Reconnecting...', { readyState })
+      } else if (readyState === EventSource.CLOSED) {
+        console.error('[Discovery SSE] Closed', { readyState, event: e })
+      } else {
+        console.warn('[Discovery SSE] Error event', { readyState, event: e })
+      }
+      sseConnectedRef.current = false
+      setIsSseConnected(false)
+      // EventSource会自动重连
+    }
+
+    return () => {
+      eventSource.close()
+      eventSourceRef.current = null
+      sseConnectedRef.current = false
+      setIsSseConnected(false)
+    }
+  }, [sessionId, reloadSession])
+
+  // ✅ 新增：SSE兜底机制：连接失败时回退到轮询
+  useEffect(() => {
+    if (!sessionId) return
+    if (isSseConnected) return // SSE已连接，不需要轮询兜底
+
+    const profileId = getProfileId()
+    if (!profileId) return
+
+    console.log('[Discovery SSE] SSE未连接，启动轮询兜底')
+
+    // 初始加载
+    void reloadSession()
+
+    // 30秒轮询兜底
+    const interval = setInterval(async () => {
+      await reloadSession()
+    }, 30000)
+
+    return () => clearInterval(interval)
+  }, [sessionId, isSseConnected, reloadSession])
 
   // 新增：创建新会话
   const createNewSession = useCallback(async () => {

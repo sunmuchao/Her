@@ -35,8 +35,6 @@ from gateway_tests.helpers import (  # noqa: E402
 MYSQL_HOST = os.environ.get("HER_E2E_MYSQL_HOST", "127.0.0.1")
 MYSQL_PORT = int(os.environ.get("HER_E2E_MYSQL_PORT", "3307"))
 MYSQL_USER = os.environ.get("HER_E2E_MYSQL_USER", "root")
-MYSQL_PASSWORD = mysql_schema.parse_mysql_dsn(f"mysql://{MYSQL_USER}@{MYSQL_HOST}:{MYSQL_PORT}/bootstrap")["password"]
-=======
 MYSQL_PASSWORD = os.environ.get("HER_E2E_MYSQL_PASSWORD", "")
 
 SEARCH_DSN = (
@@ -406,8 +404,6 @@ def main() -> None:
     seed_demo = _env_flag("HER_E2E_BOOTSTRAP_SEED_DEMO", False)
     wait_for_mysql()
     ensure_databases(reset=reset)
-=======
-    ensure_databases()
     ensure_persona_source_schema()
     migrate_targets()
     if seed_demo:

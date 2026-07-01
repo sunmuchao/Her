@@ -152,7 +152,7 @@ def _push_proxy_intro_to_discovery_timeline(
     case: dict[str, Any],
     candidate_profile_id: int,
     now: Any,
-) -> None:
+) -> bool:
     """立即推送被动推荐到候选人的discovery timeline（有人想认识你）
 
     逻辑：
@@ -169,6 +169,9 @@ def _push_proxy_intro_to_discovery_timeline(
         case: 被动推荐案件数据
         candidate_profile_id: 候选人的profile_id（被推荐方）
         now: 当前时间
+
+    Returns:
+        bool: 推送是否成功
     """
     import json
     import logging
@@ -212,7 +215,7 @@ def _push_proxy_intro_to_discovery_timeline(
                 candidate_profile_id,
             )
             conn.close()
-            return
+            return False  # ✅ 返回失败标志
 
         session_data = row_to_dict(row)
         _logger.info(
@@ -269,7 +272,7 @@ def _push_proxy_intro_to_discovery_timeline(
                 case_id,
             )
             conn.close()
-            return
+            return True  # ✅ 返回成功标志（已经推送过，视为成功）
 
         # 插入消息
         timeline.append({
@@ -339,6 +342,7 @@ def _push_proxy_intro_to_discovery_timeline(
                 "【推送成功】案件已标记: case_id=%s, discovery_pushed=True",
                 case_id,
             )
+            return True  # ✅ 返回成功标志
         finally:
             proxy_conn.close()
 
@@ -349,10 +353,13 @@ def _push_proxy_intro_to_discovery_timeline(
             e,
             exc_info=True,
         )
-        raise  # 抛出异常，让外层捕获并静默失败
+        return False  # ✅ 返回失败标志，不抛出异常
     finally:
         if conn:
             conn.close()
+
+    # ✅ 默认返回失败（如果代码执行到这里说明有问题）
+    return False
 
 
 def rest_proxy_intro_create_request(
@@ -368,6 +375,8 @@ def rest_proxy_intro_create_request(
         raise ValueError("candidate_id is required")
     gateway._get_recommendation_subscription_for_actor(environ, subscription_id)
     now = _parse_optional_now(body)
+
+    # Step 1: 创建案件（状态: pending_outreach）
     created = gateway._with_proxy_intro(
         create_match_case,
         subscription_id=subscription_id,
@@ -377,6 +386,35 @@ def rest_proxy_intro_create_request(
             "source": str(body.get("source") or "recommendation_detail"),
         },
     )
+
+    # Step 2: ✅ 先推送被动推荐到discovery timeline（数据库写入）
+    # 确保数据持久化成功后再推送SSE实时通知
+    timeline_push_success = False
+    try:
+        _push_proxy_intro_to_discovery_timeline(
+            case=created,  # 使用created（案件已创建但未分发）
+            candidate_profile_id=candidate_id,
+            now=now,
+        )
+        timeline_push_success = True
+        import logging
+        _logger = logging.getLogger(__name__)
+        _logger.info(
+            "【推送顺序优化】timeline已写入: case_id=%s, candidate_id=%s",
+            created.get("case_id"),
+            candidate_id,
+        )
+    except Exception as e:
+        import logging
+        _logger = logging.getLogger(__name__)
+        _logger.error(
+            "推送被动推荐到discovery timeline失败: case_id=%s, candidate_id=%s, error=%s",
+            created.get("case_id"),
+            candidate_id,
+            e,
+        )
+
+    # Step 3: 分发案件（状态更新为awaiting_reply）
     case = gateway._with_proxy_intro(
         dispatch_match_case_outreach,
         case_id=str(created["case_id"]),
@@ -384,23 +422,28 @@ def rest_proxy_intro_create_request(
         payload={"source": str(body.get("source") or "recommendation_detail")},
     )
 
-    # ✅ 新增：立即推送被动推荐到候选人的discovery timeline（有人想认识你）
-    try:
-        _push_proxy_intro_to_discovery_timeline(
-            case=case,
-            candidate_profile_id=candidate_id,  # B的profile_id（被推荐方）
-            now=now,
-        )
-    except Exception as e:
-        # 推送失败不阻塞主流程，静默失败（日志记录）
-        import logging
-        _logger = logging.getLogger(__name__)
-        _logger.error(
-            "推送被动推荐到discovery timeline失败: case_id=%s, candidate_id=%s, error=%s",
-            case.get("case_id"),
-            candidate_id,
-            e,
-        )
+    # Step 4: ✅ 数据库写入成功后，推送SSE实时通知
+    if timeline_push_success:
+        try:
+            _push_passive_recommendation_notification(
+                case=case,
+                now=now,
+            )
+            import logging
+            _logger = logging.getLogger(__name__)
+            _logger.info(
+                "【推送顺序优化】SSE通知已发送: case_id=%s, candidate_id=%s",
+                case.get("case_id"),
+                candidate_id,
+            )
+        except Exception as e:
+            import logging
+            _logger = logging.getLogger(__name__)
+            _logger.warning(
+                "SSE推送失败（不影响主流程，timeline已更新）: case_id=%s, error=%s",
+                case.get("case_id"),
+                e,
+            )
 
     principal = gateway._resolve_end_user_principal(environ, require_profile=True)
     return 201, {

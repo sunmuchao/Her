@@ -661,6 +661,13 @@ class DiscoveryService:
             )
             self._increment_metric("turns.created")
             self._increment_metric("sessions.fast_open.completed")
+
+            # ✅ 新增：推送候选人准备通知（SSE）
+            self._push_candidates_ready_notification(
+                session_id=session.session_id,
+                profile_id=session.profile_id,
+                search_run_id=search_run_id,
+            )
         except Exception:
             _logger.exception("[Discovery Fast Open] 后台补首轮结果失败: session_id=%s", session_id)
 
@@ -755,6 +762,63 @@ class DiscoveryService:
                 f"requester_id={requester_id}, error={exc}"
             )
             # 不抛出异常，避免阻塞切换会话
+
+    def _push_candidates_ready_notification(
+        self,
+        session_id: str,
+        profile_id: int,
+        search_run_id: int | None,
+    ) -> None:
+        """推送候选人准备好的通知给前端（通过SSE）。
+
+        Args:
+            session_id: Discovery会话ID
+            profile_id: 用户ID
+            search_run_id: 搜索运行ID（如果有候选人）
+        """
+        import httpx
+        from her_env import env_first
+
+        sse_server_base_url = env_first(
+            "SSE_SERVER_PUSH_URL",
+            "http://localhost:8081/internal/push",
+        )
+
+        # ✅ 调试日志：打印环境变量值
+        _logger.info(f"[SSE Push] 环境变量 SSE_SERVER_PUSH_URL={sse_server_base_url}")
+
+        # 只在有候选人时推送
+        if not search_run_id:
+            return
+
+        try:
+            # Discovery 推送需要使用 /discovery 子路径
+            push_url = f"{sse_server_base_url}/discovery"
+            _logger.info(f"[SSE Push] 完整推送 URL={push_url}")
+            payload = {
+                "session_id": session_id,
+                "profile_id": profile_id,
+                "search_run_id": search_run_id,
+                "event_type": "candidates_ready",
+                "timestamp": datetime.now().isoformat(),
+            }
+
+            # 异步推送（不阻塞主流程）
+            with httpx.Client(timeout=2.0) as client:
+                response = client.post(push_url, json=payload)
+                if response.status_code == 200:
+                    _logger.info(
+                        f"[SSE Push] 候选人准备通知已推送: session={session_id}, profile={profile_id}"
+                    )
+                else:
+                    _logger.warning(
+                        f"[SSE Push] 推送失败: status={response.status_code}, session={session_id}"
+                    )
+        except Exception as e:
+            # 推送失败不影响主流程，只记录日志
+            _logger.warning(
+                f"[SSE Push] 推送异常: {e}, session={session_id}"
+            )
 
     def process_turn(
         self,
@@ -887,6 +951,12 @@ class DiscoveryService:
             requester_id=session.requester_id,
             profile_id=session.profile_id,
             consumed_action_id=consumed_action_id,
+            search_run_id=search_run_id,
+        )
+        # ✅ 新增：推送候选人准备通知（SSE）
+        self._push_candidates_ready_notification(
+            session_id=session.session_id,
+            profile_id=session.profile_id,
             search_run_id=search_run_id,
         )
         return self._session_payload(session)
