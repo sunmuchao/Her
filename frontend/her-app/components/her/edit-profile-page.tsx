@@ -732,7 +732,8 @@ export default function EditProfilePage({ onBack, onSaved }: EditProfilePageProp
             label="学历"
             value={profile.education}
             options={[
-              { value: 'college', label: '专科' },
+              { value: 'high_school', label: '高中及以下' },
+              { value: 'college', label: '专科/大专' },
               { value: 'bachelor', label: '本科' },
               { value: 'master', label: '硕士' },
               { value: 'doctor', label: '博士' },
@@ -963,21 +964,6 @@ export default function EditProfilePage({ onBack, onSaved }: EditProfilePageProp
               ))}
             </div>
           </fieldset>
-
-          {/* Religion */}
-          <SelectDropdown
-            label="宗教信仰"
-            value={profile.religion}
-            options={[
-              { value: '无', label: '无' },
-              { value: '佛教', label: '佛教' },
-              { value: '基督教', label: '基督教' },
-              { value: '伊斯兰教', label: '伊斯兰教' },
-              { value: '其他', label: '其他' },
-            ]}
-            placeholder="未填写"
-            onChange={(value) => setProfile({ ...profile, religion: value })}
-          />
         </CollapsibleCard>
 
         {/* 卡片5：生活方式 */}
@@ -1048,28 +1034,6 @@ export default function EditProfilePage({ onBack, onSaved }: EditProfilePageProp
               })}
             </div>
           </div>
-
-          {/* Height */}
-          <NumberInputWithUnit
-            label="身高"
-            value={profile.height}
-            unit="cm"
-            min={100}
-            max={250}
-            placeholder="未填写"
-            onChange={(value) => setProfile({ ...profile, height: value })}
-          />
-
-          {/* Weight */}
-          <NumberInputWithUnit
-            label="体重"
-            value={profile.weight}
-            unit="kg"
-            min={30}
-            max={200}
-            placeholder="未填写"
-            onChange={(value) => setProfile({ ...profile, weight: value })}
-          />
 
           {/* Smoking */}
           <fieldset>
