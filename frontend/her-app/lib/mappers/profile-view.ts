@@ -115,9 +115,9 @@ export function buildProfileView(
     city: safeString(rawProfile.city, rawProfile.settlement_city, '待完善'),
     avatar: safeString(user.avatar_url, rawProfile.avatar_url, PLACEHOLDER_AVATAR),
     headline: safeString(
+      rawProfile.public_notes,
       rawProfile.headline,
       rawProfile.bio,
-      rawProfile.public_notes,
       '认真关系，从认真了解开始',
     ),
     verified: safeBoolean(rawProfile.verified) || safeBoolean(rawProfile.live_video_verified),
