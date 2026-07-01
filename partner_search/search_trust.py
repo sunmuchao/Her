@@ -85,7 +85,7 @@ def photo_verification_level_label(runtime: SearchTrustRuntime, value: Any) -> s
         "none": "未上传照片",
         "uploaded": "普通上传照片",
         "human_verified": "真人照片认证",
-        "live_video_verified": "真人认证",
+        "live_video_verified": "身份认证",
         "offline_verified": "线下核验照片",
     }
     return labels.get(runtime.as_lower(value), "普通上传照片")
@@ -313,7 +313,7 @@ def build_verification_items(
                 "label": "照片",
                 "status": "self_reported",
                 "source": "profile_self_reported",
-                "summary": uploaded_summary + "（未真人认证）",
+                "summary": uploaded_summary + "（未完成身份认证）",
             }
         )
     else:
@@ -607,7 +607,7 @@ def build_trust_summary(
     if photo_level == "offline_verified":
         badges.append("照片已线下核验")
     elif photo_level == "live_video_verified":
-        badges.append("照片已真人认证核验")
+        badges.append("照片已身份认证核验")
     elif photo_level == "human_verified":
         badges.append("照片已真人认证")
     if verified_rank_value >= 3:

@@ -34,7 +34,7 @@ const DEFAULT_FIELDS: FieldItem[] = [
   { id: 'education', name: '学历认证', description: '提供学位证书或学信网截图', status: 'unverified' },
   { id: 'occupation', name: '职业认证', description: '提供在职证明或工牌照片', status: 'unverified' },
   { id: 'income', name: '收入认证', description: '提供近三个月银行流水', status: 'unverified' },
-  { id: 'video', name: '真人认证', description: '录制真人视频确保真实性', status: 'unverified' },
+  { id: 'video', name: '身份认证', description: '录制真人视频确保真实性', status: 'unverified' },
 ]
 
 function mapSubmissionStatus(status?: string): FieldItem['status'] {
@@ -104,7 +104,7 @@ export function useVerificationFlow(onBack: () => void) {
         const pendingHint =
           notifications.find((n) => n.type?.includes('resubmission'))?.body ||
           notifications[0]?.body ||
-          '按提示完成真人认证'
+          '按提示完成身份认证'
 
         const fieldStatusByUi = new Map<string, FieldItem['status']>()
         for (const submission of fieldSubmissions) {
@@ -170,7 +170,7 @@ export function useVerificationFlow(onBack: () => void) {
                 const pendingHint =
                   notifications.find((n) => n.type?.includes('resubmission'))?.body ||
                   notifications[0]?.body ||
-                  '按提示完成真人认证'
+                  '按提示完成身份认证'
 
                 const fieldStatusByUi = new Map<string, FieldItem['status']>()
                 for (const submission of fieldSubmissions) {
@@ -277,7 +277,7 @@ export function useVerificationFlow(onBack: () => void) {
         videoBase64: recordedVideo?.base64,
         contentType: recordedVideo?.mimeType,
       })
-      notifySuccess('真人认证视频已提交，等待审核')
+      notifySuccess('身份认证视频已提交，等待审核')
       setStep('video-pending')
     } catch (error) {
       notifyError(error, '视频提交失败')

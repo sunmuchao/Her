@@ -1526,7 +1526,7 @@ def evaluate_profile_consistency(
             source_dsn=normalized_source,
             source_table_name=normalized_table,
             request_source="profile_photo_authenticity_engine",
-            request_reason="平台检测到你的资料照片存在待复核信号，请补录真人认证视频。",
+            request_reason="平台检测到你的资料照片存在待复核信号，请补录身份认证视频。",
             signal_codes=photo_review_signal_codes,
             risk_case_id=case_id,
             requested_by="system:profile_photo_authenticity_engine",

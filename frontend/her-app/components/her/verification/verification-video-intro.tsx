@@ -26,7 +26,7 @@ export function VerificationVideoIntro({
           >
             <ArrowLeft className="w-5 h-5 text-foreground" />
           </button>
-          <h1 className="font-medium text-foreground">真人认证</h1>
+          <h1 className="font-medium text-foreground">身份认证</h1>
         </div>
       </header>
 

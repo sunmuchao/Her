@@ -11,7 +11,6 @@ import {
   X,
   Plus,
   Video,
-  UserCheck,
   GraduationCap,
   Briefcase,
   Wallet,
@@ -287,11 +286,10 @@ export default function ProfilePage({
     [profile.verificationItems],
   )
   const verificationPriorityMap: Record<string, { order: number; target?: string; icon: React.ElementType }> = {
-    '真人认证': { order: 0, target: 'video', icon: Video },
-    '身份认证': { order: 1, icon: UserCheck },
-    '学历认证': { order: 2, target: 'education', icon: GraduationCap },
-    '职业认证': { order: 3, target: 'occupation', icon: Briefcase },
-    '收入认证': { order: 4, target: 'income', icon: Wallet },
+    '身份认证': { order: 0, target: 'video', icon: Video },
+    '学历认证': { order: 1, target: 'education', icon: GraduationCap },
+    '职业认证': { order: 2, target: 'occupation', icon: Briefcase },
+    '收入认证': { order: 3, target: 'income', icon: Wallet },
   }
   const verificationItems = useMemo(
     () =>
