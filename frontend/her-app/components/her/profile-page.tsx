@@ -18,7 +18,6 @@ import {
 import Image from 'next/image'
 import { useProfilePageData } from '@/lib/hooks/use-profile-page-data'
 import { buildProfileView, calculateVerificationProgress } from '@/lib/mappers/profile-view'
-import { patchPersonaTags } from '@/lib/api/endpoints/persona'
 import { submitOnboarding } from '@/lib/auth/auth-api'
 import { cn } from '@/lib/utils'
 import { ProgressRing } from './ui/progress-ring'
@@ -166,7 +165,12 @@ export default function ProfilePage({
     setIsSavingTags(true)
 
     try {
-      await patchPersonaTags(currentTags)
+      await submitOnboarding({
+        preference: {
+          tags: currentTags,
+        },
+        mark_completed: false,
+      })
       await refetch()
     } catch (e) {
       console.error('保存标签失败:', e)

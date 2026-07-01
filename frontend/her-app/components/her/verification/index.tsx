@@ -1,5 +1,6 @@
 'use client'
 
+import { Suspense } from 'react'
 import { useVerificationFlow } from './use-verification-flow'
 import { VerificationVideoIntro } from './verification-video-intro'
 import { VerificationVideoRecord } from './verification-video-record'
@@ -12,7 +13,7 @@ interface VerificationFlowPageProps {
   onBack: () => void
 }
 
-export default function VerificationFlowPage({ onBack }: VerificationFlowPageProps) {
+function VerificationFlowContent({ onBack }: VerificationFlowPageProps) {
   const {
     fieldVerificationTypes,
     loadError,
@@ -114,4 +115,16 @@ export default function VerificationFlowPage({ onBack }: VerificationFlowPagePro
   }
 
   return null
+}
+
+export default function VerificationFlowPage({ onBack }: VerificationFlowPageProps) {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-sm text-muted-foreground">加载中...</div>
+      </div>
+    }>
+      <VerificationFlowContent onBack={onBack} />
+    </Suspense>
+  )
 }
