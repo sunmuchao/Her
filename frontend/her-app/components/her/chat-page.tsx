@@ -67,7 +67,15 @@ function buildServerMessageSnapshot(messages: Message[]): string {
     .join('|')
 }
 
+function getVisibleChatMessages(messages: Message[], aiAssistantEnabled: boolean): Message[] {
+  if (aiAssistantEnabled) {
+    return messages
+  }
+  return messages.filter((msg) => msg.type !== 'assistant')
+}
+
 export default function ChatPage({ chatId, caseId, counterpartId, counterpartName, counterpartImage, onBack, onViewCandidate }: ChatPageProps) {
+  const isAiAssistantEnabled = false
   const searchParams = useSearchParams()
   const urlChatTitle = searchParams.get('chatTitle')
   const urlCaseId = searchParams.get('caseId')
@@ -97,7 +105,6 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
 
   // 小雅主动提示相关状态
   const xiaoyaLastCheckTimeRef = useRef<string>('') // 记录上次检查时间，避免重复触发
-  const [xiaoyaTriggerReason, setXiaoyaTriggerReason] = useState<string | null>(null)
   const hasAutoOpenedXiaoyaRef = useRef(false) // 是否已自动展开过（避免反复弹出）
 
   // 图片发送相关状态
@@ -139,6 +146,7 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
 
   // 加载小雅私信会话
   useEffect(() => {
+    if (!isAiAssistantEnabled) return
     if (!showXiaoyaChat || !resolvedCaseId) return
 
     const requesterId = getChatParticipantId()
@@ -184,14 +192,15 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
     }
     void loadXiaoyaChat()
     return () => { cancelled = true }
-  }, [showXiaoyaChat, resolvedCaseId])
+  }, [isAiAssistantEnabled, showXiaoyaChat, resolvedCaseId])
 
   // 小雅消息滚动到底部
   useEffect(() => {
+    if (!isAiAssistantEnabled) return
     if (showXiaoyaChat) {
       xiaoyaMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     }
-  }, [xiaoyaMessages, showXiaoyaChat])
+  }, [isAiAssistantEnabled, xiaoyaMessages, showXiaoyaChat])
 
   // 发送小雅私信
   const handleSendXiaoyaMessage = async () => {
@@ -239,7 +248,6 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
 
   useEffect(() => {
     if (!resolvedChatId) return
-    const resolvedConversationId = resolvedChatId
     const requesterId = getChatParticipantId()
     if (!requesterId) {
       setIsLoading(false)
@@ -264,18 +272,21 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
 
         // 提取main_group会话的消息（用户对话 + AI红娘提示）
         const mappedMessages = extractMainGroupMessages(timelineData, currentRequesterId)
-        setMessages(mappedMessages)
-        latestServerMessageSnapshotRef.current = buildServerMessageSnapshot(mappedMessages)
+        const visibleMessages = getVisibleChatMessages(mappedMessages, isAiAssistantEnabled)
+        setMessages(visibleMessages)
+        latestServerMessageSnapshotRef.current = buildServerMessageSnapshot(visibleMessages)
 
         // ✅ 检测 assistant_dm 会话（小雅私信，channel_key 为 assistant_dm_a 或 assistant_dm_b）
         // 需要检查会话成员列表来确定属于当前用户的会话
-        const assistantDm = timelineData.conversations.find(
-          (c) =>
-            c.conversation.channel_key.startsWith('assistant_dm_') &&
-            c.conversation.members?.some(
-              (m) => m.participant_id === currentRequesterId && m.member_role === 'human',
-            ),
-        )
+        const assistantDm = isAiAssistantEnabled
+          ? timelineData.conversations.find(
+              (c) =>
+                c.conversation.channel_key.startsWith('assistant_dm_') &&
+                c.conversation.members?.some(
+                  (m) => m.participant_id === currentRequesterId && m.member_role === 'human',
+                ),
+            )
+          : undefined
 
         if (assistantDm && assistantDm.messages && assistantDm.messages.length > 0) {
           // 设置会话ID，以便私信功能可用
@@ -289,7 +300,6 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
           if (mappedMessages.length === 0 && latestDmMsg.source === 'agent' && !hasAutoOpenedXiaoyaRef.current) {
             console.log('[ChatPage] 聊天前阶段，检测到小雅私信，自动展开')
             setShowXiaoyaChat(true)
-            setXiaoyaTriggerReason('opening_probe')
             hasAutoOpenedXiaoyaRef.current = true
           }
         }
@@ -310,7 +320,7 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
         setUsingMockData(false)
 
         // 标记消息已读
-        const latestMessage = mappedMessages[mappedMessages.length - 1]
+        const latestMessage = visibleMessages[visibleMessages.length - 1]
         if (latestMessage && latestMessage.authorId !== currentRequesterId) {
           markConversationRead(resolvedChatId || '', Number(latestMessage.id))
         }
@@ -344,27 +354,30 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
     try {
       const timelineData = await fetchCaseTimeline(resolvedCaseId || '', requesterId)
       const mappedMessages = extractMainGroupMessages(timelineData, requesterId)
-      const nextSnapshot = buildServerMessageSnapshot(mappedMessages)
+      const visibleMessages = getVisibleChatMessages(mappedMessages, isAiAssistantEnabled)
+      const nextSnapshot = buildServerMessageSnapshot(visibleMessages)
 
       // timeline 默认只返回最近 50 条，超过上限后不能再用长度判断是否有新消息
       if (nextSnapshot !== latestServerMessageSnapshotRef.current) {
-        setMessages(mappedMessages)
+        setMessages(visibleMessages)
         latestServerMessageSnapshotRef.current = nextSnapshot
         // 标记新消息已读
-        const latestMessage = mappedMessages[mappedMessages.length - 1]
+        const latestMessage = visibleMessages[visibleMessages.length - 1]
         if (latestMessage && latestMessage.authorId !== requesterId && resolvedChatId) {
           markConversationRead(resolvedChatId, Number(latestMessage.id))
         }
       }
 
       // ✅ 检测 assistant_dm 新消息（小雅私信主动提示）
-      const assistantDm = timelineData.conversations.find(
-        (c) =>
-          c.conversation.channel_key.startsWith('assistant_dm_') &&
-          c.conversation.members?.some(
-            (m) => m.participant_id === requesterId && m.member_role === 'human',
-          ),
-      )
+      const assistantDm = isAiAssistantEnabled
+        ? timelineData.conversations.find(
+            (c) =>
+              c.conversation.channel_key.startsWith('assistant_dm_') &&
+              c.conversation.members?.some(
+                (m) => m.participant_id === requesterId && m.member_role === 'human',
+              ),
+          )
+        : undefined
 
       if (assistantDm && assistantDm.messages && assistantDm.messages.length > 0 && !hasAutoOpenedXiaoyaRef.current) {
         const latestDmMsg = assistantDm.messages[assistantDm.messages.length - 1]
@@ -375,7 +388,6 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
 
           // 自动展开小雅私信面板
           setShowXiaoyaChat(true)
-          setXiaoyaTriggerReason(latestDmMsg.source || 'assistant_dm')
           hasAutoOpenedXiaoyaRef.current = true
 
           // 更新上次检查时间
@@ -983,7 +995,7 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
       </div>
 
       {/* 小雅私信底部面板 - 可拖动调整高���，支持全屏模式 */}
-      {showXiaoyaChat && resolvedCaseId && (
+      {isAiAssistantEnabled && showXiaoyaChat && resolvedCaseId && (
         <div 
           className="fixed inset-0 z-50 flex flex-col justify-end"
           onClick={(e) => {
@@ -1294,26 +1306,27 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
                 </div>
                 <span className="text-xs text-foreground">语音</span>
               </button>
-              {/* 小雅助手 */}
-              <button
-                onClick={() => {
-                  setShowXiaoyaChat(!showXiaoyaChat)
-                  setShowActionMenu(false)
-                }}
-                className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-secondary hover:bg-secondary/80 transition-colors"
-                aria-label="私信小雅"
-              >
-                <div className="w-12 h-12 rounded-full bg-gold-soft flex items-center justify-center overflow-hidden">
-                  <Image
-                    src="/xiaoya-avatar.png"
-                    alt="小雅"
-                    width={24}
-                    height={24}
-                    className="object-cover"
-                  />
-                </div>
-                <span className="text-xs text-gold">小雅</span>
-              </button>
+              {isAiAssistantEnabled && (
+                <button
+                  onClick={() => {
+                    setShowXiaoyaChat(!showXiaoyaChat)
+                    setShowActionMenu(false)
+                  }}
+                  className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-secondary hover:bg-secondary/80 transition-colors"
+                  aria-label="私信小雅"
+                >
+                  <div className="w-12 h-12 rounded-full bg-gold-soft flex items-center justify-center overflow-hidden">
+                    <Image
+                      src="/xiaoya-avatar.png"
+                      alt="小雅"
+                      width={24}
+                      height={24}
+                      className="object-cover"
+                    />
+                  </div>
+                  <span className="text-xs text-gold">小雅</span>
+                </button>
+              )}
               {/* 位置分享 */}
               <button
                 onClick={() => {
