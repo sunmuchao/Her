@@ -669,7 +669,328 @@ export default function EditProfilePage({ onBack, onSaved }: EditProfilePageProp
               autoComplete="off"
             />
           </div>
+
+          {/* Height - 从生活方式移入 */}
+          <NumberInputWithUnit
+            label="身高"
+            value={profile.height}
+            unit="cm"
+            min={100}
+            max={250}
+            placeholder="未填写"
+            onChange={(value) => setProfile({ ...profile, height: value })}
+          />
+
+          {/* Weight - 从生活方式移入 */}
+          <NumberInputWithUnit
+            label="体重"
+            value={profile.weight}
+            unit="kg"
+            min={30}
+            max={200}
+            placeholder="未填写"
+            onChange={(value) => setProfile({ ...profile, weight: value })}
+          />
+
+          {/* Hometown City - 从家庭背景移入 */}
+          <div>
+            <label className="block text-sm font-medium mb-2 text-foreground">
+              籍贯城市
+            </label>
+            <CitySelector
+              value={profile.hometownCity}
+              onChange={(city) => setProfile({ ...profile, hometownCity: city })}
+              placeholder="选择籍贯城市"
+            />
+          </div>
+
+          {/* Religion - 从家庭背景移入 */}
+          <SelectDropdown
+            label="宗教信仰"
+            value={profile.religion}
+            options={[
+              { value: 'none', label: '无' },
+              { value: 'buddhism', label: '佛教' },
+              { value: 'christianity', label: '基督教' },
+              { value: 'islam', label: '伊斯兰教' },
+              { value: 'other', label: '其他' },
+            ]}
+            placeholder="未填写"
+            onChange={(value) => setProfile({ ...profile, religion: value })}
+          />
         </CollapsibleCard>
+
+        {/* 卡片3：职业与经济 */}
+        <CollapsibleCard
+          title="职业与经济"
+          icon={<Briefcase className="w-4 h-4" />}
+          defaultExpanded={false}
+          className="mb-4"
+        >
+          {/* Education */}
+          <SelectDropdown
+            label="学历"
+            value={profile.education}
+            options={[
+              { value: 'college', label: '专科' },
+              { value: 'bachelor', label: '本科' },
+              { value: 'master', label: '硕士' },
+              { value: 'doctor', label: '博士' },
+            ]}
+            placeholder="未填写"
+            onChange={(value) => setProfile({ ...profile, education: value })}
+          />
+
+          {/* Job */}
+          <div>
+            <label htmlFor="job" className="block text-sm font-medium mb-2 text-foreground">
+              职业
+            </label>
+            <input
+              id="job"
+              type="text"
+              value={profile.job || ''}
+              onChange={(e) => setProfile({ ...profile, job: e.target.value })}
+              placeholder="如：软件工程师"
+              className="w-full px-4 py-3.5 rounded-xl text-base outline-none transition-all bg-input border-2 border-border text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary"
+              autoComplete="off"
+              maxLength={30}
+            />
+          </div>
+
+          {/* Income Range */}
+          <SelectDropdown
+            label="收入范围"
+            value={profile.incomeRange}
+            options={[
+              { value: '5-10万', label: '5-10万' },
+              { value: '10-20万', label: '10-20万' },
+              { value: '20-50万', label: '20-50万' },
+              { value: '50万以上', label: '50万以上' },
+            ]}
+            placeholder="未填写"
+            onChange={(value) => setProfile({ ...profile, incomeRange: value })}
+          />
+
+          {/* Has House */}
+          <fieldset>
+            <legend className="block text-sm font-medium mb-3 text-foreground">
+              房产情况
+            </legend>
+            <div className="flex gap-3">
+              {[
+                { value: 'owned', label: '有房' },
+                { value: 'mortgage', label: '房贷中' },
+                { value: 'none', label: '无房' },
+              ].map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setProfile({ ...profile, hasHouse: option.value })}
+                  className={cn(
+                    'flex-1 py-3 rounded-xl text-sm font-medium transition-all duration-200 border-2 focus-ring',
+                    profile.hasHouse === option.value
+                      ? 'bg-primary text-primary-foreground border-primary scale-[1.02]'
+                      : 'bg-input border-border text-muted-foreground hover:border-primary/30 active:scale-[0.98]'
+                  )}
+                  aria-pressed={profile.hasHouse === option.value}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+
+          {/* Has Car */}
+          <fieldset>
+            <legend className="block text-sm font-medium mb-3 text-foreground">
+              车产情况
+            </legend>
+            <div className="flex gap-3">
+              {[
+                { value: 'owned', label: '有车' },
+                { value: 'none', label: '无车' },
+              ].map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setProfile({ ...profile, hasCar: option.value })}
+                  className={cn(
+                    'flex-1 py-3 rounded-xl text-sm font-medium transition-all duration-200 border-2 focus-ring',
+                    profile.hasCar === option.value
+                      ? 'bg-primary text-primary-foreground border-primary scale-[1.02]'
+                      : 'bg-input border-border text-muted-foreground hover:border-primary/30 active:scale-[0.98]'
+                  )}
+                  aria-pressed={profile.hasCar === option.value}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+        </CollapsibleCard>
+
+        {/* 卡片4：家庭背景 */}
+        <CollapsibleCard
+          title="家庭背景"
+          icon={<Home className="w-4 h-4" />}
+          defaultExpanded={false}
+          className="mb-4"
+        >
+          {/* Marital Status */}
+          <fieldset>
+            <legend className="block text-sm font-medium mb-3 text-foreground">
+              目前婚况
+            </legend>
+            <div className="flex gap-3">
+              {[
+                { value: 'never_married', label: '未婚' },
+                { value: 'divorced', label: '离异' },
+                { value: 'widowed', label: '丧偶' },
+              ].map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setProfile({ ...profile, marriageStatus: option.value })}
+                  className={cn(
+                    'flex-1 py-3 rounded-xl text-sm font-medium transition-all duration-200 border-2 focus-ring',
+                    profile.marriageStatus === option.value
+                      ? 'bg-primary text-primary-foreground border-primary scale-[1.02]'
+                      : 'bg-input border-border text-muted-foreground hover:border-primary/30 active:scale-[0.98]'
+                  )}
+                  aria-pressed={profile.marriageStatus === option.value}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+
+          {/* Has Children */}
+          <fieldset>
+            <legend className="block text-sm font-medium mb-3 text-foreground">
+              是否有孩子
+            </legend>
+            <div className="flex gap-3">
+              {[
+                { value: 'no', label: '没有' },
+                { value: 'yes', label: '有' },
+              ].map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setProfile({ ...profile, hasChildren: option.value })}
+                  className={cn(
+                    'flex-1 py-3 rounded-xl text-sm font-medium transition-all duration-200 border-2 focus-ring',
+                    profile.hasChildren === option.value
+                      ? 'bg-primary text-primary-foreground border-primary scale-[1.02]'
+                      : 'bg-input border-border text-muted-foreground hover:border-primary/30 active:scale-[0.98]'
+                  )}
+                  aria-pressed={profile.hasChildren === option.value}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+
+          {/* Children Count and Living with Self - Conditional */}
+          {profile.hasChildren === 'yes' && (
+            <>
+              <NumberInputWithUnit
+                label="孩子数量"
+                value={profile.childrenCount}
+                unit="个"
+                min={0}
+                max={10}
+                placeholder="未填写"
+                onChange={(value) => setProfile({ ...profile, childrenCount: value })}
+              />
+
+              <fieldset>
+                <legend className="block text-sm font-medium mb-3 text-foreground">
+                  孩子是否随自己生活
+                </legend>
+                <div className="flex gap-3">
+                  {[
+                    { value: 'yes', label: '随自己' },
+                    { value: 'no', label: '不随自己' },
+                  ].map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setProfile({ ...profile, childrenLivingWithSelf: option.value })}
+                      className={cn(
+                        'flex-1 py-3 rounded-xl text-sm font-medium transition-all duration-200 border-2 focus-ring',
+                        profile.childrenLivingWithSelf === option.value
+                          ? 'bg-primary text-primary-foreground border-primary scale-[1.02]'
+                          : 'bg-input border-border text-muted-foreground hover:border-primary/30 active:scale-[0.98]'
+                      )}
+                      aria-pressed={profile.childrenLivingWithSelf === option.value}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+            </>
+          )}
+
+          {/* Is Only Child */}
+          <fieldset>
+            <legend className="block text-sm font-medium mb-3 text-foreground">
+              是否独生子女
+            </legend>
+            <div className="flex gap-3">
+              {[
+                { value: 'yes', label: '是' },
+                { value: 'no', label: '否' },
+              ].map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setProfile({ ...profile, isOnlyChild: option.value })}
+                  className={cn(
+                    'flex-1 py-3 rounded-xl text-sm font-medium transition-all duration-200 border-2 focus-ring',
+                    profile.isOnlyChild === option.value
+                      ? 'bg-primary text-primary-foreground border-primary scale-[1.02]'
+                      : 'bg-input border-border text-muted-foreground hover:border-primary/30 active:scale-[0.98]'
+                  )}
+                  aria-pressed={profile.isOnlyChild === option.value}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+
+          {/* Religion */}
+          <SelectDropdown
+            label="宗教信仰"
+            value={profile.religion}
+            options={[
+              { value: '无', label: '无' },
+              { value: '佛教', label: '佛教' },
+              { value: '基督教', label: '基督教' },
+              { value: '伊斯兰教', label: '伊斯兰教' },
+              { value: '其他', label: '其他' },
+            ]}
+            placeholder="未填写"
+            onChange={(value) => setProfile({ ...profile, religion: value })}
+          />
+        </CollapsibleCard>
+
+        {/* 卡片5：生活方式 */}
+        <CollapsibleCard
+          title="生活方式"
+          icon={<Target className="w-4 h-4" />}
+          defaultExpanded={false}
+          className="mb-4"
+        >
+          {/* Relationship Goal */}
+          <div>
+            <label className="block text-sm font-medium mb-3 text-foreground">
+              关系目标
             </label>
             <div className="space-y-3">
               {[
@@ -727,7 +1048,87 @@ export default function EditProfilePage({ onBack, onSaved }: EditProfilePageProp
               })}
             </div>
           </div>
-        </div>
+
+          {/* Height */}
+          <NumberInputWithUnit
+            label="身高"
+            value={profile.height}
+            unit="cm"
+            min={100}
+            max={250}
+            placeholder="未填写"
+            onChange={(value) => setProfile({ ...profile, height: value })}
+          />
+
+          {/* Weight */}
+          <NumberInputWithUnit
+            label="体重"
+            value={profile.weight}
+            unit="kg"
+            min={30}
+            max={200}
+            placeholder="未填写"
+            onChange={(value) => setProfile({ ...profile, weight: value })}
+          />
+
+          {/* Smoking */}
+          <fieldset>
+            <legend className="block text-sm font-medium mb-3 text-foreground">
+              抽烟情况
+            </legend>
+            <div className="flex gap-3">
+              {[
+                { value: 'never', label: '不抽烟' },
+                { value: 'occasionally', label: '偶尔抽烟' },
+                { value: 'regularly', label: '经常抽烟' },
+              ].map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setProfile({ ...profile, smoking: option.value })}
+                  className={cn(
+                    'flex-1 py-3 rounded-xl text-sm font-medium transition-all duration-200 border-2 focus-ring',
+                    profile.smoking === option.value
+                      ? 'bg-primary text-primary-foreground border-primary scale-[1.02]'
+                      : 'bg-input border-border text-muted-foreground hover:border-primary/30 active:scale-[0.98]'
+                  )}
+                  aria-pressed={profile.smoking === option.value}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+
+          {/* Drinking */}
+          <fieldset>
+            <legend className="block text-sm font-medium mb-3 text-foreground">
+              喝酒情况
+            </legend>
+            <div className="flex gap-3">
+              {[
+                { value: 'never', label: '不喝酒' },
+                { value: 'occasionally', label: '偶尔喝酒' },
+                { value: 'regularly', label: '经常喝酒' },
+              ].map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setProfile({ ...profile, drinking: option.value })}
+                  className={cn(
+                    'flex-1 py-3 rounded-xl text-sm font-medium transition-all duration-200 border-2 focus-ring',
+                    profile.drinking === option.value
+                      ? 'bg-primary text-primary-foreground border-primary scale-[1.02]'
+                      : 'bg-input border-border text-muted-foreground hover:border-primary/30 active:scale-[0.98]'
+                  )}
+                  aria-pressed={profile.drinking === option.value}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+        </CollapsibleCard>
 
         {/* Save Button */}
         <div className="py-6 safe-area-bottom">

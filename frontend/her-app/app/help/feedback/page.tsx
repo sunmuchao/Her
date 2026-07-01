@@ -15,6 +15,16 @@ const categories = [
   { value: 'suggestion', label: '产品建议' },
 ]
 
+function statusLabel() {
+  return '已提交'
+}
+
+function buildSubmitterLabel(record: FeedbackRecord): string {
+  const profilePart =
+    typeof record.submitter.profileId === 'number' ? `Profile ${record.submitter.profileId}` : '未绑定资料'
+  return `${record.submitter.userId} · ${profilePart}`
+}
+
 function formatTime(value: string): string {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
@@ -225,9 +235,13 @@ export default function FeedbackPage() {
                   <div key={item.id} className="rounded-lg bg-secondary/40 p-3">
                     <div className="flex items-center justify-between gap-3">
                       <span className="text-xs font-medium text-foreground">{categoryLabel}</span>
-                      <span className="text-xs text-muted-foreground">{formatTime(item.createdAt)}</span>
+                      <span className="rounded-full bg-background px-2 py-0.5 text-[11px] text-muted-foreground">
+                        {statusLabel()}
+                      </span>
                     </div>
+                    <p className="mt-1 text-xs text-muted-foreground">{formatTime(item.createdAt)}</p>
                     <p className="mt-2 text-sm leading-6 text-foreground">{item.content}</p>
+                    <p className="mt-2 text-xs text-muted-foreground">提交账号：{buildSubmitterLabel(item)}</p>
                     {item.contact ? (
                       <p className="mt-2 text-xs text-muted-foreground">联系方式：{item.contact}</p>
                     ) : null}

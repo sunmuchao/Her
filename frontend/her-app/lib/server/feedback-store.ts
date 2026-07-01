@@ -22,7 +22,11 @@ export async function readFeedbackRecords(): Promise<FeedbackRecord[]> {
         typeof item.category === 'string' &&
         typeof item.content === 'string' &&
         typeof item.contact === 'string' &&
-        typeof item.createdAt === 'string'
+        typeof item.createdAt === 'string' &&
+        typeof item.status === 'string' &&
+        typeof item.submitter === 'object' &&
+        item.submitter !== null &&
+        typeof item.submitter.userId === 'string'
       )
     })
   } catch (error) {
