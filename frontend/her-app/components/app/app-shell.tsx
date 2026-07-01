@@ -178,7 +178,6 @@ export function AppShell({
           <SlideInTransition key="settings" direction="right">
             <SettingsPage
               onBack={() => router.back()}
-              onOpenOnboarding={onOpenOnboarding}
             />
           </SlideInTransition>
         )}
