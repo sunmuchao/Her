@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Clock, RefreshCw, AlertTriangle, X } from 'lucide-react'
+import { Clock, RefreshCw, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getErrorMessage } from '@/lib/api/errors'
 import {
@@ -329,14 +329,6 @@ export default function UnifiedReviewWorkbench() {
           )}
         </div>
       )}
-
-      {/* 权限提示 */}
-      <div className="px-4 mt-6">
-        <div className="rounded-xl bg-muted/30 border border-border/40 p-3 text-xs text-muted-foreground">
-          <AlertTriangle className="h-3.5 w-3.5 inline mr-1" />
-          需要 profile_reviewer / risk_reviewer / platform_admin 角色
-        </div>
-      </div>
 
       {/* 审核详情面板 */}
       {selectedSubmission && isPanelOpen && (
