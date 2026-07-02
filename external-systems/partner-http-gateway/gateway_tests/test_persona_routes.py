@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import io
 import json
 import pathlib
 import sys
@@ -14,6 +13,7 @@ if str(GATEWAY_ROOT) not in sys.path:
     sys.path.insert(0, str(GATEWAY_ROOT))
 
 from gateway.persona_routes import rest_persona_patch
+from gateway_tests.helpers import build_wsgi_env
 
 
 class _PersonaGatewayStub:
@@ -41,13 +41,8 @@ class PersonaRoutesTests(unittest.TestCase):
         }
         gateway = _PersonaGatewayStub()
         actor = types.SimpleNamespace(actor_id="user-1", auth_source="auth_session")
-        environ = {
-            "_actor": actor,
-            "CONTENT_LENGTH": "49",
-            "wsgi.input": io.BytesIO(
-                json.dumps({"patch": {"preferred_traits": ["情绪稳定", "会沟通"]}}).encode("utf-8")
-            ),
-        }
+        environ = build_wsgi_env("PATCH", "/v1/persona/patch", {"patch": {"preferred_traits": ["情绪稳定", "会沟通"]}})
+        environ["_actor"] = actor
 
         status, body = rest_persona_patch(gateway, environ)
 
@@ -73,25 +68,20 @@ class PersonaRoutesTests(unittest.TestCase):
         _source_mock: MagicMock,
     ) -> None:
         apply_mock.return_value = {
-            "applied_fields": [{"field": "must_have_tags", "applied_to_persona": True}],
+            "applied_fields": [{"field": "must_not_have_tags", "applied_to_persona": True}],
             "skipped_fields": [],
         }
         gateway = _PersonaGatewayStub()
         actor = types.SimpleNamespace(actor_id="user-1", auth_source="auth_session")
-        environ = {
-            "_actor": actor,
-            "CONTENT_LENGTH": "44",
-            "wsgi.input": io.BytesIO(
-                json.dumps({"patch": {"must_have_tags": ["真诚", "靠谱"]}}).encode("utf-8")
-            ),
-        }
+        environ = build_wsgi_env("PATCH", "/v1/persona/patch", {"patch": {"must_not_have_tags": ["失联", "冷暴力"]}})
+        environ["_actor"] = actor
 
         status, _body = rest_persona_patch(gateway, environ)
 
         self.assertEqual(status, 200)
         self.assertEqual(
             apply_mock.call_args.kwargs["normalized_patch"],
-            {"must_have_tags": "真诚,靠谱"},
+            {"must_not_have_tags": "失联,冷暴力"},
         )
 
 
