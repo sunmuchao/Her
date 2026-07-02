@@ -55,6 +55,9 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.her
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+        PIP_EXTRA_INDEX_URL: ${PIP_EXTRA_INDEX_URL:-}
     env_file:
       - .env
     environment:
@@ -103,6 +106,9 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.her
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+        PIP_EXTRA_INDEX_URL: ${PIP_EXTRA_INDEX_URL:-}
     env_file:
       - .env
     environment:
@@ -150,6 +156,9 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.her
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+        PIP_EXTRA_INDEX_URL: ${PIP_EXTRA_INDEX_URL:-}
     env_file:
       - .env
     environment:
@@ -196,6 +205,9 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.her
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+        PIP_EXTRA_INDEX_URL: ${PIP_EXTRA_INDEX_URL:-}
     env_file:
       - .env
     environment:
