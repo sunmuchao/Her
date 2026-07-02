@@ -724,7 +724,7 @@ def get_auth_session_roles(
     roles = _active_roles_by_phone(conn, phone)
     if not roles:
         return [ROLE_END_USER]
-    return sorted(roles)
+    return sorted({ROLE_END_USER, *roles})
 
 
 def upsert_phone_role_binding(

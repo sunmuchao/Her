@@ -249,7 +249,7 @@ class GatewayWsgiTests(unittest.TestCase):
               }
           if fn is get_auth_session_roles:
               self.assertEqual(args[0], "usr-admin")
-              return ["platform_admin"]
+              return ["end_user", "platform_admin"]
           raise AssertionError(fn)
 
         with mock.patch.object(gw, "_with_chat", side_effect=chat_side_effect):
@@ -258,7 +258,7 @@ class GatewayWsgiTests(unittest.TestCase):
         self.assertIsNotNone(actor)
         assert actor is not None
         self.assertEqual(actor.actor_id, "usr-admin")
-        self.assertEqual(actor.roles, frozenset({"platform_admin"}))
+        self.assertEqual(actor.roles, frozenset({"end_user", "platform_admin"}))
 
     def test_aliyun_sms_provider_request_shape(self) -> None:
         class FakeResponse:
