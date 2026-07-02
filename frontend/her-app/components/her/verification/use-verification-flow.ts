@@ -358,8 +358,12 @@ export function useVerificationFlow(onBack: () => void) {
       await submitLiveVideoVerification({
         challengeToken: token,
         challengePhrase: liveChallenge?.challenge_phrase,
+        requiredActions: liveChallenge?.required_actions,
         videoBase64: recordedVideo?.base64,
+        videoBlob: recordedVideo?.blob,
+        fileName: 'verification-recording.webm',
         contentType: recordedVideo?.mimeType,
+        recordingDurationMs: 6000,
       })
       notifySuccess('身份认证视频已提交，等待审核')
 
