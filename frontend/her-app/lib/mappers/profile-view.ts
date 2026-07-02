@@ -111,10 +111,12 @@ export function buildProfileView(
   const collectedStatements = collected?.collected_statements ?? {}
   const onboardingPreference = auth?.onboarding?.preference ?? {}
   // 提取标签（从 preferred_traits 字段，用户手动编辑）
-  let tags = safeStringList(onboardingPreference.tags)
-  if (tags.length === 0 && Object.keys(collectedStatements).length > 0) {
-    tags = extractPreferredTraits(collectedStatements).slice(0, 6)
-  }
+  const tags = [
+    safeStringList(onboardingPreference.tags),
+    safeStringList(onboardingPreference.preferred_traits),
+    safeStringList(rawProfile.preferred_traits),
+    extractPreferredTraits(collectedStatements).slice(0, 6),
+  ].find((items) => items.length > 0) ?? []
 
   // 提取认证项目
   let verificationItems: VerificationItemView[] = []
